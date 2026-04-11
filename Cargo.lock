@@ -159,6 +159,7 @@ dependencies = [
  "colorized",
  "cyrusc_analyzer",
  "cyrusc_ast",
+ "cyrusc_cir_dump",
  "cyrusc_cir_traverse",
  "cyrusc_codegen_llvm",
  "cyrusc_compiler",
@@ -283,7 +284,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "cyrusc_cir_traverse"
+name = "cyrusc_cir_dump"
 version = "0.1.0"
 dependencies = [
  "cyrusc_ast",
@@ -291,6 +292,18 @@ dependencies = [
  "cyrusc_internal",
  "cyrusc_source_loc",
  "cyrusc_strescape",
+ "cyrusc_tokens",
+ "cyrusc_typed_ast",
+]
+
+[[package]]
+name = "cyrusc_cir_traverse"
+version = "0.1.0"
+dependencies = [
+ "cyrusc_ast",
+ "cyrusc_diagcentral",
+ "cyrusc_internal",
+ "cyrusc_source_loc",
  "cyrusc_tokens",
  "cyrusc_typed_ast",
  "fx-hash",

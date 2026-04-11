@@ -4,6 +4,7 @@ version = "0.0.4"
 edition = "2024"
 
 [dependencies]
+cyrusc_cir_dump = { path = "../cyrusc_cir_dump", version = "*" }
 cyrusc_cir_traverse = { path = "../cyrusc_cir_traverse", version = "*" }
 cyrusc_source_loc = { path = "../cyrusc_source_loc", version = "*" }
 cyrusc_compiler = { path = "../cyrusc_compiler", version = "*" }

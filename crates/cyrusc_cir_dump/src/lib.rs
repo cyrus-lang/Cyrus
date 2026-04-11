@@ -21,27 +21,28 @@ use cyrusc_internal::cir::{cir::*, types::CIRType};
 use cyrusc_strescape::escape_string;
 use std::{fs, path::PathBuf};
 
-pub struct CIRPrinter {
+pub struct CIRPrinter<'a> {
+    module: &'a CIRModule,
     out: String,
     indent: usize,
 }
 
-pub fn process_cir_dump_for_program_trees(program_trees: &[Box<CIRProgramTree>], output_path: PathBuf) {
+pub fn process_cir_dump_for_modules(modules: &[Box<CIRModule>], output_path: PathBuf) {
     debug_assert!(output_path.is_dir());
 
-    for program_tree in program_trees {
-        let mut printer = CIRPrinter::new();
-        let dump = printer.print_program_tree(program_tree);
+    for module in modules {
+        let mut printer = CIRPrinter::new(module);
+        let dump = printer.print_module();
 
         // derive file name: <module>.cir
-        let file_name = format!("{}.cir", program_tree.module_name);
+        let file_name = format!("{}.cir", module.module_name);
 
         let file_path = output_path.join(file_name);
 
         if let Err(err) = fs::write(&file_path, dump) {
             exit_with_msg!(format!(
                 "Failed to write CIR dump for module '{}' to '{}': {}",
-                program_tree.module_name,
+                module.module_name,
                 file_path.display(),
                 err
             ));
@@ -49,18 +50,19 @@ pub fn process_cir_dump_for_program_trees(program_trees: &[Box<CIRProgramTree>],
     }
 }
 
-impl CIRPrinter {
-    pub fn new() -> Self {
+impl<'a> CIRPrinter<'a> {
+    pub fn new(module: &'a CIRModule) -> Self {
         Self {
+            module,
             out: String::new(),
             indent: 0,
         }
     }
 }
 
-impl CIRPrinter {
-    pub fn print_program_tree(&mut self, program_tree: &CIRProgramTree) -> &str {
-        for stmt in &program_tree.body {
+impl<'a> CIRPrinter<'a> {
+    pub fn print_module(&mut self) -> &str {
+        for stmt in &self.module.stmts {
             self.print_stmt(stmt);
             self.push_line("");
         }
@@ -215,7 +217,7 @@ impl CIRPrinter {
 
         let ty = self.print_type(&global_var.ty);
 
-        self.push_line(format!("global {}: {}{};", global_var.irv_id.0, ty, init));
+        self.push_line(format!("global {}: {}{};", global_var.name, ty, init));
     }
 
     fn print_func_def(&mut self, func: &CIRFuncDefStmt) {
@@ -296,20 +298,56 @@ impl CIRPrinter {
 
     fn print_expr(&mut self, expr: &CIRExpr) -> String {
         match &expr.kind {
-            CIRExprKind::Load(value) => match &value.kind {
-                CIRValueKind::Func(func_decl_stmt) => func_decl_stmt.name.to_string(),
-                CIRValueKind::GlobalVar(global_var_stmt) => global_var_stmt.name.to_string(),
+            CIRExprKind::Load(value_ref) => match &value_ref.kind {
+                CIRValueKind::Func => {
+                    let func_decl = self.module.func_decls.get(&value_ref.irv_id).unwrap();
+                    func_decl.name.clone()
+                }
+                CIRValueKind::GlobalVar => {
+                    let global_var_decl = self.module.global_var_decls.get(&value_ref.irv_id).unwrap();
+                    global_var_decl.name.clone()
+                }
                 CIRValueKind::LocalVariable => {
-                    format!("%{}", value.irv_id.0)
+                    format!("%{}", value_ref.irv_id.0)
                 }
             },
-            CIRExprKind::Literal(l) => self.print_literal(l),
-            CIRExprKind::Infix(i) => format!("({} {} {})", self.print_expr(&i.lhs), i.op, self.print_expr(&i.rhs)),
-            CIRExprKind::Prefix(p) => format!("{}{}", p.op, self.print_expr(&p.operand)),
-            CIRExprKind::Call(c) => {
-                let args = c.args.iter().map(|a| self.print_expr(a)).collect::<Vec<_>>().join(", ");
+            CIRExprKind::Literal(literal) => self.print_literal(literal),
+            CIRExprKind::Infix(infix) => format!(
+                "({} {} {})",
+                self.print_expr(&infix.lhs),
+                infix.op,
+                self.print_expr(&infix.rhs)
+            ),
+            CIRExprKind::Prefix(prefix) => format!("{}{}", prefix.op, self.print_expr(&prefix.operand)),
+            CIRExprKind::Call(call) => {
+                let args = call
+                    .args
+                    .iter()
+                    .map(|a| self.print_expr(a))
+                    .collect::<Vec<_>>()
+                    .join(", ");
 
-                format!("{}({})", self.print_expr(&c.operand), args)
+                let dispatch = match &call.dispatch {
+                    CIRCallDispatch::Normal { irv_id, .. } => {
+                        let func_decl = self.module.func_decls.get(irv_id).unwrap();
+                        func_decl.name.clone()
+                    }
+                    CIRCallDispatch::FunctionPointer { operand } => self.print_expr(operand),
+                    CIRCallDispatch::Interface {
+                        operand,
+                        method_idx,
+                        methods_len,
+                        func_type: _,
+                    } => {
+                        let obj = self.print_expr(operand);
+                        format!("iface_call({}, method={}/{})", obj, method_idx, methods_len)
+                    }
+                    CIRCallDispatch::Monomorph { irv_id, monomorph_id } => {
+                        format!("%{}[mono:{}]", irv_id.0, monomorph_id.0)
+                    }
+                };
+
+                format!("{}({})", dispatch, args)
             }
             CIRExprKind::Assign(assign) => {
                 format!("{} = {}", self.print_expr(&assign.lhs), self.print_expr(&assign.rhs))
@@ -600,7 +638,7 @@ impl CIRPrinter {
 }
 
 // Helpers.
-impl CIRPrinter {
+impl<'a> CIRPrinter<'a> {
     fn push_line(&mut self, s: impl AsRef<str>) {
         for _ in 0..self.indent {
             self.out.push_str("    ");

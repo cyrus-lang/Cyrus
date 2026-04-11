@@ -35,8 +35,6 @@ use cyrusc_typed_ast::{SymbolID, exprs::*};
 use fx_hash::FxHashMap;
 use std::sync::{Arc, Mutex};
 
-pub mod cir_dump;
-
 pub(crate) struct CIRTraverse<'a> {
     program_tree: Box<TypedProgramTree>,
     query: &'a dyn SymbolQuery,
@@ -48,6 +46,8 @@ pub(crate) struct CIRTraverse<'a> {
 
     next_irv_id: IRValueID,
     decl_to_ir_value_map: FxHashMap<DeclID, IRValueID>,
+    func_decls: FxHashMap<IRValueID, CIRFuncDeclStmt>,
+    global_var_decls: FxHashMap<IRValueID, CIRGlobalVarStmt>,
 }
 
 impl<'resolver> CIRTraverse<'resolver> {
@@ -71,17 +71,25 @@ impl<'resolver> CIRTraverse<'resolver> {
             module_name,
             next_irv_id: IRValueID(0),
             decl_to_ir_value_map: FxHashMap::default(),
+            global_var_decls: FxHashMap::default(),
+            func_decls: FxHashMap::default(),
         }
     }
 
-    pub fn run_pass(&mut self, file_path: String) -> CIRProgramTree {
+    pub fn lower(&mut self, file_path: String) -> CIRModule {
         let stmts = std::mem::take(&mut self.program_tree.body);
+
         let lowered_stmts = self.lower_stmts(&stmts);
 
-        CIRProgramTree {
-            body: lowered_stmts,
+        let global_var_decls = std::mem::take(&mut self.global_var_decls);
+        let func_decls = std::mem::take(&mut self.func_decls);
+
+        CIRModule {
+            stmts: lowered_stmts,
             file_path,
             module_name: self.module_name.clone(),
+            global_var_decls,
+            func_decls,
         }
     }
 
@@ -175,46 +183,6 @@ impl<'resolver> CIRTraverse<'resolver> {
         }
 
         lowered_stmts
-    }
-
-    // FIXME
-    fn lower_non_generic_methods(&mut self, object_name: &String, methods: &MethodDecls) -> Vec<CIRStmt> {
-        todo!();
-
-        // let mut stmts: Vec<CIRStmt> = Vec::new();
-
-        // for method_id in methods.values().cloned() {
-        //     let method_decl_id = self.query.get_method(method_id).unwrap();
-        //     let method_decl = self.decl_tables.method_decl(method_decl_id);
-
-        //     let lowered_method = self.lower_method(&method_decl, object_name).unwrap();
-        //     stmts.push(lowered_method);
-        // }
-
-        // stmts
-    }
-
-    // FIXME
-    fn lower_method(&mut self, method_decl: &MethodDecl, object_name: &String) -> Option<CIRStmt> {
-        todo!();
-
-        // let mangled_name = DEFAULT_ABI.method_name(&self.module_name, object_name, &resolved_method.func_decl.name);
-
-        // // skip if has no body
-        // let func_body = resolved_method.func_body.clone()?;
-
-        // let func_def = TypedFuncDefStmt {
-        //     symbol_id: resolved_method.symbol_id,
-        //     name: mangled_name,
-        //     params: resolved_method.func_decl.params.clone(),
-        //     generic_params: resolved_method.func_decl.generic_params.clone(),
-        //     body: func_body,
-        //     ret_type: resolved_method.func_decl.ret_type.clone(),
-        //     modifiers: resolved_method.func_decl.modifiers.clone(),
-        //     loc: resolved_method.func_decl.loc,
-        // };
-
-        // Some(self.lower_func_def(&func_def, false))
     }
 
     fn lower_label(&self, label: &TypedLabelStmt) -> CIRStmt {
@@ -388,17 +356,21 @@ impl<'resolver> CIRTraverse<'resolver> {
 
         let global_var_decl_id = self.query.get_global_var(global_var.symbol_id).unwrap();
 
-        self.decl_to_ir_value_map
-            .insert(DeclID::GlobalVar(global_var_decl_id), irv_id);
-
-        CIRStmt::GlobalVar(CIRGlobalVarStmt {
+        let global_var_stmt = CIRGlobalVarStmt {
             irv_id,
             name: mangled_name,
             ty,
             expr,
             modifiers: global_var.modifiers.clone(),
             loc: global_var.loc,
-        })
+        };
+
+        self.decl_to_ir_value_map
+            .insert(DeclID::GlobalVar(global_var_decl_id), irv_id);
+
+        self.global_var_decls.insert(irv_id, global_var_stmt.clone());
+
+        CIRStmt::GlobalVar(global_var_stmt)
     }
 
     fn lower_global_var_decl(&mut self, irv_id: IRValueID, global_var_decl: &GlobalVarDecl) -> CIRGlobalVarStmt {
@@ -528,7 +500,8 @@ impl<'resolver> CIRTraverse<'resolver> {
 
     fn lower_func_decl(&mut self, func_decl: &FuncDecl, mangle_name: bool) -> CIRFuncDeclStmt {
         let params = self.lower_func_params(&func_decl.params, true);
-        let ret = self.lower_sema_type(&func_decl.ret_type);
+
+        let ret_type = self.lower_sema_type(&func_decl.ret_type);
 
         let func_name = if mangle_name {
             mangle_func(&func_decl.modifiers, &self.module_name, &func_decl.name)
@@ -546,7 +519,7 @@ impl<'resolver> CIRTraverse<'resolver> {
             irv_id,
             name: func_name,
             params,
-            ret,
+            ret: ret_type,
             modifiers: func_decl.modifiers.clone(),
             abi_func_info: None,
             loc: func_decl.loc,
@@ -554,6 +527,9 @@ impl<'resolver> CIRTraverse<'resolver> {
 
         let cir_func_type = cir_func_decl_as_func_ty(&cir_func_decl);
         cir_func_decl.abi_func_info = Some(self.target.target_abi.classify_func(&cir_func_type).unwrap());
+
+        self.func_decls.insert(irv_id, cir_func_decl.clone());
+
         cir_func_decl
     }
 
@@ -622,64 +598,10 @@ impl<'resolver> CIRTraverse<'resolver> {
         }
     }
 
-    // FIXME
-    fn lower_dynamic(&mut self, dynamic: &TypedDynamicExpr) -> CIRExprKind {
-        todo!();
-
-        // let operand = self.lower_expr(&dynamic.operand);
-        // let data_ptr = CIRExpr {
-        //     kind: CIRExprKind::AddrOf(CIRAddrOfExpr {
-        //         operand: Box::new(operand),
-        //     }),
-        //     ty: CIRType::Pointer(Box::new(CIRType::PlainType(PlainType::Void))),
-        //     loc: dynamic.loc,
-        // };
-
-        // let vtable_info = {
-        //     let vtable_registry = self.vtable_registry.lock().unwrap();
-        //     vtable_registry.info(dynamic.vtable_id.unwrap()).clone()
-        // };
-
-        // let method_decls: Vec<CIRFuncDeclStmt> = vtable_info
-        //     .methods
-        //     .iter()
-        //     .cloned()
-        //     .map(|mut func_decl| {
-        //         let mangled_name = mangle_method(
-        //             &self.query.lookup_module_name(func_decl.module_id).unwrap(),
-        //             &dynamic.object_name.as_ref().unwrap(),
-        //             &func_decl.name,
-        //         );
-
-        //         func_decl.name = mangled_name;
-        //         self.lower_func_sig(func_decl.symbol_id.unwrap().0, &func_decl)
-        //     })
-        //     .collect();
-
-        // let vtable_abi_name = DEFAULT_ABI.vtable_name(
-        //     &dynamic.object_name.clone().unwrap(),
-        //     &dynamic.vtable_id.unwrap().to_string(),
-        // );
-
-        // CIRExprKind::Dynamic(CIRDynamicExpr {
-        //     global_var_id: vtable_info.vtable_id.0,
-        //     data_expr: Box::new(data_ptr),
-        //     method_decls,
-        //     vtable_abi_name,
-        //     loc: dynamic.loc,
-        // })
-    }
-
     pub(crate) fn lower_load_symbol(&mut self, symbol_id: SymbolID) -> CIRExprKind {
         let symbol_entry = self.query.lookup_symbol_entry(symbol_id).unwrap();
 
         if let Some(func_decl_id) = symbol_entry.as_func() {
-            let func_decl = self.decl_tables.func_decl(func_decl_id);
-            let mut cir_func_decl = self.lower_func_decl(&func_decl, true);
-
-            let cir_func_type = cir_func_decl_as_func_ty(&cir_func_decl);
-            cir_func_decl.abi_func_info = Some(self.target.target_abi.classify_func(&cir_func_type).unwrap());
-
             let irv_id = self
                 .decl_to_ir_value_map
                 .get(&DeclID::Func(func_decl_id))
@@ -688,22 +610,18 @@ impl<'resolver> CIRTraverse<'resolver> {
 
             CIRExprKind::Load(CIRValue {
                 irv_id,
-                kind: CIRValueKind::Func(Box::new(cir_func_decl)),
+                kind: CIRValueKind::Func,
             })
         } else if let Some(global_var_decl_id) = symbol_entry.as_global_var() {
-            let global_var_decl = self.decl_tables.global_var_decl(global_var_decl_id);
-
             let irv_id = self
                 .decl_to_ir_value_map
                 .get(&DeclID::GlobalVar(global_var_decl_id))
                 .copied()
                 .unwrap();
 
-            let global_var_stmt = self.lower_global_var_decl(irv_id, &global_var_decl);
-
             CIRExprKind::Load(CIRValue {
                 irv_id,
-                kind: CIRValueKind::GlobalVar(Box::new(global_var_stmt)),
+                kind: CIRValueKind::GlobalVar,
             })
         } else if let Some(var_decl_id) = symbol_entry.as_var() {
             let irv_id = self
@@ -717,7 +635,7 @@ impl<'resolver> CIRTraverse<'resolver> {
                 kind: CIRValueKind::LocalVariable,
             })
         } else {
-            unreachable!("Unexpected symbol kind when lowering load symbol.")
+            unreachable!("unexpected symbol kind when lowering load symbol")
         }
     }
 
@@ -833,6 +751,54 @@ impl<'resolver> CIRTraverse<'resolver> {
     }
 
     // FIXME
+    fn lower_dynamic(&mut self, dynamic: &TypedDynamicExpr) -> CIRExprKind {
+        todo!();
+
+        // let operand = self.lower_expr(&dynamic.operand);
+        // let data_ptr = CIRExpr {
+        //     kind: CIRExprKind::AddrOf(CIRAddrOfExpr {
+        //         operand: Box::new(operand),
+        //     }),
+        //     ty: CIRType::Pointer(Box::new(CIRType::PlainType(PlainType::Void))),
+        //     loc: dynamic.loc,
+        // };
+
+        // let vtable_info = {
+        //     let vtable_registry = self.vtable_registry.lock().unwrap();
+        //     vtable_registry.info(dynamic.vtable_id.unwrap()).clone()
+        // };
+
+        // let method_decls: Vec<CIRFuncDeclStmt> = vtable_info
+        //     .methods
+        //     .iter()
+        //     .cloned()
+        //     .map(|mut func_decl| {
+        //         let mangled_name = mangle_method(
+        //             &self.query.lookup_module_name(func_decl.module_id).unwrap(),
+        //             &dynamic.object_name.as_ref().unwrap(),
+        //             &func_decl.name,
+        //         );
+
+        //         func_decl.name = mangled_name;
+        //         self.lower_func_sig(func_decl.symbol_id.unwrap().0, &func_decl)
+        //     })
+        //     .collect();
+
+        // let vtable_abi_name = DEFAULT_ABI.vtable_name(
+        //     &dynamic.object_name.clone().unwrap(),
+        //     &dynamic.vtable_id.unwrap().to_string(),
+        // );
+
+        // CIRExprKind::Dynamic(CIRDynamicExpr {
+        //     global_var_id: vtable_info.vtable_id.0,
+        //     data_expr: Box::new(data_ptr),
+        //     method_decls,
+        //     vtable_abi_name,
+        //     loc: dynamic.loc,
+        // })
+    }
+
+    // FIXME
     fn lower_method_call(&mut self, method_call: &TypedMethodCall) -> CIRExprKind {
         todo!();
     }
@@ -926,33 +892,79 @@ impl<'resolver> CIRTraverse<'resolver> {
         // }
     }
 
+    // FIXME
+    fn lower_non_generic_methods(&mut self, object_name: &String, methods: &MethodDecls) -> Vec<CIRStmt> {
+        todo!();
+
+        // let mut stmts: Vec<CIRStmt> = Vec::new();
+
+        // for method_id in methods.values().cloned() {
+        //     let method_decl_id = self.query.get_method(method_id).unwrap();
+        //     let method_decl = self.decl_tables.method_decl(method_decl_id);
+
+        //     let lowered_method = self.lower_method(&method_decl, object_name).unwrap();
+        //     stmts.push(lowered_method);
+        // }
+
+        // stmts
+    }
+
+    // FIXME
+    fn lower_method(&mut self, method_decl: &MethodDecl, object_name: &String) -> Option<CIRStmt> {
+        todo!();
+
+        // let mangled_name = DEFAULT_ABI.method_name(&self.module_name, object_name, &resolved_method.func_decl.name);
+
+        // // skip if has no body
+        // let func_body = resolved_method.func_body.clone()?;
+
+        // let func_def = TypedFuncDefStmt {
+        //     symbol_id: resolved_method.symbol_id,
+        //     name: mangled_name,
+        //     params: resolved_method.func_decl.params.clone(),
+        //     generic_params: resolved_method.func_decl.generic_params.clone(),
+        //     body: func_body,
+        //     ret_type: resolved_method.func_decl.ret_type.clone(),
+        //     modifiers: resolved_method.func_decl.modifiers.clone(),
+        //     loc: resolved_method.func_decl.loc,
+        // };
+
+        // Some(self.lower_func_def(&func_def, false))
+    }
+
     fn lower_func_call(&mut self, func_call: &TypedFuncCall) -> CIRExprKind {
         let args: Vec<CIRExpr> = func_call.args.iter().map(|arg| self.lower_expr(arg)).collect();
 
-        let operand = Box::new(self.lower_expr(&func_call.operand));
-
         match &func_call.dispatch {
             TypedFuncCallDispatch::Unresolved => unreachable!(),
-            TypedFuncCallDispatch::Direct { func_decl_id } => {
+            TypedFuncCallDispatch::Normal { func_decl_id } => {
                 let func_decl = self.decl_tables.func_decl(*func_decl_id);
+
+                let irv_id = self
+                    .decl_to_ir_value_map
+                    .get(&DeclID::Func(*func_decl_id))
+                    .copied()
+                    .unwrap();
 
                 let ret_type = self.lower_sema_type(&func_decl.ret_type);
 
+                let func_type = self.lower_func_type(&func_decl.as_func_type());
+
                 CIRExprKind::Call(CIRCall {
-                    operand,
                     args,
                     ret_type,
-                    dispatch: CIRCallDispatch::Normal,
+                    dispatch: CIRCallDispatch::Normal { irv_id, func_type },
                 })
             }
             TypedFuncCallDispatch::FunctionPointer { func_type } => {
+                let operand = Box::new(self.lower_expr(&func_call.operand));
+
                 let ret_type = self.lower_sema_type(&func_type.ret_type);
 
                 CIRExprKind::Call(CIRCall {
-                    operand,
                     args,
                     ret_type,
-                    dispatch: CIRCallDispatch::Normal,
+                    dispatch: CIRCallDispatch::FunctionPointer { operand },
                 })
             }
             TypedFuncCallDispatch::Monomorph {
@@ -1040,6 +1052,22 @@ impl<'resolver> CIRTraverse<'resolver> {
         CIRExprKind::Literal(CIRLiteral { kind, ty })
     }
 
+    fn lower_func_type(&mut self, func_type: &TypedFuncType) -> CIRFuncType {
+        let ret = Box::new(self.lower_sema_type(&func_type.ret_type));
+        let params = self.lower_func_type_params(&func_type.params);
+
+        let mut cir_type = CIRFuncType {
+            params: params,
+            is_var: func_type.params.variadic.is_some(),
+            ret,
+            callconv: CallConv::default(),
+            abi_func_info: None,
+        };
+
+        cir_type.abi_func_info = Some(self.target.target_abi.classify_func(&cir_type).unwrap());
+        cir_type
+    }
+
     fn lower_sema_type(&mut self, sema_type: &SemaType) -> CIRType {
         match sema_type {
             SemaType::Array(array_type) => {
@@ -1056,21 +1084,7 @@ impl<'resolver> CIRTraverse<'resolver> {
             }
             SemaType::Const(sema_type) => CIRType::Const(Box::new(self.lower_sema_type(&*sema_type))),
             SemaType::Pointer(sema_type) => CIRType::Pointer(Box::new(self.lower_sema_type(&*sema_type))),
-            SemaType::FuncType(func_type) => {
-                let ret = Box::new(self.lower_sema_type(&func_type.ret_type));
-                let params = self.lower_func_type_params(&func_type.params);
-
-                let mut cir_type = CIRFuncType {
-                    params: params,
-                    is_var: func_type.params.variadic.is_some(),
-                    ret,
-                    callconv: CallConv::default(),
-                    abi_func_info: None,
-                };
-
-                cir_type.abi_func_info = Some(self.target.target_abi.classify_func(&cir_type).unwrap());
-                CIRType::FuncType(cir_type)
-            }
+            SemaType::FuncType(func_type) => CIRType::FuncType(self.lower_func_type(func_type)),
             SemaType::Tuple(tuple_type) => {
                 let elements: Vec<CIRType> = tuple_type
                     .elements
@@ -1236,7 +1250,7 @@ pub fn walk_program_trees_in_parallel(
     cir_instance_registry: Arc<Mutex<CIRInstanceRegistry>>,
     vtable_registries: &Vec<Arc<Mutex<VTableRegistry>>>,
     target: &ABITarget,
-) -> Vec<Box<CIRProgramTree>> {
+) -> Vec<Box<CIRModule>> {
     use rayon::prelude::*;
 
     let num_threads = threads.unwrap_or_else(|| num_cpus::get().max(1));
@@ -1263,8 +1277,8 @@ pub fn walk_program_trees_in_parallel(
                 );
 
                 let file_path = source_map.get_file(program_tree.file_id).unwrap().file_path.clone();
-                let cir_program_tree = cir_walk.run_pass(file_path.to_string_lossy().to_string());
-                Box::new(cir_program_tree)
+
+                Box::new(cir_walk.lower(file_path.to_string_lossy().to_string()))
             })
             .collect()
     })

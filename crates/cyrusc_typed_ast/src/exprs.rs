@@ -237,7 +237,7 @@ pub enum TypedFuncCallDispatch {
     Unresolved,
 
     /// Normal function call
-    Direct {
+    Normal {
         func_decl_id: FuncDeclID,
     },
 

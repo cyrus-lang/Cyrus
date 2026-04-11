@@ -16,6 +16,7 @@
  */
 
 use cyrusc_typed_ast::{
+    BodyID,
     decls::{FuncDeclID, MonomorphID},
     stmts::{TypedBlockStmt, TypedTypeArgs},
 };
@@ -33,7 +34,7 @@ pub struct MonomorphInstance {
     pub monomorph_id: MonomorphID,
     pub func_decl_id: FuncDeclID,
     pub type_args: TypedTypeArgs,
-    pub body: Option<TypedBlockStmt>,
+    pub body: Option<BodyID>,
     pub analyzed: bool,
 }
 
@@ -41,6 +42,7 @@ pub struct MonomorphInstance {
 struct MonomorphRegistryInner {
     key_map: FxHashMap<MonomorphKey, MonomorphID>,
     instances: Vec<MonomorphInstance>,
+    monomorph_body: Vec<TypedBlockStmt>,
 }
 
 #[derive(Debug, Default)]
@@ -54,15 +56,16 @@ impl MonomorphRegistry {
             inner: RwLock::new(MonomorphRegistryInner {
                 key_map: FxHashMap::default(),
                 instances: Vec::new(),
+                monomorph_body: Vec::new(),
             }),
         }
     }
 
-    pub fn get_or_create(&self, template: FuncDeclID, type_args: TypedTypeArgs) -> MonomorphID {
+    pub fn get_or_create(&self, func_decl_id: FuncDeclID, type_args: TypedTypeArgs) -> MonomorphID {
         {
             let inner = self.inner.read().unwrap();
             let key = MonomorphKey {
-                template,
+                template: func_decl_id,
                 type_args: type_args.clone(),
             };
 
@@ -74,7 +77,7 @@ impl MonomorphRegistry {
         let mut inner = self.inner.write().unwrap();
 
         let key = MonomorphKey {
-            template,
+            template: func_decl_id,
             type_args: type_args.clone(),
         };
 
@@ -86,7 +89,7 @@ impl MonomorphRegistry {
 
         let instance = MonomorphInstance {
             monomorph_id: id,
-            func_decl_id: template,
+            func_decl_id,
             type_args: type_args.clone(),
             body: None,
             analyzed: false,
@@ -109,5 +112,17 @@ impl MonomorphRegistry {
     {
         let mut inner = self.inner.write().unwrap();
         f(&mut inner.instances[id.0]);
+    }
+
+    pub fn insert_monomorph_body(&self, body: TypedBlockStmt) -> BodyID {
+        let mut inner = self.inner.write().unwrap();
+        let body_id = BodyID(inner.monomorph_body.len() as u32);
+        inner.monomorph_body.push(body);
+        body_id
+    }
+
+    pub fn get_monomorph_body(&self, body_id: BodyID) -> Option<TypedBlockStmt> {
+        let inner = self.inner.read().unwrap();
+        inner.monomorph_body.get(body_id.0 as usize).cloned()
     }
 }

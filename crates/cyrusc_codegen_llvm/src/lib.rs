@@ -31,7 +31,7 @@ use cyrusc_compiler::{
     tm_info::TargetMachineInfo,
 };
 use cyrusc_diagcentral::exit_with_msg;
-use cyrusc_internal::cir::{cir::CIRProgramTree, instances::CIRInstanceRegistry};
+use cyrusc_internal::cir::{cir::CIRModule, instances::CIRInstanceRegistry};
 use cyrusc_scaffold_parser::OBJECT_CACHE_DIR_FILENAME;
 use cyrusc_tui_utils::tui_skipped;
 use inkwell::{
@@ -97,7 +97,7 @@ impl CodeGenLLVM {
         &self,
         owned_module: &'ctx OwnedModule,
         builder: Rc<Builder<'ctx>>,
-        cir_program_tree: &'ctx CIRProgramTree,
+        cir_module: &'ctx CIRModule,
         monomorph_registry: Arc<Mutex<CIRInstanceRegistry>>,
         dctx: DebugContext,
     ) {
@@ -123,7 +123,7 @@ impl CodeGenLLVM {
             dctx,
         );
 
-        ir_builder_ctx.emit_program_tree(cir_program_tree);
+        ir_builder_ctx.emit_module(cir_module);
 
         unsafe { finalize_debug(&ir_builder_ctx.dctx) };
         {
@@ -329,24 +329,24 @@ impl CodeGenBackend<'static, OwnedModule> for CodeGenLLVM {
 }
 
 impl SeparateModuleSupport<'static, OwnedModule> for CodeGenLLVM {
-    fn process_separately(&self, cir_modules: &[Box<CIRProgramTree>]) -> Vec<OwnedModule> {
+    fn process_separately(&self, cir_modules: &[Box<CIRModule>]) -> Vec<OwnedModule> {
         let mut modules = Vec::with_capacity(cir_modules.len());
 
-        for cir_program_tree in cir_modules {
+        for cir_module in cir_modules {
             let context = OwnedModule::create_context();
             let owned_module = OwnedModule::create_owned_module(
                 context,
-                &cir_program_tree.file_path,
-                &cir_program_tree.module_name,
+                &cir_module.file_path,
+                &cir_module.module_name,
                 false,
             );
 
             let recompile_forced =
-                need_to_be_recompiled(&self.ctx, &Path::new(&cir_program_tree.file_path).to_path_buf());
+                need_to_be_recompiled(&self.ctx, &Path::new(&cir_module.file_path).to_path_buf());
 
             // skip emit module if recompilation is not forced
             if !recompile_forced {
-                tui_skipped(cir_program_tree.file_path.clone());
+                tui_skipped(cir_module.file_path.clone());
                 modules.push(owned_module);
                 continue;
             }
@@ -361,7 +361,7 @@ impl SeparateModuleSupport<'static, OwnedModule> for CodeGenLLVM {
             self.process_module_with_local_context(
                 &owned_module,
                 builder,
-                cir_program_tree,
+                cir_module,
                 self.monomorph_registry.clone(),
                 dctx,
             );
@@ -373,14 +373,14 @@ impl SeparateModuleSupport<'static, OwnedModule> for CodeGenLLVM {
 }
 
 impl UnifiedModuleSupport<'static, OwnedModule> for CodeGenLLVM {
-    fn process_unified(&self, cir_modules: &[Box<CIRProgramTree>]) -> OwnedModule {
+    fn process_unified(&self, cir_modules: &[Box<CIRModule>]) -> OwnedModule {
         let context = OwnedModule::create_context();
         let owned_module = OwnedModule::create_owned_module(context, &self.entry_module_file_path, "module", true);
 
-        for cir_program_tree in cir_modules {
+        for cir_module in cir_modules {
             let dctx = {
                 let llvmmodule_ref = owned_module.module.borrow().as_mut_ptr();
-                unsafe { DebugContext::new(llvmmodule_ref, &cir_program_tree.file_path, ".") }
+                unsafe { DebugContext::new(llvmmodule_ref, &cir_module.file_path, ".") }
             };
 
             let builder = owned_module.create_builder();
@@ -388,7 +388,7 @@ impl UnifiedModuleSupport<'static, OwnedModule> for CodeGenLLVM {
             self.process_module_with_local_context(
                 &owned_module,
                 builder.clone(),
-                cir_program_tree,
+                cir_module,
                 self.monomorph_registry.clone(),
                 dctx,
             );

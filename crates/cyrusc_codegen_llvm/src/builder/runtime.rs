@@ -105,7 +105,7 @@ impl<'ll> IRBuilderCtx<'ll> {
         );
 
         let fprintf_fn_value = match module.get_function("fprintf") {
-            Some(fn_value) => fn_value,
+            Some(llvm_func_value) => llvm_func_value,
             None => module.add_function("fprintf", fprintf_type, None),
         };
 
@@ -140,7 +140,7 @@ impl<'ll> IRBuilderCtx<'ll> {
         let error_status_code = i32_type.const_int(1, false);
 
         let exit_fn_value = match module.get_function("exit") {
-            Some(fn_value) => fn_value,
+            Some(llvm_func_value) => llvm_func_value,
             None => {
                 let exit_fn_type = void_type.fn_type(
                     &[

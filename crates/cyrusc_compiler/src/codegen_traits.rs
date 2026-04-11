@@ -15,7 +15,7 @@
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
 
-use cyrusc_internal::cir::cir::CIRProgramTree;
+use cyrusc_internal::cir::cir::CIRModule;
 
 use crate::{object_file_info::ObjectFileInfo, tm_info::TargetMachineInfo};
 use std::any::Any;
@@ -76,11 +76,11 @@ pub trait CodeGenBackend<'cdg, BackendModule> {
 /// compiling serially (e.g., for link-time optimization or reduced cross-module overhead).
 pub trait UnifiedModuleSupport<'cdg, BackendModule>: CodeGenBackend<'cdg, BackendModule> {
     /// Emits code for all CIR modules into a single shared module.
-    fn process_unified(&self, cir_modules: &[Box<CIRProgramTree>]) -> BackendModule;
+    fn process_unified(&self, cir_modules: &[Box<CIRModule>]) -> BackendModule;
 }
 
 /// Trait implemented by backends that can compile modules separately and in parallel.
 pub trait SeparateModuleSupport<'cdg, BackendModule>: CodeGenBackend<'cdg, BackendModule> {
     /// Emits object files independently, allowing parallel compilation.
-    fn process_separately(&self, cir_modules: &[Box<CIRProgramTree>]) -> Vec<BackendModule>;
+    fn process_separately(&self, cir_modules: &[Box<CIRModule>]) -> Vec<BackendModule>;
 }

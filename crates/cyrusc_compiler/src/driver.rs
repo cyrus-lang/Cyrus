@@ -27,7 +27,7 @@ use cyrusc_diagcentral::{exit_with_msg, reporter::DiagReporter};
 use cyrusc_fs_utils::{ensure_output_dir, file_name_without_extension, get_directory_of_file};
 use cyrusc_internal::{
     abi::target::{ABITarget, ABITargetArch, ABITargetInfo, ABITargetOS, ABITargetObjectFormat, create_target_abi},
-    cir::{cir::CIRProgramTree, instances::CIRInstanceRegistry},
+    cir::{cir::CIRModule, instances::CIRInstanceRegistry},
     monomorph::MonomorphRegistry,
     vtable::VTableRegistry,
 };
@@ -58,7 +58,7 @@ pub struct CodeGenContextBundle {
     pub opts: CodeGenOptions,
     pub entry_file: PathBuf,
     pub build_dir: PathBuf,
-    pub program_trees: Vec<Box<CIRProgramTree>>,
+    pub program_trees: Vec<Box<CIRModule>>,
     pub monomorph_registry: Arc<Mutex<CIRInstanceRegistry>>,
     pub target: ABITarget,
     pub llvm_target: InkwellTarget,
@@ -276,7 +276,7 @@ pub fn build_compilation_bundle(opts: &mut CodeGenOptions, file_path: Option<Str
     let (llvm_target, llvm_target_triple) = create_compiler_context_target(&target_info);
     let target = ABITarget::new(target_info, target_abi);
 
-    let cir_program_trees = walk_program_trees_in_parallel(
+    let cir_modules = walk_program_trees_in_parallel(
         opts.jobs,
         boxed_program_trees,
         &*codegen_semantic_bundle.resolver,
@@ -289,7 +289,7 @@ pub fn build_compilation_bundle(opts: &mut CodeGenOptions, file_path: Option<Str
 
     CodeGenContextBundle {
         opts: opts.clone(),
-        program_trees: cir_program_trees,
+        program_trees: cir_modules,
         monomorph_registry: cir_monomorph_registry,
         entry_file: codegen_semantic_bundle.entry_file,
         build_dir: codegen_semantic_bundle.build_dir,

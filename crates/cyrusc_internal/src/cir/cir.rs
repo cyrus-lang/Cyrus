@@ -26,15 +26,19 @@ use cyrusc_ast::{
 };
 use cyrusc_source_loc::Loc;
 use cyrusc_typed_ast::{LabelID, decls::MonomorphID, exprs::TypedIdent};
+use fx_hash::FxHashMap;
 use std::fmt::Debug;
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
 pub struct IRValueID(pub u32);
 
-pub struct CIRProgramTree {
-    pub body: Vec<CIRStmt>,
+pub struct CIRModule {
+    pub stmts: Vec<CIRStmt>,
     pub file_path: String,
     pub module_name: String,
+
+    pub func_decls: FxHashMap<IRValueID, CIRFuncDeclStmt>,
+    pub global_var_decls: FxHashMap<IRValueID, CIRGlobalVarStmt>,
 }
 
 #[derive(Debug, Clone)]
@@ -116,7 +120,6 @@ pub struct CIRLambda {
 
 #[derive(Debug, Clone)]
 pub struct CIRCall {
-    pub operand: Box<CIRExpr>,
     pub args: Vec<CIRExpr>,
     pub ret_type: CIRType,
     pub dispatch: CIRCallDispatch,
@@ -124,13 +127,23 @@ pub struct CIRCall {
 
 #[derive(Debug, Clone)]
 pub enum CIRCallDispatch {
-    Normal,
+    Normal {
+        irv_id: IRValueID,
+        func_type: CIRFuncType,
+    },
+    FunctionPointer {
+        operand: Box<CIRExpr>,
+    },
     Interface {
+        operand: Box<CIRExpr>,
         method_idx: usize,
         methods_len: usize,
         func_type: CIRFuncType,
     },
-    Monomorph(MonomorphID),
+    Monomorph {
+        irv_id: IRValueID,
+        monomorph_id: MonomorphID,
+    },
 }
 
 #[derive(Debug, Clone)]
@@ -261,8 +274,8 @@ pub struct CIRValue {
 
 #[derive(Debug, Clone)]
 pub enum CIRValueKind {
-    Func(Box<CIRFuncDeclStmt>),
-    GlobalVar(Box<CIRGlobalVarStmt>),
+    Func,
+    GlobalVar,
     LocalVariable,
 }
 
@@ -584,10 +597,10 @@ impl CIREnumVariant {
     }
 }
 
-impl Debug for CIRProgramTree {
+impl Debug for CIRModule {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("CIRProgramTree")
-            .field("body", &self.body)
+            .field("body", &self.stmts)
             .field("file_path", &self.file_path)
             .finish()
     }

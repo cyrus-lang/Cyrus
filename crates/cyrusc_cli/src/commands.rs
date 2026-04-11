@@ -15,7 +15,7 @@
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
 
-use cyrusc_cir_traverse::cir_dump::process_cir_dump_for_program_trees;
+use cyrusc_cir_dump::process_cir_dump_for_modules;
 use cyrusc_codegen_llvm::CodeGenLLVM;
 use cyrusc_compiler::codegen_traits::CodeGenBackend;
 use cyrusc_compiler::driver::{
@@ -248,7 +248,7 @@ pub(crate) fn command_emit_cir_dump(
 
     ensure_output_dir(&output_path);
 
-    process_cir_dump_for_program_trees(&bundle.program_trees, output_path);
+    process_cir_dump_for_modules(&bundle.program_trees, output_path);
 }
 
 pub(crate) fn command_object(mut opts: CodeGenOptions, file_path: Option<String>, output_path: Option<String>) {

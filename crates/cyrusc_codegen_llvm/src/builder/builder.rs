@@ -38,7 +38,7 @@ use cyrusc_internal::{
     },
     cir::{
         cir::{
-            CIRBlockStmt, CIRGlobalVarStmt, CIRProgramTree, CIRStmt, CIRVarStmt, cir_enum_as_enum_ty,
+            CIRBlockStmt, CIRGlobalVarStmt, CIRModule, CIRStmt, CIRVarStmt, cir_enum_as_enum_ty,
             cir_func_decl_as_func_ty, cir_func_def_as_decl, cir_struct_as_struct_ty, cir_union_as_union_ty,
         },
         instances::CIRInstanceRegistry,
@@ -123,12 +123,12 @@ impl<'ll> IRBuilderCtx<'ll> {
         }
     }
 
-    pub fn emit_program_tree(&mut self, cir_program_tree: &CIRProgramTree) {
-        for cir_stmt in &cir_program_tree.body {
+    pub fn emit_module(&mut self, module: &CIRModule) {
+        for cir_stmt in &module.stmts {
             self.emit_stmt(cir_stmt);
         }
 
-        tui_compiled(cir_program_tree.file_path.clone());
+        tui_compiled(module.file_path.clone());
     }
 
     pub(crate) fn emit_stmt(&mut self, stmt: &CIRStmt) {
@@ -137,8 +137,8 @@ impl<'ll> IRBuilderCtx<'ll> {
             CIRStmt::FuncDef(func_def_stmt) => {
                 let func_decl = cir_func_def_as_decl(func_def_stmt);
                 let cir_func_ty = cir_func_decl_as_func_ty(&func_decl);
-                let fn_value = self.emit_func_decl(&func_decl);
-                self.set_current_func(fn_value, func_def_stmt.abi_func_info.clone().unwrap());
+                let llvm_func_value = self.emit_func_decl(&func_decl);
+                self.set_current_func(llvm_func_value, func_def_stmt.abi_func_info.clone().unwrap());
                 let func_metadata = self.emit_func_metadata(&cir_func_ty);
 
                 self.emit_func_body(
@@ -188,7 +188,7 @@ impl<'ll> IRBuilderCtx<'ll> {
             CIRStmt::Goto(goto_stmt) => self.emit_goto(goto_stmt),
             CIRStmt::Break(break_stmt) => self.emit_break(break_stmt),
             CIRStmt::Continue(continue_stmt) => self.emit_continue(continue_stmt),
-            
+
             CIRStmt::Defer(_) => unreachable!(),
         }
 
@@ -376,8 +376,8 @@ impl<'ll> IRBuilderCtx<'ll> {
         global_value
     }
 
-    pub(crate) fn set_current_func(&mut self, fn_value: FunctionValue<'ll>, abi_func_info: ABIFunctionInfo) {
-        self.cur_func = Some(fn_value);
+    pub(crate) fn set_current_func(&mut self, llvm_func_value: FunctionValue<'ll>, abi_func_info: ABIFunctionInfo) {
+        self.cur_func = Some(llvm_func_value);
         self.cur_abi_func_info = Some(abi_func_info);
     }
 }

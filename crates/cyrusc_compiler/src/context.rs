@@ -24,7 +24,7 @@ use crate::{
 };
 use cyrusc_buildmanifest::BuildManifest;
 use cyrusc_diagcentral::exit_with_msg;
-use cyrusc_internal::{abi::target::ABITarget, cir::cir::CIRProgramTree};
+use cyrusc_internal::{abi::target::ABITarget, cir::cir::CIRModule};
 use cyrusc_tui_utils::{tui_compile_finished, tui_warning};
 use inkwell::targets::{Target as LLVMTarget, TargetTriple};
 use std::{
@@ -67,7 +67,7 @@ impl CodeGenContext {
     }
 
     /// Orchestrates compilation and returns collected objects.
-    pub fn compile<'cdg, B, M>(&self, backend: &'cdg B, cir_modules: &mut Vec<Box<CIRProgramTree>>) -> Vec<M>
+    pub fn compile<'cdg, B, M>(&self, backend: &'cdg B, cir_modules: &mut Vec<Box<CIRModule>>) -> Vec<M>
     where
         B: CodeGenBackend<'cdg, M>,
         M: 'cdg,
@@ -107,7 +107,7 @@ impl CodeGenContext {
         drop(build_manifest);
     }
 
-    fn save_cir_modules_source_hash_in_build_manifest(&self, cir_modules: &[Box<CIRProgramTree>]) {
+    fn save_cir_modules_source_hash_in_build_manifest(&self, cir_modules: &[Box<CIRModule>]) {
         {
             let mut build_manifest = self.build_manifest.lock().unwrap();
 

@@ -23,11 +23,8 @@ use crate::{
     },
     c,
     llvm::{
-        abi::{
-            abi_type::abi_type_to_llvm_type,
-            modifiers::{apply_func_modifiers, apply_inlining_func},
-        },
-        debug_info::{create_debug_parameter, debug_func_type, emit_debug_function, reset_debug_location},
+        abi::{abi_type::abi_type_to_llvm_type, modifiers::*},
+        debug_info::*,
     },
 };
 use cyrusc_ast::{abi::Inlining, modifiers::FuncModifiers};
@@ -36,10 +33,7 @@ use cyrusc_internal::{
         args::{ABIArgInfo, ABIArgKind, ABIFunctionInfo, ExpandKind},
         types::ABIType,
     },
-    cir::{
-        cir::{CIRBlockStmt, CIRExpr, CIRFuncDeclStmt, CIRFuncParams, CIRLambda, cir_func_decl_as_func_ty},
-        types::{CIRFuncType, CIRType},
-    },
+    cir::{cir::*, types::*},
 };
 use cyrusc_source_loc::Loc;
 use cyrusc_typed_ast::decls::MonomorphID;
@@ -397,8 +391,8 @@ impl<'ll> IRBuilderCtx<'ll> {
         //     let irreg = self.irreg.borrow();
         //     if let Some(local_ir_value) = irreg.get(monomorph_func_entry.irv_id) {
         //         // already exists in current module
-        //         let fn_value = local_ir_value.as_func().cloned().unwrap();
-        //         return (fn_value, monomorph_func_entry.func_type.clone());
+        //         let llvm_func_value = local_ir_value.as_func().cloned().unwrap();
+        //         return (llvm_func_value, monomorph_func_entry.func_type.clone());
         //     }
 
         //     drop(monomorph_registry);
@@ -407,30 +401,30 @@ impl<'ll> IRBuilderCtx<'ll> {
         //     // insert func to current module
         //     let fn_ty = self.emit_func_ty(monomorph_func_entry.func_type.clone());
         //     {
-        //         let fn_value = {
+        //         let llvm_func_value = {
         //             let llvmmodule = self.llvmmodule.borrow_mut();
         //             let mut irreg = self.irreg.borrow_mut();
 
         //             let func_name = monomorph_func_name(monomorph_func_entry.irv_id);
 
-        //             let fn_value = match llvmmodule.get_function(&func_name) {
+        //             let llvm_func_value = match llvmmodule.get_function(&func_name) {
         //                 Some(f) => f,
         //                 None => llvmmodule.add_function(&func_name, fn_ty, None),
         //             };
 
         //             irreg.insert(
         //                 monomorph_func_entry.irv_id,
-        //                 LocalIRValue::Func(fn_value, CIRType::FuncType(monomorph_func_entry.func_type.clone())),
+        //                 LocalIRValue::Func(llvm_func_value, CIRType::FuncType(monomorph_func_entry.func_type.clone())),
         //             );
 
-        //             fn_value
+        //             llvm_func_value
         //         };
 
         //         let parent_cur_func = self.cur_func.clone();
         //         let parent_cur_abi_func_info = self.cur_abi_func_info.clone();
         //         let parent_blockreg = self.blockreg.clone();
 
-        //         self.set_current_func(fn_value, monomorph_func_entry.abi_func_info.clone());
+        //         self.set_current_func(llvm_func_value, monomorph_func_entry.abi_func_info.clone());
 
         //         let func_metadata = self.emit_func_metadata(&monomorph_func_entry.func_type);
 
@@ -454,7 +448,7 @@ impl<'ll> IRBuilderCtx<'ll> {
         //             }
         //         }
 
-        //         return (fn_value, monomorph_func_entry.func_type.clone());
+        //         return (llvm_func_value, monomorph_func_entry.func_type.clone());
         //     }
         // }
     }
@@ -651,7 +645,7 @@ impl<'ll> IRBuilderCtx<'ll> {
         let parent_cur_abi_func_info = self.cur_abi_func_info.clone();
         let parent_blockreg = self.blockreg.clone();
 
-        let lambda_name = self.increment_lambda_name();
+        let lambda_name = self.next_lambda_id();
         let mut cir_func_decl = CIRFuncDeclStmt {
             irv_id: lambda.irv_id,
             name: lambda_name,
@@ -665,15 +659,15 @@ impl<'ll> IRBuilderCtx<'ll> {
         let cir_func_type = cir_func_decl_as_func_ty(&cir_func_decl);
         cir_func_decl.abi_func_info = Some(self.target.target_abi.classify_func(&cir_func_type).unwrap());
 
-        let fn_value = self.emit_func_decl(&cir_func_decl);
-        fn_value.set_linkage(inkwell::module::Linkage::Private);
+        let llvm_func_value = self.emit_func_decl(&cir_func_decl);
+        llvm_func_value.set_linkage(inkwell::module::Linkage::Private);
         if lambda.inline {
-            apply_inlining_func(self.llvmctx, &fn_value, Inlining::Inline);
+            apply_inlining_func(self.llvmctx, &llvm_func_value, Inlining::Inline);
         }
 
         let func_metadata = self.emit_func_metadata(&cir_func_type);
 
-        self.set_current_func(fn_value, lambda.abi_func_info.clone());
+        self.set_current_func(llvm_func_value, lambda.abi_func_info.clone());
         self.emit_func_body(
             &lambda.params,
             &lambda.abi_func_info,
@@ -692,7 +686,10 @@ impl<'ll> IRBuilderCtx<'ll> {
         }
 
         let cir_fn_ty = cir_func_decl_as_func_ty(&cir_func_decl);
-        InternalValue::new(CIRType::FuncType(cir_fn_ty), InternalValueKind::FuncValue(fn_value))
+        InternalValue::new(
+            CIRType::FuncType(cir_fn_ty),
+            InternalValueKind::FuncValue(llvm_func_value),
+        )
     }
 
     pub(crate) fn emit_func_decl(&mut self, func_decl: &CIRFuncDeclStmt) -> FunctionValue<'ll> {
@@ -703,22 +700,22 @@ impl<'ll> IRBuilderCtx<'ll> {
         let func_name = &func_decl.name;
         let llvmmodule = self.llvmmodule.borrow();
 
-        let fn_value = llvmmodule
+        let llvm_func_value = llvmmodule
             .get_function(func_name)
             .unwrap_or_else(|| llvmmodule.add_function(func_name, fn_type, None));
 
-        apply_func_modifiers(self.llvmctx, &fn_value, &func_decl.modifiers);
+        apply_func_modifiers(self.llvmctx, &llvm_func_value, &func_decl.modifiers);
 
         {
             let cir_func_ty = cir_func_decl_as_func_ty(func_decl);
             let mut irreg = self.irreg.borrow_mut();
             irreg.insert(
                 func_decl.irv_id,
-                LocalIRValue::Func(fn_value, CIRType::FuncType(cir_func_ty)),
+                LocalIRValue::Func(llvm_func_value, CIRType::FuncType(cir_func_ty)),
             );
         }
 
-        fn_value
+        llvm_func_value
     }
 
     pub(crate) fn emit_func_body(
@@ -773,27 +770,26 @@ impl<'ll> IRBuilderCtx<'ll> {
         }
     }
 
-    fn increment_lambda_name(&mut self) -> String {
-        let id = self.lambda_id;
-        let name = format!("lambda.{}", id);
-        self.lambda_id += 1;
-        name
-    }
-
     pub(crate) fn emit_func_call_attributes(
         &mut self,
         abi_func_info: &ABIFunctionInfo,
         func_call_kind: FuncCallKind<'ll>,
     ) {
         match func_call_kind {
-            FuncCallKind::Direct(fn_value) => self.emit_direct_func_call_args_attributes(&fn_value, abi_func_info),
+            FuncCallKind::Direct(llvm_func_value) => {
+                self.emit_direct_func_call_args_attributes(&llvm_func_value, abi_func_info)
+            }
             FuncCallKind::Indirect(call_site) => {
                 self.emit_indirect_func_call_args_attributes(&call_site, abi_func_info)
             }
         }
     }
 
-    fn emit_direct_func_call_args_attributes(&mut self, fn_value: &FunctionValue, abi_func_info: &ABIFunctionInfo) {
+    fn emit_direct_func_call_args_attributes(
+        &mut self,
+        llvm_func_value: &FunctionValue,
+        abi_func_info: &ABIFunctionInfo,
+    ) {
         let byval_attr_kind = unsafe { LLVMGetEnumAttributeKindForName(c!("byval").as_ptr(), 5) };
         let sret_attr_kind = unsafe { LLVMGetEnumAttributeKindForName(c!("sret").as_ptr(), 4) };
 
@@ -808,7 +804,7 @@ impl<'ll> IRBuilderCtx<'ll> {
             };
 
             unsafe {
-                LLVMAddAttributeAtIndex(fn_value.as_value_ref(), 1, attr);
+                LLVMAddAttributeAtIndex(llvm_func_value.as_value_ref(), 1, attr);
             }
 
             llvm_param_index_offset = 1;
@@ -829,7 +825,11 @@ impl<'ll> IRBuilderCtx<'ll> {
 
                 // index is 1-based, 0 is return
                 unsafe {
-                    LLVMAddAttributeAtIndex(fn_value.as_value_ref(), i as u32 + 1 + llvm_param_index_offset, attr);
+                    LLVMAddAttributeAtIndex(
+                        llvm_func_value.as_value_ref(),
+                        i as u32 + 1 + llvm_param_index_offset,
+                        attr,
+                    );
                 }
             }
         }
@@ -877,6 +877,13 @@ impl<'ll> IRBuilderCtx<'ll> {
                 LLVMAddCallSiteAttribute(call_site.as_value_ref(), i as u32 + 1 + llvm_param_index_offset, attr);
             }
         }
+    }
+
+    fn next_lambda_id(&mut self) -> String {
+        let id = self.lambda_id;
+        let name = format!("lambda.{}", id);
+        self.lambda_id += 1;
+        name
     }
 }
 

@@ -72,10 +72,12 @@ impl<'a> AnalysisContext<'a> {
                 self.with_generic_env(generic_env, |this| {
                     this.normalize_func_params(&mut func_decl.params, func_call.loc);
 
-                    func_decl.ret_type =
-                        this.normalize_and_check_type_formation(func_decl.ret_type.clone(), func_call.loc)?;
-
                     let ret_type = this.analyze_call(&mut func_decl, &mut func_call.args, func_call.loc, false)?;
+
+                    func_call.operand.sema_type = Some(this.substitute_type(&operand_type));
+
+                    func_decl.ret_type = ret_type.clone();
+                    func_decl.ret_type = ret_type.clone();
 
                     this.apply_generic_defaults(func_decl.generic_params.clone());
 
@@ -102,7 +104,11 @@ impl<'a> AnalysisContext<'a> {
 
                         let diag_len = this.reporter.len();
 
+                        // analyze body
                         this.analyze_func_body(&mut body, &ret_type);
+
+                        // insert monomorphized body
+                        let monomorph_body_id = this.monomorph_registry.insert_monomorph_body(body);
 
                         let diag_originated_from = format_loc(&this.source_map, func_call.loc);
 
@@ -114,6 +120,11 @@ impl<'a> AnalysisContext<'a> {
                                 ));
                             });
                         }
+
+                        this.monomorph_registry.update(monomorph_id, |_monomorph_instance| {
+                            _monomorph_instance.analyzed = true;
+                            _monomorph_instance.body = Some(monomorph_body_id);
+                        });
                     }
 
                     Some(ret_type)
@@ -123,12 +134,11 @@ impl<'a> AnalysisContext<'a> {
             else {
                 self.normalize_func_params(&mut func_decl.params, func_call.loc);
 
-                func_decl.ret_type =
-                    self.normalize_and_check_type_formation(func_decl.ret_type.clone(), func_call.loc)?;
-
                 let ret_type = self.analyze_call(&mut func_decl, &mut func_call.args, func_call.loc, false)?;
 
-                func_call.dispatch = TypedFuncCallDispatch::Direct {
+                func_decl.ret_type = ret_type.clone();
+
+                func_call.dispatch = TypedFuncCallDispatch::Normal {
                     func_decl_id: func_decl_id,
                 };
 

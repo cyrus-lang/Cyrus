@@ -44,13 +44,13 @@ impl<'a> InternalValue<'a> {
         match &self.kind {
             InternalValueKind::LValue(pointer) => (*pointer).into(),
             InternalValueKind::RValue(value) => value.clone(),
-            InternalValueKind::FuncValue(fn_value) => fn_value.as_global_value().as_pointer_value().into(),
+            InternalValueKind::FuncValue(llvm_func_value) => llvm_func_value.as_global_value().as_pointer_value().into(),
         }
     }
 
     pub fn as_func(&self) -> Option<&FunctionValue<'a>> {
         match &self.kind {
-            InternalValueKind::FuncValue(fn_value) => Some(fn_value),
+            InternalValueKind::FuncValue(llvm_func_value) => Some(llvm_func_value),
             _ => None,
         }
     }

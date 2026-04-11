@@ -133,8 +133,11 @@ impl<'ll> IRBuilderCtx<'ll> {
                         .method_decls
                         .iter()
                         .map(|func_decl| {
-                            let fn_value = self.emit_func_decl(func_decl);
-                            fn_value.as_global_value().as_pointer_value().as_basic_value_enum()
+                            let llvm_func_value = self.emit_func_decl(func_decl);
+                            llvm_func_value
+                                .as_global_value()
+                                .as_pointer_value()
+                                .as_basic_value_enum()
                         })
                         .collect();
 
@@ -1697,13 +1700,13 @@ impl<'ll> IRBuilderCtx<'ll> {
     //     &mut self,
     //     monomorph_func_instance_call: &CIRMonomorphFuncInstanceCall,
     // ) -> InternalValue<'ll> {
-    //     let (fn_value, cir_func_ty) = self.emit_monomorph_func_instance(monomorph_func_instance_call.monomorph_id);
+    //     let (llvm_func_value, cir_func_ty) = self.emit_monomorph_func_instance(monomorph_func_instance_call.monomorph_id);
 
     //     self.emit_direct_call(
     //         &cir_func_ty,
     //         &monomorph_func_instance_call.args,
     //         &monomorph_func_instance_call.ret_ty,
-    //         &fn_value,
+    //         &llvm_func_value,
     //     )
     // }
 
@@ -1770,45 +1773,46 @@ impl<'ll> IRBuilderCtx<'ll> {
     //     }
     // }
 
-    // FIXME
     fn emit_call(&mut self, call: &CIRCall) -> InternalValue<'ll> {
-        let lvalue = self.emit_expr(&call.operand);
-        let rvalue = self.load_rvalue(lvalue);
-
         match &call.dispatch {
-            CIRCallDispatch::Normal => {
-                // check if it's a direct or indirect call
-                if let Some(fn_value) = rvalue.as_func() {
-                    self.emit_direct_call(&rvalue.ty.as_func().unwrap(), &call.args, &call.ret_type, fn_value)
-                } else if rvalue.as_basic_value().is_pointer_value() {
-                    self.emit_indirect_call(call)
-                } else {
-                    panic!("Expected a function or pointer to function in call expression.")
-                }
+            CIRCallDispatch::Normal { irv_id, func_type } => {
+                let ir_value = {
+                    let irreg = self.irreg.borrow();
+                    irreg.get(*irv_id).unwrap()
+                };
+
+                self.emit_direct_call(&func_type, &call.args, &call.ret_type, ir_value.as_func().unwrap())
+            }
+            CIRCallDispatch::FunctionPointer { operand } => {
+                let lvalue = self.emit_expr(&operand);
+                let rvalue = self.load_rvalue(lvalue);
+
+                self.emit_indirect_call(call, rvalue)
             }
             CIRCallDispatch::Interface {
+                operand,
                 method_idx,
                 methods_len,
                 func_type,
             } => todo!(),
-            CIRCallDispatch::Monomorph(monomorph_id) => todo!(),
+            CIRCallDispatch::Monomorph { irv_id, monomorph_id } => todo!(),
         }
     }
 
     fn emit_direct_call(
         &mut self,
-        fn_ty: &CIRFuncType,
+        func_type: &CIRFuncType,
         args: &Vec<CIRExpr>,
         ret_ty: &CIRType,
-        fn_value: &FunctionValue<'ll>,
+        llvm_func_value: &FunctionValue<'ll>,
     ) -> InternalValue<'ll> {
-        let abi_func_info = self.target.target_abi.classify_func(fn_ty).unwrap();
+        let abi_func_info = self.target.target_abi.classify_func(func_type).unwrap();
 
         let mut llvm_args: Vec<BasicMetadataValueEnum<'ll>> = Vec::new();
         let mut sret_alloca: Option<PointerValue<'ll>> = None;
 
         if abi_func_info.ret_info.kind.is_indirect_sret() {
-            let sret_type: BasicTypeEnum<'ll> = self.emit_ty(*fn_ty.ret.clone()).try_into().unwrap();
+            let sret_type: BasicTypeEnum<'ll> = self.emit_ty(*func_type.ret.clone()).try_into().unwrap();
 
             let alloca = self.llvmbuilder.build_alloca(sret_type, "sret").unwrap();
 
@@ -1816,19 +1820,22 @@ impl<'ll> IRBuilderCtx<'ll> {
             sret_alloca = Some(alloca);
         }
 
-        let mut args = self.emit_func_args(args, fn_ty);
+        let mut args = self.emit_func_args(args, func_type);
         llvm_args.append(&mut args);
 
-        self.emit_func_call_attributes(&abi_func_info, FuncCallKind::Direct(*fn_value));
+        self.emit_func_call_attributes(&abi_func_info, FuncCallKind::Direct(*llvm_func_value));
 
-        let call_site = self.llvmbuilder.build_call(*fn_value, &llvm_args, "call").unwrap();
+        let call_site = self
+            .llvmbuilder
+            .build_call(*llvm_func_value, &llvm_args, "call")
+            .unwrap();
 
         if let Some(ptr) = sret_alloca {
             InternalValue::new(ret_ty.clone(), InternalValueKind::LValue(ptr.into()))
         } else if let Some(mut basic_value) = call_site.try_as_basic_value().basic() {
             // REVIEW: Optimization Required
             // coerce back from abi return type to actual return type
-            let actual_return_type: BasicTypeEnum<'ll> = self.emit_ty(*fn_ty.ret.clone()).try_into().unwrap();
+            let actual_return_type: BasicTypeEnum<'ll> = self.emit_ty(*func_type.ret.clone()).try_into().unwrap();
             basic_value = self.intrinsic_coerce_through_alloca(basic_value, actual_return_type, "coerce_ret");
 
             InternalValue::new(ret_ty.clone(), InternalValueKind::RValue(basic_value))
@@ -1837,17 +1844,14 @@ impl<'ll> IRBuilderCtx<'ll> {
         }
     }
 
-    fn emit_indirect_call(&mut self, func_call: &CIRCall) -> InternalValue<'ll> {
-        let lvalue = self.emit_expr(&func_call.operand);
-        let rvalue = self.load_rvalue(lvalue);
-
-        let cir_fn_ty = rvalue.ty.as_func().unwrap();
+    fn emit_indirect_call(&mut self, func_call: &CIRCall, operand: InternalValue<'ll>) -> InternalValue<'ll> {
+        let cir_fn_ty = operand.ty.as_func().unwrap();
         let fn_ty = self.emit_func_ty(cir_fn_ty.clone());
 
         let abi_func_info = self.target.target_abi.classify_func(&cir_fn_ty).unwrap();
         let args = self.emit_func_args(&func_call.args, &cir_fn_ty);
 
-        let fn_ptr = rvalue.as_basic_value().into_pointer_value();
+        let fn_ptr = operand.as_basic_value().into_pointer_value();
 
         let call_site = self
             .llvmbuilder
@@ -1869,55 +1873,62 @@ impl<'ll> IRBuilderCtx<'ll> {
     }
 
     fn emit_load(&mut self, value_ref: &CIRValue) -> InternalValue<'ll> {
-        {
-            let irreg = self.irreg.borrow();
-            if let Some(value_ref) = irreg.get(value_ref.irv_id) {
-                let internal_value = match value_ref {
-                    LocalIRValue::Func(fn_value, ty) => InternalValue::new(ty, InternalValueKind::FuncValue(fn_value)),
-                    LocalIRValue::Global(global_value, ty) => {
-                        InternalValue::new(ty, InternalValueKind::LValue(global_value.as_pointer_value()))
-                    }
-                    LocalIRValue::LValue(pointer_value, ty) => {
-                        InternalValue::new(ty, InternalValueKind::LValue(pointer_value))
-                    }
-                };
+        todo!();
+        
+        // {
+        //     let irreg = self.irreg.borrow();
+        //     if let Some(value_ref) = irreg.get(value_ref.irv_id) {
+        //         let internal_value = match value_ref {
+        //             LocalIRValue::Func(llvm_func_value, ty) => {
+        //                 InternalValue::new(ty, InternalValueKind::FuncValue(llvm_func_value))
+        //             }
+        //             LocalIRValue::Global(global_value, ty) => {
+        //                 InternalValue::new(ty, InternalValueKind::LValue(global_value.as_pointer_value()))
+        //             }
+        //             LocalIRValue::LValue(pointer_value, ty) => {
+        //                 InternalValue::new(ty, InternalValueKind::LValue(pointer_value))
+        //             }
+        //         };
 
-                return internal_value;
-            }
-        }
+        //         return internal_value;
+        //     }
+        // }
 
-        // fresh declaration
+        // // fresh declaration
 
-        match &value_ref.kind {
-            CIRValueKind::Func(func_decl) => {
-                let mut func_decl = *func_decl.clone();
+        // match &value_ref.kind {
+        //     CIRValueKind::Func(func_decl) => {
+        //         let mut func_decl = *func_decl.clone();
 
-                func_decl.modifiers = FuncModifiers {
-                    linkage: Some(Linkage::Extern(None)),
-                    ..func_decl.modifiers
-                };
+        //         func_decl.modifiers = FuncModifiers {
+        //             linkage: Some(Linkage::Extern(None)),
+        //             ..func_decl.modifiers
+        //         };
 
-                let fn_value = self.emit_func_decl(&func_decl);
-                let cir_fn_ty = cir_func_decl_as_func_ty(&func_decl);
-                InternalValue::new(CIRType::FuncType(cir_fn_ty), InternalValueKind::FuncValue(fn_value))
-            }
-            CIRValueKind::GlobalVar(global_var) => {
-                let mut global_var = *global_var.clone();
+        //         let llvm_func_value = self.emit_func_decl(&func_decl);
+        //         let cir_fn_ty = cir_func_decl_as_func_ty(&func_decl);
+        //         InternalValue::new(
+        //             CIRType::FuncType(cir_fn_ty),
+        //             InternalValueKind::FuncValue(llvm_func_value),
+        //         )
+        //     }
+        //     CIRValueKind::GlobalVar(global_var) => {
+        //         let mut global_var = *global_var.clone();
 
-                global_var.modifiers = GlobalVarModifiers {
-                    linkage: Some(Linkage::Extern(None)),
-                    ..global_var.modifiers
-                };
+        //         global_var.modifiers = GlobalVarModifiers {
+        //             linkage: Some(Linkage::Extern(None)),
+        //             ..global_var.modifiers
+        //         };
 
-                let global_value = self.emit_global_var(&global_var);
+        //         let global_value = self.emit_global_var(&global_var);
 
-                InternalValue::new(
-                    global_var.ty.clone(),
-                    InternalValueKind::LValue(global_value.as_pointer_value()),
-                )
-            }
-            CIRValueKind::LocalVariable => unreachable!(),
-        }
+        //         InternalValue::new(
+        //             global_var.ty.clone(),
+        //             InternalValueKind::LValue(global_value.as_pointer_value()),
+        //         )
+        //     }
+        //     CIRValueKind::LocalVariable => unreachable!(),
+        // }
     }
 
     fn emit_literal(&self, lit: &CIRLiteral) -> InternalValue<'ll> {
