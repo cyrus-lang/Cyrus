@@ -115,7 +115,14 @@ impl<'a> AnalysisContext<'a> {
     }
 
     pub(crate) fn analyze_func_body(&mut self, body: &mut TypedBlockStmt, ret_type: &SemaType) {
-        self.func_env.infer = Some(InferCtx::new());
+        let created_infer = {
+            if self.func_env.infer.is_none() {
+                self.func_env.infer = Some(InferCtx::new());
+                true
+            } else {
+                false
+            }
+        };
 
         let state = self.analyze_block_stmt(body);
 
@@ -128,7 +135,9 @@ impl<'a> AnalysisContext<'a> {
             });
         }
 
-        self.func_env.infer = None;
+        if created_infer {
+            self.func_env.infer = None;
+        }
     }
 
     fn analyze_entry_func(&mut self, func_def: &mut TypedFuncDefStmt) {

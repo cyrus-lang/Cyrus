@@ -53,8 +53,8 @@ impl<'a> AnalysisContext<'a> {
     pub(crate) fn substitute_type(&self, ty: &SemaType) -> SemaType {
         let mut result = ty.clone();
 
-        for env in self.generic_env_stack.iter().rev() {
-            result = env.substitute_sema_type(&result);
+        for generic_env in self.generic_env_stack.iter().rev() {
+            result = generic_env.substitute_sema_type(&result);
         }
 
         result

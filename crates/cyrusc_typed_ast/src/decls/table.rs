@@ -15,7 +15,7 @@
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
 
-use crate::{GenericParamID, decls::*, stmts::TypedGenericParam};
+use crate::{BodyID, GenericParamID, decls::*, stmts::TypedGenericParam};
 use std::sync::RwLock;
 
 #[derive(Debug)]
@@ -35,6 +35,9 @@ pub struct DeclTables {
     pub vars: Vec<VarDecl>,
     pub typedefs: Vec<TypedefDecl>,
     pub generic_params: Vec<TypedGenericParam>,
+
+    // Holds body block of the generic functions and methods.
+    pub bodies: Vec<TypedBlockStmt>,
 }
 
 impl DeclTablesRegistry {
@@ -51,6 +54,7 @@ impl DeclTablesRegistry {
                 vars: Vec::new(),
                 typedefs: Vec::new(),
                 generic_params: Vec::new(),
+                bodies: Vec::new(),
             }),
         }
     }
@@ -136,6 +140,14 @@ impl DeclTablesRegistry {
         tables.generic_params.push(generic_param);
         id
     }
+
+    #[inline]
+    pub fn insert_body(&self, body: TypedBlockStmt) -> BodyID {
+        let mut tables = self.tables.write().unwrap();
+        let id = BodyID(tables.bodies.len() as u32);
+        tables.bodies.push(body);
+        id
+    }
 }
 
 impl DeclTablesRegistry {
@@ -194,9 +206,15 @@ impl DeclTablesRegistry {
     }
 
     #[inline]
-    pub fn generic_param(&self, generic_param_id: GenericParamID) -> TypedGenericParam {
+    pub fn generic_param(&self, id: GenericParamID) -> TypedGenericParam {
         let tables = self.tables.read().unwrap();
-        tables.generic_params[generic_param_id.0 as usize].clone()
+        tables.generic_params[id.0 as usize].clone()
+    }
+
+    #[inline]
+    pub fn body(&self, id: BodyID) -> TypedBlockStmt {
+        let tables = self.tables.read().unwrap();
+        tables.bodies[id.0 as usize].clone()
     }
 }
 
@@ -253,5 +271,11 @@ impl DeclTablesRegistry {
     pub fn with_typedef_decl_mut<R>(&self, id: TypedefDeclID, f: impl FnOnce(&mut TypedefDecl) -> R) -> R {
         let mut tables = self.tables.write().unwrap();
         f(&mut tables.typedefs[id.0 as usize])
+    }
+
+    #[inline]
+    pub fn with_body_mut<R>(&self, id: BodyID, f: impl FnOnce(&mut TypedBlockStmt) -> R) -> R {
+        let mut tables = self.tables.write().unwrap();
+        f(&mut tables.bodies[id.0 as usize])
     }
 }

@@ -17,72 +17,97 @@
 
 use cyrusc_typed_ast::{
     decls::{FuncDeclID, MonomorphID},
-    stmts::TypedBlockStmt,
-    types::SemaType,
+    stmts::{TypedBlockStmt, TypedTypeArgs},
 };
-use std::collections::HashMap;
+use fx_hash::FxHashMap;
+use std::sync::RwLock;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct MonomorphKey {
     pub template: FuncDeclID,
-    pub type_args: Vec<SemaType>,
+    pub type_args: TypedTypeArgs,
 }
 
 #[derive(Debug, Clone)]
 pub struct MonomorphInstance {
-    pub id: MonomorphID,
-    pub template: FuncDeclID,
-    pub type_args: Vec<SemaType>,
-
+    pub monomorph_id: MonomorphID,
+    pub func_decl_id: FuncDeclID,
+    pub type_args: TypedTypeArgs,
     pub body: Option<TypedBlockStmt>,
     pub analyzed: bool,
 }
 
 #[derive(Debug, Default)]
-pub struct MonomorphRegistry {
-    key_map: HashMap<MonomorphKey, MonomorphID>,
+struct MonomorphRegistryInner {
+    key_map: FxHashMap<MonomorphKey, MonomorphID>,
     instances: Vec<MonomorphInstance>,
+}
+
+#[derive(Debug, Default)]
+pub struct MonomorphRegistry {
+    inner: RwLock<MonomorphRegistryInner>,
 }
 
 impl MonomorphRegistry {
     pub fn new() -> Self {
-        Self::default()
+        Self {
+            inner: RwLock::new(MonomorphRegistryInner {
+                key_map: FxHashMap::default(),
+                instances: Vec::new(),
+            }),
+        }
     }
 
-    pub fn get_or_create(&mut self, template: FuncDeclID, type_args: Vec<SemaType>) -> MonomorphID {
-        let key = MonomorphKey { template, type_args };
+    pub fn get_or_create(&self, template: FuncDeclID, type_args: TypedTypeArgs) -> MonomorphID {
+        {
+            let inner = self.inner.read().unwrap();
+            let key = MonomorphKey {
+                template,
+                type_args: type_args.clone(),
+            };
 
-        if let Some(id) = self.key_map.get(&key) {
+            if let Some(id) = inner.key_map.get(&key) {
+                return *id;
+            }
+        }
+
+        let mut inner = self.inner.write().unwrap();
+
+        let key = MonomorphKey {
+            template,
+            type_args: type_args.clone(),
+        };
+
+        if let Some(id) = inner.key_map.get(&key) {
             return *id;
         }
 
-        let id = MonomorphID(self.instances.len());
+        let id = MonomorphID(inner.instances.len());
+
         let instance = MonomorphInstance {
-            id,
-            template: key.template,
-            type_args: key.type_args.clone(),
+            monomorph_id: id,
+            func_decl_id: template,
+            type_args: type_args.clone(),
             body: None,
             analyzed: false,
         };
 
-        self.key_map.insert(key, id);
-        self.instances.push(instance);
+        inner.key_map.insert(key, id);
+        inner.instances.push(instance);
+
         id
     }
 
-    pub fn get(&self, id: MonomorphID) -> &MonomorphInstance {
-        &self.instances[id.0]
+    pub fn get(&self, id: MonomorphID) -> MonomorphInstance {
+        let inner = self.inner.read().unwrap();
+        inner.instances[id.0].clone()
     }
 
-    pub fn get_mut(&mut self, id: MonomorphID) -> &mut MonomorphInstance {
-        &mut self.instances[id.0]
+    pub fn update<F>(&self, id: MonomorphID, f: F)
+    where
+        F: FnOnce(&mut MonomorphInstance),
+    {
+        let mut inner = self.inner.write().unwrap();
+        f(&mut inner.instances[id.0]);
     }
-}
-
-#[macro_export]
-macro_rules! monomorph_registry {
-    ($self:ident, $ctx:ident, $body:block) => {{
-        let mut $ctx = $self.monomorph_registry.lock().unwrap();
-        $body
-    }};
 }

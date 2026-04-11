@@ -711,6 +711,7 @@ impl TypedFuncDeclStmt {
             ret_type: self.ret_type.clone(),
             modifiers: self.modifiers.clone(),
             loc: self.loc,
+            body: None,
             is_func_decl: true,
         }
     }

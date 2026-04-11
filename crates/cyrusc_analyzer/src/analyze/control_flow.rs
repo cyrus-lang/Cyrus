@@ -20,10 +20,30 @@ use cyrusc_diagcentral::{Diag, DiagLevel};
 use cyrusc_internal::flow_state::{ControlRegion, FlowState};
 use cyrusc_typed_ast::{
     format::format_sema_type,
-    stmts::{TypedBreakStmt, TypedContinueStmt, TypedForStmt, TypedReturnStmt, TypedWhileStmt},
+    stmts::{TypedBreakStmt, TypedContinueStmt, TypedForStmt, TypedIfStmt, TypedReturnStmt, TypedWhileStmt},
 };
 
 impl<'a> AnalysisContext<'a> {
+    pub(crate) fn analyze_if_stmt(&mut self, if_stmt: &mut TypedIfStmt) -> FlowState {
+        let then_state = self.analyze_block_stmt(&mut if_stmt.then_block);
+
+        self.analyze_cond_expr(&mut if_stmt.cond);
+
+        let else_state = {
+            if let Some(block_stmt) = &mut if_stmt.else_block {
+                self.analyze_block_stmt(&mut *block_stmt)
+            } else {
+                FlowState::Reachable
+            }
+        };
+
+        if_stmt.branches.iter_mut().for_each(|branch| {
+            self.analyze_if_stmt(branch);
+        });
+
+        then_state.merge(else_state)
+    }
+
     pub(crate) fn analyze_while_loop(&mut self, typed_while: &mut TypedWhileStmt) -> FlowState {
         self.analyze_cond_expr(&mut typed_while.cond);
 
@@ -56,9 +76,13 @@ impl<'a> AnalysisContext<'a> {
 
     pub(crate) fn analyze_return(&mut self, ret: &mut TypedReturnStmt) -> FlowState {
         let func_type = self.func_env.current_func.clone().unwrap();
-        let ret_type = self.normalize_and_check_type_formation(*func_type.ret_type, ret.loc).unwrap();
+        let ret_type = self
+            .normalize_and_check_type_formation(*func_type.ret_type, ret.loc)
+            .unwrap();
 
         if ret_type.is_void() && ret.arg.is_some() {
+            dbg!(ret.clone());
+
             self.reporter.report(Diag {
                 level: DiagLevel::Error,
                 kind: Box::new(AnalyzerDiagKind::VoidFunctionReturnsValue),

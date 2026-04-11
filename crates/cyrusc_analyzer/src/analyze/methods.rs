@@ -59,7 +59,14 @@ impl<'a> AnalysisContext<'a> {
 
         self.func_env.current_method = Some(method_decl_id);
         self.func_env.current_func = Some(method_decl.func_decl.as_func_type());
-        self.analyze_func_body(&mut method_decl.body.as_mut().unwrap(), &method_decl.func_decl.ret_type);
+
+        let body_id = method_decl.body.unwrap();
+        let mut body = self.decl_tables.body(body_id);
+        self.analyze_func_body(&mut body, &method_decl.func_decl.ret_type);
+        self.decl_tables.with_body_mut(body_id, |_body| {
+            *_body = body;
+        });
+
         self.func_env.current_method = parent_method;
         self.func_env.current_func = parent_func;
     }

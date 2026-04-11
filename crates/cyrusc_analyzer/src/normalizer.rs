@@ -188,7 +188,9 @@ impl<'a> AnalysisContext<'a> {
 
     fn normalize_generic_param(&self, generic_param_id: GenericParamID) -> Option<SemaType> {
         if let Some(ty) = self.lookup_generic_binding(generic_param_id) {
-            return Some(ty.clone());
+            if let Some(infer) = &self.func_env.infer {
+                return Some(infer.resolve(ty));
+            }
         }
 
         // fallback

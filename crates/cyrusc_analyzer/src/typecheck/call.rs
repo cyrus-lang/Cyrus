@@ -21,7 +21,7 @@ use cyrusc_source_loc::Loc;
 use cyrusc_typed_ast::{
     decls::FuncDecl,
     exprs::{TypedExprStmt, TypedFuncCall, TypedFuncCallDispatch},
-    format::{format_func_type, format_sema_type, format_typed_expr},
+    format::{format_func_type, format_loc, format_sema_type},
     stmts::{TypedFuncTypeVariadicParams, TypedFuncVariadicParam},
     types::{SemaType, TypedFuncType},
 };
@@ -29,6 +29,8 @@ use cyrusc_typed_ast::{
 impl<'a> AnalysisContext<'a> {
     pub(crate) fn analyze_func_call(&mut self, func_call: &mut TypedFuncCall) -> Option<SemaType> {
         let operand_type = self.analyze_expr_non_terminal(&mut func_call.operand, None)?;
+
+        self.normalize_type_args(&mut func_call.type_args);
 
         let Some(mut func_type) = operand_type.as_func_type().cloned() else {
             let symbol_name = format_sema_type(operand_type, self.formatter);
@@ -58,16 +60,80 @@ impl<'a> AnalysisContext<'a> {
 
             let mut func_decl = self.decl_tables.func_decl(func_decl_id);
 
-            self.normalize_func_params(&mut func_decl.params, func_call.loc);
-            func_decl.ret_type = self.normalize_and_check_type_formation(func_decl.ret_type.clone(), func_call.loc)?;
+            // generic function
+            if func_decl.is_generic() {
+                let generic_env = self.create_inference_generic_env(
+                    &self.formatter.format_symbol_name(symbol_id),
+                    func_decl.generic_params.clone(),
+                    &func_call.type_args,
+                    func_call.loc,
+                )?;
 
-            let ret_type = self.check_func_call(&mut func_decl, &mut func_call.args, func_call.loc, false)?;
+                self.with_generic_env(generic_env, |this| {
+                    this.normalize_func_params(&mut func_decl.params, func_call.loc);
 
-            func_call.dispatch = TypedFuncCallDispatch::Direct {
-                func_decl_id: func_decl_id,
-            };
+                    func_decl.ret_type =
+                        this.normalize_and_check_type_formation(func_decl.ret_type.clone(), func_call.loc)?;
 
-            Some(ret_type)
+                    let ret_type = this.analyze_call(&mut func_decl, &mut func_call.args, func_call.loc, false)?;
+
+                    this.apply_generic_defaults(func_decl.generic_params.clone());
+
+                    let final_type_args = this.collect_instantiated_type_args(func_decl.generic_params);
+
+                    let monomorph_id = this.monomorph_registry.get_or_create(func_decl_id, final_type_args);
+
+                    func_call.dispatch = TypedFuncCallDispatch::Monomorph {
+                        func_decl_id,
+                        monomorph_id,
+                    };
+
+                    // analyze specialized function body
+                    let monomorph_instance = this.monomorph_registry.get(monomorph_id);
+
+                    if !monomorph_instance.analyzed {
+                        let current_func = this.func_env.current_func.as_mut().unwrap();
+
+                        current_func.params = func_decl.params.as_func_type_params();
+                        current_func.ret_type = Box::new(ret_type.clone());
+
+                        let body_id = func_decl.body.unwrap();
+                        let mut body = this.decl_tables.body(body_id);
+
+                        let diag_len = this.reporter.len();
+
+                        this.analyze_func_body(&mut body, &ret_type);
+
+                        let diag_originated_from = format_loc(&this.source_map, func_call.loc);
+
+                        if this.reporter.len() > diag_len {
+                            this.apply_error_originated_from_on_diag_range(diag_len..=diag_len, |diag| {
+                                diag.hint = Some(format!(
+                                    "Error originates from this function call at {}.",
+                                    diag_originated_from,
+                                ));
+                            });
+                        }
+                    }
+
+                    Some(ret_type)
+                })
+            }
+            // normal function
+            else {
+                self.normalize_func_params(&mut func_decl.params, func_call.loc);
+
+                func_decl.ret_type =
+                    self.normalize_and_check_type_formation(func_decl.ret_type.clone(), func_call.loc)?;
+
+                let ret_type = self.analyze_call(&mut func_decl, &mut func_call.args, func_call.loc, false)?;
+
+                func_call.dispatch = TypedFuncCallDispatch::Direct {
+                    func_decl_id: func_decl_id,
+                };
+
+                Some(ret_type)
+            }
         }
         // function pointer call
         else {
@@ -96,12 +162,46 @@ impl<'a> AnalysisContext<'a> {
         }
     }
 
+    fn analyze_argument(&mut self, arg: &mut TypedExprStmt, mut expected_type: SemaType, loc: Loc) -> Option<SemaType> {
+        expected_type = self.substitute_type(&expected_type);
+
+        let Some(mut arg_type) = self.analyze_expr(arg, Some(expected_type.clone())) else {
+            return None;
+        };
+
+        arg_type = self.substitute_type(&arg_type);
+
+        if let Some(infer) = &mut self.func_env.infer {
+            infer.unify(&expected_type, &arg_type);
+
+            expected_type = infer.resolve(&expected_type);
+            arg_type = infer.resolve(&arg_type);
+        }
+
+        expected_type = self.substitute_type(&expected_type);
+
+        if !self.is_assignable_to(arg_type.clone(), expected_type.clone(), loc) {
+            self.reporter.report(Diag {
+                level: DiagLevel::Error,
+                kind: Box::new(AnalyzerDiagKind::FuncCallParamTypeMismatch {
+                    param_type: format_sema_type(expected_type.clone(), self.formatter),
+                    argument_type: format_sema_type(arg_type.clone(), self.formatter),
+                    argument_idx: 0,
+                }),
+                loc: Some(arg.loc),
+                hint: None,
+            });
+        }
+
+        Some(expected_type)
+    }
+
     /// Validates function calls against their signature, checking argument counts and types.
     ///
     /// Performs comprehensive validation of function calls including argument count checking,
     /// type compatibility validation, and variadic argument handling. Supports both regular
     /// functions and instance methods (with self parameter adjustment).
-    fn check_func_call(
+    fn analyze_call(
         &mut self,
         func_decl: &mut FuncDecl,
         args: &mut Vec<TypedExprStmt>,
@@ -139,41 +239,27 @@ impl<'a> AnalysisContext<'a> {
         // analyze static arguments
         let start_idx = if instance_method_call { 1 } else { 0 };
 
-        for (param_idx, (param, arg)) in func_decl
-            .params
-            .list
-            .iter_mut()
-            .skip(start_idx)
-            .zip(args.iter_mut())
-            .enumerate()
-        {
-            let mut param_type = param.param_type().unwrap();
-
-            let arg_type = match self.analyze_expr(arg, Some(param_type.clone())) {
-                Some(sema_type) => sema_type,
-                None => continue,
+        for (param, arg) in func_decl.params.list.iter_mut().skip(start_idx).zip(args.iter_mut()) {
+            let Some(param_type) = param.param_type() else {
+                continue;
             };
 
-            param_type = match self.normalize_and_check_type_formation(param_type, param.loc()) {
-                Some(sema_type) => sema_type,
-                None => continue,
+            let Some(param_type) = self.normalize_and_check_type_formation(param_type, param.loc()) else {
+                continue;
             };
 
-            if !self.is_assignable_to(arg_type.clone(), param_type.clone(), arg.loc) {
-                self.reporter.report(Diag {
-                    level: DiagLevel::Error,
-                    kind: Box::new(AnalyzerDiagKind::FuncCallParamTypeMismatch {
-                        param_type: format_sema_type(param_type.clone(), self.formatter),
-                        argument_type: format_sema_type(arg_type, self.formatter),
-                        argument_idx: param_idx as u32,
-                    }),
-                    loc: Some(arg.loc),
-                    hint: None,
-                });
+            if self.analyze_argument(arg, param_type.clone(), arg.loc).is_none() {
+                continue;
             }
         }
 
-        self.normalize_sema_type(func_decl.ret_type.clone(), loc)
+        let ret_type = self.substitute_type(&func_decl.ret_type);
+
+        if let Some(infer) = &mut self.func_env.infer {
+            Some(infer.resolve(&ret_type))
+        } else {
+            Some(ret_type)
+        }
     }
 
     /// Validates variadic arguments in function calls, ensuring type compatibility and proper analysis.

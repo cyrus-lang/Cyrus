@@ -164,7 +164,7 @@ pub fn build_semantic_bundle(opts: &mut CodeGenOptions, file_path_opt: Option<St
             let fs_module_loader = FsModuleLoader::new(source_map.clone(), source_parser, module_loader_opts);
 
             let decl_tables = Arc::new(DeclTablesRegistry::new());
-            let monomorph_registry = Arc::new(Mutex::new(MonomorphRegistry::new()));
+            let monomorph_registry = Arc::new(MonomorphRegistry::new());
 
             let mut resolver = Resolver::new(
                 Box::new(fs_module_loader),
@@ -205,6 +205,7 @@ pub fn build_semantic_bundle(opts: &mut CodeGenOptions, file_path_opt: Option<St
                 let mut analyzer = AnalysisContext::new(
                     config.clone(),
                     reporter.clone(),
+                    source_map.clone(),
                     &resolver,
                     decl_tables.clone(),
                     &resolver,

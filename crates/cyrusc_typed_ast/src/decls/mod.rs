@@ -16,7 +16,7 @@
  */
 
 use crate::{
-    SymbolID,
+    BodyID, SymbolID,
     exprs::TypedExprStmt,
     stmts::{
         TypedBlockStmt, TypedEnumVariant, TypedFuncParams, TypedGenericParams, TypedImplementInterface,
@@ -28,7 +28,7 @@ use cyrusc_ast::{
     abi::{ReprKind, Visibility},
     modifiers::{EnumModifiers, FuncModifiers, GlobalVarModifiers, StructModifiers, UnionModifiers},
 };
-use cyrusc_source_loc::{FileID, Loc};
+use cyrusc_source_loc::Loc;
 use std::{collections::HashMap, hash::Hash};
 
 pub mod table;
@@ -126,6 +126,15 @@ pub struct FuncDecl {
     pub params: TypedFuncParams,
     pub generic_params: TypedGenericParams,
     pub ret_type: SemaType,
+
+    /// Body of the function stored in the global BodyTable.
+    ///
+    /// - None for pure function declarations (no definition).
+    /// - For generic functions, this refers to the *template body* that will
+    ///   be cloned and instantiated during monomorphization.
+    /// - For non-generic functions, this is the concrete body analyzed normally.
+    pub body: Option<BodyID>,
+
     pub is_func_decl: bool,
     pub modifiers: FuncModifiers,
     pub loc: Loc,
@@ -134,7 +143,7 @@ pub struct FuncDecl {
 #[derive(Debug, Clone)]
 pub struct MethodDecl {
     pub func_decl: FuncDecl,
-    pub body: Option<Box<TypedBlockStmt>>,
+    pub body: Option<BodyID>,
 }
 
 #[derive(Debug, Clone)]

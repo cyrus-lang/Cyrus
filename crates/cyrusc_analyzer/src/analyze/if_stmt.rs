@@ -20,23 +20,5 @@ use cyrusc_internal::flow_state::FlowState;
 use cyrusc_typed_ast::stmts::TypedIfStmt;
 
 impl<'a> AnalysisContext<'a> {
-    pub(crate) fn analyze_if_stmt(&mut self, if_stmt: &mut TypedIfStmt) -> FlowState {
-        let then_state = self.analyze_block_stmt(&mut if_stmt.then_block);
-
-        self.analyze_cond_expr(&mut if_stmt.cond);
-
-        let else_state = {
-            if let Some(block_stmt) = &mut if_stmt.else_block {
-                self.analyze_block_stmt(&mut *block_stmt)
-            } else {
-                FlowState::Reachable
-            }
-        };
-
-        if_stmt.branches.iter_mut().for_each(|branch| {
-            self.analyze_if_stmt(branch);
-        });
-
-        then_state.merge(else_state)
-    }
+    
 }

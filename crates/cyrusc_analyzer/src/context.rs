@@ -43,8 +43,9 @@ pub struct AnalysisContext<'a> {
     pub entry_points: Arc<EntryPoints>,
     pub program_tree: Rc<RefCell<TypedProgramTree>>,
     pub(crate) reporter: Arc<DiagReporter>,
+    pub(crate) source_map: Arc<SourceMap>,
     pub vtable_registry: Arc<Mutex<VTableRegistry>>,
-    pub monomorph_registry: Arc<Mutex<MonomorphRegistry>>,
+    pub monomorph_registry: Arc<MonomorphRegistry>,
 
     pub(crate) query: &'a dyn SymbolQuery,
     pub(crate) decl_tables: Arc<DeclTablesRegistry>,
@@ -64,12 +65,13 @@ impl<'a> AnalysisContext<'a> {
     pub fn new(
         config: AnalyzerConfig,
         reporter: Arc<DiagReporter>,
+        source_map: Arc<SourceMap>,
         query: &'a dyn SymbolQuery,
         decl_tables: Arc<DeclTablesRegistry>,
         formatter: &'a dyn Formatter,
         program_tree: Rc<RefCell<TypedProgramTree>>,
         entry_points: Arc<EntryPoints>,
-        monomorph_registry: Arc<Mutex<MonomorphRegistry>>,
+        monomorph_registry: Arc<MonomorphRegistry>,
         vtable_registry: Arc<Mutex<VTableRegistry>>,
     ) -> Self {
         let func_env = FuncEnv::new();
@@ -87,6 +89,7 @@ impl<'a> AnalysisContext<'a> {
             func_env,
             config,
             reporter,
+            source_map,
             control_stack,
             program_tree,
             query,

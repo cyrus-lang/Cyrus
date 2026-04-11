@@ -38,6 +38,9 @@ pub struct VTableID(pub u32);
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct GenericParamID(pub u32);
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct BodyID(pub u32);
+
 #[derive(Debug, Clone)]
 pub struct TypedProgramTree {
     pub file_id: FileID,

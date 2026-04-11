@@ -889,6 +889,7 @@ impl Resolver {
 
                 let func_decl = FuncDecl {
                     is_func_decl: true,
+                    body: None,
 
                     symbol_id: None,
                     name: func_decl_stmt.ident.as_string(),
@@ -1207,6 +1208,7 @@ impl Resolver {
             let method_decl_id = self.decl_tables.insert_method(MethodDecl {
                 func_decl: FuncDecl {
                     is_func_decl: false,
+                    body: None,
 
                     symbol_id: None,
                     name: method_name.clone(),
@@ -1263,7 +1265,13 @@ impl Resolver {
                         }
                     }
 
-                    method_decl.body = Some(Box::new(typed_body));
+                    let body_id = self.decl_tables.insert_body(typed_body);
+
+                    self.decl_tables.with_method_decl_mut(*method_decl_id, |_method_decl| {
+                        _method_decl.func_decl.body = Some(body_id);
+                    });
+
+                    method_decl.body = Some(body_id);
                 });
             }
         }
@@ -1492,6 +1500,7 @@ impl Resolver {
 
         let func_decl = FuncDecl {
             is_func_decl: true,
+            body: None,
 
             symbol_id: Some(symbol_id),
             name,
@@ -1546,6 +1555,7 @@ impl Resolver {
 
         let func_decl = FuncDecl {
             is_func_decl: false,
+            body: None,
 
             symbol_id: Some(symbol_id),
             name: func_def.ident.as_string(),
@@ -1559,18 +1569,28 @@ impl Resolver {
             loc: func_def.loc,
         };
 
+        let is_generic = func_decl.is_generic();
         let func_decl_id = self.decl_tables.insert_func(func_decl);
 
         self.with_global_symbol_mut(symbol_id, |symbol_entry| {
             symbol_entry.kind = SymbolEntryKind::Func(func_decl_id)
         });
 
-        let typed_func_body = self.with_generic_scope(&generic_params, |this| {
+        let typed_body = self.with_generic_scope(&generic_params, |this| {
             with_local_scope!(this, scope, {
                 this.insert_func_params_into_current_scope(&mut params, &mut variadic)?;
                 this.resolve_block_stmt(&func_def.body)
             })
         })?;
+
+        // only store body for generic functions (used for monomorphization)
+        if is_generic {
+            let body_id = self.decl_tables.insert_body(typed_body.clone());
+
+            self.decl_tables.with_func_decl_mut(func_decl_id, |_func_decl| {
+                _func_decl.body = Some(body_id);
+            })
+        }
 
         Some(TypedStmt::FuncDef(TypedFuncDefStmt {
             symbol_id,
@@ -1580,7 +1600,7 @@ impl Resolver {
             ret_type,
             modifiers: func_def.modifiers.clone(),
             loc: func_def.loc,
-            body: Box::new(typed_func_body),
+            body: Box::new(typed_body),
         }))
     }
 
