@@ -15,7 +15,7 @@
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
 
-use crate::builder::builder::IRBuilderCtx;
+use crate::builder::builder::CodeGenIRBuilder;
 use crate::llvm::abi::abi_type::abi_type_to_llvm_type;
 use crate::llvm::debug_info::{
     debug_array_type, debug_const_type, debug_dynamic_type, debug_enum_type, debug_member_type, debug_pointer_type,
@@ -35,7 +35,7 @@ use inkwell::{
     types::{AnyType, AnyTypeEnum, ArrayType, AsTypeRef, BasicType, BasicTypeEnum, FunctionType, StructType},
 };
 
-impl<'ll> IRBuilderCtx<'ll> {
+impl<'ll> CodeGenIRBuilder<'ll> {
     pub(crate) fn emit_debug_ty_metadata(&self, ty: &CIRType) -> LLVMMetadataRef {
         let llvm_ty = self.emit_ty(ty.clone());
 

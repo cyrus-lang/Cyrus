@@ -16,7 +16,7 @@
  */
 use crate::{
     builder::{
-        builder::IRBuilderCtx,
+        builder::CodeGenIRBuilder,
         values::{InternalValue, InternalValueKind},
     },
     c,
@@ -84,7 +84,7 @@ impl<'ll> CFLoop<'ll> {
     }
 }
 
-impl<'ll> IRBuilderCtx<'ll> {
+impl<'ll> CodeGenIRBuilder<'ll> {
     pub(crate) fn emit_predefine_labels(&mut self, cir_block: &CIRBlockStmt) {
         for cir_stmt in &cir_block.stmts {
             if let CIRStmt::Label(label_stmt) = cir_stmt {

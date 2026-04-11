@@ -62,7 +62,7 @@ use std::{
     sync::{Arc, Mutex},
 };
 
-pub(crate) struct IRBuilderCtx<'ll> {
+pub(crate) struct CodeGenIRBuilder<'ll> {
     pub(crate) target: &'ll ABITarget,
     pub(crate) llvmctx: &'ll Context,
     pub(crate) llvmbuilder: &'ll Builder<'ll>,
@@ -74,6 +74,8 @@ pub(crate) struct IRBuilderCtx<'ll> {
     pub(crate) blockreg: BlockRegistry<'ll>,
     pub(crate) defer_stack: Vec<Vec<CIRStmt>>,
     pub(crate) monomorph_registry: Arc<Mutex<CIRInstanceRegistry>>,
+
+    pub(crate) cir_module: &'ll CIRModule,
 
     // lambda abi name (auto increment)
     pub(crate) lambda_id: usize,
@@ -89,9 +91,10 @@ pub(crate) struct BlockRegistry<'ll> {
     pub(crate) labels: HashMap<LabelID, BasicBlock<'ll>>,
 }
 
-impl<'ll> IRBuilderCtx<'ll> {
+impl<'ll> CodeGenIRBuilder<'ll> {
     pub fn new(
         owned_module: &'ll OwnedModule,
+        cir_module: &'ll CIRModule,
         target: &'ll ABITarget,
         llvmbuilder: &'ll Builder<'ll>,
         llvmtm: &'ll TargetMachine,
@@ -108,6 +111,7 @@ impl<'ll> IRBuilderCtx<'ll> {
 
         Self {
             target,
+            cir_module,
             llvmctx: &owned_module.context,
             llvmbuilder,
             llvmmodule,
@@ -123,12 +127,12 @@ impl<'ll> IRBuilderCtx<'ll> {
         }
     }
 
-    pub fn emit_module(&mut self, module: &CIRModule) {
-        for cir_stmt in &module.stmts {
+    pub fn emit_module(&mut self) {
+        for cir_stmt in &self.cir_module.stmts {
             self.emit_stmt(cir_stmt);
         }
 
-        tui_compiled(module.file_path.clone());
+        tui_compiled(self.cir_module.file_path.clone());
     }
 
     pub(crate) fn emit_stmt(&mut self, stmt: &CIRStmt) {
@@ -241,139 +245,6 @@ impl<'ll> IRBuilderCtx<'ll> {
         }
 
         self.defer_stack.pop();
-    }
-
-    pub(crate) fn emit_var(&mut self, cir_var: &CIRVarStmt) {
-        let ty: BasicTypeEnum<'ll> = self.emit_ty(cir_var.ty.clone()).try_into().unwrap();
-        let layout = type_layout(&self.target.info, &cir_var.ty);
-
-        let ptr = self.llvmbuilder.build_alloca(ty, &cir_var.name).unwrap();
-        let alloca_instr = ptr.as_instruction().unwrap();
-
-        self.emit_debug_var(&layout, &ptr, cir_var);
-
-        if let Some(expr) = &cir_var.expr {
-            let lvalue = self.emit_expr(expr);
-            let rvalue = self.load_rvalue(lvalue);
-            self.emit_store(ptr, rvalue, cir_var.ty.clone());
-        } else {
-            // zero init
-            let zero_internal_value =
-                InternalValue::new(cir_var.ty.clone(), InternalValueKind::RValue(ty.const_zero()));
-
-            self.emit_store(ptr, zero_internal_value, cir_var.ty.clone());
-        }
-
-        alloca_instr.set_alignment(layout.align).unwrap();
-
-        let mut irreg = self.irreg.borrow_mut();
-        irreg.insert(cir_var.irv_id, LocalIRValue::LValue(ptr, cir_var.ty.clone()));
-        drop(irreg);
-    }
-
-    fn emit_debug_var(&self, layout: &ABITypeLayout, ptr: &PointerValue<'ll>, cir_var: &CIRVarStmt) {
-        let var_ty_metadata = self.emit_debug_ty_metadata(&cir_var.ty);
-
-        let var_meta = unsafe {
-            create_debug_variable(
-                &self.dctx,
-                &cir_var.name,
-                cir_var.loc.line.try_into().unwrap(),
-                var_ty_metadata,
-                layout.align,
-            )
-        };
-
-        unsafe {
-            emit_dbg_declare(
-                &self.dctx,
-                self.llvmctx,
-                self.llvmbuilder,
-                ptr.as_value_ref(),
-                var_meta,
-                cir_var.loc.line.try_into().unwrap(),
-                cir_var.loc.column.try_into().unwrap(),
-            )
-        };
-    }
-
-    fn emit_debug_global_var(
-        &self,
-        _layout: &ABITypeLayout,
-        global_value: &GlobalValue<'ll>,
-        cir_global_var: &CIRGlobalVarStmt,
-    ) {
-        let ty_meta = self.emit_debug_ty_metadata(&cir_global_var.ty);
-
-        let is_local = !cir_global_var
-            .modifiers
-            .linkage
-            .clone()
-            .map(|l| l.is_extern())
-            .unwrap_or(false);
-
-        let file = self.dctx.file.metadata;
-
-        // globals should use the compile unit as scope
-        let scope = self.dctx.compile_unit;
-
-        unsafe {
-            emit_global_debug(
-                &self.dctx,
-                global_value.as_value_ref(),
-                scope,
-                file,
-                &cir_global_var.name,
-                &cir_global_var.name,
-                cir_global_var.loc.line as u32,
-                ty_meta,
-                is_local,
-            );
-        }
-    }
-
-    pub(crate) fn emit_global_var(&mut self, cir_global_var: &CIRGlobalVarStmt) -> GlobalValue<'ll> {
-        {
-            let irreg = self.irreg.borrow();
-            if let Some(local_ir_value) = irreg.get(cir_global_var.irv_id) {
-                return local_ir_value.as_global().cloned().unwrap();
-            }
-        }
-
-        let llvmmodule = self.llvmmodule.borrow();
-
-        if let Some(global_value) = llvmmodule.get_global(&cir_global_var.name) {
-            return global_value;
-        }
-
-        let ty: BasicTypeEnum<'ll> = self.emit_ty(cir_global_var.ty.clone()).try_into().unwrap();
-        let global_value = llvmmodule.add_global(ty, None, &cir_global_var.name);
-        drop(llvmmodule);
-
-        let layout = type_layout(&self.target.info, &cir_global_var.ty);
-        self.emit_debug_global_var(&layout, &global_value, cir_global_var);
-
-        if let Some(expr) = &cir_global_var.expr {
-            let lvalue = self.emit_expr(&expr);
-            let rvalue = self.load_rvalue(lvalue).as_basic_value();
-            global_value.set_initializer(&rvalue);
-        } else {
-            if cir_global_var.modifiers.linkage.is_none() {
-                // zero init
-                global_value.set_initializer(&ty.const_zero());
-            }
-        }
-
-        apply_global_var_modifiers(&global_value, &cir_global_var.modifiers);
-
-        let mut irreg = self.irreg.borrow_mut();
-        irreg.insert(
-            cir_global_var.irv_id,
-            LocalIRValue::Global(global_value, cir_global_var.ty.clone()),
-        );
-        drop(irreg);
-
-        global_value
     }
 
     pub(crate) fn set_current_func(&mut self, llvm_func_value: FunctionValue<'ll>, abi_func_info: ABIFunctionInfo) {

@@ -56,14 +56,14 @@
 //     lambda_id: u32,
 // }
 
-// impl<'resolver> CIRTraverse<'resolver> {
+// impl<'a> CIRTraverse<'a> {
 //     pub fn new(
 //         program_tree: Box<TypedProgramTree>,
-//         query: &'resolver dyn Query,
+//         query: &'a dyn Query,
 //         cir_monomorph_registry: Arc<Mutex<CIRMonomorphRegistry>>,
 //         mapping_ctx_arena: Arc<Mutex<dyn GenericMappingCtxArena>>,
 //         vtable_registry: Arc<Mutex<VTableRegistry>>,
-//         target: &'resolver ABITarget,
+//         target: &'a ABITarget,
 //     ) -> Self {
 //         let module_name = query.lookup_module_name(program_tree.file_id).unwrap();
 

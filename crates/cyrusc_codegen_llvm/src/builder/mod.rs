@@ -23,3 +23,4 @@ mod irreg;
 mod runtime;
 mod types;
 mod values;
+mod vars;

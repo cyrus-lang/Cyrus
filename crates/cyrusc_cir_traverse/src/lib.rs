@@ -50,14 +50,14 @@ pub(crate) struct CIRTraverse<'a> {
     global_var_decls: FxHashMap<IRValueID, CIRGlobalVarStmt>,
 }
 
-impl<'resolver> CIRTraverse<'resolver> {
+impl<'a> CIRTraverse<'a> {
     pub fn new(
         program_tree: Box<TypedProgramTree>,
-        query: &'resolver dyn SymbolQuery,
+        query: &'a dyn SymbolQuery,
         decl_tables: Arc<DeclTablesRegistry>,
         cir_instance_registry: Arc<Mutex<CIRInstanceRegistry>>,
         vtable_registry: Arc<Mutex<VTableRegistry>>,
-        target: &'resolver ABITarget,
+        target: &'a ABITarget,
     ) -> Self {
         let module_name = query.lookup_module_name(program_tree.file_id).unwrap();
 
@@ -97,7 +97,7 @@ impl<'resolver> CIRTraverse<'resolver> {
         match stmt {
             TypedStmt::FuncDef(func_def) => {
                 if func_def.is_generic() {
-                    return; // skip lowering at this point
+                    return; // skip lowering 
                 }
                 lowered_stmts.push(self.lower_func_def(func_def, true));
             }
@@ -185,14 +185,6 @@ impl<'resolver> CIRTraverse<'resolver> {
         lowered_stmts
     }
 
-    fn lower_label(&self, label: &TypedLabelStmt) -> CIRStmt {
-        CIRStmt::Label(CIRLabelStmt {
-            name: label.name.clone(),
-            label_id: label.label_id,
-            loc: label.loc,
-        })
-    }
-
     fn lower_defer(&mut self, defer: &TypedDeferStmt) -> CIRStmt {
         let mut lowered_stmts = Vec::new();
         self.lower_stmt(&defer.operand, &mut lowered_stmts);
@@ -200,14 +192,6 @@ impl<'resolver> CIRTraverse<'resolver> {
 
         let operand = lowered_stmts.first().unwrap();
         operand.clone()
-    }
-
-    #[inline]
-    fn lower_goto(&self, goto: &TypedGotoStmt) -> CIRStmt {
-        CIRStmt::Goto(CIRGotoStmt {
-            label_id: goto.label_id.unwrap(),
-            loc: goto.loc,
-        })
     }
 
     pub fn lower_export_tuple_to_vars(&mut self, export_tuple: &TypedExportTupleStmt) -> Vec<CIRVarStmt> {
@@ -226,7 +210,7 @@ impl<'resolver> CIRTraverse<'resolver> {
                 let var_ty = self.lower_sema_type(&var_decl.ty.as_ref().unwrap());
                 let var_rhs = self.lower_expr(&var_decl.rhs.as_ref().unwrap());
 
-                let irv_id = self.next_irv_id();
+                let irv_id = self.new_ir_value_id();
 
                 self.decl_to_ir_value_map.insert(DeclID::Var(var_decl_id), irv_id);
 
@@ -352,7 +336,7 @@ impl<'resolver> CIRTraverse<'resolver> {
 
         let mangled_name = mangle_global_var(&global_var.modifiers, &self.module_name, &global_var.name);
 
-        let irv_id = self.next_irv_id();
+        let irv_id = self.new_ir_value_id();
 
         let global_var_decl_id = self.query.get_global_var(global_var.symbol_id).unwrap();
 
@@ -403,7 +387,7 @@ impl<'resolver> CIRTraverse<'resolver> {
 
         let expr = var.rhs.clone().and_then(|expr| Some(self.lower_expr(&expr)));
 
-        let irv_id = self.next_irv_id();
+        let irv_id = self.new_ir_value_id();
 
         let var_decl_id = self.query.get_var(var.symbol_id).unwrap();
 
@@ -437,7 +421,7 @@ impl<'resolver> CIRTraverse<'resolver> {
 
                     match param_kind {
                         TypedFuncParamKind::FuncParam(func_param) => {
-                            let irv_id = { if !is_decl { Some(self.next_irv_id()) } else { None } };
+                            let irv_id = { if !is_decl { Some(self.new_ir_value_id()) } else { None } };
 
                             CIRFuncParam {
                                 name,
@@ -447,7 +431,7 @@ impl<'resolver> CIRTraverse<'resolver> {
                             }
                         }
                         TypedFuncParamKind::SelfModifier(self_modifier) => {
-                            let irv_id = self.next_irv_id();
+                            let irv_id = self.new_ir_value_id();
 
                             CIRFuncParam {
                                 name,
@@ -470,7 +454,7 @@ impl<'resolver> CIRTraverse<'resolver> {
         let body = self.lower_body(&func_def.body);
         let ret = self.lower_sema_type(&func_def.ret_type);
 
-        let irv_id = self.next_irv_id();
+        let irv_id = self.new_ir_value_id();
 
         let func_decl_id = self.query.get_func(func_def.symbol_id).unwrap();
 
@@ -509,7 +493,7 @@ impl<'resolver> CIRTraverse<'resolver> {
             func_decl.name.clone()
         };
 
-        let irv_id = self.next_irv_id();
+        let irv_id = self.new_ir_value_id();
 
         let func_decl_id = self.query.get_func(func_decl.symbol_id.unwrap()).unwrap();
 
@@ -519,7 +503,7 @@ impl<'resolver> CIRTraverse<'resolver> {
             irv_id,
             name: func_name,
             params,
-            ret: ret_type,
+            ret_type,
             modifiers: func_decl.modifiers.clone(),
             abi_func_info: None,
             loc: func_decl.loc,
@@ -602,22 +586,14 @@ impl<'resolver> CIRTraverse<'resolver> {
         let symbol_entry = self.query.lookup_symbol_entry(symbol_id).unwrap();
 
         if let Some(func_decl_id) = symbol_entry.as_func() {
-            let irv_id = self
-                .decl_to_ir_value_map
-                .get(&DeclID::Func(func_decl_id))
-                .copied()
-                .unwrap();
+            let irv_id = self.get_or_declare_func_ir_value(func_decl_id);
 
             CIRExprKind::Load(CIRValue {
                 irv_id,
                 kind: CIRValueKind::Func,
             })
         } else if let Some(global_var_decl_id) = symbol_entry.as_global_var() {
-            let irv_id = self
-                .decl_to_ir_value_map
-                .get(&DeclID::GlobalVar(global_var_decl_id))
-                .copied()
-                .unwrap();
+            let irv_id = self.get_or_declare_global_var_ir_value(global_var_decl_id);
 
             CIRExprKind::Load(CIRValue {
                 irv_id,
@@ -737,7 +713,7 @@ impl<'resolver> CIRTraverse<'resolver> {
 
         let abi_func_info = self.target.target_abi.classify_func(&cir_func_type).unwrap();
 
-        let irv_id = self.next_irv_id();
+        let irv_id = self.new_ir_value_id();
 
         CIRExprKind::Lambda(CIRLambda {
             irv_id,
@@ -938,13 +914,9 @@ impl<'resolver> CIRTraverse<'resolver> {
         match &func_call.dispatch {
             TypedFuncCallDispatch::Unresolved => unreachable!(),
             TypedFuncCallDispatch::Normal { func_decl_id } => {
-                let func_decl = self.decl_tables.func_decl(*func_decl_id);
+                let irv_id = self.get_or_declare_func_ir_value(*func_decl_id);
 
-                let irv_id = self
-                    .decl_to_ir_value_map
-                    .get(&DeclID::Func(*func_decl_id))
-                    .copied()
-                    .unwrap();
+                let func_decl = self.decl_tables.func_decl(*func_decl_id);
 
                 let ret_type = self.lower_sema_type(&func_decl.ret_type);
 
@@ -1052,24 +1024,30 @@ impl<'resolver> CIRTraverse<'resolver> {
         CIRExprKind::Literal(CIRLiteral { kind, ty })
     }
 
-    fn lower_func_type(&mut self, func_type: &TypedFuncType) -> CIRFuncType {
-        let ret = Box::new(self.lower_sema_type(&func_type.ret_type));
-        let params = self.lower_func_type_params(&func_type.params);
-
-        let mut cir_type = CIRFuncType {
-            params: params,
-            is_var: func_type.params.variadic.is_some(),
-            ret,
-            callconv: CallConv::default(),
-            abi_func_info: None,
-        };
-
-        cir_type.abi_func_info = Some(self.target.target_abi.classify_func(&cir_type).unwrap());
-        cir_type
+    #[inline]
+    fn lower_label(&self, label: &TypedLabelStmt) -> CIRStmt {
+        CIRStmt::Label(CIRLabelStmt {
+            name: label.name.clone(),
+            label_id: label.label_id,
+            loc: label.loc,
+        })
     }
 
+    #[inline]
+    fn lower_goto(&self, goto: &TypedGotoStmt) -> CIRStmt {
+        CIRStmt::Goto(CIRGotoStmt {
+            label_id: goto.label_id.unwrap(),
+            loc: goto.loc,
+        })
+    }
+}
+
+// Types.
+impl<'a> CIRTraverse<'a> {
     fn lower_sema_type(&mut self, sema_type: &SemaType) -> CIRType {
         match sema_type {
+            SemaType::Plain(plain_type) => CIRType::Plain(plain_type.clone()),
+            SemaType::Named(named_type) => self.lower_named_type(named_type),
             SemaType::Array(array_type) => {
                 let element_type = self.lower_sema_type(&array_type.element_type);
                 let len = match &array_type.capacity {
@@ -1111,8 +1089,7 @@ impl<'resolver> CIRTraverse<'resolver> {
                 align: None,
                 loc: interface_type.loc,
             }),
-            SemaType::Named(named_type) => self.lower_named_type(named_type),
-            SemaType::Plain(plain_type) => CIRType::Plain(plain_type.clone()),
+
             SemaType::Unresolved(_) => unreachable!("unexpected unresolved type"),
             SemaType::GenericParam(_) => unreachable!("Unexpected generic param"),
             SemaType::SelfType(_) => unreachable!("unexpected self type"),
@@ -1122,6 +1099,22 @@ impl<'resolver> CIRTraverse<'resolver> {
         }
         .const_inner()
         .clone()
+    }
+
+    fn lower_func_type(&mut self, func_type: &TypedFuncType) -> CIRFuncType {
+        let ret = Box::new(self.lower_sema_type(&func_type.ret_type));
+        let params = self.lower_func_type_params(&func_type.params);
+
+        let mut cir_type = CIRFuncType {
+            params: params,
+            is_var: func_type.params.variadic.is_some(),
+            ret,
+            callconv: CallConv::default(),
+            abi_func_info: None,
+        };
+
+        cir_type.abi_func_info = Some(self.target.target_abi.classify_func(&cir_type).unwrap());
+        cir_type
     }
 
     fn lower_struct_decl(&mut self, struct_decl: &StructDecl) -> CIRStructType {
@@ -1231,9 +1224,53 @@ impl<'resolver> CIRTraverse<'resolver> {
             TypeDeclID::Typedef(_) => unreachable!("unexpected unexpanded typedef"),
         }
     }
+}
+
+// Helpers.
+impl<'a> CIRTraverse<'a> {
+    fn get_or_declare_func_ir_value(&mut self, func_decl_id: FuncDeclID) -> IRValueID {
+        if let Some(irv_id) = self.decl_to_ir_value_map.get(&DeclID::Func(func_decl_id)).copied() {
+            return irv_id;
+        }
+
+        let func_decl = self.decl_tables.func_decl(func_decl_id);
+
+        let cir_func_decl_stmt = self.lower_func_decl(&func_decl, !func_decl.is_func_decl);
+
+        let irv_id = cir_func_decl_stmt.irv_id;
+
+        self.func_decls.insert(irv_id, cir_func_decl_stmt);
+
+        self.decl_to_ir_value_map.insert(DeclID::Func(func_decl_id), irv_id);
+
+        irv_id
+    }
+
+    fn get_or_declare_global_var_ir_value(&mut self, global_var_decl_id: GlobalVarDeclID) -> IRValueID {
+        if let Some(irv_id) = self
+            .decl_to_ir_value_map
+            .get(&DeclID::GlobalVar(global_var_decl_id))
+            .copied()
+        {
+            return irv_id;
+        }
+
+        let global_var_decl = self.decl_tables.global_var_decl(global_var_decl_id);
+
+        let irv_id = self.new_ir_value_id();
+
+        let global_var_stmt = self.lower_global_var_decl(irv_id, &global_var_decl);
+
+        self.global_var_decls.insert(irv_id, global_var_stmt);
+
+        self.decl_to_ir_value_map
+            .insert(DeclID::GlobalVar(global_var_decl_id), irv_id);
+
+        irv_id
+    }
 
     #[inline(always)]
-    fn next_irv_id(&mut self) -> IRValueID {
+    fn new_ir_value_id(&mut self) -> IRValueID {
         let id = self.next_irv_id.0;
         self.next_irv_id.0 += 1;
         IRValueID(id)

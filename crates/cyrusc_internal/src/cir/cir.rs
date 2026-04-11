@@ -315,7 +315,7 @@ pub struct CIRFuncDeclStmt {
     pub irv_id: IRValueID,
     pub name: String,
     pub params: CIRFuncParams,
-    pub ret: CIRType,
+    pub ret_type: CIRType,
     pub modifiers: FuncModifiers,
     pub abi_func_info: Option<ABIFunctionInfo>,
     pub loc: Loc,
@@ -497,7 +497,7 @@ pub fn cir_func_def_as_decl(func_def: &CIRFuncDefStmt) -> CIRFuncDeclStmt {
         irv_id: func_def.irv_id,
         name: func_def.name.clone(),
         params: func_def.params.clone(),
-        ret: func_def.ret.clone(),
+        ret_type: func_def.ret.clone(),
         modifiers: func_def.modifiers.clone(),
         abi_func_info: func_def.abi_func_info.clone(),
         loc: func_def.loc,
@@ -509,7 +509,7 @@ pub fn cir_func_decl_as_func_ty(func_decl: &CIRFuncDeclStmt) -> CIRFuncType {
     CIRFuncType {
         params: func_decl.params.list.iter().map(|param| param.ty.clone()).collect(),
         is_var: func_decl.params.is_var,
-        ret: Box::new(func_decl.ret.clone()),
+        ret: Box::new(func_decl.ret_type.clone()),
         callconv: func_decl.modifiers.callconv.clone().unwrap_or_default(),
         abi_func_info: func_decl.abi_func_info.clone(),
     }

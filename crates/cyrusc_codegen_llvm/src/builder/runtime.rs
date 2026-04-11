@@ -16,7 +16,7 @@
  */
 
 use crate::builder::{
-    builder::IRBuilderCtx,
+    builder::CodeGenIRBuilder,
     values::{InternalValue, InternalValueKind},
 };
 use cyrusc_internal::cir::types::CIRType;
@@ -26,7 +26,7 @@ use inkwell::{
     values::{BasicMetadataValueEnum, IntValue, PointerValue},
 };
 
-impl<'ll> IRBuilderCtx<'ll> {
+impl<'ll> CodeGenIRBuilder<'ll> {
     pub(crate) fn emit_inbounds_checked_array_index(
         &mut self,
         ptr: PointerValue<'ll>,

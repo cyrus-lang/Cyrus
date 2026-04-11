@@ -17,7 +17,7 @@
 
 use crate::{
     builder::{
-        builder::IRBuilderCtx,
+        builder::CodeGenIRBuilder,
         irreg::LocalIRValue,
         values::{InternalValue, InternalValueKind},
     },
@@ -27,7 +27,10 @@ use crate::{
         debug_info::*,
     },
 };
-use cyrusc_ast::{abi::Inlining, modifiers::FuncModifiers};
+use cyrusc_ast::{
+    abi::{Inlining, Linkage},
+    modifiers::FuncModifiers,
+};
 use cyrusc_internal::{
     abi::{
         args::{ABIArgInfo, ABIArgKind, ABIFunctionInfo, ExpandKind},
@@ -55,7 +58,448 @@ pub(crate) enum FuncCallKind<'ll> {
     Indirect(CallSiteValue<'ll>),
 }
 
-impl<'ll> IRBuilderCtx<'ll> {
+// Monomorph.
+impl<'ll> CodeGenIRBuilder<'ll> {
+    // FIXME
+    pub(crate) fn emit_monomorph_func_instance(
+        &mut self,
+        monomorph_id: MonomorphID,
+    ) -> (FunctionValue<'ll>, CIRFuncType) {
+        todo!();
+
+        // {
+        //     let monomorph_registry = self.monomorph_registry.lock().unwrap();
+        //     let monomorph_entry = monomorph_registry.get_func(&monomorph_id).cloned().unwrap();
+        //     let monomorph_func_entry = match monomorph_entry {
+        //         CIRMonomorphEntry::Func(entry) => entry,
+        //     };
+
+        //     let irreg = self.irreg.borrow();
+        //     if let Some(ir_value) = irreg.get(monomorph_func_entry.irv_id) {
+        //         // already exists in current module
+        //         let llvm_func_value = ir_value.as_func().cloned().unwrap();
+        //         return (llvm_func_value, monomorph_func_entry.func_type.clone());
+        //     }
+
+        //     drop(monomorph_registry);
+        //     drop(irreg);
+
+        //     // insert func to current module
+        //     let fn_ty = self.emit_func_ty(monomorph_func_entry.func_type.clone());
+        //     {
+        //         let llvm_func_value = {
+        //             let llvmmodule = self.llvmmodule.borrow_mut();
+        //             let mut irreg = self.irreg.borrow_mut();
+
+        //             let func_name = monomorph_func_name(monomorph_func_entry.irv_id);
+
+        //             let llvm_func_value = match llvmmodule.get_function(&func_name) {
+        //                 Some(f) => f,
+        //                 None => llvmmodule.add_function(&func_name, fn_ty, None),
+        //             };
+
+        //             irreg.insert(
+        //                 monomorph_func_entry.irv_id,
+        //                 LocalIRValue::Func(llvm_func_value, CIRType::FuncType(monomorph_func_entry.func_type.clone())),
+        //             );
+
+        //             llvm_func_value
+        //         };
+
+        //         let parent_cur_func = self.cur_func.clone();
+        //         let parent_cur_abi_func_info = self.cur_abi_func_info.clone();
+        //         let parent_blockreg = self.blockreg.clone();
+
+        //         self.set_current_func(llvm_func_value, monomorph_func_entry.abi_func_info.clone());
+
+        //         let func_metadata = self.emit_func_metadata(&monomorph_func_entry.func_type);
+
+        //         self.emit_func_body(
+        //             &monomorph_func_entry.func_params,
+        //             &monomorph_func_entry.abi_func_info,
+        //             &monomorph_func_entry.body().unwrap(),
+        //             func_metadata,
+        //             monomorph_func_entry.loc,
+        //         );
+
+        //         {
+        //             // back to parent state because we emitted a new function in the middle of an another function
+        //             if let Some(cur_func) = parent_cur_func {
+        //                 self.set_current_func(cur_func, parent_cur_abi_func_info.unwrap());
+        //             }
+
+        //             self.blockreg = parent_blockreg;
+        //             if let Some(cur_block) = self.blockreg.cur_block {
+        //                 self.emit_block(cur_block);
+        //             }
+        //         }
+
+        //         return (llvm_func_value, monomorph_func_entry.func_type.clone());
+        //     }
+        // }
+    }
+}
+
+// Declaration.
+impl<'ll> CodeGenIRBuilder<'ll> {
+    pub(crate) fn emit_func_decl(&mut self, func_decl: &CIRFuncDeclStmt) -> FunctionValue<'ll> {
+        let cir_fn_ty = cir_func_decl_as_func_ty(func_decl);
+
+        let fn_type = self.emit_func_ty(cir_fn_ty);
+
+        let func_name = &func_decl.name;
+        let llvmmodule = self.llvmmodule.borrow();
+
+        let llvm_func_value = llvmmodule
+            .get_function(func_name)
+            .unwrap_or_else(|| llvmmodule.add_function(func_name, fn_type, None));
+
+        apply_func_modifiers(self.llvmctx, &llvm_func_value, &func_decl.modifiers);
+
+        let cir_func_ty = cir_func_decl_as_func_ty(func_decl);
+
+        self.insert_local_ir_value(
+            func_decl.irv_id,
+            LocalIRValue::Func(llvm_func_value, CIRType::FuncType(cir_func_ty)),
+        );
+
+        llvm_func_value
+    }
+
+    pub(crate) fn get_or_declare_function(&mut self, irv_id: IRValueID) -> InternalValue<'ll> {
+        if let Some(local) = self.lookup_local_ir_value(irv_id) {
+            if let LocalIRValue::Func(func, ty) = local {
+                return InternalValue::new(ty, InternalValueKind::FuncValue(func));
+            }
+        }
+
+        let mut func_decl = self
+            .cir_module
+            .func_decls
+            .get(&irv_id)
+            .cloned()
+            .expect("Missing CIR function declaration");
+
+        func_decl.modifiers = FuncModifiers {
+            linkage: Some(Linkage::Extern(None)),
+            ..func_decl.modifiers
+        };
+
+        let llvm_func = self.emit_func_decl(&func_decl);
+
+        let cir_func_ty = cir_func_decl_as_func_ty(&func_decl);
+
+        InternalValue::new(CIRType::FuncType(cir_func_ty), InternalValueKind::FuncValue(llvm_func))
+    }
+}
+
+// Body.
+impl<'ll> CodeGenIRBuilder<'ll> {
+    pub(crate) fn emit_func_params(&self, func_params: CIRFuncParams, abi_func_info: &ABIFunctionInfo) {
+        let mut llvm_param_index = 0;
+
+        // handle hidden sret pointer
+        if abi_func_info.ret_info.kind.is_indirect_sret() {
+            llvm_param_index += 1;
+        }
+
+        for (i, param) in func_params.list.iter().enumerate() {
+            let abi_arg_info = &abi_func_info.params_infos[i];
+
+            match &abi_arg_info.kind {
+                ABIArgKind::Direct { .. } | ABIArgKind::DirectCoerce { .. } | ABIArgKind::Extend { .. } => {
+                    let llvm_param = self.cur_func.unwrap().get_nth_param(llvm_param_index as u32).unwrap();
+
+                    llvm_param_index += 1;
+
+                    let ty: BasicTypeEnum<'ll> = self.emit_ty(param.ty.clone()).try_into().unwrap();
+
+                    let param_alloca = self.llvmbuilder.build_alloca(ty, "param").unwrap();
+
+                    self.llvmbuilder.build_store(param_alloca, llvm_param).unwrap();
+
+                    self.insert_local_ir_value(
+                        param.irv_id.unwrap(),
+                        LocalIRValue::LValue(param_alloca, param.ty.clone()),
+                    );
+                }
+                ABIArgKind::DirectPair { lo: lo_ty, hi: hi_ty } => {
+                    let ptr_type = self.llvmctx.ptr_type(AddressSpace::default());
+
+                    let coerced_type = self.llvmctx.struct_type(
+                        &[
+                            abi_type_to_llvm_type(self.llvmctx, &self.target.info, lo_ty)
+                                .try_into()
+                                .unwrap(),
+                            abi_type_to_llvm_type(self.llvmctx, &self.target.info, hi_ty)
+                                .try_into()
+                                .unwrap(),
+                        ],
+                        false,
+                    );
+
+                    let param_type: BasicTypeEnum<'ll> = self.emit_ty(param.ty.clone()).try_into().unwrap();
+
+                    let lo = self.cur_func.unwrap().get_nth_param(llvm_param_index as u32).unwrap();
+
+                    let hi = self
+                        .cur_func
+                        .unwrap()
+                        .get_nth_param((llvm_param_index + 1) as u32)
+                        .unwrap();
+
+                    llvm_param_index += 2;
+
+                    let param_alloca = self.llvmbuilder.build_alloca(param_type, "param").unwrap();
+
+                    // reinterpret memory as coercion struct
+                    let coerced_ptr = self
+                        .llvmbuilder
+                        .build_pointer_cast(param_alloca, ptr_type, "coerce.ptr")
+                        .unwrap();
+
+                    let lo_ptr = self
+                        .llvmbuilder
+                        .build_struct_gep(coerced_type, coerced_ptr, 0, "lo.ptr")
+                        .unwrap();
+
+                    self.llvmbuilder.build_store(lo_ptr, lo).unwrap();
+
+                    let hi_ptr = self
+                        .llvmbuilder
+                        .build_struct_gep(coerced_type, coerced_ptr, 1, "hi.ptr")
+                        .unwrap();
+
+                    self.llvmbuilder.build_store(hi_ptr, hi).unwrap();
+
+                    self.insert_local_ir_value(
+                        param.irv_id.unwrap(),
+                        LocalIRValue::LValue(param_alloca, param.ty.clone()),
+                    );
+                }
+                ABIArgKind::Indirect { .. } => {
+                    let param_alloca = self
+                        .cur_func
+                        .unwrap()
+                        .get_nth_param(llvm_param_index as u32)
+                        .unwrap()
+                        .into_pointer_value();
+
+                    llvm_param_index += 1;
+
+                    self.insert_local_ir_value(
+                        param.irv_id.unwrap(),
+                        LocalIRValue::LValue(param_alloca, param.ty.clone()),
+                    );
+                }
+                ABIArgKind::Expand { kind } => {
+                    let struct_ty: BasicTypeEnum<'ll> = self.emit_ty(param.ty.clone()).try_into().unwrap();
+
+                    let param_alloca = self.llvmbuilder.build_alloca(struct_ty, "param").unwrap();
+
+                    let fields_cir_types = param.ty.struct_or_union_fields().unwrap();
+
+                    match kind {
+                        ExpandKind::Simple => {
+                            let field_count = fields_cir_types.len();
+
+                            for i in 0..field_count {
+                                let llvm_param = self.cur_func.unwrap().get_nth_param(llvm_param_index as u32).unwrap();
+
+                                llvm_param_index += 1;
+
+                                let field_ptr = self
+                                    .llvmbuilder
+                                    .build_struct_gep(struct_ty, param_alloca, i as u32, "expand.field.ptr")
+                                    .unwrap();
+
+                                self.llvmbuilder.build_store(field_ptr, llvm_param).unwrap();
+                            }
+                        }
+                        ExpandKind::Struct { field_count } => {
+                            for i in 0..*field_count {
+                                let llvm_param = self.cur_func.unwrap().get_nth_param(llvm_param_index as u32).unwrap();
+
+                                llvm_param_index += 1;
+
+                                let field_ptr = self
+                                    .llvmbuilder
+                                    .build_struct_gep(struct_ty, param_alloca, i as u32, "expand.struct.ptr")
+                                    .unwrap();
+
+                                self.llvmbuilder.build_store(field_ptr, llvm_param).unwrap();
+                            }
+                        }
+                        ExpandKind::Coerced { offset_hi, .. } => {
+                            // first expanded param
+                            let lo_param = self.cur_func.unwrap().get_nth_param(llvm_param_index as u32).unwrap();
+
+                            llvm_param_index += 1;
+
+                            let lo_ptr = self
+                                .llvmbuilder
+                                .build_struct_gep(struct_ty, param_alloca, 0, "expand.lo.ptr")
+                                .unwrap();
+
+                            self.llvmbuilder.build_store(lo_ptr, lo_param).unwrap();
+
+                            // second expanded param
+                            let hi_param = self.cur_func.unwrap().get_nth_param(llvm_param_index as u32).unwrap();
+
+                            llvm_param_index += 1;
+
+                            let hi_ptr = self
+                                .llvmbuilder
+                                .build_struct_gep(struct_ty, param_alloca, *offset_hi as u32, "expand.hi.ptr")
+                                .unwrap();
+
+                            self.llvmbuilder.build_store(hi_ptr, hi_param).unwrap();
+                        }
+                    }
+
+                    self.insert_local_ir_value(
+                        param.irv_id.unwrap(),
+                        LocalIRValue::LValue(param_alloca, param.ty.clone()),
+                    );
+                }
+                ABIArgKind::Ignore => {
+                    // zero sized type
+                    continue;
+                }
+            }
+
+            let param_name = param.name.clone().unwrap_or("<unnamed_param>".to_string());
+            let param_ty_metadata = self.emit_debug_ty_metadata(&param.ty);
+
+            unsafe {
+                create_debug_parameter(
+                    &self.dctx,
+                    &param_name,
+                    param.loc.line as u32,
+                    param_ty_metadata,
+                    (i + 1) as u32,
+                )
+            };
+        }
+    }
+
+    pub(crate) fn emit_func_body(
+        &mut self,
+        func_params: &CIRFuncParams,
+        abi_func_info: &ABIFunctionInfo,
+        cir_block: &CIRBlockStmt,
+        func_metadata: LLVMMetadataRef,
+        loc: Loc,
+    ) {
+        unsafe { reset_debug_location(self.llvmbuilder) };
+        debug_assert!(self.cur_func.is_some());
+
+        let cur_func = self.cur_func.unwrap();
+        let cur_func_name = cur_func.get_name().to_str().unwrap();
+        let parent_dctx_func = self.dctx.func;
+
+        unsafe {
+            emit_debug_function(
+                &mut self.dctx,
+                cur_func.as_value_ref(),
+                cur_func_name,
+                loc.line.try_into().unwrap(),
+                func_metadata,
+            )
+        };
+
+        self.ensure_entry_block();
+        self.blockreg.labels.clear();
+        self.emit_func_params(func_params.clone(), abi_func_info);
+        self.emit_body(cir_block);
+        self.ensure_void_fn_terminated();
+
+        self.dctx.func = parent_dctx_func;
+    }
+
+    pub(crate) fn ensure_void_fn_terminated(&mut self) {
+        let cur_fn = self.cur_func.unwrap();
+
+        if cur_fn.get_type().get_return_type().is_some() {
+            return; // works only for void return type
+        }
+
+        if let Some(cur_block) = &self.blockreg.cur_block {
+            self.llvmbuilder.position_at_end(*cur_block);
+            if cur_block.get_terminator().is_some() {
+                return;
+            }
+
+            self.emit_all_defers();
+            self.llvmbuilder.build_return(None).unwrap();
+        }
+    }
+}
+
+// Lambda.
+impl<'ll> CodeGenIRBuilder<'ll> {
+    pub(crate) fn emit_lambda(&mut self, lambda: &CIRLambda) -> InternalValue<'ll> {
+        let parent_func = self.cur_func.clone();
+        let parent_cur_abi_func_info = self.cur_abi_func_info.clone();
+        let parent_blockreg = self.blockreg.clone();
+
+        let lambda_name = self.next_lambda_id();
+        let mut cir_func_decl = CIRFuncDeclStmt {
+            irv_id: lambda.irv_id,
+            name: lambda_name,
+            params: lambda.params.clone(),
+            ret_type: lambda.ret.clone(),
+            modifiers: FuncModifiers::default(),
+            abi_func_info: None,
+            loc: lambda.loc,
+        };
+
+        let cir_func_type = cir_func_decl_as_func_ty(&cir_func_decl);
+        cir_func_decl.abi_func_info = Some(self.target.target_abi.classify_func(&cir_func_type).unwrap());
+
+        let llvm_func_value = self.emit_func_decl(&cir_func_decl);
+        llvm_func_value.set_linkage(inkwell::module::Linkage::Private);
+        if lambda.inline {
+            apply_inlining_func(self.llvmctx, &llvm_func_value, Inlining::Inline);
+        }
+
+        let func_metadata = self.emit_func_metadata(&cir_func_type);
+
+        self.set_current_func(llvm_func_value, lambda.abi_func_info.clone());
+        self.emit_func_body(
+            &lambda.params,
+            &lambda.abi_func_info,
+            &lambda.body,
+            func_metadata,
+            lambda.loc,
+        );
+
+        if let Some(cur_func) = parent_func {
+            self.set_current_func(cur_func, parent_cur_abi_func_info.unwrap());
+        }
+
+        self.blockreg = parent_blockreg;
+        if let Some(basic_block) = self.blockreg.cur_block {
+            self.emit_block(basic_block);
+        }
+
+        let cir_fn_ty = cir_func_decl_as_func_ty(&cir_func_decl);
+        InternalValue::new(
+            CIRType::FuncType(cir_fn_ty),
+            InternalValueKind::FuncValue(llvm_func_value),
+        )
+    }
+
+    fn next_lambda_id(&mut self) -> String {
+        let id = self.lambda_id;
+        let name = format!("lambda.{}", id);
+        self.lambda_id += 1;
+        name
+    }
+}
+
+// ABI helpers.
+impl<'ll> CodeGenIRBuilder<'ll> {
     pub(crate) fn emit_func_metadata(&self, func_ty: &CIRFuncType) -> LLVMMetadataRef {
         let ret_ty_meta = if !func_ty.ret.is_void() {
             Some(self.emit_debug_ty_metadata(&func_ty.ret))
@@ -140,6 +584,18 @@ impl<'ll> IRBuilderCtx<'ll> {
         args_values
     }
 
+    pub(crate) fn emit_abi_pair_llvm_type(&self, lo: &ABIType, hi: &ABIType) -> StructType<'ll> {
+        let lo_ty: BasicTypeEnum<'ll> = abi_type_to_llvm_type(self.llvmctx, &self.target.info, lo)
+            .try_into()
+            .unwrap();
+
+        let hi_ty: BasicTypeEnum<'ll> = abi_type_to_llvm_type(self.llvmctx, &self.target.info, hi)
+            .try_into()
+            .unwrap();
+
+        self.llvmctx.struct_type(&[lo_ty.into(), hi_ty.into()], false)
+    }
+
     fn emit_direct_arg(
         &mut self,
         args_values: &mut Vec<BasicMetadataValueEnum<'ll>>,
@@ -157,18 +613,6 @@ impl<'ll> IRBuilderCtx<'ll> {
             // pass as-is
             args_values.push(rvalue.as_basic_value().into());
         }
-    }
-
-    pub(crate) fn emit_abi_pair_llvm_type(&self, lo: &ABIType, hi: &ABIType) -> StructType<'ll> {
-        let lo_ty: BasicTypeEnum<'ll> = abi_type_to_llvm_type(self.llvmctx, &self.target.info, lo)
-            .try_into()
-            .unwrap();
-
-        let hi_ty: BasicTypeEnum<'ll> = abi_type_to_llvm_type(self.llvmctx, &self.target.info, hi)
-            .try_into()
-            .unwrap();
-
-        self.llvmctx.struct_type(&[lo_ty.into(), hi_ty.into()], false)
     }
 
     fn emit_direct_pair_arg(
@@ -374,402 +818,6 @@ impl<'ll> IRBuilderCtx<'ll> {
         }
     }
 
-    // FIXME
-    pub(crate) fn emit_monomorph_func_instance(
-        &mut self,
-        monomorph_id: MonomorphID,
-    ) -> (FunctionValue<'ll>, CIRFuncType) {
-        todo!();
-
-        // {
-        //     let monomorph_registry = self.monomorph_registry.lock().unwrap();
-        //     let monomorph_entry = monomorph_registry.get_func(&monomorph_id).cloned().unwrap();
-        //     let monomorph_func_entry = match monomorph_entry {
-        //         CIRMonomorphEntry::Func(entry) => entry,
-        //     };
-
-        //     let irreg = self.irreg.borrow();
-        //     if let Some(local_ir_value) = irreg.get(monomorph_func_entry.irv_id) {
-        //         // already exists in current module
-        //         let llvm_func_value = local_ir_value.as_func().cloned().unwrap();
-        //         return (llvm_func_value, monomorph_func_entry.func_type.clone());
-        //     }
-
-        //     drop(monomorph_registry);
-        //     drop(irreg);
-
-        //     // insert func to current module
-        //     let fn_ty = self.emit_func_ty(monomorph_func_entry.func_type.clone());
-        //     {
-        //         let llvm_func_value = {
-        //             let llvmmodule = self.llvmmodule.borrow_mut();
-        //             let mut irreg = self.irreg.borrow_mut();
-
-        //             let func_name = monomorph_func_name(monomorph_func_entry.irv_id);
-
-        //             let llvm_func_value = match llvmmodule.get_function(&func_name) {
-        //                 Some(f) => f,
-        //                 None => llvmmodule.add_function(&func_name, fn_ty, None),
-        //             };
-
-        //             irreg.insert(
-        //                 monomorph_func_entry.irv_id,
-        //                 LocalIRValue::Func(llvm_func_value, CIRType::FuncType(monomorph_func_entry.func_type.clone())),
-        //             );
-
-        //             llvm_func_value
-        //         };
-
-        //         let parent_cur_func = self.cur_func.clone();
-        //         let parent_cur_abi_func_info = self.cur_abi_func_info.clone();
-        //         let parent_blockreg = self.blockreg.clone();
-
-        //         self.set_current_func(llvm_func_value, monomorph_func_entry.abi_func_info.clone());
-
-        //         let func_metadata = self.emit_func_metadata(&monomorph_func_entry.func_type);
-
-        //         self.emit_func_body(
-        //             &monomorph_func_entry.func_params,
-        //             &monomorph_func_entry.abi_func_info,
-        //             &monomorph_func_entry.body().unwrap(),
-        //             func_metadata,
-        //             monomorph_func_entry.loc,
-        //         );
-
-        //         {
-        //             // back to parent state because we emitted a new function in the middle of an another function
-        //             if let Some(cur_func) = parent_cur_func {
-        //                 self.set_current_func(cur_func, parent_cur_abi_func_info.unwrap());
-        //             }
-
-        //             self.blockreg = parent_blockreg;
-        //             if let Some(cur_block) = self.blockreg.cur_block {
-        //                 self.emit_block(cur_block);
-        //             }
-        //         }
-
-        //         return (llvm_func_value, monomorph_func_entry.func_type.clone());
-        //     }
-        // }
-    }
-
-    pub(crate) fn emit_func_params(&self, func_params: CIRFuncParams, abi_func_info: &ABIFunctionInfo) {
-        let mut llvm_param_index = 0;
-
-        // handle hidden sret pointer
-        if abi_func_info.ret_info.kind.is_indirect_sret() {
-            llvm_param_index += 1;
-        }
-
-        for (i, param) in func_params.list.iter().enumerate() {
-            let abi_arg_info = &abi_func_info.params_infos[i];
-
-            match &abi_arg_info.kind {
-                ABIArgKind::Direct { .. } | ABIArgKind::DirectCoerce { .. } | ABIArgKind::Extend { .. } => {
-                    let llvm_param = self.cur_func.unwrap().get_nth_param(llvm_param_index as u32).unwrap();
-
-                    llvm_param_index += 1;
-
-                    let ty: BasicTypeEnum<'ll> = self.emit_ty(param.ty.clone()).try_into().unwrap();
-
-                    let param_alloca = self.llvmbuilder.build_alloca(ty, "param").unwrap();
-
-                    self.llvmbuilder.build_store(param_alloca, llvm_param).unwrap();
-
-                    self.irreg.borrow_mut().insert(
-                        param.irv_id.unwrap(),
-                        LocalIRValue::LValue(param_alloca, param.ty.clone()),
-                    );
-                }
-                ABIArgKind::DirectPair { lo: lo_ty, hi: hi_ty } => {
-                    let ptr_type = self.llvmctx.ptr_type(AddressSpace::default());
-
-                    let coerced_type = self.llvmctx.struct_type(
-                        &[
-                            abi_type_to_llvm_type(self.llvmctx, &self.target.info, lo_ty)
-                                .try_into()
-                                .unwrap(),
-                            abi_type_to_llvm_type(self.llvmctx, &self.target.info, hi_ty)
-                                .try_into()
-                                .unwrap(),
-                        ],
-                        false,
-                    );
-
-                    let param_type: BasicTypeEnum<'ll> = self.emit_ty(param.ty.clone()).try_into().unwrap();
-
-                    let lo = self.cur_func.unwrap().get_nth_param(llvm_param_index as u32).unwrap();
-
-                    let hi = self
-                        .cur_func
-                        .unwrap()
-                        .get_nth_param((llvm_param_index + 1) as u32)
-                        .unwrap();
-
-                    llvm_param_index += 2;
-
-                    let param_alloca = self.llvmbuilder.build_alloca(param_type, "param").unwrap();
-
-                    // reinterpret memory as coercion struct
-                    let coerced_ptr = self
-                        .llvmbuilder
-                        .build_pointer_cast(param_alloca, ptr_type, "coerce.ptr")
-                        .unwrap();
-
-                    let lo_ptr = self
-                        .llvmbuilder
-                        .build_struct_gep(coerced_type, coerced_ptr, 0, "lo.ptr")
-                        .unwrap();
-
-                    self.llvmbuilder.build_store(lo_ptr, lo).unwrap();
-
-                    let hi_ptr = self
-                        .llvmbuilder
-                        .build_struct_gep(coerced_type, coerced_ptr, 1, "hi.ptr")
-                        .unwrap();
-
-                    self.llvmbuilder.build_store(hi_ptr, hi).unwrap();
-
-                    self.irreg.borrow_mut().insert(
-                        param.irv_id.unwrap(),
-                        LocalIRValue::LValue(param_alloca, param.ty.clone()),
-                    );
-                }
-                ABIArgKind::Indirect { .. } => {
-                    let param_alloca = self
-                        .cur_func
-                        .unwrap()
-                        .get_nth_param(llvm_param_index as u32)
-                        .unwrap()
-                        .into_pointer_value();
-
-                    llvm_param_index += 1;
-
-                    self.irreg.borrow_mut().insert(
-                        param.irv_id.unwrap(),
-                        LocalIRValue::LValue(param_alloca, param.ty.clone()),
-                    );
-                }
-                ABIArgKind::Expand { kind } => {
-                    let struct_ty: BasicTypeEnum<'ll> = self.emit_ty(param.ty.clone()).try_into().unwrap();
-
-                    let param_alloca = self.llvmbuilder.build_alloca(struct_ty, "param").unwrap();
-
-                    let fields_cir_types = param.ty.struct_or_union_fields().unwrap();
-
-                    match kind {
-                        ExpandKind::Simple => {
-                            let field_count = fields_cir_types.len();
-
-                            for i in 0..field_count {
-                                let llvm_param = self.cur_func.unwrap().get_nth_param(llvm_param_index as u32).unwrap();
-
-                                llvm_param_index += 1;
-
-                                let field_ptr = self
-                                    .llvmbuilder
-                                    .build_struct_gep(struct_ty, param_alloca, i as u32, "expand.field.ptr")
-                                    .unwrap();
-
-                                self.llvmbuilder.build_store(field_ptr, llvm_param).unwrap();
-                            }
-                        }
-                        ExpandKind::Struct { field_count } => {
-                            for i in 0..*field_count {
-                                let llvm_param = self.cur_func.unwrap().get_nth_param(llvm_param_index as u32).unwrap();
-
-                                llvm_param_index += 1;
-
-                                let field_ptr = self
-                                    .llvmbuilder
-                                    .build_struct_gep(struct_ty, param_alloca, i as u32, "expand.struct.ptr")
-                                    .unwrap();
-
-                                self.llvmbuilder.build_store(field_ptr, llvm_param).unwrap();
-                            }
-                        }
-                        ExpandKind::Coerced { offset_hi, .. } => {
-                            // first expanded param
-                            let lo_param = self.cur_func.unwrap().get_nth_param(llvm_param_index as u32).unwrap();
-
-                            llvm_param_index += 1;
-
-                            let lo_ptr = self
-                                .llvmbuilder
-                                .build_struct_gep(struct_ty, param_alloca, 0, "expand.lo.ptr")
-                                .unwrap();
-
-                            self.llvmbuilder.build_store(lo_ptr, lo_param).unwrap();
-
-                            // second expanded param
-                            let hi_param = self.cur_func.unwrap().get_nth_param(llvm_param_index as u32).unwrap();
-
-                            llvm_param_index += 1;
-
-                            let hi_ptr = self
-                                .llvmbuilder
-                                .build_struct_gep(struct_ty, param_alloca, *offset_hi as u32, "expand.hi.ptr")
-                                .unwrap();
-
-                            self.llvmbuilder.build_store(hi_ptr, hi_param).unwrap();
-                        }
-                    }
-
-                    self.irreg.borrow_mut().insert(
-                        param.irv_id.unwrap(),
-                        LocalIRValue::LValue(param_alloca, param.ty.clone()),
-                    );
-                }
-                ABIArgKind::Ignore => {
-                    // zero sized type
-                    continue;
-                }
-            }
-
-            let param_name = param.name.clone().unwrap_or("<unnamed_param>".to_string());
-            let param_ty_metadata = self.emit_debug_ty_metadata(&param.ty);
-            unsafe {
-                create_debug_parameter(
-                    &self.dctx,
-                    &param_name,
-                    param.loc.line as u32,
-                    param_ty_metadata,
-                    (i + 1) as u32,
-                )
-            };
-        }
-    }
-
-    pub(crate) fn emit_lambda(&mut self, lambda: &CIRLambda) -> InternalValue<'ll> {
-        let parent_func = self.cur_func.clone();
-        let parent_cur_abi_func_info = self.cur_abi_func_info.clone();
-        let parent_blockreg = self.blockreg.clone();
-
-        let lambda_name = self.next_lambda_id();
-        let mut cir_func_decl = CIRFuncDeclStmt {
-            irv_id: lambda.irv_id,
-            name: lambda_name,
-            params: lambda.params.clone(),
-            ret: lambda.ret.clone(),
-            modifiers: FuncModifiers::default(),
-            abi_func_info: None,
-            loc: lambda.loc,
-        };
-
-        let cir_func_type = cir_func_decl_as_func_ty(&cir_func_decl);
-        cir_func_decl.abi_func_info = Some(self.target.target_abi.classify_func(&cir_func_type).unwrap());
-
-        let llvm_func_value = self.emit_func_decl(&cir_func_decl);
-        llvm_func_value.set_linkage(inkwell::module::Linkage::Private);
-        if lambda.inline {
-            apply_inlining_func(self.llvmctx, &llvm_func_value, Inlining::Inline);
-        }
-
-        let func_metadata = self.emit_func_metadata(&cir_func_type);
-
-        self.set_current_func(llvm_func_value, lambda.abi_func_info.clone());
-        self.emit_func_body(
-            &lambda.params,
-            &lambda.abi_func_info,
-            &lambda.body,
-            func_metadata,
-            lambda.loc,
-        );
-
-        if let Some(cur_func) = parent_func {
-            self.set_current_func(cur_func, parent_cur_abi_func_info.unwrap());
-        }
-
-        self.blockreg = parent_blockreg;
-        if let Some(basic_block) = self.blockreg.cur_block {
-            self.emit_block(basic_block);
-        }
-
-        let cir_fn_ty = cir_func_decl_as_func_ty(&cir_func_decl);
-        InternalValue::new(
-            CIRType::FuncType(cir_fn_ty),
-            InternalValueKind::FuncValue(llvm_func_value),
-        )
-    }
-
-    pub(crate) fn emit_func_decl(&mut self, func_decl: &CIRFuncDeclStmt) -> FunctionValue<'ll> {
-        let cir_fn_ty = cir_func_decl_as_func_ty(func_decl);
-
-        let fn_type = self.emit_func_ty(cir_fn_ty);
-
-        let func_name = &func_decl.name;
-        let llvmmodule = self.llvmmodule.borrow();
-
-        let llvm_func_value = llvmmodule
-            .get_function(func_name)
-            .unwrap_or_else(|| llvmmodule.add_function(func_name, fn_type, None));
-
-        apply_func_modifiers(self.llvmctx, &llvm_func_value, &func_decl.modifiers);
-
-        {
-            let cir_func_ty = cir_func_decl_as_func_ty(func_decl);
-            let mut irreg = self.irreg.borrow_mut();
-            irreg.insert(
-                func_decl.irv_id,
-                LocalIRValue::Func(llvm_func_value, CIRType::FuncType(cir_func_ty)),
-            );
-        }
-
-        llvm_func_value
-    }
-
-    pub(crate) fn emit_func_body(
-        &mut self,
-        func_params: &CIRFuncParams,
-        abi_func_info: &ABIFunctionInfo,
-        cir_block: &CIRBlockStmt,
-        func_metadata: LLVMMetadataRef,
-        loc: Loc,
-    ) {
-        unsafe { reset_debug_location(self.llvmbuilder) };
-        debug_assert!(self.cur_func.is_some());
-
-        let cur_func = self.cur_func.unwrap();
-        let cur_func_name = cur_func.get_name().to_str().unwrap();
-        let parent_dctx_func = self.dctx.func;
-
-        unsafe {
-            emit_debug_function(
-                &mut self.dctx,
-                cur_func.as_value_ref(),
-                cur_func_name,
-                loc.line.try_into().unwrap(),
-                func_metadata,
-            )
-        };
-
-        self.ensure_entry_block();
-        self.blockreg.labels.clear();
-        self.emit_func_params(func_params.clone(), abi_func_info);
-        self.emit_body(cir_block);
-        self.ensure_void_fn_terminated();
-
-        self.dctx.func = parent_dctx_func;
-    }
-
-    pub(crate) fn ensure_void_fn_terminated(&mut self) {
-        let cur_fn = self.cur_func.unwrap();
-
-        if cur_fn.get_type().get_return_type().is_some() {
-            return; // works only for void return type
-        }
-
-        if let Some(cur_block) = &self.blockreg.cur_block {
-            self.llvmbuilder.position_at_end(*cur_block);
-            if cur_block.get_terminator().is_some() {
-                return;
-            }
-
-            self.emit_all_defers();
-            self.llvmbuilder.build_return(None).unwrap();
-        }
-    }
-
     pub(crate) fn emit_func_call_attributes(
         &mut self,
         abi_func_info: &ABIFunctionInfo,
@@ -877,13 +925,6 @@ impl<'ll> IRBuilderCtx<'ll> {
                 LLVMAddCallSiteAttribute(call_site.as_value_ref(), i as u32 + 1 + llvm_param_index_offset, attr);
             }
         }
-    }
-
-    fn next_lambda_id(&mut self) -> String {
-        let id = self.lambda_id;
-        let name = format!("lambda.{}", id);
-        self.lambda_id += 1;
-        name
     }
 }
 

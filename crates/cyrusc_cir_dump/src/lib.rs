@@ -236,7 +236,7 @@ impl<'a> CIRPrinter<'a> {
     fn print_func_decl(&mut self, func_decl: &CIRFuncDeclStmt) {
         let params = self.print_params(&func_decl.params);
 
-        let ret = self.print_type(&func_decl.ret);
+        let ret = self.print_type(&func_decl.ret_type);
         self.push_line(format!("fn {}({}) {};", func_decl.name, params, ret));
     }
 
@@ -499,7 +499,7 @@ impl<'a> CIRPrinter<'a> {
                     self.indent();
                     for decl in &dynamic.method_decls {
                         let params = self.print_params(&decl.params);
-                        let ret = self.print_type(&decl.ret);
+                        let ret = self.print_type(&decl.ret_type);
                         s.push_str(&format!("{}fn {}({}) {};\n", self.indent_str(), decl.name, params, ret));
                     }
                     self.dedent();

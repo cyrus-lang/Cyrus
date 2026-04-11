@@ -14,14 +14,14 @@
  * You should have received a copy of the GNU General Public License
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
-use crate::builder::builder::IRBuilderCtx;
+use crate::builder::builder::CodeGenIRBuilder;
 use inkwell::{
     AddressSpace,
     types::{ArrayType, BasicType, BasicTypeEnum, StructType},
     values::{ArrayValue, BasicValue, BasicValueEnum, IntValue, PointerValue, StructValue},
 };
 
-impl<'ll> IRBuilderCtx<'ll> {
+impl<'ll> CodeGenIRBuilder<'ll> {
     pub(crate) fn intrinsic_coerce_through_alloca(
         &self,
         value: BasicValueEnum<'ll>,

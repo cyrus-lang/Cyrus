@@ -16,7 +16,7 @@
  */
 use crate::{
     asan::enable_asan_for_owned_module,
-    builder::builder::IRBuilderCtx,
+    builder::builder::CodeGenIRBuilder,
     llvm::{
         debug_info::{DebugContext, emit_debug_module_flags, finalize_debug},
         target_machine::{create_target_machine, llvm_code_model, llvm_opt_level, llvm_reloc_mode},
@@ -114,8 +114,9 @@ impl CodeGenLLVM {
             );
         }
 
-        let mut ir_builder_ctx = IRBuilderCtx::new(
+        let mut codegen_ir_builder = CodeGenIRBuilder::new(
             owned_module,
+            cir_module,
             &self.ctx.target,
             &builder,
             &self.llvmtm,
@@ -123,9 +124,9 @@ impl CodeGenLLVM {
             dctx,
         );
 
-        ir_builder_ctx.emit_module(cir_module);
+        codegen_ir_builder.emit_module();
 
-        unsafe { finalize_debug(&ir_builder_ctx.dctx) };
+        unsafe { finalize_debug(&codegen_ir_builder.dctx) };
         {
             let llvmmodule = owned_module.module.borrow();
 
@@ -334,15 +335,10 @@ impl SeparateModuleSupport<'static, OwnedModule> for CodeGenLLVM {
 
         for cir_module in cir_modules {
             let context = OwnedModule::create_context();
-            let owned_module = OwnedModule::create_owned_module(
-                context,
-                &cir_module.file_path,
-                &cir_module.module_name,
-                false,
-            );
+            let owned_module =
+                OwnedModule::create_owned_module(context, &cir_module.file_path, &cir_module.module_name, false);
 
-            let recompile_forced =
-                need_to_be_recompiled(&self.ctx, &Path::new(&cir_module.file_path).to_path_buf());
+            let recompile_forced = need_to_be_recompiled(&self.ctx, &Path::new(&cir_module.file_path).to_path_buf());
 
             // skip emit module if recompilation is not forced
             if !recompile_forced {

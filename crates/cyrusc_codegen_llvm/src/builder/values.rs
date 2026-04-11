@@ -15,7 +15,7 @@
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
 
-use crate::builder::builder::IRBuilderCtx;
+use crate::builder::builder::CodeGenIRBuilder;
 use cyrusc_internal::cir::{cir::CIRExpr, types::CIRType};
 use inkwell::{
     types::BasicTypeEnum,
@@ -56,7 +56,7 @@ impl<'a> InternalValue<'a> {
     }
 }
 
-impl<'ll> IRBuilderCtx<'ll> {
+impl<'ll> CodeGenIRBuilder<'ll> {
     pub(crate) fn emit_store(&self, ptr: PointerValue<'ll>, mut rvalue: InternalValue<'ll>, target_cir_ty: CIRType) {
         if target_cir_ty.is_union() {
             self.emit_union_init(&target_cir_ty.as_union().as_ref().unwrap(), ptr, rvalue);

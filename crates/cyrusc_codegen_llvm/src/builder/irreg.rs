@@ -19,6 +19,8 @@ use cyrusc_internal::cir::{cir::IRValueID, types::CIRType};
 use inkwell::values::{FunctionValue, GlobalValue, PointerValue};
 use std::{cell::RefCell, collections::HashMap, rc::Rc};
 
+use crate::builder::builder::CodeGenIRBuilder;
+
 /// Shared reference to the registry.
 pub type LocalIRValueRegistryRef<'a> = Rc<RefCell<LocalIRValueRegistry<'a>>>;
 
@@ -42,13 +44,18 @@ impl<'a> LocalIRValueRegistry<'a> {
     }
 
     /// Inserts a new IR value associated with a id.
-    pub fn insert(&mut self, irv_id: IRValueID, local_value: LocalIRValue<'a>) {
+    fn insert(&mut self, irv_id: IRValueID, local_value: LocalIRValue<'a>) {
         self.map.insert(irv_id, local_value);
     }
 
     /// Retrieves a cloned IR value, if present.
-    pub fn get(&self, irv_id: IRValueID) -> Option<LocalIRValue<'a>> {
+    fn get(&self, irv_id: IRValueID) -> Option<LocalIRValue<'a>> {
         self.map.get(&irv_id).cloned()
+    }
+
+    /// Retrieves a cloned IR value, if present.
+    fn get_mut(&mut self, irv_id: IRValueID) -> Option<&mut LocalIRValue<'a>> {
+        self.map.get_mut(&irv_id)
     }
 }
 
@@ -65,5 +72,30 @@ impl<'a> LocalIRValue<'a> {
             LocalIRValue::Global(global, _) => Some(global),
             _ => None,
         }
+    }
+}
+
+impl<'ll> CodeGenIRBuilder<'ll> {
+    #[inline]
+    pub(crate) fn insert_local_ir_value(&self, irv_id: IRValueID, value: LocalIRValue<'ll>) {
+        let mut irreg = self.irreg.borrow_mut();
+        irreg.insert(irv_id, value);
+    }
+
+    #[inline]
+    pub(crate) fn lookup_local_ir_value(&self, irv_id: IRValueID) -> Option<LocalIRValue<'ll>> {
+        let irreg = self.irreg.borrow();
+        irreg.get(irv_id).clone()
+    }
+
+    #[inline]
+    pub(crate) fn with_local_ir_value_mut<R>(
+        &self,
+        irv_id: IRValueID,
+        f: impl FnOnce(&mut LocalIRValue<'ll>) -> R,
+    ) -> Option<R> {
+        let mut irreg = self.irreg.borrow_mut();
+        let value = irreg.get_mut(irv_id)?;
+        Some(f(value))
     }
 }
