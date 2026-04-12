@@ -425,14 +425,14 @@ impl<'a> CIRTraverse<'a> {
 
             match param_kind {
                 TypedFuncParamKind::FuncParam(func_param) => {
-                    let var_decl_id = func_param.var_decl_id.unwrap();
-
                     let irv_id = if !is_decl {
-                        let new_id = self.new_ir_value_id();
+                        let irv_id = self.new_ir_value_id();
 
-                        self.decl_to_ir_value_map.insert(DeclID::Var(var_decl_id), new_id);
+                        let var_decl_id = func_param.var_decl_id.unwrap();
 
-                        Some(new_id)
+                        self.decl_to_ir_value_map.insert(DeclID::Var(var_decl_id), irv_id);
+
+                        Some(irv_id)
                     } else {
                         None
                     };
@@ -446,15 +446,21 @@ impl<'a> CIRTraverse<'a> {
                 }
 
                 TypedFuncParamKind::SelfModifier(self_modifier) => {
-                    let irv_id = self.new_ir_value_id();
+                    let irv_id = if !is_decl {
+                        let irv_id = self.new_ir_value_id();
 
-                    let var_decl_id = self_modifier.var_decl_id.unwrap();
+                        let var_decl_id = self_modifier.var_decl_id.unwrap();
 
-                    self.decl_to_ir_value_map.insert(DeclID::Var(var_decl_id), irv_id);
+                        self.decl_to_ir_value_map.insert(DeclID::Var(var_decl_id), irv_id);
+
+                        Some(irv_id)
+                    } else {
+                        None
+                    };
 
                     cir_params.push(CIRFuncParam {
                         name,
-                        irv_id: Some(irv_id),
+                        irv_id,
                         ty: self.lower_sema_type(&self_modifier.ty),
                         loc,
                     });
