@@ -16,7 +16,7 @@
  */
 
 use cyrusc_typed_ast::{SymbolID, VTableID, decls::FuncDecl, types::SemaType};
-use std::collections::HashMap;
+use fx_hash::FxHashMap;
 
 /// Uniquely identifies a vtable by the pair:
 ///   (concrete type, interface).
@@ -47,7 +47,7 @@ pub struct VTableKey {
 /// Codegen and CIR lowering must treat this registry as immutable.
 pub struct VTableRegistry {
     /// Maps (ConcreteType, Interface) to VTableID
-    map: HashMap<VTableKey, VTableID>,
+    map: FxHashMap<VTableKey, VTableID>,
 
     /// Dense storage of all registered vtables.
     tables: Vec<VTableInfo>,
@@ -88,7 +88,7 @@ impl VTableRegistry {
     /// Typically constructed once per module or compilation unit.
     pub fn new() -> Self {
         Self {
-            map: HashMap::new(),
+            map: FxHashMap::default(),
             tables: Vec::new(),
         }
     }

@@ -31,17 +31,10 @@ use crate::{
     },
 };
 use cyrusc_internal::{
-    abi::{
-        args::ABIFunctionInfo,
-        layout::{ABITypeLayout, type_layout},
-        target::ABITarget,
-    },
-    cir::{
-        cir::{
-            CIRBlockStmt, CIRGlobalVarStmt, CIRModule, CIRStmt, CIRVarStmt, cir_enum_as_enum_ty,
-            cir_func_decl_as_func_ty, cir_func_def_as_decl, cir_struct_as_struct_ty, cir_union_as_union_ty,
-        },
-        instances::CIRInstanceRegistry,
+    abi::{args::ABIFunctionInfo, target::ABITarget},
+    cir::cir::{
+        CIRBlockStmt, CIRModule, CIRStmt, cir_enum_as_enum_type, cir_func_decl_as_func_type, cir_func_def_as_decl,
+        cir_struct_as_struct_type, cir_union_as_union_type,
     },
 };
 use cyrusc_tui_utils::tui_compiled;
@@ -73,7 +66,6 @@ pub(crate) struct CodeGenIRBuilder<'ll> {
     pub(crate) cur_abi_func_info: Option<ABIFunctionInfo>,
     pub(crate) blockreg: BlockRegistry<'ll>,
     pub(crate) defer_stack: Vec<Vec<CIRStmt>>,
-    pub(crate) monomorph_registry: Arc<Mutex<CIRInstanceRegistry>>,
 
     pub(crate) cir_module: &'ll CIRModule,
 
@@ -98,7 +90,6 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         target: &'ll ABITarget,
         llvmbuilder: &'ll Builder<'ll>,
         llvmtm: &'ll TargetMachine,
-        monomorph_registry: Arc<Mutex<CIRInstanceRegistry>>,
         dctx: DebugContext,
     ) -> Self {
         let llvmmodule = unsafe {
@@ -120,7 +111,6 @@ impl<'ll> CodeGenIRBuilder<'ll> {
             cur_func: None,
             cur_abi_func_info: None,
             blockreg,
-            monomorph_registry,
             lambda_id: 0,
             defer_stack: Vec::new(),
             dctx,
@@ -140,7 +130,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
             CIRStmt::Variable(var_stmt) => self.emit_var(var_stmt),
             CIRStmt::FuncDef(func_def_stmt) => {
                 let func_decl = cir_func_def_as_decl(func_def_stmt);
-                let cir_func_ty = cir_func_decl_as_func_ty(&func_decl);
+                let cir_func_ty = cir_func_decl_as_func_type(&func_decl);
                 let llvm_func_value = self.emit_func_decl(&func_decl);
                 self.set_current_func(llvm_func_value, func_def_stmt.abi_func_info.clone().unwrap());
                 let func_metadata = self.emit_func_metadata(&cir_func_ty);
@@ -171,13 +161,13 @@ impl<'ll> CodeGenIRBuilder<'ll> {
             }
             CIRStmt::Block(block_stmt) => self.emit_scope_block(block_stmt),
             CIRStmt::Struct(struct_stmt) => {
-                self.emit_struct_ty(cir_struct_as_struct_ty(struct_stmt));
+                self.emit_struct_ty(cir_struct_as_struct_type(struct_stmt));
             }
             CIRStmt::Enum(enum_stmt) => {
-                self.emit_enum_ty(cir_enum_as_enum_ty(enum_stmt));
+                self.emit_enum_ty(cir_enum_as_enum_type(enum_stmt));
             }
             CIRStmt::Union(union_stmt) => {
-                self.emit_union_ty(cir_union_as_union_ty(union_stmt));
+                self.emit_union_ty(cir_union_as_union_type(union_stmt));
             }
             CIRStmt::Expr(expr) => {
                 self.emit_expr(expr);

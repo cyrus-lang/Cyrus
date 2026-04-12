@@ -18,10 +18,11 @@
 use cyrusc_ast::abi::CallConv;
 use cyrusc_internal::abi::mangler::mangle_func;
 use cyrusc_internal::abi::mangler::mangle_global_var;
+use cyrusc_internal::abi::mangler::mangle_monomorphized_func;
 use cyrusc_internal::abi::target::ABITarget;
 use cyrusc_internal::cir::cir::*;
-use cyrusc_internal::cir::instances::CIRInstanceRegistry;
 use cyrusc_internal::cir::types::*;
+use cyrusc_internal::monomorph::MonomorphRegistry;
 use cyrusc_internal::symbols::SymbolQuery;
 use cyrusc_internal::vtable::VTableRegistry;
 use cyrusc_source_loc::SourceMap;
@@ -33,19 +34,22 @@ use cyrusc_typed_ast::stmts::*;
 use cyrusc_typed_ast::types::*;
 use cyrusc_typed_ast::{SymbolID, exprs::*};
 use fx_hash::FxHashMap;
+use std::env::var;
 use std::sync::{Arc, Mutex};
 
-pub(crate) struct CIRTraverse<'a> {
+struct CIRTraverse<'a> {
     program_tree: Box<TypedProgramTree>,
     query: &'a dyn SymbolQuery,
     decl_tables: Arc<DeclTablesRegistry>,
-    cir_instance_registry: Arc<Mutex<CIRInstanceRegistry>>,
-    vtable_registry: Arc<Mutex<VTableRegistry>>,
     target: &'a ABITarget,
     module_name: String,
 
+    vtable_registry: Arc<Mutex<VTableRegistry>>,
+    monomorph_registry: Arc<MonomorphRegistry>,
+
     next_irv_id: IRValueID,
     decl_to_ir_value_map: FxHashMap<DeclID, IRValueID>,
+    monomorph_to_ir_value_map: FxHashMap<MonomorphID, IRValueID>,
     func_decls: FxHashMap<IRValueID, CIRFuncDeclStmt>,
     global_var_decls: FxHashMap<IRValueID, CIRGlobalVarStmt>,
 }
@@ -55,8 +59,8 @@ impl<'a> CIRTraverse<'a> {
         program_tree: Box<TypedProgramTree>,
         query: &'a dyn SymbolQuery,
         decl_tables: Arc<DeclTablesRegistry>,
-        cir_instance_registry: Arc<Mutex<CIRInstanceRegistry>>,
         vtable_registry: Arc<Mutex<VTableRegistry>>,
+        monomorph_registry: Arc<MonomorphRegistry>,
         target: &'a ABITarget,
     ) -> Self {
         let module_name = query.lookup_module_name(program_tree.file_id).unwrap();
@@ -65,14 +69,15 @@ impl<'a> CIRTraverse<'a> {
             program_tree,
             query,
             decl_tables,
-            cir_instance_registry,
             vtable_registry,
+            monomorph_registry,
             target,
             module_name,
             next_irv_id: IRValueID(0),
             decl_to_ir_value_map: FxHashMap::default(),
             global_var_decls: FxHashMap::default(),
             func_decls: FxHashMap::default(),
+            monomorph_to_ir_value_map: FxHashMap::default(),
         }
     }
 
@@ -97,9 +102,10 @@ impl<'a> CIRTraverse<'a> {
         match stmt {
             TypedStmt::FuncDef(func_def) => {
                 if func_def.is_generic() {
-                    return; // skip lowering 
+                    lowered_stmts.extend(self.lower_monomorphized_func_defs(func_def.symbol_id));
+                } else {
+                    lowered_stmts.push(CIRStmt::FuncDef(self.lower_func_def(func_def, true)))
                 }
-                lowered_stmts.push(self.lower_func_def(func_def, true));
             }
             TypedStmt::FuncDecl(func_decl) => {
                 lowered_stmts.push(CIRStmt::FuncDecl(self.lower_func_decl_stmt(func_decl, true)));
@@ -411,48 +417,112 @@ impl<'a> CIRTraverse<'a> {
     }
 
     fn lower_func_params(&mut self, func_params: &TypedFuncParams, is_decl: bool) -> CIRFuncParams {
+        let mut cir_params = Vec::new();
+
+        for param_kind in &func_params.list {
+            let name = Some(param_kind.name());
+            let loc = param_kind.loc();
+
+            match param_kind {
+                TypedFuncParamKind::FuncParam(func_param) => {
+                    let var_decl_id = func_param.var_decl_id.unwrap();
+
+                    let irv_id = if !is_decl {
+                        let new_id = self.new_ir_value_id();
+
+                        self.decl_to_ir_value_map.insert(DeclID::Var(var_decl_id), new_id);
+
+                        Some(new_id)
+                    } else {
+                        None
+                    };
+
+                    cir_params.push(CIRFuncParam {
+                        name,
+                        irv_id,
+                        ty: self.lower_sema_type(&func_param.ty),
+                        loc,
+                    });
+                }
+
+                TypedFuncParamKind::SelfModifier(self_modifier) => {
+                    let irv_id = self.new_ir_value_id();
+
+                    let var_decl_id = self_modifier.var_decl_id.unwrap();
+
+                    self.decl_to_ir_value_map.insert(DeclID::Var(var_decl_id), irv_id);
+
+                    cir_params.push(CIRFuncParam {
+                        name,
+                        irv_id: Some(irv_id),
+                        ty: self.lower_sema_type(&self_modifier.ty),
+                        loc,
+                    });
+                }
+            }
+        }
+
         CIRFuncParams {
-            list: func_params
-                .list
-                .iter()
-                .map(|param_kind| {
-                    let name = Some(param_kind.name());
-                    let loc = param_kind.loc();
-
-                    match param_kind {
-                        TypedFuncParamKind::FuncParam(func_param) => {
-                            let irv_id = { if !is_decl { Some(self.new_ir_value_id()) } else { None } };
-
-                            CIRFuncParam {
-                                name,
-                                irv_id,
-                                ty: self.lower_sema_type(&func_param.ty),
-                                loc,
-                            }
-                        }
-                        TypedFuncParamKind::SelfModifier(self_modifier) => {
-                            let irv_id = self.new_ir_value_id();
-
-                            CIRFuncParam {
-                                name,
-                                irv_id: Some(irv_id),
-                                ty: self.lower_sema_type(&self_modifier.ty.as_ref().unwrap()),
-                                loc,
-                            }
-                        }
-                    }
-                })
-                .collect(),
-
+            list: cir_params,
             is_var: func_params.variadic.is_some(),
         }
     }
 
-    fn lower_func_def(&mut self, func_def: &TypedFuncDefStmt, mangle_name: bool) -> CIRStmt {
+    fn lower_monomorphized_func_defs(&mut self, symbol_id: SymbolID) -> Vec<CIRStmt> {
+        let mut stmts = Vec::new();
+
+        let func_decl_id = self.query.get_func(symbol_id).unwrap();
+
+        let func_decl = self.decl_tables.func_decl(func_decl_id);
+
+        let monomorph_ids = self.monomorph_registry.get_func_monomorphs(func_decl_id);
+
+        for monomorph_id in monomorph_ids {
+            let monomorph_instance = self.monomorph_registry.get(monomorph_id);
+
+            let body_id = monomorph_instance.body.unwrap();
+
+            let body = self.monomorph_registry.get_monomorph_body(body_id).unwrap();
+
+            let mangled_name = mangle_monomorphized_func(
+                &func_decl.modifiers,
+                &self.module_name,
+                &func_decl.name,
+                &monomorph_instance.type_args,
+            );
+
+            let func_def_stmt = TypedFuncDefStmt {
+                symbol_id,
+                name: mangled_name,
+                generic_params: func_decl.generic_params.clone(),
+                params: monomorph_instance.params.clone(),
+                ret_type: monomorph_instance.ret_type.clone(),
+                body: Box::new(body),
+                modifiers: func_decl.modifiers.clone(),
+                loc: func_decl.loc,
+            };
+
+            let cir_func_def = self.lower_func_def(&func_def_stmt, false);
+            let cir_func_decl = cir_func_def_as_decl(&cir_func_def);
+
+            stmts.push(CIRStmt::FuncDef(cir_func_def));
+
+            let irv_id = self.new_ir_value_id();
+
+            self.func_decls.insert(irv_id, cir_func_decl);
+
+            self.monomorph_to_ir_value_map.insert(monomorph_id, irv_id);
+        }
+
+        stmts
+    }
+
+    fn lower_func_def(&mut self, func_def: &TypedFuncDefStmt, mangle_name: bool) -> CIRFuncDefStmt {
         let params = self.lower_func_params(&func_def.params, false);
 
         let body = self.lower_body(&func_def.body);
-        let ret = self.lower_sema_type(&func_def.ret_type);
+
+        let ret_type = self.lower_sema_type(&func_def.ret_type);
 
         let irv_id = self.new_ir_value_id();
 
@@ -463,15 +533,15 @@ impl<'a> CIRTraverse<'a> {
         let mut cir_func_def = CIRFuncDefStmt {
             irv_id,
             name: func_def.name.clone(),
-            params,
             body: Box::new(body),
-            ret,
+            params,
+            ret_type,
             modifiers: func_def.modifiers.clone(),
             abi_func_info: None,
             loc: func_def.loc,
         };
 
-        let cir_func_type = cir_func_decl_as_func_ty(&cir_func_def_as_decl(&cir_func_def));
+        let cir_func_type = cir_func_decl_as_func_type(&cir_func_def_as_decl(&cir_func_def));
         cir_func_def.abi_func_info = Some(self.target.target_abi.classify_func(&cir_func_type).unwrap());
 
         if mangle_name {
@@ -479,7 +549,7 @@ impl<'a> CIRTraverse<'a> {
             cir_func_def.name = mangled_name;
         }
 
-        CIRStmt::FuncDef(cir_func_def)
+        cir_func_def
     }
 
     fn lower_func_decl(&mut self, func_decl: &FuncDecl, mangle_name: bool) -> CIRFuncDeclStmt {
@@ -509,7 +579,7 @@ impl<'a> CIRTraverse<'a> {
             loc: func_decl.loc,
         };
 
-        let cir_func_type = cir_func_decl_as_func_ty(&cir_func_decl);
+        let cir_func_type = cir_func_decl_as_func_type(&cir_func_decl);
         cir_func_decl.abi_func_info = Some(self.target.target_abi.classify_func(&cir_func_type).unwrap());
 
         self.func_decls.insert(irv_id, cir_func_decl.clone());
@@ -522,7 +592,7 @@ impl<'a> CIRTraverse<'a> {
         self.lower_func_decl(&func_decl, mangle_name)
     }
 
-    pub(crate) fn lower_body(&mut self, block: &TypedBlockStmt) -> CIRBlockStmt {
+    fn lower_body(&mut self, block: &TypedBlockStmt) -> CIRBlockStmt {
         let stmts = self.lower_stmts(&block.stmts);
         let defers = block.defers.iter().map(|defer| self.lower_defer(defer)).collect();
 
@@ -582,7 +652,7 @@ impl<'a> CIRTraverse<'a> {
         }
     }
 
-    pub(crate) fn lower_load_symbol(&mut self, symbol_id: SymbolID) -> CIRExprKind {
+    fn lower_load_symbol(&mut self, symbol_id: SymbolID) -> CIRExprKind {
         let symbol_entry = self.query.lookup_symbol_entry(symbol_id).unwrap();
 
         if let Some(func_decl_id) = symbol_entry.as_func() {
@@ -616,7 +686,7 @@ impl<'a> CIRTraverse<'a> {
     }
 
     // FIXME
-    pub(crate) fn lower_struct_init(&mut self, struct_init_expr: &TypedStructInitExpr) -> CIRExprKind {
+    fn lower_struct_init(&mut self, struct_init_expr: &TypedStructInitExpr) -> CIRExprKind {
         todo!();
 
         // let symbol_entry = self.query.lookup_symbol_entry(struct_init_expr.symbol_id).unwrap();
@@ -706,7 +776,7 @@ impl<'a> CIRTraverse<'a> {
         let cir_func_type = CIRFuncType {
             params: params.list.iter().map(|param| param.ty.clone()).collect(),
             is_var: params.is_var,
-            ret: Box::new(ret.clone()),
+            ret_type: Box::new(ret.clone()),
             callconv: CallConv::default(),
             abi_func_info: None,
         };
@@ -912,7 +982,6 @@ impl<'a> CIRTraverse<'a> {
         let args: Vec<CIRExpr> = func_call.args.iter().map(|arg| self.lower_expr(arg)).collect();
 
         match &func_call.dispatch {
-            TypedFuncCallDispatch::Unresolved => unreachable!(),
             TypedFuncCallDispatch::Normal { func_decl_id } => {
                 let irv_id = self.get_or_declare_func_ir_value(*func_decl_id);
 
@@ -925,7 +994,27 @@ impl<'a> CIRTraverse<'a> {
                 CIRExprKind::Call(CIRCall {
                     args,
                     ret_type,
-                    dispatch: CIRCallDispatch::Normal { irv_id, func_type },
+                    dispatch: CIRCallDispatch::Normal {
+                        irv_id,
+                        func_type,
+                        abi_name: func_decl.name.clone(),
+                    },
+                })
+            }
+            TypedFuncCallDispatch::Monomorph {
+                func_decl_id,
+                monomorph_id,
+            } => {
+                let (irv_id, cir_fuc_type, abi_name) = self.get_or_declare_monomorph_func_ir_value(*monomorph_id);
+
+                CIRExprKind::Call(CIRCall {
+                    args,
+                    ret_type: *cir_fuc_type.ret_type.clone(),
+                    dispatch: CIRCallDispatch::Normal {
+                        irv_id,
+                        func_type: cir_fuc_type,
+                        abi_name,
+                    },
                 })
             }
             TypedFuncCallDispatch::FunctionPointer { func_type } => {
@@ -939,10 +1028,7 @@ impl<'a> CIRTraverse<'a> {
                     dispatch: CIRCallDispatch::FunctionPointer { operand },
                 })
             }
-            TypedFuncCallDispatch::Monomorph {
-                func_decl_id,
-                monomorph_id,
-            } => todo!(),
+            TypedFuncCallDispatch::Unresolved => unreachable!(),
         }
     }
 
@@ -1108,7 +1194,7 @@ impl<'a> CIRTraverse<'a> {
         let mut cir_type = CIRFuncType {
             params: params,
             is_var: func_type.params.variadic.is_some(),
-            ret,
+            ret_type: ret,
             callconv: CallConv::default(),
             abi_func_info: None,
         };
@@ -1246,6 +1332,55 @@ impl<'a> CIRTraverse<'a> {
         irv_id
     }
 
+    fn get_or_declare_monomorph_func_ir_value(
+        &mut self,
+        monomorph_id: MonomorphID,
+    ) -> (IRValueID, CIRFuncType, String) {
+        if let Some(irv_id) = self.monomorph_to_ir_value_map.get(&monomorph_id).copied() {
+            let func_decl = self.func_decls.get(&irv_id).expect("inconsistent decl table");
+
+            return (irv_id, cir_func_decl_as_func_type(func_decl), func_decl.name.clone());
+        }
+
+        let monomorph_instance = self.monomorph_registry.get(monomorph_id);
+
+        let func_decl = self.decl_tables.func_decl(monomorph_instance.func_decl_id);
+
+        let mangled_name = mangle_monomorphized_func(
+            &func_decl.modifiers,
+            &self.module_name,
+            &func_decl.name,
+            &monomorph_instance.type_args,
+        );
+
+        let ret_type = self.lower_sema_type(&monomorph_instance.ret_type);
+
+        let params = self.lower_func_params(&monomorph_instance.params, true);
+
+        let irv_id = self.new_ir_value_id();
+
+        let mut cir_func_decl = CIRFuncDeclStmt {
+            irv_id,
+            name: mangled_name.clone(),
+            params,
+            ret_type,
+            abi_func_info: None,
+            modifiers: func_decl.modifiers.clone(),
+            loc: func_decl.loc,
+        };
+
+        let mut cir_func_type = cir_func_decl_as_func_type(&cir_func_decl);
+        let abi_func_info = self.target.target_abi.classify_func(&cir_func_type).unwrap();
+        cir_func_decl.abi_func_info = Some(abi_func_info.clone());
+        cir_func_type.abi_func_info = Some(abi_func_info);
+
+        self.func_decls.insert(irv_id, cir_func_decl);
+
+        self.monomorph_to_ir_value_map.insert(monomorph_id, irv_id);
+
+        (irv_id, cir_func_type, mangled_name)
+    }
+
     fn get_or_declare_global_var_ir_value(&mut self, global_var_decl_id: GlobalVarDeclID) -> IRValueID {
         if let Some(irv_id) = self
             .decl_to_ir_value_map
@@ -1284,8 +1419,8 @@ pub fn walk_program_trees_in_parallel(
     query: &dyn SymbolQuery,
     source_map: Arc<SourceMap>,
     decl_tables: Arc<DeclTablesRegistry>,
-    cir_instance_registry: Arc<Mutex<CIRInstanceRegistry>>,
     vtable_registries: &Vec<Arc<Mutex<VTableRegistry>>>,
+    monomorph_registry: Arc<MonomorphRegistry>,
     target: &ABITarget,
 ) -> Vec<Box<CIRModule>> {
     use rayon::prelude::*;
@@ -1308,8 +1443,8 @@ pub fn walk_program_trees_in_parallel(
                     program_tree.clone(),
                     query,
                     decl_tables.clone(),
-                    cir_instance_registry.clone(),
                     vtable_registry,
+                    monomorph_registry.clone(),
                     target,
                 );
 

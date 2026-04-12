@@ -1772,7 +1772,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
 
     fn emit_call(&mut self, call: &CIRCall) -> InternalValue<'ll> {
         match &call.dispatch {
-            CIRCallDispatch::Normal { irv_id, func_type } => {
+            CIRCallDispatch::Normal { irv_id, func_type, .. } => {
                 let llvm_func_value = self.get_or_declare_function(*irv_id).as_func().cloned().unwrap();
 
                 self.emit_direct_call(&func_type, &call.args, &call.ret_type, &llvm_func_value)
@@ -1806,7 +1806,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         let mut sret_alloca: Option<PointerValue<'ll>> = None;
 
         if abi_func_info.ret_info.kind.is_indirect_sret() {
-            let sret_type: BasicTypeEnum<'ll> = self.emit_ty(*func_type.ret.clone()).try_into().unwrap();
+            let sret_type: BasicTypeEnum<'ll> = self.emit_ty(*func_type.ret_type.clone()).try_into().unwrap();
 
             let alloca = self.llvmbuilder.build_alloca(sret_type, "sret").unwrap();
 
@@ -1829,7 +1829,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         } else if let Some(mut basic_value) = call_site.try_as_basic_value().basic() {
             // REVIEW: Optimization Required
             // coerce back from abi return type to actual return type
-            let actual_return_type: BasicTypeEnum<'ll> = self.emit_ty(*func_type.ret.clone()).try_into().unwrap();
+            let actual_return_type: BasicTypeEnum<'ll> = self.emit_ty(*func_type.ret_type.clone()).try_into().unwrap();
             basic_value = self.intrinsic_coerce_through_alloca(basic_value, actual_return_type, "coerce_ret");
 
             InternalValue::new(ret_ty.clone(), InternalValueKind::RValue(basic_value))
@@ -1857,7 +1857,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         if let Some(mut basic_value) = call_site.try_as_basic_value().basic() {
             // REVIEW: Optimization Required
             // coerce back from abi return type to actual return type
-            let actual_return_type: BasicTypeEnum<'ll> = self.emit_ty(*cir_fn_ty.ret.clone()).try_into().unwrap();
+            let actual_return_type: BasicTypeEnum<'ll> = self.emit_ty(*cir_fn_ty.ret_type.clone()).try_into().unwrap();
             basic_value = self.intrinsic_coerce_through_alloca(basic_value, actual_return_type, "coerce_ret");
 
             InternalValue::new(func_call.ret_type.clone(), InternalValueKind::RValue(basic_value))

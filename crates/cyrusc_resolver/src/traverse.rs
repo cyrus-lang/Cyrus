@@ -1372,12 +1372,14 @@ impl Resolver {
         for param in &params.list {
             match param {
                 FuncParamKind::FuncParam(func_param) => {
-                    let typed = self.resolve_func_param(func_param)?;
-                    typed_params.push(TypedFuncParamKind::FuncParam(typed));
+                    let typed_param = self.resolve_func_param(func_param)?;
+
+                    typed_params.push(TypedFuncParamKind::FuncParam(typed_param));
                 }
                 FuncParamKind::SelfModifier(self_modifier) => {
-                    let typed = self.resolve_self_modifier_param(self_modifier);
-                    typed_params.push(TypedFuncParamKind::SelfModifier(typed));
+                    let typed_self_modifier = self.resolve_self_modifier_param(self_modifier);
+
+                    typed_params.push(TypedFuncParamKind::SelfModifier(typed_self_modifier));
                 }
             }
         }
@@ -1437,7 +1439,7 @@ impl Resolver {
                     };
 
                     let var_decl_id: VarDeclID =
-                        self.insert_variable_decl(&self_ident, self_modifier.ty.clone(), None, is_const_param);
+                        self.insert_variable_decl(&self_ident, Some(self_modifier.ty.clone()), None, is_const_param);
 
                     self.insert_variable_symbol_to_current_scope(&self_ident, var_decl_id)?;
 
@@ -1454,7 +1456,7 @@ impl Resolver {
 
         TypedSelfModifier {
             var_decl_id: None,
-            ty: Some(self_type),
+            ty: self_type,
             kind: self_modifier.kind.clone(),
             loc: self_modifier.loc,
         }
@@ -1582,6 +1584,15 @@ impl Resolver {
                 this.resolve_block_stmt(&func_def.body)
             })
         })?;
+
+        // we later need the var_dec_lid of the params
+        // that's why having this update is very important!
+        self.decl_tables.with_func_decl_mut(func_decl_id, |_func_decl| {
+            _func_decl.params = TypedFuncParams {
+                list: params.clone(),
+                variadic: variadic.clone(),
+            };
+        });
 
         // only store body for generic functions (used for monomorphization)
         if is_generic {

@@ -22,7 +22,7 @@ use cyrusc_typed_ast::{
     decls::FuncDecl,
     exprs::{TypedExprStmt, TypedFuncCall, TypedFuncCallDispatch},
     format::{format_func_type, format_loc, format_sema_type},
-    stmts::{TypedFuncTypeVariadicParams, TypedFuncVariadicParam},
+    stmts::{TypedFuncParamKind, TypedFuncParams, TypedFuncTypeVariadicParams, TypedFuncVariadicParam},
     types::{SemaType, TypedFuncType},
 };
 
@@ -72,18 +72,32 @@ impl<'a> AnalysisContext<'a> {
                 self.with_generic_env(generic_env, |this| {
                     this.normalize_func_params(&mut func_decl.params, func_call.loc);
 
-                    let ret_type = this.analyze_call(&mut func_decl, &mut func_call.args, func_call.loc, false)?;
+                    if !this.analyze_call(&mut func_decl, &mut func_call.args, func_call.loc, false) {
+                        return None;
+                    }
 
                     func_call.operand.sema_type = Some(this.substitute_type(&operand_type));
+                    func_decl.params = this.substitute_func_params(func_decl.params);
+                    func_decl.ret_type = {
+                        let ret_type = this.substitute_type(&func_decl.ret_type);
 
-                    func_decl.ret_type = ret_type.clone();
-                    func_decl.ret_type = ret_type.clone();
+                        if let Some(infer) = &mut this.func_env.infer {
+                            infer.resolve(&ret_type)
+                        } else {
+                            ret_type
+                        }
+                    };
 
                     this.apply_generic_defaults(func_decl.generic_params.clone());
 
                     let final_type_args = this.collect_instantiated_type_args(func_decl.generic_params);
 
-                    let monomorph_id = this.monomorph_registry.get_or_create(func_decl_id, final_type_args);
+                    let monomorph_id = this.monomorph_registry.get_or_create(
+                        func_decl_id,
+                        final_type_args,
+                        func_decl.params.clone(),   // specialized params
+                        func_decl.ret_type.clone(), // specialized ret type
+                    );
 
                     func_call.dispatch = TypedFuncCallDispatch::Monomorph {
                         func_decl_id,
@@ -97,15 +111,19 @@ impl<'a> AnalysisContext<'a> {
                         let current_func = this.func_env.current_func.as_mut().unwrap();
 
                         current_func.params = func_decl.params.as_func_type_params();
-                        current_func.ret_type = Box::new(ret_type.clone());
+                        current_func.ret_type = Box::new(func_decl.ret_type.clone());
 
                         let body_id = func_decl.body.unwrap();
+
                         let mut body = this.decl_tables.body(body_id);
 
                         let diag_len = this.reporter.len();
 
+                        // substitute param variables type
+                        this.substitute_monomorphized_func_params_in_body(func_decl.params);
+
                         // analyze body
-                        this.analyze_func_body(&mut body, &ret_type);
+                        this.analyze_func_body(&mut body, &func_decl.ret_type);
 
                         // insert monomorphized body
                         let monomorph_body_id = this.monomorph_registry.insert_monomorph_body(body);
@@ -127,22 +145,24 @@ impl<'a> AnalysisContext<'a> {
                         });
                     }
 
-                    Some(ret_type)
+                    Some(func_decl.ret_type)
                 })
             }
             // normal function
             else {
                 self.normalize_func_params(&mut func_decl.params, func_call.loc);
 
-                let ret_type = self.analyze_call(&mut func_decl, &mut func_call.args, func_call.loc, false)?;
+                if !self.analyze_call(&mut func_decl, &mut func_call.args, func_call.loc, false) {
+                    return None;
+                }
 
-                func_decl.ret_type = ret_type.clone();
+                func_decl.ret_type = func_decl.ret_type.clone();
 
                 func_call.dispatch = TypedFuncCallDispatch::Normal {
                     func_decl_id: func_decl_id,
                 };
 
-                Some(ret_type)
+                Some(func_decl.ret_type)
             }
         }
         // function pointer call
@@ -217,7 +237,7 @@ impl<'a> AnalysisContext<'a> {
         args: &mut Vec<TypedExprStmt>,
         loc: Loc,
         instance_method_call: bool,
-    ) -> Option<SemaType> {
+    ) -> bool {
         let is_variadic = func_decl.params.variadic.is_some();
         let mut expected_args_len = func_decl.params.list.len();
 
@@ -238,7 +258,7 @@ impl<'a> AnalysisContext<'a> {
                 loc: Some(loc),
                 hint: None,
             });
-            return None;
+            return false;
         }
 
         // handle variadic arguments
@@ -250,11 +270,7 @@ impl<'a> AnalysisContext<'a> {
         let start_idx = if instance_method_call { 1 } else { 0 };
 
         for (param, arg) in func_decl.params.list.iter_mut().skip(start_idx).zip(args.iter_mut()) {
-            let Some(param_type) = param.param_type() else {
-                continue;
-            };
-
-            let Some(param_type) = self.normalize_and_check_type_formation(param_type, param.loc()) else {
+            let Some(param_type) = self.normalize_and_check_type_formation(param.param_type(), param.loc()) else {
                 continue;
             };
 
@@ -263,13 +279,7 @@ impl<'a> AnalysisContext<'a> {
             }
         }
 
-        let ret_type = self.substitute_type(&func_decl.ret_type);
-
-        if let Some(infer) = &mut self.func_env.infer {
-            Some(infer.resolve(&ret_type))
-        } else {
-            Some(ret_type)
-        }
+        true
     }
 
     /// Validates variadic arguments in function calls, ensuring type compatibility and proper analysis.
@@ -526,4 +536,42 @@ impl<'a> AnalysisContext<'a> {
 
     //     result
     // }
+
+    fn substitute_func_params(&self, mut params: TypedFuncParams) -> TypedFuncParams {
+        params.list.iter_mut().for_each(|param_kind| match param_kind {
+            TypedFuncParamKind::FuncParam(func_param) => {
+                func_param.ty = self.substitute_type(&func_param.ty);
+
+                if let Some(infer) = &self.func_env.infer {
+                    func_param.ty = infer.resolve(&func_param.ty);
+                }
+            }
+            TypedFuncParamKind::SelfModifier(self_modifier) => {
+                self_modifier.ty = self.substitute_type(&self_modifier.ty);
+
+                if let Some(infer) = &self.func_env.infer {
+                    self_modifier.ty = infer.resolve(&self_modifier.ty);
+                }
+            }
+        });
+
+        params
+    }
+
+    fn substitute_monomorphized_func_params_in_body(&self, params: TypedFuncParams) {
+        for param_kind in &params.list {
+            let var_decl_id = param_kind.var_decl_id().unwrap();
+            let mut param_type = param_kind.param_type();
+
+            param_type = self.substitute_type(&param_type);
+
+            if let Some(infer) = &self.func_env.infer {
+                param_type = infer.resolve(&param_type);
+            }
+
+            self.decl_tables.with_var_decl_mut(var_decl_id, |_var_decl| {
+                _var_decl.ty = Some(param_type);
+            })
+        }
+    }
 }

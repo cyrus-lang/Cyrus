@@ -223,8 +223,8 @@ impl<'a> CIRPrinter<'a> {
     fn print_func_def(&mut self, func: &CIRFuncDefStmt) {
         let params = self.print_params(&func.params);
 
-        let ret = self.print_type(&func.ret);
-        self.push_line(format!("fn {}({}) {} {{", func.name, params, ret));
+        let ret_type = self.print_type(&func.ret_type);
+        self.push_line(format!("fn {}({params}) {ret_type} {{", func.name));
 
         self.indent();
         self.print_block(&func.body);
@@ -328,10 +328,7 @@ impl<'a> CIRPrinter<'a> {
                     .join(", ");
 
                 let dispatch = match &call.dispatch {
-                    CIRCallDispatch::Normal { irv_id, .. } => {
-                        let func_decl = self.module.func_decls.get(irv_id).unwrap();
-                        func_decl.name.clone()
-                    }
+                    CIRCallDispatch::Normal { abi_name, .. } => abi_name.clone(),
                     CIRCallDispatch::FunctionPointer { operand } => self.print_expr(operand),
                     CIRCallDispatch::Interface {
                         operand,
@@ -456,61 +453,61 @@ impl<'a> CIRPrinter<'a> {
                 let base = self.print_expr(&field_access.operand);
                 format!("{base}.({})", self.print_type(&field_access.field_type))
             }
-            CIRExprKind::Lambda(l) => {
-                let params = self.print_params(&l.params);
-                let ret = self.print_type(&l.ret);
-                let id = l.irv_id.0;
+            CIRExprKind::Lambda(lambda) => {
+                let params = self.print_params(&lambda.params);
+                let ret = self.print_type(&lambda.ret);
+                let id = lambda.irv_id.0;
 
-                let inline_flag = if l.inline { " inline" } else { "" };
+                let inline_flag = if lambda.inline { " inline" } else { "" };
 
                 // header
-                let mut s = format!("lambda%{}{} ({}) {} {{", id, inline_flag, params, ret);
+                let mut fmt = format!("lambda%{}{} ({}) {} {{", id, inline_flag, params, ret);
 
                 // body
                 self.indent();
                 let saved_len = self.out.len();
-                self.print_block(&l.body);
+                self.print_block(&lambda.body);
                 let body_str = self.out[saved_len..].to_string();
                 self.out.truncate(saved_len);
                 self.dedent();
 
-                s.push('\n');
-                s.push_str(&body_str);
-                s.push('}');
+                fmt.push('\n');
+                fmt.push_str(&body_str);
+                fmt.push('}');
 
-                s
+                fmt
             }
             CIRExprKind::Dynamic(dynamic) => {
                 let data = self.print_expr(&dynamic.data_expr);
                 let vtable = &dynamic.vtable_abi_name;
-                let gid = dynamic.global_var_id.0;
+                let global_var_id = dynamic.global_var_id.0;
 
-                let mut s = String::new();
-                s.push_str("dynamic {\n");
+                let mut fmt = String::new();
+                fmt.push_str("dynamic {\n");
 
                 self.indent();
-                s.push_str(&format!("{}data: {}\n", self.indent_str(), data));
-                s.push_str(&format!("{}vtable: @{}\n", self.indent_str(), vtable));
-                s.push_str(&format!("{}global: %{}\n", self.indent_str(), gid));
+                fmt.push_str(&format!("{}data: {}\n", self.indent_str(), data));
+                fmt.push_str(&format!("{}vtable: @{}\n", self.indent_str(), vtable));
+                fmt.push_str(&format!("{}global: %{}\n", self.indent_str(), global_var_id));
 
                 if !dynamic.method_decls.is_empty() {
-                    s.push_str(&format!("{}methods {{\n", self.indent_str()));
+                    fmt.push_str(&format!("{}methods {{\n", self.indent_str()));
 
                     self.indent();
                     for decl in &dynamic.method_decls {
                         let params = self.print_params(&decl.params);
                         let ret = self.print_type(&decl.ret_type);
-                        s.push_str(&format!("{}fn {}({}) {};\n", self.indent_str(), decl.name, params, ret));
+                        fmt.push_str(&format!("{}fn {}({}) {};\n", self.indent_str(), decl.name, params, ret));
                     }
                     self.dedent();
 
-                    s.push_str(&format!("{}}}\n", self.indent_str()));
+                    fmt.push_str(&format!("{}}}\n", self.indent_str()));
                 }
 
                 self.dedent();
-                s.push('}');
+                fmt.push('}');
 
-                s
+                fmt
             }
         }
     }
@@ -539,9 +536,13 @@ impl<'a> CIRPrinter<'a> {
     fn print_params(&mut self, params: &CIRFuncParams) -> String {
         let mut list = Vec::new();
 
-        for p in &params.list {
-            let name = p.name.as_deref().unwrap_or("_");
-            list.push(format!("{}: {}", name, self.print_type(&p.ty)));
+        for param in &params.list {
+            let name = param
+                .irv_id
+                .map(|irv_id| format!("%{}", irv_id.0))
+                .unwrap_or("_".to_string());
+
+            list.push(format!("{}: {}", name, self.print_type(&param.ty)));
         }
 
         if params.is_var {
@@ -617,7 +618,7 @@ impl<'a> CIRPrinter<'a> {
                     .collect::<Vec<_>>()
                     .join(", ");
                 let variadic = if func.is_var { ", ..." } else { "" };
-                format!("fn({}{}) {}", params, variadic, self.print_type(&func.ret))
+                format!("fn({}{}) {}", params, variadic, self.print_type(&func.ret_type))
             }
             CIRType::Tuple(tuple) => {
                 let elements = tuple

@@ -31,7 +31,7 @@ use cyrusc_compiler::{
     tm_info::TargetMachineInfo,
 };
 use cyrusc_diagcentral::exit_with_msg;
-use cyrusc_internal::cir::{cir::CIRModule, instances::CIRInstanceRegistry};
+use cyrusc_internal::cir::cir::CIRModule;
 use cyrusc_scaffold_parser::OBJECT_CACHE_DIR_FILENAME;
 use cyrusc_tui_utils::tui_skipped;
 use inkwell::{
@@ -57,7 +57,6 @@ pub struct CodeGenLLVM {
     opts: CodeGenOptions,
     build_dir: PathBuf,
     llvmtm: TargetMachine,
-    monomorph_registry: Arc<Mutex<CIRInstanceRegistry>>,
     build_manifest: Arc<Mutex<BuildManifest>>,
     entry_module_file_path: PathBuf,
 }
@@ -69,7 +68,6 @@ impl CodeGenLLVM {
         target_triple: &TargetTriple,
         opts: CodeGenOptions,
         build_dir: PathBuf,
-        monomorph_registry: Arc<Mutex<CIRInstanceRegistry>>,
         build_manifest: Arc<Mutex<BuildManifest>>,
         entry_module_file_path: PathBuf,
     ) -> Self {
@@ -87,7 +85,6 @@ impl CodeGenLLVM {
             opts,
             build_dir,
             llvmtm,
-            monomorph_registry,
             build_manifest,
             entry_module_file_path,
         }
@@ -98,7 +95,6 @@ impl CodeGenLLVM {
         owned_module: &'ctx OwnedModule,
         builder: Rc<Builder<'ctx>>,
         cir_module: &'ctx CIRModule,
-        monomorph_registry: Arc<Mutex<CIRInstanceRegistry>>,
         dctx: DebugContext,
     ) {
         {
@@ -114,15 +110,8 @@ impl CodeGenLLVM {
             );
         }
 
-        let mut codegen_ir_builder = CodeGenIRBuilder::new(
-            owned_module,
-            cir_module,
-            &self.ctx.target,
-            &builder,
-            &self.llvmtm,
-            monomorph_registry,
-            dctx,
-        );
+        let mut codegen_ir_builder =
+            CodeGenIRBuilder::new(owned_module, cir_module, &self.ctx.target, &builder, &self.llvmtm, dctx);
 
         codegen_ir_builder.emit_module();
 
@@ -352,15 +341,10 @@ impl SeparateModuleSupport<'static, OwnedModule> for CodeGenLLVM {
                 unsafe { DebugContext::new(llvmmodule_ref, owned_module.module_file_path.to_str().unwrap(), ".") }
             };
 
-            // emit llvm-ir module
+            // emit llvm-ir
             let builder = owned_module.create_builder();
-            self.process_module_with_local_context(
-                &owned_module,
-                builder,
-                cir_module,
-                self.monomorph_registry.clone(),
-                dctx,
-            );
+            self.process_module_with_local_context(&owned_module, builder, cir_module, dctx);
+
             modules.push(owned_module);
         }
 
@@ -381,13 +365,7 @@ impl UnifiedModuleSupport<'static, OwnedModule> for CodeGenLLVM {
 
             let builder = owned_module.create_builder();
 
-            self.process_module_with_local_context(
-                &owned_module,
-                builder.clone(),
-                cir_module,
-                self.monomorph_registry.clone(),
-                dctx,
-            );
+            self.process_module_with_local_context(&owned_module, builder.clone(), cir_module, dctx);
         }
 
         owned_module

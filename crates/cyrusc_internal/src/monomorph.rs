@@ -18,7 +18,8 @@
 use cyrusc_typed_ast::{
     BodyID,
     decls::{FuncDeclID, MonomorphID},
-    stmts::{TypedBlockStmt, TypedTypeArgs},
+    stmts::{TypedBlockStmt, TypedFuncParams, TypedTypeArgs},
+    types::SemaType,
 };
 use fx_hash::FxHashMap;
 use std::sync::RwLock;
@@ -34,13 +35,18 @@ pub struct MonomorphInstance {
     pub monomorph_id: MonomorphID,
     pub func_decl_id: FuncDeclID,
     pub type_args: TypedTypeArgs,
+
+    pub params: TypedFuncParams,
+    pub ret_type: SemaType,
     pub body: Option<BodyID>,
+
     pub analyzed: bool,
 }
 
 #[derive(Debug, Default)]
 struct MonomorphRegistryInner {
     key_map: FxHashMap<MonomorphKey, MonomorphID>,
+    func_to_monomorphs: FxHashMap<FuncDeclID, Vec<MonomorphID>>,
     instances: Vec<MonomorphInstance>,
     monomorph_body: Vec<TypedBlockStmt>,
 }
@@ -55,13 +61,20 @@ impl MonomorphRegistry {
         Self {
             inner: RwLock::new(MonomorphRegistryInner {
                 key_map: FxHashMap::default(),
+                func_to_monomorphs: FxHashMap::default(),
                 instances: Vec::new(),
                 monomorph_body: Vec::new(),
             }),
         }
     }
 
-    pub fn get_or_create(&self, func_decl_id: FuncDeclID, type_args: TypedTypeArgs) -> MonomorphID {
+    pub fn get_or_create(
+        &self,
+        func_decl_id: FuncDeclID,
+        type_args: TypedTypeArgs,
+        params: TypedFuncParams,
+        ret_type: SemaType,
+    ) -> MonomorphID {
         {
             let inner = self.inner.read().unwrap();
             let key = MonomorphKey {
@@ -81,37 +94,47 @@ impl MonomorphRegistry {
             type_args: type_args.clone(),
         };
 
-        if let Some(id) = inner.key_map.get(&key) {
-            return *id;
+        if let Some(monomorph_id) = inner.key_map.get(&key) {
+            return *monomorph_id;
         }
 
-        let id = MonomorphID(inner.instances.len());
+        let monomorph_id = MonomorphID(inner.instances.len());
 
         let instance = MonomorphInstance {
-            monomorph_id: id,
+            monomorph_id,
             func_decl_id,
             type_args: type_args.clone(),
+
+            params,
+            ret_type,
             body: None,
+
             analyzed: false,
         };
 
-        inner.key_map.insert(key, id);
+        inner
+            .func_to_monomorphs
+            .entry(func_decl_id)
+            .or_default()
+            .push(monomorph_id);
+
+        inner.key_map.insert(key, monomorph_id);
         inner.instances.push(instance);
 
-        id
+        monomorph_id
     }
 
-    pub fn get(&self, id: MonomorphID) -> MonomorphInstance {
+    pub fn get(&self, monomorph_id: MonomorphID) -> MonomorphInstance {
         let inner = self.inner.read().unwrap();
-        inner.instances[id.0].clone()
+        inner.instances[monomorph_id.0].clone()
     }
 
-    pub fn update<F>(&self, id: MonomorphID, f: F)
+    pub fn update<F>(&self, monomorph_id: MonomorphID, f: F)
     where
         F: FnOnce(&mut MonomorphInstance),
     {
         let mut inner = self.inner.write().unwrap();
-        f(&mut inner.instances[id.0]);
+        f(&mut inner.instances[monomorph_id.0]);
     }
 
     pub fn insert_monomorph_body(&self, body: TypedBlockStmt) -> BodyID {
@@ -124,5 +147,10 @@ impl MonomorphRegistry {
     pub fn get_monomorph_body(&self, body_id: BodyID) -> Option<TypedBlockStmt> {
         let inner = self.inner.read().unwrap();
         inner.monomorph_body.get(body_id.0 as usize).cloned()
+    }
+
+    pub fn get_func_monomorphs(&self, func_decl_id: FuncDeclID) -> Vec<MonomorphID> {
+        let inner = self.inner.read().unwrap();
+        inner.func_to_monomorphs.get(&func_decl_id).cloned().unwrap_or_default()
     }
 }

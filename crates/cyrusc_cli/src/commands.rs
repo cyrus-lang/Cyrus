@@ -57,7 +57,6 @@ pub(crate) fn command_run(mut opts: CodeGenOptions, file_path: Option<String>, p
         &ctx.llvm_target_triple,
         opts.clone(),
         bundle.build_dir,
-        bundle.monomorph_registry.clone(),
         ctx.build_manifest.clone(),
         bundle.entry_file.clone(),
     )));
@@ -121,7 +120,6 @@ pub(crate) fn command_build(mut opts: CodeGenOptions, file_path: Option<String>,
         &ctx.llvm_target_triple,
         opts.clone(),
         bundle.build_dir,
-        bundle.monomorph_registry.clone(),
         ctx.build_manifest.clone(),
         bundle.entry_file,
     )));
@@ -169,7 +167,6 @@ pub(crate) fn command_emit_llvm(mut opts: CodeGenOptions, file_path: Option<Stri
         &ctx.llvm_target_triple,
         opts.clone(),
         bundle.build_dir,
-        bundle.monomorph_registry.clone(),
         ctx.build_manifest.clone(),
         bundle.entry_file,
     )));
@@ -198,7 +195,6 @@ pub(crate) fn command_emit_bitcode(mut opts: CodeGenOptions, file_path: Option<S
         &ctx.llvm_target_triple,
         opts.clone(),
         bundle.build_dir,
-        bundle.monomorph_registry.clone(),
         ctx.build_manifest.clone(),
         bundle.entry_file,
     )));
@@ -227,7 +223,6 @@ pub(crate) fn command_emit_asm(mut opts: CodeGenOptions, file_path: Option<Strin
         &ctx.llvm_target_triple,
         opts.clone(),
         bundle.build_dir,
-        bundle.monomorph_registry.clone(),
         ctx.build_manifest.clone(),
         bundle.entry_file,
     )));
@@ -271,7 +266,6 @@ pub(crate) fn command_object(mut opts: CodeGenOptions, file_path: Option<String>
         &ctx.llvm_target_triple,
         opts.clone(),
         bundle.build_dir,
-        bundle.monomorph_registry.clone(),
         ctx.build_manifest.clone(),
         bundle.entry_file,
     )));
@@ -300,7 +294,6 @@ pub(crate) fn command_shared_lib(mut opts: CodeGenOptions, file_path: Option<Str
         &ctx.llvm_target_triple,
         opts.clone(),
         bundle.build_dir,
-        bundle.monomorph_registry.clone(),
         ctx.build_manifest.clone(),
         bundle.entry_file,
     )));
@@ -338,7 +331,6 @@ pub(crate) fn command_static_lib(mut opts: CodeGenOptions, file_path: Option<Str
         &ctx.llvm_target_triple,
         opts.clone(),
         bundle.build_dir,
-        bundle.monomorph_registry.clone(),
         ctx.build_manifest.clone(),
         bundle.entry_file,
     )));

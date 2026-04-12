@@ -27,7 +27,7 @@ use cyrusc_diagcentral::{exit_with_msg, reporter::DiagReporter};
 use cyrusc_fs_utils::{ensure_output_dir, file_name_without_extension, get_directory_of_file};
 use cyrusc_internal::{
     abi::target::{ABITarget, ABITargetArch, ABITargetInfo, ABITargetOS, ABITargetObjectFormat, create_target_abi},
-    cir::{cir::CIRModule, instances::CIRInstanceRegistry},
+    cir::cir::CIRModule,
     monomorph::MonomorphRegistry,
     vtable::VTableRegistry,
 };
@@ -59,7 +59,6 @@ pub struct CodeGenContextBundle {
     pub entry_file: PathBuf,
     pub build_dir: PathBuf,
     pub program_trees: Vec<Box<CIRModule>>,
-    pub monomorph_registry: Arc<Mutex<CIRInstanceRegistry>>,
     pub target: ABITarget,
     pub llvm_target: InkwellTarget,
     pub llvm_target_triple: TargetTriple,
@@ -68,6 +67,7 @@ pub struct CodeGenContextBundle {
 pub struct CodeGenSemanticBundle {
     pub analyzed_program_trees: Vec<Rc<RefCell<TypedProgramTree>>>,
     pub vtable_registries: Vec<Arc<Mutex<VTableRegistry>>>,
+    pub monomorph_registry: Arc<MonomorphRegistry>,
     pub resolver: Box<Resolver>,
     pub decl_tables: Arc<DeclTablesRegistry>,
     pub source_map: Arc<SourceMap>,
@@ -238,6 +238,7 @@ pub fn build_semantic_bundle(opts: &mut CodeGenOptions, file_path_opt: Option<St
                 decl_tables,
                 analyzed_program_trees,
                 vtable_registries,
+                monomorph_registry,
                 entry_file,
                 build_dir,
             })
@@ -260,8 +261,6 @@ pub fn build_compilation_bundle(opts: &mut CodeGenOptions, file_path: Option<Str
         })
         .collect();
 
-    let cir_monomorph_registry = Arc::new(Mutex::new(CIRInstanceRegistry::new()));
-
     // target
 
     let target_info = resolve_target_info_from_opts(&opts);
@@ -282,15 +281,14 @@ pub fn build_compilation_bundle(opts: &mut CodeGenOptions, file_path: Option<Str
         &*codegen_semantic_bundle.resolver,
         codegen_semantic_bundle.source_map.clone(),
         codegen_semantic_bundle.decl_tables.clone(),
-        cir_monomorph_registry.clone(),
         &codegen_semantic_bundle.vtable_registries,
+        codegen_semantic_bundle.monomorph_registry.clone(),
         &target,
     );
 
     CodeGenContextBundle {
         opts: opts.clone(),
         program_trees: cir_modules,
-        monomorph_registry: cir_monomorph_registry,
         entry_file: codegen_semantic_bundle.entry_file,
         build_dir: codegen_semantic_bundle.build_dir,
         llvm_target_triple,

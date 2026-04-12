@@ -344,7 +344,7 @@ mod tests {
 
         let fn_ty = CIRFuncType {
             params: vec![i64(), i64(), i64(), i64(), i64(), i64(), i64()],
-            ret: Box::new(CIRType::Plain(PlainType::Void)),
+            ret_type: Box::new(CIRType::Plain(PlainType::Void)),
             callconv: CallConv::SysV64,
             abi_func_info: None,
             is_var: false,
@@ -368,7 +368,7 @@ mod tests {
 
         let fn_ty = CIRFuncType {
             params,
-            ret: Box::new(CIRType::Plain(PlainType::Void)),
+            ret_type: Box::new(CIRType::Plain(PlainType::Void)),
             callconv: CallConv::SysV64,
             abi_func_info: None,
             is_var: false,
@@ -470,7 +470,7 @@ mod tests {
 
         let fn_ty = CIRType::FuncType(CIRFuncType {
             params: vec![],
-            ret: Box::new(i32()),
+            ret_type: Box::new(i32()),
             callconv: CallConv::SysV64,
             abi_func_info: None,
             is_var: false,

@@ -251,7 +251,7 @@ impl<'a> AnalysisContext<'a> {
                 }
                 TypedFuncParamKind::SelfModifier(self_modifier) => {
                     let normalized_type = self
-                        .normalize_sema_type(self_modifier.ty.clone().unwrap(), self_modifier.loc)
+                        .normalize_sema_type(self_modifier.ty.clone(), self_modifier.loc)
                         .unwrap();
 
                     self.validate_param_type(&normalized_type, self_modifier.loc);

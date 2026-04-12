@@ -58,7 +58,7 @@ pub struct CIRArrayType {
 pub struct CIRFuncType {
     pub params: Vec<CIRType>,
     pub is_var: bool,
-    pub ret: Box<CIRType>,
+    pub ret_type: Box<CIRType>,
     pub callconv: CallConv,
     pub abi_func_info: Option<ABIFunctionInfo>,
 }
@@ -386,7 +386,7 @@ impl PartialEq for CIRFuncType {
     fn eq(&self, other: &Self) -> bool {
         self.params == other.params
             && self.is_var == other.is_var
-            && self.ret == other.ret
+            && self.ret_type == other.ret_type
             && self.callconv == other.callconv
     }
 }

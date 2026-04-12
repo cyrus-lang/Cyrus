@@ -39,7 +39,6 @@ use cyrusc_internal::{
     cir::{cir::*, types::*},
 };
 use cyrusc_source_loc::Loc;
-use cyrusc_typed_ast::decls::MonomorphID;
 use inkwell::{
     AddressSpace,
     context::AsContextRef,
@@ -58,92 +57,10 @@ pub(crate) enum FuncCallKind<'ll> {
     Indirect(CallSiteValue<'ll>),
 }
 
-// Monomorph.
-impl<'ll> CodeGenIRBuilder<'ll> {
-    // FIXME
-    pub(crate) fn emit_monomorph_func_instance(
-        &mut self,
-        monomorph_id: MonomorphID,
-    ) -> (FunctionValue<'ll>, CIRFuncType) {
-        todo!();
-
-        // {
-        //     let monomorph_registry = self.monomorph_registry.lock().unwrap();
-        //     let monomorph_entry = monomorph_registry.get_func(&monomorph_id).cloned().unwrap();
-        //     let monomorph_func_entry = match monomorph_entry {
-        //         CIRMonomorphEntry::Func(entry) => entry,
-        //     };
-
-        //     let irreg = self.irreg.borrow();
-        //     if let Some(ir_value) = irreg.get(monomorph_func_entry.irv_id) {
-        //         // already exists in current module
-        //         let llvm_func_value = ir_value.as_func().cloned().unwrap();
-        //         return (llvm_func_value, monomorph_func_entry.func_type.clone());
-        //     }
-
-        //     drop(monomorph_registry);
-        //     drop(irreg);
-
-        //     // insert func to current module
-        //     let fn_ty = self.emit_func_ty(monomorph_func_entry.func_type.clone());
-        //     {
-        //         let llvm_func_value = {
-        //             let llvmmodule = self.llvmmodule.borrow_mut();
-        //             let mut irreg = self.irreg.borrow_mut();
-
-        //             let func_name = monomorph_func_name(monomorph_func_entry.irv_id);
-
-        //             let llvm_func_value = match llvmmodule.get_function(&func_name) {
-        //                 Some(f) => f,
-        //                 None => llvmmodule.add_function(&func_name, fn_ty, None),
-        //             };
-
-        //             irreg.insert(
-        //                 monomorph_func_entry.irv_id,
-        //                 LocalIRValue::Func(llvm_func_value, CIRType::FuncType(monomorph_func_entry.func_type.clone())),
-        //             );
-
-        //             llvm_func_value
-        //         };
-
-        //         let parent_cur_func = self.cur_func.clone();
-        //         let parent_cur_abi_func_info = self.cur_abi_func_info.clone();
-        //         let parent_blockreg = self.blockreg.clone();
-
-        //         self.set_current_func(llvm_func_value, monomorph_func_entry.abi_func_info.clone());
-
-        //         let func_metadata = self.emit_func_metadata(&monomorph_func_entry.func_type);
-
-        //         self.emit_func_body(
-        //             &monomorph_func_entry.func_params,
-        //             &monomorph_func_entry.abi_func_info,
-        //             &monomorph_func_entry.body().unwrap(),
-        //             func_metadata,
-        //             monomorph_func_entry.loc,
-        //         );
-
-        //         {
-        //             // back to parent state because we emitted a new function in the middle of an another function
-        //             if let Some(cur_func) = parent_cur_func {
-        //                 self.set_current_func(cur_func, parent_cur_abi_func_info.unwrap());
-        //             }
-
-        //             self.blockreg = parent_blockreg;
-        //             if let Some(cur_block) = self.blockreg.cur_block {
-        //                 self.emit_block(cur_block);
-        //             }
-        //         }
-
-        //         return (llvm_func_value, monomorph_func_entry.func_type.clone());
-        //     }
-        // }
-    }
-}
-
 // Declaration.
 impl<'ll> CodeGenIRBuilder<'ll> {
     pub(crate) fn emit_func_decl(&mut self, func_decl: &CIRFuncDeclStmt) -> FunctionValue<'ll> {
-        let cir_fn_ty = cir_func_decl_as_func_ty(func_decl);
+        let cir_fn_ty = cir_func_decl_as_func_type(func_decl);
 
         let fn_type = self.emit_func_ty(cir_fn_ty);
 
@@ -156,7 +73,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
 
         apply_func_modifiers(self.llvmctx, &llvm_func_value, &func_decl.modifiers);
 
-        let cir_func_ty = cir_func_decl_as_func_ty(func_decl);
+        let cir_func_ty = cir_func_decl_as_func_type(func_decl);
 
         self.insert_local_ir_value(
             func_decl.irv_id,
@@ -187,7 +104,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
 
         let llvm_func = self.emit_func_decl(&func_decl);
 
-        let cir_func_ty = cir_func_decl_as_func_ty(&func_decl);
+        let cir_func_ty = cir_func_decl_as_func_type(&func_decl);
 
         InternalValue::new(CIRType::FuncType(cir_func_ty), InternalValueKind::FuncValue(llvm_func))
     }
@@ -454,7 +371,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
             loc: lambda.loc,
         };
 
-        let cir_func_type = cir_func_decl_as_func_ty(&cir_func_decl);
+        let cir_func_type = cir_func_decl_as_func_type(&cir_func_decl);
         cir_func_decl.abi_func_info = Some(self.target.target_abi.classify_func(&cir_func_type).unwrap());
 
         let llvm_func_value = self.emit_func_decl(&cir_func_decl);
@@ -483,7 +400,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
             self.emit_block(basic_block);
         }
 
-        let cir_fn_ty = cir_func_decl_as_func_ty(&cir_func_decl);
+        let cir_fn_ty = cir_func_decl_as_func_type(&cir_func_decl);
         InternalValue::new(
             CIRType::FuncType(cir_fn_ty),
             InternalValueKind::FuncValue(llvm_func_value),
@@ -501,8 +418,8 @@ impl<'ll> CodeGenIRBuilder<'ll> {
 // ABI helpers.
 impl<'ll> CodeGenIRBuilder<'ll> {
     pub(crate) fn emit_func_metadata(&self, func_ty: &CIRFuncType) -> LLVMMetadataRef {
-        let ret_ty_meta = if !func_ty.ret.is_void() {
-            Some(self.emit_debug_ty_metadata(&func_ty.ret))
+        let ret_ty_meta = if !func_ty.ret_type.is_void() {
+            Some(self.emit_debug_ty_metadata(&func_ty.ret_type))
         } else {
             None
         };

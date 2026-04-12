@@ -130,6 +130,8 @@ pub enum CIRCallDispatch {
     Normal {
         irv_id: IRValueID,
         func_type: CIRFuncType,
+        // only used in emit-cir-dump
+        abi_name: String,
     },
     FunctionPointer {
         operand: Box<CIRExpr>,
@@ -304,7 +306,7 @@ pub struct CIRFuncDefStmt {
     pub name: String,
     pub params: CIRFuncParams,
     pub body: Box<CIRBlockStmt>,
-    pub ret: CIRType,
+    pub ret_type: CIRType,
     pub modifiers: FuncModifiers,
     pub abi_func_info: Option<ABIFunctionInfo>,
     pub loc: Loc,
@@ -497,7 +499,7 @@ pub fn cir_func_def_as_decl(func_def: &CIRFuncDefStmt) -> CIRFuncDeclStmt {
         irv_id: func_def.irv_id,
         name: func_def.name.clone(),
         params: func_def.params.clone(),
-        ret_type: func_def.ret.clone(),
+        ret_type: func_def.ret_type.clone(),
         modifiers: func_def.modifiers.clone(),
         abi_func_info: func_def.abi_func_info.clone(),
         loc: func_def.loc,
@@ -505,18 +507,18 @@ pub fn cir_func_def_as_decl(func_def: &CIRFuncDefStmt) -> CIRFuncDeclStmt {
 }
 
 #[inline]
-pub fn cir_func_decl_as_func_ty(func_decl: &CIRFuncDeclStmt) -> CIRFuncType {
+pub fn cir_func_decl_as_func_type(func_decl: &CIRFuncDeclStmt) -> CIRFuncType {
     CIRFuncType {
         params: func_decl.params.list.iter().map(|param| param.ty.clone()).collect(),
         is_var: func_decl.params.is_var,
-        ret: Box::new(func_decl.ret_type.clone()),
+        ret_type: Box::new(func_decl.ret_type.clone()),
         callconv: func_decl.modifiers.callconv.clone().unwrap_or_default(),
         abi_func_info: func_decl.abi_func_info.clone(),
     }
 }
 
 #[inline]
-pub fn cir_struct_as_struct_ty(struct_stmt: &CIRStructStmt) -> CIRStructType {
+pub fn cir_struct_as_struct_type(struct_stmt: &CIRStructStmt) -> CIRStructType {
     CIRStructType {
         name: Some(struct_stmt.name.clone()),
         fields: struct_stmt.fields.clone(),
@@ -528,7 +530,7 @@ pub fn cir_struct_as_struct_ty(struct_stmt: &CIRStructStmt) -> CIRStructType {
 }
 
 #[inline]
-pub fn cir_enum_as_enum_ty(enum_stmt: &CIREnumStmt) -> CIREnumType {
+pub fn cir_enum_as_enum_type(enum_stmt: &CIREnumStmt) -> CIREnumType {
     CIREnumType {
         name: Some(enum_stmt.name.clone()),
         variants: enum_stmt.variants.clone(),
@@ -540,7 +542,7 @@ pub fn cir_enum_as_enum_ty(enum_stmt: &CIREnumStmt) -> CIREnumType {
 }
 
 #[inline]
-pub fn cir_union_as_union_ty(union_stmt: &CIRUnionStmt) -> CIRUnionType {
+pub fn cir_union_as_union_type(union_stmt: &CIRUnionStmt) -> CIRUnionType {
     CIRUnionType {
         name: Some(union_stmt.name.clone()),
         fields: union_stmt.fields.clone(),
@@ -581,6 +583,7 @@ impl PartialEq for CIREnumVariant {
 }
 
 impl CIREnumVariant {
+    #[inline]
     pub fn as_fielded(&self) -> Option<&Vec<CIRType>> {
         match self {
             CIREnumVariant::Tuple(_, fields) => Some(fields),
@@ -588,21 +591,13 @@ impl CIREnumVariant {
         }
     }
 
+    #[inline]
     pub fn ident(&self) -> &String {
         match self {
             CIREnumVariant::Unit(ident) => ident,
             CIREnumVariant::Valued(ident, _) => ident,
             CIREnumVariant::Tuple(ident, _) => ident,
         }
-    }
-}
-
-impl Debug for CIRModule {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("CIRProgramTree")
-            .field("body", &self.stmts)
-            .field("file_path", &self.file_path)
-            .finish()
     }
 }
 
@@ -645,5 +640,14 @@ impl CIRStmt {
             CIRStmt::Continue(continue_stmt) => &continue_stmt.loc,
             CIRStmt::Break(break_stmt) => &break_stmt.loc,
         }
+    }
+}
+
+impl Debug for CIRModule {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("CIRProgramTree")
+            .field("body", &self.stmts)
+            .field("file_path", &self.file_path)
+            .finish()
     }
 }

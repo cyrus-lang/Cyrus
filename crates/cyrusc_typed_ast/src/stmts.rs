@@ -333,7 +333,7 @@ pub enum TypedFuncParamKind {
 #[derive(Debug, Clone, Eq)]
 pub struct TypedSelfModifier {
     pub var_decl_id: Option<VarDeclID>,
-    pub ty: Option<SemaType>,
+    pub ty: SemaType,
     pub kind: SelfModifierKind,
     pub loc: Loc,
 }
@@ -556,7 +556,7 @@ impl TypedFuncParams {
             .iter()
             .map(|param_kind| match param_kind {
                 TypedFuncParamKind::FuncParam(param) => param.ty.clone(),
-                TypedFuncParamKind::SelfModifier(self_modifier) => self_modifier.ty.clone().unwrap(),
+                TypedFuncParamKind::SelfModifier(self_modifier) => self_modifier.ty.clone(),
             })
             .collect();
 
@@ -679,9 +679,16 @@ impl TypedFuncParamKind {
         }
     }
 
-    pub fn param_type(&self) -> Option<SemaType> {
+    pub fn var_decl_id(&self) -> Option<VarDeclID> {
         match self {
-            TypedFuncParamKind::FuncParam(func_param) => Some(func_param.ty.clone()),
+            TypedFuncParamKind::FuncParam(func_param) => func_param.var_decl_id,
+            TypedFuncParamKind::SelfModifier(self_modifier) => self_modifier.var_decl_id,
+        }
+    }
+
+    pub fn param_type(&self) -> SemaType {
+        match self {
+            TypedFuncParamKind::FuncParam(func_param) => func_param.ty.clone(),
             TypedFuncParamKind::SelfModifier(self_modifier) => self_modifier.ty.clone(),
         }
     }

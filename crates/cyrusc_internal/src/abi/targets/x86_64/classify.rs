@@ -480,9 +480,9 @@ impl X86_64 {
             params_infos.push(ABIArgInfo::direct());
         }
 
-        let ret_abi_type = cir_type_to_abi_type(&self.info, &fn_ty.ret);
+        let ret_abi_type = cir_type_to_abi_type(&self.info, &fn_ty.ret_type);
 
-        let ret_info = if fn_ty.ret.is_void() {
+        let ret_info = if fn_ty.ret_type.is_void() {
             ABIRetInfo {
                 abi_type: ret_abi_type,
                 kind: ABIRetInfoKind::Ignore,
@@ -510,7 +510,7 @@ impl X86_64 {
         let mut params_types = Vec::new();
         let mut params_infos = Vec::new();
 
-        let ret_info = self.classify_return(&fn_ty.ret);
+        let ret_info = self.classify_return(&fn_ty.ret_type);
 
         // sret consumes one integer register in sysv
         if ret_info.kind.is_indirect() {

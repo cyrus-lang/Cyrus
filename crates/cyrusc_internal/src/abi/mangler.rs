@@ -19,6 +19,10 @@ use cyrusc_ast::{
     abi::{CallConv, Linkage},
     modifiers::{FuncModifiers, GlobalVarModifiers},
 };
+use cyrusc_typed_ast::{
+    stmts::{TypedFuncTypeVariadicParams, TypedTypeArg, TypedTypeArgs},
+    types::{SemaType, TypeDeclID, TypedArrayCapacity},
+};
 use once_cell::sync::Lazy;
 
 pub static CYRUS_ABI: Lazy<Cyrus_ABI_Impl> = Lazy::new(|| Cyrus_ABI_Impl::new());
@@ -131,6 +135,125 @@ pub fn mangle_func(modifiers: &FuncModifiers, module_name: &str, name: &str) -> 
     match &modifiers.linkage {
         Some(linkage) => abi_mangler_from_linkage(linkage).func_name(module_name, name),
         None => CYRUS_ABI.func_name(module_name, name),
+    }
+}
+
+pub fn mangle_monomorphized_func(
+    modifiers: &FuncModifiers,
+    module_name: &str,
+    name: &str,
+    type_args: &TypedTypeArgs,
+) -> String {
+    let base = mangle_func(modifiers, module_name, name);
+
+    if type_args.is_empty() {
+        return base;
+    }
+
+    let type_args = mangle_type_args(type_args);
+
+    format!("{base}<{type_args}>")
+}
+
+fn mangle_type_args(type_args: &TypedTypeArgs) -> String {
+    type_args
+        .iter()
+        .map(|type_arg| match type_arg {
+            TypedTypeArg::Type(sema_type, _) => mangle_sema_type(sema_type),
+            TypedTypeArg::Infer => unreachable!(),
+        })
+        .collect::<Vec<_>>()
+        .join("_")
+}
+
+fn mangle_sema_type(sema_type: &SemaType) -> String {
+    match sema_type {
+        SemaType::Named(named_type) => {
+            let decl_id = match named_type.decl_id {
+                TypeDeclID::Struct(struct_decl_id) => format!("struct_{}", struct_decl_id.0),
+                TypeDeclID::Enum(enum_decl_id) => format!("enum_{}", enum_decl_id.0),
+                TypeDeclID::Union(union_decl_id) => format!("union_{}", union_decl_id.0),
+                TypeDeclID::Interface(interface_decl_id) => format!("interface_{}", interface_decl_id.0),
+                TypeDeclID::Typedef(_) => unreachable!(),
+            };
+
+            if named_type.type_args.is_empty() {
+                format!("{decl_id}")
+            } else {
+                let type_args = mangle_type_args(&named_type.type_args);
+
+                format!("{decl_id}<{type_args}>")
+            }
+        }
+        SemaType::Plain(plain_type) => {
+            // Use the provided to_string() method for PlainType
+            plain_type.to_string()
+        }
+        SemaType::Array(typed_array_type) => {
+            let element = mangle_sema_type(&typed_array_type.element_type);
+
+            let capacity = match &typed_array_type.capacity {
+                TypedArrayCapacity::Fixed(expr) => expr.literal_const_int_value().unwrap().to_string(),
+                TypedArrayCapacity::Dynamic => "".to_string(),
+            };
+
+            format!("{element}[{capacity}]")
+        }
+        SemaType::Const(inner_type) => {
+            format!("const_{}", mangle_sema_type(inner_type))
+        }
+        SemaType::Pointer(inner_type) => {
+            format!("ptr_{}", mangle_sema_type(inner_type))
+        }
+        SemaType::FuncType(func_type) => {
+            let ret_type = mangle_sema_type(&func_type.ret_type);
+
+            let params = func_type
+                .params
+                .list
+                .iter()
+                .map(mangle_sema_type)
+                .collect::<Vec<_>>()
+                .join("_");
+
+            let variadic = func_type.params.variadic.clone().map(|variadic| match *variadic {
+                TypedFuncTypeVariadicParams::UntypedCStyle => "cvar".to_string(),
+                TypedFuncTypeVariadicParams::Typed(sema_type) => format!("var_{}", mangle_sema_type(&sema_type)),
+            });
+
+            if let Some(variadic) = variadic {
+                format!("func_{ret_type}_{params}_{variadic}")
+            } else {
+                format!("func_{ret_type}_{params}")
+            }
+        }
+        SemaType::Tuple(typed_tuple_type) => {
+            let elements = typed_tuple_type
+                .elements
+                .iter()
+                .map(mangle_sema_type)
+                .collect::<Vec<_>>()
+                .join("_");
+
+            format!("tuple_{elements}")
+        }
+        SemaType::InterfaceType(interface_type) => {
+            format!(
+                "Interface_{}_{}",
+                interface_type.interface_decl_id, interface_type.vtable_id
+            )
+        }
+
+        SemaType::Err(_)
+        | SemaType::Unresolved(_)
+        | SemaType::SelfType(_)
+        | SemaType::GenericParam(_)
+        | SemaType::InferVar(_)
+        | SemaType::Placeholder => {
+            unreachable!(
+                "SemaType variants like Err, Unresolved, SelfType, GenericParam, InferVar, Placeholder should not be directly mangled."
+            )
+        }
     }
 }
 

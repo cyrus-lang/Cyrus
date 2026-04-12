@@ -17,5 +17,3 @@
 
 pub mod cir;
 pub mod types;
-pub mod instances;
-pub mod traverse;
