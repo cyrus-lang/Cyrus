@@ -28,17 +28,17 @@ use cyrusc_typed_ast::{
 
 impl<'a> AnalysisContext<'a> {
     pub(crate) fn analyze_union_init(&mut self, union_init: &mut TypedUnionInitExpr) -> Option<SemaType> {
-        let symbol_id = union_init.symbol_id.unwrap();
+        let decl_id = union_init.decl_id.unwrap();
 
-        let init_type = self.resolve_symbol_type_expanded(symbol_id, union_init.loc)?;
+        let init_type = self.resolve_symbol_type_expanded(decl_id, union_init.loc)?;
 
         let Some(named_type) = init_type.as_named_type() else {
-            self.report_non_union_symbol(symbol_id, union_init.loc);
+            self.report_non_union_symbol(decl_id, union_init.loc);
             return None;
         };
 
         let Some(union_decl_id) = named_type.decl_id.as_union() else {
-            self.report_non_union_symbol(symbol_id, union_init.loc);
+            self.report_non_union_symbol(decl_id, union_init.loc);
             return None;
         };
 
@@ -164,7 +164,6 @@ impl<'a> AnalysisContext<'a> {
         }];
 
         UnionDecl {
-            symbol_id: None,
             name: None,
             fields,
             impls: Vec::new(),

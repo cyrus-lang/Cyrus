@@ -19,27 +19,27 @@ use crate::{context::AnalysisContext, diagnostics::AnalyzerDiagKind};
 use cyrusc_ast::{abi::Visibility, modifiers::StructModifiers};
 use cyrusc_diagcentral::{Diag, DiagLevel};
 use cyrusc_typed_ast::{
-    decls::{MethodDecls, StructDecl, StructDeclID},
+    decls::{MethodDecls, StructDecl},
     exprs::{TypedFieldInit, TypedStructInitExpr, TypedUnnamedStructValue},
-    format::{format_missing_fields, format_sema_type, format_struct_decl},
+    format::{format_missing_fields, format_struct_decl},
     stmts::{TypedGenericParams, TypedStructField, TypedTypeArgs},
-    types::{NamedType, SemaType, TypeDeclID, UnresolvedType},
+    types::{NamedType, SemaType, TypeDeclID},
 };
 use fx_hash::FxHashSet;
 
 impl<'a> AnalysisContext<'a> {
     pub(crate) fn analyze_struct_init(&mut self, struct_init: &mut TypedStructInitExpr) -> Option<SemaType> {
-        let symbol_id = struct_init.symbol_id.unwrap();
+        let decl_id = struct_init.decl_id.unwrap();
 
-        let init_type = self.resolve_symbol_type_expanded(symbol_id, struct_init.loc)?;
+        let init_type = self.resolve_symbol_type_expanded(decl_id, struct_init.loc)?;
 
         let Some(named_type) = init_type.as_named_type() else {
-            self.report_non_struct_symbol(symbol_id, struct_init.loc);
+            self.report_non_struct_symbol(decl_id, struct_init.loc);
             return None;
         };
 
         let Some(struct_decl_id) = named_type.decl_id.as_struct() else {
-            self.report_non_struct_symbol(symbol_id, struct_init.loc);
+            self.report_non_struct_symbol(decl_id, struct_init.loc);
             return None;
         };
 
@@ -192,7 +192,6 @@ impl<'a> AnalysisContext<'a> {
             .collect();
 
         StructDecl {
-            symbol_id: None,
             name: None,
             fields,
             impls: Vec::new(),

@@ -111,7 +111,6 @@ pub fn main() {
                         config.clone(),
                         reporter.clone(),
                         source_map.clone(),
-                        &resolver,
                         decl_tables.clone(),
                         &resolver,
                         program_tree_entry.program_tree.clone(),

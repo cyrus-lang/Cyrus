@@ -18,14 +18,13 @@
 use crate::{context::AnalysisContext, diagnostics::AnalyzerDiagKind};
 use cyrusc_const_eval::value::is_comptime_valid;
 use cyrusc_diagcentral::{Diag, DiagLevel};
-use cyrusc_internal::symbols::symbols::{SymbolEntry, SymbolEntryKind};
 use cyrusc_source_loc::Loc;
 use cyrusc_typed_ast::{
-    GenericParamID, SymbolID,
-    decls::{FuncDecl, InterfaceDeclID},
+    GenericParamID,
+    decls::{DeclID, FuncDecl, InterfaceDeclID},
     exprs::TypedSelfType,
     stmts::{
-        TypedFuncParamKind, TypedFuncParams, TypedFuncTypeParams, TypedFuncTypeVariadicParams, TypedFuncVariadicParam,
+        TypedFuncParamKind, TypedFuncParams, TypedFuncTypeParams, TypedFuncTypeVariadicParam, TypedFuncVariadicParam,
         TypedTypeArg, TypedTypeArgs,
     },
     types::{
@@ -66,9 +65,12 @@ impl<'a> AnalysisContext<'a> {
 
     fn normalize_unresolved_type(&mut self, unresolved_type: UnresolvedType, loc: Loc) -> Option<SemaType> {
         let ty = match unresolved_type {
-            UnresolvedType::Symbol(symbol_id) => self.resolve_symbol_type(symbol_id, loc)?,
-            UnresolvedType::GenericInst { base, mut type_args } => {
-                let base_type = self.normalize_unresolved_type(UnresolvedType::Symbol(base), loc)?;
+            UnresolvedType::Decl(symbol_id) => self.resolve_symbol_type(symbol_id, loc)?,
+            UnresolvedType::GenericInst {
+                base_decl_id,
+                mut type_args,
+            } => {
+                let base_type = self.normalize_unresolved_type(UnresolvedType::Decl(base_decl_id), loc)?;
 
                 if let Some(named_type) = base_type.as_named_type() {
                     self.normalize_type_args(&mut type_args);
@@ -104,12 +106,12 @@ impl<'a> AnalysisContext<'a> {
         // normalize variadic parameter if present
         if let Some(variadic) = func_type.params.variadic.take() {
             match *variadic {
-                TypedFuncTypeVariadicParams::UntypedCStyle => {
-                    func_type.params.variadic = Some(Box::new(TypedFuncTypeVariadicParams::UntypedCStyle));
+                TypedFuncTypeVariadicParam::UntypedCStyle => {
+                    func_type.params.variadic = Some(Box::new(TypedFuncTypeVariadicParam::UntypedCStyle));
                 }
-                TypedFuncTypeVariadicParams::Typed(sema_type) => {
+                TypedFuncTypeVariadicParam::Typed(sema_type) => {
                     if let Some(normalized) = self.normalize_sema_type(sema_type, func_type.loc) {
-                        func_type.params.variadic = Some(Box::new(TypedFuncTypeVariadicParams::Typed(normalized)));
+                        func_type.params.variadic = Some(Box::new(TypedFuncTypeVariadicParam::Typed(normalized)));
                     } else {
                         return None;
                     }
@@ -260,14 +262,18 @@ impl<'a> AnalysisContext<'a> {
         }
 
         if let Some(variadic_params) = &mut params.variadic {
-            if let TypedFuncVariadicParam::Typed(ident, sema_type) = variadic_params {
-                let sema_type = match self.normalize_sema_type(sema_type.clone(), loc) {
+            if let TypedFuncVariadicParam::Typed { var_decl_id, ty, loc } = variadic_params {
+                let ty = match self.normalize_sema_type(ty.clone(), *loc) {
                     Some(sema_type) => sema_type,
                     None => return,
                 };
 
-                self.validate_param_type(&sema_type, ident.loc);
-                *variadic_params = TypedFuncVariadicParam::Typed(ident.clone(), sema_type);
+                self.validate_param_type(&ty, *loc);
+                *variadic_params = TypedFuncVariadicParam::Typed {
+                    var_decl_id: *var_decl_id,
+                    ty,
+                    loc: *loc,
+                }
             }
         }
     }
@@ -283,32 +289,34 @@ impl<'a> AnalysisContext<'a> {
 
         if let Some(variadic_params) = &mut params.variadic {
             match *variadic_params.clone() {
-                TypedFuncTypeVariadicParams::UntypedCStyle => {}
-                TypedFuncTypeVariadicParams::Typed(sema_type) => {
+                TypedFuncTypeVariadicParam::UntypedCStyle => {}
+                TypedFuncTypeVariadicParam::Typed(sema_type) => {
                     let sema_type = match self.normalize_sema_type(sema_type.clone(), loc) {
                         Some(sema_type) => sema_type,
                         None => return,
                     };
 
                     self.validate_param_type(&sema_type, loc);
-                    *variadic_params = Box::new(TypedFuncTypeVariadicParams::Typed(sema_type));
+                    *variadic_params = Box::new(TypedFuncTypeVariadicParam::Typed(sema_type));
                 }
             }
         }
     }
 
-    pub(crate) fn resolve_symbol_type_expanded(&mut self, symbol_id: SymbolID, loc: Loc) -> Option<SemaType> {
-        let ty = self.resolve_symbol_type(symbol_id, loc)?;
+    #[inline]
+    pub(crate) fn resolve_symbol_type_expanded(&mut self, decl_id: DeclID, loc: Loc) -> Option<SemaType> {
+        let ty = self.resolve_symbol_type(decl_id, loc)?;
+
         Some(self.expand_sema_type(ty, loc))
     }
 
-    pub(crate) fn resolve_symbol_type(&mut self, symbol_id: SymbolID, loc: Loc) -> Option<SemaType> {
-        if let Some(cached_sema_ty) = self.type_cache.cache.get(&symbol_id) {
+    pub(crate) fn resolve_symbol_type(&mut self, decl_id: DeclID, loc: Loc) -> Option<SemaType> {
+        if let Some(cached_sema_ty) = self.type_cache.cache.get(&decl_id) {
             return Some(cached_sema_ty.clone());
         }
 
-        if self.type_cache.push(symbol_id).is_err() {
-            let symbol_name = self.formatter.format_symbol_name(symbol_id);
+        if self.type_cache.push(decl_id).is_err() {
+            let symbol_name = self.formatter.format_decl(decl_id);
 
             self.reporter.report(Diag {
                 level: DiagLevel::Error,
@@ -319,70 +327,55 @@ impl<'a> AnalysisContext<'a> {
             return None;
         };
 
-        let symbol_entry = self.query.lookup_symbol_entry(symbol_id).unwrap();
-        debug_assert!(!matches!(symbol_entry.kind, SymbolEntryKind::Unresolved));
-
-        let mut sema_type_opt = self.resolve_symbol_type_internal(&symbol_entry);
+        let mut sema_type_opt = self.resolve_symbol_type_internal(decl_id);
 
         if let Some(ty) = sema_type_opt.clone() {
             sema_type_opt = self.normalize_sema_type(ty, loc);
         }
 
-        self.type_cache.pop(symbol_id);
+        self.type_cache.pop(decl_id);
 
         if let Some(ref final_ty) = sema_type_opt {
-            self.type_cache.cache.insert(symbol_id, final_ty.clone());
+            self.type_cache.cache.insert(decl_id, final_ty.clone());
         }
 
         sema_type_opt
     }
 
-    fn resolve_symbol_type_internal(&mut self, symbol_entry: &SymbolEntry) -> Option<SemaType> {
-        match &symbol_entry.kind {
-            SymbolEntryKind::GlobalVar(global_var_decl_id) => {
-                let global_var_decl = self.decl_tables.global_var_decl(*global_var_decl_id);
+    fn resolve_symbol_type_internal(&mut self, decl_id: DeclID) -> Option<SemaType> {
+        match decl_id {
+            DeclID::GlobalVar(global_var_decl_id) => {
+                let global_var_decl = self.decl_tables.global_var_decl(global_var_decl_id);
                 global_var_decl.ty.clone()
             }
-            SymbolEntryKind::Var(var_decl_id) => {
-                let var_decl = self.decl_tables.var_decl(*var_decl_id);
+            DeclID::Var(var_decl_id) => {
+                let var_decl = self.decl_tables.var_decl(var_decl_id);
                 var_decl.ty.clone()
             }
-            SymbolEntryKind::Func(func_decl_id) => {
-                let func_decl = self.decl_tables.func_decl(*func_decl_id);
+            DeclID::Func(func_decl_id) => {
+                let func_decl = self.decl_tables.func_decl(func_decl_id);
                 self.normalize_func_decl_as_func_type(&func_decl)
             }
-            SymbolEntryKind::Struct(strut_decl_id) => Some(SemaType::Named(NamedType {
-                decl_id: TypeDeclID::Struct(*strut_decl_id),
+            DeclID::Struct(strut_decl_id) => Some(SemaType::Named(NamedType {
+                decl_id: TypeDeclID::Struct(strut_decl_id),
                 type_args: TypedTypeArgs::new(),
             })),
-            SymbolEntryKind::Enum(enum_decl_id) => Some(SemaType::Named(NamedType {
-                decl_id: TypeDeclID::Enum(*enum_decl_id),
+            DeclID::Enum(enum_decl_id) => Some(SemaType::Named(NamedType {
+                decl_id: TypeDeclID::Enum(enum_decl_id),
                 type_args: TypedTypeArgs::new(),
             })),
-            SymbolEntryKind::Union(union_decl_id) => Some(SemaType::Named(NamedType {
-                decl_id: TypeDeclID::Union(*union_decl_id),
+            DeclID::Union(union_decl_id) => Some(SemaType::Named(NamedType {
+                decl_id: TypeDeclID::Union(union_decl_id),
                 type_args: TypedTypeArgs::new(),
             })),
-            SymbolEntryKind::Typedef(typedef_decl_id) => Some(SemaType::Named(NamedType {
-                decl_id: TypeDeclID::Typedef(*typedef_decl_id),
+            DeclID::Typedef(typedef_decl_id) => Some(SemaType::Named(NamedType {
+                decl_id: TypeDeclID::Typedef(typedef_decl_id),
                 type_args: TypedTypeArgs::new(),
             })),
-            SymbolEntryKind::Interface(interface_decl_id) => self.normalize_interface_type(*interface_decl_id),
+            DeclID::Interface(interface_decl_id) => self.normalize_interface_type(interface_decl_id),
 
-            SymbolEntryKind::ProxiedSymbol { .. } => {
-                unreachable!("proxied symbol entry kind should not appear here")
-            }
-            SymbolEntryKind::ProxiedModule { .. } => {
-                unreachable!("proxied module symbol entry kind should not appear here")
-            }
-            SymbolEntryKind::Module { .. } => {
-                unreachable!("module symbol entry kind should not appear here")
-            }
-            SymbolEntryKind::Namespace { .. } => {
-                unreachable!("namespace symbol entry kind should not appear here")
-            }
-            SymbolEntryKind::Unresolved => unreachable!("unresolved symbol entry should not appear here"),
-            SymbolEntryKind::Method(_) => unreachable!("method symbols are not type expressions"),
+            // FIXME: Need prone error?
+            DeclID::Method(_) => unreachable!(),
         }
     }
 }

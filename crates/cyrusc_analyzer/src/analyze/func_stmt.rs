@@ -21,7 +21,7 @@ use cyrusc_internal::flow_state::FlowState;
 use cyrusc_source_loc::Loc;
 use cyrusc_typed_ast::{
     decls::FuncDecl,
-    stmts::{TypedBlockStmt, TypedFuncDeclStmt, TypedFuncDefStmt},
+    stmts::{TypedBlockStmt, TypedFuncDeclStmt, TypedFuncDefStmt, TypedFuncParams},
     types::SemaType,
 };
 
@@ -31,36 +31,26 @@ impl<'a> AnalysisContext<'a> {
 
         self.analyze_entry_func(func_def);
 
-        let Some(func_decl_id) = self.query.get_func(func_def.symbol_id) else {
-            self.reporter.report(Diag {
-                level: DiagLevel::Error,
-                kind: Box::new(AnalyzerDiagKind::NonFunctionSymbol {
-                    symbol_name: self.formatter.format_symbol_name(func_def.symbol_id),
-                }),
-                loc: Some(func_def.loc),
-                hint: None,
-            });
-            return;
-        };
-
-        let mut func_decl = self.decl_tables.func_decl(func_decl_id);
+        let mut func_decl = self.decl_tables.func_decl(func_def.func_decl_id);
 
         self.analyze_func_decl(&mut func_decl);
 
         func_def.params = func_decl.params.clone();
         func_def.ret_type = func_decl.ret_type.clone();
 
-        self.decl_tables.with_func_decl_mut(func_decl_id, |_func_decl| {
-            _func_decl.params = func_decl.params.clone();
-            _func_decl.ret_type = func_decl.ret_type.clone();
-        });
+        self.decl_tables
+            .with_func_decl_mut(func_def.func_decl_id, |_func_decl| {
+                _func_decl.params = func_decl.params.clone();
+                _func_decl.ret_type = func_decl.ret_type.clone();
+            });
 
         if !is_generic_func {
-            let parent_func = self.func_env.current_func.clone();
+            let func_type = func_decl.as_func_type();
+            let func_env = self.create_func_def_env(func_type.clone());
 
-            self.func_env.current_func = Some(func_decl.as_func_type());
-            self.analyze_func_body(&mut func_def.body, &func_def.ret_type);
-            self.func_env.current_func = parent_func;
+            self.with_func_env(func_env, |this| {
+                this.analyze_func_body(&mut func_def.body, &func_def.ret_type);
+            });
         }
     }
 
@@ -74,26 +64,14 @@ impl<'a> AnalysisContext<'a> {
             });
         }
 
-        let Some(func_decl_id) = self.query.get_func(func_decl_stmt.symbol_id) else {
-            self.reporter.report(Diag {
-                level: DiagLevel::Error,
-                kind: Box::new(AnalyzerDiagKind::NonFunctionSymbol {
-                    symbol_name: self.formatter.format_symbol_name(func_decl_stmt.symbol_id),
-                }),
-                loc: Some(func_decl_stmt.loc),
-                hint: None,
-            });
-            return;
-        };
-
-        let mut func_decl = self.decl_tables.func_decl(func_decl_id);
+        let mut func_decl = self.decl_tables.func_decl(func_decl_stmt.func_decl_id);
 
         self.analyze_func_decl(&mut func_decl);
 
         func_decl_stmt.params = func_decl.params.clone();
         func_decl_stmt.ret_type = func_decl.ret_type.clone();
 
-        self.decl_tables.with_func_decl_mut(func_decl_id, |_func_decl| {
+        self.decl_tables.with_func_decl_mut(func_decl_stmt.func_decl_id, |_func_decl| {
             _func_decl.params = func_decl.params.clone();
             _func_decl.ret_type = func_decl.ret_type.clone();
         });
@@ -155,6 +133,28 @@ impl<'a> AnalysisContext<'a> {
                 });
             }
         }
+    }
+
+    /// Takes a cloned parameter list and returns a new list with
+    /// substituted, inference-resolved concrete types.
+    ///
+    /// Zero global mutation. Pure transformation.
+    pub(crate) fn update_param_variables_type(&mut self, mut params: TypedFuncParams) -> TypedFuncParams {
+        for param_kind in &mut params.list {
+            let var_decl_id = param_kind.var_decl_id().unwrap();
+
+            let original_type = self.decl_tables.var_decl(var_decl_id).ty.unwrap();
+
+            let mut sema_ty = self.substitute_type(&original_type);
+
+            if let Some(infer) = &self.func_env.infer {
+                sema_ty = infer.resolve(&sema_ty);
+            }
+
+            *param_kind.param_type_mut() = sema_ty;
+        }
+
+        params
     }
 
     pub(crate) fn validate_param_type(&mut self, sema_type: &SemaType, loc: Loc) {

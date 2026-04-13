@@ -15,37 +15,37 @@
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
 
-use cyrusc_typed_ast::{SymbolID, types::SemaType};
+use cyrusc_typed_ast::{decls::DeclID, types::SemaType};
 use fx_hash::FxHashMap;
 use smallvec::SmallVec;
 
 #[derive(Default)]
 pub struct TypeCache {
-    // Canonical, fully normalized result for a symbol (no UnresolvedSymbol, no Typedef)
-    pub cache: FxHashMap<SymbolID, SemaType>,
-    
-    // Guard against cycles
-    pub in_progress: SmallVec<[SymbolID; 16]>,
+    // Canonical, fully normalized result for a symbol (no UnresolvedSymbol, no Typedef).
+    pub cache: FxHashMap<DeclID, SemaType>,
+
+    // Guard against cycles.
+    pub in_progress: SmallVec<[DeclID; 16]>,
 }
 
 impl TypeCache {
     pub fn new() -> Self {
         Self {
             cache: FxHashMap::default(),
-            in_progress: SmallVec::new()
+            in_progress: SmallVec::new(),
         }
     }
 
-    pub fn push(&mut self, symbol_id: SymbolID) -> Result<(), ()> {
-        if self.in_progress.contains(&symbol_id) {
+    pub fn push(&mut self, decl_id: DeclID) -> Result<(), ()> {
+        if self.in_progress.contains(&decl_id) {
             return Err(());
         }
-        self.in_progress.push(symbol_id);
+        self.in_progress.push(decl_id);
         Ok(())
     }
 
-    pub fn pop(&mut self, symbol_id: SymbolID) {
-        debug_assert!(self.in_progress.last() == Some(&symbol_id));
+    pub fn pop(&mut self, decl_id: DeclID) {
+        debug_assert!(self.in_progress.last() == Some(&decl_id));
         self.in_progress.pop();
     }
 }

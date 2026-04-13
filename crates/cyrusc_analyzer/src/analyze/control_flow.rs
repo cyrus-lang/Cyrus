@@ -81,8 +81,6 @@ impl<'a> AnalysisContext<'a> {
             .unwrap();
 
         if ret_type.is_void() && ret.arg.is_some() {
-            dbg!(ret.clone());
-
             self.reporter.report(Diag {
                 level: DiagLevel::Error,
                 kind: Box::new(AnalyzerDiagKind::VoidFunctionReturnsValue),

@@ -19,15 +19,20 @@ use crate::{context::AnalysisContext, diagnostics::AnalyzerDiagKind};
 use cyrusc_diagcentral::{Diag, DiagLevel};
 use cyrusc_source_loc::Loc;
 use cyrusc_typed_ast::{
-    decls::FuncDecl,
+    decls::{DeclID, FuncDecl},
     exprs::{TypedExprStmt, TypedFuncCall, TypedFuncCallDispatch},
     format::{format_func_type, format_loc, format_sema_type},
-    stmts::{TypedFuncParamKind, TypedFuncParams, TypedFuncTypeVariadicParams, TypedFuncVariadicParam},
+    stmts::{TypedFuncParams, TypedFuncTypeVariadicParam, TypedFuncVariadicParam},
     types::{SemaType, TypedFuncType},
 };
 
 impl<'a> AnalysisContext<'a> {
     pub(crate) fn analyze_func_call(&mut self, func_call: &mut TypedFuncCall) -> Option<SemaType> {
+        let func_decl_id = func_call
+            .operand
+            .kind
+            .as_decl_id()
+            .and_then(|decl_id| decl_id.as_func());
         let operand_type = self.analyze_expr_non_terminal(&mut func_call.operand, None)?;
 
         self.normalize_type_args(&mut func_call.type_args);
@@ -45,25 +50,13 @@ impl<'a> AnalysisContext<'a> {
         };
 
         // named func call
-        if let Some(symbol_id) = func_type.symbol_id {
-            let Some(func_decl_id) = self.query.get_func(symbol_id) else {
-                self.reporter.report(Diag {
-                    level: DiagLevel::Error,
-                    kind: Box::new(AnalyzerDiagKind::NonFunctionSymbol {
-                        symbol_name: self.formatter.format_symbol_name(symbol_id),
-                    }),
-                    loc: Some(func_call.loc),
-                    hint: None,
-                });
-                return None;
-            };
-
+        if let Some(func_decl_id) = func_decl_id {
             let mut func_decl = self.decl_tables.func_decl(func_decl_id);
 
             // generic function
             if func_decl.is_generic() {
                 let generic_env = self.create_inference_generic_env(
-                    &self.formatter.format_symbol_name(symbol_id),
+                    &self.formatter.format_decl(DeclID::Func(func_decl_id)),
                     func_decl.generic_params.clone(),
                     &func_call.type_args,
                     func_call.loc,
@@ -77,7 +70,7 @@ impl<'a> AnalysisContext<'a> {
                     }
 
                     func_call.operand.sema_type = Some(this.substitute_type(&operand_type));
-                    func_decl.params = this.substitute_func_params(func_decl.params);
+                    func_decl.params = this.substitute_func_params(func_decl.params.clone());
                     func_decl.ret_type = {
                         let ret_type = this.substitute_type(&func_decl.ret_type);
 
@@ -90,7 +83,7 @@ impl<'a> AnalysisContext<'a> {
 
                     this.apply_generic_defaults(func_decl.generic_params.clone());
 
-                    let final_type_args = this.collect_instantiated_type_args(func_decl.generic_params);
+                    let final_type_args = this.collect_instantiated_type_args(func_decl.generic_params.clone());
 
                     let monomorph_id = this.monomorph_registry.get_or_create(
                         func_decl_id,
@@ -99,51 +92,52 @@ impl<'a> AnalysisContext<'a> {
                         func_decl.ret_type.clone(), // specialized ret type
                     );
 
-                    func_call.dispatch = TypedFuncCallDispatch::Monomorph {
-                        func_decl_id,
-                        monomorph_id,
-                    };
-
-                    // analyze specialized function body
                     let monomorph_instance = this.monomorph_registry.get(monomorph_id);
 
+                    // analyze specialized function body
                     if !monomorph_instance.analyzed {
-                        let current_func = this.func_env.current_func.as_mut().unwrap();
+                        let monomorph_func_env = this.create_monomorph_func_env(func_decl.as_func_type());
 
-                        current_func.params = func_decl.params.as_func_type_params();
-                        current_func.ret_type = Box::new(func_decl.ret_type.clone());
+                        this.with_func_env(monomorph_func_env, |this| {
+                            let body_id = func_decl.body.unwrap();
 
-                        let body_id = func_decl.body.unwrap();
+                            let template_body = this.decl_tables.body(body_id);
 
-                        let mut body = this.decl_tables.body(body_id);
+                            // create per‑monomorph locals and remap decl ids
+                            let mut specialized_body = this.specialize_func_body(&template_body, &mut func_decl.params);
 
-                        let diag_len = this.reporter.len();
+                            let diag_len = this.reporter.len();
 
-                        // substitute param variables type
-                        this.substitute_monomorphized_func_params_in_body(func_decl.params);
+                            // analyze body
+                            this.analyze_func_body(&mut specialized_body, &func_decl.ret_type);
 
-                        // analyze body
-                        this.analyze_func_body(&mut body, &func_decl.ret_type);
+                            // insert monomorphized body
+                            let monomorph_body_id = this.monomorph_registry.insert_monomorph_body(specialized_body);
 
-                        // insert monomorphized body
-                        let monomorph_body_id = this.monomorph_registry.insert_monomorph_body(body);
+                            let diag_originated_from = format_loc(&this.source_map, func_call.loc);
 
-                        let diag_originated_from = format_loc(&this.source_map, func_call.loc);
+                            if this.reporter.len() > diag_len {
+                                this.apply_error_originated_from_on_diag_range(diag_len..=diag_len, |diag| {
+                                    diag.hint = Some(format!(
+                                        "Error originates from this function call at {}.",
+                                        diag_originated_from,
+                                    ));
+                                });
+                            }
 
-                        if this.reporter.len() > diag_len {
-                            this.apply_error_originated_from_on_diag_range(diag_len..=diag_len, |diag| {
-                                diag.hint = Some(format!(
-                                    "Error originates from this function call at {}.",
-                                    diag_originated_from,
-                                ));
+                            this.monomorph_registry.update(monomorph_id, |_monomorph_instance| {
+                                _monomorph_instance.analyzed = true;
+                                _monomorph_instance.body = Some(monomorph_body_id);
+
+                                // params must be cloned after specialization so that each monomorph
+                                // owns updated var_decl_ids; avoids aliasing the template params and ensures
+                                // decl_id mappings are consistent across monomorph instances.
+                                _monomorph_instance.params = func_decl.params.clone();
                             });
-                        }
-
-                        this.monomorph_registry.update(monomorph_id, |_monomorph_instance| {
-                            _monomorph_instance.analyzed = true;
-                            _monomorph_instance.body = Some(monomorph_body_id);
                         });
                     }
+
+                    func_call.dispatch = TypedFuncCallDispatch::Monomorph { monomorph_id };
 
                     Some(func_decl.ret_type)
                 })
@@ -293,15 +287,15 @@ impl<'a> AnalysisContext<'a> {
         let variadic_args = &mut args[static_params_len..];
 
         if let Some(variadic) = &func_decl.params.variadic {
-            match variadic.clone() {
-                TypedFuncVariadicParam::Typed(_, variadic_param_type) => {
+            match &variadic {
+                TypedFuncVariadicParam::Typed { ty, .. } => {
                     for (i, arg) in variadic_args.iter_mut().enumerate() {
                         if let Some(arg_type) = self.analyze_expr(arg, arg.sema_type.clone()) {
-                            if !self.is_assignable_to(arg_type.clone(), variadic_param_type.clone(), loc) {
+                            if !self.is_assignable_to(arg_type.clone(), ty.clone(), loc) {
                                 self.reporter.report(Diag {
                                     level: DiagLevel::Error,
                                     kind: Box::new(AnalyzerDiagKind::FuncCallVariadicParamTypeMismatch {
-                                        param_type: format_sema_type(variadic_param_type.clone(), self.formatter),
+                                        param_type: format_sema_type(ty.clone(), self.formatter),
                                         argument_type: format_sema_type(arg_type, self.formatter),
                                         argument_idx: (i + static_params_len) as u32,
                                     }),
@@ -393,7 +387,7 @@ impl<'a> AnalysisContext<'a> {
 
             if let Some(variadic) = &func_type.params.variadic {
                 match *variadic.clone() {
-                    TypedFuncTypeVariadicParams::Typed(variadic_param_type) => {
+                    TypedFuncTypeVariadicParam::Typed(variadic_param_type) => {
                         for (i, arg) in variadic_args.iter_mut().enumerate() {
                             if let Some(arg_type) = self.analyze_expr(arg, arg.sema_type.clone()) {
                                 if !self.is_assignable_to(arg_type.clone(), variadic_param_type.clone(), loc) {
@@ -411,7 +405,7 @@ impl<'a> AnalysisContext<'a> {
                             }
                         }
                     }
-                    TypedFuncTypeVariadicParams::UntypedCStyle => {
+                    TypedFuncTypeVariadicParam::UntypedCStyle => {
                         for arg in variadic_args.iter_mut() {
                             self.analyze_expr(arg, arg.sema_type.clone());
                         }
@@ -536,42 +530,4 @@ impl<'a> AnalysisContext<'a> {
 
     //     result
     // }
-
-    fn substitute_func_params(&self, mut params: TypedFuncParams) -> TypedFuncParams {
-        params.list.iter_mut().for_each(|param_kind| match param_kind {
-            TypedFuncParamKind::FuncParam(func_param) => {
-                func_param.ty = self.substitute_type(&func_param.ty);
-
-                if let Some(infer) = &self.func_env.infer {
-                    func_param.ty = infer.resolve(&func_param.ty);
-                }
-            }
-            TypedFuncParamKind::SelfModifier(self_modifier) => {
-                self_modifier.ty = self.substitute_type(&self_modifier.ty);
-
-                if let Some(infer) = &self.func_env.infer {
-                    self_modifier.ty = infer.resolve(&self_modifier.ty);
-                }
-            }
-        });
-
-        params
-    }
-
-    fn substitute_monomorphized_func_params_in_body(&self, params: TypedFuncParams) {
-        for param_kind in &params.list {
-            let var_decl_id = param_kind.var_decl_id().unwrap();
-            let mut param_type = param_kind.param_type();
-
-            param_type = self.substitute_type(&param_type);
-
-            if let Some(infer) = &self.func_env.infer {
-                param_type = infer.resolve(&param_type);
-            }
-
-            self.decl_tables.with_var_decl_mut(var_decl_id, |_var_decl| {
-                _var_decl.ty = Some(param_type);
-            })
-        }
-    }
 }

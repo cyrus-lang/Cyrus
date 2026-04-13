@@ -20,15 +20,15 @@ use crate::resolver::ConstResolver;
 use crate::value::ConstValue;
 use cyrusc_ast::operators::{InfixOperator, PrefixOperator};
 use cyrusc_tokens::literals::LiteralKind;
-use cyrusc_typed_ast::SymbolID;
+use cyrusc_typed_ast::decls::DeclID;
 use cyrusc_typed_ast::exprs::*;
 use cyrusc_typed_ast::types::SemaType;
 use std::collections::HashMap;
 
 pub struct ConstEvaluator<'a, R: ConstResolver> {
     pub resolver: &'a mut R,
-    cache: HashMap<SymbolID, ConstValue>,
-    evaluating: HashMap<SymbolID, ()>,
+    cache: HashMap<DeclID, ConstValue>,
+    evaluating: HashMap<DeclID, ()>,
 }
 
 impl<'a, R: ConstResolver> ConstEvaluator<'a, R> {
@@ -42,7 +42,7 @@ impl<'a, R: ConstResolver> ConstEvaluator<'a, R> {
 
     pub fn eval_expr(&mut self, expr: &TypedExprStmt) -> Result<ConstValue, ConstEvalError> {
         let raw = match &expr.kind {
-            TypedExprKind::Symbol(symbol_expr) => self.eval_symbol(symbol_expr.symbol_id),
+            TypedExprKind::Symbol(symbol_expr) => self.eval_symbol(symbol_expr.decl_id),
             TypedExprKind::Literal(lit) => self.eval_literal(lit),
             TypedExprKind::Prefix(prefix) => self.eval_prefix(prefix),
             TypedExprKind::Infix(infix) => self.eval_infix(infix),
@@ -61,30 +61,30 @@ impl<'a, R: ConstResolver> ConstEvaluator<'a, R> {
         }
     }
 
-    fn eval_symbol(&mut self, symbol_id: SymbolID) -> Result<ConstValue, ConstEvalError> {
-        if let Some(const_value) = self.cache.get(&symbol_id) {
+    fn eval_symbol(&mut self, decl_id: DeclID) -> Result<ConstValue, ConstEvalError> {
+        if let Some(const_value) = self.cache.get(&decl_id) {
             return Ok(const_value.clone());
         }
 
-        if self.evaluating.contains_key(&symbol_id) {
-            return Err(ConstEvalError::CyclicConst(symbol_id));
+        if self.evaluating.contains_key(&decl_id) {
+            return Err(ConstEvalError::CyclicConst(decl_id));
         }
 
-        if !self.resolver.is_symbol_const(symbol_id) {
-            return Err(ConstEvalError::NonConstSymbol(symbol_id));
+        if !self.resolver.is_decl_const(decl_id) {
+            return Err(ConstEvalError::NonConstSymbol(decl_id));
         }
 
-        self.evaluating.insert(symbol_id, ());
+        self.evaluating.insert(decl_id, ());
 
         let expr = self
             .resolver
-            .resolve_symbol_expr(symbol_id)
+            .resolve_symbol_expr(decl_id)
             .ok_or(ConstEvalError::UnsupportedExpr)?;
 
         let const_value = self.eval_expr(&expr)?;
 
-        self.cache.insert(symbol_id, const_value.clone());
-        self.evaluating.remove(&symbol_id);
+        self.cache.insert(decl_id, const_value.clone());
+        self.evaluating.remove(&decl_id);
 
         Ok(const_value)
     }

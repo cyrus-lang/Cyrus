@@ -33,7 +33,6 @@ use cyrusc_internal::{
     },
 };
 use cyrusc_source_loc::Loc;
-use cyrusc_typed_ast::exprs::TypedIdent;
 use inkwell::{
     basic_block::BasicBlock,
     context::AsContextRef,
@@ -310,42 +309,42 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         pair_struct.into()
     }
 
-    // FIXME
-    pub(crate) fn emit_switch_on_enum_export_fields(
-        &self,
-        payload_alloca: PointerValue<'ll>,
-        variant_field_types: Vec<CIRType>,
-        payload_struct_ty: StructType<'ll>,
-        exported_fields: &Vec<(TypedIdent, CIRType)>,
-        loc: Loc,
-    ) {
-        todo!();
+    // // FIXME
+    // pub(crate) fn emit_switch_on_enum_export_fields(
+    //     &self,
+    //     payload_alloca: PointerValue<'ll>,
+    //     variant_field_types: Vec<CIRType>,
+    //     payload_struct_ty: StructType<'ll>,
+    //     exported_fields: &Vec<(TypedIdent, CIRType)>,
+    //     loc: Loc,
+    // ) {
+    //     todo!();
 
-        // let mut irreg = self.irreg.borrow_mut();
+    //     // let mut irreg = self.irreg.borrow_mut();
 
-        // let elements: Vec<CIRType> = exported_fields.iter().map(|(_, ty)| ty.clone()).collect();
-        // let tuple_type = CIRType::Tuple(CIRTupleType { elements, loc });
-        // let layout = type_layout(&self.target.info, &tuple_type);
+    //     // let elements: Vec<CIRType> = exported_fields.iter().map(|(_, ty)| ty.clone()).collect();
+    //     // let tuple_type = CIRType::Tuple(CIRTupleType { elements, loc });
+    //     // let layout = type_layout(&self.target.info, &tuple_type);
 
-        // for (i, (exported_field, _)) in exported_fields.iter().enumerate() {
-        //     let index = layout.lookup_field_index(i).unwrap();
+    //     // for (i, (exported_field, _)) in exported_fields.iter().enumerate() {
+    //     //     let index = layout.lookup_field_index(i).unwrap();
 
-        //     let ptr = self
-        //         .llvmbuilder
-        //         .build_struct_gep(
-        //             payload_struct_ty,
-        //             payload_alloca,
-        //             index,
-        //             &format!("export_field.{}", exported_field.name),
-        //         )
-        //         .unwrap();
+    //     //     let ptr = self
+    //     //         .llvmbuilder
+    //     //         .build_struct_gep(
+    //     //             payload_struct_ty,
+    //     //             payload_alloca,
+    //     //             index,
+    //     //             &format!("export_field.{}", exported_field.name),
+    //     //         )
+    //     //         .unwrap();
 
-        //     let field_ty = &variant_field_types[i];
-        //     irreg.insert(exported_field.symbol_id.0, LocalIRValue::LValue(ptr, field_ty.clone()));
-        // }
+    //     //     let field_ty = &variant_field_types[i];
+    //     //     irreg.insert(exported_field.symbol_id.0, LocalIRValue::LValue(ptr, field_ty.clone()));
+    //     // }
 
-        // drop(irreg);
-    }
+    //     // drop(irreg);
+    // }
 
     // FIXME
     fn emit_switch_on_scalar_enum(

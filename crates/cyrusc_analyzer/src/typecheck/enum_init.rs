@@ -277,7 +277,7 @@ impl<'a> AnalysisContext<'a> {
         &mut self,
         struct_variant_init: &mut TypedEnumStructVariantInit,
     ) -> Option<SemaType> {
-        let Some(symbol_id) = struct_variant_init.operand.kind.as_symbol_id() else {
+        let Some(decl_id) = struct_variant_init.operand.kind.as_decl_id() else {
             self.reporter.report(Diag {
                 level: DiagLevel::Error,
                 kind: Box::new(AnalyzerDiagKind::InvalidEnumConstructorTarget {
@@ -289,11 +289,11 @@ impl<'a> AnalysisContext<'a> {
             return None;
         };
 
-        let Some(enum_decl_id) = self.query.get_enum(symbol_id) else {
+        let Some(enum_decl_id) = decl_id.as_enum() else {
             self.reporter.report(Diag {
                 level: DiagLevel::Error,
                 kind: Box::new(AnalyzerDiagKind::NonEnumSymbol {
-                    symbol_name: self.formatter.format_symbol_name(symbol_id),
+                    symbol_name: self.formatter.format_decl(decl_id),
                 }),
                 loc: Some(struct_variant_init.loc),
                 hint: None,
@@ -304,7 +304,7 @@ impl<'a> AnalysisContext<'a> {
         let enum_decl = self.decl_tables.enum_decl(enum_decl_id);
 
         let Some(variant) = enum_decl.lookup_variant(&struct_variant_init.ident.value) else {
-            let enum_name = self.formatter.format_symbol_name(symbol_id);
+            let enum_name = self.formatter.format_decl(decl_id);
 
             self.reporter.report(Diag {
                 level: DiagLevel::Error,
@@ -363,10 +363,7 @@ impl<'a> AnalysisContext<'a> {
         }))
     }
 
-    fn infer_enum_decl_from_expected_type(
-        &self,
-        expected_type: Option<SemaType>,
-    ) -> Option<(EnumDeclID, EnumDecl)> {
+    fn infer_enum_decl_from_expected_type(&self, expected_type: Option<SemaType>) -> Option<(EnumDeclID, EnumDecl)> {
         expected_type.and_then(|sema_type| {
             sema_type
                 .as_enum()

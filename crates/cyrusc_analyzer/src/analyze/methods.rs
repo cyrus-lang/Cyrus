@@ -54,20 +54,19 @@ impl<'a> AnalysisContext<'a> {
     }
 
     pub(crate) fn analyze_method_body(&mut self, method_decl_id: MethodDeclID, method_decl: &mut MethodDecl) {
-        let parent_method = self.func_env.current_method;
-        let parent_func = self.func_env.current_func.clone();
-
-        self.func_env.current_method = Some(method_decl_id);
-        self.func_env.current_func = Some(method_decl.func_decl.as_func_type());
+        let func_type = method_decl.func_decl.as_func_type();
+        let method_env = self.create_method_env(method_decl_id, func_type.clone());
 
         let body_id = method_decl.body.unwrap();
-        let mut body = self.decl_tables.body(body_id);
-        self.analyze_func_body(&mut body, &method_decl.func_decl.ret_type);
-        self.decl_tables.with_body_mut(body_id, |_body| {
-            *_body = body;
-        });
 
-        self.func_env.current_method = parent_method;
-        self.func_env.current_func = parent_func;
+        self.with_func_env(method_env, |this| {
+            let mut body = this.decl_tables.body(body_id);
+            
+            this.analyze_func_body(&mut body, &method_decl.func_decl.ret_type);
+
+            this.decl_tables.with_body_mut(body_id, |_body| {
+                *_body = body;
+            });
+        });
     }
 }

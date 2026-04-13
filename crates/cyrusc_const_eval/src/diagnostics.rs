@@ -15,12 +15,12 @@
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
 
-use cyrusc_typed_ast::SymbolID;
+use cyrusc_typed_ast::decls::DeclID;
 
 #[derive(Debug)]
 pub enum ConstEvalError {
-    NonConstSymbol(SymbolID),
-    CyclicConst(SymbolID),
+    NonConstSymbol(DeclID),
+    CyclicConst(DeclID),
     UnsupportedExpr,
     DivisionByZero,
     TypeError,

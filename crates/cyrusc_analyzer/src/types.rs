@@ -22,7 +22,7 @@ use cyrusc_source_loc::Loc;
 use cyrusc_typed_ast::{
     decls::{EnumDecl, StructDecl, TypedefDeclID, UnionDecl},
     format::format_sema_type,
-    stmts::{TypedEnumVariant, TypedFuncTypeParams, TypedFuncTypeVariadicParams, TypedTypeArg, TypedTypeArgs},
+    stmts::{TypedEnumVariant, TypedFuncTypeParams, TypedFuncTypeVariadicParam, TypedTypeArg, TypedTypeArgs},
     types::{
         InterfaceType, NamedType, PlainType, SemaType, TypeDeclID, TypedArrayCapacity, TypedArrayType, TypedFuncType,
         TypedTupleType,
@@ -589,9 +589,9 @@ impl<'a> AnalysisContext<'a> {
 
                     variadic: func.params.variadic.clone().map(|variadic| {
                         Box::new(match *variadic {
-                            TypedFuncTypeVariadicParams::UntypedCStyle => TypedFuncTypeVariadicParams::UntypedCStyle,
-                            TypedFuncTypeVariadicParams::Typed(ty) => {
-                                TypedFuncTypeVariadicParams::Typed(self.expand_sema_type(ty, loc))
+                            TypedFuncTypeVariadicParam::UntypedCStyle => TypedFuncTypeVariadicParam::UntypedCStyle,
+                            TypedFuncTypeVariadicParam::Typed(ty) => {
+                                TypedFuncTypeVariadicParam::Typed(self.expand_sema_type(ty, loc))
                             }
                         })
                     }),
@@ -599,7 +599,6 @@ impl<'a> AnalysisContext<'a> {
                 let ret_type = Box::new(self.expand_sema_type(*func.ret_type.clone(), loc));
 
                 SemaType::FuncType(TypedFuncType {
-                    symbol_id: func.symbol_id,
                     params,
                     ret_type,
                     is_public: func.is_public,

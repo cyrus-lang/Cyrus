@@ -17,7 +17,6 @@
 
 use crate::{context::AnalysisContext, diagnostics::AnalyzerDiagKind};
 use cyrusc_diagcentral::{Diag, DiagLevel};
-use cyrusc_internal::symbols::symbols::SymbolEntryKind;
 use cyrusc_typed_ast::{
     exprs::{
         MemoryLocation, TypedEnumInit, TypedEnumInitArgs, TypedExprKind, TypedExprStmt, TypedUnnamedEnumValueKind,
@@ -35,10 +34,8 @@ impl<'a> AnalysisContext<'a> {
             return;
         }
 
-        if let Some(symbol_id) = field_access.operand.kind.as_symbol_id() {
-            let symbol_entry = self.query.lookup_symbol_entry(symbol_id).unwrap();
-
-            if let SymbolEntryKind::Enum(enum_decl_id) = symbol_entry.kind {
+        if let Some(decl_id) = field_access.operand.kind.as_decl_id() {
+            if let Some(enum_decl_id) = decl_id.as_enum() {
                 let enum_decl = self.decl_tables.enum_decl(enum_decl_id);
 
                 // variant exists?
@@ -98,10 +95,8 @@ impl<'a> AnalysisContext<'a> {
             });
         }
 
-        if let Some(symbol_id) = method_call.operand.kind.as_symbol_id() {
-            let symbol_entry = self.query.lookup_symbol_entry(symbol_id).unwrap();
-
-            if let SymbolEntryKind::Enum(enum_decl_id) = symbol_entry.kind {
+        if let Some(decl_id) = method_call.operand.kind.as_decl_id() {
+            if let Some(enum_decl_id) = decl_id.as_enum() {
                 let enum_decl = self.decl_tables.enum_decl(enum_decl_id);
 
                 // lower only if variant exists

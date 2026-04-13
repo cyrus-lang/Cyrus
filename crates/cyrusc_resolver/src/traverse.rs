@@ -356,11 +356,15 @@ impl Resolver {
     fn resolve_ident_expr(&mut self, ident: &Ident) -> Option<TypedExprStmt> {
         let symbol_id = self.resolve_ident(ident)?;
 
-        Some(TypedExprStmt {
-            kind: TypedExprKind::Symbol(TypedSymbolExpr::new(symbol_id, ident.loc)),
-            sema_type: None,
-            mloc: MemoryLocation::LValue,
-            loc: ident.loc,
+        self.lookup_symbol_entry(symbol_id).map(|symbol_entry| {
+            let decl_id = self.resolve_symbol_entry_as_decl_id(&symbol_entry);
+
+            TypedExprStmt {
+                kind: TypedExprKind::Symbol(TypedSymbolExpr::new(decl_id, ident.loc)),
+                sema_type: None,
+                mloc: MemoryLocation::LValue,
+                loc: ident.loc,
+            }
         })
     }
 
@@ -460,7 +464,10 @@ impl Resolver {
 
     fn resolve_ident_type(&mut self, ident: Ident) -> Option<SemaType> {
         if let Some(symbol_id) = self.resolve_local_scope_symbol(&ident.value) {
-            return Some(SemaType::Unresolved(UnresolvedType::Symbol(symbol_id)));
+            let symbol_entry = self.lookup_symbol_entry(symbol_id)?;
+            let decl_id = self.resolve_symbol_entry_as_decl_id(&symbol_entry);
+
+            return Some(SemaType::Unresolved(UnresolvedType::Decl(decl_id)));
         }
 
         if let Some(generic_param_id) = self.resolve_generic_param_as_type(&ident) {
@@ -468,7 +475,10 @@ impl Resolver {
         }
 
         if let Some(symbol_id) = self.lookup_symbol_id(self.current_scope.unwrap(), &ident.value) {
-            return Some(SemaType::Unresolved(UnresolvedType::Symbol(symbol_id)));
+            let symbol_entry = self.lookup_symbol_entry(symbol_id)?;
+            let decl_id = self.resolve_symbol_entry_as_decl_id(&symbol_entry);
+
+            return Some(SemaType::Unresolved(UnresolvedType::Decl(decl_id)));
         }
 
         self.reporter.report(Diag {
@@ -497,7 +507,13 @@ impl Resolver {
 
     fn resolve_module_import_type(&mut self, module_import: ASTModuleImport) -> Option<SemaType> {
         self.resolve_module_import(module_import.clone())
-            .map(|symbol_id| SemaType::Unresolved(UnresolvedType::Symbol(symbol_id)))
+            .and_then(|symbol_id| {
+                self.lookup_symbol_entry(symbol_id).map(|symbol_entry| {
+                    let decl_id = self.resolve_symbol_entry_as_decl_id(&symbol_entry);
+
+                    SemaType::Unresolved(UnresolvedType::Decl(decl_id))
+                })
+            })
             .or_else(|| {
                 self.reporter.report(Diag {
                     level: DiagLevel::Error,
@@ -519,11 +535,11 @@ impl Resolver {
         }
 
         let variadic = match func.params.variadic {
-            Some(FuncTypeVariadicParams::UntypedCStyle) => Some(Box::new(TypedFuncTypeVariadicParams::UntypedCStyle)),
+            Some(FuncTypeVariadicParams::UntypedCStyle) => Some(Box::new(TypedFuncTypeVariadicParam::UntypedCStyle)),
 
             Some(FuncTypeVariadicParams::Typed(spec)) => {
                 let ty = self.resolve_type(spec, loc)?;
-                Some(Box::new(TypedFuncTypeVariadicParams::Typed(ty)))
+                Some(Box::new(TypedFuncTypeVariadicParam::Typed(ty)))
             }
 
             None => None,
@@ -532,7 +548,6 @@ impl Resolver {
         let ret_type = self.resolve_type(*func.ret_type, loc)?;
 
         Some(SemaType::FuncType(TypedFuncType {
-            symbol_id: None,
             params: TypedFuncTypeParams { list: params, variadic },
             ret_type: Box::new(ret_type),
             is_public: true,
@@ -543,7 +558,7 @@ impl Resolver {
     fn resolve_generic_inst_type(&mut self, inst: GenericInst, loc: Loc) -> Option<SemaType> {
         let base_type = self.resolve_type(*inst.base.clone(), loc)?;
 
-        let base = match base_type.const_inner().as_unresolved_symbol_id() {
+        let base = match base_type.const_inner().as_unresolved_decl_id() {
             Some(id) => id,
             None => {
                 self.reporter.report(Diag {
@@ -561,7 +576,10 @@ impl Resolver {
 
         let type_args = self.resolve_type_args(&inst.type_args)?;
 
-        Some(SemaType::Unresolved(UnresolvedType::GenericInst { base, type_args }))
+        Some(SemaType::Unresolved(UnresolvedType::GenericInst {
+            base_decl_id: base,
+            type_args,
+        }))
     }
 
     fn resolve_tuple_type(&mut self, tuple: TupleType) -> Option<SemaType> {
@@ -612,7 +630,6 @@ impl Resolver {
         union_modifiers.repr_attr = union_type.repr_attr;
 
         let union_decl_id = self.decl_tables.insert_union(UnionDecl {
-            symbol_id: None,
             name: None,
             fields,
             methods: MethodDecls::new(),
@@ -640,7 +657,6 @@ impl Resolver {
         enum_modifiers.repr_attr = enum_type.repr_attr;
 
         let enum_decl_id = self.decl_tables.insert_enum(EnumDecl {
-            symbol_id: None,
             name: None,
             variants,
             tag_type,
@@ -679,7 +695,6 @@ impl Resolver {
         struct_modifiers.repr_attr = struct_type.repr_attr;
 
         let struct_decl_id = self.decl_tables.insert_struct(StructDecl {
-            symbol_id: None,
             name: None,
             fields,
             impls: Vec::new(),
@@ -797,7 +812,7 @@ impl Resolver {
             });
 
             Some(TypedStmt::Typedef(TypedTypedefStmt {
-                symbol_id,
+                typedef_decl_id,
                 name: typedef.ident.as_string(),
                 ty: sema_type,
                 generic_params,
@@ -891,7 +906,6 @@ impl Resolver {
                     is_func_decl: true,
                     body: None,
 
-                    symbol_id: None,
                     name: func_decl_stmt.ident.as_string(),
                     generic_params: method_generic_params,
                     params: TypedFuncParams { list: params, variadic },
@@ -906,7 +920,6 @@ impl Resolver {
             }
 
             let interface_decl_id = this.decl_tables.insert_interface(InterfaceDecl {
-                symbol_id,
                 name: name.clone(),
                 methods: interface_methods.clone(),
                 generic_params: generic_params.clone(),
@@ -920,7 +933,7 @@ impl Resolver {
 
             Some(TypedStmt::Interface(TypedInterfaceStmt {
                 name,
-                symbol_id,
+                interface_decl_id,
                 methods: interface_methods,
                 generic_params,
                 vis: interface.vis.clone(),
@@ -959,7 +972,6 @@ impl Resolver {
             let impls = this.resolve_object_implements_interfaces(&union_decl.impls, union_decl.loc)?;
 
             let union_decl_id = this.decl_tables.insert_union(UnionDecl {
-                symbol_id: Some(symbol_id),
                 name: Some(name.clone()),
                 fields: typed_union_fields.clone(),
                 methods: methods.clone(),
@@ -975,7 +987,7 @@ impl Resolver {
             });
 
             Some(TypedStmt::Union(TypedUnionStmt {
-                symbol_id,
+                union_decl_id,
                 name,
                 fields: typed_union_fields,
                 methods,
@@ -1107,7 +1119,6 @@ impl Resolver {
             let impls = this.resolve_object_implements_interfaces(&enum_decl.impls, enum_decl.loc)?;
 
             let enum_decl_id = this.decl_tables.insert_enum(EnumDecl {
-                symbol_id: Some(symbol_id),
                 name: Some(name.clone()),
                 variants: variants.clone(),
                 methods: methods.clone(),
@@ -1124,7 +1135,7 @@ impl Resolver {
             });
 
             Some(TypedStmt::Enum(TypedEnumStmt {
-                symbol_id,
+                enum_decl_id,
                 name,
                 variants,
                 methods,
@@ -1154,7 +1165,6 @@ impl Resolver {
         };
 
         let global_var_decl_id = self.decl_tables.insert_global_var(GlobalVarDecl {
-            symbol_id,
             name: name.clone(),
             ty: sema_type.clone(),
             rhs: typed_expr.clone(),
@@ -1169,8 +1179,8 @@ impl Resolver {
         });
 
         Some(TypedStmt::GlobalVar(TypedGlobalVarStmt {
+            global_var_decl_id,
             file_id: self.current_module_file_id.unwrap(),
-            symbol_id,
             name,
             ty: sema_type,
             expr: typed_expr,
@@ -1210,7 +1220,6 @@ impl Resolver {
                     is_func_decl: false,
                     body: None,
 
-                    symbol_id: None,
                     name: method_name.clone(),
                     params: TypedFuncParams { list: params, variadic },
                     ret_type,
@@ -1334,7 +1343,6 @@ impl Resolver {
             let impls = this.resolve_object_implements_interfaces(&struct_decl.impls, struct_decl.loc)?;
 
             let struct_decl_id = this.decl_tables.insert_struct(StructDecl {
-                symbol_id: Some(symbol_id),
                 name: Some(name.clone()),
                 fields: typed_struct_fields.clone(),
                 generic_params: generic_params.clone(),
@@ -1350,7 +1358,7 @@ impl Resolver {
             });
 
             Some(TypedStmt::Struct(TypedStructStmt {
-                symbol_id,
+                struct_decl_id,
                 name,
                 fields: typed_struct_fields,
                 methods,
@@ -1469,16 +1477,13 @@ impl Resolver {
                 let ty = self.resolve_type(type_spec.clone(), ident.loc)?;
 
                 let var_decl_id = self.insert_variable_decl(ident, Some(ty.clone()), None, false);
-                let symbol_id = self.insert_variable_symbol_to_current_scope(ident, var_decl_id)?;
+                self.insert_variable_symbol_to_current_scope(ident, var_decl_id)?;
 
-                Some(Some(TypedFuncVariadicParam::Typed(
-                    TypedIdent {
-                        name: ident.as_string(),
-                        symbol_id,
-                        loc: ident.loc,
-                    },
+                Some(Some(TypedFuncVariadicParam::Typed {
+                    var_decl_id,
                     ty,
-                )))
+                    loc: ident.loc,
+                }))
             }
         }
     }
@@ -1504,7 +1509,6 @@ impl Resolver {
             is_func_decl: true,
             body: None,
 
-            symbol_id: Some(symbol_id),
             name,
             generic_params: generic_params.clone(),
             params: TypedFuncParams {
@@ -1523,7 +1527,7 @@ impl Resolver {
         });
 
         Some(TypedStmt::FuncDecl(TypedFuncDeclStmt {
-            symbol_id,
+            func_decl_id,
             name: ast_func_decl.ident.as_string(),
             generic_params,
             params: TypedFuncParams {
@@ -1559,7 +1563,6 @@ impl Resolver {
             is_func_decl: false,
             body: None,
 
-            symbol_id: Some(symbol_id),
             name: func_def.ident.as_string(),
             generic_params: generic_params.clone(),
             params: TypedFuncParams {
@@ -1604,7 +1607,7 @@ impl Resolver {
         }
 
         Some(TypedStmt::FuncDef(TypedFuncDefStmt {
-            symbol_id,
+            func_decl_id,
             name: func_def.ident.as_string(),
             generic_params,
             params: TypedFuncParams { list: params, variadic },
@@ -1685,7 +1688,7 @@ impl Resolver {
 
         let pattern = self.resolve_export_pattern(&export_tuple.pattern, export_tuple.is_const)?;
 
-        Some(TypedStmt::ExportTuple(TypedExportTupleStmt {
+        Some(TypedStmt::TupleExport(TypedTupleExportStmt {
             pattern,
             rhs: typed_rhs,
             is_const: export_tuple.is_const,
@@ -1693,7 +1696,11 @@ impl Resolver {
         }))
     }
 
-    fn resolve_export_pattern(&mut self, pattern: &ExportPattern, stmt_is_const: bool) -> Option<TypedExportPattern> {
+    fn resolve_export_pattern(
+        &mut self,
+        pattern: &ExportPattern,
+        stmt_is_const: bool,
+    ) -> Option<TypedTupleExportPattern> {
         let kind = match &pattern.kind {
             ExportPatternKind::Ident(ident) => {
                 let is_const = pattern
@@ -1706,9 +1713,9 @@ impl Resolver {
 
                 let var_decl_id = self.insert_variable_decl(ident, None, None, is_const);
 
-                let symbol_id = self.insert_variable_symbol_to_current_scope(ident, var_decl_id)?;
+                self.insert_variable_symbol_to_current_scope(ident, var_decl_id)?;
 
-                TypedExportPatternKind::Ident(symbol_id)
+                TypedTupleExportPatternKind::Ident(var_decl_id)
             }
 
             ExportPatternKind::Tuple(patterns) => {
@@ -1718,10 +1725,10 @@ impl Resolver {
                     typed_patterns.push(self.resolve_export_pattern(pat, stmt_is_const)?);
                 }
 
-                TypedExportPatternKind::Tuple(typed_patterns)
+                TypedTupleExportPatternKind::Tuple(typed_patterns)
             }
 
-            ExportPatternKind::Ignore => TypedExportPatternKind::Ignore,
+            ExportPatternKind::Ignore => TypedTupleExportPatternKind::Ignore,
         };
 
         let ty = pattern
@@ -1729,7 +1736,7 @@ impl Resolver {
             .as_ref()
             .and_then(|t| self.resolve_type(t.clone(), pattern.loc));
 
-        Some(TypedExportPattern {
+        Some(TypedTupleExportPattern {
             kind,
             ty,
             mutability: pattern.mutability,
@@ -1910,14 +1917,14 @@ impl Resolver {
 
             // ident binding
             SwitchCasePattern::Binding(ident) => {
-                // treat like 'let ident'
+                // treat like 'var ident'
                 let var_decl_id = self.insert_variable_decl(ident, None, None, false);
 
-                let symbol_id = self.insert_variable_symbol_to_current_scope(ident, var_decl_id)?;
+                self.insert_variable_symbol_to_current_scope(ident, var_decl_id)?;
 
                 Some(TypedSwitchCasePattern::Binding {
                     name: ident.clone(),
-                    symbol_id,
+                    var_decl_id,
                 })
             }
         }
@@ -1943,10 +1950,10 @@ impl Resolver {
         let rhs = var.rhs.as_ref().and_then(|expr| self.resolve_expr(expr));
 
         let var_decl_id = self.insert_variable_decl(&var.ident, ty.clone(), rhs.clone(), var.is_const);
-        let symbol_id = self.insert_variable_symbol_to_current_scope(&var.ident, var_decl_id)?;
+        self.insert_variable_symbol_to_current_scope(&var.ident, var_decl_id)?;
 
         Some(TypedVarStmt {
-            symbol_id,
+            var_decl_id,
             name: var.ident.as_string(),
             ty,
             rhs,
@@ -2026,13 +2033,38 @@ impl Resolver {
 
     #[inline]
     fn resolve_module_import_expr(&mut self, module_import: &ASTModuleImport) -> Option<TypedExprStmt> {
-        self.resolve_module_import(module_import.clone())
-            .map(|symbol_id| TypedExprStmt {
-                kind: TypedExprKind::Symbol(TypedSymbolExpr::new(symbol_id, module_import.loc)),
-                sema_type: None,
-                mloc: MemoryLocation::LValue,
-                loc: module_import.loc,
+        self.resolve_module_import(module_import.clone()).and_then(|symbol_id| {
+            self.lookup_symbol_entry(symbol_id).map(|symbol_entry| {
+                let decl_id = self.resolve_symbol_entry_as_decl_id(&symbol_entry);
+
+                TypedExprStmt {
+                    kind: TypedExprKind::Symbol(TypedSymbolExpr::new(decl_id, module_import.loc)),
+                    sema_type: None,
+                    mloc: MemoryLocation::LValue,
+                    loc: module_import.loc,
+                }
             })
+        })
+    }
+
+    fn resolve_symbol_entry_as_decl_id(&self, symbol_entry: &SymbolEntry) -> DeclID {
+        match symbol_entry.kind {
+            SymbolEntryKind::Var(var_decl_id) => DeclID::Var(var_decl_id),
+            SymbolEntryKind::GlobalVar(global_var_decl_id) => DeclID::GlobalVar(global_var_decl_id),
+            SymbolEntryKind::Func(func_decl_id) => DeclID::Func(func_decl_id),
+            SymbolEntryKind::Method(method_decl_id) => DeclID::Method(method_decl_id),
+            SymbolEntryKind::Struct(struct_decl_id) => DeclID::Struct(struct_decl_id),
+            SymbolEntryKind::Enum(enum_decl_id) => DeclID::Enum(enum_decl_id),
+            SymbolEntryKind::Union(union_decl_id) => DeclID::Union(union_decl_id),
+            SymbolEntryKind::Interface(interface_decl_id) => DeclID::Interface(interface_decl_id),
+            SymbolEntryKind::Typedef(typedef_decl_id) => DeclID::Typedef(typedef_decl_id),
+
+            SymbolEntryKind::Namespace(_)
+            | SymbolEntryKind::Module(_)
+            | SymbolEntryKind::Unresolved
+            | SymbolEntryKind::ProxiedSymbol { .. }
+            | SymbolEntryKind::ProxiedModule { .. } => unreachable!(),
+        }
     }
 
     fn resolve_unnamed_union_value(&mut self, unnamed_union_value: &ASTUnnamedUnionValueExpr) -> Option<TypedExprStmt> {
@@ -2247,9 +2279,12 @@ impl Resolver {
 
         let type_args = self.resolve_type_args(&struct_init.type_args)?;
 
+        let symbol_entry = self.lookup_symbol_entry(symbol_id)?;
+        let decl_id = self.resolve_symbol_entry_as_decl_id(&symbol_entry);
+
         Some(TypedExprStmt {
             kind: TypedExprKind::StructInit(TypedStructInitExpr {
-                symbol_id: Some(symbol_id),
+                decl_id: Some(decl_id),
                 fields,
                 type_args,
                 loc: struct_init.loc,
@@ -2393,6 +2428,7 @@ impl Resolver {
             TypeSpecifier::ModuleImport(module_import) => self.resolve_module_import(module_import.clone())?,
             _ => {
                 let sema_type = self.resolve_type(type_spec.clone(), loc)?;
+
                 return Some(TypedExprStmt {
                     kind: TypedExprKind::SemaType(sema_type.clone()),
                     mloc: MemoryLocation::RValue,
@@ -2402,11 +2438,15 @@ impl Resolver {
             }
         };
 
-        Some(TypedExprStmt {
-            kind: TypedExprKind::Symbol(TypedSymbolExpr::new(symbol_id, loc)),
-            mloc: MemoryLocation::LValue,
-            sema_type: None,
-            loc,
+        self.lookup_symbol_entry(symbol_id).map(|symbol_entry| {
+            let decl_id = self.resolve_symbol_entry_as_decl_id(&symbol_entry);
+
+            TypedExprStmt {
+                kind: TypedExprKind::Symbol(TypedSymbolExpr::new(decl_id, loc)),
+                mloc: MemoryLocation::LValue,
+                sema_type: None,
+                loc,
+            }
         })
     }
 
@@ -2593,7 +2633,7 @@ impl Resolver {
         })
     }
 
-    fn insert_variable_symbol_to_current_scope(&mut self, ident: &Ident, var_decl_id: VarDeclID) -> Option<SymbolID> {
+    fn insert_variable_symbol_to_current_scope(&mut self, ident: &Ident, var_decl_id: VarDeclID) -> Option<()> {
         if self.current_local_scope().unwrap().contains(&ident.value) {
             self.reporter.report(Diag {
                 level: DiagLevel::Error,
@@ -2619,6 +2659,6 @@ impl Resolver {
             .unwrap()
             .insert(ident.as_string(), symbol_id);
 
-        Some(symbol_id)
+        Some(())
     }
 }

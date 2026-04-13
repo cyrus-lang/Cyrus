@@ -16,8 +16,8 @@
  */
 
 use crate::{
-    SymbolID, VTableID,
-    decls::{EnumDeclID, FuncDeclID, InterfaceDeclID, MonomorphID, StructDeclID, UnionDeclID},
+    VTableID,
+    decls::{DeclID, EnumDeclID, FuncDeclID, InterfaceDeclID, MonomorphID, StructDeclID, UnionDeclID},
     stmts::{TypedBlockStmt, TypedBuiltin, TypedFuncParams, TypedTypeArgs},
     types::{SemaType, TypedFuncType},
 };
@@ -78,7 +78,7 @@ pub enum TypedExprKind {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct TypedSymbolExpr {
-    pub symbol_id: SymbolID,
+    pub decl_id: DeclID,
     pub loc: Loc,
 }
 
@@ -127,13 +127,6 @@ pub struct TypedLiteralExpr {
 
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub struct TypedSelfType {
-    pub loc: Loc,
-}
-
-#[derive(Debug, Clone, Eq)]
-pub struct TypedIdent {
-    pub name: String,
-    pub symbol_id: SymbolID,
     pub loc: Loc,
 }
 
@@ -202,7 +195,7 @@ pub struct TypedDerefExpr {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct TypedStructInitExpr {
-    pub symbol_id: Option<SymbolID>,
+    pub decl_id: Option<DeclID>,
     pub type_args: TypedTypeArgs,
     pub fields: Vec<TypedFieldInit>,
     pub loc: Loc,
@@ -210,7 +203,7 @@ pub struct TypedStructInitExpr {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct TypedUnionInitExpr {
-    pub symbol_id: Option<SymbolID>,
+    pub decl_id: Option<DeclID>,
     pub type_args: TypedTypeArgs,
     pub field: Box<TypedFieldInit>,
     pub loc: Loc,
@@ -243,7 +236,6 @@ pub enum TypedFuncCallDispatch {
 
     /// Generic function instantiation
     Monomorph {
-        func_decl_id: FuncDeclID,
         monomorph_id: MonomorphID,
     },
 
@@ -393,9 +385,12 @@ impl TypedExprKind {
     }
 
     #[inline]
-    pub fn as_symbol_id(&self) -> Option<SymbolID> {
+    pub fn as_decl_id(&self) -> Option<DeclID> {
         match self {
-            TypedExprKind::Symbol(TypedSymbolExpr { symbol_id, .. }) => Some(*symbol_id),
+            TypedExprKind::Symbol(TypedSymbolExpr {
+                decl_id: symbol_decl_id,
+                ..
+            }) => Some(*symbol_decl_id),
             _ => None,
         }
     }
@@ -493,8 +488,8 @@ impl PartialEq for TypedUnnamedUnionValue {
 }
 
 impl TypedSymbolExpr {
-    pub fn new(symbol_id: SymbolID, loc: Loc) -> Self {
-        Self { symbol_id, loc }
+    pub fn new(decl_id: DeclID, loc: Loc) -> Self {
+        Self { decl_id, loc }
     }
 }
 

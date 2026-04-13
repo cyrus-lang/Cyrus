@@ -30,16 +30,14 @@ use cyrusc_tokens::literals::*;
 use cyrusc_typed_ast::TypedProgramTree;
 use cyrusc_typed_ast::decls::table::DeclTablesRegistry;
 use cyrusc_typed_ast::decls::*;
+use cyrusc_typed_ast::exprs::*;
 use cyrusc_typed_ast::stmts::*;
 use cyrusc_typed_ast::types::*;
-use cyrusc_typed_ast::{SymbolID, exprs::*};
 use fx_hash::FxHashMap;
-use std::env::var;
 use std::sync::{Arc, Mutex};
 
 struct CIRTraverse<'a> {
     program_tree: Box<TypedProgramTree>,
-    query: &'a dyn SymbolQuery,
     decl_tables: Arc<DeclTablesRegistry>,
     target: &'a ABITarget,
     module_name: String,
@@ -57,22 +55,19 @@ struct CIRTraverse<'a> {
 impl<'a> CIRTraverse<'a> {
     pub fn new(
         program_tree: Box<TypedProgramTree>,
-        query: &'a dyn SymbolQuery,
+        module_name: String,
         decl_tables: Arc<DeclTablesRegistry>,
         vtable_registry: Arc<Mutex<VTableRegistry>>,
         monomorph_registry: Arc<MonomorphRegistry>,
         target: &'a ABITarget,
     ) -> Self {
-        let module_name = query.lookup_module_name(program_tree.file_id).unwrap();
-
         Self {
             program_tree,
-            query,
+            module_name,
             decl_tables,
             vtable_registry,
             monomorph_registry,
             target,
-            module_name,
             next_irv_id: IRValueID(0),
             decl_to_ir_value_map: FxHashMap::default(),
             global_var_decls: FxHashMap::default(),
@@ -102,7 +97,7 @@ impl<'a> CIRTraverse<'a> {
         match stmt {
             TypedStmt::FuncDef(func_def) => {
                 if func_def.is_generic() {
-                    lowered_stmts.extend(self.lower_monomorphized_func_defs(func_def.symbol_id));
+                    lowered_stmts.extend(self.lower_monomorphized_func_defs(func_def.func_decl_id));
                 } else {
                     lowered_stmts.push(CIRStmt::FuncDef(self.lower_func_def(func_def, true)))
                 }
@@ -140,7 +135,7 @@ impl<'a> CIRTraverse<'a> {
             TypedStmt::While(while_stmt) => {
                 lowered_stmts.push(self.lower_while(while_stmt));
             }
-            TypedStmt::ExportTuple(export_tuple_stmt) => {
+            TypedStmt::TupleExport(export_tuple_stmt) => {
                 self.lower_export_tuple_to_vars(export_tuple_stmt)
                     .iter()
                     .for_each(|var| {
@@ -200,17 +195,16 @@ impl<'a> CIRTraverse<'a> {
         operand.clone()
     }
 
-    pub fn lower_export_tuple_to_vars(&mut self, export_tuple: &TypedExportTupleStmt) -> Vec<CIRVarStmt> {
+    pub fn lower_export_tuple_to_vars(&mut self, export_tuple: &TypedTupleExportStmt) -> Vec<CIRVarStmt> {
         let mut vars = Vec::new();
         self.lower_export_pattern_recursive(&export_tuple.pattern, &mut vars);
         vars
     }
 
-    fn lower_export_pattern_recursive(&mut self, pattern: &TypedExportPattern, vars: &mut Vec<CIRVarStmt>) {
+    fn lower_export_pattern_recursive(&mut self, pattern: &TypedTupleExportPattern, vars: &mut Vec<CIRVarStmt>) {
         match &pattern.kind {
-            TypedExportPatternKind::Ident(symbol_id) => {
-                let var_decl_id = self.query.get_var(*symbol_id).unwrap();
-                let var_decl = self.decl_tables.var_decl(var_decl_id);
+            TypedTupleExportPatternKind::Ident(var_decl_id) => {
+                let var_decl = self.decl_tables.var_decl(*var_decl_id);
 
                 let var_name = var_decl.name.clone();
                 let var_ty = self.lower_sema_type(&var_decl.ty.as_ref().unwrap());
@@ -218,7 +212,7 @@ impl<'a> CIRTraverse<'a> {
 
                 let irv_id = self.new_ir_value_id();
 
-                self.decl_to_ir_value_map.insert(DeclID::Var(var_decl_id), irv_id);
+                self.decl_to_ir_value_map.insert(DeclID::Var(*var_decl_id), irv_id);
 
                 vars.push(CIRVarStmt {
                     irv_id,
@@ -228,12 +222,12 @@ impl<'a> CIRTraverse<'a> {
                     loc: var_decl.loc,
                 });
             }
-            TypedExportPatternKind::Tuple(export_patterns) => {
+            TypedTupleExportPatternKind::Tuple(export_patterns) => {
                 for pattern in export_patterns {
                     self.lower_export_pattern_recursive(pattern, vars);
                 }
             }
-            TypedExportPatternKind::Ignore => { /* skip */ }
+            TypedTupleExportPatternKind::Ignore => { /* skip */ }
         }
     }
 
@@ -344,8 +338,6 @@ impl<'a> CIRTraverse<'a> {
 
         let irv_id = self.new_ir_value_id();
 
-        let global_var_decl_id = self.query.get_global_var(global_var.symbol_id).unwrap();
-
         let global_var_stmt = CIRGlobalVarStmt {
             irv_id,
             name: mangled_name,
@@ -356,7 +348,7 @@ impl<'a> CIRTraverse<'a> {
         };
 
         self.decl_to_ir_value_map
-            .insert(DeclID::GlobalVar(global_var_decl_id), irv_id);
+            .insert(DeclID::GlobalVar(global_var.global_var_decl_id), irv_id);
 
         self.global_var_decls.insert(irv_id, global_var_stmt.clone());
 
@@ -395,9 +387,7 @@ impl<'a> CIRTraverse<'a> {
 
         let irv_id = self.new_ir_value_id();
 
-        let var_decl_id = self.query.get_var(var.symbol_id).unwrap();
-
-        self.decl_to_ir_value_map.insert(DeclID::Var(var_decl_id), irv_id);
+        self.decl_to_ir_value_map.insert(DeclID::Var(var.var_decl_id), irv_id);
 
         CIRVarStmt {
             irv_id,
@@ -474,10 +464,8 @@ impl<'a> CIRTraverse<'a> {
         }
     }
 
-    fn lower_monomorphized_func_defs(&mut self, symbol_id: SymbolID) -> Vec<CIRStmt> {
+    fn lower_monomorphized_func_defs(&mut self, func_decl_id: FuncDeclID) -> Vec<CIRStmt> {
         let mut stmts = Vec::new();
-
-        let func_decl_id = self.query.get_func(symbol_id).unwrap();
 
         let func_decl = self.decl_tables.func_decl(func_decl_id);
 
@@ -498,7 +486,7 @@ impl<'a> CIRTraverse<'a> {
             );
 
             let func_def_stmt = TypedFuncDefStmt {
-                symbol_id,
+                func_decl_id,
                 name: mangled_name,
                 generic_params: func_decl.generic_params.clone(),
                 params: monomorph_instance.params.clone(),
@@ -532,9 +520,8 @@ impl<'a> CIRTraverse<'a> {
 
         let irv_id = self.new_ir_value_id();
 
-        let func_decl_id = self.query.get_func(func_def.symbol_id).unwrap();
-
-        self.decl_to_ir_value_map.insert(DeclID::Func(func_decl_id), irv_id);
+        self.decl_to_ir_value_map
+            .insert(DeclID::Func(func_def.func_decl_id), irv_id);
 
         let mut cir_func_def = CIRFuncDefStmt {
             irv_id,
@@ -558,7 +545,12 @@ impl<'a> CIRTraverse<'a> {
         cir_func_def
     }
 
-    fn lower_func_decl(&mut self, func_decl: &FuncDecl, mangle_name: bool) -> CIRFuncDeclStmt {
+    fn lower_func_decl(
+        &mut self,
+        func_decl_id: FuncDeclID,
+        func_decl: &FuncDecl,
+        mangle_name: bool,
+    ) -> CIRFuncDeclStmt {
         let params = self.lower_func_params(&func_decl.params, true);
 
         let ret_type = self.lower_sema_type(&func_decl.ret_type);
@@ -570,8 +562,6 @@ impl<'a> CIRTraverse<'a> {
         };
 
         let irv_id = self.new_ir_value_id();
-
-        let func_decl_id = self.query.get_func(func_decl.symbol_id.unwrap()).unwrap();
 
         self.decl_to_ir_value_map.insert(DeclID::Func(func_decl_id), irv_id);
 
@@ -593,9 +583,11 @@ impl<'a> CIRTraverse<'a> {
         cir_func_decl
     }
 
+    #[inline]
     fn lower_func_decl_stmt(&mut self, func_decl_stmt: &TypedFuncDeclStmt, mangle_name: bool) -> CIRFuncDeclStmt {
         let func_decl = func_decl_stmt.as_func_decl();
-        self.lower_func_decl(&func_decl, mangle_name)
+
+        self.lower_func_decl(func_decl_stmt.func_decl_id, &func_decl, mangle_name)
     }
 
     fn lower_body(&mut self, block: &TypedBlockStmt) -> CIRBlockStmt {
@@ -620,7 +612,7 @@ impl<'a> CIRTraverse<'a> {
         let ty = self.lower_sema_type(&expr.sema_type.clone().unwrap());
 
         let kind = match &expr.kind {
-            TypedExprKind::Symbol(symbol_expr) => self.lower_load_symbol(symbol_expr.symbol_id),
+            TypedExprKind::Symbol(symbol_expr) => self.lower_load_symbol(symbol_expr.decl_id),
             TypedExprKind::Literal(literal_expr) => self.lower_literal(literal_expr),
             TypedExprKind::Prefix(prefix_expr) => self.lower_prefix(prefix_expr),
             TypedExprKind::Infix(infix_expr) => self.lower_infix(infix_expr),
@@ -658,24 +650,22 @@ impl<'a> CIRTraverse<'a> {
         }
     }
 
-    fn lower_load_symbol(&mut self, symbol_id: SymbolID) -> CIRExprKind {
-        let symbol_entry = self.query.lookup_symbol_entry(symbol_id).unwrap();
-
-        if let Some(func_decl_id) = symbol_entry.as_func() {
+    fn lower_load_symbol(&mut self, decl_id: DeclID) -> CIRExprKind {
+        if let Some(func_decl_id) = decl_id.as_func() {
             let irv_id = self.get_or_declare_func_ir_value(func_decl_id);
 
             CIRExprKind::Load(CIRValue {
                 irv_id,
                 kind: CIRValueKind::Func,
             })
-        } else if let Some(global_var_decl_id) = symbol_entry.as_global_var() {
+        } else if let Some(global_var_decl_id) = decl_id.as_global_var() {
             let irv_id = self.get_or_declare_global_var_ir_value(global_var_decl_id);
 
             CIRExprKind::Load(CIRValue {
                 irv_id,
                 kind: CIRValueKind::GlobalVar,
             })
-        } else if let Some(var_decl_id) = symbol_entry.as_var() {
+        } else if let Some(var_decl_id) = decl_id.as_var() {
             let irv_id = self
                 .decl_to_ir_value_map
                 .get(&DeclID::Var(var_decl_id))
@@ -1007,10 +997,7 @@ impl<'a> CIRTraverse<'a> {
                     },
                 })
             }
-            TypedFuncCallDispatch::Monomorph {
-                func_decl_id,
-                monomorph_id,
-            } => {
+            TypedFuncCallDispatch::Monomorph { monomorph_id } => {
                 let (irv_id, cir_fuc_type, abi_name) = self.get_or_declare_monomorph_func_ir_value(*monomorph_id);
 
                 CIRExprKind::Call(CIRCall {
@@ -1327,7 +1314,7 @@ impl<'a> CIRTraverse<'a> {
 
         let func_decl = self.decl_tables.func_decl(func_decl_id);
 
-        let cir_func_decl_stmt = self.lower_func_decl(&func_decl, !func_decl.is_func_decl);
+        let cir_func_decl_stmt = self.lower_func_decl(func_decl_id, &func_decl, !func_decl.is_func_decl);
 
         let irv_id = cir_func_decl_stmt.irv_id;
 
@@ -1445,9 +1432,11 @@ pub fn walk_program_trees_in_parallel(
             .map(|(i, program_tree)| {
                 let vtable_registry = vtable_registries[i].clone();
 
+                let module_name = query.lookup_module_name(program_tree.file_id).unwrap();
+
                 let mut cir_walk = CIRTraverse::new(
                     program_tree.clone(),
-                    query,
+                    module_name,
                     decl_tables.clone(),
                     vtable_registry,
                     monomorph_registry.clone(),

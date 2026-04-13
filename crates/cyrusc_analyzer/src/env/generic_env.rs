@@ -17,9 +17,11 @@
 
 use cyrusc_typed_ast::{
     GenericParamID,
-    stmts::{TypedFuncTypeParams, TypedFuncTypeVariadicParams, TypedGenericParams, TypedTypeArg, TypedTypeArgs},
+    stmts::{TypedFuncTypeParams, TypedFuncTypeVariadicParam, TypedGenericParams, TypedTypeArg, TypedTypeArgs},
     types::{NamedType, SemaType, TypedArrayType, TypedFuncType, TypedTupleType},
 };
+
+use crate::context::AnalysisContext;
 
 pub(crate) struct GenericEnv {
     pub params: TypedGenericParams,
@@ -108,10 +110,10 @@ impl GenericEnv {
 
                 let variadic = func.params.variadic.as_ref().map(|variadic| {
                     Box::new(match variadic.as_ref() {
-                        v @ TypedFuncTypeVariadicParams::UntypedCStyle => v.clone(),
+                        v @ TypedFuncTypeVariadicParam::UntypedCStyle => v.clone(),
 
-                        TypedFuncTypeVariadicParams::Typed(ty) => {
-                            TypedFuncTypeVariadicParams::Typed(self.substitute_sema_type(ty))
+                        TypedFuncTypeVariadicParam::Typed(ty) => {
+                            TypedFuncTypeVariadicParam::Typed(self.substitute_sema_type(ty))
                         }
                     })
                 });
@@ -119,7 +121,6 @@ impl GenericEnv {
                 let ret_type = Box::new(self.substitute_sema_type(&func.ret_type));
 
                 SemaType::FuncType(TypedFuncType {
-                    symbol_id: func.symbol_id,
                     params: TypedFuncTypeParams { list: params, variadic },
                     ret_type,
                     is_public: func.is_public,
@@ -139,5 +140,12 @@ impl GenericEnv {
 
             SemaType::Err(_) => sema_type.clone(),
         }
+    }
+}
+
+impl<'a> AnalysisContext<'a> {
+    #[inline]
+    pub(crate) fn current_generic_env_mut(&mut self) -> Option<&mut GenericEnv> {
+        self.generic_env_stack.last_mut()
     }
 }

@@ -26,8 +26,8 @@ use cyrusc_internal::symbols::table::ScopeTable;
 use cyrusc_source_loc::{FileID, Loc, SourceMap};
 use cyrusc_typed_ast::decls::table::DeclTablesRegistry;
 use cyrusc_typed_ast::decls::{
-    EnumDeclID, FuncDeclID, GlobalVarDeclID, InterfaceDeclID, MethodDeclID, StructDeclID, TypedefDeclID, UnionDeclID,
-    VarDeclID,
+    DeclID, EnumDeclID, FuncDeclID, GlobalVarDeclID, InterfaceDeclID, MethodDeclID, StructDeclID, TypedefDeclID,
+    UnionDeclID, VarDeclID,
 };
 use cyrusc_typed_ast::format::{Formatter, format_enum_decl, format_struct_decl, format_union_decl};
 use cyrusc_typed_ast::stmts::*;
@@ -603,6 +603,64 @@ impl GlobalSymbolRegistry {
 }
 
 impl Formatter for Resolver {
+    fn format_decl(&self, decl_id: DeclID) -> String {
+        match decl_id {
+            DeclID::Struct(struct_decl_id) => {
+                let decl = self.decl_tables.struct_decl(struct_decl_id);
+
+                if let Some(name) = &decl.name {
+                    name.clone()
+                } else {
+                    format_struct_decl(&decl, self)
+                }
+            }
+            DeclID::Enum(enum_decl_id) => {
+                let decl = self.decl_tables.enum_decl(enum_decl_id);
+
+                if let Some(name) = &decl.name {
+                    name.clone()
+                } else {
+                    format_enum_decl(&decl, self)
+                }
+            }
+            DeclID::Union(union_decl_id) => {
+                let decl = self.decl_tables.union_decl(union_decl_id);
+
+                if let Some(name) = &decl.name {
+                    name.clone()
+                } else {
+                    format_union_decl(&decl, self)
+                }
+            }
+            DeclID::Func(func_decl_id) => {
+                let decl = self.decl_tables.func_decl(func_decl_id);
+                decl.name.clone()
+            }
+            DeclID::Method(method_decl_id) => {
+                let method_decl = self.decl_tables.method_decl(method_decl_id);
+                let func_decl = method_decl.func_decl;
+
+                func_decl.name.clone()
+            }
+            DeclID::Interface(interface_decl_id) => {
+                let decl = self.decl_tables.interface_decl(interface_decl_id);
+                decl.name.clone()
+            }
+            DeclID::GlobalVar(global_var_decl_id) => {
+                let decl = self.decl_tables.global_var_decl(global_var_decl_id);
+                decl.name.clone()
+            }
+            DeclID::Var(var_decl_id) => {
+                let decl = self.decl_tables.var_decl(var_decl_id);
+                decl.name.clone()
+            }
+            DeclID::Typedef(typedef_decl_id) => {
+                let decl = self.decl_tables.typedef_decl(typedef_decl_id);
+                decl.name.clone()
+            }
+        }
+    }
+
     fn format_type_decl(&self, id: TypeDeclID) -> String {
         match id {
             TypeDeclID::Struct(struct_decl_id) => {

@@ -41,7 +41,7 @@ impl<'a> AnalysisContext<'a> {
                 TypedStmt::Typedef(typedef) => self.analyze_typedef(typedef),
 
                 TypedStmt::Variable(_)
-                | TypedStmt::ExportTuple(_)
+                | TypedStmt::TupleExport(_)
                 | TypedStmt::BlockStmt(_)
                 | TypedStmt::Defer(_)
                 | TypedStmt::If(_)
@@ -74,7 +74,7 @@ impl<'a> AnalysisContext<'a> {
                 FlowState::Reachable
             }
             TypedStmt::BlockStmt(block) => self.analyze_block_stmt(block),
-            TypedStmt::ExportTuple(export_tuple) => {
+            TypedStmt::TupleExport(export_tuple) => {
                 self.analyze_export_tuple_values(export_tuple);
                 FlowState::Reachable
             }

@@ -20,7 +20,7 @@ use cyrusc_diagcentral::{Diag, DiagLevel};
 use cyrusc_source_loc::Loc;
 use cyrusc_typed_ast::{
     GenericParamID,
-    stmts::{TypedGenericParams, TypedTypeArg, TypedTypeArgs},
+    stmts::{TypedFuncParamKind, TypedFuncParams, TypedGenericParams, TypedTypeArg, TypedTypeArgs},
     types::SemaType,
 };
 
@@ -35,11 +35,6 @@ impl<'a> AnalysisContext<'a> {
         self.generic_env_stack.pop();
     }
 
-    #[inline]
-    pub(crate) fn current_generic_env_mut(&mut self) -> Option<&mut GenericEnv> {
-        self.generic_env_stack.last_mut()
-    }
-
     pub(crate) fn lookup_generic_binding(&self, generic_param_id: GenericParamID) -> Option<&SemaType> {
         for env in self.generic_env_stack.iter().rev() {
             if let Some(ty) = env.lookup(generic_param_id) {
@@ -48,16 +43,6 @@ impl<'a> AnalysisContext<'a> {
         }
 
         None
-    }
-
-    pub(crate) fn substitute_type(&self, ty: &SemaType) -> SemaType {
-        let mut result = ty.clone();
-
-        for generic_env in self.generic_env_stack.iter().rev() {
-            result = generic_env.substitute_sema_type(&result);
-        }
-
-        result
     }
 
     pub(crate) fn with_generic_env<F, R>(&mut self, generic_env: GenericEnv, f: F) -> R
@@ -190,5 +175,38 @@ impl<'a> AnalysisContext<'a> {
         }
 
         Some(generic_env)
+    }
+}
+
+impl<'a> AnalysisContext<'a> {
+    pub(crate) fn substitute_type(&self, ty: &SemaType) -> SemaType {
+        let mut result = ty.clone();
+
+        for generic_env in self.generic_env_stack.iter().rev() {
+            result = generic_env.substitute_sema_type(&result);
+        }
+
+        result
+    }
+
+    pub(crate) fn substitute_func_params(&self, mut params: TypedFuncParams) -> TypedFuncParams {
+        params.list.iter_mut().for_each(|param_kind| match param_kind {
+            TypedFuncParamKind::FuncParam(func_param) => {
+                func_param.ty = self.substitute_type(&func_param.ty);
+
+                if let Some(infer) = &self.func_env.infer {
+                    func_param.ty = infer.resolve(&func_param.ty);
+                }
+            }
+            TypedFuncParamKind::SelfModifier(self_modifier) => {
+                self_modifier.ty = self.substitute_type(&self_modifier.ty);
+
+                if let Some(infer) = &self.func_env.infer {
+                    self_modifier.ty = infer.resolve(&self_modifier.ty);
+                }
+            }
+        });
+
+        params
     }
 }

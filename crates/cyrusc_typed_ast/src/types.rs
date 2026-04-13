@@ -15,9 +15,9 @@
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
 
-use crate::decls::{EnumDeclID, InterfaceDeclID, StructDeclID, TypedefDeclID, UnionDeclID};
+use crate::decls::{DeclID, EnumDeclID, InterfaceDeclID, StructDeclID, TypedefDeclID, UnionDeclID};
 use crate::exprs::{TypedExprStmt, TypedSelfType};
-use crate::stmts::{TypedFuncTypeParams, TypedFuncTypeVariadicParams, TypedTypeArg, TypedTypeArgs};
+use crate::stmts::{TypedFuncTypeParams, TypedFuncTypeVariadicParam, TypedTypeArg, TypedTypeArgs};
 use crate::{GenericParamID, SymbolID, VTableID};
 use cyrusc_source_loc::Loc;
 use cyrusc_tokens::TokenKind;
@@ -49,8 +49,11 @@ pub enum SemaType {
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum UnresolvedType {
-    Symbol(SymbolID),
-    GenericInst { base: SymbolID, type_args: TypedTypeArgs },
+    Decl(DeclID),
+    GenericInst {
+        base_decl_id: DeclID,
+        type_args: TypedTypeArgs,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -104,7 +107,6 @@ pub struct TypedTupleType {
 
 #[derive(Debug, Clone)]
 pub struct TypedFuncType {
-    pub symbol_id: Option<SymbolID>,
     pub params: TypedFuncTypeParams,
     pub ret_type: Box<SemaType>,
     pub is_public: bool,
@@ -221,19 +223,19 @@ pub fn map_float_suffix_to_sema_type(suffix: &TokenKind) -> Option<SemaType> {
 
 impl UnresolvedType {
     #[inline]
-    pub fn as_symbol_id(&self) -> Option<SymbolID> {
+    pub fn as_decl_id(&self) -> Option<DeclID> {
         match self {
             UnresolvedType::GenericInst { .. } => None,
-            UnresolvedType::Symbol(symbol_id) => Some(*symbol_id),
+            UnresolvedType::Decl(decl_id) => Some(*decl_id),
         }
     }
 }
 
 impl SemaType {
     #[inline]
-    pub fn as_unresolved_symbol_id(&self) -> Option<SymbolID> {
+    pub fn as_unresolved_decl_id(&self) -> Option<DeclID> {
         match &self.const_inner() {
-            SemaType::Unresolved(unresolved_type) => unresolved_type.as_symbol_id(),
+            SemaType::Unresolved(unresolved_type) => unresolved_type.as_decl_id(),
             _ => None,
         }
     }
@@ -495,8 +497,8 @@ impl SemaType {
                         .variadic
                         .as_ref()
                         .map(|variadic| match &**variadic {
-                            TypedFuncTypeVariadicParams::UntypedCStyle => false,
-                            TypedFuncTypeVariadicParams::Typed(ty) => ty.contains_infer_var(),
+                            TypedFuncTypeVariadicParam::UntypedCStyle => false,
+                            TypedFuncTypeVariadicParam::Typed(ty) => ty.contains_infer_var(),
                         })
                         .unwrap_or(false)
                     || func.ret_type.contains_infer_var()
@@ -529,8 +531,8 @@ impl SemaType {
                         .variadic
                         .clone()
                         .map(|variadic| match *variadic {
-                            TypedFuncTypeVariadicParams::UntypedCStyle => false,
-                            TypedFuncTypeVariadicParams::Typed(ty) => ty.contains_generic_param(),
+                            TypedFuncTypeVariadicParam::UntypedCStyle => false,
+                            TypedFuncTypeVariadicParam::Typed(ty) => ty.contains_generic_param(),
                         })
                         .unwrap_or(false)
                     || func.ret_type.contains_generic_param()

@@ -23,25 +23,25 @@ use cyrusc_typed_ast::{
 
 impl<'a> AnalysisContext<'a> {
     pub(crate) fn analyze_lambda(&mut self, lambda: &mut TypedLambdaExpr) -> Option<SemaType> {
-        let parent_func = self.func_env.current_func.clone();
-
         self.normalize_func_params(&mut lambda.params, lambda.loc);
+
         let params = lambda.params.as_func_type_params();
 
         lambda.ret_type = self.normalize_and_check_type_formation(lambda.ret_type.clone(), lambda.loc)?;
 
         let func_type = TypedFuncType {
-            symbol_id: None,
             params,
             ret_type: Box::new(lambda.ret_type.clone()),
             is_public: true,
             loc: lambda.loc,
         };
 
-        self.func_env.current_func = Some(func_type.clone());
-        self.analyze_block_stmt(&mut lambda.body);
+        let lambda_env = self.create_lambda_func_env(func_type.clone());
 
-        self.func_env.current_func = parent_func;
+        self.with_func_env(lambda_env, |this| {
+            this.analyze_block_stmt(&mut lambda.body);
+        });
+
         Some(SemaType::FuncType(func_type))
     }
 }

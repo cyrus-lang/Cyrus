@@ -16,7 +16,7 @@
  */
 
 use cyrusc_typed_ast::{
-    stmts::{TypedFuncTypeVariadicParams, TypedTypeArg},
+    stmts::{TypedFuncTypeVariadicParam, TypedTypeArg},
     types::{InferVarID, SemaType, TypedFuncType},
 };
 use fx_hash::FxHashMap;
@@ -144,12 +144,12 @@ impl InferCtx {
             (None, None) => {}
 
             (Some(v1), Some(v2)) => match (&**v1, &**v2) {
-                (TypedFuncTypeVariadicParams::Typed(t1), TypedFuncTypeVariadicParams::Typed(t2)) => {
+                (TypedFuncTypeVariadicParam::Typed(t1), TypedFuncTypeVariadicParam::Typed(t2)) => {
                     if !self.unify(&t1, &t2) {
                         return false;
                     }
                 }
-                (TypedFuncTypeVariadicParams::UntypedCStyle, TypedFuncTypeVariadicParams::UntypedCStyle) => {}
+                (TypedFuncTypeVariadicParam::UntypedCStyle, TypedFuncTypeVariadicParam::UntypedCStyle) => {}
 
                 _ => return false,
             },

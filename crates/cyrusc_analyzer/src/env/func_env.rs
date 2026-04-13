@@ -15,7 +15,7 @@
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
 
-use crate::infer::InferCtx;
+use crate::{context::AnalysisContext, infer::InferCtx};
 use cyrusc_typed_ast::{
     decls::MethodDeclID,
     types::{SemaType, TypedFuncType},
@@ -35,6 +35,56 @@ impl FuncEnv {
             current_func: None,
             current_object: None,
             current_method: None,
+            infer: None,
+        }
+    }
+}
+
+impl<'a> AnalysisContext<'a> {
+    #[inline]
+    pub(crate) fn with_func_env<T>(&mut self, new_env: FuncEnv, f: impl FnOnce(&mut Self) -> T) -> T {
+        let old_env = std::mem::replace(&mut self.func_env, new_env);
+        let result = f(self);
+        self.func_env = old_env;
+        result
+    }
+
+    #[inline]
+    pub(crate) fn create_func_def_env(&self, func_type: TypedFuncType) -> FuncEnv {
+        FuncEnv {
+            current_func: Some(func_type),
+            current_method: None,
+            current_object: None,
+            infer: None,
+        }
+    }
+
+    #[inline]
+    pub(crate) fn create_method_env(&self, method_decl_id: MethodDeclID, func_type: TypedFuncType) -> FuncEnv {
+        FuncEnv {
+            current_func: Some(func_type),
+            current_method: Some(method_decl_id),
+            current_object: None,
+            infer: None,
+        }
+    }
+
+    #[inline]
+    pub(crate) fn create_monomorph_func_env(&self, func_type: TypedFuncType) -> FuncEnv {
+        FuncEnv {
+            current_func: Some(func_type),
+            current_method: None,
+            current_object: None,
+            infer: None,
+        }
+    }
+
+    #[inline]
+    pub(crate) fn create_lambda_func_env(&self, func_type: TypedFuncType) -> FuncEnv {
+        FuncEnv {
+            current_func: Some(func_type),
+            current_method: None,
+            current_object: None,
             infer: None,
         }
     }

@@ -23,7 +23,7 @@ use cyrusc_typed_ast::{
     decls::VarDeclID,
     exprs::{TypedExprKind, TypedExprStmt, TypedTupleAccessExpr},
     format::format_sema_type,
-    stmts::{TypedExportPattern, TypedExportPatternKind, TypedExportTupleStmt},
+    stmts::{TypedTupleExportPattern, TypedTupleExportPatternKind, TypedTupleExportStmt},
     types::{SemaType, TypedTupleType},
 };
 
@@ -33,7 +33,7 @@ use cyrusc_typed_ast::{
 // var (const a: int64, const b) = (1, 2);
 
 impl<'a> AnalysisContext<'a> {
-    pub(crate) fn analyze_export_tuple_values(&mut self, export_tuple: &mut TypedExportTupleStmt) -> Option<()> {
+    pub(crate) fn analyze_export_tuple_values(&mut self, export_tuple: &mut TypedTupleExportStmt) -> Option<()> {
         let rhs = match export_tuple.rhs.as_mut() {
             Some(rhs) => rhs,
             None => {
@@ -62,7 +62,7 @@ impl<'a> AnalysisContext<'a> {
         };
 
         let patterns = match &export_tuple.pattern.kind {
-            TypedExportPatternKind::Tuple(p) => p,
+            TypedTupleExportPatternKind::Tuple(p) => p,
             _ => unreachable!(), // handled in parser
         };
 
@@ -113,7 +113,7 @@ impl<'a> AnalysisContext<'a> {
 
     fn analyze_tuple_pattern(
         &mut self,
-        pattern: &TypedExportPattern,
+        pattern: &TypedTupleExportPattern,
         sema_type: &SemaType,
         root_expr: &TypedExprStmt,
         stmt_is_const: bool,
@@ -136,20 +136,8 @@ impl<'a> AnalysisContext<'a> {
         }
 
         match &pattern.kind {
-            TypedExportPatternKind::Ident(symbol_id) => {
+            TypedTupleExportPatternKind::Ident(var_decl_id) => {
                 let rhs = self.tuple_access_expr(root_expr, path, loc);
-
-                let Some(var_decl_id) = self.query.get_var(*symbol_id) else {
-                    self.reporter.report(Diag {
-                        level: DiagLevel::Error,
-                        kind: Box::new(AnalyzerDiagKind::NonVariableSymbol {
-                            symbol_name: self.formatter.format_symbol_name(*symbol_id),
-                        }),
-                        loc: Some(loc),
-                        hint: None,
-                    });
-                    return;
-                };
 
                 let is_const = pattern
                     .mutability
@@ -159,10 +147,10 @@ impl<'a> AnalysisContext<'a> {
                     })
                     .unwrap_or(stmt_is_const);
 
-                self.analyze_tuple_ident_pattern(var_decl_id, sema_type, &rhs, is_const);
+                self.analyze_tuple_ident_pattern(*var_decl_id, sema_type, &rhs, is_const);
             }
 
-            TypedExportPatternKind::Tuple(patterns) => {
+            TypedTupleExportPatternKind::Tuple(patterns) => {
                 let Some(tuple_ty) = sema_type.as_tuple_type() else {
                     self.reporter.report(Diag {
                         level: DiagLevel::Error,
@@ -190,12 +178,12 @@ impl<'a> AnalysisContext<'a> {
                 }
             }
 
-            TypedExportPatternKind::Ignore => {}
+            TypedTupleExportPatternKind::Ignore => {}
         }
     }
 
-    fn build_expected_tuple_type_from_pattern(&mut self, pattern: &TypedExportPattern) -> Option<SemaType> {
-        let TypedExportPatternKind::Tuple(elements) = &pattern.kind else {
+    fn build_expected_tuple_type_from_pattern(&mut self, pattern: &TypedTupleExportPattern) -> Option<SemaType> {
+        let TypedTupleExportPatternKind::Tuple(elements) = &pattern.kind else {
             return None;
         };
 
@@ -210,7 +198,7 @@ impl<'a> AnalysisContext<'a> {
             }
 
             match &element.kind {
-                TypedExportPatternKind::Tuple(_) => {
+                TypedTupleExportPatternKind::Tuple(_) => {
                     if let Some(inner) = self.build_expected_tuple_type_from_pattern(element) {
                         result_type.push(inner);
                         has_explicit_type = true;

@@ -102,20 +102,8 @@ impl<'a> AnalysisContext<'a> {
             }
         }
 
-        let Some(global_var_decl_id) = self.query.get_global_var(global_var.symbol_id) else {
-            self.reporter.report(Diag {
-                level: DiagLevel::Error,
-                kind: Box::new(AnalyzerDiagKind::NonGlobalVarSymbol {
-                    symbol_name: self.formatter.format_symbol_name(global_var.symbol_id),
-                }),
-                loc: Some(global_var.loc),
-                hint: None,
-            });
-            return;
-        };
-
         self.decl_tables
-            .with_global_var_decl_mut(global_var_decl_id, |global_var_decl| {
+            .with_global_var_decl_mut(global_var.global_var_decl_id, |global_var_decl| {
                 global_var_decl.rhs = global_var.expr.clone();
                 global_var_decl.ty = global_var.ty.clone();
             });
@@ -162,9 +150,7 @@ impl<'a> AnalysisContext<'a> {
             }
         }
 
-        let var_decl_id = self.query.get_var(var.symbol_id).unwrap();
-
-        self.decl_tables.with_var_decl_mut(var_decl_id, |var_decl| {
+        self.decl_tables.with_var_decl_mut(var.var_decl_id, |var_decl| {
             var_decl.rhs = var.rhs.clone();
             var_decl.ty = var.ty.clone();
         });

@@ -16,9 +16,12 @@
  */
 
 use crate::{
-    GenericParamID, LabelID, SymbolID,
-    decls::{FuncDecl, FuncDeclID, MethodDecls, VarDeclID},
-    exprs::{TypedExprStmt, TypedIdent, TypedLambdaExpr, TypedTupleAccessExpr, TypedTupleExpr},
+    GenericParamID, LabelID,
+    decls::{
+        EnumDeclID, FuncDecl, FuncDeclID, GlobalVarDeclID, InterfaceDeclID, MethodDecls, StructDeclID, TypedefDeclID,
+        UnionDeclID, VarDeclID,
+    },
+    exprs::{TypedExprStmt, TypedLambdaExpr, TypedTupleAccessExpr, TypedTupleExpr},
     types::SemaType,
 };
 use cyrusc_ast::{
@@ -50,7 +53,7 @@ pub enum TypedStmt {
     Interface(TypedInterfaceStmt),
     Expr(TypedExprStmt),
     Defer(TypedDeferStmt),
-    ExportTuple(TypedExportTupleStmt),
+    TupleExport(TypedTupleExportStmt),
     Label(TypedLabelStmt),
     Goto(TypedGotoStmt),
     Builtin(TypedBuiltin),
@@ -93,25 +96,25 @@ pub struct TypedGotoStmt {
 }
 
 #[derive(Debug, Clone)]
-pub struct TypedExportTupleStmt {
-    pub pattern: TypedExportPattern,
+pub struct TypedTupleExportStmt {
+    pub pattern: TypedTupleExportPattern,
     pub rhs: Option<TypedExprStmt>,
     pub is_const: bool,
     pub loc: Loc,
 }
 
 #[derive(Debug, Clone)]
-pub struct TypedExportPattern {
-    pub kind: TypedExportPatternKind,
+pub struct TypedTupleExportPattern {
+    pub kind: TypedTupleExportPatternKind,
     pub ty: Option<SemaType>,
     pub mutability: Option<Mutability>,
     pub loc: Loc,
 }
 
 #[derive(Debug, Clone)]
-pub enum TypedExportPatternKind {
-    Ident(SymbolID),
-    Tuple(Vec<TypedExportPattern>),
+pub enum TypedTupleExportPatternKind {
+    Ident(VarDeclID),
+    Tuple(Vec<TypedTupleExportPattern>),
     Ignore,
 }
 
@@ -130,7 +133,7 @@ pub struct TypedImplementInterface {
 #[derive(Debug, Clone)]
 pub struct TypedInterfaceStmt {
     pub name: String,
-    pub symbol_id: SymbolID,
+    pub interface_decl_id: InterfaceDeclID,
     pub methods: Vec<FuncDeclID>,
     pub generic_params: TypedGenericParams,
     pub vis: Visibility,
@@ -139,7 +142,7 @@ pub struct TypedInterfaceStmt {
 
 #[derive(Debug, Clone)]
 pub struct TypedEnumStmt {
-    pub symbol_id: SymbolID,
+    pub enum_decl_id: EnumDeclID,
     pub name: String,
     pub variants: Vec<TypedEnumVariant>,
     pub methods: MethodDecls,
@@ -183,7 +186,7 @@ pub struct TypedEnumVariantStructField {
 
 #[derive(Debug, Clone)]
 pub struct TypedStructStmt {
-    pub symbol_id: SymbolID,
+    pub struct_decl_id: StructDeclID,
     pub name: String,
     pub fields: Vec<TypedStructField>,
     pub methods: MethodDecls,
@@ -196,7 +199,7 @@ pub struct TypedStructStmt {
 
 #[derive(Debug, Clone)]
 pub struct TypedUnionStmt {
-    pub symbol_id: SymbolID,
+    pub union_decl_id: UnionDeclID,
     pub name: String,
     pub fields: Vec<TypedUnionField>,
     pub methods: MethodDecls,
@@ -230,8 +233,8 @@ pub struct TypedReturnStmt {
 
 #[derive(Debug, Clone)]
 pub struct TypedGlobalVarStmt {
+    pub global_var_decl_id: GlobalVarDeclID,
     pub file_id: FileID,
-    pub symbol_id: SymbolID,
     pub name: String,
     pub ty: Option<SemaType>,
     pub expr: Option<TypedExprStmt>,
@@ -242,7 +245,7 @@ pub struct TypedGlobalVarStmt {
 
 #[derive(Debug, Clone)]
 pub struct TypedTypedefStmt {
-    pub symbol_id: SymbolID,
+    pub typedef_decl_id: TypedefDeclID,
     pub name: String,
     pub ty: SemaType,
     pub generic_params: TypedGenericParams,
@@ -259,7 +262,7 @@ pub struct TypedBlockStmt {
 
 #[derive(Debug, Clone)]
 pub struct TypedVarStmt {
-    pub symbol_id: SymbolID,
+    pub var_decl_id: VarDeclID,
     pub name: String,
     pub ty: Option<SemaType>,
     pub rhs: Option<TypedExprStmt>,
@@ -278,7 +281,7 @@ pub struct TypedIfStmt {
 
 #[derive(Debug, Clone)]
 pub struct TypedFuncDefStmt {
-    pub symbol_id: SymbolID,
+    pub func_decl_id: FuncDeclID,
     pub name: String,
     pub params: TypedFuncParams,
     pub generic_params: TypedGenericParams,
@@ -290,7 +293,7 @@ pub struct TypedFuncDefStmt {
 
 #[derive(Debug, Clone)]
 pub struct TypedFuncDeclStmt {
-    pub symbol_id: SymbolID,
+    pub func_decl_id: FuncDeclID,
     pub name: String,
     pub generic_params: TypedGenericParams,
     pub params: TypedFuncParams,
@@ -309,17 +312,21 @@ pub struct TypedFuncParams {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum TypedFuncVariadicParam {
     UntypedCStyle,
-    Typed(TypedIdent, SemaType),
+    Typed {
+        var_decl_id: VarDeclID,
+        ty: SemaType,
+        loc: Loc,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct TypedFuncTypeParams {
     pub list: Vec<SemaType>,
-    pub variadic: Option<Box<TypedFuncTypeVariadicParams>>,
+    pub variadic: Option<Box<TypedFuncTypeVariadicParam>>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub enum TypedFuncTypeVariadicParams {
+pub enum TypedFuncTypeVariadicParam {
     UntypedCStyle,
     Typed(SemaType),
 }
@@ -384,7 +391,7 @@ pub enum TypedSwitchCasePattern {
 
     Binding {
         name: Ident,
-        symbol_id: SymbolID,
+        var_decl_id: VarDeclID,
     },
 
     /// `1..10` or `1..=10`
@@ -521,11 +528,11 @@ impl FromIterator<TypedTypeArg> for TypedTypeArgs {
     }
 }
 
-impl TypedExportPattern {
+impl TypedTupleExportPattern {
     #[inline]
-    pub fn as_tuple(&self) -> Option<&Vec<TypedExportPattern>> {
+    pub fn as_tuple(&self) -> Option<&Vec<TypedTupleExportPattern>> {
         match &self.kind {
-            TypedExportPatternKind::Tuple(patterns) => Some(patterns),
+            TypedTupleExportPatternKind::Tuple(patterns) => Some(patterns),
             _ => None,
         }
     }
@@ -562,9 +569,9 @@ impl TypedFuncParams {
 
         let variadic = match &self.variadic {
             Some(variadic) => match variadic {
-                TypedFuncVariadicParam::UntypedCStyle => Some(Box::new(TypedFuncTypeVariadicParams::UntypedCStyle)),
-                TypedFuncVariadicParam::Typed(_, sema_type) => {
-                    Some(Box::new(TypedFuncTypeVariadicParams::Typed(sema_type.clone())))
+                TypedFuncVariadicParam::UntypedCStyle => Some(Box::new(TypedFuncTypeVariadicParam::UntypedCStyle)),
+                TypedFuncVariadicParam::Typed { ty, .. } => {
+                    Some(Box::new(TypedFuncTypeVariadicParam::Typed(ty.clone())))
                 }
             },
             None => None,
@@ -596,7 +603,7 @@ impl TypedStmt {
             TypedStmt::While(while_stmt) => while_stmt.loc,
             TypedStmt::Union(union_stmt) => union_stmt.loc,
             TypedStmt::Defer(typed_defer) => typed_defer.loc,
-            TypedStmt::ExportTuple(export_tuple_values) => export_tuple_values.loc,
+            TypedStmt::TupleExport(export_tuple_values) => export_tuple_values.loc,
             TypedStmt::Label(typed_label_stmt) => typed_label_stmt.loc,
             TypedStmt::Goto(typed_goto_stmt) => typed_goto_stmt.loc,
             TypedStmt::Builtin(typed_builtin) => typed_builtin.loc(),
@@ -658,8 +665,8 @@ impl TypedFuncParams {
 impl TypedFuncTypeParams {
     pub fn as_typed_variadic(&self) -> Option<SemaType> {
         self.variadic.clone().and_then(|variadic| match *variadic {
-            TypedFuncTypeVariadicParams::Typed(sema_type) => Some(sema_type),
-            TypedFuncTypeVariadicParams::UntypedCStyle => None,
+            TypedFuncTypeVariadicParam::Typed(sema_type) => Some(sema_type),
+            TypedFuncTypeVariadicParam::UntypedCStyle => None,
         })
     }
 }
@@ -693,6 +700,13 @@ impl TypedFuncParamKind {
         }
     }
 
+    pub fn param_type_mut(&mut self) -> &mut SemaType {
+        match self {
+            TypedFuncParamKind::FuncParam(func_param) => &mut func_param.ty,
+            TypedFuncParamKind::SelfModifier(self_modifier) => &mut self_modifier.ty,
+        }
+    }
+
     pub fn as_self_modifier(&self) -> Option<&TypedSelfModifier> {
         match self {
             TypedFuncParamKind::SelfModifier(self_modifier) => Some(self_modifier),
@@ -711,7 +725,6 @@ impl TypedFuncParamKind {
 impl TypedFuncDeclStmt {
     pub fn as_func_decl(&self) -> FuncDecl {
         FuncDecl {
-            symbol_id: Some(self.symbol_id),
             name: self.usable_name(),
             params: self.params.clone(),
             generic_params: self.generic_params.clone(),
@@ -809,12 +822,6 @@ impl PartialEq for TypedTupleAccessExpr {
     }
 }
 
-impl PartialEq for TypedIdent {
-    fn eq(&self, other: &Self) -> bool {
-        self.symbol_id == other.symbol_id
-    }
-}
-
 impl PartialEq for TypedBuiltinFunc {
     fn eq(&self, other: &Self) -> bool {
         self.name == other.name && self.args == other.args && self.child_stmt.is_some() == other.child_stmt.is_some()
@@ -824,13 +831,6 @@ impl PartialEq for TypedBuiltinFunc {
 impl PartialEq for TypedBuiltinScope {
     fn eq(&self, other: &Self) -> bool {
         self.name == other.name && self.args == other.args
-    }
-}
-
-impl Hash for TypedIdent {
-    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-        self.name.hash(state);
-        self.symbol_id.hash(state);
     }
 }
 

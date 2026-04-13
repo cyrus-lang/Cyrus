@@ -21,6 +21,7 @@ use cyrusc_source_loc::Loc;
 use cyrusc_strescape::diagnostics::UnescapeError;
 use cyrusc_typed_ast::{
     SymbolID,
+    decls::DeclID,
     stmts::{TypedFuncParamKind, TypedFuncVariadicParam, TypedGenericParams, TypedTypeArgs},
     types::SemaType,
 };
@@ -505,12 +506,15 @@ impl<'a> AnalysisContext<'a> {
 
         if let Some(variadic_param) = variadic {
             match variadic_param {
-                TypedFuncVariadicParam::Typed(ident, _) => {
-                    if param_names.contains(&ident.name) {
+                TypedFuncVariadicParam::Typed { var_decl_id, .. } => {
+                    let var_decl = self.decl_tables.var_decl(*var_decl_id);
+                    let var_name = &var_decl.name;
+
+                    if param_names.contains(var_name) {
                         self.reporter.report(Diag {
                             level: DiagLevel::Error,
                             kind: Box::new(AnalyzerDiagKind::DuplicateFuncVariadicParameter {
-                                param_name: ident.name.clone(),
+                                param_name: var_name.clone(),
                             }),
                             loc: Some(loc),
                             hint: Some("Consider to rename the parameter to a different name.".to_string()),
@@ -554,22 +558,22 @@ impl<'a> AnalysisContext<'a> {
         drop(diags);
     }
 
-    pub(crate) fn report_non_struct_symbol(&self, symbol_id: SymbolID, loc: Loc) {
+    pub(crate) fn report_non_struct_symbol(&self, decl_id: DeclID, loc: Loc) {
         self.reporter.report(Diag {
             level: DiagLevel::Error,
             kind: Box::new(AnalyzerDiagKind::NonStructSymbol {
-                symbol_name: self.formatter.format_symbol_name(symbol_id),
+                symbol_name: self.formatter.format_decl(decl_id),
             }),
             loc: Some(loc),
             hint: None,
         });
     }
 
-    pub(crate) fn report_non_union_symbol(&self, symbol_id: SymbolID, loc: Loc) {
+    pub(crate) fn report_non_union_symbol(&self, decl_id: DeclID, loc: Loc) {
         self.reporter.report(Diag {
             level: DiagLevel::Error,
             kind: Box::new(AnalyzerDiagKind::NonUnionSymbol {
-                symbol_name: self.formatter.format_symbol_name(symbol_id),
+                symbol_name: self.formatter.format_decl(decl_id),
             }),
             loc: Some(loc),
             hint: None,

@@ -16,7 +16,7 @@
  */
 
 use crate::{
-    BodyID, SymbolID,
+    BodyID,
     exprs::TypedExprStmt,
     stmts::{
         TypedBlockStmt, TypedEnumVariant, TypedFuncParams, TypedGenericParams, TypedImplementInterface,
@@ -81,7 +81,6 @@ pub struct MethodDecls(pub HashMap<String, MethodDeclID>);
 
 #[derive(Debug, Clone)]
 pub struct StructDecl {
-    pub symbol_id: Option<SymbolID>,
     pub name: Option<String>,
     pub fields: Vec<TypedStructField>,
     pub impls: Vec<TypedImplementInterface>,
@@ -94,7 +93,6 @@ pub struct StructDecl {
 
 #[derive(Debug, Clone)]
 pub struct UnionDecl {
-    pub symbol_id: Option<SymbolID>,
     pub name: Option<String>,
     pub fields: Vec<TypedUnionField>,
     pub impls: Vec<TypedImplementInterface>,
@@ -107,7 +105,6 @@ pub struct UnionDecl {
 
 #[derive(Debug, Clone)]
 pub struct EnumDecl {
-    pub symbol_id: Option<SymbolID>,
     pub name: Option<String>,
     pub methods: MethodDecls,
     pub variants: Vec<TypedEnumVariant>,
@@ -121,7 +118,6 @@ pub struct EnumDecl {
 
 #[derive(Debug, Clone)]
 pub struct FuncDecl {
-    pub symbol_id: Option<SymbolID>,
     pub name: String,
     pub params: TypedFuncParams,
     pub generic_params: TypedGenericParams,
@@ -157,7 +153,6 @@ pub struct TypedefDecl {
 
 #[derive(Debug, Clone)]
 pub struct InterfaceDecl {
-    pub symbol_id: SymbolID,
     pub name: String,
     pub methods: Vec<FuncDeclID>,
     pub generic_params: TypedGenericParams,
@@ -167,7 +162,6 @@ pub struct InterfaceDecl {
 
 #[derive(Debug, Clone)]
 pub struct GlobalVarDecl {
-    pub symbol_id: SymbolID,
     pub name: String,
     pub ty: Option<SemaType>,
     pub rhs: Option<TypedExprStmt>,
@@ -243,12 +237,6 @@ impl MethodDecls {
     }
 }
 
-impl Hash for FuncDecl {
-    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-        self.symbol_id.hash(state);
-    }
-}
-
 impl PartialEq for FuncDecl {
     fn eq(&self, other: &Self) -> bool {
         let self_params = self.params.list.iter().collect::<Vec<_>>();
@@ -300,11 +288,106 @@ impl FuncDecl {
         let is_public = self.modifiers.vis.is_public();
 
         TypedFuncType {
-            symbol_id: self.symbol_id,
             params,
             ret_type: Box::new(self.ret_type.clone()),
             is_public,
             loc: self.loc,
+        }
+    }
+}
+
+impl DeclID {
+    #[inline(always)]
+    pub fn is_var(&self) -> bool {
+        matches!(self, DeclID::Var(_))
+    }
+
+    #[inline(always)]
+    pub fn is_global_var(&self) -> bool {
+        matches!(self, DeclID::GlobalVar(_))
+    }
+
+    #[inline(always)]
+    pub fn is_var_or_global_var(&self) -> bool {
+        matches!(self, DeclID::Var(_) | DeclID::GlobalVar(_))
+    }
+
+    #[inline(always)]
+    pub fn is_func(&self) -> bool {
+        matches!(self, DeclID::Func(_))
+    }
+}
+
+impl DeclID {
+    #[inline(always)]
+    pub fn as_struct(&self) -> Option<StructDeclID> {
+        match *self {
+            DeclID::Struct(id) => Some(id),
+            _ => None,
+        }
+    }
+
+    #[inline(always)]
+    pub fn as_enum(&self) -> Option<EnumDeclID> {
+        match *self {
+            DeclID::Enum(id) => Some(id),
+            _ => None,
+        }
+    }
+
+    #[inline(always)]
+    pub fn as_union(&self) -> Option<UnionDeclID> {
+        match *self {
+            DeclID::Union(id) => Some(id),
+            _ => None,
+        }
+    }
+
+    #[inline(always)]
+    pub fn as_func(&self) -> Option<FuncDeclID> {
+        match *self {
+            DeclID::Func(id) => Some(id),
+            _ => None,
+        }
+    }
+
+    #[inline(always)]
+    pub fn as_method(&self) -> Option<MethodDeclID> {
+        match *self {
+            DeclID::Method(id) => Some(id),
+            _ => None,
+        }
+    }
+
+    #[inline(always)]
+    pub fn as_interface(&self) -> Option<InterfaceDeclID> {
+        match *self {
+            DeclID::Interface(id) => Some(id),
+            _ => None,
+        }
+    }
+
+    #[inline(always)]
+    pub fn as_global_var(&self) -> Option<GlobalVarDeclID> {
+        match *self {
+            DeclID::GlobalVar(id) => Some(id),
+            _ => None,
+        }
+    }
+
+    #[inline(always)]
+    pub fn as_var(&self) -> Option<VarDeclID> {
+        match *self {
+            DeclID::Var(id) => Some(id),
+            _ => None,
+        }
+    }
+
+    #[inline(always)]
+    pub fn as_typedef(&self) -> Option<TypedefDeclID> {
+        match *self {
+            DeclID::Typedef(id) => Some(id),
+            _ => None,
         }
     }
 }

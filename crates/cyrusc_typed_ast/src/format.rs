@@ -15,14 +15,14 @@
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
 
-use crate::decls::{EnumDecl, StructDecl, UnionDecl};
+use crate::decls::{DeclID, EnumDecl, StructDecl, UnionDecl};
 use crate::exprs::TypedEnumInitArgs;
 use crate::stmts::{TypedEnumVariant, TypedEnumVariantStructField, TypedTypeArg};
 use crate::types::TypeDeclID;
 use crate::{GenericParamID, SymbolID};
 use crate::{
     exprs::{TypedExprKind, TypedExprStmt, TypedLambdaExpr, TypedSymbolExpr, TypedUnnamedEnumValueKind},
-    stmts::{TypedBuiltin, TypedFuncParamKind, TypedFuncTypeVariadicParams, TypedFuncVariadicParam, TypedTypeArgs},
+    stmts::{TypedBuiltin, TypedFuncParamKind, TypedFuncTypeVariadicParam, TypedFuncVariadicParam, TypedTypeArgs},
     types::{SemaType, TypedArrayCapacity, TypedFuncType, UnresolvedType},
 };
 use cyrusc_ast::operators::UnaryOperator;
@@ -32,6 +32,7 @@ use cyrusc_source_loc::{Loc, SourceMap};
 /// and debugging output.
 pub trait Formatter {
     fn format_symbol_name(&self, symbol_id: SymbolID) -> String;
+    fn format_decl(&self, decl_id: DeclID) -> String;
     fn format_type_decl(&self, type_decl_id: TypeDeclID) -> String;
     fn format_generic_param(&self, generic_param_id: GenericParamID) -> String;
 }
@@ -135,7 +136,10 @@ pub fn format_typed_expr(expr: &TypedExprStmt, formatter: &dyn Formatter) -> Str
     use TypedExprKind::*;
 
     match &expr.kind {
-        Symbol(TypedSymbolExpr { symbol_id, .. }) => formatter.format_symbol_name(*symbol_id),
+        Symbol(TypedSymbolExpr {
+            decl_id: symbol_decl_id,
+            ..
+        }) => formatter.format_decl(*symbol_decl_id),
         Literal(literal) => literal.to_string(),
         Prefix(p) => format!("{}{}", p.op, format_typed_expr(&p.operand, formatter)),
         Infix(inf) => format!(
@@ -174,8 +178,9 @@ pub fn format_typed_expr(expr: &TypedExprStmt, formatter: &dyn Formatter) -> Str
         AddrOf(addr_of) => format!("&{}", format_typed_expr(&addr_of.operand, formatter)),
         Deref(deref) => format!("*{}", format_typed_expr(&deref.operand, formatter)),
         StructInit(struct_init) => {
-            if let Some(symbol_id) = struct_init.symbol_id {
-                let name = formatter.format_symbol_name(symbol_id);
+            if let Some(decl_id) = struct_init.decl_id {
+                let name = formatter.format_decl(decl_id);
+
                 let fields = struct_init
                     .fields
                     .iter()
@@ -208,8 +213,8 @@ pub fn format_typed_expr(expr: &TypedExprStmt, formatter: &dyn Formatter) -> Str
             }
         }
         UnionInit(union_init) => {
-            if let Some(symbol_id) = union_init.symbol_id {
-                let name = formatter.format_symbol_name(symbol_id);
+            if let Some(decl_id) = union_init.decl_id {
+                let name = formatter.format_decl(decl_id);
 
                 format!(
                     "{}{{ {} }}",
@@ -398,7 +403,7 @@ pub fn format_enum_struct_variant_fields(
 pub fn format_sema_type(sema_type: SemaType, formatter: &dyn Formatter) -> String {
     match sema_type {
         SemaType::Unresolved(unresolved_type) => match unresolved_type {
-            UnresolvedType::Symbol(_) => format!("<unresolved_symbol>"),
+            UnresolvedType::Decl(_) => format!("<unresolved_symbol>"),
             UnresolvedType::GenericInst { .. } => format!("<unresolved_generic_inst>"),
         },
         SemaType::GenericParam(generic_param_id) => formatter.format_generic_param(generic_param_id),
@@ -480,8 +485,8 @@ pub fn format_func_type<'a>(func_type: &TypedFuncType, formatter: &dyn Formatter
 
     if let Some(variadic) = func_type.params.variadic.clone() {
         match *variadic {
-            TypedFuncTypeVariadicParams::UntypedCStyle => params.push_str(", ..."),
-            TypedFuncTypeVariadicParams::Typed(sema_type) => {
+            TypedFuncTypeVariadicParam::UntypedCStyle => params.push_str(", ..."),
+            TypedFuncTypeVariadicParam::Typed(sema_type) => {
                 params.push_str(&format!(", {}...", format_sema_type(sema_type, formatter)))
             }
         }
@@ -508,11 +513,11 @@ pub fn format_lambda(lambda: &TypedLambdaExpr, formatter: &dyn Formatter) -> Str
     if let Some(variadic) = lambda.params.variadic.clone() {
         match &variadic {
             TypedFuncVariadicParam::UntypedCStyle => params.push_str(", ..."),
-            TypedFuncVariadicParam::Typed(ident, sema_type) => params.push_str(&format!(
-                ", {}: ...{}",
-                ident.name,
-                format_sema_type(sema_type.clone(), formatter)
-            )),
+            TypedFuncVariadicParam::Typed { var_decl_id, ty, .. } => {
+                let name = formatter.format_decl(DeclID::Var(*var_decl_id));
+
+                params.push_str(&format!(", {}: ...{}", name, format_sema_type(ty.clone(), formatter)))
+            }
         }
     }
 

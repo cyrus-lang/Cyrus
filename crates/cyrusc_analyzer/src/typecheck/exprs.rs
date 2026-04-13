@@ -17,7 +17,6 @@
 
 use crate::{context::AnalysisContext, diagnostics::AnalyzerDiagKind};
 use cyrusc_diagcentral::{Diag, DiagLevel};
-use cyrusc_internal::symbols::symbols::SymbolEntryKind;
 use cyrusc_source_loc::Loc;
 use cyrusc_typed_ast::{
     exprs::{TypedExprKind, TypedExprStmt},
@@ -33,15 +32,11 @@ impl<'a> AnalysisContext<'a> {
     ) -> Option<SemaType> {
         match &expr.kind {
             TypedExprKind::Symbol(symbol_expr) => {
-                let symbol_entry = self.query.lookup_symbol_entry(symbol_expr.symbol_id).unwrap();
-
-                debug_assert!(!matches!(symbol_entry.kind, SymbolEntryKind::Unresolved));
-
-                if !symbol_entry.is_var_or_global_var() && !symbol_entry.is_func() {
+                if !symbol_expr.decl_id.is_var_or_global_var() && !symbol_expr.decl_id.is_func() {
                     self.reporter.report(Diag {
                         level: DiagLevel::Error,
                         kind: Box::new(AnalyzerDiagKind::UnknownSymbol {
-                            symbol_name: self.formatter.format_symbol_name(symbol_expr.symbol_id),
+                            symbol_name: self.formatter.format_decl(symbol_expr.decl_id),
                         }),
                         loc: Some(symbol_expr.loc),
                         hint: None,
@@ -67,7 +62,7 @@ impl<'a> AnalysisContext<'a> {
         self.lower_expr_pre_analysis(expr, expected_type.clone());
 
         let expr_type = match &mut expr.kind {
-            TypedExprKind::Symbol(symbol_expr) => self.resolve_symbol_type(symbol_expr.symbol_id, symbol_expr.loc),
+            TypedExprKind::Symbol(symbol_expr) => self.resolve_symbol_type(symbol_expr.decl_id, symbol_expr.loc),
             TypedExprKind::Assign(assign) => {
                 self.analyze_assign(assign);
                 assign.rhs.sema_type.clone()

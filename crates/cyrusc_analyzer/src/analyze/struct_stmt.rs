@@ -29,27 +29,16 @@ use fx_hash::FxHashSet;
 
 impl<'a> AnalysisContext<'a> {
     pub(crate) fn analyze_struct_stmt(&mut self, struct_stmt: &mut TypedStructStmt) {
-        let Some(struct_decl_id) = self.query.get_struct(struct_stmt.symbol_id) else {
-            self.reporter.report(Diag {
-                level: DiagLevel::Error,
-                kind: Box::new(AnalyzerDiagKind::NonStructSymbol {
-                    symbol_name: self.formatter.format_symbol_name(struct_stmt.symbol_id),
-                }),
-                loc: Some(struct_stmt.loc),
-                hint: None,
-            });
-            return;
-        };
+        let mut struct_decl = self.decl_tables.struct_decl(struct_stmt.struct_decl_id);
 
-        let mut struct_decl = self.decl_tables.struct_decl(struct_decl_id);
-
-        self.analyze_struct_decl(struct_decl_id, &mut struct_decl);
+        self.analyze_struct_decl(struct_stmt.struct_decl_id, &mut struct_decl);
 
         struct_stmt.fields = struct_decl.fields.clone();
 
-        self.decl_tables.with_struct_decl_mut(struct_decl_id, |_struct_decl| {
-            *_struct_decl = struct_decl;
-        });
+        self.decl_tables
+            .with_struct_decl_mut(struct_stmt.struct_decl_id, |_struct_decl| {
+                *_struct_decl = struct_decl;
+            });
     }
 
     pub(crate) fn analyze_struct_decl(&mut self, struct_decl_id: StructDeclID, struct_decl: &mut StructDecl) {
@@ -145,12 +134,7 @@ impl<'a> AnalysisContext<'a> {
         }
     }
 
-    pub(crate) fn validate_struct_field_type(
-        &mut self,
-        struct_decl_id: StructDeclID,
-        sema_type: &SemaType,
-        loc: Loc,
-    ) {
+    pub(crate) fn validate_struct_field_type(&mut self, struct_decl_id: StructDeclID, sema_type: &SemaType, loc: Loc) {
         let sema_type = sema_type.const_inner();
 
         if sema_type.is_void() {

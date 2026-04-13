@@ -206,7 +206,6 @@ pub fn build_semantic_bundle(opts: &mut CodeGenOptions, file_path_opt: Option<St
                     config.clone(),
                     reporter.clone(),
                     source_map.clone(),
-                    &resolver,
                     decl_tables.clone(),
                     &resolver,
                     program_tree_entry.program_tree.clone(),

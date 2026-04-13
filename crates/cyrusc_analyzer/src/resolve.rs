@@ -17,7 +17,7 @@
 
 use crate::context::AnalysisContext;
 use cyrusc_const_eval::{fold::ConstFolder, resolver::ConstResolver};
-use cyrusc_typed_ast::{SymbolID, exprs::TypedExprStmt, types::SemaType};
+use cyrusc_typed_ast::{decls::DeclID, exprs::TypedExprStmt, types::SemaType};
 
 impl<'a> AnalysisContext<'a> {
     /// Returns `true` when a const‑qualified type is assigned to a mutable variable.
@@ -34,14 +34,12 @@ impl<'a> AnalysisContext<'a> {
 
     pub(crate) fn is_const_qualified_lvalue(&self, expr: &TypedExprStmt) -> bool {
         expr.kind
-            .as_symbol_id()
-            .map(|symbol_id| {
-                let symbol_entry = self.query.lookup_symbol_entry(symbol_id).unwrap();
-
-                if let Some(var_decl_id) = symbol_entry.as_var() {
+            .as_decl_id()
+            .map(|decl_id| {
+                if let Some(var_decl_id) = decl_id.as_var() {
                     let var_decl = self.decl_tables.var_decl(var_decl_id);
                     var_decl.is_const
-                } else if let Some(global_var_decl_id) = symbol_entry.as_global_var() {
+                } else if let Some(global_var_decl_id) = decl_id.as_global_var() {
                     let global_var_decl = self.decl_tables.global_var_decl(global_var_decl_id);
                     global_var_decl.is_const
                 } else {
@@ -56,13 +54,11 @@ impl<'a> AnalysisContext<'a> {
         folder.fold_expr(expr);
     }
 
-    fn resolve_variable_rhs_expr(&mut self, symbol_id: SymbolID) -> Option<TypedExprStmt> {
-        let symbol_entry = self.query.lookup_symbol_entry(symbol_id)?;
-
-        if let Some(var_decl_id) = symbol_entry.as_var() {
+    fn resolve_variable_rhs_expr(&mut self, decl_id: DeclID) -> Option<TypedExprStmt> {
+        if let Some(var_decl_id) = decl_id.as_var() {
             let var_decl = self.decl_tables.var_decl(var_decl_id);
             var_decl.rhs.clone()
-        } else if let Some(global_var_decl_id) = symbol_entry.as_global_var() {
+        } else if let Some(global_var_decl_id) = decl_id.as_global_var() {
             let global_var_decl = self.decl_tables.global_var_decl(global_var_decl_id);
             global_var_decl.rhs.clone()
         } else {
@@ -72,12 +68,12 @@ impl<'a> AnalysisContext<'a> {
 }
 
 impl<'a> ConstResolver for AnalysisContext<'a> {
-    fn resolve_symbol_expr(&mut self, symbol_id: SymbolID) -> Option<TypedExprStmt> {
-        self.resolve_variable_rhs_expr(symbol_id)
+    fn resolve_symbol_expr(&mut self, decl_id: DeclID) -> Option<TypedExprStmt> {
+        self.resolve_variable_rhs_expr(decl_id)
     }
 
-    fn is_symbol_const(&mut self, symbol_id: SymbolID) -> bool {
-        match self.resolve_variable_rhs_expr(symbol_id) {
+    fn is_decl_const(&mut self, decl_id: DeclID) -> bool {
+        match self.resolve_variable_rhs_expr(decl_id) {
             Some(expr) => expr.sema_type.as_ref().map(|ty| ty.is_const()).unwrap_or(false),
             None => false,
         }

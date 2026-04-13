@@ -25,7 +25,10 @@ use cyrusc_ast::{
     operators::{InfixOperator, PrefixOperator, UnaryOperator},
 };
 use cyrusc_source_loc::Loc;
-use cyrusc_typed_ast::{LabelID, decls::MonomorphID, exprs::TypedIdent};
+use cyrusc_typed_ast::{
+    LabelID,
+    decls::{MonomorphID, VarDeclID},
+};
 use fx_hash::FxHashMap;
 use std::fmt::Debug;
 
@@ -400,8 +403,8 @@ pub struct CIRSwitchOnEnumCase {
 #[derive(Debug, Clone)]
 pub enum CIRSwitchOnEnumPattern {
     Ident(String, usize),
-    Valued(String, usize, (TypedIdent, CIRExpr)),
-    ExportFields(String, usize, Vec<(TypedIdent, CIRType)>),
+    Valued(String, usize, (VarDeclID, CIRExpr)),
+    ExportFields(String, usize, Vec<(VarDeclID, CIRType)>),
 }
 
 #[derive(Debug, Clone)]

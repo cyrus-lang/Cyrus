@@ -20,7 +20,7 @@ use cyrusc_ast::{
     modifiers::{FuncModifiers, GlobalVarModifiers},
 };
 use cyrusc_typed_ast::{
-    stmts::{TypedFuncTypeVariadicParams, TypedTypeArg, TypedTypeArgs},
+    stmts::{TypedFuncTypeVariadicParam, TypedTypeArg, TypedTypeArgs},
     types::{SemaType, TypeDeclID, TypedArrayCapacity},
 };
 use once_cell::sync::Lazy;
@@ -217,8 +217,8 @@ fn mangle_sema_type(sema_type: &SemaType) -> String {
                 .join("_");
 
             let variadic = func_type.params.variadic.clone().map(|variadic| match *variadic {
-                TypedFuncTypeVariadicParams::UntypedCStyle => "cvar".to_string(),
-                TypedFuncTypeVariadicParams::Typed(sema_type) => format!("var_{}", mangle_sema_type(&sema_type)),
+                TypedFuncTypeVariadicParam::UntypedCStyle => "cvar".to_string(),
+                TypedFuncTypeVariadicParam::Typed(sema_type) => format!("var_{}", mangle_sema_type(&sema_type)),
             });
 
             if let Some(variadic) = variadic {

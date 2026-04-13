@@ -25,7 +25,7 @@ impl<'a> AnalysisContext<'a> {
             return;
         };
 
-        let Some(symbol_id) = struct_init.symbol_id else {
+        let Some(symbol_id) = struct_init.decl_id else {
             return;
         };
 
@@ -51,7 +51,7 @@ impl<'a> AnalysisContext<'a> {
         let field = struct_init.fields.first().unwrap();
 
         let union_init = TypedUnionInitExpr {
-            symbol_id: Some(symbol_id),
+            decl_id: Some(symbol_id),
             type_args: struct_init.type_args.clone(),
             field: Box::new(field.clone()),
             loc: struct_init.loc,
