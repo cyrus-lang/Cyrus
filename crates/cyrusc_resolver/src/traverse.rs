@@ -2185,7 +2185,7 @@ impl Resolver {
         let scope = LocalScope::new();
 
         with_local_scope!(self, scope, {
-            let (params, variadic, ret_type) = {
+            let (mut params, mut variadic, ret_type) = {
                 let (params, variadic) = self.resolve_func_params(&lambda.params)?;
 
                 let ret_type = self.resolve_type(
@@ -2195,6 +2195,8 @@ impl Resolver {
 
                 (params, variadic, ret_type)
             };
+
+            self.insert_func_params_into_current_scope(&mut params, &mut variadic)?;
 
             let body = match self.resolve_block_stmt(&lambda.body) {
                 Some(block) => Box::new(block),

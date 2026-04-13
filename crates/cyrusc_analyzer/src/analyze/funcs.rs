@@ -71,10 +71,11 @@ impl<'a> AnalysisContext<'a> {
         func_decl_stmt.params = func_decl.params.clone();
         func_decl_stmt.ret_type = func_decl.ret_type.clone();
 
-        self.decl_tables.with_func_decl_mut(func_decl_stmt.func_decl_id, |_func_decl| {
-            _func_decl.params = func_decl.params.clone();
-            _func_decl.ret_type = func_decl.ret_type.clone();
-        });
+        self.decl_tables
+            .with_func_decl_mut(func_decl_stmt.func_decl_id, |_func_decl| {
+                _func_decl.params = func_decl.params.clone();
+                _func_decl.ret_type = func_decl.ret_type.clone();
+            });
     }
 
     pub(crate) fn analyze_func_decl(&mut self, func_decl: &mut FuncDecl) {
@@ -89,7 +90,7 @@ impl<'a> AnalysisContext<'a> {
             None => return,
         };
 
-        self.normalize_func_params(&mut func_decl.params, func_decl.loc);
+        self.normalize_func_params(&mut func_decl.params);
     }
 
     pub(crate) fn analyze_func_body(&mut self, body: &mut TypedBlockStmt, ret_type: &SemaType) {

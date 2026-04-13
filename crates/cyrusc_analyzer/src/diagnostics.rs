@@ -65,6 +65,12 @@ pub enum AnalyzerDiagKind {
     #[error("Redundant 'const' qualifier on an already-const type.")]
     RedundantConstQualifier,
 
+    #[error("Element type of an array or slice cannot be 'void'.")]
+    VoidElementTypeNotAllowed,
+
+    #[error("Tuple element cannot have type 'void'.")]
+    VoidTupleElementNotAllowed,
+
     #[error("Field cannot have type 'void'.")]
     VoidFieldType,
 

@@ -24,11 +24,7 @@ use crate::{
     },
     llvm::{abi::abi_type::abi_type_to_llvm_type, constness::is_basic_value_constant, debug_info::set_debug_location},
 };
-use cyrusc_ast::{
-    abi::Linkage,
-    modifiers::{FuncModifiers, GlobalVarModifiers},
-    operators::{InfixOperator, PrefixOperator, UnaryOperator},
-};
+use cyrusc_ast::operators::{InfixOperator, PrefixOperator, UnaryOperator};
 use cyrusc_internal::{
     abi::{
         layout::{ABIFieldOffsetInfo, ABITypeLayout, type_layout},
@@ -1691,21 +1687,6 @@ impl<'ll> CodeGenIRBuilder<'ll> {
             .unwrap()
             .into_struct_value()
     }
-
-    // FIXME
-    // fn emit_monomorph_func_instance_call(
-    //     &mut self,
-    //     monomorph_func_instance_call: &CIRMonomorphFuncInstanceCall,
-    // ) -> InternalValue<'ll> {
-    //     let (llvm_func_value, cir_func_ty) = self.emit_monomorph_func_instance(monomorph_func_instance_call.monomorph_id);
-
-    //     self.emit_direct_call(
-    //         &cir_func_ty,
-    //         &monomorph_func_instance_call.args,
-    //         &monomorph_func_instance_call.ret_ty,
-    //         &llvm_func_value,
-    //     )
-    // }
 
     // FIXME
     // fn emit_interface_method_call(&mut self, interface_method_call: &CIRInterfaceMethodCall) -> InternalValue<'ll> {

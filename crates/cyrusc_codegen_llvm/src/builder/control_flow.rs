@@ -29,10 +29,16 @@ use cyrusc_internal::{
             CIRBlockStmt, CIRBreakStmt, CIRContinueStmt, CIRForStmt, CIRGotoStmt, CIRIfStmt, CIRLabelStmt,
             CIRReturnStmt, CIRStmt, CIRSwitchOnEnumStmt, CIRSwitchStmt, CIRWhileStmt,
         },
-        types::{CIREnumType, CIRType},
+        types::CIREnumType,
     },
 };
-use cyrusc_source_loc::Loc;
+use inkwell::llvm_sys::{
+    LLVMUse,
+    core::{
+        LLVMAppendExistingBasicBlock, LLVMBasicBlockAsValue, LLVMCreateBasicBlockInContext, LLVMGetBasicBlockParent,
+        LLVMGetFirstUse,
+    },
+};
 use inkwell::{
     basic_block::BasicBlock,
     context::AsContextRef,
@@ -45,16 +51,6 @@ use inkwell::{
     },
     types::{BasicTypeEnum, StructType},
     values::{AsValueRef, BasicValueEnum, FunctionValue, InstructionOpcode, IntValue},
-};
-use inkwell::{
-    llvm_sys::{
-        LLVMUse,
-        core::{
-            LLVMAppendExistingBasicBlock, LLVMBasicBlockAsValue, LLVMCreateBasicBlockInContext,
-            LLVMGetBasicBlockParent, LLVMGetFirstUse,
-        },
-    },
-    values::PointerValue,
 };
 
 #[derive(Debug, Clone)]
@@ -84,231 +80,6 @@ impl<'ll> CFLoop<'ll> {
 }
 
 impl<'ll> CodeGenIRBuilder<'ll> {
-    pub(crate) fn emit_predefine_labels(&mut self, cir_block: &CIRBlockStmt) {
-        for cir_stmt in &cir_block.stmts {
-            if let CIRStmt::Label(label_stmt) = cir_stmt {
-                let label_basic_block = self.new_basic_block(&format!("label.{}", label_stmt.name));
-                self.blockreg
-                    .labels
-                    .insert(label_stmt.label_id.clone(), label_basic_block);
-            }
-        }
-    }
-
-    pub(crate) fn ensure_entry_block(&mut self) {
-        let entry_block = self.new_basic_block("entry");
-        self.blockreg.first_block = Some(entry_block);
-
-        self.emit_block(entry_block);
-    }
-
-    pub(crate) fn emit_label(&mut self, label_stmt: &CIRLabelStmt) {
-        if let Some(parent_block) = self.blockreg.cur_block {
-            if parent_block.get_terminator().is_none() {
-                let label_block = self.blockreg.labels.get(&label_stmt.label_id).unwrap();
-                self.llvmbuilder.build_unconditional_branch(*label_block).unwrap();
-            }
-        }
-
-        if let Some(basic_block) = self.blockreg.labels.get(&label_stmt.label_id) {
-            self.emit_block(*basic_block);
-        } else {
-            panic!("Label block for '{}' not predefined.", label_stmt.name);
-        }
-    }
-
-    pub(crate) fn emit_goto(&mut self, goto_stmt: &CIRGotoStmt) {
-        let target_block = *self.blockreg.labels.get(&goto_stmt.label_id).unwrap();
-
-        let cur_block = self.blockreg.cur_block.unwrap();
-
-        if cur_block.get_terminator().is_none() {
-            self.llvmbuilder.build_unconditional_branch(target_block).unwrap();
-        }
-
-        self.blockreg.cur_block = None;
-    }
-
-    pub(crate) fn emit_scope_defers(&mut self) {
-        let scope = match self.defer_stack.last() {
-            Some(scope) => scope.clone(),
-            None => return,
-        };
-
-        for stmt in scope.iter().rev() {
-            self.emit_stmt(&stmt);
-        }
-    }
-
-    pub(crate) fn emit_all_defers(&mut self) {
-        let scopes: Vec<_> = self.defer_stack.iter().cloned().collect();
-
-        for scope in scopes.iter().rev() {
-            for stmt in scope.iter().rev() {
-                if self.blockreg.cur_block.is_none() {
-                    break;
-                }
-
-                self.emit_stmt(&stmt);
-            }
-        }
-    }
-
-    pub(crate) fn emit_ret(&mut self, return_stmt: &CIRReturnStmt) {
-        let cur_fn = self.cur_func.unwrap();
-        let cur_abi_func_info = self.cur_abi_func_info.clone().unwrap();
-        let ret_info = &cur_abi_func_info.ret_info;
-
-        match (&return_stmt.arg, &ret_info.kind) {
-            (None, _) => {
-                self.emit_all_defers();
-                self.llvmbuilder.build_return(None).unwrap();
-            }
-            (Some(expr), ABIRetInfoKind::Ignore) => {
-                self.emit_expr(expr);
-                self.emit_all_defers();
-                self.llvmbuilder.build_return(None).unwrap();
-            }
-            (Some(expr), ABIRetInfoKind::Indirect { sret }) => {
-                let lvalue = self.emit_expr(expr);
-                let rvalue = self.load_rvalue(lvalue.clone());
-
-                if *sret {
-                    self.emit_compute_indirect_sret(cur_fn, &lvalue, &rvalue);
-                    self.emit_all_defers();
-                    self.llvmbuilder.build_return(None).unwrap();
-                    return;
-                }
-            }
-            (Some(expr), ABIRetInfoKind::Direct { coerce_to }) => {
-                let lvalue = self.emit_expr(expr);
-                let rvalue = self.load_rvalue(lvalue);
-
-                let ret_ty = abi_type_to_llvm_type(self.llvmctx, &self.target.info, &ret_info.abi_type);
-
-                let value: BasicValueEnum<'ll> = if let Some(coerce) = coerce_to {
-                    let coerce_ty = abi_type_to_llvm_type(self.llvmctx, &self.target.info, coerce);
-                    self.emit_cast(coerce_ty, rvalue).try_into().unwrap()
-                } else {
-                    self.emit_cast(ret_ty, rvalue).try_into().unwrap()
-                };
-
-                let return_value =
-                    self.intrinsic_coerce_through_alloca(value, ret_ty.try_into().unwrap(), "coerce.ret");
-
-                self.emit_all_defers();
-                self.llvmbuilder.build_return(Some(&return_value)).unwrap();
-            }
-            (Some(expr), ABIRetInfoKind::DirectPair { lo, hi }) => {
-                let lvalue = self.emit_expr(expr);
-                let rvalue = self.load_rvalue(lvalue);
-
-                let return_value = self.emit_compute_return_direct_pair(rvalue, lo, hi, &ret_info.abi_type);
-
-                self.emit_all_defers();
-                self.llvmbuilder.build_return(Some(&return_value)).unwrap();
-            }
-        }
-    }
-
-    fn emit_compute_indirect_sret(
-        &mut self,
-        cur_fn: FunctionValue<'ll>,
-        lvalue: &InternalValue<'ll>,
-        rvalue: &InternalValue<'ll>,
-    ) {
-        let sret_param = cur_fn.get_first_param().unwrap();
-        let sret_ptr = sret_param.into_pointer_value();
-
-        let struct_ty = rvalue.ty.clone();
-        let struct_layout = type_layout(&self.target.info, &struct_ty);
-
-        let size_val = self.llvmctx.i64_type().const_int(struct_layout.size as u64, false);
-
-        let src_ptr = match &lvalue.kind {
-            InternalValueKind::LValue(ptr) => *ptr,
-            InternalValueKind::RValue(val) => {
-                let temp_alloca = self.llvmbuilder.build_alloca(val.get_type(), "sret.temp").unwrap();
-
-                self.llvmbuilder.build_store(temp_alloca, *val).unwrap();
-                temp_alloca
-            }
-            InternalValueKind::FuncValue(_) => unreachable!(),
-        };
-
-        self.llvmbuilder
-            .build_memcpy(
-                sret_ptr,
-                self.target.info.pointer_align(),
-                src_ptr,
-                self.target.info.pointer_align(),
-                size_val,
-            )
-            .unwrap();
-    }
-
-    fn emit_compute_return_direct_pair(
-        &mut self,
-        rvalue: InternalValue<'ll>,
-        lo: &ABIType,
-        hi: &ABIType,
-        abi_ret_type: &ABIType,
-    ) -> BasicValueEnum<'ll> {
-        let value = rvalue.as_basic_value();
-
-        let lo_ty: BasicTypeEnum<'ll> = abi_type_to_llvm_type(self.llvmctx, &self.target.info, lo)
-            .try_into()
-            .unwrap();
-
-        let hi_ty: BasicTypeEnum<'ll> = abi_type_to_llvm_type(self.llvmctx, &self.target.info, hi)
-            .try_into()
-            .unwrap();
-
-        let pair_ty = self.emit_abi_pair_llvm_type(lo, hi);
-
-        let src_alloca = self
-            .llvmbuilder
-            .build_alloca(value.get_type(), "ret.src.alloca")
-            .unwrap();
-
-        self.llvmbuilder.build_store(src_alloca, value).unwrap();
-
-        let lo_ptr = self
-            .llvmbuilder
-            .build_struct_gep(pair_ty, src_alloca, 0, "ret.lo.ptr")
-            .unwrap();
-
-        let lo_val = self.llvmbuilder.build_load(lo_ty, lo_ptr, "ret.lo").unwrap();
-
-        let hi_ptr = self
-            .llvmbuilder
-            .build_struct_gep(pair_ty, src_alloca, 1, "ret.hi.ptr")
-            .unwrap();
-
-        let hi_val = self.llvmbuilder.build_load(hi_ty, hi_ptr, "ret.hi").unwrap();
-
-        // construct ABI return struct
-        let ret_struct_ty: StructType = abi_type_to_llvm_type(self.llvmctx, &self.target.info, abi_ret_type)
-            .try_into()
-            .unwrap();
-
-        let mut pair_struct = ret_struct_ty.get_undef();
-
-        pair_struct = self
-            .llvmbuilder
-            .build_insert_value(pair_struct, lo_val, 0, "ret.insert.lo")
-            .unwrap()
-            .into_struct_value();
-
-        pair_struct = self
-            .llvmbuilder
-            .build_insert_value(pair_struct, hi_val, 1, "ret.insert.hi")
-            .unwrap()
-            .into_struct_value();
-
-        pair_struct.into()
-    }
-
     // // FIXME
     // pub(crate) fn emit_switch_on_enum_export_fields(
     //     &self,
@@ -657,7 +428,10 @@ impl<'ll> CodeGenIRBuilder<'ll> {
             self.emit_block(exit_block);
         }
     }
+}
 
+// Loops.
+impl<'ll> CodeGenIRBuilder<'ll> {
     pub(crate) fn emit_for(&mut self, for_stmt: &CIRForStmt) {
         let cond_block = for_stmt.cond.as_ref().map(|_| self.new_basic_block("for.cond"));
         let inc_block = for_stmt.increment.as_ref().map(|_| self.new_basic_block("for_inc"));
@@ -780,36 +554,9 @@ impl<'ll> CodeGenIRBuilder<'ll> {
 
         self.blockreg.control_flow_stack.pop().unwrap();
     }
+}
 
-    pub(crate) fn emit_break(&mut self, _break_stmt: &CIRBreakStmt) {
-        let entry = self.blockreg.control_flow_stack.last().unwrap();
-
-        let CFEntry::Loop(cf_loop) = entry;
-
-        let exit_block = cf_loop.exit_block;
-        let cur_block = self.blockreg.cur_block.unwrap();
-
-        if cur_block.get_terminator().is_none() {
-            self.llvmbuilder.build_unconditional_branch(exit_block).unwrap();
-        }
-        self.blockreg.cur_block = None;
-    }
-
-    pub(crate) fn emit_continue(&mut self, _continue_stmt: &CIRContinueStmt) {
-        let entry = self.blockreg.control_flow_stack.last().unwrap();
-
-        let CFEntry::Loop(cf_loop) = entry;
-
-        let target_block = cf_loop.inc_block.or(cf_loop.cond_block).unwrap();
-
-        let cur_block = self.blockreg.cur_block.unwrap();
-
-        if cur_block.get_terminator().is_none() {
-            self.llvmbuilder.build_unconditional_branch(target_block).unwrap();
-        }
-        self.blockreg.cur_block = None;
-    }
-
+impl<'ll> CodeGenIRBuilder<'ll> {
     pub(crate) fn emit_if(&mut self, if_stmt: &CIRIfStmt) {
         let exit_block = self.new_basic_block("if.exit");
         let mut then_block = exit_block;
@@ -895,30 +642,315 @@ impl<'ll> CodeGenIRBuilder<'ll> {
             self.emit_block(exit_block);
         }
     }
+}
 
-    pub unsafe fn llvm_emit_check_block_branch(&mut self) -> bool {
-        let cur = match self.blockreg.cur_block {
+// Return + Continue
+impl<'ll> CodeGenIRBuilder<'ll> {
+    pub(crate) fn emit_break(&mut self, _break_stmt: &CIRBreakStmt) {
+        let entry = self.blockreg.control_flow_stack.last().unwrap();
+
+        let CFEntry::Loop(cf_loop) = entry;
+
+        let exit_block = cf_loop.exit_block;
+        let cur_block = self.blockreg.cur_block.unwrap();
+
+        if cur_block.get_terminator().is_none() {
+            self.llvmbuilder.build_unconditional_branch(exit_block).unwrap();
+        }
+        self.blockreg.cur_block = None;
+    }
+
+    pub(crate) fn emit_continue(&mut self, _continue_stmt: &CIRContinueStmt) {
+        let entry = self.blockreg.control_flow_stack.last().unwrap();
+
+        let CFEntry::Loop(cf_loop) = entry;
+
+        let target_block = cf_loop.inc_block.or(cf_loop.cond_block).unwrap();
+
+        let cur_block = self.blockreg.cur_block.unwrap();
+
+        if cur_block.get_terminator().is_none() {
+            self.llvmbuilder.build_unconditional_branch(target_block).unwrap();
+        }
+        self.blockreg.cur_block = None;
+    }
+}
+
+// Labels + Goto Jumps.
+impl<'ll> CodeGenIRBuilder<'ll> {
+    pub(crate) fn emit_predefine_labels(&mut self, cir_block: &CIRBlockStmt) {
+        for cir_stmt in &cir_block.stmts {
+            if let CIRStmt::Label(label_stmt) = cir_stmt {
+                let label_basic_block = self.new_basic_block(&format!("label.{}", label_stmt.name));
+                self.blockreg
+                    .labels
+                    .insert(label_stmt.label_id.clone(), label_basic_block);
+            }
+        }
+    }
+
+    pub(crate) fn emit_label(&mut self, label_stmt: &CIRLabelStmt) {
+        if let Some(parent_block) = self.blockreg.cur_block {
+            if parent_block.get_terminator().is_none() {
+                let label_block = self.blockreg.labels.get(&label_stmt.label_id).unwrap();
+                self.llvmbuilder.build_unconditional_branch(*label_block).unwrap();
+            }
+        }
+
+        if let Some(basic_block) = self.blockreg.labels.get(&label_stmt.label_id) {
+            self.emit_block(*basic_block);
+        } else {
+            panic!("label block for '{}' not predefined", label_stmt.name);
+        }
+    }
+
+    pub(crate) fn emit_goto(&mut self, goto_stmt: &CIRGotoStmt) {
+        let target_block = *self.blockreg.labels.get(&goto_stmt.label_id).unwrap();
+
+        let cur_block = self.blockreg.cur_block.unwrap();
+
+        if cur_block.get_terminator().is_none() {
+            self.llvmbuilder.build_unconditional_branch(target_block).unwrap();
+        }
+
+        self.blockreg.cur_block = None;
+    }
+}
+
+// Return.
+impl<'ll> CodeGenIRBuilder<'ll> {
+    pub(crate) fn emit_return(&mut self, return_stmt: &CIRReturnStmt) {
+        let cur_fn = self.cur_func.unwrap();
+        let cur_abi_func_info = self.cur_abi_func_info.clone().unwrap();
+        let ret_info = &cur_abi_func_info.ret_info;
+
+        match (&return_stmt.arg, &ret_info.kind) {
+            (None, _) => {
+                self.emit_all_defers();
+                self.llvmbuilder.build_return(None).unwrap();
+            }
+            (Some(expr), ABIRetInfoKind::Ignore) => {
+                self.emit_expr(expr);
+                self.emit_all_defers();
+                self.llvmbuilder.build_return(None).unwrap();
+            }
+            (Some(expr), ABIRetInfoKind::Indirect { sret }) => {
+                let lvalue = self.emit_expr(expr);
+                let rvalue = self.load_rvalue(lvalue.clone());
+
+                if *sret {
+                    self.emit_compute_indirect_sret(cur_fn, &lvalue, &rvalue);
+                    self.emit_all_defers();
+                    self.llvmbuilder.build_return(None).unwrap();
+                    return;
+                }
+            }
+            (Some(expr), ABIRetInfoKind::Direct { coerce_to }) => {
+                let lvalue = self.emit_expr(expr);
+                let rvalue = self.load_rvalue(lvalue);
+
+                let ret_ty = abi_type_to_llvm_type(self.llvmctx, &self.target.info, &ret_info.abi_type);
+
+                let value: BasicValueEnum<'ll> = if let Some(coerce) = coerce_to {
+                    let coerce_ty = abi_type_to_llvm_type(self.llvmctx, &self.target.info, coerce);
+                    self.emit_cast(coerce_ty, rvalue).try_into().unwrap()
+                } else {
+                    self.emit_cast(ret_ty, rvalue).try_into().unwrap()
+                };
+
+                let return_value =
+                    self.intrinsic_coerce_through_alloca(value, ret_ty.try_into().unwrap(), "coerce.ret");
+
+                self.emit_all_defers();
+                self.llvmbuilder.build_return(Some(&return_value)).unwrap();
+            }
+            (Some(expr), ABIRetInfoKind::DirectPair { lo, hi }) => {
+                let lvalue = self.emit_expr(expr);
+                let rvalue = self.load_rvalue(lvalue);
+
+                let return_value = self.emit_compute_return_direct_pair(rvalue, lo, hi, &ret_info.abi_type);
+
+                self.emit_all_defers();
+                self.llvmbuilder.build_return(Some(&return_value)).unwrap();
+            }
+        }
+    }
+
+    fn emit_compute_indirect_sret(
+        &mut self,
+        cur_fn: FunctionValue<'ll>,
+        lvalue: &InternalValue<'ll>,
+        rvalue: &InternalValue<'ll>,
+    ) {
+        let sret_param = cur_fn.get_first_param().unwrap();
+        let sret_ptr = sret_param.into_pointer_value();
+
+        let struct_ty = rvalue.ty.clone();
+        let struct_layout = type_layout(&self.target.info, &struct_ty);
+
+        let size_val = self.llvmctx.i64_type().const_int(struct_layout.size as u64, false);
+
+        let src_ptr = match &lvalue.kind {
+            InternalValueKind::LValue(ptr) => *ptr,
+            InternalValueKind::RValue(val) => {
+                let temp_alloca = self.llvmbuilder.build_alloca(val.get_type(), "sret.temp").unwrap();
+
+                self.llvmbuilder.build_store(temp_alloca, *val).unwrap();
+                temp_alloca
+            }
+            InternalValueKind::FuncValue(_) => unreachable!(),
+        };
+
+        self.llvmbuilder
+            .build_memcpy(
+                sret_ptr,
+                self.target.info.pointer_align(),
+                src_ptr,
+                self.target.info.pointer_align(),
+                size_val,
+            )
+            .unwrap();
+    }
+
+    fn emit_compute_return_direct_pair(
+        &mut self,
+        rvalue: InternalValue<'ll>,
+        lo: &ABIType,
+        hi: &ABIType,
+        abi_ret_type: &ABIType,
+    ) -> BasicValueEnum<'ll> {
+        let value = rvalue.as_basic_value();
+
+        let lo_ty: BasicTypeEnum<'ll> = abi_type_to_llvm_type(self.llvmctx, &self.target.info, lo)
+            .try_into()
+            .unwrap();
+
+        let hi_ty: BasicTypeEnum<'ll> = abi_type_to_llvm_type(self.llvmctx, &self.target.info, hi)
+            .try_into()
+            .unwrap();
+
+        let pair_ty = self.emit_abi_pair_llvm_type(lo, hi);
+
+        let src_alloca = self
+            .llvmbuilder
+            .build_alloca(value.get_type(), "ret.src.alloca")
+            .unwrap();
+
+        self.llvmbuilder.build_store(src_alloca, value).unwrap();
+
+        let lo_ptr = self
+            .llvmbuilder
+            .build_struct_gep(pair_ty, src_alloca, 0, "ret.lo.ptr")
+            .unwrap();
+
+        let lo_val = self.llvmbuilder.build_load(lo_ty, lo_ptr, "ret.lo").unwrap();
+
+        let hi_ptr = self
+            .llvmbuilder
+            .build_struct_gep(pair_ty, src_alloca, 1, "ret.hi.ptr")
+            .unwrap();
+
+        let hi_val = self.llvmbuilder.build_load(hi_ty, hi_ptr, "ret.hi").unwrap();
+
+        // construct abi return struct
+        let ret_struct_ty: StructType = abi_type_to_llvm_type(self.llvmctx, &self.target.info, abi_ret_type)
+            .try_into()
+            .unwrap();
+
+        let mut pair_struct = ret_struct_ty.get_undef();
+
+        pair_struct = self
+            .llvmbuilder
+            .build_insert_value(pair_struct, lo_val, 0, "insert.lo")
+            .unwrap()
+            .into_struct_value();
+
+        pair_struct = self
+            .llvmbuilder
+            .build_insert_value(pair_struct, hi_val, 1, "insert.hi")
+            .unwrap()
+            .into_struct_value();
+
+        pair_struct.into()
+    }
+}
+
+// Defers.
+impl<'ll> CodeGenIRBuilder<'ll> {
+    pub(crate) fn emit_scope_defers(&mut self) {
+        let scope = match self.defer_stack.last() {
+            Some(scope) => scope.clone(),
+            None => return,
+        };
+
+        for stmt in scope.iter().rev() {
+            self.emit_stmt(&stmt);
+        }
+    }
+
+    pub(crate) fn emit_all_defers(&mut self) {
+        let scopes = self.defer_stack.iter().cloned().collect::<Vec<_>>();
+
+        for scope in scopes.iter().rev() {
+            for stmt in scope.iter().rev() {
+                if self.blockreg.cur_block.is_none() {
+                    break;
+                }
+
+                self.emit_stmt(&stmt);
+            }
+        }
+    }
+}
+
+// Helpers.
+impl<'ll> CodeGenIRBuilder<'ll> {
+    pub(crate) fn ensure_entry_block(&mut self) {
+        let entry_block = self.new_basic_block("entry");
+        self.blockreg.first_block = Some(entry_block);
+
+        self.emit_block(entry_block);
+    }
+
+    pub(crate) fn emit_block(&mut self, next_block: BasicBlock<'ll>) {
+        let cur_fn = self.cur_func.unwrap();
+
+        unsafe {
+            if LLVMGetBasicBlockParent(next_block.as_mut_ptr()).is_null() {
+                LLVMAppendExistingBasicBlock(cur_fn.as_value_ref(), next_block.as_mut_ptr());
+            }
+
+            self.llvmbuilder.position_at_end(next_block);
+        }
+
+        self.blockreg.cur_block = Some(next_block);
+    }
+
+    fn llvm_emit_check_block_branch(&mut self) -> bool {
+        let cur_block = match self.blockreg.cur_block {
             Some(bb) => bb,
             None => return false,
         };
 
         // if it's the function's first block, never delete it.
         if let Some(first) = self.blockreg.first_block {
-            if cur.as_mut_ptr() == first.as_mut_ptr() {
+            if cur_block.as_mut_ptr() == first.as_mut_ptr() {
                 return true;
             }
         }
 
-        let first_use = unsafe { LLVMGetFirstUse(LLVMBasicBlockAsValue(cur.as_mut_ptr())) };
+        let first_use = unsafe { LLVMGetFirstUse(LLVMBasicBlockAsValue(cur_block.as_mut_ptr())) };
+
         if first_use.is_null() {
-            unsafe { LLVMDeleteBasicBlock(cur.as_mut_ptr()) };
+            unsafe { LLVMDeleteBasicBlock(cur_block.as_mut_ptr()) };
             self.blockreg.cur_block = None;
             return false;
         }
+
         true
     }
 
-    pub fn llvm_emit_br(&mut self, next_block: LLVMBasicBlockRef) {
+    fn llvm_emit_br(&mut self, next_block: LLVMBasicBlockRef) {
         unsafe {
             if !self.llvm_emit_check_block_branch() {
                 return;
@@ -929,12 +961,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         }
     }
 
-    pub fn llvm_emit_cond_br(
-        &mut self,
-        cond: LLVMValueRef,
-        then_block: LLVMBasicBlockRef,
-        else_block: LLVMBasicBlockRef,
-    ) {
+    fn llvm_emit_cond_br(&mut self, cond: LLVMValueRef, then_block: LLVMBasicBlockRef, else_block: LLVMBasicBlockRef) {
         unsafe {
             if !self.llvm_emit_check_block_branch() {
                 return;
@@ -944,40 +971,29 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         }
     }
 
-    pub(crate) fn new_basic_block(&mut self, name: &str) -> BasicBlock<'ll> {
+    fn new_basic_block(&mut self, name: &str) -> BasicBlock<'ll> {
         unsafe {
             let llvm_bb = LLVMCreateBasicBlockInContext(self.llvmctx.as_ctx_ref(), c!(name).as_ptr());
             BasicBlock::new(llvm_bb).unwrap()
         }
     }
-
-    pub(crate) fn emit_block(&mut self, next_block: BasicBlock<'ll>) {
-        let cur_fn = self.cur_func.unwrap();
-        unsafe {
-            if LLVMGetBasicBlockParent(next_block.as_mut_ptr()).is_null() {
-                LLVMAppendExistingBasicBlock(cur_fn.as_value_ref(), next_block.as_mut_ptr());
-            }
-            self.llvmbuilder.position_at_end(next_block);
-        }
-        self.blockreg.cur_block = Some(next_block);
-    }
 }
 
-pub unsafe fn llvm_get_current_block_if_in_use(
-    current_block: &mut Option<LLVMBasicBlockRef>,
-) -> Option<LLVMBasicBlockRef> {
+fn llvm_get_current_block_if_in_use(current_block: &mut Option<LLVMBasicBlockRef>) -> Option<LLVMBasicBlockRef> {
     if let Some(block) = *current_block {
         if unsafe { llvm_basic_block_is_unused(block) } {
             unsafe { LLVMDeleteBasicBlock(block) };
+
             *current_block = None;
             return None;
         }
+
         return Some(block);
     }
     None
 }
 
-unsafe fn llvm_basic_block_is_unused(block: LLVMBasicBlockRef) -> bool {
+fn llvm_basic_block_is_unused(block: LLVMBasicBlockRef) -> bool {
     let first_instr = unsafe { LLVMGetFirstInstruction(block) };
     let first_use = unsafe { LLVMGetFirstUse(LLVMBasicBlockAsValue(block)) };
 

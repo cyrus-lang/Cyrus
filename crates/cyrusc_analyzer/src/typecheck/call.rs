@@ -63,7 +63,7 @@ impl<'a> AnalysisContext<'a> {
                 )?;
 
                 self.with_generic_env(generic_env, |this| {
-                    this.normalize_func_params(&mut func_decl.params, func_call.loc);
+                    this.normalize_func_params(&mut func_decl.params);
 
                     if !this.analyze_call(&mut func_decl, &mut func_call.args, func_call.loc, false) {
                         return None;
@@ -144,7 +144,7 @@ impl<'a> AnalysisContext<'a> {
             }
             // normal function
             else {
-                self.normalize_func_params(&mut func_decl.params, func_call.loc);
+                self.normalize_func_params(&mut func_decl.params);
 
                 if !self.analyze_call(&mut func_decl, &mut func_call.args, func_call.loc, false) {
                     return None;

@@ -23,7 +23,7 @@ use cyrusc_typed_ast::{
 
 impl<'a> AnalysisContext<'a> {
     pub(crate) fn analyze_lambda(&mut self, lambda: &mut TypedLambdaExpr) -> Option<SemaType> {
-        self.normalize_func_params(&mut lambda.params, lambda.loc);
+        self.normalize_func_params(&mut lambda.params);
 
         let params = lambda.params.as_func_type_params();
 

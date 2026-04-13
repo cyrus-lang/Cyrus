@@ -81,8 +81,20 @@ impl<'a> CIRPrinter<'a> {
             CIRStmt::Enum(enum_stmt) => self.print_enum(enum_stmt),
             CIRStmt::Union(union_stmt) => self.print_union(union_stmt),
             CIRStmt::Expr(expr) => {
-                let expr = self.print_expr(expr);
-                self.push_line(format!("{expr};"));
+                let expr_str = self.print_expr(expr);
+
+                if expr_str.contains('\n') {
+                    for (i, line) in expr_str.lines().enumerate() {
+                        if i == 0 {
+                            self.push_line(line.to_string());
+                        } else {
+                            self.push_line(line.to_string());
+                        }
+                    }
+                } else {
+                    // normal single-line expression
+                    self.push_line(format!("{expr_str}"));
+                }
             }
             CIRStmt::If(if_stmt) => self.print_if(if_stmt),
             CIRStmt::For(for_stmt) => self.print_for(for_stmt),
@@ -91,7 +103,7 @@ impl<'a> CIRPrinter<'a> {
             CIRStmt::SwitchOnEnum(switch_on_enum) => self.print_switch_enum(switch_on_enum),
             CIRStmt::Return(return_stmt) => self.print_return(return_stmt),
             CIRStmt::Label(label) => self.push_line(format!("{}:", label.name)),
-            CIRStmt::Goto(goto) => self.push_line(format!("goto L{};", goto.label_id)),
+            CIRStmt::Goto(goto) => self.push_line(format!("goto L{}", goto.label_id)),
             CIRStmt::Defer(deref) => {
                 self.push_line("defer {");
                 self.indent();
@@ -99,8 +111,8 @@ impl<'a> CIRPrinter<'a> {
                 self.dedent();
                 self.push_line("}");
             }
-            CIRStmt::Continue(_) => self.push_line("continue;"),
-            CIRStmt::Break(_) => self.push_line("break;"),
+            CIRStmt::Continue(_) => self.push_line("continue"),
+            CIRStmt::Break(_) => self.push_line("break"),
         }
     }
 
@@ -197,15 +209,32 @@ impl<'a> CIRPrinter<'a> {
     }
 
     fn print_var_stmt(&mut self, var: &CIRVarStmt) {
-        let init = var
-            .expr
-            .as_ref()
-            .map(|e| format!(" = {}", self.print_expr(e)))
-            .unwrap_or_default();
-
         let ty = self.print_type(&var.ty);
 
-        self.push_line(format!("%{}: {}{};", var.irv_id.0, ty, init));
+        match &var.expr {
+            None => {
+                // Simple no-init var
+                self.push_line(format!("%{}: {}", var.irv_id.0, ty));
+            }
+
+            Some(expr) => {
+                let expr_str = self.print_expr(expr);
+
+                if !expr_str.contains('\n') {
+                    // single-line initializer (normal case)
+                    self.push_line(format!("%{}: {} = {}", var.irv_id.0, ty, expr_str));
+                } else {
+                    // multi-line initializer
+                    self.push_line(format!("%{}: {} =", var.irv_id.0, ty));
+
+                    self.indent();
+                    for line in expr_str.lines() {
+                        self.push_line(line.to_string());
+                    }
+                    self.dedent();
+                }
+            }
+        }
     }
 
     fn print_global_var_stmt(&mut self, global_var: &CIRGlobalVarStmt) {
@@ -217,7 +246,7 @@ impl<'a> CIRPrinter<'a> {
 
         let ty = self.print_type(&global_var.ty);
 
-        self.push_line(format!("global {}: {}{};", global_var.name, ty, init));
+        self.push_line(format!("global {}: {}{}", global_var.name, ty, init));
     }
 
     fn print_func_def(&mut self, func: &CIRFuncDefStmt) {
@@ -237,7 +266,7 @@ impl<'a> CIRPrinter<'a> {
         let params = self.print_params(&func_decl.params);
 
         let ret = self.print_type(&func_decl.ret_type);
-        self.push_line(format!("fn {}({}) {};", func_decl.name, params, ret));
+        self.push_line(format!("fn {}({}) {}", func_decl.name, params, ret));
     }
 
     fn print_block(&mut self, block: &CIRBlockStmt) {
@@ -290,9 +319,9 @@ impl<'a> CIRPrinter<'a> {
         match &return_stmt.arg {
             Some(expr) => {
                 let expr_str = self.print_expr(&expr);
-                self.push_line(format!("return {};", expr_str))
+                self.push_line(format!("return {}", expr_str))
             }
-            None => self.push_line("return;"),
+            None => self.push_line("return"),
         }
     }
 
@@ -460,15 +489,25 @@ impl<'a> CIRPrinter<'a> {
                 let mut out = format!("lambda%{}{} ({}) {} {{", id, inline_flag, params, ret);
 
                 // body
-                self.indent();
                 let saved_len = self.out.len();
                 self.print_block(&lambda.body);
                 let body_str = self.out[saved_len..].to_string();
                 self.out.truncate(saved_len);
-                self.dedent();
 
+                // re‑indent body lines
+                if !body_str.trim().is_empty() {
+                    for line in body_str.lines() {
+                        out.push('\n');
+                        out.push_str(&self.indent_str());
+                        out.push_str(line);
+                    }
+                } else {
+                    out.push('\n');
+                    out.push_str(&self.indent_str());
+                }
+
+                // closing brace
                 out.push('\n');
-                out.push_str(&body_str);
                 out.push('}');
 
                 out

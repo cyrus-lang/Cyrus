@@ -637,7 +637,10 @@ impl<'a> CIRTraverse<'a> {
             TypedExprKind::Dynamic(dynamic) => self.lower_dynamic(dynamic),
             TypedExprKind::StructInit(struct_init) => self.lower_struct_init(struct_init),
             TypedExprKind::UnionInit(union_init) => self.lower_union_init(union_init),
-            TypedExprKind::EnumInit(enum_init) => todo!(),
+            TypedExprKind::EnumInit(enum_init) => {
+                // TODO
+                todo!();
+            }
 
             TypedExprKind::Builtin(_builtin) => todo!(),
 

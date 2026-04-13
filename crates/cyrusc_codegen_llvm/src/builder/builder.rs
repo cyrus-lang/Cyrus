@@ -177,7 +177,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
             CIRStmt::If(if_stmt) => self.emit_if(if_stmt),
             CIRStmt::For(for_stmt) => self.emit_for(for_stmt),
             CIRStmt::While(while_stmt) => self.emit_while(while_stmt),
-            CIRStmt::Return(return_stmt) => self.emit_ret(return_stmt),
+            CIRStmt::Return(return_stmt) => self.emit_return(return_stmt),
             CIRStmt::Label(label_stmt) => self.emit_label(label_stmt),
             CIRStmt::Goto(goto_stmt) => self.emit_goto(goto_stmt),
             CIRStmt::Break(break_stmt) => self.emit_break(break_stmt),

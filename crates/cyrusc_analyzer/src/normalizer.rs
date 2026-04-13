@@ -238,7 +238,7 @@ impl<'a> AnalysisContext<'a> {
         // }))
     }
 
-    pub(crate) fn normalize_func_params(&mut self, params: &mut TypedFuncParams, loc: Loc) {
+    pub(crate) fn normalize_func_params(&mut self, params: &mut TypedFuncParams) {
         // analyze static arguments
         for param in params.list.iter_mut() {
             match param {

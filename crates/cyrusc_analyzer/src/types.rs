@@ -656,51 +656,171 @@ fn canonicalize_typedef_cycle(path: &[TypedefDeclID]) -> Vec<TypedefDeclID> {
 
 impl<'a> AnalysisContext<'a> {
     pub(crate) fn check_type_formation(&mut self, ty: SemaType, loc: Loc) -> Option<SemaType> {
+        fn check_recursively(this: &mut AnalysisContext, ty: &SemaType, loc: Loc) {
+            if ty.count_const_layers() > 1 {
+                this.reporter.report(Diag {
+                    level: DiagLevel::Error,
+                    kind: Box::new(AnalyzerDiagKind::RedundantConstQualifier),
+                    loc: Some(loc),
+                    hint: None,
+                });
+            }
+
+            match ty {
+                SemaType::Named(named_type) => {
+                    this.check_unexpected_type_args(named_type, loc);
+
+                    for type_arg in named_type.type_args.iter() {
+                        match type_arg {
+                            TypedTypeArg::Type(inner, _) => check_recursively(this, inner, loc),
+                            TypedTypeArg::Infer => {}
+                        }
+                    }
+                }
+
+                SemaType::Const(inner) => check_recursively(this, inner, loc),
+                SemaType::Pointer(inner) => check_recursively(this, inner, loc),
+
+                SemaType::Array(array_type) => {
+                    // array element cannot be void
+                    if array_type.element_type.is_void() {
+                        this.reporter.report(Diag {
+                            level: DiagLevel::Error,
+                            kind: Box::new(AnalyzerDiagKind::VoidElementTypeNotAllowed),
+                            loc: Some(array_type.loc),
+                            hint: None,
+                        });
+                    }
+                    check_recursively(this, &array_type.element_type, loc);
+                }
+
+                SemaType::FuncType(func_type) => {
+                    for param_type in &func_type.params.list {
+                        // function parameter cannot be void
+                        if param_type.is_void() {
+                            this.reporter.report(Diag {
+                                level: DiagLevel::Error,
+                                kind: Box::new(AnalyzerDiagKind::VoidParameterType),
+                                loc: Some(func_type.loc),
+                                hint: None,
+                            });
+                        }
+                        check_recursively(this, param_type, loc);
+                    }
+
+                    check_recursively(this, &func_type.ret_type, loc);
+                }
+                SemaType::Tuple(tuple_type) => {
+                    for element in &tuple_type.elements {
+                        // tuple element cannot be void → correct diagnostic
+                        if element.is_void() {
+                            this.reporter.report(Diag {
+                                level: DiagLevel::Error,
+                                kind: Box::new(AnalyzerDiagKind::VoidTupleElementNotAllowed),
+                                loc: Some(tuple_type.loc),
+                                hint: None,
+                            });
+                        }
+                        check_recursively(this, element, loc);
+                    }
+                }
+                SemaType::SelfType(a) => {
+                    if this.func_env.current_object.is_none() {
+                        this.reporter.report(Diag {
+                            level: DiagLevel::Error,
+                            kind: Box::new(AnalyzerDiagKind::SelfTypeOutsideOfAnObject),
+                            loc: Some(loc),
+                            hint: None,
+                        });
+                    }
+                }
+
+                SemaType::InterfaceType(_) => {}
+                SemaType::Plain(_) => {}
+
+                SemaType::GenericParam(_)
+                | SemaType::InferVar(_)
+                | SemaType::Unresolved(_)
+                | SemaType::Err(_)
+                | SemaType::Placeholder => {}
+            }
+        }
+
         if ty.is_err() {
             return None;
         }
 
-        if ty.count_const_layers() > 1 {
-            self.reporter.report(Diag {
-                level: DiagLevel::Error,
-                kind: Box::new(AnalyzerDiagKind::RedundantConstQualifier),
-                loc: Some(loc),
-                hint: None,
-            });
-        }
-
-        if ty.is_self_type() && self.func_env.current_object.is_none() {
-            self.reporter.report(Diag {
-                level: DiagLevel::Error,
-                kind: Box::new(AnalyzerDiagKind::SelfTypeOutsideOfAnObject),
-                loc: Some(loc),
-                hint: None,
-            });
-        }
-
-        if let Some(named_type) = ty.as_named_type() {
-            self.check_unexpected_type_args(named_type, loc);
-        }
+        check_recursively(self, &ty, loc);
 
         Some(ty)
     }
 
     pub(crate) fn check_type_arity(&mut self, ty: SemaType, loc: Loc) -> Option<SemaType> {
+        fn check_recursively(this: &mut AnalysisContext, ty: &SemaType, loc: Loc) -> bool {
+            match ty {
+                SemaType::Named(named_type) => {
+                    // wrong number of args?
+                    if this.check_missing_type_args(named_type, loc) {
+                        return false;
+                    }
+
+                    // infer vars remaining?
+                    if this.check_unresolved_infer_vars(named_type, loc) {
+                        return false;
+                    }
+
+                    for arg in named_type.type_args.iter() {
+                        match arg {
+                            TypedTypeArg::Type(inner, inner_loc) => {
+                                if !check_recursively(this, inner, *inner_loc) {
+                                    return false;
+                                }
+                            }
+                            TypedTypeArg::Infer => { /* infer is allowed, but NOT after monomorph */ }
+                        }
+                    }
+                    true
+                }
+                SemaType::Const(inner) | SemaType::Pointer(inner) => check_recursively(this, inner, loc),
+                SemaType::Array(array_type) => check_recursively(this, &array_type.element_type, array_type.loc),
+                SemaType::FuncType(func_type) => {
+                    for param_ty in &func_type.params.list {
+                        if !check_recursively(this, param_ty, func_type.loc) {
+                            return false;
+                        }
+                    }
+                    check_recursively(this, &func_type.ret_type, func_type.loc)
+                }
+                SemaType::Tuple(tuple_type) => {
+                    for elem in &tuple_type.elements {
+                        if !check_recursively(this, elem, tuple_type.loc) {
+                            return false;
+                        }
+                    }
+                    true
+                }
+
+                SemaType::InterfaceType(_) => true,
+                SemaType::Plain(_) => true,
+
+                SemaType::SelfType(_)
+                | SemaType::GenericParam(_)
+                | SemaType::InferVar(_)
+                | SemaType::Unresolved(_)
+                | SemaType::Err(_)
+                | SemaType::Placeholder => true,
+            }
+        }
+
         if ty.is_err() {
             return None;
         }
 
-        if let Some(named_type) = ty.as_named_type() {
-            if self.check_missing_type_args(named_type, loc) {
-                return None;
-            }
-
-            if self.check_unresolved_infer_vars(named_type, loc) {
-                return None;
-            }
+        if check_recursively(self, &ty, loc) {
+            Some(ty)
+        } else {
+            None
         }
-
-        Some(ty)
     }
 
     fn check_unexpected_type_args(&self, named_type: &NamedType, loc: Loc) -> bool {

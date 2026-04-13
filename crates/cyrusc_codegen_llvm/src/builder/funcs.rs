@@ -844,7 +844,3 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         }
     }
 }
-
-fn monomorph_func_name(irv_id: u32) -> String {
-    format!("monomorph.instance@{}", irv_id)
-}
