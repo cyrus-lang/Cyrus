@@ -2071,6 +2071,7 @@ impl Resolver {
         let value = self.resolve_expr(&unnamed_union_value.field_value)?;
 
         let kind = TypedExprKind::UnnamedUnionValue(TypedUnnamedUnionValue {
+            union_decl_id: None,
             name: unnamed_union_value.field_name.clone(),
             value: Box::new(value),
             loc: unnamed_union_value.loc,
@@ -2284,7 +2285,7 @@ impl Resolver {
 
         Some(TypedExprStmt {
             kind: TypedExprKind::StructInit(TypedStructInitExpr {
-                decl_id: Some(decl_id),
+                decl_id,
                 fields,
                 type_args,
                 loc: struct_init.loc,
@@ -2314,6 +2315,7 @@ impl Resolver {
 
         Some(TypedExprStmt {
             kind: TypedExprKind::UnnamedStructValue(TypedUnnamedStructValue {
+                struct_decl_id: None,
                 fields,
                 loc: unnamed_struct_value.loc,
                 repr_attr: unnamed_struct_value.repr_attr.clone(),

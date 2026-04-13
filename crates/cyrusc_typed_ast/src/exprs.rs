@@ -17,7 +17,7 @@
 
 use crate::{
     VTableID,
-    decls::{DeclID, EnumDeclID, FuncDeclID, InterfaceDeclID, MonomorphID, StructDeclID, UnionDeclID},
+    decls::{DeclID, EnumDeclID, FuncDeclID, InterfaceDeclID, MonomorphID, StructDeclID, UnionDecl, UnionDeclID},
     stmts::{TypedBlockStmt, TypedBuiltin, TypedFuncParams, TypedTypeArgs},
     types::{SemaType, TypedFuncType},
 };
@@ -195,7 +195,7 @@ pub struct TypedDerefExpr {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct TypedStructInitExpr {
-    pub decl_id: Option<DeclID>,
+    pub decl_id: DeclID,
     pub type_args: TypedTypeArgs,
     pub fields: Vec<TypedFieldInit>,
     pub loc: Loc,
@@ -203,7 +203,7 @@ pub struct TypedStructInitExpr {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct TypedUnionInitExpr {
-    pub decl_id: Option<DeclID>,
+    pub decl_id: DeclID,
     pub type_args: TypedTypeArgs,
     pub field: Box<TypedFieldInit>,
     pub loc: Loc,
@@ -314,6 +314,7 @@ pub enum TypedMethodCallDispatch {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct TypedUnnamedStructValue {
+    pub struct_decl_id: Option<StructDeclID>,
     pub fields: Vec<TypedUnnamedStructValueField>,
     pub repr_attr: Option<ReprAttr>,
     pub align: Option<usize>,
@@ -322,6 +323,7 @@ pub struct TypedUnnamedStructValue {
 
 #[derive(Debug, Clone)]
 pub struct TypedUnnamedUnionValue {
+    pub union_decl_id: Option<UnionDeclID>,
     pub name: Ident,
     pub value: Box<TypedExprStmt>,
     pub loc: Loc,

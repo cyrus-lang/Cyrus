@@ -405,23 +405,18 @@ impl<'a> CIRPrinter<'a> {
             CIRExprKind::StructInit(struct_init) => {
                 let mut parts = Vec::new();
 
-                for (idx, expr) in struct_init.fields.iter().enumerate() {
-                    let fname = format!("f{}", idx); // fallback field name
-                    let v = self.print_expr(expr);
-                    parts.push(format!("{fname}: {v}"));
+                for expr in struct_init.fields.iter() {
+                    let expr = self.print_expr(expr);
+                    parts.push(expr);
                 }
 
                 let body = parts.join(", ");
-                format!(
-                    "{} {{ {} }}",
-                    self.print_type(&CIRType::Struct(struct_init.ty.clone())),
-                    body
-                )
+                format!("struct {{ {body} }}")
             }
             CIRExprKind::UnionInit(union_init) => {
-                let inner = self.print_expr(&union_init.expr);
-                let t = self.print_type(&union_init.ty);
-                format!("{t} {{ {inner} }}")
+                let value = self.print_expr(&union_init.expr);
+
+                format!("union {{ {value} }}")
             }
             CIRExprKind::EnumInit(enum_init) => {
                 let variant_name = enum_init
@@ -450,8 +445,9 @@ impl<'a> CIRPrinter<'a> {
                 }
             }
             CIRExprKind::UnionFieldAccess(field_access) => {
-                let base = self.print_expr(&field_access.operand);
-                format!("{base}.({})", self.print_type(&field_access.field_type))
+                let operand = self.print_expr(&field_access.operand);
+
+                format!("{operand}.({})", self.print_type(&field_access.field_type))
             }
             CIRExprKind::Lambda(lambda) => {
                 let params = self.print_params(&lambda.params);
@@ -461,7 +457,7 @@ impl<'a> CIRPrinter<'a> {
                 let inline_flag = if lambda.inline { " inline" } else { "" };
 
                 // header
-                let mut fmt = format!("lambda%{}{} ({}) {} {{", id, inline_flag, params, ret);
+                let mut out = format!("lambda%{}{} ({}) {} {{", id, inline_flag, params, ret);
 
                 // body
                 self.indent();
@@ -471,43 +467,43 @@ impl<'a> CIRPrinter<'a> {
                 self.out.truncate(saved_len);
                 self.dedent();
 
-                fmt.push('\n');
-                fmt.push_str(&body_str);
-                fmt.push('}');
+                out.push('\n');
+                out.push_str(&body_str);
+                out.push('}');
 
-                fmt
+                out
             }
             CIRExprKind::Dynamic(dynamic) => {
                 let data = self.print_expr(&dynamic.data_expr);
                 let vtable = &dynamic.vtable_abi_name;
                 let global_var_id = dynamic.global_var_id.0;
 
-                let mut fmt = String::new();
-                fmt.push_str("dynamic {\n");
+                let mut out = String::new();
+                out.push_str("dynamic {\n");
 
                 self.indent();
-                fmt.push_str(&format!("{}data: {}\n", self.indent_str(), data));
-                fmt.push_str(&format!("{}vtable: @{}\n", self.indent_str(), vtable));
-                fmt.push_str(&format!("{}global: %{}\n", self.indent_str(), global_var_id));
+                out.push_str(&format!("{}data: {}\n", self.indent_str(), data));
+                out.push_str(&format!("{}vtable: @{}\n", self.indent_str(), vtable));
+                out.push_str(&format!("{}global: %{}\n", self.indent_str(), global_var_id));
 
                 if !dynamic.method_decls.is_empty() {
-                    fmt.push_str(&format!("{}methods {{\n", self.indent_str()));
+                    out.push_str(&format!("{}methods {{\n", self.indent_str()));
 
                     self.indent();
                     for decl in &dynamic.method_decls {
                         let params = self.print_params(&decl.params);
                         let ret = self.print_type(&decl.ret_type);
-                        fmt.push_str(&format!("{}fn {}({}) {};\n", self.indent_str(), decl.name, params, ret));
+                        out.push_str(&format!("{}fn {}({}) {};\n", self.indent_str(), decl.name, params, ret));
                     }
                     self.dedent();
 
-                    fmt.push_str(&format!("{}}}\n", self.indent_str()));
+                    out.push_str(&format!("{}}}\n", self.indent_str()));
                 }
 
                 self.dedent();
-                fmt.push('}');
+                out.push('}');
 
-                fmt
+                out
             }
         }
     }
@@ -560,8 +556,8 @@ impl<'a> CIRPrinter<'a> {
             CIRType::Const(inner) => format!("const {}", self.print_type(inner)),
             CIRType::Pointer(inner) => format!("{}*", self.print_type(inner)),
             CIRType::Struct(struct_type) => {
-                let name = struct_type.name.as_deref().unwrap_or("<anon>");
-                let mut out = format!("struct {}", name);
+                let mut out = String::from("struct");
+
                 out.push_str(" { ");
 
                 let mut parts = Vec::new();
@@ -575,8 +571,7 @@ impl<'a> CIRPrinter<'a> {
                 out
             }
             CIRType::Enum(enum_type) => {
-                let name = enum_type.name.as_deref().unwrap_or("<anon>");
-                let mut out = format!("enum {}", name);
+                let mut out = String::from("enum");
                 out.push_str(" { ");
 
                 let mut parts = Vec::new();
@@ -598,8 +593,7 @@ impl<'a> CIRPrinter<'a> {
                 out
             }
             CIRType::Union(union_type) => {
-                let name = union_type.name.as_deref().unwrap_or("<anon>");
-                let mut out = format!("union {}", name);
+                let mut out = String::from("union");
                 out.push_str(" { ");
 
                 let mut parts = Vec::new();

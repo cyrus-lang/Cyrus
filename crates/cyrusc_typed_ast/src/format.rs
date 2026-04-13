@@ -30,7 +30,7 @@ use cyrusc_source_loc::{Loc, SourceMap};
 
 /// Provides human‑readable formatting utilities for compiler diagnostics
 /// and debugging output.
-pub trait Formatter {
+pub trait Formatter: Send + Sync {
     fn format_symbol_name(&self, symbol_id: SymbolID) -> String;
     fn format_decl(&self, decl_id: DeclID) -> String;
     fn format_type_decl(&self, type_decl_id: TypeDeclID) -> String;
@@ -178,63 +178,30 @@ pub fn format_typed_expr(expr: &TypedExprStmt, formatter: &dyn Formatter) -> Str
         AddrOf(addr_of) => format!("&{}", format_typed_expr(&addr_of.operand, formatter)),
         Deref(deref) => format!("*{}", format_typed_expr(&deref.operand, formatter)),
         StructInit(struct_init) => {
-            if let Some(decl_id) = struct_init.decl_id {
-                let name = formatter.format_decl(decl_id);
+            let fields = struct_init
+                .fields
+                .iter()
+                .map(|field_init| {
+                    format!(
+                        "{} = {}",
+                        field_init.name,
+                        format_typed_expr(&field_init.value, formatter)
+                    )
+                })
+                .collect::<Vec<_>>()
+                .join(", ");
 
-                let fields = struct_init
-                    .fields
-                    .iter()
-                    .map(|field_init| {
-                        format!(
-                            "{}: {}",
-                            field_init.name,
-                            format_typed_expr(&field_init.value, formatter)
-                        )
-                    })
-                    .collect::<Vec<_>>()
-                    .join(", ");
-
-                format!("{}{{ {} }}", name, fields)
-            } else {
-                let fields = struct_init
-                    .fields
-                    .iter()
-                    .map(|field_init| {
-                        format!(
-                            "{} = {}",
-                            field_init.name,
-                            format_typed_expr(&field_init.value, formatter)
-                        )
-                    })
-                    .collect::<Vec<_>>()
-                    .join(", ");
-
-                format!("struct {{ {} }}", fields)
-            }
+            format!("struct {{ {} }}", fields)
         }
         UnionInit(union_init) => {
-            if let Some(decl_id) = union_init.decl_id {
-                let name = formatter.format_decl(decl_id);
-
+            format!(
+                "union {{ {} }}",
                 format!(
-                    "{}{{ {} }}",
-                    name,
-                    format!(
-                        "{}: {}",
-                        union_init.field.name,
-                        format_typed_expr(&union_init.field.value, formatter)
-                    )
+                    "{}: {}",
+                    union_init.field.name,
+                    format_typed_expr(&union_init.field.value, formatter)
                 )
-            } else {
-                format!(
-                    "union {{ {} }}",
-                    format!(
-                        "{}: {}",
-                        union_init.field.name,
-                        format_typed_expr(&union_init.field.value, formatter)
-                    )
-                )
-            }
+            )
         }
         FuncCall(func_call) => format!(
             "{}({})",

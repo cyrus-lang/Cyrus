@@ -31,6 +31,9 @@ use cyrusc_typed_ast::TypedProgramTree;
 use cyrusc_typed_ast::decls::table::DeclTablesRegistry;
 use cyrusc_typed_ast::decls::*;
 use cyrusc_typed_ast::exprs::*;
+use cyrusc_typed_ast::format::Formatter;
+use cyrusc_typed_ast::format::format_struct_decl;
+use cyrusc_typed_ast::format::format_union_decl;
 use cyrusc_typed_ast::stmts::*;
 use cyrusc_typed_ast::types::*;
 use fx_hash::FxHashMap;
@@ -39,6 +42,7 @@ use std::sync::{Arc, Mutex};
 struct CIRTraverse<'a> {
     program_tree: Box<TypedProgramTree>,
     decl_tables: Arc<DeclTablesRegistry>,
+    formatter: &'a dyn Formatter,
     target: &'a ABITarget,
     module_name: String,
 
@@ -57,6 +61,7 @@ impl<'a> CIRTraverse<'a> {
         program_tree: Box<TypedProgramTree>,
         module_name: String,
         decl_tables: Arc<DeclTablesRegistry>,
+        formatter: &'a dyn Formatter,
         vtable_registry: Arc<Mutex<VTableRegistry>>,
         monomorph_registry: Arc<MonomorphRegistry>,
         target: &'a ABITarget,
@@ -65,6 +70,7 @@ impl<'a> CIRTraverse<'a> {
             program_tree,
             module_name,
             decl_tables,
+            formatter,
             vtable_registry,
             monomorph_registry,
             target,
@@ -613,25 +619,25 @@ impl<'a> CIRTraverse<'a> {
 
         let kind = match &expr.kind {
             TypedExprKind::Symbol(symbol_expr) => self.lower_load_symbol(symbol_expr.decl_id),
-            TypedExprKind::Literal(literal_expr) => self.lower_literal(literal_expr),
-            TypedExprKind::Prefix(prefix_expr) => self.lower_prefix(prefix_expr),
-            TypedExprKind::Infix(infix_expr) => self.lower_infix(infix_expr),
-            TypedExprKind::Unary(unary_expr) => self.lower_unary(unary_expr),
-            TypedExprKind::Assign(assign_expr) => self.lower_assign(assign_expr),
-            TypedExprKind::AddrOf(addr_of_expr) => self.lower_addr_of(addr_of_expr),
-            TypedExprKind::Deref(deref_expr) => self.lower_deref(deref_expr),
-            TypedExprKind::Array(array_expr) => self.lower_array(array_expr),
-            TypedExprKind::ArrayIndex(array_index_expr) => self.lower_array_index(array_index_expr),
+            TypedExprKind::Literal(literal) => self.lower_literal(literal),
+            TypedExprKind::Prefix(prefix) => self.lower_prefix(prefix),
+            TypedExprKind::Infix(infix) => self.lower_infix(infix),
+            TypedExprKind::Unary(unary) => self.lower_unary(unary),
+            TypedExprKind::Assign(assign) => self.lower_assign(assign),
+            TypedExprKind::AddrOf(addr_of) => self.lower_addr_of(addr_of),
+            TypedExprKind::Deref(deref) => self.lower_deref(deref),
+            TypedExprKind::Array(array) => self.lower_array(array),
+            TypedExprKind::ArrayIndex(array_index) => self.lower_array_index(array_index),
             TypedExprKind::FuncCall(func_call) => self.lower_func_call(func_call),
             TypedExprKind::MethodCall(method_call) => self.lower_method_call(method_call),
             TypedExprKind::FieldAccess(field_access) => self.lower_field_access(field_access.clone()),
-            TypedExprKind::Lambda(lambda_expr) => self.lower_lambda(lambda_expr),
-            TypedExprKind::Tuple(tuple_expr) => self.lower_tuple(tuple_expr),
-            TypedExprKind::TupleAccess(tuple_access_expr) => self.lower_tuple_access(tuple_access_expr),
+            TypedExprKind::Lambda(lambda) => self.lower_lambda(lambda),
+            TypedExprKind::Tuple(expr) => self.lower_tuple(expr),
+            TypedExprKind::TupleAccess(tuple_access) => self.lower_tuple_access(tuple_access),
             TypedExprKind::Dynamic(dynamic) => self.lower_dynamic(dynamic),
-            TypedExprKind::StructInit(struct_init_expr) => self.lower_struct_init(struct_init_expr),
+            TypedExprKind::StructInit(struct_init) => self.lower_struct_init(struct_init),
+            TypedExprKind::UnionInit(union_init) => self.lower_union_init(union_init),
             TypedExprKind::EnumInit(enum_init) => todo!(),
-            TypedExprKind::UnionInit(union_init) => todo!(),
 
             TypedExprKind::Builtin(_builtin) => todo!(),
 
@@ -681,70 +687,86 @@ impl<'a> CIRTraverse<'a> {
         }
     }
 
-    // FIXME
-    fn lower_struct_init(&mut self, struct_init_expr: &TypedStructInitExpr) -> CIRExprKind {
-        todo!();
+    fn lower_struct_init(&mut self, struct_init: &TypedStructInitExpr) -> CIRExprKind {
+        let struct_decl_id = struct_init.decl_id.as_struct().unwrap();
+        let struct_decl = self.decl_tables.struct_decl(struct_decl_id);
 
-        // let symbol_entry = self.query.lookup_symbol_entry(struct_init_expr.symbol_id).unwrap();
+        let struct_name = format_struct_decl(&struct_decl, self.formatter);
 
-        // if let Some(resolved_struct) = symbol_entry.as_struct() {
-        //     let fields = struct_init_expr
-        //         .fields
-        //         .iter()
-        //         .map(|field| self.lower_sema_ty(&field.value.sema_type.clone().unwrap()))
-        //         .collect();
+        let fields = struct_decl
+            .fields
+            .iter()
+            .map(|field| self.lower_sema_type(&field.ty))
+            .collect();
 
-        //     let fields_info = struct_init_expr
-        //         .fields
-        //         .iter()
-        //         .map(|field| (field.name.clone(), field.loc))
-        //         .collect();
+        let fields_info = struct_decl
+            .fields
+            .iter()
+            .map(|field| (field.name.clone(), field.loc))
+            .collect();
 
-        //     let struct_ty = CIRStructType {
-        //         name: Some(resolved_struct.struct_decl.name.clone()),
-        //         repr_attr: resolved_struct.struct_decl.modifiers.repr_attr.clone(),
-        //         align: resolved_struct.struct_decl.align.clone(),
-        //         fields,
-        //         fields_info,
-        //         loc: resolved_struct.struct_decl.loc,
-        //     };
+        let struct_type = CIRStructType {
+            name: Some(struct_name),
+            fields,
+            fields_info,
+            align: struct_decl.align.clone(),
+            repr_attr: struct_decl.modifiers.repr_attr.clone(),
+            loc: struct_decl.loc,
+        };
 
-        //     let fields: Vec<CIRExpr> = struct_init_expr
-        //         .fields
-        //         .iter()
-        //         .map(|field| self.lower_expr(&field.value))
-        //         .collect();
+        let mut lowered_fields = FxHashMap::default();
 
-        //     CIRExprKind::StructInit(CIRStructInitExpr { ty: struct_ty, fields })
-        // } else if let Some(resolved_union) = symbol_entry.as_union() {
-        //     let fields = struct_init_expr
-        //         .fields
-        //         .iter()
-        //         .map(|field| self.lower_sema_ty(&field.value.sema_type.clone().unwrap()))
-        //         .collect();
+        for field_init in &struct_init.fields {
+            let lowered = self.lower_expr(&field_init.value);
+            lowered_fields.insert(field_init.name.clone(), lowered);
+        }
 
-        //     let fields_info = struct_init_expr
-        //         .fields
-        //         .iter()
-        //         .map(|field| (field.name.clone(), field.loc))
-        //         .collect();
+        // emit exprs in declaration order
+        let fields: Vec<CIRExpr> = struct_decl
+            .fields
+            .iter()
+            .map(|decl_field| lowered_fields.get(&decl_field.name).unwrap().clone())
+            .collect();
 
-        //     let union_ty = CIRType::Union(CIRUnionTy {
-        //         name: Some(resolved_union.union_decl.name.clone()),
-        //         fields,
-        //         fields_info,
-        //         repr_attr: resolved_union.union_decl.modifiers.repr_attr.clone(),
-        //         align: resolved_union.union_decl.align.clone(),
-        //         loc: resolved_union.union_decl.loc,
-        //     });
+        CIRExprKind::StructInit(CIRStructInitExpr {
+            ty: struct_type,
+            fields,
+        })
+    }
 
-        //     let struct_field_init = struct_init_expr.fields.first().unwrap();
-        //     let expr = Box::new(self.lower_expr(&struct_field_init.value));
+    fn lower_union_init(&mut self, union_init: &TypedUnionInitExpr) -> CIRExprKind {
+        let union_decl_id = union_init.decl_id.as_union().unwrap();
+        let union_decl = self.decl_tables.union_decl(union_decl_id);
 
-        //     CIRExprKind::UnionInit(CIRUnionInitExpr { expr, ty: union_ty })
-        // } else {
-        //     unreachable!()
-        // }
+        let union_name = format_union_decl(&union_decl, self.formatter);
+
+        let fields = union_decl
+            .fields
+            .iter()
+            .map(|field| self.lower_sema_type(&field.ty))
+            .collect();
+
+        let fields_info = union_decl
+            .fields
+            .iter()
+            .map(|field| (field.name.clone(), field.loc))
+            .collect();
+
+        let union_type = CIRUnionType {
+            name: Some(union_name),
+            fields,
+            fields_info,
+            repr_attr: union_decl.modifiers.repr_attr.clone(),
+            align: union_decl.align.clone(),
+            loc: union_decl.loc,
+        };
+
+        let lowered_expr = Box::new(self.lower_expr(&union_init.field.value));
+
+        CIRExprKind::UnionInit(CIRUnionInitExpr {
+            ty: CIRType::Union(union_type),
+            expr: lowered_expr,
+        })
     }
 
     fn lower_tuple_access(&mut self, tuple_access: &TypedTupleAccessExpr) -> CIRExprKind {
@@ -1410,6 +1432,7 @@ pub fn walk_program_trees_in_parallel(
     threads: Option<usize>,
     program_trees: Vec<Box<TypedProgramTree>>,
     query: &dyn SymbolQuery,
+    formatter: &dyn Formatter,
     source_map: Arc<SourceMap>,
     decl_tables: Arc<DeclTablesRegistry>,
     vtable_registries: &Vec<Arc<Mutex<VTableRegistry>>>,
@@ -1438,6 +1461,7 @@ pub fn walk_program_trees_in_parallel(
                     program_tree.clone(),
                     module_name,
                     decl_tables.clone(),
+                    formatter,
                     vtable_registry,
                     monomorph_registry.clone(),
                     target,

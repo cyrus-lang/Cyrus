@@ -19,7 +19,7 @@ use crate::{context::AnalysisContext, diagnostics::AnalyzerDiagKind};
 use cyrusc_ast::{abi::Visibility, modifiers::StructModifiers};
 use cyrusc_diagcentral::{Diag, DiagLevel};
 use cyrusc_typed_ast::{
-    decls::{MethodDecls, StructDecl},
+    decls::{MethodDecls, StructDecl, StructDeclID},
     exprs::{TypedFieldInit, TypedStructInitExpr, TypedUnnamedStructValue},
     format::{format_missing_fields, format_struct_decl},
     stmts::{TypedGenericParams, TypedStructField, TypedTypeArgs},
@@ -29,17 +29,15 @@ use fx_hash::FxHashSet;
 
 impl<'a> AnalysisContext<'a> {
     pub(crate) fn analyze_struct_init(&mut self, struct_init: &mut TypedStructInitExpr) -> Option<SemaType> {
-        let decl_id = struct_init.decl_id.unwrap();
-
-        let init_type = self.resolve_symbol_type_expanded(decl_id, struct_init.loc)?;
+        let init_type = self.resolve_symbol_type_expanded(struct_init.decl_id, struct_init.loc)?;
 
         let Some(named_type) = init_type.as_named_type() else {
-            self.report_non_struct_symbol(decl_id, struct_init.loc);
+            self.report_non_struct_symbol(struct_init.decl_id, struct_init.loc);
             return None;
         };
 
         let Some(struct_decl_id) = named_type.decl_id.as_struct() else {
-            self.report_non_struct_symbol(decl_id, struct_init.loc);
+            self.report_non_struct_symbol(struct_init.decl_id, struct_init.loc);
             return None;
         };
 
@@ -95,7 +93,7 @@ impl<'a> AnalysisContext<'a> {
     ) -> Option<SemaType> {
         // case 1: if expected type is a struct, then use it's declaration
         // and analyze fields with expected type.
-        if let Some(struct_decl) = self.infer_struct_decl_from_expected_type(expected_type.clone()) {
+        if let Some((struct_decl_id, struct_decl)) = self.infer_struct_decl_from_expected_type(expected_type.clone()) {
             let type_args = if let Some(SemaType::Named(named)) = &expected_type {
                 named.type_args.clone()
             } else {
@@ -140,6 +138,8 @@ impl<'a> AnalysisContext<'a> {
                 this.check_missing_fields_for_unnamed_struct_value(&struct_decl, struct_value);
                 this.check_duplicate_fields_for_unnamed_struct_value(struct_value);
 
+                struct_value.struct_decl_id = Some(struct_decl_id);
+
                 Some(expected_type.unwrap())
             });
         }
@@ -165,17 +165,22 @@ impl<'a> AnalysisContext<'a> {
             *_struct_decl = struct_decl.clone();
         });
 
+        struct_value.struct_decl_id = Some(struct_decl_id);
+
         Some(SemaType::Named(NamedType {
             decl_id: TypeDeclID::Struct(struct_decl_id),
             type_args: TypedTypeArgs::new(),
         }))
     }
 
-    fn infer_struct_decl_from_expected_type(&self, expected_type: Option<SemaType>) -> Option<StructDecl> {
+    fn infer_struct_decl_from_expected_type(
+        &self,
+        expected_type: Option<SemaType>,
+    ) -> Option<(StructDeclID, StructDecl)> {
         expected_type.and_then(|sema_type| {
             sema_type
                 .as_struct()
-                .map(|struct_decl_id| self.decl_tables.struct_decl(struct_decl_id))
+                .map(|struct_decl_id| (struct_decl_id, self.decl_tables.struct_decl(struct_decl_id)))
         })
     }
 

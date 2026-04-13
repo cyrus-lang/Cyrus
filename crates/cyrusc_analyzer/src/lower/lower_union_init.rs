@@ -17,7 +17,11 @@
 
 use crate::{context::AnalysisContext, diagnostics::AnalyzerDiagKind};
 use cyrusc_diagcentral::{Diag, DiagLevel};
-use cyrusc_typed_ast::exprs::{MemoryLocation, TypedExprKind, TypedExprStmt, TypedUnionInitExpr};
+use cyrusc_typed_ast::{
+    decls::DeclID,
+    exprs::{MemoryLocation, TypedExprKind, TypedExprStmt, TypedFieldInit, TypedUnionInitExpr},
+    stmts::TypedTypeArgs,
+};
 
 impl<'a> AnalysisContext<'a> {
     pub(crate) fn lower_struct_init_as_union_init(&mut self, typed_expr: &mut TypedExprStmt) {
@@ -25,11 +29,7 @@ impl<'a> AnalysisContext<'a> {
             return;
         };
 
-        let Some(symbol_id) = struct_init.decl_id else {
-            return;
-        };
-
-        let Some(init_type) = self.resolve_symbol_type_expanded(symbol_id, struct_init.loc) else {
+        let Some(init_type) = self.resolve_symbol_type_expanded(struct_init.decl_id, struct_init.loc) else {
             return;
         };
 
@@ -51,7 +51,7 @@ impl<'a> AnalysisContext<'a> {
         let field = struct_init.fields.first().unwrap();
 
         let union_init = TypedUnionInitExpr {
-            decl_id: Some(symbol_id),
+            decl_id: struct_init.decl_id,
             type_args: struct_init.type_args.clone(),
             field: Box::new(field.clone()),
             loc: struct_init.loc,
@@ -62,6 +62,30 @@ impl<'a> AnalysisContext<'a> {
             sema_type: None,
             mloc: MemoryLocation::RValue,
             loc: struct_init.loc,
+        };
+    }
+
+    pub(crate) fn lower_unnamed_union_value_as_union_init(&self, typed_expr: &mut TypedExprStmt) {
+        let TypedExprKind::UnnamedUnionValue(union_value) = &typed_expr.kind else {
+            return;
+        };
+
+        let field = TypedFieldInit {
+            name: union_value.name.as_string(),
+            value: *union_value.value.clone(),
+            loc: union_value.loc,
+        };
+
+        *typed_expr = TypedExprStmt {
+            kind: TypedExprKind::UnionInit(TypedUnionInitExpr {
+                decl_id: DeclID::Union(union_value.union_decl_id.unwrap()),
+                field: Box::new(field),
+                type_args: TypedTypeArgs::new(),
+                loc: union_value.loc,
+            }),
+            sema_type: typed_expr.sema_type.clone(),
+            mloc: typed_expr.mloc,
+            loc: typed_expr.loc,
         };
     }
 }

@@ -278,6 +278,7 @@ pub fn build_compilation_bundle(opts: &mut CodeGenOptions, file_path: Option<Str
         opts.jobs,
         boxed_program_trees,
         &*codegen_semantic_bundle.resolver,
+        &*codegen_semantic_bundle.resolver,
         codegen_semantic_bundle.source_map.clone(),
         codegen_semantic_bundle.decl_tables.clone(),
         &codegen_semantic_bundle.vtable_registries,

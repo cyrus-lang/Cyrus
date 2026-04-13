@@ -19,7 +19,7 @@ use crate::{context::AnalysisContext, diagnostics::AnalyzerDiagKind};
 use cyrusc_ast::{abi::Visibility, modifiers::UnionModifiers};
 use cyrusc_diagcentral::{Diag, DiagLevel};
 use cyrusc_typed_ast::{
-    decls::{MethodDecls, UnionDecl},
+    decls::{MethodDecls, UnionDecl, UnionDeclID},
     exprs::{TypedUnionInitExpr, TypedUnnamedUnionValue},
     format::format_union_decl,
     stmts::{TypedGenericParams, TypedTypeArgs, TypedUnionField},
@@ -28,17 +28,15 @@ use cyrusc_typed_ast::{
 
 impl<'a> AnalysisContext<'a> {
     pub(crate) fn analyze_union_init(&mut self, union_init: &mut TypedUnionInitExpr) -> Option<SemaType> {
-        let decl_id = union_init.decl_id.unwrap();
-
-        let init_type = self.resolve_symbol_type_expanded(decl_id, union_init.loc)?;
+        let init_type = self.resolve_symbol_type_expanded(union_init.decl_id, union_init.loc)?;
 
         let Some(named_type) = init_type.as_named_type() else {
-            self.report_non_union_symbol(decl_id, union_init.loc);
+            self.report_non_union_symbol(union_init.decl_id, union_init.loc);
             return None;
         };
 
         let Some(union_decl_id) = named_type.decl_id.as_union() else {
-            self.report_non_union_symbol(decl_id, union_init.loc);
+            self.report_non_union_symbol(union_init.decl_id, union_init.loc);
             return None;
         };
 
@@ -87,7 +85,7 @@ impl<'a> AnalysisContext<'a> {
         union_value: &mut TypedUnnamedUnionValue,
         expected_type: Option<SemaType>,
     ) -> Option<SemaType> {
-        if let Some(union_decl) = self.infer_union_decl_from_expected_type(expected_type.clone()) {
+        if let Some((union_decl_id, union_decl)) = self.infer_union_decl_from_expected_type(expected_type.clone()) {
             let type_args = if let Some(SemaType::Named(named)) = &expected_type {
                 named.type_args.clone()
             } else {
@@ -124,6 +122,8 @@ impl<'a> AnalysisContext<'a> {
                     this.analyze_expr(&mut union_value.value, None);
                 }
 
+                union_value.union_decl_id = Some(union_decl_id);
+
                 Some(expected_type.unwrap())
             });
         }
@@ -142,17 +142,19 @@ impl<'a> AnalysisContext<'a> {
             *_decl = union_decl.clone();
         });
 
+        union_value.union_decl_id = Some(union_decl_id);
+
         Some(SemaType::Named(NamedType {
             decl_id: TypeDeclID::Union(union_decl_id),
             type_args: TypedTypeArgs::new(),
         }))
     }
 
-    fn infer_union_decl_from_expected_type(&self, expected_type: Option<SemaType>) -> Option<UnionDecl> {
+    fn infer_union_decl_from_expected_type(&self, expected_type: Option<SemaType>) -> Option<(UnionDeclID, UnionDecl)> {
         expected_type.and_then(|sema_type| {
             sema_type
                 .as_union()
-                .map(|union_decl_id| self.decl_tables.union_decl(union_decl_id))
+                .map(|union_decl_id| (union_decl_id, self.decl_tables.union_decl(union_decl_id)))
         })
     }
 

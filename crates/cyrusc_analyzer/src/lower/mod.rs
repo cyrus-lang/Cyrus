@@ -25,15 +25,12 @@ use cyrusc_typed_ast::{
 pub(crate) mod lower_assign;
 pub(crate) mod lower_enum_init;
 pub(crate) mod lower_prefix_not;
+pub(crate) mod lower_struct_init;
 pub(crate) mod lower_union_init;
 
 impl<'a> AnalysisContext<'a> {
     /// Rewrites special expression forms into their canonical AST representation.
-    pub(crate) fn lower_expr_pre_analysis(
-        &mut self,
-        typed_expr: &mut TypedExprStmt,
-        expected_type: Option<SemaType>,
-    ) {
+    pub(crate) fn lower_expr_pre_analysis(&mut self, typed_expr: &mut TypedExprStmt, expected_type: Option<SemaType>) {
         match &mut typed_expr.kind {
             TypedExprKind::Assign(assign) => {
                 if assign.kind != AssignKind::Default {
@@ -56,7 +53,9 @@ impl<'a> AnalysisContext<'a> {
     }
 
     pub(crate) fn lower_expr_post_analysis(&mut self, typed_expr: &mut TypedExprStmt) {
+        self.lower_unnamed_struct_value_as_struct_init(typed_expr);
         self.lower_unnamed_enum_value_as_enum_init(typed_expr);
+        self.lower_unnamed_union_value_as_union_init(typed_expr);
         self.lower_enum_struct_variant_init_as_enum_init(typed_expr);
     }
 }
