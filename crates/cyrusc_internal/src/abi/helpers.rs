@@ -70,14 +70,14 @@ pub fn cir_type_to_abi_type(info: &ABITargetInfo, cir_type: &CIRType) -> ABIType
         }
         CIRType::Const(ty) => cir_type_to_abi_type(info, ty),
         CIRType::Pointer(_) => ABIType::Pointer,
-        CIRType::Struct(struct_ty) => {
-            let fields = struct_ty
+        CIRType::Struct(struct_type) => {
+            let fields = struct_type
                 .fields
                 .iter()
                 .map(|ty| cir_type_to_abi_type(info, ty))
                 .collect();
 
-            ABIType::Struct(fields, struct_ty.is_packed())
+            ABIType::Struct(fields, struct_type.is_packed())
         }
         CIRType::Union(union_ty) => {
             let fields = union_ty
@@ -89,8 +89,8 @@ pub fn cir_type_to_abi_type(info: &ABITargetInfo, cir_type: &CIRType) -> ABIType
             ABIType::Union(fields)
         }
         CIRType::FuncType(_) => ABIType::Pointer,
-        CIRType::Tuple(tuple_ty) => {
-            let elements = tuple_ty
+        CIRType::Tuple(tuple_type) => {
+            let elements = tuple_type
                 .elements
                 .iter()
                 .map(|elem_ty| cir_type_to_abi_type(info, elem_ty))

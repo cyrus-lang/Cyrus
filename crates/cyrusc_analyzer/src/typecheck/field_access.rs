@@ -20,7 +20,7 @@ use cyrusc_ast::abi::Visibility;
 use cyrusc_diagcentral::{Diag, DiagLevel};
 use cyrusc_typed_ast::{
     decls::MethodDecls,
-    exprs::TypedFieldAccess,
+    exprs::{TypedFieldAccess, TypedFieldAccessDispatch},
     format::{format_struct_decl, format_union_decl},
     types::SemaType,
 };
@@ -49,7 +49,20 @@ impl<'a> AnalysisContext<'a> {
 
             self.validate_struct_field_access(&field_access, field.vis, &struct_decl.methods, &struct_name);
 
-            self.normalize_sema_type(field.ty.clone(), field_access.loc)
+            let field_type = self.normalize_sema_type(field.ty.clone(), field_access.loc)?;
+            let field_index = struct_decl
+                .fields
+                .iter()
+                .position(|_field| _field.name == field.name)
+                .unwrap();
+
+            field_access.ty = Some(field_type.clone());
+            field_access.dispatch = TypedFieldAccessDispatch::Struct {
+                struct_decl_id,
+                index: field_index,
+            };
+
+            Some(field_type)
         } else if let Some(union_decl_id) = operand_type.as_union() {
             let union_decl = self.decl_tables.union_decl(union_decl_id);
 
@@ -73,7 +86,12 @@ impl<'a> AnalysisContext<'a> {
 
             self.validate_struct_field_access(&field_access, vis, &union_decl.methods, &union_name);
 
-            self.normalize_sema_type(field.ty.clone(), field_access.loc)
+            let field_type = self.normalize_sema_type(field.ty.clone(), field_access.loc)?;
+
+            field_access.ty = Some(field_type.clone());
+            field_access.dispatch = TypedFieldAccessDispatch::Union { union_decl_id };
+
+            Some(field_type)
         } else {
             self.reporter.report(Diag {
                 level: DiagLevel::Error,

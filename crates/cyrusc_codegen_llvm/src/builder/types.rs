@@ -89,12 +89,12 @@ impl<'ll> CodeGenIRBuilder<'ll> {
                 let ptr_align = self.target.info.pointer_align() * 8;
                 unsafe { debug_pointer_type(&self.dctx, inner_ty_metadata, ptr_size_bits as u64, ptr_align, "T*") }
             }
-            CIRType::Struct(struct_ty) => unsafe {
-                let layout = type_layout(&self.target.info, &CIRType::Struct(struct_ty.clone()));
+            CIRType::Struct(struct_type) => unsafe {
+                let layout = type_layout(&self.target.info, &CIRType::Struct(struct_type.clone()));
                 let size_bits = layout.size * 8;
                 let align_bits = layout.align * 8;
 
-                let mut elements_metadata: Vec<LLVMMetadataRef> = struct_ty
+                let mut elements_metadata: Vec<LLVMMetadataRef> = struct_type
                     .fields
                     .iter()
                     .enumerate()
@@ -102,7 +102,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
                         let field_type_metadata = self.emit_debug_ty_metadata(ty);
                         let offset_bits = layout.lookup_field_offset(i) * 8;
 
-                        let (name, loc) = &struct_ty.fields_info[i];
+                        let (name, loc) = &struct_type.fields_info[i];
 
                         debug_member_type(
                             &self.dctx,
@@ -114,7 +114,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
                     })
                     .collect();
 
-                let struct_name = struct_ty.name.clone().unwrap_or("<unnamed_struct>".to_string());
+                let struct_name = struct_type.name.clone().unwrap_or("<unnamed_struct>".to_string());
 
                 debug_struct_type(
                     &self.dctx,
@@ -122,13 +122,13 @@ impl<'ll> CodeGenIRBuilder<'ll> {
                     &mut elements_metadata,
                     size_bits as u64,
                     align_bits,
-                    struct_ty.loc.line.try_into().unwrap(),
+                    struct_type.loc.line.try_into().unwrap(),
                 )
             },
-            CIRType::Tuple(tuple_ty) => {
-                let layout = type_layout(&self.target.info, &CIRType::Tuple(tuple_ty.clone()));
+            CIRType::Tuple(tuple_type) => {
+                let layout = type_layout(&self.target.info, &CIRType::Tuple(tuple_type.clone()));
 
-                let mut elements_metadata: Vec<LLVMMetadataRef> = tuple_ty
+                let mut elements_metadata: Vec<LLVMMetadataRef> = tuple_type
                     .elements
                     .iter()
                     .enumerate()
@@ -146,8 +146,8 @@ impl<'ll> CodeGenIRBuilder<'ll> {
                                 offset_bits as u64,
                                 // FIXME: Expected to have exact location of the element
                                 // but hence it's not implemented correctly in the AST
-                                // using tuple_ty.loc for now.
-                                tuple_ty.loc.line as u32,
+                                // using tuple_type.loc for now.
+                                tuple_type.loc.line as u32,
                             )
                         }
                     })
@@ -162,7 +162,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
                         &mut elements_metadata,
                         layout.size as u64,
                         layout.align,
-                        tuple_ty.loc.line.try_into().unwrap(),
+                        tuple_type.loc.line.try_into().unwrap(),
                     )
                 }
             }
@@ -317,10 +317,10 @@ impl<'ll> CodeGenIRBuilder<'ll> {
             CIRType::Const(inner_ty) => self.emit_ty(*inner_ty),
             CIRType::Plain(plain_ty) => self.emit_plain_ty(plain_ty),
             CIRType::Pointer(_) => self.llvmctx.ptr_type(AddressSpace::default()).as_any_type_enum(),
-            CIRType::Struct(struct_ty) => self.emit_struct_ty(struct_ty).as_any_type_enum(),
+            CIRType::Struct(struct_type) => self.emit_struct_ty(struct_type).as_any_type_enum(),
             CIRType::Enum(enum_ty) => self.emit_enum_ty(enum_ty).as_any_type_enum(),
             CIRType::Union(union_ty) => self.emit_union_ty(union_ty).as_any_type_enum(),
-            CIRType::Tuple(tuple_ty) => self.emit_tuple_ty(tuple_ty).as_any_type_enum(),
+            CIRType::Tuple(tuple_type) => self.emit_tuple_ty(tuple_type).as_any_type_enum(),
             CIRType::Array(array_ty) => self.emit_arr_ty(array_ty).as_any_type_enum(),
             CIRType::FuncType(..) => self.llvmctx.ptr_type(AddressSpace::default()).as_any_type_enum(),
             CIRType::Dynamic(..) => self.emit_dynamic_ty().as_any_type_enum(),
@@ -398,9 +398,9 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         }
     }
 
-    pub(crate) fn emit_struct_ty(&self, struct_ty: CIRStructType) -> StructType<'ll> {
-        let is_packed = struct_ty.is_packed();
-        let layout = type_layout(&self.target.info, &CIRType::Struct(struct_ty.clone()));
+    pub(crate) fn emit_struct_ty(&self, struct_type: CIRStructType) -> StructType<'ll> {
+        let is_packed = struct_type.is_packed();
+        let layout = type_layout(&self.target.info, &CIRType::Struct(struct_type.clone()));
 
         let mut llvm_field_types: Vec<BasicTypeEnum<'ll>> = Vec::new();
         let mut next_field_index = 0;
@@ -409,7 +409,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
             match field_offset {
                 ABIFieldOffsetInfo::Normal { .. } => {
                     // get the next actual field from the struct
-                    let field_ty = &struct_ty.fields[next_field_index];
+                    let field_ty = &struct_type.fields[next_field_index];
                     let llvm_ty: BasicTypeEnum<'ll> = self.emit_ty(field_ty.clone()).try_into().unwrap();
                     llvm_field_types.push(llvm_ty);
                     next_field_index += 1;
@@ -424,7 +424,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
 
         assert_eq!(
             next_field_index,
-            struct_ty.fields.len(),
+            struct_type.fields.len(),
             "mismatch between layout fields and struct fields"
         );
 
@@ -482,9 +482,9 @@ impl<'ll> CodeGenIRBuilder<'ll> {
                             .map(|ty| (*ty).try_into().unwrap())
                             .collect();
 
-                        let struct_ty = self.llvmctx.struct_type(&llvm_fields, false);
-                        let size = target_data.get_store_size(&struct_ty);
-                        let align = target_data.get_abi_alignment(&struct_ty) as u64;
+                        let struct_type = self.llvmctx.struct_type(&llvm_fields, false);
+                        let size = target_data.get_store_size(&struct_type);
+                        let align = target_data.get_abi_alignment(&struct_type) as u64;
                         (size, align)
                     }
                 }
@@ -572,9 +572,9 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         }
     }
 
-    pub(crate) fn emit_tuple_ty(&self, tuple_ty: CIRTupleType) -> StructType<'ll> {
-        let struct_ty = tuple_ty.as_struct_ty();
-        self.emit_struct_ty(struct_ty)
+    pub(crate) fn emit_tuple_ty(&self, tuple_type: CIRTupleType) -> StructType<'ll> {
+        let struct_type = tuple_type.as_struct_ty();
+        self.emit_struct_ty(struct_type)
     }
 
     pub(crate) fn emit_arr_ty(&self, array_ty: CIRArrayType) -> AnyTypeEnum<'ll> {

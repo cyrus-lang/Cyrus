@@ -175,9 +175,9 @@ impl X86_64 {
                     return cir_type_to_abi_type(&self.info, ty);
                 }
             }
-            CIRType::Tuple(tuple_ty) => {
+            CIRType::Tuple(tuple_type) => {
                 // tuple lowered as struct in codegen
-                let struct_type = tuple_ty.as_struct_ty();
+                let struct_type = tuple_type.as_struct_ty();
 
                 if let Some((field_ty, field_offset)) = self.get_member_at_offset(&CIRType::Struct(struct_type), offset) {
                     return self.get_int_type_at_offset(&field_ty, offset - field_offset, source_type, source_offset);

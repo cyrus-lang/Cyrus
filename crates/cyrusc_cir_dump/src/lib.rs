@@ -393,9 +393,18 @@ impl<'a> CIRPrinter<'a> {
             CIRExprKind::TupleAccess(tuple_access) => {
                 format!("{}.{}", self.print_expr(&tuple_access.operand), tuple_access.index)
             }
-            CIRExprKind::StructFieldAccess(field_access) => {
-                format!("{}.f{}", self.print_expr(&field_access.operand), field_access.field_idx)
-            }
+            CIRExprKind::FieldAccess(field_access) => match &field_access.kind {
+                CIRFieldAccessKind::Struct { index, .. } => {
+                    format!("{}.{}", self.print_expr(&field_access.operand), index)
+                }
+                CIRFieldAccessKind::Union { field_type } => {
+                    format!(
+                        "{}.{}",
+                        self.print_expr(&field_access.operand),
+                        self.print_type(&field_type)
+                    )
+                }
+            },
             CIRExprKind::Cast(cast) => format!(
                 "cast({}, {})",
                 self.print_type(&cast.ty),
@@ -472,11 +481,6 @@ impl<'a> CIRPrinter<'a> {
                         format!(".{variant_name}({exprs})")
                     }
                 }
-            }
-            CIRExprKind::UnionFieldAccess(field_access) => {
-                let operand = self.print_expr(&field_access.operand);
-
-                format!("{operand}.({})", self.print_type(&field_access.field_type))
             }
             CIRExprKind::Lambda(lambda) => {
                 let params = self.print_params(&lambda.params);

@@ -151,7 +151,7 @@ impl<'a> AnalysisContext<'a> {
             }
 
             TypedTupleExportPatternKind::Tuple(patterns) => {
-                let Some(tuple_ty) = sema_type.as_tuple_type() else {
+                let Some(tuple_type) = sema_type.as_tuple_type() else {
                     self.reporter.report(Diag {
                         level: DiagLevel::Error,
                         kind: Box::new(AnalyzerDiagKind::TupleMemberAccessOnNonTupleOperand),
@@ -161,7 +161,7 @@ impl<'a> AnalysisContext<'a> {
                     return;
                 };
 
-                if patterns.len() != tuple_ty.elements.len() {
+                if patterns.len() != tuple_type.elements.len() {
                     self.reporter.report(Diag {
                         level: DiagLevel::Error,
                         kind: Box::new(AnalyzerDiagKind::TupleExportedValuesAndTupleElementsCountMismatch),
@@ -171,7 +171,7 @@ impl<'a> AnalysisContext<'a> {
                     return;
                 }
 
-                for (i, (sub_pattern, sub_ty)) in patterns.iter().zip(&tuple_ty.elements).enumerate() {
+                for (i, (sub_pattern, sub_ty)) in patterns.iter().zip(&tuple_type.elements).enumerate() {
                     path.push(i);
                     self.analyze_tuple_pattern(sub_pattern, sub_ty, root_expr, stmt_is_const, loc, path);
                     path.pop();
@@ -232,11 +232,11 @@ impl<'a> AnalysisContext<'a> {
                 break;
             };
 
-            let Some(tuple_ty) = ty.as_tuple_type() else {
+            let Some(tuple_type) = ty.as_tuple_type() else {
                 break;
             };
 
-            let element_type = tuple_ty.elements.get(index).cloned();
+            let element_type = tuple_type.elements.get(index).cloned();
 
             expr = TypedExprStmt {
                 kind: TypedExprKind::TupleAccess(TypedTupleAccessExpr {

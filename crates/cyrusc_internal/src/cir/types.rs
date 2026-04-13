@@ -213,14 +213,14 @@ impl CIRType {
 
     pub fn as_struct(&self) -> Option<CIRStructType> {
         match self.const_inner() {
-            CIRType::Struct(struct_ty) => Some(struct_ty.clone()),
+            CIRType::Struct(struct_type) => Some(struct_type.clone()),
             _ => None,
         }
     }
 
     pub fn struct_or_union_fields(&self) -> Option<Vec<CIRType>> {
         match self.const_inner() {
-            CIRType::Struct(struct_ty) => Some(struct_ty.fields.clone()),
+            CIRType::Struct(struct_type) => Some(struct_type.fields.clone()),
             CIRType::Union(union_ty) => Some(union_ty.fields.clone()),
             _ => None,
         }

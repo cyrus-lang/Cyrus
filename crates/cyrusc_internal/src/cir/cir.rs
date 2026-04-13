@@ -94,8 +94,7 @@ pub enum CIRExprKind {
     StructInit(CIRStructInitExpr),
     UnionInit(CIRUnionInitExpr),
     EnumInit(CIREnumInitExpr),
-    StructFieldAccess(CIRStructFieldAccessExpr),
-    UnionFieldAccess(CIRUnionFieldAccessExpr),
+    FieldAccess(CIRFieldAccessExpr),
     Lambda(CIRLambda),
     Dynamic(CIRDynamicExpr),
     Call(CIRCall),
@@ -152,16 +151,15 @@ pub enum CIRCallDispatch {
 }
 
 #[derive(Debug, Clone)]
-pub struct CIRUnionFieldAccessExpr {
+pub struct CIRFieldAccessExpr {
     pub operand: Box<CIRExpr>,
-    pub field_type: CIRType,
+    pub kind: CIRFieldAccessKind,
 }
 
 #[derive(Debug, Clone)]
-pub struct CIRStructFieldAccessExpr {
-    pub operand: Box<CIRExpr>,
-    pub field_idx: usize,
-    pub field_ty: CIRType,
+pub enum CIRFieldAccessKind {
+    Struct { field_type: CIRType, index: usize },
+    Union { field_type: CIRType },
 }
 
 #[derive(Debug, Clone)]

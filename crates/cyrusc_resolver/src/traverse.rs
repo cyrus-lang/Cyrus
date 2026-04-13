@@ -441,7 +441,7 @@ impl Resolver {
             }
             TypeSpecifier::UnnamedUnion(union_ty) => self.resolve_unnamed_union_type(union_ty),
             TypeSpecifier::UnnamedEnum(enum_ty) => self.resolve_unnamed_enum_type(enum_ty),
-            TypeSpecifier::UnnamedStruct(struct_ty) => self.resolve_unnamed_struct_type(struct_ty),
+            TypeSpecifier::UnnamedStruct(struct_type) => self.resolve_unnamed_struct_type(struct_type),
         }
     }
 

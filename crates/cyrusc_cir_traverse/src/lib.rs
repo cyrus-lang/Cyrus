@@ -870,93 +870,38 @@ impl<'a> CIRTraverse<'a> {
         todo!();
     }
 
-    // FIXME
     fn lower_field_access(&mut self, mut field_access: TypedFieldAccess) -> CIRExprKind {
-        todo!();
+        if field_access.is_fat_arrow {
+            field_access.operand = Box::new(TypedExprStmt {
+                kind: TypedExprKind::Deref(TypedDerefExpr {
+                    operand: field_access.operand.clone(),
+                    loc: field_access.loc,
+                }),
+                sema_type: Some(field_access.operand.sema_type.clone().unwrap().pointer_inner().clone()),
+                mloc: MemoryLocation::LValue,
+                loc: field_access.loc,
+            })
+        }
 
-        // if field_access.is_fat_arrow {
-        //     field_access.operand = Box::new(TypedExprStmt {
-        //         kind: TypedExprKind::Deref(TypedDerefExpr {
-        //             operand: field_access.operand.clone(),
-        //             loc: field_access.loc,
-        //         }),
-        //         sema_type: Some(field_access.operand.sema_type.clone().unwrap().pointer_inner().clone()),
-        //         mloc: MemoryLocation::LValue,
-        //         loc: field_access.loc,
-        //     })
-        // }
+        let operand = self.lower_expr(&field_access.operand);
 
-        // if let Some(sema_type) = &field_access.operand.sema_type {
-        //     if sema_type.as_unnamed_struct().is_some() {
-        //         return CIRExprKind::StructFieldAccess(CIRStructFieldAccessExpr {
-        //             operand: Box::new(self.lower_expr(&field_access.operand)),
-        //             field_idx: field_access.field_index.unwrap(),
-        //             field_ty: self.lower_sema_ty(&field_access.field_ty.as_ref().unwrap()),
-        //         });
-        //     }
+        let field_type = self.lower_sema_type(&field_access.ty.unwrap());
 
-        //     if sema_type.as_unnamed_union().is_some() {
-        //         return CIRExprKind::UnionFieldAccess(CIRUnionFieldAccessExpr {
-        //             operand: Box::new(self.lower_expr(&field_access.operand)),
-        //             field_ty: self.lower_sema_ty(&field_access.field_ty.as_ref().unwrap()),
-        //         });
-        //     }
-        // }
+        match &field_access.dispatch {
+            TypedFieldAccessDispatch::Unresolved => unreachable!(),
 
-        // let symbol_entry = self
-        //     .query
-        //     .lookup_symbol_entry(field_access.object_symbol_id.unwrap())
-        //     .unwrap();
-
-        // if symbol_entry.as_struct().is_some() {
-        //     CIRExprKind::StructFieldAccess(CIRStructFieldAccessExpr {
-        //         operand: Box::new(self.lower_expr(&field_access.operand)),
-        //         field_idx: field_access.field_index.unwrap(),
-        //         field_ty: self.lower_sema_ty(&field_access.field_ty.as_ref().unwrap()),
-        //     })
-        // } else if symbol_entry.as_union().is_some() {
-        //     CIRExprKind::UnionFieldAccess(CIRUnionFieldAccessExpr {
-        //         operand: Box::new(self.lower_expr(&field_access.operand)),
-        //         field_ty: self.lower_sema_ty(&field_access.field_ty.as_ref().unwrap()),
-        //     })
-        // } else if let Some(mut resolved_enum) = symbol_entry.as_enum().cloned() {
-        //     let sema_type = field_access.operand.sema_type.as_ref().unwrap();
-
-        //     let variant: CIREnumInitVariant;
-        //     let enum_ty: CIREnumTy;
-        //     if let Some(generic_type) = sema_type.as_generic_type() {
-        //         resolved_enum.enum_decl = substitute_enum_sig(
-        //             self.mapping_ctx_arena.clone(),
-        //             &resolved_enum.enum_decl,
-        //             generic_type.mapping_ctx.clone(),
-        //         )
-        //         .unwrap()
-        //     }
-
-        //     let typed_variant = resolved_enum
-        //         .enum_decl
-        //         .variants
-        //         .get(field_access.field_index.unwrap())
-        //         .unwrap();
-
-        //     variant = match typed_variant {
-        //         TypedEnumVariant::Ident(..) => CIREnumInitVariant::Ident,
-        //         TypedEnumVariant::Valued(_, expr) => CIREnumInitVariant::Valued(Box::new(self.lower_expr(expr))),
-        //         TypedEnumVariant::Variant(..) => unreachable!(),
-        //     };
-
-        //     enum_ty = self.lower_enum_sig_as_enum_ty(&resolved_enum.enum_decl);
-
-        //     let tag = enum_ty.compute_variant_tag(&field_access.field_name).unwrap();
-
-        //     CIRExprKind::EnumInit(CIREnumInitExpr {
-        //         tag: tag.try_into().unwrap(),
-        //         variant,
-        //         enum_ty,
-        //     })
-        // } else {
-        //     unreachable!()
-        // }
+            TypedFieldAccessDispatch::Struct { index, .. } => CIRExprKind::FieldAccess(CIRFieldAccessExpr {
+                operand: Box::new(operand),
+                kind: CIRFieldAccessKind::Struct {
+                    index: *index,
+                    field_type: field_type,
+                },
+            }),
+            TypedFieldAccessDispatch::Union { .. } => CIRExprKind::FieldAccess(CIRFieldAccessExpr {
+                operand: Box::new(operand),
+                kind: CIRFieldAccessKind::Union { field_type },
+            }),
+        }
     }
 
     // FIXME

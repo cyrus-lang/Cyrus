@@ -210,9 +210,9 @@ impl<'ll> CodeGenIRBuilder<'ll> {
                     );
                 }
                 ABIArgKind::Expand { kind } => {
-                    let struct_ty: BasicTypeEnum<'ll> = self.emit_ty(param.ty.clone()).try_into().unwrap();
+                    let struct_type: BasicTypeEnum<'ll> = self.emit_ty(param.ty.clone()).try_into().unwrap();
 
-                    let param_alloca = self.llvmbuilder.build_alloca(struct_ty, "param").unwrap();
+                    let param_alloca = self.llvmbuilder.build_alloca(struct_type, "param").unwrap();
 
                     let fields_cir_types = param.ty.struct_or_union_fields().unwrap();
 
@@ -227,7 +227,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
 
                                 let field_ptr = self
                                     .llvmbuilder
-                                    .build_struct_gep(struct_ty, param_alloca, i as u32, "expand.field.ptr")
+                                    .build_struct_gep(struct_type, param_alloca, i as u32, "expand.field.ptr")
                                     .unwrap();
 
                                 self.llvmbuilder.build_store(field_ptr, llvm_param).unwrap();
@@ -241,7 +241,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
 
                                 let field_ptr = self
                                     .llvmbuilder
-                                    .build_struct_gep(struct_ty, param_alloca, i as u32, "expand.struct.ptr")
+                                    .build_struct_gep(struct_type, param_alloca, i as u32, "expand.struct.ptr")
                                     .unwrap();
 
                                 self.llvmbuilder.build_store(field_ptr, llvm_param).unwrap();
@@ -255,7 +255,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
 
                             let lo_ptr = self
                                 .llvmbuilder
-                                .build_struct_gep(struct_ty, param_alloca, 0, "expand.lo.ptr")
+                                .build_struct_gep(struct_type, param_alloca, 0, "expand.lo.ptr")
                                 .unwrap();
 
                             self.llvmbuilder.build_store(lo_ptr, lo_param).unwrap();
@@ -267,7 +267,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
 
                             let hi_ptr = self
                                 .llvmbuilder
-                                .build_struct_gep(struct_ty, param_alloca, *offset_hi as u32, "expand.hi.ptr")
+                                .build_struct_gep(struct_type, param_alloca, *offset_hi as u32, "expand.hi.ptr")
                                 .unwrap();
 
                             self.llvmbuilder.build_store(hi_ptr, hi_param).unwrap();

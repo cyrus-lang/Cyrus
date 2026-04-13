@@ -77,12 +77,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
             CIRExprKind::StructInit(struct_init_expr) => self.emit_struct_init(struct_init_expr),
             CIRExprKind::UnionInit(union_init_expr) => self.emit_union_init_value(union_init_expr),
             CIRExprKind::EnumInit(enum_init_expr) => self.emit_enum_init(enum_init_expr),
-            CIRExprKind::StructFieldAccess(struct_field_access_expr) => {
-                self.emit_struct_field_access(struct_field_access_expr)
-            }
-            CIRExprKind::UnionFieldAccess(union_field_access_expr) => {
-                self.emit_union_field_access(union_field_access_expr)
-            }
+            CIRExprKind::FieldAccess(field_access) => self.emit_field_access(field_access),
             CIRExprKind::Call(call) => self.emit_call(call),
             CIRExprKind::Lambda(lambda) => self.emit_lambda(lambda),
             CIRExprKind::Dynamic(dynamic) => self.emit_dynamic_expr(dynamic),
@@ -566,25 +561,27 @@ impl<'ll> CodeGenIRBuilder<'ll> {
                 let inner_ty = rvalue.ty.pointer_inner().unwrap();
                 InternalValue::new(inner_ty.clone(), InternalValueKind::LValue(ptr))
             }
-            CIRExprKind::StructFieldAccess(struct_field_access) => {
-                let lvalue = self.emit_lvalue_address(&struct_field_access.operand);
+            CIRExprKind::FieldAccess(field_access) => match &field_access.kind {
+                CIRFieldAccessKind::Struct { field_type, index } => {
+                    let lvalue = self.emit_lvalue_address(&field_access.operand);
 
-                let struct_ptr_value = lvalue.as_basic_value().into_pointer_value();
-                let struct_ty = lvalue.ty.clone();
+                    let struct_ptr_value = lvalue.as_basic_value().into_pointer_value();
+                    let struct_type = lvalue.ty.clone();
 
-                let layout = type_layout(&self.target.info, &struct_ty);
-                let llvm_struct_ty = self.emit_ty(struct_ty).into_struct_type();
+                    let layout = type_layout(&self.target.info, &struct_type);
+                    let llvm_struct_type = self.emit_ty(struct_type).into_struct_type();
 
-                let index = layout.lookup_field_index(struct_field_access.field_idx).unwrap();
+                    let index = layout.lookup_field_index(*index).unwrap();
 
-                let field_ptr = self
-                    .llvmbuilder
-                    .build_struct_gep(llvm_struct_ty, struct_ptr_value, index, "field_ptr")
-                    .unwrap();
+                    let field_ptr = self
+                        .llvmbuilder
+                        .build_struct_gep(llvm_struct_type, struct_ptr_value, index, "field_ptr")
+                        .unwrap();
 
-                let field_ty = struct_field_access.field_ty.clone();
-                InternalValue::new(field_ty, InternalValueKind::LValue(field_ptr))
-            }
+                    InternalValue::new(field_type.clone(), InternalValueKind::LValue(field_ptr))
+                }
+                CIRFieldAccessKind::Union { .. } => self.emit_lvalue_address(&field_access.operand),
+            },
             _ => self.emit_expr(expr),
         }
     }
@@ -1214,27 +1211,50 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         }
     }
 
-    fn emit_union_field_access(&mut self, field_access: &CIRUnionFieldAccessExpr) -> InternalValue<'ll> {
-        let value = self.emit_lvalue_address(&field_access.operand);
+    fn emit_field_access(&mut self, field_access: &CIRFieldAccessExpr) -> InternalValue<'ll> {
+        match &field_access.kind {
+            CIRFieldAccessKind::Struct { .. } => self.emit_struct_field_access(field_access),
+            CIRFieldAccessKind::Union { .. } => self.emit_union_field_access(field_access),
+        }
+    }
+
+    fn emit_union_field_access(&mut self, field_access: &CIRFieldAccessExpr) -> InternalValue<'ll> {
+        // old logic, adapted to unified type
+        let operand_val = self.emit_lvalue_address(&field_access.operand);
 
         let union_ty: BasicTypeEnum<'ll> = self.emit_ty(field_access.operand.ty.clone()).try_into().unwrap();
 
-        let union_ptr = match value.kind {
+        let union_ptr = match operand_val.kind {
             InternalValueKind::LValue(ptr) => ptr,
-            InternalValueKind::RValue(basic_value) => {
+
+            // RValue → spill to stack
+            InternalValueKind::RValue(basic_val) => {
                 let temp = self.llvmbuilder.build_alloca(union_ty, "union.temp").unwrap();
-                self.llvmbuilder.build_store(temp, basic_value).unwrap();
+                self.llvmbuilder.build_store(temp, basic_val).unwrap();
                 temp
             }
+
             _ => unreachable!(),
         };
 
-        InternalValue::new(field_access.field_type.clone(), InternalValueKind::LValue(union_ptr))
+        // union field access just narrows the type
+        let field_ty = match &field_access.kind {
+            CIRFieldAccessKind::Union { field_type } => field_type.clone(),
+            _ => unreachable!(),
+        };
+
+        InternalValue::new(field_ty, InternalValueKind::LValue(union_ptr))
     }
 
-    fn emit_struct_field_access(&mut self, field_access: &CIRStructFieldAccessExpr) -> InternalValue<'ll> {
+    fn emit_struct_field_access(&mut self, field_access: &CIRFieldAccessExpr) -> InternalValue<'ll> {
+        let (field_type, field_index) = match &field_access.kind {
+            CIRFieldAccessKind::Struct { field_type, index } => (field_type.clone(), *index),
+            _ => unreachable!(),
+        };
+
         let operand = self.emit_lvalue_address(&field_access.operand);
 
+        // Determine concrete struct type of operand
         let cir_struct_ty = if let Some(inner) = field_access.operand.ty.pointer_inner() {
             inner.clone().as_struct().unwrap()
         } else {
@@ -1242,28 +1262,31 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         };
 
         let layout = type_layout(&self.target.info, &CIRType::Struct(cir_struct_ty.clone()));
-        let index = layout.lookup_field_index(field_access.field_idx).unwrap();
 
-        let struct_ty = self.emit_struct_ty(cir_struct_ty);
+        let llvm_field_index = layout
+            .lookup_field_index(field_index)
+            .expect("layout must contain field");
+
+        let llvm_struct_ty = self.emit_struct_ty(cir_struct_ty);
 
         match operand.kind {
-            InternalValueKind::LValue(addr) => {
-                let field_addr = self
+            InternalValueKind::LValue(ptr_value) => {
+                let field_ptr = self
                     .llvmbuilder
-                    .build_struct_gep(struct_ty, addr, index, "field_gep")
+                    .build_struct_gep(llvm_struct_ty, ptr_value, llvm_field_index, "field_gep")
                     .unwrap();
 
-                InternalValue::new(field_access.field_ty.clone(), InternalValueKind::LValue(field_addr))
+                InternalValue::new(field_type, InternalValueKind::LValue(field_ptr))
             }
-            InternalValueKind::RValue(val) => {
-                let struct_val = val.into_struct_value();
+            InternalValueKind::RValue(struct_val) => {
+                let struct_value = struct_val.into_struct_value();
 
-                let field_val = self
+                let field_value = self
                     .llvmbuilder
-                    .build_extract_value(struct_val, index, "field_extract")
+                    .build_extract_value(struct_value, llvm_field_index, "field_extract")
                     .unwrap();
 
-                InternalValue::new(field_access.field_ty.clone(), InternalValueKind::RValue(field_val))
+                InternalValue::new(field_type, InternalValueKind::RValue(field_value))
             }
             _ => unreachable!(),
         }
@@ -1277,14 +1300,14 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         let layout = type_layout(&self.target.info, &CIRType::Tuple(cir_tuple_ty.clone()));
         let index = layout.lookup_field_index(tuple_access.index).unwrap();
 
-        let tuple_ty = self.emit_tuple_ty(cir_tuple_ty.clone());
+        let tuple_type = self.emit_tuple_ty(cir_tuple_ty.clone());
         let field_type = &cir_tuple_ty.elements[tuple_access.index];
 
         match operand.kind {
             InternalValueKind::LValue(addr) => {
                 let field_addr = self
                     .llvmbuilder
-                    .build_struct_gep(tuple_ty, addr, index, "tuple_gep")
+                    .build_struct_gep(tuple_type, addr, index, "tuple_gep")
                     .unwrap();
 
                 InternalValue::new(field_type.clone(), InternalValueKind::LValue(field_addr))

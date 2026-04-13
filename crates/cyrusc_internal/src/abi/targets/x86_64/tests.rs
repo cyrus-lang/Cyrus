@@ -63,7 +63,7 @@ mod tests {
         CIRType::Plain(PlainType::Float64)
     }
 
-    fn struct_ty(fields: Vec<CIRType>) -> CIRType {
+    fn struct_type(fields: Vec<CIRType>) -> CIRType {
         let fields = fields.iter().map(|ty| ty.clone()).collect();
 
         CIRType::Struct(CIRStructType {
@@ -148,7 +148,7 @@ mod tests {
     #[test]
     fn classify_struct_two_i64_direct_pair() {
         let abi = abi();
-        let ty = struct_ty(vec![i64(), i64()]);
+        let ty = struct_type(vec![i64(), i64()]);
 
         let (info, regs) = abi.classify_argument(&ty, 6, true);
 
@@ -163,7 +163,7 @@ mod tests {
     #[test]
     fn classify_struct_two_f64_sse_pair() {
         let abi = abi();
-        let ty = struct_ty(vec![f64(), f64()]);
+        let ty = struct_type(vec![f64(), f64()]);
 
         let (info, regs) = abi.classify_argument(&ty, 6, true);
 
@@ -178,7 +178,7 @@ mod tests {
     #[test]
     fn classify_struct_int_float_pair() {
         let abi = abi();
-        let ty = struct_ty(vec![i32(), f64()]);
+        let ty = struct_type(vec![i32(), f64()]);
 
         let (info, regs) = abi.classify_argument(&ty, 6, true);
 
@@ -194,7 +194,7 @@ mod tests {
     #[test]
     fn classify_struct_small_integer_pack() {
         let abi = abi();
-        let ty = struct_ty(vec![i32(), i32()]);
+        let ty = struct_type(vec![i32(), i32()]);
 
         let (info, regs) = abi.classify_argument(&ty, 6, true);
 
@@ -208,7 +208,7 @@ mod tests {
     #[test]
     fn classify_struct_large_memory() {
         let abi = abi();
-        let ty = struct_ty(vec![i64(), i64(), i64()]);
+        let ty = struct_type(vec![i64(), i64(), i64()]);
 
         let (info, _) = abi.classify_argument(&ty, 6, true);
 
@@ -302,7 +302,7 @@ mod tests {
     #[test]
     fn classify_return_two_i64_struct() {
         let abi = abi();
-        let ty = struct_ty(vec![i64(), i64()]);
+        let ty = struct_type(vec![i64(), i64()]);
 
         let ret = abi.classify_return(&ty);
 
@@ -315,7 +315,7 @@ mod tests {
     #[test]
     fn classify_return_double_pair() {
         let abi = abi();
-        let ty = struct_ty(vec![f64(), f64()]);
+        let ty = struct_type(vec![f64(), f64()]);
 
         let ret = abi.classify_return(&ty);
 
@@ -328,7 +328,7 @@ mod tests {
     #[test]
     fn classify_return_large_struct_sret() {
         let abi = abi();
-        let ty = struct_ty(vec![i64(), i64(), i64()]);
+        let ty = struct_type(vec![i64(), i64(), i64()]);
 
         let ret = abi.classify_return(&ty);
 
@@ -484,7 +484,7 @@ mod tests {
     #[test]
     fn classify_return_struct_single_i64() {
         let abi = abi();
-        let ty = struct_ty(vec![i64()]);
+        let ty = struct_type(vec![i64()]);
 
         let ret = abi.classify_return(&ty);
 
@@ -494,7 +494,7 @@ mod tests {
     #[test]
     fn classify_return_struct_i32_i32() {
         let abi = abi();
-        let ty = struct_ty(vec![i32(), i32()]);
+        let ty = struct_type(vec![i32(), i32()]);
 
         let ret = abi.classify_return(&ty);
 
@@ -504,7 +504,7 @@ mod tests {
     #[test]
     fn classify_return_struct_i64_i32() {
         let abi = abi();
-        let ty = struct_ty(vec![i64(), i32()]);
+        let ty = struct_type(vec![i64(), i32()]);
 
         let ret = abi.classify_return(&ty);
 
@@ -517,7 +517,7 @@ mod tests {
     #[test]
     fn classify_return_struct_float_int() {
         let abi = abi();
-        let ty = struct_ty(vec![f64(), i64()]);
+        let ty = struct_type(vec![f64(), i64()]);
 
         let ret = abi.classify_return(&ty);
 
@@ -530,7 +530,7 @@ mod tests {
     #[test]
     fn classify_return_struct_three_i32() {
         let abi = abi();
-        let ty = struct_ty(vec![i32(), i32(), i32()]);
+        let ty = struct_type(vec![i32(), i32(), i32()]);
 
         let ret = abi.classify_return(&ty);
 
@@ -543,7 +543,7 @@ mod tests {
     #[test]
     fn classify_return_struct_exact_16_bytes() {
         let abi = abi();
-        let ty = struct_ty(vec![i64(), i64()]);
+        let ty = struct_type(vec![i64(), i64()]);
 
         let ret = abi.classify_return(&ty);
 
@@ -619,8 +619,8 @@ mod tests {
     fn classify_return_nested_struct_pair() {
         let abi = abi();
 
-        let inner = struct_ty(vec![i64(), i64()]);
-        let outer = struct_ty(vec![inner]);
+        let inner = struct_type(vec![i64(), i64()]);
+        let outer = struct_type(vec![inner]);
 
         let ret = abi.classify_return(&outer);
 
@@ -634,7 +634,7 @@ mod tests {
     fn classify_return_struct_with_array_field() {
         let abi = abi();
 
-        let ty = struct_ty(vec![array_ty(i32(), 4)]);
+        let ty = struct_type(vec![array_ty(i32(), 4)]);
 
         let ret = abi.classify_return(&ty);
 

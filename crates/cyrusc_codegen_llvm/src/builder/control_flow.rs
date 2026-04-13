@@ -785,8 +785,8 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         let sret_param = cur_fn.get_first_param().unwrap();
         let sret_ptr = sret_param.into_pointer_value();
 
-        let struct_ty = rvalue.ty.clone();
-        let struct_layout = type_layout(&self.target.info, &struct_ty);
+        let struct_type = rvalue.ty.clone();
+        let struct_layout = type_layout(&self.target.info, &struct_type);
 
         let size_val = self.llvmctx.i64_type().const_int(struct_layout.size as u64, false);
 
