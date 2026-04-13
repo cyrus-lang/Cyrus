@@ -537,12 +537,14 @@ impl<'a> CIRPrinter<'a> {
         let mut list = Vec::new();
 
         for param in &params.list {
-            let name = param
-                .irv_id
-                .map(|irv_id| format!("%{}", irv_id.0))
-                .unwrap_or("_".to_string());
+            let name = param.irv_id.map(|irv_id| format!("%{}", irv_id.0));
 
-            list.push(format!("{}: {}", name, self.print_type(&param.ty)));
+            if let Some(name) = name {
+                list.push(format!("{name}: {}", self.print_type(&param.ty)));
+            } else {
+                // used for function declaration
+                list.push(format!("{}", self.print_type(&param.ty)));
+            }
         }
 
         if params.is_var {

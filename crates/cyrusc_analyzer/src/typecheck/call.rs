@@ -22,7 +22,7 @@ use cyrusc_typed_ast::{
     decls::{DeclID, FuncDecl},
     exprs::{TypedExprStmt, TypedFuncCall, TypedFuncCallDispatch},
     format::{format_func_type, format_loc, format_sema_type},
-    stmts::{TypedFuncParams, TypedFuncTypeVariadicParam, TypedFuncVariadicParam},
+    stmts::{TypedFuncTypeVariadicParam, TypedFuncVariadicParam},
     types::{SemaType, TypedFuncType},
 };
 

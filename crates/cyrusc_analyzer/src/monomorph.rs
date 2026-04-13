@@ -82,7 +82,8 @@ impl<'a> AnalysisContext<'a> {
                     if let Some(mut var_decl_id) = self_modifier.var_decl_id {
                         let var_decl = self.decl_tables.var_decl(var_decl_id);
 
-                        let new_var_decl_id = self.instantiate_fresh_param_var(&mut var_decl_id, var_decl, param_type, decl_map);
+                        let new_var_decl_id =
+                            self.instantiate_fresh_param_var(&mut var_decl_id, var_decl, param_type, decl_map);
 
                         self_modifier.var_decl_id = Some(new_var_decl_id);
                     }
@@ -134,6 +135,15 @@ impl<'a> AnalysisContext<'a> {
         *var_decl_id = new_var_decl_id;
     }
 
+    /// Instantiate a fresh `VarDecl` for a specialized function parameter.
+    ///
+    /// Creates a new `VarDeclID` for the parameter and updates the caller‑
+    /// provided `var_decl_id` in place. Uses `decl_map` to guarantee that
+    /// each template parameter is instantiated exactly once per monomorph.
+    ///
+    /// The parameter's type is replaced with the monomorphized `param_type`
+    /// before insertion. Reuses an existing mapping if the parameter has
+    /// already been instantiated during this specialization pass.
     #[inline]
     fn instantiate_fresh_param_var(
         &self,
