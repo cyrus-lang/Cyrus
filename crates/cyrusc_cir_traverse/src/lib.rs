@@ -35,6 +35,9 @@ use cyrusc_typed_ast::format::Formatter;
 use cyrusc_typed_ast::format::format_struct_decl;
 use cyrusc_typed_ast::format::format_union_decl;
 use cyrusc_typed_ast::stmts::*;
+use cyrusc_typed_ast::substitute::instantiate_enum_decl_with_type_args;
+use cyrusc_typed_ast::substitute::instantiate_struct_decl_with_type_args;
+use cyrusc_typed_ast::substitute::instantiate_union_decl_with_type_args;
 use cyrusc_typed_ast::types::*;
 use fx_hash::FxHashMap;
 use std::sync::{Arc, Mutex};
@@ -637,10 +640,7 @@ impl<'a> CIRTraverse<'a> {
             TypedExprKind::Dynamic(dynamic) => self.lower_dynamic(dynamic),
             TypedExprKind::StructInit(struct_init) => self.lower_struct_init(struct_init),
             TypedExprKind::UnionInit(union_init) => self.lower_union_init(union_init),
-            TypedExprKind::EnumInit(enum_init) => {
-                // TODO
-                todo!();
-            }
+            TypedExprKind::EnumInit(enum_init) => self.lower_enum_init(enum_init),
 
             TypedExprKind::Builtin(_builtin) => todo!(),
 
@@ -694,15 +694,17 @@ impl<'a> CIRTraverse<'a> {
         let struct_decl_id = struct_init.decl_id.as_struct().unwrap();
         let struct_decl = self.decl_tables.struct_decl(struct_decl_id);
 
-        let struct_name = format_struct_decl(&struct_decl, self.formatter);
+        let inst_struct_decl = instantiate_struct_decl_with_type_args(&struct_decl, &struct_init.type_args);
 
-        let fields = struct_decl
+        let struct_name = format_struct_decl(&inst_struct_decl, self.formatter);
+
+        let fields = inst_struct_decl
             .fields
             .iter()
             .map(|field| self.lower_sema_type(&field.ty))
             .collect();
 
-        let fields_info = struct_decl
+        let fields_info = inst_struct_decl
             .fields
             .iter()
             .map(|field| (field.name.clone(), field.loc))
@@ -712,9 +714,9 @@ impl<'a> CIRTraverse<'a> {
             name: Some(struct_name),
             fields,
             fields_info,
-            align: struct_decl.align.clone(),
-            repr_attr: struct_decl.modifiers.repr_attr.clone(),
-            loc: struct_decl.loc,
+            align: inst_struct_decl.align.clone(),
+            repr_attr: inst_struct_decl.modifiers.repr_attr.clone(),
+            loc: inst_struct_decl.loc,
         };
 
         let mut lowered_fields = FxHashMap::default();
@@ -725,7 +727,7 @@ impl<'a> CIRTraverse<'a> {
         }
 
         // emit exprs in declaration order
-        let fields: Vec<CIRExpr> = struct_decl
+        let fields: Vec<CIRExpr> = inst_struct_decl
             .fields
             .iter()
             .map(|decl_field| lowered_fields.get(&decl_field.name).unwrap().clone())
@@ -741,15 +743,17 @@ impl<'a> CIRTraverse<'a> {
         let union_decl_id = union_init.decl_id.as_union().unwrap();
         let union_decl = self.decl_tables.union_decl(union_decl_id);
 
-        let union_name = format_union_decl(&union_decl, self.formatter);
+        let inst_union_decl = instantiate_union_decl_with_type_args(&union_decl, &union_init.type_args);
 
-        let fields = union_decl
+        let union_name = format_union_decl(&inst_union_decl, self.formatter);
+
+        let fields = inst_union_decl
             .fields
             .iter()
             .map(|field| self.lower_sema_type(&field.ty))
             .collect();
 
-        let fields_info = union_decl
+        let fields_info = inst_union_decl
             .fields
             .iter()
             .map(|field| (field.name.clone(), field.loc))
@@ -759,9 +763,9 @@ impl<'a> CIRTraverse<'a> {
             name: Some(union_name),
             fields,
             fields_info,
-            repr_attr: union_decl.modifiers.repr_attr.clone(),
-            align: union_decl.align.clone(),
-            loc: union_decl.loc,
+            repr_attr: inst_union_decl.modifiers.repr_attr.clone(),
+            align: inst_union_decl.align.clone(),
+            loc: inst_union_decl.loc,
         };
 
         let lowered_expr = Box::new(self.lower_expr(&union_init.field.value));
@@ -770,6 +774,11 @@ impl<'a> CIRTraverse<'a> {
             ty: CIRType::Union(union_type),
             expr: lowered_expr,
         })
+    }
+
+    // TODO
+    fn lower_enum_init(&mut self, enum_init: &TypedEnumInit) -> CIRExprKind {
+        todo!();
     }
 
     fn lower_tuple_access(&mut self, tuple_access: &TypedTupleAccessExpr) -> CIRExprKind {
@@ -815,6 +824,86 @@ impl<'a> CIRTraverse<'a> {
             abi_func_info,
             loc: lambda.loc,
         })
+    }
+
+    fn lower_field_access(&mut self, mut field_access: TypedFieldAccess) -> CIRExprKind {
+        if field_access.is_fat_arrow {
+            field_access.operand = Box::new(TypedExprStmt {
+                kind: TypedExprKind::Deref(TypedDerefExpr {
+                    operand: field_access.operand.clone(),
+                    loc: field_access.loc,
+                }),
+                sema_type: Some(field_access.operand.sema_type.clone().unwrap().pointer_inner().clone()),
+                mloc: MemoryLocation::LValue,
+                loc: field_access.loc,
+            })
+        }
+
+        let operand = self.lower_expr(&field_access.operand);
+
+        let field_type = self.lower_sema_type(&field_access.ty.unwrap());
+
+        match &field_access.dispatch {
+            TypedFieldAccessDispatch::Unresolved => unreachable!(),
+
+            TypedFieldAccessDispatch::Struct { index, .. } => CIRExprKind::FieldAccess(CIRFieldAccessExpr {
+                operand: Box::new(operand),
+                kind: CIRFieldAccessKind::Struct {
+                    index: *index,
+                    field_type: field_type,
+                },
+            }),
+            TypedFieldAccessDispatch::Union { .. } => CIRExprKind::FieldAccess(CIRFieldAccessExpr {
+                operand: Box::new(operand),
+                kind: CIRFieldAccessKind::Union { field_type },
+            }),
+        }
+    }
+
+    // FIXME
+    fn lower_non_generic_methods(&mut self, object_name: &String, methods: &MethodDecls) -> Vec<CIRStmt> {
+        // todo!();
+        Vec::new()
+
+        // let mut stmts: Vec<CIRStmt> = Vec::new();
+
+        // for method_id in methods.values().cloned() {
+        //     let method_decl_id = self.query.get_method(method_id).unwrap();
+        //     let method_decl = self.decl_tables.method_decl(method_decl_id);
+
+        //     let lowered_method = self.lower_method(&method_decl, object_name).unwrap();
+        //     stmts.push(lowered_method);
+        // }
+
+        // stmts
+    }
+
+    // FIXME
+    fn lower_method(&mut self, method_decl: &MethodDecl, object_name: &String) -> Option<CIRStmt> {
+        todo!();
+
+        // let mangled_name = DEFAULT_ABI.method_name(&self.module_name, object_name, &resolved_method.func_decl.name);
+
+        // // skip if has no body
+        // let func_body = resolved_method.func_body.clone()?;
+
+        // let func_def = TypedFuncDefStmt {
+        //     symbol_id: resolved_method.symbol_id,
+        //     name: mangled_name,
+        //     params: resolved_method.func_decl.params.clone(),
+        //     generic_params: resolved_method.func_decl.generic_params.clone(),
+        //     body: func_body,
+        //     ret_type: resolved_method.func_decl.ret_type.clone(),
+        //     modifiers: resolved_method.func_decl.modifiers.clone(),
+        //     loc: resolved_method.func_decl.loc,
+        // };
+
+        // Some(self.lower_func_def(&func_def, false))
+    }
+
+    // FIXME
+    fn lower_method_call(&mut self, method_call: &TypedMethodCall) -> CIRExprKind {
+        todo!();
     }
 
     // FIXME
@@ -863,85 +952,6 @@ impl<'a> CIRTraverse<'a> {
         //     vtable_abi_name,
         //     loc: dynamic.loc,
         // })
-    }
-
-    // FIXME
-    fn lower_method_call(&mut self, method_call: &TypedMethodCall) -> CIRExprKind {
-        todo!();
-    }
-
-    fn lower_field_access(&mut self, mut field_access: TypedFieldAccess) -> CIRExprKind {
-        if field_access.is_fat_arrow {
-            field_access.operand = Box::new(TypedExprStmt {
-                kind: TypedExprKind::Deref(TypedDerefExpr {
-                    operand: field_access.operand.clone(),
-                    loc: field_access.loc,
-                }),
-                sema_type: Some(field_access.operand.sema_type.clone().unwrap().pointer_inner().clone()),
-                mloc: MemoryLocation::LValue,
-                loc: field_access.loc,
-            })
-        }
-
-        let operand = self.lower_expr(&field_access.operand);
-
-        let field_type = self.lower_sema_type(&field_access.ty.unwrap());
-
-        match &field_access.dispatch {
-            TypedFieldAccessDispatch::Unresolved => unreachable!(),
-
-            TypedFieldAccessDispatch::Struct { index, .. } => CIRExprKind::FieldAccess(CIRFieldAccessExpr {
-                operand: Box::new(operand),
-                kind: CIRFieldAccessKind::Struct {
-                    index: *index,
-                    field_type: field_type,
-                },
-            }),
-            TypedFieldAccessDispatch::Union { .. } => CIRExprKind::FieldAccess(CIRFieldAccessExpr {
-                operand: Box::new(operand),
-                kind: CIRFieldAccessKind::Union { field_type },
-            }),
-        }
-    }
-
-    // FIXME
-    fn lower_non_generic_methods(&mut self, object_name: &String, methods: &MethodDecls) -> Vec<CIRStmt> {
-        todo!();
-
-        // let mut stmts: Vec<CIRStmt> = Vec::new();
-
-        // for method_id in methods.values().cloned() {
-        //     let method_decl_id = self.query.get_method(method_id).unwrap();
-        //     let method_decl = self.decl_tables.method_decl(method_decl_id);
-
-        //     let lowered_method = self.lower_method(&method_decl, object_name).unwrap();
-        //     stmts.push(lowered_method);
-        // }
-
-        // stmts
-    }
-
-    // FIXME
-    fn lower_method(&mut self, method_decl: &MethodDecl, object_name: &String) -> Option<CIRStmt> {
-        todo!();
-
-        // let mangled_name = DEFAULT_ABI.method_name(&self.module_name, object_name, &resolved_method.func_decl.name);
-
-        // // skip if has no body
-        // let func_body = resolved_method.func_body.clone()?;
-
-        // let func_def = TypedFuncDefStmt {
-        //     symbol_id: resolved_method.symbol_id,
-        //     name: mangled_name,
-        //     params: resolved_method.func_decl.params.clone(),
-        //     generic_params: resolved_method.func_decl.generic_params.clone(),
-        //     body: func_body,
-        //     ret_type: resolved_method.func_decl.ret_type.clone(),
-        //     modifiers: resolved_method.func_decl.modifiers.clone(),
-        //     loc: resolved_method.func_decl.loc,
-        // };
-
-        // Some(self.lower_func_def(&func_def, false))
     }
 
     fn lower_func_call(&mut self, func_call: &TypedFuncCall) -> CIRExprKind {
@@ -1253,15 +1263,24 @@ impl<'a> CIRTraverse<'a> {
         match named_type.decl_id {
             TypeDeclID::Struct(struct_decl_id) => {
                 let struct_decl = self.decl_tables.struct_decl(struct_decl_id);
-                CIRType::Struct(self.lower_struct_decl(&struct_decl))
-            }
-            TypeDeclID::Enum(enum_decl_id) => {
-                let enum_decl = self.decl_tables.enum_decl(enum_decl_id);
-                CIRType::Enum(self.lower_enum_decl(&enum_decl))
+
+                let inst_struct_decl = instantiate_struct_decl_with_type_args(&struct_decl, &named_type.type_args);
+
+                CIRType::Struct(self.lower_struct_decl(&inst_struct_decl))
             }
             TypeDeclID::Union(union_decl_id) => {
                 let union_decl = self.decl_tables.union_decl(union_decl_id);
-                CIRType::Union(self.lower_union_decl(&union_decl))
+
+                let inst_union_decl = instantiate_union_decl_with_type_args(&union_decl, &named_type.type_args);
+
+                CIRType::Union(self.lower_union_decl(&inst_union_decl))
+            }
+            TypeDeclID::Enum(enum_decl_id) => {
+                let enum_decl = self.decl_tables.enum_decl(enum_decl_id);
+
+                let inst_enum_decl = instantiate_enum_decl_with_type_args(&enum_decl, &named_type.type_args);
+
+                CIRType::Enum(self.lower_enum_decl(&inst_enum_decl))
             }
             TypeDeclID::Interface(interface_decl_id) => {
                 // let interface_decl = self.decl_tables.interface_decl(interface_decl_id);

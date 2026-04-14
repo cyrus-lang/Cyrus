@@ -114,10 +114,10 @@ pub fn cir_type_to_abi_type(info: &ABITargetInfo, cir_type: &CIRType) -> ABIType
                 false,
             )
         }
-        CIRType::Enum(enum_ty) => {
+        CIRType::Enum(enum_type) => {
             // enums are represented as a struct with tag and payload
             // first, determine if this is a simple C-style enum (no payload)
-            if !enum_ty.includes_payload() {
+            if !enum_type.includes_payload() {
                 // c-style enum without payload
                 ABIType::Integer(32)
             } else {
@@ -125,7 +125,7 @@ pub fn cir_type_to_abi_type(info: &ABITargetInfo, cir_type: &CIRType) -> ABIType
                 // need to compute max payload size to determine the byte array size
                 let mut max_payload_size = 0;
 
-                for variant in &enum_ty.variants {
+                for variant in &enum_type.variants {
                     match variant {
                         CIREnumVariant::Unit(_) => {
                             // no payload
@@ -155,7 +155,7 @@ pub fn cir_type_to_abi_type(info: &ABITargetInfo, cir_type: &CIRType) -> ABIType
                 }
 
                 // round payload size to at least 1 if there are any payload variants
-                if max_payload_size == 0 && enum_ty.includes_payload() {
+                if max_payload_size == 0 && enum_type.includes_payload() {
                     max_payload_size = 1;
                 }
 

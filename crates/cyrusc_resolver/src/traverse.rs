@@ -440,7 +440,7 @@ impl Resolver {
                 Some(SemaType::Pointer(Box::new(inner)))
             }
             TypeSpecifier::UnnamedUnion(union_ty) => self.resolve_unnamed_union_type(union_ty),
-            TypeSpecifier::UnnamedEnum(enum_ty) => self.resolve_unnamed_enum_type(enum_ty),
+            TypeSpecifier::UnnamedEnum(enum_type) => self.resolve_unnamed_enum_type(enum_type),
             TypeSpecifier::UnnamedStruct(struct_type) => self.resolve_unnamed_struct_type(struct_type),
         }
     }

@@ -22,6 +22,7 @@ use cyrusc_typed_ast::{
     decls::MethodDecls,
     exprs::{TypedFieldAccess, TypedFieldAccessDispatch},
     format::{format_struct_decl, format_union_decl},
+    substitute::instantiate_struct_decl_with_type_args,
     types::SemaType,
 };
 
@@ -30,11 +31,15 @@ impl<'a> AnalysisContext<'a> {
         let operand_type = self.analyze_expr(&mut field_access.operand, None)?;
 
         if let Some(struct_decl_id) = operand_type.as_struct() {
+            let type_args = &operand_type.as_named_type().unwrap().type_args;
+
             let struct_decl = self.decl_tables.struct_decl(struct_decl_id);
 
-            let struct_name = format_struct_decl(&struct_decl, self.formatter);
+            let inst_struct_decl = instantiate_struct_decl_with_type_args(&struct_decl, type_args);
 
-            let Some(field) = struct_decl.lookup_field(&field_access.name) else {
+            let struct_name = format_struct_decl(&inst_struct_decl, self.formatter);
+
+            let Some(field) = inst_struct_decl.lookup_field(&field_access.name) else {
                 self.reporter.report(Diag {
                     level: DiagLevel::Error,
                     kind: Box::new(AnalyzerDiagKind::ObjectHasNoFieldNamed {
@@ -47,10 +52,10 @@ impl<'a> AnalysisContext<'a> {
                 return None;
             };
 
-            self.validate_struct_field_access(&field_access, field.vis, &struct_decl.methods, &struct_name);
+            self.validate_struct_field_access(&field_access, field.vis, &inst_struct_decl.methods, &struct_name);
 
             let field_type = self.normalize_sema_type(field.ty.clone(), field_access.loc)?;
-            let field_index = struct_decl
+            let field_index = inst_struct_decl
                 .fields
                 .iter()
                 .position(|_field| _field.name == field.name)

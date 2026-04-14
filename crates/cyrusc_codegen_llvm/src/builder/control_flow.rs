@@ -122,7 +122,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         &mut self,
         switch_on_enum_stmt: &CIRSwitchOnEnumStmt,
         enum_value: IntValue<'ll>,
-        enum_ty: &CIREnumType,
+        enum_type: &CIREnumType,
     ) {
         todo!();
 
@@ -155,7 +155,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         //     let case_block = self.new_basic_block("switch_on_enum.case");
 
         //     for pattern in &case.patterns {
-        //         let tag = enum_ty.compute_variant_tag(pattern.variant_name()).unwrap() as u64;
+        //         let tag = enum_type.compute_variant_tag(pattern.variant_name()).unwrap() as u64;
 
         //         let pattern_value = enum_value.get_type().const_int(tag, false);
 
@@ -203,7 +203,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         //         .map_or(false, |inst| inst.get_opcode() == InstructionOpcode::Return)
         // });
 
-        // if all_cases_return && switch_on_enum_stmt.cases.len() == enum_ty.variants.len() {
+        // if all_cases_return && switch_on_enum_stmt.cases.len() == enum_type.variants.len() {
         //     self.emit_block(exit_block);
         //     self.llvmbuilder.build_unreachable().unwrap();
         // }
@@ -224,14 +224,14 @@ impl<'ll> CodeGenIRBuilder<'ll> {
 
         // let lvalue = self.emit_expr(&switch_on_enum_stmt.value);
         // let rvalue = self.load_rvalue(lvalue);
-        // let enum_ty = rvalue.ty.as_enum().unwrap();
+        // let enum_type = rvalue.ty.as_enum().unwrap();
 
         // {
-        //     let ty = self.emit_enum_ty(enum_ty.clone());
+        //     let ty = self.emit_enum_ty(enum_type.clone());
 
         //     if ty.is_int_type() {
         //         let enum_value = rvalue.as_basic_value().into_int_value();
-        //         self.emit_switch_on_scalar_enum(switch_on_enum_stmt, enum_value, &enum_ty);
+        //         self.emit_switch_on_scalar_enum(switch_on_enum_stmt, enum_value, &enum_type);
         //         return;
         //     }
         // }
@@ -258,7 +258,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         //     exit_block
         // };
 
-        // let tag_type = self.emit_ty(*enum_ty.tag_type_or_infer_or_default()).into_int_type();
+        // let tag_type = self.emit_ty(*enum_type.tag_type_or_infer_or_default()).into_int_type();
 
         // let mut cases: Vec<(IntValue<'ll>, BasicBlock<'ll>)> = Vec::new();
 
@@ -275,7 +275,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         //             let enum_payload = self.extract_enum_payload(enum_struct_value);
 
         //             let payload_struct_type = self
-        //                 .emit_enum_fielded_variant_payload_ty(*variant_idx, &enum_ty)
+        //                 .emit_enum_fielded_variant_payload_ty(*variant_idx, &enum_type)
         //                 .unwrap();
         //             let payload_struct_value = self.intrinsic_copy_buffer_to_struct(enum_payload, payload_struct_type);
 
@@ -284,7 +284,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         //                 .build_store(payload_alloca, payload_struct_value)
         //                 .unwrap();
 
-        //             let variant_field_types = enum_ty.variants[*variant_idx].as_fielded().unwrap();
+        //             let variant_field_types = enum_type.variants[*variant_idx].as_fielded().unwrap();
 
         //             self.emit_switch_on_enum_export_fields(
         //                 payload_alloca,
@@ -345,7 +345,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         //         .map_or(false, |inst| inst.get_opcode() == InstructionOpcode::Return)
         // });
 
-        // if all_cases_return && switch_on_enum_stmt.cases.len() == enum_ty.variants.len() {
+        // if all_cases_return && switch_on_enum_stmt.cases.len() == enum_type.variants.len() {
         //     self.emit_block(exit_block);
         //     self.llvmbuilder.build_unreachable().unwrap();
         // }

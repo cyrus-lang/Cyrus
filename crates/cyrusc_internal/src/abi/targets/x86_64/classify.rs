@@ -578,9 +578,9 @@ impl TargetABI for X86_64 {
 
                 if ty.is_integer_or_bool() {
                     result_type = Some(cir_type_to_abi_type(&self.info, ty));
-                } else if let Some(enum_ty) = ty.as_enum() {
-                    if enum_ty.is_scalar_optimizable() {
-                        let tag_type = enum_ty.tag_type_or_infer_or_default();
+                } else if let Some(enum_type) = ty.as_enum() {
+                    if enum_type.is_scalar_optimizable() {
+                        let tag_type = enum_type.tag_type_or_infer_or_default();
                         result_type = Some(cir_type_to_abi_type(&self.info, &tag_type));
                     }
                 } else {

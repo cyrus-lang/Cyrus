@@ -166,26 +166,26 @@ impl<'ll> CodeGenIRBuilder<'ll> {
                     )
                 }
             }
-            CIRType::Enum(enum_ty) => {
-                let layout = type_layout(&self.target.info, &CIRType::Enum(enum_ty.clone()));
+            CIRType::Enum(enum_type) => {
+                let layout = type_layout(&self.target.info, &CIRType::Enum(enum_type.clone()));
                 let size_bits = layout.size * 8;
                 let align_bits = layout.align * 8;
 
-                let enum_name = enum_ty.name.clone().unwrap_or("<unnamed_enum>".to_string());
+                let enum_name = enum_type.name.clone().unwrap_or("<unnamed_enum>".to_string());
 
-                let tag_type = self.emit_debug_ty_metadata(&enum_ty.tag_type_or_infer_or_default());
+                let tag_type = self.emit_debug_ty_metadata(&enum_type.tag_type_or_infer_or_default());
 
-                if enum_ty.is_scalar_optimizable() {
-                    let variants: Vec<(String, i64)> = enum_ty
+                if enum_type.is_scalar_optimizable() {
+                    let variants: Vec<(String, i64)> = enum_type
                         .variants
                         .iter()
                         .map(|variant| match variant {
                             CIREnumVariant::Unit(ident) => {
-                                let tag = enum_ty.compute_variant_tag(ident).unwrap();
+                                let tag = enum_type.compute_variant_tag(ident).unwrap();
                                 (ident.clone(), tag as i64)
                             }
                             CIREnumVariant::Valued(ident, _) => {
-                                let tag = enum_ty.compute_variant_tag(ident).unwrap();
+                                let tag = enum_type.compute_variant_tag(ident).unwrap();
                                 (ident.clone(), tag as i64)
                             }
                             CIREnumVariant::Tuple(..) => unreachable!(),
@@ -199,17 +199,17 @@ impl<'ll> CodeGenIRBuilder<'ll> {
                             &variants,
                             size_bits as u64,
                             align_bits,
-                            enum_ty.loc.line as u32,
+                            enum_type.loc.line as u32,
                             tag_type,
                         )
                     }
                 } else {
-                    let variants: Vec<(String, i64, LLVMMetadataRef)> = enum_ty
+                    let variants: Vec<(String, i64, LLVMMetadataRef)> = enum_type
                         .variants
                         .iter()
                         .map(|variant| {
                             let ident = variant.ident();
-                            let tag = enum_ty.compute_variant_tag(ident).unwrap();
+                            let tag = enum_type.compute_variant_tag(ident).unwrap();
 
                             match variant {
                                 CIREnumVariant::Unit(_) => {
@@ -221,7 +221,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
                                 CIREnumVariant::Tuple(_, elements) => {
                                     let tuple_type = CIRTupleType {
                                         elements: elements.to_vec(),
-                                        loc: enum_ty.loc,
+                                        loc: enum_type.loc,
                                     };
 
                                     let tuple_type_metadata = self.emit_debug_ty_metadata(&CIRType::Tuple(tuple_type));
@@ -236,7 +236,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
                         debug_enum_type(
                             &self.dctx,
                             &enum_name,
-                            enum_ty.loc.line as u32,
+                            enum_type.loc.line as u32,
                             tag_type,
                             &variants,
                             size_bits as u64,
@@ -318,7 +318,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
             CIRType::Plain(plain_ty) => self.emit_plain_ty(plain_ty),
             CIRType::Pointer(_) => self.llvmctx.ptr_type(AddressSpace::default()).as_any_type_enum(),
             CIRType::Struct(struct_type) => self.emit_struct_ty(struct_type).as_any_type_enum(),
-            CIRType::Enum(enum_ty) => self.emit_enum_ty(enum_ty).as_any_type_enum(),
+            CIRType::Enum(enum_type) => self.emit_enum_ty(enum_type).as_any_type_enum(),
             CIRType::Union(union_ty) => self.emit_union_ty(union_ty).as_any_type_enum(),
             CIRType::Tuple(tuple_type) => self.emit_tuple_ty(tuple_type).as_any_type_enum(),
             CIRType::Array(array_ty) => self.emit_arr_ty(array_ty).as_any_type_enum(),
@@ -434,17 +434,17 @@ impl<'ll> CodeGenIRBuilder<'ll> {
     pub(crate) fn emit_enum_fielded_variant_payload_ty(
         &self,
         variant_idx: usize,
-        enum_ty: &CIREnumType,
+        enum_type: &CIREnumType,
     ) -> Option<StructType<'ll>> {
-        if !enum_ty.includes_payload() {
+        if !enum_type.includes_payload() {
             return None;
         }
 
-        let variant = &enum_ty.variants[variant_idx];
+        let variant = &enum_type.variants[variant_idx];
         let elements = variant.as_fielded()?.clone();
         let tuple_type = CIRTupleType {
             elements,
-            loc: enum_ty.loc,
+            loc: enum_type.loc,
         };
         let struct_tuple_type = tuple_type.as_struct_ty();
 
@@ -454,16 +454,16 @@ impl<'ll> CodeGenIRBuilder<'ll> {
             fields_info: struct_tuple_type.fields_info,
             repr_attr: None,
             align: None,
-            loc: enum_ty.loc,
+            loc: enum_type.loc,
         }))
     }
 
-    pub(crate) fn emit_enum_buffer_payload_ty(&self, enum_ty: &CIREnumType) -> (ArrayType<'ll>, u64) {
+    pub(crate) fn emit_enum_buffer_payload_ty(&self, enum_type: &CIREnumType) -> (ArrayType<'ll>, u64) {
         let target_data = self.llvmtm.get_target_data();
         let mut max_payload_size: u64 = 0;
         let mut max_payload_align: u64 = 1;
 
-        for variant in &enum_ty.variants {
+        for variant in &enum_type.variants {
             let (payload_size, payload_align) = match variant {
                 CIREnumVariant::Unit(_) => (0, 1),
                 CIREnumVariant::Valued(_, expr) => {
@@ -497,7 +497,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         }
 
         if max_payload_size == 0 {
-            if enum_ty.includes_payload() {
+            if enum_type.includes_payload() {
                 max_payload_size = 1;
                 max_payload_align = 1;
             } else {
@@ -514,21 +514,21 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         (payload_buffer_ty, aligned_size)
     }
 
-    fn emit_repr_c_enum_ty(&self, enum_ty: &CIREnumType) -> BasicTypeEnum<'ll> {
-        let cir_tag_type = enum_ty.tag_type_or_infer_or_default();
+    fn emit_repr_c_enum_ty(&self, enum_type: &CIREnumType) -> BasicTypeEnum<'ll> {
+        let cir_tag_type = enum_type.tag_type_or_infer_or_default();
         self.emit_ty(*cir_tag_type.clone()).try_into().unwrap()
     }
 
-    pub(crate) fn emit_enum_ty(&self, enum_ty: CIREnumType) -> BasicTypeEnum<'ll> {
-        if enum_ty.is_scalar_optimizable() {
+    pub(crate) fn emit_enum_ty(&self, enum_type: CIREnumType) -> BasicTypeEnum<'ll> {
+        if enum_type.is_scalar_optimizable() {
             // c-compatible enum
-            self.emit_repr_c_enum_ty(&enum_ty)
+            self.emit_repr_c_enum_ty(&enum_type)
         } else {
             // cyrus special enum
-            let cir_tag_type = enum_ty.tag_type_or_infer_or_default();
+            let cir_tag_type = enum_type.tag_type_or_infer_or_default();
             let tag_type: BasicTypeEnum<'ll> = self.emit_ty(*cir_tag_type.clone()).try_into().unwrap();
 
-            let (payload_ty, _) = self.emit_enum_buffer_payload_ty(&enum_ty);
+            let (payload_ty, _) = self.emit_enum_buffer_payload_ty(&enum_type);
             self.llvmctx
                 .struct_type(&[tag_type.as_basic_type_enum(), payload_ty.into()], false)
                 .as_basic_type_enum()

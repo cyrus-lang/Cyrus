@@ -264,8 +264,8 @@ impl<'ll> CodeGenIRBuilder<'ll> {
             return value;
         }
 
-        if let CIRType::Enum(enum_ty) = from_cir_type {
-            if !enum_ty.includes_payload() {
+        if let CIRType::Enum(enum_type) = from_cir_type {
+            if !enum_type.includes_payload() {
                 if let BasicValueEnum::StructValue(struct_value) = value {
                     let tag = self.extract_enum_tag(struct_value);
                     return self.emit_cast_func_arg(tag.into(), &CIRType::Plain(PlainType::Int32), target_type);
@@ -1219,17 +1219,16 @@ impl<'ll> CodeGenIRBuilder<'ll> {
     }
 
     fn emit_union_field_access(&mut self, field_access: &CIRFieldAccessExpr) -> InternalValue<'ll> {
-        // old logic, adapted to unified type
-        let operand_val = self.emit_lvalue_address(&field_access.operand);
+        let operand = self.emit_lvalue_address(&field_access.operand);
 
-        let union_ty: BasicTypeEnum<'ll> = self.emit_ty(field_access.operand.ty.clone()).try_into().unwrap();
+        let union_type: BasicTypeEnum<'ll> = self.emit_ty(field_access.operand.ty.clone()).try_into().unwrap();
 
-        let union_ptr = match operand_val.kind {
+        let union_ptr = match operand.kind {
             InternalValueKind::LValue(ptr) => ptr,
 
             // RValue → spill to stack
             InternalValueKind::RValue(basic_val) => {
-                let temp = self.llvmbuilder.build_alloca(union_ty, "union.temp").unwrap();
+                let temp = self.llvmbuilder.build_alloca(union_type, "union.temp").unwrap();
                 self.llvmbuilder.build_store(temp, basic_val).unwrap();
                 temp
             }
@@ -1238,12 +1237,12 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         };
 
         // union field access just narrows the type
-        let field_ty = match &field_access.kind {
+        let field_type = match &field_access.kind {
             CIRFieldAccessKind::Union { field_type } => field_type.clone(),
             _ => unreachable!(),
         };
 
-        InternalValue::new(field_ty, InternalValueKind::LValue(union_ptr))
+        InternalValue::new(field_type, InternalValueKind::LValue(union_ptr))
     }
 
     fn emit_struct_field_access(&mut self, field_access: &CIRFieldAccessExpr) -> InternalValue<'ll> {
@@ -1267,13 +1266,13 @@ impl<'ll> CodeGenIRBuilder<'ll> {
             .lookup_field_index(field_index)
             .expect("layout must contain field");
 
-        let llvm_struct_ty = self.emit_struct_ty(cir_struct_ty);
+        let llvm_struct_type = self.emit_struct_ty(cir_struct_ty);
 
         match operand.kind {
             InternalValueKind::LValue(ptr_value) => {
                 let field_ptr = self
                     .llvmbuilder
-                    .build_struct_gep(llvm_struct_ty, ptr_value, llvm_field_index, "field_gep")
+                    .build_struct_gep(llvm_struct_type, ptr_value, llvm_field_index, "field_gep")
                     .unwrap();
 
                 InternalValue::new(field_type, InternalValueKind::LValue(field_ptr))
@@ -1362,31 +1361,35 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         )
     }
 
-    fn emit_repr_c_enum_init(&mut self, enum_init_expr: &CIREnumInitExpr, enum_ty: &CIREnumType) -> InternalValue<'ll> {
-        let cir_tag_type = enum_ty.tag_type_or_infer_or_default();
+    fn emit_repr_c_enum_init(
+        &mut self,
+        enum_init_expr: &CIREnumInitExpr,
+        enum_type: &CIREnumType,
+    ) -> InternalValue<'ll> {
+        let cir_tag_type = enum_type.tag_type_or_infer_or_default();
         let tag_type = self.emit_ty(*cir_tag_type.clone()).into_int_type();
         let tag_value = tag_type.const_int(enum_init_expr.tag.try_into().unwrap(), cir_tag_type.is_signed_integer());
 
         InternalValue::new(
-            CIRType::Enum(enum_ty.clone()),
+            CIRType::Enum(enum_type.clone()),
             InternalValueKind::RValue(tag_value.as_basic_value_enum()),
         )
     }
 
     fn emit_enum_init(&mut self, enum_init_expr: &CIREnumInitExpr) -> InternalValue<'ll> {
-        let enum_ty = &enum_init_expr.enum_type;
+        let enum_type = &enum_init_expr.enum_type;
 
         // handle c-compatible enum init
-        if enum_ty.is_scalar_optimizable() {
-            return self.emit_repr_c_enum_init(enum_init_expr, enum_ty);
+        if enum_type.is_scalar_optimizable() {
+            return self.emit_repr_c_enum_init(enum_init_expr, enum_type);
         }
 
-        let enum_struct_ty = self.emit_enum_ty(enum_ty.clone()).into_struct_type();
-        let (payload_ty, _) = self.emit_enum_buffer_payload_ty(enum_ty);
+        let enum_struct_ty = self.emit_enum_ty(enum_type.clone()).into_struct_type();
+        let (payload_ty, _) = self.emit_enum_buffer_payload_ty(enum_type);
 
         let mut enum_value = enum_struct_ty.get_undef();
 
-        let cir_tag_type = enum_ty.tag_type_or_infer_or_default();
+        let cir_tag_type = enum_type.tag_type_or_infer_or_default();
         let tag_type = self.emit_ty(*cir_tag_type.clone()).into_int_type();
         let tag_value = tag_type.const_int(enum_init_expr.tag as u64, false);
 

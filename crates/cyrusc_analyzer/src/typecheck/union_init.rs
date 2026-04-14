@@ -71,12 +71,12 @@ impl<'a> AnalysisContext<'a> {
 
             let final_type_args = this.collect_instantiated_type_args(union_decl.generic_params);
 
-            let final_type = SemaType::Named(NamedType {
+            union_init.type_args = final_type_args.clone();
+
+            Some(SemaType::Named(NamedType {
                 decl_id: TypeDeclID::Union(union_decl_id),
                 type_args: final_type_args,
-            });
-
-            Some(this.func_env.infer.as_mut().unwrap().resolve(&final_type))
+            }))
         })
     }
 

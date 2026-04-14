@@ -20,9 +20,8 @@ use cyrusc_diagcentral::{Diag, DiagKind, DiagLevel};
 use cyrusc_source_loc::Loc;
 use cyrusc_strescape::diagnostics::UnescapeError;
 use cyrusc_typed_ast::{
-    SymbolID,
     decls::DeclID,
-    stmts::{TypedFuncParamKind, TypedFuncVariadicParam, TypedGenericParams, TypedTypeArgs},
+    stmts::{TypedFuncParamKind, TypedFuncVariadicParam},
     types::SemaType,
 };
 use std::ops::RangeInclusive;
@@ -135,9 +134,6 @@ pub enum AnalyzerDiagKind {
         interface_name: String,
     },
 
-    #[error("Internal symbol '{symbol_name}' is not accessible here.")]
-    InternalSymbolAccess { symbol_name: String },
-
     #[error(
         "Object '{object_name}' does not implement required method '{method_name}' from interface '{interface_name}'."
     )]
@@ -152,9 +148,6 @@ pub enum AnalyzerDiagKind {
 
     #[error("Tuple member access with index {index} exceeds tuple length {length}.")]
     TupleIndexOutOfRange { index: usize, length: usize },
-
-    #[error("Function '{name}' is private and cannot be called.")]
-    PrivateFunctionCall { name: String },
 
     #[error("Lambda cannot be left uninitialized.")]
     UninitializedLambda,
@@ -177,9 +170,6 @@ pub enum AnalyzerDiagKind {
 
     #[error("Could not infer type of unnamed enum value '.{variant_name}'")]
     CannotInferEnumForUnnamedVariant { variant_name: String },
-
-    #[error("Could not infer type of unnamed union value.")]
-    UnnamedUnionValueInfering,
 
     #[error("Union initialization must contain exactly one field.")]
     UnionInitMustContainExactlyOneField,

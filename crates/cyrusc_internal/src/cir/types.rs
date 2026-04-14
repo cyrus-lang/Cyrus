@@ -206,7 +206,7 @@ impl CIRType {
 
     pub fn as_enum(&self) -> Option<CIREnumType> {
         match self.const_inner() {
-            CIRType::Enum(enum_ty) => Some(enum_ty.clone()),
+            CIRType::Enum(enum_type) => Some(enum_type.clone()),
             _ => None,
         }
     }

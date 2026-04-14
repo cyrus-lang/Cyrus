@@ -61,14 +61,14 @@ impl<'a> AnalysisContext<'a> {
 
         self.with_generic_env(generic_env, |this| {
             for field in &mut struct_init.fields {
-                let Some(expected_type) = struct_decl
-                    .lookup_field(&field.name)
-                    .map(|field| this.substitute_type(&field.ty))
-                else {
+                let Some(struct_field) = struct_decl.lookup_field(&field.name) else {
+                    // unknown field, reported later
                     continue;
                 };
 
-                this.analyze_field_assign(&mut field.value, expected_type, field.loc);
+                let expected_field_type = this.substitute_type(&struct_field.ty);
+
+                this.analyze_field_assign(&mut field.value, expected_field_type, field.loc);
             }
 
             this.check_duplicate_struct_field_init(&struct_init.fields);
@@ -78,6 +78,8 @@ impl<'a> AnalysisContext<'a> {
             this.apply_generic_defaults(struct_decl.generic_params.clone());
 
             let final_type_args = this.collect_instantiated_type_args(struct_decl.generic_params);
+
+            struct_init.type_args = final_type_args.clone();
 
             Some(SemaType::Named(NamedType {
                 decl_id: TypeDeclID::Struct(struct_decl_id),
@@ -111,27 +113,18 @@ impl<'a> AnalysisContext<'a> {
 
             return self.with_generic_env(generic_env, |this| {
                 for struct_value_field in &mut struct_value.fields {
-                    if let Some(struct_field) = struct_decl.lookup_field(&struct_value_field.name) {
-                        let expected_field_type = this.substitute_type(&struct_field.ty);
+                    let Some(struct_field) = struct_decl.lookup_field(&struct_value_field.name) else {
+                        // unknown field, reported later
+                        continue;
+                    };
 
-                        this.analyze_field_assign(
-                            &mut struct_value_field.value,
-                            expected_field_type,
-                            struct_value_field.loc,
-                        );
-                    } else {
-                        let struct_name = format_struct_decl(&struct_decl, this.formatter);
+                    let expected_field_type = this.substitute_type(&struct_field.ty);
 
-                        this.reporter.report(Diag {
-                            level: DiagLevel::Error,
-                            kind: Box::new(AnalyzerDiagKind::ObjectHasNoFieldNamed {
-                                object_name: struct_name,
-                                field_name: struct_value_field.name.clone(),
-                            }),
-                            loc: Some(struct_value_field.loc),
-                            hint: None,
-                        });
-                    }
+                    this.analyze_field_assign(
+                        &mut struct_value_field.value,
+                        expected_field_type,
+                        struct_value_field.loc,
+                    );
                 }
 
                 this.check_invalid_fields_for_unnamed_struct_value(&struct_decl, struct_value);
