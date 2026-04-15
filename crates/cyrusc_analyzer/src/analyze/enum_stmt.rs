@@ -31,7 +31,18 @@ impl<'a> AnalysisContext<'a> {
     pub(crate) fn analyze_enum_stmt(&mut self, enum_stmt: &mut TypedEnumStmt) {
         let mut enum_decl = self.decl_tables.enum_decl(enum_stmt.enum_decl_id);
 
-        self.analyze_enum_decl(enum_stmt.enum_decl_id, &mut enum_decl);
+        if enum_stmt.is_generic() {
+            let object_type = SemaType::Named(NamedType {
+                decl_id: TypeDeclID::Enum(enum_stmt.enum_decl_id),
+                type_args: TypedTypeArgs::new(),
+            });
+
+            self.with_object(Some(object_type), |this| {
+                this.analyze_enum_decl(enum_stmt.enum_decl_id, &mut enum_decl);
+            })
+        } else {
+            self.analyze_enum_decl(enum_stmt.enum_decl_id, &mut enum_decl);
+        }
 
         enum_stmt.variants = enum_decl.variants.clone();
         enum_stmt.tag_type = enum_decl.tag_type.clone();

@@ -32,9 +32,23 @@ use fx_hash::{FxHashMap, FxHashSet};
 
 impl<'a> AnalysisContext<'a> {
     pub(crate) fn analyze_enum_init(&mut self, enum_init: &mut TypedEnumInit) -> Option<SemaType> {
-        let enum_decl = self.decl_tables.enum_decl(enum_init.enum_decl_id);
+        let init_type = self.resolve_symbol_type_expanded(enum_init.decl_id, enum_init.loc)?;
 
-        let Some(variant) = enum_decl.lookup_variant(&enum_init.name) else {
+        let Some(named_type) = init_type.as_named_type() else {
+            self.report_non_struct_symbol(enum_init.decl_id, enum_init.loc);
+            return None;
+        };
+
+        let Some(enum_decl_id) = named_type.decl_id.as_enum() else {
+            self.report_non_struct_symbol(enum_init.decl_id, enum_init.loc);
+            return None;
+        };
+
+        let enum_decl = self.decl_tables.enum_decl(enum_decl_id);
+
+        let enum_name = format_enum_decl(&enum_decl, self.formatter);
+
+        let Some(variant) = enum_decl.lookup_variant(&enum_init.name).cloned() else {
             let enum_name = format_enum_decl(&enum_decl, self.formatter);
 
             self.reporter.report(Diag {
@@ -49,99 +63,93 @@ impl<'a> AnalysisContext<'a> {
             return None;
         };
 
-        match (&mut enum_init.args, variant) {
-            // .Variant
-            (TypedEnumInitArgs::Unit, TypedEnumVariant::Unit(_)) => { /* skip */ }
+        let generic_env = self.create_inference_generic_env(
+            &enum_name,
+            enum_decl.generic_params.clone(),
+            &TypedTypeArgs::new(),
+            enum_decl.loc,
+        )?;
 
-            // .Variant(a, b)
-            (TypedEnumInitArgs::Tuple(elements), TypedEnumVariant::Tuple { fields, .. }) => {
-                if elements.len() != fields.len() {
-                    self.reporter.report(Diag {
-                        level: DiagLevel::Error,
-                        kind: Box::new(AnalyzerDiagKind::EnumVariantArgCountMismatch {
-                            variant_name: enum_init.name.clone(),
-                            expected: fields.len() as u32,
-                            provided: elements.len() as u32,
-                        }),
-                        loc: Some(enum_init.loc),
-                        hint: None,
-                    });
-                    return None;
-                }
+        self.with_generic_env(generic_env, |this| {
+            match (&mut enum_init.args, &variant) {
+                // .Variant
+                (TypedEnumInitArgs::Unit, TypedEnumVariant::Unit(_)) => { /* skip */ }
 
-                for (element, field) in elements.iter_mut().zip(fields) {
-                    let value_type = match self.analyze_expr(element, Some(field.ty.clone())) {
-                        Some(sema_type) => sema_type,
-                        None => continue,
-                    };
-
-                    if !self.is_assignable_to(value_type.clone(), field.ty.clone(), element.loc) {
-                        let got_type = format_sema_type(value_type.clone(), self.formatter);
-                        let expected_type = format_sema_type(field.ty.clone(), self.formatter);
-
-                        self.reporter.report(Diag {
+                // .Variant(a, b)
+                (TypedEnumInitArgs::Tuple(elements), TypedEnumVariant::Tuple { fields, .. }) => {
+                    if elements.len() != fields.len() {
+                        this.reporter.report(Diag {
                             level: DiagLevel::Error,
-                            kind: Box::new(AnalyzerDiagKind::InvalidEnumVariantFieldValueType {
-                                got_type,
-                                expected_type,
+                            kind: Box::new(AnalyzerDiagKind::EnumVariantArgCountMismatch {
+                                variant_name: enum_init.name.clone(),
+                                expected: fields.len() as u32,
+                                provided: elements.len() as u32,
                             }),
-                            loc: Some(element.loc),
+                            loc: Some(enum_init.loc),
                             hint: None,
                         });
+                        return None;
+                    }
+
+                    for (element, field) in elements.iter_mut().zip(fields) {
+                        this.analyze_field_assign(element, field.ty.clone(), enum_init.loc);
                     }
                 }
+
+                // .Variant { a: expr1, b: expr2 }
+                (TypedEnumInitArgs::Struct(field_inits), TypedEnumVariant::Struct { fields, .. }) => {
+                    this.analyze_enum_struct_variant_fields(&enum_init.name, field_inits, &fields, enum_init.loc);
+                }
+
+                _ => match variant {
+                    TypedEnumVariant::Unit(_) | TypedEnumVariant::Valued { .. } => {
+                        this.reporter.report(Diag {
+                            level: DiagLevel::Error,
+                            kind: Box::new(AnalyzerDiagKind::EnumVariantDoesNotAcceptFields {
+                                variant_name: enum_init.name.clone(),
+                            }),
+                            loc: Some(enum_init.loc),
+                            hint: None,
+                        });
+                        return None;
+                    }
+                    TypedEnumVariant::Tuple { .. } | TypedEnumVariant::Struct { .. } => {
+                        let provided_kind = match &enum_init.args {
+                            TypedEnumInitArgs::Unit => "unit",
+                            TypedEnumInitArgs::Tuple(_) => "tuple",
+                            TypedEnumInitArgs::Struct(_) => "struct",
+                        };
+
+                        let expected_kind = match variant {
+                            TypedEnumVariant::Tuple { .. } => "tuple",
+                            TypedEnumVariant::Struct { .. } => "struct",
+                            _ => unreachable!(),
+                        };
+
+                        this.reporter.report(Diag {
+                            level: DiagLevel::Error,
+                            kind: Box::new(AnalyzerDiagKind::EnumVariantKindMismatch {
+                                variant_name: enum_init.name.clone(),
+                                expected_kind: expected_kind.to_string(),
+                                provided_kind: provided_kind.to_string(),
+                            }),
+                            loc: Some(enum_init.loc),
+                            hint: Some(this.invalid_enum_variant_construction_hint(&variant)),
+                        });
+                        return None;
+                    }
+                },
             }
 
-            // .Variant { a: expr1, b: expr2 }
-            (TypedEnumInitArgs::Struct(field_inits), TypedEnumVariant::Struct { fields, .. }) => {
-                self.analyze_enum_struct_variant_fields(&enum_init.name, field_inits, fields, enum_init.loc);
-            }
+            this.apply_generic_defaults(enum_decl.generic_params.clone());
 
-            _ => match variant {
-                TypedEnumVariant::Unit(_) | TypedEnumVariant::Valued { .. } => {
-                    self.reporter.report(Diag {
-                        level: DiagLevel::Error,
-                        kind: Box::new(AnalyzerDiagKind::EnumVariantDoesNotAcceptFields {
-                            variant_name: enum_init.name.clone(),
-                        }),
-                        loc: Some(enum_init.loc),
-                        hint: None,
-                    });
-                    return None;
-                }
-                TypedEnumVariant::Tuple { .. } | TypedEnumVariant::Struct { .. } => {
-                    let provided_kind = match &enum_init.args {
-                        TypedEnumInitArgs::Unit => "unit",
-                        TypedEnumInitArgs::Tuple(_) => "tuple",
-                        TypedEnumInitArgs::Struct(_) => "struct",
-                    };
+            let final_type_args = this.collect_instantiated_type_args(enum_decl.generic_params);
 
-                    let expected_kind = match variant {
-                        TypedEnumVariant::Tuple { .. } => "tuple",
-                        TypedEnumVariant::Struct { .. } => "struct",
-                        _ => unreachable!(),
-                    };
-
-                    self.reporter.report(Diag {
-                        level: DiagLevel::Error,
-                        kind: Box::new(AnalyzerDiagKind::EnumVariantKindMismatch {
-                            variant_name: enum_init.name.clone(),
-                            expected_kind: expected_kind.to_string(),
-                            provided_kind: provided_kind.to_string(),
-                        }),
-                        loc: Some(enum_init.loc),
-                        hint: Some(self.invalid_enum_variant_construction_hint(variant)),
-                    });
-
-                    return None;
-                }
-            },
-        }
-
-        Some(SemaType::Named(NamedType {
-            decl_id: TypeDeclID::Enum(enum_init.enum_decl_id),
-            type_args: TypedTypeArgs::new(),
-        }))
+            Some(SemaType::Named(NamedType {
+                decl_id: TypeDeclID::Enum(enum_decl_id),
+                type_args: final_type_args,
+            }))
+        })
     }
 
     pub(crate) fn analyze_unnamed_enum_value(
@@ -413,26 +421,7 @@ impl<'a> AnalysisContext<'a> {
                 continue;
             };
 
-            // analyze expression with expected type
-            let value_type = match self.analyze_expr(&mut field_init.value, Some(declared_field.ty.clone())) {
-                Some(sema_type) => sema_type,
-                None => continue,
-            };
-
-            if !self.is_assignable_to(value_type.clone(), declared_field.ty.clone(), field_init.loc) {
-                let got_type = format_sema_type(value_type.clone(), self.formatter);
-                let expected_type = format_sema_type(declared_field.ty.clone(), self.formatter);
-
-                self.reporter.report(Diag {
-                    level: DiagLevel::Error,
-                    kind: Box::new(AnalyzerDiagKind::InvalidEnumVariantFieldValueType {
-                        got_type,
-                        expected_type,
-                    }),
-                    loc: Some(field_init.loc),
-                    hint: None,
-                });
-            }
+            self.analyze_field_assign(&mut field_init.value, declared_field.ty.clone(), declared_field.loc);
         }
 
         // missing fields

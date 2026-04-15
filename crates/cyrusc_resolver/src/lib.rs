@@ -101,6 +101,8 @@ pub struct Resolver {
     scope_table_stack: Vec<SymbolID>,
     current_scope: Option<SymbolID>,
 
+    current_object_symbol_id: Option<SymbolID>,
+
     // ID allocator for all compiler entities
     pub(crate) id_gen: IDGen,
 }
@@ -138,6 +140,7 @@ impl Resolver {
             scope_table_stack: Vec::new(),
             module_symbols: HashMap::new(),
             current_module_file_id: None,
+            current_object_symbol_id: None,
         }
     }
 

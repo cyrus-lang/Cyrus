@@ -31,7 +31,18 @@ impl<'a> AnalysisContext<'a> {
     pub(crate) fn analyze_union_stmt(&mut self, union_stmt: &mut TypedUnionStmt) {
         let mut union_decl = self.decl_tables.union_decl(union_stmt.union_decl_id);
 
-        self.analyze_union_decl(union_stmt.union_decl_id, &mut union_decl);
+        if !union_stmt.is_generic() {
+            let object_type = SemaType::Named(NamedType {
+                decl_id: TypeDeclID::Union(union_stmt.union_decl_id),
+                type_args: TypedTypeArgs::new(),
+            });
+
+            self.with_object(Some(object_type), |this| {
+                this.analyze_union_decl(union_stmt.union_decl_id, &mut union_decl);
+            })
+        } else {
+            self.analyze_union_decl(union_stmt.union_decl_id, &mut union_decl);
+        }
 
         union_stmt.fields = union_decl.fields.clone();
 

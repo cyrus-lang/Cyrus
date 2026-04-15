@@ -30,13 +30,23 @@ pub(crate) struct FuncEnv {
 }
 
 impl FuncEnv {
-    pub fn new() -> Self {
+    pub(crate) fn new() -> Self {
         Self {
             current_func: None,
             current_object: None,
             current_method: None,
             infer: None,
         }
+    }
+}
+
+impl<'a> AnalysisContext<'a> {
+    pub fn with_object<T>(&mut self, object_type: Option<SemaType>, f: impl FnOnce(&mut Self) -> T) -> T {
+        let old = self.func_env.current_object.take();
+        self.func_env.current_object = object_type;
+        let result = f(self);
+        self.func_env.current_object = old;
+        result
     }
 }
 

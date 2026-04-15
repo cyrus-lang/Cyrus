@@ -18,6 +18,7 @@
 use crate::{context::AnalysisContext, diagnostics::AnalyzerDiagKind};
 use cyrusc_diagcentral::{Diag, DiagLevel};
 use cyrusc_typed_ast::{
+    decls::DeclID,
     exprs::{
         MemoryLocation, TypedEnumInit, TypedEnumInitArgs, TypedExprKind, TypedExprStmt, TypedUnnamedEnumValueKind,
     },
@@ -43,7 +44,7 @@ impl<'a> AnalysisContext<'a> {
                     let args = TypedEnumInitArgs::Unit;
 
                     let enum_init = TypedEnumInit {
-                        enum_decl_id,
+                        decl_id: DeclID::Enum(enum_decl_id),
                         name: field_access.name.clone(),
                         args,
                         loc: field_access.loc,
@@ -104,7 +105,7 @@ impl<'a> AnalysisContext<'a> {
                     let args = TypedEnumInitArgs::Tuple(method_call.args.clone());
 
                     let enum_init = TypedEnumInit {
-                        enum_decl_id,
+                        decl_id: DeclID::Enum(enum_decl_id),
                         name: method_call.name.clone(),
                         args,
                         loc: method_call.loc,
@@ -134,7 +135,7 @@ impl<'a> AnalysisContext<'a> {
 
         *typed_expr = TypedExprStmt {
             kind: TypedExprKind::EnumInit(TypedEnumInit {
-                enum_decl_id: enum_value.enum_decl_id.unwrap(),
+                decl_id: DeclID::Enum(enum_value.enum_decl_id.unwrap()),
                 name: enum_value.ident.as_string(),
                 args: enum_init_args,
                 loc: enum_value.loc,
@@ -154,7 +155,7 @@ impl<'a> AnalysisContext<'a> {
 
         *typed_expr = TypedExprStmt {
             kind: TypedExprKind::EnumInit(TypedEnumInit {
-                enum_decl_id: struct_variant_init.enum_decl_id.unwrap(),
+                decl_id: DeclID::Enum(struct_variant_init.enum_decl_id.unwrap()),
                 name: struct_variant_init.ident.as_string(),
                 args,
                 loc: struct_variant_init.loc,

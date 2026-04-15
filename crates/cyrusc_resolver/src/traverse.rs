@@ -270,6 +270,12 @@ impl Resolver {
     /// current lexical and module scope.
     fn resolve_local_module_import(&mut self, module_import: &ASTModuleImport) -> Option<SymbolID> {
         if let Some(ident) = module_import.as_ident() {
+            if ident.value == "Self" {
+                if let Some(symbol_id) = self.current_object_symbol_id {
+                    return Some(symbol_id);
+                }
+            }
+
             return self.resolve_ident(&ident);
         }
 
@@ -967,14 +973,12 @@ impl Resolver {
 
             this.report_if_duplicate_method_names(&name, &union_decl.methods);
 
-            let methods = this.resolve_methods(&union_decl.methods, &name);
-
             let impls = this.resolve_object_implements_interfaces(&union_decl.impls, union_decl.loc)?;
 
             let union_decl_id = this.decl_tables.insert_union(UnionDecl {
                 name: Some(name.clone()),
                 fields: typed_union_fields.clone(),
-                methods: methods.clone(),
+                methods: MethodDecls::new(), // placeholder
                 impls: impls.clone(),
                 generic_params: generic_params.clone(),
                 modifiers: union_decl.modifiers.clone(),
@@ -984,6 +988,12 @@ impl Resolver {
 
             this.with_global_symbol_mut(symbol_id, |symbol_entry| {
                 symbol_entry.kind = SymbolEntryKind::Union(union_decl_id)
+            });
+
+            let methods = this.resolve_methods(&union_decl.methods, symbol_id, &name);
+
+            this.decl_tables.with_union_decl_mut(union_decl_id, |_union_decl| {
+                _union_decl.methods = methods.clone();
             });
 
             Some(TypedStmt::Union(TypedUnionStmt {
@@ -1114,14 +1124,12 @@ impl Resolver {
                 None => None,
             };
 
-            let methods = this.resolve_methods(&enum_decl.methods, &name);
-
             let impls = this.resolve_object_implements_interfaces(&enum_decl.impls, enum_decl.loc)?;
 
             let enum_decl_id = this.decl_tables.insert_enum(EnumDecl {
                 name: Some(name.clone()),
                 variants: variants.clone(),
-                methods: methods.clone(),
+                methods: MethodDecls::new(), // placeholder
                 impls: impls.clone(),
                 generic_params: generic_params.clone(),
                 tag_type: tag_type.clone(),
@@ -1132,6 +1140,12 @@ impl Resolver {
 
             this.with_global_symbol_mut(symbol_id, |symbol_entry| {
                 symbol_entry.kind = SymbolEntryKind::Enum(enum_decl_id)
+            });
+
+            let methods = this.resolve_methods(&enum_decl.methods, symbol_id, &name);
+
+            this.decl_tables.with_enum_decl_mut(enum_decl_id, |_enum_decl| {
+                _enum_decl.methods = methods.clone();
             });
 
             Some(TypedStmt::Enum(TypedEnumStmt {
@@ -1241,52 +1255,38 @@ impl Resolver {
             let scope = LocalScope::new();
 
             let typed_body = with_local_scope!(self, scope.clone(), {
-                let method_decl = self.decl_tables.method_decl(*method_decl_id).func_decl;
+                let mut method_decl = self.decl_tables.method_decl(*method_decl_id).func_decl;
 
-                let self_modifier_opt = method_decl.params.list.first().and_then(|p| p.as_self_modifier());
+                self.insert_func_params_into_current_scope(
+                    &mut method_decl.params.list,
+                    &mut method_decl.params.variadic,
+                );
 
-                let self_decl_id_opt = {
-                    if let Some(self_modifier) = self_modifier_opt {
-                        let is_self_const = false;
-                        let self_ident = Ident::new("self", self_modifier.loc);
+                self.decl_tables.with_method_decl_mut(*method_decl_id, |_method_decl| {
+                    _method_decl.func_decl.params = method_decl.params.clone();
+                });
 
-                        let var_decl_id = self.insert_variable_decl(&self_ident, None, None, is_self_const);
-
-                        self.insert_variable_symbol_to_current_scope(&self_ident, var_decl_id);
-
-                        // store later
-                        Some(var_decl_id)
-                    } else {
-                        None
-                    }
-                };
-
-                (self_decl_id_opt, self.resolve_block_stmt(&ast_method.body))
+                self.resolve_block_stmt(&ast_method.body)
             });
 
-            let (self_decl_id_opt, body) = typed_body;
+            if let Some(typed_body) = typed_body {
+                let body_id = self.decl_tables.insert_body(typed_body);
 
-            if let Some(typed_body) = body {
-                self.decl_tables.with_method_decl_mut(*method_decl_id, |method_decl| {
-                    if let Some(param) = method_decl.func_decl.params.list.first_mut() {
-                        if let Some(self_modifier) = param.as_self_modifier_mut() {
-                            self_modifier.var_decl_id = self_decl_id_opt;
-                        }
-                    }
-
-                    let body_id = self.decl_tables.insert_body(typed_body);
-
-                    self.decl_tables.with_method_decl_mut(*method_decl_id, |_method_decl| {
-                        _method_decl.func_decl.body = Some(body_id);
-                    });
-
-                    method_decl.body = Some(body_id);
+                self.decl_tables.with_method_decl_mut(*method_decl_id, |_method_decl| {
+                    _method_decl.body = Some(body_id);
                 });
             }
         }
     }
 
-    fn resolve_methods(&mut self, ast_methods: &[ASTFuncDefStmt], object_name: &String) -> MethodDecls {
+    fn resolve_methods(
+        &mut self,
+        ast_methods: &[ASTFuncDefStmt],
+        object_symbol_id: SymbolID,
+        object_name: &String,
+    ) -> MethodDecls {
+        self.current_object_symbol_id = Some(object_symbol_id);
+
         self.report_if_duplicate_method_names(object_name, ast_methods);
 
         let method_decls = self.resolve_method_decls(ast_methods);
@@ -1338,8 +1338,6 @@ impl Resolver {
 
             this.report_if_duplicate_method_names(&name, &struct_decl.methods);
 
-            let methods = this.resolve_methods(&struct_decl.methods, &name);
-
             let impls = this.resolve_object_implements_interfaces(&struct_decl.impls, struct_decl.loc)?;
 
             let struct_decl_id = this.decl_tables.insert_struct(StructDecl {
@@ -1347,7 +1345,7 @@ impl Resolver {
                 fields: typed_struct_fields.clone(),
                 generic_params: generic_params.clone(),
                 impls: impls.clone(),
-                methods: methods.clone(),
+                methods: MethodDecls::new(), // placeholder
                 modifiers: struct_decl.modifiers.clone(),
                 align: struct_decl.align.clone(),
                 loc,
@@ -1355,6 +1353,12 @@ impl Resolver {
 
             this.with_global_symbol_mut(symbol_id, |symbol_entry| {
                 symbol_entry.kind = SymbolEntryKind::Struct(struct_decl_id)
+            });
+
+            let methods = this.resolve_methods(&struct_decl.methods, symbol_id, &name);
+
+            this.decl_tables.with_struct_decl_mut(struct_decl_id, |_struct_decl| {
+                _struct_decl.methods = methods.clone();
             });
 
             Some(TypedStmt::Struct(TypedStructStmt {

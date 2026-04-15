@@ -31,7 +31,18 @@ impl<'a> AnalysisContext<'a> {
     pub(crate) fn analyze_struct_stmt(&mut self, struct_stmt: &mut TypedStructStmt) {
         let mut struct_decl = self.decl_tables.struct_decl(struct_stmt.struct_decl_id);
 
-        self.analyze_struct_decl(struct_stmt.struct_decl_id, &mut struct_decl);
+        if !struct_stmt.is_generic() {
+            let object_type = SemaType::Named(NamedType {
+                decl_id: TypeDeclID::Struct(struct_stmt.struct_decl_id),
+                type_args: TypedTypeArgs::new(),
+            });
+
+            self.with_object(Some(object_type), |this| {
+                this.analyze_struct_decl(struct_stmt.struct_decl_id, &mut struct_decl);
+            })
+        } else {
+            self.analyze_struct_decl(struct_stmt.struct_decl_id, &mut struct_decl);
+        }
 
         struct_stmt.fields = struct_decl.fields.clone();
 

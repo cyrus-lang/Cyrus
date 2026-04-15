@@ -306,11 +306,11 @@ pub struct ASTEnumStructVariantFieldInit {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ASTMethodCallExpr {
-    pub is_fat_arrow: bool,
     pub operand: Box<ASTExpr>,
     pub method_name: Ident,
     pub args: Vec<ASTExpr>,
     pub type_args: TypeArgs,
+    pub is_fat_arrow: bool,
     pub loc: Loc,
 }
 

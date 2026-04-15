@@ -17,7 +17,7 @@
 
 use crate::{
     VTableID,
-    decls::{DeclID, EnumDeclID, FuncDeclID, InterfaceDeclID, MonomorphID, StructDeclID, UnionDecl, UnionDeclID},
+    decls::{DeclID, EnumDeclID, FuncDeclID, InterfaceDeclID, MonomorphID, StructDeclID, UnionDeclID},
     stmts::{TypedBlockStmt, TypedBuiltin, TypedFuncParams, TypedTypeArgs},
     types::{SemaType, TypedFuncType},
 };
@@ -266,7 +266,7 @@ pub enum TypedFieldAccessDispatch {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct TypedEnumInit {
-    pub enum_decl_id: EnumDeclID,
+    pub decl_id: DeclID,
     pub name: String,
     pub args: TypedEnumInitArgs,
     pub loc: Loc,

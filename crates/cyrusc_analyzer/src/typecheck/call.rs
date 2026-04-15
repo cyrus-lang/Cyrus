@@ -19,8 +19,8 @@ use crate::{context::AnalysisContext, diagnostics::AnalyzerDiagKind};
 use cyrusc_diagcentral::{Diag, DiagLevel};
 use cyrusc_source_loc::Loc;
 use cyrusc_typed_ast::{
-    decls::{DeclID, FuncDecl},
-    exprs::{TypedExprStmt, TypedFuncCall, TypedFuncCallDispatch},
+    decls::{DeclID, FuncDecl, MethodDecls},
+    exprs::{TypedExprStmt, TypedFuncCall, TypedFuncCallDispatch, TypedMethodCall},
     format::{format_func_type, format_loc, format_sema_type},
     stmts::{TypedFuncTypeVariadicParam, TypedFuncVariadicParam},
     types::{SemaType, TypedFuncType},
@@ -28,11 +28,12 @@ use cyrusc_typed_ast::{
 
 impl<'a> AnalysisContext<'a> {
     pub(crate) fn analyze_func_call(&mut self, func_call: &mut TypedFuncCall) -> Option<SemaType> {
-        let func_decl_id = func_call
+        let func_decl_id_opt = func_call
             .operand
             .kind
             .as_decl_id()
             .and_then(|decl_id| decl_id.as_func());
+
         let operand_type = self.analyze_expr_non_terminal(&mut func_call.operand, None)?;
 
         self.normalize_type_args(&mut func_call.type_args);
@@ -50,7 +51,7 @@ impl<'a> AnalysisContext<'a> {
         };
 
         // named func call
-        if let Some(func_decl_id) = func_decl_id {
+        if let Some(func_decl_id) = func_decl_id_opt {
             let mut func_decl = self.decl_tables.func_decl(func_decl_id);
 
             // generic function
@@ -186,6 +187,16 @@ impl<'a> AnalysisContext<'a> {
         }
     }
 
+    pub(crate) fn analyze_method_call(&mut self, method_call: &mut TypedMethodCall) -> Option<SemaType> {
+        let operand_type = self.analyze_expr_non_terminal(&mut method_call.operand, None)?;
+
+        self.normalize_type_args(&mut method_call.type_args);
+
+        todo!();
+    }
+}
+
+impl<'a> AnalysisContext<'a> {
     fn analyze_argument(&mut self, arg: &mut TypedExprStmt, mut expected_type: SemaType, loc: Loc) -> Option<SemaType> {
         expected_type = self.substitute_type(&expected_type);
 
@@ -417,117 +428,69 @@ impl<'a> AnalysisContext<'a> {
         Some(*func_type.ret_type.clone())
     }
 
-    // /// Validates a method call's accessibility, syntax, and mutability constraints.
-    // fn validate_method_call(
-    //     &mut self,
-    //     instance_symbol_id: SymbolID,
-    //     method_name: &String,
-    //     method_call_operand_ty: SemaType,
-    //     is_fat_arrow: bool,
-    //     method_call_on_interface: bool,
-    //     first_param_opt: Option<&TypedFuncParamKind>,
-    //     object_methods_opt: Option<HashMap<String, SymbolID>>,
-    //     object_name: String,
-    //     func_decl: &FuncDecl,
-    //     loc: Loc,
-    // ) -> bool {
-    //     let mut result = true;
-    //     let vis = &func_decl.modifiers.vis;
+    /// Validates method call visibility, accessibility, and pointer semantics.
+    fn validate_method_call(
+        &mut self,
+        operand_ty: &SemaType,
+        method_decl: &FuncDecl,
+        method_decls: &MethodDecls,
+        method_name: &str,
+        object_name: &str,
+        is_fat_arrow: bool,
+        method_call_on_interface: bool,
+        loc: Loc,
+    ) {
+        // ------------------------------------------------------------
+        // 1️⃣ Visibility check (modern style — mirrors field access)
+        // ------------------------------------------------------------
 
-    //     let access_violation = if let Some(current_method_symbol_id) = self.fenv.current_method_symbol_id {
-    //         let object_contains_method = {
-    //             if let Some(object_methods) = object_methods_opt {
-    //                 object_methods
-    //                     .values()
-    //                     .cloned()
-    //                     .collect::<Vec<SymbolID>>()
-    //                     .contains(&current_method_symbol_id)
-    //             } else {
-    //                 true
-    //             }
-    //         };
+        let access_violation = if let Some(current_method_id) = self.func_env.current_method {
+            if method_decls.contains_method_id(current_method_id) {
+                false
+            } else {
+                !method_decl.modifiers.vis.is_public() && !method_call_on_interface
+            }
+        } else {
+            !method_decl.modifiers.vis.is_public() && !method_call_on_interface
+        };
 
-    //         if object_contains_method {
-    //             false
-    //         } else {
-    //             !vis.is_public() && !method_call_on_interface
-    //         }
-    //     } else {
-    //         !vis.is_public() && !method_call_on_interface
-    //     };
+        if access_violation {
+            self.reporter.report(Diag {
+                level: DiagLevel::Error,
+                kind: Box::new(AnalyzerDiagKind::InternalMethodCall {
+                    method_name: method_name.to_string(),
+                    object_name: object_name.to_string(),
+                }),
+                loc: Some(loc),
+                hint: None,
+            });
+        }
 
-    //     if access_violation {
-    //         self.reporter.report(Diag {
-    //             level: DiagLevel::Error,
-    //             kind: Box::new(AnalyzerDiagKind::InternalMethodCall {
-    //                 method_name: func_decl.name.clone(),
-    //                 object_name,
-    //             }),
-    //             loc: Some(loc),
-    //             hint: None,
-    //         });
-    //         result = false;
-    //     }
+        let base_type = operand_ty.const_inner();
 
-    //     let is_pointer = method_call_operand_ty.const_inner().is_pointer();
-    //     let is_operand_const = method_call_operand_ty.is_const();
-    //     let is_object = method_call_operand_ty.const_inner().is_resolved_symbol()
-    //         || method_call_operand_ty.as_generic_type().is_some()
-    //         || method_call_on_interface;
+        let is_pointer = base_type.is_pointer();
 
-    //     if is_fat_arrow {
-    //         if !is_pointer {
-    //             self.reporter.report(Diag {
-    //                 level: DiagLevel::Error,
-    //                 kind: Box::new(AnalyzerDiagKind::InvalidThinArrow),
-    //                 loc: Some(loc),
-    //                 hint: Some("Use '.' instead of '->'.".to_string()),
-    //             });
-    //             result = false;
-    //         }
-    //     } else {
-    //         if !is_object {
-    //             self.reporter.report(Diag {
-    //                 level: DiagLevel::Error,
-    //                 kind: Box::new(AnalyzerDiagKind::UseThinArrow),
-    //                 loc: Some(loc),
-    //                 hint: Some("Use '->' when accessing through a pointer.".to_string()),
-    //             });
-    //             result = false;
-    //         }
-    //     }
+        let is_object =
+            base_type.is_struct() || base_type.is_union() || base_type.is_enum() || method_call_on_interface;
 
-    //     // TODO: Extend it after implement const self modifier for methods:
-    //     //
-    //     // struct Foo {
-    //     //   ...
-    //     //
-    //     //   fn bar1(&const self, x: int) int { ... }
-    //     //   fn bar2(&const self, const x: int) int { ... }
-    //     //   fn bar3(&self, x: int) int { ... }
-    //     // }
-    //     if let Some(first_param) = first_param_opt {
-    //         if let TypedFuncParamKind::SelfModifier(typed_self_modifier) = first_param {
-    //             if typed_self_modifier.kind == SelfModifierKind::Referenced && is_operand_const {
-    //                 let instance_name = self.formatter.format_symbol_name(instance_symbol_id);
-
-    //                 self.reporter.report(Diag {
-    //                     level: DiagLevel::Error,
-    //                     kind: Box::new(AnalyzerDiagKind::MutationPossibleMethodCallOnConstInstance {
-    //                         method_name: method_name.clone(),
-    //                         instance_name: instance_name.clone(),
-    //                     }),
-    //                     loc: Some(loc),
-    //                     hint: Some(format!(
-    //                         "Instance '{}' is declared as 'const' and cannot be modified.",
-    //                         instance_name
-    //                     )),
-    //                 });
-    //                 result = false;
-    //             }
-    //         }
-    //     }
-
-    //     result
-    // }
+        if is_fat_arrow {
+            if !is_pointer {
+                self.reporter.report(Diag {
+                    level: DiagLevel::Error,
+                    kind: Box::new(AnalyzerDiagKind::InvalidThinArrow),
+                    loc: Some(loc),
+                    hint: Some("Use '.' instead of '->'.".to_string()),
+                });
+            }
+        } else {
+            if !is_object {
+                self.reporter.report(Diag {
+                    level: DiagLevel::Error,
+                    kind: Box::new(AnalyzerDiagKind::UseThinArrow),
+                    loc: Some(loc),
+                    hint: Some("Use '->' when accessing through a pointer.".to_string()),
+                });
+            }
+        }
+    }
 }

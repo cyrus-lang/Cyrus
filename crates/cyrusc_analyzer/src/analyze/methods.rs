@@ -61,7 +61,7 @@ impl<'a> AnalysisContext<'a> {
 
         self.with_func_env(method_env, |this| {
             let mut body = this.decl_tables.body(body_id);
-            
+
             this.analyze_func_body(&mut body, &method_decl.func_decl.ret_type);
 
             this.decl_tables.with_body_mut(body_id, |_body| {

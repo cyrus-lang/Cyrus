@@ -139,6 +139,9 @@ pub struct FuncDecl {
 #[derive(Debug, Clone)]
 pub struct MethodDecl {
     pub func_decl: FuncDecl,
+
+    /// Concrete body of the method, used for both normal methods and
+    /// monomorphized generic instances.
     pub body: Option<BodyID>,
 }
 

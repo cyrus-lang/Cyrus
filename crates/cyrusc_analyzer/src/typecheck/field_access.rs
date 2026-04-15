@@ -52,7 +52,7 @@ impl<'a> AnalysisContext<'a> {
                 return None;
             };
 
-            self.validate_struct_field_access(&field_access, field.vis, &inst_struct_decl.methods, &struct_name);
+            self.validate_field_access(&field_access, field.vis, &inst_struct_decl.methods, &struct_name);
 
             let field_type = self.normalize_sema_type(field.ty.clone(), field_access.loc)?;
             let field_index = inst_struct_decl
@@ -89,7 +89,7 @@ impl<'a> AnalysisContext<'a> {
             // unions never involved with visibility violation
             let vis = Visibility::Public;
 
-            self.validate_struct_field_access(&field_access, vis, &union_decl.methods, &union_name);
+            self.validate_field_access(&field_access, vis, &union_decl.methods, &union_name);
 
             let field_type = self.normalize_sema_type(field.ty.clone(), field_access.loc)?;
 
@@ -109,7 +109,7 @@ impl<'a> AnalysisContext<'a> {
     }
 
     /// Validates field access syntax, visibility, and pointer semantics.
-    fn validate_struct_field_access(
+    fn validate_field_access(
         &mut self,
         field_access: &TypedFieldAccess,
         field_vis: Visibility,

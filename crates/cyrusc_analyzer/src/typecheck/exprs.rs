@@ -76,7 +76,7 @@ impl<'a> AnalysisContext<'a> {
             TypedExprKind::Array(array) => self.analyze_array(array, expected_type.clone()),
             TypedExprKind::ArrayIndex(array_index) => self.analyze_array_index(array_index),
             TypedExprKind::Dynamic(dynamic_expr) => todo!(),
-            TypedExprKind::MethodCall(method_call) => todo!(),
+            TypedExprKind::MethodCall(method_call) => self.analyze_method_call(method_call),
             TypedExprKind::FieldAccess(field_access) => self.analyze_field_access(field_access),
             TypedExprKind::FuncCall(func_call) => self.analyze_func_call(func_call),
             TypedExprKind::Lambda(lambda) => self.analyze_lambda(lambda),
@@ -98,6 +98,7 @@ impl<'a> AnalysisContext<'a> {
                 self.analyze_enum_struct_variant_init(struct_variant_init)
             }
 
+            // TODO
             TypedExprKind::Builtin(_typed_builtin) => todo!(),
 
             TypedExprKind::SemaType(_) => {
