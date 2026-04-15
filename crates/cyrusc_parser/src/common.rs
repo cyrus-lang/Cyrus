@@ -304,7 +304,6 @@ impl<'source_file> Parser<'source_file> {
                             // this pattern occurs when we have a generic type followed by array initialization brackets.
                             // example 1: `Vec<int>[5]` - creates an array of 5 Vec<int> elements
                             // example 2: `Option<String>[10]` - array of 10 Option<String> elements
-                            // example 3: `Record<V=int[2]>[3]` - array of 3 Record<V=int[2]> instances
                             // the array size `N` can be any constant expression.
                             if next_token.kind == TokenKind::LeftBracket {
                                 // we need to determine if this is genuinely an array initialization
@@ -320,13 +319,12 @@ impl<'source_file> Parser<'source_file> {
                                     is_array_init,            // True if this is array initialization
                                 };
                             }
-                            // `Type<T> { ... }` - Struct/tuple initialization with generics
-                            // this pattern occurs when we have a generic type followed by a struct initializer.
-                            // example 1: `Record<V = int[2]> { key: 10, value: 20 }` - Record struct with generic V
-                            // example 2: `Point<f32> { x: 1.0, y: 2.0 }` - Point struct with f32 generic
-                            // example 3: `Option<String> { value: "hello" }` - Option enum variant initialization
-                            // the braces contain field initializers for the struct or enum variant.
-                            else if next_token.kind == TokenKind::LeftBrace {
+                            // `Type<T> { ... }` or `Type<T>.member(...)`
+                            // Both patterns are valid after a generic type expression:
+                            // - `{ ... }` indicates a struct or enum variant initialization with generics
+                            // - `.` indicates a field or method access on a generic type (e.g., `Object<int>.member(10)`)
+                            // This branch ensures such cases are recognized as valid generic constructs, not disqualified comparisons.
+                            else if next_token.kind == TokenKind::LeftBrace || next_token.kind == TokenKind::Dot {
                                 return TypeArgStartDetail {
                                     includes_type_args: true, // yes, there were type arguments before the braces
                                     is_array_init: false, // not an array initialization - it's struct initialization
@@ -425,52 +423,46 @@ impl<'source_file> Parser<'source_file> {
         false
     }
 
-    /// Determines if a token after `>` would invalidate type arguments.
+    /// Determines if a token that appears immediately after `>`
+    /// invalidates the interpretation of `<...>` as type arguments.
     ///
-    /// Used to distinguish generics from comparison expressions.
-    /// Returns true if the token cannot follow a type argument list.
+    /// This is part of the `<` vs comparison disambiguation logic.
+    /// If the token can legally follow a *type expression*, then it
+    /// must NOT disqualify generic type arguments.
+    ///
+    /// Returns `true` when the token makes `<...>` impossible to be generics.
     fn token_disqualifies_type_arg(&mut self, kind: &TokenKind) -> bool {
         match kind {
-            // allowed tokens
-            TokenKind::Ident { .. } => false,
+            // ------------------------------------------------------------
+            // Tokens that are VALID after a type expression
+            // ------------------------------------------------------------
 
-            TokenKind::UIntPtr
-            | TokenKind::IntPtr
-            | TokenKind::ISize
-            | TokenKind::USize
-            | TokenKind::Int
-            | TokenKind::Int8
-            | TokenKind::Int16
-            | TokenKind::Int32
-            | TokenKind::Int64
-            | TokenKind::Int128
-            | TokenKind::UInt
-            | TokenKind::UInt8
-            | TokenKind::UInt16
-            | TokenKind::UInt32
-            | TokenKind::UInt64
-            | TokenKind::UInt128
-            | TokenKind::Float16
-            | TokenKind::Float32
-            | TokenKind::Float64
-            | TokenKind::Float128
-            | TokenKind::Char
-            | TokenKind::Void
-            | TokenKind::Bool => false,
+            // Path continuation: `Type<T>.member`
+            TokenKind::Dot => false,
 
-            TokenKind::DoubleColon => false,
+            // Function / tuple / constructor call: `Type<T>(...)`
+            TokenKind::LeftParen => false,
 
+            // Struct or enum variant initialization: `Type<T> { ... }`
+            TokenKind::LeftBrace => false,
+
+            // Array type or array init: `Type<T>[N]`
+            TokenKind::LeftBracket | TokenKind::RightBracket => false,
+
+            // Another generic layer or nested type
             TokenKind::LessThan | TokenKind::GreaterThan | TokenKind::Comma => false,
 
-            TokenKind::Const | TokenKind::Public | TokenKind::Extern => false,
+            TokenKind::Asterisk => false,
 
-            TokenKind::Asterisk | TokenKind::Ampersand | TokenKind::LeftBracket | TokenKind::RightBracket => false,
-
-            // assign used in named-type-args that why it doesn't disqualify
-            TokenKind::Assign => false,
-
-            // any other token disqualifies type arg
+            // ------------------------------------------------------------
+            // Tokens that CANNOT follow a type expression
+            // These indicate `<` was a comparison operator.
+            // ------------------------------------------------------------
             TokenKind::Literal(_) => true,
+
+            TokenKind::Assign => true,
+
+            TokenKind::DoubleColon => true,
 
             TokenKind::Plus
             | TokenKind::Minus
@@ -492,42 +484,23 @@ impl<'source_file> Parser<'source_file> {
             | TokenKind::ShiftLeft
             | TokenKind::ShiftRight => true,
 
-            TokenKind::LeftParen | TokenKind::RightParen => true,
-
-            TokenKind::If
-            | TokenKind::Else
-            | TokenKind::For
-            | TokenKind::While
-            | TokenKind::Foreach
-            | TokenKind::Switch
-            | TokenKind::Case
-            | TokenKind::Default
-            | TokenKind::Return
-            | TokenKind::Break
-            | TokenKind::Continue
-            | TokenKind::Goto
-            | TokenKind::Defer => true,
-
             TokenKind::ThinArrow
             | TokenKind::FatArrow
             | TokenKind::DoubleQuote
             | TokenKind::SingleQuote
-            | TokenKind::Dot
             | TokenKind::DoubleDot
             | TokenKind::TripleDot => true,
 
-            TokenKind::Struct | TokenKind::Union | TokenKind::Enum | TokenKind::Interface => true,
-
             TokenKind::True | TokenKind::False | TokenKind::Null => true,
 
-            TokenKind::Macro | TokenKind::In | TokenKind::As => true,
-
-            TokenKind::LeftBrace | TokenKind::RightBrace => true,
+            TokenKind::RightParen => true,
+            TokenKind::RightBrace => true,
 
             TokenKind::Semicolon => true,
 
-            TokenKind::Typedef | TokenKind::Typecast | TokenKind::SizeOf => true,
-
+            // ------------------------------------------------------------
+            // Fallback
+            // ------------------------------------------------------------
             other => !self.is_type_specifier_base_token(other),
         }
     }

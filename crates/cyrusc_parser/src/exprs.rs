@@ -45,8 +45,6 @@ impl<'source_file> Parser<'source_file> {
             }
 
             if self.peek_token_is(TokenKind::Dot) || self.peek_token_is(TokenKind::ThinArrow) {
-                self.next_token();
-
                 lhs = self.parse_field_access(lhs)?;
                 continue;
             }
@@ -212,7 +210,7 @@ impl<'source_file> Parser<'source_file> {
         let loc = self.current_token().loc;
         let (line, column, start) = (loc.line, loc.column, loc.start);
 
-        let expr = match &self.current_token().kind {
+        let mut expr = match &self.current_token().kind {
             TokenKind::At => {
                 // return Ok(Expr::Builtin(self.parse_builtin()?));
                 ASTExpr::Builtin(self.parse_builtin()?)
@@ -354,6 +352,7 @@ impl<'source_file> Parser<'source_file> {
         let mut type_args = TypeArgs::new();
 
         let type_arg_start_detail = self.is_type_arg_start(expr.clone());
+
         if type_arg_start_detail.includes_type_args {
             if !type_arg_start_detail.is_array_init {
                 self.next_token(); // consume current token of expr
@@ -377,6 +376,24 @@ impl<'source_file> Parser<'source_file> {
             }
         } else if self.peek_token_is(TokenKind::LeftParen) {
             return self.parse_func_call(expr, type_args);
+        }
+        // Case: Option<int>.Some(...) (Method or static member access)
+        // We redirect to parse_field_access, passing the base expr and the
+        // type arguments that qualify it.
+        else if self.peek_token_is(TokenKind::Dot) {
+            if let ASTExpr::ModuleImport(module_import) = expr.clone() {
+                self.next_token(); // consume `>`
+
+                expr = ASTExpr::TypeSpecifier(TypeSpecifier::GenericInst(GenericInst {
+                    base: Box::new(TypeSpecifier::ModuleImport(module_import)),
+                    type_args,
+                    loc,
+                }));
+
+                self.parse_field_access(expr)
+            } else {
+                return Err(self.error_invalid_token());
+            }
         } else {
             // type args are given to the wrong expression
             if !type_args.is_empty() {
@@ -605,7 +622,6 @@ impl<'source_file> Parser<'source_file> {
         start: usize,
     ) -> Result<ASTExpr, Diag> {
         self.must_be_left_paren()?;
-
         let args = self.parse_expr_series(TokenKind::RightParen)?;
         self.must_be_right_paren()?;
 
@@ -633,18 +649,21 @@ impl<'source_file> Parser<'source_file> {
                 self.next_token();
                 false
             } else {
-                return Err(self.error_invalid_token())?;
+                self.expect_current(TokenKind::Dot)?;
+                unreachable!()
             }
         };
 
         if matches!(self.current_token().kind, TokenKind::Ident { .. }) {
             let ident = self.parse_ident()?;
 
-            let mut type_args: TypeArgs = TypeArgs::new();
+            let type_args: TypeArgs;
 
-            if self.is_type_arg_start(operand.clone()).includes_type_args {
-                self.next_token(); // consume current token of expr
+            if self.peek_token_is(TokenKind::LessThan) {
+                self.next_token(); // consume ident
                 type_args = self.parse_type_args()?;
+            } else {
+                type_args = TypeArgs::new();
             }
 
             if self.peek_token_is(TokenKind::LeftParen) {

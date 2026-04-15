@@ -19,8 +19,7 @@ use cyrusc_tokens::TokenKind;
 #[derive(Debug, Copy, Clone, PartialEq, PartialOrd)]
 pub enum Precedence {
     Lowest,
-    Assign, // =
-    Sizeof,
+    Assign,      // =
     Or,          // ||
     And,         // &&
     Equals,      // ==, !=
@@ -58,8 +57,6 @@ pub fn token_precedence_of(token_kind: TokenKind) -> Precedence {
         | TokenKind::Caret
         | TokenKind::ShiftLeft
         | TokenKind::ShiftRight => Precedence::Bitwise,
-
-        TokenKind::SizeOf => Precedence::Sizeof,
 
         TokenKind::Dot | TokenKind::ThinArrow => Precedence::Field,
 
