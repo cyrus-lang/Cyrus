@@ -36,7 +36,7 @@ impl<'a> AnalysisContext<'a> {
             return None;
         };
 
-        let Some(struct_decl_id) = named_type.decl_id.as_struct() else {
+        let Some(struct_decl_id) = named_type.type_decl_id.as_struct() else {
             self.report_non_struct_symbol(struct_init.decl_id, struct_init.loc);
             return None;
         };
@@ -82,7 +82,7 @@ impl<'a> AnalysisContext<'a> {
             struct_init.type_args = final_type_args.clone();
 
             Some(SemaType::Named(NamedType {
-                decl_id: TypeDeclID::Struct(struct_decl_id),
+                type_decl_id: TypeDeclID::Struct(struct_decl_id),
                 type_args: final_type_args,
             }))
         })
@@ -161,7 +161,7 @@ impl<'a> AnalysisContext<'a> {
         struct_value.struct_decl_id = Some(struct_decl_id);
 
         Some(SemaType::Named(NamedType {
-            decl_id: TypeDeclID::Struct(struct_decl_id),
+            type_decl_id: TypeDeclID::Struct(struct_decl_id),
             type_args: TypedTypeArgs::new(),
         }))
     }

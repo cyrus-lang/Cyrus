@@ -15,7 +15,7 @@
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
 
-use crate::{context::AnalysisContext, diagnostics::AnalyzerDiagKind, infer::InferCtx};
+use crate::{context::AnalysisContext, diagnostics::AnalyzerDiagKind};
 use cyrusc_diagcentral::{Diag, DiagLevel};
 use cyrusc_internal::flow_state::FlowState;
 use cyrusc_source_loc::Loc;
@@ -94,15 +94,6 @@ impl<'a> AnalysisContext<'a> {
     }
 
     pub(crate) fn analyze_func_body(&mut self, body: &mut TypedBlockStmt, ret_type: &SemaType) {
-        let created_infer = {
-            if self.func_env.infer.is_none() {
-                self.func_env.infer = Some(InferCtx::new());
-                true
-            } else {
-                false
-            }
-        };
-
         let state = self.analyze_block_stmt(body);
 
         if !ret_type.is_void() && state != FlowState::Returns {
@@ -112,10 +103,6 @@ impl<'a> AnalysisContext<'a> {
                 loc: Some(body.loc),
                 hint: Some("Not all control paths return a value.".to_string()),
             });
-        }
-
-        if created_infer {
-            self.func_env.infer = None;
         }
     }
 

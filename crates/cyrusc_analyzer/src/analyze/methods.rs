@@ -40,10 +40,6 @@ impl<'a> AnalysisContext<'a> {
             } else {
                 // generic methods are being analyzed in call-site
             }
-
-            self.decl_tables.with_method_decl_mut(*method_decl_id, |_method_decl| {
-                *_method_decl = method_decl.clone();
-            });
         }
     }
 
@@ -55,6 +51,7 @@ impl<'a> AnalysisContext<'a> {
 
     pub(crate) fn analyze_method_body(&mut self, method_decl_id: MethodDeclID, method_decl: &mut MethodDecl) {
         let func_type = method_decl.func_decl.as_func_type();
+
         let method_env = self.create_method_env(method_decl_id, func_type.clone());
 
         let body_id = method_decl.body.unwrap();

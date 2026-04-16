@@ -91,7 +91,7 @@ impl InferCtx {
                 true
             }
             (SemaType::Named(n1), SemaType::Named(n2)) => {
-                if n1.decl_id != n2.decl_id {
+                if n1.type_decl_id != n2.type_decl_id {
                     return false;
                 }
                 for (a, b) in n1.type_args.iter().zip(n2.type_args.iter()) {

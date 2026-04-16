@@ -39,7 +39,7 @@ impl<'a> AnalysisContext<'a> {
             return None;
         };
 
-        let Some(enum_decl_id) = named_type.decl_id.as_enum() else {
+        let Some(enum_decl_id) = named_type.type_decl_id.as_enum() else {
             self.report_non_struct_symbol(enum_init.decl_id, enum_init.loc);
             return None;
         };
@@ -66,7 +66,7 @@ impl<'a> AnalysisContext<'a> {
         let generic_env = self.create_inference_generic_env(
             &enum_name,
             enum_decl.generic_params.clone(),
-            &TypedTypeArgs::new(),
+            &enum_init.type_args,
             enum_decl.loc,
         )?;
 
@@ -146,7 +146,7 @@ impl<'a> AnalysisContext<'a> {
             let final_type_args = this.collect_instantiated_type_args(enum_decl.generic_params);
 
             Some(SemaType::Named(NamedType {
-                decl_id: TypeDeclID::Enum(enum_decl_id),
+                type_decl_id: TypeDeclID::Enum(enum_decl_id),
                 type_args: final_type_args,
             }))
         })
@@ -276,7 +276,7 @@ impl<'a> AnalysisContext<'a> {
         enum_value.enum_decl_id = Some(enum_decl_id);
 
         Some(SemaType::Named(NamedType {
-            decl_id: TypeDeclID::Enum(enum_decl_id),
+            type_decl_id: TypeDeclID::Enum(enum_decl_id),
             type_args: TypedTypeArgs::new(),
         }))
     }
@@ -366,7 +366,7 @@ impl<'a> AnalysisContext<'a> {
         struct_variant_init.enum_decl_id = Some(enum_decl_id);
 
         Some(SemaType::Named(NamedType {
-            decl_id: TypeDeclID::Enum(enum_decl_id),
+            type_decl_id: TypeDeclID::Enum(enum_decl_id),
             type_args: TypedTypeArgs::new(),
         }))
     }

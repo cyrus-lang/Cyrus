@@ -186,6 +186,11 @@ pub struct VarDecl {
 
 impl EnumDecl {
     #[inline]
+    pub fn is_generic(&self) -> bool {
+        !self.generic_params.is_empty()
+    }
+
+    #[inline]
     pub fn lookup_variant(&self, name: &str) -> Option<&TypedEnumVariant> {
         self.variants.iter().find(|variant| variant.ident().value == name)
     }
@@ -251,6 +256,11 @@ impl PartialEq for FuncDecl {
 
 impl UnionDecl {
     #[inline]
+    pub fn is_generic(&self) -> bool {
+        !self.generic_params.is_empty()
+    }
+
+    #[inline]
     pub fn lookup_field(&self, name: &str) -> Option<&TypedUnionField> {
         self.fields.iter().find(|field| field.name == name)
     }
@@ -262,6 +272,11 @@ impl UnionDecl {
 }
 
 impl StructDecl {
+    #[inline]
+    pub fn is_generic(&self) -> bool {
+        !self.generic_params.is_empty()
+    }
+
     #[inline]
     pub fn lookup_field(&self, name: &str) -> Option<&TypedStructField> {
         self.fields.iter().find(|field| field.name == name)

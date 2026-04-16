@@ -101,16 +101,7 @@ impl<'a> AnalysisContext<'a> {
             // TODO
             TypedExprKind::Builtin(_typed_builtin) => todo!(),
 
-            TypedExprKind::SemaType(_) => {
-                self.reporter.report(Diag {
-                    level: DiagLevel::Error,
-                    kind: Box::new(AnalyzerDiagKind::InvalidUsageOfTheSemanticType),
-                    loc: Some(expr.loc),
-                    hint: None,
-                });
-                return None;
-            }
-
+            TypedExprKind::SemaType(ty) => return self.normalize_sema_type(ty.clone(), expr.loc),
             TypedExprKind::Poisoned => return None,
         };
 

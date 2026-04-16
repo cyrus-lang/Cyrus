@@ -169,7 +169,7 @@ fn mangle_type_args(type_args: &TypedTypeArgs) -> String {
 fn mangle_sema_type(sema_type: &SemaType) -> String {
     match sema_type {
         SemaType::Named(named_type) => {
-            let decl_id = match named_type.decl_id {
+            let decl_id = match named_type.type_decl_id {
                 TypeDeclID::Struct(struct_decl_id) => format!("struct_{}", struct_decl_id.0),
                 TypeDeclID::Enum(enum_decl_id) => format!("enum_{}", enum_decl_id.0),
                 TypeDeclID::Union(union_decl_id) => format!("union_{}", union_decl_id.0),

@@ -119,6 +119,9 @@ pub enum AnalyzerDiagKind {
         provided: usize,
     },
 
+    #[error("Type arguments must be applied to the enum type, not the variant.")]
+    TypeArgsMustBeSuppliedToEnumTypeNotVariant,
+
     #[error("Unknown symbol '{symbol_name}'.")]
     UnknownSymbol { symbol_name: String },
 

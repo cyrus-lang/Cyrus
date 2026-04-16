@@ -17,7 +17,7 @@
 
 use cyrusc_typed_ast::{
     BodyID,
-    decls::{FuncDeclID, MonomorphID},
+    decls::{FuncDeclID, MethodDeclID, MonomorphID},
     stmts::{TypedBlockStmt, TypedFuncParams, TypedTypeArgs},
     types::SemaType,
 };
@@ -26,14 +26,20 @@ use std::sync::RwLock;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct MonomorphKey {
-    pub template: FuncDeclID,
+    pub template_id: CallableTemplateID,
     pub type_args: TypedTypeArgs,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum CallableTemplateID {
+    Func(FuncDeclID),
+    Method(MethodDeclID),
 }
 
 #[derive(Debug, Clone)]
 pub struct MonomorphInstance {
     pub monomorph_id: MonomorphID,
-    pub func_decl_id: FuncDeclID,
+    pub template_id: CallableTemplateID,
     pub type_args: TypedTypeArgs,
 
     pub params: TypedFuncParams,
@@ -46,7 +52,7 @@ pub struct MonomorphInstance {
 #[derive(Debug, Default)]
 struct MonomorphRegistryInner {
     key_map: FxHashMap<MonomorphKey, MonomorphID>,
-    func_to_monomorphs: FxHashMap<FuncDeclID, Vec<MonomorphID>>,
+    func_to_monomorphs: FxHashMap<CallableTemplateID, Vec<MonomorphID>>,
     instances: Vec<MonomorphInstance>,
     monomorph_body: Vec<TypedBlockStmt>,
 }
@@ -70,7 +76,7 @@ impl MonomorphRegistry {
 
     pub fn get_or_create(
         &self,
-        func_decl_id: FuncDeclID,
+        template_id: CallableTemplateID,
         type_args: TypedTypeArgs,
         params: TypedFuncParams,
         ret_type: SemaType,
@@ -78,7 +84,7 @@ impl MonomorphRegistry {
         {
             let inner = self.inner.read().unwrap();
             let key = MonomorphKey {
-                template: func_decl_id,
+                template_id,
                 type_args: type_args.clone(),
             };
 
@@ -90,7 +96,7 @@ impl MonomorphRegistry {
         let mut inner = self.inner.write().unwrap();
 
         let key = MonomorphKey {
-            template: func_decl_id,
+            template_id,
             type_args: type_args.clone(),
         };
 
@@ -102,7 +108,7 @@ impl MonomorphRegistry {
 
         let instance = MonomorphInstance {
             monomorph_id,
-            func_decl_id,
+            template_id,
             type_args: type_args.clone(),
 
             params,
@@ -114,7 +120,7 @@ impl MonomorphRegistry {
 
         inner
             .func_to_monomorphs
-            .entry(func_decl_id)
+            .entry(template_id)
             .or_default()
             .push(monomorph_id);
 
@@ -149,8 +155,26 @@ impl MonomorphRegistry {
         inner.monomorph_body.get(body_id.0 as usize).cloned()
     }
 
-    pub fn get_func_monomorphs(&self, func_decl_id: FuncDeclID) -> Vec<MonomorphID> {
+    pub fn get_func_monomorphs(&self, template_id: CallableTemplateID) -> Vec<MonomorphID> {
         let inner = self.inner.read().unwrap();
-        inner.func_to_monomorphs.get(&func_decl_id).cloned().unwrap_or_default()
+        inner.func_to_monomorphs.get(&template_id).cloned().unwrap_or_default()
+    }
+}
+
+impl CallableTemplateID {
+    #[inline]
+    pub fn as_func(&self) -> Option<FuncDeclID> {
+        match self {
+            CallableTemplateID::Func(func_decl_id) => Some(*func_decl_id),
+            _ => None,
+        }
+    }
+
+    #[inline]
+    pub fn as_method(&self) -> Option<MethodDeclID> {
+        match self {
+            CallableTemplateID::Method(method_decl_id) => Some(*method_decl_id),
+            _ => None,
+        }
     }
 }

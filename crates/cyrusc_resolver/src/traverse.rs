@@ -647,7 +647,7 @@ impl Resolver {
         });
 
         Some(SemaType::Named(NamedType {
-            decl_id: TypeDeclID::Union(union_decl_id),
+            type_decl_id: TypeDeclID::Union(union_decl_id),
             type_args: TypedTypeArgs::new(),
         }))
     }
@@ -675,7 +675,7 @@ impl Resolver {
         });
 
         Some(SemaType::Named(NamedType {
-            decl_id: TypeDeclID::Enum(enum_decl_id),
+            type_decl_id: TypeDeclID::Enum(enum_decl_id),
             type_args: TypedTypeArgs::new(),
         }))
     }
@@ -712,7 +712,7 @@ impl Resolver {
         });
 
         Some(SemaType::Named(NamedType {
-            decl_id: TypeDeclID::Struct(struct_decl_id),
+            type_decl_id: TypeDeclID::Struct(struct_decl_id),
             type_args: TypedTypeArgs::new(),
         }))
     }
@@ -1205,7 +1205,7 @@ impl Resolver {
     }
 
     fn resolve_method_decls(&mut self, methods: &[ASTFuncDefStmt]) -> MethodDecls {
-        let mut method_decl_ids = MethodDecls::new_with_capacity(methods.len());
+        let mut method_decls = MethodDecls::new_with_capacity(methods.len());
 
         for ast_method in methods {
             let method_name = &ast_method.ident.value;
@@ -1244,26 +1244,28 @@ impl Resolver {
                 body: None,
             });
 
-            method_decl_ids.insert(method_name.to_string(), method_decl_id);
+            method_decls.insert(method_name.to_string(), method_decl_id);
         }
 
-        method_decl_ids
+        method_decls
     }
 
     fn resolve_method_bodies(&mut self, method_decls: &MethodDecls, ast_methods: &[ASTFuncDefStmt]) {
-        for ((_, method_decl_id), ast_method) in method_decls.iter().zip(ast_methods) {
+        for ast_method in ast_methods {
+            let method_decl_id = method_decls.get(&ast_method.ident.value).unwrap();
+
             let scope = LocalScope::new();
 
             let typed_body = with_local_scope!(self, scope.clone(), {
-                let mut method_decl = self.decl_tables.method_decl(*method_decl_id).func_decl;
+                let mut method_decl = self.decl_tables.method_decl(method_decl_id);
 
                 self.insert_func_params_into_current_scope(
-                    &mut method_decl.params.list,
-                    &mut method_decl.params.variadic,
+                    &mut method_decl.func_decl.params.list,
+                    &mut method_decl.func_decl.params.variadic,
                 );
 
-                self.decl_tables.with_method_decl_mut(*method_decl_id, |_method_decl| {
-                    _method_decl.func_decl.params = method_decl.params.clone();
+                self.decl_tables.with_method_decl_mut(method_decl_id, |_method_decl| {
+                    *_method_decl = method_decl;
                 });
 
                 self.resolve_block_stmt(&ast_method.body)
@@ -1272,7 +1274,7 @@ impl Resolver {
             if let Some(typed_body) = typed_body {
                 let body_id = self.decl_tables.insert_body(typed_body);
 
-                self.decl_tables.with_method_decl_mut(*method_decl_id, |_method_decl| {
+                self.decl_tables.with_method_decl_mut(method_decl_id, |_method_decl| {
                     _method_decl.body = Some(body_id);
                 });
             }

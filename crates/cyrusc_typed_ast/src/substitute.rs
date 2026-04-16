@@ -46,7 +46,7 @@ pub fn substitute_sema_type_with_type_args(
             }
 
             SemaType::Named(NamedType {
-                decl_id: named_type.decl_id,
+                type_decl_id: named_type.type_decl_id,
                 type_args: TypedTypeArgs(new_args),
             })
         }

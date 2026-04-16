@@ -35,6 +35,23 @@ impl GenericEnv {
         Self { params, bindings }
     }
 
+    /// Merge two generic environments.
+    ///
+    /// The resulting environment keeps:
+    ///   - All params and bindings of `self` first
+    ///   - Then all params and bindings of `other`
+    ///
+    /// Parameter IDs are unique, so no deduplication is required.
+    pub fn merge(&self, other: GenericEnv) -> GenericEnv {
+        let mut params = self.params.clone();
+        params.0.extend(other.params.iter().cloned());
+
+        let mut bindings = self.bindings.clone();
+        bindings.extend(other.bindings.iter().cloned());
+
+        GenericEnv { params, bindings }
+    }
+
     pub fn from_type_args(params: TypedGenericParams, type_args: &TypedTypeArgs) -> Self {
         let mut generic_env = GenericEnv::new(params.clone());
 
@@ -89,7 +106,7 @@ impl GenericEnv {
                     .collect();
 
                 SemaType::Named(NamedType {
-                    decl_id: named_type.decl_id,
+                    type_decl_id: named_type.type_decl_id,
                     type_args,
                 })
             }

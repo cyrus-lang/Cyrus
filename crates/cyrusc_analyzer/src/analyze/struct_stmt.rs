@@ -33,7 +33,7 @@ impl<'a> AnalysisContext<'a> {
 
         if !struct_stmt.is_generic() {
             let object_type = SemaType::Named(NamedType {
-                decl_id: TypeDeclID::Struct(struct_stmt.struct_decl_id),
+                type_decl_id: TypeDeclID::Struct(struct_stmt.struct_decl_id),
                 type_args: TypedTypeArgs::new(),
             });
 
@@ -72,7 +72,9 @@ impl<'a> AnalysisContext<'a> {
 
         self.analyze_object_implements_interfaces(&object_name, &struct_decl.impls, &struct_decl.methods);
 
-        self.analyze_object_methods(&struct_decl.methods);
+        if !struct_decl.is_generic() {
+            self.analyze_object_methods(&struct_decl.methods);
+        }
     }
 
     fn analyze_struct_fields(&mut self, struct_decl_id: StructDeclID, struct_fields: &mut [TypedStructField]) {
@@ -158,7 +160,7 @@ impl<'a> AnalysisContext<'a> {
         }
 
         let ty = NamedType {
-            decl_id: TypeDeclID::Struct(struct_decl_id),
+            type_decl_id: TypeDeclID::Struct(struct_decl_id),
             type_args: TypedTypeArgs::new(),
         };
 

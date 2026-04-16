@@ -22,6 +22,7 @@ use cyrusc_internal::abi::mangler::mangle_monomorphized_func;
 use cyrusc_internal::abi::target::ABITarget;
 use cyrusc_internal::cir::cir::*;
 use cyrusc_internal::cir::types::*;
+use cyrusc_internal::monomorph::CallableTemplateID;
 use cyrusc_internal::monomorph::MonomorphRegistry;
 use cyrusc_internal::symbols::SymbolQuery;
 use cyrusc_internal::vtable::VTableRegistry;
@@ -478,7 +479,9 @@ impl<'a> CIRTraverse<'a> {
 
         let func_decl = self.decl_tables.func_decl(func_decl_id);
 
-        let monomorph_ids = self.monomorph_registry.get_func_monomorphs(func_decl_id);
+        let monomorph_ids = self
+            .monomorph_registry
+            .get_func_monomorphs(CallableTemplateID::Func(func_decl_id));
 
         for monomorph_id in monomorph_ids {
             let monomorph_instance = self.monomorph_registry.get(monomorph_id);
@@ -1260,7 +1263,7 @@ impl<'a> CIRTraverse<'a> {
     }
 
     fn lower_named_type(&mut self, named_type: &NamedType) -> CIRType {
-        match named_type.decl_id {
+        match named_type.type_decl_id {
             TypeDeclID::Struct(struct_decl_id) => {
                 let struct_decl = self.decl_tables.struct_decl(struct_decl_id);
 
@@ -1326,7 +1329,8 @@ impl<'a> CIRTraverse<'a> {
 
         let monomorph_instance = self.monomorph_registry.get(monomorph_id);
 
-        let func_decl = self.decl_tables.func_decl(monomorph_instance.func_decl_id);
+        let func_decl_id = monomorph_instance.template_id.as_func().unwrap();
+        let func_decl = self.decl_tables.func_decl(func_decl_id);
 
         let mangled_name = mangle_monomorphized_func(
             &func_decl.modifiers,

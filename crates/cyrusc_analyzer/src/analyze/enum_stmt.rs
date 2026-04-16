@@ -33,7 +33,7 @@ impl<'a> AnalysisContext<'a> {
 
         if enum_stmt.is_generic() {
             let object_type = SemaType::Named(NamedType {
-                decl_id: TypeDeclID::Enum(enum_stmt.enum_decl_id),
+                type_decl_id: TypeDeclID::Enum(enum_stmt.enum_decl_id),
                 type_args: TypedTypeArgs::new(),
             });
 
@@ -72,7 +72,9 @@ impl<'a> AnalysisContext<'a> {
 
         self.analyze_object_implements_interfaces(&object_name, &enum_decl.impls, &enum_decl.methods);
 
-        self.analyze_object_methods(&enum_decl.methods);
+        if !enum_decl.is_generic() {
+            self.analyze_object_methods(&enum_decl.methods);
+        }
     }
 
     #[inline]
@@ -276,7 +278,7 @@ impl<'a> AnalysisContext<'a> {
         if sema_type.is_void() {}
 
         let ty = NamedType {
-            decl_id: TypeDeclID::Enum(enum_decl_id),
+            type_decl_id: TypeDeclID::Enum(enum_decl_id),
             type_args: TypedTypeArgs::new(),
         };
 

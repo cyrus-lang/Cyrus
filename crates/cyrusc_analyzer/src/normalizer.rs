@@ -76,7 +76,7 @@ impl<'a> AnalysisContext<'a> {
                     self.normalize_type_args(&mut type_args);
 
                     SemaType::Named(NamedType {
-                        decl_id: named_type.decl_id,
+                        type_decl_id: named_type.type_decl_id,
                         type_args,
                     })
                 } else {
@@ -357,19 +357,19 @@ impl<'a> AnalysisContext<'a> {
                 self.normalize_func_decl_as_func_type(&func_decl)
             }
             DeclID::Struct(strut_decl_id) => Some(SemaType::Named(NamedType {
-                decl_id: TypeDeclID::Struct(strut_decl_id),
+                type_decl_id: TypeDeclID::Struct(strut_decl_id),
                 type_args: TypedTypeArgs::new(),
             })),
             DeclID::Enum(enum_decl_id) => Some(SemaType::Named(NamedType {
-                decl_id: TypeDeclID::Enum(enum_decl_id),
+                type_decl_id: TypeDeclID::Enum(enum_decl_id),
                 type_args: TypedTypeArgs::new(),
             })),
             DeclID::Union(union_decl_id) => Some(SemaType::Named(NamedType {
-                decl_id: TypeDeclID::Union(union_decl_id),
+                type_decl_id: TypeDeclID::Union(union_decl_id),
                 type_args: TypedTypeArgs::new(),
             })),
             DeclID::Typedef(typedef_decl_id) => Some(SemaType::Named(NamedType {
-                decl_id: TypeDeclID::Typedef(typedef_decl_id),
+                type_decl_id: TypeDeclID::Typedef(typedef_decl_id),
                 type_args: TypedTypeArgs::new(),
             })),
             DeclID::Interface(interface_decl_id) => self.normalize_interface_type(interface_decl_id),

@@ -375,7 +375,7 @@ pub fn format_sema_type(sema_type: SemaType, formatter: &dyn Formatter) -> Strin
         },
         SemaType::GenericParam(generic_param_id) => formatter.format_generic_param(generic_param_id),
         SemaType::Named(named_type) => {
-            let name = formatter.format_type_decl(named_type.decl_id);
+            let name = formatter.format_type_decl(named_type.type_decl_id);
             format!("{}{}", name, format_type_args(&named_type.type_args, formatter))
         }
         SemaType::Plain(plain_type) => plain_type.to_string(),

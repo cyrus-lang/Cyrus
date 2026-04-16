@@ -33,7 +33,7 @@ impl<'a> AnalysisContext<'a> {
 
         if !union_stmt.is_generic() {
             let object_type = SemaType::Named(NamedType {
-                decl_id: TypeDeclID::Union(union_stmt.union_decl_id),
+                type_decl_id: TypeDeclID::Union(union_stmt.union_decl_id),
                 type_args: TypedTypeArgs::new(),
             });
 
@@ -68,7 +68,9 @@ impl<'a> AnalysisContext<'a> {
 
         self.analyze_object_implements_interfaces(&object_name, &union_decl.impls, &union_decl.methods);
 
-        self.analyze_object_methods(&union_decl.methods);
+        if !union_decl.is_generic() {
+            self.analyze_object_methods(&union_decl.methods);
+        }
     }
 
     fn analyze_union_fields(&mut self, union_decl_id: UnionDeclID, union_fields: &mut [TypedUnionField]) {
@@ -154,7 +156,7 @@ impl<'a> AnalysisContext<'a> {
         }
 
         let ty = NamedType {
-            decl_id: TypeDeclID::Union(union_decl_id),
+            type_decl_id: TypeDeclID::Union(union_decl_id),
             type_args: TypedTypeArgs::new(),
         };
 

@@ -17,13 +17,17 @@
 
 use crate::{context::AnalysisContext, diagnostics::AnalyzerDiagKind};
 use cyrusc_diagcentral::{Diag, DiagLevel};
+use cyrusc_internal::monomorph::CallableTemplateID;
 use cyrusc_source_loc::Loc;
 use cyrusc_typed_ast::{
-    decls::{DeclID, FuncDecl, MethodDecls},
-    exprs::{TypedExprStmt, TypedFuncCall, TypedFuncCallDispatch, TypedMethodCall},
+    decls::{DeclID, FuncDecl, MethodDeclID, MethodDecls},
+    exprs::{
+        TypedExprKind, TypedExprStmt, TypedFuncCall, TypedFuncCallDispatch, TypedMethodCall, TypedMethodCallDispatch,
+    },
     format::{format_func_type, format_loc, format_sema_type},
-    stmts::{TypedFuncTypeVariadicParam, TypedFuncVariadicParam},
-    types::{SemaType, TypedFuncType},
+    stmts::{TypedFuncTypeVariadicParam, TypedFuncVariadicParam, TypedGenericParams, TypedTypeArgs},
+    substitute::instantiate_struct_decl_with_type_args,
+    types::{NamedType, SemaType, TypeDeclID, TypedFuncType},
 };
 
 impl<'a> AnalysisContext<'a> {
@@ -72,22 +76,14 @@ impl<'a> AnalysisContext<'a> {
 
                     func_call.operand.sema_type = Some(this.substitute_type(&operand_type));
                     func_decl.params = this.substitute_func_params(func_decl.params.clone());
-                    func_decl.ret_type = {
-                        let ret_type = this.substitute_type(&func_decl.ret_type);
-
-                        if let Some(infer) = &mut this.func_env.infer {
-                            infer.resolve(&ret_type)
-                        } else {
-                            ret_type
-                        }
-                    };
+                    func_decl.ret_type = this.substitute_ret_type(&func_decl.ret_type);
 
                     this.apply_generic_defaults(func_decl.generic_params.clone());
 
                     let final_type_args = this.collect_instantiated_type_args(func_decl.generic_params.clone());
 
                     let monomorph_id = this.monomorph_registry.get_or_create(
-                        func_decl_id,
+                        CallableTemplateID::Func(func_decl_id),
                         final_type_args,
                         func_decl.params.clone(),   // specialized params
                         func_decl.ret_type.clone(), // specialized ret type
@@ -97,9 +93,9 @@ impl<'a> AnalysisContext<'a> {
 
                     // analyze specialized function body
                     if !monomorph_instance.analyzed {
-                        let monomorph_func_env = this.create_monomorph_func_env(func_decl.as_func_type());
+                        let func_env = this.create_func_def_env(func_decl.as_func_type());
 
-                        this.with_func_env(monomorph_func_env, |this| {
+                        this.with_func_env(func_env, |this| {
                             let body_id = func_decl.body.unwrap();
 
                             let template_body = this.decl_tables.body(body_id);
@@ -186,13 +182,352 @@ impl<'a> AnalysisContext<'a> {
             Some(ret_type)
         }
     }
+}
 
+// Methods.
+impl<'a> AnalysisContext<'a> {
     pub(crate) fn analyze_method_call(&mut self, method_call: &mut TypedMethodCall) -> Option<SemaType> {
-        let operand_type = self.analyze_expr_non_terminal(&mut method_call.operand, None)?;
+        let is_operand_instance = self.is_method_call_operand_instance(&method_call.operand);
 
         self.normalize_type_args(&mut method_call.type_args);
 
-        todo!();
+        if is_operand_instance {
+            self.analyze_instance_method_call(method_call)
+        } else {
+            self.analyze_static_method_call(method_call)
+        }
+    }
+
+    fn analyze_instance_method_call(&mut self, method_call: &mut TypedMethodCall) -> Option<SemaType> {
+        let operand_type = self.analyze_expr(&mut method_call.operand, None)?;
+
+        let Some((type_decl_id, method_decls)) = self
+            .normalize_sema_type(method_call.operand.kind.as_type_expr().unwrap(), method_call.loc)
+            .and_then(|sema_type| {
+                sema_type.as_named_type().and_then(|named_type| {
+                    self.methods_decl_of_named_type(named_type)
+                        .map(|method_decls| (named_type.type_decl_id, method_decls))
+                })
+            })
+        else {
+            self.reporter.report(Diag {
+                level: DiagLevel::Error,
+                kind: Box::new(AnalyzerDiagKind::ObjectNotSupportsFields),
+                loc: Some(method_call.loc),
+                hint: None,
+            });
+            return None;
+        };
+
+        // insert instance value to args
+        method_call.args.insert(0, *method_call.operand.clone());
+
+        self.analyze_method_call_internal(method_call, &method_decls, type_decl_id, operand_type, true)
+    }
+
+    fn analyze_static_method_call(&mut self, method_call: &mut TypedMethodCall) -> Option<SemaType> {
+        let operand_type = self.normalize_sema_type(method_call.operand.sema_type.clone().unwrap(), method_call.loc)?;
+
+        let Some((type_decl_id, method_decls)) = self
+            .normalize_sema_type(method_call.operand.kind.as_type_expr().unwrap(), method_call.loc)
+            .and_then(|sema_type| {
+                sema_type.as_named_type().and_then(|named_type| {
+                    self.methods_decl_of_named_type(named_type)
+                        .map(|method_decls| (named_type.type_decl_id, method_decls))
+                })
+            })
+        else {
+            self.reporter.report(Diag {
+                level: DiagLevel::Error,
+                kind: Box::new(AnalyzerDiagKind::ObjectNotSupportsFields),
+                loc: Some(method_call.loc),
+                hint: None,
+            });
+            return None;
+        };
+
+        if !method_call.type_args.is_empty() {
+            // FIXME
+            // self.reporter.report(Diag {
+            //     level: DiagLevel::Error,
+            //     kind: Box::new(AnalyzerDiagKind::UnexpectedTypeArgs),
+            //     loc: Some(method_call.loc),
+            //     hint: None,
+            // });
+            return None;
+        }
+
+        // REVIEW:
+        // validate_type_arity is required for operand_type before we get dive into method's own generic env??
+
+        self.analyze_method_call_internal(method_call, &method_decls, type_decl_id, operand_type, false)
+    }
+
+    fn analyze_method_call_internal(
+        &mut self,
+        method_call: &mut TypedMethodCall,
+        method_decls: &MethodDecls,
+        type_decl_id: TypeDeclID,
+        mut operand_type: SemaType,
+        is_instance_method_call: bool,
+    ) -> Option<SemaType> {
+        let Some(method_decl_id) = method_decls.get(&method_call.name) else {
+            let object_name = self.formatter.format_type_decl(type_decl_id);
+
+            self.reporter.report(Diag {
+                level: DiagLevel::Error,
+                kind: Box::new(AnalyzerDiagKind::ObjectMethodNotDefined {
+                    object_name,
+                    method_name: method_call.name.clone(),
+                }),
+                loc: Some(method_call.loc),
+                hint: None,
+            });
+            return None;
+        };
+
+        let (operand_generic_params, operand_type_args) = operand_type
+            .as_named_type()
+            .map(|named_type| {
+                (
+                    self.type_decl_generic_params(named_type.type_decl_id),
+                    named_type.type_args.clone(),
+                )
+            })
+            .unwrap_or((TypedGenericParams::new(), TypedTypeArgs::new()));
+
+        let operand_generic_env = self.create_inference_generic_env(
+            &format_sema_type(operand_type.clone(), self.formatter),
+            operand_generic_params.clone(),
+            &operand_type_args,
+            method_call.loc,
+        )?;
+
+        let mut method_decl = self.decl_tables.method_decl(method_decl_id);
+
+        let method_generic_env = self.create_inference_generic_env(
+            &method_call.name,
+            method_decl.func_decl.generic_params.clone(),
+            &method_call.type_args,
+            method_call.loc,
+        )?;
+
+        let generic_env = operand_generic_env.merge(method_generic_env);
+
+        let is_static_generic_method_call = !generic_env.params.is_empty();
+
+        self.with_generic_env(generic_env, |this| {
+            this.normalize_func_params(&mut method_decl.func_decl.params);
+
+            operand_type = this.substitute_type(&operand_type);
+            method_decl.func_decl.params = this.substitute_func_params(method_decl.func_decl.params.clone());
+            method_decl.func_decl.ret_type = this.substitute_ret_type(&method_decl.func_decl.ret_type);
+
+            // analyze call arguments
+            if !this.analyze_call(
+                &mut method_decl.func_decl,
+                &mut method_call.args,
+                method_call.loc,
+                is_instance_method_call,
+            ) {
+                return None;
+            }
+
+            // generic static method
+            if is_static_generic_method_call {
+                let func_type = method_decl.func_decl.as_func_type();
+                let func_env = this.create_method_env(method_decl_id, func_type);
+
+                this.with_func_env(func_env, |this| {
+                    // set self type
+                    this.func_env.current_object = Some(operand_type.clone());
+
+                    // apply defaults for method generics
+                    this.apply_generic_defaults(method_decl.func_decl.generic_params.clone());
+
+                    operand_type = this.substitute_type(&operand_type);
+                    method_decl.func_decl.params = this.substitute_func_params(method_decl.func_decl.params.clone());
+                    method_decl.func_decl.ret_type = this.substitute_ret_type(&method_decl.func_decl.ret_type);
+
+                    let final_type_args =
+                        this.collect_instantiated_type_args(method_decl.func_decl.generic_params.clone());
+
+                    // emit monomorphized function
+                    let monomorph_id = this.monomorph_registry.get_or_create(
+                        CallableTemplateID::Method(method_decl_id),
+                        final_type_args.clone(),
+                        method_decl.func_decl.params.clone(),   // specialized params
+                        method_decl.func_decl.ret_type.clone(), // specialized ret type
+                    );
+
+                    let monomorph_instance = this.monomorph_registry.get(monomorph_id);
+
+                    // analyze specialized function body
+                    if !monomorph_instance.analyzed {
+                        let body_id = method_decl.body.unwrap();
+
+                        let template_body = this.decl_tables.body(body_id);
+
+                        // create per‑monomorph locals and remap decl ids
+                        let mut specialized_body =
+                            this.specialize_func_body(&template_body, &mut method_decl.func_decl.params);
+
+                        let diag_len = this.reporter.len();
+
+                        // analyze body
+                        this.analyze_func_body(&mut specialized_body, &method_decl.func_decl.ret_type);
+
+                        // insert monomorphized body
+                        let monomorph_body_id = this.monomorph_registry.insert_monomorph_body(specialized_body);
+
+                        let diag_originated_from = format_loc(&this.source_map, method_decl.func_decl.loc);
+
+                        if this.reporter.len() > diag_len {
+                            this.apply_error_originated_from_on_diag_range(diag_len..=diag_len, |diag| {
+                                diag.hint = Some(format!(
+                                    "Error originates from this function call at {}.",
+                                    diag_originated_from,
+                                ));
+                            });
+                        }
+
+                        this.monomorph_registry.update(monomorph_id, |_monomorph_instance| {
+                            _monomorph_instance.analyzed = true;
+                            _monomorph_instance.body = Some(monomorph_body_id);
+
+                            // params must be cloned after specialization so that each monomorph
+                            // owns updated var_decl_ids; avoids aliasing the template params and ensures
+                            // decl_id mappings are consistent across monomorph instances.
+                            _monomorph_instance.params = method_decl.func_decl.params.clone();
+                        });
+                    }
+
+                    method_call.type_args = final_type_args;
+                    method_call.operand.sema_type = Some(operand_type.clone());
+
+                    method_call.dispatch = TypedMethodCallDispatch::Monomorph {
+                        method_decl_id,
+                        monomorph_id,
+                        self_type: operand_type.clone(),
+                    };
+
+                    Some(method_decl.func_decl.ret_type.clone())
+                })
+            }
+            // normal static method
+            else {
+                method_call.operand.sema_type = Some(operand_type.clone());
+                method_call.dispatch = TypedMethodCallDispatch::Normal {
+                    method_decl_id,
+                    self_type: operand_type.clone(),
+                };
+
+                Some(method_decl.func_decl.ret_type.clone())
+            }
+        })
+    }
+}
+
+impl<'a> AnalysisContext<'a> {
+    /// Returns true if the operand to a method call is a value (instance), not a type.
+    fn is_method_call_operand_instance(&self, operand: &TypedExprStmt) -> bool {
+        operand
+            .kind
+            .as_type_expr()
+            .and_then(|ty| {
+                ty.as_unresolved_base_decl_id()
+                    .map(|decl_id| decl_id.is_var_or_global_var())
+            })
+            .unwrap_or(false)
+    }
+
+    fn methods_decl_of_named_type(&self, named_type: &NamedType) -> Option<MethodDecls> {
+        match named_type.type_decl_id {
+            TypeDeclID::Struct(struct_decl_id) => {
+                let struct_decl = self.decl_tables.struct_decl(struct_decl_id);
+
+                Some(struct_decl.methods)
+            }
+            TypeDeclID::Enum(enum_decl_id) => {
+                let enum_decl = self.decl_tables.enum_decl(enum_decl_id);
+
+                Some(enum_decl.methods)
+            }
+            TypeDeclID::Union(union_decl_id) => {
+                let union_decl = self.decl_tables.union_decl(union_decl_id);
+
+                Some(union_decl.methods)
+            }
+            // FIXME
+            TypeDeclID::Interface(_interface_decl_id) => todo!(),
+            TypeDeclID::Typedef(_) => None,
+        }
+    }
+
+    /// Validates method call visibility, accessibility, and pointer semantics.
+    fn validate_method_call(
+        &mut self,
+        operand_ty: &SemaType,
+        method_decl: &FuncDecl,
+        method_decls: &MethodDecls,
+        method_name: &str,
+        object_name: &str,
+        is_fat_arrow: bool,
+        method_call_on_interface: bool,
+        loc: Loc,
+    ) {
+        // ------------------------------------------------------------
+        // 1️⃣ Visibility check (modern style — mirrors field access)
+        // ------------------------------------------------------------
+
+        let access_violation = if let Some(current_method_id) = self.func_env.current_method {
+            if method_decls.contains_method_id(current_method_id) {
+                false
+            } else {
+                !method_decl.modifiers.vis.is_public() && !method_call_on_interface
+            }
+        } else {
+            !method_decl.modifiers.vis.is_public() && !method_call_on_interface
+        };
+
+        if access_violation {
+            self.reporter.report(Diag {
+                level: DiagLevel::Error,
+                kind: Box::new(AnalyzerDiagKind::InternalMethodCall {
+                    method_name: method_name.to_string(),
+                    object_name: object_name.to_string(),
+                }),
+                loc: Some(loc),
+                hint: None,
+            });
+        }
+
+        let base_type = operand_ty.const_inner();
+
+        let is_pointer = base_type.is_pointer();
+
+        let is_object =
+            base_type.is_struct() || base_type.is_union() || base_type.is_enum() || method_call_on_interface;
+
+        if is_fat_arrow {
+            if !is_pointer {
+                self.reporter.report(Diag {
+                    level: DiagLevel::Error,
+                    kind: Box::new(AnalyzerDiagKind::InvalidThinArrow),
+                    loc: Some(loc),
+                    hint: Some("Use '.' instead of '->'.".to_string()),
+                });
+            }
+        } else {
+            if !is_object {
+                self.reporter.report(Diag {
+                    level: DiagLevel::Error,
+                    kind: Box::new(AnalyzerDiagKind::UseThinArrow),
+                    loc: Some(loc),
+                    hint: Some("Use '->' when accessing through a pointer.".to_string()),
+                });
+            }
+        }
     }
 }
 
@@ -426,71 +761,5 @@ impl<'a> AnalysisContext<'a> {
         }
 
         Some(*func_type.ret_type.clone())
-    }
-
-    /// Validates method call visibility, accessibility, and pointer semantics.
-    fn validate_method_call(
-        &mut self,
-        operand_ty: &SemaType,
-        method_decl: &FuncDecl,
-        method_decls: &MethodDecls,
-        method_name: &str,
-        object_name: &str,
-        is_fat_arrow: bool,
-        method_call_on_interface: bool,
-        loc: Loc,
-    ) {
-        // ------------------------------------------------------------
-        // 1️⃣ Visibility check (modern style — mirrors field access)
-        // ------------------------------------------------------------
-
-        let access_violation = if let Some(current_method_id) = self.func_env.current_method {
-            if method_decls.contains_method_id(current_method_id) {
-                false
-            } else {
-                !method_decl.modifiers.vis.is_public() && !method_call_on_interface
-            }
-        } else {
-            !method_decl.modifiers.vis.is_public() && !method_call_on_interface
-        };
-
-        if access_violation {
-            self.reporter.report(Diag {
-                level: DiagLevel::Error,
-                kind: Box::new(AnalyzerDiagKind::InternalMethodCall {
-                    method_name: method_name.to_string(),
-                    object_name: object_name.to_string(),
-                }),
-                loc: Some(loc),
-                hint: None,
-            });
-        }
-
-        let base_type = operand_ty.const_inner();
-
-        let is_pointer = base_type.is_pointer();
-
-        let is_object =
-            base_type.is_struct() || base_type.is_union() || base_type.is_enum() || method_call_on_interface;
-
-        if is_fat_arrow {
-            if !is_pointer {
-                self.reporter.report(Diag {
-                    level: DiagLevel::Error,
-                    kind: Box::new(AnalyzerDiagKind::InvalidThinArrow),
-                    loc: Some(loc),
-                    hint: Some("Use '.' instead of '->'.".to_string()),
-                });
-            }
-        } else {
-            if !is_object {
-                self.reporter.report(Diag {
-                    level: DiagLevel::Error,
-                    kind: Box::new(AnalyzerDiagKind::UseThinArrow),
-                    loc: Some(loc),
-                    hint: Some("Use '->' when accessing through a pointer.".to_string()),
-                });
-            }
-        }
     }
 }

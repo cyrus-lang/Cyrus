@@ -65,7 +65,7 @@ impl<'a> AnalysisContext<'a> {
             current_func: Some(func_type),
             current_method: None,
             current_object: None,
-            infer: None,
+            infer: Some(InferCtx::new()),
         }
     }
 
@@ -75,27 +75,7 @@ impl<'a> AnalysisContext<'a> {
             current_func: Some(func_type),
             current_method: Some(method_decl_id),
             current_object: None,
-            infer: None,
-        }
-    }
-
-    #[inline]
-    pub(crate) fn create_monomorph_func_env(&self, func_type: TypedFuncType) -> FuncEnv {
-        FuncEnv {
-            current_func: Some(func_type),
-            current_method: None,
-            current_object: None,
-            infer: None,
-        }
-    }
-
-    #[inline]
-    pub(crate) fn create_lambda_func_env(&self, func_type: TypedFuncType) -> FuncEnv {
-        FuncEnv {
-            current_func: Some(func_type),
-            current_method: None,
-            current_object: None,
-            infer: None,
+            infer: Some(InferCtx::new()),
         }
     }
 }

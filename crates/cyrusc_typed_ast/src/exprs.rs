@@ -17,7 +17,7 @@
 
 use crate::{
     VTableID,
-    decls::{DeclID, EnumDeclID, FuncDeclID, InterfaceDeclID, MonomorphID, StructDeclID, UnionDeclID},
+    decls::{DeclID, EnumDeclID, FuncDeclID, InterfaceDeclID, MethodDeclID, MonomorphID, StructDeclID, UnionDeclID},
     stmts::{TypedBlockStmt, TypedBuiltin, TypedFuncParams, TypedTypeArgs},
     types::{SemaType, TypedFuncType},
 };
@@ -268,6 +268,7 @@ pub enum TypedFieldAccessDispatch {
 pub struct TypedEnumInit {
     pub decl_id: DeclID,
     pub name: String,
+    pub type_args: TypedTypeArgs,
     pub args: TypedEnumInitArgs,
     pub loc: Loc,
 }
@@ -295,8 +296,8 @@ pub struct TypedMethodCall {
 #[derive(Debug, Clone, PartialEq)]
 pub enum TypedMethodCallDispatch {
     Unresolved,
-    Direct {
-        decl_id: FuncDeclID,
+    Normal {
+        method_decl_id: MethodDeclID,
         self_type: SemaType,
     },
     Interface {
@@ -306,7 +307,7 @@ pub enum TypedMethodCallDispatch {
         methods_len: usize,
     },
     Monomorph {
-        decl_id: FuncDeclID,
+        method_decl_id: MethodDeclID,
         monomorph_id: MonomorphID,
         self_type: SemaType,
     },
@@ -378,6 +379,14 @@ impl TypedExprStmt {
 }
 
 impl TypedExprKind {
+    #[inline]
+    pub fn as_type_expr(&self) -> Option<SemaType> {
+        match self {
+            TypedExprKind::SemaType(sema_type) => Some(sema_type.clone()),
+            _ => None,
+        }
+    }
+
     #[inline]
     pub fn is_dynamic(&self) -> bool {
         match self {

@@ -35,7 +35,7 @@ impl<'a> AnalysisContext<'a> {
             return None;
         };
 
-        let Some(union_decl_id) = named_type.decl_id.as_union() else {
+        let Some(union_decl_id) = named_type.type_decl_id.as_union() else {
             self.report_non_union_symbol(union_init.decl_id, union_init.loc);
             return None;
         };
@@ -74,7 +74,7 @@ impl<'a> AnalysisContext<'a> {
             union_init.type_args = final_type_args.clone();
 
             Some(SemaType::Named(NamedType {
-                decl_id: TypeDeclID::Union(union_decl_id),
+                type_decl_id: TypeDeclID::Union(union_decl_id),
                 type_args: final_type_args,
             }))
         })
@@ -145,7 +145,7 @@ impl<'a> AnalysisContext<'a> {
         union_value.union_decl_id = Some(union_decl_id);
 
         Some(SemaType::Named(NamedType {
-            decl_id: TypeDeclID::Union(union_decl_id),
+            type_decl_id: TypeDeclID::Union(union_decl_id),
             type_args: TypedTypeArgs::new(),
         }))
     }

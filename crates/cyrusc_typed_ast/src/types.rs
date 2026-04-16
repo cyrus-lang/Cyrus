@@ -19,6 +19,7 @@ use crate::decls::{DeclID, EnumDeclID, InterfaceDeclID, StructDeclID, TypedefDec
 use crate::exprs::{TypedExprStmt, TypedSelfType};
 use crate::stmts::{TypedFuncTypeParams, TypedFuncTypeVariadicParam, TypedTypeArg, TypedTypeArgs};
 use crate::{GenericParamID, SymbolID, VTableID};
+use cyrusc_ast::GenericInst;
 use cyrusc_source_loc::Loc;
 use cyrusc_tokens::TokenKind;
 use std::fmt;
@@ -58,7 +59,7 @@ pub enum UnresolvedType {
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct NamedType {
-    pub decl_id: TypeDeclID,
+    pub type_decl_id: TypeDeclID,
     pub type_args: TypedTypeArgs,
 }
 
@@ -229,6 +230,14 @@ impl UnresolvedType {
             UnresolvedType::Decl(decl_id) => Some(*decl_id),
         }
     }
+
+    #[inline]
+    pub fn base_decl_id(&self) -> Option<DeclID> {
+        match self {
+            UnresolvedType::GenericInst { base_decl_id, .. } => Some(*base_decl_id),
+            UnresolvedType::Decl(decl_id) => Some(*decl_id),
+        }
+    }
 }
 
 impl SemaType {
@@ -236,6 +245,14 @@ impl SemaType {
     pub fn as_unresolved_decl_id(&self) -> Option<DeclID> {
         match &self.const_inner() {
             SemaType::Unresolved(unresolved_type) => unresolved_type.as_decl_id(),
+            _ => None,
+        }
+    }
+
+    #[inline]
+    pub fn as_unresolved_base_decl_id(&self) -> Option<DeclID> {
+        match &self.const_inner() {
+            SemaType::Unresolved(unresolved_type) => unresolved_type.base_decl_id(),
             _ => None,
         }
     }
@@ -299,7 +316,7 @@ impl SemaType {
     #[inline]
     pub fn as_struct(&self) -> Option<StructDeclID> {
         match self.const_inner() {
-            SemaType::Named(named_type) => named_type.decl_id.as_struct(),
+            SemaType::Named(named_type) => named_type.type_decl_id.as_struct(),
             _ => None,
         }
     }
@@ -307,7 +324,7 @@ impl SemaType {
     #[inline]
     pub fn as_union(&self) -> Option<UnionDeclID> {
         match self.const_inner() {
-            SemaType::Named(named_type) => named_type.decl_id.as_union(),
+            SemaType::Named(named_type) => named_type.type_decl_id.as_union(),
             _ => None,
         }
     }
@@ -315,7 +332,7 @@ impl SemaType {
     #[inline]
     pub fn as_enum(&self) -> Option<EnumDeclID> {
         match self.const_inner() {
-            SemaType::Named(named_type) => named_type.decl_id.as_enum(),
+            SemaType::Named(named_type) => named_type.type_decl_id.as_enum(),
             _ => None,
         }
     }
@@ -323,7 +340,7 @@ impl SemaType {
     #[inline]
     pub fn as_interface(&self) -> Option<InterfaceDeclID> {
         match self.const_inner() {
-            SemaType::Named(named_type) => named_type.decl_id.as_interface(),
+            SemaType::Named(named_type) => named_type.type_decl_id.as_interface(),
             _ => None,
         }
     }
@@ -453,7 +470,7 @@ impl SemaType {
     #[inline]
     pub fn is_struct(&self) -> bool {
         match self.const_inner() {
-            SemaType::Named(named_type) => named_type.decl_id.is_struct(),
+            SemaType::Named(named_type) => named_type.type_decl_id.is_struct(),
             _ => false,
         }
     }
@@ -461,7 +478,7 @@ impl SemaType {
     #[inline]
     pub fn is_union(&self) -> bool {
         match self.const_inner() {
-            SemaType::Named(named_type) => named_type.decl_id.is_union(),
+            SemaType::Named(named_type) => named_type.type_decl_id.is_union(),
             _ => false,
         }
     }
@@ -469,7 +486,7 @@ impl SemaType {
     #[inline]
     pub fn is_enum(&self) -> bool {
         match self.const_inner() {
-            SemaType::Named(named_type) => named_type.decl_id.is_enum(),
+            SemaType::Named(named_type) => named_type.type_decl_id.is_enum(),
             _ => false,
         }
     }
@@ -477,7 +494,7 @@ impl SemaType {
     #[inline]
     pub fn is_interface(&self) -> bool {
         match self.const_inner() {
-            SemaType::Named(named_type) => named_type.decl_id.is_interface(),
+            SemaType::Named(named_type) => named_type.type_decl_id.is_interface(),
             _ => false,
         }
     }

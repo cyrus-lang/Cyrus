@@ -136,7 +136,7 @@ impl<'a> AnalysisContext<'a> {
             return false;
         }
 
-        match (named_type1.decl_id, named_type2.decl_id) {
+        match (named_type1.type_decl_id, named_type2.type_decl_id) {
             (TypeDeclID::Struct(id1), TypeDeclID::Struct(id2)) => {
                 let decl1 = self.decl_tables.struct_decl(id1);
                 let decl2 = self.decl_tables.struct_decl(id2);
@@ -435,7 +435,7 @@ impl<'a> AnalysisContext<'a> {
             // through the cast builtin implementation.
             //
             (SemaType::Named(named_type), SemaType::Plain(plain_type)) => {
-                let Some(enum_decl_id) = named_type.decl_id.as_enum() else {
+                let Some(enum_decl_id) = named_type.type_decl_id.as_enum() else {
                     return false;
                 };
 
@@ -470,7 +470,7 @@ impl<'a> AnalysisContext<'a> {
             if args.len() > final_args.len() {
                 let type_name = format_sema_type(
                     SemaType::Named(NamedType {
-                        decl_id: TypeDeclID::Typedef(typedef_decl_id),
+                        type_decl_id: TypeDeclID::Typedef(typedef_decl_id),
                         type_args: args.clone(),
                     }),
                     self.formatter,
@@ -535,7 +535,7 @@ impl<'a> AnalysisContext<'a> {
         match &ty {
             SemaType::InferVar(_) => ty,
             SemaType::Placeholder => ty,
-            SemaType::Named(named_type) => match &named_type.decl_id {
+            SemaType::Named(named_type) => match &named_type.type_decl_id {
                 TypeDeclID::Typedef(typedef_decl_id) => {
                     self.expand_typedef(*typedef_decl_id, &named_type.type_args, loc)
                 }
@@ -552,7 +552,7 @@ impl<'a> AnalysisContext<'a> {
                         .collect();
 
                     SemaType::Named(NamedType {
-                        decl_id: named_type.decl_id,
+                        type_decl_id: named_type.type_decl_id,
                         type_args,
                     })
                 }
@@ -724,7 +724,7 @@ impl<'a> AnalysisContext<'a> {
                         check_recursively(this, element, loc);
                     }
                 }
-                SemaType::SelfType(a) => {
+                SemaType::SelfType(_) => {
                     if this.func_env.current_object.is_none() {
                         this.reporter.report(Diag {
                             level: DiagLevel::Error,
@@ -824,7 +824,7 @@ impl<'a> AnalysisContext<'a> {
     }
 
     fn check_unexpected_type_args(&self, named_type: &NamedType, loc: Loc) -> bool {
-        let generic_params = match named_type.decl_id {
+        let generic_params = match named_type.type_decl_id {
             TypeDeclID::Struct(id) => self.decl_tables.struct_decl(id).generic_params,
             TypeDeclID::Enum(id) => self.decl_tables.enum_decl(id).generic_params,
             TypeDeclID::Union(id) => self.decl_tables.union_decl(id).generic_params,
@@ -850,7 +850,7 @@ impl<'a> AnalysisContext<'a> {
     fn check_missing_type_args(&self, named_type: &NamedType, loc: Loc) -> bool {
         let mut has_error = false;
 
-        let generic_params = match named_type.decl_id {
+        let generic_params = match named_type.type_decl_id {
             TypeDeclID::Struct(id) => self.decl_tables.struct_decl(id).generic_params,
             TypeDeclID::Enum(id) => self.decl_tables.enum_decl(id).generic_params,
             TypeDeclID::Union(id) => self.decl_tables.union_decl(id).generic_params,
@@ -916,7 +916,7 @@ impl<'a> AnalysisContext<'a> {
     fn check_unresolved_infer_vars(&self, named_type: &NamedType, loc: Loc) -> bool {
         let mut has_error = false;
 
-        let generic_params = match named_type.decl_id {
+        let generic_params = match named_type.type_decl_id {
             TypeDeclID::Struct(id) => self.decl_tables.struct_decl(id).generic_params,
             TypeDeclID::Enum(id) => self.decl_tables.enum_decl(id).generic_params,
             TypeDeclID::Union(id) => self.decl_tables.union_decl(id).generic_params,
