@@ -68,8 +68,10 @@ impl<'a> AnalysisContext<'a> {
 
         self.analyze_object_implements_interfaces(&object_name, &union_decl.impls, &union_decl.methods);
 
+        let object_type_decl_id = TypeDeclID::Union(union_decl_id);
+
         if !union_decl.is_generic() {
-            self.analyze_object_methods(&union_decl.methods);
+            self.analyze_object_methods(object_type_decl_id, &union_decl.methods);
         }
     }
 

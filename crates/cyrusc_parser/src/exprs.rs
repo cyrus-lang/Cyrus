@@ -45,6 +45,7 @@ impl<'source_file> Parser<'source_file> {
             }
 
             if self.peek_token_is(TokenKind::Dot) || self.peek_token_is(TokenKind::ThinArrow) {
+                self.next_token();
                 lhs = self.parse_field_access(lhs)?;
                 continue;
             }
@@ -380,19 +381,23 @@ impl<'source_file> Parser<'source_file> {
         // Case: Option<int>.Some(...) (Method or static member access)
         // We redirect to parse_field_access, passing the base expr and the
         // type arguments that qualify it.
-        else if self.peek_token_is(TokenKind::Dot) {
+        else if self.peek_token_is(TokenKind::Dot) || self.peek_token_is(TokenKind::ThinArrow) {
             if let ASTExpr::ModuleImport(module_import) = expr.clone() {
-                self.next_token(); // consume `>`
+                if !type_args.is_empty() {
+                    self.next_token(); // consume `>`
 
-                expr = ASTExpr::TypeSpecifier(TypeSpecifier::GenericInst(GenericInst {
-                    base: Box::new(TypeSpecifier::ModuleImport(module_import)),
-                    type_args,
-                    loc,
-                }));
+                    expr = ASTExpr::TypeSpecifier(TypeSpecifier::GenericInst(GenericInst {
+                        base: Box::new(TypeSpecifier::ModuleImport(module_import)),
+                        type_args,
+                        loc,
+                    }));
 
-                self.parse_field_access(expr)
+                    self.parse_field_access(expr)
+                } else {
+                    Ok(expr)
+                }
             } else {
-                return Err(self.error_invalid_token());
+                Ok(expr)
             }
         } else {
             // type args are given to the wrong expression

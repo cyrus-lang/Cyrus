@@ -27,7 +27,7 @@ use cyrusc_ast::{
 use cyrusc_source_loc::Loc;
 use cyrusc_typed_ast::{
     LabelID,
-    decls::{MonomorphID, VarDeclID},
+    decls::{MethodDecls, MonomorphID, VarDeclID},
 };
 use fx_hash::FxHashMap;
 use std::fmt::Debug;
@@ -51,9 +51,6 @@ pub enum CIRStmt {
     FuncDef(CIRFuncDefStmt),
     FuncDecl(CIRFuncDeclStmt),
     Block(CIRBlockStmt),
-    Struct(CIRStructStmt),
-    Enum(CIREnumStmt),
-    Union(CIRUnionStmt),
     Expr(CIRExpr),
     If(CIRIfStmt),
     For(CIRForStmt),
@@ -427,6 +424,10 @@ pub struct CIRStructStmt {
     pub fields: Vec<CIRType>,
     pub fields_info: Vec<(String, Loc)>,
     pub align: Option<usize>,
+
+    // only used in emit-cir-dump
+    pub methods: MethodDecls,
+
     pub modifiers: StructModifiers,
     pub loc: Loc,
 }
@@ -437,6 +438,10 @@ pub struct CIREnumStmt {
     pub variants: Vec<CIREnumVariant>,
     pub align: Option<usize>,
     pub tag_type: Option<Box<CIRType>>,
+
+    // only used in emit-cir-dump
+    pub methods: MethodDecls,
+
     pub modifiers: EnumModifiers,
     pub loc: Loc,
 }
@@ -461,6 +466,10 @@ pub struct CIRUnionStmt {
     pub fields: Vec<CIRType>,
     pub fields_info: Vec<(String, Loc)>,
     pub align: Option<usize>,
+
+    // only used in emit-cir-dump
+    pub methods: MethodDecls,
+
     pub modifiers: UnionModifiers,
     pub loc: Loc,
 }
@@ -625,9 +634,6 @@ impl CIRStmt {
             CIRStmt::FuncDef(func_def_stmt) => &func_def_stmt.loc,
             CIRStmt::FuncDecl(func_decl_stmt) => &func_decl_stmt.loc,
             CIRStmt::Block(block_stmt) => &block_stmt.loc,
-            CIRStmt::Struct(struct_stmt) => &struct_stmt.loc,
-            CIRStmt::Enum(enum_stmt) => &enum_stmt.loc,
-            CIRStmt::Union(union_stmt) => &union_stmt.loc,
             CIRStmt::Expr(expr) => &expr.loc,
             CIRStmt::If(if_stmt) => &if_stmt.loc,
             CIRStmt::For(for_stmt) => &for_stmt.loc,

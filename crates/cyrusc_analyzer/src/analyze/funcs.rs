@@ -122,29 +122,7 @@ impl<'a> AnalysisContext<'a> {
             }
         }
     }
-
-    /// Takes a cloned parameter list and returns a new list with
-    /// substituted, inference-resolved concrete types.
-    ///
-    /// Zero global mutation. Pure transformation.
-    pub(crate) fn update_param_variables_type(&mut self, mut params: TypedFuncParams) -> TypedFuncParams {
-        for param_kind in &mut params.list {
-            let var_decl_id = param_kind.var_decl_id().unwrap();
-
-            let original_type = self.decl_tables.var_decl(var_decl_id).ty.unwrap();
-
-            let mut sema_ty = self.substitute_type(&original_type);
-
-            if let Some(infer) = &self.func_env.infer {
-                sema_ty = infer.resolve(&sema_ty);
-            }
-
-            *param_kind.param_type_mut() = sema_ty;
-        }
-
-        params
-    }
-
+  
     pub(crate) fn validate_param_type(&mut self, sema_type: &SemaType, loc: Loc) {
         let sema_type = sema_type.const_inner();
 

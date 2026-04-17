@@ -16,15 +16,19 @@
  */
 
 use crate::context::AnalysisContext;
-use cyrusc_typed_ast::decls::{MethodDecl, MethodDeclID, MethodDecls};
+use cyrusc_typed_ast::{
+    decls::{MethodDecl, MethodDeclID, MethodDecls},
+    stmts::TypedTypeArgs,
+    types::{NamedType, SemaType, TypeDeclID},
+};
 
 impl<'a> AnalysisContext<'a> {
-    pub(crate) fn analyze_object_methods(&mut self, method_decls: &MethodDecls) {
+    pub(crate) fn analyze_object_methods(&mut self, object_type_decl_id: TypeDeclID, method_decls: &MethodDecls) {
         // pass 1: declarations
         for (_, method_decl_id) in method_decls.iter() {
             let mut method_decl = self.decl_tables.method_decl(*method_decl_id);
 
-            self.analyze_method_decl(&mut method_decl);
+            self.analyze_method_decl(object_type_decl_id, &mut method_decl);
 
             self.decl_tables.with_method_decl_mut(*method_decl_id, |_method_decl| {
                 *_method_decl = method_decl;
@@ -43,7 +47,18 @@ impl<'a> AnalysisContext<'a> {
         }
     }
 
-    pub(crate) fn analyze_method_decl(&mut self, method_decl: &mut MethodDecl) {
+    pub(crate) fn analyze_method_decl(&mut self, object_type_decl_id: TypeDeclID, method_decl: &mut MethodDecl) {
+        // If the method is non-generic, eagerly lower all SelfType occurrences
+        // to the concrete object type. Generic methods defer SelfType substitution
+        // to the call-site via the instantiated generic environment.
+        if !method_decl.func_decl.is_generic() {
+            let concrete_self_type = SemaType::Named(NamedType {
+                type_decl_id: object_type_decl_id,
+                type_args: TypedTypeArgs::new(),
+            });
+            self.substitute_self_type_in_func_decl(&mut method_decl.func_decl, &concrete_self_type);
+        }
+
         self.analyze_func_decl(&mut method_decl.func_decl);
 
         self.nameconv_check_method_name(&method_decl.func_decl.name, method_decl.func_decl.loc);

@@ -20,7 +20,7 @@ use cyrusc_diagcentral::{Diag, DiagLevel};
 use cyrusc_internal::monomorph::CallableTemplateID;
 use cyrusc_source_loc::Loc;
 use cyrusc_typed_ast::{
-    decls::{DeclID, FuncDecl, MethodDeclID, MethodDecls},
+    decls::{DeclID, FuncDecl, MethodDecl, MethodDeclID, MethodDecls},
     exprs::{
         TypedExprKind, TypedExprStmt, TypedFuncCall, TypedFuncCallDispatch, TypedMethodCall, TypedMethodCallDispatch,
     },
@@ -271,9 +271,9 @@ impl<'a> AnalysisContext<'a> {
         mut operand_type: SemaType,
         is_instance_method_call: bool,
     ) -> Option<SemaType> {
-        let Some(method_decl_id) = method_decls.get(&method_call.name) else {
-            let object_name = self.formatter.format_type_decl(type_decl_id);
+        let object_name = self.formatter.format_type_decl(type_decl_id);
 
+        let Some(method_decl_id) = method_decls.get(&method_call.name) else {
             self.reporter.report(Diag {
                 level: DiagLevel::Error,
                 kind: Box::new(AnalyzerDiagKind::ObjectMethodNotDefined {
@@ -332,6 +332,16 @@ impl<'a> AnalysisContext<'a> {
             ) {
                 return None;
             }
+
+            this.validate_method_call(
+                &operand_type,
+                &method_decl,
+                method_decls,
+                &object_name,
+                method_call.is_fat_arrow,
+                false,
+                method_call.loc,
+            );
 
             // generic static method
             if is_static_generic_method_call {
@@ -467,34 +477,29 @@ impl<'a> AnalysisContext<'a> {
     /// Validates method call visibility, accessibility, and pointer semantics.
     fn validate_method_call(
         &mut self,
-        operand_ty: &SemaType,
-        method_decl: &FuncDecl,
+        operand_type: &SemaType,
+        method_decl: &MethodDecl,
         method_decls: &MethodDecls,
-        method_name: &str,
         object_name: &str,
         is_fat_arrow: bool,
-        method_call_on_interface: bool,
+        is_interface_method_call: bool,
         loc: Loc,
     ) {
-        // ------------------------------------------------------------
-        // 1️⃣ Visibility check (modern style — mirrors field access)
-        // ------------------------------------------------------------
-
         let access_violation = if let Some(current_method_id) = self.func_env.current_method {
             if method_decls.contains_method_id(current_method_id) {
                 false
             } else {
-                !method_decl.modifiers.vis.is_public() && !method_call_on_interface
+                !method_decl.func_decl.modifiers.vis.is_public() && !is_interface_method_call
             }
         } else {
-            !method_decl.modifiers.vis.is_public() && !method_call_on_interface
+            !method_decl.func_decl.modifiers.vis.is_public() && !is_interface_method_call
         };
 
         if access_violation {
             self.reporter.report(Diag {
                 level: DiagLevel::Error,
                 kind: Box::new(AnalyzerDiagKind::InternalMethodCall {
-                    method_name: method_name.to_string(),
+                    method_name: method_decl.func_decl.name.to_string(),
                     object_name: object_name.to_string(),
                 }),
                 loc: Some(loc),
@@ -502,12 +507,12 @@ impl<'a> AnalysisContext<'a> {
             });
         }
 
-        let base_type = operand_ty.const_inner();
+        let base_type = operand_type.const_inner();
 
         let is_pointer = base_type.is_pointer();
 
         let is_object =
-            base_type.is_struct() || base_type.is_union() || base_type.is_enum() || method_call_on_interface;
+            base_type.is_struct() || base_type.is_union() || base_type.is_enum() || is_interface_method_call;
 
         if is_fat_arrow {
             if !is_pointer {

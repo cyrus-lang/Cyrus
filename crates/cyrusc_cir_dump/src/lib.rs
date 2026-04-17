@@ -77,9 +77,6 @@ impl<'a> CIRPrinter<'a> {
             CIRStmt::FuncDef(func_def_stmt) => self.print_func_def(func_def_stmt),
             CIRStmt::FuncDecl(func_decl_stmt) => self.print_func_decl(func_decl_stmt),
             CIRStmt::Block(block) => self.print_block(block),
-            CIRStmt::Struct(struct_stmt) => self.print_struct(struct_stmt),
-            CIRStmt::Enum(enum_stmt) => self.print_enum(enum_stmt),
-            CIRStmt::Union(union_stmt) => self.print_union(union_stmt),
             CIRStmt::Expr(expr) => {
                 let expr_str = self.print_expr(expr);
 
@@ -114,60 +111,6 @@ impl<'a> CIRPrinter<'a> {
             CIRStmt::Continue(_) => self.push_line("continue"),
             CIRStmt::Break(_) => self.push_line("break"),
         }
-    }
-
-    fn print_union(&mut self, union_stmt: &CIRUnionStmt) {
-        self.push_line(format!("union {} {{", union_stmt.name));
-        self.indent();
-
-        for (idx, (fname, _loc)) in union_stmt.fields_info.iter().enumerate() {
-            let field_type = self.print_type(&union_stmt.fields[idx]);
-
-            self.push_line(format!("{fname}: {field_type}"));
-        }
-
-        self.dedent();
-        self.push_line("}");
-    }
-
-    fn print_enum(&mut self, e: &CIREnumStmt) {
-        self.push_line(format!("enum {} {{", e.name));
-        self.indent();
-
-        for variant in &e.variants {
-            match variant {
-                CIREnumVariant::Unit(name) => {
-                    self.push_line(name.clone());
-                }
-
-                CIREnumVariant::Valued(name, expr) => {
-                    let v = self.print_expr(expr);
-                    self.push_line(format!("{name} = {v}"));
-                }
-
-                CIREnumVariant::Tuple(name, types) => {
-                    let list = types.iter().map(|t| self.print_type(t)).collect::<Vec<_>>().join(", ");
-
-                    self.push_line(format!("{name}({list})"));
-                }
-            }
-        }
-
-        self.dedent();
-        self.push_line("}");
-    }
-
-    fn print_struct(&mut self, s: &CIRStructStmt) {
-        self.push_line(format!("struct {} {{", s.name));
-        self.indent();
-
-        for (idx, (fname, _loc)) in s.fields_info.iter().enumerate() {
-            let field_type = self.print_type(&s.fields[idx]);
-            self.push_line(format!("{fname}: {field_type}"));
-        }
-
-        self.dedent();
-        self.push_line("}");
     }
 
     fn print_for(&mut self, s: &CIRForStmt) {

@@ -20,7 +20,7 @@ use cyrusc_diagcentral::{Diag, DiagLevel};
 use cyrusc_source_loc::Loc;
 use cyrusc_typed_ast::{
     GenericParamID,
-    stmts::{TypedFuncParamKind, TypedFuncParams, TypedGenericParams, TypedTypeArg, TypedTypeArgs},
+    stmts::{TypedGenericParams, TypedTypeArg, TypedTypeArgs},
     types::{SemaType, TypeDeclID},
 };
 
@@ -205,56 +205,5 @@ impl<'a> AnalysisContext<'a> {
         }
 
         Some(generic_env)
-    }
-}
-
-impl<'a> AnalysisContext<'a> {
-    pub(crate) fn substitute_type(&self, ty: &SemaType) -> SemaType {
-        let mut result = ty.clone();
-
-        for generic_env in self.generic_env_stack.iter().rev() {
-            if result.is_self_type() {
-                if let Some(object_type) = &self.func_env.current_object {
-                    result = generic_env.substitute_sema_type(&object_type);
-                    continue;
-                }
-            }
-
-            result = generic_env.substitute_sema_type(&result);
-        }
-
-        result
-    }
-
-    pub(crate) fn substitute_func_params(&self, mut params: TypedFuncParams) -> TypedFuncParams {
-        params.list.iter_mut().for_each(|param_kind| match param_kind {
-            TypedFuncParamKind::FuncParam(func_param) => {
-                func_param.ty = self.substitute_type(&func_param.ty);
-
-                if let Some(infer) = &self.func_env.infer {
-                    func_param.ty = infer.resolve(&func_param.ty);
-                }
-            }
-            TypedFuncParamKind::SelfModifier(self_modifier) => {
-                self_modifier.ty = self.substitute_type(&self_modifier.ty);
-
-                if let Some(infer) = &self.func_env.infer {
-                    self_modifier.ty = infer.resolve(&self_modifier.ty);
-                }
-            }
-        });
-
-        params
-    }
-
-    #[inline]
-    pub(crate) fn substitute_ret_type(&mut self, ty: &SemaType) -> SemaType {
-        let ret_type = self.substitute_type(&ty);
-
-        if let Some(infer) = &mut self.func_env.infer {
-            infer.resolve(&ret_type)
-        } else {
-            ret_type
-        }
     }
 }

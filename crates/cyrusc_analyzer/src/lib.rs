@@ -26,5 +26,6 @@ pub(crate) mod lower;
 pub(crate) mod monomorph;
 pub(crate) mod normalizer;
 pub(crate) mod resolve;
+pub(crate) mod substitute;
 pub(crate) mod typecheck;
 pub(crate) mod types;

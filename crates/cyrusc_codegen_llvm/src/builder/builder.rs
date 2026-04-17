@@ -32,10 +32,7 @@ use crate::{
 };
 use cyrusc_internal::{
     abi::{args::ABIFunctionInfo, target::ABITarget},
-    cir::cir::{
-        CIRBlockStmt, CIRModule, CIRStmt, cir_enum_as_enum_type, cir_func_decl_as_func_type, cir_func_def_as_decl,
-        cir_struct_as_struct_type, cir_union_as_union_type,
-    },
+    cir::cir::{CIRBlockStmt, CIRModule, CIRStmt, cir_func_decl_as_func_type, cir_func_def_as_decl},
 };
 use cyrusc_tui_utils::tui_compiled;
 use cyrusc_typed_ast::LabelID;
@@ -160,15 +157,6 @@ impl<'ll> CodeGenIRBuilder<'ll> {
                 // only emitted when used.
             }
             CIRStmt::Block(block_stmt) => self.emit_scope_block(block_stmt),
-            CIRStmt::Struct(struct_stmt) => {
-                self.emit_struct_ty(cir_struct_as_struct_type(struct_stmt));
-            }
-            CIRStmt::Enum(enum_stmt) => {
-                self.emit_enum_ty(cir_enum_as_enum_type(enum_stmt));
-            }
-            CIRStmt::Union(union_stmt) => {
-                self.emit_union_ty(cir_union_as_union_type(union_stmt));
-            }
             CIRStmt::Expr(expr) => {
                 self.emit_expr(expr);
             }

@@ -30,8 +30,10 @@ impl<'a> AnalysisContext<'a> {
     pub(crate) fn analyze_field_access(&mut self, field_access: &mut TypedFieldAccess) -> Option<SemaType> {
         let operand_type = self.analyze_expr(&mut field_access.operand, None)?;
 
-        if let Some(struct_decl_id) = operand_type.as_struct() {
-            let type_args = &operand_type.as_named_type().unwrap().type_args;
+        let pure_operand_type = operand_type.const_inner().pointer_inner().clone();
+
+        if let Some(struct_decl_id) = pure_operand_type.as_struct() {
+            let type_args = &pure_operand_type.as_named_type().unwrap().type_args;
 
             let struct_decl = self.decl_tables.struct_decl(struct_decl_id);
 
@@ -68,7 +70,7 @@ impl<'a> AnalysisContext<'a> {
             };
 
             Some(field_type)
-        } else if let Some(union_decl_id) = operand_type.as_union() {
+        } else if let Some(union_decl_id) = pure_operand_type.as_union() {
             let union_decl = self.decl_tables.union_decl(union_decl_id);
 
             let union_name = format_union_decl(&union_decl, self.formatter);

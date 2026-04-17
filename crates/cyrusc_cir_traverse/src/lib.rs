@@ -16,6 +16,8 @@
  */
 
 use cyrusc_ast::abi::CallConv;
+use cyrusc_internal::abi::mangler::ABINameMangler;
+use cyrusc_internal::abi::mangler::CYRUS_ABI;
 use cyrusc_internal::abi::mangler::mangle_func;
 use cyrusc_internal::abi::mangler::mangle_global_var;
 use cyrusc_internal::abi::mangler::mangle_monomorphized_func;
@@ -107,7 +109,7 @@ impl<'a> CIRTraverse<'a> {
         match stmt {
             TypedStmt::FuncDef(func_def) => {
                 if func_def.is_generic() {
-                    lowered_stmts.extend(self.lower_monomorphized_func_defs(func_def.func_decl_id));
+                    lowered_stmts.extend(self.lower_monomorphized_func_def(func_def.func_decl_id));
                 } else {
                     lowered_stmts.push(CIRStmt::FuncDef(self.lower_func_def(func_def, true)))
                 }
@@ -162,19 +164,19 @@ impl<'a> CIRTraverse<'a> {
                 lowered_stmts.push(CIRStmt::Expr(self.lower_expr(expr)));
             }
             TypedStmt::Struct(struct_stmt) => {
-                if struct_stmt.is_generic() {
+                if !struct_stmt.is_generic() {
                     let stmts = self.lower_non_generic_methods(&struct_stmt.name, &struct_stmt.methods);
                     lowered_stmts.extend(stmts);
                 }
             }
             TypedStmt::Enum(enum_stmt) => {
-                if enum_stmt.is_generic() {
+                if !enum_stmt.is_generic() {
                     let stmts = self.lower_non_generic_methods(&enum_stmt.name, &enum_stmt.methods);
                     lowered_stmts.extend(stmts);
                 }
             }
             TypedStmt::Union(union_stmt) => {
-                if union_stmt.is_generic() {
+                if !union_stmt.is_generic() {
                     let stmts = self.lower_non_generic_methods(&union_stmt.name, &union_stmt.methods);
                     lowered_stmts.extend(stmts);
                 }
@@ -474,7 +476,7 @@ impl<'a> CIRTraverse<'a> {
         }
     }
 
-    fn lower_monomorphized_func_defs(&mut self, func_decl_id: FuncDeclID) -> Vec<CIRStmt> {
+    fn lower_monomorphized_func_def(&mut self, func_decl_id: FuncDeclID) -> Vec<CIRStmt> {
         let mut stmts = Vec::new();
 
         let func_decl = self.decl_tables.func_decl(func_decl_id);
@@ -521,6 +523,10 @@ impl<'a> CIRTraverse<'a> {
         }
 
         stmts
+    }
+
+    fn lower_monomorphized_methods_def(&mut self, method_decl_id: MethodDeclID) -> Vec<CIRStmt> {
+        todo!();
     }
 
     fn lower_func_def(&mut self, func_def: &TypedFuncDefStmt, mangle_name: bool) -> CIRFuncDefStmt {
@@ -863,45 +869,60 @@ impl<'a> CIRTraverse<'a> {
         }
     }
 
-    // FIXME
     fn lower_non_generic_methods(&mut self, object_name: &String, methods: &MethodDecls) -> Vec<CIRStmt> {
-        // todo!();
-        Vec::new()
+        let mut stmts: Vec<CIRStmt> = Vec::new();
 
-        // let mut stmts: Vec<CIRStmt> = Vec::new();
+        for (_, &method_decl_id) in methods.iter() {
+            let method_decl = self.decl_tables.method_decl(method_decl_id);
 
-        // for method_id in methods.values().cloned() {
-        //     let method_decl_id = self.query.get_method(method_id).unwrap();
-        //     let method_decl = self.decl_tables.method_decl(method_decl_id);
+            let method_def = self.lower_method(method_decl_id, &method_decl, &object_name).unwrap();
 
-        //     let lowered_method = self.lower_method(&method_decl, object_name).unwrap();
-        //     stmts.push(lowered_method);
-        // }
+            stmts.push(method_def);
+        }
 
-        // stmts
+        stmts
     }
 
-    // FIXME
-    fn lower_method(&mut self, method_decl: &MethodDecl, object_name: &String) -> Option<CIRStmt> {
-        todo!();
+    fn lower_method(
+        &mut self,
+        method_decl_id: MethodDeclID,
+        method_decl: &MethodDecl,
+        object_name: &String,
+    ) -> Option<CIRStmt> {
+        let body_id = method_decl.body.unwrap();
 
-        // let mangled_name = DEFAULT_ABI.method_name(&self.module_name, object_name, &resolved_method.func_decl.name);
+        let params = self.lower_func_params(&method_decl.func_decl.params, false);
 
-        // // skip if has no body
-        // let func_body = resolved_method.func_body.clone()?;
+        let body = {
+            // FIXME: Handle monomorphized body if method is generic.
+            let method_body = self.decl_tables.body(body_id);
 
-        // let func_def = TypedFuncDefStmt {
-        //     symbol_id: resolved_method.symbol_id,
-        //     name: mangled_name,
-        //     params: resolved_method.func_decl.params.clone(),
-        //     generic_params: resolved_method.func_decl.generic_params.clone(),
-        //     body: func_body,
-        //     ret_type: resolved_method.func_decl.ret_type.clone(),
-        //     modifiers: resolved_method.func_decl.modifiers.clone(),
-        //     loc: resolved_method.func_decl.loc,
-        // };
+            self.lower_body(&method_body)
+        };
 
-        // Some(self.lower_func_def(&func_def, false))
+        let ret_type = self.lower_sema_type(&method_decl.func_decl.ret_type);
+
+        let irv_id = self.new_ir_value_id();
+
+        self.decl_to_ir_value_map.insert(DeclID::Method(method_decl_id), irv_id);
+
+        let mangled_name = CYRUS_ABI.method_name(&self.module_name, object_name, &method_decl.func_decl.name);
+
+        let mut cir_func_def = CIRFuncDefStmt {
+            irv_id,
+            name: mangled_name,
+            body: Box::new(body),
+            params,
+            ret_type,
+            modifiers: method_decl.func_decl.modifiers.clone(),
+            abi_func_info: None,
+            loc: method_decl.func_decl.loc,
+        };
+
+        let cir_func_type = cir_func_decl_as_func_type(&cir_func_def_as_decl(&cir_func_def));
+        cir_func_def.abi_func_info = Some(self.target.target_abi.classify_func(&cir_func_type).unwrap());
+
+        Some(CIRStmt::FuncDef(cir_func_def))
     }
 
     // FIXME
