@@ -22,7 +22,7 @@ use crate::{
         TypedBlockStmt, TypedEnumVariant, TypedFuncParams, TypedGenericParams, TypedImplementInterface,
         TypedStructField, TypedUnionField,
     },
-    types::{SemaType, TypedFuncType},
+    types::{SemaType, TypeDeclID, TypedFuncType},
 };
 use cyrusc_ast::{
     abi::{ReprKind, Visibility},
@@ -210,6 +210,13 @@ impl EnumDecl {
     }
 }
 
+impl MethodDecl {
+    #[inline]
+    pub fn is_instance_method(&self) -> bool {
+        self.func_decl.params.is_instance_method()
+    }
+}
+
 impl MethodDecls {
     pub fn new() -> Self {
         Self(HashMap::new())
@@ -310,6 +317,21 @@ impl FuncDecl {
             ret_type: Box::new(self.ret_type.clone()),
             is_public,
             loc: self.loc,
+        }
+    }
+}
+
+impl DeclID {
+    #[inline]
+    pub fn as_type_decl_id(&self) -> Option<TypeDeclID> {
+        match self {
+            DeclID::Struct(id) => Some(TypeDeclID::Struct(*id)),
+            DeclID::Enum(id) => Some(TypeDeclID::Enum(*id)),
+            DeclID::Union(id) => Some(TypeDeclID::Union(*id)),
+            DeclID::Interface(id) => Some(TypeDeclID::Interface(*id)),
+            DeclID::Typedef(id) => Some(TypeDeclID::Typedef(*id)),
+
+            DeclID::Func(_) | DeclID::Method(_) | DeclID::GlobalVar(_) | DeclID::Var(_) => None,
         }
     }
 }

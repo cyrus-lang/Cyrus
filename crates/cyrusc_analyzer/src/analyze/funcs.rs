@@ -21,7 +21,7 @@ use cyrusc_internal::flow_state::FlowState;
 use cyrusc_source_loc::Loc;
 use cyrusc_typed_ast::{
     decls::FuncDecl,
-    stmts::{TypedBlockStmt, TypedFuncDeclStmt, TypedFuncDefStmt, TypedFuncParams},
+    stmts::{TypedBlockStmt, TypedFuncDeclStmt, TypedFuncDefStmt},
     types::SemaType,
 };
 
@@ -122,7 +122,7 @@ impl<'a> AnalysisContext<'a> {
             }
         }
     }
-  
+
     pub(crate) fn validate_param_type(&mut self, sema_type: &SemaType, loc: Loc) {
         let sema_type = sema_type.const_inner();
 

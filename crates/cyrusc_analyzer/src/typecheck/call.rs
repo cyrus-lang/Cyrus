@@ -187,29 +187,67 @@ impl<'a> AnalysisContext<'a> {
 // Methods.
 impl<'a> AnalysisContext<'a> {
     pub(crate) fn analyze_method_call(&mut self, method_call: &mut TypedMethodCall) -> Option<SemaType> {
-        let is_operand_instance = self.is_method_call_operand_instance(&method_call.operand);
+        self.analyze_expr_non_terminal(&mut method_call.operand, None);
 
         self.normalize_type_args(&mut method_call.type_args);
 
+        let mut is_operand_instance = false;
+
+        // `method_call.operand.sema_type` is only present when operand is a generic inst;
+        // we need to extract the decl_id manually if method call used without type args,
+        // which means `method_call.operand.kind` would be a `TypedSymbolExpr`.
+        let operand_type = match method_call.operand.sema_type.clone().or({
+            if let Some(decl_id) = method_call.operand.kind.as_decl_id() {
+                if let Some(type_decl_id) = decl_id.as_type_decl_id() {
+                    // type_decl means it's operand of a static method call.
+                    is_operand_instance = false;
+
+                    Some(SemaType::Named(NamedType {
+                        type_decl_id,
+                        type_args: TypedTypeArgs::new(),
+                    }))
+                } else {
+                    is_operand_instance = true;
+
+                    if decl_id.is_var_or_global_var() {
+                        // extract variable type as use it as operand type for instance method calls.
+                        Some(self.resolve_symbol_type(decl_id, method_call.loc)?)
+                    } else {
+                        None
+                    }
+                }
+            } else {
+                None
+            }
+        }) {
+            Some(ty) => ty,
+            None => {
+                self.reporter.report(Diag {
+                    level: DiagLevel::Error,
+                    kind: Box::new(AnalyzerDiagKind::ObjectNotSupportsFields),
+                    loc: Some(method_call.loc),
+                    hint: None,
+                });
+                return None;
+            }
+        };
+
         if is_operand_instance {
-            self.analyze_instance_method_call(method_call)
+            self.analyze_instance_method_call(method_call, &operand_type)
         } else {
-            self.analyze_static_method_call(method_call)
+            self.analyze_static_method_call(method_call, &operand_type)
         }
     }
 
-    fn analyze_instance_method_call(&mut self, method_call: &mut TypedMethodCall) -> Option<SemaType> {
-        let operand_type = self.analyze_expr(&mut method_call.operand, None)?;
-
-        let Some((type_decl_id, method_decls)) = self
-            .normalize_sema_type(method_call.operand.kind.as_type_expr().unwrap(), method_call.loc)
-            .and_then(|sema_type| {
-                sema_type.as_named_type().and_then(|named_type| {
-                    self.methods_decl_of_named_type(named_type)
-                        .map(|method_decls| (named_type.type_decl_id, method_decls))
-                })
-            })
-        else {
+    fn analyze_instance_method_call(
+        &mut self,
+        method_call: &mut TypedMethodCall,
+        operand_type: &SemaType,
+    ) -> Option<SemaType> {
+        let Some((type_decl_id, method_decls)) = operand_type.as_named_type().and_then(|named_type| {
+            self.methods_decl_of_named_type(named_type)
+                .map(|method_decls| (named_type.type_decl_id, method_decls))
+        }) else {
             self.reporter.report(Diag {
                 level: DiagLevel::Error,
                 kind: Box::new(AnalyzerDiagKind::ObjectNotSupportsFields),
@@ -219,24 +257,20 @@ impl<'a> AnalysisContext<'a> {
             return None;
         };
 
-        // insert instance value to args
-        method_call.args.insert(0, *method_call.operand.clone());
+        self.analyze_expr(&mut method_call.operand, None);
 
-        self.analyze_method_call_internal(method_call, &method_decls, type_decl_id, operand_type, true)
+        self.analyze_method_call_internal(method_call, &method_decls, type_decl_id, operand_type.clone(), true)
     }
 
-    fn analyze_static_method_call(&mut self, method_call: &mut TypedMethodCall) -> Option<SemaType> {
-        let operand_type = self.normalize_sema_type(method_call.operand.sema_type.clone().unwrap(), method_call.loc)?;
-
-        let Some((type_decl_id, method_decls)) = self
-            .normalize_sema_type(method_call.operand.kind.as_type_expr().unwrap(), method_call.loc)
-            .and_then(|sema_type| {
-                sema_type.as_named_type().and_then(|named_type| {
-                    self.methods_decl_of_named_type(named_type)
-                        .map(|method_decls| (named_type.type_decl_id, method_decls))
-                })
-            })
-        else {
+    fn analyze_static_method_call(
+        &mut self,
+        method_call: &mut TypedMethodCall,
+        operand_type: &SemaType,
+    ) -> Option<SemaType> {
+        let Some((type_decl_id, method_decls)) = operand_type.as_named_type().and_then(|named_type| {
+            self.methods_decl_of_named_type(named_type)
+                .map(|method_decls| (named_type.type_decl_id, method_decls))
+        }) else {
             self.reporter.report(Diag {
                 level: DiagLevel::Error,
                 kind: Box::new(AnalyzerDiagKind::ObjectNotSupportsFields),
@@ -257,10 +291,9 @@ impl<'a> AnalysisContext<'a> {
             return None;
         }
 
-        // REVIEW:
-        // validate_type_arity is required for operand_type before we get dive into method's own generic env??
+        self.check_type_arity(operand_type.clone(), method_call.loc)?;
 
-        self.analyze_method_call_internal(method_call, &method_decls, type_decl_id, operand_type, false)
+        self.analyze_method_call_internal(method_call, &method_decls, type_decl_id, operand_type.clone(), false)
     }
 
     fn analyze_method_call_internal(
@@ -427,10 +460,7 @@ impl<'a> AnalysisContext<'a> {
             // normal static method
             else {
                 method_call.operand.sema_type = Some(operand_type.clone());
-                method_call.dispatch = TypedMethodCallDispatch::Normal {
-                    method_decl_id,
-                    self_type: operand_type.clone(),
-                };
+                method_call.dispatch = TypedMethodCallDispatch::Normal { method_decl_id };
 
                 Some(method_decl.func_decl.ret_type.clone())
             }
@@ -439,18 +469,6 @@ impl<'a> AnalysisContext<'a> {
 }
 
 impl<'a> AnalysisContext<'a> {
-    /// Returns true if the operand to a method call is a value (instance), not a type.
-    fn is_method_call_operand_instance(&self, operand: &TypedExprStmt) -> bool {
-        operand
-            .kind
-            .as_type_expr()
-            .and_then(|ty| {
-                ty.as_unresolved_base_decl_id()
-                    .map(|decl_id| decl_id.is_var_or_global_var())
-            })
-            .unwrap_or(false)
-    }
-
     fn methods_decl_of_named_type(&self, named_type: &NamedType) -> Option<MethodDecls> {
         match named_type.type_decl_id {
             TypeDeclID::Struct(struct_decl_id) => {

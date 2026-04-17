@@ -18,7 +18,7 @@
 use crate::context::AnalysisContext;
 use cyrusc_typed_ast::{
     decls::{MethodDecl, MethodDeclID, MethodDecls},
-    stmts::TypedTypeArgs,
+    stmts::{TypedFuncParamKind, TypedTypeArgs},
     types::{NamedType, SemaType, TypeDeclID},
 };
 
@@ -56,7 +56,8 @@ impl<'a> AnalysisContext<'a> {
                 type_decl_id: object_type_decl_id,
                 type_args: TypedTypeArgs::new(),
             });
-            self.substitute_self_type_in_func_decl(&mut method_decl.func_decl, &concrete_self_type);
+
+            self.apply_self_type_in_method_decl_and_variable(method_decl, &concrete_self_type);
         }
 
         self.analyze_func_decl(&mut method_decl.func_decl);
@@ -80,5 +81,44 @@ impl<'a> AnalysisContext<'a> {
                 *_body = body;
             });
         });
+    }
+
+    fn apply_self_type_in_method_decl_and_variable(
+        &mut self,
+        method_decl: &mut MethodDecl,
+        concrete_self_type: &SemaType,
+    ) {
+        for param_kind in method_decl.func_decl.params.list.iter_mut() {
+            match param_kind {
+                TypedFuncParamKind::FuncParam(func_param) => {
+                    func_param.ty = self.substitute_self_type(func_param.ty.clone(), concrete_self_type);
+
+                    if let Some(infer) = &self.func_env.infer {
+                        func_param.ty = infer.resolve(&func_param.ty);
+                    }
+                }
+                TypedFuncParamKind::SelfModifier(self_modifier) => {
+                    self_modifier.ty = self.substitute_self_type(self_modifier.ty.clone(), concrete_self_type);
+
+                    if let Some(infer) = &self.func_env.infer {
+                        self_modifier.ty = infer.resolve(&self_modifier.ty);
+                    }
+
+                    self.decl_tables
+                        .with_var_decl_mut(self_modifier.var_decl_id.unwrap(), |_var_decl| {
+                            _var_decl.ty = Some(self_modifier.ty.clone());
+                        });
+                }
+            }
+        }
+
+        let mut substituted_ret_type =
+            self.substitute_self_type(method_decl.func_decl.ret_type.clone(), concrete_self_type);
+
+        if let Some(infer) = &self.func_env.infer {
+            substituted_ret_type = infer.resolve(&substituted_ret_type);
+        }
+
+        method_decl.func_decl.ret_type = substituted_ret_type;
     }
 }

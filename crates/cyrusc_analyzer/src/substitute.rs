@@ -17,7 +17,6 @@
 
 use crate::context::AnalysisContext;
 use cyrusc_typed_ast::{
-    decls::FuncDecl,
     stmts::{TypedFuncParamKind, TypedFuncParams, TypedFuncTypeParams, TypedFuncTypeVariadicParam, TypedTypeArg},
     types::{NamedType, SemaType, TypedArrayType, TypedFuncType, TypedTupleType},
 };
@@ -70,40 +69,6 @@ impl<'a> AnalysisContext<'a> {
         } else {
             ret_type
         }
-    }
-
-    pub(crate) fn substitute_self_type_in_func_decl(
-        &mut self,
-        func_decl: &mut FuncDecl,
-        concrete_self_type: &SemaType,
-    ) {
-        for param_kind in func_decl.params.list.iter_mut() {
-            match param_kind {
-                TypedFuncParamKind::FuncParam(func_param) => {
-                    func_param.ty = self.substitute_self_type(func_param.ty.clone(), concrete_self_type);
-
-                    if let Some(infer) = &self.func_env.infer {
-                        func_param.ty = infer.resolve(&func_param.ty);
-                    }
-                }
-
-                TypedFuncParamKind::SelfModifier(self_param) => {
-                    self_param.ty = self.substitute_self_type(self_param.ty.clone(), concrete_self_type);
-
-                    if let Some(infer) = &self.func_env.infer {
-                        self_param.ty = infer.resolve(&self_param.ty);
-                    }
-                }
-            }
-        }
-
-        let substituted_ret_type = self.substitute_self_type(func_decl.ret_type.clone(), concrete_self_type);
-
-        func_decl.ret_type = if let Some(infer) = &self.func_env.infer {
-            infer.resolve(&substituted_ret_type)
-        } else {
-            substituted_ret_type
-        };
     }
 
     pub fn substitute_self_type(&mut self, mut sema_type: SemaType, self_type: &SemaType) -> SemaType {

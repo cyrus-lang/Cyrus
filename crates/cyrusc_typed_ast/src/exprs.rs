@@ -298,7 +298,6 @@ pub enum TypedMethodCallDispatch {
     Unresolved,
     Normal {
         method_decl_id: MethodDeclID,
-        self_type: SemaType,
     },
     Interface {
         decl_id: InterfaceDeclID,
