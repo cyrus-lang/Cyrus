@@ -109,6 +109,9 @@ pub enum AnalyzerDiagKind {
     #[error("Type arguments supplied to non-generic type '{type_name}'.")]
     UnexpectedTypeArgs { type_name: String },
 
+    #[error("Generic static method type arguments must be applied to the operand, not the method.")]
+    GenericStaticMethodWrongTypeArgs,
+
     #[error("Could not resolve type for generic parameter '{param_name}'.")]
     UnresolvedGenericParameter { param_name: String },
 

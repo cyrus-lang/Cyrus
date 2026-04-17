@@ -281,7 +281,7 @@ pub struct TypedIfStmt {
 
 #[derive(Debug, Clone)]
 pub struct TypedFuncDefStmt {
-    pub func_decl_id: FuncDeclID,
+    pub func_decl_id: Option<FuncDeclID>,
     pub name: String,
     pub params: TypedFuncParams,
     pub generic_params: TypedGenericParams,
@@ -653,12 +653,21 @@ impl TypedBlockStmt {
 }
 
 impl TypedFuncParams {
+    #[inline]
     pub fn is_instance_method(&self) -> bool {
         if let Some(param) = self.list.first() {
             param.as_self_modifier().is_some()
         } else {
             false
         }
+    }
+
+    #[inline]
+    pub fn get_self_modifier(&self) -> Option<&TypedSelfModifier> {
+        self.list.first().and_then(|param_kind| match param_kind {
+            TypedFuncParamKind::SelfModifier(self_modifier) => Some(self_modifier),
+            TypedFuncParamKind::FuncParam(_) => None,
+        })
     }
 }
 

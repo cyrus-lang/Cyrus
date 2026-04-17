@@ -27,7 +27,7 @@ use cyrusc_ast::{
 use cyrusc_source_loc::Loc;
 use cyrusc_typed_ast::{
     LabelID,
-    decls::{MethodDecls, MonomorphID, VarDeclID},
+    decls::{MethodDecls, VarDeclID},
 };
 use fx_hash::FxHashMap;
 use std::fmt::Debug;
@@ -140,10 +140,6 @@ pub enum CIRCallDispatch {
         method_idx: usize,
         methods_len: usize,
         func_type: CIRFuncType,
-    },
-    Monomorph {
-        irv_id: IRValueID,
-        monomorph_id: MonomorphID,
     },
 }
 

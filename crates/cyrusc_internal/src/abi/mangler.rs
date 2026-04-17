@@ -73,12 +73,7 @@ impl ABINameMangler for Cyrus_ABI_Impl {
     }
 
     fn method_name(&self, module_name: &str, object_name: &str, method_name: &str) -> String {
-        format!(
-            "{}${}.{}",
-            Self::sanitize(module_name),
-            Self::sanitize(object_name),
-            Self::sanitize(method_name)
-        )
+        format!("{}${}.{}", module_name, object_name, method_name)
     }
 
     fn global_var_name(&self, module_name: &str, var_name: &str) -> String {
@@ -145,6 +140,23 @@ pub fn mangle_monomorphized_func(
     type_args: &TypedTypeArgs,
 ) -> String {
     let base = mangle_func(modifiers, module_name, name);
+
+    if type_args.is_empty() {
+        return base;
+    }
+
+    let type_args = mangle_type_args(type_args);
+
+    format!("{base}<{type_args}>")
+}
+
+pub fn mangle_monomorphized_method(
+    module_name: &str,
+    id: usize,
+    method_name: &str,
+    type_args: &TypedTypeArgs,
+) -> String {
+    let base = mangle_method(module_name, &id.to_string(), method_name);
 
     if type_args.is_empty() {
         return base;
@@ -257,8 +269,8 @@ fn mangle_sema_type(sema_type: &SemaType) -> String {
     }
 }
 
-pub fn mangle_method(module_name: &str, object_name: &str, name: &str) -> String {
-    CYRUS_ABI.method_name(module_name, object_name, name)
+pub fn mangle_method(module_name: &str, id: &str, name: &str) -> String {
+    CYRUS_ABI.method_name(module_name, id, name)
 }
 
 pub fn abi_mangler_from_linkage(linkage: &Linkage) -> &'static dyn ABINameMangler {

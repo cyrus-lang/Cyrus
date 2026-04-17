@@ -1468,9 +1468,14 @@ impl Resolver {
     fn resolve_self_modifier_param(&mut self, self_modifier: &SelfModifier) -> TypedSelfModifier {
         let self_type = SemaType::SelfType(TypedSelfType { loc: self_modifier.loc });
 
+        let ty = match &self_modifier.kind {
+            SelfModifierKind::Copied => self_type,
+            SelfModifierKind::Referenced => SemaType::Pointer(Box::new(self_type)),
+        };
+
         TypedSelfModifier {
             var_decl_id: None,
-            ty: self_type,
+            ty,
             kind: self_modifier.kind.clone(),
             loc: self_modifier.loc,
         }
@@ -1557,12 +1562,12 @@ impl Resolver {
         let (mut params, mut variadic, ret_type) = self.with_generic_scope(&generic_params, |this| {
             let (params, variadic) = this.resolve_func_params(&func_def.params)?;
 
-            let ret = this.resolve_type(
+            let ret_type = this.resolve_type(
                 return_type_or_default_void(func_def.ret_type.clone(), func_def.loc),
                 func_def.loc,
             )?;
 
-            Some((params, variadic, ret))
+            Some((params, variadic, ret_type))
         })?;
 
         let func_decl = FuncDecl {
@@ -1613,7 +1618,7 @@ impl Resolver {
         }
 
         Some(TypedStmt::FuncDef(TypedFuncDefStmt {
-            func_decl_id,
+            func_decl_id: Some(func_decl_id),
             name: func_def.ident.as_string(),
             generic_params,
             params: TypedFuncParams { list: params, variadic },

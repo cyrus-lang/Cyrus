@@ -83,6 +83,12 @@ impl<'a> AnalysisContext<'a> {
             return;
         }
 
+        let Some((enum_decl_id, type_args)) =
+            self.extract_enum_decl_id_of_expr_kind(&method_call.operand.kind, method_call.loc)
+        else {
+            return;
+        };
+
         if !method_call.type_args.is_empty() {
             self.reporter.report(Diag {
                 level: DiagLevel::Error,
@@ -91,12 +97,6 @@ impl<'a> AnalysisContext<'a> {
                 hint: None,
             });
         }
-
-        let Some((enum_decl_id, type_args)) =
-            self.extract_enum_decl_id_of_expr_kind(&method_call.operand.kind, method_call.loc)
-        else {
-            return;
-        };
 
         let enum_decl = self.decl_tables.enum_decl(enum_decl_id);
 

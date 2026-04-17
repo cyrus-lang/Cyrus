@@ -1796,7 +1796,6 @@ impl<'ll> CodeGenIRBuilder<'ll> {
                 methods_len,
                 func_type,
             } => todo!(),
-            CIRCallDispatch::Monomorph { irv_id, monomorph_id } => todo!(),
         }
     }
 

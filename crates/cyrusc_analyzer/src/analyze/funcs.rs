@@ -31,7 +31,7 @@ impl<'a> AnalysisContext<'a> {
 
         self.analyze_entry_func(func_def);
 
-        let mut func_decl = self.decl_tables.func_decl(func_def.func_decl_id);
+        let mut func_decl = self.decl_tables.func_decl(func_def.func_decl_id.unwrap());
 
         self.analyze_func_decl(&mut func_decl);
 
@@ -39,7 +39,7 @@ impl<'a> AnalysisContext<'a> {
         func_def.ret_type = func_decl.ret_type.clone();
 
         self.decl_tables
-            .with_func_decl_mut(func_def.func_decl_id, |_func_decl| {
+            .with_func_decl_mut(func_def.func_decl_id.unwrap(), |_func_decl| {
                 _func_decl.params = func_decl.params.clone();
                 _func_decl.ret_type = func_decl.ret_type.clone();
             });

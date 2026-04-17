@@ -83,7 +83,7 @@ impl<'a> AnalysisContext<'a> {
         });
     }
 
-    fn apply_self_type_in_method_decl_and_variable(
+    pub(crate) fn apply_self_type_in_method_decl_and_variable(
         &mut self,
         method_decl: &mut MethodDecl,
         concrete_self_type: &SemaType,

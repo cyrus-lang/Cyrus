@@ -196,7 +196,7 @@ impl<'a> AnalysisContext<'a> {
         // `method_call.operand.sema_type` is only present when operand is a generic inst;
         // we need to extract the decl_id manually if method call used without type args,
         // which means `method_call.operand.kind` would be a `TypedSymbolExpr`.
-        let operand_type = match method_call.operand.sema_type.clone().or({
+        let mut operand_type = match method_call.operand.sema_type.clone().or({
             if let Some(decl_id) = method_call.operand.kind.as_decl_id() {
                 if let Some(type_decl_id) = decl_id.as_type_decl_id() {
                     // type_decl means it's operand of a static method call.
@@ -231,6 +231,8 @@ impl<'a> AnalysisContext<'a> {
                 return None;
             }
         };
+
+        operand_type = self.normalize_sema_type(operand_type, method_call.loc)?;
 
         if is_operand_instance {
             self.analyze_instance_method_call(method_call, &operand_type)
@@ -281,17 +283,17 @@ impl<'a> AnalysisContext<'a> {
         };
 
         if !method_call.type_args.is_empty() {
-            // FIXME
-            // self.reporter.report(Diag {
-            //     level: DiagLevel::Error,
-            //     kind: Box::new(AnalyzerDiagKind::UnexpectedTypeArgs),
-            //     loc: Some(method_call.loc),
-            //     hint: None,
-            // });
+            self.reporter.report(Diag {
+                level: DiagLevel::Error,
+                kind: Box::new(AnalyzerDiagKind::GenericStaticMethodWrongTypeArgs),
+                loc: Some(method_call.loc),
+                hint: None,
+            });
             return None;
         }
 
-        self.check_type_arity(operand_type.clone(), method_call.loc)?;
+        // REVIEW
+        // self.check_type_arity(operand_type.clone(), method_call.loc)?;
 
         self.analyze_method_call_internal(method_call, &method_decls, type_decl_id, operand_type.clone(), false)
     }
@@ -347,7 +349,7 @@ impl<'a> AnalysisContext<'a> {
 
         let generic_env = operand_generic_env.merge(method_generic_env);
 
-        let is_static_generic_method_call = !generic_env.params.is_empty();
+        let is_generic_method_call = !generic_env.params.is_empty();
 
         self.with_generic_env(generic_env, |this| {
             this.normalize_func_params(&mut method_decl.func_decl.params);
@@ -377,13 +379,15 @@ impl<'a> AnalysisContext<'a> {
             );
 
             // generic static method
-            if is_static_generic_method_call {
+            if is_generic_method_call {
                 let func_type = method_decl.func_decl.as_func_type();
                 let func_env = this.create_method_env(method_decl_id, func_type);
 
                 this.with_func_env(func_env, |this| {
                     // set self type
                     this.func_env.current_object = Some(operand_type.clone());
+
+                    this.apply_self_type_in_method_decl_and_variable(&mut method_decl, &operand_type);
 
                     // apply defaults for method generics
                     this.apply_generic_defaults(method_decl.func_decl.generic_params.clone());
@@ -449,9 +453,8 @@ impl<'a> AnalysisContext<'a> {
                     method_call.operand.sema_type = Some(operand_type.clone());
 
                     method_call.dispatch = TypedMethodCallDispatch::Monomorph {
-                        method_decl_id,
                         monomorph_id,
-                        self_type: operand_type.clone(),
+                        is_instance_method: is_instance_method_call,
                     };
 
                     Some(method_decl.func_decl.ret_type.clone())

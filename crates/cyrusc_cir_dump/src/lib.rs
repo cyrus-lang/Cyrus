@@ -311,9 +311,6 @@ impl<'a> CIRPrinter<'a> {
                         let obj = self.print_expr(operand);
                         format!("iface_call({}, method={}/{})", obj, method_idx, methods_len)
                     }
-                    CIRCallDispatch::Monomorph { irv_id, monomorph_id } => {
-                        format!("%{}[mono:{}]", irv_id.0, monomorph_id.0)
-                    }
                 };
 
                 format!("{}({})", dispatch, args)

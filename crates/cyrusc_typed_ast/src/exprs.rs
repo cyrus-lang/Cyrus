@@ -296,19 +296,21 @@ pub struct TypedMethodCall {
 #[derive(Debug, Clone, PartialEq)]
 pub enum TypedMethodCallDispatch {
     Unresolved,
+
     Normal {
         method_decl_id: MethodDeclID,
     },
+
     Interface {
         decl_id: InterfaceDeclID,
         self_type: SemaType,
         method_idx: usize,
         methods_len: usize,
     },
+
     Monomorph {
-        method_decl_id: MethodDeclID,
         monomorph_id: MonomorphID,
-        self_type: SemaType,
+        is_instance_method: bool,
     },
 }
 
