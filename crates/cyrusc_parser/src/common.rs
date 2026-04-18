@@ -111,7 +111,7 @@ impl<'source_file> Parser<'source_file> {
                 self.next_token();
                 base_type = TypeSpecifier::Deref(Box::new(base_type));
             } else if self.peek_token_is(TokenKind::LeftBracket) {
-                self.next_token(); // consume '['
+                self.next_token();
                 base_type = self.parse_array_type(base_type)?;
             } else if self.peek_token_is(TokenKind::LessThan) {
                 // handle generic type arguments
@@ -579,7 +579,7 @@ impl<'source_file> Parser<'source_file> {
         }
     }
 
-    fn parse_tuple(&mut self) -> Result<TypeSpecifier, Diag> {
+    fn parse_tuple_type(&mut self) -> Result<TypeSpecifier, Diag> {
         let loc = self.current_token().loc;
         let (line, column, start) = (loc.line, loc.column, loc.start);
 
@@ -590,8 +590,9 @@ impl<'source_file> Parser<'source_file> {
         loop {
             let ty = self.parse_type_specifier()?;
             type_list.push(ty);
+            self.next_token();
 
-            if self.current_token().kind == TokenKind::Comma {
+            if self.current_token_is(TokenKind::Comma) {
                 self.next_token(); // consume comma
                 continue;
             }
@@ -647,7 +648,7 @@ impl<'source_file> Parser<'source_file> {
             TokenKind::Union => self.parse_unnamed_union_type(None),
             TokenKind::Enum => self.parse_unnamed_enum_type(None),
             TokenKind::Function => self.parse_func_type(),
-            TokenKind::LeftParen => self.parse_tuple(),
+            TokenKind::LeftParen => self.parse_tuple_type(),
 
             TokenKind::Ident(ref ident) => {
                 if self.peek_token_is(TokenKind::DoubleColon) {

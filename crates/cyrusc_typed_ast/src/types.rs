@@ -314,6 +314,14 @@ impl SemaType {
     }
 
     #[inline]
+    pub fn as_named_type_mut(&mut self) -> Option<&mut NamedType> {
+        match self.const_inner_mut() {
+            SemaType::Named(named_type) => Some(named_type),
+            _ => None,
+        }
+    }
+
+    #[inline]
     pub fn as_struct(&self) -> Option<StructDeclID> {
         match self.const_inner() {
             SemaType::Named(named_type) => named_type.type_decl_id.as_struct(),
