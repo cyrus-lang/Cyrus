@@ -436,13 +436,15 @@ impl<'ll> CodeGenIRBuilder<'ll> {
     pub(crate) fn emit_func_args(
         &mut self,
         args: &Vec<CIRExpr>,
-        fn_ty: &CIRFuncType,
+        cir_func_type: &CIRFuncType,
     ) -> Vec<BasicMetadataValueEnum<'ll>> {
-        let abi_func_info = fn_ty.abi_func_info.as_ref().unwrap();
+        let abi_func_info = cir_func_type.abi_func_info.as_ref().unwrap();
 
         let mut args_values = Vec::with_capacity(args.len());
 
         for (i, expr) in args.iter().enumerate() {
+            let cir_param_type = cir_func_type.params.get(i).unwrap();
+
             let lvalue = self.emit_expr(expr);
             let mut rvalue = self.load_rvalue(lvalue.clone());
 

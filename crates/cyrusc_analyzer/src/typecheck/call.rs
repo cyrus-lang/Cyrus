@@ -141,7 +141,7 @@ impl<'a> AnalysisContext<'a> {
 
         self.normalize_type_args(&mut method_call.type_args);
 
-        let mut is_operand_instance = false;
+        let mut is_operand_instance = true;
 
         // `method_call.operand.sema_type` is only present when operand is a generic inst;
         // we need to extract the decl_id manually if method call used without type args,
@@ -174,7 +174,7 @@ impl<'a> AnalysisContext<'a> {
             None => {
                 self.reporter.report(Diag {
                     level: DiagLevel::Error,
-                    kind: Box::new(AnalyzerDiagKind::ObjectNotSupportsFields),
+                    kind: Box::new(AnalyzerDiagKind::ObjectNotSupportsMethods),
                     loc: Some(method_call.loc),
                     hint: None,
                 });
@@ -196,13 +196,15 @@ impl<'a> AnalysisContext<'a> {
         method_call: &mut TypedMethodCall,
         operand_type: &SemaType,
     ) -> Option<SemaType> {
-        let Some((type_decl_id, method_decls)) = operand_type.as_named_type().and_then(|named_type| {
+        let pure_operand_type = operand_type.const_inner().pointer_inner().clone();
+
+        let Some((type_decl_id, method_decls)) = pure_operand_type.as_named_type().and_then(|named_type| {
             self.methods_decl_of_named_type(named_type)
                 .map(|method_decls| (named_type.type_decl_id, method_decls))
         }) else {
             self.reporter.report(Diag {
                 level: DiagLevel::Error,
-                kind: Box::new(AnalyzerDiagKind::ObjectNotSupportsFields),
+                kind: Box::new(AnalyzerDiagKind::ObjectNotSupportsMethods),
                 loc: Some(method_call.loc),
                 hint: None,
             });
@@ -219,13 +221,15 @@ impl<'a> AnalysisContext<'a> {
         method_call: &mut TypedMethodCall,
         operand_type: &SemaType,
     ) -> Option<SemaType> {
-        let Some((type_decl_id, method_decls)) = operand_type.as_named_type().and_then(|named_type| {
+        let pure_operand_type = operand_type.const_inner().pointer_inner().clone();
+
+        let Some((type_decl_id, method_decls)) = pure_operand_type.as_named_type().and_then(|named_type| {
             self.methods_decl_of_named_type(named_type)
                 .map(|method_decls| (named_type.type_decl_id, method_decls))
         }) else {
             self.reporter.report(Diag {
                 level: DiagLevel::Error,
-                kind: Box::new(AnalyzerDiagKind::ObjectNotSupportsFields),
+                kind: Box::new(AnalyzerDiagKind::ObjectNotSupportsMethods),
                 loc: Some(method_call.loc),
                 hint: None,
             });
@@ -253,6 +257,8 @@ impl<'a> AnalysisContext<'a> {
         mut operand_type: SemaType,
         is_instance_method_call: bool,
     ) -> Option<SemaType> {
+        let pure_operand_type = operand_type.const_inner().pointer_inner().clone();
+
         let object_name = self.formatter.format_type_decl(type_decl_id);
 
         let Some(method_decl_id) = method_decls.get(&method_call.name) else {
@@ -268,7 +274,7 @@ impl<'a> AnalysisContext<'a> {
             return None;
         };
 
-        let (operand_generic_params, operand_type_args) = operand_type
+        let (operand_generic_params, operand_type_args) = pure_operand_type
             .as_named_type()
             .map(|named_type| {
                 (
@@ -294,7 +300,7 @@ impl<'a> AnalysisContext<'a> {
                 level: DiagLevel::Error,
                 kind: Box::new(AnalyzerDiagKind::InstanceMethodCallOnType { method_name }),
                 loc: Some(method_call.loc),
-                hint: Some("Use an object to call this method, e.g. `obj.method(...)`.".to_string()),
+                hint: Some("Use an object to call this method, e.g. 'obj.method(...)'.".to_string()),
             });
 
             return None;
@@ -307,7 +313,7 @@ impl<'a> AnalysisContext<'a> {
                 level: DiagLevel::Error,
                 kind: Box::new(AnalyzerDiagKind::StaticMethodCallOnInstance { method_name }),
                 loc: Some(method_call.loc),
-                hint: Some("Call static methods on the type, e.g. `TypeName.method(...)`.".to_string()),
+                hint: Some("Call static methods on the type, e.g. 'TypeName.method(...)'.".to_string()),
             });
 
             return None;
@@ -355,7 +361,7 @@ impl<'a> AnalysisContext<'a> {
             // instantiate operand type with collected type args
             operand_type = this.substitute_type(&operand_type);
 
-            if let Some(named_type) = operand_type.as_named_type_mut() {
+            if let Some(named_type) = operand_type.const_inner_mut().pointer_inner_mut().as_named_type_mut() {
                 let inferred_operand_type_args = this.collect_instantiated_type_args(operand_generic_params);
 
                 named_type.type_args = inferred_operand_type_args;
@@ -399,16 +405,18 @@ impl<'a> AnalysisContext<'a> {
         mut operand_type: SemaType,
         is_instance_method_call: bool,
     ) -> Option<SemaType> {
+        let pure_operand_type = operand_type.const_inner().pointer_inner().clone();
+
         // set self type for `Self` resolution
-        self.func_env.current_object = Some(operand_type.clone());
+        self.func_env.current_object = Some(pure_operand_type.clone());
 
         // substitute Self inside params, ret_type, variables
-        self.apply_self_type_in_method_decl_and_variable(&mut method_decl, &operand_type);
+        self.apply_self_type_in_method_decl_and_variable(&mut method_decl, &pure_operand_type);
 
         // refresh substituted operand, params, ret_type
         operand_type = self.substitute_type(&operand_type);
         method_decl.func_decl.params = self.substitute_func_params(method_decl.func_decl.params.clone());
-        method_decl.func_decl.ret_type = self.substitute_ret_type(&method_decl.func_decl.ret_type);
+        method_decl.func_decl.ret_type = self.substitute_type(&method_decl.func_decl.ret_type);
 
         let final_type_args = self.collect_instantiated_type_args(method_decl.func_decl.generic_params.clone());
 
@@ -472,7 +480,7 @@ impl<'a> AnalysisContext<'a> {
     ) -> Option<SemaType> {
         func_call.operand.sema_type = Some(self.substitute_type(&operand_type));
         func_decl.params = self.substitute_func_params(func_decl.params.clone());
-        func_decl.ret_type = self.substitute_ret_type(&func_decl.ret_type);
+        func_decl.ret_type = self.substitute_type(&func_decl.ret_type);
 
         // get or get monomorph instance
         let monomorph_id = self.monomorph_registry.get_or_create(

@@ -290,6 +290,14 @@ impl SemaType {
     }
 
     #[inline]
+    pub fn pointer_inner_mut(&mut self) -> &mut SemaType {
+        match self {
+            SemaType::Pointer(sema_type) => sema_type,
+            ty @ _ => ty,
+        }
+    }
+
+    #[inline]
     pub fn as_const(&self) -> SemaType {
         if self.is_const() {
             return self.clone();

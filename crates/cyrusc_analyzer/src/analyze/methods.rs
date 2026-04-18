@@ -100,10 +100,6 @@ impl<'a> AnalysisContext<'a> {
                 TypedFuncParamKind::SelfModifier(self_modifier) => {
                     self_modifier.ty = self.substitute_self_type(self_modifier.ty.clone(), concrete_self_type);
 
-                    if let Some(infer) = &self.func_env.infer {
-                        self_modifier.ty = infer.resolve(&self_modifier.ty);
-                    }
-
                     self.decl_tables
                         .with_var_decl_mut(self_modifier.var_decl_id.unwrap(), |_var_decl| {
                             _var_decl.ty = Some(self_modifier.ty.clone());

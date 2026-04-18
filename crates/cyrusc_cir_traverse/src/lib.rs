@@ -718,10 +718,54 @@ impl<'a> CIRTraverse<'a> {
             TypedExprKind::Poisoned => unreachable!("unexpected poisoned expression"),
         };
 
+        let mloc = match &expr.kind {
+            // variable references always produce an lvalue
+            TypedExprKind::Symbol(_) => MemoryLocation::LValue,
+
+            // deref(*x) always yields lvalue
+            TypedExprKind::Deref(_) => MemoryLocation::LValue,
+
+            // array[i] is lvalue
+            TypedExprKind::ArrayIndex(_) => MemoryLocation::LValue,
+
+            // field access is lvalue
+            TypedExprKind::FieldAccess(_) => MemoryLocation::LValue,
+
+            // tuple access: same rule as field access
+            TypedExprKind::TupleAccess(_) => MemoryLocation::LValue,
+
+            // addr-of always produces an RValue
+            TypedExprKind::AddrOf(_)
+            | TypedExprKind::Literal(_)
+            | TypedExprKind::Prefix(_)
+            | TypedExprKind::Unary(_)
+            | TypedExprKind::Infix(_)
+            | TypedExprKind::Assign(_)
+            | TypedExprKind::Array(_)
+            | TypedExprKind::Tuple(_)
+            | TypedExprKind::FuncCall(_)
+            | TypedExprKind::MethodCall(_)
+            | TypedExprKind::StructInit(_)
+            | TypedExprKind::UnionInit(_)
+            | TypedExprKind::EnumInit(_)
+            | TypedExprKind::Lambda(_)
+            | TypedExprKind::Dynamic(_)
+            | TypedExprKind::Builtin(_) => MemoryLocation::RValue,
+
+            // unreachable kinds
+            TypedExprKind::UnnamedStructValue(_)
+            | TypedExprKind::UnnamedEnumValue(_)
+            | TypedExprKind::UnnamedUnionValue(_)
+            | TypedExprKind::EnumStructVariantInit(_)
+            | TypedExprKind::SemaType(_)
+            | TypedExprKind::Poisoned => unreachable!(),
+        };
+
         CIRExpr {
             kind,
             ty,
             loc: expr.loc,
+            mloc,
         }
     }
 
@@ -1067,25 +1111,31 @@ impl<'a> CIRTraverse<'a> {
 
     fn lower_method_call_operand_as_self(
         &mut self,
-        mut operand: TypedExprStmt,
+        operand: TypedExprStmt,
         self_modifier: &TypedSelfModifier,
     ) -> CIRExpr {
-        match self_modifier.kind {
-            SelfModifierKind::Copied => self.lower_expr(&operand),
-            SelfModifierKind::Referenced => {
-                operand = TypedExprStmt {
-                    kind: TypedExprKind::AddrOf(TypedAddrOfExpr {
-                        operand: Box::new(operand.clone()),
-                        loc: operand.loc,
-                    }),
-                    sema_type: Some(SemaType::Pointer(Box::new(operand.sema_type.clone().unwrap()))),
-                    mloc: MemoryLocation::LValue,
-                    loc: operand.loc,
-                };
+        let mut lowered_expr = self.lower_expr(&operand);
 
-                self.lower_expr(&operand)
+        match self_modifier.kind {
+            SelfModifierKind::Copied => {}
+            SelfModifierKind::Referenced => {
+                if operand.is_rvalue() {
+                    let ty = CIRType::Pointer(Box::new(lowered_expr.ty.clone()));
+                    let loc = lowered_expr.loc;
+
+                    lowered_expr = CIRExpr {
+                        kind: CIRExprKind::AddrOf(CIRAddrOfExpr {
+                            operand: Box::new(lowered_expr),
+                        }),
+                        ty,
+                        mloc: MemoryLocation::LValue,
+                        loc,
+                    };
+                }
             }
-        }
+        };
+
+        lowered_expr
     }
 
     // FIXME

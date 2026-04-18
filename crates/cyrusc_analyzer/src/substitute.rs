@@ -60,23 +60,8 @@ impl<'a> AnalysisContext<'a> {
         params
     }
 
-    #[inline]
-    pub(crate) fn substitute_ret_type(&mut self, ty: &SemaType) -> SemaType {
-        let ret_type = self.substitute_type(&ty);
-
-        if let Some(infer) = &mut self.func_env.infer {
-            infer.resolve(&ret_type)
-        } else {
-            ret_type
-        }
-    }
-
     pub fn substitute_self_type(&mut self, mut sema_type: SemaType, self_type: &SemaType) -> SemaType {
         sema_type = self.substitute_type(&sema_type);
-
-        if let Some(infer) = &mut self.func_env.infer {
-            sema_type = infer.resolve(&sema_type);
-        }
 
         match sema_type {
             SemaType::Unresolved(_)

@@ -35,7 +35,7 @@ use cyrusc_internal::{
         types::{CIRArrayType, CIREnumType, CIRFuncType, CIRStructType, CIRTupleType, CIRType, CIRUnionType},
     },
 };
-use cyrusc_typed_ast::types::PlainType;
+use cyrusc_typed_ast::{exprs::MemoryLocation, types::PlainType};
 use inkwell::{
     AddressSpace, FloatPredicate, IntPredicate,
     types::{AnyTypeEnum, ArrayType, BasicType, BasicTypeEnum, StructType},
@@ -602,6 +602,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
             DerefMode::Store => self.emit_lvalue_address(&CIRExpr {
                 kind: CIRExprKind::Deref(deref.clone()),
                 ty: deref.operand.ty.pointer_inner().cloned().unwrap(),
+                mloc: MemoryLocation::LValue,
                 loc: deref.operand.loc,
             }),
         }

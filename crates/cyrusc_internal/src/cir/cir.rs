@@ -28,6 +28,7 @@ use cyrusc_source_loc::Loc;
 use cyrusc_typed_ast::{
     LabelID,
     decls::{MethodDecls, VarDeclID},
+    exprs::MemoryLocation,
 };
 use fx_hash::FxHashMap;
 use std::fmt::Debug;
@@ -69,6 +70,7 @@ pub enum CIRStmt {
 pub struct CIRExpr {
     pub kind: CIRExprKind,
     pub ty: CIRType,
+    pub mloc: MemoryLocation,
     pub loc: Loc,
 }
 

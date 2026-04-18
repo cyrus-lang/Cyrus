@@ -2608,7 +2608,7 @@ impl Resolver {
                 operand: Box::new(operand),
                 loc: addr_of.loc,
             }),
-            mloc: MemoryLocation::LValue,
+            mloc: MemoryLocation::RValue,
             sema_type: None,
             loc: addr_of.loc,
         })
@@ -2622,7 +2622,7 @@ impl Resolver {
                 operand: Box::new(operand),
                 loc: deref.loc,
             }),
-            mloc: MemoryLocation::RValue,
+            mloc: MemoryLocation::LValue,
             sema_type: None,
             loc: deref.loc,
         })
