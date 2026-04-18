@@ -55,8 +55,11 @@ pub enum AnalyzerDiagKind {
     #[error("Cannot apply 'dynamic' to an already dynamic value.")]
     InvalidMultipleDynamicType,
 
-    #[error("Cannot call instance method '{method_name}'.")]
+    #[error("Cannot call static method '{method_name}' on an instance.")]
     StaticMethodCallOnInstance { method_name: String },
+
+    #[error("Cannot call instance method '{method_name}' without an object.")]
+    InstanceMethodCallOnType { method_name: String },
 
     #[error("Self type can only be used inside an object context.")]
     SelfTypeOutsideOfAnObject,

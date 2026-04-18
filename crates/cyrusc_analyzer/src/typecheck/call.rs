@@ -242,9 +242,6 @@ impl<'a> AnalysisContext<'a> {
             return None;
         }
 
-        // REVIEW
-        // self.check_type_arity(operand_type.clone(), method_call.loc)?;
-
         self.analyze_method_call_internal(method_call, &method_decls, type_decl_id, operand_type.clone(), false)
     }
 
@@ -289,6 +286,32 @@ impl<'a> AnalysisContext<'a> {
         )?;
 
         let mut method_decl = self.decl_tables.method_decl(method_decl_id);
+
+        if method_decl.is_instance_method() && !is_instance_method_call {
+            let method_name = method_decl.func_decl.name.clone();
+
+            self.reporter.report(Diag {
+                level: DiagLevel::Error,
+                kind: Box::new(AnalyzerDiagKind::InstanceMethodCallOnType { method_name }),
+                loc: Some(method_call.loc),
+                hint: Some("Use an object to call this method, e.g. `obj.method(...)`.".to_string()),
+            });
+
+            return None;
+        }
+
+        if !method_decl.is_instance_method() && is_instance_method_call {
+            let method_name = method_decl.func_decl.name.clone();
+
+            self.reporter.report(Diag {
+                level: DiagLevel::Error,
+                kind: Box::new(AnalyzerDiagKind::StaticMethodCallOnInstance { method_name }),
+                loc: Some(method_call.loc),
+                hint: Some("Call static methods on the type, e.g. `TypeName.method(...)`.".to_string()),
+            });
+
+            return None;
+        }
 
         let method_generic_params = method_decl.func_decl.generic_params.clone();
 
