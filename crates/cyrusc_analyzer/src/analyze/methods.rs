@@ -15,7 +15,7 @@
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
 
-use crate::context::AnalysisContext;
+use crate::{context::AnalysisContext, infer::InferCtx};
 use cyrusc_typed_ast::{
     decls::{MethodDecl, MethodDeclID, MethodDecls},
     stmts::{TypedFuncParamKind, TypedTypeArgs},
@@ -68,7 +68,7 @@ impl<'a> AnalysisContext<'a> {
     pub(crate) fn analyze_method_body(&mut self, method_decl_id: MethodDeclID, method_decl: &mut MethodDecl) {
         let func_type = method_decl.func_decl.as_func_type();
 
-        let method_env = self.create_method_env(method_decl_id, func_type.clone());
+        let method_env = self.create_method_env(method_decl_id, func_type.clone(), Some(InferCtx::new()));
 
         let body_id = method_decl.body.unwrap();
 

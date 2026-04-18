@@ -67,6 +67,9 @@ pub enum AnalyzerDiagKind {
     #[error("Element type of an array or slice cannot be 'void'.")]
     VoidElementTypeNotAllowed,
 
+    #[error("Cannot pass a 'void' value into a variadic parameter.")]
+    VoidArgumentInVariadicParam,
+
     #[error("Tuple element cannot have type 'void'.")]
     VoidTupleElementNotAllowed,
 

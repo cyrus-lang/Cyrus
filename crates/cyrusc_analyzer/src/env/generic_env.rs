@@ -23,6 +23,7 @@ use cyrusc_typed_ast::{
 
 use crate::context::AnalysisContext;
 
+#[derive(Debug, Clone)]
 pub(crate) struct GenericEnv {
     pub params: TypedGenericParams,
     bindings: Vec<Option<SemaType>>,

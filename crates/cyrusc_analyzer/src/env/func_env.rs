@@ -70,12 +70,12 @@ impl<'a> AnalysisContext<'a> {
     }
 
     #[inline]
-    pub(crate) fn create_method_env(&self, method_decl_id: MethodDeclID, func_type: TypedFuncType) -> FuncEnv {
+    pub(crate) fn create_method_env(&self, method_decl_id: MethodDeclID, func_type: TypedFuncType, parent_infer_ctx: Option<InferCtx>) -> FuncEnv {
         FuncEnv {
             current_func: Some(func_type),
             current_method: Some(method_decl_id),
             current_object: None,
-            infer: Some(InferCtx::new()),
+            infer: parent_infer_ctx,
         }
     }
 }
