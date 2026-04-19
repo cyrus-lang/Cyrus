@@ -19,7 +19,7 @@ use cyrusc_ast::operators::UnaryOperator;
 use cyrusc_diagcentral::exit_with_msg;
 use cyrusc_internal::cir::{cir::*, types::CIRType};
 use cyrusc_strescape::escape_string;
-use std::{fmt::format, fs, path::PathBuf};
+use std::{fs, path::PathBuf};
 
 pub struct CIRPrinter<'a> {
     module: &'a CIRModule,
@@ -268,26 +268,21 @@ impl<'a> CIRPrinter<'a> {
         }
     }
 
-    fn print_mem_loc(&mut self, mem: &CIRMemoryLocation) -> String {
-        match mem.addr_kind {
-            CIRAddressKind::GlobalVar => {
-                let global_var_stmt = self.module.global_var_decls.get(&mem.irv_id).unwrap();
-                format!("__mloc(@{})", global_var_stmt.name)
-            }
-            CIRAddressKind::LocalVar => {
-                format!("__mloc(%{})", mem.irv_id.0)
-            }
-        }
-    }
-
     fn print_expr(&mut self, expr: &CIRExpr) -> String {
         match &expr.kind {
-            CIRExprKind::Load(CIRLoad { expr }) => format!("__load({})", self.print_expr(expr)),
-            CIRExprKind::MemoryAddress(mem_loc) => self.print_mem_loc(mem_loc),
-            CIRExprKind::FuncRef(CIRFuncRef { irv_id }) => {
-                format!("{}", irv_id.0)
-            }
-            CIRExprKind::Value(CIRValue { expr }) => format!("value {}", self.print_expr(expr)),
+            CIRExprKind::Load(value_ref) => match &value_ref.kind {
+                CIRValueKind::Func => {
+                    let func_decl = self.module.func_decls.get(&value_ref.irv_id).unwrap();
+                    func_decl.name.clone()
+                }
+                CIRValueKind::GlobalVar => {
+                    let global_var_decl = self.module.global_var_decls.get(&value_ref.irv_id).unwrap();
+                    global_var_decl.name.clone()
+                }
+                CIRValueKind::LocalVariable => {
+                    format!("%{}", value_ref.irv_id.0)
+                }
+            },
             CIRExprKind::Literal(literal) => self.print_literal(literal),
             CIRExprKind::Infix(infix) => format!(
                 "({} {} {})",
@@ -297,12 +292,7 @@ impl<'a> CIRPrinter<'a> {
             ),
             CIRExprKind::Prefix(prefix) => format!("{}{}", prefix.op, self.print_expr(&prefix.operand)),
             CIRExprKind::Call(call) => {
-                let args = call
-                    .args
-                    .iter()
-                    .map(|a| self.print_expr(a))
-                    .collect::<Vec<_>>()
-                    .join(", ");
+                let mut args = call.args.iter().map(|a| self.print_expr(a)).collect::<Vec<_>>();
 
                 let dispatch = match &call.dispatch {
                     CIRCallDispatch::Normal { abi_name, .. } => abi_name.clone(),
@@ -316,9 +306,18 @@ impl<'a> CIRPrinter<'a> {
                         let obj = self.print_expr(operand);
                         format!("iface_call({}, method={}/{})", obj, method_idx, methods_len)
                     }
+                    CIRCallDispatch::Method {
+                        self_meta, abi_name, ..
+                    } => {
+                        if let Some(self_meta) = self_meta {
+                            args.insert(0, self.print_expr(&self_meta.operand))
+                        }
+                        
+                        abi_name.clone()
+                    }
                 };
 
-                format!("{}({})", dispatch, args)
+                format!("{}({})", dispatch, args.join(", "))
             }
             CIRExprKind::Assign(assign) => {
                 format!("{} = {}", self.print_expr(&assign.lhs), self.print_expr(&assign.rhs))

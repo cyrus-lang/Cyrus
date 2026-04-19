@@ -1222,6 +1222,16 @@ impl AssignKind {
     }
 }
 
+impl SelfModifierKind {
+    #[inline]
+    pub fn is_referenced(&self) -> bool {
+        match self {
+            SelfModifierKind::Copied => false,
+            SelfModifierKind::Referenced => true,
+        }
+    }
+}
+
 impl fmt::Display for AssignKind {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {

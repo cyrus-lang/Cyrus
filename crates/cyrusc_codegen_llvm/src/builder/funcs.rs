@@ -433,6 +433,39 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         unsafe { debug_func_type(&self.dctx, ret_ty_meta, &params_metadata) }
     }
 
+    pub(crate) fn emit_abi_arg(
+        &mut self,
+        abi_func_info: &ABIFunctionInfo,
+        abi_arg_info: &ABIArgInfo,
+        lvalue: &InternalValue<'ll>,
+        rvalue: &InternalValue<'ll>,
+        out: &mut Vec<BasicMetadataValueEnum<'ll>>,
+    ) {
+        match abi_arg_info.kind.clone() {
+            ABIArgKind::Direct { coerce_to } => {
+                self.emit_direct_arg(out, rvalue, coerce_to);
+            }
+            ABIArgKind::DirectPair { lo, hi } => {
+                self.emit_direct_pair_arg(out, lvalue, lo, hi);
+            }
+            ABIArgKind::DirectCoerce { ty } => {
+                self.emit_direct_coerce_arg(out, rvalue, ty);
+            }
+            ABIArgKind::Expand { kind } => {
+                self.emit_expand_arg(out, rvalue, kind, &abi_func_info.params_types);
+            }
+            ABIArgKind::Extend { signed } => {
+                self.emit_extend_arg(out, rvalue.clone(), signed);
+            }
+            ABIArgKind::Indirect { align, ty } => {
+                self.emit_indirect_arg(out, rvalue, align, ty.clone(), abi_arg_info);
+            }
+            ABIArgKind::Ignore => {
+                // skip zero-sized types
+            }
+        }
+    }
+
     pub(crate) fn emit_func_args(
         &mut self,
         args: &Vec<CIRExpr>,
@@ -447,31 +480,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
             let mut rvalue = self.load_rvalue(lvalue.clone());
 
             if i < abi_func_info.params_infos.len() {
-                let abi_arg_info = &abi_func_info.params_infos[i];
-
-                match abi_arg_info.kind.clone() {
-                    ABIArgKind::Direct { coerce_to } => {
-                        self.emit_direct_arg(&mut args_values, &rvalue, coerce_to);
-                    }
-                    ABIArgKind::DirectPair { lo, hi } => {
-                        self.emit_direct_pair_arg(&mut args_values, &lvalue, lo, hi);
-                    }
-                    ABIArgKind::DirectCoerce { ty } => {
-                        self.emit_direct_coerce_arg(&mut args_values, &rvalue, ty);
-                    }
-                    ABIArgKind::Expand { kind } => {
-                        self.emit_expand_arg(&mut args_values, &rvalue, kind, &abi_func_info.params_types);
-                    }
-                    ABIArgKind::Extend { signed } => {
-                        self.emit_extend_arg(&mut args_values, rvalue, signed);
-                    }
-                    ABIArgKind::Indirect { align, ref ty } => {
-                        self.emit_indirect_arg(&mut args_values, &rvalue, align, ty.clone(), &abi_arg_info);
-                    }
-                    ABIArgKind::Ignore => {
-                        // skip argument (zero-sized types)
-                    }
-                }
+                self.emit_abi_arg(abi_func_info,&abi_func_info.params_infos[i], &lvalue, &rvalue, &mut args_values);
             } else {
                 // classify variadic argument value
                 let promoted_rvalue_ty = self.target.target_abi.apply_variadic_argument_promote(&rvalue.ty);

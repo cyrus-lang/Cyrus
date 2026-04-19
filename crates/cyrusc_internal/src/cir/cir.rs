@@ -20,6 +20,7 @@ use crate::{
     cir::types::{CIREnumType, CIRFuncType, CIRStructType, CIRType, CIRUnionType},
 };
 use cyrusc_ast::{
+    SelfModifierKind,
     abi::ReprKind,
     modifiers::{EnumModifiers, FuncModifiers, GlobalVarModifiers, StructModifiers, UnionModifiers},
     operators::{InfixOperator, PrefixOperator, UnaryOperator},
@@ -70,16 +71,12 @@ pub enum CIRStmt {
 pub struct CIRExpr {
     pub kind: CIRExprKind,
     pub ty: CIRType,
-    pub val_cat: ValueCategory,
     pub loc: Loc,
 }
 
 #[derive(Debug, Clone)]
 pub enum CIRExprKind {
-    FuncRef(CIRFuncRef),
-    MemoryAddress(CIRMemoryLocation),
-    Value(CIRValue),
-    Load(CIRLoad),
+    Load(CIRValue),
 
     Literal(CIRLiteral),
     Prefix(CIRPrefixExpr),
@@ -104,30 +101,16 @@ pub enum CIRExprKind {
 }
 
 #[derive(Debug, Clone)]
-pub struct CIRLoad {
-    pub expr: Box<CIRExpr>,
-}
-
-#[derive(Debug, Clone)]
 pub struct CIRValue {
-    pub expr: Box<CIRExpr>,
-}
-
-#[derive(Debug, Clone)]
-pub struct CIRMemoryLocation {
     pub irv_id: IRValueID,
-    pub addr_kind: CIRAddressKind,
+    pub kind: CIRValueKind,
 }
 
 #[derive(Debug, Clone)]
-pub enum CIRAddressKind {
+pub enum CIRValueKind {
+    Func,
     GlobalVar,
-    LocalVar,
-}
-
-#[derive(Debug, Clone)]
-pub struct CIRFuncRef {
-    pub irv_id: IRValueID,
+    LocalVariable,
 }
 
 #[derive(Debug, Clone)]
@@ -165,6 +148,14 @@ pub enum CIRCallDispatch {
         // only used in emit-cir-dump
         abi_name: String,
     },
+    Method {
+        irv_id: IRValueID,
+        func_type: CIRFuncType,
+        // only used in emit-cir-dump
+        abi_name: String,
+
+        self_meta: Option<CIRCallMethodSelfMetadata>,
+    },
     FunctionPointer {
         operand: Box<CIRExpr>,
     },
@@ -174,6 +165,12 @@ pub enum CIRCallDispatch {
         methods_len: usize,
         func_type: CIRFuncType,
     },
+}
+
+#[derive(Debug, Clone)]
+pub struct CIRCallMethodSelfMetadata {
+    pub operand: Box<CIRExpr>,
+    pub is_referenced: bool,
 }
 
 #[derive(Debug, Clone)]
