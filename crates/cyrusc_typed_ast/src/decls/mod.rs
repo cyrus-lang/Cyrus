@@ -17,7 +17,7 @@
 
 use crate::{
     BodyID,
-    exprs::TypedExprStmt,
+    exprs::TypedExpr,
     stmts::{
         TypedBlockStmt, TypedEnumVariant, TypedFuncParams, TypedGenericParams, TypedImplementInterface,
         TypedStructField, TypedUnionField,
@@ -167,7 +167,7 @@ pub struct InterfaceDecl {
 pub struct GlobalVarDecl {
     pub name: String,
     pub ty: Option<SemaType>,
-    pub rhs: Option<TypedExprStmt>,
+    pub rhs: Option<TypedExpr>,
     pub is_const: bool,
     pub analyzed: bool,
     pub modifiers: GlobalVarModifiers,
@@ -178,7 +178,7 @@ pub struct GlobalVarDecl {
 pub struct VarDecl {
     pub name: String,
     pub ty: Option<SemaType>,
-    pub rhs: Option<TypedExprStmt>,
+    pub rhs: Option<TypedExpr>,
     pub is_const: bool,
     pub analyzed: bool,
     pub loc: Loc,

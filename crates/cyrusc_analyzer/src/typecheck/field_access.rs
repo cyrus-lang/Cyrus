@@ -145,7 +145,7 @@ impl<'a> AnalysisContext<'a> {
         let is_pointer = base_type.is_pointer();
         let is_object = base_type.is_struct() || base_type.is_union();
 
-        if field_access.is_fat_arrow {
+        if field_access.is_thin_arrow {
             if !is_pointer {
                 self.reporter.report(Diag {
                     level: DiagLevel::Error,

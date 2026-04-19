@@ -19,12 +19,12 @@ use crate::{context::AnalysisContext, diagnostics::AnalyzerDiagKind};
 use cyrusc_diagcentral::{Diag, DiagLevel};
 use cyrusc_typed_ast::{
     decls::DeclID,
-    exprs::{MemoryLocation, TypedExprKind, TypedExprStmt, TypedFieldInit, TypedUnionInitExpr},
+    exprs::{ValueCategory, TypedExprKind, TypedExpr, TypedFieldInit, TypedUnionInitExpr},
     stmts::TypedTypeArgs,
 };
 
 impl<'a> AnalysisContext<'a> {
-    pub(crate) fn lower_struct_init_as_union_init(&mut self, typed_expr: &mut TypedExprStmt) {
+    pub(crate) fn lower_struct_init_as_union_init(&mut self, typed_expr: &mut TypedExpr) {
         let TypedExprKind::StructInit(struct_init) = &typed_expr.kind else {
             return;
         };
@@ -57,15 +57,15 @@ impl<'a> AnalysisContext<'a> {
             loc: struct_init.loc,
         };
 
-        *typed_expr = TypedExprStmt {
+        *typed_expr = TypedExpr {
             kind: TypedExprKind::UnionInit(union_init),
             sema_type: None,
-            mloc: MemoryLocation::RValue,
+            val_cat: ValueCategory::RValue,
             loc: struct_init.loc,
         };
     }
 
-    pub(crate) fn lower_unnamed_union_value_as_union_init(&self, typed_expr: &mut TypedExprStmt) {
+    pub(crate) fn lower_unnamed_union_value_as_union_init(&self, typed_expr: &mut TypedExpr) {
         let TypedExprKind::UnnamedUnionValue(union_value) = &typed_expr.kind else {
             return;
         };
@@ -76,7 +76,7 @@ impl<'a> AnalysisContext<'a> {
             loc: union_value.loc,
         };
 
-        *typed_expr = TypedExprStmt {
+        *typed_expr = TypedExpr {
             kind: TypedExprKind::UnionInit(TypedUnionInitExpr {
                 decl_id: DeclID::Union(union_value.union_decl_id.unwrap()),
                 field: Box::new(field),
@@ -84,7 +84,7 @@ impl<'a> AnalysisContext<'a> {
                 loc: union_value.loc,
             }),
             sema_type: typed_expr.sema_type.clone(),
-            mloc: typed_expr.mloc,
+            val_cat: typed_expr.val_cat,
             loc: typed_expr.loc,
         };
     }

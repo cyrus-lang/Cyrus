@@ -18,7 +18,7 @@
 use cyrusc_ast::operators::InfixOperator;
 use cyrusc_tokens::literals::LiteralKind;
 use cyrusc_typed_ast::{
-    exprs::{MemoryLocation, TypedExprKind, TypedExprStmt, TypedInfixExpr, TypedLiteralExpr, TypedPrefixExpr},
+    exprs::{ValueCategory, TypedExprKind, TypedExpr, TypedInfixExpr, TypedLiteralExpr, TypedPrefixExpr},
     types::{PlainType, SemaType},
 };
 use crate::context::AnalysisContext;
@@ -29,19 +29,19 @@ impl<'a> AnalysisContext<'a> {
         &mut self,
         expected_type: Option<SemaType>,
         prefix_expr: &mut TypedPrefixExpr,
-    ) -> Option<TypedExprStmt> {
+    ) -> Option<TypedExpr> {
         let operand_type = match self.analyze_expr(&mut prefix_expr.operand, expected_type.clone()) {
             Some(sema_type) => sema_type,
             None => return None,
         };
 
-        let null_literal_expr = TypedExprStmt {
+        let null_literal_expr = TypedExpr {
             kind: TypedExprKind::Literal(TypedLiteralExpr {
                 ty: Some(SemaType::Pointer(Box::new(SemaType::Plain(PlainType::Void)))),
                 kind: LiteralKind::Null,
                 loc: prefix_expr.loc,
             }),
-            mloc: MemoryLocation::RValue,
+            val_cat: ValueCategory::RValue,
             sema_type: None,
             loc: prefix_expr.loc,
         };
@@ -56,9 +56,9 @@ impl<'a> AnalysisContext<'a> {
                 loc: prefix_expr.loc,
             });
 
-            Some(TypedExprStmt {
+            Some(TypedExpr {
                 kind: new_infix_expr,
-                mloc: MemoryLocation::RValue,
+                val_cat: ValueCategory::RValue,
                 sema_type: None,
                 loc: prefix_expr.loc,
             })

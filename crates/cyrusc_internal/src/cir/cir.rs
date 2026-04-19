@@ -28,7 +28,7 @@ use cyrusc_source_loc::Loc;
 use cyrusc_typed_ast::{
     LabelID,
     decls::{MethodDecls, VarDeclID},
-    exprs::MemoryLocation,
+    exprs::ValueCategory,
 };
 use fx_hash::FxHashMap;
 use std::fmt::Debug;
@@ -70,13 +70,17 @@ pub enum CIRStmt {
 pub struct CIRExpr {
     pub kind: CIRExprKind,
     pub ty: CIRType,
-    pub mloc: MemoryLocation,
+    pub val_cat: ValueCategory,
     pub loc: Loc,
 }
 
 #[derive(Debug, Clone)]
 pub enum CIRExprKind {
-    Load(CIRValue),
+    FuncRef(CIRFuncRef),
+    MemoryAddress(CIRMemoryLocation),
+    Value(CIRValue),
+    Load(CIRLoad),
+
     Literal(CIRLiteral),
     Prefix(CIRPrefixExpr),
     Infix(CIRInfixExpr),
@@ -97,6 +101,33 @@ pub enum CIRExprKind {
     Lambda(CIRLambda),
     Dynamic(CIRDynamicExpr),
     Call(CIRCall),
+}
+
+#[derive(Debug, Clone)]
+pub struct CIRLoad {
+    pub expr: Box<CIRExpr>,
+}
+
+#[derive(Debug, Clone)]
+pub struct CIRValue {
+    pub expr: Box<CIRExpr>,
+}
+
+#[derive(Debug, Clone)]
+pub struct CIRMemoryLocation {
+    pub irv_id: IRValueID,
+    pub addr_kind: CIRAddressKind,
+}
+
+#[derive(Debug, Clone)]
+pub enum CIRAddressKind {
+    GlobalVar,
+    LocalVar,
+}
+
+#[derive(Debug, Clone)]
+pub struct CIRFuncRef {
+    pub irv_id: IRValueID,
 }
 
 #[derive(Debug, Clone)]
@@ -262,19 +293,6 @@ pub enum CIRLiteralKind {
     Null,
     CString(String),
     ByteString(String),
-}
-
-#[derive(Debug, Clone)]
-pub struct CIRValue {
-    pub irv_id: IRValueID,
-    pub kind: CIRValueKind,
-}
-
-#[derive(Debug, Clone)]
-pub enum CIRValueKind {
-    Func,
-    GlobalVar,
-    LocalVariable,
 }
 
 #[derive(Debug, Clone)]

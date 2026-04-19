@@ -443,8 +443,6 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         let mut args_values = Vec::with_capacity(args.len());
 
         for (i, expr) in args.iter().enumerate() {
-            let cir_param_type = cir_func_type.params.get(i).unwrap();
-
             let lvalue = self.emit_expr(expr);
             let mut rvalue = self.load_rvalue(lvalue.clone());
 

@@ -359,22 +359,22 @@ impl Resolver {
     }
 
     #[inline]
-    fn resolve_ident_expr(&mut self, ident: &Ident) -> Option<TypedExprStmt> {
+    fn resolve_ident_expr(&mut self, ident: &Ident) -> Option<TypedExpr> {
         let symbol_id = self.resolve_ident(ident)?;
 
         self.lookup_symbol_entry(symbol_id).map(|symbol_entry| {
             let decl_id = self.resolve_symbol_entry_as_decl_id(&symbol_entry);
 
-            TypedExprStmt {
+            TypedExpr {
                 kind: TypedExprKind::Symbol(TypedSymbolExpr::new(decl_id, ident.loc)),
                 sema_type: None,
-                mloc: MemoryLocation::LValue,
+                val_cat: ValueCategory::LValue,
                 loc: ident.loc,
             }
         })
     }
 
-    fn resolve_expr(&mut self, expr: &ASTExpr) -> Option<TypedExprStmt> {
+    fn resolve_expr(&mut self, expr: &ASTExpr) -> Option<TypedExpr> {
         match expr {
             ASTExpr::Ident(ident) => self.resolve_ident_expr(ident),
             ASTExpr::Infix(infix_expr) => self.resolve_infix_expr(infix_expr),
@@ -408,10 +408,10 @@ impl Resolver {
                 Some(typed_builtin) => {
                     let kind = TypedExprKind::Builtin(typed_builtin);
 
-                    Some(TypedExprStmt {
+                    Some(TypedExpr {
                         kind,
                         sema_type: None,
-                        mloc: MemoryLocation::RValue,
+                        val_cat: ValueCategory::RValue,
                         loc: builtin.loc(),
                     })
                 }
@@ -1013,7 +1013,7 @@ impl Resolver {
     fn resolve_enum_struct_variant_init(
         &mut self,
         struct_variant_init: &ASTEnumStructVariantInit,
-    ) -> Option<TypedExprStmt> {
+    ) -> Option<TypedExpr> {
         let operand = self.resolve_expr(&struct_variant_init.operand)?;
 
         let mut typed_field_inits = Vec::new();
@@ -1031,7 +1031,7 @@ impl Resolver {
             }
         }
 
-        Some(TypedExprStmt {
+        Some(TypedExpr {
             kind: TypedExprKind::EnumStructVariantInit(TypedEnumStructVariantInit {
                 enum_decl_id: None,
                 operand: Box::new(operand),
@@ -1040,7 +1040,7 @@ impl Resolver {
                 loc: struct_variant_init.loc,
             }),
             sema_type: None,
-            mloc: MemoryLocation::RValue,
+            val_cat: ValueCategory::RValue,
             loc: struct_variant_init.loc,
         })
     }
@@ -2043,15 +2043,15 @@ impl Resolver {
     }
 
     #[inline]
-    fn resolve_module_import_expr(&mut self, module_import: &ASTModuleImport) -> Option<TypedExprStmt> {
+    fn resolve_module_import_expr(&mut self, module_import: &ASTModuleImport) -> Option<TypedExpr> {
         self.resolve_module_import(module_import.clone()).and_then(|symbol_id| {
             self.lookup_symbol_entry(symbol_id).map(|symbol_entry| {
                 let decl_id = self.resolve_symbol_entry_as_decl_id(&symbol_entry);
 
-                TypedExprStmt {
+                TypedExpr {
                     kind: TypedExprKind::Symbol(TypedSymbolExpr::new(decl_id, module_import.loc)),
                     sema_type: None,
-                    mloc: MemoryLocation::LValue,
+                    val_cat: ValueCategory::LValue,
                     loc: module_import.loc,
                 }
             })
@@ -2078,7 +2078,7 @@ impl Resolver {
         }
     }
 
-    fn resolve_unnamed_union_value(&mut self, unnamed_union_value: &ASTUnnamedUnionValueExpr) -> Option<TypedExprStmt> {
+    fn resolve_unnamed_union_value(&mut self, unnamed_union_value: &ASTUnnamedUnionValueExpr) -> Option<TypedExpr> {
         let value = self.resolve_expr(&unnamed_union_value.field_value)?;
 
         let kind = TypedExprKind::UnnamedUnionValue(TypedUnnamedUnionValue {
@@ -2088,19 +2088,19 @@ impl Resolver {
             loc: unnamed_union_value.loc,
         });
 
-        Some(TypedExprStmt {
+        Some(TypedExpr {
             kind,
             sema_type: None,
-            mloc: MemoryLocation::RValue,
+            val_cat: ValueCategory::RValue,
             loc: unnamed_union_value.loc,
         })
     }
 
-    fn resolve_unnamed_enum_value(&mut self, unnamed_enum_value: &ASTUnnamedEnumValueExpr) -> Option<TypedExprStmt> {
+    fn resolve_unnamed_enum_value(&mut self, unnamed_enum_value: &ASTUnnamedEnumValueExpr) -> Option<TypedExpr> {
         let kind = match &unnamed_enum_value.kind {
             UnnamedEnumValueKind::Plain => TypedUnnamedEnumValueKind::Unit,
             UnnamedEnumValueKind::Tuple(exprs) => {
-                let mut typed_exprs: Vec<TypedExprStmt> = Vec::new();
+                let mut typed_exprs: Vec<TypedExpr> = Vec::new();
                 for expr in exprs {
                     match self.resolve_expr(expr) {
                         Some(typed_expr) => typed_exprs.push(typed_expr),
@@ -2127,23 +2127,23 @@ impl Resolver {
             }
         };
 
-        Some(TypedExprStmt {
+        Some(TypedExpr {
             kind: TypedExprKind::UnnamedEnumValue(TypedUnnamedEnumValue {
                 enum_decl_id: None,
                 ident: unnamed_enum_value.ident.clone(),
                 kind,
                 loc: unnamed_enum_value.loc,
             }),
-            mloc: MemoryLocation::RValue,
+            val_cat: ValueCategory::RValue,
             sema_type: None,
             loc: unnamed_enum_value.loc,
         })
     }
 
-    fn resolve_dynamic_expr(&mut self, dynamic: &ASTDynamicExpr) -> Option<TypedExprStmt> {
+    fn resolve_dynamic_expr(&mut self, dynamic: &ASTDynamicExpr) -> Option<TypedExpr> {
         let operand = self.resolve_expr(&dynamic.operand)?;
 
-        Some(TypedExprStmt {
+        Some(TypedExpr {
             kind: TypedExprKind::Dynamic(TypedDynamicExpr {
                 operand: Box::new(operand),
                 vtable_id: None,
@@ -2151,28 +2151,28 @@ impl Resolver {
                 loc: dynamic.loc,
             }),
             sema_type: None,
-            mloc: MemoryLocation::RValue,
+            val_cat: ValueCategory::RValue,
             loc: dynamic.loc,
         })
     }
 
-    fn resolve_tuple_member_access(&mut self, tuple_member_access: &ASTTupleAccessExpr) -> Option<TypedExprStmt> {
+    fn resolve_tuple_member_access(&mut self, tuple_member_access: &ASTTupleAccessExpr) -> Option<TypedExpr> {
         let operand = self.resolve_expr(&tuple_member_access.operand)?;
 
-        Some(TypedExprStmt {
+        Some(TypedExpr {
             kind: TypedExprKind::TupleAccess(TypedTupleAccessExpr {
                 operand: Box::new(operand),
                 index: tuple_member_access.index,
                 loc: tuple_member_access.loc,
             }),
             sema_type: None,
-            mloc: MemoryLocation::LValue,
+            val_cat: ValueCategory::LValue,
             loc: tuple_member_access.loc,
         })
     }
 
-    fn resolve_tuple_expr(&mut self, tuple_value: &ASTTupleValueExpr) -> Option<TypedExprStmt> {
-        let mut elements: Vec<TypedExprStmt> = Vec::new();
+    fn resolve_tuple_expr(&mut self, tuple_value: &ASTTupleValueExpr) -> Option<TypedExpr> {
+        let mut elements: Vec<TypedExpr> = Vec::new();
 
         for expr in &tuple_value.elements {
             match self.resolve_expr(expr) {
@@ -2181,18 +2181,18 @@ impl Resolver {
             }
         }
 
-        Some(TypedExprStmt {
+        Some(TypedExpr {
             kind: TypedExprKind::Tuple(TypedTupleExpr {
                 elements,
                 loc: tuple_value.loc,
             }),
             sema_type: None,
-            mloc: MemoryLocation::RValue,
+            val_cat: ValueCategory::RValue,
             loc: tuple_value.loc,
         })
     }
 
-    fn resolve_lambda_expr(&mut self, lambda: &ASTLambdaExpr) -> Option<TypedExprStmt> {
+    fn resolve_lambda_expr(&mut self, lambda: &ASTLambdaExpr) -> Option<TypedExpr> {
         let scope = LocalScope::new();
 
         with_local_scope!(self, scope, {
@@ -2214,7 +2214,7 @@ impl Resolver {
                 None => return None,
             };
 
-            Some(TypedExprStmt {
+            Some(TypedExpr {
                 kind: TypedExprKind::Lambda(TypedLambdaExpr {
                     params: TypedFuncParams { list: params, variadic },
                     body,
@@ -2223,34 +2223,34 @@ impl Resolver {
                     loc: lambda.loc,
                 }),
                 sema_type: None,
-                mloc: MemoryLocation::RValue,
+                val_cat: ValueCategory::RValue,
                 loc: lambda.loc,
             })
         })
     }
 
-    fn resolve_field_access(&mut self, field_access: &ASTFieldAccessExpr) -> Option<TypedExprStmt> {
+    fn resolve_field_access(&mut self, field_access: &ASTFieldAccessExpr) -> Option<TypedExpr> {
         let operand = self.resolve_expr(&field_access.operand)?;
 
-        Some(TypedExprStmt {
+        Some(TypedExpr {
             kind: TypedExprKind::FieldAccess(TypedFieldAccess {
                 operand: Box::new(operand),
                 name: field_access.field_name.value.clone(),
-                is_fat_arrow: field_access.is_fat_arrow,
+                is_thin_arrow: field_access.is_thin_arrow,
                 dispatch: TypedFieldAccessDispatch::Unresolved,
                 ty: None,
                 loc: field_access.loc,
             }),
-            mloc: MemoryLocation::LValue,
+            val_cat: ValueCategory::LValue,
             sema_type: None,
             loc: field_access.loc,
         })
     }
 
-    fn resolve_method_call(&mut self, method_call: &ASTMethodCallExpr) -> Option<TypedExprStmt> {
+    fn resolve_method_call(&mut self, method_call: &ASTMethodCallExpr) -> Option<TypedExpr> {
         let operand = self.resolve_expr(&method_call.operand)?;
 
-        let args: Vec<TypedExprStmt> = method_call
+        let args: Vec<TypedExpr> = method_call
             .args
             .iter()
             .filter_map(|arg| self.resolve_expr(arg))
@@ -2258,7 +2258,7 @@ impl Resolver {
 
         let type_args = self.resolve_type_args(&method_call.type_args)?;
 
-        Some(TypedExprStmt {
+        Some(TypedExpr {
             kind: TypedExprKind::MethodCall(TypedMethodCall {
                 operand: Box::new(operand),
                 name: method_call.method_name.value.clone(),
@@ -2267,16 +2267,16 @@ impl Resolver {
 
                 dispatch: TypedMethodCallDispatch::Unresolved,
 
-                is_fat_arrow: method_call.is_fat_arrow,
+                is_thin_arrow: method_call.is_thin_arrow,
                 loc: method_call.loc,
             }),
-            mloc: MemoryLocation::RValue,
+            val_cat: ValueCategory::RValue,
             sema_type: None,
             loc: method_call.loc,
         })
     }
 
-    fn resolve_struct_init(&mut self, struct_init: &ASTStructInitExpr) -> Option<TypedExprStmt> {
+    fn resolve_struct_init(&mut self, struct_init: &ASTStructInitExpr) -> Option<TypedExpr> {
         let symbol_id = self.resolve_local_module_import(&struct_init.struct_name)?;
 
         let fields: Vec<TypedFieldInit> = struct_init
@@ -2296,14 +2296,14 @@ impl Resolver {
         let symbol_entry = self.lookup_symbol_entry(symbol_id)?;
         let decl_id = self.resolve_symbol_entry_as_decl_id(&symbol_entry);
 
-        Some(TypedExprStmt {
+        Some(TypedExpr {
             kind: TypedExprKind::StructInit(TypedStructInitExpr {
                 decl_id,
                 fields,
                 type_args,
                 loc: struct_init.loc,
             }),
-            mloc: MemoryLocation::RValue,
+            val_cat: ValueCategory::RValue,
             sema_type: None,
             loc: struct_init.loc,
         })
@@ -2312,7 +2312,7 @@ impl Resolver {
     fn resolve_unnamed_struct_value(
         &mut self,
         unnamed_struct_value: &ASTUnnamedStructValueExpr,
-    ) -> Option<TypedExprStmt> {
+    ) -> Option<TypedExpr> {
         let fields = unnamed_struct_value
             .fields
             .iter()
@@ -2326,7 +2326,7 @@ impl Resolver {
             })
             .collect();
 
-        Some(TypedExprStmt {
+        Some(TypedExpr {
             kind: TypedExprKind::UnnamedStructValue(TypedUnnamedStructValue {
                 struct_decl_id: None,
                 fields,
@@ -2335,21 +2335,21 @@ impl Resolver {
                 align: unnamed_struct_value.align,
             }),
             sema_type: None,
-            mloc: MemoryLocation::RValue,
+            val_cat: ValueCategory::RValue,
             loc: unnamed_struct_value.loc,
         })
     }
 
-    fn resolve_func_call(&mut self, func_call: &ASTFuncCallExpr) -> Option<TypedExprStmt> {
+    fn resolve_func_call(&mut self, func_call: &ASTFuncCallExpr) -> Option<TypedExpr> {
         let operand = self.resolve_expr(&func_call.operand)?;
 
-        let args: Vec<TypedExprStmt> = func_call.args.iter().filter_map(|arg| self.resolve_expr(arg)).collect();
+        let args: Vec<TypedExpr> = func_call.args.iter().filter_map(|arg| self.resolve_expr(arg)).collect();
 
         let type_args = self.resolve_type_args(&func_call.type_args)?;
 
         let loc = func_call.loc;
 
-        Some(TypedExprStmt {
+        Some(TypedExpr {
             kind: TypedExprKind::FuncCall(TypedFuncCall {
                 operand: Box::new(operand),
                 args,
@@ -2357,85 +2357,85 @@ impl Resolver {
                 dispatch: TypedFuncCallDispatch::Unresolved,
                 loc,
             }),
-            mloc: MemoryLocation::RValue,
+            val_cat: ValueCategory::RValue,
             sema_type: None,
             loc,
         })
     }
 
-    fn resolve_untyped_array_expr(&mut self, untyped_array: &ASTUntypedArrayExpr) -> Option<TypedExprStmt> {
-        let elements: Vec<TypedExprStmt> = untyped_array
+    fn resolve_untyped_array_expr(&mut self, untyped_array: &ASTUntypedArrayExpr) -> Option<TypedExpr> {
+        let elements: Vec<TypedExpr> = untyped_array
             .elements
             .iter()
             .filter_map(|item| self.resolve_expr(item))
             .collect();
 
-        Some(TypedExprStmt {
+        Some(TypedExpr {
             kind: TypedExprKind::Array(TypedArrayExpr {
                 ty: None,
                 elements,
                 loc: untyped_array.loc,
             }),
-            mloc: MemoryLocation::RValue,
+            val_cat: ValueCategory::RValue,
             sema_type: None,
             loc: untyped_array.loc,
         })
     }
 
-    fn resolve_array_expr(&mut self, array: &ASTArrayExpr) -> Option<TypedExprStmt> {
+    fn resolve_array_expr(&mut self, array: &ASTArrayExpr) -> Option<TypedExpr> {
         let array_type = self.resolve_type(array.data_type.clone(), array.loc)?;
 
-        let typed_elements: Vec<TypedExprStmt> = array
+        let typed_elements: Vec<TypedExpr> = array
             .elements
             .iter()
             .filter_map(|item| self.resolve_expr(item))
             .collect();
 
-        Some(TypedExprStmt {
+        Some(TypedExpr {
             kind: TypedExprKind::Array(TypedArrayExpr {
                 ty: Some(array_type),
                 elements: typed_elements,
                 loc: array.loc,
             }),
-            mloc: MemoryLocation::RValue,
+            val_cat: ValueCategory::RValue,
             sema_type: None,
             loc: array.loc,
         })
     }
 
-    fn resolve_infix_expr(&mut self, infix: &ASTInfixExpr) -> Option<TypedExprStmt> {
+    fn resolve_infix_expr(&mut self, infix: &ASTInfixExpr) -> Option<TypedExpr> {
         let lhs = self.resolve_expr(&*infix.lhs)?;
         let rhs = self.resolve_expr(&*infix.rhs)?;
 
-        Some(TypedExprStmt {
+        Some(TypedExpr {
             kind: TypedExprKind::Infix(TypedInfixExpr {
                 lhs: Box::new(lhs),
                 rhs: Box::new(rhs),
                 op: infix.op.clone(),
                 loc: infix.loc,
             }),
-            mloc: MemoryLocation::RValue,
+            val_cat: ValueCategory::RValue,
             sema_type: None,
             loc: infix.loc,
         })
     }
 
-    fn resolve_prefix_expr(&mut self, prefix: &ASTPrefixExpr) -> Option<TypedExprStmt> {
+    fn resolve_prefix_expr(&mut self, prefix: &ASTPrefixExpr) -> Option<TypedExpr> {
         let operand = self.resolve_expr(&*prefix.operand)?;
 
-        Some(TypedExprStmt {
+        Some(TypedExpr {
             kind: TypedExprKind::Prefix(TypedPrefixExpr {
                 operand: Box::new(operand),
                 op: prefix.op.clone(),
                 loc: prefix.loc,
             }),
-            mloc: MemoryLocation::RValue,
+            val_cat: ValueCategory::RValue,
             sema_type: None,
             loc: prefix.loc,
         })
     }
 
-    fn resolve_type_specifier_expr(&mut self, type_spec: &TypeSpecifier) -> Option<TypedExprStmt> {
+    fn resolve_type_specifier_expr(&mut self, type_spec: &TypeSpecifier) -> Option<TypedExpr> {
         let loc = type_spec.loc();
 
         let symbol_id = match type_spec {
@@ -2444,9 +2444,9 @@ impl Resolver {
             _ => {
                 let sema_type = self.resolve_type(type_spec.clone(), loc)?;
 
-                return Some(TypedExprStmt {
+                return Some(TypedExpr {
                     kind: TypedExprKind::SemaType(sema_type.clone()),
-                    mloc: MemoryLocation::RValue,
+                    val_cat: ValueCategory::RValue,
                     sema_type: Some(sema_type),
                     loc,
                 });
@@ -2456,33 +2456,33 @@ impl Resolver {
         self.lookup_symbol_entry(symbol_id).map(|symbol_entry| {
             let decl_id = self.resolve_symbol_entry_as_decl_id(&symbol_entry);
 
-            TypedExprStmt {
+            TypedExpr {
                 kind: TypedExprKind::Symbol(TypedSymbolExpr::new(decl_id, loc)),
-                mloc: MemoryLocation::LValue,
+                val_cat: ValueCategory::LValue,
                 sema_type: None,
                 loc,
             }
         })
     }
 
-    fn resolve_assign_expr(&mut self, assign: &ASTAssignExpr) -> Option<TypedExprStmt> {
+    fn resolve_assign_expr(&mut self, assign: &ASTAssignExpr) -> Option<TypedExpr> {
         let lhs = self.resolve_expr(&assign.lhs)?;
         let rhs = self.resolve_expr(&assign.rhs)?;
 
-        Some(TypedExprStmt {
+        Some(TypedExpr {
             kind: TypedExprKind::Assign(TypedAssignExpr {
                 lhs: Box::new(lhs),
                 rhs: Box::new(rhs),
                 kind: assign.kind.clone(),
                 loc: assign.loc,
             }),
-            mloc: MemoryLocation::RValue,
+            val_cat: ValueCategory::RValue,
             sema_type: None,
             loc: assign.loc,
         })
     }
 
-    fn resolve_literal_expr(&mut self, literal: &ASTLiteralExpr) -> Option<TypedExprStmt> {
+    fn resolve_literal_expr(&mut self, literal: &ASTLiteralExpr) -> Option<TypedExpr> {
         let literal_type = self.resolve_literal_type(literal)?;
 
         let typed_literal = TypedLiteralExpr {
@@ -2491,10 +2491,10 @@ impl Resolver {
             loc: literal.loc,
         };
 
-        Some(TypedExprStmt {
+        Some(TypedExpr {
             kind: TypedExprKind::Literal(typed_literal.clone()),
             sema_type: None,
-            mloc: MemoryLocation::RValue,
+            val_cat: ValueCategory::RValue,
             loc: typed_literal.loc,
         })
     }
@@ -2569,60 +2569,60 @@ impl Resolver {
         }
     }
 
-    fn resolve_unary_expr(&mut self, unary: &ASTUnaryExpr) -> Option<TypedExprStmt> {
+    fn resolve_unary_expr(&mut self, unary: &ASTUnaryExpr) -> Option<TypedExpr> {
         let operand = self.resolve_expr(&*unary.operand)?;
 
-        Some(TypedExprStmt {
+        Some(TypedExpr {
             kind: TypedExprKind::Unary(TypedUnaryExpr {
                 op: unary.op.clone(),
                 operand: Box::new(operand),
                 loc: unary.loc,
             }),
-            mloc: MemoryLocation::RValue,
+            val_cat: ValueCategory::RValue,
             sema_type: None,
             loc: unary.loc,
         })
     }
 
-    fn resolve_array_index_expr(&mut self, array_index: &ASTArrayIndexExpr) -> Option<TypedExprStmt> {
+    fn resolve_array_index_expr(&mut self, array_index: &ASTArrayIndexExpr) -> Option<TypedExpr> {
         let operand = self.resolve_expr(&array_index.operand)?;
         let index = self.resolve_expr(&array_index.index)?;
 
-        Some(TypedExprStmt {
+        Some(TypedExpr {
             kind: TypedExprKind::ArrayIndex(TypedArrayIndexExpr {
                 operand: Box::new(operand),
                 index: Box::new(index),
                 loc: array_index.loc,
             }),
-            mloc: MemoryLocation::LValue,
+            val_cat: ValueCategory::LValue,
             sema_type: None,
             loc: array_index.loc,
         })
     }
 
-    fn resolve_addr_of_expr(&mut self, addr_of: &ASTAddrOfExpr) -> Option<TypedExprStmt> {
+    fn resolve_addr_of_expr(&mut self, addr_of: &ASTAddrOfExpr) -> Option<TypedExpr> {
         let operand = self.resolve_expr(&addr_of.expr)?;
 
-        Some(TypedExprStmt {
+        Some(TypedExpr {
             kind: TypedExprKind::AddrOf(TypedAddrOfExpr {
                 operand: Box::new(operand),
                 loc: addr_of.loc,
             }),
-            mloc: MemoryLocation::RValue,
+            val_cat: ValueCategory::RValue,
             sema_type: None,
             loc: addr_of.loc,
         })
     }
 
-    fn resolve_deref_expr(&mut self, deref: &ASTDerefExpr) -> Option<TypedExprStmt> {
+    fn resolve_deref_expr(&mut self, deref: &ASTDerefExpr) -> Option<TypedExpr> {
         let operand = self.resolve_expr(&deref.expr)?;
 
-        Some(TypedExprStmt {
+        Some(TypedExpr {
             kind: TypedExprKind::Deref(TypedDerefExpr {
                 operand: Box::new(operand),
                 loc: deref.loc,
             }),
-            mloc: MemoryLocation::LValue,
+            val_cat: ValueCategory::LValue,
             sema_type: None,
             loc: deref.loc,
         })
@@ -2635,7 +2635,7 @@ impl Resolver {
         &mut self,
         ident: &Ident,
         ty: Option<SemaType>,
-        rhs: Option<TypedExprStmt>,
+        rhs: Option<TypedExpr>,
         is_const: bool,
     ) -> VarDeclID {
         self.decl_tables.insert_var(VarDecl {

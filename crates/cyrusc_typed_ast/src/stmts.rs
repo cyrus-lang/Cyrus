@@ -21,7 +21,7 @@ use crate::{
         EnumDeclID, FuncDecl, FuncDeclID, GlobalVarDeclID, InterfaceDeclID, MethodDecls, StructDeclID, TypedefDeclID,
         UnionDeclID, VarDeclID,
     },
-    exprs::{TypedExprStmt, TypedLambdaExpr, TypedTupleAccessExpr, TypedTupleExpr},
+    exprs::{TypedExpr, TypedLambdaExpr, TypedTupleAccessExpr, TypedTupleExpr},
     types::SemaType,
 };
 use cyrusc_ast::{
@@ -51,7 +51,7 @@ pub enum TypedStmt {
     Enum(TypedEnumStmt),
     Union(TypedUnionStmt),
     Interface(TypedInterfaceStmt),
-    Expr(TypedExprStmt),
+    Expr(TypedExpr),
     Defer(TypedDeferStmt),
     TupleExport(TypedTupleExportStmt),
     Label(TypedLabelStmt),
@@ -68,7 +68,7 @@ pub enum TypedBuiltin {
 #[derive(Debug, Clone)]
 pub struct TypedBuiltinFunc {
     pub name: Ident,
-    pub args: Vec<TypedExprStmt>,
+    pub args: Vec<TypedExpr>,
     pub child_stmt: Option<Box<TypedStmt>>,
     pub loc: Loc,
 }
@@ -76,7 +76,7 @@ pub struct TypedBuiltinFunc {
 #[derive(Debug, Clone)]
 pub struct TypedBuiltinScope {
     pub name: Ident,
-    pub args: Vec<TypedExprStmt>,
+    pub args: Vec<TypedExpr>,
     pub block: Box<TypedBlockStmt>,
     pub loc: Loc,
 }
@@ -98,7 +98,7 @@ pub struct TypedGotoStmt {
 #[derive(Debug, Clone)]
 pub struct TypedTupleExportStmt {
     pub pattern: TypedTupleExportPattern,
-    pub rhs: Option<TypedExprStmt>,
+    pub rhs: Option<TypedExpr>,
     pub is_const: bool,
     pub loc: Loc,
 }
@@ -159,7 +159,7 @@ pub enum TypedEnumVariant {
     Unit(Ident),
     Valued {
         ident: Ident,
-        value: Box<TypedExprStmt>,
+        value: Box<TypedExpr>,
     },
     Tuple {
         ident: Ident,
@@ -227,7 +227,7 @@ pub struct TypedStructField {
 
 #[derive(Debug, Clone)]
 pub struct TypedReturnStmt {
-    pub arg: Option<TypedExprStmt>,
+    pub arg: Option<TypedExpr>,
     pub loc: Loc,
 }
 
@@ -237,7 +237,7 @@ pub struct TypedGlobalVarStmt {
     pub file_id: FileID,
     pub name: String,
     pub ty: Option<SemaType>,
-    pub expr: Option<TypedExprStmt>,
+    pub expr: Option<TypedExpr>,
     pub is_const: bool,
     pub modifiers: GlobalVarModifiers,
     pub loc: Loc,
@@ -265,14 +265,14 @@ pub struct TypedVarStmt {
     pub var_decl_id: VarDeclID,
     pub name: String,
     pub ty: Option<SemaType>,
-    pub rhs: Option<TypedExprStmt>,
+    pub rhs: Option<TypedExpr>,
     pub is_const: bool,
     pub loc: Loc,
 }
 
 #[derive(Debug, Clone)]
 pub struct TypedIfStmt {
-    pub cond: TypedExprStmt,
+    pub cond: TypedExpr,
     pub then_block: Box<TypedBlockStmt>,
     pub branches: Vec<TypedIfStmt>,
     pub else_block: Option<Box<TypedBlockStmt>>,
@@ -356,22 +356,22 @@ pub struct TypedFuncParam {
 #[derive(Debug, Clone)]
 pub struct TypedForStmt {
     pub initializer: Option<TypedVarStmt>,
-    pub cond: Option<TypedExprStmt>,
-    pub increment: Option<TypedExprStmt>,
+    pub cond: Option<TypedExpr>,
+    pub increment: Option<TypedExpr>,
     pub body: Box<TypedBlockStmt>,
     pub loc: Loc,
 }
 
 #[derive(Debug, Clone)]
 pub struct TypedWhileStmt {
-    pub cond: TypedExprStmt,
+    pub cond: TypedExpr,
     pub body: Box<TypedBlockStmt>,
     pub loc: Loc,
 }
 
 #[derive(Debug, Clone)]
 pub struct TypedSwitchStmt {
-    pub operand: TypedExprStmt,
+    pub operand: TypedExpr,
     pub cases: Vec<TypedSwitchCase>,
     pub default_case: Option<TypedBlockStmt>,
     pub loc: Loc,
@@ -398,7 +398,7 @@ pub enum TypedSwitchCasePattern {
     Range(TypedRange),
 
     /// literal / constant expression
-    Expr(TypedExprStmt),
+    Expr(TypedExpr),
 
     /// .Variant
     EnumUnit(Ident),
@@ -425,8 +425,8 @@ pub struct TypedSwitchCaseEnumStructPatternField {
 
 #[derive(Debug, Clone)]
 pub struct TypedRange {
-    pub lower: TypedExprStmt,
-    pub upper: TypedExprStmt,
+    pub lower: TypedExpr,
+    pub upper: TypedExpr,
     pub inclusive_upper: bool,
     pub loc: Loc,
 }

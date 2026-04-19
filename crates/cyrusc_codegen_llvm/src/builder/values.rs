@@ -40,18 +40,38 @@ impl<'a> InternalValue<'a> {
         InternalValue { ty, kind }
     }
 
+    #[inline]
     pub fn as_basic_value(&self) -> BasicValueEnum<'a> {
         match &self.kind {
             InternalValueKind::LValue(pointer) => (*pointer).into(),
             InternalValueKind::RValue(value) => value.clone(),
-            InternalValueKind::FuncValue(llvm_func_value) => llvm_func_value.as_global_value().as_pointer_value().into(),
+            InternalValueKind::FuncValue(llvm_func_value) => {
+                llvm_func_value.as_global_value().as_pointer_value().into()
+            }
         }
     }
 
+    #[inline]
     pub fn as_func(&self) -> Option<&FunctionValue<'a>> {
         match &self.kind {
             InternalValueKind::FuncValue(llvm_func_value) => Some(llvm_func_value),
             _ => None,
+        }
+    }
+
+    #[inline]
+    pub fn is_lvalue(&self) -> bool {
+        match &self.kind {
+            InternalValueKind::LValue(_) => true,
+            _ => false,
+        }
+    }
+
+    #[inline]
+    pub fn is_rvalue(&self) -> bool {
+        match &self.kind {
+            InternalValueKind::RValue(_) => true,
+            _ => false,
         }
     }
 }

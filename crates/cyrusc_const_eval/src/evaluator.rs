@@ -40,7 +40,7 @@ impl<'a, R: ConstResolver> ConstEvaluator<'a, R> {
         }
     }
 
-    pub fn eval_expr(&mut self, expr: &TypedExprStmt) -> Result<ConstValue, ConstEvalError> {
+    pub fn eval_expr(&mut self, expr: &TypedExpr) -> Result<ConstValue, ConstEvalError> {
         let raw = match &expr.kind {
             TypedExprKind::Symbol(symbol_expr) => self.eval_symbol(symbol_expr.decl_id),
             TypedExprKind::Literal(lit) => self.eval_literal(lit),

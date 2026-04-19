@@ -21,7 +21,7 @@ use cyrusc_diagcentral::{Diag, DiagLevel};
 use cyrusc_source_loc::Loc;
 use cyrusc_typed_ast::{
     decls::VarDeclID,
-    exprs::{TypedExprKind, TypedExprStmt, TypedTupleAccessExpr},
+    exprs::{TypedExprKind, TypedExpr, TypedTupleAccessExpr},
     format::format_sema_type,
     stmts::{TypedTupleExportPattern, TypedTupleExportPatternKind, TypedTupleExportStmt},
     types::{SemaType, TypedTupleType},
@@ -99,7 +99,7 @@ impl<'a> AnalysisContext<'a> {
         &mut self,
         var_decl_id: VarDeclID,
         sema_type: &SemaType,
-        rhs: &TypedExprStmt,
+        rhs: &TypedExpr,
         is_const: bool,
     ) {
         let ty = sema_type.clone();
@@ -115,7 +115,7 @@ impl<'a> AnalysisContext<'a> {
         &mut self,
         pattern: &TypedTupleExportPattern,
         sema_type: &SemaType,
-        root_expr: &TypedExprStmt,
+        root_expr: &TypedExpr,
         stmt_is_const: bool,
         loc: Loc,
         path: &mut Vec<usize>,
@@ -222,10 +222,10 @@ impl<'a> AnalysisContext<'a> {
         }))
     }
 
-    fn tuple_access_expr(&self, base_expr: &TypedExprStmt, access_path: &[usize], loc: Loc) -> TypedExprStmt {
+    fn tuple_access_expr(&self, base_expr: &TypedExpr, access_path: &[usize], loc: Loc) -> TypedExpr {
         let mut expr = base_expr.clone();
         let mut current_type = expr.sema_type.clone();
-        let mloc = expr.mloc;
+        let val_cat = expr.val_cat;
 
         for &index in access_path {
             let Some(ty) = &current_type else {
@@ -238,14 +238,14 @@ impl<'a> AnalysisContext<'a> {
 
             let element_type = tuple_type.elements.get(index).cloned();
 
-            expr = TypedExprStmt {
+            expr = TypedExpr {
                 kind: TypedExprKind::TupleAccess(TypedTupleAccessExpr {
                     operand: Box::new(expr),
                     index,
                     loc,
                 }),
                 sema_type: element_type.clone(),
-                mloc,
+                val_cat,
                 loc,
             };
 

@@ -21,7 +21,7 @@ use crate::stmts::{TypedEnumVariant, TypedEnumVariantStructField, TypedTypeArg};
 use crate::types::TypeDeclID;
 use crate::{GenericParamID, SymbolID};
 use crate::{
-    exprs::{TypedExprKind, TypedExprStmt, TypedLambdaExpr, TypedSymbolExpr, TypedUnnamedEnumValueKind},
+    exprs::{TypedExprKind, TypedExpr, TypedLambdaExpr, TypedSymbolExpr, TypedUnnamedEnumValueKind},
     stmts::{TypedBuiltin, TypedFuncParamKind, TypedFuncTypeVariadicParam, TypedFuncVariadicParam, TypedTypeArgs},
     types::{SemaType, TypedArrayCapacity, TypedFuncType, UnresolvedType},
 };
@@ -37,7 +37,7 @@ pub trait Formatter: Send + Sync {
     fn format_generic_param(&self, generic_param_id: GenericParamID) -> String;
 }
 
-fn join_exprs(exprs: &[TypedExprStmt], f: &dyn Formatter) -> String {
+fn join_exprs(exprs: &[TypedExpr], f: &dyn Formatter) -> String {
     exprs
         .iter()
         .map(|expr| format_typed_expr(expr, f))
@@ -132,7 +132,7 @@ pub fn format_struct_decl(struct_decl: &StructDecl, f: &dyn Formatter) -> String
     out
 }
 
-pub fn format_typed_expr(expr: &TypedExprStmt, formatter: &dyn Formatter) -> String {
+pub fn format_typed_expr(expr: &TypedExpr, formatter: &dyn Formatter) -> String {
     use TypedExprKind::*;
 
     match &expr.kind {
@@ -210,7 +210,7 @@ pub fn format_typed_expr(expr: &TypedExprStmt, formatter: &dyn Formatter) -> Str
         ),
         FieldAccess(field_access) => {
             let op = format_typed_expr(&field_access.operand, formatter);
-            let sep = if field_access.is_fat_arrow { "->" } else { "." };
+            let sep = if field_access.is_thin_arrow { "->" } else { "." };
             format!("{}{}{}", op, sep, field_access.name)
         }
         TupleAccess(tuple_access) => format!(
@@ -220,7 +220,7 @@ pub fn format_typed_expr(expr: &TypedExprStmt, formatter: &dyn Formatter) -> Str
         ),
         MethodCall(method_call) => {
             let operand = format_typed_expr(&method_call.operand, formatter);
-            let separator = if method_call.is_fat_arrow { "->" } else { "." };
+            let separator = if method_call.is_thin_arrow { "->" } else { "." };
             format!("{}{}{}", operand, separator, method_call.name)
         }
         UnnamedUnionValue(unnamed_union_value) => format!(

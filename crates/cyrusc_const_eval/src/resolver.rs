@@ -15,9 +15,9 @@
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
 
-use cyrusc_typed_ast::{decls::DeclID, exprs::TypedExprStmt};
+use cyrusc_typed_ast::{decls::DeclID, exprs::TypedExpr};
 
 pub trait ConstResolver {
     fn is_decl_const(&mut self, decl_id: DeclID) -> bool;
-    fn resolve_symbol_expr(&mut self, decl_id: DeclID) -> Option<TypedExprStmt>;
+    fn resolve_symbol_expr(&mut self, decl_id: DeclID) -> Option<TypedExpr>;
 }

@@ -22,7 +22,7 @@ use cyrusc_source_loc::Loc;
 use cyrusc_typed_ast::{
     decls::{DeclID, FuncDecl, FuncDeclID, MethodDecl, MethodDeclID, MethodDecls},
     exprs::{
-        TypedExprKind, TypedExprStmt, TypedFuncCall, TypedFuncCallDispatch, TypedMethodCall, TypedMethodCallDispatch,
+        TypedExprKind, TypedExpr, TypedFuncCall, TypedFuncCallDispatch, TypedMethodCall, TypedMethodCallDispatch,
     },
     format::{format_func_type, format_loc, format_sema_type},
     stmts::{TypedFuncTypeVariadicParam, TypedFuncVariadicParam, TypedGenericParams, TypedTypeArgs},
@@ -350,7 +350,7 @@ impl<'a> AnalysisContext<'a> {
                 &method_decl,
                 method_decls,
                 &object_name,
-                method_call.is_fat_arrow,
+                method_call.is_thin_arrow,
                 false,
                 method_call.loc,
             );
@@ -563,7 +563,7 @@ impl<'a> AnalysisContext<'a> {
         method_decl: &MethodDecl,
         method_decls: &MethodDecls,
         object_name: &str,
-        is_fat_arrow: bool,
+        is_thin_arrow: bool,
         is_interface_method_call: bool,
         loc: Loc,
     ) {
@@ -596,7 +596,7 @@ impl<'a> AnalysisContext<'a> {
         let is_object =
             base_type.is_struct() || base_type.is_union() || base_type.is_enum() || is_interface_method_call;
 
-        if is_fat_arrow {
+        if is_thin_arrow {
             if !is_pointer {
                 self.reporter.report(Diag {
                     level: DiagLevel::Error,
@@ -619,7 +619,7 @@ impl<'a> AnalysisContext<'a> {
 }
 
 impl<'a> AnalysisContext<'a> {
-    fn analyze_argument(&mut self, arg: &mut TypedExprStmt, mut expected_type: SemaType, loc: Loc) -> Option<SemaType> {
+    fn analyze_argument(&mut self, arg: &mut TypedExpr, mut expected_type: SemaType, loc: Loc) -> Option<SemaType> {
         expected_type = self.substitute_type(&expected_type);
 
         let Some(mut arg_type) = self.analyze_expr(arg, Some(expected_type.clone())) else {
@@ -661,7 +661,7 @@ impl<'a> AnalysisContext<'a> {
     fn analyze_call(
         &mut self,
         func_decl: &mut FuncDecl,
-        args: &mut Vec<TypedExprStmt>,
+        args: &mut Vec<TypedExpr>,
         loc: Loc,
         instance_method_call: bool,
     ) -> bool {
@@ -715,7 +715,7 @@ impl<'a> AnalysisContext<'a> {
     /// handling both typed variadic parameters (with explicit type requirements) and untyped
     /// C-style variadic parameters. This function processes arguments beyond the static
     /// parameter list according to the function's variadic specification.
-    fn check_func_variadic_arguments(&mut self, func_decl: &FuncDecl, args: &mut Vec<TypedExprStmt>, loc: Loc) {
+    fn check_func_variadic_arguments(&mut self, func_decl: &FuncDecl, args: &mut Vec<TypedExpr>, loc: Loc) {
         let static_params_len = func_decl.params.list.len();
         let variadic_args = &mut args[static_params_len..];
 
@@ -767,7 +767,7 @@ impl<'a> AnalysisContext<'a> {
     fn check_func_type_call(
         &mut self,
         func_type: &mut TypedFuncType,
-        args: &mut Vec<TypedExprStmt>,
+        args: &mut Vec<TypedExpr>,
         loc: Loc,
     ) -> Option<SemaType> {
         let is_variadic = func_type.params.variadic.is_some();

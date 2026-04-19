@@ -35,7 +35,7 @@ use cyrusc_internal::{
         types::{CIRArrayType, CIREnumType, CIRFuncType, CIRStructType, CIRTupleType, CIRType, CIRUnionType},
     },
 };
-use cyrusc_typed_ast::{exprs::MemoryLocation, types::PlainType};
+use cyrusc_typed_ast::{exprs::ValueCategory, types::PlainType};
 use inkwell::{
     AddressSpace, FloatPredicate, IntPredicate,
     types::{AnyTypeEnum, ArrayType, BasicType, BasicTypeEnum, StructType},
@@ -54,7 +54,11 @@ pub enum DerefMode {
 impl<'ll> CodeGenIRBuilder<'ll> {
     pub(crate) fn emit_expr(&mut self, expr: &CIRExpr) -> InternalValue<'ll> {
         let value = match &expr.kind {
-            CIRExprKind::Load(value_ref) => self.emit_load(value_ref),
+            CIRExprKind::Load(load) => self.emit_load_value(load),
+            CIRExprKind::FuncRef(func_ref) => self.emit_func_ref(func_ref),
+            CIRExprKind::MemoryAddress(addr) => self.emit_memory_address(addr),
+            CIRExprKind::Value(val) => self.emit_value(val),
+
             CIRExprKind::Literal(literal) => self.emit_literal(literal),
             CIRExprKind::Prefix(prefix_expr) => self.emit_prefix_expr(prefix_expr),
             CIRExprKind::Infix(infix_expr) => self.emit_infix_expr(infix_expr),
@@ -602,7 +606,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
             DerefMode::Store => self.emit_lvalue_address(&CIRExpr {
                 kind: CIRExprKind::Deref(deref.clone()),
                 ty: deref.operand.ty.pointer_inner().cloned().unwrap(),
-                mloc: MemoryLocation::LValue,
+                val_cat: ValueCategory::LValue,
                 loc: deref.operand.loc,
             }),
         }
@@ -1254,7 +1258,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
 
         let operand = self.emit_lvalue_address(&field_access.operand);
 
-        // Determine concrete struct type of operand
+        // determine concrete struct type of operand
         let cir_struct_ty = if let Some(inner) = field_access.operand.ty.pointer_inner() {
             inner.clone().as_struct().unwrap()
         } else {
@@ -1267,7 +1271,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
             .lookup_field_index(field_index)
             .expect("layout must contain field");
 
-        let llvm_struct_type = self.emit_struct_ty(cir_struct_ty);
+        let llvm_struct_type = self.emit_struct_type(cir_struct_ty);
 
         match operand.kind {
             InternalValueKind::LValue(ptr_value) => {
@@ -1596,7 +1600,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
 
     fn emit_struct_init(&mut self, struct_init: &CIRStructInitExpr) -> InternalValue<'ll> {
         let layout = type_layout(&self.target.info, &CIRType::Struct(struct_init.ty.clone()));
-        let struct_type = self.emit_struct_ty(struct_init.ty.clone());
+        let struct_type = self.emit_struct_type(struct_init.ty.clone());
 
         let mut all_const = true;
         let mut values: Vec<(Option<usize>, InternalValue<'ll>)> = Vec::new();
@@ -1873,29 +1877,52 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         }
     }
 
-    fn emit_load(&mut self, value_ref: &CIRValue) -> InternalValue<'ll> {
-        if let Some(value_ref) = self.lookup_local_ir_value(value_ref.irv_id) {
-            let internal_value = match value_ref {
-                LocalIRValue::Func(llvm_func_value, ty) => {
-                    InternalValue::new(ty, InternalValueKind::FuncValue(llvm_func_value))
-                }
-                LocalIRValue::Global(global_value, ty) => {
-                    InternalValue::new(ty, InternalValueKind::LValue(global_value.as_pointer_value()))
-                }
-                LocalIRValue::LValue(pointer_value, ty) => {
-                    InternalValue::new(ty, InternalValueKind::LValue(pointer_value))
-                }
-            };
+    fn emit_func_ref(&mut self, func_ref: &CIRFuncRef) -> InternalValue<'ll> {
+        let value = self.get_or_declare_function(func_ref.irv_id);
+        let llvm_func_value = value.as_func().unwrap().clone();
 
-            return internal_value;
+        InternalValue::new(value.ty, InternalValueKind::FuncValue(llvm_func_value))
+    }
+
+    #[inline]
+    fn emit_value(&mut self, value: &CIRValue) -> InternalValue<'ll> {
+        self.emit_expr(&value.expr)
+    }
+
+    fn emit_memory_address(&mut self, addr: &CIRMemoryLocation) -> InternalValue<'ll> {
+        if let Some(local) = self.lookup_local_ir_value(addr.irv_id) {
+            match local {
+                LocalIRValue::Func(func, ty) => InternalValue::new(ty, InternalValueKind::FuncValue(func)),
+                LocalIRValue::Global(global, ty) => {
+                    InternalValue::new(ty, InternalValueKind::LValue(global.as_pointer_value()))
+                }
+                LocalIRValue::LValue(ptr, ty) => InternalValue::new(ty, InternalValueKind::LValue(ptr)),
+            }
+        } else {
+            match &addr.addr_kind {
+                CIRAddressKind::GlobalVar => self.get_or_declare_global(addr.irv_id),
+                CIRAddressKind::LocalVar => unreachable!(),
+            }
+        }
+    }
+
+    fn emit_load_value(&mut self, load: &CIRLoad) -> InternalValue<'ll> {
+        let expr = self.emit_expr(&load.expr);
+
+        if expr.is_rvalue() {
+            return expr; // already rvalue
         }
 
-        // declare
-        match &value_ref.kind {
-            CIRValueKind::Func => self.get_or_declare_function(value_ref.irv_id),
-            CIRValueKind::GlobalVar => self.get_or_declare_global(value_ref.irv_id),
-            CIRValueKind::LocalVariable => unreachable!(),
-        }
+        let pointer = expr.as_basic_value().into_pointer_value();
+
+        // inner type gets computed in CIRTraverse.
+        let pointee_ty = &load.expr.ty;
+
+        let llvm_pointee_ty: BasicTypeEnum<'ll> = self.emit_ty(pointee_ty.clone()).try_into().unwrap();
+
+        let loaded_value = self.llvmbuilder.build_load(llvm_pointee_ty, pointer, "load").unwrap();
+
+        InternalValue::new(pointee_ty.clone(), InternalValueKind::RValue(loaded_value))
     }
 
     fn emit_literal(&self, lit: &CIRLiteral) -> InternalValue<'ll> {

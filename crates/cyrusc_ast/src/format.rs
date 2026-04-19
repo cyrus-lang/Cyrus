@@ -365,7 +365,7 @@ impl fmt::Display for ASTExpr {
             ASTExpr::FuncCall(func_call) => write!(f, "{}", func_call.to_string()),
             ASTExpr::Builtin(builtin) => write!(f, "{}", builtin.to_string()),
             ASTExpr::FieldAccess(field_access) => {
-                if field_access.is_fat_arrow {
+                if field_access.is_thin_arrow {
                     write!(f, "{}->{}", field_access.operand, field_access.field_name)
                 } else {
                     write!(f, "{}.{}", field_access.operand, field_access.field_name)

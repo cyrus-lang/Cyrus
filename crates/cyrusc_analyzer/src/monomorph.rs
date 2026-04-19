@@ -18,7 +18,7 @@
 use crate::context::AnalysisContext;
 use cyrusc_typed_ast::{
     decls::{DeclID, VarDecl, VarDeclID},
-    exprs::{TypedEnumInitArgs, TypedExprKind, TypedExprStmt, TypedUnnamedEnumValueKind},
+    exprs::{TypedEnumInitArgs, TypedExprKind, TypedExpr, TypedUnnamedEnumValueKind},
     stmts::{
         TypedBlockStmt, TypedFuncParamKind, TypedFuncParams, TypedFuncVariadicParam, TypedIfStmt, TypedStmt,
         TypedSwitchCasePattern, TypedTupleExportPattern, TypedTupleExportPatternKind, TypedVarStmt,
@@ -316,7 +316,7 @@ impl<'a> AnalysisContext<'a> {
         }
     }
 
-    fn specialize_expr(&self, expr: &mut TypedExprStmt, decl_map: &DeclMap) {
+    fn specialize_expr(&self, expr: &mut TypedExpr, decl_map: &DeclMap) {
         match &mut expr.kind {
             TypedExprKind::Symbol(symbol_expr) => {
                 if let Some(var_decl_id) = symbol_expr.decl_id.as_var() {

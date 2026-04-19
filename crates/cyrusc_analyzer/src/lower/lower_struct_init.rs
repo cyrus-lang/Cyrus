@@ -18,12 +18,12 @@
 use crate::context::AnalysisContext;
 use cyrusc_typed_ast::{
     decls::DeclID,
-    exprs::{TypedExprKind, TypedExprStmt, TypedFieldInit, TypedStructInitExpr},
+    exprs::{TypedExprKind, TypedExpr, TypedFieldInit, TypedStructInitExpr},
     stmts::TypedTypeArgs,
 };
 
 impl<'a> AnalysisContext<'a> {
-    pub(crate) fn lower_unnamed_struct_value_as_struct_init(&self, typed_expr: &mut TypedExprStmt) {
+    pub(crate) fn lower_unnamed_struct_value_as_struct_init(&self, typed_expr: &mut TypedExpr) {
         let TypedExprKind::UnnamedStructValue(struct_value) = &typed_expr.kind else {
             return;
         };
@@ -38,7 +38,7 @@ impl<'a> AnalysisContext<'a> {
             })
             .collect();
 
-        *typed_expr = TypedExprStmt {
+        *typed_expr = TypedExpr {
             kind: TypedExprKind::StructInit(TypedStructInitExpr {
                 decl_id: DeclID::Struct(struct_value.struct_decl_id.unwrap()),
                 type_args: TypedTypeArgs::new(),
@@ -46,7 +46,7 @@ impl<'a> AnalysisContext<'a> {
                 loc: struct_value.loc,
             }),
             sema_type: typed_expr.sema_type.clone(),
-            mloc: typed_expr.mloc,
+            val_cat: typed_expr.val_cat,
             loc: typed_expr.loc,
         };
     }

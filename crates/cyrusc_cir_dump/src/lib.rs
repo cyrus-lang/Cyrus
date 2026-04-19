@@ -19,7 +19,7 @@ use cyrusc_ast::operators::UnaryOperator;
 use cyrusc_diagcentral::exit_with_msg;
 use cyrusc_internal::cir::{cir::*, types::CIRType};
 use cyrusc_strescape::escape_string;
-use std::{fs, path::PathBuf};
+use std::{fmt::format, fs, path::PathBuf};
 
 pub struct CIRPrinter<'a> {
     module: &'a CIRModule,
@@ -268,21 +268,26 @@ impl<'a> CIRPrinter<'a> {
         }
     }
 
+    fn print_mem_loc(&mut self, mem: &CIRMemoryLocation) -> String {
+        match mem.addr_kind {
+            CIRAddressKind::GlobalVar => {
+                let global_var_stmt = self.module.global_var_decls.get(&mem.irv_id).unwrap();
+                format!("__mloc(@{})", global_var_stmt.name)
+            }
+            CIRAddressKind::LocalVar => {
+                format!("__mloc(%{})", mem.irv_id.0)
+            }
+        }
+    }
+
     fn print_expr(&mut self, expr: &CIRExpr) -> String {
         match &expr.kind {
-            CIRExprKind::Load(value_ref) => match &value_ref.kind {
-                CIRValueKind::Func => {
-                    let func_decl = self.module.func_decls.get(&value_ref.irv_id).unwrap();
-                    func_decl.name.clone()
-                }
-                CIRValueKind::GlobalVar => {
-                    let global_var_decl = self.module.global_var_decls.get(&value_ref.irv_id).unwrap();
-                    global_var_decl.name.clone()
-                }
-                CIRValueKind::LocalVariable => {
-                    format!("%{}", value_ref.irv_id.0)
-                }
-            },
+            CIRExprKind::Load(CIRLoad { expr }) => format!("__load({})", self.print_expr(expr)),
+            CIRExprKind::MemoryAddress(mem_loc) => self.print_mem_loc(mem_loc),
+            CIRExprKind::FuncRef(CIRFuncRef { irv_id }) => {
+                format!("{}", irv_id.0)
+            }
+            CIRExprKind::Value(CIRValue { expr }) => format!("value {}", self.print_expr(expr)),
             CIRExprKind::Literal(literal) => self.print_literal(literal),
             CIRExprKind::Infix(infix) => format!(
                 "({} {} {})",

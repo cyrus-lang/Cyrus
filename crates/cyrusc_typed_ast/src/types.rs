@@ -16,7 +16,7 @@
  */
 
 use crate::decls::{DeclID, EnumDeclID, InterfaceDeclID, StructDeclID, TypedefDeclID, UnionDeclID};
-use crate::exprs::{TypedExprStmt, TypedSelfType};
+use crate::exprs::{TypedExpr, TypedSelfType};
 use crate::stmts::{TypedFuncTypeParams, TypedFuncTypeVariadicParam, TypedTypeArg, TypedTypeArgs};
 use crate::{GenericParamID, SymbolID, VTableID};
 use cyrusc_ast::GenericInst;
@@ -130,7 +130,7 @@ pub struct TypedArrayType {
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum TypedArrayCapacity {
-    Fixed(Box<TypedExprStmt>),
+    Fixed(Box<TypedExpr>),
     Dynamic,
 }
 

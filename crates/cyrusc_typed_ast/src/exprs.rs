@@ -31,15 +31,15 @@ use cyrusc_tokens::literals::LiteralKind;
 use std::fmt;
 
 #[derive(Debug, Clone)]
-pub struct TypedExprStmt {
+pub struct TypedExpr {
     pub kind: TypedExprKind,
     pub sema_type: Option<SemaType>,
-    pub mloc: MemoryLocation,
+    pub val_cat: ValueCategory,
     pub loc: Loc,
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
-pub enum MemoryLocation {
+pub enum ValueCategory {
     LValue,
     RValue,
 }
@@ -84,7 +84,7 @@ pub struct TypedSymbolExpr {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct TypedDynamicExpr {
-    pub operand: Box<TypedExprStmt>,
+    pub operand: Box<TypedExpr>,
     pub object_name: Option<String>,
     pub vtable_id: Option<VTableID>,
     pub loc: Loc,
@@ -92,14 +92,14 @@ pub struct TypedDynamicExpr {
 
 #[derive(Debug, Clone)]
 pub struct TypedTupleAccessExpr {
-    pub operand: Box<TypedExprStmt>,
+    pub operand: Box<TypedExpr>,
     pub index: usize,
     pub loc: Loc,
 }
 
 #[derive(Debug, Clone)]
 pub struct TypedTupleExpr {
-    pub elements: Vec<TypedExprStmt>,
+    pub elements: Vec<TypedExpr>,
     pub loc: Loc,
 }
 
@@ -114,7 +114,7 @@ pub struct TypedLambdaExpr {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct TypedSizeOfExpr {
-    pub operand: Box<TypedExprStmt>,
+    pub operand: Box<TypedExpr>,
     pub loc: Loc,
 }
 
@@ -133,13 +133,13 @@ pub struct TypedSelfType {
 #[derive(Debug, Clone, PartialEq)]
 pub struct TypedPrefixExpr {
     pub op: PrefixOperator,
-    pub operand: Box<TypedExprStmt>,
+    pub operand: Box<TypedExpr>,
     pub loc: Loc,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct TypedUnaryExpr {
-    pub operand: Box<TypedExprStmt>,
+    pub operand: Box<TypedExpr>,
     pub op: UnaryOperator,
     pub loc: Loc,
 }
@@ -147,22 +147,22 @@ pub struct TypedUnaryExpr {
 #[derive(Debug, Clone, PartialEq)]
 pub struct TypedInfixExpr {
     pub op: InfixOperator,
-    pub lhs: Box<TypedExprStmt>,
-    pub rhs: Box<TypedExprStmt>,
+    pub lhs: Box<TypedExpr>,
+    pub rhs: Box<TypedExpr>,
     pub loc: Loc,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct TypedAssignExpr {
-    pub lhs: Box<TypedExprStmt>,
-    pub rhs: Box<TypedExprStmt>,
+    pub lhs: Box<TypedExpr>,
+    pub rhs: Box<TypedExpr>,
     pub kind: AssignKind,
     pub loc: Loc,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct TypedCastExpr {
-    pub operand: Box<TypedExprStmt>,
+    pub operand: Box<TypedExpr>,
     pub target_type: SemaType,
     pub loc: Loc,
 }
@@ -170,26 +170,26 @@ pub struct TypedCastExpr {
 #[derive(Debug, Clone, PartialEq)]
 pub struct TypedArrayExpr {
     pub ty: Option<SemaType>,
-    pub elements: Vec<TypedExprStmt>,
+    pub elements: Vec<TypedExpr>,
     pub loc: Loc,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct TypedArrayIndexExpr {
-    pub operand: Box<TypedExprStmt>,
-    pub index: Box<TypedExprStmt>,
+    pub operand: Box<TypedExpr>,
+    pub index: Box<TypedExpr>,
     pub loc: Loc,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct TypedAddrOfExpr {
-    pub operand: Box<TypedExprStmt>,
+    pub operand: Box<TypedExpr>,
     pub loc: Loc,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct TypedDerefExpr {
-    pub operand: Box<TypedExprStmt>,
+    pub operand: Box<TypedExpr>,
     pub loc: Loc,
 }
 
@@ -212,14 +212,14 @@ pub struct TypedUnionInitExpr {
 #[derive(Debug, Clone, PartialEq)]
 pub struct TypedFieldInit {
     pub name: String,
-    pub value: TypedExprStmt,
+    pub value: TypedExpr,
     pub loc: Loc,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct TypedFuncCall {
-    pub operand: Box<TypedExprStmt>,
-    pub args: Vec<TypedExprStmt>,
+    pub operand: Box<TypedExpr>,
+    pub args: Vec<TypedExpr>,
     pub type_args: TypedTypeArgs,
     pub dispatch: TypedFuncCallDispatch,
     pub loc: Loc,
@@ -247,11 +247,11 @@ pub enum TypedFuncCallDispatch {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct TypedFieldAccess {
-    pub operand: Box<TypedExprStmt>,
+    pub operand: Box<TypedExpr>,
     pub name: String,
     pub dispatch: TypedFieldAccessDispatch,
     pub ty: Option<SemaType>,
-    pub is_fat_arrow: bool,
+    pub is_thin_arrow: bool,
     pub loc: Loc,
 }
 
@@ -276,20 +276,20 @@ pub struct TypedEnumInit {
 #[derive(Debug, Clone, PartialEq)]
 pub enum TypedEnumInitArgs {
     Unit,
-    Tuple(Vec<TypedExprStmt>),
+    Tuple(Vec<TypedExpr>),
     Struct(Vec<TypedEnumStructVariantFieldInit>),
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct TypedMethodCall {
-    pub operand: Box<TypedExprStmt>,
+    pub operand: Box<TypedExpr>,
     pub name: String,
-    pub args: Vec<TypedExprStmt>,
+    pub args: Vec<TypedExpr>,
     pub type_args: TypedTypeArgs,
 
     pub dispatch: TypedMethodCallDispatch,
 
-    pub is_fat_arrow: bool,
+    pub is_thin_arrow: bool,
     pub loc: Loc,
 }
 
@@ -327,7 +327,7 @@ pub struct TypedUnnamedStructValue {
 pub struct TypedUnnamedUnionValue {
     pub union_decl_id: Option<UnionDeclID>,
     pub name: Ident,
-    pub value: Box<TypedExprStmt>,
+    pub value: Box<TypedExpr>,
     pub loc: Loc,
 }
 
@@ -342,14 +342,14 @@ pub struct TypedUnnamedEnumValue {
 #[derive(Debug, Clone, PartialEq)]
 pub enum TypedUnnamedEnumValueKind {
     Unit,
-    Tuple(Vec<TypedExprStmt>),
+    Tuple(Vec<TypedExpr>),
     Struct(Vec<TypedEnumStructVariantFieldInit>),
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct TypedEnumStructVariantInit {
     pub enum_decl_id: Option<EnumDeclID>,
-    pub operand: Box<TypedExprStmt>,
+    pub operand: Box<TypedExpr>,
     pub ident: Ident,
     pub field_inits: Vec<TypedEnumStructVariantFieldInit>,
     pub loc: Loc,
@@ -358,24 +358,24 @@ pub struct TypedEnumStructVariantInit {
 #[derive(Debug, Clone, PartialEq)]
 pub struct TypedEnumStructVariantFieldInit {
     pub name: Ident,
-    pub value: Box<TypedExprStmt>,
+    pub value: Box<TypedExpr>,
     pub loc: Loc,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct TypedUnnamedStructValueField {
     pub name: String,
-    pub value: Box<TypedExprStmt>,
+    pub value: Box<TypedExpr>,
     pub loc: Loc,
 }
 
-impl TypedExprStmt {
+impl TypedExpr {
     pub fn is_lvalue(&self) -> bool {
-        self.mloc == MemoryLocation::LValue
+        self.val_cat == ValueCategory::LValue
     }
 
     pub fn is_rvalue(&self) -> bool {
-        self.mloc == MemoryLocation::RValue
+        self.val_cat == ValueCategory::RValue
     }
 }
 
@@ -465,7 +465,7 @@ impl TypedLiteralExpr {
 
 impl TypedUnnamedEnumValueKind {
     #[inline]
-    pub fn as_fielded(&self) -> Option<&Vec<TypedExprStmt>> {
+    pub fn as_fielded(&self) -> Option<&Vec<TypedExpr>> {
         match self {
             TypedUnnamedEnumValueKind::Unit => None,
             TypedUnnamedEnumValueKind::Struct(_) => None,
@@ -480,7 +480,7 @@ impl PartialEq for TypedUnnamedEnumValue {
     }
 }
 
-impl PartialEq for TypedExprStmt {
+impl PartialEq for TypedExpr {
     fn eq(&self, other: &Self) -> bool {
         self.kind == other.kind && self.sema_type == other.sema_type
     }
@@ -505,7 +505,7 @@ impl TypedSymbolExpr {
     }
 }
 
-impl TypedExprStmt {
+impl TypedExpr {
     pub fn literal_const_int_value(&self) -> Option<i128> {
         match &self.kind {
             TypedExprKind::Literal(lit) => match &lit.kind {
@@ -518,15 +518,15 @@ impl TypedExprStmt {
     }
 }
 
-pub fn literal_expr_from_const_int(value: i128, loc: Loc) -> TypedExprStmt {
-    TypedExprStmt {
+pub fn literal_expr_from_const_int(value: i128, loc: Loc) -> TypedExpr {
+    TypedExpr {
         kind: TypedExprKind::Literal(TypedLiteralExpr {
             kind: LiteralKind::Integer(value, None),
             ty: None,
             loc: loc,
         }),
         sema_type: None,
-        mloc: MemoryLocation::RValue,
+        val_cat: ValueCategory::RValue,
         loc,
     }
 }

@@ -154,7 +154,11 @@ impl<'a> CIRTraverse<'a> {
                 lowered_stmts.push(self.lower_goto(goto));
             }
             TypedStmt::Expr(expr) => {
-                lowered_stmts.push(CIRStmt::Expr(self.lower_expr(expr)));
+                if expr.is_rvalue() {
+                    lowered_stmts.push(CIRStmt::Expr(self.lower_rvalue(expr)));
+                } else {
+                    // ignore
+                }
             }
             TypedStmt::Struct(struct_stmt) => {
                 if !struct_stmt.is_generic() {
@@ -219,7 +223,7 @@ impl<'a> CIRTraverse<'a> {
 
                 let var_name = var_decl.name.clone();
                 let var_ty = self.lower_sema_type(&var_decl.ty.as_ref().unwrap());
-                let var_rhs = self.lower_expr(&var_decl.rhs.as_ref().unwrap());
+                let var_rhs = self.lower_rvalue(&var_decl.rhs.as_ref().unwrap());
 
                 let irv_id = self.new_ir_value_id();
 
@@ -243,7 +247,7 @@ impl<'a> CIRTraverse<'a> {
     }
 
     fn lower_if(&mut self, if_stmt: &TypedIfStmt) -> CIRStmt {
-        let cond = self.lower_expr(&if_stmt.cond);
+        let cond = self.lower_rvalue(&if_stmt.cond);
         let then_block = Box::new(self.lower_body(&if_stmt.then_block));
 
         let mut else_block = if_stmt
@@ -252,7 +256,7 @@ impl<'a> CIRTraverse<'a> {
             .map(|block| Box::new(self.lower_body(block)));
 
         for branch in if_stmt.branches.iter().rev() {
-            let branch_cond = self.lower_expr(&branch.cond);
+            let branch_cond = self.lower_rvalue(&branch.cond);
             let branch_then = Box::new(self.lower_body(&branch.then_block));
 
             let nested_if = CIRStmt::If(CIRIfStmt {
@@ -283,7 +287,7 @@ impl<'a> CIRTraverse<'a> {
     }
 
     fn lower_while(&mut self, while_stmt: &TypedWhileStmt) -> CIRStmt {
-        let cond = Box::new(self.lower_expr(&while_stmt.cond));
+        let cond = Box::new(self.lower_rvalue(&while_stmt.cond));
         let body = Box::new(self.lower_body(&while_stmt.body));
         CIRStmt::While(CIRWhileStmt {
             cond,
@@ -295,12 +299,12 @@ impl<'a> CIRTraverse<'a> {
     fn lower_for(&mut self, for_stmt: &TypedForStmt) -> CIRStmt {
         let initializer = for_stmt.initializer.clone().and_then(|var| Some(self.lower_var(&var)));
 
-        let cond = for_stmt.cond.clone().and_then(|cond| Some(self.lower_expr(&cond)));
+        let cond = for_stmt.cond.clone().and_then(|cond| Some(self.lower_rvalue(&cond)));
 
         let increment = for_stmt
             .increment
             .clone()
-            .and_then(|increment| Some(self.lower_expr(&increment)));
+            .and_then(|increment| Some(self.lower_rvalue(&increment)));
 
         let body = Box::new(self.lower_body(&for_stmt.body));
 
@@ -322,7 +326,7 @@ impl<'a> CIRTraverse<'a> {
     }
 
     fn lower_return(&mut self, return_stmt: &TypedReturnStmt) -> CIRStmt {
-        let arg = return_stmt.arg.clone().and_then(|arg| Some(self.lower_expr(&arg)));
+        let arg = return_stmt.arg.clone().and_then(|arg| Some(self.lower_rvalue(&arg)));
 
         CIRStmt::Return(CIRReturnStmt {
             arg,
@@ -343,7 +347,7 @@ impl<'a> CIRTraverse<'a> {
                 )
             });
 
-        let expr = global_var.expr.clone().and_then(|expr| Some(self.lower_expr(&expr)));
+        let expr = global_var.expr.clone().and_then(|expr| Some(self.lower_rvalue(&expr)));
 
         let mangled_name = mangle_global_var(&global_var.modifiers, &self.module_name, &global_var.name);
 
@@ -394,7 +398,7 @@ impl<'a> CIRTraverse<'a> {
                 )
             });
 
-        let expr = var.rhs.clone().and_then(|expr| Some(self.lower_expr(&expr)));
+        let expr = var.rhs.clone().and_then(|expr| Some(self.lower_rvalue(&expr)));
 
         let irv_id = self.new_ir_value_id();
 
@@ -676,113 +680,17 @@ impl<'a> CIRTraverse<'a> {
         }
     }
 
-    fn lower_expr(&mut self, expr: &TypedExprStmt) -> CIRExpr {
-        if cfg!(debug_assertions) {
-            if expr.sema_type.is_none() {
-                dbg!(expr.clone());
-            }
-            debug_assert!(expr.sema_type.is_some());
-        }
-
-        let ty = self.lower_sema_type(&expr.sema_type.clone().unwrap());
-
-        let kind = match &expr.kind {
-            TypedExprKind::Symbol(symbol_expr) => self.lower_load_symbol(symbol_expr.decl_id),
-            TypedExprKind::Literal(literal) => self.lower_literal(literal),
-            TypedExprKind::Prefix(prefix) => self.lower_prefix(prefix),
-            TypedExprKind::Infix(infix) => self.lower_infix(infix),
-            TypedExprKind::Unary(unary) => self.lower_unary(unary),
-            TypedExprKind::Assign(assign) => self.lower_assign(assign),
-            TypedExprKind::AddrOf(addr_of) => self.lower_addr_of(addr_of),
-            TypedExprKind::Deref(deref) => self.lower_deref(deref),
-            TypedExprKind::Array(array) => self.lower_array(array),
-            TypedExprKind::ArrayIndex(array_index) => self.lower_array_index(array_index),
-            TypedExprKind::FuncCall(func_call) => self.lower_func_call(func_call),
-            TypedExprKind::MethodCall(method_call) => self.lower_method_call(method_call),
-            TypedExprKind::FieldAccess(field_access) => self.lower_field_access(field_access.clone()),
-            TypedExprKind::Lambda(lambda) => self.lower_lambda(lambda),
-            TypedExprKind::Tuple(expr) => self.lower_tuple(expr),
-            TypedExprKind::TupleAccess(tuple_access) => self.lower_tuple_access(tuple_access),
-            TypedExprKind::Dynamic(dynamic) => self.lower_dynamic(dynamic),
-            TypedExprKind::StructInit(struct_init) => self.lower_struct_init(struct_init),
-            TypedExprKind::UnionInit(union_init) => self.lower_union_init(union_init),
-            TypedExprKind::EnumInit(enum_init) => self.lower_enum_init(enum_init),
-
-            TypedExprKind::Builtin(_builtin) => todo!(),
-
-            TypedExprKind::UnnamedStructValue(_)
-            | TypedExprKind::UnnamedEnumValue(_)
-            | TypedExprKind::UnnamedUnionValue(_) => unreachable!("unexpected unnamed constructor expression"),
-            TypedExprKind::EnumStructVariantInit(_) => unreachable!("unexpected enum struct variant init expression"),
-            TypedExprKind::SemaType(..) => unreachable!("unexpected semantic type as expression"),
-            TypedExprKind::Poisoned => unreachable!("unexpected poisoned expression"),
-        };
-
-        let mloc = match &expr.kind {
-            // variable references always produce an lvalue
-            TypedExprKind::Symbol(_) => MemoryLocation::LValue,
-
-            // deref(*x) always yields lvalue
-            TypedExprKind::Deref(_) => MemoryLocation::LValue,
-
-            // array[i] is lvalue
-            TypedExprKind::ArrayIndex(_) => MemoryLocation::LValue,
-
-            // field access is lvalue
-            TypedExprKind::FieldAccess(_) => MemoryLocation::LValue,
-
-            // tuple access: same rule as field access
-            TypedExprKind::TupleAccess(_) => MemoryLocation::LValue,
-
-            // addr-of always produces an RValue
-            TypedExprKind::AddrOf(_)
-            | TypedExprKind::Literal(_)
-            | TypedExprKind::Prefix(_)
-            | TypedExprKind::Unary(_)
-            | TypedExprKind::Infix(_)
-            | TypedExprKind::Assign(_)
-            | TypedExprKind::Array(_)
-            | TypedExprKind::Tuple(_)
-            | TypedExprKind::FuncCall(_)
-            | TypedExprKind::MethodCall(_)
-            | TypedExprKind::StructInit(_)
-            | TypedExprKind::UnionInit(_)
-            | TypedExprKind::EnumInit(_)
-            | TypedExprKind::Lambda(_)
-            | TypedExprKind::Dynamic(_)
-            | TypedExprKind::Builtin(_) => MemoryLocation::RValue,
-
-            // unreachable kinds
-            TypedExprKind::UnnamedStructValue(_)
-            | TypedExprKind::UnnamedEnumValue(_)
-            | TypedExprKind::UnnamedUnionValue(_)
-            | TypedExprKind::EnumStructVariantInit(_)
-            | TypedExprKind::SemaType(_)
-            | TypedExprKind::Poisoned => unreachable!(),
-        };
-
-        CIRExpr {
-            kind,
-            ty,
-            loc: expr.loc,
-            mloc,
-        }
-    }
-
-    fn lower_load_symbol(&mut self, decl_id: DeclID) -> CIRExprKind {
+    fn lower_symbol(&mut self, decl_id: DeclID) -> CIRExprKind {
         if let Some(func_decl_id) = decl_id.as_func() {
             let irv_id = self.get_or_declare_func_ir_value(func_decl_id);
 
-            CIRExprKind::Load(CIRValue {
-                irv_id,
-                kind: CIRValueKind::Func,
-            })
+            CIRExprKind::FuncRef(CIRFuncRef { irv_id })
         } else if let Some(global_var_decl_id) = decl_id.as_global_var() {
             let irv_id = self.get_or_declare_global_var_ir_value(global_var_decl_id);
 
-            CIRExprKind::Load(CIRValue {
+            CIRExprKind::MemoryAddress(CIRMemoryLocation {
                 irv_id,
-                kind: CIRValueKind::GlobalVar,
+                addr_kind: CIRAddressKind::GlobalVar,
             })
         } else if let Some(var_decl_id) = decl_id.as_var() {
             let irv_id = self
@@ -791,9 +699,9 @@ impl<'a> CIRTraverse<'a> {
                 .copied()
                 .unwrap();
 
-            CIRExprKind::Load(CIRValue {
+            CIRExprKind::MemoryAddress(CIRMemoryLocation {
                 irv_id,
-                kind: CIRValueKind::LocalVariable,
+                addr_kind: CIRAddressKind::LocalVar,
             })
         } else {
             unreachable!("unexpected symbol kind when lowering load symbol")
@@ -832,7 +740,7 @@ impl<'a> CIRTraverse<'a> {
         let mut lowered_fields = FxHashMap::default();
 
         for field_init in &struct_init.fields {
-            let lowered = self.lower_expr(&field_init.value);
+            let lowered = self.lower_rvalue(&field_init.value);
             lowered_fields.insert(field_init.name.clone(), lowered);
         }
 
@@ -878,7 +786,7 @@ impl<'a> CIRTraverse<'a> {
             loc: inst_union_decl.loc,
         };
 
-        let lowered_expr = Box::new(self.lower_expr(&union_init.field.value));
+        let lowered_expr = Box::new(self.lower_rvalue(&union_init.field.value));
 
         CIRExprKind::UnionInit(CIRUnionInitExpr {
             ty: CIRType::Union(union_type),
@@ -891,16 +799,8 @@ impl<'a> CIRTraverse<'a> {
         todo!();
     }
 
-    fn lower_tuple_access(&mut self, tuple_access: &TypedTupleAccessExpr) -> CIRExprKind {
-        let operand = Box::new(self.lower_expr(&tuple_access.operand));
-        CIRExprKind::TupleAccess(CIRTupleAccessExpr {
-            operand,
-            index: tuple_access.index,
-        })
-    }
-
     fn lower_tuple(&mut self, tuple: &TypedTupleExpr) -> CIRExprKind {
-        let elements: Vec<CIRExpr> = tuple.elements.iter().map(|expr| self.lower_expr(expr)).collect();
+        let elements: Vec<CIRExpr> = tuple.elements.iter().map(|expr| self.lower_rvalue(expr)).collect();
 
         CIRExprKind::Tuple(CIRTupleExpr {
             elements,
@@ -934,40 +834,6 @@ impl<'a> CIRTraverse<'a> {
             abi_func_info,
             loc: lambda.loc,
         })
-    }
-
-    fn lower_field_access(&mut self, mut field_access: TypedFieldAccess) -> CIRExprKind {
-        if field_access.is_fat_arrow {
-            field_access.operand = Box::new(TypedExprStmt {
-                kind: TypedExprKind::Deref(TypedDerefExpr {
-                    operand: field_access.operand.clone(),
-                    loc: field_access.loc,
-                }),
-                sema_type: Some(field_access.operand.sema_type.clone().unwrap().pointer_inner().clone()),
-                mloc: MemoryLocation::LValue,
-                loc: field_access.loc,
-            })
-        }
-
-        let operand = self.lower_expr(&field_access.operand);
-
-        let field_type = self.lower_sema_type(&field_access.ty.unwrap());
-
-        match &field_access.dispatch {
-            TypedFieldAccessDispatch::Unresolved => unreachable!(),
-
-            TypedFieldAccessDispatch::Struct { index, .. } => CIRExprKind::FieldAccess(CIRFieldAccessExpr {
-                operand: Box::new(operand),
-                kind: CIRFieldAccessKind::Struct {
-                    index: *index,
-                    field_type: field_type,
-                },
-            }),
-            TypedFieldAccessDispatch::Union { .. } => CIRExprKind::FieldAccess(CIRFieldAccessExpr {
-                operand: Box::new(operand),
-                kind: CIRFieldAccessKind::Union { field_type },
-            }),
-        }
     }
 
     fn lower_generic_methods(&mut self, methods: &MethodDecls, lowered_stmts: &mut Vec<CIRStmt>) {
@@ -1038,7 +904,7 @@ impl<'a> CIRTraverse<'a> {
     }
 
     fn lower_method_call(&mut self, method_call: &TypedMethodCall) -> CIRExprKind {
-        let mut args: Vec<CIRExpr> = method_call.args.iter().map(|arg| self.lower_expr(arg)).collect();
+        let mut args: Vec<CIRExpr> = method_call.args.iter().map(|arg| self.lower_rvalue(arg)).collect();
 
         match &method_call.dispatch {
             TypedMethodCallDispatch::Normal { method_decl_id } => {
@@ -1052,7 +918,7 @@ impl<'a> CIRTraverse<'a> {
 
                     args.insert(
                         0,
-                        self.lower_method_call_operand_as_self(*method_call.operand.clone(), self_modifier),
+                        self.lower_method_call_operand_as_self(&method_call.operand, self_modifier),
                     );
                 }
 
@@ -1090,7 +956,7 @@ impl<'a> CIRTraverse<'a> {
 
                     args.insert(
                         0,
-                        self.lower_method_call_operand_as_self(*method_call.operand.clone(), self_modifier),
+                        self.lower_method_call_operand_as_self(&method_call.operand, self_modifier),
                     );
                 }
 
@@ -1109,33 +975,51 @@ impl<'a> CIRTraverse<'a> {
         }
     }
 
-    fn lower_method_call_operand_as_self(
-        &mut self,
-        operand: TypedExprStmt,
-        self_modifier: &TypedSelfModifier,
-    ) -> CIRExpr {
-        let mut lowered_expr = self.lower_expr(&operand);
-
+    // FIXME
+    fn lower_method_call_operand_as_self(&mut self, operand: &TypedExpr, self_modifier: &TypedSelfModifier) -> CIRExpr {
         match self_modifier.kind {
-            SelfModifierKind::Copied => {}
-            SelfModifierKind::Referenced => {
-                if operand.is_rvalue() {
-                    let ty = CIRType::Pointer(Box::new(lowered_expr.ty.clone()));
-                    let loc = lowered_expr.loc;
+            SelfModifierKind::Copied => {
+                // operand as rvalue (normal rule)
+                let operand = self.lower_rvalue(operand);
 
-                    lowered_expr = CIRExpr {
-                        kind: CIRExprKind::AddrOf(CIRAddrOfExpr {
-                            operand: Box::new(lowered_expr),
+                if operand.val_cat == ValueCategory::RValue {
+                    operand
+                } else {
+                    CIRExpr {
+                        val_cat: ValueCategory::RValue,
+                        ty: operand.ty.clone(),
+                        loc: operand.loc,
+                        kind: CIRExprKind::Load(CIRLoad {
+                            expr: Box::new(operand),
                         }),
-                        ty,
-                        mloc: MemoryLocation::LValue,
-                        loc,
-                    };
+                    }
                 }
             }
-        };
+            SelfModifierKind::Referenced => {
+                // CRUCIAL RULE:
+                // try lowering as lvalue first!
+                if let Some(lvalue) = self.lower_lvalue(operand) {
+                    return lvalue;
+                }
 
-        lowered_expr
+                let operand = self.lower_rvalue(operand);
+
+                match operand.val_cat {
+                    ValueCategory::LValue => operand,
+                    ValueCategory::RValue => {
+                        let ty = CIRType::Pointer(Box::new(operand.ty.clone()));
+                        CIRExpr {
+                            val_cat: ValueCategory::LValue,
+                            ty,
+                            loc: operand.loc,
+                            kind: CIRExprKind::AddrOf(CIRAddrOfExpr {
+                                operand: Box::new(operand),
+                            }),
+                        }
+                    }
+                }
+            }
+        }
     }
 
     // FIXME
@@ -1187,7 +1071,7 @@ impl<'a> CIRTraverse<'a> {
     }
 
     fn lower_func_call(&mut self, func_call: &TypedFuncCall) -> CIRExprKind {
-        let args: Vec<CIRExpr> = func_call.args.iter().map(|arg| self.lower_expr(arg)).collect();
+        let args: Vec<CIRExpr> = func_call.args.iter().map(|arg| self.lower_rvalue(arg)).collect();
 
         match &func_call.dispatch {
             TypedFuncCallDispatch::Normal { func_decl_id } => {
@@ -1223,7 +1107,7 @@ impl<'a> CIRTraverse<'a> {
                 })
             }
             TypedFuncCallDispatch::FunctionPointer { func_type } => {
-                let operand = Box::new(self.lower_expr(&func_call.operand));
+                let operand = Box::new(self.lower_rvalue(&func_call.operand));
 
                 let ret_type = self.lower_sema_type(&func_type.ret_type);
 
@@ -1237,15 +1121,8 @@ impl<'a> CIRTraverse<'a> {
         }
     }
 
-    fn lower_array_index(&mut self, array_index: &TypedArrayIndexExpr) -> CIRExprKind {
-        CIRExprKind::ArrayIndex(CIRArrayIndexExpr {
-            operand: Box::new(self.lower_expr(&array_index.operand)),
-            index: Box::new(self.lower_expr(&array_index.index)),
-        })
-    }
-
     fn lower_array(&mut self, array: &TypedArrayExpr) -> CIRExprKind {
-        let elements: Vec<CIRExpr> = array.elements.iter().map(|elm| self.lower_expr(elm)).collect();
+        let elements: Vec<CIRExpr> = array.elements.iter().map(|elm| self.lower_rvalue(elm)).collect();
 
         CIRExprKind::Array(CIRArrayExpr {
             ty: self.lower_sema_type(&array.ty.as_ref().unwrap()),
@@ -1254,44 +1131,48 @@ impl<'a> CIRTraverse<'a> {
         })
     }
 
-    fn lower_deref(&mut self, deref: &TypedDerefExpr) -> CIRExprKind {
-        CIRExprKind::Deref(CIRDerefExpr {
-            operand: Box::new(self.lower_expr(&deref.operand)),
-        })
-    }
-
     fn lower_addr_of(&mut self, addr_of: &TypedAddrOfExpr) -> CIRExprKind {
+        let lvalue = self
+            .lower_lvalue(&addr_of.operand)
+            .expect("addr-of applied to non-lvalue expression");
+
         CIRExprKind::AddrOf(CIRAddrOfExpr {
-            operand: Box::new(self.lower_expr(&addr_of.operand)),
+            operand: Box::new(lvalue),
         })
     }
 
     fn lower_assign(&mut self, assign: &TypedAssignExpr) -> CIRExprKind {
+        let lhs = self
+            .lower_lvalue(&assign.lhs)
+            .expect("lhs of assignment must be an lvalue");
+
+        let rhs = self.lower_rvalue(&assign.rhs);
+
         CIRExprKind::Assign(CIRAssignExpr {
-            lhs: Box::new(self.lower_expr(&assign.lhs)),
-            rhs: Box::new(self.lower_expr(&assign.rhs)),
+            lhs: Box::new(lhs),
+            rhs: Box::new(rhs),
         })
     }
 
     fn lower_unary(&mut self, unary: &TypedUnaryExpr) -> CIRExprKind {
         CIRExprKind::Unary(CIRUnaryExpr {
             op: unary.op.clone(),
-            operand: Box::new(self.lower_expr(&unary.operand)),
+            operand: Box::new(self.lower_rvalue(&unary.operand)),
         })
     }
 
     fn lower_infix(&mut self, infix: &TypedInfixExpr) -> CIRExprKind {
         CIRExprKind::Infix(CIRInfixExpr {
             op: infix.op.clone(),
-            lhs: Box::new(self.lower_expr(&infix.lhs)),
-            rhs: Box::new(self.lower_expr(&infix.rhs)),
+            lhs: Box::new(self.lower_rvalue(&infix.lhs)),
+            rhs: Box::new(self.lower_rvalue(&infix.rhs)),
         })
     }
 
     fn lower_prefix(&mut self, prefix: &TypedPrefixExpr) -> CIRExprKind {
         CIRExprKind::Prefix(CIRPrefixExpr {
             op: prefix.op.clone(),
-            operand: Box::new(self.lower_expr(&prefix.operand)),
+            operand: Box::new(self.lower_rvalue(&prefix.operand)),
         })
     }
 
@@ -1330,6 +1211,204 @@ impl<'a> CIRTraverse<'a> {
             label_id: goto.label_id.unwrap(),
             loc: goto.loc,
         })
+    }
+}
+
+impl<'a> CIRTraverse<'a> {
+    fn lower_rvalue(&mut self, expr: &TypedExpr) -> CIRExpr {
+        if let Some(lvalue) = self.lower_lvalue(expr) {
+            return CIRExpr {
+                val_cat: ValueCategory::RValue,
+                ty: self.lower_sema_type(expr.sema_type.as_ref().unwrap()),
+                loc: expr.loc,
+                kind: CIRExprKind::Load(CIRLoad { expr: Box::new(lvalue) }),
+            };
+        }
+
+        self.lower_rvalue_non_lvalue(expr)
+    }
+
+    fn lower_rvalue_non_lvalue(&mut self, expr: &TypedExpr) -> CIRExpr {
+        let kind = match &expr.kind {
+            TypedExprKind::Literal(literal) => self.lower_literal(literal),
+            TypedExprKind::Prefix(prefix) => self.lower_prefix(prefix),
+            TypedExprKind::Unary(unary) => self.lower_unary(unary),
+            TypedExprKind::Infix(infix) => self.lower_infix(infix),
+            TypedExprKind::Assign(assign) => self.lower_assign(assign),
+            TypedExprKind::AddrOf(addr) => self.lower_addr_of(addr),
+            TypedExprKind::Array(array) => self.lower_array(array),
+            TypedExprKind::Tuple(tuple) => self.lower_tuple(tuple),
+            TypedExprKind::FuncCall(call) => self.lower_func_call(call),
+            TypedExprKind::MethodCall(call) => self.lower_method_call(call),
+            TypedExprKind::Lambda(lambda) => self.lower_lambda(lambda),
+            TypedExprKind::Dynamic(dyn_expr) => self.lower_dynamic(dyn_expr),
+            TypedExprKind::StructInit(s) => self.lower_struct_init(s),
+            TypedExprKind::UnionInit(u) => self.lower_union_init(u),
+            TypedExprKind::EnumInit(e) => self.lower_enum_init(e),
+            TypedExprKind::Builtin(_) => todo!(),
+
+            TypedExprKind::Symbol(_)
+            | TypedExprKind::Deref(_)
+            | TypedExprKind::ArrayIndex(_)
+            | TypedExprKind::FieldAccess(_)
+            | TypedExprKind::TupleAccess(_) => unreachable!("LValue kinds must not reach lower_rvalue_non_lvalue"),
+
+            TypedExprKind::UnnamedStructValue(_)
+            | TypedExprKind::UnnamedEnumValue(_)
+            | TypedExprKind::UnnamedUnionValue(_)
+            | TypedExprKind::EnumStructVariantInit(_)
+            | TypedExprKind::SemaType(_)
+            | TypedExprKind::Poisoned => unreachable!("invalid expression passed to lower_rvalue_non_lvalue"),
+        };
+
+        CIRExpr {
+            val_cat: ValueCategory::RValue,
+            kind,
+            ty: self.lower_sema_type(expr.sema_type.as_ref().unwrap()),
+            loc: expr.loc,
+        }
+    }
+}
+
+// LValues
+impl<'a> CIRTraverse<'a> {
+    fn lower_lvalue(&mut self, expr: &TypedExpr) -> Option<CIRExpr> {
+        let operand_type = self.lower_sema_type(expr.sema_type.as_ref().unwrap());
+
+        match &expr.kind {
+            TypedExprKind::Symbol(symbol_expr) => {
+                let kind = self.lower_symbol(symbol_expr.decl_id);
+                let ty = CIRType::Pointer(Box::new(operand_type));
+
+                Some(CIRExpr {
+                    val_cat: ValueCategory::LValue,
+                    kind,
+                    ty,
+                    loc: expr.loc,
+                })
+            }
+            TypedExprKind::Deref(deref_expr) => Some(self.lower_lvalue_deref(deref_expr)),
+            TypedExprKind::ArrayIndex(array_index) => Some(self.lower_lvalue_array_index(array_index, &operand_type)),
+            TypedExprKind::FieldAccess(field_expr) => Some(self.lower_lvalue_field_access(field_expr.clone())),
+            TypedExprKind::TupleAccess(tuple_access) => {
+                Some(self.lower_lvalue_tuple_access(tuple_access, &operand_type))
+            }
+
+            _ => None,
+        }
+    }
+
+    fn lower_lvalue_tuple_access(&mut self, tuple_access: &TypedTupleAccessExpr, operand_type: &CIRType) -> CIRExpr {
+        // try to access through lvalue first
+        let operand = self
+            .lower_lvalue(&tuple_access.operand)
+            .unwrap_or(self.lower_rvalue(&tuple_access.operand));
+
+        // propagate
+        let val_cat = operand.val_cat;
+
+        CIRExpr {
+            val_cat,
+            ty: operand_type.clone(),
+            loc: tuple_access.loc,
+            kind: CIRExprKind::TupleAccess(CIRTupleAccessExpr {
+                operand: Box::new(operand),
+                index: tuple_access.index,
+            }),
+        }
+    }
+
+    fn lower_lvalue_field_access(&mut self, mut field_access: TypedFieldAccess) -> CIRExpr {
+        if field_access.is_thin_arrow {
+            field_access.operand = Box::new(TypedExpr {
+                kind: TypedExprKind::Deref(TypedDerefExpr {
+                    operand: field_access.operand.clone(),
+                    loc: field_access.loc,
+                }),
+                sema_type: Some(field_access.operand.sema_type.clone().unwrap().pointer_inner().clone()),
+                val_cat: ValueCategory::LValue,
+                loc: field_access.loc,
+            });
+        }
+
+        // try to access through lvalue first
+        let operand = self
+            .lower_lvalue(&field_access.operand)
+            .unwrap_or(self.lower_rvalue(&field_access.operand));
+
+        // propagate
+        let val_cat = operand.val_cat;
+
+        let field_type = self.lower_sema_type(&field_access.ty.unwrap());
+
+        match &field_access.dispatch {
+            TypedFieldAccessDispatch::Struct { index, .. } => CIRExpr {
+                kind: CIRExprKind::FieldAccess(CIRFieldAccessExpr {
+                    operand: Box::new(operand),
+                    kind: CIRFieldAccessKind::Struct {
+                        index: *index,
+                        field_type: field_type.clone(),
+                    },
+                }),
+                ty: field_type,
+                val_cat,
+                loc: field_access.loc,
+            },
+
+            TypedFieldAccessDispatch::Union { .. } => CIRExpr {
+                kind: CIRExprKind::FieldAccess(CIRFieldAccessExpr {
+                    operand: Box::new(operand),
+                    kind: CIRFieldAccessKind::Union {
+                        field_type: field_type.clone(),
+                    },
+                }),
+                ty: field_type,
+                val_cat,
+                loc: field_access.loc,
+            },
+
+            TypedFieldAccessDispatch::Unresolved => unreachable!(),
+        }
+    }
+
+    fn lower_lvalue_array_index(&mut self, array_index: &TypedArrayIndexExpr, element_type: &CIRType) -> CIRExpr {
+        // try to access through lvalue first
+        let operand = self
+            .lower_lvalue(&array_index.operand)
+            .unwrap_or(self.lower_rvalue(&array_index.operand));
+
+        let index = self.lower_rvalue(&array_index.index);
+
+        // propagate
+        let val_cat = operand.val_cat;
+
+        CIRExpr {
+            kind: CIRExprKind::ArrayIndex(CIRArrayIndexExpr {
+                operand: Box::new(operand),
+                index: Box::new(index),
+            }),
+            ty: element_type.clone(),
+            val_cat,
+            loc: array_index.loc,
+        }
+    }
+
+    fn lower_lvalue_deref(&mut self, deref: &TypedDerefExpr) -> CIRExpr {
+        let operand = self.lower_lvalue(&deref.operand).unwrap();
+
+        let inner = deref.operand.sema_type.as_ref().unwrap().pointer_inner();
+
+        // lvalue type is ALWAYS `inner*`
+        let ty = CIRType::Pointer(Box::new(self.lower_sema_type(&inner)));
+
+        CIRExpr {
+            kind: CIRExprKind::Deref(CIRDerefExpr {
+                operand: Box::new(operand),
+            }),
+            ty,
+            val_cat: ValueCategory::LValue,
+            loc: deref.loc,
+        }
     }
 }
 
@@ -1435,7 +1514,7 @@ impl<'a> CIRTraverse<'a> {
         match variant {
             TypedEnumVariant::Unit(ident) => CIREnumVariant::Unit(ident.as_string()),
             TypedEnumVariant::Valued { ident, value } => {
-                CIREnumVariant::Valued(ident.as_string(), Box::new(self.lower_expr(value)))
+                CIREnumVariant::Valued(ident.as_string(), Box::new(self.lower_rvalue(value)))
             }
             TypedEnumVariant::Tuple { ident, fields } => {
                 let tuple_fields = fields.iter().map(|field| self.lower_sema_type(&field.ty)).collect();

@@ -317,7 +317,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
             CIRType::Const(inner_ty) => self.emit_ty(*inner_ty),
             CIRType::Plain(plain_ty) => self.emit_plain_ty(plain_ty),
             CIRType::Pointer(_) => self.llvmctx.ptr_type(AddressSpace::default()).as_any_type_enum(),
-            CIRType::Struct(struct_type) => self.emit_struct_ty(struct_type).as_any_type_enum(),
+            CIRType::Struct(struct_type) => self.emit_struct_type(struct_type).as_any_type_enum(),
             CIRType::Enum(enum_type) => self.emit_enum_ty(enum_type).as_any_type_enum(),
             CIRType::Union(union_ty) => self.emit_union_ty(union_ty).as_any_type_enum(),
             CIRType::Tuple(tuple_type) => self.emit_tuple_ty(tuple_type).as_any_type_enum(),
@@ -398,7 +398,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         }
     }
 
-    pub(crate) fn emit_struct_ty(&self, struct_type: CIRStructType) -> StructType<'ll> {
+    pub(crate) fn emit_struct_type(&self, struct_type: CIRStructType) -> StructType<'ll> {
         let is_packed = struct_type.is_packed();
         let layout = type_layout(&self.target.info, &CIRType::Struct(struct_type.clone()));
 
@@ -448,7 +448,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         };
         let struct_tuple_type = tuple_type.as_struct_ty();
 
-        Some(self.emit_struct_ty(CIRStructType {
+        Some(self.emit_struct_type(CIRStructType {
             name: None,
             fields: struct_tuple_type.fields,
             fields_info: struct_tuple_type.fields_info,
@@ -574,7 +574,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
 
     pub(crate) fn emit_tuple_ty(&self, tuple_type: CIRTupleType) -> StructType<'ll> {
         let struct_type = tuple_type.as_struct_ty();
-        self.emit_struct_ty(struct_type)
+        self.emit_struct_type(struct_type)
     }
 
     pub(crate) fn emit_arr_ty(&self, array_ty: CIRArrayType) -> AnyTypeEnum<'ll> {

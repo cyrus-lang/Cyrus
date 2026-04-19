@@ -16,7 +16,7 @@
  */
 
 use cyrusc_ast::AssignKind;
-use cyrusc_typed_ast::exprs::{MemoryLocation, TypedAssignExpr, TypedExprKind, TypedExprStmt, TypedInfixExpr};
+use cyrusc_typed_ast::exprs::{ValueCategory, TypedAssignExpr, TypedExprKind, TypedExpr, TypedInfixExpr};
 
 /// Lowers a compound assignment into an equivalent infix expression assignment.
 pub(crate) fn lower_assign_to_infix_expr(assign: &mut TypedAssignExpr) -> TypedExprKind {
@@ -29,11 +29,11 @@ pub(crate) fn lower_assign_to_infix_expr(assign: &mut TypedAssignExpr) -> TypedE
 
     TypedExprKind::Assign(TypedAssignExpr {
         lhs: assign.lhs.clone(),
-        rhs: Box::new(TypedExprStmt {
+        rhs: Box::new(TypedExpr {
             kind: infix_expr,
             sema_type: None,
             loc: assign.loc,
-            mloc: MemoryLocation::RValue,
+            val_cat: ValueCategory::RValue,
         }),
         kind: AssignKind::Default,
         loc: assign.loc,

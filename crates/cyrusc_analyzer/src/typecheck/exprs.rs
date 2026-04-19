@@ -19,7 +19,7 @@ use crate::{context::AnalysisContext, diagnostics::AnalyzerDiagKind};
 use cyrusc_diagcentral::{Diag, DiagLevel};
 use cyrusc_source_loc::Loc;
 use cyrusc_typed_ast::{
-    exprs::{TypedExprKind, TypedExprStmt},
+    exprs::{TypedExprKind, TypedExpr},
     format::format_sema_type,
     types::{PlainType, SemaType},
 };
@@ -27,7 +27,7 @@ use cyrusc_typed_ast::{
 impl<'a> AnalysisContext<'a> {
     pub(crate) fn analyze_expr(
         &mut self,
-        expr: &mut TypedExprStmt,
+        expr: &mut TypedExpr,
         expected_type: Option<SemaType>,
     ) -> Option<SemaType> {
         match &expr.kind {
@@ -52,7 +52,7 @@ impl<'a> AnalysisContext<'a> {
 
     pub(crate) fn analyze_expr_non_terminal(
         &mut self,
-        expr: &mut TypedExprStmt,
+        expr: &mut TypedExpr,
         mut expected_type: Option<SemaType>,
     ) -> Option<SemaType> {
         if let Some(sema_type) = expected_type {
@@ -134,7 +134,7 @@ impl<'a> AnalysisContext<'a> {
         normalized_type
     }
 
-    pub(crate) fn analyze_cond_expr(&mut self, cond: &mut TypedExprStmt) {
+    pub(crate) fn analyze_cond_expr(&mut self, cond: &mut TypedExpr) {
         if let Some(sema_type) = self.analyze_expr(cond, Some(SemaType::Plain(PlainType::Bool))) {
             self.report_if_not_cond_expr(sema_type, cond.loc);
         }
@@ -142,7 +142,7 @@ impl<'a> AnalysisContext<'a> {
 
     pub(crate) fn analyze_field_assign(
         &mut self,
-        field_expr: &mut TypedExprStmt,
+        field_expr: &mut TypedExpr,
         mut expected_type: SemaType,
         loc: Loc,
     ) -> SemaType {

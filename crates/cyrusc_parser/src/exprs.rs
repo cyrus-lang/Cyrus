@@ -619,7 +619,7 @@ impl<'source_file> Parser<'source_file> {
         &mut self,
         operand: ASTExpr,
         method_name: Ident,
-        is_fat_arrow: bool,
+        is_thin_arrow: bool,
         type_args: TypeArgs,
         line: usize,
         column: usize,
@@ -632,7 +632,7 @@ impl<'source_file> Parser<'source_file> {
         let end = self.current_token().loc.end;
 
         Ok(ASTExpr::MethodCall(ASTMethodCallExpr {
-            is_fat_arrow,
+            is_thin_arrow,
             operand: Box::new(operand),
             method_name,
             type_args,
@@ -645,7 +645,7 @@ impl<'source_file> Parser<'source_file> {
         let loc = self.current_token().loc;
         let (line, column, start) = (loc.line, loc.column, loc.start);
 
-        let is_fat_arrow = {
+        let is_thin_arrow = {
             if self.current_token_is(TokenKind::ThinArrow) {
                 self.next_token();
                 true
@@ -673,9 +673,9 @@ impl<'source_file> Parser<'source_file> {
             if self.peek_token_is(TokenKind::LeftParen) {
                 self.next_token(); // consume ident
 
-                self.parse_method_call(operand, ident, is_fat_arrow, type_args, line, column, start)
+                self.parse_method_call(operand, ident, is_thin_arrow, type_args, line, column, start)
             } else if self.peek_token_is(TokenKind::LeftBrace) {
-                if is_fat_arrow || !type_args.is_empty() {
+                if is_thin_arrow || !type_args.is_empty() {
                     return Err(self.error_invalid_token());
                 }
 
@@ -690,7 +690,7 @@ impl<'source_file> Parser<'source_file> {
                 let end = self.current_token().loc.end;
 
                 Ok(ASTExpr::FieldAccess(ASTFieldAccessExpr {
-                    is_fat_arrow,
+                    is_thin_arrow,
                     operand: Box::new(operand),
                     field_name: ident,
                     loc: Loc::new(self.file_id(), line, column, start, end),

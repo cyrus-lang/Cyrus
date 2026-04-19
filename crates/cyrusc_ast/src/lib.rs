@@ -283,7 +283,7 @@ pub struct ASTFuncCallExpr {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ASTFieldAccessExpr {
-    pub is_fat_arrow: bool,
+    pub is_thin_arrow: bool,
     pub operand: Box<ASTExpr>,
     pub field_name: Ident,
     pub loc: Loc,
@@ -310,7 +310,7 @@ pub struct ASTMethodCallExpr {
     pub method_name: Ident,
     pub args: Vec<ASTExpr>,
     pub type_args: TypeArgs,
-    pub is_fat_arrow: bool,
+    pub is_thin_arrow: bool,
     pub loc: Loc,
 }
 

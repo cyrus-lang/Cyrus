@@ -20,16 +20,16 @@ use cyrusc_diagcentral::{Diag, DiagLevel};
 use cyrusc_typed_ast::{
     decls::{DeclID, EnumDeclID},
     exprs::{
-        MemoryLocation, TypedEnumInit, TypedEnumInitArgs, TypedExprKind, TypedExprStmt, TypedUnnamedEnumValueKind,
+        ValueCategory, TypedEnumInit, TypedEnumInitArgs, TypedExprKind, TypedExpr, TypedUnnamedEnumValueKind,
     },
     format::format_enum_decl,
     stmts::{TypedTypeArg, TypedTypeArgs},
 };
 
 impl<'a> AnalysisContext<'a> {
-    pub(crate) fn lower_field_access_as_enum_init(&mut self, expr: &mut TypedExprStmt) {
+    pub(crate) fn lower_field_access_as_enum_init(&mut self, expr: &mut TypedExpr) {
         let field_access = match &expr.kind {
-            TypedExprKind::FieldAccess(field_access) if !field_access.is_fat_arrow => field_access,
+            TypedExprKind::FieldAccess(field_access) if !field_access.is_thin_arrow => field_access,
             _ => return,
         };
 
@@ -66,20 +66,20 @@ impl<'a> AnalysisContext<'a> {
             loc: field_access.loc,
         };
 
-        *expr = TypedExprStmt {
+        *expr = TypedExpr {
             kind: TypedExprKind::EnumInit(enum_init),
             sema_type: None,
-            mloc: MemoryLocation::RValue,
+            val_cat: ValueCategory::RValue,
             loc: field_access.loc,
         };
     }
 
-    pub(crate) fn lower_method_call_as_enum_init(&mut self, typed_expr: &mut TypedExprStmt) {
+    pub(crate) fn lower_method_call_as_enum_init(&mut self, typed_expr: &mut TypedExpr) {
         let TypedExprKind::MethodCall(method_call) = &typed_expr.kind else {
             return;
         };
 
-        if method_call.is_fat_arrow {
+        if method_call.is_thin_arrow {
             return;
         }
 
@@ -111,16 +111,16 @@ impl<'a> AnalysisContext<'a> {
                 loc: method_call.loc,
             };
 
-            *typed_expr = TypedExprStmt {
+            *typed_expr = TypedExpr {
                 kind: TypedExprKind::EnumInit(enum_init),
                 sema_type: None,
-                mloc: MemoryLocation::RValue,
+                val_cat: ValueCategory::RValue,
                 loc: method_call.loc,
             };
         }
     }
 
-    pub(crate) fn lower_unnamed_enum_value_as_enum_init(&self, typed_expr: &mut TypedExprStmt) {
+    pub(crate) fn lower_unnamed_enum_value_as_enum_init(&self, typed_expr: &mut TypedExpr) {
         let TypedExprKind::UnnamedEnumValue(enum_value) = &typed_expr.kind else {
             return;
         };
@@ -131,7 +131,7 @@ impl<'a> AnalysisContext<'a> {
             TypedUnnamedEnumValueKind::Struct(field_inits) => TypedEnumInitArgs::Struct(field_inits.clone()),
         };
 
-        *typed_expr = TypedExprStmt {
+        *typed_expr = TypedExpr {
             kind: TypedExprKind::EnumInit(TypedEnumInit {
                 decl_id: DeclID::Enum(enum_value.enum_decl_id.unwrap()),
                 name: enum_value.ident.as_string(),
@@ -140,19 +140,19 @@ impl<'a> AnalysisContext<'a> {
                 loc: enum_value.loc,
             }),
             sema_type: typed_expr.sema_type.clone(),
-            mloc: typed_expr.mloc,
+            val_cat: typed_expr.val_cat,
             loc: typed_expr.loc,
         };
     }
 
-    pub(crate) fn lower_enum_struct_variant_init_as_enum_init(&self, typed_expr: &mut TypedExprStmt) {
+    pub(crate) fn lower_enum_struct_variant_init_as_enum_init(&self, typed_expr: &mut TypedExpr) {
         let TypedExprKind::EnumStructVariantInit(struct_variant_init) = &typed_expr.kind else {
             return;
         };
 
         let args = TypedEnumInitArgs::Struct(struct_variant_init.field_inits.clone());
 
-        *typed_expr = TypedExprStmt {
+        *typed_expr = TypedExpr {
             kind: TypedExprKind::EnumInit(TypedEnumInit {
                 decl_id: DeclID::Enum(struct_variant_init.enum_decl_id.unwrap()),
                 name: struct_variant_init.ident.as_string(),
@@ -161,7 +161,7 @@ impl<'a> AnalysisContext<'a> {
                 loc: struct_variant_init.loc,
             }),
             sema_type: typed_expr.sema_type.clone(),
-            mloc: typed_expr.mloc,
+            val_cat: typed_expr.val_cat,
             loc: typed_expr.loc,
         };
     }

@@ -30,7 +30,7 @@ impl<'a, R: ConstResolver> ConstFolder<'a, R> {
         }
     }
 
-    pub fn fold_expr(&mut self, expr: &mut TypedExprStmt) {
+    pub fn fold_expr(&mut self, expr: &mut TypedExpr) {
         match &mut expr.kind {
             TypedExprKind::Prefix(prefix) => {
                 self.fold_expr(&mut prefix.operand);
@@ -64,7 +64,7 @@ impl<'a, R: ConstResolver> ConstFolder<'a, R> {
         }
     }
 
-    pub fn expr_as_const_int(&mut self, expr: &TypedExprStmt) -> Option<i128> {
+    pub fn expr_as_const_int(&mut self, expr: &TypedExpr) -> Option<i128> {
         if let TypedExprKind::Literal(literal) = &expr.kind {
             if let LiteralKind::Integer(value, ..) = &literal.kind {
                 return Some(*value);
