@@ -47,9 +47,9 @@ impl<'a> AnalysisContext<'a> {
         }
 
         global_var.ty = match &global_var.ty {
-            Some(sema_type) => self.normalize_and_check_type_formation(sema_type.clone(), global_var.loc),
+            Some(ty) => self.normalize_and_check_type_formation(ty.clone(), global_var.loc),
             None => match global_var.expr.as_ref().and_then(|expr| expr.sema_type.clone()) {
-                Some(sema_type) => Some(sema_type),
+                Some(ty) => Some(ty),
                 None => {
                     self.reporter.report(Diag {
                         level: DiagLevel::Error,
@@ -62,8 +62,8 @@ impl<'a> AnalysisContext<'a> {
             },
         };
 
-        if let Some(sema_type) = &global_var.ty {
-            if !self.validate_variable_type(sema_type, global_var.expr.is_some(), global_var.loc) {
+        if let Some(ty) = &global_var.ty {
+            if !self.validate_variable_type(ty, global_var.expr.is_some(), global_var.loc) {
                 return;
             }
         }
@@ -114,8 +114,8 @@ impl<'a> AnalysisContext<'a> {
             var.ty = self.normalize_and_check_type_formation(ty.clone(), var.loc);
         }
 
-        if let Some(rhs) = &mut var.rhs {
-            let Some(inferred_type) = self.analyze_expr(rhs, var.ty.clone()) else {
+        if let Some(expr) = &mut var.rhs {
+            let Some(inferred_type) = self.analyze_expr(expr, var.ty.clone()) else {
                 return;
             };
 
@@ -156,8 +156,8 @@ impl<'a> AnalysisContext<'a> {
         });
     }
 
-    fn validate_variable_type(&mut self, sema_type: &SemaType, is_init: bool, loc: Loc) -> bool {
-        if sema_type.const_inner().is_void() {
+    fn validate_variable_type(&mut self, ty: &SemaType, is_init: bool, loc: Loc) -> bool {
+        if ty.const_inner().is_void() {
             self.reporter.report(Diag {
                 level: DiagLevel::Error,
                 kind: Box::new(AnalyzerDiagKind::VoidVariableType),
@@ -166,7 +166,7 @@ impl<'a> AnalysisContext<'a> {
             });
         }
 
-        if sema_type.const_inner().is_const() && !is_init {
+        if ty.const_inner().is_const() && !is_init {
             self.reporter.report(Diag {
                 level: DiagLevel::Error,
                 kind: Box::new(AnalyzerDiagKind::ConstVariableMustBeInitialized),
@@ -175,7 +175,7 @@ impl<'a> AnalysisContext<'a> {
             });
         }
 
-        if sema_type.const_inner().is_func_type() && !is_init {
+        if ty.const_inner().is_func_type() && !is_init {
             self.reporter.report(Diag {
                 level: DiagLevel::Error,
                 kind: Box::new(AnalyzerDiagKind::UninitializedLambda),
@@ -184,6 +184,6 @@ impl<'a> AnalysisContext<'a> {
             });
         }
 
-        self.check_type_arity(sema_type.clone(), loc).is_some()
+        self.check_type_arity(ty.clone(), loc).is_some()
     }
 }

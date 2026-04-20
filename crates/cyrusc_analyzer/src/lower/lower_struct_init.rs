@@ -17,9 +17,9 @@
 
 use crate::context::AnalysisContext;
 use cyrusc_typed_ast::{
-    decls::DeclID,
-    exprs::{TypedExprKind, TypedExpr, TypedFieldInit, TypedStructInitExpr},
+    exprs::{TypedExpr, TypedExprKind, TypedFieldInit, TypedStructInitExpr},
     stmts::TypedTypeArgs,
+    types::{NamedType, SemaType, TypeDeclID},
 };
 
 impl<'a> AnalysisContext<'a> {
@@ -40,8 +40,10 @@ impl<'a> AnalysisContext<'a> {
 
         *typed_expr = TypedExpr {
             kind: TypedExprKind::StructInit(TypedStructInitExpr {
-                decl_id: DeclID::Struct(struct_value.struct_decl_id.unwrap()),
-                type_args: TypedTypeArgs::new(),
+                operand: SemaType::Named(NamedType {
+                    type_decl_id: TypeDeclID::Struct(struct_value.struct_decl_id.unwrap()),
+                    type_args: TypedTypeArgs::new(),
+                }),
                 fields,
                 loc: struct_value.loc,
             }),

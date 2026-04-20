@@ -18,9 +18,9 @@
 use crate::{context::AnalysisContext, diagnostics::AnalyzerDiagKind};
 use cyrusc_diagcentral::{Diag, DiagLevel};
 use cyrusc_typed_ast::{
-    decls::DeclID,
-    exprs::{ValueCategory, TypedExprKind, TypedExpr, TypedFieldInit, TypedUnionInitExpr},
+    exprs::{TypedExpr, TypedExprKind, TypedFieldInit, TypedUnionInitExpr, ValueCategory},
     stmts::TypedTypeArgs,
+    types::{NamedType, SemaType, TypeDeclID},
 };
 
 impl<'a> AnalysisContext<'a> {
@@ -29,11 +29,9 @@ impl<'a> AnalysisContext<'a> {
             return;
         };
 
-        let Some(init_type) = self.resolve_symbol_type_expanded(struct_init.decl_id, struct_init.loc) else {
-            return;
-        };
+        let operand = self.expand_sema_type(struct_init.operand.clone(), struct_init.loc);
 
-        if init_type.as_union().is_none() {
+        if operand.as_union().is_none() {
             return;
         }
 
@@ -51,8 +49,7 @@ impl<'a> AnalysisContext<'a> {
         let field = struct_init.fields.first().unwrap();
 
         let union_init = TypedUnionInitExpr {
-            decl_id: struct_init.decl_id,
-            type_args: struct_init.type_args.clone(),
+            operand,
             field: Box::new(field.clone()),
             loc: struct_init.loc,
         };
@@ -78,9 +75,11 @@ impl<'a> AnalysisContext<'a> {
 
         *typed_expr = TypedExpr {
             kind: TypedExprKind::UnionInit(TypedUnionInitExpr {
-                decl_id: DeclID::Union(union_value.union_decl_id.unwrap()),
+                operand: SemaType::Named(NamedType {
+                    type_decl_id: TypeDeclID::Union(union_value.union_decl_id.unwrap()),
+                    type_args: TypedTypeArgs::new(),
+                }),
                 field: Box::new(field),
-                type_args: TypedTypeArgs::new(),
                 loc: union_value.loc,
             }),
             sema_type: typed_expr.sema_type.clone(),

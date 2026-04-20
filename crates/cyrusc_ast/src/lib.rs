@@ -562,9 +562,8 @@ pub struct ASTStructStmt {
 
 #[derive(Debug, Clone)]
 pub struct ASTStructInitExpr {
-    pub struct_name: ASTModuleImport,
+    pub operand: TypeSpecifier,
     pub field_inits: Vec<FieldInit>,
-    pub type_args: TypeArgs,
     pub loc: Loc,
 }
 
@@ -1440,9 +1439,7 @@ impl PartialEq for ASTDerefExpr {
 
 impl PartialEq for ASTStructInitExpr {
     fn eq(&self, other: &Self) -> bool {
-        self.struct_name == other.struct_name
-            && self.field_inits == other.field_inits
-            && self.type_args == other.type_args
+        self.operand == other.operand && self.field_inits == other.field_inits
     }
 }
 

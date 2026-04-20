@@ -18,12 +18,11 @@
 use crate::{context::AnalysisContext, diagnostics::AnalyzerDiagKind};
 use cyrusc_diagcentral::{Diag, DiagLevel};
 use cyrusc_typed_ast::{
-    decls::{DeclID, EnumDeclID},
-    exprs::{
-        ValueCategory, TypedEnumInit, TypedEnumInitArgs, TypedExprKind, TypedExpr, TypedUnnamedEnumValueKind,
-    },
+    decls::EnumDeclID,
+    exprs::{TypedEnumInit, TypedEnumInitArgs, TypedExpr, TypedExprKind, TypedUnnamedEnumValueKind, ValueCategory},
     format::format_enum_decl,
-    stmts::{TypedTypeArg, TypedTypeArgs},
+    stmts::TypedTypeArgs,
+    types::{NamedType, SemaType, TypeDeclID},
 };
 
 impl<'a> AnalysisContext<'a> {
@@ -59,10 +58,12 @@ impl<'a> AnalysisContext<'a> {
         }
 
         let enum_init = TypedEnumInit {
-            decl_id: DeclID::Enum(enum_decl_id),
+            operand: SemaType::Named(NamedType {
+                type_decl_id: TypeDeclID::Enum(enum_decl_id),
+                type_args,
+            }),
             name: field_access.name.clone(),
             args: TypedEnumInitArgs::Unit,
-            type_args: type_args,
             loc: field_access.loc,
         };
 
@@ -104,9 +105,11 @@ impl<'a> AnalysisContext<'a> {
             let args = TypedEnumInitArgs::Tuple(method_call.args.clone());
 
             let enum_init = TypedEnumInit {
-                decl_id: DeclID::Enum(enum_decl_id),
+                operand: SemaType::Named(NamedType {
+                    type_decl_id: TypeDeclID::Enum(enum_decl_id),
+                    type_args,
+                }),
                 name: method_call.name.clone(),
-                type_args,
                 args,
                 loc: method_call.loc,
             };
@@ -133,9 +136,11 @@ impl<'a> AnalysisContext<'a> {
 
         *typed_expr = TypedExpr {
             kind: TypedExprKind::EnumInit(TypedEnumInit {
-                decl_id: DeclID::Enum(enum_value.enum_decl_id.unwrap()),
+                operand: SemaType::Named(NamedType {
+                    type_decl_id: TypeDeclID::Enum(enum_value.enum_decl_id.unwrap()),
+                    type_args: TypedTypeArgs::new(),
+                }),
                 name: enum_value.ident.as_string(),
-                type_args: TypedTypeArgs::new(),
                 args: enum_init_args,
                 loc: enum_value.loc,
             }),
@@ -154,9 +159,11 @@ impl<'a> AnalysisContext<'a> {
 
         *typed_expr = TypedExpr {
             kind: TypedExprKind::EnumInit(TypedEnumInit {
-                decl_id: DeclID::Enum(struct_variant_init.enum_decl_id.unwrap()),
+                operand: SemaType::Named(NamedType {
+                    type_decl_id: TypeDeclID::Enum(struct_variant_init.enum_decl_id.unwrap()),
+                    type_args: TypedTypeArgs::new(),
+                }),
                 name: struct_variant_init.ident.as_string(),
-                type_args: TypedTypeArgs::new(),
                 args,
                 loc: struct_variant_init.loc,
             }),

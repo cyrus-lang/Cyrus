@@ -21,39 +21,37 @@ use cyrusc_diagcentral::{Diag, DiagLevel};
 use cyrusc_typed_ast::{
     decls::{MethodDecls, UnionDecl, UnionDeclID},
     exprs::{TypedUnionInitExpr, TypedUnnamedUnionValue},
-    format::format_union_decl,
+    format::{format_sema_type, format_union_decl},
     stmts::{TypedGenericParams, TypedTypeArgs, TypedUnionField},
     types::{NamedType, SemaType, TypeDeclID},
 };
 
 impl<'a> AnalysisContext<'a> {
     pub(crate) fn analyze_union_init(&mut self, union_init: &mut TypedUnionInitExpr) -> Option<SemaType> {
-        let init_type = self.resolve_symbol_type_expanded(union_init.decl_id, union_init.loc)?;
+        let mut operand = self.normalize_and_check_type_formation(union_init.operand.clone(), union_init.loc)?;
 
-        let Some(named_type) = init_type.as_named_type() else {
-            self.report_non_union_symbol(union_init.decl_id, union_init.loc);
+        operand = self.expand_sema_type(operand, union_init.loc);
+
+        let Some(named_type) = operand.as_named_type() else {
+            let symbol_name = format_sema_type(operand, self.formatter);
+            self.report_non_union_symbol(symbol_name, union_init.loc);
             return None;
         };
 
         let Some(union_decl_id) = named_type.type_decl_id.as_union() else {
-            self.report_non_union_symbol(union_init.decl_id, union_init.loc);
+            let symbol_name = format_sema_type(operand, self.formatter);
+            self.report_non_union_symbol(symbol_name, union_init.loc);
             return None;
         };
-
-        if union_init.type_args.is_empty() {
-            union_init.type_args = named_type.type_args.clone();
-        }
 
         let union_decl = self.decl_tables.union_decl(union_decl_id);
 
         let union_name = format_union_decl(&union_decl, self.formatter);
 
-        self.normalize_type_args(&mut union_init.type_args);
-
         let generic_env = self.create_inference_generic_env(
             &union_name,
             union_decl.generic_params.clone(),
-            &union_init.type_args,
+            &named_type.type_args,
             union_init.loc,
         )?;
 
@@ -69,9 +67,9 @@ impl<'a> AnalysisContext<'a> {
 
             this.apply_generic_defaults(union_decl.generic_params.clone());
 
-            let final_type_args = this.collect_instantiated_type_args(union_decl.generic_params);
+            union_init.operand = this.substitute_type(&operand);
 
-            union_init.type_args = final_type_args.clone();
+            let final_type_args = this.collect_instantiated_type_args(union_decl.generic_params);
 
             Some(SemaType::Named(NamedType {
                 type_decl_id: TypeDeclID::Union(union_decl_id),

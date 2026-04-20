@@ -564,8 +564,18 @@ impl Resolver {
     fn resolve_generic_inst_type(&mut self, inst: GenericInst, loc: Loc) -> Option<SemaType> {
         let base_type = self.resolve_type(*inst.base.clone(), loc)?;
 
-        let base = match base_type.const_inner().as_unresolved_decl_id() {
-            Some(id) => id,
+        if base_type.is_self_type() {
+            self.reporter.report(Diag {
+                level: DiagLevel::Error,
+                kind: Box::new(ResolverDiagKind::SelfTypeDoesNotAcceptTypeArgs),
+                loc: Some(inst.loc),
+                hint: None,
+            });
+            return None;
+        }
+
+        let base_decl_id = match base_type.const_inner().as_unresolved_decl_id() {
+            Some(decl_id) => decl_id,
             None => {
                 self.reporter.report(Diag {
                     level: DiagLevel::Error,
@@ -575,7 +585,6 @@ impl Resolver {
                     loc: Some(inst.loc),
                     hint: None,
                 });
-
                 return None;
             }
         };
@@ -583,7 +592,7 @@ impl Resolver {
         let type_args = self.resolve_type_args(&inst.type_args)?;
 
         Some(SemaType::Unresolved(UnresolvedType::GenericInst {
-            base_decl_id: base,
+            base_decl_id,
             type_args,
         }))
     }
@@ -1252,7 +1261,9 @@ impl Resolver {
 
     fn resolve_method_bodies(&mut self, method_decls: &MethodDecls, ast_methods: &[ASTFuncDefStmt]) {
         for ast_method in ast_methods {
-            let method_decl_id = method_decls.get(&ast_method.ident.value).unwrap();
+            let Some(method_decl_id) = method_decls.get(&ast_method.ident.value) else {
+                continue;
+            };
 
             let scope = LocalScope::new();
 
@@ -2277,7 +2288,7 @@ impl Resolver {
     }
 
     fn resolve_struct_init(&mut self, struct_init: &ASTStructInitExpr) -> Option<TypedExpr> {
-        let symbol_id = self.resolve_local_module_import(&struct_init.struct_name)?;
+        let operand = self.resolve_type(struct_init.operand.clone(), struct_init.loc)?;
 
         let fields: Vec<TypedFieldInit> = struct_init
             .field_inits
@@ -2291,16 +2302,10 @@ impl Resolver {
             })
             .collect();
 
-        let type_args = self.resolve_type_args(&struct_init.type_args)?;
-
-        let symbol_entry = self.lookup_symbol_entry(symbol_id)?;
-        let decl_id = self.resolve_symbol_entry_as_decl_id(&symbol_entry);
-
         Some(TypedExpr {
             kind: TypedExprKind::StructInit(TypedStructInitExpr {
-                decl_id,
+                operand,
                 fields,
-                type_args,
                 loc: struct_init.loc,
             }),
             val_cat: ValueCategory::RValue,
@@ -2309,10 +2314,7 @@ impl Resolver {
         })
     }
 
-    fn resolve_unnamed_struct_value(
-        &mut self,
-        unnamed_struct_value: &ASTUnnamedStructValueExpr,
-    ) -> Option<TypedExpr> {
+    fn resolve_unnamed_struct_value(&mut self, unnamed_struct_value: &ASTUnnamedStructValueExpr) -> Option<TypedExpr> {
         let fields = unnamed_struct_value
             .fields
             .iter()

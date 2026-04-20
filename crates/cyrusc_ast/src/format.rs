@@ -387,11 +387,7 @@ impl fmt::Display for ASTExpr {
             ASTExpr::AddrOf(address_of) => write!(f, "&({})", address_of.expr),
             ASTExpr::Deref(dereference) => write!(f, "(*{})", dereference.expr),
             ASTExpr::StructInit(struct_init) => {
-                write!(
-                    f,
-                    "{} {{",
-                    ASTExpr::ModuleImport(struct_init.struct_name.clone()).to_string()
-                )?;
+                write!(f, "{} {{", struct_init.operand)?;
                 for field in &struct_init.field_inits {
                     write!(f, "{}: {};", field.ident, field.value)?;
                 }

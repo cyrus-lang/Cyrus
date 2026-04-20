@@ -32,15 +32,19 @@ use fx_hash::{FxHashMap, FxHashSet};
 
 impl<'a> AnalysisContext<'a> {
     pub(crate) fn analyze_enum_init(&mut self, enum_init: &mut TypedEnumInit) -> Option<SemaType> {
-        let init_type = self.resolve_symbol_type_expanded(enum_init.decl_id, enum_init.loc)?;
+        let mut operand = self.normalize_and_check_type_formation(enum_init.operand.clone(), enum_init.loc)?;
 
-        let Some(named_type) = init_type.as_named_type() else {
-            self.report_non_struct_symbol(enum_init.decl_id, enum_init.loc);
+        operand = self.expand_sema_type(operand, enum_init.loc);
+
+        let Some(named_type) = operand.as_named_type() else {
+            let symbol_name = format_sema_type(operand, self.formatter);
+            self.report_non_enum_symbol(symbol_name, enum_init.loc);
             return None;
         };
 
         let Some(enum_decl_id) = named_type.type_decl_id.as_enum() else {
-            self.report_non_struct_symbol(enum_init.decl_id, enum_init.loc);
+            let symbol_name = format_sema_type(operand, self.formatter);
+            self.report_non_enum_symbol(symbol_name, enum_init.loc);
             return None;
         };
 
@@ -66,7 +70,7 @@ impl<'a> AnalysisContext<'a> {
         let generic_env = self.create_inference_generic_env(
             &enum_name,
             enum_decl.generic_params.clone(),
-            &enum_init.type_args,
+            &named_type.type_args,
             enum_decl.loc,
         )?;
 
@@ -142,6 +146,8 @@ impl<'a> AnalysisContext<'a> {
             }
 
             this.apply_generic_defaults(enum_decl.generic_params.clone());
+
+            enum_init.operand = this.substitute_type(&operand);
 
             let final_type_args = this.collect_instantiated_type_args(enum_decl.generic_params);
 

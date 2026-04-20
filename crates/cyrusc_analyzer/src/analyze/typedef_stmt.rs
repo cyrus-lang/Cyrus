@@ -21,7 +21,7 @@ use cyrusc_typed_ast::stmts::TypedTypedefStmt;
 impl<'a> AnalysisContext<'a> {
     pub(crate) fn analyze_typedef(&mut self, typedef: &mut TypedTypedefStmt) {
         typedef.ty = match self.normalize_and_check_type_formation(typedef.ty.clone(), typedef.loc) {
-            Some(sema_type) => sema_type,
+            Some(ty) => ty,
             None => return,
         };
 

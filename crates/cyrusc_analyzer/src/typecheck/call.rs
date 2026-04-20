@@ -118,6 +118,7 @@ impl<'a> AnalysisContext<'a> {
             }
 
             self.normalize_func_type_params(&mut func_type.params, func_call.loc);
+            
             func_type.ret_type =
                 Box::new(self.normalize_and_check_type_formation(*func_type.ret_type.clone(), func_call.loc)?);
 

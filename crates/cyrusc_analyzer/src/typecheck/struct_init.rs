@@ -21,7 +21,7 @@ use cyrusc_diagcentral::{Diag, DiagLevel};
 use cyrusc_typed_ast::{
     decls::{MethodDecls, StructDecl, StructDeclID},
     exprs::{TypedFieldInit, TypedStructInitExpr, TypedUnnamedStructValue},
-    format::{format_missing_fields, format_struct_decl},
+    format::{format_missing_fields, format_sema_type, format_struct_decl},
     stmts::{TypedGenericParams, TypedStructField, TypedTypeArgs},
     types::{NamedType, SemaType, TypeDeclID},
 };
@@ -29,33 +29,30 @@ use fx_hash::FxHashSet;
 
 impl<'a> AnalysisContext<'a> {
     pub(crate) fn analyze_struct_init(&mut self, struct_init: &mut TypedStructInitExpr) -> Option<SemaType> {
-        let init_type = self.resolve_symbol_type_expanded(struct_init.decl_id, struct_init.loc)?;
+        let mut operand = self.normalize_and_check_type_formation(struct_init.operand.clone(), struct_init.loc)?;
 
-        let Some(named_type) = init_type.as_named_type() else {
-            self.report_non_struct_symbol(struct_init.decl_id, struct_init.loc);
+        operand = self.expand_sema_type(operand, struct_init.loc);
+
+        let Some(named_type) = operand.as_named_type() else {
+            let symbol_name = format_sema_type(operand, self.formatter);
+            self.report_non_struct_symbol(symbol_name, struct_init.loc);
             return None;
         };
 
         let Some(struct_decl_id) = named_type.type_decl_id.as_struct() else {
-            self.report_non_struct_symbol(struct_init.decl_id, struct_init.loc);
+            let symbol_name = format_sema_type(operand, self.formatter);
+            self.report_non_struct_symbol(symbol_name, struct_init.loc);
             return None;
         };
-
-        // overwrite type args with expanded ones if none explicitly provided
-        if struct_init.type_args.is_empty() {
-            struct_init.type_args = named_type.type_args.clone();
-        }
 
         let struct_decl = self.decl_tables.struct_decl(struct_decl_id);
 
         let struct_name = format_struct_decl(&struct_decl, self.formatter);
 
-        self.normalize_type_args(&mut struct_init.type_args);
-
         let generic_env = self.create_inference_generic_env(
             &struct_name,
             struct_decl.generic_params.clone(),
-            &struct_init.type_args,
+            &named_type.type_args,
             struct_init.loc,
         )?;
 
@@ -77,9 +74,9 @@ impl<'a> AnalysisContext<'a> {
 
             this.apply_generic_defaults(struct_decl.generic_params.clone());
 
+            struct_init.operand = this.substitute_type(&operand);
+            
             let final_type_args = this.collect_instantiated_type_args(struct_decl.generic_params);
-
-            struct_init.type_args = final_type_args.clone();
 
             Some(SemaType::Named(NamedType {
                 type_decl_id: TypeDeclID::Struct(struct_decl_id),

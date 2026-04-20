@@ -303,6 +303,7 @@ impl<'a> AnalysisContext<'a> {
         }
     }
 
+    // FIXME: Remove later.
     #[inline]
     pub(crate) fn resolve_symbol_type_expanded(&mut self, decl_id: DeclID, loc: Loc) -> Option<SemaType> {
         let ty = self.resolve_symbol_type(decl_id, loc)?;

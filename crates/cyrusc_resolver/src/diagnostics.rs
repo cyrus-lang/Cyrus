@@ -53,6 +53,9 @@ pub enum ResolverDiagKind {
     #[error("Type '{type_name}' does not accept any type arguments.")]
     TypeDoesNotAcceptTypeArgs { type_name: String },
 
+    #[error("Self type does not accept any type arguments.")]
+    SelfTypeDoesNotAcceptTypeArgs,
+
     #[error("Expected an ident in module import path, but found something else.")]
     ExpectedIdentifierInImport,
 

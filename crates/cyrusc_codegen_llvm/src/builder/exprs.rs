@@ -448,11 +448,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
                             .unwrap(),
                     )
                 } else {
-                    AnyValueEnum::FloatValue(
-                        self.llvmbuilder
-                            .build_float_cast(basic_value.into_float_value(), float_type, "cast")
-                            .unwrap(),
-                    )
+                    basic_value.into()
                 }
             }
             AnyTypeEnum::PointerType(ptr_type) => {

@@ -82,7 +82,7 @@ impl<'a> AnalysisContext<'a> {
     fn analyze_struct_fields(&mut self, struct_decl_id: StructDeclID, struct_fields: &mut [TypedStructField]) {
         for field in struct_fields {
             field.ty = match self.normalize_and_check_type_formation(field.ty.clone(), field.loc) {
-                Some(sema_type) => sema_type,
+                Some(ty) => ty,
                 None => continue,
             };
 

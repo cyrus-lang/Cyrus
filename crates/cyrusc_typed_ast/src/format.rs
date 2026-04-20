@@ -296,7 +296,7 @@ pub fn format_typed_expr(expr: &TypedExpr, formatter: &dyn Formatter) -> String 
             out
         }
         EnumInit(enum_init) => {
-            let enum_name = formatter.format_decl(enum_init.decl_id);
+            let enum_name = format_sema_type(enum_init.operand.clone(), formatter);
 
             let mut out = String::from(format!("{}.{}", enum_name, enum_init.name));
 

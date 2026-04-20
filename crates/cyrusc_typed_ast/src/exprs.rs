@@ -195,16 +195,14 @@ pub struct TypedDerefExpr {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct TypedStructInitExpr {
-    pub decl_id: DeclID,
-    pub type_args: TypedTypeArgs,
+    pub operand: SemaType,
     pub fields: Vec<TypedFieldInit>,
     pub loc: Loc,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct TypedUnionInitExpr {
-    pub decl_id: DeclID,
-    pub type_args: TypedTypeArgs,
+    pub operand: SemaType,
     pub field: Box<TypedFieldInit>,
     pub loc: Loc,
 }
@@ -266,9 +264,8 @@ pub enum TypedFieldAccessDispatch {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct TypedEnumInit {
-    pub decl_id: DeclID,
+    pub operand: SemaType,
     pub name: String,
-    pub type_args: TypedTypeArgs,
     pub args: TypedEnumInitArgs,
     pub loc: Loc,
 }

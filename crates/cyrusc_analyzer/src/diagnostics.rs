@@ -566,23 +566,28 @@ impl<'a> AnalysisContext<'a> {
         drop(diags);
     }
 
-    pub(crate) fn report_non_struct_symbol(&self, decl_id: DeclID, loc: Loc) {
+    pub(crate) fn report_non_struct_symbol(&self, symbol_name: String, loc: Loc) {
         self.reporter.report(Diag {
             level: DiagLevel::Error,
-            kind: Box::new(AnalyzerDiagKind::NonStructSymbol {
-                symbol_name: self.formatter.format_decl(decl_id),
-            }),
+            kind: Box::new(AnalyzerDiagKind::NonStructSymbol { symbol_name }),
             loc: Some(loc),
             hint: None,
         });
     }
 
-    pub(crate) fn report_non_union_symbol(&self, decl_id: DeclID, loc: Loc) {
+    pub(crate) fn report_non_enum_symbol(&self, symbol_name: String, loc: Loc) {
         self.reporter.report(Diag {
             level: DiagLevel::Error,
-            kind: Box::new(AnalyzerDiagKind::NonUnionSymbol {
-                symbol_name: self.formatter.format_decl(decl_id),
-            }),
+            kind: Box::new(AnalyzerDiagKind::NonEnumSymbol { symbol_name }),
+            loc: Some(loc),
+            hint: None,
+        });
+    }
+
+    pub(crate) fn report_non_union_symbol(&self, symbol_name: String, loc: Loc) {
+        self.reporter.report(Diag {
+            level: DiagLevel::Error,
+            kind: Box::new(AnalyzerDiagKind::NonUnionSymbol { symbol_name }),
             loc: Some(loc),
             hint: None,
         });

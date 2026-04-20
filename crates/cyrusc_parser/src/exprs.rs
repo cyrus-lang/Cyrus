@@ -252,7 +252,7 @@ impl<'source_file> Parser<'source_file> {
                 let module_import = self.parse_module_import()?;
 
                 if self.current_token_is(TokenKind::LeftBrace) {
-                    ASTExpr::StructInit(self.parse_struct_init(module_import, TypeArgs::new())?)
+                    ASTExpr::StructInit(self.parse_struct_init(TypeSpecifier::ModuleImport(module_import))?)
                 } else {
                     ASTExpr::ModuleImport(module_import)
                 }
@@ -369,7 +369,28 @@ impl<'source_file> Parser<'source_file> {
             if let ASTExpr::ModuleImport(module_import) = expr.clone() {
                 self.next_token(); // consume struct name
 
-                let struct_init = self.parse_struct_init(module_import, type_args)?;
+                let struct_init = {
+                    let operand = {
+                        if let Some(ident) = module_import.as_ident() {
+                            TypeSpecifier::Ident(ident)
+                        } else {
+                            TypeSpecifier::ModuleImport(module_import)
+                        }
+                    };
+                    
+                    if type_args.is_empty() {
+                        self.parse_struct_init(operand)?
+                    } else {
+                        let end = self.current_token().loc.end;
+
+                        self.parse_struct_init(TypeSpecifier::GenericInst(GenericInst {
+                            base: Box::new(operand),
+                            type_args,
+                            loc: Loc::new(self.file_id(), line, column, start, end),
+                        }))?
+                    }
+                };
+
                 Ok(ASTExpr::StructInit(struct_init))
             } else {
                 return Err(self.error_invalid_token());
@@ -727,11 +748,7 @@ impl<'source_file> Parser<'source_file> {
         }))
     }
 
-    fn parse_struct_init(
-        &mut self,
-        struct_name: ASTModuleImport,
-        type_args: TypeArgs,
-    ) -> Result<ASTStructInitExpr, Diag> {
+    fn parse_struct_init(&mut self, operand: TypeSpecifier) -> Result<ASTStructInitExpr, Diag> {
         let loc = self.current_token().loc;
         let (line, column, start) = (loc.line, loc.column, loc.start);
 
@@ -742,9 +759,8 @@ impl<'source_file> Parser<'source_file> {
             let end = self.current_token().loc.end;
 
             return Ok(ASTStructInitExpr {
-                struct_name,
+                operand,
                 field_inits,
-                type_args,
                 loc: Loc::new(self.file_id(), line, column, start, end),
             });
         }
@@ -799,9 +815,8 @@ impl<'source_file> Parser<'source_file> {
         let end = self.current_token().loc.end;
 
         Ok(ASTStructInitExpr {
-            struct_name,
+            operand,
             field_inits,
-            type_args,
             loc: Loc::new(self.file_id(), line, column, start, end),
         })
     }

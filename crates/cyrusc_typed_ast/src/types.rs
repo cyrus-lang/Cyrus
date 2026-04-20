@@ -19,7 +19,6 @@ use crate::decls::{DeclID, EnumDeclID, InterfaceDeclID, StructDeclID, TypedefDec
 use crate::exprs::{TypedExpr, TypedSelfType};
 use crate::stmts::{TypedFuncTypeParams, TypedFuncTypeVariadicParam, TypedTypeArg, TypedTypeArgs};
 use crate::{GenericParamID, SymbolID, VTableID};
-use cyrusc_ast::GenericInst;
 use cyrusc_source_loc::Loc;
 use cyrusc_tokens::TokenKind;
 use std::fmt;

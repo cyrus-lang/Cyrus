@@ -15,7 +15,6 @@
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
 
-use cyrusc_ast::SelfModifierKind;
 use cyrusc_ast::abi::CallConv;
 use cyrusc_internal::abi::mangler::*;
 use cyrusc_internal::abi::target::ABITarget;
@@ -723,10 +722,13 @@ impl<'a> CIRTraverse<'a> {
     }
 
     fn lower_struct_init(&mut self, struct_init: &TypedStructInitExpr) -> CIRExprKind {
-        let struct_decl_id = struct_init.decl_id.as_struct().unwrap();
+        let named_type = struct_init.operand.as_named_type().unwrap();
+        let type_args = &named_type.type_args;
+        let struct_decl_id = named_type.type_decl_id.as_struct().unwrap();
+
         let struct_decl = self.decl_tables.struct_decl(struct_decl_id);
 
-        let inst_struct_decl = instantiate_struct_decl_with_type_args(&struct_decl, &struct_init.type_args);
+        let inst_struct_decl = instantiate_struct_decl_with_type_args(&struct_decl, type_args);
 
         let struct_name = format_struct_decl(&inst_struct_decl, self.formatter);
 
@@ -772,10 +774,13 @@ impl<'a> CIRTraverse<'a> {
     }
 
     fn lower_union_init(&mut self, union_init: &TypedUnionInitExpr) -> CIRExprKind {
-        let union_decl_id = union_init.decl_id.as_union().unwrap();
+        let named_type = union_init.operand.as_named_type().unwrap();
+        let type_args = &named_type.type_args;
+        let union_decl_id = named_type.type_decl_id.as_union().unwrap();
+
         let union_decl = self.decl_tables.union_decl(union_decl_id);
 
-        let inst_union_decl = instantiate_union_decl_with_type_args(&union_decl, &union_init.type_args);
+        let inst_union_decl = instantiate_union_decl_with_type_args(&union_decl, type_args);
 
         let union_name = format_union_decl(&inst_union_decl, self.formatter);
 
@@ -810,6 +815,9 @@ impl<'a> CIRTraverse<'a> {
 
     // TODO
     fn lower_enum_init(&mut self, enum_init: &TypedEnumInit) -> CIRExprKind {
+        // let named_type = struct_init.operand.as_named_type().unwrap();
+        // let type_args = &named_type.type_args;
+        // let struct_decl_id = named_type.type_decl_id.as_struct().unwrap();
         todo!();
     }
 

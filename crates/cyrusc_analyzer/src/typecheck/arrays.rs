@@ -91,7 +91,7 @@ impl<'a> AnalysisContext<'a> {
         }
 
         array.ty = match self.normalize_and_check_type_formation(array.ty.clone()?, array.loc) {
-            Some(sema_type) => Some(sema_type),
+            Some(ty) => Some(ty),
             None => return None,
         };
 
@@ -100,12 +100,12 @@ impl<'a> AnalysisContext<'a> {
 
             if analyzed_first_element && element.sema_type.is_some() {
                 expr_type = match self.normalize_and_check_type_formation(element.sema_type.clone().unwrap(), element.loc) {
-                    Some(sema_type) => sema_type,
+                    Some(ty) => ty,
                     None => continue,
                 };
             } else {
                 expr_type = match self.analyze_expr(element, Some(*array_type!().element_type.clone())) {
-                    Some(sema_type) => sema_type,
+                    Some(ty) => ty,
                     None => continue,
                 };
             }

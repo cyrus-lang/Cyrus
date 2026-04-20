@@ -488,14 +488,14 @@ impl<'a> AnalysisContext<'a> {
                 });
             }
 
-            let gen_env = GenericEnv::from_type_args(generic_params.clone(), &TypedTypeArgs(final_args));
+            let generic_env = GenericEnv::from_type_args(generic_params.clone(), &TypedTypeArgs(final_args));
 
             let typedef_type = match self.normalize_and_check_type_formation(*typedef_decl.ty, loc) {
-                Some(t) => t,
+                Some(ty) => ty,
                 None => return Ok(SemaType::Err(loc)),
             };
 
-            let substituted = gen_env.substitute_sema_type(&typedef_type);
+            let substituted = generic_env.substitute_sema_type(&typedef_type);
 
             Ok(self.expand_sema_type(substituted, loc))
         });
@@ -656,7 +656,7 @@ fn canonicalize_typedef_cycle(path: &[TypedefDeclID]) -> Vec<TypedefDeclID> {
 
 impl<'a> AnalysisContext<'a> {
     pub(crate) fn check_type_formation(&mut self, ty: SemaType, loc: Loc) -> Option<SemaType> {
-        fn check_recursively(this: &mut AnalysisContext, ty: &SemaType, loc: Loc) {
+        fn check_recursively(this: &mut AnalysisContext, ty: &SemaType, loc: Loc, has_error: &mut bool) {
             if ty.count_const_layers() > 1 {
                 this.reporter.report(Diag {
                     level: DiagLevel::Error,
@@ -664,25 +664,23 @@ impl<'a> AnalysisContext<'a> {
                     loc: Some(loc),
                     hint: None,
                 });
+                *has_error = true;
             }
 
             match ty {
                 SemaType::Named(named_type) => {
                     this.check_unexpected_type_args(named_type, loc);
-
                     for type_arg in named_type.type_args.iter() {
-                        match type_arg {
-                            TypedTypeArg::Type(inner, _) => check_recursively(this, inner, loc),
-                            TypedTypeArg::Infer => {}
+                        if let TypedTypeArg::Type(inner, _) = type_arg {
+                            check_recursively(this, inner, loc, has_error);
                         }
                     }
                 }
 
-                SemaType::Const(inner) => check_recursively(this, inner, loc),
-                SemaType::Pointer(inner) => check_recursively(this, inner, loc),
+                SemaType::Const(inner) => check_recursively(this, inner, loc, has_error),
+                SemaType::Pointer(inner) => check_recursively(this, inner, loc, has_error),
 
                 SemaType::Array(array_type) => {
-                    // array element cannot be void
                     if array_type.element_type.is_void() {
                         this.reporter.report(Diag {
                             level: DiagLevel::Error,
@@ -690,40 +688,42 @@ impl<'a> AnalysisContext<'a> {
                             loc: Some(array_type.loc),
                             hint: None,
                         });
+                        *has_error = true;
                     }
-                    check_recursively(this, &array_type.element_type, loc);
+                    check_recursively(this, &array_type.element_type, loc, has_error);
                 }
 
                 SemaType::FuncType(func_type) => {
-                    for param_type in &func_type.params.list {
-                        // function parameter cannot be void
-                        if param_type.is_void() {
+                    for param in &func_type.params.list {
+                        if param.is_void() {
                             this.reporter.report(Diag {
                                 level: DiagLevel::Error,
                                 kind: Box::new(AnalyzerDiagKind::VoidParameterType),
                                 loc: Some(func_type.loc),
                                 hint: None,
                             });
+                            *has_error = true;
                         }
-                        check_recursively(this, param_type, loc);
+                        check_recursively(this, param, loc, has_error);
                     }
-
-                    check_recursively(this, &func_type.ret_type, loc);
+                    check_recursively(this, &func_type.ret_type, loc, has_error);
                 }
+
                 SemaType::Tuple(tuple_type) => {
-                    for element in &tuple_type.elements {
-                        // tuple element cannot be void → correct diagnostic
-                        if element.is_void() {
+                    for el in &tuple_type.elements {
+                        if el.is_void() {
                             this.reporter.report(Diag {
                                 level: DiagLevel::Error,
                                 kind: Box::new(AnalyzerDiagKind::VoidTupleElementNotAllowed),
                                 loc: Some(tuple_type.loc),
                                 hint: None,
                             });
+                            *has_error = true;
                         }
-                        check_recursively(this, element, loc);
+                        check_recursively(this, el, loc, has_error);
                     }
                 }
+
                 SemaType::SelfType(_) => {
                     if this.func_env.current_object.is_none() {
                         this.reporter.report(Diag {
@@ -732,6 +732,7 @@ impl<'a> AnalysisContext<'a> {
                             loc: Some(loc),
                             hint: None,
                         });
+                        *has_error = true;
                     }
                 }
 
@@ -750,9 +751,10 @@ impl<'a> AnalysisContext<'a> {
             return None;
         }
 
-        check_recursively(self, &ty, loc);
+        let mut has_error = false;
+        check_recursively(self, &ty, loc, &mut has_error);
 
-        Some(ty)
+        if has_error { None } else { Some(ty) }
     }
 
     pub(crate) fn check_type_arity(&mut self, ty: SemaType, loc: Loc) -> Option<SemaType> {
