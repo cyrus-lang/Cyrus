@@ -408,12 +408,12 @@ impl<'a> CIRPrinter<'a> {
                     .map(|variant| match variant {
                         CIREnumVariant::Unit(name)
                         | CIREnumVariant::Valued(name, _)
-                        | CIREnumVariant::Tuple(name, _) => name.clone(),
+                        | CIREnumVariant::Payload(name, _) => name.clone(),
                     })
                     .unwrap();
 
                 match &enum_init.variant {
-                    CIREnumInitVariant::Ident => {
+                    CIREnumInitVariant::Unit => {
                         format!(".{variant_name}")
                     }
                     CIREnumInitVariant::Valued(_) => {
@@ -568,7 +568,7 @@ impl<'a> CIRPrinter<'a> {
                         CIREnumVariant::Valued(name, expr) => {
                             parts.push(format!("{name} = {}", self.print_expr(expr)));
                         }
-                        CIREnumVariant::Tuple(name, types) => {
+                        CIREnumVariant::Payload(name, types) => {
                             let elements = types.iter().map(|t| self.print_type(t)).collect::<Vec<_>>().join(", ");
                             parts.push(format!("{name}({elements})"));
                         }

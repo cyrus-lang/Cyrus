@@ -1480,7 +1480,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
             .into_struct_value();
 
         match &enum_init_expr.variant {
-            CIREnumInitVariant::Ident => {
+            CIREnumInitVariant::Unit => {
                 let zero_payload = payload_ty.const_zero();
                 enum_value = self
                     .llvmbuilder
@@ -1501,14 +1501,15 @@ impl<'ll> CodeGenIRBuilder<'ll> {
                     .into_struct_value();
             }
             CIREnumInitVariant::Payload(field_exprs) => {
-                let field_basic_tys: Vec<BasicTypeEnum<'ll>> = field_exprs
+                let field_types: Vec<BasicTypeEnum<'ll>> = field_exprs
                     .iter()
                     .map(|fld| self.emit_ty(fld.ty.clone()).try_into().unwrap())
                     .collect();
 
-                let payload_struct_ty = self.llvmctx.struct_type(&field_basic_tys, false);
+                let payload_struct_type = self.llvmctx.struct_type(&field_types, false);
 
-                let mut payload_value = payload_struct_ty.get_undef();
+                let mut payload_value = payload_struct_type.get_undef();
+
                 for (i, field_expr) in field_exprs.iter().enumerate() {
                     let lvalue = self.emit_expr(&field_expr);
                     let rvalue = self.load_rvalue(lvalue);

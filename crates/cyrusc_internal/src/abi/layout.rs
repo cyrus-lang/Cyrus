@@ -163,7 +163,7 @@ pub fn type_layout(info: &ABITargetInfo, ty: &CIRType) -> ABITypeLayout {
                         (layout.size, layout.align)
                     }
 
-                    CIREnumVariant::Tuple(_, field_types) => {
+                    CIREnumVariant::Payload(_, field_types) => {
                         let tuple_type = CIRTupleType {
                             elements: field_types.clone(),
                             loc: enum_type.loc,

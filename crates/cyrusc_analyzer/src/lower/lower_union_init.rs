@@ -17,11 +17,7 @@
 
 use crate::{context::AnalysisContext, diagnostics::AnalyzerDiagKind};
 use cyrusc_diagcentral::{Diag, DiagLevel};
-use cyrusc_typed_ast::{
-    exprs::{TypedExpr, TypedExprKind, TypedFieldInit, TypedUnionInitExpr, ValueCategory},
-    stmts::TypedTypeArgs,
-    types::{NamedType, SemaType, TypeDeclID},
-};
+use cyrusc_typed_ast::exprs::{TypedExpr, TypedExprKind, TypedFieldInit, TypedUnionInitExpr, ValueCategory};
 
 impl<'a> AnalysisContext<'a> {
     pub(crate) fn lower_struct_init_as_union_init(&mut self, typed_expr: &mut TypedExpr) {
@@ -67,21 +63,24 @@ impl<'a> AnalysisContext<'a> {
             return;
         };
 
+        let Some(operand) = &typed_expr.sema_type else {
+            return;
+        };
+
         let field = TypedFieldInit {
             name: union_value.name.as_string(),
             value: *union_value.value.clone(),
             loc: union_value.loc,
         };
 
+        let union_init = TypedUnionInitExpr {
+            operand: operand.clone(),
+            field: Box::new(field),
+            loc: union_value.loc,
+        };
+
         *typed_expr = TypedExpr {
-            kind: TypedExprKind::UnionInit(TypedUnionInitExpr {
-                operand: SemaType::Named(NamedType {
-                    type_decl_id: TypeDeclID::Union(union_value.union_decl_id.unwrap()),
-                    type_args: TypedTypeArgs::new(),
-                }),
-                field: Box::new(field),
-                loc: union_value.loc,
-            }),
+            kind: TypedExprKind::UnionInit(union_init),
             sema_type: typed_expr.sema_type.clone(),
             val_cat: typed_expr.val_cat,
             loc: typed_expr.loc,

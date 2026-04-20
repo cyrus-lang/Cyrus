@@ -28,7 +28,11 @@ use cyrusc_typed_ast::{
 use fx_hash::FxHashSet;
 
 impl<'a> AnalysisContext<'a> {
-    pub(crate) fn analyze_struct_init(&mut self, struct_init: &mut TypedStructInitExpr) -> Option<SemaType> {
+    pub(crate) fn analyze_struct_init(
+        &mut self,
+        struct_init: &mut TypedStructInitExpr,
+        expected_type: Option<SemaType>,
+    ) -> Option<SemaType> {
         let mut operand = self.normalize_and_check_type_formation(struct_init.operand.clone(), struct_init.loc)?;
 
         operand = self.expand_sema_type(operand, struct_init.loc);
@@ -72,16 +76,28 @@ impl<'a> AnalysisContext<'a> {
             this.check_missing_fields(&struct_decl, struct_init);
             this.check_invalid_fields(&struct_decl, struct_init);
 
+            let inferred_type_args = this.collect_instantiated_type_args(struct_decl.generic_params.clone());
+
+            this.unify_with_expected_type(
+                SemaType::Named(NamedType {
+                    type_decl_id: TypeDeclID::Struct(struct_decl_id),
+                    type_args: inferred_type_args,
+                }),
+                &expected_type,
+            );
+
             this.apply_generic_defaults(struct_decl.generic_params.clone());
 
-            struct_init.operand = this.substitute_type(&operand);
-            
             let final_type_args = this.collect_instantiated_type_args(struct_decl.generic_params);
 
-            Some(SemaType::Named(NamedType {
+            let final_type = SemaType::Named(NamedType {
                 type_decl_id: TypeDeclID::Struct(struct_decl_id),
                 type_args: final_type_args,
-            }))
+            });
+
+            struct_init.operand = final_type.clone();
+
+            Some(final_type)
         })
     }
 
@@ -93,45 +109,28 @@ impl<'a> AnalysisContext<'a> {
         // case 1: if expected type is a struct, then use it's declaration
         // and analyze fields with expected type.
         if let Some((struct_decl_id, struct_decl)) = self.infer_struct_decl_from_expected_type(expected_type.clone()) {
-            let type_args = if let Some(SemaType::Named(named)) = &expected_type {
-                named.type_args.clone()
-            } else {
-                TypedTypeArgs::new()
-            };
+            for struct_value_field in &mut struct_value.fields {
+                let Some(struct_field) = struct_decl.lookup_field(&struct_value_field.name) else {
+                    // unknown field, reported later
+                    continue;
+                };
 
-            let struct_name = format_struct_decl(&struct_decl, self.formatter);
+                let expected_field_type = self.substitute_type(&struct_field.ty);
 
-            let generic_env = self.create_inference_generic_env(
-                &struct_name,
-                struct_decl.generic_params.clone(),
-                &type_args,
-                struct_value.loc,
-            )?;
+                self.analyze_field_assign(
+                    &mut struct_value_field.value,
+                    expected_field_type,
+                    struct_value_field.loc,
+                );
+            }
 
-            return self.with_generic_env(generic_env, |this| {
-                for struct_value_field in &mut struct_value.fields {
-                    let Some(struct_field) = struct_decl.lookup_field(&struct_value_field.name) else {
-                        // unknown field, reported later
-                        continue;
-                    };
+            self.check_invalid_fields_for_unnamed_struct_value(&struct_decl, struct_value);
+            self.check_missing_fields_for_unnamed_struct_value(&struct_decl, struct_value);
+            self.check_duplicate_fields_for_unnamed_struct_value(struct_value);
 
-                    let expected_field_type = this.substitute_type(&struct_field.ty);
+            struct_value.struct_decl_id = Some(struct_decl_id);
 
-                    this.analyze_field_assign(
-                        &mut struct_value_field.value,
-                        expected_field_type,
-                        struct_value_field.loc,
-                    );
-                }
-
-                this.check_invalid_fields_for_unnamed_struct_value(&struct_decl, struct_value);
-                this.check_missing_fields_for_unnamed_struct_value(&struct_decl, struct_value);
-                this.check_duplicate_fields_for_unnamed_struct_value(struct_value);
-
-                struct_value.struct_decl_id = Some(struct_decl_id);
-
-                Some(expected_type.unwrap())
-            });
+            return Some(expected_type.unwrap());
         }
 
         // case 2: no expected type (create a new struct decl)
@@ -167,9 +166,8 @@ impl<'a> AnalysisContext<'a> {
         &self,
         expected_type: Option<SemaType>,
     ) -> Option<(StructDeclID, StructDecl)> {
-        expected_type.and_then(|sema_type| {
-            sema_type
-                .as_struct()
+        expected_type.and_then(|ty| {
+            ty.as_struct()
                 .map(|struct_decl_id| (struct_decl_id, self.decl_tables.struct_decl(struct_decl_id)))
         })
     }

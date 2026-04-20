@@ -19,17 +19,13 @@ use crate::{context::AnalysisContext, diagnostics::AnalyzerDiagKind};
 use cyrusc_diagcentral::{Diag, DiagLevel};
 use cyrusc_source_loc::Loc;
 use cyrusc_typed_ast::{
-    exprs::{TypedExprKind, TypedExpr},
+    exprs::{TypedExpr, TypedExprKind},
     format::format_sema_type,
     types::{PlainType, SemaType},
 };
 
 impl<'a> AnalysisContext<'a> {
-    pub(crate) fn analyze_expr(
-        &mut self,
-        expr: &mut TypedExpr,
-        expected_type: Option<SemaType>,
-    ) -> Option<SemaType> {
+    pub(crate) fn analyze_expr(&mut self, expr: &mut TypedExpr, expected_type: Option<SemaType>) -> Option<SemaType> {
         match &expr.kind {
             TypedExprKind::Symbol(symbol_expr) => {
                 if !symbol_expr.decl_id.is_var_or_global_var() && !symbol_expr.decl_id.is_func() {
@@ -82,9 +78,9 @@ impl<'a> AnalysisContext<'a> {
             TypedExprKind::Lambda(lambda) => self.analyze_lambda(lambda),
             TypedExprKind::Tuple(tuple) => self.analyze_tuple_value(tuple, expected_type.clone()),
             TypedExprKind::TupleAccess(tuple_access) => self.analyze_tuple_access(tuple_access, expected_type.clone()),
-            TypedExprKind::EnumInit(enum_init) => self.analyze_enum_init(enum_init),
-            TypedExprKind::StructInit(struct_init) => self.analyze_struct_init(struct_init),
-            TypedExprKind::UnionInit(union_init) => self.analyze_union_init(union_init),
+            TypedExprKind::EnumInit(enum_init) => self.analyze_enum_init(enum_init, expected_type.clone()),
+            TypedExprKind::StructInit(struct_init) => self.analyze_struct_init(struct_init, expected_type.clone()),
+            TypedExprKind::UnionInit(union_init) => self.analyze_union_init(union_init, expected_type.clone()),
             TypedExprKind::UnnamedStructValue(struct_value) => {
                 self.analyze_unnamed_struct_value(struct_value, expected_type.clone())
             }
@@ -107,9 +103,9 @@ impl<'a> AnalysisContext<'a> {
 
         let expr_type = expr_type?;
 
-        if let Some(expected_type) = expected_type {
+        if let Some(expected_type) = &expected_type {
             if let Some(infer) = &mut self.func_env.infer {
-                infer.unify(&expr_type, &expected_type);
+                infer.unify(&expr_type, expected_type);
             }
         }
 

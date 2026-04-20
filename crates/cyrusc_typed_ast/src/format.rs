@@ -300,7 +300,7 @@ pub fn format_typed_expr(expr: &TypedExpr, formatter: &dyn Formatter) -> String 
 
             let mut out = String::from(format!("{}.{}", enum_name, enum_init.name));
 
-            match &enum_init.args {
+            match &enum_init.arg {
                 TypedEnumInitArgs::Unit => {}
 
                 TypedEnumInitArgs::Tuple(vals) => {

@@ -16,15 +16,15 @@
  */
 
 use crate::context::AnalysisContext;
-use cyrusc_typed_ast::{
-    exprs::{TypedExpr, TypedExprKind, TypedFieldInit, TypedStructInitExpr},
-    stmts::TypedTypeArgs,
-    types::{NamedType, SemaType, TypeDeclID},
-};
+use cyrusc_typed_ast::exprs::{TypedExpr, TypedExprKind, TypedFieldInit, TypedStructInitExpr};
 
 impl<'a> AnalysisContext<'a> {
     pub(crate) fn lower_unnamed_struct_value_as_struct_init(&self, typed_expr: &mut TypedExpr) {
         let TypedExprKind::UnnamedStructValue(struct_value) = &typed_expr.kind else {
+            return;
+        };
+
+        let Some(operand) = &typed_expr.sema_type else {
             return;
         };
 
@@ -38,15 +38,14 @@ impl<'a> AnalysisContext<'a> {
             })
             .collect();
 
+        let struct_init = TypedStructInitExpr {
+            operand: operand.clone(),
+            fields,
+            loc: struct_value.loc,
+        };
+
         *typed_expr = TypedExpr {
-            kind: TypedExprKind::StructInit(TypedStructInitExpr {
-                operand: SemaType::Named(NamedType {
-                    type_decl_id: TypeDeclID::Struct(struct_value.struct_decl_id.unwrap()),
-                    type_args: TypedTypeArgs::new(),
-                }),
-                fields,
-                loc: struct_value.loc,
-            }),
+            kind: TypedExprKind::StructInit(struct_init),
             sema_type: typed_expr.sema_type.clone(),
             val_cat: typed_expr.val_cat,
             loc: typed_expr.loc,

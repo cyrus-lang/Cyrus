@@ -188,7 +188,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
                                 let tag = enum_type.compute_variant_tag(ident).unwrap();
                                 (ident.clone(), tag as i64)
                             }
-                            CIREnumVariant::Tuple(..) => unreachable!(),
+                            CIREnumVariant::Payload(..) => unreachable!(),
                         })
                         .collect();
 
@@ -218,7 +218,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
                                 CIREnumVariant::Valued(_, _) => {
                                     (ident.clone(), tag as i64, std::ptr::null_mut() as LLVMMetadataRef)
                                 }
-                                CIREnumVariant::Tuple(_, elements) => {
+                                CIREnumVariant::Payload(_, elements) => {
                                     let tuple_type = CIRTupleType {
                                         elements: elements.to_vec(),
                                         loc: enum_type.loc,
@@ -472,7 +472,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
                     let align = target_data.get_abi_alignment(&llvm_ty) as u64;
                     (size, align)
                 }
-                CIREnumVariant::Tuple(_, field_tys) => {
+                CIREnumVariant::Payload(_, field_tys) => {
                     if field_tys.is_empty() {
                         (0, 1)
                     } else {

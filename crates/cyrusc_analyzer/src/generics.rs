@@ -153,6 +153,16 @@ impl<'a> AnalysisContext<'a> {
         }
     }
 
+    pub(crate) fn unify_with_expected_type(&mut self, operand_type: SemaType, expected_type: &Option<SemaType>) {
+        let Some(expected_type) = expected_type else {
+            return;
+        };
+
+        if let Some(infer) = &mut self.func_env.infer {
+            infer.unify(&expected_type, &operand_type);
+        }
+    }
+
     pub(crate) fn create_inference_generic_env(
         &mut self,
         type_name: &String,

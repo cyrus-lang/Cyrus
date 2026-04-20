@@ -815,10 +815,40 @@ impl<'a> CIRTraverse<'a> {
 
     // TODO
     fn lower_enum_init(&mut self, enum_init: &TypedEnumInit) -> CIRExprKind {
-        // let named_type = struct_init.operand.as_named_type().unwrap();
-        // let type_args = &named_type.type_args;
-        // let struct_decl_id = named_type.type_decl_id.as_struct().unwrap();
-        todo!();
+        let named_type = enum_init.operand.as_named_type().unwrap();
+        let type_args = &named_type.type_args;
+        let enum_decl_id = named_type.type_decl_id.as_enum().unwrap();
+
+        let enum_decl = self.decl_tables.enum_decl(enum_decl_id);
+
+        let inst_enum_decl = instantiate_enum_decl_with_type_args(&enum_decl, type_args);
+
+        let variant = match &enum_init.arg {
+            TypedEnumInitArgs::Unit => CIREnumInitVariant::Unit,
+            TypedEnumInitArgs::Tuple(exprs) => {
+                let lowered_exprs = exprs.iter().map(|expr| self.lower_expr(expr)).collect();
+
+                CIREnumInitVariant::Payload(lowered_exprs)
+            }
+            TypedEnumInitArgs::Struct(field_inits) => {
+                let lowered_exprs = field_inits
+                    .iter()
+                    .map(|field_init| self.lower_expr(&field_init.value))
+                    .collect();
+
+                CIREnumInitVariant::Payload(lowered_exprs)
+            }
+        };
+
+        let enum_type = self.lower_enum_decl(&inst_enum_decl);
+
+        let tag = enum_type.compute_variant_tag(&enum_init.name).unwrap() as usize;
+
+        CIRExprKind::EnumInit(CIREnumInitExpr {
+            tag,
+            variant,
+            enum_type,
+        })
     }
 
     fn lower_tuple(&mut self, tuple: &TypedTupleExpr) -> CIRExprKind {
@@ -1430,11 +1460,18 @@ impl<'a> CIRTraverse<'a> {
                 CIREnumVariant::Valued(ident.as_string(), Box::new(self.lower_expr(value)))
             }
             TypedEnumVariant::Tuple { ident, fields } => {
-                let tuple_fields = fields.iter().map(|field| self.lower_sema_type(&field.ty)).collect();
+                let fields = fields.iter().map(|field| self.lower_sema_type(&field.ty)).collect();
 
-                CIREnumVariant::Tuple(ident.as_string(), tuple_fields)
+                CIREnumVariant::Payload(ident.as_string(), fields)
             }
-            TypedEnumVariant::Struct { ident, fields } => todo!(), // TODO
+            TypedEnumVariant::Struct { ident, fields} => {
+                let fields = fields
+                    .iter()
+                    .map(|struct_variant_field| self.lower_sema_type(&struct_variant_field.ty))
+                    .collect();
+
+                CIREnumVariant::Payload(ident.as_string(), fields)
+            }
         }
     }
 

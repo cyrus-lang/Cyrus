@@ -63,7 +63,7 @@ impl<'a> AnalysisContext<'a> {
                 type_args,
             }),
             name: field_access.name.clone(),
-            args: TypedEnumInitArgs::Unit,
+            arg: TypedEnumInitArgs::Unit,
             loc: field_access.loc,
         };
 
@@ -110,7 +110,7 @@ impl<'a> AnalysisContext<'a> {
                     type_args,
                 }),
                 name: method_call.name.clone(),
-                args,
+                arg: args,
                 loc: method_call.loc,
             };
 
@@ -123,27 +123,30 @@ impl<'a> AnalysisContext<'a> {
         }
     }
 
-    pub(crate) fn lower_unnamed_enum_value_as_enum_init(&self, typed_expr: &mut TypedExpr) {
+    pub(crate) fn lower_unnamed_enum_value_as_enum_init(&mut self, typed_expr: &mut TypedExpr) {
         let TypedExprKind::UnnamedEnumValue(enum_value) = &typed_expr.kind else {
             return;
         };
 
-        let enum_init_args = match &enum_value.kind {
+        let Some(operand) = &typed_expr.sema_type else {
+            return;
+        };
+
+        let enum_init_arg = match &enum_value.kind {
             TypedUnnamedEnumValueKind::Unit => TypedEnumInitArgs::Unit,
             TypedUnnamedEnumValueKind::Tuple(elements) => TypedEnumInitArgs::Tuple(elements.clone()),
             TypedUnnamedEnumValueKind::Struct(field_inits) => TypedEnumInitArgs::Struct(field_inits.clone()),
         };
 
+        let enum_init = TypedEnumInit {
+            operand: operand.clone(),
+            name: enum_value.ident.as_string(),
+            arg: enum_init_arg,
+            loc: enum_value.loc,
+        };
+
         *typed_expr = TypedExpr {
-            kind: TypedExprKind::EnumInit(TypedEnumInit {
-                operand: SemaType::Named(NamedType {
-                    type_decl_id: TypeDeclID::Enum(enum_value.enum_decl_id.unwrap()),
-                    type_args: TypedTypeArgs::new(),
-                }),
-                name: enum_value.ident.as_string(),
-                args: enum_init_args,
-                loc: enum_value.loc,
-            }),
+            kind: TypedExprKind::EnumInit(enum_init),
             sema_type: typed_expr.sema_type.clone(),
             val_cat: typed_expr.val_cat,
             loc: typed_expr.loc,
@@ -155,18 +158,21 @@ impl<'a> AnalysisContext<'a> {
             return;
         };
 
+        let Some(operand) = &typed_expr.sema_type else {
+            return;
+        };
+
         let args = TypedEnumInitArgs::Struct(struct_variant_init.field_inits.clone());
 
+        let enum_init = TypedEnumInit {
+            operand: operand.clone(),
+            name: struct_variant_init.ident.as_string(),
+            arg: args,
+            loc: struct_variant_init.loc,
+        };
+
         *typed_expr = TypedExpr {
-            kind: TypedExprKind::EnumInit(TypedEnumInit {
-                operand: SemaType::Named(NamedType {
-                    type_decl_id: TypeDeclID::Enum(struct_variant_init.enum_decl_id.unwrap()),
-                    type_args: TypedTypeArgs::new(),
-                }),
-                name: struct_variant_init.ident.as_string(),
-                args,
-                loc: struct_variant_init.loc,
-            }),
+            kind: TypedExprKind::EnumInit(enum_init),
             sema_type: typed_expr.sema_type.clone(),
             val_cat: typed_expr.val_cat,
             loc: typed_expr.loc,

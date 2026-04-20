@@ -18,7 +18,7 @@
 use crate::{context::AnalysisContext, lower::lower_assign::lower_assign_to_infix_expr};
 use cyrusc_ast::{AssignKind, operators::PrefixOperator};
 use cyrusc_typed_ast::{
-    exprs::{TypedExprKind, TypedExpr},
+    exprs::{TypedExpr, TypedExprKind},
     types::SemaType,
 };
 

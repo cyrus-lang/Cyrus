@@ -381,7 +381,7 @@ impl<'a> AnalysisContext<'a> {
                     self.specialize_expr(&mut field_init.value, decl_map);
                 }
             }
-            TypedExprKind::EnumInit(enum_init) => match &mut enum_init.args {
+            TypedExprKind::EnumInit(enum_init) => match &mut enum_init.arg {
                 TypedEnumInitArgs::Unit => todo!(),
                 TypedEnumInitArgs::Tuple(elements) => {
                     for element in elements {

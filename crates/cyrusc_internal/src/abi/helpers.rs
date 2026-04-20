@@ -134,7 +134,7 @@ pub fn cir_type_to_abi_type(info: &ABITargetInfo, cir_type: &CIRType) -> ABIType
                             let layout = type_layout(info, &expr.ty);
                             max_payload_size = max_payload_size.max(layout.size);
                         }
-                        CIREnumVariant::Tuple(_, fields) => {
+                        CIREnumVariant::Payload(_, fields) => {
                             let mut total_size = 0;
                             let mut max_align = 1;
 

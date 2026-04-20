@@ -147,7 +147,7 @@ impl CIREnumType {
         self.variants.iter().all(|v| match v {
             CIREnumVariant::Valued(_, expr) => expr.ty.is_integer_or_bool(),
             CIREnumVariant::Unit(_) => true,
-            CIREnumVariant::Tuple(_, _) => false,
+            CIREnumVariant::Payload(_, _) => false,
         })
     }
 
@@ -169,7 +169,7 @@ impl CIREnumType {
                     Some(variant_idx.try_into().unwrap())
                 }
             }
-            CIREnumVariant::Tuple(_, _) => Some(variant_idx.try_into().unwrap()),
+            CIREnumVariant::Payload(_, _) => Some(variant_idx.try_into().unwrap()),
             CIREnumVariant::Unit(_) => Some(variant_idx.try_into().unwrap()),
         }
     }

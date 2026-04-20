@@ -463,12 +463,12 @@ pub struct CIREnumStmt {
 pub enum CIREnumVariant {
     Unit(String),
     Valued(String, Box<CIRExpr>),
-    Tuple(String, Vec<CIRType>),
+    Payload(String, Vec<CIRType>),
 }
 
 #[derive(Debug, Clone)]
 pub enum CIREnumInitVariant {
-    Ident,
+    Unit,
     Valued(Box<CIRExpr>),
     Payload(Vec<CIRExpr>),
 }
@@ -599,7 +599,7 @@ impl PartialEq for CIREnumVariant {
         match (self, other) {
             (Self::Unit(ident1), Self::Unit(ident2)) => ident1 == ident2,
             (Self::Valued(ident1, expr1), Self::Valued(ident2, expr2)) => ident1 == ident2 && expr1.ty == expr2.ty,
-            (Self::Tuple(ident1, fields1), Self::Tuple(ident2, fields2)) => ident1 == ident2 && fields1 == fields2,
+            (Self::Payload(ident1, fields1), Self::Payload(ident2, fields2)) => ident1 == ident2 && fields1 == fields2,
             _ => false,
         }
     }
@@ -609,7 +609,7 @@ impl CIREnumVariant {
     #[inline]
     pub fn as_fielded(&self) -> Option<&Vec<CIRType>> {
         match self {
-            CIREnumVariant::Tuple(_, fields) => Some(fields),
+            CIREnumVariant::Payload(_, fields) => Some(fields),
             _ => None,
         }
     }
@@ -619,7 +619,7 @@ impl CIREnumVariant {
         match self {
             CIREnumVariant::Unit(ident) => ident,
             CIREnumVariant::Valued(ident, _) => ident,
-            CIREnumVariant::Tuple(ident, _) => ident,
+            CIREnumVariant::Payload(ident, _) => ident,
         }
     }
 }

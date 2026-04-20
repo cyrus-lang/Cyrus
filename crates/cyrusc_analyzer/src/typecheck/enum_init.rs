@@ -31,7 +31,11 @@ use cyrusc_typed_ast::{
 use fx_hash::{FxHashMap, FxHashSet};
 
 impl<'a> AnalysisContext<'a> {
-    pub(crate) fn analyze_enum_init(&mut self, enum_init: &mut TypedEnumInit) -> Option<SemaType> {
+    pub(crate) fn analyze_enum_init(
+        &mut self,
+        enum_init: &mut TypedEnumInit,
+        expected_type: Option<SemaType>,
+    ) -> Option<SemaType> {
         let mut operand = self.normalize_and_check_type_formation(enum_init.operand.clone(), enum_init.loc)?;
 
         operand = self.expand_sema_type(operand, enum_init.loc);
@@ -75,7 +79,7 @@ impl<'a> AnalysisContext<'a> {
         )?;
 
         self.with_generic_env(generic_env, |this| {
-            match (&mut enum_init.args, &variant) {
+            match (&mut enum_init.arg, &variant) {
                 // .Variant
                 (TypedEnumInitArgs::Unit, TypedEnumVariant::Unit(_)) => { /* skip */ }
 
@@ -118,7 +122,7 @@ impl<'a> AnalysisContext<'a> {
                         return None;
                     }
                     TypedEnumVariant::Tuple { .. } | TypedEnumVariant::Struct { .. } => {
-                        let provided_kind = match &enum_init.args {
+                        let provided_kind = match &enum_init.arg {
                             TypedEnumInitArgs::Unit => "unit",
                             TypedEnumInitArgs::Tuple(_) => "tuple",
                             TypedEnumInitArgs::Struct(_) => "struct",
@@ -145,16 +149,28 @@ impl<'a> AnalysisContext<'a> {
                 },
             }
 
-            this.apply_generic_defaults(enum_decl.generic_params.clone());
+            let inferred_type_args = this.collect_instantiated_type_args(enum_decl.generic_params.clone());
 
-            enum_init.operand = this.substitute_type(&operand);
+            this.unify_with_expected_type(
+                SemaType::Named(NamedType {
+                    type_decl_id: TypeDeclID::Enum(enum_decl_id),
+                    type_args: inferred_type_args,
+                }),
+                &expected_type,
+            );
+
+            this.apply_generic_defaults(enum_decl.generic_params.clone());
 
             let final_type_args = this.collect_instantiated_type_args(enum_decl.generic_params);
 
-            Some(SemaType::Named(NamedType {
+            let final_type = SemaType::Named(NamedType {
                 type_decl_id: TypeDeclID::Enum(enum_decl_id),
                 type_args: final_type_args,
-            }))
+            });
+
+            enum_init.operand = final_type.clone();
+
+            Some(final_type)
         })
     }
 
@@ -163,7 +179,7 @@ impl<'a> AnalysisContext<'a> {
         enum_value: &mut TypedUnnamedEnumValue,
         expected_type: Option<SemaType>,
     ) -> Option<SemaType> {
-        let Some((enum_decl_id, enum_decl)) = self.infer_enum_decl_from_expected_type(expected_type) else {
+        let Some((enum_decl_id, enum_decl)) = self.infer_enum_decl_from_expected_type(expected_type.clone()) else {
             self.reporter.report(Diag {
                 level: DiagLevel::Error,
                 kind: Box::new(AnalyzerDiagKind::CannotInferEnumForUnnamedVariant {
@@ -281,10 +297,7 @@ impl<'a> AnalysisContext<'a> {
 
         enum_value.enum_decl_id = Some(enum_decl_id);
 
-        Some(SemaType::Named(NamedType {
-            type_decl_id: TypeDeclID::Enum(enum_decl_id),
-            type_args: TypedTypeArgs::new(),
-        }))
+        Some(expected_type.unwrap())
     }
 
     pub(crate) fn analyze_enum_struct_variant_init(
@@ -378,9 +391,8 @@ impl<'a> AnalysisContext<'a> {
     }
 
     fn infer_enum_decl_from_expected_type(&self, expected_type: Option<SemaType>) -> Option<(EnumDeclID, EnumDecl)> {
-        expected_type.and_then(|sema_type| {
-            sema_type
-                .as_enum()
+        expected_type.and_then(|ty| {
+            ty.as_enum()
                 .map(|enum_decl_id| (enum_decl_id, self.decl_tables.enum_decl(enum_decl_id)))
         })
     }

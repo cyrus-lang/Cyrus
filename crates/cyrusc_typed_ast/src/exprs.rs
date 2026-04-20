@@ -266,7 +266,7 @@ pub enum TypedFieldAccessDispatch {
 pub struct TypedEnumInit {
     pub operand: SemaType,
     pub name: String,
-    pub args: TypedEnumInitArgs,
+    pub arg: TypedEnumInitArgs,
     pub loc: Loc,
 }
 
