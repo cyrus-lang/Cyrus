@@ -79,12 +79,12 @@ impl<'ll> CodeGenIRBuilder<'ll> {
 
                 unsafe { debug_simple_type(&self.dctx, &name, bits as u64, encoding as u32) }
             }
-            CIRType::Const(inner_ty) => {
-                let inner_ty_metadata = self.emit_debug_ty_metadata(inner_ty);
+            CIRType::Const(inner) => {
+                let inner_ty_metadata = self.emit_debug_ty_metadata(inner);
                 unsafe { debug_const_type(&self.dctx, inner_ty_metadata) }
             }
-            CIRType::Pointer(inner_ty) => {
-                let inner_ty_metadata = self.emit_debug_ty_metadata(inner_ty);
+            CIRType::Pointer(inner) => {
+                let inner_ty_metadata = self.emit_debug_ty_metadata(inner);
                 let ptr_size_bits = self.target.info.pointer_size() * 8;
                 let ptr_align = self.target.info.pointer_align() * 8;
                 unsafe { debug_pointer_type(&self.dctx, inner_ty_metadata, ptr_size_bits as u64, ptr_align, "T*") }
@@ -245,10 +245,10 @@ impl<'ll> CodeGenIRBuilder<'ll> {
                     }
                 }
             }
-            CIRType::Union(union_ty) => {
-                let layout = type_layout(&self.target.info, &CIRType::Union(union_ty.clone()));
+            CIRType::Union(union_type) => {
+                let layout = type_layout(&self.target.info, &CIRType::Union(union_type.clone()));
 
-                let mut elements_metadata: Vec<LLVMMetadataRef> = union_ty
+                let mut elements_metadata: Vec<LLVMMetadataRef> = union_type
                     .fields
                     .iter()
                     .enumerate()
@@ -256,7 +256,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
                         let field_type_metadata = self.emit_debug_ty_metadata(ty);
                         let offset_bits = layout.lookup_field_offset(i) * 8;
 
-                        let (name, loc) = &union_ty.fields_info[i];
+                        let (name, loc) = &union_type.fields_info[i];
 
                         unsafe {
                             debug_member_type(
@@ -270,7 +270,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
                     })
                     .collect();
 
-                let union_name = union_ty.name.clone().unwrap_or("<unnamed_union>".to_string());
+                let union_name = union_type.name.clone().unwrap_or("<unnamed_union>".to_string());
 
                 unsafe {
                     debug_union_type(
@@ -279,27 +279,27 @@ impl<'ll> CodeGenIRBuilder<'ll> {
                         &mut elements_metadata,
                         layout.size as u64,
                         layout.align,
-                        union_ty.loc.line.try_into().unwrap(),
+                        union_type.loc.line.try_into().unwrap(),
                     )
                 }
             }
-            CIRType::FuncType(func_ty) => self.emit_func_metadata(func_ty),
-            CIRType::Array(array_ty) => {
-                let element_ty_metadata = self.emit_debug_ty_metadata(&array_ty.element_type);
-                let layout = type_layout(&self.target.info, &CIRType::Array(array_ty.clone()));
+            CIRType::FuncType(func_type) => self.emit_func_metadata(func_type),
+            CIRType::Array(array_type) => {
+                let element_ty_metadata = self.emit_debug_ty_metadata(&array_type.element_type);
+                let layout = type_layout(&self.target.info, &CIRType::Array(array_type.clone()));
 
                 unsafe {
                     debug_array_type(
                         &self.dctx,
                         element_ty_metadata,
-                        array_ty.len as u64,
+                        array_type.len as u64,
                         layout.size as u64,
                         layout.align,
                     )
                 }
             }
-            CIRType::Dynamic(dynamic_ty) => {
-                let layout = type_layout(&self.target.info, &CIRType::Dynamic(dynamic_ty.clone()));
+            CIRType::Dynamic(dynamic_type) => {
+                let layout = type_layout(&self.target.info, &CIRType::Dynamic(dynamic_type.clone()));
                 let ptr_size_bits = layout.size * 8;
                 let align_bits = layout.align * 8;
 

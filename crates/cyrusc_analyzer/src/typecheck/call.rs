@@ -21,9 +21,7 @@ use cyrusc_internal::monomorph::CallableTemplateID;
 use cyrusc_source_loc::Loc;
 use cyrusc_typed_ast::{
     decls::{DeclID, FuncDecl, FuncDeclID, MethodDecl, MethodDeclID, MethodDecls},
-    exprs::{
-        TypedExprKind, TypedExpr, TypedFuncCall, TypedFuncCallDispatch, TypedMethodCall, TypedMethodCallDispatch,
-    },
+    exprs::{TypedExpr, TypedExprKind, TypedFuncCall, TypedFuncCallDispatch, TypedMethodCall, TypedMethodCallDispatch},
     format::{format_func_type, format_loc, format_sema_type},
     stmts::{TypedFuncTypeVariadicParam, TypedFuncVariadicParam, TypedGenericParams, TypedTypeArgs},
     substitute::instantiate_struct_decl_with_type_args,
@@ -146,7 +144,7 @@ impl<'a> AnalysisContext<'a> {
         // `method_call.operand.sema_type` is only present when operand is a generic inst;
         // we need to extract the decl_id manually if method call used without type args,
         // which means `method_call.operand.kind` would be a `TypedSymbolExpr`.
-        let mut operand_type = match method_call.operand.sema_type.clone().or({
+        let mut operand_type = match {
             if let Some(decl_id) = method_call.operand.kind.as_decl_id() {
                 if let Some(type_decl_id) = decl_id.as_type_decl_id() {
                     // type_decl means it's operand of a static method call.
@@ -166,10 +164,15 @@ impl<'a> AnalysisContext<'a> {
                         None
                     }
                 }
+            } else if let Some(sema_type) = method_call.operand.kind.as_type_expr() {
+                is_operand_instance = false;
+
+                // normalized later
+                Some(sema_type)
             } else {
                 None
             }
-        }) {
+        } {
             Some(ty) => ty,
             None => {
                 self.reporter.report(Diag {
@@ -418,6 +421,8 @@ impl<'a> AnalysisContext<'a> {
         method_decl.func_decl.params = self.substitute_func_params(method_decl.func_decl.params.clone());
         method_decl.func_decl.ret_type = self.substitute_type(&method_decl.func_decl.ret_type);
 
+        self.check_type_arity(method_decl.func_decl.ret_type.clone(), method_call.loc)?;
+
         let final_type_args = self.collect_instantiated_type_args(method_decl.func_decl.generic_params.clone());
 
         // get or create monomorph instance
@@ -447,7 +452,7 @@ impl<'a> AnalysisContext<'a> {
 
             if self.reporter.len() > diag_len {
                 self.apply_error_originated_from_on_diag_range(diag_len..=diag_len, |diag| {
-                    diag.hint = Some(format!("Error originates from this method call at {}.", diag_origin,));
+                    diag.hint = Some(format!("Error originates from this method call at {}.", diag_origin));
                 });
             }
 

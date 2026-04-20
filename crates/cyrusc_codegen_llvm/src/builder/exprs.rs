@@ -1840,38 +1840,31 @@ impl<'ll> CodeGenIRBuilder<'ll> {
     ) -> InternalValue<'ll> {
         let llvm_func_value = self.get_or_declare_function(irv_id).as_func().cloned().unwrap();
 
-        let mut abi_func_info = self.target.target_abi.classify_func(cir_func_type).unwrap();
+        let abi_func_info = self.target.target_abi.classify_func(cir_func_type).unwrap();
 
         let mut llvm_args: Vec<BasicMetadataValueEnum<'ll>> = Vec::new();
 
+        let mut abi_param_index = 0;
+
+        // emit self argument (if exists)
         if let Some(self_meta) = self_meta_opt {
-            let lvalue = self.emit_expr(&self_meta.operand);
+            let (lvalue, rvalue) = self.emit_self_argument(self_meta);
 
-            let rvalue = if self_meta.is_referenced {
-                match lvalue.kind {
-                    InternalValueKind::LValue(_) => {
-                        // operand is a value, load pointer stored in it
-                        self.load_rvalue(lvalue.clone())
-                    }
-                    InternalValueKind::RValue(_) => {
-                        // operand already evaluated, take its address
-                        self.emit_lvalue_address(&self_meta.operand)
-                    }
-                    _ => unreachable!(),
-                }
-            } else {
-                self.load_rvalue(lvalue.clone())
-            };
+            // use param index 0 for self
+            let self_param_types = &abi_func_info.params_types[0..1];
+            let self_abi_info = &abi_func_info.params_infos[0];
 
-            // self must be abi-coerced
-            let abi_arg_info = abi_func_info.params_infos.first().unwrap();
-            self.emit_abi_arg(&abi_func_info, abi_arg_info, &lvalue, &rvalue, &mut llvm_args);
+            self.emit_abi_arg(self_param_types, self_abi_info, &lvalue, &rvalue, &mut llvm_args);
 
-            abi_func_info.params_infos.remove(0);
-            abi_func_info.params_types.remove(0);
+            abi_param_index = 1; // advance index
         }
 
-        let mut normal_args = self.emit_func_args(&call.args, cir_func_type);
+        // emit normal arguments
+        let remaining_param_infos = &abi_func_info.params_infos[abi_param_index..];
+
+        let remaining_param_types = &abi_func_info.params_types[abi_param_index..];
+
+        let mut normal_args = self.emit_func_args(&call.args, remaining_param_infos, remaining_param_types);
 
         llvm_args.append(&mut normal_args);
 
@@ -1884,6 +1877,24 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         )
     }
 
+    fn emit_self_argument(
+        &mut self,
+        self_meta: &CIRCallMethodSelfMetadata,
+    ) -> (InternalValue<'ll>, InternalValue<'ll>) {
+        if self_meta.is_referenced {
+            // always pass a pointer, regardless of ABI decision
+            let lvalue = self.emit_lvalue_address(&self_meta.operand);
+            let rvalue = lvalue.clone();
+
+            (lvalue, rvalue)
+        } else {
+            let lvalue = self.emit_expr(&self_meta.operand);
+            let rvalue = self.load_rvalue(lvalue.clone());
+
+            (lvalue, rvalue)
+        }
+    }
+
     fn emit_direct_call(
         &mut self,
         cir_func_type: &CIRFuncType,
@@ -1891,7 +1902,9 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         ret_type: &CIRType,
         llvm_func_value: &FunctionValue<'ll>,
     ) -> InternalValue<'ll> {
-        let llvm_args = self.emit_func_args(args, cir_func_type);
+        let abi_func_info = cir_func_type.abi_func_info.as_ref().unwrap();
+
+        let llvm_args = self.emit_func_args(args, &abi_func_info.params_infos, &abi_func_info.params_types);
 
         let abi_func_info = self.target.target_abi.classify_func(cir_func_type).unwrap();
 
@@ -1944,13 +1957,18 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         let fn_ty = self.emit_func_ty(cir_fn_ty.clone());
 
         let abi_func_info = self.target.target_abi.classify_func(&cir_fn_ty).unwrap();
-        let args = self.emit_func_args(&func_call.args, &cir_fn_ty);
+
+        let llvm_args = self.emit_func_args(
+            &func_call.args,
+            &abi_func_info.params_infos,
+            &abi_func_info.params_types,
+        );
 
         let fn_ptr = operand.as_basic_value().into_pointer_value();
 
         let call_site = self
             .llvmbuilder
-            .build_indirect_call(fn_ty, fn_ptr, &args, "indirect_call")
+            .build_indirect_call(fn_ty, fn_ptr, &llvm_args, "indirect_call")
             .unwrap();
 
         self.emit_func_call_attributes(&abi_func_info, FuncCallKind::Indirect(call_site));

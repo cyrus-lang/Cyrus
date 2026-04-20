@@ -308,7 +308,6 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         func_metadata: LLVMMetadataRef,
         loc: Loc,
     ) {
-        unsafe { reset_debug_location(self.llvmbuilder) };
         debug_assert!(self.cur_func.is_some());
 
         let cur_func = self.cur_func.unwrap();
@@ -322,6 +321,16 @@ impl<'ll> CodeGenIRBuilder<'ll> {
                 cur_func_name,
                 loc.line.try_into().unwrap(),
                 func_metadata,
+            )
+        };
+
+        unsafe {
+            set_debug_location(
+                &self.dctx,
+                self.llvmctx,
+                self.llvmbuilder,
+                loc.line.try_into().unwrap(),
+                loc.column.try_into().unwrap(),
             )
         };
 
@@ -417,14 +426,14 @@ impl<'ll> CodeGenIRBuilder<'ll> {
 
 // ABI helpers.
 impl<'ll> CodeGenIRBuilder<'ll> {
-    pub(crate) fn emit_func_metadata(&self, func_ty: &CIRFuncType) -> LLVMMetadataRef {
-        let ret_ty_meta = if !func_ty.ret_type.is_void() {
-            Some(self.emit_debug_ty_metadata(&func_ty.ret_type))
+    pub(crate) fn emit_func_metadata(&self, func_type: &CIRFuncType) -> LLVMMetadataRef {
+        let ret_ty_meta = if !func_type.ret_type.is_void() {
+            Some(self.emit_debug_ty_metadata(&func_type.ret_type))
         } else {
             None
         };
 
-        let params_metadata: Vec<LLVMMetadataRef> = func_ty
+        let params_metadata: Vec<LLVMMetadataRef> = func_type
             .params
             .iter()
             .map(|ty| self.emit_debug_ty_metadata(&ty))
@@ -435,7 +444,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
 
     pub(crate) fn emit_abi_arg(
         &mut self,
-        abi_func_info: &ABIFunctionInfo,
+        params_types: &[ABIType],
         abi_arg_info: &ABIArgInfo,
         lvalue: &InternalValue<'ll>,
         rvalue: &InternalValue<'ll>,
@@ -452,7 +461,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
                 self.emit_direct_coerce_arg(out, rvalue, ty);
             }
             ABIArgKind::Expand { kind } => {
-                self.emit_expand_arg(out, rvalue, kind, &abi_func_info.params_types);
+                self.emit_expand_arg(out, rvalue, kind, &params_types);
             }
             ABIArgKind::Extend { signed } => {
                 self.emit_extend_arg(out, rvalue.clone(), signed);
@@ -469,26 +478,26 @@ impl<'ll> CodeGenIRBuilder<'ll> {
     pub(crate) fn emit_func_args(
         &mut self,
         args: &Vec<CIRExpr>,
-        cir_func_type: &CIRFuncType,
+        params_infos: &[ABIArgInfo],
+        params_types: &[ABIType],
     ) -> Vec<BasicMetadataValueEnum<'ll>> {
-        let abi_func_info = cir_func_type.abi_func_info.as_ref().unwrap();
-
         let mut args_values = Vec::with_capacity(args.len());
 
         for (i, expr) in args.iter().enumerate() {
             let lvalue = self.emit_expr(expr);
             let mut rvalue = self.load_rvalue(lvalue.clone());
 
-            if i < abi_func_info.params_infos.len() {
-                self.emit_abi_arg(abi_func_info,&abi_func_info.params_infos[i], &lvalue, &rvalue, &mut args_values);
+            if i < params_infos.len() {
+                self.emit_abi_arg(params_types, &params_infos[i], &lvalue, &rvalue, &mut args_values);
             } else {
                 // classify variadic argument value
-                let promoted_rvalue_ty = self.target.target_abi.apply_variadic_argument_promote(&rvalue.ty);
-                let llvm_promoted_type = self.emit_ty(promoted_rvalue_ty.clone());
+                let promoted_rvalue_type = self.target.target_abi.apply_variadic_argument_promote(&rvalue.ty);
+                let llvm_promoted_type = self.emit_ty(promoted_rvalue_type.clone());
+
                 let promoted_value: BasicValueEnum<'ll> =
                     self.emit_cast(llvm_promoted_type, rvalue).try_into().unwrap();
 
-                rvalue = InternalValue::new(promoted_rvalue_ty, InternalValueKind::RValue(promoted_value));
+                rvalue = InternalValue::new(promoted_rvalue_type, InternalValueKind::RValue(promoted_value));
 
                 let (abi_arg_info, _) = self.target.target_abi.classify_argument(&rvalue.ty, 0, false);
 
@@ -590,7 +599,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         args_values: &mut Vec<BasicMetadataValueEnum<'ll>>,
         rvalue: &InternalValue<'ll>,
         kind: ExpandKind,
-        param_types: &Vec<ABIType>,
+        param_types: &[ABIType],
     ) {
         let struct_value = rvalue.as_basic_value().into_struct_value();
         let fields_cir_types = rvalue.ty.struct_or_union_fields().unwrap();
