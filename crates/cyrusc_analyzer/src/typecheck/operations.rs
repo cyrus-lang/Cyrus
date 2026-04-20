@@ -272,6 +272,7 @@ impl<'a> AnalysisContext<'a> {
 
     pub(crate) fn analyze_unary(&mut self, unary: &mut TypedUnaryExpr) -> Option<SemaType> {
         let expected_type = unary.operand.sema_type.clone();
+
         let operand_type = self.analyze_expr(&mut unary.operand, expected_type)?;
 
         if operand_type.is_const() {
@@ -284,7 +285,7 @@ impl<'a> AnalysisContext<'a> {
             return None;
         }
 
-        if !(operand_type.is_integer() && unary.operand.is_lvalue()) {
+        if !((operand_type.is_integer() && unary.operand.is_lvalue()) || unary.operand.sema_type.as_ref()?.is_pointer()) {
             self.reporter.report(Diag {
                 level: DiagLevel::Error,
                 kind: Box::new(AnalyzerDiagKind::InvalidUnary {

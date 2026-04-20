@@ -637,47 +637,105 @@ impl<'ll> CodeGenIRBuilder<'ll> {
 
     fn emit_unary_expr(&mut self, unary_expr: &CIRUnaryExpr) -> InternalValue<'ll> {
         let lvalue = self.emit_lvalue_address(&unary_expr.operand);
-        let lvalue_pointer = lvalue.as_basic_value().into_pointer_value();
+        let lvalue_ptr = lvalue.as_basic_value().into_pointer_value();
+
         let rvalue = self.load_rvalue(lvalue);
 
-        let signed = rvalue.ty.as_plain().unwrap().is_signed();
+        let ty = rvalue.ty.clone();
+        let is_pointer = ty.is_pointer();
 
-        let unit_type = self.emit_ty(rvalue.ty.clone()).into_int_type();
-        let unit_value = InternalValue::new(
-            rvalue.ty.clone(),
-            InternalValueKind::RValue(BasicValueEnum::IntValue(unit_type.const_int(1, signed))),
-        );
+        let unit_int_value = {
+            if is_pointer {
+                self.llvmctx.i64_type().const_int(1, false)
+            } else {
+                let is_signed = ty.is_signed_integer();
+                let basic_type: BasicTypeEnum<'ll> = self.emit_ty(ty.clone()).try_into().unwrap();
+                basic_type.into_int_type().const_int(1, is_signed)
+            }
+        };
 
         match unary_expr.op {
             UnaryOperator::PreIncrement => {
-                let new_rhs_rvalue = self.emit_add(rvalue, unit_value);
+                let new_value = if is_pointer {
+                    // ptr + 1
+                    let ptr = rvalue.as_basic_value().into_pointer_value();
+                    let value = self.emit_pointer_add(ptr, unit_int_value, ty.clone());
+                    value
+                } else {
+                    // normal integer/float increment
+                    let unit_value = InternalValue::new(
+                        ty.clone(),
+                        InternalValueKind::RValue(BasicValueEnum::IntValue(unit_int_value)),
+                    );
+
+                    self.emit_add(rvalue.clone(), unit_value)
+                };
+
                 self.llvmbuilder
-                    .build_store(lvalue_pointer, new_rhs_rvalue.as_basic_value())
+                    .build_store(lvalue_ptr, new_value.as_basic_value())
                     .unwrap();
-                new_rhs_rvalue
+
+                new_value
             }
             UnaryOperator::PreDecrement => {
-                let new_rhs_rvalue = self.emit_sub(rvalue, unit_value);
+                let new_value = if is_pointer {
+                    // ptr - 1
+                    let ptr = rvalue.as_basic_value().into_pointer_value();
+                    let value = self.emit_pointer_sub(ptr, unit_int_value, ty.clone());
+                    value
+                } else {
+                    let unit_value = InternalValue::new(
+                        ty.clone(),
+                        InternalValueKind::RValue(BasicValueEnum::IntValue(unit_int_value)),
+                    );
+
+                    self.emit_sub(rvalue.clone(), unit_value)
+                };
+
                 self.llvmbuilder
-                    .build_store(lvalue_pointer, new_rhs_rvalue.as_basic_value())
+                    .build_store(lvalue_ptr, new_value.as_basic_value())
                     .unwrap();
-                new_rhs_rvalue
+
+                new_value
             }
             UnaryOperator::PostIncrement => {
-                let rhs_rvalue_clone = rvalue.clone();
-                let new_rhs_rvalue = self.emit_add(rvalue, unit_value);
+                let old_value = rvalue.clone();
+                let new_value = if is_pointer {
+                    // ptr + 1
+                    let ptr = rvalue.as_basic_value().into_pointer_value();
+                    self.emit_pointer_add(ptr, unit_int_value, ty.clone())
+                } else {
+                    let unit_value = InternalValue::new(
+                        ty.clone(),
+                        InternalValueKind::RValue(BasicValueEnum::IntValue(unit_int_value)),
+                    );
+                    self.emit_add(rvalue, unit_value)
+                };
+
                 self.llvmbuilder
-                    .build_store(lvalue_pointer, new_rhs_rvalue.as_basic_value())
+                    .build_store(lvalue_ptr, new_value.as_basic_value())
                     .unwrap();
-                rhs_rvalue_clone
+
+                old_value
             }
             UnaryOperator::PostDecrement => {
-                let rhs_rvalue_clone = rvalue.clone();
-                let new_rhs_rvalue = self.emit_sub(rvalue, unit_value);
+                let old_value = rvalue.clone();
+                let new_value = if is_pointer {
+                    let ptr = rvalue.as_basic_value().into_pointer_value();
+                    self.emit_pointer_sub(ptr, unit_int_value, ty.clone())
+                } else {
+                    let unit_value = InternalValue::new(
+                        ty.clone(),
+                        InternalValueKind::RValue(BasicValueEnum::IntValue(unit_int_value)),
+                    );
+                    self.emit_sub(rvalue, unit_value)
+                };
+
                 self.llvmbuilder
-                    .build_store(lvalue_pointer, new_rhs_rvalue.as_basic_value())
+                    .build_store(lvalue_ptr, new_value.as_basic_value())
                     .unwrap();
-                rhs_rvalue_clone
+
+                old_value
             }
         }
     }
@@ -943,7 +1001,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         let gep_index = if index.get_type() == i64_type {
             index
         } else {
-            self.llvmbuilder.build_int_cast(index, i64_type, "i.cast").unwrap()
+            self.llvmbuilder.build_int_cast(index, i64_type, "index.cast").unwrap()
         };
 
         // Create GEP instruction
