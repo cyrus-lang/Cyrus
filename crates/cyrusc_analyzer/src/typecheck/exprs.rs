@@ -51,8 +51,8 @@ impl<'a> AnalysisContext<'a> {
         expr: &mut TypedExpr,
         mut expected_type: Option<SemaType>,
     ) -> Option<SemaType> {
-        if let Some(sema_type) = expected_type {
-            expected_type = Some(sema_type.const_inner().clone());
+        if let Some(ty) = expected_type {
+            expected_type = Some(ty.const_inner().clone());
         }
 
         self.lower_expr_pre_analysis(expr, expected_type.clone());
@@ -115,8 +115,8 @@ impl<'a> AnalysisContext<'a> {
 
         // debug
         if cfg!(debug_assertions) {
-            if let Some(sema_type) = expr.ty.clone() {
-                assert!(!sema_type.is_unresolved());
+            if let Some(ty) = expr.ty.clone() {
+                assert!(!ty.is_unresolved());
             }
             if expr.ty.is_none() {
                 panic!("expr.sema_type is empty!");

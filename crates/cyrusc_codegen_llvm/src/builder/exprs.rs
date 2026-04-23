@@ -1785,7 +1785,6 @@ impl<'ll> CodeGenIRBuilder<'ll> {
             CIRCallDispatch::Interface {
                 operand,
                 index,
-                methods_len,
                 func_type,
             } => self.emit_interface_method_call(call, operand, *index, func_type),
             CIRCallDispatch::Method {

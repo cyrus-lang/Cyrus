@@ -162,7 +162,6 @@ pub enum CIRCallDispatch {
     Interface {
         operand: Box<CIRExpr>,
         index: usize,
-        methods_len: usize,
         func_type: CIRFuncType,
     },
 }

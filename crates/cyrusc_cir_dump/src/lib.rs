@@ -319,12 +319,11 @@ impl<'a> CIRPrinter<'a> {
                     CIRCallDispatch::FunctionPointer { operand } => self.print_expr(operand),
                     CIRCallDispatch::Interface {
                         operand,
-                        index: method_idx,
-                        methods_len,
+                        index,
                         func_type: _,
                     } => {
                         let obj = self.print_expr(operand);
-                        format!("dynamic_dispatch({}, index={})", obj, method_idx)
+                        format!("dynamic_dispatch({}, index={})", obj, index)
                     }
                     CIRCallDispatch::Method {
                         self_meta, abi_name, ..
@@ -483,11 +482,7 @@ impl<'a> CIRPrinter<'a> {
             CIRExprKind::Dynamic(dynamic) => {
                 let data = self.print_expr(&dynamic.data_expr);
 
-                format!(
-                    "dynamic {{ data: {}, vtable_id: {} }}",
-                    data,
-                    dynamic.vtable_id,
-                )
+                format!("dynamic {{ data: {}, vtable_id: {} }}", data, dynamic.vtable_id,)
             }
         }
     }

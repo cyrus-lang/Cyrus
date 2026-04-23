@@ -320,6 +320,8 @@ impl<'a> AnalysisContext<'a> {
         self.with_generic_env(generic_env, |this| {
             this.normalize_func_params(&mut method_decl.func_decl.params);
 
+            method_decl.func_decl.params = this.substitute_func_params(method_decl.func_decl.params);
+
             if !this.analyze_call(
                 &mut method_decl.func_decl,
                 &mut method_call.args,
@@ -328,8 +330,6 @@ impl<'a> AnalysisContext<'a> {
             ) {
                 return None;
             }
-
-            let substituted_ret_type = this.substitute_type(&method_decl.func_decl.ret_type);
 
             debug_assert!(
                 method_decl
@@ -340,6 +340,8 @@ impl<'a> AnalysisContext<'a> {
                     .kind
                     .is_referenced()
             );
+
+            let substituted_ret_type = this.substitute_type(&method_decl.func_decl.ret_type);
 
             let method_self_type = SemaType::Pointer(Box::new(concrete_type.clone()));
 

@@ -102,7 +102,7 @@ impl<'a> CIRTraverse<'a> {
             global_var_decls,
             func_decls,
             vtable_registry: self.vtable_registry.clone(),
-            vtable_to_ir_value_map: self.vtable_to_ir_value_map.clone()
+            vtable_to_ir_value_map: self.vtable_to_ir_value_map.clone(),
         }
     }
 
@@ -1124,7 +1124,6 @@ impl<'a> CIRTraverse<'a> {
                     dispatch: CIRCallDispatch::Interface {
                         operand: Box::new(operand),
                         index: *index,
-                        methods_len: *methods_len,
                         func_type: cir_func_type,
                     },
                 })
@@ -1262,11 +1261,17 @@ impl<'a> CIRTraverse<'a> {
 
         let vtable_info = self.vtable_registry.info(vtable_id);
 
+        dbg!(vtable_info.clone());
+
         if vtable_info.cir_method_decls.is_none() {
             let lowered_methods = vtable_info
                 .methods
                 .iter()
                 .map(|(_, method_decl_id)| {
+                    // self.monomorph_registry.
+                    let method_decl = self.decl_tables.method_decl(*method_decl_id);
+                    dbg!(method_decl.clone());
+
                     self.decl_to_ir_value_map
                         .get(&DeclID::Method(*method_decl_id))
                         .copied()

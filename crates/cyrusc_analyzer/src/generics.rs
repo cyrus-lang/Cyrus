@@ -91,7 +91,7 @@ impl<'a> AnalysisContext<'a> {
         for generic_param_id in generic_params.iter() {
             let generic_param = self.decl_tables.generic_param(*generic_param_id);
 
-            let mut sema_type = {
+            let mut ty = {
                 if let Some(ty) = self.lookup_generic_binding(*generic_param_id) {
                     ty.clone()
                 } else {
@@ -101,9 +101,9 @@ impl<'a> AnalysisContext<'a> {
 
             let infer = self.func_env.infer.as_mut().unwrap();
 
-            sema_type = infer.resolve(&sema_type);
+            ty = infer.resolve(&ty);
 
-            args.push(TypedTypeArg::Type(sema_type, generic_param.name.loc));
+            args.push(TypedTypeArg::Type(ty, generic_param.name.loc));
         }
 
         TypedTypeArgs(args)
@@ -118,10 +118,10 @@ impl<'a> AnalysisContext<'a> {
                 generic_env.lookup(*generic_param_id).cloned()
             };
 
-            if let Some(bound_ty) = binding {
-                let resolved = self.func_env.infer.as_ref().unwrap().resolve(&bound_ty);
+            if let Some(bound_type) = binding {
+                let resolved_type = self.func_env.infer.as_ref().unwrap().resolve(&bound_type);
 
-                if let SemaType::InferVar(var) = resolved {
+                if let SemaType::InferVar(var) = resolved_type {
                     if let Some(default_ty) = &generic_param.default {
                         let mut default_type = self
                             .normalize_sema_type(*default_ty.clone(), generic_param.name.loc)
@@ -148,6 +148,7 @@ impl<'a> AnalysisContext<'a> {
                 default_type = self.substitute_type(&default_type);
 
                 let generic_env = self.current_generic_env_mut().unwrap();
+                
                 generic_env.bind(*generic_param_id, default_type);
             }
         }

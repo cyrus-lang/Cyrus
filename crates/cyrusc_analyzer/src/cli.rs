@@ -125,7 +125,7 @@ pub fn main() {
                         reporter.display();
                         continue;
                     } else {
-                        dbg!(program_tree_entry.program_tree.clone());
+                        // dbg!(program_tree_entry.program_tree.clone());
                     }
                 }
 

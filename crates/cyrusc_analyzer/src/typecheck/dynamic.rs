@@ -17,7 +17,7 @@
 
 use crate::{context::AnalysisContext, diagnostics::AnalyzerDiagKind};
 use cyrusc_diagcentral::{Diag, DiagLevel};
-use cyrusc_typed_ast::{exprs::TypedDynamicExpr, types::SemaType};
+use cyrusc_typed_ast::{exprs::TypedDynamicExpr, format::format_sema_type, types::SemaType};
 
 impl<'a> AnalysisContext<'a> {
     pub(crate) fn analyze_dynamic(
@@ -37,6 +37,12 @@ impl<'a> AnalysisContext<'a> {
             return None;
         }
 
+        let named_type = operand_type.as_named_type().unwrap();
+        let object_generic_params = self.type_decl_generic_params(named_type.type_decl_id);
+        let object_impls = self.implement_interfaces_of_named_type(named_type).unwrap();
+        let object_name = self.formatter.format_type_decl(named_type.type_decl_id);
+        let method_decls = self.methods_decl_of_named_type(named_type).unwrap();
+
         let Some(interface_decl_id) = expected_type.clone().and_then(|sema_ty| sema_ty.as_interface()) else {
             self.reporter.report(Diag {
                 level: DiagLevel::Error,
@@ -47,9 +53,38 @@ impl<'a> AnalysisContext<'a> {
             return None;
         };
 
-        let named_type = operand_type.as_named_type().unwrap();
-
         let interface_decl = self.decl_tables.interface_decl(interface_decl_id);
+
+        let object_impls_interface = object_impls
+            .iter()
+            .find(|implement_interface| {
+                if let Some(ty) = self.normalize_sema_type(implement_interface.ty.clone(), implement_interface.loc) {
+                    if ty.as_interface() == Some(interface_decl_id) {
+                        true
+                    } else {
+                        false
+                    }
+                } else {
+                    false
+                }
+            })
+            .is_some();
+
+        if !object_impls_interface {
+            let concrete_type = format_sema_type(operand_type.clone(), self.formatter);
+
+            self.reporter.report(Diag {
+                level: DiagLevel::Error,
+                kind: Box::new(AnalyzerDiagKind::DynamicConversionMissingInterface {
+                    interface_type: interface_decl.name.clone(),
+                    concrete_type,
+                }),
+                loc: Some(dynamic.loc),
+                hint: None,
+            });
+            return None;
+        }
+
         let interface_type_args = expected_type
             .as_ref()
             .unwrap()
@@ -57,6 +92,21 @@ impl<'a> AnalysisContext<'a> {
             .cloned()
             .unwrap()
             .type_args;
+
+        let object_generic_env =
+            self.create_inference_generic_env(&object_name, object_generic_params, &named_type.type_args, dynamic.loc)?;
+
+        self.with_generic_env(object_generic_env, |this| {
+            this.analyze_object_implements_monomorphized_interfaces(
+                &interface_decl,
+                interface_type_args.clone(),
+                &object_name,
+                &operand_type,
+                &object_impls,
+                &method_decls,
+                dynamic.loc,
+            );
+        });
 
         let object_methods = self.methods_decl_of_named_type(named_type).unwrap();
 

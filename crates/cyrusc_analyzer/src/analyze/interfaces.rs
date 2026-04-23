@@ -17,10 +17,12 @@
 
 use crate::{context::AnalysisContext, diagnostics::AnalyzerDiagKind};
 use cyrusc_diagcentral::{Diag, DiagLevel};
+use cyrusc_source_loc::Loc;
 use cyrusc_typed_ast::{
-    decls::MethodDecls,
+    decls::{InterfaceDecl, MethodDecls},
     format::format_sema_type,
-    stmts::{TypedImplementInterface, TypedInterfaceStmt},
+    stmts::{TypedImplementInterface, TypedInterfaceStmt, TypedTypeArgs},
+    types::{NamedType, SemaType, TypeDeclID},
 };
 
 impl<'a> AnalysisContext<'a> {
@@ -109,6 +111,7 @@ impl<'a> AnalysisContext<'a> {
     pub(crate) fn analyze_object_implements_interfaces(
         &mut self,
         object_name: &String,
+        is_object_generic: bool,
         impls: &Vec<TypedImplementInterface>,
         method_decls: &MethodDecls,
     ) {
@@ -120,13 +123,6 @@ impl<'a> AnalysisContext<'a> {
             };
 
             let sema_type = self.expand_sema_type(normalized_type, implement_interface.loc);
-
-            if self
-                .check_type_arity(sema_type.clone(), implement_interface.loc)
-                .is_none()
-            {
-                continue;
-            }
 
             let interface_decl_id = sema_type.as_interface();
 
@@ -164,23 +160,148 @@ impl<'a> AnalysisContext<'a> {
                     continue;
                 }
 
-                let method_decl_id = method_decls.get(&func_decl.name).unwrap();
-                let method_decl = self.decl_tables.method_decl(method_decl_id);
+                if !is_object_generic {
+                    let method_decl_id = method_decls.get(&func_decl.name).unwrap();
+                    let method_decl = self.decl_tables.method_decl(method_decl_id);
 
-                // check method declaration mismatch
-                if method_decl.func_decl != func_decl {
-                    self.reporter.report(Diag {
-                        level: DiagLevel::Error,
-                        kind: Box::new(AnalyzerDiagKind::InterfaceMethodTypeMismatch {
-                            object_name: object_name.clone(),
-                            method_name: func_decl.name.clone(),
-                            interface_name: interface_decl.name.clone(),
-                        }),
-                        loc: Some(func_decl.loc),
-                        hint: None,
-                    });
+                    // check method declaration mismatch
+                    if method_decl.func_decl != func_decl {
+                        self.reporter.report(Diag {
+                            level: DiagLevel::Error,
+                            kind: Box::new(AnalyzerDiagKind::InterfaceMethodTypeMismatch {
+                                object_name: object_name.clone(),
+                                method_name: func_decl.name.clone(),
+                                interface_name: interface_decl.name.clone(),
+                            }),
+                            loc: Some(func_decl.loc),
+                            hint: None,
+                        });
+                    }
                 }
             }
+
+            if !is_object_generic
+                && self
+                    .check_type_arity(sema_type.clone(), implement_interface.loc)
+                    .is_none()
+            {
+                continue;
+            }
+        }
+    }
+
+    pub(crate) fn analyze_object_implements_monomorphized_interfaces(
+        &mut self,
+        interface_decl: &InterfaceDecl,
+        interface_type_args: TypedTypeArgs,
+        object_name: &String,
+        object_type: &SemaType,
+        impls: &Vec<TypedImplementInterface>,
+        method_decls: &MethodDecls,
+        loc: Loc,
+    ) -> Option<()> {
+        let generic_params = interface_decl.generic_params.clone();
+        let generic_env =
+            self.create_inference_generic_env(&interface_decl.name, generic_params, &interface_type_args, loc)?;
+
+        self.with_generic_env(generic_env, |this| {
+            for implement_interface in impls {
+                let Some(normalized_type) =
+                    this.normalize_sema_type(implement_interface.ty.clone(), implement_interface.loc)
+                else {
+                    continue;
+                };
+
+                let sema_type = this.expand_sema_type(normalized_type, implement_interface.loc);
+
+                // if this
+                //     .check_type_arity(sema_type.clone(), implement_interface.loc)
+                //     .is_none()
+                // {
+                //     continue;
+                // }
+
+                let interface_decl_id = sema_type.as_interface();
+
+                let interface_decl = match interface_decl_id {
+                    Some(id) => this.decl_tables.interface_decl(id),
+                    None => {
+                        this.reporter.report(Diag {
+                            level: DiagLevel::Error,
+                            kind: Box::new(AnalyzerDiagKind::NonInterfaceSymbol {
+                                symbol_name: format_sema_type(sema_type, this.formatter),
+                            }),
+                            loc: Some(implement_interface.loc),
+                            hint: None,
+                        });
+                        continue;
+                    }
+                };
+
+                for (_, method_decl_id) in interface_decl.methods.iter() {
+                    // interface method
+
+                    let interface_method_decl = &mut this.decl_tables.method_decl(*method_decl_id).func_decl;
+
+                    let self_modifier = interface_method_decl.params.get_self_modifier_mut().unwrap();
+                    self_modifier.ty = this.substitute_self_type(self_modifier.ty.clone(), object_type);
+
+                    interface_method_decl.params = this.substitute_func_params(interface_method_decl.params.clone());
+                    interface_method_decl.ret_type = this.substitute_type(&interface_method_decl.ret_type);
+
+                    // object method
+
+                    let method_decl_id = method_decls.get(&interface_method_decl.name).unwrap();
+                    let method_decl = &mut this.decl_tables.method_decl(method_decl_id).func_decl;
+
+                    let self_modifier = method_decl.params.get_self_modifier_mut().unwrap();
+                    self_modifier.ty = this.substitute_self_type(self_modifier.ty.clone(), object_type);
+
+                    method_decl.params = this.substitute_func_params(method_decl.params.clone());
+                    method_decl.ret_type = this.substitute_type(&method_decl.ret_type);
+
+                    // check method declaration mismatch
+                    if method_decl != interface_method_decl {
+                        this.reporter.report(Diag {
+                            level: DiagLevel::Error,
+                            kind: Box::new(AnalyzerDiagKind::InterfaceMethodTypeMismatch {
+                                object_name: object_name.clone(),
+                                method_name: interface_method_decl.name.clone(),
+                                interface_name: interface_decl.name.clone(),
+                            }),
+                            loc: Some(interface_method_decl.loc),
+                            hint: None,
+                        });
+                    }
+                }
+            }
+
+            Some(())
+        })
+    }
+
+    pub(crate) fn implement_interfaces_of_named_type(
+        &self,
+        named_type: &NamedType,
+    ) -> Option<Vec<TypedImplementInterface>> {
+        match named_type.type_decl_id {
+            TypeDeclID::Struct(struct_decl_id) => {
+                let struct_decl = self.decl_tables.struct_decl(struct_decl_id);
+
+                Some(struct_decl.impls)
+            }
+            TypeDeclID::Enum(enum_decl_id) => {
+                let enum_decl = self.decl_tables.enum_decl(enum_decl_id);
+
+                Some(enum_decl.impls)
+            }
+            TypeDeclID::Union(union_decl_id) => {
+                let union_decl = self.decl_tables.union_decl(union_decl_id);
+
+                Some(union_decl.impls)
+            }
+            TypeDeclID::Interface(_) => None,
+            TypeDeclID::Typedef(_) => None,
         }
     }
 }

@@ -66,7 +66,12 @@ impl<'a> AnalysisContext<'a> {
 
         self.analyze_union_fields(union_decl_id, &mut union_decl.fields);
 
-        self.analyze_object_implements_interfaces(&object_name, &union_decl.impls, &union_decl.methods);
+        self.analyze_object_implements_interfaces(
+            &object_name,
+            union_decl.is_generic(),
+            &union_decl.impls,
+            &union_decl.methods,
+        );
 
         let object_type_decl_id = TypeDeclID::Union(union_decl_id);
 
