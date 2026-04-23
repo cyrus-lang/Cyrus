@@ -26,12 +26,12 @@ use std::sync::RwLock;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct MonomorphKey {
-    pub template_id: CallableTemplateID,
+    pub template_id: MonomorphizableTemplateID,
     pub type_args: TypedTypeArgs,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum CallableTemplateID {
+pub enum MonomorphizableTemplateID {
     Func(FuncDeclID),
     Method(MethodDeclID),
 }
@@ -39,7 +39,7 @@ pub enum CallableTemplateID {
 #[derive(Debug, Clone)]
 pub struct MonomorphInstance {
     pub monomorph_id: MonomorphID,
-    pub template_id: CallableTemplateID,
+    pub template_id: MonomorphizableTemplateID,
     pub type_args: TypedTypeArgs,
 
     pub params: TypedFuncParams,
@@ -52,7 +52,7 @@ pub struct MonomorphInstance {
 #[derive(Debug, Default)]
 struct MonomorphRegistryInner {
     key_map: FxHashMap<MonomorphKey, MonomorphID>,
-    func_to_monomorphs: FxHashMap<CallableTemplateID, Vec<MonomorphID>>,
+    func_to_monomorphs: FxHashMap<MonomorphizableTemplateID, Vec<MonomorphID>>,
     instances: Vec<MonomorphInstance>,
     monomorph_body: Vec<TypedBlockStmt>,
 }
@@ -76,7 +76,7 @@ impl MonomorphRegistry {
 
     pub fn get_or_create(
         &self,
-        template_id: CallableTemplateID,
+        template_id: MonomorphizableTemplateID,
         type_args: TypedTypeArgs,
         params: TypedFuncParams,
         ret_type: SemaType,
@@ -155,17 +155,17 @@ impl MonomorphRegistry {
         inner.monomorph_body.get(body_id.0 as usize).cloned()
     }
 
-    pub fn get_func_monomorphs(&self, template_id: CallableTemplateID) -> Vec<MonomorphID> {
+    pub fn get_func_monomorphs(&self, template_id: MonomorphizableTemplateID) -> Vec<MonomorphID> {
         let inner = self.inner.read().unwrap();
         inner.func_to_monomorphs.get(&template_id).cloned().unwrap_or_default()
     }
 }
 
-impl CallableTemplateID {
+impl MonomorphizableTemplateID {
     #[inline]
     pub fn as_func(&self) -> Option<FuncDeclID> {
         match self {
-            CallableTemplateID::Func(func_decl_id) => Some(*func_decl_id),
+            MonomorphizableTemplateID::Func(func_decl_id) => Some(*func_decl_id),
             _ => None,
         }
     }
@@ -173,7 +173,7 @@ impl CallableTemplateID {
     #[inline]
     pub fn as_method(&self) -> Option<MethodDeclID> {
         match self {
-            CallableTemplateID::Method(method_decl_id) => Some(*method_decl_id),
+            MonomorphizableTemplateID::Method(method_decl_id) => Some(*method_decl_id),
             _ => None,
         }
     }

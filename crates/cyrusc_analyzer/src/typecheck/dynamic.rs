@@ -38,10 +38,10 @@ impl<'a> AnalysisContext<'a> {
         }
 
         let named_type = operand_type.as_named_type().unwrap();
-        let object_generic_params = self.type_decl_generic_params(named_type.type_decl_id);
+        let object_generic_params = self.decl_tables.type_decl_generic_params(named_type.type_decl_id);
         let object_impls = self.implement_interfaces_of_named_type(named_type).unwrap();
         let object_name = self.formatter.format_type_decl(named_type.type_decl_id);
-        let method_decls = self.methods_decl_of_named_type(named_type).unwrap();
+        let method_decls = self.decl_tables.methods_decl_of_named_type(named_type).unwrap();
 
         let Some(interface_decl_id) = expected_type.clone().and_then(|sema_ty| sema_ty.as_interface()) else {
             self.reporter.report(Diag {
@@ -108,13 +108,14 @@ impl<'a> AnalysisContext<'a> {
             );
         });
 
-        let object_methods = self.methods_decl_of_named_type(named_type).unwrap();
+        let object_methods = self.decl_tables.methods_decl_of_named_type(named_type).unwrap();
 
         self.vtable_registry.register(
             operand_type.clone(),
             interface_decl_id,
             interface_type_args,
             object_methods,
+            interface_decl.is_generic(),
             interface_decl.loc,
         );
 

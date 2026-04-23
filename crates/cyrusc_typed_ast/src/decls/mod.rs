@@ -219,31 +219,43 @@ impl MethodDecl {
 }
 
 impl MethodDecls {
+    #[inline]
     pub fn new() -> Self {
         Self(FxHashMap::default())
     }
 
+    #[inline]
+    pub fn len(&self) -> usize {
+        self.0.len()
+    }
+
+    #[inline]
     pub fn insert(&mut self, name: String, method_decl_id: MethodDeclID) -> bool {
         let name = name.into();
         self.0.insert(name, method_decl_id).is_none()
     }
 
+    #[inline]
     pub fn get(&self, name: &str) -> Option<MethodDeclID> {
         self.0.get(name).cloned()
     }
 
+    #[inline]
     pub fn contains(&self, name: &str) -> bool {
         self.0.contains_key(name)
     }
 
+    #[inline]
     pub fn contains_method_id(&self, method_decl_id: MethodDeclID) -> bool {
         self.0.values().any(|&id| id == method_decl_id)
     }
 
+    #[inline]
     pub fn iter(&self) -> impl Iterator<Item = (&String, &MethodDeclID)> {
         self.0.iter()
     }
 
+    #[inline]
     pub fn iter_mut(&mut self) -> impl Iterator<Item = (&String, &mut MethodDeclID)> {
         self.0.iter_mut()
     }
@@ -430,6 +442,11 @@ impl DeclID {
 }
 
 impl InterfaceDecl {
+    #[inline]
+    pub fn is_generic(&self) -> bool {
+        !self.generic_params.is_empty()
+    }
+
     #[inline]
     pub fn method_index(&self, name: &str) -> Option<usize> {
         self.methods.0.iter().position(|(method_name, _)| method_name == name)

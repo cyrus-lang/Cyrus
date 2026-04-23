@@ -19,7 +19,7 @@ use crate::cir::cir::IRValueID;
 use cyrusc_source_loc::Loc;
 use cyrusc_typed_ast::{
     VTableID,
-    decls::{InterfaceDeclID, MethodDecls},
+    decls::{InterfaceDeclID, MethodDecls, MonomorphID},
     stmts::TypedTypeArgs,
     types::SemaType,
 };
@@ -33,18 +33,20 @@ pub struct VTableKey {
     pub interface: (InterfaceDeclID, TypedTypeArgs),
 }
 
-/// Immutable metadata describing one vtable layout.
 #[derive(Debug, Clone)]
 pub struct VTableInfo {
-    pub sema_type: SemaType,
+    pub concrete_type: SemaType,
     pub interface_decl_id: InterfaceDeclID,
     pub interface_type_args: TypedTypeArgs,
-    pub methods: MethodDecls,
+    pub is_interface_generic: bool,
+    pub method_decls: MethodDecls,
     pub vtable_id: VTableID,
 
     /// Populated during CIR lowering.
     /// Codegen will rely on this for function declarations.
     pub cir_method_decls: Option<Vec<IRValueID>>,
+
+    pub monomorphized_methods: Vec<Option<MonomorphID>>,
 
     pub vtable_irv_id: Option<IRValueID>,
 
@@ -87,6 +89,7 @@ impl VTableRegistry {
         interface_decl_id: InterfaceDeclID,
         interface_type_args: TypedTypeArgs,
         methods: MethodDecls,
+        is_interface_generic: bool,
         loc: Loc,
     ) -> VTableID {
         assert!(!methods.0.is_empty(), "vtable must contain at least one method");
@@ -102,23 +105,27 @@ impl VTableRegistry {
         if let Some(&existing_id) = inner.map.get(&key) {
             let existing = &inner.tables[existing_id.0 as usize];
             assert_eq!(
-                existing.methods.0, methods.0,
+                existing.method_decls.0, methods.0,
                 "duplicate vtable registration with mismatched method layout"
             );
             return existing_id;
         }
 
+        let monomorphized_methods = (0..methods.len()).map(|_| None).collect();
+
         // create new
         let vtable_id = VTableID(inner.tables.len() as u32);
 
         inner.tables.push(VTableInfo {
-            sema_type,
+            concrete_type: sema_type,
             interface_decl_id,
             interface_type_args,
-            methods,
+            method_decls: methods,
             vtable_id,
             cir_method_decls: None,
             vtable_irv_id: None,
+            monomorphized_methods,
+            is_interface_generic,
             abi_name: None,
             loc,
         });

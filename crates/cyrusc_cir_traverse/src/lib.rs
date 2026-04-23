@@ -103,6 +103,7 @@ impl<'a> CIRTraverse<'a> {
             func_decls,
             vtable_registry: self.vtable_registry.clone(),
             vtable_to_ir_value_map: self.vtable_to_ir_value_map.clone(),
+            monomorph_to_ir_value_map: self.monomorph_to_ir_value_map.clone(),
         }
     }
 
@@ -112,7 +113,9 @@ impl<'a> CIRTraverse<'a> {
                 if func_def.is_generic() {
                     lowered_stmts.extend(self.lower_monomorphized_func_def(func_def.func_decl_id.unwrap()));
                 } else {
-                    lowered_stmts.push(CIRStmt::FuncDef(self.lower_func_def(func_def, true)))
+                    let irv_id = self.new_ir_value_id();
+
+                    lowered_stmts.push(CIRStmt::FuncDef(self.lower_func_def(irv_id, func_def, true)))
                 }
             }
             TypedStmt::FuncDecl(func_decl) => {
@@ -483,11 +486,13 @@ impl<'a> CIRTraverse<'a> {
                     let irv_id = if !is_decl {
                         let irv_id = self.new_ir_value_id();
 
-                        let var_decl_id = func_param.var_decl_id.unwrap();
+                        if let Some(var_decl_id) = func_param.var_decl_id {
+                            self.decl_to_ir_value_map.insert(DeclID::Var(var_decl_id), irv_id);
 
-                        self.decl_to_ir_value_map.insert(DeclID::Var(var_decl_id), irv_id);
-
-                        Some(irv_id)
+                            Some(irv_id)
+                        } else {
+                            None
+                        }
                     } else {
                         None
                     };
@@ -499,16 +504,17 @@ impl<'a> CIRTraverse<'a> {
                         loc,
                     });
                 }
-
                 TypedFuncParamKind::SelfModifier(self_modifier) => {
                     let irv_id = if !is_decl {
                         let irv_id = self.new_ir_value_id();
 
-                        let var_decl_id = self_modifier.var_decl_id.unwrap();
+                        if let Some(var_decl_id) = self_modifier.var_decl_id {
+                            self.decl_to_ir_value_map.insert(DeclID::Var(var_decl_id), irv_id);
 
-                        self.decl_to_ir_value_map.insert(DeclID::Var(var_decl_id), irv_id);
-
-                        Some(irv_id)
+                            Some(irv_id)
+                        } else {
+                            None
+                        }
                     } else {
                         None
                     };
@@ -536,7 +542,7 @@ impl<'a> CIRTraverse<'a> {
 
         let monomorph_ids = self
             .monomorph_registry
-            .get_func_monomorphs(CallableTemplateID::Func(func_decl_id));
+            .get_func_monomorphs(MonomorphizableTemplateID::Func(func_decl_id));
 
         for monomorph_id in monomorph_ids {
             let monomorph_instance = self.monomorph_registry.get(monomorph_id);
@@ -544,6 +550,8 @@ impl<'a> CIRTraverse<'a> {
             let body_id = monomorph_instance.body.unwrap();
 
             let body = self.monomorph_registry.get_monomorph_body(body_id).unwrap();
+
+            let irv_id = self.get_or_declare_func_ir_value(func_decl_id);
 
             let mangled_name = mangle_monomorphized_func(
                 &func_decl.modifiers,
@@ -563,12 +571,10 @@ impl<'a> CIRTraverse<'a> {
                 loc: func_decl.loc,
             };
 
-            let cir_func_def = self.lower_func_def(&func_def_stmt, false);
+            let cir_func_def = self.lower_func_def(irv_id, &func_def_stmt, false);
             let cir_func_decl = cir_func_def_as_decl(&cir_func_def);
 
             stmts.push(CIRStmt::FuncDef(cir_func_def));
-
-            let irv_id = self.new_ir_value_id();
 
             self.func_decls.insert(irv_id, cir_func_decl);
 
@@ -585,7 +591,7 @@ impl<'a> CIRTraverse<'a> {
 
         let monomorph_ids = self
             .monomorph_registry
-            .get_func_monomorphs(CallableTemplateID::Method(method_decl_id));
+            .get_func_monomorphs(MonomorphizableTemplateID::Method(method_decl_id));
 
         for monomorph_id in monomorph_ids {
             let monomorph_instance = self.monomorph_registry.get(monomorph_id);
@@ -594,12 +600,7 @@ impl<'a> CIRTraverse<'a> {
 
             let body = self.monomorph_registry.get_monomorph_body(body_id).unwrap();
 
-            let mangled_name = mangle_monomorphized_method(
-                &self.module_name,
-                method_decl_id.0 as usize,
-                &method_decl.func_decl.name,
-                &monomorph_instance.type_args,
-            );
+            let (irv_id, _, mangled_name) = self.get_or_declare_monomorph_method_ir_value(monomorph_id);
 
             let func_def_stmt = TypedFuncDefStmt {
                 func_decl_id: None,
@@ -612,12 +613,10 @@ impl<'a> CIRTraverse<'a> {
                 loc: method_decl.func_decl.loc,
             };
 
-            let cir_func_def = self.lower_func_def(&func_def_stmt, false);
+            let cir_func_def = self.lower_func_def(irv_id, &func_def_stmt, false);
             let cir_func_decl = cir_func_def_as_decl(&cir_func_def);
 
             stmts.push(CIRStmt::FuncDef(cir_func_def));
-
-            let irv_id = self.new_ir_value_id();
 
             self.func_decls.insert(irv_id, cir_func_decl);
 
@@ -627,14 +626,12 @@ impl<'a> CIRTraverse<'a> {
         stmts
     }
 
-    fn lower_func_def(&mut self, func_def: &TypedFuncDefStmt, mangle_name: bool) -> CIRFuncDefStmt {
+    fn lower_func_def(&mut self, irv_id: IRValueID, func_def: &TypedFuncDefStmt, mangle_name: bool) -> CIRFuncDefStmt {
         let params = self.lower_func_params(&func_def.params, false);
 
         let body = self.lower_body(&func_def.body);
 
         let ret_type = self.lower_sema_type(&func_def.ret_type);
-
-        let irv_id = self.new_ir_value_id();
 
         if let Some(func_decl_id) = func_def.func_decl_id {
             self.decl_to_ir_value_map.insert(DeclID::Func(func_decl_id), irv_id);
@@ -899,6 +896,7 @@ impl<'a> CIRTraverse<'a> {
     fn lower_generic_methods(&mut self, methods: &MethodDecls, lowered_stmts: &mut Vec<CIRStmt>) {
         for (_, &method_decl_id) in methods.iter() {
             let stmts = self.lower_monomorphized_methods_def(method_decl_id);
+
             lowered_stmts.extend(stmts);
         }
     }
@@ -1092,19 +1090,28 @@ impl<'a> CIRTraverse<'a> {
                 vtable_id,
                 interface_decl_id,
                 index,
-                methods_len,
                 method_self_type,
             } => {
+                let concrete_type = method_self_type.const_inner().pointer_inner();
+
+                let named_type = &concrete_type.as_named_type().unwrap();
+
+                let object_methods = self.decl_tables.methods_decl_of_named_type(*named_type).unwrap();
+
+                let object_generic_params = self.decl_tables.type_decl_generic_params(named_type.type_decl_id);
+
+                let type_args = &named_type.type_args;
+
                 let operand = self.lower_expr(&method_call.operand);
 
-                let interface_decl = self.decl_tables.interface_decl(*interface_decl_id);
+                let method_decl_id = object_methods.get(&method_call.name).unwrap();
 
-                let method_decl_id = interface_decl.methods.0.get(&method_call.name).copied().unwrap();
+                let method_decl = self.decl_tables.method_decl(method_decl_id);
 
-                let mut method_decl = self.decl_tables.method_decl(method_decl_id);
+                let mut inst_method_decl = instantiate_method_decl(&method_decl, &object_generic_params, type_args);
 
                 // substitute method self type
-                method_decl
+                inst_method_decl
                     .func_decl
                     .params
                     .get_self_modifier_mut()
@@ -1112,9 +1119,9 @@ impl<'a> CIRTraverse<'a> {
                     .unwrap()
                     .ty = method_self_type.clone();
 
-                let cir_func_type = self.lower_func_type(&method_decl.func_decl.as_func_type());
+                let cir_func_type = self.lower_func_type(&inst_method_decl.func_decl.as_func_type());
 
-                let ret_type = self.lower_sema_type(&method_decl.func_decl.ret_type);
+                let ret_type = self.lower_sema_type(&inst_method_decl.func_decl.ret_type);
 
                 // let vtable_irv = self.get_or_declare_vtable_ir_value(&interface_decl.name, *vtable_id);
 
@@ -1261,21 +1268,27 @@ impl<'a> CIRTraverse<'a> {
 
         let vtable_info = self.vtable_registry.info(vtable_id);
 
-        dbg!(vtable_info.clone());
-
         if vtable_info.cir_method_decls.is_none() {
             let lowered_methods = vtable_info
-                .methods
+                .method_decls
                 .iter()
-                .map(|(_, method_decl_id)| {
-                    // self.monomorph_registry.
-                    let method_decl = self.decl_tables.method_decl(*method_decl_id);
-                    dbg!(method_decl.clone());
+                .enumerate()
+                .map(|(idx, (_, method_decl_id))| {
+                    if vtable_info.is_interface_generic {
+                        if let Some(monomorph_id) = vtable_info.monomorphized_methods.get(idx).unwrap() {
+                            let (irv_id, _, _) = self.get_or_declare_monomorph_method_ir_value(*monomorph_id);
 
-                    self.decl_to_ir_value_map
-                        .get(&DeclID::Method(*method_decl_id))
-                        .copied()
-                        .unwrap()
+                            irv_id
+                        } else {
+                            // FIXME
+                            panic!()
+                        }
+                    } else {
+                        self.decl_to_ir_value_map
+                            .get(&DeclID::Method(*method_decl_id))
+                            .copied()
+                            .unwrap()
+                    }
                 })
                 .collect();
 
@@ -1615,21 +1628,6 @@ impl<'a> CIRTraverse<'a> {
 
 // Helpers.
 impl<'a> CIRTraverse<'a> {
-    pub fn get_or_declare_vtable_ir_value(&mut self, interface_name: &str, vtable_id: VTableID) -> IRValueID {
-        if let Some(irv) = self.vtable_to_ir_value_map.get(&vtable_id) {
-            return *irv;
-        }
-
-        let vtable_info = self.vtable_registry.info(vtable_id);
-
-        let abi_name = match &vtable_info.abi_name {
-            Some(name) => name.clone(),
-            None => DEFAULT_ABI.vtable_name(interface_name, &vtable_id.0.to_string()),
-        };
-
-        self.lower_vtable_global(vtable_id, &abi_name, vtable_info.loc)
-    }
-
     fn get_or_declare_method_ir_value(&mut self, method_decl_id: MethodDeclID) -> IRValueID {
         if let Some(irv_id) = self.decl_to_ir_value_map.get(&DeclID::Method(method_decl_id)).copied() {
             return irv_id;

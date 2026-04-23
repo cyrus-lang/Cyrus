@@ -25,36 +25,6 @@ use cyrusc_typed_ast::{
 };
 
 impl<'a> AnalysisContext<'a> {
-    pub(crate) fn type_decl_generic_params(&self, type_decl_id: TypeDeclID) -> TypedGenericParams {
-        match type_decl_id {
-            TypeDeclID::Struct(struct_decl_id) => {
-                let struct_decl = self.decl_tables.struct_decl(struct_decl_id);
-
-                struct_decl.generic_params
-            }
-            TypeDeclID::Enum(enum_decl_id) => {
-                let enum_decl = self.decl_tables.enum_decl(enum_decl_id);
-
-                enum_decl.generic_params
-            }
-            TypeDeclID::Union(union_decl_id) => {
-                let union_decl = self.decl_tables.union_decl(union_decl_id);
-
-                union_decl.generic_params
-            }
-            TypeDeclID::Interface(interface_decl_id) => {
-                let interface_decl = self.decl_tables.interface_decl(interface_decl_id);
-
-                interface_decl.generic_params
-            }
-            TypeDeclID::Typedef(typedef_decl_id) => {
-                let typedef_decl = self.decl_tables.typedef_decl(typedef_decl_id);
-
-                typedef_decl.generic_params
-            }
-        }
-    }
-
     #[inline]
     pub(crate) fn push_generic_env(&mut self, env: GenericEnv) {
         self.generic_env_stack.push(env);
@@ -148,7 +118,7 @@ impl<'a> AnalysisContext<'a> {
                 default_type = self.substitute_type(&default_type);
 
                 let generic_env = self.current_generic_env_mut().unwrap();
-                
+
                 generic_env.bind(*generic_param_id, default_type);
             }
         }

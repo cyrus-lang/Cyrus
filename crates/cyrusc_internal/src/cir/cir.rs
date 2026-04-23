@@ -28,7 +28,7 @@ use cyrusc_ast::{
 use cyrusc_source_loc::Loc;
 use cyrusc_typed_ast::{
     LabelID, VTableID,
-    decls::{MethodDecls, VarDeclID},
+    decls::{MethodDecls, MonomorphID, VarDeclID},
 };
 use fx_hash::FxHashMap;
 use std::{fmt::Debug, sync::Arc};
@@ -45,6 +45,7 @@ pub struct CIRModule {
     pub global_var_decls: FxHashMap<IRValueID, CIRGlobalVarStmt>,
     pub vtable_registry: Arc<VTableRegistry>,
     pub vtable_to_ir_value_map: FxHashMap<VTableID, IRValueID>,
+    pub monomorph_to_ir_value_map: FxHashMap<MonomorphID, IRValueID>,
 }
 
 #[derive(Debug, Clone)]

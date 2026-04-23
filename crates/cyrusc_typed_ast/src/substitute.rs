@@ -16,10 +16,11 @@
  */
 
 use crate::{
-    decls::{EnumDecl, StructDecl, UnionDecl},
+    decls::{EnumDecl, FuncDecl, MethodDecl, StructDecl, UnionDecl},
     stmts::{
-        TypedEnumVariant, TypedEnumVariantStructField, TypedEnumVariantTupleField, TypedFuncTypeParams,
-        TypedFuncTypeVariadicParam, TypedGenericParams, TypedStructField, TypedTypeArg, TypedTypeArgs, TypedUnionField,
+        TypedEnumVariant, TypedEnumVariantStructField, TypedEnumVariantTupleField, TypedFuncParam, TypedFuncParamKind,
+        TypedFuncParams, TypedFuncTypeParams, TypedFuncTypeVariadicParam, TypedFuncVariadicParam, TypedGenericParams,
+        TypedSelfModifier, TypedStructField, TypedTypeArg, TypedTypeArgs, TypedUnionField,
     },
     types::{NamedType, SemaType, TypedArrayType, TypedFuncType, TypedTupleType},
 };
@@ -30,6 +31,22 @@ pub fn substitute_sema_type_with_type_args(
     type_args: &TypedTypeArgs,
 ) -> SemaType {
     match ty {
+        SemaType::GenericParam(generic_param_id) => {
+            let pos = generic_params
+                .iter()
+                .position(|_generic_param_id| _generic_param_id == generic_param_id);
+
+            match pos {
+                Some(idx) => match &type_args.0[idx] {
+                    TypedTypeArg::Type(inner, _) => {
+                        substitute_sema_type_with_type_args(inner, generic_params, type_args)
+                    }
+                    TypedTypeArg::Infer => ty.clone(),
+                },
+                None => ty.clone(),
+            }
+        }
+
         SemaType::Named(named_type) => {
             let mut new_args = Vec::new();
 
@@ -106,23 +123,8 @@ pub fn substitute_sema_type_with_type_args(
                 loc: tuple.loc,
             })
         }
-        SemaType::GenericParam(generic_param_id) => {
-            let pos = generic_params
-                .iter()
-                .position(|_generic_param_id| _generic_param_id == generic_param_id);
 
-            match pos {
-                Some(idx) => match &type_args.0[idx] {
-                    TypedTypeArg::Type(inner, _) => {
-                        substitute_sema_type_with_type_args(inner, generic_params, type_args)
-                    }
-                    TypedTypeArg::Infer => ty.clone(),
-                },
-                None => ty.clone(),
-            }
-        }
-
-        | SemaType::SelfType(_)
+        SemaType::SelfType(_)
         | SemaType::Plain(_)
         | SemaType::Unresolved(_)
         | SemaType::InferVar(_)
@@ -238,5 +240,91 @@ pub fn instantiate_enum_decl_with_type_args(enum_decl: &EnumDecl, type_args: &Ty
         tag_type: enum_decl.tag_type.clone(),
         align: enum_decl.align,
         loc: enum_decl.loc,
+    }
+}
+
+#[inline]
+pub fn instantiate_method_decl(
+    method_decl: &MethodDecl,
+    interface_generic_params: &TypedGenericParams,
+    type_args: &TypedTypeArgs,
+) -> MethodDecl {
+    MethodDecl {
+        func_decl: instantiate_func_decl(&method_decl.func_decl, interface_generic_params, type_args),
+        body: method_decl.body,
+    }
+}
+
+pub fn instantiate_func_decl(
+    func_decl: &FuncDecl,
+    generic_params: &TypedGenericParams,
+    type_args: &TypedTypeArgs,
+) -> FuncDecl {
+    let params = substitute_func_params_with_type_args(&func_decl.params, generic_params, type_args);
+
+    let ret_type = substitute_sema_type_with_type_args(&func_decl.ret_type, generic_params, type_args);
+
+    FuncDecl {
+        name: func_decl.name.clone(),
+        params,
+        generic_params: func_decl.generic_params.clone(),
+        ret_type,
+        body: func_decl.body,
+        is_func_decl: func_decl.is_func_decl,
+        modifiers: func_decl.modifiers.clone(),
+        loc: func_decl.loc,
+    }
+}
+
+pub fn substitute_func_params_with_type_args(
+    params: &TypedFuncParams,
+    generic_params: &TypedGenericParams,
+    type_args: &TypedTypeArgs,
+) -> TypedFuncParams {
+    let mut new_list = Vec::with_capacity(params.list.len());
+
+    for param_kind in &params.list {
+        let new_p = match param_kind {
+            TypedFuncParamKind::FuncParam(func_param) => {
+                let ty = substitute_sema_type_with_type_args(&func_param.ty, generic_params, type_args);
+
+                TypedFuncParamKind::FuncParam(TypedFuncParam {
+                    var_decl_id: func_param.var_decl_id,
+                    ident: func_param.ident.clone(),
+                    ty,
+                    loc: func_param.loc,
+                })
+            }
+            TypedFuncParamKind::SelfModifier(self_modifier) => {
+                let ty = substitute_sema_type_with_type_args(&self_modifier.ty, generic_params, type_args);
+
+                TypedFuncParamKind::SelfModifier(TypedSelfModifier {
+                    var_decl_id: self_modifier.var_decl_id,
+                    ty,
+                    kind: self_modifier.kind.clone(),
+                    loc: self_modifier.loc,
+                })
+            }
+        };
+
+        new_list.push(new_p);
+    }
+    let new_variadic = match &params.variadic {
+        None => None,
+        Some(TypedFuncVariadicParam::UntypedCStyle) => Some(TypedFuncVariadicParam::UntypedCStyle),
+        Some(TypedFuncVariadicParam::Typed { var_decl_id, ty, loc }) => {
+            let ty = substitute_sema_type_with_type_args(ty, generic_params, type_args);
+
+            Some(TypedFuncVariadicParam::Typed {
+                var_decl_id: *var_decl_id,
+                ty,
+                loc: *loc,
+            })
+        }
+    };
+
+    TypedFuncParams {
+        list: new_list,
+        variadic: new_variadic,
     }
 }

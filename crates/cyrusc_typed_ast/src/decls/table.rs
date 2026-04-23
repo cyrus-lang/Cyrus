@@ -15,7 +15,7 @@
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
 
-use crate::{BodyID, GenericParamID, decls::*, stmts::TypedGenericParam};
+use crate::{BodyID, GenericParamID, decls::*, stmts::TypedGenericParam, types::NamedType};
 use std::sync::RwLock;
 
 #[derive(Debug)]
@@ -56,6 +56,60 @@ impl DeclTablesRegistry {
                 generic_params: Vec::new(),
                 bodies: Vec::new(),
             }),
+        }
+    }
+}
+
+impl DeclTablesRegistry {
+    pub fn type_decl_generic_params(&self, type_decl_id: TypeDeclID) -> TypedGenericParams {
+        match type_decl_id {
+            TypeDeclID::Struct(struct_decl_id) => {
+                let struct_decl = self.struct_decl(struct_decl_id);
+
+                struct_decl.generic_params
+            }
+            TypeDeclID::Enum(enum_decl_id) => {
+                let enum_decl = self.enum_decl(enum_decl_id);
+
+                enum_decl.generic_params
+            }
+            TypeDeclID::Union(union_decl_id) => {
+                let union_decl = self.union_decl(union_decl_id);
+
+                union_decl.generic_params
+            }
+            TypeDeclID::Interface(interface_decl_id) => {
+                let interface_decl = self.interface_decl(interface_decl_id);
+
+                interface_decl.generic_params
+            }
+            TypeDeclID::Typedef(typedef_decl_id) => {
+                let typedef_decl = self.typedef_decl(typedef_decl_id);
+
+                typedef_decl.generic_params
+            }
+        }
+    }
+
+    pub fn methods_decl_of_named_type(&self, named_type: &NamedType) -> Option<MethodDecls> {
+        match named_type.type_decl_id {
+            TypeDeclID::Struct(struct_decl_id) => {
+                let struct_decl = self.struct_decl(struct_decl_id);
+
+                Some(struct_decl.methods)
+            }
+            TypeDeclID::Enum(enum_decl_id) => {
+                let enum_decl = self.enum_decl(enum_decl_id);
+
+                Some(enum_decl.methods)
+            }
+            TypeDeclID::Union(union_decl_id) => {
+                let union_decl = self.union_decl(union_decl_id);
+
+                Some(union_decl.methods)
+            }
+            TypeDeclID::Interface(_) => None,
+            TypeDeclID::Typedef(_) => None,
         }
     }
 }

@@ -304,7 +304,6 @@ pub enum TypedMethodCallDispatch {
         interface_decl_id: InterfaceDeclID,
 
         index: usize,
-        methods_len: usize,
         method_self_type: SemaType,
     },
 
