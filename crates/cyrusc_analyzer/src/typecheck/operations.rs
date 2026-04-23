@@ -105,7 +105,7 @@ impl<'a> AnalysisContext<'a> {
             return None;
         }
 
-        let expected_type = addr_of.operand.sema_type.clone();
+        let expected_type = addr_of.operand.ty.clone();
 
         let operand_type = match self.analyze_expr(&mut addr_of.operand, expected_type) {
             Some(sema_type) => sema_type.const_inner().clone(),
@@ -116,14 +116,14 @@ impl<'a> AnalysisContext<'a> {
     }
 
     pub(crate) fn analyze_deref(&mut self, deref: &mut TypedDerefExpr) -> Option<SemaType> {
-        let expected_type = deref.operand.sema_type.clone();
+        let expected_type = deref.operand.ty.clone();
 
         let operand_type = match self.analyze_expr(&mut deref.operand, expected_type) {
             Some(sema_type) => sema_type.const_inner().clone(),
             None => return None,
         };
 
-        deref.operand.sema_type = Some(operand_type.clone());
+        deref.operand.ty = Some(operand_type.clone());
 
         if (!deref.operand.is_lvalue() || operand_type.as_func_type().is_some()) && !operand_type.is_pointer() {
             self.reporter.report(Diag {
@@ -271,7 +271,7 @@ impl<'a> AnalysisContext<'a> {
     }
 
     pub(crate) fn analyze_unary(&mut self, unary: &mut TypedUnaryExpr) -> Option<SemaType> {
-        let expected_type = unary.operand.sema_type.clone();
+        let expected_type = unary.operand.ty.clone();
 
         let operand_type = self.analyze_expr(&mut unary.operand, expected_type)?;
 
@@ -285,7 +285,7 @@ impl<'a> AnalysisContext<'a> {
             return None;
         }
 
-        if !((operand_type.is_integer() && unary.operand.is_lvalue()) || unary.operand.sema_type.as_ref()?.is_pointer()) {
+        if !((operand_type.is_integer() && unary.operand.is_lvalue()) || unary.operand.ty.as_ref()?.is_pointer()) {
             self.reporter.report(Diag {
                 level: DiagLevel::Error,
                 kind: Box::new(AnalyzerDiagKind::InvalidUnary {

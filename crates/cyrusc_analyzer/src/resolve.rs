@@ -74,7 +74,7 @@ impl<'a> ConstResolver for AnalysisContext<'a> {
 
     fn is_decl_const(&mut self, decl_id: DeclID) -> bool {
         match self.resolve_variable_rhs_expr(decl_id) {
-            Some(expr) => expr.sema_type.as_ref().map(|ty| ty.is_const()).unwrap_or(false),
+            Some(expr) => expr.ty.as_ref().map(|ty| ty.is_const()).unwrap_or(false),
             None => false,
         }
     }

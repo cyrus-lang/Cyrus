@@ -93,6 +93,20 @@ pub struct CIREnumType {
     pub loc: Loc,
 }
 
+pub fn cir_vtable_type(loc: Loc) -> CIRType {
+    CIRType::Struct(CIRStructType {
+        name: None,
+        fields: vec![
+            CIRType::Pointer(Box::new(CIRType::Plain(PlainType::Void))),
+            CIRType::Pointer(Box::new(CIRType::Plain(PlainType::Void))),
+        ],
+        fields_info: vec![("data_ptr".to_string(), loc), ("vtable_ptr".to_string(), loc)],
+        repr_attr: None,
+        align: None,
+        loc: loc,
+    })
+}
+
 impl CIREnumType {
     pub fn tag_type_or_infer_or_default(&self) -> Box<CIRType> {
         self.tag_type

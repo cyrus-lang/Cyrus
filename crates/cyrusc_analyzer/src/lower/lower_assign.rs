@@ -31,7 +31,7 @@ pub(crate) fn lower_assign_to_infix_expr(assign: &mut TypedAssignExpr) -> TypedE
         lhs: assign.lhs.clone(),
         rhs: Box::new(TypedExpr {
             kind: infix_expr,
-            sema_type: None,
+            ty: None,
             loc: assign.loc,
             val_cat: ValueCategory::RValue,
         }),

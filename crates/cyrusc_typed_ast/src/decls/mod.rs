@@ -29,7 +29,8 @@ use cyrusc_ast::{
     modifiers::{EnumModifiers, FuncModifiers, GlobalVarModifiers, StructModifiers, UnionModifiers},
 };
 use cyrusc_source_loc::Loc;
-use std::{collections::HashMap, hash::Hash};
+use fx_hash::FxHashMap;
+use std::hash::Hash;
 
 pub mod table;
 
@@ -77,7 +78,7 @@ pub struct TypedefDeclID(pub u32);
 pub struct MonomorphID(pub usize);
 
 #[derive(Debug, Clone)]
-pub struct MethodDecls(pub HashMap<String, MethodDeclID>);
+pub struct MethodDecls(pub FxHashMap<String, MethodDeclID>);
 
 #[derive(Debug, Clone)]
 pub struct StructDecl {
@@ -157,7 +158,7 @@ pub struct TypedefDecl {
 #[derive(Debug, Clone)]
 pub struct InterfaceDecl {
     pub name: String,
-    pub methods: Vec<FuncDeclID>,
+    pub methods: MethodDecls,
     pub generic_params: TypedGenericParams,
     pub vis: Visibility,
     pub loc: Loc,
@@ -219,11 +220,7 @@ impl MethodDecl {
 
 impl MethodDecls {
     pub fn new() -> Self {
-        Self(HashMap::new())
-    }
-
-    pub fn new_with_capacity(capacity: usize) -> Self {
-        Self(HashMap::with_capacity(capacity))
+        Self(FxHashMap::default())
     }
 
     pub fn insert(&mut self, name: String, method_decl_id: MethodDeclID) -> bool {
@@ -429,5 +426,12 @@ impl DeclID {
             DeclID::Typedef(id) => Some(id),
             _ => None,
         }
+    }
+}
+
+impl InterfaceDecl {
+    #[inline]
+    pub fn method_index(&self, name: &str) -> Option<usize> {
+        self.methods.0.iter().position(|(method_name, _)| method_name == name)
     }
 }

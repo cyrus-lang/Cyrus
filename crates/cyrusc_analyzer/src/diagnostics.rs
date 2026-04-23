@@ -161,9 +161,6 @@ pub enum AnalyzerDiagKind {
     #[error("Tuple member access with index {index} exceeds tuple length {length}.")]
     TupleIndexOutOfRange { index: usize, length: usize },
 
-    #[error("Lambda cannot be left uninitialized.")]
-    UninitializedLambda,
-
     #[error("The type 'void' cannot be used in this context.")]
     VoidVariableType,
 
@@ -228,8 +225,13 @@ pub enum AnalyzerDiagKind {
     #[error("Use '->' instead of '.' when accessing a member via a pointer.")]
     UseThinArrow,
 
-    #[error("Invalid usage of the concrete type.")]
-    InvalidUsageOfTheSemanticType,
+    #[error(
+        "Interface method '{method_name}' called on a non-dynamic object; expected a dynamic interface object of type '{expected_interface}'."
+    )]
+    InterfaceMethodCallOnNonDynamicObject {
+        method_name: String,
+        expected_interface: String,
+    },
 
     #[error("Invalid field access (not supported for this symbol).")]
     ObjectNotSupportsFields,
@@ -248,6 +250,12 @@ pub enum AnalyzerDiagKind {
 
     #[error("Constant variable must be initialized with a value.")]
     ConstVariableMustBeInitialized,
+
+    #[error("Interface type value must be initialized.")]
+    InterfaceTypeMustBeInitialized,
+
+    #[error("Lambda type value must be uninitialized.")]
+    LambdaTypeMustBeInitialized,
 
     #[error("Cyclic type definition found for type '{symbol_name}'.")]
     CyclicTypeDefinition { symbol_name: String },
@@ -449,8 +457,23 @@ pub enum AnalyzerDiagKind {
     #[error("Instance methods must have self modifier.")]
     InterfaceMethodsMustHaveSelfModifier,
 
+    #[error("Interface methods must use referenced self. By-value 'self' is not allowed.")]
+    InterfaceMethodsMustUseReferencedSelf,
+
     #[error("Function declarations cannot have generic parameters.")]
     GenericFunctionDeclaration,
+
+    #[error("Interface method parameter type cannot contain 'Self'.")]
+    InterfaceMethodParamContainsSelf {
+        interface_name: String,
+        method_name: String,
+    },
+
+    #[error("Interface method return type cannot contain 'Self'.")]
+    InterfaceMethodReturnTypeContainsSelf {
+        interface_name: String,
+        method_name: String,
+    },
 
     #[error("{0}")]
     UnescapeError(UnescapeError),

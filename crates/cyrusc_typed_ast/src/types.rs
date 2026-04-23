@@ -15,10 +15,10 @@
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
 
+use crate::GenericParamID;
 use crate::decls::{DeclID, EnumDeclID, InterfaceDeclID, StructDeclID, TypedefDeclID, UnionDeclID};
 use crate::exprs::{TypedExpr, TypedSelfType};
 use crate::stmts::{TypedFuncTypeParams, TypedFuncTypeVariadicParam, TypedTypeArg, TypedTypeArgs};
-use crate::{GenericParamID, SymbolID, VTableID};
 use cyrusc_source_loc::Loc;
 use cyrusc_tokens::TokenKind;
 use std::fmt;
@@ -40,7 +40,6 @@ pub enum SemaType {
     FuncType(TypedFuncType),
     Tuple(TypedTupleType),
     SelfType(TypedSelfType),
-    InterfaceType(InterfaceType),
     GenericParam(GenericParamID),
     InferVar(InferVarID),
 
@@ -110,13 +109,6 @@ pub struct TypedFuncType {
     pub params: TypedFuncTypeParams,
     pub ret_type: Box<SemaType>,
     pub is_public: bool,
-    pub loc: Loc,
-}
-
-#[derive(Debug, Clone, Eq)]
-pub struct InterfaceType {
-    pub interface_decl_id: SymbolID,
-    pub vtable_id: VTableID,
     pub loc: Loc,
 }
 
@@ -539,11 +531,7 @@ impl SemaType {
                 TypedTypeArg::Type(ty, _) => ty.contains_infer_var(),
                 TypedTypeArg::Infer => true,
             }),
-            SemaType::Err(_)
-            | SemaType::Unresolved(_)
-            | SemaType::Plain(_)
-            | SemaType::SelfType(_)
-            | SemaType::InterfaceType(_) => false,
+            SemaType::Err(_) | SemaType::Unresolved(_) | SemaType::Plain(_) | SemaType::SelfType(_) => false,
         }
     }
 
@@ -573,12 +561,54 @@ impl SemaType {
                 TypedTypeArg::Type(ty, _) => ty.contains_generic_param(),
                 TypedTypeArg::Infer => todo!(),
             }),
-            SemaType::Err(_)
-            | SemaType::Unresolved(_)
-            | SemaType::Plain(_)
-            | SemaType::SelfType(_)
-            | SemaType::InterfaceType(_) => false,
+            SemaType::Err(_) | SemaType::Unresolved(_) | SemaType::Plain(_) | SemaType::SelfType(_) => false,
         }
+    }
+
+    /// Returns true if this type contains `SelfType` anywhere inside it
+    pub fn contains_self_type(&self) -> bool {
+        fn inner(ty: &SemaType) -> bool {
+            match ty {
+                SemaType::SelfType(_) => true,
+                SemaType::Named(named_type) => {
+                    for arg in named_type.type_args.iter() {
+                        if let TypedTypeArg::Type(ty, _) = arg {
+                            if inner(ty) {
+                                return true;
+                            }
+                        }
+                    }
+                    false
+                }
+                SemaType::Const(inner_ty) | SemaType::Pointer(inner_ty) => inner(inner_ty),
+                SemaType::Array(array) => inner(&array.element_type),
+                SemaType::FuncType(func_ty) => {
+                    for ty in &func_ty.params.list {
+                        if inner(ty) {
+                            return true;
+                        }
+                    }
+                    inner(&func_ty.ret_type)
+                }
+                SemaType::Tuple(ty) => {
+                    for ty in &ty.elements {
+                        if inner(ty) {
+                            return true;
+                        }
+                    }
+                    false
+                }
+
+                SemaType::Plain(_)
+                | SemaType::GenericParam(_)
+                | SemaType::InferVar(_)
+                | SemaType::Unresolved(_)
+                | SemaType::Err(_)
+                | SemaType::Placeholder => false,
+            }
+        }
+
+        inner(self)
     }
 }
 
@@ -730,12 +760,6 @@ impl PlainType {
     }
 }
 
-impl Hash for InterfaceType {
-    fn hash<H: Hasher>(&self, state: &mut H) {
-        self.vtable_id.hash(state);
-    }
-}
-
 impl Hash for TypedArrayType {
     fn hash<H: Hasher>(&self, state: &mut H) {
         self.element_type.hash(state);
@@ -765,12 +789,6 @@ impl Hash for TypedArrayCapacity {
 impl PartialEq for TypedArrayType {
     fn eq(&self, other: &Self) -> bool {
         self.element_type == other.element_type && self.capacity == other.capacity
-    }
-}
-
-impl PartialEq for InterfaceType {
-    fn eq(&self, other: &Self) -> bool {
-        self.interface_decl_id == other.interface_decl_id
     }
 }
 

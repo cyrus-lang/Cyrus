@@ -139,7 +139,7 @@ impl<'a> AnalysisContext<'a> {
 
         self.analyze_expr(&mut union_value.value, None);
 
-        if let Some(rhs_type) = &union_value.value.sema_type {
+        if let Some(rhs_type) = &union_value.value.ty {
             let union_field = union_decl.lookup_field_mut(&union_value.name.value).unwrap();
             union_field.ty = rhs_type.clone();
         }

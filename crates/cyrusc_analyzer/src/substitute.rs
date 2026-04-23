@@ -135,8 +135,6 @@ impl<'a> AnalysisContext<'a> {
                     loc: func.loc,
                 })
             }
-
-            SemaType::InterfaceType(interface) => SemaType::InterfaceType(interface.clone()),
         }
     }
 }

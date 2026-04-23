@@ -61,7 +61,7 @@ impl<'a> AnalysisContext<'a> {
             TypedExprKind::Symbol(symbol_expr) => self.resolve_symbol_type(symbol_expr.decl_id, symbol_expr.loc),
             TypedExprKind::Assign(assign) => {
                 self.analyze_assign(assign);
-                assign.rhs.sema_type.clone()
+                assign.rhs.ty.clone()
             }
             TypedExprKind::Literal(literal) => self.analyze_literal(literal, expected_type.clone()),
             TypedExprKind::Prefix(prefix) => self.analyze_prefix(prefix, expected_type.clone()),
@@ -71,7 +71,7 @@ impl<'a> AnalysisContext<'a> {
             TypedExprKind::Deref(deref) => self.analyze_deref(deref),
             TypedExprKind::Array(array) => self.analyze_array(array, expected_type.clone()),
             TypedExprKind::ArrayIndex(array_index) => self.analyze_array_index(array_index),
-            TypedExprKind::Dynamic(dynamic_expr) => todo!(),
+            TypedExprKind::Dynamic(dynamic) => self.analyze_dynamic(dynamic, expected_type.clone()),
             TypedExprKind::MethodCall(method_call) => self.analyze_method_call(method_call),
             TypedExprKind::FieldAccess(field_access) => self.analyze_field_access(field_access),
             TypedExprKind::FuncCall(func_call) => self.analyze_func_call(func_call),
@@ -111,14 +111,14 @@ impl<'a> AnalysisContext<'a> {
 
         let normalized_type = self.normalize_and_check_type_formation(expr_type, expr.loc);
 
-        expr.sema_type = Some(normalized_type.clone()?);
+        expr.ty = Some(normalized_type.clone()?);
 
         // debug
         if cfg!(debug_assertions) {
-            if let Some(sema_type) = expr.sema_type.clone() {
+            if let Some(sema_type) = expr.ty.clone() {
                 assert!(!sema_type.is_unresolved());
             }
-            if expr.sema_type.is_none() {
+            if expr.ty.is_none() {
                 panic!("expr.sema_type is empty!");
             }
         }

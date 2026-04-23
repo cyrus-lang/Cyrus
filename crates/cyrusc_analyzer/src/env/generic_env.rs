@@ -154,7 +154,6 @@ impl GenericEnv {
                 None => sema_type.clone(),
             },
             SemaType::SelfType(self_type) => SemaType::SelfType(self_type.clone()),
-            SemaType::InterfaceType(interface) => SemaType::InterfaceType(interface.clone()),
 
             SemaType::Err(_) => sema_type.clone(),
         }

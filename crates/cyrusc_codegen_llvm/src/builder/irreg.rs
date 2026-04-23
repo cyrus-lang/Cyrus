@@ -61,6 +61,13 @@ impl<'a> LocalIRValue<'a> {
             _ => None,
         }
     }
+
+    pub fn as_func(&self) -> Option<&FunctionValue<'a>> {
+        match self {
+            LocalIRValue::Func(func_value, _) => Some(func_value),
+            _ => None,
+        }
+    }
 }
 
 impl<'ll> CodeGenIRBuilder<'ll> {

@@ -54,7 +54,7 @@ impl<'a, R: ConstResolver> ConstFolder<'a, R> {
         if let Ok(const_value) = self.evaluator.eval_expr(expr) {
             if let Some(int_value) = const_value.as_int() {
                 let literal = TypedLiteralExpr {
-                    ty: expr.sema_type.clone(),
+                    ty: expr.ty.clone(),
                     kind: LiteralKind::Integer(int_value, None),
                     loc: expr.loc,
                 };

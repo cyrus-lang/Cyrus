@@ -20,3 +20,5 @@ cyrusc_cir_traverse = { path = "../cyrusc_cir_traverse", version = "*" }
 inkwell = { version = "0.7.0", features = ["llvm18-1"] }
 serde = { version = "1.0.219", features = ["derive"] }
 which = "8.0.0"
+fx-hash = "0.1.0"
+

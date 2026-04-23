@@ -31,7 +31,7 @@ use cyrusc_compiler::{
     tm_info::TargetMachineInfo,
 };
 use cyrusc_diagcentral::exit_with_msg;
-use cyrusc_internal::cir::cir::CIRModule;
+use cyrusc_internal::{cir::cir::CIRModule, vtable::VTableRegistry};
 use cyrusc_scaffold_parser::OBJECT_CACHE_DIR_FILENAME;
 use cyrusc_tui_utils::tui_skipped;
 use inkwell::{
@@ -96,6 +96,7 @@ impl CodeGenLLVM {
         builder: Rc<Builder<'ctx>>,
         cir_module: &'ctx CIRModule,
         dctx: DebugContext,
+        vtable_registry: Arc<VTableRegistry>,
     ) {
         {
             let llvmmodule = owned_module.module.borrow();
@@ -110,8 +111,15 @@ impl CodeGenLLVM {
             );
         }
 
-        let mut codegen_ir_builder =
-            CodeGenIRBuilder::new(owned_module, cir_module, &self.ctx.target, &builder, &self.llvmtm, dctx);
+        let mut codegen_ir_builder = CodeGenIRBuilder::new(
+            owned_module,
+            cir_module,
+            &self.ctx.target,
+            &builder,
+            &self.llvmtm,
+            dctx,
+            vtable_registry,
+        );
 
         codegen_ir_builder.emit_module();
 
@@ -343,7 +351,13 @@ impl SeparateModuleSupport<'static, OwnedModule> for CodeGenLLVM {
 
             // emit llvm-ir
             let builder = owned_module.create_builder();
-            self.process_module_with_local_context(&owned_module, builder, cir_module, dctx);
+            self.process_module_with_local_context(
+                &owned_module,
+                builder,
+                cir_module,
+                dctx,
+                cir_module.vtable_registry.clone(),
+            );
 
             modules.push(owned_module);
         }
@@ -365,7 +379,13 @@ impl UnifiedModuleSupport<'static, OwnedModule> for CodeGenLLVM {
 
             let builder = owned_module.create_builder();
 
-            self.process_module_with_local_context(&owned_module, builder.clone(), cir_module, dctx);
+            self.process_module_with_local_context(
+                &owned_module,
+                builder.clone(),
+                cir_module,
+                dctx,
+                cir_module.vtable_registry.clone(),
+            );
         }
 
         owned_module

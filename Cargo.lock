@@ -349,6 +349,7 @@ dependencies = [
  "cyrusc_source_loc",
  "cyrusc_tui_utils",
  "cyrusc_typed_ast",
+ "fx-hash",
  "inkwell",
  "serde",
  "which",
@@ -497,6 +498,7 @@ dependencies = [
  "cyrusc_diagcentral",
  "cyrusc_source_loc",
  "cyrusc_tokens",
+ "fx-hash",
  "thiserror",
  "thiserror-impl",
 ]

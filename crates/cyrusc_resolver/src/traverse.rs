@@ -21,6 +21,7 @@ use crate::with_local_scope;
 use cyrusc_ast::abi::Visibility;
 use cyrusc_ast::format::format_module_segments;
 use cyrusc_ast::modifiers::EnumModifiers;
+use cyrusc_ast::modifiers::FuncModifiers;
 use cyrusc_ast::modifiers::StructModifiers;
 use cyrusc_ast::modifiers::UnionModifiers;
 use cyrusc_ast::*;
@@ -367,7 +368,7 @@ impl Resolver {
 
             TypedExpr {
                 kind: TypedExprKind::Symbol(TypedSymbolExpr::new(decl_id, ident.loc)),
-                sema_type: None,
+                ty: None,
                 val_cat: ValueCategory::LValue,
                 loc: ident.loc,
             }
@@ -410,7 +411,7 @@ impl Resolver {
 
                     Some(TypedExpr {
                         kind,
-                        sema_type: None,
+                        ty: None,
                         val_cat: ValueCategory::RValue,
                         loc: builtin.loc(),
                     })
@@ -891,7 +892,7 @@ impl Resolver {
         let generic_params = self.resolve_generic_params(&interface.generic_params)?;
 
         self.with_generic_scope(&generic_params.clone(), |this| {
-            let mut interface_methods = Vec::with_capacity(interface.methods.len());
+            let mut interface_methods = MethodDecls::new();
 
             for func_decl_stmt in &interface.methods {
                 if func_decl_stmt.renamed_as.is_some() {
@@ -917,21 +918,29 @@ impl Resolver {
                     Some((params, variadic, ret_type))
                 })?;
 
-                let func_decl = FuncDecl {
-                    is_func_decl: true,
-                    body: None,
+                let method_decl = MethodDecl {
+                    func_decl: FuncDecl {
+                        is_func_decl: true,
+                        body: None,
 
-                    name: func_decl_stmt.ident.as_string(),
-                    generic_params: method_generic_params,
-                    params: TypedFuncParams { list: params, variadic },
-                    ret_type,
-                    modifiers: func_decl_stmt.modifiers.clone(),
-                    loc: func_decl_stmt.loc,
+                        name: func_decl_stmt.ident.as_string(),
+                        generic_params: method_generic_params,
+                        params: TypedFuncParams { list: params, variadic },
+                        ret_type,
+                        modifiers: FuncModifiers {
+                            vis: Visibility::Public,
+                            ..Default::default()
+                        },
+                        loc: func_decl_stmt.loc,
+                    },
+                    body: None,
                 };
 
-                let func_decl_id = this.decl_tables.insert_func(func_decl);
+                let method_decl_id = this.decl_tables.insert_method(method_decl);
 
-                interface_methods.push(func_decl_id);
+                interface_methods
+                    .0
+                    .insert(func_decl_stmt.ident.as_string(), method_decl_id);
             }
 
             let interface_decl_id = this.decl_tables.insert_interface(InterfaceDecl {
@@ -1048,7 +1057,7 @@ impl Resolver {
                 field_inits: typed_field_inits,
                 loc: struct_variant_init.loc,
             }),
-            sema_type: None,
+            ty: None,
             val_cat: ValueCategory::RValue,
             loc: struct_variant_init.loc,
         })
@@ -1214,7 +1223,7 @@ impl Resolver {
     }
 
     fn resolve_method_decls(&mut self, methods: &[ASTFuncDefStmt]) -> MethodDecls {
-        let mut method_decls = MethodDecls::new_with_capacity(methods.len());
+        let mut method_decls = MethodDecls::new();
 
         for ast_method in methods {
             let method_name = &ast_method.ident.value;
@@ -2061,7 +2070,7 @@ impl Resolver {
 
                 TypedExpr {
                     kind: TypedExprKind::Symbol(TypedSymbolExpr::new(decl_id, module_import.loc)),
-                    sema_type: None,
+                    ty: None,
                     val_cat: ValueCategory::LValue,
                     loc: module_import.loc,
                 }
@@ -2101,7 +2110,7 @@ impl Resolver {
 
         Some(TypedExpr {
             kind,
-            sema_type: None,
+            ty: None,
             val_cat: ValueCategory::RValue,
             loc: unnamed_union_value.loc,
         })
@@ -2146,7 +2155,7 @@ impl Resolver {
                 loc: unnamed_enum_value.loc,
             }),
             val_cat: ValueCategory::RValue,
-            sema_type: None,
+            ty: None,
             loc: unnamed_enum_value.loc,
         })
     }
@@ -2157,11 +2166,12 @@ impl Resolver {
         Some(TypedExpr {
             kind: TypedExprKind::Dynamic(TypedDynamicExpr {
                 operand: Box::new(operand),
-                vtable_id: None,
+                ty: None,
+                concrete_type: None,
                 object_name: None,
                 loc: dynamic.loc,
             }),
-            sema_type: None,
+            ty: None,
             val_cat: ValueCategory::RValue,
             loc: dynamic.loc,
         })
@@ -2176,7 +2186,7 @@ impl Resolver {
                 index: tuple_member_access.index,
                 loc: tuple_member_access.loc,
             }),
-            sema_type: None,
+            ty: None,
             val_cat: ValueCategory::LValue,
             loc: tuple_member_access.loc,
         })
@@ -2197,7 +2207,7 @@ impl Resolver {
                 elements,
                 loc: tuple_value.loc,
             }),
-            sema_type: None,
+            ty: None,
             val_cat: ValueCategory::RValue,
             loc: tuple_value.loc,
         })
@@ -2233,7 +2243,7 @@ impl Resolver {
                     inline: lambda.inline,
                     loc: lambda.loc,
                 }),
-                sema_type: None,
+                ty: None,
                 val_cat: ValueCategory::RValue,
                 loc: lambda.loc,
             })
@@ -2253,7 +2263,7 @@ impl Resolver {
                 loc: field_access.loc,
             }),
             val_cat: ValueCategory::LValue,
-            sema_type: None,
+            ty: None,
             loc: field_access.loc,
         })
     }
@@ -2282,7 +2292,7 @@ impl Resolver {
                 loc: method_call.loc,
             }),
             val_cat: ValueCategory::RValue,
-            sema_type: None,
+            ty: None,
             loc: method_call.loc,
         })
     }
@@ -2309,7 +2319,7 @@ impl Resolver {
                 loc: struct_init.loc,
             }),
             val_cat: ValueCategory::RValue,
-            sema_type: None,
+            ty: None,
             loc: struct_init.loc,
         })
     }
@@ -2336,7 +2346,7 @@ impl Resolver {
                 repr_attr: unnamed_struct_value.repr_attr.clone(),
                 align: unnamed_struct_value.align,
             }),
-            sema_type: None,
+            ty: None,
             val_cat: ValueCategory::RValue,
             loc: unnamed_struct_value.loc,
         })
@@ -2360,7 +2370,7 @@ impl Resolver {
                 loc,
             }),
             val_cat: ValueCategory::RValue,
-            sema_type: None,
+            ty: None,
             loc,
         })
     }
@@ -2379,7 +2389,7 @@ impl Resolver {
                 loc: untyped_array.loc,
             }),
             val_cat: ValueCategory::RValue,
-            sema_type: None,
+            ty: None,
             loc: untyped_array.loc,
         })
     }
@@ -2400,7 +2410,7 @@ impl Resolver {
                 loc: array.loc,
             }),
             val_cat: ValueCategory::RValue,
-            sema_type: None,
+            ty: None,
             loc: array.loc,
         })
     }
@@ -2417,7 +2427,7 @@ impl Resolver {
                 loc: infix.loc,
             }),
             val_cat: ValueCategory::RValue,
-            sema_type: None,
+            ty: None,
             loc: infix.loc,
         })
     }
@@ -2432,7 +2442,7 @@ impl Resolver {
                 loc: prefix.loc,
             }),
             val_cat: ValueCategory::RValue,
-            sema_type: None,
+            ty: None,
             loc: prefix.loc,
         })
     }
@@ -2449,7 +2459,7 @@ impl Resolver {
                 return Some(TypedExpr {
                     kind: TypedExprKind::SemaType(sema_type.clone()),
                     val_cat: ValueCategory::RValue,
-                    sema_type: Some(sema_type),
+                    ty: Some(sema_type),
                     loc,
                 });
             }
@@ -2461,7 +2471,7 @@ impl Resolver {
             TypedExpr {
                 kind: TypedExprKind::Symbol(TypedSymbolExpr::new(decl_id, loc)),
                 val_cat: ValueCategory::LValue,
-                sema_type: None,
+                ty: None,
                 loc,
             }
         })
@@ -2479,7 +2489,7 @@ impl Resolver {
                 loc: assign.loc,
             }),
             val_cat: ValueCategory::RValue,
-            sema_type: None,
+            ty: None,
             loc: assign.loc,
         })
     }
@@ -2495,7 +2505,7 @@ impl Resolver {
 
         Some(TypedExpr {
             kind: TypedExprKind::Literal(typed_literal.clone()),
-            sema_type: None,
+            ty: None,
             val_cat: ValueCategory::RValue,
             loc: typed_literal.loc,
         })
@@ -2581,7 +2591,7 @@ impl Resolver {
                 loc: unary.loc,
             }),
             val_cat: ValueCategory::RValue,
-            sema_type: None,
+            ty: None,
             loc: unary.loc,
         })
     }
@@ -2597,7 +2607,7 @@ impl Resolver {
                 loc: array_index.loc,
             }),
             val_cat: ValueCategory::LValue,
-            sema_type: None,
+            ty: None,
             loc: array_index.loc,
         })
     }
@@ -2611,7 +2621,7 @@ impl Resolver {
                 loc: addr_of.loc,
             }),
             val_cat: ValueCategory::RValue,
-            sema_type: None,
+            ty: None,
             loc: addr_of.loc,
         })
     }
@@ -2625,7 +2635,7 @@ impl Resolver {
                 loc: deref.loc,
             }),
             val_cat: ValueCategory::LValue,
-            sema_type: None,
+            ty: None,
             loc: deref.loc,
         })
     }

@@ -16,6 +16,7 @@
  */
 
 use crate::{context::AnalysisContext, diagnostics::AnalyzerDiagKind};
+use cyrusc_const_eval::resolver::ConstResolver;
 use cyrusc_diagcentral::{Diag, DiagLevel};
 use cyrusc_internal::monomorph::CallableTemplateID;
 use cyrusc_source_loc::Loc;
@@ -118,7 +119,7 @@ impl<'a> AnalysisContext<'a> {
             }
 
             self.normalize_func_type_params(&mut func_type.params, func_call.loc);
-            
+
             func_type.ret_type =
                 Box::new(self.normalize_and_check_type_formation(*func_type.ret_type.clone(), func_call.loc)?);
 
@@ -202,7 +203,16 @@ impl<'a> AnalysisContext<'a> {
     ) -> Option<SemaType> {
         let pure_operand_type = operand_type.const_inner().pointer_inner().clone();
 
-        let Some((type_decl_id, method_decls)) = pure_operand_type.as_named_type().and_then(|named_type| {
+        let named_type = pure_operand_type.as_named_type();
+
+        if named_type
+            .map(|named_type| named_type.type_decl_id.is_interface())
+            .unwrap_or(false)
+        {
+            return self.analyze_interface_method_call(method_call, operand_type);
+        }
+
+        let Some((type_decl_id, method_decls)) = named_type.and_then(|named_type| {
             self.methods_decl_of_named_type(named_type)
                 .map(|method_decls| (named_type.type_decl_id, method_decls))
         }) else {
@@ -251,6 +261,106 @@ impl<'a> AnalysisContext<'a> {
         }
 
         self.analyze_method_call_internal(method_call, &method_decls, type_decl_id, operand_type.clone(), false)
+    }
+
+    fn analyze_interface_method_call(
+        &mut self,
+        method_call: &mut TypedMethodCall,
+        operand_type: &SemaType,
+    ) -> Option<SemaType> {
+        let decl_id = method_call.operand.kind.as_decl_id().unwrap();
+        let expr = self.resolve_symbol_expr(decl_id).unwrap();
+
+        let Some(concrete_type) = expr.extract_dynamic_expr_concrete_type().cloned() else {
+            let operand_type = format_sema_type(operand_type.clone(), self.formatter);
+
+            self.reporter.report(Diag {
+                level: DiagLevel::Error,
+                kind: Box::new(AnalyzerDiagKind::InterfaceMethodCallOnNonDynamicObject {
+                    method_name: method_call.name.clone(),
+                    expected_interface: operand_type,
+                }),
+                loc: Some(method_call.loc),
+                hint: None,
+            });
+            return None;
+        };
+
+        let pure_operand_type = operand_type.const_inner().pointer_inner().clone();
+
+        let interface_decl_id = pure_operand_type.as_interface().unwrap();
+        let interface_decl = self.decl_tables.interface_decl(interface_decl_id);
+
+        let named_type = pure_operand_type.as_named_type().unwrap();
+        let interface_type_args = named_type.type_args.clone();
+
+        let Some(method_decl_id) = interface_decl.methods.get(&method_call.name) else {
+            self.reporter.report(Diag {
+                level: DiagLevel::Error,
+                kind: Box::new(AnalyzerDiagKind::ObjectMethodNotDefined {
+                    object_name: interface_decl.name.clone(),
+                    method_name: method_call.name.clone(),
+                }),
+                loc: Some(method_call.loc),
+                hint: None,
+            });
+            return None;
+        };
+
+        let mut method_decl = self.decl_tables.method_decl(method_decl_id);
+
+        let generic_params = interface_decl.generic_params.clone();
+        let generic_env = self.create_inference_generic_env(
+            &interface_decl.name,
+            generic_params,
+            &interface_type_args,
+            method_call.loc,
+        )?;
+
+        self.with_generic_env(generic_env, |this| {
+            this.normalize_func_params(&mut method_decl.func_decl.params);
+
+            if !this.analyze_call(
+                &mut method_decl.func_decl,
+                &mut method_call.args,
+                method_call.loc,
+                true, // always instance call
+            ) {
+                return None;
+            }
+
+            let substituted_ret_type = this.substitute_type(&method_decl.func_decl.ret_type);
+
+            debug_assert!(
+                method_decl
+                    .func_decl
+                    .params
+                    .get_self_modifier()
+                    .unwrap()
+                    .kind
+                    .is_referenced()
+            );
+
+            let method_self_type = SemaType::Pointer(Box::new(concrete_type.clone()));
+
+            let method_index = interface_decl.method_index(&method_call.name).unwrap();
+
+            let vtable_id = this
+                .vtable_registry
+                .get(&concrete_type, (interface_decl_id, interface_type_args.clone()));
+
+            method_call.operand.ty = Some(operand_type.clone());
+
+            method_call.dispatch = TypedMethodCallDispatch::Interface {
+                vtable_id,
+                interface_decl_id,
+                index: method_index,
+                methods_len: interface_decl.methods.0.len(),
+                method_self_type,
+            };
+
+            Some(substituted_ret_type)
+        })
     }
 
     fn analyze_method_call_internal(
@@ -393,7 +503,7 @@ impl<'a> AnalysisContext<'a> {
             }
             // normal static method
             else {
-                method_call.operand.sema_type = Some(operand_type.clone());
+                method_call.operand.ty = Some(operand_type.clone());
                 method_call.dispatch = TypedMethodCallDispatch::Normal { method_decl_id };
 
                 Some(method_decl.func_decl.ret_type.clone())
@@ -467,7 +577,7 @@ impl<'a> AnalysisContext<'a> {
         }
 
         method_call.type_args = final_type_args;
-        method_call.operand.sema_type = Some(operand_type.clone());
+        method_call.operand.ty = Some(operand_type.clone());
         method_call.dispatch = TypedMethodCallDispatch::Monomorph {
             monomorph_id,
             is_instance_method: is_instance_method_call,
@@ -484,7 +594,7 @@ impl<'a> AnalysisContext<'a> {
         func_decl: &mut FuncDecl,
         final_type_args: TypedTypeArgs,
     ) -> Option<SemaType> {
-        func_call.operand.sema_type = Some(self.substitute_type(&operand_type));
+        func_call.operand.ty = Some(self.substitute_type(&operand_type));
         func_decl.params = self.substitute_func_params(func_decl.params.clone());
         func_decl.ret_type = self.substitute_type(&func_decl.ret_type);
 
@@ -539,7 +649,7 @@ impl<'a> AnalysisContext<'a> {
 }
 
 impl<'a> AnalysisContext<'a> {
-    fn methods_decl_of_named_type(&self, named_type: &NamedType) -> Option<MethodDecls> {
+    pub(crate) fn methods_decl_of_named_type(&self, named_type: &NamedType) -> Option<MethodDecls> {
         match named_type.type_decl_id {
             TypeDeclID::Struct(struct_decl_id) => {
                 let struct_decl = self.decl_tables.struct_decl(struct_decl_id);
@@ -556,8 +666,7 @@ impl<'a> AnalysisContext<'a> {
 
                 Some(union_decl.methods)
             }
-            // FIXME
-            TypeDeclID::Interface(_interface_decl_id) => todo!(),
+            TypeDeclID::Interface(_) => None,
             TypeDeclID::Typedef(_) => None,
         }
     }
@@ -729,7 +838,7 @@ impl<'a> AnalysisContext<'a> {
             match &variadic {
                 TypedFuncVariadicParam::Typed { ty, .. } => {
                     for (i, arg) in variadic_args.iter_mut().enumerate() {
-                        if let Some(arg_type) = self.analyze_expr(arg, arg.sema_type.clone()) {
+                        if let Some(arg_type) = self.analyze_expr(arg, arg.ty.clone()) {
                             if !self.is_assignable_to(arg_type.clone(), ty.clone(), loc) {
                                 self.reporter.report(Diag {
                                     level: DiagLevel::Error,
@@ -747,7 +856,7 @@ impl<'a> AnalysisContext<'a> {
                 }
                 TypedFuncVariadicParam::UntypedCStyle => {
                     for arg in variadic_args.iter_mut() {
-                        let Some(arg_type) = self.analyze_expr(arg, arg.sema_type.clone()) else {
+                        let Some(arg_type) = self.analyze_expr(arg, arg.ty.clone()) else {
                             continue;
                         };
 
@@ -839,7 +948,7 @@ impl<'a> AnalysisContext<'a> {
                 match *variadic.clone() {
                     TypedFuncTypeVariadicParam::Typed(variadic_param_type) => {
                         for (i, arg) in variadic_args.iter_mut().enumerate() {
-                            if let Some(arg_type) = self.analyze_expr(arg, arg.sema_type.clone()) {
+                            if let Some(arg_type) = self.analyze_expr(arg, arg.ty.clone()) {
                                 if !self.is_assignable_to(arg_type.clone(), variadic_param_type.clone(), loc) {
                                     self.reporter.report(Diag {
                                         level: DiagLevel::Error,
@@ -857,7 +966,7 @@ impl<'a> AnalysisContext<'a> {
                     }
                     TypedFuncTypeVariadicParam::UntypedCStyle => {
                         for arg in variadic_args.iter_mut() {
-                            self.analyze_expr(arg, arg.sema_type.clone());
+                            self.analyze_expr(arg, arg.ty.clone());
                         }
                     }
                 }

@@ -18,21 +18,20 @@
 use crate::{
     abi::args::ABIFunctionInfo,
     cir::types::{CIREnumType, CIRFuncType, CIRStructType, CIRType, CIRUnionType},
+    vtable::VTableRegistry,
 };
 use cyrusc_ast::{
-    SelfModifierKind,
     abi::ReprKind,
     modifiers::{EnumModifiers, FuncModifiers, GlobalVarModifiers, StructModifiers, UnionModifiers},
     operators::{InfixOperator, PrefixOperator, UnaryOperator},
 };
 use cyrusc_source_loc::Loc;
 use cyrusc_typed_ast::{
-    LabelID,
+    LabelID, VTableID,
     decls::{MethodDecls, VarDeclID},
-    exprs::ValueCategory,
 };
 use fx_hash::FxHashMap;
-use std::fmt::Debug;
+use std::{fmt::Debug, sync::Arc};
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
 pub struct IRValueID(pub u32);
@@ -44,6 +43,8 @@ pub struct CIRModule {
 
     pub func_decls: FxHashMap<IRValueID, CIRFuncDeclStmt>,
     pub global_var_decls: FxHashMap<IRValueID, CIRGlobalVarStmt>,
+    pub vtable_registry: Arc<VTableRegistry>,
+    pub vtable_to_ir_value_map: FxHashMap<VTableID, IRValueID>,
 }
 
 #[derive(Debug, Clone)]
@@ -116,9 +117,8 @@ pub enum CIRValueKind {
 #[derive(Debug, Clone)]
 pub struct CIRDynamicExpr {
     pub data_expr: Box<CIRExpr>,
-    pub method_decls: Vec<CIRFuncDeclStmt>,
-    pub global_var_id: IRValueID,
-    pub vtable_abi_name: String,
+    pub vtable_id: VTableID,
+    pub vtable_irv_id: IRValueID,
     pub loc: Loc,
 }
 
@@ -161,7 +161,7 @@ pub enum CIRCallDispatch {
     },
     Interface {
         operand: Box<CIRExpr>,
-        method_idx: usize,
+        index: usize,
         methods_len: usize,
         func_type: CIRFuncType,
     },

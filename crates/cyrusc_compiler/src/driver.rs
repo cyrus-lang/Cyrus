@@ -41,9 +41,10 @@ use cyrusc_scaffold_parser::{
     ASSEMBLY_DIR_PATH, BITCODE_DIR_PATH, CIR_DUMP_DIR_PATH, LLVM_IR_DIR_PATH, OBJECT_CACHE_DIR_FILENAME,
     OBJECT_DIR_FILENAME, OUTPUT_DIR_FILENAME, SHARED_LIB_DIR_PATH, SRC_CACHE_DIR_PATH, STATIC_LIB_DIR_PATH,
 };
-use cyrusc_source_loc::SourceMap;
+use cyrusc_source_loc::{FileID, SourceMap};
 use cyrusc_tui_utils::tui_error;
 use cyrusc_typed_ast::{TypedProgramTree, decls::table::DeclTablesRegistry};
+use fx_hash::FxHashMap;
 use inkwell::targets::{InitializationConfig, Target as InkwellTarget, TargetTriple};
 use std::{
     cell::RefCell,
@@ -66,7 +67,7 @@ pub struct CodeGenContextBundle {
 
 pub struct CodeGenSemanticBundle {
     pub analyzed_program_trees: Vec<Rc<RefCell<TypedProgramTree>>>,
-    pub vtable_registries: Vec<Arc<Mutex<VTableRegistry>>>,
+    pub vtable_registries: FxHashMap<FileID, Arc<VTableRegistry>>,
     pub monomorph_registry: Arc<MonomorphRegistry>,
     pub resolver: Box<Resolver>,
     pub decl_tables: Arc<DeclTablesRegistry>,
@@ -196,11 +197,12 @@ pub fn build_semantic_bundle(opts: &mut CodeGenOptions, file_path_opt: Option<St
 
             let mut has_error = false;
             let mut analyzed_program_trees: Vec<Rc<RefCell<TypedProgramTree>>> = Vec::new();
-            let mut vtable_registries: Vec<Arc<Mutex<VTableRegistry>>> = Vec::new();
+            let mut vtable_registries: FxHashMap<FileID, Arc<VTableRegistry>> = FxHashMap::default();
 
             for program_tree_entry in &*resolved_program_trees {
-                let vtable_registry = Arc::new(Mutex::new(VTableRegistry::new()));
-                vtable_registries.push(vtable_registry.clone());
+                let vtable_registry = Arc::new(VTableRegistry::new());
+
+                vtable_registries.insert(program_tree_entry.file_id, vtable_registry.clone());
 
                 let mut analyzer = AnalysisContext::new(
                     config.clone(),

@@ -104,7 +104,7 @@ impl<'a> AnalysisContext<'a> {
             TypedEnumVariant::Valued { ident, value } => {
                 self.analyze_expr(value, None);
 
-                if let Some(value_type) = &value.sema_type {
+                if let Some(value_type) = &value.ty {
                     if is_repr_c && !value_type.is_integer() {
                         self.reporter.report(Diag {
                             level: DiagLevel::Error,
@@ -115,7 +115,7 @@ impl<'a> AnalysisContext<'a> {
                     }
                 }
 
-                if let (Some(value_type), Some(tag_type)) = (&value.sema_type, tag_type_opt) {
+                if let (Some(value_type), Some(tag_type)) = (&value.ty, tag_type_opt) {
                     if !self.is_assignable_to(value_type.clone(), tag_type.clone(), value.loc) {
                         let got_type = format_sema_type(value_type.clone(), self.formatter);
                         let expected_type = format_sema_type(tag_type.clone(), self.formatter);

@@ -66,7 +66,7 @@ impl<'a> AnalysisContext<'a> {
     pub(crate) fn analyze_stmt(&mut self, typed_stmt: &mut TypedStmt) -> FlowState {
         match typed_stmt {
             TypedStmt::Expr(expr) => {
-                self.analyze_expr(expr, expr.sema_type.clone());
+                self.analyze_expr(expr, expr.ty.clone());
                 FlowState::Reachable
             }
             TypedStmt::Variable(var) => {

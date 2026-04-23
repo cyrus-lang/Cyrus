@@ -81,7 +81,7 @@ impl ABINameMangler for Cyrus_ABI_Impl {
     }
 
     fn vtable_name(&self, interface_name: &str, vtable_id: &str) -> String {
-        format!("__vtable_{}_{}", interface_name, vtable_id)
+        format!("__vtable${}_{}", interface_name, vtable_id)
     }
 }
 
@@ -248,12 +248,6 @@ fn mangle_sema_type(sema_type: &SemaType) -> String {
                 .join("_");
 
             format!("tuple_{elements}")
-        }
-        SemaType::InterfaceType(interface_type) => {
-            format!(
-                "Interface_{}_{}",
-                interface_type.interface_decl_id, interface_type.vtable_id
-            )
         }
 
         SemaType::Err(_)

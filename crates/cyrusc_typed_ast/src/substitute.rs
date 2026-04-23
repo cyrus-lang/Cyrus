@@ -122,7 +122,6 @@ pub fn substitute_sema_type_with_type_args(
             }
         }
 
-        SemaType::InterfaceType(_)
         | SemaType::SelfType(_)
         | SemaType::Plain(_)
         | SemaType::Unresolved(_)

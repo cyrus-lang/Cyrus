@@ -49,7 +49,7 @@ impl<'a, R: ConstResolver> ConstEvaluator<'a, R> {
             _ => Err(ConstEvalError::UnsupportedExpr),
         }?;
 
-        self.coerce_to_expected_type(raw, &expr.sema_type.as_ref().unwrap())
+        self.coerce_to_expected_type(raw, &expr.ty.as_ref().unwrap())
     }
 
     fn eval_literal(&self, literal: &TypedLiteralExpr) -> Result<ConstValue, ConstEvalError> {

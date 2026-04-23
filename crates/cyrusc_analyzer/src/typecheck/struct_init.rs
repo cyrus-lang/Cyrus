@@ -142,7 +142,7 @@ impl<'a> AnalysisContext<'a> {
 
             self.analyze_expr(&mut struct_value_field.value, None);
 
-            if let Some(rhs_type) = &struct_value_field.value.sema_type {
+            if let Some(rhs_type) = &struct_value_field.value.ty {
                 struct_field.ty = rhs_type.clone();
             }
         }

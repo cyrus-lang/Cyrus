@@ -140,7 +140,7 @@ impl<'a> AnalysisContext<'a> {
             });
         }
 
-        let base_type = field_access.operand.sema_type.as_ref().unwrap().const_inner();
+        let base_type = field_access.operand.ty.as_ref().unwrap().const_inner();
 
         let is_pointer = base_type.is_pointer();
         let is_object = base_type.is_struct() || base_type.is_union();

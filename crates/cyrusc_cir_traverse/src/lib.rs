@@ -16,6 +16,8 @@
  */
 
 use cyrusc_ast::abi::CallConv;
+use cyrusc_ast::abi::Linkage;
+use cyrusc_ast::modifiers::GlobalVarModifiers;
 use cyrusc_internal::abi::mangler::*;
 use cyrusc_internal::abi::target::ABITarget;
 use cyrusc_internal::cir::cir::*;
@@ -23,9 +25,12 @@ use cyrusc_internal::cir::types::*;
 use cyrusc_internal::monomorph::*;
 use cyrusc_internal::symbols::SymbolQuery;
 use cyrusc_internal::vtable::VTableRegistry;
+use cyrusc_source_loc::FileID;
+use cyrusc_source_loc::Loc;
 use cyrusc_source_loc::SourceMap;
 use cyrusc_tokens::literals::*;
 use cyrusc_typed_ast::TypedProgramTree;
+use cyrusc_typed_ast::VTableID;
 use cyrusc_typed_ast::decls::table::DeclTablesRegistry;
 use cyrusc_typed_ast::decls::*;
 use cyrusc_typed_ast::exprs::*;
@@ -35,7 +40,7 @@ use cyrusc_typed_ast::stmts::*;
 use cyrusc_typed_ast::substitute::*;
 use cyrusc_typed_ast::types::*;
 use fx_hash::FxHashMap;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 
 struct CIRTraverse<'a> {
     program_tree: Box<TypedProgramTree>,
@@ -44,12 +49,13 @@ struct CIRTraverse<'a> {
     target: &'a ABITarget,
     module_name: String,
 
-    vtable_registry: Arc<Mutex<VTableRegistry>>,
+    vtable_registry: Arc<VTableRegistry>,
     monomorph_registry: Arc<MonomorphRegistry>,
 
     next_irv_id: IRValueID,
     decl_to_ir_value_map: FxHashMap<DeclID, IRValueID>,
     monomorph_to_ir_value_map: FxHashMap<MonomorphID, IRValueID>,
+    vtable_to_ir_value_map: FxHashMap<VTableID, IRValueID>,
     func_decls: FxHashMap<IRValueID, CIRFuncDeclStmt>,
     global_var_decls: FxHashMap<IRValueID, CIRGlobalVarStmt>,
 }
@@ -60,7 +66,7 @@ impl<'a> CIRTraverse<'a> {
         module_name: String,
         decl_tables: Arc<DeclTablesRegistry>,
         formatter: &'a dyn Formatter,
-        vtable_registry: Arc<Mutex<VTableRegistry>>,
+        vtable_registry: Arc<VTableRegistry>,
         monomorph_registry: Arc<MonomorphRegistry>,
         target: &'a ABITarget,
     ) -> Self {
@@ -77,6 +83,7 @@ impl<'a> CIRTraverse<'a> {
             global_var_decls: FxHashMap::default(),
             func_decls: FxHashMap::default(),
             monomorph_to_ir_value_map: FxHashMap::default(),
+            vtable_to_ir_value_map: FxHashMap::default(),
         }
     }
 
@@ -94,6 +101,8 @@ impl<'a> CIRTraverse<'a> {
             module_name: self.module_name.clone(),
             global_var_decls,
             func_decls,
+            vtable_registry: self.vtable_registry.clone(),
+            vtable_to_ir_value_map: self.vtable_to_ir_value_map.clone()
         }
     }
 
@@ -379,7 +388,7 @@ impl<'a> CIRTraverse<'a> {
         let ty = global_var
             .ty
             .as_ref()
-            .or_else(|| global_var.expr.as_ref().and_then(|expr| expr.sema_type.as_ref()))
+            .or_else(|| global_var.expr.as_ref().and_then(|expr| expr.ty.as_ref()))
             .map(|sema_type| self.lower_sema_type(sema_type))
             .unwrap_or_else(|| {
                 panic!(
@@ -430,7 +439,7 @@ impl<'a> CIRTraverse<'a> {
         let ty = var
             .ty
             .as_ref()
-            .or_else(|| var.rhs.as_ref().and_then(|rhs| rhs.sema_type.as_ref()))
+            .or_else(|| var.rhs.as_ref().and_then(|rhs| rhs.ty.as_ref()))
             .map(|ty| self.lower_sema_type(ty))
             .unwrap_or_else(|| {
                 panic!(
@@ -813,7 +822,6 @@ impl<'a> CIRTraverse<'a> {
         })
     }
 
-    // TODO
     fn lower_enum_init(&mut self, enum_init: &TypedEnumInit) -> CIRExprKind {
         let named_type = enum_init.operand.as_named_type().unwrap();
         let type_args = &named_type.type_args;
@@ -995,13 +1003,13 @@ impl<'a> CIRTraverse<'a> {
 
     fn lower_expr(&mut self, expr: &TypedExpr) -> CIRExpr {
         if cfg!(debug_assertions) {
-            if expr.sema_type.is_none() {
+            if expr.ty.is_none() {
                 dbg!(expr.clone());
             }
-            debug_assert!(expr.sema_type.is_some());
+            debug_assert!(expr.ty.is_some());
         }
 
-        let ty = self.lower_sema_type(&expr.sema_type.clone().unwrap());
+        let ty = self.lower_sema_type(&expr.ty.clone().unwrap());
 
         let kind = match &expr.kind {
             TypedExprKind::Symbol(symbol_expr) => self.lower_load_symbol(symbol_expr.decl_id),
@@ -1081,11 +1089,46 @@ impl<'a> CIRTraverse<'a> {
                 })
             }
             TypedMethodCallDispatch::Interface {
-                decl_id,
-                self_type,
-                method_idx,
+                vtable_id,
+                interface_decl_id,
+                index,
                 methods_len,
-            } => todo!(),
+                method_self_type,
+            } => {
+                let operand = self.lower_expr(&method_call.operand);
+
+                let interface_decl = self.decl_tables.interface_decl(*interface_decl_id);
+
+                let method_decl_id = interface_decl.methods.0.get(&method_call.name).copied().unwrap();
+
+                let mut method_decl = self.decl_tables.method_decl(method_decl_id);
+
+                // substitute method self type
+                method_decl
+                    .func_decl
+                    .params
+                    .get_self_modifier_mut()
+                    .as_mut()
+                    .unwrap()
+                    .ty = method_self_type.clone();
+
+                let cir_func_type = self.lower_func_type(&method_decl.func_decl.as_func_type());
+
+                let ret_type = self.lower_sema_type(&method_decl.func_decl.ret_type);
+
+                // let vtable_irv = self.get_or_declare_vtable_ir_value(&interface_decl.name, *vtable_id);
+
+                CIRExprKind::Call(CIRCall {
+                    args,
+                    ret_type,
+                    dispatch: CIRCallDispatch::Interface {
+                        operand: Box::new(operand),
+                        index: *index,
+                        methods_len: *methods_len,
+                        func_type: cir_func_type,
+                    },
+                })
+            }
             TypedMethodCallDispatch::Monomorph {
                 monomorph_id,
                 is_instance_method,
@@ -1140,7 +1183,7 @@ impl<'a> CIRTraverse<'a> {
                     operand: field_access.operand.clone(),
                     loc: field_access.loc,
                 }),
-                sema_type: Some(field_access.operand.sema_type.clone().unwrap().pointer_inner().clone()),
+                ty: Some(field_access.operand.ty.clone().unwrap().pointer_inner().clone()),
                 val_cat: ValueCategory::LValue,
                 loc: field_access.loc,
             })
@@ -1167,52 +1210,78 @@ impl<'a> CIRTraverse<'a> {
         }
     }
 
-    // FIXME
     fn lower_dynamic(&mut self, dynamic: &TypedDynamicExpr) -> CIRExprKind {
-        todo!();
+        let operand_sema_type = dynamic.operand.ty.clone().unwrap();
+        let operand = self.lower_expr(&dynamic.operand);
 
-        // let operand = self.lower_expr(&dynamic.operand);
-        // let data_ptr = CIRExpr {
-        //     kind: CIRExprKind::AddrOf(CIRAddrOfExpr {
-        //         operand: Box::new(operand),
-        //     }),
-        //     ty: CIRType::Pointer(Box::new(CIRType::PlainType(PlainType::Void))),
-        //     loc: dynamic.loc,
-        // };
+        let named_type = dynamic.ty.as_ref().unwrap().as_named_type().cloned().unwrap();
+        let interface_decl_id = named_type.type_decl_id.as_interface().unwrap();
+        let interface_name = self.formatter.format_decl(DeclID::Interface(interface_decl_id));
+        let interface_type_args = named_type.type_args.clone();
 
-        // let vtable_info = {
-        //     let vtable_registry = self.vtable_registry.lock().unwrap();
-        //     vtable_registry.info(dynamic.vtable_id.unwrap()).clone()
-        // };
+        let vtable_id = self
+            .vtable_registry
+            .get(&operand_sema_type, (interface_decl_id, interface_type_args));
 
-        // let method_decls: Vec<CIRFuncDeclStmt> = vtable_info
-        //     .methods
-        //     .iter()
-        //     .cloned()
-        //     .map(|mut func_decl| {
-        //         let mangled_name = mangle_method(
-        //             &self.query.lookup_module_name(func_decl.module_id).unwrap(),
-        //             &dynamic.object_name.as_ref().unwrap(),
-        //             &func_decl.name,
-        //         );
+        let vtable_abi_name = DEFAULT_ABI.vtable_name(&interface_name, &vtable_id.0.to_string());
 
-        //         func_decl.name = mangled_name;
-        //         self.lower_func_sig(func_decl.symbol_id.unwrap().0, &func_decl)
-        //     })
-        //     .collect();
+        let vtable_irv_id = self.lower_vtable_global(vtable_id, &vtable_abi_name, dynamic.loc);
 
-        // let vtable_abi_name = DEFAULT_ABI.vtable_name(
-        //     &dynamic.object_name.clone().unwrap(),
-        //     &dynamic.vtable_id.unwrap().to_string(),
-        // );
+        CIRExprKind::Dynamic(CIRDynamicExpr {
+            data_expr: Box::new(operand),
+            vtable_id,
+            vtable_irv_id,
+            loc: dynamic.loc,
+        })
+    }
 
-        // CIRExprKind::Dynamic(CIRDynamicExpr {
-        //     global_var_id: vtable_info.vtable_id.0,
-        //     data_expr: Box::new(data_ptr),
-        //     method_decls,
-        //     vtable_abi_name,
-        //     loc: dynamic.loc,
-        // })
+    fn lower_vtable_global(&mut self, vtable_id: VTableID, vtable_abi_name: &str, loc: Loc) -> IRValueID {
+        if let Some(existing_irv_id) = self.vtable_to_ir_value_map.get(&vtable_id) {
+            return *existing_irv_id;
+        }
+
+        let irv_id = self.new_ir_value_id();
+
+        let vtable_type = cir_vtable_type(loc);
+
+        let cir_global = CIRGlobalVarStmt {
+            irv_id,
+            name: vtable_abi_name.to_string(),
+            ty: vtable_type,
+            expr: None, // no initializer
+            modifiers: GlobalVarModifiers {
+                linkage: None,
+                ..Default::default()
+            },
+            loc,
+        };
+
+        self.global_var_decls.insert(irv_id, cir_global);
+
+        self.vtable_to_ir_value_map.insert(vtable_id, irv_id);
+
+        let vtable_info = self.vtable_registry.info(vtable_id);
+
+        if vtable_info.cir_method_decls.is_none() {
+            let lowered_methods = vtable_info
+                .methods
+                .iter()
+                .map(|(_, method_decl_id)| {
+                    self.decl_to_ir_value_map
+                        .get(&DeclID::Method(*method_decl_id))
+                        .copied()
+                        .unwrap()
+                })
+                .collect();
+
+            self.vtable_registry.with_vtable_info_mut(vtable_id, |_vtable_info| {
+                _vtable_info.abi_name = Some(vtable_abi_name.to_string());
+                _vtable_info.vtable_irv_id = Some(irv_id);
+                _vtable_info.cir_method_decls = Some(lowered_methods);
+            });
+        }
+
+        irv_id
     }
 
     fn lower_func_call(&mut self, func_call: &TypedFuncCall) -> CIRExprKind {
@@ -1388,20 +1457,6 @@ impl<'a> CIRTraverse<'a> {
                     loc: tuple_type.loc,
                 })
             }
-            SemaType::InterfaceType(interface_type) => CIRType::Struct(CIRStructType {
-                name: None,
-                fields: vec![
-                    CIRType::Pointer(Box::new(CIRType::Plain(PlainType::Void))),
-                    CIRType::Pointer(Box::new(CIRType::Plain(PlainType::Void))),
-                ],
-                fields_info: vec![
-                    ("data_ptr".to_string(), interface_type.loc),
-                    ("vtable_ptr".to_string(), interface_type.loc),
-                ],
-                repr_attr: None,
-                align: None,
-                loc: interface_type.loc,
-            }),
 
             SemaType::Unresolved(_) => unreachable!("unexpected unresolved type"),
             SemaType::GenericParam(_) => unreachable!("Unexpected generic param"),
@@ -1464,7 +1519,7 @@ impl<'a> CIRTraverse<'a> {
 
                 CIREnumVariant::Payload(ident.as_string(), fields)
             }
-            TypedEnumVariant::Struct { ident, fields} => {
+            TypedEnumVariant::Struct { ident, fields } => {
                 let fields = fields
                     .iter()
                     .map(|struct_variant_field| self.lower_sema_type(&struct_variant_field.ty))
@@ -1544,11 +1599,9 @@ impl<'a> CIRTraverse<'a> {
                 CIRType::Enum(self.lower_enum_decl(&inst_enum_decl))
             }
             TypeDeclID::Interface(interface_decl_id) => {
-                // let interface_decl = self.decl_tables.interface_decl(interface_decl_id);
-                // CIRType::Dynamic(self.lower_interface(&interface_decl))
+                let interface_decl = self.decl_tables.interface_decl(interface_decl_id);
 
-                // FIXME
-                todo!();
+                cir_vtable_type(interface_decl.loc)
             }
             TypeDeclID::Typedef(_) => unreachable!("unexpected unexpanded typedef"),
         }
@@ -1557,6 +1610,21 @@ impl<'a> CIRTraverse<'a> {
 
 // Helpers.
 impl<'a> CIRTraverse<'a> {
+    pub fn get_or_declare_vtable_ir_value(&mut self, interface_name: &str, vtable_id: VTableID) -> IRValueID {
+        if let Some(irv) = self.vtable_to_ir_value_map.get(&vtable_id) {
+            return *irv;
+        }
+
+        let vtable_info = self.vtable_registry.info(vtable_id);
+
+        let abi_name = match &vtable_info.abi_name {
+            Some(name) => name.clone(),
+            None => DEFAULT_ABI.vtable_name(interface_name, &vtable_id.0.to_string()),
+        };
+
+        self.lower_vtable_global(vtable_id, &abi_name, vtable_info.loc)
+    }
+
     fn get_or_declare_method_ir_value(&mut self, method_decl_id: MethodDeclID) -> IRValueID {
         if let Some(irv_id) = self.decl_to_ir_value_map.get(&DeclID::Method(method_decl_id)).copied() {
             return irv_id;
@@ -1732,7 +1800,7 @@ pub fn walk_program_trees_in_parallel(
     formatter: &dyn Formatter,
     source_map: Arc<SourceMap>,
     decl_tables: Arc<DeclTablesRegistry>,
-    vtable_registries: &Vec<Arc<Mutex<VTableRegistry>>>,
+    vtable_registries: &FxHashMap<FileID, Arc<VTableRegistry>>,
     monomorph_registry: Arc<MonomorphRegistry>,
     target: &ABITarget,
 ) -> Vec<Box<CIRModule>> {
@@ -1748,9 +1816,8 @@ pub fn walk_program_trees_in_parallel(
     pool.install(|| {
         program_trees
             .into_par_iter()
-            .enumerate()
-            .map(|(i, program_tree)| {
-                let vtable_registry = vtable_registries[i].clone();
+            .map(|program_tree| {
+                let vtable_registry = vtable_registries.get(&program_tree.file_id).cloned().unwrap();
 
                 let module_name = query.lookup_module_name(program_tree.file_id).unwrap();
 

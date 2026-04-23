@@ -21,7 +21,7 @@ use cyrusc_diagcentral::{Diag, DiagLevel};
 use cyrusc_source_loc::Loc;
 use cyrusc_typed_ast::{
     GenericParamID,
-    decls::{DeclID, FuncDecl, InterfaceDeclID},
+    decls::{DeclID, FuncDecl},
     exprs::TypedSelfType,
     stmts::{
         TypedFuncParamKind, TypedFuncParams, TypedFuncTypeParams, TypedFuncTypeVariadicParam, TypedFuncVariadicParam,
@@ -57,7 +57,7 @@ impl<'a> AnalysisContext<'a> {
             SemaType::FuncType(func_type) => self.normalize_func_type(func_type),
             SemaType::Tuple(tuple_type) => self.normalize_tuple(tuple_type),
             SemaType::SelfType(self_type) => self.normalize_self_type(self_type),
-            SemaType::Plain(_) | SemaType::InterfaceType(_) => Some(ty),
+            SemaType::Plain(_) => Some(ty),
 
             SemaType::Err(_) => Some(ty),
         }
@@ -220,24 +220,6 @@ impl<'a> AnalysisContext<'a> {
         }
     }
 
-    // FIXME
-    fn normalize_interface_type(&mut self, interface_decl_id: InterfaceDeclID) -> Option<SemaType> {
-        todo!();
-        // let interface_decl = self.decl_tables.interface_decl(interface_decl_id);
-
-        // let methods: Vec<FuncDecl> = interface_decl
-        //     .methods
-        //     .iter()
-        //     .map(|func_decl| func_decl)
-        //     .collect();
-
-        // Some(SemaType::Interface(InterfaceType {
-        //     symbol_id: interface_decl_id.symbol_id,
-        //     methods,
-        //     loc,
-        // }))
-    }
-
     pub(crate) fn normalize_func_params(&mut self, params: &mut TypedFuncParams) {
         // analyze static arguments
         for param in params.list.iter_mut() {
@@ -373,9 +355,11 @@ impl<'a> AnalysisContext<'a> {
                 type_decl_id: TypeDeclID::Typedef(typedef_decl_id),
                 type_args: TypedTypeArgs::new(),
             })),
-            DeclID::Interface(interface_decl_id) => self.normalize_interface_type(interface_decl_id),
+            DeclID::Interface(interface_decl_id) => Some(SemaType::Named(NamedType {
+                type_decl_id: TypeDeclID::Interface(interface_decl_id),
+                type_args: TypedTypeArgs::new(),
+            })),
 
-            // FIXME: Need prone error?
             DeclID::Method(_) => unreachable!(),
         }
     }

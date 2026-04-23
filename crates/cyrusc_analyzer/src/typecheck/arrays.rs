@@ -98,8 +98,8 @@ impl<'a> AnalysisContext<'a> {
         for (i, element) in array.elements.iter_mut().enumerate() {
             let expr_type: SemaType;
 
-            if analyzed_first_element && element.sema_type.is_some() {
-                expr_type = match self.normalize_and_check_type_formation(element.sema_type.clone().unwrap(), element.loc) {
+            if analyzed_first_element && element.ty.is_some() {
+                expr_type = match self.normalize_and_check_type_formation(element.ty.clone().unwrap(), element.loc) {
                     Some(ty) => ty,
                     None => continue,
                 };
@@ -191,7 +191,7 @@ impl<'a> AnalysisContext<'a> {
             return None;
         }
 
-        let expected_index_type = array_index.index.sema_type.clone();
+        let expected_index_type = array_index.index.ty.clone();
 
         let index_concrete_type = match self.analyze_expr(&mut array_index.index, expected_index_type) {
             Some(sema_type) => sema_type,
@@ -215,7 +215,7 @@ impl<'a> AnalysisContext<'a> {
             return None;
         }
 
-        let sema_type = array_index.operand.sema_type.clone().unwrap();
+        let sema_type = array_index.operand.ty.clone().unwrap();
 
         let element_type: SemaType;
 

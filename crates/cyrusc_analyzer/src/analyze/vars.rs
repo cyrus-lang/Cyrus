@@ -48,7 +48,7 @@ impl<'a> AnalysisContext<'a> {
 
         global_var.ty = match &global_var.ty {
             Some(ty) => self.normalize_and_check_type_formation(ty.clone(), global_var.loc),
-            None => match global_var.expr.as_ref().and_then(|expr| expr.sema_type.clone()) {
+            None => match global_var.expr.as_ref().and_then(|expr| expr.ty.clone()) {
                 Some(ty) => Some(ty),
                 None => {
                     self.reporter.report(Diag {
@@ -86,7 +86,7 @@ impl<'a> AnalysisContext<'a> {
                     self.report_const_qualified_type_assigned_to_non_const_variable(global_var.loc);
                 }
 
-                let expr_type = expr.sema_type.clone().unwrap();
+                let expr_type = expr.ty.clone().unwrap();
 
                 if *expr_type.const_inner() != *target_type.const_inner() {
                     self.reporter.report(Diag {
@@ -136,12 +136,12 @@ impl<'a> AnalysisContext<'a> {
 
         if let Some(expr) = &mut var.rhs {
             if let Some(target_type) = &var.ty {
-                if !self.is_assignable_to(expr.sema_type.clone().unwrap(), target_type.clone(), var.loc) {
+                if !self.is_assignable_to(expr.ty.clone().unwrap(), target_type.clone(), var.loc) {
                     self.reporter.report(Diag {
                         level: DiagLevel::Error,
                         kind: Box::new(AnalyzerDiagKind::AssignmentTypeMismatch {
                             lhs_type: format_sema_type(target_type.clone(), self.formatter),
-                            rhs_type: format_sema_type(expr.sema_type.clone().unwrap(), self.formatter),
+                            rhs_type: format_sema_type(expr.ty.clone().unwrap(), self.formatter),
                         }),
                         loc: Some(var.loc),
                         hint: None,
@@ -175,12 +175,21 @@ impl<'a> AnalysisContext<'a> {
             });
         }
 
+        if ty.const_inner().is_interface() && !is_init {
+            self.reporter.report(Diag {
+                level: DiagLevel::Error,
+                kind: Box::new(AnalyzerDiagKind::InterfaceTypeMustBeInitialized),
+                loc: Some(loc),
+                hint: None,
+            });
+        }
+
         if ty.const_inner().is_func_type() && !is_init {
             self.reporter.report(Diag {
                 level: DiagLevel::Error,
-                kind: Box::new(AnalyzerDiagKind::UninitializedLambda),
+                kind: Box::new(AnalyzerDiagKind::LambdaTypeMustBeInitialized),
                 loc: Some(loc),
-                hint: Some("Assign a function or lambda expression to this variable at declaration.".to_string()),
+                hint: None,
             });
         }
 

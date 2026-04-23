@@ -24,8 +24,7 @@ use cyrusc_typed_ast::{
     format::format_sema_type,
     stmts::{TypedEnumVariant, TypedFuncTypeParams, TypedFuncTypeVariadicParam, TypedTypeArg, TypedTypeArgs},
     types::{
-        InterfaceType, NamedType, PlainType, SemaType, TypeDeclID, TypedArrayCapacity, TypedArrayType, TypedFuncType,
-        TypedTupleType,
+        NamedType, PlainType, SemaType, TypeDeclID, TypedArrayCapacity, TypedArrayType, TypedFuncType, TypedTupleType,
     },
 };
 
@@ -62,8 +61,7 @@ impl<'a> AnalysisContext<'a> {
                 .iter()
                 .any(|ty| self.sema_type_contains_self_by_value(ty, named_type.clone())),
 
-            SemaType::InterfaceType(_)
-            | SemaType::SelfType(_)
+            SemaType::SelfType(_)
             | SemaType::Plain(_)
             | SemaType::GenericParam(_)
             | SemaType::InferVar(_)
@@ -100,9 +98,6 @@ impl<'a> AnalysisContext<'a> {
                 (inner1.is_void() || inner2.is_void()) || self.is_assignable_to(*inner1, *inner2, loc)
             }
             (SemaType::Tuple(tuple_type1), SemaType::Tuple(tuple_type2)) => tuple_type1 == tuple_type2,
-            (SemaType::InterfaceType(interface_type1), SemaType::InterfaceType(interface_type2)) => {
-                interface_type1.interface_decl_id == interface_type2.interface_decl_id
-            }
             (SemaType::FuncType(func_type1), SemaType::FuncType(func_type2)) => func_type1 == func_type2,
 
             // allowed: null -> T*
@@ -251,7 +246,7 @@ impl<'a> AnalysisContext<'a> {
                 (TypedEnumVariant::Unit(_), TypedEnumVariant::Unit(_)) => {}
 
                 (TypedEnumVariant::Valued { value: v1, .. }, TypedEnumVariant::Valued { value: v2, .. }) => {
-                    let (Some(sema_type1), Some(sema_type2)) = (v1.sema_type.clone(), v2.sema_type.clone()) else {
+                    let (Some(sema_type1), Some(sema_type2)) = (v1.ty.clone(), v2.ty.clone()) else {
                         return false;
                     };
 
@@ -605,11 +600,6 @@ impl<'a> AnalysisContext<'a> {
                     loc: func.loc,
                 })
             }
-            SemaType::InterfaceType(interface) => SemaType::InterfaceType(InterfaceType {
-                interface_decl_id: interface.interface_decl_id,
-                vtable_id: interface.vtable_id,
-                loc: interface.loc,
-            }),
             SemaType::Plain(_) | SemaType::GenericParam(_) | SemaType::SelfType(_) | SemaType::Unresolved(_) => ty,
 
             SemaType::Err(_) => ty,
@@ -736,7 +726,6 @@ impl<'a> AnalysisContext<'a> {
                     }
                 }
 
-                SemaType::InterfaceType(_) => {}
                 SemaType::Plain(_) => {}
 
                 SemaType::GenericParam(_)
@@ -801,8 +790,6 @@ impl<'a> AnalysisContext<'a> {
                     }
                     true
                 }
-
-                SemaType::InterfaceType(_) => true,
                 SemaType::Plain(_) => true,
 
                 SemaType::SelfType(_)

@@ -33,6 +33,7 @@ use crate::{
 use cyrusc_internal::{
     abi::{args::ABIFunctionInfo, target::ABITarget},
     cir::cir::{CIRBlockStmt, CIRModule, CIRStmt, cir_func_decl_as_func_type, cir_func_def_as_decl},
+    vtable::VTableRegistry,
 };
 use cyrusc_tui_utils::tui_compiled;
 use cyrusc_typed_ast::LabelID;
@@ -70,6 +71,8 @@ pub(crate) struct CodeGenIRBuilder<'ll> {
     pub(crate) lambda_id: usize,
 
     pub(crate) dctx: DebugContext,
+
+    pub(crate) vtable_registry: Arc<VTableRegistry>,
 }
 
 #[derive(Debug, Clone)]
@@ -88,6 +91,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         llvmbuilder: &'ll Builder<'ll>,
         llvmtm: &'ll TargetMachine,
         dctx: DebugContext,
+        vtable_registry: Arc<VTableRegistry>,
     ) -> Self {
         let llvmmodule = unsafe {
             std::mem::transmute::<Rc<RefCell<Module<'static>>>, Rc<RefCell<Module<'ll>>>>(owned_module.module.clone())
@@ -111,13 +115,18 @@ impl<'ll> CodeGenIRBuilder<'ll> {
             lambda_id: 0,
             defer_stack: Vec::new(),
             dctx,
+            vtable_registry,
         }
     }
 
     pub fn emit_module(&mut self) {
+        self.emit_vtable_decls();
+
         for cir_stmt in &self.cir_module.stmts {
             self.emit_stmt(cir_stmt);
         }
+
+        self.emit_vtable_defs();
 
         tui_compiled(self.cir_module.file_path.clone());
     }

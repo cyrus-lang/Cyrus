@@ -33,7 +33,7 @@ use std::fmt;
 #[derive(Debug, Clone)]
 pub struct TypedExpr {
     pub kind: TypedExprKind,
-    pub sema_type: Option<SemaType>,
+    pub ty: Option<SemaType>,
     pub val_cat: ValueCategory,
     pub loc: Loc,
 }
@@ -86,7 +86,8 @@ pub struct TypedSymbolExpr {
 pub struct TypedDynamicExpr {
     pub operand: Box<TypedExpr>,
     pub object_name: Option<String>,
-    pub vtable_id: Option<VTableID>,
+    pub ty: Option<SemaType>,
+    pub concrete_type: Option<SemaType>,
     pub loc: Loc,
 }
 
@@ -299,10 +300,12 @@ pub enum TypedMethodCallDispatch {
     },
 
     Interface {
-        decl_id: InterfaceDeclID,
-        self_type: SemaType,
-        method_idx: usize,
+        vtable_id: VTableID,
+        interface_decl_id: InterfaceDeclID,
+
+        index: usize,
         methods_len: usize,
+        method_self_type: SemaType,
     },
 
     Monomorph {
@@ -373,6 +376,15 @@ impl TypedExpr {
 
     pub fn is_rvalue(&self) -> bool {
         self.val_cat == ValueCategory::RValue
+    }
+}
+
+impl TypedExpr {
+    pub fn extract_dynamic_expr_concrete_type(&self) -> Option<&SemaType> {
+        match &self.kind {
+            TypedExprKind::Dynamic(dynamic) => dynamic.concrete_type.as_ref(),
+            _ => None,
+        }
     }
 }
 
@@ -479,7 +491,7 @@ impl PartialEq for TypedUnnamedEnumValue {
 
 impl PartialEq for TypedExpr {
     fn eq(&self, other: &Self) -> bool {
-        self.kind == other.kind && self.sema_type == other.sema_type
+        self.kind == other.kind && self.ty == other.ty
     }
 }
 
@@ -522,7 +534,7 @@ pub fn literal_expr_from_const_int(value: i128, loc: Loc) -> TypedExpr {
             ty: None,
             loc: loc,
         }),
-        sema_type: None,
+        ty: None,
         val_cat: ValueCategory::RValue,
         loc,
     }

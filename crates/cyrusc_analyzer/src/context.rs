@@ -42,7 +42,7 @@ pub struct AnalysisContext<'a> {
     pub program_tree: Rc<RefCell<TypedProgramTree>>,
     pub(crate) reporter: Arc<DiagReporter>,
     pub(crate) source_map: Arc<SourceMap>,
-    pub vtable_registry: Arc<Mutex<VTableRegistry>>,
+    pub vtable_registry: Arc<VTableRegistry>,
     pub monomorph_registry: Arc<MonomorphRegistry>,
 
     pub(crate) decl_tables: Arc<DeclTablesRegistry>,
@@ -68,7 +68,7 @@ impl<'a> AnalysisContext<'a> {
         program_tree: Rc<RefCell<TypedProgramTree>>,
         entry_points: Arc<EntryPoints>,
         monomorph_registry: Arc<MonomorphRegistry>,
-        vtable_registry: Arc<Mutex<VTableRegistry>>,
+        vtable_registry: Arc<VTableRegistry>,
     ) -> Self {
         let func_env = FuncEnv::new();
         let generic_env_stack = Vec::new();

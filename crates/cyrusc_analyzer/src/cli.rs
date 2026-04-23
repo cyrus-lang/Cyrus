@@ -105,7 +105,7 @@ pub fn main() {
                 let resolved_program_trees = resolver.program_trees.lock().unwrap();
 
                 for program_tree_entry in &*resolved_program_trees {
-                    let vtable_registry = Arc::new(Mutex::new(VTableRegistry::new()));
+                    let vtable_registry = Arc::new(VTableRegistry::new());
 
                     let mut analyzer = AnalysisContext::new(
                         config.clone(),

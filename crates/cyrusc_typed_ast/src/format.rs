@@ -21,7 +21,7 @@ use crate::stmts::{TypedEnumVariant, TypedEnumVariantStructField, TypedTypeArg};
 use crate::types::TypeDeclID;
 use crate::{GenericParamID, SymbolID};
 use crate::{
-    exprs::{TypedExprKind, TypedExpr, TypedLambdaExpr, TypedSymbolExpr, TypedUnnamedEnumValueKind},
+    exprs::{TypedExpr, TypedExprKind, TypedLambdaExpr, TypedSymbolExpr, TypedUnnamedEnumValueKind},
     stmts::{TypedBuiltin, TypedFuncParamKind, TypedFuncTypeVariadicParam, TypedFuncVariadicParam, TypedTypeArgs},
     types::{SemaType, TypedArrayCapacity, TypedFuncType, UnresolvedType},
 };
@@ -408,12 +408,6 @@ pub fn format_sema_type(sema_type: SemaType, formatter: &dyn Formatter) -> Strin
                     .map(|t| format_sema_type(t.clone(), formatter))
                     .collect::<Vec<String>>()
                     .join(", ")
-            )
-        }
-        SemaType::InterfaceType(dynamic_type) => {
-            format!(
-                "dynamic {}",
-                formatter.format_symbol_name(dynamic_type.interface_decl_id)
             )
         }
         SemaType::SelfType(_) => "Self".to_string(),

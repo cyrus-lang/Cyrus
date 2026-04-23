@@ -62,6 +62,8 @@ impl<'a> CIRPrinter<'a> {
 
 impl<'a> CIRPrinter<'a> {
     pub fn print_module(&mut self) -> &str {
+        self.print_vtables();
+
         for stmt in &self.module.stmts {
             self.print_stmt(stmt);
             self.push_line("");
@@ -70,10 +72,22 @@ impl<'a> CIRPrinter<'a> {
         &self.out
     }
 
+    fn print_vtables(&mut self) {
+        for (vtable_id, irv_id) in &self.module.vtable_to_ir_value_map {
+            let global_var = self.module.global_var_decls.get(irv_id).unwrap();
+
+            let prefix = format!("vtable({}) ", vtable_id);
+
+            self.print_global_var_stmt(global_var, Some(prefix));
+        }
+
+        self.push_line("");
+    }
+
     fn print_stmt(&mut self, stmt: &CIRStmt) {
         match stmt {
             CIRStmt::Variable(var) => self.print_var_stmt(var),
-            CIRStmt::GlobalVar(global_var) => self.print_global_var_stmt(global_var),
+            CIRStmt::GlobalVar(global_var) => self.print_global_var_stmt(global_var, None),
             CIRStmt::FuncDef(func_def_stmt) => self.print_func_def(func_def_stmt),
             CIRStmt::FuncDecl(func_decl_stmt) => self.print_func_decl(func_decl_stmt),
             CIRStmt::Block(block) => self.print_block(block),
@@ -180,7 +194,7 @@ impl<'a> CIRPrinter<'a> {
         }
     }
 
-    fn print_global_var_stmt(&mut self, global_var: &CIRGlobalVarStmt) {
+    fn print_global_var_stmt(&mut self, global_var: &CIRGlobalVarStmt, prefix: Option<String>) {
         let init = global_var
             .expr
             .as_ref()
@@ -189,7 +203,13 @@ impl<'a> CIRPrinter<'a> {
 
         let ty = self.print_type(&global_var.ty);
 
-        self.push_line(format!("global {}: {}{}", global_var.name, ty, init));
+        self.push_line(format!(
+            "{}global {}: {}{}",
+            prefix.unwrap_or("".to_string()),
+            global_var.name,
+            ty,
+            init
+        ));
     }
 
     fn print_func_def(&mut self, func: &CIRFuncDefStmt) {
@@ -299,12 +319,12 @@ impl<'a> CIRPrinter<'a> {
                     CIRCallDispatch::FunctionPointer { operand } => self.print_expr(operand),
                     CIRCallDispatch::Interface {
                         operand,
-                        method_idx,
+                        index: method_idx,
                         methods_len,
                         func_type: _,
                     } => {
                         let obj = self.print_expr(operand);
-                        format!("iface_call({}, method={}/{})", obj, method_idx, methods_len)
+                        format!("dynamic_dispatch({}, index={})", obj, method_idx)
                     }
                     CIRCallDispatch::Method {
                         self_meta, abi_name, ..
@@ -312,7 +332,7 @@ impl<'a> CIRPrinter<'a> {
                         if let Some(self_meta) = self_meta {
                             args.insert(0, self.print_expr(&self_meta.operand))
                         }
-                        
+
                         abi_name.clone()
                     }
                 };
@@ -462,35 +482,12 @@ impl<'a> CIRPrinter<'a> {
             }
             CIRExprKind::Dynamic(dynamic) => {
                 let data = self.print_expr(&dynamic.data_expr);
-                let vtable = &dynamic.vtable_abi_name;
-                let global_var_id = dynamic.global_var_id.0;
 
-                let mut out = String::new();
-                out.push_str("dynamic {\n");
-
-                self.indent();
-                out.push_str(&format!("{}data: {}\n", self.indent_str(), data));
-                out.push_str(&format!("{}vtable: @{}\n", self.indent_str(), vtable));
-                out.push_str(&format!("{}global: %{}\n", self.indent_str(), global_var_id));
-
-                if !dynamic.method_decls.is_empty() {
-                    out.push_str(&format!("{}methods {{\n", self.indent_str()));
-
-                    self.indent();
-                    for decl in &dynamic.method_decls {
-                        let params = self.print_params(&decl.params);
-                        let ret = self.print_type(&decl.ret_type);
-                        out.push_str(&format!("{}fn {}({}) {};\n", self.indent_str(), decl.name, params, ret));
-                    }
-                    self.dedent();
-
-                    out.push_str(&format!("{}}}\n", self.indent_str()));
-                }
-
-                self.dedent();
-                out.push('}');
-
-                out
+                format!(
+                    "dynamic {{ data: {}, vtable_id: {} }}",
+                    data,
+                    dynamic.vtable_id,
+                )
             }
         }
     }

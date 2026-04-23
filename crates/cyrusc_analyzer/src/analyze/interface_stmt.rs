@@ -31,13 +31,54 @@ impl<'a> AnalysisContext<'a> {
 
         let mut methods: Vec<String> = Vec::new();
 
-        for func_decl_id in &interface.methods {
-            let func_decl = self.decl_tables.func_decl(*func_decl_id);
+        for (_, method_decl_id) in interface.methods.iter() {
+            let method_decl = self.decl_tables.method_decl(*method_decl_id);
+            let func_decl = method_decl.func_decl;
 
-            if !func_decl.params.is_instance_method() {
+            if let Some(self_modifier) = func_decl.params.get_self_modifier() {
+                if !self_modifier.kind.is_referenced() {
+                    self.reporter.report(Diag {
+                        level: DiagLevel::Error,
+                        kind: Box::new(AnalyzerDiagKind::InterfaceMethodsMustUseReferencedSelf),
+                        loc: Some(self_modifier.loc),
+                        hint: None,
+                    });
+                }
+            } else {
                 self.reporter.report(Diag {
                     level: DiagLevel::Error,
                     kind: Box::new(AnalyzerDiagKind::InterfaceMethodsMustHaveSelfModifier),
+                    loc: Some(func_decl.loc),
+                    hint: None,
+                });
+            }
+
+            // skip the self param (index 0)
+            let params = &func_decl.params.list[1..];
+
+            for param_kind in params {
+                let ty = param_kind.param_type();
+
+                if ty.contains_self_type() {
+                    self.reporter.report(Diag {
+                        level: DiagLevel::Error,
+                        kind: Box::new(AnalyzerDiagKind::InterfaceMethodParamContainsSelf {
+                            interface_name: interface_name.clone(),
+                            method_name: func_decl.name.clone(),
+                        }),
+                        loc: Some(param_kind.loc()),
+                        hint: None,
+                    });
+                }
+            }
+
+            if func_decl.ret_type.contains_self_type() {
+                self.reporter.report(Diag {
+                    level: DiagLevel::Error,
+                    kind: Box::new(AnalyzerDiagKind::InterfaceMethodReturnTypeContainsSelf {
+                        interface_name: interface_name.clone(),
+                        method_name: func_decl.name.clone(),
+                    }),
                     loc: Some(func_decl.loc),
                     hint: None,
                 });
@@ -78,7 +119,16 @@ impl<'a> AnalysisContext<'a> {
                 continue;
             };
 
-            let interface_decl_id = normalized_type.as_interface();
+            let sema_type = self.expand_sema_type(normalized_type, implement_interface.loc);
+
+            if self
+                .check_type_arity(sema_type.clone(), implement_interface.loc)
+                .is_none()
+            {
+                continue;
+            }
+
+            let interface_decl_id = sema_type.as_interface();
 
             let interface_decl = match interface_decl_id {
                 Some(id) => self.decl_tables.interface_decl(id),
@@ -86,7 +136,7 @@ impl<'a> AnalysisContext<'a> {
                     self.reporter.report(Diag {
                         level: DiagLevel::Error,
                         kind: Box::new(AnalyzerDiagKind::NonInterfaceSymbol {
-                            symbol_name: format_sema_type(normalized_type, self.formatter),
+                            symbol_name: format_sema_type(sema_type, self.formatter),
                         }),
                         loc: Some(implement_interface.loc),
                         hint: None,
@@ -95,16 +145,17 @@ impl<'a> AnalysisContext<'a> {
                 }
             };
 
-            for func_decl_id in &interface_decl.methods {
-                let interface_func_decl = self.decl_tables.func_decl(*func_decl_id);
+            for (_, method_decl_id) in interface_decl.methods.iter() {
+                let interface_method_decl = self.decl_tables.method_decl(*method_decl_id);
+                let func_decl = interface_method_decl.func_decl;
 
-                if !method_decls.contains(&interface_func_decl.name) {
+                if !method_decls.contains(&func_decl.name) {
                     // method missing
                     self.reporter.report(Diag {
                         level: DiagLevel::Error,
                         kind: Box::new(AnalyzerDiagKind::MissingInterfaceMethodImpl {
                             object_name: object_name.clone(),
-                            method_name: interface_func_decl.name.clone(),
+                            method_name: func_decl.name.clone(),
                             interface_name: interface_decl.name.clone(),
                         }),
                         loc: Some(implement_interface.loc),
@@ -113,19 +164,19 @@ impl<'a> AnalysisContext<'a> {
                     continue;
                 }
 
-                let method_decl_id = method_decls.get(&interface_func_decl.name).unwrap();
+                let method_decl_id = method_decls.get(&func_decl.name).unwrap();
                 let method_decl = self.decl_tables.method_decl(method_decl_id);
 
                 // check method declaration mismatch
-                if method_decl.func_decl != interface_func_decl {
+                if method_decl.func_decl != func_decl {
                     self.reporter.report(Diag {
                         level: DiagLevel::Error,
                         kind: Box::new(AnalyzerDiagKind::InterfaceMethodTypeMismatch {
                             object_name: object_name.clone(),
-                            method_name: interface_func_decl.name.clone(),
+                            method_name: func_decl.name.clone(),
                             interface_name: interface_decl.name.clone(),
                         }),
-                        loc: Some(interface_func_decl.loc),
+                        loc: Some(func_decl.loc),
                         hint: None,
                     });
                 }

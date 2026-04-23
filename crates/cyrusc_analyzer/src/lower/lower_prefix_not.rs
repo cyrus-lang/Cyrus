@@ -42,7 +42,7 @@ impl<'a> AnalysisContext<'a> {
                 loc: prefix_expr.loc,
             }),
             val_cat: ValueCategory::RValue,
-            sema_type: None,
+            ty: None,
             loc: prefix_expr.loc,
         };
 
@@ -59,7 +59,7 @@ impl<'a> AnalysisContext<'a> {
             Some(TypedExpr {
                 kind: new_infix_expr,
                 val_cat: ValueCategory::RValue,
-                sema_type: None,
+                ty: None,
                 loc: prefix_expr.loc,
             })
         } else {

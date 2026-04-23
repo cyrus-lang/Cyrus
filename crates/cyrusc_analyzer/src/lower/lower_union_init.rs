@@ -52,7 +52,7 @@ impl<'a> AnalysisContext<'a> {
 
         *typed_expr = TypedExpr {
             kind: TypedExprKind::UnionInit(union_init),
-            sema_type: None,
+            ty: None,
             val_cat: ValueCategory::RValue,
             loc: struct_init.loc,
         };
@@ -63,7 +63,7 @@ impl<'a> AnalysisContext<'a> {
             return;
         };
 
-        let Some(operand) = &typed_expr.sema_type else {
+        let Some(operand) = &typed_expr.ty else {
             return;
         };
 
@@ -81,7 +81,7 @@ impl<'a> AnalysisContext<'a> {
 
         *typed_expr = TypedExpr {
             kind: TypedExprKind::UnionInit(union_init),
-            sema_type: typed_expr.sema_type.clone(),
+            ty: typed_expr.ty.clone(),
             val_cat: typed_expr.val_cat,
             loc: typed_expr.loc,
         };

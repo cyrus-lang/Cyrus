@@ -51,7 +51,7 @@ impl<'a> AnalysisContext<'a> {
 
         self.analyze_expr(rhs, expected_type)?;
 
-        let Some(tuple_type) = rhs.sema_type.as_ref()?.as_tuple_type() else {
+        let Some(tuple_type) = rhs.ty.as_ref()?.as_tuple_type() else {
             self.reporter.report(Diag {
                 level: DiagLevel::Error,
                 kind: Box::new(AnalyzerDiagKind::TupleMemberAccessOnNonTupleOperand),
@@ -224,7 +224,7 @@ impl<'a> AnalysisContext<'a> {
 
     fn tuple_access_expr(&self, base_expr: &TypedExpr, access_path: &[usize], loc: Loc) -> TypedExpr {
         let mut expr = base_expr.clone();
-        let mut current_type = expr.sema_type.clone();
+        let mut current_type = expr.ty.clone();
         let val_cat = expr.val_cat;
 
         for &index in access_path {
@@ -244,7 +244,7 @@ impl<'a> AnalysisContext<'a> {
                     index,
                     loc,
                 }),
-                sema_type: element_type.clone(),
+                ty: element_type.clone(),
                 val_cat,
                 loc,
             };

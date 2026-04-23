@@ -134,7 +134,7 @@ pub struct TypedImplementInterface {
 pub struct TypedInterfaceStmt {
     pub name: String,
     pub interface_decl_id: InterfaceDeclID,
-    pub methods: Vec<FuncDeclID>,
+    pub methods: MethodDecls,
     pub generic_params: TypedGenericParams,
     pub vis: Visibility,
     pub loc: Loc,
@@ -669,6 +669,14 @@ impl TypedFuncParams {
             TypedFuncParamKind::FuncParam(_) => None,
         })
     }
+
+    #[inline]
+    pub fn get_self_modifier_mut(&mut self) -> Option<&mut TypedSelfModifier> {
+        self.list.first_mut().and_then(|param_kind| match param_kind {
+            TypedFuncParamKind::SelfModifier(self_modifier) => Some(self_modifier),
+            TypedFuncParamKind::FuncParam(_) => None,
+        })
+    }
 }
 
 impl TypedFuncTypeParams {
@@ -779,7 +787,7 @@ impl TypedSwitchStmt {
         self.cases.iter().any(|case| {
             case.patterns.iter().any(|p| match p {
                 TypedSwitchCasePattern::Expr(expr, ..) => {
-                    let sema_type = expr.sema_type.as_ref().unwrap();
+                    let sema_type = expr.ty.as_ref().unwrap();
                     sema_type.is_char() || sema_type.is_integer()
                 }
                 _ => false,
