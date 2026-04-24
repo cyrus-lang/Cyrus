@@ -35,12 +35,17 @@ impl<'a> AnalysisContext<'a> {
             });
         }
 
+        let object_type = SemaType::Named(NamedType {
+            type_decl_id: object_type_decl_id,
+            type_args: TypedTypeArgs::new(),
+        });
+
         // pass 2: bodies
         for (_, method_decl_id) in method_decls.iter() {
             let mut method_decl = self.decl_tables.method_decl(*method_decl_id);
 
             if !method_decl.func_decl.is_generic() {
-                self.analyze_method_body(*method_decl_id, &mut method_decl);
+                self.analyze_method_body(&object_type, *method_decl_id, &mut method_decl);
             } else {
                 // generic methods are being analyzed in call-site
             }
@@ -60,12 +65,15 @@ impl<'a> AnalysisContext<'a> {
             self.apply_self_type_in_method_decl_and_variable(method_decl, &concrete_self_type);
         }
 
-        self.analyze_func_decl(&mut method_decl.func_decl);
-
         self.nameconv_check_method_name(&method_decl.func_decl.name, method_decl.func_decl.loc);
     }
 
-    pub(crate) fn analyze_method_body(&mut self, method_decl_id: MethodDeclID, method_decl: &mut MethodDecl) {
+    pub(crate) fn analyze_method_body(
+        &mut self,
+        object_type: &SemaType,
+        method_decl_id: MethodDeclID,
+        method_decl: &mut MethodDecl,
+    ) {
         let func_type = method_decl.func_decl.as_func_type();
 
         let method_env = self.create_method_env(method_decl_id, func_type.clone(), Some(InferCtx::new()));
@@ -73,12 +81,14 @@ impl<'a> AnalysisContext<'a> {
         let body_id = method_decl.body.unwrap();
 
         self.with_func_env(method_env, |this| {
-            let mut body = this.decl_tables.body(body_id);
+            this.with_object(Some(object_type.clone()), |this| {
+                let mut body = this.decl_tables.body(body_id);
 
-            this.analyze_func_body(&mut body, &method_decl.func_decl.ret_type);
+                this.analyze_func_body(&mut body, &method_decl.func_decl.ret_type);
 
-            this.decl_tables.with_body_mut(body_id, |_body| {
-                *_body = body;
+                this.decl_tables.with_body_mut(body_id, |_body| {
+                    *_body = body;
+                });
             });
         });
     }

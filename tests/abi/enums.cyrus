@@ -14,6 +14,7 @@ extern "C" fn enum_color(color: Color) c_int;
 
 pub fn main() {
     const color = Color.Red;
+    
     printf("enum_color=%d,%d,%d", 
         enum_color(.Blue),
         enum_color(.Green),

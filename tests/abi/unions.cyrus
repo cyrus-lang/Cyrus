@@ -33,9 +33,9 @@ repr(c) union WithNestedStruct {
 extern "C" fn nested_struct_inside_union(v: WithNestedStruct, use_struct: c_int) c_double;
 
 pub fn main() {
-    display_union_payload(union { int_value = 10 }, 1);
-    display_union_payload(union { text_value = "Cyrus!" }, 2);
-    display_union_payload(union { float_value = 3.14 }, 3);
+    display_union_payload(union { int_value: 10 }, 1);
+    display_union_payload(union { text_value: "Cyrus!" }, 2);
+    display_union_payload(union { float_value: 3.14 }, 3);
 
     const with_nested_union = WithNestedUnion {
         tag: 1,
@@ -45,8 +45,8 @@ pub fn main() {
 
     const with_nested_struct = WithNestedStruct {
         coords: repr(c) struct {
-            a = 3.3,
-            b = 8.7
+            a: 3.3,
+            b: 8.7
         }
     };
     printf("nested_struct_inside_union=%f ", nested_struct_inside_union(with_nested_struct, cast(int32, true)));

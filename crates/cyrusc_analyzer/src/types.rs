@@ -716,6 +716,8 @@ impl<'a> AnalysisContext<'a> {
 
                 SemaType::SelfType(_) => {
                     if this.func_env.current_object.is_none() {
+                        dbg!(this.func_env.clone());
+                        
                         this.reporter.report(Diag {
                             level: DiagLevel::Error,
                             kind: Box::new(AnalyzerDiagKind::SelfTypeOutsideOfAnObject),

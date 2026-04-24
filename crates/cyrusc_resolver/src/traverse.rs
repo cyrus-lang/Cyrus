@@ -363,15 +363,14 @@ impl Resolver {
     fn resolve_ident_expr(&mut self, ident: &Ident) -> Option<TypedExpr> {
         let symbol_id = self.resolve_ident(ident)?;
 
-        self.lookup_symbol_entry(symbol_id).map(|symbol_entry| {
-            let decl_id = self.resolve_symbol_entry_as_decl_id(&symbol_entry);
-
-            TypedExpr {
-                kind: TypedExprKind::Symbol(TypedSymbolExpr::new(decl_id, ident.loc)),
-                ty: None,
-                val_cat: ValueCategory::LValue,
-                loc: ident.loc,
-            }
+        self.lookup_symbol_entry(symbol_id).and_then(|symbol_entry| {
+            self.resolve_symbol_entry_as_decl_id(&symbol_entry)
+                .map(|decl_id| TypedExpr {
+                    kind: TypedExprKind::Symbol(TypedSymbolExpr::new(decl_id, ident.loc)),
+                    ty: None,
+                    val_cat: ValueCategory::LValue,
+                    loc: ident.loc,
+                })
         })
     }
 
@@ -472,9 +471,10 @@ impl Resolver {
     fn resolve_ident_type(&mut self, ident: Ident) -> Option<SemaType> {
         if let Some(symbol_id) = self.resolve_local_scope_symbol(&ident.value) {
             let symbol_entry = self.lookup_symbol_entry(symbol_id)?;
-            let decl_id = self.resolve_symbol_entry_as_decl_id(&symbol_entry);
 
-            return Some(SemaType::Unresolved(UnresolvedType::Decl(decl_id)));
+            if let Some(decl_id) = self.resolve_symbol_entry_as_decl_id(&symbol_entry) {
+                return Some(SemaType::Unresolved(UnresolvedType::Decl(decl_id)));
+            }
         }
 
         if let Some(generic_param_id) = self.resolve_generic_param_as_type(&ident) {
@@ -483,9 +483,10 @@ impl Resolver {
 
         if let Some(symbol_id) = self.lookup_symbol_id(self.current_scope.unwrap(), &ident.value) {
             let symbol_entry = self.lookup_symbol_entry(symbol_id)?;
-            let decl_id = self.resolve_symbol_entry_as_decl_id(&symbol_entry);
 
-            return Some(SemaType::Unresolved(UnresolvedType::Decl(decl_id)));
+            if let Some(decl_id) = self.resolve_symbol_entry_as_decl_id(&symbol_entry) {
+                return Some(SemaType::Unresolved(UnresolvedType::Decl(decl_id)));
+            }
         }
 
         self.reporter.report(Diag {
@@ -515,10 +516,9 @@ impl Resolver {
     fn resolve_module_import_type(&mut self, module_import: ASTModuleImport) -> Option<SemaType> {
         self.resolve_module_import(module_import.clone())
             .and_then(|symbol_id| {
-                self.lookup_symbol_entry(symbol_id).map(|symbol_entry| {
-                    let decl_id = self.resolve_symbol_entry_as_decl_id(&symbol_entry);
-
-                    SemaType::Unresolved(UnresolvedType::Decl(decl_id))
+                self.lookup_symbol_entry(symbol_id).and_then(|symbol_entry| {
+                    self.resolve_symbol_entry_as_decl_id(&symbol_entry)
+                        .map(|decl_id| SemaType::Unresolved(UnresolvedType::Decl(decl_id)))
                 })
             })
             .or_else(|| {
@@ -2065,36 +2065,35 @@ impl Resolver {
     #[inline]
     fn resolve_module_import_expr(&mut self, module_import: &ASTModuleImport) -> Option<TypedExpr> {
         self.resolve_module_import(module_import.clone()).and_then(|symbol_id| {
-            self.lookup_symbol_entry(symbol_id).map(|symbol_entry| {
-                let decl_id = self.resolve_symbol_entry_as_decl_id(&symbol_entry);
-
-                TypedExpr {
-                    kind: TypedExprKind::Symbol(TypedSymbolExpr::new(decl_id, module_import.loc)),
-                    ty: None,
-                    val_cat: ValueCategory::LValue,
-                    loc: module_import.loc,
-                }
+            self.lookup_symbol_entry(symbol_id).and_then(|symbol_entry| {
+                self.resolve_symbol_entry_as_decl_id(&symbol_entry)
+                    .map(|decl_id| TypedExpr {
+                        kind: TypedExprKind::Symbol(TypedSymbolExpr::new(decl_id, module_import.loc)),
+                        ty: None,
+                        val_cat: ValueCategory::LValue,
+                        loc: module_import.loc,
+                    })
             })
         })
     }
 
-    fn resolve_symbol_entry_as_decl_id(&self, symbol_entry: &SymbolEntry) -> DeclID {
+    fn resolve_symbol_entry_as_decl_id(&self, symbol_entry: &SymbolEntry) -> Option<DeclID> {
         match symbol_entry.kind {
-            SymbolEntryKind::Var(var_decl_id) => DeclID::Var(var_decl_id),
-            SymbolEntryKind::GlobalVar(global_var_decl_id) => DeclID::GlobalVar(global_var_decl_id),
-            SymbolEntryKind::Func(func_decl_id) => DeclID::Func(func_decl_id),
-            SymbolEntryKind::Method(method_decl_id) => DeclID::Method(method_decl_id),
-            SymbolEntryKind::Struct(struct_decl_id) => DeclID::Struct(struct_decl_id),
-            SymbolEntryKind::Enum(enum_decl_id) => DeclID::Enum(enum_decl_id),
-            SymbolEntryKind::Union(union_decl_id) => DeclID::Union(union_decl_id),
-            SymbolEntryKind::Interface(interface_decl_id) => DeclID::Interface(interface_decl_id),
-            SymbolEntryKind::Typedef(typedef_decl_id) => DeclID::Typedef(typedef_decl_id),
+            SymbolEntryKind::Var(var_decl_id) => Some(DeclID::Var(var_decl_id)),
+            SymbolEntryKind::GlobalVar(global_var_decl_id) => Some(DeclID::GlobalVar(global_var_decl_id)),
+            SymbolEntryKind::Func(func_decl_id) => Some(DeclID::Func(func_decl_id)),
+            SymbolEntryKind::Method(method_decl_id) => Some(DeclID::Method(method_decl_id)),
+            SymbolEntryKind::Struct(struct_decl_id) => Some(DeclID::Struct(struct_decl_id)),
+            SymbolEntryKind::Enum(enum_decl_id) => Some(DeclID::Enum(enum_decl_id)),
+            SymbolEntryKind::Union(union_decl_id) => Some(DeclID::Union(union_decl_id)),
+            SymbolEntryKind::Interface(interface_decl_id) => Some(DeclID::Interface(interface_decl_id)),
+            SymbolEntryKind::Typedef(typedef_decl_id) => Some(DeclID::Typedef(typedef_decl_id)),
 
             SymbolEntryKind::Namespace(_)
             | SymbolEntryKind::Module(_)
             | SymbolEntryKind::Unresolved
             | SymbolEntryKind::ProxiedSymbol { .. }
-            | SymbolEntryKind::ProxiedModule { .. } => unreachable!(),
+            | SymbolEntryKind::ProxiedModule { .. } => None,
         }
     }
 
@@ -2465,15 +2464,14 @@ impl Resolver {
             }
         };
 
-        self.lookup_symbol_entry(symbol_id).map(|symbol_entry| {
-            let decl_id = self.resolve_symbol_entry_as_decl_id(&symbol_entry);
-
-            TypedExpr {
-                kind: TypedExprKind::Symbol(TypedSymbolExpr::new(decl_id, loc)),
-                val_cat: ValueCategory::LValue,
-                ty: None,
-                loc,
-            }
+        self.lookup_symbol_entry(symbol_id).and_then(|symbol_entry| {
+            self.resolve_symbol_entry_as_decl_id(&symbol_entry)
+                .map(|decl_id| TypedExpr {
+                    kind: TypedExprKind::Symbol(TypedSymbolExpr::new(decl_id, loc)),
+                    val_cat: ValueCategory::LValue,
+                    ty: None,
+                    loc,
+                })
         })
     }
 

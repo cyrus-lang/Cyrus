@@ -8,8 +8,11 @@ interface IValidator<T> {
 
 struct NumberValidator: IValidator<int> {
 	pub fn validate(&self, value: int) bool {
-		if (value > 5) { return true; }
-		else { return false; }
+		if (value > 5) {
+			return true;
+		} else {
+			return false;
+		}
 	}
 }
 

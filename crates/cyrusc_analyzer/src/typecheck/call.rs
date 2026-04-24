@@ -399,6 +399,8 @@ impl<'a> AnalysisContext<'a> {
                     let func_env = this.create_method_env(object_method_decl_id, func_type, parent_infer_ctx);
 
                     this.with_func_env(func_env, |this| {
+                        this.func_env.current_object = Some(concrete_type.clone());
+
                         let Some((monomorph_id, _)) = this.monomorphize_generic_method_call(
                             concrete_type.clone(),
                             object_method_decl_id,
@@ -563,6 +565,8 @@ impl<'a> AnalysisContext<'a> {
                 let func_env = this.create_method_env(method_decl_id, func_type, parent_infer_ctx);
 
                 return this.with_func_env(func_env, |this| {
+                    this.func_env.current_object = Some(pure_operand_type.clone());
+
                     method_decl.func_decl.params = this.substitute_func_params(method_decl.func_decl.params.clone());
 
                     method_decl.func_decl.ret_type = this.substitute_type(&method_decl.func_decl.ret_type);
@@ -610,9 +614,6 @@ impl<'a> AnalysisContext<'a> {
         loc: Loc,
     ) -> Option<(MonomorphID, TypedTypeArgs)> {
         let pure_operand_type = operand_type.const_inner().pointer_inner().clone();
-
-        // set self type for `Self` resolution
-        self.func_env.current_object = Some(pure_operand_type.clone());
 
         if !is_generic_interface_method_call {
             // substitute Self inside params, ret_type, variables

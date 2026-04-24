@@ -1276,12 +1276,17 @@ impl<'a> CIRTraverse<'a> {
                 .map(|(idx, (_, method_decl_id))| {
                     if vtable_info.is_interface_generic {
                         if let Some(monomorph_id) = vtable_info.monomorphized_methods.get(idx).unwrap() {
+                            // both interface and method are generics,
+                            // that's why we need to monomorphize
                             let (irv_id, _, _) = self.get_or_declare_monomorph_method_ir_value(*monomorph_id);
 
                             irv_id
                         } else {
-                            // FIXME
-                            panic!()
+                            // interface is generic, but method is concrete (non-generic)
+                            self.decl_to_ir_value_map
+                                .get(&DeclID::Method(*method_decl_id))
+                                .copied()
+                                .unwrap()
                         }
                     } else {
                         self.decl_to_ir_value_map

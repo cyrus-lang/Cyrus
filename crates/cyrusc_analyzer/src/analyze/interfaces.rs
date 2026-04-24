@@ -22,6 +22,7 @@ use cyrusc_typed_ast::{
     decls::{InterfaceDecl, MethodDecls},
     format::format_sema_type,
     stmts::{TypedImplementInterface, TypedInterfaceStmt, TypedTypeArgs},
+    substitute::instantiate_method_decl,
     types::{NamedType, SemaType, TypeDeclID},
 };
 
@@ -141,9 +142,16 @@ impl<'a> AnalysisContext<'a> {
                 }
             };
 
+            let interface_type_args = &sema_type.as_named_type().unwrap().type_args;
+
             for (_, method_decl_id) in interface_decl.methods.iter() {
                 let interface_method_decl = self.decl_tables.method_decl(*method_decl_id);
-                let func_decl = interface_method_decl.func_decl;
+                let func_decl = instantiate_method_decl(
+                    &interface_method_decl,
+                    &interface_decl.generic_params,
+                    interface_type_args,
+                )
+                .func_decl;
 
                 if !method_decls.contains(&func_decl.name) {
                     // method missing
@@ -214,13 +222,6 @@ impl<'a> AnalysisContext<'a> {
 
                 let sema_type = this.expand_sema_type(normalized_type, implement_interface.loc);
 
-                // if this
-                //     .check_type_arity(sema_type.clone(), implement_interface.loc)
-                //     .is_none()
-                // {
-                //     continue;
-                // }
-
                 let interface_decl_id = sema_type.as_interface();
 
                 let interface_decl = match interface_decl_id {
@@ -273,6 +274,13 @@ impl<'a> AnalysisContext<'a> {
                             hint: None,
                         });
                     }
+                }
+
+                if this
+                    .check_type_arity(sema_type.clone(), implement_interface.loc)
+                    .is_none()
+                {
+                    continue;
                 }
             }
 
