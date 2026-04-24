@@ -29,7 +29,7 @@ use cyrusc_ast::{
     modifiers::{EnumModifiers, FuncModifiers, GlobalVarModifiers, StructModifiers, UnionModifiers},
 };
 use cyrusc_source_loc::Loc;
-use fx_hash::FxHashMap;
+use indexmap::IndexMap;
 use std::hash::Hash;
 
 pub mod table;
@@ -78,7 +78,7 @@ pub struct TypedefDeclID(pub u32);
 pub struct MonomorphID(pub usize);
 
 #[derive(Debug, Clone)]
-pub struct MethodDecls(pub FxHashMap<String, MethodDeclID>);
+pub struct MethodDecls(pub IndexMap<String, MethodDeclID>);
 
 #[derive(Debug, Clone)]
 pub struct StructDecl {
@@ -221,7 +221,7 @@ impl MethodDecl {
 impl MethodDecls {
     #[inline]
     pub fn new() -> Self {
-        Self(FxHashMap::default())
+        Self(IndexMap::new())
     }
 
     #[inline]

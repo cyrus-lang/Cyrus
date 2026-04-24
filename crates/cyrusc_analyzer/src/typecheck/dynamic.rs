@@ -17,7 +17,7 @@
 
 use crate::{context::AnalysisContext, diagnostics::AnalyzerDiagKind};
 use cyrusc_diagcentral::{Diag, DiagLevel};
-use cyrusc_typed_ast::{exprs::TypedDynamicExpr, format::format_sema_type, types::SemaType};
+use cyrusc_typed_ast::{decls::MethodDecls, exprs::TypedDynamicExpr, format::format_sema_type, types::SemaType};
 
 impl<'a> AnalysisContext<'a> {
     pub(crate) fn analyze_dynamic(
@@ -110,11 +110,22 @@ impl<'a> AnalysisContext<'a> {
 
         let object_methods = self.decl_tables.methods_decl_of_named_type(named_type).unwrap();
 
+        let interface_methods = MethodDecls(
+            interface_decl
+                .methods
+                .iter()
+                .map(|(method_name, _)| {
+                    let method_decl_id = object_methods.get(method_name).unwrap();
+                    (method_name.clone(), method_decl_id)
+                })
+                .collect(),
+        );
+
         self.vtable_registry.register(
             operand_type.clone(),
             interface_decl_id,
             interface_type_args,
-            object_methods,
+            interface_methods,
             interface_decl.is_generic(),
             interface_decl.loc,
         );

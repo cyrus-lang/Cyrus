@@ -11,4 +11,4 @@ cyrusc_diagcentral = { path = "../cyrusc_diagcentral", version = "*" }
 thiserror = "2.0.17"
 thiserror-impl = "2.0.17"
 fx-hash = "0.1.0"
-
+indexmap = "=2.14.0"

@@ -359,7 +359,15 @@ impl<'a> AnalysisContext<'a> {
                 .vtable_registry
                 .get(&concrete_type, (interface_decl_id, interface_type_args.clone()));
 
-            if is_interface_generic {
+            // checking object is generic or not is necessary here
+            // because `is_interface_generic` is not enough solely.
+            // and we prevent of monomorphization of concrete methods.
+            let is_object_generic = !this
+                .decl_tables
+                .type_decl_generic_params(concrete_type.as_named_type().unwrap().type_decl_id)
+                .is_empty();
+
+            if is_interface_generic && is_object_generic {
                 // monomorphize object method
                 let concrete_named_type = concrete_type.as_named_type().unwrap();
 

@@ -55,39 +55,31 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         for vtable_info in self.vtable_registry.iter() {
             let mut fn_ptr_constants = Vec::with_capacity(vtable_info.method_decls.len());
 
-            if vtable_info.is_interface_generic {
-                for monomorph_id_opt in &vtable_info.monomorphized_methods {
-                    let fn_ptr = {
-                        if let Some(monomorph_id) = monomorph_id_opt {
-                            let irv_id = self
-                                .cir_module
-                                .monomorph_to_ir_value_map
-                                .get(monomorph_id)
-                                .copied()
-                                .unwrap();
+            for (idx, _) in vtable_info.method_decls.iter().enumerate() {
+                let fn_ptr = {
+                    if let Some(Some(monomorph_id)) = vtable_info.monomorphized_methods.get(idx) {
+                        // method is generic, use monomorphized
+                        let irv_id = self
+                            .cir_module
+                            .monomorph_to_ir_value_map
+                            .get(monomorph_id)
+                            .copied()
+                            .unwrap();
 
-                            let ir_value = self.lookup_local_ir_value(irv_id).unwrap();
-                            let llvm_func_value = ir_value.as_func().unwrap();
+                        let ir_value = self.lookup_local_ir_value(irv_id).unwrap();
+                        let llvm_func_value = ir_value.as_func().unwrap();
+                        llvm_func_value.as_global_value().as_pointer_value()
+                    } else {
+                        // method is concrete, use cir_method_decls
+                        let irv_id = vtable_info.cir_method_decls.as_ref().unwrap()[idx];
 
-                            llvm_func_value.as_global_value().as_pointer_value()
-                        } else {
-                            self.llvmctx.ptr_type(AddressSpace::default()).const_null()
-                        }
-                    };
+                        let ir_value = self.lookup_local_ir_value(irv_id).unwrap();
+                        let llvm_func_value = ir_value.as_func().unwrap();
+                        llvm_func_value.as_global_value().as_pointer_value()
+                    }
+                };
 
-                    fn_ptr_constants.push(fn_ptr.into());
-                }
-            } else {
-                let method_decls = vtable_info.cir_method_decls.as_ref().unwrap();
-
-                for irv_id in method_decls {
-                    let ir_value = self.lookup_local_ir_value(*irv_id).unwrap();
-                    let llvm_func_value = ir_value.as_func().unwrap();
-
-                    let fn_ptr = llvm_func_value.as_global_value().as_pointer_value();
-
-                    fn_ptr_constants.push(fn_ptr.into());
-                }
+                fn_ptr_constants.push(fn_ptr.into());
             }
 
             self.emit_single_vtable(&vtable_info, fn_ptr_constants);

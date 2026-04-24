@@ -20,7 +20,8 @@ members = [
     "crates/cyrusc_internal",
     "crates/cyrusc_cir_traverse",
     "crates/cyrusc_const_eval",
-    "crates/cyrusc_source_loc", "crates/cyrusc_cir_dump",
+    "crates/cyrusc_source_loc", 
+    "crates/cyrusc_cir_dump",
 ]
 
 default-members = ["crates/cyrusc_cli"]
