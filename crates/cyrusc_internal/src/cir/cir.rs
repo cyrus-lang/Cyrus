@@ -170,6 +170,7 @@ pub enum CIRCallDispatch {
 #[derive(Debug, Clone)]
 pub struct CIRCallMethodSelfMetadata {
     pub operand: Box<CIRExpr>,
+    pub use_fat_ptr_data: bool,
     pub is_referenced: bool,
 }
 

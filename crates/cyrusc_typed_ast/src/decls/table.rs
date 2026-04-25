@@ -91,7 +91,7 @@ impl DeclTablesRegistry {
         }
     }
 
-    pub fn methods_decl_of_named_type(&self, named_type: &NamedType) -> Option<MethodDecls> {
+    pub fn method_decls_of_named_type(&self, named_type: &NamedType) -> Option<MethodDecls> {
         match named_type.type_decl_id {
             TypeDeclID::Struct(struct_decl_id) => {
                 let struct_decl = self.struct_decl(struct_decl_id);

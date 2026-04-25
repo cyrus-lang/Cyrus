@@ -68,7 +68,7 @@ impl<'a> AnalysisContext<'a> {
         let monomorph_instance = self.monomorph_registry.get(monomorph_id);
 
         // analyze monomorphized body if not analyzed yet
-        if !monomorph_instance.analyzed {
+        if !is_generic_interface_method_call && !monomorph_instance.analyzed {
             let body_id = method_decl.body.unwrap();
             let template_body = self.decl_tables.body(body_id);
 

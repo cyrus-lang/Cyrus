@@ -26,7 +26,7 @@ use cyrusc_typed_ast::{
     },
     format::{format_func_type, format_sema_type},
     stmts::{TypedFuncTypeVariadicParam, TypedFuncVariadicParam, TypedGenericParams, TypedTypeArgs},
-    types::{NamedType, SemaType, TypeDeclID, TypedFuncType},
+    types::{InterfaceObjectType, NamedType, SemaType, TypeDeclID, TypedFuncType},
 };
 
 impl<'a> AnalysisContext<'a> {
@@ -214,7 +214,7 @@ impl<'a> AnalysisContext<'a> {
 
         let Some((type_decl_id, method_decls)) = named_type.and_then(|named_type| {
             self.decl_tables
-                .methods_decl_of_named_type(named_type)
+                .method_decls_of_named_type(named_type)
                 .map(|method_decls| (named_type.type_decl_id, method_decls))
         }) else {
             self.reporter.report(Diag {
@@ -228,7 +228,14 @@ impl<'a> AnalysisContext<'a> {
 
         self.analyze_expr(&mut method_call.operand, None);
 
-        self.analyze_method_call_internal(method_call, &method_decls, type_decl_id, operand_type.clone(), true)
+        self.analyze_method_call_internal(
+            method_call,
+            &method_decls,
+            type_decl_id,
+            operand_type.clone(),
+            true,
+            false,
+        )
     }
 
     fn analyze_static_method_call(
@@ -240,7 +247,7 @@ impl<'a> AnalysisContext<'a> {
 
         let Some((type_decl_id, method_decls)) = pure_operand_type.as_named_type().and_then(|named_type| {
             self.decl_tables
-                .methods_decl_of_named_type(named_type)
+                .method_decls_of_named_type(named_type)
                 .map(|method_decls| (named_type.type_decl_id, method_decls))
         }) else {
             self.reporter.report(Diag {
@@ -262,99 +269,14 @@ impl<'a> AnalysisContext<'a> {
             return None;
         }
 
-        self.analyze_method_call_internal(method_call, &method_decls, type_decl_id, operand_type.clone(), false)
-    }
-
-    // TODO should decide about dynamic-dispatch & static-dispatch interface call.
-    fn analyze_interface_method_call(
-        &mut self,
-        method_call: &mut TypedMethodCall,
-        operand_type: &SemaType,
-    ) -> Option<SemaType> {
-        let pure_operand_type = operand_type.const_inner().pointer_inner().clone();
-
-        // try as static-dispatch if interface-object is present
-        if let Some(interface_object) = pure_operand_type.as_interface_object() {
-            dbg!(interface_object.clone());
-            todo!()
-        }
-
-        // interface-call detected as dynamic-dispatch on vtable
-
-        let interface_decl_id = pure_operand_type.as_named_interface().unwrap();
-        let interface_decl = self.decl_tables.interface_decl(interface_decl_id);
-
-        let named_type = pure_operand_type.as_named_type().unwrap();
-        let interface_type_args = named_type.type_args.clone();
-
-        let Some(interface_method_decl_id) = interface_decl.methods.get(&method_call.name) else {
-            self.reporter.report(Diag {
-                level: DiagLevel::Error,
-                kind: Box::new(AnalyzerDiagKind::ObjectMethodNotDefined {
-                    object_name: interface_decl.name.clone(),
-                    method_name: method_call.name.clone(),
-                }),
-                loc: Some(method_call.loc),
-                hint: None,
-            });
-            return None;
-        };
-
-        let mut interface_method_decl = self.decl_tables.method_decl(interface_method_decl_id);
-
-        let generic_params = interface_decl.generic_params.clone();
-        let generic_env = self.create_inference_generic_env(
-            &interface_decl.name,
-            generic_params,
-            &interface_type_args,
-            method_call.loc,
-        )?;
-
-        self.with_generic_env(generic_env, |this| {
-            this.normalize_func_params(&mut interface_method_decl.func_decl.params);
-
-            interface_method_decl.func_decl.params =
-                this.substitute_func_params(interface_method_decl.func_decl.params);
-
-            interface_method_decl.func_decl.ret_type = this.substitute_type(&interface_method_decl.func_decl.ret_type);
-
-            if !this.analyze_call(
-                &mut interface_method_decl.func_decl,
-                &mut method_call.args,
-                method_call.loc,
-                true, // always instance call
-            ) {
-                return None;
-            }
-
-            debug_assert!(
-                interface_method_decl
-                    .func_decl
-                    .params
-                    .get_self_modifier()
-                    .unwrap()
-                    .kind
-                    .is_referenced()
-            );
-
-            interface_method_decl.func_decl.ret_type = this.substitute_type(&interface_method_decl.func_decl.ret_type);
-
-            let ret_type = interface_method_decl.func_decl.ret_type.clone();
-
-            let method_index = interface_decl.method_index(&method_call.name).unwrap();
-
-            method_call.type_args = this.collect_instantiated_type_args(interface_decl.generic_params);
-
-            method_call.operand.ty = Some(operand_type.clone());
-
-            method_call.dispatch = TypedMethodCallDispatch::Interface {
-                interface_decl_id,
-                index: method_index,
-                dispatch: TypedInterfaceCallDispatch::Dynamic,
-            };
-
-            Some(ret_type)
-        })
+        self.analyze_method_call_internal(
+            method_call,
+            &method_decls,
+            type_decl_id,
+            operand_type.clone(),
+            false,
+            false,
+        )
     }
 
     fn analyze_method_call_internal(
@@ -364,6 +286,7 @@ impl<'a> AnalysisContext<'a> {
         type_decl_id: TypeDeclID,
         mut operand_type: SemaType,
         is_instance_method_call: bool,
+        is_interface_method_call: bool,
     ) -> Option<SemaType> {
         let mut pure_operand_type = operand_type.const_inner().pointer_inner().clone();
 
@@ -459,7 +382,7 @@ impl<'a> AnalysisContext<'a> {
                 method_decls,
                 &object_name,
                 method_call.is_thin_arrow,
-                false,
+                is_interface_method_call,
                 method_call.loc,
             );
 
@@ -478,6 +401,7 @@ impl<'a> AnalysisContext<'a> {
             }
 
             let final_type_args = this.collect_instantiated_type_args(method_generic_params.clone());
+
             method_call.type_args = final_type_args;
 
             // generic static method
@@ -530,6 +454,159 @@ impl<'a> AnalysisContext<'a> {
                 Some(method_decl.func_decl.ret_type.clone())
             }
         })
+    }
+}
+
+impl<'a> AnalysisContext<'a> {
+    fn analyze_dynamic_dispatch_interface_method_call(
+        &mut self,
+        method_call: &mut TypedMethodCall,
+        pure_operand_type: &SemaType,
+    ) -> Option<SemaType> {
+        let interface_decl_id = pure_operand_type.as_named_interface().unwrap();
+        let interface_decl = self.decl_tables.interface_decl(interface_decl_id);
+
+        let named_type = pure_operand_type.as_named_type().unwrap();
+        let interface_type_args = named_type.type_args.clone();
+
+        let Some(interface_method_decl_id) = interface_decl.methods.get(&method_call.name) else {
+            self.reporter.report(Diag {
+                level: DiagLevel::Error,
+                kind: Box::new(AnalyzerDiagKind::ObjectMethodNotDefined {
+                    object_name: interface_decl.name.clone(),
+                    method_name: method_call.name.clone(),
+                }),
+                loc: Some(method_call.loc),
+                hint: None,
+            });
+            return None;
+        };
+
+        let mut interface_method_decl = self.decl_tables.method_decl(interface_method_decl_id);
+
+        let generic_params = interface_decl.generic_params.clone();
+        let generic_env = self.create_inference_generic_env(
+            &interface_decl.name,
+            generic_params,
+            &interface_type_args,
+            method_call.loc,
+        )?;
+
+        self.with_generic_env(generic_env, |this| {
+            this.normalize_func_params(&mut interface_method_decl.func_decl.params);
+
+            interface_method_decl.func_decl.params =
+                this.substitute_func_params(interface_method_decl.func_decl.params);
+
+            interface_method_decl.func_decl.ret_type = this.substitute_type(&interface_method_decl.func_decl.ret_type);
+
+            if !this.analyze_call(
+                &mut interface_method_decl.func_decl,
+                &mut method_call.args,
+                method_call.loc,
+                true, // always instance call
+            ) {
+                return None;
+            }
+
+            debug_assert!(
+                interface_method_decl
+                    .func_decl
+                    .params
+                    .get_self_modifier()
+                    .unwrap()
+                    .kind
+                    .is_referenced()
+            );
+
+            interface_method_decl.func_decl.ret_type = this.substitute_type(&interface_method_decl.func_decl.ret_type);
+
+            let ret_type = interface_method_decl.func_decl.ret_type.clone();
+
+            let method_index = interface_decl.method_index(&method_call.name).unwrap();
+
+            method_call.type_args = this.collect_instantiated_type_args(interface_decl.generic_params);
+
+            method_call.dispatch = TypedMethodCallDispatch::Interface {
+                interface_decl_id,
+                index: method_index,
+                dispatch: TypedInterfaceCallDispatch::Dynamic,
+            };
+
+            Some(ret_type)
+        })
+    }
+
+    fn analyze_static_dispatch_interface_method_call(
+        &mut self,
+        method_call: &mut TypedMethodCall,
+        mut operand_type: SemaType,
+        interface_object: &InterfaceObjectType,
+    ) -> Option<SemaType> {
+        let interface_decl_id = interface_object.interface_type.type_decl_id.as_interface().unwrap();
+        let interface_decl = self.decl_tables.interface_decl(interface_decl_id);
+
+        let interface_name = &interface_decl.name;
+
+        let concrete_object_methods = self
+            .decl_tables
+            .method_decls_of_named_type(interface_object.concrete_type.as_named_type().unwrap())
+            .unwrap();
+
+        let concrete_operand_type = &*interface_object.concrete_type;
+        let concrete_type_decl_id = concrete_operand_type.as_named_type().unwrap().type_decl_id;
+
+        let method_index = interface_decl.method_index(&method_call.name).unwrap();
+
+        // we monomorphize concrete object's method!
+        // not interface's method and distinguishing these two is important at this moment.
+        let ret_type = self.analyze_method_call_internal(
+            method_call,
+            &concrete_object_methods,
+            concrete_type_decl_id,
+            concrete_operand_type.clone(),
+            true,
+            false,
+        );
+
+        let interface_call_dispatch = match &method_call.dispatch {
+            TypedMethodCallDispatch::Monomorph {
+                monomorph_id,
+                is_instance_method,
+            } => {
+                debug_assert!(*is_instance_method);
+                TypedInterfaceCallDispatch::StaticMonomorphized {
+                    monomorph_id: *monomorph_id,
+                }
+            }
+            TypedMethodCallDispatch::Normal { method_decl_id } => TypedInterfaceCallDispatch::StaticNormal {
+                method_decl_id: *method_decl_id,
+            },
+            TypedMethodCallDispatch::Unresolved | TypedMethodCallDispatch::Interface { .. } => unreachable!(),
+        };
+
+        method_call.dispatch = TypedMethodCallDispatch::Interface {
+            interface_decl_id,
+            index: method_index,
+            dispatch: interface_call_dispatch,
+        };
+
+        ret_type
+    }
+
+    fn analyze_interface_method_call(
+        &mut self,
+        method_call: &mut TypedMethodCall,
+        operand_type: &SemaType,
+    ) -> Option<SemaType> {
+        let pure_operand_type = operand_type.const_inner().pointer_inner().clone();
+
+        // try as static-dispatch if interface-object is present
+        if let Some(interface_object) = pure_operand_type.as_interface_object() {
+            self.analyze_static_dispatch_interface_method_call(method_call, operand_type.clone(), interface_object)
+        } else {
+            self.analyze_dynamic_dispatch_interface_method_call(method_call, &pure_operand_type)
+        }
     }
 }
 

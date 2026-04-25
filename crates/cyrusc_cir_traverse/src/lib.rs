@@ -1063,6 +1063,7 @@ impl<'a> CIRTraverse<'a> {
 
                         Some(CIRCallMethodSelfMetadata {
                             operand: Box::new(operand),
+                            use_fat_ptr_data: false,
                             is_referenced: self_modifier.kind.is_referenced(),
                         })
                     } else {
@@ -1127,22 +1128,82 @@ impl<'a> CIRTraverse<'a> {
                             },
                         })
                     }
-                    TypedInterfaceCallDispatch::Static { vtable_id } => {
-                        // let vtable_irv = self.get_or_declare_vtable_ir_value(&interface_decl.name, *vtable_id);
-                        
-                        // TODO
-                        todo!()
+                    TypedInterfaceCallDispatch::StaticNormal { method_decl_id } => {
+                        let irv_id = self.get_or_declare_method_ir_value(*method_decl_id);
+
+                        let method_decl = self.decl_tables.method_decl(*method_decl_id);
+
+                        let self_meta = {
+                            if method_decl.is_instance_method() {
+                                let self_modifier = method_decl.func_decl.params.get_self_modifier().unwrap();
+
+                                debug_assert!(
+                                    self_modifier.kind.is_referenced(),
+                                    "interface method self modifier is always referenced"
+                                );
+
+                                let operand = self.lower_expr(&method_call.operand);
+
+                                Some(CIRCallMethodSelfMetadata {
+                                    operand: Box::new(operand),
+                                    use_fat_ptr_data: true,
+                                    is_referenced: true,
+                                })
+                            } else {
+                                None
+                            }
+                        };
+
+                        let ret_type = self.lower_sema_type(&method_decl.func_decl.ret_type);
+
+                        let func_type = self.lower_func_type(&method_decl.func_decl.as_func_type());
+
+                        CIRExprKind::Call(CIRCall {
+                            args,
+                            ret_type,
+                            dispatch: CIRCallDispatch::Method {
+                                irv_id,
+                                func_type,
+                                abi_name: method_decl.func_decl.name.clone(),
+                                self_meta,
+                            },
+                        })
+                    }
+                    TypedInterfaceCallDispatch::StaticMonomorphized { monomorph_id } => {
+                        let (irv_id, cir_func_type, abi_name) =
+                            self.get_or_declare_monomorph_method_ir_value(*monomorph_id);
+
+                        let monomorph_instance = self.monomorph_registry.get(*monomorph_id);
+
+                        let self_meta = {
+                            let self_modifier = monomorph_instance.params.get_self_modifier().unwrap();
+
+                            debug_assert!(
+                                self_modifier.kind.is_referenced(),
+                                "interface method self modifier is always referenced"
+                            );
+
+                            let operand = self.lower_expr(&method_call.operand);
+
+                            Some(CIRCallMethodSelfMetadata {
+                                operand: Box::new(operand),
+                                use_fat_ptr_data: true,
+                                is_referenced: true,
+                            })
+                        };
+
+                        CIRExprKind::Call(CIRCall {
+                            args,
+                            ret_type: *cir_func_type.ret_type.clone(),
+                            dispatch: CIRCallDispatch::Method {
+                                irv_id,
+                                func_type: cir_func_type,
+                                abi_name,
+                                self_meta,
+                            },
+                        })
                     }
                 }
-                // let concrete_type = method_self_type.const_inner().pointer_inner();
-
-                // let named_type = &concrete_type.as_named_type().unwrap();
-
-                // let object_methods = self.decl_tables.methods_decl_of_named_type(*named_type).unwrap();
-
-                // let object_generic_params = self.decl_tables.type_decl_generic_params(named_type.type_decl_id);
-
-                // let type_args = &named_type.type_args;
             }
             TypedMethodCallDispatch::Monomorph {
                 monomorph_id,
@@ -1159,6 +1220,7 @@ impl<'a> CIRTraverse<'a> {
 
                         Some(CIRCallMethodSelfMetadata {
                             operand: Box::new(operand),
+                            use_fat_ptr_data: false,
                             is_referenced: self_modifier.kind.is_referenced(),
                         })
                     } else {

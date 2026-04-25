@@ -41,8 +41,8 @@ use inkwell::{
     AddressSpace, FloatPredicate, IntPredicate,
     types::{AnyTypeEnum, ArrayType, BasicType, BasicTypeEnum, StructType},
     values::{
-        AnyValueEnum, ArrayValue, BasicMetadataValueEnum, BasicValue, BasicValueEnum, FunctionValue, IntValue,
-        PointerValue, StructValue,
+        AggregateValueEnum, AnyValueEnum, ArrayValue, BasicMetadataValueEnum, BasicValue, BasicValueEnum,
+        FunctionValue, IntValue, PointerValue, StructValue,
     },
 };
 
@@ -1902,7 +1902,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
 
         // emit self argument (if exists)
         if let Some(self_meta) = self_meta_opt {
-            let (lvalue, rvalue) = self.emit_self_argument(self_meta);
+            let (lvalue, rvalue) = self.emit_self_argument(self_meta.clone());
 
             // use param index 0 for self
             let self_param_types = &abi_func_info.params_types[0..1];
@@ -1931,21 +1931,45 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         )
     }
 
-    fn emit_self_argument(
-        &mut self,
-        self_meta: &CIRCallMethodSelfMetadata,
-    ) -> (InternalValue<'ll>, InternalValue<'ll>) {
-        if self_meta.is_referenced {
-            // always pass a pointer, regardless of ABI decision
-            let lvalue = self.emit_lvalue_address(&self_meta.operand);
-            let rvalue = lvalue.clone();
+    fn emit_self_argument(&mut self, self_meta: CIRCallMethodSelfMetadata) -> (InternalValue<'ll>, InternalValue<'ll>) {
+        if self_meta.use_fat_ptr_data {
+            let fat_ptr_value = {
+                let value = self.emit_expr(&self_meta.operand);
+                self.load_rvalue(value)
+            };
 
-            (lvalue, rvalue)
+            let fat_ptr_struct_value = fat_ptr_value.as_basic_value().into_struct_value();
+
+            let struct_type = fat_ptr_value.ty.as_struct().unwrap();
+            let data_type = struct_type.fields.first().cloned().unwrap();
+
+            debug_assert!(data_type.is_pointer()); // always `void*`
+
+            // let llvm_struct_type = self.emit_struct_type(struct_type);
+            let data_ptr = self
+                .llvmbuilder
+                .build_extract_value(AggregateValueEnum::StructValue(fat_ptr_struct_value), 0, "fat_ptr.data")
+                .unwrap();
+
+            let data_value = InternalValue::new(
+                data_type.clone(),
+                InternalValueKind::RValue(data_ptr.as_basic_value_enum()),
+            );
+
+            (data_value.clone(), data_value)
         } else {
-            let lvalue = self.emit_expr(&self_meta.operand);
-            let rvalue = self.load_rvalue(lvalue.clone());
+            if self_meta.is_referenced {
+                // always pass a pointer, regardless of ABI decision
+                let lvalue = self.emit_lvalue_address(&self_meta.operand);
+                let rvalue = lvalue.clone();
 
-            (lvalue, rvalue)
+                (lvalue, rvalue)
+            } else {
+                let lvalue = self.emit_expr(&self_meta.operand);
+                let rvalue = self.load_rvalue(lvalue.clone());
+
+                (lvalue, rvalue)
+            }
         }
     }
 

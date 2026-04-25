@@ -315,7 +315,8 @@ pub enum TypedMethodCallDispatch {
 #[derive(Debug, Clone, PartialEq)]
 pub enum TypedInterfaceCallDispatch {
     Dynamic,
-    Static { vtable_id: VTableID },
+    StaticNormal { method_decl_id: MethodDeclID },
+    StaticMonomorphized { monomorph_id: MonomorphID },
 }
 
 #[derive(Debug, Clone, PartialEq)]
