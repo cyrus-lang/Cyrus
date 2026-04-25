@@ -20,7 +20,7 @@ use cyrusc_internal::flow_state::FlowState;
 use cyrusc_typed_ast::stmts::TypedSwitchStmt;
 
 impl<'a> AnalysisContext<'a> {
-    pub(crate) fn analyze_switch(&mut self, switch_stmt: &mut TypedSwitchStmt) -> FlowState {
+    pub(crate) fn analyze_switch(&mut self, _switch_stmt: &mut TypedSwitchStmt) -> FlowState {
         todo!();
     }
 }

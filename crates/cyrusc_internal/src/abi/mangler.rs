@@ -197,6 +197,9 @@ fn mangle_sema_type(sema_type: &SemaType) -> String {
                 format!("{decl_id}<{type_args}>")
             }
         }
+        SemaType::InterfaceObject(interface_object) => {
+            mangle_sema_type(&SemaType::InterfaceObject(interface_object.clone()))
+        }
         SemaType::Plain(plain_type) => {
             // Use the provided to_string() method for PlainType
             plain_type.to_string()

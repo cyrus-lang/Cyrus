@@ -265,24 +265,6 @@ impl Resolver {
         None
     }
 
-    /// Resolve a module import that refers to a single identifier.
-    ///
-    /// This is equivalent to resolving the identifier within the
-    /// current lexical and module scope.
-    fn resolve_local_module_import(&mut self, module_import: &ASTModuleImport) -> Option<SymbolID> {
-        if let Some(ident) = module_import.as_ident() {
-            if ident.value == "Self" {
-                if let Some(symbol_id) = self.current_object_symbol_id {
-                    return Some(symbol_id);
-                }
-            }
-
-            return self.resolve_ident(&ident);
-        }
-
-        None
-    }
-
     fn resolve_module_import(&mut self, module_import: ASTModuleImport) -> Option<SymbolID> {
         if let Some(ident) = module_import.as_ident() {
             return self.resolve_ident(&ident);
@@ -2165,7 +2147,7 @@ impl Resolver {
         Some(TypedExpr {
             kind: TypedExprKind::Dynamic(TypedDynamicExpr {
                 operand: Box::new(operand),
-                ty: None,
+                interface_object_type: None,
                 concrete_type: None,
                 object_name: None,
                 loc: dynamic.loc,

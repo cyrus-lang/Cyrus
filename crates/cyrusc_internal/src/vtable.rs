@@ -81,9 +81,9 @@ impl VTableRegistry {
         }
     }
 
-    /// Register a vtable. Called only during semantic analysis.
-    /// If already present, returns the existing ID and validates identical layout.
-    pub fn register(
+    /// Get existing vtable ID or create a new one if not present.
+    /// Validates method layout consistency for existing vtables.
+    pub fn get_or_create_vtable(
         &self,
         sema_type: SemaType,
         interface_decl_id: InterfaceDeclID,
@@ -101,20 +101,28 @@ impl VTableRegistry {
 
         let mut inner = self.inner.write().unwrap();
 
-        // reuse existing
+        // Check for existing vtable
         if let Some(&existing_id) = inner.map.get(&key) {
             let existing = &inner.tables[existing_id.0 as usize];
+
+            // Validate method layout consistency
             assert_eq!(
                 existing.method_decls.0, methods.0,
                 "duplicate vtable registration with mismatched method layout"
             );
+
+            // Validate interface generic flag consistency
+            assert_eq!(
+                existing.is_interface_generic, is_interface_generic,
+                "duplicate vtable registration with mismatched interface generic flag"
+            );
+
             return existing_id;
         }
 
-        let monomorphized_methods = (0..methods.len()).map(|_| None).collect();
-
-        // create new
+        // Create new vtable
         let vtable_id = VTableID(inner.tables.len() as u32);
+        let monomorphized_methods = (0..methods.len()).map(|_| None).collect();
 
         inner.tables.push(VTableInfo {
             concrete_type: sema_type,

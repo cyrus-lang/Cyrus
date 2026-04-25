@@ -125,7 +125,7 @@ impl<'a> AnalysisContext<'a> {
 
             let sema_type = self.expand_sema_type(normalized_type, implement_interface.loc);
 
-            let interface_decl_id = sema_type.as_interface();
+            let interface_decl_id = sema_type.as_named_interface();
 
             let interface_decl = match interface_decl_id {
                 Some(id) => self.decl_tables.interface_decl(id),
@@ -222,7 +222,7 @@ impl<'a> AnalysisContext<'a> {
 
                 let sema_type = this.expand_sema_type(normalized_type, implement_interface.loc);
 
-                let interface_decl_id = sema_type.as_interface();
+                let interface_decl_id = sema_type.as_named_interface();
 
                 let interface_decl = match interface_decl_id {
                     Some(id) => this.decl_tables.interface_decl(id),

@@ -16,18 +16,151 @@
  */
 
 use crate::context::AnalysisContext;
+use cyrusc_internal::monomorph::MonomorphizableTemplateID;
+use cyrusc_source_loc::Loc;
 use cyrusc_typed_ast::{
-    decls::{DeclID, VarDecl, VarDeclID},
-    exprs::{TypedEnumInitArgs, TypedExprKind, TypedExpr, TypedUnnamedEnumValueKind},
+    decls::{DeclID, FuncDecl, FuncDeclID, MethodDecl, MethodDeclID, MonomorphID, VarDecl, VarDeclID},
+    exprs::{
+        TypedEnumInitArgs, TypedExpr, TypedExprKind, TypedFuncCall, TypedFuncCallDispatch, TypedUnnamedEnumValueKind,
+    },
+    format::format_loc,
     stmts::{
         TypedBlockStmt, TypedFuncParamKind, TypedFuncParams, TypedFuncVariadicParam, TypedIfStmt, TypedStmt,
-        TypedSwitchCasePattern, TypedTupleExportPattern, TypedTupleExportPatternKind, TypedVarStmt,
+        TypedSwitchCasePattern, TypedTupleExportPattern, TypedTupleExportPatternKind, TypedTypeArgs, TypedVarStmt,
     },
     types::SemaType,
 };
 use fx_hash::FxHashMap;
 
 type DeclMap = FxHashMap<VarDeclID, VarDeclID>;
+
+impl<'a> AnalysisContext<'a> {
+    pub(crate) fn monomorphize_generic_method_call(
+        &mut self,
+        operand_type: SemaType,
+        method_decl_id: MethodDeclID,
+        mut method_decl: MethodDecl,
+        is_generic_interface_method_call: bool,
+        loc: Loc,
+    ) -> Option<(MonomorphID, TypedTypeArgs)> {
+        let pure_operand_type = operand_type.const_inner().pointer_inner().clone();
+
+        if !is_generic_interface_method_call {
+            // substitute Self inside params, ret_type, variables
+            self.apply_self_type_in_method_decl_and_variable(&mut method_decl, &pure_operand_type);
+        }
+
+        method_decl.func_decl.params = self.substitute_func_params(method_decl.func_decl.params.clone());
+        method_decl.func_decl.ret_type = self.substitute_type(&method_decl.func_decl.ret_type);
+
+        self.check_type_arity(method_decl.func_decl.ret_type.clone(), loc)?;
+
+        let final_type_args = self.collect_instantiated_type_args(method_decl.func_decl.generic_params.clone());
+
+        // get or create monomorph instance
+        let monomorph_id = self.monomorph_registry.get_or_create(
+            MonomorphizableTemplateID::Method(method_decl_id),
+            final_type_args.clone(),
+            method_decl.func_decl.params.clone(),
+            method_decl.func_decl.ret_type.clone(),
+        );
+
+        let monomorph_instance = self.monomorph_registry.get(monomorph_id);
+
+        // analyze monomorphized body if not analyzed yet
+        if !monomorph_instance.analyzed {
+            let body_id = method_decl.body.unwrap();
+            let template_body = self.decl_tables.body(body_id);
+
+            let mut specialized_body = self.specialize_func_body(&template_body, &mut method_decl.func_decl.params);
+
+            let diag_len = self.reporter.len();
+
+            self.analyze_func_body(&mut specialized_body, &method_decl.func_decl.ret_type);
+
+            let monomorph_body_id = self.monomorph_registry.insert_monomorph_body(specialized_body);
+
+            let diag_origin = format_loc(&self.source_map, loc);
+
+            if self.reporter.len() > diag_len {
+                self.apply_error_originated_from_on_diag_range(diag_len..=diag_len, |diag| {
+                    diag.hint = Some(format!("Error originates from this method call at {}.", diag_origin));
+                });
+            }
+
+            self.monomorph_registry.update(monomorph_id, |inst| {
+                inst.analyzed = true;
+                inst.body = Some(monomorph_body_id);
+
+                // ensure unique var_decl_id remapping per monomorph instance
+                inst.params = method_decl.func_decl.params.clone();
+            });
+        }
+
+        Some((monomorph_id, final_type_args))
+    }
+
+    pub(crate) fn monomorphize_generic_func_call(
+        &mut self,
+        operand_type: &SemaType,
+        func_call: &mut TypedFuncCall,
+        func_decl_id: FuncDeclID,
+        func_decl: &mut FuncDecl,
+        final_type_args: TypedTypeArgs,
+    ) -> Option<SemaType> {
+        func_call.operand.ty = Some(self.substitute_type(&operand_type));
+        func_decl.params = self.substitute_func_params(func_decl.params.clone());
+        func_decl.ret_type = self.substitute_type(&func_decl.ret_type);
+
+        // get or get monomorph instance
+        let monomorph_id = self.monomorph_registry.get_or_create(
+            MonomorphizableTemplateID::Func(func_decl_id),
+            final_type_args.clone(),
+            func_decl.params.clone(),   // specialized params
+            func_decl.ret_type.clone(), // specialized ret
+        );
+
+        let monomorph_instance = self.monomorph_registry.get(monomorph_id);
+
+        // analyze monomorphized body if not analyzed yet
+        if !monomorph_instance.analyzed {
+            let func_env = self.create_func_def_env(func_decl.as_func_type());
+
+            self.with_func_env(func_env, |this| {
+                let body_id = func_decl.body.unwrap();
+                let template_body = this.decl_tables.body(body_id);
+
+                let mut specialized_body = this.specialize_func_body(&template_body, &mut func_decl.params);
+
+                let diag_len = this.reporter.len();
+
+                this.analyze_func_body(&mut specialized_body, &func_decl.ret_type);
+
+                let monomorph_body_id = this.monomorph_registry.insert_monomorph_body(specialized_body);
+
+                let diag_origin = format_loc(&this.source_map, func_call.loc);
+
+                if this.reporter.len() > diag_len {
+                    this.apply_error_originated_from_on_diag_range(diag_len..=diag_len, |diag| {
+                        diag.hint = Some(format!("Error originates from this function call at {}.", diag_origin));
+                    });
+                }
+
+                this.monomorph_registry.update(monomorph_id, |inst| {
+                    inst.analyzed = true;
+                    inst.body = Some(monomorph_body_id);
+
+                    // ensure unique var_decl_id remapping per monomorph instance
+                    inst.params = func_decl.params.clone();
+                });
+            });
+        }
+
+        func_call.dispatch = TypedFuncCallDispatch::Monomorph { monomorph_id };
+
+        Some(func_decl.ret_type.clone())
+    }
+}
 
 impl<'a> AnalysisContext<'a> {
     /// Specialize a function body's local declarations for a monomorph.

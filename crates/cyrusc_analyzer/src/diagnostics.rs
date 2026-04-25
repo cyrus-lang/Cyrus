@@ -20,7 +20,6 @@ use cyrusc_diagcentral::{Diag, DiagKind, DiagLevel};
 use cyrusc_source_loc::Loc;
 use cyrusc_strescape::diagnostics::UnescapeError;
 use cyrusc_typed_ast::{
-    decls::DeclID,
     stmts::{TypedFuncParamKind, TypedFuncVariadicParam},
     types::SemaType,
 };
@@ -233,8 +232,13 @@ pub enum AnalyzerDiagKind {
         expected_interface: String,
     },
 
-    #[error("Cannot convert to dynamic interface '{interface_type}'. Type '{concrete_type}' does not implement the interface.")]
-    DynamicConversionMissingInterface { interface_type: String, concrete_type: String },
+    #[error(
+        "Cannot convert to dynamic interface '{interface_type}'. Type '{concrete_type}' does not implement the interface."
+    )]
+    DynamicConversionMissingInterface {
+        interface_type: String,
+        concrete_type: String,
+    },
 
     #[error("Invalid field access (not supported for this symbol).")]
     ObjectNotSupportsFields,

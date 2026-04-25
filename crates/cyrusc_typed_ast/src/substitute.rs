@@ -22,7 +22,7 @@ use crate::{
         TypedFuncParams, TypedFuncTypeParams, TypedFuncTypeVariadicParam, TypedFuncVariadicParam, TypedGenericParams,
         TypedSelfModifier, TypedStructField, TypedTypeArg, TypedTypeArgs, TypedUnionField,
     },
-    types::{NamedType, SemaType, TypedArrayType, TypedFuncType, TypedTupleType},
+    types::{InterfaceObjectType, NamedType, SemaType, TypedArrayType, TypedFuncType, TypedTupleType},
 };
 
 pub fn substitute_sema_type_with_type_args(
@@ -65,6 +65,16 @@ pub fn substitute_sema_type_with_type_args(
             SemaType::Named(NamedType {
                 type_decl_id: named_type.type_decl_id,
                 type_args: TypedTypeArgs(new_args),
+            })
+        }
+        SemaType::InterfaceObject(interface_object) => {
+            let concrete_type = substitute_sema_type_with_type_args(&interface_object.concrete_type, generic_params, type_args);
+
+            SemaType::InterfaceObject(InterfaceObjectType {
+                interface_type: interface_object.interface_type.clone(),
+                concrete_type: Box::new(concrete_type),
+                vtable_id: interface_object.vtable_id,
+                loc: interface_object.loc
             })
         }
         SemaType::Array(array) => {

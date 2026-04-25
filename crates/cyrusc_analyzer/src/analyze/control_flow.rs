@@ -76,9 +76,10 @@ impl<'a> AnalysisContext<'a> {
 
     pub(crate) fn analyze_return(&mut self, ret: &mut TypedReturnStmt) -> FlowState {
         let func_type = self.func_env.current_func.clone().unwrap();
-        let ret_type = self
-            .normalize_and_check_type_formation(*func_type.ret_type, ret.loc)
-            .unwrap();
+        
+        let Some(ret_type) = self.normalize_and_check_type_formation(*func_type.ret_type, ret.loc) else {
+            return FlowState::Reachable;
+        };
 
         if ret_type.is_void() && ret.arg.is_some() {
             self.reporter.report(Diag {

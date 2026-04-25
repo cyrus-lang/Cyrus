@@ -57,6 +57,7 @@ impl<'a> AnalysisContext<'a> {
             SemaType::FuncType(func_type) => self.normalize_func_type(func_type),
             SemaType::Tuple(tuple_type) => self.normalize_tuple(tuple_type),
             SemaType::SelfType(self_type) => self.normalize_self_type(self_type),
+            SemaType::InterfaceObject(_) => Some(ty),
             SemaType::Plain(_) => Some(ty),
 
             SemaType::Err(_) => Some(ty),

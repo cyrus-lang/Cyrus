@@ -16,16 +16,16 @@
  */
 
 use crate::{context::AnalysisContext, diagnostics::AnalyzerDiagKind};
-use cyrusc_const_eval::resolver::ConstResolver;
 use cyrusc_diagcentral::{Diag, DiagLevel};
-use cyrusc_internal::monomorph::MonomorphizableTemplateID;
 use cyrusc_source_loc::Loc;
 use cyrusc_typed_ast::{
-    decls::{DeclID, FuncDecl, FuncDeclID, MethodDecl, MethodDeclID, MethodDecls, MonomorphID},
-    exprs::{TypedExpr, TypedExprKind, TypedFuncCall, TypedFuncCallDispatch, TypedMethodCall, TypedMethodCallDispatch},
-    format::{format_func_type, format_loc, format_sema_type},
+    decls::{DeclID, FuncDecl, MethodDecl, MethodDecls},
+    exprs::{
+        TypedExpr, TypedFuncCall, TypedFuncCallDispatch, TypedInterfaceCallDispatch, TypedMethodCall,
+        TypedMethodCallDispatch,
+    },
+    format::{format_func_type, format_sema_type},
     stmts::{TypedFuncTypeVariadicParam, TypedFuncVariadicParam, TypedGenericParams, TypedTypeArgs},
-    substitute::instantiate_struct_decl_with_type_args,
     types::{NamedType, SemaType, TypeDeclID, TypedFuncType},
 };
 
@@ -203,14 +203,14 @@ impl<'a> AnalysisContext<'a> {
     ) -> Option<SemaType> {
         let pure_operand_type = operand_type.const_inner().pointer_inner().clone();
 
-        let named_type = pure_operand_type.as_named_type();
+        let is_interface =
+            pure_operand_type.as_interface_object().is_some() || pure_operand_type.as_named_interface().is_some();
 
-        if named_type
-            .map(|named_type| named_type.type_decl_id.is_interface())
-            .unwrap_or(false)
-        {
+        if is_interface {
             return self.analyze_interface_method_call(method_call, operand_type);
         }
+
+        let named_type = pure_operand_type.as_named_type();
 
         let Some((type_decl_id, method_decls)) = named_type.and_then(|named_type| {
             self.decl_tables
@@ -265,34 +265,24 @@ impl<'a> AnalysisContext<'a> {
         self.analyze_method_call_internal(method_call, &method_decls, type_decl_id, operand_type.clone(), false)
     }
 
+    // TODO should decide about dynamic-dispatch & static-dispatch interface call.
     fn analyze_interface_method_call(
         &mut self,
         method_call: &mut TypedMethodCall,
         operand_type: &SemaType,
     ) -> Option<SemaType> {
-        let decl_id = method_call.operand.kind.as_decl_id().unwrap();
-        let expr = self.resolve_symbol_expr(decl_id).unwrap();
-
-        let Some(concrete_type) = expr.extract_dynamic_expr_concrete_type().cloned() else {
-            let operand_type = format_sema_type(operand_type.clone(), self.formatter);
-
-            self.reporter.report(Diag {
-                level: DiagLevel::Error,
-                kind: Box::new(AnalyzerDiagKind::InterfaceMethodCallOnNonDynamicObject {
-                    method_name: method_call.name.clone(),
-                    expected_interface: operand_type,
-                }),
-                loc: Some(method_call.loc),
-                hint: None,
-            });
-            return None;
-        };
-
         let pure_operand_type = operand_type.const_inner().pointer_inner().clone();
 
-        let interface_decl_id = pure_operand_type.as_interface().unwrap();
+        // try as static-dispatch if interface-object is present
+        if let Some(interface_object) = pure_operand_type.as_interface_object() {
+            dbg!(interface_object.clone());
+            todo!()
+        }
+
+        // interface-call detected as dynamic-dispatch on vtable
+
+        let interface_decl_id = pure_operand_type.as_named_interface().unwrap();
         let interface_decl = self.decl_tables.interface_decl(interface_decl_id);
-        let is_interface_generic = interface_decl.is_generic();
 
         let named_type = pure_operand_type.as_named_type().unwrap();
         let interface_type_args = named_type.type_args.clone();
@@ -351,93 +341,16 @@ impl<'a> AnalysisContext<'a> {
 
             let ret_type = interface_method_decl.func_decl.ret_type.clone();
 
-            let method_self_type = SemaType::Pointer(Box::new(concrete_type.clone()));
-
             let method_index = interface_decl.method_index(&method_call.name).unwrap();
 
-            let vtable_id = this
-                .vtable_registry
-                .get(&concrete_type, (interface_decl_id, interface_type_args.clone()));
-
-            // checking object is generic or not is necessary here
-            // because `is_interface_generic` is not enough solely.
-            // and we prevent of monomorphization of concrete methods.
-            let is_object_generic = !this
-                .decl_tables
-                .type_decl_generic_params(concrete_type.as_named_type().unwrap().type_decl_id)
-                .is_empty();
-
-            if is_interface_generic && is_object_generic {
-                // monomorphize object method
-                let concrete_named_type = concrete_type.as_named_type().unwrap();
-
-                let object_methods = this
-                    .decl_tables
-                    .methods_decl_of_named_type(concrete_named_type)
-                    .unwrap();
-
-                let object_generic_params = this
-                    .decl_tables
-                    .type_decl_generic_params(concrete_named_type.type_decl_id);
-
-                let object_method_decl_id = object_methods.get(&method_call.name).unwrap();
-                let mut object_method_decl = this.decl_tables.method_decl(object_method_decl_id);
-
-                let object_method_generic_env = this.create_inference_generic_env(
-                    &method_call.name,
-                    object_generic_params,
-                    &concrete_named_type.type_args,
-                    method_call.loc,
-                )?;
-
-                this.with_generic_env(object_method_generic_env, |this| {
-                    object_method_decl.func_decl.params =
-                        this.substitute_func_params(object_method_decl.func_decl.params.clone());
-
-                    object_method_decl.func_decl.ret_type =
-                        this.substitute_type(&object_method_decl.func_decl.ret_type);
-
-                    let self_modifier = object_method_decl.func_decl.params.get_self_modifier_mut().unwrap();
-
-                    self_modifier.ty = this.substitute_self_type(self_modifier.ty.clone(), &concrete_type);
-
-                    let func_type = object_method_decl.func_decl.as_func_type();
-
-                    let parent_infer_ctx = this.func_env.infer.clone();
-                    let func_env = this.create_method_env(object_method_decl_id, func_type, parent_infer_ctx);
-
-                    this.with_func_env(func_env, |this| {
-                        this.func_env.current_object = Some(concrete_type.clone());
-
-                        let Some((monomorph_id, _)) = this.monomorphize_generic_method_call(
-                            concrete_type.clone(),
-                            object_method_decl_id,
-                            object_method_decl,
-                            true,
-                            method_call.loc,
-                        ) else {
-                            return;
-                        };
-
-                        this.vtable_registry.with_vtable_info_mut(vtable_id, |_vtable_info| {
-                            let slot = _vtable_info
-                                .monomorphized_methods
-                                .get_mut(method_index)
-                                .expect("vtable method index out of bounds");
-
-                            *slot = Some(monomorph_id);
-                        });
-                    });
-                });
-            }
+            method_call.type_args = this.collect_instantiated_type_args(interface_decl.generic_params);
 
             method_call.operand.ty = Some(operand_type.clone());
 
             method_call.dispatch = TypedMethodCallDispatch::Interface {
-                vtable_id,
                 interface_decl_id,
                 index: method_index,
-                method_self_type,
+                dispatch: TypedInterfaceCallDispatch::Dynamic,
             };
 
             Some(ret_type)
@@ -452,7 +365,7 @@ impl<'a> AnalysisContext<'a> {
         mut operand_type: SemaType,
         is_instance_method_call: bool,
     ) -> Option<SemaType> {
-        let pure_operand_type = operand_type.const_inner().pointer_inner().clone();
+        let mut pure_operand_type = operand_type.const_inner().pointer_inner().clone();
 
         let object_name = self.formatter.format_type_decl(type_decl_id);
 
@@ -560,10 +473,12 @@ impl<'a> AnalysisContext<'a> {
                 let inferred_operand_type_args = this.collect_instantiated_type_args(operand_generic_params);
 
                 named_type.type_args = inferred_operand_type_args;
+
+                pure_operand_type = operand_type.const_inner().pointer_inner().clone();
             }
 
-            let inferred_method_call_type_args = this.collect_instantiated_type_args(method_generic_params.clone());
-            method_call.type_args = inferred_method_call_type_args;
+            let final_type_args = this.collect_instantiated_type_args(method_generic_params.clone());
+            method_call.type_args = final_type_args;
 
             // generic static method
             if is_generic_method_call {
@@ -573,15 +488,19 @@ impl<'a> AnalysisContext<'a> {
                 let func_env = this.create_method_env(method_decl_id, func_type, parent_infer_ctx);
 
                 return this.with_func_env(func_env, |this| {
-                    this.func_env.current_object = Some(pure_operand_type.clone());
+                    if let Some(self_modifier) = method_decl.func_decl.params.get_self_modifier_mut() {
+                        // self type of instance method
+                        this.func_env.current_object = Some(pure_operand_type.clone());
+
+                        self_modifier.ty = this.substitute_self_type(self_modifier.ty.clone(), &operand_type);
+                    } else {
+                        // self type of static method
+                        this.func_env.current_object = Some(pure_operand_type.clone());
+                    }
 
                     method_decl.func_decl.params = this.substitute_func_params(method_decl.func_decl.params.clone());
 
                     method_decl.func_decl.ret_type = this.substitute_type(&method_decl.func_decl.ret_type);
-
-                    let self_modifier = method_decl.func_decl.params.get_self_modifier_mut().unwrap();
-
-                    self_modifier.ty = this.substitute_self_type(self_modifier.ty.clone(), &operand_type);
 
                     let ret_type = method_decl.func_decl.ret_type.clone();
 
@@ -611,132 +530,6 @@ impl<'a> AnalysisContext<'a> {
                 Some(method_decl.func_decl.ret_type.clone())
             }
         })
-    }
-
-    fn monomorphize_generic_method_call(
-        &mut self,
-        operand_type: SemaType,
-        method_decl_id: MethodDeclID,
-        mut method_decl: MethodDecl,
-        is_generic_interface_method_call: bool,
-        loc: Loc,
-    ) -> Option<(MonomorphID, TypedTypeArgs)> {
-        let pure_operand_type = operand_type.const_inner().pointer_inner().clone();
-
-        if !is_generic_interface_method_call {
-            // substitute Self inside params, ret_type, variables
-            self.apply_self_type_in_method_decl_and_variable(&mut method_decl, &pure_operand_type);
-        }
-
-        method_decl.func_decl.params = self.substitute_func_params(method_decl.func_decl.params.clone());
-        method_decl.func_decl.ret_type = self.substitute_type(&method_decl.func_decl.ret_type);
-
-        self.check_type_arity(method_decl.func_decl.ret_type.clone(), loc)?;
-
-        let final_type_args = self.collect_instantiated_type_args(method_decl.func_decl.generic_params.clone());
-
-        // get or create monomorph instance
-        let monomorph_id = self.monomorph_registry.get_or_create(
-            MonomorphizableTemplateID::Method(method_decl_id),
-            final_type_args.clone(),
-            method_decl.func_decl.params.clone(),
-            method_decl.func_decl.ret_type.clone(),
-        );
-
-        let monomorph_instance = self.monomorph_registry.get(monomorph_id);
-
-        // analyze monomorphized body if not analyzed yet
-        if !monomorph_instance.analyzed {
-            let body_id = method_decl.body.unwrap();
-            let template_body = self.decl_tables.body(body_id);
-
-            let mut specialized_body = self.specialize_func_body(&template_body, &mut method_decl.func_decl.params);
-
-            let diag_len = self.reporter.len();
-
-            self.analyze_func_body(&mut specialized_body, &method_decl.func_decl.ret_type);
-
-            let monomorph_body_id = self.monomorph_registry.insert_monomorph_body(specialized_body);
-
-            let diag_origin = format_loc(&self.source_map, loc);
-
-            if self.reporter.len() > diag_len {
-                self.apply_error_originated_from_on_diag_range(diag_len..=diag_len, |diag| {
-                    diag.hint = Some(format!("Error originates from this method call at {}.", diag_origin));
-                });
-            }
-
-            self.monomorph_registry.update(monomorph_id, |inst| {
-                inst.analyzed = true;
-                inst.body = Some(monomorph_body_id);
-
-                // ensure unique var_decl_id remapping per monomorph instance
-                inst.params = method_decl.func_decl.params.clone();
-            });
-        }
-
-        Some((monomorph_id, final_type_args))
-    }
-
-    fn monomorphize_generic_func_call(
-        &mut self,
-        operand_type: &SemaType,
-        func_call: &mut TypedFuncCall,
-        func_decl_id: FuncDeclID,
-        func_decl: &mut FuncDecl,
-        final_type_args: TypedTypeArgs,
-    ) -> Option<SemaType> {
-        func_call.operand.ty = Some(self.substitute_type(&operand_type));
-        func_decl.params = self.substitute_func_params(func_decl.params.clone());
-        func_decl.ret_type = self.substitute_type(&func_decl.ret_type);
-
-        // get or get monomorph instance
-        let monomorph_id = self.monomorph_registry.get_or_create(
-            MonomorphizableTemplateID::Func(func_decl_id),
-            final_type_args.clone(),
-            func_decl.params.clone(),   // specialized params
-            func_decl.ret_type.clone(), // specialized ret
-        );
-
-        let monomorph_instance = self.monomorph_registry.get(monomorph_id);
-
-        // analyze monomorphized body if not analyzed yet
-        if !monomorph_instance.analyzed {
-            let func_env = self.create_func_def_env(func_decl.as_func_type());
-
-            self.with_func_env(func_env, |this| {
-                let body_id = func_decl.body.unwrap();
-                let template_body = this.decl_tables.body(body_id);
-
-                let mut specialized_body = this.specialize_func_body(&template_body, &mut func_decl.params);
-
-                let diag_len = this.reporter.len();
-
-                this.analyze_func_body(&mut specialized_body, &func_decl.ret_type);
-
-                let monomorph_body_id = this.monomorph_registry.insert_monomorph_body(specialized_body);
-
-                let diag_origin = format_loc(&this.source_map, func_call.loc);
-
-                if this.reporter.len() > diag_len {
-                    this.apply_error_originated_from_on_diag_range(diag_len..=diag_len, |diag| {
-                        diag.hint = Some(format!("Error originates from this function call at {}.", diag_origin));
-                    });
-                }
-
-                this.monomorph_registry.update(monomorph_id, |inst| {
-                    inst.analyzed = true;
-                    inst.body = Some(monomorph_body_id);
-
-                    // ensure unique var_decl_id remapping per monomorph instance
-                    inst.params = func_decl.params.clone();
-                });
-            });
-        }
-
-        func_call.dispatch = TypedFuncCallDispatch::Monomorph { monomorph_id };
-
-        Some(func_decl.ret_type.clone())
     }
 }
 

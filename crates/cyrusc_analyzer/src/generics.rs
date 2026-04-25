@@ -21,7 +21,7 @@ use cyrusc_source_loc::Loc;
 use cyrusc_typed_ast::{
     GenericParamID,
     stmts::{TypedGenericParams, TypedTypeArg, TypedTypeArgs},
-    types::{SemaType, TypeDeclID},
+    types::SemaType,
 };
 
 impl<'a> AnalysisContext<'a> {

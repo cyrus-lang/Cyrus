@@ -93,7 +93,7 @@ pub struct CIREnumType {
     pub loc: Loc,
 }
 
-pub fn cir_vtable_type(loc: Loc) -> CIRType {
+pub fn cir_fat_ptr_type(loc: Loc) -> CIRType {
     CIRType::Struct(CIRStructType {
         name: None,
         fields: vec![

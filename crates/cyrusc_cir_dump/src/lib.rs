@@ -156,12 +156,12 @@ impl<'a> CIRPrinter<'a> {
     }
 
     // TODO
-    fn print_switch(&self, switch: &CIRSwitchStmt) {
+    fn print_switch(&self, _switch: &CIRSwitchStmt) {
         todo!();
     }
 
     // TODO
-    fn print_switch_enum(&self, switch_on_enum: &CIRSwitchOnEnumStmt) {
+    fn print_switch_enum(&self, _switch_on_enum: &CIRSwitchOnEnumStmt) {
         todo!();
     }
 
@@ -322,8 +322,8 @@ impl<'a> CIRPrinter<'a> {
                         index,
                         func_type: _,
                     } => {
-                        let obj = self.print_expr(operand);
-                        format!("dynamic_dispatch({}, index={})", obj, index)
+                        let operand = self.print_expr(operand);
+                        format!("dynamic_dispatch(operand={}, index={})", operand, index)
                     }
                     CIRCallDispatch::Method {
                         self_meta, abi_name, ..

@@ -27,13 +27,7 @@ use cyrusc_resolver::{
 };
 use cyrusc_source_loc::SourceMap;
 use cyrusc_typed_ast::decls::table::DeclTablesRegistry;
-use std::{
-    env,
-    path::Path,
-    process::exit,
-    sync::{Arc, Mutex},
-    vec,
-};
+use std::{env, path::Path, process::exit, sync::Arc, vec};
 
 pub fn main() {
     let args: Vec<String> = env::args().collect();

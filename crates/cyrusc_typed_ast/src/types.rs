@@ -15,10 +15,10 @@
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
 
-use crate::GenericParamID;
 use crate::decls::{DeclID, EnumDeclID, InterfaceDeclID, StructDeclID, TypedefDeclID, UnionDeclID};
 use crate::exprs::{TypedExpr, TypedSelfType};
 use crate::stmts::{TypedFuncTypeParams, TypedFuncTypeVariadicParam, TypedTypeArg, TypedTypeArgs};
+use crate::{GenericParamID, VTableID};
 use cyrusc_source_loc::Loc;
 use cyrusc_tokens::TokenKind;
 use std::fmt;
@@ -42,6 +42,7 @@ pub enum SemaType {
     SelfType(TypedSelfType),
     GenericParam(GenericParamID),
     InferVar(InferVarID),
+    InterfaceObject(InterfaceObjectType),
 
     Placeholder, // used only during synthesis of unnamed unions/structs
 }
@@ -123,6 +124,14 @@ pub struct TypedArrayType {
 pub enum TypedArrayCapacity {
     Fixed(Box<TypedExpr>),
     Dynamic,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct InterfaceObjectType {
+    pub interface_type: NamedType,
+    pub concrete_type: Box<SemaType>,
+    pub vtable_id: VTableID,
+    pub loc: Loc
 }
 
 impl TypeDeclID {
@@ -345,9 +354,17 @@ impl SemaType {
     }
 
     #[inline]
-    pub fn as_interface(&self) -> Option<InterfaceDeclID> {
+    pub fn as_named_interface(&self) -> Option<InterfaceDeclID> {
         match self.const_inner() {
             SemaType::Named(named_type) => named_type.type_decl_id.as_interface(),
+            _ => None,
+        }
+    }
+
+    #[inline]
+    pub fn as_interface_object(&self) -> Option<&InterfaceObjectType> {
+        match self.const_inner() {
+            SemaType::InterfaceObject(interface_object) => Some(interface_object),
             _ => None,
         }
     }
@@ -531,7 +548,12 @@ impl SemaType {
                 TypedTypeArg::Type(ty, _) => ty.contains_infer_var(),
                 TypedTypeArg::Infer => true,
             }),
-            SemaType::Err(_) | SemaType::Unresolved(_) | SemaType::Plain(_) | SemaType::SelfType(_) => false,
+
+            SemaType::Err(_)
+            | SemaType::Unresolved(_)
+            | SemaType::Plain(_)
+            | SemaType::SelfType(_)
+            | SemaType::InterfaceObject(_) => false,
         }
     }
 
@@ -559,9 +581,14 @@ impl SemaType {
             }
             SemaType::Named(named_type) => named_type.type_args.iter().any(|type_arg| match type_arg {
                 TypedTypeArg::Type(ty, _) => ty.contains_generic_param(),
-                TypedTypeArg::Infer => todo!(),
+                TypedTypeArg::Infer => false,
             }),
-            SemaType::Err(_) | SemaType::Unresolved(_) | SemaType::Plain(_) | SemaType::SelfType(_) => false,
+
+            SemaType::Err(_)
+            | SemaType::Unresolved(_)
+            | SemaType::Plain(_)
+            | SemaType::SelfType(_)
+            | SemaType::InterfaceObject(_) => false,
         }
     }
 
@@ -598,6 +625,7 @@ impl SemaType {
                     }
                     false
                 }
+                SemaType::InterfaceObject(_) => false,
 
                 SemaType::Plain(_)
                 | SemaType::GenericParam(_)

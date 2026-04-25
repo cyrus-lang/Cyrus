@@ -16,7 +16,6 @@
  */
 
 use cyrusc_ast::abi::CallConv;
-use cyrusc_ast::abi::Linkage;
 use cyrusc_ast::modifiers::GlobalVarModifiers;
 use cyrusc_internal::abi::mangler::*;
 use cyrusc_internal::abi::target::ABITarget;
@@ -1087,53 +1086,63 @@ impl<'a> CIRTraverse<'a> {
                 })
             }
             TypedMethodCallDispatch::Interface {
-                vtable_id,
                 interface_decl_id,
                 index,
-                method_self_type,
+                dispatch,
             } => {
-                let concrete_type = method_self_type.const_inner().pointer_inner();
+                match dispatch {
+                    TypedInterfaceCallDispatch::Dynamic => {
+                        let operand = self.lower_expr(&method_call.operand);
 
-                let named_type = &concrete_type.as_named_type().unwrap();
+                        let interface_decl = self.decl_tables.interface_decl(*interface_decl_id);
+                        let interface_generic_params = &interface_decl.generic_params;
 
-                let object_methods = self.decl_tables.methods_decl_of_named_type(*named_type).unwrap();
+                        let method_decl_id = interface_decl.get_method(&method_call.name).unwrap();
 
-                let object_generic_params = self.decl_tables.type_decl_generic_params(named_type.type_decl_id);
+                        let method_decl = self.decl_tables.method_decl(method_decl_id);
 
-                let type_args = &named_type.type_args;
+                        let mut inst_method_decl =
+                            instantiate_method_decl(&method_decl, interface_generic_params, &method_call.type_args);
 
-                let operand = self.lower_expr(&method_call.operand);
+                        // substitute method self type
+                        inst_method_decl
+                            .func_decl
+                            .params
+                            .get_self_modifier_mut()
+                            .as_mut()
+                            .unwrap()
+                            .ty = SemaType::Pointer(Box::new(SemaType::Plain(PlainType::Void))); // void*
 
-                let method_decl_id = object_methods.get(&method_call.name).unwrap();
+                        let cir_func_type = self.lower_func_type(&inst_method_decl.func_decl.as_func_type());
 
-                let method_decl = self.decl_tables.method_decl(method_decl_id);
+                        let ret_type = self.lower_sema_type(&inst_method_decl.func_decl.ret_type);
 
-                let mut inst_method_decl = instantiate_method_decl(&method_decl, &object_generic_params, type_args);
+                        CIRExprKind::Call(CIRCall {
+                            args,
+                            ret_type,
+                            dispatch: CIRCallDispatch::Interface {
+                                operand: Box::new(operand),
+                                index: *index,
+                                func_type: cir_func_type,
+                            },
+                        })
+                    }
+                    TypedInterfaceCallDispatch::Static { vtable_id } => {
+                        // let vtable_irv = self.get_or_declare_vtable_ir_value(&interface_decl.name, *vtable_id);
+                        
+                        // TODO
+                        todo!()
+                    }
+                }
+                // let concrete_type = method_self_type.const_inner().pointer_inner();
 
-                // substitute method self type
-                inst_method_decl
-                    .func_decl
-                    .params
-                    .get_self_modifier_mut()
-                    .as_mut()
-                    .unwrap()
-                    .ty = method_self_type.clone();
+                // let named_type = &concrete_type.as_named_type().unwrap();
 
-                let cir_func_type = self.lower_func_type(&inst_method_decl.func_decl.as_func_type());
+                // let object_methods = self.decl_tables.methods_decl_of_named_type(*named_type).unwrap();
 
-                let ret_type = self.lower_sema_type(&inst_method_decl.func_decl.ret_type);
+                // let object_generic_params = self.decl_tables.type_decl_generic_params(named_type.type_decl_id);
 
-                // let vtable_irv = self.get_or_declare_vtable_ir_value(&interface_decl.name, *vtable_id);
-
-                CIRExprKind::Call(CIRCall {
-                    args,
-                    ret_type,
-                    dispatch: CIRCallDispatch::Interface {
-                        operand: Box::new(operand),
-                        index: *index,
-                        func_type: cir_func_type,
-                    },
-                })
+                // let type_args = &named_type.type_args;
             }
             TypedMethodCallDispatch::Monomorph {
                 monomorph_id,
@@ -1220,7 +1229,8 @@ impl<'a> CIRTraverse<'a> {
         let operand_sema_type = dynamic.operand.ty.clone().unwrap();
         let operand = self.lower_expr(&dynamic.operand);
 
-        let named_type = dynamic.ty.as_ref().unwrap().as_named_type().cloned().unwrap();
+        let named_type = &dynamic.interface_object_type.as_ref().unwrap().interface_type;
+
         let interface_decl_id = named_type.type_decl_id.as_interface().unwrap();
         let interface_name = self.formatter.format_decl(DeclID::Interface(interface_decl_id));
         let interface_type_args = named_type.type_args.clone();
@@ -1248,7 +1258,7 @@ impl<'a> CIRTraverse<'a> {
 
         let irv_id = self.new_ir_value_id();
 
-        let vtable_type = cir_vtable_type(loc);
+        let vtable_type = cir_fat_ptr_type(loc);
 
         let cir_global = CIRGlobalVarStmt {
             irv_id,
@@ -1449,10 +1459,11 @@ impl<'a> CIRTraverse<'a> {
 
 // Types.
 impl<'a> CIRTraverse<'a> {
-    fn lower_sema_type(&mut self, sema_type: &SemaType) -> CIRType {
-        match sema_type {
+    fn lower_sema_type(&mut self, ty: &SemaType) -> CIRType {
+        match ty {
             SemaType::Plain(plain_type) => CIRType::Plain(plain_type.clone()),
             SemaType::Named(named_type) => self.lower_named_type(named_type),
+            SemaType::InterfaceObject(interface_object) => cir_fat_ptr_type(interface_object.loc),
             SemaType::Array(array_type) => {
                 let element_type = self.lower_sema_type(&array_type.element_type);
                 let len = match &array_type.capacity {
@@ -1480,7 +1491,6 @@ impl<'a> CIRTraverse<'a> {
                     loc: tuple_type.loc,
                 })
             }
-
             SemaType::Unresolved(_) => unreachable!("unexpected unresolved type"),
             SemaType::GenericParam(_) => unreachable!("Unexpected generic param"),
             SemaType::SelfType(_) => unreachable!("unexpected self type"),
@@ -1624,7 +1634,7 @@ impl<'a> CIRTraverse<'a> {
             TypeDeclID::Interface(interface_decl_id) => {
                 let interface_decl = self.decl_tables.interface_decl(interface_decl_id);
 
-                cir_vtable_type(interface_decl.loc)
+                cir_fat_ptr_type(interface_decl.loc)
             }
             TypeDeclID::Typedef(_) => unreachable!("unexpected unexpanded typedef"),
         }

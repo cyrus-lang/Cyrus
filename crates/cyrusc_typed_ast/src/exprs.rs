@@ -19,7 +19,7 @@ use crate::{
     VTableID,
     decls::{DeclID, EnumDeclID, FuncDeclID, InterfaceDeclID, MethodDeclID, MonomorphID, StructDeclID, UnionDeclID},
     stmts::{TypedBlockStmt, TypedBuiltin, TypedFuncParams, TypedTypeArgs},
-    types::{SemaType, TypedFuncType},
+    types::{InterfaceObjectType, SemaType, TypedFuncType},
 };
 use cyrusc_ast::{
     AssignKind, Ident,
@@ -86,7 +86,7 @@ pub struct TypedSymbolExpr {
 pub struct TypedDynamicExpr {
     pub operand: Box<TypedExpr>,
     pub object_name: Option<String>,
-    pub ty: Option<SemaType>,
+    pub interface_object_type: Option<InterfaceObjectType>,
     pub concrete_type: Option<SemaType>,
     pub loc: Loc,
 }
@@ -300,17 +300,22 @@ pub enum TypedMethodCallDispatch {
     },
 
     Interface {
-        vtable_id: VTableID,
         interface_decl_id: InterfaceDeclID,
-
         index: usize,
-        method_self_type: SemaType,
+
+        dispatch: TypedInterfaceCallDispatch,
     },
 
     Monomorph {
         monomorph_id: MonomorphID,
         is_instance_method: bool,
     },
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum TypedInterfaceCallDispatch {
+    Dynamic,
+    Static { vtable_id: VTableID },
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -375,15 +380,6 @@ impl TypedExpr {
 
     pub fn is_rvalue(&self) -> bool {
         self.val_cat == ValueCategory::RValue
-    }
-}
-
-impl TypedExpr {
-    pub fn extract_dynamic_expr_concrete_type(&self) -> Option<&SemaType> {
-        match &self.kind {
-            TypedExprKind::Dynamic(dynamic) => dynamic.concrete_type.as_ref(),
-            _ => None,
-        }
     }
 }
 

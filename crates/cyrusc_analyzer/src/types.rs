@@ -21,10 +21,12 @@ use cyrusc_diagcentral::{Diag, DiagLevel};
 use cyrusc_source_loc::Loc;
 use cyrusc_typed_ast::{
     decls::{EnumDecl, StructDecl, TypedefDeclID, UnionDecl},
+    exprs::TypedExpr,
     format::format_sema_type,
     stmts::{TypedEnumVariant, TypedFuncTypeParams, TypedFuncTypeVariadicParam, TypedTypeArg, TypedTypeArgs},
     types::{
-        NamedType, PlainType, SemaType, TypeDeclID, TypedArrayCapacity, TypedArrayType, TypedFuncType, TypedTupleType,
+        InterfaceObjectType, NamedType, PlainType, SemaType, TypeDeclID, TypedArrayCapacity, TypedArrayType,
+        TypedFuncType, TypedTupleType,
     },
 };
 
@@ -61,7 +63,8 @@ impl<'a> AnalysisContext<'a> {
                 .iter()
                 .any(|ty| self.sema_type_contains_self_by_value(ty, named_type.clone())),
 
-            SemaType::SelfType(_)
+            SemaType::InterfaceObject(_)
+            | SemaType::SelfType(_)
             | SemaType::Plain(_)
             | SemaType::GenericParam(_)
             | SemaType::InferVar(_)
@@ -79,6 +82,11 @@ impl<'a> AnalysisContext<'a> {
                 return true;
             }
 
+            (SemaType::InterfaceObject(interface_object1), SemaType::InterfaceObject(interface_object2)) => self
+                .is_named_type_assignable_to(interface_object1.interface_type, interface_object2.interface_type, loc),
+            (SemaType::InterfaceObject(interface_object), SemaType::Named(named_type2)) => {
+                self.is_named_type_assignable_to(interface_object.interface_type, named_type2, loc)
+            }
             (SemaType::Named(named_type1), SemaType::Named(named_type2)) => {
                 self.is_named_type_assignable_to(named_type1, named_type2, loc)
             }
@@ -372,7 +380,7 @@ impl<'a> AnalysisContext<'a> {
     }
 
     // NOTE: Would be used after implementing @cast.
-    pub(crate) fn is_explicit_cast_allowed(&mut self, value_type: SemaType, target_type: SemaType) -> bool {
+    pub(crate) fn _is_explicit_cast_allowed(&mut self, value_type: SemaType, target_type: SemaType) -> bool {
         match (value_type, target_type) {
             // Any integer to any integer
             (SemaType::Plain(value), SemaType::Plain(target)) if value.is_integer() && target.is_integer() => true,
@@ -600,7 +608,11 @@ impl<'a> AnalysisContext<'a> {
                     loc: func.loc,
                 })
             }
-            SemaType::Plain(_) | SemaType::GenericParam(_) | SemaType::SelfType(_) | SemaType::Unresolved(_) => ty,
+            SemaType::Plain(_)
+            | SemaType::GenericParam(_)
+            | SemaType::SelfType(_)
+            | SemaType::Unresolved(_)
+            | SemaType::InterfaceObject(_) => ty,
 
             SemaType::Err(_) => ty,
         }
@@ -645,6 +657,114 @@ fn canonicalize_typedef_cycle(path: &[TypedefDeclID]) -> Vec<TypedefDeclID> {
 }
 
 impl<'a> AnalysisContext<'a> {
+    pub(crate) fn coerce_interface_as_interface_object_if_possible(
+        &mut self,
+        ty: &SemaType,
+        expr: &TypedExpr,
+    ) -> SemaType {
+        let Some(expr_type) = &expr.ty else {
+            return ty.clone();
+        };
+
+        let Some(interface_object) = expr_type.as_interface_object() else {
+            return ty.clone();
+        };
+
+        // recursively substitute interface types that are compatible with interface-object
+        fn coerce_recursively(
+            this: &mut AnalysisContext,
+            ty: &SemaType,
+            interface_object: &InterfaceObjectType,
+            loc: Loc,
+        ) -> SemaType {
+            match ty {
+                SemaType::Named(named_type) => {
+                    if this.is_named_type_assignable_to(
+                        named_type.clone(),
+                        interface_object.interface_type.clone(),
+                        loc,
+                    ) {
+                        SemaType::InterfaceObject(interface_object.clone())
+                    } else {
+                        ty.clone()
+                    }
+                }
+
+                SemaType::Const(inner) => coerce_recursively(this, inner, interface_object, loc),
+                SemaType::Pointer(inner) => coerce_recursively(this, inner, interface_object, loc),
+                SemaType::Array(array_type) => {
+                    let element_type = Box::new(coerce_recursively(
+                        this,
+                        &array_type.element_type,
+                        interface_object,
+                        loc,
+                    ));
+
+                    SemaType::Array(TypedArrayType {
+                        element_type,
+                        capacity: array_type.capacity.clone(),
+                        loc: array_type.loc,
+                    })
+                }
+                SemaType::Tuple(tuple_type) => {
+                    let elements = tuple_type
+                        .elements
+                        .iter()
+                        .map(|ty| coerce_recursively(this, ty, interface_object, loc))
+                        .collect();
+
+                    SemaType::Tuple(TypedTupleType {
+                        elements,
+                        loc: tuple_type.loc,
+                    })
+                }
+                SemaType::FuncType(func_type) => {
+                    let params = TypedFuncTypeParams {
+                        list: func_type
+                            .params
+                            .list
+                            .iter()
+                            .map(|ty| coerce_recursively(this, ty, interface_object, loc))
+                            .collect(),
+                        variadic: func_type.params.variadic.clone().and_then(|variadic| {
+                            Some(match *variadic {
+                                TypedFuncTypeVariadicParam::UntypedCStyle => {
+                                    Box::new(TypedFuncTypeVariadicParam::UntypedCStyle)
+                                }
+                                TypedFuncTypeVariadicParam::Typed(ty) => Box::new(TypedFuncTypeVariadicParam::Typed(
+                                    coerce_recursively(this, &ty, interface_object, loc),
+                                )),
+                            })
+                        }),
+                    };
+
+                    let ret_type = coerce_recursively(this, &func_type.ret_type, interface_object, loc);
+
+                    SemaType::FuncType(TypedFuncType {
+                        params,
+                        ret_type: Box::new(ret_type),
+                        is_public: func_type.is_public,
+                        loc: func_type.loc,
+                    })
+                }
+
+                // existing interface-object remains same (don't touch it)
+                SemaType::InterfaceObject(_) => ty.clone(),
+
+                SemaType::Plain(_) => ty.clone(),
+
+                SemaType::SelfType(_)
+                | SemaType::GenericParam(_)
+                | SemaType::InferVar(_)
+                | SemaType::Unresolved(_)
+                | SemaType::Err(_)
+                | SemaType::Placeholder => ty.clone(),
+            }
+        }
+
+        coerce_recursively(self, ty, interface_object, expr.loc)
+    }
+
     pub(crate) fn check_type_formation(&mut self, ty: SemaType, loc: Loc) -> Option<SemaType> {
         fn check_recursively(this: &mut AnalysisContext, ty: &SemaType, loc: Loc, has_error: &mut bool) {
             if ty.count_const_layers() > 1 {
@@ -666,10 +786,6 @@ impl<'a> AnalysisContext<'a> {
                         }
                     }
                 }
-
-                SemaType::Const(inner) => check_recursively(this, inner, loc, has_error),
-                SemaType::Pointer(inner) => check_recursively(this, inner, loc, has_error),
-
                 SemaType::Array(array_type) => {
                     if array_type.element_type.is_void() {
                         this.reporter.report(Diag {
@@ -682,7 +798,6 @@ impl<'a> AnalysisContext<'a> {
                     }
                     check_recursively(this, &array_type.element_type, loc, has_error);
                 }
-
                 SemaType::FuncType(func_type) => {
                     for param in &func_type.params.list {
                         if param.is_void() {
@@ -698,7 +813,6 @@ impl<'a> AnalysisContext<'a> {
                     }
                     check_recursively(this, &func_type.ret_type, loc, has_error);
                 }
-
                 SemaType::Tuple(tuple_type) => {
                     for el in &tuple_type.elements {
                         if el.is_void() {
@@ -713,11 +827,10 @@ impl<'a> AnalysisContext<'a> {
                         check_recursively(this, el, loc, has_error);
                     }
                 }
-
                 SemaType::SelfType(_) => {
                     if this.func_env.current_object.is_none() {
                         dbg!(this.func_env.clone());
-                        
+
                         this.reporter.report(Diag {
                             level: DiagLevel::Error,
                             kind: Box::new(AnalyzerDiagKind::SelfTypeOutsideOfAnObject),
@@ -727,7 +840,10 @@ impl<'a> AnalysisContext<'a> {
                         *has_error = true;
                     }
                 }
+                SemaType::Const(inner) => check_recursively(this, inner, loc, has_error),
+                SemaType::Pointer(inner) => check_recursively(this, inner, loc, has_error),
 
+                SemaType::InterfaceObject(_) => {}
                 SemaType::Plain(_) => {}
 
                 SemaType::GenericParam(_)
@@ -774,6 +890,7 @@ impl<'a> AnalysisContext<'a> {
                     }
                     true
                 }
+
                 SemaType::Const(inner) | SemaType::Pointer(inner) => check_recursively(this, inner, loc),
                 SemaType::Array(array_type) => check_recursively(this, &array_type.element_type, array_type.loc),
                 SemaType::FuncType(func_type) => {
@@ -792,6 +909,8 @@ impl<'a> AnalysisContext<'a> {
                     }
                     true
                 }
+
+                SemaType::InterfaceObject(_) => true,
                 SemaType::Plain(_) => true,
 
                 SemaType::SelfType(_)

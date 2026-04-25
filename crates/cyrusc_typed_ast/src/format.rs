@@ -367,13 +367,16 @@ pub fn format_enum_struct_variant_fields(
         .join(", ")
 }
 
-pub fn format_sema_type(sema_type: SemaType, formatter: &dyn Formatter) -> String {
-    match sema_type {
+pub fn format_sema_type(ty: SemaType, formatter: &dyn Formatter) -> String {
+    match ty {
         SemaType::Unresolved(unresolved_type) => match unresolved_type {
             UnresolvedType::Decl(_) => format!("<unresolved_symbol>"),
             UnresolvedType::GenericInst { .. } => format!("<unresolved_generic_inst>"),
         },
         SemaType::GenericParam(generic_param_id) => formatter.format_generic_param(generic_param_id),
+        SemaType::InterfaceObject(interface_object) => {
+            format_sema_type(SemaType::Named(interface_object.interface_type), formatter)
+        }
         SemaType::Named(named_type) => {
             let name = formatter.format_type_decl(named_type.type_decl_id);
             format!("{}{}", name, format_type_args(&named_type.type_args, formatter))

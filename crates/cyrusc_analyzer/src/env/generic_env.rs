@@ -18,7 +18,7 @@
 use cyrusc_typed_ast::{
     GenericParamID,
     stmts::{TypedFuncTypeParams, TypedFuncTypeVariadicParam, TypedGenericParams, TypedTypeArg, TypedTypeArgs},
-    types::{NamedType, SemaType, TypedArrayType, TypedFuncType, TypedTupleType},
+    types::{InterfaceObjectType, NamedType, SemaType, TypedArrayType, TypedFuncType, TypedTupleType},
 };
 
 use crate::context::AnalysisContext;
@@ -91,11 +91,9 @@ impl GenericEnv {
 
 impl GenericEnv {
     #[inline]
-    pub fn substitute_sema_type(&self, sema_type: &SemaType) -> SemaType {
-        match sema_type {
-            SemaType::Unresolved(_) | SemaType::InferVar(_) | SemaType::Plain(_) | SemaType::Placeholder => {
-                sema_type.clone()
-            }
+    pub fn substitute_sema_type(&self, ty: &SemaType) -> SemaType {
+        match ty {
+            SemaType::Unresolved(_) | SemaType::InferVar(_) | SemaType::Plain(_) | SemaType::Placeholder => ty.clone(),
             SemaType::Named(named_type) => {
                 let type_args = named_type
                     .type_args
@@ -109,6 +107,16 @@ impl GenericEnv {
                 SemaType::Named(NamedType {
                     type_decl_id: named_type.type_decl_id,
                     type_args,
+                })
+            }
+            SemaType::InterfaceObject(interface_object) => {
+                let concrete_type = self.substitute_sema_type(&interface_object.concrete_type);
+
+                SemaType::InterfaceObject(InterfaceObjectType {
+                    interface_type: interface_object.interface_type.clone(),
+                    concrete_type: Box::new(concrete_type),
+                    vtable_id: interface_object.vtable_id,
+                    loc: interface_object.loc,
                 })
             }
             SemaType::Array(array) => SemaType::Array(TypedArrayType {
@@ -151,11 +159,11 @@ impl GenericEnv {
             }),
             SemaType::GenericParam(id) => match self.lookup(*id) {
                 Some(ty) => ty.clone(),
-                None => sema_type.clone(),
+                None => ty.clone(),
             },
             SemaType::SelfType(self_type) => SemaType::SelfType(self_type.clone()),
 
-            SemaType::Err(_) => sema_type.clone(),
+            SemaType::Err(_) => ty.clone(),
         }
     }
 }

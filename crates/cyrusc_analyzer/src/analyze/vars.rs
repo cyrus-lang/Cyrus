@@ -122,6 +122,8 @@ impl<'a> AnalysisContext<'a> {
             if var.ty.is_none() {
                 var.ty = Some(inferred_type);
             }
+
+            var.ty = Some(self.coerce_interface_as_interface_object_if_possible(&var.ty.as_ref().unwrap(), &expr));
         }
 
         if let Some(ty) = &var.ty {

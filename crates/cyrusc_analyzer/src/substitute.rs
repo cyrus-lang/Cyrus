@@ -60,16 +60,17 @@ impl<'a> AnalysisContext<'a> {
         params
     }
 
-    pub fn substitute_self_type(&mut self, mut sema_type: SemaType, self_type: &SemaType) -> SemaType {
-        sema_type = self.substitute_type(&sema_type);
+    pub fn substitute_self_type(&mut self, mut ty: SemaType, self_type: &SemaType) -> SemaType {
+        ty = self.substitute_type(&ty);
 
-        match sema_type {
-            SemaType::Unresolved(_)
+        match ty {
+            SemaType::InterfaceObject(_)
+            | SemaType::Unresolved(_)
             | SemaType::GenericParam(_)
             | SemaType::InferVar(_)
             | SemaType::Plain(_)
             | SemaType::Placeholder
-            | SemaType::Err(_) => sema_type.clone(),
+            | SemaType::Err(_) => ty.clone(),
 
             SemaType::SelfType(_) => self_type.clone(),
 
@@ -91,7 +92,6 @@ impl<'a> AnalysisContext<'a> {
                     type_args,
                 })
             }
-
             SemaType::Array(array) => SemaType::Array(TypedArrayType {
                 element_type: Box::new(self.substitute_self_type(*array.element_type.clone(), self_type)),
                 capacity: array.capacity.clone(),

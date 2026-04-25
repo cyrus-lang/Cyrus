@@ -451,4 +451,9 @@ impl InterfaceDecl {
     pub fn method_index(&self, name: &str) -> Option<usize> {
         self.methods.0.iter().position(|(method_name, _)| method_name == name)
     }
+
+    #[inline]
+    pub fn get_method(&self, name: &str) -> Option<MethodDeclID> {
+        self.methods.0.get(name).copied()
+    }
 }
