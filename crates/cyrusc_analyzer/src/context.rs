@@ -51,7 +51,7 @@ pub struct AnalysisContext<'a> {
     pub(crate) func_env: FuncEnv,
     pub(crate) type_cache: TypeCache,
 
-    pub(crate) control_stack: Vec<ControlRegion>,
+    pub(crate) control_region_stack: Vec<ControlRegion>,
     pub(crate) generic_env_stack: Vec<GenericEnv>,
 
     pub(crate) typedef_expansion_stack: Vec<TypedefDeclID>,
@@ -86,7 +86,7 @@ impl<'a> AnalysisContext<'a> {
             config,
             reporter,
             source_map,
-            control_stack,
+            control_region_stack: control_stack,
             program_tree,
             decl_tables,
             formatter,

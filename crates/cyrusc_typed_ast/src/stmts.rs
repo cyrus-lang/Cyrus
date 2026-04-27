@@ -385,7 +385,13 @@ pub struct TypedSwitchCase {
 }
 
 #[derive(Debug, Clone)]
-pub enum TypedSwitchCasePattern {
+pub struct TypedSwitchCasePattern {
+    pub kind: TypedSwitchCasePatternKind,
+    pub loc: Loc,
+}
+
+#[derive(Debug, Clone)]
+pub enum TypedSwitchCasePatternKind {
     /// `_`
     Wildcard,
 
@@ -779,14 +785,14 @@ impl TypedSwitchStmt {
         self.cases.iter().any(|case| {
             case.patterns
                 .iter()
-                .any(|p| matches!(p, TypedSwitchCasePattern::Range(_)))
+                .any(|pattern| matches!(&pattern.kind, TypedSwitchCasePatternKind::Range(_)))
         })
     }
 
     pub fn includes_only_integer(&self) -> bool {
         self.cases.iter().any(|case| {
-            case.patterns.iter().any(|p| match p {
-                TypedSwitchCasePattern::Expr(expr, ..) => {
+            case.patterns.iter().any(|pattern| match &pattern.kind {
+                TypedSwitchCasePatternKind::Expr(expr, ..) => {
                     let sema_type = expr.ty.as_ref().unwrap();
                     sema_type.is_char() || sema_type.is_integer()
                 }

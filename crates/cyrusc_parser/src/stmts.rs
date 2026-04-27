@@ -923,7 +923,7 @@ impl<'source_file> Parser<'source_file> {
     }
 
     fn parse_object_impls(&mut self) -> Result<Vec<ImplementInterface>, Diag> {
-        let mut impls= Vec::new();
+        let mut impls = Vec::new();
 
         if self.current_token_is(TokenKind::Colon) {
             self.next_token();
@@ -1704,12 +1704,19 @@ impl<'source_file> Parser<'source_file> {
         let (line, column, start) = (loc.line, loc.column, loc.start);
 
         if self.current_token_is(TokenKind::Underscore) {
+            let loc = self.current_token().loc;
             self.next_token();
-            return Ok(SwitchCasePattern::Wildcard);
+            return Ok(SwitchCasePattern {
+                kind: SwitchCasePatternKind::Wildcard,
+                loc,
+            });
         }
 
         // enum variant pattern
         if self.current_token_is(TokenKind::Dot) {
+            let loc = self.current_token().loc;
+            let (line, column, start) = (loc.line, loc.column, loc.start);
+
             self.next_token(); // consume dot
 
             let variant = self.parse_ident()?;
@@ -1737,7 +1744,12 @@ impl<'source_file> Parser<'source_file> {
 
                 self.expect_current(TokenKind::RightParen)?;
 
-                return Ok(SwitchCasePattern::EnumTupleVariant { variant, items });
+                let end = self.current_token().loc.end;
+
+                return Ok(SwitchCasePattern {
+                    kind: SwitchCasePatternKind::EnumTupleVariant { variant, items },
+                    loc: Loc::new(self.file_id(), line, column, start, end),
+                });
             }
 
             // .Variant { a, b: x, c: _, .. }
@@ -1755,6 +1767,7 @@ impl<'source_file> Parser<'source_file> {
                         break;
                     }
 
+                    let field_loc = self.current_token().loc;
                     let field_name = self.parse_ident()?;
                     self.next_token();
 
@@ -1763,7 +1776,10 @@ impl<'source_file> Parser<'source_file> {
                         self.parse_switch_pattern()?
                     } else {
                         // shorthand: { a } == { a: a }
-                        SwitchCasePattern::Binding(field_name.clone())
+                        SwitchCasePattern {
+                            kind: SwitchCasePatternKind::Binding(field_name.clone()),
+                            loc: field_loc,
+                        }
                     };
 
                     items.push(SwitchCaseEnumStructPatternField {
@@ -1781,28 +1797,39 @@ impl<'source_file> Parser<'source_file> {
 
                 self.expect_current(TokenKind::RightBrace)?;
 
-                return Ok(SwitchCasePattern::EnumStructVariant {
-                    variant,
-                    items,
-                    has_rest,
+                let end = self.current_token().loc.end;
+
+                return Ok(SwitchCasePattern {
+                    kind: SwitchCasePatternKind::EnumStructVariant {
+                        variant,
+                        items,
+                        has_rest,
+                    },
+                    loc: Loc::new(self.file_id(), line, column, start, end),
                 });
             }
 
-            return Ok(SwitchCasePattern::EnumUnit(variant));
+            let end = self.current_token().loc.end;
+
+            return Ok(SwitchCasePattern {
+                kind: SwitchCasePatternKind::EnumUnit(variant),
+                loc: Loc::new(self.file_id(), line, column, start, end),
+            });
         }
 
         if matches!(self.current_token().kind, TokenKind::Ident { .. }) {
             let ident = self.parse_ident()?;
             self.next_token();
 
-            return Ok(SwitchCasePattern::Binding(ident));
+            return Ok(SwitchCasePattern {
+                kind: SwitchCasePatternKind::Binding(ident),
+                loc,
+            });
         }
 
         // expression or range pattern
         let expr = self.parse_expr(Precedence::Prefix)?;
         self.next_token();
-
-        let end = self.current_token().loc.end;
 
         // range exclusive:  a..b
         if self.current_token_is(TokenKind::TripleDot) {
@@ -1810,12 +1837,17 @@ impl<'source_file> Parser<'source_file> {
             let upper = self.parse_expr(Precedence::Prefix)?;
             self.next_token();
 
-            return Ok(SwitchCasePattern::Range(Range {
-                lower: expr,
-                upper,
-                inclusive_upper: false,
-                loc: Loc::new(self.file_id(), line, column, start, end),
-            }));
+            let end = self.current_token().loc.end;
+
+            return Ok(SwitchCasePattern {
+                kind: SwitchCasePatternKind::Range(Range {
+                    lower: expr,
+                    upper,
+                    inclusive_upper: false,
+                    loc: Loc::new(self.file_id(), line, column, start, end),
+                }),
+                loc,
+            });
         }
 
         // range inclusive:  a..=b
@@ -1826,16 +1858,26 @@ impl<'source_file> Parser<'source_file> {
             let upper = self.parse_expr(Precedence::Prefix)?;
             self.next_token();
 
-            return Ok(SwitchCasePattern::Range(Range {
-                lower: expr,
-                upper,
-                inclusive_upper: true,
+            let end = self.current_token().loc.end;
+
+            return Ok(SwitchCasePattern {
+                kind: SwitchCasePatternKind::Range(Range {
+                    lower: expr,
+                    upper,
+                    inclusive_upper: true,
+                    loc: Loc::new(self.file_id(), line, column, start, end),
+                }),
                 loc: Loc::new(self.file_id(), line, column, start, end),
-            }));
+            });
         }
 
+        let end = self.current_token().loc.end;
+
         // fallback literal / expr pattern
-        Ok(SwitchCasePattern::Expr(expr))
+        Ok(SwitchCasePattern {
+            kind: SwitchCasePatternKind::Expr(expr),
+            loc: Loc::new(self.file_id(), line, column, start, end),
+        })
     }
 
     fn parse_switch(&mut self) -> Result<ASTStmt, Diag> {

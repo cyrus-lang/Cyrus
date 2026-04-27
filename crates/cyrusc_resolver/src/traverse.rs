@@ -1855,38 +1855,51 @@ impl Resolver {
     }
 
     fn resolve_switch_pattern(&mut self, pattern: &SwitchCasePattern) -> Option<TypedSwitchCasePattern> {
-        match pattern {
+        match &pattern.kind {
             // `_`
-            SwitchCasePattern::Wildcard => Some(TypedSwitchCasePattern::Wildcard),
+            SwitchCasePatternKind::Wildcard => Some(TypedSwitchCasePattern {
+                kind: TypedSwitchCasePatternKind::Wildcard,
+                loc: pattern.loc,
+            }),
 
             // literal / const expression
-            SwitchCasePattern::Expr(expr) => {
-                let typed = self.resolve_expr(expr)?;
-                Some(TypedSwitchCasePattern::Expr(typed))
+            SwitchCasePatternKind::Expr(expr) => {
+                let typed_expr = self.resolve_expr(expr)?;
+
+                Some(TypedSwitchCasePattern {
+                    kind: TypedSwitchCasePatternKind::Expr(typed_expr),
+                    loc: pattern.loc,
+                })
             }
 
             // range: `1...10` or `1..=10`
-            SwitchCasePattern::Range(range) => {
+            SwitchCasePatternKind::Range(range) => {
                 let lower = self.resolve_expr(&range.lower)?;
                 let upper = self.resolve_expr(&range.upper)?;
 
-                Some(TypedSwitchCasePattern::Range(TypedRange {
-                    lower,
-                    upper,
-                    inclusive_upper: range.inclusive_upper,
-                    loc: range.loc,
-                }))
+                Some(TypedSwitchCasePattern {
+                    kind: TypedSwitchCasePatternKind::Range(TypedRange {
+                        lower,
+                        upper,
+                        inclusive_upper: range.inclusive_upper,
+                        loc: range.loc,
+                    }),
+                    loc: pattern.loc,
+                })
             }
 
             // enum unit variant: `.A`
-            SwitchCasePattern::EnumUnit(variant) => Some(TypedSwitchCasePattern::EnumUnit(variant.clone())),
+            SwitchCasePatternKind::EnumUnit(variant) => Some(TypedSwitchCasePattern {
+                kind: TypedSwitchCasePatternKind::EnumUnit(variant.clone()),
+                loc: pattern.loc,
+            }),
 
             // enum tuple variant: `.C(a, b, _)`
             //
             // IMPORTANT:
             //   - recursively resolve items
             //   - bindings inside get inserted into the case-local scope
-            SwitchCasePattern::EnumTupleVariant { variant, items } => {
+            SwitchCasePatternKind::EnumTupleVariant { variant, items } => {
                 let mut typed_items = Vec::with_capacity(items.len());
 
                 for item in items {
@@ -1894,9 +1907,12 @@ impl Resolver {
                     typed_items.push(typed_item);
                 }
 
-                Some(TypedSwitchCasePattern::EnumTupleVariant {
-                    variant: variant.clone(),
-                    items: typed_items,
+                Some(TypedSwitchCasePattern {
+                    kind: TypedSwitchCasePatternKind::EnumTupleVariant {
+                        variant: variant.clone(),
+                        items: typed_items,
+                    },
+                    loc: pattern.loc,
                 })
             }
 
@@ -1905,7 +1921,7 @@ impl Resolver {
             // IMPORTANT:
             //   - resolve each field recursively
             //   - bindings inserted into scope
-            SwitchCasePattern::EnumStructVariant {
+            SwitchCasePatternKind::EnumStructVariant {
                 variant,
                 items,
                 has_rest,
@@ -1921,23 +1937,29 @@ impl Resolver {
                     });
                 }
 
-                Some(TypedSwitchCasePattern::EnumStructVariant {
-                    variant: variant.clone(),
-                    items: typed_items,
-                    has_rest: *has_rest,
+                Some(TypedSwitchCasePattern {
+                    kind: TypedSwitchCasePatternKind::EnumStructVariant {
+                        variant: variant.clone(),
+                        items: typed_items,
+                        has_rest: *has_rest,
+                    },
+                    loc: pattern.loc,
                 })
             }
 
             // ident binding
-            SwitchCasePattern::Binding(ident) => {
+            SwitchCasePatternKind::Binding(ident) => {
                 // treat like 'var ident'
                 let var_decl_id = self.insert_variable_decl(ident, None, None, false);
 
                 self.insert_variable_symbol_to_current_scope(ident, var_decl_id)?;
 
-                Some(TypedSwitchCasePattern::Binding {
-                    name: ident.clone(),
-                    var_decl_id,
+                Some(TypedSwitchCasePattern {
+                    kind: TypedSwitchCasePatternKind::Binding {
+                        name: ident.clone(),
+                        var_decl_id,
+                    },
+                    loc: pattern.loc,
                 })
             }
         }

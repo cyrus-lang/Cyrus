@@ -26,7 +26,8 @@ use cyrusc_typed_ast::{
     format::format_loc,
     stmts::{
         TypedBlockStmt, TypedFuncParamKind, TypedFuncParams, TypedFuncVariadicParam, TypedIfStmt, TypedStmt,
-        TypedSwitchCasePattern, TypedTupleExportPattern, TypedTupleExportPatternKind, TypedTypeArgs, TypedVarStmt,
+        TypedSwitchCasePattern, TypedSwitchCasePatternKind, TypedTupleExportPattern, TypedTupleExportPatternKind,
+        TypedTypeArgs, TypedVarStmt,
     },
     types::SemaType,
 };
@@ -418,24 +419,31 @@ impl<'a> AnalysisContext<'a> {
     }
 
     fn specialize_switch_pattern(&self, pattern: &mut TypedSwitchCasePattern, decl_map: &DeclMap) {
-        match pattern {
-            TypedSwitchCasePattern::Wildcard | TypedSwitchCasePattern::EnumUnit(_) => {}
+        match &mut pattern.kind {
+            TypedSwitchCasePatternKind::Wildcard | TypedSwitchCasePatternKind::EnumUnit(_) => {
+                // nothing to specialize
+            }
 
-            TypedSwitchCasePattern::Binding { var_decl_id, .. } => {
+            TypedSwitchCasePatternKind::Binding { var_decl_id, .. } => {
                 *var_decl_id = decl_map.get(var_decl_id).copied().unwrap();
             }
 
-            TypedSwitchCasePattern::Range(range) => {
+            TypedSwitchCasePatternKind::Range(range) => {
                 self.specialize_expr(&mut range.lower, decl_map);
                 self.specialize_expr(&mut range.upper, decl_map);
             }
-            TypedSwitchCasePattern::Expr(expr) => {
+
+            TypedSwitchCasePatternKind::Expr(expr) => {
                 self.specialize_expr(expr, decl_map);
             }
-            TypedSwitchCasePattern::EnumTupleVariant { items, .. } => {
-                self.specialize_switch_patterns(items, decl_map);
+
+            TypedSwitchCasePatternKind::EnumTupleVariant { items, .. } => {
+                for item in items {
+                    self.specialize_switch_pattern(item, decl_map);
+                }
             }
-            TypedSwitchCasePattern::EnumStructVariant { items, .. } => {
+
+            TypedSwitchCasePatternKind::EnumStructVariant { items, .. } => {
                 for item in items {
                     self.specialize_switch_pattern(&mut item.pattern, decl_map);
                 }
@@ -728,23 +736,26 @@ impl<'a> AnalysisContext<'a> {
         pattern: &mut TypedSwitchCasePattern,
         decl_map: &mut DeclMap,
     ) {
-        match pattern {
-            TypedSwitchCasePattern::Wildcard
-            | TypedSwitchCasePattern::Range(_)
-            | TypedSwitchCasePattern::Expr(_)
-            | TypedSwitchCasePattern::EnumUnit(_) => {}
+        match &mut pattern.kind {
+            TypedSwitchCasePatternKind::Wildcard
+            | TypedSwitchCasePatternKind::Range(_)
+            | TypedSwitchCasePatternKind::Expr(_)
+            | TypedSwitchCasePatternKind::EnumUnit(_) => {
+                // nothing to do
+            }
 
-            TypedSwitchCasePattern::Binding { var_decl_id, .. } => {
+            TypedSwitchCasePatternKind::Binding { var_decl_id, .. } => {
                 let var_decl = self.decl_tables.var_decl(*var_decl_id);
-
                 self.instantiate_fresh_var_decl(var_decl_id, &var_decl, decl_map);
             }
-            TypedSwitchCasePattern::EnumTupleVariant { items, .. } => {
+
+            TypedSwitchCasePatternKind::EnumTupleVariant { items, .. } => {
                 for item in items {
                     self.collect_and_instantiate_fresh_var_decls_of_switch_pattern(item, decl_map);
                 }
             }
-            TypedSwitchCasePattern::EnumStructVariant { items, .. } => {
+
+            TypedSwitchCasePatternKind::EnumStructVariant { items, .. } => {
                 for item in items {
                     self.collect_and_instantiate_fresh_var_decls_of_switch_pattern(&mut item.pattern, decl_map);
                 }

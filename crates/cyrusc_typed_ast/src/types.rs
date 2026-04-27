@@ -131,7 +131,7 @@ pub struct InterfaceObjectType {
     pub interface_type: NamedType,
     pub concrete_type: Box<SemaType>,
     pub vtable_id: VTableID,
-    pub loc: Loc
+    pub loc: Loc,
 }
 
 impl TypeDeclID {
@@ -430,6 +430,14 @@ impl SemaType {
     }
 
     #[inline]
+    pub fn is_char_pointer(&self) -> bool {
+        match self.const_inner() {
+            SemaType::Pointer(inner) => inner.is_char(),
+            _ => false,
+        }
+    }
+
+    #[inline]
     pub fn is_scalar(&self) -> bool {
         match self.const_inner() {
             SemaType::Plain(plain_type) => plain_type.is_scalar(),
@@ -441,6 +449,14 @@ impl SemaType {
     pub fn is_self_type(&self) -> bool {
         match self.const_inner() {
             SemaType::SelfType(_) => true,
+            _ => false,
+        }
+    }
+
+    #[inline]
+    pub fn is_plain_type(&self) -> bool {
+        match self.const_inner() {
+            SemaType::Plain(_) => true,
             _ => false,
         }
     }

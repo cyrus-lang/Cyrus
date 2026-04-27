@@ -154,8 +154,10 @@ pub enum AnalyzerDiagKind {
         interface_name: String,
     },
 
-    #[error("Mismatch between number of exported values and tuple elements.")]
-    TupleExportedValuesAndTupleElementsCountMismatch,
+    #[error(
+        "Mismatch between number of exported values and tuple elements: expected {expected}, but {provided} were provided."
+    )]
+    TupleExportedValuesAndTupleElementsCountMismatch { expected: usize, provided: usize },
 
     #[error("Tuple member access with index {index} exceeds tuple length {length}.")]
     TupleIndexOutOfRange { index: usize, length: usize },
@@ -183,7 +185,10 @@ pub enum AnalyzerDiagKind {
     UnionInitMustContainExactlyOneField,
 
     #[error("Only enum variants are allowed here.")]
-    ExpressionPatternInAEnumSwitch,
+    OnlyVariantPatternIsAllowedInSwitch,
+
+    #[error("Unknown field '{field_name}' in enum struct pattern.")]
+    UnknownFieldInEnumStructPattern { field_name: String },
 
     #[error("Switch expression must be an enum type, but found '{expr_type}'.")]
     SwitchOperandIsNotEnum { expr_type: String },
@@ -208,6 +213,12 @@ pub enum AnalyzerDiagKind {
         "Switch statement must contain at least one case or consider removing it or replacing it with an if statement."
     )]
     EmptyCaseSwitchStatement,
+
+    #[error("Enum variant kind does not match the pattern form.")]
+    EnumVariantKindMismatchInSwitchPattern,
+
+    #[error("Only one exporting pattern is allowed per switch case.")]
+    MultipleExportingPatternsInSwitchCase,
 
     #[error("Case pattern with type '{pattern_type}' is not compatible with switch operand of type '{operand_type}'.")]
     TypeMismatchInCasePattern { operand_type: String, pattern_type: String },

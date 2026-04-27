@@ -1,0 +1,52 @@
+// @stdout: 7.500000 106.090000 106.090000 10.600000 106.090000
+
+import std::libc{printf};
+
+interface Shape<T> {
+	fn area(&self) T;
+}
+
+struct Square : Shape<float64> {
+	side: float64;
+
+	pub fn new(side: float64) Self {
+		return Self { side };
+	}
+
+	pub fn area(&self) float64 {
+		return self->side * self->side;
+	}
+}
+
+struct Rectangle<T> : Shape<T> {
+	x: T;
+	y: T;
+
+	pub fn new(x: T, y: T) Self {
+		return Self { x, y };
+	}
+
+	pub fn area(&self) T {
+		return self->x * self->y;
+	}
+}
+
+pub fn main() {
+	const rectX: Shape<float64> = dynamic Rectangle { x: 3.0, y: 2.5 };
+	const squareX: Shape<float64> = dynamic Square.new(10.3);
+
+	printf("%f ", rectX.area());
+	printf("%f ", squareX.area());
+	
+
+	const shapes = Shape<float64>[3] {
+		dynamic Square.new(10.3),
+		dynamic Rectangle.new(5.3, 2.0),
+		squareX,
+	};
+
+	for (var i = 0; i < 3; i++) {
+		const shape = shapes[i];
+		printf("%f ", shape.area());
+	}
+}

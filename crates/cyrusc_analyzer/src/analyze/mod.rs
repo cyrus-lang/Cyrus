@@ -24,7 +24,6 @@ pub(crate) mod interfaces;
 pub(crate) mod methods;
 pub(crate) mod stmts;
 pub(crate) mod struct_stmt;
-pub(crate) mod switch_stmt;
 pub(crate) mod tuple_export_stmt;
 pub(crate) mod typedef_stmt;
 pub(crate) mod union_stmt;

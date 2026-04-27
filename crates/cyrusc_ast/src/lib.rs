@@ -622,8 +622,15 @@ pub struct SwitchCase {
     pub loc: Loc,
 }
 
+
 #[derive(Debug, Clone)]
-pub enum SwitchCasePattern {
+pub struct SwitchCasePattern {
+    pub kind: SwitchCasePatternKind,
+    pub loc: Loc,
+}
+
+#[derive(Debug, Clone)]
+pub enum SwitchCasePatternKind {
     /// `_`
     Wildcard,
 

@@ -21,7 +21,7 @@ use cyrusc_diagcentral::{Diag, DiagLevel};
 use cyrusc_source_loc::Loc;
 use cyrusc_typed_ast::{
     decls::VarDeclID,
-    exprs::{TypedExprKind, TypedExpr, TypedTupleAccessExpr},
+    exprs::{TypedExpr, TypedExprKind, TypedTupleAccessExpr},
     format::format_sema_type,
     stmts::{TypedTupleExportPattern, TypedTupleExportPatternKind, TypedTupleExportStmt},
     types::{SemaType, TypedTupleType},
@@ -69,10 +69,14 @@ impl<'a> AnalysisContext<'a> {
         if patterns.len() != tuple_type.elements.len() {
             self.reporter.report(Diag {
                 level: DiagLevel::Error,
-                kind: Box::new(AnalyzerDiagKind::TupleExportedValuesAndTupleElementsCountMismatch),
+                kind: Box::new(AnalyzerDiagKind::TupleExportedValuesAndTupleElementsCountMismatch {
+                    expected: tuple_type.elements.len(),
+                    provided: patterns.len(),
+                }),
                 loc: Some(export_tuple.loc),
                 hint: None,
             });
+
             return None;
         }
 
@@ -164,7 +168,10 @@ impl<'a> AnalysisContext<'a> {
                 if patterns.len() != tuple_type.elements.len() {
                     self.reporter.report(Diag {
                         level: DiagLevel::Error,
-                        kind: Box::new(AnalyzerDiagKind::TupleExportedValuesAndTupleElementsCountMismatch),
+                        kind: Box::new(AnalyzerDiagKind::TupleExportedValuesAndTupleElementsCountMismatch {
+                            expected: tuple_type.elements.len(),
+                            provided: patterns.len(),
+                        }),
                         loc: Some(loc),
                         hint: None,
                     });
