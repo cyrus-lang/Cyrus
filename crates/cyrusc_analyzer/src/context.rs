@@ -34,7 +34,7 @@ use cyrusc_typed_ast::{
     decls::{TypedefDeclID, table::DeclTablesRegistry},
     format::{Formatter, format_loc},
 };
-use fx_hash::FxHashSet;
+use fx_hash::{FxHashSet, FxHashSetExt};
 
 pub struct AnalysisContext<'a> {
     pub(crate) config: AnalyzerConfig,
@@ -75,7 +75,7 @@ impl<'a> AnalysisContext<'a> {
         let type_cache = TypeCache::new();
         let control_stack = Vec::new();
         let typedef_expansion_stack = Vec::new();
-        let reported_typedef_cycles = FxHashSet::default();
+        let reported_typedef_cycles = FxHashSet::new();
 
         Self {
             typedef_expansion_stack,

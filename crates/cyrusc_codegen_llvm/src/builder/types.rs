@@ -318,7 +318,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
             CIRType::Plain(plain_ty) => self.emit_plain_ty(plain_ty),
             CIRType::Pointer(_) => self.llvmctx.ptr_type(AddressSpace::default()).as_any_type_enum(),
             CIRType::Struct(struct_type) => self.emit_struct_type(struct_type).as_any_type_enum(),
-            CIRType::Enum(enum_type) => self.emit_enum_ty(enum_type).as_any_type_enum(),
+            CIRType::Enum(enum_type) => self.emit_enum_type(enum_type).as_any_type_enum(),
             CIRType::Union(union_ty) => self.emit_union_ty(union_ty).as_any_type_enum(),
             CIRType::Tuple(tuple_type) => self.emit_tuple_ty(tuple_type).as_any_type_enum(),
             CIRType::Array(array_ty) => self.emit_arr_ty(array_ty).as_any_type_enum(),
@@ -519,7 +519,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         self.emit_ty(*cir_tag_type.clone()).try_into().unwrap()
     }
 
-    pub(crate) fn emit_enum_ty(&self, enum_type: CIREnumType) -> BasicTypeEnum<'ll> {
+    pub(crate) fn emit_enum_type(&self, enum_type: CIREnumType) -> BasicTypeEnum<'ll> {
         if enum_type.is_scalar_optimizable() {
             // c-compatible enum
             self.emit_repr_c_enum_ty(&enum_type)

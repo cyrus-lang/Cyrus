@@ -93,17 +93,8 @@ pub enum AnalyzerDiagKind {
     #[error("Invalid enum constructor target; expression '{expr}' is not an enum.")]
     InvalidEnumConstructorTarget { expr: String },
 
-    #[error("Variant '.{variant_name}' has only one field, but multiple were provided.")]
+    #[error("Valued variant '.{variant_name}' can export only one field, because it contains exactly one value.")]
     ValuedEnumVariantCanOnlyExportOneField { variant_name: String },
-
-    #[error("Variant '.{variant_name}' is listed more than once in the patterns.")]
-    DuplicateEnumVariantInSwitchPatterns { variant_name: String },
-
-    #[error("Range lower bound must not exceed upper bound.")]
-    InvalidRange,
-
-    #[error("Overlapping range in switch case.")]
-    OverlappingSwitchCaseRange,
 
     #[error("Cannot destructure tuple in export without a value.")]
     TupleDestructionWithNoRhs,
@@ -184,8 +175,14 @@ pub enum AnalyzerDiagKind {
     #[error("Union initialization must contain exactly one field.")]
     UnionInitMustContainExactlyOneField,
 
+    #[error("Switch pattern of type '{pattern_type}' is not compatible with switch operand of type '{operand_type}'.")]
+    IncompatibleSwitchPatternType { pattern_type: String, operand_type: String },
+
     #[error("Only enum variants are allowed here.")]
     OnlyVariantPatternIsAllowedInSwitch,
+
+    #[error("Invalid switch case pattern.")]
+    InvalidSwitchCasePattern,
 
     #[error("Unknown field '{field_name}' in enum struct pattern.")]
     UnknownFieldInEnumStructPattern { field_name: String },
@@ -193,8 +190,14 @@ pub enum AnalyzerDiagKind {
     #[error("Switch expression must be an enum type, but found '{expr_type}'.")]
     SwitchOperandIsNotEnum { expr_type: String },
 
-    #[error("Variant '{variant_name}' does not export any fields, but you attempted to destructure it.")]
-    VariantDoesNotExportAnyField { variant_name: String },
+    #[error("Variant '.{variant_name}' is listed more than once in the patterns.")]
+    DuplicateEnumVariantInSwitchPatterns { variant_name: String },
+
+    #[error("Range lower bound must not exceed upper bound.")]
+    InvalidRange,
+
+    #[error("Overlapping range in switch case.")]
+    OverlappingSwitchCaseRange,
 
     #[error("Invalid construction of enum variant.")]
     EnumVariantKindMismatch {
@@ -222,9 +225,6 @@ pub enum AnalyzerDiagKind {
 
     #[error("Case pattern with type '{pattern_type}' is not compatible with switch operand of type '{operand_type}'.")]
     TypeMismatchInCasePattern { operand_type: String, pattern_type: String },
-
-    #[error("Cannot call method '{method_name}' on constant instance '{instance_name}'.")]
-    MutationPossibleMethodCallOnConstInstance { method_name: String, instance_name: String },
 
     #[error("Cannot access internal field '{field_name}' of struct '{object_name}' from outside its definition.")]
     InternalFieldAccess { field_name: String, object_name: String },
@@ -363,9 +363,6 @@ pub enum AnalyzerDiagKind {
     #[error("Cannot dereference a pointer of type 'void*'.")]
     DerefVoidPointerValue,
 
-    #[error("Method generic parameter '{param_name}' shadows generic parameter from '{object_name}'.")]
-    ShadowsObjectGenericParam { param_name: String, object_name: String },
-
     #[error("Duplicate parameter name '{param_name}' at index {param_idx}.")]
     DuplicateFuncParameter { param_name: String, param_idx: u32 },
 
@@ -411,15 +408,6 @@ pub enum AnalyzerDiagKind {
 
     #[error("Symbol '{symbol_name}' is not an union.")]
     NonUnionSymbol { symbol_name: String },
-
-    #[error("Symbol '{symbol_name}' is not a typedef.")]
-    NonTypedefSymbol { symbol_name: String },
-
-    #[error("Symbol '{symbol_name}' is not a variable.")]
-    NonVariableSymbol { symbol_name: String },
-
-    #[error("Symbol '{symbol_name}' is not a global variable.")]
-    NonGlobalVarSymbol { symbol_name: String },
 
     #[error("Symbol '{symbol_name}' is not a function.")]
     NonFunctionSymbol { symbol_name: String },

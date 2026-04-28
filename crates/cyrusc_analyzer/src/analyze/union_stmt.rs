@@ -25,7 +25,7 @@ use cyrusc_typed_ast::{
     stmts::{TypedTypeArgs, TypedUnionField, TypedUnionStmt},
     types::{NamedType, SemaType, TypeDeclID},
 };
-use fx_hash::FxHashSet;
+use fx_hash::{FxHashSet, FxHashSetExt};
 
 impl<'a> AnalysisContext<'a> {
     pub(crate) fn analyze_union_stmt(&mut self, union_stmt: &mut TypedUnionStmt) {
@@ -94,7 +94,7 @@ impl<'a> AnalysisContext<'a> {
     }
 
     fn check_duplicate_union_field(&self, object_name: &String, fields: &[TypedUnionField]) {
-        let mut field_names: FxHashSet<&str> = FxHashSet::default();
+        let mut field_names: FxHashSet<&str> = FxHashSet::new();
 
         for field in fields {
             if !field_names.insert(&field.name) {

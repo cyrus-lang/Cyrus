@@ -121,6 +121,7 @@ impl CIREnumType {
             .unwrap_or_else(|| Box::new(CIRType::Plain(PlainType::Int32)))
     }
 
+    #[inline]
     pub fn is_scalar_optimizable(&self) -> bool {
         self.is_repr_c()
             || (self.variant_expr_type().is_some() && self.includes_only_integer_payload())

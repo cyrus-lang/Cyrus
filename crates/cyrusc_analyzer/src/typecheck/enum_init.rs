@@ -28,7 +28,7 @@ use cyrusc_typed_ast::{
     stmts::{TypedEnumVariant, TypedEnumVariantStructField, TypedTypeArgs},
     types::{NamedType, SemaType, TypeDeclID},
 };
-use fx_hash::{FxHashMap, FxHashSet};
+use fx_hash::{FxHashMap, FxHashSet, FxHashSetExt};
 
 impl<'a> AnalysisContext<'a> {
     pub(crate) fn analyze_enum_init(
@@ -80,8 +80,11 @@ impl<'a> AnalysisContext<'a> {
 
         self.with_generic_env(generic_env, |this| {
             match (&mut enum_init.arg, &variant) {
-                // .Variant
+                // .Unit
                 (TypedEnumInitArgs::Unit, TypedEnumVariant::Unit(_)) => { /* skip */ }
+
+                // .ValuedVariant
+                (TypedEnumInitArgs::Unit, TypedEnumVariant::Valued { .. }) => { /* valid */ }
 
                 // .Variant(a, b)
                 (TypedEnumInitArgs::Tuple(elements), TypedEnumVariant::Tuple { fields, .. }) => {
@@ -404,7 +407,7 @@ impl<'a> AnalysisContext<'a> {
         fields: &[TypedEnumVariantStructField],
         loc: Loc,
     ) {
-        let mut initialized_fields = FxHashSet::default();
+        let mut initialized_fields = FxHashSet::new();
 
         // build lookup for declared fields
         let declared: FxHashMap<_, _> = fields.iter().map(|field| (field.name.as_string(), field)).collect();

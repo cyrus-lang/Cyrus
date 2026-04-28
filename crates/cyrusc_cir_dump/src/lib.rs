@@ -111,7 +111,6 @@ impl<'a> CIRPrinter<'a> {
             CIRStmt::For(for_stmt) => self.print_for(for_stmt),
             CIRStmt::While(while_stmt) => self.print_while(while_stmt),
             CIRStmt::Switch(switch) => self.print_switch(switch),
-            CIRStmt::SwitchOnEnum(switch_on_enum) => self.print_switch_enum(switch_on_enum),
             CIRStmt::Return(return_stmt) => self.print_return(return_stmt),
             CIRStmt::Label(label) => self.push_line(format!("{}:", label.name)),
             CIRStmt::Goto(goto) => self.push_line(format!("goto L{}", goto.label_id)),
@@ -155,14 +154,63 @@ impl<'a> CIRPrinter<'a> {
         self.push_line("}");
     }
 
-    // TODO
-    fn print_switch(&self, _switch: &CIRSwitchStmt) {
-        todo!();
-    }
+    fn print_switch(&mut self, switch: &CIRSwitchStmt) {
+        let value = self.print_expr(&switch.value);
 
-    // TODO
-    fn print_switch_enum(&self, _switch_on_enum: &CIRSwitchOnEnumStmt) {
-        todo!();
+        self.push_line(format!("switch {} {{", value));
+        self.indent();
+
+        for case in &switch.cases {
+            let mut patterns = Vec::new();
+
+            for pattern in &case.patterns {
+                match pattern {
+                    CIRPattern::Value(expr) => {
+                        let expr_str = self.print_expr(expr);
+                        patterns.push(expr_str);
+                    }
+
+                    CIRPattern::Variant { name, tag, payload } => {
+                        let payload_str = match payload {
+                            CIRVariantPayload::Unit => String::new(),
+                            CIRVariantPayload::Single(var_id, ty) => {
+                                format!("({}: {})", var_id.0, self.print_type(ty))
+                            }
+                            CIRVariantPayload::Fields { exported_fields, .. } => {
+                                let fields = exported_fields
+                                    .iter()
+                                    .map(|(_, var_id, ty)| format!("%{}: {}", var_id.0, self.print_type(ty)))
+                                    .collect::<Vec<_>>()
+                                    .join(", ");
+
+                                format!("({fields})")
+                            }
+                        };
+
+                        patterns.push(format!(".{}[tag={}]{payload_str}", name, tag));
+                    }
+                };
+            }
+
+            self.push_line(format!("case {}:", patterns.join(", ")));
+            self.indent();
+
+            self.print_block(&case.body);
+
+            self.dedent();
+        }
+
+        if let Some(default) = &switch.default {
+            self.push_line("default:");
+            self.indent();
+
+            self.print_block(default);
+
+            self.dedent();
+        }
+
+        self.dedent();
+        self.push_line("}");
     }
 
     fn print_var_stmt(&mut self, var: &CIRVarStmt) {

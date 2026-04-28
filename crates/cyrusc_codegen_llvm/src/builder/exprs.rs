@@ -1438,7 +1438,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
             return self.emit_repr_c_enum_init(enum_init_expr, enum_type);
         }
 
-        let enum_struct_ty = self.emit_enum_ty(enum_type.clone()).into_struct_type();
+        let enum_struct_ty = self.emit_enum_type(enum_type.clone()).into_struct_type();
         let (payload_ty, _) = self.emit_enum_buffer_payload_ty(enum_type);
 
         let mut enum_value = enum_struct_ty.get_undef();

@@ -60,7 +60,6 @@ pub enum CIRStmt {
     For(CIRForStmt),
     While(CIRWhileStmt),
     Switch(CIRSwitchStmt),
-    SwitchOnEnum(CIRSwitchOnEnumStmt),
     Return(CIRReturnStmt),
     Label(CIRLabelStmt),
     Goto(CIRGotoStmt),
@@ -391,29 +390,29 @@ pub struct CIRSwitchStmt {
 
 #[derive(Debug, Clone)]
 pub struct CIRSwitchCase {
-    pub patterns: Vec<CIRExpr>,
+    pub patterns: Vec<CIRPattern>,
     pub body: CIRBlockStmt,
 }
 
 #[derive(Debug, Clone)]
-pub struct CIRSwitchOnEnumStmt {
-    pub value: CIRExpr,
-    pub cases: Vec<CIRSwitchOnEnumCase>,
-    pub default: Option<CIRBlockStmt>,
-    pub loc: Loc,
+pub enum CIRPattern {
+    Value(CIRExpr),
+
+    Variant {
+        name: String,
+        tag: usize,
+        payload: CIRVariantPayload,
+    },
 }
 
 #[derive(Debug, Clone)]
-pub struct CIRSwitchOnEnumCase {
-    pub patterns: Vec<CIRSwitchOnEnumPattern>,
-    pub body: CIRBlockStmt,
-}
-
-#[derive(Debug, Clone)]
-pub enum CIRSwitchOnEnumPattern {
-    Ident(String, usize),
-    Valued(String, usize, (VarDeclID, CIRExpr)),
-    ExportFields(String, usize, Vec<(VarDeclID, CIRType)>),
+pub enum CIRVariantPayload {
+    Unit,
+    Single(IRValueID, CIRType),
+    Fields {
+        struct_type: CIRStructType,
+        exported_fields: Vec<(usize, IRValueID, CIRType)>,
+    },
 }
 
 #[derive(Debug, Clone)]
@@ -577,24 +576,6 @@ pub fn cir_union_as_union_type(union_stmt: &CIRUnionStmt) -> CIRUnionType {
     }
 }
 
-impl CIRSwitchOnEnumPattern {
-    pub fn variant_idx(&self) -> usize {
-        match self {
-            CIRSwitchOnEnumPattern::Ident(_, variant_idx) => *variant_idx,
-            CIRSwitchOnEnumPattern::ExportFields(_, variant_idx, ..) => *variant_idx,
-            CIRSwitchOnEnumPattern::Valued(_, variant_idx, ..) => *variant_idx,
-        }
-    }
-
-    pub fn variant_name(&self) -> &String {
-        match self {
-            CIRSwitchOnEnumPattern::Ident(ident, ..) => ident,
-            CIRSwitchOnEnumPattern::ExportFields(ident, ..) => ident,
-            CIRSwitchOnEnumPattern::Valued(ident, ..) => ident,
-        }
-    }
-}
-
 impl PartialEq for CIREnumVariant {
     fn eq(&self, other: &Self) -> bool {
         match (self, other) {
@@ -653,7 +634,6 @@ impl CIRStmt {
             CIRStmt::For(for_stmt) => &for_stmt.loc,
             CIRStmt::While(while_stmt) => &while_stmt.loc,
             CIRStmt::Switch(switch_stmt) => &switch_stmt.loc,
-            CIRStmt::SwitchOnEnum(switch_on_enum_stmt) => &switch_on_enum_stmt.loc,
             CIRStmt::Return(return_stmt) => &return_stmt.loc,
             CIRStmt::Label(label_stmt) => &label_stmt.loc,
             CIRStmt::Goto(goto_stmt) => &goto_stmt.loc,

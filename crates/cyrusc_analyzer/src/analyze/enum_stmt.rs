@@ -25,7 +25,7 @@ use cyrusc_typed_ast::{
     stmts::{TypedEnumStmt, TypedEnumVariant, TypedTypeArgs},
     types::{NamedType, SemaType, TypeDeclID},
 };
-use fx_hash::FxHashSet;
+use fx_hash::{FxHashSet, FxHashSetExt};
 
 impl<'a> AnalysisContext<'a> {
     pub(crate) fn analyze_enum_stmt(&mut self, enum_stmt: &mut TypedEnumStmt) {
@@ -185,7 +185,7 @@ impl<'a> AnalysisContext<'a> {
     }
 
     fn check_duplicate_enum_variants(&mut self, object_name: &String, variants: &[TypedEnumVariant]) {
-        let mut variant_names: FxHashSet<&str> = FxHashSet::default();
+        let mut variant_names: FxHashSet<&str> = FxHashSet::new();
 
         for variant in variants {
             let ident = variant.ident();

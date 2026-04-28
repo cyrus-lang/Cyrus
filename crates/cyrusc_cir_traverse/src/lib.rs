@@ -17,6 +17,7 @@
 
 use cyrusc_ast::abi::CallConv;
 use cyrusc_ast::modifiers::GlobalVarModifiers;
+use cyrusc_ast::operators::InfixOperator;
 use cyrusc_internal::abi::mangler::*;
 use cyrusc_internal::abi::target::ABITarget;
 use cyrusc_internal::cir::cir::*;
@@ -333,9 +334,393 @@ impl<'a> CIRTraverse<'a> {
         })
     }
 
-    // FIXME
-    fn lower_switch(&mut self, switch_stmt: &TypedSwitchStmt) -> CIRStmt {
-        todo!();
+    pub fn lower_switch(&mut self, switch_stmt: &TypedSwitchStmt) -> CIRStmt {
+        let operand = self.lower_expr(&switch_stmt.operand);
+        let operand_ty = switch_stmt.operand.ty.as_ref().unwrap().const_inner();
+
+        let default = switch_stmt.default_case.as_ref().map(|block| self.lower_body(block));
+
+        let is_enum = operand_ty.is_enum();
+
+        if is_enum {
+            self.lower_switch_on_enum(operand, default, switch_stmt)
+        } else {
+            let lower_as_chained_if = switch_stmt.cases.iter().any(|case| {
+                case.patterns.iter().any(|pattern| match &pattern.kind {
+                    TypedSwitchCasePatternKind::Range(_) => true, // desugar
+                    TypedSwitchCasePatternKind::Expr(expr) => {
+                        let ty = expr.ty.as_ref().unwrap();
+
+                        if !(ty.is_integer() || ty.is_char() || ty.is_bool()) {
+                            true
+                        } else {
+                            false
+                        }
+                    }
+                    _ => unreachable!(),
+                })
+            });
+
+            if lower_as_chained_if {
+                self.lower_switch_as_chained_if(operand, default, switch_stmt)
+            } else {
+                self.lower_pure_switch(operand, default, switch_stmt)
+            }
+        }
+    }
+
+    fn lower_switch_as_chained_if(
+        &mut self,
+        operand: CIRExpr,
+        default: Option<CIRBlockStmt>,
+        switch_stmt: &TypedSwitchStmt,
+    ) -> CIRStmt {
+        let mut else_block = default.map(|b| Box::new(b));
+
+        for case in switch_stmt.cases.iter().rev() {
+            let mut pattern_exprs = Vec::new();
+
+            for pattern in &case.patterns {
+                let cond = match &pattern.kind {
+                    TypedSwitchCasePatternKind::Expr(expr) => {
+                        let rhs = self.lower_expr(expr);
+
+                        CIRExpr {
+                            kind: CIRExprKind::Infix(CIRInfixExpr {
+                                op: InfixOperator::Equal,
+                                lhs: Box::new(operand.clone()),
+                                rhs: Box::new(rhs),
+                            }),
+                            ty: CIRType::Plain(PlainType::Bool),
+                            loc: pattern.loc,
+                        }
+                    }
+
+                    TypedSwitchCasePatternKind::Range(range) => {
+                        let lower = self.lower_expr(&range.lower);
+                        let upper = self.lower_expr(&range.upper);
+
+                        let ge = CIRExpr {
+                            kind: CIRExprKind::Infix(CIRInfixExpr {
+                                op: InfixOperator::GreaterEqual,
+                                lhs: Box::new(operand.clone()),
+                                rhs: Box::new(lower),
+                            }),
+                            ty: CIRType::Plain(PlainType::Bool),
+                            loc: pattern.loc,
+                        };
+
+                        let cmp_op = if range.inclusive_upper {
+                            InfixOperator::LessEqual
+                        } else {
+                            InfixOperator::LessThan
+                        };
+
+                        let le = CIRExpr {
+                            kind: CIRExprKind::Infix(CIRInfixExpr {
+                                op: cmp_op,
+                                lhs: Box::new(operand.clone()),
+                                rhs: Box::new(upper),
+                            }),
+                            ty: CIRType::Plain(PlainType::Bool),
+                            loc: pattern.loc,
+                        };
+
+                        CIRExpr {
+                            kind: CIRExprKind::Infix(CIRInfixExpr {
+                                op: InfixOperator::And,
+                                lhs: Box::new(ge),
+                                rhs: Box::new(le),
+                            }),
+                            ty: CIRType::Plain(PlainType::Bool),
+                            loc: pattern.loc,
+                        }
+                    }
+
+                    _ => unreachable!("unsupported pattern in chained-if lowering"),
+                };
+
+                pattern_exprs.push(cond);
+            }
+
+            let case_cond = pattern_exprs
+                .into_iter()
+                .reduce(|a, b| CIRExpr {
+                    kind: CIRExprKind::Infix(CIRInfixExpr {
+                        op: InfixOperator::Or,
+                        lhs: Box::new(a),
+                        rhs: Box::new(b),
+                    }),
+                    ty: CIRType::Plain(PlainType::Bool),
+                    loc: case.loc,
+                })
+                .expect("case must have at least one pattern");
+
+            let then_block = Box::new(self.lower_body(&case.body));
+
+            let if_stmt = CIRStmt::If(CIRIfStmt {
+                cond: case_cond,
+                then_block,
+                else_block,
+                loc: case.loc,
+            });
+
+            else_block = Some(Box::new(CIRBlockStmt {
+                stmts: vec![if_stmt],
+                defers: Vec::new(),
+                loc: case.loc,
+            }));
+        }
+
+        else_block
+            .map(|b| match &b.stmts[0] {
+                CIRStmt::If(if_stmt) => CIRStmt::If(if_stmt.clone()),
+                _ => unreachable!(),
+            })
+            .unwrap()
+    }
+
+    fn lower_pure_switch(
+        &mut self,
+        operand: CIRExpr,
+        default: Option<CIRBlockStmt>,
+        switch_stmt: &TypedSwitchStmt,
+    ) -> CIRStmt {
+        let mut cases = Vec::new();
+
+        for typed_case in &switch_stmt.cases {
+            let mut patterns = Vec::new();
+
+            for typed_pattern in &typed_case.patterns {
+                match &typed_pattern.kind {
+                    TypedSwitchCasePatternKind::Expr(expr) => {
+                        let expr = self.lower_expr(expr);
+
+                        patterns.push(CIRPattern::Value(expr));
+                    }
+                    TypedSwitchCasePatternKind::Wildcard => {
+                        continue;
+                    }
+
+                    _ => unreachable!("unsupported pattern in pure switch lowering"),
+                }
+            }
+
+            let body = self.lower_body(&typed_case.body);
+
+            cases.push(CIRSwitchCase { patterns, body });
+        }
+
+        CIRStmt::Switch(CIRSwitchStmt {
+            value: operand,
+            cases,
+            default,
+            all_cases_covered: switch_stmt.all_cases_covered.unwrap(),
+            loc: switch_stmt.loc.clone(),
+        })
+    }
+
+    fn lower_switch_on_enum(
+        &mut self,
+        operand: CIRExpr,
+        default: Option<CIRBlockStmt>,
+        switch_stmt: &TypedSwitchStmt,
+    ) -> CIRStmt {
+        let operand_type = switch_stmt.operand.ty.as_ref().unwrap().const_inner();
+        let named_type = operand_type.as_named_type().unwrap();
+        let type_args = &named_type.type_args;
+        let enum_decl_id = named_type.type_decl_id.as_enum().unwrap();
+
+        let enum_decl = self.decl_tables.enum_decl(enum_decl_id);
+
+        let inst_enum_decl = instantiate_enum_decl_with_type_args(&enum_decl, type_args);
+        let enum_type = self.lower_enum_decl(&inst_enum_decl);
+
+        let mut cases = Vec::new();
+
+        for typed_case in &switch_stmt.cases {
+            let mut patterns = Vec::new();
+
+            for typed_pattern in &typed_case.patterns {
+                let pattern = match &typed_pattern.kind {
+                    TypedSwitchCasePatternKind::EnumUnit(ident) => {
+                        let tag = enum_type.compute_variant_tag(&ident.value).unwrap();
+
+                        CIRPattern::Variant {
+                            name: ident.to_string(),
+                            tag: tag as usize,
+                            payload: CIRVariantPayload::Unit,
+                        }
+                    }
+                    TypedSwitchCasePatternKind::EnumTupleVariant { ident, items } => {
+                        let tag = enum_type.compute_variant_tag(&ident.value).unwrap();
+
+                        let variant = inst_enum_decl
+                            .variants
+                            .iter()
+                            .find(|variant| variant.ident() == ident)
+                            .unwrap();
+
+                        let exported_fields = self.lower_switch_case_tuple_pattern_bindings(items, variant);
+
+                        if matches!(variant, TypedEnumVariant::Valued { .. }) {
+                            let (_, var_id, ty) = exported_fields.first().cloned().unwrap();
+
+                            CIRPattern::Variant {
+                                name: ident.to_string(),
+                                tag: tag as usize,
+                                payload: CIRVariantPayload::Single(var_id, ty),
+                            }
+                        } else {
+                            let cir_struct_type = {
+                                let TypedEnumVariant::Tuple { fields, .. } = variant else {
+                                    unreachable!()
+                                };
+
+                                let field_types = fields.iter().map(|field| self.lower_sema_type(&field.ty)).collect();
+                                let fields_info = fields
+                                    .iter()
+                                    .enumerate()
+                                    .map(|(i, field)| (i.to_string(), field.loc))
+                                    .collect();
+
+                                CIRStructType {
+                                    name: None,
+                                    fields: field_types,
+                                    fields_info,
+                                    repr_attr: None,
+                                    align: None,
+                                    loc: ident.loc,
+                                }
+                            };
+
+                            CIRPattern::Variant {
+                                name: ident.to_string(),
+                                tag: tag as usize,
+                                payload: CIRVariantPayload::Fields {
+                                    struct_type: cir_struct_type,
+                                    exported_fields,
+                                },
+                            }
+                        }
+                    }
+                    TypedSwitchCasePatternKind::EnumStructVariant { ident, items, .. } => {
+                        let tag = enum_type.compute_variant_tag(&ident.value).unwrap();
+
+                        let variant = inst_enum_decl
+                            .variants
+                            .iter()
+                            .find(|variant| variant.ident() == ident)
+                            .unwrap();
+
+                        let exported_fields = self.lower_switch_case_struct_pattern_bindings(items, variant);
+
+                        let cir_struct_type = {
+                            let TypedEnumVariant::Struct { fields, .. } = variant else {
+                                unreachable!()
+                            };
+
+                            let field_types = fields.iter().map(|field| self.lower_sema_type(&field.ty)).collect();
+                            let fields_info = fields.iter().map(|field| (field.name.as_string(), field.loc)).collect();
+
+                            CIRStructType {
+                                name: None,
+                                fields: field_types,
+                                fields_info,
+                                repr_attr: None,
+                                align: None,
+                                loc: ident.loc,
+                            }
+                        };
+
+                        CIRPattern::Variant {
+                            name: ident.to_string(),
+                            tag: tag as usize,
+                            payload: CIRVariantPayload::Fields {
+                                struct_type: cir_struct_type,
+                                exported_fields,
+                            },
+                        }
+                    }
+
+                    TypedSwitchCasePatternKind::Wildcard => {
+                        continue;
+                    }
+
+                    _ => unreachable!("non-enum pattern in enum switch lowering"),
+                };
+
+                patterns.push(pattern);
+            }
+
+            let body = self.lower_body(&typed_case.body);
+
+            cases.push(CIRSwitchCase { patterns, body });
+        }
+
+        let all_cases_covered = switch_stmt.all_cases_covered.unwrap();
+
+        CIRStmt::Switch(CIRSwitchStmt {
+            value: operand,
+            cases,
+            default,
+            all_cases_covered,
+            loc: switch_stmt.loc.clone(),
+        })
+    }
+
+    fn lower_switch_case_struct_pattern_bindings(
+        &mut self,
+        items: &[TypedSwitchCaseEnumStructPatternField],
+        variant_decl: &TypedEnumVariant,
+    ) -> Vec<(usize, IRValueID, CIRType)> {
+        items
+            .iter()
+            .filter_map(|item| {
+                if let TypedSwitchCasePatternKind::Binding { var_decl_id, .. } = &item.pattern.kind {
+                    let ty = variant_decl.get_struct_variant_field_type(&item.name.value).unwrap();
+
+                    let irv_id = self.new_ir_value_id();
+
+                    self.decl_to_ir_value_map.insert(DeclID::Var(*var_decl_id), irv_id);
+
+                    let field_index = variant_decl.get_struct_variant_field_index(&item.name.value).unwrap();
+
+                    Some((field_index, irv_id, self.lower_sema_type(&ty)))
+                } else {
+                    None
+                }
+            })
+            .collect()
+    }
+
+    fn lower_switch_case_tuple_pattern_bindings(
+        &mut self,
+        items: &[TypedSwitchCasePattern],
+        variant_decl: &TypedEnumVariant,
+    ) -> Vec<(usize, IRValueID, CIRType)> {
+        items
+            .iter()
+            .enumerate()
+            .filter_map(|(idx, p)| {
+                if let TypedSwitchCasePatternKind::Binding { var_decl_id, .. } = &p.kind {
+                    let ty = match variant_decl {
+                        TypedEnumVariant::Tuple { fields, .. } => &fields[idx].ty,
+                        TypedEnumVariant::Valued { value, .. } => value.ty.as_ref().unwrap(),
+                        _ => unreachable!(),
+                    };
+
+                    let irv_id = self.new_ir_value_id();
+
+                    self.decl_to_ir_value_map.insert(DeclID::Var(*var_decl_id), irv_id);
+
+                    // tuple: consecutive index
+                    Some((idx, irv_id, self.lower_sema_type(&ty)))
+                } else {
+                    None
+                }
+            })
+            .collect()
     }
 
     fn lower_while(&mut self, while_stmt: &TypedWhileStmt) -> CIRStmt {
@@ -828,7 +1213,18 @@ impl<'a> CIRTraverse<'a> {
         let inst_enum_decl = instantiate_enum_decl_with_type_args(&enum_decl, type_args);
 
         let variant = match &enum_init.arg {
-            TypedEnumInitArgs::Unit => CIREnumInitVariant::Unit,
+            TypedEnumInitArgs::Unit => {
+                let variant = inst_enum_decl.lookup_variant(&enum_init.name).unwrap();
+
+                match variant {
+                    TypedEnumVariant::Unit(_) => CIREnumInitVariant::Unit,
+                    TypedEnumVariant::Valued { value, .. } => {
+                        let expr = self.lower_expr(value);
+                        CIREnumInitVariant::Valued(Box::new(expr))
+                    }
+                    _ => unreachable!(),
+                }
+            }
             TypedEnumInitArgs::Tuple(exprs) => {
                 let lowered_exprs = exprs.iter().map(|expr| self.lower_expr(expr)).collect();
 

@@ -25,7 +25,7 @@ use cyrusc_typed_ast::{
     stmts::{TypedGenericParams, TypedStructField, TypedTypeArgs},
     types::{NamedType, SemaType, TypeDeclID},
 };
-use fx_hash::FxHashSet;
+use fx_hash::{FxHashSet, FxHashSetExt};
 
 impl<'a> AnalysisContext<'a> {
     pub(crate) fn analyze_struct_init(
@@ -204,7 +204,7 @@ impl<'a> AnalysisContext<'a> {
         struct_decl: &StructDecl,
         struct_value: &TypedUnnamedStructValue,
     ) {
-        let mut decl_field_names: FxHashSet<&str> = FxHashSet::default();
+        let mut decl_field_names: FxHashSet<&str> = FxHashSet::new();
 
         for decl_field in &struct_decl.fields {
             decl_field_names.insert(decl_field.name.as_str());
@@ -234,12 +234,12 @@ impl<'a> AnalysisContext<'a> {
         struct_decl: &StructDecl,
         struct_value: &TypedUnnamedStructValue,
     ) {
-        let mut decl_field_names: FxHashSet<&str> = FxHashSet::default();
+        let mut decl_field_names: FxHashSet<&str> = FxHashSet::new();
         for decl_field in &struct_decl.fields {
             decl_field_names.insert(decl_field.name.as_str());
         }
 
-        let mut initialized_field_names: FxHashSet<&str> = FxHashSet::default();
+        let mut initialized_field_names: FxHashSet<&str> = FxHashSet::new();
         for field in &struct_value.fields {
             initialized_field_names.insert(field.name.as_str());
         }
@@ -268,7 +268,7 @@ impl<'a> AnalysisContext<'a> {
     }
 
     fn check_duplicate_fields_for_unnamed_struct_value(&self, struct_value: &TypedUnnamedStructValue) {
-        let mut field_names: FxHashSet<&str> = FxHashSet::default();
+        let mut field_names: FxHashSet<&str> = FxHashSet::new();
 
         for field in &struct_value.fields {
             if !field_names.insert(field.name.as_str()) {
@@ -285,7 +285,7 @@ impl<'a> AnalysisContext<'a> {
     }
 
     fn check_invalid_fields(&self, struct_decl: &StructDecl, struct_init: &TypedStructInitExpr) {
-        let mut decl_field_names: FxHashSet<&str> = FxHashSet::default();
+        let mut decl_field_names: FxHashSet<&str> = FxHashSet::new();
 
         for decl_field in &struct_decl.fields {
             decl_field_names.insert(decl_field.name.as_str());
@@ -311,12 +311,12 @@ impl<'a> AnalysisContext<'a> {
     }
 
     fn check_missing_fields(&self, struct_decl: &StructDecl, struct_init: &TypedStructInitExpr) {
-        let mut decl_field_names: FxHashSet<&str> = FxHashSet::default();
+        let mut decl_field_names: FxHashSet<&str> = FxHashSet::new();
         for decl_field in &struct_decl.fields {
             decl_field_names.insert(decl_field.name.as_str());
         }
 
-        let mut initialized_field_names: FxHashSet<&str> = FxHashSet::default();
+        let mut initialized_field_names: FxHashSet<&str> = FxHashSet::new();
         for init in &struct_init.fields {
             initialized_field_names.insert(init.name.as_str());
         }
@@ -345,7 +345,7 @@ impl<'a> AnalysisContext<'a> {
     }
 
     fn check_duplicate_struct_field_init(&self, fields: &[TypedFieldInit]) {
-        let mut field_names: FxHashSet<&str> = FxHashSet::default();
+        let mut field_names: FxHashSet<&str> = FxHashSet::new();
 
         for field in fields {
             if !field_names.insert(&field.name) {

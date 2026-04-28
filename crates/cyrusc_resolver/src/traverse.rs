@@ -40,6 +40,7 @@ use cyrusc_typed_ast::stmts::*;
 use cyrusc_typed_ast::types::*;
 use cyrusc_typed_ast::*;
 use fx_hash::FxHashSet;
+use fx_hash::FxHashSetExt;
 
 // Resolver endpoints.
 impl Resolver {
@@ -724,7 +725,7 @@ impl Resolver {
 
     fn resolve_generic_params(&mut self, generic_params: &GenericParams) -> Option<TypedGenericParams> {
         let mut list = Vec::with_capacity(generic_params.len());
-        let mut seen = FxHashSet::default();
+        let mut seen = FxHashSet::new();
 
         for generic_param in generic_params {
             let name = &generic_param.param_name.value;
@@ -1815,6 +1816,7 @@ impl Resolver {
             operand,
             cases,
             default_case,
+            all_cases_covered: None,
             loc: switch.loc,
         })
     }
@@ -1909,7 +1911,7 @@ impl Resolver {
 
                 Some(TypedSwitchCasePattern {
                     kind: TypedSwitchCasePatternKind::EnumTupleVariant {
-                        variant: variant.clone(),
+                        ident: variant.clone(),
                         items: typed_items,
                     },
                     loc: pattern.loc,
@@ -1939,7 +1941,7 @@ impl Resolver {
 
                 Some(TypedSwitchCasePattern {
                     kind: TypedSwitchCasePatternKind::EnumStructVariant {
-                        variant: variant.clone(),
+                        ident: variant.clone(),
                         items: typed_items,
                         has_rest: *has_rest,
                     },

@@ -25,7 +25,7 @@ use cyrusc_typed_ast::{
     stmts::{TypedStructField, TypedStructStmt, TypedTypeArgs},
     types::{NamedType, SemaType, TypeDeclID},
 };
-use fx_hash::FxHashSet;
+use fx_hash::{FxHashSet, FxHashSetExt};
 
 impl<'a> AnalysisContext<'a> {
     pub(crate) fn analyze_struct_stmt(&mut self, struct_stmt: &mut TypedStructStmt) {
@@ -98,7 +98,7 @@ impl<'a> AnalysisContext<'a> {
     }
 
     fn check_duplicate_struct_field(&self, object_name: &String, fields: &[TypedStructField]) {
-        let mut field_names: FxHashSet<&str> = FxHashSet::default();
+        let mut field_names: FxHashSet<&str> = FxHashSet::new();
 
         for field in fields {
             if !field_names.insert(&field.name) {

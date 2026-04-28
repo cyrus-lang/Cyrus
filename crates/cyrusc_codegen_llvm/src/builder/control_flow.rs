@@ -17,26 +17,24 @@
 use crate::{
     builder::{
         builder::CodeGenIRBuilder,
+        irreg::LocalIRValue,
         values::{InternalValue, InternalValueKind},
     },
     c,
     llvm::abi::abi_type::abi_type_to_llvm_type,
 };
 use cyrusc_internal::{
-    abi::{args::ABIRetInfoKind, layout::type_layout, types::ABIType},
+    abi::{
+        args::ABIRetInfoKind,
+        layout::{ABITypeLayout, type_layout},
+        types::ABIType,
+    },
     cir::{
         cir::{
-            CIRBlockStmt, CIRBreakStmt, CIRContinueStmt, CIRForStmt, CIRGotoStmt, CIRIfStmt, CIRLabelStmt,
-            CIRReturnStmt, CIRStmt, CIRSwitchOnEnumStmt, CIRSwitchStmt, CIRWhileStmt,
+            CIRBlockStmt, CIRBreakStmt, CIRContinueStmt, CIRForStmt, CIRGotoStmt, CIRIfStmt, CIRLabelStmt, CIRPattern,
+            CIRReturnStmt, CIRStmt, CIRSwitchStmt, CIRVariantPayload, CIRWhileStmt, IRValueID,
         },
-        types::CIREnumType,
-    },
-};
-use inkwell::llvm_sys::{
-    LLVMUse,
-    core::{
-        LLVMAppendExistingBasicBlock, LLVMBasicBlockAsValue, LLVMCreateBasicBlockInContext, LLVMGetBasicBlockParent,
-        LLVMGetFirstUse,
+        types::{CIREnumType, CIRType},
     },
 };
 use inkwell::{
@@ -51,6 +49,16 @@ use inkwell::{
     },
     types::{BasicTypeEnum, StructType},
     values::{AsValueRef, BasicValueEnum, FunctionValue, InstructionOpcode, IntValue},
+};
+use inkwell::{
+    llvm_sys::{
+        LLVMUse,
+        core::{
+            LLVMAppendExistingBasicBlock, LLVMBasicBlockAsValue, LLVMCreateBasicBlockInContext,
+            LLVMGetBasicBlockParent, LLVMGetFirstUse,
+        },
+    },
+    values::PointerValue,
 };
 
 #[derive(Debug, Clone)]
@@ -80,288 +88,285 @@ impl<'ll> CFLoop<'ll> {
 }
 
 impl<'ll> CodeGenIRBuilder<'ll> {
-    // // FIXME
-    // pub(crate) fn emit_switch_on_enum_export_fields(
-    //     &self,
-    //     payload_alloca: PointerValue<'ll>,
-    //     variant_field_types: Vec<CIRType>,
-    //     payload_struct_ty: StructType<'ll>,
-    //     exported_fields: &Vec<(TypedIdent, CIRType)>,
-    //     loc: Loc,
-    // ) {
-    //     todo!();
+    pub(crate) fn emit_switch_on_enum_export_fields(
+        &mut self,
+        enum_layout: &ABITypeLayout,
+        payload_alloca: PointerValue<'ll>,
+        payload_struct_type: StructType<'ll>,
+        exported_fields: &Vec<(usize, IRValueID, CIRType)>,
+    ) {
+        for (field_index, irv_id, cir_ty) in exported_fields {
+            let llvm_field_type: BasicTypeEnum<'ll> = self.emit_ty(cir_ty.clone()).try_into().unwrap();
+            let llvm_field_index = enum_layout.lookup_field_index(*field_index).unwrap();
 
-    //     // let mut irreg = self.irreg.borrow_mut();
+            // pointer to payload_struct.field_index
+            let gep = self
+                .llvmbuilder
+                .build_struct_gep(payload_struct_type, payload_alloca, llvm_field_index, "gep.field")
+                .unwrap();
 
-    //     // let elements: Vec<CIRType> = exported_fields.iter().map(|(_, ty)| ty.clone()).collect();
-    //     // let tuple_type = CIRType::Tuple(CIRTupleType { elements, loc });
-    //     // let layout = type_layout(&self.target.info, &tuple_type);
+            let loaded_value = self.llvmbuilder.build_load(llvm_field_type, gep, "load.field").unwrap();
 
-    //     // for (i, (exported_field, _)) in exported_fields.iter().enumerate() {
-    //     //     let index = layout.lookup_field_index(i).unwrap();
+            let alloca = self
+                .llvmbuilder
+                .build_alloca(llvm_field_type, "export.field.alloca")
+                .unwrap();
 
-    //     //     let ptr = self
-    //     //         .llvmbuilder
-    //     //         .build_struct_gep(
-    //     //             payload_struct_ty,
-    //     //             payload_alloca,
-    //     //             index,
-    //     //             &format!("export_field.{}", exported_field.name),
-    //     //         )
-    //     //         .unwrap();
+            self.llvmbuilder.build_store(alloca, loaded_value).unwrap();
 
-    //     //     let field_ty = &variant_field_types[i];
-    //     //     irreg.insert(exported_field.symbol_id.0, LocalIRValue::LValue(ptr, field_ty.clone()));
-    //     // }
+            self.insert_local_ir_value(*irv_id, LocalIRValue::LValue(alloca, cir_ty.clone()));
+        }
+    }
 
-    //     // drop(irreg);
-    // }
-
-    // FIXME
     fn emit_switch_on_scalar_enum(
         &mut self,
-        switch_on_enum_stmt: &CIRSwitchOnEnumStmt,
+        switch_stmt: &CIRSwitchStmt,
         enum_value: IntValue<'ll>,
         enum_type: &CIREnumType,
     ) {
-        todo!();
+        let parent_block = self.blockreg.cur_block.unwrap();
+        let exit_block = self.new_basic_block("switch_on_enum.exit");
 
-        // let parent_block = self.blockreg.cur_block.unwrap();
-        // let exit_block = self.new_basic_block("switch_on_enum.exit");
+        let else_block = if let Some(block_stmt) = &switch_stmt.default {
+            let else_block = self.new_basic_block("switch_on_enum.default");
+            self.emit_block(else_block);
+            self.emit_body(block_stmt);
 
-        // // for scalar enums the value itself is the tag
-        // let enum_idx_int_value = enum_value;
+            if let Some(cur_block) = &self.blockreg.cur_block {
+                if cur_block.get_terminator().is_none() {
+                    self.llvmbuilder.build_unconditional_branch(exit_block).unwrap();
+                }
+            }
 
-        // let else_block = if let Some(block_stmt) = &switch_on_enum_stmt.default {
-        //     let else_block = self.new_basic_block("switch_on_enum.default");
+            else_block
+        } else {
+            exit_block
+        };
 
-        //     self.emit_block(else_block);
-        //     self.emit_body(block_stmt);
+        let mut cases: Vec<(IntValue<'ll>, BasicBlock<'ll>)> = Vec::new();
 
-        //     if let Some(cur_block) = &self.blockreg.cur_block {
-        //         if cur_block.get_terminator().is_none() {
-        //             self.llvmbuilder.build_unconditional_branch(exit_block).unwrap();
-        //         }
-        //     }
+        for case in &switch_stmt.cases {
+            let case_block = self.new_basic_block("switch_on_enum.case");
 
-        //     else_block
-        // } else {
-        //     exit_block
-        // };
+            for pattern in &case.patterns {
+                let CIRPattern::Variant { tag, payload, .. } = pattern else {
+                    unreachable!()
+                };
 
-        // let mut cases: Vec<(IntValue<'ll>, BasicBlock<'ll>)> = Vec::new();
+                let pattern_value = enum_value.get_type().const_int(*tag as u64, false);
 
-        // for case in &switch_on_enum_stmt.cases {
-        //     let case_block = self.new_basic_block("switch_on_enum.case");
+                match payload {
+                    CIRVariantPayload::Unit => { /* no payload */ }
+                    CIRVariantPayload::Single(irv_id, cir_type) => {
+                        self.emit_block(case_block);
 
-        //     for pattern in &case.patterns {
-        //         let tag = enum_type.compute_variant_tag(pattern.variant_name()).unwrap() as u64;
+                        let llvm_type: BasicTypeEnum<'ll> = self.emit_ty(cir_type.clone()).try_into().unwrap();
 
-        //         let pattern_value = enum_value.get_type().const_int(tag, false);
+                        let alloca = self
+                            .llvmbuilder
+                            .build_alloca(llvm_type, "scalar.enum.payload.alloca")
+                            .unwrap();
 
-        //         cases.push((pattern_value, case_block));
-        //     }
+                        self.llvmbuilder.build_store(alloca, enum_value).unwrap();
 
-        //     self.emit_block(case_block);
+                        self.insert_local_ir_value(*irv_id, LocalIRValue::LValue(alloca, cir_type.clone()));
+                    }
 
-        //     // payload binding
-        //     for pattern in &case.patterns {
-        //         if let CIRSwitchOnEnumPattern::Valued(_, _, (ident, expr_ty)) = pattern {
-        //             let payload_ty: BasicTypeEnum<'ll> = self.emit_ty(expr_ty.ty.clone()).try_into().unwrap();
-        //             let payload_alloca = self.llvmbuilder.build_alloca(payload_ty, "enum_payload").unwrap();
+                    CIRVariantPayload::Fields { .. } => {
+                        panic!("scalar enum cannot have struct/tuple payload");
+                    }
+                }
 
-        //             // For scalar enums the value itself is the payload
-        //             self.llvmbuilder.build_store(payload_alloca, enum_value).unwrap();
+                cases.push((pattern_value, case_block));
+            }
 
-        //             let mut irreg = self.irreg.borrow_mut();
-        //             irreg.insert(
-        //                 ident.symbol_id.0,
-        //                 LocalIRValue::LValue(payload_alloca, expr_ty.ty.clone()),
-        //             );
-        //         }
-        //     }
+            self.emit_block(case_block);
+            self.emit_body(&case.body);
 
-        //     self.emit_body(&case.body);
+            if let Some(cur_block) = &self.blockreg.cur_block {
+                if cur_block.get_terminator().is_none() {
+                    self.llvmbuilder.build_unconditional_branch(exit_block).unwrap();
+                }
+            }
+        }
 
-        //     if let Some(cur_block) = &self.blockreg.cur_block {
-        //         if cur_block.get_terminator().is_none() {
-        //             self.llvmbuilder.build_unconditional_branch(exit_block).unwrap();
-        //         }
-        //     }
-        // }
+        self.llvmbuilder.position_at_end(parent_block);
+        self.llvmbuilder.build_switch(enum_value, else_block, &cases).unwrap();
 
-        // // emit switch
-        // self.llvmbuilder.position_at_end(parent_block);
+        let all_cases_return = cases.iter().all(|(_, bb)| {
+            bb.get_terminator()
+                .map_or(false, |inst| inst.get_opcode() == InstructionOpcode::Return)
+        });
 
-        // self.llvmbuilder
-        //     .build_switch(enum_idx_int_value, else_block, &cases)
-        //     .unwrap();
+        if all_cases_return && switch_stmt.cases.len() == enum_type.variants.len() {
+            self.emit_block(exit_block);
+            self.llvmbuilder.build_unreachable().unwrap();
+            return;
+        }
 
-        // // unreachable optimization
-        // let all_cases_return = cases.iter().all(|(_, bb)| {
-        //     bb.get_terminator()
-        //         .map_or(false, |inst| inst.get_opcode() == InstructionOpcode::Return)
-        // });
+        let exit_in_use: bool = unsafe {
+            let first_use: *const LLVMUse = LLVMGetFirstUse(LLVMBasicBlockAsValue(exit_block.as_mut_ptr()));
+            !first_use.is_null()
+        };
 
-        // if all_cases_return && switch_on_enum_stmt.cases.len() == enum_type.variants.len() {
-        //     self.emit_block(exit_block);
-        //     self.llvmbuilder.build_unreachable().unwrap();
-        // }
-
-        // let exit_in_use: bool = unsafe {
-        //     let first_use: *const LLVMUse = LLVMGetFirstUse(LLVMBasicBlockAsValue(exit_block.as_mut_ptr()));
-        //     !first_use.is_null()
-        // };
-
-        // if exit_in_use {
-        //     self.emit_block(exit_block);
-        // }
+        if exit_in_use {
+            self.emit_block(exit_block);
+        }
     }
 
-    // FIXME
-    pub(crate) fn emit_switch_on_enum(&mut self, switch_on_enum_stmt: &CIRSwitchOnEnumStmt) {
-        todo!();
+    pub(crate) fn emit_switch_on_enum(&mut self, switch_stmt: &CIRSwitchStmt) {
+        let lvalue = self.emit_expr(&switch_stmt.value);
+        let rvalue = self.load_rvalue(lvalue);
+        let enum_type = rvalue.ty.as_enum().unwrap();
 
-        // let lvalue = self.emit_expr(&switch_on_enum_stmt.value);
-        // let rvalue = self.load_rvalue(lvalue);
-        // let enum_type = rvalue.ty.as_enum().unwrap();
+        // enum has only tag (no payload)? optimize
+        {
+            let ty = self.emit_enum_type(enum_type.clone());
 
-        // {
-        //     let ty = self.emit_enum_ty(enum_type.clone());
+            if ty.is_int_type() {
+                let enum_value = rvalue.as_basic_value().into_int_value();
 
-        //     if ty.is_int_type() {
-        //         let enum_value = rvalue.as_basic_value().into_int_value();
-        //         self.emit_switch_on_scalar_enum(switch_on_enum_stmt, enum_value, &enum_type);
-        //         return;
-        //     }
-        // }
+                self.emit_switch_on_scalar_enum(switch_stmt, enum_value, &enum_type);
+                return;
+            }
+        }
 
-        // let enum_struct_value = rvalue.as_basic_value().into_struct_value();
-        // let enum_idx_int_value = self.extract_enum_tag(enum_struct_value);
+        let enum_struct_value = rvalue.as_basic_value().into_struct_value();
+        let enum_idx_int_value = self.extract_enum_tag(enum_struct_value);
 
-        // let parent_block = self.blockreg.cur_block.unwrap();
-        // let exit_block = self.new_basic_block("switch_on_enum.exit");
+        let parent_block = self.blockreg.cur_block.unwrap();
+        let exit_block = self.new_basic_block("switch_on_enum.exit");
 
-        // let else_block = if let Some(block_stmt) = &switch_on_enum_stmt.default {
-        //     let else_block = self.new_basic_block("switch_on_enum.default");
-        //     self.emit_block(else_block);
-        //     self.emit_body(block_stmt);
+        let else_block = if let Some(block_stmt) = &switch_stmt.default {
+            let else_block = self.new_basic_block("switch_on_enum.default");
+            self.emit_block(else_block);
+            self.emit_body(block_stmt);
 
-        //     if let Some(cur_block) = &self.blockreg.cur_block {
-        //         if cur_block.get_terminator().is_none() {
-        //             self.llvmbuilder.build_unconditional_branch(exit_block).unwrap();
-        //         }
-        //     }
+            if let Some(cur_block) = &self.blockreg.cur_block {
+                if cur_block.get_terminator().is_none() {
+                    self.llvmbuilder.build_unconditional_branch(exit_block).unwrap();
+                }
+            }
 
-        //     else_block
-        // } else {
-        //     exit_block
-        // };
+            else_block
+        } else {
+            exit_block
+        };
 
-        // let tag_type = self.emit_ty(*enum_type.tag_type_or_infer_or_default()).into_int_type();
+        let tag_type = self.emit_ty(*enum_type.tag_type_or_infer_or_default()).into_int_type();
 
-        // let mut cases: Vec<(IntValue<'ll>, BasicBlock<'ll>)> = Vec::new();
+        let mut cases: Vec<(IntValue<'ll>, BasicBlock<'ll>)> = Vec::new();
 
-        // for case in &switch_on_enum_stmt.cases {
-        //     let case_block = self.new_basic_block("switch_on_enum.case");
-        //     self.emit_block(case_block);
+        for case in &switch_stmt.cases {
+            let case_block = self.new_basic_block("switch_on_enum.case");
+            self.emit_block(case_block);
 
-        //     for pattern in &case.patterns {
-        //         let pattern_int_value = tag_type.const_int(pattern.variant_idx().try_into().unwrap(), false);
+            for pattern in &case.patterns {
+                let CIRPattern::Variant { tag, payload, .. } = pattern else {
+                    unreachable!()
+                };
 
-        //         if let CIRSwitchOnEnumPattern::ExportFields(_, variant_idx, exported_fields) = pattern {
-        //             self.emit_block(case_block);
+                let pattern_int_value = tag_type.const_int((*tag).try_into().unwrap(), false);
 
-        //             let enum_payload = self.extract_enum_payload(enum_struct_value);
+                match payload {
+                    CIRVariantPayload::Unit => { /* no payload */ }
+                    CIRVariantPayload::Single(irv_id, cir_type) => {
+                        self.emit_block(case_block);
 
-        //             let payload_struct_type = self
-        //                 .emit_enum_fielded_variant_payload_ty(*variant_idx, &enum_type)
-        //                 .unwrap();
-        //             let payload_struct_value = self.intrinsic_copy_buffer_to_struct(enum_payload, payload_struct_type);
+                        let llvm_type: BasicTypeEnum<'ll> = self.emit_ty(cir_type.clone()).try_into().unwrap();
 
-        //             let payload_alloca = self.llvmbuilder.build_alloca(payload_struct_type, "alloca").unwrap();
-        //             self.llvmbuilder
-        //                 .build_store(payload_alloca, payload_struct_value)
-        //                 .unwrap();
+                        // reinterpret payload buffer
+                        let enum_payload = self.extract_enum_payload(enum_struct_value);
 
-        //             let variant_field_types = enum_type.variants[*variant_idx].as_fielded().unwrap();
+                        let alloca = self.llvmbuilder.build_alloca(llvm_type, "reinterpret.variant").unwrap();
 
-        //             self.emit_switch_on_enum_export_fields(
-        //                 payload_alloca,
-        //                 variant_field_types.to_vec(),
-        //                 payload_struct_type,
-        //                 exported_fields,
-        //                 switch_on_enum_stmt.loc,
-        //             );
-        //         } else if let CIRSwitchOnEnumPattern::Valued(_, _, (ident, expr)) = pattern {
-        //             self.emit_block(case_block);
+                        self.llvmbuilder.build_store(alloca, enum_payload).unwrap();
 
-        //             let variant_expr_type = &expr.ty;
-        //             let llvm_variant_expr_type: BasicTypeEnum<'ll> =
-        //                 self.emit_ty(variant_expr_type.clone()).try_into().unwrap();
+                        self.insert_local_ir_value(*irv_id, LocalIRValue::LValue(alloca, cir_type.clone()));
+                    }
+                    CIRVariantPayload::Fields {
+                        struct_type,
+                        exported_fields,
+                    } => {
+                        let layout = type_layout(&self.target.info, &CIRType::Struct(struct_type.clone()));
 
-        //             // reinterpret payload buffer as expr.ty
+                        self.emit_block(case_block);
 
-        //             let enum_payload = self.extract_enum_payload(enum_struct_value);
+                        let enum_payload = self.extract_enum_payload(enum_struct_value);
 
-        //             let alloca = self
-        //                 .llvmbuilder
-        //                 .build_alloca(llvm_variant_expr_type, "reinterpret.variant")
-        //                 .unwrap();
+                        let payload_struct_type = self.emit_enum_fielded_variant_payload_ty(*tag, &enum_type).unwrap();
+                        let payload_struct_value =
+                            self.intrinsic_copy_buffer_to_struct(enum_payload, payload_struct_type);
 
-        //             self.llvmbuilder.build_store(alloca, enum_payload).unwrap();
+                        let payload_alloca = self.llvmbuilder.build_alloca(payload_struct_type, "alloca").unwrap();
+                        self.llvmbuilder
+                            .build_store(payload_alloca, payload_struct_value)
+                            .unwrap();
 
-        //             let mut irreg = self.irreg.borrow_mut();
-        //             irreg.insert(
-        //                 ident.symbol_id.0,
-        //                 LocalIRValue::LValue(alloca, variant_expr_type.clone()),
-        //             );
-        //             drop(irreg);
-        //         }
+                        self.emit_switch_on_enum_export_fields(
+                            &layout,
+                            payload_alloca,
+                            payload_struct_type,
+                            exported_fields,
+                        );
+                    }
+                }
 
-        //         cases.push((pattern_int_value, case_block));
-        //     }
+                cases.push((pattern_int_value, case_block));
+            }
 
-        //     self.emit_block(case_block);
-        //     self.emit_body(&case.body);
+            self.emit_block(case_block);
+            self.emit_body(&case.body);
 
-        //     if let Some(cur_block) = &self.blockreg.cur_block {
-        //         self.llvmbuilder.position_at_end(*cur_block);
-        //         if cur_block.get_terminator().is_none() {
-        //             self.llvmbuilder.build_unconditional_branch(exit_block).unwrap();
-        //         }
-        //     }
-        // }
+            if let Some(cur_block) = &self.blockreg.cur_block {
+                self.llvmbuilder.position_at_end(*cur_block);
+                if cur_block.get_terminator().is_none() {
+                    self.llvmbuilder.build_unconditional_branch(exit_block).unwrap();
+                }
+            }
+        }
 
-        // // back to parent block to build switch instruction
-        // self.llvmbuilder.position_at_end(parent_block);
+        self.llvmbuilder.position_at_end(parent_block);
 
-        // self.llvmbuilder
-        //     .build_switch(enum_idx_int_value, else_block, &cases)
-        //     .unwrap();
+        self.llvmbuilder
+            .build_switch(enum_idx_int_value, else_block, &cases)
+            .unwrap();
 
-        // let all_cases_return = cases.iter().all(|(_, bb)| {
-        //     bb.get_terminator()
-        //         .map_or(false, |inst| inst.get_opcode() == InstructionOpcode::Return)
-        // });
+        let all_cases_return = cases.iter().all(|(_, bb)| {
+            bb.get_terminator()
+                .map_or(false, |inst| inst.get_opcode() == InstructionOpcode::Return)
+        });
 
-        // if all_cases_return && switch_on_enum_stmt.cases.len() == enum_type.variants.len() {
-        //     self.emit_block(exit_block);
-        //     self.llvmbuilder.build_unreachable().unwrap();
-        // }
+        if all_cases_return && switch_stmt.cases.len() == enum_type.variants.len() {
+            self.emit_block(exit_block);
+            self.llvmbuilder.build_unreachable().unwrap();
+        }
 
-        // let exit_in_use: bool = unsafe {
-        //     let first_use: *const LLVMUse = LLVMGetFirstUse(LLVMBasicBlockAsValue(exit_block.as_mut_ptr()));
-        //     !first_use.is_null()
-        // };
-        // if exit_in_use {
-        //     self.emit_block(exit_block);
-        // }
+        let exit_in_use: bool = unsafe {
+            let first_use: *const LLVMUse = LLVMGetFirstUse(LLVMBasicBlockAsValue(exit_block.as_mut_ptr()));
+            !first_use.is_null()
+        };
+        if exit_in_use {
+            self.emit_block(exit_block);
+        }
     }
 
     pub(crate) fn emit_switch(&mut self, switch_stmt: &CIRSwitchStmt) {
         let lvalue = self.emit_expr(&switch_stmt.value);
         let rvalue = self.load_rvalue(lvalue);
+
+        let rvalue_type = &switch_stmt.value.ty;
+
+        if let CIRType::Enum(enum_type) = rvalue_type {
+            if enum_type.is_scalar_optimizable() {
+                let enum_value = rvalue.as_basic_value().into_int_value();
+
+                self.emit_switch_on_scalar_enum(switch_stmt, enum_value, &enum_type);
+            } else {
+                self.emit_switch_on_enum(switch_stmt);
+            }
+            return;
+        }
 
         let parent_block = self.blockreg.cur_block.unwrap();
         let exit_block = self.new_basic_block("switch.exit");
@@ -386,6 +391,16 @@ impl<'ll> CodeGenIRBuilder<'ll> {
 
         for case in &switch_stmt.cases {
             let case_block = self.new_basic_block("switch.case");
+
+            for pattern in &case.patterns {
+                if let CIRPattern::Value(expr) = pattern {
+                    let pattern_lvalue = self.emit_expr(expr);
+                    let pattern_rvalue = self.load_rvalue(pattern_lvalue);
+                    let pattern_int_value = pattern_rvalue.as_basic_value().into_int_value();
+                    cases.push((pattern_int_value, case_block));
+                }
+            }
+
             self.emit_block(case_block);
             self.emit_body(&case.body);
 
@@ -394,16 +409,8 @@ impl<'ll> CodeGenIRBuilder<'ll> {
                     self.llvmbuilder.build_unconditional_branch(exit_block).unwrap();
                 }
             }
-
-            for pattern in &case.patterns {
-                let pattern_lvalue = self.emit_expr(pattern);
-                let pattern_rvalue = self.load_rvalue(pattern_lvalue);
-                let pattern_int_value = pattern_rvalue.as_basic_value().into_int_value();
-                cases.push((pattern_int_value, case_block));
-            }
         }
 
-        // back to parent block to build switch instruction
         self.llvmbuilder.position_at_end(parent_block);
 
         self.llvmbuilder
@@ -424,6 +431,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
             let first_use: *const LLVMUse = LLVMGetFirstUse(LLVMBasicBlockAsValue(exit_block.as_mut_ptr()));
             !first_use.is_null()
         };
+
         if exit_in_use {
             self.emit_block(exit_block);
         }
@@ -981,7 +989,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
 
 fn llvm_get_current_block_if_in_use(current_block: &mut Option<LLVMBasicBlockRef>) -> Option<LLVMBasicBlockRef> {
     if let Some(block) = *current_block {
-        if unsafe { llvm_basic_block_is_unused(block) } {
+        if llvm_basic_block_is_unused(block) {
             unsafe { LLVMDeleteBasicBlock(block) };
 
             *current_block = None;

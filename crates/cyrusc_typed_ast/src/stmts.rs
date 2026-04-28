@@ -374,6 +374,7 @@ pub struct TypedSwitchStmt {
     pub operand: TypedExpr,
     pub cases: Vec<TypedSwitchCase>,
     pub default_case: Option<TypedBlockStmt>,
+    pub all_cases_covered: Option<bool>,
     pub loc: Loc,
 }
 
@@ -411,13 +412,13 @@ pub enum TypedSwitchCasePatternKind {
 
     /// .Variant(a, b, _)
     EnumTupleVariant {
-        variant: Ident,
+        ident: Ident,
         items: Vec<TypedSwitchCasePattern>,
     },
 
     /// .Variant { a, b: x, c: _, .. }
     EnumStructVariant {
-        variant: Ident,
+        ident: Ident,
         items: Vec<TypedSwitchCaseEnumStructPatternField>,
         has_rest: bool,
     },
@@ -769,6 +770,25 @@ impl TypedFuncDeclStmt {
 }
 
 impl TypedEnumVariant {
+    pub fn get_struct_variant_field_type(&self, name: &str) -> Option<SemaType> {
+        match self {
+            TypedEnumVariant::Struct { fields, .. } => fields
+                .iter()
+                .find(|field| field.name.value == name)
+                .map(|field| field.ty.clone()),
+
+            _ => None,
+        }
+    }
+
+    pub fn get_struct_variant_field_index(&self, name: &str) -> Option<usize> {
+        match self {
+            TypedEnumVariant::Struct { fields, .. } => fields.iter().position(|field| field.name.value == name),
+
+            _ => None,
+        }
+    }
+
     #[inline]
     pub fn ident(&self) -> &Ident {
         match self {
