@@ -17,7 +17,7 @@ struct MathUtils {
 }
 
 pub fn main() {    
-    printf("%f ", MathUtils.add<float64>(5.5, 1.5));
+    printf("%f ", MathUtils<float64>.add(5.5, 1.5));
     printf("%f ", MathUtils.sub(5.5, 1.5));
     printf("%d ", MathUtils.mul(3, 5));
 }

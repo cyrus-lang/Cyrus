@@ -21,11 +21,11 @@ use cyrusc_diagcentral::{Diag, DiagLevel};
 use cyrusc_source_loc::Loc;
 use cyrusc_typed_ast::{
     GenericParamID,
-    decls::{DeclID, FuncDecl},
+    decls::{DeclID, EnumDeclID, FuncDecl},
     exprs::TypedSelfType,
     stmts::{
-        TypedFuncParamKind, TypedFuncParams, TypedFuncTypeParams, TypedFuncTypeVariadicParam, TypedFuncVariadicParam,
-        TypedTypeArg, TypedTypeArgs,
+        TypedEnumVariant, TypedFuncParamKind, TypedFuncParams, TypedFuncTypeParams, TypedFuncTypeVariadicParam,
+        TypedFuncVariadicParam, TypedTypeArg, TypedTypeArgs,
     },
     types::{
         NamedType, SemaType, TypeDeclID, TypedArrayCapacity, TypedArrayType, TypedFuncType, TypedTupleType,
@@ -49,7 +49,13 @@ impl<'a> AnalysisContext<'a> {
             SemaType::Placeholder => Some(ty),
             SemaType::InferVar(_) => Some(ty),
             SemaType::Unresolved(unresolved_type) => self.normalize_unresolved_type(unresolved_type, loc),
-            SemaType::Named(_) => Some(ty),
+            SemaType::Named(ref named_type) => {
+                if let Some(enum_decl_id) = named_type.type_decl_id.as_enum() {
+                    self.normalize_enum_decl(enum_decl_id, &named_type.type_args)
+                } else {
+                    Some(ty)
+                }
+            }
             SemaType::GenericParam(generic_param_id) => self.normalize_generic_param(generic_param_id),
             SemaType::Pointer(inner) => self.normalize_pointer(*inner, loc),
             SemaType::Const(inner) => self.normalize_const(*inner, loc),
@@ -62,6 +68,28 @@ impl<'a> AnalysisContext<'a> {
 
             SemaType::Err(_) => Some(ty),
         }
+    }
+
+    fn normalize_enum_decl(&mut self, enum_decl_id: EnumDeclID, type_args: &TypedTypeArgs) -> Option<SemaType> {
+        let mut enum_decl = self.decl_tables.enum_decl(enum_decl_id);
+
+        for variant in &mut enum_decl.variants {
+            match variant {
+                TypedEnumVariant::Valued { value, .. } => {
+                    self.analyze_expr(value, None);
+                }
+                _ => {}
+            }
+        }
+
+        self.decl_tables.with_enum_decl_mut(enum_decl_id, |_enum_decl| {
+            _enum_decl.variants = enum_decl.variants;
+        });
+
+        Some(SemaType::Named(NamedType {
+            type_decl_id: TypeDeclID::Enum(enum_decl_id),
+            type_args: type_args.clone(),
+        }))
     }
 
     fn normalize_unresolved_type(&mut self, unresolved_type: UnresolvedType, loc: Loc) -> Option<SemaType> {
@@ -284,14 +312,6 @@ impl<'a> AnalysisContext<'a> {
                 }
             }
         }
-    }
-
-    // FIXME: Remove later.
-    #[inline]
-    pub(crate) fn resolve_symbol_type_expanded(&mut self, decl_id: DeclID, loc: Loc) -> Option<SemaType> {
-        let ty = self.resolve_symbol_type(decl_id, loc)?;
-
-        Some(self.expand_sema_type(ty, loc))
     }
 
     pub(crate) fn resolve_symbol_type(&mut self, decl_id: DeclID, loc: Loc) -> Option<SemaType> {

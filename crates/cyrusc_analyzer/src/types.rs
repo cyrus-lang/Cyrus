@@ -141,6 +141,10 @@ impl<'a> AnalysisContext<'a> {
 
         match (named_type1.type_decl_id, named_type2.type_decl_id) {
             (TypeDeclID::Struct(id1), TypeDeclID::Struct(id2)) => {
+                if id1 == id2 {
+                    return true;
+                }
+
                 let decl1 = self.decl_tables.struct_decl(id1);
                 let decl2 = self.decl_tables.struct_decl(id2);
 
@@ -150,6 +154,10 @@ impl<'a> AnalysisContext<'a> {
                 self.is_struct_decl_assignable_to(&decl1, &decl2, env1, env2, loc)
             }
             (TypeDeclID::Union(id1), TypeDeclID::Union(id2)) => {
+                if id1 == id2 {
+                    return true;
+                }
+
                 let decl1 = self.decl_tables.union_decl(id1);
                 let decl2 = self.decl_tables.union_decl(id2);
 
@@ -159,6 +167,10 @@ impl<'a> AnalysisContext<'a> {
                 self.is_union_decl_assignable_to(&decl1, &decl2, env1, env2, loc)
             }
             (TypeDeclID::Enum(id1), TypeDeclID::Enum(id2)) => {
+                if id1 == id2 {
+                    return true;
+                }
+                
                 let decl1 = self.decl_tables.enum_decl(id1);
                 let decl2 = self.decl_tables.enum_decl(id2);
 
@@ -187,8 +199,16 @@ impl<'a> AnalysisContext<'a> {
                 return false;
             };
 
-            let ty1 = env1.substitute_sema_type(&field1.ty);
-            let ty2 = env2.substitute_sema_type(&field2.ty);
+            let Some(mut ty1) = self.normalize_sema_type(field1.ty.clone(), loc) else {
+                return false;
+            };
+
+            let Some(mut ty2) = self.normalize_sema_type(field2.ty.clone(), loc) else {
+                return false;
+            };
+
+            ty1 = env1.substitute_sema_type(&ty1);
+            ty2 = env2.substitute_sema_type(&ty2);
 
             if !self.is_assignable_to(ty1, ty2, loc) {
                 return false;
@@ -211,8 +231,16 @@ impl<'a> AnalysisContext<'a> {
                 return false;
             };
 
-            let ty1 = env1.substitute_sema_type(&field1.ty);
-            let ty2 = env2.substitute_sema_type(&field2.ty);
+            let Some(mut ty1) = self.normalize_sema_type(field1.ty.clone(), loc) else {
+                return false;
+            };
+
+            let Some(mut ty2) = self.normalize_sema_type(field2.ty.clone(), loc) else {
+                return false;
+            };
+
+            ty1 = env1.substitute_sema_type(&ty1);
+            ty2 = env2.substitute_sema_type(&ty2);
 
             if !self.is_assignable_to(ty1, ty2, loc) {
                 return false;
@@ -254,12 +282,20 @@ impl<'a> AnalysisContext<'a> {
                 (TypedEnumVariant::Unit(_), TypedEnumVariant::Unit(_)) => {}
 
                 (TypedEnumVariant::Valued { value: v1, .. }, TypedEnumVariant::Valued { value: v2, .. }) => {
-                    let (Some(sema_type1), Some(sema_type2)) = (v1.ty.clone(), v2.ty.clone()) else {
+                    let (Some(ty1), Some(ty2)) = (v1.ty.clone(), v2.ty.clone()) else {
                         return false;
                     };
 
-                    let ty1 = env1.substitute_sema_type(&sema_type1);
-                    let ty2 = env2.substitute_sema_type(&sema_type2);
+                    let Some(mut ty1) = self.normalize_sema_type(ty1.clone(), loc) else {
+                        return false;
+                    };
+
+                    let Some(mut ty2) = self.normalize_sema_type(ty2.clone(), loc) else {
+                        return false;
+                    };
+
+                    ty1 = env1.substitute_sema_type(&ty1);
+                    ty2 = env2.substitute_sema_type(&ty2);
 
                     if !self.is_assignable_to(ty1, ty2, loc) {
                         return false;
@@ -272,8 +308,16 @@ impl<'a> AnalysisContext<'a> {
                     }
 
                     for (t1, t2) in f1.iter().zip(f2) {
-                        let ty1 = env1.substitute_sema_type(&t1.ty);
-                        let ty2 = env2.substitute_sema_type(&t2.ty);
+                        let Some(mut ty1) = self.normalize_sema_type(t1.ty.clone(), loc) else {
+                            return false;
+                        };
+
+                        let Some(mut ty2) = self.normalize_sema_type(t2.ty.clone(), loc) else {
+                            return false;
+                        };
+
+                        ty1 = env1.substitute_sema_type(&ty1);
+                        ty2 = env2.substitute_sema_type(&ty2);
 
                         if !self.is_assignable_to(ty1, ty2, loc) {
                             return false;
@@ -287,8 +331,16 @@ impl<'a> AnalysisContext<'a> {
                             return false;
                         };
 
-                        let ty1 = env1.substitute_sema_type(&field1.ty);
-                        let ty2 = env2.substitute_sema_type(&field2.ty);
+                        let Some(mut ty1) = self.normalize_sema_type(field1.ty.clone(), loc) else {
+                            return false;
+                        };
+
+                        let Some(mut ty2) = self.normalize_sema_type(field2.ty.clone(), loc) else {
+                            return false;
+                        };
+
+                        ty1 = env1.substitute_sema_type(&ty1);
+                        ty2 = env2.substitute_sema_type(&ty2);
 
                         if !self.is_assignable_to(ty1, ty2, loc) {
                             return false;

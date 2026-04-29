@@ -3,8 +3,8 @@
 import std::libc{printf};
 
 enum OSError {
-    FileNotFound = struct { errno = 1, msg = "file not found" },
-    BufferOverflow = struct { errno = 2, msg = "buffer overflow" },
+    FileNotFound = struct { errno: 1, msg: "file not found" },
+    BufferOverflow = struct { errno: 2, msg: "buffer overflow" },
     Custom(int, char*)
 }
 

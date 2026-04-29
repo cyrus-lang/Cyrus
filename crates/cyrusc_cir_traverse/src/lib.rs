@@ -935,7 +935,7 @@ impl<'a> CIRTraverse<'a> {
 
             let body = self.monomorph_registry.get_monomorph_body(body_id).unwrap();
 
-            let irv_id = self.get_or_declare_func_ir_value(func_decl_id);
+            let (irv_id , _, _)= self.get_or_declare_monomorph_func_ir_value(monomorph_id);
 
             let mangled_name = mangle_monomorphized_func(
                 &func_decl.modifiers,

@@ -36,6 +36,10 @@ impl<'a> AnalysisContext<'a> {
             result = generic_env.substitute_sema_type(&result);
         }
 
+        if let Some(infer) = &self.func_env.infer {
+            result = infer.resolve(&result);
+        }
+
         result
     }
 

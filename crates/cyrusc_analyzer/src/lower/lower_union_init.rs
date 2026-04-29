@@ -25,9 +25,13 @@ impl<'a> AnalysisContext<'a> {
             return;
         };
 
-        let operand = self.expand_sema_type(struct_init.operand.clone(), struct_init.loc);
+        let Some(mut operand_type) = self.normalize_sema_type(struct_init.operand.clone(), struct_init.loc) else {
+            return;
+        };
 
-        if operand.as_union().is_none() {
+        operand_type = self.expand_sema_type(operand_type, struct_init.loc);
+
+        if operand_type.as_union().is_none() {
             return;
         }
 
@@ -45,7 +49,7 @@ impl<'a> AnalysisContext<'a> {
         let field = struct_init.fields.first().unwrap();
 
         let union_init = TypedUnionInitExpr {
-            operand,
+            operand: operand_type,
             field: Box::new(field.clone()),
             loc: struct_init.loc,
         };

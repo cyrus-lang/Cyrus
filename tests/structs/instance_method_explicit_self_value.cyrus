@@ -13,8 +13,8 @@ struct Person {
 
 pub fn main() {
     const person = struct {
-        name = "Taha",
-        age = 18uint
+        name: "Taha",
+        age: 18uint
     };
     
     Person.display(&person);

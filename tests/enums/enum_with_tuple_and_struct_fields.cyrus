@@ -28,7 +28,7 @@ fn display_file_read_error(f: FileReadError) {
 }
 
 pub fn main() {
-    var f = FileReadError.FileNotFound(struct { why = "I don't know:/" });
+    var f = FileReadError.FileNotFound(struct { why: "I don't know:/" });
     display_file_read_error(f);
 
     f = FileReadError.FileEmpty((4, 5));

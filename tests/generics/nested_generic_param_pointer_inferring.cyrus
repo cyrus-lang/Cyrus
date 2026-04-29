@@ -15,7 +15,7 @@ struct Box<T> {
 }
 
 pub fn main() {
-    const raw: int* = malloc(sizeof(int));
+    const raw: int* = malloc(4);
     *raw = 99;
 
     const box = Box { raw: raw };

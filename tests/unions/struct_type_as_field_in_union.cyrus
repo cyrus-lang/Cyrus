@@ -15,7 +15,7 @@ union Payload {
 }
 
 pub fn main() {
-    var inst = Payload { struct_value: struct { a = 3.14, b = 6.5 } };
+    var inst = Payload { struct_value: struct { a: 3.14, b: 6.5 } };
     printf("%f %f ", inst.struct_value.a, inst.struct_value.b);
 
     inst.text_value = "Cyrus!";

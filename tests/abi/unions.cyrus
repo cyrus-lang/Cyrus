@@ -39,7 +39,7 @@ pub fn main() {
 
     const with_nested_union = WithNestedUnion {
         tag: 1,
-        data: union { f = 3.14 }
+        data: union { f: 3.14 }
     };
     printf("nested_union=%f ", nested_union(with_nested_union));
 

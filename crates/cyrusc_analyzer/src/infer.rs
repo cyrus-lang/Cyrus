@@ -16,8 +16,8 @@
  */
 
 use cyrusc_typed_ast::{
-    stmts::{TypedFuncTypeVariadicParam, TypedTypeArg},
-    types::{InferVarID, SemaType, TypedFuncType},
+    stmts::{TypedFuncTypeParams, TypedFuncTypeVariadicParam, TypedTypeArg},
+    types::{InferVarID, NamedType, SemaType, TypedArrayType, TypedFuncType, TypedTupleType},
 };
 use fx_hash::FxHashMap;
 
@@ -55,7 +55,61 @@ impl InferCtx {
                     ty.clone()
                 }
             }
-            _ => ty.clone(),
+            SemaType::Named(named_type) => {
+                let resolved_args = named_type
+                    .type_args
+                    .iter()
+                    .map(|arg| match arg {
+                        TypedTypeArg::Type(inner_ty, loc) => TypedTypeArg::Type(self.resolve(inner_ty), *loc),
+                        TypedTypeArg::Infer => TypedTypeArg::Infer,
+                    })
+                    .collect();
+
+                SemaType::Named(NamedType {
+                    type_decl_id: named_type.type_decl_id,
+                    type_args: resolved_args,
+                })
+            }
+
+            SemaType::Array(array) => SemaType::Array(TypedArrayType {
+                element_type: Box::new(self.resolve(&array.element_type)),
+                capacity: array.capacity.clone(),
+                loc: array.loc,
+            }),
+            SemaType::Const(inner) => SemaType::Const(Box::new(self.resolve(inner))),
+            SemaType::Pointer(inner) => SemaType::Pointer(Box::new(self.resolve(inner))),
+            SemaType::FuncType(func) => {
+                let resolved_params = func.params.list.iter().map(|p| self.resolve(p)).collect();
+
+                let resolved_variadic = func.params.variadic.as_ref().map(|vbox| match vbox.as_ref() {
+                    TypedFuncTypeVariadicParam::UntypedCStyle => vbox.clone(),
+                    TypedFuncTypeVariadicParam::Typed(inner) => {
+                        Box::new(TypedFuncTypeVariadicParam::Typed(self.resolve(inner)))
+                    }
+                });
+
+                let resolved_ret = Box::new(self.resolve(&func.ret_type));
+
+                SemaType::FuncType(TypedFuncType {
+                    params: TypedFuncTypeParams {
+                        list: resolved_params,
+                        variadic: resolved_variadic,
+                    },
+                    ret_type: resolved_ret,
+                    is_public: func.is_public,
+                    loc: func.loc,
+                })
+            }
+            SemaType::Tuple(tuple) => SemaType::Tuple(TypedTupleType {
+                elements: tuple.elements.iter().map(|e| self.resolve(e)).collect(),
+                loc: tuple.loc,
+            }),
+
+            SemaType::InterfaceObject(_) | SemaType::SelfType(_) | SemaType::Plain(_) => ty.clone(),
+
+            SemaType::GenericParam(_) | SemaType::Err(_) | SemaType::Unresolved(_) | SemaType::Placeholder => {
+                ty.clone()
+            }
         }
     }
 

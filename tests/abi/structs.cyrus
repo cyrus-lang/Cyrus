@@ -91,7 +91,7 @@ pub fn main() {
     printf("triple_struct=%d, %d, %d ", triple_struct.a, triple_struct.b, triple_struct.c);
 
     const outer = NestedStructOuter {
-        inner: repr(c) struct { x = 10, y = 20 },
+        inner: repr(c) struct { x: 10, y: 20 },
         z: 1.1
     };
     printf("nested_struct_sum=%f ", nested_struct_sum(outer));

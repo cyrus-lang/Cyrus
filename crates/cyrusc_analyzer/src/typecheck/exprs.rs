@@ -141,11 +141,13 @@ impl<'a> AnalysisContext<'a> {
         field_expr: &mut TypedExpr,
         mut expected_type: SemaType,
         loc: Loc,
-    ) -> SemaType {
+    ) -> Option<()> {
+        expected_type = self.normalize_sema_type(expected_type.clone(), loc)?;
+
         expected_type = self.substitute_type(&expected_type);
 
         let Some(mut value_type) = self.analyze_expr(field_expr, Some(expected_type.clone())) else {
-            return expected_type;
+            return Some(());
         };
 
         value_type = self.substitute_type(&value_type);
@@ -171,6 +173,6 @@ impl<'a> AnalysisContext<'a> {
             });
         }
 
-        expected_type
+        Some(())
     }
 }

@@ -211,7 +211,7 @@ impl<'a> AnalysisContext<'a> {
         let enum_decl_id = named_type.type_decl_id.as_enum().unwrap();
         let enum_decl = self.decl_tables.enum_decl(enum_decl_id);
 
-        let inst_enum_decl = instantiate_enum_decl_with_type_args(&enum_decl, &named_type.type_args);
+        let mut inst_enum_decl = instantiate_enum_decl_with_type_args(&enum_decl, &named_type.type_args);
 
         let all_variants_count = inst_enum_decl.variants.len();
         let mut all_covered_variants = FxHashSet::new();
@@ -219,7 +219,7 @@ impl<'a> AnalysisContext<'a> {
         let mut flow_states = Vec::new();
 
         for case in &mut switch_stmt.cases {
-            let covered_variants = self.analyze_switch_on_enum_case_patterns(&case.patterns, &inst_enum_decl);
+            let covered_variants = self.analyze_switch_on_enum_case_patterns(&case.patterns, &mut inst_enum_decl);
 
             flow_states.push(self.analyze_block_stmt(&mut case.body));
             all_covered_variants.extend(covered_variants);
@@ -252,15 +252,15 @@ impl<'a> AnalysisContext<'a> {
     fn analyze_switch_on_enum_case_patterns(
         &mut self,
         patterns: &Vec<TypedSwitchCasePattern>,
-        inst_enum_decl: &EnumDecl,
+        inst_enum_decl: &mut EnumDecl,
     ) -> FxHashSet<String> {
         let enum_name = format_enum_decl(&inst_enum_decl, self.formatter);
 
         let mut exporting_pattern_count = 0;
         let mut covered_variants = FxHashSet::new();
 
-        fn find_variant<'a>(enum_decl: &'a EnumDecl, ident: &Ident) -> Option<&'a TypedEnumVariant> {
-            enum_decl.variants.iter().find(|variant| match variant {
+        fn find_variant<'a>(enum_decl: &'a mut EnumDecl, ident: &Ident) -> Option<&'a mut TypedEnumVariant> {
+            enum_decl.variants.iter_mut().find(|variant| match variant {
                 TypedEnumVariant::Unit(_ident)
                 | TypedEnumVariant::Valued { ident: _ident, .. }
                 | TypedEnumVariant::Tuple { ident: _ident, .. }
@@ -289,7 +289,7 @@ impl<'a> AnalysisContext<'a> {
         fn analyze_pattern<'a>(
             this: &mut AnalysisContext<'a>,
             pattern: &TypedSwitchCasePattern,
-            inst_enum_decl: &EnumDecl,
+            inst_enum_decl: &mut EnumDecl,
             enum_name: &String,
             exporting_pattern_count: &mut usize,
             covered_variants: &mut FxHashSet<String>,
@@ -394,7 +394,9 @@ impl<'a> AnalysisContext<'a> {
 
                             let pattern = items.first().unwrap();
 
-                            expose_pattern_bindings(this, pattern, value.ty.as_ref().unwrap());
+                            if let Some(expr_type) = this.analyze_expr(value, None) {
+                                expose_pattern_bindings(this, pattern, &expr_type);
+                            }
                         }
                         _ => {
                             this.reporter.report(Diag {
@@ -593,13 +595,13 @@ impl<'a> AnalysisContext<'a> {
                 hint: None,
             });
         } else if let Some(expr) = &mut ret.arg {
-            if let Some(sema_type) = self.analyze_expr(expr, Some(ret_type.clone())) {
-                if !self.is_assignable_to(sema_type.clone(), ret_type.clone(), expr.loc) {
+            if let Some(expr_type) = self.analyze_expr(expr, Some(ret_type.clone())) {
+                if !self.is_assignable_to(expr_type.clone(), ret_type.clone(), expr.loc) {
                     self.reporter.report(Diag {
                         level: DiagLevel::Error,
                         kind: Box::new(AnalyzerDiagKind::ReturnStatementTypeMismatch {
                             expected: format_sema_type(ret_type.const_inner().clone(), self.formatter),
-                            got: format_sema_type(sema_type.const_inner().clone(), self.formatter),
+                            got: format_sema_type(expr_type.const_inner().clone(), self.formatter),
                         }),
                         loc: Some(ret.loc),
                         hint: None,

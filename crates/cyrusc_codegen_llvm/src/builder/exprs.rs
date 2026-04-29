@@ -213,14 +213,14 @@ impl<'ll> CodeGenIRBuilder<'ll> {
                     array_type.len.try_into().unwrap(),
                 )
             } else {
-                unreachable!("Expected array or pointer type for array indexing expression");
+                unreachable!("expected array or pointer type for array indexing expression");
             }
         } else if let Some(pointee_ty) = base_addr.ty.pointer_inner().cloned() {
             let array_ptr = self.load_rvalue(base_addr).as_basic_value().into_pointer_value();
 
             self.emit_array_index_on_pointer(array_ptr, index_rvalue, pointee_ty.clone())
         } else {
-            unreachable!("Expected array or pointer type for array indexing expression");
+            unreachable!("expected array or pointer type for array indexing expression");
         }
     }
 

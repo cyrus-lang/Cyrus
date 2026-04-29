@@ -67,7 +67,11 @@ impl<'a> AnalysisContext<'a> {
                     continue;
                 };
 
-                let expected_field_type = this.substitute_type(&struct_field.ty);
+                let Some(mut expected_field_type) = this.normalize_sema_type(struct_field.ty.clone(), field.loc) else {
+                    continue;
+                };
+
+                expected_field_type = this.substitute_type(&expected_field_type);
 
                 this.analyze_field_assign(&mut field.value, expected_field_type, field.loc);
             }

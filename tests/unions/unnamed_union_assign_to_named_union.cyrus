@@ -8,7 +8,7 @@ union Payload {
 }
 
 pub fn main() {
-	const layout: Payload = union { s = "Cyrus!" };
+	const layout: Payload = union { s: "Cyrus!" };
 
 	printf("%s\n", layout.s);
 }

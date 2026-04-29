@@ -73,9 +73,12 @@ impl<'a> AnalysisContext<'a> {
                         return None;
                     }
 
-                    this.apply_generic_defaults(func_decl.generic_params.clone());
-
                     let final_type_args = this.collect_instantiated_type_args(func_decl.generic_params.clone());
+
+                    assert!(
+                        !func_decl.ret_type.contains_infer_var(),
+                        "monomorphized function contains InferVar!"
+                    );
 
                     let ret_type = this.monomorphize_generic_func_call(
                         &operand_type,
@@ -540,13 +543,10 @@ impl<'a> AnalysisContext<'a> {
     fn analyze_static_dispatch_interface_method_call(
         &mut self,
         method_call: &mut TypedMethodCall,
-        mut operand_type: SemaType,
         interface_object: &InterfaceObjectType,
     ) -> Option<SemaType> {
         let interface_decl_id = interface_object.interface_type.type_decl_id.as_interface().unwrap();
         let interface_decl = self.decl_tables.interface_decl(interface_decl_id);
-
-        let interface_name = &interface_decl.name;
 
         let concrete_object_methods = self
             .decl_tables
@@ -603,7 +603,7 @@ impl<'a> AnalysisContext<'a> {
 
         // try as static-dispatch if interface-object is present
         if let Some(interface_object) = pure_operand_type.as_interface_object() {
-            self.analyze_static_dispatch_interface_method_call(method_call, operand_type.clone(), interface_object)
+            self.analyze_static_dispatch_interface_method_call(method_call, interface_object)
         } else {
             self.analyze_dynamic_dispatch_interface_method_call(method_call, &pure_operand_type)
         }
@@ -689,8 +689,6 @@ impl<'a> AnalysisContext<'a> {
             expected_type = infer.resolve(&expected_type);
             arg_type = infer.resolve(&arg_type);
         }
-
-        expected_type = self.substitute_type(&expected_type);
 
         if !self.is_assignable_to(arg_type.clone(), expected_type.clone(), loc) {
             self.reporter.report(Diag {

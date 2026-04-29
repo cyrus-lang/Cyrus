@@ -213,6 +213,9 @@ impl<'a> AnalysisContext<'a> {
             // .Variant
             (TypedUnnamedEnumValueKind::Unit, TypedEnumVariant::Unit(_)) => { /* skip */ }
 
+            // .Variant
+            (TypedUnnamedEnumValueKind::Unit, TypedEnumVariant::Valued { .. }) => { /* valid */ }
+
             // .Variant(a, b)
             (TypedUnnamedEnumValueKind::Tuple(elements), TypedEnumVariant::Tuple { fields, .. }) => {
                 if elements.len() != fields.len() {
