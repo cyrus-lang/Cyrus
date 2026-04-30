@@ -262,15 +262,16 @@ impl<'a> AnalysisContext<'a> {
             return None;
         };
 
-        if !method_call.type_args.is_empty() {
-            self.reporter.report(Diag {
-                level: DiagLevel::Error,
-                kind: Box::new(AnalyzerDiagKind::GenericStaticMethodWrongTypeArgs),
-                loc: Some(method_call.loc),
-                hint: None,
-            });
-            return None;
-        }
+        // FIXME
+        // if !method_call.type_args.is_empty() {
+        //     self.reporter.report(Diag {
+        //         level: DiagLevel::Error,
+        //         kind: Box::new(AnalyzerDiagKind::GenericStaticMethodWrongTypeArgs),
+        //         loc: Some(method_call.loc),
+        //         hint: None,
+        //     });
+        //     return None;
+        // }
 
         self.analyze_method_call_internal(
             method_call,

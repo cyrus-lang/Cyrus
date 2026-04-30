@@ -480,11 +480,14 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         args: &Vec<CIRExpr>,
         params_infos: &[ABIArgInfo],
         params_types: &[ABIType],
+        cir_params_types: &[CIRType],
     ) -> Vec<BasicMetadataValueEnum<'ll>> {
         let mut args_values = Vec::with_capacity(args.len());
 
         for (i, expr) in args.iter().enumerate() {
-            let lvalue = self.emit_expr(expr);
+            let cir_param_type = &cir_params_types.get(i).cloned();
+
+            let lvalue = self.emit_expr(expr, cir_param_type);
             let mut rvalue = self.load_rvalue(lvalue.clone());
 
             if i < params_infos.len() {

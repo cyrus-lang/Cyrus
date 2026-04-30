@@ -125,6 +125,11 @@ impl<'a> AnalysisContext<'a> {
 
         // analyze monomorphized body if not analyzed yet
         if !monomorph_instance.analyzed {
+            // IMPORTANT: to prevent infinite-recursion for recursive-generic-funcs
+            self.monomorph_registry.update(monomorph_id, |_monomorph_instance| {
+                _monomorph_instance.analyzed = true;
+            });
+
             let func_env = self.create_func_def_env(func_decl.as_func_type());
 
             self.with_func_env(func_env, |this| {
@@ -147,12 +152,12 @@ impl<'a> AnalysisContext<'a> {
                     });
                 }
 
-                this.monomorph_registry.update(monomorph_id, |inst| {
-                    inst.analyzed = true;
-                    inst.body = Some(monomorph_body_id);
+                this.monomorph_registry.update(monomorph_id, |_monomorph_instance| {
+                    _monomorph_instance.analyzed = true;
+                    _monomorph_instance.body = Some(monomorph_body_id);
 
                     // ensure unique var_decl_id remapping per monomorph instance
-                    inst.params = func_decl.params.clone();
+                    _monomorph_instance.params = func_decl.params.clone();
                 });
             });
         }

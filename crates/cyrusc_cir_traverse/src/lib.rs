@@ -935,7 +935,7 @@ impl<'a> CIRTraverse<'a> {
 
             let body = self.monomorph_registry.get_monomorph_body(body_id).unwrap();
 
-            let (irv_id , _, _)= self.get_or_declare_monomorph_func_ir_value(monomorph_id);
+            let (irv_id, _, _) = self.get_or_declare_monomorph_func_ir_value(monomorph_id);
 
             let mangled_name = mangle_monomorphized_func(
                 &func_decl.modifiers,
@@ -968,7 +968,7 @@ impl<'a> CIRTraverse<'a> {
         stmts
     }
 
-    fn lower_monomorphized_methods_def(&mut self, method_decl_id: MethodDeclID) -> Vec<CIRStmt> {
+    fn lower_monomorphized_method_def(&mut self, method_decl_id: MethodDeclID) -> Vec<CIRStmt> {
         let mut stmts = Vec::new();
 
         let method_decl = self.decl_tables.method_decl(method_decl_id);
@@ -1290,7 +1290,7 @@ impl<'a> CIRTraverse<'a> {
 
     fn lower_generic_methods(&mut self, methods: &MethodDecls, lowered_stmts: &mut Vec<CIRStmt>) {
         for (_, &method_decl_id) in methods.iter() {
-            let stmts = self.lower_monomorphized_methods_def(method_decl_id);
+            let stmts = self.lower_monomorphized_method_def(method_decl_id);
 
             lowered_stmts.extend(stmts);
         }
@@ -1302,7 +1302,19 @@ impl<'a> CIRTraverse<'a> {
         for (_, &method_decl_id) in methods.iter() {
             let method_decl = self.decl_tables.method_decl(method_decl_id);
 
-            let method_def = self.lower_method(method_decl_id, &method_decl, &object_name).unwrap();
+            let method_def = {
+                // when a method achieve to this point it means object is not generic,
+                // but method is.
+                if method_decl.func_decl.is_generic() {
+                    if let Some(stmt) = self.lower_monomorphized_method_def(method_decl_id).first() {
+                        stmt.clone()
+                    } else {
+                        continue;
+                    }
+                } else {
+                    self.lower_method(method_decl_id, &method_decl, &object_name).unwrap()
+                }
+            };
 
             stmts.push(method_def);
         }
@@ -1316,12 +1328,13 @@ impl<'a> CIRTraverse<'a> {
         method_decl: &MethodDecl,
         object_name: &String,
     ) -> Option<CIRStmt> {
+        debug_assert!(!method_decl.func_decl.is_generic());
+
         let body_id = method_decl.body.unwrap();
 
         let params = self.lower_func_params(&method_decl.func_decl.params, false);
 
         let body = {
-            // FIXME: Handle monomorphized body if method is generic.
             let method_body = self.decl_tables.body(body_id);
 
             self.lower_body(&method_body)

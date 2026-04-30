@@ -22,11 +22,13 @@ use crate::llvm::debug_info::{
     debug_scalar_enum_type, debug_simple_type, debug_struct_type, debug_union_type,
 };
 use crate::llvm::dwarf::{DW_ATE_BOOLEAN, DW_ATE_FLOAT, DW_ATE_SIGNED, DW_ATE_UNSIGNED, DW_ATE_UNSIGNED_CHAR};
-use cyrusc_source_loc::Loc;
 use cyrusc_internal::abi::args::{ABIArgKind, ABIFunctionInfo, ExpandKind};
 use cyrusc_internal::abi::layout::{ABIFieldOffsetInfo, type_layout};
 use cyrusc_internal::cir::cir::CIREnumVariant;
-use cyrusc_internal::cir::types::{CIRArrayType, CIREnumType, CIRFuncType, CIRStructType, CIRTupleType, CIRType, CIRUnionType};
+use cyrusc_internal::cir::types::{
+    CIRArrayType, CIREnumType, CIRFuncType, CIRStructType, CIRTupleType, CIRType, CIRUnionType,
+};
+use cyrusc_source_loc::Loc;
 use cyrusc_typed_ast::types::PlainType;
 use inkwell::llvm_sys::prelude::{LLVMMetadataRef, LLVMTypeRef};
 use inkwell::{
@@ -321,7 +323,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
             CIRType::Enum(enum_type) => self.emit_enum_type(enum_type).as_any_type_enum(),
             CIRType::Union(union_ty) => self.emit_union_ty(union_ty).as_any_type_enum(),
             CIRType::Tuple(tuple_type) => self.emit_tuple_ty(tuple_type).as_any_type_enum(),
-            CIRType::Array(array_ty) => self.emit_arr_ty(array_ty).as_any_type_enum(),
+            CIRType::Array(array_ty) => self.emit_array_type(array_ty).as_any_type_enum(),
             CIRType::FuncType(..) => self.llvmctx.ptr_type(AddressSpace::default()).as_any_type_enum(),
             CIRType::Dynamic(..) => self.emit_dynamic_ty().as_any_type_enum(),
         }
@@ -334,13 +336,10 @@ impl<'ll> CodeGenIRBuilder<'ll> {
                 CIRType::Pointer(Box::new(data_ptr_inner_ty)),
                 CIRType::Pointer(Box::new(CIRType::Plain(PlainType::Void))),
             ],
-            fields_info: vec![
-                ("data_ptr".to_string(), loc),
-                ("vtable_ptr".to_string(), loc),
-            ],
+            fields_info: vec![("data_ptr".to_string(), loc), ("vtable_ptr".to_string(), loc)],
             align: None,
             repr_attr: None,
-            loc
+            loc,
         })
     }
 
@@ -349,15 +348,6 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         let data_ptr = self.llvmctx.ptr_type(AddressSpace::default()).as_basic_type_enum();
 
         self.llvmctx.struct_type(&[data_ptr, vtable_ptr], false)
-    }
-
-    pub(crate) fn emit_vtable_ty(&self, methods_len: usize) -> StructType<'ll> {
-        self.llvmctx.struct_type(
-            &(0..methods_len)
-                .map(|_| self.llvmctx.ptr_type(AddressSpace::default()).as_basic_type_enum())
-                .collect::<Vec<_>>(),
-            false,
-        )
     }
 
     pub(crate) fn emit_types(&self, tys: &[CIRType]) -> Vec<AnyTypeEnum<'ll>> {
@@ -577,7 +567,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         self.emit_struct_type(struct_type)
     }
 
-    pub(crate) fn emit_arr_ty(&self, array_ty: CIRArrayType) -> AnyTypeEnum<'ll> {
+    pub(crate) fn emit_array_type(&self, array_ty: CIRArrayType) -> AnyTypeEnum<'ll> {
         let elm_ty: BasicTypeEnum<'ll> = self
             .emit_ty(*array_ty.element_type)
             .try_into()

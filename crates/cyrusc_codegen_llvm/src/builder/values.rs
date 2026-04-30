@@ -58,22 +58,6 @@ impl<'a> InternalValue<'a> {
             _ => None,
         }
     }
-
-    #[inline]
-    pub fn is_lvalue(&self) -> bool {
-        match &self.kind {
-            InternalValueKind::LValue(_) => true,
-            _ => false,
-        }
-    }
-
-    #[inline]
-    pub fn is_rvalue(&self) -> bool {
-        match &self.kind {
-            InternalValueKind::RValue(_) => true,
-            _ => false,
-        }
-    }
 }
 
 impl<'ll> CodeGenIRBuilder<'ll> {
@@ -189,7 +173,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
     }
 
     pub(crate) fn emit_cond(&mut self, cir_expr: &CIRExpr) -> IntValue<'ll> {
-        let lvalue = self.emit_expr(cir_expr);
+        let lvalue = self.emit_expr(cir_expr, &None);
         let rvalue = self.load_rvalue(lvalue);
 
         assert!(rvalue.ty.is_integer_or_bool());
@@ -202,10 +186,6 @@ impl<'ll> CodeGenIRBuilder<'ll> {
     pub(crate) fn load_rvalue(&self, internal_value: InternalValue<'ll>) -> InternalValue<'ll> {
         match internal_value.kind {
             InternalValueKind::LValue(pointer_value) => {
-                if internal_value.ty.is_array() {
-                    return self.emit_decay_array_to_pointer(internal_value);
-                }
-
                 let ty: BasicTypeEnum<'ll> = self.emit_ty(internal_value.ty.clone()).try_into().unwrap();
                 let basic_value = self.llvmbuilder.build_load(ty, pointer_value, "rvalue").unwrap();
 

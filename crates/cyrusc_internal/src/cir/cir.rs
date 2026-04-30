@@ -28,7 +28,7 @@ use cyrusc_ast::{
 use cyrusc_source_loc::Loc;
 use cyrusc_typed_ast::{
     LabelID, VTableID,
-    decls::{MethodDecls, MonomorphID, VarDeclID},
+    decls::{MethodDecls, MonomorphID},
 };
 use fx_hash::FxHashMap;
 use std::{fmt::Debug, sync::Arc};
@@ -85,7 +85,6 @@ pub enum CIRExprKind {
     Unary(CIRUnaryExpr),
     SizeOf(CIRSizeOfExpr),
     Assign(CIRAssignExpr),
-    Cast(CIRCastExpr),
     AddrOf(CIRAddrOfExpr),
     Deref(CIRDerefExpr),
     Array(CIRArrayExpr),

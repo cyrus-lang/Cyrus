@@ -16,7 +16,6 @@
  */
 
 use crate::{
-    VTableID,
     decls::{DeclID, EnumDeclID, FuncDeclID, InterfaceDeclID, MethodDeclID, MonomorphID, StructDeclID, UnionDeclID},
     stmts::{TypedBlockStmt, TypedBuiltin, TypedFuncParams, TypedTypeArgs},
     types::{InterfaceObjectType, SemaType, TypedFuncType},

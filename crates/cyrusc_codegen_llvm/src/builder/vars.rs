@@ -58,7 +58,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         self.emit_debug_global_var(&layout, &global_value, cir_global_var);
 
         if let Some(expr) = &cir_global_var.expr {
-            let lvalue = self.emit_expr(&expr);
+            let lvalue = self.emit_expr(&expr, &Some(cir_global_var.ty.clone()));
             let rvalue = self.load_rvalue(lvalue).as_basic_value();
             global_value.set_initializer(&rvalue);
         } else {
@@ -118,7 +118,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         self.emit_debug_var(&layout, &ptr, cir_var);
 
         if let Some(expr) = &cir_var.expr {
-            let lvalue = self.emit_expr(expr);
+            let lvalue = self.emit_expr(expr, &Some(cir_var.ty.clone()));
             let rvalue = self.load_rvalue(lvalue);
             self.emit_store(ptr, rvalue, cir_var.ty.clone());
         } else {

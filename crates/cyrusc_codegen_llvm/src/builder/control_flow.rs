@@ -215,7 +215,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
     }
 
     pub(crate) fn emit_switch_on_enum(&mut self, switch_stmt: &CIRSwitchStmt) {
-        let lvalue = self.emit_expr(&switch_stmt.value);
+        let lvalue = self.emit_expr(&switch_stmt.value, &None);
         let rvalue = self.load_rvalue(lvalue);
         let enum_type = rvalue.ty.as_enum().unwrap();
 
@@ -352,7 +352,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
     }
 
     pub(crate) fn emit_switch(&mut self, switch_stmt: &CIRSwitchStmt) {
-        let lvalue = self.emit_expr(&switch_stmt.value);
+        let lvalue = self.emit_expr(&switch_stmt.value, &None);
         let rvalue = self.load_rvalue(lvalue);
 
         let rvalue_type = &switch_stmt.value.ty;
@@ -394,7 +394,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
 
             for pattern in &case.patterns {
                 if let CIRPattern::Value(expr) = pattern {
-                    let pattern_lvalue = self.emit_expr(expr);
+                    let pattern_lvalue = self.emit_expr(expr, &None);
                     let pattern_rvalue = self.load_rvalue(pattern_lvalue);
                     let pattern_int_value = pattern_rvalue.as_basic_value().into_int_value();
                     cases.push((pattern_int_value, case_block));
@@ -474,7 +474,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
 
         if let (Some(inc_expr), Some(inc_bb)) = (&for_stmt.increment, inc_block) {
             self.emit_block(inc_bb);
-            self.emit_expr(inc_expr);
+            self.emit_expr(inc_expr, &None);
 
             if inc_bb.get_terminator().is_none() {
                 let next_after_inc = cond_block.unwrap_or(body_block);
@@ -586,7 +586,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
             .as_ref()
             .map(|basic_block| basic_block.as_mut_ptr());
 
-        if unsafe { llvm_get_current_block_if_in_use(&mut llvm_cur_block).is_none() } {
+        if llvm_get_current_block_if_in_use(&mut llvm_cur_block).is_none() {
             return;
         }
 
@@ -738,12 +738,12 @@ impl<'ll> CodeGenIRBuilder<'ll> {
                 self.llvmbuilder.build_return(None).unwrap();
             }
             (Some(expr), ABIRetInfoKind::Ignore) => {
-                self.emit_expr(expr);
+                self.emit_expr(expr, &Some(*ret_info.cir_ret_type.clone()));
                 self.emit_all_defers();
                 self.llvmbuilder.build_return(None).unwrap();
             }
             (Some(expr), ABIRetInfoKind::Indirect { sret }) => {
-                let lvalue = self.emit_expr(expr);
+                let lvalue = self.emit_expr(expr, &Some(*ret_info.cir_ret_type.clone()));
                 let rvalue = self.load_rvalue(lvalue.clone());
 
                 if *sret {
@@ -754,7 +754,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
                 }
             }
             (Some(expr), ABIRetInfoKind::Direct { coerce_to }) => {
-                let lvalue = self.emit_expr(expr);
+                let lvalue = self.emit_expr(expr, &Some(*ret_info.cir_ret_type.clone()));
                 let rvalue = self.load_rvalue(lvalue);
 
                 let ret_ty = abi_type_to_llvm_type(self.llvmctx, &self.target.info, &ret_info.abi_type);
@@ -773,7 +773,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
                 self.llvmbuilder.build_return(Some(&return_value)).unwrap();
             }
             (Some(expr), ABIRetInfoKind::DirectPair { lo, hi }) => {
-                let lvalue = self.emit_expr(expr);
+                let lvalue = self.emit_expr(expr, &Some(*ret_info.cir_ret_type.clone()));
                 let rvalue = self.load_rvalue(lvalue);
 
                 let return_value = self.emit_compute_return_direct_pair(rvalue, lo, hi, &ret_info.abi_type);

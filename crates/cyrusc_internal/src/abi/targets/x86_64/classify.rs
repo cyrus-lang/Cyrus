@@ -179,7 +179,8 @@ impl X86_64 {
                 // tuple lowered as struct in codegen
                 let struct_type = tuple_type.as_struct_ty();
 
-                if let Some((field_ty, field_offset)) = self.get_member_at_offset(&CIRType::Struct(struct_type), offset) {
+                if let Some((field_ty, field_offset)) = self.get_member_at_offset(&CIRType::Struct(struct_type), offset)
+                {
                     return self.get_int_type_at_offset(&field_ty, offset - field_offset, source_type, source_offset);
                 }
             }
@@ -468,29 +469,31 @@ impl X86_64 {
 }
 
 impl X86_64 {
-    fn classify_func_naked(&self, fn_ty: &CIRFuncType) -> ABIFunctionInfo {
+    fn classify_func_naked(&self, cir_func_type: &CIRFuncType) -> ABIFunctionInfo {
         // naked functions just pass arguments as-is, NO ABI TRANSFORMATIONS
         let mut params_types = Vec::new();
         let mut params_infos = Vec::new();
 
-        for param_ty in &fn_ty.params {
+        for param_ty in &cir_func_type.params {
             let abi_param_type = cir_type_to_abi_type(&self.info, param_ty);
 
             params_types.push(abi_param_type);
             params_infos.push(ABIArgInfo::direct());
         }
 
-        let ret_abi_type = cir_type_to_abi_type(&self.info, &fn_ty.ret_type);
+        let ret_abi_type = cir_type_to_abi_type(&self.info, &cir_func_type.ret_type);
 
-        let ret_info = if fn_ty.ret_type.is_void() {
+        let ret_info = if cir_func_type.ret_type.is_void() {
             ABIRetInfo {
                 abi_type: ret_abi_type,
                 kind: ABIRetInfoKind::Ignore,
+                cir_ret_type: cir_func_type.ret_type.clone(),
             }
         } else {
             ABIRetInfo {
                 abi_type: ret_abi_type,
                 kind: ABIRetInfoKind::Direct { coerce_to: None },
+                cir_ret_type: cir_func_type.ret_type.clone(),
             }
         };
 
@@ -781,14 +784,16 @@ impl TargetABI for X86_64 {
             CIRType::Array(array_type) => CIRType::Pointer(array_type.element_type.clone()),
 
             CIRType::Pointer(_) | CIRType::FuncType(_) => ty.clone(),
-            CIRType::Struct(_) | CIRType::Tuple(_) | CIRType::Dynamic(_) | CIRType::Enum(_) | CIRType::Union(_) => ty.clone(),
+            CIRType::Struct(_) | CIRType::Tuple(_) | CIRType::Dynamic(_) | CIRType::Enum(_) | CIRType::Union(_) => {
+                ty.clone()
+            }
         }
     }
 
-    fn classify_return(&self, ty: &CIRType) -> ABIRetInfo {
+    fn classify_return(&self, cir_ret_type: &CIRType) -> ABIRetInfo {
         let mut lo_class = RegisterClass::NoClass;
         let mut hi_class = RegisterClass::NoClass;
-        classify(&self.info, ty, 0, &mut lo_class, &mut hi_class);
+        classify(&self.info, cir_ret_type, 0, &mut lo_class, &mut hi_class);
 
         assert!(
             hi_class != RegisterClass::Memory || lo_class == RegisterClass::Memory,
@@ -805,8 +810,9 @@ impl TargetABI for X86_64 {
             RegisterClass::NoClass => {
                 if hi_class == RegisterClass::NoClass {
                     return ABIRetInfo {
-                        abi_type: cir_type_to_abi_type(&self.info, ty),
+                        abi_type: cir_type_to_abi_type(&self.info, cir_ret_type),
                         kind: ABIRetInfoKind::Ignore,
+                        cir_ret_type: Box::new(cir_ret_type.clone()),
                     };
                 }
 
@@ -818,23 +824,24 @@ impl TargetABI for X86_64 {
             RegisterClass::SSEUP => unreachable!(),
             RegisterClass::Memory => {
                 return ABIRetInfo {
-                    abi_type: cir_type_to_abi_type(&self.info, ty),
+                    abi_type: cir_type_to_abi_type(&self.info, cir_ret_type),
                     kind: ABIRetInfoKind::Indirect { sret: true },
+                    cir_ret_type: Box::new(cir_ret_type.clone()),
                 };
             }
             RegisterClass::Integer => {
-                result_type = Some(self.get_int_type_at_offset(ty, 0, ty, 0));
+                result_type = Some(self.get_int_type_at_offset(cir_ret_type, 0, cir_ret_type, 0));
 
-                // FIXME Would break if used on a small struct_type. Maybe?
-                if hi_class == RegisterClass::NoClass && ty.is_integer_or_bool() {
+                if hi_class == RegisterClass::NoClass && cir_ret_type.is_integer_or_bool() {
                     return ABIRetInfo {
                         abi_type: result_type.clone().unwrap(),
                         kind: ABIRetInfoKind::Direct { coerce_to: result_type },
+                        cir_ret_type: Box::new(cir_ret_type.clone()),
                     };
                 }
             }
             RegisterClass::SSE => {
-                result_type = Some(self.get_sse_type_at_offset(ty, 0, ty, 0).unwrap());
+                result_type = Some(self.get_sse_type_at_offset(cir_ret_type, 0, cir_ret_type, 0).unwrap());
             }
         }
 
@@ -844,11 +851,11 @@ impl TargetABI for X86_64 {
             RegisterClass::Memory | RegisterClass::NoClass => {}
             RegisterClass::Integer => {
                 assert!(lo_class != RegisterClass::NoClass, "empty first 8 bytes not allowed");
-                high_part = Some(self.get_int_type_at_offset(ty, 8, ty, 8));
+                high_part = Some(self.get_int_type_at_offset(cir_ret_type, 8, cir_ret_type, 8));
             }
             RegisterClass::SSE => {
                 assert!(lo_class != RegisterClass::NoClass, "empty first 8 bytes not allowed");
-                high_part = Some(self.get_sse_type_at_offset(ty, 8, ty, 8).unwrap());
+                high_part = Some(self.get_sse_type_at_offset(cir_ret_type, 8, cir_ret_type, 8).unwrap());
             }
             RegisterClass::SSEUP => {
                 unreachable!() // NOTE: Vector type not supported already.
@@ -861,16 +868,18 @@ impl TargetABI for X86_64 {
             return ABIRetInfo {
                 abi_type: ABIType::Struct(vec![lo.clone(), hi.clone()], false),
                 kind: ABIRetInfoKind::DirectPair { lo: lo.clone(), hi },
+                cir_ret_type: Box::new(cir_ret_type.clone()),
             };
         }
 
         if let Some(result) = result_type {
-            let abi_type = cir_type_to_abi_type(&self.info, ty);
+            let abi_type = cir_type_to_abi_type(&self.info, cir_ret_type);
 
             if result == abi_type {
                 return ABIRetInfo {
                     abi_type: result,
                     kind: ABIRetInfoKind::Direct { coerce_to: None },
+                    cir_ret_type: Box::new(cir_ret_type.clone()),
                 };
             }
 
@@ -879,14 +888,16 @@ impl TargetABI for X86_64 {
                 kind: ABIRetInfoKind::Direct {
                     coerce_to: Some(result),
                 },
+                cir_ret_type: Box::new(cir_ret_type.clone())
             };
         }
 
         // fallback
-        let abi_type = cir_type_to_abi_type(&self.info, ty);
+        let abi_type = cir_type_to_abi_type(&self.info, cir_ret_type);
         ABIRetInfo {
             abi_type,
             kind: ABIRetInfoKind::Direct { coerce_to: None },
+            cir_ret_type: Box::new(cir_ret_type.clone())
         }
     }
 

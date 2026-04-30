@@ -416,11 +416,6 @@ impl<'a> CIRPrinter<'a> {
                     )
                 }
             },
-            CIRExprKind::Cast(cast) => format!(
-                "cast({}, {})",
-                self.print_type(&cast.ty),
-                self.print_expr(&cast.operand)
-            ),
             CIRExprKind::SizeOf(sizeof) => format!("sizeof({})", self.print_type(&sizeof.ty)),
 
             CIRExprKind::Unary(unary) => {

@@ -19,16 +19,9 @@ use crate::{
     OwnedModule,
     builder::{
         control_flow::CFEntry,
-        irreg::{LocalIRValue, LocalIRValueRegistry, LocalIRValueRegistryRef},
-        values::{InternalValue, InternalValueKind},
+        irreg::{LocalIRValueRegistry, LocalIRValueRegistryRef},
     },
-    llvm::{
-        abi::modifiers::apply_global_var_modifiers,
-        debug_info::{
-            BlockScope, DebugContext, create_debug_lexical_block, create_debug_variable, debug_current_scope,
-            emit_dbg_declare, emit_global_debug, set_debug_location,
-        },
-    },
+    llvm::debug_info::{BlockScope, DebugContext, create_debug_lexical_block, debug_current_scope, set_debug_location},
 };
 use cyrusc_internal::{
     abi::{args::ABIFunctionInfo, target::ABITarget},
@@ -38,20 +31,10 @@ use cyrusc_internal::{
 use cyrusc_tui_utils::tui_compiled;
 use cyrusc_typed_ast::LabelID;
 use inkwell::{
-    basic_block::BasicBlock,
-    builder::Builder,
-    context::Context,
-    module::Module,
-    targets::TargetMachine,
-    types::BasicTypeEnum,
-    values::{AsValueRef, FunctionValue, GlobalValue, PointerValue},
+    basic_block::BasicBlock, builder::Builder, context::Context, module::Module, targets::TargetMachine,
+    values::FunctionValue,
 };
-use std::{
-    cell::RefCell,
-    collections::HashMap,
-    rc::Rc,
-    sync::{Arc, Mutex},
-};
+use std::{cell::RefCell, collections::HashMap, rc::Rc, sync::Arc};
 
 pub(crate) struct CodeGenIRBuilder<'ll> {
     pub(crate) target: &'ll ABITarget,
@@ -167,7 +150,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
             }
             CIRStmt::Block(block_stmt) => self.emit_scope_block(block_stmt),
             CIRStmt::Expr(expr) => {
-                self.emit_expr(expr);
+                self.emit_expr(expr, &None);
             }
             CIRStmt::Switch(switch_stmt) => self.emit_switch(switch_stmt),
             CIRStmt::If(if_stmt) => self.emit_if(if_stmt),

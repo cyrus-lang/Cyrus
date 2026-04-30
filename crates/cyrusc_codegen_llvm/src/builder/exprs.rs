@@ -53,7 +53,7 @@ pub enum DerefMode {
 }
 
 impl<'ll> CodeGenIRBuilder<'ll> {
-    pub(crate) fn emit_expr(&mut self, expr: &CIRExpr) -> InternalValue<'ll> {
+    pub(crate) fn emit_expr(&mut self, expr: &CIRExpr, target_cir_type: &Option<CIRType>) -> InternalValue<'ll> {
         let value = match &expr.kind {
             CIRExprKind::Load(value_ref) => self.emit_load(value_ref),
             CIRExprKind::Literal(literal) => self.emit_literal(literal),
@@ -62,13 +62,6 @@ impl<'ll> CodeGenIRBuilder<'ll> {
             CIRExprKind::Unary(unary_expr) => self.emit_unary_expr(unary_expr),
             CIRExprKind::SizeOf(sizeof_expr) => self.emit_sizeof(sizeof_expr),
             CIRExprKind::Assign(assign_expr) => self.emit_assign(assign_expr),
-            CIRExprKind::Cast(cast_expr) => {
-                let lvalue = self.emit_expr(&cast_expr.operand);
-                let rvalue = self.load_rvalue(lvalue);
-                let target_type = self.emit_ty(*cast_expr.ty.clone());
-                let casted_value: BasicValueEnum<'ll> = self.emit_cast(target_type, rvalue).try_into().unwrap();
-                InternalValue::new(*cast_expr.ty.clone(), InternalValueKind::RValue(casted_value))
-            }
             CIRExprKind::AddrOf(addr_of_expr) => self.emit_addr_of(addr_of_expr),
             CIRExprKind::Deref(deref_expr) => self.emit_deref(deref_expr, DerefMode::Load),
             CIRExprKind::Array(array_expr) => self.emit_array(array_expr),
@@ -93,6 +86,12 @@ impl<'ll> CodeGenIRBuilder<'ll> {
                 expr.loc.column.try_into().unwrap(),
             )
         };
+
+        if let Some(ty) = target_cir_type {
+            if ty.is_pointer() && value.ty.is_array() {
+                return self.emit_decay_array_to_pointer(value);
+            }
+        }
 
         value
     }
@@ -123,7 +122,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
     }
 
     fn emit_dynamic_expr(&mut self, dynamic: &CIRDynamicExpr) -> InternalValue<'ll> {
-        let data_value = self.emit_expr(&dynamic.data_expr);
+        let data_value = self.emit_expr(&dynamic.data_expr, &None);
         let data_basic_value = data_value.as_basic_value();
 
         let data_ptr = if data_basic_value.is_pointer_value() {
@@ -189,7 +188,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
     fn emit_array_index(&mut self, array_index: &CIRArrayIndexExpr) -> InternalValue<'ll> {
         let base_addr = self.emit_lvalue_address(&array_index.operand);
 
-        let index_lvalue = self.emit_expr(&array_index.index);
+        let index_lvalue = self.emit_expr(&array_index.index, &None);
         let index_rvalue = self.load_rvalue(index_lvalue);
 
         if base_addr.ty.as_array().is_some() {
@@ -235,7 +234,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
     fn emit_assign(&mut self, assign: &CIRAssignExpr) -> InternalValue<'ll> {
         let lhs_lvalue = self.emit_lvalue_address(&assign.lhs);
 
-        let rhs_lvalue = self.emit_expr(&assign.rhs);
+        let rhs_lvalue = self.emit_expr(&assign.rhs, &Some(assign.lhs.ty.clone()));
         let rhs_value = self.load_rvalue(rhs_lvalue);
 
         self.llvmbuilder
@@ -461,17 +460,17 @@ impl<'ll> CodeGenIRBuilder<'ll> {
     }
 
     fn emit_array(&mut self, array: &CIRArrayExpr) -> InternalValue<'ll> {
-        let cir_arr_ty = array.ty.as_array().unwrap();
-        let element_ty = cir_arr_ty.element_type.clone();
+        let cir_array_type = array.ty.as_array().unwrap();
+        let element_ty = cir_array_type.element_type.clone();
 
-        let arr_ty: ArrayType<'ll> = self.emit_arr_ty(cir_arr_ty).try_into().unwrap();
+        let array_type: ArrayType<'ll> = self.emit_array_type(cir_array_type.clone()).try_into().unwrap();
 
         let required_len = array.elements.len();
         let mut elements = Vec::with_capacity(required_len);
         let mut all_const = true;
 
         for expr in &array.elements {
-            let lvalue = self.emit_expr(expr);
+            let lvalue = self.emit_expr(expr, &Some(*cir_array_type.element_type.clone()));
             let mut rvalue = self.load_rvalue(lvalue);
 
             if !self.llvmbuilder.get_insert_block().is_none() {
@@ -488,13 +487,13 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         // zero-fill if array type is fixed-length and not fully initialized
         let element_basic_ty: BasicTypeEnum<'ll> = self.emit_ty(*element_ty.clone()).try_into().unwrap();
 
-        while elements.len() < arr_ty.len() as usize {
+        while elements.len() < array_type.len() as usize {
             elements.push(element_basic_ty.const_zero());
             all_const = false;
         }
 
         let array_value = if all_const {
-            let mut val = arr_ty.get_undef();
+            let mut val = array_type.get_undef();
             for (i, elem) in elements.iter().enumerate() {
                 val = self
                     .llvmbuilder
@@ -505,7 +504,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
             val
         } else {
             // build runtime array by inserting each element
-            let mut value = arr_ty.get_undef();
+            let mut value = array_type.get_undef();
             for (i, elem) in elements.iter().enumerate() {
                 value = self
                     .llvmbuilder
@@ -520,7 +519,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
     }
 
     fn emit_addr_of(&mut self, addr_of: &CIRAddrOfExpr) -> InternalValue<'ll> {
-        let operand = self.emit_expr(&addr_of.operand);
+        let operand = self.emit_expr(&addr_of.operand, &None);
         InternalValue::new(
             CIRType::Pointer(Box::new(operand.ty.clone())),
             InternalValueKind::RValue(operand.as_basic_value()),
@@ -551,7 +550,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
     pub(crate) fn emit_lvalue_address(&mut self, expr: &CIRExpr) -> InternalValue<'ll> {
         match &expr.kind {
             CIRExprKind::Deref(deref_expr) => {
-                let lvalue = self.emit_expr(&deref_expr.operand);
+                let lvalue = self.emit_expr(&deref_expr.operand, &None);
                 let rvalue = self.load_rvalue(lvalue.clone());
                 let ptr = rvalue.as_basic_value().into_pointer_value();
                 let inner_ty = rvalue.ty.pointer_inner().unwrap();
@@ -578,12 +577,12 @@ impl<'ll> CodeGenIRBuilder<'ll> {
                 }
                 CIRFieldAccessKind::Union { .. } => self.emit_lvalue_address(&field_access.operand),
             },
-            _ => self.emit_expr(expr),
+            _ => self.emit_expr(expr, &None),
         }
     }
 
     fn emit_deref(&mut self, deref: &CIRDerefExpr, mode: DerefMode) -> InternalValue<'ll> {
-        let lvalue = self.emit_expr(&deref.operand);
+        let lvalue = self.emit_expr(&deref.operand, &None);
         let rvalue = self.load_rvalue(lvalue.clone());
         let ptr = rvalue.as_basic_value().into_pointer_value();
 
@@ -715,8 +714,8 @@ impl<'ll> CodeGenIRBuilder<'ll> {
     }
 
     fn emit_infix_expr(&mut self, infix_expr: &CIRInfixExpr) -> InternalValue<'ll> {
-        let lhs_lvalue = self.emit_expr(&infix_expr.lhs);
-        let rhs_lvalue = self.emit_expr(&infix_expr.rhs);
+        let lhs_lvalue = self.emit_expr(&infix_expr.lhs, &None);
+        let rhs_lvalue = self.emit_expr(&infix_expr.rhs, &None);
 
         let mut lhs_rvalue = self.load_rvalue(lhs_lvalue.clone());
         let mut rhs_rvalue = self.load_rvalue(rhs_lvalue.clone());
@@ -1217,7 +1216,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
     }
 
     fn emit_prefix_expr(&mut self, prefix_expr: &CIRPrefixExpr) -> InternalValue<'ll> {
-        let lvalue = self.emit_expr(&prefix_expr.operand);
+        let lvalue = self.emit_expr(&prefix_expr.operand, &None);
         let mut rvalue = self.load_rvalue(lvalue);
 
         match prefix_expr.op {
@@ -1346,7 +1345,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
     }
 
     fn emit_tuple_access(&mut self, tuple_access: &CIRTupleAccessExpr) -> InternalValue<'ll> {
-        let operand_value = self.emit_expr(&tuple_access.operand);
+        let operand_value = self.emit_expr(&tuple_access.operand, &None);
 
         let cir_tuple_type = operand_value.ty.as_tuple().unwrap();
 
@@ -1463,7 +1462,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
                     .into_struct_value();
             }
             CIREnumInitVariant::Valued(expr) => {
-                let lvalue = self.emit_expr(expr);
+                let lvalue = self.emit_expr(expr, &None);
                 let rvalue = self.load_rvalue(lvalue);
 
                 let copied_payload = self.intrinsic_copy_payload_to_buffer(rvalue.as_basic_value(), payload_ty);
@@ -1485,7 +1484,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
                 let mut payload_value = payload_struct_type.get_undef();
 
                 for (i, field_expr) in field_exprs.iter().enumerate() {
-                    let lvalue = self.emit_expr(&field_expr);
+                    let lvalue = self.emit_expr(&field_expr, &None);
                     let rvalue = self.load_rvalue(lvalue);
 
                     payload_value = self
@@ -1551,7 +1550,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
     }
 
     fn emit_union_init_value(&mut self, union_init_expr: &CIRUnionInitExpr) -> InternalValue<'ll> {
-        self.emit_expr(&union_init_expr.expr)
+        self.emit_expr(&union_init_expr.expr, &None)
     }
 
     // ANCHOR: Check extracting tag of repr-c enums.
@@ -1658,8 +1657,10 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         for field_offset in &layout.field_offsets {
             match field_offset {
                 ABIFieldOffsetInfo::Normal { original_index, .. } => {
+                    let cir_field_type = &struct_init.ty.fields[*original_index];
+
                     let expr = &struct_init.fields[*original_index];
-                    let lvalue = self.emit_expr(expr);
+                    let lvalue = self.emit_expr(expr, &Some(cir_field_type.clone()));
                     let mut rvalue = self.load_rvalue(lvalue);
 
                     let field_original_index = field_offset.original_index().unwrap();
@@ -1777,7 +1778,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
                 self.emit_direct_call(&func_type, &call.args, &call.ret_type, &llvm_func_value)
             }
             CIRCallDispatch::FunctionPointer { operand } => {
-                let lvalue = self.emit_expr(&operand);
+                let lvalue = self.emit_expr(&operand, &None);
                 let rvalue = self.load_rvalue(lvalue);
 
                 self.emit_indirect_call(call, rvalue)
@@ -1804,7 +1805,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         func_type: &CIRFuncType,
     ) -> InternalValue<'ll> {
         let dyn_value = {
-            let lvalue = self.emit_expr(operand);
+            let lvalue = self.emit_expr(operand, &None);
             let rvalue = self.load_rvalue(lvalue);
             rvalue.as_basic_value().into_struct_value()
         };
@@ -1859,7 +1860,12 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         let remaining_param_infos = &abi_func_info.params_infos[1..];
         let remaining_param_types = &abi_func_info.params_types[1..];
 
-        let mut normal_args = self.emit_func_args(&call.args, remaining_param_infos, remaining_param_types);
+        let mut normal_args = self.emit_func_args(
+            &call.args,
+            remaining_param_infos,
+            remaining_param_types,
+            &func_type.params,
+        );
 
         llvm_args.append(&mut normal_args);
 
@@ -1918,7 +1924,12 @@ impl<'ll> CodeGenIRBuilder<'ll> {
 
         let remaining_param_types = &abi_func_info.params_types[abi_param_index..];
 
-        let mut normal_args = self.emit_func_args(&call.args, remaining_param_infos, remaining_param_types);
+        let mut normal_args = self.emit_func_args(
+            &call.args,
+            remaining_param_infos,
+            remaining_param_types,
+            &cir_func_type.params,
+        );
 
         llvm_args.append(&mut normal_args);
 
@@ -1934,7 +1945,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
     fn emit_self_argument(&mut self, self_meta: CIRCallMethodSelfMetadata) -> (InternalValue<'ll>, InternalValue<'ll>) {
         if self_meta.use_fat_ptr_data {
             let fat_ptr_value = {
-                let value = self.emit_expr(&self_meta.operand);
+                let value = self.emit_expr(&self_meta.operand, &None);
                 self.load_rvalue(value)
             };
 
@@ -1965,7 +1976,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
 
                 (lvalue, rvalue)
             } else {
-                let lvalue = self.emit_expr(&self_meta.operand);
+                let lvalue = self.emit_expr(&self_meta.operand, &None);
                 let rvalue = self.load_rvalue(lvalue.clone());
 
                 (lvalue, rvalue)
@@ -1982,7 +1993,12 @@ impl<'ll> CodeGenIRBuilder<'ll> {
     ) -> InternalValue<'ll> {
         let abi_func_info = cir_func_type.abi_func_info.as_ref().unwrap();
 
-        let llvm_args = self.emit_func_args(args, &abi_func_info.params_infos, &abi_func_info.params_types);
+        let llvm_args = self.emit_func_args(
+            args,
+            &abi_func_info.params_infos,
+            &abi_func_info.params_types,
+            &cir_func_type.params,
+        );
 
         let abi_func_info = self.target.target_abi.classify_func(cir_func_type).unwrap();
 
@@ -2031,22 +2047,23 @@ impl<'ll> CodeGenIRBuilder<'ll> {
     }
 
     fn emit_indirect_call(&mut self, func_call: &CIRCall, operand: InternalValue<'ll>) -> InternalValue<'ll> {
-        let cir_fn_ty = operand.ty.as_func().unwrap();
-        let fn_ty = self.emit_func_ty(cir_fn_ty.clone());
+        let cir_func_type = operand.ty.as_func().unwrap();
+        let llvm_func_type = self.emit_func_ty(cir_func_type.clone());
 
-        let abi_func_info = self.target.target_abi.classify_func(&cir_fn_ty).unwrap();
+        let abi_func_info = self.target.target_abi.classify_func(&cir_func_type).unwrap();
 
         let llvm_args = self.emit_func_args(
             &func_call.args,
             &abi_func_info.params_infos,
             &abi_func_info.params_types,
+            &cir_func_type.params,
         );
 
         let fn_ptr = operand.as_basic_value().into_pointer_value();
 
         let call_site = self
             .llvmbuilder
-            .build_indirect_call(fn_ty, fn_ptr, &llvm_args, "indirect_call")
+            .build_indirect_call(llvm_func_type, fn_ptr, &llvm_args, "indirect_call")
             .unwrap();
 
         self.emit_func_call_attributes(&abi_func_info, FuncCallKind::Indirect(call_site));
@@ -2054,7 +2071,8 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         if let Some(mut basic_value) = call_site.try_as_basic_value().basic() {
             // REVIEW: Optimization Required
             // coerce back from abi return type to actual return type
-            let actual_return_type: BasicTypeEnum<'ll> = self.emit_ty(*cir_fn_ty.ret_type.clone()).try_into().unwrap();
+            let actual_return_type: BasicTypeEnum<'ll> =
+                self.emit_ty(*cir_func_type.ret_type.clone()).try_into().unwrap();
             basic_value = self.intrinsic_coerce_through_alloca(basic_value, actual_return_type, "coerce_ret");
 
             InternalValue::new(func_call.ret_type.clone(), InternalValueKind::RValue(basic_value))
