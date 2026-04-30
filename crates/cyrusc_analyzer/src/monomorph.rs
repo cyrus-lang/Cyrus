@@ -16,12 +16,14 @@
  */
 
 use crate::context::AnalysisContext;
+use cyrusc_const_eval::resolver::ConstResolver;
 use cyrusc_internal::monomorph::MonomorphizableTemplateID;
 use cyrusc_source_loc::Loc;
 use cyrusc_typed_ast::{
     decls::{DeclID, FuncDecl, FuncDeclID, MethodDecl, MethodDeclID, MonomorphID, VarDecl, VarDeclID},
     exprs::{
-        TypedEnumInitArgs, TypedExpr, TypedExprKind, TypedFuncCall, TypedFuncCallDispatch, TypedUnnamedEnumValueKind,
+        TypedEnumInitArgs, TypedExpr, TypedExprKind, TypedFuncCall, TypedFuncCallDispatch, TypedSymbolExpr,
+        TypedUnnamedEnumValueKind,
     },
     format::format_loc,
     stmts::{
@@ -465,8 +467,15 @@ impl<'a> AnalysisContext<'a> {
     fn specialize_expr(&self, expr: &mut TypedExpr, decl_map: &DeclMap) {
         match &mut expr.kind {
             TypedExprKind::Symbol(symbol_expr) => {
-                if let Some(var_decl_id) = symbol_expr.decl_id.as_var() {
-                    symbol_expr.decl_id = DeclID::Var(decl_map.get(&var_decl_id).copied().unwrap());
+                let decl_id = symbol_expr.as_decl_id().unwrap();
+
+                if let Some(var_decl_id) = decl_id.as_var() {
+                    let new_decl_id = DeclID::Var(decl_map.get(&var_decl_id).copied().unwrap());
+
+                    *symbol_expr = TypedSymbolExpr::Resolved {
+                        decl_id: new_decl_id,
+                        loc: symbol_expr.loc(),
+                    };
                 }
             }
 

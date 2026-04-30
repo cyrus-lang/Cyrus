@@ -136,10 +136,10 @@ pub fn format_typed_expr(expr: &TypedExpr, formatter: &dyn Formatter) -> String 
     use TypedExprKind::*;
 
     match &expr.kind {
-        Symbol(TypedSymbolExpr {
-            decl_id: symbol_decl_id,
-            ..
-        }) => formatter.format_decl(*symbol_decl_id),
+        Symbol(symbol_expr) => match symbol_expr {
+            TypedSymbolExpr::Unresolved { symbol_id, .. } => formatter.format_symbol_name(*symbol_id),
+            TypedSymbolExpr::Resolved { decl_id, .. } => formatter.format_decl(*decl_id),
+        },
         Literal(literal) => literal.to_string(),
         Prefix(p) => format!("{}{}", p.op, format_typed_expr(&p.operand, formatter)),
         Infix(inf) => format!(

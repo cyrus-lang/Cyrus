@@ -107,6 +107,7 @@ pub fn main() {
                         source_map.clone(),
                         decl_tables.clone(),
                         &resolver,
+                        &resolver,
                         program_tree_entry.program_tree.clone(),
                         entry_points.clone(),
                         monomorph_registry.clone(),

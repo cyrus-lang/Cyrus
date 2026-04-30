@@ -16,6 +16,7 @@
  */
 
 use crate::{context::AnalysisContext, diagnostics::AnalyzerDiagKind};
+use cyrusc_const_eval::resolver::ConstResolver;
 use cyrusc_diagcentral::{Diag, DiagLevel};
 use cyrusc_source_loc::Loc;
 use cyrusc_typed_ast::{
@@ -31,11 +32,10 @@ use cyrusc_typed_ast::{
 
 impl<'a> AnalysisContext<'a> {
     pub(crate) fn analyze_func_call(&mut self, func_call: &mut TypedFuncCall) -> Option<SemaType> {
-        let func_decl_id_opt = func_call
-            .operand
-            .kind
-            .as_decl_id()
-            .and_then(|decl_id| decl_id.as_func());
+        let func_decl_id_opt = func_call.operand.kind.as_unresolved_symbol_id().and_then(|symbol_id| {
+            self.lookup_symbol_as_decl_id(symbol_id)
+                .and_then(|decl_id| decl_id.as_func())
+        });
 
         let operand_type = self.analyze_expr_non_terminal(&mut func_call.operand, None)?;
 
@@ -150,25 +150,27 @@ impl<'a> AnalysisContext<'a> {
         // we need to extract the decl_id manually if method call used without type args,
         // which means `method_call.operand.kind` would be a `TypedSymbolExpr`.
         let mut operand_type = match {
-            if let Some(decl_id) = method_call.operand.kind.as_decl_id() {
-                if let Some(type_decl_id) = decl_id.as_type_decl_id() {
-                    // type_decl means it's operand of a static method call.
-                    is_operand_instance = false;
+            if let Some(symbol_id) = method_call.operand.kind.as_unresolved_symbol_id() {
+                self.lookup_symbol_as_decl_id(symbol_id).and_then(|decl_id| {
+                    if let Some(type_decl_id) = decl_id.as_type_decl_id() {
+                        // type_decl means it's operand of a static method call.
+                        is_operand_instance = false;
 
-                    Some(SemaType::Named(NamedType {
-                        type_decl_id,
-                        type_args: TypedTypeArgs::new(),
-                    }))
-                } else {
-                    is_operand_instance = true;
-
-                    if decl_id.is_var_or_global_var() {
-                        // extract variable type as use it as operand type for instance method calls.
-                        Some(self.resolve_symbol_type(decl_id, method_call.loc)?)
+                        Some(SemaType::Named(NamedType {
+                            type_decl_id,
+                            type_args: TypedTypeArgs::new(),
+                        }))
                     } else {
-                        None
+                        is_operand_instance = true;
+
+                        if decl_id.is_var_or_global_var() {
+                            // extract variable type as use it as operand type for instance method calls.
+                            Some(self.resolve_symbol_type(decl_id, method_call.loc)?)
+                        } else {
+                            None
+                        }
                     }
-                }
+                })
             } else if let Some(sema_type) = method_call.operand.kind.as_type_expr() {
                 is_operand_instance = false;
 

@@ -26,18 +26,27 @@ use cyrusc_typed_ast::{
 
 impl<'a> AnalysisContext<'a> {
     pub(crate) fn analyze_expr(&mut self, expr: &mut TypedExpr, expected_type: Option<SemaType>) -> Option<SemaType> {
-        match &expr.kind {
+        match &mut expr.kind {
             TypedExprKind::Symbol(symbol_expr) => {
-                if !symbol_expr.decl_id.is_var_or_global_var() && !symbol_expr.decl_id.is_func() {
-                    self.reporter.report(Diag {
-                        level: DiagLevel::Error,
-                        kind: Box::new(AnalyzerDiagKind::UnknownSymbol {
-                            symbol_name: self.formatter.format_decl(symbol_expr.decl_id),
-                        }),
-                        loc: Some(symbol_expr.loc),
-                        hint: None,
-                    });
-                    return None;
+                let decl_id_opt = symbol_expr
+                    .as_symbol_id()
+                    .and_then(|symbol_id| self.query.lookup_symbol_as_decl_id(symbol_id))
+                    .or(symbol_expr.as_decl_id());
+
+                if let Some(decl_id) = decl_id_opt {
+                    symbol_expr.to_resolved_decl_id(decl_id);
+
+                    if !decl_id.is_var_or_global_var() && !decl_id.is_func() {
+                        self.reporter.report(Diag {
+                            level: DiagLevel::Error,
+                            kind: Box::new(AnalyzerDiagKind::UnknownSymbol {
+                                symbol_name: self.formatter.format_decl(decl_id),
+                            }),
+                            loc: Some(symbol_expr.loc()),
+                            hint: None,
+                        });
+                        return None;
+                    }
                 }
             }
             _ => {}
@@ -58,7 +67,21 @@ impl<'a> AnalysisContext<'a> {
         self.lower_expr_pre_analysis(expr, expected_type.clone());
 
         let expr_type = match &mut expr.kind {
-            TypedExprKind::Symbol(symbol_expr) => self.resolve_symbol_type(symbol_expr.decl_id, symbol_expr.loc),
+            TypedExprKind::Symbol(symbol_expr) => {
+                let decl_id_opt = symbol_expr
+                    .as_symbol_id()
+                    .and_then(|symbol_id| self.query.lookup_symbol_as_decl_id(symbol_id))
+                    .or(symbol_expr.as_decl_id());
+
+                if let Some(decl_id) = decl_id_opt {
+                    symbol_expr.to_resolved_decl_id(decl_id);
+
+                    self.resolve_symbol_type(decl_id, symbol_expr.loc())
+                } else {
+                    None
+                }
+            }
+
             TypedExprKind::Assign(assign) => {
                 self.analyze_assign(assign);
                 assign.rhs.ty.clone()

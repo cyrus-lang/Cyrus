@@ -346,20 +346,22 @@ impl Resolver {
     fn resolve_ident_expr(&mut self, ident: &Ident) -> Option<TypedExpr> {
         let symbol_id = self.resolve_ident(ident)?;
 
-        self.lookup_symbol_entry(symbol_id).and_then(|symbol_entry| {
-            self.resolve_symbol_entry_as_decl_id(&symbol_entry)
-                .map(|decl_id| TypedExpr {
-                    kind: TypedExprKind::Symbol(TypedSymbolExpr::new(decl_id, ident.loc)),
-                    ty: None,
-                    val_cat: ValueCategory::LValue,
-                    loc: ident.loc,
-                })
+        Some(TypedExpr {
+            kind: TypedExprKind::Symbol(TypedSymbolExpr::Unresolved {
+                symbol_id,
+                loc: ident.loc,
+            }),
+            ty: None,
+            val_cat: ValueCategory::LValue,
+            loc: ident.loc,
         })
     }
 
     fn resolve_expr(&mut self, expr: &ASTExpr) -> Option<TypedExpr> {
         match expr {
             ASTExpr::Ident(ident) => self.resolve_ident_expr(ident),
+            ASTExpr::ModuleImport(module_import) => self.resolve_module_import_expr(module_import),
+
             ASTExpr::Infix(infix_expr) => self.resolve_infix_expr(infix_expr),
             ASTExpr::Prefix(prefix_expr) => self.resolve_prefix_expr(prefix_expr),
             ASTExpr::Unary(unary) => self.resolve_unary_expr(unary),
@@ -367,7 +369,6 @@ impl Resolver {
             ASTExpr::FieldAccess(field_access) => self.resolve_field_access(field_access),
             ASTExpr::MethodCall(method_call) => self.resolve_method_call(method_call),
             ASTExpr::StructInit(struct_init) => self.resolve_struct_init(struct_init),
-            ASTExpr::ModuleImport(module_import) => self.resolve_module_import_expr(module_import),
             ASTExpr::FuncCall(func_call) => self.resolve_func_call(func_call),
             ASTExpr::Array(array) => self.resolve_array_expr(array),
             ASTExpr::Literal(literal) => self.resolve_literal_expr(literal),
@@ -453,11 +454,7 @@ impl Resolver {
 
     fn resolve_ident_type(&mut self, ident: Ident) -> Option<SemaType> {
         if let Some(symbol_id) = self.resolve_local_scope_symbol(&ident.value) {
-            let symbol_entry = self.lookup_symbol_entry(symbol_id)?;
-
-            if let Some(decl_id) = self.resolve_symbol_entry_as_decl_id(&symbol_entry) {
-                return Some(SemaType::Unresolved(UnresolvedType::Decl(decl_id)));
-            }
+            return Some(SemaType::Unresolved(UnresolvedType::Decl(symbol_id)));
         }
 
         if let Some(generic_param_id) = self.resolve_generic_param_as_type(&ident) {
@@ -465,11 +462,7 @@ impl Resolver {
         }
 
         if let Some(symbol_id) = self.lookup_symbol_id(self.current_scope.unwrap(), &ident.value) {
-            let symbol_entry = self.lookup_symbol_entry(symbol_id)?;
-
-            if let Some(decl_id) = self.resolve_symbol_entry_as_decl_id(&symbol_entry) {
-                return Some(SemaType::Unresolved(UnresolvedType::Decl(decl_id)));
-            }
+            return Some(SemaType::Unresolved(UnresolvedType::Decl(symbol_id)));
         }
 
         self.reporter.report(Diag {
@@ -498,12 +491,7 @@ impl Resolver {
 
     fn resolve_module_import_type(&mut self, module_import: ASTModuleImport) -> Option<SemaType> {
         self.resolve_module_import(module_import.clone())
-            .and_then(|symbol_id| {
-                self.lookup_symbol_entry(symbol_id).and_then(|symbol_entry| {
-                    self.resolve_symbol_entry_as_decl_id(&symbol_entry)
-                        .map(|decl_id| SemaType::Unresolved(UnresolvedType::Decl(decl_id)))
-                })
-            })
+            .map(|symbol_id| SemaType::Unresolved(UnresolvedType::Decl(symbol_id)))
             .or_else(|| {
                 self.reporter.report(Diag {
                     level: DiagLevel::Error,
@@ -576,7 +564,7 @@ impl Resolver {
         let type_args = self.resolve_type_args(&inst.type_args)?;
 
         Some(SemaType::Unresolved(UnresolvedType::GenericInst {
-            base_decl_id,
+            base_symbol_id: base_decl_id,
             type_args,
         }))
     }
@@ -2071,36 +2059,16 @@ impl Resolver {
     #[inline]
     fn resolve_module_import_expr(&mut self, module_import: &ASTModuleImport) -> Option<TypedExpr> {
         self.resolve_module_import(module_import.clone()).and_then(|symbol_id| {
-            self.lookup_symbol_entry(symbol_id).and_then(|symbol_entry| {
-                self.resolve_symbol_entry_as_decl_id(&symbol_entry)
-                    .map(|decl_id| TypedExpr {
-                        kind: TypedExprKind::Symbol(TypedSymbolExpr::new(decl_id, module_import.loc)),
-                        ty: None,
-                        val_cat: ValueCategory::LValue,
-                        loc: module_import.loc,
-                    })
+            Some(TypedExpr {
+                kind: TypedExprKind::Symbol(TypedSymbolExpr::Unresolved {
+                    symbol_id,
+                    loc: module_import.loc,
+                }),
+                ty: None,
+                val_cat: ValueCategory::LValue,
+                loc: module_import.loc,
             })
         })
-    }
-
-    fn resolve_symbol_entry_as_decl_id(&self, symbol_entry: &SymbolEntry) -> Option<DeclID> {
-        match symbol_entry.kind {
-            SymbolEntryKind::Var(var_decl_id) => Some(DeclID::Var(var_decl_id)),
-            SymbolEntryKind::GlobalVar(global_var_decl_id) => Some(DeclID::GlobalVar(global_var_decl_id)),
-            SymbolEntryKind::Func(func_decl_id) => Some(DeclID::Func(func_decl_id)),
-            SymbolEntryKind::Method(method_decl_id) => Some(DeclID::Method(method_decl_id)),
-            SymbolEntryKind::Struct(struct_decl_id) => Some(DeclID::Struct(struct_decl_id)),
-            SymbolEntryKind::Enum(enum_decl_id) => Some(DeclID::Enum(enum_decl_id)),
-            SymbolEntryKind::Union(union_decl_id) => Some(DeclID::Union(union_decl_id)),
-            SymbolEntryKind::Interface(interface_decl_id) => Some(DeclID::Interface(interface_decl_id)),
-            SymbolEntryKind::Typedef(typedef_decl_id) => Some(DeclID::Typedef(typedef_decl_id)),
-
-            SymbolEntryKind::Namespace(_)
-            | SymbolEntryKind::Module(_)
-            | SymbolEntryKind::Unresolved
-            | SymbolEntryKind::ProxiedSymbol { .. }
-            | SymbolEntryKind::ProxiedModule { .. } => None,
-        }
     }
 
     fn resolve_unnamed_union_value(&mut self, unnamed_union_value: &ASTUnnamedUnionValueExpr) -> Option<TypedExpr> {
@@ -2470,14 +2438,11 @@ impl Resolver {
             }
         };
 
-        self.lookup_symbol_entry(symbol_id).and_then(|symbol_entry| {
-            self.resolve_symbol_entry_as_decl_id(&symbol_entry)
-                .map(|decl_id| TypedExpr {
-                    kind: TypedExprKind::Symbol(TypedSymbolExpr::new(decl_id, loc)),
-                    val_cat: ValueCategory::LValue,
-                    ty: None,
-                    loc,
-                })
+        Some(TypedExpr {
+            kind: TypedExprKind::Symbol(TypedSymbolExpr::Unresolved { symbol_id, loc }),
+            val_cat: ValueCategory::LValue,
+            ty: None,
+            loc,
         })
     }
 

@@ -16,6 +16,7 @@
  */
 
 use crate::{
+    SymbolID,
     decls::{DeclID, EnumDeclID, FuncDeclID, InterfaceDeclID, MethodDeclID, MonomorphID, StructDeclID, UnionDeclID},
     stmts::{TypedBlockStmt, TypedBuiltin, TypedFuncParams, TypedTypeArgs},
     types::{InterfaceObjectType, SemaType, TypedFuncType},
@@ -76,9 +77,9 @@ pub enum TypedExprKind {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct TypedSymbolExpr {
-    pub decl_id: DeclID,
-    pub loc: Loc,
+pub enum TypedSymbolExpr {
+    Unresolved { symbol_id: SymbolID, loc: Loc },
+    Resolved { decl_id: DeclID, loc: Loc },
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -373,6 +374,40 @@ pub struct TypedUnnamedStructValueField {
     pub loc: Loc,
 }
 
+impl TypedSymbolExpr {
+    #[inline]
+    pub fn to_resolved_decl_id(&mut self, decl_id: DeclID) {
+        if let TypedSymbolExpr::Unresolved { loc, .. } = self {
+            *self = Self::Resolved { decl_id, loc: *loc }
+        }
+    }
+
+    #[inline]
+    pub fn as_decl_id(&self) -> Option<DeclID> {
+        match self {
+            TypedSymbolExpr::Resolved { decl_id, .. } => Some(*decl_id),
+            TypedSymbolExpr::Unresolved { .. } => None,
+        }
+    }
+
+    #[inline]
+    pub fn as_symbol_id(&self) -> Option<SymbolID> {
+        match self {
+            TypedSymbolExpr::Unresolved { symbol_id, .. } => Some(*symbol_id),
+            TypedSymbolExpr::Resolved { .. } => None,
+        }
+    }
+
+
+    #[inline]
+    pub fn loc(&self) -> Loc {
+        match self {
+            TypedSymbolExpr::Resolved { loc ,..} => *loc,
+            TypedSymbolExpr::Unresolved { loc, .. } => *loc,
+        }
+    }
+}
+
 impl TypedExpr {
     pub fn is_lvalue(&self) -> bool {
         self.val_cat == ValueCategory::LValue
@@ -401,12 +436,17 @@ impl TypedExprKind {
     }
 
     #[inline]
-    pub fn as_decl_id(&self) -> Option<DeclID> {
+    pub fn as_unresolved_symbol_id(&self) -> Option<SymbolID> {
         match self {
-            TypedExprKind::Symbol(TypedSymbolExpr {
-                decl_id: symbol_decl_id,
-                ..
-            }) => Some(*symbol_decl_id),
+            TypedExprKind::Symbol(symbol_expr) => symbol_expr.as_symbol_id(),
+            _ => None,
+        }
+    }
+
+    #[inline]
+    pub fn as_resolved_decl_id(&self) -> Option<DeclID> {
+        match self {
+            TypedExprKind::Symbol(symbol_expr) => symbol_expr.as_decl_id(),
             _ => None,
         }
     }
@@ -500,12 +540,6 @@ impl std::hash::Hash for TypedSelfType {
 impl PartialEq for TypedUnnamedUnionValue {
     fn eq(&self, other: &Self) -> bool {
         self.name == other.name && self.value == other.value
-    }
-}
-
-impl TypedSymbolExpr {
-    pub fn new(decl_id: DeclID, loc: Loc) -> Self {
-        Self { decl_id, loc }
     }
 }
 

@@ -17,7 +17,7 @@
 
 use crate::context::AnalysisContext;
 use cyrusc_const_eval::{fold::ConstFolder, resolver::ConstResolver};
-use cyrusc_typed_ast::{decls::DeclID, exprs::TypedExpr, types::SemaType};
+use cyrusc_typed_ast::{SymbolID, decls::DeclID, exprs::TypedExpr, types::SemaType};
 
 impl<'a> AnalysisContext<'a> {
     /// Returns `true` when a const‑qualified type is assigned to a mutable variable.
@@ -34,7 +34,7 @@ impl<'a> AnalysisContext<'a> {
 
     pub(crate) fn is_const_qualified_lvalue(&self, expr: &TypedExpr) -> bool {
         expr.kind
-            .as_decl_id()
+            .as_resolved_decl_id()
             .map(|decl_id| {
                 if let Some(var_decl_id) = decl_id.as_var() {
                     let var_decl = self.decl_tables.var_decl(var_decl_id);
@@ -77,5 +77,9 @@ impl<'a> ConstResolver for AnalysisContext<'a> {
             Some(expr) => expr.ty.as_ref().map(|ty| ty.is_const()).unwrap_or(false),
             None => false,
         }
+    }
+
+    fn lookup_symbol_as_decl_id(&self, symbol_id: SymbolID) -> Option<DeclID> {
+        self.query.lookup_symbol_as_decl_id(symbol_id)
     }
 }

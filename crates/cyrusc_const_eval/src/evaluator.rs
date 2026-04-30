@@ -42,7 +42,11 @@ impl<'a, R: ConstResolver> ConstEvaluator<'a, R> {
 
     pub fn eval_expr(&mut self, expr: &TypedExpr) -> Result<ConstValue, ConstEvalError> {
         let raw = match &expr.kind {
-            TypedExprKind::Symbol(symbol_expr) => self.eval_symbol(symbol_expr.decl_id),
+            TypedExprKind::Symbol(symbol_expr) => {
+                let decl_id = symbol_expr.as_decl_id().unwrap();
+
+                self.eval_symbol(decl_id)
+            }
             TypedExprKind::Literal(lit) => self.eval_literal(lit),
             TypedExprKind::Prefix(prefix) => self.eval_prefix(prefix),
             TypedExprKind::Infix(infix) => self.eval_infix(infix),

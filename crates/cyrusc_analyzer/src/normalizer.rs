@@ -16,7 +16,7 @@
  */
 
 use crate::{context::AnalysisContext, diagnostics::AnalyzerDiagKind};
-use cyrusc_const_eval::value::is_comptime_valid;
+use cyrusc_const_eval::{resolver::ConstResolver, value::is_comptime_valid};
 use cyrusc_diagcentral::{Diag, DiagLevel};
 use cyrusc_source_loc::Loc;
 use cyrusc_typed_ast::{
@@ -94,12 +94,15 @@ impl<'a> AnalysisContext<'a> {
 
     fn normalize_unresolved_type(&mut self, unresolved_type: UnresolvedType, loc: Loc) -> Option<SemaType> {
         let ty = match unresolved_type {
-            UnresolvedType::Decl(symbol_id) => self.resolve_symbol_type(symbol_id, loc)?,
+            UnresolvedType::Decl(symbol_id) => self
+                .lookup_symbol_as_decl_id(symbol_id)
+                .and_then(|decl_id| self.resolve_symbol_type(decl_id, loc))?,
+
             UnresolvedType::GenericInst {
-                base_decl_id,
+                base_symbol_id,
                 mut type_args,
             } => {
-                let base_type = self.normalize_unresolved_type(UnresolvedType::Decl(base_decl_id), loc)?;
+                let base_type = self.normalize_unresolved_type(UnresolvedType::Decl(base_symbol_id), loc)?;
 
                 if let Some(named_type) = base_type.as_named_type() {
                     self.normalize_type_args(&mut type_args);

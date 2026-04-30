@@ -20,7 +20,7 @@ use cyrusc_source_loc::FileID;
 use cyrusc_typed_ast::{
     SymbolID,
     decls::{
-        EnumDeclID, FuncDeclID, GlobalVarDeclID, InterfaceDeclID, MethodDeclID, StructDeclID, TypedefDeclID,
+        DeclID, EnumDeclID, FuncDeclID, GlobalVarDeclID, InterfaceDeclID, MethodDeclID, StructDeclID, TypedefDeclID,
         UnionDeclID, VarDeclID,
     },
 };
@@ -44,4 +44,6 @@ pub trait SymbolQuery: Sync + Send {
     fn lookup_symbol_entry(&self, symbol_id: SymbolID) -> Option<SymbolEntry>;
 
     fn lookup_module_name(&self, file_id: FileID) -> Option<String>;
+
+    fn lookup_symbol_as_decl_id(&self, symbol_id: SymbolID) -> Option<DeclID>;
 }

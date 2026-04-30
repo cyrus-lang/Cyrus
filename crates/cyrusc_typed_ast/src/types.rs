@@ -15,10 +15,10 @@
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
 
-use crate::decls::{DeclID, EnumDeclID, InterfaceDeclID, StructDeclID, TypedefDeclID, UnionDeclID};
+use crate::decls::{EnumDeclID, InterfaceDeclID, StructDeclID, TypedefDeclID, UnionDeclID};
 use crate::exprs::{TypedExpr, TypedSelfType};
 use crate::stmts::{TypedFuncTypeParams, TypedFuncTypeVariadicParam, TypedTypeArg, TypedTypeArgs};
-use crate::{GenericParamID, VTableID};
+use crate::{GenericParamID, SymbolID, VTableID};
 use cyrusc_source_loc::Loc;
 use cyrusc_tokens::TokenKind;
 use std::fmt;
@@ -49,9 +49,9 @@ pub enum SemaType {
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum UnresolvedType {
-    Decl(DeclID),
+    Decl(SymbolID),
     GenericInst {
-        base_decl_id: DeclID,
+        base_symbol_id: SymbolID,
         type_args: TypedTypeArgs,
     },
 }
@@ -224,35 +224,38 @@ pub fn map_float_suffix_to_sema_type(suffix: &TokenKind) -> Option<SemaType> {
 
 impl UnresolvedType {
     #[inline]
-    pub fn as_decl_id(&self) -> Option<DeclID> {
+    pub fn as_symbol_id(&self) -> Option<SymbolID> {
         match self {
             UnresolvedType::GenericInst { .. } => None,
-            UnresolvedType::Decl(decl_id) => Some(*decl_id),
+            UnresolvedType::Decl(symbol_id) => Some(*symbol_id),
         }
     }
 
     #[inline]
-    pub fn base_decl_id(&self) -> Option<DeclID> {
+    pub fn as_base_symbol_id(&self) -> Option<SymbolID> {
         match self {
-            UnresolvedType::GenericInst { base_decl_id, .. } => Some(*base_decl_id),
-            UnresolvedType::Decl(decl_id) => Some(*decl_id),
+            UnresolvedType::GenericInst {
+                base_symbol_id: base_decl_id,
+                ..
+            } => Some(*base_decl_id),
+            UnresolvedType::Decl(symbol_id) => Some(*symbol_id),
         }
     }
 }
 
 impl SemaType {
     #[inline]
-    pub fn as_unresolved_decl_id(&self) -> Option<DeclID> {
+    pub fn as_unresolved_decl_id(&self) -> Option<SymbolID> {
         match &self.const_inner() {
-            SemaType::Unresolved(unresolved_type) => unresolved_type.as_decl_id(),
+            SemaType::Unresolved(unresolved_type) => unresolved_type.as_symbol_id(),
             _ => None,
         }
     }
 
     #[inline]
-    pub fn as_unresolved_base_decl_id(&self) -> Option<DeclID> {
+    pub fn as_unresolved_base_decl_id(&self) -> Option<SymbolID> {
         match &self.const_inner() {
-            SemaType::Unresolved(unresolved_type) => unresolved_type.base_decl_id(),
+            SemaType::Unresolved(unresolved_type) => unresolved_type.as_base_symbol_id(),
             _ => None,
         }
     }

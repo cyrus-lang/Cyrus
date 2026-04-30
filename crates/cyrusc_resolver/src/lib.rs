@@ -825,6 +825,28 @@ impl SymbolQuery for Resolver {
         let map = self.module_names.lock().unwrap();
         map.get(&file_id).cloned()
     }
+
+    fn lookup_symbol_as_decl_id(&self, symbol_id: SymbolID) -> Option<DeclID> {
+        let symbol_entry = self.lookup_symbol_entry(symbol_id)?;
+
+        match symbol_entry.kind {
+            SymbolEntryKind::Var(var_decl_id) => Some(DeclID::Var(var_decl_id)),
+            SymbolEntryKind::GlobalVar(global_var_decl_id) => Some(DeclID::GlobalVar(global_var_decl_id)),
+            SymbolEntryKind::Func(func_decl_id) => Some(DeclID::Func(func_decl_id)),
+            SymbolEntryKind::Method(method_decl_id) => Some(DeclID::Method(method_decl_id)),
+            SymbolEntryKind::Struct(struct_decl_id) => Some(DeclID::Struct(struct_decl_id)),
+            SymbolEntryKind::Enum(enum_decl_id) => Some(DeclID::Enum(enum_decl_id)),
+            SymbolEntryKind::Union(union_decl_id) => Some(DeclID::Union(union_decl_id)),
+            SymbolEntryKind::Interface(interface_decl_id) => Some(DeclID::Interface(interface_decl_id)),
+            SymbolEntryKind::Typedef(typedef_decl_id) => Some(DeclID::Typedef(typedef_decl_id)),
+
+            SymbolEntryKind::Namespace(_)
+            | SymbolEntryKind::Module(_)
+            | SymbolEntryKind::Unresolved
+            | SymbolEntryKind::ProxiedSymbol { .. }
+            | SymbolEntryKind::ProxiedModule { .. } => None,
+        }
+    }
 }
 
 impl IDGen {

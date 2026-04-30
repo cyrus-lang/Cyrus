@@ -3,6 +3,12 @@
 import std::libc{printf};
 
 pub fn main() {
-    const untyped_arr = {1, 2, 3};
-    printf("%d %d %d\n", untyped_arr[0], untyped_arr[1], untyped_arr[2]);
+    const untyped_array = {1, 2, 3};
+
+    printf(
+        "%d %d %d\n",
+        untyped_array[0], 
+        untyped_array[1],
+        untyped_array[2]
+    );
 }

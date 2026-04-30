@@ -16,6 +16,7 @@
  */
 
 use crate::{context::AnalysisContext, diagnostics::AnalyzerDiagKind};
+use cyrusc_const_eval::resolver::ConstResolver;
 use cyrusc_diagcentral::{Diag, DiagLevel};
 use cyrusc_source_loc::Loc;
 use cyrusc_typed_ast::{
@@ -307,7 +308,13 @@ impl<'a> AnalysisContext<'a> {
         &mut self,
         struct_variant_init: &mut TypedEnumStructVariantInit,
     ) -> Option<SemaType> {
-        let Some(decl_id) = struct_variant_init.operand.kind.as_decl_id() else {
+        let decl_id_opt = struct_variant_init
+            .operand
+            .kind
+            .as_unresolved_symbol_id()
+            .and_then(|symbol_id| self.lookup_symbol_as_decl_id(symbol_id));
+
+        let Some(decl_id) = decl_id_opt else {
             self.reporter.report(Diag {
                 level: DiagLevel::Error,
                 kind: Box::new(AnalyzerDiagKind::InvalidEnumConstructorTarget {

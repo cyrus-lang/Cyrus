@@ -856,7 +856,7 @@ impl<'a> CIRTraverse<'a> {
             .map(|ty| self.lower_sema_type(ty))
             .unwrap_or_else(|| {
                 panic!(
-                    "Variable '{}' has neither explicit type nor RHS type ({}:{})",
+                    "variable '{}' has neither explicit type nor RHS type ({}:{})",
                     var.name, var.loc.line, var.loc.column
                 )
             });
@@ -1444,7 +1444,11 @@ impl<'a> CIRTraverse<'a> {
         let ty = self.lower_sema_type(&expr.ty.clone().unwrap());
 
         let kind = match &expr.kind {
-            TypedExprKind::Symbol(symbol_expr) => self.lower_load_symbol(symbol_expr.decl_id),
+            TypedExprKind::Symbol(symbol_expr) => {
+                let decl_id = symbol_expr.as_decl_id().unwrap();
+
+                self.lower_load_symbol(decl_id)
+            }
             TypedExprKind::Literal(literal) => self.lower_literal(literal),
             TypedExprKind::Prefix(prefix) => self.lower_prefix(prefix),
             TypedExprKind::Infix(infix) => self.lower_infix(infix),

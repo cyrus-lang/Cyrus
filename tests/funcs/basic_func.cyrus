@@ -2,10 +2,6 @@
 
 import std::libc{printf};
 
-fn add(x: int, y: int) int {
-    return x + y;
-}
-
 pub fn main() {
     const x1 = 5;
     const y1 = 7;
@@ -15,4 +11,8 @@ pub fn main() {
 
     printf("%d ", add(x1, y1));
     printf("%d\n", add(x2, y2));
+}
+
+fn add(x: int, y: int) int {
+    return x + y;
 }
