@@ -192,7 +192,7 @@ impl<'a> AnalysisContext<'a> {
 
         match expr_kind {
             TypedExprKind::Symbol(symbol_expr) => {
-                let decl_id = symbol_expr.as_decl_id().unwrap();
+                let decl_id = self.analyze_symbol_expr(symbol_expr)?;
 
                 let Some(_enum_decl_id) = decl_id.as_enum() else {
                     return None;

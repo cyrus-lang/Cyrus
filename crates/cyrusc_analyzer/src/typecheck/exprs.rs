@@ -19,7 +19,8 @@ use crate::{context::AnalysisContext, diagnostics::AnalyzerDiagKind};
 use cyrusc_diagcentral::{Diag, DiagLevel};
 use cyrusc_source_loc::Loc;
 use cyrusc_typed_ast::{
-    exprs::{TypedExpr, TypedExprKind},
+    decls::DeclID,
+    exprs::{TypedExpr, TypedExprKind, TypedSymbolExpr},
     format::format_sema_type,
     types::{PlainType, SemaType},
 };
@@ -28,10 +29,7 @@ impl<'a> AnalysisContext<'a> {
     pub(crate) fn analyze_expr(&mut self, expr: &mut TypedExpr, expected_type: Option<SemaType>) -> Option<SemaType> {
         match &mut expr.kind {
             TypedExprKind::Symbol(symbol_expr) => {
-                let decl_id_opt = symbol_expr
-                    .as_symbol_id()
-                    .and_then(|symbol_id| self.query.lookup_symbol_as_decl_id(symbol_id))
-                    .or(symbol_expr.as_decl_id());
+                let decl_id_opt = self.analyze_symbol_expr(symbol_expr);
 
                 if let Some(decl_id) = decl_id_opt {
                     symbol_expr.to_resolved_decl_id(decl_id);
@@ -68,10 +66,7 @@ impl<'a> AnalysisContext<'a> {
 
         let expr_type = match &mut expr.kind {
             TypedExprKind::Symbol(symbol_expr) => {
-                let decl_id_opt = symbol_expr
-                    .as_symbol_id()
-                    .and_then(|symbol_id| self.query.lookup_symbol_as_decl_id(symbol_id))
-                    .or(symbol_expr.as_decl_id());
+                let decl_id_opt = self.analyze_symbol_expr(symbol_expr);
 
                 if let Some(decl_id) = decl_id_opt {
                     symbol_expr.to_resolved_decl_id(decl_id);
@@ -126,12 +121,6 @@ impl<'a> AnalysisContext<'a> {
 
         let expr_type = expr_type?;
 
-        if let Some(expected_type) = &expected_type {
-            if let Some(infer) = &mut self.func_env.infer {
-                infer.unify(&expr_type, expected_type);
-            }
-        }
-
         let normalized_type = self.normalize_and_check_type_formation(expr_type, expr.loc);
 
         expr.ty = Some(normalized_type.clone()?);
@@ -151,6 +140,13 @@ impl<'a> AnalysisContext<'a> {
         self.lower_expr_post_analysis(expr);
 
         normalized_type
+    }
+
+    pub(crate) fn analyze_symbol_expr(&self, symbol_expr: &TypedSymbolExpr) -> Option<DeclID> {
+        symbol_expr
+            .as_symbol_id()
+            .and_then(|symbol_id| self.query.lookup_symbol_as_decl_id(symbol_id))
+            .or(symbol_expr.as_decl_id())
     }
 
     pub(crate) fn analyze_cond_expr(&mut self, cond: &mut TypedExpr) {

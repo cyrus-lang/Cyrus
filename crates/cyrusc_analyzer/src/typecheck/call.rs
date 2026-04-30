@@ -144,39 +144,40 @@ impl<'a> AnalysisContext<'a> {
 
         self.normalize_type_args(&mut method_call.type_args);
 
+        #[warn(unused_assignments)]
         let mut is_operand_instance = true;
 
         // `method_call.operand.sema_type` is only present when operand is a generic inst;
         // we need to extract the decl_id manually if method call used without type args,
         // which means `method_call.operand.kind` would be a `TypedSymbolExpr`.
         let mut operand_type = match {
-            if let Some(symbol_id) = method_call.operand.kind.as_unresolved_symbol_id() {
-                self.lookup_symbol_as_decl_id(symbol_id).and_then(|decl_id| {
-                    if let Some(type_decl_id) = decl_id.as_type_decl_id() {
-                        // type_decl means it's operand of a static method call.
-                        is_operand_instance = false;
+            if let Some(decl_id) = method_call.operand.kind.as_resolved_decl_id() {
+                if let Some(type_decl_id) = decl_id.as_type_decl_id() {
+                    // type_decl means it's operand of a static method call.
+                    is_operand_instance = false;
 
-                        Some(SemaType::Named(NamedType {
-                            type_decl_id,
-                            type_args: TypedTypeArgs::new(),
-                        }))
+                    Some(SemaType::Named(NamedType {
+                        type_decl_id,
+                        type_args: TypedTypeArgs::new(),
+                    }))
+                } else {
+                    is_operand_instance = true;
+
+                    if decl_id.is_var_or_global_var() {
+                        // extract variable type as use it as operand type for instance method calls.
+                        Some(self.resolve_symbol_type(decl_id, method_call.loc)?)
                     } else {
-                        is_operand_instance = true;
-
-                        if decl_id.is_var_or_global_var() {
-                            // extract variable type as use it as operand type for instance method calls.
-                            Some(self.resolve_symbol_type(decl_id, method_call.loc)?)
-                        } else {
-                            None
-                        }
+                        None
                     }
-                })
+                }
             } else if let Some(sema_type) = method_call.operand.kind.as_type_expr() {
                 is_operand_instance = false;
 
                 // normalized later
                 Some(sema_type)
             } else {
+                is_operand_instance = false;
+
                 method_call.operand.ty.clone()
             }
         } {
@@ -194,8 +195,12 @@ impl<'a> AnalysisContext<'a> {
 
         operand_type = self.normalize_sema_type(operand_type, method_call.loc)?;
 
+        let is_operand_interface = operand_type.as_interface_object().is_some() || operand_type.is_interface();
+
         if is_operand_instance {
             self.analyze_instance_method_call(method_call, &operand_type)
+        } else if is_operand_interface {
+            self.analyze_interface_method_call(method_call, &operand_type)
         } else {
             self.analyze_static_method_call(method_call, &operand_type)
         }

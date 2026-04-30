@@ -16,7 +16,6 @@
  */
 
 use crate::context::AnalysisContext;
-use cyrusc_const_eval::resolver::ConstResolver;
 use cyrusc_internal::monomorph::MonomorphizableTemplateID;
 use cyrusc_source_loc::Loc;
 use cyrusc_typed_ast::{
@@ -467,7 +466,7 @@ impl<'a> AnalysisContext<'a> {
     fn specialize_expr(&self, expr: &mut TypedExpr, decl_map: &DeclMap) {
         match &mut expr.kind {
             TypedExprKind::Symbol(symbol_expr) => {
-                let decl_id = symbol_expr.as_decl_id().unwrap();
+                let decl_id = self.analyze_symbol_expr(symbol_expr).unwrap();
 
                 if let Some(var_decl_id) = decl_id.as_var() {
                     let new_decl_id = DeclID::Var(decl_map.get(&var_decl_id).copied().unwrap());
@@ -760,6 +759,7 @@ impl<'a> AnalysisContext<'a> {
 
             TypedSwitchCasePatternKind::Binding { var_decl_id, .. } => {
                 let var_decl = self.decl_tables.var_decl(*var_decl_id);
+                
                 self.instantiate_fresh_var_decl(var_decl_id, &var_decl, decl_map);
             }
 

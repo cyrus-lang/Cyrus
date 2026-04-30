@@ -17,7 +17,7 @@ pub fn main() {
         panic("error opening file");
     }
 
-     while ((bytes_read = fread(&buffer, 1, sizeof(buffer), file)) != 0) {
+     while ((bytes_read = fread(&buffer, 1, 1024, file)) != 0) {
         total_bytes += bytes_read;
 
         if (ferror(file)) {

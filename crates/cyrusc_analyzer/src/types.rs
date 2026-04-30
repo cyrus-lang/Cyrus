@@ -116,29 +116,6 @@ impl<'a> AnalysisContext<'a> {
     }
 
     fn is_named_type_assignable_to(&mut self, named_type1: NamedType, named_type2: NamedType, loc: Loc) -> bool {
-        // check type args count
-        if named_type1.type_args.len() != named_type2.type_args.len() {
-            return false;
-        }
-
-        // check type args compatibility
-        if !named_type1
-            .type_args
-            .0
-            .iter()
-            .zip(&named_type2.type_args.0)
-            .all(|(type_arg1, type_arg2)| {
-                let (TypedTypeArg::Type(sema_type1, _), TypedTypeArg::Type(sema_type2, _)) = (type_arg1, type_arg2)
-                else {
-                    return false;
-                };
-
-                self.is_assignable_to(sema_type1.clone(), sema_type2.clone(), loc)
-            })
-        {
-            return false;
-        }
-
         match (named_type1.type_decl_id, named_type2.type_decl_id) {
             (TypeDeclID::Struct(id1), TypeDeclID::Struct(id2)) => {
                 if id1 == id2 {
@@ -170,7 +147,7 @@ impl<'a> AnalysisContext<'a> {
                 if id1 == id2 {
                     return true;
                 }
-                
+
                 let decl1 = self.decl_tables.enum_decl(id1);
                 let decl2 = self.decl_tables.enum_decl(id2);
 

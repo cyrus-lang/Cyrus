@@ -1,4 +1,4 @@
-// @stdout: result = 105.140000
+// @stdout: result = 105.340000
 // @compilerArgs: -z=./tests/abi/lambdas_library.c
 
 import std::libc{printf};

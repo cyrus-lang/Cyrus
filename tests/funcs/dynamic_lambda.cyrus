@@ -2,19 +2,19 @@
 
 import std::libc{printf};
 
-var handler = fn(x: int64, y: float64) float64 {
-    return 0.0;
+var handler = fn(x: float64, y: float64) float64 {
+    return 1.5;
 };
 
 pub fn main() {
-    const compute_handler = fn(cond: bool) fn(int64, float64) float64 {
+    const compute_handler = fn(cond: bool) fn(float64, float64) float64 {
         if (cond) {
-            return fn(x: int64, y: float64) float64 { return y + cast(float64, x); };
+            return fn(x: float64, y: float64) float64 { return y + x; };
         } else {
-            return fn(x: int64, y: float64) float64 { return -y * 2.0; };
+            return fn(x: float64, y: float64) float64 { return -y * 2.0; };
         }
     };
 
-    printf("%f ", (compute_handler(true))(2, 3.5));
-    printf("%f ", (compute_handler(false))(2, 3.5));
+    printf("%f ", (compute_handler(true))(2.0, 3.5));
+    printf("%f ", (compute_handler(false))(2.0, 3.5));
 }
