@@ -575,8 +575,13 @@ impl<'ll> CodeGenIRBuilder<'ll> {
 
                     InternalValue::new(field_type.clone(), InternalValueKind::LValue(field_ptr))
                 }
-                CIRFieldAccessKind::Union { .. } => self.emit_lvalue_address(&field_access.operand),
+                CIRFieldAccessKind::Union { field_type } => {
+                    let mut value = self.emit_lvalue_address(&field_access.operand);
+                    value.ty = field_type.clone();
+                    value
+                },
             },
+
             _ => self.emit_expr(expr, &None),
         }
     }

@@ -108,30 +108,43 @@ impl<'a> AnalysisContext<'a> {
         union_value: &mut TypedUnnamedUnionValue,
         expected_type: Option<SemaType>,
     ) -> Option<SemaType> {
-        if let Some((union_decl_id, union_decl)) = self.infer_union_decl_from_expected_type(expected_type.clone()) {
-            if let Some(union_field) = union_decl.lookup_field(&union_value.name.value) {
-                let expected_type = self.substitute_type(&union_field.ty);
+        if let Some((union_decl_id, union_decl, type_args)) =
+            self.infer_union_decl_from_expected_type(expected_type.clone())
+        {
+            let union_name = format_union_decl(&union_decl, self.formatter);
 
-                self.analyze_field_assign(&mut union_value.value, expected_type, union_value.loc);
-            } else {
-                let union_name = format_union_decl(&union_decl, self.formatter);
+            let generic_env = self.create_inference_generic_env(
+                &union_name,
+                union_decl.generic_params.clone(),
+                &type_args,
+                union_value.loc,
+            )?;
 
-                self.reporter.report(Diag {
-                    level: DiagLevel::Error,
-                    kind: Box::new(AnalyzerDiagKind::ObjectHasNoFieldNamed {
-                        object_name: union_name,
-                        field_name: union_value.name.as_string(),
-                    }),
-                    loc: Some(union_value.loc),
-                    hint: None,
-                });
+            return self.with_generic_env(generic_env, |this| {
+                if let Some(union_field) = union_decl.lookup_field(&union_value.name.value) {
+                    let expected_type = this.substitute_type(&union_field.ty);
 
-                self.analyze_expr(&mut union_value.value, None);
-            }
+                    this.analyze_field_assign(&mut union_value.value, expected_type, union_value.loc);
+                } else {
+                    let union_name = format_union_decl(&union_decl, this.formatter);
 
-            union_value.union_decl_id = Some(union_decl_id);
+                    this.reporter.report(Diag {
+                        level: DiagLevel::Error,
+                        kind: Box::new(AnalyzerDiagKind::ObjectHasNoFieldNamed {
+                            object_name: union_name,
+                            field_name: union_value.name.as_string(),
+                        }),
+                        loc: Some(union_value.loc),
+                        hint: None,
+                    });
 
-            return Some(expected_type.unwrap());
+                    this.analyze_expr(&mut union_value.value, None);
+                }
+
+                union_value.union_decl_id = Some(union_decl_id);
+
+                Some(expected_type.unwrap())
+            });
         }
 
         let mut union_decl = self.create_union_decl_from_unnamed_union_value(union_value);
@@ -156,10 +169,20 @@ impl<'a> AnalysisContext<'a> {
         }))
     }
 
-    fn infer_union_decl_from_expected_type(&self, expected_type: Option<SemaType>) -> Option<(UnionDeclID, UnionDecl)> {
+    fn infer_union_decl_from_expected_type(
+        &self,
+        expected_type: Option<SemaType>,
+    ) -> Option<(UnionDeclID, UnionDecl, TypedTypeArgs)> {
         expected_type.and_then(|ty| {
-            ty.as_union()
-                .map(|union_decl_id| (union_decl_id, self.decl_tables.union_decl(union_decl_id)))
+            ty.as_named_type().and_then(|named_type| {
+                named_type.type_decl_id.as_union().map(|union_decl_id| {
+                    (
+                        union_decl_id,
+                        self.decl_tables.union_decl(union_decl_id),
+                        named_type.type_args.clone(),
+                    )
+                })
+            })
         })
     }
 

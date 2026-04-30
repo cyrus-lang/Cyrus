@@ -13,7 +13,7 @@ fn format_bool(x: bool) char* {
 }
 
 pub fn main() {
-    const inst = Pair<K = uint> {
+    const inst = Pair<uint, _> {
         key: 1,
         value: Pair<char*, bool> {
             key: "Cyrus",

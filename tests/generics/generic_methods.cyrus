@@ -2,7 +2,7 @@
 
 import std::libc{printf};
 
-struct MathUtils {
+struct MathUtils<X> {
     pub fn add<T>(x: T, y: T) T {
         return x + y;
     }
@@ -14,10 +14,14 @@ struct MathUtils {
     pub fn mul<T>(x: T, y: T) T {
         return x * y;
     }
+
+    pub fn new(x: X) Self {
+        return Self { value: x };
+    }
 }
 
 pub fn main() {    
-    printf("%f ", MathUtils<float64>.add(5.5, 1.5));
+    printf("%f ", MathUtils.add<float64>(5.5, 1.5));
     printf("%f ", MathUtils.sub(5.5, 1.5));
     printf("%d ", MathUtils.mul(3, 5));
 }

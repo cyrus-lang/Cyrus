@@ -112,29 +112,42 @@ impl<'a> AnalysisContext<'a> {
     ) -> Option<SemaType> {
         // case 1: if expected type is a struct, then use it's declaration
         // and analyze fields with expected type.
-        if let Some((struct_decl_id, struct_decl)) = self.infer_struct_decl_from_expected_type(expected_type.clone()) {
-            for struct_value_field in &mut struct_value.fields {
-                let Some(struct_field) = struct_decl.lookup_field(&struct_value_field.name) else {
-                    // unknown field, reported later
-                    continue;
-                };
+        if let Some((struct_decl_id, struct_decl, type_args)) =
+            self.infer_struct_decl_from_expected_type(expected_type.clone())
+        {
+            let struct_name = format_struct_decl(&struct_decl, self.formatter);
+            
+            let generic_env = self.create_inference_generic_env(
+                &struct_name,
+                struct_decl.generic_params.clone(),
+                &type_args,
+                struct_value.loc,
+            )?;
 
-                let expected_field_type = self.substitute_type(&struct_field.ty);
+            return self.with_generic_env(generic_env, |this| {
+                for struct_value_field in &mut struct_value.fields {
+                    let Some(struct_field) = struct_decl.lookup_field(&struct_value_field.name) else {
+                        // unknown field, reported later
+                        continue;
+                    };
 
-                self.analyze_field_assign(
-                    &mut struct_value_field.value,
-                    expected_field_type,
-                    struct_value_field.loc,
-                );
-            }
+                    let expected_field_type = this.substitute_type(&struct_field.ty);
 
-            self.check_invalid_fields_for_unnamed_struct_value(&struct_decl, struct_value);
-            self.check_missing_fields_for_unnamed_struct_value(&struct_decl, struct_value);
-            self.check_duplicate_fields_for_unnamed_struct_value(struct_value);
+                    this.analyze_field_assign(
+                        &mut struct_value_field.value,
+                        expected_field_type,
+                        struct_value_field.loc,
+                    );
+                }
 
-            struct_value.struct_decl_id = Some(struct_decl_id);
+                this.check_invalid_fields_for_unnamed_struct_value(&struct_decl, struct_value);
+                this.check_missing_fields_for_unnamed_struct_value(&struct_decl, struct_value);
+                this.check_duplicate_fields_for_unnamed_struct_value(struct_value);
 
-            return Some(expected_type.unwrap());
+                struct_value.struct_decl_id = Some(struct_decl_id);
+
+                Some(expected_type.unwrap())
+            });
         }
 
         // case 2: no expected type (create a new struct decl)
@@ -169,10 +182,17 @@ impl<'a> AnalysisContext<'a> {
     fn infer_struct_decl_from_expected_type(
         &self,
         expected_type: Option<SemaType>,
-    ) -> Option<(StructDeclID, StructDecl)> {
+    ) -> Option<(StructDeclID, StructDecl, TypedTypeArgs)> {
         expected_type.and_then(|ty| {
-            ty.as_struct()
-                .map(|struct_decl_id| (struct_decl_id, self.decl_tables.struct_decl(struct_decl_id)))
+            ty.as_named_type().and_then(|named_type| {
+                named_type.type_decl_id.as_struct().map(|struct_decl_id| {
+                    (
+                        struct_decl_id,
+                        self.decl_tables.struct_decl(struct_decl_id),
+                        named_type.type_args.clone(),
+                    )
+                })
+            })
         })
     }
 
