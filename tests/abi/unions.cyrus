@@ -49,5 +49,5 @@ pub fn main() {
             b: 8.7
         }
     };
-    printf("nested_struct_inside_union=%f ", nested_struct_inside_union(with_nested_struct, cast(int32, true)));
+    printf("nested_struct_inside_union=%f ", nested_struct_inside_union(with_nested_struct, 1));
 }

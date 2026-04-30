@@ -157,31 +157,31 @@ impl<'a> AnalysisContext<'a> {
 
         let mut generic_env = GenericEnv::new(params.clone());
 
-        let infer = self.func_env.infer.as_mut().unwrap();
-
         for (i, param_id) in params.iter().enumerate() {
-            let mut bound_type: Option<SemaType> = None;
+            if let Some(infer) = &mut self.func_env.infer {
+                let mut bound_type: Option<SemaType> = None;
 
-            // 1. check if an explicit type argument was provided
-            if let Some(type_arg) = type_args.get(i) {
-                match type_arg {
-                    TypedTypeArg::Type(sema_type, _) => {
-                        bound_type = Some(sema_type.clone());
-                    }
-                    TypedTypeArg::Infer => {
-                        bound_type = Some(infer.new_var());
+                // 1. check if an explicit type argument was provided
+                if let Some(type_arg) = type_args.get(i) {
+                    match type_arg {
+                        TypedTypeArg::Type(sema_type, _) => {
+                            bound_type = Some(sema_type.clone());
+                        }
+                        TypedTypeArg::Infer => {
+                            bound_type = Some(infer.new_var());
+                        }
                     }
                 }
-            }
 
-            // 2. if nothing was provided (e.g. MyStruct { ... }), create an InferVar
-            if bound_type.is_none() {
-                bound_type = Some(infer.new_var());
-            }
+                // 2. if nothing was provided (e.g. MyStruct { ... }), create an InferVar
+                if bound_type.is_none() {
+                    bound_type = Some(infer.new_var());
+                }
 
-            // bind it
-            if let Some(ty) = bound_type {
-                generic_env.bind(*param_id, ty);
+                // bind it
+                if let Some(ty) = bound_type {
+                    generic_env.bind(*param_id, ty);
+                }
             }
         }
 

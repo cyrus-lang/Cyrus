@@ -285,7 +285,14 @@ impl<'ll> CodeGenIRBuilder<'ll> {
                     )
                 }
             }
-            CIRType::FuncType(func_type) => self.emit_func_metadata(func_type),
+            CIRType::FuncType(func_type) => {
+                let subroutine_type = self.emit_func_metadata(func_type);
+
+                let ptr_size_bits = self.target.info.pointer_size() * 8;
+                let ptr_align = self.target.info.pointer_align() * 8;
+
+                unsafe { debug_pointer_type(&self.dctx, subroutine_type, ptr_size_bits as u64, ptr_align, "T*") }
+            }
             CIRType::Array(array_type) => {
                 let element_ty_metadata = self.emit_debug_ty_metadata(&array_type.element_type);
                 let layout = type_layout(&self.target.info, &CIRType::Array(array_type.clone()));

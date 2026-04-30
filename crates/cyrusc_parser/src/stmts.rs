@@ -1328,8 +1328,6 @@ impl<'source_file> Parser<'source_file> {
                                 break;
                             }
                             _ => {
-                                dbg!(self.current_token());
-
                                 return Err(self.error_with_hint(
                                     &self.current_token(),
                                     ParserDiagKind::InvalidToken(self.current_token().kind.clone()),
@@ -1380,6 +1378,7 @@ impl<'source_file> Parser<'source_file> {
 
         // parse the whole pattern (which must start with left paren)
         let pattern = self.parse_export_pattern()?;
+        self.next_token();
 
         if !matches!(pattern.kind, ExportPatternKind::Tuple(_)) {
             return Err(self.error_at_current(ParserDiagKind::InvalidToken(self.current_token().kind.clone())));

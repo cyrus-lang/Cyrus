@@ -175,7 +175,7 @@ impl<'a> AnalysisContext<'a> {
                 // normalized later
                 Some(sema_type)
             } else {
-                None
+                method_call.operand.ty.clone()
             }
         } {
             Some(ty) => ty,

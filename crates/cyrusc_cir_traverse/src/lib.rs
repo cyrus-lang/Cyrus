@@ -233,13 +233,13 @@ impl<'a> CIRTraverse<'a> {
         vars.push(CIRVarStmt {
             irv_id: expr_var,
             name: "__tuple_expr".to_string(),
-            ty,
+            ty: ty.clone(),
             expr: Some(tuple_expr),
             loc: export_tuple.loc,
         });
 
-        // start recursion (root has no index)
-        self.lower_export_pattern_recursive(&export_tuple.pattern, expr_var, None, &mut vars);
+        // start recursion with empty path
+        self.lower_export_pattern_recursive(&export_tuple.pattern, expr_var, ty, vec![], &mut vars);
 
         vars
     }
@@ -248,7 +248,8 @@ impl<'a> CIRTraverse<'a> {
         &mut self,
         pattern: &TypedTupleExportPattern,
         base_irv_id: IRValueID,
-        index: Option<usize>,
+        base_ty: CIRType,
+        index_path: Vec<usize>,
         vars: &mut Vec<CIRVarStmt>,
     ) {
         match &pattern.kind {
@@ -262,40 +263,65 @@ impl<'a> CIRTraverse<'a> {
 
                 self.decl_to_ir_value_map.insert(DeclID::Var(*var_decl_id), irv_id);
 
-                let tuple_index = index.expect("tuple element must have index");
+                assert!(!index_path.is_empty(), "tuple element must have index path");
 
-                let expr = CIRExpr {
-                    kind: CIRExprKind::TupleAccess(CIRTupleAccessExpr {
-                        operand: Box::new(CIRExpr {
-                            kind: CIRExprKind::Load(CIRValue {
-                                irv_id: base_irv_id,
-                                kind: CIRValueKind::LocalVariable,
-                            }),
-                            ty: var_ty.clone(),
-                            loc: var_decl.loc,
-                        }),
-                        index: tuple_index,
+                // Build projection chain
+                let mut current_expr = CIRExpr {
+                    kind: CIRExprKind::Load(CIRValue {
+                        irv_id: base_irv_id,
+                        kind: CIRValueKind::LocalVariable,
                     }),
-                    ty: var_ty.clone(),
+                    ty: base_ty.clone(),
                     loc: var_decl.loc,
                 };
+
+                let mut current_ty = base_ty.clone();
+
+                for &idx in &index_path {
+                    let elem_ty = self.get_tuple_element_type(&current_ty, idx);
+
+                    current_expr = CIRExpr {
+                        kind: CIRExprKind::TupleAccess(CIRTupleAccessExpr {
+                            operand: Box::new(current_expr),
+                            index: idx,
+                        }),
+                        ty: elem_ty.clone(),
+                        loc: var_decl.loc,
+                    };
+
+                    current_ty = elem_ty;
+                }
 
                 vars.push(CIRVarStmt {
                     irv_id,
                     name: var_name,
                     ty: var_ty,
-                    expr: Some(expr),
+                    expr: Some(current_expr),
                     loc: var_decl.loc,
                 });
             }
 
             TypedTupleExportPatternKind::Tuple(children) => {
                 for (i, child) in children.iter().enumerate() {
-                    self.lower_export_pattern_recursive(child, base_irv_id, Some(i), vars);
+                    let mut new_path = index_path.clone();
+                    new_path.push(i);
+
+                    self.lower_export_pattern_recursive(child, base_irv_id, base_ty.clone(), new_path, vars);
                 }
             }
 
             TypedTupleExportPatternKind::Ignore => {}
+        }
+    }
+
+    fn get_tuple_element_type(&self, ty: &CIRType, index: usize) -> CIRType {
+        match ty {
+            CIRType::Tuple(tuple_type) => tuple_type
+                .elements
+                .get(index)
+                .expect("tuple index out of bounds")
+                .clone(),
+            _ => panic!("expected tuple type"),
         }
     }
 

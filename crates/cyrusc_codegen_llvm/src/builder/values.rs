@@ -67,24 +67,25 @@ impl<'ll> CodeGenIRBuilder<'ll> {
             return;
         }
 
-        let target_ty: BasicTypeEnum<'ll> = self.emit_ty(target_cir_ty.clone()).try_into().unwrap();
+        let llvm_target_type: BasicTypeEnum<'ll> = self.emit_ty(target_cir_ty.clone()).try_into().unwrap();
 
-        if let BasicTypeEnum::IntType(int_ty) = target_ty {
+        if let BasicTypeEnum::IntType(int_type) = llvm_target_type {
             let rvalue_int_value = rvalue.as_basic_value().into_int_value();
             let rvalue_bit_width = rvalue_int_value.get_type().get_bit_width();
-            let target_bit_width = int_ty.get_bit_width();
+            let target_bit_width = int_type.get_bit_width();
 
             if rvalue_bit_width != target_bit_width {
                 let signed = rvalue.ty.as_plain().map_or(false, |plain| plain.is_signed());
                 let widened = if signed {
                     self.llvmbuilder
-                        .build_int_s_extend(rvalue_int_value, int_ty, "widen_store")
+                        .build_int_s_extend(rvalue_int_value, int_type, "widen_store")
                         .unwrap()
                 } else {
                     self.llvmbuilder
-                        .build_int_z_extend(rvalue_int_value, int_ty, "widen_store")
+                        .build_int_z_extend(rvalue_int_value, int_type, "widen_store")
                         .unwrap()
                 };
+                
                 rvalue = InternalValue::new(rvalue.ty.clone(), InternalValueKind::RValue(widened.into()));
             }
         }

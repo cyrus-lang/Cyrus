@@ -558,7 +558,7 @@ pub unsafe fn debug_dynamic_type(
         LLVMDIBuilderCreateStructType(
             dctx.builder,
             scope,
-            c"DynValue".as_ptr(),
+            c"DynamicValue".as_ptr(),
             8,
             dctx.file.metadata,
             0,
