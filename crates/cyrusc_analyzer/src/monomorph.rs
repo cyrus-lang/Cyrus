@@ -86,7 +86,7 @@ impl<'a> AnalysisContext<'a> {
 
             if self.reporter.len() > diag_len {
                 self.apply_error_originated_from_on_diag_range(diag_len..=diag_len, |diag| {
-                    diag.hint = Some(format!("Error originates from this method call at {}.", diag_origin));
+                    diag.hint = Some(format!("Error originates from self method call at {}.", diag_origin));
                 });
             }
 
@@ -131,35 +131,31 @@ impl<'a> AnalysisContext<'a> {
                 _monomorph_instance.analyzed = true;
             });
 
-            let func_env = self.create_func_def_env(func_decl.as_func_type());
+            let body_id = func_decl.body.unwrap();
+            let template_body = self.decl_tables.body(body_id);
 
-            self.with_func_env(func_env, |this| {
-                let body_id = func_decl.body.unwrap();
-                let template_body = this.decl_tables.body(body_id);
+            let mut specialized_body = self.specialize_func_body(&template_body, &mut func_decl.params);
 
-                let mut specialized_body = this.specialize_func_body(&template_body, &mut func_decl.params);
+            let diag_len = self.reporter.len();
 
-                let diag_len = this.reporter.len();
+            self.analyze_func_body(&mut specialized_body, &func_decl.ret_type);
 
-                this.analyze_func_body(&mut specialized_body, &func_decl.ret_type);
+            let monomorph_body_id = self.monomorph_registry.insert_monomorph_body(specialized_body);
 
-                let monomorph_body_id = this.monomorph_registry.insert_monomorph_body(specialized_body);
+            let diag_origin = format_loc(&self.source_map, func_call.loc);
 
-                let diag_origin = format_loc(&this.source_map, func_call.loc);
-
-                if this.reporter.len() > diag_len {
-                    this.apply_error_originated_from_on_diag_range(diag_len..=diag_len, |diag| {
-                        diag.hint = Some(format!("Error originates from this function call at {}.", diag_origin));
-                    });
-                }
-
-                this.monomorph_registry.update(monomorph_id, |_monomorph_instance| {
-                    _monomorph_instance.analyzed = true;
-                    _monomorph_instance.body = Some(monomorph_body_id);
-
-                    // ensure unique var_decl_id remapping per monomorph instance
-                    _monomorph_instance.params = func_decl.params.clone();
+            if self.reporter.len() > diag_len {
+                self.apply_error_originated_from_on_diag_range(diag_len..=diag_len, |diag| {
+                    diag.hint = Some(format!("Error originates from self function call at {}.", diag_origin));
                 });
+            }
+
+            self.monomorph_registry.update(monomorph_id, |_monomorph_instance| {
+                _monomorph_instance.analyzed = true;
+                _monomorph_instance.body = Some(monomorph_body_id);
+
+                // ensure unique var_decl_id remapping per monomorph instance
+                _monomorph_instance.params = func_decl.params.clone();
             });
         }
 
@@ -265,9 +261,20 @@ impl<'a> AnalysisContext<'a> {
             return;
         }
 
+        let mut var_decl = template_var_decl.clone();
+
+        if var_decl.ty.is_some() {
+            var_decl.ty = Some(self.substitute_type(&var_decl.ty.unwrap()));
+
+            if let Some(infer) = &self.func_env.infer {
+                var_decl.ty = Some(infer.resolve(&var_decl.ty.unwrap()));
+            }
+        }
+
         let new_var_decl_id = self.decl_tables.insert_var(template_var_decl.clone());
 
         let old_var_decl_id = var_decl_id;
+
         decl_map.insert(old_var_decl_id, new_var_decl_id);
     }
 }
@@ -354,6 +361,8 @@ impl<'a> AnalysisContext<'a> {
                 self.specialize_block_stmt(&mut while_stmt.body, decl_map);
             }
             TypedStmt::Switch(switch_stmt) => {
+                self.specialize_expr(&mut switch_stmt.operand, decl_map);
+
                 for case in &mut switch_stmt.cases {
                     self.specialize_switch_patterns(&mut case.patterns, decl_map);
 
@@ -392,7 +401,9 @@ impl<'a> AnalysisContext<'a> {
             }
 
             TypedSwitchCasePatternKind::Binding { var_decl_id, .. } => {
-                *var_decl_id = decl_map.get(var_decl_id).copied().unwrap();
+                let new_var_decl_id = decl_map.get(var_decl_id).copied().unwrap();
+
+                *var_decl_id = new_var_decl_id
             }
 
             TypedSwitchCasePatternKind::Range(range) => {

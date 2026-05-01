@@ -75,15 +75,20 @@ impl<'a> AnalysisContext<'a> {
 
                     let final_type_args = this.collect_instantiated_type_args(func_decl.generic_params.clone());
 
-                    let ret_type = this.monomorphize_generic_func_call(
-                        &operand_type,
-                        func_call,
-                        func_decl_id,
-                        &mut func_decl,
-                        final_type_args,
-                    )?;
+                    let func_type = func_decl.as_func_type();
+                    let func_env = this.create_func_def_env(func_type, this.func_env.infer.clone());
 
-                    Some(ret_type)
+                    this.with_func_env(func_env, |this| {
+                        let ret_type = this.monomorphize_generic_func_call(
+                            &operand_type,
+                            func_call,
+                            func_decl_id,
+                            &mut func_decl,
+                            final_type_args,
+                        )?;
+
+                        Some(ret_type)
+                    })
                 })
             }
             // normal function
@@ -171,9 +176,12 @@ impl<'a> AnalysisContext<'a> {
                 // normalized later
                 Some(sema_type)
             } else {
-                is_operand_instance = false;
-
-                method_call.operand.ty.clone()
+                method_call.operand.ty.clone().map(|ty| {
+                    if !(ty.is_interface() || ty.is_interface_object()) {
+                        is_operand_instance = true;
+                    }
+                    ty
+                })
             }
         } {
             Some(ty) => ty,
@@ -208,8 +216,7 @@ impl<'a> AnalysisContext<'a> {
     ) -> Option<SemaType> {
         let pure_operand_type = operand_type.const_inner().pointer_inner().clone();
 
-        let is_interface =
-            pure_operand_type.as_interface_object().is_some() || pure_operand_type.as_named_interface().is_some();
+        let is_interface = pure_operand_type.is_interface_object() || pure_operand_type.as_named_interface().is_some();
 
         if is_interface {
             return self.analyze_interface_method_call(method_call, operand_type);
@@ -429,7 +436,6 @@ impl<'a> AnalysisContext<'a> {
                     }
 
                     method_decl.func_decl.params = this.substitute_func_params(method_decl.func_decl.params.clone());
-
                     method_decl.func_decl.ret_type = this.substitute_type(&method_decl.func_decl.ret_type);
 
                     let ret_type = method_decl.func_decl.ret_type.clone();

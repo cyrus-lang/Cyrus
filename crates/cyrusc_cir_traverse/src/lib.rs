@@ -2177,8 +2177,6 @@ impl<'a> CIRTraverse<'a> {
         let method_decl_id = monomorph_instance.template_id.as_method().unwrap();
         let method_decl = self.decl_tables.method_decl(method_decl_id);
 
-        debug_assert!(method_decl.func_decl.decl_contains_any_infer_var());
-
         let mangled_name = mangle_monomorphized_method(
             &self.module_name,
             method_decl_id.0 as usize,

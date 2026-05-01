@@ -36,10 +36,10 @@ use cyrusc_typed_ast::{
 impl<'a> AnalysisContext<'a> {
     /// Fully normalize AND validate a type
     /// This is what we call when an explicit type is used
-    pub fn normalize_and_check_type_formation(&mut self, sema_type: SemaType, loc: Loc) -> Option<SemaType> {
-        let sema_type = self.normalize_sema_type(sema_type, loc)?;
+    pub fn normalize_and_check_type_formation(&mut self, ty: SemaType, loc: Loc) -> Option<SemaType> {
+        let ty = self.normalize_sema_type(ty, loc)?;
 
-        self.check_type_formation(sema_type, loc)
+        self.check_type_formation(ty, loc)
     }
 
     // Fully normalize a type: remove UnresolvedSymbol, expand typedefs,
@@ -289,7 +289,7 @@ impl<'a> AnalysisContext<'a> {
                 if validate {
                     self.validate_param_type(&ty, *loc);
                 }
-                
+
                 *variadic_params = TypedFuncVariadicParam::Typed {
                     var_decl_id: *var_decl_id,
                     ty,

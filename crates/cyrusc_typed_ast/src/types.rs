@@ -542,6 +542,14 @@ impl SemaType {
         }
     }
 
+    #[inline]
+    pub fn is_interface_object(&self) -> bool {
+        match self.const_inner() {
+            SemaType::InterfaceObject(_) => true,
+            _ => false,
+        }
+    }
+
     pub fn contains_infer_var(&self) -> bool {
         match self {
             SemaType::Placeholder => false,
