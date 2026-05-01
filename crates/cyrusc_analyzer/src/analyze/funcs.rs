@@ -79,18 +79,24 @@ impl<'a> AnalysisContext<'a> {
     }
 
     pub(crate) fn analyze_func_decl(&mut self, func_decl: &mut FuncDecl) {
+        let is_generic_func = !func_decl.is_generic();
+
         self.report_if_duplicate_param_names(
             &func_decl.params.list,
             func_decl.params.variadic.as_ref(),
             func_decl.loc,
         );
 
-        func_decl.ret_type = match self.normalize_and_check_type_formation(func_decl.ret_type.clone(), func_decl.loc) {
+        func_decl.ret_type = match self.normalize_sema_type(func_decl.ret_type.clone(), func_decl.loc) {
             Some(ty) => ty,
             None => return,
         };
 
-        self.normalize_func_params(&mut func_decl.params);
+        if is_generic_func {
+            self.check_type_formation(func_decl.ret_type.clone(), func_decl.loc);
+        }
+
+        self.normalize_func_params(&mut func_decl.params, is_generic_func);
     }
 
     pub(crate) fn analyze_func_body(&mut self, body: &mut TypedBlockStmt, ret_type: &SemaType) {
@@ -123,10 +129,10 @@ impl<'a> AnalysisContext<'a> {
         }
     }
 
-    pub(crate) fn validate_param_type(&mut self, sema_type: &SemaType, loc: Loc) {
-        let sema_type = sema_type.const_inner();
+    pub(crate) fn validate_param_type(&mut self, ty: &SemaType, loc: Loc) {
+        let ty = ty.const_inner();
 
-        if sema_type.is_void() {
+        if ty.is_void() {
             self.reporter.report(Diag {
                 level: DiagLevel::Error,
                 kind: Box::new(AnalyzerDiagKind::VoidParameterType),
@@ -135,6 +141,6 @@ impl<'a> AnalysisContext<'a> {
             });
         }
 
-        self.check_type_arity(sema_type.clone(), loc);
+        self.check_type_arity(ty.clone(), loc);
     }
 }

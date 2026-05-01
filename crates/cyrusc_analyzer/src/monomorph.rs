@@ -186,7 +186,7 @@ impl<'a> AnalysisContext<'a> {
         let mut decl_map = FxHashMap::default();
 
         // assign fresh decls for parameters (first-class locals)
-        self.specialize_func_params(params, &mut decl_map);
+        self.collect_and_instantiate_and_specialize_func_params(params, &mut decl_map);
 
         // first pass: create fresh vars and fill decl_map
         for stmt in &mut specialize_body.stmts {
@@ -203,27 +203,31 @@ impl<'a> AnalysisContext<'a> {
         specialize_body
     }
 
-    fn specialize_func_params(&self, params: &mut TypedFuncParams, decl_map: &mut DeclMap) {
+    fn collect_and_instantiate_and_specialize_func_params(&self, params: &mut TypedFuncParams, decl_map: &mut DeclMap) {
         for param_kind in &mut params.list {
-            let param_type = param_kind.param_type();
-
             match param_kind {
                 TypedFuncParamKind::FuncParam(func_param) => {
-                    if let Some(mut var_decl_id) = func_param.var_decl_id {
-                        let var_decl = self.decl_tables.var_decl(var_decl_id);
+                    if let Some(var_decl_id) = func_param.var_decl_id {
+                        let mut var_decl = self.decl_tables.var_decl(var_decl_id);
 
-                        let new_var_decl_id =
-                            self.instantiate_fresh_param_var(&mut var_decl_id, var_decl, param_type, decl_map);
+                        var_decl.ty = Some(func_param.ty.clone());
+
+                        self.instantiate_fresh_var_decl(var_decl_id, &var_decl, decl_map);
+
+                        let new_var_decl_id = decl_map.get(&var_decl_id).copied().unwrap();
 
                         func_param.var_decl_id = Some(new_var_decl_id);
                     }
                 }
                 TypedFuncParamKind::SelfModifier(self_modifier) => {
-                    if let Some(mut var_decl_id) = self_modifier.var_decl_id {
-                        let var_decl = self.decl_tables.var_decl(var_decl_id);
+                    if let Some(var_decl_id) = self_modifier.var_decl_id {
+                        let mut var_decl = self.decl_tables.var_decl(var_decl_id);
 
-                        let new_var_decl_id =
-                            self.instantiate_fresh_param_var(&mut var_decl_id, var_decl, param_type, decl_map);
+                        var_decl.ty = Some(self_modifier.ty.clone());
+
+                        self.instantiate_fresh_var_decl(var_decl_id, &var_decl, decl_map);
+
+                        let new_var_decl_id = decl_map.get(&var_decl_id).copied().unwrap();
 
                         self_modifier.var_decl_id = Some(new_var_decl_id);
                     }
@@ -236,7 +240,7 @@ impl<'a> AnalysisContext<'a> {
     /// `VarDeclID` using the specialization mapping.
     ///
     /// Only used during the declaration-collection pass.
-    fn instantiate_fresh_var_stmt(&self, var_stmt: &mut TypedVarStmt, decl_map: &mut DeclMap) {
+    fn instantiate_fresh_var_stmt(&self, var_stmt: &TypedVarStmt, decl_map: &mut DeclMap) {
         let var_decl = VarDecl {
             name: var_stmt.name.clone(),
             ty: var_stmt.ty.clone(),
@@ -246,7 +250,7 @@ impl<'a> AnalysisContext<'a> {
             loc: var_stmt.loc,
         };
 
-        self.instantiate_fresh_var_decl(&mut var_stmt.var_decl_id, &var_decl, decl_map);
+        self.instantiate_fresh_var_decl(var_stmt.var_decl_id, &var_decl, decl_map);
     }
 
     /// Instantiate a fresh `VarDecl` for a template-local variable.
@@ -255,59 +259,16 @@ impl<'a> AnalysisContext<'a> {
     /// Ensures each template-local variable produces exactly one new
     /// `VarDeclID` per monomorph.
     #[inline]
-    fn instantiate_fresh_var_decl(
-        &self,
-        var_decl_id: &mut VarDeclID,
-        template_var_decl: &VarDecl,
-        decl_map: &mut DeclMap,
-    ) {
+    fn instantiate_fresh_var_decl(&self, var_decl_id: VarDeclID, template_var_decl: &VarDecl, decl_map: &mut DeclMap) {
         // already instantiated earlier in traversal
-        if let Some(&mapped) = decl_map.get(var_decl_id) {
-            *var_decl_id = mapped;
+        if decl_map.get(&var_decl_id).is_some() {
             return;
         }
 
         let new_var_decl_id = self.decl_tables.insert_var(template_var_decl.clone());
 
-        let old_var_decl_id = *var_decl_id;
+        let old_var_decl_id = var_decl_id;
         decl_map.insert(old_var_decl_id, new_var_decl_id);
-
-        *var_decl_id = new_var_decl_id;
-    }
-
-    /// Instantiate a fresh `VarDecl` for a specialized function parameter.
-    ///
-    /// Creates a new `VarDeclID` for the parameter and updates the caller‑
-    /// provided `var_decl_id` in place. Uses `decl_map` to guarantee that
-    /// each template parameter is instantiated exactly once per monomorph.
-    ///
-    /// The parameter's type is replaced with the monomorphized `param_type`
-    /// before insertion. Reuses an existing mapping if the parameter has
-    /// already been instantiated during this specialization pass.
-    #[inline]
-    fn instantiate_fresh_param_var(
-        &self,
-        var_decl_id: &mut VarDeclID,
-        mut template_var_decl: VarDecl,
-        param_type: SemaType,
-        decl_map: &mut DeclMap,
-    ) -> VarDeclID {
-        // already instantiated earlier in traversal
-        if let Some(&mapped_var_decl_id) = decl_map.get(var_decl_id) {
-            *var_decl_id = mapped_var_decl_id;
-            return mapped_var_decl_id;
-        }
-
-        template_var_decl.ty = Some(param_type);
-
-        let new_var_decl_id = self.decl_tables.insert_var(template_var_decl.clone());
-
-        let old_var_decl_id = *var_decl_id;
-        decl_map.insert(old_var_decl_id, new_var_decl_id);
-
-        *var_decl_id = new_var_decl_id;
-
-        new_var_decl_id
     }
 }
 
@@ -635,66 +596,66 @@ impl<'a> AnalysisContext<'a> {
 }
 
 impl<'a> AnalysisContext<'a> {
-    fn collect_and_instantiate_fresh_var_decls(&self, stmt: &mut TypedStmt, decl_map: &mut DeclMap) {
+    fn collect_and_instantiate_fresh_var_decls(&self, stmt: &TypedStmt, decl_map: &mut DeclMap) {
         match stmt {
             TypedStmt::Variable(var_stmt) => {
                 self.instantiate_fresh_var_stmt(var_stmt, decl_map);
             }
             TypedStmt::BlockStmt(block) => {
-                for stmt in &mut block.stmts {
+                for stmt in &block.stmts {
                     self.collect_and_instantiate_fresh_var_decls(stmt, decl_map);
                 }
 
-                for defer in &mut block.defers {
-                    self.collect_and_instantiate_fresh_var_decls(&mut defer.operand, decl_map);
+                for defer in &block.defers {
+                    self.collect_and_instantiate_fresh_var_decls(&defer.operand, decl_map);
                 }
             }
             TypedStmt::For(for_stmt) => {
-                if let Some(initializer) = &mut for_stmt.initializer {
+                if let Some(initializer) = &for_stmt.initializer {
                     self.instantiate_fresh_var_stmt(initializer, decl_map);
                 }
 
-                for stmt in &mut for_stmt.body.stmts {
+                for stmt in &for_stmt.body.stmts {
                     self.collect_and_instantiate_fresh_var_decls(stmt, decl_map);
                 }
             }
             TypedStmt::While(while_stmt) => {
-                for stmt in &mut while_stmt.body.stmts {
+                for stmt in &while_stmt.body.stmts {
                     self.collect_and_instantiate_fresh_var_decls(stmt, decl_map);
                 }
             }
             TypedStmt::Switch(switch_stmt) => {
-                for case in &mut switch_stmt.cases {
-                    for stmt in &mut case.body.stmts {
+                for case in &switch_stmt.cases {
+                    for pattern in &case.patterns {
+                        self.collect_and_instantiate_fresh_var_decls_of_switch_pattern(pattern, decl_map);
+                    }
+
+                    for stmt in &case.body.stmts {
                         self.collect_and_instantiate_fresh_var_decls(stmt, decl_map);
                     }
 
-                    for defer in &mut case.body.defers {
-                        self.collect_and_instantiate_fresh_var_decls(&mut defer.operand, decl_map);
-                    }
-
-                    for pattern in &mut case.patterns {
-                        self.collect_and_instantiate_fresh_var_decls_of_switch_pattern(pattern, decl_map);
+                    for defer in &case.body.defers {
+                        self.collect_and_instantiate_fresh_var_decls(&defer.operand, decl_map);
                     }
                 }
             }
             TypedStmt::TupleExport(tuple_export) => {
-                self.collect_and_instantiate_fresh_var_decls_of_tuple_pattern(&mut tuple_export.pattern, decl_map);
+                self.collect_and_instantiate_fresh_var_decls_of_tuple_pattern(&tuple_export.pattern, decl_map);
             }
-            TypedStmt::Expr(expr) => match &mut expr.kind {
+            TypedStmt::Expr(expr) => match &expr.kind {
                 TypedExprKind::Lambda(lambda) => {
-                    for param_kind in &mut lambda.params.list {
+                    for param_kind in &lambda.params.list {
                         match param_kind {
                             TypedFuncParamKind::FuncParam(func_param) => {
-                                if let Some(var_decl_id) = &mut func_param.var_decl_id {
-                                    let var_decl = self.decl_tables.var_decl(*var_decl_id);
+                                if let Some(var_decl_id) = func_param.var_decl_id {
+                                    let var_decl = self.decl_tables.var_decl(var_decl_id);
 
                                     self.instantiate_fresh_var_decl(var_decl_id, &var_decl, decl_map);
                                 }
                             }
                             TypedFuncParamKind::SelfModifier(self_modifier) => {
-                                if let Some(var_decl_id) = &mut self_modifier.var_decl_id {
-                                    let var_decl = self.decl_tables.var_decl(*var_decl_id);
+                                if let Some(var_decl_id) = self_modifier.var_decl_id {
+                                    let var_decl = self.decl_tables.var_decl(var_decl_id);
 
                                     self.instantiate_fresh_var_decl(var_decl_id, &var_decl, decl_map);
                                 }
@@ -702,13 +663,13 @@ impl<'a> AnalysisContext<'a> {
                         }
                     }
 
-                    if let Some(variadic) = &mut lambda.params.variadic {
+                    if let Some(variadic) = &lambda.params.variadic {
                         match variadic {
                             TypedFuncVariadicParam::UntypedCStyle => {}
                             TypedFuncVariadicParam::Typed { var_decl_id, .. } => {
                                 let var_decl = self.decl_tables.var_decl(*var_decl_id);
 
-                                self.instantiate_fresh_var_decl(var_decl_id, &var_decl, decl_map);
+                                self.instantiate_fresh_var_decl(*var_decl_id, &var_decl, decl_map);
                             }
                         }
                     }
@@ -726,14 +687,14 @@ impl<'a> AnalysisContext<'a> {
 
     fn collect_and_instantiate_fresh_var_decls_of_tuple_pattern(
         &self,
-        pattern: &mut TypedTupleExportPattern,
+        pattern: &TypedTupleExportPattern,
         decl_map: &mut DeclMap,
     ) {
-        match &mut pattern.kind {
+        match &pattern.kind {
             TypedTupleExportPatternKind::Ident(var_decl_id) => {
                 let var_decl = self.decl_tables.var_decl(*var_decl_id);
 
-                self.instantiate_fresh_var_decl(var_decl_id, &var_decl, decl_map);
+                self.instantiate_fresh_var_decl(*var_decl_id, &var_decl, decl_map);
             }
             TypedTupleExportPatternKind::Tuple(patterns) => {
                 for pattern in patterns {
@@ -746,10 +707,10 @@ impl<'a> AnalysisContext<'a> {
 
     fn collect_and_instantiate_fresh_var_decls_of_switch_pattern(
         &self,
-        pattern: &mut TypedSwitchCasePattern,
+        pattern: &TypedSwitchCasePattern,
         decl_map: &mut DeclMap,
     ) {
-        match &mut pattern.kind {
+        match &pattern.kind {
             TypedSwitchCasePatternKind::Wildcard
             | TypedSwitchCasePatternKind::Range(_)
             | TypedSwitchCasePatternKind::Expr(_)
@@ -759,8 +720,8 @@ impl<'a> AnalysisContext<'a> {
 
             TypedSwitchCasePatternKind::Binding { var_decl_id, .. } => {
                 let var_decl = self.decl_tables.var_decl(*var_decl_id);
-                
-                self.instantiate_fresh_var_decl(var_decl_id, &var_decl, decl_map);
+
+                self.instantiate_fresh_var_decl(*var_decl_id, &var_decl, decl_map);
             }
 
             TypedSwitchCasePatternKind::EnumTupleVariant { items, .. } => {
@@ -771,7 +732,7 @@ impl<'a> AnalysisContext<'a> {
 
             TypedSwitchCasePatternKind::EnumStructVariant { items, .. } => {
                 for item in items {
-                    self.collect_and_instantiate_fresh_var_decls_of_switch_pattern(&mut item.pattern, decl_map);
+                    self.collect_and_instantiate_fresh_var_decls_of_switch_pattern(&item.pattern, decl_map);
                 }
             }
         }

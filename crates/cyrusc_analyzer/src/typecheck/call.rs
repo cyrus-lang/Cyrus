@@ -67,18 +67,13 @@ impl<'a> AnalysisContext<'a> {
                 )?;
 
                 self.with_generic_env(generic_env, |this| {
-                    this.normalize_func_params(&mut func_decl.params);
+                    this.normalize_func_params(&mut func_decl.params, false);
 
                     if !this.analyze_call(&mut func_decl, &mut func_call.args, func_call.loc, false) {
                         return None;
                     }
 
                     let final_type_args = this.collect_instantiated_type_args(func_decl.generic_params.clone());
-
-                    assert!(
-                        !func_decl.ret_type.contains_infer_var(),
-                        "monomorphized function contains InferVar!"
-                    );
 
                     let ret_type = this.monomorphize_generic_func_call(
                         &operand_type,
@@ -93,7 +88,7 @@ impl<'a> AnalysisContext<'a> {
             }
             // normal function
             else {
-                self.normalize_func_params(&mut func_decl.params);
+                self.normalize_func_params(&mut func_decl.params, false);
 
                 if !self.analyze_call(&mut func_decl, &mut func_call.args, func_call.loc, false) {
                     return None;
@@ -375,7 +370,7 @@ impl<'a> AnalysisContext<'a> {
         let is_generic_method_call = !generic_env.params.is_empty();
 
         self.with_generic_env(generic_env, |this| {
-            this.normalize_func_params(&mut method_decl.func_decl.params);
+            this.normalize_func_params(&mut method_decl.func_decl.params, true);
 
             // analyze call arguments
             if !this.analyze_call(
@@ -504,7 +499,7 @@ impl<'a> AnalysisContext<'a> {
         )?;
 
         self.with_generic_env(generic_env, |this| {
-            this.normalize_func_params(&mut interface_method_decl.func_decl.params);
+            this.normalize_func_params(&mut interface_method_decl.func_decl.params, true);
 
             interface_method_decl.func_decl.params =
                 this.substitute_func_params(interface_method_decl.func_decl.params);

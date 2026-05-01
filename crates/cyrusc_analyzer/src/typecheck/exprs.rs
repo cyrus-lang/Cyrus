@@ -125,6 +125,10 @@ impl<'a> AnalysisContext<'a> {
 
         expr.ty = Some(normalized_type.clone()?);
 
+        if let Some(infer) = &self.func_env.infer  {
+            expr.ty = Some(infer.resolve(&normalized_type.clone()?));
+        }
+
         // debug
         if cfg!(debug_assertions) {
             if let Some(ty) = expr.ty.clone() {
@@ -150,8 +154,10 @@ impl<'a> AnalysisContext<'a> {
     }
 
     pub(crate) fn analyze_cond_expr(&mut self, cond: &mut TypedExpr) {
-        if let Some(sema_type) = self.analyze_expr(cond, Some(SemaType::Plain(PlainType::Bool))) {
-            self.report_if_not_cond_expr(sema_type, cond.loc);
+        if let Some(ty) = self.analyze_expr(cond, Some(SemaType::Plain(PlainType::Bool))) {
+            if !(ty.is_bool() || ty.is_integer()) {
+                self.report_not_cond_expr(ty, cond.loc);
+            }
         }
     }
 

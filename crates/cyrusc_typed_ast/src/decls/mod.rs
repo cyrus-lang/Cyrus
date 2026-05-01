@@ -19,8 +19,8 @@ use crate::{
     BodyID,
     exprs::TypedExpr,
     stmts::{
-        TypedBlockStmt, TypedEnumVariant, TypedFuncParams, TypedGenericParams, TypedImplementInterface,
-        TypedStructField, TypedUnionField,
+        TypedBlockStmt, TypedEnumVariant, TypedFuncParams, TypedFuncVariadicParam, TypedGenericParams,
+        TypedImplementInterface, TypedStructField, TypedUnionField,
     },
     types::{SemaType, TypeDeclID, TypedFuncType},
 };
@@ -327,6 +327,28 @@ impl FuncDecl {
             is_public,
             loc: self.loc,
         }
+    }
+
+    #[inline]
+    pub fn decl_contains_any_infer_var(&self) -> bool {
+        for param in &self.params.list {
+            if param.param_type().contains_infer_var() {
+                return true;
+            }
+        }
+
+        if let Some(variadic) = &self.params.variadic {
+            match variadic {
+                TypedFuncVariadicParam::Typed { ty, .. } => {
+                    if ty.contains_infer_var() {
+                        return true;
+                    }
+                }
+                TypedFuncVariadicParam::UntypedCStyle => {}
+            }
+        }
+
+        false
     }
 }
 

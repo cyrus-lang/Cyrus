@@ -1299,13 +1299,9 @@ impl<'source_file> Parser<'source_file> {
         let mutability = self.parse_mutability();
 
         let kind = match &self.current_token().kind {
-            TokenKind::Underscore => {
-                self.next_token();
-                ExportPatternKind::Ignore
-            }
+            TokenKind::Underscore => ExportPatternKind::Ignore,
             TokenKind::Ident { .. } => {
                 let ident = self.parse_ident()?;
-                self.next_token();
 
                 ExportPatternKind::Ident(ident)
             }
@@ -1317,6 +1313,7 @@ impl<'source_file> Parser<'source_file> {
                 if !matches!(self.current_token().kind, TokenKind::RightParen) {
                     loop {
                         let pattern = self.parse_export_pattern()?;
+                        self.next_token();
 
                         patterns.push(pattern);
 
@@ -1386,8 +1383,7 @@ impl<'source_file> Parser<'source_file> {
 
         // optional initializer
         let rhs = {
-            if self.peek_token_is(TokenKind::Assign) {
-                self.next_token();
+            if self.current_token_is(TokenKind::Assign) {
                 self.next_token();
                 Some(self.parse_expr(Precedence::Lowest)?)
             } else {

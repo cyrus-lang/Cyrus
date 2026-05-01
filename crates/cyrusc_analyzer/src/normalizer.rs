@@ -252,7 +252,7 @@ impl<'a> AnalysisContext<'a> {
         }
     }
 
-    pub(crate) fn normalize_func_params(&mut self, params: &mut TypedFuncParams) {
+    pub(crate) fn normalize_func_params(&mut self, params: &mut TypedFuncParams, validate: bool) {
         // analyze static arguments
         for param in params.list.iter_mut() {
             match param {
@@ -263,14 +263,18 @@ impl<'a> AnalysisContext<'a> {
 
                     typed_func_param.ty = normalized_type.clone();
 
-                    self.validate_param_type(&typed_func_param.ty, typed_func_param.loc);
+                    if validate {
+                        self.validate_param_type(&typed_func_param.ty, typed_func_param.loc);
+                    }
                 }
                 TypedFuncParamKind::SelfModifier(self_modifier) => {
                     let normalized_type = self
                         .normalize_sema_type(self_modifier.ty.clone(), self_modifier.loc)
                         .unwrap();
 
-                    self.validate_param_type(&normalized_type, self_modifier.loc);
+                    if validate {
+                        self.validate_param_type(&normalized_type, self_modifier.loc);
+                    }
                 }
             }
         }
@@ -282,7 +286,10 @@ impl<'a> AnalysisContext<'a> {
                     None => return,
                 };
 
-                self.validate_param_type(&ty, *loc);
+                if validate {
+                    self.validate_param_type(&ty, *loc);
+                }
+                
                 *variadic_params = TypedFuncVariadicParam::Typed {
                     var_decl_id: *var_decl_id,
                     ty,

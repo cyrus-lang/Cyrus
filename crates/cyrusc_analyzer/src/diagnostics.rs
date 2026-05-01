@@ -498,15 +498,13 @@ impl<'a> AnalysisContext<'a> {
     }
 
     /// Validates that an expression type is suitable for use as a boolean condition.
-    pub(crate) fn report_if_not_cond_expr(&mut self, sema_type: SemaType, loc: Loc) {
-        if !sema_type.is_bool() {
-            self.reporter.report(Diag {
-                level: DiagLevel::Error,
-                kind: Box::new(AnalyzerDiagKind::ConditionExprMustBeOfTypeBool),
-                loc: Some(loc),
-                hint: None,
-            });
-        }
+    pub(crate) fn report_not_cond_expr(&mut self, sema_type: SemaType, loc: Loc) {
+        self.reporter.report(Diag {
+            level: DiagLevel::Error,
+            kind: Box::new(AnalyzerDiagKind::ConditionExprMustBeOfTypeBool),
+            loc: Some(loc),
+            hint: None,
+        });
     }
 
     pub(crate) fn report_if_duplicate_param_names(
