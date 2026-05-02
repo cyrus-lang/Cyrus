@@ -233,8 +233,8 @@ pub struct TypedReturnStmt {
 
 #[derive(Debug, Clone)]
 pub struct TypedGlobalVarStmt {
-    pub global_var_decl_id: GlobalVarDeclID,
     pub file_id: FileID,
+    pub global_var_decl_id: GlobalVarDeclID,
     pub name: String,
     pub ty: Option<SemaType>,
     pub expr: Option<TypedExpr>,
@@ -293,6 +293,7 @@ pub struct TypedFuncDefStmt {
 
 #[derive(Debug, Clone)]
 pub struct TypedFuncDeclStmt {
+    pub file_id: FileID,
     pub func_decl_id: FuncDeclID,
     pub name: String,
     pub generic_params: TypedGenericParams,
@@ -749,6 +750,7 @@ impl TypedFuncParamKind {
 impl TypedFuncDeclStmt {
     pub fn as_func_decl(&self) -> FuncDecl {
         FuncDecl {
+            file_id: self.file_id,
             name: self.usable_name(),
             params: self.params.clone(),
             generic_params: self.generic_params.clone(),

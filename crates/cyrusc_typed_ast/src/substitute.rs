@@ -68,13 +68,14 @@ pub fn substitute_sema_type_with_type_args(
             })
         }
         SemaType::InterfaceObject(interface_object) => {
-            let concrete_type = substitute_sema_type_with_type_args(&interface_object.concrete_type, generic_params, type_args);
+            let concrete_type =
+                substitute_sema_type_with_type_args(&interface_object.concrete_type, generic_params, type_args);
 
             SemaType::InterfaceObject(InterfaceObjectType {
                 interface_type: interface_object.interface_type.clone(),
                 concrete_type: Box::new(concrete_type),
                 vtable_id: interface_object.vtable_id,
-                loc: interface_object.loc
+                loc: interface_object.loc,
             })
         }
         SemaType::Array(array) => {
@@ -166,6 +167,8 @@ pub fn instantiate_struct_decl_with_type_args(struct_decl: &StructDecl, type_arg
         modifiers: struct_decl.modifiers.clone(),
         align: struct_decl.align,
         loc: struct_decl.loc,
+
+        is_normalized: true,
     }
 }
 
@@ -191,6 +194,8 @@ pub fn instantiate_union_decl_with_type_args(union_decl: &UnionDecl, type_args: 
         modifiers: union_decl.modifiers.clone(),
         align: union_decl.align,
         loc: union_decl.loc,
+
+        is_normalized: true,
     }
 }
 
@@ -250,6 +255,8 @@ pub fn instantiate_enum_decl_with_type_args(enum_decl: &EnumDecl, type_args: &Ty
         tag_type: enum_decl.tag_type.clone(),
         align: enum_decl.align,
         loc: enum_decl.loc,
+
+        is_normalized: true,
     }
 }
 
@@ -262,6 +269,7 @@ pub fn instantiate_method_decl(
     MethodDecl {
         func_decl: instantiate_func_decl(&method_decl.func_decl, interface_generic_params, type_args),
         body: method_decl.body,
+        object_name: method_decl.object_name.clone(),
     }
 }
 
@@ -275,6 +283,7 @@ pub fn instantiate_func_decl(
     let ret_type = substitute_sema_type_with_type_args(&func_decl.ret_type, generic_params, type_args);
 
     FuncDecl {
+        file_id: func_decl.file_id,
         name: func_decl.name.clone(),
         params,
         generic_params: func_decl.generic_params.clone(),

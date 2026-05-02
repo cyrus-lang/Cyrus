@@ -46,6 +46,7 @@ struct CIRTraverse<'a> {
     program_tree: Box<TypedProgramTree>,
     decl_tables: Arc<DeclTablesRegistry>,
     formatter: &'a dyn Formatter,
+    query: &'a dyn SymbolQuery,
     target: &'a ABITarget,
     module_name: String,
 
@@ -66,6 +67,7 @@ impl<'a> CIRTraverse<'a> {
         module_name: String,
         decl_tables: Arc<DeclTablesRegistry>,
         formatter: &'a dyn Formatter,
+        query: &'a dyn SymbolQuery,
         vtable_registry: Arc<VTableRegistry>,
         monomorph_registry: Arc<MonomorphRegistry>,
         target: &'a ABITarget,
@@ -75,6 +77,7 @@ impl<'a> CIRTraverse<'a> {
             module_name,
             decl_tables,
             formatter,
+            query,
             vtable_registry,
             monomorph_registry,
             target,
@@ -1063,13 +1066,8 @@ impl<'a> CIRTraverse<'a> {
 
         if mangle_name {
             let mangled_name = mangle_func(&cir_func_def.modifiers, &self.module_name, &cir_func_def.name);
-            cir_func_def.name = mangled_name.clone();
 
-            if let Some(func_decl_id) = func_def.func_decl_id {
-                self.decl_tables.with_func_decl_mut(func_decl_id, |_func_decl| {
-                    _func_decl.name = mangled_name.clone();
-                });
-            }
+            cir_func_def.name = mangled_name.clone();
         }
 
         cir_func_def
@@ -1086,7 +1084,8 @@ impl<'a> CIRTraverse<'a> {
         let ret_type = self.lower_sema_type(&func_decl.ret_type);
 
         let func_name = if mangle_name {
-            mangle_func(&func_decl.modifiers, &self.module_name, &func_decl.name)
+            let module_name = self.query.lookup_module_name(func_decl.file_id).unwrap();
+            mangle_func(&func_decl.modifiers, &module_name, &func_decl.name)
         } else {
             func_decl.name.clone()
         };
@@ -1095,10 +1094,6 @@ impl<'a> CIRTraverse<'a> {
 
         if let Some(func_decl_id) = func_decl_id_opt {
             self.decl_to_ir_value_map.insert(DeclID::Func(func_decl_id), irv_id);
-
-            self.decl_tables.with_func_decl_mut(func_decl_id, |_func_decl| {
-                _func_decl.name = func_name.clone();
-            });
         }
 
         let mut cir_func_decl = CIRFuncDeclStmt {
@@ -1992,7 +1987,14 @@ impl<'a> CIRTraverse<'a> {
                     loc: tuple_type.loc,
                 })
             }
-            SemaType::Unresolved(_) => unreachable!("unexpected unresolved type"),
+            SemaType::Unresolved(unresolved_type) => {
+                if cfg!(debug_assertions) {
+                    let symbol_id = unresolved_type.as_base_symbol_id().unwrap();
+                    let symbol_name = self.formatter.format_symbol_name(symbol_id);
+                    dbg!("unresolved symbol: {}", symbol_name);
+                }
+                unreachable!("unexpected unresolved type")
+            }
             SemaType::GenericParam(_) => unreachable!("Unexpected generic param"),
             SemaType::SelfType(_) => unreachable!("unexpected self type"),
             SemaType::InferVar(_) => unreachable!("unexpected infer var type"),
@@ -2149,7 +2151,13 @@ impl<'a> CIRTraverse<'a> {
             return irv_id;
         }
 
-        let method_decl = self.decl_tables.method_decl(method_decl_id);
+        let mut method_decl = self.decl_tables.method_decl(method_decl_id);
+
+        let module_name = self.query.lookup_module_name(method_decl.func_decl.file_id).unwrap();
+        let object_name = method_decl.object_name.unwrap();
+        let method_name = mangle_method(&module_name, &object_name, &method_decl.func_decl.name);
+
+        method_decl.func_decl.name = method_name;
 
         let cir_func_decl_stmt = self.lower_func_decl(None, &method_decl.func_decl, false);
 
@@ -2345,6 +2353,7 @@ pub fn walk_program_trees_in_parallel(
                     module_name,
                     decl_tables.clone(),
                     formatter,
+                    query,
                     vtable_registry,
                     monomorph_registry.clone(),
                     target,

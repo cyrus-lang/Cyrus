@@ -220,6 +220,8 @@ impl<'a> AnalysisContext<'a> {
             },
             align: struct_value.align,
             loc: struct_value.loc,
+
+            is_normalized: false,
         }
     }
 

@@ -21,7 +21,7 @@ use cyrusc_diagcentral::{Diag, DiagLevel};
 use cyrusc_source_loc::Loc;
 use cyrusc_typed_ast::{
     GenericParamID,
-    decls::{DeclID, EnumDeclID, FuncDecl},
+    decls::{DeclID, EnumDeclID, FuncDecl, StructDeclID, UnionDeclID},
     exprs::TypedSelfType,
     stmts::{
         TypedEnumVariant, TypedFuncParamKind, TypedFuncParams, TypedFuncTypeParams, TypedFuncTypeVariadicParam,
@@ -49,13 +49,7 @@ impl<'a> AnalysisContext<'a> {
             SemaType::Placeholder => Some(ty),
             SemaType::InferVar(_) => Some(ty),
             SemaType::Unresolved(unresolved_type) => self.normalize_unresolved_type(unresolved_type, loc),
-            SemaType::Named(ref named_type) => {
-                if let Some(enum_decl_id) = named_type.type_decl_id.as_enum() {
-                    self.normalize_enum_decl(enum_decl_id, &named_type.type_args)
-                } else {
-                    Some(ty)
-                }
-            }
+            SemaType::Named(ref named_type) => self.normalize_named_type(named_type),
             SemaType::GenericParam(generic_param_id) => self.normalize_generic_param(generic_param_id),
             SemaType::Pointer(inner) => self.normalize_pointer(*inner, loc),
             SemaType::Const(inner) => self.normalize_const(*inner, loc),
@@ -70,8 +64,81 @@ impl<'a> AnalysisContext<'a> {
         }
     }
 
+    fn normalize_named_type(&mut self, named_type: &NamedType) -> Option<SemaType> {
+        match named_type.type_decl_id {
+            TypeDeclID::Enum(enum_decl_id) => self.normalize_enum_decl(enum_decl_id, &named_type.type_args),
+            TypeDeclID::Struct(struct_decl_id) => self.normalize_struct_decl(struct_decl_id, &named_type.type_args),
+            TypeDeclID::Union(union_decl_id) => self.normalize_union_decl(union_decl_id, &named_type.type_args),
+
+            TypeDeclID::Interface(_) | TypeDeclID::Typedef(_) => Some(SemaType::Named(named_type.clone())),
+        }
+    }
+
+    fn normalize_struct_decl(&mut self, struct_decl_id: StructDeclID, type_args: &TypedTypeArgs) -> Option<SemaType> {
+        let mut struct_decl = self.decl_tables.struct_decl(struct_decl_id);
+
+        if struct_decl.is_normalized {
+            return Some(SemaType::Named(NamedType {
+                type_decl_id: TypeDeclID::Struct(struct_decl_id),
+                type_args: type_args.clone(),
+            }));
+        }
+
+        for field in &mut struct_decl.fields {
+            field.ty = match self.normalize_sema_type(field.ty.clone(), field.loc) {
+                Some(ty) => ty,
+                None => continue,
+            };
+        }
+
+        self.decl_tables.with_struct_decl_mut(struct_decl_id, |_struct_decl| {
+            _struct_decl.fields = struct_decl.fields;
+            _struct_decl.is_normalized = true;
+        });
+
+        Some(SemaType::Named(NamedType {
+            type_decl_id: TypeDeclID::Struct(struct_decl_id),
+            type_args: type_args.clone(),
+        }))
+    }
+
+    fn normalize_union_decl(&mut self, union_decl_id: UnionDeclID, type_args: &TypedTypeArgs) -> Option<SemaType> {
+        let mut union_decl = self.decl_tables.union_decl(union_decl_id);
+
+        if union_decl.is_normalized {
+            return Some(SemaType::Named(NamedType {
+                type_decl_id: TypeDeclID::Union(union_decl_id),
+                type_args: type_args.clone(),
+            }));
+        }
+
+        for field in &mut union_decl.fields {
+            field.ty = match self.normalize_sema_type(field.ty.clone(), field.loc) {
+                Some(ty) => ty,
+                None => continue,
+            };
+        }
+
+        self.decl_tables.with_union_decl_mut(union_decl_id, |_union_decl| {
+            _union_decl.fields = union_decl.fields;
+            _union_decl.is_normalized = true;
+        });
+
+        Some(SemaType::Named(NamedType {
+            type_decl_id: TypeDeclID::Union(union_decl_id),
+            type_args: type_args.clone(),
+        }))
+    }
+
     fn normalize_enum_decl(&mut self, enum_decl_id: EnumDeclID, type_args: &TypedTypeArgs) -> Option<SemaType> {
         let mut enum_decl = self.decl_tables.enum_decl(enum_decl_id);
+
+        if enum_decl.is_normalized {
+            return Some(SemaType::Named(NamedType {
+                type_decl_id: TypeDeclID::Enum(enum_decl_id),
+                type_args: type_args.clone(),
+            }));
+        }
 
         for variant in &mut enum_decl.variants {
             match variant {
@@ -84,6 +151,7 @@ impl<'a> AnalysisContext<'a> {
 
         self.decl_tables.with_enum_decl_mut(enum_decl_id, |_enum_decl| {
             _enum_decl.variants = enum_decl.variants;
+            _enum_decl.is_normalized = true;
         });
 
         Some(SemaType::Named(NamedType {

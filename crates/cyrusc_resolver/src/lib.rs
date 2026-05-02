@@ -214,6 +214,16 @@ impl Resolver {
         module_names.insert(file_id, name.to_string());
     }
 
+    pub(crate) fn resolve_local_scope_label(&self, name: &str) -> Option<LabelID> {
+        for scope in self.local_scopes_into_iter() {
+            if let Some(label_id) = scope.resolve_label(name) {
+                return Some(label_id);
+            }
+        }
+
+        None
+    }
+
     /// Resolves a symbol by searching the active local scope stack.
     ///
     /// Lookup proceeds from the innermost scope outward until a matching

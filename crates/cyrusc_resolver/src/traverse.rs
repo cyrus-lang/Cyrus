@@ -625,6 +625,8 @@ impl Resolver {
             modifiers: union_modifiers,
             align: union_type.align,
             loc: union_type.loc,
+
+            is_normalized: false,
         });
 
         Some(SemaType::Named(NamedType {
@@ -653,6 +655,8 @@ impl Resolver {
             modifiers: enum_modifiers,
             align: enum_type.align,
             loc: enum_type.loc,
+
+            is_normalized: false,
         });
 
         Some(SemaType::Named(NamedType {
@@ -690,6 +694,8 @@ impl Resolver {
             modifiers: struct_modifiers,
             align: struct_type.align,
             loc: struct_type.loc,
+
+            is_normalized: false,
         });
 
         Some(SemaType::Named(NamedType {
@@ -894,6 +900,7 @@ impl Resolver {
                         is_func_decl: true,
                         body: None,
 
+                        file_id: this.current_module_file_id.unwrap(),
                         name: func_decl_stmt.ident.as_string(),
                         generic_params: method_generic_params,
                         params: TypedFuncParams { list: params, variadic },
@@ -905,6 +912,7 @@ impl Resolver {
                         loc: func_decl_stmt.loc,
                     },
                     body: None,
+                    object_name: Some(name.clone()),
                 };
 
                 let method_decl_id = this.decl_tables.insert_method(method_decl);
@@ -973,6 +981,8 @@ impl Resolver {
                 modifiers: union_decl.modifiers.clone(),
                 align: union_decl.align.clone(),
                 loc,
+
+                is_normalized: false,
             });
 
             this.with_global_symbol_mut(symbol_id, |symbol_entry| {
@@ -1125,6 +1135,8 @@ impl Resolver {
                 modifiers: enum_decl.modifiers.clone(),
                 align: enum_decl.align.clone(),
                 loc,
+
+                is_normalized: false,
             });
 
             this.with_global_symbol_mut(symbol_id, |symbol_entry| {
@@ -1168,6 +1180,7 @@ impl Resolver {
         };
 
         let global_var_decl_id = self.decl_tables.insert_global_var(GlobalVarDecl {
+            file_id: self.current_module_file_id.unwrap(),
             name: name.clone(),
             ty: sema_type.clone(),
             rhs: typed_expr.clone(),
@@ -1182,8 +1195,8 @@ impl Resolver {
         });
 
         Some(TypedStmt::GlobalVar(TypedGlobalVarStmt {
-            global_var_decl_id,
             file_id: self.current_module_file_id.unwrap(),
+            global_var_decl_id,
             name,
             ty: sema_type,
             expr: typed_expr,
@@ -1193,7 +1206,7 @@ impl Resolver {
         }))
     }
 
-    fn resolve_method_decls(&mut self, methods: &[ASTFuncDefStmt]) -> MethodDecls {
+    fn resolve_method_decls(&mut self, object_name: &str, methods: &[ASTFuncDefStmt]) -> MethodDecls {
         let mut method_decls = MethodDecls::new();
 
         for ast_method in methods {
@@ -1223,6 +1236,7 @@ impl Resolver {
                     is_func_decl: false,
                     body: None,
 
+                    file_id: self.current_module_file_id.unwrap(),
                     name: method_name.clone(),
                     params: TypedFuncParams { list: params, variadic },
                     ret_type,
@@ -1231,6 +1245,7 @@ impl Resolver {
                     loc: ast_method.loc,
                 },
                 body: None,
+                object_name: Some(object_name.to_string()),
             });
 
             method_decls.insert(method_name.to_string(), method_decl_id);
@@ -1282,7 +1297,7 @@ impl Resolver {
 
         self.report_if_duplicate_method_names(object_name, ast_methods);
 
-        let method_decls = self.resolve_method_decls(ast_methods);
+        let method_decls = self.resolve_method_decls(object_name, ast_methods);
 
         self.resolve_method_bodies(&method_decls, ast_methods);
 
@@ -1342,6 +1357,8 @@ impl Resolver {
                 modifiers: struct_decl.modifiers.clone(),
                 align: struct_decl.align.clone(),
                 loc,
+
+                is_normalized: false,
             });
 
             this.with_global_symbol_mut(symbol_id, |symbol_entry| {
@@ -1511,6 +1528,7 @@ impl Resolver {
             is_func_decl: true,
             body: None,
 
+            file_id: self.current_module_file_id.unwrap(),
             name,
             generic_params: generic_params.clone(),
             params: TypedFuncParams {
@@ -1529,6 +1547,7 @@ impl Resolver {
         });
 
         Some(TypedStmt::FuncDecl(TypedFuncDeclStmt {
+            file_id: self.current_module_file_id.unwrap(),
             func_decl_id,
             name: ast_func_decl.ident.as_string(),
             generic_params,
@@ -1565,6 +1584,7 @@ impl Resolver {
             is_func_decl: false,
             body: None,
 
+            file_id: self.current_module_file_id.unwrap(),
             name: func_def.ident.as_string(),
             generic_params: generic_params.clone(),
             params: TypedFuncParams {
@@ -1659,6 +1679,8 @@ impl Resolver {
     fn resolve_block_stmt(&mut self, block_stmt: &ASTBlockStmt) -> Option<TypedBlockStmt> {
         let mut typed_body: Vec<TypedStmt> = Vec::new();
         let mut defers: Vec<TypedDeferStmt> = Vec::new();
+
+        self.collect_labels_in_block(block_stmt);
 
         for stmt in &block_stmt.stmts {
             match stmt {
@@ -2006,9 +2028,7 @@ impl Resolver {
     }
 
     fn resolve_goto_stmt(&self, goto: &ASTGotoStmt) -> Option<TypedStmt> {
-        let current_scope = self.current_local_scope().unwrap();
-
-        if let Some(label_id) = current_scope.resolve_label(&goto.name.value) {
+        if let Some(label_id) = self.resolve_local_scope_label(&goto.name.value) {
             Some(TypedStmt::Goto(TypedGotoStmt {
                 name: goto.name.as_string(),
                 label_id: Some(label_id),
@@ -2030,24 +2050,7 @@ impl Resolver {
     fn resolve_label_stmt(&mut self, label: &ASTLabelStmt) -> Option<TypedStmt> {
         let name = label.name.as_string();
 
-        if self.current_local_scope().unwrap().contains_label(&name) {
-            self.reporter.report(Diag {
-                level: DiagLevel::Error,
-                kind: Box::new(ResolverDiagKind::LabelAlreadyDefined {
-                    label_name: label.name.to_string(),
-                }),
-                loc: Some(label.loc),
-                hint: None,
-            });
-
-            return None;
-        }
-
-        let label_id = self.id_gen.label_id();
-
-        self.current_local_scope_mut()
-            .unwrap()
-            .insert_label(name.clone(), label_id);
+        let label_id = self.resolve_local_scope_label(&name).unwrap();
 
         Some(TypedStmt::Label(TypedLabelStmt {
             name,
@@ -2656,5 +2659,31 @@ impl Resolver {
             .insert(ident.as_string(), symbol_id);
 
         Some(())
+    }
+
+    fn collect_labels_in_block(&mut self, block_stmt: &ASTBlockStmt) {
+        for stmt in &block_stmt.stmts {
+            if let ASTStmt::Label(label_stmt) = stmt {
+                let name = label_stmt.name.as_string();
+
+                if self.resolve_local_scope_label(&name).is_some() {
+                    self.reporter.report(Diag {
+                        level: DiagLevel::Error,
+                        kind: Box::new(ResolverDiagKind::LabelAlreadyDefined {
+                            label_name: label_stmt.name.to_string(),
+                        }),
+                        loc: Some(label_stmt.loc),
+                        hint: None,
+                    });
+                    continue;
+                }
+
+                let label_id = self.id_gen.label_id();
+
+                self.current_local_scope_mut()
+                    .unwrap()
+                    .insert_label(name.clone(), label_id);
+            }
+        }
     }
 }

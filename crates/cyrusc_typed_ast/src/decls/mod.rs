@@ -28,7 +28,7 @@ use cyrusc_ast::{
     abi::{ReprKind, Visibility},
     modifiers::{EnumModifiers, FuncModifiers, GlobalVarModifiers, StructModifiers, UnionModifiers},
 };
-use cyrusc_source_loc::Loc;
+use cyrusc_source_loc::{FileID, Loc};
 use indexmap::IndexMap;
 use std::hash::Hash;
 
@@ -90,6 +90,8 @@ pub struct StructDecl {
     pub modifiers: StructModifiers,
     pub align: Option<usize>,
     pub loc: Loc,
+
+    pub is_normalized: bool
 }
 
 #[derive(Debug, Clone)]
@@ -102,6 +104,8 @@ pub struct UnionDecl {
     pub modifiers: UnionModifiers,
     pub align: Option<usize>,
     pub loc: Loc,
+
+    pub is_normalized: bool
 }
 
 #[derive(Debug, Clone)]
@@ -115,10 +119,13 @@ pub struct EnumDecl {
     pub tag_type: Option<SemaType>,
     pub align: Option<usize>,
     pub loc: Loc,
+
+    pub is_normalized: bool
 }
 
 #[derive(Debug, Clone)]
 pub struct FuncDecl {
+    pub file_id: FileID,
     pub name: String,
     pub params: TypedFuncParams,
     pub generic_params: TypedGenericParams,
@@ -144,6 +151,9 @@ pub struct MethodDecl {
     /// Concrete body of the method, used for both normal methods and
     /// monomorphized generic instances.
     pub body: Option<BodyID>,
+
+    /// Object name is used for name-mangling in CIR layer.
+    pub object_name: Option<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -166,6 +176,7 @@ pub struct InterfaceDecl {
 
 #[derive(Debug, Clone)]
 pub struct GlobalVarDecl {
+    pub file_id: FileID,
     pub name: String,
     pub ty: Option<SemaType>,
     pub rhs: Option<TypedExpr>,

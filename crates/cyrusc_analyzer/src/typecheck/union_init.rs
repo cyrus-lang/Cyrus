@@ -205,6 +205,8 @@ impl<'a> AnalysisContext<'a> {
             },
             align: None,
             loc: union_value.loc,
+
+            is_normalized: false,
         }
     }
 }
