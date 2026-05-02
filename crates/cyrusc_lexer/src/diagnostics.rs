@@ -14,7 +14,7 @@
  * You should have received a copy of the GNU General Public License
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
-use cyrusc_diagcentral::{Diag, DiagKind, DiagLevel, DiagLoc, display_single_diag, source_loc::SourceLoc};
+use cyrusc_diagcentral::DiagKind;
 use thiserror::Error;
 
 #[derive(Debug, Error, Clone)]
@@ -34,24 +34,11 @@ pub enum LexicalDiagKind {
     #[error("Unterminated multi-line comment.")]
     UnterminatedMultiLineComment,
 
-    #[error("Empty char literal is invalid.")]
-    EmptyCharLiteral,
+    #[error("Invalid escape sequence.")]
+    InvalidEscapeSequence,
 
     #[error("Invalid character: '{0}'.")]
     InvalidChar(char),
 }
 
 impl DiagKind for LexicalDiagKind {}
-
-pub fn lexer_invalid_char_error(file: String, line: usize, column: usize, ch: char) -> Diag {
-    display_single_diag!(Diag {
-        level: DiagLevel::Error,
-        kind: Box::new(LexicalDiagKind::InvalidChar(ch)),
-        location: Some(DiagLoc::new(SourceLoc {
-            file_path: file,
-            column,
-            line,
-        })),
-        hint: None,
-    });
-}

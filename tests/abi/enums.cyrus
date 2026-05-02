@@ -1,0 +1,23 @@
+// @stdout: enum_color=30,20,10
+// @compilerArgs: -z=./tests/abi/enum_library.c
+
+import std::libc{printf};
+import std::libc::abi{c_int};
+
+repr(c) enum Color {
+    Red = 1,
+    Green = 2,
+    Blue = 3
+}
+
+extern "C" fn enum_color(color: Color) c_int;
+
+pub fn main() {
+    const color = Color.Red;
+    
+    printf("enum_color=%d,%d,%d", 
+        enum_color(.Blue),
+        enum_color(.Green),
+        enum_color(color)
+    );
+}

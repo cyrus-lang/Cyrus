@@ -14,48 +14,48 @@
  * You should have received a copy of the GNU General Public License
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
+
 use crate::{
     OwnedModule,
     builder::{
         control_flow::CFEntry,
-        irreg::{LocalIRValue, LocalIRValueRegistry, LocalIRValueRegistryRef},
-        values::{InternalValue, InternalValueKind},
+        irreg::{LocalIRValueRegistry, LocalIRValueRegistryRef},
     },
-    llvm::abi::modifiers::apply_global_var_modifiers,
+    llvm::debug_info::{BlockScope, DebugContext, create_debug_lexical_block, debug_current_scope, set_debug_location},
 };
-use cyrusc_cir::{
-    CIRBlockStmt, CIRGlobalVarStmt, CIRProgramTree, CIRReturnStmt, CIRStmt, CIRVarStmt, cir_enum_as_enum_ty,
-    cir_func_def_as_decl, cir_struct_as_struct_ty, cir_union_as_union_ty, monomorph::CIRMonomorphRegistry,
+use cyrusc_internal::{
+    abi::{args::ABIFunctionInfo, target::ABITarget},
+    cir::cir::{CIRBlockStmt, CIRModule, CIRStmt, cir_func_decl_as_func_type, cir_func_def_as_decl},
+    vtable::VTableRegistry,
 };
-use cyrusc_tast::LabelID;
 use cyrusc_tui_utils::tui_compiled;
+use cyrusc_typed_ast::LabelID;
 use inkwell::{
-    basic_block::BasicBlock,
-    builder::Builder,
-    context::Context,
-    module::Module,
-    targets::TargetMachine,
-    types::{AnyType, BasicTypeEnum},
-    values::{BasicValueEnum, FunctionValue, GlobalValue},
+    basic_block::BasicBlock, builder::Builder, context::Context, module::Module, targets::TargetMachine,
+    values::FunctionValue,
 };
-use std::{
-    cell::RefCell,
-    collections::HashMap,
-    rc::Rc,
-    sync::{Arc, Mutex},
-};
+use std::{cell::RefCell, collections::HashMap, rc::Rc, sync::Arc};
 
-pub(crate) struct IRBuilderCtx<'ll> {
+pub(crate) struct CodeGenIRBuilder<'ll> {
+    pub(crate) target: &'ll ABITarget,
     pub(crate) llvmctx: &'ll Context,
     pub(crate) llvmbuilder: &'ll Builder<'ll>,
     pub(crate) llvmmodule: Rc<RefCell<Module<'ll>>>,
     pub(crate) llvmtm: &'ll TargetMachine,
     pub(crate) irreg: LocalIRValueRegistryRef<'ll>,
-    pub(crate) cur_fn: Option<FunctionValue<'ll>>,
+    pub(crate) cur_func: Option<FunctionValue<'ll>>,
+    pub(crate) cur_abi_func_info: Option<ABIFunctionInfo>,
     pub(crate) blockreg: BlockRegistry<'ll>,
-    pub(crate) monomorph_registry: Arc<Mutex<CIRMonomorphRegistry>>,
-    // lambda name (auto increment)
+    pub(crate) defer_stack: Vec<Vec<CIRStmt>>,
+
+    pub(crate) cir_module: &'ll CIRModule,
+
+    // lambda abi name (auto increment)
     pub(crate) lambda_id: usize,
+
+    pub(crate) dctx: DebugContext,
+
+    pub(crate) vtable_registry: Arc<VTableRegistry>,
 }
 
 #[derive(Debug, Clone)]
@@ -66,12 +66,15 @@ pub(crate) struct BlockRegistry<'ll> {
     pub(crate) labels: HashMap<LabelID, BasicBlock<'ll>>,
 }
 
-impl<'ll> IRBuilderCtx<'ll> {
+impl<'ll> CodeGenIRBuilder<'ll> {
     pub fn new(
         owned_module: &'ll OwnedModule,
+        cir_module: &'ll CIRModule,
+        target: &'ll ABITarget,
         llvmbuilder: &'ll Builder<'ll>,
         llvmtm: &'ll TargetMachine,
-        monomorph_registry: Arc<Mutex<CIRMonomorphRegistry>>,
+        dctx: DebugContext,
+        vtable_registry: Arc<VTableRegistry>,
     ) -> Self {
         let llvmmodule = unsafe {
             std::mem::transmute::<Rc<RefCell<Module<'static>>>, Rc<RefCell<Module<'ll>>>>(owned_module.module.clone())
@@ -82,154 +85,140 @@ impl<'ll> IRBuilderCtx<'ll> {
         let blockreg = BlockRegistry::default();
 
         Self {
+            target,
+            cir_module,
             llvmctx: &owned_module.context,
             llvmbuilder,
             llvmmodule,
             llvmtm,
             irreg,
-            cur_fn: None,
+            cur_func: None,
+            cur_abi_func_info: None,
             blockreg,
-            monomorph_registry,
             lambda_id: 0,
+            defer_stack: Vec::new(),
+            dctx,
+            vtable_registry,
         }
     }
 
-    pub fn emit_program_tree(&mut self, cir_program_tree: &CIRProgramTree) {
-        for cir_stmt in &cir_program_tree.body {
+    pub fn emit_module(&mut self) {
+        self.emit_vtable_decls();
+
+        for cir_stmt in &self.cir_module.stmts {
             self.emit_stmt(cir_stmt);
         }
 
-        tui_compiled(cir_program_tree.file_path.clone());
+        self.emit_vtable_defs();
+
+        tui_compiled(self.cir_module.file_path.clone());
     }
 
-    pub(crate) fn emit_stmt(&mut self, cir_stmt: &CIRStmt) {
-        match cir_stmt {
+    pub(crate) fn emit_stmt(&mut self, stmt: &CIRStmt) {
+        match stmt {
             CIRStmt::Variable(var_stmt) => self.emit_var(var_stmt),
-            CIRStmt::GlobalVar(global_var_stmt) => {
-                self.emit_global_var(global_var_stmt);
-            }
             CIRStmt::FuncDef(func_def_stmt) => {
                 let func_decl = cir_func_def_as_decl(func_def_stmt);
-                let fn_value = self.emit_func_decl(&func_decl);
-                self.cur_fn = Some(fn_value);
-                self.emit_func_body(&func_decl.params, &func_def_stmt.body);
+                let cir_func_ty = cir_func_decl_as_func_type(&func_decl);
+                let llvm_func_value = self.emit_func_decl(&func_decl);
+                self.set_current_func(llvm_func_value, func_def_stmt.abi_func_info.clone().unwrap());
+                let func_metadata = self.emit_func_metadata(&cir_func_ty);
+
+                self.emit_func_body(
+                    &func_decl.params,
+                    &func_def_stmt.abi_func_info.as_ref().unwrap(),
+                    &func_def_stmt.body,
+                    func_metadata,
+                    func_decl.loc,
+                );
             }
-            CIRStmt::FuncDecl(func_decl_stmt) => {
-                self.emit_func_decl(func_decl_stmt);
+            CIRStmt::GlobalVar(global_var_stmt) => {
+                let is_extern = global_var_stmt
+                    .modifiers
+                    .linkage
+                    .as_ref()
+                    .map(|linkage| linkage.is_extern())
+                    .unwrap_or(false);
+
+                if !is_extern {
+                    self.emit_global_var(global_var_stmt);
+                }
             }
-            CIRStmt::Block(block_stmt) => self.emit_body(block_stmt),
-            CIRStmt::Struct(struct_stmt) => {
-                self.emit_struct_ty(cir_struct_as_struct_ty(struct_stmt));
+            CIRStmt::FuncDecl(_) => {
+                // early emitting causes symtab bloat;
+                // only emitted when used.
             }
-            CIRStmt::Enum(enum_stmt) => {
-                self.emit_enum_ty(cir_enum_as_enum_ty(enum_stmt));
-            }
-            CIRStmt::Union(union_stmt) => {
-                self.emit_union_ty(cir_union_as_union_ty(union_stmt));
-            }
+            CIRStmt::Block(block_stmt) => self.emit_scope_block(block_stmt),
             CIRStmt::Expr(expr) => {
-                self.emit_expr(expr);
+                self.emit_expr(expr, &None);
             }
             CIRStmt::Switch(switch_stmt) => self.emit_switch(switch_stmt),
-            CIRStmt::SwitchOnEnum(switch_on_enum_stmt) => self.emit_switch_on_enum(switch_on_enum_stmt),
             CIRStmt::If(if_stmt) => self.emit_if(if_stmt),
             CIRStmt::For(for_stmt) => self.emit_for(for_stmt),
             CIRStmt::While(while_stmt) => self.emit_while(while_stmt),
-            CIRStmt::Return(return_stmt) => self.emit_ret(return_stmt),
+            CIRStmt::Return(return_stmt) => self.emit_return(return_stmt),
             CIRStmt::Label(label_stmt) => self.emit_label(label_stmt),
             CIRStmt::Goto(goto_stmt) => self.emit_goto(goto_stmt),
-            CIRStmt::Break => self.emit_break(),
-            CIRStmt::Continue => self.emit_continue(),
+            CIRStmt::Break(break_stmt) => self.emit_break(break_stmt),
+            CIRStmt::Continue(continue_stmt) => self.emit_continue(continue_stmt),
+
+            CIRStmt::Defer(_) => unreachable!(),
         }
+
+        unsafe {
+            set_debug_location(
+                &self.dctx,
+                self.llvmctx,
+                self.llvmbuilder,
+                stmt.loc().line.try_into().unwrap(),
+                stmt.loc().column.try_into().unwrap(),
+            )
+        };
     }
 
-    pub(crate) fn emit_body(&mut self, cir_block: &CIRBlockStmt) {
-        self.emit_predefine_labels(cir_block);
+    pub(crate) fn emit_scope_block(&mut self, block: &CIRBlockStmt) {
+        let parent = debug_current_scope(&self.dctx);
 
-        for stmt in &cir_block.stmts {
-            if self.blockreg.cur_block.is_none() {
-                break;
+        let lexical_block =
+            unsafe { create_debug_lexical_block(&self.dctx, parent, block.loc.line as u32, block.loc.column as u32) };
+
+        self.dctx.block_stack.push(BlockScope {
+            lexical_block,
+            inline_loc: std::ptr::null_mut(),
+        });
+
+        self.emit_body(block);
+
+        self.dctx.block_stack.pop();
+    }
+
+    pub(crate) fn emit_body(&mut self, block: &CIRBlockStmt) {
+        self.emit_predefine_labels(block);
+
+        self.defer_stack.push(block.defers.clone());
+
+        for stmt in &block.stmts {
+            if let Some(basic_block) = &self.blockreg.cur_block {
+                if basic_block.get_terminator().is_some() {
+                    break;
+                }
             }
+
             self.emit_stmt(stmt);
         }
-    }
 
-    pub(crate) fn emit_ret(&mut self, return_stmt: &CIRReturnStmt) {
-        let cur_fn = self.cur_fn.unwrap();
-
-        if let Some(expr) = &return_stmt.arg {
-            let lvalue = self.emit_expr(&expr);
-            let rvalue = self.load_rvalue(lvalue);
-
-            let ret_ty = cur_fn.get_type().get_return_type().unwrap();
-            let casted: BasicValueEnum<'ll> = self.emit_cast(ret_ty.as_any_type_enum(), rvalue).try_into().unwrap();
-
-            self.llvmbuilder.build_return(Some(&casted)).unwrap();
-        } else {
-            self.llvmbuilder.build_return(None).unwrap();
-        }
-    }
-
-    pub(crate) fn emit_var(&mut self, cir_var: &CIRVarStmt) {
-        let ty: BasicTypeEnum<'ll> = self.emit_ty(cir_var.ty.clone()).try_into().unwrap();
-        let ptr = self.llvmbuilder.build_alloca(ty, &cir_var.name).unwrap();
-
-        if let Some(expr) = &cir_var.expr {
-            let lvalue = self.emit_expr(expr);
-            let rvalue = self.load_rvalue(lvalue);
-            self.emit_store(ptr, rvalue, cir_var.ty.clone());
-        } else {
-            // zero init
-            let zero_internal_value =
-                InternalValue::new(cir_var.ty.clone(), InternalValueKind::RValue(ty.const_zero()));
-
-            self.emit_store(ptr, zero_internal_value, cir_var.ty.clone());
-        }
-
-        let mut irreg = self.irreg.borrow_mut();
-        irreg.insert(cir_var.irv_id, LocalIRValue::LValue(ptr, cir_var.ty.clone()));
-        drop(irreg);
-    }
-
-    pub(crate) fn emit_global_var(&mut self, cir_global_var: &CIRGlobalVarStmt) -> GlobalValue<'ll> {
-        {
-            let irreg = self.irreg.borrow();
-            if let Some(local_ir_value) = irreg.get(cir_global_var.irv_id) {
-                return local_ir_value.as_global().cloned().unwrap();
+        if let Some(basic_block) = &self.blockreg.cur_block {
+            if !basic_block.get_terminator().is_some() {
+                self.emit_scope_defers();
             }
         }
 
-        let llvmmodule = self.llvmmodule.borrow();
+        self.defer_stack.pop();
+    }
 
-        if let Some(global_value) = llvmmodule.get_global(&cir_global_var.name) {
-            return global_value;
-        }
-
-        let ty: BasicTypeEnum<'ll> = self.emit_ty(cir_global_var.ty.clone()).try_into().unwrap();
-        let global_value = llvmmodule.add_global(ty, None, &cir_global_var.name);
-        drop(llvmmodule);
-
-        if let Some(expr) = &cir_global_var.expr {
-            let lvalue = self.emit_expr(&expr);
-            let rvalue = self.load_rvalue(lvalue).as_basic_value();
-            global_value.set_initializer(&rvalue);
-        } else {
-            if cir_global_var.modifiers.linkage.is_none() {
-                // zero init
-                global_value.set_initializer(&ty.const_zero());
-            }
-        }
-
-        apply_global_var_modifiers(&global_value, &cir_global_var.modifiers);
-
-        let mut irreg = self.irreg.borrow_mut();
-        irreg.insert(
-            cir_global_var.irv_id,
-            LocalIRValue::Global(global_value, cir_global_var.ty.clone()),
-        );
-        drop(irreg);
-
-        global_value
+    pub(crate) fn set_current_func(&mut self, llvm_func_value: FunctionValue<'ll>, abi_func_info: ABIFunctionInfo) {
+        self.cur_func = Some(llvm_func_value);
+        self.cur_abi_func_info = Some(abi_func_info);
     }
 }
 

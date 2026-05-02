@@ -27,8 +27,8 @@ pub fn main() {
 	};
 
 	users[2] = struct {
-		key = 3,
-		value = "Cyrus"	
+		key: 3,
+		value: "Cyrus"	
 	};
 
 	for (var i = 0; i < 3; i++) {

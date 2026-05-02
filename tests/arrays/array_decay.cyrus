@@ -1,0 +1,20 @@
+// @stdout: 1, 2, 3 1, 1, 2
+
+import std::libc{printf};
+
+pub fn ptr_arith(i: usize, nums: int*) int {
+    return *(nums + i);
+}
+
+pub fn array_index(i: usize, nums: int*) int {
+    return nums[i];
+}
+
+pub fn main() {
+    const nums = const int[3]{1, 2, 3};
+    const ptr: const int* = nums; // compiler decays automatically
+
+    printf("%d, %d, %d ", ptr[0], ptr[1], ptr[2]);
+
+    printf("%d, %d, %d", nums[0], ptr_arith(0, &nums[0]), array_index(1, &nums[0]));
+}

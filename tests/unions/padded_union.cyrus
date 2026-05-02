@@ -1,0 +1,18 @@
+// @stdout: 10 5 25
+
+import std::libc{printf};
+
+union PaddedUnion {
+    a: int32;
+    b: int64;
+    c: int8[12];
+}
+
+pub fn main() {
+    var inst = PaddedUnion { b: 10 };
+    printf("%d ", inst.b);
+
+    inst.c[0] = 5;
+    inst.c[1] = 25;
+    printf("%d %d", inst.c[0], inst.c[1]);
+}

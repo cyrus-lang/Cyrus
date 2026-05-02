@@ -1,0 +1,36 @@
+// @stdout: many_ints=55 many_floats=55.000000
+// @compilerArgs: -z=./tests/abi/passing_many_args_library.c
+
+import std::libc{printf};
+import std::libc::abi{c_long, c_double};
+
+extern "C" fn many_ints(
+    a: c_long,
+    b: c_long,
+    c: c_long,
+    d: c_long,
+    e: c_long,
+    f: c_long,
+    g: c_long,
+    h: c_long,
+    i: c_long,
+    j: c_long
+) c_long;
+
+extern "C" fn many_floats(
+    a: c_double,
+    b: c_double,
+    c: c_double,
+    d: c_double,
+    e: c_double,
+    f: c_double,
+    g: c_double,
+    h: c_double,
+    i: c_double,
+    j: c_double
+) c_double;
+
+pub fn main() {
+    printf("many_ints=%d ", many_ints(1,2,3,4,5,6,7,8,9,10));
+    printf("many_floats=%f ", many_floats(1.0,2.0,3.0,4.0,5.0,6.0,7.0,8.0,9.0,10.0));
+}

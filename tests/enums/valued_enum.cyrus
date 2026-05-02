@@ -1,0 +1,30 @@
+// @stdout: (errno = 1, msg = file not found) custom(3, custom err msg)
+
+import std::libc{printf};
+
+enum OSError {
+    FileNotFound = struct { errno: 1, msg: "file not found" },
+    BufferOverflow = struct { errno: 2, msg: "buffer overflow" },
+    Custom(int, char*)
+}
+
+fn display_os_error(err: OSError) {
+    switch (err) {
+        case .FileNotFound(detail) => {
+            printf("(errno = %d, msg = %s) ", detail.errno, detail.msg);
+        }
+        case .Custom(errno, msg) => {
+            printf("custom(%d, %s)", errno, msg);
+        }
+        default => {
+            printf("unknown error");
+        }
+    }
+}
+
+pub fn main() {
+    var err = OSError.FileNotFound;
+
+    display_os_error(err);
+    display_os_error(.Custom(3, "custom err msg"));
+}

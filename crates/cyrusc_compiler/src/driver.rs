@@ -14,29 +14,38 @@
  * You should have received a copy of the GNU General Public License
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
+
 use crate::{
     context::CodeGenContext,
     linker::Linker,
     options::{BuildDir, CodeGenOptions, CodeGenOptionsProjectType, LinkerOutputKind},
 };
+use cyrusc_analyzer::context::{AnalysisContext, AnalyzerConfig, EntryPoints};
 use cyrusc_buildmanifest::BuildManifest;
-use cyrusc_cir::{CIRProgramTree, monomorph::CIRMonomorphRegistry, walk::walk_program_trees_in_parallel};
-use cyrusc_diagcentral::{display_single_custom_diag, reporter::DiagReporter};
-use cyrusc_fs_utils::{ensure_output_dir, file_name_without_extension, get_directory_of_file, read_file};
-use cyrusc_lexer::Lexer;
-use cyrusc_modulefsloader::ModuleLoaderOptions;
-use cyrusc_parser::Parser;
-use cyrusc_resolver::{Resolver, Visiting, generate_module_id};
+use cyrusc_cir_traverse::walk_program_trees_in_parallel;
+use cyrusc_diagcentral::{exit_with_msg, reporter::DiagReporter};
+use cyrusc_fs_utils::{ensure_output_dir, file_name_without_extension, get_directory_of_file};
+use cyrusc_internal::{
+    abi::target::{ABITarget, ABITargetArch, ABITargetInfo, ABITargetOS, ABITargetObjectFormat, create_target_abi},
+    cir::cir::CIRModule,
+    monomorph::MonomorphRegistry,
+    vtable::VTableRegistry,
+};
+use cyrusc_parser::SourceParser;
+use cyrusc_resolver::{
+    Resolver,
+    fs_module_loader::{FsModuleLoader, FsModuleLoaderOptions},
+    modules::VisitingModule,
+};
 use cyrusc_scaffold_parser::{
-    ASSEMBLY_DIR_PATH, BITCODE_DIR_PATH, LLVM_IR_DIR_PATH, OBJECT_CACHE_DIR_FILENAME, OBJECT_DIR_FILENAME,
-    OUTPUT_DIR_FILENAME, SHARED_LIB_DIR_PATH, SRC_CACHE_DIR_PATH, STATIC_LIB_DIR_PATH,
+    ASSEMBLY_DIR_PATH, BITCODE_DIR_PATH, CIR_DUMP_DIR_PATH, LLVM_IR_DIR_PATH, OBJECT_CACHE_DIR_FILENAME,
+    OBJECT_DIR_FILENAME, OUTPUT_DIR_FILENAME, SHARED_LIB_DIR_PATH, SRC_CACHE_DIR_PATH, STATIC_LIB_DIR_PATH,
 };
-use cyrusc_sema::analyze::AnalysisContext;
-use cyrusc_tast::{
-    TypedProgramTree,
-    generics::{mapping_ctx_arena::GenericMappingCtxArenaImpl, monomorph::MonomorphRegistry},
-};
-use cyrusc_vtable_registry::VTableRegistry;
+use cyrusc_source_loc::{FileID, SourceMap};
+use cyrusc_tui_utils::tui_error;
+use cyrusc_typed_ast::{TypedProgramTree, decls::table::DeclTablesRegistry};
+use fx_hash::FxHashMap;
+use inkwell::targets::{InitializationConfig, Target as InkwellTarget, TargetTriple};
 use std::{
     cell::RefCell,
     env,
@@ -50,23 +59,45 @@ pub struct CodeGenContextBundle {
     pub opts: CodeGenOptions,
     pub entry_file: PathBuf,
     pub build_dir: PathBuf,
-    pub program_trees: Vec<Box<CIRProgramTree>>,
-    pub monomorph_registry: Arc<Mutex<CIRMonomorphRegistry>>,
+    pub program_trees: Vec<Box<CIRModule>>,
+    pub target: ABITarget,
+    pub llvm_target: InkwellTarget,
+    pub llvm_target_triple: TargetTriple,
 }
 
 pub struct CodeGenSemanticBundle {
     pub analyzed_program_trees: Vec<Rc<RefCell<TypedProgramTree>>>,
-    pub vtable_registries: Vec<Arc<Mutex<VTableRegistry>>>,
-    pub mapping_ctx_arena: Arc<Mutex<GenericMappingCtxArenaImpl>>,
+    pub vtable_registries: FxHashMap<FileID, Arc<VTableRegistry>>,
+    pub monomorph_registry: Arc<MonomorphRegistry>,
     pub resolver: Box<Resolver>,
+    pub decl_tables: Arc<DeclTablesRegistry>,
+    pub source_map: Arc<SourceMap>,
     pub entry_file: PathBuf,
     pub build_dir: PathBuf,
 }
 
+fn create_compiler_context_target(target_info: &ABITargetInfo) -> (InkwellTarget, TargetTriple) {
+    InkwellTarget::initialize_all(&InitializationConfig::default());
+
+    let target_triple = TargetTriple::create(&target_info.triple());
+    match InkwellTarget::from_triple(&target_triple) {
+        Ok(target) => (target, target_triple),
+        Err(llvm_string) => {
+            tui_error(format!("LLVM Target Triple Error: {}", llvm_string.to_string()));
+            exit(1);
+        }
+    }
+}
+
+// REVIEW: Consider to refactor this to get reference to CodeGenContextBundle
+// it's much cleaner than getting it's fields one by one!
 pub fn create_compiler_context(
     opts: CodeGenOptions,
     file_path: &Option<PathBuf>,
     linker_output_kind: LinkerOutputKind,
+    target: ABITarget,
+    llvm_target: InkwellTarget,
+    llvm_target_triple: TargetTriple,
 ) -> CodeGenContext {
     let base_path = opts.base_path.clone().map(|path| Path::new(&path).to_path_buf());
 
@@ -81,11 +112,20 @@ pub fn create_compiler_context(
     let linker = match Linker::new(opts.clone()) {
         Ok(linker) => linker,
         Err(err) => {
-            display_single_custom_diag!(err);
+            exit_with_msg!(err);
         }
     };
 
-    CodeGenContext::new(opts, build_manifest, entry_module_file_path, linker_output_kind, linker)
+    CodeGenContext::new(
+        opts,
+        target,
+        llvm_target,
+        llvm_target_triple,
+        build_manifest,
+        entry_module_file_path,
+        linker_output_kind,
+        linker,
+    )
 }
 
 pub fn build_semantic_bundle(opts: &mut CodeGenOptions, file_path_opt: Option<String>) -> Box<CodeGenSemanticBundle> {
@@ -106,87 +146,107 @@ pub fn build_semantic_bundle(opts: &mut CodeGenOptions, file_path_opt: Option<St
     let build_dir = get_final_build_directory_path(&opts.build_dir);
     ensure_build_dir_subs_exist(&base_path, build_dir.clone());
 
-    // lex & parse
-    let file_content = read_file(entry_file.clone()).0;
-    let mut lexer = Lexer::new(file_content, entry_file.to_string_lossy().to_string());
-    let mut parser = Parser::new(lexer.tokenize(), entry_file.to_string_lossy().to_string());
-    let program_tree = parser.parse().unwrap_or_else(|errors| {
-        parser.display_parser_errors(errors);
-        exit(1);
-    });
+    // create source map
+    let source_map = Arc::new(SourceMap::new());
+    let file_id = source_map.add_file_by_loading(entry_file.clone());
+    let entry_source_file = { source_map.get_file(file_id).unwrap().clone() };
 
-    let module_loader_opts = ModuleLoaderOptions {
-        base_path: opts.base_path.clone().unwrap(),
-        stdlib_path: opts.stdlib_path.clone(),
-        source_dirs: opts.source_dirs.clone(),
-    };
+    let reporter = Arc::new(DiagReporter::new(source_map.clone()));
+    let source_parser = Arc::new(SourceParser::new(reporter.clone()));
 
-    let monomorph_registry = Arc::new(Mutex::new(MonomorphRegistry::new()));
-    let mapping_ctx_arena = Arc::new(Mutex::new(GenericMappingCtxArenaImpl::new()));
+    match source_parser.parse_program(&entry_source_file) {
+        Ok(program_tree) => {
+            let module_loader_opts = FsModuleLoaderOptions {
+                base_path: opts.base_path.clone().unwrap(),
+                stdlib_path: opts.stdlib_path.clone(),
+                source_dirs: opts.source_dirs.clone(),
+            };
 
-    let mut resolver = Resolver::new(
-        module_loader_opts,
-        monomorph_registry.clone(),
-        mapping_ctx_arena.clone(),
-        entry_file.clone(),
-    );
+            let fs_module_loader = FsModuleLoader::new(source_map.clone(), source_parser, module_loader_opts);
 
-    // resolve the entry module
-    let module_id = generate_module_id();
-    resolver.resolve_module(module_id, &program_tree, &mut Visiting::new(), true, entry_file.clone());
-    if resolver.reporter.has_errors() {
-        DiagReporter::display(&resolver.reporter);
-        exit(1);
-    }
+            let decl_tables = Arc::new(DeclTablesRegistry::new());
+            let monomorph_registry = Arc::new(MonomorphRegistry::new());
 
-    // analyze modules
+            let mut resolver = Resolver::new(
+                Box::new(fs_module_loader),
+                source_map.clone(),
+                reporter.clone(),
+                decl_tables.clone(),
+            );
 
-    let entry_points = Arc::new(Mutex::new(Vec::new()));
-    let resolved_program_trees = resolver.program_trees.lock().unwrap();
+            let module_symbol_id = resolver.create_entry_module_symbol_id(Path::new(&entry_file), file_id);
 
-    let mut has_error = false;
-    let mut analyzed_program_trees: Vec<Rc<RefCell<TypedProgramTree>>> = Vec::new();
-    let mut vtable_registries: Vec<Arc<Mutex<VTableRegistry>>> = Vec::new();
+            resolver.resolve_module(
+                module_symbol_id,
+                &program_tree,
+                &mut VisitingModule::new(),
+                file_id,
+                true,
+            );
+            if resolver.reporter.has_errors() {
+                DiagReporter::display(&resolver.reporter);
+                exit(1);
+            }
 
-    for program_tree_entry in &*resolved_program_trees {
-        let vtable_registry = Arc::new(Mutex::new(VTableRegistry::new()));
-        vtable_registries.push(vtable_registry.clone());
+            // analyze modules
 
-        let mut analyzer = AnalysisContext::new(
-            &resolver,
-            program_tree_entry.module_id,
-            program_tree_entry.program.clone(),
-            entry_points.clone(),
-            monomorph_registry.clone(),
-            mapping_ctx_arena.clone(),
-            vtable_registry,
-            true,
-        );
+            let config = AnalyzerConfig::default();
 
-        analyzer.analyze();
-        DiagReporter::display(&analyzer.reporter);
-        if analyzer.reporter.has_errors() {
-            has_error = true;
+            let entry_points = Arc::new(EntryPoints::new(reporter.clone(), source_map.clone()));
+            let resolved_program_trees = resolver.program_trees.lock().unwrap();
+
+            let mut has_error = false;
+            let mut analyzed_program_trees: Vec<Rc<RefCell<TypedProgramTree>>> = Vec::new();
+            let mut vtable_registries: FxHashMap<FileID, Arc<VTableRegistry>> = FxHashMap::default();
+
+            for program_tree_entry in &*resolved_program_trees {
+                let vtable_registry = Arc::new(VTableRegistry::new());
+
+                vtable_registries.insert(program_tree_entry.file_id, vtable_registry.clone());
+
+                let mut analyzer = AnalysisContext::new(
+                    config.clone(),
+                    reporter.clone(),
+                    source_map.clone(),
+                    decl_tables.clone(),
+                    &resolver,
+                    &resolver,
+                    program_tree_entry.program_tree.clone(),
+                    entry_points.clone(),
+                    monomorph_registry.clone(),
+                    vtable_registry,
+                );
+
+                analyzer.analyze();
+
+                if reporter.has_errors() {
+                    has_error = true;
+                }
+
+                reporter.display();
+                analyzed_program_trees.push(analyzer.program_tree.clone());
+            }
+
+            entry_points.validate();
+            drop(resolved_program_trees);
+
+            if has_error {
+                exit(1);
+            }
+
+            Box::new(CodeGenSemanticBundle {
+                resolver: Box::new(resolver),
+                source_map,
+                decl_tables,
+                analyzed_program_trees,
+                vtable_registries,
+                monomorph_registry,
+                entry_file,
+                build_dir,
+            })
         }
-
-        analyzed_program_trees.push(analyzer.program_tree.clone());
+        Err(_) => exit(1),
     }
-
-    AnalysisContext::check_entry_points(entry_points);
-    drop(resolved_program_trees);
-
-    if has_error {
-        exit(1);
-    }
-
-    Box::new(CodeGenSemanticBundle {
-        resolver: Box::new(resolver),
-        analyzed_program_trees,
-        vtable_registries,
-        mapping_ctx_arena,
-        entry_file,
-        build_dir,
-    })
 }
 
 pub fn build_compilation_bundle(opts: &mut CodeGenOptions, file_path: Option<String>) -> CodeGenContextBundle {
@@ -203,24 +263,122 @@ pub fn build_compilation_bundle(opts: &mut CodeGenOptions, file_path: Option<Str
         })
         .collect();
 
-    let cir_monomorph_registry = Arc::new(Mutex::new(CIRMonomorphRegistry::new()));
+    // target
 
-    let cir_program_trees = walk_program_trees_in_parallel(
+    let target_info = resolve_target_info_from_opts(&opts);
+    let target_abi = match create_target_abi(target_info.clone()) {
+        Ok(target_abi) => target_abi,
+        Err(err) => {
+            tui_error(err);
+            exit(1)
+        }
+    };
+
+    let (llvm_target, llvm_target_triple) = create_compiler_context_target(&target_info);
+    let target = ABITarget::new(target_info, target_abi);
+
+    let cir_modules = walk_program_trees_in_parallel(
         opts.jobs,
         boxed_program_trees,
-        &codegen_semantic_bundle.resolver,
-        cir_monomorph_registry.clone(),
-        codegen_semantic_bundle.mapping_ctx_arena.clone(),
+        &*codegen_semantic_bundle.resolver,
+        &*codegen_semantic_bundle.resolver,
+        codegen_semantic_bundle.source_map.clone(),
+        codegen_semantic_bundle.decl_tables.clone(),
         &codegen_semantic_bundle.vtable_registries,
+        codegen_semantic_bundle.monomorph_registry.clone(),
+        &target,
     );
 
     CodeGenContextBundle {
         opts: opts.clone(),
-        program_trees: cir_program_trees,
-        monomorph_registry: cir_monomorph_registry,
+        program_trees: cir_modules,
         entry_file: codegen_semantic_bundle.entry_file,
         build_dir: codegen_semantic_bundle.build_dir,
+        llvm_target_triple,
+        llvm_target,
+        target,
     }
+}
+
+pub fn resolve_target_info_from_opts(opts: &CodeGenOptions) -> ABITargetInfo {
+    let triple_str = if let Some(t) = opts.target.as_ref() {
+        if !t.is_empty() { t.clone() } else { "".to_string() }
+    } else {
+        "".to_string()
+    };
+
+    let arch = if !triple_str.is_empty() {
+        match triple_str.split('-').next().unwrap_or("") {
+            "x86_64" => ABITargetArch::X86_64,
+            "aarch64" => ABITargetArch::Aarch64,
+            "riscv64" => ABITargetArch::RiscV64,
+            "wasm32" => ABITargetArch::Wasm32,
+            other => {
+                tui_error(format!("Unsupported target architecture: {}", other));
+                exit(1);
+            }
+        }
+    } else {
+        // fallback to host env
+        match env::consts::ARCH {
+            "x86_64" => ABITargetArch::X86_64,
+            "aarch64" => ABITargetArch::Aarch64,
+            "riscv64" => ABITargetArch::RiscV64,
+            "wasm32" => ABITargetArch::Wasm32,
+            other => {
+                tui_error(format!("Unsupported host architecture: {}", other));
+                exit(1);
+            }
+        }
+    };
+
+    let os = if !triple_str.is_empty() {
+        match triple_str.split('-').nth(1).unwrap_or("") {
+            "linux" => ABITargetOS::Linux,
+            "windows" => ABITargetOS::Windows,
+            "darwin" => ABITargetOS::MacOS,
+            "unknown" | "" => {
+                // fallback to host OS
+                match env::consts::OS {
+                    "linux" => ABITargetOS::Linux,
+                    "windows" => ABITargetOS::Windows,
+                    "macos" => ABITargetOS::MacOS,
+                    _ => ABITargetOS::Unknown,
+                }
+            }
+            other => {
+                tui_error(format!("Unsupported target OS: {}", other));
+                exit(1);
+            }
+        }
+    } else {
+        match env::consts::OS {
+            "linux" => ABITargetOS::Linux,
+            "windows" => ABITargetOS::Windows,
+            "macos" => ABITargetOS::MacOS,
+            _ => ABITargetOS::Unknown,
+        }
+    };
+
+    // Step 4: resolve object format (derived, not user-selected)
+    let format = match os {
+        ABITargetOS::Linux | ABITargetOS::Unknown => ABITargetObjectFormat::Elf,
+        ABITargetOS::MacOS => ABITargetObjectFormat::MachO,
+        ABITargetOS::Windows => ABITargetObjectFormat::Coff,
+    };
+
+    ABITargetInfo { arch, os, format }
+}
+
+pub fn get_cir_dump_output_path(build_dir: &PathBuf, output_path_opt: &Option<String>) -> PathBuf {
+    if let Some(output_path) = output_path_opt {
+        ensure_output_dir(output_path);
+        return Path::new(&output_path).to_path_buf();
+    }
+
+    let dir_path = build_dir.join(OUTPUT_DIR_FILENAME).join(CIR_DUMP_DIR_PATH);
+    ensure_output_dir(&dir_path);
+    return dir_path;
 }
 
 pub fn get_llvm_dir_output_path(build_dir: &PathBuf, output_path_opt: &Option<String>) -> PathBuf {
@@ -392,7 +550,7 @@ fn get_entry_module_file_path(
     // check if we found an unexpected file but not the expected one
     if found_unexpected.is_some() {
         if found_expected.is_none() {
-            display_single_custom_diag!(format!(
+            exit_with_msg!(format!(
                 "Project type mismatch: Found '{}' but expected '{}' for a {} project.\n\
                  \n\
                  Solutions:\n\
@@ -446,7 +604,7 @@ fn get_entry_module_file_path(
     let project_root_display = format_path_for_display(&project_root, &current_dir);
 
     // neither expected nor unexpected file found
-    display_single_custom_diag!(format!(
+    exit_with_msg!(format!(
         "No '{}' entry point found for {} project.\n\
          \n\
          Expected '{}' in one of these directories:\n{}\n\

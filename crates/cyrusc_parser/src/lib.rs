@@ -14,17 +14,15 @@
  * You should have received a copy of the GNU General Public License
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
+
 use crate::diagnostics::ParserDiagKind;
 use cyrusc_ast::*;
 use cyrusc_diagcentral::Diag;
 use cyrusc_diagcentral::reporter::DiagReporter;
-use cyrusc_fs_utils::read_file;
-use cyrusc_lexer::*;
-use cyrusc_tokens::Token;
-use cyrusc_tokens::TokenKind;
-use cyrusc_tokens::loc::Location;
-use cyrusc_tokens::loc::Span;
-use std::rc::Rc;
+use cyrusc_lexer::Lexer;
+use cyrusc_source_loc::{FileID, Loc, SourceFile};
+use cyrusc_tokens::{Token, TokenKind};
+use std::{fmt, rc::Rc, sync::Arc};
 
 mod common;
 mod diagnostics;
@@ -33,66 +31,80 @@ mod modifiers;
 mod prec;
 mod stmts;
 
-/// Parses the program from the given file path.
-///
-/// # Parameters
-/// - `file_path`: The path to the file containing the program code.
-///
-/// # Returns
-/// A tuple containing:
-/// - `ProgramTree`: The parsed program representation.
-/// - `String`: The name of the file.
-pub fn parse_program(file_path: String) -> (ProgramTree, String) {
-    let file = read_file(file_path.clone());
-    let code = file.0;
+const DISPLAY_DIAG_KIND: usize = 1;
 
-    let mut lexer = Lexer::new(code, file_path.clone());
-    let mut parser = Parser::new(lexer.tokenize(), file_path);
-
-    let program = match parser.parse() {
-        Ok(program) => program,
-        Err(errors) => {
-            parser.display_parser_errors(errors);
-            panic!();
-        }
-    };
-
-    (program, file.1)
-}
-
-pub struct Parser {
+pub struct Parser<'source_file> {
+    source_file: &'source_file SourceFile,
+    reporter: Arc<DiagReporter>,
     tokens: Vec<Token>,
-    cur_token_idx: usize,
-    file_name: String,
-    errors: Vec<Diag>,
+    pos: usize,
+    last_loc: Loc,
 }
 
-impl Parser {
-    pub fn new(tokens: Vec<Token>, file_name: String) -> Self {
-        Parser {
-            tokens,
-            cur_token_idx: 0,
-            file_name,
-            errors: Vec::new(),
-        }
+pub struct SourceParser {
+    reporter: Arc<DiagReporter>,
+}
+
+impl SourceParser {
+    #[inline]
+    pub fn parse_program(&self, source_file: &SourceFile) -> Result<ProgramTree, ()> {
+        let mut lexer = Lexer::new(&self.reporter, source_file);
+        let tokens = lexer.tokenize();
+
+        let mut parser = Parser::new(self.reporter.clone(), source_file, tokens);
+
+        let Ok(program_tree) = parser.parse() else {
+            self.display_errors();
+            return Err(());
+        };
+
+        Ok(program_tree)
     }
 
     #[inline]
-    pub fn parse(&mut self) -> Result<ProgramTree, Vec<Diag>> {
-        self.parse_program()
+    pub fn display_errors(&self) {
+        self.reporter.display_first(DISPLAY_DIAG_KIND);
+    }
+}
+
+impl SourceParser {
+    pub fn new(reporter: Arc<DiagReporter>) -> Self {
+        Self { reporter }
+    }
+}
+
+impl<'source_file> Parser<'source_file> {
+    pub fn new(reporter: Arc<DiagReporter>, source_file: &'source_file SourceFile, tokens: Vec<Token>) -> Self {
+        let initial_loc = Loc::default(source_file.file_id);
+
+        Parser {
+            source_file,
+            reporter,
+            tokens,
+            pos: 0,
+            last_loc: initial_loc,
+        }
+    }
+
+    /// Returns the FileID of the source file being tokenized.
+    #[inline]
+    pub fn file_id(&self) -> FileID {
+        self.source_file.file_id
     }
 
     /// Parses the program by repeatedly parsing statements until the end of file (EOF) token is encountered.
     ///
     /// It processes each statement and adds it to the program body. If any errors occur during parsing,
     /// they are accumulated and returned after the entire program has been parsed.
-    pub fn parse_program(&mut self) -> Result<ProgramTree, Vec<Diag>> {
-        let mut body: Vec<Stmt> = Vec::new();
+    pub fn parse(&mut self) -> Result<ProgramTree, ()> {
+        let mut body: Vec<ASTStmt> = Vec::new();
 
         while self.current_token().kind != TokenKind::EOF {
             match self.parse_stmt(None, true) {
                 Ok(stmts) => body.extend(stmts),
-                Err(error) => self.errors.push(error),
+                Err(diag) => {
+                    self.reporter.report(diag);
+                }
             }
             self.next_token();
         }
@@ -101,41 +113,34 @@ impl Parser {
         self.finalize_program_parse(program)
     }
 
-    #[inline]
-    pub fn display_parser_errors(&mut self, errors: Vec<Diag>) {
-        let len = errors.len();
-        if len > 0 {
-            let diag = errors.first().unwrap().clone();
-            DiagReporter::display_single(diag);
-        }
-    }
-
-    #[inline]
     /// Finalizes the program parse by checking for errors.
-    fn finalize_program_parse(&self, program: ProgramTree) -> Result<ProgramTree, Vec<Diag>> {
-        if self.errors.is_empty() {
+    #[inline]
+    fn finalize_program_parse(&self, program: ProgramTree) -> Result<ProgramTree, ()> {
+        if !self.reporter.has_errors() {
             Ok(program)
         } else {
-            Err(self.errors.clone())
+            Err(())
         }
     }
 
     #[inline]
     fn next_token(&mut self) -> Option<Token> {
-        let peek_token = match self.tokens.get(self.cur_token_idx) {
+        let peek_token = match self.tokens.get(self.pos) {
             Some(token) => token,
             None => {
                 self.error_at_peek(ParserDiagKind::InvalidToken(self.peek_token().kind));
                 return None;
             }
         };
-        self.cur_token_idx += 1;
+
+        self.last_loc = self.current_token().loc;
+        self.pos += 1;
         Some(peek_token.clone())
     }
 
     #[inline]
     fn current_token_is(&self, token_kind: TokenKind) -> bool {
-        let current_token = match self.tokens.get(self.cur_token_idx) {
+        let current_token = match self.tokens.get(self.pos) {
             Some(token) => token,
             None => {
                 if token_kind == TokenKind::EOF {
@@ -150,7 +155,7 @@ impl Parser {
 
     #[inline]
     fn peek_token_is(&self, token_kind: TokenKind) -> bool {
-        let peek_token = match self.tokens.get(self.cur_token_idx + 1) {
+        let peek_token = match self.tokens.get(self.pos + 1) {
             Some(token) => token,
             None => {
                 if token_kind == TokenKind::EOF {
@@ -160,36 +165,53 @@ impl Parser {
                 }
             }
         };
+
         peek_token.kind == token_kind
     }
 
     #[inline]
     fn current_token(&self) -> Token {
-        match self.tokens.get(self.cur_token_idx).cloned() {
+        match self.tokens.get(self.pos).cloned() {
             Some(token) => token,
-            None => Token {
-                kind: TokenKind::EOF,
-                span: Span::default(),
-                loc: Location::default(),
-            },
+            None => {
+                // generate proper EOF using last known location
+                Token {
+                    kind: TokenKind::EOF,
+                    loc: Loc {
+                        file_id: self.last_loc.file_id,
+                        line: self.last_loc.line,
+                        column: self.last_loc.column,
+                        start: self.last_loc.end,
+                        end: self.last_loc.end,
+                    },
+                }
+            }
         }
     }
 
     #[inline]
     fn peek_token(&self) -> Token {
-        match self.tokens.get(self.cur_token_idx + 1).cloned() {
+        match self.tokens.get(self.pos + 1).cloned() {
             Some(token) => token,
-            None => Token {
-                kind: TokenKind::EOF,
-                span: Span::default(),
-                loc: Location::default(),
-            },
+            None => {
+                // generate proper EOF using last known location
+                Token {
+                    kind: TokenKind::EOF,
+                    loc: Loc {
+                        file_id: self.last_loc.file_id,
+                        line: self.last_loc.line,
+                        column: self.last_loc.column,
+                        start: self.last_loc.end,
+                        end: self.last_loc.end,
+                    },
+                }
+            }
         }
     }
 
     #[inline]
     fn peek_n_token(&self, n: usize) -> Option<Token> {
-        self.tokens.get(self.cur_token_idx + n).cloned()
+        self.tokens.get(self.pos + n).cloned()
     }
 
     /// This function peeks at the next token without advancing the lexer. If the token matches
@@ -282,6 +304,26 @@ impl Parser {
     }
 
     fn prev_token(&self) -> Token {
-        self.tokens[self.cur_token_idx - 1].clone()
+        self.tokens[self.pos - 1].clone()
     }
 }
+
+impl<'source_file> fmt::Debug for Parser<'source_file> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("Parser")
+            .field("source_file", &self.source_file)
+            .field("tokens", &self.tokens)
+            .field("pos", &self.pos)
+            .field("last_loc", &self.last_loc)
+            .finish()
+    }
+}
+
+impl fmt::Debug for SourceParser {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("SourceParser").finish()
+    }
+}
+
+unsafe impl<'source_file> Send for Parser<'source_file> {}
+unsafe impl<'source_file> Sync for Parser<'source_file> {}

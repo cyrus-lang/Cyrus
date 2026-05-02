@@ -14,365 +14,325 @@
  * You should have received a copy of the GNU General Public License
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
+
+use crate::abi::{ReprAttr, Visibility};
+use crate::modifiers::{EnumModifiers, FuncModifiers, GlobalVarModifiers, StructModifiers, UnionModifiers};
 use crate::operators::{InfixOperator, PrefixOperator, UnaryOperator};
-use cyrusc_abi::{
-    modifiers::{EnumModifiers, FuncModifiers, GlobalVarModifiers, StructModifiers, UnionModifiers},
-    visibility::Visibility,
-};
-use cyrusc_tokens::{
-    Token,
-    literals::Literal,
-    loc::{Location, Span},
-};
+use cyrusc_source_loc::Loc;
+use cyrusc_tokens::TokenKind;
+use cyrusc_tokens::{Token, literals::ASTLiteralExpr};
+use std::fmt;
 use std::{
     hash::{Hash, Hasher},
     rc::Rc,
 };
 
+pub mod abi;
 pub mod format;
+pub mod modifiers;
 pub mod operators;
 
 #[derive(Debug)]
 pub struct ProgramTree {
-    pub body: Rc<Vec<Stmt>>,
+    pub body: Rc<Vec<ASTStmt>>,
 }
 
-impl Default for ProgramTree {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-impl ProgramTree {
-    pub fn new() -> Self {
-        Self {
-            body: Rc::new(Vec::new()),
-        }
-    }
-
-    pub fn import_stmts(&self) -> Vec<Import> {
-        let mut imports: Vec<Import> = Vec::new();
-
-        self.body.iter().for_each(|stmt| match stmt {
-            Stmt::Import(import) => {
-                imports.push(import.clone());
-            }
-            _ => {}
-        });
-
-        imports
-    }
-}
-
-#[derive(Debug, Clone)]
-pub enum Expr {
-    Cast(Cast),
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ASTExpr {
     Ident(Ident),
     TypeSpecifier(TypeSpecifier),
-    ModuleImport(ModuleImport),
-    Assign(Box<Assign>),
-    Literal(Literal),
-    Prefix(PrefixExpr),
-    Infix(InfixExpr),
-    Unary(UnaryExpr),
-    Array(Array),
-    UntypedArray(UntypedArray),
-    ArrayIndex(ArrayIndex),
-    AddrOf(AddrOf),
-    Deref(Deref),
-    StructInit(StructInit),
-    FuncCall(FuncCall),
-    FieldAccess(FieldAccess),
-    MethodCall(MethodCall),
-    SizeOf(SizeOf),
-    Lambda(Lambda),
-    Tuple(TupleValue),
-    TupleAccess(TupleAccess),
-    Dynamic(Dynamic),
-    UnnamedStructValue(UnnamedStructValue),
-    UnnamedUnionValue(UnnamedUnionValue),
-    UnnamedEnumValue(UnnamedEnumValue),
+    ModuleImport(ASTModuleImport),
+    Builtin(Builtin),
+    Assign(Box<ASTAssignExpr>),
+    Literal(ASTLiteralExpr),
+    Prefix(ASTPrefixExpr),
+    Infix(ASTInfixExpr),
+    Unary(ASTUnaryExpr),
+    Array(ASTArrayExpr),
+    UntypedArray(ASTUntypedArrayExpr),
+    ArrayIndex(ASTArrayIndexExpr),
+    AddrOf(ASTAddrOfExpr),
+    Deref(ASTDerefExpr),
+    StructInit(ASTStructInitExpr),
+    FuncCall(ASTFuncCallExpr),
+    FieldAccess(ASTFieldAccessExpr),
+    MethodCall(ASTMethodCallExpr),
+    Lambda(ASTLambdaExpr),
+    Tuple(ASTTupleValueExpr),
+    TupleAccess(ASTTupleAccessExpr),
+    Dynamic(ASTDynamicExpr),
+    EnumStructVariantInit(ASTEnumStructVariantInit),
+    UnnamedStructValue(ASTUnnamedStructValueExpr),
+    UnnamedUnionValue(ASTUnnamedUnionValueExpr),
+    UnnamedEnumValue(ASTUnnamedEnumValueExpr),
 }
 
 #[derive(Debug, Clone)]
-pub struct Dynamic {
-    pub operand: Box<Expr>,
-    pub loc: Location,
-    pub span: Span,
+pub struct ASTModuleDecl {
+    pub ident: Ident,
+    pub vis: Visibility,
+    pub stmts: Vec<ASTStmt>,
+    pub loc: Loc,
 }
 
 #[derive(Debug, Clone)]
-pub struct TupleAccess {
-    pub operand: Box<Expr>,
+pub struct ASTDynamicExpr {
+    pub operand: Box<ASTExpr>,
+    pub loc: Loc,
+}
+
+#[derive(Debug, Clone)]
+pub struct ASTTupleAccessExpr {
+    pub operand: Box<ASTExpr>,
     pub index: usize,
-    pub loc: Location,
-    pub span: Span,
+    pub loc: Loc,
 }
 
 #[derive(Debug, Clone)]
-pub struct TupleValue {
-    pub expr_list: Vec<Expr>,
-    pub loc: Location,
-    pub span: Span,
+pub struct ASTTupleValueExpr {
+    pub elements: Vec<ASTExpr>,
+    pub loc: Loc,
 }
 
 #[derive(Debug, Clone)]
-pub struct SizeOf {
-    pub expr: Box<Expr>,
-    pub loc: Location,
-    pub span: Span,
+pub struct ASTDerefExpr {
+    pub expr: Box<ASTExpr>,
+    pub loc: Loc,
 }
 
 #[derive(Debug, Clone)]
-pub struct Deref {
-    pub expr: Box<Expr>,
-    pub loc: Location,
-    pub span: Span,
+pub struct ASTAddrOfExpr {
+    pub expr: Box<ASTExpr>,
+    pub loc: Loc,
 }
 
 #[derive(Debug, Clone)]
-pub struct AddrOf {
-    pub expr: Box<Expr>,
-    pub loc: Location,
-    pub span: Span,
-}
-
-#[derive(Debug, Clone)]
-pub struct UnnamedStructValue {
+pub struct ASTUnnamedStructValueExpr {
     pub fields: Vec<UnnamedStructValueField>,
-    pub is_packed: bool,
-    pub is_const: bool,
-    pub loc: Location,
-    pub span: Span,
+    pub repr_attr: Option<ReprAttr>,
+    pub align: Option<usize>,
+    pub loc: Loc,
 }
 
 #[derive(Debug, Clone)]
-pub struct UnnamedUnionValue {
+pub struct ASTUnnamedUnionValueExpr {
     pub field_name: Ident,
-    pub field_value: Box<Expr>,
+    pub field_value: Box<ASTExpr>,
     pub is_const: bool,
-    pub loc: Location,
-    pub span: Span,
+    pub loc: Loc,
 }
 
 #[derive(Debug, Clone)]
-pub struct UnnamedEnumValue {
+pub struct ASTUnnamedEnumValueExpr {
     pub ident: Ident,
     pub kind: UnnamedEnumValueKind,
-    pub loc: Location,
-    pub span: Span,
+    pub loc: Loc,
 }
 
 #[derive(Debug, Clone)]
 pub enum UnnamedEnumValueKind {
     Plain,
-    Fielded(Vec<Expr>),
+    Tuple(Vec<ASTExpr>),
+    Struct(Vec<ASTEnumStructVariantFieldInit>),
 }
 
 #[derive(Debug, Clone)]
 pub struct UnnamedStructValueField {
-    pub field_name: Ident,
-    pub field_ty: Option<TypeSpecifier>,
-    pub field_value: Box<Expr>,
-    pub loc: Location,
-    pub span: Span,
+    pub name: Ident,
+    pub value: Box<ASTExpr>,
+    pub loc: Loc,
 }
 
 #[derive(Debug, Clone)]
 pub struct UnnamedStructType {
     pub fields: Vec<UnnamedStructTypeField>,
-    pub is_packed: bool,
-    pub loc: Location,
-    pub span: Span,
+    pub repr_attr: Option<ReprAttr>,
+    pub align: Option<usize>,
+    pub loc: Loc,
 }
 
 #[derive(Debug, Clone)]
 pub struct UnnamedStructTypeField {
-    pub field_name: Ident,
-    pub field_ty: TypeSpecifier,
-    pub loc: Location,
-    pub span: Span,
+    pub name: Ident,
+    pub ty: TypeSpecifier,
+    pub loc: Loc,
 }
 
 #[derive(Debug, Clone)]
 pub struct UnnamedUnionType {
     pub fields: Vec<UnnamedUnionTypeField>,
-    pub loc: Location,
-    pub span: Span,
+    pub repr_attr: Option<ReprAttr>,
+    pub align: Option<usize>,
+    pub loc: Loc,
 }
 
 #[derive(Debug, Clone)]
 pub struct UnnamedUnionTypeField {
-    pub field_name: Ident,
+    pub ident: Ident,
     pub field_ty: TypeSpecifier,
-    pub loc: Location,
-    pub span: Span,
+    pub loc: Loc,
 }
 
 #[derive(Debug, Clone)]
-pub struct Union {
+pub struct ASTUnionStmt {
     pub ident: Ident,
     pub fields: Vec<UnionField>,
-    pub generic_params: Option<GenericParamsList>,
-    pub methods: Vec<FuncDef>,
-    pub impls: Vec<TypeSpecifier>,
+    pub generic_params: GenericParams,
+    pub methods: Vec<ASTFuncDefStmt>,
+    pub impls: Vec<ImplementInterface>,
     pub modifiers: UnionModifiers,
-    pub loc: Location,
-    pub span: Span,
+    pub align: Option<usize>,
+    pub loc: Loc,
 }
 
 #[derive(Debug, Clone)]
 pub struct UnionField {
-    pub ident: Ident,
+    pub name: Ident,
     pub ty: TypeSpecifier,
-    pub loc: Location,
-    pub span: Span,
+    pub loc: Loc,
 }
 
 #[derive(Debug, Clone)]
-pub struct Enum {
+pub struct ASTEnumStmt {
     pub ident: Ident,
     pub variants: Vec<EnumVariant>,
-    pub generic_params: Option<GenericParamsList>,
-    pub methods: Vec<FuncDef>,
-    pub impls: Vec<TypeSpecifier>,
+    pub generic_params: GenericParams,
+    pub methods: Vec<ASTFuncDefStmt>,
+    pub impls: Vec<ImplementInterface>,
     pub modifiers: EnumModifiers,
-    pub loc: Location,
-    pub span: Span,
+    pub tag_type: Option<TypeSpecifier>,
+    pub align: Option<usize>,
+    pub loc: Loc,
 }
 
 #[derive(Debug, Clone)]
 pub struct UnnamedEnumType {
-    pub variants: Vec<UnnamedEnumVariant>,
-    pub loc: Location,
-    pub span: Span,
-}
-
-#[derive(Debug, Clone)]
-pub enum UnnamedEnumVariant {
-    Ident(Ident),
-    Variant(Ident, Vec<UnnamedEnumValuedField>),
-    Valued(Ident, Box<Expr>),
-}
-
-#[derive(Debug, Clone)]
-pub struct UnnamedEnumValuedField {
-    pub ty: TypeSpecifier,
-    pub loc: Location,
-    pub span: Span,
+    pub variants: Vec<EnumVariant>,
+    pub tag_type: Option<Box<TypeSpecifier>>,
+    pub repr_attr: Option<ReprAttr>,
+    pub align: Option<usize>,
+    pub loc: Loc,
 }
 
 #[derive(Debug, Clone)]
 pub enum EnumVariant {
-    Ident(Ident),
-    Variant(Ident, Vec<EnumValuedField>),
-    Valued(Ident, Box<Expr>),
+    Unit(Ident),
+    Valued {
+        ident: Ident,
+        value: Box<ASTExpr>,
+    },
+    Tuple {
+        ident: Ident,
+        fields: Vec<EnumVariantTupleField>,
+    },
+    Struct {
+        ident: Ident,
+        fields: Vec<EnumVariantStructField>,
+    },
 }
 
 #[derive(Debug, Clone)]
-pub struct EnumValuedField {
+pub struct EnumVariantTupleField {
     pub ty: TypeSpecifier,
-    pub loc: Location,
+    pub loc: Loc,
 }
 
 #[derive(Debug, Clone)]
-pub struct Cast {
-    pub expr: Box<Expr>,
-    pub target_type: TypeSpecifier,
-    pub span: Span,
-    pub loc: Location,
+pub struct EnumVariantStructField {
+    pub name: Ident,
+    pub ty: TypeSpecifier,
+    pub loc: Loc,
 }
 
-#[derive(Debug, Clone)]
-pub struct PrefixExpr {
-    pub operand: Box<Expr>,
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ASTPrefixExpr {
+    pub operand: Box<ASTExpr>,
     pub op: PrefixOperator,
-    pub span: Span,
-    pub loc: Location,
+    pub loc: Loc,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Builtin {
+    BuiltinFunc(BuiltinFunc),
+    BuiltinScope(BuiltinScope),
 }
 
 #[derive(Debug, Clone)]
-pub struct FuncCall {
-    pub operand: Box<Expr>,
-    pub args: Vec<Expr>,
-    pub type_args: Option<TypeArgs>,
-    pub span: Span,
-    pub loc: Location,
+pub struct BuiltinFunc {
+    pub name: Ident,
+    pub args: Vec<ASTExpr>,
+    pub child_stmt: Option<Box<ASTStmt>>,
+    pub loc: Loc,
 }
 
 #[derive(Debug, Clone)]
-pub struct FieldAccess {
-    pub is_fat_arrow: bool,
-    pub operand: Box<Expr>,
+pub struct BuiltinScope {
+    pub name: Ident,
+    pub args: Vec<ASTExpr>,
+    pub block: Box<ASTBlockStmt>,
+    pub loc: Loc,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ASTFuncCallExpr {
+    pub operand: Box<ASTExpr>,
+    pub args: Vec<ASTExpr>,
+    pub type_args: TypeArgs,
+    pub loc: Loc,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ASTFieldAccessExpr {
+    pub is_thin_arrow: bool,
+    pub operand: Box<ASTExpr>,
     pub field_name: Ident,
-    pub type_args: Option<TypeArgs>,
-    pub span: Span,
-    pub loc: Location,
+    pub loc: Loc,
 }
 
-#[derive(Debug, Clone)]
-pub struct MethodCall {
-    pub is_fat_arrow: bool,
-    pub operand: Box<Expr>,
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ASTEnumStructVariantInit {
+    pub operand: Box<ASTExpr>,
+    pub ident: Ident,
+    pub field_inits: Vec<ASTEnumStructVariantFieldInit>,
+    pub loc: Loc,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ASTEnumStructVariantFieldInit {
+    pub name: Ident,
+    pub value: ASTExpr,
+    pub loc: Loc,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ASTMethodCallExpr {
+    pub operand: Box<ASTExpr>,
     pub method_name: Ident,
-    pub args: Vec<Expr>,
-    pub type_args: Option<TypeArgs>,
-    pub span: Span,
-    pub loc: Location,
+    pub args: Vec<ASTExpr>,
+    pub type_args: TypeArgs,
+    pub is_thin_arrow: bool,
+    pub loc: Loc,
 }
 
 #[derive(Debug, Clone, Eq)]
 pub struct Ident {
     pub value: String,
-    pub span: Span,
-    pub loc: Location,
-}
-
-impl PartialEq for Ident {
-    fn eq(&self, other: &Self) -> bool {
-        self.value == other.value
-    }
-}
-
-impl Hash for Ident {
-    fn hash<H: Hasher>(&self, state: &mut H) {
-        self.value.hash(state);
-    }
-}
-
-impl Ident {
-    pub fn as_string(&self) -> String {
-        self.value.clone()
-    }
+    pub loc: Loc,
 }
 
 #[derive(Debug, Clone)]
-pub struct ModuleImport {
+pub struct ASTModuleImport {
     pub segments: Vec<ModuleSegment>,
-    pub span: Span,
-    pub loc: Location,
+    pub loc: Loc,
 }
 
-impl ModuleImport {
-    pub fn as_identifier(&self) -> Option<Ident> {
-        if self.segments.len() == 1 {
-            match self.segments.last()? {
-                ModuleSegment::SubModule(ident) => Some(ident.clone()),
-                ModuleSegment::Single(_) => None,
-            }
-        } else {
-            None
-        }
-    }
-}
-
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum TypeSpecifier {
     TypeToken(Token),
     Ident(Ident),
     Const(Box<TypeSpecifier>),
-    Array(ArrayTypeSpecifier),
-    ModuleImport(ModuleImport),
+    Array(ArrayType),
+    ModuleImport(ASTModuleImport),
     Deref(Box<TypeSpecifier>),
     UnnamedStruct(UnnamedStructType),
     UnnamedUnion(UnnamedUnionType),
@@ -383,288 +343,594 @@ pub enum TypeSpecifier {
     SelfType(SelfType),
 }
 
-impl TypeSpecifier {
-    pub fn is_const(&self) -> bool {
-        matches!(self, Self::Const(..))
-    }
-
-    pub fn as_module_import(&self) -> Option<ModuleImport> {
-        match self {
-            TypeSpecifier::Ident(ident) => Some(ModuleImport {
-                segments: vec![ModuleSegment::SubModule(ident.clone())],
-                loc: ident.loc,
-                span: ident.span,
-            }),
-            TypeSpecifier::ModuleImport(module_import) => Some(module_import.clone()),
-            _ => None,
-        }
-    }
-
-    pub fn loc(&self) -> (Location, usize) {
-        match self {
-            TypeSpecifier::TypeToken(token) => (token.loc.clone(), token.span.end),
-            TypeSpecifier::Ident(ident) => (ident.loc.clone(), ident.span.end),
-            TypeSpecifier::Const(inner) => inner.loc(),
-            TypeSpecifier::Array(array) => array.element_type.loc(),
-            TypeSpecifier::ModuleImport(module_import) => (module_import.loc.clone(), module_import.span.end),
-            TypeSpecifier::Deref(inner) => inner.loc(),
-            TypeSpecifier::UnnamedStruct(unnamed_struct_type) => {
-                (unnamed_struct_type.loc.clone(), unnamed_struct_type.span.end)
-            }
-            TypeSpecifier::UnnamedUnion(unnamed_union_type) => {
-                (unnamed_union_type.loc.clone(), unnamed_union_type.span.end)
-            }
-            TypeSpecifier::UnnamedEnum(unnamed_enum_type) => {
-                (unnamed_enum_type.loc.clone(), unnamed_enum_type.span.end)
-            }
-            TypeSpecifier::FuncType(func_type) => (func_type.loc.clone(), func_type.span.end),
-            TypeSpecifier::Tuple(tuple_type) => (tuple_type.loc.clone(), tuple_type.span.end),
-            TypeSpecifier::GenericInst(generic_inst) => (generic_inst.loc.clone(), generic_inst.span.end),
-            TypeSpecifier::SelfType(self_type) => (self_type.loc.clone(), self_type.span.end),
-        }
-    }
-}
-
 #[derive(Debug, Clone)]
 pub struct SelfType {
-    pub loc: Location,
-    pub span: Span,
+    pub loc: Loc,
 }
 
 #[derive(Debug, Clone)]
 pub struct GenericInst {
     pub base: Box<TypeSpecifier>,
     pub type_args: TypeArgs,
-    pub loc: Location,
-    pub span: Span,
+    pub loc: Loc,
 }
 
 #[derive(Debug, Clone)]
 pub struct TupleType {
     pub type_list: Vec<TypeSpecifier>,
-    pub loc: Location,
-    pub span: Span,
+    pub loc: Loc,
 }
 
-#[derive(Debug, Clone)]
-pub struct ArrayTypeSpecifier {
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ArrayType {
     pub size: ArrayCapacity,
     pub element_type: Box<TypeSpecifier>,
+    pub loc: Loc,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ArrayCapacity {
-    Fixed(Box<Expr>),
+    Fixed(Box<ASTExpr>),
     Dynamic,
 }
 
 #[derive(Debug, Clone)]
-pub struct UnaryExpr {
-    pub operand: Box<Expr>,
+pub struct ASTUnaryExpr {
+    pub operand: Box<ASTExpr>,
     pub op: UnaryOperator,
-    pub span: Span,
-    pub loc: Location,
+    pub loc: Loc,
 }
 
 #[derive(Debug, Clone)]
 pub struct FuncType {
     pub params: FuncTypeParams,
-    pub return_type: Box<TypeSpecifier>,
+    pub ret_type: Box<TypeSpecifier>,
     pub vis_opt: Option<Visibility>,
-    pub span: Span,
-    pub loc: Location,
+    pub loc: Loc,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FuncTypeParams {
     pub list: Vec<TypeSpecifier>,
     pub variadic: Option<FuncTypeVariadicParams>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum FuncTypeVariadicParams {
     UntypedCStyle,
     Typed(TypeSpecifier),
 }
 
 #[derive(Debug, Clone)]
-pub struct InfixExpr {
+pub struct ASTInfixExpr {
     pub op: InfixOperator,
-    pub lhs: Box<Expr>,
-    pub rhs: Box<Expr>,
-    pub span: Span,
-    pub loc: Location,
+    pub lhs: Box<ASTExpr>,
+    pub rhs: Box<ASTExpr>,
+    pub loc: Loc,
 }
 
 #[derive(Debug, Clone)]
-pub struct Array {
+pub struct ASTArrayExpr {
     pub data_type: TypeSpecifier,
-    pub elements: Vec<Expr>,
-    pub span: Span,
-    pub loc: Location,
+    pub elements: Vec<ASTExpr>,
+    pub loc: Loc,
 }
 
 #[derive(Debug, Clone)]
-pub struct UntypedArray {
-    pub elements: Vec<Expr>,
-    pub span: Span,
-    pub loc: Location,
+pub struct ASTUntypedArrayExpr {
+    pub elements: Vec<ASTExpr>,
+    pub loc: Loc,
 }
 
 #[derive(Debug, Clone)]
-pub struct ArrayIndex {
-    pub operand: Box<Expr>,
-    pub index: Box<Expr>,
-    pub span: Span,
-    pub loc: Location,
+pub struct ASTArrayIndexExpr {
+    pub operand: Box<ASTExpr>,
+    pub index: Box<ASTExpr>,
+    pub loc: Loc,
 }
 
 #[derive(Debug, Clone)]
-pub enum Stmt {
-    Import(Import),
-    Variable(Variable),
-    ExportTuple(ExportTuple),
-    Expr(Expr),
-    If(If),
-    Return(Return),
-    FuncDef(FuncDef),
-    FuncDecl(FuncDecl),
-    For(For),
-    While(While),
-    Foreach(Foreach),
-    Switch(Switch),
-    BlockStmt(BlockStmt),
-    Interface(Interface),
-    Struct(Struct),
-    Enum(Enum),
-    Union(Union),
-    Break(Break),
-    Continue(Continue),
-    Typedef(Typedef),
-    GlobalVar(GlobalVar),
-    Defer(Defer),
-    Label(Label),
-    Goto(Goto),
+pub enum ASTStmt {
+    ModuleDecl(ASTModuleDecl),
+    Builtin(Builtin),
+    Import(ASTImportStmt),
+    Variable(ASTVarStmt),
+    ExportTuple(ASTExportTupleStmt),
+    Expr(ASTExpr),
+    If(ASTIfStmt),
+    Return(ASTReturnStmt),
+    FuncDef(ASTFuncDefStmt),
+    FuncDecl(ASTFuncDeclStmt),
+    For(ASTForStmt),
+    While(ASTWhileStmt),
+    Foreach(ASTForeachStmt),
+    Switch(ASTSwitchStmt),
+    BlockStmt(ASTBlockStmt),
+    Interface(ASTInterfaceStmt),
+    Struct(ASTStructStmt),
+    Enum(ASTEnumStmt),
+    Union(ASTUnionStmt),
+    Break(ASTBreakStmt),
+    Continue(ASTContinueStmt),
+    Typedef(ASTTypedefStmt),
+    GlobalVar(ASTGlobalVarStmt),
+    Defer(ASTDeferStmt),
+    Label(ASTLabelStmt),
+    Goto(ASTGotoStmt),
 }
 
 #[derive(Debug, Clone)]
-pub struct Goto {
+pub struct ASTGotoStmt {
     pub name: Ident,
-    pub loc: Location,
-    pub span: Span,
+    pub loc: Loc,
 }
 
 #[derive(Debug, Clone)]
-pub struct Label {
+pub struct ASTLabelStmt {
     pub name: Ident,
-    pub loc: Location,
-    pub span: Span,
+    pub loc: Loc,
 }
 
 #[derive(Debug, Clone)]
-pub struct Defer {
-    pub operand: Box<Stmt>,
-    pub loc: Location,
-    pub span: Span,
+pub struct ASTDeferStmt {
+    pub operand: Box<ASTStmt>,
+    pub loc: Loc,
 }
 
 #[derive(Debug, Clone)]
-pub struct Interface {
+pub struct ASTInterfaceStmt {
     pub ident: Ident,
-    pub methods: Vec<FuncDecl>,
-    pub generic_params: Option<GenericParamsList>,
+    pub methods: Vec<ASTFuncDeclStmt>,
+    pub generic_params: GenericParams,
     pub vis: Visibility,
-    pub loc: Location,
-    pub span: Span,
+    pub loc: Loc,
 }
 
 #[derive(Debug, Clone)]
-pub struct GlobalVar {
+pub struct ASTGlobalVarStmt {
     pub ident: Ident,
-    pub type_specifier: Option<TypeSpecifier>,
-    pub expr: Option<Expr>,
+    pub type_spec: Option<TypeSpecifier>,
+    pub expr: Option<ASTExpr>,
     pub is_const: bool,
     pub modifiers: GlobalVarModifiers,
-    pub loc: Location,
-    pub span: Span,
+    pub loc: Loc,
 }
 
 #[derive(Debug, Clone)]
-pub struct Typedef {
+pub struct ASTTypedefStmt {
     pub ident: Ident,
-    pub type_specifier: TypeSpecifier,
-    pub generic_params: Option<GenericParamsList>,
+    pub type_spec: TypeSpecifier,
+    pub generic_params: GenericParams,
     pub vis: Visibility,
-    pub loc: Location,
-    pub span: Span,
+    pub loc: Loc,
 }
 
 #[derive(Debug, Clone)]
-pub struct Break {
-    pub loc: Location,
-    pub span: Span,
+pub struct ASTBreakStmt {
+    pub loc: Loc,
 }
 
 #[derive(Debug, Clone)]
-pub struct Continue {
-    pub loc: Location,
-    pub span: Span,
+pub struct ASTContinueStmt {
+    pub loc: Loc,
 }
 
 #[derive(Debug, Clone)]
-pub struct Return {
-    pub argument: Option<Expr>,
-    pub span: Span,
-    pub loc: Location,
+pub struct ASTReturnStmt {
+    pub argument: Option<ASTExpr>,
+
+    pub loc: Loc,
 }
 
-#[derive(Debug, Clone, Eq, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ModuleSegmentSingle {
     pub ident: Ident,
     pub renamed: Option<Ident>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ModuleSegment {
     SubModule(Ident),
     Single(Vec<ModuleSegmentSingle>),
-}
-
-impl Hash for ModuleSegmentSingle {
-    fn hash<H: Hasher>(&self, state: &mut H) {
-        self.ident.hash(state);
-        self.renamed.hash(state);
-    }
-}
-
-impl ModuleSegment {
-    pub fn as_identifier_opt(&self) -> Option<Ident> {
-        match self {
-            ModuleSegment::SubModule(ident) => Some(ident.clone()),
-            ModuleSegment::Single(_) => None,
-        }
-    }
 }
 
 #[derive(Debug, Clone)]
 pub struct ModulePath {
     pub alias: Option<String>,
     pub segments: Vec<ModuleSegment>,
-    pub loc: Location,
-    pub span: Span,
+    pub loc: Loc,
 }
 
-impl Hash for ModulePath {
-    fn hash<H: Hasher>(&self, state: &mut H) {
-        for segment in &self.segments {
-            if let ModuleSegment::SubModule(ident) = segment {
-                ident.value.hash(state);
-            }
-        }
+#[derive(Debug, Clone)]
+pub struct ASTImportStmt {
+    pub paths: Vec<ModulePath>,
+    pub loc: Loc,
+}
+
+#[derive(Debug, Clone)]
+pub struct ASTStructStmt {
+    pub ident: Ident,
+    pub generic_params: GenericParams,
+    pub impls: Vec<ImplementInterface>,
+    pub fields: Vec<StructField>,
+    pub methods: Vec<ASTFuncDefStmt>,
+    pub modifiers: StructModifiers,
+    pub align: Option<usize>,
+    pub is_packed: bool,
+    pub loc: Loc,
+}
+
+#[derive(Debug, Clone)]
+pub struct ASTStructInitExpr {
+    pub operand: TypeSpecifier,
+    pub field_inits: Vec<FieldInit>,
+    pub loc: Loc,
+}
+
+#[derive(Debug, Clone)]
+pub struct StructField {
+    pub name: Ident,
+    pub vis: Visibility,
+    pub ty: TypeSpecifier,
+    pub loc: Loc,
+}
+
+#[derive(Debug, Clone)]
+pub struct FieldInit {
+    pub ident: Ident,
+    pub value: ASTExpr,
+    pub loc: Loc,
+}
+
+#[derive(Debug, Clone)]
+pub struct ASTWhileStmt {
+    pub condition: ASTExpr,
+    pub body: Box<ASTBlockStmt>,
+    pub loc: Loc,
+}
+
+#[derive(Debug, Clone)]
+pub struct ASTForStmt {
+    pub initializer: Option<ASTVarStmt>,
+    pub condition: Option<ASTExpr>,
+    pub increment: Option<ASTExpr>,
+    pub body: Box<ASTBlockStmt>,
+    pub loc: Loc,
+}
+
+#[derive(Debug, Clone)]
+pub struct ASTForeachStmt {
+    pub item: Ident,
+    pub index: Option<Ident>,
+    pub expr: ASTExpr,
+    pub body: Box<ASTBlockStmt>,
+    pub loc: Loc,
+}
+
+#[derive(Debug, Clone)]
+pub struct ASTSwitchStmt {
+    pub operand: ASTExpr,
+    pub cases: Vec<SwitchCase>,
+    pub default_case: Option<ASTBlockStmt>,
+    pub loc: Loc,
+}
+
+#[derive(Debug, Clone)]
+pub struct SwitchCase {
+    pub patterns: Vec<SwitchCasePattern>,
+    pub body: ASTBlockStmt,
+    pub loc: Loc,
+}
+
+
+#[derive(Debug, Clone)]
+pub struct SwitchCasePattern {
+    pub kind: SwitchCasePatternKind,
+    pub loc: Loc,
+}
+
+#[derive(Debug, Clone)]
+pub enum SwitchCasePatternKind {
+    /// `_`
+    Wildcard,
+
+    /// variable binding
+    Binding(Ident),
+
+    /// literal / constant expression
+    Expr(ASTExpr),
+
+    /// `1..10` or `1..=10`
+    Range(Range),
+
+    /// .Variant
+    EnumUnit(Ident),
+
+    /// .Variant(a, b, _)
+    EnumTupleVariant {
+        variant: Ident,
+        items: Vec<SwitchCasePattern>,
+    },
+
+    /// .Variant { a, b: x, c: _, .. }
+    EnumStructVariant {
+        variant: Ident,
+        items: Vec<SwitchCaseEnumStructPatternField>,
+        has_rest: bool,
+    },
+}
+
+#[derive(Debug, Clone)]
+pub struct SwitchCaseEnumStructPatternField {
+    pub name: Ident,
+    pub pattern: SwitchCasePattern,
+}
+
+#[derive(Debug, Clone)]
+pub struct Range {
+    pub lower: ASTExpr,
+    pub upper: ASTExpr,
+    pub inclusive_upper: bool,
+    pub loc: Loc,
+}
+
+#[derive(Debug, Clone)]
+pub struct ASTLambdaExpr {
+    pub params: FuncParams,
+    pub body: Box<ASTBlockStmt>,
+    pub ret_type: TypeSpecifier,
+    pub inline: bool,
+    pub loc: Loc,
+}
+
+#[derive(Debug, Clone)]
+pub struct ASTFuncDefStmt {
+    pub ident: Ident,
+    pub generic_params: GenericParams,
+    pub params: FuncParams,
+    pub body: Box<ASTBlockStmt>,
+    pub ret_type: Option<TypeSpecifier>,
+    pub modifiers: FuncModifiers,
+    pub loc: Loc,
+}
+
+#[derive(Debug, Clone)]
+pub struct ASTFuncDeclStmt {
+    pub ident: Ident,
+    pub generic_params: GenericParams,
+    pub params: FuncParams,
+    pub ret_type: Option<TypeSpecifier>,
+    pub modifiers: FuncModifiers,
+    pub renamed_as: Option<Ident>,
+    pub loc: Loc,
+}
+
+#[derive(Debug, Clone)]
+pub struct ASTBlockStmt {
+    pub stmts: Vec<ASTStmt>,
+    pub loc: Loc,
+}
+
+#[derive(Debug, Clone)]
+pub struct ASTVarStmt {
+    pub ident: Ident,
+    pub ty: Option<TypeSpecifier>,
+    pub rhs: Option<ASTExpr>,
+    pub is_const: bool,
+    pub loc: Loc,
+}
+
+#[derive(Debug, Clone)]
+pub struct ASTExportTupleStmt {
+    pub pattern: ExportPattern,
+    pub rhs: Option<ASTExpr>,
+    pub is_const: bool,
+    pub loc: Loc,
+}
+#[derive(Debug, Clone)]
+pub struct ExportPattern {
+    pub kind: ExportPatternKind,
+    pub ty: Option<TypeSpecifier>,
+    pub mutability: Option<Mutability>,
+    pub loc: Loc,
+}
+
+#[derive(Debug, Clone)]
+pub enum ExportPatternKind {
+    Ident(Ident),
+    Tuple(Vec<ExportPattern>),
+    Ignore,
+}
+
+#[derive(Debug, Clone)]
+pub struct ASTAssignExpr {
+    pub lhs: ASTExpr,
+    pub rhs: ASTExpr,
+    pub kind: AssignKind,
+    pub loc: Loc,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum AssignKind {
+    Default,
+    AddAssign,
+    SubAssign,
+    MulAssign,
+    DivAssign,
+    ModAssign,
+    BitwiseAndAssign,
+    BitwiseXorAssign,
+    BitwiseAndNotAssign,
+    LeftShiftAssign,
+    RightShiftAssign,
+}
+
+#[derive(Debug, Clone)]
+pub struct SelfModifier {
+    pub kind: SelfModifierKind,
+    pub loc: Loc,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum SelfModifierKind {
+    Copied,
+    Referenced,
+}
+
+#[derive(Debug, Clone)]
+pub enum FuncParamKind {
+    FuncParam(FuncParam),
+    SelfModifier(SelfModifier),
+}
+
+#[derive(Debug, Clone)]
+pub struct FuncParam {
+    pub ident: Ident,
+    pub ty: Option<TypeSpecifier>,
+
+    pub loc: Loc,
+}
+
+#[derive(Debug, Clone)]
+pub struct FuncParams {
+    pub list: Vec<FuncParamKind>,
+    pub variadic: Option<FuncVariadicParam>,
+}
+
+#[derive(Debug, Clone)]
+pub enum FuncVariadicParam {
+    UntypedCStyle,
+    Typed(Ident, TypeSpecifier),
+}
+
+#[derive(Debug, Clone)]
+pub struct ASTIfStmt {
+    pub condition: ASTExpr,
+    pub then_block: Box<ASTBlockStmt>,
+    pub branches: Vec<ASTIfStmt>,
+    pub else_block: Option<Box<ASTBlockStmt>>,
+    pub loc: Loc,
+}
+
+#[derive(Debug, Clone)]
+pub struct ImplementInterface {
+    pub ty: TypeSpecifier,
+    pub loc: Loc,
+}
+
+pub type GenericParams = Vec<GenericParam>;
+
+#[derive(Debug, Clone)]
+pub struct GenericParam {
+    pub param_name: Ident,
+    pub bounds: Option<Vec<Bound>>,
+    pub default: Option<TypeSpecifier>,
+}
+
+#[derive(Debug, Clone)]
+pub struct Bound(pub TypeSpecifier);
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TypeArgs(pub Vec<TypeArg>);
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum TypeArg {
+    Type(TypeSpecifier),
+    Infer, // `_`
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Mutability {
+    Const,
+    Var,
+}
+
+// Returns the provided return type, or constructs a default `void` type.
+///
+/// This utility is used by the parser when building the raw AST to ensure
+/// that functions without an explicit return type are assigned a `void`
+/// return type. The resulting `TypeSpecifier` preserves the provided
+/// source location and span for accurate diagnostics.
+pub fn return_type_or_default_void(ret_type: Option<TypeSpecifier>, loc: Loc) -> TypeSpecifier {
+    ret_type.unwrap_or(TypeSpecifier::TypeToken(Token {
+        kind: TokenKind::Void,
+        loc,
+    }))
+}
+
+pub fn last_sub_module_index(segments: &Vec<ModuleSegment>) -> usize {
+    segments
+        .iter()
+        .rposition(|seg| matches!(seg, ModuleSegment::SubModule(_)))
+        .expect("import must contain at least one module segment")
+}
+
+#[inline]
+pub fn sub_module_segments(segments: Vec<ModuleSegment>) -> Vec<Ident> {
+    segments
+        .iter()
+        .filter_map(|module_segment| module_segment.as_ident())
+        .collect()
+}
+
+impl TypeArgs {
+    #[inline]
+    pub fn new() -> Self {
+        Self(Vec::new())
+    }
+
+    #[inline]
+    pub fn is_empty(&self) -> bool {
+        self.0.is_empty()
+    }
+
+    #[inline]
+    pub fn len(&self) -> usize {
+        self.0.len()
+    }
+
+    #[inline]
+    pub fn iter(&self) -> impl Iterator<Item = &TypeArg> {
+        self.0.iter()
+    }
+
+    #[inline]
+    pub fn iter_mut(&mut self) -> impl Iterator<Item = &mut TypeArg> {
+        self.0.iter_mut()
+    }
+
+    #[inline]
+    pub fn push(&mut self, ty: TypeArg) {
+        self.0.push(ty);
+    }
+
+    #[inline]
+    pub fn get(&self, index: usize) -> Option<&TypeArg> {
+        self.0.get(index)
+    }
+
+    #[inline]
+    pub fn as_slice(&self) -> &[TypeArg] {
+        &self.0
     }
 }
 
-impl Eq for ModulePath {}
+impl ModuleSegment {
+    pub fn loc(&self) -> Loc {
+        match self {
+            ModuleSegment::SubModule(ident) => ident.loc,
+            ModuleSegment::Single(singles) => singles.first().unwrap().ident.loc,
+        }
+    }
+
+    #[inline]
+    pub fn as_ident(&self) -> Option<Ident> {
+        match self {
+            ModuleSegment::SubModule(ident) => Some(ident.clone()),
+            ModuleSegment::Single(_) => None,
+        }
+    }
+}
 
 impl PartialEq for ModulePath {
     fn eq(&self, other: &Self) -> bool {
@@ -697,173 +963,29 @@ impl PartialEq for ModulePath {
 }
 
 impl ModulePath {
-    pub fn as_module_import(&self) -> ModuleImport {
-        ModuleImport {
+    pub fn as_module_import(&self) -> ASTModuleImport {
+        ASTModuleImport {
             segments: self.segments.clone(),
-            span: self.span,
-            loc: self.loc.clone(),
+            loc: self.loc,
         }
     }
 }
 
-#[derive(Debug, Clone)]
-pub struct Import {
-    pub paths: Vec<ModulePath>,
-    pub span: Span,
-    pub loc: Location,
-}
-
-#[derive(Debug, Clone)]
-pub struct Struct {
-    pub ident: Ident,
-    pub generic_params: Option<GenericParamsList>,
-    pub impls: Vec<TypeSpecifier>,
-    pub fields: Vec<StructField>,
-    pub methods: Vec<FuncDef>,
-    pub modifiers: StructModifiers,
-    pub is_packed: bool,
-    pub loc: Location,
-    pub span: Span,
-}
-
-#[derive(Debug, Clone)]
-pub struct StructInit {
-    pub struct_name: ModuleImport,
-    pub field_inits: Vec<FieldInit>,
-    pub type_args: Option<TypeArgs>,
-    pub is_const: bool,
-    pub loc: Location,
-    pub span: Span,
-}
-
-#[derive(Debug, Clone)]
-pub struct StructField {
-    pub ident: Ident,
-    pub vis: Visibility,
-    pub ty: TypeSpecifier,
-    pub loc: Location,
-    pub span: Span,
-}
-
-#[derive(Debug, Clone)]
-pub struct FieldInit {
-    pub ident: Ident,
-    pub value: Expr,
-    pub loc: Location,
-}
-
-#[derive(Debug, Clone)]
-pub struct While {
-    pub condition: Expr,
-    pub body: Box<BlockStmt>,
-    pub span: Span,
-    pub loc: Location,
-}
-
-#[derive(Debug, Clone)]
-pub struct For {
-    pub initializer: Option<Variable>,
-    pub condition: Option<Expr>,
-    pub increment: Option<Expr>,
-    pub body: Box<BlockStmt>,
-    pub span: Span,
-    pub loc: Location,
-}
-
-#[derive(Debug, Clone)]
-pub struct Foreach {
-    pub item: Ident,
-    pub index: Option<Ident>,
-    pub expr: Expr,
-    pub body: Box<BlockStmt>,
-    pub span: Span,
-    pub loc: Location,
-}
-
-#[derive(Debug, Clone)]
-pub struct Switch {
-    pub operand: Expr,
-    pub cases: Vec<SwitchCase>,
-    pub default_case: Option<BlockStmt>,
-    pub span: Span,
-    pub loc: Location,
-}
-
-#[derive(Debug, Clone)]
-pub struct SwitchCase {
-    pub patterns: Vec<SwitchCasePattern>,
-    pub body: BlockStmt,
-    pub loc: Location,
-    pub span: Span,
-}
-
-#[derive(Debug, Clone)]
-pub enum SwitchCasePattern {
-    Expr(Expr),
-    Range(Range),
-    Ident(Ident),
-    EnumVariant(Ident, Vec<Ident>),
-}
-
-#[derive(Debug, Clone)]
-pub struct Range {
-    pub lower: Expr,
-    pub upper: Expr,
-    pub inclusive_upper: bool,
-    pub loc: Location,
-    pub span: Span,
-}
-
-#[derive(Debug, Clone)]
-pub struct Lambda {
-    pub params: FuncParams,
-    pub body: Box<BlockStmt>,
-    pub return_type: TypeSpecifier,
-    pub inline: bool,
-    pub span: Span,
-    pub loc: Location,
-}
-
-#[derive(Debug, Clone)]
-pub struct FuncDef {
-    pub ident: Ident,
-    pub generic_params: Option<GenericParamsList>,
-    pub params: FuncParams,
-    pub body: Box<BlockStmt>,
-    pub return_type: Option<TypeSpecifier>,
-    pub modifiers: FuncModifiers,
-    pub span: Span,
-    pub loc: Location,
-}
-
-#[derive(Debug, Clone)]
-pub struct FuncDecl {
-    pub ident: Ident,
-    pub generic_params: Option<GenericParamsList>,
-    pub params: FuncParams,
-    pub return_type: Option<TypeSpecifier>,
-    pub modifiers: FuncModifiers,
-    pub renamed_as: Option<Ident>,
-    pub span: Span,
-    pub loc: Location,
-}
-
-impl FuncDef {
-    pub fn as_func_decl(&self) -> FuncDecl {
-        FuncDecl {
+impl ASTFuncDefStmt {
+    pub fn as_func_decl(&self) -> ASTFuncDeclStmt {
+        ASTFuncDeclStmt {
             ident: self.ident.clone(),
             generic_params: self.generic_params.clone(),
             params: self.params.clone(),
-            return_type: self.return_type.clone(),
+            ret_type: self.ret_type.clone(),
             modifiers: self.modifiers.clone(),
             renamed_as: None,
-            span: self.span,
-            loc: self.loc.clone(),
+            loc: self.loc,
         }
     }
 }
 
-impl FuncDecl {
+impl ASTFuncDeclStmt {
     /// Returns the function's effective name, preferring the renamed version if available.
     pub fn usable_name(&self) -> String {
         match &self.renamed_as {
@@ -873,61 +995,219 @@ impl FuncDecl {
     }
 }
 
-#[derive(Debug, Clone)]
-pub struct BlockStmt {
-    pub exprs: Vec<Stmt>,
-    pub span: Span,
-    pub loc: Location,
+impl ASTStmt {
+    pub fn vis(&self) -> Option<Visibility> {
+        match self {
+            ASTStmt::ModuleDecl(module_decl) => Some(module_decl.vis),
+            ASTStmt::FuncDef(func_def) => Some(func_def.modifiers.vis),
+            ASTStmt::FuncDecl(func_decl) => Some(func_decl.modifiers.vis),
+            ASTStmt::Interface(interface) => Some(interface.vis),
+            ASTStmt::Struct(struct_stmt) => Some(struct_stmt.modifiers.vis),
+            ASTStmt::Union(union_stmt) => Some(union_stmt.modifiers.vis),
+            ASTStmt::Enum(enum_stmt) => Some(enum_stmt.modifiers.vis),
+            ASTStmt::GlobalVar(global_var) => Some(global_var.modifiers.vis),
+
+            ASTStmt::Builtin(_)
+            | ASTStmt::For(_)
+            | ASTStmt::While(_)
+            | ASTStmt::Foreach(_)
+            | ASTStmt::Switch(_)
+            | ASTStmt::BlockStmt(_)
+            | ASTStmt::Import(_)
+            | ASTStmt::Variable(_)
+            | ASTStmt::ExportTuple(_)
+            | ASTStmt::Expr(_)
+            | ASTStmt::If(_)
+            | ASTStmt::Return(_)
+            | ASTStmt::Break(_)
+            | ASTStmt::Continue(_)
+            | ASTStmt::Typedef(_)
+            | ASTStmt::Defer(_)
+            | ASTStmt::Label(_)
+            | ASTStmt::Goto(_) => None,
+        }
+    }
+
+    pub fn decl_name(&self) -> Option<&Ident> {
+        match self {
+            ASTStmt::ModuleDecl(module_decl) => Some(&module_decl.ident),
+            ASTStmt::Variable(variable) => Some(&variable.ident),
+            ASTStmt::FuncDef(func_def) => Some(&func_def.ident),
+            ASTStmt::FuncDecl(func_decl) => Some(&func_decl.ident),
+            ASTStmt::Interface(interface) => Some(&interface.ident),
+            ASTStmt::Struct(struct_) => Some(&struct_.ident),
+            ASTStmt::Enum(enum_) => Some(&enum_.ident),
+            ASTStmt::Union(union_) => Some(&union_.ident),
+            ASTStmt::Typedef(typedef) => Some(&typedef.ident),
+            ASTStmt::GlobalVar(global_var) => Some(&global_var.ident),
+
+            ASTStmt::Import(_)
+            | ASTStmt::ExportTuple(_)
+            | ASTStmt::Expr(_)
+            | ASTStmt::If(_)
+            | ASTStmt::Return(_)
+            | ASTStmt::For(_)
+            | ASTStmt::While(_)
+            | ASTStmt::Foreach(_)
+            | ASTStmt::Switch(_)
+            | ASTStmt::BlockStmt(_)
+            | ASTStmt::Break(_)
+            | ASTStmt::Continue(_)
+            | ASTStmt::Defer(_)
+            | ASTStmt::Label(_)
+            | ASTStmt::Goto(_)
+            | ASTStmt::Builtin(_) => None,
+        }
+    }
+
+    pub fn loc(&self) -> Loc {
+        match self {
+            ASTStmt::ModuleDecl(module_decl) => module_decl.loc,
+            ASTStmt::Interface(interface) => interface.loc,
+            ASTStmt::Variable(variable) => variable.loc,
+            ASTStmt::ExportTuple(export_tuple_values) => export_tuple_values.loc,
+            ASTStmt::If(if_stmt) => if_stmt.loc,
+            ASTStmt::Return(ret) => ret.loc,
+            ASTStmt::FuncDef(func_def) => func_def.loc,
+            ASTStmt::FuncDecl(func_decl) => func_decl.loc,
+            ASTStmt::For(for_stmt) => for_stmt.loc,
+            ASTStmt::While(while_stmt) => while_stmt.loc,
+            ASTStmt::Foreach(foreach) => foreach.loc,
+            ASTStmt::Switch(switch) => switch.loc,
+            ASTStmt::Struct(struct_stmt) => struct_stmt.loc,
+            ASTStmt::Import(import) => import.loc,
+            ASTStmt::BlockStmt(block_stmt) => block_stmt.loc,
+            ASTStmt::Enum(enum_stmt) => enum_stmt.loc,
+            ASTStmt::Union(union) => union.loc,
+            ASTStmt::Break(break_stmt) => break_stmt.loc,
+            ASTStmt::Continue(continue_stmt) => continue_stmt.loc,
+            ASTStmt::Typedef(typedef) => typedef.loc,
+            ASTStmt::GlobalVar(global_variable) => global_variable.loc,
+            ASTStmt::Defer(defer) => defer.loc,
+            ASTStmt::Label(label) => label.loc,
+            ASTStmt::Goto(goto) => goto.loc,
+            ASTStmt::Builtin(builtin) => match builtin {
+                Builtin::BuiltinFunc(builtin_func) => builtin_func.loc,
+                Builtin::BuiltinScope(builtin_scope) => builtin_scope.loc,
+            },
+            ASTStmt::Expr(..) => unreachable!(),
+        }
+    }
 }
 
-#[derive(Debug, Clone)]
-pub struct Variable {
-    pub ident: Ident,
-    pub ty: Option<TypeSpecifier>,
-    pub rhs: Option<Expr>,
-    pub is_const: bool,
-    pub span: Span,
-    pub loc: Location,
+impl Default for ProgramTree {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
-#[derive(Debug, Clone)]
-pub struct ExportTuple {
-    pub pattern: ExportPattern,
-    pub ty: Option<TypeSpecifier>,
-    pub rhs: Option<Expr>,
-    pub is_const: bool,
-    pub span: Span,
-    pub loc: Location,
+impl ProgramTree {
+    pub fn new() -> Self {
+        Self {
+            body: Rc::new(Vec::new()),
+        }
+    }
+
+    pub fn import_stmts(&self) -> Vec<ASTImportStmt> {
+        let mut imports: Vec<ASTImportStmt> = Vec::new();
+
+        self.body.iter().for_each(|stmt| match stmt {
+            ASTStmt::Import(import) => {
+                imports.push(import.clone());
+            }
+            _ => {}
+        });
+
+        imports
+    }
 }
 
-#[derive(Debug, Clone)]
-pub enum ExportPattern {
-    Ident(Ident),
-    Tuple(Vec<ExportPattern>),
+impl Ident {
+    pub fn new(value: &str, loc: Loc) -> Self {
+        Self {
+            value: value.to_string(),
+            loc,
+        }
+    }
+
+    #[inline]
+    pub fn as_string(&self) -> String {
+        self.value.clone()
+    }
 }
 
-#[derive(Debug, Clone)]
-pub struct Assign {
-    pub lhs: Expr,
-    pub rhs: Expr,
-    pub kind: AssignKind,
-    pub span: Span,
-    pub loc: Location,
+impl ModuleSegmentSingle {
+    #[inline]
+    pub fn visible_name(&self) -> String {
+        self.renamed
+            .clone()
+            .map(|ident| ident.value)
+            .unwrap_or(self.ident.as_string())
+    }
 }
 
-#[derive(Debug, Clone, PartialEq)]
-pub enum AssignKind {
-    Default,
-    AddAssign,
-    SubAssign,
-    MulAssign,
-    DivAssign,
-    ModAssign,
-    BitwiseAndAssign,
-    BitwiseXorAssign,
-    BitwiseAndNotAssign,
-    LeftShiftAssign,
-    RightShiftAssign,
+impl ASTModuleImport {
+    pub fn as_ident(&self) -> Option<Ident> {
+        if self.segments.len() == 1 {
+            match self.segments.last()? {
+                ModuleSegment::SubModule(ident) => Some(ident.clone()),
+                ModuleSegment::Single(_) => None,
+            }
+        } else {
+            None
+        }
+    }
+}
+
+impl TypeSpecifier {
+    pub fn as_type_token(&self) -> Option<&Token> {
+        match self {
+            TypeSpecifier::TypeToken(token) => Some(token),
+            _ => None,
+        }
+    }
+
+    pub fn is_const(&self) -> bool {
+        matches!(self, Self::Const(..))
+    }
+
+    pub fn as_module_import(&self) -> Option<ASTModuleImport> {
+        match self {
+            TypeSpecifier::Ident(ident) => Some(ASTModuleImport {
+                segments: vec![ModuleSegment::SubModule(ident.clone())],
+                loc: ident.loc,
+            }),
+            TypeSpecifier::ModuleImport(module_import) => Some(module_import.clone()),
+            _ => None,
+        }
+    }
+
+    pub fn loc(&self) -> Loc {
+        match self {
+            TypeSpecifier::TypeToken(token) => token.loc,
+            TypeSpecifier::Ident(ident) => ident.loc,
+            TypeSpecifier::Const(inner) => inner.loc(),
+            TypeSpecifier::Array(array) => array.loc,
+            TypeSpecifier::ModuleImport(module_import) => module_import.loc,
+            TypeSpecifier::Deref(type_spec) => type_spec.loc(),
+            TypeSpecifier::UnnamedStruct(unnamed_struct_type) => unnamed_struct_type.loc,
+            TypeSpecifier::UnnamedUnion(unnamed_union_type) => unnamed_union_type.loc,
+            TypeSpecifier::UnnamedEnum(unnamed_enum_type) => unnamed_enum_type.loc,
+            TypeSpecifier::FuncType(func_type) => func_type.loc,
+            TypeSpecifier::Tuple(tuple_type) => tuple_type.loc,
+            TypeSpecifier::GenericInst(generic_inst) => generic_inst.loc,
+            TypeSpecifier::SelfType(self_type) => self_type.loc,
+        }
+    }
+}
+
+impl Builtin {
+    pub fn loc(&self) -> Loc {
+        match self {
+            Builtin::BuiltinFunc(builtin_func) => builtin_func.loc,
+            Builtin::BuiltinScope(builtin_scope) => builtin_scope.loc,
+        }
+    }
 }
 
 impl AssignKind {
@@ -948,105 +1228,381 @@ impl AssignKind {
     }
 }
 
-#[derive(Debug, Clone)]
-pub struct SelfModifier {
-    pub kind: SelfModifierKind,
-    pub loc: Location,
-    pub span: Span,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum SelfModifierKind {
-    Copied,
-    Referenced,
-}
-
-#[derive(Debug, Clone)]
-pub enum FuncParamKind {
-    FuncParam(FuncParam),
-    SelfModifier(SelfModifier),
-}
-
-#[derive(Debug, Clone)]
-pub struct FuncParam {
-    pub ident: Ident,
-    pub ty: Option<TypeSpecifier>,
-    pub span: Span,
-    pub loc: Location,
-}
-
-#[derive(Debug, Clone)]
-pub struct FuncParams {
-    pub list: Vec<FuncParamKind>,
-    pub variadic: Option<FuncVariadicParams>,
-}
-
-#[derive(Debug, Clone)]
-pub enum FuncVariadicParams {
-    UntypedCStyle,
-    Typed(Ident, TypeSpecifier),
-}
-
-#[derive(Debug, Clone)]
-pub struct If {
-    pub condition: Expr,
-    pub consequent: Box<BlockStmt>,
-    pub branches: Vec<If>,
-    pub alternate: Option<Box<BlockStmt>>,
-    pub span: Span,
-    pub loc: Location,
-}
-
-impl Stmt {
-    pub fn loc(&self) -> Location {
+impl SelfModifierKind {
+    #[inline]
+    pub fn is_referenced(&self) -> bool {
         match self {
-            Stmt::Interface(interface) => interface.loc.clone(),
-            Stmt::Variable(variable) => variable.loc.clone(),
-            Stmt::ExportTuple(export_tuple_values) => export_tuple_values.loc.clone(),
-            Stmt::If(if_stmt) => if_stmt.loc.clone(),
-            Stmt::Return(ret) => ret.loc.clone(),
-            Stmt::FuncDef(func_def) => func_def.loc.clone(),
-            Stmt::FuncDecl(func_decl) => func_decl.loc.clone(),
-            Stmt::For(for_stmt) => for_stmt.loc.clone(),
-            Stmt::While(while_stmt) => while_stmt.loc.clone(),
-            Stmt::Foreach(foreach) => foreach.loc.clone(),
-            Stmt::Switch(switch) => switch.loc.clone(),
-            Stmt::Struct(struct_stmt) => struct_stmt.loc.clone(),
-            Stmt::Import(import) => import.loc.clone(),
-            Stmt::BlockStmt(block_stmt) => block_stmt.loc.clone(),
-            Stmt::Enum(enum_stmt) => enum_stmt.loc.clone(),
-            Stmt::Union(union) => union.loc.clone(),
-            Stmt::Break(brk) => brk.loc.clone(),
-            Stmt::Continue(cont) => cont.loc.clone(),
-            Stmt::Typedef(typedef) => typedef.loc.clone(),
-            Stmt::GlobalVar(global_variable) => global_variable.loc.clone(),
-            Stmt::Defer(defer) => defer.loc.clone(),
-            Stmt::Label(label) => label.loc.clone(),
-            Stmt::Goto(goto) => goto.loc.clone(),
-            Stmt::Expr(..) => unreachable!(),
+            SelfModifierKind::Copied => false,
+            SelfModifierKind::Referenced => true,
         }
     }
 }
 
-pub type GenericParamsList = Vec<GenericParam>;
-
-#[derive(Debug, Clone)]
-pub struct GenericParam {
-    pub param_name: Ident,
-    pub bounds: Option<Vec<Bound>>,
-    pub default: Option<TypeSpecifier>,
+impl fmt::Display for AssignKind {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            AssignKind::Default => write!(f, "="),
+            AssignKind::AddAssign => write!(f, "+="),
+            AssignKind::SubAssign => write!(f, "-="),
+            AssignKind::MulAssign => write!(f, "*="),
+            AssignKind::DivAssign => write!(f, "/="),
+            AssignKind::ModAssign => write!(f, "%="),
+            AssignKind::BitwiseAndAssign => write!(f, "&="),
+            AssignKind::BitwiseXorAssign => write!(f, "^="),
+            AssignKind::BitwiseAndNotAssign => write!(f, "&~="),
+            AssignKind::LeftShiftAssign => write!(f, "<<="),
+            AssignKind::RightShiftAssign => write!(f, ">>="),
+        }
+    }
 }
 
-#[derive(Debug, Clone)]
-pub struct Bound {
-    pub symbol: Ident,
-    pub type_args: Vec<TypeArg>,
+impl Hash for ModuleSegmentSingle {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.ident.hash(state);
+        self.renamed.hash(state);
+    }
 }
 
-#[derive(Debug, Clone)]
-pub enum TypeArg {
-    Positional(TypeSpecifier),
-    Named { key: Ident, ty: TypeSpecifier },
+impl Hash for ModulePath {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        for segment in &self.segments {
+            if let ModuleSegment::SubModule(ident) = segment {
+                ident.value.hash(state);
+            }
+        }
+    }
 }
 
-pub type TypeArgs = Vec<TypeArg>;
+impl Hash for Ident {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.value.hash(state);
+    }
+}
+
+impl PartialEq for Ident {
+    fn eq(&self, other: &Self) -> bool {
+        self.value == other.value
+    }
+}
+
+impl PartialEq for ASTModuleImport {
+    fn eq(&self, other: &Self) -> bool {
+        self.segments == other.segments
+    }
+}
+
+impl PartialEq for UnnamedStructType {
+    fn eq(&self, other: &Self) -> bool {
+        self.fields == other.fields && self.repr_attr == other.repr_attr
+    }
+}
+
+impl PartialEq for UnnamedStructTypeField {
+    fn eq(&self, other: &Self) -> bool {
+        self.name == other.name && self.ty == other.ty
+    }
+}
+
+impl PartialEq for UnnamedUnionType {
+    fn eq(&self, other: &Self) -> bool {
+        self.fields == other.fields
+    }
+}
+
+impl PartialEq for UnnamedUnionTypeField {
+    fn eq(&self, other: &Self) -> bool {
+        self.ident == other.ident && self.field_ty == other.field_ty
+    }
+}
+
+impl PartialEq for FuncType {
+    fn eq(&self, other: &Self) -> bool {
+        self.params == other.params && self.ret_type == other.ret_type
+    }
+}
+
+impl PartialEq for TupleType {
+    fn eq(&self, other: &Self) -> bool {
+        self.type_list == other.type_list
+    }
+}
+
+impl PartialEq for UnnamedEnumType {
+    fn eq(&self, other: &Self) -> bool {
+        self.variants == other.variants
+    }
+}
+
+impl PartialEq for EnumVariant {
+    fn eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (Self::Unit(l0), Self::Unit(r0)) => l0 == r0,
+            (
+                Self::Valued {
+                    ident: l_ident,
+                    value: l_value,
+                },
+                Self::Valued {
+                    ident: r_ident,
+                    value: r_value,
+                },
+            ) => l_ident == r_ident && l_value == r_value,
+            (
+                Self::Tuple {
+                    ident: l_ident,
+                    fields: l_fields,
+                },
+                Self::Tuple {
+                    ident: r_ident,
+                    fields: r_fields,
+                },
+            ) => l_ident == r_ident && l_fields == r_fields,
+            (
+                Self::Struct {
+                    ident: l_ident,
+                    fields: l_fields,
+                },
+                Self::Struct {
+                    ident: r_ident,
+                    fields: r_fields,
+                },
+            ) => l_ident == r_ident && l_fields == r_fields,
+            _ => false,
+        }
+    }
+}
+
+impl PartialEq for EnumVariantTupleField {
+    fn eq(&self, other: &Self) -> bool {
+        self.ty == other.ty
+    }
+}
+
+impl PartialEq for EnumVariantStructField {
+    fn eq(&self, other: &Self) -> bool {
+        self.name == other.name && self.ty == other.ty
+    }
+}
+
+impl PartialEq for GenericInst {
+    fn eq(&self, other: &Self) -> bool {
+        self.base == other.base && self.type_args == other.type_args
+    }
+}
+
+impl PartialEq for SelfType {
+    fn eq(&self, _other: &Self) -> bool {
+        true
+    }
+}
+
+impl PartialEq for ASTAssignExpr {
+    fn eq(&self, other: &Self) -> bool {
+        self.lhs == other.lhs && self.rhs == other.rhs && self.kind == other.kind
+    }
+}
+
+impl PartialEq for ASTInfixExpr {
+    fn eq(&self, other: &Self) -> bool {
+        self.op == other.op && self.lhs == other.lhs && self.rhs == other.rhs
+    }
+}
+
+impl PartialEq for ASTUnaryExpr {
+    fn eq(&self, other: &Self) -> bool {
+        self.operand == other.operand && self.op == other.op
+    }
+}
+
+impl PartialEq for ASTArrayExpr {
+    fn eq(&self, other: &Self) -> bool {
+        self.data_type == other.data_type && self.elements == other.elements
+    }
+}
+
+impl PartialEq for ASTUntypedArrayExpr {
+    fn eq(&self, other: &Self) -> bool {
+        self.elements == other.elements
+    }
+}
+
+impl PartialEq for ASTArrayIndexExpr {
+    fn eq(&self, other: &Self) -> bool {
+        self.operand == other.operand && self.index == other.index
+    }
+}
+
+impl PartialEq for ASTAddrOfExpr {
+    fn eq(&self, other: &Self) -> bool {
+        self.expr == other.expr
+    }
+}
+
+impl PartialEq for ASTDerefExpr {
+    fn eq(&self, other: &Self) -> bool {
+        self.expr == other.expr
+    }
+}
+
+impl PartialEq for ASTStructInitExpr {
+    fn eq(&self, other: &Self) -> bool {
+        self.operand == other.operand && self.field_inits == other.field_inits
+    }
+}
+
+impl PartialEq for FieldInit {
+    fn eq(&self, other: &Self) -> bool {
+        self.ident == other.ident && self.value == other.value
+    }
+}
+
+impl PartialEq for ASTTupleValueExpr {
+    fn eq(&self, other: &Self) -> bool {
+        self.elements == other.elements
+    }
+}
+
+impl PartialEq for ASTTupleAccessExpr {
+    fn eq(&self, other: &Self) -> bool {
+        self.operand == other.operand && self.index == other.index
+    }
+}
+
+impl PartialEq for ASTDynamicExpr {
+    fn eq(&self, other: &Self) -> bool {
+        self.operand == other.operand
+    }
+}
+
+impl PartialEq for ASTUnnamedStructValueExpr {
+    fn eq(&self, other: &Self) -> bool {
+        self.fields == other.fields && self.repr_attr == other.repr_attr && self.align == other.align
+    }
+}
+
+impl PartialEq for ASTUnnamedUnionValueExpr {
+    fn eq(&self, other: &Self) -> bool {
+        self.field_name == other.field_name && self.field_value == other.field_value && self.is_const == other.is_const
+    }
+}
+
+impl PartialEq for UnnamedStructValueField {
+    fn eq(&self, other: &Self) -> bool {
+        self.name == other.name && self.value == other.value
+    }
+}
+
+impl PartialEq for ASTUnnamedEnumValueExpr {
+    fn eq(&self, other: &Self) -> bool {
+        self.ident == other.ident && self.kind == other.kind
+    }
+}
+
+impl PartialEq for UnnamedEnumValueKind {
+    fn eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (UnnamedEnumValueKind::Plain, UnnamedEnumValueKind::Plain) => true,
+            (UnnamedEnumValueKind::Tuple(exprs1), UnnamedEnumValueKind::Tuple(exprs2)) => exprs1 == exprs2,
+            _ => false,
+        }
+    }
+}
+
+impl PartialEq for ASTLambdaExpr {
+    fn eq(&self, other: &Self) -> bool {
+        self.params == other.params && self.ret_type == other.ret_type && self.inline == other.inline
+    }
+}
+
+impl PartialEq for FuncParam {
+    fn eq(&self, other: &Self) -> bool {
+        self.ident == other.ident && self.ty == other.ty
+    }
+}
+
+impl PartialEq for FuncParams {
+    fn eq(&self, other: &Self) -> bool {
+        self.list == other.list && self.variadic == other.variadic
+    }
+}
+
+impl PartialEq for FuncParamKind {
+    fn eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (Self::FuncParam(func_param1), Self::FuncParam(func_param2)) => func_param1 == func_param2,
+            (Self::SelfModifier(self_modifier1), Self::SelfModifier(self_modifier2)) => {
+                self_modifier1 == self_modifier2
+            }
+            _ => false,
+        }
+    }
+}
+
+impl PartialEq for SelfModifier {
+    fn eq(&self, other: &Self) -> bool {
+        self.kind == other.kind
+    }
+}
+
+impl PartialEq for FuncVariadicParam {
+    fn eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (FuncVariadicParam::UntypedCStyle, FuncVariadicParam::UntypedCStyle) => true,
+            (FuncVariadicParam::Typed(ident1, type_specifier1), FuncVariadicParam::Typed(ident2, type_specifier2)) => {
+                ident1 == ident2 && type_specifier1 == type_specifier2
+            }
+            _ => false,
+        }
+    }
+}
+
+impl PartialEq for BuiltinScope {
+    fn eq(&self, other: &Self) -> bool {
+        self.name == other.name && self.args == other.args
+    }
+}
+
+impl PartialEq for BuiltinFunc {
+    fn eq(&self, other: &Self) -> bool {
+        self.name == other.name && self.args == other.args && self.child_stmt.is_some() == other.child_stmt.is_some()
+    }
+}
+
+impl PartialEq for ImplementInterface {
+    fn eq(&self, other: &Self) -> bool {
+        self.ty == other.ty
+    }
+}
+
+impl Eq for ImplementInterface {}
+impl Eq for BuiltinFunc {}
+impl Eq for BuiltinScope {}
+impl Eq for ASTArrayExpr {}
+impl Eq for ASTUntypedArrayExpr {}
+impl Eq for ASTArrayIndexExpr {}
+impl Eq for ASTAddrOfExpr {}
+impl Eq for ASTDerefExpr {}
+impl Eq for ASTStructInitExpr {}
+impl Eq for ASTLambdaExpr {}
+impl Eq for ASTTupleValueExpr {}
+impl Eq for ASTTupleAccessExpr {}
+impl Eq for ASTDynamicExpr {}
+impl Eq for ASTUnnamedStructValueExpr {}
+impl Eq for ASTUnnamedUnionValueExpr {}
+impl Eq for ASTUnnamedEnumValueExpr {}
+impl Eq for ASTUnaryExpr {}
+impl Eq for ASTInfixExpr {}
+impl Eq for ASTAssignExpr {}
+impl Eq for ASTModuleImport {}
+impl Eq for ModulePath {}
+impl Eq for UnnamedStructType {}
+impl Eq for UnnamedStructTypeField {}
+impl Eq for UnnamedUnionType {}
+impl Eq for UnnamedUnionTypeField {}
+impl Eq for FuncType {}
+impl Eq for TupleType {}
+impl Eq for UnnamedEnumType {}
+impl Eq for GenericInst {}
+impl Eq for SelfType {}
+impl Eq for EnumVariantStructField {}
+impl Eq for EnumVariantTupleField {}

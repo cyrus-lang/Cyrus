@@ -1,13 +1,17 @@
-// @stdout: x: 10 
+// @stdout: 10 20
 
 import std::libc{printf};
 
 type Handler<T> = fn(T) void;
+type Int<T> = T;
 
 pub fn main() {
     const handler: Handler<uint> = fn(x: uint) void {
-        printf("x: %d\n", x);
+        printf("%d ", x);
     };
 
+    const integer: Int<uint64> = 20;
+
     handler(10);
+    printf("%d\n", integer);
 }

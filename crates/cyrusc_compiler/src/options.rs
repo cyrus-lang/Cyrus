@@ -53,10 +53,10 @@ pub struct CodeGenOptions {
     pub reloc_mode: RelocModeOptions,
     pub code_model: CodeModelOptions,
     pub cpu: Option<String>,
-    pub target_triple: Option<String>,
+    pub target: Option<String>,
     pub disable_modulefs_cache: bool,
     pub disable_warnings: bool,
-    pub endianness: Option<CodeGenEndianness>,
+    pub debug_enabled: bool,
     pub abi: Option<CodeGenABI>,
     pub source_dirs: Vec<String>,
 }
@@ -116,14 +116,14 @@ impl Default for CodeGenOptions {
             display_target_machine: false,
             reloc_mode: RelocModeOptions::Default,
             code_model: CodeModelOptions::Default,
-            target_triple: None,
+            target: None,
             cpu: None,
             disable_modulefs_cache: false,
             disable_warnings: false,
             linker_options: CodeGenLinkerOptions::default(),
             linker_flags: Vec::new(),
             sanitizer: Vec::new(),
-            endianness: None,
+            debug_enabled: false,
             abi: None,
         }
     }
@@ -392,9 +392,8 @@ impl CodeGenOptions {
         merge_option!(cyrus_version);
         merge_option!(opt_level);
         merge_option!(stdlib_path);
-        merge_option!(target_triple);
+        merge_option!(target);
         merge_option!(cpu);
-        merge_option!(endianness);
         merge_option!(abi);
         merge_option!(cyrus_version);
 

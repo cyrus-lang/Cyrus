@@ -2,7 +2,7 @@
 
 import std::libc{printf};
 
-type Kind = const enum { Unknown = 0, Known = 1 };
+type Kind = enum { Unknown = 0, Known = 1 };
 
 fn display_kind(value: Kind) {
 	switch (value) {

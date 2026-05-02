@@ -1,23 +1,23 @@
-/* 
+/*
  * Copyright (c) 2026 The Cyrus Language
- * 
+ *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation, either version 3 of the License, or
  * (at your option) any later version.
- * 
+ *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. 
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
  * See the GNU General Public License for more details.
- * 
+ *
  * You should have received a copy of the GNU General Public License
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
 use crate::OwnedModule;
 use cyrusc_asan_wrapper::{SanitizerOptions, run_sanitizers};
 use cyrusc_compiler::options::{CodeGenOptions, CodeGenSanitizer};
-use cyrusc_diagcentral::display_single_custom_diag;
+use cyrusc_diagcentral::exit_with_msg;
 use inkwell::{
     context::Context,
     module::{FlagBehavior, Module},
@@ -38,11 +38,11 @@ pub(crate) fn enable_asan_for_owned_module(
 
     opts.sanitizer.iter().for_each(|sanitizer| {
         if matches!(sanitizer, CodeGenSanitizer::HWAddress) && !is_hwasan_supported() {
-            display_single_custom_diag!("HWASan not supported on this platform.".to_string());
+            exit_with_msg!("HWASan not supported on this platform.".to_string());
         }
 
         if !is_sanitizer_support_in_linker(&opts.linker.as_ref().unwrap(), sanitizer) {
-            display_single_custom_diag!(format!(
+            exit_with_msg!(format!(
                 "Sanitizer not supported for linker: '{}'.",
                 opts.linker.as_ref().unwrap()
             ));

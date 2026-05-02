@@ -9,10 +9,11 @@ pub var globalHandler: Handler*;
 
 pub fn main() {
     var defaultHandler: Handler = fn(x: Int, y: Int) Int {
-        return cast(Int, x + y);
+        return  x + y;
     };
+    
     globalHandler = &defaultHandler;
 
-    const Int: int64 = (*globalHandler)(5, 4);
-    printf("%d\n", Int);
+    const result: int64 = (*globalHandler)(5, 4);
+    printf("%d\n", result);
 }

@@ -1,16 +1,20 @@
-// @stdout: 3
+// @stdout: 5.500000 -7.000000
 
 import std::libc{printf};
 
+var handler = fn(x: float64, y: float64) float64 {
+    return 1.5;
+};
+
 pub fn main() {
-    var x = true;
+    const compute_handler = fn(cond: bool) fn(float64, float64) float64 {
+        if (cond) {
+            return fn(x: float64, y: float64) float64 { return y + x; };
+        } else {
+            return fn(x: float64, y: float64) float64 { return -y * 2.0; };
+        }
+    };
 
-    var lambda: fn(int64) int64 = fn(_x: int64) int64 { return -1; };
-    if (!!x) {
-        lambda = fn(x: int64) int64 { return x + 1; };
-    } else {
-        lambda = fn(x: int64) int64 { return -x; };
-    }
-
-    printf("%d\n", lambda(2));
+    printf("%f ", (compute_handler(true))(2.0, 3.5));
+    printf("%f ", (compute_handler(false))(2.0, 3.5));
 }

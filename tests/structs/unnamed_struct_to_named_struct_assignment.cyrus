@@ -10,9 +10,9 @@ struct MyStruct {
 
 pub fn main() {
     const inst: MyStruct = struct {
-        a = 10,
-        b = 3.14,
-        c = 'z'
+        a: 10,
+        b: 3.14,
+        c: 'z'
     };
 
     printf("%d %f %c", inst.a, inst.b, inst.c);

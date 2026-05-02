@@ -14,8 +14,9 @@
  * You should have received a copy of the GNU General Public License
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
+
 pub mod codegen_traits;
-pub mod compiler_version_compatibility;
+pub mod vercheck;
 pub mod context;
 pub mod driver;
 pub mod linker;

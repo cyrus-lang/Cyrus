@@ -16,27 +16,29 @@
  */
 use crate::{
     asan::enable_asan_for_owned_module,
-    builder::builder::IRBuilderCtx,
-    llvm::target_machine::{create_target_machine, llvm_code_model, llvm_opt_level, llvm_reloc_mode},
+    builder::builder::CodeGenIRBuilder,
+    llvm::{
+        debug_info::{DebugContext, emit_debug_module_flags, finalize_debug},
+        target_machine::{create_target_machine, llvm_code_model, llvm_opt_level, llvm_reloc_mode},
+    },
 };
-use cyrusc_abi::modulename::make_module_name_from_filepath;
 use cyrusc_buildmanifest::BuildManifest;
-use cyrusc_cir::{CIRProgramTree, monomorph::CIRMonomorphRegistry};
 use cyrusc_compiler::{
     codegen_traits::{CodeGenBackend, SeparateModuleSupport, UnifiedModuleSupport},
     context::CodeGenContext,
     object_file_info::ObjectFileInfo,
-    options::{CodeGenEndianness, CodeGenOptions},
+    options::CodeGenOptions,
     tm_info::TargetMachineInfo,
 };
-use cyrusc_diagcentral::display_single_custom_diag;
+use cyrusc_diagcentral::exit_with_msg;
+use cyrusc_internal::{cir::cir::CIRModule, vtable::VTableRegistry};
 use cyrusc_scaffold_parser::OBJECT_CACHE_DIR_FILENAME;
 use cyrusc_tui_utils::tui_skipped;
 use inkwell::{
     builder::Builder,
     context::Context,
     module::Module,
-    targets::{ByteOrdering, FileType, InitializationConfig, Target, TargetData, TargetMachine, TargetTriple},
+    targets::{ByteOrdering, FileType, InitializationConfig, Target as InkwellTarget, TargetMachine, TargetTriple},
 };
 use std::{
     any::Any,
@@ -55,7 +57,6 @@ pub struct CodeGenLLVM {
     opts: CodeGenOptions,
     build_dir: PathBuf,
     llvmtm: TargetMachine,
-    monomorph_registry: Arc<Mutex<CIRMonomorphRegistry>>,
     build_manifest: Arc<Mutex<BuildManifest>>,
     entry_module_file_path: PathBuf,
 }
@@ -63,15 +64,17 @@ pub struct CodeGenLLVM {
 impl CodeGenLLVM {
     pub fn new(
         ctx: Rc<CodeGenContext>,
+        target: &InkwellTarget,
+        target_triple: &TargetTriple,
         opts: CodeGenOptions,
         build_dir: PathBuf,
-        monomorph_registry: Arc<Mutex<CIRMonomorphRegistry>>,
         build_manifest: Arc<Mutex<BuildManifest>>,
         entry_module_file_path: PathBuf,
     ) -> Self {
         let llvmtm = create_target_machine(
+            target,
+            target_triple,
             opts.cpu.clone(),
-            opts.target_triple.clone(),
             llvm_reloc_mode(opts.reloc_mode.clone()),
             llvm_code_model(opts.code_model.clone()),
             llvm_opt_level(opts.opt_level.unwrap_or(0).try_into().unwrap()),
@@ -82,30 +85,8 @@ impl CodeGenLLVM {
             opts,
             build_dir,
             llvmtm,
-            monomorph_registry,
             build_manifest,
             entry_module_file_path,
-        }
-    }
-
-    fn set_endianness<'module>(&self, module: &Module<'module>) {
-        if let Some(endianness) = &self.opts.endianness {
-            let layout = self
-                .llvmtm
-                .get_target_data()
-                .get_data_layout()
-                .as_str()
-                .to_str()
-                .unwrap()
-                .to_string();
-
-            let new_layout_str = match endianness {
-                CodeGenEndianness::Little => layout.replacen(&layout[0..1], "e", 1),
-                CodeGenEndianness::Big => layout.replacen(&layout[0..1], "E", 1),
-            };
-
-            let new_layout = TargetData::create(&new_layout_str);
-            module.set_data_layout(&new_layout.get_data_layout());
         }
     }
 
@@ -113,14 +94,15 @@ impl CodeGenLLVM {
         &self,
         owned_module: &'ctx OwnedModule,
         builder: Rc<Builder<'ctx>>,
-        cir_program_tree: &'ctx CIRProgramTree,
-        monomorph_registry: Arc<Mutex<CIRMonomorphRegistry>>,
+        cir_module: &'ctx CIRModule,
+        dctx: DebugContext,
+        vtable_registry: Arc<VTableRegistry>,
     ) {
         {
             let llvmmodule = owned_module.module.borrow();
             llvmmodule.set_triple(&self.llvmtm.get_triple());
             llvmmodule.set_data_layout(&self.llvmtm.get_target_data().get_data_layout());
-            self.set_endianness(&llvmmodule);
+
             enable_asan_for_owned_module(
                 &self.opts,
                 owned_module,
@@ -129,11 +111,24 @@ impl CodeGenLLVM {
             );
         }
 
-        let mut ir_builder_ctx = IRBuilderCtx::new(owned_module, &builder, &self.llvmtm, monomorph_registry);
-        ir_builder_ctx.emit_program_tree(cir_program_tree);
+        let mut codegen_ir_builder = CodeGenIRBuilder::new(
+            owned_module,
+            cir_module,
+            &self.ctx.target,
+            &builder,
+            &self.llvmtm,
+            dctx,
+            vtable_registry,
+        );
 
+        codegen_ir_builder.emit_module();
+
+        unsafe { finalize_debug(&codegen_ir_builder.dctx) };
         {
             let llvmmodule = owned_module.module.borrow();
+
+            unsafe { emit_debug_module_flags(llvmmodule.as_mut_ptr()) };
+
             if let Err(err) = llvmmodule.verify() {
                 eprintln!("LLVM Module Error: {}", err)
             }
@@ -147,7 +142,7 @@ impl CodeGenLLVM {
             llvm_ir_path.set_extension("ll");
 
             if let Err(llvm_str) = module.print_to_file(llvm_ir_path) {
-                display_single_custom_diag!(llvm_str.to_string());
+                exit_with_msg!(llvm_str.to_string());
             }
             drop(module);
         }
@@ -171,7 +166,7 @@ impl CodeGenLLVM {
             assembly_path.set_extension("asm");
 
             if let Err(llvm_str) = self.llvmtm.write_to_file(&module, FileType::Assembly, &assembly_path) {
-                display_single_custom_diag!(llvm_str.to_string());
+                exit_with_msg!(llvm_str.to_string());
             }
             drop(module);
         }
@@ -184,23 +179,17 @@ impl CodeGenLLVM {
             object_path.set_extension("o");
 
             if let Err(llvm_str) = self.llvmtm.write_to_file(&module, FileType::Object, &object_path) {
-                display_single_custom_diag!(llvm_str.to_string());
+                exit_with_msg!(llvm_str.to_string());
             }
             drop(module);
         }
-    }
-
-    fn make_module_name<P: AsRef<Path> + ?Sized>(&self, file_path: &P) -> String {
-        let base_path = self.opts.base_path.as_ref().map(|p| Path::new(p));
-        let stdlib_path = self.opts.stdlib_path.as_ref().map(|p| Path::new(p));
-        make_module_name_from_filepath(file_path, base_path, stdlib_path)
     }
 
     fn store_object_file_cache(&self, module_name: &String, object_path: &PathBuf) {
         {
             let mut build_manifest = self.build_manifest.lock().unwrap();
             if let Err(err) = build_manifest.insert_object(module_name, object_path) {
-                display_single_custom_diag!(err.to_string());
+                exit_with_msg!(err.to_string());
             }
         }
     }
@@ -241,11 +230,9 @@ impl CodeGenBackend<'static, OwnedModule> for CodeGenLLVM {
             }
         }
 
-        let module_name = self.make_module_name(&owned_module.module_name);
-
         let object_path = Path::new(&self.build_dir)
             .join(OBJECT_CACHE_DIR_FILENAME)
-            .join(format!("{}.o", module_name));
+            .join(format!("{}.o", owned_module.module_name.clone()));
 
         if let Some(dir) = object_path.parent() {
             std::fs::create_dir_all(dir).expect("Failed to create directories for object file");
@@ -259,13 +246,13 @@ impl CodeGenBackend<'static, OwnedModule> for CodeGenLLVM {
                 .expect("Failed to write LLVM object file")
         }
 
-        self.store_object_file_cache(&module_name, &object_path);
+        self.store_object_file_cache(&owned_module.module_name.clone(), &object_path);
 
         ObjectFileInfo::new(object_path.clone(), object_file_size(&object_path))
     }
 
     fn target_machine_info(&self) -> TargetMachineInfo {
-        Target::initialize_all(&InitializationConfig::default());
+        InkwellTarget::initialize_all(&InitializationConfig::default());
 
         let cpu = if let Some(cpu) = &self.opts.cpu {
             cpu.clone()
@@ -274,13 +261,9 @@ impl CodeGenBackend<'static, OwnedModule> for CodeGenLLVM {
         };
         let features = TargetMachine::get_host_cpu_features().to_string();
 
-        let target_triple = if let Some(target_triple_str) = &self.opts.target_triple {
-            TargetTriple::create(&target_triple_str)
-        } else {
-            TargetMachine::get_default_triple()
-        };
+        let target_triple = self.llvmtm.get_triple();
 
-        let target = Target::from_triple(&target_triple).unwrap();
+        let target = InkwellTarget::from_triple(&target_triple).unwrap();
         let target_machine = match target.create_target_machine(
             &target_triple,
             &cpu,
@@ -291,22 +274,15 @@ impl CodeGenBackend<'static, OwnedModule> for CodeGenLLVM {
         ) {
             Some(target_machine) => target_machine,
             None => {
-                display_single_custom_diag!(
+                exit_with_msg!(
                     "Failed to create LLVM Target Machine with given target_triple, cpu, features.".to_string()
                 );
             }
         };
 
-        let native_endianness = match target_machine.get_target_data().get_byte_ordering() {
+        let endianness = match target_machine.get_target_data().get_byte_ordering() {
             ByteOrdering::LittleEndian => "Little".to_string(),
             ByteOrdering::BigEndian => "Big".to_string(),
-        };
-        let endianness = match &self.opts.endianness {
-            Some(codegen_endianness) => match codegen_endianness {
-                CodeGenEndianness::Little => "Little".to_string(),
-                CodeGenEndianness::Big => "Big".to_string(),
-            },
-            None => native_endianness,
         };
 
         TargetMachineInfo {
@@ -351,33 +327,38 @@ impl CodeGenBackend<'static, OwnedModule> for CodeGenLLVM {
 }
 
 impl SeparateModuleSupport<'static, OwnedModule> for CodeGenLLVM {
-    fn process_separately(&self, cir_modules: &[Box<CIRProgramTree>]) -> Vec<OwnedModule> {
+    fn process_separately(&self, cir_modules: &[Box<CIRModule>]) -> Vec<OwnedModule> {
         let mut modules = Vec::with_capacity(cir_modules.len());
 
-        for cir_program_tree in cir_modules {
+        for cir_module in cir_modules {
             let context = OwnedModule::create_context();
-            let module_name = self.make_module_name(&cir_program_tree.file_path);
             let owned_module =
-                OwnedModule::create_owned_module(context, &cir_program_tree.file_path, &module_name, false);
+                OwnedModule::create_owned_module(context, &cir_module.file_path, &cir_module.module_name, false);
 
-            let recompile_forced =
-                need_to_be_recompiled(&self.ctx, &Path::new(&cir_program_tree.file_path).to_path_buf());
+            let recompile_forced = need_to_be_recompiled(&self.ctx, &Path::new(&cir_module.file_path).to_path_buf());
 
             // skip emit module if recompilation is not forced
             if !recompile_forced {
-                tui_skipped(cir_program_tree.file_path.clone());
+                tui_skipped(cir_module.file_path.clone());
                 modules.push(owned_module);
                 continue;
             }
 
-            // emit llvm-ir module
+            let dctx = {
+                let llvmmodule_ref = owned_module.module.borrow().as_mut_ptr();
+                unsafe { DebugContext::new(llvmmodule_ref, owned_module.module_file_path.to_str().unwrap(), ".") }
+            };
+
+            // emit llvm-ir
             let builder = owned_module.create_builder();
             self.process_module_with_local_context(
                 &owned_module,
                 builder,
-                cir_program_tree,
-                self.monomorph_registry.clone(),
+                cir_module,
+                dctx,
+                cir_module.vtable_registry.clone(),
             );
+
             modules.push(owned_module);
         }
 
@@ -386,18 +367,24 @@ impl SeparateModuleSupport<'static, OwnedModule> for CodeGenLLVM {
 }
 
 impl UnifiedModuleSupport<'static, OwnedModule> for CodeGenLLVM {
-    fn process_unified(&self, cir_modules: &[Box<CIRProgramTree>]) -> OwnedModule {
+    fn process_unified(&self, cir_modules: &[Box<CIRModule>]) -> OwnedModule {
         let context = OwnedModule::create_context();
         let owned_module = OwnedModule::create_owned_module(context, &self.entry_module_file_path, "module", true);
 
-        for cir_program_tree in cir_modules {
+        for cir_module in cir_modules {
+            let dctx = {
+                let llvmmodule_ref = owned_module.module.borrow().as_mut_ptr();
+                unsafe { DebugContext::new(llvmmodule_ref, &cir_module.file_path, ".") }
+            };
+
             let builder = owned_module.create_builder();
 
             self.process_module_with_local_context(
                 &owned_module,
                 builder.clone(),
-                cir_program_tree,
-                self.monomorph_registry.clone(),
+                cir_module,
+                dctx,
+                cir_module.vtable_registry.clone(),
             );
         }
 

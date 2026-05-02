@@ -14,6 +14,7 @@
  * You should have received a copy of the GNU General Public License
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
+
 use crate::{
     codegen_traits::CodeGenBackend,
     linker::Linker,
@@ -22,9 +23,10 @@ use crate::{
     tm_info::TargetMachineInfo,
 };
 use cyrusc_buildmanifest::BuildManifest;
-use cyrusc_cir::CIRProgramTree;
-use cyrusc_diagcentral::display_single_custom_diag;
+use cyrusc_diagcentral::exit_with_msg;
+use cyrusc_internal::{abi::target::ABITarget, cir::cir::CIRModule};
 use cyrusc_tui_utils::{tui_compile_finished, tui_warning};
+use inkwell::targets::{Target as LLVMTarget, TargetTriple};
 use std::{
     path::PathBuf,
     sync::{Arc, Mutex},
@@ -32,6 +34,9 @@ use std::{
 
 pub struct CodeGenContext {
     pub opts: CodeGenOptions,
+    pub target: ABITarget,
+    pub llvm_target: LLVMTarget,
+    pub llvm_target_triple: TargetTriple,
     pub build_manifest: Arc<Mutex<BuildManifest>>,
     pub master_module_file_path: PathBuf,
     pub linker_output_kind: LinkerOutputKind,
@@ -41,6 +46,9 @@ pub struct CodeGenContext {
 impl CodeGenContext {
     pub(crate) fn new(
         opts: CodeGenOptions,
+        target: ABITarget,
+        llvm_target: LLVMTarget,
+        llvm_target_triple: TargetTriple,
         build_manifest: Arc<Mutex<BuildManifest>>,
         master_module_file_path: PathBuf,
         linker_output_kind: LinkerOutputKind,
@@ -48,6 +56,9 @@ impl CodeGenContext {
     ) -> Self {
         Self {
             opts,
+            target,
+            llvm_target,
+            llvm_target_triple,
             build_manifest,
             master_module_file_path,
             linker_output_kind,
@@ -56,7 +67,7 @@ impl CodeGenContext {
     }
 
     /// Orchestrates compilation and returns collected objects.
-    pub fn compile<'cdg, B, M>(&self, backend: &'cdg B, cir_modules: &mut Vec<Box<CIRProgramTree>>) -> Vec<M>
+    pub fn compile<'cdg, B, M>(&self, backend: &'cdg B, cir_modules: &mut Vec<Box<CIRModule>>) -> Vec<M>
     where
         B: CodeGenBackend<'cdg, M>,
         M: 'cdg,
@@ -91,12 +102,12 @@ impl CodeGenContext {
     pub fn save_context_build_cache(&self) {
         let build_manifest = self.build_manifest.lock().unwrap();
         if let Err(err) = build_manifest.save_manifest() {
-            display_single_custom_diag!(err.to_string());
+            exit_with_msg!(err.to_string());
         }
         drop(build_manifest);
     }
 
-    fn save_cir_modules_source_hash_in_build_manifest(&self, cir_modules: &[Box<CIRProgramTree>]) {
+    fn save_cir_modules_source_hash_in_build_manifest(&self, cir_modules: &[Box<CIRModule>]) {
         {
             let mut build_manifest = self.build_manifest.lock().unwrap();
 

@@ -1,27 +1,24 @@
-/* 
+/*
  * Copyright (c) 2026 The Cyrus Language
- * 
+ *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation, either version 3 of the License, or
  * (at your option) any later version.
- * 
+ *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. 
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
  * See the GNU General Public License for more details.
- * 
+ *
  * You should have received a copy of the GNU General Public License
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
+
 use crate::llvm::abi::callconv::LLVMCallConv;
-use cyrusc_abi::{
-    export::ExportKind,
-    flags::OptionalFlag,
-    inline::Inlining,
-    linkage::Linkage,
+use cyrusc_ast::{
+    abi::{ExportKind, Inlining, Linkage, OptionalFlag, Prologue},
     modifiers::{FuncModifiers, GlobalVarModifiers},
-    prologue::Prologue,
 };
 use inkwell::{
     DLLStorageClass,
@@ -102,18 +99,13 @@ pub(crate) fn apply_global_var_modifiers<'ll>(global_value: &GlobalValue<'ll>, m
     if let Some(section) = &modifiers.section {
         global_value.set_section(Some(section.0.as_str()));
     }
-
-    assert!(
-        modifiers.optional_flags.is_empty(),
-        "Global variables do not accept optional flags."
-    );
 }
 
-pub(crate) fn apply_inlining_func<'a>(llvmctx: &'a Context, fn_value: &FunctionValue<'a>, inline: Inlining) {
+pub(crate) fn apply_inlining_func<'a>(llvmctx: &'a Context, llvm_func_value: &FunctionValue<'a>, inline: Inlining) {
     let attr_name = llvm_inline(&inline);
     let enum_kind_id = Attribute::get_named_enum_kind_id(attr_name);
     let enum_attr = llvmctx.create_enum_attribute(enum_kind_id, 0);
-    fn_value.add_attribute(AttributeLoc::Function, enum_attr);
+    llvm_func_value.add_attribute(AttributeLoc::Function, enum_attr);
 }
 
 pub(crate) fn apply_func_modifiers<'ll>(llvmctx: &'ll Context, func: &FunctionValue<'ll>, modifiers: &FuncModifiers) {

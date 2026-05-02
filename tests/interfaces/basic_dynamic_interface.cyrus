@@ -1,4 +1,4 @@
-// @stdout: meow بعععع
+// @stdout: this is meow :3 meow بعععع
 
 import std::libc{printf};
 
@@ -10,6 +10,10 @@ struct Cat : Animal {
 	pub fn sound(&self) char* {
 		return "meow";
 	}
+
+    pub fn introduce(&self) {
+        printf("this is meow :3");
+    }
 }
 
 struct Ship : Animal {
@@ -20,8 +24,8 @@ struct Ship : Animal {
 
 pub fn main() {
 	const cat = Cat {};
-	const ship = Ship {};
+    cat.introduce();
 
-    const animals = Animal[2]{dynamic cat, dynamic ship};
-	printf("%s %s\n", animals[0].sound(), animals[1].sound());
+    const animals = Animal[2]{dynamic cat, dynamic Ship{}};
+	printf(" %s %s\n", animals[0].sound(), animals[1].sound());
 }

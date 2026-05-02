@@ -1,0 +1,20 @@
+[package]
+name = "cyrusc_cir_traverse"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+cyrusc_source_loc = { path = "../cyrusc_source_loc", version = "*" }
+cyrusc_typed_ast = { path = "../cyrusc_typed_ast", version = "*" }
+cyrusc_ast = { path = "../cyrusc_ast", version = "*" }
+cyrusc_diagcentral = { path = "../cyrusc_diagcentral", version = "*" }
+cyrusc_tokens = { path = "../cyrusc_tokens", version = "*" }
+cyrusc_internal = { path = "../cyrusc_internal", version = "*" }
+fx-hash = "0.1.0"
+rayon = "1.11.0"
+num_cpus = "1.17.0"
+once_cell = "1.21.3"
+
+[lib]
+name = "cyrusc_cir_traverse"
+path = "./src/lib.rs"

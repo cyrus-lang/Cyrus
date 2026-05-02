@@ -14,14 +14,114 @@
  * You should have received a copy of the GNU General Public License
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
-use crate::builder::builder::IRBuilderCtx;
+use crate::builder::builder::CodeGenIRBuilder;
 use inkwell::{
     AddressSpace,
-    types::{ArrayType, BasicType, StructType},
-    values::{ArrayValue, BasicValueEnum, IntValue, PointerValue, StructValue},
+    types::{ArrayType, BasicType, BasicTypeEnum, StructType},
+    values::{ArrayValue, BasicValue, BasicValueEnum, IntValue, PointerValue, StructValue},
 };
 
-impl<'ll> IRBuilderCtx<'ll> {
+impl<'ll> CodeGenIRBuilder<'ll> {
+    pub(crate) fn intrinsic_coerce_through_alloca(
+        &self,
+        value: BasicValueEnum<'ll>,
+        dst_ty: BasicTypeEnum<'ll>,
+        name: &str,
+    ) -> BasicValueEnum<'ll> {
+        let src_ty = value.get_type();
+
+        // if source and destination types are the same, no coercion is needed
+        if src_ty == dst_ty {
+            return value;
+        }
+
+        let dst_alloca = self
+            .llvmbuilder
+            .build_alloca(dst_ty, &format!("{name}.dst.alloca"))
+            .unwrap();
+
+        let src_alloca = self
+            .llvmbuilder
+            .build_alloca(src_ty, &format!("{name}.src.alloca"))
+            .unwrap();
+
+        self.llvmbuilder.build_store(src_alloca, value).unwrap();
+
+        let i8_ptr_type = self.llvmctx.ptr_type(inkwell::AddressSpace::default());
+
+        let dst_ptr = self
+            .llvmbuilder
+            .build_bit_cast(dst_alloca, i8_ptr_type, &format!("{name}.dst.ptr"))
+            .unwrap()
+            .into_pointer_value();
+
+        let src_ptr = self
+            .llvmbuilder
+            .build_bit_cast(src_alloca, i8_ptr_type, &format!("{name}.src.ptr"))
+            .unwrap()
+            .into_pointer_value();
+
+        let size = dst_ty.size_of().unwrap();
+
+        self.llvmbuilder.build_memcpy(dst_ptr, 1, src_ptr, 1, size).unwrap();
+
+        self.llvmbuilder.build_load(dst_ty, dst_alloca, name).unwrap()
+    }
+
+    pub(crate) fn intrinsic_optimized_memcpy(&self, dest: PointerValue<'ll>, rvalue: BasicValueEnum<'ll>) {
+        let ty = rvalue.get_type();
+
+        // Fast path: direct store
+        if ty.is_int_type()
+            || ty.is_float_type()
+            || ty.is_pointer_type()
+            || ty.is_struct_type()
+            || ty.is_array_type()
+            || ty.is_vector_type()
+        {
+            self.llvmbuilder.build_store(dest, rvalue).unwrap();
+            return;
+        }
+
+        // fallback to memcpy
+        self.intrinsic_memcpy(dest, rvalue);
+    }
+
+    pub(crate) fn intrinsic_memcpy(&self, dest: PointerValue<'ll>, rvalue: BasicValueEnum<'ll>) {
+        let target_data = self.llvmtm.get_target_data();
+        let ty = rvalue.get_type();
+
+        let size_in_bytes = target_data.get_store_size(&ty);
+        let size_value = self.llvmctx.i64_type().const_int(size_in_bytes, false);
+
+        let src_align = target_data.get_abi_alignment(&ty);
+        let dest_align = target_data.get_abi_alignment(&ty);
+
+        let src_ptr = if rvalue.is_const() {
+            // use global value if rvalue is a constant
+            let global = {
+                let module = self.llvmmodule.borrow();
+                module.add_global(ty, None, "__const.memcpy")
+            };
+
+            global.set_linkage(inkwell::module::Linkage::Private);
+            global.set_constant(true);
+            global.set_unnamed_address(inkwell::values::UnnamedAddress::Global);
+            global.set_initializer(&rvalue);
+
+            global.as_pointer_value()
+        } else {
+            // fallback
+            let tmp = self.llvmbuilder.build_alloca(ty, "memcpy.temp").unwrap();
+            self.llvmbuilder.build_store(tmp, rvalue).unwrap();
+            tmp
+        };
+
+        self.llvmbuilder
+            .build_memcpy(dest, dest_align, src_ptr, src_align, size_value)
+            .unwrap();
+    }
+
     pub(crate) fn intrinsic_strcmp(&self, lhs_ptr: PointerValue<'ll>, rhs_ptr: PointerValue<'ll>) -> IntValue<'ll> {
         let i32_type = self.llvmctx.i32_type();
         let i8_ptr_type = self.llvmctx.ptr_type(AddressSpace::default());
@@ -128,66 +228,28 @@ impl<'ll> IRBuilderCtx<'ll> {
         buffer: ArrayValue<'ll>,
         struct_type: StructType<'ll>,
     ) -> StructValue<'ll> {
-        let struct_alloca = self.llvmbuilder.build_alloca(struct_type, "struct_alloca").unwrap();
-
-        let buffer_alloca = self
-            .llvmbuilder
-            .build_alloca(buffer.get_type(), "buffer_alloca")
-            .unwrap();
-        self.llvmbuilder.build_store(buffer_alloca, buffer).unwrap();
-
-        let i8_ptr_type = self.llvmctx.ptr_type(AddressSpace::default());
-        let dest_i8_ptr = self
-            .llvmbuilder
-            .build_pointer_cast(struct_alloca, i8_ptr_type, "dest_i8")
-            .unwrap();
-        let src_i8_ptr = self
-            .llvmbuilder
-            .build_pointer_cast(buffer_alloca, i8_ptr_type, "src_i8")
-            .unwrap();
-
-        let struct_size = struct_type.size_of().unwrap();
-        self.llvmbuilder
-            .build_memcpy(dest_i8_ptr, 1, src_i8_ptr, 1, struct_size)
-            .unwrap();
-
-        self.llvmbuilder
-            .build_load(struct_type, struct_alloca, "load_struct")
-            .unwrap()
-            .into_struct_value()
+        self.intrinsic_coerce_through_alloca(
+            BasicValueEnum::ArrayValue(buffer),
+            BasicTypeEnum::StructType(struct_type),
+            "coerce",
+        )
+        .into_struct_value()
     }
 
     pub(crate) fn intrinsic_copy_payload_to_buffer(
         &self,
-        src_value: BasicValueEnum<'ll>,
-        dest_array_type: ArrayType<'ll>,
+        mut value: BasicValueEnum<'ll>,
+        array_type: ArrayType<'ll>,
     ) -> ArrayValue<'ll> {
-        let builder = &self.llvmbuilder;
+        let alloca = self.llvmbuilder.build_alloca(array_type, "alloca").unwrap();
 
-        let array_alloca = builder.build_alloca(dest_array_type, "alloca").unwrap();
-        builder.build_store(array_alloca, dest_array_type.const_zero()).unwrap(); // zero-init
+        value = self.intrinsic_coerce_through_alloca(value, BasicTypeEnum::ArrayType(array_type), "coerce");
 
-        let src_ptr = match src_value {
-            BasicValueEnum::PointerValue(ptr) => ptr,
-            _ => {
-                let tmp_alloca = builder.build_alloca(src_value.get_type(), "tmp").unwrap();
-                builder.build_store(tmp_alloca, src_value).unwrap();
-                tmp_alloca
-            }
-        };
-
-        let i8_ptr_type = self.llvmctx.ptr_type(AddressSpace::default());
-        let dest_i8_ptr = builder
-            .build_pointer_cast(array_alloca, i8_ptr_type, "dest_i8")
-            .unwrap();
-        let src_i8_ptr = builder.build_pointer_cast(src_ptr, i8_ptr_type, "src_i8").unwrap();
-
-        let src_size = src_value.get_type().size_of().unwrap();
-        builder.build_memcpy(dest_i8_ptr, 1, src_i8_ptr, 1, src_size).unwrap();
+        self.intrinsic_optimized_memcpy(alloca, value);
 
         // load back the array
-        builder
-            .build_load(dest_array_type, array_alloca, "load")
+        self.llvmbuilder
+            .build_load(array_type, alloca, "load")
             .unwrap()
             .into_array_value()
     }

@@ -15,222 +15,251 @@
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
 
-/*
- * Copyright (c) 2026 The Cyrus Language
- *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
- * See the GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License
- * along with this program. If not, see <https://www.gnu.org/licenses/>.
- */
 use crate::{Diag, DiagKind, DiagLevel};
 use colorized::{Color, Colors};
 use console::user_attended;
-use cyrusc_strescape::{saturating_sub, spaces};
-use std::fmt::{self};
-use std::fs;
+use cyrusc_source_loc::{Loc, SourceMap};
+use cyrusc_strescape::spaces;
+use std::{
+    cell::{Ref, RefCell, RefMut},
+    fmt,
+    process::exit,
+    sync::Arc,
+};
 
 const PANEL_LENGTH: usize = 2;
 const TAB_WIDTH: usize = 4;
 
 pub struct DiagReporter {
-    pub diags: Vec<Diag>,
+    source_map: Option<Arc<SourceMap>>,
+    diags: RefCell<Vec<Diag>>,
 }
 
 impl DiagReporter {
-    pub fn new() -> Self {
-        Self { diags: Vec::new() }
+    pub fn new(source_map: Arc<SourceMap>) -> Self {
+        Self {
+            source_map: Some(source_map),
+            diags: RefCell::new(Vec::new()),
+        }
     }
 
-    pub fn report(&mut self, diag: Diag) -> &mut Self {
-        self.diags.push(diag);
-        self
+    pub fn new_with_no_source_map() -> Self {
+        Self {
+            source_map: None,
+            diags: RefCell::new(Vec::new()),
+        }
     }
 
-    pub fn has_errors(&self) -> bool {
-        self.diags.iter().any(|d| matches!(d.level, DiagLevel::Error))
+    pub fn diags(&self) -> Ref<'_, Vec<Diag>> {
+        self.diags.borrow()
     }
-}
 
-impl DiagReporter {
-    pub fn display(&self) {
-        for diag in self.diags.iter() {
+    pub fn diags_mut(&self) -> RefMut<'_, Vec<Diag>> {
+        self.diags.borrow_mut()
+    }
+
+    pub fn display_and_exit_if_has_errors(&self) {
+        if self.has_errors() {
+            self.display();
+            exit(1);
+        }
+    }
+
+    pub fn display_first(&self, n: usize) {
+        let mut diags = self.diags.borrow_mut();
+
+        let count = n.min(diags.len());
+
+        for diag in diags.iter().take(count) {
             match diag.level {
-                DiagLevel::Error => eprintln!("{}", Self::format_panel(diag)),
-                DiagLevel::Warning => println!("{}", Self::format_panel(diag)),
+                DiagLevel::Error => eprintln!("{}", self.render(diag)),
+                DiagLevel::Warning => println!("{}", self.render(diag)),
             }
         }
+
+        diags.drain(..count);
+    }
+
+    pub fn display(&self) {
+        let mut diags = self.diags.borrow_mut();
+
+        for diag in diags.iter() {
+            match diag.level {
+                DiagLevel::Error => eprintln!("{}", self.render(diag)),
+                DiagLevel::Warning => println!("{}", self.render(diag)),
+            }
+        }
+
+        diags.clear();
+        drop(diags);
     }
 
     pub fn display_single(diag: Diag) {
-        let mut reporter = Self::new();
-        reporter.report(diag);
-        reporter.display();
+        let reporter = DiagReporter::new_with_no_source_map();
+        let output = reporter.render(&diag);
+        eprintln!("{}", output);
     }
 
-    pub fn format_panel(diag: &Diag) -> String {
-        let mut formatted = String::new();
+    pub fn report(&self, diag: Diag) {
+        self.diags.borrow_mut().push(diag)
+    }
 
-        macro_rules! get_highlight_color {
-            () => {
-                match diag.level {
-                    DiagLevel::Error => Colors::RedFg,
-                    DiagLevel::Warning => Colors::YellowFg,
-                }
-            };
-        }
+    pub fn has_errors(&self) -> bool {
+        self.diags.borrow().iter().any(|d| matches!(d.level, DiagLevel::Error))
+    }
 
-        let level_text = match diag.level {
-            DiagLevel::Error => "error".color(get_highlight_color!()),
-            DiagLevel::Warning => "warning".color(get_highlight_color!()),
-        };
-
-        formatted.push_str(&format!("[{}] {}\n", level_text, diag.kind));
-
-        if let Some(loc) = &diag.location {
-            formatted.push_str(&format!("       --> {}:{}:{}\n\n", loc.file, loc.line, loc.column));
-
-            // Get source lines
-            let source = fs::read_to_string(&loc.file).unwrap_or_default();
-            let lines: Vec<&str> = source.lines().collect();
-
-            // Convert 1-based line number to 0-based index
-            let error_line_idx = loc.line.saturating_sub(1);
-
-            // Calculate range of lines to show
-            let start_line = saturating_sub(error_line_idx, PANEL_LENGTH);
-            let end_line = std::cmp::min(error_line_idx + PANEL_LENGTH + 1, lines.len());
-
-            // Display the lines
-            for line_idx in start_line..end_line {
-                if let Some(line_content) = lines.get(line_idx) {
-                    let line_num = line_idx + 1;
-
-                    // Add line number
-                    formatted.push_str(&format!("{}{:>4} | ", spaces(2), line_num));
-
-                    // Handle highlighting if this is the error line
-                    if line_idx == error_line_idx {
-                        // Check if we have a specific range to highlight
-                        if let Some(range) = loc.range {
-                            let (range_start, range_end) = range;
-
-                            // Ensure range is within bounds
-                            let safe_start = range_start.min(line_content.len());
-                            let safe_end = range_end.min(line_content.len());
-
-                            // Split the line into parts
-                            if safe_start <= safe_end {
-                                // Part before the highlighted range
-                                let before = &line_content[..safe_start];
-                                formatted.push_str(before);
-
-                                // The highlighted part itself
-                                if safe_start < line_content.len() {
-                                    let highlighted = &line_content[safe_start..safe_end];
-                                    formatted.push_str(&format!("{}", highlighted.color(get_highlight_color!())));
-
-                                    // Part after the highlighted range
-                                    let after = &line_content[safe_end..];
-                                    formatted.push_str(after);
-                                }
-
-                                formatted.push('\n');
-
-                                // Add the pointer line (~~~~~) to show where the error is
-                                if user_attended() {
-                                    formatted.push_str(&format!("{}     | ", spaces(2)));
-
-                                    // Handle tabs in the code
-                                    let before_tabs = before.chars().filter(|&c| c == '\t').count();
-                                    let before_visible_length = before.len() + before_tabs * (TAB_WIDTH - 1);
-
-                                    // Add spaces to align the pointer
-                                    formatted.push_str(&" ".repeat(before_visible_length));
-
-                                    // Calculate pointer length
-                                    let highlighted_len = if safe_start < safe_end {
-                                        let highlighted_text = &line_content[safe_start..safe_end];
-                                        // Account for tabs in highlighted text
-                                        let tab_count = highlighted_text.chars().filter(|&c| c == '\t').count();
-                                        highlighted_text.len() + tab_count * (TAB_WIDTH - 1)
-                                    } else {
-                                        1 // Single caret for empty range
-                                    };
-
-                                    // Add the pointer
-                                    if highlighted_len > 0 {
-                                        if highlighted_len == 1 {
-                                            formatted.push_str(&format!("{}", "^".color(get_highlight_color!())));
-                                        } else {
-                                            formatted.push_str(&format!(
-                                                "{}",
-                                                "~".repeat(highlighted_len).color(get_highlight_color!())
-                                            ));
-                                        }
-                                    } else {
-                                        formatted.push_str(&format!("{}", "^".color(get_highlight_color!())));
-                                    }
-
-                                    formatted.push('\n');
-                                }
-                            } else {
-                                // Invalid range, just show the line normally
-                                formatted.push_str(&format!("{}", line_content.color(get_highlight_color!())));
-                                formatted.push('\n');
-                            }
-                        } else {
-                            // No specific range, highlight entire line
-                            formatted.push_str(&format!("{}", line_content.color(get_highlight_color!())));
-                            formatted.push('\n');
-
-                            // Add a simple pointer at the column position
-                            if user_attended() && loc.column > 0 {
-                                formatted.push_str(&format!("{}     | ", spaces(2)));
-
-                                // Handle tabs
-                                let line_up_to_col = &line_content[..(loc.column - 1).min(line_content.len())];
-                                let tab_count = line_up_to_col.chars().filter(|&c| c == '\t').count();
-                                let visible_length = line_up_to_col.len() + tab_count * (TAB_WIDTH - 1);
-
-                                formatted.push_str(&" ".repeat(visible_length));
-                                formatted.push_str(&format!("{}", "^".color(get_highlight_color!())));
-                                formatted.push('\n');
-                            }
-                        }
-                    } else {
-                        // Regular line (not the error line)
-                        formatted.push_str(line_content);
-                        formatted.push('\n');
-                    }
-                }
-            }
-
-            if let Some(hint) = &diag.hint {
-                formatted.push_str("\n");
-                formatted.push_str(&format!(" {}: {}", "hint".color(Colors::BlueFg), hint));
-                formatted.push_str("\n");
-            }
-        }
-
-        formatted
+    pub fn len(&self) -> usize {
+        self.diags.borrow().len()
     }
 }
 
-#[macro_export]
-macro_rules! display_single_diag {
-    ($diag:expr) => {
-        cyrusc_diagcentral::reporter::DiagReporter::display_single($diag);
-        std::process::exit(1);
-    };
+impl DiagReporter {
+    pub(crate) fn render(&self, diag: &Diag) -> String {
+        let mut out = String::new();
+
+        let level_text = {
+            let color = self.highlight_color(diag);
+
+            match diag.level {
+                DiagLevel::Error => "error".color(color),
+                DiagLevel::Warning => "warning".color(color),
+            }
+        };
+
+        out.push_str(&format!("[{}] {}\n", level_text, diag.kind));
+
+        if diag.loc.is_none() || self.source_map.is_none() {
+            if let Some(hint) = &diag.hint {
+                out.push_str(&format!(" {}: {}\n", "hint".color(Colors::BlueFg), hint));
+            }
+            return out;
+        }
+
+        let loc = diag.loc.unwrap();
+        let source_map = self.source_map.as_ref().unwrap();
+        let source_file = { source_map.get_file(loc.file_id).unwrap().clone() };
+
+        let lines: Vec<&str> = source_file.content.lines().collect();
+
+        // Render header: `--> file:line:column`
+        out.push_str(&self.render_header(source_file.file_path.to_str().unwrap(), loc));
+
+        // Compute which lines to print
+        let error_idx = loc.line.saturating_sub(1);
+        let start_line = error_idx.saturating_sub(PANEL_LENGTH);
+        let end_line = std::cmp::min(error_idx + PANEL_LENGTH + 1, lines.len());
+
+        for line_idx in start_line..end_line {
+            let line = lines[line_idx];
+            let line_no = line_idx + 1;
+
+            out.push_str(&self.render_line_number(line_no));
+
+            if line_idx == error_idx {
+                let highlighted_line = {
+                    let color = self.highlight_color(diag);
+                    self.render_highlighted_line(line, loc, color)
+                };
+
+                out.push_str(&highlighted_line);
+
+                // draw pointer caret if "user attended" mode
+                if user_attended() {
+                    let color = self.highlight_color(diag);
+                    out.push_str(&self.render_pointer_line(line, loc, color));
+                }
+            } else {
+                out.push_str(line);
+                out.push('\n');
+            }
+        }
+
+        // Render hints
+        if let Some(hint) = &diag.hint {
+            out.push_str("\n");
+            out.push_str(&format!(" {}: {}\n", "hint".color(Colors::BlueFg), hint));
+        }
+
+        out
+    }
+
+    fn render_header(&self, file: &str, loc: Loc) -> String {
+        format!("       --> {}:{}:{}\n\n", file, loc.line, loc.column + 1)
+    }
+
+    fn render_line_number(&self, line: usize) -> String {
+        format!("{}{:>4} | ", spaces(2), line)
+    }
+
+    fn render_highlighted_line(&self, line: &str, loc: Loc, color: Colors) -> String {
+        let mut out = String::new();
+
+        let start = loc.start.min(line.len());
+        let end = loc.end.min(line.len());
+
+        if start <= end {
+            let before = &line[..start];
+            let highlight = &line[start..end];
+            let after = &line[end..];
+
+            out.push_str(before);
+            out.push_str(&format!("{}", highlight.color(color)));
+            out.push_str(after);
+        } else {
+            out.push_str(line);
+        }
+
+        out.push('\n');
+        out
+    }
+
+    fn render_pointer_line(&self, line: &str, loc: Loc, color: Colors) -> String {
+        let mut out = String::new();
+
+        out.push_str(&format!("{}     | ", spaces(2)));
+
+        let start = loc.start.min(line.len());
+        let end = loc.end.min(line.len());
+
+        let before = &line[..start];
+        let span = &line[start..end];
+
+        let before_width = self.visual_width(before);
+        let span_width = self.visual_width(span).max(1);
+
+        out.push_str(&" ".repeat(before_width));
+
+        if span_width == 1 {
+            out.push_str(&format!("{}", "^".color(color)));
+        } else {
+            out.push_str(&format!("{}", "~".repeat(span_width).color(color)));
+        }
+
+        out.push('\n');
+
+        out
+    }
+
+    fn visual_width(&self, text: &str) -> usize {
+        let mut width = 0;
+
+        for c in text.chars() {
+            if c == '\t' {
+                width += TAB_WIDTH;
+            } else {
+                width += 1;
+            }
+        }
+
+        width
+    }
+
+    fn highlight_color(&self, diag: &Diag) -> Colors {
+        match diag.level {
+            DiagLevel::Error => Colors::RedFg,
+            DiagLevel::Warning => Colors::YellowFg,
+        }
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -249,14 +278,22 @@ impl fmt::Display for CustomDiagKind {
 }
 
 #[macro_export]
-macro_rules! display_single_custom_diag {
+macro_rules! exit_with_msg {
     ($msg:expr) => {
         cyrusc_diagcentral::reporter::DiagReporter::display_single(cyrusc_diagcentral::Diag {
             level: cyrusc_diagcentral::DiagLevel::Error,
             kind: Box::new(cyrusc_diagcentral::reporter::CustomDiagKind::Custom($msg)),
-            location: None,
+            loc: None,
             hint: None,
         });
+        std::process::exit(1);
+    };
+}
+
+#[macro_export]
+macro_rules! exit_with_single_diag {
+    ($diag:expr) => {
+        cyrusc_diagcentral::reporter::DiagReporter::display_single($diag);
         std::process::exit(1);
     };
 }

@@ -14,15 +14,17 @@
  * You should have received a copy of the GNU General Public License
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
+
 use crate::Diag;
 use crate::Parser;
 use crate::diagnostics::ParserDiagKind;
 use crate::prec::Precedence;
+use cyrusc_ast::abi::ReprAttr;
 use cyrusc_ast::*;
+use cyrusc_source_loc::Loc;
 use cyrusc_tokens::PRIMITIVE_TYPES;
 use cyrusc_tokens::TokenKind;
 use cyrusc_tokens::literals::LiteralKind;
-use cyrusc_tokens::loc::Span;
 
 #[derive(Debug, Clone)]
 pub(crate) struct TypeArgStartDetail {
@@ -30,56 +32,99 @@ pub(crate) struct TypeArgStartDetail {
     pub(crate) is_array_init: bool,
 }
 
-impl Parser {
+impl<'source_file> Parser<'source_file> {
+    /// Parses an identifier token.
     pub(crate) fn parse_ident(&mut self) -> Result<Ident, Diag> {
         let token = self.current_token();
 
-        match token.kind {
-            TokenKind::Ident(ident) => Ok(Ident {
+        if let TokenKind::Ident(ident) = token.kind {
+            Ok(Ident {
                 value: ident,
-                span: token.span,
                 loc: token.loc,
-            }),
-            _ => Err(self.error_at_token(&token, ParserDiagKind::ExpectedIdentifier)),
+            })
+        } else {
+            Err(self.error_at_token(
+                &token,
+                ParserDiagKind::ExpectedIdentifier {
+                    got: token.kind.to_string(),
+                },
+            ))
         }
     }
 
-    pub(crate) fn is_type_token(&mut self, token_kind: &TokenKind) -> bool {
+    /// Parses an integer literal that must not have a suffix.
+    ///
+    /// Used in contexts where type suffixes on integers are forbidden.
+    pub(crate) fn parse_integer_without_suffix(&self) -> Result<i128, Diag> {
+        let token = self.current_token();
+
+        if let TokenKind::Literal(literal) = &token.kind {
+            if let LiteralKind::Integer(value, suffix) = &literal.kind {
+                if suffix.is_none() {
+                    return Ok(*value);
+                }
+            }
+        }
+
+        Err(self.error_at_current(ParserDiagKind::IntegerSuffixNotAllowed))
+    }
+
+    /// Parses a string literal that must not have a prefix.
+    ///
+    /// Used in contexts where string prefixes like `c"..."` or `b"..."` are forbidden.
+    pub(crate) fn parse_string_without_prefix(&mut self) -> Result<String, Diag> {
+        let token = self.current_token();
+
+        if let TokenKind::Literal(literal) = &token.kind {
+            if let LiteralKind::String(value, prefix) = &literal.kind {
+                if prefix.is_none() {
+                    return Ok(value.clone());
+                }
+            }
+        }
+
+        Err(self.error_at_token(&token, ParserDiagKind::StringPrefixNotAllowed))
+    }
+
+    /// Determines whether a token can begin a type specifier in the grammar.
+    pub(crate) fn is_type_specifier_base_token(&mut self, token_kind: &TokenKind) -> bool {
         if PRIMITIVE_TYPES.contains(token_kind) {
             true
         } else if let TokenKind::Ident { .. } = token_kind {
             true
         } else {
-            matches!(
-                token_kind,
-                TokenKind::Asterisk | TokenKind::Ampersand | TokenKind::Const
-            )
+            matches!(token_kind, TokenKind::Const)
         }
     }
 
+    /// Parses a complete type specifier, handling pointers, arrays, and generic types.
+    ///
+    /// This is the heart of parsing types in our language.
     pub(crate) fn parse_type_specifier(&mut self) -> Result<TypeSpecifier, Diag> {
         let mut base_type = self.parse_base_type_token()?;
+
+        let loc = base_type.loc();
+        let (line, column, start) = (loc.line, loc.column, loc.start);
 
         loop {
             if self.peek_token_is(TokenKind::Asterisk) {
                 self.next_token();
                 base_type = TypeSpecifier::Deref(Box::new(base_type));
             } else if self.peek_token_is(TokenKind::LeftBracket) {
-                self.next_token(); // consume '['
+                self.next_token();
                 base_type = self.parse_array_type(base_type)?;
             } else if self.peek_token_is(TokenKind::LessThan) {
                 // handle generic type arguments
-                let start = self.peek_token().span.start;
-                let loc = self.peek_token().loc.clone();
 
                 self.next_token(); // consume less than
-                let type_args = self.parse_type_arg_list()?;
+                let type_args = self.parse_type_args()?;
+
+                let end = self.current_token().loc.end;
 
                 base_type = TypeSpecifier::GenericInst(GenericInst {
                     base: Box::new(base_type),
                     type_args,
-                    loc,
-                    span: Span::new(start, self.current_token().span.end),
+                    loc: Loc::new(self.file_id(), line, column, start, end),
                 });
             } else {
                 break;
@@ -89,10 +134,13 @@ impl Parser {
         Ok(base_type)
     }
 
-    pub(crate) fn parse_generic_params(&mut self) -> Result<GenericParamsList, Diag> {
+    /// Parses generic parameters enclosed in `<...>`.
+    ///
+    /// Used in declarations like structs, enums, unions, typedefs, and functions.
+    pub(crate) fn parse_generic_params(&mut self) -> Result<GenericParams, Diag> {
         self.expect_current(TokenKind::LessThan)?;
 
-        let mut generic_params: GenericParamsList = GenericParamsList::new();
+        let mut generic_params: GenericParams = GenericParams::new();
 
         loop {
             generic_params.push(self.parse_generic_param()?);
@@ -110,25 +158,82 @@ impl Parser {
         Ok(generic_params)
     }
 
-    pub(crate) fn parse_type_arg_list(&mut self) -> Result<Vec<TypeArg>, Diag> {
+    /// Parses a single generic parameter with optional bounds and default type.
+    ///
+    /// Examples:
+    /// - `T` (simple)
+    /// - `T: Display` (with bound)
+    /// - `T = int32` (with default type)
+    /// - `T: Debug = int32` (with both bound and default)
+    fn parse_generic_param(&mut self) -> Result<GenericParam, Diag> {
+        let param_name = self.parse_ident()?;
+        self.next_token();
+
+        let bounds = if self.current_token_is(TokenKind::Colon) {
+            self.next_token(); // consume colon
+            Some(self.parse_bounds()?)
+        } else {
+            None
+        };
+
+        let default = if self.current_token_is(TokenKind::Assign) {
+            self.next_token(); // consume assign
+
+            let ty = self.parse_type_specifier()?;
+            self.next_token();
+
+            Some(ty)
+        } else {
+            None
+        };
+
+        Ok(GenericParam {
+            param_name,
+            bounds,
+            default,
+        })
+    }
+
+    /// Parses a list of trait bounds separated by `+`.
+    fn parse_bounds(&mut self) -> Result<Vec<Bound>, Diag> {
+        let mut list: Vec<Bound> = Vec::new();
+
+        loop {
+            let ty = self.parse_type_specifier()?;
+            self.next_token();
+
+            list.push(Bound(ty));
+
+            match self.current_token().kind {
+                TokenKind::Plus => {
+                    self.next_token();
+                    continue;
+                }
+                _ => break,
+            }
+        }
+
+        Ok(list)
+    }
+
+    /// Parses a list of type arguments inside `<...>` for generic instantiations.
+    ///
+    /// Supports both positional (`<T, U>`) and named (`<Key = T, Value = U>`) arguments.
+    pub(crate) fn parse_type_args(&mut self) -> Result<TypeArgs, Diag> {
         self.expect_current(TokenKind::LessThan)?;
 
         let mut args = Vec::new();
 
         loop {
-            if matches!(self.current_token().kind, TokenKind::Ident { .. }) && self.peek_token_is(TokenKind::Assign) {
-                let key = self.parse_ident()?;
-                self.next_token(); // consume ident
-                self.expect_current(TokenKind::Assign)?;
-
-                let ty = self.parse_type_specifier()?;
+            if self.current_token_is(TokenKind::Underscore) {
                 self.next_token();
 
-                args.push(TypeArg::Named { key, ty });
+                args.push(TypeArg::Infer);
             } else {
                 let ty = self.parse_type_specifier()?;
                 self.next_token();
-                args.push(TypeArg::Positional(ty));
+
+                args.push(TypeArg::Type(ty));
             }
 
             match self.current_token().kind {
@@ -145,10 +250,14 @@ impl Parser {
             }
         }
 
-        Ok(args)
+        Ok(TypeArgs(args))
     }
 
-    pub(crate) fn is_type_arg_start(&mut self, last_parsed_expr: Expr) -> TypeArgStartDetail {
+    /// Determines if the current position starts a type argument list.
+    ///
+    /// This function resolves the ambiguity between `<` as a generic opener vs. a comparison operator.
+    /// It's crucial for correctly parsing expressions like `x < y > z` (comparison) vs `T<U>` (generics).
+    pub(crate) fn is_type_arg_start(&mut self, last_parsed_expr: ASTExpr) -> TypeArgStartDetail {
         // do we even have a '<' token at the current position?
         // if there's no '<', this can't possibly be the start of type arguments
         if !self.peek_token_is(TokenKind::LessThan) {
@@ -195,7 +304,6 @@ impl Parser {
                             // this pattern occurs when we have a generic type followed by array initialization brackets.
                             // example 1: `Vec<int>[5]` - creates an array of 5 Vec<int> elements
                             // example 2: `Option<String>[10]` - array of 10 Option<String> elements
-                            // example 3: `Record<V=int[2]>[3]` - array of 3 Record<V=int[2]> instances
                             // the array size `N` can be any constant expression.
                             if next_token.kind == TokenKind::LeftBracket {
                                 // we need to determine if this is genuinely an array initialization
@@ -211,13 +319,12 @@ impl Parser {
                                     is_array_init,            // True if this is array initialization
                                 };
                             }
-                            // `Type<T> { ... }` - Struct/tuple initialization with generics
-                            // this pattern occurs when we have a generic type followed by a struct initializer.
-                            // example 1: `Record<V = int[2]> { key: 10, value: 20 }` - Record struct with generic V
-                            // example 2: `Point<f32> { x: 1.0, y: 2.0 }` - Point struct with f32 generic
-                            // example 3: `Option<String> { value: "hello" }` - Option enum variant initialization
-                            // the braces contain field initializers for the struct or enum variant.
-                            else if next_token.kind == TokenKind::LeftBrace {
+                            // `Type<T> { ... }` or `Type<T>.member(...)`
+                            // Both patterns are valid after a generic type expression:
+                            // - `{ ... }` indicates a struct or enum variant initialization with generics
+                            // - `.` indicates a field or method access on a generic type (e.g., `Object<int>.member(10)`)
+                            // This branch ensures such cases are recognized as valid generic constructs, not disqualified comparisons.
+                            else if next_token.kind == TokenKind::LeftBrace || next_token.kind == TokenKind::Dot {
                                 return TypeArgStartDetail {
                                     includes_type_args: true, // yes, there were type arguments before the braces
                                     is_array_init: false, // not an array initialization - it's struct initialization
@@ -273,6 +380,11 @@ impl Parser {
         };
     }
 
+    /// Determines if a generic type followed by brackets is an array initialization.
+    ///
+    /// Checks whether `GenericType<T>[N]` is an array of generics (true) or
+    /// a generic with an array type parameter (false). Looks for `{` after brackets
+    /// to identify struct initialization.
     fn check_for_array_init_after_generic(&mut self, start_idx: usize) -> bool {
         let mut i = start_idx;
         let mut bracket_depth = 0;
@@ -311,48 +423,46 @@ impl Parser {
         false
     }
 
+    /// Determines if a token that appears immediately after `>`
+    /// invalidates the interpretation of `<...>` as type arguments.
+    ///
+    /// This is part of the `<` vs comparison disambiguation logic.
+    /// If the token can legally follow a *type expression*, then it
+    /// must NOT disqualify generic type arguments.
+    ///
+    /// Returns `true` when the token makes `<...>` impossible to be generics.
     fn token_disqualifies_type_arg(&mut self, kind: &TokenKind) -> bool {
         match kind {
-            // allowed tokens
-            TokenKind::Ident { .. } => false,
+            // ------------------------------------------------------------
+            // Tokens that are VALID after a type expression
+            // ------------------------------------------------------------
 
-            TokenKind::UIntPtr
-            | TokenKind::IntPtr
-            | TokenKind::ISize
-            | TokenKind::USize
-            | TokenKind::Int
-            | TokenKind::Int8
-            | TokenKind::Int16
-            | TokenKind::Int32
-            | TokenKind::Int64
-            | TokenKind::Int128
-            | TokenKind::UInt
-            | TokenKind::UInt8
-            | TokenKind::UInt16
-            | TokenKind::UInt32
-            | TokenKind::UInt64
-            | TokenKind::UInt128
-            | TokenKind::Float16
-            | TokenKind::Float32
-            | TokenKind::Float64
-            | TokenKind::Float128
-            | TokenKind::Char
-            | TokenKind::Void
-            | TokenKind::Bool => false,
+            // Path continuation: `Type<T>.member`
+            TokenKind::Dot => false,
 
-            TokenKind::DoubleColon => false,
+            // Function / tuple / constructor call: `Type<T>(...)`
+            TokenKind::LeftParen => false,
 
+            // Struct or enum variant initialization: `Type<T> { ... }`
+            TokenKind::LeftBrace => false,
+
+            // Array type or array init: `Type<T>[N]`
+            TokenKind::LeftBracket | TokenKind::RightBracket => false,
+
+            // Another generic layer or nested type
             TokenKind::LessThan | TokenKind::GreaterThan | TokenKind::Comma => false,
 
-            TokenKind::Const | TokenKind::Public | TokenKind::Extern => false,
+            TokenKind::Asterisk => false,
 
-            TokenKind::Asterisk | TokenKind::Ampersand | TokenKind::LeftBracket | TokenKind::RightBracket => false,
-
-            // assign used in named-type-args that why it doesn't disqualify
-            TokenKind::Assign => false,
-
-            // any other token disqualifies type arg
+            // ------------------------------------------------------------
+            // Tokens that CANNOT follow a type expression
+            // These indicate `<` was a comparison operator.
+            // ------------------------------------------------------------
             TokenKind::Literal(_) => true,
+
+            TokenKind::Assign => true,
+
+            TokenKind::DoubleColon => true,
 
             TokenKind::Plus
             | TokenKind::Minus
@@ -374,86 +484,28 @@ impl Parser {
             | TokenKind::ShiftLeft
             | TokenKind::ShiftRight => true,
 
-            TokenKind::LeftParen | TokenKind::RightParen => true,
-
-            TokenKind::If
-            | TokenKind::Else
-            | TokenKind::For
-            | TokenKind::While
-            | TokenKind::Foreach
-            | TokenKind::Switch
-            | TokenKind::Case
-            | TokenKind::Default
-            | TokenKind::Return
-            | TokenKind::Break
-            | TokenKind::Continue
-            | TokenKind::Goto
-            | TokenKind::Defer => true,
-
             TokenKind::ThinArrow
             | TokenKind::FatArrow
             | TokenKind::DoubleQuote
             | TokenKind::SingleQuote
-            | TokenKind::Dot
             | TokenKind::DoubleDot
             | TokenKind::TripleDot => true,
 
-            TokenKind::Struct | TokenKind::Union | TokenKind::Enum | TokenKind::Interface | TokenKind::Bits => true,
-
             TokenKind::True | TokenKind::False | TokenKind::Null => true,
 
-            TokenKind::Macro | TokenKind::In | TokenKind::As => true,
-
-            TokenKind::LeftBrace | TokenKind::RightBrace => true,
+            TokenKind::RightParen => true,
+            TokenKind::RightBrace => true,
 
             TokenKind::Semicolon => true,
 
-            TokenKind::Typedef | TokenKind::Typecast | TokenKind::SizeOf => true,
-
-            other => !self.is_type_token(other),
+            // ------------------------------------------------------------
+            // Fallback
+            // ------------------------------------------------------------
+            other => !self.is_type_specifier_base_token(other),
         }
     }
 
-    pub(crate) fn parse_single_array_index(&mut self) -> Result<Expr, Diag> {
-        self.expect_current(TokenKind::LeftBracket)?;
-
-        if self.current_token_is(TokenKind::RightBracket) {
-            return Err(self.error_invalid_token());
-        }
-
-        let index = self.parse_expr(Precedence::Lowest)?.0;
-        self.expect_peek(TokenKind::RightBracket)?;
-        Ok(index)
-    }
-
-    pub(crate) fn parse_never_suffixed_integer(&self) -> Result<i128, Diag> {
-        let token = self.current_token();
-
-        if let TokenKind::Literal(literal) = &token.kind {
-            if let LiteralKind::Integer(value, suffix) = &literal.kind {
-                if suffix.is_none() {
-                    return Ok(*value);
-                }
-            }
-        }
-
-        Err(self.error_at_current(ParserDiagKind::IntegerSuffixNotAllowed))
-    }
-
-    pub(crate) fn parse_never_prefixed_string(&mut self) -> Result<String, Diag> {
-        let token = self.current_token();
-
-        if let TokenKind::Literal(literal) = &token.kind {
-            if let LiteralKind::String(value, prefix) = &literal.kind {
-                if prefix.is_none() {
-                    return Ok(value.clone());
-                }
-            }
-        }
-
-        Err(self.error_at_token(&token, ParserDiagKind::StringPrefixNotAllowed))
-    }
-
+    /// Parses function type parameters inside `(...)`.
     fn parse_func_type_params(&mut self) -> Result<FuncTypeParams, Diag> {
         self.expect_current(TokenKind::LeftParen)?;
 
@@ -497,44 +549,55 @@ impl Parser {
     }
 
     fn parse_func_type(&mut self) -> Result<TypeSpecifier, Diag> {
-        let start = self.current_token().span.start;
-        let loc = self.current_token().loc.clone();
+        let loc = self.current_token().loc;
+        let (line, column, start) = (loc.line, loc.column, loc.start);
 
         self.next_token(); // consume function
 
         let params = self.parse_func_type_params()?;
         let ret = self.parse_type_specifier()?;
 
+        let end = self.current_token().loc.end;
+
         Ok(TypeSpecifier::FuncType(Box::new(FuncType {
             params,
-            return_type: Box::new(ret),
-            span: Span::new(start, self.current_token().span.end),
+            ret_type: Box::new(ret),
             vis_opt: None,
-            loc,
+            loc: Loc::new(self.file_id(), line, column, start, end),
         })))
     }
 
-    fn parse_tuple(&mut self) -> Result<TypeSpecifier, Diag> {
-        let start = self.current_token().span.start;
-        let loc = self.current_token().loc.clone();
+    pub(crate) fn parse_mutability(&mut self) -> Option<Mutability> {
+        if self.current_token_is(TokenKind::Var) {
+            self.next_token();
+            Some(Mutability::Var)
+        } else if self.current_token_is(TokenKind::Const) {
+            self.next_token();
+            Some(Mutability::Const)
+        } else {
+            None
+        }
+    }
+
+    fn parse_tuple_type(&mut self) -> Result<TypeSpecifier, Diag> {
+        let loc = self.current_token().loc;
+        let (line, column, start) = (loc.line, loc.column, loc.start);
 
         self.expect_current(TokenKind::LeftParen)?;
 
         let mut type_list: Vec<TypeSpecifier> = Vec::new();
 
         loop {
-            let type_specifier = self.parse_type_specifier()?;
+            let ty = self.parse_type_specifier()?;
+            type_list.push(ty);
             self.next_token();
 
-            type_list.push(type_specifier);
-
-            match self.current_token().kind {
-                TokenKind::Comma => {
-                    self.next_token();
-                    continue;
-                }
-                _ => break,
+            if self.current_token_is(TokenKind::Comma) {
+                self.next_token(); // consume comma
+                continue;
             }
+
+            break;
         }
 
         self.must_be_right_paren()?;
@@ -546,10 +609,11 @@ impl Parser {
             ));
         }
 
+        let end = self.current_token().loc.end;
+
         Ok(TypeSpecifier::Tuple(TupleType {
             type_list,
-            loc,
-            span: Span::new(start, self.current_token().span.end),
+            loc: Loc::new(self.file_id(), line, column, start, end),
         }))
     }
 
@@ -557,27 +621,42 @@ impl Parser {
         let token = self.current_token().clone();
 
         match token.kind {
+            // plain types
             ref token_kind if PRIMITIVE_TYPES.contains(&token_kind) => Ok(TypeSpecifier::TypeToken(token)),
-            TokenKind::Struct | TokenKind::Bits => self.parse_unnamed_struct_type(),
-            TokenKind::Union => self.parse_unnamed_union_type(),
-            TokenKind::Enum => self.parse_unnamed_enum_type(),
-            TokenKind::LeftParen => self.parse_tuple(),
-            TokenKind::Function => self.parse_func_type(),
+
             TokenKind::Const => {
                 self.next_token(); // consume const
                 let inner_type = self.parse_base_type_token()?;
                 Ok(TypeSpecifier::Const(Box::new(inner_type)))
             }
+
+            TokenKind::Repr => {
+                let repr_attr = self.parse_repr_attr(token)?.unwrap();
+
+                if self.current_token_is(TokenKind::Struct) {
+                    self.parse_unnamed_struct_type(Some(repr_attr))
+                } else if self.current_token_is(TokenKind::Union) {
+                    self.parse_unnamed_union_type(Some(repr_attr))
+                } else if self.current_token_is(TokenKind::Enum) {
+                    self.parse_unnamed_enum_type(Some(repr_attr))
+                } else {
+                    todo!();
+                }
+            }
+
+            TokenKind::Struct => self.parse_unnamed_struct_type(None),
+            TokenKind::Union => self.parse_unnamed_union_type(None),
+            TokenKind::Enum => self.parse_unnamed_enum_type(None),
+            TokenKind::Function => self.parse_func_type(),
+            TokenKind::LeftParen => self.parse_tuple_type(),
+
             TokenKind::Ident(ref ident) => {
                 if self.peek_token_is(TokenKind::DoubleColon) {
                     let module_import = self.parse_module_import()?;
                     Ok(TypeSpecifier::ModuleImport(module_import))
                 } else {
                     if ident == "Self" {
-                        Ok(TypeSpecifier::SelfType(SelfType {
-                            span: token.span,
-                            loc: self.current_token().loc.clone(),
-                        }))
+                        Ok(TypeSpecifier::SelfType(SelfType { loc: token.loc }))
                     } else {
                         Ok(TypeSpecifier::Ident(Ident {
                             value: {
@@ -587,22 +666,25 @@ impl Parser {
                                     unreachable!()
                                 }
                             },
-                            span: token.span,
-                            loc: self.current_token().loc.clone(),
+                            loc: token.loc,
                         }))
                     }
                 }
             }
+
             _ => Err(self.error_at_current(ParserDiagKind::InvalidTypeToken(token.kind))),
         }
     }
 
-    fn parse_array_type(&mut self, base_type_specifier: TypeSpecifier) -> Result<TypeSpecifier, Diag> {
+    fn parse_array_type(&mut self, base_type: TypeSpecifier) -> Result<TypeSpecifier, Diag> {
+        let loc = self.current_token().loc;
+        let (line, column, start) = (loc.line, loc.column, loc.start);
+
         let mut dims: Vec<ArrayCapacity> = Vec::new();
 
         // Parse consecutive array dimensions: `int[3][4]` -> dims = [3, 4]
         while self.current_token_is(TokenKind::LeftBracket) {
-            let array_capacity = self.parse_single_array_capacity()?;
+            let array_capacity = self.parse_array_capacity()?;
 
             // If another dimension follows `[3][4]`, consume the closing bracket
             // to position the parser at the next `[`. Without this, we'd be stuck at the `]`.
@@ -613,228 +695,193 @@ impl Parser {
             dims.push(array_capacity);
         }
 
+        let end = self.current_token().loc.end;
+
         // Build the nested array type from the inside out:
         // Start with base type `int`, then wrap with outer dimensions.
         //
         // Example: `int[3][4]` builds as:
-        // 1. `type_specifier = int`
-        // 2. `type_specifier = Array(4, element=int)`
-        // 3. `type_specifier = Array(3, element=Array(4, element=int))`
-        let mut type_specifier = base_type_specifier.clone();
+        // 1. `type_spec = int`
+        // 2. `type_spec = Array(4, element=int)`
+        // 3. `type_spec = Array(3, element=Array(4, element=int))`
+        let mut type_spec = base_type.clone();
+
         for array_capacity in dims.iter().rev() {
-            type_specifier = TypeSpecifier::Array(ArrayTypeSpecifier {
+            type_spec = TypeSpecifier::Array(ArrayType {
                 size: array_capacity.clone(),
-                element_type: Box::new(type_specifier),
+                element_type: Box::new(type_spec),
+                loc: Loc::new(self.file_id(), line, column, start, end),
             });
         }
 
-        Ok(type_specifier)
+        Ok(type_spec)
     }
 
-    fn parse_single_array_capacity(&mut self) -> Result<ArrayCapacity, Diag> {
+    fn parse_array_capacity(&mut self) -> Result<ArrayCapacity, Diag> {
         self.expect_current(TokenKind::LeftBracket)?;
+
         if self.current_token_is(TokenKind::RightBracket) {
             return Ok(ArrayCapacity::Dynamic);
         }
-        let capacity = self.parse_expr(Precedence::Lowest)?.0;
+
+        let capacity = self.parse_expr(Precedence::Lowest)?;
         self.expect_peek(TokenKind::RightBracket)?;
+
         Ok(ArrayCapacity::Fixed(Box::new(capacity)))
     }
 
-    fn parse_unnamed_struct_type(&mut self) -> Result<TypeSpecifier, Diag> {
-        let start = self.current_token().span.start;
-        let loc = self.current_token().loc.clone();
+    fn parse_unnamed_struct_type(&mut self, repr_attr: Option<ReprAttr>) -> Result<TypeSpecifier, Diag> {
+        let loc = self.current_token().loc;
+        let (line, column, start) = (loc.line, loc.column, loc.start);
 
-        let is_packed = {
-            if self.current_token_is(TokenKind::Bits) {
-                self.next_token();
-                true
-            } else if self.current_token_is(TokenKind::Struct) {
-                self.next_token();
-                false
-            } else {
-                return Err(self.error_invalid_token());
-            }
-        };
+        self.next_token(); // consume struct 
+
+        let align = self.parse_align_specifier()?;
+
         self.expect_current(TokenKind::LeftBrace)?;
 
         let mut fields: Vec<UnnamedStructTypeField> = Vec::new();
 
         loop {
-            match self.current_token().kind {
-                TokenKind::RightBrace => {
-                    break;
-                }
-                TokenKind::EOF => {
-                    return Err(self.error_at_current(ParserDiagKind::MissingClosingBrace));
-                }
-                TokenKind::Ident { .. } => {
-                    let start = self.current_token().span.start;
-                    let loc = self.current_token().loc.clone();
-
-                    let field_name = self.parse_ident()?;
-                    self.next_token(); // consume ident
-
-                    self.expect_current(TokenKind::Colon)?;
-
-                    let field_type_specifier = self.parse_type_specifier()?;
-                    self.next_token();
-
-                    fields.push(UnnamedStructTypeField {
-                        field_name,
-                        field_ty: field_type_specifier,
-                        loc,
-                        span: Span {
-                            start,
-                            end: self.current_token().span.end,
-                        },
-                    });
-
-                    if self.current_token_is(TokenKind::RightBrace) {
-                        break;
-                    } else {
-                        self.expect_current(TokenKind::Comma)?;
-                    }
-                }
-                _ => return Err(self.error_invalid_token()),
+            if self.current_token_is(TokenKind::RightBrace) {
+                break;
             }
+
+            if self.current_token_is(TokenKind::EOF) {
+                return Err(self.error_at_current(ParserDiagKind::MissingClosingBrace));
+            }
+
+            if matches!(self.current_token().kind, TokenKind::Ident { .. }) {
+                let loc = self.current_token().loc;
+                let (line, column, start) = (loc.line, loc.column, loc.start);
+
+                let field_name = self.parse_ident()?;
+                self.next_token(); // consume ident
+
+                self.expect_current(TokenKind::Colon)?;
+
+                let field_type_specifier = self.parse_type_specifier()?;
+                self.next_token();
+
+                let end = self.current_token().loc.end;
+
+                fields.push(UnnamedStructTypeField {
+                    name: field_name,
+                    ty: field_type_specifier,
+                    loc: Loc::new(self.file_id(), line, column, start, end),
+                });
+
+                if self.current_token_is(TokenKind::RightBrace) {
+                    break;
+                } else {
+                    self.expect_current(TokenKind::Comma)?;
+                }
+
+                continue;
+            }
+
+            return Err(self.error_invalid_token());
         }
+
+        let end = self.current_token().loc.end;
 
         Ok(TypeSpecifier::UnnamedStruct(UnnamedStructType {
             fields,
-            is_packed,
-            loc,
-            span: Span::new(start, self.current_token().span.end),
+            repr_attr,
+            align,
+            loc: Loc::new(self.file_id(), line, column, start, end),
         }))
     }
 
-    fn parse_unnamed_union_type(&mut self) -> Result<TypeSpecifier, Diag> {
-        let start = self.current_token().span.start;
-        let loc = self.current_token().loc.clone();
+    fn parse_unnamed_union_type(&mut self, repr_attr: Option<ReprAttr>) -> Result<TypeSpecifier, Diag> {
+        let loc = self.current_token().loc;
+        let (line, column, start) = (loc.line, loc.column, loc.start);
 
         self.next_token(); // consume union 
+
+        let align = self.parse_align_specifier()?;
+
         self.expect_current(TokenKind::LeftBrace)?;
 
         let mut fields: Vec<UnnamedUnionTypeField> = Vec::new();
 
         loop {
-            match self.current_token().kind {
-                TokenKind::RightBrace => {
-                    break;
-                }
-                TokenKind::EOF => {
-                    return Err(self.error_at_current(ParserDiagKind::MissingClosingBrace));
-                }
-                TokenKind::Ident { .. } => {
-                    let start = self.current_token().span.start;
-                    let loc = self.current_token().loc.clone();
-
-                    let field_name = self.parse_ident()?;
-                    self.next_token(); // consume ident
-
-                    self.expect_current(TokenKind::Colon)?;
-
-                    let field_type_specifier = self.parse_type_specifier()?;
-                    self.next_token();
-
-                    fields.push(UnnamedUnionTypeField {
-                        field_name,
-                        field_ty: field_type_specifier,
-                        loc,
-                        span: Span {
-                            start,
-                            end: self.current_token().span.end,
-                        },
-                    });
-
-                    if self.current_token_is(TokenKind::RightBrace) {
-                        break;
-                    } else {
-                        self.expect_current(TokenKind::Comma)?;
-                    }
-                }
-                _ => return Err(self.error_invalid_token()),
+            if self.current_token_is(TokenKind::RightBrace) {
+                break;
             }
-        }
 
-        Ok(TypeSpecifier::UnnamedUnion(UnnamedUnionType {
-            fields,
-            loc,
-            span: Span::new(start, self.current_token().span.end),
-        }))
-    }
+            if self.current_token_is(TokenKind::EOF) {
+                return Err(self.error_at_current(ParserDiagKind::MissingClosingBrace));
+            }
 
-    fn parse_unnamed_enum_field(&mut self) -> Result<UnnamedEnumVariant, Diag> {
-        let variant_name = self.parse_ident()?;
-        self.next_token();
+            if matches!(self.current_token().kind, TokenKind::Ident { .. }) {
+                let loc = self.current_token().loc;
+                let (line, column, start) = (loc.line, loc.column, loc.start);
 
-        let mut variant_fields: Vec<UnnamedEnumValuedField> = Vec::new();
+                let field_name = self.parse_ident()?;
+                self.next_token(); // consume ident
 
-        if self.current_token_is(TokenKind::Comma) || self.current_token_is(TokenKind::RightBrace) {
-            return Ok(UnnamedEnumVariant::Ident(variant_name));
-        } else if self.current_token_is(TokenKind::Assign) {
-            self.next_token(); // consume assign
-            let value = self.parse_expr(Precedence::Lowest)?.0;
-            self.next_token(); // consume last token of the expression
-            return Ok(UnnamedEnumVariant::Valued(variant_name, Box::new(value)));
-        } else if self.current_token_is(TokenKind::LeftParen) {
-            self.next_token(); // consume left paren
+                self.expect_current(TokenKind::Colon)?;
 
-            loop {
-                if self.current_token_is(TokenKind::RightParen) {
-                    return Err(self.error_with_hint(
-                        &self.current_token(),
-                        ParserDiagKind::InvalidToken(self.current_token().kind),
-                        "Consider to add a field to enum variant or remove the parenthesis.",
-                    ));
-                }
-
-                let start = self.current_token().span.start;
-                let loc = self.current_token().loc.clone();
-                let field_ty = self.parse_type_specifier()?;
+                let field_type_specifier = self.parse_type_specifier()?;
                 self.next_token();
 
-                variant_fields.push(UnnamedEnumValuedField {
-                    ty: field_ty,
-                    loc,
-                    span: Span::new(start, self.current_token().span.end),
+                let end = self.current_token().loc.end;
+
+                fields.push(UnnamedUnionTypeField {
+                    ident: field_name,
+                    field_ty: field_type_specifier,
+                    loc: Loc::new(self.file_id(), line, column, start, end),
                 });
 
-                if self.current_token_is(TokenKind::RightParen) {
-                    self.next_token();
+                if self.current_token_is(TokenKind::RightBrace) {
                     break;
                 } else {
                     self.expect_current(TokenKind::Comma)?;
-                    continue;
                 }
+
+                continue;
             }
+
+            return Err(self.error_invalid_token());
         }
 
-        if variant_fields.is_empty() {
-            Ok(UnnamedEnumVariant::Ident(variant_name))
-        } else {
-            Ok(UnnamedEnumVariant::Variant(variant_name, variant_fields))
-        }
+        let end = self.current_token().loc.end;
+
+        Ok(TypeSpecifier::UnnamedUnion(UnnamedUnionType {
+            fields,
+            repr_attr,
+            align,
+            loc: Loc::new(self.file_id(), line, column, start, end),
+        }))
     }
 
-    fn parse_unnamed_enum_type(&mut self) -> Result<TypeSpecifier, Diag> {
-        let loc = self.current_token().loc.clone();
-        let start = self.current_token().span.start;
+    fn parse_unnamed_enum_type(&mut self, repr_attr: Option<ReprAttr>) -> Result<TypeSpecifier, Diag> {
+        let loc = self.current_token().loc;
+        let (line, column, start) = (loc.line, loc.column, loc.start);
 
         self.next_token(); // parse enum keyword
+
+        let tag_type = self.parse_enum_tag_type()?.map(Box::new);
+        let align = self.parse_align_specifier()?;
+
         self.expect_current(TokenKind::LeftBrace)?;
 
-        let mut enum_fields: Vec<UnnamedEnumVariant> = Vec::new();
+        let mut enum_fields = Vec::new();
 
         if self.current_token_is(TokenKind::RightBrace) {
+            let end = self.current_token().loc.end;
+
             return Ok(TypeSpecifier::UnnamedEnum(UnnamedEnumType {
                 variants: enum_fields,
-                loc,
-                span: Span::new(start, self.current_token().span.end),
+                repr_attr,
+                tag_type: tag_type,
+                align,
+                loc: Loc::new(self.file_id(), line, column, start, end),
             }));
         }
 
-        enum_fields.push(self.parse_unnamed_enum_field()?);
+        enum_fields.push(self.parse_enum_variant()?);
 
         while self.current_token_is(TokenKind::Comma) {
             self.expect_current(TokenKind::Comma)?;
@@ -843,7 +890,7 @@ impl Parser {
                 break;
             }
 
-            enum_fields.push(self.parse_unnamed_enum_field()?);
+            enum_fields.push(self.parse_enum_variant()?);
             if self.peek_token_is(TokenKind::RightBrace) {
                 break;
             }
@@ -854,68 +901,21 @@ impl Parser {
             self.next_token();
         }
 
+        let end = self.current_token().loc.end;
+
         Ok(TypeSpecifier::UnnamedEnum(UnnamedEnumType {
             variants: enum_fields,
-            loc,
-            span: Span::new(start, self.current_token().span.end),
+            tag_type: tag_type,
+            repr_attr,
+            align,
+            loc: Loc::new(self.file_id(), line, column, start, end),
         }))
     }
 
-    fn parse_bounds(&mut self) -> Result<Vec<Bound>, Diag> {
-        self.expect_current(TokenKind::Colon)?;
-
-        let mut list: Vec<Bound> = Vec::new();
-
-        loop {
-            let symbol = self.parse_ident()?;
-            self.next_token();
-
-            list.push(Bound {
-                symbol,
-                type_args: Vec::new(),
-            });
-
-            match self.current_token().kind {
-                TokenKind::Plus => {
-                    self.next_token();
-                    continue;
-                }
-                _ => break,
-            }
-        }
-
-        Ok(list)
-    }
-
-    fn parse_generic_param(&mut self) -> Result<GenericParam, Diag> {
-        let param_name = self.parse_ident()?;
-        self.next_token();
-
-        let bounds = if self.current_token_is(TokenKind::Colon) {
-            self.next_token(); // consume ident
-            Some(self.parse_bounds()?)
-        } else {
-            None
-        };
-
-        let default = if self.current_token_is(TokenKind::Assign) {
-            self.next_token(); // consume assign
-            dbg!(self.current_token());
-            let type_specifier = self.parse_type_specifier()?;
-            self.next_token();
-            Some(type_specifier)
-        } else {
-            None
-        };
-
-        Ok(GenericParam {
-            param_name,
-            bounds,
-            default,
-        })
-    }
-
-    fn current_expr_is_path_like(&self, last_parsed_expr: Expr) -> bool {
-        matches!(last_parsed_expr, Expr::Ident(..) | Expr::ModuleImport(..))
+    /// Checks if the parsed expression is a path or symbol.
+    ///
+    /// Path-like expressions include identifiers and module-qualified paths like `foo` or `std::foo`.
+    fn current_expr_is_path_like(&self, last_parsed_expr: ASTExpr) -> bool {
+        matches!(last_parsed_expr, ASTExpr::Ident(..) | ASTExpr::ModuleImport(..))
     }
 }

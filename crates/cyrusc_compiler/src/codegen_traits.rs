@@ -1,21 +1,23 @@
-/* 
+/*
  * Copyright (c) 2026 The Cyrus Language
- * 
+ *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation, either version 3 of the License, or
  * (at your option) any later version.
- * 
+ *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. 
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
  * See the GNU General Public License for more details.
- * 
+ *
  * You should have received a copy of the GNU General Public License
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
+
+use cyrusc_internal::cir::cir::CIRModule;
+
 use crate::{object_file_info::ObjectFileInfo, tm_info::TargetMachineInfo};
-use cyrusc_cir::CIRProgramTree;
 use std::any::Any;
 
 /// The base trait that every code generation backend must implement.
@@ -74,11 +76,11 @@ pub trait CodeGenBackend<'cdg, BackendModule> {
 /// compiling serially (e.g., for link-time optimization or reduced cross-module overhead).
 pub trait UnifiedModuleSupport<'cdg, BackendModule>: CodeGenBackend<'cdg, BackendModule> {
     /// Emits code for all CIR modules into a single shared module.
-    fn process_unified(&self, cir_modules: &[Box<CIRProgramTree>]) -> BackendModule;
+    fn process_unified(&self, cir_modules: &[Box<CIRModule>]) -> BackendModule;
 }
 
 /// Trait implemented by backends that can compile modules separately and in parallel.
 pub trait SeparateModuleSupport<'cdg, BackendModule>: CodeGenBackend<'cdg, BackendModule> {
     /// Emits object files independently, allowing parallel compilation.
-    fn process_separately(&self, cir_modules: &[Box<CIRProgramTree>]) -> Vec<BackendModule>;
+    fn process_separately(&self, cir_modules: &[Box<CIRModule>]) -> Vec<BackendModule>;
 }

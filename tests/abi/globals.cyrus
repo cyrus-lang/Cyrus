@@ -1,0 +1,17 @@
+// @stdout: global_counter=98,25
+// @compilerArgs: -z=./tests/abi/globals_library.c
+
+import std::libc{printf};
+import std::libc::abi{c_int, c_long};
+
+extern "C" const global_counter: c_int;
+
+extern "C" fn get_global() c_int;
+
+extern "C" fn set_global(v: c_int);
+
+pub fn main() {
+    const local_counter = global_counter;
+    set_global(25);
+    printf("global_counter=%d,%d\n", local_counter, global_counter);
+}

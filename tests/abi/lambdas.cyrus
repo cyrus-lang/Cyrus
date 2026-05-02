@@ -1,0 +1,17 @@
+// @stdout: result = 105.340000
+// @compilerArgs: -z=./tests/abi/lambdas_library.c
+
+import std::libc{printf};
+import std::libc::abi{c_int, c_double};
+
+type CallbackFn = fn(c_double, c_double) c_double;
+
+const handler = fn(x: c_double, y: c_double) c_double {
+    return x + y;
+};
+
+extern "C" fn call_callback_fn(cbk: CallbackFn);
+
+pub fn main() {
+    call_callback_fn(handler);
+}

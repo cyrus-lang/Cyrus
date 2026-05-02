@@ -3,17 +3,16 @@
 import std::libc{printf};
 
 union Value {
-    text_value: char*;
     int_value: int64;
+    text_value: char*;
 }
 
-fn new_text_value(text: char*) Value {
-    return Value {
-        text_value: text
-    };
+fn new_text_value(text_value: char*) Value {
+    return Value { text_value };
 }
 
 pub fn main() {
     const inst = new_text_value("Cyrus!");
+
     printf("%s\n", inst.text_value);
 }

@@ -14,12 +14,12 @@
  * You should have received a copy of the GNU General Public License
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
-use cyrusc_cir::types::CIRTy;
+
+use cyrusc_internal::cir::{cir::IRValueID, types::CIRType};
 use inkwell::values::{FunctionValue, GlobalValue, PointerValue};
 use std::{cell::RefCell, collections::HashMap, rc::Rc};
 
-/// Represents a unique symbol ID in the current IR scope.
-pub type IRValueID = u32;
+use crate::builder::builder::CodeGenIRBuilder;
 
 /// Shared reference to the registry.
 pub type LocalIRValueRegistryRef<'a> = Rc<RefCell<LocalIRValueRegistry<'a>>>;
@@ -32,9 +32,9 @@ pub struct LocalIRValueRegistry<'a> {
 /// Represents a local LLVM IR value.
 #[derive(Debug, Clone)]
 pub enum LocalIRValue<'a> {
-    Func(FunctionValue<'a>, CIRTy),
-    Global(GlobalValue<'a>, CIRTy),
-    LValue(PointerValue<'a>, CIRTy),
+    Func(FunctionValue<'a>, CIRType),
+    Global(GlobalValue<'a>, CIRType),
+    LValue(PointerValue<'a>, CIRType),
 }
 
 impl<'a> LocalIRValueRegistry<'a> {
@@ -44,28 +44,42 @@ impl<'a> LocalIRValueRegistry<'a> {
     }
 
     /// Inserts a new IR value associated with a id.
-    pub fn insert(&mut self, irv_id: IRValueID, local_value: LocalIRValue<'a>) {
+    fn insert(&mut self, irv_id: IRValueID, local_value: LocalIRValue<'a>) {
         self.map.insert(irv_id, local_value);
     }
 
     /// Retrieves a cloned IR value, if present.
-    pub fn get(&self, irv_id: IRValueID) -> Option<LocalIRValue<'a>> {
+    fn get(&self, irv_id: IRValueID) -> Option<LocalIRValue<'a>> {
         self.map.get(&irv_id).cloned()
     }
 }
 
 impl<'a> LocalIRValue<'a> {
-    pub fn as_func(&self) -> Option<&FunctionValue<'a>> {
-        match self {
-            LocalIRValue::Func(func, _) => Some(func),
-            _ => None,
-        }
-    }
-
     pub fn as_global(&self) -> Option<&GlobalValue<'a>> {
         match self {
             LocalIRValue::Global(global, _) => Some(global),
             _ => None,
         }
+    }
+
+    pub fn as_func(&self) -> Option<&FunctionValue<'a>> {
+        match self {
+            LocalIRValue::Func(func_value, _) => Some(func_value),
+            _ => None,
+        }
+    }
+}
+
+impl<'ll> CodeGenIRBuilder<'ll> {
+    #[inline]
+    pub(crate) fn insert_local_ir_value(&self, irv_id: IRValueID, value: LocalIRValue<'ll>) {
+        let mut irreg = self.irreg.borrow_mut();
+        irreg.insert(irv_id, value);
+    }
+
+    #[inline]
+    pub(crate) fn lookup_local_ir_value(&self, irv_id: IRValueID) -> Option<LocalIRValue<'ll>> {
+        let irreg = self.irreg.borrow();
+        irreg.get(irv_id).clone()
     }
 }

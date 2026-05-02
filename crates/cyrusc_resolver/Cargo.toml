@@ -4,17 +4,17 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
+cyrusc_parser = { path = "../cyrusc_parser", version = "*" }
+cyrusc_source_loc = { path = "../cyrusc_source_loc", version = "*" }
+cyrusc_internal = { path = "../cyrusc_internal", version = "*" }
 cyrusc_tokens = { path = "../cyrusc_tokens", version = "*" }
-cyrusc_abi = { path = "../cyrusc_abi", version = "*" }
-cyrusc_modulefsloader = { path = "../cyrusc_modulefsloader", version = "*" }
 cyrusc_diagcentral = { path = "../cyrusc_diagcentral", version = "*" }
 cyrusc_fs_utils = { path = "../cyrusc_fs_utils", version = "*" }
-cyrusc_tast = { path = "../cyrusc_tast", version = "*" }
-cyrusc_parser = { path = "../cyrusc_parser", version = "*" }
-cyrusc_lexer = { path = "../cyrusc_lexer", version = "*" }
+cyrusc_typed_ast = { path = "../cyrusc_typed_ast", version = "*" }
 cyrusc_ast = { path = "../cyrusc_ast", version = "*" }
 thiserror = "2.0.17"
 thiserror-impl = "2.0.17"
+fx-hash = "0.1.0"
 rand = "0.9.0"
 
 [lib]
@@ -24,3 +24,7 @@ path = "./src/lib.rs"
 [[bin]]
 name = "cyrusc_resolver"
 path = "./src/cli.rs"
+
+[[bin]]
+name = "cyrusc_resolver_debugger"
+path = "./src/debugger_cli.rs"

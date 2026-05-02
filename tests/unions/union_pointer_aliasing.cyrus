@@ -2,12 +2,12 @@
 
 import std::libc{printf};
 
-pub fn main() {
-    union Union {
-        p: char*;
-        i: int64;
-    }
+union Union {
+    p: char*;
+    i: int64;
+}
 
+pub fn main() {
     var inst = Union { p: null };
 
     var iptr = &inst.i;

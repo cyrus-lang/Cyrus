@@ -14,17 +14,15 @@
  * You should have received a copy of the GNU General Public License
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
-use crate::{
-    TokenKind,
-    loc::{Location, Span},
-};
+
+use crate::TokenKind;
+use cyrusc_source_loc::Loc;
 use std::fmt;
 
-#[derive(Debug, Clone, PartialEq)]
-pub struct Literal {
+#[derive(Debug, Clone)]
+pub struct ASTLiteralExpr {
     pub kind: LiteralKind,
-    pub loc: Location,
-    pub span: Span,
+    pub loc: Loc,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -43,9 +41,9 @@ pub enum StringPrefix {
     B, // Bytes string
 }
 
-impl fmt::Display for Literal {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match &self.kind {
+impl fmt::Display for LiteralKind {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match &self {
             LiteralKind::Integer(integer, integer_type_opt) => {
                 write!(f, "{}", integer)?;
                 if let Some(integer_type) = integer_type_opt {
@@ -75,3 +73,17 @@ impl fmt::Display for Literal {
         }
     }
 }
+
+impl fmt::Display for ASTLiteralExpr {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.kind.fmt(f)
+    }
+}
+
+impl PartialEq for ASTLiteralExpr {
+    fn eq(&self, other: &Self) -> bool {
+        self.kind == other.kind
+    }
+}
+
+impl Eq for ASTLiteralExpr {}

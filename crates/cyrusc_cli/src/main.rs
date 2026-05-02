@@ -23,24 +23,24 @@ use std::{
 use clap::{Parser, ValueEnum};
 use commands::*;
 use cyrusc_compiler::{
-    compiler_version_compatibility::validate_compiler_version, linker::default_linker, options::{
-        BuildDir, CodeGenABI, CodeGenEndianness, CodeGenLinkerOptions, CodeGenOptions, CodeGenSanitizer,
-        CodeModelOptions, ModuleKind, RelocModeOptions,
-    }
+    linker::default_linker,
+    options::{
+        BuildDir, CodeGenABI, CodeGenLinkerOptions, CodeGenOptions, CodeGenSanitizer, CodeModelOptions, ModuleKind,
+        RelocModeOptions,
+    },
+    vercheck::validate_compiler_version,
 };
-use cyrusc_diagcentral::display_single_custom_diag;
+use cyrusc_diagcentral::exit_with_msg;
+use cyrusc_scaffold::version::CYRUS_COMPILER_VERSION;
 use cyrusc_scaffold_parser::{PROJECT_FILE_PATH, ScaffoldConfig, parse_project_toml};
+use cyrusc_tui_utils::tui_error;
 use serde::Deserialize;
 
-use crate::version::CYRUS_COMPILER_VERSION;
-
 mod commands;
-mod temp_executable_builder;
-mod version;
 
 pub(crate) fn project_file_required() {
     if !std::path::Path::new(PROJECT_FILE_PATH).exists() {
-        display_single_custom_diag!(format!("'{}' not found in current directory.", PROJECT_FILE_PATH));
+        exit_with_msg!(format!("'{}' not found in current directory.", PROJECT_FILE_PATH));
     }
 }
 
@@ -80,10 +80,12 @@ struct LinkerCompilerOptions {
 
 #[derive(Parser, Debug, Clone)]
 struct CompilerOptions {
-    #[clap(long, default_value_t = String::new(),
-        help = "Specify the target triple (e.g., x86_64-pc-linux-gnu, aarch64-apple-darwin). Defaults to host triple if not specified."
+    #[clap(
+        long,
+        default_value_t = String::new(),
+        help = "Compile for a specific architecture and operating system target (e.g., x86_64-pc-linux-gnu). Defaults to the host target if not specified."
     )]
-    target_triple: String,
+    target: String,
 
     #[clap(long, default_value_t = String::new(),
         help = "Specify the target CPU name (e.g., skylake, broadwell, generic). Defaults to host CPU if not specified."
@@ -104,6 +106,13 @@ struct CompilerOptions {
 
     #[clap(long = "linker-flags", short = 'z', help = "Adds custom flags to the linker.")]
     linkerflags: Vec<String>,
+
+    #[clap(
+        long = "debug",
+        short = 'g',
+        help = "Enable generation of DWARF debug information for use with debuggers (GDB/LLDB)."
+    )]
+    debug_enabled: bool,
 
     #[clap(
         long = "build-dir",
@@ -167,13 +176,10 @@ struct CompilerOptions {
     help =
     "Select the ABI name mangling scheme for code generation. \
 Choices determine how function, global variable, and type names \
-are represented in the generated output. For example, 'C' produces \
-C-compatible names, while 'Cyrus' uses the compiler's default mangling."
+are represented in the generated output. For example, 'c' produces \
+C-compatible names, while 'cyrus' uses the compiler's default mangling."
     )]
     abi: ABI,
-
-    #[clap(long, value_enum, help = "Set endianness (default uses target machine endianness).")]
-    pub endianness: Option<Endianness>,
 
     #[clap(long, help = "Number of threads to use for compilation.")]
     pub jobs: Option<usize>,
@@ -302,10 +308,6 @@ impl CompilerOptions {
 
         CodeGenOptions {
             abi: Some(self.abi.to_compiler_abi()),
-            endianness: self.endianness.and_then(|endianness| match endianness {
-                Endianness::Little => Some(CodeGenEndianness::Little),
-                Endianness::Big => Some(CodeGenEndianness::Big),
-            }),
             module_kind: self
                 .module_merge_mode
                 .and_then(|module_merge_mode| match module_merge_mode {
@@ -339,6 +341,7 @@ impl CompilerOptions {
                     None => BuildDir::Default,
                 }
             },
+            debug_enabled: self.debug_enabled,
             quiet: self.quiet,
             verbose: self.verbose,
             stdlib_path: self.stdlib.clone(),
@@ -346,10 +349,10 @@ impl CompilerOptions {
             disable_warnings: self.disable_warnings,
             reloc_mode: self.reloc_mode.as_compiler_reloc_mode(),
             code_model: self.code_model.as_compiler_code_model(),
-            target_triple: if self.target_triple.trim().is_empty() {
+            target: if self.target.trim().is_empty() {
                 None
             } else {
-                Some(self.target_triple.clone())
+                Some(self.target.clone())
             },
             cpu: if self.cpu.trim().is_empty() {
                 None
@@ -467,20 +470,33 @@ enum Commands {
         compiler_options: CompilerOptions,
     },
 
-    #[clap(about = "Lexical analysis only.", display_order = 11)]
+    #[clap(
+        name = "emit-cir-dump",
+        about = "Emit the textual CIR representation as a .cir file per module.",
+        display_order = 11
+    )]
+    EmitCIRDump {
+        file_path: Option<String>,
+        #[clap(long, short)]
+        output_path: Option<String>,
+        #[clap(flatten)]
+        compiler_options: CompilerOptions,
+    },
+
+    #[clap(about = "Lexical analysis only.", display_order = 12)]
     LexOnly { file_path: String },
 
-    #[clap(about = "Display program tree.", display_order = 12)]
+    #[clap(about = "Display program tree.", display_order = 13)]
     ParseOnly { file_path: String },
 
-    #[clap(about = "Check program correctness semantically.", display_order = 13)]
+    #[clap(about = "Check program correctness semantically.", display_order = 14)]
     SemanticOnly {
         file_path: String,
         #[clap(flatten)]
         compiler_options: CompilerOptions,
     },
 
-    #[clap(about = "Print version information", display_order = 14)]
+    #[clap(about = "Print version information", display_order = 15)]
     Version,
 }
 
@@ -494,7 +510,7 @@ fn command_new(project_name: String, lib: bool) {
     };
 
     if let Err(err) = result {
-        display_single_custom_diag!(err);
+        exit_with_msg!(err);
     }
 }
 
@@ -514,12 +530,12 @@ fn compiler_option_from_scaffold_parser(base_path: Option<String>) -> Option<Sca
     match parse_project_toml(project_file) {
         Ok(scaffold_config) => Some(scaffold_config),
         Err(err) => {
-            display_single_custom_diag!(format!("Scaffold Parse Error: {}", err.to_string()));
+            exit_with_msg!(format!("Scaffold Parse Error: {}", err.to_string()));
         }
     }
 }
 
-pub fn merge_scaffold_config_with_codegen_options(
+pub fn merge_and_validate_scaffold_config_with_codegen_options(
     opts: &mut CodeGenOptions,
     scaffold_config_opt: &Option<ScaffoldConfig>,
 ) {
@@ -530,7 +546,10 @@ pub fn merge_scaffold_config_with_codegen_options(
     let scaffold_codegen_options = CodeGenOptions::from_scaffold(scaffold_config);
     *opts = opts.merge(&scaffold_codegen_options);
 
-    validate_compiler_version(CYRUS_COMPILER_VERSION.trim(), scaffold_codegen_options.cyrus_version);
+    if let Err(err) = validate_compiler_version(CYRUS_COMPILER_VERSION.trim(), scaffold_codegen_options.cyrus_version) {
+        tui_error(err);
+        exit(1);
+    }
 
     if opts.validate_paths().is_err() {
         exit(1);
@@ -556,7 +575,7 @@ pub fn main() {
             let scaffold_config = compiler_option_from_scaffold_parser(compiler_options.base_path.clone());
             let mut codegen_options = compiler_options.as_codegen_options();
             codegen_options.linker_options = linker_options.to_compiler_linker_options();
-            merge_scaffold_config_with_codegen_options(&mut codegen_options, &scaffold_config);
+            merge_and_validate_scaffold_config_with_codegen_options(&mut codegen_options, &scaffold_config);
 
             command_run(codegen_options, file_path, program_args);
         }
@@ -570,7 +589,7 @@ pub fn main() {
             }
             let scaffold_config = compiler_option_from_scaffold_parser(compiler_options.base_path.clone());
             let mut codegen_options = compiler_options.as_codegen_options();
-            merge_scaffold_config_with_codegen_options(&mut codegen_options, &scaffold_config);
+            merge_and_validate_scaffold_config_with_codegen_options(&mut codegen_options, &scaffold_config);
 
             command_emit_llvm(codegen_options, file_path, output_path);
         }
@@ -585,7 +604,7 @@ pub fn main() {
 
             let scaffold_config = compiler_option_from_scaffold_parser(compiler_options.base_path.clone());
             let mut codegen_options = compiler_options.as_codegen_options();
-            merge_scaffold_config_with_codegen_options(&mut codegen_options, &scaffold_config);
+            merge_and_validate_scaffold_config_with_codegen_options(&mut codegen_options, &scaffold_config);
 
             command_emit_asm(codegen_options, file_path, output_path);
         }
@@ -600,7 +619,7 @@ pub fn main() {
 
             let scaffold_config = compiler_option_from_scaffold_parser(compiler_options.base_path.clone());
             let mut codegen_options = compiler_options.as_codegen_options();
-            merge_scaffold_config_with_codegen_options(&mut codegen_options, &scaffold_config);
+            merge_and_validate_scaffold_config_with_codegen_options(&mut codegen_options, &scaffold_config);
 
             command_emit_bitcode(codegen_options, file_path, output_path);
         }
@@ -617,14 +636,14 @@ pub fn main() {
             let scaffold_config = compiler_option_from_scaffold_parser(compiler_options.base_path.clone());
             let mut codegen_options = compiler_options.as_codegen_options();
             codegen_options.linker_options = linker_options.to_compiler_linker_options();
-            merge_scaffold_config_with_codegen_options(&mut codegen_options, &scaffold_config);
+            merge_and_validate_scaffold_config_with_codegen_options(&mut codegen_options, &scaffold_config);
 
             command_build(codegen_options, file_path, output_path);
         }
         Commands::Clean { compiler_options } => {
             let scaffold_config = compiler_option_from_scaffold_parser(compiler_options.base_path.clone());
             let mut codegen_options = compiler_options.as_codegen_options();
-            merge_scaffold_config_with_codegen_options(&mut codegen_options, &scaffold_config);
+            merge_and_validate_scaffold_config_with_codegen_options(&mut codegen_options, &scaffold_config);
 
             command_clean(codegen_options);
         }
@@ -639,7 +658,7 @@ pub fn main() {
 
             let scaffold_config = compiler_option_from_scaffold_parser(compiler_options.base_path.clone());
             let mut codegen_options = compiler_options.as_codegen_options();
-            merge_scaffold_config_with_codegen_options(&mut codegen_options, &scaffold_config);
+            merge_and_validate_scaffold_config_with_codegen_options(&mut codegen_options, &scaffold_config);
 
             command_object(codegen_options, file_path, output_path);
         }
@@ -654,7 +673,7 @@ pub fn main() {
 
             let scaffold_config = compiler_option_from_scaffold_parser(compiler_options.base_path.clone());
             let mut codegen_options = compiler_options.as_codegen_options();
-            merge_scaffold_config_with_codegen_options(&mut codegen_options, &scaffold_config);
+            merge_and_validate_scaffold_config_with_codegen_options(&mut codegen_options, &scaffold_config);
 
             command_shared_lib(codegen_options, file_path, output_path);
         }
@@ -669,7 +688,7 @@ pub fn main() {
 
             let scaffold_config = compiler_option_from_scaffold_parser(compiler_options.base_path.clone());
             let mut codegen_options = compiler_options.as_codegen_options();
-            merge_scaffold_config_with_codegen_options(&mut codegen_options, &scaffold_config);
+            merge_and_validate_scaffold_config_with_codegen_options(&mut codegen_options, &scaffold_config);
 
             command_static_lib(codegen_options, file_path, output_path);
         }
@@ -679,7 +698,7 @@ pub fn main() {
         } => {
             let scaffold_config = compiler_option_from_scaffold_parser(compiler_options.base_path.clone());
             let mut codegen_options = compiler_options.as_codegen_options();
-            merge_scaffold_config_with_codegen_options(&mut codegen_options, &scaffold_config);
+            merge_and_validate_scaffold_config_with_codegen_options(&mut codegen_options, &scaffold_config);
 
             command_semantic_only(codegen_options, file_path)
         }
@@ -688,5 +707,16 @@ pub fn main() {
         }
         Commands::LexOnly { file_path } => command_lex_only(file_path),
         Commands::ParseOnly { file_path } => command_parse_only(file_path),
+        Commands::EmitCIRDump {
+            file_path,
+            output_path,
+            compiler_options,
+        } => {
+            let scaffold_config = compiler_option_from_scaffold_parser(compiler_options.base_path.clone());
+            let mut codegen_options = compiler_options.as_codegen_options();
+            merge_and_validate_scaffold_config_with_codegen_options(&mut codegen_options, &scaffold_config);
+
+            command_emit_cir_dump(codegen_options, file_path, output_path);
+        }
     }
 }

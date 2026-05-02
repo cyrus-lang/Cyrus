@@ -14,22 +14,23 @@
  * You should have received a copy of the GNU General Public License
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
+
 use crate::builder::{
-    builder::IRBuilderCtx,
+    builder::CodeGenIRBuilder,
     values::{InternalValue, InternalValueKind},
 };
-use cyrusc_cir::types::CIRTy;
+use cyrusc_internal::cir::types::CIRType;
 use inkwell::{
     AddressSpace,
     types::{BasicMetadataTypeEnum, BasicTypeEnum},
     values::{BasicMetadataValueEnum, IntValue, PointerValue},
 };
 
-impl<'ll> IRBuilderCtx<'ll> {
+impl<'ll> CodeGenIRBuilder<'ll> {
     pub(crate) fn emit_inbounds_checked_array_index(
         &mut self,
         ptr: PointerValue<'ll>,
-        pointee_ty: CIRTy,
+        pointee_ty: CIRType,
         index: InternalValue<'ll>,
         array_length: u32,
     ) -> InternalValue<'ll> {
@@ -71,7 +72,7 @@ impl<'ll> IRBuilderCtx<'ll> {
             }
         }
 
-        let cur_fn = self.cur_fn.unwrap();
+        let cur_fn = self.cur_func.unwrap();
 
         let failure_block = self.llvmctx.append_basic_block(cur_fn, "inbounds_check.failure");
         let success_block = self.llvmctx.append_basic_block(cur_fn, "inbounds_check.success");
@@ -104,7 +105,7 @@ impl<'ll> IRBuilderCtx<'ll> {
         );
 
         let fprintf_fn_value = match module.get_function("fprintf") {
-            Some(fn_value) => fn_value,
+            Some(llvm_func_value) => llvm_func_value,
             None => module.add_function("fprintf", fprintf_type, None),
         };
 
@@ -139,7 +140,7 @@ impl<'ll> IRBuilderCtx<'ll> {
         let error_status_code = i32_type.const_int(1, false);
 
         let exit_fn_value = match module.get_function("exit") {
-            Some(fn_value) => fn_value,
+            Some(llvm_func_value) => llvm_func_value,
             None => {
                 let exit_fn_type = void_type.fn_type(
                     &[

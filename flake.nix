@@ -37,6 +37,7 @@
             isl
             llvm_18.lib
             llvm_18.dev
+            # llvmPackages_18.libunwind
             libxml2
             ncurses
             zlib
@@ -122,6 +123,7 @@
             llvm_18.lib
             llvm_18.dev
             lldb_18
+            # llvmPackages_18.libunwind
 
             libxml2
             libxml2.dev

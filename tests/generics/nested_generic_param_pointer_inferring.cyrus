@@ -15,10 +15,10 @@ struct Box<T> {
 }
 
 pub fn main() {
-    const raw: int* = malloc(sizeof(int));
+    const raw: int* = malloc(4);
     *raw = 99;
 
-    const box = Box { raw: raw };
+    const box = Box.new(raw);
     
     printf("%d\n", *raw);
     free(box.raw_ptr());
