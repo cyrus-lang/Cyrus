@@ -108,9 +108,6 @@ def extract_test_metadata(content, file_name):
     return metadata
 
 
-import sys
-from pathlib import Path
-
 def main():
     try:
         if len(sys.argv) < 5 or sys.argv[1] not in ("-d", "--directory"):
