@@ -16,11 +16,13 @@
  */
 
 use crate::{context::AnalysisContext, diagnostics::AnalyzerDiagKind};
+use cyrusc_ast::Mutability;
+use cyrusc_const_eval::resolver::ConstResolver;
 use cyrusc_diagcentral::{Diag, DiagLevel};
 use cyrusc_source_loc::Loc;
 use cyrusc_typed_ast::{
     decls::DeclID,
-    exprs::{TypedExpr, TypedExprKind, TypedSymbolExpr},
+    exprs::{TypedExpr, TypedExprKind, TypedSymbolExpr, ValueCategory},
     format::format_sema_type,
     types::{PlainType, SemaType},
 };
@@ -56,12 +58,8 @@ impl<'a> AnalysisContext<'a> {
     pub(crate) fn analyze_expr_non_terminal(
         &mut self,
         expr: &mut TypedExpr,
-        mut expected_type: Option<SemaType>,
+        expected_type: Option<SemaType>,
     ) -> Option<SemaType> {
-        if let Some(ty) = expected_type {
-            expected_type = Some(ty.const_inner().clone());
-        }
-
         self.lower_expr_pre_analysis(expr, expected_type.clone());
 
         let expr_type = match &mut expr.kind {
@@ -77,10 +75,6 @@ impl<'a> AnalysisContext<'a> {
                 }
             }
 
-            TypedExprKind::Assign(assign) => {
-                self.analyze_assign(assign);
-                assign.rhs.ty.clone()
-            }
             TypedExprKind::Literal(literal) => self.analyze_literal(literal, expected_type.clone()),
             TypedExprKind::Prefix(prefix) => self.analyze_prefix(prefix, expected_type.clone()),
             TypedExprKind::Infix(infix) => self.analyze_infix(infix, expected_type.clone()),
@@ -88,14 +82,11 @@ impl<'a> AnalysisContext<'a> {
             TypedExprKind::AddrOf(addr_of) => self.analyze_addr_of(addr_of),
             TypedExprKind::Deref(deref) => self.analyze_deref(deref),
             TypedExprKind::Array(array) => self.analyze_array(array, expected_type.clone()),
-            TypedExprKind::ArrayIndex(array_index) => self.analyze_array_index(array_index),
             TypedExprKind::Dynamic(dynamic) => self.analyze_dynamic(dynamic, expected_type.clone()),
             TypedExprKind::MethodCall(method_call) => self.analyze_method_call(method_call),
-            TypedExprKind::FieldAccess(field_access) => self.analyze_field_access(field_access),
             TypedExprKind::FuncCall(func_call) => self.analyze_func_call(func_call),
             TypedExprKind::Lambda(lambda) => self.analyze_lambda(lambda),
             TypedExprKind::Tuple(tuple) => self.analyze_tuple_value(tuple, expected_type.clone()),
-            TypedExprKind::TupleAccess(tuple_access) => self.analyze_tuple_access(tuple_access, expected_type.clone()),
             TypedExprKind::EnumInit(enum_init) => self.analyze_enum_init(enum_init, expected_type.clone()),
             TypedExprKind::StructInit(struct_init) => self.analyze_struct_init(struct_init, expected_type.clone()),
             TypedExprKind::UnionInit(union_init) => self.analyze_union_init(union_init, expected_type.clone()),
@@ -112,6 +103,14 @@ impl<'a> AnalysisContext<'a> {
                 self.analyze_enum_struct_variant_init(struct_variant_init)
             }
 
+            TypedExprKind::Assign(assign) => {
+                self.analyze_assign(assign);
+                assign.rhs.ty.clone()
+            }
+            TypedExprKind::ArrayIndex(array_index) => self.analyze_array_index(array_index),
+            TypedExprKind::FieldAccess(field_access) => self.analyze_field_access(field_access),
+            TypedExprKind::TupleAccess(tuple_access) => self.analyze_tuple_access(tuple_access, expected_type.clone()),
+
             // TODO
             TypedExprKind::Builtin(_typed_builtin) => todo!(),
 
@@ -125,7 +124,7 @@ impl<'a> AnalysisContext<'a> {
 
         expr.ty = Some(normalized_type.clone()?);
 
-        if let Some(infer) = &self.func_env.infer  {
+        if let Some(infer) = &self.func_env.infer {
             expr.ty = Some(infer.resolve(&normalized_type.clone()?));
         }
 
@@ -139,11 +138,81 @@ impl<'a> AnalysisContext<'a> {
             }
         }
 
-        self.fold_const_expr(expr);
+        // FIXME: Gotta be removed.
+        // self.fold_const_expr(expr);
 
         self.lower_expr_post_analysis(expr);
 
+        expr.val_cat = self.value_category_of_expr(expr);
+
         normalized_type
+    }
+
+    fn value_category_of_expr(&self, expr: &TypedExpr) -> ValueCategory {
+        match &expr.kind {
+            TypedExprKind::Symbol(symbol_expr) => {
+                let decl_id = symbol_expr.as_decl_id().unwrap();
+                let is_decl_const = self.is_decl_const(decl_id);
+
+                let mutability = {
+                    if is_decl_const {
+                        Mutability::Const
+                    } else {
+                        Mutability::Var
+                    }
+                };
+
+                ValueCategory::LValue(mutability)
+            }
+
+            TypedExprKind::Deref(deref) => {
+                let mutability = {
+                    let is_type_const = deref.operand.ty.as_ref().map(|ty| ty.is_const()).unwrap_or(false);
+                    let is_val_cat_const = deref.operand.val_cat.is_const_lvalue();
+
+                    if is_type_const || is_val_cat_const {
+                        Mutability::Const
+                    } else {
+                        Mutability::Var
+                    }
+                };
+
+                ValueCategory::LValue(mutability)
+            }
+
+            TypedExprKind::AddrOf(_) => ValueCategory::RValue,
+
+            // propagate (follows operand's value-category)
+            TypedExprKind::FieldAccess(field_access) => field_access.operand.val_cat,
+            TypedExprKind::TupleAccess(tuple_access) => tuple_access.operand.val_cat,
+            TypedExprKind::ArrayIndex(array_index) => array_index.operand.val_cat,
+
+            TypedExprKind::Assign(_)
+            | TypedExprKind::Lambda(_)
+            | TypedExprKind::Array(_)
+            | TypedExprKind::Tuple(_)
+            | TypedExprKind::Dynamic(_)
+            | TypedExprKind::EnumInit(_)
+            | TypedExprKind::StructInit(_)
+            | TypedExprKind::UnionInit(_)
+            | TypedExprKind::FuncCall(_)
+            | TypedExprKind::MethodCall(_)
+            | TypedExprKind::Literal(_)
+            | TypedExprKind::Unary(_)
+            | TypedExprKind::Prefix(_)
+            | TypedExprKind::Infix(_) => ValueCategory::RValue,
+
+            // TODO
+            TypedExprKind::Builtin(_typed_builtin) => todo!(),
+
+            TypedExprKind::SemaType(_) | TypedExprKind::Poisoned => ValueCategory::Unknown,
+
+            // lowered
+            TypedExprKind::UnnamedStructValue(_)
+            | TypedExprKind::UnnamedUnionValue(_)
+            | TypedExprKind::UnnamedEnumValue(_)
+            | TypedExprKind::EnumStructVariantInit(_) => unreachable!(),
+        }
     }
 
     pub(crate) fn analyze_symbol_expr(&self, symbol_expr: &TypedSymbolExpr) -> Option<DeclID> {
@@ -156,7 +225,7 @@ impl<'a> AnalysisContext<'a> {
     pub(crate) fn analyze_cond_expr(&mut self, cond: &mut TypedExpr) {
         if let Some(ty) = self.analyze_expr(cond, Some(SemaType::Plain(PlainType::Bool))) {
             if !(ty.is_bool() || ty.is_integer()) {
-                self.report_not_cond_expr(ty, cond.loc);
+                self.report_not_cond_expr(cond.loc);
             }
         }
     }

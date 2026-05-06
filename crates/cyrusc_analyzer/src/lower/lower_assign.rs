@@ -16,7 +16,7 @@
  */
 
 use cyrusc_ast::AssignKind;
-use cyrusc_typed_ast::exprs::{ValueCategory, TypedAssignExpr, TypedExprKind, TypedExpr, TypedInfixExpr};
+use cyrusc_typed_ast::exprs::{TypedAssignExpr, TypedExpr, TypedExprKind, TypedInfixExpr, ValueCategory};
 
 /// Lowers a compound assignment into an equivalent infix expression assignment.
 pub(crate) fn lower_assign_to_infix_expr(assign: &mut TypedAssignExpr) -> TypedExprKind {

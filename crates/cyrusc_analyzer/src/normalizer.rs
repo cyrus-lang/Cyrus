@@ -428,10 +428,12 @@ impl<'a> AnalysisContext<'a> {
         match decl_id {
             DeclID::GlobalVar(global_var_decl_id) => {
                 let global_var_decl = self.decl_tables.global_var_decl(global_var_decl_id);
+
                 global_var_decl.ty.clone()
             }
             DeclID::Var(var_decl_id) => {
                 let var_decl = self.decl_tables.var_decl(var_decl_id);
+
                 var_decl.ty.clone()
             }
             DeclID::Func(func_decl_id) => {

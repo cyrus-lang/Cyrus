@@ -178,7 +178,6 @@ impl<'a> AnalysisContext<'a> {
             None => return None,
         };
 
-        let is_operand_const = operand_type.is_const();
         let is_operand_array = operand_type.const_inner().is_array();
 
         if !(operand_type.is_pointer() || is_operand_array) {
@@ -237,10 +236,6 @@ impl<'a> AnalysisContext<'a> {
             }
         }
 
-        if is_operand_const {
-            Some(element_type.as_const())
-        } else {
-            Some(element_type)
-        }
+        Some(element_type)
     }
 }

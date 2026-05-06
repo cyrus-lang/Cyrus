@@ -16,7 +16,7 @@
  */
 
 use crate::context::AnalysisContext;
-use cyrusc_typed_ast::exprs::{TypedExpr, TypedExprKind, TypedFieldInit, TypedStructInitExpr};
+use cyrusc_typed_ast::exprs::{TypedExpr, TypedExprKind, TypedFieldInit, TypedStructInitExpr, ValueCategory};
 
 impl<'a> AnalysisContext<'a> {
     pub(crate) fn lower_unnamed_struct_value_as_struct_init(&self, typed_expr: &mut TypedExpr) {
@@ -47,7 +47,7 @@ impl<'a> AnalysisContext<'a> {
         *typed_expr = TypedExpr {
             kind: TypedExprKind::StructInit(struct_init),
             ty: typed_expr.ty.clone(),
-            val_cat: typed_expr.val_cat,
+            val_cat: ValueCategory::RValue,
             loc: typed_expr.loc,
         };
     }

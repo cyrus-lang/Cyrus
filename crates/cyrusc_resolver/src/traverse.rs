@@ -352,7 +352,7 @@ impl Resolver {
                 loc: ident.loc,
             }),
             ty: None,
-            val_cat: ValueCategory::LValue,
+            val_cat: ValueCategory::Unknown,
             loc: ident.loc,
         })
     }
@@ -395,7 +395,7 @@ impl Resolver {
                     Some(TypedExpr {
                         kind,
                         ty: None,
-                        val_cat: ValueCategory::RValue,
+                        val_cat: ValueCategory::Unknown,
                         loc: builtin.loc(),
                     })
                 }
@@ -1039,7 +1039,7 @@ impl Resolver {
                 loc: struct_variant_init.loc,
             }),
             ty: None,
-            val_cat: ValueCategory::RValue,
+            val_cat: ValueCategory::Unknown,
             loc: struct_variant_init.loc,
         })
     }
@@ -2068,7 +2068,7 @@ impl Resolver {
                     loc: module_import.loc,
                 }),
                 ty: None,
-                val_cat: ValueCategory::LValue,
+                val_cat: ValueCategory::Unknown,
                 loc: module_import.loc,
             })
         })
@@ -2087,7 +2087,7 @@ impl Resolver {
         Some(TypedExpr {
             kind,
             ty: None,
-            val_cat: ValueCategory::RValue,
+            val_cat: ValueCategory::Unknown,
             loc: unnamed_union_value.loc,
         })
     }
@@ -2130,7 +2130,7 @@ impl Resolver {
                 kind,
                 loc: unnamed_enum_value.loc,
             }),
-            val_cat: ValueCategory::RValue,
+            val_cat: ValueCategory::Unknown,
             ty: None,
             loc: unnamed_enum_value.loc,
         })
@@ -2148,7 +2148,7 @@ impl Resolver {
                 loc: dynamic.loc,
             }),
             ty: None,
-            val_cat: ValueCategory::RValue,
+            val_cat: ValueCategory::Unknown,
             loc: dynamic.loc,
         })
     }
@@ -2163,7 +2163,7 @@ impl Resolver {
                 loc: tuple_member_access.loc,
             }),
             ty: None,
-            val_cat: ValueCategory::LValue,
+            val_cat: ValueCategory::Unknown,
             loc: tuple_member_access.loc,
         })
     }
@@ -2184,7 +2184,7 @@ impl Resolver {
                 loc: tuple_value.loc,
             }),
             ty: None,
-            val_cat: ValueCategory::RValue,
+            val_cat: ValueCategory::Unknown,
             loc: tuple_value.loc,
         })
     }
@@ -2220,7 +2220,7 @@ impl Resolver {
                     loc: lambda.loc,
                 }),
                 ty: None,
-                val_cat: ValueCategory::RValue,
+                val_cat: ValueCategory::Unknown,
                 loc: lambda.loc,
             })
         })
@@ -2238,8 +2238,8 @@ impl Resolver {
                 ty: None,
                 loc: field_access.loc,
             }),
-            val_cat: ValueCategory::LValue,
             ty: None,
+            val_cat: ValueCategory::Unknown,
             loc: field_access.loc,
         })
     }
@@ -2267,7 +2267,7 @@ impl Resolver {
                 is_thin_arrow: method_call.is_thin_arrow,
                 loc: method_call.loc,
             }),
-            val_cat: ValueCategory::RValue,
+            val_cat: ValueCategory::Unknown,
             ty: None,
             loc: method_call.loc,
         })
@@ -2294,8 +2294,8 @@ impl Resolver {
                 fields,
                 loc: struct_init.loc,
             }),
-            val_cat: ValueCategory::RValue,
             ty: None,
+            val_cat: ValueCategory::Unknown,
             loc: struct_init.loc,
         })
     }
@@ -2323,7 +2323,7 @@ impl Resolver {
                 align: unnamed_struct_value.align,
             }),
             ty: None,
-            val_cat: ValueCategory::RValue,
+            val_cat: ValueCategory::Unknown,
             loc: unnamed_struct_value.loc,
         })
     }
@@ -2345,7 +2345,7 @@ impl Resolver {
                 dispatch: TypedFuncCallDispatch::Unresolved,
                 loc,
             }),
-            val_cat: ValueCategory::RValue,
+            val_cat: ValueCategory::Unknown,
             ty: None,
             loc,
         })
@@ -2364,8 +2364,8 @@ impl Resolver {
                 elements,
                 loc: untyped_array.loc,
             }),
-            val_cat: ValueCategory::RValue,
             ty: None,
+            val_cat: ValueCategory::Unknown,
             loc: untyped_array.loc,
         })
     }
@@ -2385,8 +2385,8 @@ impl Resolver {
                 elements: typed_elements,
                 loc: array.loc,
             }),
-            val_cat: ValueCategory::RValue,
             ty: None,
+            val_cat: ValueCategory::Unknown,
             loc: array.loc,
         })
     }
@@ -2402,8 +2402,8 @@ impl Resolver {
                 op: infix.op.clone(),
                 loc: infix.loc,
             }),
-            val_cat: ValueCategory::RValue,
             ty: None,
+            val_cat: ValueCategory::Unknown,
             loc: infix.loc,
         })
     }
@@ -2417,8 +2417,8 @@ impl Resolver {
                 op: prefix.op.clone(),
                 loc: prefix.loc,
             }),
-            val_cat: ValueCategory::RValue,
             ty: None,
+            val_cat: ValueCategory::Unknown,
             loc: prefix.loc,
         })
     }
@@ -2430,12 +2430,12 @@ impl Resolver {
             TypeSpecifier::Ident(ident) => self.resolve_ident(&ident)?,
             TypeSpecifier::ModuleImport(module_import) => self.resolve_module_import(module_import.clone())?,
             _ => {
-                let sema_type = self.resolve_type(type_spec.clone(), loc)?;
+                let ty = self.resolve_type(type_spec.clone(), loc)?;
 
                 return Some(TypedExpr {
-                    kind: TypedExprKind::SemaType(sema_type.clone()),
-                    val_cat: ValueCategory::RValue,
-                    ty: Some(sema_type),
+                    kind: TypedExprKind::SemaType(ty.clone()),
+                    ty: Some(ty),
+                    val_cat: ValueCategory::Unknown,
                     loc,
                 });
             }
@@ -2443,7 +2443,7 @@ impl Resolver {
 
         Some(TypedExpr {
             kind: TypedExprKind::Symbol(TypedSymbolExpr::Unresolved { symbol_id, loc }),
-            val_cat: ValueCategory::LValue,
+            val_cat: ValueCategory::Unknown,
             ty: None,
             loc,
         })
@@ -2460,8 +2460,8 @@ impl Resolver {
                 kind: assign.kind.clone(),
                 loc: assign.loc,
             }),
-            val_cat: ValueCategory::RValue,
             ty: None,
+            val_cat: ValueCategory::Unknown,
             loc: assign.loc,
         })
     }
@@ -2478,7 +2478,7 @@ impl Resolver {
         Some(TypedExpr {
             kind: TypedExprKind::Literal(typed_literal.clone()),
             ty: None,
-            val_cat: ValueCategory::RValue,
+            val_cat: ValueCategory::Unknown,
             loc: typed_literal.loc,
         })
     }
@@ -2562,8 +2562,8 @@ impl Resolver {
                 operand: Box::new(operand),
                 loc: unary.loc,
             }),
-            val_cat: ValueCategory::RValue,
             ty: None,
+            val_cat: ValueCategory::Unknown,
             loc: unary.loc,
         })
     }
@@ -2578,8 +2578,8 @@ impl Resolver {
                 index: Box::new(index),
                 loc: array_index.loc,
             }),
-            val_cat: ValueCategory::LValue,
             ty: None,
+            val_cat: ValueCategory::Unknown,
             loc: array_index.loc,
         })
     }
@@ -2592,8 +2592,8 @@ impl Resolver {
                 operand: Box::new(operand),
                 loc: addr_of.loc,
             }),
-            val_cat: ValueCategory::RValue,
             ty: None,
+            val_cat: ValueCategory::Unknown,
             loc: addr_of.loc,
         })
     }
@@ -2606,8 +2606,8 @@ impl Resolver {
                 operand: Box::new(operand),
                 loc: deref.loc,
             }),
-            val_cat: ValueCategory::LValue,
             ty: None,
+            val_cat: ValueCategory::Unknown,
             loc: deref.loc,
         })
     }

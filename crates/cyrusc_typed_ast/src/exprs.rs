@@ -22,7 +22,7 @@ use crate::{
     types::{InterfaceObjectType, SemaType, TypedFuncType},
 };
 use cyrusc_ast::{
-    AssignKind, Ident,
+    AssignKind, Ident, Mutability,
     abi::ReprAttr,
     operators::{InfixOperator, PrefixOperator, UnaryOperator},
 };
@@ -40,8 +40,9 @@ pub struct TypedExpr {
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub enum ValueCategory {
-    LValue,
+    Unknown,
     RValue,
+    LValue(Mutability),
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -398,21 +399,22 @@ impl TypedSymbolExpr {
         }
     }
 
-
     #[inline]
     pub fn loc(&self) -> Loc {
         match self {
-            TypedSymbolExpr::Resolved { loc ,..} => *loc,
+            TypedSymbolExpr::Resolved { loc, .. } => *loc,
             TypedSymbolExpr::Unresolved { loc, .. } => *loc,
         }
     }
 }
 
 impl TypedExpr {
+    #[inline]
     pub fn is_lvalue(&self) -> bool {
-        self.val_cat == ValueCategory::LValue
+        matches!(self.val_cat, ValueCategory::LValue(_))
     }
 
+    #[inline]
     pub fn is_rvalue(&self) -> bool {
         self.val_cat == ValueCategory::RValue
     }
@@ -483,6 +485,13 @@ impl TypedExprKind {
 
             TypedExprKind::Poisoned => unreachable!(),
         }
+    }
+}
+
+impl ValueCategory {
+    #[inline]
+    pub fn is_const_lvalue(&self) -> bool {
+        matches!(self, Self::LValue(Mutability::Const))
     }
 }
 

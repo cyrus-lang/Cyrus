@@ -24,7 +24,8 @@ struct HeapAllocator : Allocator {
 pub fn main() {
     const allocator = HeapAllocator.new();
     
-    const ptr: int* = allocator.alloc(4);
+    var ptr: int* = allocator.alloc(4);
+    
     *ptr = 5;
     printf("%d\n", *ptr);
     allocator.free(ptr);
