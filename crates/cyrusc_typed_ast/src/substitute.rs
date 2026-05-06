@@ -311,6 +311,7 @@ pub fn substitute_func_params_with_type_args(
                     var_decl_id: func_param.var_decl_id,
                     ident: func_param.ident.clone(),
                     ty,
+                    mutability: func_param.mutability,
                     loc: func_param.loc,
                 })
             }
@@ -321,6 +322,7 @@ pub fn substitute_func_params_with_type_args(
                     var_decl_id: self_modifier.var_decl_id,
                     ty,
                     kind: self_modifier.kind.clone(),
+                    mutability: self_modifier.mutability,
                     loc: self_modifier.loc,
                 })
             }

@@ -340,17 +340,23 @@ pub enum TypedFuncParamKind {
 
 #[derive(Debug, Clone, Eq)]
 pub struct TypedSelfModifier {
+    // none if used in func decl (no body)
     pub var_decl_id: Option<VarDeclID>,
+
     pub ty: SemaType,
     pub kind: SelfModifierKind,
+    pub mutability: Mutability,
     pub loc: Loc,
 }
 
 #[derive(Debug, Clone, Eq)]
 pub struct TypedFuncParam {
-    pub var_decl_id: Option<VarDeclID>, // none if used in func decl
+    // none if used in func decl (no body)
+    pub var_decl_id: Option<VarDeclID>,
+
     pub ident: Ident,
     pub ty: SemaType,
+    pub mutability: Mutability,
     pub loc: Loc,
 }
 
@@ -697,6 +703,15 @@ impl TypedFuncTypeParams {
 }
 
 impl TypedFuncParamKind {
+    #[inline]
+    pub fn is_const(&self) -> bool {
+        match self {
+            TypedFuncParamKind::FuncParam(func_param) => func_param.mutability.is_const(),
+            TypedFuncParamKind::SelfModifier(self_modifier) => self_modifier.mutability.is_const(),
+        }
+    }
+
+    #[inline]
     pub fn name(&self) -> String {
         match self {
             TypedFuncParamKind::FuncParam(func_param) => func_param.ident.as_string(),
@@ -704,6 +719,7 @@ impl TypedFuncParamKind {
         }
     }
 
+    #[inline]
     pub fn loc(&self) -> Loc {
         match self {
             TypedFuncParamKind::FuncParam(typed_func_param) => typed_func_param.loc,
@@ -711,6 +727,7 @@ impl TypedFuncParamKind {
         }
     }
 
+    #[inline]
     pub fn var_decl_id(&self) -> Option<VarDeclID> {
         match self {
             TypedFuncParamKind::FuncParam(func_param) => func_param.var_decl_id,
@@ -718,6 +735,7 @@ impl TypedFuncParamKind {
         }
     }
 
+    #[inline]
     pub fn param_type(&self) -> SemaType {
         match self {
             TypedFuncParamKind::FuncParam(func_param) => func_param.ty.clone(),
@@ -725,6 +743,7 @@ impl TypedFuncParamKind {
         }
     }
 
+    #[inline]
     pub fn param_type_mut(&mut self) -> &mut SemaType {
         match self {
             TypedFuncParamKind::FuncParam(func_param) => &mut func_param.ty,
@@ -732,6 +751,7 @@ impl TypedFuncParamKind {
         }
     }
 
+    #[inline]
     pub fn as_self_modifier(&self) -> Option<&TypedSelfModifier> {
         match self {
             TypedFuncParamKind::SelfModifier(self_modifier) => Some(self_modifier),
@@ -739,6 +759,7 @@ impl TypedFuncParamKind {
         }
     }
 
+    #[inline]
     pub fn as_self_modifier_mut(&mut self) -> Option<&mut TypedSelfModifier> {
         match self {
             TypedFuncParamKind::SelfModifier(self_modifier) => Some(self_modifier),
