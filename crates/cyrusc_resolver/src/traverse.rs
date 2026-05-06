@@ -179,6 +179,7 @@ impl Resolver {
             ASTStmt::Continue(continue_stmt) => self.resolve_continue_stmt(continue_stmt).map(TypedStmt::Continue),
             ASTStmt::Typedef(typedef) => self.resolve_typedef(typedef),
             ASTStmt::Label(label) => self.resolve_label_stmt(label),
+            
             ASTStmt::Goto(goto) => self.resolve_goto_stmt(goto),
             ASTStmt::Foreach(_foreach_stmt) => unimplemented!(), // TODO
 
@@ -1432,6 +1433,7 @@ impl Resolver {
             var_decl_id: None,
             ident: param.ident.clone(),
             ty,
+            mutability: param.mutability,
             loc: param.loc,
         })
     }
@@ -1441,10 +1443,9 @@ impl Resolver {
         params_kinds: &mut Vec<TypedFuncParamKind>,
         _variadic: &mut Option<TypedFuncVariadicParam>,
     ) -> Option<()> {
-        // TODO: Const func param not implemented yet.
-        let is_const_param = false;
-
         for param_kind in params_kinds {
+            let is_const_param = param_kind.is_const();
+
             match param_kind {
                 TypedFuncParamKind::FuncParam(func_param) => {
                     let var_decl_id: VarDeclID =
@@ -1485,6 +1486,7 @@ impl Resolver {
             var_decl_id: None,
             ty,
             kind: self_modifier.kind.clone(),
+            mutability: self_modifier.mutability,
             loc: self_modifier.loc,
         }
     }

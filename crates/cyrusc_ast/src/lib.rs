@@ -767,6 +767,7 @@ pub enum AssignKind {
 #[derive(Debug, Clone)]
 pub struct SelfModifier {
     pub kind: SelfModifierKind,
+    pub mutability: Mutability,
     pub loc: Loc,
 }
 
@@ -786,7 +787,7 @@ pub enum FuncParamKind {
 pub struct FuncParam {
     pub ident: Ident,
     pub ty: Option<TypeSpecifier>,
-
+    pub mutability: Mutability,
     pub loc: Loc,
 }
 

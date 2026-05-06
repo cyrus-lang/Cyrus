@@ -368,6 +368,15 @@ impl<'source_file> Parser<'source_file> {
                     let token = self.current_token();
                     self.next_token(); // ampersand
 
+                    let mutability = {
+                        if self.current_token_is(TokenKind::Const) {
+                            self.next_token();
+                            Mutability::Const
+                        } else {
+                            Mutability::Var
+                        }
+                    };
+
                     let ident = self.parse_ident()?;
                     self.next_token(); // consume ident
 
@@ -381,14 +390,24 @@ impl<'source_file> Parser<'source_file> {
 
                     list.push(FuncParamKind::SelfModifier(SelfModifier {
                         kind: SelfModifierKind::Referenced,
+                        mutability,
                         loc: Loc::new(self.file_id(), line, column, start, end),
                     }));
 
                     self_modifier_count += 1;
                 }
-                TokenKind::Ident(_) => {
+                TokenKind::Const | TokenKind::Ident(_) => {
                     let start = self.current_token().loc.start;
                     let line = self.current_token().loc.line;
+
+                    let mutability = {
+                        if self.current_token_is(TokenKind::Const) {
+                            self.next_token();
+                            Mutability::Const
+                        } else {
+                            Mutability::Var
+                        }
+                    };
 
                     let ident = self.parse_ident()?;
                     self.next_token(); // consume the ident
@@ -398,6 +417,7 @@ impl<'source_file> Parser<'source_file> {
 
                         list.push(FuncParamKind::SelfModifier(SelfModifier {
                             kind: SelfModifierKind::Copied,
+                            mutability,
                             loc: Loc::new(self.file_id(), line, column, start, end),
                         }));
 
@@ -427,6 +447,7 @@ impl<'source_file> Parser<'source_file> {
                         list.push(FuncParamKind::FuncParam(FuncParam {
                             ident,
                             ty: var_type,
+                            mutability,
                             loc: Loc::new(self.file_id(), line, column, start, end),
                         }));
                     }
