@@ -16,8 +16,14 @@
  */
 
 use crate::context::AnalysisContext;
+use cyrusc_ast::Mutability;
 use cyrusc_const_eval::{fold::ConstFolder, resolver::ConstResolver};
-use cyrusc_typed_ast::{SymbolID, decls::DeclID, exprs::TypedExpr, types::SemaType};
+use cyrusc_typed_ast::{
+    SymbolID,
+    decls::DeclID,
+    exprs::{TypedExpr, ValueCategory},
+    types::SemaType,
+};
 
 impl<'a> AnalysisContext<'a> {
     /// Returns `true` when a const‑qualified type is assigned to a mutable variable.
@@ -33,20 +39,16 @@ impl<'a> AnalysisContext<'a> {
     }
 
     pub(crate) fn is_const_qualified_lvalue(&self, expr: &TypedExpr) -> bool {
-        expr.kind
-            .as_resolved_decl_id()
-            .map(|decl_id| {
-                if let Some(var_decl_id) = decl_id.as_var() {
-                    let var_decl = self.decl_tables.var_decl(var_decl_id);
-                    var_decl.is_const
-                } else if let Some(global_var_decl_id) = decl_id.as_global_var() {
-                    let global_var_decl = self.decl_tables.global_var_decl(global_var_decl_id);
-                    global_var_decl.is_const
-                } else {
-                    false
-                }
-            })
-            .unwrap_or(false)
+        if matches!(expr.val_cat, ValueCategory::LValue(Mutability::Const)) {
+            return true;
+        }
+
+        // type-level constness
+        if expr.ty.as_ref().map(|ty| ty.is_const()).unwrap_or(false) {
+            return true;
+        }
+
+        false
     }
 
     pub(crate) fn fold_const_expr(&mut self, expr: &mut TypedExpr) {
@@ -72,10 +74,19 @@ impl<'a> ConstResolver for AnalysisContext<'a> {
         self.resolve_variable_rhs_expr(decl_id)
     }
 
-    fn is_decl_const(&mut self, decl_id: DeclID) -> bool {
-        match self.resolve_variable_rhs_expr(decl_id) {
-            Some(expr) => expr.ty.as_ref().map(|ty| ty.is_const()).unwrap_or(false),
-            None => false,
+    fn is_decl_const(&self, decl_id: DeclID) -> bool {
+        match decl_id {
+            DeclID::GlobalVar(global_var_decl_id) => {
+                let global_var_decl = self.decl_tables.global_var_decl(global_var_decl_id);
+
+                global_var_decl.is_const
+            }
+            DeclID::Var(var_decl_id) => {
+                let var_decl = self.decl_tables.var_decl(var_decl_id);
+
+                var_decl.is_const
+            }
+            _ => false,
         }
     }
 

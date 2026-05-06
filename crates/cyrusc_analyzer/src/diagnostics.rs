@@ -19,18 +19,12 @@ use crate::context::AnalysisContext;
 use cyrusc_diagcentral::{Diag, DiagKind, DiagLevel};
 use cyrusc_source_loc::Loc;
 use cyrusc_strescape::diagnostics::UnescapeError;
-use cyrusc_typed_ast::{
-    stmts::{TypedFuncParamKind, TypedFuncVariadicParam},
-    types::SemaType,
-};
+use cyrusc_typed_ast::stmts::{TypedFuncParamKind, TypedFuncVariadicParam};
 use std::ops::RangeInclusive;
 use thiserror::Error;
 
 #[derive(Debug, Error, Clone)]
 pub enum AnalyzerDiagKind {
-    #[error("Cannot discard 'const' qualifier when converting from '{from}' to '{to}'.")]
-    CannotDiscardConst { from: String, to: String },
-
     #[error(
         "Repr 'c' enum cannot contain non-integer variants, because their layout cannot be represented in the C ABI."
     )]
@@ -222,9 +216,6 @@ pub enum AnalyzerDiagKind {
 
     #[error("Only one exporting pattern is allowed per switch case.")]
     MultipleExportingPatternsInSwitchCase,
-
-    #[error("Case pattern with type '{pattern_type}' is not compatible with switch operand of type '{operand_type}'.")]
-    TypeMismatchInCasePattern { operand_type: String, pattern_type: String },
 
     #[error("Cannot access internal field '{field_name}' of struct '{object_name}' from outside its definition.")]
     InternalFieldAccess { field_name: String, object_name: String },
@@ -498,7 +489,7 @@ impl<'a> AnalysisContext<'a> {
     }
 
     /// Validates that an expression type is suitable for use as a boolean condition.
-    pub(crate) fn report_not_cond_expr(&mut self, sema_type: SemaType, loc: Loc) {
+    pub(crate) fn report_not_cond_expr(&mut self, loc: Loc) {
         self.reporter.report(Diag {
             level: DiagLevel::Error,
             kind: Box::new(AnalyzerDiagKind::ConditionExprMustBeOfTypeBool),

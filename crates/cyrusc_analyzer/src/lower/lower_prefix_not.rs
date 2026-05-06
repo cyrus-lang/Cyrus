@@ -15,13 +15,13 @@
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
 
+use crate::context::AnalysisContext;
 use cyrusc_ast::operators::InfixOperator;
 use cyrusc_tokens::literals::LiteralKind;
 use cyrusc_typed_ast::{
-    exprs::{ValueCategory, TypedExprKind, TypedExpr, TypedInfixExpr, TypedLiteralExpr, TypedPrefixExpr},
+    exprs::{TypedExpr, TypedExprKind, TypedInfixExpr, TypedLiteralExpr, TypedPrefixExpr, ValueCategory},
     types::{PlainType, SemaType},
 };
-use crate::context::AnalysisContext;
 
 /// Lowers a logical negation on a pointer operand into a null comparison.
 impl<'a> AnalysisContext<'a> {

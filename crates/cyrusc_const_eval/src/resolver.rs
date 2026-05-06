@@ -18,7 +18,7 @@
 use cyrusc_typed_ast::{SymbolID, decls::DeclID, exprs::TypedExpr};
 
 pub trait ConstResolver {
-    fn is_decl_const(&mut self, decl_id: DeclID) -> bool;
+    fn is_decl_const(&self, decl_id: DeclID) -> bool;
     fn resolve_symbol_expr(&mut self, decl_id: DeclID) -> Option<TypedExpr>;
     fn lookup_symbol_as_decl_id(&self, symbol_id: SymbolID) -> Option<DeclID>;
 }

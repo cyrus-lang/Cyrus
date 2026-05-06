@@ -1695,7 +1695,7 @@ impl<'a> CIRTraverse<'a> {
                     loc: field_access.loc,
                 }),
                 ty: Some(field_access.operand.ty.clone().unwrap().pointer_inner().clone()),
-                val_cat: ValueCategory::LValue,
+                val_cat: ValueCategory::Unknown,
                 loc: field_access.loc,
             })
         }

@@ -148,7 +148,7 @@ impl<'a> AnalysisContext<'a> {
         *typed_expr = TypedExpr {
             kind: TypedExprKind::EnumInit(enum_init),
             ty: typed_expr.ty.clone(),
-            val_cat: typed_expr.val_cat,
+            val_cat: ValueCategory::RValue,
             loc: typed_expr.loc,
         };
     }
@@ -174,7 +174,7 @@ impl<'a> AnalysisContext<'a> {
         *typed_expr = TypedExpr {
             kind: TypedExprKind::EnumInit(enum_init),
             ty: typed_expr.ty.clone(),
-            val_cat: typed_expr.val_cat,
+            val_cat: ValueCategory::RValue,
             loc: typed_expr.loc,
         };
     }

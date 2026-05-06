@@ -243,7 +243,7 @@ impl<'a> AnalysisContext<'a> {
                 break;
             };
 
-            let element_type = tuple_type.elements.get(index).cloned();
+            let element_type = tuple_type.elements.get(index).cloned().unwrap();
 
             expr = TypedExpr {
                 kind: TypedExprKind::TupleAccess(TypedTupleAccessExpr {
@@ -251,12 +251,12 @@ impl<'a> AnalysisContext<'a> {
                     index,
                     loc,
                 }),
-                ty: element_type.clone(),
+                ty: Some(element_type.clone()),
                 val_cat,
                 loc,
             };
 
-            current_type = element_type;
+            current_type = Some(element_type);
         }
 
         expr

@@ -26,49 +26,32 @@ use cyrusc_typed_ast::{
 };
 
 impl<'a> AnalysisContext<'a> {
-    fn analyze_pointer_arithmetic_type(
-        &mut self,
-        lhs_type: &SemaType,
-        rhs_type: &SemaType,
-        is_addition: bool,
-    ) -> Option<SemaType> {
-        if lhs_type.is_pointer() && rhs_type.is_integer() {
-            return Some(lhs_type.clone());
-        } else if lhs_type.is_integer() && rhs_type.is_pointer() {
-            return Some(rhs_type.clone());
-        } else if lhs_type.is_pointer() && rhs_type.is_pointer() && !is_addition {
-            return Some(SemaType::Plain(PlainType::ISize));
-        } else {
-            None
-        }
-    }
-
     pub(crate) fn analyze_infix(
         &mut self,
         infix: &mut TypedInfixExpr,
         expected_type: Option<SemaType>,
     ) -> Option<SemaType> {
         let lhs_type = match self.analyze_expr(&mut infix.lhs, expected_type.clone()) {
-            Some(sema_type) => sema_type.const_inner().clone(),
+            Some(ty) => ty.const_inner().clone(),
             None => return None,
         };
 
         let rhs_type = match self.analyze_expr(&mut infix.rhs, Some(lhs_type.clone())) {
-            Some(sema_type) => sema_type.const_inner().clone(),
+            Some(ty) => ty.const_inner().clone(),
             None => return None,
         };
 
         match infix.op {
             InfixOperator::Add => {
-                if let Some(sema_type) = self.analyze_pointer_arithmetic_type(&lhs_type, &rhs_type, true) {
-                    return Some(sema_type);
+                if let Some(ty) = self.analyze_pointer_arithmetic_type(&lhs_type, &rhs_type, true) {
+                    return Some(ty);
                 }
 
                 self.analyze_arithmetic_expr(lhs_type, rhs_type, infix.loc)
             }
             InfixOperator::Sub => {
-                if let Some(sema_type) = self.analyze_pointer_arithmetic_type(&lhs_type, &rhs_type, false) {
-                    return Some(sema_type);
+                if let Some(ty) = self.analyze_pointer_arithmetic_type(&lhs_type, &rhs_type, false) {
+                    return Some(ty);
                 }
 
                 self.analyze_arithmetic_expr(lhs_type, rhs_type, infix.loc)
@@ -76,25 +59,37 @@ impl<'a> AnalysisContext<'a> {
             InfixOperator::Mul | InfixOperator::Div | InfixOperator::Rem => {
                 self.analyze_arithmetic_expr(lhs_type, rhs_type, infix.loc)
             }
+
             InfixOperator::LessThan
             | InfixOperator::LessEqual
             | InfixOperator::GreaterThan
             | InfixOperator::GreaterEqual => self.analyze_compare_expr(lhs_type, rhs_type, false, infix.loc),
+
             InfixOperator::Equal | InfixOperator::NotEqual => {
                 self.analyze_compare_expr(lhs_type, rhs_type, true, infix.loc)
             }
+
             InfixOperator::Or => self.analyze_or_expr(lhs_type, rhs_type, infix.loc),
             InfixOperator::And => self.analyze_and_expr(lhs_type, rhs_type, infix.loc),
+
             InfixOperator::BitwiseAnd
             | InfixOperator::BitwiseOr
             | InfixOperator::BitwiseXor
             | InfixOperator::BitwiseAndNot => self.analyze_bitwise_expr(lhs_type, rhs_type, infix.loc),
+
             InfixOperator::ShiftLeft => self.analyze_left_shift_expr(lhs_type, rhs_type, infix.loc),
             InfixOperator::ShiftRight => self.analyze_right_shift_expr(lhs_type, rhs_type, infix.loc),
         }
     }
 
     pub(crate) fn analyze_addr_of(&mut self, addr_of: &mut TypedAddrOfExpr) -> Option<SemaType> {
+        let expected_type = addr_of.operand.ty.clone();
+
+        let operand_type = match self.analyze_expr(&mut addr_of.operand, expected_type) {
+            Some(ty) => ty.const_inner().clone(),
+            None => return None,
+        };
+
         if !addr_of.operand.is_lvalue() {
             self.reporter.report(Diag {
                 level: DiagLevel::Error,
@@ -104,13 +99,6 @@ impl<'a> AnalysisContext<'a> {
             });
             return None;
         }
-
-        let expected_type = addr_of.operand.ty.clone();
-
-        let operand_type = match self.analyze_expr(&mut addr_of.operand, expected_type) {
-            Some(sema_type) => sema_type.const_inner().clone(),
-            None => return None,
-        };
 
         Some(SemaType::Pointer(Box::new(operand_type)))
     }
@@ -136,7 +124,7 @@ impl<'a> AnalysisContext<'a> {
         }
 
         let inner_type = match operand_type {
-            SemaType::Pointer(sema_type) => *sema_type,
+            SemaType::Pointer(inner) => *inner,
             _ => {
                 self.reporter.report(Diag {
                     level: DiagLevel::Error,
@@ -202,7 +190,7 @@ impl<'a> AnalysisContext<'a> {
             PrefixOperator::Bang => {
                 let valid_plain_type = match &operand_type {
                     SemaType::Plain(plain_type) => {
-                        if plain_type.is_bool() {
+                        if plain_type.is_integer_or_bool() {
                             Some(plain_type)
                         } else {
                             None
@@ -212,7 +200,7 @@ impl<'a> AnalysisContext<'a> {
                 };
 
                 match valid_plain_type {
-                    Some(sema_type) => Some(SemaType::Plain(sema_type.clone())),
+                    Some(plain_type) => Some(SemaType::Plain(plain_type.clone())),
                     None => {
                         let operand_type = format_sema_type(operand_type, self.formatter);
 
@@ -300,20 +288,30 @@ impl<'a> AnalysisContext<'a> {
         Some(operand_type)
     }
 
-    fn analyze_arithmetic_expr(
+    fn analyze_pointer_arithmetic_type(
         &mut self,
-        lhs_type: SemaType,
-        rhs_type: SemaType,
-        loc: Loc,
+        lhs_type: &SemaType,
+        rhs_type: &SemaType,
+        is_addition: bool,
     ) -> Option<SemaType> {
+        if lhs_type.is_pointer() && rhs_type.is_integer() {
+            return Some(lhs_type.clone());
+        } else if lhs_type.is_integer() && rhs_type.is_pointer() {
+            return Some(rhs_type.clone());
+        } else if lhs_type.is_pointer() && rhs_type.is_pointer() && !is_addition {
+            return Some(SemaType::Plain(PlainType::ISize));
+        } else {
+            None
+        }
+    }
+
+    fn analyze_arithmetic_expr(&mut self, lhs_type: SemaType, rhs_type: SemaType, loc: Loc) -> Option<SemaType> {
         self.analyze_binary_expr(lhs_type.clone(), rhs_type.clone(), loc, |_, lhs, rhs| {
             let valid = (lhs.is_integer() && rhs.is_integer()) || (lhs.is_float() && rhs.is_float());
 
             if valid {
                 if let (SemaType::Plain(lhs_basic), SemaType::Plain(rhs_basic)) = (lhs, rhs) {
-                    Some(SemaType::Plain(
-                        PlainType::widen_type(lhs_basic, rhs_basic).unwrap(),
-                    ))
+                    Some(SemaType::Plain(PlainType::widen_type(lhs_basic, rhs_basic).unwrap()))
                 } else {
                     None
                 }
@@ -357,9 +355,7 @@ impl<'a> AnalysisContext<'a> {
                     Some(SemaType::Plain(PlainType::Bool))
                 } else if let (SemaType::Pointer(_), SemaType::Plain(PlainType::Null)) = (&lhs, &rhs) {
                     Some(SemaType::Plain(PlainType::Bool))
-                } else if let (SemaType::Plain(PlainType::Bool), SemaType::Plain(PlainType::Bool)) =
-                    (&lhs, &rhs)
-                {
+                } else if let (SemaType::Plain(PlainType::Bool), SemaType::Plain(PlainType::Bool)) = (&lhs, &rhs) {
                     Some(SemaType::Plain(PlainType::Bool))
                 } else {
                     None
@@ -372,7 +368,6 @@ impl<'a> AnalysisContext<'a> {
 
     fn analyze_binary_expr(
         &mut self,
-
         lhs_type: SemaType,
         rhs_type: SemaType,
         loc: Loc,
@@ -398,7 +393,7 @@ impl<'a> AnalysisContext<'a> {
         }
 
         match type_checker(self, lhs_type.clone(), rhs_type.clone()) {
-            Some(sema_type) => Some(sema_type),
+            Some(ty) => Some(ty),
             None => {
                 self.reporter.report(Diag {
                     level: DiagLevel::Error,
@@ -429,9 +424,7 @@ impl<'a> AnalysisContext<'a> {
                     None
                 }
             }
-            (null_sema_ty @ SemaType::Plain(PlainType::Null), SemaType::Plain(PlainType::Null)) => {
-                Some(null_sema_ty)
-            }
+            (null_sema_ty @ SemaType::Plain(PlainType::Null), SemaType::Plain(PlainType::Null)) => Some(null_sema_ty),
             _ => self.analyze_binary_expr(lhs_type, rhs_type, loc, |_, lhs, rhs| match (lhs, rhs) {
                 (SemaType::Plain(lhs_basic), SemaType::Plain(rhs_basic))
                     if lhs_basic.is_bool() && rhs_basic.is_bool() =>
@@ -445,21 +438,14 @@ impl<'a> AnalysisContext<'a> {
 
     fn analyze_and_expr(&mut self, lhs_type: SemaType, rhs_type: SemaType, loc: Loc) -> Option<SemaType> {
         self.analyze_binary_expr(lhs_type, rhs_type, loc, |_, lhs, rhs| match (lhs, rhs) {
-            (SemaType::Plain(lhs_basic), SemaType::Plain(rhs_basic))
-                if lhs_basic.is_bool() && rhs_basic.is_bool() =>
-            {
+            (SemaType::Plain(lhs_basic), SemaType::Plain(rhs_basic)) if lhs_basic.is_bool() && rhs_basic.is_bool() => {
                 Some(SemaType::Plain(PlainType::Bool))
             }
             _ => None,
         })
     }
 
-    fn analyze_left_shift_expr(
-        &mut self,
-        lhs_type: SemaType,
-        rhs_type: SemaType,
-        loc: Loc,
-    ) -> Option<SemaType> {
+    fn analyze_left_shift_expr(&mut self, lhs_type: SemaType, rhs_type: SemaType, loc: Loc) -> Option<SemaType> {
         self.analyze_binary_expr(lhs_type.clone(), rhs_type.clone(), loc, |_, lhs, rhs| {
             if let (SemaType::Plain(lhs_basic), SemaType::Plain(rhs_basic)) = (&lhs, &rhs) {
                 if lhs_basic.is_integer() && rhs_basic.is_integer() {
@@ -476,16 +462,11 @@ impl<'a> AnalysisContext<'a> {
         })
     }
 
-    fn analyze_right_shift_expr(
-        &mut self,
-        lhs_type: SemaType,
-        rhs_type: SemaType,
-        loc: Loc,
-    ) -> Option<SemaType> {
+    fn analyze_right_shift_expr(&mut self, lhs_type: SemaType, rhs_type: SemaType, loc: Loc) -> Option<SemaType> {
         self.analyze_binary_expr(lhs_type.clone(), rhs_type.clone(), loc, |this, lhs, rhs| {
-            if let (SemaType::Plain(lhs_basic), SemaType::Plain(rhs_basic)) = (&lhs, &rhs) {
+            if let (SemaType::Plain(plain_type1), SemaType::Plain(plain_type2)) = (&lhs, &rhs) {
                 // rhs must be unsigned
-                if rhs_basic.is_signed() {
+                if plain_type2.is_signed() {
                     this.reporter.report(Diag {
                         level: DiagLevel::Error,
                         kind: Box::new(AnalyzerDiagKind::RhsOfShiftMustBeUnsignedInteger),
@@ -495,10 +476,10 @@ impl<'a> AnalysisContext<'a> {
                     return None;
                 }
 
-                if lhs_basic.is_integer() && rhs_basic.is_integer() {
+                if plain_type1.is_integer() && plain_type2.is_integer() {
                     Some(SemaType::Plain(PlainType::widen_type(
-                        lhs_basic.clone(),
-                        rhs_basic.clone(),
+                        plain_type1.clone(),
+                        plain_type2.clone(),
                     )?))
                 } else {
                     None
@@ -509,19 +490,13 @@ impl<'a> AnalysisContext<'a> {
         })
     }
 
-    fn analyze_bitwise_expr(
-        &mut self,
-
-        lhs_type: SemaType,
-        rhs_type: SemaType,
-        loc: Loc,
-    ) -> Option<SemaType> {
+    fn analyze_bitwise_expr(&mut self, lhs_type: SemaType, rhs_type: SemaType, loc: Loc) -> Option<SemaType> {
         self.analyze_binary_expr(lhs_type.clone(), rhs_type.clone(), loc, |_, lhs, rhs| {
             // only allow integer types
-            if let (Some(lhs_basic), Some(rhs_basic)) = (lhs.as_plain_type(), rhs.as_plain_type()) {
-                if lhs_basic.is_integer() && rhs_basic.is_integer() {
+            if let (Some(plain_type1), Some(plain_type2)) = (lhs.as_plain_type(), rhs.as_plain_type()) {
+                if plain_type1.is_integer() && plain_type2.is_integer() {
                     return Some(SemaType::Plain(
-                        PlainType::widen_type(lhs_basic.clone(), rhs_basic.clone()).unwrap(),
+                        PlainType::widen_type(plain_type1.clone(), plain_type2.clone()).unwrap(),
                     ));
                 }
             }

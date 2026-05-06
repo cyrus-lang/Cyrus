@@ -38,7 +38,7 @@ impl<'a> AnalysisContext<'a> {
     ) -> Option<SemaType> {
         let literal_clone = literal.clone();
 
-        let ty_opt = match &mut literal.kind {
+        let type_opt = match &mut literal.kind {
             LiteralKind::Integer(_, suffix_opt) => {
                 match infer_integer_type(&literal_clone, suffix_opt, expected_type.clone()) {
                     Ok(ty) => Some(ty),
@@ -93,11 +93,11 @@ impl<'a> AnalysisContext<'a> {
             LiteralKind::Null => Some(SemaType::Plain(PlainType::Null)),
         };
 
-        if let Some(ty) = &ty_opt {
+        if let Some(ty) = &type_opt {
             literal.ty = Some(ty.clone());
         }
 
-        ty_opt
+        type_opt
     }
 }
 

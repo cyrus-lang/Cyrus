@@ -622,7 +622,6 @@ pub struct SwitchCase {
     pub loc: Loc,
 }
 
-
 #[derive(Debug, Clone)]
 pub struct SwitchCasePattern {
     pub kind: SwitchCasePatternKind,
@@ -871,6 +870,13 @@ pub fn sub_module_segments(segments: Vec<ModuleSegment>) -> Vec<Ident> {
         .iter()
         .filter_map(|module_segment| module_segment.as_ident())
         .collect()
+}
+
+impl Mutability {
+    #[inline]
+    pub fn is_const(&self) -> bool {
+        matches!(self, Self::Const)
+    }
 }
 
 impl TypeArgs {

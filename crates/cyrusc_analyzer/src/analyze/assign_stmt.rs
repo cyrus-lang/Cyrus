@@ -32,9 +32,9 @@ impl<'a> AnalysisContext<'a> {
             None => return,
         };
 
-        let is_lhs_const = self.is_const_qualified_lvalue(&assign.lhs);
+        let is_const = self.is_const_qualified_lvalue(&assign.lhs);
 
-        if is_lhs_const {
+        if is_const {
             self.reporter.report(Diag {
                 level: DiagLevel::Error,
                 kind: Box::new(AnalyzerDiagKind::CannotAssignToConstLValue),
