@@ -4,12 +4,12 @@ import re
 import subprocess
 import shlex
 import shutil
+from concurrent.futures import ThreadPoolExecutor, as_completed
+import os
+import tempfile
+import hashlib
 
 def get_compiler_version(compiler_path: str, timeout: float = 3.0) -> str | None:
-    """
-    Get the compiler version using the 'version' subcommand.
-    Returns the version string or None if the compiler is not found or fails.
-    """
     exe = compiler_path
     
     if not Path(exe).exists():
@@ -19,9 +19,7 @@ def get_compiler_version(compiler_path: str, timeout: float = 3.0) -> str | None
 
     try:
         cp = subprocess.run([exe, "version"], capture_output=True, text=True, timeout=timeout)
-    except FileNotFoundError:
-        return None
-    except subprocess.TimeoutExpired:
+    except (FileNotFoundError, subprocess.TimeoutExpired):
         return None
 
     out = (cp.stdout or "").strip()
@@ -38,43 +36,68 @@ def print_compiler_version(compiler_path: str):
         print(f"Warning: couldn't determine version for compiler '{compiler_path}'.\n")
 
 
+def unique_name(path: Path) -> str:
+    # collision-free stable name
+    h = hashlib.sha1(str(path).encode()).hexdigest()[:10]
+    return f"{path.stem}_{h}"
+
+
 def build_and_run(file_path, metadata, compiler_path, compiler_flags, output_dir):
-    output_binary = Path(output_dir) / file_path.stem
+    # isolate temp per test
+    with tempfile.TemporaryDirectory() as tmpdir:
+        tmpdir = Path(tmpdir)
 
-    before_compile = metadata.get("beforeCompile")
-    if before_compile:
-        before_cmd = shlex.split(before_compile)
-        before_result = subprocess.run(before_cmd, capture_output=True, text=True)
-        if before_result.returncode != 0:
-            raise Exception(f"beforeCompile error:\n{before_result.stderr}")
+        output_binary = tmpdir / unique_name(file_path)
 
-    build_cmd = [
-        compiler_path, "build", str(file_path), "-o", str(output_binary),
-    ]
-    
-    if compiler_flags:
-        build_cmd += shlex.split(compiler_flags)
+        env = os.environ.copy()
+        env["TMPDIR"] = str(tmpdir)
+        env["TEMP"] = str(tmpdir)
+        env["TMP"] = str(tmpdir)
 
-    extra_args = metadata.get("compilerArgs")
-    if extra_args:
-        build_cmd += shlex.split(extra_args)
+        # beforeCompile
+        before_compile = metadata.get("beforeCompile")
+        if before_compile:
+            before_cmd = shlex.split(before_compile)
+            before_result = subprocess.run(before_cmd, capture_output=True, text=True, env=env)
+            if before_result.returncode != 0:
+                raise Exception(f"beforeCompile error:\n{before_result.stderr}")
 
-    build_result = subprocess.run(build_cmd, capture_output=True, text=True)
-    if build_result.returncode != 0:
-        raise Exception(f"Build error:\n{build_result.stderr}")
+        # build
+        build_cmd = [
+            compiler_path, "build", str(file_path), "-o", str(output_binary),
+        ]
+        
+        if compiler_flags:
+            build_cmd += shlex.split(compiler_flags)
 
-    args = shlex.split(metadata.get("args") or "")
-    run_cmd = [str(output_binary)] + args
+        extra_args = metadata.get("compilerArgs")
+        if extra_args:
+            build_cmd += shlex.split(extra_args)
 
-    run_result = subprocess.run(run_cmd, input=metadata.get("stdin") or "", capture_output=True, text=True)
+        build_result = subprocess.run(build_cmd, capture_output=True, text=True, env=env)
+        if build_result.returncode != 0:
+            raise Exception(f"Build error:\n{build_result.stderr}")
 
-    actual_stdout = run_result.stdout.strip()
-    expected_stdout = (metadata.get("stdout") or "").strip()
+        # run
+        args = shlex.split(metadata.get("args") or "")
+        run_cmd = [str(output_binary)] + args
 
-    if actual_stdout != expected_stdout:
-        raise Exception(
-            f"Expected:\n   {expected_stdout}\nGot:\n   {actual_stdout}"
+        run_result = subprocess.run(
+            run_cmd,
+            input=metadata.get("stdin") or "",
+            capture_output=True,
+            text=True,
+            env=env
         )
+
+        actual_stdout = run_result.stdout.strip()
+        expected_stdout = (metadata.get("stdout") or "").strip()
+
+        if actual_stdout != expected_stdout:
+            raise Exception(
+                f"Expected:\n   {expected_stdout}\nGot:\n   {actual_stdout}"
+            )
+
 
 def extract_test_metadata(content, file_name):
     metadata = {
@@ -85,27 +108,39 @@ def extract_test_metadata(content, file_name):
         "compilerArgs": ""
     }
 
-    stdout_match = re.search(r"//\s*@stdout:\s*(.*)", content)
-    if stdout_match:
-        metadata["stdout"] = stdout_match.group(1)
+    patterns = {
+        "stdout": r"//\s*@stdout:\s*(.*)",
+        "stdin": r"//\s*@stdin:\s*(.*)",
+        "args": r"//\s*@args:\s*(.*)",
+        "beforeCompile": r"//\s*@beforeCompile:\s*(.*)",
+        "compilerArgs": r"//\s*@compilerArgs:\s*(.*)",
+    }
 
-    stdin_match = re.search(r"//\s*@stdin:\s*(.*)", content)
-    if stdin_match:
-        metadata["stdin"] = stdin_match.group(1)
+    for key, pattern in patterns.items():
+        match = re.search(pattern, content)
+        if match:
+            metadata[key] = match.group(1)
 
-    args_match = re.search(r"//\s*@args:\s*(.*)", content)
-    if args_match:
-        metadata["args"] = args_match.group(1)
-
-    before_compile_match = re.search(r"//\s*@beforeCompile:\s*(.*)", content)
-    if before_compile_match:
-        metadata["beforeCompile"] = before_compile_match.group(1)
-
-    extra_args_match = re.search(r"//\s*@compilerArgs:\s*(.*)", content)
-    if extra_args_match:
-        metadata["compilerArgs"] = extra_args_match.group(1)
-    
     return metadata
+
+
+def run_single_test(test_file, tests_path, compiler_path, compiler_flags, output_path):
+    relative_name = str(test_file.relative_to(tests_path))
+    try:
+        content = test_file.read_text()
+        metadata = extract_test_metadata(content, test_file.name)
+
+        build_and_run(
+            test_file,
+            metadata,
+            compiler_path,
+            compiler_flags,
+            output_path
+        )
+
+        return ("passed", relative_name, None)
+    except Exception as e:
+        return ("failed", relative_name, str(e))
 
 
 def main():
@@ -124,18 +159,12 @@ def main():
         i = 3
         while i < len(sys.argv):
             if sys.argv[i] == "--compiler":
-                if i + 1 >= len(sys.argv):
-                    raise Exception("Missing compiler path after --compiler")
                 compiler_path = sys.argv[i + 1]
                 i += 2
             elif sys.argv[i] == "--flags":
-                if i + 1 >= len(sys.argv):
-                    raise Exception("Missing compiler flags after --flags")
                 compiler_flags = sys.argv[i + 1]
                 i += 2
             elif sys.argv[i] == "--output":
-                if i + 1 >= len(sys.argv):
-                    raise Exception("Missing output directory after --output")
                 output_dir = sys.argv[i + 1]
                 i += 2
             else:
@@ -153,20 +182,35 @@ def main():
 
         print_compiler_version(compiler_path)
 
+        test_files = [f for f in tests_path.rglob("*.cyrus") if f.is_file()]
+
         passed_tests = []
         failed_tests = []
 
-        for test_file in tests_path.rglob("*.cyrus"):
-            if test_file.is_file():
-                relative_name = test_file.relative_to(tests_path)
-                try:
-                    with open(test_file, "r") as file:
-                        content = file.read()
-                        metadata = extract_test_metadata(content, test_file.name)
-                        build_and_run(test_file, metadata, compiler_path, compiler_flags, output_path)
-                    passed_tests.append(str(relative_name))
-                except Exception as e:
-                    failed_tests.append((str(relative_name), str(e)))
+        max_workers = min(16, os.cpu_count() or 4)
+
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            futures = [
+                executor.submit(
+                    run_single_test,
+                    test_file,
+                    tests_path,
+                    compiler_path,
+                    compiler_flags,
+                    output_path
+                )
+                for test_file in test_files
+            ]
+
+            for future in as_completed(futures):
+                status, name, reason = future.result()
+                if status == "passed":
+                    passed_tests.append(name)
+                else:
+                    failed_tests.append((name, reason))
+
+        passed_tests.sort()
+        failed_tests.sort(key=lambda x: x[0])
 
         print("\n=== Test Summary ===")
         total = len(passed_tests) + len(failed_tests)
