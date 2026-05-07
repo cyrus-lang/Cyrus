@@ -62,7 +62,7 @@ pub enum TypedStmt {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum TypedBuiltin {
     BuiltinFunc(TypedBuiltinFunc),
-    BuiltinScope(TypedBuiltinScope),
+    BuiltinBlock(TypedBuiltinBlock),
 }
 
 #[derive(Debug, Clone)]
@@ -74,7 +74,7 @@ pub struct TypedBuiltinFunc {
 }
 
 #[derive(Debug, Clone)]
-pub struct TypedBuiltinScope {
+pub struct TypedBuiltinBlock {
     pub name: Ident,
     pub args: Vec<TypedExpr>,
     pub block: Box<TypedBlockStmt>,
@@ -643,7 +643,7 @@ impl TypedBuiltin {
     pub fn loc(&self) -> Loc {
         match self {
             TypedBuiltin::BuiltinFunc(builtin_func) => builtin_func.loc,
-            TypedBuiltin::BuiltinScope(builtin_scope) => builtin_scope.loc,
+            TypedBuiltin::BuiltinBlock(builtin_block) => builtin_block.loc,
         }
     }
 }
@@ -901,7 +901,7 @@ impl PartialEq for TypedBuiltinFunc {
     }
 }
 
-impl PartialEq for TypedBuiltinScope {
+impl PartialEq for TypedBuiltinBlock {
     fn eq(&self, other: &Self) -> bool {
         self.name == other.name && self.args == other.args
     }
@@ -922,4 +922,4 @@ impl Hash for TypedTypeArg {
 }
 
 impl Eq for TypedBuiltinFunc {}
-impl Eq for TypedBuiltinScope {}
+impl Eq for TypedBuiltinBlock {}

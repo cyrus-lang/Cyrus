@@ -816,50 +816,84 @@ impl Resolver {
         })
     }
 
-    // ANCHOR: New feature
     #[allow(unused)]
     fn resolve_builtin(&mut self, builtin: &Builtin) -> Option<TypedBuiltin> {
-        // FIXME
-        // match builtin {
-        //     Builtin::BuiltinFunc(builtin_func) => self.resolve_builtin_func(scope_id, scope, builtin_func),
-        //     Builtin::BuiltinScope(builtin_scope) => {
-        //         // self.resolve_builtin_scope( scope, builtin_scope)
-        //         todo!();
-        //     }
-        // }
-        todo!()
+        match builtin {
+            Builtin::BuiltinFunc(builtin_func) => self.resolve_builtin_func(builtin_func),
+            Builtin::BuiltinBlock(builtin_block) => self.resolve_builtin_scope(builtin_block),
+        }
     }
 
-    // ANCHOR: New feature
     #[allow(unused)]
     fn resolve_builtin_func(&mut self, builtin_func: &BuiltinFunc) -> Option<TypedBuiltin> {
-        // let args: Vec<TypedExprStmt> = builtin_func
-        //     .args
-        //     .iter()
-        //     .filter_map(|arg| self.resolve_expr(Some(scope_opt.clone()), arg))
-        //     .collect();
+        let args = builtin_func
+            .args
+            .iter()
+            .filter_map(|arg| self.resolve_expr(arg))
+            .collect();
 
-        // let child_stmt = builtin_func
-        //     .child_stmt
-        //     .clone()
-        //     .and_then(|stmt| self.resolve_stmt(scope_id, scope_opt, &stmt))
-        //     .map(Box::new);
+        let child_stmt = builtin_func
+            .child_stmt
+            .clone()
+            .and_then(|stmt| self.resolve_stmt(&stmt))
+            .map(Box::new);
 
-        // let builtin_func = TypedBuiltinFunc {
-        //     name: builtin_func.name.clone(),
-        //     args,
-        //     child_stmt,
-        //     loc: Loc::from_loc(builtin_func.loc, self.current_file_path()),
-        // };
+        let builtin_func = TypedBuiltinFunc {
+            name: builtin_func.name.clone(),
+            args,
+            child_stmt,
+            loc: builtin_func.loc,
+        };
 
-        // TypedBuiltin::BuiltinFunc(())
-        todo!();
+        Some(TypedBuiltin::BuiltinFunc(builtin_func))
     }
 
-    // ANCHOR: New feature
     #[allow(unused)]
-    fn resolve_builtin_scope(&self, builtin_scope: &BuiltinScope) -> Option<TypedBuiltin> {
-        todo!();
+    fn resolve_builtin_scope(&mut self, builtin_block: &BuiltinBlock) -> Option<TypedBuiltin> {
+        let args = builtin_block
+            .args
+            .iter()
+            .filter_map(|arg| self.resolve_expr(arg))
+            .collect();
+
+        let block = {
+            if builtin_block.is_toplevel_block {
+                let typed_stmts: Vec<TypedStmt> = builtin_block
+                    .block
+                    .stmts
+                    .iter()
+                    .flat_map(|stmt| self.resolve_toplevel_stmt(stmt))
+                    .collect();
+
+                TypedBlockStmt {
+                    stmts: typed_stmts,
+                    defers: Vec::new(),
+                    loc: builtin_block.loc,
+                }
+            } else {
+                let typed_stmts: Vec<TypedStmt> = builtin_block
+                    .block
+                    .stmts
+                    .iter()
+                    .flat_map(|stmt| self.resolve_stmt(stmt))
+                    .collect();
+
+                TypedBlockStmt {
+                    stmts: typed_stmts,
+                    defers: Vec::new(),
+                    loc: builtin_block.loc,
+                }
+            }
+        };
+
+        let built_block = TypedBuiltinBlock {
+            name: builtin_block.name.clone(),
+            args,
+            block: Box::new(block),
+            loc: builtin_block.loc,
+        };
+
+        Some(TypedBuiltin::BuiltinBlock(built_block))
     }
 
     fn resolve_interface_stmt(&mut self, interface: &ASTInterfaceStmt) -> Option<TypedStmt> {

@@ -254,7 +254,7 @@ pub struct ASTPrefixExpr {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Builtin {
     BuiltinFunc(BuiltinFunc),
-    BuiltinScope(BuiltinScope),
+    BuiltinBlock(BuiltinBlock),
 }
 
 #[derive(Debug, Clone)]
@@ -266,10 +266,11 @@ pub struct BuiltinFunc {
 }
 
 #[derive(Debug, Clone)]
-pub struct BuiltinScope {
+pub struct BuiltinBlock {
     pub name: Ident,
     pub args: Vec<ASTExpr>,
     pub block: Box<ASTBlockStmt>,
+    pub is_toplevel_block: bool,
     pub loc: Loc,
 }
 
@@ -1098,7 +1099,7 @@ impl ASTStmt {
             ASTStmt::Goto(goto) => goto.loc,
             ASTStmt::Builtin(builtin) => match builtin {
                 Builtin::BuiltinFunc(builtin_func) => builtin_func.loc,
-                Builtin::BuiltinScope(builtin_scope) => builtin_scope.loc,
+                Builtin::BuiltinBlock(builtin_block) => builtin_block.loc,
             },
             ASTStmt::Expr(..) => unreachable!(),
         }
@@ -1215,7 +1216,7 @@ impl Builtin {
     pub fn loc(&self) -> Loc {
         match self {
             Builtin::BuiltinFunc(builtin_func) => builtin_func.loc,
-            Builtin::BuiltinScope(builtin_scope) => builtin_scope.loc,
+            Builtin::BuiltinBlock(builtin_block) => builtin_block.loc,
         }
     }
 }
@@ -1566,7 +1567,7 @@ impl PartialEq for FuncVariadicParam {
     }
 }
 
-impl PartialEq for BuiltinScope {
+impl PartialEq for BuiltinBlock {
     fn eq(&self, other: &Self) -> bool {
         self.name == other.name && self.args == other.args
     }
@@ -1586,7 +1587,7 @@ impl PartialEq for ImplementInterface {
 
 impl Eq for ImplementInterface {}
 impl Eq for BuiltinFunc {}
-impl Eq for BuiltinScope {}
+impl Eq for BuiltinBlock {}
 impl Eq for ASTArrayExpr {}
 impl Eq for ASTUntypedArrayExpr {}
 impl Eq for ASTArrayIndexExpr {}
