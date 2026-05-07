@@ -36,7 +36,7 @@ impl<'source_file> Parser<'source_file> {
         toplevel: bool,
     ) -> Result<Vec<ASTStmt>, Diag> {
         if self.current_token_is(TokenKind::At) {
-            let mut builtin = self.parse_builtin()?;
+            let mut builtin = self.parse_builtin(toplevel)?;
 
             if let Builtin::BuiltinFunc(builtin_func) = &mut builtin {
                 if !self.peek_token_is(TokenKind::Semicolon) {
@@ -156,7 +156,7 @@ impl<'source_file> Parser<'source_file> {
         }))
     }
 
-    pub(crate) fn parse_builtin(&mut self) -> Result<Builtin, Diag> {
+    pub(crate) fn parse_builtin(&mut self, toplevel: bool) -> Result<Builtin, Diag> {
         let loc = self.current_token().loc;
         let (line, column, start) = (loc.line, loc.column, loc.start);
 
@@ -171,24 +171,30 @@ impl<'source_file> Parser<'source_file> {
         self.must_be_right_paren()?;
 
         if self.peek_token_is(TokenKind::LeftBrace) {
-            // self.next_token(); // consume right paren
+            self.next_token();
 
-            // TODO
-            // if toplevel?
-            //  self.parse_toplevel_stmts()?
-            // else
-            //  self.parse_block()?
+            let block = {
+                if toplevel {
+                    let end = self.current_token().loc.end;
 
-            // let block = self.parse_toplevel_stmts()?;
-            // let end = self.current_token().loc.end;
+                    ASTBlockStmt {
+                        stmts: self.parse_toplevel_stmts()?,
+                        loc: Loc::new(self.file_id(), line, column, start, end),
+                    }
+                } else {
+                    self.parse_block()?
+                }
+            };
 
-            // Ok(Builtin::BuiltinScope(BuiltinScope {
-            //     name: ident,
-            //     args,
-            //     block: Box::new(block),
-            //     loc: Loc::new(self.file_id(), line, column, start, end),
-            // }))
-            todo!();
+            let end = self.current_token().loc.end;
+
+            Ok(Builtin::BuiltinBlock(BuiltinBlock {
+                name: ident,
+                args,
+                block: Box::new(block),
+                loc: Loc::new(self.file_id(), line, column, start, end),
+                is_toplevel_block: toplevel,
+            }))
         } else {
             let end = self.current_token().loc.end;
 

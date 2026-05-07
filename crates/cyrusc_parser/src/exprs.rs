@@ -212,8 +212,7 @@ impl<'source_file> Parser<'source_file> {
 
         let mut expr = match &self.current_token().kind {
             TokenKind::At => {
-                // return Ok(Expr::Builtin(self.parse_builtin()?));
-                ASTExpr::Builtin(self.parse_builtin()?)
+                return Ok(ASTExpr::Builtin(self.parse_builtin(false)?));
             }
             TokenKind::Repr => {
                 let repr_attr = self.parse_repr_attr(self.current_token())?.unwrap();
@@ -377,7 +376,7 @@ impl<'source_file> Parser<'source_file> {
                             TypeSpecifier::ModuleImport(module_import)
                         }
                     };
-                    
+
                     if type_args.is_empty() {
                         self.parse_struct_init(operand)?
                     } else {

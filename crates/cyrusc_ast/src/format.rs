@@ -102,7 +102,7 @@ impl fmt::Display for Builtin {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Builtin::BuiltinFunc(builtin_func) => write!(f, "{}", builtin_func),
-            Builtin::BuiltinScope(builtin_scope) => write!(f, "{}", builtin_scope),
+            Builtin::BuiltinBlock(builtin_block) => write!(f, "{}", builtin_block),
         }
     }
 }
@@ -113,7 +113,7 @@ impl fmt::Display for BuiltinFunc {
     }
 }
 
-impl fmt::Display for BuiltinScope {
+impl fmt::Display for BuiltinBlock {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(
             f,

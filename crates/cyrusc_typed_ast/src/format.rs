@@ -346,10 +346,10 @@ pub fn format_typed_expr(expr: &TypedExpr, formatter: &dyn Formatter) -> String 
             TypedBuiltin::BuiltinFunc(builtin_func) => {
                 format!("@{}({})", builtin_func.name, join_exprs(&builtin_func.args, formatter))
             }
-            TypedBuiltin::BuiltinScope(builtin_scope) => format!(
+            TypedBuiltin::BuiltinBlock(builtin_block) => format!(
                 "@{}({}) {{ ... }}",
-                builtin_scope.name,
-                join_exprs(&builtin_scope.args, formatter)
+                builtin_block.name,
+                join_exprs(&builtin_block.args, formatter)
             ),
         },
         Poisoned => unreachable!(),

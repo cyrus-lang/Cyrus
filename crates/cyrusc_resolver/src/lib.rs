@@ -537,7 +537,7 @@ impl GlobalSymbolRegistry {
 
         let registry = self.inner.read().unwrap();
         let symbol_entry = &registry.entries[scope_id.0 as usize];
-        let scope_table = symbol_entry.get_scope_table().unwrap();
+        let scope_table = symbol_entry.get_scope_table()?;
 
         scope_table.lookup(name)
     }
