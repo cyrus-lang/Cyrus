@@ -556,31 +556,57 @@ impl<'ll> CodeGenIRBuilder<'ll> {
     fn emit_direct_pair_arg(
         &mut self,
         args: &mut Vec<BasicMetadataValueEnum<'ll>>,
-        lvalue: &InternalValue<'ll>,
+        value: &InternalValue<'ll>,
         lo: ABIType,
         hi: ABIType,
     ) {
-        let ptr = lvalue.as_basic_value().into_pointer_value();
-        let pair_ty = self.emit_abi_pair_llvm_type(&lo, &hi);
+        match &value.kind {
+            InternalValueKind::LValue(ptr) => {
+                let pair_ty = self.emit_abi_pair_llvm_type(&lo, &hi);
 
-        let lo_ty: BasicTypeEnum<'ll> = abi_type_to_llvm_type(self.llvmctx, &self.target.info, &lo)
-            .try_into()
-            .unwrap();
+                let lo_ty: BasicTypeEnum<'ll> = abi_type_to_llvm_type(self.llvmctx, &self.target.info, &lo)
+                    .try_into()
+                    .unwrap();
 
-        let lo_ptr = self.llvmbuilder.build_struct_gep(pair_ty, ptr, 0, "lo.ptr").unwrap();
+                let lo_ptr = self.llvmbuilder.build_struct_gep(pair_ty, *ptr, 0, "lo.ptr").unwrap();
 
-        let lo_val = self.llvmbuilder.build_load(lo_ty, lo_ptr, "lo").unwrap();
+                let lo_val = self.llvmbuilder.build_load(lo_ty, lo_ptr, "lo").unwrap();
 
-        let hi_ty: BasicTypeEnum<'ll> = abi_type_to_llvm_type(self.llvmctx, &self.target.info, &hi)
-            .try_into()
-            .unwrap();
+                let hi_ty: BasicTypeEnum<'ll> = abi_type_to_llvm_type(self.llvmctx, &self.target.info, &hi)
+                    .try_into()
+                    .unwrap();
 
-        let hi_ptr = self.llvmbuilder.build_struct_gep(pair_ty, ptr, 1, "hi.ptr").unwrap();
+                let hi_ptr = self.llvmbuilder.build_struct_gep(pair_ty, *ptr, 1, "hi.ptr").unwrap();
 
-        let hi_val = self.llvmbuilder.build_load(hi_ty, hi_ptr, "hi").unwrap();
+                let hi_val = self.llvmbuilder.build_load(hi_ty, hi_ptr, "hi").unwrap();
 
-        args.push(lo_val.into());
-        args.push(hi_val.into());
+                args.push(lo_val.into());
+                args.push(hi_val.into());
+            }
+
+            InternalValueKind::RValue(basic_value) => match basic_value {
+                BasicValueEnum::StructValue(struct_val) => {
+                    let lo_val = self.llvmbuilder.build_extract_value(*struct_val, 0, "lo").unwrap();
+                    let hi_val = self.llvmbuilder.build_extract_value(*struct_val, 1, "hi").unwrap();
+
+                    args.push(lo_val.into());
+                    args.push(hi_val.into());
+                }
+
+                BasicValueEnum::ArrayValue(array_val) => {
+                    let lo_val = self.llvmbuilder.build_extract_value(*array_val, 0, "lo").unwrap();
+                    let hi_val = self.llvmbuilder.build_extract_value(*array_val, 1, "hi").unwrap();
+
+                    args.push(lo_val.into());
+                    args.push(hi_val.into());
+                }
+
+                other => {
+                    panic!("direct-pair rvalue must be struct or array, got {:?}", other);
+                }
+            },
+            _ => unreachable!(),
+        }
     }
 
     fn emit_direct_coerce_arg(
