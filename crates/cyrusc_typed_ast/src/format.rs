@@ -15,6 +15,7 @@
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
 
+use crate::builtins::TypedBuiltin;
 use crate::decls::{DeclID, EnumDecl, StructDecl, UnionDecl};
 use crate::exprs::TypedEnumInitArgs;
 use crate::stmts::{TypedEnumVariant, TypedEnumVariantStructField, TypedTypeArg};
@@ -22,7 +23,7 @@ use crate::types::TypeDeclID;
 use crate::{GenericParamID, SymbolID};
 use crate::{
     exprs::{TypedExpr, TypedExprKind, TypedLambdaExpr, TypedSymbolExpr, TypedUnnamedEnumValueKind},
-    stmts::{TypedBuiltin, TypedFuncParamKind, TypedFuncTypeVariadicParam, TypedFuncVariadicParam, TypedTypeArgs},
+    stmts::{TypedFuncParamKind, TypedFuncTypeVariadicParam, TypedFuncVariadicParam, TypedTypeArgs},
     types::{SemaType, TypedArrayCapacity, TypedFuncType, UnresolvedType},
 };
 use cyrusc_ast::operators::UnaryOperator;

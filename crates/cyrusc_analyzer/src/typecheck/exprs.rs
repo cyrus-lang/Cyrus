@@ -138,8 +138,7 @@ impl<'a> AnalysisContext<'a> {
             }
         }
 
-        // FIXME: Gotta be removed.
-        // self.fold_const_expr(expr);
+        self.fold_const_expr(expr);
 
         self.lower_expr_post_analysis(expr);
 

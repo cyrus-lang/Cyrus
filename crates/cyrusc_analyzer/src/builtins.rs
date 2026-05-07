@@ -15,18 +15,8 @@
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
 
-pub(crate) mod analyze;
-pub(crate) mod builtins;
-pub mod context;
-pub(crate) mod diagnostics;
-pub(crate) mod env;
-pub(crate) mod generics;
-pub(crate) mod infer;
-pub(crate) mod lint;
-pub(crate) mod lower;
-pub(crate) mod monomorph;
-pub(crate) mod normalizer;
-pub(crate) mod resolve;
-pub(crate) mod substitute;
-pub(crate) mod typecheck;
-pub(crate) mod types;
+use crate::context::AnalysisContext;
+
+impl<'a> AnalysisContext<'a> {
+    
+}

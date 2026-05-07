@@ -16,7 +16,7 @@
  */
 
 use crate::{context::AnalysisContext, diagnostics::AnalyzerDiagKind};
-use cyrusc_const_eval::{resolver::ConstResolver, value::is_comptime_valid};
+use cyrusc_const_eval::resolver::ConstResolver;
 use cyrusc_diagcentral::{Diag, DiagLevel};
 use cyrusc_source_loc::Loc;
 use cyrusc_typed_ast::{
@@ -255,16 +255,6 @@ impl<'a> AnalysisContext<'a> {
         match &mut array.capacity {
             TypedArrayCapacity::Fixed(expr) => {
                 self.analyze_expr(expr, None);
-
-                if !is_comptime_valid(&expr.kind) {
-                    self.reporter.report(Diag {
-                        level: DiagLevel::Error,
-                        kind: Box::new(AnalyzerDiagKind::ExprNotComptimeValid),
-                        loc: Some(loc),
-                        hint: None,
-                    });
-                    return None;
-                }
             }
             TypedArrayCapacity::Dynamic => todo!(),
         }
