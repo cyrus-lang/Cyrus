@@ -70,6 +70,8 @@ impl<'a> AnalysisContext<'a> {
 
         self.analyze_enum_variants(enum_decl_id, &mut enum_decl.variants, &enum_decl.tag_type, is_repr_c);
 
+        self.analyze_generic_bounds(&enum_decl.generic_params);
+
         self.analyze_object_implements_interfaces(
             &object_name,
             enum_decl.is_generic(),

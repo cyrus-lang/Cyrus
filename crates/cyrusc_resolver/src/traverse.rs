@@ -179,7 +179,7 @@ impl Resolver {
             ASTStmt::Continue(continue_stmt) => self.resolve_continue_stmt(continue_stmt).map(TypedStmt::Continue),
             ASTStmt::Typedef(typedef) => self.resolve_typedef(typedef),
             ASTStmt::Label(label) => self.resolve_label_stmt(label),
-            
+
             ASTStmt::Goto(goto) => self.resolve_goto_stmt(goto),
             ASTStmt::Foreach(_foreach_stmt) => unimplemented!(), // TODO
 
@@ -761,12 +761,12 @@ impl Resolver {
         let mut typed_bounds = Vec::with_capacity(bounds_list.len());
 
         for bound in bounds_list {
-            let sema_type = match self.resolve_type(bound.0.clone(), bound.0.loc()) {
+            let ty = match self.resolve_type(bound.type_spec.clone(), bound.loc) {
                 Some(ty) => ty,
                 None => continue,
             };
 
-            typed_bounds.push(TypedBound(sema_type));
+            typed_bounds.push(TypedBound { ty, loc: bound.loc });
         }
 
         Some(typed_bounds)

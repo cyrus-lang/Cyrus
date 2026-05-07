@@ -112,6 +112,28 @@ impl DeclTablesRegistry {
             TypeDeclID::Typedef(_) => None,
         }
     }
+
+    pub fn implement_interfaces_of_named_type(&self, named_type: &NamedType) -> Option<Vec<TypedImplementInterface>> {
+        match named_type.type_decl_id {
+            TypeDeclID::Struct(struct_decl_id) => {
+                let struct_decl = self.struct_decl(struct_decl_id);
+
+                Some(struct_decl.impls)
+            }
+            TypeDeclID::Enum(enum_decl_id) => {
+                let enum_decl = self.enum_decl(enum_decl_id);
+
+                Some(enum_decl.impls)
+            }
+            TypeDeclID::Union(union_decl_id) => {
+                let union_decl = self.union_decl(union_decl_id);
+
+                Some(union_decl.impls)
+            }
+            TypeDeclID::Interface(_) => None,
+            TypeDeclID::Typedef(_) => None,
+        }
+    }
 }
 
 impl DeclTablesRegistry {
@@ -331,5 +353,11 @@ impl DeclTablesRegistry {
     pub fn with_body_mut<R>(&self, id: BodyID, f: impl FnOnce(&mut TypedBlockStmt) -> R) -> R {
         let mut tables = self.tables.write().unwrap();
         f(&mut tables.bodies[id.0 as usize])
+    }
+
+    #[inline]
+    pub fn with_generic_param<R>(&self, id: GenericParamID, f: impl FnOnce(&mut TypedGenericParam) -> R) -> R {
+        let mut tables = self.tables.write().unwrap();
+        f(&mut tables.generic_params[id.0 as usize])
     }
 }

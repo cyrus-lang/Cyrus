@@ -25,6 +25,8 @@ impl<'a> AnalysisContext<'a> {
             None => return,
         };
 
+        self.analyze_generic_bounds(&typedef.generic_params);
+
         self.decl_tables
             .with_typedef_decl_mut(typedef.typedef_decl_id, |typedef_decl| {
                 typedef_decl.ty = Box::new(typedef.ty.clone());

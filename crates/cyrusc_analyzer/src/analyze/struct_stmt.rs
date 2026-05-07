@@ -70,6 +70,8 @@ impl<'a> AnalysisContext<'a> {
 
         self.analyze_struct_fields(struct_decl_id, &mut struct_decl.fields);
 
+        self.analyze_generic_bounds(&struct_decl.generic_params);
+
         self.analyze_object_implements_interfaces(
             &object_name,
             struct_decl.is_generic(),
