@@ -54,6 +54,7 @@ impl<'a> AnalysisContext<'a> {
                     loc: Some(func_decl.loc),
                     hint: None,
                 });
+                continue;
             }
 
             // skip the self param (index 0)

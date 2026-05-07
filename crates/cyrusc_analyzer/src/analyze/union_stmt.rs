@@ -66,6 +66,8 @@ impl<'a> AnalysisContext<'a> {
 
         self.analyze_union_fields(union_decl_id, &mut union_decl.fields);
 
+        self.analyze_generic_bounds(&union_decl.generic_params);
+
         self.analyze_object_implements_interfaces(
             &object_name,
             union_decl.is_generic(),

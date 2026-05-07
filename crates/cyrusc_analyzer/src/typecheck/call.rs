@@ -26,7 +26,7 @@ use cyrusc_typed_ast::{
         TypedMethodCallDispatch,
     },
     format::{format_func_type, format_sema_type},
-    stmts::{TypedFuncTypeVariadicParam, TypedFuncVariadicParam, TypedGenericParams, TypedTypeArgs},
+    stmts::{TypedFuncParams, TypedFuncTypeVariadicParam, TypedFuncVariadicParam, TypedGenericParams, TypedTypeArgs},
     types::{InterfaceObjectType, NamedType, SemaType, TypeDeclID, TypedFuncType},
 };
 
@@ -57,6 +57,8 @@ impl<'a> AnalysisContext<'a> {
         if let Some(func_decl_id) = func_decl_id_opt {
             let mut func_decl = self.decl_tables.func_decl(func_decl_id);
 
+            let original_params = func_decl.params.clone();
+
             // generic function
             if func_decl.is_generic() {
                 let generic_env = self.create_inference_generic_env(
@@ -69,7 +71,13 @@ impl<'a> AnalysisContext<'a> {
                 self.with_generic_env(generic_env, |this| {
                     this.normalize_func_params(&mut func_decl.params, false);
 
-                    if !this.analyze_call(&mut func_decl, &mut func_call.args, func_call.loc, false) {
+                    if !this.analyze_call(
+                        &original_params,
+                        &mut func_decl,
+                        &mut func_call.args,
+                        func_call.loc,
+                        false,
+                    ) {
                         return None;
                     }
 
@@ -95,7 +103,13 @@ impl<'a> AnalysisContext<'a> {
             else {
                 self.normalize_func_params(&mut func_decl.params, false);
 
-                if !self.analyze_call(&mut func_decl, &mut func_call.args, func_call.loc, false) {
+                if !self.analyze_call(
+                    &original_params,
+                    &mut func_decl,
+                    &mut func_call.args,
+                    func_call.loc,
+                    false,
+                ) {
                     return None;
                 }
 
@@ -337,6 +351,8 @@ impl<'a> AnalysisContext<'a> {
 
         let mut method_decl = self.decl_tables.method_decl(method_decl_id);
 
+        let original_params = method_decl.func_decl.params.clone();
+
         if method_decl.is_instance_method() && !is_instance_method_call {
             let method_name = method_decl.func_decl.name.clone();
 
@@ -381,6 +397,7 @@ impl<'a> AnalysisContext<'a> {
 
             // analyze call arguments
             if !this.analyze_call(
+                &original_params,
                 &mut method_decl.func_decl,
                 &mut method_call.args,
                 method_call.loc,
@@ -496,6 +513,8 @@ impl<'a> AnalysisContext<'a> {
 
         let mut interface_method_decl = self.decl_tables.method_decl(interface_method_decl_id);
 
+        let original_params = interface_method_decl.func_decl.params.clone();
+
         let generic_params = interface_decl.generic_params.clone();
         let generic_env = self.create_inference_generic_env(
             &interface_decl.name,
@@ -513,6 +532,7 @@ impl<'a> AnalysisContext<'a> {
             interface_method_decl.func_decl.ret_type = this.substitute_type(&interface_method_decl.func_decl.ret_type);
 
             if !this.analyze_call(
+                &original_params,
                 &mut interface_method_decl.func_decl,
                 &mut method_call.args,
                 method_call.loc,
@@ -722,6 +742,7 @@ impl<'a> AnalysisContext<'a> {
     /// functions and instance methods (with self parameter adjustment).
     fn analyze_call(
         &mut self,
+        original_params: &TypedFuncParams,
         func_decl: &mut FuncDecl,
         args: &mut Vec<TypedExpr>,
         loc: Loc,
@@ -758,17 +779,72 @@ impl<'a> AnalysisContext<'a> {
         // analyze static arguments
         let start_idx = if instance_method_call { 1 } else { 0 };
 
-        for (param, arg) in func_decl.params.list.iter_mut().skip(start_idx).zip(args.iter_mut()) {
+        for (idx, (param, arg)) in func_decl
+            .params
+            .list
+            .iter_mut()
+            .skip(start_idx)
+            .zip(args.iter_mut())
+            .enumerate()
+        {
             let Some(param_type) = self.normalize_and_check_type_formation(param.param_type(), param.loc()) else {
                 continue;
             };
 
-            if self.analyze_argument(arg, param_type.clone(), arg.loc).is_none() {
+            let Some(arg_type) = self.analyze_argument(arg, param_type.clone(), arg.loc) else {
                 continue;
-            }
+            };
+
+            self.check_argument_satisfies_generic_param_bounds(original_params, &param.name(), &arg_type, arg.loc, idx);
         }
 
         true
+    }
+
+    fn check_argument_satisfies_generic_param_bounds(
+        &mut self,
+        original_params: &TypedFuncParams,
+        param_name: &str,
+        arg_type: &SemaType,
+        arg_loc: Loc,
+        arg_index: usize,
+    ) {
+        let original_param = original_params.lookup_param(param_name).unwrap();
+
+        if let Some(generic_param_id) = original_param.param_type().as_generic_param() {
+            let generic_param = self.decl_tables.generic_param(generic_param_id);
+
+            for bound in &generic_param.bounds {
+                let mut satisfies_bound = false;
+
+                if let Some(named_type) = arg_type.as_named_type() {
+                    if let Some(impls) = self.decl_tables.implement_interfaces_of_named_type(named_type) {
+                        for implement_interface in impls {
+                            if !self.is_assignable_to(implement_interface.ty.clone(), bound.ty.clone(), bound.loc) {
+                                satisfies_bound = true;
+                                break;
+                            }
+                        }
+                    }
+                }
+
+                if !satisfies_bound {
+                    let expected_bound = format_sema_type(bound.ty.clone(), self.formatter);
+                    let found_type = format_sema_type(arg_type.clone(), self.formatter);
+
+                    self.reporter.report(Diag {
+                        level: DiagLevel::Error,
+                        kind: Box::new(AnalyzerDiagKind::ArgumentDoesNotSatisfyBound {
+                            index: arg_index,
+                            expected_bound,
+                            found_type,
+                        }),
+                        loc: Some(arg_loc),
+                        hint: None,
+                    });
+                }
+            }
+        }
     }
 
     /// Validates variadic arguments in function calls, ensuring type compatibility and proper analysis.

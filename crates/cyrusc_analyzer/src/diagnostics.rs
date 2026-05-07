@@ -445,6 +445,18 @@ pub enum AnalyzerDiagKind {
     #[error("Cannot apply unary operator to value of type '{operand_type}'.")]
     InvalidUnary { operand_type: String },
 
+    #[error("Expected an interface in bound, but found type '{found}'.")]
+    ExpectedInterfaceInBound { found: String },
+
+    #[error(
+        "Argument at index {index} does not satisfy the required bound: expected a type implementing '{expected_bound}', but found '{found_type}'."
+    )]
+    ArgumentDoesNotSatisfyBound {
+        index: usize,
+        expected_bound: String,
+        found_type: String,
+    },
+
     #[error("Duplicate method '{method_name}' in interface '{interface_name}'.")]
     InterfaceDuplicateMethod {
         interface_name: String,

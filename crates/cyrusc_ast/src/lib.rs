@@ -828,7 +828,10 @@ pub struct GenericParam {
 }
 
 #[derive(Debug, Clone)]
-pub struct Bound(pub TypeSpecifier);
+pub struct Bound {
+    pub type_spec: TypeSpecifier,
+    pub loc: Loc,
+}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TypeArgs(pub Vec<TypeArg>);

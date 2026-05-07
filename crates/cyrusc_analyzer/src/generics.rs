@@ -20,7 +20,8 @@ use cyrusc_diagcentral::{Diag, DiagLevel};
 use cyrusc_source_loc::Loc;
 use cyrusc_typed_ast::{
     GenericParamID,
-    stmts::{TypedGenericParams, TypedTypeArg, TypedTypeArgs},
+    format::format_sema_type,
+    stmts::{TypedBound, TypedGenericParams, TypedTypeArg, TypedTypeArgs},
     types::SemaType,
 };
 
@@ -92,12 +93,8 @@ impl<'a> AnalysisContext<'a> {
                 let resolved_type = self.func_env.infer.as_ref().unwrap().resolve(&bound_type);
 
                 if let SemaType::InferVar(var) = resolved_type {
-                    if let Some(default_ty) = &generic_param.default {
-                        let mut default_type = self
-                            .normalize_sema_type(*default_ty.clone(), generic_param.name.loc)
-                            .unwrap();
-
-                        default_type = self.substitute_type(&default_type);
+                    if let Some(mut default_type) = generic_param.default {
+                        default_type = Box::new(self.substitute_type(&default_type));
 
                         self.func_env
                             .infer
@@ -110,16 +107,12 @@ impl<'a> AnalysisContext<'a> {
                 continue;
             }
 
-            if let Some(default_ty) = &generic_param.default {
-                let mut default_type = self
-                    .normalize_sema_type(*default_ty.clone(), generic_param.name.loc)
-                    .unwrap();
-
-                default_type = self.substitute_type(&default_type);
+            if let Some(mut default_type) = generic_param.default {
+                default_type = Box::new(self.substitute_type(&default_type));
 
                 let generic_env = self.current_generic_env_mut().unwrap();
 
-                generic_env.bind(*generic_param_id, default_type);
+                generic_env.bind(*generic_param_id, *default_type);
             }
         }
     }
@@ -186,5 +179,38 @@ impl<'a> AnalysisContext<'a> {
         }
 
         Some(generic_env)
+    }
+
+    pub(crate) fn analyze_generic_bounds(&mut self, generic_params: &TypedGenericParams) {
+        for &generic_param_id in generic_params.iter() {
+            let mut generic_param = self.decl_tables.generic_param(generic_param_id);
+
+            if let Some(default_type) = &mut generic_param.default {
+                if let Some(ty) = self.normalize_sema_type(*default_type.clone(), generic_param.name.loc) {
+                    *default_type = Box::new(ty);
+                }
+            }
+
+            for bound in &mut generic_param.bounds {
+                if let Some(ty) = self.normalize_sema_type(bound.ty.clone(), generic_param.name.loc) {
+                    if !ty.is_interface() {
+                        let found = format_sema_type(ty.clone(), self.formatter);
+
+                        self.reporter.report(Diag {
+                            level: DiagLevel::Error,
+                            kind: Box::new(AnalyzerDiagKind::ExpectedInterfaceInBound { found }),
+                            loc: Some(bound.loc),
+                            hint: None,
+                        });
+                    }
+
+                    bound.ty = ty;
+                }
+            }
+
+            self.decl_tables.with_generic_param(generic_param_id, |_generic_param| {
+                *_generic_param = generic_param;
+            });
+        }
     }
 }

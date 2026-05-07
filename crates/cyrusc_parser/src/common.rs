@@ -199,10 +199,18 @@ impl<'source_file> Parser<'source_file> {
         let mut list: Vec<Bound> = Vec::new();
 
         loop {
+            let loc = self.current_token().loc;
+            let (line, column, start) = (loc.line, loc.column, loc.start);
+
             let ty = self.parse_type_specifier()?;
             self.next_token();
 
-            list.push(Bound(ty));
+            let end = self.current_token().loc.end;
+
+            list.push(Bound {
+                type_spec: ty,
+                loc: Loc::new(self.file_id(), line, column, start, end),
+            });
 
             match self.current_token().kind {
                 TokenKind::Plus => {

@@ -97,6 +97,8 @@ impl<'a> AnalysisContext<'a> {
         }
 
         self.normalize_func_params(&mut func_decl.params, is_generic_func);
+
+        self.analyze_generic_bounds(&func_decl.generic_params);
     }
 
     pub(crate) fn analyze_func_body(&mut self, body: &mut TypedBlockStmt, ret_type: &SemaType) {

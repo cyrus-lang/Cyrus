@@ -475,7 +475,10 @@ pub enum TypedTypeArg {
 }
 
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]
-pub struct TypedBound(pub SemaType);
+pub struct TypedBound {
+    pub ty: SemaType,
+    pub loc: Loc,
+}
 
 impl TypedGenericParams {
     #[inline]
@@ -571,6 +574,10 @@ impl TypedUnionStmt {
 }
 
 impl TypedFuncParams {
+    pub fn lookup_param(&self, name: &str) -> Option<&TypedFuncParamKind> {
+        self.list.iter().find(|param_kind| param_kind.name().as_str() == name)
+    }
+
     pub fn as_func_type_params(&self) -> TypedFuncTypeParams {
         let list = self
             .list
