@@ -17,6 +17,7 @@
 
 use crate::{
     GenericParamID, LabelID,
+    builtins::TypedBuiltin,
     decls::{
         EnumDeclID, FuncDecl, FuncDeclID, GlobalVarDeclID, InterfaceDeclID, MethodDecls, StructDeclID, TypedefDeclID,
         UnionDeclID, VarDeclID,
@@ -57,28 +58,6 @@ pub enum TypedStmt {
     Label(TypedLabelStmt),
     Goto(TypedGotoStmt),
     Builtin(TypedBuiltin),
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum TypedBuiltin {
-    BuiltinFunc(TypedBuiltinFunc),
-    BuiltinBlock(TypedBuiltinBlock),
-}
-
-#[derive(Debug, Clone)]
-pub struct TypedBuiltinFunc {
-    pub name: Ident,
-    pub args: Vec<TypedExpr>,
-    pub child_stmt: Option<Box<TypedStmt>>,
-    pub loc: Loc,
-}
-
-#[derive(Debug, Clone)]
-pub struct TypedBuiltinBlock {
-    pub name: Ident,
-    pub args: Vec<TypedExpr>,
-    pub block: Box<TypedBlockStmt>,
-    pub loc: Loc,
 }
 
 #[derive(Debug, Clone)]
@@ -895,18 +874,6 @@ impl PartialEq for TypedTupleAccessExpr {
     }
 }
 
-impl PartialEq for TypedBuiltinFunc {
-    fn eq(&self, other: &Self) -> bool {
-        self.name == other.name && self.args == other.args && self.child_stmt.is_some() == other.child_stmt.is_some()
-    }
-}
-
-impl PartialEq for TypedBuiltinBlock {
-    fn eq(&self, other: &Self) -> bool {
-        self.name == other.name && self.args == other.args
-    }
-}
-
 impl Hash for TypedTypeArg {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
         match self {
@@ -920,6 +887,3 @@ impl Hash for TypedTypeArg {
         }
     }
 }
-
-impl Eq for TypedBuiltinFunc {}
-impl Eq for TypedBuiltinBlock {}

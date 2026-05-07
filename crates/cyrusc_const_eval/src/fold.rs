@@ -48,6 +48,7 @@ impl<'a, R: ConstResolver> ConstFolder<'a, R> {
                     self.fold_expr(element);
                 }
             }
+
             _ => {}
         }
 

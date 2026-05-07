@@ -51,17 +51,21 @@ impl<'a> AnalysisContext<'a> {
         false
     }
 
+    #[inline]
     pub(crate) fn fold_const_expr(&mut self, expr: &mut TypedExpr) {
         let mut folder = ConstFolder::new(self);
+
         folder.fold_expr(expr);
     }
 
     fn resolve_variable_rhs_expr(&mut self, decl_id: DeclID) -> Option<TypedExpr> {
         if let Some(var_decl_id) = decl_id.as_var() {
             let var_decl = self.decl_tables.var_decl(var_decl_id);
+            
             var_decl.rhs.clone()
         } else if let Some(global_var_decl_id) = decl_id.as_global_var() {
             let global_var_decl = self.decl_tables.global_var_decl(global_var_decl_id);
+
             global_var_decl.rhs.clone()
         } else {
             None

@@ -19,6 +19,7 @@ use crate::stmts::TypedStmt;
 use cyrusc_source_loc::FileID;
 use std::fmt;
 
+pub mod builtins;
 pub mod decls;
 pub mod exprs;
 pub mod format;

@@ -16,10 +16,7 @@
  */
 
 use crate::{
-    SymbolID,
-    decls::{DeclID, EnumDeclID, FuncDeclID, InterfaceDeclID, MethodDeclID, MonomorphID, StructDeclID, UnionDeclID},
-    stmts::{TypedBlockStmt, TypedBuiltin, TypedFuncParams, TypedTypeArgs},
-    types::{InterfaceObjectType, SemaType, TypedFuncType},
+    SymbolID, builtins::TypedBuiltin, decls::{DeclID, EnumDeclID, FuncDeclID, InterfaceDeclID, MethodDeclID, MonomorphID, StructDeclID, UnionDeclID}, stmts::{TypedBlockStmt, TypedFuncParams, TypedTypeArgs}, types::{InterfaceObjectType, SemaType, TypedFuncType}
 };
 use cyrusc_ast::{
     AssignKind, Ident, Mutability,
