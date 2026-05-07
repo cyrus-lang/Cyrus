@@ -21,7 +21,7 @@ use cyrusc_source_loc::Loc;
 use cyrusc_typed_ast::{
     GenericParamID,
     format::format_sema_type,
-    stmts::{TypedBound, TypedGenericParams, TypedTypeArg, TypedTypeArgs},
+    stmts::{TypedGenericParams, TypedTypeArg, TypedTypeArgs},
     types::SemaType,
 };
 
