@@ -632,6 +632,15 @@ impl CIREnumType {
 }
 
 impl CIRStmt {
+    #[inline]
+    pub fn as_expr(&self) -> Option<&CIRExpr> {
+        match self {
+            CIRStmt::Expr(expr) => Some(expr),
+            _ => None,
+        }
+    }
+
+    #[inline]
     pub fn loc(&self) -> &Loc {
         match self {
             CIRStmt::Variable(var_stmt) => &var_stmt.loc,

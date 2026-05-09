@@ -348,17 +348,28 @@ impl Resolver {
 
     #[inline]
     fn resolve_ident_expr(&mut self, ident: &Ident) -> Option<TypedExpr> {
-        let symbol_id = self.resolve_ident(ident)?;
-
-        Some(TypedExpr {
-            kind: TypedExprKind::Symbol(TypedSymbolExpr::Unresolved {
-                symbol_id,
+        if let Some(symbol_id) = self.resolve_ident(ident) {
+            return Some(TypedExpr {
+                kind: TypedExprKind::Symbol(TypedSymbolExpr::Unresolved {
+                    symbol_id,
+                    loc: ident.loc,
+                }),
+                ty: None,
+                val_cat: ValueCategory::Unknown,
                 loc: ident.loc,
-            }),
-            ty: None,
-            val_cat: ValueCategory::Unknown,
-            loc: ident.loc,
-        })
+            });
+        }
+
+        if let Some(generic_param_id) = self.resolve_generic_param_as_type(&ident) {
+            return Some(TypedExpr {
+                kind: TypedExprKind::SemaType(SemaType::GenericParam(generic_param_id)),
+                ty: None,
+                val_cat: ValueCategory::Unknown,
+                loc: ident.loc,
+            });
+        }
+
+        None
     }
 
     fn resolve_expr(&mut self, expr: &ASTExpr) -> Option<TypedExpr> {
@@ -405,6 +416,7 @@ impl Resolver {
                 }
                 None => None,
             },
+
             ASTExpr::TypeSpecifier(type_spec) => self.resolve_type_specifier_expr(type_spec),
         }
     }
@@ -2100,8 +2112,19 @@ impl Resolver {
 
     #[inline]
     fn resolve_module_import_expr(&mut self, module_import: &ASTModuleImport) -> Option<TypedExpr> {
-        self.resolve_module_import(module_import.clone()).and_then(|symbol_id| {
-            Some(TypedExpr {
+        if let Some(ident) = module_import.as_ident() {
+            if let Some(generic_param_id) = self.resolve_generic_param_as_type(&ident) {
+                return Some(TypedExpr {
+                    kind: TypedExprKind::SemaType(SemaType::GenericParam(generic_param_id)),
+                    ty: None,
+                    val_cat: ValueCategory::Unknown,
+                    loc: module_import.loc,
+                });
+            }
+        }
+
+        if let Some(symbol_id) = self.resolve_module_import(module_import.clone()) {
+            return Some(TypedExpr {
                 kind: TypedExprKind::Symbol(TypedSymbolExpr::Unresolved {
                     symbol_id,
                     loc: module_import.loc,
@@ -2109,8 +2132,10 @@ impl Resolver {
                 ty: None,
                 val_cat: ValueCategory::Unknown,
                 loc: module_import.loc,
-            })
-        })
+            });
+        }
+
+        None
     }
 
     fn resolve_unnamed_union_value(&mut self, unnamed_union_value: &ASTUnnamedUnionValueExpr) -> Option<TypedExpr> {
