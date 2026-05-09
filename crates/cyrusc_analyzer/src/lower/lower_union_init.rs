@@ -110,34 +110,32 @@ impl<'a> AnalysisContext<'a> {
     }
 
     pub(crate) fn lower_unnamed_union_value_as_unnamed_union_type(
-        &self,
-        union_value: &TypedUnnamedUnionValue,
+        &mut self,
+        mut union_value: TypedUnnamedUnionValue,
     ) -> Option<TypedExpr> {
-        let includes_type_expr = union_value
+        for field in &mut union_value.fields {
+            self.analyze_expr_non_terminal(&mut field.value, None);
+        }
+        
+        let only_type_expr = union_value
             .fields
-            .iter()
-            .any(|field| field.value.kind.as_type_expr().is_some());
+            .iter_mut()
+            .all(|field| field.value.kind.as_type_expr().is_some());
 
-        if !includes_type_expr {
-            return None;
-        }
+        if !only_type_expr {
+            self.reporter.report(Diag {
+                level: DiagLevel::Error,
+                kind: Box::new(AnalyzerDiagKind::MixedUnionFieldKinds),
+                loc: Some(union_value.loc),
+                hint: None,
+            });
 
-        let mut has_error = false;
-
-        for field in &union_value.fields {
-            if !field.value.kind.as_type_expr().is_some() {
-                self.reporter.report(Diag {
-                    level: DiagLevel::Error,
-                    kind: Box::new(AnalyzerDiagKind::MixedUnionFieldKinds),
-                    loc: Some(field.loc),
-                    hint: None,
-                });
-                has_error = true;
-            }
-        }
-
-        if has_error {
-            return None;
+            return Some(TypedExpr {
+                kind: TypedExprKind::Poisoned,
+                ty: None,
+                val_cat: ValueCategory::Unknown,
+                loc: union_value.loc,
+            });
         }
 
         let fields = union_value

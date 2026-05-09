@@ -45,12 +45,13 @@ impl<'a> AnalysisContext<'a> {
                 };
             }
             TypedExprKind::UnnamedStructValue(unnamed_struct_value) => {
-                if let Some(expr) = self.lower_unnamed_struct_value_as_unnamed_struct_type(unnamed_struct_value) {
+                if let Some(expr) = self.lower_unnamed_struct_value_as_unnamed_struct_type(unnamed_struct_value.clone())
+                {
                     *typed_expr = expr;
                 }
             }
             TypedExprKind::UnnamedUnionValue(unnamed_union_value) => {
-                if let Some(expr) = self.lower_unnamed_union_value_as_unnamed_union_type(unnamed_union_value) {
+                if let Some(expr) = self.lower_unnamed_union_value_as_unnamed_union_type(unnamed_union_value.clone()) {
                     *typed_expr = expr;
                 }
             }

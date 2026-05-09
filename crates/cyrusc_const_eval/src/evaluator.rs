@@ -259,7 +259,9 @@ impl<'a, R: ConstResolver> ConstEvaluator<'a, R> {
     fn eval_sizeof(&self, builtin_func: &TypedBuiltinFunc) -> Result<ConstValue, ConstEvalError> {
         let arg = builtin_func.args.first().unwrap();
 
-        let arg_type = arg.ty.as_ref().unwrap();
+        let Some(arg_type) = arg.ty.as_ref() else {
+            return Err(ConstEvalError::TypeError);
+        };
 
         let cir_type = lower_sema_type(self.decl_tables, self.target, &arg_type);
         let layout = type_layout(&self.target.info, &cir_type);
