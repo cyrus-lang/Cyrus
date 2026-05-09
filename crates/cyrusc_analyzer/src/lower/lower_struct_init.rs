@@ -60,41 +60,39 @@ impl<'a> AnalysisContext<'a> {
     }
 
     pub(crate) fn lower_unnamed_struct_value_as_unnamed_struct_type(
-        &self,
-        struct_value: &TypedUnnamedStructValue,
+        &mut self,
+        mut struct_value: TypedUnnamedStructValue,
     ) -> Option<TypedExpr> {
-        let includes_type_expr = struct_value
+        for field in &mut struct_value.fields {
+            self.analyze_expr_non_terminal(&mut field.value, None);
+        }
+
+        let only_type_expr = struct_value
             .fields
-            .iter()
-            .any(|field| field.value.kind.as_type_expr().is_some());
+            .iter_mut()
+            .all(|field| field.value.kind.as_type_expr().is_some());
 
-        if !includes_type_expr {
-            return None;
+        if !only_type_expr {
+            self.reporter.report(Diag {
+                level: DiagLevel::Error,
+                kind: Box::new(AnalyzerDiagKind::MixedUnionFieldKinds),
+                loc: Some(struct_value.loc),
+                hint: None,
+            });
+
+            return Some(TypedExpr {
+                kind: TypedExprKind::Poisoned,
+                ty: None,
+                val_cat: ValueCategory::Unknown,
+                loc: struct_value.loc,
+            });
         }
 
-        let mut has_error = false;
-
-        for field in &struct_value.fields {
-            if !field.value.kind.as_type_expr().is_some() {
-                self.reporter.report(Diag {
-                    level: DiagLevel::Error,
-                    kind: Box::new(AnalyzerDiagKind::MixedStructFieldKinds),
-                    loc: Some(field.loc),
-                    hint: None,
-                });
-                has_error = true;
-            }
-        }
-
-        if has_error {
-            return None;
-        }
-
-        let fields = struct_value
+        let fields: Vec<TypedStructField> = struct_value
             .fields
-            .iter()
+            .iter_mut()
             .map(|field| {
-                let ty = field.value.kind.as_type_expr().unwrap();
+                let ty = field.value.ty.clone().unwrap();
 
                 TypedStructField {
                     name: field.name.clone(),
@@ -128,8 +126,8 @@ impl<'a> AnalysisContext<'a> {
         });
 
         Some(TypedExpr {
-            kind: TypedExprKind::SemaType(ty),
-            ty: None,
+            kind: TypedExprKind::SemaType(ty.clone()),
+            ty: Some(ty),
             val_cat: ValueCategory::Unknown,
             loc: struct_value.loc,
         })
