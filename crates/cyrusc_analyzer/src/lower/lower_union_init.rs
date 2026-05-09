@@ -116,13 +116,24 @@ impl<'a> AnalysisContext<'a> {
         for field in &mut union_value.fields {
             self.analyze_expr_non_terminal(&mut field.value, None);
         }
-        
-        let only_type_expr = union_value
+
+        let all_type_fields = union_value
             .fields
-            .iter_mut()
+            .iter()
             .all(|field| field.value.kind.as_type_expr().is_some());
 
-        if !only_type_expr {
+        let all_expr_fields = union_value
+            .fields
+            .iter()
+            .all(|field| field.value.kind.as_type_expr().is_none());
+
+        if all_expr_fields {
+            // normal struct literal expression
+            // skip lowering
+            return None;
+        }
+
+        if !all_type_fields {
             self.reporter.report(Diag {
                 level: DiagLevel::Error,
                 kind: Box::new(AnalyzerDiagKind::MixedUnionFieldKinds),
