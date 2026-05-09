@@ -2114,12 +2114,22 @@ impl Resolver {
     }
 
     fn resolve_unnamed_union_value(&mut self, unnamed_union_value: &ASTUnnamedUnionValueExpr) -> Option<TypedExpr> {
-        let value = self.resolve_expr(&unnamed_union_value.field_value)?;
+        let fields = unnamed_union_value
+            .fields
+            .iter()
+            .filter_map(|field| {
+                self.resolve_expr(&field.value)
+                    .map(|value| TypedUnnamedUnionValueField {
+                        name: field.name.as_string(),
+                        value: Box::new(value),
+                        loc: field.loc,
+                    })
+            })
+            .collect();
 
         let kind = TypedExprKind::UnnamedUnionValue(TypedUnnamedUnionValue {
             union_decl_id: None,
-            name: unnamed_union_value.field_name.clone(),
-            value: Box::new(value),
+            fields,
             loc: unnamed_union_value.loc,
         });
 

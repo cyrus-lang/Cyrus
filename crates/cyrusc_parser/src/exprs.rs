@@ -234,7 +234,7 @@ impl<'source_file> Parser<'source_file> {
 
             TokenKind::Struct => self.parse_unnamed_struct_value(None)?,
 
-            TokenKind::Union => self.parse_unnamed_union_value(false)?,
+            TokenKind::Union => self.parse_unnamed_union_value()?,
 
             TokenKind::Inline | TokenKind::Function => {
                 let is_inline = {
@@ -1284,7 +1284,7 @@ impl<'source_file> Parser<'source_file> {
         }))
     }
 
-    fn parse_unnamed_union_value(&mut self, is_const: bool) -> Result<ASTExpr, Diag> {
+    fn parse_unnamed_union_value(&mut self) -> Result<ASTExpr, Diag> {
         let loc = self.current_token().loc;
         let (line, column, start) = (loc.line, loc.column, loc.start);
 
@@ -1292,40 +1292,66 @@ impl<'source_file> Parser<'source_file> {
 
         self.expect_current(TokenKind::LeftBrace)?;
 
-        let ident = self.parse_ident()?;
+        let mut fields: Vec<UnnamedUnionValueField> = Vec::new();
 
-        self.next_token(); // consume ident
+        loop {
+            match self.current_token().kind {
+                TokenKind::RightBrace => {
+                    break;
+                }
+                TokenKind::EOF => {
+                    return Err(self.error_at_current(ParserDiagKind::MissingClosingBrace));
+                }
+                TokenKind::Ident(_) => {
+                    let start = self.current_token().loc.start;
+                    let line = self.current_token().loc.line;
+                    let ident = self.parse_ident()?;
 
-        if self.current_token_is(TokenKind::Comma) || self.current_token_is(TokenKind::RightBrace) {
-            // syntax shorthand for `ident:ident`
-            let ident_expr = ASTExpr::Ident(ident.clone());
+                    self.next_token(); // consume ident
 
-            self.must_be_right_brace()?;
+                    if self.current_token_is(TokenKind::Comma) || self.current_token_is(TokenKind::RightBrace) {
+                        // syntax shorthand for `ident:ident`
+                        let ident_expr = ASTExpr::Ident(ident.clone());
 
-            let end = self.current_token().loc.end;
+                        let end = self.current_token().loc.end;
 
-            return Ok(ASTExpr::UnnamedUnionValue(ASTUnnamedUnionValueExpr {
-                field_name: ident,
-                field_value: Box::new(ident_expr),
-                is_const,
-                loc: Loc::new(self.file_id(), line, column, start, end),
-            }));
-        } else {
-            self.expect_current(TokenKind::Colon)?;
+                        fields.push(UnnamedUnionValueField {
+                            name: ident.clone(),
+                            value: Box::new(ident_expr),
+                            loc: Loc::new(self.file_id(), line, column, start, end),
+                        });
+                    } else {
+                        self.expect_current(TokenKind::Colon)?;
 
-            let field_value = self.parse_expr(Precedence::Lowest)?;
-            self.next_token();
+                        let field_value = self.parse_expr(Precedence::Lowest)?;
+                        self.next_token();
 
-            self.must_be_right_brace()?;
+                        let end = self.current_token().loc.end;
 
-            let end = self.current_token().loc.end;
+                        fields.push(UnnamedUnionValueField {
+                            name: ident.clone(),
+                            value: Box::new(field_value),
+                            loc: Loc::new(self.file_id(), line, column, start, end),
+                        });
+                    }
 
-            return Ok(ASTExpr::UnnamedUnionValue(ASTUnnamedUnionValueExpr {
-                field_name: ident,
-                field_value: Box::new(field_value),
-                is_const,
-                loc: Loc::new(self.file_id(), line, column, start, end),
-            }));
+                    if self.current_token_is(TokenKind::RightBrace) {
+                        break;
+                    } else {
+                        self.expect_current(TokenKind::Comma)?;
+                    }
+                }
+                _ => {
+                    return Err(self.error_invalid_token());
+                }
+            }
         }
+
+        let end = self.current_token().loc.end;
+
+        Ok(ASTExpr::UnnamedUnionValue(ASTUnnamedUnionValueExpr {
+            fields,
+            loc: Loc::new(self.file_id(), line, column, start, end),
+        }))
     }
 }

@@ -576,7 +576,9 @@ impl<'a> CIRTraverse<'a> {
             for typed_pattern in &typed_case.patterns {
                 let pattern = match &typed_pattern.kind {
                     TypedSwitchCasePatternKind::EnumUnit(ident) => {
-                        let tag = enum_type.compute_variant_tag(&ident.value).unwrap();
+                        let tag = self
+                            .lower_enum_variant_tag(&enum_type, &inst_enum_decl, &ident.value)
+                            .unwrap();
 
                         CIRPattern::Variant {
                             name: ident.to_string(),
@@ -585,7 +587,9 @@ impl<'a> CIRTraverse<'a> {
                         }
                     }
                     TypedSwitchCasePatternKind::EnumTupleVariant { ident, items } => {
-                        let tag = enum_type.compute_variant_tag(&ident.value).unwrap();
+                        let tag = self
+                            .lower_enum_variant_tag(&enum_type, &inst_enum_decl, &ident.value)
+                            .unwrap();
 
                         let variant = inst_enum_decl
                             .variants
@@ -640,7 +644,9 @@ impl<'a> CIRTraverse<'a> {
                         }
                     }
                     TypedSwitchCasePatternKind::EnumStructVariant { ident, items, .. } => {
-                        let tag = enum_type.compute_variant_tag(&ident.value).unwrap();
+                        let tag = self
+                            .lower_enum_variant_tag(&enum_type, &inst_enum_decl, &ident.value)
+                            .unwrap();
 
                         let variant = inst_enum_decl
                             .variants
@@ -1272,13 +1278,47 @@ impl<'a> CIRTraverse<'a> {
 
         let enum_type = self.lower_enum_decl(&inst_enum_decl);
 
-        let tag = enum_type.compute_variant_tag(&enum_init.name).unwrap() as usize;
+        let tag = self
+            .lower_enum_variant_tag(&enum_type, &inst_enum_decl, &enum_init.name)
+            .unwrap() as usize;
 
         CIRExprKind::EnumInit(CIREnumInitExpr {
             tag,
             variant,
             enum_type,
         })
+    }
+
+    fn lower_enum_variant_tag(
+        &mut self,
+        enum_type: &CIREnumType,
+        enum_decl: &EnumDecl,
+        variant_name: &str,
+    ) -> Option<u32> {
+        let variant_idx = enum_decl
+            .variants
+            .iter()
+            .position(|variant| variant.ident().value == variant_name)?;
+
+        match &enum_decl.variants[variant_idx] {
+            TypedEnumVariant::Valued { value, .. } => {
+                let cir_expr = self.lower_expr(&value);
+
+                if enum_type.is_scalar_optimizable() {
+                    let integer_value = match cir_expr_as_const_integer_value(&cir_expr) {
+                        Some(value) => value,
+                        None => return Some(variant_idx.try_into().unwrap()),
+                    };
+                    Some(integer_value.try_into().unwrap())
+                } else {
+                    Some(variant_idx.try_into().unwrap())
+                }
+            }
+
+            TypedEnumVariant::Unit(_) | TypedEnumVariant::Tuple { .. } | TypedEnumVariant::Struct { .. } => {
+                Some(variant_idx.try_into().unwrap())
+            }
+        }
     }
 
     fn lower_tuple(&mut self, tuple: &TypedTupleExpr) -> CIRExprKind {
@@ -1477,8 +1517,9 @@ impl<'a> CIRTraverse<'a> {
 
             TypedExprKind::UnnamedStructValue(_)
             | TypedExprKind::UnnamedEnumValue(_)
+            | TypedExprKind::EnumStructVariantInit(_)
             | TypedExprKind::UnnamedUnionValue(_) => unreachable!("unexpected unnamed constructor expression"),
-            TypedExprKind::EnumStructVariantInit(_) => unreachable!("unexpected enum struct variant init expression"),
+
             TypedExprKind::SemaType(..) => unreachable!("unexpected semantic type as expression"),
             TypedExprKind::Poisoned => unreachable!("unexpected poisoned expression"),
         };

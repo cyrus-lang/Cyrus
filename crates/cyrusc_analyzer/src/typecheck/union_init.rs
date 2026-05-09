@@ -20,7 +20,7 @@ use cyrusc_ast::{abi::Visibility, modifiers::UnionModifiers};
 use cyrusc_diagcentral::{Diag, DiagLevel};
 use cyrusc_typed_ast::{
     decls::{MethodDecls, UnionDecl, UnionDeclID},
-    exprs::{TypedUnionInitExpr, TypedUnnamedUnionValue},
+    exprs::{TypedUnionInitExpr, TypedUnnamedUnionValue, TypedUnnamedUnionValueField},
     format::{format_sema_type, format_union_decl},
     stmts::{TypedGenericParams, TypedTypeArgs, TypedUnionField},
     types::{NamedType, SemaType, TypeDeclID},
@@ -108,6 +108,18 @@ impl<'a> AnalysisContext<'a> {
         union_value: &mut TypedUnnamedUnionValue,
         expected_type: Option<SemaType>,
     ) -> Option<SemaType> {
+        if union_value.fields.first().is_none() || union_value.fields.len() != 1 {
+            self.reporter.report(Diag {
+                level: DiagLevel::Error,
+                kind: Box::new(AnalyzerDiagKind::UnionInitMustContainExactlyOneField),
+                loc: Some(union_value.loc),
+                hint: None,
+            });
+            return None;
+        }
+
+        let union_field_value = union_value.fields.first_mut().unwrap();
+
         if let Some((union_decl_id, union_decl, type_args)) =
             self.infer_union_decl_from_expected_type(expected_type.clone())
         {
@@ -121,10 +133,10 @@ impl<'a> AnalysisContext<'a> {
             )?;
 
             return self.with_generic_env(generic_env, |this| {
-                if let Some(union_field) = union_decl.lookup_field(&union_value.name.value) {
+                if let Some(union_field) = union_decl.lookup_field(&union_field_value.name) {
                     let expected_type = this.substitute_type(&union_field.ty);
 
-                    this.analyze_field_assign(&mut union_value.value, expected_type, union_value.loc);
+                    this.analyze_field_assign(&mut union_field_value.value, expected_type, union_value.loc);
                 } else {
                     let union_name = format_union_decl(&union_decl, this.formatter);
 
@@ -132,13 +144,13 @@ impl<'a> AnalysisContext<'a> {
                         level: DiagLevel::Error,
                         kind: Box::new(AnalyzerDiagKind::ObjectHasNoFieldNamed {
                             object_name: union_name,
-                            field_name: union_value.name.as_string(),
+                            field_name: union_field_value.name.clone(),
                         }),
                         loc: Some(union_value.loc),
                         hint: None,
                     });
 
-                    this.analyze_expr(&mut union_value.value, None);
+                    this.analyze_expr(&mut union_field_value.value, None);
                 }
 
                 union_value.union_decl_id = Some(union_decl_id);
@@ -147,13 +159,14 @@ impl<'a> AnalysisContext<'a> {
             });
         }
 
-        let mut union_decl = self.create_union_decl_from_unnamed_union_value(union_value);
+        let mut union_decl = self.create_union_decl_from_unnamed_union_value(union_field_value);
         let union_decl_id = self.decl_tables.insert_union(union_decl.clone());
 
-        self.analyze_expr(&mut union_value.value, None);
+        self.analyze_expr(&mut union_field_value.value, None);
 
-        if let Some(rhs_type) = &union_value.value.ty {
-            let union_field = union_decl.lookup_field_mut(&union_value.name.value).unwrap();
+        if let Some(rhs_type) = &union_field_value.value.ty {
+            let union_field = union_decl.lookup_field_mut(&union_field_value.name).unwrap();
+
             union_field.ty = rhs_type.clone();
         }
 
@@ -186,11 +199,14 @@ impl<'a> AnalysisContext<'a> {
         })
     }
 
-    fn create_union_decl_from_unnamed_union_value(&mut self, union_value: &TypedUnnamedUnionValue) -> UnionDecl {
+    fn create_union_decl_from_unnamed_union_value(
+        &mut self,
+        union_field_value: &TypedUnnamedUnionValueField,
+    ) -> UnionDecl {
         let fields = vec![TypedUnionField {
-            name: union_value.name.as_string(),
+            name: union_field_value.name.clone(),
             ty: SemaType::Placeholder,
-            loc: union_value.loc,
+            loc: union_field_value.loc,
         }];
 
         UnionDecl {
@@ -204,7 +220,7 @@ impl<'a> AnalysisContext<'a> {
                 repr_attr: None,
             },
             align: None,
-            loc: union_value.loc,
+            loc: union_field_value.loc,
 
             is_normalized: false,
         }

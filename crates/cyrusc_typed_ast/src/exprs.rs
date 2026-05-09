@@ -16,7 +16,11 @@
  */
 
 use crate::{
-    SymbolID, builtins::TypedBuiltin, decls::{DeclID, EnumDeclID, FuncDeclID, InterfaceDeclID, MethodDeclID, MonomorphID, StructDeclID, UnionDeclID}, stmts::{TypedBlockStmt, TypedFuncParams, TypedTypeArgs}, types::{InterfaceObjectType, SemaType, TypedFuncType}
+    SymbolID,
+    builtins::TypedBuiltin,
+    decls::{DeclID, EnumDeclID, FuncDeclID, InterfaceDeclID, MethodDeclID, MonomorphID, StructDeclID, UnionDeclID},
+    stmts::{TypedBlockStmt, TypedFuncParams, TypedTypeArgs},
+    types::{InterfaceObjectType, SemaType, TypedFuncType},
 };
 use cyrusc_ast::{
     AssignKind, Ident, Mutability,
@@ -329,8 +333,7 @@ pub struct TypedUnnamedStructValue {
 #[derive(Debug, Clone)]
 pub struct TypedUnnamedUnionValue {
     pub union_decl_id: Option<UnionDeclID>,
-    pub name: Ident,
-    pub value: Box<TypedExpr>,
+    pub fields: Vec<TypedUnnamedUnionValueField>,
     pub loc: Loc,
 }
 
@@ -367,6 +370,13 @@ pub struct TypedEnumStructVariantFieldInit {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct TypedUnnamedStructValueField {
+    pub name: String,
+    pub value: Box<TypedExpr>,
+    pub loc: Loc,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct TypedUnnamedUnionValueField {
     pub name: String,
     pub value: Box<TypedExpr>,
     pub loc: Loc,
@@ -545,7 +555,7 @@ impl std::hash::Hash for TypedSelfType {
 
 impl PartialEq for TypedUnnamedUnionValue {
     fn eq(&self, other: &Self) -> bool {
-        self.name == other.name && self.value == other.value
+        self.fields == other.fields
     }
 }
 

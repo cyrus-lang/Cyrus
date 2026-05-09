@@ -485,7 +485,11 @@ impl<'a> AnalysisContext<'a> {
                 }
             }
             TypedExprKind::UnnamedUnionValue(union_value) => {
-                self.specialize_expr(&mut union_value.value, decl_map);
+                debug_assert!(union_value.fields.len() == 1);
+
+                let field = union_value.fields.first_mut().unwrap();
+
+                self.specialize_expr(&mut field.value, decl_map);
             }
             TypedExprKind::UnnamedEnumValue(enum_value) => match &mut enum_value.kind {
                 TypedUnnamedEnumValueKind::Unit => {}

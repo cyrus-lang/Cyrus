@@ -116,9 +116,14 @@ pub struct ASTUnnamedStructValueExpr {
 
 #[derive(Debug, Clone)]
 pub struct ASTUnnamedUnionValueExpr {
-    pub field_name: Ident,
-    pub field_value: Box<ASTExpr>,
-    pub is_const: bool,
+    pub fields: Vec<UnnamedUnionValueField>,
+    pub loc: Loc,
+}
+
+#[derive(Debug, Clone)]
+pub struct UnnamedUnionValueField {
+    pub name: Ident,
+    pub value: Box<ASTExpr>,
     pub loc: Loc,
 }
 
@@ -1493,11 +1498,17 @@ impl PartialEq for ASTUnnamedStructValueExpr {
 
 impl PartialEq for ASTUnnamedUnionValueExpr {
     fn eq(&self, other: &Self) -> bool {
-        self.field_name == other.field_name && self.field_value == other.field_value && self.is_const == other.is_const
+        self.fields == other.fields
     }
 }
 
 impl PartialEq for UnnamedStructValueField {
+    fn eq(&self, other: &Self) -> bool {
+        self.name == other.name && self.value == other.value
+    }
+}
+
+impl PartialEq for UnnamedUnionValueField {
     fn eq(&self, other: &Self) -> bool {
         self.name == other.name && self.value == other.value
     }

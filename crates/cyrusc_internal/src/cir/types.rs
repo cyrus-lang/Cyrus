@@ -15,10 +15,7 @@
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
 
-use crate::{
-    abi::args::ABIFunctionInfo,
-    cir::cir::{CIREnumVariant, cir_expr_as_const_integer_value},
-};
+use crate::{abi::args::ABIFunctionInfo, cir::cir::CIREnumVariant};
 use cyrusc_ast::abi::{CallConv, ReprAttr};
 use cyrusc_source_loc::Loc;
 use cyrusc_typed_ast::{VTableID, types::PlainType};
@@ -129,19 +126,17 @@ impl CIREnumType {
     }
 
     pub fn variant_expr_type(&self) -> Option<Box<CIRType>> {
-        let mut expr_ty: Option<Box<CIRType>> = None;
+        let mut expr_type: Option<Box<CIRType>> = None;
 
         for variant in &self.variants {
-            if let CIREnumVariant::Valued(_, expr) = variant {
-                let ty = expr.ty.clone();
-
-                match &expr_ty {
+            if let CIREnumVariant::Valued(_, value_type) = variant {
+                match &expr_type {
                     None => {
-                        expr_ty = Some(Box::new(ty));
+                        expr_type = Some(Box::new(value_type.clone()));
                     }
 
                     Some(existing) => {
-                        if **existing != ty {
+                        if **existing != *value_type {
                             // inference failed
                             return None;
                         }
@@ -150,7 +145,7 @@ impl CIREnumType {
             }
         }
 
-        expr_ty
+        expr_type
     }
 
     #[inline]
@@ -160,33 +155,10 @@ impl CIREnumType {
 
     pub fn includes_only_integer_payload(&self) -> bool {
         self.variants.iter().all(|v| match v {
-            CIREnumVariant::Valued(_, expr) => expr.ty.is_integer_or_bool(),
+            CIREnumVariant::Valued(_, value_type) => value_type.is_integer_or_bool(),
             CIREnumVariant::Unit(_) => true,
             CIREnumVariant::Payload(_, _) => false,
         })
-    }
-
-    pub fn compute_variant_tag(&self, lookup_ident: &String) -> Option<u32> {
-        let variant_idx = self
-            .variants
-            .iter()
-            .position(|variant| variant.ident() == lookup_ident)?;
-
-        match &self.variants[variant_idx] {
-            CIREnumVariant::Valued(_, expr) => {
-                if self.is_scalar_optimizable() {
-                    let integer_value = match cir_expr_as_const_integer_value(expr) {
-                        Some(value) => value,
-                        None => return Some(variant_idx.try_into().unwrap()),
-                    };
-                    Some(integer_value.try_into().unwrap())
-                } else {
-                    Some(variant_idx.try_into().unwrap())
-                }
-            }
-            CIREnumVariant::Payload(_, _) => Some(variant_idx.try_into().unwrap()),
-            CIREnumVariant::Unit(_) => Some(variant_idx.try_into().unwrap()),
-        }
     }
 }
 

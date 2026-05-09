@@ -183,11 +183,15 @@ impl<'ll> CodeGenIRBuilder<'ll> {
                         .iter()
                         .map(|variant| match variant {
                             CIREnumVariant::Unit(ident) => {
-                                let tag = enum_type.compute_variant_tag(ident).unwrap();
+                                // FIXME
+                                // let tag = enum_type.compute_variant_tag(ident).unwrap();
+                                let tag = 0;
                                 (ident.clone(), tag as i64)
                             }
                             CIREnumVariant::Valued(ident, _) => {
-                                let tag = enum_type.compute_variant_tag(ident).unwrap();
+                                // FIXME
+                                // let tag = enum_type.compute_variant_tag(ident).unwrap();
+                                let tag = 0;
                                 (ident.clone(), tag as i64)
                             }
                             CIREnumVariant::Payload(..) => unreachable!(),
@@ -211,7 +215,9 @@ impl<'ll> CodeGenIRBuilder<'ll> {
                         .iter()
                         .map(|variant| {
                             let ident = variant.ident();
-                            let tag = enum_type.compute_variant_tag(ident).unwrap();
+                            // FIXME
+                            // let tag = enum_type.compute_variant_tag(ident).unwrap();
+                            let tag = 0;
 
                             match variant {
                                 CIREnumVariant::Unit(_) => {
@@ -463,8 +469,8 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         for variant in &enum_type.variants {
             let (payload_size, payload_align) = match variant {
                 CIREnumVariant::Unit(_) => (0, 1),
-                CIREnumVariant::Valued(_, expr) => {
-                    let llvm_ty: BasicTypeEnum<'ll> = self.emit_ty(expr.ty.clone()).try_into().unwrap();
+                CIREnumVariant::Valued(_, value_type) => {
+                    let llvm_ty: BasicTypeEnum<'ll> = self.emit_ty(value_type.clone()).try_into().unwrap();
                     let size = target_data.get_store_size(&llvm_ty);
                     let align = target_data.get_abi_alignment(&llvm_ty) as u64;
                     (size, align)

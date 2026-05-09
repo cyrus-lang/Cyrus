@@ -16,8 +16,14 @@
  */
 
 use crate::{context::AnalysisContext, diagnostics::AnalyzerDiagKind};
+use cyrusc_ast::{abi::Visibility, modifiers::UnionModifiers};
 use cyrusc_diagcentral::{Diag, DiagLevel};
-use cyrusc_typed_ast::exprs::{TypedExpr, TypedExprKind, TypedFieldInit, TypedUnionInitExpr, ValueCategory};
+use cyrusc_typed_ast::{
+    decls::{MethodDecls, UnionDecl},
+    exprs::{TypedExpr, TypedExprKind, TypedFieldInit, TypedUnionInitExpr, TypedUnnamedUnionValue, ValueCategory},
+    stmts::{TypedGenericParams, TypedTypeArgs, TypedUnionField},
+    types::{NamedType, SemaType, TypeDeclID},
+};
 
 impl<'a> AnalysisContext<'a> {
     pub(crate) fn lower_struct_init_as_union_init(&mut self, typed_expr: &mut TypedExpr) {
@@ -71,10 +77,22 @@ impl<'a> AnalysisContext<'a> {
             return;
         };
 
+        if union_value.fields.first().is_none() || union_value.fields.len() != 1 {
+            self.reporter.report(Diag {
+                level: DiagLevel::Error,
+                kind: Box::new(AnalyzerDiagKind::UnionInitMustContainExactlyOneField),
+                loc: Some(union_value.loc),
+                hint: None,
+            });
+            return;
+        }
+
+        let union_field = union_value.fields.first().unwrap();
+
         let field = TypedFieldInit {
-            name: union_value.name.as_string(),
-            value: *union_value.value.clone(),
-            loc: union_value.loc,
+            name: union_field.name.clone(),
+            value: *union_field.value.clone(),
+            loc: union_field.loc,
         };
 
         let union_init = TypedUnionInitExpr {
@@ -89,5 +107,80 @@ impl<'a> AnalysisContext<'a> {
             val_cat: ValueCategory::RValue,
             loc: typed_expr.loc,
         };
+    }
+
+    pub(crate) fn lower_unnamed_union_value_as_unnamed_union_type(
+        &self,
+        union_value: &TypedUnnamedUnionValue,
+    ) -> Option<TypedExpr> {
+        let includes_type_expr = union_value
+            .fields
+            .iter()
+            .any(|field| field.value.kind.as_type_expr().is_some());
+
+        if !includes_type_expr {
+            return None;
+        }
+
+        let mut has_error = false;
+
+        for field in &union_value.fields {
+            if !field.value.kind.as_type_expr().is_some() {
+                self.reporter.report(Diag {
+                    level: DiagLevel::Error,
+                    kind: Box::new(AnalyzerDiagKind::MixedUnionFieldKinds),
+                    loc: Some(field.loc),
+                    hint: None,
+                });
+                has_error = true;
+            }
+        }
+
+        if has_error {
+            return None;
+        }
+
+        let fields = union_value
+            .fields
+            .iter()
+            .map(|field| {
+                let ty = field.value.kind.as_type_expr().unwrap();
+
+                TypedUnionField {
+                    name: field.name.clone(),
+                    ty,
+                    loc: field.loc,
+                }
+            })
+            .collect();
+
+        let union_decl = UnionDecl {
+            name: None,
+            fields,
+            impls: Vec::new(),
+            methods: MethodDecls::new(),
+            generic_params: TypedGenericParams::new(),
+            modifiers: UnionModifiers {
+                vis: Visibility::Public,
+                repr_attr: None,
+            },
+            align: None,
+            loc: union_value.loc,
+            is_normalized: false,
+        };
+
+        let union_decl_id = self.decl_tables.insert_union(union_decl);
+
+        let ty = SemaType::Named(NamedType {
+            type_decl_id: TypeDeclID::Union(union_decl_id),
+            type_args: TypedTypeArgs::new(),
+        });
+
+        Some(TypedExpr {
+            kind: TypedExprKind::SemaType(ty),
+            ty: None,
+            val_cat: ValueCategory::Unknown,
+            loc: union_value.loc,
+        })
     }
 }
