@@ -463,16 +463,7 @@ impl<'a> CIRPrinter<'a> {
                 format!("union {{ {value} }}")
             }
             CIRExprKind::EnumInit(enum_init) => {
-                let variant_name = enum_init
-                    .enum_type
-                    .variants
-                    .get(enum_init.tag)
-                    .map(|variant| match variant {
-                        CIREnumVariant::Unit(name)
-                        | CIREnumVariant::Valued(name, _)
-                        | CIREnumVariant::Payload(name, _) => name.clone(),
-                    })
-                    .unwrap();
+                let variant_name = enum_init.enum_type.lookup_variant(&enum_init.ident).unwrap().ident();
 
                 match &enum_init.variant {
                     CIREnumInitVariant::Unit => {
@@ -599,11 +590,11 @@ impl<'a> CIRPrinter<'a> {
                 let mut parts = Vec::new();
                 for variant in &enum_type.variants {
                     match variant {
-                        CIREnumVariant::Unit(name) => parts.push(name.clone()),
-                        CIREnumVariant::Valued(name, value_type) => {
-                            parts.push(format!("{name} = {}", self.print_type(value_type)));
+                        CIREnumVariant::Unit(name, _) => parts.push(name.clone()),
+                        CIREnumVariant::Valued(name, _, tag) => {
+                            parts.push(format!("{name} = {}", tag));
                         }
-                        CIREnumVariant::Payload(name, types) => {
+                        CIREnumVariant::Payload(name, types, _) => {
                             let elements = types.iter().map(|t| self.print_type(t)).collect::<Vec<_>>().join(", ");
                             parts.push(format!("{name}({elements})"));
                         }

@@ -1048,11 +1048,11 @@ fn classify_enum(
     lo_class: *mut RegisterClass,
     hi_class: *mut RegisterClass,
 ) {
-    let cir_enum_ty = ty.as_enum().unwrap();
+    let enum_type = ty.as_enum().unwrap();
 
-    if cir_enum_ty.is_scalar_optimizable() {
+    if enum_type.is_scalar_optimizable() {
         // enum is an integer
-        let tag_ty = cir_enum_ty.tag_type_or_infer_or_default();
+        let tag_ty = enum_type.tag_type_or_infer_or_default();
         classify(info, &tag_ty, offset_base, lo_class, hi_class);
         return;
     }
@@ -1074,7 +1074,7 @@ fn classify_enum(
     }
 
     // first, classify the tag field at offset 0
-    let tag_ty = cir_enum_ty.tag_type_or_infer_or_default();
+    let tag_ty = enum_type.tag_type_or_infer_or_default();
     let tag_offset = offset_base;
     let tag_layout = type_layout(info, &tag_ty);
     let tag_size = tag_layout.size;

@@ -139,11 +139,14 @@ pub fn lower_struct_decl(
     }
 }
 
+// FIXME
+// Have a guard mechanism when we are generating tag if enum is not scalar optimizable
+// to assure unique tag value.
 pub fn lower_enum_decl(decl_tables: &DeclTablesRegistry, target: &ABITarget, enum_decl: &EnumDecl) -> CIREnumType {
-    let variants: Vec<CIREnumVariant> = enum_decl
+    let mut variants: Vec<CIREnumVariant> = enum_decl
         .variants
         .iter()
-        .map(|variant| lower_enum_type_variant(decl_tables, target, variant))
+        .map(|variant| lower_enum_type_variant(decl_tables, target, enum_decl, variant))
         .collect();
 
     let tag_type = enum_decl
@@ -151,14 +154,39 @@ pub fn lower_enum_decl(decl_tables: &DeclTablesRegistry, target: &ABITarget, enu
         .clone()
         .map(|sema_type| Box::new(lower_sema_type(decl_tables, target, &sema_type)));
 
-    CIREnumType {
+    let mut cir_enum_type = CIREnumType {
         name: enum_decl.name.clone(),
-        variants,
+        variants: variants.clone(),
         tag_type,
         repr_attr: enum_decl.modifiers.repr_attr.clone(),
         align: enum_decl.align.clone(),
         loc: enum_decl.loc,
+    };
+
+    if cir_enum_type.is_scalar_optimizable() {
+        for variant in &mut variants {
+            match variant {
+                CIREnumVariant::Valued(ident, _, tag) => {
+                    let value = match enum_decl.lookup_variant(ident).unwrap() {
+                        TypedEnumVariant::Valued { value, .. } => value,
+                        _ => unreachable!(),
+                    };
+
+                    let int_tag = match value.literal_const_int_value() {
+                        Some(value) => value,
+                        None => continue,
+                    };
+
+                    *tag = int_tag.try_into().unwrap();
+                }
+                _ => {}
+            }
+        }
     }
+
+    cir_enum_type.variants = variants;
+
+    cir_enum_type
 }
 
 pub fn lower_union_decl(decl_tables: &DeclTablesRegistry, target: &ABITarget, union_decl: &UnionDecl) -> CIRUnionType {
@@ -215,14 +243,23 @@ fn lower_func_type_params(
 fn lower_enum_type_variant(
     decl_tables: &DeclTablesRegistry,
     target: &ABITarget,
+    enum_decl: &EnumDecl,
     variant: &TypedEnumVariant,
 ) -> CIREnumVariant {
+    let variant_idx: u32 = enum_decl
+        .variants
+        .iter()
+        .position(|_variant| _variant.ident() == variant.ident())
+        .unwrap()
+        .try_into()
+        .unwrap();
+
     match variant {
-        TypedEnumVariant::Unit(ident) => CIREnumVariant::Unit(ident.as_string()),
+        TypedEnumVariant::Unit(ident) => CIREnumVariant::Unit(ident.as_string(), variant_idx),
         TypedEnumVariant::Valued { ident, value } => {
             let cir_value_type = lower_sema_type(decl_tables, target, value.ty.as_ref().unwrap());
 
-            CIREnumVariant::Valued(ident.as_string(), cir_value_type)
+            CIREnumVariant::Valued(ident.as_string(), cir_value_type, variant_idx)
         }
         TypedEnumVariant::Tuple { ident, fields } => {
             let fields = fields
@@ -230,7 +267,10 @@ fn lower_enum_type_variant(
                 .map(|field| lower_sema_type(decl_tables, target, &field.ty))
                 .collect();
 
-            CIREnumVariant::Payload(ident.as_string(), fields)
+            // IMPORTANT
+            // default=variant_idx
+            // changed if enum-type is_scalar_optimizable.
+            CIREnumVariant::Payload(ident.as_string(), fields, variant_idx)
         }
         TypedEnumVariant::Struct { ident, fields } => {
             let fields = fields
@@ -238,7 +278,7 @@ fn lower_enum_type_variant(
                 .map(|struct_variant_field| lower_sema_type(decl_tables, target, &struct_variant_field.ty))
                 .collect();
 
-            CIREnumVariant::Payload(ident.as_string(), fields)
+            CIREnumVariant::Payload(ident.as_string(), fields, variant_idx)
         }
     }
 }

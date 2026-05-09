@@ -192,7 +192,8 @@ pub struct CIRStructInitExpr {
 
 #[derive(Debug, Clone)]
 pub struct CIREnumInitExpr {
-    pub tag: usize,
+    pub ident: String,
+    pub tag: u32,
     pub variant: CIREnumInitVariant,
     pub enum_type: CIREnumType,
 }
@@ -460,9 +461,9 @@ pub struct CIREnumStmt {
 
 #[derive(Debug, Clone)]
 pub enum CIREnumVariant {
-    Unit(String),
-    Valued(String, CIRType),
-    Payload(String, Vec<CIRType>),
+    Unit(String, u32),
+    Valued(String, CIRType, u32),
+    Payload(String, Vec<CIRType>, u32),
 }
 
 #[derive(Debug, Clone)]
@@ -578,19 +579,29 @@ pub fn cir_union_as_union_type(union_stmt: &CIRUnionStmt) -> CIRUnionType {
 impl PartialEq for CIREnumVariant {
     fn eq(&self, other: &Self) -> bool {
         match (self, other) {
-            (Self::Unit(ident1), Self::Unit(ident2)) => ident1 == ident2,
-            (Self::Valued(ident1, ty1), Self::Valued(ident2, ty2)) => ident1 == ident2 && ty1 == ty2,
-            (Self::Payload(ident1, fields1), Self::Payload(ident2, fields2)) => ident1 == ident2 && fields1 == fields2,
+            (Self::Unit(ident1, _), Self::Unit(ident2, _)) => ident1 == ident2,
+            (Self::Valued(ident1, ty1, _), Self::Valued(ident2, ty2, _)) => ident1 == ident2 && ty1 == ty2,
+            (Self::Payload(ident1, fields1, _), Self::Payload(ident2, fields2, _)) => {
+                ident1 == ident2 && fields1 == fields2
+            }
             _ => false,
         }
     }
 }
 
 impl CIREnumVariant {
+    pub fn tag(&self) -> u32 {
+        match self {
+            CIREnumVariant::Unit(_, tag) => *tag,
+            CIREnumVariant::Valued(_, _, tag) => *tag,
+            CIREnumVariant::Payload(_, _, tag) => *tag,
+        }
+    }
+
     #[inline]
     pub fn as_fielded(&self) -> Option<&Vec<CIRType>> {
         match self {
-            CIREnumVariant::Payload(_, fields) => Some(fields),
+            CIREnumVariant::Payload(_, fields, _) => Some(fields),
             _ => None,
         }
     }
@@ -598,9 +609,9 @@ impl CIREnumVariant {
     #[inline]
     pub fn ident(&self) -> &String {
         match self {
-            CIREnumVariant::Unit(ident) => ident,
-            CIREnumVariant::Valued(ident, _) => ident,
-            CIREnumVariant::Payload(ident, _) => ident,
+            CIREnumVariant::Unit(ident, _) => ident,
+            CIREnumVariant::Valued(ident, _, _) => ident,
+            CIREnumVariant::Payload(ident, _, _) => ident,
         }
     }
 }
