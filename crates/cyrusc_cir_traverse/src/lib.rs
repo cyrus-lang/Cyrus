@@ -21,6 +21,9 @@ use cyrusc_ast::operators::InfixOperator;
 use cyrusc_internal::abi::mangler::*;
 use cyrusc_internal::abi::target::ABITarget;
 use cyrusc_internal::cir::cir::*;
+use cyrusc_internal::cir::lower::lower_enum_decl;
+use cyrusc_internal::cir::lower::lower_func_type;
+use cyrusc_internal::cir::lower::lower_sema_type;
 use cyrusc_internal::cir::types::*;
 use cyrusc_internal::monomorph::*;
 use cyrusc_internal::symbols::SymbolQuery;
@@ -260,7 +263,7 @@ impl<'a> CIRTraverse<'a> {
                 let var_decl = self.decl_tables.var_decl(*var_decl_id);
 
                 let var_name = var_decl.name.clone();
-                let var_ty = self.lower_sema_type(&var_decl.ty.as_ref().unwrap());
+                let var_ty = lower_sema_type(&self.decl_tables, self.target, &var_decl.ty.as_ref().unwrap());
 
                 let irv_id = self.new_ir_value_id();
 
@@ -563,7 +566,7 @@ impl<'a> CIRTraverse<'a> {
         let enum_decl = self.decl_tables.enum_decl(enum_decl_id);
 
         let inst_enum_decl = instantiate_enum_decl_with_type_args(&enum_decl, type_args);
-        let enum_type = self.lower_enum_decl(&inst_enum_decl);
+        let enum_type = lower_enum_decl(&self.decl_tables, self.target, &inst_enum_decl);
 
         let mut cases = Vec::new();
 
@@ -606,7 +609,10 @@ impl<'a> CIRTraverse<'a> {
                                     unreachable!()
                                 };
 
-                                let field_types = fields.iter().map(|field| self.lower_sema_type(&field.ty)).collect();
+                                let field_types = fields
+                                    .iter()
+                                    .map(|field| lower_sema_type(&self.decl_tables, self.target, &field.ty))
+                                    .collect();
                                 let fields_info = fields
                                     .iter()
                                     .enumerate()
@@ -649,7 +655,10 @@ impl<'a> CIRTraverse<'a> {
                                 unreachable!()
                             };
 
-                            let field_types = fields.iter().map(|field| self.lower_sema_type(&field.ty)).collect();
+                            let field_types = fields
+                                .iter()
+                                .map(|field| lower_sema_type(&self.decl_tables, self.target, &field.ty))
+                                .collect();
                             let fields_info = fields.iter().map(|field| (field.name.as_string(), field.loc)).collect();
 
                             CIRStructType {
@@ -715,7 +724,11 @@ impl<'a> CIRTraverse<'a> {
 
                     let field_index = variant_decl.get_struct_variant_field_index(&item.name.value).unwrap();
 
-                    Some((field_index, irv_id, self.lower_sema_type(&ty)))
+                    Some((
+                        field_index,
+                        irv_id,
+                        lower_sema_type(&self.decl_tables, self.target, &ty),
+                    ))
                 } else {
                     None
                 }
@@ -744,7 +757,7 @@ impl<'a> CIRTraverse<'a> {
                     self.decl_to_ir_value_map.insert(DeclID::Var(*var_decl_id), irv_id);
 
                     // tuple: consecutive index
-                    Some((idx, irv_id, self.lower_sema_type(&ty)))
+                    Some((idx, irv_id, lower_sema_type(&self.decl_tables, self.target, &ty)))
                 } else {
                     None
                 }
@@ -805,7 +818,7 @@ impl<'a> CIRTraverse<'a> {
             .ty
             .as_ref()
             .or_else(|| global_var.expr.as_ref().and_then(|expr| expr.ty.as_ref()))
-            .map(|sema_type| self.lower_sema_type(sema_type))
+            .map(|sema_type| lower_sema_type(&self.decl_tables, self.target, sema_type))
             .unwrap_or_else(|| {
                 panic!(
                     "Global var '{}' has neither explicit type nor valid initializer type.",
@@ -837,7 +850,11 @@ impl<'a> CIRTraverse<'a> {
     }
 
     fn lower_global_var_decl(&mut self, irv_id: IRValueID, global_var_decl: &GlobalVarDecl) -> CIRGlobalVarStmt {
-        let ty = global_var_decl.ty.as_ref().map(|ty| self.lower_sema_type(ty)).unwrap();
+        let ty = global_var_decl
+            .ty
+            .as_ref()
+            .map(|ty| lower_sema_type(&self.decl_tables, self.target, ty))
+            .unwrap();
 
         let mangled_name = mangle_global_var(&global_var_decl.modifiers, &self.module_name, &global_var_decl.name);
 
@@ -879,14 +896,6 @@ impl<'a> CIRTraverse<'a> {
         }
     }
 
-    fn lower_func_type_params(&mut self, func_type_params: &TypedFuncTypeParams) -> Vec<CIRType> {
-        func_type_params
-            .list
-            .iter()
-            .map(|sema_type| self.lower_sema_type(sema_type))
-            .collect()
-    }
-
     fn lower_func_params(&mut self, func_params: &TypedFuncParams, is_decl: bool) -> CIRFuncParams {
         let mut cir_params = Vec::new();
 
@@ -913,7 +922,7 @@ impl<'a> CIRTraverse<'a> {
                     cir_params.push(CIRFuncParam {
                         name,
                         irv_id,
-                        ty: self.lower_sema_type(&func_param.ty),
+                        ty: lower_sema_type(&self.decl_tables, self.target, &func_param.ty),
                         loc,
                     });
                 }
@@ -935,7 +944,7 @@ impl<'a> CIRTraverse<'a> {
                     cir_params.push(CIRFuncParam {
                         name,
                         irv_id,
-                        ty: self.lower_sema_type(&self_modifier.ty),
+                        ty: lower_sema_type(&self.decl_tables, self.target, &self_modifier.ty),
                         loc,
                     });
                 }
@@ -1866,9 +1875,10 @@ impl<'a> CIRTraverse<'a> {
 
     fn lower_array(&mut self, array: &TypedArrayExpr) -> CIRExprKind {
         let elements: Vec<CIRExpr> = array.elements.iter().map(|elm| self.lower_expr(elm)).collect();
+        let ty = self.lower_sema_type(&array.ty.as_ref().unwrap());
 
         CIRExprKind::Array(CIRArrayExpr {
-            ty: self.lower_sema_type(&array.ty.as_ref().unwrap()),
+            ty,
             elements,
             loc: array.loc,
         })
@@ -1932,6 +1942,7 @@ impl<'a> CIRTraverse<'a> {
         };
 
         let ty = self.lower_sema_type(&literal.ty.clone().unwrap());
+
         CIRExprKind::Literal(CIRLiteral { kind, ty })
     }
 
@@ -1953,199 +1964,23 @@ impl<'a> CIRTraverse<'a> {
     }
 }
 
-// Types.
-impl<'a> CIRTraverse<'a> {
-    fn lower_sema_type(&mut self, ty: &SemaType) -> CIRType {
-        match ty {
-            SemaType::Plain(plain_type) => CIRType::Plain(plain_type.clone()),
-            SemaType::Named(named_type) => self.lower_named_type(named_type),
-            SemaType::InterfaceObject(interface_object) => cir_fat_ptr_type(interface_object.loc),
-            SemaType::Array(array_type) => {
-                let element_type = self.lower_sema_type(&array_type.element_type);
-                let len = match &array_type.capacity {
-                    TypedArrayCapacity::Fixed(expr) => expr.literal_const_int_value().unwrap(),
-                    TypedArrayCapacity::Dynamic => todo!(),
-                };
-
-                CIRType::Array(CIRArrayType {
-                    element_type: Box::new(element_type),
-                    len: len.try_into().unwrap(),
-                })
-            }
-            SemaType::Const(sema_type) => CIRType::Const(Box::new(self.lower_sema_type(&*sema_type))),
-            SemaType::Pointer(sema_type) => CIRType::Pointer(Box::new(self.lower_sema_type(&*sema_type))),
-            SemaType::FuncType(func_type) => CIRType::FuncType(self.lower_func_type(func_type)),
-            SemaType::Tuple(tuple_type) => {
-                let elements: Vec<CIRType> = tuple_type
-                    .elements
-                    .iter()
-                    .map(|sema_type| self.lower_sema_type(sema_type))
-                    .collect();
-
-                CIRType::Tuple(CIRTupleType {
-                    elements,
-                    loc: tuple_type.loc,
-                })
-            }
-            SemaType::Unresolved(unresolved_type) => {
-                if cfg!(debug_assertions) {
-                    let symbol_id = unresolved_type.as_base_symbol_id().unwrap();
-                    let symbol_name = self.formatter.format_symbol_name(symbol_id);
-                    dbg!("unresolved symbol: {}", symbol_name);
-                }
-                unreachable!("unexpected unresolved type")
-            }
-            SemaType::GenericParam(_) => unreachable!("Unexpected generic param"),
-            SemaType::SelfType(_) => unreachable!("unexpected self type"),
-            SemaType::InferVar(_) => unreachable!("unexpected infer var type"),
-            SemaType::Placeholder => unreachable!("unexpected placeholder type"),
-            SemaType::Err(_) => unreachable!("unexpected error type"),
-        }
-        .const_inner()
-        .clone()
-    }
-
-    fn lower_func_type(&mut self, func_type: &TypedFuncType) -> CIRFuncType {
-        let ret = Box::new(self.lower_sema_type(&func_type.ret_type));
-        let params = self.lower_func_type_params(&func_type.params);
-
-        let mut cir_type = CIRFuncType {
-            params: params,
-            is_var: func_type.params.variadic.is_some(),
-            ret_type: ret,
-            callconv: CallConv::default(),
-            abi_func_info: None,
-        };
-
-        cir_type.abi_func_info = Some(self.target.target_abi.classify_func(&cir_type).unwrap());
-        cir_type
-    }
-
-    fn lower_struct_decl(&mut self, struct_decl: &StructDecl) -> CIRStructType {
-        let fields = struct_decl
-            .fields
-            .iter()
-            .map(|field| self.lower_sema_type(&field.ty))
-            .collect();
-
-        let fields_info = struct_decl
-            .fields
-            .iter()
-            .map(|field| (field.name.clone(), field.loc))
-            .collect();
-
-        CIRStructType {
-            name: struct_decl.name.clone(),
-            fields,
-            fields_info,
-            repr_attr: struct_decl.modifiers.repr_attr.clone(),
-            align: struct_decl.align.clone(),
-            loc: struct_decl.loc,
-        }
-    }
-
-    fn lower_enum_variant(&mut self, variant: &TypedEnumVariant) -> CIREnumVariant {
-        match variant {
-            TypedEnumVariant::Unit(ident) => CIREnumVariant::Unit(ident.as_string()),
-            TypedEnumVariant::Valued { ident, value } => {
-                CIREnumVariant::Valued(ident.as_string(), Box::new(self.lower_expr(value)))
-            }
-            TypedEnumVariant::Tuple { ident, fields } => {
-                let fields = fields.iter().map(|field| self.lower_sema_type(&field.ty)).collect();
-
-                CIREnumVariant::Payload(ident.as_string(), fields)
-            }
-            TypedEnumVariant::Struct { ident, fields } => {
-                let fields = fields
-                    .iter()
-                    .map(|struct_variant_field| self.lower_sema_type(&struct_variant_field.ty))
-                    .collect();
-
-                CIREnumVariant::Payload(ident.as_string(), fields)
-            }
-        }
-    }
-
-    fn lower_enum_decl(&mut self, enum_decl: &EnumDecl) -> CIREnumType {
-        let variants: Vec<CIREnumVariant> = enum_decl
-            .variants
-            .iter()
-            .map(|variant| self.lower_enum_variant(variant))
-            .collect();
-
-        let tag_type = enum_decl
-            .tag_type
-            .clone()
-            .map(|sema_type| Box::new(self.lower_sema_type(&sema_type)));
-
-        CIREnumType {
-            name: enum_decl.name.clone(),
-            variants,
-            tag_type,
-            repr_attr: enum_decl.modifiers.repr_attr.clone(),
-            align: enum_decl.align.clone(),
-            loc: enum_decl.loc,
-        }
-    }
-
-    fn lower_union_decl(&mut self, union_decl: &UnionDecl) -> CIRUnionType {
-        let fields = union_decl
-            .fields
-            .iter()
-            .map(|field| self.lower_sema_type(&field.ty))
-            .collect();
-
-        let fields_info = union_decl
-            .fields
-            .iter()
-            .map(|field| (field.name.clone(), field.loc))
-            .collect();
-
-        CIRUnionType {
-            name: union_decl.name.clone(),
-            fields,
-            fields_info,
-            repr_attr: union_decl.modifiers.repr_attr.clone(),
-            align: union_decl.align.clone(),
-            loc: union_decl.loc,
-        }
-    }
-
-    fn lower_named_type(&mut self, named_type: &NamedType) -> CIRType {
-        match named_type.type_decl_id {
-            TypeDeclID::Struct(struct_decl_id) => {
-                let struct_decl = self.decl_tables.struct_decl(struct_decl_id);
-
-                let inst_struct_decl = instantiate_struct_decl_with_type_args(&struct_decl, &named_type.type_args);
-
-                CIRType::Struct(self.lower_struct_decl(&inst_struct_decl))
-            }
-            TypeDeclID::Union(union_decl_id) => {
-                let union_decl = self.decl_tables.union_decl(union_decl_id);
-
-                let inst_union_decl = instantiate_union_decl_with_type_args(&union_decl, &named_type.type_args);
-
-                CIRType::Union(self.lower_union_decl(&inst_union_decl))
-            }
-            TypeDeclID::Enum(enum_decl_id) => {
-                let enum_decl = self.decl_tables.enum_decl(enum_decl_id);
-
-                let inst_enum_decl = instantiate_enum_decl_with_type_args(&enum_decl, &named_type.type_args);
-
-                CIRType::Enum(self.lower_enum_decl(&inst_enum_decl))
-            }
-            TypeDeclID::Interface(interface_decl_id) => {
-                let interface_decl = self.decl_tables.interface_decl(interface_decl_id);
-
-                cir_fat_ptr_type(interface_decl.loc)
-            }
-            TypeDeclID::Typedef(_) => unreachable!("unexpected unexpanded typedef"),
-        }
-    }
-}
-
 // Helpers.
 impl<'a> CIRTraverse<'a> {
+    #[inline]
+    fn lower_sema_type(&self, ty: &SemaType) -> CIRType {
+        lower_sema_type(&self.decl_tables, self.target, ty)
+    }
+
+    #[inline]
+    fn lower_enum_decl(&self, enum_decl: &EnumDecl) -> CIREnumType {
+        lower_enum_decl(&self.decl_tables, self.target, enum_decl)
+    }
+
+    #[inline]
+    fn lower_func_type(&self, func_type: &TypedFuncType) -> CIRFuncType {
+        lower_func_type(&self.decl_tables, self.target, func_type)
+    }
+
     fn get_or_declare_method_ir_value(&mut self, method_decl_id: MethodDeclID) -> IRValueID {
         if let Some(irv_id) = self.decl_to_ir_value_map.get(&DeclID::Method(method_decl_id)).copied() {
             return irv_id;

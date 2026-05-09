@@ -21,6 +21,7 @@ use cyrusc_const_eval::resolver::ConstResolver;
 use cyrusc_diagcentral::{Diag, DiagLevel};
 use cyrusc_source_loc::Loc;
 use cyrusc_typed_ast::{
+    builtins::TypedBuiltin,
     decls::DeclID,
     exprs::{TypedExpr, TypedExprKind, TypedSymbolExpr, ValueCategory},
     format::format_sema_type,
@@ -111,10 +112,21 @@ impl<'a> AnalysisContext<'a> {
             TypedExprKind::FieldAccess(field_access) => self.analyze_field_access(field_access),
             TypedExprKind::TupleAccess(tuple_access) => self.analyze_tuple_access(tuple_access, expected_type.clone()),
 
-            // TODO
-            TypedExprKind::Builtin(_typed_builtin) => todo!(),
+            TypedExprKind::Builtin(builtin) => match builtin {
+                TypedBuiltin::BuiltinFunc(builtin_func) => self.analyze_builtin_func(builtin_func),
+                TypedBuiltin::BuiltinBlock(builtin_block) => {
+                    self.reporter.report(Diag {
+                        level: DiagLevel::Error,
+                        kind: Box::new(AnalyzerDiagKind::InvalidStatement),
+                        loc: Some(builtin_block.loc),
+                        hint: None,
+                    });
+                    return None;
+                }
+            },
 
             TypedExprKind::SemaType(ty) => return self.normalize_sema_type(ty.clone(), expr.loc),
+            
             TypedExprKind::Poisoned => return None,
         };
 
@@ -201,8 +213,7 @@ impl<'a> AnalysisContext<'a> {
             | TypedExprKind::Prefix(_)
             | TypedExprKind::Infix(_) => ValueCategory::RValue,
 
-            // TODO
-            TypedExprKind::Builtin(_typed_builtin) => todo!(),
+            TypedExprKind::Builtin(_) => ValueCategory::RValue,
 
             TypedExprKind::SemaType(_) | TypedExprKind::Poisoned => ValueCategory::Unknown,
 

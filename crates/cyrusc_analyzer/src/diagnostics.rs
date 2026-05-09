@@ -19,7 +19,10 @@ use crate::context::AnalysisContext;
 use cyrusc_diagcentral::{Diag, DiagKind, DiagLevel};
 use cyrusc_source_loc::Loc;
 use cyrusc_strescape::diagnostics::UnescapeError;
-use cyrusc_typed_ast::stmts::{TypedFuncParamKind, TypedFuncVariadicParam};
+use cyrusc_typed_ast::{
+    builtins::TypedBuiltinForm,
+    stmts::{TypedFuncParamKind, TypedFuncVariadicParam},
+};
 use std::ops::RangeInclusive;
 use thiserror::Error;
 
@@ -301,6 +304,30 @@ pub enum AnalyzerDiagKind {
 
     #[error("Top-level statements cannot be used within a block scope; only at compilation unit level.")]
     InvalidStatement,
+
+    #[error("Builtin '@{name}' is not defined.")]
+    BuiltinNotDefined { name: String },
+
+    #[error("Builtin '@{name}' cannot be used in this context.")]
+    InvalidBuiltinForm {
+        name: String,
+        expected: TypedBuiltinForm,
+        found: TypedBuiltinForm,
+    },
+
+    #[error("Builtin '@{name}' expects at least {expected} argument(s), but {found} were provided.")]
+    BuiltinTooFewArgs {
+        name: String,
+        expected: usize,
+        found: usize,
+    },
+
+    #[error("Builtin '@{name}' expects at most {expected} argument(s), but {found} were provided.")]
+    BuiltinTooManyArgs {
+        name: String,
+        expected: usize,
+        found: usize,
+    },
 
     #[error("Condition expression must be of type 'bool'.")]
     ConditionExprMustBeOfTypeBool,

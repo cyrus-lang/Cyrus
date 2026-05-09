@@ -34,7 +34,7 @@ use std::{
 
 pub struct CodeGenContext {
     pub opts: CodeGenOptions,
-    pub target: ABITarget,
+    pub target: Arc<ABITarget>,
     pub llvm_target: LLVMTarget,
     pub llvm_target_triple: TargetTriple,
     pub build_manifest: Arc<Mutex<BuildManifest>>,
@@ -46,7 +46,7 @@ pub struct CodeGenContext {
 impl CodeGenContext {
     pub(crate) fn new(
         opts: CodeGenOptions,
-        target: ABITarget,
+        target: Arc<ABITarget>,
         llvm_target: LLVMTarget,
         llvm_target_triple: TargetTriple,
         build_manifest: Arc<Mutex<BuildManifest>>,

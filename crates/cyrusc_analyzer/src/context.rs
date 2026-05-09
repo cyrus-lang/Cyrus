@@ -27,7 +27,10 @@ use crate::{
     typecheck::type_cache::TypeCache,
 };
 use cyrusc_diagcentral::{Diag, DiagLevel, exit_with_single_diag, reporter::DiagReporter};
-use cyrusc_internal::{flow_state::ControlRegion, monomorph::MonomorphRegistry, symbols::SymbolQuery, vtable::VTableRegistry};
+use cyrusc_internal::{
+    abi::target::ABITarget, flow_state::ControlRegion, monomorph::MonomorphRegistry, symbols::SymbolQuery,
+    vtable::VTableRegistry,
+};
 use cyrusc_source_loc::{Loc, SourceMap};
 use cyrusc_typed_ast::{
     TypedProgramTree,
@@ -45,6 +48,7 @@ pub struct AnalysisContext<'a> {
     pub vtable_registry: Arc<VTableRegistry>,
     pub monomorph_registry: Arc<MonomorphRegistry>,
 
+    pub(crate) target: &'a ABITarget,
     pub(crate) decl_tables: Arc<DeclTablesRegistry>,
     pub(crate) formatter: &'a dyn Formatter,
     pub(crate) query: &'a dyn SymbolQuery,
@@ -64,6 +68,7 @@ impl<'a> AnalysisContext<'a> {
         config: AnalyzerConfig,
         reporter: Arc<DiagReporter>,
         source_map: Arc<SourceMap>,
+        target: &'a ABITarget,
         decl_tables: Arc<DeclTablesRegistry>,
         formatter: &'a dyn Formatter,
         query: &'a dyn SymbolQuery,
@@ -90,6 +95,7 @@ impl<'a> AnalysisContext<'a> {
             source_map,
             control_region_stack: control_stack,
             program_tree,
+            target,
             decl_tables,
             query,
             formatter,

@@ -60,7 +60,7 @@ pub struct CodeGenContextBundle {
     pub entry_file: PathBuf,
     pub build_dir: PathBuf,
     pub program_trees: Vec<Box<CIRModule>>,
-    pub target: ABITarget,
+    pub target: Arc<ABITarget>,
     pub llvm_target: InkwellTarget,
     pub llvm_target_triple: TargetTriple,
 }
@@ -74,6 +74,7 @@ pub struct CodeGenSemanticBundle {
     pub source_map: Arc<SourceMap>,
     pub entry_file: PathBuf,
     pub build_dir: PathBuf,
+    pub target: Arc<ABITarget>
 }
 
 fn create_compiler_context_target(target_info: &ABITargetInfo) -> (InkwellTarget, TargetTriple) {
@@ -95,7 +96,7 @@ pub fn create_compiler_context(
     opts: CodeGenOptions,
     file_path: &Option<PathBuf>,
     linker_output_kind: LinkerOutputKind,
-    target: ABITarget,
+    target: Arc<ABITarget>,
     llvm_target: InkwellTarget,
     llvm_target_triple: TargetTriple,
 ) -> CodeGenContext {
@@ -130,6 +131,7 @@ pub fn create_compiler_context(
 
 pub fn build_semantic_bundle(opts: &mut CodeGenOptions, file_path_opt: Option<String>) -> Box<CodeGenSemanticBundle> {
     // disable modulefs cache if compiling a single file
+
     if let Some(file_path) = &file_path_opt {
         opts.disable_modulefs_cache = true;
 
@@ -142,11 +144,13 @@ pub fn build_semantic_bundle(opts: &mut CodeGenOptions, file_path_opt: Option<St
     let file_path = file_path_opt.map(|path| Path::new(&path).to_path_buf());
 
     // resolve entry module file path & build directory path
+
     let entry_file = get_entry_module_file_path(opts, &base_path, &file_path);
     let build_dir = get_final_build_directory_path(&opts.build_dir);
     ensure_build_dir_subs_exist(&base_path, build_dir.clone());
 
     // create source map
+
     let source_map = Arc::new(SourceMap::new());
     let file_id = source_map.add_file_by_loading(entry_file.clone());
     let entry_source_file = { source_map.get_file(file_id).unwrap().clone() };
@@ -188,6 +192,18 @@ pub fn build_semantic_bundle(opts: &mut CodeGenOptions, file_path_opt: Option<St
                 exit(1);
             }
 
+            // target
+
+            let target_info = resolve_target_info_from_opts(&opts);
+            let target_abi = match create_target_abi(target_info.clone()) {
+                Ok(target_abi) => target_abi,
+                Err(err) => {
+                    tui_error(err);
+                    exit(1)
+                }
+            };
+            let target = Arc::new(ABITarget::new(target_info, target_abi));
+
             // analyze modules
 
             let config = AnalyzerConfig::default();
@@ -208,6 +224,7 @@ pub fn build_semantic_bundle(opts: &mut CodeGenOptions, file_path_opt: Option<St
                     config.clone(),
                     reporter.clone(),
                     source_map.clone(),
+                    &target,
                     decl_tables.clone(),
                     &resolver,
                     &resolver,
@@ -243,6 +260,7 @@ pub fn build_semantic_bundle(opts: &mut CodeGenOptions, file_path_opt: Option<St
                 monomorph_registry,
                 entry_file,
                 build_dir,
+                target,
             })
         }
         Err(_) => exit(1),
@@ -251,6 +269,9 @@ pub fn build_semantic_bundle(opts: &mut CodeGenOptions, file_path_opt: Option<St
 
 pub fn build_compilation_bundle(opts: &mut CodeGenOptions, file_path: Option<String>) -> CodeGenContextBundle {
     let codegen_semantic_bundle = build_semantic_bundle(opts, file_path);
+
+    let target = codegen_semantic_bundle.target;
+    let (llvm_target, llvm_target_triple) = create_compiler_context_target(&target.info);
 
     // prepare trees for codegen
 
@@ -262,20 +283,6 @@ pub fn build_compilation_bundle(opts: &mut CodeGenOptions, file_path: Option<Str
             Err(rc_still_shared) => Box::new(rc_still_shared.borrow().clone()),
         })
         .collect();
-
-    // target
-
-    let target_info = resolve_target_info_from_opts(&opts);
-    let target_abi = match create_target_abi(target_info.clone()) {
-        Ok(target_abi) => target_abi,
-        Err(err) => {
-            tui_error(err);
-            exit(1)
-        }
-    };
-
-    let (llvm_target, llvm_target_triple) = create_compiler_context_target(&target_info);
-    let target = ABITarget::new(target_info, target_abi);
 
     let cir_modules = walk_program_trees_in_parallel(
         opts.jobs,

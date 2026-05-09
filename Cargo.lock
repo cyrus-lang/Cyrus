@@ -371,6 +371,7 @@ name = "cyrusc_const_eval"
 version = "0.1.0"
 dependencies = [
  "cyrusc_ast",
+ "cyrusc_internal",
  "cyrusc_tokens",
  "cyrusc_typed_ast",
 ]
