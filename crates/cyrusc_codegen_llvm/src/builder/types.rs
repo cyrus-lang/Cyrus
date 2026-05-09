@@ -182,18 +182,8 @@ impl<'ll> CodeGenIRBuilder<'ll> {
                         .variants
                         .iter()
                         .map(|variant| match variant {
-                            CIREnumVariant::Unit(ident) => {
-                                // FIXME
-                                // let tag = enum_type.compute_variant_tag(ident).unwrap();
-                                let tag = 0;
-                                (ident.clone(), tag as i64)
-                            }
-                            CIREnumVariant::Valued(ident, _) => {
-                                // FIXME
-                                // let tag = enum_type.compute_variant_tag(ident).unwrap();
-                                let tag = 0;
-                                (ident.clone(), tag as i64)
-                            }
+                            CIREnumVariant::Unit(ident, tag) => (ident.clone(), *tag as i64),
+                            CIREnumVariant::Valued(ident, _, tag) => (ident.clone(), *tag as i64),
                             CIREnumVariant::Payload(..) => unreachable!(),
                         })
                         .collect();
@@ -215,18 +205,15 @@ impl<'ll> CodeGenIRBuilder<'ll> {
                         .iter()
                         .map(|variant| {
                             let ident = variant.ident();
-                            // FIXME
-                            // let tag = enum_type.compute_variant_tag(ident).unwrap();
-                            let tag = 0;
 
                             match variant {
-                                CIREnumVariant::Unit(_) => {
-                                    (ident.clone(), tag as i64, std::ptr::null_mut() as LLVMMetadataRef)
+                                CIREnumVariant::Unit(_, tag) => {
+                                    (ident.clone(), *tag as i64, std::ptr::null_mut() as LLVMMetadataRef)
                                 }
-                                CIREnumVariant::Valued(_, _) => {
-                                    (ident.clone(), tag as i64, std::ptr::null_mut() as LLVMMetadataRef)
+                                CIREnumVariant::Valued(_, _, tag) => {
+                                    (ident.clone(), *tag as i64, std::ptr::null_mut() as LLVMMetadataRef)
                                 }
-                                CIREnumVariant::Payload(_, elements) => {
+                                CIREnumVariant::Payload(_, elements, tag) => {
                                     let tuple_type = CIRTupleType {
                                         elements: elements.to_vec(),
                                         loc: enum_type.loc,
@@ -234,7 +221,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
 
                                     let tuple_type_metadata = self.emit_debug_ty_metadata(&CIRType::Tuple(tuple_type));
 
-                                    (ident.clone(), tag as i64, tuple_type_metadata)
+                                    (ident.clone(), *tag as i64, tuple_type_metadata)
                                 }
                             }
                         })
@@ -434,7 +421,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         self.llvmctx.struct_type(&llvm_field_types, is_packed)
     }
 
-    pub(crate) fn emit_enum_fielded_variant_payload_ty(
+    pub(crate) fn emit_enum_fielded_variant_payload_type(
         &self,
         variant_idx: usize,
         enum_type: &CIREnumType,
@@ -468,14 +455,14 @@ impl<'ll> CodeGenIRBuilder<'ll> {
 
         for variant in &enum_type.variants {
             let (payload_size, payload_align) = match variant {
-                CIREnumVariant::Unit(_) => (0, 1),
-                CIREnumVariant::Valued(_, value_type) => {
+                CIREnumVariant::Unit(_, _) => (0, 1),
+                CIREnumVariant::Valued(_, value_type, _) => {
                     let llvm_ty: BasicTypeEnum<'ll> = self.emit_ty(value_type.clone()).try_into().unwrap();
                     let size = target_data.get_store_size(&llvm_ty);
                     let align = target_data.get_abi_alignment(&llvm_ty) as u64;
                     (size, align)
                 }
-                CIREnumVariant::Payload(_, field_tys) => {
+                CIREnumVariant::Payload(_, field_tys, _) => {
                     if field_tys.is_empty() {
                         (0, 1)
                     } else {

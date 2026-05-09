@@ -153,6 +153,8 @@ impl<'ll> CodeGenIRBuilder<'ll> {
                     unreachable!()
                 };
 
+                dbg!(tag);
+
                 let pattern_value = enum_value.get_type().const_int(*tag as u64, false);
 
                 match payload {
@@ -294,7 +296,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
 
                         let enum_payload = self.extract_enum_payload(enum_struct_value);
 
-                        let payload_struct_type = self.emit_enum_fielded_variant_payload_ty(*tag, &enum_type).unwrap();
+                        let payload_struct_type = self.emit_enum_fielded_variant_payload_type(*tag, &enum_type).unwrap();
                         let payload_struct_value =
                             self.intrinsic_copy_buffer_to_struct(enum_payload, payload_struct_type);
 

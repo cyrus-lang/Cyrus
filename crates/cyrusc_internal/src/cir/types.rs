@@ -105,6 +105,16 @@ pub fn cir_fat_ptr_type(loc: Loc) -> CIRType {
 }
 
 impl CIREnumType {
+    #[inline]
+    pub fn lookup_variant_tag(&self, variant_name: &str) -> Option<u32> {
+        self.lookup_variant(variant_name).map(|variant| variant.tag())
+    }
+
+    #[inline]
+    pub fn lookup_variant(&self, variant_name: &str) -> Option<&CIREnumVariant> {
+        self.variants.iter().find(|variant| variant.ident() == variant_name)
+    }
+
     pub fn tag_type_or_infer_or_default(&self) -> Box<CIRType> {
         self.tag_type
             .clone()
@@ -129,7 +139,7 @@ impl CIREnumType {
         let mut expr_type: Option<Box<CIRType>> = None;
 
         for variant in &self.variants {
-            if let CIREnumVariant::Valued(_, value_type) = variant {
+            if let CIREnumVariant::Valued(_, value_type, _) = variant {
                 match &expr_type {
                     None => {
                         expr_type = Some(Box::new(value_type.clone()));
@@ -150,14 +160,14 @@ impl CIREnumType {
 
     #[inline]
     pub fn includes_payload(&self) -> bool {
-        self.variants.iter().any(|v| !matches!(v, CIREnumVariant::Unit(_)))
+        self.variants.iter().any(|v| !matches!(v, CIREnumVariant::Unit(_, _)))
     }
 
     pub fn includes_only_integer_payload(&self) -> bool {
         self.variants.iter().all(|v| match v {
-            CIREnumVariant::Valued(_, value_type) => value_type.is_integer_or_bool(),
-            CIREnumVariant::Unit(_) => true,
-            CIREnumVariant::Payload(_, _) => false,
+            CIREnumVariant::Valued(_, value_type, _) => value_type.is_integer_or_bool(),
+            CIREnumVariant::Unit(_, _) => true,
+            CIREnumVariant::Payload(_, _, _) => false,
         })
     }
 }
