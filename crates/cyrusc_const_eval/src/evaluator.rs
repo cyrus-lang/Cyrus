@@ -19,24 +19,35 @@ use crate::diagnostics::ConstEvalError;
 use crate::resolver::ConstResolver;
 use crate::value::ConstValue;
 use cyrusc_ast::operators::{InfixOperator, PrefixOperator};
+use cyrusc_internal::abi::layout::type_layout;
+use cyrusc_internal::abi::target::ABITarget;
+use cyrusc_internal::cir::lower::lower_sema_type;
 use cyrusc_tokens::literals::LiteralKind;
+use cyrusc_typed_ast::builtins::{
+    TypedBuiltin, TypedBuiltinFunc, TypedBuiltinKind, TypedBuiltinPhase, builtin_spec_of, lookup_builtin,
+};
 use cyrusc_typed_ast::decls::DeclID;
+use cyrusc_typed_ast::decls::table::DeclTablesRegistry;
 use cyrusc_typed_ast::exprs::*;
 use cyrusc_typed_ast::types::SemaType;
 use std::collections::HashMap;
 
 pub struct ConstEvaluator<'a, R: ConstResolver> {
-    pub resolver: &'a mut R,
+    pub resolver: &'a R,
     cache: HashMap<DeclID, ConstValue>,
     evaluating: HashMap<DeclID, ()>,
+    decl_tables: &'a DeclTablesRegistry,
+    target: &'a ABITarget,
 }
 
 impl<'a, R: ConstResolver> ConstEvaluator<'a, R> {
-    pub fn new(resolver: &'a mut R) -> Self {
+    pub fn new(resolver: &'a R, decl_tables: &'a DeclTablesRegistry, target: &'a ABITarget) -> Self {
         Self {
             resolver,
             cache: HashMap::new(),
             evaluating: HashMap::new(),
+            decl_tables,
+            target,
         }
     }
 
@@ -56,6 +67,8 @@ impl<'a, R: ConstResolver> ConstEvaluator<'a, R> {
             TypedExprKind::Literal(lit) => self.eval_literal(lit),
             TypedExprKind::Prefix(prefix) => self.eval_prefix(prefix),
             TypedExprKind::Infix(infix) => self.eval_infix(infix),
+
+            TypedExprKind::Builtin(builtin) => self.eval_builtin(builtin),
 
             _ => Err(ConstEvalError::UnsupportedExpr),
         }?;
@@ -216,5 +229,52 @@ impl<'a, R: ConstResolver> ConstEvaluator<'a, R> {
         }
 
         Ok(value)
+    }
+}
+
+impl<'a, R: ConstResolver> ConstEvaluator<'a, R> {
+    fn eval_builtin(&self, builtin: &TypedBuiltin) -> Result<ConstValue, ConstEvalError> {
+        let Some(builtin_func) = builtin.as_builtin_func() else {
+            return Err(ConstEvalError::UnsupportedExpr);
+        };
+
+        let Some(builtin_kind) = lookup_builtin(&builtin_func.name.value) else {
+            return Err(ConstEvalError::UnsupportedExpr);
+        };
+
+        let builtin_spec = builtin_spec_of(builtin_kind);
+
+        if builtin_spec.phase != TypedBuiltinPhase::ConstEval {
+            return Err(ConstEvalError::UnsupportedExpr);
+        }
+
+        match builtin_spec.kind {
+            TypedBuiltinKind::SizeOf => self.eval_sizeof(builtin_func),
+            TypedBuiltinKind::AlignOf => self.eval_alignof(builtin_func),
+
+            _ => return Err(ConstEvalError::UnsupportedExpr),
+        }
+    }
+
+    fn eval_sizeof(&self, builtin_func: &TypedBuiltinFunc) -> Result<ConstValue, ConstEvalError> {
+        let arg = builtin_func.args.first().unwrap();
+
+        dbg!(arg.clone());
+        let arg_type = arg.ty.as_ref().unwrap();
+
+        let cir_type = lower_sema_type(self.decl_tables, self.target, &arg_type);
+        let layout = type_layout(&self.target.info, &cir_type);
+
+        Ok(ConstValue::Int(layout.size.try_into().unwrap()))
+    }
+
+    fn eval_alignof(&self, builtin_func: &TypedBuiltinFunc) -> Result<ConstValue, ConstEvalError> {
+        let arg = builtin_func.args.first().unwrap();
+        let arg_type = arg.ty.as_ref().unwrap();
+
+        let cir_type = lower_sema_type(self.decl_tables, self.target, &arg_type);
+        let layout = type_layout(&self.target.info, &cir_type);
+
+        Ok(ConstValue::Int(layout.align.try_into().unwrap()))
     }
 }

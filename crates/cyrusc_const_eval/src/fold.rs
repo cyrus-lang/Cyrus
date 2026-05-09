@@ -16,17 +16,18 @@
  */
 
 use crate::{evaluator::ConstEvaluator, resolver::ConstResolver};
+use cyrusc_internal::abi::target::ABITarget;
 use cyrusc_tokens::literals::LiteralKind;
-use cyrusc_typed_ast::exprs::*;
+use cyrusc_typed_ast::{decls::table::DeclTablesRegistry, exprs::*};
 
 pub struct ConstFolder<'a, R: ConstResolver> {
     evaluator: ConstEvaluator<'a, R>,
 }
 
 impl<'a, R: ConstResolver> ConstFolder<'a, R> {
-    pub fn new(resolver: &'a mut R) -> Self {
+    pub fn new(resolver: &'a R, decl_tables: &'a DeclTablesRegistry, target: &'a ABITarget) -> Self {
         Self {
-            evaluator: ConstEvaluator::new(resolver),
+            evaluator: ConstEvaluator::new(resolver, decl_tables, target),
         }
     }
 

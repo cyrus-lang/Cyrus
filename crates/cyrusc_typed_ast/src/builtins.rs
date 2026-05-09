@@ -65,34 +65,25 @@ pub struct TypedBuiltinBlock {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum BuiltinFamily {
+pub enum TypedBuiltinFamily {
     Attribute,
     ConstEval,
     Intrinsic,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum BuiltinPhase {
+pub enum TypedBuiltinPhase {
     Analyzer,
+    ConstEval,
     CIRLowering,
-    CIRConstEval,
     Codegen,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum BuiltinForm {
+pub enum TypedBuiltinForm {
     Expr,
     Stmt,
     Block,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum BuiltinLowering {
-    Remove,
-    ToConst,
-    ToAttr,
-    ToInstruction,
-    PreserveToCodegen,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -106,83 +97,75 @@ pub enum TypedBuiltinKind {
 }
 
 #[derive(Debug)]
-pub struct BuiltinSpec {
+pub struct TypedBuiltinSpec {
     pub kind: TypedBuiltinKind,
     pub name: &'static str,
 
-    pub family: BuiltinFamily,
-    pub form: BuiltinForm,
-
-    pub phase: BuiltinPhase,
-    pub lowering: BuiltinLowering,
+    pub family: TypedBuiltinFamily,
+    pub form: TypedBuiltinForm,
+    pub phase: TypedBuiltinPhase,
 
     pub min_args: usize,
-    pub max_args: usize,
+    pub max_args: Option<usize>,
 }
 
-pub static BUILTIN_SPECS: &[BuiltinSpec] = &[
+pub static BUILTIN_SPECS: &[TypedBuiltinSpec] = &[
     // -- const-evals --
-    BuiltinSpec {
+    TypedBuiltinSpec {
         kind: TypedBuiltinKind::SizeOf,
         name: "sizeof",
-        family: BuiltinFamily::ConstEval,
-        form: BuiltinForm::Expr,
-        phase: BuiltinPhase::CIRConstEval,
-        lowering: BuiltinLowering::ToConst,
+        family: TypedBuiltinFamily::ConstEval,
+        form: TypedBuiltinForm::Expr,
+        phase: TypedBuiltinPhase::ConstEval,
         min_args: 1,
-        max_args: 1,
+        max_args: Some(1),
     },
-    BuiltinSpec {
+    TypedBuiltinSpec {
         kind: TypedBuiltinKind::AlignOf,
         name: "alignof",
-        family: BuiltinFamily::ConstEval,
-        form: BuiltinForm::Expr,
-        phase: BuiltinPhase::CIRConstEval,
-        lowering: BuiltinLowering::ToConst,
+        family: TypedBuiltinFamily::ConstEval,
+        form: TypedBuiltinForm::Expr,
+        phase: TypedBuiltinPhase::ConstEval,
         min_args: 1,
-        max_args: 1,
+        max_args: Some(1),
     },
     // -- intrinsics --
-    BuiltinSpec {
+    TypedBuiltinSpec {
         kind: TypedBuiltinKind::Memcpy,
         name: "memcpy",
-        family: BuiltinFamily::Intrinsic,
-        form: BuiltinForm::Expr,
-        phase: BuiltinPhase::Codegen,
-        lowering: BuiltinLowering::ToInstruction,
+        family: TypedBuiltinFamily::Intrinsic,
+        form: TypedBuiltinForm::Expr,
+        phase: TypedBuiltinPhase::Codegen,
         min_args: 3,
-        max_args: 3,
+        max_args: Some(3),
     },
-    BuiltinSpec {
+    TypedBuiltinSpec {
         kind: TypedBuiltinKind::Memset,
         name: "memset",
-        family: BuiltinFamily::Intrinsic,
-        form: BuiltinForm::Expr,
-        phase: BuiltinPhase::Codegen,
-        lowering: BuiltinLowering::ToInstruction,
+        family: TypedBuiltinFamily::Intrinsic,
+        form: TypedBuiltinForm::Expr,
+        phase: TypedBuiltinPhase::Codegen,
         min_args: 3,
-        max_args: 3,
+        max_args: Some(3),
     },
     // -- attributes --
-    BuiltinSpec {
+    TypedBuiltinSpec {
         kind: TypedBuiltinKind::Unroll,
         name: "unroll",
-        family: BuiltinFamily::Attribute,
-        form: BuiltinForm::Stmt,
-        phase: BuiltinPhase::Codegen,
-        lowering: BuiltinLowering::ToAttr,
+        family: TypedBuiltinFamily::Attribute,
+        form: TypedBuiltinForm::Stmt,
+        phase: TypedBuiltinPhase::Codegen,
         min_args: 0,
-        max_args: 1,
+        max_args: Some(1),
     },
-    BuiltinSpec {
+    TypedBuiltinSpec {
         kind: TypedBuiltinKind::Allow,
         name: "allow",
-        family: BuiltinFamily::Attribute,
-        form: BuiltinForm::Block,
-        phase: BuiltinPhase::Analyzer,
-        lowering: BuiltinLowering::Remove,
+        family: TypedBuiltinFamily::Attribute,
+        form: TypedBuiltinForm::Block,
+        phase: TypedBuiltinPhase::Analyzer,
         min_args: 1,
-        max_args: 1,
+        max_args: Some(1),
     },
 ];
 
@@ -197,7 +180,7 @@ builtin_lookup! {
     }
 }
 
-pub fn builtin_spec_of(kind: TypedBuiltinKind) -> &'static BuiltinSpec {
+pub fn builtin_spec_of(kind: TypedBuiltinKind) -> &'static TypedBuiltinSpec {
     BUILTIN_SPECS
         .iter()
         .find(|s| s.kind == kind)
@@ -218,3 +201,21 @@ impl PartialEq for TypedBuiltinBlock {
 
 impl Eq for TypedBuiltinFunc {}
 impl Eq for TypedBuiltinBlock {}
+
+impl TypedBuiltin {
+    #[inline]
+    pub fn as_builtin_func(&self) -> Option<&TypedBuiltinFunc> {
+        match self {
+            TypedBuiltin::BuiltinFunc(builtin_func) => Some(builtin_func),
+            _ => None,
+        }
+    }
+
+    #[inline]
+    pub fn as_builtin_block(&self) -> Option<&TypedBuiltinBlock> {
+        match self {
+            TypedBuiltin::BuiltinBlock(builtin_block) => Some(builtin_block),
+            _ => None,
+        }
+    }
+}

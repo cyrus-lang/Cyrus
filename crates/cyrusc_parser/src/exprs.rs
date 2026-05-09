@@ -211,9 +211,6 @@ impl<'source_file> Parser<'source_file> {
         let (line, column, start) = (loc.line, loc.column, loc.start);
 
         let mut expr = match &self.current_token().kind {
-            TokenKind::At => {
-                return Ok(ASTExpr::Builtin(self.parse_builtin(false)?));
-            }
             TokenKind::Repr => {
                 let repr_attr = self.parse_repr_attr(self.current_token())?.unwrap();
 
@@ -234,19 +231,36 @@ impl<'source_file> Parser<'source_file> {
                     return Err(self.error_invalid_token());
                 }
             }
+
             TokenKind::Struct => self.parse_unnamed_struct_value(None)?,
+
             TokenKind::Union => self.parse_unnamed_union_value(false)?,
-            TokenKind::Dot => self.parse_unnamed_enum_value()?,
-            TokenKind::Dynamic => self.parse_dynamic_expr()?,
-            TokenKind::Inline => {
-                if self.peek_token_is(TokenKind::Function) {
-                    self.next_token();
-                    self.parse_lambda_expr(true)?
+
+            TokenKind::Inline | TokenKind::Function => {
+                let is_inline = {
+                    if self.current_token_is(TokenKind::Inline) {
+                        self.next_token();
+                        true
+                    } else {
+                        false
+                    }
+                };
+
+                if self.current_token_is(TokenKind::Function) {
+                    self.parse_lambda_expr(is_inline)?
                 } else {
                     return Err(self.error_invalid_token());
                 }
             }
-            TokenKind::Function => self.parse_lambda_expr(false)?,
+
+            TokenKind::At => {
+                return Ok(ASTExpr::Builtin(self.parse_builtin(false)?));
+            }
+
+            TokenKind::Dot => self.parse_unnamed_enum_value()?,
+
+            TokenKind::Dynamic => self.parse_dynamic_expr()?,
+
             TokenKind::Ident { .. } => {
                 let module_import = self.parse_module_import()?;
 
@@ -256,6 +270,7 @@ impl<'source_file> Parser<'source_file> {
                     ASTExpr::ModuleImport(module_import)
                 }
             }
+
             TokenKind::Ampersand => {
                 self.next_token();
 
@@ -266,6 +281,7 @@ impl<'source_file> Parser<'source_file> {
                     loc: Loc::new(self.file_id(), line, column, start, end),
                 })
             }
+
             TokenKind::Asterisk => {
                 self.next_token();
 
@@ -276,6 +292,9 @@ impl<'source_file> Parser<'source_file> {
                     loc: Loc::new(self.file_id(), line, column, start, end),
                 })
             }
+
+            TokenKind::Literal(value) => ASTExpr::Literal(value.clone()),
+
             TokenKind::Null => {
                 let end = self.current_token().loc.end;
 
@@ -284,6 +303,7 @@ impl<'source_file> Parser<'source_file> {
                     loc: Loc::new(self.file_id(), line, column, start, end),
                 })
             }
+
             bool_token @ TokenKind::True | bool_token @ TokenKind::False => {
                 let value = match bool_token {
                     TokenKind::True => true,
@@ -298,7 +318,7 @@ impl<'source_file> Parser<'source_file> {
                     loc: Loc::new(self.file_id(), line, column, start, end),
                 })
             }
-            TokenKind::Literal(value) => ASTExpr::Literal(value.clone()),
+
             token_kind @ TokenKind::Minus | token_kind @ TokenKind::Bang | token_kind @ TokenKind::Tilde => {
                 let prefix_operator = match token_kind {
                     TokenKind::Minus => PrefixOperator::Minus,
@@ -320,6 +340,7 @@ impl<'source_file> Parser<'source_file> {
                     loc: Loc::new(self.file_id(), line, column, start, end),
                 })
             }
+
             TokenKind::LeftParen => {
                 // grouped expression
                 self.next_token();
@@ -335,6 +356,7 @@ impl<'source_file> Parser<'source_file> {
                     expr
                 }
             }
+
             TokenKind::LeftBrace => self.parse_untyped_array()?,
             _ => {
                 let type_spec = self.parse_type_specifier()?;

@@ -53,12 +53,12 @@ impl<'a> AnalysisContext<'a> {
 
     #[inline]
     pub(crate) fn fold_const_expr(&mut self, expr: &mut TypedExpr) {
-        let mut folder = ConstFolder::new(self);
+        let mut folder = ConstFolder::new(self, &self.decl_tables, self.target);
 
         folder.fold_expr(expr);
     }
 
-    fn resolve_variable_rhs_expr(&mut self, decl_id: DeclID) -> Option<TypedExpr> {
+    fn resolve_variable_rhs_expr(&self, decl_id: DeclID) -> Option<TypedExpr> {
         if let Some(var_decl_id) = decl_id.as_var() {
             let var_decl = self.decl_tables.var_decl(var_decl_id);
             
@@ -74,7 +74,7 @@ impl<'a> AnalysisContext<'a> {
 }
 
 impl<'a> ConstResolver for AnalysisContext<'a> {
-    fn resolve_symbol_expr(&mut self, decl_id: DeclID) -> Option<TypedExpr> {
+    fn resolve_symbol_expr(&self, decl_id: DeclID) -> Option<TypedExpr> {
         self.resolve_variable_rhs_expr(decl_id)
     }
 

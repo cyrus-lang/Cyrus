@@ -16,4 +16,5 @@
  */
 
 pub mod cir;
+pub mod lower;
 pub mod types;

@@ -26,6 +26,3 @@ indexmap = "=2.14.0"
 name = "cyrusc_analyzer"
 path = "./src/lib.rs"
 
-[[bin]]
-name = "cyrusc_analyzer"
-path = "./src/cli.rs"
