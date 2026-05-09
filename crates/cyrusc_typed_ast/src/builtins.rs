@@ -91,6 +91,7 @@ pub enum TypedBuiltinKind {
     Allow,
     SizeOf,
     AlignOf,
+    OffsetOf,
     Unroll,
     Memcpy,
     Memset,
@@ -113,7 +114,7 @@ pub static BUILTIN_SPECS: &[TypedBuiltinSpec] = &[
     // -- const-evals --
     TypedBuiltinSpec {
         kind: TypedBuiltinKind::SizeOf,
-        name: "sizeof",
+        name: "sizeOf",
         family: TypedBuiltinFamily::ConstEval,
         form: TypedBuiltinForm::Expr,
         phase: TypedBuiltinPhase::ConstEval,
@@ -122,12 +123,21 @@ pub static BUILTIN_SPECS: &[TypedBuiltinSpec] = &[
     },
     TypedBuiltinSpec {
         kind: TypedBuiltinKind::AlignOf,
-        name: "alignof",
+        name: "alignOf",
         family: TypedBuiltinFamily::ConstEval,
         form: TypedBuiltinForm::Expr,
         phase: TypedBuiltinPhase::ConstEval,
         min_args: 1,
         max_args: Some(1),
+    },
+    TypedBuiltinSpec {
+        kind: TypedBuiltinKind::OffsetOf,
+        name: "offsetOf",
+        family: TypedBuiltinFamily::ConstEval,
+        form: TypedBuiltinForm::Expr,
+        phase: TypedBuiltinPhase::ConstEval,
+        min_args: 2,
+        max_args: Some(2),
     },
     // -- intrinsics --
     TypedBuiltinSpec {
@@ -172,8 +182,9 @@ pub static BUILTIN_SPECS: &[TypedBuiltinSpec] = &[
 builtin_lookup! {
     pub fn lookup_builtin(name: &str) -> Option<TypedBuiltinKind> {
         "allow" => TypedBuiltinKind::Allow,
-        "sizeof" => TypedBuiltinKind::SizeOf,
-        "alignof" => TypedBuiltinKind::AlignOf,
+        "sizeOf" => TypedBuiltinKind::SizeOf,
+        "alignOf" => TypedBuiltinKind::AlignOf,
+        "offsetOf" => TypedBuiltinKind::OffsetOf,
         "unroll" => TypedBuiltinKind::Unroll,
         "memcpy" => TypedBuiltinKind::Memcpy,
         "memset" => TypedBuiltinKind::Memset,

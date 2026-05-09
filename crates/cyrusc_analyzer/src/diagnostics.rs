@@ -28,6 +28,12 @@ use thiserror::Error;
 
 #[derive(Debug, Error, Clone)]
 pub enum AnalyzerDiagKind {
+    #[error("@offsetOf operand must be a struct type, but found '{arg_type}'.")]
+    InvalidOffsetOfOperand { arg_type: String },
+
+    #[error("@offsetOf field name must be a string literal.")]
+    OffsetOfFieldMustBeString,
+
     #[error("Invalid struct literal: mixed type and value fields.")]
     MixedStructFieldKinds,
 
