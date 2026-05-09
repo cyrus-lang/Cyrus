@@ -17,16 +17,36 @@
 
 use crate::{context::AnalysisContext, diagnostics::AnalyzerDiagKind};
 use cyrusc_diagcentral::{Diag, DiagLevel};
+use cyrusc_internal::flow_state::FlowState;
 use cyrusc_source_loc::Loc;
 use cyrusc_typed_ast::{
     builtins::{
-        TypedBuiltinForm, TypedBuiltinFunc, TypedBuiltinKind, TypedBuiltinSpec, builtin_spec_of, lookup_builtin,
+        TypedBuiltin, TypedBuiltinForm, TypedBuiltinFunc, TypedBuiltinKind, TypedBuiltinSpec, builtin_spec_of,
+        lookup_builtin,
     },
     format::{format_sema_type, format_struct_decl},
+    stmts::TypedStmt,
     types::{PlainType, SemaType},
 };
 
 impl<'a> AnalysisContext<'a> {
+    pub(crate) fn analyze_builtin(&mut self, typed_stmt: &mut TypedStmt) -> FlowState {
+        let TypedStmt::Builtin(builtin) = typed_stmt else {
+            unreachable!()
+        };
+
+        match builtin {
+            TypedBuiltin::BuiltinFunc(builtin_func) => {
+                self.analyze_builtin_func(builtin_func);
+
+                FlowState::Reachable
+            }
+            TypedBuiltin::BuiltinBlock(_builtin_block) => {
+                todo!()
+            }
+        }
+    }
+
     pub(crate) fn analyze_builtin_func(&mut self, builtin_func: &mut TypedBuiltinFunc) -> Option<SemaType> {
         for arg in &mut builtin_func.args {
             self.analyze_expr_non_terminal(arg, None);
@@ -175,10 +195,7 @@ impl<'a> AnalysisContext<'a> {
 
         let struct_name = format_struct_decl(&struct_decl, self.formatter);
 
-        let field_exists = struct_decl
-            .fields
-            .iter()
-            .any(|field| field.name == field_name);
+        let field_exists = struct_decl.fields.iter().any(|field| field.name == field_name);
 
         if !field_exists {
             self.reporter.report(Diag {

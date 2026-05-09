@@ -86,6 +86,8 @@ impl<'a> AnalysisContext<'a> {
             TypedStmt::Return(return_stmt) => self.analyze_return(return_stmt),
             TypedStmt::Switch(switch_stmt) => self.analyze_switch(switch_stmt),
 
+            TypedStmt::Builtin(_) => self.analyze_builtin(typed_stmt),
+
             // skipped
             TypedStmt::Goto(_) => FlowState::Reachable,
             TypedStmt::Label(_) => FlowState::Reachable,

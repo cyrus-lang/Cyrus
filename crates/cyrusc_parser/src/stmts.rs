@@ -219,6 +219,7 @@ impl<'source_file> Parser<'source_file> {
         loop {
             let inner_stmts = self.parse_stmt(None, true)?;
             self.next_token();
+            
             stmts.extend(inner_stmts);
 
             if self.current_token_is(TokenKind::RightBrace) {

@@ -19,6 +19,7 @@ use crate::context::AnalysisContext;
 use cyrusc_internal::monomorph::MonomorphizableTemplateID;
 use cyrusc_source_loc::Loc;
 use cyrusc_typed_ast::{
+    builtins::TypedBuiltin,
     decls::{DeclID, FuncDecl, FuncDeclID, MethodDecl, MethodDeclID, MonomorphID, VarDecl, VarDeclID},
     exprs::{
         TypedEnumInitArgs, TypedExpr, TypedExprKind, TypedFuncCall, TypedFuncCallDispatch, TypedSymbolExpr,
@@ -588,8 +589,20 @@ impl<'a> AnalysisContext<'a> {
                 self.specialize_expr(&mut dynamic.operand, decl_map);
             }
 
-            // TODO
-            TypedExprKind::Builtin(_builtin) => todo!(),
+            TypedExprKind::Builtin(builtin) => match builtin {
+                TypedBuiltin::BuiltinFunc(builtin_func) => {
+                    for arg in &mut builtin_func.args {
+                        self.specialize_expr(arg, decl_map);
+                    }
+                }
+                TypedBuiltin::BuiltinBlock(builtin_block) => {
+                    for arg in &mut builtin_block.args {
+                        self.specialize_expr(arg, decl_map);
+                    }
+
+                    self.specialize_block_stmt(&mut builtin_block.block, decl_map);
+                }
+            },
 
             TypedExprKind::Poisoned | TypedExprKind::Literal(_) | TypedExprKind::SemaType(_) => {}
         }

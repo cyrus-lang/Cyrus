@@ -34,6 +34,7 @@ use cyrusc_source_loc::SourceMap;
 use cyrusc_tokens::literals::*;
 use cyrusc_typed_ast::TypedProgramTree;
 use cyrusc_typed_ast::VTableID;
+use cyrusc_typed_ast::builtins::TypedBuiltin;
 use cyrusc_typed_ast::decls::table::DeclTablesRegistry;
 use cyrusc_typed_ast::decls::*;
 use cyrusc_typed_ast::exprs::*;
@@ -203,8 +204,21 @@ impl<'a> CIRTraverse<'a> {
             }
             TypedStmt::Defer(_) | TypedStmt::Interface(..) | TypedStmt::Typedef(..) => {}
 
-            // TODO
-            TypedStmt::Builtin(_builtin) => todo!(),
+            TypedStmt::Builtin(builtin) => {
+                let stmts = self.lower_builtin(builtin);
+                lowered_stmts.extend(stmts);
+            }
+        }
+    }
+
+    fn lower_builtin(&self, builtin: &TypedBuiltin) -> Vec<CIRStmt> {
+        match builtin {
+            TypedBuiltin::BuiltinFunc(builtin_func) => {
+                dbg!(builtin_func.clone());
+
+                todo!()
+            }
+            TypedBuiltin::BuiltinBlock(_builtin_block) => todo!(),
         }
     }
 
@@ -1475,7 +1489,11 @@ impl<'a> CIRTraverse<'a> {
             TypedExprKind::UnionInit(union_init) => self.lower_union_init(union_init),
             TypedExprKind::EnumInit(enum_init) => self.lower_enum_init(enum_init),
 
-            TypedExprKind::Builtin(_builtin) => todo!(),
+            TypedExprKind::Builtin(builtin) => {
+                let stmt = self.lower_builtin(builtin).first().cloned().unwrap();
+
+                stmt.as_expr().unwrap().kind.clone()
+            }
 
             TypedExprKind::UnnamedStructValue(_)
             | TypedExprKind::UnnamedEnumValue(_)
