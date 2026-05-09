@@ -402,7 +402,6 @@ impl fmt::Display for ASTExpr {
                     format_enum_struct_variant_field_inits(&struct_init.field_inits)
                 )
             }
-            ASTExpr::UnnamedStructValue(unnamed_struct_value) => write!(f, "{}", unnamed_struct_value),
             ASTExpr::ModuleImport(module_import) => write!(f, "{}", module_import),
             ASTExpr::TypeSpecifier(type_spec) => write!(f, "{}", type_spec),
             ASTExpr::Tuple(tuple_value) => {
@@ -436,14 +435,8 @@ impl fmt::Display for ASTExpr {
 
                 Ok(())
             }
-            ASTExpr::UnnamedUnionValue(unnamed_union_value) => {
-                if unnamed_union_value.is_const {
-                    write!(f, "const ")?;
-                }
-                write!(f, "union {{ {}", unnamed_union_value.field_name.as_string())?;
-                write!(f, " = {} }}", unnamed_union_value.field_value)?;
-                Ok(())
-            }
+            ASTExpr::UnnamedStructValue(unnamed_struct_value) => write!(f, "{}", unnamed_struct_value),
+            ASTExpr::UnnamedUnionValue(unnamed_union_value) => write!(f, "{}", unnamed_union_value),
         }
     }
 }
@@ -485,6 +478,25 @@ impl fmt::Display for ASTUnnamedStructValueExpr {
         if let Some(align) = self.align {
             write!(f, " align({})", align)?;
         }
+
+        write!(f, " {{ ")?;
+
+        let mut field_iter = self.fields.iter().peekable();
+        while let Some(field) = field_iter.next() {
+            write!(f, "{} = {}", field.name.value, *field.value)?;
+
+            if field_iter.peek().is_some() {
+                write!(f, ", ")?;
+            }
+        }
+
+        write!(f, " }}")
+    }
+}
+
+impl fmt::Display for ASTUnnamedUnionValueExpr {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "union")?;
 
         write!(f, " {{ ")?;
 

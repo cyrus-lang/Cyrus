@@ -600,8 +600,8 @@ impl<'a> CIRPrinter<'a> {
                 for variant in &enum_type.variants {
                     match variant {
                         CIREnumVariant::Unit(name) => parts.push(name.clone()),
-                        CIREnumVariant::Valued(name, expr) => {
-                            parts.push(format!("{name} = {}", self.print_expr(expr)));
+                        CIREnumVariant::Valued(name, value_type) => {
+                            parts.push(format!("{name} = {}", self.print_type(value_type)));
                         }
                         CIREnumVariant::Payload(name, types) => {
                             let elements = types.iter().map(|t| self.print_type(t)).collect::<Vec<_>>().join(", ");

@@ -125,8 +125,15 @@ impl<'a> AnalysisContext<'a> {
                 }
             },
 
-            TypedExprKind::SemaType(ty) => return self.normalize_sema_type(ty.clone(), expr.loc),
-            
+            // FIXME 
+            // SemaType must be only valid in analyze_expr_non_terminal,
+            // and consider to report error if a sema-type used in this context.
+            TypedExprKind::SemaType(ty) => {
+                let ty = self.normalize_sema_type(ty.clone(), expr.loc);
+                expr.ty = ty.clone();
+                return ty;
+            }
+
             TypedExprKind::Poisoned => return None,
         };
 

@@ -224,11 +224,30 @@ pub fn format_typed_expr(expr: &TypedExpr, formatter: &dyn Formatter) -> String 
             let separator = if method_call.is_thin_arrow { "->" } else { "." };
             format!("{}{}{}", operand, separator, method_call.name)
         }
-        UnnamedUnionValue(unnamed_union_value) => format!(
-            "union {{ {} = {} }}",
-            unnamed_union_value.name.as_string(),
-            format_typed_expr(&unnamed_union_value.value, formatter)
-        ),
+        UnnamedUnionValue(unnamed_union_value) => {
+            let mut out = String::new();
+
+            out.push_str("union");
+
+            out.push_str(" {{ ");
+
+            out.push_str(
+                &unnamed_union_value
+                    .fields
+                    .iter()
+                    .map(|field| {
+                        let mut x = String::new();
+                        x.push_str(&field.name);
+                        x.push_str(&format_typed_expr(&field.value, formatter));
+                        x
+                    })
+                    .collect::<Vec<_>>()
+                    .join(", "),
+            );
+
+            out.push_str(" }}");
+            out
+        }
         UnnamedStructValue(unnamed_struct_value) => {
             let mut out = String::new();
 

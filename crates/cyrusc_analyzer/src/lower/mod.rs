@@ -44,6 +44,17 @@ impl<'a> AnalysisContext<'a> {
                     }
                 };
             }
+            TypedExprKind::UnnamedStructValue(unnamed_struct_value) => {
+                if let Some(expr) = self.lower_unnamed_struct_value_as_unnamed_struct_type(unnamed_struct_value) {
+                    *typed_expr = expr;
+                }
+            }
+            TypedExprKind::UnnamedUnionValue(unnamed_union_value) => {
+                if let Some(expr) = self.lower_unnamed_union_value_as_unnamed_union_type(unnamed_union_value) {
+                    *typed_expr = expr;
+                }
+            }
+
             _ => {
                 self.lower_field_access_as_enum_init(typed_expr);
                 self.lower_method_call_as_enum_init(typed_expr);

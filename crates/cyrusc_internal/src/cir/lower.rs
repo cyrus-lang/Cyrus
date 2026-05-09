@@ -143,7 +143,7 @@ pub fn lower_enum_decl(decl_tables: &DeclTablesRegistry, target: &ABITarget, enu
     let variants: Vec<CIREnumVariant> = enum_decl
         .variants
         .iter()
-        .map(|variant| lower_enum_variant(decl_tables, target, variant))
+        .map(|variant| lower_enum_type_variant(decl_tables, target, variant))
         .collect();
 
     let tag_type = enum_decl
@@ -212,17 +212,17 @@ fn lower_func_type_params(
         .collect()
 }
 
-fn lower_enum_variant(
+fn lower_enum_type_variant(
     decl_tables: &DeclTablesRegistry,
     target: &ABITarget,
     variant: &TypedEnumVariant,
 ) -> CIREnumVariant {
     match variant {
         TypedEnumVariant::Unit(ident) => CIREnumVariant::Unit(ident.as_string()),
-        TypedEnumVariant::Valued { .. } => {
-            // FIXME: Maybe we should make Valued variant disallowed in unnamed-enum-types??
-            // CIREnumVariant::Valued(ident.as_string(), Box::new(self.lower_expr(value)))
-            unreachable!()
+        TypedEnumVariant::Valued { ident, value } => {
+            let cir_value_type = lower_sema_type(decl_tables, target, value.ty.as_ref().unwrap());
+
+            CIREnumVariant::Valued(ident.as_string(), cir_value_type)
         }
         TypedEnumVariant::Tuple { ident, fields } => {
             let fields = fields

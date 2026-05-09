@@ -27,7 +27,11 @@ use cyrusc_typed_ast::{
 };
 
 impl<'a> AnalysisContext<'a> {
-    pub(crate) fn analyze_builtin_func(&self, builtin_func: &TypedBuiltinFunc) -> Option<SemaType> {
+    pub(crate) fn analyze_builtin_func(&mut self, builtin_func: &mut TypedBuiltinFunc) -> Option<SemaType> {
+        for arg in &mut builtin_func.args {
+            self.analyze_expr_non_terminal(arg, None);
+        }
+
         let Some(builtin_kind) = lookup_builtin(&builtin_func.name.value) else {
             self.reporter.report(Diag {
                 level: DiagLevel::Error,

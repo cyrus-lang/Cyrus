@@ -130,8 +130,8 @@ pub fn cir_type_to_abi_type(info: &ABITargetInfo, cir_type: &CIRType) -> ABIType
                         CIREnumVariant::Unit(_) => {
                             // no payload
                         }
-                        CIREnumVariant::Valued(_, expr) => {
-                            let layout = type_layout(info, &expr.ty);
+                        CIREnumVariant::Valued(_, value_type) => {
+                            let layout = type_layout(info, value_type);
                             max_payload_size = max_payload_size.max(layout.size);
                         }
                         CIREnumVariant::Payload(_, fields) => {

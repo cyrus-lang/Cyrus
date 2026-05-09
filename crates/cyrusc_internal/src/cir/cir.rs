@@ -461,7 +461,7 @@ pub struct CIREnumStmt {
 #[derive(Debug, Clone)]
 pub enum CIREnumVariant {
     Unit(String),
-    Valued(String, Box<CIRExpr>),
+    Valued(String, CIRType),
     Payload(String, Vec<CIRType>),
 }
 
@@ -579,7 +579,7 @@ impl PartialEq for CIREnumVariant {
     fn eq(&self, other: &Self) -> bool {
         match (self, other) {
             (Self::Unit(ident1), Self::Unit(ident2)) => ident1 == ident2,
-            (Self::Valued(ident1, expr1), Self::Valued(ident2, expr2)) => ident1 == ident2 && expr1.ty == expr2.ty,
+            (Self::Valued(ident1, ty1), Self::Valued(ident2, ty2)) => ident1 == ident2 && ty1 == ty2,
             (Self::Payload(ident1, fields1), Self::Payload(ident2, fields2)) => ident1 == ident2 && fields1 == fields2,
             _ => false,
         }

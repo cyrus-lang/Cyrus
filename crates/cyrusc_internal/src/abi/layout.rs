@@ -158,8 +158,9 @@ pub fn type_layout(info: &ABITargetInfo, ty: &CIRType) -> ABITypeLayout {
                 let (variant_size, variant_align) = match variant {
                     CIREnumVariant::Unit(_) => (0, 1),
 
-                    CIREnumVariant::Valued(_, expr) => {
-                        let layout = type_layout(info, &expr.ty);
+                    CIREnumVariant::Valued(_, value_type) => {
+                        let layout = type_layout(info, value_type);
+
                         (layout.size, layout.align)
                     }
 

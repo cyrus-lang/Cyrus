@@ -28,6 +28,15 @@ use thiserror::Error;
 
 #[derive(Debug, Error, Clone)]
 pub enum AnalyzerDiagKind {
+    #[error("Invalid struct literal: mixed type and value fields.")]
+    MixedStructFieldKinds,
+
+    #[error("Invalid union literal: mixed type and value fields.")]
+    MixedUnionFieldKinds,
+
+    #[error("Invalid enum literal: mixed type and value in variants.")]
+    MixedEnumVariantFieldKinds,
+
     #[error(
         "Repr 'c' enum cannot contain non-integer variants, because their layout cannot be represented in the C ABI."
     )]
