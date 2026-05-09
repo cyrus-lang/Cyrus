@@ -28,7 +28,7 @@ use cyrusc_ast::{
     operators::{InfixOperator, PrefixOperator, UnaryOperator},
 };
 use cyrusc_source_loc::Loc;
-use cyrusc_tokens::literals::LiteralKind;
+use cyrusc_tokens::literals::{LiteralKind, StringPrefix};
 use std::fmt;
 
 #[derive(Debug, Clone)]
@@ -565,6 +565,22 @@ impl TypedExpr {
             TypedExprKind::Literal(lit) => match &lit.kind {
                 LiteralKind::Integer(v, ..) => Some(*v),
                 LiteralKind::Bool(v) => Some(if *v { 1 } else { 0 }),
+                _ => None,
+            },
+            _ => None,
+        }
+    }
+
+    pub fn literal_const_string_value(&self) -> Option<String> {
+        match &self.kind {
+            TypedExprKind::Literal(lit) => match &lit.kind {
+                LiteralKind::String(value, prefix) => {
+                    if prefix.is_some() {
+                        return None;
+                    }
+
+                    Some(value.clone())
+                }
                 _ => None,
             },
             _ => None,

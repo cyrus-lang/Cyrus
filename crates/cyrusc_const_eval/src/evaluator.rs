@@ -251,6 +251,7 @@ impl<'a, R: ConstResolver> ConstEvaluator<'a, R> {
         match builtin_spec.kind {
             TypedBuiltinKind::SizeOf => self.eval_sizeof(builtin_func),
             TypedBuiltinKind::AlignOf => self.eval_alignof(builtin_func),
+            TypedBuiltinKind::OffsetOf => self.eval_offsetof(builtin_func),
 
             _ => return Err(ConstEvalError::UnsupportedExpr),
         }
@@ -277,5 +278,32 @@ impl<'a, R: ConstResolver> ConstEvaluator<'a, R> {
         let layout = type_layout(&self.target.info, &cir_type);
 
         Ok(ConstValue::Int(layout.align.try_into().unwrap()))
+    }
+
+    fn eval_offsetof(&self, builtin_func: &TypedBuiltinFunc) -> Result<ConstValue, ConstEvalError> {
+        let type_expr = &builtin_func.args[0];
+        let field_expr = &builtin_func.args[1];
+
+        let ty = type_expr.ty.as_ref().ok_or(ConstEvalError::TypeError)?;
+
+        let field_name = field_expr
+            .literal_const_string_value()
+            .ok_or(ConstEvalError::TypeError)?;
+
+        let cir_type = lower_sema_type(self.decl_tables, self.target, ty);
+        let layout = type_layout(&self.target.info, &cir_type);
+
+        let struct_decl_id = ty.as_struct().ok_or(ConstEvalError::TypeError)?;
+        let struct_decl = self.decl_tables.struct_decl(struct_decl_id);
+
+        for (i, field) in struct_decl.fields.iter().enumerate() {
+            if field.name == field_name {
+                let field_offset = &layout.lookup_field_offset(i);
+                
+                return Ok(ConstValue::Int((*field_offset).try_into().unwrap()));
+            }
+        }
+
+        Err(ConstEvalError::TypeError)
     }
 }

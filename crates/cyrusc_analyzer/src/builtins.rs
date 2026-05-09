@@ -22,7 +22,7 @@ use cyrusc_typed_ast::{
     builtins::{
         TypedBuiltinForm, TypedBuiltinFunc, TypedBuiltinKind, TypedBuiltinSpec, builtin_spec_of, lookup_builtin,
     },
-    format::format_sema_type,
+    format::{format_sema_type, format_struct_decl},
     types::{PlainType, SemaType},
 };
 
@@ -115,6 +115,7 @@ impl<'a> AnalysisContext<'a> {
         match kind {
             TypedBuiltinKind::SizeOf => self.validate_builtin_sizeof(builtin),
             TypedBuiltinKind::AlignOf => self.validate_builtin_alignof(builtin),
+            TypedBuiltinKind::OffsetOf => self.validate_builtin_offsetof(builtin),
             TypedBuiltinKind::Memcpy => self.validate_builtin_memcpy(builtin),
             TypedBuiltinKind::Memset => self.validate_builtin_memset(builtin),
             _ => {
@@ -130,6 +131,69 @@ impl<'a> AnalysisContext<'a> {
     }
 
     fn validate_builtin_sizeof(&self, _builtin_func: &TypedBuiltinFunc) -> Option<SemaType> {
+        Some(SemaType::Plain(PlainType::USize))
+    }
+
+    fn validate_builtin_offsetof(&self, builtin_func: &TypedBuiltinFunc) -> Option<SemaType> {
+        let type_expr = &builtin_func.args[0];
+        let field_name_expr = &builtin_func.args[1];
+
+        let ty = type_expr.ty.as_ref()?;
+
+        if !ty.is_struct() {
+            let arg_type = format_sema_type(ty.clone(), self.formatter);
+
+            self.reporter.report(Diag {
+                level: DiagLevel::Error,
+                kind: Box::new(AnalyzerDiagKind::InvalidOffsetOfOperand { arg_type }),
+                loc: Some(builtin_func.loc),
+                hint: None,
+            });
+            return None;
+        }
+
+        let field_name = match field_name_expr.literal_const_string_value() {
+            Some(name) => name,
+            None => {
+                self.reporter.report(Diag {
+                    level: DiagLevel::Error,
+                    kind: Box::new(AnalyzerDiagKind::OffsetOfFieldMustBeString),
+                    loc: Some(builtin_func.loc),
+                    hint: None,
+                });
+
+                return None;
+            }
+        };
+
+        let struct_decl_id = match ty.as_struct() {
+            Some(decl) => decl,
+            None => return None,
+        };
+
+        let struct_decl = self.decl_tables.struct_decl(struct_decl_id);
+
+        let struct_name = format_struct_decl(&struct_decl, self.formatter);
+
+        let field_exists = struct_decl
+            .fields
+            .iter()
+            .any(|field| field.name == field_name);
+
+        if !field_exists {
+            self.reporter.report(Diag {
+                level: DiagLevel::Error,
+                kind: Box::new(AnalyzerDiagKind::ObjectHasNoFieldNamed {
+                    object_name: struct_name,
+                    field_name: field_name.to_string(),
+                }),
+                loc: Some(builtin_func.loc),
+                hint: None,
+            });
+
+            return None;
+        }
+
         Some(SemaType::Plain(PlainType::USize))
     }
 

@@ -1,0 +1,18 @@
+// @stdout: 0 8 8
+
+import std::libc{printf};
+
+struct Foo {
+    a: int;
+    b: int*;
+}
+
+pub fn main() {
+    printf("%d ", @offsetOf(Foo, "a"));
+    printf("%d ", @offsetOf(Foo, "b"));
+    printf("%d ", @offsetOf(struct {
+        x: int32,
+        y: int32,
+        z: int64
+    }, "z"));
+}
