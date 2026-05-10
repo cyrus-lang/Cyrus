@@ -857,6 +857,7 @@ impl Resolver {
             name: builtin_func.name.clone(),
             args,
             child_stmt,
+            ret_type: None,
             loc: builtin_func.loc,
         };
 

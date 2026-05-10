@@ -48,10 +48,6 @@ impl<'a> AnalysisContext<'a> {
     }
 
     pub(crate) fn analyze_builtin_func(&mut self, builtin_func: &mut TypedBuiltinFunc) -> Option<SemaType> {
-        for arg in &mut builtin_func.args {
-            self.analyze_expr_non_terminal(arg, None);
-        }
-
         let Some(builtin_kind) = lookup_builtin(&builtin_func.name.value) else {
             self.reporter.report(Diag {
                 level: DiagLevel::Error,
@@ -74,7 +70,7 @@ impl<'a> AnalysisContext<'a> {
             return None;
         }
 
-        self.validate_builtin_func_semantics(builtin_kind, builtin_func)
+        self.analyze_builtin_func_semantics(builtin_kind, builtin_func)
     }
 
     fn validate_builtin_form(&self, builtin_spec: &TypedBuiltinSpec, actual: TypedBuiltinForm, loc: Loc) -> bool {
@@ -131,13 +127,17 @@ impl<'a> AnalysisContext<'a> {
         true
     }
 
-    fn validate_builtin_func_semantics(&self, kind: TypedBuiltinKind, builtin: &TypedBuiltinFunc) -> Option<SemaType> {
+    fn analyze_builtin_func_semantics(
+        &mut self,
+        kind: TypedBuiltinKind,
+        builtin: &mut TypedBuiltinFunc,
+    ) -> Option<SemaType> {
         match kind {
-            TypedBuiltinKind::SizeOf => self.validate_builtin_sizeof(builtin),
-            TypedBuiltinKind::AlignOf => self.validate_builtin_alignof(builtin),
-            TypedBuiltinKind::OffsetOf => self.validate_builtin_offsetof(builtin),
-            TypedBuiltinKind::Memcpy => self.validate_builtin_memcpy(builtin),
-            TypedBuiltinKind::Memset => self.validate_builtin_memset(builtin),
+            TypedBuiltinKind::SizeOf => self.analyze_builtin_sizeof(builtin),
+            TypedBuiltinKind::AlignOf => self.analyze_builtin_alignof(builtin),
+            TypedBuiltinKind::OffsetOf => self.analyze_builtin_offsetof(builtin),
+            TypedBuiltinKind::Memcpy => self.analyze_builtin_memcpy(builtin),
+            TypedBuiltinKind::Memset => self.analyze_builtin_memset(builtin),
             _ => {
                 unreachable!()
             }
@@ -146,19 +146,31 @@ impl<'a> AnalysisContext<'a> {
 }
 
 impl<'a> AnalysisContext<'a> {
-    fn validate_builtin_alignof(&self, _builtin_func: &TypedBuiltinFunc) -> Option<SemaType> {
+    fn analyze_builtin_alignof(&mut self, builtin_func: &mut TypedBuiltinFunc) -> Option<SemaType> {
+        let operand = builtin_func.args.first_mut().unwrap();
+
+        self.analyze_expr_non_terminal(operand, None);
+
         Some(SemaType::Plain(PlainType::USize))
     }
 
-    fn validate_builtin_sizeof(&self, _builtin_func: &TypedBuiltinFunc) -> Option<SemaType> {
+    fn analyze_builtin_sizeof(&mut self, builtin_func: &mut TypedBuiltinFunc) -> Option<SemaType> {
+        let operand = builtin_func.args.first_mut().unwrap();
+
+        self.analyze_expr_non_terminal(operand, None);
+
         Some(SemaType::Plain(PlainType::USize))
     }
 
-    fn validate_builtin_offsetof(&self, builtin_func: &TypedBuiltinFunc) -> Option<SemaType> {
+    fn analyze_builtin_offsetof(&mut self, builtin_func: &mut TypedBuiltinFunc) -> Option<SemaType> {
+        for arg in &mut builtin_func.args {
+            self.analyze_expr_non_terminal(arg, None);
+        }
+
         let type_expr = &builtin_func.args[0];
         let field_name_expr = &builtin_func.args[1];
 
-        let ty = type_expr.ty.as_ref()?;
+        let ty = type_expr.ty.clone()?;
 
         if !ty.is_struct() {
             let arg_type = format_sema_type(ty.clone(), self.formatter);
@@ -214,133 +226,85 @@ impl<'a> AnalysisContext<'a> {
         Some(SemaType::Plain(PlainType::USize))
     }
 
-    fn validate_builtin_memset(&self, builtin_func: &TypedBuiltinFunc) -> Option<SemaType> {
-        let ptr = &builtin_func.args[0];
-        let val = &builtin_func.args[1];
-        let size = &builtin_func.args[2];
+    fn analyze_builtin_memset(&mut self, builtin_func: &mut TypedBuiltinFunc) -> Option<SemaType> {
+        let param_types = [
+            SemaType::Pointer(Box::new(SemaType::Plain(PlainType::Void))), // dest
+            SemaType::Plain(PlainType::Int8),                              // value
+            SemaType::Plain(PlainType::USize),                             // size
+        ];
 
-        if !ptr.ty.as_ref()?.is_pointer() {
-            let argument_type = format_sema_type(ptr.ty.clone().unwrap(), self.formatter);
-            let param_type = format_sema_type(
-                SemaType::Pointer(Box::new(SemaType::Plain(PlainType::Void))),
-                self.formatter,
-            );
-
-            self.reporter.report(Diag {
-                level: DiagLevel::Error,
-                kind: Box::new(AnalyzerDiagKind::FuncCallParamTypeMismatch {
-                    param_type,
-                    argument_type,
-                    argument_idx: 0,
-                }),
-                loc: Some(builtin_func.loc),
-                hint: None,
-            });
-            return None;
+        for (arg, expected_type) in builtin_func.args.iter_mut().zip(param_types.iter()) {
+            self.analyze_expr_non_terminal(arg, Some(expected_type.clone()));
         }
 
-        if !val.ty.as_ref()?.is_integer() {
-            let argument_type = format_sema_type(ptr.ty.clone().unwrap(), self.formatter);
-            let param_type = format_sema_type(SemaType::Plain(PlainType::USize), self.formatter);
+        for (idx, (arg, expected_type)) in builtin_func.args.iter().zip(param_types.iter()).enumerate() {
+            let arg_ty = arg.ty.clone()?;
 
-            self.reporter.report(Diag {
-                level: DiagLevel::Error,
-                kind: Box::new(AnalyzerDiagKind::FuncCallParamTypeMismatch {
-                    param_type,
-                    argument_type,
-                    argument_idx: 1,
-                }),
-                loc: Some(builtin_func.loc),
-                hint: None,
-            });
-            return None;
+            if !self.is_assignable_to(arg_ty.clone(), expected_type.clone(), builtin_func.loc) {
+                let argument_type = format_sema_type(arg_ty, self.formatter);
+
+                let param_type = format_sema_type(expected_type.clone(), self.formatter);
+
+                self.reporter.report(Diag {
+                    level: DiagLevel::Error,
+                    kind: Box::new(AnalyzerDiagKind::FuncCallParamTypeMismatch {
+                        param_type,
+                        argument_type,
+                        argument_idx: idx as u32,
+                    }),
+                    loc: Some(builtin_func.loc),
+                    hint: None,
+                });
+
+                return None;
+            }
         }
 
-        if !size.ty.as_ref()?.is_integer() {
-            let argument_type = format_sema_type(ptr.ty.clone().unwrap(), self.formatter);
-            let param_type = format_sema_type(SemaType::Plain(PlainType::USize), self.formatter);
+        let ret_type = SemaType::Plain(PlainType::Void);
 
-            self.reporter.report(Diag {
-                level: DiagLevel::Error,
-                kind: Box::new(AnalyzerDiagKind::FuncCallParamTypeMismatch {
-                    param_type,
-                    argument_type,
-                    argument_idx: 0,
-                }),
-                loc: Some(builtin_func.loc),
-                hint: None,
-            });
-            return None;
-        }
+        builtin_func.ret_type = Some(ret_type.clone());
 
-        Some(SemaType::Plain(PlainType::Void))
+        Some(ret_type)
     }
 
-    fn validate_builtin_memcpy(&self, builtin_func: &TypedBuiltinFunc) -> Option<SemaType> {
-        let dst = &builtin_func.args[0];
-        let src = &builtin_func.args[1];
-        let size = &builtin_func.args[2];
+    fn analyze_builtin_memcpy(&mut self, builtin_func: &mut TypedBuiltinFunc) -> Option<SemaType> {
+        let param_types = [
+            SemaType::Pointer(Box::new(SemaType::Plain(PlainType::Void))), // dest
+            SemaType::Pointer(Box::new(SemaType::Plain(PlainType::Void))), // src
+            SemaType::Plain(PlainType::USize),                             // size
+        ];
 
-        if !dst.ty.as_ref()?.is_pointer() {
-            let argument_type = format_sema_type(dst.ty.clone().unwrap(), self.formatter);
-            let param_type = format_sema_type(
-                SemaType::Pointer(Box::new(SemaType::Plain(PlainType::Void))),
-                self.formatter,
-            );
-
-            self.reporter.report(Diag {
-                level: DiagLevel::Error,
-                kind: Box::new(AnalyzerDiagKind::FuncCallParamTypeMismatch {
-                    param_type,
-                    argument_type,
-                    argument_idx: 0,
-                }),
-                loc: Some(builtin_func.loc),
-                hint: None,
-            });
-
-            return None;
+        for (arg, expected_type) in builtin_func.args.iter_mut().zip(param_types.iter()) {
+            self.analyze_expr_non_terminal(arg, Some(expected_type.clone()));
         }
 
-        if !src.ty.as_ref()?.is_pointer() {
-            let argument_type = format_sema_type(src.ty.clone().unwrap(), self.formatter);
-            let param_type = format_sema_type(
-                SemaType::Pointer(Box::new(SemaType::Plain(PlainType::Void))),
-                self.formatter,
-            );
+        for (idx, (arg, expected_type)) in builtin_func.args.iter().zip(param_types.iter()).enumerate() {
+            let arg_ty = arg.ty.clone()?;
 
-            self.reporter.report(Diag {
-                level: DiagLevel::Error,
-                kind: Box::new(AnalyzerDiagKind::FuncCallParamTypeMismatch {
-                    param_type,
-                    argument_type,
-                    argument_idx: 1,
-                }),
-                loc: Some(builtin_func.loc),
-                hint: None,
-            });
+            if !self.is_assignable_to(arg_ty.clone(), expected_type.clone(), builtin_func.loc) {
+                let argument_type = format_sema_type(arg_ty, self.formatter);
 
-            return None;
+                let param_type = format_sema_type(expected_type.clone(), self.formatter);
+
+                self.reporter.report(Diag {
+                    level: DiagLevel::Error,
+                    kind: Box::new(AnalyzerDiagKind::FuncCallParamTypeMismatch {
+                        param_type,
+                        argument_type,
+                        argument_idx: idx as u32,
+                    }),
+                    loc: Some(builtin_func.loc),
+                    hint: None,
+                });
+
+                return None;
+            }
         }
 
-        if !size.ty.as_ref()?.is_integer() {
-            let argument_type = format_sema_type(size.ty.clone().unwrap(), self.formatter);
-            let param_type = format_sema_type(SemaType::Plain(PlainType::USize), self.formatter);
+        let ret_type = SemaType::Plain(PlainType::Void);
 
-            self.reporter.report(Diag {
-                level: DiagLevel::Error,
-                kind: Box::new(AnalyzerDiagKind::FuncCallParamTypeMismatch {
-                    param_type,
-                    argument_type,
-                    argument_idx: 2,
-                }),
-                loc: Some(builtin_func.loc),
-                hint: None,
-            });
+        builtin_func.ret_type = Some(ret_type.clone());
 
-            return None;
-        }
-
-        Some(SemaType::Plain(PlainType::Void))
+        Some(ret_type)
     }
 }

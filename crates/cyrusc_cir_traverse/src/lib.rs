@@ -35,6 +35,9 @@ use cyrusc_tokens::literals::*;
 use cyrusc_typed_ast::TypedProgramTree;
 use cyrusc_typed_ast::VTableID;
 use cyrusc_typed_ast::builtins::TypedBuiltin;
+use cyrusc_typed_ast::builtins::TypedBuiltinFunc;
+use cyrusc_typed_ast::builtins::builtin_spec_of;
+use cyrusc_typed_ast::builtins::lookup_builtin;
 use cyrusc_typed_ast::decls::table::DeclTablesRegistry;
 use cyrusc_typed_ast::decls::*;
 use cyrusc_typed_ast::exprs::*;
@@ -211,14 +214,33 @@ impl<'a> CIRTraverse<'a> {
         }
     }
 
-    fn lower_builtin(&self, builtin: &TypedBuiltin) -> Vec<CIRStmt> {
+    fn lower_builtin(&mut self, builtin: &TypedBuiltin) -> Vec<CIRStmt> {
         match builtin {
             TypedBuiltin::BuiltinFunc(builtin_func) => {
-                dbg!(builtin_func.clone());
-
-                todo!()
+                vec![CIRStmt::Expr(self.lower_builtin_func(builtin_func))]
             }
             TypedBuiltin::BuiltinBlock(_builtin_block) => todo!(),
+        }
+    }
+
+    fn lower_builtin_func(&mut self, builtin_func: &TypedBuiltinFunc) -> CIRExpr {
+        let args: Vec<CIRExpr> = builtin_func.args.iter().map(|arg| self.lower_expr(arg)).collect();
+
+        let ret_type = self.lower_sema_type(builtin_func.ret_type.as_ref().unwrap());
+
+        let builtin_kind = lookup_builtin(&builtin_func.name.value).unwrap();
+        let builtin_spec = builtin_spec_of(builtin_kind).clone();
+
+        let dispatch = CIRCallDispatch::Builtin { builtin_spec };
+
+        CIRExpr {
+            kind: CIRExprKind::Call(CIRCall {
+                args,
+                ret_type: ret_type.clone(),
+                dispatch,
+            }),
+            ty: ret_type,
+            loc: builtin_func.loc,
         }
     }
 

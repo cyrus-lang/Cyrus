@@ -382,6 +382,9 @@ impl<'a> CIRPrinter<'a> {
 
                         abi_name.clone()
                     }
+                    CIRCallDispatch::Builtin { builtin_spec } => {
+                        format!("@{}", builtin_spec.name)
+                    }
                 };
 
                 format!("{}({})", dispatch, args.join(", "))

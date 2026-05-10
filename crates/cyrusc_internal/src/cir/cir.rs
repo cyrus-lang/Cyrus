@@ -28,6 +28,7 @@ use cyrusc_ast::{
 use cyrusc_source_loc::Loc;
 use cyrusc_typed_ast::{
     LabelID, VTableID,
+    builtins::TypedBuiltinSpec,
     decls::{MethodDecls, MonomorphID},
 };
 use fx_hash::FxHashMap;
@@ -162,6 +163,9 @@ pub enum CIRCallDispatch {
         operand: Box<CIRExpr>,
         index: usize,
         func_type: CIRFuncType,
+    },
+    Builtin {
+        builtin_spec: TypedBuiltinSpec,
     },
 }
 
