@@ -1102,8 +1102,14 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         float_pred: FloatPredicate,
     ) -> InternalValue<'ll> {
         match (lhs_rvalue.as_basic_value(), rhs_rvalue.as_basic_value()) {
-            (BasicValueEnum::IntValue(lhs), BasicValueEnum::IntValue(rhs)) => {
+            (BasicValueEnum::IntValue(mut lhs), BasicValueEnum::IntValue(mut rhs)) => {
+                if lhs_rvalue.ty.is_bool() || rhs_rvalue.ty.is_bool() {
+                    lhs = self.int_value_as_bool_i1(lhs);
+                    rhs = self.int_value_as_bool_i1(rhs);
+                }
+
                 let cmp = self.llvmbuilder.build_int_compare(int_pred, lhs, rhs, "cmp").unwrap();
+
                 InternalValue::new(CIRType::Plain(PlainType::Bool), InternalValueKind::RValue(cmp.into()))
             }
             (BasicValueEnum::FloatValue(lhs), BasicValueEnum::FloatValue(rhs)) => {
@@ -1111,6 +1117,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
                     .llvmbuilder
                     .build_float_compare(float_pred, lhs, rhs, "cmp")
                     .unwrap();
+
                 InternalValue::new(CIRType::Plain(PlainType::Bool), InternalValueKind::RValue(cmp.into()))
             }
             _ => unreachable!(),
@@ -1143,11 +1150,17 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         rhs_rvalue: InternalValue<'ll>,
     ) -> InternalValue<'ll> {
         match (lhs_rvalue.as_basic_value(), rhs_rvalue.as_basic_value()) {
-            (BasicValueEnum::IntValue(lhs), BasicValueEnum::IntValue(rhs)) => {
+            (BasicValueEnum::IntValue(mut lhs), BasicValueEnum::IntValue(mut rhs)) => {
+                if lhs_rvalue.ty.is_bool() || rhs_rvalue.ty.is_bool() {
+                    lhs = self.int_value_as_bool_i1(lhs);
+                    rhs = self.int_value_as_bool_i1(rhs);
+                }
+
                 let cmp = self
                     .llvmbuilder
                     .build_int_compare(IntPredicate::EQ, lhs, rhs, "eq")
                     .unwrap();
+
                 InternalValue::new(CIRType::Plain(PlainType::Bool), InternalValueKind::RValue(cmp.into()))
             }
             (BasicValueEnum::FloatValue(lhs), BasicValueEnum::FloatValue(rhs)) => {
@@ -1155,6 +1168,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
                     .llvmbuilder
                     .build_float_compare(FloatPredicate::OEQ, lhs, rhs, "eq")
                     .unwrap();
+
                 InternalValue::new(CIRType::Plain(PlainType::Bool), InternalValueKind::RValue(cmp.into()))
             }
             (BasicValueEnum::PointerValue(lhs), BasicValueEnum::PointerValue(rhs)) => {
@@ -1171,6 +1185,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
                     .llvmbuilder
                     .build_int_compare(IntPredicate::EQ, lhs, rhs, "eq")
                     .unwrap();
+
                 InternalValue::new(CIRType::Plain(PlainType::Bool), InternalValueKind::RValue(cmp.into()))
             }
             _ => {

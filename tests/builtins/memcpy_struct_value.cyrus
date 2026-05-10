@@ -1,0 +1,25 @@
+// @stdout: id: 99, score: 99.5, flag: 1 | SUCCESS
+
+import std::libc{printf};
+
+struct Data {
+    pub id: int32;
+    pub score: float64;
+    pub flag: bool;
+}
+
+pub fn main() {
+    var src = Data { id: 99, score: 99.5, flag: true };
+    var dst: Data;
+
+    // copy src to dst
+    @memcpy(&dst, &src, @sizeOf(Data));
+
+    printf("id: %d, score: %.1f, flag: %d", dst.id, dst.score, dst.flag);
+
+    if (dst.id == 99  && dst.score == 99.5 && dst.flag == true) {
+        printf(" | SUCCESS\n");
+    } else {
+        printf("FAILURE: data mismatch\n");
+    }
+}

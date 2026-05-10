@@ -1,0 +1,18 @@
+// @stdout: value: aaaaaaaa | SUCCESS
+
+import std::libc{printf};
+
+pub fn main() {
+    var x: int32 = 0;
+
+    // fill with 0xAA (170 decimal).
+    @memset(&x, 0xAAAA, @sizeOf(int32));
+
+    printf("value: %x", x);
+    
+    if (x == 0xAAAAAAAA) {
+        printf(" | SUCCESS\n");
+    } else {
+        printf("FAILURE: x was %x\n", x);
+    }
+}

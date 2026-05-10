@@ -85,7 +85,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
                         .build_int_z_extend(rvalue_int_value, int_type, "widen_store")
                         .unwrap()
                 };
-                
+
                 rvalue = InternalValue::new(rvalue.ty.clone(), InternalValueKind::RValue(widened.into()));
             }
         }
@@ -164,6 +164,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
 
     pub(crate) fn int_value_as_bool_i1(&self, int_value: IntValue<'ll>) -> IntValue<'ll> {
         let bit_width = int_value.get_type().get_bit_width();
+
         if bit_width == 1 {
             int_value
         } else {
@@ -179,9 +180,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
 
         assert!(rvalue.ty.is_integer_or_bool());
 
-        let basic_value = rvalue.as_basic_value();
-        let int_value = basic_value.into_int_value();
-        self.int_value_as_bool_i1(int_value)
+        self.int_value_as_bool_i1(rvalue.as_basic_value().into_int_value())
     }
 
     pub(crate) fn load_rvalue(&self, internal_value: InternalValue<'ll>) -> InternalValue<'ll> {
