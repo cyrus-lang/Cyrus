@@ -21,14 +21,15 @@ use cyrusc_internal::flow_state::FlowState;
 use cyrusc_source_loc::Loc;
 use cyrusc_typed_ast::{
     builtins::{
-        TypedBuiltin, TypedBuiltinForm, TypedBuiltinFunc, TypedBuiltinKind, TypedBuiltinSpec, builtin_spec_of,
-        lookup_builtin,
+        TypedBuiltin, TypedBuiltinBlock, TypedBuiltinForm, TypedBuiltinFunc, TypedBuiltinKind, TypedBuiltinSpec,
+        builtin_spec_of, lookup_builtin,
     },
     format::{format_sema_type, format_struct_decl},
     stmts::TypedStmt,
     types::{PlainType, SemaType},
 };
 
+// Builtins entry point.
 impl<'a> AnalysisContext<'a> {
     pub(crate) fn analyze_builtin(&mut self, typed_stmt: &mut TypedStmt) -> FlowState {
         let TypedStmt::Builtin(builtin) = typed_stmt else {
@@ -37,17 +38,21 @@ impl<'a> AnalysisContext<'a> {
 
         match builtin {
             TypedBuiltin::BuiltinFunc(builtin_func) => {
-                self.analyze_builtin_func(builtin_func);
+                if builtin_func.child_stmt.is_some() {
+                    self.analyze_builtin_stmt_func(builtin_func)
+                } else {
+                    // expression builtin used as statement
+                    self.analyze_builtin_expr(builtin_func);
 
-                FlowState::Reachable
+                    FlowState::Reachable
+                }
             }
-            TypedBuiltin::BuiltinBlock(_builtin_block) => {
-                todo!()
-            }
+
+            TypedBuiltin::BuiltinBlock(block) => self.analyze_builtin_block(block),
         }
     }
 
-    pub(crate) fn analyze_builtin_func(&mut self, builtin_func: &mut TypedBuiltinFunc) -> Option<SemaType> {
+    pub(crate) fn analyze_builtin_expr(&mut self, builtin_func: &mut TypedBuiltinFunc) -> Option<SemaType> {
         let Some(builtin_kind) = lookup_builtin(&builtin_func.name.value) else {
             self.reporter.report(Diag {
                 level: DiagLevel::Error,
@@ -71,6 +76,32 @@ impl<'a> AnalysisContext<'a> {
         }
 
         self.analyze_builtin_func_semantics(builtin_kind, builtin_func)
+    }
+
+    fn analyze_builtin_stmt_func(&mut self, builtin_func: &mut TypedBuiltinFunc) -> FlowState {
+        let Some(builtin_kind) = lookup_builtin(&builtin_func.name.value) else {
+            self.reporter.report(Diag {
+                level: DiagLevel::Error,
+                kind: Box::new(AnalyzerDiagKind::BuiltinNotDefined {
+                    name: builtin_func.name.as_string(),
+                }),
+                loc: Some(builtin_func.loc),
+                hint: None,
+            });
+            return FlowState::Reachable;
+        };
+
+        let builtin_spec = builtin_spec_of(builtin_kind);
+
+        if !self.validate_builtin_form(builtin_spec, TypedBuiltinForm::Stmt, builtin_func.loc) {
+            return FlowState::Reachable;
+        }
+
+        let Some(child) = builtin_func.child_stmt.as_mut() else {
+            return FlowState::Reachable;
+        };
+
+        self.analyze_stmt(child)
     }
 
     fn validate_builtin_form(&self, builtin_spec: &TypedBuiltinSpec, actual: TypedBuiltinForm, loc: Loc) -> bool {
@@ -126,7 +157,35 @@ impl<'a> AnalysisContext<'a> {
 
         true
     }
+}
 
+// Builtin Statements
+impl<'a> AnalysisContext<'a> {
+    fn analyze_builtin_block(&mut self, builtin_block: &mut TypedBuiltinBlock) -> FlowState {
+        let Some(builtin_kind) = lookup_builtin(&builtin_block.name.value) else {
+            self.reporter.report(Diag {
+                level: DiagLevel::Error,
+                kind: Box::new(AnalyzerDiagKind::BuiltinNotDefined {
+                    name: builtin_block.name.as_string(),
+                }),
+                loc: Some(builtin_block.loc),
+                hint: None,
+            });
+            return FlowState::Reachable;
+        };
+
+        let builtin_spec = builtin_spec_of(builtin_kind);
+
+        if !self.validate_builtin_form(builtin_spec, TypedBuiltinForm::Stmt, builtin_block.loc) {
+            return FlowState::Reachable;
+        }
+
+        self.analyze_block_stmt(&mut builtin_block.block)
+    }
+}
+
+// BuiltinFunc (Expr)
+impl<'a> AnalysisContext<'a> {
     fn analyze_builtin_func_semantics(
         &mut self,
         kind: TypedBuiltinKind,
@@ -143,15 +202,17 @@ impl<'a> AnalysisContext<'a> {
             }
         }
     }
-}
 
-impl<'a> AnalysisContext<'a> {
     fn analyze_builtin_alignof(&mut self, builtin_func: &mut TypedBuiltinFunc) -> Option<SemaType> {
         let operand = builtin_func.args.first_mut().unwrap();
 
         self.analyze_expr_non_terminal(operand, None);
 
-        Some(SemaType::Plain(PlainType::USize))
+        let ret_type = SemaType::Plain(PlainType::USize);
+
+        builtin_func.ret_type = Some(ret_type.clone());
+
+        Some(ret_type)
     }
 
     fn analyze_builtin_sizeof(&mut self, builtin_func: &mut TypedBuiltinFunc) -> Option<SemaType> {
@@ -159,7 +220,11 @@ impl<'a> AnalysisContext<'a> {
 
         self.analyze_expr_non_terminal(operand, None);
 
-        Some(SemaType::Plain(PlainType::USize))
+        let ret_type = SemaType::Plain(PlainType::USize);
+
+        builtin_func.ret_type = Some(ret_type.clone());
+
+        Some(ret_type)
     }
 
     fn analyze_builtin_offsetof(&mut self, builtin_func: &mut TypedBuiltinFunc) -> Option<SemaType> {
@@ -170,7 +235,7 @@ impl<'a> AnalysisContext<'a> {
         let type_expr = &builtin_func.args[0];
         let field_name_expr = &builtin_func.args[1];
 
-        let ty = type_expr.ty.clone()?;
+        let Some(ty) = type_expr.ty.clone() else { return None };
 
         if !ty.is_struct() {
             let arg_type = format_sema_type(ty.clone(), self.formatter);
@@ -193,7 +258,6 @@ impl<'a> AnalysisContext<'a> {
                     loc: Some(builtin_func.loc),
                     hint: None,
                 });
-
                 return None;
             }
         };
@@ -219,11 +283,14 @@ impl<'a> AnalysisContext<'a> {
                 loc: Some(builtin_func.loc),
                 hint: None,
             });
-
             return None;
         }
 
-        Some(SemaType::Plain(PlainType::USize))
+        let ret_type = SemaType::Plain(PlainType::USize);
+
+        builtin_func.ret_type = Some(ret_type.clone());
+
+        Some(ret_type)
     }
 
     fn analyze_builtin_memset(&mut self, builtin_func: &mut TypedBuiltinFunc) -> Option<SemaType> {
@@ -238,10 +305,10 @@ impl<'a> AnalysisContext<'a> {
         }
 
         for (idx, (arg, expected_type)) in builtin_func.args.iter().zip(param_types.iter()).enumerate() {
-            let arg_ty = arg.ty.clone()?;
+            let Some(arg_type) = arg.ty.clone() else { return None };
 
-            if !self.is_assignable_to(arg_ty.clone(), expected_type.clone(), builtin_func.loc) {
-                let argument_type = format_sema_type(arg_ty, self.formatter);
+            if !self.is_assignable_to(arg_type.clone(), expected_type.clone(), builtin_func.loc) {
+                let argument_type = format_sema_type(arg_type, self.formatter);
 
                 let param_type = format_sema_type(expected_type.clone(), self.formatter);
 
@@ -255,7 +322,6 @@ impl<'a> AnalysisContext<'a> {
                     loc: Some(builtin_func.loc),
                     hint: None,
                 });
-
                 return None;
             }
         }
@@ -279,11 +345,10 @@ impl<'a> AnalysisContext<'a> {
         }
 
         for (idx, (arg, expected_type)) in builtin_func.args.iter().zip(param_types.iter()).enumerate() {
-            let arg_ty = arg.ty.clone()?;
+            let Some(arg_type) = arg.ty.clone() else { return None };
 
-            if !self.is_assignable_to(arg_ty.clone(), expected_type.clone(), builtin_func.loc) {
-                let argument_type = format_sema_type(arg_ty, self.formatter);
-
+            if !self.is_assignable_to(arg_type.clone(), expected_type.clone(), builtin_func.loc) {
+                let argument_type = format_sema_type(arg_type, self.formatter);
                 let param_type = format_sema_type(expected_type.clone(), self.formatter);
 
                 self.reporter.report(Diag {
@@ -296,7 +361,6 @@ impl<'a> AnalysisContext<'a> {
                     loc: Some(builtin_func.loc),
                     hint: None,
                 });
-
                 return None;
             }
         }

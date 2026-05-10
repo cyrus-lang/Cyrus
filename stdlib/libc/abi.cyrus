@@ -52,3 +52,5 @@ pub type c_char32 = uint32;
 pub type c_sig_atomic = int32;
 
 pub type c_file = void*;
+
+pub type pthread = c_unsigned_long;

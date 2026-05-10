@@ -22,7 +22,7 @@ use crate::{
 };
 use cyrusc_analyzer::context::{AnalysisContext, AnalyzerConfig, EntryPoints};
 use cyrusc_buildmanifest::BuildManifest;
-use cyrusc_cir_traverse::walk_program_trees_in_parallel;
+use cyrusc_cir_traverse::traverse_program_trees_in_parallel;
 use cyrusc_diagcentral::{exit_with_msg, reporter::DiagReporter};
 use cyrusc_fs_utils::{ensure_output_dir, file_name_without_extension, get_directory_of_file};
 use cyrusc_internal::{
@@ -284,7 +284,7 @@ pub fn build_compilation_bundle(opts: &mut CodeGenOptions, file_path: Option<Str
         })
         .collect();
 
-    let cir_modules = walk_program_trees_in_parallel(
+    let cir_modules = traverse_program_trees_in_parallel(
         opts.jobs,
         boxed_program_trees,
         &*codegen_semantic_bundle.resolver,
