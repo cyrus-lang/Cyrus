@@ -1,0 +1,27 @@
+// @stdout: P2 values: a=1, b=500 | SUCCESS
+
+import std::libc{printf};
+
+struct Packed {
+    pub a: int8;  // offset: 0, size: 1
+                  // padding: 3, size: 3,
+    pub b: int32; // offset: 4, size: 4
+}
+
+pub fn main() {
+    var p1: Packed;
+    var p2: Packed;
+
+    p1.a = 1;
+    p1.b = 500;
+
+    // alignment-aware memcpy:
+    // direct copy of the whole struct including the padding holes
+    @memcpy(&p2, &p1, @sizeOf(Packed));
+
+    printf("P2 values: a=%d, b=%d", p2.a, p2.b);
+    
+    if (p2.b == 500) {
+        printf(" | SUCCESS\n");
+    }
+}

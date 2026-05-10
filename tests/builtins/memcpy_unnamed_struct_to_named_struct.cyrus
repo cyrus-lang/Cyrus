@@ -1,0 +1,20 @@
+// @stdout: name: Cyrus, age: 2500
+
+import std::libc{printf};
+
+struct Data {
+    pub name: char*;
+    pub age: uint;
+}
+
+pub fn main() {
+    var dst: Data;
+    var src = struct {
+        name: "Cyrus",
+        age: 2500
+    };
+
+    @memcpy(&dst, &src, @sizeOf(Data));
+
+    printf("name: %s, age: %d\n", dst.name, dst.age);
+}
