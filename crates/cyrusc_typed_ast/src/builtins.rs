@@ -18,6 +18,7 @@
 use crate::{
     exprs::TypedExpr,
     stmts::{TypedBlockStmt, TypedStmt},
+    types::{SemaType, TypedFuncType},
 };
 use cyrusc_ast::Ident;
 use cyrusc_source_loc::Loc;
@@ -53,6 +54,7 @@ pub struct TypedBuiltinFunc {
     pub name: Ident,
     pub args: Vec<TypedExpr>,
     pub child_stmt: Option<Box<TypedStmt>>,
+    pub ret_type: Option<SemaType>,
     pub loc: Loc,
 }
 
@@ -97,7 +99,7 @@ pub enum TypedBuiltinKind {
     Memset,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct TypedBuiltinSpec {
     pub kind: TypedBuiltinKind,
     pub name: &'static str,
@@ -159,24 +161,24 @@ pub static BUILTIN_SPECS: &[TypedBuiltinSpec] = &[
         max_args: Some(3),
     },
     // -- attributes --
-    TypedBuiltinSpec {
-        kind: TypedBuiltinKind::Unroll,
-        name: "unroll",
-        family: TypedBuiltinFamily::Attribute,
-        form: TypedBuiltinForm::Stmt,
-        phase: TypedBuiltinPhase::Codegen,
-        min_args: 0,
-        max_args: Some(1),
-    },
-    TypedBuiltinSpec {
-        kind: TypedBuiltinKind::Allow,
-        name: "allow",
-        family: TypedBuiltinFamily::Attribute,
-        form: TypedBuiltinForm::Block,
-        phase: TypedBuiltinPhase::Analyzer,
-        min_args: 1,
-        max_args: Some(1),
-    },
+    // TypedBuiltinSpec {
+    //     kind: TypedBuiltinKind::Unroll,
+    //     name: "unroll",
+    //     family: TypedBuiltinFamily::Attribute,
+    //     form: TypedBuiltinForm::Stmt,
+    //     phase: TypedBuiltinPhase::Codegen,
+    //     min_args: 0,
+    //     max_args: Some(1),
+    // },
+    // TypedBuiltinSpec {
+    //     kind: TypedBuiltinKind::Allow,
+    //     name: "allow",
+    //     family: TypedBuiltinFamily::Attribute,
+    //     form: TypedBuiltinForm::Block,
+    //     phase: TypedBuiltinPhase::Analyzer,
+    //     min_args: 1,
+    //     max_args: Some(1),
+    // },
 ];
 
 builtin_lookup! {

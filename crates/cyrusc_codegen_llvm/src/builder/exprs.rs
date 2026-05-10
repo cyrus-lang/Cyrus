@@ -579,7 +579,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
                     let mut value = self.emit_lvalue_address(&field_access.operand);
                     value.ty = field_type.clone();
                     value
-                },
+                }
             },
 
             _ => self.emit_expr(expr, &None),
@@ -1782,23 +1782,28 @@ impl<'ll> CodeGenIRBuilder<'ll> {
 
                 self.emit_direct_call(&func_type, &call.args, &call.ret_type, &llvm_func_value)
             }
+
             CIRCallDispatch::FunctionPointer { operand } => {
                 let lvalue = self.emit_expr(&operand, &None);
                 let rvalue = self.load_rvalue(lvalue);
 
                 self.emit_indirect_call(call, rvalue)
             }
+
             CIRCallDispatch::Interface {
                 operand,
                 index,
                 func_type,
             } => self.emit_interface_method_call(call, operand, *index, func_type),
+
             CIRCallDispatch::Method {
                 irv_id,
                 func_type,
                 self_meta,
                 ..
             } => self.emit_method_call(call, *irv_id, func_type, self_meta),
+
+            CIRCallDispatch::Builtin { builtin_spec } => self.emit_builtin_call(call, builtin_spec),
         }
     }
 
@@ -1989,7 +1994,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         }
     }
 
-    fn emit_direct_call(
+    pub(crate) fn emit_direct_call(
         &mut self,
         cir_func_type: &CIRFuncType,
         args: &Vec<CIRExpr>,
@@ -2110,8 +2115,9 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         InternalValue::new(lit.ty.clone(), InternalValueKind::RValue(basic_value))
     }
 
-    fn emit_null(&self, ty: CIRType) -> InternalValue<'ll> {
+    pub(crate) fn emit_null(&self, ty: CIRType) -> InternalValue<'ll> {
         let basic_value = BasicValueEnum::PointerValue(self.llvmctx.ptr_type(AddressSpace::default()).const_null());
+
         InternalValue::new(ty, InternalValueKind::RValue(basic_value))
     }
 

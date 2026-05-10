@@ -14,13 +14,109 @@
  * You should have received a copy of the GNU General Public License
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
-use crate::builder::builder::CodeGenIRBuilder;
+
+use crate::builder::{builder::CodeGenIRBuilder, values::InternalValue};
+use cyrusc_internal::cir::{cir::CIRCall, types::CIRType};
+use cyrusc_typed_ast::{
+    builtins::{TypedBuiltinForm, TypedBuiltinKind, TypedBuiltinPhase, TypedBuiltinSpec},
+    types::PlainType,
+};
 use inkwell::{
     AddressSpace,
     types::{ArrayType, BasicType, BasicTypeEnum, StructType},
     values::{ArrayValue, BasicValue, BasicValueEnum, IntValue, PointerValue, StructValue},
 };
 
+// These intrinsics published via builtin to user side.
+impl<'ll> CodeGenIRBuilder<'ll> {
+    pub(crate) fn emit_builtin_call(&mut self, call: &CIRCall, builtin_spec: &TypedBuiltinSpec) -> InternalValue<'ll> {
+        debug_assert!(builtin_spec.phase == TypedBuiltinPhase::Codegen);
+        debug_assert!(builtin_spec.form == TypedBuiltinForm::Expr);
+
+        match builtin_spec.kind {
+            TypedBuiltinKind::Memcpy => self.emit_intrinsic_memcpy(call),
+            TypedBuiltinKind::Memset => self.emit_intrinsic_memset(call),
+
+            _ => unreachable!("unknown builtin called"),
+        }
+    }
+
+    fn emit_intrinsic_memcpy(&mut self, call: &CIRCall) -> InternalValue<'ll> {
+        let cir_void_ptr = CIRType::Pointer(Box::new(CIRType::Plain(PlainType::Void)));
+        let cir_int64 = CIRType::Plain(PlainType::Int64);
+
+        // ptr
+        let dest = {
+            let lvalue = self.emit_expr(&call.args[0], &Some(cir_void_ptr.clone()));
+            let rvalue = self.load_rvalue(lvalue);
+            let casted = self.emit_implicit_cast(&cir_void_ptr, rvalue);
+            casted.as_basic_value().into_pointer_value()
+        };
+
+        // ptr
+        let src = {
+            let lvalue = self.emit_expr(&call.args[1], &Some(cir_void_ptr.clone()));
+            let rvalue = self.load_rvalue(lvalue);
+            let casted = self.emit_implicit_cast(&cir_void_ptr, rvalue);
+            casted.as_basic_value().into_pointer_value()
+        };
+
+        // i64
+        let size = {
+            let lvalue = self.emit_expr(&call.args[2], &Some(cir_int64.clone()));
+            let rvalue = self.load_rvalue(lvalue);
+            let casted = self.emit_implicit_cast(&cir_int64, rvalue);
+            casted.as_basic_value().into_int_value()
+        };
+
+        let dest_align = self.target.info.pointer_align();
+        let src_align = self.target.info.pointer_align();
+
+        self.llvmbuilder
+            .build_memcpy(dest, dest_align, src, src_align, size)
+            .unwrap();
+
+        self.emit_null(cir_void_ptr)
+    }
+
+    fn emit_intrinsic_memset(&mut self, call: &CIRCall) -> InternalValue<'ll> {
+        let cir_void_ptr = CIRType::Pointer(Box::new(CIRType::Plain(PlainType::Void)));
+        let cir_int8 = CIRType::Plain(PlainType::Int8);
+        let cir_int64 = CIRType::Plain(PlainType::Int64);
+
+        // ptr
+        let dest = {
+            let lvalue = self.emit_expr(&call.args[0], &Some(cir_void_ptr.clone()));
+            let rvalue = self.load_rvalue(lvalue);
+            let casted = self.emit_implicit_cast(&cir_void_ptr, rvalue);
+            casted.as_basic_value().into_pointer_value()
+        };
+
+        // i8
+        let value = {
+            let lvalue = self.emit_expr(&call.args[1], &Some(cir_int8.clone()));
+            let rvalue = self.load_rvalue(lvalue);
+            let casted = self.emit_implicit_cast(&cir_int8, rvalue);
+            casted.as_basic_value().into_int_value()
+        };
+
+        // i64
+        let size = {
+            let lvalue = self.emit_expr(&call.args[2], &Some(cir_int64.clone()));
+            let rvalue = self.load_rvalue(lvalue);
+            let casted = self.emit_implicit_cast(&cir_int64, rvalue);
+            casted.as_basic_value().into_int_value()
+        };
+
+        let align = self.target.info.pointer_align();
+
+        self.llvmbuilder.build_memset(dest, align, value, size).unwrap();
+
+        self.emit_null(cir_void_ptr)
+    }
+}
+
+// These intrinsics only used inside compiler (internally; no-publication).
 impl<'ll> CodeGenIRBuilder<'ll> {
     pub(crate) fn intrinsic_coerce_through_alloca(
         &self,
