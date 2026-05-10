@@ -217,7 +217,13 @@ impl<'a> CIRTraverse<'a> {
     fn lower_builtin(&mut self, builtin: &TypedBuiltin) -> Vec<CIRStmt> {
         match builtin {
             TypedBuiltin::BuiltinFunc(builtin_func) => {
-                vec![CIRStmt::Expr(self.lower_builtin_func(builtin_func))]
+                if let Some(child_stmt) = &builtin_func.child_stmt {
+                    // builtin_func.name
+                    todo!();
+                } else {
+                    // expression
+                    vec![CIRStmt::Expr(self.lower_builtin_func(builtin_func))]
+                }
             }
             TypedBuiltin::BuiltinBlock(_builtin_block) => todo!(),
         }
@@ -2198,7 +2204,7 @@ impl<'a> CIRTraverse<'a> {
 }
 
 #[inline(never)]
-pub fn walk_program_trees_in_parallel(
+pub fn traverse_program_trees_in_parallel(
     threads: Option<usize>,
     program_trees: Vec<Box<TypedProgramTree>>,
     query: &dyn SymbolQuery,

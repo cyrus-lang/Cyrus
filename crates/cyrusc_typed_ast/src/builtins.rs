@@ -85,18 +85,19 @@ pub enum TypedBuiltinPhase {
 pub enum TypedBuiltinForm {
     Expr,
     Stmt,
-    Block,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum TypedBuiltinKind {
-    Allow,
     SizeOf,
     AlignOf,
     OffsetOf,
-    Unroll,
     Memcpy,
     Memset,
+
+    Debug,
+    Release,
+    Unroll,
 }
 
 #[derive(Debug, Clone)]
@@ -160,6 +161,16 @@ pub static BUILTIN_SPECS: &[TypedBuiltinSpec] = &[
         min_args: 3,
         max_args: Some(3),
     },
+    // -- statements --
+    TypedBuiltinSpec {
+        kind: TypedBuiltinKind::Debug,
+        name: "debug",
+        family: TypedBuiltinFamily::ConstEval,
+        form: TypedBuiltinForm::Stmt,
+        phase: TypedBuiltinPhase::CIRLowering,
+        min_args: 0,
+        max_args: Some(0),
+    },
     // -- attributes --
     // TypedBuiltinSpec {
     //     kind: TypedBuiltinKind::Unroll,
@@ -183,13 +194,14 @@ pub static BUILTIN_SPECS: &[TypedBuiltinSpec] = &[
 
 builtin_lookup! {
     pub fn lookup_builtin(name: &str) -> Option<TypedBuiltinKind> {
-        "allow" => TypedBuiltinKind::Allow,
         "sizeof" => TypedBuiltinKind::SizeOf,
         "alignof" => TypedBuiltinKind::AlignOf,
         "offsetof" => TypedBuiltinKind::OffsetOf,
         "unroll" => TypedBuiltinKind::Unroll,
         "memcpy" => TypedBuiltinKind::Memcpy,
         "memset" => TypedBuiltinKind::Memset,
+        "debug" => TypedBuiltinKind::Debug,
+        "release" => TypedBuiltinKind::Release,
     }
 }
 

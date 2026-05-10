@@ -113,7 +113,7 @@ impl<'a> AnalysisContext<'a> {
             TypedExprKind::TupleAccess(tuple_access) => self.analyze_tuple_access(tuple_access, expected_type.clone()),
 
             TypedExprKind::Builtin(builtin) => match builtin {
-                TypedBuiltin::BuiltinFunc(builtin_func) => self.analyze_builtin_func(builtin_func),
+                TypedBuiltin::BuiltinFunc(builtin_func) => self.analyze_builtin_expr(builtin_func),
                 TypedBuiltin::BuiltinBlock(builtin_block) => {
                     self.reporter.report(Diag {
                         level: DiagLevel::Error,
