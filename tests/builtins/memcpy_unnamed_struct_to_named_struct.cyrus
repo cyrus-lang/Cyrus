@@ -14,7 +14,7 @@ pub fn main() {
         age: 2500
     };
 
-    @memcpy(&dst, &src, @sizeOf(Data));
+    @memcpy(&dst, &src, @sizeof(Data));
 
     printf("name: %s, age: %d\n", dst.name, dst.age);
 }

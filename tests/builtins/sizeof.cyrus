@@ -3,9 +3,9 @@
 import std::libc{printf};
 
 pub fn main() {
-    printf("%d ", @sizeOf(int)); // works 
-    printf("%d ", @sizeOf(float64)); // works 
-    printf("%d ", @sizeOf(struct { a: int*, b: int32* })); 
-    printf("%d ", @sizeOf(enum(int64) { A, B }));   
-    printf("%d ", @sizeOf(struct { c: int, x: struct { a: int }, a: int }));
+    printf("%d ", @sizeof(int)); // works 
+    printf("%d ", @sizeof(float64)); // works 
+    printf("%d ", @sizeof(struct { a: int*, b: int32* })); 
+    printf("%d ", @sizeof(enum(int64) { A, B }));   
+    printf("%d ", @sizeof(struct { c: int, x: struct { a: int }, a: int }));
 }

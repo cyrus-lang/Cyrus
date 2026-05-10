@@ -3,9 +3,9 @@
 import std::libc{printf};
 
 pub fn main() {
-    printf("%d ", @alignOf(int));
-    printf("%d ", @alignOf(float64));
-    printf("%d ", @alignOf(struct { a: int*, b: int32* }));
-    printf("%d ", @alignOf(enum(int64) { A, B }));
-    printf("%d ", @alignOf(struct { a: int, b: int8 }));
+    printf("%d ", @alignof(int));
+    printf("%d ", @alignof(float64));
+    printf("%d ", @alignof(struct { a: int*, b: int32* }));
+    printf("%d ", @alignof(enum(int64) { A, B }));
+    printf("%d ", @alignof(struct { a: int, b: int8 }));
 }

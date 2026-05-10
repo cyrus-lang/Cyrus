@@ -18,7 +18,7 @@
 use crate::{
     exprs::TypedExpr,
     stmts::{TypedBlockStmt, TypedStmt},
-    types::{SemaType, TypedFuncType},
+    types::SemaType,
 };
 use cyrusc_ast::Ident;
 use cyrusc_source_loc::Loc;
@@ -116,7 +116,7 @@ pub static BUILTIN_SPECS: &[TypedBuiltinSpec] = &[
     // -- const-evals --
     TypedBuiltinSpec {
         kind: TypedBuiltinKind::SizeOf,
-        name: "sizeOf",
+        name: "sizeof",
         family: TypedBuiltinFamily::ConstEval,
         form: TypedBuiltinForm::Expr,
         phase: TypedBuiltinPhase::ConstEval,
@@ -125,7 +125,7 @@ pub static BUILTIN_SPECS: &[TypedBuiltinSpec] = &[
     },
     TypedBuiltinSpec {
         kind: TypedBuiltinKind::AlignOf,
-        name: "alignOf",
+        name: "alignof",
         family: TypedBuiltinFamily::ConstEval,
         form: TypedBuiltinForm::Expr,
         phase: TypedBuiltinPhase::ConstEval,
@@ -134,7 +134,7 @@ pub static BUILTIN_SPECS: &[TypedBuiltinSpec] = &[
     },
     TypedBuiltinSpec {
         kind: TypedBuiltinKind::OffsetOf,
-        name: "offsetOf",
+        name: "offsetof",
         family: TypedBuiltinFamily::ConstEval,
         form: TypedBuiltinForm::Expr,
         phase: TypedBuiltinPhase::ConstEval,
@@ -184,9 +184,9 @@ pub static BUILTIN_SPECS: &[TypedBuiltinSpec] = &[
 builtin_lookup! {
     pub fn lookup_builtin(name: &str) -> Option<TypedBuiltinKind> {
         "allow" => TypedBuiltinKind::Allow,
-        "sizeOf" => TypedBuiltinKind::SizeOf,
-        "alignOf" => TypedBuiltinKind::AlignOf,
-        "offsetOf" => TypedBuiltinKind::OffsetOf,
+        "sizeof" => TypedBuiltinKind::SizeOf,
+        "alignof" => TypedBuiltinKind::AlignOf,
+        "offsetof" => TypedBuiltinKind::OffsetOf,
         "unroll" => TypedBuiltinKind::Unroll,
         "memcpy" => TypedBuiltinKind::Memcpy,
         "memset" => TypedBuiltinKind::Memset,
