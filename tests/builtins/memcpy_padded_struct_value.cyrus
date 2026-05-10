@@ -17,7 +17,7 @@ pub fn main() {
 
     // alignment-aware memcpy:
     // direct copy of the whole struct including the padding holes
-    @memcpy(&p2, &p1, @sizeOf(Packed));
+    @memcpy(&p2, &p1, @sizeof(Packed));
 
     printf("P2 values: a=%d, b=%d", p2.a, p2.b);
     

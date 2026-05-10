@@ -6,7 +6,7 @@ pub fn main() {
     var x: int32 = 0;
 
     // fill with 0xAA (170 decimal).
-    @memset(&x, 0xAAAA, @sizeOf(int32));
+    @memset(&x, 0xAAAA, @sizeof(int32));
 
     printf("value: %x", x);
     
