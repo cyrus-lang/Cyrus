@@ -25,7 +25,6 @@ use cyrusc_internal::cir::lower::lower_enum_decl;
 use cyrusc_internal::cir::lower::lower_func_type;
 use cyrusc_internal::cir::lower::lower_sema_type;
 use cyrusc_internal::cir::types::*;
-use cyrusc_internal::compiler_options::CompilerOptions;
 use cyrusc_internal::monomorph::*;
 use cyrusc_internal::symbols::SymbolQuery;
 use cyrusc_internal::vtable::VTableRegistry;
@@ -38,8 +37,6 @@ use cyrusc_typed_ast::VTableID;
 use cyrusc_typed_ast::builtins::TypedBuiltin;
 use cyrusc_typed_ast::builtins::TypedBuiltinBlock;
 use cyrusc_typed_ast::builtins::TypedBuiltinFunc;
-use cyrusc_typed_ast::builtins::TypedBuiltinKind;
-use cyrusc_typed_ast::builtins::TypedBuiltinPhase;
 use cyrusc_typed_ast::builtins::builtin_spec_of;
 use cyrusc_typed_ast::builtins::lookup_builtin;
 use cyrusc_typed_ast::decls::table::DeclTablesRegistry;
@@ -54,7 +51,6 @@ use fx_hash::FxHashMap;
 use std::sync::Arc;
 
 struct CIRLower<'a> {
-    opts: &'a CompilerOptions,
     program_tree: Box<TypedProgramTree>,
     decl_tables: Arc<DeclTablesRegistry>,
     formatter: &'a dyn Formatter,
@@ -75,7 +71,6 @@ struct CIRLower<'a> {
 
 impl<'a> CIRLower<'a> {
     pub fn new(
-        opts: &'a CompilerOptions,
         program_tree: Box<TypedProgramTree>,
         module_name: String,
         decl_tables: Arc<DeclTablesRegistry>,
@@ -86,7 +81,6 @@ impl<'a> CIRLower<'a> {
         target: &'a ABITarget,
     ) -> Self {
         Self {
-            opts,
             program_tree,
             module_name,
             decl_tables,
@@ -148,7 +142,7 @@ impl<'a> CIRLower<'a> {
                 lowered_stmts.push(self.lower_global_var_stmt(&mut global_var.clone()));
             }
             TypedStmt::BlockStmt(block) => {
-                lowered_stmts.push(CIRStmt::Block(self.lower_body(block)));
+                lowered_stmts.push(CIRStmt::Block(self.lower_block(block)));
             }
             TypedStmt::If(if_stmt) => {
                 lowered_stmts.push(self.lower_if(if_stmt));
@@ -224,14 +218,31 @@ impl<'a> CIRLower<'a> {
     fn lower_builtin(&mut self, builtin: &TypedBuiltin) -> Vec<CIRStmt> {
         match builtin {
             TypedBuiltin::BuiltinFunc(builtin_func) => {
-                if builtin_func.child_stmt.is_some() {
-                    self.eval_builtin_func_stmt(builtin_func)
-                } else {
-                    // expression
-                    vec![CIRStmt::Expr(self.lower_builtin_func(builtin_func))]
-                }
+                debug_assert!(
+                    builtin_func.child_stmt.is_none(),
+                    "attribute builtin cannot be  appeared cir lower"
+                );
+
+                // expression
+                vec![CIRStmt::Expr(self.lower_builtin_func(builtin_func))]
             }
-            TypedBuiltin::BuiltinBlock(builtin_block) => self.eval_builtin_block(builtin_block),
+            TypedBuiltin::BuiltinBlock(builtin_block) => self.lower_builtin_block(builtin_block),
+        }
+    }
+
+    fn lower_builtin_block(&mut self, builtin_block: &TypedBuiltinBlock) -> Vec<CIRStmt> {
+        if builtin_block.is_toplevel.unwrap() {
+            // VERY IMPORTANT FOR CODEGEN:
+            // unwrap block!
+            let mut lowered_stmts = Vec::new();
+
+            for stmt in &builtin_block.block.stmts {
+                self.lower_stmt(stmt, &mut lowered_stmts);
+            }
+
+            lowered_stmts
+        } else {
+            vec![CIRStmt::Block(self.lower_block(&builtin_block.block))]
         }
     }
 
@@ -381,16 +392,16 @@ impl<'a> CIRLower<'a> {
 
     fn lower_if(&mut self, if_stmt: &TypedIfStmt) -> CIRStmt {
         let cond = self.lower_expr(&if_stmt.cond);
-        let then_block = Box::new(self.lower_body(&if_stmt.then_block));
+        let then_block = Box::new(self.lower_block(&if_stmt.then_block));
 
         let mut else_block = if_stmt
             .else_block
             .as_ref()
-            .map(|block| Box::new(self.lower_body(block)));
+            .map(|block| Box::new(self.lower_block(block)));
 
         for branch in if_stmt.branches.iter().rev() {
             let branch_cond = self.lower_expr(&branch.cond);
-            let branch_then = Box::new(self.lower_body(&branch.then_block));
+            let branch_then = Box::new(self.lower_block(&branch.then_block));
 
             let nested_if = CIRStmt::If(CIRIfStmt {
                 cond: branch_cond,
@@ -418,7 +429,7 @@ impl<'a> CIRLower<'a> {
         let operand = self.lower_expr(&switch_stmt.operand);
         let operand_ty = switch_stmt.operand.ty.as_ref().unwrap().const_inner();
 
-        let default = switch_stmt.default_case.as_ref().map(|block| self.lower_body(block));
+        let default = switch_stmt.default_case.as_ref().map(|block| self.lower_block(block));
 
         let is_enum = operand_ty.is_enum();
 
@@ -536,7 +547,7 @@ impl<'a> CIRLower<'a> {
                 })
                 .expect("case must have at least one pattern");
 
-            let then_block = Box::new(self.lower_body(&case.body));
+            let then_block = Box::new(self.lower_block(&case.body));
 
             let if_stmt = CIRStmt::If(CIRIfStmt {
                 cond: case_cond,
@@ -586,7 +597,7 @@ impl<'a> CIRLower<'a> {
                 }
             }
 
-            let body = self.lower_body(&typed_case.body);
+            let body = self.lower_block(&typed_case.body);
 
             cases.push(CIRSwitchCase { patterns, body });
         }
@@ -740,7 +751,7 @@ impl<'a> CIRLower<'a> {
                 patterns.push(pattern);
             }
 
-            let body = self.lower_body(&typed_case.body);
+            let body = self.lower_block(&typed_case.body);
 
             cases.push(CIRSwitchCase { patterns, body });
         }
@@ -816,7 +827,7 @@ impl<'a> CIRLower<'a> {
 
     fn lower_while(&mut self, while_stmt: &TypedWhileStmt) -> CIRStmt {
         let cond = Box::new(self.lower_expr(&while_stmt.cond));
-        let body = Box::new(self.lower_body(&while_stmt.body));
+        let body = Box::new(self.lower_block(&while_stmt.body));
         CIRStmt::While(CIRWhileStmt {
             cond,
             body,
@@ -834,7 +845,7 @@ impl<'a> CIRLower<'a> {
             .clone()
             .and_then(|increment| Some(self.lower_expr(&increment)));
 
-        let body = Box::new(self.lower_body(&for_stmt.body));
+        let body = Box::new(self.lower_block(&for_stmt.body));
 
         CIRStmt::For(CIRForStmt {
             initializer,
@@ -1100,7 +1111,7 @@ impl<'a> CIRLower<'a> {
     fn lower_func_def(&mut self, irv_id: IRValueID, func_def: &TypedFuncDefStmt, mangle_name: bool) -> CIRFuncDefStmt {
         let params = self.lower_func_params(&func_def.params, false);
 
-        let body = self.lower_body(&func_def.body);
+        let body = self.lower_block(&func_def.body);
 
         let ret_type = self.lower_sema_type(&func_def.ret_type);
 
@@ -1179,7 +1190,7 @@ impl<'a> CIRLower<'a> {
         self.lower_func_decl(Some(func_decl_stmt.func_decl_id), &func_decl, mangle_name)
     }
 
-    fn lower_body(&mut self, block: &TypedBlockStmt) -> CIRBlockStmt {
+    fn lower_block(&mut self, block: &TypedBlockStmt) -> CIRBlockStmt {
         let stmts = self.lower_stmts(&block.stmts);
         let defers = block.defers.iter().map(|defer| self.lower_defer(defer)).collect();
 
@@ -1342,7 +1353,7 @@ impl<'a> CIRLower<'a> {
 
     fn lower_lambda(&mut self, lambda: &TypedLambdaExpr) -> CIRExprKind {
         let params = self.lower_func_params(&lambda.params, false);
-        let body = Box::new(self.lower_body(&lambda.body));
+        let body = Box::new(self.lower_block(&lambda.body));
         let ret = self.lower_sema_type(&lambda.ret_type);
 
         let cir_func_type = CIRFuncType {
@@ -1417,7 +1428,7 @@ impl<'a> CIRLower<'a> {
         let body = {
             let method_body = self.decl_tables.body(body_id);
 
-            self.lower_body(&method_body)
+            self.lower_block(&method_body)
         };
 
         let ret_type = self.lower_sema_type(&method_decl.func_decl.ret_type);
@@ -2209,39 +2220,9 @@ impl<'a> CIRLower<'a> {
     }
 }
 
-// BuiltinBlock Evaluation
-impl<'a> CIRLower<'a> {
-    fn eval_builtin_block(&self, builtin_block: &TypedBuiltinBlock) -> Vec<CIRStmt> {
-        let builtin_kind = lookup_builtin(&builtin_block.name.value).unwrap();
-        let builtin_spec = builtin_spec_of(builtin_kind);
-        debug_assert!(builtin_spec.phase == TypedBuiltinPhase::CIRLowering);
-
-        match &builtin_spec.kind {
-            TypedBuiltinKind::Debug => {
-                // if self.target.info.
-
-                todo!();
-            }
-            TypedBuiltinKind::Release => todo!(),
-            TypedBuiltinKind::Unroll => todo!(),
-
-            _ => unreachable!(),
-        }
-    }
-
-    fn eval_builtin_func_stmt(&self, builtin_func: &TypedBuiltinFunc) -> Vec<CIRStmt> {
-        let builtin_kind = lookup_builtin(&builtin_func.name.value).unwrap();
-        let builtin_spec = builtin_spec_of(builtin_kind);
-        debug_assert!(builtin_spec.phase == TypedBuiltinPhase::CIRLowering);
-
-        vec![]
-    }
-}
-
 #[inline(never)]
-pub fn traverse_program_trees_in_parallel(
+pub fn lower_program_trees_in_parallel(
     threads: Option<usize>,
-    opts: &CompilerOptions,
     program_trees: Vec<Box<TypedProgramTree>>,
     query: &dyn SymbolQuery,
     formatter: &dyn Formatter,
@@ -2258,7 +2239,7 @@ pub fn traverse_program_trees_in_parallel(
     let pool = rayon::ThreadPoolBuilder::new()
         .num_threads(num_threads)
         .build()
-        .expect("Failed to build thread pool.");
+        .expect("failed to build thread pool");
 
     pool.install(|| {
         program_trees
@@ -2269,7 +2250,6 @@ pub fn traverse_program_trees_in_parallel(
                 let module_name = query.lookup_module_name(program_tree.file_id).unwrap();
 
                 let mut cir_walk = CIRLower::new(
-                    opts,
                     program_tree.clone(),
                     module_name,
                     decl_tables.clone(),

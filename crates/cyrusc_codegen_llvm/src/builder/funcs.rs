@@ -60,16 +60,16 @@ pub(crate) enum FuncCallKind<'ll> {
 // Declaration.
 impl<'ll> CodeGenIRBuilder<'ll> {
     pub(crate) fn emit_func_decl(&mut self, func_decl: &CIRFuncDeclStmt) -> FunctionValue<'ll> {
-        let cir_fn_ty = cir_func_decl_as_func_type(func_decl);
+        let cir_fn_type = cir_func_decl_as_func_type(func_decl);
 
-        let fn_type = self.emit_func_ty(cir_fn_ty);
+        let llvm_func_type = self.emit_func_ty(cir_fn_type);
 
         let func_name = &func_decl.name;
         let llvmmodule = self.llvmmodule.borrow();
 
         let llvm_func_value = llvmmodule
             .get_function(func_name)
-            .unwrap_or_else(|| llvmmodule.add_function(func_name, fn_type, None));
+            .unwrap_or_else(|| llvmmodule.add_function(func_name, llvm_func_type, None));
 
         apply_func_modifiers(self.llvmctx, &llvm_func_value, &func_decl.modifiers);
 
@@ -84,9 +84,9 @@ impl<'ll> CodeGenIRBuilder<'ll> {
     }
 
     pub(crate) fn get_or_declare_function(&mut self, irv_id: IRValueID) -> InternalValue<'ll> {
-        if let Some(local) = self.lookup_local_ir_value(irv_id) {
-            if let LocalIRValue::Func(func, ty) = local {
-                return InternalValue::new(ty, InternalValueKind::FuncValue(func));
+        if let Some(ir_value) = self.lookup_local_ir_value(irv_id) {
+            if let LocalIRValue::Func(llvm_func_value, ty) = ir_value {
+                return InternalValue::new(ty, InternalValueKind::FuncValue(llvm_func_value));
             }
         }
 
@@ -102,11 +102,14 @@ impl<'ll> CodeGenIRBuilder<'ll> {
             ..func_decl.modifiers
         };
 
-        let llvm_func = self.emit_func_decl(&func_decl);
+        let llvm_func_value = self.emit_func_decl(&func_decl);
 
-        let cir_func_ty = cir_func_decl_as_func_type(&func_decl);
+        let cir_func_type = cir_func_decl_as_func_type(&func_decl);
 
-        InternalValue::new(CIRType::FuncType(cir_func_ty), InternalValueKind::FuncValue(llvm_func))
+        InternalValue::new(
+            CIRType::FuncType(cir_func_type),
+            InternalValueKind::FuncValue(llvm_func_value),
+        )
     }
 }
 
@@ -309,6 +312,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         loc: Loc,
     ) {
         debug_assert!(self.cur_func.is_some());
+        debug_assert!(self.dctx.compile_unit != std::ptr::null_mut());
 
         let cur_func = self.cur_func.unwrap();
         let cur_func_name = cur_func.get_name().to_str().unwrap();

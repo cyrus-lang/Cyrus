@@ -49,6 +49,12 @@ pub enum TypedBuiltin {
     BuiltinBlock(TypedBuiltinBlock),
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TypedBuiltinForm {
+    Expr,
+    Stmt,
+}
+
 #[derive(Debug, Clone)]
 pub struct TypedBuiltinFunc {
     pub name: Ident,
@@ -63,28 +69,21 @@ pub struct TypedBuiltinBlock {
     pub name: Ident,
     pub args: Vec<TypedExpr>,
     pub block: Box<TypedBlockStmt>,
+    pub is_toplevel: Option<bool>,
     pub loc: Loc,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TypedBuiltinFamily {
-    Attribute,
     ConstEval,
     Intrinsic,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TypedBuiltinPhase {
-    Analyzer,
+    Resolver,
     ConstEval,
-    CIRLowering,
     Codegen,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum TypedBuiltinForm {
-    Expr,
-    Stmt,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -106,8 +105,8 @@ pub struct TypedBuiltinSpec {
     pub name: &'static str,
 
     pub family: TypedBuiltinFamily,
-    pub form: TypedBuiltinForm,
     pub phase: TypedBuiltinPhase,
+    pub form: TypedBuiltinForm,
 
     pub min_args: usize,
     pub max_args: Option<usize>,
@@ -119,8 +118,8 @@ pub static BUILTIN_SPECS: &[TypedBuiltinSpec] = &[
         kind: TypedBuiltinKind::SizeOf,
         name: "sizeof",
         family: TypedBuiltinFamily::ConstEval,
-        form: TypedBuiltinForm::Expr,
         phase: TypedBuiltinPhase::ConstEval,
+        form: TypedBuiltinForm::Expr,
         min_args: 1,
         max_args: Some(1),
     },
@@ -128,8 +127,8 @@ pub static BUILTIN_SPECS: &[TypedBuiltinSpec] = &[
         kind: TypedBuiltinKind::AlignOf,
         name: "alignof",
         family: TypedBuiltinFamily::ConstEval,
-        form: TypedBuiltinForm::Expr,
         phase: TypedBuiltinPhase::ConstEval,
+        form: TypedBuiltinForm::Expr,
         min_args: 1,
         max_args: Some(1),
     },
@@ -137,8 +136,8 @@ pub static BUILTIN_SPECS: &[TypedBuiltinSpec] = &[
         kind: TypedBuiltinKind::OffsetOf,
         name: "offsetof",
         family: TypedBuiltinFamily::ConstEval,
-        form: TypedBuiltinForm::Expr,
         phase: TypedBuiltinPhase::ConstEval,
+        form: TypedBuiltinForm::Expr,
         min_args: 2,
         max_args: Some(2),
     },
@@ -147,8 +146,8 @@ pub static BUILTIN_SPECS: &[TypedBuiltinSpec] = &[
         kind: TypedBuiltinKind::Memcpy,
         name: "memcpy",
         family: TypedBuiltinFamily::Intrinsic,
-        form: TypedBuiltinForm::Expr,
         phase: TypedBuiltinPhase::Codegen,
+        form: TypedBuiltinForm::Expr,
         min_args: 3,
         max_args: Some(3),
     },
@@ -156,8 +155,8 @@ pub static BUILTIN_SPECS: &[TypedBuiltinSpec] = &[
         kind: TypedBuiltinKind::Memset,
         name: "memset",
         family: TypedBuiltinFamily::Intrinsic,
-        form: TypedBuiltinForm::Expr,
         phase: TypedBuiltinPhase::Codegen,
+        form: TypedBuiltinForm::Expr,
         min_args: 3,
         max_args: Some(3),
     },
@@ -166,42 +165,34 @@ pub static BUILTIN_SPECS: &[TypedBuiltinSpec] = &[
         kind: TypedBuiltinKind::Debug,
         name: "debug",
         family: TypedBuiltinFamily::ConstEval,
+        phase: TypedBuiltinPhase::Resolver,
         form: TypedBuiltinForm::Stmt,
-        phase: TypedBuiltinPhase::CIRLowering,
         min_args: 0,
         max_args: Some(0),
     },
-    // -- attributes --
-    // TypedBuiltinSpec {
-    //     kind: TypedBuiltinKind::Unroll,
-    //     name: "unroll",
-    //     family: TypedBuiltinFamily::Attribute,
-    //     form: TypedBuiltinForm::Stmt,
-    //     phase: TypedBuiltinPhase::Codegen,
-    //     min_args: 0,
-    //     max_args: Some(1),
-    // },
-    // TypedBuiltinSpec {
-    //     kind: TypedBuiltinKind::Allow,
-    //     name: "allow",
-    //     family: TypedBuiltinFamily::Attribute,
-    //     form: TypedBuiltinForm::Block,
-    //     phase: TypedBuiltinPhase::Analyzer,
-    //     min_args: 1,
-    //     max_args: Some(1),
-    // },
+    TypedBuiltinSpec {
+        kind: TypedBuiltinKind::Release,
+        name: "release",
+        family: TypedBuiltinFamily::ConstEval,
+        phase: TypedBuiltinPhase::Resolver,
+        form: TypedBuiltinForm::Stmt,
+        min_args: 0,
+        max_args: Some(0),
+    },
 ];
 
 builtin_lookup! {
     pub fn lookup_builtin(name: &str) -> Option<TypedBuiltinKind> {
+        // const-evals
         "sizeof" => TypedBuiltinKind::SizeOf,
         "alignof" => TypedBuiltinKind::AlignOf,
         "offsetof" => TypedBuiltinKind::OffsetOf,
-        "unroll" => TypedBuiltinKind::Unroll,
-        "memcpy" => TypedBuiltinKind::Memcpy,
-        "memset" => TypedBuiltinKind::Memset,
         "debug" => TypedBuiltinKind::Debug,
         "release" => TypedBuiltinKind::Release,
+
+        // intrinsics
+        "memcpy" => TypedBuiltinKind::Memcpy,
+        "memset" => TypedBuiltinKind::Memset,
     }
 }
 

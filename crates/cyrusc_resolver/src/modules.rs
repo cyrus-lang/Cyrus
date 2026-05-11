@@ -68,7 +68,7 @@ impl VisitingModule {
     }
 }
 
-impl Resolver {
+impl<'a> Resolver<'a> {
     /// Resolve a module and produce its typed program tree.
     ///
     /// Performs a two‑phase semantic resolution:

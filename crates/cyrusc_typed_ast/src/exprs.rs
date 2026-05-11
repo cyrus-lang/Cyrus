@@ -28,7 +28,7 @@ use cyrusc_ast::{
     operators::{InfixOperator, PrefixOperator, UnaryOperator},
 };
 use cyrusc_source_loc::Loc;
-use cyrusc_tokens::literals::{LiteralKind, StringPrefix};
+use cyrusc_tokens::literals::LiteralKind;
 use std::fmt;
 
 #[derive(Debug, Clone)]

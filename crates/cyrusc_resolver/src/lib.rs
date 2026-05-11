@@ -17,6 +17,7 @@
 
 use cyrusc_ast::abi::Visibility;
 use cyrusc_diagcentral::reporter::DiagReporter;
+use cyrusc_internal::compiler_options::CompilerOptions;
 use cyrusc_internal::generic_scope::GenericScope;
 use cyrusc_internal::local_scope::LocalScope;
 use cyrusc_internal::module_loader::ModuleLoader;
@@ -60,7 +61,9 @@ pub struct GlobalSymbolRegistryInner {
 
 /// Semantic resolver responsible for symbol binding, module loading,
 /// and building the typed representation of the program.
-pub struct Resolver {
+pub struct Resolver<'a> {
+    opts: &'a CompilerOptions,
+
     /// Global symbol table shared across all modules.
     /// Stores all declared symbols and their associated metadata.
     pub global_symbols: Arc<GlobalSymbolRegistry>,
@@ -117,14 +120,16 @@ pub struct IDGen {
     next_label_id: AtomicU32,
 }
 
-impl Resolver {
+impl<'a> Resolver<'a> {
     pub fn new(
+        opts: &'a CompilerOptions,
         module_loader: Box<dyn ModuleLoader>,
         source_map: Arc<SourceMap>,
         reporter: Arc<DiagReporter>,
         decl_tables: Arc<DeclTablesRegistry>,
     ) -> Self {
         Self {
+            opts,
             global_symbols: Arc::new(GlobalSymbolRegistry::new()),
             analyzed_files: Arc::new(Mutex::new(HashSet::new())),
             program_trees: Arc::new(Mutex::new(Vec::new())),
@@ -615,7 +620,7 @@ impl GlobalSymbolRegistry {
     }
 }
 
-impl Formatter for Resolver {
+impl<'a> Formatter for Resolver<'a> {
     fn format_decl(&self, decl_id: DeclID) -> String {
         match decl_id {
             DeclID::Struct(struct_decl_id) => {
@@ -784,7 +789,7 @@ impl Formatter for Resolver {
     }
 }
 
-impl SymbolQuery for Resolver {
+impl<'a> SymbolQuery for Resolver<'a> {
     impl_helper_method__get_kind!(get_var, Var, VarDeclID);
 
     impl_helper_method__get_kind!(get_global_var, GlobalVar, GlobalVarDeclID);
@@ -872,5 +877,5 @@ impl IDGen {
     }
 }
 
-unsafe impl Send for Resolver {}
-unsafe impl Sync for Resolver {}
+unsafe impl<'a> Send for Resolver<'a> {}
+unsafe impl<'a> Sync for Resolver<'a> {}

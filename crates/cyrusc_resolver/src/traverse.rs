@@ -37,6 +37,10 @@ use cyrusc_tokens::literals::{ASTLiteralExpr, LiteralKind, StringPrefix};
 use cyrusc_typed_ast::builtins::TypedBuiltin;
 use cyrusc_typed_ast::builtins::TypedBuiltinBlock;
 use cyrusc_typed_ast::builtins::TypedBuiltinFunc;
+use cyrusc_typed_ast::builtins::TypedBuiltinKind;
+use cyrusc_typed_ast::builtins::TypedBuiltinPhase;
+use cyrusc_typed_ast::builtins::builtin_spec_of;
+use cyrusc_typed_ast::builtins::lookup_builtin;
 use cyrusc_typed_ast::decls::*;
 use cyrusc_typed_ast::exprs::*;
 use cyrusc_typed_ast::stmts::*;
@@ -46,13 +50,30 @@ use fx_hash::FxHashSet;
 use fx_hash::FxHashSetExt;
 
 // Resolver endpoints.
-impl Resolver {
+impl<'a> Resolver<'a> {
     // Scans the top-level AST for declarations (typedefs, functions, structs, etc.)
     // And Registers each declared name into the current module’s symbol table. (first pass)
     pub(crate) fn resolve_decl_names(&mut self, stmts: &[ASTStmt]) {
         for stmt in stmts {
             if let ASTStmt::ModuleDecl(module_decl) = stmt {
                 self.resolve_module_decl_names(module_decl);
+                continue;
+            }
+
+            if let ASTStmt::Builtin(builtin) = stmt {
+                if let Builtin::BuiltinBlock(builtin_block) = builtin {
+                    if !self.is_builtin_active(&builtin_block.name.value) {
+                        continue;
+                    }
+
+                    if let Some(builtin_kind) = lookup_builtin(&builtin_block.name.value) {
+                        let builtin_spec = builtin_spec_of(builtin_kind);
+
+                        if builtin_spec.phase == TypedBuiltinPhase::Resolver {
+                            self.resolve_decl_names(&builtin_block.block.stmts);
+                        }
+                    }
+                }
                 continue;
             }
 
@@ -82,6 +103,7 @@ impl Resolver {
 
         for stmt in ast.body.as_ref() {
             let resolved = self.resolve_toplevel_stmt(stmt);
+
             typed_body.extend(resolved);
         }
 
@@ -403,6 +425,7 @@ impl Resolver {
             ASTExpr::UnnamedStructValue(unnamed_struct_value) => {
                 self.resolve_unnamed_struct_value(unnamed_struct_value)
             }
+
             ASTExpr::Builtin(builtin) => match self.resolve_builtin(builtin) {
                 Some(typed_builtin) => {
                     let kind = TypedExprKind::Builtin(typed_builtin);
@@ -835,11 +858,10 @@ impl Resolver {
     fn resolve_builtin(&mut self, builtin: &Builtin) -> Option<TypedBuiltin> {
         match builtin {
             Builtin::BuiltinFunc(builtin_func) => self.resolve_builtin_func(builtin_func),
-            Builtin::BuiltinBlock(builtin_block) => self.resolve_builtin_scope(builtin_block),
+            Builtin::BuiltinBlock(builtin_block) => self.resolve_builtin_block(builtin_block),
         }
     }
 
-    #[allow(unused)]
     fn resolve_builtin_func(&mut self, builtin_func: &BuiltinFunc) -> Option<TypedBuiltin> {
         let args = builtin_func
             .args
@@ -864,15 +886,18 @@ impl Resolver {
         Some(TypedBuiltin::BuiltinFunc(builtin_func))
     }
 
-    #[allow(unused)]
-    fn resolve_builtin_scope(&mut self, builtin_block: &BuiltinBlock) -> Option<TypedBuiltin> {
+    fn resolve_builtin_block(&mut self, builtin_block: &BuiltinBlock) -> Option<TypedBuiltin> {
+        if !self.is_builtin_active(&builtin_block.name.value) {
+            return None;
+        }
+
         let args = builtin_block
             .args
             .iter()
             .filter_map(|arg| self.resolve_expr(arg))
             .collect();
 
-        let block = {
+        let stmts = {
             if builtin_block.is_toplevel_block {
                 let typed_stmts: Vec<TypedStmt> = builtin_block
                     .block
@@ -881,11 +906,7 @@ impl Resolver {
                     .flat_map(|stmt| self.resolve_toplevel_stmt(stmt))
                     .collect();
 
-                TypedBlockStmt {
-                    stmts: typed_stmts,
-                    defers: Vec::new(),
-                    loc: builtin_block.loc,
-                }
+                typed_stmts
             } else {
                 let typed_stmts: Vec<TypedStmt> = builtin_block
                     .block
@@ -894,18 +915,21 @@ impl Resolver {
                     .flat_map(|stmt| self.resolve_stmt(stmt))
                     .collect();
 
-                TypedBlockStmt {
-                    stmts: typed_stmts,
-                    defers: Vec::new(),
-                    loc: builtin_block.loc,
-                }
+                typed_stmts
             }
+        };
+
+        let block = TypedBlockStmt {
+            stmts,
+            defers: Vec::new(),
+            loc: builtin_block.loc,
         };
 
         let built_block = TypedBuiltinBlock {
             name: builtin_block.name.clone(),
             args,
             block: Box::new(block),
+            is_toplevel: None,
             loc: builtin_block.loc,
         };
 
@@ -2689,7 +2713,7 @@ impl Resolver {
 }
 
 // Resolver helper methods.
-impl Resolver {
+impl<'a> Resolver<'a> {
     fn insert_variable_decl(
         &mut self,
         ident: &Ident,
@@ -2760,5 +2784,21 @@ impl Resolver {
                     .insert_label(name.clone(), label_id);
             }
         }
+    }
+
+    fn is_builtin_active(&self, name: &str) -> bool {
+        if let Some(builtin_kind) = lookup_builtin(name) {
+            let builtin_spec = builtin_spec_of(builtin_kind);
+
+            if builtin_spec.phase == TypedBuiltinPhase::Resolver {
+                match builtin_spec.kind {
+                    TypedBuiltinKind::Debug => return self.opts.profile.is_debug(),
+                    TypedBuiltinKind::Release => return self.opts.profile.is_release(),
+                    _ => {}
+                }
+            }
+        }
+
+        true
     }
 }
