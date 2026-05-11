@@ -28,11 +28,10 @@ use cyrusc_compiler::{
     codegen_traits::{CodeGenBackend, SeparateModuleSupport, UnifiedModuleSupport},
     context::CodeGenContext,
     object_file_info::ObjectFileInfo,
-    options::CompilerOptions,
     target_machine_info::TargetMachineInfo,
 };
 use cyrusc_diagcentral::exit_with_msg;
-use cyrusc_internal::{cir::cir::CIRModule, vtable::VTableRegistry};
+use cyrusc_internal::{cir::cir::CIRModule, compiler_options::CompilerOptions, vtable::VTableRegistry};
 use cyrusc_scaffold_parser::OBJECT_CACHE_DIR_FILENAME;
 use cyrusc_tui_utils::tui_skipped;
 use inkwell::{

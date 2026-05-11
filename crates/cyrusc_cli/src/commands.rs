@@ -24,11 +24,11 @@ use cyrusc_compiler::driver::{
     get_object_dir_output_path, get_shared_lib_dir_output_path, get_static_lib_dir_output_path,
 };
 use cyrusc_compiler::object_file_info::ObjectFileInfo;
-use cyrusc_compiler::options::{CompilerOption_LinkerOutputKind, CompilerOptions};
 use cyrusc_diagcentral::exit_with_msg;
 use cyrusc_diagcentral::reporter::DiagReporter;
 use cyrusc_fs_utils::ensure_output_dir;
 use cyrusc_fs_utils::temp::TempExecutableBuilder;
+use cyrusc_internal::compiler_options::{CompilerOption_LinkerOutputKind, CompilerOptions};
 use cyrusc_lexer::Lexer;
 use cyrusc_parser::SourceParser;
 use cyrusc_source_loc::SourceMap;

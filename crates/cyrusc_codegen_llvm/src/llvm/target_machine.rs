@@ -14,7 +14,8 @@
  * You should have received a copy of the GNU General Public License
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
-use cyrusc_compiler::options::{CompilerOption_CodeModel, CompilerOption_RelocMode};
+
+use cyrusc_internal::compiler_options::{CompilerOption_CodeModel, CompilerOption_RelocMode};
 use cyrusc_tui_utils::tui_error;
 use inkwell::{
     OptimizationLevel,

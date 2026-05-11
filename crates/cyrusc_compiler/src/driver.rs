@@ -15,11 +15,7 @@
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
 
-use crate::{
-    context::CodeGenContext,
-    linker::Linker,
-    options::{CompilerOption_BuildDir, CompilerOptions, CompilerOption_ProjectType, CompilerOption_LinkerOutputKind},
-};
+use crate::{context::CodeGenContext, linker::Linker};
 use cyrusc_analyzer::context::{AnalysisContext, AnalyzerConfig, EntryPoints};
 use cyrusc_buildmanifest::BuildManifest;
 use cyrusc_cir_lower::traverse_program_trees_in_parallel;
@@ -28,6 +24,9 @@ use cyrusc_fs_utils::{ensure_output_dir, file_name_without_extension, get_direct
 use cyrusc_internal::{
     abi::target::{ABITarget, ABITargetArch, ABITargetInfo, ABITargetOS, ABITargetObjectFormat, create_target_abi},
     cir::cir::CIRModule,
+    compiler_options::{
+        CompilerOption_BuildDir, CompilerOption_LinkerOutputKind, CompilerOption_ProjectType, CompilerOptions,
+    },
     monomorph::MonomorphRegistry,
     vtable::VTableRegistry,
 };
@@ -286,6 +285,7 @@ pub fn build_compilation_bundle(opts: &mut CompilerOptions, file_path: Option<St
 
     let cir_modules = traverse_program_trees_in_parallel(
         opts.jobs,
+        opts,
         boxed_program_trees,
         &*codegen_semantic_bundle.resolver,
         &*codegen_semantic_bundle.resolver,

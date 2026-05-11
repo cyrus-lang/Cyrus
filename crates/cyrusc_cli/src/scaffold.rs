@@ -15,8 +15,12 @@
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
 
-use cyrusc_compiler::{options::CompilerOptions, vercheck::validate_compiler_version};
+use cyrusc_compiler::{
+    options::{compiler_options_from_scaffold, merge_compiler_options, validate_compiler_options_paths},
+    vercheck::validate_compiler_version,
+};
 use cyrusc_diagcentral::exit_with_msg;
+use cyrusc_internal::compiler_options::CompilerOptions;
 use cyrusc_scaffold::version::CYRUS_COMPILER_VERSION;
 use cyrusc_scaffold_parser::{PROJECT_FILE_PATH, ScaffoldConfig, parse_project_toml};
 use cyrusc_tui_utils::tui_error;
@@ -61,15 +65,17 @@ pub(crate) fn merge_and_validate_scaffold_config_with_codegen_options(
         return;
     };
 
-    let scaffold_codegen_options = CompilerOptions::from_scaffold(scaffold_config);
-    *opts = opts.merge(&scaffold_codegen_options);
+    let scaffold_compiler_options = compiler_options_from_scaffold(scaffold_config);
 
-    if let Err(err) = validate_compiler_version(CYRUS_COMPILER_VERSION.trim(), scaffold_codegen_options.cyrus_version) {
+    *opts = merge_compiler_options(&scaffold_compiler_options, &scaffold_compiler_options);
+
+    if let Err(err) = validate_compiler_version(CYRUS_COMPILER_VERSION.trim(), scaffold_compiler_options.cyrus_version)
+    {
         tui_error(err);
         exit(1);
     }
 
-    if opts.validate_paths().is_err() {
+    if validate_compiler_options_paths(opts).is_err() {
         exit(1);
     }
 }
