@@ -18,7 +18,7 @@
 use crate::{context::CodeGenContext, linker::Linker};
 use cyrusc_analyzer::context::{AnalysisContext, AnalyzerConfig, EntryPoints};
 use cyrusc_buildmanifest::BuildManifest;
-use cyrusc_cir_lower::traverse_program_trees_in_parallel;
+use cyrusc_cir_lower::lower_program_trees_in_parallel;
 use cyrusc_diagcentral::{exit_with_msg, reporter::DiagReporter};
 use cyrusc_fs_utils::{ensure_output_dir, file_name_without_extension, get_directory_of_file};
 use cyrusc_internal::{
@@ -64,11 +64,11 @@ pub struct CodeGenContextBundle {
     pub llvm_target_triple: TargetTriple,
 }
 
-pub struct CodeGenSemanticBundle {
+pub struct CodeGenSemanticBundle<'a> {
     pub analyzed_program_trees: Vec<Rc<RefCell<TypedProgramTree>>>,
     pub vtable_registries: FxHashMap<FileID, Arc<VTableRegistry>>,
     pub monomorph_registry: Arc<MonomorphRegistry>,
-    pub resolver: Box<Resolver>,
+    pub resolver: Box<Resolver<'a>>,
     pub decl_tables: Arc<DeclTablesRegistry>,
     pub source_map: Arc<SourceMap>,
     pub entry_file: PathBuf,
@@ -128,17 +128,10 @@ pub fn create_compiler_context(
     )
 }
 
-pub fn build_semantic_bundle(opts: &mut CompilerOptions, file_path_opt: Option<String>) -> Box<CodeGenSemanticBundle> {
-    // disable modulefs cache if compiling a single file
-
-    if let Some(file_path) = &file_path_opt {
-        opts.disable_modulefs_cache = true;
-
-        // use the same directory as source directory
-        let dir_path = get_directory_of_file(file_path).unwrap();
-        opts.source_dirs.push(dir_path);
-    }
-
+pub fn build_semantic_bundle<'a>(
+    opts: &'a CompilerOptions,
+    file_path_opt: Option<String>,
+) -> Box<CodeGenSemanticBundle<'a>> {
     let base_path = opts.base_path.clone().map(|path| Path::new(&path).to_path_buf());
     let file_path = file_path_opt.map(|path| Path::new(&path).to_path_buf());
 
@@ -171,6 +164,7 @@ pub fn build_semantic_bundle(opts: &mut CompilerOptions, file_path_opt: Option<S
             let monomorph_registry = Arc::new(MonomorphRegistry::new());
 
             let mut resolver = Resolver::new(
+                opts,
                 Box::new(fs_module_loader),
                 source_map.clone(),
                 reporter.clone(),
@@ -266,8 +260,18 @@ pub fn build_semantic_bundle(opts: &mut CompilerOptions, file_path_opt: Option<S
     }
 }
 
-pub fn build_compilation_bundle(opts: &mut CompilerOptions, file_path: Option<String>) -> CodeGenContextBundle {
-    let codegen_semantic_bundle = build_semantic_bundle(opts, file_path);
+pub fn build_compilation_bundle(opts: &mut CompilerOptions, file_path_opt: Option<String>) -> CodeGenContextBundle {
+    // disable modulefs cache if compiling a single file
+
+    if let Some(file_path) = &file_path_opt {
+        opts.disable_modulefs_cache = true;
+
+        // use the same directory as source directory
+        let dir_path = get_directory_of_file(file_path).unwrap();
+        opts.source_dirs.push(dir_path);
+    }
+
+    let codegen_semantic_bundle = build_semantic_bundle(opts, file_path_opt);
 
     let target = codegen_semantic_bundle.target;
     let (llvm_target, llvm_target_triple) = create_compiler_context_target(&target.info);
@@ -283,9 +287,8 @@ pub fn build_compilation_bundle(opts: &mut CompilerOptions, file_path: Option<St
         })
         .collect();
 
-    let cir_modules = traverse_program_trees_in_parallel(
+    let cir_modules = lower_program_trees_in_parallel(
         opts.jobs,
-        opts,
         boxed_program_trees,
         &*codegen_semantic_bundle.resolver,
         &*codegen_semantic_bundle.resolver,

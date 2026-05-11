@@ -774,7 +774,3 @@ pub unsafe fn emit_debug_module_flags(module: LLVMModuleRef) {
 
     unsafe { module_flag(module, LLVMModuleFlagBehaviorWarning, "frame-pointer", 2) };
 }
-
-// pub unsafe fn reset_debug_location(builder: &Builder) {
-//     unsafe { LLVMSetCurrentDebugLocation2(builder.as_mut_ptr(), std::ptr::null_mut()) };
-// }

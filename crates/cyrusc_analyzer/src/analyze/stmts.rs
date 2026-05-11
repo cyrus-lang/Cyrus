@@ -29,38 +29,51 @@ impl<'a> AnalysisContext<'a> {
             std::mem::take(&mut tree_borrowed.body)
         };
 
-        for mut typed_stmt in &mut body {
-            match &mut typed_stmt {
-                TypedStmt::GlobalVar(global_var) => self.analyze_global_var(global_var),
-                TypedStmt::FuncDef(func_def_stmt) => self.analyze_func_def(func_def_stmt),
-                TypedStmt::FuncDecl(func_decl_stmt) => self.analyze_func_decl_stmt(func_decl_stmt),
-                TypedStmt::Interface(interface) => self.analyze_interface(interface),
-                TypedStmt::Struct(struct_stmt) => self.analyze_struct_stmt(struct_stmt),
-                TypedStmt::Enum(enum_stmt) => self.analyze_enum_stmt(enum_stmt),
-                TypedStmt::Union(union_stmt) => self.analyze_union_stmt(union_stmt),
-                TypedStmt::Typedef(typedef) => self.analyze_typedef(typedef),
-
-                TypedStmt::Variable(_)
-                | TypedStmt::TupleExport(_)
-                | TypedStmt::BlockStmt(_)
-                | TypedStmt::Defer(_)
-                | TypedStmt::If(_)
-                | TypedStmt::Return(_)
-                | TypedStmt::Break(_)
-                | TypedStmt::Continue(_)
-                | TypedStmt::For(_)
-                | TypedStmt::While(_)
-                | TypedStmt::Switch(_)
-                | TypedStmt::Label(_)
-                | TypedStmt::Goto(_)
-                | TypedStmt::Expr(_) => {
-                    unreachable!()
-                }
-                TypedStmt::Builtin(_typed_builtin) => todo!(),
-            }
+        for typed_stmt in &mut body {
+            self.analyze_toplevel_stmt(typed_stmt);
         }
 
         self.program_tree.borrow_mut().body = body;
+    }
+
+    pub(crate) fn analyze_toplevel_stmt(&mut self, typed_stmt: &mut TypedStmt) {
+        match typed_stmt {
+            TypedStmt::GlobalVar(global_var) => self.analyze_global_var(global_var),
+            TypedStmt::FuncDef(func_def_stmt) => self.analyze_func_def(func_def_stmt),
+            TypedStmt::FuncDecl(func_decl_stmt) => self.analyze_func_decl_stmt(func_decl_stmt),
+            TypedStmt::Interface(interface) => self.analyze_interface(interface),
+            TypedStmt::Struct(struct_stmt) => self.analyze_struct_stmt(struct_stmt),
+            TypedStmt::Enum(enum_stmt) => self.analyze_enum_stmt(enum_stmt),
+            TypedStmt::Union(union_stmt) => self.analyze_union_stmt(union_stmt),
+            TypedStmt::Typedef(typedef) => self.analyze_typedef(typedef),
+
+            TypedStmt::Builtin(_) => {
+                self.analyze_builtin(typed_stmt, true);
+            }
+
+            // invalid at toplevel
+            TypedStmt::Variable(_)
+            | TypedStmt::TupleExport(_)
+            | TypedStmt::BlockStmt(_)
+            | TypedStmt::Defer(_)
+            | TypedStmt::If(_)
+            | TypedStmt::Return(_)
+            | TypedStmt::Break(_)
+            | TypedStmt::Continue(_)
+            | TypedStmt::For(_)
+            | TypedStmt::While(_)
+            | TypedStmt::Switch(_)
+            | TypedStmt::Label(_)
+            | TypedStmt::Goto(_)
+            | TypedStmt::Expr(_) => {
+                self.reporter.report(Diag {
+                    level: DiagLevel::Error,
+                    kind: Box::new(AnalyzerDiagKind::InvalidStatement),
+                    loc: Some(typed_stmt.loc()),
+                    hint: None,
+                });
+            }
+        }
     }
 
     pub(crate) fn analyze_stmt(&mut self, typed_stmt: &mut TypedStmt) -> FlowState {
@@ -86,7 +99,7 @@ impl<'a> AnalysisContext<'a> {
             TypedStmt::Return(return_stmt) => self.analyze_return(return_stmt),
             TypedStmt::Switch(switch_stmt) => self.analyze_switch(switch_stmt),
 
-            TypedStmt::Builtin(_) => self.analyze_builtin(typed_stmt),
+            TypedStmt::Builtin(_) => self.analyze_builtin(typed_stmt, false),
 
             // skipped
             TypedStmt::Goto(_) => FlowState::Reachable,

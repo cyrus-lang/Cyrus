@@ -185,6 +185,18 @@ impl CompilerOption_ModuleKind {
     }
 }
 
+impl CompilerOption_Profile {
+    #[inline]
+    pub fn is_debug(&self) -> bool {
+        matches!(self, Self::Debug)
+    }
+
+    #[inline]
+    pub fn is_release(&self) -> bool {
+        matches!(self, Self::Release)
+    }
+}
+
 // default
 
 impl Default for CompilerOption_Linker {

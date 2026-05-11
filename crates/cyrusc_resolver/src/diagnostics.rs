@@ -109,7 +109,7 @@ pub enum ResolverDiagKind {
 
 impl DiagKind for ResolverDiagKind {}
 
-impl Resolver {
+impl<'a> Resolver<'a> {
     pub(crate) fn report_if_duplicate_symbol(&mut self, scope_id: SymbolID, symbol_name: String, loc: Loc) -> bool {
         match self.lookup_symbol_id_in_scope(scope_id, &symbol_name) {
             Some(_) => {

@@ -31,7 +31,7 @@ use cyrusc_typed_ast::{
 
 // Builtins entry point.
 impl<'a> AnalysisContext<'a> {
-    pub(crate) fn analyze_builtin(&mut self, typed_stmt: &mut TypedStmt) -> FlowState {
+    pub(crate) fn analyze_builtin(&mut self, typed_stmt: &mut TypedStmt, is_toplevel: bool) -> FlowState {
         let TypedStmt::Builtin(builtin) = typed_stmt else {
             unreachable!()
         };
@@ -48,7 +48,7 @@ impl<'a> AnalysisContext<'a> {
                 }
             }
 
-            TypedBuiltin::BuiltinBlock(block) => self.analyze_builtin_block(block),
+            TypedBuiltin::BuiltinBlock(block) => self.analyze_builtin_block(block, is_toplevel),
         }
     }
 
@@ -161,7 +161,7 @@ impl<'a> AnalysisContext<'a> {
 
 // Builtin Statements
 impl<'a> AnalysisContext<'a> {
-    fn analyze_builtin_block(&mut self, builtin_block: &mut TypedBuiltinBlock) -> FlowState {
+    fn analyze_builtin_block(&mut self, builtin_block: &mut TypedBuiltinBlock, is_toplevel: bool) -> FlowState {
         let Some(builtin_kind) = lookup_builtin(&builtin_block.name.value) else {
             self.reporter.report(Diag {
                 level: DiagLevel::Error,
@@ -180,7 +180,17 @@ impl<'a> AnalysisContext<'a> {
             return FlowState::Reachable;
         }
 
-        self.analyze_block_stmt(&mut builtin_block.block)
+        builtin_block.is_toplevel = Some(is_toplevel);
+
+        if is_toplevel {
+            for stmt in &mut builtin_block.block.stmts {
+                self.analyze_toplevel_stmt(stmt);
+            }
+
+            FlowState::Reachable
+        } else {
+            self.analyze_block_stmt(&mut builtin_block.block)
+        }
     }
 }
 

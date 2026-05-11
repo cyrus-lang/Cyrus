@@ -17,7 +17,7 @@
 
 use cyrusc_diagcentral::reporter::DiagReporter;
 use cyrusc_fs_utils::get_directory_of_file;
-use cyrusc_internal::symbols::symbols::{SymbolEntry, SymbolEntryKind};
+use cyrusc_internal::{compiler_options::CompilerOptions, symbols::symbols::{SymbolEntry, SymbolEntryKind}};
 use cyrusc_parser::SourceParser;
 use cyrusc_resolver::{
     Resolver,
@@ -57,6 +57,8 @@ pub fn main() {
     let reporter = Arc::new(DiagReporter::new(source_map.clone()));
     let source_parser = Arc::new(SourceParser::new(reporter.clone()));
 
+    let opts = CompilerOptions::default();
+
     match source_parser.parse_program(&entry_source_file) {
         Ok(program) => {
             let mut current_dir = env::current_dir().unwrap();
@@ -75,6 +77,7 @@ pub fn main() {
             let decl_tables = Arc::new(DeclTablesRegistry::new());
 
             let mut resolver = Resolver::new(
+                &opts,
                 Box::new(fs_module_loader),
                 source_map.clone(),
                 reporter.clone(),
