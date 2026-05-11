@@ -24,7 +24,7 @@ use cyrusc_compiler::driver::{
     get_object_dir_output_path, get_shared_lib_dir_output_path, get_static_lib_dir_output_path,
 };
 use cyrusc_compiler::object_file_info::ObjectFileInfo;
-use cyrusc_compiler::options::{CompilerOptions, CompilerOption_LinkerOutputKind};
+use cyrusc_compiler::options::{CompilerOption_LinkerOutputKind, CompilerOptions};
 use cyrusc_diagcentral::exit_with_msg;
 use cyrusc_diagcentral::reporter::DiagReporter;
 use cyrusc_fs_utils::ensure_output_dir;
@@ -38,6 +38,20 @@ use std::path::Path;
 use std::process::{Command, exit};
 use std::rc::Rc;
 use std::sync::Arc;
+
+pub(crate) fn command_new(project_name: String, lib: bool) {
+    let result = {
+        if lib {
+            cyrusc_scaffold::create_library_project(project_name)
+        } else {
+            cyrusc_scaffold::create_project(project_name)
+        }
+    };
+
+    if let Err(err) = result {
+        exit_with_msg!(err);
+    }
+}
 
 pub(crate) fn command_run(mut opts: CompilerOptions, file_path: Option<String>, program_args: Vec<String>) {
     let mut bundle = build_compilation_bundle(&mut opts, file_path);
