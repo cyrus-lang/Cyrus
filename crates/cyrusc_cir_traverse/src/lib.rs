@@ -35,7 +35,10 @@ use cyrusc_tokens::literals::*;
 use cyrusc_typed_ast::TypedProgramTree;
 use cyrusc_typed_ast::VTableID;
 use cyrusc_typed_ast::builtins::TypedBuiltin;
+use cyrusc_typed_ast::builtins::TypedBuiltinBlock;
 use cyrusc_typed_ast::builtins::TypedBuiltinFunc;
+use cyrusc_typed_ast::builtins::TypedBuiltinKind;
+use cyrusc_typed_ast::builtins::TypedBuiltinPhase;
 use cyrusc_typed_ast::builtins::builtin_spec_of;
 use cyrusc_typed_ast::builtins::lookup_builtin;
 use cyrusc_typed_ast::decls::table::DeclTablesRegistry;
@@ -49,7 +52,7 @@ use cyrusc_typed_ast::types::*;
 use fx_hash::FxHashMap;
 use std::sync::Arc;
 
-struct CIRTraverse<'a> {
+struct CIRLower<'a> {
     program_tree: Box<TypedProgramTree>,
     decl_tables: Arc<DeclTablesRegistry>,
     formatter: &'a dyn Formatter,
@@ -68,7 +71,7 @@ struct CIRTraverse<'a> {
     global_var_decls: FxHashMap<IRValueID, CIRGlobalVarStmt>,
 }
 
-impl<'a> CIRTraverse<'a> {
+impl<'a> CIRLower<'a> {
     pub fn new(
         program_tree: Box<TypedProgramTree>,
         module_name: String,
@@ -217,15 +220,14 @@ impl<'a> CIRTraverse<'a> {
     fn lower_builtin(&mut self, builtin: &TypedBuiltin) -> Vec<CIRStmt> {
         match builtin {
             TypedBuiltin::BuiltinFunc(builtin_func) => {
-                if let Some(child_stmt) = &builtin_func.child_stmt {
-                    // builtin_func.name
-                    todo!();
+                if builtin_func.child_stmt.is_some() {
+                    self.eval_builtin_func_stmt(builtin_func)
                 } else {
                     // expression
                     vec![CIRStmt::Expr(self.lower_builtin_func(builtin_func))]
                 }
             }
-            TypedBuiltin::BuiltinBlock(_builtin_block) => todo!(),
+            TypedBuiltin::BuiltinBlock(builtin_block) => self.eval_builtin_block(builtin_block),
         }
     }
 
@@ -2014,7 +2016,7 @@ impl<'a> CIRTraverse<'a> {
 }
 
 // Helpers.
-impl<'a> CIRTraverse<'a> {
+impl<'a> CIRLower<'a> {
     #[inline]
     fn lower_sema_type(&self, ty: &SemaType) -> CIRType {
         lower_sema_type(&self.decl_tables, self.target, ty)
@@ -2203,6 +2205,36 @@ impl<'a> CIRTraverse<'a> {
     }
 }
 
+// BuiltinBlock Evaluation
+impl<'a> CIRLower<'a> {
+    fn eval_builtin_block(&self, builtin_block: &TypedBuiltinBlock) -> Vec<CIRStmt> {
+        let builtin_kind = lookup_builtin(&builtin_block.name.value).unwrap();
+        let builtin_spec = builtin_spec_of(builtin_kind);
+        debug_assert!(builtin_spec.phase == TypedBuiltinPhase::CIRLowering);
+
+        match &builtin_spec.kind {
+            TypedBuiltinKind::Debug => {
+                // if self.target.info.
+                
+
+                todo!();
+            },
+            TypedBuiltinKind::Release => todo!(),
+            TypedBuiltinKind::Unroll => todo!(),
+
+            _ => unreachable!(),
+        }
+    }
+
+    fn eval_builtin_func_stmt(&self, builtin_func: &TypedBuiltinFunc) -> Vec<CIRStmt> {
+        let builtin_kind = lookup_builtin(&builtin_func.name.value).unwrap();
+        let builtin_spec = builtin_spec_of(builtin_kind);
+        debug_assert!(builtin_spec.phase == TypedBuiltinPhase::CIRLowering);
+
+        vec![]
+    }
+}
+
 #[inline(never)]
 pub fn traverse_program_trees_in_parallel(
     threads: Option<usize>,
@@ -2232,7 +2264,7 @@ pub fn traverse_program_trees_in_parallel(
 
                 let module_name = query.lookup_module_name(program_tree.file_id).unwrap();
 
-                let mut cir_walk = CIRTraverse::new(
+                let mut cir_walk = CIRLower::new(
                     program_tree.clone(),
                     module_name,
                     decl_tables.clone(),
