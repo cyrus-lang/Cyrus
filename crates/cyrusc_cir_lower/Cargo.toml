@@ -1,5 +1,5 @@
 [package]
-name = "cyrusc_cir_traverse"
+name = "cyrusc_cir_lower"
 version = "0.1.0"
 edition = "2024"
 
@@ -16,5 +16,5 @@ num_cpus = "1.17.0"
 once_cell = "1.21.3"
 
 [lib]
-name = "cyrusc_cir_traverse"
+name = "cyrusc_cir_lower"
 path = "./src/lib.rs"

@@ -14,6 +14,7 @@
  * You should have received a copy of the GNU General Public License
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
+
 use crate::{
     asan::enable_asan_for_owned_module,
     builder::builder::CodeGenIRBuilder,
@@ -28,7 +29,7 @@ use cyrusc_compiler::{
     context::CodeGenContext,
     object_file_info::ObjectFileInfo,
     options::CodeGenOptions,
-    tm_info::TargetMachineInfo,
+    target_machine_info::TargetMachineInfo,
 };
 use cyrusc_diagcentral::exit_with_msg;
 use cyrusc_internal::{cir::cir::CIRModule, vtable::VTableRegistry};

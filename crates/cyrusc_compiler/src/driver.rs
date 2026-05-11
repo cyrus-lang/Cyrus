@@ -22,7 +22,7 @@ use crate::{
 };
 use cyrusc_analyzer::context::{AnalysisContext, AnalyzerConfig, EntryPoints};
 use cyrusc_buildmanifest::BuildManifest;
-use cyrusc_cir_traverse::traverse_program_trees_in_parallel;
+use cyrusc_cir_lower::traverse_program_trees_in_parallel;
 use cyrusc_diagcentral::{exit_with_msg, reporter::DiagReporter};
 use cyrusc_fs_utils::{ensure_output_dir, file_name_without_extension, get_directory_of_file};
 use cyrusc_internal::{

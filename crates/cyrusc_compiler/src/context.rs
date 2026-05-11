@@ -20,7 +20,7 @@ use crate::{
     linker::Linker,
     object_file_info::{ObjectFileInfo, collect_objects_file_names},
     options::{CodeGenOptions, LinkerOutputKind, ModuleKind},
-    tm_info::TargetMachineInfo,
+    target_machine_info::TargetMachineInfo,
 };
 use cyrusc_buildmanifest::BuildManifest;
 use cyrusc_diagcentral::exit_with_msg;
