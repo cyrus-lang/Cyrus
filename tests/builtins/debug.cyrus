@@ -1,0 +1,27 @@
+// @stdout: 10 - debug mode (5) - shorthand - only in debug mode - 10
+// @compilerArgs: --profile=debug
+
+import std::libc{printf};
+
+@debug() {
+    const x = 10;
+
+    fn foo(y: int) {
+        printf("debug mode (%d) - ", y);
+    }
+}
+
+pub fn main() {
+    printf("%d - ", x);
+    foo(5);
+
+    @debug() printf("shorthand - ");
+
+    @debug() {
+        printf("only in debug mode - ");
+
+        const x = 10;
+
+        printf("%d", x);
+    }
+}

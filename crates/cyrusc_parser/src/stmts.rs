@@ -39,6 +39,7 @@ impl<'source_file> Parser<'source_file> {
             let mut builtin = self.parse_builtin(toplevel)?;
 
             if let Builtin::BuiltinFunc(builtin_func) = &mut builtin {
+                // reform builtin: syntactic builtin
                 if !self.peek_token_is(TokenKind::Semicolon) {
                     self.expect_current(TokenKind::RightParen)?;
 
@@ -48,7 +49,18 @@ impl<'source_file> Parser<'source_file> {
                         return Err(self.error_invalid_token());
                     }
 
-                    builtin_func.child_stmt = Some(Box::new(stmts.first().unwrap().clone()));
+                    let block = BuiltinBlock {
+                        name: builtin_func.name.clone(),
+                        args: builtin_func.args.clone(),
+                        block: Box::new(ASTBlockStmt {
+                            stmts,
+                            loc: builtin_func.loc,
+                        }),
+                        is_toplevel: toplevel,
+                        loc: builtin_func.loc,
+                    };
+
+                    builtin = Builtin::BuiltinBlock(block);
                 } else {
                     self.expect_current(TokenKind::RightParen)?;
                 }
@@ -193,7 +205,7 @@ impl<'source_file> Parser<'source_file> {
                 args,
                 block: Box::new(block),
                 loc: Loc::new(self.file_id(), line, column, start, end),
-                is_toplevel_block: toplevel,
+                is_toplevel: toplevel,
             }))
         } else {
             let end = self.current_token().loc.end;
@@ -201,7 +213,6 @@ impl<'source_file> Parser<'source_file> {
             Ok(Builtin::BuiltinFunc(BuiltinFunc {
                 name: ident,
                 args,
-                child_stmt: None,
                 loc: Loc::new(self.file_id(), line, column, start, end),
             }))
         }
@@ -219,7 +230,7 @@ impl<'source_file> Parser<'source_file> {
         loop {
             let inner_stmts = self.parse_stmt(None, true)?;
             self.next_token();
-            
+
             stmts.extend(inner_stmts);
 
             if self.current_token_is(TokenKind::RightBrace) {
