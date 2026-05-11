@@ -30,6 +30,7 @@ pub enum CodeGenOptionsProjectType {
 
 #[derive(Debug, Clone)]
 pub struct CodeGenOptions {
+    pub profile: ProfileOptions,
     pub module_kind: Option<ModuleKind>,
     pub jobs: Option<usize>,
     pub sanitizer: Vec<CodeGenSanitizer>,
@@ -125,6 +126,7 @@ impl Default for CodeGenOptions {
             sanitizer: Vec::new(),
             debug_enabled: false,
             abi: None,
+            profile: ProfileOptions::Debug
         }
     }
 }
@@ -524,6 +526,12 @@ pub enum CodeModelOptions {
     Kernel,
     Medium,
     Large,
+}
+
+#[derive(Debug, Clone)]
+pub enum ProfileOptions {
+    Debug, 
+    Release,
 }
 
 impl fmt::Display for RelocModeOptions {

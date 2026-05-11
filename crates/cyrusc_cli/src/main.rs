@@ -14,11 +14,6 @@
  * You should have received a copy of the GNU General Public License
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
-use std::{
-    env,
-    path::{Path, PathBuf},
-    process::exit,
-};
 
 use clap::{Parser, ValueEnum};
 use commands::*;
@@ -26,7 +21,7 @@ use cyrusc_compiler::{
     linker::default_linker,
     options::{
         BuildDir, CodeGenABI, CodeGenLinkerOptions, CodeGenOptions, CodeGenSanitizer, CodeModelOptions, ModuleKind,
-        RelocModeOptions,
+        ProfileOptions, RelocModeOptions,
     },
     vercheck::validate_compiler_version,
 };
@@ -35,6 +30,11 @@ use cyrusc_scaffold::version::CYRUS_COMPILER_VERSION;
 use cyrusc_scaffold_parser::{PROJECT_FILE_PATH, ScaffoldConfig, parse_project_toml};
 use cyrusc_tui_utils::tui_error;
 use serde::Deserialize;
+use std::{
+    env,
+    path::{Path, PathBuf},
+    process::exit,
+};
 
 mod commands;
 
@@ -108,7 +108,6 @@ struct CompilerOptions {
     linkerflags: Vec<String>,
 
     #[clap(
-        long = "debug",
         short = 'g',
         help = "Enable generation of DWARF debug information for use with debuggers (GDB/LLDB)."
     )]
@@ -171,6 +170,11 @@ struct CompilerOptions {
     help = "Set the code model for code generation."
     )]
     code_model: CodeModel,
+
+    #[clap(long, value_enum, default_value_t = Profile::Debug,
+    help = "Build profile configuration."
+    )]
+    profile: Profile,
 
     #[clap(long, value_enum, default_value_t = ABI::Cyrus,
     help =
@@ -239,6 +243,12 @@ impl RelocMode {
 }
 
 #[derive(Deserialize, Debug, Clone, ValueEnum)]
+pub enum Profile {
+    Debug,
+    Release,
+}
+
+#[derive(Deserialize, Debug, Clone, ValueEnum)]
 pub enum CodeModel {
     Default,
     Tiny,
@@ -254,7 +264,18 @@ pub enum ABI {
     C,
 }
 
+impl Profile {
+    #[inline]
+    pub fn to_compiler_profile(&self) -> ProfileOptions {
+        match self {
+            Profile::Debug => ProfileOptions::Debug,
+            Profile::Release => ProfileOptions::Release,
+        }
+    }
+}
+
 impl CodeModel {
+    #[inline]
     pub fn as_compiler_code_model(&self) -> CodeModelOptions {
         match self {
             CodeModel::Default => CodeModelOptions::Default,
@@ -268,6 +289,7 @@ impl CodeModel {
 }
 
 impl LinkerCompilerOptions {
+    #[inline]
     pub fn to_compiler_linker_options(&self) -> CodeGenLinkerOptions {
         CodeGenLinkerOptions {
             link_static: self.r#static,
@@ -278,6 +300,7 @@ impl LinkerCompilerOptions {
 }
 
 impl Sanitizer {
+    #[inline]
     pub fn to_compiler_sanitizer(&self) -> CodeGenSanitizer {
         match self {
             Sanitizer::Address => CodeGenSanitizer::Address,
@@ -289,6 +312,7 @@ impl Sanitizer {
 }
 
 impl ABI {
+    #[inline]
     pub fn to_compiler_abi(&self) -> CodeGenABI {
         match self {
             ABI::Cyrus => CodeGenABI::Cyrus,
@@ -297,6 +321,7 @@ impl ABI {
     }
 }
 
+#[inline]
 fn get_current_dir_as_base_path() -> String {
     let current_dir: PathBuf = env::current_dir().unwrap_or_default();
     current_dir.to_string_lossy().into_owned()
@@ -307,6 +332,7 @@ impl CompilerOptions {
         let linker = self.linker.clone().unwrap_or(default_linker().to_string());
 
         CodeGenOptions {
+            profile: self.profile.to_compiler_profile(),
             abi: Some(self.abi.to_compiler_abi()),
             module_kind: self
                 .module_merge_mode
