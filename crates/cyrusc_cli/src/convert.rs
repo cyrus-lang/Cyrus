@@ -22,14 +22,8 @@ use crate::{
     },
     options::{CliCompilerOptions, CliLinkerOptions, get_current_dir_as_base_path},
 };
-use cyrusc_compiler::{
-    linker::default_linker,
-    options::{
-        CompilerOption_BuildDir, CompilerOption_CodeGenABI, CompilerOption_CodeModel, CompilerOption_Linker,
-        CompilerOption_ModuleKind, CompilerOption_Profile, CompilerOption_RelocMode, CompilerOption_Sanitizer,
-        CompilerOptions,
-    },
-};
+use cyrusc_compiler::linker::default_linker;
+use cyrusc_internal::compiler_options::*;
 
 impl CliCompilerOptions {
     pub fn as_compiler_options(&self) -> CompilerOptions {

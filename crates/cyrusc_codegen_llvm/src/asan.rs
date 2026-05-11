@@ -17,8 +17,8 @@
 
 use crate::OwnedModule;
 use cyrusc_asan_wrapper::{SanitizerOptions, run_sanitizers};
-use cyrusc_compiler::options::{CompilerOptions, CompilerOption_Sanitizer};
 use cyrusc_diagcentral::exit_with_msg;
+use cyrusc_internal::compiler_options::{CompilerOption_Sanitizer, CompilerOptions};
 use inkwell::{
     context::Context,
     module::{FlagBehavior, Module},

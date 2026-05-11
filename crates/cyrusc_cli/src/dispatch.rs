@@ -24,9 +24,6 @@ use cyrusc_scaffold::version::CYRUS_COMPILER_VERSION;
 
 pub fn dispatch(args: Args) {
     match args.cmd {
-        Commands::Fetch { .. } => {
-            todo!();
-        }
         Commands::New { project_name, lib } => {
             command_new(project_name, lib);
         }
@@ -166,9 +163,6 @@ pub fn dispatch(args: Args) {
 
             command_semantic_only(codegen_options, file_path)
         }
-        Commands::Version => {
-            println!("Cyrus {}", CYRUS_COMPILER_VERSION)
-        }
         Commands::LexOnly { file_path } => command_lex_only(file_path),
         Commands::ParseOnly { file_path } => command_parse_only(file_path),
         Commands::EmitCIRDump {
@@ -181,6 +175,12 @@ pub fn dispatch(args: Args) {
             merge_and_validate_scaffold_config_with_codegen_options(&mut codegen_options, &scaffold_config);
 
             command_emit_cir_dump(codegen_options, file_path, output_path);
+        }
+        Commands::Fetch { .. } => {
+            todo!();
+        }
+        Commands::Version => {
+            println!("Cyrus {}", CYRUS_COMPILER_VERSION)
         }
     }
 }

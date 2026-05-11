@@ -25,6 +25,7 @@ use cyrusc_internal::cir::lower::lower_enum_decl;
 use cyrusc_internal::cir::lower::lower_func_type;
 use cyrusc_internal::cir::lower::lower_sema_type;
 use cyrusc_internal::cir::types::*;
+use cyrusc_internal::compiler_options::CompilerOptions;
 use cyrusc_internal::monomorph::*;
 use cyrusc_internal::symbols::SymbolQuery;
 use cyrusc_internal::vtable::VTableRegistry;
@@ -53,6 +54,7 @@ use fx_hash::FxHashMap;
 use std::sync::Arc;
 
 struct CIRLower<'a> {
+    opts: &'a CompilerOptions,
     program_tree: Box<TypedProgramTree>,
     decl_tables: Arc<DeclTablesRegistry>,
     formatter: &'a dyn Formatter,
@@ -73,6 +75,7 @@ struct CIRLower<'a> {
 
 impl<'a> CIRLower<'a> {
     pub fn new(
+        opts: &'a CompilerOptions,
         program_tree: Box<TypedProgramTree>,
         module_name: String,
         decl_tables: Arc<DeclTablesRegistry>,
@@ -83,6 +86,7 @@ impl<'a> CIRLower<'a> {
         target: &'a ABITarget,
     ) -> Self {
         Self {
+            opts,
             program_tree,
             module_name,
             decl_tables,
@@ -2215,10 +2219,9 @@ impl<'a> CIRLower<'a> {
         match &builtin_spec.kind {
             TypedBuiltinKind::Debug => {
                 // if self.target.info.
-                
 
                 todo!();
-            },
+            }
             TypedBuiltinKind::Release => todo!(),
             TypedBuiltinKind::Unroll => todo!(),
 
@@ -2238,6 +2241,7 @@ impl<'a> CIRLower<'a> {
 #[inline(never)]
 pub fn traverse_program_trees_in_parallel(
     threads: Option<usize>,
+    opts: &CompilerOptions,
     program_trees: Vec<Box<TypedProgramTree>>,
     query: &dyn SymbolQuery,
     formatter: &dyn Formatter,
@@ -2265,6 +2269,7 @@ pub fn traverse_program_trees_in_parallel(
                 let module_name = query.lookup_module_name(program_tree.file_id).unwrap();
 
                 let mut cir_walk = CIRLower::new(
+                    opts,
                     program_tree.clone(),
                     module_name,
                     decl_tables.clone(),

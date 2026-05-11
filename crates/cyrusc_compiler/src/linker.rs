@@ -15,10 +15,10 @@
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
 
-use crate::options::{CompilerOptions, CompilerOption_RelocMode};
 use std::env::consts::{FAMILY, OS};
 use std::path::PathBuf;
 use std::process::Command;
+use cyrusc_internal::compiler_options::{CompilerOption_RelocMode, CompilerOptions};
 use which::which;
 
 #[derive(Debug, Clone)]

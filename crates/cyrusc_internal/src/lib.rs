@@ -24,3 +24,4 @@ pub mod vtable;
 pub mod flow_state;
 pub mod monomorph;
 pub mod generic_scope;
+pub mod compiler_options;

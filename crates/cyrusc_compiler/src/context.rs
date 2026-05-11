@@ -16,15 +16,11 @@
  */
 
 use crate::{
-    codegen_traits::CodeGenBackend,
-    linker::Linker,
-    object_file_info::{ObjectFileInfo, collect_objects_file_names},
-    options::{CompilerOption_LinkerOutputKind, CompilerOption_ModuleKind, CompilerOptions},
-    target_machine_info::TargetMachineInfo,
+    codegen_traits::CodeGenBackend, linker::Linker, object_file_info::{ObjectFileInfo, collect_objects_file_names}, options::canonical_project_name, target_machine_info::TargetMachineInfo
 };
 use cyrusc_buildmanifest::BuildManifest;
 use cyrusc_diagcentral::exit_with_msg;
-use cyrusc_internal::{abi::target::ABITarget, cir::cir::CIRModule};
+use cyrusc_internal::{abi::target::ABITarget, cir::cir::CIRModule, compiler_options::{CompilerOption_LinkerOutputKind, CompilerOption_ModuleKind, CompilerOptions}};
 use cyrusc_tui_utils::{tui_compile_finished, tui_warning};
 use inkwell::targets::{Target as LLVMTarget, TargetTriple};
 use std::{
@@ -163,14 +159,14 @@ impl CodeGenContext {
                 self.linker.link_executable(&object_files, &output_path_cow.to_string())
             }
             CompilerOption_LinkerOutputKind::SharedLib => {
-                let lib_name = self.opts.canonical_project_name();
+                let lib_name = canonical_project_name(&self.opts);
 
                 self.linker
                     .link_shared_library(&object_files, &output_path, lib_name)
                     .map(|_| ())
             }
             CompilerOption_LinkerOutputKind::StaticLib => {
-                let lib_name = self.opts.canonical_project_name();
+                let lib_name = canonical_project_name(&self.opts);
 
                 self.linker
                     .link_static_library(&object_files, &output_path, lib_name)
