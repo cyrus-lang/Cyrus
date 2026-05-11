@@ -161,7 +161,7 @@ dependencies = [
  "cyrusc_analyzer",
  "cyrusc_ast",
  "cyrusc_cir_dump",
- "cyrusc_cir_traverse",
+ "cyrusc_cir_lower",
  "cyrusc_codegen_llvm",
  "cyrusc_compiler",
  "cyrusc_diagcentral",
@@ -308,7 +308,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "cyrusc_cir_traverse"
+name = "cyrusc_cir_lower"
 version = "0.1.0"
 dependencies = [
  "cyrusc_ast",
@@ -350,7 +350,7 @@ dependencies = [
  "cyrusc_analyzer",
  "cyrusc_ast",
  "cyrusc_buildmanifest",
- "cyrusc_cir_traverse",
+ "cyrusc_cir_lower",
  "cyrusc_diagcentral",
  "cyrusc_fs_utils",
  "cyrusc_internal",

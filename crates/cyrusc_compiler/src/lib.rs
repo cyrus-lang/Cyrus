@@ -22,4 +22,4 @@ pub mod driver;
 pub mod linker;
 pub mod object_file_info;
 pub mod options;
-pub mod tm_info;
+pub mod target_machine_info;

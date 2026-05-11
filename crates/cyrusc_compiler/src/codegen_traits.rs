@@ -17,7 +17,7 @@
 
 use cyrusc_internal::cir::cir::CIRModule;
 
-use crate::{object_file_info::ObjectFileInfo, tm_info::TargetMachineInfo};
+use crate::{object_file_info::ObjectFileInfo, target_machine_info::TargetMachineInfo};
 use std::any::Any;
 
 /// The base trait that every code generation backend must implement.
