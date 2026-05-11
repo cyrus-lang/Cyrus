@@ -15,10 +15,8 @@
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
 
-use cyrusc_internal::cir::cir::CIRModule;
-
 use crate::{object_file_info::ObjectFileInfo, target_machine_info::TargetMachineInfo};
-use std::any::Any;
+use cyrusc_internal::cir::cir::CIRModule;
 
 /// The base trait that every code generation backend must implement.
 ///
@@ -46,14 +44,8 @@ pub trait CodeGenBackend<'cdg, BackendModule> {
 
     /// Returns a human-readable name for the backend.
     ///
-    /// Typically something like `"llvm"` or `"cyrusc_jit"`.
+    /// Typically something like `"codegen_llvm"` or `"codegen_c"`.
     fn name(&'cdg self) -> &'static str;
-
-    /// Allows dynamic downcasting to the concrete backend type.
-    ///
-    /// Useful when working with trait objects and needing to access
-    /// backend-specific functionality.
-    fn as_any(&'cdg self) -> &'cdg dyn Any;
 
     /// Returns a reference to the backend as a unified module compiler, if supported.
     ///

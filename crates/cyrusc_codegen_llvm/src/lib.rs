@@ -28,7 +28,7 @@ use cyrusc_compiler::{
     codegen_traits::{CodeGenBackend, SeparateModuleSupport, UnifiedModuleSupport},
     context::CodeGenContext,
     object_file_info::ObjectFileInfo,
-    options::CodeGenOptions,
+    options::CompilerOptions,
     target_machine_info::TargetMachineInfo,
 };
 use cyrusc_diagcentral::exit_with_msg;
@@ -42,7 +42,6 @@ use inkwell::{
     targets::{ByteOrdering, FileType, InitializationConfig, Target as InkwellTarget, TargetMachine, TargetTriple},
 };
 use std::{
-    any::Any,
     cell::RefCell,
     path::{Path, PathBuf},
     rc::Rc,
@@ -55,7 +54,7 @@ mod llvm;
 
 pub struct CodeGenLLVM {
     ctx: Rc<CodeGenContext>,
-    opts: CodeGenOptions,
+    opts: CompilerOptions,
     build_dir: PathBuf,
     llvmtm: TargetMachine,
     build_manifest: Arc<Mutex<BuildManifest>>,
@@ -67,7 +66,7 @@ impl CodeGenLLVM {
         ctx: Rc<CodeGenContext>,
         target: &InkwellTarget,
         target_triple: &TargetTriple,
-        opts: CodeGenOptions,
+        opts: CompilerOptions,
         build_dir: PathBuf,
         build_manifest: Arc<Mutex<BuildManifest>>,
         entry_module_file_path: PathBuf,
@@ -311,11 +310,7 @@ impl CodeGenBackend<'static, OwnedModule> for CodeGenLLVM {
     }
 
     fn name(&self) -> &'static str {
-        "llvm"
-    }
-
-    fn as_any(&self) -> &dyn Any {
-        self
+        "codegen_llvm"
     }
 
     fn as_unified(&self) -> Option<&dyn UnifiedModuleSupport<'static, OwnedModule>> {

@@ -24,7 +24,7 @@ use cyrusc_compiler::driver::{
     get_object_dir_output_path, get_shared_lib_dir_output_path, get_static_lib_dir_output_path,
 };
 use cyrusc_compiler::object_file_info::ObjectFileInfo;
-use cyrusc_compiler::options::{CodeGenOptions, LinkerOutputKind};
+use cyrusc_compiler::options::{CompilerOptions, CompilerOption_LinkerOutputKind};
 use cyrusc_diagcentral::exit_with_msg;
 use cyrusc_diagcentral::reporter::DiagReporter;
 use cyrusc_fs_utils::ensure_output_dir;
@@ -39,13 +39,13 @@ use std::process::{Command, exit};
 use std::rc::Rc;
 use std::sync::Arc;
 
-pub(crate) fn command_run(mut opts: CodeGenOptions, file_path: Option<String>, program_args: Vec<String>) {
+pub(crate) fn command_run(mut opts: CompilerOptions, file_path: Option<String>, program_args: Vec<String>) {
     let mut bundle = build_compilation_bundle(&mut opts, file_path);
 
     let ctx = Rc::new(create_compiler_context(
         opts.clone(),
         &Some(bundle.entry_file.clone()),
-        LinkerOutputKind::Executable,
+        CompilerOption_LinkerOutputKind::Executable,
         bundle.target,
         bundle.llvm_target,
         bundle.llvm_target_triple,
@@ -99,7 +99,7 @@ pub(crate) fn command_run(mut opts: CodeGenOptions, file_path: Option<String>, p
     }
 }
 
-pub(crate) fn command_build(mut opts: CodeGenOptions, file_path: Option<String>, output_path_opt: Option<String>) {
+pub(crate) fn command_build(mut opts: CompilerOptions, file_path: Option<String>, output_path_opt: Option<String>) {
     let mut bundle = build_compilation_bundle(&mut opts, file_path);
 
     let output_path_opt = output_path_opt.map(|path| Path::new(&path).to_path_buf());
@@ -108,7 +108,7 @@ pub(crate) fn command_build(mut opts: CodeGenOptions, file_path: Option<String>,
     let ctx = Rc::new(create_compiler_context(
         opts.clone(),
         &Some(bundle.entry_file.clone()),
-        LinkerOutputKind::Executable,
+        CompilerOption_LinkerOutputKind::Executable,
         bundle.target,
         bundle.llvm_target,
         bundle.llvm_target_triple,
@@ -137,7 +137,7 @@ pub(crate) fn command_build(mut opts: CodeGenOptions, file_path: Option<String>,
     }
 }
 
-pub(crate) fn command_clean(opts: CodeGenOptions) {
+pub(crate) fn command_clean(opts: CompilerOptions) {
     let build_dir = get_final_build_directory_path(&opts.build_dir);
 
     if build_dir.exists() {
@@ -147,7 +147,7 @@ pub(crate) fn command_clean(opts: CodeGenOptions) {
     }
 }
 
-pub(crate) fn command_emit_llvm(mut opts: CodeGenOptions, file_path: Option<String>, output_path: Option<String>) {
+pub(crate) fn command_emit_llvm(mut opts: CompilerOptions, file_path: Option<String>, output_path: Option<String>) {
     let mut bundle = build_compilation_bundle(&mut opts, file_path);
 
     let llvm_ir_dir = get_llvm_dir_output_path(&bundle.build_dir, &output_path);
@@ -155,7 +155,7 @@ pub(crate) fn command_emit_llvm(mut opts: CodeGenOptions, file_path: Option<Stri
     let ctx = Rc::new(create_compiler_context(
         opts.clone(),
         &Some(bundle.entry_file.clone()),
-        LinkerOutputKind::Executable,
+        CompilerOption_LinkerOutputKind::Executable,
         bundle.target,
         bundle.llvm_target,
         bundle.llvm_target_triple,
@@ -175,7 +175,7 @@ pub(crate) fn command_emit_llvm(mut opts: CodeGenOptions, file_path: Option<Stri
     llvm_backend.save_modules_as_llvm_ir(&owned_modules, &llvm_ir_dir);
 }
 
-pub(crate) fn command_emit_bitcode(mut opts: CodeGenOptions, file_path: Option<String>, output_path: Option<String>) {
+pub(crate) fn command_emit_bitcode(mut opts: CompilerOptions, file_path: Option<String>, output_path: Option<String>) {
     let mut bundle = build_compilation_bundle(&mut opts, file_path);
 
     let bitcode_dir = get_bitcode_dir_output_path(&bundle.build_dir, &output_path);
@@ -183,7 +183,7 @@ pub(crate) fn command_emit_bitcode(mut opts: CodeGenOptions, file_path: Option<S
     let ctx = Rc::new(create_compiler_context(
         opts.clone(),
         &Some(bundle.entry_file.clone()),
-        LinkerOutputKind::Executable,
+        CompilerOption_LinkerOutputKind::Executable,
         bundle.target,
         bundle.llvm_target,
         bundle.llvm_target_triple,
@@ -203,7 +203,7 @@ pub(crate) fn command_emit_bitcode(mut opts: CodeGenOptions, file_path: Option<S
     llvm_backend.save_modules_as_bitcode(&owned_modules, &bitcode_dir);
 }
 
-pub(crate) fn command_emit_asm(mut opts: CodeGenOptions, file_path: Option<String>, output_path: Option<String>) {
+pub(crate) fn command_emit_asm(mut opts: CompilerOptions, file_path: Option<String>, output_path: Option<String>) {
     let mut bundle = build_compilation_bundle(&mut opts, file_path);
 
     let assembly_dir = get_assembly_dir_output_path(&bundle.build_dir, &output_path);
@@ -211,7 +211,7 @@ pub(crate) fn command_emit_asm(mut opts: CodeGenOptions, file_path: Option<Strin
     let ctx = Rc::new(create_compiler_context(
         opts.clone(),
         &Some(bundle.entry_file.clone()),
-        LinkerOutputKind::Executable,
+        CompilerOption_LinkerOutputKind::Executable,
         bundle.target,
         bundle.llvm_target,
         bundle.llvm_target_triple,
@@ -232,7 +232,7 @@ pub(crate) fn command_emit_asm(mut opts: CodeGenOptions, file_path: Option<Strin
 }
 
 pub(crate) fn command_emit_cir_dump(
-    mut opts: CodeGenOptions,
+    mut opts: CompilerOptions,
     file_path: Option<String>,
     output_path_opt: Option<String>,
 ) {
@@ -246,7 +246,7 @@ pub(crate) fn command_emit_cir_dump(
     process_cir_dump_for_modules(&bundle.program_trees, output_path);
 }
 
-pub(crate) fn command_object(mut opts: CodeGenOptions, file_path: Option<String>, output_path: Option<String>) {
+pub(crate) fn command_object(mut opts: CompilerOptions, file_path: Option<String>, output_path: Option<String>) {
     let mut bundle = build_compilation_bundle(&mut opts, file_path);
 
     let object_dir = get_object_dir_output_path(&bundle.build_dir, &output_path);
@@ -254,7 +254,7 @@ pub(crate) fn command_object(mut opts: CodeGenOptions, file_path: Option<String>
     let ctx = Rc::new(create_compiler_context(
         opts.clone(),
         &Some(bundle.entry_file.clone()),
-        LinkerOutputKind::Executable,
+        CompilerOption_LinkerOutputKind::Executable,
         bundle.target,
         bundle.llvm_target,
         bundle.llvm_target_triple,
@@ -274,7 +274,7 @@ pub(crate) fn command_object(mut opts: CodeGenOptions, file_path: Option<String>
     llvm_backend.save_modules_as_object(&owned_modules, &object_dir);
 }
 
-pub(crate) fn command_shared_lib(mut opts: CodeGenOptions, file_path: Option<String>, output_path: Option<String>) {
+pub(crate) fn command_shared_lib(mut opts: CompilerOptions, file_path: Option<String>, output_path: Option<String>) {
     let mut bundle = build_compilation_bundle(&mut opts, file_path);
 
     let shared_lib_dir = get_shared_lib_dir_output_path(&bundle.build_dir, &output_path);
@@ -282,7 +282,7 @@ pub(crate) fn command_shared_lib(mut opts: CodeGenOptions, file_path: Option<Str
     let ctx = Rc::new(create_compiler_context(
         opts.clone(),
         &Some(bundle.entry_file.clone()),
-        LinkerOutputKind::SharedLib,
+        CompilerOption_LinkerOutputKind::SharedLib,
         bundle.target,
         bundle.llvm_target,
         bundle.llvm_target_triple,
@@ -311,7 +311,7 @@ pub(crate) fn command_shared_lib(mut opts: CodeGenOptions, file_path: Option<Str
     }
 }
 
-pub(crate) fn command_static_lib(mut opts: CodeGenOptions, file_path: Option<String>, output_path: Option<String>) {
+pub(crate) fn command_static_lib(mut opts: CompilerOptions, file_path: Option<String>, output_path: Option<String>) {
     let mut bundle = build_compilation_bundle(&mut opts, file_path);
 
     let static_lib_dir = get_static_lib_dir_output_path(&bundle.build_dir, &output_path);
@@ -319,7 +319,7 @@ pub(crate) fn command_static_lib(mut opts: CodeGenOptions, file_path: Option<Str
     let ctx = Rc::new(create_compiler_context(
         opts.clone(),
         &Some(bundle.entry_file.clone()),
-        LinkerOutputKind::StaticLib,
+        CompilerOption_LinkerOutputKind::StaticLib,
         bundle.target,
         bundle.llvm_target,
         bundle.llvm_target_triple,
@@ -385,6 +385,6 @@ pub(crate) fn command_parse_only(file_path: String) {
     }
 }
 
-pub(crate) fn command_semantic_only(mut opts: CodeGenOptions, file_path: String) {
+pub(crate) fn command_semantic_only(mut opts: CompilerOptions, file_path: String) {
     build_semantic_bundle(&mut opts, Some(file_path));
 }

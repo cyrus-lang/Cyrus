@@ -15,13 +15,16 @@
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
 
+#![allow(nonstandard_style)]
+
 use clap::{Parser, ValueEnum};
 use commands::*;
 use cyrusc_compiler::{
     linker::default_linker,
     options::{
-        BuildDir, CodeGenABI, CodeGenLinkerOptions, CodeGenOptions, CodeGenSanitizer, CodeModelOptions, ModuleKind,
-        ProfileOptions, RelocModeOptions,
+        CompilerOption_BuildDir, CompilerOption_CodeGenABI, CompilerOption_CodeModel,
+        CompilerOption_Linker, CompilerOption_ModuleKind, CompilerOption_Profile, CompilerOption_RelocMode,
+        CompilerOption_Sanitizer, CompilerOptions,
     },
     vercheck::validate_compiler_version,
 };
@@ -79,7 +82,7 @@ struct LinkerCompilerOptions {
 }
 
 #[derive(Parser, Debug, Clone)]
-struct CompilerOptions {
+struct CLI_CompilerOptions {
     #[clap(
         long,
         default_value_t = String::new(),
@@ -111,7 +114,7 @@ struct CompilerOptions {
         short = 'g',
         help = "Enable generation of DWARF debug information for use with debuggers (GDB/LLDB)."
     )]
-    debug_enabled: bool,
+    debuginfo_enabled: bool,
 
     #[clap(
         long = "build-dir",
@@ -232,12 +235,12 @@ impl Default for RelocMode {
 }
 
 impl RelocMode {
-    pub fn as_compiler_reloc_mode(&self) -> RelocModeOptions {
+    pub fn as_compiler_reloc_mode(&self) -> CompilerOption_RelocMode {
         match self {
-            RelocMode::Default => RelocModeOptions::Default,
-            RelocMode::Static => RelocModeOptions::Static,
-            RelocMode::PIC => RelocModeOptions::PIC,
-            RelocMode::DynamicNoPic => RelocModeOptions::DynamicNoPic,
+            RelocMode::Default => CompilerOption_RelocMode::Default,
+            RelocMode::Static => CompilerOption_RelocMode::Static,
+            RelocMode::PIC => CompilerOption_RelocMode::PIC,
+            RelocMode::DynamicNoPic => CompilerOption_RelocMode::DynamicNoPic,
         }
     }
 }
@@ -266,32 +269,32 @@ pub enum ABI {
 
 impl Profile {
     #[inline]
-    pub fn to_compiler_profile(&self) -> ProfileOptions {
+    pub fn to_compiler_profile(&self) -> CompilerOption_Profile {
         match self {
-            Profile::Debug => ProfileOptions::Debug,
-            Profile::Release => ProfileOptions::Release,
+            Profile::Debug => CompilerOption_Profile::Debug,
+            Profile::Release => CompilerOption_Profile::Release,
         }
     }
 }
 
 impl CodeModel {
     #[inline]
-    pub fn as_compiler_code_model(&self) -> CodeModelOptions {
+    pub fn as_compiler_code_model(&self) -> CompilerOption_CodeModel {
         match self {
-            CodeModel::Default => CodeModelOptions::Default,
-            CodeModel::Tiny => CodeModelOptions::Tiny,
-            CodeModel::Small => CodeModelOptions::Small,
-            CodeModel::Kernel => CodeModelOptions::Kernel,
-            CodeModel::Medium => CodeModelOptions::Medium,
-            CodeModel::Large => CodeModelOptions::Large,
+            CodeModel::Default => CompilerOption_CodeModel::Default,
+            CodeModel::Tiny => CompilerOption_CodeModel::Tiny,
+            CodeModel::Small => CompilerOption_CodeModel::Small,
+            CodeModel::Kernel => CompilerOption_CodeModel::Kernel,
+            CodeModel::Medium => CompilerOption_CodeModel::Medium,
+            CodeModel::Large => CompilerOption_CodeModel::Large,
         }
     }
 }
 
 impl LinkerCompilerOptions {
     #[inline]
-    pub fn to_compiler_linker_options(&self) -> CodeGenLinkerOptions {
-        CodeGenLinkerOptions {
+    pub fn to_compiler_linker_options(&self) -> CompilerOption_Linker {
+        CompilerOption_Linker {
             link_static: self.r#static,
             pie: self.pie,
             no_pie: self.no_pie,
@@ -301,22 +304,22 @@ impl LinkerCompilerOptions {
 
 impl Sanitizer {
     #[inline]
-    pub fn to_compiler_sanitizer(&self) -> CodeGenSanitizer {
+    pub fn to_compiler_sanitizer(&self) -> CompilerOption_Sanitizer {
         match self {
-            Sanitizer::Address => CodeGenSanitizer::Address,
-            Sanitizer::Memory => CodeGenSanitizer::Memory,
-            Sanitizer::Thread => CodeGenSanitizer::Thread,
-            Sanitizer::HWAddress => CodeGenSanitizer::HWAddress,
+            Sanitizer::Address => CompilerOption_Sanitizer::Address,
+            Sanitizer::Memory => CompilerOption_Sanitizer::Memory,
+            Sanitizer::Thread => CompilerOption_Sanitizer::Thread,
+            Sanitizer::HWAddress => CompilerOption_Sanitizer::HWAddress,
         }
     }
 }
 
 impl ABI {
     #[inline]
-    pub fn to_compiler_abi(&self) -> CodeGenABI {
+    pub fn to_compiler_abi(&self) -> CompilerOption_CodeGenABI {
         match self {
-            ABI::Cyrus => CodeGenABI::Cyrus,
-            ABI::C => CodeGenABI::C,
+            ABI::Cyrus => CompilerOption_CodeGenABI::Cyrus,
+            ABI::C => CompilerOption_CodeGenABI::C,
         }
     }
 }
@@ -327,23 +330,23 @@ fn get_current_dir_as_base_path() -> String {
     current_dir.to_string_lossy().into_owned()
 }
 
-impl CompilerOptions {
-    pub fn as_codegen_options(&self) -> CodeGenOptions {
+impl CLI_CompilerOptions {
+    pub fn as_codegen_options(&self) -> CompilerOptions {
         let linker = self.linker.clone().unwrap_or(default_linker().to_string());
 
-        CodeGenOptions {
+        CompilerOptions {
             profile: self.profile.to_compiler_profile(),
             abi: Some(self.abi.to_compiler_abi()),
             module_kind: self
                 .module_merge_mode
                 .and_then(|module_merge_mode| match module_merge_mode {
-                    ModuleMergeMode::Unified => Some(ModuleKind::Unified),
-                    ModuleMergeMode::Separate => Some(ModuleKind::Separate),
+                    ModuleMergeMode::Unified => Some(CompilerOption_ModuleKind::Unified),
+                    ModuleMergeMode::Separate => Some(CompilerOption_ModuleKind::Separate),
                 }),
             jobs: self.jobs,
             sanitizer: self.sanitizer.iter().map(|s| s.to_compiler_sanitizer()).collect(),
             linker_flags: self.linkerflags.clone(),
-            linker_options: CodeGenLinkerOptions::default(),
+            linker_options: CompilerOption_Linker::default(),
             linker: Some(linker),
             disable_modulefs_cache: self.disable_modulefs_cache,
             base_path: Some(self.base_path.clone().or(Some(get_current_dir_as_base_path())).unwrap()),
@@ -359,15 +362,14 @@ impl CompilerOptions {
             project_name: None,
             project_version: None,
             cyrus_version: None,
-            authors: None,
             project_type: None,
             build_dir: {
                 match self.build_dir.clone() {
-                    Some(path) => BuildDir::Provided(path),
-                    None => BuildDir::Default,
+                    Some(path) => CompilerOption_BuildDir::Provided(path),
+                    None => CompilerOption_BuildDir::Default,
                 }
             },
-            debug_enabled: self.debug_enabled,
+            debuginfo_enabled: self.debuginfo_enabled,
             quiet: self.quiet,
             verbose: self.verbose,
             stdlib_path: self.stdlib.clone(),
@@ -409,7 +411,7 @@ enum Commands {
     Run {
         file_path: Option<String>,
         #[clap(flatten)]
-        compiler_options: CompilerOptions,
+        compiler_options: CLI_CompilerOptions,
 
         #[clap(flatten)]
         linker_options: LinkerCompilerOptions,
@@ -427,7 +429,7 @@ enum Commands {
         #[clap(long, short)]
         output_path: Option<String>,
         #[clap(flatten)]
-        compiler_options: CompilerOptions,
+        compiler_options: CLI_CompilerOptions,
 
         #[clap(flatten)]
         linker_options: LinkerCompilerOptions,
@@ -436,7 +438,7 @@ enum Commands {
     #[clap(about = "Clean build directory", display_order = 4)]
     Clean {
         #[clap(flatten)]
-        compiler_options: CompilerOptions,
+        compiler_options: CLI_CompilerOptions,
     },
 
     #[clap(about = "Generate an object file", display_order = 5)]
@@ -445,7 +447,7 @@ enum Commands {
         #[clap(long, short)]
         output_path: Option<String>,
         #[clap(flatten)]
-        compiler_options: CompilerOptions,
+        compiler_options: CLI_CompilerOptions,
     },
 
     #[clap(about = "Generate a dynamic library (shared object)", display_order = 6)]
@@ -454,7 +456,7 @@ enum Commands {
         #[clap(long, short)]
         output_path: Option<String>,
         #[clap(flatten)]
-        compiler_options: CompilerOptions,
+        compiler_options: CLI_CompilerOptions,
     },
     #[clap(about = "Generate a static library", display_order = 7)]
     StaticLib {
@@ -462,7 +464,7 @@ enum Commands {
         #[clap(long, short)]
         output_path: Option<String>,
         #[clap(flatten)]
-        compiler_options: CompilerOptions,
+        compiler_options: CLI_CompilerOptions,
     },
 
     #[clap(about = "Emit LLVM IR as a .ll file per module.", display_order = 8)]
@@ -471,7 +473,7 @@ enum Commands {
         #[clap(long, short)]
         output_path: Option<String>,
         #[clap(flatten)]
-        compiler_options: CompilerOptions,
+        compiler_options: CLI_CompilerOptions,
     },
 
     #[clap(about = "Emit asm as a .s file per module.", display_order = 9)]
@@ -480,7 +482,7 @@ enum Commands {
         #[clap(long, short)]
         output_path: Option<String>,
         #[clap(flatten)]
-        compiler_options: CompilerOptions,
+        compiler_options: CLI_CompilerOptions,
     },
 
     #[clap(
@@ -493,7 +495,7 @@ enum Commands {
         #[clap(long, short)]
         output_path: Option<String>,
         #[clap(flatten)]
-        compiler_options: CompilerOptions,
+        compiler_options: CLI_CompilerOptions,
     },
 
     #[clap(
@@ -506,7 +508,7 @@ enum Commands {
         #[clap(long, short)]
         output_path: Option<String>,
         #[clap(flatten)]
-        compiler_options: CompilerOptions,
+        compiler_options: CLI_CompilerOptions,
     },
 
     #[clap(about = "Lexical analysis only.", display_order = 12)]
@@ -519,7 +521,7 @@ enum Commands {
     SemanticOnly {
         file_path: String,
         #[clap(flatten)]
-        compiler_options: CompilerOptions,
+        compiler_options: CLI_CompilerOptions,
     },
 
     #[clap(about = "Print version information", display_order = 15)]
@@ -562,14 +564,14 @@ fn compiler_option_from_scaffold_parser(base_path: Option<String>) -> Option<Sca
 }
 
 pub fn merge_and_validate_scaffold_config_with_codegen_options(
-    opts: &mut CodeGenOptions,
+    opts: &mut CompilerOptions,
     scaffold_config_opt: &Option<ScaffoldConfig>,
 ) {
     let Some(scaffold_config) = scaffold_config_opt else {
         return;
     };
 
-    let scaffold_codegen_options = CodeGenOptions::from_scaffold(scaffold_config);
+    let scaffold_codegen_options = CompilerOptions::from_scaffold(scaffold_config);
     *opts = opts.merge(&scaffold_codegen_options);
 
     if let Err(err) = validate_compiler_version(CYRUS_COMPILER_VERSION.trim(), scaffold_codegen_options.cyrus_version) {

@@ -18,7 +18,7 @@
 use crate::{
     context::CodeGenContext,
     linker::Linker,
-    options::{BuildDir, CodeGenOptions, CodeGenOptionsProjectType, LinkerOutputKind},
+    options::{CompilerOption_BuildDir, CompilerOptions, CompilerOption_ProjectType, CompilerOption_LinkerOutputKind},
 };
 use cyrusc_analyzer::context::{AnalysisContext, AnalyzerConfig, EntryPoints};
 use cyrusc_buildmanifest::BuildManifest;
@@ -56,7 +56,7 @@ use std::{
 };
 
 pub struct CodeGenContextBundle {
-    pub opts: CodeGenOptions,
+    pub opts: CompilerOptions,
     pub entry_file: PathBuf,
     pub build_dir: PathBuf,
     pub program_trees: Vec<Box<CIRModule>>,
@@ -74,7 +74,7 @@ pub struct CodeGenSemanticBundle {
     pub source_map: Arc<SourceMap>,
     pub entry_file: PathBuf,
     pub build_dir: PathBuf,
-    pub target: Arc<ABITarget>
+    pub target: Arc<ABITarget>,
 }
 
 fn create_compiler_context_target(target_info: &ABITargetInfo) -> (InkwellTarget, TargetTriple) {
@@ -93,9 +93,9 @@ fn create_compiler_context_target(target_info: &ABITargetInfo) -> (InkwellTarget
 // REVIEW: Consider to refactor this to get reference to CodeGenContextBundle
 // it's much cleaner than getting it's fields one by one!
 pub fn create_compiler_context(
-    opts: CodeGenOptions,
+    opts: CompilerOptions,
     file_path: &Option<PathBuf>,
-    linker_output_kind: LinkerOutputKind,
+    linker_output_kind: CompilerOption_LinkerOutputKind,
     target: Arc<ABITarget>,
     llvm_target: InkwellTarget,
     llvm_target_triple: TargetTriple,
@@ -129,7 +129,7 @@ pub fn create_compiler_context(
     )
 }
 
-pub fn build_semantic_bundle(opts: &mut CodeGenOptions, file_path_opt: Option<String>) -> Box<CodeGenSemanticBundle> {
+pub fn build_semantic_bundle(opts: &mut CompilerOptions, file_path_opt: Option<String>) -> Box<CodeGenSemanticBundle> {
     // disable modulefs cache if compiling a single file
 
     if let Some(file_path) = &file_path_opt {
@@ -267,7 +267,7 @@ pub fn build_semantic_bundle(opts: &mut CodeGenOptions, file_path_opt: Option<St
     }
 }
 
-pub fn build_compilation_bundle(opts: &mut CodeGenOptions, file_path: Option<String>) -> CodeGenContextBundle {
+pub fn build_compilation_bundle(opts: &mut CompilerOptions, file_path: Option<String>) -> CodeGenContextBundle {
     let codegen_semantic_bundle = build_semantic_bundle(opts, file_path);
 
     let target = codegen_semantic_bundle.target;
@@ -307,7 +307,7 @@ pub fn build_compilation_bundle(opts: &mut CodeGenOptions, file_path: Option<Str
     }
 }
 
-pub fn resolve_target_info_from_opts(opts: &CodeGenOptions) -> ABITargetInfo {
+pub fn resolve_target_info_from_opts(opts: &CompilerOptions) -> ABITargetInfo {
     let triple_str = if let Some(t) = opts.target.as_ref() {
         if !t.is_empty() { t.clone() } else { "".to_string() }
     } else {
@@ -320,6 +320,7 @@ pub fn resolve_target_info_from_opts(opts: &CodeGenOptions) -> ABITargetInfo {
             "aarch64" => ABITargetArch::Aarch64,
             "riscv64" => ABITargetArch::RiscV64,
             "wasm32" => ABITargetArch::Wasm32,
+
             other => {
                 tui_error(format!("Unsupported target architecture: {}", other));
                 exit(1);
@@ -332,6 +333,7 @@ pub fn resolve_target_info_from_opts(opts: &CodeGenOptions) -> ABITargetInfo {
             "aarch64" => ABITargetArch::Aarch64,
             "riscv64" => ABITargetArch::RiscV64,
             "wasm32" => ABITargetArch::Wasm32,
+
             other => {
                 tui_error(format!("Unsupported host architecture: {}", other));
                 exit(1);
@@ -455,7 +457,7 @@ pub fn get_static_lib_dir_output_path(build_dir: &PathBuf, output_path_opt: &Opt
 }
 
 pub fn get_executable_output_path(
-    opts: &CodeGenOptions,
+    opts: &CompilerOptions,
     build_dir: &PathBuf,
     entry_file_path: &PathBuf,
     output_path_opt: Option<PathBuf>,
@@ -476,7 +478,7 @@ pub fn get_executable_output_path(
     return file_path;
 }
 
-pub fn get_final_build_directory_path(build_dir: &BuildDir) -> PathBuf {
+pub fn get_final_build_directory_path(build_dir: &CompilerOption_BuildDir) -> PathBuf {
     fn temp_build_dir() -> PathBuf {
         let temp_dir = env::temp_dir();
         ensure_output_dir(&temp_dir);
@@ -484,13 +486,13 @@ pub fn get_final_build_directory_path(build_dir: &BuildDir) -> PathBuf {
     }
 
     match build_dir {
-        BuildDir::Provided(dir_path_str) => PathBuf::from(dir_path_str),
-        BuildDir::Default => temp_build_dir(),
+        CompilerOption_BuildDir::Provided(dir_path_str) => PathBuf::from(dir_path_str),
+        CompilerOption_BuildDir::Default => temp_build_dir(),
     }
 }
 
 fn get_entry_module_file_path(
-    opts: &CodeGenOptions,
+    opts: &CompilerOptions,
     base_path: &Option<PathBuf>,
     input_file_path: &Option<PathBuf>,
 ) -> PathBuf {
@@ -518,18 +520,18 @@ fn get_entry_module_file_path(
 
     // determine which file we expect based on project type
     let expected_file = match project_type {
-        CodeGenOptionsProjectType::Library => library_file,
-        CodeGenOptionsProjectType::Executable => executable_file,
+        CompilerOption_ProjectType::Library => library_file,
+        CompilerOption_ProjectType::Executable => executable_file,
     };
 
     let unexpected_file = match project_type {
-        CodeGenOptionsProjectType::Library => executable_file,
-        CodeGenOptionsProjectType::Executable => library_file,
+        CompilerOption_ProjectType::Library => executable_file,
+        CompilerOption_ProjectType::Executable => library_file,
     };
 
     let project_type_name = match project_type {
-        CodeGenOptionsProjectType::Library => "library",
-        CodeGenOptionsProjectType::Executable => "executable",
+        CompilerOption_ProjectType::Library => "library",
+        CompilerOption_ProjectType::Executable => "executable",
     };
 
     // search for files in all source directories

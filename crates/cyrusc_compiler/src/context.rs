@@ -19,7 +19,7 @@ use crate::{
     codegen_traits::CodeGenBackend,
     linker::Linker,
     object_file_info::{ObjectFileInfo, collect_objects_file_names},
-    options::{CodeGenOptions, LinkerOutputKind, ModuleKind},
+    options::{CompilerOption_LinkerOutputKind, CompilerOption_ModuleKind, CompilerOptions},
     target_machine_info::TargetMachineInfo,
 };
 use cyrusc_buildmanifest::BuildManifest;
@@ -33,25 +33,30 @@ use std::{
 };
 
 pub struct CodeGenContext {
-    pub opts: CodeGenOptions,
+    pub opts: CompilerOptions,
+
     pub target: Arc<ABITarget>,
+
+    pub build_manifest: Arc<Mutex<BuildManifest>>,
+
+    pub master_module_file_path: PathBuf,
+
+    pub linker_output_kind: CompilerOption_LinkerOutputKind,
+    pub linker: Linker,
+
     pub llvm_target: LLVMTarget,
     pub llvm_target_triple: TargetTriple,
-    pub build_manifest: Arc<Mutex<BuildManifest>>,
-    pub master_module_file_path: PathBuf,
-    pub linker_output_kind: LinkerOutputKind,
-    pub linker: Linker,
 }
 
 impl CodeGenContext {
     pub(crate) fn new(
-        opts: CodeGenOptions,
+        opts: CompilerOptions,
         target: Arc<ABITarget>,
         llvm_target: LLVMTarget,
         llvm_target_triple: TargetTriple,
         build_manifest: Arc<Mutex<BuildManifest>>,
         master_module_file_path: PathBuf,
-        linker_output_kind: LinkerOutputKind,
+        linker_output_kind: CompilerOption_LinkerOutputKind,
         linker: Linker,
     ) -> Self {
         Self {
@@ -77,17 +82,17 @@ impl CodeGenContext {
         }
 
         let modules = match self.opts.module_kind {
-            Some(ModuleKind::Separate) => {
+            Some(CompilerOption_ModuleKind::Separate) => {
                 let separate_backend = backend
                     .as_separate()
-                    .expect("Backend does not support separate module compilation");
+                    .expect("backend does not support separate module compilation");
 
                 separate_backend.process_separately(cir_modules)
             }
-            Some(ModuleKind::Unified) | None => {
+            Some(CompilerOption_ModuleKind::Unified) | None => {
                 let unified_backend = backend
                     .as_unified()
-                    .expect("Backend does not support unified module compilation");
+                    .expect("backend does not support unified module compilation");
 
                 vec![unified_backend.process_unified(cir_modules)]
             }
@@ -99,11 +104,14 @@ impl CodeGenContext {
         modules
     }
 
+    #[inline]
     pub fn save_context_build_cache(&self) {
         let build_manifest = self.build_manifest.lock().unwrap();
+
         if let Err(err) = build_manifest.save_manifest() {
             exit_with_msg!(err.to_string());
         }
+
         drop(build_manifest);
     }
 
@@ -137,6 +145,7 @@ impl CodeGenContext {
     }
 
     /// Fetch the target machine info from the backend
+    #[inline]
     pub fn target_machine_info<'cdg, BackendModule>(
         &self,
         backend: &'cdg dyn CodeGenBackend<'cdg, BackendModule>,
@@ -148,23 +157,26 @@ impl CodeGenContext {
         let object_files = collect_objects_file_names(object_files);
 
         match self.linker_output_kind {
-            LinkerOutputKind::Executable => {
+            CompilerOption_LinkerOutputKind::Executable => {
                 let output_path_cow = output_path.to_string_lossy();
+
                 self.linker.link_executable(&object_files, &output_path_cow.to_string())
             }
-            LinkerOutputKind::SharedLib => {
+            CompilerOption_LinkerOutputKind::SharedLib => {
                 let lib_name = self.opts.canonical_project_name();
+
                 self.linker
                     .link_shared_library(&object_files, &output_path, lib_name)
                     .map(|_| ())
             }
-            LinkerOutputKind::StaticLib => {
+            CompilerOption_LinkerOutputKind::StaticLib => {
                 let lib_name = self.opts.canonical_project_name();
+
                 self.linker
                     .link_static_library(&object_files, &output_path, lib_name)
                     .map(|_| ())
             }
-            LinkerOutputKind::ObjectFile => Ok(()),
+            CompilerOption_LinkerOutputKind::ObjectFile => Ok(()),
         }
     }
 }

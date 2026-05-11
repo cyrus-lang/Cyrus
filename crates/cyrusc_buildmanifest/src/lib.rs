@@ -51,18 +51,6 @@ impl BuildManifest {
         }
     }
 
-    pub fn mark_initial_build_complete(&mut self) {
-        self.initial_build = false;
-    }
-
-    pub fn initial_build(&mut self) {
-        self.initial_build = true;
-    }
-
-    pub fn get_object<P: AsRef<Path>>(&self, object_name: P) -> Option<&PathBuf> {
-        self.objects.get_key_value(object_name.as_ref()).map(|(_, path)| path)
-    }
-
     pub fn insert_object<P: AsRef<Path> + ?Sized, Q: AsRef<Path> + ?Sized>(
         &mut self,
         object_name: &P,
@@ -83,14 +71,6 @@ impl BuildManifest {
 
         self.objects.insert(object_name.as_ref().to_path_buf(), canonical_path);
         Ok(())
-    }
-
-    fn manifest_path(&self) -> PathBuf {
-        self.base_path.join(&self.build_dir).join(MANIFEST_FILENAME)
-    }
-
-    fn sources_dir(&self) -> PathBuf {
-        self.base_path.join(&self.build_dir).join(SRC_CACHE_DIR_PATH)
     }
 
     pub fn hash_source_code<P: AsRef<Path> + ?Sized>(&self, path: &P) -> io::Result<String> {
@@ -131,10 +111,6 @@ impl BuildManifest {
         let canonical = fs::canonicalize(&hash_file_path).unwrap_or(hash_file_path);
         self.sources.insert(source_file_path.as_ref().to_path_buf(), canonical);
         Ok(())
-    }
-
-    pub fn has_source<P: AsRef<Path>>(&self, source_path: P) -> bool {
-        self.sources.contains_key(source_path.as_ref())
     }
 
     pub fn is_source_changed<P: AsRef<Path> + ?Sized>(&self, source_path: &P) -> io::Result<bool> {
@@ -182,5 +158,35 @@ impl BuildManifest {
             exit_with_msg!(format!("Error while saving build manifest: {}", err.to_string()));
         }
         return initial_build_manifest;
+    }
+
+    #[inline]
+    pub fn mark_initial_build_complete(&mut self) {
+        self.initial_build = false;
+    }
+
+    #[inline]
+    pub fn initial_build(&mut self) {
+        self.initial_build = true;
+    }
+
+    #[inline]
+    pub fn get_object<P: AsRef<Path>>(&self, object_name: P) -> Option<&PathBuf> {
+        self.objects.get_key_value(object_name.as_ref()).map(|(_, path)| path)
+    }
+
+    #[inline]
+    fn manifest_path(&self) -> PathBuf {
+        self.base_path.join(&self.build_dir).join(MANIFEST_FILENAME)
+    }
+
+    #[inline]
+    fn sources_dir(&self) -> PathBuf {
+        self.base_path.join(&self.build_dir).join(SRC_CACHE_DIR_PATH)
+    }
+
+    #[inline]
+    pub fn has_source<P: AsRef<Path>>(&self, source_path: P) -> bool {
+        self.sources.contains_key(source_path.as_ref())
     }
 }
