@@ -77,7 +77,7 @@ library_path = []
 [compiler]
 cpu = \"generic\"
 optimize = \"o1\"
-sources = [\"src/*\"]
+sources = [\"./src\"]
 version = \"{}\"
 build_dir = \"./build\"
 ",
@@ -129,7 +129,7 @@ library_path = []
 [compiler]
 cpu = \"generic\"
 optimize = \"o1\"
-sources = [\"src/*\"]
+sources = [\"./src\"]
 version = \"{}\"
 ",
                 pure_project_name, CYRUS_COMPILER_VERSION

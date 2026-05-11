@@ -14,9 +14,10 @@
  * You should have received a copy of the GNU General Public License
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
+
 use crate::OwnedModule;
 use cyrusc_asan_wrapper::{SanitizerOptions, run_sanitizers};
-use cyrusc_compiler::options::{CodeGenOptions, CodeGenSanitizer};
+use cyrusc_compiler::options::{CompilerOptions, CompilerOption_Sanitizer};
 use cyrusc_diagcentral::exit_with_msg;
 use inkwell::{
     context::Context,
@@ -26,7 +27,7 @@ use inkwell::{
 };
 
 pub(crate) fn enable_asan_for_owned_module(
-    opts: &CodeGenOptions,
+    opts: &CompilerOptions,
     owned_module: &OwnedModule,
     tm: &TargetMachine,
     opt_level: i32,
@@ -37,7 +38,7 @@ pub(crate) fn enable_asan_for_owned_module(
     add_asan_metadata_flags_to_module(opts, context, &llvmmodule);
 
     opts.sanitizer.iter().for_each(|sanitizer| {
-        if matches!(sanitizer, CodeGenSanitizer::HWAddress) && !is_hwasan_supported() {
+        if matches!(sanitizer, CompilerOption_Sanitizer::HWAddress) && !is_hwasan_supported() {
             exit_with_msg!("HWASan not supported on this platform.".to_string());
         }
 
@@ -50,10 +51,10 @@ pub(crate) fn enable_asan_for_owned_module(
     });
 
     let sanitizer_opts = SanitizerOptions {
-        address_sanitize: opts.sanitizer.iter().any(|s| matches!(s, CodeGenSanitizer::Address)),
-        thread_sanitize: opts.sanitizer.iter().any(|s| matches!(s, CodeGenSanitizer::Thread)),
-        mem_sanitize: opts.sanitizer.iter().any(|s| matches!(s, CodeGenSanitizer::Memory)),
-        hwaddress_sanitize: opts.sanitizer.iter().any(|s| matches!(s, CodeGenSanitizer::HWAddress)),
+        address_sanitize: opts.sanitizer.iter().any(|s| matches!(s, CompilerOption_Sanitizer::Address)),
+        thread_sanitize: opts.sanitizer.iter().any(|s| matches!(s, CompilerOption_Sanitizer::Thread)),
+        mem_sanitize: opts.sanitizer.iter().any(|s| matches!(s, CompilerOption_Sanitizer::Memory)),
+        hwaddress_sanitize: opts.sanitizer.iter().any(|s| matches!(s, CompilerOption_Sanitizer::HWAddress)),
         recover: false,
         asan_use_after_scope: true,
         asan_use_after_return: false,
@@ -64,13 +65,13 @@ pub(crate) fn enable_asan_for_owned_module(
     drop(llvmmodule);
 }
 
-fn add_asan_metadata_flags_to_module<'ctx>(opts: &CodeGenOptions, context: &'ctx Context, module: &Module<'ctx>) {
+fn add_asan_metadata_flags_to_module<'ctx>(opts: &CompilerOptions, context: &'ctx Context, module: &Module<'ctx>) {
     for sanitizer in &opts.sanitizer {
         let name = match sanitizer {
-            CodeGenSanitizer::Address => "asan",
-            CodeGenSanitizer::Memory => "msan",
-            CodeGenSanitizer::Thread => "tsan",
-            CodeGenSanitizer::HWAddress => "hwasan",
+            CompilerOption_Sanitizer::Address => "asan",
+            CompilerOption_Sanitizer::Memory => "msan",
+            CompilerOption_Sanitizer::Thread => "tsan",
+            CompilerOption_Sanitizer::HWAddress => "hwasan",
         };
 
         if module.get_flag(name).is_some() {
@@ -85,13 +86,15 @@ fn add_asan_metadata_flags_to_module<'ctx>(opts: &CodeGenOptions, context: &'ctx
     }
 }
 
-fn is_sanitizer_support_in_linker(linker: &str, sanitizer: &CodeGenSanitizer) -> bool {
+#[inline]
+fn is_sanitizer_support_in_linker(linker: &str, sanitizer: &CompilerOption_Sanitizer) -> bool {
     match sanitizer {
-        CodeGenSanitizer::Memory => linker.contains("clang"),
+        CompilerOption_Sanitizer::Memory => linker.contains("clang"),
         _ => true,
     }
 }
 
+#[inline]
 fn is_hwasan_supported() -> bool {
     cfg!(target_arch = "aarch64")
 }

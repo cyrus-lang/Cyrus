@@ -14,7 +14,7 @@
  * You should have received a copy of the GNU General Public License
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
-use cyrusc_compiler::options::{CodeModelOptions, RelocModeOptions};
+use cyrusc_compiler::options::{CompilerOption_CodeModel, CompilerOption_RelocMode};
 use cyrusc_tui_utils::tui_error;
 use inkwell::{
     OptimizationLevel,
@@ -46,23 +46,23 @@ pub(crate) fn create_target_machine(
     }
 }
 
-pub(crate) fn llvm_reloc_mode(reloc_mode: RelocModeOptions) -> RelocMode {
+pub(crate) fn llvm_reloc_mode(reloc_mode: CompilerOption_RelocMode) -> RelocMode {
     match reloc_mode {
-        RelocModeOptions::Default => RelocMode::Default,
-        RelocModeOptions::Static => RelocMode::Static,
-        RelocModeOptions::PIC => RelocMode::PIC,
-        RelocModeOptions::DynamicNoPic => RelocMode::DynamicNoPic,
+        CompilerOption_RelocMode::Default => RelocMode::Default,
+        CompilerOption_RelocMode::Static => RelocMode::Static,
+        CompilerOption_RelocMode::PIC => RelocMode::PIC,
+        CompilerOption_RelocMode::DynamicNoPic => RelocMode::DynamicNoPic,
     }
 }
 
-pub(crate) fn llvm_code_model(code_model: CodeModelOptions) -> CodeModel {
+pub(crate) fn llvm_code_model(code_model: CompilerOption_CodeModel) -> CodeModel {
     match code_model {
-        CodeModelOptions::Default => CodeModel::Default,
-        CodeModelOptions::Tiny => CodeModel::Default,
-        CodeModelOptions::Small => CodeModel::Small,
-        CodeModelOptions::Kernel => CodeModel::Kernel,
-        CodeModelOptions::Medium => CodeModel::Medium,
-        CodeModelOptions::Large => CodeModel::Large,
+        CompilerOption_CodeModel::Default => CodeModel::Default,
+        CompilerOption_CodeModel::Tiny => CodeModel::Default,
+        CompilerOption_CodeModel::Small => CodeModel::Small,
+        CompilerOption_CodeModel::Kernel => CodeModel::Kernel,
+        CompilerOption_CodeModel::Medium => CodeModel::Medium,
+        CompilerOption_CodeModel::Large => CodeModel::Large,
     }
 }
 

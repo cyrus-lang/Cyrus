@@ -14,7 +14,8 @@
  * You should have received a copy of the GNU General Public License
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
-use crate::options::{CodeGenOptions, RelocModeOptions};
+
+use crate::options::{CompilerOptions, CompilerOption_RelocMode};
 use std::env::consts::{FAMILY, OS};
 use std::path::PathBuf;
 use std::process::Command;
@@ -23,7 +24,7 @@ use which::which;
 #[derive(Debug, Clone)]
 pub struct Linker {
     pub linker_path: String,
-    pub opts: CodeGenOptions,
+    pub opts: CompilerOptions,
 }
 
 /// Static mapping of platforms to default linkers
@@ -45,7 +46,7 @@ pub fn default_linker() -> &'static str {
 }
 
 impl Linker {
-    pub fn new(opts: CodeGenOptions) -> Result<Self, String> {
+    pub fn new(opts: CompilerOptions) -> Result<Self, String> {
         let os = std::env::consts::OS;
         let default_linker = DEFAULT_LINKERS
             .iter()
@@ -85,7 +86,7 @@ impl Linker {
             cmd.arg("-lc");
         }
 
-        if self.opts.debug_enabled {
+        if self.opts.debuginfo_enabled {
             cmd.arg("-g");
             cmd.arg("-fno-omit-frame-pointer");
         }
@@ -201,7 +202,7 @@ impl Linker {
             false => {
                 if matches!(
                     self.opts.reloc_mode,
-                    RelocModeOptions::PIC | RelocModeOptions::DynamicNoPic
+                    CompilerOption_RelocMode::PIC | CompilerOption_RelocMode::DynamicNoPic
                 ) {
                     cmd.args(["-ldl", "-rdynamic"]);
                 }
