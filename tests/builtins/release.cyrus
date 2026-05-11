@@ -1,0 +1,27 @@
+// @stdout: 10 - release mode (5) - shorthand - only in release mode - 10
+// @compilerArgs: --profile=release
+
+import std::libc{printf};
+
+@release() {
+    const x = 10;
+
+    fn foo(y: int) {
+        printf("release mode (%d) - ", y);
+    }
+}
+
+pub fn main() {
+    printf("%d - ", x);
+    foo(5);
+
+    @release() printf("shorthand - ");
+
+    @release() {
+        printf("only in release mode - ");
+
+        const x = 10;
+
+        printf("%d", x);
+    }
+}

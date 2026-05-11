@@ -38,14 +38,9 @@ impl<'a> AnalysisContext<'a> {
 
         match builtin {
             TypedBuiltin::BuiltinFunc(builtin_func) => {
-                if builtin_func.child_stmt.is_some() {
-                    self.analyze_builtin_stmt_func(builtin_func)
-                } else {
-                    // expression builtin used as statement
-                    self.analyze_builtin_expr(builtin_func);
+                self.analyze_builtin_expr(builtin_func);
 
-                    FlowState::Reachable
-                }
+                FlowState::Reachable
             }
 
             TypedBuiltin::BuiltinBlock(block) => self.analyze_builtin_block(block, is_toplevel),
@@ -76,32 +71,6 @@ impl<'a> AnalysisContext<'a> {
         }
 
         self.analyze_builtin_func_semantics(builtin_kind, builtin_func)
-    }
-
-    fn analyze_builtin_stmt_func(&mut self, builtin_func: &mut TypedBuiltinFunc) -> FlowState {
-        let Some(builtin_kind) = lookup_builtin(&builtin_func.name.value) else {
-            self.reporter.report(Diag {
-                level: DiagLevel::Error,
-                kind: Box::new(AnalyzerDiagKind::BuiltinNotDefined {
-                    name: builtin_func.name.as_string(),
-                }),
-                loc: Some(builtin_func.loc),
-                hint: None,
-            });
-            return FlowState::Reachable;
-        };
-
-        let builtin_spec = builtin_spec_of(builtin_kind);
-
-        if !self.validate_builtin_form(builtin_spec, TypedBuiltinForm::Stmt, builtin_func.loc) {
-            return FlowState::Reachable;
-        }
-
-        let Some(child) = builtin_func.child_stmt.as_mut() else {
-            return FlowState::Reachable;
-        };
-
-        self.analyze_stmt(child)
     }
 
     fn validate_builtin_form(&self, builtin_spec: &TypedBuiltinSpec, actual: TypedBuiltinForm, loc: Loc) -> bool {

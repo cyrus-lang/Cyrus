@@ -869,16 +869,9 @@ impl<'a> Resolver<'a> {
             .filter_map(|arg| self.resolve_expr(arg))
             .collect();
 
-        let child_stmt = builtin_func
-            .child_stmt
-            .clone()
-            .and_then(|stmt| self.resolve_stmt(&stmt))
-            .map(Box::new);
-
         let builtin_func = TypedBuiltinFunc {
             name: builtin_func.name.clone(),
             args,
-            child_stmt,
             ret_type: None,
             loc: builtin_func.loc,
         };
@@ -898,7 +891,7 @@ impl<'a> Resolver<'a> {
             .collect();
 
         let stmts = {
-            if builtin_block.is_toplevel_block {
+            if builtin_block.is_toplevel {
                 let typed_stmts: Vec<TypedStmt> = builtin_block
                     .block
                     .stmts

@@ -266,7 +266,6 @@ pub enum Builtin {
 pub struct BuiltinFunc {
     pub name: Ident,
     pub args: Vec<ASTExpr>,
-    pub child_stmt: Option<Box<ASTStmt>>,
     pub loc: Loc,
 }
 
@@ -275,7 +274,7 @@ pub struct BuiltinBlock {
     pub name: Ident,
     pub args: Vec<ASTExpr>,
     pub block: Box<ASTBlockStmt>,
-    pub is_toplevel_block: bool,
+    pub is_toplevel: bool,
     pub loc: Loc,
 }
 
@@ -1586,7 +1585,7 @@ impl PartialEq for BuiltinBlock {
 
 impl PartialEq for BuiltinFunc {
     fn eq(&self, other: &Self) -> bool {
-        self.name == other.name && self.args == other.args && self.child_stmt.is_some() == other.child_stmt.is_some()
+        self.name == other.name && self.args == other.args 
     }
 }
 

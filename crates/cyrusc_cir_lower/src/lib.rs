@@ -218,13 +218,9 @@ impl<'a> CIRLower<'a> {
     fn lower_builtin(&mut self, builtin: &TypedBuiltin) -> Vec<CIRStmt> {
         match builtin {
             TypedBuiltin::BuiltinFunc(builtin_func) => {
-                debug_assert!(
-                    builtin_func.child_stmt.is_none(),
-                    "attribute builtin cannot be  appeared cir lower"
-                );
+                let expr = self.lower_builtin_func(builtin_func);
 
-                // expression
-                vec![CIRStmt::Expr(self.lower_builtin_func(builtin_func))]
+                vec![CIRStmt::Expr(expr)]
             }
             TypedBuiltin::BuiltinBlock(builtin_block) => self.lower_builtin_block(builtin_block),
         }

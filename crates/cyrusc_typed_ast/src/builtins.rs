@@ -15,11 +15,7 @@
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
 
-use crate::{
-    exprs::TypedExpr,
-    stmts::{TypedBlockStmt, TypedStmt},
-    types::SemaType,
-};
+use crate::{exprs::TypedExpr, stmts::TypedBlockStmt, types::SemaType};
 use cyrusc_ast::Ident;
 use cyrusc_source_loc::Loc;
 
@@ -59,7 +55,6 @@ pub enum TypedBuiltinForm {
 pub struct TypedBuiltinFunc {
     pub name: Ident,
     pub args: Vec<TypedExpr>,
-    pub child_stmt: Option<Box<TypedStmt>>,
     pub ret_type: Option<SemaType>,
     pub loc: Loc,
 }
@@ -205,7 +200,7 @@ pub fn builtin_spec_of(kind: TypedBuiltinKind) -> &'static TypedBuiltinSpec {
 
 impl PartialEq for TypedBuiltinFunc {
     fn eq(&self, other: &Self) -> bool {
-        self.name == other.name && self.child_stmt.is_some() == other.child_stmt.is_some()
+        self.name == other.name
     }
 }
 
