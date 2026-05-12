@@ -141,14 +141,14 @@ impl<'a> AnalysisContext<'a> {
                     this.analyze_expr(&mut range.lower, Some(operand_type.clone()));
                     this.analyze_expr(&mut range.upper, Some(operand_type.clone()));
 
-                    let mut const_folder = ConstFolder::new(this, &this.decl_tables, this.target);
+                    let mut const_folder = ConstFolder::new(this, &this.decl_tables, this.target, this);
 
-                    let lower = match const_folder.expr_as_const_int(&range.lower) {
+                    let lower = match const_folder.expr_as_const_int(&range.lower, this) {
                         Some(value) => value,
                         None => return None,
                     };
 
-                    let upper = match const_folder.expr_as_const_int(&range.upper) {
+                    let upper = match const_folder.expr_as_const_int(&range.upper, this) {
                         Some(value) => value,
                         None => return None,
                     };

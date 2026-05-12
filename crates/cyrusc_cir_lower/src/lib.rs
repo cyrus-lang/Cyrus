@@ -37,6 +37,7 @@ use cyrusc_typed_ast::VTableID;
 use cyrusc_typed_ast::builtins::TypedBuiltin;
 use cyrusc_typed_ast::builtins::TypedBuiltinBlock;
 use cyrusc_typed_ast::builtins::TypedBuiltinFunc;
+use cyrusc_typed_ast::builtins::TypedBuiltinPhase;
 use cyrusc_typed_ast::builtins::builtin_spec_of;
 use cyrusc_typed_ast::builtins::lookup_builtin;
 use cyrusc_typed_ast::decls::table::DeclTablesRegistry;
@@ -218,6 +219,21 @@ impl<'a> CIRLower<'a> {
     fn lower_builtin(&mut self, builtin: &TypedBuiltin) -> Vec<CIRStmt> {
         match builtin {
             TypedBuiltin::BuiltinFunc(builtin_func) => {
+                if cfg!(debug_assertions) {
+                    let builtin_kind = lookup_builtin(&builtin_func.name.value).unwrap();
+                    let builtin_spec = builtin_spec_of(builtin_kind);
+
+                    match &builtin_spec.phase {
+                        TypedBuiltinPhase::Resolver => {
+                            panic!("builtin func with resolver phase cannot appear in cir-lower")
+                        }
+                        TypedBuiltinPhase::ConstEval => {
+                            panic!("builtin func with const-eval phase cannot appear in cir-lower")
+                        }
+                        TypedBuiltinPhase::Codegen => { /* it's okay */ }
+                    }
+                }
+
                 let expr = self.lower_builtin_func(builtin_func);
 
                 vec![CIRStmt::Expr(expr)]

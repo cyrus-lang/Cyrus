@@ -1,0 +1,14 @@
+// @stdout: my_method | <undefined>
+
+import std::libc{printf};
+
+struct Object {
+    pub fn my_method() {
+        printf("%s | ", @method_name());
+    }
+}
+pub fn main() {
+    Object.my_method();
+
+    printf("%s\n", @method_name());
+}

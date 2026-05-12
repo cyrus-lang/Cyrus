@@ -142,8 +142,8 @@ impl<'a> AnalysisContext<'a> {
                     });
                 }
 
-                let mut folder = ConstFolder::new(self, &self.decl_tables, self.target);
-                folder.expr_as_const_int(&expr).unwrap()
+                let mut folder = ConstFolder::new(self, &self.decl_tables, self.target, self);
+                folder.expr_as_const_int(&expr, self).unwrap()
             }
             TypedArrayCapacity::Dynamic => todo!(),
         };

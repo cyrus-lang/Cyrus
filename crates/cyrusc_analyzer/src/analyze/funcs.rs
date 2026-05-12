@@ -46,7 +46,7 @@ impl<'a> AnalysisContext<'a> {
 
         if !is_generic_func {
             let func_type = func_decl.as_func_type();
-            let func_env = self.create_func_def_env(func_type.clone(), None);
+            let func_env = self.create_func_def_env(&func_decl.name, func_type.clone(), None);
 
             self.with_func_env(func_env, |this| {
                 this.analyze_func_body(&mut func_def.body, &func_def.ret_type);

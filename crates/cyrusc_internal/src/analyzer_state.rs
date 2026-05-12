@@ -15,14 +15,10 @@
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
 
-pub mod abi;
-pub mod cir;
-pub mod local_scope;
-pub mod symbols;
-pub mod module_loader;
-pub mod vtable;
-pub mod flow_state;
-pub mod monomorph;
-pub mod generic_scope;
-pub mod compiler_options;
-pub mod analyzer_state;
+/// Minimal interface exposed to subsystems such as const-eval.
+pub trait AnalyzerState {
+    fn func_name(&self) -> String;
+    fn method_name(&self) -> String;
+    fn module_name(&self) -> String;
+    fn file_name(&self) -> String;
+}
