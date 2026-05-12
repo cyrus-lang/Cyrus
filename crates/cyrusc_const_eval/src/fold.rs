@@ -16,7 +16,7 @@
  */
 
 use crate::{evaluator::ConstEvaluator, resolver::ConstResolver};
-use cyrusc_internal::abi::target::ABITarget;
+use cyrusc_internal::{abi::target::ABITarget, analyzer_state::AnalyzerState};
 use cyrusc_tokens::literals::LiteralKind;
 use cyrusc_typed_ast::{decls::table::DeclTablesRegistry, exprs::*};
 
@@ -25,35 +25,40 @@ pub struct ConstFolder<'a, R: ConstResolver> {
 }
 
 impl<'a, R: ConstResolver> ConstFolder<'a, R> {
-    pub fn new(resolver: &'a R, decl_tables: &'a DeclTablesRegistry, target: &'a ABITarget) -> Self {
+    pub fn new(
+        resolver: &'a R,
+        decl_tables: &'a DeclTablesRegistry,
+        target: &'a ABITarget,
+        analyzer_state: &'a dyn AnalyzerState,
+    ) -> Self {
         Self {
-            evaluator: ConstEvaluator::new(resolver, decl_tables, target),
+            evaluator: ConstEvaluator::new(resolver, decl_tables, target, analyzer_state),
         }
     }
 
-    pub fn fold_expr(&mut self, expr: &mut TypedExpr) {
+    pub fn fold_expr(&mut self, expr: &mut TypedExpr, analyzer_state: &'a dyn AnalyzerState) {
         match &mut expr.kind {
             TypedExprKind::Prefix(prefix) => {
-                self.fold_expr(&mut prefix.operand);
+                self.fold_expr(&mut prefix.operand, analyzer_state);
             }
             TypedExprKind::Infix(infix) => {
-                self.fold_expr(&mut infix.lhs);
-                self.fold_expr(&mut infix.rhs);
+                self.fold_expr(&mut infix.lhs, analyzer_state);
+                self.fold_expr(&mut infix.rhs, analyzer_state);
             }
             TypedExprKind::ArrayIndex(array_index) => {
-                self.fold_expr(&mut array_index.operand);
-                self.fold_expr(&mut array_index.index);
+                self.fold_expr(&mut array_index.operand, analyzer_state);
+                self.fold_expr(&mut array_index.index, analyzer_state);
             }
             TypedExprKind::Array(array) => {
                 for element in &mut array.elements {
-                    self.fold_expr(element);
+                    self.fold_expr(element, analyzer_state);
                 }
             }
 
             _ => {}
         }
 
-        if let Ok(const_value) = self.evaluator.eval_expr(expr) {
+        if let Ok(const_value) = self.evaluator.eval_expr(expr, analyzer_state) {
             if let Some(int_value) = const_value.as_int() {
                 let literal = TypedLiteralExpr {
                     ty: expr.ty.clone(),
@@ -62,11 +67,27 @@ impl<'a, R: ConstResolver> ConstFolder<'a, R> {
                 };
 
                 expr.kind = TypedExprKind::Literal(literal);
+            } else if let Some(float_value) = const_value.as_float() {
+                let literal = TypedLiteralExpr {
+                    ty: expr.ty.clone(),
+                    kind: LiteralKind::Float(float_value, None),
+                    loc: expr.loc,
+                };
+
+                expr.kind = TypedExprKind::Literal(literal);
+            } else if let Some(string_value) = const_value.as_string() {
+                let literal = TypedLiteralExpr {
+                    ty: expr.ty.clone(),
+                    kind: LiteralKind::String(string_value.clone(), None),
+                    loc: expr.loc,
+                };
+
+                expr.kind = TypedExprKind::Literal(literal);
             }
         }
     }
 
-    pub fn expr_as_const_int(&mut self, expr: &TypedExpr) -> Option<i128> {
+    pub fn expr_as_const_int(&mut self, expr: &TypedExpr, analyzer_state: &'a dyn AnalyzerState) -> Option<i128> {
         if let TypedExprKind::Literal(literal) = &expr.kind {
             if let LiteralKind::Integer(value, ..) = &literal.kind {
                 return Some(*value);
@@ -74,6 +95,6 @@ impl<'a, R: ConstResolver> ConstFolder<'a, R> {
         }
 
         // try const evaluation
-        self.evaluator.eval_expr(expr).ok()?.as_int()
+        self.evaluator.eval_expr(expr, analyzer_state).ok()?.as_int()
     }
 }

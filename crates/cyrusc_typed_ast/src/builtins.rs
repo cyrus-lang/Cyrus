@@ -83,6 +83,13 @@ pub enum TypedBuiltinPhase {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum TypedBuiltinKind {
+    FuncName,
+    MethodName,
+    ModuleName,
+    FileName,
+    Line,
+    Column,
+
     SizeOf,
     AlignOf,
     OffsetOf,
@@ -109,6 +116,60 @@ pub struct TypedBuiltinSpec {
 
 pub static BUILTIN_SPECS: &[TypedBuiltinSpec] = &[
     // -- const-evals --
+    TypedBuiltinSpec {
+        kind: TypedBuiltinKind::FuncName,
+        name: "func_name",
+        family: TypedBuiltinFamily::ConstEval,
+        phase: TypedBuiltinPhase::ConstEval,
+        form: TypedBuiltinForm::Expr,
+        min_args: 0,
+        max_args: Some(0),
+    },
+    TypedBuiltinSpec {
+        kind: TypedBuiltinKind::MethodName,
+        name: "method_name",
+        family: TypedBuiltinFamily::ConstEval,
+        phase: TypedBuiltinPhase::ConstEval,
+        form: TypedBuiltinForm::Expr,
+        min_args: 0,
+        max_args: Some(0),
+    },
+    TypedBuiltinSpec {
+        kind: TypedBuiltinKind::ModuleName,
+        name: "module_name",
+        family: TypedBuiltinFamily::ConstEval,
+        phase: TypedBuiltinPhase::ConstEval,
+        form: TypedBuiltinForm::Expr,
+        min_args: 0,
+        max_args: Some(0),
+    },
+    TypedBuiltinSpec {
+        kind: TypedBuiltinKind::FileName,
+        name: "file_name",
+        family: TypedBuiltinFamily::ConstEval,
+        phase: TypedBuiltinPhase::ConstEval,
+        form: TypedBuiltinForm::Expr,
+        min_args: 0,
+        max_args: Some(0),
+    },
+    TypedBuiltinSpec {
+        kind: TypedBuiltinKind::Line,
+        name: "line",
+        family: TypedBuiltinFamily::ConstEval,
+        phase: TypedBuiltinPhase::ConstEval,
+        form: TypedBuiltinForm::Expr,
+        min_args: 0,
+        max_args: Some(0),
+    },
+    TypedBuiltinSpec {
+        kind: TypedBuiltinKind::Column,
+        name: "column",
+        family: TypedBuiltinFamily::ConstEval,
+        phase: TypedBuiltinPhase::ConstEval,
+        form: TypedBuiltinForm::Expr,
+        min_args: 0,
+        max_args: Some(0),
+    },
     TypedBuiltinSpec {
         kind: TypedBuiltinKind::SizeOf,
         name: "sizeof",
@@ -179,6 +240,12 @@ pub static BUILTIN_SPECS: &[TypedBuiltinSpec] = &[
 builtin_lookup! {
     pub fn lookup_builtin(name: &str) -> Option<TypedBuiltinKind> {
         // const-evals
+        "func_name" => TypedBuiltinKind::FuncName,
+        "method_name" => TypedBuiltinKind::MethodName,
+        "module_name" => TypedBuiltinKind::ModuleName,
+        "file_name" => TypedBuiltinKind::FileName,
+        "line" => TypedBuiltinKind::Line,
+        "column" => TypedBuiltinKind:: Column,
         "sizeof" => TypedBuiltinKind::SizeOf,
         "alignof" => TypedBuiltinKind::AlignOf,
         "offsetof" => TypedBuiltinKind::OffsetOf,

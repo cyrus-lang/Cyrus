@@ -1,0 +1,13 @@
+// @stdout: main | <unnamed>
+
+import std::libc{printf};
+
+pub fn main() {
+    printf("%s | ", @func_name());
+
+    const lambda = fn() void {
+        printf("%s\n", @func_name());
+    };
+
+    lambda();
+}

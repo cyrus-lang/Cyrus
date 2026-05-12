@@ -171,15 +171,62 @@ impl<'a> AnalysisContext<'a> {
         builtin: &mut TypedBuiltinFunc,
     ) -> Option<SemaType> {
         match kind {
+            TypedBuiltinKind::FuncName => self.analyze_builtin_func_name(builtin),
+            TypedBuiltinKind::MethodName => self.analyze_builtin_func_name(builtin),
+            TypedBuiltinKind::ModuleName => self.analyze_builtin_module_name(builtin),
+            TypedBuiltinKind::FileName => self.analyze_builtin_file_name(builtin),
+            TypedBuiltinKind::Line => self.analyze_builtin_line(builtin),
+            TypedBuiltinKind::Column => self.analyze_builtin_column(builtin),
             TypedBuiltinKind::SizeOf => self.analyze_builtin_sizeof(builtin),
             TypedBuiltinKind::AlignOf => self.analyze_builtin_alignof(builtin),
             TypedBuiltinKind::OffsetOf => self.analyze_builtin_offsetof(builtin),
             TypedBuiltinKind::Memcpy => self.analyze_builtin_memcpy(builtin),
             TypedBuiltinKind::Memset => self.analyze_builtin_memset(builtin),
+
             _ => {
                 unreachable!()
             }
         }
+    }
+
+    fn analyze_builtin_func_name(&mut self, builtin_func: &mut TypedBuiltinFunc) -> Option<SemaType> {
+        let ret_type = SemaType::Pointer(Box::new(SemaType::Plain(PlainType::Char)));
+
+        builtin_func.ret_type = Some(ret_type.clone());
+
+        Some(ret_type)
+    }
+
+    fn analyze_builtin_module_name(&mut self, builtin_func: &mut TypedBuiltinFunc) -> Option<SemaType> {
+        let ret_type = SemaType::Pointer(Box::new(SemaType::Plain(PlainType::Char)));
+
+        builtin_func.ret_type = Some(ret_type.clone());
+
+        Some(ret_type)
+    }
+
+    fn analyze_builtin_file_name(&mut self, builtin_func: &mut TypedBuiltinFunc) -> Option<SemaType> {
+        let ret_type = SemaType::Pointer(Box::new(SemaType::Plain(PlainType::Char)));
+
+        builtin_func.ret_type = Some(ret_type.clone());
+
+        Some(ret_type)
+    }
+
+    fn analyze_builtin_line(&mut self, builtin_func: &mut TypedBuiltinFunc) -> Option<SemaType> {
+        let ret_type = SemaType::Plain(PlainType::USize);
+
+        builtin_func.ret_type = Some(ret_type.clone());
+
+        Some(ret_type)
+    }
+
+    fn analyze_builtin_column(&mut self, builtin_func: &mut TypedBuiltinFunc) -> Option<SemaType> {
+        let ret_type = SemaType::Plain(PlainType::USize);
+
+        builtin_func.ret_type = Some(ret_type.clone());
+
+        Some(ret_type)
     }
 
     fn analyze_builtin_alignof(&mut self, builtin_func: &mut TypedBuiltinFunc) -> Option<SemaType> {

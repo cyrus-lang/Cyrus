@@ -125,7 +125,23 @@ impl<'a> Resolver<'a> {
         // collect full definitions and details of the symbols (second pass)
         let body = self.resolve_decl_full(&program_tree);
 
-        let typed_program_tree = Rc::new(RefCell::new(TypedProgramTree { file_id, body }));
+        let file_name = self
+            .source_map
+            .get_file(file_id)
+            .unwrap()
+            .file_path
+            .to_str()
+            .unwrap()
+            .to_string();
+
+        let module_name = self.lookup_module_name(file_id).unwrap();
+
+        let typed_program_tree = Rc::new(RefCell::new(TypedProgramTree {
+            file_id,
+            body,
+            file_name,
+            module_name,
+        }));
 
         {
             let mut program_trees = self.program_trees.lock().unwrap();

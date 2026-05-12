@@ -21,6 +21,7 @@ use crate::value::ConstValue;
 use cyrusc_ast::operators::{InfixOperator, PrefixOperator};
 use cyrusc_internal::abi::layout::type_layout;
 use cyrusc_internal::abi::target::ABITarget;
+use cyrusc_internal::analyzer_state::AnalyzerState;
 use cyrusc_internal::cir::lower::lower_sema_type;
 use cyrusc_tokens::literals::LiteralKind;
 use cyrusc_typed_ast::builtins::{
@@ -38,20 +39,31 @@ pub struct ConstEvaluator<'a, R: ConstResolver> {
     evaluating: HashMap<DeclID, ()>,
     decl_tables: &'a DeclTablesRegistry,
     target: &'a ABITarget,
+    analyzer_state: &'a dyn AnalyzerState,
 }
 
 impl<'a, R: ConstResolver> ConstEvaluator<'a, R> {
-    pub fn new(resolver: &'a R, decl_tables: &'a DeclTablesRegistry, target: &'a ABITarget) -> Self {
+    pub fn new(
+        resolver: &'a R,
+        decl_tables: &'a DeclTablesRegistry,
+        target: &'a ABITarget,
+        analyzer_state: &'a dyn AnalyzerState,
+    ) -> Self {
         Self {
             resolver,
             cache: HashMap::new(),
             evaluating: HashMap::new(),
             decl_tables,
             target,
+            analyzer_state,
         }
     }
 
-    pub fn eval_expr(&mut self, expr: &TypedExpr) -> Result<ConstValue, ConstEvalError> {
+    pub fn eval_expr(
+        &mut self,
+        expr: &TypedExpr,
+        analyzer_state: &'a dyn AnalyzerState,
+    ) -> Result<ConstValue, ConstEvalError> {
         let raw = match &expr.kind {
             TypedExprKind::Symbol(symbol_expr) => {
                 let decl_id = symbol_expr.as_decl_id().unwrap();
@@ -68,7 +80,7 @@ impl<'a, R: ConstResolver> ConstEvaluator<'a, R> {
             TypedExprKind::Prefix(prefix) => self.eval_prefix(prefix),
             TypedExprKind::Infix(infix) => self.eval_infix(infix),
 
-            TypedExprKind::Builtin(builtin) => self.eval_builtin(builtin),
+            TypedExprKind::Builtin(builtin) => self.eval_builtin(builtin, analyzer_state),
 
             _ => Err(ConstEvalError::UnsupportedExpr),
         }?;
@@ -105,7 +117,7 @@ impl<'a, R: ConstResolver> ConstEvaluator<'a, R> {
             .resolve_symbol_expr(decl_id)
             .ok_or(ConstEvalError::UnsupportedExpr)?;
 
-        let const_value = self.eval_expr(&expr)?;
+        let const_value = self.eval_expr(&expr, self.analyzer_state)?;
 
         self.cache.insert(decl_id, const_value.clone());
         self.evaluating.remove(&decl_id);
@@ -114,7 +126,7 @@ impl<'a, R: ConstResolver> ConstEvaluator<'a, R> {
     }
 
     fn eval_prefix(&mut self, expr: &TypedPrefixExpr) -> Result<ConstValue, ConstEvalError> {
-        let const_value = self.eval_expr(&expr.operand)?;
+        let const_value = self.eval_expr(&expr.operand, self.analyzer_state)?;
 
         match expr.op {
             PrefixOperator::Minus => match const_value {
@@ -134,8 +146,8 @@ impl<'a, R: ConstResolver> ConstEvaluator<'a, R> {
     }
 
     fn eval_infix(&mut self, expr: &TypedInfixExpr) -> Result<ConstValue, ConstEvalError> {
-        let lhs = self.eval_expr(&expr.lhs)?;
-        let rhs = self.eval_expr(&expr.rhs)?;
+        let lhs = self.eval_expr(&expr.lhs, self.analyzer_state)?;
+        let rhs = self.eval_expr(&expr.rhs, self.analyzer_state)?;
 
         if let (Some(lhs), Some(rhs)) = (lhs.as_float(), rhs.as_float()) {
             let result = match expr.op {
@@ -209,6 +221,7 @@ impl<'a, R: ConstResolver> ConstEvaluator<'a, R> {
                 ConstValue::Int(value) => Ok(ConstValue::Int(value)),
                 ConstValue::Bool(value) => Ok(ConstValue::Int(if value { 1 } else { 0 })),
                 ConstValue::Float(value) => Ok(ConstValue::Int(value as i128)),
+                ConstValue::String(_) => return Err(ConstEvalError::TypeError),
             };
         }
 
@@ -217,6 +230,7 @@ impl<'a, R: ConstResolver> ConstEvaluator<'a, R> {
                 ConstValue::Bool(value) => Ok(ConstValue::Bool(value)),
                 ConstValue::Int(value) => Ok(ConstValue::Bool(value != 0)),
                 ConstValue::Float(value) => Ok(ConstValue::Bool(value != 0.0)),
+                ConstValue::String(_) => return Err(ConstEvalError::TypeError),
             };
         }
 
@@ -225,6 +239,7 @@ impl<'a, R: ConstResolver> ConstEvaluator<'a, R> {
                 ConstValue::Float(value) => Ok(ConstValue::Float(value)),
                 ConstValue::Int(value) => Ok(ConstValue::Float(value as f64)),
                 ConstValue::Bool(value) => Ok(ConstValue::Float(if value { 1.0 } else { 0.0 })),
+                ConstValue::String(_) => return Err(ConstEvalError::TypeError),
             };
         }
 
@@ -233,7 +248,11 @@ impl<'a, R: ConstResolver> ConstEvaluator<'a, R> {
 }
 
 impl<'a, R: ConstResolver> ConstEvaluator<'a, R> {
-    fn eval_builtin(&self, builtin: &TypedBuiltin) -> Result<ConstValue, ConstEvalError> {
+    fn eval_builtin(
+        &self,
+        builtin: &TypedBuiltin,
+        analyzer_state: &'a dyn AnalyzerState,
+    ) -> Result<ConstValue, ConstEvalError> {
         let Some(builtin_func) = builtin.as_builtin_func() else {
             return Err(ConstEvalError::UnsupportedExpr);
         };
@@ -249,12 +268,58 @@ impl<'a, R: ConstResolver> ConstEvaluator<'a, R> {
         }
 
         match builtin_spec.kind {
+            TypedBuiltinKind::FuncName => self.eval_func_name(builtin_func, analyzer_state),
+            TypedBuiltinKind::MethodName => self.eval_method_name(builtin_func, analyzer_state),
+            TypedBuiltinKind::ModuleName => self.eval_module_name(builtin_func, analyzer_state),
+            TypedBuiltinKind::FileName => self.eval_file_name(builtin_func, analyzer_state),
+            TypedBuiltinKind::Line => self.eval_line(builtin_func),
+            TypedBuiltinKind::Column => self.eval_column(builtin_func),
             TypedBuiltinKind::SizeOf => self.eval_sizeof(builtin_func),
             TypedBuiltinKind::AlignOf => self.eval_alignof(builtin_func),
             TypedBuiltinKind::OffsetOf => self.eval_offsetof(builtin_func),
 
             _ => return Err(ConstEvalError::UnsupportedExpr),
         }
+    }
+
+    fn eval_func_name(
+        &self,
+        _builtin_func: &TypedBuiltinFunc,
+        analyzer_state: &'a dyn AnalyzerState,
+    ) -> Result<ConstValue, ConstEvalError> {
+        Ok(ConstValue::String(analyzer_state.func_name().to_string()))
+    }
+
+    fn eval_method_name(
+        &self,
+        _builtin_func: &TypedBuiltinFunc,
+        analyzer_state: &'a dyn AnalyzerState,
+    ) -> Result<ConstValue, ConstEvalError> {
+        Ok(ConstValue::String(analyzer_state.method_name().to_string()))
+    }
+
+    fn eval_module_name(
+        &self,
+        _builtin_func: &TypedBuiltinFunc,
+        analyzer_state: &'a dyn AnalyzerState,
+    ) -> Result<ConstValue, ConstEvalError> {
+        Ok(ConstValue::String(analyzer_state.module_name().to_string()))
+    }
+
+    fn eval_file_name(
+        &self,
+        _builtin_func: &TypedBuiltinFunc,
+        analyzer_state: &'a dyn AnalyzerState,
+    ) -> Result<ConstValue, ConstEvalError> {
+        Ok(ConstValue::String(analyzer_state.file_name().to_string()))
+    }
+
+    fn eval_line(&self, builtin_func: &TypedBuiltinFunc) -> Result<ConstValue, ConstEvalError> {
+        Ok(ConstValue::Int(builtin_func.loc.line.try_into().unwrap()))
+    }
+
+    fn eval_column(&self, builtin_func: &TypedBuiltinFunc) -> Result<ConstValue, ConstEvalError> {
+        Ok(ConstValue::Int(builtin_func.loc.column.try_into().unwrap()))
     }
 
     fn eval_sizeof(&self, builtin_func: &TypedBuiltinFunc) -> Result<ConstValue, ConstEvalError> {
@@ -299,7 +364,7 @@ impl<'a, R: ConstResolver> ConstEvaluator<'a, R> {
         for (i, field) in struct_decl.fields.iter().enumerate() {
             if field.name == field_name {
                 let field_offset = &layout.lookup_field_offset(i);
-                
+
                 return Ok(ConstValue::Int((*field_offset).try_into().unwrap()));
             }
         }

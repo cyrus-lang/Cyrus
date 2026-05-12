@@ -53,9 +53,9 @@ impl<'a> AnalysisContext<'a> {
 
     #[inline]
     pub(crate) fn fold_const_expr(&mut self, expr: &mut TypedExpr) {
-        let mut folder = ConstFolder::new(self, &self.decl_tables, self.target);
+        let mut folder = ConstFolder::new(self, &self.decl_tables, self.target, self);
 
-        folder.fold_expr(expr);
+        folder.fold_expr(expr, self);
     }
 
     fn resolve_variable_rhs_expr(&self, decl_id: DeclID) -> Option<TypedExpr> {

@@ -23,6 +23,7 @@ use cyrusc_typed_ast::{
 
 #[derive(Debug, Clone)]
 pub(crate) struct FuncEnv {
+    pub(crate) current_func_name: Option<String>,
     pub(crate) current_func: Option<TypedFuncType>,
     pub(crate) current_object: Option<SemaType>,
     pub(crate) current_method: Option<MethodDeclID>,
@@ -32,6 +33,7 @@ pub(crate) struct FuncEnv {
 impl FuncEnv {
     pub(crate) fn new() -> Self {
         Self {
+            current_func_name: None,
             current_func: None,
             current_object: None,
             current_method: None,
@@ -60,8 +62,14 @@ impl<'a> AnalysisContext<'a> {
     }
 
     #[inline]
-    pub(crate) fn create_func_def_env(&self, func_type: TypedFuncType, use_parent_infer_ctx: Option<InferCtx>) -> FuncEnv {
+    pub(crate) fn create_func_def_env(
+        &self,
+        name: &str,
+        func_type: TypedFuncType,
+        use_parent_infer_ctx: Option<InferCtx>,
+    ) -> FuncEnv {
         FuncEnv {
+            current_func_name: Some(name.to_string()),
             current_func: Some(func_type),
             current_method: None,
             current_object: None,
@@ -70,8 +78,14 @@ impl<'a> AnalysisContext<'a> {
     }
 
     #[inline]
-    pub(crate) fn create_method_env(&self, method_decl_id: MethodDeclID, func_type: TypedFuncType, use_parent_infer_ctx: Option<InferCtx>) -> FuncEnv {
+    pub(crate) fn create_method_env(
+        &self,
+        method_decl_id: MethodDeclID,
+        func_type: TypedFuncType,
+        use_parent_infer_ctx: Option<InferCtx>,
+    ) -> FuncEnv {
         FuncEnv {
+            current_func_name: None,
             current_func: Some(func_type),
             current_method: Some(method_decl_id),
             current_object: None,

@@ -36,7 +36,9 @@ impl<'a> AnalysisContext<'a> {
             loc: lambda.loc,
         };
 
-        let lambda_env = self.create_func_def_env(func_type.clone(), None);
+        let func_name = "<unnamed>";
+
+        let lambda_env = self.create_func_def_env(func_name, func_type.clone(), None);
 
         self.with_func_env(lambda_env, |this| {
             this.analyze_block_stmt(&mut lambda.body);

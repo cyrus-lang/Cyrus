@@ -46,6 +46,8 @@ pub struct BodyID(pub u32);
 pub struct TypedProgramTree {
     pub file_id: FileID,
     pub body: Vec<TypedStmt>,
+    pub file_name: String,
+    pub module_name: String,
 }
 
 unsafe impl Send for TypedProgramTree {}

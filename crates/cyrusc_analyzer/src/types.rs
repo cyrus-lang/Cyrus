@@ -397,10 +397,10 @@ impl<'a> AnalysisContext<'a> {
     fn is_const_str_assignable_to_array(&mut self, value_type: TypedArrayType, target_type: TypedArrayType) -> bool {
         match (value_type.capacity, target_type.capacity) {
             (TypedArrayCapacity::Fixed(value_capacity_expr), TypedArrayCapacity::Fixed(target_capacity_expr)) => {
-                let mut folder = ConstFolder::new(self, &self.decl_tables, self.target);
+                let mut folder = ConstFolder::new(self, &self.decl_tables, self.target, self);
 
-                let value_capacity = folder.expr_as_const_int(&value_capacity_expr).unwrap();
-                let target_capacity = folder.expr_as_const_int(&target_capacity_expr).unwrap();
+                let value_capacity = folder.expr_as_const_int(&value_capacity_expr, self).unwrap();
+                let target_capacity = folder.expr_as_const_int(&target_capacity_expr, self).unwrap();
 
                 value_capacity == target_capacity
             }

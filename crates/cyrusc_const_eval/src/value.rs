@@ -22,30 +22,47 @@ pub enum ConstValue {
     Int(i128),
     Bool(bool),
     Float(f64),
+    String(String),
 }
 
 impl ConstValue {
+    #[inline]
     pub fn as_int(&self) -> Option<i128> {
         match self {
             ConstValue::Int(int_value) => Some(*int_value),
             ConstValue::Bool(bool_value) => Some(if *bool_value { 1 } else { 0 }),
             ConstValue::Float(_) => None,
+            ConstValue::String(_) => None,
         }
     }
 
+    #[inline]
     pub fn as_bool(&self) -> Option<bool> {
         match self {
             ConstValue::Bool(v) => Some(*v),
             ConstValue::Int(v) => Some(*v != 0),
             ConstValue::Float(_) => None,
+            ConstValue::String(_) => None,
         }
     }
 
+    #[inline]
     pub fn as_float(&self) -> Option<f64> {
         match self {
             ConstValue::Float(float_value) => Some(*float_value),
             ConstValue::Int(_) => None,
             ConstValue::Bool(_) => None,
+            ConstValue::String(_) => None,
+        }
+    }
+
+    #[inline]
+    pub fn as_string(&self) -> Option<&String> {
+        match self {
+            ConstValue::String(string_value) => Some(string_value),
+            ConstValue::Int(_) => None,
+            ConstValue::Bool(_) => None,
+            ConstValue::Float(_) => None,
         }
     }
 }
@@ -78,7 +95,7 @@ pub fn is_comptime_valid(expr: &TypedExprKind) -> bool {
         | TypedExprKind::SemaType(_)
         | TypedExprKind::AddrOf(_) => false,
 
-        TypedExprKind::Builtin(_typed_builtin) => todo!(),
+        TypedExprKind::Builtin(_) => false,
 
         TypedExprKind::Poisoned => unreachable!(),
     }

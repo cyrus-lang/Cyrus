@@ -28,8 +28,8 @@ use crate::{
 };
 use cyrusc_diagcentral::{Diag, DiagLevel, exit_with_single_diag, reporter::DiagReporter};
 use cyrusc_internal::{
-    abi::target::ABITarget, flow_state::ControlRegion, monomorph::MonomorphRegistry, symbols::SymbolQuery,
-    vtable::VTableRegistry,
+    abi::target::ABITarget, analyzer_state::AnalyzerState, flow_state::ControlRegion, monomorph::MonomorphRegistry,
+    symbols::SymbolQuery, vtable::VTableRegistry,
 };
 use cyrusc_source_loc::{Loc, SourceMap};
 use cyrusc_typed_ast::{
@@ -126,6 +126,35 @@ pub struct WarningConfig {
     pub unused_variables: bool,
     pub unreachable_code: bool,
     pub dead_code: bool,
+}
+
+impl<'a> AnalyzerState for AnalysisContext<'a> {
+    fn func_name(&self) -> String {
+        if let Some(func_name) = &self.func_env.current_func_name {
+            return func_name.clone();
+        }
+
+        "<undefined>".to_string()
+    }
+
+    fn method_name(&self) -> String {
+        if let &Some(method_decl_id) = &self.func_env.current_method {
+            let method_decl = self.decl_tables.method_decl(method_decl_id);
+            let method_name = method_decl.func_decl.name;
+
+            return method_name.clone();
+        }
+
+        "<undefined>".to_string()
+    }
+
+    fn module_name(&self) -> String {
+        self.program_tree.borrow().module_name.clone()
+    }
+
+    fn file_name(&self) -> String {
+        self.program_tree.borrow().file_name.clone()
+    }
 }
 
 impl Default for WarningConfig {

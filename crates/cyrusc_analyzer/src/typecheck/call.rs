@@ -84,7 +84,7 @@ impl<'a> AnalysisContext<'a> {
                     let final_type_args = this.collect_instantiated_type_args(func_decl.generic_params.clone());
 
                     let func_type = func_decl.as_func_type();
-                    let func_env = this.create_func_def_env(func_type, this.func_env.infer.clone());
+                    let func_env = this.create_func_def_env(&func_decl.name, func_type, this.func_env.infer.clone());
 
                     this.with_func_env(func_env, |this| {
                         let ret_type = this.monomorphize_generic_func_call(

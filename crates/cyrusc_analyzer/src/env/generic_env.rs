@@ -15,13 +15,12 @@
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
 
+use crate::context::AnalysisContext;
 use cyrusc_typed_ast::{
     GenericParamID,
     stmts::{TypedFuncTypeParams, TypedFuncTypeVariadicParam, TypedGenericParams, TypedTypeArg, TypedTypeArgs},
     types::{InterfaceObjectType, NamedType, SemaType, TypedArrayType, TypedFuncType, TypedTupleType},
 };
-
-use crate::context::AnalysisContext;
 
 #[derive(Debug, Clone)]
 pub(crate) struct GenericEnv {
