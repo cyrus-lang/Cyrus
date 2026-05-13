@@ -1,0 +1,9 @@
+// @stdout: b
+
+import std::libc{printf};
+
+pub fn main() {
+    var x: @typeof('a');
+    x = 'b';
+    printf("%c\n", x);
+}

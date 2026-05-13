@@ -15,7 +15,7 @@
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
 
-use cyrusc_typed_ast::exprs::TypedExprKind;
+use cyrusc_typed_ast::{exprs::TypedExprKind, types::SemaType};
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum ConstValue {
@@ -23,6 +23,7 @@ pub enum ConstValue {
     Bool(bool),
     Float(f64),
     String(String),
+    Type(SemaType),
 }
 
 impl ConstValue {
@@ -33,6 +34,7 @@ impl ConstValue {
             ConstValue::Bool(bool_value) => Some(if *bool_value { 1 } else { 0 }),
             ConstValue::Float(_) => None,
             ConstValue::String(_) => None,
+            ConstValue::Type(_) => None,
         }
     }
 
@@ -43,6 +45,7 @@ impl ConstValue {
             ConstValue::Int(v) => Some(*v != 0),
             ConstValue::Float(_) => None,
             ConstValue::String(_) => None,
+            ConstValue::Type(_) => None,
         }
     }
 
@@ -53,6 +56,7 @@ impl ConstValue {
             ConstValue::Int(_) => None,
             ConstValue::Bool(_) => None,
             ConstValue::String(_) => None,
+            ConstValue::Type(_) => None,
         }
     }
 
@@ -60,6 +64,18 @@ impl ConstValue {
     pub fn as_string(&self) -> Option<&String> {
         match self {
             ConstValue::String(string_value) => Some(string_value),
+            ConstValue::Int(_) => None,
+            ConstValue::Bool(_) => None,
+            ConstValue::Float(_) => None,
+            ConstValue::Type(_) => None,
+        }
+    }
+
+    #[inline]
+    pub fn as_type(&self) -> Option<&SemaType> {
+        match self {
+            ConstValue::Type(ty) => Some(ty),
+            ConstValue::String(_) => None,
             ConstValue::Int(_) => None,
             ConstValue::Bool(_) => None,
             ConstValue::Float(_) => None,

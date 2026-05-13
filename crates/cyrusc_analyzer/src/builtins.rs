@@ -180,6 +180,7 @@ impl<'a> AnalysisContext<'a> {
             TypedBuiltinKind::SizeOf => self.analyze_builtin_sizeof(builtin),
             TypedBuiltinKind::AlignOf => self.analyze_builtin_alignof(builtin),
             TypedBuiltinKind::OffsetOf => self.analyze_builtin_offsetof(builtin),
+            TypedBuiltinKind::TypeOf => self.analyze_builtin_typeof(builtin),
             TypedBuiltinKind::Memcpy => self.analyze_builtin_memcpy(builtin),
             TypedBuiltinKind::Memset => self.analyze_builtin_memset(builtin),
 
@@ -317,6 +318,14 @@ impl<'a> AnalysisContext<'a> {
         builtin_func.ret_type = Some(ret_type.clone());
 
         Some(ret_type)
+    }
+
+    fn analyze_builtin_typeof(&mut self, builtin_func: &mut TypedBuiltinFunc) -> Option<SemaType> {
+        let operand = builtin_func.args.first_mut().unwrap();
+
+        self.analyze_expr_non_terminal(operand, None);
+
+        operand.ty.clone()
     }
 
     fn analyze_builtin_memset(&mut self, builtin_func: &mut TypedBuiltinFunc) -> Option<SemaType> {

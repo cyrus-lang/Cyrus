@@ -15,6 +15,7 @@
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
 
+use crate::builtins::TypedBuiltinFunc;
 use crate::decls::{EnumDeclID, InterfaceDeclID, StructDeclID, TypedefDeclID, UnionDeclID};
 use crate::exprs::{TypedExpr, TypedSelfType};
 use crate::stmts::{TypedFuncTypeParams, TypedFuncTypeVariadicParam, TypedTypeArg, TypedTypeArgs};
@@ -54,6 +55,7 @@ pub enum UnresolvedType {
         base_symbol_id: SymbolID,
         type_args: TypedTypeArgs,
     },
+    BuiltinFunc(Box<TypedBuiltinFunc>),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -227,6 +229,7 @@ impl UnresolvedType {
     pub fn as_symbol_id(&self) -> Option<SymbolID> {
         match self {
             UnresolvedType::GenericInst { .. } => None,
+            UnresolvedType::BuiltinFunc(_) => None,
             UnresolvedType::Decl(symbol_id) => Some(*symbol_id),
         }
     }
@@ -239,6 +242,7 @@ impl UnresolvedType {
                 ..
             } => Some(*base_decl_id),
             UnresolvedType::Decl(symbol_id) => Some(*symbol_id),
+            UnresolvedType::BuiltinFunc(_) => None,
         }
     }
 }

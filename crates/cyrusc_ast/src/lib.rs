@@ -346,6 +346,7 @@ pub enum TypeSpecifier {
     Tuple(TupleType),
     GenericInst(GenericInst),
     SelfType(SelfType),
+    Builtin(Builtin),
 }
 
 #[derive(Debug, Clone)]
@@ -1212,6 +1213,7 @@ impl TypeSpecifier {
             TypeSpecifier::Tuple(tuple_type) => tuple_type.loc,
             TypeSpecifier::GenericInst(generic_inst) => generic_inst.loc,
             TypeSpecifier::SelfType(self_type) => self_type.loc,
+            TypeSpecifier::Builtin(builtin) => builtin.loc(),
         }
     }
 }
@@ -1585,7 +1587,7 @@ impl PartialEq for BuiltinBlock {
 
 impl PartialEq for BuiltinFunc {
     fn eq(&self, other: &Self) -> bool {
-        self.name == other.name && self.args == other.args 
+        self.name == other.name && self.args == other.args
     }
 }
 

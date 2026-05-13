@@ -196,6 +196,7 @@ impl fmt::Display for TypeSpecifier {
                 write!(f, "{}<{}>", generic_inst.base, type_args)
             }
             TypeSpecifier::SelfType(_) => write!(f, "Self"),
+            TypeSpecifier::Builtin(builtin) => write!(f, "{}", builtin),
         }
     }
 }

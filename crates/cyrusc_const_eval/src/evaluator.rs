@@ -222,6 +222,7 @@ impl<'a, R: ConstResolver> ConstEvaluator<'a, R> {
                 ConstValue::Bool(value) => Ok(ConstValue::Int(if value { 1 } else { 0 })),
                 ConstValue::Float(value) => Ok(ConstValue::Int(value as i128)),
                 ConstValue::String(_) => return Err(ConstEvalError::TypeError),
+                ConstValue::Type(_) => return Err(ConstEvalError::TypeError),
             };
         }
 
@@ -231,6 +232,7 @@ impl<'a, R: ConstResolver> ConstEvaluator<'a, R> {
                 ConstValue::Int(value) => Ok(ConstValue::Bool(value != 0)),
                 ConstValue::Float(value) => Ok(ConstValue::Bool(value != 0.0)),
                 ConstValue::String(_) => return Err(ConstEvalError::TypeError),
+                ConstValue::Type(_) => return Err(ConstEvalError::TypeError),
             };
         }
 
@@ -240,6 +242,7 @@ impl<'a, R: ConstResolver> ConstEvaluator<'a, R> {
                 ConstValue::Int(value) => Ok(ConstValue::Float(value as f64)),
                 ConstValue::Bool(value) => Ok(ConstValue::Float(if value { 1.0 } else { 0.0 })),
                 ConstValue::String(_) => return Err(ConstEvalError::TypeError),
+                ConstValue::Type(_) => return Err(ConstEvalError::TypeError),
             };
         }
 
@@ -248,7 +251,7 @@ impl<'a, R: ConstResolver> ConstEvaluator<'a, R> {
 }
 
 impl<'a, R: ConstResolver> ConstEvaluator<'a, R> {
-    fn eval_builtin(
+    pub fn eval_builtin(
         &self,
         builtin: &TypedBuiltin,
         analyzer_state: &'a dyn AnalyzerState,
@@ -277,6 +280,7 @@ impl<'a, R: ConstResolver> ConstEvaluator<'a, R> {
             TypedBuiltinKind::SizeOf => self.eval_sizeof(builtin_func),
             TypedBuiltinKind::AlignOf => self.eval_alignof(builtin_func),
             TypedBuiltinKind::OffsetOf => self.eval_offsetof(builtin_func),
+            TypedBuiltinKind::TypeOf => self.eval_typeof(builtin_func),
 
             _ => return Err(ConstEvalError::UnsupportedExpr),
         }
@@ -370,5 +374,13 @@ impl<'a, R: ConstResolver> ConstEvaluator<'a, R> {
         }
 
         Err(ConstEvalError::TypeError)
+    }
+
+    fn eval_typeof(&self, builtin_func: &TypedBuiltinFunc) -> Result<ConstValue, ConstEvalError> {
+        let operand = &builtin_func.args[0];
+
+        let ty = operand.ty.as_ref().ok_or(ConstEvalError::TypeError)?;
+
+        Ok(ConstValue::Type(ty.clone()))
     }
 }
