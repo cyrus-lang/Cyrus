@@ -117,6 +117,7 @@ impl Linker {
                 .map(|s| s.to_string())
                 .collect::<Vec<_>>()
                 .join(",");
+            
             cmd.arg(format!("-fsanitize={}", joined_flags));
         }
 

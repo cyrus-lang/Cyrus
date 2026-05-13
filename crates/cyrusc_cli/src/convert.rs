@@ -28,7 +28,7 @@ use cyrusc_internal::compiler_options::*;
 impl CliCompilerOptions {
     pub fn as_compiler_options(&self) -> CompilerOptions {
         let linker = self.linker.clone().unwrap_or(default_linker().to_string());
-        let base_path = Some(self.base_path.clone().or(Some(get_current_dir_as_base_path())).unwrap());
+        let base_path = Some(self.base_path.clone().unwrap_or(get_current_dir_as_base_path()));
 
         CompilerOptions {
             profile: self.profile.convert(),
