@@ -67,7 +67,7 @@ pub(crate) fn merge_and_validate_scaffold_config_with_codegen_options(
 
     let scaffold_compiler_options = compiler_options_from_scaffold(scaffold_config);
 
-    *opts = merge_compiler_options(&scaffold_compiler_options, &scaffold_compiler_options);
+    *opts = merge_compiler_options(&opts, &scaffold_compiler_options);
 
     if let Err(err) = validate_compiler_version(CYRUS_COMPILER_VERSION.trim(), scaffold_compiler_options.cyrus_version)
     {

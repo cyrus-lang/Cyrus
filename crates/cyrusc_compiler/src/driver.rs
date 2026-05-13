@@ -154,7 +154,7 @@ pub fn build_semantic_bundle<'a>(
     match source_parser.parse_program(&entry_source_file) {
         Ok(program_tree) => {
             let module_loader_opts = FsModuleLoaderOptions {
-                base_path: opts.base_path.clone().unwrap(),
+                base_path: opts.base_path.clone().unwrap_or_default(),
                 stdlib_path: opts.stdlib_path.clone(),
                 source_dirs: opts.source_dirs.clone(),
             };
