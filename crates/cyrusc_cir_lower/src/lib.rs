@@ -273,6 +273,7 @@ impl<'a> CIRLower<'a> {
                 args,
                 ret_type: ret_type.clone(),
                 dispatch,
+                loc: builtin_func.loc,
             }),
             ty: ret_type,
             loc: builtin_func.loc,
@@ -1609,6 +1610,7 @@ impl<'a> CIRLower<'a> {
                         abi_name: method_decl.func_decl.name.clone(),
                         self_meta,
                     },
+                    loc: method_call.loc,
                 })
             }
             TypedMethodCallDispatch::Interface {
@@ -1651,6 +1653,7 @@ impl<'a> CIRLower<'a> {
                                 index: *index,
                                 func_type: cir_func_type,
                             },
+                            loc: method_call.loc,
                         })
                     }
                     TypedInterfaceCallDispatch::StaticNormal { method_decl_id } => {
@@ -1692,6 +1695,7 @@ impl<'a> CIRLower<'a> {
                                 abi_name: method_decl.func_decl.name.clone(),
                                 self_meta,
                             },
+                            loc: method_call.loc,
                         })
                     }
                     TypedInterfaceCallDispatch::StaticMonomorphized { monomorph_id } => {
@@ -1726,6 +1730,7 @@ impl<'a> CIRLower<'a> {
                                 abi_name,
                                 self_meta,
                             },
+                            loc: method_call.loc,
                         })
                     }
                 }
@@ -1762,6 +1767,7 @@ impl<'a> CIRLower<'a> {
                         abi_name,
                         self_meta,
                     },
+                    loc: method_call.loc,
                 })
             }
 
@@ -1925,6 +1931,7 @@ impl<'a> CIRLower<'a> {
                         func_type,
                         abi_name: func_decl.name.clone(),
                     },
+                    loc: func_call.loc
                 })
             }
             TypedFuncCallDispatch::Monomorph { monomorph_id } => {
@@ -1938,6 +1945,7 @@ impl<'a> CIRLower<'a> {
                         func_type: cir_fuc_type,
                         abi_name,
                     },
+                    loc: func_call.loc
                 })
             }
             TypedFuncCallDispatch::FunctionPointer { func_type } => {
@@ -1949,6 +1957,7 @@ impl<'a> CIRLower<'a> {
                     args,
                     ret_type,
                     dispatch: CIRCallDispatch::FunctionPointer { operand },
+                    loc: func_call.loc
                 })
             }
             TypedFuncCallDispatch::Unresolved => unreachable!(),

@@ -1,0 +1,10 @@
+// @stderr: thread 'main' panicked at ./tmp/main.cyrus:14:6\nassertion failed: x is not 2
+
+import std::libc{printf};
+
+pub fn main() {
+    const x = 20;
+    @assert(x == 2, "x is not 2");
+
+    printf("nothing\n");
+}

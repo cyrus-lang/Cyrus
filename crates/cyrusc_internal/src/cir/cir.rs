@@ -139,6 +139,7 @@ pub struct CIRCall {
     pub args: Vec<CIRExpr>,
     pub ret_type: CIRType,
     pub dispatch: CIRCallDispatch,
+    pub loc: Loc,
 }
 
 #[derive(Debug, Clone)]
@@ -511,10 +512,22 @@ pub struct CIRDeferStmt {
     pub loc: Loc,
 }
 
+#[inline]
 pub fn cir_expr_as_const_integer_value(expr: &CIRExpr) -> Option<i128> {
     match &expr.kind {
         CIRExprKind::Literal(literal) => match literal.kind {
             CIRLiteralKind::Integer(value, _) => Some(value),
+            _ => None,
+        },
+        _ => None,
+    }
+}
+
+#[inline]
+pub fn cir_expr_as_const_string_value(expr: &CIRExpr) -> Option<&String> {
+    match &expr.kind {
+        CIRExprKind::Literal(literal) => match &literal.kind {
+            CIRLiteralKind::CString(value) => Some(value),
             _ => None,
         },
         _ => None,

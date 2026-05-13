@@ -39,9 +39,27 @@ impl<'a> AnalysisContext<'a> {
 
         match builtin {
             TypedBuiltin::BuiltinFunc(builtin_func) => {
+                let Some(builtin_kind) = lookup_builtin(&builtin_func.name.value) else {
+                    self.reporter.report(Diag {
+                        level: DiagLevel::Error,
+                        kind: Box::new(AnalyzerDiagKind::BuiltinNotDefined {
+                            name: builtin_func.name.as_string(),
+                        }),
+                        loc: Some(builtin_func.loc),
+                        hint: None,
+                    });
+                    return FlowState::Reachable;
+                };
+
+                let builtin_spec = builtin_spec_of(builtin_kind);
+
                 self.analyze_builtin_expr(builtin_func);
 
-                FlowState::Reachable
+                if builtin_spec.unreachable {
+                    FlowState::Unreachable
+                } else {
+                    FlowState::Reachable
+                }
             }
 
             TypedBuiltin::BuiltinBlock(block) => self.analyze_builtin_block(block, is_toplevel),
@@ -71,7 +89,7 @@ impl<'a> AnalysisContext<'a> {
             return None;
         }
 
-        self.analyze_builtin_func_semantics(builtin_kind, builtin_func)
+        self.analyze_builtin_func_semantics(&builtin_kind, builtin_func)
     }
 
     fn validate_builtin_form(&self, builtin_spec: &TypedBuiltinSpec, actual: TypedBuiltinForm, loc: Loc) -> bool {
@@ -168,23 +186,25 @@ impl<'a> AnalysisContext<'a> {
 impl<'a> AnalysisContext<'a> {
     fn analyze_builtin_func_semantics(
         &mut self,
-        kind: TypedBuiltinKind,
-        builtin: &mut TypedBuiltinFunc,
+        builtin_kind: &TypedBuiltinKind,
+        builtin_func: &mut TypedBuiltinFunc,
     ) -> Option<SemaType> {
-        match kind {
-            TypedBuiltinKind::FuncName => self.analyze_builtin_func_name(builtin),
-            TypedBuiltinKind::MethodName => self.analyze_builtin_func_name(builtin),
-            TypedBuiltinKind::ModuleName => self.analyze_builtin_module_name(builtin),
-            TypedBuiltinKind::FileName => self.analyze_builtin_file_name(builtin),
-            TypedBuiltinKind::Line => self.analyze_builtin_line(builtin),
-            TypedBuiltinKind::Column => self.analyze_builtin_column(builtin),
-            TypedBuiltinKind::SizeOf => self.analyze_builtin_sizeof(builtin),
-            TypedBuiltinKind::AlignOf => self.analyze_builtin_alignof(builtin),
-            TypedBuiltinKind::OffsetOf => self.analyze_builtin_offsetof(builtin),
-            TypedBuiltinKind::TypeOf => self.analyze_builtin_typeof(builtin),
-            TypedBuiltinKind::Memcpy => self.analyze_builtin_memcpy(builtin),
-            TypedBuiltinKind::Memset => self.analyze_builtin_memset(builtin),
-            TypedBuiltinKind::Cast => self.analyze_builtin_cast(builtin),
+        match builtin_kind {
+            TypedBuiltinKind::FuncName => self.analyze_builtin_func_name(builtin_func),
+            TypedBuiltinKind::MethodName => self.analyze_builtin_func_name(builtin_func),
+            TypedBuiltinKind::ModuleName => self.analyze_builtin_module_name(builtin_func),
+            TypedBuiltinKind::FileName => self.analyze_builtin_file_name(builtin_func),
+            TypedBuiltinKind::Line => self.analyze_builtin_line(builtin_func),
+            TypedBuiltinKind::Column => self.analyze_builtin_column(builtin_func),
+            TypedBuiltinKind::SizeOf => self.analyze_builtin_sizeof(builtin_func),
+            TypedBuiltinKind::AlignOf => self.analyze_builtin_alignof(builtin_func),
+            TypedBuiltinKind::OffsetOf => self.analyze_builtin_offsetof(builtin_func),
+            TypedBuiltinKind::TypeOf => self.analyze_builtin_typeof(builtin_func),
+            TypedBuiltinKind::Memcpy => self.analyze_builtin_memcpy(builtin_func),
+            TypedBuiltinKind::Memset => self.analyze_builtin_memset(builtin_func),
+            TypedBuiltinKind::Cast => self.analyze_builtin_cast(builtin_func),
+            TypedBuiltinKind::Assert => self.analyze_builtin_assert(builtin_func),
+            TypedBuiltinKind::Panic => self.analyze_builtin_panic(builtin_func),
 
             _ => {
                 unreachable!()
@@ -445,6 +465,93 @@ impl<'a> AnalysisContext<'a> {
                         argument_type,
                         argument_idx: idx as u32,
                     }),
+                    loc: Some(builtin_func.loc),
+                    hint: None,
+                });
+                return None;
+            }
+        }
+
+        let ret_type = SemaType::Plain(PlainType::Void);
+
+        builtin_func.ret_type = Some(ret_type.clone());
+
+        Some(ret_type)
+    }
+
+    fn analyze_builtin_panic(&mut self, builtin_func: &mut TypedBuiltinFunc) -> Option<SemaType> {
+        let param_types = [
+            SemaType::Pointer(Box::new(SemaType::Plain(PlainType::Char))), // msg? (char*)
+        ];
+
+        for (arg, expected_type) in builtin_func.args.iter_mut().zip(param_types.iter()) {
+            self.analyze_expr_non_terminal(arg, Some(expected_type.clone()));
+        }
+
+        for (idx, (arg, expected_type)) in builtin_func.args.iter().zip(param_types.iter()).enumerate() {
+            let Some(arg_type) = arg.ty.clone() else { return None };
+
+            if !self.is_assignable_to(arg_type.clone(), expected_type.clone(), builtin_func.loc) {
+                let argument_type = format_sema_type(arg_type, self.formatter);
+                let param_type = format_sema_type(expected_type.clone(), self.formatter);
+
+                self.reporter.report(Diag {
+                    level: DiagLevel::Error,
+                    kind: Box::new(AnalyzerDiagKind::FuncCallParamTypeMismatch {
+                        param_type,
+                        argument_type,
+                        argument_idx: idx as u32,
+                    }),
+                    loc: Some(builtin_func.loc),
+                    hint: None,
+                });
+                return None;
+            }
+        }
+
+        let ret_type = SemaType::Plain(PlainType::Void);
+
+        builtin_func.ret_type = Some(ret_type.clone());
+
+        Some(ret_type)
+    }
+
+    fn analyze_builtin_assert(&mut self, builtin_func: &mut TypedBuiltinFunc) -> Option<SemaType> {
+        let param_types = [
+            SemaType::Plain(PlainType::Bool),                              // cond (bool)
+            SemaType::Pointer(Box::new(SemaType::Plain(PlainType::Char))), // msg? (char*)
+        ];
+
+        for (arg, expected_type) in builtin_func.args.iter_mut().zip(param_types.iter()) {
+            self.analyze_expr_non_terminal(arg, Some(expected_type.clone()));
+        }
+
+        for (idx, (arg, expected_type)) in builtin_func.args.iter().zip(param_types.iter()).enumerate() {
+            let Some(arg_type) = arg.ty.clone() else { return None };
+
+            if !self.is_assignable_to(arg_type.clone(), expected_type.clone(), builtin_func.loc) {
+                let argument_type = format_sema_type(arg_type, self.formatter);
+                let param_type = format_sema_type(expected_type.clone(), self.formatter);
+
+                self.reporter.report(Diag {
+                    level: DiagLevel::Error,
+                    kind: Box::new(AnalyzerDiagKind::FuncCallParamTypeMismatch {
+                        param_type,
+                        argument_type,
+                        argument_idx: idx as u32,
+                    }),
+                    loc: Some(builtin_func.loc),
+                    hint: None,
+                });
+                return None;
+            }
+        }
+
+        if let Some(msg) = builtin_func.args.get(1) {
+            if msg.literal_const_string_value().is_none() {
+                self.reporter.report(Diag {
+                    level: DiagLevel::Error,
+                    kind: Box::new(AnalyzerDiagKind::AssertMessageMustBeConstStringLiteral),
                     loc: Some(builtin_func.loc),
                     hint: None,
                 });

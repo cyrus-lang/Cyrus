@@ -1,0 +1,9 @@
+// @stderr: thread 'main' panicked at ./tmp/main.cyrus:13:6\nmeow
+
+import std::libc{printf};
+
+pub fn main() {
+    @panic("meow");
+
+    printf("nothing\n");
+}

@@ -33,6 +33,7 @@ use cyrusc_compiler::{
 use cyrusc_diagcentral::exit_with_msg;
 use cyrusc_internal::{cir::cir::CIRModule, compiler_options::CompilerOptions, vtable::VTableRegistry};
 use cyrusc_scaffold_parser::OBJECT_CACHE_DIR_FILENAME;
+use cyrusc_source_loc::SourceMap;
 use cyrusc_tui_utils::tui_skipped;
 use inkwell::{
     builder::Builder,
@@ -58,6 +59,7 @@ pub struct CodeGenLLVM {
     llvmtm: TargetMachine,
     build_manifest: Arc<Mutex<BuildManifest>>,
     entry_module_file_path: PathBuf,
+    source_map: Arc<SourceMap>,
 }
 
 impl CodeGenLLVM {
@@ -69,6 +71,7 @@ impl CodeGenLLVM {
         build_dir: PathBuf,
         build_manifest: Arc<Mutex<BuildManifest>>,
         entry_module_file_path: PathBuf,
+        source_map: Arc<SourceMap>,
     ) -> Self {
         let llvmtm = create_target_machine(
             target,
@@ -86,6 +89,7 @@ impl CodeGenLLVM {
             llvmtm,
             build_manifest,
             entry_module_file_path,
+            source_map,
         }
     }
 
@@ -96,6 +100,7 @@ impl CodeGenLLVM {
         cir_module: &'ctx CIRModule,
         dctx: DebugContext,
         vtable_registry: Arc<VTableRegistry>,
+        source_map: Arc<SourceMap>,
     ) {
         {
             let llvmmodule = owned_module.module.borrow();
@@ -118,6 +123,7 @@ impl CodeGenLLVM {
             &self.llvmtm,
             dctx,
             vtable_registry,
+            source_map,
         );
 
         codegen_ir_builder.emit_module();
@@ -352,6 +358,7 @@ impl SeparateModuleSupport<'static, OwnedModule> for CodeGenLLVM {
                 cir_module,
                 dctx,
                 cir_module.vtable_registry.clone(),
+                self.source_map.clone(),
             );
 
             modules.push(owned_module);
@@ -380,6 +387,7 @@ impl UnifiedModuleSupport<'static, OwnedModule> for CodeGenLLVM {
                 cir_module,
                 dctx,
                 cir_module.vtable_registry.clone(),
+                self.source_map.clone(),
             );
         }
 
