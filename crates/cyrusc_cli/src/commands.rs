@@ -73,6 +73,7 @@ pub(crate) fn command_run(mut opts: CompilerOptions, file_path: Option<String>, 
         bundle.build_dir,
         ctx.build_manifest.clone(),
         bundle.entry_file.clone(),
+        bundle.source_map.clone(),
     )));
 
     let temp_exe = TempExecutableBuilder::new()
@@ -136,6 +137,7 @@ pub(crate) fn command_build(mut opts: CompilerOptions, file_path: Option<String>
         bundle.build_dir,
         ctx.build_manifest.clone(),
         bundle.entry_file,
+        bundle.source_map.clone(),
     )));
 
     let owned_modules = ctx.compile(llvm_backend, &mut bundle.program_trees);
@@ -183,6 +185,7 @@ pub(crate) fn command_emit_llvm(mut opts: CompilerOptions, file_path: Option<Str
         bundle.build_dir,
         ctx.build_manifest.clone(),
         bundle.entry_file,
+        bundle.source_map.clone(),
     )));
 
     let owned_modules = ctx.compile(llvm_backend, &mut bundle.program_trees);
@@ -211,6 +214,7 @@ pub(crate) fn command_emit_bitcode(mut opts: CompilerOptions, file_path: Option<
         bundle.build_dir,
         ctx.build_manifest.clone(),
         bundle.entry_file,
+        bundle.source_map.clone(),
     )));
 
     let owned_modules = ctx.compile(llvm_backend, &mut bundle.program_trees);
@@ -239,6 +243,7 @@ pub(crate) fn command_emit_asm(mut opts: CompilerOptions, file_path: Option<Stri
         bundle.build_dir,
         ctx.build_manifest.clone(),
         bundle.entry_file,
+        bundle.source_map.clone(),
     )));
 
     let owned_modules = ctx.compile(llvm_backend, &mut bundle.program_trees);
@@ -282,6 +287,7 @@ pub(crate) fn command_object(mut opts: CompilerOptions, file_path: Option<String
         bundle.build_dir,
         ctx.build_manifest.clone(),
         bundle.entry_file,
+        bundle.source_map.clone(),
     )));
 
     let owned_modules = ctx.compile(llvm_backend, &mut bundle.program_trees);
@@ -310,6 +316,7 @@ pub(crate) fn command_shared_lib(mut opts: CompilerOptions, file_path: Option<St
         bundle.build_dir,
         ctx.build_manifest.clone(),
         bundle.entry_file,
+        bundle.source_map.clone(),
     )));
 
     let owned_modules = ctx.compile(llvm_backend, &mut bundle.program_trees);
@@ -347,6 +354,7 @@ pub(crate) fn command_static_lib(mut opts: CompilerOptions, file_path: Option<St
         bundle.build_dir,
         ctx.build_manifest.clone(),
         bundle.entry_file,
+        bundle.source_map.clone(),
     )));
 
     let owned_modules = ctx.compile(llvm_backend, &mut bundle.program_trees);

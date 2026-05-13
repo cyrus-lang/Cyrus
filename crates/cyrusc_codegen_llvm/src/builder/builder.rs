@@ -28,6 +28,7 @@ use cyrusc_internal::{
     cir::cir::{CIRBlockStmt, CIRModule, CIRStmt, cir_func_decl_as_func_type, cir_func_def_as_decl},
     vtable::VTableRegistry,
 };
+use cyrusc_source_loc::SourceMap;
 use cyrusc_tui_utils::tui_compiled;
 use cyrusc_typed_ast::LabelID;
 use inkwell::{
@@ -56,6 +57,7 @@ pub(crate) struct CodeGenIRBuilder<'ll> {
     pub(crate) dctx: DebugContext,
 
     pub(crate) vtable_registry: Arc<VTableRegistry>,
+    pub(crate) source_map: Arc<SourceMap>,
 }
 
 #[derive(Debug, Clone)]
@@ -75,6 +77,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         llvmtm: &'ll TargetMachine,
         dctx: DebugContext,
         vtable_registry: Arc<VTableRegistry>,
+        source_map: Arc<SourceMap>,
     ) -> Self {
         let llvmmodule = unsafe {
             std::mem::transmute::<Rc<RefCell<Module<'static>>>, Rc<RefCell<Module<'ll>>>>(owned_module.module.clone())
@@ -99,6 +102,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
             defer_stack: Vec::new(),
             dctx,
             vtable_registry,
+            source_map,
         }
     }
 

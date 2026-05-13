@@ -326,6 +326,9 @@ pub enum AnalyzerDiagKind {
     #[error("Cannot cast value of type '{value_type}' to '{target_type}'.")]
     CannotCast { value_type: String, target_type: String },
 
+    #[error("Optional message argument to '@assert' must be a constant string literal.")]
+    AssertMessageMustBeConstStringLiteral,
+
     #[error("Builtin '@{name}' is not defined.")]
     BuiltinNotDefined { name: String },
 

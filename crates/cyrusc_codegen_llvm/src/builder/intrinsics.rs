@@ -19,7 +19,11 @@ use crate::builder::{
     builder::CodeGenIRBuilder,
     values::{InternalValue, InternalValueKind},
 };
-use cyrusc_internal::cir::{cir::CIRCall, types::CIRType};
+use cyrusc_internal::cir::{
+    cir::{CIRCall, CIRExpr},
+    types::CIRType,
+};
+use cyrusc_source_loc::Loc;
 use cyrusc_typed_ast::{
     builtins::{TypedBuiltinForm, TypedBuiltinKind, TypedBuiltinPhase, TypedBuiltinSpec},
     types::PlainType,
@@ -27,7 +31,7 @@ use cyrusc_typed_ast::{
 use inkwell::{
     AddressSpace,
     types::{ArrayType, BasicType, BasicTypeEnum, StructType},
-    values::{ArrayValue, BasicValue, BasicValueEnum, IntValue, PointerValue, StructValue},
+    values::{ArrayValue, BasicValue, BasicValueEnum, FunctionValue, IntValue, PointerValue, StructValue},
 };
 
 // These intrinsics published via builtin to user side.
@@ -37,21 +41,24 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         debug_assert!(builtin_spec.form == TypedBuiltinForm::Expr);
 
         match builtin_spec.kind {
-            TypedBuiltinKind::Memcpy => self.emit_intrinsic_memcpy(call),
-            TypedBuiltinKind::Memset => self.emit_intrinsic_memset(call),
-            TypedBuiltinKind::Cast => self.emit_intrinsic_cast(call),
+            TypedBuiltinKind::Memcpy => self.emit_intrinsic_memcpy(&call.args),
+            TypedBuiltinKind::Memset => self.emit_intrinsic_memset(&call.args),
+            TypedBuiltinKind::Cast => self.emit_intrinsic_cast(&call.args),
+
+            TypedBuiltinKind::Assert => self.emit_intrinsic_assert(&call.args, call.loc),
+            TypedBuiltinKind::Panic => self.emit_intrinsic_panic(&call.args, call.loc),
 
             _ => unreachable!("unknown builtin called"),
         }
     }
 
-    fn emit_intrinsic_memcpy(&mut self, call: &CIRCall) -> InternalValue<'ll> {
+    fn emit_intrinsic_memcpy(&mut self, args: &[CIRExpr]) -> InternalValue<'ll> {
         let cir_void_ptr = CIRType::Pointer(Box::new(CIRType::Plain(PlainType::Void)));
         let cir_int64 = CIRType::Plain(PlainType::Int64);
 
         // ptr
         let dest = {
-            let lvalue = self.emit_expr(&call.args[0], &Some(cir_void_ptr.clone()));
+            let lvalue = self.emit_expr(&args[0], &Some(cir_void_ptr.clone()));
             let rvalue = self.load_rvalue(lvalue);
             let casted = self.emit_implicit_cast(&cir_void_ptr, rvalue);
             casted.as_basic_value().into_pointer_value()
@@ -59,7 +66,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
 
         // ptr
         let src = {
-            let lvalue = self.emit_expr(&call.args[1], &Some(cir_void_ptr.clone()));
+            let lvalue = self.emit_expr(&args[1], &Some(cir_void_ptr.clone()));
             let rvalue = self.load_rvalue(lvalue);
             let casted = self.emit_implicit_cast(&cir_void_ptr, rvalue);
             casted.as_basic_value().into_pointer_value()
@@ -67,7 +74,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
 
         // i64
         let size = {
-            let lvalue = self.emit_expr(&call.args[2], &Some(cir_int64.clone()));
+            let lvalue = self.emit_expr(&args[2], &Some(cir_int64.clone()));
             let rvalue = self.load_rvalue(lvalue);
             let casted = self.emit_implicit_cast(&cir_int64, rvalue);
             casted.as_basic_value().into_int_value()
@@ -83,10 +90,10 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         self.emit_null(cir_void_ptr)
     }
 
-    fn emit_intrinsic_cast(&mut self, call: &CIRCall) -> InternalValue<'ll> {
-        let target_type = call.args[0].kind.as_type().unwrap();
+    fn emit_intrinsic_cast(&mut self, args: &[CIRExpr]) -> InternalValue<'ll> {
+        let target_type = args[0].kind.as_type().unwrap();
 
-        let lvalue = self.emit_expr(&call.args[1], &None);
+        let lvalue = self.emit_expr(&args[1], &None);
         let rvalue = self.load_rvalue(lvalue);
 
         let llvm_target_type = self.emit_ty(target_type.clone());
@@ -96,14 +103,14 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         InternalValue::new(target_type.clone(), InternalValueKind::RValue(casted_value))
     }
 
-    fn emit_intrinsic_memset(&mut self, call: &CIRCall) -> InternalValue<'ll> {
+    fn emit_intrinsic_memset(&mut self, args: &[CIRExpr]) -> InternalValue<'ll> {
         let cir_void_ptr = CIRType::Pointer(Box::new(CIRType::Plain(PlainType::Void)));
         let cir_int8 = CIRType::Plain(PlainType::Int8);
         let cir_int64 = CIRType::Plain(PlainType::Int64);
 
         // ptr
         let dest = {
-            let lvalue = self.emit_expr(&call.args[0], &Some(cir_void_ptr.clone()));
+            let lvalue = self.emit_expr(&args[0], &Some(cir_void_ptr.clone()));
             let rvalue = self.load_rvalue(lvalue);
             let casted = self.emit_implicit_cast(&cir_void_ptr, rvalue);
             casted.as_basic_value().into_pointer_value()
@@ -111,7 +118,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
 
         // i8
         let value = {
-            let lvalue = self.emit_expr(&call.args[1], &Some(cir_int8.clone()));
+            let lvalue = self.emit_expr(&args[1], &Some(cir_int8.clone()));
             let rvalue = self.load_rvalue(lvalue);
             let casted = self.emit_implicit_cast(&cir_int8, rvalue);
             casted.as_basic_value().into_int_value()
@@ -119,7 +126,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
 
         // i64
         let size = {
-            let lvalue = self.emit_expr(&call.args[2], &Some(cir_int64.clone()));
+            let lvalue = self.emit_expr(&args[2], &Some(cir_int64.clone()));
             let rvalue = self.load_rvalue(lvalue);
             let casted = self.emit_implicit_cast(&cir_int64, rvalue);
             casted.as_basic_value().into_int_value()
@@ -130,6 +137,196 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         self.llvmbuilder.build_memset(dest, align, value, size).unwrap();
 
         self.emit_null(cir_void_ptr)
+    }
+
+    fn emit_intrinsic_panic(&mut self, args: &[CIRExpr], loc: Loc) -> InternalValue<'ll> {
+        let cir_void_ptr = CIRType::Pointer(Box::new(CIRType::Plain(PlainType::Void)));
+
+        let ptr_type = self.llvmctx.ptr_type(inkwell::AddressSpace::default());
+
+        // message
+        let msg = if let Some(expr) = args.get(0) {
+            let lvalue = self.emit_expr(expr, &None);
+            self.load_rvalue(lvalue).as_basic_value()
+        } else {
+            self.intrinsic_get_or_insert_explicit_panic_msg().into()
+        };
+
+        // format string
+        let format_ptr = self.intrinsic_get_or_insert_panic_format();
+
+        // declare fprintf
+        let fprintf = {
+            let module = self.llvmmodule.borrow();
+
+            if let Some(func) = module.get_function("fprintf") {
+                func
+            } else {
+                let fn_type = self.llvmctx.i32_type().fn_type(
+                    &[
+                        ptr_type.into(), // FILE*
+                        ptr_type.into(), // fmt
+                    ],
+                    true,
+                );
+
+                module.add_function("fprintf", fn_type, None)
+            }
+        };
+
+        // declare stderr
+        let stderr_global = {
+            let module = self.llvmmodule.borrow();
+
+            if let Some(g) = module.get_global("stderr") {
+                g
+            } else {
+                module.add_global(ptr_type, None, "stderr")
+            }
+        };
+
+        let stderr = self
+            .llvmbuilder
+            .build_load(ptr_type, stderr_global.as_pointer_value(), "stderr")
+            .unwrap();
+
+        // location info
+        let source_file = self.source_map.get_file(loc.file_id).unwrap();
+        let file_path = source_file.file_path.to_str().unwrap();
+        let file = self.intrinsic_get_or_insert_global_cstr("__const.panic.file", file_path);
+        let line = self.llvmctx.i32_type().const_int(loc.line as u64, false);
+        let column = self.llvmctx.i32_type().const_int(loc.column as u64, false);
+
+        // thread name
+        let thread_name = self.intrinsic_emit_current_thread_name();
+
+        self.llvmbuilder
+            .build_call(
+                fprintf,
+                &[
+                    stderr.into(),
+                    format_ptr.into(),
+                    thread_name.into(),
+                    file.into(),
+                    line.into(),
+                    column.into(),
+                    msg.into(),
+                ],
+                "call",
+            )
+            .unwrap();
+
+        let trap = self.intrinsic_get_or_insert_trap();
+
+        self.llvmbuilder.build_call(trap, &[], "").unwrap();
+
+        self.llvmbuilder.build_unreachable().unwrap();
+
+        self.emit_null(cir_void_ptr)
+    }
+
+    fn emit_intrinsic_assert(&mut self, args: &[CIRExpr], loc: Loc) -> InternalValue<'ll> {
+        let cir_bool = CIRType::Plain(PlainType::Bool);
+
+        let cond = {
+            let lvalue = self.emit_expr(&args[0], &Some(cir_bool.clone()));
+            let rvalue = self.load_rvalue(lvalue);
+            let casted = self.emit_implicit_cast(&cir_bool, rvalue);
+
+            self.int_value_as_bool_i1(casted.as_basic_value().into_int_value())
+        };
+
+        let cur_func = self.cur_func.unwrap();
+
+        let ok_block = self.llvmctx.append_basic_block(cur_func, "assert.ok");
+        let fail_block = self.llvmctx.append_basic_block(cur_func, "assert.fail");
+
+        self.llvmbuilder
+            .build_conditional_branch(cond, ok_block, fail_block)
+            .unwrap();
+
+        self.emit_block(fail_block);
+
+        let ptr_type = self.llvmctx.ptr_type(inkwell::AddressSpace::default());
+
+        let msg = if let Some(expr) = args.get(1) {
+            let lvalue = self.emit_expr(expr, &None);
+
+            self.load_rvalue(lvalue).as_basic_value()
+        } else {
+            self.intrinsic_get_or_insert_assert_failed_msg().into()
+        };
+
+        let format_ptr = self.intrinsic_get_or_insert_assert_format();
+
+        let fprintf = {
+            let module = self.llvmmodule.borrow();
+
+            if let Some(func) = module.get_function("fprintf") {
+                func
+            } else {
+                let fn_type = self.llvmctx.i32_type().fn_type(
+                    &[
+                        ptr_type.into(), // FILE*
+                        ptr_type.into(), // fmt
+                    ],
+                    true,
+                );
+
+                module.add_function("fprintf", fn_type, None)
+            }
+        };
+
+        let stderr_global = {
+            let module = self.llvmmodule.borrow();
+
+            if let Some(g) = module.get_global("stderr") {
+                g
+            } else {
+                module.add_global(ptr_type, None, "stderr")
+            }
+        };
+
+        let stderr = self
+            .llvmbuilder
+            .build_load(ptr_type, stderr_global.as_pointer_value(), "stderr")
+            .unwrap();
+
+        // location info
+        let source_file = self.source_map.get_file(loc.file_id).unwrap();
+        let file_path = source_file.file_path.to_str().unwrap();
+        let file = self.intrinsic_get_or_insert_global_cstr("__const.panic.file", file_path);
+        let line = self.llvmctx.i32_type().const_int(loc.line as u64, false);
+        let column = self.llvmctx.i32_type().const_int(loc.column as u64, false);
+
+        // thread name
+        let thread_name = self.intrinsic_emit_current_thread_name();
+
+        self.llvmbuilder
+            .build_call(
+                fprintf,
+                &[
+                    stderr.into(),
+                    format_ptr.into(),
+                    thread_name.into(),
+                    file.into(),
+                    line.into(),
+                    column.into(),
+                    msg.into(),
+                ],
+                "call",
+            )
+            .unwrap();
+
+        let trap = self.intrinsic_get_or_insert_trap();
+
+        self.llvmbuilder.build_call(trap, &[], "").unwrap();
+
+        self.llvmbuilder.build_unreachable().unwrap();
+
+        self.emit_block(ok_block);
+
+        self.emit_null(CIRType::Pointer(Box::new(CIRType::Plain(PlainType::Void))))
     }
 }
 
@@ -365,5 +562,112 @@ impl<'ll> CodeGenIRBuilder<'ll> {
             .build_load(array_type, alloca, "load")
             .unwrap()
             .into_array_value()
+    }
+
+    fn intrinsic_get_or_insert_trap(&self) -> FunctionValue<'ll> {
+        let llvmmodule = self.llvmmodule.borrow();
+
+        if let Some(func) = llvmmodule.get_function("llvm.trap") {
+            func
+        } else {
+            let fn_type = self.llvmctx.void_type().fn_type(&[], false);
+            llvmmodule.add_function("llvm.trap", fn_type, None)
+        }
+    }
+
+    fn intrinsic_get_or_insert_global_cstr(&self, name: &str, value: &str) -> PointerValue<'ll> {
+        let module = self.llvmmodule.borrow();
+
+        if let Some(global) = module.get_global(name) {
+            return global.as_pointer_value();
+        }
+
+        let builder = &self.llvmbuilder;
+
+        let global_value = builder.build_global_string_ptr(value, name).unwrap();
+
+        global_value.as_pointer_value()
+    }
+
+    #[inline]
+    fn intrinsic_emit_current_thread_name(&self) -> PointerValue<'ll> {
+        let llvmmodule = self.llvmmodule.borrow();
+
+        let i8_type = self.llvmctx.i8_type();
+        let i64_type = self.llvmctx.i64_type();
+
+        let ptr_type = self.llvmctx.ptr_type(inkwell::AddressSpace::default());
+
+        // pthread_t pthread_self(void)
+        let pthread_self_fn = if let Some(func) = llvmmodule.get_function("pthread_self") {
+            func
+        } else {
+            let fn_type = i64_type.fn_type(&[], false);
+
+            llvmmodule.add_function("pthread_self", fn_type, None)
+        };
+
+        // int pthread_getname_np(pthread_t, char*, size_t)
+        let pthread_getname_np_fn = if let Some(func) = llvmmodule.get_function("pthread_getname_np") {
+            func
+        } else {
+            let fn_type = self
+                .llvmctx
+                .i32_type()
+                .fn_type(&[i64_type.into(), ptr_type.into(), i64_type.into()], false);
+
+            llvmmodule.add_function("pthread_getname_np", fn_type, None)
+        };
+
+        drop(llvmmodule);
+
+        // allocate thread-name buffer
+        // POSIX thread names are typically <= 16 bytes.
+        let buf = self
+            .llvmbuilder
+            .build_array_alloca(i8_type, i64_type.const_int(64, false), "thread_name_buf")
+            .unwrap();
+
+        // pthread_self()
+        let thread = self
+            .llvmbuilder
+            .build_call(pthread_self_fn, &[], "pthread_self")
+            .unwrap()
+            .try_as_basic_value()
+            .unwrap_basic();
+
+        // pthread_getname_np(thread, buf, 64)
+        self.llvmbuilder
+            .build_call(
+                pthread_getname_np_fn,
+                &[thread.into(), buf.into(), i64_type.const_int(64, false).into()],
+                "pthread_getname_np",
+            )
+            .unwrap();
+
+        buf
+    }
+
+    #[inline]
+    fn intrinsic_get_or_insert_panic_format(&self) -> PointerValue<'ll> {
+        self.intrinsic_get_or_insert_global_cstr("__const.panic.format", "thread '%s' panicked at %s:%d:%d\n%s\n")
+    }
+
+    #[inline]
+    fn intrinsic_get_or_insert_explicit_panic_msg(&self) -> PointerValue<'ll> {
+        self.intrinsic_get_or_insert_global_cstr("__const.panic.explicit", "explicit panic")
+    }
+
+    #[inline]
+    fn intrinsic_get_or_insert_assert_format(&self) -> PointerValue<'ll> {
+        self.intrinsic_get_or_insert_global_cstr(
+            "__const.assert.format",
+            "thread '%s' panicked at %s:%d:%d\nassertion failed: %s\n",
+        )
+    }
+
+    #[inline]
+    fn intrinsic_get_or_insert_assert_failed_msg(&self) -> PointerValue<'ll> {
+        self.intrinsic_get_or_insert_global_cstr("__const.assert.failed", "unknown")
     }
 }

@@ -62,6 +62,7 @@ pub struct CodeGenContextBundle {
     pub target: Arc<ABITarget>,
     pub llvm_target: InkwellTarget,
     pub llvm_target_triple: TargetTriple,
+    pub source_map: Arc<SourceMap>,
 }
 
 pub struct CodeGenSemanticBundle<'a> {
@@ -304,6 +305,7 @@ pub fn build_compilation_bundle(opts: &mut CompilerOptions, file_path_opt: Optio
         program_trees: cir_modules,
         entry_file: codegen_semantic_bundle.entry_file,
         build_dir: codegen_semantic_bundle.build_dir,
+        source_map: codegen_semantic_bundle.source_map,
         llvm_target_triple,
         llvm_target,
         target,
