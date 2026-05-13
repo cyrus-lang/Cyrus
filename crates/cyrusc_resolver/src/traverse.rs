@@ -384,7 +384,10 @@ impl<'a> Resolver<'a> {
 
         if let Some(generic_param_id) = self.resolve_generic_param_as_type(&ident) {
             return Some(TypedExpr {
-                kind: TypedExprKind::SemaType(SemaType::GenericParam(generic_param_id)),
+                kind: TypedExprKind::SemaType {
+                    ty: SemaType::GenericParam(generic_param_id),
+                    loc: ident.loc,
+                },
                 ty: None,
                 val_cat: ValueCategory::Unknown,
                 loc: ident.loc,
@@ -457,7 +460,7 @@ impl<'a> Resolver<'a> {
             TypeSpecifier::TypeToken(token) => self.resolve_builtin_type(token, loc),
             TypeSpecifier::Const(inner) => {
                 let inner = self.resolve_type(*inner, loc)?;
-                
+
                 Some(SemaType::Const(Box::new(inner)))
             }
             TypeSpecifier::SelfType(self_ty) => Some(SemaType::SelfType(TypedSelfType { loc: self_ty.loc })),
@@ -474,9 +477,9 @@ impl<'a> Resolver<'a> {
             TypeSpecifier::UnnamedEnum(enum_type) => self.resolve_unnamed_enum_type(enum_type),
             TypeSpecifier::UnnamedStruct(struct_type) => self.resolve_unnamed_struct_type(struct_type),
             TypeSpecifier::Builtin(builtin) => match self.resolve_builtin(&builtin)? {
-                TypedBuiltin::BuiltinFunc(builtin_func) => {
-                    Some(SemaType::Unresolved(UnresolvedType::BuiltinFunc(Box::new(builtin_func))))
-                }
+                TypedBuiltin::BuiltinFunc(builtin_func) => Some(SemaType::Unresolved(UnresolvedType::BuiltinFunc(
+                    Box::new(builtin_func),
+                ))),
                 TypedBuiltin::BuiltinBlock(_) => todo!(),
             },
         }
@@ -2139,9 +2142,14 @@ impl<'a> Resolver<'a> {
     #[inline]
     fn resolve_module_import_expr(&mut self, module_import: &ASTModuleImport) -> Option<TypedExpr> {
         if let Some(ident) = module_import.as_ident() {
+            // FIXME: Order of resolution is not correct.
+            // Generic param as type resolution must be after `try-in-local-first`.
             if let Some(generic_param_id) = self.resolve_generic_param_as_type(&ident) {
                 return Some(TypedExpr {
-                    kind: TypedExprKind::SemaType(SemaType::GenericParam(generic_param_id)),
+                    kind: TypedExprKind::SemaType {
+                        ty: SemaType::GenericParam(generic_param_id),
+                        loc: ident.loc,
+                    },
                     ty: None,
                     val_cat: ValueCategory::Unknown,
                     loc: module_import.loc,
@@ -2533,7 +2541,7 @@ impl<'a> Resolver<'a> {
                 let ty = self.resolve_type(type_spec.clone(), loc)?;
 
                 return Some(TypedExpr {
-                    kind: TypedExprKind::SemaType(ty.clone()),
+                    kind: TypedExprKind::SemaType { ty: ty.clone(), loc },
                     ty: Some(ty),
                     val_cat: ValueCategory::Unknown,
                     loc,

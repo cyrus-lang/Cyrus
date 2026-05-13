@@ -20,7 +20,7 @@ use crate::{
     builtins::TypedBuiltin,
     decls::{DeclID, EnumDeclID, FuncDeclID, InterfaceDeclID, MethodDeclID, MonomorphID, StructDeclID, UnionDeclID},
     stmts::{TypedBlockStmt, TypedFuncParams, TypedTypeArgs},
-    types::{InterfaceObjectType, SemaType, TypedFuncType},
+    types::{InterfaceObjectType, NamedType, SemaType, TypedFuncType},
 };
 use cyrusc_ast::{
     AssignKind, Ident, Mutability,
@@ -72,8 +72,9 @@ pub enum TypedExprKind {
     Tuple(TypedTupleExpr),
     TupleAccess(TypedTupleAccessExpr),
     Dynamic(TypedDynamicExpr),
-    SemaType(SemaType),
     Builtin(TypedBuiltin),
+
+    SemaType { ty: SemaType, loc: Loc },
 
     Poisoned, // semantically wrong
 }
@@ -431,7 +432,16 @@ impl TypedExprKind {
     #[inline]
     pub fn as_type_expr(&self) -> Option<SemaType> {
         match self {
-            TypedExprKind::SemaType(sema_type) => Some(sema_type.clone()),
+            TypedExprKind::Symbol(symbol_expr) => {
+                let decl_id = symbol_expr.as_decl_id()?;
+                let type_decl_id = decl_id.as_type_decl_id()?;
+
+                Some(SemaType::Named(NamedType {
+                    type_decl_id,
+                    type_args: TypedTypeArgs::new(),
+                }))
+            },
+            TypedExprKind::SemaType { ty, .. } => Some(ty.clone()),
             _ => None,
         }
     }
@@ -480,7 +490,6 @@ impl TypedExprKind {
             | TypedExprKind::Assign(_)
             | TypedExprKind::AddrOf(_)
             | TypedExprKind::Array(_)
-            | TypedExprKind::SemaType(_)
             | TypedExprKind::Lambda(_)
             | TypedExprKind::Tuple(_)
             | TypedExprKind::Dynamic(_)
@@ -488,7 +497,8 @@ impl TypedExprKind {
             | TypedExprKind::Builtin(_)
             | TypedExprKind::EnumStructVariantInit(_)
             | TypedExprKind::UnionInit(_)
-            | TypedExprKind::EnumInit(_) => false,
+            | TypedExprKind::EnumInit(_)
+            | TypedExprKind::SemaType { .. } => false,
 
             TypedExprKind::Poisoned => unreachable!(),
         }

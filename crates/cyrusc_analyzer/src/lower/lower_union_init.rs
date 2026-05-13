@@ -186,7 +186,10 @@ impl<'a> AnalysisContext<'a> {
         });
 
         Some(TypedExpr {
-            kind: TypedExprKind::SemaType(ty),
+            kind: TypedExprKind::SemaType {
+                ty: ty.clone(),
+                loc: union_value.loc,
+            },
             ty: None,
             val_cat: ValueCategory::Unknown,
             loc: union_value.loc,

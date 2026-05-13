@@ -350,7 +350,6 @@ pub fn format_typed_expr(expr: &TypedExpr, formatter: &dyn Formatter) -> String 
 
             out
         }
-        SemaType(sema_type) => format_sema_type(sema_type.clone(), formatter),
         Lambda(lambda) => format_lambda(lambda, formatter),
         Tuple(tuple) => format!(
             "({})",
@@ -372,6 +371,9 @@ pub fn format_typed_expr(expr: &TypedExpr, formatter: &dyn Formatter) -> String 
                 join_exprs(&builtin_block.args, formatter)
             ),
         },
+
+        SemaType { ty, .. } => format_sema_type(ty.clone(), formatter),
+        
         Poisoned => unreachable!(),
     }
 }

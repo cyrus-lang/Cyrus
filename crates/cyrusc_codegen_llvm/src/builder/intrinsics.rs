@@ -15,7 +15,10 @@
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
 
-use crate::builder::{builder::CodeGenIRBuilder, values::InternalValue};
+use crate::builder::{
+    builder::CodeGenIRBuilder,
+    values::{InternalValue, InternalValueKind},
+};
 use cyrusc_internal::cir::{cir::CIRCall, types::CIRType};
 use cyrusc_typed_ast::{
     builtins::{TypedBuiltinForm, TypedBuiltinKind, TypedBuiltinPhase, TypedBuiltinSpec},
@@ -36,6 +39,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         match builtin_spec.kind {
             TypedBuiltinKind::Memcpy => self.emit_intrinsic_memcpy(call),
             TypedBuiltinKind::Memset => self.emit_intrinsic_memset(call),
+            TypedBuiltinKind::Cast => self.emit_intrinsic_cast(call),
 
             _ => unreachable!("unknown builtin called"),
         }
@@ -77,6 +81,19 @@ impl<'ll> CodeGenIRBuilder<'ll> {
             .unwrap();
 
         self.emit_null(cir_void_ptr)
+    }
+
+    fn emit_intrinsic_cast(&mut self, call: &CIRCall) -> InternalValue<'ll> {
+        let target_type = call.args[0].kind.as_type().unwrap();
+
+        let lvalue = self.emit_expr(&call.args[1], &None);
+        let rvalue = self.load_rvalue(lvalue);
+
+        let llvm_target_type = self.emit_ty(target_type.clone());
+
+        let casted_value: BasicValueEnum<'ll> = self.emit_cast(llvm_target_type, rvalue).try_into().unwrap();
+
+        InternalValue::new(target_type.clone(), InternalValueKind::RValue(casted_value))
     }
 
     fn emit_intrinsic_memset(&mut self, call: &CIRCall) -> InternalValue<'ll> {
