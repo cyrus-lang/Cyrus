@@ -1,0 +1,11 @@
+// @stdout: x
+
+import std::libc{printf};
+
+type rune = uint32;
+
+pub fn main() {
+    const x = @cast(rune, 'x');
+
+    printf("%c\n", x);
+}

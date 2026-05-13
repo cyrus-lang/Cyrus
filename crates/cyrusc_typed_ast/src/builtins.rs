@@ -96,6 +96,8 @@ pub enum TypedBuiltinKind {
     AlignOf,
     OffsetOf,
     TypeOf,
+
+    Cast,
     Memcpy,
     Memset,
 
@@ -211,6 +213,15 @@ pub static BUILTIN_SPECS: &[TypedBuiltinSpec] = &[
     },
     // -- intrinsics --
     TypedBuiltinSpec {
+        kind: TypedBuiltinKind::Cast,
+        name: "cast",
+        family: TypedBuiltinFamily::Intrinsic,
+        phase: TypedBuiltinPhase::Codegen,
+        form: TypedBuiltinForm::Expr,
+        min_args: 2,
+        max_args: Some(2),
+    },
+    TypedBuiltinSpec {
         kind: TypedBuiltinKind::Memcpy,
         name: "memcpy",
         family: TypedBuiltinFamily::Intrinsic,
@@ -262,12 +273,15 @@ builtin_lookup! {
         "alignof" => TypedBuiltinKind::AlignOf,
         "offsetof" => TypedBuiltinKind::OffsetOf,
         "typeof" => TypedBuiltinKind::TypeOf,
-        "debug" => TypedBuiltinKind::Debug,
-        "release" => TypedBuiltinKind::Release,
 
         // intrinsics
+        "cast" => TypedBuiltinKind::Cast,
         "memcpy" => TypedBuiltinKind::Memcpy,
         "memset" => TypedBuiltinKind::Memset,
+
+        // statements
+        "debug" => TypedBuiltinKind::Debug,
+        "release" => TypedBuiltinKind::Release,
     }
 }
 

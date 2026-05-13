@@ -1521,6 +1521,11 @@ impl<'a> CIRLower<'a> {
         let ty = self.lower_sema_type(&expr.ty.clone().unwrap());
 
         let kind = match &expr.kind {
+            &TypedExprKind::SemaType { ref ty, .. } => {
+                let cir_type = self.lower_sema_type(ty);
+
+                CIRExprKind::Type(cir_type.clone())
+            }
             TypedExprKind::Symbol(symbol_expr) => {
                 let decl_id = symbol_expr.as_decl_id().unwrap();
 
@@ -1557,7 +1562,6 @@ impl<'a> CIRLower<'a> {
             | TypedExprKind::EnumStructVariantInit(_)
             | TypedExprKind::UnnamedUnionValue(_) => unreachable!("unexpected unnamed constructor expression"),
 
-            TypedExprKind::SemaType(..) => unreachable!("unexpected semantic type as expression"),
             TypedExprKind::Poisoned => unreachable!("unexpected poisoned expression"),
         };
 

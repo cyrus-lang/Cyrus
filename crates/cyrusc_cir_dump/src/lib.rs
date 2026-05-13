@@ -521,6 +521,8 @@ impl<'a> CIRPrinter<'a> {
 
                 format!("dynamic {{ data: {}, vtable_id: {} }}", data, dynamic.vtable_id,)
             }
+
+            CIRExprKind::Type(ty) => self.print_type(ty),
         }
     }
 

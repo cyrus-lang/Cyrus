@@ -75,6 +75,8 @@ impl<'ll> CodeGenIRBuilder<'ll> {
             CIRExprKind::Call(call) => self.emit_call(call),
             CIRExprKind::Lambda(lambda) => self.emit_lambda(lambda),
             CIRExprKind::Dynamic(dynamic) => self.emit_dynamic_expr(dynamic),
+
+            CIRExprKind::Type(_) => unreachable!(),
         };
 
         unsafe {

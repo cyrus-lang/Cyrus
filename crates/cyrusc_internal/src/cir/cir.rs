@@ -99,6 +99,7 @@ pub enum CIRExprKind {
     Lambda(CIRLambda),
     Dynamic(CIRDynamicExpr),
     Call(CIRCall),
+    Type(CIRType),
 }
 
 #[derive(Debug, Clone)]
@@ -580,15 +581,12 @@ pub fn cir_union_as_union_type(union_stmt: &CIRUnionStmt) -> CIRUnionType {
     }
 }
 
-impl PartialEq for CIREnumVariant {
-    fn eq(&self, other: &Self) -> bool {
-        match (self, other) {
-            (Self::Unit(ident1, _), Self::Unit(ident2, _)) => ident1 == ident2,
-            (Self::Valued(ident1, ty1, _), Self::Valued(ident2, ty2, _)) => ident1 == ident2 && ty1 == ty2,
-            (Self::Payload(ident1, fields1, _), Self::Payload(ident2, fields2, _)) => {
-                ident1 == ident2 && fields1 == fields2
-            }
-            _ => false,
+impl CIRExprKind {
+    #[inline]
+    pub fn as_type(&self) -> Option<&CIRType> {
+        match self {
+            CIRExprKind::Type(ty) => Some(ty),
+            _ => None,
         }
     }
 }
@@ -666,6 +664,23 @@ impl CIRStmt {
         }
     }
 }
+
+// partial-eq
+
+impl PartialEq for CIREnumVariant {
+    fn eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (Self::Unit(ident1, _), Self::Unit(ident2, _)) => ident1 == ident2,
+            (Self::Valued(ident1, ty1, _), Self::Valued(ident2, ty2, _)) => ident1 == ident2 && ty1 == ty2,
+            (Self::Payload(ident1, fields1, _), Self::Payload(ident2, fields2, _)) => {
+                ident1 == ident2 && fields1 == fields2
+            }
+            _ => false,
+        }
+    }
+}
+
+// debug
 
 impl Debug for CIRModule {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {

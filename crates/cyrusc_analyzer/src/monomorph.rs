@@ -604,7 +604,7 @@ impl<'a> AnalysisContext<'a> {
                 }
             },
 
-            TypedExprKind::Poisoned | TypedExprKind::Literal(_) | TypedExprKind::SemaType(_) => {}
+            TypedExprKind::Poisoned | TypedExprKind::Literal(_) | TypedExprKind::SemaType { .. } => {}
         }
     }
 

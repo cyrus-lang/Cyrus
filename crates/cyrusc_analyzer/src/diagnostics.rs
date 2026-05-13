@@ -320,6 +320,12 @@ pub enum AnalyzerDiagKind {
     #[error("Top-level statements cannot be used within a block scope; only at compilation unit level.")]
     InvalidStatement,
 
+    #[error("Builtin '@cast' requires a type as its first argument.")]
+    BuiltinCastRequiresTypeArgument,
+
+    #[error("Cannot cast value of type '{value_type}' to '{target_type}'.")]
+    CannotCast { value_type: String, target_type: String },
+
     #[error("Builtin '@{name}' is not defined.")]
     BuiltinNotDefined { name: String },
 

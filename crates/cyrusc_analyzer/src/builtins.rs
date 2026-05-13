@@ -24,6 +24,7 @@ use cyrusc_typed_ast::{
         TypedBuiltin, TypedBuiltinBlock, TypedBuiltinForm, TypedBuiltinFunc, TypedBuiltinKind, TypedBuiltinSpec,
         builtin_spec_of, lookup_builtin,
     },
+    exprs::TypedExprKind,
     format::{format_sema_type, format_struct_decl},
     stmts::TypedStmt,
     types::{PlainType, SemaType},
@@ -183,6 +184,7 @@ impl<'a> AnalysisContext<'a> {
             TypedBuiltinKind::TypeOf => self.analyze_builtin_typeof(builtin),
             TypedBuiltinKind::Memcpy => self.analyze_builtin_memcpy(builtin),
             TypedBuiltinKind::Memset => self.analyze_builtin_memset(builtin),
+            TypedBuiltinKind::Cast => self.analyze_builtin_cast(builtin),
 
             _ => {
                 unreachable!()
@@ -326,6 +328,56 @@ impl<'a> AnalysisContext<'a> {
         self.analyze_expr_non_terminal(operand, None);
 
         operand.ty.clone()
+    }
+
+    fn analyze_builtin_cast(&mut self, builtin_func: &mut TypedBuiltinFunc) -> Option<SemaType> {
+        self.analyze_expr_non_terminal(&mut builtin_func.args[0], None);
+        self.analyze_expr(&mut builtin_func.args[1], None);
+
+        let type_expr = &builtin_func.args[0];
+        let value_expr = &builtin_func.args[1];
+
+        let Some(mut target_type) = type_expr.kind.as_type_expr() else {
+            self.reporter.report(Diag {
+                level: DiagLevel::Error,
+                kind: Box::new(AnalyzerDiagKind::BuiltinCastRequiresTypeArgument),
+                loc: Some(builtin_func.loc),
+                hint: None,
+            });
+            return None;
+        };
+
+        target_type = self.expand_sema_type(target_type, builtin_func.loc);
+
+        let value_type = value_expr.ty.as_ref()?;
+
+        if !self.is_explicit_cast_allowed(value_type.clone(), target_type.clone()) {
+            let value_type = format_sema_type(value_type.clone(), self.formatter);
+            let target_type = format_sema_type(target_type, self.formatter);
+
+            self.reporter.report(Diag {
+                level: DiagLevel::Error,
+                kind: Box::new(AnalyzerDiagKind::CannotCast {
+                    value_type,
+                    target_type,
+                }),
+                loc: Some(builtin_func.loc),
+                hint: None,
+            });
+            return None;
+        }
+
+        // IMPORTANT: update analyzed type argument
+        let type_expr = builtin_func.args.first_mut().unwrap();
+        type_expr.kind = TypedExprKind::SemaType {
+            ty: target_type.clone(),
+            loc: builtin_func.loc,
+        };
+        type_expr.ty = Some(target_type.clone());
+
+        builtin_func.ret_type = Some(target_type.clone());
+
+        Some(target_type)
     }
 
     fn analyze_builtin_memset(&mut self, builtin_func: &mut TypedBuiltinFunc) -> Option<SemaType> {

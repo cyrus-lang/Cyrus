@@ -201,8 +201,8 @@ impl<'a> AnalysisContext<'a> {
                 enum_decl_id = _enum_decl_id;
                 type_args = TypedTypeArgs::new();
             }
-            TypedExprKind::SemaType(sema_type) => {
-                let ty = match self.normalize_sema_type(sema_type.clone(), loc) {
+            TypedExprKind::SemaType { ty, .. } => {
+                let ty = match self.normalize_sema_type(ty.clone(), loc) {
                     Some(ty) => ty,
                     None => return None,
                 };

@@ -108,8 +108,8 @@ pub fn is_comptime_valid(expr: &TypedExprKind) -> bool {
         | TypedExprKind::FuncCall(_)
         | TypedExprKind::Assign(_)
         | TypedExprKind::Dynamic(_)
-        | TypedExprKind::SemaType(_)
-        | TypedExprKind::AddrOf(_) => false,
+        | TypedExprKind::AddrOf(_)
+        | TypedExprKind::SemaType { .. } => false,
 
         TypedExprKind::Builtin(_) => false,
 

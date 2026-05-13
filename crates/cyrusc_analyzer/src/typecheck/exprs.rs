@@ -125,10 +125,10 @@ impl<'a> AnalysisContext<'a> {
                 }
             },
 
-            // FIXME 
+            // FIXME
             // SemaType must be only valid in analyze_expr_non_terminal,
             // and consider to report error if a sema-type used in this context.
-            TypedExprKind::SemaType(ty) => {
+            TypedExprKind::SemaType { ty, .. } => {
                 let ty = self.normalize_sema_type(ty.clone(), expr.loc);
                 expr.ty = ty.clone();
                 return ty;
@@ -222,7 +222,7 @@ impl<'a> AnalysisContext<'a> {
 
             TypedExprKind::Builtin(_) => ValueCategory::RValue,
 
-            TypedExprKind::SemaType(_) | TypedExprKind::Poisoned => ValueCategory::Unknown,
+            TypedExprKind::SemaType { .. } | TypedExprKind::Poisoned => ValueCategory::Unknown,
 
             // lowered
             TypedExprKind::UnnamedStructValue(_)
