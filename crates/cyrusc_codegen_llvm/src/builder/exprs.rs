@@ -782,8 +782,14 @@ impl<'ll> CodeGenIRBuilder<'ll> {
 
     fn emit_logical_or(&self, lhs_rvalue: InternalValue<'ll>, rhs_rvalue: InternalValue<'ll>) -> InternalValue<'ll> {
         match (lhs_rvalue.as_basic_value(), rhs_rvalue.as_basic_value()) {
-            (BasicValueEnum::IntValue(lhs), BasicValueEnum::IntValue(rhs)) => {
+            (BasicValueEnum::IntValue(mut lhs), BasicValueEnum::IntValue(mut rhs)) => {
+                if lhs_rvalue.ty.is_bool() || rhs_rvalue.ty.is_bool() {
+                    lhs = self.int_value_as_bool_i1(lhs);
+                    rhs = self.int_value_as_bool_i1(rhs);
+                }
+
                 let or_value = self.llvmbuilder.build_or(lhs, rhs, "lor").unwrap();
+
                 InternalValue::new(
                     CIRType::Plain(PlainType::Bool),
                     InternalValueKind::RValue(or_value.into()),
@@ -819,8 +825,14 @@ impl<'ll> CodeGenIRBuilder<'ll> {
 
     fn emit_logical_and(&self, lhs_rvalue: InternalValue<'ll>, rhs_rvalue: InternalValue<'ll>) -> InternalValue<'ll> {
         match (lhs_rvalue.as_basic_value(), rhs_rvalue.as_basic_value()) {
-            (BasicValueEnum::IntValue(lhs), BasicValueEnum::IntValue(rhs)) => {
+            (BasicValueEnum::IntValue(mut lhs), BasicValueEnum::IntValue(mut rhs)) => {
+                if lhs_rvalue.ty.is_bool() || rhs_rvalue.ty.is_bool() {
+                    lhs = self.int_value_as_bool_i1(lhs);
+                    rhs = self.int_value_as_bool_i1(rhs);
+                }
+
                 let and_value = self.llvmbuilder.build_and(lhs, rhs, "land").unwrap();
+
                 InternalValue::new(
                     CIRType::Plain(PlainType::Bool),
                     InternalValueKind::RValue(and_value.into()),
@@ -1239,13 +1251,10 @@ impl<'ll> CodeGenIRBuilder<'ll> {
 
     fn emit_prefix_expr(&mut self, prefix_expr: &CIRPrefixExpr) -> InternalValue<'ll> {
         let lvalue = self.emit_expr(&prefix_expr.operand, &None);
-        let mut rvalue = self.load_rvalue(lvalue);
+        let rvalue = self.load_rvalue(lvalue);
 
         match prefix_expr.op {
-            PrefixOperator::Bang => {
-                rvalue = self.internal_value_as_bool_i1(rvalue);
-                self.emit_logical_not(rvalue)
-            }
+            PrefixOperator::Bang => self.emit_logical_not(rvalue),
             PrefixOperator::Minus => self.emit_negate(rvalue),
             PrefixOperator::BitwiseNot => self.emit_bitwise_not(rvalue),
         }
@@ -1265,11 +1274,13 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         match rvalue.as_basic_value() {
             BasicValueEnum::IntValue(int_value) => {
                 let basic_value = BasicValueEnum::IntValue(self.llvmbuilder.build_int_neg(int_value, "neg").unwrap());
+
                 InternalValue::new(rvalue.ty.clone(), InternalValueKind::RValue(basic_value))
             }
             BasicValueEnum::FloatValue(float_value) => {
                 let basic_value =
                     BasicValueEnum::FloatValue(self.llvmbuilder.build_float_neg(float_value, "neg").unwrap());
+
                 InternalValue::new(rvalue.ty.clone(), InternalValueKind::RValue(basic_value))
             }
             _ => unreachable!(),
@@ -1278,8 +1289,11 @@ impl<'ll> CodeGenIRBuilder<'ll> {
 
     fn emit_logical_not(&self, rvalue: InternalValue<'ll>) -> InternalValue<'ll> {
         match rvalue.as_basic_value() {
-            BasicValueEnum::IntValue(int_value) => {
+            BasicValueEnum::IntValue(mut int_value) => {
+                int_value = self.int_value_as_bool_i1(int_value);
+
                 let basic_value = BasicValueEnum::IntValue(self.llvmbuilder.build_not(int_value, "neg").unwrap());
+
                 InternalValue::new(rvalue.ty.clone(), InternalValueKind::RValue(basic_value))
             }
             _ => unreachable!(),

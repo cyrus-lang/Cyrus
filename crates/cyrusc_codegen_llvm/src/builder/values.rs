@@ -149,19 +149,6 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         (lhs_w, rhs_w)
     }
 
-    pub(crate) fn internal_value_as_bool_i1(&self, internal_value: InternalValue<'ll>) -> InternalValue<'ll> {
-        assert!(internal_value.ty.is_bool());
-
-        let basic_value = internal_value.as_basic_value();
-        let int_value = basic_value.into_int_value();
-        let i1_int_value = self.int_value_as_bool_i1(int_value);
-
-        InternalValue::new(
-            internal_value.ty.clone(),
-            InternalValueKind::RValue(i1_int_value.into()),
-        )
-    }
-
     pub(crate) fn int_value_as_bool_i1(&self, int_value: IntValue<'ll>) -> IntValue<'ll> {
         let bit_width = int_value.get_type().get_bit_width();
 
