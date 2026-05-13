@@ -680,6 +680,12 @@ impl<'source_file> Parser<'source_file> {
                 }
             }
 
+            TokenKind::At => {
+                let builtin = self.parse_builtin(false)?;
+
+                Ok(TypeSpecifier::Builtin(builtin))
+            }
+
             _ => Err(self.error_at_current(ParserDiagKind::InvalidTypeToken(token.kind))),
         }
     }

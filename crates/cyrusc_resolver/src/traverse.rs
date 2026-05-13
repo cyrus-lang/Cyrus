@@ -457,6 +457,7 @@ impl<'a> Resolver<'a> {
             TypeSpecifier::TypeToken(token) => self.resolve_builtin_type(token, loc),
             TypeSpecifier::Const(inner) => {
                 let inner = self.resolve_type(*inner, loc)?;
+                
                 Some(SemaType::Const(Box::new(inner)))
             }
             TypeSpecifier::SelfType(self_ty) => Some(SemaType::SelfType(TypedSelfType { loc: self_ty.loc })),
@@ -466,11 +467,18 @@ impl<'a> Resolver<'a> {
             TypeSpecifier::Array(array) => self.resolve_array_type(array, loc),
             TypeSpecifier::Deref(inner) => {
                 let inner = self.resolve_type(*inner, loc)?;
+
                 Some(SemaType::Pointer(Box::new(inner)))
             }
             TypeSpecifier::UnnamedUnion(union_ty) => self.resolve_unnamed_union_type(union_ty),
             TypeSpecifier::UnnamedEnum(enum_type) => self.resolve_unnamed_enum_type(enum_type),
             TypeSpecifier::UnnamedStruct(struct_type) => self.resolve_unnamed_struct_type(struct_type),
+            TypeSpecifier::Builtin(builtin) => match self.resolve_builtin(&builtin)? {
+                TypedBuiltin::BuiltinFunc(builtin_func) => {
+                    Some(SemaType::Unresolved(UnresolvedType::BuiltinFunc(Box::new(builtin_func))))
+                }
+                TypedBuiltin::BuiltinBlock(_) => todo!(),
+            },
         }
     }
 

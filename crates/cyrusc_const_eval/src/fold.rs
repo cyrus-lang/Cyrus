@@ -15,10 +15,10 @@
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
 
-use crate::{evaluator::ConstEvaluator, resolver::ConstResolver};
+use crate::{diagnostics::ConstEvalError, evaluator::ConstEvaluator, resolver::ConstResolver, value::ConstValue};
 use cyrusc_internal::{abi::target::ABITarget, analyzer_state::AnalyzerState};
 use cyrusc_tokens::literals::LiteralKind;
-use cyrusc_typed_ast::{decls::table::DeclTablesRegistry, exprs::*};
+use cyrusc_typed_ast::{builtins::TypedBuiltin, decls::table::DeclTablesRegistry, exprs::*};
 
 pub struct ConstFolder<'a, R: ConstResolver> {
     evaluator: ConstEvaluator<'a, R>,
@@ -85,6 +85,15 @@ impl<'a, R: ConstResolver> ConstFolder<'a, R> {
                 expr.kind = TypedExprKind::Literal(literal);
             }
         }
+    }
+
+    #[inline]
+    pub fn fold_builtin_func(
+        &self,
+        builtin: TypedBuiltin,
+        analyzer_state: &'a dyn AnalyzerState,
+    ) -> Result<ConstValue, ConstEvalError> {
+        self.evaluator.eval_builtin(&builtin, analyzer_state)
     }
 
     pub fn expr_as_const_int(&mut self, expr: &TypedExpr, analyzer_state: &'a dyn AnalyzerState) -> Option<i128> {

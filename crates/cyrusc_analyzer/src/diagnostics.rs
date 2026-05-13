@@ -330,6 +330,9 @@ pub enum AnalyzerDiagKind {
         found: TypedBuiltinForm,
     },
 
+    #[error("Builtin '@{name}' does not produce a type and cannot be used in a type context.")]
+    BuiltinDoesNotProduceType { name: String },
+
     #[error("Builtin '@{name}' expects at least {expected} argument(s), but {found} were provided.")]
     BuiltinTooFewArgs {
         name: String,

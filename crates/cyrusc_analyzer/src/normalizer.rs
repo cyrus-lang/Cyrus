@@ -16,11 +16,12 @@
  */
 
 use crate::{context::AnalysisContext, diagnostics::AnalyzerDiagKind};
-use cyrusc_const_eval::resolver::ConstResolver;
+use cyrusc_const_eval::{fold::ConstFolder, resolver::ConstResolver};
 use cyrusc_diagcentral::{Diag, DiagLevel};
 use cyrusc_source_loc::Loc;
 use cyrusc_typed_ast::{
     GenericParamID,
+    builtins::TypedBuiltin,
     decls::{DeclID, EnumDeclID, FuncDecl, StructDeclID, UnionDeclID},
     exprs::TypedSelfType,
     stmts::{
@@ -182,6 +183,29 @@ impl<'a> AnalysisContext<'a> {
                 } else {
                     return None;
                 }
+            }
+            UnresolvedType::BuiltinFunc(mut builtin_func) => {
+                self.analyze_builtin_expr(&mut builtin_func);
+
+                let folder = ConstFolder::new(self, &self.decl_tables, self.target, self);
+
+                if let Ok(const_value) =
+                    folder.fold_builtin_func(TypedBuiltin::BuiltinFunc(*builtin_func.clone()), self)
+                {
+                    if let Some(ty) = const_value.as_type() {
+                        return Some(self.expand_sema_type(ty.clone(), builtin_func.loc));
+                    }
+                }
+
+                self.reporter.report(Diag {
+                    level: DiagLevel::Error,
+                    kind: Box::new(AnalyzerDiagKind::BuiltinDoesNotProduceType {
+                        name: builtin_func.name.to_string(),
+                    }),
+                    loc: Some(builtin_func.loc),
+                    hint: None,
+                });
+                return Some(SemaType::Err(builtin_func.loc));
             }
         };
 

@@ -15,6 +15,8 @@
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
 
+use std::hash::{Hash, Hasher};
+
 use crate::{exprs::TypedExpr, stmts::TypedBlockStmt, types::SemaType};
 use cyrusc_ast::Ident;
 use cyrusc_source_loc::Loc;
@@ -93,6 +95,7 @@ pub enum TypedBuiltinKind {
     SizeOf,
     AlignOf,
     OffsetOf,
+    TypeOf,
     Memcpy,
     Memset,
 
@@ -197,6 +200,15 @@ pub static BUILTIN_SPECS: &[TypedBuiltinSpec] = &[
         min_args: 2,
         max_args: Some(2),
     },
+    TypedBuiltinSpec {
+        kind: TypedBuiltinKind::TypeOf,
+        name: "typeof",
+        family: TypedBuiltinFamily::ConstEval,
+        phase: TypedBuiltinPhase::ConstEval,
+        form: TypedBuiltinForm::Expr,
+        min_args: 1,
+        max_args: Some(1),
+    },
     // -- intrinsics --
     TypedBuiltinSpec {
         kind: TypedBuiltinKind::Memcpy,
@@ -249,6 +261,7 @@ builtin_lookup! {
         "sizeof" => TypedBuiltinKind::SizeOf,
         "alignof" => TypedBuiltinKind::AlignOf,
         "offsetof" => TypedBuiltinKind::OffsetOf,
+        "typeof" => TypedBuiltinKind::TypeOf,
         "debug" => TypedBuiltinKind::Debug,
         "release" => TypedBuiltinKind::Release,
 
@@ -264,21 +277,6 @@ pub fn builtin_spec_of(kind: TypedBuiltinKind) -> &'static TypedBuiltinSpec {
         .find(|s| s.kind == kind)
         .expect("builtin spec missing")
 }
-
-impl PartialEq for TypedBuiltinFunc {
-    fn eq(&self, other: &Self) -> bool {
-        self.name == other.name
-    }
-}
-
-impl PartialEq for TypedBuiltinBlock {
-    fn eq(&self, other: &Self) -> bool {
-        self.name == other.name
-    }
-}
-
-impl Eq for TypedBuiltinFunc {}
-impl Eq for TypedBuiltinBlock {}
 
 impl TypedBuiltin {
     #[inline]
@@ -297,3 +295,31 @@ impl TypedBuiltin {
         }
     }
 }
+
+// hash
+
+impl Hash for TypedBuiltinFunc {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.name.hash(state);
+        self.ret_type.hash(state);
+    }
+}
+
+// partial-eq
+
+impl PartialEq for TypedBuiltinFunc {
+    fn eq(&self, other: &Self) -> bool {
+        self.name == other.name
+    }
+}
+
+impl PartialEq for TypedBuiltinBlock {
+    fn eq(&self, other: &Self) -> bool {
+        self.name == other.name
+    }
+}
+
+// eq
+
+impl Eq for TypedBuiltinFunc {}
+impl Eq for TypedBuiltinBlock {}

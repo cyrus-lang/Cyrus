@@ -392,6 +392,7 @@ pub fn format_sema_type(ty: SemaType, formatter: &dyn Formatter) -> String {
         SemaType::Unresolved(unresolved_type) => match unresolved_type {
             UnresolvedType::Decl(_) => format!("<unresolved_symbol>"),
             UnresolvedType::GenericInst { .. } => format!("<unresolved_generic_inst>"),
+            UnresolvedType::BuiltinFunc(_) => format!("<unresolved_builtin_func>"),
         },
         SemaType::GenericParam(generic_param_id) => formatter.format_generic_param(generic_param_id),
         SemaType::InterfaceObject(interface_object) => {
