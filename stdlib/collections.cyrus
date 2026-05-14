@@ -16,6 +16,7 @@
  */
 
 import std::libc{printf, memmove, realloc, malloc, free};
+import std::iterator{Iterator};
 
 const initial_array_capacity: usize = 16;
 
@@ -136,14 +137,6 @@ pub struct Array<T> {
 
     pub fn clone(&self) Self {
         @todo();
-    }   
-
-    pub fn for_each(&self, handle: fn(T) void) {
-         for (var i: usize = 0; i < self->len; i++) {
-            const item = self->data[i];
-
-            handle(item);
-        }
     }
 
     pub fn get_unchecked(&self, index: usize) T* {

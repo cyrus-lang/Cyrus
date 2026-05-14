@@ -228,7 +228,9 @@ impl<'a> AnalysisContext<'a> {
         switch_stmt.all_cases_covered = Some(false);
 
         if let Some(default) = &mut switch_stmt.default_case {
-            flow_states.push(self.analyze_block_stmt(default));
+            let flow_state = self.analyze_block_stmt(default);
+
+            flow_states.push(flow_state);
         } else {
             // check that all enum variants are covered inside switch patterns:
             if all_covered_variants.len() == all_variants_count {
@@ -240,10 +242,12 @@ impl<'a> AnalysisContext<'a> {
             }
         }
 
-        if self.all_flow_states_return(&flow_states) {
-            FlowState::Returns
-        } else if self.all_flow_states_are_unreachable(&flow_states) {
-            FlowState::Unreachable
+        if self.all_flow_states_terminate(&flow_states) {
+            if self.all_flow_states_are_unreachable(&flow_states) {
+                FlowState::Unreachable
+            } else {
+                FlowState::Returns
+            }
         } else {
             FlowState::Reachable
         }
@@ -674,5 +678,12 @@ impl<'a> AnalysisContext<'a> {
     #[inline]
     fn all_flow_states_return(&self, flow_states: &[FlowState]) -> bool {
         flow_states.iter().all(|fs| matches!(fs, FlowState::Returns))
+    }
+
+    #[inline]
+    fn all_flow_states_terminate(&self, flow_states: &[FlowState]) -> bool {
+        flow_states
+            .iter()
+            .all(|fs| matches!(fs, FlowState::Returns | FlowState::Unreachable))
     }
 }
