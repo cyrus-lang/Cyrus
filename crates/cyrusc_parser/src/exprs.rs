@@ -533,6 +533,7 @@ impl<'source_file> Parser<'source_file> {
                 let end = self.current_token().loc.end;
 
                 let peek_token_idx = self.pos + 1;
+
                 self.tokens.remove(peek_token_idx);
                 self.tokens.remove(peek_token_idx);
                 self.tokens.insert(
@@ -548,6 +549,7 @@ impl<'source_file> Parser<'source_file> {
         match self.peek_token().kind {
             TokenKind::Assign => {
                 self.next_token();
+
                 match self.parse_assign(lhs, AssignKind::Default, lhs_start) {
                     Ok(expr) => Some(Ok(expr)),
                     Err(err) => Some(Err(err)),
@@ -703,14 +705,16 @@ impl<'source_file> Parser<'source_file> {
         if matches!(self.current_token().kind, TokenKind::Ident { .. }) {
             let ident = self.parse_ident()?;
 
-            let type_args: TypeArgs;
+            let type_arg_start_detail = self.is_type_arg_start(ASTExpr::Ident(ident.clone()));
 
-            if self.peek_token_is(TokenKind::LessThan) {
-                self.next_token(); // consume ident
-                type_args = self.parse_type_args()?;
-            } else {
-                type_args = TypeArgs::new();
-            }
+            let type_args = {
+                if type_arg_start_detail.includes_type_args {
+                    self.next_token(); // consume ident
+                    self.parse_type_args()?
+                } else {
+                    TypeArgs::new()
+                }
+            };
 
             if self.peek_token_is(TokenKind::LeftParen) {
                 self.next_token(); // consume ident
@@ -725,10 +729,6 @@ impl<'source_file> Parser<'source_file> {
 
                 self.parse_enum_struct_variant_init(operand, ident, line, column, start)
             } else {
-                if !type_args.is_empty() {
-                    return Err(self.error_invalid_token());
-                }
-
                 let end = self.current_token().loc.end;
 
                 Ok(ASTExpr::FieldAccess(ASTFieldAccessExpr {
