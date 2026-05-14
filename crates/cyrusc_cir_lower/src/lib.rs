@@ -1452,10 +1452,6 @@ impl<'a> CIRLower<'a> {
 
         let mangled_name = CYRUS_ABI.method_name(&self.module_name, object_name, &method_decl.func_decl.name);
 
-        self.decl_tables.with_method_decl_mut(method_decl_id, |_method_decl| {
-            _method_decl.func_decl.name = mangled_name.clone();
-        });
-
         let mut cir_func_def = CIRFuncDefStmt {
             irv_id,
             name: mangled_name,
@@ -1886,16 +1882,10 @@ impl<'a> CIRLower<'a> {
                             irv_id
                         } else {
                             // interface is generic, but method is concrete (non-generic)
-                            self.decl_to_ir_value_map
-                                .get(&DeclID::Method(*method_decl_id))
-                                .copied()
-                                .unwrap()
+                            self.get_or_declare_method_ir_value(*method_decl_id)
                         }
                     } else {
-                        self.decl_to_ir_value_map
-                            .get(&DeclID::Method(*method_decl_id))
-                            .copied()
-                            .unwrap()
+                        self.get_or_declare_method_ir_value(*method_decl_id)
                     }
                 })
                 .collect();
@@ -1931,7 +1921,7 @@ impl<'a> CIRLower<'a> {
                         func_type,
                         abi_name: func_decl.name.clone(),
                     },
-                    loc: func_call.loc
+                    loc: func_call.loc,
                 })
             }
             TypedFuncCallDispatch::Monomorph { monomorph_id } => {
@@ -1945,7 +1935,7 @@ impl<'a> CIRLower<'a> {
                         func_type: cir_fuc_type,
                         abi_name,
                     },
-                    loc: func_call.loc
+                    loc: func_call.loc,
                 })
             }
             TypedFuncCallDispatch::FunctionPointer { func_type } => {
@@ -1957,7 +1947,7 @@ impl<'a> CIRLower<'a> {
                     args,
                     ret_type,
                     dispatch: CIRCallDispatch::FunctionPointer { operand },
-                    loc: func_call.loc
+                    loc: func_call.loc,
                 })
             }
             TypedFuncCallDispatch::Unresolved => unreachable!(),

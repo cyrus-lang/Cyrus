@@ -73,8 +73,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
                         // method is concrete, use cir_method_decls
                         let irv_id = vtable_info.cir_method_decls.as_ref().unwrap()[idx];
 
-                        let ir_value = self.lookup_local_ir_value(irv_id).unwrap();
-                        let llvm_func_value = ir_value.as_func().unwrap();
+                        let llvm_func_value = self.get_or_declare_function(irv_id).as_func().cloned().unwrap();
                         llvm_func_value.as_global_value().as_pointer_value()
                     }
                 };

@@ -279,11 +279,22 @@ impl<'a> AnalysisContext<'a> {
         match &mut array.capacity {
             TypedArrayCapacity::Fixed(expr) => {
                 self.analyze_expr(expr, None);
+
+                if expr.literal_const_int_value().is_none() {
+                    self.reporter.report(Diag {
+                        level: DiagLevel::Error,
+                        kind: Box::new(AnalyzerDiagKind::ArrayCapacityNotConst),
+                        loc: Some(loc),
+                        hint: None,
+                    });
+                    return None;
+                }
             }
             TypedArrayCapacity::Dynamic => todo!(),
         }
 
         array.element_type = Box::new(self.normalize_sema_type(*array.element_type, loc)?);
+
         Some(array)
     }
 
