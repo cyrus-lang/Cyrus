@@ -96,7 +96,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
             .func_decls
             .get(&irv_id)
             .cloned()
-            .expect("Missing CIR function declaration");
+            .expect("missing cir function declaration");
 
         func_decl.modifiers = FuncModifiers {
             linkage: Some(Linkage::Extern(None)),
