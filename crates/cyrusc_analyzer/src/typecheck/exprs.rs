@@ -84,7 +84,7 @@ impl<'a> AnalysisContext<'a> {
             TypedExprKind::Deref(deref) => self.analyze_deref(deref),
             TypedExprKind::Array(array) => self.analyze_array(array, expected_type.clone()),
             TypedExprKind::Dynamic(dynamic) => self.analyze_dynamic(dynamic, expected_type.clone()),
-            TypedExprKind::MethodCall(method_call) => self.analyze_method_call(method_call),
+            TypedExprKind::MethodCall(method_call) => self.analyze_method_call(method_call, expected_type.clone()),
             TypedExprKind::FuncCall(func_call) => self.analyze_func_call(func_call),
             TypedExprKind::Lambda(lambda) => self.analyze_lambda(lambda),
             TypedExprKind::Tuple(tuple) => self.analyze_tuple_value(tuple, expected_type.clone()),

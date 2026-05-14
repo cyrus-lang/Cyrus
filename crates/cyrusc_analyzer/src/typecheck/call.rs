@@ -153,7 +153,11 @@ impl<'a> AnalysisContext<'a> {
 
 // Methods.
 impl<'a> AnalysisContext<'a> {
-    pub(crate) fn analyze_method_call(&mut self, method_call: &mut TypedMethodCall) -> Option<SemaType> {
+    pub(crate) fn analyze_method_call(
+        &mut self,
+        method_call: &mut TypedMethodCall,
+        expected_type: Option<SemaType>,
+    ) -> Option<SemaType> {
         self.analyze_expr_non_terminal(&mut method_call.operand, None);
 
         self.normalize_type_args(&mut method_call.type_args);
@@ -215,11 +219,11 @@ impl<'a> AnalysisContext<'a> {
         let is_operand_interface = operand_type.as_interface_object().is_some() || operand_type.is_interface();
 
         if is_operand_instance {
-            self.analyze_instance_method_call(method_call, &operand_type)
+            self.analyze_instance_method_call(method_call, &operand_type, expected_type)
         } else if is_operand_interface {
-            self.analyze_interface_method_call(method_call, &operand_type)
+            self.analyze_interface_method_call(method_call, &operand_type, expected_type)
         } else {
-            self.analyze_static_method_call(method_call, &operand_type)
+            self.analyze_static_method_call(method_call, &operand_type, expected_type)
         }
     }
 
@@ -227,13 +231,14 @@ impl<'a> AnalysisContext<'a> {
         &mut self,
         method_call: &mut TypedMethodCall,
         operand_type: &SemaType,
+        expected_type: Option<SemaType>,
     ) -> Option<SemaType> {
         let pure_operand_type = operand_type.const_inner().pointer_inner().clone();
 
         let is_interface = pure_operand_type.is_interface_object() || pure_operand_type.as_named_interface().is_some();
 
         if is_interface {
-            return self.analyze_interface_method_call(method_call, operand_type);
+            return self.analyze_interface_method_call(method_call, operand_type, expected_type);
         }
 
         let named_type = pure_operand_type.as_named_type();
@@ -261,6 +266,7 @@ impl<'a> AnalysisContext<'a> {
             operand_type.clone(),
             true,
             false,
+            expected_type,
         )
     }
 
@@ -268,6 +274,7 @@ impl<'a> AnalysisContext<'a> {
         &mut self,
         method_call: &mut TypedMethodCall,
         operand_type: &SemaType,
+        expected_type: Option<SemaType>,
     ) -> Option<SemaType> {
         let pure_operand_type = operand_type.const_inner().pointer_inner().clone();
 
@@ -303,6 +310,7 @@ impl<'a> AnalysisContext<'a> {
             operand_type.clone(),
             false,
             false,
+            expected_type,
         )
     }
 
@@ -314,6 +322,7 @@ impl<'a> AnalysisContext<'a> {
         mut operand_type: SemaType,
         is_instance_method_call: bool,
         is_interface_method_call: bool,
+        expected_type: Option<SemaType>,
     ) -> Option<SemaType> {
         let mut pure_operand_type = operand_type.const_inner().pointer_inner().clone();
 
@@ -414,6 +423,17 @@ impl<'a> AnalysisContext<'a> {
                 method_call.is_thin_arrow,
                 is_interface_method_call,
                 method_call.loc,
+            );
+
+            let inferred_type_args = this.collect_instantiated_type_args(operand_generic_params.clone());
+            let type_decl_id = pure_operand_type.as_named_type().unwrap().type_decl_id;
+
+            this.unify_with_expected_type(
+                SemaType::Named(NamedType {
+                    type_decl_id,
+                    type_args: inferred_type_args,
+                }),
+                &expected_type,
             );
 
             // apply defaults for method generics
@@ -573,6 +593,7 @@ impl<'a> AnalysisContext<'a> {
         &mut self,
         method_call: &mut TypedMethodCall,
         interface_object: &InterfaceObjectType,
+        expected_type: Option<SemaType>,
     ) -> Option<SemaType> {
         let interface_decl_id = interface_object.interface_type.type_decl_id.as_interface().unwrap();
         let interface_decl = self.decl_tables.interface_decl(interface_decl_id);
@@ -596,6 +617,7 @@ impl<'a> AnalysisContext<'a> {
             concrete_operand_type.clone(),
             true,
             false,
+            expected_type,
         );
 
         let interface_call_dispatch = match &method_call.dispatch {
@@ -627,12 +649,13 @@ impl<'a> AnalysisContext<'a> {
         &mut self,
         method_call: &mut TypedMethodCall,
         operand_type: &SemaType,
+        expected_type: Option<SemaType>,
     ) -> Option<SemaType> {
         let pure_operand_type = operand_type.const_inner().pointer_inner().clone();
 
         // try as static-dispatch if interface-object is present
         if let Some(interface_object) = pure_operand_type.as_interface_object() {
-            self.analyze_static_dispatch_interface_method_call(method_call, interface_object)
+            self.analyze_static_dispatch_interface_method_call(method_call, interface_object, expected_type)
         } else {
             self.analyze_dynamic_dispatch_interface_method_call(method_call, &pure_operand_type)
         }
