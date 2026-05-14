@@ -205,7 +205,7 @@ impl<'a> AnalysisContext<'a> {
             TypedBuiltinKind::Cast => self.analyze_builtin_cast(builtin_func),
             TypedBuiltinKind::Assert => self.analyze_builtin_assert(builtin_func),
             TypedBuiltinKind::Panic => self.analyze_builtin_panic(builtin_func),
-            TypedBuiltinKind::Todo => self.analyze_builtin_panic(builtin_func),
+            TypedBuiltinKind::Todo => self.analyze_builtin_todo(builtin_func),
             TypedBuiltinKind::Unimplemented => self.analyze_builtin_unimplemented(builtin_func),
             TypedBuiltinKind::Unreachable => self.analyze_builtin_unreachable(builtin_func),
 
