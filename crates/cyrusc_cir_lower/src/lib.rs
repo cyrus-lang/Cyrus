@@ -2101,8 +2101,9 @@ impl<'a> CIRLower<'a> {
         let method_decl_id = monomorph_instance.template_id.as_method().unwrap();
         let method_decl = self.decl_tables.method_decl(method_decl_id);
 
+        let module_name = self.query.lookup_module_name(method_decl.func_decl.file_id).unwrap();
         let mangled_name = mangle_monomorphized_method(
-            &self.module_name,
+            &module_name,
             method_decl_id.0 as usize,
             &method_decl.func_decl.name,
             &monomorph_instance.type_args,
