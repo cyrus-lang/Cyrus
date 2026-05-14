@@ -116,11 +116,12 @@ impl<'a> AnalysisContext<'a> {
 
     fn analyze_entry_func(&mut self, func_def: &mut TypedFuncDefStmt) {
         let is_public = func_def.modifiers.vis.is_public();
+        let is_extern = func_def.modifiers.linkage.is_some();
 
         if func_def.name == "main" {
             self.entry_points.add(func_def.loc);
 
-            if !is_public {
+            if !is_public && !is_extern {
                 self.reporter.report(Diag {
                     level: DiagLevel::Error,
                     kind: Box::new(AnalyzerDiagKind::PrivateEntryPoint),
