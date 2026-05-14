@@ -1,0 +1,195 @@
+/*
+ * Copyright (c) 2026 The Cyrus Language
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+ * See the GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program. If not, see <https://www.gnu.org/licenses/>.
+ */
+
+import std::libc{printf, memmove, realloc, malloc, free};
+
+const initial_array_capacity: usize = 16;
+
+struct Array<T> {
+    data: T*;
+    len: usize;
+    cap: usize;
+
+    pub fn new() Self {
+        const data: T* = malloc(@sizeof(T) * initial_array_capacity);
+        if (!data) {
+            @panic("allocation failed");
+        }
+
+        return Self {
+            data,
+            len: 0,
+            cap: initial_array_capacity
+        };
+    }
+
+    pub fn resize(&self, new_len: usize, value: T) {
+        if (new_len > self->len) {
+            self->reserve(new_len - self->len);
+
+            // while (self->len < new_len) {
+            //     self->push(value);
+            // }
+        } else {
+            self->len = new_len;
+        }
+    }
+
+    pub fn reserve(&self, extra: usize) {
+        const required = self->len + extra;
+
+        if (required <= self->cap) {
+            return;
+        }
+
+        self->grow(required);
+    }
+
+    pub fn grow(&self, min_cap: usize) {
+        var new_cap = self->cap;
+
+        while (new_cap < min_cap) {
+            new_cap *= 2;
+        }
+
+        const new_data: T* = realloc(
+            self->data,
+            new_cap * @sizeof(T)
+        );
+
+        if (new_data == null) {
+            @panic("realloc failed");
+        }
+
+        self->data = new_data;
+        self->cap = new_cap;
+    }
+
+    pub fn push(&self, value: T) {
+        self->reserve(1);
+
+        self->data[self->len] = value;
+        self->len++;
+    }
+
+    pub fn pop(&self) T {
+        if (self->len == 0) {
+            @panic("cannot pop from empty array");
+        }
+
+        self->len--;
+
+        return self->data[self->len];
+    }
+
+    pub fn insert(&self, index: usize, value: T) {
+        if (index > self->len) {
+            @panic("insertion index out of bounds");
+        }
+
+        self->reserve(1);
+
+        const src: T* = self->data + index;
+        const dst: T* = self->data + index + 1;
+        const count = self->len - index;
+
+        memmove(dst, src, count * @sizeof(T));
+
+        self->data[index] = value;
+        self->len += 1;
+    }
+
+    pub fn get(&self, index: usize) T* {
+        if (index >= self->len) {
+            @panic("index out of bounds");
+        }
+
+        return self->data + index;
+    }
+
+    pub fn contains(&self, value: T) bool {
+        // linear lookup
+        for (var i: usize = 0; i < self->len; i++) {
+            if (self->data[i] == value) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    pub fn for_each(&self, handle: fn(T) void) {
+         for (var i: usize = 0; i < self->len; i++) {
+            const item = self->data[i];
+
+            handle(item);
+        }
+    }
+
+    pub fn get_unchecked(&self, index: usize) T* {
+        return self->data + index;
+    }
+
+    pub fn len(&self) usize {
+        return self->len;
+    }
+
+    pub fn capacity(&self) usize {
+        return self->cap;
+    }
+
+    pub fn is_empty(&self) bool {
+        return self->len == 0;
+    }
+
+    pub fn clear(&self) {
+        self->len = 0;
+    }
+
+    pub fn reset(&self) {
+        self->len = 0;
+    }
+
+    pub fn remove(&self, index: usize) T {
+        if (index >= self->len) {
+            @panic("index out of bounds");
+        }
+
+        const value = self->data[index];
+
+        const src = self->data + index + 1;
+        const dst = self->data + index;
+
+        const count = self->len - index - 1;
+
+        memmove(dst, src, count * @sizeof(T));
+
+        self->len--;
+
+        return value;
+    }
+
+    pub fn free(&self) {
+        if (self->data != null) {
+            free(self->data);
+
+            self->data = null;
+            self->len = 0;
+            self->cap = 0;
+        }
+    }
+}
