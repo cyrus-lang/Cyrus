@@ -19,7 +19,7 @@ import std::libc{printf, memmove, realloc, malloc, free};
 
 const initial_array_capacity: usize = 16;
 
-struct Array<T> {
+pub struct Array<T> {
     data: T*;
     len: usize;
     cap: usize;
@@ -41,15 +41,16 @@ struct Array<T> {
         if (new_len > self->len) {
             self->reserve(new_len - self->len);
 
-            // while (self->len < new_len) {
-            //     self->push(value);
-            // }
+            while (self->len < new_len) {
+                self->push(value);
+            }
         } else {
             self->len = new_len;
         }
     }
 
     pub fn reserve(&self, extra: usize) {
+        // FIXME: Integer Overflow Risk
         const required = self->len + extra;
 
         if (required <= self->cap) {
@@ -63,6 +64,7 @@ struct Array<T> {
         var new_cap = self->cap;
 
         while (new_cap < min_cap) {
+            // FIXME: Integer Overflow Risk
             new_cap *= 2;
         }
 
@@ -131,6 +133,10 @@ struct Array<T> {
 
         return false;
     }
+
+    pub fn clone(&self) Self {
+        @todo();
+    }   
 
     pub fn for_each(&self, handle: fn(T) void) {
          for (var i: usize = 0; i < self->len; i++) {
