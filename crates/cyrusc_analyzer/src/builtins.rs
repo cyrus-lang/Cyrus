@@ -205,6 +205,9 @@ impl<'a> AnalysisContext<'a> {
             TypedBuiltinKind::Cast => self.analyze_builtin_cast(builtin_func),
             TypedBuiltinKind::Assert => self.analyze_builtin_assert(builtin_func),
             TypedBuiltinKind::Panic => self.analyze_builtin_panic(builtin_func),
+            TypedBuiltinKind::Todo => self.analyze_builtin_panic(builtin_func),
+            TypedBuiltinKind::Unimplemented => self.analyze_builtin_unimplemented(builtin_func),
+            TypedBuiltinKind::Unreachable => self.analyze_builtin_unreachable(builtin_func),
 
             _ => {
                 unreachable!()
@@ -480,6 +483,117 @@ impl<'a> AnalysisContext<'a> {
     }
 
     fn analyze_builtin_panic(&mut self, builtin_func: &mut TypedBuiltinFunc) -> Option<SemaType> {
+        let param_types = [
+            SemaType::Pointer(Box::new(SemaType::Plain(PlainType::Char))), // msg? (char*)
+        ];
+
+        for (arg, expected_type) in builtin_func.args.iter_mut().zip(param_types.iter()) {
+            self.analyze_expr_non_terminal(arg, Some(expected_type.clone()));
+        }
+
+        for (idx, (arg, expected_type)) in builtin_func.args.iter().zip(param_types.iter()).enumerate() {
+            let Some(arg_type) = arg.ty.clone() else { return None };
+
+            if !self.is_assignable_to(arg_type.clone(), expected_type.clone(), builtin_func.loc) {
+                let argument_type = format_sema_type(arg_type, self.formatter);
+                let param_type = format_sema_type(expected_type.clone(), self.formatter);
+
+                self.reporter.report(Diag {
+                    level: DiagLevel::Error,
+                    kind: Box::new(AnalyzerDiagKind::FuncCallParamTypeMismatch {
+                        param_type,
+                        argument_type,
+                        argument_idx: idx as u32,
+                    }),
+                    loc: Some(builtin_func.loc),
+                    hint: None,
+                });
+                return None;
+            }
+        }
+
+        let ret_type = SemaType::Plain(PlainType::Void);
+
+        builtin_func.ret_type = Some(ret_type.clone());
+
+        Some(ret_type)
+    }
+
+    fn analyze_builtin_todo(&mut self, builtin_func: &mut TypedBuiltinFunc) -> Option<SemaType> {
+        let param_types = [
+            SemaType::Pointer(Box::new(SemaType::Plain(PlainType::Char))), // msg? (char*)
+        ];
+
+        for (arg, expected_type) in builtin_func.args.iter_mut().zip(param_types.iter()) {
+            self.analyze_expr_non_terminal(arg, Some(expected_type.clone()));
+        }
+
+        for (idx, (arg, expected_type)) in builtin_func.args.iter().zip(param_types.iter()).enumerate() {
+            let Some(arg_type) = arg.ty.clone() else { return None };
+
+            if !self.is_assignable_to(arg_type.clone(), expected_type.clone(), builtin_func.loc) {
+                let argument_type = format_sema_type(arg_type, self.formatter);
+                let param_type = format_sema_type(expected_type.clone(), self.formatter);
+
+                self.reporter.report(Diag {
+                    level: DiagLevel::Error,
+                    kind: Box::new(AnalyzerDiagKind::FuncCallParamTypeMismatch {
+                        param_type,
+                        argument_type,
+                        argument_idx: idx as u32,
+                    }),
+                    loc: Some(builtin_func.loc),
+                    hint: None,
+                });
+                return None;
+            }
+        }
+
+        let ret_type = SemaType::Plain(PlainType::Void);
+
+        builtin_func.ret_type = Some(ret_type.clone());
+
+        Some(ret_type)
+    }
+
+    fn analyze_builtin_unimplemented(&mut self, builtin_func: &mut TypedBuiltinFunc) -> Option<SemaType> {
+        let param_types = [
+            SemaType::Pointer(Box::new(SemaType::Plain(PlainType::Char))), // msg? (char*)
+        ];
+
+        for (arg, expected_type) in builtin_func.args.iter_mut().zip(param_types.iter()) {
+            self.analyze_expr_non_terminal(arg, Some(expected_type.clone()));
+        }
+
+        for (idx, (arg, expected_type)) in builtin_func.args.iter().zip(param_types.iter()).enumerate() {
+            let Some(arg_type) = arg.ty.clone() else { return None };
+
+            if !self.is_assignable_to(arg_type.clone(), expected_type.clone(), builtin_func.loc) {
+                let argument_type = format_sema_type(arg_type, self.formatter);
+                let param_type = format_sema_type(expected_type.clone(), self.formatter);
+
+                self.reporter.report(Diag {
+                    level: DiagLevel::Error,
+                    kind: Box::new(AnalyzerDiagKind::FuncCallParamTypeMismatch {
+                        param_type,
+                        argument_type,
+                        argument_idx: idx as u32,
+                    }),
+                    loc: Some(builtin_func.loc),
+                    hint: None,
+                });
+                return None;
+            }
+        }
+
+        let ret_type = SemaType::Plain(PlainType::Void);
+
+        builtin_func.ret_type = Some(ret_type.clone());
+
+        Some(ret_type)
+    }
+
+    fn analyze_builtin_unreachable(&mut self, builtin_func: &mut TypedBuiltinFunc) -> Option<SemaType> {
         let param_types = [
             SemaType::Pointer(Box::new(SemaType::Plain(PlainType::Char))), // msg? (char*)
         ];

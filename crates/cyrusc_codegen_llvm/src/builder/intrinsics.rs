@@ -47,6 +47,9 @@ impl<'ll> CodeGenIRBuilder<'ll> {
 
             TypedBuiltinKind::Assert => self.emit_intrinsic_assert(&call.args, call.loc),
             TypedBuiltinKind::Panic => self.emit_intrinsic_panic(&call.args, call.loc),
+            TypedBuiltinKind::Todo => self.emit_intrinsic_todo(&call.args, call.loc),
+            TypedBuiltinKind::Unimplemented => self.emit_intrinsic_unimplemented(&call.args, call.loc),
+            TypedBuiltinKind::Unreachable => self.emit_intrinsic_unreachable(&call.args, call.loc),
 
             _ => unreachable!("unknown builtin called"),
         }
@@ -220,6 +223,250 @@ impl<'ll> CodeGenIRBuilder<'ll> {
 
         self.llvmbuilder.build_call(trap, &[], "").unwrap();
 
+        self.llvmbuilder.build_unreachable().unwrap();
+
+        self.emit_null(cir_void_ptr)
+    }
+
+    fn emit_intrinsic_todo(&mut self, args: &[CIRExpr], loc: Loc) -> InternalValue<'ll> {
+        let cir_void_ptr = CIRType::Pointer(Box::new(CIRType::Plain(PlainType::Void)));
+
+        let ptr_type = self.llvmctx.ptr_type(inkwell::AddressSpace::default());
+
+        let msg = if let Some(expr) = args.get(0) {
+            let lvalue = self.emit_expr(expr, &None);
+            self.load_rvalue(lvalue).as_basic_value()
+        } else {
+            self.intrinsic_get_or_insert_global_cstr("__const.todo.default", "not yet implemented")
+                .into()
+        };
+
+        let format_ptr =
+            self.intrinsic_get_or_insert_global_cstr("__const.todo.format", "thread '%s' hit TODO at %s:%d:%d\n%s\n");
+
+        let fprintf = {
+            let module = self.llvmmodule.borrow();
+
+            if let Some(func) = module.get_function("fprintf") {
+                func
+            } else {
+                let fn_type = self
+                    .llvmctx
+                    .i32_type()
+                    .fn_type(&[ptr_type.into(), ptr_type.into()], true);
+
+                module.add_function("fprintf", fn_type, None)
+            }
+        };
+
+        let stderr_global = {
+            let module = self.llvmmodule.borrow();
+
+            if let Some(global_value) = module.get_global("stderr") {
+                global_value
+            } else {
+                module.add_global(ptr_type, None, "stderr")
+            }
+        };
+
+        let stderr = self
+            .llvmbuilder
+            .build_load(ptr_type, stderr_global.as_pointer_value(), "stderr")
+            .unwrap();
+
+        let source_file = self.source_map.get_file(loc.file_id).unwrap();
+        let file_path = source_file.file_path.to_str().unwrap();
+        let file = self.intrinsic_get_or_insert_global_cstr("__const.todo.file", file_path);
+        let line = self.llvmctx.i32_type().const_int(loc.line as u64, false);
+        let column = self.llvmctx.i32_type().const_int(loc.column as u64, false);
+
+        let thread_name = self.intrinsic_emit_current_thread_name();
+
+        self.llvmbuilder
+            .build_call(
+                fprintf,
+                &[
+                    stderr.into(),
+                    format_ptr.into(),
+                    thread_name.into(),
+                    file.into(),
+                    line.into(),
+                    column.into(),
+                    msg.into(),
+                ],
+                "todo",
+            )
+            .unwrap();
+
+        let trap = self.intrinsic_get_or_insert_trap();
+
+        self.llvmbuilder.build_call(trap, &[], "").unwrap();
+
+        self.llvmbuilder.build_unreachable().unwrap();
+
+        self.emit_null(cir_void_ptr)
+    }
+
+    fn emit_intrinsic_unimplemented(&mut self, args: &[CIRExpr], loc: Loc) -> InternalValue<'ll> {
+        let cir_void_ptr = CIRType::Pointer(Box::new(CIRType::Plain(PlainType::Void)));
+
+        let ptr_type = self.llvmctx.ptr_type(inkwell::AddressSpace::default());
+
+        let msg = if let Some(expr) = args.get(0) {
+            let lvalue = self.emit_expr(expr, &None);
+            self.load_rvalue(lvalue).as_basic_value()
+        } else {
+            self.intrinsic_get_or_insert_global_cstr("__const.unimplemented.default", "feature is not implemented")
+                .into()
+        };
+
+        // REVIEW: Refactor with making a helper method for this.
+        let format_ptr = self.intrinsic_get_or_insert_global_cstr(
+            "__const.unimplemented.format",
+            "thread '%s' hit UNIMPLEMENTED code at %s:%d:%d\n%s\n",
+        );
+
+        let fprintf = {
+            let module = self.llvmmodule.borrow();
+
+            if let Some(func) = module.get_function("fprintf") {
+                func
+            } else {
+                let fn_type = self
+                    .llvmctx
+                    .i32_type()
+                    .fn_type(&[ptr_type.into(), ptr_type.into()], true);
+
+                module.add_function("fprintf", fn_type, None)
+            }
+        };
+
+        let stderr_global = {
+            let module = self.llvmmodule.borrow();
+
+            if let Some(global_value) = module.get_global("stderr") {
+                global_value
+            } else {
+                module.add_global(ptr_type, None, "stderr")
+            }
+        };
+
+        let stderr = self
+            .llvmbuilder
+            .build_load(ptr_type, stderr_global.as_pointer_value(), "stderr")
+            .unwrap();
+
+        let source_file = self.source_map.get_file(loc.file_id).unwrap();
+        let file_path = source_file.file_path.to_str().unwrap();
+        let file = self.intrinsic_get_or_insert_global_cstr("__const.unimplemented.file", file_path);
+        let line = self.llvmctx.i32_type().const_int(loc.line as u64, false);
+        let column = self.llvmctx.i32_type().const_int(loc.column as u64, false);
+
+        let thread_name = self.intrinsic_emit_current_thread_name();
+
+        self.llvmbuilder
+            .build_call(
+                fprintf,
+                &[
+                    stderr.into(),
+                    format_ptr.into(),
+                    thread_name.into(),
+                    file.into(),
+                    line.into(),
+                    column.into(),
+                    msg.into(),
+                ],
+                "unimplemented",
+            )
+            .unwrap();
+
+        let trap = self.intrinsic_get_or_insert_trap();
+
+        self.llvmbuilder.build_call(trap, &[], "").unwrap();
+
+        self.llvmbuilder.build_unreachable().unwrap();
+
+        self.emit_null(cir_void_ptr)
+    }
+
+    fn emit_intrinsic_unreachable(&mut self, args: &[CIRExpr], loc: Loc) -> InternalValue<'ll> {
+        let cir_void_ptr = CIRType::Pointer(Box::new(CIRType::Plain(PlainType::Void)));
+
+        let ptr_type = self.llvmctx.ptr_type(inkwell::AddressSpace::default());
+
+        let msg = if let Some(expr) = args.get(0) {
+            let lvalue = self.emit_expr(expr, &None);
+            self.load_rvalue(lvalue).as_basic_value()
+        } else {
+            self.intrinsic_get_or_insert_global_cstr("__const.unreachable.default", "entered unreachable code")
+                .into()
+        };
+
+        // REVIEW: Refactor with making a helper method for this.
+        let format_ptr = self.intrinsic_get_or_insert_global_cstr(
+            "__const.unreachable.format",
+            "thread '%s' entered unreachable code at %s:%d:%d\n%s\n",
+        );
+
+        let fprintf = {
+            let module = self.llvmmodule.borrow();
+
+            if let Some(func) = module.get_function("fprintf") {
+                func
+            } else {
+                let fn_type = self
+                    .llvmctx
+                    .i32_type()
+                    .fn_type(&[ptr_type.into(), ptr_type.into()], true);
+
+                module.add_function("fprintf", fn_type, None)
+            }
+        };
+
+        let stderr_global = {
+            let module = self.llvmmodule.borrow();
+
+            if let Some(g) = module.get_global("stderr") {
+                g
+            } else {
+                module.add_global(ptr_type, None, "stderr")
+            }
+        };
+
+        let stderr = self
+            .llvmbuilder
+            .build_load(ptr_type, stderr_global.as_pointer_value(), "stderr")
+            .unwrap();
+
+        let source_file = self.source_map.get_file(loc.file_id).unwrap();
+        let file_path = source_file.file_path.to_str().unwrap();
+        let file = self.intrinsic_get_or_insert_global_cstr("__const.unreachable.file", file_path);
+        let line = self.llvmctx.i32_type().const_int(loc.line as u64, false);
+        let column = self.llvmctx.i32_type().const_int(loc.column as u64, false);
+
+        let thread_name = self.intrinsic_emit_current_thread_name();
+
+        self.llvmbuilder
+            .build_call(
+                fprintf,
+                &[
+                    stderr.into(),
+                    format_ptr.into(),
+                    thread_name.into(),
+                    file.into(),
+                    line.into(),
+                    column.into(),
+                    msg.into(),
+                ],
+                "unreachable",
+            )
+            .unwrap();
+
+        let trap = self.intrinsic_get_or_insert_trap();
+
+        self.llvmbuilder.build_call(trap, &[], "").unwrap();
+
+        // llvm unreachable
         self.llvmbuilder.build_unreachable().unwrap();
 
         self.emit_null(cir_void_ptr)
