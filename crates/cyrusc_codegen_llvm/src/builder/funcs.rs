@@ -65,6 +65,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         let llvm_func_type = self.emit_func_ty(cir_fn_type);
 
         let func_name = &func_decl.name;
+
         let llvmmodule = self.llvmmodule.borrow();
 
         let llvm_func_value = llvmmodule

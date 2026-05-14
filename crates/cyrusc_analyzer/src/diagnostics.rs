@@ -481,6 +481,9 @@ pub enum AnalyzerDiagKind {
         expected_type: String,
     },
 
+    #[error("Array capacity must be a compile-time constant expression.")]
+    ArrayCapacityNotConst,
+
     #[error("Variable has a const-qualified type but is not declared const.")]
     ConstQualifiedTypeAssignedToNonConstVariable,
 
