@@ -1,0 +1,9 @@
+// @stderr: thread 'main' hit TODO at ./tmp/main.cyrus:6:6\nmeow
+
+import std::libc{printf};
+
+pub fn main() {
+    @todo("meow");
+
+    printf("nothing\n");
+}

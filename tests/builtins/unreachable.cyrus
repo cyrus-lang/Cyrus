@@ -1,0 +1,9 @@
+// @stderr: thread 'main' entered unreachable code at ./tmp/main.cyrus:8:6\nmeow
+
+import std::libc{printf};
+
+pub fn main() {
+    @unreachable("meow");
+
+    printf("nothing\n");
+}

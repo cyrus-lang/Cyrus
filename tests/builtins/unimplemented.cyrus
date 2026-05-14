@@ -1,0 +1,9 @@
+// @stderr: thread 'main' hit UNIMPLEMENTED code at ./tmp/main.cyrus:4:6\nmeow
+
+import std::libc{printf};
+
+pub fn main() {
+    @unimplemented("meow");
+
+    printf("nothing\n");
+}
