@@ -102,9 +102,9 @@ impl<'a> AnalysisContext<'a> {
     }
 
     pub(crate) fn analyze_func_body(&mut self, body: &mut TypedBlockStmt, ret_type: &SemaType) {
-        let state = self.analyze_block_stmt(body);
+        let flow_state = self.analyze_block_stmt(body);
 
-        if !ret_type.is_void() && state != FlowState::Returns {
+        if (!ret_type.is_void() && flow_state != FlowState::Returns) && flow_state != FlowState::Unreachable {
             self.reporter.report(Diag {
                 level: DiagLevel::Error,
                 kind: Box::new(AnalyzerDiagKind::MissingReturn),

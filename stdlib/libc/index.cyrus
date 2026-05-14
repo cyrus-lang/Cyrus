@@ -28,12 +28,12 @@ pub extern "C" {
     fn getline(lineptr: abi::c_char**, n: abi::c_size*, stream: abi::c_file*) abi::c_size;
     fn fread(src: abi::c_void*, size: abi::c_size, n: abi::c_size, stream: abi::c_file*) abi::c_size;
     fn fopen(file_name: abi::c_char*, modes: abi::c_char*) abi::c_file*;
-    fn fclose(src: abi::c_void*) abi::c_int;
-    fn ferror(stream: abi::c_file*) abi::c_int;
-    fn abort();
-    fn pthread_self() abi::pthread;
-    fn pthread_getname_np(thread: abi::pthread, name: abi::c_char*, len: abi::c_size) abi::c_int;
     fn fseek(stream: abi::c_file*, offset: abi::c_long, origin: abi::c_int) abi::c_int;
     fn ftell(stream: abi::c_file*) abi::c_long;
     fn rewind(stream: abi::c_file*) abi::c_void;
+    fn fclose(src: abi::c_void*) abi::c_int;
+    fn ferror(stream: abi::c_file*) abi::c_int;
+    fn pthread_self() abi::pthread;
+    fn pthread_getname_np(thread: abi::pthread, name: abi::c_char*, len: abi::c_size) abi::c_int;
+    fn abort();
 }
