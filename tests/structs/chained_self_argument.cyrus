@@ -1,0 +1,33 @@
+// @stdout: 1
+
+import std::libc { printf };
+
+struct Object {
+    pub ptr: usize*;
+    pub counter: usize;
+
+    pub fn new(ptr: usize*) Self {
+        return Self {
+            ptr,
+            counter: 0
+        };
+    }
+
+    pub fn inc(&self) {
+        self->counter += 1;
+    }
+
+    pub fn call(&self) {
+        self->inc();
+    }
+}
+
+pub fn main() {
+    var x: usize = 123;
+
+    const obj = Object.new(&x);
+
+    obj.call();
+
+    printf("%d\n", obj.counter);
+}
