@@ -2011,11 +2011,19 @@ impl<'ll> CodeGenIRBuilder<'ll> {
             (data_value.clone(), data_value)
         } else {
             if self_meta.is_referenced {
-                // always pass a pointer, regardless of ABI decision
-                let lvalue = self.emit_lvalue_address(&self_meta.operand);
-                let rvalue = lvalue.clone();
+                let value = self.emit_expr(&self_meta.operand, &None);
 
-                (lvalue, rvalue)
+                if value.ty.is_pointer() {
+                    // already a pointer-to-object
+                    let rvalue = self.load_rvalue(value);
+
+                    (rvalue.clone(), rvalue)
+                } else {
+                    // value type, need address
+                    let lvalue = self.emit_lvalue_address(&self_meta.operand);
+
+                    (lvalue.clone(), lvalue)
+                }
             } else {
                 let lvalue = self.emit_expr(&self_meta.operand, &None);
                 let rvalue = self.load_rvalue(lvalue.clone());
