@@ -44,6 +44,7 @@ pub fn lower_sema_type(decl_tables: &DeclTablesRegistry, target: &ABITarget, ty:
         SemaType::InterfaceObject(interface_object) => cir_fat_ptr_type(interface_object.loc),
         SemaType::Array(array_type) => {
             let element_type = lower_sema_type(decl_tables, target, &array_type.element_type);
+            
             let len = match &array_type.capacity {
                 TypedArrayCapacity::Fixed(expr) => expr.literal_const_int_value().unwrap(),
                 TypedArrayCapacity::Dynamic => todo!(),

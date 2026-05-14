@@ -82,6 +82,9 @@ impl<'a> AnalysisContext<'a> {
                 return true;
             }
 
+            (SemaType::Plain(plain_type1), SemaType::Plain(plain_type2)) => {
+                self.is_plain_type_assignable_to(plain_type1, plain_type2)
+            }
             (SemaType::InterfaceObject(interface_object1), SemaType::InterfaceObject(interface_object2)) => self
                 .is_named_type_assignable_to(interface_object1.interface_type, interface_object2.interface_type, loc),
             (SemaType::InterfaceObject(interface_object), SemaType::Named(named_type2)) => {
@@ -90,9 +93,7 @@ impl<'a> AnalysisContext<'a> {
             (SemaType::Named(named_type1), SemaType::Named(named_type2)) => {
                 self.is_named_type_assignable_to(named_type1, named_type2, loc)
             }
-            (SemaType::Plain(plain_type1), SemaType::Plain(plain_type2)) => {
-                self.is_plain_type_assignable_to(plain_type1, plain_type2)
-            }
+
             (SemaType::Array(array_type1), SemaType::Array(array_type2)) => {
                 let valid_capacity = self.is_const_str_assignable_to_array(array_type1.clone(), array_type2.clone());
 
