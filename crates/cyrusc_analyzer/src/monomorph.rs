@@ -378,8 +378,20 @@ impl<'a> AnalysisContext<'a> {
 
             TypedStmt::Continue(_) | TypedStmt::Break(_) => {}
 
-            // TODO: Recursively remap if it defines a compound block..
-            TypedStmt::Builtin(_) => todo!(),
+            TypedStmt::Builtin(builtin) => match builtin {
+                TypedBuiltin::BuiltinFunc(builtin_func) => {
+                    for arg in &mut builtin_func.args {
+                        self.specialize_expr(arg, decl_map);
+                    }
+                }
+                TypedBuiltin::BuiltinBlock(builtin_block) => {
+                    for arg in &mut builtin_block.args {
+                        self.specialize_expr(arg, decl_map);
+                    }
+
+                    self.specialize_block_stmt(&mut builtin_block.block, decl_map);
+                }
+            },
 
             TypedStmt::FuncDef(_)
             | TypedStmt::FuncDecl(_)
@@ -706,8 +718,20 @@ impl<'a> AnalysisContext<'a> {
                 _ => {}
             },
 
-            // TODO: Collect recursively if it defines a compound block..
-            TypedStmt::Builtin(_builtin) => todo!(),
+            TypedStmt::Builtin(builtin) => {
+                match builtin {
+                    TypedBuiltin::BuiltinFunc(_) => { /* no binding: skip */ }
+                    TypedBuiltin::BuiltinBlock(builtin_block) => {
+                        for stmt in &builtin_block.block.stmts {
+                            self.collect_and_instantiate_fresh_var_decls(stmt, decl_map);
+                        }
+
+                        for defer in &builtin_block.block.defers {
+                            self.collect_and_instantiate_fresh_var_decls(&defer.operand, decl_map);
+                        }
+                    }
+                }
+            }
 
             _ => {}
         }

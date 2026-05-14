@@ -1,7 +1,6 @@
 // @stdout: (13) (Hello, Cyrus!)
 
 import std::libc::abi;
-import std::core{panic};
 import std::libc{printf, fopen, fread, fclose, ferror};
 
 pub fn main() {
@@ -14,14 +13,14 @@ pub fn main() {
 
     file = fopen(file_name, "r");
     if (file == null) {
-        panic("error opening file");
+        @panic("error opening file");
     }
 
      while ((bytes_read = fread(&buffer, 1, 1024, file)) != 0) {
         total_bytes += bytes_read;
 
         if (ferror(file)) {
-            panic("error reading file");
+            @panic("error reading file");
         }
     }
 
