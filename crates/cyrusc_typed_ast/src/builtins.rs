@@ -102,6 +102,9 @@ pub enum TypedBuiltinKind {
     Memset,
     Assert,
     Panic,
+    Todo,
+    Unimplemented,
+    Unreachable,
 
     Debug,
     Release,
@@ -275,6 +278,36 @@ pub static BUILTIN_SPECS: &[TypedBuiltinSpec] = &[
         min_args: 0,
         max_args: Some(1),
     },
+    TypedBuiltinSpec {
+        kind: TypedBuiltinKind::Todo,
+        name: "todo",
+        family: TypedBuiltinFamily::Intrinsic,
+        phase: TypedBuiltinPhase::Codegen,
+        form: TypedBuiltinForm::Expr,
+        unreachable: true,
+        min_args: 0,
+        max_args: Some(1),
+    },
+    TypedBuiltinSpec {
+        kind: TypedBuiltinKind::Unimplemented,
+        name: "unimplemented",
+        family: TypedBuiltinFamily::Intrinsic,
+        phase: TypedBuiltinPhase::Codegen,
+        form: TypedBuiltinForm::Expr,
+        unreachable: true,
+        min_args: 0,
+        max_args: Some(1),
+    },
+    TypedBuiltinSpec {
+        kind: TypedBuiltinKind::Unreachable,
+        name: "unreachable",
+        family: TypedBuiltinFamily::Intrinsic,
+        phase: TypedBuiltinPhase::Codegen,
+        form: TypedBuiltinForm::Expr,
+        unreachable: true,
+        min_args: 0,
+        max_args: Some(1),
+    },
     // -- statements --
     TypedBuiltinSpec {
         kind: TypedBuiltinKind::Debug,
@@ -318,6 +351,9 @@ builtin_lookup! {
         "memset" => TypedBuiltinKind::Memset,
         "assert" => TypedBuiltinKind::Assert,
         "panic" => TypedBuiltinKind::Panic,
+        "todo" => TypedBuiltinKind::Todo,
+        "unimplemented" => TypedBuiltinKind::Unimplemented,
+        "unreachable" => TypedBuiltinKind::Unreachable,
 
         // statements
         "debug" => TypedBuiltinKind::Debug,
