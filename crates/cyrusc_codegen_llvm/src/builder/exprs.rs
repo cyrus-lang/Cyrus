@@ -846,6 +846,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         match (lhs_rvalue.as_basic_value(), rhs_rvalue.as_basic_value()) {
             (BasicValueEnum::IntValue(lhs), BasicValueEnum::IntValue(rhs)) => {
                 let and_value = self.llvmbuilder.build_xor(lhs, rhs, "xor").unwrap();
+                
                 InternalValue::new(
                     CIRType::Plain(PlainType::Bool),
                     InternalValueKind::RValue(and_value.into()),

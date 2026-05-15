@@ -159,7 +159,6 @@ pub enum TokenKind {
     NoUnwind,
     Section,
     Repr,
-    Align,
 }
 
 pub const PRIMITIVE_TYPES: &[TokenKind] = &[
@@ -192,6 +191,15 @@ pub const PRIMITIVE_TYPES: &[TokenKind] = &[
 ];
 
 impl TokenKind {
+    #[inline]
+    pub fn is_ident_str(&self, value: &str) -> bool {
+        match self {
+            TokenKind::Ident(_value) => _value == value,
+            _ => false,
+        }
+    }
+
+    #[inline]
     pub fn is_unsigned(&self) -> bool {
         match self {
             TokenKind::UInt
@@ -206,6 +214,7 @@ impl TokenKind {
         }
     }
 
+    #[inline]
     pub fn is_eof(&self) -> bool {
         match self {
             TokenKind::EOF => true,
@@ -335,7 +344,6 @@ impl fmt::Display for TokenKind {
             TokenKind::While => write!(f, "while"),
             TokenKind::NoInline => write!(f, "noinline"),
             TokenKind::AlwaysInline => write!(f, "alwaysinline"),
-            TokenKind::Align => write!(f, "align"),
             TokenKind::Literal(literal) => write!(f, "{}", literal),
         }
     }

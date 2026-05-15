@@ -35,5 +35,6 @@ pub extern "C" {
     fn ferror(stream: abi::c_file*) abi::c_int;
     fn pthread_self() abi::pthread;
     fn pthread_getname_np(thread: abi::pthread, name: abi::c_char*, len: abi::c_size) abi::c_int;
+    fn posix_memalign(memptr: abi::c_void**, alignment: abi::c_size, size: abi::c_size) abi::c_int;
     fn abort();
 }
