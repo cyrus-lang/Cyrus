@@ -60,9 +60,9 @@ pub(crate) enum FuncCallKind<'ll> {
 // Declaration.
 impl<'ll> CodeGenIRBuilder<'ll> {
     pub(crate) fn emit_func_decl(&mut self, func_decl: &CIRFuncDeclStmt) -> FunctionValue<'ll> {
-        let cir_fn_type = cir_func_decl_as_func_type(func_decl);
+        let cir_func_type = cir_func_decl_as_func_type(func_decl);
 
-        let llvm_func_type = self.emit_func_ty(cir_fn_type);
+        let llvm_func_type = self.emit_func_type(cir_func_type.clone());
 
         let func_name = &func_decl.name;
 
@@ -74,11 +74,9 @@ impl<'ll> CodeGenIRBuilder<'ll> {
 
         apply_func_modifiers(self.llvmctx, &llvm_func_value, &func_decl.modifiers);
 
-        let cir_func_ty = cir_func_decl_as_func_type(func_decl);
-
         self.insert_local_ir_value(
             func_decl.irv_id,
-            LocalIRValue::Func(llvm_func_value, CIRType::FuncType(cir_func_ty)),
+            LocalIRValue::Func(llvm_func_value, CIRType::FuncType(cir_func_type)),
         );
 
         llvm_func_value

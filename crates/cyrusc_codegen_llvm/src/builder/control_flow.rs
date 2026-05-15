@@ -296,7 +296,8 @@ impl<'ll> CodeGenIRBuilder<'ll> {
 
                         let enum_payload = self.extract_enum_payload(enum_struct_value);
 
-                        let payload_struct_type = self.emit_enum_fielded_variant_payload_type(*tag, &enum_type).unwrap();
+                        let payload_struct_type =
+                            self.emit_enum_fielded_variant_payload_type(*tag, &enum_type).unwrap();
                         let payload_struct_value =
                             self.intrinsic_copy_buffer_to_struct(enum_payload, payload_struct_type);
 
@@ -742,6 +743,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
             (Some(expr), ABIRetInfoKind::Ignore) => {
                 self.emit_expr(expr, &Some(*ret_info.cir_ret_type.clone()));
                 self.emit_all_defers();
+
                 self.llvmbuilder.build_return(None).unwrap();
             }
             (Some(expr), ABIRetInfoKind::Indirect { sret }) => {
