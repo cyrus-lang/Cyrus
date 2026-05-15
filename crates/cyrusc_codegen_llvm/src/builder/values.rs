@@ -18,6 +18,7 @@
 use crate::builder::builder::CodeGenIRBuilder;
 use cyrusc_internal::cir::{cir::CIRExpr, types::CIRType};
 use inkwell::{
+    IntPredicate,
     types::BasicTypeEnum,
     values::{BasicValue, BasicValueEnum, FunctionValue, IntValue, PointerValue},
 };
@@ -150,13 +151,13 @@ impl<'ll> CodeGenIRBuilder<'ll> {
     }
 
     pub(crate) fn int_value_as_bool_i1(&self, int_value: IntValue<'ll>) -> IntValue<'ll> {
-        let bit_width = int_value.get_type().get_bit_width();
-
-        if bit_width == 1 {
+        if int_value.get_type().get_bit_width() == 1 {
             int_value
         } else {
+            let zero = int_value.get_type().const_zero();
+
             self.llvmbuilder
-                .build_int_truncate(int_value, self.llvmctx.bool_type(), "bool_trunc")
+                .build_int_compare(IntPredicate::NE, int_value, zero, "bool_cast")
                 .unwrap()
         }
     }

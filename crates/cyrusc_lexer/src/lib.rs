@@ -804,7 +804,6 @@ fn lookup_identifier(ident: String) -> TokenKind {
         "nounwind" => TokenKind::NoUnwind,
         "section" => TokenKind::Section,
         "repr" => TokenKind::Repr,
-        "align" => TokenKind::Align,
         "uintptr" => TokenKind::UIntPtr,
         "intptr" => TokenKind::IntPtr,
         "isize" => TokenKind::ISize,

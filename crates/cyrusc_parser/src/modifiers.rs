@@ -161,11 +161,11 @@ impl<'source_file> Parser<'source_file> {
     }
 
     pub(crate) fn parse_align_specifier(&mut self) -> Result<Option<usize>, Diag> {
-        if !self.current_token_is(TokenKind::Align) {
+        if !self.current_token().kind.is_ident_str("align") {
             return Ok(None);
         }
 
-        self.next_token(); // consume align
+        self.next_token(); // consume ident align
         self.expect_current(TokenKind::LeftParen)?;
         let align = self.parse_integer_without_suffix()?;
         self.next_token();
