@@ -15,6 +15,7 @@
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
 
+use cyrusc_ast::Mutability;
 use cyrusc_ast::abi::CallConv;
 use cyrusc_ast::modifiers::GlobalVarModifiers;
 use cyrusc_ast::operators::InfixOperator;
@@ -1539,7 +1540,7 @@ impl<'a> CIRLower<'a> {
             TypedExprKind::Array(array) => self.lower_array(array),
             TypedExprKind::ArrayIndex(array_index) => self.lower_array_index(array_index),
             TypedExprKind::FuncCall(func_call) => self.lower_func_call(func_call),
-            TypedExprKind::MethodCall(method_call) => self.lower_method_call(method_call),
+            TypedExprKind::MethodCall(method_call) => self.lower_method_call(method_call.clone()),
             TypedExprKind::FieldAccess(field_access) => self.lower_field_access(field_access.clone()),
             TypedExprKind::Lambda(lambda) => self.lower_lambda(lambda),
             TypedExprKind::Tuple(expr) => self.lower_tuple(expr),
@@ -1570,7 +1571,19 @@ impl<'a> CIRLower<'a> {
         }
     }
 
-    fn lower_method_call(&mut self, method_call: &TypedMethodCall) -> CIRExprKind {
+    fn lower_method_call(&mut self, mut method_call: TypedMethodCall) -> CIRExprKind {
+        if method_call.is_thin_arrow {
+            method_call.operand = Box::new(TypedExpr {
+                kind: TypedExprKind::Deref(TypedDerefExpr {
+                    operand: method_call.operand.clone(),
+                    loc: method_call.loc,
+                }),
+                ty: Some(method_call.operand.ty.clone().unwrap().pointer_inner().clone()),
+                val_cat: ValueCategory::LValue(Mutability::Var),
+                loc: method_call.loc,
+            })
+        }
+
         let args: Vec<CIRExpr> = method_call.args.iter().map(|arg| self.lower_expr(arg)).collect();
 
         match &method_call.dispatch {
@@ -1789,7 +1802,7 @@ impl<'a> CIRLower<'a> {
                     loc: field_access.loc,
                 }),
                 ty: Some(field_access.operand.ty.clone().unwrap().pointer_inner().clone()),
-                val_cat: ValueCategory::Unknown,
+                val_cat: ValueCategory::LValue(Mutability::Var),
                 loc: field_access.loc,
             })
         }
