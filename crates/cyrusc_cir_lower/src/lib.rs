@@ -1167,6 +1167,7 @@ impl<'a> CIRLower<'a> {
 
         let func_name = if mangle_name {
             let module_name = self.query.lookup_module_name(func_decl.file_id).unwrap();
+
             mangle_func(&func_decl.modifiers, &module_name, &func_decl.name)
         } else {
             func_decl.name.clone()
@@ -2144,7 +2145,8 @@ impl<'a> CIRLower<'a> {
 
         let func_decl = self.decl_tables.func_decl(func_decl_id);
 
-        let cir_func_decl_stmt = self.lower_func_decl(Some(func_decl_id), &func_decl, !func_decl.is_func_decl);
+        let mangle_name = !func_decl.is_func_decl;
+        let cir_func_decl_stmt = self.lower_func_decl(Some(func_decl_id), &func_decl, mangle_name);
 
         let irv_id = cir_func_decl_stmt.irv_id;
 
@@ -2170,9 +2172,10 @@ impl<'a> CIRLower<'a> {
         let func_decl_id = monomorph_instance.template_id.as_func().unwrap();
         let func_decl = self.decl_tables.func_decl(func_decl_id);
 
+        let module_name = self.query.lookup_module_name(func_decl.file_id).unwrap();
         let mangled_name = mangle_monomorphized_func(
             &func_decl.modifiers,
-            &self.module_name,
+            &module_name,
             &func_decl.name,
             &monomorph_instance.type_args,
         );
