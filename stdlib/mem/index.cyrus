@@ -8,6 +8,10 @@ pub interface Allocator {
 	fn free(&self, ptr: void*) void;
 }
 
+pub inline fn is_power_of_two<T>(v: T) bool {
+	return v != 0 && (v & (v - 1)) == 0;
+}
+
 pub struct LibcAllocator : Allocator {
 	pub fn new() Self {
 		return Self{};
@@ -15,6 +19,27 @@ pub struct LibcAllocator : Allocator {
 
 	pub inline fn alloc(&self, size: usize) void* {
 		return libc::malloc(size);
+	}
+
+	pub inline fn alloc_aligned(&self, size: usize, align: usize) void* {
+		// FIXME
+		// if (!is_power_of_two(align)) {
+		// 	@panic("alignment must be power of two");
+		// }
+
+		if (align < @sizeof(void*)) {
+			@panic("alignment must be >= sizeof(void*)");
+		}
+
+		var ptr: void* = null;
+
+		const result = libc::posix_memalign(&ptr, align, size);
+
+		if (result != 0) {
+			return null;
+		}
+
+		return ptr;
 	}
 
 	pub inline fn alloc_zeroed(&self, size: usize) void* {
@@ -28,8 +53,4 @@ pub struct LibcAllocator : Allocator {
 	pub inline fn free(&self, ptr: void*) {
 		libc::free(ptr);
 	}
-}
-
-inline fn is_power_of_two<T>(v: T) bool {
-	return (v & (v - 1)) == 0;
 }
