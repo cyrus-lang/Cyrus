@@ -31,7 +31,7 @@ mod modifiers;
 mod prec;
 mod stmts;
 
-const DISPLAY_DIAG_KIND: usize = 1;
+const DISPLAY_DIAG_KIND_COUNT: usize = 1;
 
 pub struct Parser<'source_file> {
     source_file: &'source_file SourceFile,
@@ -55,6 +55,7 @@ impl SourceParser {
 
         let Ok(program_tree) = parser.parse() else {
             self.display_errors();
+            
             return Err(());
         };
 
@@ -63,7 +64,7 @@ impl SourceParser {
 
     #[inline]
     pub fn display_errors(&self) {
-        self.reporter.display_first(DISPLAY_DIAG_KIND);
+        self.reporter.display_first(DISPLAY_DIAG_KIND_COUNT);
     }
 }
 

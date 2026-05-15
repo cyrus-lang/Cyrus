@@ -561,6 +561,18 @@ impl<'a> AnalysisContext<'a> {
                 return None;
             }
 
+            let object_name = &interface_decl.name;
+
+            this.validate_method_call(
+                method_call.operand.ty.as_ref()?,
+                &interface_method_decl,
+                &interface_decl.methods,
+                &object_name,
+                method_call.is_thin_arrow,
+                true,
+                method_call.loc,
+            );
+
             debug_assert!(
                 interface_method_decl
                     .func_decl
@@ -697,11 +709,7 @@ impl<'a> AnalysisContext<'a> {
         }
 
         let base_type = operand_type.const_inner();
-
         let is_pointer = base_type.is_pointer();
-
-        let is_object =
-            base_type.is_struct() || base_type.is_union() || base_type.is_enum() || is_interface_method_call;
 
         if is_thin_arrow {
             if !is_pointer {
@@ -713,12 +721,12 @@ impl<'a> AnalysisContext<'a> {
                 });
             }
         } else {
-            if !is_object {
+            if is_thin_arrow {
                 self.reporter.report(Diag {
                     level: DiagLevel::Error,
-                    kind: Box::new(AnalyzerDiagKind::UseThinArrow),
+                    kind: Box::new(AnalyzerDiagKind::InvalidThinArrow),
                     loc: Some(loc),
-                    hint: Some("Use '->' when accessing through a pointer.".to_string()),
+                    hint: Some("Use '.' when accessing through a value.".to_string()),
                 });
             }
         }

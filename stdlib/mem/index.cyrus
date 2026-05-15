@@ -1,3 +1,20 @@
+/*
+ * Copyright (c) 2026 The Cyrus Language
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+ * See the GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program. If not, see <https://www.gnu.org/licenses/>.
+ */
+
 import std::libc;
 
 pub interface Allocator {
@@ -8,12 +25,8 @@ pub interface Allocator {
 	fn free(&self, ptr: void*) void;
 }
 
-pub inline fn is_power_of_two<T>(v: T) bool {
-	return v != 0 && (v & (v - 1)) == 0;
-}
-
 pub struct LibcAllocator : Allocator {
-	pub fn new() Self {
+	pub inline fn new() Self {
 		return Self{};
 	}
 
@@ -22,14 +35,8 @@ pub struct LibcAllocator : Allocator {
 	}
 
 	pub inline fn alloc_aligned(&self, size: usize, align: usize) void* {
-		// FIXME
-		// if (!is_power_of_two(align)) {
-		// 	@panic("alignment must be power of two");
-		// }
-
-		if (align < @sizeof(void*)) {
-			@panic("alignment must be >= sizeof(void*)");
-		}
+		@assert(is_power_of_two(align), "alignment must be power of two");
+		@assert(align >= @sizeof(void*), "alignment must be >= sizeof(void*)");
 
 		var ptr: void* = null;
 
@@ -53,4 +60,80 @@ pub struct LibcAllocator : Allocator {
 	pub inline fn free(&self, ptr: void*) {
 		libc::free(ptr);
 	}
+}
+
+pub struct StackAllocator : Allocator {
+	ptr: void*;
+	cap: usize;
+	offset: usize;
+
+	pub inline fn new(ptr: void*, size: usize) Self {
+		return Self{
+			ptr: ptr,
+			cap: size,
+			offset: 0
+		};
+	}
+
+	pub inline fn alloc(&self, size: usize) void* {
+		const current = self->offset;
+		const next = current + size;
+
+		if (next > self->cap) {
+			return null;
+		}
+
+		const ptr = @cast(uintptr, self->ptr) + current;
+		self->offset = next;
+
+		return @cast(void*, ptr);
+	}
+
+	pub inline fn alloc_aligned(&self, size: usize, align: usize) void* {
+		@assert(is_power_of_two(align));
+
+		const current = @cast(uintptr, self->ptr) + self->offset;
+		
+		const aligned = align_up(current, align);
+
+		const new_offset = (aligned - @cast(uintptr, self->ptr)) + size;
+
+		if (new_offset > self->cap) {
+			return null;
+		}
+
+		self->offset = new_offset;
+
+		return @cast(void*, aligned);
+	}
+
+	pub inline fn alloc_zeroed(&self, size: usize) void* {
+		const ptr = self->alloc(size);
+
+		if (ptr != null) {
+			@memset(ptr, 0, size);
+		}
+
+		return ptr;
+	}
+
+	pub inline fn realloc(&self, ptr: void*, size: usize) void* {
+		return null;
+	}
+
+	pub inline fn reset(&self) {
+		self->offset = 0;
+	}
+
+	pub inline fn free(&self, ptr: void*) void {
+		// no-operation
+	}
+}
+
+pub inline fn align_up(ptr: uintptr, align: usize) uintptr {
+	return (ptr + (align - 1)) & ~(align - 1);
+}
+
+pub inline fn is_power_of_two<T>(v: T) bool {
+	return v != 0 && (v & (v - 1)) == 0;
 }
