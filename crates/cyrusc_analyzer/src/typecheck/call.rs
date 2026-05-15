@@ -711,13 +711,13 @@ impl<'a> AnalysisContext<'a> {
         let base_type = operand_type.const_inner();
         let is_pointer = base_type.is_pointer();
 
-        if is_thin_arrow {
-            if !is_pointer {
+        if is_pointer {
+            if !is_thin_arrow {
                 self.reporter.report(Diag {
                     level: DiagLevel::Error,
-                    kind: Box::new(AnalyzerDiagKind::InvalidThinArrow),
+                    kind: Box::new(AnalyzerDiagKind::UseThinArrow),
                     loc: Some(loc),
-                    hint: Some("Use '.' instead of '->'.".to_string()),
+                    hint: Some("Use '->' when accessing through a pointer.".to_string()),
                 });
             }
         } else {
