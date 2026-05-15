@@ -644,10 +644,12 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         param_types
     }
 
-    pub(crate) fn emit_func_ty(&self, func_ty: CIRFuncType) -> FunctionType<'ll> {
+    pub(crate) fn emit_func_type(&self, func_ty: CIRFuncType) -> FunctionType<'ll> {
         let abi_func_info = func_ty.abi_func_info.as_ref().unwrap();
 
         let ret_type = if abi_func_info.ret_info.kind.is_indirect_sret() {
+            AnyTypeEnum::VoidType(self.llvmctx.void_type())
+        } else if abi_func_info.ret_info.kind.is_ignore() {
             AnyTypeEnum::VoidType(self.llvmctx.void_type())
         } else {
             abi_type_to_llvm_type(self.llvmctx, &self.target.info, &abi_func_info.ret_info.abi_type)

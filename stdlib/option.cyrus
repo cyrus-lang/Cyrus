@@ -43,7 +43,7 @@ pub enum Option<T> {
 
     pub inline fn unwrap(&self) T {
         if (self->is_none()) {
-            @panic("meow");
+            @panic("called `Option.unwrap()` on a `None` value");
         }
 
         switch (*self) {

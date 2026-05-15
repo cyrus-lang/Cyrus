@@ -1,3 +1,20 @@
+/*
+ * Copyright (c) 2026 The Cyrus Language
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+ * See the GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program. If not, see <https://www.gnu.org/licenses/>.
+ */
+
 import std::libc{strlen, malloc, realloc, memcpy, free};
 
 pub struct String {
@@ -19,13 +36,13 @@ pub struct String {
         return inst;
     }
 
-    pub fn set(&self, const_str: char*) char* {
-        self->length = strlen(const_str);
+    pub fn set(&self, str: char*) char* {
+        self->length = strlen(str);
         const new_capacity = self->length + 1;
 
-        self->realloc_if_required(new_capacity);
+        self->grow(new_capacity);
 
-        memcpy(self->data, const_str, self->capacity);
+        memcpy(self->data, str, self->capacity);
         return self->data;
     }
 
@@ -36,7 +53,7 @@ pub struct String {
         self->capacity = 0;
     }
 
-    pub fn const_str(&self) char* {
+    pub fn as_str(&self) char* {
         return self->data;
     }
 
@@ -48,7 +65,7 @@ pub struct String {
         return self->length;
     }
 
-    fn realloc_if_required(&self, new_capacity: usize) {
+    fn grow(&self, new_capacity: usize) {
         if (new_capacity > self->capacity) {
             const new_data = realloc(self->data, new_capacity);
             if (!new_data) {

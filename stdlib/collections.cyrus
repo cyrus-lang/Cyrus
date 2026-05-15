@@ -135,6 +135,10 @@ pub struct Array<T> {
         return false;
     }
 
+    // TODO: extend
+    // TODO: index
+    // TODO: iter
+
     pub fn clone(&self) Self {
         @todo();
     }

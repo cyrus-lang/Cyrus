@@ -113,6 +113,7 @@ pub enum ExpandKind {
 }
 
 impl ABIArgInfo {
+    #[inline]
     pub fn expand(kind: ExpandKind) -> Self {
         Self {
             param_index_start: 0,
@@ -122,6 +123,7 @@ impl ABIArgInfo {
         }
     }
 
+    #[inline]
     pub fn direct() -> Self {
         Self {
             param_index_start: 0,
@@ -131,6 +133,7 @@ impl ABIArgInfo {
         }
     }
 
+    #[inline]
     pub fn direct_coerce(ty: ABIType) -> Self {
         Self {
             param_index_start: 0,
@@ -140,6 +143,7 @@ impl ABIArgInfo {
         }
     }
 
+    #[inline]
     pub fn direct_pair(lo: ABIType, hi: ABIType) -> Self {
         Self {
             param_index_start: 0,
@@ -149,6 +153,7 @@ impl ABIArgInfo {
         }
     }
 
+    #[inline]
     pub fn indirect(ty: ABIType, alignment: u32) -> Self {
         Self {
             param_index_start: 0,
@@ -158,6 +163,7 @@ impl ABIArgInfo {
         }
     }
 
+    #[inline]
     pub fn extend(signed: bool) -> Self {
         Self {
             param_index_start: 0,
@@ -167,6 +173,7 @@ impl ABIArgInfo {
         }
     }
 
+    #[inline]
     pub fn ignore() -> Self {
         Self {
             param_index_start: 0,
@@ -176,17 +183,20 @@ impl ABIArgInfo {
         }
     }
 
+    #[inline]
     pub fn with_attrs(mut self, attrs: ABIArgAttrs) -> Self {
         self.attrs = attrs;
         self
     }
 
+    #[inline]
     pub fn with_indices(mut self, start: u16, end: u16) -> Self {
         self.param_index_start = start;
         self.param_index_end = end;
         self
     }
 
+    #[inline]
     pub fn is_direct(&self) -> bool {
         matches!(
             self.kind,
@@ -194,20 +204,32 @@ impl ABIArgInfo {
         )
     }
 
+    #[inline]
     pub fn is_indirect(&self) -> bool {
         matches!(self.kind, ABIArgKind::Indirect { .. })
     }
 
+    #[inline]
     pub fn is_indirect_by_val(&self) -> bool {
         self.is_indirect() && self.attrs.by_val
     }
 
+    #[inline]
     pub fn is_ignore(&self) -> bool {
         matches!(self.kind, ABIArgKind::Ignore)
     }
 }
 
 impl ABIRetInfoKind {
+    #[inline]
+    pub fn is_ignore(&self) -> bool {
+        match self {
+            ABIRetInfoKind::Ignore => true,
+            _ => false,
+        }
+    }
+
+    #[inline]
     pub fn is_indirect(&self) -> bool {
         match self {
             ABIRetInfoKind::Indirect { .. } => true,
@@ -215,6 +237,7 @@ impl ABIRetInfoKind {
         }
     }
 
+    #[inline]
     pub fn is_indirect_sret(&self) -> bool {
         match self {
             ABIRetInfoKind::Indirect { sret } => *sret,

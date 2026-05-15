@@ -1910,7 +1910,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
 
         llvm_args.append(&mut normal_args);
 
-        let llvm_fn_ty = self.emit_func_ty(func_type.clone());
+        let llvm_fn_ty = self.emit_func_type(func_type.clone());
 
         let call_site = self
             .llvmbuilder
@@ -2097,7 +2097,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
 
     fn emit_indirect_call(&mut self, func_call: &CIRCall, operand: InternalValue<'ll>) -> InternalValue<'ll> {
         let cir_func_type = operand.ty.as_func().unwrap();
-        let llvm_func_type = self.emit_func_ty(cir_func_type.clone());
+        let llvm_func_type = self.emit_func_type(cir_func_type.clone());
 
         let abi_func_info = self.target.target_abi.classify_func(&cir_func_type).unwrap();
 
