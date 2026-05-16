@@ -357,7 +357,7 @@ impl<'a> AnalysisContext<'a> {
                     Some(SemaType::Plain(PlainType::Bool))
                 } else if let (SemaType::Plain(PlainType::Bool), SemaType::Plain(PlainType::Bool)) = (&lhs, &rhs) {
                     Some(SemaType::Plain(PlainType::Bool))
-                } else if let (SemaType::Plain(plain_typ1), SemaType::Plain(plain_type2)) = (&lhs, &rhs) {
+                } else if let (SemaType::Plain(_), SemaType::Plain(_)) = (&lhs, &rhs) {
                     Some(SemaType::Plain(PlainType::Bool))
                 } else {
                     None
