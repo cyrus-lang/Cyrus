@@ -204,31 +204,25 @@ def main():
 
             for future in as_completed(futures):
                 status, name, reason = future.result()
+                
                 if status == "passed":
                     passed_tests.append(name)
+                    print(f"[ok] {name}")
                 else:
-                    failed_tests.append((name, reason))
+                    failed_tests.append((name, status))
+                    print(f"[error] {name}:\n")
+                    print("    " + reason.strip().replace('\n', '\n    '))
+                    print()
 
         passed_tests.sort()
         failed_tests.sort(key=lambda x: x[0])
 
-        print("\n=== Test Summary ===")
+        print("-------------------------------------------")
+        print("Test Summary: ")
         total = len(passed_tests) + len(failed_tests)
         print(f"Total: {total}")
         print(f"Passed: {len(passed_tests)}")
         print(f"Failed: {len(failed_tests)}")
-
-        if passed_tests:
-            print("\nPassed tests:")
-            for name in passed_tests:
-                print(f"  - {name}")
-
-        if failed_tests:
-            print("\nFailed tests:")
-            for name, reason in failed_tests:
-                print(f"  - {name}:\n")
-                print("    " + reason.strip().replace('\n', '\n    '))
-                print()
 
         if failed_tests:
             sys.exit(1)
