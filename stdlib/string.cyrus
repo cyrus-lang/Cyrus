@@ -15,65 +15,30 @@
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
 
-import std::libc{strlen, malloc, realloc, memcpy, free};
+import std::collections{Array};
 
 pub struct String {
-    pub data: char*;
-    pub length: usize;
-    pub capacity: usize;
+    buf: Array<char>;
 
-    pub fn new(init: const char*) Self {
-        var inst: String;
-        inst.length = strlen(init);
-        inst.capacity = inst.length + 1;
+    pub inline fn new() Self {
+        const buf: Array<char> = Array.new();
 
-        inst.data = malloc(inst.capacity);
-        if (!inst.data) {
-            @panic("failed to allocate memory for string");
-        }
-
-        memcpy(inst.data, init, inst.capacity);
-        return inst;
+        return Self { buf };
     }
 
-    pub fn set(&self, str: char*) char* {
-        self->length = strlen(str);
-        const new_capacity = self->length + 1;
-
-        self->grow(new_capacity);
-
-        memcpy(self->data, str, self->capacity);
-        return self->data;
+    pub inline fn as_str(&self) char* {
+        return self->buf.data_ptr();
     }
 
-    pub fn free(&self) {
-        free(self->data);
-        self->data = null;
-        self->length = 0;
-        self->capacity = 0;
+    pub inline fn cap(&self) usize {
+        return self->buf.cap();
     }
 
-    pub fn as_str(&self) char* {
-        return self->data;
+    pub inline fn len(&self) usize {
+        return self->buf.len();
     }
 
-    pub fn cap(&self) usize {
-        return self->capacity;
-    }
-
-    pub fn len(&self) usize {
-        return self->length;
-    }
-
-    fn grow(&self, new_capacity: usize) {
-        if (new_capacity > self->capacity) {
-            const new_data = realloc(self->data, new_capacity);
-            if (!new_data) {
-                @panic("failed to reallocate memory for string");
-            }
-            
-            self->data = new_data;
-            self->capacity = new_capacity;
-        }
+    pub inline fn free(&self) {
+        self->buf.free();
     }
 }

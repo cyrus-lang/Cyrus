@@ -374,7 +374,7 @@ impl<'a> AnalysisContext<'a> {
 
         let value_type = value_expr.ty.as_ref()?;
 
-        if !self.is_explicit_cast_allowed(value_type.clone(), target_type.clone()) {
+        if !self.is_explicit_cast_allowed(value_type.clone(), target_type.clone(), builtin_func.loc) {
             let value_type = format_sema_type(value_type.clone(), self.formatter);
             let target_type = format_sema_type(target_type, self.formatter);
 

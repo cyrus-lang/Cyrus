@@ -763,7 +763,6 @@ impl PlainType {
             | PlainType::UInt32
             | PlainType::UInt64
             | PlainType::UInt128
-            | PlainType::ISize
             | PlainType::USize
             | PlainType::Bool
             | PlainType::Char
@@ -774,7 +773,8 @@ impl PlainType {
             | PlainType::Float64
             | PlainType::Float128 => false,
 
-            PlainType::IntPtr
+            PlainType::ISize
+            | PlainType::IntPtr
             | PlainType::Int
             | PlainType::Int8
             | PlainType::Int16

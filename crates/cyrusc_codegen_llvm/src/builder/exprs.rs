@@ -2139,6 +2139,11 @@ impl<'ll> CodeGenIRBuilder<'ll> {
                 BasicValueEnum::IntValue(self.llvmctx.bool_type().const_int(*value as u64, false))
             }
             CIRLiteralKind::Integer(value, is_signed) => {
+                // FIXME
+                // thread 'main' (30290) panicked at crates/cyrusc_codegen_llvm/src/builder/exprs.rs:2143:91:
+                // called `Result::unwrap()` on an `Err` value: TryFromIntError(())
+                // note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+                // make: *** [Makefile:50: run] Error 101
                 BasicValueEnum::IntValue(ty.into_int_type().const_int((*value).try_into().unwrap(), *is_signed))
             }
             CIRLiteralKind::Float(value) => BasicValueEnum::FloatValue(ty.into_float_type().const_float(*value)),

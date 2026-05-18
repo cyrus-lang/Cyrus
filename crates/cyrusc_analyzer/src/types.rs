@@ -410,7 +410,12 @@ impl<'a> AnalysisContext<'a> {
     }
 
     // NOTE: Would be used after implementing @cast.
-    pub(crate) fn is_explicit_cast_allowed(&mut self, value_type: SemaType, target_type: SemaType) -> bool {
+    pub(crate) fn is_explicit_cast_allowed(&mut self, value_type: SemaType, target_type: SemaType, loc: Loc) -> bool {
+        if self.is_assignable_to(value_type.clone(), target_type.clone(), loc) {
+            // it's castable, if it's assignable normally
+            return true;
+        }
+
         match (value_type, target_type) {
             // Any integer to any integer
             (SemaType::Plain(value), SemaType::Plain(target)) if value.is_integer() && target.is_integer() => true,

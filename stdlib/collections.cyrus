@@ -16,6 +16,7 @@
  */
 
 import std::libc{printf, memmove, realloc, malloc, free};
+import std::option{Option};
 import std::iterator{Iterator};
 
 const initial_array_capacity: usize = 16;
@@ -25,7 +26,8 @@ pub struct Array<T> {
     len: usize;
     cap: usize;
 
-    pub fn new() Self {
+    /// Create a new array using a specific allocator.
+    pub inline fn new() Self {
         const data: T* = malloc(@sizeof(T) * initial_array_capacity);
         if (!data) {
             @panic("allocation failed");
@@ -38,7 +40,58 @@ pub struct Array<T> {
         };
     }
 
-    pub fn resize(&self, new_len: usize, value: T) {
+    /// Pre-allocate memory to avoid initial reallocations
+    pub inline fn with_capacity(cap: usize) Self {
+        @debug() {
+            @assert(cap != 0, "initial capacity cannot be zero");
+        }
+
+        const bytes = cap * @sizeof(T);
+        const data: T* = malloc(bytes);
+        
+        if (data == null && cap > 0) {
+            @panic("initial allocation failed");
+        }
+
+        return Self {
+            data: data,
+            len: 0,
+            cap: cap
+        };
+    }
+
+    /// Add all elements from another Array
+    pub inline fn extend(&self, other: Array<T>*) {
+        self->extend_from_ptr(other->data, other->len);
+    }
+
+    // FIXME: heap-buffer-overflow on address 0x502000000040 at pc 0x7ffff78fa30f bp 0x7fffffff74a0 sp 0x7fffffff6c60
+    /// Add all elements from another buffer.
+    pub inline fn extend_from_ptr(&self, ptr: T*, count: usize) {
+        if (count == 0) {
+            return;
+        }
+        
+        self->reserve(count);
+
+        @memcpy(self->data + self->len, ptr, count * @sizeof(T));
+
+        self->len += count;
+    }
+
+    // FIXME: `Self` not found error.
+    // /// Deep copy of the array
+    // pub inline fn clone(&self) Self {
+    //     var inst = Self.with_capacity(self->len);
+
+    //     inst.extend_from_ptr(self->data, self->len);
+
+    //     return inst;
+    // }
+
+    // TODO: from<V>(value: V)
+
+    pub inline fn resize(&self, new_len: usize, value: T) {
         if (new_len > self->len) {
             self->reserve(new_len - self->len);
 
@@ -50,9 +103,12 @@ pub struct Array<T> {
         }
     }
 
-    pub fn reserve(&self, extra: usize) {
-        // FIXME: Integer Overflow Risk
+    pub inline fn reserve(&self, extra: usize) {
         const required = self->len + extra;
+
+        if (required < self->len) {
+            @panic("array capacity overflow");
+        }
 
         if (required <= self->cap) {
             return;
@@ -61,11 +117,18 @@ pub struct Array<T> {
         self->grow(required);
     }
 
-    pub fn grow(&self, min_cap: usize) {
-        var new_cap = self->cap;
+    pub inline fn grow(&self, min_cap: usize) {
+        var new_cap: usize;
 
+        if (self->cap == 0) {
+            new_cap = initial_array_capacity;
+        } else {
+            new_cap = self->cap;
+        }
+
+        // exponential growth (2x)
         while (new_cap < min_cap) {
-            // FIXME: Integer Overflow Risk
+            // FIXME: add safety check
             new_cap *= 2;
         }
 
@@ -82,14 +145,14 @@ pub struct Array<T> {
         self->cap = new_cap;
     }
 
-    pub fn push(&self, value: T) {
+    pub inline fn push(&self, value: T) {
         self->reserve(1);
 
         self->data[self->len] = value;
         self->len++;
     }
 
-    pub fn pop(&self) T {
+    pub inline fn pop(&self) T {
         if (self->len == 0) {
             @panic("cannot pop from empty array");
         }
@@ -99,7 +162,7 @@ pub struct Array<T> {
         return self->data[self->len];
     }
 
-    pub fn insert(&self, index: usize, value: T) {
+    pub inline fn insert(&self, index: usize, value: T) {
         if (index > self->len) {
             @panic("insertion index out of bounds");
         }
@@ -116,7 +179,27 @@ pub struct Array<T> {
         self->len += 1;
     }
 
-    pub fn get(&self, index: usize) T* {
+    /// Find the index of a value (Linear Search).
+    pub inline fn index_of(&self, value: T) Option<usize> {
+        for (var i: usize = 0; i < self->len; i++) {
+            if (self->data[i] == value) {
+                // FIXME: we got a compiler error here
+                return .Some(i);
+            }
+        }
+
+        return .None;
+    }
+
+    pub inline fn get(&self, index: usize) T {
+        if (index >= self->len) {
+            @panic("index out of bounds");
+        }
+
+        return *(self->data + index);
+    }
+
+    pub inline fn get_ref(&self, index: usize) T* {
         if (index >= self->len) {
             @panic("index out of bounds");
         }
@@ -124,7 +207,7 @@ pub struct Array<T> {
         return self->data + index;
     }
 
-    pub fn contains(&self, value: T) bool {
+    pub inline fn contains(&self, value: T) bool {
         // linear lookup
         for (var i: usize = 0; i < self->len; i++) {
             if (self->data[i] == value) {
@@ -139,35 +222,31 @@ pub struct Array<T> {
     // TODO: index
     // TODO: iter
 
-    pub fn clone(&self) Self {
-        @todo();
-    }
-
-    pub fn get_unchecked(&self, index: usize) T* {
+    pub inline fn get_unchecked(&self, index: usize) T* {
         return self->data + index;
     }
 
-    pub fn len(&self) usize {
+    pub inline fn len(&self) usize {
         return self->len;
     }
 
-    pub fn capacity(&self) usize {
+    pub inline fn cap(&self) usize {
         return self->cap;
     }
 
-    pub fn is_empty(&self) bool {
+    pub inline fn is_empty(&self) bool {
         return self->len == 0;
     }
 
-    pub fn clear(&self) {
+    pub inline fn clear(&self) {
         self->len = 0;
     }
 
-    pub fn reset(&self) {
+    pub inline fn reset(&self) {
         self->len = 0;
     }
 
-    pub fn remove(&self, index: usize) T {
+    pub inline fn remove(&self, index: usize) T {
         if (index >= self->len) {
             @panic("index out of bounds");
         }
@@ -186,7 +265,11 @@ pub struct Array<T> {
         return value;
     }
 
-    pub fn free(&self) {
+    pub inline fn data_ptr(&self) T* {
+        return self->data;
+    }
+
+    pub inline fn free(&self) {
         if (self->data != null) {
             free(self->data);
 
