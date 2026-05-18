@@ -95,13 +95,22 @@ def build_and_run(file_path, metadata, compiler_path, compiler_flags, output_dir
 
         if actual_stdout != expected_stdout:
             raise Exception(
-                f"Expected:\n   {expected_stdout}\nGot:\n   {actual_stdout}"
+                f"Expected stdout:\n   {expected_stdout}\nGot stdout:\n   {actual_stdout}"
+            )
+
+        actual_stderr = run_result.stderr.strip()
+        expected_stderr = (metadata.get("stderr") or "").strip()
+
+        if actual_stderr != expected_stderr:
+            raise Exception(
+                f"Expected stderr:\n   {expected_stderr}\nGot stderr:\n   {actual_stderr}"
             )
 
 
 def extract_test_metadata(content, file_name):
     metadata = {
         "stdout": "",
+        "stderr": "",
         "stdin": "",
         "args": "",
         "beforeCompile": "",
@@ -110,6 +119,7 @@ def extract_test_metadata(content, file_name):
 
     patterns = {
         "stdout": r"//\s*@stdout:\s*(.*)",
+        "stderr": r"//\s*@stderr:\s*(.*)",
         "stdin": r"//\s*@stdin:\s*(.*)",
         "args": r"//\s*@args:\s*(.*)",
         "beforeCompile": r"//\s*@beforeCompile:\s*(.*)",
@@ -190,7 +200,7 @@ def main():
         max_workers = min(16, os.cpu_count() or 4)
 
         with ThreadPoolExecutor(max_workers=max_workers) as executor:
-            futures = [
+            futures = {
                 executor.submit(
                     run_single_test,
                     test_file,
@@ -198,16 +208,18 @@ def main():
                     compiler_path,
                     compiler_flags,
                     output_path
-                )
+                ): test_file
                 for test_file in test_files
-            ]
+            }
 
             for future in as_completed(futures):
                 status, name, reason = future.result()
                 if status == "passed":
                     passed_tests.append(name)
+                    print(f"✓ {name}")
                 else:
                     failed_tests.append((name, reason))
+                    print(f"✗ {name}")
 
         passed_tests.sort()
         failed_tests.sort(key=lambda x: x[0])
