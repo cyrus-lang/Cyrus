@@ -1,40 +1,489 @@
-import std::libc::abi;
+/*
+ * Copyright (c) 2026 The Cyrus Language
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+ * See the GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program. If not, see <https://www.gnu.org/licenses/>.
+ */
+
+import std::libc::types;
+
+// stdio
 
 pub extern "C" {
-    var stdout: abi::c_file;
-    var stderr: abi::c_file;
-    var stdin: abi::c_file;
+    var stdin:  types::c_file*;
+    var stdout: types::c_file*;
+    var stderr: types::c_file*;
+
+    fn printf(format: types::c_char*, ...) types::c_int;
+    fn fprintf(stream: types::c_file*, format: types::c_char*, ...) types::c_int;
+    fn sprintf(str: types::c_char*, format: types::c_char*, ...) types::c_int;
+    fn snprintf(str: types::c_char*, size: types::c_size, format: types::c_char*, ...) types::c_int;
+
+    fn vprintf(format: types::c_char*, ap: types::c_va_list) types::c_int;
+    fn vfprintf(stream: types::c_file*, format: types::c_char*, ap: types::c_va_list) types::c_int;
+    fn vsprintf(str: types::c_char*, format: types::c_char*, ap: types::c_va_list) types::c_int;
+    fn vsnprintf(str: types::c_char*, size: types::c_size, format: types::c_char*, ap: types::c_va_list) types::c_int;
+
+    fn scanf(format: types::c_char*, ...) types::c_int;
+    fn fscanf(stream: types::c_file*, format: types::c_char*, ...) types::c_int;
+    fn sscanf(str: types::c_char*, format: types::c_char*, ...) types::c_int;
+
+    fn vscanf(format: types::c_char*, ap: types::c_va_list) types::c_int;
+    fn vfscanf(stream: types::c_file*, format: types::c_char*, ap: types::c_va_list) types::c_int;
+    fn vsscanf(str: types::c_char*, format: types::c_char*, ap: types::c_va_list) types::c_int;
+
+    fn getchar() types::c_int;
+    fn putchar(ch: types::c_int) types::c_int;
+
+    fn getc(stream: types::c_file*) types::c_int;
+    fn putc(ch: types::c_int, stream: types::c_file*) types::c_int;
+
+    fn fgetc(stream: types::c_file*) types::c_int;
+    fn fputc(ch: types::c_int, stream: types::c_file*) types::c_int;
+
+    fn ungetc(ch: types::c_int, stream: types::c_file*) types::c_int;
+
+    fn fgets(str: types::c_char*, n: types::c_int, stream: types::c_file*) types::c_char*;
+    fn fputs(str: types::c_char*, stream: types::c_file*) types::c_int;
+    fn puts(str: types::c_char*) types::c_int;
+    fn fread(ptr: types::c_void*, size: types::c_size, nmemb: types::c_size, stream: types::c_file*) types::c_size;
+    fn fwrite(ptr: types::c_void*, size: types::c_size, nmemb: types::c_size, stream: types::c_file*) types::c_size;
+
+    fn fopen(filename: types::c_char*, mode: types::c_char*) types::c_file*;
+    fn freopen(filename: types::c_char*, mode: types::c_char*, stream: types::c_file*) types::c_file*;
+    fn fclose(stream: types::c_file*) types::c_int;
+
+    fn remove(filename: types::c_char*) types::c_int;
+    fn rename(old: types::c_char*, new: types::c_char*) types::c_int;
+
+    fn tmpfile() types::c_file*;
+    fn tmpnam(str: types::c_char*) types::c_char*;
+
+    fn fflush(stream: types::c_file*) types::c_int;
+
+    fn setbuf(stream: types::c_file*, buf: types::c_char*) types::c_void;
+    fn setvbuf(stream: types::c_file*, buf: types::c_char*, mode: types::c_int, size: types::c_size) types::c_int;
+
+    fn fseek(stream: types::c_file*, offset: types::c_long, whence: types::c_int) types::c_int;
+    fn ftell(stream: types::c_file*) types::c_long;
+    fn rewind(stream: types::c_file*) types::c_void;
+
+    fn fgetpos(stream: types::c_file*, pos: types::c_fpos*) types::c_int;
+    fn fsetpos(stream: types::c_file*, pos: types::c_fpos*) types::c_int;
+
+    fn feof(stream: types::c_file*) types::c_int;
+    fn ferror(stream: types::c_file*) types::c_int;
+    fn clearerr(stream: types::c_file*) types::c_void;
+    fn perror(s: types::c_char*) types::c_void;
+
+    fn flockfile(stream: types::c_file*) types::c_void;
+    fn ftrylockfile(stream: types::c_file*) types::c_int;
+    fn funlockfile(stream: types::c_file*) types::c_void;
+
+    fn fileno(stream: types::c_file*) types::c_int;
+    fn getline(lineptr: types::c_char**, n: types::c_size*, stream: types::c_file*) types::c_ssize;
+}
+
+// stdlib
+
+pub repr(c) struct CDivResult {
+    quot: types::c_int;
+    rem: types::c_int;
+}
+
+pub repr(c) struct CLongDivResult {
+    quot: types::c_long;
+    rem: types::c_long;
+}
+
+pub repr(c) struct CLongLongDivResult {
+    quot: types::c_long_long;
+    rem: types::c_long_long;
 }
 
 pub extern "C" {
-    fn printf(format: abi::c_char*, ...) abi::c_int;
-    fn fprintf(stream: abi::c_file, format: abi::c_char*, ...) abi::c_int;
-    fn malloc(size: abi::c_size) abi::c_void*;
-    fn calloc(num: abi::c_size, size: abi::c_size) abi::c_void*;
-    fn free(ptr: abi::c_void*) abi::c_void;
-    fn exit(status: abi::c_int) abi::c_void;
-    fn realloc(ptr: abi::c_void*, size: abi::c_size) abi::c_void*;
-    fn strncpy(dest: abi::c_char*, src: abi::c_char*, count: abi::c_size) abi::c_char*;
-    fn putchar(ch: abi::c_char) abi::c_int;
-    fn strdup(src: abi::c_char*) abi::c_char*;
-    fn strlen(src: abi::c_char*) abi::c_size;
-    fn memcpy(dest: abi::c_void*, src: abi::c_void*, count: abi::c_size) abi::c_void*;
-    fn memmove(dest: abi::c_void*, src: abi::c_void*, count: abi::c_size) abi::c_void*;
-    fn memcmp(lhs: abi::c_void*, rhs: abi::c_void*, count: abi::c_size) abi::c_int;
-    fn fflush(stream: abi::c_file*) abi::c_int;
-    fn strcat(dest: abi::c_char*, src: abi::c_char*) abi::c_char*;
-    fn strcpy(dest: abi::c_char*, src: abi::c_char*) abi::c_char*;
-    fn scanf(format: abi::c_char*, ...) abi::c_int;
-    fn getline(lineptr: abi::c_char**, n: abi::c_size*, stream: abi::c_file*) abi::c_size;
-    fn fread(src: abi::c_void*, size: abi::c_size, n: abi::c_size, stream: abi::c_file*) abi::c_size;
-    fn fopen(file_name: abi::c_char*, modes: abi::c_char*) abi::c_file*;
-    fn fseek(stream: abi::c_file*, offset: abi::c_long, origin: abi::c_int) abi::c_int;
-    fn ftell(stream: abi::c_file*) abi::c_long;
-    fn rewind(stream: abi::c_file*) abi::c_void;
-    fn fclose(src: abi::c_void*) abi::c_int;
-    fn ferror(stream: abi::c_file*) abi::c_int;
-    fn pthread_self() abi::pthread;
-    fn pthread_getname_np(thread: abi::pthread, name: abi::c_char*, len: abi::c_size) abi::c_int;
-    fn posix_memalign(memptr: abi::c_void**, alignment: abi::c_size, size: abi::c_size) abi::c_int;
-    fn abort();
+    fn atof(nptr: types::c_char*) types::c_double;
+    fn atoi(nptr: types::c_char*) types::c_int;
+    fn atol(nptr: types::c_char*) types::c_long;
+    fn atoll(nptr: types::c_char*) types::c_long_long;
+
+    fn strtod(nptr: types::c_char*, endptr: types::c_char**) types::c_double;
+    fn strtof(nptr: types::c_char*, endptr: types::c_char**) types::c_float;
+    fn strtol(nptr: types::c_char*, endptr: types::c_char**, base: types::c_int) types::c_long;
+    fn strtoul(nptr: types::c_char*, endptr: types::c_char**, base: types::c_int) types::c_unsigned_long;
+    fn strtoll(nptr: types::c_char*, endptr: types::c_char**, base: types::c_int) types::c_long_long;
+    fn strtoull(nptr: types::c_char*, endptr: types::c_char**, base: types::c_int) types::c_unsigned_long_long;
+
+    // FIXME: requires c_long_double but it's not implemented yet.
+    // fn strtold(nptr: types::c_char*, endptr: types::c_char**) types::c_long_double;
+
+    fn rand() types::c_int;
+    fn srand(seed: types::c_uint) types::c_void;
+
+    fn malloc(size: types::c_size) types::c_void*;
+    fn calloc(nmemb: types::c_size, size: types::c_size) types::c_void*;
+    fn realloc(ptr: types::c_void*, size: types::c_size) types::c_void*;
+    fn free(ptr: types::c_void*) types::c_void;
+
+    fn aligned_alloc(alignment: types::c_size, size: types::c_size) types::c_void*;
+
+    fn abort() types::c_void;
+    fn exit(status: types::c_int) types::c_void;
+    fn _Exit(status: types::c_int) types::c_void;
+
+    fn atexit(func: fn() types::c_void) types::c_int;
+
+    fn quick_exit(status: types::c_int) types::c_void;
+    fn at_quick_exit(func: fn() types::c_void) types::c_int;
+
+    fn getenv(name: types::c_char*) types::c_char*;
+    fn system(command: types::c_char*) types::c_int;
+
+    fn bsearch(
+        key: types::c_void*,
+        base: types::c_void*,
+        nmemb: types::c_size,
+        size: types::c_size,
+        compar: fn(types::c_void*, types::c_void*) types::c_int
+    ) types::c_void*;
+
+    fn qsort(
+        base: types::c_void*,
+        nmemb: types::c_size,
+        size: types::c_size,
+        compar: fn(types::c_void*, types::c_void*) types::c_int
+    ) types::c_void;
+
+    fn abs(j: types::c_int) types::c_int;
+    fn labs(j: types::c_long) types::c_long;
+    fn llabs(j: types::c_long_long) types::c_long_long;
+
+    fn div(numer: types::c_int, denom: types::c_int) CDivResult;
+    fn ldiv(numer: types::c_long, denom: types::c_long) CLongDivResult;
+    fn lldiv(numer: types::c_long_long, denom: types::c_long_long) CLongLongDivResult;
+
+    fn mblen(s: types::c_char*, n: types::c_size) types::c_int;
+    fn mbtowc(pwc: types::c_wchar*, s: types::c_char*, n: types::c_size) types::c_int;
+    fn wctomb(s: types::c_char*, wc: types::c_wchar) types::c_int;
+
+    fn mbstowcs(
+        dest: types::c_wchar*,
+        src: types::c_char*,
+        n: types::c_size
+    ) types::c_size;
+
+    fn wcstombs(
+        dest: types::c_char*,
+        src: types::c_wchar*,
+        n: types::c_size
+    ) types::c_size;
 }
+
+// string
+
+pub extern "C" {
+    fn memcpy(
+        dest: types::c_void*,
+        src: types::c_void*,
+        n: types::c_size
+    ) types::c_void*;
+
+    fn memmove(
+        dest: types::c_void*,
+        src: types::c_void*,
+        n: types::c_size
+    ) types::c_void*;
+
+    fn memset(
+        s: types::c_void*,
+        c: types::c_int,
+        n: types::c_size
+    ) types::c_void*;
+
+    fn memcmp(
+        s1: types::c_void*,
+        s2: types::c_void*,
+        n: types::c_size
+    ) types::c_int;
+
+    fn memchr(
+        s: types::c_void*,
+        c: types::c_int,
+        n: types::c_size
+    ) types::c_void*;
+
+    fn strlen(s: types::c_char*) types::c_size;
+
+    fn strcpy(
+        dest: types::c_char*,
+        src: types::c_char*
+    ) types::c_char*;
+
+    fn strncpy(
+        dest: types::c_char*,
+        src: types::c_char*,
+        n: types::c_size
+    ) types::c_char*;
+
+    fn strcat(
+        dest: types::c_char*,
+        src: types::c_char*
+    ) types::c_char*;
+
+    fn strncat(
+        dest: types::c_char*,
+        src: types::c_char*,
+        n: types::c_size
+    ) types::c_char*;
+
+    fn strcmp(
+        s1: types::c_char*,
+        s2: types::c_char*
+    ) types::c_int;
+
+    fn strncmp(
+        s1: types::c_char*,
+        s2: types::c_char*,
+        n: types::c_size
+    ) types::c_int;
+
+    fn strchr(
+        s: types::c_char*,
+        c: types::c_int
+    ) types::c_char*;
+
+    fn strrchr(
+        s: types::c_char*,
+        c: types::c_int
+    ) types::c_char*;
+
+    fn strstr(
+        haystack: types::c_char*,
+        needle: types::c_char*
+    ) types::c_char*;
+
+    fn strpbrk(
+        s: types::c_char*,
+        accept: types::c_char*
+    ) types::c_char*;
+
+    fn strspn(
+        s: types::c_char*,
+        accept: types::c_char*
+    ) types::c_size;
+
+    fn strcspn(
+        s: types::c_char*,
+        reject: types::c_char*
+    ) types::c_size;
+
+    fn strtok(
+        str: types::c_char*,
+        delim: types::c_char*
+    ) types::c_char*;
+
+    fn strerror(errnum: types::c_int) types::c_char*;
+
+    fn strdup(s: types::c_char*) types::c_char*;
+
+    fn strndup(
+        s: types::c_char*,
+        n: types::c_size
+    ) types::c_char*;
+}
+
+// errno
+
+// FIXME
+// pub extern "C" fn __errno_location() types::c_int*;
+
+// pub inline fn errno() types::c_int* {
+//     return __errno_location();
+// }
+pub const EPERM: types::c_int = 1;
+pub const ENOENT: types::c_int = 2;
+pub const ESRCH: types::c_int = 3;
+pub const EINTR: types::c_int = 4;
+pub const EIO: types::c_int = 5;
+pub const ENXIO: types::c_int = 6;
+pub const E2BIG: types::c_int = 7;
+pub const ENOEXEC: types::c_int = 8;
+pub const EBADF: types::c_int = 9;
+pub const ECHILD: types::c_int = 10;
+pub const EAGAIN: types::c_int = 11;
+pub const ENOMEM: types::c_int = 12;
+pub const EACCES: types::c_int = 13;
+pub const EFAULT: types::c_int = 14;
+pub const ENOTBLK: types::c_int = 15;
+pub const EBUSY: types::c_int = 16;
+pub const EEXIST: types::c_int = 17;
+pub const EXDEV: types::c_int = 18;
+pub const ENODEV: types::c_int = 19;
+pub const ENOTDIR: types::c_int = 20;
+pub const EISDIR: types::c_int = 21;
+pub const EINVAL: types::c_int = 22;
+pub const ENFILE: types::c_int = 23;
+pub const EMFILE: types::c_int = 24;
+pub const ENOTTY: types::c_int = 25;
+pub const ETXTBSY: types::c_int = 26;
+pub const EFBIG: types::c_int = 27;
+pub const ENOSPC: types::c_int = 28;
+pub const ESPIPE: types::c_int = 29;
+pub const EROFS: types::c_int = 30;
+pub const EMLINK: types::c_int = 31;
+pub const EPIPE: types::c_int = 32;
+pub const EDOM: types::c_int = 33;
+
+// ctype
+
+pub extern "C" {
+    fn isalnum(c: types::c_int) types::c_int;
+    fn isalpha(c: types::c_int) types::c_int;
+    fn isblank(c: types::c_int) types::c_int;
+    fn iscntrl(c: types::c_int) types::c_int;
+    fn isdigit(c: types::c_int) types::c_int;
+    fn isgraph(c: types::c_int) types::c_int;
+    fn islower(c: types::c_int) types::c_int;
+    fn isprint(c: types::c_int) types::c_int;
+    fn ispunct(c: types::c_int) types::c_int;
+    fn isspace(c: types::c_int) types::c_int;
+    fn isupper(c: types::c_int) types::c_int;
+    fn isxdigit(c: types::c_int) types::c_int;
+
+    fn tolower(c: types::c_int) types::c_int;
+    fn toupper(c: types::c_int) types::c_int;
+}
+
+// time 
+
+pub repr(c) struct CTimeSpec {
+    tv_sec: types::c_long;
+    tv_nsec: types::c_long;
+}
+
+pub repr(c) struct CTimeVal {
+    tv_sec: types::c_long;
+    tv_usec: types::c_long;
+}
+
+pub repr(c) struct CTm {
+    tm_sec: types::c_int;
+    tm_min: types::c_int;
+    tm_hour: types::c_int;
+    tm_mday: types::c_int;
+    tm_mon: types::c_int;
+    tm_year: types::c_int;
+    tm_wday: types::c_int;
+    tm_yday: types::c_int;
+    tm_isdst: types::c_int;
+    tm_gmtoff: types::c_long;
+    tm_zone: types::c_char*;
+}
+
+pub extern "C" {
+    fn clock() types::c_long;
+    fn difftime(time1: types::c_long, time0: types::c_long) types::c_double;
+    fn mktime(tm: CTm*) types::c_long;
+    fn time(timer: types::c_long*) types::c_long;
+
+    fn asctime(tm: CTm*) types::c_char*;
+    fn ctime(timer: types::c_long*) types::c_char*;
+
+    fn gmtime(timer: types::c_long*) CTm*;
+    fn localtime(timer: types::c_long*) CTm*;
+
+    fn gmtime_r(timer: types::c_long*, result: CTm*) CTm*;
+    fn localtime_r(timer: types::c_long*, result: CTm*) CTm*;
+
+    fn strftime(
+        s: types::c_char*,
+        max: types::c_size,
+        format: types::c_char*,
+        tm: CTm*
+    ) types::c_size;
+
+    fn timespec_get(ts: CTimeSpec*, base: types::c_int) types::c_int;
+}
+
+// signal 
+
+pub type CSignalHandler = fn(types::c_int) types::c_void;
+
+pub extern "C" {
+    fn signal(sig: types::c_int, handler: CSignalHandler) CSignalHandler;
+    fn raise(sig: types::c_int) types::c_int;
+}
+
+pub const SIGABRT: types::c_int = 6;
+pub const SIGFPE: types::c_int = 8;
+pub const SIGILL: types::c_int = 4;
+pub const SIGINT: types::c_int = 2;
+pub const SIGSEGV: types::c_int = 11;
+pub const SIGTERM: types::c_int = 15;
+pub const SIGBUS: types::c_int = 7;
+pub const SIGTRAP: types::c_int = 5;
+pub const SIGQUIT: types::c_int = 3;
+pub const SIGHUP: types::c_int = 1;
+pub const SIGKILL: types::c_int = 9;
+pub const SIGPIPE: types::c_int = 13;
+pub const SIGALRM: types::c_int = 14;
+pub const SIGUSR1: types::c_int = 10;
+pub const SIGUSR2: types::c_int = 12;
+pub const SIGCHLD: types::c_int = 17;
+pub const SIGCONT: types::c_int = 18;
+pub const SIGSTOP: types::c_int = 19;
+pub const SIGTSTP: types::c_int = 20;
+pub const SIGTTIN: types::c_int = 21;
+pub const SIGTTOU: types::c_int = 22;
+
+// locale
+
+pub repr(c) struct CLocaleConv {
+    decimal_point: types::c_char*;
+    thousands_sep: types::c_char*;
+    grouping: types::c_char*;
+    int_curr_symbol: types::c_char*;
+    currency_symbol: types::c_char*;
+    mon_decimal_point: types::c_char*;
+    mon_thousands_sep: types::c_char*;
+    mon_grouping: types::c_char*;
+    positive_sign: types::c_char*;
+    negative_sign: types::c_char*;
+    int_frac_digits: types::c_char;
+    frac_digits: types::c_char;
+    p_cs_precedes: types::c_char;
+    p_sep_by_space: types::c_char;
+    n_cs_precedes: types::c_char;
+    n_sep_by_space: types::c_char;
+    p_sign_posn: types::c_char;
+    n_sign_posn: types::c_char;
+    int_p_cs_precedes: types::c_char;
+    int_p_sep_by_space: types::c_char;
+    int_n_cs_precedes: types::c_char;
+    int_n_sep_by_space: types::c_char;
+    int_p_sign_posn: types::c_char;
+    int_n_sign_posn: types::c_char;
+}
+
+pub extern "C" {
+    fn setlocale(category: types::c_int, locale: types::c_char*) types::c_char*;
+    fn localeconv() CLocaleConv*;
+}
+
+pub const LC_CTYPE: types::c_int = 0;
+pub const LC_NUMERIC: types::c_int = 1;
+pub const LC_TIME: types::c_int = 2;
+pub const LC_COLLATE: types::c_int = 3;
+pub const LC_MONETARY: types::c_int = 4;
+pub const LC_MESSAGES: types::c_int = 5;
+pub const LC_ALL: types::c_int = 6;

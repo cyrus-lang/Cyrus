@@ -2,7 +2,7 @@
 // @compilerArgs: -z=./tests/abi/enum_library.c
 
 import std::libc{printf};
-import std::libc::abi{c_int};
+import std::libc::types{c_int};
 
 repr(c) enum Color {
     Red = 1,

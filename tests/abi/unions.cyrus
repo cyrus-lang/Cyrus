@@ -2,7 +2,7 @@
 // @compilerArgs: -z=./tests/abi/unions_library.c
 
 import std::libc{printf};
-import std::libc::abi{c_int, c_char, c_float, c_double};
+import std::libc::types{c_int, c_char, c_float, c_double};
 
 repr(c) union UnionPayload {
     int_value: c_int;

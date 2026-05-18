@@ -1,0 +1,43 @@
+/*
+ * Copyright (c) 2026 The Cyrus Language
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+ * See the GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program. If not, see <https://www.gnu.org/licenses/>.
+ */
+
+import std::libc::types;
+
+pub const CHAR_BIT: types::c_int = 8;
+
+pub const SCHAR_MIN: types::c_int = -128;
+pub const SCHAR_MAX: types::c_int = 127;
+pub const UCHAR_MAX: types::c_int = 255;
+
+pub const CHAR_MIN: types::c_int = -128;
+pub const CHAR_MAX: types::c_int = 127;
+
+pub const SHRT_MIN: types::c_int = -32768;
+pub const SHRT_MAX: types::c_int = 32767;
+pub const USHRT_MAX: types::c_int = 65535;
+
+pub const INT_MIN: types::c_int = -2147483648;
+pub const INT_MAX: types::c_int = 2147483647;
+pub const UINT_MAX: types::c_uint = 4294967295;
+
+pub const LONG_MIN: types::c_long = -9223372036854775808;
+pub const LONG_MAX: types::c_long = 9223372036854775807;
+pub const ULONG_MAX: types::c_unsigned_long = 18446744073709551615;
+
+pub const LLONG_MIN: types::c_long_long = -9223372036854775808;
+pub const LLONG_MAX: types::c_long_long = 9223372036854775807;
+pub const ULLONG_MAX: types::c_unsigned_long_long = 18446744073709551615;

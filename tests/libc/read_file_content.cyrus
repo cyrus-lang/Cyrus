@@ -1,12 +1,12 @@
 // @stdout: (13) (Hello, Cyrus!)
 
-import std::libc::abi;
+import std::libc::types{c_file};
 import std::libc{printf, fopen, fread, fclose, ferror};
 
 pub fn main() {
     const file_name = "./tests/libc/example_content.txt";
 
-    var file: abi::c_file*;
+    var file: c_file*;
     var buffer: char[1024];
     var bytes_read: usize;
     var total_bytes: usize;

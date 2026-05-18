@@ -2,7 +2,7 @@
 // @compilerArgs: -z=./tests/abi/structs_library.c
 
 import std::libc{printf};
-import std::libc::abi{c_int, c_float, c_double, c_long};
+import std::libc::types{c_int, c_float, c_double, c_long};
 
 repr(c) struct Pair {
     pub a: c_int;

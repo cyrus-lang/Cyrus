@@ -1,0 +1,103 @@
+/*
+ * Copyright (c) 2026 The Cyrus Language
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+ * See the GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program. If not, see <https://www.gnu.org/licenses/>.
+ */
+
+pub type c_int = int32;
+
+pub type c_uint = uint32;
+
+pub type c_int8 = int8;
+
+pub type c_int16 = int16;
+
+pub type c_int32 = int32;
+
+pub type c_int64 = int64;
+
+pub type c_int128 = int128;
+
+pub type c_uint8 = uint8;
+
+pub type c_uint16 = uint16;
+
+pub type c_uint32 = uint32;
+
+pub type c_uint64 = uint64;
+
+pub type c_uint128 = uint128;
+
+pub type c_signed_char = int8;
+
+pub type c_unsigned_char = uint8;
+
+pub type c_char = int8;
+
+pub type c_short = int16;
+
+pub type c_unsigned_short = uint16;
+
+pub type c_unsigned_int = uint32;
+
+pub type c_long = isize;
+
+pub type c_unsigned_long = usize;
+
+pub type c_long_long = int64;
+
+pub type c_unsigned_long_long = uint64;
+
+pub type c_bool = bool;
+
+pub type c_void = void;
+
+pub type c_size = usize;
+
+pub type c_ssize = isize;
+
+pub type c_ptrdiff = c_long;
+
+pub type c_intptr = intptr;
+
+pub type c_uintptr = uintptr;
+
+pub type c_float = float32;
+
+pub type c_double = float64;
+
+pub type c_wchar = int32;
+
+pub type c_wint = c_uint;
+
+pub type c_char16 = uint16;
+
+pub type c_char32 = uint32;
+
+pub type c_sig_atomic = int32;
+
+pub type pthread = c_unsigned_long;
+
+// FIXME: used an inaccurate equivalent, because we don't support opaque-types yet.
+pub type c_file = uint8[0];
+
+// FIXME: used an inaccurate equivalent, because we don't support opaque-types yet.
+pub type c_fpos = uint8[16];
+
+// FIXME: used an inaccurate equivalent, because we don't support opaque-types yet.
+pub type c_va_list = uint8[24];
+
+// FIXME: not implemented yet.
+pub type c_long_double = float64; 
+// pub type c_long_double = x86_fp80; 

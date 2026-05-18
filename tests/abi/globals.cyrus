@@ -2,7 +2,7 @@
 // @compilerArgs: -z=./tests/abi/globals_library.c
 
 import std::libc{printf};
-import std::libc::abi{c_int, c_long};
+import std::libc::types{c_int, c_long};
 
 extern "C" const global_counter: c_int;
 

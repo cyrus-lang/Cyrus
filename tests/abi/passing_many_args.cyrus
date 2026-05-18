@@ -2,7 +2,7 @@
 // @compilerArgs: -z=./tests/abi/passing_many_args_library.c
 
 import std::libc{printf};
-import std::libc::abi{c_long, c_double};
+import std::libc::types{c_long, c_double};
 
 extern "C" fn many_ints(
     a: c_long,

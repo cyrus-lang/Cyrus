@@ -59,8 +59,14 @@ impl<'a> AnalysisContext<'a> {
     pub(crate) fn analyze_expr_non_terminal(
         &mut self,
         expr: &mut TypedExpr,
-        expected_type: Option<SemaType>,
+        mut expected_type: Option<SemaType>,
     ) -> Option<SemaType> {
+        if let Some(ty) = &expected_type {
+            if let Some(ty) = self.normalize_sema_type(ty.clone(), expr.loc) {
+                expected_type = Some(ty);
+            }
+        }
+
         self.lower_expr_pre_analysis(expr, expected_type.clone());
 
         let expr_type = match &mut expr.kind {

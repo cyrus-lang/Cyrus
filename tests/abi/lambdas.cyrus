@@ -2,7 +2,7 @@
 // @compilerArgs: -z=./tests/abi/lambdas_library.c
 
 import std::libc{printf};
-import std::libc::abi{c_int, c_double};
+import std::libc::types{c_int, c_double};
 
 type CallbackFn = fn(c_double, c_double) c_double;
 

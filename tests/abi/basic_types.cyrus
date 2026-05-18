@@ -2,7 +2,7 @@
 // @compilerArgs: -z=./tests/abi/basic_types_library.c
 
 import std::libc{printf};
-import std::libc::abi{c_int, c_long, c_float, c_double};
+import std::libc::types{c_int, c_long, c_float, c_double};
 
 extern "C" fn add_ints(a: c_int, b: c_int) c_int;
 
