@@ -18,13 +18,25 @@
 import std::libc::types;
 
 pub extern "C" {
-    fn acos(x: types::c_double) types::c_double;
-    fn acosf(x: types::c_float) types::c_float;
-    fn acosl(x: types::c_long_double) types::c_long_double;
+    fn sin(x: types::c_double) types::c_double;
+    fn sinf(x: types::c_float) types::c_float;
+    fn sinl(x: types::c_long_double) types::c_long_double;
+
+    fn cos(x: types::c_double) types::c_double;
+    fn cosf(x: types::c_float) types::c_float;
+    fn cosl(x: types::c_long_double) types::c_long_double;
+
+    fn tan(x: types::c_double) types::c_double;
+    fn tanf(x: types::c_float) types::c_float;
+    fn tanl(x: types::c_long_double) types::c_long_double;
 
     fn asin(x: types::c_double) types::c_double;
     fn asinf(x: types::c_float) types::c_float;
     fn asinl(x: types::c_long_double) types::c_long_double;
+
+    fn acos(x: types::c_double) types::c_double;
+    fn acosf(x: types::c_float) types::c_float;
+    fn acosl(x: types::c_long_double) types::c_long_double;
 
     fn atan(x: types::c_double) types::c_double;
     fn atanf(x: types::c_float) types::c_float;
@@ -34,41 +46,29 @@ pub extern "C" {
     fn atan2f(y: types::c_float, x: types::c_float) types::c_float;
     fn atan2l(y: types::c_long_double, x: types::c_long_double) types::c_long_double;
 
-    fn cos(x: types::c_double) types::c_double;
-    fn cosf(x: types::c_float) types::c_float;
-    fn cosl(x: types::c_long_double) types::c_long_double;
-
-    fn sin(x: types::c_double) types::c_double;
-    fn sinf(x: types::c_float) types::c_float;
-    fn sinl(x: types::c_long_double) types::c_long_double;
-
-    fn tan(x: types::c_double) types::c_double;
-    fn tanf(x: types::c_float) types::c_float;
-    fn tanl(x: types::c_long_double) types::c_long_double;
-
-    fn acosh(x: types::c_double) types::c_double;
-    fn acoshf(x: types::c_float) types::c_float;
-    fn acoshl(x: types::c_long_double) types::c_long_double;
-
-    fn asinh(x: types::c_double) types::c_double;
-    fn asinhf(x: types::c_float) types::c_float;
-    fn asinhl(x: types::c_long_double) types::c_long_double;
-
-    fn atanh(x: types::c_double) types::c_double;
-    fn atanhf(x: types::c_float) types::c_float;
-    fn atanhl(x: types::c_long_double) types::c_long_double;
+    fn sinh(x: types::c_double) types::c_double;
+    fn sinhf(x: types::c_float) types::c_float;
+    fn sinhl(x: types::c_long_double) types::c_long_double;
 
     fn cosh(x: types::c_double) types::c_double;
     fn coshf(x: types::c_float) types::c_float;
     fn coshl(x: types::c_long_double) types::c_long_double;
 
-    fn sinh(x: types::c_double) types::c_double;
-    fn sinhf(x: types::c_float) types::c_float;
-    fn sinhl(x: types::c_long_double) types::c_long_double;
-
     fn tanh(x: types::c_double) types::c_double;
     fn tanhf(x: types::c_float) types::c_float;
     fn tanhl(x: types::c_long_double) types::c_long_double;
+
+    fn asinh(x: types::c_double) types::c_double;
+    fn asinhf(x: types::c_float) types::c_float;
+    fn asinhl(x: types::c_long_double) types::c_long_double;
+
+    fn acosh(x: types::c_double) types::c_double;
+    fn acoshf(x: types::c_float) types::c_float;
+    fn acoshl(x: types::c_long_double) types::c_long_double;
+
+    fn atanh(x: types::c_double) types::c_double;
+    fn atanhf(x: types::c_float) types::c_float;
+    fn atanhl(x: types::c_long_double) types::c_long_double;
 
     fn exp(x: types::c_double) types::c_double;
     fn expf(x: types::c_float) types::c_float;
@@ -82,14 +82,6 @@ pub extern "C" {
     fn expm1f(x: types::c_float) types::c_float;
     fn expm1l(x: types::c_long_double) types::c_long_double;
 
-    fn frexp(x: types::c_double, exp: types::c_int*) types::c_double;
-    fn frexpf(x: types::c_float, exp: types::c_int*) types::c_float;
-    fn frexpl(x: types::c_long_double, exp: types::c_int*) types::c_long_double;
-
-    fn ldexp(x: types::c_double, exp: types::c_int) types::c_double;
-    fn ldexpf(x: types::c_float, exp: types::c_int) types::c_float;
-    fn ldexpl(x: types::c_long_double, exp: types::c_int) types::c_long_double;
-
     fn log(x: types::c_double) types::c_double;
     fn logf(x: types::c_float) types::c_float;
     fn logl(x: types::c_long_double) types::c_long_double;
@@ -98,29 +90,13 @@ pub extern "C" {
     fn log10f(x: types::c_float) types::c_float;
     fn log10l(x: types::c_long_double) types::c_long_double;
 
-    fn log1p(x: types::c_double) types::c_double;
-    fn log1pf(x: types::c_float) types::c_float;
-    fn log1pl(x: types::c_long_double) types::c_long_double;
-
     fn log2(x: types::c_double) types::c_double;
     fn log2f(x: types::c_float) types::c_float;
     fn log2l(x: types::c_long_double) types::c_long_double;
 
-    fn logb(x: types::c_double) types::c_double;
-    fn logbf(x: types::c_float) types::c_float;
-    fn logbl(x: types::c_long_double) types::c_long_double;
-
-    fn modf(x: types::c_double, iptr: types::c_double*) types::c_double;
-    fn modff(x: types::c_float, iptr: types::c_float*) types::c_float;
-    fn modfl(x: types::c_long_double, iptr: types::c_long_double*) types::c_long_double;
-
-    fn scalbn(x: types::c_double, n: types::c_int) types::c_double;
-    fn scalbnf(x: types::c_float, n: types::c_int) types::c_float;
-    fn scalbnl(x: types::c_long_double, n: types::c_int) types::c_long_double;
-
-    fn scalbln(x: types::c_double, n: types::c_long) types::c_double;
-    fn scalblnf(x: types::c_float, n: types::c_long) types::c_float;
-    fn scalblnl(x: types::c_long_double, n: types::c_long) types::c_long_double;
+    fn log1p(x: types::c_double) types::c_double;
+    fn log1pf(x: types::c_float) types::c_float;
+    fn log1pl(x: types::c_long_double) types::c_long_double;
 
     fn pow(x: types::c_double, y: types::c_double) types::c_double;
     fn powf(x: types::c_float, y: types::c_float) types::c_float;
@@ -138,81 +114,39 @@ pub extern "C" {
     fn hypotf(x: types::c_float, y: types::c_float) types::c_float;
     fn hypotl(x: types::c_long_double, y: types::c_long_double) types::c_long_double;
 
-    fn erf(x: types::c_double) types::c_double;
-    fn erff(x: types::c_float) types::c_float;
-    fn erfl(x: types::c_long_double) types::c_long_double;
+    fn fabs(x: types::c_double) types::c_double;
+    fn fabsf(x: types::c_float) types::c_float;
+    fn fabsl(x: types::c_long_double) types::c_long_double;
 
-    fn erfc(x: types::c_double) types::c_double;
-    fn erfcf(x: types::c_float) types::c_float;
-    fn erfcl(x: types::c_long_double) types::c_long_double;
-
-    fn tgamma(x: types::c_double) types::c_double;
-    fn tgammaf(x: types::c_float) types::c_float;
-    fn tgammal(x: types::c_long_double) types::c_long_double;
-
-    fn lgamma(x: types::c_double) types::c_double;
-    fn lgammaf(x: types::c_float) types::c_float;
-    fn lgammal(x: types::c_long_double) types::c_long_double;
-
-    fn lgamma_r(x: types::c_double, signp: types::c_int*) types::c_double;
-    fn lgammaf_r(x: types::c_float, signp: types::c_int*) types::c_float;
-    fn lgammal_r(x: types::c_long_double, signp: types::c_int*) types::c_long_double;
-
-    fn ceil(x: types::c_double) types::c_double;
-    fn ceilf(x: types::c_float) types::c_float;
-    fn ceill(x: types::c_long_double) types::c_long_double;
-
-    fn floor(x: types::c_double) types::c_double;
-    fn floorf(x: types::c_float) types::c_float;
-    fn floorl(x: types::c_long_double) types::c_long_double;
-
-    fn trunc(x: types::c_double) types::c_double;
-    fn truncf(x: types::c_float) types::c_float;
-    fn truncl(x: types::c_long_double) types::c_long_double;
-
-    fn round(x: types::c_double) types::c_double;
-    fn roundf(x: types::c_float) types::c_float;
-    fn roundl(x: types::c_long_double) types::c_long_double;
-
-    fn lround(x: types::c_double) types::c_long;
-    fn lroundf(x: types::c_float) types::c_long;
-    fn lroundl(x: types::c_long_double) types::c_long;
-
-    fn llround(x: types::c_double) types::c_long_long;
-    fn llroundf(x: types::c_float) types::c_long_long;
-    fn llroundl(x: types::c_long_double) types::c_long_long;
-    
-    fn rint(x: types::c_double) types::c_double;
-    fn rintf(x: types::c_float) types::c_float;
-    fn rintl(x: types::c_long_double) types::c_long_double;
-
-    fn lrint(x: types::c_double) types::c_long;
-    fn lrintf(x: types::c_float) types::c_long;
-    fn lrintl(x: types::c_long_double) types::c_long;
-
-    fn llrint(x: types::c_double) types::c_long_long;
-    fn llrintf(x: types::c_float) types::c_long_long;
-    fn llrintl(x: types::c_long_double) types::c_long_long;
-
-    fn nearbyint(x: types::c_double) types::c_double;
-    fn nearbyintf(x: types::c_float) types::c_float;
-    fn nearbyintl(x: types::c_long_double) types::c_long_double;
+    fn fmod(x: types::c_double, y: types::c_double) types::c_double;
+    fn fmodf(x: types::c_float, y: types::c_float) types::c_float;
+    fn fmodl(x: types::c_long_double, y: types::c_long_double) types::c_long_double;
 
     fn remainder(x: types::c_double, y: types::c_double) types::c_double;
     fn remainderf(x: types::c_float, y: types::c_float) types::c_float;
     fn remainderl(x: types::c_long_double, y: types::c_long_double) types::c_long_double;
 
-    fn remquo(x: types::c_double, y: types::c_double, quo: types::c_int*) types::c_double;
-    fn remquof(x: types::c_float, y: types::c_float, quo: types::c_int*) types::c_float;
-    fn remquol(x: types::c_long_double, y: types::c_long_double, quo: types::c_int*) types::c_long_double;
+    fn remquo(
+        x: types::c_double,
+        y: types::c_double,
+        quo: types::c_int*
+    ) types::c_double;
+
+    fn remquof(
+        x: types::c_float,
+        y: types::c_float,
+        quo: types::c_int*
+    ) types::c_float;
+
+    fn remquol(
+        x: types::c_long_double,
+        y: types::c_long_double,
+        quo: types::c_int*
+    ) types::c_long_double;
 
     fn copysign(x: types::c_double, y: types::c_double) types::c_double;
     fn copysignf(x: types::c_float, y: types::c_float) types::c_float;
     fn copysignl(x: types::c_long_double, y: types::c_long_double) types::c_long_double;
-
-    fn nan(tagp: types::c_char*) types::c_double;
-    fn nanf(tagp: types::c_char*) types::c_float;
-    fn nanl(tagp: types::c_char*) types::c_long_double;
 
     fn nextafter(x: types::c_double, y: types::c_double) types::c_double;
     fn nextafterf(x: types::c_float, y: types::c_float) types::c_float;
@@ -222,155 +156,37 @@ pub extern "C" {
     fn nexttowardf(x: types::c_float, y: types::c_long_double) types::c_float;
     fn nexttowardl(x: types::c_long_double, y: types::c_long_double) types::c_long_double;
 
-    fn fdim(x: types::c_double, y: types::c_double) types::c_double;
-    fn fdimf(x: types::c_float, y: types::c_float) types::c_float;
-    fn fdiml(x: types::c_long_double, y: types::c_long_double) types::c_long_double;
+    fn fmin(x: types::c_double, y: types::c_double) types::c_double;
+    fn fminf(x: types::c_float, y: types::c_float) types::c_float;
+    fn fminl(x: types::c_long_double, y: types::c_long_double) types::c_long_double;
 
     fn fmax(x: types::c_double, y: types::c_double) types::c_double;
     fn fmaxf(x: types::c_float, y: types::c_float) types::c_float;
     fn fmaxl(x: types::c_long_double, y: types::c_long_double) types::c_long_double;
 
-    fn fmin(x: types::c_double, y: types::c_double) types::c_double;
-    fn fminf(x: types::c_float, y: types::c_float) types::c_float;
-    fn fminl(x: types::c_long_double, y: types::c_long_double) types::c_long_double;
+    fn fdim(x: types::c_double, y: types::c_double) types::c_double;
+    fn fdimf(x: types::c_float, y: types::c_float) types::c_float;
+    fn fdiml(x: types::c_long_double, y: types::c_long_double) types::c_long_double;
 
-    fn fabs(x: types::c_double) types::c_double;
-    fn fabsf(x: types::c_float) types::c_float;
-    fn fabsl(x: types::c_long_double) types::c_long_double;
+    fn fma(
+        x: types::c_double,
+        y: types::c_double,
+        z: types::c_double
+    ) types::c_double;
 
-    fn fma(x: types::c_double, y: types::c_double, z: types::c_double) types::c_double;
-    fn fmaf(x: types::c_float, y: types::c_float, z: types::c_float) types::c_float;
-    fn fmal(x: types::c_long_double, y: types::c_long_double, z: types::c_long_double) types::c_long_double;
+    fn fmaf(
+        x: types::c_float,
+        y: types::c_float,
+        z: types::c_float
+    ) types::c_float;
 
-    fn fmod(x: types::c_double, y: types::c_double) types::c_double;
-    fn fmodf(x: types::c_float, y: types::c_float) types::c_float;
-    fn fmodl(x: types::c_long_double, y: types::c_long_double) types::c_long_double;
+    fn fmal(
+        x: types::c_long_double,
+        y: types::c_long_double,
+        z: types::c_long_double
+    ) types::c_long_double;
 
-    fn frac(x: types::c_double) types::c_double;
-    fn fracf(x: types::c_float) types::c_float;
-    fn fracl(x: types::c_long_double) types::c_long_double;
-
-    fn isinf(x: types::c_double) types::c_int;
-    fn isinff(x: types::c_float) types::c_int;
-    fn isinfl(x: types::c_long_double) types::c_int;
-
-    fn isnan(x: types::c_double) types::c_int;
-    fn isnanf(x: types::c_float) types::c_int;
-    fn isnanl(x: types::c_long_double) types::c_int;
-
-    fn j0(x: types::c_double) types::c_double;
-    fn j1(x: types::c_double) types::c_double;
-    fn jn(n: types::c_int, x: types::c_double) types::c_double;
-
-    fn y0(x: types::c_double) types::c_double;
-    fn y1(x: types::c_double) types::c_double;
-    fn yn(n: types::c_int, x: types::c_double) types::c_double;
-
-    fn ilogb(x: types::c_double) types::c_int;
-    fn ilogbf(x: types::c_float) types::c_int;
-    fn ilogbl(x: types::c_long_double) types::c_int;
-
-    fn fpclassify(x: types::c_double) types::c_int;
-    fn fpclassifyf(x: types::c_float) types::c_int;
-    fn fpclassifyl(x: types::c_long_double) types::c_int;
-
-    fn finite(x: types::c_double) types::c_int;
-    fn finitef(x: types::c_float) types::c_int;
-    fn finitel(x: types::c_long_double) types::c_int;
-
-    fn gamma(x: types::c_double) types::c_double;
-    fn gammaf(x: types::c_float) types::c_float;
-    fn gammal(x: types::c_long_double) types::c_long_double;
-
-    fn significand(x: types::c_double) types::c_double;
-    fn significandf(x: types::c_float) types::c_float;
-    fn significandl(x: types::c_long_double) types::c_long_double;
-
-    fn sincos(x: types::c_double, sinp: types::c_double*, cosp: types::c_double*) types::c_void;
-    fn sincosf(x: types::c_float, sinp: types::c_float*, cosp: types::c_float*) types::c_void;
-    fn sincosl(x: types::c_long_double, sinp: types::c_long_double*, cosp: types::c_long_double*) types::c_void;
-
-    fn exp10(x: types::c_double) types::c_double;
-    fn exp10f(x: types::c_float) types::c_float;
-    fn exp10l(x: types::c_long_double) types::c_long_double;
-
-    fn pow10(x: types::c_double) types::c_double;
-    fn pow10f(x: types::c_float) types::c_float;
-    fn pow10l(x: types::c_long_double) types::c_long_double;
-
-    fn drem(x: types::c_double, y: types::c_double) types::c_double;
-    fn dremf(x: types::c_float, y: types::c_float) types::c_float;
-    fn dreml(x: types::c_long_double, y: types::c_long_double) types::c_long_double;
-
-    fn significandf128(x: types::c_long_double) types::c_long_double;
-
-    fn canonicalize(x: types::c_double*, y: types::c_double*) types::c_int;
-    fn canonicalizef(x: types::c_float*, y: types::c_float*) types::c_int;
-    fn canonicalizel(x: types::c_long_double*, y: types::c_long_double*) types::c_int;
-
-    fn totalorder(x: types::c_double*, y: types::c_double*) types::c_int;
-    fn totalorderf(x: types::c_float*, y: types::c_float*) types::c_int;
-    fn totalorderl(x: types::c_long_double*, y: types::c_long_double*) types::c_int;
-
-    fn totalordermag(x: types::c_double*, y: types::c_double*) types::c_int;
-    fn totalordermagf(x: types::c_float*, y: types::c_float*) types::c_int;
-    fn totalordermagl(x: types::c_long_double*, y: types::c_long_double*) types::c_int;
-
-    // fn getpayload(x: types::c_double*) types::c_double;
-    // fn getpayloadf(x: types::c_float*) types::c_float;
-    // fn getpayloadl(x: types::c_long_double*) types::c_long_double;
-
-    // fn sincos(x: types::c_double, sinp: types::c_double*, cosp: types::c_double*) types::c_void;
-    // fn sincosf(x: types::c_float, sinp: types::c_float*, cosp: types::c_float*) types::c_void;
-    // fn sincosl(x: types::c_long_double, sinp: types::c_long_double*, cosp: types::c_long_double*) types::c_void;
-
-    // fn exp10(x: types::c_double) types::c_double;
-    // fn exp10f(x: types::c_float) types::c_float;
-    // fn exp10l(x: types::c_long_double) types::c_long_double;
-
-    // fn pow10(x: types::c_double) types::c_double;
-    // fn pow10f(x: types::c_float) types::c_float;
-    // fn pow10l(x: types::c_long_double) types::c_long_double;
-
-    // fn drem(x: types::c_double, y: types::c_double) types::c_double;
-    // fn dremf(x: types::c_float, y: types::c_float) types::c_float;
-    // fn dreml(x: types::c_long_double, y: types::c_long_double) types::c_long_double;
-
-    // fn significandf128(x: types::c_long_double) types::c_long_double;
-
-    // fn scalb(x: types::c_double, n: types::c_double) types::c_double;
-    // fn scalbf(x: types::c_float, n: types::c_float) types::c_float;
-    // fn scalbl(x: types::c_long_double, n: types::c_long_double) types::c_long_double;
-
-    // fn nextup(x: types::c_double) types::c_double;
-    // fn nextupf(x: types::c_float) types::c_float;
-    // fn nextupl(x: types::c_long_double) types::c_long_double;
-
-    // fn nextdown(x: types::c_double) types::c_double;
-    // fn nextdownf(x: types::c_float) types::c_float;
-    // fn nextdownl(x: types::c_long_double) types::c_long_double;
-
-    // fn canonicalize(x: types::c_double*, y: types::c_double*) types::c_int;
-    // fn canonicalizef(x: types::c_float*, y: types::c_float*) types::c_int;
-    // fn canonicalizel(x: types::c_long_double*, y: types::c_long_double*) types::c_int;
-
-    // fn getpayload(x: types::c_double) types::c_double;
-    // fn getpayloadf(x: types::c_float) types::c_float;
-    // fn getpayloadl(x: types::c_long_double) types::c_long_double;
-
-    // fn setpayload(x: types::c_double*, payload: types::c_double) types::c_int;
-    // fn setpayloadf(x: types::c_float*, payload: types::c_float) types::c_int;
-    // fn setpayloadl(x: types::c_long_double*, payload: types::c_long_double) types::c_int;
-
-    // fn setpayloadsig(x: types::c_double*, payload: types::c_double) types::c_int;
-    // fn setpayloadsigf(x: types::c_float*, payload: types::c_float) types::c_int;
-    // fn setpayloadsigl(x: types::c_long_double*, payload: types::c_long_double) types::c_int;
-
-    // fn totalorder(x: types::c_double*, y: types::c_double*) types::c_int;
-    // fn totalorderf(x: types::c_float*, y: types::c_float*) types::c_int;
-    // fn totalorderl(x: types::c_long_double*, y: types::c_long_double*) types::c_int;
-
-    // fn totalordermag(x: types::c_double*, y: types::c_double*) types::c_int;
-    // fn totalordermagf(x: types::c_float*, y: types::c_float*) types::c_int;
-    // fn totalordermagl(x: types::c_long_double*, y: types::c_long_double*) types::c_int;
+    fn nan(tagp: types::c_char*) types::c_double;
+    fn nanf(tagp: types::c_char*) types::c_float;
+    fn nanl(tagp: types::c_char*) types::c_long_double;
 }
