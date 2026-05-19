@@ -28,7 +28,12 @@ pub struct Array<T> {
 
     /// Create a new array using a specific allocator.
     pub inline fn new() Self {
-        const data: T* = malloc(@sizeof(T) * initial_array_capacity);
+        printf("sizeof T: %d, bytes allocated: %d\n", @sizeof(T), initial_array_capacity * @sizeof(T));
+
+        const cap = initial_array_capacity;
+
+        const data: T* = malloc(cap * @sizeof(T));
+
         if (!data) {
             @panic("allocation failed");
         }
@@ -36,7 +41,7 @@ pub struct Array<T> {
         return Self {
             data,
             len: 0,
-            cap: initial_array_capacity
+            cap
         };
     }
 
@@ -46,37 +51,60 @@ pub struct Array<T> {
             @assert(cap != 0, "initial capacity cannot be zero");
         }
 
-        const bytes = cap * @sizeof(T);
-        const data: T* = malloc(bytes);
+        const data: T* = malloc(cap * @sizeof(T));
         
-        if (data == null && cap > 0) {
+        if (data == null) {
             @panic("initial allocation failed");
         }
 
         return Self {
-            data: data,
+            data,
             len: 0,
-            cap: cap
+            cap
         };
     }
 
-    /// Add all elements from another Array
     pub inline fn extend(&self, other: Array<T>*) {
+        if (self == other) {
+            var original_len = self->len;
+
+            self->reserve(original_len);
+            
+            memmove(
+                self->data + original_len,
+                self->data,
+                original_len * @sizeof(T)
+            );
+
+            self->len += original_len;
+
+            return;
+        }
+
         self->extend_from_ptr(other->data, other->len);
     }
 
-    // FIXME: heap-buffer-overflow on address 0x502000000040 at pc 0x7ffff78fa30f bp 0x7fffffff74a0 sp 0x7fffffff6c60
-    /// Add all elements from another buffer.
     pub inline fn extend_from_ptr(&self, ptr: T*, count: usize) {
         if (count == 0) {
             return;
         }
-        
+
+        // TODO: add integer overflow check 
+        // if (count > USIZE_MAX - self->len) {
+        //     @panic("capacity overflow");
+        // }
+
+        const old_len = self->len;
+
         self->reserve(count);
 
-        @memcpy(self->data + self->len, ptr, count * @sizeof(T));
+        memmove(
+            self->data + old_len,
+            ptr,
+            count * @sizeof(T)
+        );
 
-        self->len += count;
+        self->len = old_len + count;
     }
 
     // FIXME: `Self` not found error.
@@ -109,6 +137,11 @@ pub struct Array<T> {
         if (required < self->len) {
             @panic("array capacity overflow");
         }
+        
+        // TODO: add integer overflow check 
+        // if (extra > USIZE_MAX - self->len) {
+        //     @panic("capacity overflow");
+        // }
 
         if (required <= self->cap) {
             return;

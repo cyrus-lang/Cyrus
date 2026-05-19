@@ -288,6 +288,10 @@ impl<'a> AnalysisContext<'a> {
     }
 
     fn specialize_var_stmt(&self, var_stmt: &mut TypedVarStmt, decl_map: &DeclMap) {
+        if decl_map.get(&var_stmt.var_decl_id).copied().is_none() {
+            dbg!(var_stmt.clone());
+        }
+
         var_stmt.var_decl_id = decl_map.get(&var_stmt.var_decl_id).copied().unwrap();
 
         if let Some(init) = &mut var_stmt.rhs {
@@ -659,6 +663,9 @@ impl<'a> AnalysisContext<'a> {
                     self.collect_and_instantiate_fresh_var_decls(stmt, decl_map);
                 }
             }
+            TypedStmt::If(if_stmt) => {
+                self.collect_and_instantiate_fresh_var_decls_of_if_stmt(if_stmt, decl_map);
+            }
             TypedStmt::While(while_stmt) => {
                 for stmt in &while_stmt.body.stmts {
                     self.collect_and_instantiate_fresh_var_decls(stmt, decl_map);
@@ -733,7 +740,36 @@ impl<'a> AnalysisContext<'a> {
                 }
             }
 
-            _ => {}
+            TypedStmt::Typedef(_)
+            | TypedStmt::GlobalVar(_)
+            | TypedStmt::FuncDef(_)
+            | TypedStmt::FuncDecl(_)
+            | TypedStmt::Return(_)
+            | TypedStmt::Break(_)
+            | TypedStmt::Continue(_)
+            | TypedStmt::Struct(_)
+            | TypedStmt::Enum(_)
+            | TypedStmt::Union(_)
+            | TypedStmt::Interface(_)
+            | TypedStmt::Defer(_)
+            | TypedStmt::Label(_)
+            | TypedStmt::Goto(_) => {}
+        }
+    }
+
+    fn collect_and_instantiate_fresh_var_decls_of_if_stmt(&self, if_stmt: &TypedIfStmt, decl_map: &mut DeclMap) {
+        for stmt in &if_stmt.then_block.stmts {
+            self.collect_and_instantiate_fresh_var_decls(stmt, decl_map);
+        }
+
+        if let Some(else_block) = &if_stmt.else_block {
+            for stmt in &else_block.stmts {
+                self.collect_and_instantiate_fresh_var_decls(stmt, decl_map);
+            }
+        }
+
+        for branch in &if_stmt.branches {
+            self.collect_and_instantiate_fresh_var_decls_of_if_stmt(branch, decl_map);
         }
     }
 
