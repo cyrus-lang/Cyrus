@@ -26,7 +26,10 @@ use cyrusc_typed_ast::{
         TypedMethodCallDispatch,
     },
     format::{format_func_type, format_sema_type},
-    stmts::{TypedFuncParams, TypedFuncTypeVariadicParam, TypedFuncVariadicParam, TypedGenericParams, TypedTypeArgs},
+    stmts::{
+        TypedFuncParamKind, TypedFuncParams, TypedFuncTypeVariadicParam, TypedFuncVariadicParam, TypedGenericParams,
+        TypedTypeArgs,
+    },
     types::{InterfaceObjectType, NamedType, SemaType, TypeDeclID, TypedFuncType},
 };
 
@@ -402,7 +405,13 @@ impl<'a> AnalysisContext<'a> {
         let is_generic_method_call = !generic_env.params.is_empty();
 
         self.with_generic_env(generic_env, |this| {
+            // normalize func params
             this.normalize_func_params(&mut method_decl.func_decl.params, true);
+
+            // normalize return type
+            if let Some(ty) = this.normalize_sema_type(method_decl.func_decl.ret_type.clone(), method_call.loc) {
+                method_decl.func_decl.ret_type = ty;
+            }
 
             // analyze call arguments
             if !this.analyze_call(
@@ -453,6 +462,9 @@ impl<'a> AnalysisContext<'a> {
             let final_type_args = this.collect_instantiated_type_args(method_generic_params.clone());
 
             method_call.type_args = final_type_args;
+
+            #[cfg(debug_assertions)]
+            debug_assert_func_decl_resolved(&method_decl.func_decl);
 
             // generic static method
             if is_generic_method_call {
@@ -1029,4 +1041,26 @@ impl<'a> AnalysisContext<'a> {
 
         Some(*func_type.ret_type.clone())
     }
+}
+
+#[cfg(debug_assertions)]
+fn debug_assert_func_decl_resolved(func_decl: &FuncDecl) {
+    for func_param in &func_decl.params.list {
+        match func_param {
+            TypedFuncParamKind::FuncParam(func_param) => {
+                debug_assert!(!func_param.ty.is_unresolved(), "func decl param type is unresolved");
+            }
+            TypedFuncParamKind::SelfModifier(self_modifier) => {
+                debug_assert!(
+                    !self_modifier.ty.is_unresolved(),
+                    "func decl self_modifier type in unresolved"
+                );
+            }
+        }
+    }
+
+    debug_assert!(
+        !func_decl.ret_type.is_unresolved(),
+        "func decl return type is unresolved"
+    );
 }

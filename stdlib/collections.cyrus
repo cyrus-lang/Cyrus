@@ -40,7 +40,7 @@ pub struct Array<T> {
         };
     }
 
-    /// Pre-allocate memory to avoid initial reallocations
+    /// Pre-allocate memory to avoid initial reallocations.
     pub inline fn with_capacity(cap: usize) Self {
         @debug() {
             @assert(cap != 0, "initial capacity cannot be zero");
@@ -179,11 +179,14 @@ pub struct Array<T> {
         self->len += 1;
     }
 
+    // FIXME: we got a compiler error here (method: index_of).
+    // return type not substituted correctly.
+    // because it hasn't even normalized correctly!!
+
     /// Find the index of a value (Linear Search).
     pub inline fn index_of(&self, value: T) Option<usize> {
         for (var i: usize = 0; i < self->len; i++) {
             if (self->data[i] == value) {
-                // FIXME: we got a compiler error here
                 return .Some(i);
             }
         }
