@@ -21,7 +21,7 @@ use cyrusc_diagcentral::{Diag, DiagLevel};
 use cyrusc_typed_ast::{
     decls::MethodDecls,
     exprs::{TypedFieldAccess, TypedFieldAccessDispatch},
-    format::{format_struct_decl, format_union_decl},
+    format::{format_sema_type, format_struct_decl, format_union_decl},
     substitute::instantiate_struct_decl_with_type_args,
     types::SemaType,
 };
@@ -100,9 +100,13 @@ impl<'a> AnalysisContext<'a> {
 
             Some(field_type)
         } else {
+            let operand_type = field_access.operand.ty.clone().unwrap();
+
             self.reporter.report(Diag {
                 level: DiagLevel::Error,
-                kind: Box::new(AnalyzerDiagKind::ObjectNotSupportsFields),
+                kind: Box::new(AnalyzerDiagKind::ObjectNotSupportsFields {
+                    operand_type: format_sema_type(operand_type, self.formatter),
+                }),
                 loc: Some(field_access.loc),
                 hint: None,
             });

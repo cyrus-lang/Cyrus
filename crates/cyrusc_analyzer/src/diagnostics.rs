@@ -260,11 +260,11 @@ pub enum AnalyzerDiagKind {
         concrete_type: String,
     },
 
-    #[error("Invalid field access (not supported for this symbol).")]
-    ObjectNotSupportsFields,
+    #[error("Type '{operand_type}' does not support field access.")]
+    ObjectNotSupportsFields { operand_type: String },
 
-    #[error("Invalid method call (not supported for this symbol).")]
-    ObjectNotSupportsMethods,
+    #[error("Type '{operand_type}' does not support method calls.")]
+    ObjectNotSupportsMethods { operand_type: String },
 
     #[error("Invalid usage of the thin arrow.")]
     InvalidThinArrow,

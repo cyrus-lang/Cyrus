@@ -207,9 +207,13 @@ impl<'a> AnalysisContext<'a> {
         } {
             Some(ty) => ty,
             None => {
+                let operand_type = method_call.operand.ty.clone().unwrap();
+
                 self.reporter.report(Diag {
                     level: DiagLevel::Error,
-                    kind: Box::new(AnalyzerDiagKind::ObjectNotSupportsMethods),
+                    kind: Box::new(AnalyzerDiagKind::ObjectNotSupportsMethods {
+                        operand_type: format_sema_type(operand_type, self.formatter),
+                    }),
                     loc: Some(method_call.loc),
                     hint: None,
                 });
@@ -251,9 +255,13 @@ impl<'a> AnalysisContext<'a> {
                 .method_decls_of_named_type(named_type)
                 .map(|method_decls| (named_type.type_decl_id, method_decls))
         }) else {
+            let operand_type = method_call.operand.ty.clone().unwrap();
+
             self.reporter.report(Diag {
                 level: DiagLevel::Error,
-                kind: Box::new(AnalyzerDiagKind::ObjectNotSupportsMethods),
+                kind: Box::new(AnalyzerDiagKind::ObjectNotSupportsMethods {
+                    operand_type: format_sema_type(operand_type, self.formatter),
+                }),
                 loc: Some(method_call.loc),
                 hint: None,
             });
@@ -286,9 +294,13 @@ impl<'a> AnalysisContext<'a> {
                 .method_decls_of_named_type(named_type)
                 .map(|method_decls| (named_type.type_decl_id, method_decls))
         }) else {
+            let operand_type = method_call.operand.ty.clone().unwrap();
+
             self.reporter.report(Diag {
                 level: DiagLevel::Error,
-                kind: Box::new(AnalyzerDiagKind::ObjectNotSupportsMethods),
+                kind: Box::new(AnalyzerDiagKind::ObjectNotSupportsMethods {
+                    operand_type: format_sema_type(operand_type, self.formatter),
+                }),
                 loc: Some(method_call.loc),
                 hint: None,
             });
@@ -461,9 +473,6 @@ impl<'a> AnalysisContext<'a> {
 
             method_call.type_args = final_type_args;
 
-            #[cfg(debug_assertions)]
-            debug_assert_func_decl_resolved(&method_decl.func_decl);
-
             // generic static method
             if is_generic_method_call {
                 let func_type = method_decl.func_decl.as_func_type();
@@ -474,7 +483,7 @@ impl<'a> AnalysisContext<'a> {
                 return this.with_func_env(func_env, |this| {
                     // self self type in self_modifier
                     if let Some(self_modifier) = method_decl.func_decl.params.get_self_modifier_mut() {
-                        self_modifier.ty = this.substitute_self_type(self_modifier.ty.clone(), &operand_type);
+                        self_modifier.ty = this.substitute_self_type(self_modifier.ty.clone(), &pure_operand_type);
                     }
 
                     // set func env object type
@@ -488,6 +497,9 @@ impl<'a> AnalysisContext<'a> {
 
                     method_decl.func_decl.params = this.substitute_func_params(method_decl.func_decl.params.clone());
                     method_decl.func_decl.ret_type = this.substitute_type(&method_decl.func_decl.ret_type);
+
+                    #[cfg(debug_assertions)]
+                    debug_assert_func_decl_resolved(&method_decl.func_decl);
 
                     let ret_type = method_decl.func_decl.ret_type.clone();
 
