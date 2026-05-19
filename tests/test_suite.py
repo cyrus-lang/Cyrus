@@ -216,10 +216,12 @@ def main():
                 status, name, reason = future.result()
                 if status == "passed":
                     passed_tests.append(name)
-                    print(f"✓ {name}")
+                    print(f"[ok] {name}")
                 else:
                     failed_tests.append((name, reason))
-                    print(f"✗ {name}")
+                    print(f"[error] {name}:\n")
+                    print("  " + reason.strip().replace('\n', '\n  '))
+                    print()
 
         passed_tests.sort()
         failed_tests.sort(key=lambda x: x[0])
