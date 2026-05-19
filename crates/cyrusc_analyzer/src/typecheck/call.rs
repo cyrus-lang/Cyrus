@@ -405,13 +405,11 @@ impl<'a> AnalysisContext<'a> {
         let is_generic_method_call = !generic_env.params.is_empty();
 
         self.with_generic_env(generic_env, |this| {
+            // NOTE: we need to clarify why we normalize func params
+            // but not return type at this moment (VERY IMPORTANT)
+            //
             // normalize func params
             this.normalize_func_params(&mut method_decl.func_decl.params, true);
-
-            // normalize return type
-            if let Some(ty) = this.normalize_sema_type(method_decl.func_decl.ret_type.clone(), method_call.loc) {
-                method_decl.func_decl.ret_type = ty;
-            }
 
             // analyze call arguments
             if !this.analyze_call(
@@ -474,15 +472,19 @@ impl<'a> AnalysisContext<'a> {
                 let func_env = this.create_method_env(method_decl_id, func_type, parent_infer_ctx);
 
                 return this.with_func_env(func_env, |this| {
+                    // self self type in self_modifier
                     if let Some(self_modifier) = method_decl.func_decl.params.get_self_modifier_mut() {
-                        // self type of instance method
-                        this.func_env.current_object = Some(pure_operand_type.clone());
-
                         self_modifier.ty = this.substitute_self_type(self_modifier.ty.clone(), &operand_type);
-                    } else {
-                        // self type of static method
-                        this.func_env.current_object = Some(pure_operand_type.clone());
                     }
+
+                    // set func env object type
+                    this.func_env.current_object = Some(pure_operand_type.clone());
+
+                    // NOTE: we need to clarify why we normalize return type later (VERY IMPORTANT)
+                    //
+                    // normalize ret type
+                    method_decl.func_decl.ret_type =
+                        this.normalize_sema_type(method_decl.func_decl.ret_type.clone(), method_call.loc)?;
 
                     method_decl.func_decl.params = this.substitute_func_params(method_decl.func_decl.params.clone());
                     method_decl.func_decl.ret_type = this.substitute_type(&method_decl.func_decl.ret_type);
