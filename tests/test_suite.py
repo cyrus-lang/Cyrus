@@ -129,7 +129,10 @@ def extract_test_metadata(content, file_name):
     for key, pattern in patterns.items():
         match = re.search(pattern, content)
         if match:
-            metadata[key] = match.group(1)
+            value = match.group(1)
+            if key in ("stdout", "stderr"):
+                value = value.replace(r'\n', '\n').replace(r'\t', '\t').replace(r'\r', '\r')
+            metadata[key] = value
 
     return metadata
 
