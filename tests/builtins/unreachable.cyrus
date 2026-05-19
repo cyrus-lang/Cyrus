@@ -1,4 +1,4 @@
-// @stderr: thread 'main' entered unreachable code at ./tmp/main.cyrus:8:6\nmeow
+// @stderr: thread 'unreachable_c8e' entered unreachable code at tests/builtins/unreachable.cyrus:6:6\nmeow
 
 import std::libc{printf};
 
