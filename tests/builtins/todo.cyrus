@@ -1,4 +1,4 @@
-// @stderr: thread 'main' hit TODO at ./tmp/main.cyrus:6:6\nmeow
+// @stderr: thread 'todo_6944f86b60' hit TODO at tests/builtins/todo.cyrus:6:6\nmeow
 
 import std::libc{printf};
 
