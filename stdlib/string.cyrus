@@ -16,29 +16,33 @@
  */
 
 import std::collections{Array};
+import std::mem{Allocator};
 
 pub struct String {
     buf: Array<char>;
 
-    pub inline fn new() Self {
-        const buf: Array<char> = Array.new();
+    pub inline fn new(allocator: Allocator) Self {
+        const buf: Array<char> = Array.new(allocator);
 
+    //     // buf.reserve(1);
+    //     // buf.push('\0');
+        
         return Self { buf };
     }
 
-    pub inline fn as_str(&self) char* {
-        return self->buf.data_ptr();
-    }
+    // pub inline fn as_str(&self) char* {
+    //     return self->buf.data_ptr();
+    // }
 
-    pub inline fn cap(&self) usize {
-        return self->buf.cap();
-    }
+    // pub inline fn cap(&self) usize {
+    //     return self->buf.cap();
+    // }
 
-    pub inline fn len(&self) usize {
-        return self->buf.len();
-    }
+    // pub inline fn len(&self) usize {
+    //     return self->buf.len();
+    // }
 
-    pub inline fn free(&self) {
-        self->buf.free();
-    }
+    // pub inline fn free(&self) {
+    //     self->buf.free();
+    // }
 }

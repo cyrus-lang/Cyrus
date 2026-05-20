@@ -79,7 +79,7 @@ impl<'a> AnalysisContext<'a> {
     }
 
     pub(crate) fn analyze_func_decl(&mut self, func_decl: &mut FuncDecl) {
-        let is_generic_func = !func_decl.is_generic();
+        let is_not_generic_func = !func_decl.is_generic();
 
         self.report_if_duplicate_param_names(
             &func_decl.params.list,
@@ -92,11 +92,11 @@ impl<'a> AnalysisContext<'a> {
             None => return,
         };
 
-        if is_generic_func {
+        if is_not_generic_func {
             self.check_type_formation(func_decl.ret_type.clone(), func_decl.loc);
         }
 
-        self.normalize_func_params(&mut func_decl.params, is_generic_func);
+        self.normalize_func_params(&mut func_decl.params, is_not_generic_func);
 
         self.analyze_generic_bounds(&func_decl.generic_params);
     }

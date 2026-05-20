@@ -66,6 +66,8 @@ impl<'a> AnalysisContext<'a> {
         }
 
         self.nameconv_check_method_name(&method_decl.func_decl.name, method_decl.func_decl.loc);
+
+        self.analyze_func_decl(&mut method_decl.func_decl);
     }
 
     pub(crate) fn analyze_method_body(

@@ -149,34 +149,6 @@ pub struct Array<T> {
         self->grow(required);
     }
 
-    pub inline fn grow(&self, min_cap: usize) {
-        var new_cap: usize;
-
-        if (self->cap == 0) {
-            new_cap = initial_array_capacity;
-        } else {
-            new_cap = self->cap;
-        }
-
-        // exponential growth (2x)
-        while (new_cap < min_cap) {
-            // FIXME: add safety check
-            new_cap *= 2;
-        }
-
-        const new_data: T* = realloc(
-            self->data,
-            new_cap * @sizeof(T)
-        );
-
-        if (new_data == null) {
-            @panic("realloc failed");
-        }
-
-        self->data = new_data;
-        self->cap = new_cap;
-    }
-
     pub inline fn push(&self, value: T) {
         self->reserve(1);
 
@@ -211,12 +183,8 @@ pub struct Array<T> {
         self->len += 1;
     }
 
-    // FIXME: we got a compiler error here (method: index_of).
-    // return type not substituted correctly.
-    // because it hasn't even normalized correctly!!
-
     /// Find the index of a value (Linear Search).
-    pub inline fn index_of(&self, value: T) Option<usize> {
+    pub inline fn index(&self, value: T) Option<usize> {
         for (var i: usize = 0; i < self->len; i++) {
             if (self->data[i] == value) {
                 return .Some(i);
@@ -252,10 +220,6 @@ pub struct Array<T> {
 
         return false;
     }
-
-    // TODO: extend
-    // TODO: index
-    // TODO: iter
 
     pub inline fn get_unchecked(&self, index: usize) T* {
         return self->data + index;
@@ -312,5 +276,35 @@ pub struct Array<T> {
             self->len = 0;
             self->cap = 0;
         }
+    }
+
+    // internals 
+
+     inline fn grow(&self, min_cap: usize) {
+        var new_cap: usize;
+
+        if (self->cap == 0) {
+            new_cap = initial_array_capacity;
+        } else {
+            new_cap = self->cap;
+        }
+
+        // exponential growth (2x)
+        while (new_cap < min_cap) {
+            // FIXME: add safety check
+            new_cap *= 2;
+        }
+
+        const new_data: T* = realloc(
+            self->data,
+            new_cap * @sizeof(T)
+        );
+
+        if (new_data == null) {
+            @panic("realloc failed");
+        }
+
+        self->data = new_data;
+        self->cap = new_cap;
     }
 }
