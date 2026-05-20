@@ -43,14 +43,6 @@ pub struct String {
         return self->buffer.data_ptr();
     }
 
-    pub inline fn cap(&self) usize {
-        return self->buffer.cap();
-    }
-
-    pub inline fn len(&self) usize {
-        return self->buffer.len() - 1; // exclude '\0'
-    }
-
     pub inline fn push(&self, ch: char) {
         self->buffer.pop();
         self->reserve(1);
@@ -61,14 +53,13 @@ pub struct String {
     pub inline fn push_str(&self, str: char*) {
         @assert(str != null, "input string cannot be null");
 
-        const add_len = strlen(str);
+        const len = strlen(str);
 
-        // remove current '\0'
         self->buffer.pop();
 
-        self->reserve(add_len);
+        self->reserve(len);
 
-        for (var i: usize = 0; i < add_len; i++) {
+        for (var i: usize = 0; i < len; i++) {
             self->buffer.push(str[i]);
         }
         
@@ -77,6 +68,14 @@ pub struct String {
 
     pub inline fn is_empty(&self) bool {
         return self->len() == 0;
+    }
+
+    pub inline fn cap(&self) usize {
+        return self->buffer.cap();
+    }
+
+    pub inline fn len(&self) usize {
+        return self->buffer.len() - 1; // exclude '\0'
     }
 
     pub inline fn clear(&self) {

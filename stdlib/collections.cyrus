@@ -28,7 +28,7 @@ pub struct Array<T> {
     len: usize;
 
     /// Create a new array using a specific allocator.
-    pub inline fn new(allocator: Allocator) Self {
+    pub inline fn new(const allocator: Allocator) Self {
         const cap = initial_array_capacity;
 
         const data: T* = allocator.alloc(cap * @sizeof(T));
@@ -45,7 +45,7 @@ pub struct Array<T> {
     }
 
     /// Pre-allocate memory to avoid initial reallocations.
-    pub inline fn with_capacity(allocator: Allocator, cap: usize) Self {
+    pub inline fn with_capacity(const allocator: Allocator, const cap: usize) Self {
         @debug() {
             @assert(cap != 0, "initial capacity cannot be zero");
         }
@@ -63,7 +63,7 @@ pub struct Array<T> {
         };
     }
 
-    pub inline fn extend(&self, other: Array<T>*) {
+    pub inline fn extend(&const self, const other: Array<T>*) {
         if (self == other) {
             var original_len = self->len;
 
@@ -83,7 +83,7 @@ pub struct Array<T> {
         self->extend_from_ptr(other->data, other->len);
     }
 
-    pub inline fn extend_from_ptr(&self, ptr: T*, count: usize) {
+    pub inline fn extend_from_ptr(&const self, const ptr: T*, const count: usize) {
         if (count == 0) {
             return;
         }
@@ -118,19 +118,19 @@ pub struct Array<T> {
 
     // TODO: from<V>(value: V)
 
-    pub inline fn resize(&self, new_len: usize, value: T) {
-        if (new_len > self->len) {
-            self->reserve(new_len - self->len);
+    pub inline fn resize(&self, const len: usize, const value: T) {
+        if (len > self->len) {
+            self->reserve(len - self->len);
 
-            while (self->len < new_len) {
+            while (self->len < len) {
                 self->push(value);
             }
         } else {
-            self->len = new_len;
+            self->len = len;
         }
     }
 
-    pub inline fn reserve(&self, extra: usize) {
+    pub inline fn reserve(&self, const extra: usize) {
         const required = self->len + extra;
 
         if (required < self->len) {
@@ -184,7 +184,7 @@ pub struct Array<T> {
     }
 
     /// Find the index of a value (Linear Search).
-    pub inline fn index(&self, value: T) Option<usize> {
+    pub inline fn index(&const self, const value: T) Option<usize> {
         for (var i: usize = 0; i < self->len; i++) {
             if (self->data[i] == value) {
                 return .Some(i);
@@ -194,7 +194,7 @@ pub struct Array<T> {
         return .None;
     }
 
-    pub inline fn get(&self, index: usize) T {
+    pub inline fn get(&const self, const index: usize) T {
         if (index >= self->len) {
             @panic("index out of bounds");
         }
@@ -202,7 +202,7 @@ pub struct Array<T> {
         return *(self->data + index);
     }
 
-    pub inline fn get_ref(&self, index: usize) T* {
+    pub inline fn get_ref(&const self, const index: usize) T* {
         if (index >= self->len) {
             @panic("index out of bounds");
         }
@@ -210,7 +210,7 @@ pub struct Array<T> {
         return self->data + index;
     }
 
-    pub inline fn contains(&self, value: T) bool {
+    pub inline fn contains(&const self, const value: T) bool {
         // linear lookup
         for (var i: usize = 0; i < self->len; i++) {
             if (self->data[i] == value) {
@@ -221,19 +221,19 @@ pub struct Array<T> {
         return false;
     }
 
-    pub inline fn get_unchecked(&self, index: usize) T* {
+    pub inline fn get_unchecked(&const self, const index: usize) T* {
         return self->data + index;
     }
 
-    pub inline fn len(&self) usize {
+    pub inline fn len(&const self) usize {
         return self->len;
     }
 
-    pub inline fn cap(&self) usize {
+    pub inline fn cap(&const self) usize {
         return self->cap;
     }
 
-    pub inline fn is_empty(&self) bool {
+    pub inline fn is_empty(&const self) bool {
         return self->len == 0;
     }
 
