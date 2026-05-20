@@ -455,8 +455,9 @@ impl<'a> AnalysisContext<'a> {
                 &expected_type,
             );
 
-            // apply defaults for method generics
+            // apply defaults for generics
             this.apply_generic_defaults(method_decl.func_decl.generic_params.clone());
+            this.apply_generic_defaults(operand_generic_params.clone());
 
             // instantiate operand type with collected type args
             operand_type = this.substitute_type(&operand_type);
@@ -504,7 +505,7 @@ impl<'a> AnalysisContext<'a> {
                     let ret_type = method_decl.func_decl.ret_type.clone();
 
                     let (monomorph_id, final_type_args) = this.monomorphize_generic_method_call(
-                        operand_type.clone(),
+                        pure_operand_type.clone(),
                         method_decl_id,
                         method_decl,
                         false,

@@ -40,14 +40,12 @@ type DeclMap = FxHashMap<VarDeclID, VarDeclID>;
 impl<'a> AnalysisContext<'a> {
     pub(crate) fn monomorphize_generic_method_call(
         &mut self,
-        operand_type: SemaType,
+        pure_operand_type: SemaType,
         method_decl_id: MethodDeclID,
         mut method_decl: MethodDecl,
         is_generic_interface_method_call: bool,
         loc: Loc,
     ) -> Option<(MonomorphID, TypedTypeArgs)> {
-        let pure_operand_type = operand_type.const_inner().pointer_inner().clone();
-
         if !is_generic_interface_method_call {
             // substitute Self inside params, ret_type, variables
             self.apply_self_type_in_method_decl_and_variable(&mut method_decl, &pure_operand_type);
