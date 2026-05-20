@@ -16,6 +16,7 @@
  */
 
 import std::libc{printf, memmove, realloc, malloc, free};
+import std::mem{Allocator};
 import std::option{Option};
 import std::iterator{Iterator};
 
@@ -23,16 +24,14 @@ const initial_array_capacity: usize = 16;
 
 pub struct Array<T> {
     data: T*;
-    len: usize;
     cap: usize;
+    len: usize;
 
     /// Create a new array using a specific allocator.
-    pub inline fn new() Self {
-        printf("sizeof T: %d, bytes allocated: %d\n", @sizeof(T), initial_array_capacity * @sizeof(T));
-
+    pub inline fn new(allocator: Allocator) Self {
         const cap = initial_array_capacity;
 
-        const data: T* = malloc(cap * @sizeof(T));
+        const data: T* = allocator.alloc(cap * @sizeof(T));
 
         if (!data) {
             @panic("allocation failed");
@@ -40,18 +39,18 @@ pub struct Array<T> {
 
         return Self {
             data,
+            cap,
             len: 0,
-            cap
         };
     }
 
     /// Pre-allocate memory to avoid initial reallocations.
-    pub inline fn with_capacity(cap: usize) Self {
+    pub inline fn with_capacity(allocator: Allocator, cap: usize) Self {
         @debug() {
             @assert(cap != 0, "initial capacity cannot be zero");
         }
 
-        const data: T* = malloc(cap * @sizeof(T));
+        const data: T* = allocator.alloc(cap * @sizeof(T));
         
         if (data == null) {
             @panic("initial allocation failed");

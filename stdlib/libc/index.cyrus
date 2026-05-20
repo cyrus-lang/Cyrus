@@ -137,6 +137,8 @@ pub extern "C" {
 
     fn aligned_alloc(alignment: types::c_size, size: types::c_size) types::c_void*;
 
+    fn posix_memalign(memptr: types::c_void**, alignment: types::c_size, size: types::c_size) types::c_int;
+
     fn abort() types::c_void;
     fn exit(status: types::c_int) types::c_void;
     fn _Exit(status: types::c_int) types::c_void;
