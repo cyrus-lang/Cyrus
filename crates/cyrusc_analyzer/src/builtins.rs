@@ -260,6 +260,10 @@ impl<'a> AnalysisContext<'a> {
 
         self.analyze_expr_non_terminal(operand, None);
 
+        if let Some(ty) = &mut operand.ty {
+            *ty = self.expand_sema_type(ty.clone(), builtin_func.loc);
+        }
+
         let ret_type = SemaType::Plain(PlainType::USize);
 
         builtin_func.ret_type = Some(ret_type.clone());
@@ -291,7 +295,9 @@ impl<'a> AnalysisContext<'a> {
         let type_expr = &builtin_func.args[0];
         let field_name_expr = &builtin_func.args[1];
 
-        let Some(mut ty) = type_expr.ty.clone() else { return None };
+        let Some(mut ty) = type_expr.ty.clone() else {
+            return None;
+        };
 
         ty = self.expand_sema_type(ty, builtin_func.loc);
 
@@ -355,6 +361,10 @@ impl<'a> AnalysisContext<'a> {
         let operand = builtin_func.args.first_mut().unwrap();
 
         self.analyze_expr_non_terminal(operand, None);
+
+        if let Some(ty) = &mut operand.ty {
+            *ty = self.expand_sema_type(ty.clone(), builtin_func.loc);
+        }
 
         operand.ty.clone()
     }
