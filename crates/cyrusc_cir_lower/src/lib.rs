@@ -930,7 +930,8 @@ impl<'a> CIRLower<'a> {
             .map(|ty| lower_sema_type(&self.decl_tables, self.target, ty))
             .unwrap();
 
-        let mangled_name = mangle_global_var(&global_var_decl.modifiers, &self.module_name, &global_var_decl.name);
+        let module_name = self.query.lookup_module_name(global_var_decl.file_id).unwrap();
+        let mangled_name = mangle_global_var(&global_var_decl.modifiers, &module_name, &global_var_decl.name);
 
         CIRGlobalVarStmt {
             irv_id,
