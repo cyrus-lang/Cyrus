@@ -489,3 +489,9 @@ pub const LC_COLLATE: types::c_int = 3;
 pub const LC_MONETARY: types::c_int = 4;
 pub const LC_MESSAGES: types::c_int = 5;
 pub const LC_ALL: types::c_int = 6;
+
+// uninst
+
+pub extern "C" {
+    fn access(pathname: types::c_char*, mode: types::c_int) types::c_int;
+}
