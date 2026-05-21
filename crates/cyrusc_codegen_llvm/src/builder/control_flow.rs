@@ -42,8 +42,8 @@ use inkwell::{
     context::AsContextRef,
     llvm_sys::{
         core::{
-            LLVMBuildBr, LLVMBuildCondBr, LLVMConstIntGetZExtValue, LLVMDeleteBasicBlock, LLVMGetFirstInstruction,
-            LLVMIsAConstantInt,
+            LLVMAddCase, LLVMBuildBr, LLVMBuildCondBr, LLVMConstIntGetZExtValue, LLVMDeleteBasicBlock,
+            LLVMGetFirstInstruction, LLVMIsAConstantInt,
         },
         prelude::{LLVMBasicBlockRef, LLVMValueRef},
     },
@@ -143,6 +143,9 @@ impl<'ll> CodeGenIRBuilder<'ll> {
             exit_block
         };
 
+        self.emit_block(parent_block);
+        let switch_inst = self.llvmbuilder.build_switch(enum_value, else_block, &[]).unwrap();
+
         let mut cases: Vec<(IntValue<'ll>, BasicBlock<'ll>)> = Vec::new();
 
         for case in &switch_stmt.cases {
@@ -152,8 +155,6 @@ impl<'ll> CodeGenIRBuilder<'ll> {
                 let CIRPattern::Variant { tag, payload, .. } = pattern else {
                     unreachable!()
                 };
-
-                dbg!(tag);
 
                 let pattern_value = enum_value.get_type().const_int(*tag as u64, false);
 
@@ -179,7 +180,17 @@ impl<'ll> CodeGenIRBuilder<'ll> {
                     }
                 }
 
+                unsafe {
+                    LLVMAddCase(
+                        switch_inst.as_value_ref(),
+                        pattern_value.as_value_ref(),
+                        case_block.as_mut_ptr(),
+                    );
+                }
+
                 cases.push((pattern_value, case_block));
+
+                self.emit_block(case_block);
             }
 
             self.emit_block(case_block);
@@ -191,9 +202,6 @@ impl<'ll> CodeGenIRBuilder<'ll> {
                 }
             }
         }
-
-        self.llvmbuilder.position_at_end(parent_block);
-        self.llvmbuilder.build_switch(enum_value, else_block, &cases).unwrap();
 
         let all_cases_return = cases.iter().all(|(_, bb)| {
             bb.get_terminator()
@@ -255,6 +263,12 @@ impl<'ll> CodeGenIRBuilder<'ll> {
             exit_block
         };
 
+        self.emit_block(parent_block);
+        let switch_inst = self
+            .llvmbuilder
+            .build_switch(enum_idx_int_value, else_block, &[])
+            .unwrap();
+
         let tag_type = self.emit_ty(*enum_type.tag_type_or_infer_or_default()).into_int_type();
 
         let mut cases: Vec<(IntValue<'ll>, BasicBlock<'ll>)> = Vec::new();
@@ -315,6 +329,14 @@ impl<'ll> CodeGenIRBuilder<'ll> {
                     }
                 }
 
+                unsafe {
+                    LLVMAddCase(
+                        switch_inst.as_value_ref(),
+                        pattern_int_value.as_value_ref(),
+                        case_block.as_mut_ptr(),
+                    );
+                }
+
                 cases.push((pattern_int_value, case_block));
             }
 
@@ -328,12 +350,6 @@ impl<'ll> CodeGenIRBuilder<'ll> {
                 }
             }
         }
-
-        self.llvmbuilder.position_at_end(parent_block);
-
-        self.llvmbuilder
-            .build_switch(enum_idx_int_value, else_block, &cases)
-            .unwrap();
 
         let all_cases_return = cases.iter().all(|(_, bb)| {
             bb.get_terminator()
@@ -390,6 +406,12 @@ impl<'ll> CodeGenIRBuilder<'ll> {
             exit_block
         };
 
+        self.emit_block(parent_block);
+        let switch_inst = self
+            .llvmbuilder
+            .build_switch(rvalue.as_basic_value().into_int_value(), else_block, &[])
+            .unwrap();
+
         let mut cases: Vec<(IntValue<'ll>, BasicBlock<'ll>)> = Vec::new();
 
         for case in &switch_stmt.cases {
@@ -400,6 +422,15 @@ impl<'ll> CodeGenIRBuilder<'ll> {
                     let pattern_lvalue = self.emit_expr(expr, &None);
                     let pattern_rvalue = self.load_rvalue(pattern_lvalue);
                     let pattern_int_value = pattern_rvalue.as_basic_value().into_int_value();
+
+                    unsafe {
+                        LLVMAddCase(
+                            switch_inst.as_value_ref(),
+                            pattern_int_value.as_value_ref(),
+                            case_block.as_mut_ptr(),
+                        );
+                    }
+
                     cases.push((pattern_int_value, case_block));
                 }
             }
@@ -413,12 +444,6 @@ impl<'ll> CodeGenIRBuilder<'ll> {
                 }
             }
         }
-
-        self.llvmbuilder.position_at_end(parent_block);
-
-        self.llvmbuilder
-            .build_switch(rvalue.as_basic_value().into_int_value(), else_block, &cases)
-            .unwrap();
 
         let all_cases_return = cases.iter().all(|(_, bb)| {
             bb.get_terminator()
