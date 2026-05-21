@@ -172,6 +172,7 @@ impl<'a> Resolver<'a> {
                 }
                 return Vec::new();
             }
+
             _ => {
                 self.reporter.report(Diag {
                     level: DiagLevel::Error,
@@ -194,22 +195,22 @@ impl<'a> Resolver<'a> {
             ASTStmt::For(for_stmt) => self.resolve_for_stmt(for_stmt).map(TypedStmt::For),
             ASTStmt::While(while_stmt) => self.resolve_while_stmt(while_stmt).map(TypedStmt::While),
             ASTStmt::Switch(switch_stmt) => self.resolve_switch_stmt(switch_stmt).map(TypedStmt::Switch),
-            ASTStmt::Enum(enum_decl) => self.resolve_enum_stmt(enum_decl),
-            ASTStmt::Union(union_decl) => self.resolve_union_stmt(union_decl),
-            ASTStmt::Interface(interface) => self.resolve_interface_stmt(interface),
-            ASTStmt::Struct(struct_decl) => self.resolve_struct_stmt(struct_decl),
             ASTStmt::BlockStmt(block) => self.resolve_block_stmt(block).map(TypedStmt::BlockStmt),
             ASTStmt::Return(return_stmt) => self.resolve_return_stmt(return_stmt).map(TypedStmt::Return),
             ASTStmt::Break(break_stmt) => self.resolve_break_stmt(break_stmt).map(TypedStmt::Break),
             ASTStmt::Continue(continue_stmt) => self.resolve_continue_stmt(continue_stmt).map(TypedStmt::Continue),
-            ASTStmt::Typedef(typedef) => self.resolve_typedef(typedef),
             ASTStmt::Label(label) => self.resolve_label_stmt(label),
 
             ASTStmt::Goto(goto) => self.resolve_goto_stmt(goto),
             ASTStmt::Foreach(_foreach_stmt) => unimplemented!(), // TODO
 
             // invalid statements
-            ASTStmt::GlobalVar(_)
+            ASTStmt::Enum(_)
+            | ASTStmt::Union(_)
+            | ASTStmt::Interface(_)
+            | ASTStmt::Struct(_)
+            | ASTStmt::Typedef(_)
+            | ASTStmt::GlobalVar(_)
             | ASTStmt::FuncDef(_)
             | ASTStmt::FuncDecl(_)
             | ASTStmt::Import(_)
@@ -222,6 +223,7 @@ impl<'a> Resolver<'a> {
                 });
                 None
             }
+
             ASTStmt::Defer(_) => unreachable!(),
         }
     }
@@ -833,9 +835,7 @@ impl<'a> Resolver<'a> {
     }
 
     fn resolve_typedef(&mut self, typedef: &ASTTypedefStmt) -> Option<TypedStmt> {
-        let symbol_id = self
-            .lookup_symbol_id(self.current_scope.unwrap(), &typedef.ident.value)
-            .unwrap();
+        let symbol_id = self.lookup_symbol_id(self.current_scope.unwrap(), &typedef.ident.value)?;
 
         let generic_params = self.resolve_generic_params(&typedef.generic_params)?;
 
