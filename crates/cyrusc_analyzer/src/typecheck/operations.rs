@@ -273,7 +273,18 @@ impl<'a> AnalysisContext<'a> {
             return None;
         }
 
-        if !((operand_type.is_integer() && unary.operand.is_lvalue()) || unary.operand.ty.as_ref()?.is_pointer()) {
+        if !unary.operand.is_lvalue() {
+            self.reporter.report(Diag {
+                level: DiagLevel::Error,
+                kind: Box::new(AnalyzerDiagKind::UnaryOnTemporary {
+                    operand_type: format_sema_type(operand_type.clone(), self.formatter),
+                }),
+                loc: Some(unary.loc),
+                hint: None,
+            });
+        }
+
+        if !((operand_type.is_integer()) || unary.operand.ty.as_ref()?.is_pointer()) {
             self.reporter.report(Diag {
                 level: DiagLevel::Error,
                 kind: Box::new(AnalyzerDiagKind::InvalidUnary {

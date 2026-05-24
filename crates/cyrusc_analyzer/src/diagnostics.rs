@@ -494,6 +494,9 @@ pub enum AnalyzerDiagKind {
     #[error("Cannot apply unary operator to value of type '{operand_type}'.")]
     InvalidUnary { operand_type: String },
 
+    #[error("Unary operator cannot be applied to a temporary value of type '{operand_type}'.")]
+    UnaryOnTemporary { operand_type: String },
+
     #[error("Expected an interface in bound, but found type '{found}'.")]
     ExpectedInterfaceInBound { found: String },
 
