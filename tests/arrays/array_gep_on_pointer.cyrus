@@ -1,6 +1,6 @@
 // @stdout: 10 20
 
-import std::libc{printf, malloc, free};
+import std::libc{printf, malloc};
 
 pub fn main() {
     var ptr: int* = malloc(4 * 2);

@@ -78,6 +78,7 @@ impl<'source_file> Parser<'source_file> {
                 match self.parse_infix_expr(lhs.clone(), lhs_line, lhs_column, lhs_start) {
                     Some(infix) => {
                         lhs = infix?;
+
                         if let ASTExpr::Infix(infix_expr) = lhs.clone() {
                             lhs_start = infix_expr.loc.start;
                             lhs_line = infix_expr.loc.line;
@@ -330,6 +331,7 @@ impl<'source_file> Parser<'source_file> {
                 };
 
                 self.next_token(); // consume the prefix operator
+
                 let expr = self.parse_expr(Precedence::Prefix)?;
 
                 let end = self.current_token().loc.end;
@@ -358,6 +360,35 @@ impl<'source_file> Parser<'source_file> {
             }
 
             TokenKind::LeftBrace => self.parse_untyped_array()?,
+
+            TokenKind::Increment => {
+                self.next_token();
+
+                let expr = self.parse_expr(Precedence::Prefix)?;
+
+                let end = self.current_token().loc.end;
+
+                ASTExpr::Unary(ASTUnaryExpr {
+                    op: UnaryOperator::PreIncrement,
+                    operand: Box::new(expr),
+                    loc: Loc::new(self.file_id(), line, column, start, end),
+                })
+            }
+
+            TokenKind::Decrement => {
+                self.next_token();
+
+                let expr = self.parse_expr(Precedence::Prefix)?;
+
+                let end = self.current_token().loc.end;
+
+                ASTExpr::Unary(ASTUnaryExpr {
+                    op: UnaryOperator::PreDecrement,
+                    operand: Box::new(expr),
+                    loc: Loc::new(self.file_id(), line, column, start, end),
+                })
+            }
+
             _ => {
                 let type_spec = self.parse_type_specifier()?;
 

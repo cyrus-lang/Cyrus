@@ -34,7 +34,7 @@ use cyrusc_internal::{
             CIRBlockStmt, CIRBreakStmt, CIRContinueStmt, CIRForStmt, CIRGotoStmt, CIRIfStmt, CIRLabelStmt, CIRPattern,
             CIRReturnStmt, CIRStmt, CIRSwitchStmt, CIRVariantPayload, CIRWhileStmt, IRValueID,
         },
-        types::{CIREnumType, CIRType},
+        types::CIRType,
     },
 };
 use inkwell::{
@@ -118,12 +118,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         }
     }
 
-    fn emit_switch_on_scalar_enum(
-        &mut self,
-        switch_stmt: &CIRSwitchStmt,
-        enum_value: IntValue<'ll>,
-        enum_type: &CIREnumType,
-    ) {
+    fn emit_switch_on_scalar_enum(&mut self, switch_stmt: &CIRSwitchStmt, enum_value: IntValue<'ll>) {
         let parent_block = self.blockreg.cur_block.unwrap();
         let exit_block = self.new_basic_block("switch_on_enum.exit");
 
@@ -208,7 +203,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
                 .map_or(false, |inst| inst.get_opcode() == InstructionOpcode::Return)
         });
 
-        if all_cases_return && switch_stmt.cases.len() == enum_type.variants.len() {
+        if all_cases_return && switch_stmt.all_cases_covered {
             self.emit_block(exit_block);
             self.llvmbuilder.build_unreachable().unwrap();
             return;
@@ -236,7 +231,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
             if ty.is_int_type() {
                 let enum_value = rvalue.as_basic_value().into_int_value();
 
-                self.emit_switch_on_scalar_enum(switch_stmt, enum_value, &enum_type);
+                self.emit_switch_on_scalar_enum(switch_stmt, enum_value);
                 return;
             }
         }
@@ -356,7 +351,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
                 .map_or(false, |inst| inst.get_opcode() == InstructionOpcode::Return)
         });
 
-        if all_cases_return && switch_stmt.cases.len() == enum_type.variants.len() {
+        if all_cases_return && switch_stmt.all_cases_covered {
             self.emit_block(exit_block);
             self.llvmbuilder.build_unreachable().unwrap();
         }
@@ -380,7 +375,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
             if enum_type.is_scalar_optimizable() {
                 let enum_value = rvalue.as_basic_value().into_int_value();
 
-                self.emit_switch_on_scalar_enum(switch_stmt, enum_value, &enum_type);
+                self.emit_switch_on_scalar_enum(switch_stmt, enum_value);
             } else {
                 self.emit_switch_on_enum(switch_stmt);
             }
