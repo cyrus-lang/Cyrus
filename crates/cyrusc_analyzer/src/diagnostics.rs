@@ -117,8 +117,8 @@ pub enum AnalyzerDiagKind {
     #[error("Type arguments supplied to non-generic type '{type_name}'.")]
     UnexpectedTypeArgs { type_name: String },
 
-    #[error("Generic static method type arguments must be applied to the operand, not the method.")]
-    GenericStaticMethodWrongTypeArgs,
+    #[error("Type arguments cannot be applied to an instance.")]
+    InstanceCannotTakeTypeArgs,
 
     #[error("Could not resolve type for generic parameter '{param_name}'.")]
     UnresolvedGenericParameter { param_name: String },
@@ -243,14 +243,6 @@ pub enum AnalyzerDiagKind {
 
     #[error("Use '->' instead of '.' when accessing a member via a pointer.")]
     UseThinArrow,
-
-    #[error(
-        "Interface method '{method_name}' called on a non-dynamic object; expected a dynamic interface object of type '{expected_interface}'."
-    )]
-    InterfaceMethodCallOnNonDynamicObject {
-        method_name: String,
-        expected_interface: String,
-    },
 
     #[error(
         "Cannot convert to dynamic interface '{interface_type}'. Type '{concrete_type}' does not implement the interface."

@@ -223,7 +223,22 @@ impl<'a> AnalysisContext<'a> {
 
         operand_type = self.normalize_sema_type(operand_type, method_call.loc)?;
 
+        let operand_includes_type_args = operand_type
+            .as_named_type()
+            .map(|named_type| named_type.type_args.len() > 0)
+            .unwrap_or(false);
+
         let is_operand_interface = operand_type.as_interface_object().is_some() || operand_type.is_interface();
+
+        if !is_operand_instance && operand_includes_type_args {
+            self.reporter.report(Diag {
+                level: DiagLevel::Error,
+                kind: Box::new(AnalyzerDiagKind::InstanceCannotTakeTypeArgs),
+                loc: Some(method_call.loc),
+                hint: None,
+            });
+            return None;
+        }
 
         if is_operand_instance {
             self.analyze_instance_method_call(method_call, &operand_type, expected_type)
