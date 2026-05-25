@@ -40,9 +40,6 @@ pub enum AnalyzerDiagKind {
     #[error("Invalid union literal: mixed type and value fields.")]
     MixedUnionFieldKinds,
 
-    #[error("Invalid enum literal: mixed type and value in variants.")]
-    MixedEnumVariantFieldKinds,
-
     #[error(
         "Repr 'c' enum cannot contain non-integer variants, because their layout cannot be represented in the C ABI."
     )]
@@ -98,9 +95,6 @@ pub enum AnalyzerDiagKind {
 
     #[error("Value of type '{got_type}' is not compatible with the enum's tag type '{expected_type}'.")]
     InvalidEnumVariantValueType { got_type: String, expected_type: String },
-
-    #[error("Value of type '{got_type}' is not assignable to field type '{expected_type}'.")]
-    InvalidEnumVariantFieldValueType { got_type: String, expected_type: String },
 
     #[error("Invalid enum constructor target; expression '{expr}' is not an enum.")]
     InvalidEnumConstructorTarget { expr: String },

@@ -98,8 +98,11 @@ pub fn is_comptime_valid(expr: &TypedExprKind) -> bool {
         | TypedExprKind::UnnamedEnumValue(_)
         | TypedExprKind::EnumStructVariantInit(_)
         | TypedExprKind::EnumInit(_)
-        | TypedExprKind::UnnamedUnionValue(_)
-        | TypedExprKind::Symbol(_)
+        | TypedExprKind::UnnamedUnionValue(_) => true,
+
+        TypedExprKind::SemaType { .. } => true,
+
+        TypedExprKind::Symbol(_)
         | TypedExprKind::ArrayIndex(_)
         | TypedExprKind::TupleAccess(_)
         | TypedExprKind::Deref(_)
@@ -108,9 +111,9 @@ pub fn is_comptime_valid(expr: &TypedExprKind) -> bool {
         | TypedExprKind::FuncCall(_)
         | TypedExprKind::Assign(_)
         | TypedExprKind::Dynamic(_)
-        | TypedExprKind::AddrOf(_)
-        | TypedExprKind::SemaType { .. } => false,
+        | TypedExprKind::AddrOf(_) => false,
 
+        // IMPORTANT
         TypedExprKind::Builtin(_) => false,
 
         TypedExprKind::Poisoned => unreachable!(),
