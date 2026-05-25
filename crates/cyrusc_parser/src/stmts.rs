@@ -1333,7 +1333,7 @@ impl<'source_file> Parser<'source_file> {
         }))
     }
 
-    fn parse_export_pattern(&mut self) -> Result<ExportPattern, Diag> {
+    fn parse_export_tuple_pattern(&mut self) -> Result<ExportPattern, Diag> {
         let loc = self.current_token().loc;
         let mutability = self.parse_mutability();
 
@@ -1351,7 +1351,7 @@ impl<'source_file> Parser<'source_file> {
 
                 if !matches!(self.current_token().kind, TokenKind::RightParen) {
                     loop {
-                        let pattern = self.parse_export_pattern()?;
+                        let pattern = self.parse_export_tuple_pattern()?;
                         self.next_token();
 
                         patterns.push(pattern);
@@ -1388,11 +1388,12 @@ impl<'source_file> Parser<'source_file> {
 
         // optional type annotation
         let ty = {
-            if matches!(self.current_token().kind, TokenKind::Colon) {
-                self.next_token();
+            if matches!(self.peek_token().kind, TokenKind::Colon) {
+                self.next_token(); // consume last token
+                self.next_token(); // consume colon
 
                 let type_spec = self.parse_type_specifier()?;
-                self.next_token();
+                // self.next_token();
 
                 Some(type_spec)
             } else {
@@ -1413,7 +1414,7 @@ impl<'source_file> Parser<'source_file> {
         let (line, column, start) = (loc.line, loc.column, loc.start);
 
         // parse the whole pattern (which must start with left paren)
-        let pattern = self.parse_export_pattern()?;
+        let pattern = self.parse_export_tuple_pattern()?;
         self.next_token();
 
         if !matches!(pattern.kind, ExportPatternKind::Tuple(_)) {

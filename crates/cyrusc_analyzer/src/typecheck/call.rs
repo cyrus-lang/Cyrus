@@ -285,6 +285,8 @@ impl<'a> AnalysisContext<'a> {
 
         self.analyze_expr(&mut method_call.operand, None);
 
+        let is_operand_const_qualified = self.is_const_qualified_lvalue(&method_call.operand);
+
         self.analyze_method_call_internal(
             method_call,
             &method_decls,
@@ -292,6 +294,7 @@ impl<'a> AnalysisContext<'a> {
             operand_type.clone(),
             true,
             false,
+            is_operand_const_qualified,
             expected_type,
         )
     }
@@ -340,6 +343,7 @@ impl<'a> AnalysisContext<'a> {
             operand_type.clone(),
             false,
             false,
+            false,
             expected_type,
         )
     }
@@ -352,6 +356,7 @@ impl<'a> AnalysisContext<'a> {
         mut operand_type: SemaType,
         is_instance_method_call: bool,
         is_interface_method_call: bool,
+        is_operand_const_qualified: bool,
         expected_type: Option<SemaType>,
     ) -> Option<SemaType> {
         let mut pure_operand_type = operand_type.const_inner().pointer_inner().clone();
@@ -456,6 +461,7 @@ impl<'a> AnalysisContext<'a> {
                 &object_name,
                 method_call.is_thin_arrow,
                 is_interface_method_call,
+                is_operand_const_qualified,
                 method_call.loc,
             );
 
@@ -553,6 +559,7 @@ impl<'a> AnalysisContext<'a> {
         &mut self,
         method_call: &mut TypedMethodCall,
         pure_operand_type: &SemaType,
+        is_operand_const_qualified: bool,
     ) -> Option<SemaType> {
         let interface_decl_id = pure_operand_type.as_named_interface().unwrap();
         let interface_decl = self.decl_tables.interface_decl(interface_decl_id);
@@ -612,6 +619,7 @@ impl<'a> AnalysisContext<'a> {
                 &object_name,
                 method_call.is_thin_arrow,
                 true,
+                is_operand_const_qualified,
                 method_call.loc,
             );
 
@@ -647,6 +655,7 @@ impl<'a> AnalysisContext<'a> {
         &mut self,
         method_call: &mut TypedMethodCall,
         interface_object: &InterfaceObjectType,
+        is_operand_const_qualified: bool,
         expected_type: Option<SemaType>,
     ) -> Option<SemaType> {
         let interface_decl_id = interface_object.interface_type.type_decl_id.as_interface().unwrap();
@@ -671,6 +680,7 @@ impl<'a> AnalysisContext<'a> {
             concrete_operand_type.clone(),
             true,
             false,
+            is_operand_const_qualified,
             expected_type,
         );
 
@@ -705,13 +715,24 @@ impl<'a> AnalysisContext<'a> {
         operand_type: &SemaType,
         expected_type: Option<SemaType>,
     ) -> Option<SemaType> {
+        let is_operand_const_qualified = self.is_const_qualified_lvalue(&method_call.operand);
+
         let pure_operand_type = operand_type.const_inner().pointer_inner().clone();
 
         // try as static-dispatch if interface-object is present
         if let Some(interface_object) = pure_operand_type.as_interface_object() {
-            self.analyze_static_dispatch_interface_method_call(method_call, interface_object, expected_type)
+            self.analyze_static_dispatch_interface_method_call(
+                method_call,
+                interface_object,
+                is_operand_const_qualified,
+                expected_type,
+            )
         } else {
-            self.analyze_dynamic_dispatch_interface_method_call(method_call, &pure_operand_type)
+            self.analyze_dynamic_dispatch_interface_method_call(
+                method_call,
+                &pure_operand_type,
+                is_operand_const_qualified,
+            )
         }
     }
 }
@@ -726,6 +747,7 @@ impl<'a> AnalysisContext<'a> {
         object_name: &str,
         is_thin_arrow: bool,
         is_interface_method_call: bool,
+        is_operand_const_qualified: bool,
         loc: Loc,
     ) {
         let access_violation = if let Some(current_method_id) = self.func_env.current_method {
@@ -751,9 +773,29 @@ impl<'a> AnalysisContext<'a> {
         }
 
         let base_type = operand_type.const_inner();
-        let is_pointer = base_type.is_pointer();
+        let is_base_type_pointer = base_type.is_pointer();
 
-        if is_pointer {
+        if let Some(self_modifier) = method_decl.func_decl.params.get_self_modifier() {
+            let is_self_const = self_modifier.mutability.is_const();
+
+            if !is_self_const && is_operand_const_qualified {
+                let type_name = format_sema_type(operand_type.clone(), self.formatter);
+
+                self.reporter.report(Diag {
+                    level: DiagLevel::Error,
+                    kind: Box::new(AnalyzerDiagKind::MutableMethodOnConstInstance {
+                        method_name: method_decl.func_decl.name.clone(),
+                        type_name,
+                    }),
+                    loc: Some(loc),
+                    hint: Some(
+                        "Consider declaring the instance with 'var' instead of 'const' to allow mutation.".to_string(),
+                    ),
+                });
+            }
+        }
+
+        if is_base_type_pointer {
             if !is_thin_arrow {
                 self.reporter.report(Diag {
                     level: DiagLevel::Error,

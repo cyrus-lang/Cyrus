@@ -1,0 +1,25 @@
+// @stdout: id: 2, custom error message
+
+import std::libc{printf};
+
+enum Error {
+    NotFound = struct { id: 1uint32, msg: "not found" },
+
+    Custom {
+        id: uint32,
+        msg: const char*
+    }
+}
+
+pub fn main() {
+    const err = Error.Custom { id: 2, msg: "custom error message" };
+
+    switch (err) {
+        case .NotFound => {
+            printf("not found\n");
+        }
+        case .Custom { id, msg } => {
+            printf("id: %d, %s\n", id, msg);
+        }
+    }
+}

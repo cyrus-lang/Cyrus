@@ -63,6 +63,14 @@ pub enum AnalyzerDiagKind {
     #[error("Cannot apply 'dynamic' to an already dynamic value.")]
     InvalidMultipleDynamicType,
 
+    #[error(
+        "Method '{method_name}' requires mutable access to 'self', but instance of type '{type_name}' is declared 'const'."
+    )]
+    MutableMethodOnConstInstance {
+        method_name: String,
+        type_name: String,
+    },
+
     #[error("Cannot call static method '{method_name}' on an instance.")]
     StaticMethodCallOnInstance { method_name: String },
 

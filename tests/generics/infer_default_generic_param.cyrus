@@ -6,29 +6,29 @@ struct IOError<V, E = uint64> {
     pub value: V;
     pub error: E;
 
-    pub fn new(value: V, error: E) Self {
+    pub fn new(const value: V, const error: E) Self {
         return Self { value, error };
     }
 
-    pub fn display_error(self) {
+    pub fn display_error(const self) {
         printf("%d ", self.error);
     }
 
-    pub fn display_value(self) {
+    pub fn display_value(const self) {
         printf("%s ", self.value);
     }
 
-    pub fn set_error(&self, new_error: E) {
+    pub fn set_error(&self, const new_error: E) {
         self->error = new_error;
     }
 
-    pub fn get_error(&self) E {
+    pub fn get_error(&const self) E {
         return self->error;
     }
 }
 
 pub fn main() {
-    const inst = IOError.new("Value!", 2);
+    var inst = IOError.new("Value!", 2);
     inst.display_value();
     inst.display_error();
 

@@ -3,17 +3,17 @@
 import std::libc{printf};
 
 interface Shape<T> {
-	fn area(&self) T;
+	fn area(&const self) T;
 }
 
 struct Square : Shape<float64> {
 	side: float64;
 
-	pub fn new(side: float64) Self {
+	pub fn new(const side: float64) Self {
 		return Self { side };
 	}
 
-	pub fn area(&self) float64 {
+	pub fn area(&const self) float64 {
 		return self->side * self->side;
 	}
 }
@@ -22,11 +22,11 @@ struct Rectangle<T> : Shape<T> {
 	x: T;
 	y: T;
 
-	pub fn new(x: T, y: T) Self {
+	pub fn new(const x: T, const y: T) Self {
 		return Self { x, y };
 	}
 
-	pub fn area(&self) T {
+	pub fn area(&const self) T {
 		return self->x * self->y;
 	}
 }

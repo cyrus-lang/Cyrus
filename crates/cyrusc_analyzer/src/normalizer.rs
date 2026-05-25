@@ -142,11 +142,8 @@ impl<'a> AnalysisContext<'a> {
         }
 
         for variant in &mut enum_decl.variants {
-            match variant {
-                TypedEnumVariant::Valued { value, .. } => {
-                    self.analyze_expr(value, None);
-                }
-                _ => {}
+            if let TypedEnumVariant::Valued { value, .. } = variant {
+                self.analyze_expr(value, enum_decl.tag_type.clone());
             }
         }
 

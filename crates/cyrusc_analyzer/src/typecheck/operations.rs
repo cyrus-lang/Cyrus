@@ -90,6 +90,8 @@ impl<'a> AnalysisContext<'a> {
             None => return None,
         };
 
+        let is_operand_const = self.is_const_qualified_lvalue(&addr_of.operand);
+
         if !addr_of.operand.is_lvalue() {
             self.reporter.report(Diag {
                 level: DiagLevel::Error,
@@ -100,7 +102,11 @@ impl<'a> AnalysisContext<'a> {
             return None;
         }
 
-        Some(SemaType::Pointer(Box::new(operand_type)))
+        if is_operand_const {
+            Some(SemaType::Pointer(Box::new(operand_type.as_const())))
+        } else {
+            Some(SemaType::Pointer(Box::new(operand_type)))
+        }
     }
 
     pub(crate) fn analyze_deref(&mut self, deref: &mut TypedDerefExpr) -> Option<SemaType> {

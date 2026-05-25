@@ -113,7 +113,7 @@ impl<'a> AnalysisContext<'a> {
         match variant {
             TypedEnumVariant::Unit(_) => { /* skip */ }
             TypedEnumVariant::Valued { ident, value } => {
-                self.analyze_expr(value, None);
+                self.analyze_expr(value, tag_type_opt.clone());
 
                 if let Some(value_type) = &value.ty {
                     if is_repr_c && !value_type.is_integer() {

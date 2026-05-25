@@ -5,11 +5,11 @@ import std::libc{printf, malloc, free};
 struct Box<T> {
     raw: T*;
 
-    pub fn new(raw: T*) Self {
+    pub fn new(const raw: T*) Self {
         return Self { raw: raw };
     }
 
-    pub fn raw_ptr(&self) T* {
+    pub fn raw_ptr(&const self) T* {
         return self->raw;
     }
 }

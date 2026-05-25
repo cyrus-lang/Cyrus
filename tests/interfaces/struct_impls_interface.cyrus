@@ -12,11 +12,11 @@ struct HeapAllocator : Allocator {
         return Self {};
     }
 
-    pub fn alloc(&self, size: usize) void* {
+    pub fn alloc(&const self, size: usize) void* {
         return malloc(size);
     }
 
-    pub fn free(&self, ptr: void*) void {
+    pub fn free(&const self, ptr: void*) void {
         free(ptr);
     }
 }
@@ -28,5 +28,6 @@ pub fn main() {
     
     *ptr = 5;
     printf("%d\n", *ptr);
+    
     allocator.free(ptr);
 }

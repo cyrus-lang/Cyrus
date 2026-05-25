@@ -25,7 +25,7 @@ struct Object {
 pub fn main() {
     var x: usize = 123;
 
-    const obj = Object.new(&x);
+    var obj = Object.new(&x);
 
     obj.call();
 

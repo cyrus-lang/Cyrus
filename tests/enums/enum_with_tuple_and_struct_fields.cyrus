@@ -1,39 +1,40 @@
-// @stdout: FileNotFound(reason: I don't know:/) | FileEmpty(tuple: (4, 5)) | NoPermission(value: 99) |
+// @stdout: Compute(id: 1024, priority: 5) | Range(start: 0, end: 100) | Delay(ms: 500) |
 
 import std::libc{printf};
 
-enum FileReadError {
-    FileNotFound(struct {
-        why: char*
+enum Task {
+    Compute(struct {
+        id: uint64,
+        priority: int
     }),
-    NoPermission(usize),
-    FileEmpty((usize, usize))
+    Delay(uint32),
+    Range((int, int))
 }
 
-fn display_file_read_error(f: FileReadError) {
-    switch (f) {
-        case .FileNotFound(reason) => {
-            printf("FileNotFound(reason: %s) | ", reason.why);
+fn process_task(t: Task) {
+    switch (t) {
+        case .Compute(req) => {
+            printf("Compute(id: %llu, priority: %d) | ", req.id, req.priority);
         }
-        case .NoPermission(value) => {
-            printf("NoPermission(value: %d) | ", value);
+        case .Delay(ms) => {
+            printf("Delay(ms: %u) | ", ms);
         }
-        case .FileEmpty(tuple) => {
-            printf("FileEmpty(tuple: (%d, %d)) | ", tuple.0, tuple.1);
+        case .Range(bounds) => {
+            printf("Range(start: %d, end: %d) | ", bounds.0, bounds.1);
         }
         default => {
-            printf("UnknownFileReadError | ");
+            printf("Unknown Task | ");
         }
     }
 }
 
 pub fn main() {
-    var f = FileReadError.FileNotFound(struct { why: "I don't know:/" });
-    display_file_read_error(f);
+    var t = Task.Compute(struct { id: 1024, priority: 5 });
+    process_task(t);
 
-    f = FileReadError.FileEmpty((4, 5));
-    display_file_read_error(f);
+    t = Task.Range((0, 100));
+    process_task(t);
 
-    f = FileReadError.NoPermission(99);
-    display_file_read_error(f);
+    t = Task.Delay(500);
+    process_task(t);
 }

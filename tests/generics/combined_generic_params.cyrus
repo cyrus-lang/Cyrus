@@ -6,7 +6,7 @@ struct Point<T> {
     pub x: T;
     pub y: T;
 
-    pub fn add_x<I>(&self, x: I) I {
+    pub fn add_x<I>(&const self, x: I) I {
         return self->x + x;
     }
 }

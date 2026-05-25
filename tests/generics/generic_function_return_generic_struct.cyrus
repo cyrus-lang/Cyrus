@@ -6,7 +6,7 @@ struct Point<T> {
     pub x: T;
     pub y: T;
 
-	pub fn display(&self) {
+	pub fn display(&const self) {
 		printf("x: %d, y: %d\n", self->x, self->y);
 	}
 }
