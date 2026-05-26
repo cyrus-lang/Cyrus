@@ -27,11 +27,6 @@ use cyrusc_typed_ast::{
     types::{SemaType, TypedTupleType},
 };
 
-// TODO: Warn for weird situations like:
-// const (const a: int64, const b) = (1, 2);
-// var (var a, var b) = (1, 2);
-// var (const a: int64, const b) = (1, 2);
-
 impl<'a> AnalysisContext<'a> {
     pub(crate) fn analyze_export_tuple_values(&mut self, export_tuple: &mut TypedTupleExportStmt) -> Option<()> {
         let rhs = match export_tuple.rhs.as_mut() {
@@ -61,9 +56,8 @@ impl<'a> AnalysisContext<'a> {
             return None;
         };
 
-        let patterns = match &export_tuple.pattern.kind {
-            TypedTupleExportPatternKind::Tuple(p) => p,
-            _ => unreachable!(), // handled in parser
+        let TypedTupleExportPatternKind::Tuple(patterns) = &export_tuple.pattern.kind else {
+            unreachable!() // handled in parser
         };
 
         if patterns.len() != tuple_type.elements.len() {
@@ -143,15 +137,27 @@ impl<'a> AnalysisContext<'a> {
             TypedTupleExportPatternKind::Ident(var_decl_id) => {
                 let rhs = self.tuple_access_expr(root_expr, path, loc);
 
-                let is_const = pattern
-                    .mutability
-                    .map(|mutability| match mutability {
-                        Mutability::Const => true,
-                        Mutability::Var => false,
-                    })
-                    .unwrap_or(stmt_is_const);
+                let is_const_opt = pattern.mutability.map(|mutability| match mutability {
+                    Mutability::Const => true,
+                    Mutability::Var => false,
+                });
 
-                self.analyze_tuple_ident_pattern(*var_decl_id, sema_type, &rhs, is_const);
+                if let Some(is_const) = is_const_opt
+                    && !(is_const ^ stmt_is_const)
+                {
+                    let mutability = if is_const { "const" } else { "var" };
+
+                    self.reporter.report(Diag {
+                        level: DiagLevel::Error,
+                        kind: Box::new(AnalyzerDiagKind::InvalidNestedExportTuple {
+                            mutability: mutability.to_string(),
+                        }),
+                        loc: Some(loc),
+                        hint: None,
+                    });
+                }
+
+                self.analyze_tuple_ident_pattern(*var_decl_id, sema_type, &rhs, is_const_opt.unwrap_or(stmt_is_const));
             }
 
             TypedTupleExportPatternKind::Tuple(patterns) => {

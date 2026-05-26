@@ -392,6 +392,9 @@ pub enum AnalyzerDiagKind {
 
     #[error("Cannot access member of non-tuple value.")]
     TupleMemberAccessOnNonTupleOperand,
+    
+    #[error("Invalid variable declaration in tuple destructuring: nested '{mutability}' is not allowed.")]
+    InvalidNestedExportTuple { mutability: String },
 
     #[error("Cannot take the address of a temporary value.")]
     AddressOfRvalue,
