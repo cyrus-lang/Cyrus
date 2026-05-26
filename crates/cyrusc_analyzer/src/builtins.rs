@@ -262,6 +262,7 @@ impl<'a> AnalysisContext<'a> {
 
         if let Some(ty) = &mut operand.ty {
             *ty = self.expand_sema_type(ty.clone(), builtin_func.loc);
+            *ty = self.substitute_type(ty);
         }
 
         let ret_type = SemaType::Plain(PlainType::USize);
@@ -278,6 +279,7 @@ impl<'a> AnalysisContext<'a> {
 
         if let Some(ty) = &mut operand.ty {
             *ty = self.expand_sema_type(ty.clone(), builtin_func.loc);
+            *ty = self.substitute_type(ty);
         }
 
         let ret_type = SemaType::Plain(PlainType::USize);
@@ -300,6 +302,7 @@ impl<'a> AnalysisContext<'a> {
         };
 
         ty = self.expand_sema_type(ty, builtin_func.loc);
+        ty = self.substitute_type(&ty);
 
         if !ty.is_struct() {
             let arg_type = format_sema_type(ty.clone(), self.formatter);
@@ -387,6 +390,7 @@ impl<'a> AnalysisContext<'a> {
         };
 
         target_type = self.expand_sema_type(target_type, builtin_func.loc);
+        target_type = self.substitute_type(&target_type);
 
         let value_type = value_expr.ty.as_ref()?;
 

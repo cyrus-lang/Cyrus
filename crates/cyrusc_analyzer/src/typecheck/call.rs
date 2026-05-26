@@ -230,15 +230,16 @@ impl<'a> AnalysisContext<'a> {
 
         let is_operand_interface = operand_type.as_interface_object().is_some() || operand_type.is_interface();
 
-        if !is_operand_instance && operand_includes_type_args {
-            self.reporter.report(Diag {
-                level: DiagLevel::Error,
-                kind: Box::new(AnalyzerDiagKind::InstanceCannotTakeTypeArgs),
-                loc: Some(method_call.loc),
-                hint: None,
-            });
-            return None;
-        }
+        // FIXME!!
+        // if !is_operand_instance && operand_includes_type_args {
+        //     self.reporter.report(Diag {
+        //         level: DiagLevel::Error,
+        //         kind: Box::new(AnalyzerDiagKind::InstanceCannotTakeTypeArgs),
+        //         loc: Some(method_call.loc),
+        //         hint: None,
+        //     });
+        //     return None;
+        // }
 
         if is_operand_instance {
             self.analyze_instance_method_call(method_call, &operand_type, expected_type)
