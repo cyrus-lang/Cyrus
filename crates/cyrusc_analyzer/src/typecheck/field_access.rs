@@ -22,7 +22,7 @@ use cyrusc_typed_ast::{
     decls::MethodDecls,
     exprs::{TypedFieldAccess, TypedFieldAccessDispatch},
     format::{format_sema_type, format_struct_decl, format_union_decl},
-    substitute::instantiate_struct_decl_with_type_args,
+    substitute::{instantiate_struct_decl_with_type_args, instantiate_union_decl_with_type_args},
     types::SemaType,
 };
 
@@ -32,9 +32,9 @@ impl<'a> AnalysisContext<'a> {
 
         let pure_operand_type = operand_type.const_inner().pointer_inner().clone();
 
-        if let Some(struct_decl_id) = pure_operand_type.as_struct() {
-            let type_args = &pure_operand_type.as_named_type().unwrap().type_args;
+        let type_args = &pure_operand_type.as_named_type().unwrap().type_args;
 
+        if let Some(struct_decl_id) = pure_operand_type.as_struct() {
             let struct_decl = self.decl_tables.struct_decl(struct_decl_id);
 
             let inst_struct_decl = instantiate_struct_decl_with_type_args(&struct_decl, type_args);
@@ -73,9 +73,11 @@ impl<'a> AnalysisContext<'a> {
         } else if let Some(union_decl_id) = pure_operand_type.as_union() {
             let union_decl = self.decl_tables.union_decl(union_decl_id);
 
-            let union_name = format_union_decl(&union_decl, self.formatter);
+            let inst_union_decl = instantiate_union_decl_with_type_args(&union_decl, type_args);
 
-            let Some(field) = union_decl.lookup_field(&field_access.name) else {
+            let union_name = format_union_decl(&inst_union_decl, self.formatter);
+
+            let Some(field) = inst_union_decl.lookup_field(&field_access.name) else {
                 self.reporter.report(Diag {
                     level: DiagLevel::Error,
                     kind: Box::new(AnalyzerDiagKind::ObjectHasNoFieldNamed {
@@ -91,7 +93,7 @@ impl<'a> AnalysisContext<'a> {
             // unions never involved with visibility violation
             let vis = Visibility::Public;
 
-            self.validate_field_access(&field_access, vis, &union_decl.methods, &union_name);
+            self.validate_field_access(&field_access, vis, &inst_union_decl.methods, &union_name);
 
             let field_type = self.normalize_sema_type(field.ty.clone(), field_access.loc)?;
 
