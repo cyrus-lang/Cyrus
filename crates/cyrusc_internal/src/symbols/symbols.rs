@@ -125,6 +125,14 @@ impl SymbolEntry {
     }
 
     #[inline]
+    pub fn as_namespace(&self) -> Option<&Namespace> {
+        match &self.kind {
+            SymbolEntryKind::Namespace(namespace) => Some(namespace),
+            _ => None,
+        }
+    }
+
+    #[inline]
     pub fn as_proxied_symbol(&self) -> Option<(SymbolID, SymbolID)> {
         match self.kind {
             SymbolEntryKind::ProxiedSymbol { scope_id, symbol_id } => Some((scope_id, symbol_id)),

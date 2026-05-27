@@ -23,7 +23,7 @@ use cyrusc_internal::{
     symbols::SymbolQuery,
 };
 use cyrusc_source_loc::{FileID, Loc, SourceMap};
-use cyrusc_typed_ast::{SymbolID, TypedProgramTree};
+use cyrusc_typed_ast::{SymbolID, TypedProgramTree, format::Formatter};
 use std::{cell::RefCell, collections::HashSet, rc::Rc, sync::Arc};
 
 // Used to check import cycles.
@@ -290,7 +290,12 @@ impl<'a> Resolver<'a> {
                         .insert_proxied_module(parent_scope_id, &alias, module_symbol_id);
                 }
                 ModuleAlias::Single(singles) => {
-                    self.resolve_import_single_symbols_from_module(parent_scope_id, module_symbol_id, &singles);
+                    self.resolve_import_single_symbols_from_module(
+                        parent_scope_id,
+                        module_symbol_id,
+                        &singles,
+                        is_module_safe_to_be_resolved,
+                    );
                 }
             }
         }
@@ -341,6 +346,7 @@ impl<'a> Resolver<'a> {
         target_scope_id: SymbolID,         // where proxies are inserted
         source_module_symbol_id: SymbolID, // module we import from
         singles: &[ModuleSegmentSingle],
+        is_module_safe_to_be_resolved: &mut bool,
     ) {
         let source_scope_id = self.global_symbols.resolve_concrete_scope_id(source_module_symbol_id);
 
@@ -365,6 +371,13 @@ impl<'a> Resolver<'a> {
 
             // visibility check
             if let Some(symbol_entry) = self.lookup_symbol_entry(target_symbol_id) {
+                if symbol_entry.as_namespace().is_some() {
+                    self.report_imported_namespace_as_single(self.format_symbol_name(target_symbol_id), loc);
+
+                    *is_module_safe_to_be_resolved = false;
+                    continue;
+                }
+
                 if let Some(vis) = symbol_entry.vis_opt {
                     self.report_if_imported_private_symbol(actual_name.clone(), vis, loc);
                 }
@@ -380,7 +393,6 @@ impl<'a> Resolver<'a> {
                     loc: Some(loc),
                     hint: None,
                 });
-
                 continue;
             }
 
@@ -462,6 +474,17 @@ impl<'a> Resolver<'a> {
                 hint: None,
             });
         }
+    }
+
+    fn report_imported_namespace_as_single(&mut self, single_name: String, loc: Loc) {
+        self.reporter.report(Diag {
+            level: DiagLevel::Error,
+            kind: Box::new(ResolverDiagKind::NamespaceImportedAsSingle {
+                symbol_name: single_name,
+            }),
+            loc: Some(loc),
+            hint: None,
+        });
     }
 }
 

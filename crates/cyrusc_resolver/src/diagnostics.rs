@@ -62,6 +62,9 @@ pub enum ResolverDiagKind {
     #[error("Symbol '{symbol_name}' is private and cannot be imported.")]
     ImportSinglePrivateSymbol { symbol_name: String },
 
+    #[error("Namespace '{symbol_name}' cannot be imported as single in import statement.")]
+    NamespaceImportedAsSingle { symbol_name: String },
+
     #[error("Invalid literal suffix.")]
     InvalidLiteralSuffix,
 
