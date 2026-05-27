@@ -69,7 +69,7 @@ pub trait ModuleLoader {
         &mut self,
         import: &ASTImportStmt,
         current_module_file_id: FileID,
-    ) -> Vec<Result<LoadedModule, Box<dyn DiagKindClone>>>;
+    ) -> Vec<Result<LoadedModule, Option<Box<dyn DiagKindClone>>>>;
 
     /// Forms a stable module name from a filesystem path.
     /// Strips extensions, normalizes separators, and prefixes stdlib modules.

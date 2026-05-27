@@ -174,13 +174,21 @@ pub fn build_semantic_bundle<'a>(
 
             let module_symbol_id = resolver.create_entry_module_symbol_id(Path::new(&entry_file), file_id);
 
-            resolver.resolve_module(
+            let entry_module = resolver.resolve_module(
                 module_symbol_id,
                 &program_tree,
                 &mut VisitingModule::new(),
                 file_id,
                 true,
             );
+
+            // If entry module is None, it means something went wrong in resolver layer,
+            // And we don't run analyzer and exit immediately.
+            if entry_module.is_none() {
+                DiagReporter::display(&resolver.reporter);
+                exit(1);
+            }
+
             if resolver.reporter.has_errors() {
                 DiagReporter::display(&resolver.reporter);
                 exit(1);

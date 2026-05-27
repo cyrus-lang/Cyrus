@@ -117,9 +117,25 @@ impl<'a> Resolver<'a> {
         // collect symbol names (first pass)
         self.resolve_decl_names(&program_tree.body);
 
+        // This switch is used to prevent resolving the module,
+        // if any fault happened during parsing or importing a module (these happen inside self.resolve_import(...)),
+        // so we pass mutable reference to resolve_import and when flipped, we stop resolving current module.
+        let mut is_module_safe_to_be_resolved = true;
+
         // analyze `import statements` of this module
         for import in program_tree.import_stmts() {
-            self.resolve_import(module_symbol_id, import, &mut visiting);
+            self.resolve_import(
+                module_symbol_id,
+                import,
+                &mut visiting,
+                &mut is_module_safe_to_be_resolved,
+            );
+
+            if !is_module_safe_to_be_resolved {
+                // IMPORTANT:
+                // Prevent cascading failures by stopping module resolution.
+                return None;
+            }
         }
 
         // collect full definitions and details of the symbols (second pass)
@@ -164,7 +180,13 @@ impl<'a> Resolver<'a> {
     }
 
     /// Resolves a module import with duplicate and cycle detection.
-    fn resolve_import(&mut self, parent_scope_id: SymbolID, import: ASTImportStmt, visiting: &mut VisitingModule) {
+    fn resolve_import(
+        &mut self,
+        parent_scope_id: SymbolID,
+        import: ASTImportStmt,
+        visiting: &mut VisitingModule,
+        is_module_safe_to_be_resolved: &mut bool,
+    ) {
         let parent_scope_id = self.global_symbols.resolve_concrete_scope_id(parent_scope_id);
 
         let current_file = self.current_module_file_id.unwrap();
@@ -173,13 +195,17 @@ impl<'a> Resolver<'a> {
         for loaded_module_result in loaded_modules_list {
             let loaded_module = match loaded_module_result {
                 Ok(loaded_module) => loaded_module,
-                Err(diag_kind) => {
-                    self.reporter.report(Diag {
-                        level: DiagLevel::Error,
-                        kind: diag_kind,
-                        loc: Some(import.loc),
-                        hint: None,
-                    });
+                Err(diag_opt) => {
+                    if let Some(diag) = diag_opt {
+                        self.reporter.report(Diag {
+                            level: DiagLevel::Error,
+                            kind: diag,
+                            loc: Some(import.loc),
+                            hint: None,
+                        });
+                    }
+
+                    *is_module_safe_to_be_resolved = false;
                     continue;
                 }
             };
@@ -194,6 +220,8 @@ impl<'a> Resolver<'a> {
                         loc: Some(import.loc),
                         hint: Some("Consider removing the previous declaration.".to_string()),
                     });
+
+                    *is_module_safe_to_be_resolved = false;
                     continue;
                 }
             }
@@ -210,6 +238,8 @@ impl<'a> Resolver<'a> {
                     hint: Some("Break the cycle by removing one import.".to_string()),
                 });
                 visiting.done.insert(loaded_module.file_id);
+
+                *is_module_safe_to_be_resolved = false;
             }
 
             // insert file module

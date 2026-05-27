@@ -207,12 +207,12 @@ impl ModuleLoader for FsModuleLoader {
         &mut self,
         import: &ASTImportStmt,
         current_module_file_id: FileID,
-    ) -> Vec<Result<LoadedModule, Box<dyn DiagKindClone>>> {
+    ) -> Vec<Result<LoadedModule, Option<Box<dyn DiagKindClone>>>> {
         let current_module_file_path = &self.source_map.get_file(current_module_file_id).unwrap().file_path;
 
         // phase 1: collect and parse all modules
         let mut parsed_program_trees: Vec<(FileID, Rc<ProgramTree>, &ModulePath, ResolvedModuleFile)> = Vec::new();
-        let mut loaded_modules_list: Vec<Result<LoadedModule, Box<dyn DiagKindClone>>> = Vec::new();
+        let mut loaded_modules_list: Vec<Result<LoadedModule, Option<Box<dyn DiagKindClone>>>> = Vec::new();
 
         for sub_import in &import.paths {
             let resolved_module_file = match self
@@ -220,7 +220,7 @@ impl ModuleLoader for FsModuleLoader {
             {
                 Ok(path) => path,
                 Err(diag) => {
-                    loaded_modules_list.push(Err(Box::new(diag)));
+                    loaded_modules_list.push(Err(Some(Box::new(diag))));
                     continue;
                 }
             };
@@ -229,9 +229,9 @@ impl ModuleLoader for FsModuleLoader {
 
             // verify file exists
             if std::fs::read_to_string(module_file_path).is_err() {
-                loaded_modules_list.push(Err(Box::new(ModuleFSLoaderDiagKind::ModuleNotFound {
+                loaded_modules_list.push(Err(Some(Box::new(ModuleFSLoaderDiagKind::ModuleNotFound {
                     module_name: format_module_segments(&sub_import.segments),
-                })));
+                }))));
                 continue;
             }
 
@@ -242,6 +242,10 @@ impl ModuleLoader for FsModuleLoader {
 
             let Ok(program_tree) = self.source_parser.parse_program(&source_file) else {
                 self.source_parser.display_errors();
+
+                // REVIEW: REFACTOR REQUIRE
+                // Redesign more abstracted.
+                loaded_modules_list.push(Err(None));
                 continue;
             };
 
