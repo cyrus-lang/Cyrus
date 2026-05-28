@@ -95,118 +95,6 @@ impl<'source_file> Parser<'source_file> {
         Ok(lhs)
     }
 
-    pub(crate) fn parse_module_import(&mut self) -> Result<ASTModuleImport, Diag> {
-        let loc = self.current_token().loc;
-        let (line, column, start) = (loc.line, loc.column, loc.start);
-
-        let mut segments = {
-            let end = self.current_token().loc.end;
-
-            match &self.current_token().kind {
-                TokenKind::Ident(ident) => {
-                    vec![ModuleSegment::SubModule(Ident {
-                        value: ident.clone(),
-                        loc: Loc::new(self.file_id(), line, column, start, end),
-                    })]
-                }
-                _ => {
-                    return Err(self.error_at_current(ParserDiagKind::ExpectedIdentifier {
-                        got: self.current_token().kind.to_string(),
-                    }));
-                }
-            }
-        };
-
-        // if no '::' follows, this is a single identifier import
-        if !self.peek_token_is(TokenKind::DoubleColon) {
-            let end = self.current_token().loc.end;
-
-            return Ok(ASTModuleImport {
-                segments,
-                loc: Loc::new(self.file_id(), line, column, start, end),
-            });
-        }
-
-        self.next_token(); // consume first identifier
-
-        loop {
-            if !self.current_token_is(TokenKind::DoubleColon) {
-                break;
-            }
-
-            self.next_token(); // consume '::'
-
-            let ident_token = self.current_token();
-
-            match &ident_token.kind {
-                TokenKind::Ident(name) => {
-                    segments.push(ModuleSegment::SubModule(Ident {
-                        value: name.clone(),
-                        loc: ident_token.loc,
-                    }));
-                }
-                _ => {
-                    // if we find '::' but no identifier after it
-                    return Err(self.error_at_current(ParserDiagKind::ExpectedIdentifier {
-                        got: ident_token.kind.to_string(),
-                    }));
-                }
-            }
-
-            // check if there's another '::' after this identifier
-            if !self.peek_token_is(TokenKind::DoubleColon) {
-                break;
-            }
-
-            // Prepare for next iteration
-            self.next_token();
-        }
-
-        let end = self.current_token().loc.end;
-
-        Ok(ASTModuleImport {
-            segments,
-            loc: Loc::new(self.file_id(), line, column, start, end),
-        })
-    }
-
-    pub(crate) fn parse_module_path(&mut self) -> Result<ModulePath, Diag> {
-        let loc = self.current_token().loc;
-        let (line, column, start) = (loc.line, loc.column, loc.start);
-
-        let mut segments = Vec::new();
-        let mut alias = None;
-
-        let ident = self.parse_ident()?;
-        segments.push(ModuleSegment::SubModule(ident));
-        self.next_token();
-
-        while self.current_token_is(TokenKind::DoubleColon) {
-            self.next_token(); // consume '::'
-
-            let ident = self.parse_ident()?;
-            segments.push(ModuleSegment::SubModule(ident));
-            self.next_token();
-        }
-
-        // check for optional 'as' alias
-        if self.current_token_is(TokenKind::As) {
-            self.next_token();
-
-            let alias_ident = self.parse_ident()?;
-            alias = Some(alias_ident.value);
-            self.next_token(); // consume the alias identifier
-        }
-
-        let end = self.current_token().loc.end;
-
-        Ok(ModulePath {
-            alias,
-            segments,
-            loc: Loc::new(self.file_id(), line, column, start, end),
-        })
-    }
-
     fn parse_prefix_expr(&mut self) -> Result<ASTExpr, Diag> {
         let loc = self.current_token().loc;
         let (line, column, start) = (loc.line, loc.column, loc.start);
@@ -481,6 +369,260 @@ impl<'source_file> Parser<'source_file> {
         }
     }
 
+    fn parse_infix_expr(
+        &mut self,
+        lhs: ASTExpr,
+        lhs_line: usize,
+        lhs_column: usize,
+        lhs_start: usize,
+    ) -> Option<Result<ASTExpr, Diag>> {
+        // NOTE: disambiguate confusion when facing `>>`. when it used as expressions the token must be lowered
+        // into shift-right but otherwise, it's interpreted as separate greater-than tokens. For instance in generic types args:
+        // Generic<A, Generic<B, C>>
+        if let (Some(token1), Some(token2)) = (self.peek_n_token(1), self.peek_n_token(2)) {
+            if token1.kind == TokenKind::GreaterThan && token2.kind == TokenKind::GreaterThan {
+                let end = self.current_token().loc.end;
+
+                let peek_token_idx = self.pos + 1;
+
+                self.tokens.remove(peek_token_idx);
+                self.tokens.remove(peek_token_idx);
+                self.tokens.insert(
+                    peek_token_idx,
+                    Token {
+                        kind: TokenKind::ShiftLeft,
+                        loc: Loc::new(self.file_id(), lhs_line, lhs_column, lhs_start, end),
+                    },
+                );
+            }
+        }
+
+        match self.peek_token().kind {
+            TokenKind::Assign => {
+                self.next_token();
+
+                match self.parse_assign(lhs, AssignKind::Default, lhs_start) {
+                    Ok(expr) => Some(Ok(expr)),
+                    Err(err) => Some(Err(err)),
+                }
+            }
+            TokenKind::Plus
+            | TokenKind::Minus
+            | TokenKind::Asterisk
+            | TokenKind::Slash
+            | TokenKind::Percent
+            | TokenKind::Equal
+            | TokenKind::NotEqual
+            | TokenKind::LessEqual
+            | TokenKind::LessThan
+            | TokenKind::GreaterEqual
+            | TokenKind::GreaterThan
+            | TokenKind::And
+            | TokenKind::Or
+            | TokenKind::Ampersand
+            | TokenKind::Pipe
+            | TokenKind::Tilde
+            | TokenKind::AmpTilde
+            | TokenKind::Caret
+            | TokenKind::ShiftLeft
+            | TokenKind::ShiftRight
+            | TokenKind::Ident { .. } => {
+                self.next_token(); // consume lhs expr
+
+                let operator_token = self.current_token().kind;
+                if self.peek_token_is(TokenKind::Assign) {
+                    self.next_token();
+                    let Some(assign_kind) = map_assign_kind(operator_token.clone()) else {
+                        return Some(Err(
+                            self.error_at_current(ParserDiagKind::InvalidAssignOperator(operator_token))
+                        ));
+                    };
+
+                    return Some(self.parse_assign(lhs, assign_kind, lhs_start));
+                }
+
+                let precedence = token_precedence_of(operator_token.clone());
+                self.next_token(); // consume the operator
+
+                let op = match operator_token {
+                    TokenKind::Plus => InfixOperator::Add,
+                    TokenKind::Minus => InfixOperator::Sub,
+                    TokenKind::Asterisk => InfixOperator::Mul,
+                    TokenKind::Slash => InfixOperator::Div,
+                    TokenKind::Percent => InfixOperator::Rem,
+                    TokenKind::LessThan => InfixOperator::LessThan,
+                    TokenKind::LessEqual => InfixOperator::LessEqual,
+                    TokenKind::GreaterThan => InfixOperator::GreaterThan,
+                    TokenKind::GreaterEqual => InfixOperator::GreaterEqual,
+                    TokenKind::Equal => InfixOperator::Equal,
+                    TokenKind::NotEqual => InfixOperator::NotEqual,
+                    TokenKind::Or => InfixOperator::Or,
+                    TokenKind::And => InfixOperator::And,
+                    TokenKind::Ampersand => InfixOperator::BitwiseAnd,
+                    TokenKind::Pipe => InfixOperator::BitwiseOr,
+                    TokenKind::Caret => InfixOperator::BitwiseXor,
+                    TokenKind::AmpTilde => InfixOperator::BitwiseAndNot,
+                    TokenKind::ShiftLeft => InfixOperator::ShiftLeft,
+                    TokenKind::ShiftRight => InfixOperator::ShiftRight,
+                    
+                    _ => {
+                        return Some(Err(self.error_at_current(ParserDiagKind::InvalidInfixOperator(
+                            self.current_token().kind,
+                        ))));
+                    }
+                };
+
+                let rhs = self.parse_expr(precedence).ok()?;
+
+                let end = self.current_token().loc.end;
+
+                Some(Ok(ASTExpr::Infix(ASTInfixExpr {
+                    op,
+                    lhs: Box::new(lhs),
+                    rhs: Box::new(rhs),
+                    loc: Loc::new(self.file_id(), lhs_line, lhs_column, lhs_start, end),
+                })))
+            }
+            _ => None,
+        }
+    }
+
+    pub(crate) fn parse_expr_series(&mut self, ending_token: TokenKind) -> Result<Vec<ASTExpr>, Diag> {
+        let mut series: Vec<ASTExpr> = Vec::new();
+
+        // detect empty series of expressions
+        if self.peek_token_is(ending_token.clone()) {
+            self.next_token();
+            return Ok(series);
+        } else if self.current_token_is(ending_token.clone()) {
+            return Ok(series);
+        }
+        self.next_token();
+
+        series.push(self.parse_expr(Precedence::Lowest)?);
+
+        while self.peek_token_is(TokenKind::Comma) {
+            self.next_token();
+            self.next_token();
+            series.push(self.parse_expr(Precedence::Lowest)?);
+        }
+        self.next_token(); // consume latest token of the expression
+
+        Ok(series)
+    }
+
+    pub(crate) fn parse_module_import(&mut self) -> Result<ASTModuleImport, Diag> {
+        let loc = self.current_token().loc;
+        let (line, column, start) = (loc.line, loc.column, loc.start);
+
+        let mut segments = {
+            let end = self.current_token().loc.end;
+
+            match &self.current_token().kind {
+                TokenKind::Ident(ident) => {
+                    vec![ModuleSegment::SubModule(Ident {
+                        value: ident.clone(),
+                        loc: Loc::new(self.file_id(), line, column, start, end),
+                    })]
+                }
+                _ => {
+                    return Err(self.error_at_current(ParserDiagKind::ExpectedIdentifier {
+                        got: self.current_token().kind.to_string(),
+                    }));
+                }
+            }
+        };
+
+        // if no '::' follows, this is a single identifier import
+        if !self.peek_token_is(TokenKind::DoubleColon) {
+            let end = self.current_token().loc.end;
+
+            return Ok(ASTModuleImport {
+                segments,
+                loc: Loc::new(self.file_id(), line, column, start, end),
+            });
+        }
+
+        self.next_token(); // consume first identifier
+
+        loop {
+            if !self.current_token_is(TokenKind::DoubleColon) {
+                break;
+            }
+
+            self.next_token(); // consume '::'
+
+            let ident_token = self.current_token();
+
+            match &ident_token.kind {
+                TokenKind::Ident(name) => {
+                    segments.push(ModuleSegment::SubModule(Ident {
+                        value: name.clone(),
+                        loc: ident_token.loc,
+                    }));
+                }
+                _ => {
+                    // if we find '::' but no identifier after it
+                    return Err(self.error_at_current(ParserDiagKind::ExpectedIdentifier {
+                        got: ident_token.kind.to_string(),
+                    }));
+                }
+            }
+
+            // check if there's another '::' after this identifier
+            if !self.peek_token_is(TokenKind::DoubleColon) {
+                break;
+            }
+
+            // Prepare for next iteration
+            self.next_token();
+        }
+
+        let end = self.current_token().loc.end;
+
+        Ok(ASTModuleImport {
+            segments,
+            loc: Loc::new(self.file_id(), line, column, start, end),
+        })
+    }
+
+    pub(crate) fn parse_module_path(&mut self) -> Result<ModulePath, Diag> {
+        let loc = self.current_token().loc;
+        let (line, column, start) = (loc.line, loc.column, loc.start);
+
+        let mut segments = Vec::new();
+        let mut alias = None;
+
+        let ident = self.parse_ident()?;
+        segments.push(ModuleSegment::SubModule(ident));
+        self.next_token();
+
+        while self.current_token_is(TokenKind::DoubleColon) {
+            self.next_token(); // consume '::'
+
+            let ident = self.parse_ident()?;
+            segments.push(ModuleSegment::SubModule(ident));
+            self.next_token();
+        }
+
+        // check for optional 'as' alias
+        if self.current_token_is(TokenKind::As) {
+            self.next_token();
+
+            let alias_ident = self.parse_ident()?;
+            alias = Some(alias_ident.value);
+            self.next_token(); // consume the alias identifier
+        }
+
+        let end = self.current_token().loc.end;
+
+        Ok(ModulePath {
+            alias,
+            segments,
+            loc: Loc::new(self.file_id(), line, column, start, end),
+        })
+    }
+
     fn parse_dynamic_expr(&mut self) -> Result<ASTExpr, Diag> {
         let loc = self.current_token().loc;
         let (line, column, start) = (loc.line, loc.column, loc.start);
@@ -547,147 +689,6 @@ impl<'source_file> Parser<'source_file> {
             inline,
             loc: Loc::new(self.file_id(), line, column, start, end),
         }))
-    }
-
-    fn parse_infix_expr(
-        &mut self,
-        lhs: ASTExpr,
-        lhs_line: usize,
-        lhs_column: usize,
-        lhs_start: usize,
-    ) -> Option<Result<ASTExpr, Diag>> {
-        // NOTE: disambiguate confusion when facing `>>`. when it used as expressions the token must be lowered
-        // into shift-right but otherwise, it's interpreted as separate greater-than tokens. For instance in generic types args:
-        // Generic<A, Generic<B, C>>
-        if let (Some(token1), Some(token2)) = (self.peek_n_token(1), self.peek_n_token(2)) {
-            if token1.kind == TokenKind::GreaterThan && token2.kind == TokenKind::GreaterThan {
-                let end = self.current_token().loc.end;
-
-                let peek_token_idx = self.pos + 1;
-
-                self.tokens.remove(peek_token_idx);
-                self.tokens.remove(peek_token_idx);
-                self.tokens.insert(
-                    peek_token_idx,
-                    Token {
-                        kind: TokenKind::ShiftLeft,
-                        loc: Loc::new(self.file_id(), lhs_line, lhs_column, lhs_start, end),
-                    },
-                );
-            }
-        }
-
-        match self.peek_token().kind {
-            TokenKind::Assign => {
-                self.next_token();
-
-                match self.parse_assign(lhs, AssignKind::Default, lhs_start) {
-                    Ok(expr) => Some(Ok(expr)),
-                    Err(err) => Some(Err(err)),
-                }
-            }
-            TokenKind::Plus
-            | TokenKind::Minus
-            | TokenKind::Asterisk
-            | TokenKind::Slash
-            | TokenKind::Percent
-            | TokenKind::Equal
-            | TokenKind::NotEqual
-            | TokenKind::LessEqual
-            | TokenKind::LessThan
-            | TokenKind::GreaterEqual
-            | TokenKind::GreaterThan
-            | TokenKind::And
-            | TokenKind::Or
-            | TokenKind::Ampersand
-            | TokenKind::Pipe
-            | TokenKind::Tilde
-            | TokenKind::AmpTilde
-            | TokenKind::Caret
-            | TokenKind::ShiftLeft
-            | TokenKind::ShiftRight
-            | TokenKind::Ident { .. } => {
-                self.next_token(); // consume lhs expr
-
-                let operator_token = self.current_token().kind;
-                if self.peek_token_is(TokenKind::Assign) {
-                    self.next_token();
-                    let Some(assign_kind) = self.map_assign_kind(operator_token.clone()) else {
-                        return Some(Err(
-                            self.error_at_current(ParserDiagKind::InvalidAssignOperator(operator_token))
-                        ));
-                    };
-
-                    return Some(self.parse_assign(lhs, assign_kind, lhs_start));
-                }
-
-                let precedence = token_precedence_of(operator_token.clone());
-                self.next_token(); // consume the operator
-
-                let op = match operator_token {
-                    TokenKind::Plus => InfixOperator::Add,
-                    TokenKind::Minus => InfixOperator::Sub,
-                    TokenKind::Asterisk => InfixOperator::Mul,
-                    TokenKind::Slash => InfixOperator::Div,
-                    TokenKind::Percent => InfixOperator::Rem,
-                    TokenKind::LessThan => InfixOperator::LessThan,
-                    TokenKind::LessEqual => InfixOperator::LessEqual,
-                    TokenKind::GreaterThan => InfixOperator::GreaterThan,
-                    TokenKind::GreaterEqual => InfixOperator::GreaterEqual,
-                    TokenKind::Equal => InfixOperator::Equal,
-                    TokenKind::NotEqual => InfixOperator::NotEqual,
-                    TokenKind::Or => InfixOperator::Or,
-                    TokenKind::And => InfixOperator::And,
-                    TokenKind::Ampersand => InfixOperator::BitwiseAnd,
-                    TokenKind::Pipe => InfixOperator::BitwiseOr,
-                    TokenKind::Caret => InfixOperator::BitwiseXor,
-                    TokenKind::AmpTilde => InfixOperator::BitwiseAndNot,
-                    TokenKind::ShiftLeft => InfixOperator::ShiftLeft,
-                    TokenKind::ShiftRight => InfixOperator::ShiftRight,
-                    _ => {
-                        return Some(Err(self.error_at_current(ParserDiagKind::InvalidInfixOperator(
-                            self.current_token().kind,
-                        ))));
-                    }
-                };
-
-                let rhs = self.parse_expr(precedence).ok()?;
-
-                let end = self.current_token().loc.end;
-
-                Some(Ok(ASTExpr::Infix(ASTInfixExpr {
-                    op,
-                    lhs: Box::new(lhs),
-                    rhs: Box::new(rhs),
-                    loc: Loc::new(self.file_id(), lhs_line, lhs_column, lhs_start, end),
-                })))
-            }
-            _ => None,
-        }
-    }
-
-    pub(crate) fn parse_expr_series(&mut self, ending_token: TokenKind) -> Result<Vec<ASTExpr>, Diag> {
-        let mut series: Vec<ASTExpr> = Vec::new();
-
-        // detect empty series of expressions
-        if self.peek_token_is(ending_token.clone()) {
-            self.next_token();
-            return Ok(series);
-        } else if self.current_token_is(ending_token.clone()) {
-            return Ok(series);
-        }
-        self.next_token();
-
-        series.push(self.parse_expr(Precedence::Lowest)?);
-
-        while self.peek_token_is(TokenKind::Comma) {
-            self.next_token();
-            self.next_token();
-            series.push(self.parse_expr(Precedence::Lowest)?);
-        }
-        self.next_token(); // consume latest token of the expression
-
-        Ok(series)
     }
 
     fn parse_method_call(
@@ -871,22 +872,6 @@ impl<'source_file> Parser<'source_file> {
             field_inits,
             loc: Loc::new(self.file_id(), line, column, start, end),
         })
-    }
-
-    fn map_assign_kind(&mut self, token_kind: TokenKind) -> Option<AssignKind> {
-        match token_kind {
-            TokenKind::Plus => Some(AssignKind::AddAssign),
-            TokenKind::Minus => Some(AssignKind::SubAssign),
-            TokenKind::Asterisk => Some(AssignKind::MulAssign),
-            TokenKind::Slash => Some(AssignKind::DivAssign),
-            TokenKind::Percent => Some(AssignKind::ModAssign),
-            TokenKind::Ampersand => Some(AssignKind::BitwiseAndAssign),
-            TokenKind::Tilde => Some(AssignKind::BitwiseXorAssign),
-            TokenKind::AmpTilde => Some(AssignKind::BitwiseAndNotAssign),
-            TokenKind::ShiftLeft => Some(AssignKind::LeftShiftAssign),
-            TokenKind::ShiftRight => Some(AssignKind::RightShiftAssign),
-            _ => None,
-        }
     }
 
     fn parse_assign(&mut self, lhs: ASTExpr, kind: AssignKind, start: usize) -> Result<ASTExpr, Diag> {
@@ -1384,5 +1369,22 @@ impl<'source_file> Parser<'source_file> {
             fields,
             loc: Loc::new(self.file_id(), line, column, start, end),
         }))
+    }
+}
+
+#[inline]
+fn map_assign_kind(token_kind: TokenKind) -> Option<AssignKind> {
+    match token_kind {
+        TokenKind::Plus => Some(AssignKind::AddAssign),
+        TokenKind::Minus => Some(AssignKind::SubAssign),
+        TokenKind::Asterisk => Some(AssignKind::MulAssign),
+        TokenKind::Slash => Some(AssignKind::DivAssign),
+        TokenKind::Percent => Some(AssignKind::ModAssign),
+        TokenKind::Ampersand => Some(AssignKind::BitwiseAndAssign),
+        TokenKind::Tilde => Some(AssignKind::BitwiseXorAssign),
+        TokenKind::AmpTilde => Some(AssignKind::BitwiseAndNotAssign),
+        TokenKind::ShiftLeft => Some(AssignKind::LeftShiftAssign),
+        TokenKind::ShiftRight => Some(AssignKind::RightShiftAssign),
+        _ => None,
     }
 }
