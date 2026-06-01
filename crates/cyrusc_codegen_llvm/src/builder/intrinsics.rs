@@ -30,8 +30,11 @@ use cyrusc_typed_ast::{
 };
 use inkwell::{
     AddressSpace,
+    llvm_sys::target_machine::LLVMTargetHasTargetMachine,
     types::{ArrayType, BasicType, BasicTypeEnum, StructType},
-    values::{ArrayValue, BasicValue, BasicValueEnum, FunctionValue, IntValue, PointerValue, StructValue},
+    values::{
+        AnyValueEnum, ArrayValue, BasicValue, BasicValueEnum, FunctionValue, IntValue, PointerValue, StructValue,
+    },
 };
 
 // These intrinsics published via builtin to user side.
@@ -100,6 +103,67 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         let rvalue = self.load_rvalue(lvalue);
 
         let llvm_target_type = self.emit_ty(target_type.clone());
+
+        // SPECIAL CASES of cast handled here (explicit cast):
+        if rvalue.ty.is_float() && llvm_target_type.is_int_type() {
+            // float to integer cast
+
+            let is_target_int_signed = target_type.is_signed_integer();
+
+            let casted_value = {
+                if is_target_int_signed {
+                    self.llvmbuilder
+                        .build_float_to_signed_int(
+                            rvalue.as_basic_value().into_float_value(),
+                            llvm_target_type.into_int_type(),
+                            "cast",
+                        )
+                        .unwrap()
+                        .as_basic_value_enum()
+                } else {
+                    self.llvmbuilder
+                        .build_float_to_unsigned_int(
+                            rvalue.as_basic_value().into_float_value(),
+                            llvm_target_type.into_int_type(),
+                            "cast",
+                        )
+                        .unwrap()
+                        .as_basic_value_enum()
+                }
+            };
+
+            return InternalValue::new(target_type.clone(), InternalValueKind::RValue(casted_value));
+        }
+
+        if rvalue.ty.is_integer_or_bool() && llvm_target_type.is_float_type() {
+            // integer to float cast
+
+            let is_int_signed = rvalue.ty.is_signed_integer();
+
+            let casted_value = {
+                if is_int_signed {
+                    self.llvmbuilder
+                        .build_signed_int_to_float(
+                            rvalue.as_basic_value().into_int_value(),
+                            llvm_target_type.into_float_type(),
+                            "cast",
+                        )
+                        .unwrap()
+                        .as_basic_value_enum()
+                } else {
+                    self.llvmbuilder
+                        .build_unsigned_int_to_float(
+                            rvalue.as_basic_value().into_int_value(),
+                            llvm_target_type.into_float_type(),
+                            "cast",
+                        )
+                        .unwrap()
+                        .as_basic_value_enum()
+                }
+            };
+
+            return InternalValue::new(target_type.clone(), InternalValueKind::RValue(casted_value));
+        }
 
         let casted_value: BasicValueEnum<'ll> = self.emit_cast(llvm_target_type, rvalue).try_into().unwrap();
 
@@ -756,6 +820,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
             .llvmbuilder
             .build_pointer_cast(lhs_ptr, i8_ptr_type, "lhs_cast")
             .unwrap();
+
         let rhs_cast = self
             .llvmbuilder
             .build_pointer_cast(rhs_ptr, i8_ptr_type, "rhs_cast")
