@@ -1,0 +1,44 @@
+/*
+ * Copyright (c) 2026 The Cyrus Language
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+ * See the GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program. If not, see <https://www.gnu.org/licenses/>.
+ */
+
+import std::string{String};
+import std::mem{Allocator};
+
+pub struct Path {
+    allocator: Allocator;
+    inner: String;
+
+    pub inline fn new(const allocator: Allocator, const name: char*) Self {
+        const inner = String.from(allocator, name);
+
+        return Self { allocator, inner };
+    }
+
+    // TODO
+    pub fn is_absolute(&const self) bool {
+        @todo();
+    }
+
+    // TODO
+    pub fn is_relative(&const self) bool {
+        @todo();
+    }
+
+    pub inline fn free(&self) {
+        self->inner.free();
+    }
+}

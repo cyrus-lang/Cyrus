@@ -70,7 +70,9 @@ impl<'ll> CodeGenIRBuilder<'ll> {
 
         let llvm_target_type: BasicTypeEnum<'ll> = self.emit_ty(target_cir_ty.clone()).try_into().unwrap();
 
-        if let BasicTypeEnum::IntType(int_type) = llvm_target_type {
+        if let BasicTypeEnum::IntType(int_type) = llvm_target_type
+            && rvalue.as_basic_value().is_int_value()
+        {
             let rvalue_int_value = rvalue.as_basic_value().into_int_value();
             let rvalue_bit_width = rvalue_int_value.get_type().get_bit_width();
             let target_bit_width = int_type.get_bit_width();
@@ -89,6 +91,19 @@ impl<'ll> CodeGenIRBuilder<'ll> {
 
                 rvalue = InternalValue::new(rvalue.ty.clone(), InternalValueKind::RValue(widened.into()));
             }
+        }
+
+        if let BasicTypeEnum::FloatType(float_type) = llvm_target_type
+            && rvalue.as_basic_value().is_float_value()
+        {
+            let rvalue_float_value = rvalue.as_basic_value().into_float_value();
+
+            let widened = self
+                .llvmbuilder
+                .build_float_ext(rvalue_float_value, float_type, "widen_store")
+                .unwrap();
+
+            rvalue = InternalValue::new(rvalue.ty.clone(), InternalValueKind::RValue(widened.into()));
         }
 
         self.llvmbuilder.build_store(ptr, rvalue.as_basic_value()).unwrap();

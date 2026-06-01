@@ -21,15 +21,19 @@ import std::mem{Allocator};
 pub struct Buffer<T> {
     buffer: Array<T>;
 
-    pub inline fn new(allocator: Allocator) Self {
-        const buffer: Array<T> = Array.with_capacity(allocator, @sizeof(T));
-
-        buffer.push('\0');
+    pub inline fn new(const allocator: Allocator) Self {
+        var buffer: Array<T> = Array.with_capacity(allocator, @sizeof(T));
 
         return Self { buffer };
     }
 
-    pub inline fn reserve(&self, extra: usize) {
+    pub inline fn with_capacity(const allocator: Allocator, cap: usize) Self {
+        var buffer: Array<T> = Array.with_capacity(allocator, cap * @sizeof(T));
+
+        return Self { buffer };
+    }
+
+    pub inline fn reserve(&self, const extra: usize) {
         const required = self->len() + extra + 1;
 
         if (required > self->cap()) {
@@ -45,32 +49,28 @@ pub struct Buffer<T> {
         return self->buffer.data_ptr();
     }
 
-    pub inline fn cap(&self) usize {
+    pub inline fn cap(&const self) usize {
         return self->buffer.cap();
     }
 
-    pub inline fn len(&self) usize {
-        return self->buffer.len() - 1; // exclude null
+    pub inline fn len(&const self) usize {
+        return self->buffer.len();
     }
 
     pub inline fn push(&self, ch: T) {
-        self->buffer.pop();
-        self->reserve(1);
         self->buffer.push(ch);
-        self->buffer.push('\0');
     }
 
     pub inline fn pop(&self) T {
         return self->buffer.pop();
     }
 
-    pub inline fn is_empty(&self) bool {
+    pub inline fn is_empty(&const self) bool {
         return self->len() == 0;
     }
 
     pub inline fn clear(&self) {
         self->buffer.clear();
-        self->buffer.push('\0');
     }
 
     pub inline fn free(&self) {

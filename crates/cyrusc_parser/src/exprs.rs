@@ -107,7 +107,7 @@ impl<'source_file> Parser<'source_file> {
                     self.parse_unnamed_struct_value(Some(repr_attr))?
                 } else if self.current_token_is(TokenKind::Union) {
                     let end = self.current_token().loc.end;
-
+                    
                     return Err(Diag {
                         kind: Box::new(ParserDiagKind::InvalidModifier(
                             "Repr attribute cannot be applied to unnamed union values.".to_string(),

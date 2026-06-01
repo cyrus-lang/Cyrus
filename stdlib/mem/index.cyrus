@@ -18,11 +18,11 @@
 import std::libc;
 
 pub interface Allocator {
-	fn alloc(&self, size: usize) void*;
-	fn alloc_zeroed(&self, size: usize) void*;
-	fn alloc_aligned(&self, size: usize, align: usize) void*;
-	fn realloc(&self, ptr: void*, size: usize) void*;
-	fn free(&self, ptr: void*) void;
+	fn alloc(&const self, size: usize) void*;
+	fn alloc_zeroed(&const self, size: usize) void*;
+	fn alloc_aligned(&const self, size: usize, align: usize) void*;
+	fn realloc(&const self, ptr: void*, size: usize) void*;
+	fn free(&const self, ptr: void*) void;
 }
 
 pub struct LibcAllocator : Allocator {

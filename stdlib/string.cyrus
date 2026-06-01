@@ -24,14 +24,28 @@ pub struct String {
     buffer: Buffer<char>;
 
     pub inline fn new(allocator: Allocator) Self {
-        const buffer: Buffer<char> = Buffer.new(allocator);
+        var buffer: Buffer<char> = Buffer.new(allocator);
 
         buffer.push('\0'); // null-terminated
 
         return Self { buffer };
     }
 
-    pub inline fn reserve(&self, extra: usize) {
+    pub inline fn from(const allocator: Allocator, const str: char*) Self {
+        @assert(str != null, "input string cannot be null");
+
+        const len = strlen(str);
+
+        var buffer: Buffer<char> = Buffer.new(allocator);
+
+        for (var i: usize = 0; i < len; i++) {
+            buffer.push(str[i]);
+        }
+        
+        return Self { buffer };
+    }
+
+    pub inline fn reserve(&self, const extra: usize) {
         const required = self->len() + extra + 1;
 
         if (required > self->cap()) {
@@ -43,14 +57,14 @@ pub struct String {
         return self->buffer.data_ptr();
     }
 
-    pub inline fn push(&self, ch: char) {
+    pub inline fn push(&self, const ch: char) {
         self->buffer.pop();
         self->reserve(1);
         self->buffer.push(ch);
         self->buffer.push('\0');
     }
 
-    pub inline fn push_str(&self, str: char*) {
+    pub inline fn push_str(&self, const str: char*) {
         @assert(str != null, "input string cannot be null");
 
         const len = strlen(str);
@@ -66,15 +80,15 @@ pub struct String {
         self->push('\0');
     }
 
-    pub inline fn is_empty(&self) bool {
+    pub inline fn is_empty(&const self) bool {
         return self->len() == 0;
     }
 
-    pub inline fn cap(&self) usize {
+    pub inline fn cap(&const self) usize {
         return self->buffer.cap();
     }
 
-    pub inline fn len(&self) usize {
+    pub inline fn len(&const self) usize {
         return self->buffer.len() - 1; // exclude '\0'
     }
 
