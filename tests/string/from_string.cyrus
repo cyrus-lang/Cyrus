@@ -1,0 +1,14 @@
+// @stdout: Cyrus
+
+import std::libc{printf};
+import std::string{String};
+import std::mem{Allocator, LibcAllocator};
+
+pub fn main() {
+    const allocator: Allocator = dynamic LibcAllocator.new();
+
+    var name = String.from(allocator, "Cyrus");
+    defer name.free();
+
+    printf("%s\n", name.as_str());
+}

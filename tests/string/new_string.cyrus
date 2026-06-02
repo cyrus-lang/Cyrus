@@ -1,0 +1,16 @@
+// @stdout: meow
+
+import std::libc{printf};
+import std::string{String};
+import std::mem{Allocator, LibcAllocator};
+
+pub fn main() {
+    const allocator: Allocator = dynamic LibcAllocator.new();
+
+    var name = String.new(allocator);
+    defer name.free();
+
+    if (name.len() == 0) {
+        printf("meow\n");
+    }
+}
