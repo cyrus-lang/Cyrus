@@ -1,4 +1,4 @@
-// @stderr: thread 'main' panicked at ./tmp/main.cyrus:14:6\nassertion failed: x is not 2
+// @stderr: thread 'assert_ca78506f' panicked at tests/builtins/assert.cyrus:7:6\nassertion failed: x is not 2
 
 import std::libc{printf};
 

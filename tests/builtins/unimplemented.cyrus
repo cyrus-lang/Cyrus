@@ -1,4 +1,4 @@
-// @stderr: thread 'main' hit UNIMPLEMENTED code at ./tmp/main.cyrus:4:6\nmeow
+// @stderr: thread 'unimplemented_e' hit UNIMPLEMENTED code at tests/builtins/unimplemented.cyrus:6:6\nmeow
 
 import std::libc{printf};
 

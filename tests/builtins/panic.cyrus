@@ -1,4 +1,4 @@
-// @stderr: thread 'main' panicked at ./tmp/main.cyrus:13:6\nmeow
+// @stderr: thread 'panic_008d24972' panicked at tests/builtins/panic.cyrus:6:6\nmeow
 
 import std::libc{printf};
 
