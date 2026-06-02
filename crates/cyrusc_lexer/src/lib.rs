@@ -21,7 +21,7 @@ use cyrusc_source_loc::{FileID, Loc, SourceFile};
 use cyrusc_strescape::unescape_string;
 use cyrusc_tokens::{
     Token, TokenKind,
-    literals::{ASTLiteralExpr, LiteralKind, StringPrefix},
+    literals::{ASTLiteralExpr, IntLiteralKind, LiteralKind, StringPrefix},
 };
 
 mod diagnostics;
@@ -541,10 +541,11 @@ impl<'source_map, 'source_file> Lexer<'source_map, 'source_file> {
                     }
                     2
                 }
-                _ => 10,
+
+                _ => 10, // fallback: DECIMAL
             }
         } else {
-            10
+            10 // fallback: DECIMAL
         };
 
         if base == 10 {
@@ -603,43 +604,49 @@ impl<'source_map, 'source_file> Lexer<'source_map, 'source_file> {
             }
         } else {
             let is_unsigned = matches!(suffix, Some(ref token_kind) if token_kind.is_unsigned());
-            let value: i128 = if is_unsigned || base != 10 {
-                match u128::from_str_radix(&number, base) {
-                    Ok(v) => v as i128,
-                    Err(_) => {
-                        let end = self.pos;
 
-                        self.reporter.report(Diag {
-                            level: DiagLevel::Error,
-                            kind: Box::new(LexicalDiagKind::InvalidIntegerLiteral),
-                            loc: Some(Loc::new(self.file_id(), line, column, start, end)),
-                            hint: None,
-                        });
+            // always parse into a u128 to prevent early signed overflow
+            let int_literal_kind = match u128::from_str_radix(&number, base) {
+                Ok(value) => {
+                    if is_unsigned || base != 10 {
+                        // for unsigned or non-decimal types, allow full u128 range
+                        IntLiteralKind::Unsigned(value)
+                    } else {
+                        // for standard signed decimals, allow up to i128::MAX + 1
+                        // this accommodates the negative boundary condition (-170141183460469231731687303715884105728)
+                        // (Used in std::libc::limits)
 
-                        self.read_char();
-                        return TokenKind::Invalid;
+                        let max_lexer_value = (i128::MAX as u128) + 1;
+
+                        if value > max_lexer_value {
+                            let end = self.pos;
+                            self.reporter.report(Diag {
+                                level: DiagLevel::Error,
+                                kind: Box::new(LexicalDiagKind::InvalidIntegerLiteral),
+                                loc: Some(Loc::new(self.file_id(), line, column, start, end)),
+                                hint: Some("Integer literal exceeds 128-bit signed limits".to_string()),
+                            });
+                            self.read_char();
+                            return TokenKind::Invalid;
+                        }
+
+                        IntLiteralKind::Signed(value as i128)
                     }
                 }
-            } else {
-                match i128::from_str_radix(&number, base) {
-                    Ok(v) => v,
-                    Err(_) => {
-                        let end = self.pos;
-
-                        self.reporter.report(Diag {
-                            level: DiagLevel::Error,
-                            kind: Box::new(LexicalDiagKind::InvalidIntegerLiteral),
-                            loc: Some(Loc::new(self.file_id(), line, column, start, end)),
-                            hint: None,
-                        });
-
-                        self.read_char();
-                        return TokenKind::Invalid;
-                    }
+                Err(_) => {
+                    let end = self.pos;
+                    self.reporter.report(Diag {
+                        level: DiagLevel::Error,
+                        kind: Box::new(LexicalDiagKind::InvalidIntegerLiteral),
+                        loc: Some(Loc::new(self.file_id(), line, column, start, end)),
+                        hint: None,
+                    });
+                    self.read_char();
+                    return TokenKind::Invalid;
                 }
             };
 
-            LiteralKind::Integer(value, suffix)
+            LiteralKind::Integer(int_literal_kind, suffix)
         };
 
         let end = self.pos;

@@ -61,7 +61,7 @@ impl<'source_file> Parser<'source_file> {
         if let TokenKind::Literal(literal) = &token.kind {
             if let LiteralKind::Integer(value, suffix) = &literal.kind {
                 if suffix.is_none() {
-                    return Ok(*value);
+                    return Ok(value.as_int());
                 }
             }
         }

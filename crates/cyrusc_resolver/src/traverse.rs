@@ -2637,7 +2637,7 @@ impl<'a> Resolver<'a> {
         match string_prefix {
             Some(StringPrefix::B) => {
                 let len = string_value.len() + 1;
-                let len_expr = literal_expr_from_const_int(len.try_into().unwrap(), loc);
+                let len_expr = literal_expr_from_const_int(len, loc);
 
                 Some(SemaType::Array(TypedArrayType {
                     element_type: Box::new(SemaType::Plain(PlainType::Char)),

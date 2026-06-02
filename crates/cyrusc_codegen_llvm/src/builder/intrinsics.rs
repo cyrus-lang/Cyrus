@@ -30,11 +30,8 @@ use cyrusc_typed_ast::{
 };
 use inkwell::{
     AddressSpace,
-    llvm_sys::target_machine::LLVMTargetHasTargetMachine,
     types::{ArrayType, BasicType, BasicTypeEnum, StructType},
-    values::{
-        AnyValueEnum, ArrayValue, BasicValue, BasicValueEnum, FunctionValue, IntValue, PointerValue, StructValue,
-    },
+    values::{ArrayValue, BasicValue, BasicValueEnum, FunctionValue, IntValue, PointerValue, StructValue},
 };
 
 // These intrinsics published via builtin to user side.

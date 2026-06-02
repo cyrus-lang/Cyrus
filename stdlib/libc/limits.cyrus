@@ -19,6 +19,8 @@ import std::libc::types;
 
 pub const CHAR_BIT: types::c_int = 8;
 
+// Core Types
+
 pub const SCHAR_MIN: types::c_int = -128;
 pub const SCHAR_MAX: types::c_int = 127;
 pub const UCHAR_MAX: types::c_int = 255;
@@ -41,3 +43,63 @@ pub const ULONG_MAX: types::c_unsigned_long = 18446744073709551615;
 pub const LLONG_MIN: types::c_long_long = -9223372036854775808;
 pub const LLONG_MAX: types::c_long_long = 9223372036854775807;
 pub const ULLONG_MAX: types::c_unsigned_long_long = 18446744073709551615;
+
+// Explicitly Sized Types
+
+pub const INT8_MIN: types::c_int8 = -128;
+pub const INT8_MAX: types::c_int8 = 127;
+pub const UINT8_MAX: types::c_uint8 = 255;
+
+pub const INT16_MIN: types::c_int16 = -32768;
+pub const INT16_MAX: types::c_int16 = 32767;
+pub const UINT16_MAX: types::c_uint16 = 65535;
+
+pub const INT32_MIN: types::c_int32 = -2147483648;
+pub const INT32_MAX: types::c_int32 = 2147483647;
+pub const UINT32_MAX: types::c_uint32 = 4294967295;
+
+pub const INT64_MIN: types::c_int64 = -9223372036854775808;
+pub const INT64_MAX: types::c_int64 = 9223372036854775807;
+pub const UINT64_MAX: types::c_uint64 = 18446744073709551615;
+
+// FIXME
+// pub const INT128_MIN: types::c_int128 = -170141183460469231731687303715884105728;
+// pub const INT128_MAX: types::c_int128 = 170141183460469231731687303715884105727;
+// pub const UINT128_MAX: types::c_uint128 = 340282366920938463463374607431768211455;
+
+// Wide and Specialized Character Types 
+
+pub const WCHAR_MIN: types::c_wchar = -2147483648;
+pub const WCHAR_MAX: types::c_wchar = 2147483647;
+
+pub const WINT_MIN: types::c_wint = 0;
+pub const WINT_MAX: types::c_wint = 4294967295;
+
+pub const CHAR16_MIN: types::c_char16 = 0;
+pub const CHAR16_MAX: types::c_char16 = 65535;
+
+pub const CHAR32_MIN: types::c_char32 = 0;
+pub const CHAR32_MAX: types::c_char32 = 4294967295;
+
+// OS / Runtime Specific Types
+
+pub const SIG_ATOMIC_MIN: types::c_sig_atomic = -2147483648;
+pub const SIG_ATOMIC_MAX: types::c_sig_atomic = 2147483647;
+
+// Target Dependent Types
+
+// pub const SIZE_MAX: types::c_size = ((1 << (@sizeof(types::c_size) * 8 - 1)) - 1) * 2 + 1;
+                                    // 18446744073709551615
+
+// FIXME
+// pub const SSIZE_MIN: types::c_ssize = -(1 << (@sizeof(types::c_ssize) * 8 - 1));
+
+// pub const SSIZE_MAX: types::c_ssize = (1 << (@sizeof(types::c_ssize) * 8 - 1)) - 1;
+
+// pub const PTRDIFF_MIN: types::c_ptrdiff = -(1 << (@sizeof(types::c_ptrdiff) * 8 - 1));
+// pub const PTRDIFF_MAX: types::c_ptrdiff = (1 << (@sizeof(types::c_ptrdiff) * 8 - 1)) - 1;
+
+// pub const INTPTR_MIN: types::c_intptr = -(1 << (@sizeof(types::c_intptr) * 8 - 1));
+// pub const INTPTR_MAX: types::c_intptr = (1 << (@sizeof(types::c_intptr) * 8 - 1)) - 1;
+
+// pub const UINTPTR_MAX: types::c_uintptr = ((1 << (@sizeof(types::c_uintptr) * 8 - 1)) - 1) * 2 - 10;

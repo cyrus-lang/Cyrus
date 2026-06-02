@@ -71,7 +71,7 @@ impl<'a> AnalysisContext<'a> {
                     }
                 };
 
-                let capacity = literal_expr_from_const_int(value.len().try_into().unwrap(), literal.loc);
+                let capacity = literal_expr_from_const_int(value.len(), literal.loc);
 
                 let ty = if let Some(prefix) = prefix_opt {
                     match prefix {

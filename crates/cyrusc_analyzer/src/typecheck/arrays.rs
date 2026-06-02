@@ -55,7 +55,7 @@ impl<'a> AnalysisContext<'a> {
             if let Some(first_elem) = array.elements.first_mut() {
                 if let Some(sema_type) = self.analyze_expr(first_elem, expected_element_type.clone()) {
                     let elements_count_expr =
-                        literal_expr_from_const_int(elements_count.try_into().unwrap(), first_elem.loc);
+                        literal_expr_from_const_int(elements_count, first_elem.loc);
 
                     array.ty = Some(SemaType::Array(TypedArrayType {
                         element_type: Box::new(sema_type),
@@ -71,7 +71,7 @@ impl<'a> AnalysisContext<'a> {
         // try to infer from expected type
         if array.ty.is_none() {
             if let Some(sema_type) = expected_element_type {
-                let elements_count_expr = literal_expr_from_const_int(elements_count.try_into().unwrap(), array.loc);
+                let elements_count_expr = literal_expr_from_const_int(elements_count, array.loc);
 
                 array.ty = Some(SemaType::Array(TypedArrayType {
                     element_type: Box::new(sema_type),

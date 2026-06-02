@@ -90,7 +90,7 @@ impl<'a, R: ConstResolver> ConstEvaluator<'a, R> {
 
     fn eval_literal(&self, literal: &TypedLiteralExpr) -> Result<ConstValue, ConstEvalError> {
         match &literal.kind {
-            LiteralKind::Integer(int_value, None) => Ok(ConstValue::Int(*int_value)),
+            LiteralKind::Integer(int_value, None) => Ok(ConstValue::Int(int_value.as_int())),
             LiteralKind::Bool(bool_value) => Ok(ConstValue::Bool(*bool_value)),
             LiteralKind::Float(float_value, None) => Ok(ConstValue::Float(*float_value)),
             _ => Err(ConstEvalError::UnsupportedExpr),

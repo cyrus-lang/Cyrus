@@ -1,4 +1,4 @@
-// @stdout: 1
+// @stdout: 123 1
 
 import std::libc { printf };
 
@@ -11,6 +11,10 @@ struct Object {
             ptr,
             counter: 0
         };
+    }
+
+    pub fn ptr_val(&self) usize {
+        return *self->ptr;
     }
 
     pub fn inc(&self) {
@@ -27,7 +31,8 @@ pub fn main() {
 
     var obj = Object.new(&x);
 
-    obj.call();
+    printf("%d ", obj.ptr_val());
 
+    obj.call();
     printf("%d\n", obj.counter);
 }

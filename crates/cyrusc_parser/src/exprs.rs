@@ -28,6 +28,7 @@ use cyrusc_source_loc::Loc;
 use cyrusc_tokens::Token;
 use cyrusc_tokens::TokenKind;
 use cyrusc_tokens::literals::ASTLiteralExpr;
+use cyrusc_tokens::literals::IntLiteralKind;
 use cyrusc_tokens::literals::LiteralKind;
 
 impl<'source_file> Parser<'source_file> {
@@ -107,7 +108,7 @@ impl<'source_file> Parser<'source_file> {
                     self.parse_unnamed_struct_value(Some(repr_attr))?
                 } else if self.current_token_is(TokenKind::Union) {
                     let end = self.current_token().loc.end;
-                    
+
                     return Err(Diag {
                         kind: Box::new(ParserDiagKind::InvalidModifier(
                             "Repr attribute cannot be applied to unnamed union values.".to_string(),
@@ -464,7 +465,7 @@ impl<'source_file> Parser<'source_file> {
                     TokenKind::AmpTilde => InfixOperator::BitwiseAndNot,
                     TokenKind::ShiftLeft => InfixOperator::ShiftLeft,
                     TokenKind::ShiftRight => InfixOperator::ShiftRight,
-                    
+
                     _ => {
                         return Some(Err(self.error_at_current(ParserDiagKind::InvalidInfixOperator(
                             self.current_token().kind,
@@ -1054,7 +1055,10 @@ impl<'source_file> Parser<'source_file> {
 
                     let data_type = TypeSpecifier::Array(ArrayType {
                         size: ArrayCapacity::Fixed(Box::new(ASTExpr::Literal(ASTLiteralExpr {
-                            kind: LiteralKind::Integer(untyped_array.len().try_into().unwrap(), None),
+                            kind: LiteralKind::Integer(
+                                IntLiteralKind::Unsigned(untyped_array.len().try_into().unwrap()),
+                                None,
+                            ),
                             loc: Loc::new(self.file_id(), line, column, start, end),
                         }))),
                         element_type: inner_type_specifier.element_type,

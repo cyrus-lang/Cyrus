@@ -26,6 +26,7 @@ use cyrusc_ast::{
     operators::{InfixOperator, PrefixOperator, UnaryOperator},
 };
 use cyrusc_source_loc::Loc;
+use cyrusc_tokens::literals::{IntLiteralKind, Integer};
 use cyrusc_typed_ast::{
     LabelID, VTableID,
     builtins::TypedBuiltinSpec,
@@ -289,7 +290,7 @@ pub struct CIRLiteral {
 
 #[derive(Debug, Clone)]
 pub enum CIRLiteralKind {
-    Integer(i128, bool),
+    Integer(IntLiteralKind, bool),
     Float(f64),
     Bool(bool),
     Char(char),
@@ -513,10 +514,11 @@ pub struct CIRDeferStmt {
 }
 
 #[inline]
-pub fn cir_expr_as_const_integer_value(expr: &CIRExpr) -> Option<i128> {
+pub fn cir_expr_as_const_integer_value<T: Integer>(expr: &CIRExpr) -> Option<T> {
     match &expr.kind {
         CIRExprKind::Literal(literal) => match literal.kind {
-            CIRLiteralKind::Integer(value, _) => Some(value),
+            CIRLiteralKind::Integer(value, _) => Some(value.as_int()),
+            
             _ => None,
         },
         _ => None,

@@ -52,7 +52,7 @@ pub fn lower_sema_type(decl_tables: &DeclTablesRegistry, target: &ABITarget, ty:
 
             CIRType::Array(CIRArrayType {
                 element_type: Box::new(element_type),
-                len: len.try_into().unwrap(),
+                len: len.as_int(),
             })
         }
         SemaType::Const(sema_type) => CIRType::Const(Box::new(lower_sema_type(decl_tables, target, &*sema_type))),
@@ -181,7 +181,7 @@ pub fn lower_enum_decl(decl_tables: &DeclTablesRegistry, target: &ABITarget, enu
                 };
 
                 if let Some(int_tag) = value.literal_const_int_value() {
-                    let tag_value: u32 = int_tag.try_into().unwrap();
+                    let tag_value: u32 = int_tag.as_int();
                     *tag = tag_value;
                     used_tags.insert(tag_value);
                 }

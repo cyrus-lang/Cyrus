@@ -17,7 +17,7 @@
 
 use crate::{diagnostics::ConstEvalError, evaluator::ConstEvaluator, resolver::ConstResolver, value::ConstValue};
 use cyrusc_internal::{abi::target::ABITarget, analyzer_state::AnalyzerState};
-use cyrusc_tokens::literals::LiteralKind;
+use cyrusc_tokens::literals::{IntLiteralKind, LiteralKind};
 use cyrusc_typed_ast::{builtins::TypedBuiltin, decls::table::DeclTablesRegistry, exprs::*};
 
 pub struct ConstFolder<'a, R: ConstResolver> {
@@ -60,9 +60,19 @@ impl<'a, R: ConstResolver> ConstFolder<'a, R> {
 
         if let Ok(const_value) = self.evaluator.eval_expr(expr, analyzer_state) {
             if let Some(int_value) = const_value.as_int() {
+                let is_signed = expr.ty.as_ref().unwrap().as_plain_type().unwrap().is_signed();
+
+                let int_literal_kind = {
+                    if is_signed {
+                        IntLiteralKind::Signed(int_value)
+                    } else {
+                        IntLiteralKind::Signed((int_value as u128).try_into().unwrap())
+                    }
+                };
+
                 let literal = TypedLiteralExpr {
                     ty: expr.ty.clone(),
-                    kind: LiteralKind::Integer(int_value, None),
+                    kind: LiteralKind::Integer(int_literal_kind, None),
                     loc: expr.loc,
                 };
 
@@ -99,7 +109,7 @@ impl<'a, R: ConstResolver> ConstFolder<'a, R> {
     pub fn expr_as_const_int(&mut self, expr: &TypedExpr, analyzer_state: &'a dyn AnalyzerState) -> Option<i128> {
         if let TypedExprKind::Literal(literal) = &expr.kind {
             if let LiteralKind::Integer(value, ..) = &literal.kind {
-                return Some(*value);
+                return Some(value.as_int());
             }
         }
 

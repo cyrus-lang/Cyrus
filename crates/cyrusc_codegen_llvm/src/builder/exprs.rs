@@ -1316,7 +1316,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         let union_ptr = match operand.kind {
             InternalValueKind::LValue(ptr) => ptr,
 
-            // RValue → spill to stack
+            // RValue spill to stack
             InternalValueKind::RValue(basic_val) => {
                 let temp = self.llvmbuilder.build_alloca(union_type, "union.temp").unwrap();
                 self.llvmbuilder.build_store(temp, basic_val).unwrap();
@@ -2012,7 +2012,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
             (data_value.clone(), data_value)
         } else {
             if self_meta.is_referenced {
-                let value = self.emit_expr(&self_meta.operand, &None);
+                let value = self.emit_lvalue_address(&self_meta.operand);
 
                 if value.ty.is_pointer() {
                     // already a pointer-to-object
@@ -2020,10 +2020,23 @@ impl<'ll> CodeGenIRBuilder<'ll> {
 
                     (rvalue.clone(), rvalue)
                 } else {
-                    // value type, need address
-                    let lvalue = self.emit_lvalue_address(&self_meta.operand);
+                    if value.is_rvalue() && !value.ty.is_pointer() {
+                        let llvm_type: BasicTypeEnum<'ll> = self.emit_ty(value.ty.clone()).try_into().unwrap();
 
-                    (lvalue.clone(), lvalue)
+                        let temp = self.llvmbuilder.build_alloca(llvm_type, "temp.self").unwrap();
+                        self.llvmbuilder.build_store(temp, value.as_basic_value()).unwrap();
+
+                        let lvalue = InternalValue::new(value.ty, InternalValueKind::LValue(temp));
+
+                        (lvalue.clone(), lvalue)
+                    } else {
+                        debug_assert!(value.is_lvalue());
+
+                        // value type, need address
+                        let lvalue = self.emit_lvalue_address(&self_meta.operand);
+
+                        (lvalue.clone(), lvalue)
+                    }
                 }
             } else {
                 let lvalue = self.emit_expr(&self_meta.operand, &None);
@@ -2138,13 +2151,19 @@ impl<'ll> CodeGenIRBuilder<'ll> {
             CIRLiteralKind::Bool(value) => {
                 BasicValueEnum::IntValue(self.llvmctx.bool_type().const_int(*value as u64, false))
             }
-            CIRLiteralKind::Integer(value, is_signed) => {
-                // FIXME
-                // thread 'main' (30290) panicked at crates/cyrusc_codegen_llvm/src/builder/exprs.rs:2143:91:
-                // called `Result::unwrap()` on an `Err` value: TryFromIntError(())
-                // note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
-                // make: *** [Makefile:50: run] Error 101
-                BasicValueEnum::IntValue(ty.into_int_type().const_int((*value).try_into().unwrap(), *is_signed))
+            CIRLiteralKind::Integer(value, _) => {
+                let int_type = ty.into_int_type();
+                let bit_width = int_type.get_bit_width() as usize;
+
+                let num_words = (bit_width + 63) / 64;
+                let full_value = value.as_int::<u128>();
+
+                let mut words = Vec::with_capacity(num_words);
+                for i in 0..num_words {
+                    words.push((full_value >> (i * 64)) as u64);
+                }
+
+                BasicValueEnum::IntValue(int_type.const_int_arbitrary_precision(&words))
             }
             CIRLiteralKind::Float(value) => BasicValueEnum::FloatValue(ty.into_float_type().const_float(*value)),
             CIRLiteralKind::Char(value) => {

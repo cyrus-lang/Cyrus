@@ -59,6 +59,22 @@ impl<'a> InternalValue<'a> {
             _ => None,
         }
     }
+
+    #[inline]
+    pub fn is_rvalue(&self) -> bool {
+        match &self.kind {
+            InternalValueKind::RValue(_) => true,
+            _ => false,
+        }
+    }
+
+    #[inline]
+    pub fn is_lvalue(&self) -> bool {
+        match &self.kind {
+            InternalValueKind::LValue(_) => true,
+            _ => false,
+        }
+    }
 }
 
 impl<'ll> CodeGenIRBuilder<'ll> {

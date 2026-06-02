@@ -28,7 +28,7 @@ use cyrusc_ast::{
     operators::{InfixOperator, PrefixOperator, UnaryOperator},
 };
 use cyrusc_source_loc::Loc;
-use cyrusc_tokens::literals::LiteralKind;
+use cyrusc_tokens::literals::{IntLiteralKind, Integer, LiteralKind};
 use std::fmt;
 
 #[derive(Debug, Clone)]
@@ -440,7 +440,7 @@ impl TypedExprKind {
                     type_decl_id,
                     type_args: TypedTypeArgs::new(),
                 }))
-            },
+            }
             TypedExprKind::SemaType { ty, .. } => Some(ty.clone()),
             _ => None,
         }
@@ -570,11 +570,15 @@ impl PartialEq for TypedUnnamedUnionValue {
 }
 
 impl TypedExpr {
-    pub fn literal_const_int_value(&self) -> Option<i128> {
+    pub fn literal_const_int_value(&self) -> Option<IntLiteralKind> {
         match &self.kind {
             TypedExprKind::Literal(lit) => match &lit.kind {
-                LiteralKind::Integer(v, ..) => Some(*v),
-                LiteralKind::Bool(v) => Some(if *v { 1 } else { 0 }),
+                LiteralKind::Integer(int_literal_kind, ..) => Some(*int_literal_kind),
+                LiteralKind::Bool(v) => Some(if *v {
+                    IntLiteralKind::Unsigned(1)
+                } else {
+                    IntLiteralKind::Unsigned(0)
+                }),
                 _ => None,
             },
             _ => None,
@@ -598,10 +602,18 @@ impl TypedExpr {
     }
 }
 
-pub fn literal_expr_from_const_int(value: i128, loc: Loc) -> TypedExpr {
+pub fn literal_expr_from_const_int<T: Integer>(value: T, loc: Loc) -> TypedExpr {
+    let int_literal_kind = {
+        if T::is_signed() {
+            IntLiteralKind::Signed(value.to_i128())
+        } else {
+            IntLiteralKind::Unsigned(value.to_u128())
+        }
+    };
+
     TypedExpr {
         kind: TypedExprKind::Literal(TypedLiteralExpr {
-            kind: LiteralKind::Integer(value, None),
+            kind: LiteralKind::Integer(int_literal_kind, None),
             ty: None,
             loc: loc,
         }),
