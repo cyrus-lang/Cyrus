@@ -62,10 +62,9 @@ pub const INT64_MIN: types::c_int64 = -9223372036854775808;
 pub const INT64_MAX: types::c_int64 = 9223372036854775807;
 pub const UINT64_MAX: types::c_uint64 = 18446744073709551615;
 
-// FIXME
-// pub const INT128_MIN: types::c_int128 = -170141183460469231731687303715884105728;
-// pub const INT128_MAX: types::c_int128 = 170141183460469231731687303715884105727;
-// pub const UINT128_MAX: types::c_uint128 = 340282366920938463463374607431768211455;
+pub const INT128_MIN: types::c_int128 = -170141183460469231731687303715884105728int128;
+pub const INT128_MAX: types::c_int128 = 170141183460469231731687303715884105727int128;
+pub const UINT128_MAX: types::c_uint128 = 340282366920938463463374607431768211455uint128;
 
 // Wide and Specialized Character Types 
 
@@ -86,20 +85,25 @@ pub const CHAR32_MAX: types::c_char32 = 4294967295;
 pub const SIG_ATOMIC_MIN: types::c_sig_atomic = -2147483648;
 pub const SIG_ATOMIC_MAX: types::c_sig_atomic = 2147483647;
 
+
 // Target Dependent Types
-
+//
+// FIXME: These values here are temporary!! 
+// Computed manually only for x64 system,
+// Must be fixed after implementing comptime.
+// 
 // pub const SIZE_MAX: types::c_size = ((1 << (@sizeof(types::c_size) * 8 - 1)) - 1) * 2 + 1;
-                                    // 18446744073709551615
+// 
 
-// FIXME
-// pub const SSIZE_MIN: types::c_ssize = -(1 << (@sizeof(types::c_ssize) * 8 - 1));
+pub const SIZE_MAX: types::c_size = 18446744073709551615;
 
-// pub const SSIZE_MAX: types::c_ssize = (1 << (@sizeof(types::c_ssize) * 8 - 1)) - 1;
+pub const SSIZE_MIN: types::c_ssize = -9223372036854775808;
+pub const SSIZE_MAX: types::c_ssize = 9223372036854775807;
 
-// pub const PTRDIFF_MIN: types::c_ptrdiff = -(1 << (@sizeof(types::c_ptrdiff) * 8 - 1));
-// pub const PTRDIFF_MAX: types::c_ptrdiff = (1 << (@sizeof(types::c_ptrdiff) * 8 - 1)) - 1;
+pub const PTRDIFF_MIN: types::c_ptrdiff = -9223372036854775808;
+pub const PTRDIFF_MAX: types::c_ptrdiff = 9223372036854775807;
 
-// pub const INTPTR_MIN: types::c_intptr = -(1 << (@sizeof(types::c_intptr) * 8 - 1));
-// pub const INTPTR_MAX: types::c_intptr = (1 << (@sizeof(types::c_intptr) * 8 - 1)) - 1;
+pub const INTPTR_MIN: types::c_intptr = -9223372036854775808;
+pub const INTPTR_MAX: types::c_intptr = 9223372036854775807;
 
-// pub const UINTPTR_MAX: types::c_uintptr = ((1 << (@sizeof(types::c_uintptr) * 8 - 1)) - 1) * 2 - 10;
+pub const UINTPTR_MAX: types::c_uintptr = 18446744073709551615;

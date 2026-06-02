@@ -604,6 +604,33 @@ impl<'ll> CodeGenIRBuilder<'ll> {
                     args.push(hi_val.into());
                 }
 
+                BasicValueEnum::IntValue(int_val) => {
+                    // Split i128 into two i64 values (low and high parts)
+                    let i64_type = self.llvmctx.i64_type();
+                    let i128_type = self.llvmctx.i128_type();
+
+                    let is_signed = value.ty.is_signed_integer();
+
+                    // extract low 64 bits (mask with 0xFFFFFFFFFFFFFFFF)
+                    let low_value = self.llvmbuilder.build_int_truncate(*int_val, i64_type, "lo").unwrap();
+
+                    // extract high 64 bits (shift right by 64)
+
+                    let shift_amount = i128_type.const_int(64, is_signed);
+                    let high_val_i128 = self
+                        .llvmbuilder
+                        .build_right_shift(*int_val, shift_amount, false, "hi.tmp")
+                        .unwrap();
+
+                    let high_value = self
+                        .llvmbuilder
+                        .build_int_truncate(high_val_i128, i64_type, "hi")
+                        .unwrap();
+
+                    args.push(low_value.into());
+                    args.push(high_value.into());
+                }
+
                 other => {
                     panic!("direct-pair rvalue must be struct or array, got {:?}", other);
                 }

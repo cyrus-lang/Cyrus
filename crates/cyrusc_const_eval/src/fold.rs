@@ -66,7 +66,7 @@ impl<'a, R: ConstResolver> ConstFolder<'a, R> {
                     if is_signed {
                         IntLiteralKind::Signed(int_value)
                     } else {
-                        IntLiteralKind::Signed((int_value as u128).try_into().unwrap())
+                        IntLiteralKind::Signed((int_value as i128).try_into().unwrap())
                     }
                 };
 

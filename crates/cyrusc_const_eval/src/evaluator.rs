@@ -64,7 +64,7 @@ impl<'a, R: ConstResolver> ConstEvaluator<'a, R> {
         expr: &TypedExpr,
         analyzer_state: &'a dyn AnalyzerState,
     ) -> Result<ConstValue, ConstEvalError> {
-        let raw = match &expr.kind {
+        let const_value = match &expr.kind {
             TypedExprKind::Symbol(symbol_expr) => {
                 let decl_id = symbol_expr.as_decl_id().unwrap();
 
@@ -85,14 +85,15 @@ impl<'a, R: ConstResolver> ConstEvaluator<'a, R> {
             _ => Err(ConstEvalError::UnsupportedExpr),
         }?;
 
-        self.coerce_to_expected_type(raw, &expr.ty.as_ref().unwrap())
+        self.coerce_to_expected_type(const_value, &expr.ty.as_ref().unwrap())
     }
 
     fn eval_literal(&self, literal: &TypedLiteralExpr) -> Result<ConstValue, ConstEvalError> {
         match &literal.kind {
-            LiteralKind::Integer(int_value, None) => Ok(ConstValue::Int(int_value.as_int())),
+            LiteralKind::Integer(int_value, _) => Ok(ConstValue::Int(int_value.as_int())),
+            LiteralKind::Float(float_value, _) => Ok(ConstValue::Float(*float_value)),
             LiteralKind::Bool(bool_value) => Ok(ConstValue::Bool(*bool_value)),
-            LiteralKind::Float(float_value, None) => Ok(ConstValue::Float(*float_value)),
+
             _ => Err(ConstEvalError::UnsupportedExpr),
         }
     }
@@ -130,17 +131,27 @@ impl<'a, R: ConstResolver> ConstEvaluator<'a, R> {
 
         match expr.op {
             PrefixOperator::Minus => match const_value {
-                ConstValue::Int(v) => Ok(ConstValue::Int(-v)),
-                ConstValue::Float(v) => Ok(ConstValue::Float(-v)),
+                ConstValue::Int(value) => {
+                    if value == i128::MIN {
+                        Ok(ConstValue::Int(i128::MIN))
+                    } else {
+                        match value.checked_neg() {
+                            Some(negated) => Ok(ConstValue::Int(negated)),
+                            None => Err(ConstEvalError::UnsupportedExpr),
+                        }
+                    }
+                }
+                ConstValue::Float(value) => Ok(ConstValue::Float(-value)),
+                
                 _ => Err(ConstEvalError::TypeError),
             },
             PrefixOperator::Bang => {
-                let v = const_value.as_int().ok_or(ConstEvalError::TypeError)?;
-                Ok(ConstValue::Bool(v == 0))
+                let value = const_value.as_int().ok_or(ConstEvalError::TypeError)?;
+                Ok(ConstValue::Bool(value == 0))
             }
             PrefixOperator::BitwiseNot => {
-                let v = const_value.as_int().ok_or(ConstEvalError::TypeError)?;
-                Ok(ConstValue::Int(!v))
+                let value = const_value.as_int().ok_or(ConstEvalError::TypeError)?;
+                Ok(ConstValue::Int(!value))
             }
         }
     }
@@ -211,7 +222,7 @@ impl<'a, R: ConstResolver> ConstEvaluator<'a, R> {
         Err(ConstEvalError::TypeError)
     }
 
-    fn coerce_to_expected_type(
+    pub fn coerce_to_expected_type(
         &self,
         value: ConstValue,
         expected_type: &SemaType,
@@ -266,6 +277,11 @@ impl<'a, R: ConstResolver> ConstEvaluator<'a, R> {
 
         let builtin_spec = builtin_spec_of(builtin_kind);
 
+        // SPECIAL CASE:
+        if builtin_spec.kind == TypedBuiltinKind::Cast {
+            return self.eval_cast(builtin_func);
+        }
+
         if builtin_spec.phase != TypedBuiltinPhase::ConstEval {
             return Err(ConstEvalError::UnsupportedExpr);
         }
@@ -284,6 +300,34 @@ impl<'a, R: ConstResolver> ConstEvaluator<'a, R> {
 
             _ => return Err(ConstEvalError::UnsupportedExpr),
         }
+    }
+
+    fn eval_cast(&self, builtin_func: &TypedBuiltinFunc) -> Result<ConstValue, ConstEvalError> {
+        let target_type = builtin_func.args.get(0).unwrap().kind.as_type_expr().unwrap();
+        let operand = builtin_func.args.get(1).unwrap();
+
+        if let Some(literal) = operand.kind.as_literal() {
+            match &literal.kind {
+                LiteralKind::Integer(value, suffix_opt) => {
+                    if suffix_opt.is_none() {
+                        return Ok(ConstValue::Int(value.as_int()));
+                    }
+                }
+                LiteralKind::Float(value, suffix_opt) => {
+                    if suffix_opt.is_none() {
+                        return Ok(ConstValue::Float(*value));
+                    }
+                }
+                LiteralKind::Char(value) => {
+                    if target_type.is_integer() {
+                        return Ok(ConstValue::Int(*value as i128));
+                    }
+                }
+                LiteralKind::Bool(_) | LiteralKind::String(_, _) | LiteralKind::Null => {}
+            }
+        }
+
+        Err(ConstEvalError::UnsupportedExpr)
     }
 
     fn eval_func_name(

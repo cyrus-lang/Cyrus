@@ -755,7 +755,7 @@ pub struct ASTAssignExpr {
     pub loc: Loc,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub enum AssignKind {
     Default,
     AddAssign,

@@ -430,6 +430,14 @@ impl TypedExpr {
 
 impl TypedExprKind {
     #[inline]
+    pub fn as_literal(&self) -> Option<&TypedLiteralExpr> {
+        match self {
+            TypedExprKind::Literal(literal) => Some(literal),
+            _ => None,
+        }
+    }
+
+    #[inline]
     pub fn as_type_expr(&self) -> Option<SemaType> {
         match self {
             TypedExprKind::Symbol(symbol_expr) => {
