@@ -41,6 +41,8 @@ pub struct String {
         for (var i: usize = 0; i < len; i++) {
             buffer.push(str[i]);
         }
+
+        buffer.push('\0');
         
         return Self { buffer };
     }
@@ -77,7 +79,7 @@ pub struct String {
             self->buffer.push(str[i]);
         }
         
-        self->push('\0');
+        self->buffer.push('\0');
     }
 
     pub inline fn is_empty(&const self) bool {
