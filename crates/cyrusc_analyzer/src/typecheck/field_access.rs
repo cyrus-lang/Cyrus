@@ -32,7 +32,20 @@ impl<'a> AnalysisContext<'a> {
 
         let pure_operand_type = operand_type.const_inner().pointer_inner().clone();
 
-        let type_args = &pure_operand_type.as_named_type().unwrap().type_args;
+        let Some(type_args) = &pure_operand_type
+            .as_named_type()
+            .map(|named_type| named_type.type_args.clone())
+        else {
+            self.reporter.report(Diag {
+                level: DiagLevel::Error,
+                kind: Box::new(AnalyzerDiagKind::ObjectNotSupportsFields {
+                    operand_type: format_sema_type(operand_type, self.formatter),
+                }),
+                loc: Some(field_access.loc),
+                hint: None,
+            });
+            return None;
+        };
 
         if let Some(struct_decl_id) = pure_operand_type.as_struct() {
             let struct_decl = self.decl_tables.struct_decl(struct_decl_id);

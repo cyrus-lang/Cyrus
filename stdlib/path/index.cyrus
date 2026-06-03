@@ -15,6 +15,7 @@
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
 
+import std::libc{printf};
 import std::string{String};
 import std::mem{Allocator};
 
@@ -26,19 +27,39 @@ pub struct Path {
         const inner = String.from(allocator, name);
 
         return Self { allocator, inner };
+    }   
+
+    /// POSIX: Check if path has a root `/`.
+    pub inline fn has_root(&const self) bool {
+        return self->inner.as_str_const()[0] == '/';
+    }
+
+    /// POSIX: Path is absolute if it starts with `/`.
+    pub inline fn is_absolute(&const self) bool {
+        if (self->inner.is_empty()) {
+            return false;
+        }
+
+        if (self->inner.as_str_const()[0] == '/') {
+            return true;
+        }
+        
+        return false;
     }
 
     // TODO
-    pub fn is_absolute(&const self) bool {
-        @todo();
-    }
 
-    // TODO
-    pub fn is_relative(&const self) bool {
-        @todo();
+    // POSIX: Path is relative if it's not absolute.
+    pub inline fn is_relative(&const self) bool {
+        return !self->is_absolute();
     }
 
     pub inline fn free(&self) {
         self->inner.free();
     }
+}
+
+// POSIX
+inline fn is_separator(ch: char) bool {
+    return ch == '/';
 }

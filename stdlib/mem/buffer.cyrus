@@ -42,11 +42,15 @@ pub struct Buffer<T> {
     }
 
     pub inline fn get(&self, index: usize) T {
-        return self->data_ptr()[index];
+        return self->data()[index];
     }
 
-    pub inline fn data_ptr(&self) T* {
-        return self->buffer.data_ptr();
+    pub inline fn data(&self) T* {
+        return self->buffer.data();
+    }
+
+    pub inline fn data_const(&const self) const T* {
+        return self->buffer.data_const();
     }
 
     pub inline fn cap(&const self) usize {
