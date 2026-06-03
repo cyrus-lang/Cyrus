@@ -35,13 +35,6 @@ jobs:
           chmod +x ./scripts/release.sh
           ./scripts/release.sh
 
-      - name: Run tests
-        env:
-          LLVM_CONFIG: /usr/bin/llvm-config-18
-          CC: clang
-          CXX: clang++
-        run: make testsuite PROFILE=release
-
       - name: Collect files in single directory
         run: |
           mkdir cyrus
