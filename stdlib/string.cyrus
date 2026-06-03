@@ -63,10 +63,6 @@ pub struct String {
         return self->buffer.data_const();
     }
 
-    pub inline fn as_const_str(&const self) const char* {
-        return self->buffer.data_const();
-    }
-
     pub inline fn push(&self, const ch: char) {
         self->buffer.pop();
         self->reserve(1);

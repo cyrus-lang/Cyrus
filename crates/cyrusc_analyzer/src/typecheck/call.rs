@@ -207,7 +207,7 @@ impl<'a> AnalysisContext<'a> {
         } {
             Some(ty) => ty,
             None => {
-                let operand_type = method_call.operand.ty.clone().unwrap();
+                let operand_type = method_call.operand.ty.clone()?;
 
                 self.reporter.report(Diag {
                     level: DiagLevel::Error,
@@ -223,14 +223,14 @@ impl<'a> AnalysisContext<'a> {
 
         operand_type = self.normalize_sema_type(operand_type, method_call.loc)?;
 
-        let operand_includes_type_args = operand_type
-            .as_named_type()
-            .map(|named_type| named_type.type_args.len() > 0)
-            .unwrap_or(false);
+        // let operand_includes_type_args = operand_type
+        //     .as_named_type()
+        //     .map(|named_type| named_type.type_args.len() > 0)
+        //     .unwrap_or(false);
 
         let is_operand_interface = operand_type.as_interface_object().is_some() || operand_type.is_interface();
 
-        // FIXME!!
+        // FIXME !!
         // if !is_operand_instance && operand_includes_type_args {
         //     self.reporter.report(Diag {
         //         level: DiagLevel::Error,
