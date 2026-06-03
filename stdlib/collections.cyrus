@@ -264,7 +264,11 @@ pub struct Array<T> {
         return value;
     }
 
-    pub inline fn data_ptr(&self) T* {
+    pub inline fn data(&self) T* {
+        return self->data;
+    }
+
+    pub inline fn data_const(&const self) const T* {
         return self->data;
     }
 

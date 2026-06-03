@@ -451,13 +451,7 @@ impl<'a> Resolver<'a> {
 
     fn resolve_type(&mut self, type_spec: TypeSpecifier, loc: Loc) -> Option<SemaType> {
         match type_spec {
-            TypeSpecifier::Ident(ident) => {
-                if ident.value == "Self" {
-                    return Some(SemaType::SelfType(TypedSelfType { loc: ident.loc }));
-                }
-
-                self.resolve_ident_type(ident)
-            }
+            TypeSpecifier::Ident(ident) => self.resolve_ident_type(ident),
             TypeSpecifier::ModuleImport(import) => self.resolve_module_import_type(import),
             TypeSpecifier::TypeToken(token) => self.resolve_builtin_type(token, loc),
             TypeSpecifier::Const(inner) => {
@@ -515,6 +509,10 @@ impl<'a> Resolver<'a> {
 
         if let Some(symbol_id) = self.lookup_symbol_id(self.current_scope.unwrap(), &ident.value) {
             return Some(SemaType::Unresolved(UnresolvedType::Decl(symbol_id)));
+        }
+
+        if ident.value == "Self" {
+            return Some(SemaType::SelfType(TypedSelfType { loc: ident.loc }));
         }
 
         self.reporter.report(Diag {

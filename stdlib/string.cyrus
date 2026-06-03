@@ -56,7 +56,15 @@ pub struct String {
     }
 
     pub inline fn as_str(&self) char* {
-        return self->buffer.data_ptr();
+        return self->buffer.data();
+    }
+
+    pub inline fn as_str_const(&const self) const char* {
+        return self->buffer.data_const();
+    }
+
+    pub inline fn as_const_str(&const self) const char* {
+        return self->buffer.data_const();
     }
 
     pub inline fn push(&self, const ch: char) {
