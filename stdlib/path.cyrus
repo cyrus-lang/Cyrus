@@ -20,6 +20,7 @@ import std::string{String};
 import std::mem{Allocator};
 import std::option{Option};
 
+/// POSIX ONLY!
 pub struct Path {
     allocator: Allocator;
     inner: String;
@@ -30,6 +31,7 @@ pub struct Path {
         return Self { allocator, inner };
     }   
 
+    /// POSIX ONLY!
     /// Get the parent directory (Everything before last `/`). Allocates new Path and returns it.
     pub fn parent(&self) Path {
         var last: usize;
@@ -63,17 +65,79 @@ pub struct Path {
         };
     }
 
-    /// POSIX: Check if path has a root `/`.
+    /// POSIX ONLY!
+    /// Get the last component. Allocates new Path and returns it.
+    pub fn file_name(&self) Path {
+        const str = self->inner.as_str_const();
+        const len = self->inner.len();
+
+        var last: usize;
+
+        for (var i: usize = 0; i < len; i++) {
+            if (str[i] == '/') {
+                last = i + 1;
+            }
+        }
+
+        if (last >= len) {
+            return Path.new(self->allocator, ".");
+        }
+
+        var file_name = String.new(self->allocator);
+        for (var i: usize = last; i < len; i++) {
+            file_name.push(str[i]);
+        }
+
+        return Path {
+            allocator: self->allocator, 
+            inner: file_name
+        };
+    }
+
+    /// POSIX ONLY!
+    /// Check if path has a dot.
+    pub inline fn has_dot(&const self) bool {
+        const str = self->inner.as_str_const();
+        const len = self->inner.len();
+
+        for (var i: usize = 0; i < 10; i++) {
+            if (str[i] == '.' && (i == 0 || str[i - 1] == '/')) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /// POSIX ONLY!
+    /// Check if path has ".." component.
+    pub fn has_dot_dot(&const self) bool {
+        const str = self->inner.as_str_const();
+        const len = self->inner.len();
+        
+        for (var i: usize = 0; i < len - 1; i++) {
+            if (str[i] == '.' && str[i + 1] == '.') {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /// POSIX ONLY!
+    /// Check if path has a root `/`.
     pub inline fn has_root(&const self) bool {
         return self->inner.as_str_const()[0] == '/';
     }
 
-    /// POSIX: Path is absolute if it starts with `/`.
+    /// POSIX ONLY!
+    /// Path is absolute if it starts with `/`.
     pub inline fn is_absolute(&const self) bool {
         return !self->inner.is_empty() && self->inner.as_str_const()[0] == '/';
     }
 
-    // POSIX: Path is relative if it's not absolute.
+    /// POSIX ONLY!
+    // Path is relative if it's not absolute.
     pub inline fn is_relative(&const self) bool {
         return !self->is_absolute();
     }
@@ -91,7 +155,7 @@ pub struct Path {
     }
 }
 
-// POSIX
+/// POSIX ONLY!
 inline fn is_separator(ch: char) bool {
     return ch == '/';
 }
