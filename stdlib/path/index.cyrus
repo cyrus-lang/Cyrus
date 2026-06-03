@@ -18,6 +18,7 @@
 import std::libc{printf};
 import std::string{String};
 import std::mem{Allocator};
+import std::option{Option};
 
 pub struct Path {
     allocator: Allocator;
@@ -29,6 +30,39 @@ pub struct Path {
         return Self { allocator, inner };
     }   
 
+    /// Get the parent directory (Everything before last `/`). Allocates new Path and returns it.
+    pub fn parent(&self) Path {
+        var last: usize;
+        var found = false;
+
+        const str = self->inner.as_str_const();
+
+        for (var i: usize = 0; i < self->inner.len(); i++) {
+            if (str[i] == '/') {
+                last = i;
+                found = true;
+            }
+        }
+
+        if (!found) {
+            return Path.new(self->allocator, ".");
+        }
+
+        if (last == 0) {
+            return Path.new(self->allocator, "/");
+        }
+
+        var parent = String.new(self->allocator);
+        for (var i: usize = 0; i < last; i++) {
+            parent.push(str[i]);
+        }
+
+        return Path {
+            allocator: self->allocator, 
+            inner: parent
+        };
+    }
+
     /// POSIX: Check if path has a root `/`.
     pub inline fn has_root(&const self) bool {
         return self->inner.as_str_const()[0] == '/';
@@ -36,22 +70,20 @@ pub struct Path {
 
     /// POSIX: Path is absolute if it starts with `/`.
     pub inline fn is_absolute(&const self) bool {
-        if (self->inner.is_empty()) {
-            return false;
-        }
-
-        if (self->inner.as_str_const()[0] == '/') {
-            return true;
-        }
-        
-        return false;
+        return !self->inner.is_empty() && self->inner.as_str_const()[0] == '/';
     }
-
-    // TODO
 
     // POSIX: Path is relative if it's not absolute.
     pub inline fn is_relative(&const self) bool {
         return !self->is_absolute();
+    }
+
+    pub inline fn as_string(&self) String {
+        return self->inner;
+    }
+
+    pub inline fn as_string_const(&const self) const String {
+        return self->inner;
     }
 
     pub inline fn free(&self) {
