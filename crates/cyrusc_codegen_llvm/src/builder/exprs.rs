@@ -2020,23 +2020,23 @@ impl<'ll> CodeGenIRBuilder<'ll> {
 
                     (rvalue.clone(), rvalue)
                 } else {
-                    // if value.is_rvalue() && !value.ty.is_pointer() {
-                    //     let llvm_type: BasicTypeEnum<'ll> = self.emit_ty(value.ty.clone()).try_into().unwrap();
+                    if value.is_rvalue() && !value.ty.is_pointer() {
+                        let llvm_type: BasicTypeEnum<'ll> = self.emit_ty(value.ty.clone()).try_into().unwrap();
 
-                    //     let temp = self.llvmbuilder.build_alloca(llvm_type, "temp.self").unwrap();
-                    //     self.llvmbuilder.build_store(temp, value.as_basic_value()).unwrap();
+                        let temp = self.llvmbuilder.build_alloca(llvm_type, "temp.self").unwrap();
+                        self.llvmbuilder.build_store(temp, value.as_basic_value()).unwrap();
 
-                    //     let lvalue = InternalValue::new(value.ty, InternalValueKind::LValue(temp));
+                        let lvalue = InternalValue::new(value.ty, InternalValueKind::LValue(temp));
 
-                    //     (lvalue.clone(), lvalue)
-                    // } else {
+                        (lvalue.clone(), lvalue)
+                    } else {
                         debug_assert!(value.is_lvalue());
 
                         // value type, need address
                         let lvalue = self.emit_lvalue_address(&self_meta.operand);
 
                         (lvalue.clone(), lvalue)
-                    // }
+                    }
                 }
             } else {
                 let lvalue = self.emit_expr(&self_meta.operand, &None);
