@@ -33,14 +33,14 @@ pub struct Path {
 
     /// POSIX ONLY!
     /// Get the parent directory (Everything before last `/`). Allocates new Path and returns it.
-    pub fn parent(&self) Path {
+    pub fn parent(&self) Self {
         var last: usize;
         var found = false;
 
         const str = self->inner.as_str_const();
 
         for (var i: usize = 0; i < self->inner.len(); i++) {
-            if (str[i] == '/') {
+            if (str[i] == separator()) {
                 last = i;
                 found = true;
             }
@@ -67,14 +67,14 @@ pub struct Path {
 
     /// POSIX ONLY!
     /// Get the last component. Allocates new Path and returns it.
-    pub fn file_name(&self) Path {
+    pub fn file_name(&self) Self {
         const str = self->inner.as_str_const();
         const len = self->inner.len();
 
         var last: usize;
 
         for (var i: usize = 0; i < len; i++) {
-            if (str[i] == '/') {
+            if (str[i] == separator()) {
                 last = i + 1;
             }
         }
@@ -88,9 +88,45 @@ pub struct Path {
             file_name.push(str[i]);
         }
 
-        return Path {
+        return Self {
             allocator: self->allocator, 
             inner: file_name
+        };
+    }
+
+    pub fn join(&const self, other: const Self*) Self {
+        const self_str = self->inner.as_str_const();
+        const self_len = self->inner.len();
+
+        const other_str = other->inner.as_str_const();
+        const other_len = other->inner.len();
+
+        const self_ends_with_slash = self_len > 0 && self_str[self_len - 1] == separator();
+
+        // if `other` is absolute, just return other
+        if (other_len > 0 && other_str[0] == separator()) {
+            const inner = String.from(self->allocator, other_str);
+            
+            return Self { allocator: self->allocator, inner };
+        }
+
+        var result = String.new(self->allocator);
+
+        for (var i: usize = 0; i < self_len; i++) {
+            result.push(self_str[i]);
+        }
+
+        if (self_len > 0 && !self_ends_with_slash && other_len > 0) {
+            result.push(separator());
+        }
+
+        for (var i: usize = 0; i < other_len; i++) {
+            result.push(other_str[i]);
+        }
+
+        return Self {
+            allocator: self->allocator, 
+            inner: result
         };
     }
 
@@ -101,7 +137,7 @@ pub struct Path {
         const len = self->inner.len();
 
         for (var i: usize = 0; i < 10; i++) {
-            if (str[i] == '.' && (i == 0 || str[i - 1] == '/')) {
+            if (str[i] == '.' && (i == 0 || str[i - 1] == separator())) {
                 return true;
             }
         }
@@ -127,13 +163,13 @@ pub struct Path {
     /// POSIX ONLY!
     /// Check if path has a root `/`.
     pub inline fn has_root(&const self) bool {
-        return self->inner.as_str_const()[0] == '/';
+        return self->inner.as_str_const()[0] == separator();
     }
 
     /// POSIX ONLY!
     /// Path is absolute if it starts with `/`.
     pub inline fn is_absolute(&const self) bool {
-        return !self->inner.is_empty() && self->inner.as_str_const()[0] == '/';
+        return !self->inner.is_empty() && self->inner.as_str_const()[0] == separator();
     }
 
     /// POSIX ONLY!
@@ -158,4 +194,9 @@ pub struct Path {
 /// POSIX ONLY!
 inline fn is_separator(ch: char) bool {
     return ch == '/';
+}
+
+/// POSIX ONLY!
+inline fn separator() char {
+    return '/';
 }
