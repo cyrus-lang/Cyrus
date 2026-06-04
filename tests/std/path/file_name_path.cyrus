@@ -1,0 +1,17 @@
+// @stdout: file_name: file
+
+import std::mem{Allocator, LibcAllocator};
+import std::string{String};
+import std::libc{printf};
+import std::path{Path};
+
+pub fn main() {
+    const allocator: Allocator = dynamic LibcAllocator.new();
+
+    var path = Path.new(allocator, "/tmp/file");
+    defer path.free();
+
+    var file_name = path.file_name();
+    defer file_name.free();
+    printf("file_name: %s\n", file_name.as_string_const().as_str_const());
+}
