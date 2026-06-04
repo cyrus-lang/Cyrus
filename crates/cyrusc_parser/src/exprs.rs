@@ -223,7 +223,7 @@ impl<'source_file> Parser<'source_file> {
                 self.next_token();
 
                 let expr = self.parse_expr(Precedence::Lowest)?;
-                self.next_token(); // consume last token of expr
+                self.next_token();
 
                 if self.current_token_is(TokenKind::Comma) {
                     // considered as tuple construction, not grouped expr
@@ -384,93 +384,65 @@ impl<'source_file> Parser<'source_file> {
             }
         }
 
-        match self.peek_token().kind {
-            TokenKind::Assign => {
-                self.next_token();
+        self.next_token(); // consume lhs expr
 
-                match self.parse_assign(lhs, AssignKind::Default, lhs_start) {
-                    Ok(expr) => Some(Ok(expr)),
-                    Err(err) => Some(Err(err)),
-                }
-            }
-            TokenKind::Plus
-            | TokenKind::Minus
-            | TokenKind::Asterisk
-            | TokenKind::Slash
-            | TokenKind::Percent
-            | TokenKind::Equal
-            | TokenKind::NotEqual
-            | TokenKind::LessEqual
-            | TokenKind::LessThan
-            | TokenKind::GreaterEqual
-            | TokenKind::GreaterThan
-            | TokenKind::And
-            | TokenKind::Or
-            | TokenKind::Ampersand
-            | TokenKind::Pipe
-            | TokenKind::Tilde
-            | TokenKind::AmpTilde
-            | TokenKind::Caret
-            | TokenKind::ShiftLeft
-            | TokenKind::ShiftRight
-            | TokenKind::Ident { .. } => {
-                self.next_token(); // consume lhs expr
+        match self.current_token().kind {
+            TokenKind::Assign => match self.parse_assign(lhs, AssignKind::Default, lhs_start) {
+                Ok(expr) => Some(Ok(expr)),
+                Err(err) => Some(Err(err)),
+            },
 
-                let operator_token = self.current_token().kind;
+            token_kind if is_infix_operator(&token_kind) => {
+                let operator = self.current_token().kind;
+
                 if self.peek_token_is(TokenKind::Assign) {
-                    self.next_token();
-                    let Some(assign_kind) = map_assign_kind(operator_token.clone()) else {
+                    self.next_token(); // consume operator
+
+                    let Some(assign_kind) = map_assign_kind(operator.clone()) else {
                         return Some(Err(
-                            self.error_at_current(ParserDiagKind::InvalidAssignOperator(operator_token))
+                            self.error_at_current(ParserDiagKind::InvalidAssignOperator(operator))
                         ));
                     };
 
                     return Some(self.parse_assign(lhs, assign_kind, lhs_start));
                 }
 
-                let precedence = token_precedence_of(operator_token.clone());
+                let precedence = token_precedence_of(operator.clone());
+
+                let Some(infix_operator) = map_infix_operator(&operator) else {
+                    return Some(Err(self.error_at_current(ParserDiagKind::InvalidInfixOperator(
+                        self.current_token().kind,
+                    ))));
+                };
+
                 self.next_token(); // consume the operator
 
-                let op = match operator_token {
-                    TokenKind::Plus => InfixOperator::Add,
-                    TokenKind::Minus => InfixOperator::Sub,
-                    TokenKind::Asterisk => InfixOperator::Mul,
-                    TokenKind::Slash => InfixOperator::Div,
-                    TokenKind::Percent => InfixOperator::Rem,
-                    TokenKind::LessThan => InfixOperator::LessThan,
-                    TokenKind::LessEqual => InfixOperator::LessEqual,
-                    TokenKind::GreaterThan => InfixOperator::GreaterThan,
-                    TokenKind::GreaterEqual => InfixOperator::GreaterEqual,
-                    TokenKind::Equal => InfixOperator::Equal,
-                    TokenKind::NotEqual => InfixOperator::NotEqual,
-                    TokenKind::Or => InfixOperator::Or,
-                    TokenKind::And => InfixOperator::And,
-                    TokenKind::Ampersand => InfixOperator::BitwiseAnd,
-                    TokenKind::Pipe => InfixOperator::BitwiseOr,
-                    TokenKind::Caret => InfixOperator::BitwiseXor,
-                    TokenKind::AmpTilde => InfixOperator::BitwiseAndNot,
-                    TokenKind::ShiftLeft => InfixOperator::ShiftLeft,
-                    TokenKind::ShiftRight => InfixOperator::ShiftRight,
-
-                    _ => {
-                        return Some(Err(self.error_at_current(ParserDiagKind::InvalidInfixOperator(
-                            self.current_token().kind,
-                        ))));
-                    }
-                };
+                if !can_start_expr(&self.current_token().kind) {
+                    let diag = Diag {
+                        kind: Box::new(ParserDiagKind::ExpectedExpressionAfterOperator(operator)),
+                        level: DiagLevel::Error,
+                        loc: Some(self.current_token().loc),
+                        hint: None,
+                    };
+                    return Some(Err(diag));
+                }
 
                 let rhs = self.parse_expr(precedence).ok()?;
 
                 let end = self.current_token().loc.end;
 
                 Some(Ok(ASTExpr::Infix(ASTInfixExpr {
-                    op,
+                    op: infix_operator,
                     lhs: Box::new(lhs),
                     rhs: Box::new(rhs),
                     loc: Loc::new(self.file_id(), lhs_line, lhs_column, lhs_start, end),
                 })))
             }
-            _ => None,
+
+            _ => {
+                // FIXME: Diag -> Expected Infix Operator But Got '{}'.
+                None
+            }
         }
     }
 
@@ -625,11 +597,11 @@ impl<'source_file> Parser<'source_file> {
         }))
     }
 
-    fn parse_tuple_value(&mut self, first_expr: ASTExpr) -> Result<ASTExpr, Diag> {
+    fn parse_tuple_value(&mut self, first: ASTExpr) -> Result<ASTExpr, Diag> {
         let loc = self.current_token().loc;
         let (line, column, start) = (loc.line, loc.column, loc.start);
 
-        let mut elements: Vec<ASTExpr> = vec![first_expr];
+        let mut elements: Vec<ASTExpr> = vec![first];
 
         loop {
             let expr = self.parse_expr(Precedence::Lowest)?;
@@ -1370,6 +1342,184 @@ fn map_assign_kind(token_kind: TokenKind) -> Option<AssignKind> {
         TokenKind::AmpTilde => Some(AssignKind::BitwiseAndNotAssign),
         TokenKind::ShiftLeft => Some(AssignKind::LeftShiftAssign),
         TokenKind::ShiftRight => Some(AssignKind::RightShiftAssign),
+        _ => None,
+    }
+}
+
+fn can_start_expr(kind: &TokenKind) -> bool {
+    match kind {
+        TokenKind::Ident { .. }
+        | TokenKind::Literal(_)
+        | TokenKind::Repr
+        | TokenKind::Struct
+        | TokenKind::Union
+        | TokenKind::Inline
+        | TokenKind::Function
+        | TokenKind::At
+        | TokenKind::Dot
+        | TokenKind::Dynamic
+        | TokenKind::Ampersand
+        | TokenKind::Asterisk
+        | TokenKind::Null
+        | TokenKind::True
+        | TokenKind::False
+        | TokenKind::Minus
+        | TokenKind::Bang
+        | TokenKind::Tilde
+        | TokenKind::LeftParen
+        | TokenKind::LeftBrace
+        | TokenKind::Increment
+        | TokenKind::Decrement => true,
+
+        TokenKind::EOF
+        | TokenKind::Semicolon
+        | TokenKind::RightParen
+        | TokenKind::RightBrace
+        | TokenKind::RightBracket
+        | TokenKind::Comma
+        | TokenKind::Assign
+        | TokenKind::Plus
+        | TokenKind::Slash
+        | TokenKind::Percent
+        | TokenKind::Equal
+        | TokenKind::NotEqual
+        | TokenKind::LessEqual
+        | TokenKind::LessThan
+        | TokenKind::GreaterEqual
+        | TokenKind::GreaterThan
+        | TokenKind::And
+        | TokenKind::Or
+        | TokenKind::Pipe
+        | TokenKind::AmpTilde
+        | TokenKind::Caret
+        | TokenKind::ShiftLeft
+        | TokenKind::ShiftRight
+        | TokenKind::Colon
+        | TokenKind::ThinArrow
+        | TokenKind::LeftBracket
+        | TokenKind::FatArrow
+        | TokenKind::DoubleDot
+        | TokenKind::TripleDot
+        | TokenKind::DoubleQuote
+        | TokenKind::SingleQuote
+        | TokenKind::DoubleColon
+        | TokenKind::Underscore
+        | TokenKind::Module
+        | TokenKind::Var
+        | TokenKind::Goto
+        | TokenKind::Defer
+        | TokenKind::Interface
+        | TokenKind::Typedef
+        | TokenKind::Switch
+        | TokenKind::Case
+        | TokenKind::Default
+        | TokenKind::If
+        | TokenKind::Else
+        | TokenKind::Return
+        | TokenKind::For
+        | TokenKind::While
+        | TokenKind::Foreach
+        | TokenKind::Break
+        | TokenKind::Continue
+        | TokenKind::Import
+        | TokenKind::In
+        | TokenKind::Enum
+        | TokenKind::As
+        | TokenKind::UIntPtr
+        | TokenKind::IntPtr
+        | TokenKind::ISize
+        | TokenKind::USize
+        | TokenKind::Int
+        | TokenKind::Int8
+        | TokenKind::Int16
+        | TokenKind::Int32
+        | TokenKind::Int64
+        | TokenKind::Int128
+        | TokenKind::UInt
+        | TokenKind::UInt8
+        | TokenKind::UInt16
+        | TokenKind::UInt32
+        | TokenKind::UInt64
+        | TokenKind::UInt128
+        | TokenKind::Float16
+        | TokenKind::Float32
+        | TokenKind::Float64
+        | TokenKind::Float128
+        | TokenKind::Char
+        | TokenKind::Void
+        | TokenKind::Bool
+        | TokenKind::Const
+        | TokenKind::Weak
+        | TokenKind::LinkOnce
+        | TokenKind::Callconv
+        | TokenKind::Naked
+        | TokenKind::NoReturn
+        | TokenKind::Hot
+        | TokenKind::Cold
+        | TokenKind::Extern
+        | TokenKind::Public
+        | TokenKind::NoInline
+        | TokenKind::AlwaysInline
+        | TokenKind::DllImport
+        | TokenKind::DllExport
+        | TokenKind::OptSize
+        | TokenKind::OptNone
+        | TokenKind::NoSanitize
+        | TokenKind::NoUnwind
+        | TokenKind::Section
+        | TokenKind::Invalid => false,
+    }
+}
+
+fn is_infix_operator(token_kind: &TokenKind) -> bool {
+    matches!(
+        token_kind,
+        TokenKind::Plus
+            | TokenKind::Minus
+            | TokenKind::Asterisk
+            | TokenKind::Slash
+            | TokenKind::Percent
+            | TokenKind::Equal
+            | TokenKind::NotEqual
+            | TokenKind::LessEqual
+            | TokenKind::LessThan
+            | TokenKind::GreaterEqual
+            | TokenKind::GreaterThan
+            | TokenKind::And
+            | TokenKind::Or
+            | TokenKind::Ampersand
+            | TokenKind::Pipe
+            | TokenKind::Tilde
+            | TokenKind::AmpTilde
+            | TokenKind::Caret
+            | TokenKind::ShiftLeft
+            | TokenKind::ShiftRight
+            | TokenKind::Ident(..)
+    )
+}
+
+fn map_infix_operator(token_kind: &TokenKind) -> Option<InfixOperator> {
+    match token_kind {
+        TokenKind::Plus => Some(InfixOperator::Add),
+        TokenKind::Minus => Some(InfixOperator::Sub),
+        TokenKind::Asterisk => Some(InfixOperator::Mul),
+        TokenKind::Slash => Some(InfixOperator::Div),
+        TokenKind::Percent => Some(InfixOperator::Rem),
+        TokenKind::LessThan => Some(InfixOperator::LessThan),
+        TokenKind::LessEqual => Some(InfixOperator::LessEqual),
+        TokenKind::GreaterThan => Some(InfixOperator::GreaterThan),
+        TokenKind::GreaterEqual => Some(InfixOperator::GreaterEqual),
+        TokenKind::Equal => Some(InfixOperator::Equal),
+        TokenKind::NotEqual => Some(InfixOperator::NotEqual),
+        TokenKind::Or => Some(InfixOperator::Or),
+        TokenKind::And => Some(InfixOperator::And),
+        TokenKind::Ampersand => Some(InfixOperator::BitwiseAnd),
+        TokenKind::Pipe => Some(InfixOperator::BitwiseOr),
+        TokenKind::Caret => Some(InfixOperator::BitwiseXor),
+        TokenKind::AmpTilde => Some(InfixOperator::BitwiseAndNot),
+        TokenKind::ShiftLeft => Some(InfixOperator::ShiftLeft),
+        TokenKind::ShiftRight => Some(InfixOperator::ShiftRight),
+
         _ => None,
     }
 }
