@@ -1,0 +1,20 @@
+// @stdout: absolute path
+
+import std::mem{Allocator, LibcAllocator};
+import std::string{String};
+import std::libc{printf};
+import std::path{Path};
+
+pub fn main() {
+    const allocator: Allocator = dynamic LibcAllocator.new();
+
+    var path = Path.new(allocator, "/tmp/file");
+    defer path.free();
+
+    if (path.is_absolute()) {
+        printf("absolute path\n");
+    } else {
+        @assert(path.is_relative() == true);
+        printf("relative path\n");
+    }
+}
