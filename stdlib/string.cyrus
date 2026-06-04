@@ -18,7 +18,6 @@
 import std::libc{strlen};
 import std::mem{Allocator};
 import std::mem::buffer{Buffer};
-import std::collections{Array};
 
 pub struct String {
     buffer: Buffer<char>;
