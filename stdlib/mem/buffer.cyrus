@@ -15,20 +15,20 @@
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
 
-import std::collections{Array};
+import std::collections{Vector};
 import std::mem{Allocator};
 
 pub struct Buffer<T> {
-    buffer: Array<T>;
+    buffer: Vector<T>;
 
     pub inline fn new(const allocator: Allocator) Self {
-        var buffer: Array<T> = Array.with_capacity(allocator, @sizeof(T));
+        var buffer: Vector<T> = Vector.with_capacity(allocator, @sizeof(T));
 
         return Self { buffer };
     }
 
     pub inline fn with_capacity(const allocator: Allocator, cap: usize) Self {
-        var buffer: Array<T> = Array.with_capacity(allocator, cap * @sizeof(T));
+        var buffer: Vector<T> = Vector.with_capacity(allocator, cap * @sizeof(T));
 
         return Self { buffer };
     }

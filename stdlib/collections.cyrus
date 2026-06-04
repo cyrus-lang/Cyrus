@@ -22,7 +22,7 @@ import std::iterator{Iterator};
 
 const initial_array_capacity: usize = 16;
 
-pub struct Array<T> {
+pub struct Vector<T> {
     data: T*;
     cap: usize;
     len: usize;
@@ -63,7 +63,7 @@ pub struct Array<T> {
         };
     }
 
-    pub inline fn extend(&const self, const other: Array<T>*) {
+    pub inline fn extend(&const self, const other: Self*) {
         if (self == other) {
             var original_len = self->len;
 
