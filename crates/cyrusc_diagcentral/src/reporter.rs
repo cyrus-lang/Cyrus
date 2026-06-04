@@ -22,6 +22,7 @@ pub struct DiagReporter {
 }
 
 impl DiagReporter {
+    #[inline]
     pub fn new(source_map: Arc<SourceMap>) -> Self {
         Self {
             source_map: Some(source_map),
@@ -29,6 +30,7 @@ impl DiagReporter {
         }
     }
 
+    #[inline]
     pub fn new_with_no_source_map() -> Self {
         Self {
             source_map: None,
@@ -36,10 +38,12 @@ impl DiagReporter {
         }
     }
 
+    #[inline]
     pub fn diags(&self) -> Ref<'_, Vec<Diag>> {
         self.diags.borrow()
     }
 
+    #[inline]
     pub fn diags_mut(&self) -> RefMut<'_, Vec<Diag>> {
         self.diags.borrow_mut()
     }
@@ -60,6 +64,7 @@ impl DiagReporter {
             match diag.level {
                 DiagLevel::Error => eprintln!("{}", self.render(diag)),
                 DiagLevel::Warning => println!("{}", self.render(diag)),
+                DiagLevel::Unimplemented => println!("{}", self.render(diag)),
             }
         }
 
@@ -73,6 +78,7 @@ impl DiagReporter {
             match diag.level {
                 DiagLevel::Error => eprintln!("{}", self.render(diag)),
                 DiagLevel::Warning => println!("{}", self.render(diag)),
+                DiagLevel::Unimplemented => println!("{}", self.render(diag)),
             }
         }
 
@@ -80,20 +86,27 @@ impl DiagReporter {
         drop(diags);
     }
 
+    #[inline]
     pub fn display_single(diag: Diag) {
         let reporter = DiagReporter::new_with_no_source_map();
         let output = reporter.render(&diag);
         eprintln!("{}", output);
     }
 
+    #[inline]
     pub fn report(&self, diag: Diag) {
         self.diags.borrow_mut().push(diag)
     }
 
+    #[inline]
     pub fn has_errors(&self) -> bool {
-        self.diags.borrow().iter().any(|d| matches!(d.level, DiagLevel::Error))
+        self.diags
+            .borrow()
+            .iter()
+            .any(|d| matches!(d.level, DiagLevel::Error | DiagLevel::Unimplemented))
     }
 
+    #[inline]
     pub fn len(&self) -> usize {
         self.diags.borrow().len()
     }
@@ -109,6 +122,7 @@ impl DiagReporter {
             match diag.level {
                 DiagLevel::Error => "error".color(color),
                 DiagLevel::Warning => "warning".color(color),
+                DiagLevel::Unimplemented => "unimplemented".color(color),
             }
         };
 
@@ -244,6 +258,7 @@ impl DiagReporter {
         match diag.level {
             DiagLevel::Error => Colors::RedFg,
             DiagLevel::Warning => Colors::YellowFg,
+            DiagLevel::Unimplemented => Colors::CyanFg,
         }
     }
 }

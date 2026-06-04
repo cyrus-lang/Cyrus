@@ -52,10 +52,7 @@ pub enum AnalyzerDiagKind {
     #[error(
         "Method '{method_name}' requires mutable access to 'self', but instance of type '{type_name}' is declared 'const'."
     )]
-    MutableMethodOnConstInstance {
-        method_name: String,
-        type_name: String,
-    },
+    MutableMethodOnConstInstance { method_name: String, type_name: String },
 
     #[error("Cannot call static method '{method_name}' on an instance.")]
     StaticMethodCallOnInstance { method_name: String },
@@ -378,7 +375,7 @@ pub enum AnalyzerDiagKind {
 
     #[error("Cannot access member of non-tuple value.")]
     TupleMemberAccessOnNonTupleOperand,
-    
+
     #[error("Invalid variable declaration in tuple destructuring: nested '{mutability}' is not allowed.")]
     InvalidNestedExportTuple { mutability: String },
 
@@ -526,6 +523,14 @@ pub enum AnalyzerDiagKind {
         interface_name: String,
         method_name: String,
     },
+
+    // ------- UNIMPLEMENTED ------- 
+
+    // NOTE: Gotta be removed after implementing slices.
+    #[error("Slices are not implemented yet. Try to use pointer arithmetic instead for now.")]
+    UnimplementedFeatureSlice,
+
+    // -----------------------------
 
     #[error("{0}")]
     UnescapeError(UnescapeError),
