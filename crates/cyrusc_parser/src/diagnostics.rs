@@ -14,9 +14,6 @@ pub enum ParserDiagKind {
     #[error("Invalid ABI: '{0}'.")]
     InvalidABI(String),
 
-    #[error("Tuple type must contain at least two elements.")]
-    SingleElementTupleType,
-
     #[error("Expected token '{0}'.")]
     ExpectedToken(TokenKind),
 
@@ -25,6 +22,12 @@ pub enum ParserDiagKind {
 
     #[error("Expected type token but got '{0}'.")]
     InvalidTypeToken(TokenKind),
+
+    #[error("Expected expression after operator '{0}'.")]
+    ExpectedExpressionAfterOperator(TokenKind),
+
+    #[error("Tuple type must contain at least two elements.")]
+    SingleElementTupleType,
 
     #[error("Missing closing brace '}}'.")]
     MissingClosingBrace,
@@ -46,9 +49,6 @@ pub enum ParserDiagKind {
 
     #[error("Missing comma.")]
     MissingComma,
-
-    #[error("If untyped array constructor would not have an item, consider removing it.")]
-    InvalidUntypedArrayConstructor,
 
     #[error("Cannot define self modifier several times in a function.")]
     SeveralSelfModifierUsed,
@@ -88,6 +88,7 @@ pub enum ParserDiagKind {
 }
 
 impl<'source_file> Parser<'source_file> {
+    #[inline]
     pub(crate) fn error_invalid_token(&self) -> Diag {
         let token = self.current_token();
 
@@ -99,6 +100,7 @@ impl<'source_file> Parser<'source_file> {
         }
     }
 
+    #[inline]
     pub(crate) fn error_at_current_with_hint(&self, kind: ParserDiagKind, hint: &str) -> Diag {
         let token = self.current_token();
 
@@ -110,6 +112,7 @@ impl<'source_file> Parser<'source_file> {
         }
     }
 
+    #[inline]
     pub(crate) fn error_at_current(&self, kind: ParserDiagKind) -> Diag {
         let token = self.current_token();
 
@@ -121,6 +124,7 @@ impl<'source_file> Parser<'source_file> {
         }
     }
 
+    #[inline]
     pub(crate) fn error_at_peek(&self, kind: ParserDiagKind) -> Diag {
         let token = self.peek_token();
 
@@ -132,6 +136,7 @@ impl<'source_file> Parser<'source_file> {
         }
     }
 
+    #[inline]
     pub(crate) fn error_at_token(&self, token: &Token, kind: ParserDiagKind) -> Diag {
         Diag {
             kind: Box::new(kind),
@@ -141,6 +146,7 @@ impl<'source_file> Parser<'source_file> {
         }
     }
 
+    #[inline]
     pub(crate) fn error_with_hint(&self, token: &Token, kind: ParserDiagKind, hint: &str) -> Diag {
         Diag {
             kind: Box::new(kind),

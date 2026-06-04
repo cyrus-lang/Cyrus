@@ -1396,6 +1396,8 @@ impl<'source_file> Parser<'source_file> {
     }
 
     fn parse_export_tuple(&mut self, is_const: bool) -> Result<ASTStmt, Diag> {
+        let token = self.current_token();
+
         let loc = self.current_token().loc;
         let (line, column, start) = (loc.line, loc.column, loc.start);
 
@@ -1404,7 +1406,7 @@ impl<'source_file> Parser<'source_file> {
         self.next_token();
 
         if !matches!(pattern.kind, ExportPatternKind::Tuple(_)) {
-            return Err(self.error_at_current(ParserDiagKind::InvalidToken(self.current_token().kind.clone())));
+            return Err(self.error_at_token(&token.clone(), ParserDiagKind::InvalidTypeToken(token.kind)));
         }
 
         // optional initializer

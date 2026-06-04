@@ -41,7 +41,7 @@ impl SourceParser {
 
         let Ok(program_tree) = parser.parse() else {
             self.display_errors();
-            
+
             return Err(());
         };
 

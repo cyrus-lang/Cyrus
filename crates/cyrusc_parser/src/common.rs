@@ -239,7 +239,7 @@ impl<'source_file> Parser<'source_file> {
                     break;
                 }
                 _ => {
-                    return Err(self.error_invalid_token());
+                    return Err(self.error_at_current(ParserDiagKind::ExpectedToken(TokenKind::GreaterThan)));
                 }
             }
         }
