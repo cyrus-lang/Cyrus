@@ -1018,11 +1018,6 @@ impl<'source_file> Parser<'source_file> {
                 self.next_token(); // consume left brace
 
                 loop {
-                    // REVIEW: Maybe this is not necessary here anymore? Because we support untyped array constructors...
-                    if self.current_token_is(TokenKind::RightBrace) {
-                        return Err(self.error_at_current(ParserDiagKind::InvalidUntypedArrayConstructor));
-                    }
-
                     untyped_array.push(self.parse_expr(Precedence::Lowest)?);
 
                     if self.peek_token_is(TokenKind::Comma) {

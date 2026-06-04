@@ -273,7 +273,15 @@ impl<'a> AnalysisContext<'a> {
                     return None;
                 }
             }
-            TypedArrayCapacity::Dynamic => todo!(),
+            TypedArrayCapacity::Dynamic => {
+                self.reporter.report(Diag {
+                    level: DiagLevel::Unimplemented,
+                    kind: Box::new(AnalyzerDiagKind::UnimplementedFeatureSlice),
+                    loc: Some(loc),
+                    hint: None,
+                });
+                return None;
+            }
         }
 
         array.element_type = Box::new(self.normalize_sema_type(*array.element_type, loc)?);
