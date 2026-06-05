@@ -59,9 +59,14 @@ impl<'source_file> Parser<'source_file> {
                 }));
             }
 
+            let peek_token = self.peek_token();
+
             // infix handling (respect precedence)
-            let peek_prec = token_precedence_of(self.peek_token().kind);
-            if self.peek_token().kind != TokenKind::EOF && precedence < peek_prec {
+            let Some(operator_precedence) = token_precedence_of(peek_token.kind.clone()) else {
+                break;
+            };
+
+            if peek_token.kind != TokenKind::EOF && precedence < operator_precedence {
                 match self.parse_infix_expr(lhs.clone(), lhs_line, lhs_column, lhs_start) {
                     Some(infix) => {
                         lhs = infix?;
@@ -407,7 +412,11 @@ impl<'source_file> Parser<'source_file> {
                     return Some(self.parse_assign(lhs, assign_kind, lhs_start));
                 }
 
-                let precedence = token_precedence_of(operator.clone());
+                let Some(precedence) = token_precedence_of(operator.clone()) else {
+                    return Some(Err(self.error_at_current(ParserDiagKind::InvalidInfixOperator(
+                        self.current_token().kind,
+                    ))));
+                };
 
                 let Some(infix_operator) = map_infix_operator(&operator) else {
                     return Some(Err(self.error_at_current(ParserDiagKind::InvalidInfixOperator(
@@ -439,10 +448,7 @@ impl<'source_file> Parser<'source_file> {
                 })))
             }
 
-            _ => {
-                // FIXME: Diag -> Expected Infix Operator But Got '{}'.
-                None
-            }
+            _ => None,
         }
     }
 

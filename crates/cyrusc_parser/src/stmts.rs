@@ -637,7 +637,6 @@ impl<'source_file> Parser<'source_file> {
         Ok(field)
     }
 
-    // FIXME: Make method_parsing helper methods.
     fn parse_union(&mut self, modifiers: UnionModifiers) -> Result<ASTStmt, Diag> {
         let loc = self.current_token().loc;
         let (line, column, start) = (loc.line, loc.column, loc.start);
@@ -1729,6 +1728,7 @@ impl<'source_file> Parser<'source_file> {
         if self.current_token_is(TokenKind::Underscore) {
             let loc = self.current_token().loc;
             self.next_token();
+
             return Ok(SwitchCasePattern {
                 kind: SwitchCasePatternKind::Wildcard,
                 loc,
@@ -1851,13 +1851,13 @@ impl<'source_file> Parser<'source_file> {
         }
 
         // expression or range pattern
-        let expr = self.parse_expr(Precedence::Prefix)?;
+        let expr = self.parse_expr(Precedence::Lowest)?;
         self.next_token();
 
         // range exclusive:  a..b
         if self.current_token_is(TokenKind::TripleDot) {
             self.next_token();
-            let upper = self.parse_expr(Precedence::Prefix)?;
+            let upper = self.parse_expr(Precedence::Lowest)?;
             self.next_token();
 
             let end = self.current_token().loc.end;
@@ -1927,6 +1927,7 @@ impl<'source_file> Parser<'source_file> {
                 self.next_token();
 
                 let mut patterns: Vec<SwitchCasePattern> = Vec::new();
+
                 loop {
                     let pattern = self.parse_switch_pattern()?;
                     patterns.push(pattern);

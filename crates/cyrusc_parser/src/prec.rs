@@ -19,21 +19,21 @@ pub enum Precedence {
     Field,       // . and ->
 }
 
-pub fn token_precedence_of(token_kind: TokenKind) -> Precedence {
+pub fn token_precedence_of(token_kind: TokenKind) -> Option<Precedence> {
     match token_kind {
-        TokenKind::Assign => Precedence::Assign,
-        TokenKind::Or => Precedence::Or,
-        TokenKind::And => Precedence::And,
-        TokenKind::Equal | TokenKind::NotEqual => Precedence::Equals,
+        TokenKind::Assign => Some(Precedence::Assign),
+        TokenKind::Or => Some(Precedence::Or),
+        TokenKind::And => Some(Precedence::And),
+        TokenKind::Equal | TokenKind::NotEqual => Some(Precedence::Equals),
 
         // Comparison
         TokenKind::LessThan | TokenKind::LessEqual | TokenKind::GreaterThan | TokenKind::GreaterEqual => {
-            Precedence::LessGreater
+            Some(Precedence::LessGreater)
         }
 
         // Arithmetic
-        TokenKind::Plus | TokenKind::Minus => Precedence::Sum,
-        TokenKind::Asterisk | TokenKind::Slash | TokenKind::Percent => Precedence::Product,
+        TokenKind::Plus | TokenKind::Minus => Some(Precedence::Sum),
+        TokenKind::Asterisk | TokenKind::Slash | TokenKind::Percent => Some(Precedence::Product),
 
         // Bitwise
         TokenKind::Ampersand
@@ -42,14 +42,14 @@ pub fn token_precedence_of(token_kind: TokenKind) -> Precedence {
         | TokenKind::AmpTilde
         | TokenKind::Caret
         | TokenKind::ShiftLeft
-        | TokenKind::ShiftRight => Precedence::Bitwise,
+        | TokenKind::ShiftRight => Some(Precedence::Bitwise),
 
-        TokenKind::Dot | TokenKind::ThinArrow => Precedence::Field,
+        TokenKind::Dot | TokenKind::ThinArrow => Some(Precedence::Field),
 
         // Calls and indexing
-        TokenKind::LeftParen => Precedence::Call,
-        TokenKind::LeftBracket => Precedence::Index,
+        TokenKind::LeftParen => Some(Precedence::Call),
+        TokenKind::LeftBracket => Some(Precedence::Index),
 
-        _ => Precedence::Lowest,
+        _ => None,
     }
 }
