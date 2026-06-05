@@ -352,6 +352,9 @@ pub enum AnalyzerDiagKind {
     #[error("Cannot assign to immutable lvalue.")]
     CannotAssignToConstLValue,
 
+    #[error("Cannot assign to non-lvalue.")]
+    CannotAssignToNonValue,
+
     #[error("Missing required field {missing_field_names} in struct '{struct_name}'.")]
     StructMissingFields {
         struct_name: String,
