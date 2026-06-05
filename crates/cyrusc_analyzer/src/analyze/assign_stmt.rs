@@ -42,5 +42,14 @@ impl<'a> AnalysisContext<'a> {
                 hint: None,
             });
         }
+
+        if !assign.lhs.is_lvalue() {
+            self.reporter.report(Diag {
+                level: DiagLevel::Error,
+                kind: Box::new(AnalyzerDiagKind::CannotAssignToNonValue),
+                loc: Some(assign.loc),
+                hint: None,
+            });
+        }
     }
 }
