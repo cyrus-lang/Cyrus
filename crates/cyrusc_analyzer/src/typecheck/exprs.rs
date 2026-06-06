@@ -36,6 +36,17 @@ impl<'a> AnalysisContext<'a> {
                     }
                 }
             }
+
+            TypedExprKind::SemaType { loc, .. } => {
+                self.reporter.report(Diag {
+                    level: DiagLevel::Error,
+                    kind: Box::new(AnalyzerDiagKind::TypeCannotBeUsedInThisContext),
+                    loc: Some(*loc),
+                    hint: None,
+                });
+                return None;
+            }
+
             _ => {}
         };
 
@@ -117,9 +128,6 @@ impl<'a> AnalysisContext<'a> {
                 }
             },
 
-            // FIXME
-            // SemaType must be only valid in analyze_expr_non_terminal,
-            // and consider to report error if a sema-type used in this context.
             TypedExprKind::SemaType { ty, .. } => {
                 let ty = self.normalize_sema_type(ty.clone(), expr.loc);
                 expr.ty = ty.clone();
