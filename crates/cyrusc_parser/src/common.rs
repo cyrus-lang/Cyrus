@@ -283,6 +283,21 @@ impl<'source_file> Parser<'source_file> {
                     // nested generic opening: `A<B<C>>`
                     // increment depth to track we're now inside another level
                     depth += 1;
+
+                    // check that it's disqualified until the first greater-then token or not.
+                    let mut i = 2;
+                    while let Some(peek_token) = self.peek_n_token(i)
+                        && peek_token.kind != TokenKind::GreaterThan
+                    {
+                        if self.token_disqualifies_type_arg(&peek_token.kind) {
+                            return TypeArgStartDetail {
+                                includes_type_args: false,
+                                is_array_init: false,
+                            };
+                        }
+
+                        i += 1;
+                    }
                 }
                 TokenKind::GreaterThan => {
                     depth -= 1;
@@ -448,6 +463,8 @@ impl<'source_file> Parser<'source_file> {
             TokenKind::LessThan | TokenKind::GreaterThan | TokenKind::Comma => false,
 
             TokenKind::Asterisk => false,
+
+            TokenKind::Underscore => false,
 
             // ------------------------------------------------------------
             // Tokens that CANNOT follow a type expression
