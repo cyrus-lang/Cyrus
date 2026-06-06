@@ -172,7 +172,11 @@ impl<'a> AnalysisContext<'a> {
                     }
                 };
 
-                ValueCategory::LValue(mutability)
+                if decl_id.is_var_or_global_var() {
+                    ValueCategory::LValue(mutability)
+                } else {
+                    ValueCategory::Type
+                }
             }
 
             TypedExprKind::Deref(deref) => {

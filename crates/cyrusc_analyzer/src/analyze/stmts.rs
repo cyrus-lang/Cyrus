@@ -5,7 +5,11 @@ use crate::{context::AnalysisContext, diagnostics::AnalyzerDiagKind};
 use cyrusc_diagcentral::{Diag, DiagLevel};
 use cyrusc_internal::flow_state::FlowState;
 use cyrusc_source_loc::Loc;
-use cyrusc_typed_ast::stmts::TypedStmt;
+use cyrusc_typed_ast::{
+    builtins::{TypedBuiltin, is_builtin_unreachable},
+    exprs::{TypedExpr, TypedExprKind, ValueCategory},
+    stmts::TypedStmt,
+};
 
 impl<'a> AnalysisContext<'a> {
     // Traverse TypedAST
@@ -63,6 +67,36 @@ impl<'a> AnalysisContext<'a> {
     }
 
     pub(crate) fn analyze_stmt(&mut self, typed_stmt: &mut TypedStmt) -> FlowState {
+        if let TypedStmt::Builtin(builtin) = typed_stmt {
+            return match builtin {
+                TypedBuiltin::BuiltinFunc(builtin_func) => {
+                    let loc = builtin_func.loc;
+                    let name = builtin_func.name.value.clone();
+                    let builtin_func_clone = builtin_func.clone();
+
+                    let mut builtin_expr = TypedExpr {
+                        kind: TypedExprKind::Builtin(TypedBuiltin::BuiltinFunc(builtin_func_clone)),
+                        ty: None,
+                        val_cat: ValueCategory::RValue,
+                        loc,
+                    };
+
+                    if self.analyze_expr(&mut builtin_expr, None).is_none() {
+                        return FlowState::Reachable;
+                    }
+
+                    *typed_stmt = TypedStmt::Expr(builtin_expr);
+
+                    if is_builtin_unreachable(&name) {
+                        FlowState::Unreachable
+                    } else {
+                        FlowState::Reachable
+                    }
+                }
+                TypedBuiltin::BuiltinBlock(_) => self.analyze_builtin(typed_stmt, false),
+            };
+        }
+
         match typed_stmt {
             TypedStmt::Expr(expr) => {
                 self.analyze_expr(expr, expr.ty.clone());
@@ -84,8 +118,6 @@ impl<'a> AnalysisContext<'a> {
             TypedStmt::Continue(continue_stmt) => self.analyze_continue(continue_stmt),
             TypedStmt::Return(return_stmt) => self.analyze_return(return_stmt),
             TypedStmt::Switch(switch_stmt) => self.analyze_switch(switch_stmt),
-
-            TypedStmt::Builtin(_) => self.analyze_builtin(typed_stmt, false),
 
             // skipped
             TypedStmt::Goto(_) => FlowState::Reachable,

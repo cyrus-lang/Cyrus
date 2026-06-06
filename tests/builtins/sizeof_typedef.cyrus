@@ -1,0 +1,15 @@
+// @stdout: 4
+
+import std::libc{printf};
+
+struct Box<T> {
+    value: T;
+}
+
+type MyAlias = Box<int32>;
+
+pub fn main() {
+    const size = @sizeof(MyAlias);
+
+    printf("%d\n", size);
+}
