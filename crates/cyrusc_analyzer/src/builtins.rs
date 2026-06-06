@@ -8,7 +8,7 @@ use cyrusc_source_loc::Loc;
 use cyrusc_typed_ast::{
     builtins::{
         TypedBuiltin, TypedBuiltinBlock, TypedBuiltinForm, TypedBuiltinFunc, TypedBuiltinKind, TypedBuiltinSpec,
-        builtin_spec_of, lookup_builtin,
+        builtin_spec_of, is_builtin_unreachable, lookup_builtin,
     },
     exprs::TypedExprKind,
     format::{format_sema_type, format_struct_decl},
@@ -25,23 +25,11 @@ impl<'a> AnalysisContext<'a> {
 
         match builtin {
             TypedBuiltin::BuiltinFunc(builtin_func) => {
-                let Some(builtin_kind) = lookup_builtin(&builtin_func.name.value) else {
-                    self.reporter.report(Diag {
-                        level: DiagLevel::Error,
-                        kind: Box::new(AnalyzerDiagKind::BuiltinNotDefined {
-                            name: builtin_func.name.as_string(),
-                        }),
-                        loc: Some(builtin_func.loc),
-                        hint: None,
-                    });
+                if self.analyze_builtin_expr(builtin_func).is_none() {
                     return FlowState::Reachable;
-                };
+                }
 
-                let builtin_spec = builtin_spec_of(builtin_kind);
-
-                self.analyze_builtin_expr(builtin_func);
-
-                if builtin_spec.unreachable {
+                if is_builtin_unreachable(&builtin_func.name.value) {
                     FlowState::Unreachable
                 } else {
                     FlowState::Reachable
@@ -261,7 +249,7 @@ impl<'a> AnalysisContext<'a> {
     fn analyze_builtin_sizeof(&mut self, builtin_func: &mut TypedBuiltinFunc) -> Option<SemaType> {
         let operand = builtin_func.args.first_mut().unwrap();
 
-        self.analyze_expr_non_terminal(operand, None);
+        self.analyze_expr_non_terminal(operand, None)?;
 
         if let Some(ty) = &mut operand.ty {
             *ty = self.expand_sema_type(ty.clone(), builtin_func.loc);

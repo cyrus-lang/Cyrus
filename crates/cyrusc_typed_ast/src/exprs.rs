@@ -30,6 +30,7 @@ pub enum ValueCategory {
     Unknown,
     RValue,
     LValue(Mutability),
+    Type
 }
 
 #[derive(Debug, Clone, PartialEq)]

@@ -128,7 +128,7 @@ impl<'a, R: ConstResolver> ConstEvaluator<'a, R> {
                     }
                 }
                 ConstValue::Float(value) => Ok(ConstValue::Float(-value)),
-                
+
                 _ => Err(ConstEvalError::TypeError),
             },
             PrefixOperator::Bang => {

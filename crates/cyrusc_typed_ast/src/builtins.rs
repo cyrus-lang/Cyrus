@@ -354,6 +354,16 @@ pub fn builtin_spec_of(kind: TypedBuiltinKind) -> &'static TypedBuiltinSpec {
         .expect("builtin spec missing")
 }
 
+pub fn is_builtin_unreachable(name: &str) -> bool {
+    let Some(builtin_kind) = lookup_builtin(&name) else {
+        unreachable!("unknown builtin")
+    };
+
+    let builtin_spec = builtin_spec_of(builtin_kind);
+
+    builtin_spec.unreachable
+}
+
 impl TypedBuiltin {
     #[inline]
     pub fn as_builtin_func(&self) -> Option<&TypedBuiltinFunc> {
