@@ -43,6 +43,9 @@ pub enum AnalyzerDiagKind {
     #[error("Global variable requires explicit type annotation.")]
     GlobalVarRequiresTypeAnnotation,
 
+    #[error("Type cannot be used in this context.")]
+    TypeCannotBeUsedInThisContext,
+
     #[error("Cannot infer dynamic interface type.")]
     CannotInferDynamicInterfaceType,
 
@@ -527,14 +530,13 @@ pub enum AnalyzerDiagKind {
         method_name: String,
     },
 
-    // ------- UNIMPLEMENTED ------- 
+    // ------- UNIMPLEMENTED -------
 
     // NOTE: Gotta be removed after implementing slices.
     #[error("Slices are not implemented yet. Try to use pointer arithmetic instead for now.")]
     UnimplementedFeatureSlice,
 
     // -----------------------------
-
     #[error("{0}")]
     UnescapeError(UnescapeError),
 }
