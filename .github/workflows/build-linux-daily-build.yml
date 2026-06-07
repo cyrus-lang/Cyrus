@@ -1,28 +1,26 @@
-name: Cyrus Linux - Daily Build
+name: Cyrus Linux - Nightly Build
 
 on:
   schedule:
-    - cron: "0 0 * * *"
+    - cron: "0 */12 * * *"  # every 12 hours
   workflow_dispatch: {}
 
 permissions:
   contents: write
 
 jobs:
-  build-linux-ubuntu:
+  build-linux:
     runs-on: ubuntu-24.04
-
-    outputs:
-      datetime: ${{ steps.date.outputs.datetime }}
-      artifact_name: ${{ steps.date.outputs.artifact_name }}
 
     steps:
       - uses: actions/checkout@v4
 
       - name: Install dependencies
         run: |
+          set -euo pipefail
           sudo apt-get update
-          sudo apt install -y software-properties-common llvm-18 llvm-18-dev clang-18 zlib1g zlib1g-dev libpolly-18-dev upx libasan8
+          sudo apt install -y software-properties-common llvm-18 llvm-18-dev clang-18 \
+            zlib1g zlib1g-dev libpolly-18-dev upx libasan8 zip
 
       - name: Install Rust
         uses: actions-rs/toolchain@v1
@@ -30,65 +28,61 @@ jobs:
           toolchain: stable
           override: true
 
-      - name: Build
+      - name: Build Cyrus
         env:
           LLVM_CONFIG: /usr/bin/llvm-config-18
           CC: clang
           CXX: clang++
         run: |
+          set -euo pipefail
           chmod +x ./scripts/release.sh
           ./scripts/release.sh
 
-      - name: Collect files
+      - name: Prepare release folder
         run: |
+          set -euo pipefail
+
           mkdir -p cyrus
-          cp ./target/release/cyrus ./cyrus
-          cp ./scripts/install.sh ./cyrus
+
+          test -f ./target/release/cyrus
+          test -d ./stdlib
+
+          cp ./target/release/cyrus ./cyrus/
+          cp ./scripts/install.sh ./cyrus/
           cp -r ./stdlib ./cyrus/
 
-      - name: Generate build metadata (SINGLE SOURCE OF TRUTH)
-        id: date
+      - name: Generate build metadata
+        id: meta
         run: |
+          set -euo pipefail
+
           DATETIME=$(date +'%Y%m%d-%H%M%S')
           echo "datetime=$DATETIME" >> $GITHUB_OUTPUT
-          echo "artifact_name=cyrus-linux-$DATETIME" >> $GITHUB_OUTPUT
 
-      - name: Zip release
+          echo "artifact=cyrus-linux-$DATETIME" >> $GITHUB_OUTPUT
+          echo "zip=cyrus-linux-$DATETIME.zip" >> $GITHUB_OUTPUT
+
+      - name: Create archive
         run: |
-          zip -r -9 "${{ steps.date.outputs.artifact_name }}.zip" ./cyrus
+          set -euo pipefail
 
-      - name: Upload artifact
+          zip -r -9 "${{ steps.meta.outputs.zip }}" ./cyrus
+          test -f "${{ steps.meta.outputs.zip }}"
+
+      - name: Upload artifact (CI storage)
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ steps.date.outputs.artifact_name }}
-          path: ${{ steps.date.outputs.artifact_name }}.zip
+          name: ${{ steps.meta.outputs.artifact }}
+          path: ${{ steps.meta.outputs.zip }}
+          if-no-files-found: error
 
-
-  create-daily-release:
-    needs: build-linux-ubuntu
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: Download artifact (correct name)
-        uses: actions/download-artifact@v4
-        with:
-          name: ${{ needs.build-linux-ubuntu.outputs.artifact_name }}
-          path: ./release-files
-
-      - name: Create Git tag
-        run: |
-          TAG="daily-${{ needs.build-linux-ubuntu.outputs.datetime }}"
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git tag $TAG
-          git push origin $TAG
-
-      - name: Create Release
+      - name: Create GitHub Release (nightly rolling)
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: daily-${{ needs.build-linux-ubuntu.outputs.datetime }}
-          name: "Daily Build - ${{ needs.build-linux-ubuntu.outputs.datetime }}"
-          files: ./release-files/*.zip
+          tag_name: nightly-${{ steps.meta.outputs.datetime }}
+          name: "Cyrus Nightly - ${{ steps.meta.outputs.datetime }}"
           prerelease: true
+          generate_release_notes: true
+          files: ${{ steps.meta.outputs.zip }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
