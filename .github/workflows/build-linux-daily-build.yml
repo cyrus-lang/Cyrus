@@ -2,9 +2,8 @@ name: Cyrus Linux - Daily Build
 
 on:
   schedule:
-    # Runs at 00:00 UTC every day
     - cron: "0 0 * * *"
-  workflow_dispatch: {} # Allow manual trigger
+  workflow_dispatch: {}
 
 permissions:
   contents: write
@@ -12,6 +11,11 @@ permissions:
 jobs:
   build-linux-ubuntu:
     runs-on: ubuntu-24.04
+
+    outputs:
+      datetime: ${{ steps.date.outputs.datetime }}
+      artifact_name: ${{ steps.date.outputs.artifact_name }}
+
     steps:
       - uses: actions/checkout@v4
 
@@ -35,68 +39,56 @@ jobs:
           chmod +x ./scripts/release.sh
           ./scripts/release.sh
 
-      - name: Collect files in single directory
+      - name: Collect files
         run: |
-          mkdir cyrus
+          mkdir -p cyrus
           cp ./target/release/cyrus ./cyrus
           cp ./scripts/install.sh ./cyrus
           cp -r ./stdlib ./cyrus/
 
-      - name: Create dated zip filename
+      - name: Generate build metadata (SINGLE SOURCE OF TRUTH)
         id: date
         run: |
-          echo "DATE=$(date +'%Y-%m-%d')" >> $GITHUB_ENV
-          echo "DATETIME=$(date +'%Y%m%d-%H%M%S')" >> $GITHUB_ENV
+          DATETIME=$(date +'%Y%m%d-%H%M%S')
+          echo "datetime=$DATETIME" >> $GITHUB_OUTPUT
+          echo "artifact_name=cyrus-linux-$DATETIME" >> $GITHUB_OUTPUT
 
-      - name: Zip release files with date
+      - name: Zip release
         run: |
-          zip -r -9 "cyrus-linux-${{ env.DATETIME }}.zip" ./cyrus
+          zip -r -9 "${{ steps.date.outputs.artifact_name }}.zip" ./cyrus
 
-      - name: Upload as artifact
+      - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: cyrus-linux-${{ env.DATETIME }}
-          path: ./cyrus-linux-${{ env.DATETIME }}.zip
+          name: ${{ steps.date.outputs.artifact_name }}
+          path: ${{ steps.date.outputs.artifact_name }}.zip
+
 
   create-daily-release:
     needs: build-linux-ubuntu
     runs-on: ubuntu-latest
-    steps:
-      - name: Get date for tag
-        id: date
-        run: |
-          echo "DATE=$(date +'%Y-%m-%d')" >> $GITHUB_ENV
-          echo "DATETIME=$(date +'%Y%m%d-%H%M%S')" >> $GITHUB_ENV
-          echo "TAG_NAME=daily-$(date +'%Y%m%d-%H%M%S')" >> $GITHUB_ENV
 
-      - name: Download artifact
+    steps:
+      - name: Download artifact (correct name)
         uses: actions/download-artifact@v4
         with:
-          name: cyrus-linux-${{ env.DATETIME }}
+          name: ${{ needs.build-linux-ubuntu.outputs.artifact_name }}
           path: ./release-files
 
-      - name: Create Git Tag
+      - name: Create Git tag
         run: |
+          TAG="daily-${{ needs.build-linux-ubuntu.outputs.datetime }}"
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git tag ${{ env.TAG_NAME }}
-          git push origin ${{ env.TAG_NAME }}
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          git tag $TAG
+          git push origin $TAG
 
-      - name: Create Release with Date Title
+      - name: Create Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ env.TAG_NAME }}
-          name: "Daily Build - ${{ env.DATE }}"
-          body: |
-            ## Daily Automated Build
-
-            **Build Date:** ${{ env.DATE }}
-            **Build Time:** ${{ env.DATETIME }}
-            
-          files: ./release-files/cyrus-linux-${{ env.DATETIME }}.zip
-          draft: false
-          prerelease: true # Set to false if you want it as full release
+          tag_name: daily-${{ needs.build-linux-ubuntu.outputs.datetime }}
+          name: "Daily Build - ${{ needs.build-linux-ubuntu.outputs.datetime }}"
+          files: ./release-files/*.zip
+          prerelease: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
