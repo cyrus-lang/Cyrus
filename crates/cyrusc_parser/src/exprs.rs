@@ -18,7 +18,16 @@ use cyrusc_tokens::literals::IntLiteralKind;
 use cyrusc_tokens::literals::LiteralKind;
 
 impl<'source_file> Parser<'source_file> {
-    pub(crate) fn parse_expr(&mut self, precedence: Precedence) -> Result<ASTExpr, Diag> {
+    #[inline]
+    pub(crate) fn parse_expr(&mut self, minimum_precedence: Precedence) -> Result<ASTExpr, Diag> {
+        self.parse_expr_with_banned_precedence(minimum_precedence, None)
+    }
+
+    pub(crate) fn parse_expr_with_banned_precedence(
+        &mut self,
+        minimum_precedence: Precedence,
+        banned_precedence: Option<Precedence>,
+    ) -> Result<ASTExpr, Diag> {
         let loc = self.current_token().loc;
         let (mut lhs_line, mut lhs_column, mut lhs_start) = (loc.line, loc.column, loc.start);
 
@@ -66,8 +75,32 @@ impl<'source_file> Parser<'source_file> {
                 break;
             };
 
-            if peek_token.kind != TokenKind::EOF && precedence < operator_precedence {
-                match self.parse_infix_expr(lhs.clone(), lhs_line, lhs_column, lhs_start) {
+            // check for banned precedence (chained non-associative operators)
+            if let Some(banned_precedence) = banned_precedence {
+                if operator_precedence == banned_precedence {
+                    let invalid_token = self.peek_token().clone();
+                    self.next_token(); // consume the bad operator
+
+                    return Err(Diag {
+                        kind: Box::new(ParserDiagKind::ChainedComparisonOperator),
+                        level: DiagLevel::Error,
+                        loc: Some(invalid_token.loc),
+                        hint: Some(format!("Cannot chain '{}' operators.", invalid_token.kind)),
+                    });
+                }
+            }
+
+            let is_non_assoc = is_comparison_operator(&self.peek_token().kind);
+            let infix_banned_precedence = if is_non_assoc { Some(operator_precedence) } else { None };
+
+            if peek_token.kind != TokenKind::EOF && minimum_precedence < operator_precedence {
+                match self.parse_infix_expr_with_banned(
+                    lhs.clone(),
+                    lhs_line,
+                    lhs_column,
+                    lhs_start,
+                    infix_banned_precedence,
+                ) {
                     Some(infix) => {
                         lhs = infix?;
 
@@ -361,12 +394,13 @@ impl<'source_file> Parser<'source_file> {
         }
     }
 
-    fn parse_infix_expr(
+    fn parse_infix_expr_with_banned(
         &mut self,
         lhs: ASTExpr,
         lhs_line: usize,
         lhs_column: usize,
         lhs_start: usize,
+        banned_precedence: Option<Precedence>,
     ) -> Option<Result<ASTExpr, Diag>> {
         // NOTE: disambiguate confusion when facing `>>`. when it used as expressions the token must be lowered
         // into shift-right but otherwise, it's interpreted as separate greater-than tokens. For instance in generic types args:
@@ -436,7 +470,10 @@ impl<'source_file> Parser<'source_file> {
                     return Some(Err(diag));
                 }
 
-                let rhs = self.parse_expr(precedence).ok()?;
+                let rhs = match self.parse_expr_with_banned_precedence(precedence, banned_precedence) {
+                    Ok(expr) => expr,
+                    Err(diag) => return Some(Err(diag)),
+                };
 
                 let end = self.current_token().loc.end;
 
@@ -1501,6 +1538,20 @@ fn is_infix_operator(token_kind: &TokenKind) -> bool {
             | TokenKind::ShiftLeft
             | TokenKind::ShiftRight
             | TokenKind::Ident(..)
+    )
+}
+
+fn is_comparison_operator(token_kind: &TokenKind) -> bool {
+    matches!(
+        token_kind,
+        TokenKind::Equal
+            | TokenKind::NotEqual
+            | TokenKind::LessEqual
+            | TokenKind::LessThan
+            | TokenKind::GreaterEqual
+            | TokenKind::GreaterThan
+            | TokenKind::And
+            | TokenKind::Or
     )
 }
 

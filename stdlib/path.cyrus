@@ -102,7 +102,7 @@ pub struct Path {
             result.push(self_str[i]);
         }
 
-        if (self_len > 0 && !self_ends_with_slash && other_len > 0) {
+        if ((self_len > 0 && other_len > 0) && !self_ends_with_slash) {
             result.push(separator());
         }
 

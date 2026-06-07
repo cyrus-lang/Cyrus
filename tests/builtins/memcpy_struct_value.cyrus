@@ -17,7 +17,7 @@ pub fn main() {
 
     printf("id: %d, score: %.1f, flag: %d", dst.id, dst.score, dst.flag);
 
-    if (dst.id == 99  && dst.score == 99.5 && dst.flag == true) {
+    if ((dst.id == 99 && dst.score == 99.5) && dst.flag == true) {
         printf(" | SUCCESS\n");
     } else {
         printf("FAILURE: data mismatch\n");
