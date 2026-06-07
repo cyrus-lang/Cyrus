@@ -1,16 +1,21 @@
-name: Cyrus Linux - Nightly Build
+name: Cyrus Linux - Daily Build
 
 on:
   schedule:
-    - cron: "0 */12 * * *"  # every 12 hours
+    - cron: "0 0 * * *"  # every 12 hours if changed to */12
   workflow_dispatch: {}
 
 permissions:
   contents: write
 
 jobs:
-  build-linux:
+  build-linux-ubuntu:
     runs-on: ubuntu-24.04
+
+    outputs:
+      datetime: ${{ steps.meta.outputs.datetime }}
+      artifact: ${{ steps.meta.outputs.artifact }}
+      zipfile: ${{ steps.meta.outputs.zipfile }}
 
     steps:
       - uses: actions/checkout@v4
@@ -28,7 +33,7 @@ jobs:
           toolchain: stable
           override: true
 
-      - name: Build Cyrus
+      - name: Build
         env:
           LLVM_CONFIG: /usr/bin/llvm-config-18
           CC: clang
@@ -38,7 +43,12 @@ jobs:
           chmod +x ./scripts/release.sh
           ./scripts/release.sh
 
-      - name: Prepare release folder
+      - name: Run tests
+        run: |
+          set -euo pipefail
+          make testsuite PROFILE=release
+
+      - name: Prepare release directory
         run: |
           set -euo pipefail
 
@@ -57,32 +67,35 @@ jobs:
           set -euo pipefail
 
           DATETIME=$(date +'%Y%m%d-%H%M%S')
+
+          ARTIFACT="cyrus-linux-$DATETIME"
+          ZIPFILE="$ARTIFACT.zip"
+
           echo "datetime=$DATETIME" >> $GITHUB_OUTPUT
+          echo "artifact=$ARTIFACT" >> $GITHUB_OUTPUT
+          echo "zipfile=$ZIPFILE" >> $GITHUB_OUTPUT
 
-          echo "artifact=cyrus-linux-$DATETIME" >> $GITHUB_OUTPUT
-          echo "zip=cyrus-linux-$DATETIME.zip" >> $GITHUB_OUTPUT
-
-      - name: Create archive
+      - name: Create zip archive
         run: |
           set -euo pipefail
 
-          zip -r -9 "${{ steps.meta.outputs.zip }}" ./cyrus
-          test -f "${{ steps.meta.outputs.zip }}"
+          zip -r -9 "${{ steps.meta.outputs.zipfile }}" ./cyrus
+          test -f "${{ steps.meta.outputs.zipfile }}"
 
-      - name: Upload artifact (CI storage)
+      - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: ${{ steps.meta.outputs.artifact }}
-          path: ${{ steps.meta.outputs.zip }}
+          path: ${{ steps.meta.outputs.zipfile }}
           if-no-files-found: error
 
-      - name: Create GitHub Release (nightly rolling)
+      - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: nightly-${{ steps.meta.outputs.datetime }}
           name: "Cyrus Nightly - ${{ steps.meta.outputs.datetime }}"
           prerelease: true
           generate_release_notes: true
-          files: ${{ steps.meta.outputs.zip }}
+          files: ${{ steps.meta.outputs.zipfile }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
