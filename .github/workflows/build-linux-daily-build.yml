@@ -85,12 +85,11 @@ jobs:
           if-no-files-found: error
 
       - name: Create GitHub Release
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: nightly-${{ steps.meta.outputs.datetime }}
-          name: "Cyrus Nightly - ${{ steps.meta.outputs.datetime }}"
-          prerelease: true
-          generate_release_notes: false
-          files: ${{ steps.meta.outputs.zipfile }}
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release create \
+            "nightly-${{ steps.meta.outputs.datetime }}" \
+            "${{ steps.meta.outputs.zipfile }}" \
+            --title "Cyrus Nightly - ${{ steps.meta.outputs.datetime }}" \
+            --prerelease
