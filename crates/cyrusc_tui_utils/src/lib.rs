@@ -1,74 +1,35 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 The Cyrus Language
-use colorized::{Color, Colors};
-use std::sync::OnceLock;
-use std::sync::atomic::{AtomicBool, Ordering};
-
-/// Global flag to enable/disable ANSI colors and formatting.
-static ANSI_ENABLED: OnceLock<AtomicBool> = OnceLock::new();
-
-/// Returns a reference to the global ANSI flag.
-fn ansi_flag() -> &'static AtomicBool {
-    ANSI_ENABLED.get_or_init(|| AtomicBool::new(console::user_attended()))
-}
-
-/// Check if ANSI output is enabled.
-pub fn is_ansi_enabled() -> bool {
-    ansi_flag().load(Ordering::Relaxed)
-}
-
-/// Enable ANSI output globally.
-pub fn enable_ansi() {
-    ansi_flag().store(true, Ordering::Relaxed);
-}
-
-/// Disable ANSI output globally.
-pub fn disable_ansi() {
-    ansi_flag().store(false, Ordering::Relaxed);
-}
 
 /// Internal helper to print status messages, only using ANSI codes if enabled.
-fn print_status(label: &str, file_name: Option<&str>, color: Option<Colors>) {
-    let formatted_label = if is_ansi_enabled() {
-        match color {
-            Some(c) => format!("[{}]", label.color(c)),
-            None => format!("[{}]", label),
-        }
-    } else {
-        label.to_string()
-    };
-
+fn print_status(label: &str, file_name: Option<&str>) {
     match file_name {
-        Some(name) => println!("{} {}", formatted_label, name),
-        None => println!("{}", formatted_label),
+        Some(name) => println!("[{}] {}", label, name),
+        None => println!("[{}]", label),
     }
 }
 
 /// Internal helper to print diagnostics (error/warning) respecting ANSI flag.
-fn print_diag(label: &str, msg: &str, color: Option<Colors>) {
-    if is_ansi_enabled() {
-        eprintln!("{}: {}", label.color(color.unwrap_or(Colors::RedFg)), msg);
-    } else {
-        eprintln!("{}: {}", label, msg);
-    }
+fn print_diag(label: &str, msg: &str) {
+    eprintln!("{}: {}", label, msg);
 }
 
 pub fn tui_compiled(file_name: String) {
-    print_status("compiled", Some(&file_name), Some(Colors::GreenFg));
+    print_status("compiled", Some(&file_name));
 }
 
 pub fn tui_skipped(file_name: String) {
-    print_status("skipped", Some(&file_name), Some(Colors::BlueFg));
+    print_status("skipped", Some(&file_name));
 }
 
 pub fn tui_compile_finished() {
-    print_status("finished", None, Some(Colors::GreenFg));
+    print_status("finished", None);
 }
 
 pub fn tui_error(msg: String) {
-    print_diag("error", &msg, Some(Colors::RedFg));
+    print_diag("error", &msg);
 }
 
 pub fn tui_warning(msg: String) {
-    print_diag("warning", &msg, Some(Colors::YellowFg));
+    print_diag("warning", &msg);
 }
