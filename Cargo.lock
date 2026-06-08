@@ -381,8 +381,6 @@ dependencies = [
 name = "cyrusc_diagcentral"
 version = "0.1.0"
 dependencies = [
- "colorized",
- "console",
  "cyrusc_source_loc",
  "cyrusc_strescape",
  "cyrusc_tokens",

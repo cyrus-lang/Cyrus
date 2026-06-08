@@ -2,8 +2,6 @@
 // Copyright (c) 2026 The Cyrus Language
 
 use crate::{Diag, DiagKind, DiagLevel};
-use colorized::{Color, Colors};
-use console::user_attended;
 use cyrusc_source_loc::{Loc, SourceMap};
 use cyrusc_strescape::spaces;
 use std::{
@@ -14,7 +12,6 @@ use std::{
 };
 
 const PANEL_LENGTH: usize = 2;
-const TAB_WIDTH: usize = 4;
 
 pub struct DiagReporter {
     source_map: Option<Arc<SourceMap>>,
@@ -117,149 +114,42 @@ impl DiagReporter {
         let mut out = String::new();
 
         let level_text = {
-            let color = self.highlight_color(diag);
-
             match diag.level {
-                DiagLevel::Error => "error".color(color),
-                DiagLevel::Warning => "warning".color(color),
-                DiagLevel::Unimplemented => "unimplemented".color(color),
+                DiagLevel::Error => "error",
+                DiagLevel::Warning => "warning",
+                DiagLevel::Unimplemented => "unimplemented",
             }
         };
-
-        out.push_str(&format!("[{}] {}\n", level_text, diag.kind));
-
-        if diag.loc.is_none() || self.source_map.is_none() {
-            if let Some(hint) = &diag.hint {
-                out.push_str(&format!(" {}: {}\n", "hint".color(Colors::BlueFg), hint));
-            }
-            return out;
-        }
 
         let loc = diag.loc.unwrap();
         let source_map = self.source_map.as_ref().unwrap();
         let source_file = { source_map.get_file(loc.file_id).unwrap().clone() };
 
+        out.push_str(&format!("[{}]", level_text));
+        out.push_str(&format!("[{}]", source_file.file_path.to_str().unwrap()));
+        out.push_str(&format!(": {}", diag.kind));
+        out.push('\n');
+
+        if diag.loc.is_none() || self.source_map.is_none() {
+            if let Some(hint) = &diag.hint {
+                out.push_str(&format!(" {}: {}\n", "hint", hint));
+            }
+            return out;
+        }
+
         let lines: Vec<&str> = source_file.content.lines().collect();
 
-        // Render header: `--> file:line:column`
-        out.push_str(&self.render_header(source_file.file_path.to_str().unwrap(), loc));
+        let line = lines[loc.line - 1];
 
-        // Compute which lines to print
-        let error_idx = loc.line.saturating_sub(1);
-        let start_line = error_idx.saturating_sub(PANEL_LENGTH);
-        let end_line = std::cmp::min(error_idx + PANEL_LENGTH + 1, lines.len());
+        out.push_str(line);
 
-        for line_idx in start_line..end_line {
-            let line = lines[line_idx];
-            let line_no = line_idx + 1;
-
-            out.push_str(&self.render_line_number(line_no));
-
-            if line_idx == error_idx {
-                let highlighted_line = {
-                    let color = self.highlight_color(diag);
-                    self.render_highlighted_line(line, loc, color)
-                };
-
-                out.push_str(&highlighted_line);
-
-                // draw pointer caret if "user attended" mode
-                if user_attended() {
-                    let color = self.highlight_color(diag);
-                    out.push_str(&self.render_pointer_line(line, loc, color));
-                }
-            } else {
-                out.push_str(line);
-                out.push('\n');
-            }
-        }
-
-        // Render hints
+        // render hints
         if let Some(hint) = &diag.hint {
-            out.push_str("\n");
-            out.push_str(&format!(" {}: {}\n", "hint".color(Colors::BlueFg), hint));
+            out.push_str("\n\n");
+            out.push_str(&format!(" {}: {}\n", "hint", hint));
         }
 
         out
-    }
-
-    fn render_header(&self, file: &str, loc: Loc) -> String {
-        format!("       --> {}:{}:{}\n\n", file, loc.line, loc.column + 1)
-    }
-
-    fn render_line_number(&self, line: usize) -> String {
-        format!("{}{:>4} | ", spaces(2), line)
-    }
-
-    fn render_highlighted_line(&self, line: &str, loc: Loc, color: Colors) -> String {
-        let mut out = String::new();
-
-        let start = loc.start.min(line.len());
-        let end = loc.end.min(line.len());
-
-        if start <= end {
-            let before = &line[..start];
-            let highlight = &line[start..end];
-            let after = &line[end..];
-
-            out.push_str(before);
-            out.push_str(&format!("{}", highlight.color(color)));
-            out.push_str(after);
-        } else {
-            out.push_str(line);
-        }
-
-        out.push('\n');
-        out
-    }
-
-    fn render_pointer_line(&self, line: &str, loc: Loc, color: Colors) -> String {
-        let mut out = String::new();
-
-        out.push_str(&format!("{}     | ", spaces(2)));
-
-        let start = loc.start.min(line.len());
-        let end = loc.end.min(line.len());
-
-        let before = &line[..start];
-        let span = &line[start..end];
-
-        let before_width = self.visual_width(before);
-        let span_width = self.visual_width(span).max(1);
-
-        out.push_str(&" ".repeat(before_width));
-
-        if span_width == 1 {
-            out.push_str(&format!("{}", "^".color(color)));
-        } else {
-            out.push_str(&format!("{}", "~".repeat(span_width).color(color)));
-        }
-
-        out.push('\n');
-
-        out
-    }
-
-    fn visual_width(&self, text: &str) -> usize {
-        let mut width = 0;
-
-        for c in text.chars() {
-            if c == '\t' {
-                width += TAB_WIDTH;
-            } else {
-                width += 1;
-            }
-        }
-
-        width
-    }
-
-    fn highlight_color(&self, diag: &Diag) -> Colors {
-        match diag.level {
-            DiagLevel::Error => Colors::RedFg,
-            DiagLevel::Warning => Colors::YellowFg,
-            DiagLevel::Unimplemented => Colors::CyanFg,
-        }
     }
 }
 
