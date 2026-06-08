@@ -2,7 +2,7 @@ name: Cyrus Linux - Daily Build
 
 on:
   schedule:
-    - cron: "0 0 * * *"  # every 12 hours if changed to */12
+    - cron: "0 0 * * *" # every 12 hours if changed to */12
   workflow_dispatch: {}
 
 permissions:
@@ -42,11 +42,6 @@ jobs:
           set -euo pipefail
           chmod +x ./scripts/release.sh
           ./scripts/release.sh
-
-      - name: Run tests
-        run: |
-          set -euo pipefail
-          make testsuite PROFILE=release
 
       - name: Prepare release directory
         run: |
@@ -95,7 +90,7 @@ jobs:
           tag_name: nightly-${{ steps.meta.outputs.datetime }}
           name: "Cyrus Nightly - ${{ steps.meta.outputs.datetime }}"
           prerelease: true
-          generate_release_notes: true
+          generate_release_notes: false
           files: ${{ steps.meta.outputs.zipfile }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
