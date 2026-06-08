@@ -2,16 +2,13 @@
 // Copyright (c) 2026 The Cyrus Language
 
 use crate::{Diag, DiagKind, DiagLevel};
-use cyrusc_source_loc::{Loc, SourceMap};
-use cyrusc_strescape::spaces;
+use cyrusc_source_loc::SourceMap;
 use std::{
     cell::{Ref, RefCell, RefMut},
     fmt,
     process::exit,
     sync::Arc,
 };
-
-const PANEL_LENGTH: usize = 2;
 
 pub struct DiagReporter {
     source_map: Option<Arc<SourceMap>>,
@@ -121,6 +118,13 @@ impl DiagReporter {
             }
         };
 
+        if diag.loc.is_none() || self.source_map.is_none() {
+            out.push_str(&format!("[{}]", level_text));
+            out.push_str(&format!(": {}", diag.kind));
+            out.push('\n');
+            return out;
+        }
+
         let loc = diag.loc.unwrap();
         let source_map = self.source_map.as_ref().unwrap();
         let source_file = { source_map.get_file(loc.file_id).unwrap().clone() };
@@ -129,13 +133,6 @@ impl DiagReporter {
         out.push_str(&format!("[{}]", source_file.file_path.to_str().unwrap()));
         out.push_str(&format!(": {}", diag.kind));
         out.push('\n');
-
-        if diag.loc.is_none() || self.source_map.is_none() {
-            if let Some(hint) = &diag.hint {
-                out.push_str(&format!(" {}: {}\n", "hint", hint));
-            }
-            return out;
-        }
 
         let lines: Vec<&str> = source_file.content.lines().collect();
 
