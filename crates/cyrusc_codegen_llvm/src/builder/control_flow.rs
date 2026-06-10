@@ -74,7 +74,7 @@ impl<'ll> CFLoop<'ll> {
 }
 
 impl<'ll> CodeGenIRBuilder<'ll> {
-    pub(crate) fn emit_switch_on_enum_export_fields(
+    fn emit_switch_on_enum_export_fields(
         &mut self,
         enum_layout: &ABITypeLayout,
         payload_alloca: PointerValue<'ll>,
@@ -185,8 +185,12 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         }
 
         let all_cases_return = cases.iter().all(|(_, bb)| {
-            bb.get_terminator()
-                .map_or(false, |inst| inst.get_opcode() == InstructionOpcode::Return)
+            bb.get_terminator().map_or(false, |inst| {
+                matches!(
+                    inst.get_opcode(),
+                    InstructionOpcode::Return | InstructionOpcode::Unreachable
+                )
+            })
         });
 
         if all_cases_return && switch_stmt.all_cases_covered {
@@ -205,7 +209,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         }
     }
 
-    pub(crate) fn emit_switch_on_enum(&mut self, switch_stmt: &CIRSwitchStmt) {
+    fn emit_switch_on_enum(&mut self, switch_stmt: &CIRSwitchStmt) {
         let lvalue = self.emit_expr(&switch_stmt.value, &None);
         let rvalue = self.load_rvalue(lvalue);
         let enum_type = rvalue.ty.as_enum().unwrap();
@@ -228,20 +232,22 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         let parent_block = self.blockreg.cur_block.unwrap();
         let exit_block = self.new_basic_block("switch_on_enum.exit");
 
-        let else_block = if let Some(block_stmt) = &switch_stmt.default {
-            let else_block = self.new_basic_block("switch_on_enum.default");
-            self.emit_block(else_block);
-            self.emit_body(block_stmt);
+        let else_block = {
+            if let Some(block_stmt) = &switch_stmt.default {
+                let else_block = self.new_basic_block("switch_on_enum.default");
+                self.emit_block(else_block);
+                self.emit_body(block_stmt);
 
-            if let Some(cur_block) = &self.blockreg.cur_block {
-                if cur_block.get_terminator().is_none() {
-                    self.llvmbuilder.build_unconditional_branch(exit_block).unwrap();
+                if let Some(cur_block) = &self.blockreg.cur_block {
+                    if cur_block.get_terminator().is_none() {
+                        self.llvmbuilder.build_unconditional_branch(exit_block).unwrap();
+                    }
                 }
-            }
 
-            else_block
-        } else {
-            exit_block
+                else_block
+            } else {
+                exit_block
+            }
         };
 
         self.emit_block(parent_block);
@@ -333,8 +339,12 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         }
 
         let all_cases_return = cases.iter().all(|(_, bb)| {
-            bb.get_terminator()
-                .map_or(false, |inst| inst.get_opcode() == InstructionOpcode::Return)
+            bb.get_terminator().map_or(false, |inst| {
+                matches!(
+                    inst.get_opcode(),
+                    InstructionOpcode::Return | InstructionOpcode::Unreachable
+                )
+            })
         });
 
         if all_cases_return && switch_stmt.all_cases_covered {
@@ -427,8 +437,12 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         }
 
         let all_cases_return = cases.iter().all(|(_, bb)| {
-            bb.get_terminator()
-                .map_or(false, |inst| inst.get_opcode() == InstructionOpcode::Return)
+            bb.get_terminator().map_or(false, |inst| {
+                matches!(
+                    inst.get_opcode(),
+                    InstructionOpcode::Return | InstructionOpcode::Unreachable
+                )
+            })
         });
 
         if all_cases_return && switch_stmt.all_cases_covered {
