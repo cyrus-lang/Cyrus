@@ -325,8 +325,8 @@ impl<'a> AnalysisContext<'a> {
     pub(crate) fn normalize_type_args(&mut self, type_args: &mut TypedTypeArgs) {
         for type_arg in type_args.iter_mut() {
             match type_arg {
-                TypedTypeArg::Type(sema_type, loc) => {
-                    *sema_type = match self.normalize_and_check_type_formation(sema_type.clone(), *loc) {
+                TypedTypeArg::Type(ty, loc) => {
+                    *ty = match self.normalize_and_check_type_formation(ty.clone(), *loc) {
                         Some(sema_type) => sema_type,
                         None => continue,
                     };

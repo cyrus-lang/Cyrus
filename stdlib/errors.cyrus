@@ -18,10 +18,17 @@ pub enum ErrorOr<V> {
 		}
     }
 
-	pub fn is_error(&const self) bool {
+	pub inline fn is_error(&const self) bool {
 		switch (*self) {
-			case .Value(_) => { return false; },
+			case .Value(_) => { return false; }
 			case .Error(_) => { return true; }
+		}
+	}
+	
+	pub inline fn is_value(&const self) bool {
+		switch (*self) {
+			case .Value(_) => { return true; }
+			case .Error(_) => { return false; }
 		}
 	}
 }

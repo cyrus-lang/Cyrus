@@ -764,7 +764,8 @@ impl<'a> AnalysisContext<'a> {
         if let Some(self_modifier) = method_decl.func_decl.params.get_self_modifier() {
             let is_self_const = self_modifier.mutability.is_const();
 
-            if !is_self_const && is_operand_const_qualified {
+            // only if referenced!!
+            if !is_self_const && is_operand_const_qualified && self_modifier.kind.is_referenced() {
                 let type_name = format_sema_type(operand_type.clone(), self.formatter);
 
                 self.reporter.report(Diag {

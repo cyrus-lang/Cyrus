@@ -1,23 +1,43 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 The Cyrus Language
 
-import std::string{String};
-import std::path{Path};
+import std::libc::types as c_types;
 import std::libc;
 
+import std::errors{ErrorOr};
+import std::string{String};
+import std::path{Path};
+
 pub enum OpeningModes {
-    Read,            = "r"
-    ReadBinary,      = "rb"
-    Write,           = "w"
-    WriteBinary,     = "wb"
-    Append,          = "a"
-    AppendBinary,    = "ab"
-    ReadWrite,       = "r+"
-    ReadWriteBinary, = "rb+"
-    WriteRead,       = "w+"
-    WriteReadBinary, = "wb+"
-    AppendRead,      = "a+"
-    AppendReadBinary = "ab+"
+    Read,
+    ReadBinary,
+    Write,
+    WriteBinary,
+    Append,
+    AppendBinary,
+    ReadWrite,
+    ReadWriteBinary,
+    WriteRead,
+    WriteReadBinary,
+    AppendRead,
+    AppendReadBinary,
+
+    pub fn as_str(self) const char* {
+        switch (self) {
+            case .Read => { return "r"; }
+            case .ReadBinary => { return "rb"; }
+            case .Write => { return "w"; }
+            case .WriteBinary => { return "wb"; }
+            case .Append => { return "a"; }
+            case .AppendBinary => { return "ab"; }
+            case .ReadWrite => { return "r+"; }
+            case .ReadWriteBinary => { return "rb+"; }
+            case .WriteRead => { return "w+"; }
+            case .WriteReadBinary => { return "wb+"; }
+            case .AppendRead => { return "a+"; }
+            case .AppendReadBinary => { return "ab+"; }
+        }
+    }
 }
 
 pub enum FileFlags {
@@ -39,11 +59,15 @@ pub enum FileSeek {
 pub struct File {
     path: Path*;
     mode: OpeningModes;
-    file: libc::c_file;
+    file: c_types::c_file;
     is_open: bool;
     
-    pub fn open(const file_path: const Path*, const mode: OpeningModes) Result<const char*, Self> {
-    	
+    pub fn open(const path: const Path*, const mode: OpeningModes) ErrorOr<Self> {
+        const path_str = path->as_string_const().as_str_const();
+        const mode_str = mode.as_str();
+
+    	const file = libc::fopen(path_str, mode_str);
+
     	@todo();
     }
 }
