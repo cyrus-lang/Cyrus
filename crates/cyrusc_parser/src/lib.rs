@@ -17,8 +17,6 @@ mod modifiers;
 mod prec;
 mod stmts;
 
-const DISPLAY_DIAG_KIND_COUNT: usize = 1;
-
 pub struct Parser<'source_file> {
     source_file: &'source_file SourceFile,
     reporter: Arc<DiagReporter>,
@@ -50,7 +48,8 @@ impl SourceParser {
 
     #[inline]
     pub fn display_errors(&self) {
-        self.reporter.display_first(DISPLAY_DIAG_KIND_COUNT);
+        self.reporter.display_first();
+        self.reporter.diags_mut().clear();
     }
 }
 

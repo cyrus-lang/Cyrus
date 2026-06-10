@@ -227,8 +227,6 @@ impl ModuleLoader for FsModuleLoader {
             let source_file = { self.source_map.get_file(file_id).unwrap().clone() };
 
             let Ok(program_tree) = self.source_parser.parse_program(&source_file) else {
-                self.source_parser.display_errors();
-
                 // REVIEW: REFACTOR REQUIRE
                 // Redesign more abstracted.
                 loaded_modules_list.push(Err(None));

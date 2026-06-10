@@ -49,20 +49,16 @@ impl DiagReporter {
         }
     }
 
-    pub fn display_first(&self, n: usize) {
-        let mut diags = self.diags.borrow_mut();
+    pub fn display_first(&self) {
+        let diags = self.diags.borrow_mut();
 
-        let count = n.min(diags.len());
-
-        for diag in diags.iter().take(count) {
+        if let Some(diag) = diags.first() {
             match diag.level {
                 DiagLevel::Error => eprintln!("{}", self.render(diag)),
                 DiagLevel::Warning => println!("{}", self.render(diag)),
                 DiagLevel::Unimplemented => println!("{}", self.render(diag)),
             }
         }
-
-        diags.drain(..count);
     }
 
     pub fn display(&self) {
@@ -130,7 +126,12 @@ impl DiagReporter {
         let source_file = { source_map.get_file(loc.file_id).unwrap().clone() };
 
         out.push_str(&format!("[{}]", level_text));
-        out.push_str(&format!("[{}]", source_file.file_path.to_str().unwrap()));
+        out.push_str(&format!(
+            "[{}:{}:{}]",
+            source_file.file_path.to_str().unwrap(),
+            loc.line,
+            loc.column,
+        ));
         out.push_str(&format!(": {}", diag.kind));
         out.push('\n');
 

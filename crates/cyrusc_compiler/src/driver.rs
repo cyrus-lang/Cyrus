@@ -228,7 +228,7 @@ pub fn build_semantic_bundle<'a>(
                     has_error = true;
                 }
 
-                reporter.display();
+                reporter.display_first();
                 analyzed_program_trees.push(analyzer.program_tree.clone());
             }
 

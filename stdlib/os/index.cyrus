@@ -2,20 +2,50 @@
 // Copyright (c) 2026 The Cyrus Language
 
 import std::string{String};
+import std::path{Path};
 import std::libc;
 
-pub enum FileMode {
-    Read,
-    Write,
-    ReadWrite
+pub enum OpeningModes {
+    Read,            = "r"
+    ReadBinary,      = "rb"
+    Write,           = "w"
+    WriteBinary,     = "wb"
+    Append,          = "a"
+    AppendBinary,    = "ab"
+    ReadWrite,       = "r+"
+    ReadWriteBinary, = "rb+"
+    WriteRead,       = "w+"
+    WriteReadBinary, = "wb+"
+    AppendRead,      = "a+"
+    AppendReadBinary = "ab+"
 }
 
 pub enum FileFlags {
-    ReadOnly
+    ReadOnly,
+    WriteOnly,
+    ReadWrite,
+    AppendOnly,
+    Truncate,
+    Create,
+    Exclusive
+}
+
+pub enum FileSeek {
+    Set,
+    Cur,
+    End
 }
 
 pub struct File {
+    path: Path*;
+    mode: OpeningModes;
+    file: libc::c_file;
+    is_open: bool;
     
+    pub fn open(const file_path: const Path*, const mode: OpeningModes) Result<const char*, Self> {
+    	
+    	@todo();
+    }
 }
 
 pub fn exit() {

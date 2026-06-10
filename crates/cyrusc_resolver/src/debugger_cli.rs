@@ -88,7 +88,6 @@ pub fn main() {
                 return;
             }
         }
-
         Err(()) => {
             eprintln!("exit with error.")
         }

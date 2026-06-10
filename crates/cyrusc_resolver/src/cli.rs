@@ -68,7 +68,7 @@ pub fn main() {
                 .unwrap();
 
             if resolver.reporter.has_errors() {
-                resolver.reporter.display();
+                resolver.reporter.display_first();
                 exit(1);
             }
 

@@ -272,10 +272,6 @@ impl<'a> AnalysisContext<'a> {
     }
 
     fn specialize_var_stmt(&self, var_stmt: &mut TypedVarStmt, decl_map: &DeclMap) {
-        if decl_map.get(&var_stmt.var_decl_id).copied().is_none() {
-            dbg!(var_stmt.clone());
-        }
-
         var_stmt.var_decl_id = decl_map.get(&var_stmt.var_decl_id).copied().unwrap();
 
         if let Some(init) = &mut var_stmt.rhs {
