@@ -149,8 +149,6 @@ impl DiagReporter {
             out.push_str(&format!(" {}: {}\n", "hint", hint));
         }
 
-        out.push('\n');
-
         out
     }
 }
