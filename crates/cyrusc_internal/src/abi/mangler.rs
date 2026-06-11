@@ -157,11 +157,11 @@ fn mangle_type_args(type_args: &TypedTypeArgs) -> String {
     type_args
         .iter()
         .map(|type_arg| match type_arg {
-            TypedTypeArg::Type(sema_type, _) => mangle_sema_type(sema_type),
+            TypedTypeArg::Type(ty, _) => mangle_sema_type(ty),
             TypedTypeArg::Infer => unreachable!(),
         })
         .collect::<Vec<_>>()
-        .join("_")
+        .join(",")
 }
 
 fn mangle_sema_type(sema_type: &SemaType) -> String {
@@ -239,11 +239,12 @@ fn mangle_sema_type(sema_type: &SemaType) -> String {
             format!("tuple_{elements}")
         }
 
+        SemaType::InferVar(_) => "_".to_string(),
+
         SemaType::Err(_)
         | SemaType::Unresolved(_)
         | SemaType::SelfType(_)
         | SemaType::GenericParam(_)
-        | SemaType::InferVar(_)
         | SemaType::Placeholder => {
             unreachable!(
                 "SemaType variants like Err, Unresolved, SelfType, GenericParam, InferVar, Placeholder should not be directly mangled."

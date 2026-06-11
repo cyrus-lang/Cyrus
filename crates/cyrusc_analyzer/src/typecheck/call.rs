@@ -470,16 +470,17 @@ impl<'a> AnalysisContext<'a> {
             operand_type = this.substitute_type(&operand_type);
 
             if let Some(named_type) = operand_type.const_inner_mut().pointer_inner_mut().as_named_type_mut() {
-                let inferred_operand_type_args = this.collect_instantiated_type_args(operand_generic_params);
+                let inferred_operand_type_args = this.collect_instantiated_type_args(operand_generic_params.clone());
 
                 named_type.type_args = inferred_operand_type_args;
 
                 pure_operand_type = operand_type.const_inner().pointer_inner().clone();
             }
 
-            let final_type_args = this.collect_instantiated_type_args(method_generic_params.clone());
+            let final_generics_params = method_generic_params.extend(operand_generic_params);
+            let final_type_args = this.collect_instantiated_type_args(final_generics_params);
 
-            method_call.type_args = final_type_args;
+            method_call.type_args = final_type_args.clone();
 
             // generic static method
             if is_generic_method_call {
@@ -511,10 +512,11 @@ impl<'a> AnalysisContext<'a> {
 
                     let ret_type = method_decl.func_decl.ret_type.clone();
 
-                    let (monomorph_id, final_type_args) = this.monomorphize_generic_method_call(
+                    let monomorph_id = this.monomorphize_generic_method_call(
                         pure_operand_type.clone(),
                         method_decl_id,
                         method_decl,
+                        final_type_args.clone(),
                         false,
                         method_call.loc,
                     )?;

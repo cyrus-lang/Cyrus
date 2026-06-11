@@ -465,6 +465,13 @@ impl TypedGenericParams {
     pub fn iter(&self) -> impl Iterator<Item = &GenericParamID> {
         self.0.iter()
     }
+
+    #[inline]
+    pub fn extend(&self, other: Self) -> Self {
+        let mut inst = self.0.clone();
+        inst.extend(other.0);
+        Self(inst)
+    }
 }
 
 impl TypedTypeArgs {

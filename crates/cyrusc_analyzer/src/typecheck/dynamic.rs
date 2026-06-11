@@ -178,7 +178,7 @@ impl<'a> AnalysisContext<'a> {
 
                 let Some(object_method_generic_env) = self.create_inference_generic_env(
                     &method_name,
-                    object_generic_params,
+                    object_generic_params.clone(),
                     &concrete_named_type.type_args,
                     loc,
                 ) else {
@@ -199,13 +199,17 @@ impl<'a> AnalysisContext<'a> {
                     let parent_infer_ctx = this.func_env.infer.clone();
                     let func_env = this.create_method_env(*method_decl_id, func_type, parent_infer_ctx);
 
+                    let final_generics_params = method_decl.func_decl.generic_params.extend(object_generic_params);
+                    let final_type_args = this.collect_instantiated_type_args(final_generics_params);
+
                     this.with_func_env(func_env, |this| {
                         this.func_env.current_object = Some(concrete_type.clone());
 
-                        let Some((monomorph_id, _)) = this.monomorphize_generic_method_call(
+                        let Some(monomorph_id) = this.monomorphize_generic_method_call(
                             concrete_type.clone(),
                             *method_decl_id,
                             method_decl,
+                            final_type_args,
                             true,
                             loc,
                         ) else {

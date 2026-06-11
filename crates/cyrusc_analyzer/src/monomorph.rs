@@ -29,9 +29,10 @@ impl<'a> AnalysisContext<'a> {
         pure_operand_type: SemaType,
         method_decl_id: MethodDeclID,
         mut method_decl: MethodDecl,
+        final_type_args: TypedTypeArgs,
         is_generic_interface_method_call: bool,
         loc: Loc,
-    ) -> Option<(MonomorphID, TypedTypeArgs)> {
+    ) -> Option<MonomorphID> {
         if !is_generic_interface_method_call {
             // substitute Self inside params, ret_type, variables
             self.apply_self_type_in_method_decl_and_variable(&mut method_decl, &pure_operand_type);
@@ -41,8 +42,6 @@ impl<'a> AnalysisContext<'a> {
         method_decl.func_decl.ret_type = self.substitute_type(&method_decl.func_decl.ret_type);
 
         self.check_type_arity(method_decl.func_decl.ret_type.clone(), loc)?;
-
-        let final_type_args = self.collect_instantiated_type_args(method_decl.func_decl.generic_params.clone());
 
         // get or create monomorph instance
         let monomorph_id = self.monomorph_registry.get_or_create(
@@ -84,7 +83,7 @@ impl<'a> AnalysisContext<'a> {
             });
         }
 
-        Some((monomorph_id, final_type_args))
+        Some(monomorph_id)
     }
 
     pub(crate) fn monomorphize_generic_func_call(

@@ -2011,7 +2011,7 @@ impl<'a> CIRLower<'a> {
         let kind = match &literal.kind {
             LiteralKind::Integer(value, ..) => {
                 let is_signed = literal.ty.clone().unwrap().as_plain_type().unwrap().is_signed();
-                
+
                 CIRLiteralKind::Integer(*value, is_signed)
             }
             LiteralKind::Float(value, ..) => CIRLiteralKind::Float(*value),
