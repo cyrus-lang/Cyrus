@@ -37,7 +37,7 @@ pub struct Vector<T> {
         }
 
         const data: T* = allocator.alloc(cap * @sizeof(T));
-        
+
         if (data == null) {
             @panic("initial allocation failed");
         }
@@ -52,8 +52,10 @@ pub struct Vector<T> {
             self->reserve(original_len);
             
             memmove(
+                // TODO: add integer overflow check 
                 self->data + original_len,
                 self->data,
+                // TODO: add integer overflow check 
                 original_len * @sizeof(T)
             );
 
@@ -82,9 +84,11 @@ pub struct Vector<T> {
         memmove(
             self->data + old_len,
             ptr,
+            // TODO: add integer overflow check 
             count * @sizeof(T)
         );
 
+        // TODO: add integer overflow check 
         self->len = old_len + count;
     }
 
@@ -234,6 +238,7 @@ pub struct Vector<T> {
 
         const value = self->data[index];
 
+        // TODO: add integer overflow check 
         const src = self->data + index + 1;
         const dst = self->data + index;
 
@@ -266,7 +271,7 @@ pub struct Vector<T> {
 
     // internals 
 
-     inline fn grow(&self, min_cap: usize) {
+    fn grow(&self, min_cap: usize) {
         var new_cap: usize;
 
         if (self->cap == 0) {
@@ -277,12 +282,13 @@ pub struct Vector<T> {
 
         // exponential growth (2x)
         while (new_cap < min_cap) {
-            // FIXME: add safety check
+            // TODO: add integer overflow check 
             new_cap *= 2;
         }
 
         const new_data: T* = realloc(
             self->data,
+            // TODO: add integer overflow check 
             new_cap * @sizeof(T)
         );
 

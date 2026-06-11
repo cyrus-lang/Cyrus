@@ -8,7 +8,7 @@ import std::mem::buffer{Buffer};
 pub struct String {
     buffer: Buffer<char>;
 
-    pub inline fn new(allocator: Allocator) Self {
+    pub fn new(const allocator: Allocator) Self {
         var buffer: Buffer<char> = Buffer.new(allocator);
 
         buffer.push('\0'); // null-terminated
@@ -16,7 +16,9 @@ pub struct String {
         return Self { buffer };
     }
 
-    pub inline fn from(const allocator: Allocator, const str: char*) Self {
+    // TODO: Add method: From slice.
+
+    pub fn from_str(const allocator: Allocator, const str: const char*) Self {
         @assert(str != null, "input string cannot be null");
 
         const len = strlen(str);
@@ -32,7 +34,7 @@ pub struct String {
         return Self { buffer };
     }
 
-    pub inline fn with_capacity(const allocator: Allocator, cap: usize) Self {
+    pub fn with_capacity(const allocator: Allocator, const cap: usize) Self {
         var buffer: Buffer<char> = Buffer.with_capacity(allocator, cap);
 
         buffer.push('\0');
@@ -40,7 +42,7 @@ pub struct String {
         return Self { buffer };
     }
 
-    pub inline fn reserve(&self, const extra: usize) {
+    pub fn reserve(&self, const extra: usize) {
         const required = self->len() + extra + 1;
 
         if (required > self->cap()) {
@@ -48,15 +50,7 @@ pub struct String {
         }
     }
 
-    pub inline fn as_str(&self) char* {
-        return self->buffer.data();
-    }
-
-    pub inline fn as_str_const(&const self) const char* {
-        return self->buffer.data_const();
-    }
-
-    pub inline fn push(&self, const ch: char) {        
+    pub fn push(&self, const ch: char) {        
         var data = self->buffer.data();
         var current = &data[self->len()];
 
@@ -65,7 +59,7 @@ pub struct String {
         self->buffer.push('\0');
     }
 
-    pub inline fn push_str(&self, const str: char*) {
+    pub fn push_str(&self, const str: char*) {
         @assert(str != null, "input string cannot be null");
 
         const len = strlen(str);
@@ -79,6 +73,14 @@ pub struct String {
         }
         
         self->buffer.push('\0');
+    }
+
+    pub inline fn as_str(&self) char* {
+        return self->buffer.data();
+    }
+
+    pub inline fn as_str_const(&const self) const char* {
+        return self->buffer.data_const();
     }
 
     pub inline fn is_empty(&const self) bool {

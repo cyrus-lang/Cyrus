@@ -12,7 +12,7 @@ pub struct Path {
     inner: String;
 
     pub inline fn new(const allocator: Allocator, const name: char*) Self {
-        const inner = String.from(allocator, name);
+        const inner = String.from_str(allocator, name);
 
         return Self { allocator, inner };
     }
@@ -91,7 +91,7 @@ pub struct Path {
 
         // if `other` is absolute, just return other
         if (other_len > 0 && other_str[0] == separator()) {
-            const inner = String.from(self->allocator, other_str);
+            const inner = String.from_str(self->allocator, other_str);
             
             return Self { allocator: self->allocator, inner };
         }

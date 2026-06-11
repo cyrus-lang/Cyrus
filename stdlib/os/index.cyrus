@@ -88,17 +88,26 @@ pub struct File {
 
     pub fn read(&const self, allocator: Allocator) ErrorOr<String> {
         libc::fseek(self->file, 0, FileSeek.End.as_num());
-        const size = libc::ftell(self->file);
+        const size = @cast(usize, libc::ftell(self->file));
         libc::rewind(self->file);
 
         if (size < 0) {
             return .Error("failed to get file size");
         }
 
-        // const content = String.with_capacity(allocator, 16);
-        // TODO
-        
-        @todo();
+        var buffer: char* = allocator.alloc(size + 1);
+
+        const read = libc::fread(buffer, 1, size, self->file);
+        if (read != size) {
+            return .Error("failed to read file");
+        }
+
+        buffer[size] = '\0';
+
+        const content = String.from_str(allocator, buffer);
+        allocator.free(buffer);
+
+        return .Value(content);
     }
 
     pub fn write(&self, content: const char*) ErrorOr<usize> {
