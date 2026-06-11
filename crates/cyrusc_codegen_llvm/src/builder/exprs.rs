@@ -2018,10 +2018,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
                     } else {
                         debug_assert!(value.is_lvalue());
 
-                        // value type, need address
-                        let lvalue = self.emit_lvalue_address(&self_meta.operand);
-
-                        (lvalue.clone(), lvalue)
+                        (value.clone(), value)
                     }
                 }
             } else {

@@ -7,7 +7,7 @@ import std::mem{Allocator, LibcAllocator};
 pub fn main() {
     const allocator: Allocator = dynamic LibcAllocator.new();
 
-    var name = String.from(allocator, "Cyrus");
+    var name = String.from_str(allocator, "Cyrus");
     defer name.free();
 
     printf("%s\n", name.as_str());
