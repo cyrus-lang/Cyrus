@@ -42,11 +42,7 @@ pub struct Vector<T> {
             @panic("initial allocation failed");
         }
 
-        return Self {
-            data,
-            len: 0,
-            cap
-        };
+        return Self { data, cap, len: 0 };
     }
 
     pub inline fn extend(&const self, const other: Self*) {

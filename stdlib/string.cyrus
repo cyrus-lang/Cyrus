@@ -32,6 +32,14 @@ pub struct String {
         return Self { buffer };
     }
 
+    pub inline fn with_capacity(const allocator: Allocator, cap: usize) Self {
+        var buffer: Buffer<char> = Buffer.with_capacity(allocator, cap);
+
+        buffer.push('\0');
+        
+        return Self { buffer };
+    }
+
     pub inline fn reserve(&self, const extra: usize) {
         const required = self->len() + extra + 1;
 

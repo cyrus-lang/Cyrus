@@ -15,7 +15,7 @@ pub struct Path {
         const inner = String.from(allocator, name);
 
         return Self { allocator, inner };
-    }   
+    }
 
     /// POSIX ONLY!
     /// Get the parent directory (Everything before last `/`). Allocates new Path and returns it.

@@ -50,7 +50,7 @@ impl DiagReporter {
     }
 
     pub fn display_first(&self) {
-        let diags = self.diags.borrow_mut();
+        let mut diags = self.diags.borrow_mut();
 
         if let Some(diag) = diags.first() {
             match diag.level {
@@ -59,6 +59,8 @@ impl DiagReporter {
                 DiagLevel::Unimplemented => println!("{}", self.render(diag)),
             }
         }
+
+        diags.clear();
     }
 
     pub fn display(&self) {
