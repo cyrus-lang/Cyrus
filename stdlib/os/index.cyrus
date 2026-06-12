@@ -1,12 +1,11 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 The Cyrus Language
 
+import std::libc::types{c_file};
 import std::errors{ErrorOr};
+import std::mem{Allocator};
 import std::string{String};
 import std::path{Path};
-import std::mem{Allocator};
-
-import std::libc::types{c_file};
 import std::libc;
 
 pub struct File {
@@ -192,7 +191,7 @@ pub enum ExitStatusCode {
     AllocationError,
     FileOperationError,
     
-    pub fn as_int(const self) int32 {
+    pub fn as_num(const self) int32 {
         switch (self) {
             case .Success => return 0;
             case .Failure => return 1;
@@ -206,5 +205,5 @@ pub enum ExitStatusCode {
 }
 
 pub inline fn exit(code: ExitStatusCode) {
-    libc::exit(code.as_int());
+    libc::exit(code.as_num());
 }
