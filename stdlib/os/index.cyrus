@@ -74,11 +74,31 @@ pub struct File {
         const content_len = libc::strlen(content);
 
         const bytes = libc::fwrite(content, 1, content_len, self->file);
-
         if (bytes == 0) {
             return .Error("failed to write to file");
         } 
 
+        return .Value(bytes);
+    }
+
+    pub fn append(&self, const content: const char*) ErrorOr<usize> {
+        switch (self->mode) {
+            case .Append | .AppendBinary | .AppendRead | .AppendReadBinary => {}
+            default => { return .Error("file not opened in append mode"); }
+        }
+
+        const result = libc::fseek(self->file, 0, FileSeek.End.as_num());
+        if (result != 0) {
+            return .Error("failed to seek to end of file for append");
+        }
+        
+        const content_len = libc::strlen(content);
+
+        const bytes = libc::fwrite(content, 1, content_len, self->file);
+        if (bytes == 0) {
+            return .Error("failed to append to file");
+        }
+        
         return .Value(bytes);
     }
 
@@ -96,13 +116,16 @@ pub struct File {
         }
     }
 
-    pub fn rename(const old_path: const Path*, const new_path: const Path*) bool {
+    pub fn rename(const old_path: const Path*, const new_path: const Path*) ErrorOrNothing {
         const old_path_str = old_path->as_string_const().as_str_const();
         const new_path_str = new_path->as_string_const().as_str_const();
 
         const result = libc::rename(old_path_str, new_path_str);
-        
-        return result == 0;
+        if (result != 0) {
+            return .Error("failed to rename file");
+        }
+
+        return ErrorOr.nothing();
     }
 
     pub inline fn eof(&const self) bool {
