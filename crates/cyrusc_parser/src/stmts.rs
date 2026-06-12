@@ -1942,8 +1942,25 @@ impl<'source_file> Parser<'source_file> {
 
                 self.expect_current(TokenKind::FatArrow)?;
 
-                let case_body = self.parse_block()?;
-                self.next_token();
+                let case_body;
+
+                if !self.current_token_is(TokenKind::LeftBrace) {
+                    let loc = self.current_token().loc;
+                    let (line, column, start) = (loc.line, loc.column, loc.start);
+
+                    let stmts = self.parse_stmt(None, false)?;
+                    self.next_token();
+                    
+                    let end = self.current_token().loc.end;
+
+                    case_body = ASTBlockStmt {
+                        stmts,
+                        loc: Loc::new(self.file_id(), line, column, start, end),
+                    };
+                } else {
+                    case_body = self.parse_block()?;
+                    self.next_token();
+                }
 
                 let end = self.current_token().loc.end;
 
@@ -1956,11 +1973,26 @@ impl<'source_file> Parser<'source_file> {
                 self.next_token();
                 self.expect_current(TokenKind::FatArrow)?;
 
-                let case_body = self.parse_block()?;
-                self.next_token();
+                if !self.current_token_is(TokenKind::LeftBrace) {
+                    let loc = self.current_token().loc;
+                    let (line, column, start) = (loc.line, loc.column, loc.start);
 
-                default_case = Some(case_body);
-                break;
+                    let stmts = self.parse_stmt(None, false)?;
+
+                    let end = self.current_token().loc.end;
+
+                    default_case = Some(ASTBlockStmt {
+                        stmts,
+                        loc: Loc::new(self.file_id(), line, column, start, end),
+                    });
+                    break;
+                } else {
+                    let case_body = self.parse_block()?;
+                    self.next_token();
+
+                    default_case = Some(case_body);
+                    break;
+                }
             } else {
                 break;
             }

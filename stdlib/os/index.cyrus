@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 The Cyrus Language
 
-import std::errors{ErrorOr, ErrorOrNothing};
+import std::errors{ErrorOr};
 import std::string{String};
 import std::path{Path};
 import std::mem{Allocator};
@@ -32,12 +32,12 @@ pub struct File {
         });
     }
 
-    pub fn flush(&const self) ErrorOrNothing {
+    pub fn flush(&const self) ErrorOr<()> {
         const result = libc::fflush(self->file);
         if (result != 0) {
             return .Error("failed to flush file buffer");
         }
-        return ErrorOr.nothing();
+        return .Value(());
     }
 
     pub fn remove(&const self) bool {
@@ -116,7 +116,7 @@ pub struct File {
         }
     }
 
-    pub fn rename(const old_path: const Path*, const new_path: const Path*) ErrorOrNothing {
+    pub fn rename(const old_path: const Path*, const new_path: const Path*) ErrorOr<()> {
         const old_path_str = old_path->as_string_const().as_str_const();
         const new_path_str = new_path->as_string_const().as_str_const();
 
@@ -125,7 +125,7 @@ pub struct File {
             return .Error("failed to rename file");
         }
 
-        return ErrorOr.nothing();
+        return .Value(());
     }
 
     pub inline fn eof(&const self) bool {
@@ -169,16 +169,6 @@ pub enum OpeningModes {
     }
 }
 
-pub enum FileFlags {
-    ReadOnly = 0x01,  
-    WriteOnly = 0x02, 
-    ReadWrite = 0x04,
-    AppendOnly = 0x08,
-    Truncate = 0x10, 
-    Create = 0x20,   
-    Exclusive = 0x40 
-}
-
 pub enum FileSeek {
     Set,
     Cur,
@@ -193,6 +183,40 @@ pub enum FileSeek {
     }
 }
 
-pub inline fn exit() {
-    libc::exit(1);
+pub enum ExitStatusCode {
+    Success,
+    Failure,
+    InvalidArgument,
+    FileNotFound,
+    PermissionDenied,
+    AllocationError,
+    FileOperationError,
+    
+    pub fn as_int(const self) int32 {
+        switch (self) {
+            case .Success => return 0;
+            case .Failure => return 1;
+            case .InvalidArgument => return 2;
+            case .FileNotFound => return 3;
+            case .PermissionDenied => return 4;
+            case .AllocationError => return 5;
+            case .FileOperationError => return 6;
+        }
+    }
+    
+    pub fn as_str(const self) const char* {
+        switch (self) {
+            case .Success => return "success";
+            case .Failure => return "failure";
+            case .InvalidArgument => return "invalid argument";
+            case .FileNotFound => return "file not found";
+            case .PermissionDenied => return "permission denied";
+            case .AllocationError => return "allocation error";
+            case .FileOperationError => return "file operation error";
+        }
+    }
+}
+
+pub inline fn exit(code: ExitStatusCode) {
+    libc::exit(code.as_int());
 }

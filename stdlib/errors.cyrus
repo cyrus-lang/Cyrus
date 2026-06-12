@@ -4,12 +4,6 @@
 /// A null-terminated C-style string literal for error messages.
 pub type ErrorStr = const char*;
 
-/// Zero-sized type indicating successful completion with no data.
-pub type Nothing = struct{};
-
-/// Alias for operations that either succeed with no value or fail with an error message.
-pub type ErrorOrNothing = ErrorOr<Nothing>;
-
 /// A result type representing either a successful value `V` or an error message.
 pub enum ErrorOr<V> {
 	Value(V),
@@ -41,10 +35,5 @@ pub enum ErrorOr<V> {
 			case .Value(_) => { return true; }
 			case .Error(_) => { return false; }
 		}
-	}
-
-    /// Creates a successful `ErrorOr` object, containing the zero-sized Nothing type.
-	pub inline fn nothing() Self {
-		return .Value(Nothing {});
 	}
 }
