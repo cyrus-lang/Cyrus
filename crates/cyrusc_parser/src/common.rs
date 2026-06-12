@@ -699,7 +699,7 @@ impl<'source_file> Parser<'source_file> {
                 Ok(TypeSpecifier::Builtin(builtin))
             }
 
-            _ => Err(self.error_at_current(ParserDiagKind::InvalidTypeToken(token.kind))),
+            _ => Err(self.error_at_current(ParserDiagKind::ExpectedExprOrStmt)),
         }
     }
 

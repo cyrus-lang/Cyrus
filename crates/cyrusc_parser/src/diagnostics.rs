@@ -23,6 +23,9 @@ pub enum ParserDiagKind {
     #[error("Expected type token but got '{0}'.")]
     InvalidTypeToken(TokenKind),
 
+    #[error("Expected expression or statement.")]
+    ExpectedExprOrStmt,
+
     #[error("Expected expression after operator '{0}'.")]
     ExpectedExpressionAfterOperator(TokenKind),
 
