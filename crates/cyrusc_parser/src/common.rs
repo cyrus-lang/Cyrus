@@ -599,6 +599,15 @@ impl<'source_file> Parser<'source_file> {
 
         let mut type_list: Vec<TypeSpecifier> = Vec::new();
 
+        if self.current_token_is(TokenKind::RightParen) {
+            let end = self.current_token().loc.end;
+
+            return Ok(TypeSpecifier::Tuple(TupleType {
+                type_list,
+                loc: Loc::new(self.file_id(), line, column, start, end),
+            }));
+        }
+
         loop {
             let ty = self.parse_type_specifier()?;
             type_list.push(ty);

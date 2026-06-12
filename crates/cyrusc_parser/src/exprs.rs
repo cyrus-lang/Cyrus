@@ -260,15 +260,19 @@ impl<'source_file> Parser<'source_file> {
                 // grouped expression
                 self.next_token();
 
-                let expr = self.parse_expr(Precedence::Lowest)?;
-                self.next_token();
-
-                if self.current_token_is(TokenKind::Comma) {
-                    // considered as tuple construction, not grouped expr
-                    self.next_token();
-                    self.parse_tuple_value(expr)?
+                if self.current_token_is(TokenKind::RightParen) {
+                    self.parse_tuple_value(None)?
                 } else {
-                    expr
+                    let expr = self.parse_expr(Precedence::Lowest)?;
+                    self.next_token();
+
+                    if self.current_token_is(TokenKind::Comma) {
+                        // considered as tuple construction, not grouped expr
+                        self.next_token();
+                        self.parse_tuple_value(Some(expr))?
+                    } else {
+                        expr
+                    }
                 }
             }
 
@@ -640,9 +644,18 @@ impl<'source_file> Parser<'source_file> {
         }))
     }
 
-    fn parse_tuple_value(&mut self, first: ASTExpr) -> Result<ASTExpr, Diag> {
+    fn parse_tuple_value(&mut self, first_opt: Option<ASTExpr>) -> Result<ASTExpr, Diag> {
         let loc = self.current_token().loc;
         let (line, column, start) = (loc.line, loc.column, loc.start);
+
+        let Some(first) = first_opt else {
+            let end = self.current_token().loc.end;
+
+            return Ok(ASTExpr::Tuple(ASTTupleValueExpr {
+                elements: Vec::new(),
+                loc: Loc::new(self.file_id(), line, column, start, end),
+            }));
+        };
 
         let mut elements: Vec<ASTExpr> = vec![first];
 
