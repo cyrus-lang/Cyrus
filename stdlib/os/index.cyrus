@@ -137,7 +137,7 @@ pub struct File {
 }
 
 pub enum OpeningModes {
-    Read,
+    Read  ,
     ReadBinary,
     Write,
     WriteBinary,
@@ -152,55 +152,43 @@ pub enum OpeningModes {
 
     pub fn as_str(const self) const char* {
         switch (self) {
-            case .Read => { return "r"; }
-            case .ReadBinary => { return "rb"; }
-            case .Write => { return "w"; }
-            case .WriteBinary => { return "wb"; }
-            case .Append => { return "a"; }
-            case .AppendBinary => { return "ab"; }
-            case .ReadWrite => { return "r+"; }
-            case .ReadWriteBinary => { return "rb+"; }
-            case .WriteRead => { return "w+"; }
-            case .WriteReadBinary => { return "wb+"; }
-            case .AppendRead => { return "a+"; }
-            case .AppendReadBinary => { return "ab+"; }
+            case .Read => return "r";
+            case .ReadBinary => return "rb";
+            case .Write => return "w";
+            case .WriteBinary => return "wb";
+            case .Append => return "a";
+            case .AppendBinary => return "ab";
+            case .ReadWrite => return "r+";
+            case .ReadWriteBinary => return "rb+";
+            case .WriteRead => return "w+";
+            case .WriteReadBinary => return "wb+";
+            case .AppendRead => return "a+";
+            case .AppendReadBinary => return "ab+";
         }
     }
 }
 
 pub enum FileSeek {
-    Set,
-    Cur,
-    End,
+    Set = 0,
+    Cur = 1,
+    End = 2,
 
-    pub fn as_num(const self) int32 {
-        switch (self) {
-            case .Set => { return 0; }
-            case .Cur => { return 1; }
-            case .End => { return 2; }
-        }
+    pub inline fn as_num(const self) int32 {
+        return @cast(int32, self);
     }
 }
 
 pub enum ExitStatusCode {
-    Success,
-    Failure,
-    InvalidArgument,
-    FileNotFound,
-    PermissionDenied,
-    AllocationError,
-    FileOperationError,
+    Success = 0,
+    Failure = 1,
+    InvalidArgument = 2,
+    FileNotFound = 3,
+    PermissionDenied = 4,
+    AllocationError = 5,
+    FileOperationError = 6,
     
     pub fn as_num(const self) int32 {
-        switch (self) {
-            case .Success => return 0;
-            case .Failure => return 1;
-            case .InvalidArgument => return 2;
-            case .FileNotFound => return 3;
-            case .PermissionDenied => return 4;
-            case .AllocationError => return 5;
-            case .FileOperationError => return 6;
-        }
+        return @cast(int32, self);
     }
 }
 
