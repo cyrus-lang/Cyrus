@@ -1,12 +1,21 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 The Cyrus Language
 
+/// A null-terminated C-style string literal for error messages.
 pub type ErrorStr = const char*;
 
+/// Zero-sized type indicating successful completion with no data.
+pub type Nothing = struct{};
+
+/// Alias for operations that either succeed with no value or fail with an error message.
+pub type ErrorOrNothing = ErrorOr<Nothing>;
+
+/// A result type representing either a successful value `V` or an error message.
 pub enum ErrorOr<V> {
 	Value(V),
 	Error(ErrorStr)
 
+	/// Unwraps the contained value, panicking with the error message if this is an Error.
     pub fn unwrap(&const self) V {
     	switch (*self) {
 			case .Value(value) => {
@@ -18,6 +27,7 @@ pub enum ErrorOr<V> {
 		}
     }
 
+	/// Returns true if contains an error, false otherwise.
 	pub inline fn is_error(&const self) bool {
 		switch (*self) {
 			case .Value(_) => { return false; }
@@ -25,10 +35,16 @@ pub enum ErrorOr<V> {
 		}
 	}
 	
+	/// Returns true if contains a value, false otherwise.
 	pub inline fn is_value(&const self) bool {
 		switch (*self) {
 			case .Value(_) => { return true; }
 			case .Error(_) => { return false; }
 		}
+	}
+
+    /// Creates a successful `ErrorOr` object, containing the zero-sized Nothing type.
+	pub inline fn nothing() Self {
+		return .Value(Nothing {});
 	}
 }

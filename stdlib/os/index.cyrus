@@ -1,13 +1,118 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 The Cyrus Language
 
-import std::libc::types{c_file};
-import std::libc;
-
-import std::errors{ErrorOr};
+import std::errors{ErrorOr, ErrorOrNothing};
 import std::string{String};
 import std::path{Path};
 import std::mem{Allocator};
+
+import std::libc::types{c_file};
+import std::libc;
+
+pub struct File {
+    path: Path*;
+    file: c_file*;
+    mode: OpeningModes;
+    
+    pub fn open(const path: const Path*, const mode: OpeningModes) ErrorOr<Self> {        
+        const path_str = path->as_string_const().as_str_const();
+        const mode_str = mode.as_str();
+
+        libc::printf("%s\n", path_str);
+
+    	const file = libc::fopen(path_str, mode_str);
+        if (!file) {
+            return .Error("could not open the file");
+        }
+
+    	return .Value(Self {
+            path,
+            mode,
+            file,
+        });
+    }
+
+    pub fn flush(&const self) ErrorOrNothing {
+        const result = libc::fflush(self->file);
+        if (result != 0) {
+            return .Error("failed to flush file buffer");
+        }
+        return ErrorOr.nothing();
+    }
+
+    pub fn remove(&const self) bool {
+        const path_str = self->path->as_string_const().as_str_const();
+        const result = libc::remove(path_str);
+        return result == 0;
+    }
+
+    pub fn read(&const self, const allocator: Allocator) ErrorOr<String> {
+        libc::fseek(self->file, 0, FileSeek.End.as_num());
+        const size = @cast(usize, libc::ftell(self->file));
+        libc::rewind(self->file);
+
+        if (size < 0) {
+            return .Error("failed to get file size");
+        }
+
+        var buffer: char* = allocator.alloc(size + 1);
+
+        const read = libc::fread(buffer, 1, size, self->file);
+        if (read != size) {
+            return .Error("failed to read file");
+        }
+
+        buffer[size] = '\0';
+
+        const content = String.from_str(allocator, buffer);
+        allocator.free(buffer);
+
+        return .Value(content);
+    }
+
+    pub fn write(&self, const content: const char*) ErrorOr<usize> {
+        const content_len = libc::strlen(content);
+
+        const bytes = libc::fwrite(content, 1, content_len, self->file);
+
+        if (bytes == 0) {
+            return .Error("failed to write to file");
+        } 
+
+        return .Value(bytes);
+    }
+
+    pub fn exists(const path: const Path*) bool {
+        const path_str = path->as_string_const().as_str_const();
+        const mode_str = OpeningModes.Read.as_str();
+
+        const file = libc::fopen(path_str, mode_str);
+
+        if (!file) {
+            return false;
+        } else {
+            libc::fclose(file);
+            return true;
+        }
+    }
+
+    pub fn rename(const old_path: const Path*, const new_path: const Path*) bool {
+        const old_path_str = old_path->as_string_const().as_str_const();
+        const new_path_str = new_path->as_string_const().as_str_const();
+
+        const result = libc::rename(old_path_str, new_path_str);
+        
+        return result == 0;
+    }
+
+    pub inline fn eof(&const self) bool {
+        return libc::feof(self->file) != 0;
+    }
+
+    pub inline fn close(&self) {
+        libc::fclose(self->file);
+    }
+}
 
 pub enum OpeningModes {
     Read,
@@ -56,103 +161,12 @@ pub enum FileSeek {
     Cur,
     End,
 
-    pub fn as_num(self) int32 {
+    pub fn as_num(const self) int32 {
         switch (self) {
             case .Set => { return 0; }
             case .Cur => { return 1; }
             case .End => { return 2; }
         }
-    }
-}
-
-pub struct File {
-    path: Path*;
-    file: c_file*;
-    mode: OpeningModes;
-    
-    pub fn open(const path: const Path*, const mode: OpeningModes) ErrorOr<Self> {        
-        const path_str = path->as_string_const().as_str_const();
-        const mode_str = mode.as_str();
-
-        libc::printf("%s\n", path_str);
-
-    	const file = libc::fopen(path_str, mode_str);
-        if (!file) {
-            return .Error("could not open the file");
-        }
-
-    	return .Value(Self {
-            path,
-            mode,
-            file,
-        });
-    }
-
-    pub fn read(&const self, allocator: Allocator) ErrorOr<String> {
-        libc::fseek(self->file, 0, FileSeek.End.as_num());
-        const size = @cast(usize, libc::ftell(self->file));
-        libc::rewind(self->file);
-
-        if (size < 0) {
-            return .Error("failed to get file size");
-        }
-
-        var buffer: char* = allocator.alloc(size + 1);
-
-        const read = libc::fread(buffer, 1, size, self->file);
-        if (read != size) {
-            return .Error("failed to read file");
-        }
-
-        buffer[size] = '\0';
-
-        const content = String.from_str(allocator, buffer);
-        allocator.free(buffer);
-
-        return .Value(content);
-    }
-
-    pub fn write(&self, content: const char*) ErrorOr<usize> {
-        const content_len = libc::strlen(content);
-
-        const bytes = libc::fwrite(content, 1, content_len, self->file);
-
-        if (bytes == 0) {
-            return .Error("failed to write to file");
-        } 
-
-        return .Value(bytes);
-    }
-
-    pub fn exists(const path: const Path*) bool {
-        const path_str = path->as_string_const().as_str_const();
-        const mode_str = OpeningModes.Read.as_str();
-
-        const file = libc::fopen(path_str, mode_str);
-
-        if (!file) {
-            return false;
-        } else {
-            libc::fclose(file);
-            return true;
-        }
-    }
-
-    pub fn rename(const old_path: const Path*, const new_path: const Path*) bool {
-        const old_path_str = old_path->as_string_const().as_str_const();
-        const new_path_str = new_path->as_string_const().as_str_const();
-
-        const result = libc::rename(old_path_str, new_path_str);
-        
-        return result == 0;
-    }
-
-    pub inline fn eof(&const self) bool {
-        return libc::feof(self->file) != 0;
-    }
-
-    pub inline fn close(&self) {
-        libc::fclose(self->file);
     }
 }
 
