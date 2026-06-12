@@ -1950,7 +1950,7 @@ impl<'source_file> Parser<'source_file> {
 
                     let stmts = self.parse_stmt(None, false)?;
                     self.next_token();
-                    
+
                     let end = self.current_token().loc.end;
 
                     case_body = ASTBlockStmt {
@@ -1978,7 +1978,8 @@ impl<'source_file> Parser<'source_file> {
                     let (line, column, start) = (loc.line, loc.column, loc.start);
 
                     let stmts = self.parse_stmt(None, false)?;
-
+                    self.next_token();
+                    
                     let end = self.current_token().loc.end;
 
                     default_case = Some(ASTBlockStmt {

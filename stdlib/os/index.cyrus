@@ -203,18 +203,6 @@ pub enum ExitStatusCode {
             case .FileOperationError => return 6;
         }
     }
-    
-    pub fn as_str(const self) const char* {
-        switch (self) {
-            case .Success => return "success";
-            case .Failure => return "failure";
-            case .InvalidArgument => return "invalid argument";
-            case .FileNotFound => return "file not found";
-            case .PermissionDenied => return "permission denied";
-            case .AllocationError => return "allocation error";
-            case .FileOperationError => return "file operation error";
-        }
-    }
 }
 
 pub inline fn exit(code: ExitStatusCode) {

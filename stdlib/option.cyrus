@@ -7,23 +7,15 @@ pub enum Option<T> {
 
     pub inline fn is_some(&self) bool {
         switch (*self) {
-            case .Some(_) => {
-                return true;
-            }
-            case .None => {
-                return false;
-            }
+            case .Some(_) => return true;
+            case .None => return false;
         }
     }
 
     pub inline fn is_none(&self) bool {
         switch (*self) {
-            case .Some(_) => {
-                return false;
-            }
-            case .None => {
-                return true;
-            }
+            case .Some(_) => return false;
+            case .None => return true;
         }
     }
 
@@ -33,12 +25,8 @@ pub enum Option<T> {
         }
 
         switch (*self) {
-            case .Some(value) => {
-                return value;
-            }
-            default => {
-                @unreachable();
-            }
+            case .Some(value) => return value;
+            default => @unreachable();
         }
     }
 }
