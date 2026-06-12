@@ -4,6 +4,7 @@
 use crate::{context::AnalysisContext, diagnostics::AnalyzerDiagKind, env::generic_env::GenericEnv};
 use cyrusc_const_eval::fold::ConstFolder;
 use cyrusc_diagcentral::{Diag, DiagLevel};
+use cyrusc_internal::cir::lower::lower_enum_decl;
 use cyrusc_source_loc::Loc;
 use cyrusc_typed_ast::{
     decls::{EnumDecl, StructDecl, TypedefDeclID, UnionDecl},
@@ -395,7 +396,6 @@ impl<'a> AnalysisContext<'a> {
         }
     }
 
-    // NOTE: Would be used after implementing @cast.
     pub(crate) fn is_explicit_cast_allowed(&mut self, value_type: SemaType, target_type: SemaType, loc: Loc) -> bool {
         if self.is_assignable_to(value_type.clone(), target_type.clone(), loc) {
             // it's castable, if it's assignable normally
@@ -458,15 +458,19 @@ impl<'a> AnalysisContext<'a> {
             // point we perform the precise lowering (and any required compile‑time validation)
             // through the cast builtin implementation.
             //
-            (SemaType::Named(named_type), SemaType::Plain(plain_type)) => {
+            (SemaType::Named(named_type), SemaType::Plain(plain_type))
+            | (SemaType::Plain(plain_type), SemaType::Named(named_type)) => {
                 let Some(enum_decl_id) = named_type.type_decl_id.as_enum() else {
                     return false;
                 };
 
                 let enum_decl = self.decl_tables.enum_decl(enum_decl_id);
 
-                // FIXME: Checking repr isn't enough, we must validate tag type.
-                enum_decl.is_repr_c() && plain_type.is_integer_or_bool()
+                let cir_enum_type = lower_enum_decl(&self.decl_tables, self.target, &enum_decl);
+
+                let tag_type = cir_enum_type.tag_type_or_infer_or_default();
+
+                tag_type.is_integer_or_bool() && plain_type.is_integer_or_bool()
             }
 
             _ => false,

@@ -1,0 +1,16 @@
+// @stdout: 20
+
+import std::libc{printf};
+
+pub enum Foo {
+    A = 10,
+    B = 20,
+
+    pub fn as_num(const self) int32 {
+        return @cast(int32, self);
+    }
+}
+
+pub fn main() {
+    printf("%d\n", Foo.B.as_num());
+}

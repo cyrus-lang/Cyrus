@@ -1,0 +1,22 @@
+// @stdout: 20
+
+import std::libc{printf};
+
+pub enum Foo {
+    A = 10,
+    B = 20,
+
+    pub fn as_num(const self) int32 {
+        return @cast(int32, self);
+    }
+
+    pub fn from_num(x: int32) Self {
+        return @cast(Foo, x);
+    } 
+}
+
+pub fn main() {
+    const foo = Foo.from_num(20);
+
+    printf("%d\n", foo);
+}
