@@ -5,7 +5,7 @@ use crate::builder::builder::CodeGenIRBuilder;
 use cyrusc_internal::cir::{cir::CIRExpr, types::CIRType};
 use inkwell::{
     IntPredicate,
-    types::BasicTypeEnum,
+    types::{BasicType, BasicTypeEnum},
     values::{BasicValue, BasicValueEnum, FunctionValue, IntValue, PointerValue},
 };
 

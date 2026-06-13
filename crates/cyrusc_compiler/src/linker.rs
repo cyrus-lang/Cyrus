@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 The Cyrus Language
 
-use cyrusc_internal::compiler_options::{CompilerOption_RelocMode, CompilerOptions};
+use cyrusc_internal::compiler_options::{CompilerOption_Optimize, CompilerOption_RelocMode, CompilerOptions};
 use std::env::consts::{FAMILY, OS};
 use std::path::PathBuf;
 use std::process::Command;
@@ -85,7 +85,19 @@ impl Linker {
             cmd.arg(format!("-L{}", library));
         }
 
-        cmd.arg("-funroll-loops").arg("-flto");
+        if let Some(opt_level) = self.opts.opt_level {
+            match opt_level {
+                CompilerOption_Optimize::O0 => {}
+
+                CompilerOption_Optimize::O1
+                | CompilerOption_Optimize::O2
+                | CompilerOption_Optimize::O3
+                | CompilerOption_Optimize::Os
+                | CompilerOption_Optimize::Oz => {
+                    cmd.arg("-flto");
+                }
+            }
+        }
 
         if let Some(opt_level) = self.opts.opt_level {
             let opt_level_str = match opt_level {

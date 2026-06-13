@@ -22,7 +22,7 @@ const PIPELINE_AGGRESSIVE_CUSTOM: &str = "default<O3>,loop-unroll,loop-vectorize
 
 const PIPELINE_SIZE: &str = "default<Os>,loop-unroll,mergefunc,globalopt,deadargelim";
 
-pub(crate) fn get_optimization_pipeline(opt_level: CompilerOption_Optimize) -> &'static str {
+fn get_optimization_pipeline(opt_level: CompilerOption_Optimize) -> &'static str {
     match opt_level {
         CompilerOption_Optimize::O0 => PIPELINE_O0,
         CompilerOption_Optimize::O1 => PIPELINE_O1,
