@@ -1,0 +1,12 @@
+// @stdout: ok
+
+import std::libc{printf, malloc, free};
+
+fn foo() () {
+    return ();
+}
+
+pub fn main() {
+    const x: () = foo();
+    printf("ok\n");
+}
