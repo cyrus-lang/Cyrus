@@ -50,6 +50,7 @@ impl<'a> AnalysisContext<'a> {
             kind: TypedExprKind::UnionInit(union_init),
             ty: None,
             val_cat: ValueCategory::RValue,
+            analyzed: false,
             loc: struct_init.loc,
         };
     }
@@ -91,6 +92,7 @@ impl<'a> AnalysisContext<'a> {
             kind: TypedExprKind::UnionInit(union_init),
             ty: typed_expr.ty.clone(),
             val_cat: ValueCategory::RValue,
+            analyzed: true,
             loc: typed_expr.loc,
         };
     }
@@ -131,6 +133,7 @@ impl<'a> AnalysisContext<'a> {
                 kind: TypedExprKind::Poisoned,
                 ty: None,
                 val_cat: ValueCategory::Unknown,
+                analyzed: false,
                 loc: union_value.loc,
             });
         }
@@ -178,6 +181,7 @@ impl<'a> AnalysisContext<'a> {
             },
             ty: None,
             val_cat: ValueCategory::Unknown,
+            analyzed: false,
             loc: union_value.loc,
         })
     }

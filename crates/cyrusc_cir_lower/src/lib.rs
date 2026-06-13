@@ -1567,6 +1567,7 @@ impl<'a> CIRLower<'a> {
                 }),
                 ty: Some(method_call.operand.ty.clone().unwrap().pointer_inner().clone()),
                 val_cat: ValueCategory::LValue(Mutability::Var),
+                analyzed: true,
                 loc: method_call.loc,
             })
         }
@@ -1790,6 +1791,7 @@ impl<'a> CIRLower<'a> {
                 }),
                 ty: Some(field_access.operand.ty.clone().unwrap().pointer_inner().clone()),
                 val_cat: ValueCategory::LValue(Mutability::Var),
+                analyzed: true,
                 loc: field_access.loc,
             })
         }

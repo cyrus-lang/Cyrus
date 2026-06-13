@@ -41,6 +41,7 @@ impl<'a> AnalysisContext<'a> {
             kind: TypedExprKind::StructInit(struct_init),
             ty: typed_expr.ty.clone(),
             val_cat: ValueCategory::RValue,
+            analyzed: true,
             loc: typed_expr.loc,
         };
     }
@@ -81,6 +82,7 @@ impl<'a> AnalysisContext<'a> {
                 kind: TypedExprKind::Poisoned,
                 ty: None,
                 val_cat: ValueCategory::Unknown,
+                analyzed: false,
                 loc: struct_value.loc,
             });
         }
@@ -129,6 +131,7 @@ impl<'a> AnalysisContext<'a> {
             },
             ty: Some(ty),
             val_cat: ValueCategory::Unknown,
+            analyzed: false,
             loc: struct_value.loc,
         })
     }

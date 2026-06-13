@@ -78,6 +78,7 @@ impl<'a> AnalysisContext<'a> {
                         kind: TypedExprKind::Builtin(TypedBuiltin::BuiltinFunc(builtin_func_clone)),
                         ty: None,
                         val_cat: ValueCategory::RValue,
+                        analyzed: false,
                         loc,
                     };
 

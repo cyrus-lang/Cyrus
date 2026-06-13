@@ -366,6 +366,7 @@ impl<'a> Resolver<'a> {
                 }),
                 ty: None,
                 val_cat: ValueCategory::Unknown,
+                analyzed: false,
                 loc: ident.loc,
             });
         }
@@ -378,6 +379,7 @@ impl<'a> Resolver<'a> {
                 },
                 ty: None,
                 val_cat: ValueCategory::Unknown,
+                analyzed: false,
                 loc: ident.loc,
             });
         }
@@ -425,6 +427,7 @@ impl<'a> Resolver<'a> {
                         kind,
                         ty: None,
                         val_cat: ValueCategory::Unknown,
+                        analyzed: false,
                         loc: builtin.loc(),
                     })
                 }
@@ -1103,6 +1106,7 @@ impl<'a> Resolver<'a> {
             }),
             ty: None,
             val_cat: ValueCategory::Unknown,
+            analyzed: false,
             loc: struct_variant_init.loc,
         })
     }
@@ -2136,6 +2140,7 @@ impl<'a> Resolver<'a> {
                     },
                     ty: None,
                     val_cat: ValueCategory::Unknown,
+                    analyzed: false,
                     loc: module_import.loc,
                 });
             }
@@ -2149,6 +2154,7 @@ impl<'a> Resolver<'a> {
                 }),
                 ty: None,
                 val_cat: ValueCategory::Unknown,
+                analyzed: false,
                 loc: module_import.loc,
             });
         }
@@ -2180,6 +2186,7 @@ impl<'a> Resolver<'a> {
             kind,
             ty: None,
             val_cat: ValueCategory::Unknown,
+            analyzed: false,
             loc: unnamed_union_value.loc,
         })
     }
@@ -2222,8 +2229,9 @@ impl<'a> Resolver<'a> {
                 kind,
                 loc: unnamed_enum_value.loc,
             }),
-            val_cat: ValueCategory::Unknown,
             ty: None,
+            val_cat: ValueCategory::Unknown,
+            analyzed: false,
             loc: unnamed_enum_value.loc,
         })
     }
@@ -2241,6 +2249,7 @@ impl<'a> Resolver<'a> {
             }),
             ty: None,
             val_cat: ValueCategory::Unknown,
+            analyzed: false,
             loc: dynamic.loc,
         })
     }
@@ -2256,6 +2265,7 @@ impl<'a> Resolver<'a> {
             }),
             ty: None,
             val_cat: ValueCategory::Unknown,
+            analyzed: false,
             loc: tuple_member_access.loc,
         })
     }
@@ -2277,6 +2287,7 @@ impl<'a> Resolver<'a> {
             }),
             ty: None,
             val_cat: ValueCategory::Unknown,
+            analyzed: false,
             loc: tuple_value.loc,
         })
     }
@@ -2313,6 +2324,7 @@ impl<'a> Resolver<'a> {
                 }),
                 ty: None,
                 val_cat: ValueCategory::Unknown,
+                analyzed: false,
                 loc: lambda.loc,
             })
         })
@@ -2332,6 +2344,7 @@ impl<'a> Resolver<'a> {
             }),
             ty: None,
             val_cat: ValueCategory::Unknown,
+            analyzed: false,
             loc: field_access.loc,
         })
     }
@@ -2359,8 +2372,9 @@ impl<'a> Resolver<'a> {
                 is_thin_arrow: method_call.is_thin_arrow,
                 loc: method_call.loc,
             }),
-            val_cat: ValueCategory::Unknown,
             ty: None,
+            val_cat: ValueCategory::Unknown,
+            analyzed: false,
             loc: method_call.loc,
         })
     }
@@ -2388,6 +2402,7 @@ impl<'a> Resolver<'a> {
             }),
             ty: None,
             val_cat: ValueCategory::Unknown,
+            analyzed: false,
             loc: struct_init.loc,
         })
     }
@@ -2416,6 +2431,7 @@ impl<'a> Resolver<'a> {
             }),
             ty: None,
             val_cat: ValueCategory::Unknown,
+            analyzed: false,
             loc: unnamed_struct_value.loc,
         })
     }
@@ -2437,8 +2453,9 @@ impl<'a> Resolver<'a> {
                 dispatch: TypedFuncCallDispatch::Unresolved,
                 loc,
             }),
-            val_cat: ValueCategory::Unknown,
             ty: None,
+            val_cat: ValueCategory::Unknown,
+            analyzed: false,
             loc,
         })
     }
@@ -2458,6 +2475,7 @@ impl<'a> Resolver<'a> {
             }),
             ty: None,
             val_cat: ValueCategory::Unknown,
+            analyzed: false,
             loc: untyped_array.loc,
         })
     }
@@ -2479,6 +2497,7 @@ impl<'a> Resolver<'a> {
             }),
             ty: None,
             val_cat: ValueCategory::Unknown,
+            analyzed: false,
             loc: array.loc,
         })
     }
@@ -2496,6 +2515,7 @@ impl<'a> Resolver<'a> {
             }),
             ty: None,
             val_cat: ValueCategory::Unknown,
+            analyzed: false,
             loc: infix.loc,
         })
     }
@@ -2511,6 +2531,7 @@ impl<'a> Resolver<'a> {
             }),
             ty: None,
             val_cat: ValueCategory::Unknown,
+            analyzed: false,
             loc: prefix.loc,
         })
     }
@@ -2528,6 +2549,7 @@ impl<'a> Resolver<'a> {
                     kind: TypedExprKind::SemaType { ty: ty.clone(), loc },
                     ty: Some(ty),
                     val_cat: ValueCategory::Unknown,
+                    analyzed: false,
                     loc,
                 });
             }
@@ -2536,6 +2558,7 @@ impl<'a> Resolver<'a> {
         Some(TypedExpr {
             kind: TypedExprKind::Symbol(TypedSymbolExpr::Unresolved { symbol_id, loc }),
             val_cat: ValueCategory::Unknown,
+            analyzed: false,
             ty: None,
             loc,
         })
@@ -2554,6 +2577,7 @@ impl<'a> Resolver<'a> {
             }),
             ty: None,
             val_cat: ValueCategory::Unknown,
+            analyzed: false,
             loc: assign.loc,
         })
     }
@@ -2571,6 +2595,7 @@ impl<'a> Resolver<'a> {
             kind: TypedExprKind::Literal(typed_literal.clone()),
             ty: None,
             val_cat: ValueCategory::Unknown,
+            analyzed: false,
             loc: typed_literal.loc,
         })
     }
@@ -2656,6 +2681,7 @@ impl<'a> Resolver<'a> {
             }),
             ty: None,
             val_cat: ValueCategory::Unknown,
+            analyzed: false,
             loc: unary.loc,
         })
     }
@@ -2672,6 +2698,7 @@ impl<'a> Resolver<'a> {
             }),
             ty: None,
             val_cat: ValueCategory::Unknown,
+            analyzed: false,
             loc: array_index.loc,
         })
     }
@@ -2686,6 +2713,7 @@ impl<'a> Resolver<'a> {
             }),
             ty: None,
             val_cat: ValueCategory::Unknown,
+            analyzed: false,
             loc: addr_of.loc,
         })
     }
@@ -2700,6 +2728,7 @@ impl<'a> Resolver<'a> {
             }),
             ty: None,
             val_cat: ValueCategory::Unknown,
+            analyzed: false,
             loc: deref.loc,
         })
     }

@@ -20,6 +20,7 @@ pub(crate) fn lower_assign_to_infix_expr(assign: &mut TypedAssignExpr) -> TypedE
             ty: None,
             loc: assign.loc,
             val_cat: ValueCategory::RValue,
+            analyzed: false,
         }),
         kind: AssignKind::Default,
         loc: assign.loc,

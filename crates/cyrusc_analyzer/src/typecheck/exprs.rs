@@ -64,6 +64,12 @@ impl<'a> AnalysisContext<'a> {
             }
         }
 
+        if expr.analyzed {
+            return expr.ty.clone();
+        }
+
+        expr.analyzed = true;
+
         self.lower_expr_pre_analysis(expr, expected_type.clone());
 
         let expr_type = match &mut expr.kind {

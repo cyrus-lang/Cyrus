@@ -27,8 +27,9 @@ impl<'a> AnalysisContext<'a> {
                 kind: LiteralKind::Null,
                 loc: prefix_expr.loc,
             }),
-            val_cat: ValueCategory::RValue,
             ty: None,
+            val_cat: ValueCategory::RValue,
+            analyzed: false,
             loc: prefix_expr.loc,
         };
 
@@ -44,8 +45,9 @@ impl<'a> AnalysisContext<'a> {
 
             Some(TypedExpr {
                 kind: new_infix_expr,
-                val_cat: ValueCategory::RValue,
                 ty: None,
+                val_cat: ValueCategory::RValue,
+                analyzed: false,
                 loc: prefix_expr.loc,
             })
         } else {

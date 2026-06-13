@@ -22,6 +22,7 @@ pub struct TypedExpr {
     pub kind: TypedExprKind,
     pub ty: Option<SemaType>,
     pub val_cat: ValueCategory,
+    pub analyzed: bool,
     pub loc: Loc,
 }
 
@@ -614,6 +615,7 @@ pub fn literal_expr_from_const_int<T: Integer>(value: T, loc: Loc) -> TypedExpr 
         }),
         ty: None,
         val_cat: ValueCategory::RValue,
+        analyzed: false,
         loc,
     }
 }

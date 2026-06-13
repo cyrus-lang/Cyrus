@@ -244,6 +244,7 @@ impl<'a> AnalysisContext<'a> {
                     loc,
                 }),
                 ty: Some(element_type.clone()),
+                analyzed: false,
                 val_cat,
                 loc,
             };

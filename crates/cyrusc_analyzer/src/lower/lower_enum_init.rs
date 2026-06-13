@@ -57,6 +57,7 @@ impl<'a> AnalysisContext<'a> {
             kind: TypedExprKind::EnumInit(enum_init),
             ty: None,
             val_cat: ValueCategory::RValue,
+            analyzed: false,
             loc: field_access.loc,
         };
     }
@@ -104,6 +105,7 @@ impl<'a> AnalysisContext<'a> {
                 kind: TypedExprKind::EnumInit(enum_init),
                 ty: None,
                 val_cat: ValueCategory::RValue,
+                analyzed: false,
                 loc: method_call.loc,
             };
         }
@@ -135,6 +137,7 @@ impl<'a> AnalysisContext<'a> {
             kind: TypedExprKind::EnumInit(enum_init),
             ty: typed_expr.ty.clone(),
             val_cat: ValueCategory::RValue,
+            analyzed: true,
             loc: typed_expr.loc,
         };
     }
@@ -161,6 +164,7 @@ impl<'a> AnalysisContext<'a> {
             kind: TypedExprKind::EnumInit(enum_init),
             ty: typed_expr.ty.clone(),
             val_cat: ValueCategory::RValue,
+            analyzed: true,
             loc: typed_expr.loc,
         };
     }
