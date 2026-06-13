@@ -1,0 +1,8 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 The Cyrus Language
+
+struct Range<T> {
+    pub start: T;
+    pub end: T;
+    pub inclusive: bool;
+}
