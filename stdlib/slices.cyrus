@@ -18,12 +18,16 @@ pub struct Slice<T> {
 
         return .Some(self->ptr + index);
     }
-
-    pub inline fn range(const self, const start: usize, const end: usize) Self {
-        return Self { ptr: self.ptr + start, len: end - start };
+    
+    pub inline fn range(&const self, const start: usize, const end: usize) Self {
+        return Self { ptr: self->ptr + start, len: end - start };
     }
 
-    pub inline fn len(const self) usize {
-        return self.len;
+    pub inline fn range_inclusive(&const self, const start: usize, const end: usize) Self {
+        return Self { ptr: self->ptr + start, len: end - start + 1 };
+    }
+
+    pub inline fn len(&const self) usize {
+        return self->len;
     }
 }

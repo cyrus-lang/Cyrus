@@ -1,0 +1,19 @@
+// @stdout: 50
+
+import std::libc{printf};
+
+struct Box<T> {
+    pub value: T;
+
+    pub fn inst(&self, x: T) Self* {
+        self->value = x;
+        return self;
+    }
+}
+
+pub fn main() {
+    var box = Box { value: 1 };
+    const box2 = box.inst(5)->inst(50);
+
+    printf("%d\n", box2->value);
+}
