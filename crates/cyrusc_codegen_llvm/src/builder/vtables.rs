@@ -17,15 +17,15 @@ impl<'ll> CodeGenIRBuilder<'ll> {
 
             let method_decls = vtable_info.cir_method_decls.as_ref().unwrap();
 
-            let ptr_type = self.llvmctx.ptr_type(AddressSpace::default());
+            let ptr_type = self.llvm_ctx.ptr_type(AddressSpace::default());
 
             let field_types: Vec<BasicTypeEnum<'ll>> = method_decls.iter().map(|_| ptr_type.into()).collect();
 
-            let vtable_struct_type = self.llvmctx.struct_type(&field_types, false);
+            let vtable_struct_type = self.llvm_ctx.struct_type(&field_types, false);
 
             let global_value = {
-                let llvmmodule = self.llvmmodule.borrow_mut();
-                llvmmodule.add_global(vtable_struct_type, None, &vtable_info.abi_name.unwrap())
+                let llvm_module = self.llvm_module.borrow_mut();
+                llvm_module.add_global(vtable_struct_type, None, &vtable_info.abi_name.unwrap())
             };
 
             global_value.set_linkage(Linkage::Internal);
@@ -76,7 +76,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         let global_value = ir_value.as_global().unwrap();
 
         let struct_values: Vec<BasicValueEnum<'ll>> = fn_ptrs.iter().map(|ptr| ptr.as_basic_value_enum()).collect();
-        let struct_const = self.llvmctx.const_struct(&struct_values, false);
+        let struct_const = self.llvm_ctx.const_struct(&struct_values, false);
 
         global_value.set_initializer(&struct_const);
         global_value.set_constant(true);

@@ -52,13 +52,13 @@ impl<'ll> CodeGenIRBuilder<'ll> {
 
         let func_name = &func_decl.name;
 
-        let llvmmodule = self.llvmmodule.borrow();
+        let llvm_module = self.llvm_module.borrow();
 
-        let llvm_func_value = llvmmodule
+        let llvm_func_value = llvm_module
             .get_function(func_name)
-            .unwrap_or_else(|| llvmmodule.add_function(func_name, llvm_func_type, None));
+            .unwrap_or_else(|| llvm_module.add_function(func_name, llvm_func_type, None));
 
-        apply_func_modifiers(self.llvmctx, &llvm_func_value, &func_decl.modifiers);
+        apply_func_modifiers(self.llvm_ctx, &llvm_func_value, &func_decl.modifiers);
 
         self.insert_local_ir_value(
             func_decl.irv_id,
@@ -129,14 +129,14 @@ impl<'ll> CodeGenIRBuilder<'ll> {
                     );
                 }
                 ABIArgKind::DirectPair { lo: lo_ty, hi: hi_ty } => {
-                    let ptr_type = self.llvmctx.ptr_type(AddressSpace::default());
+                    let ptr_type = self.llvm_ctx.ptr_type(AddressSpace::default());
 
-                    let coerced_type = self.llvmctx.struct_type(
+                    let coerced_type = self.llvm_ctx.struct_type(
                         &[
-                            abi_type_to_llvm_type(self.llvmctx, &self.target.info, lo_ty)
+                            abi_type_to_llvm_type(self.llvm_ctx, &self.target.info, lo_ty)
                                 .try_into()
                                 .unwrap(),
-                            abi_type_to_llvm_type(self.llvmctx, &self.target.info, hi_ty)
+                            abi_type_to_llvm_type(self.llvm_ctx, &self.target.info, hi_ty)
                                 .try_into()
                                 .unwrap(),
                         ],
@@ -316,7 +316,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         unsafe {
             set_debug_location(
                 &self.dctx,
-                self.llvmctx,
+                self.llvm_ctx,
                 self.llvmbuilder,
                 loc.line.try_into().unwrap(),
                 loc.column.try_into().unwrap(),
@@ -375,7 +375,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         let llvm_func_value = self.emit_func_decl(&cir_func_decl);
         llvm_func_value.set_linkage(inkwell::module::Linkage::Private);
         if lambda.inline {
-            apply_inlining_func(self.llvmctx, &llvm_func_value, Inlining::Inline);
+            apply_inlining_func(self.llvm_ctx, &llvm_func_value, Inlining::Inline);
         }
 
         let func_metadata = self.emit_func_metadata(&cir_func_type);
@@ -512,15 +512,15 @@ impl<'ll> CodeGenIRBuilder<'ll> {
     }
 
     pub(crate) fn emit_abi_pair_llvm_type(&self, lo: &ABIType, hi: &ABIType) -> StructType<'ll> {
-        let lo_ty: BasicTypeEnum<'ll> = abi_type_to_llvm_type(self.llvmctx, &self.target.info, lo)
+        let lo_ty: BasicTypeEnum<'ll> = abi_type_to_llvm_type(self.llvm_ctx, &self.target.info, lo)
             .try_into()
             .unwrap();
 
-        let hi_ty: BasicTypeEnum<'ll> = abi_type_to_llvm_type(self.llvmctx, &self.target.info, hi)
+        let hi_ty: BasicTypeEnum<'ll> = abi_type_to_llvm_type(self.llvm_ctx, &self.target.info, hi)
             .try_into()
             .unwrap();
 
-        self.llvmctx.struct_type(&[lo_ty.into(), hi_ty.into()], false)
+        self.llvm_ctx.struct_type(&[lo_ty.into(), hi_ty.into()], false)
     }
 
     fn emit_direct_arg(
@@ -553,7 +553,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
             InternalValueKind::LValue(ptr) => {
                 let pair_ty = self.emit_abi_pair_llvm_type(&lo, &hi);
 
-                let lo_ty: BasicTypeEnum<'ll> = abi_type_to_llvm_type(self.llvmctx, &self.target.info, &lo)
+                let lo_ty: BasicTypeEnum<'ll> = abi_type_to_llvm_type(self.llvm_ctx, &self.target.info, &lo)
                     .try_into()
                     .unwrap();
 
@@ -561,7 +561,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
 
                 let lo_val = self.llvmbuilder.build_load(lo_ty, lo_ptr, "lo").unwrap();
 
-                let hi_ty: BasicTypeEnum<'ll> = abi_type_to_llvm_type(self.llvmctx, &self.target.info, &hi)
+                let hi_ty: BasicTypeEnum<'ll> = abi_type_to_llvm_type(self.llvm_ctx, &self.target.info, &hi)
                     .try_into()
                     .unwrap();
 
@@ -592,8 +592,8 @@ impl<'ll> CodeGenIRBuilder<'ll> {
 
                 BasicValueEnum::IntValue(int_val) => {
                     // Split i128 into two i64 values (low and high parts)
-                    let i64_type = self.llvmctx.i64_type();
-                    let i128_type = self.llvmctx.i128_type();
+                    let i64_type = self.llvm_ctx.i64_type();
+                    let i128_type = self.llvm_ctx.i128_type();
 
                     let is_signed = value.ty.is_signed_integer();
 
@@ -680,7 +680,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
                     .build_extract_value(struct_value, 0, "expand.lo")
                     .unwrap();
 
-                let lo_llvm: BasicTypeEnum<'ll> = abi_type_to_llvm_type(self.llvmctx, &self.target.info, &lo)
+                let lo_llvm: BasicTypeEnum<'ll> = abi_type_to_llvm_type(self.llvm_ctx, &self.target.info, &lo)
                     .try_into()
                     .unwrap();
 
@@ -706,7 +706,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
                     .build_extract_value(struct_value, offset_hi as u32, "expand.hi")
                     .unwrap();
 
-                let hi_llvm: BasicTypeEnum<'ll> = abi_type_to_llvm_type(self.llvmctx, &self.target.info, &hi)
+                let hi_llvm: BasicTypeEnum<'ll> = abi_type_to_llvm_type(self.llvm_ctx, &self.target.info, &hi)
                     .try_into()
                     .unwrap();
 
@@ -773,7 +773,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         abi_arg_info: &ABIArgInfo,
     ) {
         // pass indirectly via pointer
-        let llvm_ty: BasicTypeEnum<'ll> = abi_type_to_llvm_type(self.llvmctx, &self.target.info, &ty)
+        let llvm_ty: BasicTypeEnum<'ll> = abi_type_to_llvm_type(self.llvm_ctx, &self.target.info, &ty)
             .try_into()
             .unwrap();
 
@@ -825,10 +825,10 @@ impl<'ll> CodeGenIRBuilder<'ll> {
 
         if abi_func_info.ret_info.kind.is_indirect_sret() {
             let ret_ty = &abi_func_info.ret_info.abi_type;
-            let llvm_ret_ty = abi_type_to_llvm_type(self.llvmctx, &self.target.info, ret_ty);
+            let llvm_ret_ty = abi_type_to_llvm_type(self.llvm_ctx, &self.target.info, ret_ty);
 
             let attr = unsafe {
-                LLVMCreateTypeAttribute(self.llvmctx.as_ctx_ref(), sret_attr_kind, llvm_ret_ty.as_type_ref())
+                LLVMCreateTypeAttribute(self.llvm_ctx.as_ctx_ref(), sret_attr_kind, llvm_ret_ty.as_type_ref())
             };
 
             unsafe {
@@ -841,11 +841,11 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         for (i, param_info) in abi_func_info.params_infos.iter().enumerate() {
             if param_info.is_indirect_by_val() {
                 let struct_type = &abi_func_info.params_types[i];
-                let llvm_struct_type = abi_type_to_llvm_type(self.llvmctx, &self.target.info, struct_type);
+                let llvm_struct_type = abi_type_to_llvm_type(self.llvm_ctx, &self.target.info, struct_type);
 
                 let attr = unsafe {
                     LLVMCreateTypeAttribute(
-                        self.llvmctx.as_ctx_ref(),
+                        self.llvm_ctx.as_ctx_ref(),
                         byval_attr_kind,
                         llvm_struct_type.as_type_ref(),
                     )
@@ -875,10 +875,10 @@ impl<'ll> CodeGenIRBuilder<'ll> {
 
         if abi_func_info.ret_info.kind.is_indirect_sret() {
             let ret_ty = &abi_func_info.ret_info.abi_type;
-            let llvm_ret_ty = abi_type_to_llvm_type(self.llvmctx, &self.target.info, ret_ty);
+            let llvm_ret_ty = abi_type_to_llvm_type(self.llvm_ctx, &self.target.info, ret_ty);
 
             let attr = unsafe {
-                LLVMCreateTypeAttribute(self.llvmctx.as_ctx_ref(), sret_attr_kind, llvm_ret_ty.as_type_ref())
+                LLVMCreateTypeAttribute(self.llvm_ctx.as_ctx_ref(), sret_attr_kind, llvm_ret_ty.as_type_ref())
             };
 
             unsafe {
@@ -894,10 +894,10 @@ impl<'ll> CodeGenIRBuilder<'ll> {
             }
 
             let param_type = abi_func_info.params_types.get(i).unwrap().clone();
-            let pointee_type = abi_type_to_llvm_type(self.llvmctx, &self.target.info, &param_type);
+            let pointee_type = abi_type_to_llvm_type(self.llvm_ctx, &self.target.info, &param_type);
 
             let attr = unsafe {
-                LLVMCreateTypeAttribute(self.llvmctx.as_ctx_ref(), byval_attr_kind, pointee_type.as_type_ref())
+                LLVMCreateTypeAttribute(self.llvm_ctx.as_ctx_ref(), byval_attr_kind, pointee_type.as_type_ref())
             };
 
             // index is 1-based, 0 is return

@@ -8,6 +8,7 @@ use crate::{
         debug_info::{DebugContext, emit_debug_module_flags, finalize_debug},
         target_machine::{create_target_machine, llvm_code_model, llvm_opt_level, llvm_reloc_mode},
     },
+    optimizer::optimize_module_with_custom_passes,
 };
 use cyrusc_buildmanifest::BuildManifest;
 use cyrusc_compiler::{
@@ -20,7 +21,7 @@ use cyrusc_diagcentral::exit_with_msg;
 use cyrusc_internal::{cir::cir::CIRModule, compiler_options::CompilerOptions, vtable::VTableRegistry};
 use cyrusc_scaffold_parser::OBJECT_CACHE_DIR_FILENAME;
 use cyrusc_source_loc::SourceMap;
-use cyrusc_tui_utils::tui_skipped;
+use cyrusc_tui_utils::{tui_compiled, tui_skipped};
 use inkwell::{
     builder::Builder,
     context::Context,
@@ -37,12 +38,13 @@ use std::{
 mod asan;
 mod builder;
 mod llvm;
+mod optimizer;
 
 pub struct CodeGenLLVM {
     ctx: Rc<CodeGenContext>,
     opts: CompilerOptions,
     build_dir: PathBuf,
-    llvmtm: TargetMachine,
+    llvm_target_machine: TargetMachine,
     build_manifest: Arc<Mutex<BuildManifest>>,
     entry_module_file_path: PathBuf,
     source_map: Arc<SourceMap>,
@@ -59,20 +61,20 @@ impl CodeGenLLVM {
         entry_module_file_path: PathBuf,
         source_map: Arc<SourceMap>,
     ) -> Self {
-        let llvmtm = create_target_machine(
+        let llvm_target_machine = create_target_machine(
             target,
             target_triple,
             opts.cpu.clone(),
             llvm_reloc_mode(opts.reloc_mode.clone()),
             llvm_code_model(opts.code_model.clone()),
-            llvm_opt_level(opts.opt_level.unwrap_or(0).try_into().unwrap()),
+            llvm_opt_level(opts.opt_level.unwrap_or_default()),
         );
 
         Self {
             ctx,
             opts,
             build_dir,
-            llvmtm,
+            llvm_target_machine,
             build_manifest,
             entry_module_file_path,
             source_map,
@@ -89,16 +91,11 @@ impl CodeGenLLVM {
         source_map: Arc<SourceMap>,
     ) {
         {
-            let llvmmodule = owned_module.module.borrow();
-            llvmmodule.set_triple(&self.llvmtm.get_triple());
-            llvmmodule.set_data_layout(&self.llvmtm.get_target_data().get_data_layout());
+            let llvm_module = owned_module.module.borrow();
+            llvm_module.set_triple(&self.llvm_target_machine.get_triple());
+            llvm_module.set_data_layout(&self.llvm_target_machine.get_target_data().get_data_layout());
 
-            enable_asan_for_owned_module(
-                &self.opts,
-                owned_module,
-                &self.llvmtm,
-                self.opts.opt_level.unwrap_or_default(),
-            );
+            enable_asan_for_owned_module(&self.opts, owned_module, &self.llvm_target_machine);
         }
 
         let mut codegen_ir_builder = CodeGenIRBuilder::new(
@@ -106,7 +103,7 @@ impl CodeGenLLVM {
             cir_module,
             &self.ctx.target,
             &builder,
-            &self.llvmtm,
+            &self.llvm_target_machine,
             dctx,
             vtable_registry,
             source_map,
@@ -114,13 +111,24 @@ impl CodeGenLLVM {
 
         codegen_ir_builder.emit_module();
 
+        // run optimizer
+        {
+            let llvm_module = owned_module.module.borrow();
+
+            let opt_level = self.opts.opt_level.unwrap_or_default();
+
+            optimize_module_with_custom_passes(&llvm_module, opt_level).unwrap();
+        }
+
+        tui_compiled(cir_module.file_path.clone());
+
         unsafe { finalize_debug(&codegen_ir_builder.dctx) };
         {
-            let llvmmodule = owned_module.module.borrow();
+            let llvm_module = owned_module.module.borrow();
 
-            unsafe { emit_debug_module_flags(llvmmodule.as_mut_ptr()) };
+            unsafe { emit_debug_module_flags(llvm_module.as_mut_ptr()) };
 
-            if let Err(err) = llvmmodule.verify() {
+            if let Err(err) = llvm_module.verify() {
                 eprintln!("LLVM Module Error: {}", err)
             }
         }
@@ -156,7 +164,10 @@ impl CodeGenLLVM {
             let mut assembly_path = assembly_dir_path.join(module.get_name().to_str().unwrap());
             assembly_path.set_extension("asm");
 
-            if let Err(llvm_str) = self.llvmtm.write_to_file(&module, FileType::Assembly, &assembly_path) {
+            if let Err(llvm_str) = self
+                .llvm_target_machine
+                .write_to_file(&module, FileType::Assembly, &assembly_path)
+            {
                 exit_with_msg!(llvm_str.to_string());
             }
             drop(module);
@@ -169,7 +180,10 @@ impl CodeGenLLVM {
             let mut object_path = object_dir_path.join(module.get_name().to_str().unwrap());
             object_path.set_extension("o");
 
-            if let Err(llvm_str) = self.llvmtm.write_to_file(&module, FileType::Object, &object_path) {
+            if let Err(llvm_str) = self
+                .llvm_target_machine
+                .write_to_file(&module, FileType::Object, &object_path)
+            {
                 exit_with_msg!(llvm_str.to_string());
             }
             drop(module);
@@ -232,7 +246,7 @@ impl CodeGenBackend<'static, OwnedModule> for CodeGenLLVM {
         {
             let module = owned_module.module.borrow();
 
-            self.llvmtm
+            self.llvm_target_machine
                 .write_to_file(&module, FileType::Object, &object_path)
                 .expect("Failed to write LLVM object file")
         }
@@ -252,14 +266,14 @@ impl CodeGenBackend<'static, OwnedModule> for CodeGenLLVM {
         };
         let features = TargetMachine::get_host_cpu_features().to_string();
 
-        let target_triple = self.llvmtm.get_triple();
+        let target_triple = self.llvm_target_machine.get_triple();
 
         let target = InkwellTarget::from_triple(&target_triple).unwrap();
         let target_machine = match target.create_target_machine(
             &target_triple,
             &cpu,
             &features,
-            llvm_opt_level(self.opts.opt_level.unwrap_or(0).try_into().unwrap()),
+            llvm_opt_level(self.opts.opt_level.unwrap_or_default()),
             llvm_reloc_mode(self.opts.reloc_mode.clone()),
             llvm_code_model(self.opts.code_model.clone()),
         ) {
@@ -276,27 +290,35 @@ impl CodeGenBackend<'static, OwnedModule> for CodeGenLLVM {
             ByteOrdering::BigEndian => "Big".to_string(),
         };
 
-        TargetMachineInfo {
-            triple: target_machine.get_triple().to_string(),
-            cpu_name: target_machine.get_cpu().to_string(),
-            data_layout: target_machine
+        {
+            let data_layout = target_machine
                 .get_target_data()
                 .get_data_layout()
                 .as_str()
                 .to_str()
                 .unwrap()
-                .to_string(),
-            endianness,
-            pointer_size_bits: target_machine.get_target_data().get_pointer_byte_size(None),
-            opt_level: self
+                .to_string();
+
+            let pointer_size_bits = target_machine.get_target_data().get_pointer_byte_size(None);
+
+            let opt_level = self
                 .opts
                 .opt_level
-                .and_then(|opt| Some(format!("O{}", opt)))
-                .unwrap_or("Default".to_string()),
-            reloc_mode: self.opts.reloc_mode.to_string(),
-            code_model: self.opts.code_model.to_string(),
-            link_static: self.opts.linker_options.link_static,
-            pie: self.opts.linker_options.pie,
+                .and_then(|opt| Some(opt.to_string()))
+                .unwrap_or("Default".to_string());
+
+            TargetMachineInfo {
+                triple: target_machine.get_triple().to_string(),
+                cpu_name: target_machine.get_cpu().to_string(),
+                reloc_mode: self.opts.reloc_mode.to_string(),
+                code_model: self.opts.code_model.to_string(),
+                link_static: self.opts.linker_options.link_static,
+                pie: self.opts.linker_options.pie,
+                data_layout,
+                endianness,
+                pointer_size_bits,
+                opt_level,
+            }
         }
     }
 

@@ -68,7 +68,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         unsafe {
             set_debug_location(
                 &self.dctx,
-                self.llvmctx,
+                self.llvm_ctx,
                 self.llvmbuilder,
                 expr.loc.line.try_into().unwrap(),
                 expr.loc.column.try_into().unwrap(),
@@ -243,7 +243,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
     ) -> BasicValueEnum<'ll> {
         let from_type = value.get_type();
         let target_basic_type: BasicTypeEnum<'ll> =
-            abi_type_to_llvm_type(self.llvmctx, &self.target.info, &target_type)
+            abi_type_to_llvm_type(self.llvm_ctx, &self.target.info, &target_type)
                 .try_into()
                 .unwrap();
 
@@ -368,7 +368,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
                     let ptr_width = self.llvmtm.get_target_data().get_pointer_byte_size(None) * 8;
 
                     if int_type.get_bit_width() < ptr_width {
-                        let ptr_int = self.llvmctx.custom_width_int_type(ptr_width);
+                        let ptr_int = self.llvm_ctx.custom_width_int_type(ptr_width);
                         let tmp = self
                             .llvmbuilder
                             .build_ptr_to_int(basic_value.into_pointer_value(), ptr_int, "ptr_to_int")
@@ -518,7 +518,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         let array_ptr = array_lvalue.as_basic_value().into_pointer_value();
         let element_type = array_lvalue.ty.as_array().unwrap().element_type;
 
-        let zero = self.llvmctx.i32_type().const_int(0, false);
+        let zero = self.llvm_ctx.i32_type().const_int(0, false);
         let first_element = unsafe {
             self.llvmbuilder
                 .build_in_bounds_gep(
@@ -612,7 +612,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
 
         let unit_int_value = {
             if is_pointer {
-                self.llvmctx.i64_type().const_int(1, false)
+                self.llvm_ctx.i64_type().const_int(1, false)
             } else {
                 let is_signed = ty.is_signed_integer();
                 let basic_type: BasicTypeEnum<'ll> = self.emit_ty(ty.clone()).try_into().unwrap();
@@ -976,7 +976,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
             .try_into()
             .unwrap();
 
-        let i64_type = self.llvmctx.i64_type();
+        let i64_type = self.llvm_ctx.i64_type();
         let gep_index = if index.get_type() == i64_type {
             index
         } else {
@@ -1007,7 +1007,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
             .unwrap();
 
         // negate the index for subtraction
-        let i64_type = self.llvmctx.i64_type();
+        let i64_type = self.llvm_ctx.i64_type();
         let index_i64 = if index.get_type() == i64_type {
             index
         } else {
@@ -1502,7 +1502,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
                     .map(|fld| self.emit_ty(fld.ty.clone()).try_into().unwrap())
                     .collect();
 
-                let payload_struct_type = self.llvmctx.struct_type(&field_types, false);
+                let payload_struct_type = self.llvm_ctx.struct_type(&field_types, false);
 
                 let mut payload_value = payload_struct_type.get_undef();
 
@@ -1544,7 +1544,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         }
 
         let value = rvalue.as_basic_value();
-        let ptr_type = self.llvmctx.ptr_type(AddressSpace::default());
+        let ptr_type = self.llvm_ctx.ptr_type(AddressSpace::default());
 
         if llvm_union_type.is_struct_type() {
             // get pointer to storage field (largest field)
@@ -1624,8 +1624,8 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         };
 
         let current_func = self.cur_func.unwrap();
-        let payload_block = self.llvmctx.append_basic_block(current_func, "enum_cmp.payload");
-        let exit_block = self.llvmctx.append_basic_block(current_func, "enum_cmp.exit");
+        let payload_block = self.llvm_ctx.append_basic_block(current_func, "enum_cmp.payload");
+        let exit_block = self.llvm_ctx.append_basic_block(current_func, "enum_cmp.exit");
 
         let entry_block = self.blockreg.cur_block.unwrap();
 
@@ -1644,7 +1644,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
 
         let memcmp_result = self.intrinsic_array_memcmp(payload1, payload2);
 
-        let i32_zero = self.llvmctx.i32_type().const_zero();
+        let i32_zero = self.llvm_ctx.i32_type().const_zero();
         let payload_eq = self
             .llvmbuilder
             .build_int_compare(inkwell::IntPredicate::EQ, memcmp_result, i32_zero, "payload_eq")
@@ -1658,10 +1658,10 @@ impl<'ll> CodeGenIRBuilder<'ll> {
 
         let phi = self
             .llvmbuilder
-            .build_phi(self.llvmctx.bool_type(), "enum_cmp_phi")
+            .build_phi(self.llvm_ctx.bool_type(), "enum_cmp_phi")
             .unwrap();
 
-        phi.add_incoming(&[(&self.llvmctx.bool_type().const_zero(), entry_block)]);
+        phi.add_incoming(&[(&self.llvm_ctx.bool_type().const_zero(), entry_block)]);
         phi.add_incoming(&[(&payload_eq, payload_cmp_block)]);
 
         InternalValue::new(
@@ -1704,7 +1704,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
                         element_type: Box::new(CIRType::Plain(PlainType::Int8)),
                         len: *size as usize,
                     });
-                    let padding_array_value = self.llvmctx.i8_type().array_type(*size).const_zero();
+                    let padding_array_value = self.llvm_ctx.i8_type().array_type(*size).const_zero();
                     values.push((
                         None,
                         InternalValue::new(
@@ -1850,10 +1850,10 @@ impl<'ll> CodeGenIRBuilder<'ll> {
             .unwrap()
             .into_pointer_value();
 
-        let ptr_type = self.llvmctx.ptr_type(AddressSpace::default());
+        let ptr_type = self.llvm_ctx.ptr_type(AddressSpace::default());
 
         let method_gep = unsafe {
-            let idx = self.llvmctx.i64_type().const_int(method_idx as u64, false);
+            let idx = self.llvm_ctx.i64_type().const_int(method_idx as u64, false);
             self.llvmbuilder
                 .build_gep(ptr_type, vtable_ptr, &[idx], "vtable.method.gep")
                 .unwrap()
@@ -2132,7 +2132,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
 
         let basic_value = match &lit.kind {
             CIRLiteralKind::Bool(value) => {
-                BasicValueEnum::IntValue(self.llvmctx.bool_type().const_int(*value as u64, false))
+                BasicValueEnum::IntValue(self.llvm_ctx.bool_type().const_int(*value as u64, false))
             }
             CIRLiteralKind::Integer(value, _) => {
                 let int_type = ty.into_int_type();
@@ -2150,10 +2150,10 @@ impl<'ll> CodeGenIRBuilder<'ll> {
             }
             CIRLiteralKind::Float(value) => BasicValueEnum::FloatValue(ty.into_float_type().const_float(*value)),
             CIRLiteralKind::Char(value) => {
-                BasicValueEnum::IntValue(self.llvmctx.i8_type().const_int(*value as u64, false))
+                BasicValueEnum::IntValue(self.llvm_ctx.i8_type().const_int(*value as u64, false))
             }
             CIRLiteralKind::Null => {
-                BasicValueEnum::PointerValue(self.llvmctx.ptr_type(AddressSpace::default()).const_null())
+                BasicValueEnum::PointerValue(self.llvm_ctx.ptr_type(AddressSpace::default()).const_null())
             }
             CIRLiteralKind::CString(value) => self.emit_cstring(value.clone()),
             CIRLiteralKind::ByteString(value) => self.emit_bytestring(value.clone()),
@@ -2163,28 +2163,28 @@ impl<'ll> CodeGenIRBuilder<'ll> {
     }
 
     pub(crate) fn emit_null(&self, ty: CIRType) -> InternalValue<'ll> {
-        let basic_value = BasicValueEnum::PointerValue(self.llvmctx.ptr_type(AddressSpace::default()).const_null());
+        let basic_value = BasicValueEnum::PointerValue(self.llvm_ctx.ptr_type(AddressSpace::default()).const_null());
 
         InternalValue::new(ty, InternalValueKind::RValue(basic_value))
     }
 
     pub(crate) fn emit_cstring(&self, value: String) -> BasicValueEnum<'ll> {
-        let const_str = self.llvmctx.const_string(value.as_bytes(), true);
+        let const_str = self.llvm_ctx.const_string(value.as_bytes(), true);
 
-        let llvmmodule = self.llvmmodule.borrow();
-        let global_str = llvmmodule.add_global(const_str.get_type(), None, ".cstring");
+        let llvm_module = self.llvm_module.borrow();
+        let global_str = llvm_module.add_global(const_str.get_type(), None, ".cstring");
         global_str.set_initializer(&const_str);
         global_str.set_constant(true);
         global_str.set_unnamed_addr(true);
         global_str.set_linkage(inkwell::module::Linkage::Private);
         global_str.set_alignment(1);
-        drop(llvmmodule);
+        drop(llvm_module);
 
         global_str.as_pointer_value().into()
     }
 
     fn emit_bytestring(&self, value: String) -> BasicValueEnum<'ll> {
-        self.llvmctx.const_string(value.as_bytes(), true).into()
+        self.llvm_ctx.const_string(value.as_bytes(), true).into()
     }
 }
 

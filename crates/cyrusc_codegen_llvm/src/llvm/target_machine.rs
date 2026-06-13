@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 The Cyrus Language
 
-use cyrusc_internal::compiler_options::{CompilerOption_CodeModel, CompilerOption_RelocMode};
+use cyrusc_internal::compiler_options::{CompilerOption_CodeModel, CompilerOption_Optimize, CompilerOption_RelocMode};
 use cyrusc_tui_utils::tui_error;
 use inkwell::{
     OptimizationLevel,
@@ -53,12 +53,13 @@ pub(crate) fn llvm_code_model(code_model: CompilerOption_CodeModel) -> CodeModel
     }
 }
 
-pub(crate) fn llvm_opt_level(opt_level: u32) -> OptimizationLevel {
+pub(crate) fn llvm_opt_level(opt_level: CompilerOption_Optimize) -> OptimizationLevel {
     match opt_level {
-        0 => OptimizationLevel::Default,
-        1 => OptimizationLevel::None,
-        2 => OptimizationLevel::Less,
-        3 => OptimizationLevel::Aggressive,
-        _ => panic!("Unknown llvm optimization level."),
+        CompilerOption_Optimize::O0 => OptimizationLevel::None,    // O0
+        CompilerOption_Optimize::O1 => OptimizationLevel::Less,    // O1
+        CompilerOption_Optimize::O2 => OptimizationLevel::Default, // O2
+        CompilerOption_Optimize::O3 => OptimizationLevel::Aggressive, // O3
+        CompilerOption_Optimize::Os => OptimizationLevel::Default, // O2 with size optimization (handled via pipeline)
+        CompilerOption_Optimize::Oz => OptimizationLevel::Default, // O2 with aggressive size optimization
     }
 }

@@ -33,3 +33,7 @@ pub fn tui_error(msg: String) {
 pub fn tui_warning(msg: String) {
     print_diag("warning", &msg);
 }
+
+pub fn tui_note(msg: String) {
+    print_diag("note", &msg);
+}

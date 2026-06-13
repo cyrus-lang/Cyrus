@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 The Cyrus Language
 
+use cyrusc_internal::compiler_options::{CompilerOption_RelocMode, CompilerOptions};
 use std::env::consts::{FAMILY, OS};
 use std::path::PathBuf;
 use std::process::Command;
-use cyrusc_internal::compiler_options::{CompilerOption_RelocMode, CompilerOptions};
 use which::which;
 
 #[derive(Debug, Clone)]
@@ -87,8 +87,17 @@ impl Linker {
 
         cmd.arg("-funroll-loops").arg("-flto");
 
-        if let Some(level) = self.opts.opt_level {
-            cmd.arg(format!("-O{}", level));
+        if let Some(opt_level) = self.opts.opt_level {
+            let opt_level_str = match opt_level {
+                cyrusc_internal::compiler_options::CompilerOption_Optimize::O0 => "0",
+                cyrusc_internal::compiler_options::CompilerOption_Optimize::O1 => "1",
+                cyrusc_internal::compiler_options::CompilerOption_Optimize::O2 => "2",
+                cyrusc_internal::compiler_options::CompilerOption_Optimize::O3 => "3",
+                cyrusc_internal::compiler_options::CompilerOption_Optimize::Os => "s",
+                cyrusc_internal::compiler_options::CompilerOption_Optimize::Oz => "z",
+            };
+
+            cmd.arg(format!("-O{}", opt_level_str));
         }
 
         cmd.arg("-o").arg(output_path);
@@ -103,7 +112,7 @@ impl Linker {
                 .map(|s| s.to_string())
                 .collect::<Vec<_>>()
                 .join(",");
-            
+
             cmd.arg(format!("-fsanitize={}", joined_flags));
         }
 

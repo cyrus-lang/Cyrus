@@ -23,7 +23,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         let pointee_basic_ty: BasicTypeEnum<'ll> = self.emit_ty(pointee_ty.clone()).try_into().unwrap();
 
         let target_data = self.llvmtm.get_target_data();
-        let ptr_sized_int_type = self.llvmctx.ptr_sized_int_type(&target_data, None);
+        let ptr_sized_int_type = self.llvm_ctx.ptr_sized_int_type(&target_data, None);
         let mut array_length_int_value = ptr_sized_int_type.const_int(array_length.into(), false);
 
         let mut index_int_value = index.as_basic_value().into_int_value();
@@ -60,8 +60,8 @@ impl<'ll> CodeGenIRBuilder<'ll> {
 
         let cur_fn = self.cur_func.unwrap();
 
-        let failure_block = self.llvmctx.append_basic_block(cur_fn, "inbounds_check.failure");
-        let success_block = self.llvmctx.append_basic_block(cur_fn, "inbounds_check.success");
+        let failure_block = self.llvm_ctx.append_basic_block(cur_fn, "inbounds_check.failure");
+        let success_block = self.llvm_ctx.append_basic_block(cur_fn, "inbounds_check.success");
 
         self.llvmbuilder
             .build_conditional_branch(compare_result, success_block, failure_block)
@@ -74,14 +74,14 @@ impl<'ll> CodeGenIRBuilder<'ll> {
             array_length
         ));
 
-        let module = self.llvmmodule.borrow_mut();
+        let module = self.llvm_module.borrow_mut();
 
         // call fprintf to display panic message
 
-        let ptr_type = self.llvmctx.ptr_type(AddressSpace::default());
+        let ptr_type = self.llvm_ctx.ptr_type(AddressSpace::default());
 
-        let void_type = self.llvmctx.void_type();
-        let i32_type = self.llvmctx.i32_type();
+        let void_type = self.llvm_ctx.void_type();
+        let i32_type = self.llvm_ctx.i32_type();
         let fprintf_type = i32_type.fn_type(
             &[
                 BasicMetadataTypeEnum::from(ptr_type), // FILE *stream

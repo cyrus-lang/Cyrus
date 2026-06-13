@@ -6,6 +6,7 @@ use crate::{
     commands::*,
     scaffold::*,
 };
+use cyrusc_compiler::options::validate_compiler_options;
 use cyrusc_scaffold::version::CYRUS_COMPILER_VERSION;
 
 pub fn dispatch(args: Args) {
@@ -20,11 +21,13 @@ pub fn dispatch(args: Args) {
             program_args,
         } => {
             let scaffold_config = compiler_option_from_scaffold_parser(compiler_options.base_path.clone());
-            let mut codegen_options = compiler_options.as_compiler_options();
-            codegen_options.linker_options = linker_options.convert();
-            merge_and_validate_scaffold_config_with_codegen_options(&mut codegen_options, &scaffold_config);
+            let mut compiler_options = compiler_options.as_compiler_options();
+            compiler_options.linker_options = linker_options.convert();
+            merge_and_validate_scaffold_config_with_codegen_options(&mut compiler_options, &scaffold_config);
 
-            command_run(codegen_options, file_path, program_args);
+            validate_compiler_options(&compiler_options);
+
+            command_run(compiler_options, file_path, program_args);
         }
         Commands::EmitLLVM {
             file_path,
@@ -35,10 +38,12 @@ pub fn dispatch(args: Args) {
                 project_file_required();
             }
             let scaffold_config = compiler_option_from_scaffold_parser(compiler_options.base_path.clone());
-            let mut codegen_options = compiler_options.as_compiler_options();
-            merge_and_validate_scaffold_config_with_codegen_options(&mut codegen_options, &scaffold_config);
+            let mut compiler_options = compiler_options.as_compiler_options();
+            merge_and_validate_scaffold_config_with_codegen_options(&mut compiler_options, &scaffold_config);
 
-            command_emit_llvm(codegen_options, file_path, output_path);
+            validate_compiler_options(&compiler_options);
+
+            command_emit_llvm(compiler_options, file_path, output_path);
         }
         Commands::EmitASM {
             file_path,
@@ -50,10 +55,12 @@ pub fn dispatch(args: Args) {
             }
 
             let scaffold_config = compiler_option_from_scaffold_parser(compiler_options.base_path.clone());
-            let mut codegen_options = compiler_options.as_compiler_options();
-            merge_and_validate_scaffold_config_with_codegen_options(&mut codegen_options, &scaffold_config);
+            let mut compiler_options = compiler_options.as_compiler_options();
+            merge_and_validate_scaffold_config_with_codegen_options(&mut compiler_options, &scaffold_config);
 
-            command_emit_asm(codegen_options, file_path, output_path);
+            validate_compiler_options(&compiler_options);
+
+            command_emit_asm(compiler_options, file_path, output_path);
         }
         Commands::EmitBitcode {
             file_path,
@@ -65,10 +72,12 @@ pub fn dispatch(args: Args) {
             }
 
             let scaffold_config = compiler_option_from_scaffold_parser(compiler_options.base_path.clone());
-            let mut codegen_options = compiler_options.as_compiler_options();
-            merge_and_validate_scaffold_config_with_codegen_options(&mut codegen_options, &scaffold_config);
+            let mut compiler_options = compiler_options.as_compiler_options();
+            merge_and_validate_scaffold_config_with_codegen_options(&mut compiler_options, &scaffold_config);
 
-            command_emit_bitcode(codegen_options, file_path, output_path);
+            validate_compiler_options(&compiler_options);
+
+            command_emit_bitcode(compiler_options, file_path, output_path);
         }
         Commands::Build {
             file_path,
@@ -81,18 +90,20 @@ pub fn dispatch(args: Args) {
             }
 
             let scaffold_config = compiler_option_from_scaffold_parser(compiler_options.base_path.clone());
-            let mut codegen_options = compiler_options.as_compiler_options();
-            codegen_options.linker_options = linker_options.convert();
-            merge_and_validate_scaffold_config_with_codegen_options(&mut codegen_options, &scaffold_config);
+            let mut compiler_options = compiler_options.as_compiler_options();
+            compiler_options.linker_options = linker_options.convert();
+            merge_and_validate_scaffold_config_with_codegen_options(&mut compiler_options, &scaffold_config);
 
-            command_build(codegen_options, file_path, output_path);
+            validate_compiler_options(&compiler_options);
+
+            command_build(compiler_options, file_path, output_path);
         }
         Commands::Clean { compiler_options } => {
             let scaffold_config = compiler_option_from_scaffold_parser(compiler_options.base_path.clone());
-            let mut codegen_options = compiler_options.as_compiler_options();
-            merge_and_validate_scaffold_config_with_codegen_options(&mut codegen_options, &scaffold_config);
+            let mut compiler_options = compiler_options.as_compiler_options();
+            merge_and_validate_scaffold_config_with_codegen_options(&mut compiler_options, &scaffold_config);
 
-            command_clean(codegen_options);
+            command_clean(compiler_options);
         }
         Commands::Object {
             file_path,
@@ -104,10 +115,12 @@ pub fn dispatch(args: Args) {
             }
 
             let scaffold_config = compiler_option_from_scaffold_parser(compiler_options.base_path.clone());
-            let mut codegen_options = compiler_options.as_compiler_options();
-            merge_and_validate_scaffold_config_with_codegen_options(&mut codegen_options, &scaffold_config);
+            let mut compiler_options = compiler_options.as_compiler_options();
+            merge_and_validate_scaffold_config_with_codegen_options(&mut compiler_options, &scaffold_config);
 
-            command_object(codegen_options, file_path, output_path);
+            validate_compiler_options(&compiler_options);
+
+            command_object(compiler_options, file_path, output_path);
         }
         Commands::SharedLib {
             file_path,
@@ -119,10 +132,12 @@ pub fn dispatch(args: Args) {
             }
 
             let scaffold_config = compiler_option_from_scaffold_parser(compiler_options.base_path.clone());
-            let mut codegen_options = compiler_options.as_compiler_options();
-            merge_and_validate_scaffold_config_with_codegen_options(&mut codegen_options, &scaffold_config);
+            let mut compiler_options = compiler_options.as_compiler_options();
+            merge_and_validate_scaffold_config_with_codegen_options(&mut compiler_options, &scaffold_config);
 
-            command_shared_lib(codegen_options, file_path, output_path);
+            validate_compiler_options(&compiler_options);
+
+            command_shared_lib(compiler_options, file_path, output_path);
         }
         Commands::StaticLib {
             file_path,
@@ -134,20 +149,24 @@ pub fn dispatch(args: Args) {
             }
 
             let scaffold_config = compiler_option_from_scaffold_parser(compiler_options.base_path.clone());
-            let mut codegen_options = compiler_options.as_compiler_options();
-            merge_and_validate_scaffold_config_with_codegen_options(&mut codegen_options, &scaffold_config);
+            let mut compiler_options = compiler_options.as_compiler_options();
+            merge_and_validate_scaffold_config_with_codegen_options(&mut compiler_options, &scaffold_config);
 
-            command_static_lib(codegen_options, file_path, output_path);
+            validate_compiler_options(&compiler_options);
+
+            command_static_lib(compiler_options, file_path, output_path);
         }
         Commands::SemanticOnly {
             compiler_options,
             file_path,
         } => {
             let scaffold_config = compiler_option_from_scaffold_parser(compiler_options.base_path.clone());
-            let mut codegen_options = compiler_options.as_compiler_options();
-            merge_and_validate_scaffold_config_with_codegen_options(&mut codegen_options, &scaffold_config);
+            let mut compiler_options = compiler_options.as_compiler_options();
+            merge_and_validate_scaffold_config_with_codegen_options(&mut compiler_options, &scaffold_config);
 
-            command_semantic_only(codegen_options, file_path)
+            validate_compiler_options(&compiler_options);
+
+            command_semantic_only(compiler_options, file_path)
         }
         Commands::LexOnly { file_path } => command_lex_only(file_path),
         Commands::ParseOnly { file_path } => command_parse_only(file_path),
@@ -157,10 +176,12 @@ pub fn dispatch(args: Args) {
             compiler_options,
         } => {
             let scaffold_config = compiler_option_from_scaffold_parser(compiler_options.base_path.clone());
-            let mut codegen_options = compiler_options.as_compiler_options();
-            merge_and_validate_scaffold_config_with_codegen_options(&mut codegen_options, &scaffold_config);
+            let mut compiler_options = compiler_options.as_compiler_options();
+            merge_and_validate_scaffold_config_with_codegen_options(&mut compiler_options, &scaffold_config);
 
-            command_emit_cir_dump(codegen_options, file_path, output_path);
+            validate_compiler_options(&compiler_options);
+
+            command_emit_cir_dump(compiler_options, file_path, output_path);
         }
         Commands::Fetch { .. } => {
             todo!();

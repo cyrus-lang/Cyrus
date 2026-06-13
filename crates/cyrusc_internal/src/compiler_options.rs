@@ -31,7 +31,7 @@ pub struct CompilerOptions {
     pub library_paths: Vec<String>,
     pub source_dirs: Vec<String>,
 
-    pub opt_level: Option<i32>,
+    pub opt_level: Option<CompilerOption_Optimize>,
     pub jobs: Option<usize>,
 
     pub display_target_machine: bool,
@@ -68,6 +68,16 @@ pub enum CompilerOption_LinkerOutputKind {
     ObjectFile,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CompilerOption_Optimize {
+    O0,
+    O1,
+    O2,
+    O3,
+    Os,
+    Oz,
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum CompilerOption_BuildDir {
     Default,
@@ -80,7 +90,7 @@ pub enum CompilerOption_Endianness {
     Big,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum CompilerOption_RelocMode {
     Default,
     Static,
@@ -195,6 +205,12 @@ impl Default for CompilerOption_Linker {
     }
 }
 
+impl Default for CompilerOption_Optimize {
+    fn default() -> Self {
+        Self::O1
+    }
+}
+
 impl Default for CompilerOption_CodeGenABI {
     fn default() -> Self {
         Self::Cyrus
@@ -247,5 +263,22 @@ impl fmt::Display for CompilerOption_Sanitizer {
             CompilerOption_Sanitizer::Thread => write!(f, "thread"),
             CompilerOption_Sanitizer::HWAddress => write!(f, "hwaddress"),
         }
+    }
+}
+
+impl fmt::Display for CompilerOption_Optimize {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "{}",
+            match self {
+                CompilerOption_Optimize::O0 => "O0",
+                CompilerOption_Optimize::O1 => "O1",
+                CompilerOption_Optimize::O2 => "O2",
+                CompilerOption_Optimize::O3 => "O3",
+                CompilerOption_Optimize::Os => "Os",
+                CompilerOption_Optimize::Oz => "Oz",
+            }
+        )
     }
 }

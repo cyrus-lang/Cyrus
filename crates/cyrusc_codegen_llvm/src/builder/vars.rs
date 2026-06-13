@@ -30,15 +30,15 @@ impl<'ll> CodeGenIRBuilder<'ll> {
             return *ir_value.as_global().unwrap();
         }
 
-        let llvmmodule = self.llvmmodule.borrow();
+        let llvm_module = self.llvm_module.borrow();
 
-        if let Some(global_value) = llvmmodule.get_global(&cir_global_var.name) {
+        if let Some(global_value) = llvm_module.get_global(&cir_global_var.name) {
             return global_value;
         }
 
         let ty: BasicTypeEnum<'ll> = self.emit_ty(cir_global_var.ty.clone()).try_into().unwrap();
-        let global_value = llvmmodule.add_global(ty, None, &cir_global_var.name);
-        drop(llvmmodule);
+        let global_value = llvm_module.add_global(ty, None, &cir_global_var.name);
+        drop(llvm_module);
 
         let layout = type_layout(&self.target.info, &cir_global_var.ty);
         self.emit_debug_global_var(&layout, &global_value, cir_global_var);
@@ -174,7 +174,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         unsafe {
             emit_dbg_declare(
                 &self.dctx,
-                self.llvmctx,
+                self.llvm_ctx,
                 self.llvmbuilder,
                 ptr.as_value_ref(),
                 var_meta,

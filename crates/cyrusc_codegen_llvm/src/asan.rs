@@ -4,7 +4,7 @@
 use crate::OwnedModule;
 use cyrusc_asan_wrapper::{SanitizerOptions, run_sanitizers};
 use cyrusc_diagcentral::exit_with_msg;
-use cyrusc_internal::compiler_options::{CompilerOption_Sanitizer, CompilerOptions};
+use cyrusc_internal::compiler_options::{CompilerOption_Optimize, CompilerOption_Sanitizer, CompilerOptions};
 use inkwell::{
     context::Context,
     module::{FlagBehavior, Module},
@@ -12,16 +12,11 @@ use inkwell::{
     values::BasicMetadataValueEnum,
 };
 
-pub(crate) fn enable_asan_for_owned_module(
-    opts: &CompilerOptions,
-    owned_module: &OwnedModule,
-    tm: &TargetMachine,
-    opt_level: i32,
-) {
-    let llvmmodule = owned_module.module.borrow();
+pub(crate) fn enable_asan_for_owned_module(opts: &CompilerOptions, owned_module: &OwnedModule, tm: &TargetMachine) {
+    let llvm_module = owned_module.module.borrow();
     let context = &owned_module.context;
 
-    add_asan_metadata_flags_to_module(opts, context, &llvmmodule);
+    add_asan_metadata_flags_to_module(opts, context, &llvm_module);
 
     opts.sanitizer.iter().for_each(|sanitizer| {
         if matches!(sanitizer, CompilerOption_Sanitizer::HWAddress) && !is_hwasan_supported() {
@@ -37,18 +32,44 @@ pub(crate) fn enable_asan_for_owned_module(
     });
 
     let sanitizer_opts = SanitizerOptions {
-        address_sanitize: opts.sanitizer.iter().any(|s| matches!(s, CompilerOption_Sanitizer::Address)),
-        thread_sanitize: opts.sanitizer.iter().any(|s| matches!(s, CompilerOption_Sanitizer::Thread)),
-        mem_sanitize: opts.sanitizer.iter().any(|s| matches!(s, CompilerOption_Sanitizer::Memory)),
-        hwaddress_sanitize: opts.sanitizer.iter().any(|s| matches!(s, CompilerOption_Sanitizer::HWAddress)),
+        address_sanitize: opts
+            .sanitizer
+            .iter()
+            .any(|s| matches!(s, CompilerOption_Sanitizer::Address)),
+        thread_sanitize: opts
+            .sanitizer
+            .iter()
+            .any(|s| matches!(s, CompilerOption_Sanitizer::Thread)),
+        mem_sanitize: opts
+            .sanitizer
+            .iter()
+            .any(|s| matches!(s, CompilerOption_Sanitizer::Memory)),
+        hwaddress_sanitize: opts
+            .sanitizer
+            .iter()
+            .any(|s| matches!(s, CompilerOption_Sanitizer::HWAddress)),
         recover: false,
         asan_use_after_scope: true,
         asan_use_after_return: false,
     };
 
-    run_sanitizers(&llvmmodule, tm, opt_level, sanitizer_opts);
+    let opt_level = match opts.opt_level {
+        Some(opt_level) => match opt_level {
+            CompilerOption_Optimize::O0 => 0,
+            CompilerOption_Optimize::O1 => 1,
+            CompilerOption_Optimize::O2 => 2,
+            CompilerOption_Optimize::O3 => 3,
 
-    drop(llvmmodule);
+            // sanitizers work better with O1
+            CompilerOption_Optimize::Os => 1,
+            CompilerOption_Optimize::Oz => 1,
+        },
+        None => 1,
+    };
+
+    run_sanitizers(&llvm_module, tm, opt_level, sanitizer_opts);
+
+    drop(llvm_module);
 }
 
 fn add_asan_metadata_flags_to_module<'ctx>(opts: &CompilerOptions, context: &'ctx Context, module: &Module<'ctx>) {

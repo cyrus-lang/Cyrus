@@ -34,10 +34,12 @@ pub(crate) enum CliRelocModeOption {
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, ValueEnum)]
 pub(crate) enum CliOptimizeLevelOption {
-    None,
+    O0,
     O1,
     O2,
     O3,
+    Os,
+    Oz,
 }
 
 #[derive(Deserialize, Debug, Clone, ValueEnum)]
@@ -75,10 +77,12 @@ impl Default for CliRelocModeOption {
 impl std::fmt::Display for CliOptimizeLevelOption {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            CliOptimizeLevelOption::None => write!(f, "none"),
-            CliOptimizeLevelOption::O1 => write!(f, "o1"),
-            CliOptimizeLevelOption::O2 => write!(f, "o2"),
-            CliOptimizeLevelOption::O3 => write!(f, "o3"),
+            CliOptimizeLevelOption::O0 => write!(f, "O0"),
+            CliOptimizeLevelOption::O1 => write!(f, "O1"),
+            CliOptimizeLevelOption::O2 => write!(f, "O2"),
+            CliOptimizeLevelOption::O3 => write!(f, "O3"),
+            CliOptimizeLevelOption::Os => write!(f, "Os"),
+            CliOptimizeLevelOption::Oz => write!(f, "Oz"),
         }
     }
 }

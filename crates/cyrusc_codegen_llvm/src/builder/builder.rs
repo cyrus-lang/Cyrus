@@ -15,7 +15,6 @@ use cyrusc_internal::{
     vtable::VTableRegistry,
 };
 use cyrusc_source_loc::SourceMap;
-use cyrusc_tui_utils::tui_compiled;
 use cyrusc_typed_ast::LabelID;
 use inkwell::{
     basic_block::BasicBlock, builder::Builder, context::Context, module::Module, targets::TargetMachine,
@@ -25,9 +24,9 @@ use std::{cell::RefCell, collections::HashMap, rc::Rc, sync::Arc};
 
 pub(crate) struct CodeGenIRBuilder<'ll> {
     pub(crate) target: &'ll ABITarget,
-    pub(crate) llvmctx: &'ll Context,
+    pub(crate) llvm_ctx: &'ll Context,
     pub(crate) llvmbuilder: &'ll Builder<'ll>,
-    pub(crate) llvmmodule: Rc<RefCell<Module<'ll>>>,
+    pub(crate) llvm_module: Rc<RefCell<Module<'ll>>>,
     pub(crate) llvmtm: &'ll TargetMachine,
     pub(crate) irreg: LocalIRValueRegistryRef<'ll>,
     pub(crate) cur_func: Option<FunctionValue<'ll>>,
@@ -65,7 +64,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         vtable_registry: Arc<VTableRegistry>,
         source_map: Arc<SourceMap>,
     ) -> Self {
-        let llvmmodule = unsafe {
+        let llvm_module = unsafe {
             std::mem::transmute::<Rc<RefCell<Module<'static>>>, Rc<RefCell<Module<'ll>>>>(owned_module.module.clone())
         };
 
@@ -76,9 +75,9 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         Self {
             target,
             cir_module,
-            llvmctx: &owned_module.context,
+            llvm_ctx: &owned_module.context,
             llvmbuilder,
-            llvmmodule,
+            llvm_module,
             llvmtm,
             irreg,
             cur_func: None,
@@ -100,8 +99,6 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         }
 
         self.emit_vtable_defs();
-
-        tui_compiled(self.cir_module.file_path.clone());
     }
 
     pub(crate) fn emit_stmt(&mut self, stmt: &CIRStmt) {
@@ -158,7 +155,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         unsafe {
             set_debug_location(
                 &self.dctx,
-                self.llvmctx,
+                self.llvm_ctx,
                 self.llvmbuilder,
                 stmt.loc().line.try_into().unwrap(),
                 stmt.loc().column.try_into().unwrap(),

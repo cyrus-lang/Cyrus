@@ -1,11 +1,13 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 The Cyrus Language
 
+use cyrusc_diagcentral::exit_with_msg;
 use cyrusc_internal::compiler_options::{
-    CompilerOption_BuildDir, CompilerOption_CodeModel, CompilerOption_RelocMode, CompilerOptions,
+    CompilerOption_BuildDir, CompilerOption_CodeModel, CompilerOption_Optimize, CompilerOption_Profile,
+    CompilerOption_RelocMode, CompilerOption_Sanitizer, CompilerOptions,
 };
 use cyrusc_scaffold_parser::ScaffoldConfig;
-use cyrusc_tui_utils::tui_error;
+use cyrusc_tui_utils::{tui_error, tui_note, tui_warning};
 use std::{
     fs,
     path::{Path, PathBuf},
@@ -316,18 +318,14 @@ pub fn compiler_options_from_scaffold(scaffold: &ScaffoldConfig) -> CompilerOpti
         if let Some(opt) = &compiler.optimize {
             // parse the optimize flag in a case-insensitive way
             opts.opt_level = match opt.to_lowercase().as_str() {
-                "none" => Some(0),
-                "o1" => Some(1),
-                "o2" => Some(2),
-                "o3" => Some(3),
+                "none" => Some(CompilerOption_Optimize::O1),
+                "o1" => Some(CompilerOption_Optimize::O1),
+                "o2" => Some(CompilerOption_Optimize::O2),
+                "o3" => Some(CompilerOption_Optimize::O3),
+                "os" => Some(CompilerOption_Optimize::Os),
+                "oz" => Some(CompilerOption_Optimize::Oz),
 
-                other => {
-                    if let Some(num) = other.strip_prefix('o') {
-                        num.parse().ok()
-                    } else {
-                        None
-                    }
-                }
+                _ => None,
             }
         }
 
@@ -396,5 +394,132 @@ fn validate_compiler_options_path_relationships(opts: &CompilerOptions, errors: 
                 }
             }
         }
+    }
+}
+
+pub fn validate_compiler_options(opts: &CompilerOptions) {
+    if opts.debuginfo_enabled && opts.opt_level != Some(CompilerOption_Optimize::O1) {
+        exit_with_msg!("Debug info emission '-g' can only be used with optimization level O0".to_string());
+    }
+
+    if !opts.sanitizer.is_empty() {
+        if !opts.debuginfo_enabled {
+            tui_warning(
+                "Sanitizers work better with debug info '-g'. Consider enabling debug info for better error messages."
+                    .to_string(),
+            );
+        }
+
+        // sanitizers don't work well with high optimization levels
+        if let Some(opt_level) = opts.opt_level {
+            match opt_level {
+                CompilerOption_Optimize::O0 | CompilerOption_Optimize::O1 => {}
+                CompilerOption_Optimize::O2 | CompilerOption_Optimize::O3 => {
+                    tui_warning("Sanitizers with --optimize=O2/--optimize=O3 may miss some errors. Consider using --optimize=O1 for better sanitizer coverage".to_string());
+                }
+                CompilerOption_Optimize::Os | CompilerOption_Optimize::Oz => {
+                    tui_warning(
+                        "Sanitizers with size optimizations may produce false negatives. Consider using --optimize=O1 for better sanitizer results".to_string(),
+                    );
+                }
+            }
+        }
+
+        // can't use multiple incompatible sanitizers
+        let has_address = opts.sanitizer.contains(&CompilerOption_Sanitizer::Address);
+        let has_memory = opts.sanitizer.contains(&CompilerOption_Sanitizer::Memory);
+        let has_thread = opts.sanitizer.contains(&CompilerOption_Sanitizer::Thread);
+
+        if has_address && has_memory {
+            exit_with_msg!("AddressSanitizer and MemorySanitizer cannot be used together".to_string());
+        }
+        if has_address && has_thread {
+            exit_with_msg!("AddressSanitizer and ThreadSanitizer cannot be used together".to_string());
+        }
+        if has_memory && has_thread {
+            exit_with_msg!("MemorySanitizer and ThreadSanitizer cannot be used together".to_string());
+        }
+    }
+
+    // linker validation
+    if opts.linker_options.link_static && opts.linker_options.pie {
+        tui_warning(
+            "Static linking with PIE may not be supported on all targets. Consider using '--static' without '--pie' or vice versa."
+                .to_string(),
+        );
+    }
+
+    if opts.linker_options.no_pie && opts.linker_options.pie {
+        exit_with_msg!("Cannot specify both '--pie' and '--no-pie'.".to_string());
+    }
+
+    // profile validation
+    match opts.profile {
+        CompilerOption_Profile::Debug => {
+            if let Some(opt_level) = opts.opt_level {
+                match opt_level {
+                    CompilerOption_Optimize::O0 => {}
+                    CompilerOption_Optimize::O1
+                    | CompilerOption_Optimize::O2
+                    | CompilerOption_Optimize::O3
+                    | CompilerOption_Optimize::Os
+                    | CompilerOption_Optimize::Oz => {
+                        tui_note("Debug profile with optimization may complicate debugging. consider using --optimize=O0 for debug builds.".to_string());
+                    }
+                }
+            }
+        }
+        CompilerOption_Profile::Release => {
+            if let Some(opt_level) = opts.opt_level {
+                match opt_level {
+                    CompilerOption_Optimize::O0 => {
+                        tui_warning(
+                            "Release profile with --optimize=O0 will produce unoptimized code. Consider using --optimize=O2 or --optimize=O3 for release builds."
+                                .to_string(),
+                        );
+                    }
+                    _ => {}
+                }
+            } else {
+                tui_note("Release profile defaulting to --optimize=O1 optimization.".to_string());
+            }
+        }
+    }
+
+    // 5. Code model validation
+    match opts.code_model {
+        CompilerOption_CodeModel::Tiny => {
+            if opts.reloc_mode != CompilerOption_RelocMode::Static {
+                tui_warning(
+                    "Tiny code model works best with static relocation forcing static relocation mode.".to_string(),
+                );
+            }
+        }
+        CompilerOption_CodeModel::Large => {
+            if opts.reloc_mode == CompilerOption_RelocMode::PIC {
+                tui_warning("Large code model with PIC may produce inefficient code".to_string());
+            }
+        }
+        _ => {}
+    }
+
+    // job count validation
+    if let Some(jobs) = opts.jobs {
+        if jobs == 0 {
+            exit_with_msg!("Job count must be at least 1.".to_string());
+        }
+        if jobs > num_cpus::get() {
+            tui_warning(format!(
+                "Job count ({}) exceeds available CPU cores ({}). performance may degrade.",
+                jobs,
+                num_cpus::get(),
+            ));
+        }
+    }
+}
+
+mod num_cpus {
+    pub fn get() -> usize {
+        std::thread::available_parallelism().map(|n| n.get()).unwrap_or(1)
     }
 }

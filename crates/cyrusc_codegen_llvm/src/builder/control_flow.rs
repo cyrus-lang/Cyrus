@@ -537,9 +537,9 @@ impl<'ll> CodeGenIRBuilder<'ll> {
     pub(crate) fn emit_while(&mut self, while_stmt: &CIRWhileStmt) {
         let cur_fn = self.cur_func.unwrap();
 
-        let cond_block = self.llvmctx.append_basic_block(cur_fn, "while.cond");
-        let body_block = self.llvmctx.append_basic_block(cur_fn, "while.body");
-        let exit_block = self.llvmctx.append_basic_block(cur_fn, "while.exit");
+        let cond_block = self.llvm_ctx.append_basic_block(cur_fn, "while.cond");
+        let body_block = self.llvm_ctx.append_basic_block(cur_fn, "while.body");
+        let exit_block = self.llvm_ctx.append_basic_block(cur_fn, "while.exit");
 
         self.blockreg
             .control_flow_stack
@@ -781,10 +781,10 @@ impl<'ll> CodeGenIRBuilder<'ll> {
                 let lvalue = self.emit_expr(expr, &Some(*ret_info.cir_ret_type.clone()));
                 let rvalue = self.load_rvalue(lvalue);
 
-                let ret_ty = abi_type_to_llvm_type(self.llvmctx, &self.target.info, &ret_info.abi_type);
+                let ret_ty = abi_type_to_llvm_type(self.llvm_ctx, &self.target.info, &ret_info.abi_type);
 
                 let value: BasicValueEnum<'ll> = if let Some(coerce) = coerce_to {
-                    let coerce_ty = abi_type_to_llvm_type(self.llvmctx, &self.target.info, coerce);
+                    let coerce_ty = abi_type_to_llvm_type(self.llvm_ctx, &self.target.info, coerce);
                     self.emit_cast(coerce_ty, rvalue).try_into().unwrap()
                 } else {
                     self.emit_cast(ret_ty, rvalue).try_into().unwrap()
@@ -820,7 +820,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         let struct_type = rvalue.ty.clone();
         let struct_layout = type_layout(&self.target.info, &struct_type);
 
-        let size_val = self.llvmctx.i64_type().const_int(struct_layout.size as u64, false);
+        let size_val = self.llvm_ctx.i64_type().const_int(struct_layout.size as u64, false);
 
         let src_ptr = match &lvalue.kind {
             InternalValueKind::LValue(ptr) => *ptr,
@@ -853,11 +853,11 @@ impl<'ll> CodeGenIRBuilder<'ll> {
     ) -> BasicValueEnum<'ll> {
         let value = rvalue.as_basic_value();
 
-        let lo_ty: BasicTypeEnum<'ll> = abi_type_to_llvm_type(self.llvmctx, &self.target.info, lo)
+        let lo_ty: BasicTypeEnum<'ll> = abi_type_to_llvm_type(self.llvm_ctx, &self.target.info, lo)
             .try_into()
             .unwrap();
 
-        let hi_ty: BasicTypeEnum<'ll> = abi_type_to_llvm_type(self.llvmctx, &self.target.info, hi)
+        let hi_ty: BasicTypeEnum<'ll> = abi_type_to_llvm_type(self.llvm_ctx, &self.target.info, hi)
             .try_into()
             .unwrap();
 
@@ -885,7 +885,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         let hi_val = self.llvmbuilder.build_load(hi_ty, hi_ptr, "ret.hi").unwrap();
 
         // construct abi return struct
-        let ret_struct_ty: StructType = abi_type_to_llvm_type(self.llvmctx, &self.target.info, abi_ret_type)
+        let ret_struct_ty: StructType = abi_type_to_llvm_type(self.llvm_ctx, &self.target.info, abi_ret_type)
             .try_into()
             .unwrap();
 
@@ -1005,7 +1005,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
 
     fn new_basic_block(&mut self, name: &str) -> BasicBlock<'ll> {
         unsafe {
-            let llvm_bb = LLVMCreateBasicBlockInContext(self.llvmctx.as_ctx_ref(), c!(name).as_ptr());
+            let llvm_bb = LLVMCreateBasicBlockInContext(self.llvm_ctx.as_ctx_ref(), c!(name).as_ptr());
             BasicBlock::new(llvm_bb).unwrap()
         }
     }

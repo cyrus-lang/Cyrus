@@ -304,13 +304,13 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         match ty {
             CIRType::Const(inner_ty) => self.emit_ty(*inner_ty),
             CIRType::Plain(plain_ty) => self.emit_plain_ty(plain_ty),
-            CIRType::Pointer(_) => self.llvmctx.ptr_type(AddressSpace::default()).as_any_type_enum(),
+            CIRType::Pointer(_) => self.llvm_ctx.ptr_type(AddressSpace::default()).as_any_type_enum(),
             CIRType::Struct(struct_type) => self.emit_struct_type(struct_type).as_any_type_enum(),
             CIRType::Enum(enum_type) => self.emit_enum_type(enum_type).as_any_type_enum(),
             CIRType::Union(union_ty) => self.emit_union_ty(union_ty).as_any_type_enum(),
             CIRType::Tuple(tuple_type) => self.emit_tuple_ty(tuple_type).as_any_type_enum(),
             CIRType::Array(array_ty) => self.emit_array_type(array_ty).as_any_type_enum(),
-            CIRType::FuncType(..) => self.llvmctx.ptr_type(AddressSpace::default()).as_any_type_enum(),
+            CIRType::FuncType(..) => self.llvm_ctx.ptr_type(AddressSpace::default()).as_any_type_enum(),
             CIRType::Dynamic(..) => self.emit_dynamic_ty().as_any_type_enum(),
         }
     }
@@ -330,10 +330,10 @@ impl<'ll> CodeGenIRBuilder<'ll> {
     }
 
     pub(crate) fn emit_dynamic_ty(&self) -> StructType<'ll> {
-        let vtable_ptr = self.llvmctx.ptr_type(AddressSpace::default()).as_basic_type_enum();
-        let data_ptr = self.llvmctx.ptr_type(AddressSpace::default()).as_basic_type_enum();
+        let vtable_ptr = self.llvm_ctx.ptr_type(AddressSpace::default()).as_basic_type_enum();
+        let data_ptr = self.llvm_ctx.ptr_type(AddressSpace::default()).as_basic_type_enum();
 
-        self.llvmctx.struct_type(&[data_ptr, vtable_ptr], false)
+        self.llvm_ctx.struct_type(&[data_ptr, vtable_ptr], false)
     }
 
     pub(crate) fn emit_types(&self, tys: &[CIRType]) -> Vec<AnyTypeEnum<'ll>> {
@@ -341,36 +341,36 @@ impl<'ll> CodeGenIRBuilder<'ll> {
     }
 
     pub(crate) fn emit_plain_ty(&self, plain_ty: PlainType) -> AnyTypeEnum<'ll> {
-        let llvmctx = &self.llvmctx;
+        let llvm_ctx = &self.llvm_ctx;
 
         match plain_ty {
-            PlainType::UIntPtr | PlainType::IntPtr | PlainType::USize | PlainType::ISize => llvmctx
+            PlainType::UIntPtr | PlainType::IntPtr | PlainType::USize | PlainType::ISize => llvm_ctx
                 .ptr_sized_int_type(&self.llvmtm.get_target_data(), None)
                 .as_any_type_enum(),
-            PlainType::Int8 => llvmctx.i8_type().as_any_type_enum(),
-            PlainType::Int16 => llvmctx.i16_type().as_any_type_enum(),
-            PlainType::Int32 => llvmctx.i32_type().as_any_type_enum(),
-            PlainType::Int64 => llvmctx.i64_type().as_any_type_enum(),
-            PlainType::Int128 => llvmctx.i128_type().as_any_type_enum(),
-            PlainType::UInt8 => llvmctx.i8_type().as_any_type_enum(),
-            PlainType::UInt16 => llvmctx.i16_type().as_any_type_enum(),
-            PlainType::UInt32 => llvmctx.i32_type().as_any_type_enum(),
-            PlainType::UInt64 => llvmctx.i64_type().as_any_type_enum(),
-            PlainType::UInt128 => llvmctx.i128_type().as_any_type_enum(),
-            PlainType::Int => llvmctx.i32_type().as_any_type_enum(),
-            PlainType::UInt => llvmctx.i32_type().as_any_type_enum(),
-            PlainType::Float16 => llvmctx.f16_type().as_any_type_enum(),
-            PlainType::Float32 => llvmctx.f32_type().as_any_type_enum(),
-            PlainType::Float64 => llvmctx.f64_type().as_any_type_enum(),
-            PlainType::Float128 => llvmctx.f128_type().as_any_type_enum(),
-            PlainType::Char => llvmctx.i8_type().as_any_type_enum(),
+            PlainType::Int8 => llvm_ctx.i8_type().as_any_type_enum(),
+            PlainType::Int16 => llvm_ctx.i16_type().as_any_type_enum(),
+            PlainType::Int32 => llvm_ctx.i32_type().as_any_type_enum(),
+            PlainType::Int64 => llvm_ctx.i64_type().as_any_type_enum(),
+            PlainType::Int128 => llvm_ctx.i128_type().as_any_type_enum(),
+            PlainType::UInt8 => llvm_ctx.i8_type().as_any_type_enum(),
+            PlainType::UInt16 => llvm_ctx.i16_type().as_any_type_enum(),
+            PlainType::UInt32 => llvm_ctx.i32_type().as_any_type_enum(),
+            PlainType::UInt64 => llvm_ctx.i64_type().as_any_type_enum(),
+            PlainType::UInt128 => llvm_ctx.i128_type().as_any_type_enum(),
+            PlainType::Int => llvm_ctx.i32_type().as_any_type_enum(),
+            PlainType::UInt => llvm_ctx.i32_type().as_any_type_enum(),
+            PlainType::Float16 => llvm_ctx.f16_type().as_any_type_enum(),
+            PlainType::Float32 => llvm_ctx.f32_type().as_any_type_enum(),
+            PlainType::Float64 => llvm_ctx.f64_type().as_any_type_enum(),
+            PlainType::Float128 => llvm_ctx.f128_type().as_any_type_enum(),
+            PlainType::Char => llvm_ctx.i8_type().as_any_type_enum(),
             PlainType::Bool => {
                 // Booleans are stored as i8 in memory for stable layout and ABI compatibility.
                 // i1 is reserved for logical operations only.
-                llvmctx.i8_type().as_any_type_enum()
+                llvm_ctx.i8_type().as_any_type_enum()
             }
-            PlainType::Void => llvmctx.void_type().as_any_type_enum(),
-            PlainType::Null => llvmctx.ptr_type(AddressSpace::default()).as_any_type_enum(),
+            PlainType::Void => llvm_ctx.void_type().as_any_type_enum(),
+            PlainType::Null => llvm_ctx.ptr_type(AddressSpace::default()).as_any_type_enum(),
         }
     }
 
@@ -392,7 +392,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
                 }
                 ABIFieldOffsetInfo::Padding { size, .. } => {
                     // create padding array
-                    let padding_array = self.llvmctx.i8_type().array_type(*size);
+                    let padding_array = self.llvm_ctx.i8_type().array_type(*size);
                     llvm_field_types.push(padding_array.as_basic_type_enum());
                 }
             }
@@ -404,7 +404,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
             "mismatch between layout fields and struct fields"
         );
 
-        self.llvmctx.struct_type(&llvm_field_types, is_packed)
+        self.llvm_ctx.struct_type(&llvm_field_types, is_packed)
     }
 
     pub(crate) fn emit_enum_fielded_variant_payload_type(
@@ -458,7 +458,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
                             .map(|ty| (*ty).try_into().unwrap())
                             .collect();
 
-                        let struct_type = self.llvmctx.struct_type(&llvm_fields, false);
+                        let struct_type = self.llvm_ctx.struct_type(&llvm_fields, false);
                         let size = target_data.get_store_size(&struct_type);
                         let align = target_data.get_abi_alignment(&struct_type) as u64;
                         (size, align)
@@ -486,7 +486,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         // round up size to alignment boundary
         let aligned_size = ((max_payload_size + (max_payload_align - 1)) / max_payload_align) * max_payload_align;
 
-        let payload_buffer_ty = self.llvmctx.i8_type().array_type(aligned_size as u32);
+        let payload_buffer_ty = self.llvm_ctx.i8_type().array_type(aligned_size as u32);
         (payload_buffer_ty, aligned_size)
     }
 
@@ -505,7 +505,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
             let tag_type: BasicTypeEnum<'ll> = self.emit_ty(*cir_tag_type.clone()).try_into().unwrap();
 
             let (payload_ty, _) = self.emit_enum_buffer_payload_ty(&enum_type);
-            self.llvmctx
+            self.llvm_ctx
                 .struct_type(&[tag_type.as_basic_type_enum(), payload_ty.into()], false)
                 .as_basic_type_enum()
         }
@@ -536,13 +536,13 @@ impl<'ll> CodeGenIRBuilder<'ll> {
             let mut fields = vec![ty.unwrap()];
 
             fields.push(
-                self.llvmctx
+                self.llvm_ctx
                     .i8_type()
                     .array_type((layout.size as u64 - max_size) as u32)
                     .into(),
             );
 
-            self.llvmctx.struct_type(&fields, false).into()
+            self.llvm_ctx.struct_type(&fields, false).into()
         } else {
             ty.unwrap()
         }
@@ -567,49 +567,49 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         for abi_arg_info in &abi_func_info.params_infos {
             match &abi_arg_info.kind {
                 ABIArgKind::DirectPair { lo, hi } => {
-                    let lo_type = abi_type_to_llvm_type(self.llvmctx, &self.target.info, lo);
-                    let hi_type = abi_type_to_llvm_type(self.llvmctx, &self.target.info, hi);
+                    let lo_type = abi_type_to_llvm_type(self.llvm_ctx, &self.target.info, lo);
+                    let hi_type = abi_type_to_llvm_type(self.llvm_ctx, &self.target.info, hi);
 
                     param_types.push(lo_type.as_type_ref());
                     param_types.push(hi_type.as_type_ref());
                 }
                 ABIArgKind::Direct { coerce_to } => {
                     let param_type = if let Some(coerce_ty) = coerce_to {
-                        abi_type_to_llvm_type(self.llvmctx, &self.target.info, coerce_ty)
+                        abi_type_to_llvm_type(self.llvm_ctx, &self.target.info, coerce_ty)
                     } else {
                         // for direct without coercion, we need to find the type from params_types
                         let i = abi_arg_info.param_index_start as usize;
                         let abi_type = &abi_func_info.params_types[i];
-                        abi_type_to_llvm_type(self.llvmctx, &self.target.info, abi_type)
+                        abi_type_to_llvm_type(self.llvm_ctx, &self.target.info, abi_type)
                     };
                     param_types.push(param_type.as_type_ref());
                 }
                 ABIArgKind::DirectCoerce { ty } => {
-                    let param_type = abi_type_to_llvm_type(self.llvmctx, &self.target.info, ty);
+                    let param_type = abi_type_to_llvm_type(self.llvm_ctx, &self.target.info, ty);
                     param_types.push(param_type.as_type_ref());
                 }
                 ABIArgKind::Indirect { .. } => {
-                    let ptr_ty = self.llvmctx.ptr_type(AddressSpace::default());
+                    let ptr_ty = self.llvm_ctx.ptr_type(AddressSpace::default());
                     param_types.push(ptr_ty.as_type_ref());
                 }
                 ABIArgKind::Expand { kind } => match kind {
                     ExpandKind::Coerced { lo, hi, .. } => {
-                        let lo_type = abi_type_to_llvm_type(self.llvmctx, &self.target.info, lo);
+                        let lo_type = abi_type_to_llvm_type(self.llvm_ctx, &self.target.info, lo);
                         param_types.push(lo_type.as_type_ref());
 
-                        let hi_type = abi_type_to_llvm_type(self.llvmctx, &self.target.info, hi);
+                        let hi_type = abi_type_to_llvm_type(self.llvm_ctx, &self.target.info, hi);
                         param_types.push(hi_type.as_type_ref());
 
                         for i in abi_arg_info.param_index_start..=abi_arg_info.param_index_end {
                             let abi_type = &abi_func_info.params_types[i as usize];
-                            let param_type = abi_type_to_llvm_type(self.llvmctx, &self.target.info, abi_type);
+                            let param_type = abi_type_to_llvm_type(self.llvm_ctx, &self.target.info, abi_type);
                             param_types.push(param_type.as_type_ref());
                         }
                     }
                     ExpandKind::Simple | ExpandKind::Struct { .. } => {
                         for i in abi_arg_info.param_index_start..=abi_arg_info.param_index_end {
                             let abi_type = &abi_func_info.params_types[i as usize];
-                            let param_type = abi_type_to_llvm_type(self.llvmctx, &self.target.info, abi_type);
+                            let param_type = abi_type_to_llvm_type(self.llvm_ctx, &self.target.info, abi_type);
                             param_types.push(param_type.as_type_ref());
                         }
                     }
@@ -617,7 +617,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
                 ABIArgKind::Extend { .. } => {
                     let i = abi_arg_info.param_index_start as usize;
                     let abi_type = &abi_func_info.params_types[i];
-                    let param_type = abi_type_to_llvm_type(self.llvmctx, &self.target.info, abi_type);
+                    let param_type = abi_type_to_llvm_type(self.llvm_ctx, &self.target.info, abi_type);
                     param_types.push(param_type.as_type_ref());
                 }
                 ABIArgKind::Ignore => {
@@ -634,17 +634,17 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         let abi_func_info = func_ty.abi_func_info.as_ref().unwrap();
 
         let ret_type = if abi_func_info.ret_info.kind.is_indirect_sret() {
-            AnyTypeEnum::VoidType(self.llvmctx.void_type())
+            AnyTypeEnum::VoidType(self.llvm_ctx.void_type())
         } else if abi_func_info.ret_info.kind.is_ignore() {
-            AnyTypeEnum::VoidType(self.llvmctx.void_type())
+            AnyTypeEnum::VoidType(self.llvm_ctx.void_type())
         } else {
-            abi_type_to_llvm_type(self.llvmctx, &self.target.info, &abi_func_info.ret_info.abi_type)
+            abi_type_to_llvm_type(self.llvm_ctx, &self.target.info, &abi_func_info.ret_info.abi_type)
         };
 
         let mut param_types = self.emit_func_ty_params(abi_func_info);
 
         if abi_func_info.ret_info.kind.is_indirect_sret() {
-            let ptr_type = self.llvmctx.ptr_type(AddressSpace::default());
+            let ptr_type = self.llvm_ctx.ptr_type(AddressSpace::default());
             param_types.insert(0, ptr_type.as_type_ref());
         }
 

@@ -43,24 +43,24 @@ fn llvm_prologue(prologue: &Prologue) -> Option<&'static str> {
     }
 }
 
-fn apply_optional_flags<'ll>(llvmctx: &'ll Context, func: &FunctionValue<'ll>, flags: &[OptionalFlag]) {
+fn apply_optional_flags<'ll>(llvm_ctx: &'ll Context, func: &FunctionValue<'ll>, flags: &[OptionalFlag]) {
     for flag in flags {
         let attr = match flag {
             OptionalFlag::NoReturn => {
-                Some(llvmctx.create_enum_attribute(Attribute::get_named_enum_kind_id("noreturn"), 0))
+                Some(llvm_ctx.create_enum_attribute(Attribute::get_named_enum_kind_id("noreturn"), 0))
             }
             OptionalFlag::NoUnwind => {
-                Some(llvmctx.create_enum_attribute(Attribute::get_named_enum_kind_id("nounwind"), 0))
+                Some(llvm_ctx.create_enum_attribute(Attribute::get_named_enum_kind_id("nounwind"), 0))
             }
-            OptionalFlag::Cold => Some(llvmctx.create_enum_attribute(Attribute::get_named_enum_kind_id("cold"), 0)),
-            OptionalFlag::Hot => Some(llvmctx.create_enum_attribute(Attribute::get_named_enum_kind_id("hot"), 0)),
+            OptionalFlag::Cold => Some(llvm_ctx.create_enum_attribute(Attribute::get_named_enum_kind_id("cold"), 0)),
+            OptionalFlag::Hot => Some(llvm_ctx.create_enum_attribute(Attribute::get_named_enum_kind_id("hot"), 0)),
             OptionalFlag::OptSize => {
-                Some(llvmctx.create_enum_attribute(Attribute::get_named_enum_kind_id("optsize"), 0))
+                Some(llvm_ctx.create_enum_attribute(Attribute::get_named_enum_kind_id("optsize"), 0))
             }
             OptionalFlag::OptNone => {
-                Some(llvmctx.create_enum_attribute(Attribute::get_named_enum_kind_id("optnone"), 0))
+                Some(llvm_ctx.create_enum_attribute(Attribute::get_named_enum_kind_id("optnone"), 0))
             }
-            OptionalFlag::NoSanitize(kind) => Some(llvmctx.create_string_attribute("no_sanitize", kind)),
+            OptionalFlag::NoSanitize(kind) => Some(llvm_ctx.create_string_attribute("no_sanitize", kind)),
         };
 
         if let Some(a) = attr {
@@ -87,14 +87,14 @@ pub(crate) fn apply_global_var_modifiers<'ll>(global_value: &GlobalValue<'ll>, m
     }
 }
 
-pub(crate) fn apply_inlining_func<'a>(llvmctx: &'a Context, llvm_func_value: &FunctionValue<'a>, inline: Inlining) {
+pub(crate) fn apply_inlining_func<'a>(llvm_ctx: &'a Context, llvm_func_value: &FunctionValue<'a>, inline: Inlining) {
     let attr_name = llvm_inline(&inline);
     let enum_kind_id = Attribute::get_named_enum_kind_id(attr_name);
-    let enum_attr = llvmctx.create_enum_attribute(enum_kind_id, 0);
+    let enum_attr = llvm_ctx.create_enum_attribute(enum_kind_id, 0);
     llvm_func_value.add_attribute(AttributeLoc::Function, enum_attr);
 }
 
-pub(crate) fn apply_func_modifiers<'ll>(llvmctx: &'ll Context, func: &FunctionValue<'ll>, modifiers: &FuncModifiers) {
+pub(crate) fn apply_func_modifiers<'ll>(llvm_ctx: &'ll Context, func: &FunctionValue<'ll>, modifiers: &FuncModifiers) {
     if let Some(export) = &modifiers.export {
         func.as_global_value()
             .set_dll_storage_class(llvm_dll_storage_class(export));
@@ -107,13 +107,13 @@ pub(crate) fn apply_func_modifiers<'ll>(llvmctx: &'ll Context, func: &FunctionVa
     if let Some(inline) = &modifiers.inline {
         let attr_name = llvm_inline(inline);
         let enum_kind_id = Attribute::get_named_enum_kind_id(attr_name);
-        let enum_attr = llvmctx.create_enum_attribute(enum_kind_id, 0);
+        let enum_attr = llvm_ctx.create_enum_attribute(enum_kind_id, 0);
         func.add_attribute(AttributeLoc::Function, enum_attr);
     }
 
     if let Some(prologue) = &modifiers.prologue {
         if let Some(attr_name) = llvm_prologue(prologue) {
-            let attr = llvmctx.create_string_attribute(attr_name, "");
+            let attr = llvm_ctx.create_string_attribute(attr_name, "");
             func.add_attribute(AttributeLoc::Function, attr);
         }
     }
@@ -130,5 +130,5 @@ pub(crate) fn apply_func_modifiers<'ll>(llvmctx: &'ll Context, func: &FunctionVa
         func.set_section(Some(section.0.as_str()));
     }
 
-    apply_optional_flags(llvmctx, func, &modifiers.optional_flags);
+    apply_optional_flags(llvm_ctx, func, &modifiers.optional_flags);
 }

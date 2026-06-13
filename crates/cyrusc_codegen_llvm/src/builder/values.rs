@@ -115,7 +115,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         let target_bit_width = self.target.info.int_bit_width();
 
         let int_value = value.as_basic_value().into_int_value();
-        let target_ty = self.llvmctx.custom_width_int_type(target_bit_width);
+        let target_ty = self.llvm_ctx.custom_width_int_type(target_bit_width);
 
         let widened = if signed {
             self.llvmbuilder
@@ -148,7 +148,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
 
         // target width
         let target_bw = lhs_bw.max(rhs_bw);
-        let target_ty = self.llvmctx.custom_width_int_type(target_bw);
+        let target_ty = self.llvm_ctx.custom_width_int_type(target_bw);
 
         let widen = |v: InternalValue<'ll>, iv: IntValue<'ll>| {
             let signed = v.ty.as_plain().unwrap().is_signed();

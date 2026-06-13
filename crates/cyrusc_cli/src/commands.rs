@@ -66,7 +66,7 @@ pub(crate) fn command_run(mut opts: CompilerOptions, file_path: Option<String>, 
         .project_name(opts.project_name.clone().unwrap_or_default())
         .entry_file(bundle.entry_file)
         .build()
-        .expect("Failed to create temp executable path.");
+        .expect("failed to create temp executable path");
 
     let owned_modules = ctx.compile(llvm_backend, &mut bundle.program_trees);
     let object_files: Vec<ObjectFileInfo> = owned_modules
@@ -93,7 +93,7 @@ pub(crate) fn command_run(mut opts: CompilerOptions, file_path: Option<String>, 
         }
         Err(err) => {
             eprintln!(
-                "Failed to execute temporary program '{}': {err}",
+                "failed to execute temporary program '{}': {err}",
                 temp_exe.path.display()
             );
         }
@@ -144,7 +144,7 @@ pub(crate) fn command_clean(opts: CompilerOptions) {
 
     if build_dir.exists() {
         if let Err(err) = fs::remove_dir_all(build_dir) {
-            exit_with_msg!(format!("Error while cleaning build directory: {}", err.to_string()));
+            exit_with_msg!(format!("error while cleaning build directory: {}", err.to_string()));
         }
     }
 }

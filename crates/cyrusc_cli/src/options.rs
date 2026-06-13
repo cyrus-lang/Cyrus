@@ -1,7 +1,10 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 The Cyrus Language
 
-use crate::enums::{CliABIOption, CliCodeModelOption, CliModuleMergeModeOption, CliOptimizeLevelOption, CliProfileOption, CliRelocModeOption, CliSanitizerOption};
+use crate::enums::{
+    CliABIOption, CliCodeModelOption, CliModuleMergeModeOption, CliOptimizeLevelOption, CliProfileOption,
+    CliRelocModeOption, CliSanitizerOption,
+};
 use clap::Parser;
 use std::env;
 
@@ -19,7 +22,7 @@ pub(crate) struct CliCompilerOptions {
     )]
     pub cpu: String,
 
-    #[clap(long, value_enum, default_value_t = CliOptimizeLevelOption::None, help = "Set optimization level.")]
+    #[clap(long, value_enum, default_value_t = CliOptimizeLevelOption::O0, help = "Set optimization level.", ignore_case = true)]
     pub optimize: CliOptimizeLevelOption,
 
     #[clap(short = 'L', long, value_name = "LIBRARY_PATH", help = "Add a library search path.")]

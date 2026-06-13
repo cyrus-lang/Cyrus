@@ -192,7 +192,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
     fn emit_intrinsic_panic(&mut self, args: &[CIRExpr], loc: Loc) -> InternalValue<'ll> {
         let cir_void_ptr = CIRType::Pointer(Box::new(CIRType::Plain(PlainType::Void)));
 
-        let ptr_type = self.llvmctx.ptr_type(inkwell::AddressSpace::default());
+        let ptr_type = self.llvm_ctx.ptr_type(inkwell::AddressSpace::default());
 
         // message
         let msg = if let Some(expr) = args.get(0) {
@@ -207,12 +207,12 @@ impl<'ll> CodeGenIRBuilder<'ll> {
 
         // declare fprintf
         let fprintf = {
-            let module = self.llvmmodule.borrow();
+            let module = self.llvm_module.borrow();
 
             if let Some(func) = module.get_function("fprintf") {
                 func
             } else {
-                let fn_type = self.llvmctx.i32_type().fn_type(
+                let fn_type = self.llvm_ctx.i32_type().fn_type(
                     &[
                         ptr_type.into(), // FILE*
                         ptr_type.into(), // fmt
@@ -226,7 +226,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
 
         // declare stderr
         let stderr_global = {
-            let module = self.llvmmodule.borrow();
+            let module = self.llvm_module.borrow();
 
             if let Some(g) = module.get_global("stderr") {
                 g
@@ -244,8 +244,8 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         let source_file = self.source_map.get_file(loc.file_id).unwrap();
         let file_path = source_file.file_path.to_str().unwrap();
         let file = self.intrinsic_get_or_insert_global_cstr("__const.panic.file", file_path);
-        let line = self.llvmctx.i32_type().const_int(loc.line as u64, false);
-        let column = self.llvmctx.i32_type().const_int(loc.column as u64, false);
+        let line = self.llvm_ctx.i32_type().const_int(loc.line as u64, false);
+        let column = self.llvm_ctx.i32_type().const_int(loc.column as u64, false);
 
         // thread name
         let thread_name = self.intrinsic_emit_current_thread_name();
@@ -278,7 +278,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
     fn emit_intrinsic_todo(&mut self, args: &[CIRExpr], loc: Loc) -> InternalValue<'ll> {
         let cir_void_ptr = CIRType::Pointer(Box::new(CIRType::Plain(PlainType::Void)));
 
-        let ptr_type = self.llvmctx.ptr_type(inkwell::AddressSpace::default());
+        let ptr_type = self.llvm_ctx.ptr_type(inkwell::AddressSpace::default());
 
         let msg = if let Some(expr) = args.get(0) {
             let lvalue = self.emit_expr(expr, &None);
@@ -292,13 +292,13 @@ impl<'ll> CodeGenIRBuilder<'ll> {
             self.intrinsic_get_or_insert_global_cstr("__const.todo.format", "thread '%s' hit TODO at %s:%d:%d\n%s\n");
 
         let fprintf = {
-            let module = self.llvmmodule.borrow();
+            let module = self.llvm_module.borrow();
 
             if let Some(func) = module.get_function("fprintf") {
                 func
             } else {
                 let fn_type = self
-                    .llvmctx
+                    .llvm_ctx
                     .i32_type()
                     .fn_type(&[ptr_type.into(), ptr_type.into()], true);
 
@@ -307,7 +307,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         };
 
         let stderr_global = {
-            let module = self.llvmmodule.borrow();
+            let module = self.llvm_module.borrow();
 
             if let Some(global_value) = module.get_global("stderr") {
                 global_value
@@ -324,8 +324,8 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         let source_file = self.source_map.get_file(loc.file_id).unwrap();
         let file_path = source_file.file_path.to_str().unwrap();
         let file = self.intrinsic_get_or_insert_global_cstr("__const.todo.file", file_path);
-        let line = self.llvmctx.i32_type().const_int(loc.line as u64, false);
-        let column = self.llvmctx.i32_type().const_int(loc.column as u64, false);
+        let line = self.llvm_ctx.i32_type().const_int(loc.line as u64, false);
+        let column = self.llvm_ctx.i32_type().const_int(loc.column as u64, false);
 
         let thread_name = self.intrinsic_emit_current_thread_name();
 
@@ -357,7 +357,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
     fn emit_intrinsic_unimplemented(&mut self, args: &[CIRExpr], loc: Loc) -> InternalValue<'ll> {
         let cir_void_ptr = CIRType::Pointer(Box::new(CIRType::Plain(PlainType::Void)));
 
-        let ptr_type = self.llvmctx.ptr_type(inkwell::AddressSpace::default());
+        let ptr_type = self.llvm_ctx.ptr_type(inkwell::AddressSpace::default());
 
         let msg = if let Some(expr) = args.get(0) {
             let lvalue = self.emit_expr(expr, &None);
@@ -374,13 +374,13 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         );
 
         let fprintf = {
-            let module = self.llvmmodule.borrow();
+            let module = self.llvm_module.borrow();
 
             if let Some(func) = module.get_function("fprintf") {
                 func
             } else {
                 let fn_type = self
-                    .llvmctx
+                    .llvm_ctx
                     .i32_type()
                     .fn_type(&[ptr_type.into(), ptr_type.into()], true);
 
@@ -389,7 +389,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         };
 
         let stderr_global = {
-            let module = self.llvmmodule.borrow();
+            let module = self.llvm_module.borrow();
 
             if let Some(global_value) = module.get_global("stderr") {
                 global_value
@@ -406,8 +406,8 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         let source_file = self.source_map.get_file(loc.file_id).unwrap();
         let file_path = source_file.file_path.to_str().unwrap();
         let file = self.intrinsic_get_or_insert_global_cstr("__const.unimplemented.file", file_path);
-        let line = self.llvmctx.i32_type().const_int(loc.line as u64, false);
-        let column = self.llvmctx.i32_type().const_int(loc.column as u64, false);
+        let line = self.llvm_ctx.i32_type().const_int(loc.line as u64, false);
+        let column = self.llvm_ctx.i32_type().const_int(loc.column as u64, false);
 
         let thread_name = self.intrinsic_emit_current_thread_name();
 
@@ -439,7 +439,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
     fn emit_intrinsic_unreachable(&mut self, args: &[CIRExpr], loc: Loc) -> InternalValue<'ll> {
         let cir_void_ptr = CIRType::Pointer(Box::new(CIRType::Plain(PlainType::Void)));
 
-        let ptr_type = self.llvmctx.ptr_type(inkwell::AddressSpace::default());
+        let ptr_type = self.llvm_ctx.ptr_type(inkwell::AddressSpace::default());
 
         let msg = if let Some(expr) = args.get(0) {
             let lvalue = self.emit_expr(expr, &None);
@@ -456,13 +456,13 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         );
 
         let fprintf = {
-            let module = self.llvmmodule.borrow();
+            let module = self.llvm_module.borrow();
 
             if let Some(func) = module.get_function("fprintf") {
                 func
             } else {
                 let fn_type = self
-                    .llvmctx
+                    .llvm_ctx
                     .i32_type()
                     .fn_type(&[ptr_type.into(), ptr_type.into()], true);
 
@@ -471,7 +471,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         };
 
         let stderr_global = {
-            let module = self.llvmmodule.borrow();
+            let module = self.llvm_module.borrow();
 
             if let Some(g) = module.get_global("stderr") {
                 g
@@ -488,8 +488,8 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         let source_file = self.source_map.get_file(loc.file_id).unwrap();
         let file_path = source_file.file_path.to_str().unwrap();
         let file = self.intrinsic_get_or_insert_global_cstr("__const.unreachable.file", file_path);
-        let line = self.llvmctx.i32_type().const_int(loc.line as u64, false);
-        let column = self.llvmctx.i32_type().const_int(loc.column as u64, false);
+        let line = self.llvm_ctx.i32_type().const_int(loc.line as u64, false);
+        let column = self.llvm_ctx.i32_type().const_int(loc.column as u64, false);
 
         let thread_name = self.intrinsic_emit_current_thread_name();
 
@@ -532,8 +532,8 @@ impl<'ll> CodeGenIRBuilder<'ll> {
 
         let cur_func = self.cur_func.unwrap();
 
-        let ok_block = self.llvmctx.append_basic_block(cur_func, "assert.ok");
-        let fail_block = self.llvmctx.append_basic_block(cur_func, "assert.fail");
+        let ok_block = self.llvm_ctx.append_basic_block(cur_func, "assert.ok");
+        let fail_block = self.llvm_ctx.append_basic_block(cur_func, "assert.fail");
 
         self.llvmbuilder
             .build_conditional_branch(cond, ok_block, fail_block)
@@ -541,7 +541,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
 
         self.emit_block(fail_block);
 
-        let ptr_type = self.llvmctx.ptr_type(inkwell::AddressSpace::default());
+        let ptr_type = self.llvm_ctx.ptr_type(inkwell::AddressSpace::default());
 
         let msg = if let Some(expr) = args.get(1) {
             let lvalue = self.emit_expr(expr, &None);
@@ -554,12 +554,12 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         let format_ptr = self.intrinsic_get_or_insert_assert_format();
 
         let fprintf = {
-            let module = self.llvmmodule.borrow();
+            let module = self.llvm_module.borrow();
 
             if let Some(func) = module.get_function("fprintf") {
                 func
             } else {
-                let fn_type = self.llvmctx.i32_type().fn_type(
+                let fn_type = self.llvm_ctx.i32_type().fn_type(
                     &[
                         ptr_type.into(), // FILE*
                         ptr_type.into(), // fmt
@@ -572,7 +572,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         };
 
         let stderr_global = {
-            let module = self.llvmmodule.borrow();
+            let module = self.llvm_module.borrow();
 
             if let Some(g) = module.get_global("stderr") {
                 g
@@ -590,8 +590,8 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         let source_file = self.source_map.get_file(loc.file_id).unwrap();
         let file_path = source_file.file_path.to_str().unwrap();
         let file = self.intrinsic_get_or_insert_global_cstr("__const.panic.file", file_path);
-        let line = self.llvmctx.i32_type().const_int(loc.line as u64, false);
-        let column = self.llvmctx.i32_type().const_int(loc.column as u64, false);
+        let line = self.llvm_ctx.i32_type().const_int(loc.line as u64, false);
+        let column = self.llvm_ctx.i32_type().const_int(loc.column as u64, false);
 
         // thread name
         let thread_name = self.intrinsic_emit_current_thread_name();
@@ -651,7 +651,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
 
         self.llvmbuilder.build_store(src_alloca, value).unwrap();
 
-        let i8_ptr_type = self.llvmctx.ptr_type(inkwell::AddressSpace::default());
+        let i8_ptr_type = self.llvm_ctx.ptr_type(inkwell::AddressSpace::default());
 
         let dst_ptr = self
             .llvmbuilder
@@ -696,7 +696,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         let ty = rvalue.get_type();
 
         let size_in_bytes = target_data.get_store_size(&ty);
-        let size_value = self.llvmctx.i64_type().const_int(size_in_bytes, false);
+        let size_value = self.llvm_ctx.i64_type().const_int(size_in_bytes, false);
 
         let src_align = target_data.get_abi_alignment(&ty);
         let dest_align = target_data.get_abi_alignment(&ty);
@@ -704,7 +704,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         let src_ptr = if rvalue.is_const() {
             // use global value if rvalue is a constant
             let global = {
-                let module = self.llvmmodule.borrow();
+                let module = self.llvm_module.borrow();
                 module.add_global(ty, None, "__const.memcpy")
             };
 
@@ -727,10 +727,10 @@ impl<'ll> CodeGenIRBuilder<'ll> {
     }
 
     pub(crate) fn intrinsic_strcmp(&self, lhs_ptr: PointerValue<'ll>, rhs_ptr: PointerValue<'ll>) -> IntValue<'ll> {
-        let i32_type = self.llvmctx.i32_type();
-        let i8_ptr_type = self.llvmctx.ptr_type(AddressSpace::default());
+        let i32_type = self.llvm_ctx.i32_type();
+        let i8_ptr_type = self.llvm_ctx.ptr_type(AddressSpace::default());
 
-        let module = self.llvmmodule.borrow();
+        let module = self.llvm_module.borrow();
 
         let strcmp_func = match module.get_function("strcmp") {
             Some(func) => func,
@@ -759,12 +759,12 @@ impl<'ll> CodeGenIRBuilder<'ll> {
     }
 
     pub(crate) fn intrinsic_array_memcmp(&self, lhs_arr: ArrayValue<'ll>, rhs_arr: ArrayValue<'ll>) -> IntValue<'ll> {
-        let i32_type = self.llvmctx.i32_type();
-        let i8_ptr_type = self.llvmctx.ptr_type(AddressSpace::default());
+        let i32_type = self.llvm_ctx.i32_type();
+        let i8_ptr_type = self.llvm_ctx.ptr_type(AddressSpace::default());
         let target_data = self.llvmtm.get_target_data();
-        let ptr_sized_int_type = self.llvmctx.ptr_sized_int_type(&target_data, None);
+        let ptr_sized_int_type = self.llvm_ctx.ptr_sized_int_type(&target_data, None);
 
-        let module = self.llvmmodule.borrow();
+        let module = self.llvm_module.borrow();
         let memcmp = match module.get_function("memcmp") {
             Some(func) => func,
             None => {
@@ -786,7 +786,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         self.llvmbuilder.build_store(lhs_alloca, lhs_arr).unwrap();
         self.llvmbuilder.build_store(rhs_alloca, rhs_arr).unwrap();
 
-        let zero = self.llvmctx.i32_type().const_zero();
+        let zero = self.llvm_ctx.i32_type().const_zero();
         let gep_idx = &[zero, zero];
         let lhs_ptr = unsafe {
             self.llvmbuilder
@@ -860,18 +860,18 @@ impl<'ll> CodeGenIRBuilder<'ll> {
     }
 
     fn intrinsic_get_or_insert_trap(&self) -> FunctionValue<'ll> {
-        let llvmmodule = self.llvmmodule.borrow();
+        let llvm_module = self.llvm_module.borrow();
 
-        if let Some(func) = llvmmodule.get_function("llvm.trap") {
+        if let Some(func) = llvm_module.get_function("llvm.trap") {
             func
         } else {
-            let fn_type = self.llvmctx.void_type().fn_type(&[], false);
-            llvmmodule.add_function("llvm.trap", fn_type, None)
+            let fn_type = self.llvm_ctx.void_type().fn_type(&[], false);
+            llvm_module.add_function("llvm.trap", fn_type, None)
         }
     }
 
     fn intrinsic_get_or_insert_global_cstr(&self, name: &str, value: &str) -> PointerValue<'ll> {
-        let module = self.llvmmodule.borrow();
+        let module = self.llvm_module.borrow();
 
         if let Some(global) = module.get_global(name) {
             return global.as_pointer_value();
@@ -886,35 +886,35 @@ impl<'ll> CodeGenIRBuilder<'ll> {
 
     #[inline]
     fn intrinsic_emit_current_thread_name(&self) -> PointerValue<'ll> {
-        let llvmmodule = self.llvmmodule.borrow();
+        let llvm_module = self.llvm_module.borrow();
 
-        let i8_type = self.llvmctx.i8_type();
-        let i64_type = self.llvmctx.i64_type();
+        let i8_type = self.llvm_ctx.i8_type();
+        let i64_type = self.llvm_ctx.i64_type();
 
-        let ptr_type = self.llvmctx.ptr_type(inkwell::AddressSpace::default());
+        let ptr_type = self.llvm_ctx.ptr_type(inkwell::AddressSpace::default());
 
         // pthread_t pthread_self(void)
-        let pthread_self_fn = if let Some(func) = llvmmodule.get_function("pthread_self") {
+        let pthread_self_fn = if let Some(func) = llvm_module.get_function("pthread_self") {
             func
         } else {
             let fn_type = i64_type.fn_type(&[], false);
 
-            llvmmodule.add_function("pthread_self", fn_type, None)
+            llvm_module.add_function("pthread_self", fn_type, None)
         };
 
         // int pthread_getname_np(pthread_t, char*, size_t)
-        let pthread_getname_np_fn = if let Some(func) = llvmmodule.get_function("pthread_getname_np") {
+        let pthread_getname_np_fn = if let Some(func) = llvm_module.get_function("pthread_getname_np") {
             func
         } else {
             let fn_type = self
-                .llvmctx
+                .llvm_ctx
                 .i32_type()
                 .fn_type(&[i64_type.into(), ptr_type.into(), i64_type.into()], false);
 
-            llvmmodule.add_function("pthread_getname_np", fn_type, None)
+            llvm_module.add_function("pthread_getname_np", fn_type, None)
         };
 
-        drop(llvmmodule);
+        drop(llvm_module);
 
         // allocate thread-name buffer
         // POSIX thread names are typically <= 16 bytes.
