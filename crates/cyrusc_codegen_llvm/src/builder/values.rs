@@ -2,10 +2,13 @@
 // Copyright (c) 2026 The Cyrus Language
 
 use crate::builder::builder::CodeGenIRBuilder;
-use cyrusc_internal::cir::{cir::CIRExpr, types::CIRType};
+use cyrusc_internal::{
+    abi::layout::type_layout,
+    cir::{cir::CIRExpr, types::CIRType},
+};
 use inkwell::{
     IntPredicate,
-    types::{BasicType, BasicTypeEnum},
+    types::BasicTypeEnum,
     values::{BasicValue, BasicValueEnum, FunctionValue, IntValue, PointerValue},
 };
 
@@ -65,6 +68,14 @@ impl<'a> InternalValue<'a> {
 
 impl<'ll> CodeGenIRBuilder<'ll> {
     pub(crate) fn emit_store(&self, ptr: PointerValue<'ll>, mut rvalue: InternalValue<'ll>, target_cir_ty: CIRType) {
+        let layout = type_layout(&self.target.info, &target_cir_ty);
+
+        // IMPORTANT!!
+        // If you store null or a value in a zero-sized type, it will cause severe issues (UB)
+        if layout.size == 0 {
+            return;
+        }
+
         if target_cir_ty.is_union() {
             self.emit_union_init(&target_cir_ty.as_union().as_ref().unwrap(), ptr, rvalue);
             return;
