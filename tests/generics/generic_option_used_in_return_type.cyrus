@@ -1,0 +1,22 @@
+// @stdout: 100
+
+import std::libc{printf};
+
+enum Option<T> {
+    Some(T),
+    None
+}
+
+fn foo<T>(x: T) Option<T> {
+   return .Some(x);
+}
+
+pub fn main() {
+    const x = foo(100);
+    
+    switch (x) {
+        case .Some(value) => {
+            printf("%d\n", value);
+        }
+    }
+}

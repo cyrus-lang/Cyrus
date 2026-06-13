@@ -278,7 +278,6 @@ impl<'a> AnalysisContext<'a> {
                             loc: Some(enum_value.loc),
                             hint: Some(this.invalid_enum_variant_construction_hint(variant)),
                         });
-
                         return None;
                     }
                 },

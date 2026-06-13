@@ -134,7 +134,7 @@ pub fn lower_struct_decl(
 /// variants are preserved when the enum is scalar‑optimizable. Remaining
 /// variants receive automatically assigned tags, ensuring all tags are
 /// unique.
-pub fn lower_enum_decl(decl_tables: &DeclTablesRegistry, target: &ABITarget, enum_decl: &EnumDecl) -> CIREnumType {
+pub fn lower_enum_decl(decl_tables: &DeclTablesRegistry, target: &ABITarget, enum_decl: &EnumDecl) -> CIREnumType {    
     let mut variants: Vec<CIREnumVariant> = enum_decl
         .variants
         .iter()

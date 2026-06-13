@@ -150,6 +150,11 @@ impl InferCtx {
             (SemaType::Const(c1), SemaType::Const(c2)) => self.unify(c1, c2),
             (SemaType::FuncType(f1), SemaType::FuncType(f2)) => self.unify_func(f1, f2),
 
+            // unify: array-to-pointer decay
+            (SemaType::Array(arr), SemaType::Pointer(ptr)) | (SemaType::Pointer(ptr), SemaType::Array(arr)) => {
+                self.unify(&arr.element_type, &ptr)
+            }
+            
             _ => false,
         }
     }

@@ -43,6 +43,10 @@ impl<'a> AnalysisContext<'a> {
 
         self.check_type_arity(method_decl.func_decl.ret_type.clone(), loc)?;
 
+        let current_func = self.func_env.current_func.as_mut().unwrap();
+        current_func.params = method_decl.func_decl.params.as_func_type_params();
+        current_func.ret_type = Box::new(method_decl.func_decl.ret_type.clone());
+
         // get or create monomorph instance
         let monomorph_id = self.monomorph_registry.get_or_create(
             MonomorphizableTemplateID::Method(method_decl_id),
@@ -97,6 +101,12 @@ impl<'a> AnalysisContext<'a> {
         func_call.operand.ty = Some(self.substitute_type(&operand_type));
         func_decl.params = self.substitute_func_params(func_decl.params.clone());
         func_decl.ret_type = self.substitute_type(&func_decl.ret_type);
+
+        self.check_type_arity(func_decl.ret_type.clone(), func_call.loc)?;
+
+        let current_func = self.func_env.current_func.as_mut().unwrap();
+        current_func.params = func_decl.params.as_func_type_params();
+        current_func.ret_type = Box::new(func_decl.ret_type.clone());
 
         // get or get monomorph instance
         let monomorph_id = self.monomorph_registry.get_or_create(

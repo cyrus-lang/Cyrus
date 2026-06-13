@@ -5,6 +5,17 @@ pub enum Option<T> {
     Some(T),
     None
 
+    pub inline fn unwrap(&const self) T {
+        if (self->is_none()) {
+            @panic("called `Option.unwrap()` on a `None` value");
+        }
+
+        switch (*self) {
+            case .Some(value) => return value;
+            default => @unreachable();
+        }
+    }
+    
     pub inline fn is_some(&const self) bool {
         switch (*self) {
             case .Some(_) => return true;
@@ -16,17 +27,6 @@ pub enum Option<T> {
         switch (*self) {
             case .Some(_) => return false;
             case .None => return true;
-        }
-    }
-
-    pub inline fn unwrap(&const self) T {
-        if (self->is_none()) {
-            @panic("called `Option.unwrap()` on a `None` value");
-        }
-
-        switch (*self) {
-            case .Some(value) => return value;
-            default => @unreachable();
         }
     }
 }

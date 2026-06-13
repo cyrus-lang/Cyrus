@@ -21,10 +21,19 @@ use cyrusc_typed_ast::{
 
 impl<'a> AnalysisContext<'a> {
     pub(crate) fn analyze_func_call(&mut self, func_call: &mut TypedFuncCall) -> Option<SemaType> {
-        let func_decl_id_opt = func_call.operand.kind.as_unresolved_symbol_id().and_then(|symbol_id| {
-            self.lookup_symbol_as_decl_id(symbol_id)
-                .and_then(|decl_id| decl_id.as_func())
-        });
+        let func_decl_id_opt = func_call
+            .operand
+            .kind
+            .as_unresolved_symbol_id()
+            .and_then(|symbol_id| {
+                self.lookup_symbol_as_decl_id(symbol_id)
+                    .and_then(|decl_id| decl_id.as_func())
+            })
+            .or(func_call
+                .operand
+                .kind
+                .as_resolved_decl_id()
+                .and_then(|decl_id| decl_id.as_func()));
 
         let operand_type = self.analyze_expr_non_terminal(&mut func_call.operand, None)?;
 

@@ -1,3 +1,29 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 The Cyrus Language
  
+import std::option{Option};
+
+pub struct Slice<T> {
+    ptr: T*;
+    len: usize;
+
+    pub inline fn new(const ptr: T*, const len: usize) Self {
+        return Self { ptr, len };
+    }
+
+    pub inline fn get(&const self, const index: usize) Option<T*> {
+        if (index >= self->len) {
+            return .None;
+        }
+
+        return .Some(self->ptr + index);
+    }
+
+    pub inline fn range(const self, const start: usize, const end: usize) Self {
+        return Self { ptr: self.ptr + start, len: end - start };
+    }
+
+    pub inline fn len(const self) usize {
+        return self.len;
+    }
+}
