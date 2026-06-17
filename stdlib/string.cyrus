@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 The Cyrus Language
 
-import std::libc{strlen};
+import std::libc{strlen, strcmp, tolower, toupper};
 import std::mem{Allocator};
 import std::mem::buffer{Buffer};
 
@@ -75,6 +75,22 @@ pub struct String {
         self->buffer.push('\0');
     }
 
+    pub fn to_lower(&self) {
+        var str = self->as_str();
+
+        for (var i: usize = 0; i < self->buffer.len(); i++) {
+            str[i] = @cast(char, tolower(str[i]));
+        }
+    }
+
+    pub fn to_upper(&self) {
+        var str = self->as_str();
+
+        for (var i: usize = 0; i < self->buffer.len(); i++) {
+            str[i] = @cast(char, toupper(str[i]));
+        }
+    }
+
     pub inline fn as_str(&self) char* {
         return self->buffer.data();
     }
@@ -93,6 +109,10 @@ pub struct String {
 
     pub inline fn len(&const self) usize {
         return self->buffer.len() - 1; // exclude '\0'
+    }
+
+    pub inline fn eq(&const self, other: Self*) bool {
+        return strcmp(self->as_str_const(), other->as_str_const()) == 0;
     }
 
     pub inline fn clear(&self) {
