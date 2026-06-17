@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 The Cyrus Language
 
-/// A null-terminated C-style string literal for error messages.
+/// A const string literal for error message.
 pub type ErrorStr = const char*;
 
 /// A result type representing either a successful value `V` or an error message.
@@ -12,28 +12,24 @@ pub enum ErrorOr<V> {
 	/// Unwraps the contained value, panicking with the error message if this is an Error.
     pub fn unwrap(&const self) V {
     	switch (*self) {
-			case .Value(value) => {
-				return value;
-			}
-			case .Error(err) => {
-				@panic(err);
-			}
+			case .Value(value) => return value;
+			case .Error(err) => @panic(err);
 		}
     }
 
 	/// Returns true if contains an error, false otherwise.
 	pub inline fn is_error(&const self) bool {
 		switch (*self) {
-			case .Value(_) => { return false; }
-			case .Error(_) => { return true; }
+			case .Value(_) => return false;
+			case .Error(_) => return true;
 		}
 	}
 	
 	/// Returns true if contains a value, false otherwise.
 	pub inline fn is_value(&const self) bool {
 		switch (*self) {
-			case .Value(_) => { return true; }
-			case .Error(_) => { return false; }
+			case .Value(_) => return true;
+			case .Error(_) => return false;
 		}
 	}
 }
