@@ -1,8 +1,8 @@
 // @stdout: meow
 
-import std::libc{printf};
-import std::string{String};
 import std::mem{Allocator, LibcAllocator};
+import std::string{String};
+import std::libc{printf};
 
 pub fn main() {
     const allocator: Allocator = dynamic LibcAllocator.new();

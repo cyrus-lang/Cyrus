@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 The Cyrus Language
 
-import std::libc{printf, memmove, realloc, malloc, free};
+import std::libc{memmove, realloc, malloc, free};
 import std::mem{Allocator};
 import std::option{Option};
 import std::iterator{Iterator};

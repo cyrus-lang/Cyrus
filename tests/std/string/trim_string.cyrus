@@ -1,0 +1,20 @@
+// @stdout: Hello World, 11
+
+import std::mem{Allocator, LibcAllocator};
+import std::string{String};
+import std::libc{printf};
+
+pub fn main() {
+    const allocator: Allocator = dynamic LibcAllocator.new();
+
+    var name = String.from_str(allocator, "   Hello World    ");
+    defer name.free();
+
+    name.trim();
+
+    const str = name.as_str_const();
+    
+    @assert(str[name.len()] == '\0');
+
+    printf("%s, %d\n", str, name.len());
+}
