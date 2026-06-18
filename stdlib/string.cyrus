@@ -74,6 +74,8 @@ pub struct String {
         
         self->buffer.push('\0');
     }
+    
+    // TODO: Add method: replace
 
     pub inline fn trim(&self) {
         self->trim_start();

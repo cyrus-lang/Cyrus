@@ -417,10 +417,11 @@ impl<'source_file> Parser<'source_file> {
 
                 self.tokens.remove(peek_token_idx);
                 self.tokens.remove(peek_token_idx);
+
                 self.tokens.insert(
                     peek_token_idx,
                     Token {
-                        kind: TokenKind::ShiftLeft,
+                        kind: TokenKind::ShiftRight,
                         loc: Loc::new(self.file_id(), lhs_line, lhs_column, lhs_start, end),
                     },
                 );

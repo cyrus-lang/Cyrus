@@ -11,13 +11,6 @@ pub interface Allocator {
 	fn free(&const self, ptr: void*) void;
 }
 
-// TODO
-// pub struct Arena {
-// 	mem: void*;
-// 	cur: void*;
-// 	end: void*;
-// }
-
 pub struct LibcAllocator : Allocator {
 	pub inline fn new() Self {
 		return Self{};
@@ -55,7 +48,11 @@ pub struct LibcAllocator : Allocator {
 	}
 }
 
-pub struct StackAllocator : Allocator {
+pub struct ArenaAllocator {
+
+}
+
+pub struct BumpAllocator : Allocator {
 	ptr: void*;
 	cap: usize;
 	offset: usize;
@@ -76,7 +73,7 @@ pub struct StackAllocator : Allocator {
 			return null;
 		}
 
-		const ptr = @cast(uintptr, self->ptr) + current;
+		const ptr = @cast(uintptr, self->ptr) + self->offset;
 		self->offset = next;
 
 		return @cast(void*, ptr);
