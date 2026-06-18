@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 The Cyrus Language
 
-import std::libc{strlen, strcmp, memmove, printf, tolower, toupper};
+import std::libc{strlen, strcmp, memmove, isspace, tolower, toupper};
 import std::mem{Allocator};
 import std::mem::buffer{Buffer};
 
@@ -86,7 +86,7 @@ pub struct String {
 
         // count whitespace
         var j: usize;
-        while (j < len && is_whitespace(str[j])) {
+        while (j < len && isspace(str[j]) != 0) {
             j++;
         }
 
@@ -106,7 +106,7 @@ pub struct String {
         const len = self->buffer.len();
 
         for (var i: usize = len - 1; i > 0; i--) {
-            if (is_whitespace(str[i])) {
+            if (isspace(str[i])) {
                 self->buffer.pop();
             }
         }
@@ -162,10 +162,4 @@ pub struct String {
     pub inline fn free(&self) {
         self->buffer.free();
     }
-}
-
-pub fn is_whitespace(ch: char) bool {
-    return ((ch == ' ') || (ch == '\t')) ||
-            (((ch == '\n') || (ch == '\r')) ||
-            ((ch == '\v') || (ch == '\f')));
 }
