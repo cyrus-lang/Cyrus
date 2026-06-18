@@ -4,7 +4,7 @@
 use crate::diagnostics::LexicalDiagKind;
 use cyrusc_diagcentral::{Diag, DiagLevel, exit_with_single_diag, reporter::DiagReporter};
 use cyrusc_source_loc::{FileID, Loc, SourceFile};
-use cyrusc_strescape::unescape_string;
+use cyrusc_strescape::{ESCAPE_CHARS, escape_sequence_to_char, unescape_string};
 use cyrusc_tokens::{
     Token, TokenKind,
     literals::{ASTLiteralExpr, IntLiteralKind, LiteralKind, StringPrefix},
@@ -362,30 +362,24 @@ impl<'source_map, 'source_file> Lexer<'source_map, 'source_file> {
             // escape sequence
             self.read_char();
 
-            let escaped = match self.ch {
-                'n' => '\n',
-                't' => '\t',
-                'r' => '\r',
-                '\\' => '\\',
-                '\'' => '\'',
-                '0' => '\0',
-                _ => {
-                    let column = self.column;
-                    let end = self.pos;
+            if !ESCAPE_CHARS.contains(&self.ch) {
+                let column = self.column;
+                let end = self.pos;
 
-                    self.reporter.report(Diag {
-                        level: DiagLevel::Error,
-                        kind: Box::new(LexicalDiagKind::InvalidEscapeSequence),
-                        loc: Some(Loc::new(self.file_id(), line, column, start, end)),
-                        hint: Some("Valid escapes include \\n, \\t, \\\\, \\'.".to_string()),
-                    });
-                    self.read_char();
-                    return TokenKind::Invalid;
-                }
-            };
+                self.reporter.report(Diag {
+                    level: DiagLevel::Error,
+                    kind: Box::new(LexicalDiagKind::InvalidEscapeSequence),
+                    loc: Some(Loc::new(self.file_id(), line, column, start, end)),
+                    hint: Some("Valid escapes include \\n, \\t, \\\\, \\', ...".to_string()),
+                });
+                self.read_char();
+                return TokenKind::Invalid;
+            }
+
+            let escaped_str = escape_sequence_to_char(self.ch).unwrap();
 
             self.read_char();
-            escaped
+            escaped_str
         } else {
             // normal char
             if self.ch.len_utf8() != 1 {

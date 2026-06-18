@@ -11,6 +11,13 @@ pub interface Allocator {
 	fn free(&const self, ptr: void*) void;
 }
 
+// TODO
+// pub struct Arena {
+// 	mem: void*;
+// 	cur: void*;
+// 	end: void*;
+// }
+
 pub struct LibcAllocator : Allocator {
 	pub inline fn new() Self {
 		return Self{};

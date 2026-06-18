@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 The Cyrus Language
 
-import std::libc{strlen, strcmp, tolower, toupper};
+import std::libc{strlen, strcmp, memmove, printf, tolower, toupper};
 import std::mem{Allocator};
 import std::mem::buffer{Buffer};
 
@@ -75,6 +75,45 @@ pub struct String {
         self->buffer.push('\0');
     }
 
+    pub inline fn trim(&self) {
+        self->trim_start();
+        self->trim_end();
+    }
+
+    pub fn trim_start(&self) {
+        const str = self->as_str_const();
+        const len = self->buffer.len();
+
+        // count whitespace
+        var j: usize;
+        while (j < len && is_whitespace(str[j])) {
+            j++;
+        }
+
+        // move string to starting point
+        const n = len - j;
+
+        memmove(str, str + j, n);
+
+        while (j > 0) {
+            self->buffer.pop();
+            j--;
+        }
+    }
+
+    pub fn trim_end(&self) {
+        const str = self->as_str_const();
+        const len = self->buffer.len();
+
+        for (var i: usize = len - 1; i > 0; i--) {
+            if (is_whitespace(str[i])) {
+                self->buffer.pop();
+            }
+        }
+
+        self->buffer.push('\0');
+    }
+
     pub fn to_lower(&self) {
         var str = self->as_str();
 
@@ -123,4 +162,10 @@ pub struct String {
     pub inline fn free(&self) {
         self->buffer.free();
     }
+}
+
+pub fn is_whitespace(ch: char) bool {
+    return ((ch == ' ') || (ch == '\t')) ||
+            (((ch == '\n') || (ch == '\r')) ||
+            ((ch == '\v') || (ch == '\f')));
 }

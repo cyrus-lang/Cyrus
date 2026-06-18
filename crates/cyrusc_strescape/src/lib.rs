@@ -5,6 +5,20 @@ use crate::diagnostics::UnescapeError;
 
 pub mod diagnostics;
 
+pub const ESCAPE_CHARS: [char; 11] = [
+    '0',  // null
+    'n',  // newline
+    't',  // tab
+    'r',  // carriage return
+    'b',  // backspace
+    'a',  // bell
+    'v',  // vertical tab
+    'f',  // form feed
+    '\\', // backslash
+    '"',  // double quote
+    '\'', // single quote
+];
+
 pub fn unescape_string(input: &str) -> Result<String, UnescapeError> {
     let mut result = String::new();
     let mut chars = input.chars().peekable();
@@ -149,10 +163,44 @@ pub fn unescape_string(input: &str) -> Result<String, UnescapeError> {
     Ok(result)
 }
 
+pub fn escape_sequence_to_char(seq: char) -> Option<char> {
+    match seq {
+        '0' => Some('\0'),
+        'n' => Some('\n'),
+        't' => Some('\t'),
+        'r' => Some('\r'),
+        'b' => Some('\x08'),
+        'a' => Some('\x07'),
+        'v' => Some('\x0B'),
+        'f' => Some('\x0C'),
+        '\\' => Some('\\'),
+        '"' => Some('"'),
+        '\'' => Some('\''),
+        _ => None,
+    }
+}
+
+pub fn char_to_escape_sequence(ch: char) -> Option<char> {
+    match ch {
+        '\0' => Some('0'),
+        '\n' => Some('n'),
+        '\t' => Some('t'),
+        '\r' => Some('r'),
+        '\x08' => Some('b'),
+        '\x07' => Some('a'),
+        '\x0B' => Some('v'),
+        '\x0C' => Some('f'),
+        '\\' => Some('\\'),
+        '"' => Some('"'),
+        '\'' => Some('\''),
+        _ => None,
+    }
+}
+
 pub fn escape_string(s: &str) -> String {
     let mut result = String::with_capacity(s.len());
-    for c in s.chars() {
-        match c {
+    for ch in s.chars() {
+        match ch {
             '\n' => result.push_str("\\n"),
             '\t' => result.push_str("\\t"),
             '\r' => result.push_str("\\r"),
@@ -163,7 +211,8 @@ pub fn escape_string(s: &str) -> String {
             '\\' => result.push_str("\\\\"),
             '\"' => result.push_str("\\\""),
             '\'' => result.push_str("\\'"),
-            _ => result.push(c),
+
+            _ => result.push(ch),
         }
     }
     result

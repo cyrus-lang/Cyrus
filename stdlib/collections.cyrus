@@ -67,7 +67,7 @@ pub struct Vector<T> {
         self->extend_from_ptr(other->data, other->len);
     }
 
-    pub inline fn extend_from_ptr(&const self, const ptr: T*, const count: usize) {
+    pub inline fn extend_from_ptr(&self, const ptr: T*, const count: usize) {
         if (count == 0) {
             return;
         }
@@ -92,15 +92,12 @@ pub struct Vector<T> {
         self->len = old_len + count;
     }
 
-    // FIXME: `Self` not found error.
-    // /// Deep copy of the array
-    // pub inline fn clone(&self) Self {
-    //     var inst = Self.with_capacity(self->len);
-
-    //     inst.extend_from_ptr(self->data, self->len);
-
-    //     return inst;
-    // }
+    /// Deep copy of the array. 
+    pub inline fn clone(&const self, const allocator: Allocator) Self {
+        var vec: Vector<T> = Vector.with_capacity(allocator, self->len);
+        vec.extend_from_ptr(self->data, self->len);
+        return vec;
+    }
 
     // TODO: from<V>(value: V)
 
