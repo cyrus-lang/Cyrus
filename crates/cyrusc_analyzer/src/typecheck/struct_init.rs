@@ -19,7 +19,7 @@ impl<'a> AnalysisContext<'a> {
         struct_init: &mut TypedStructInitExpr,
         expected_type: Option<SemaType>,
     ) -> Option<SemaType> {
-        let mut operand = self.normalize_and_check_type_formation(struct_init.operand.clone(), struct_init.loc)?;
+        let mut operand = self.normalize_and_check_type_formation(struct_init.operand.clone(), struct_init.loc, 0)?;
 
         operand = self.expand_sema_type(operand, struct_init.loc);
 
@@ -53,7 +53,7 @@ impl<'a> AnalysisContext<'a> {
                     continue;
                 };
 
-                let Some(mut expected_field_type) = this.normalize_sema_type(struct_field.ty.clone(), field.loc) else {
+                let Some(mut expected_field_type) = this.normalize_sema_type(struct_field.ty.clone(), field.loc, 0) else {
                     continue;
                 };
 

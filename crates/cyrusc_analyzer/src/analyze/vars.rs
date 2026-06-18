@@ -33,7 +33,7 @@ impl<'a> AnalysisContext<'a> {
         }
 
         global_var.ty = match &global_var.ty {
-            Some(ty) => self.normalize_and_check_type_formation(ty.clone(), global_var.loc),
+            Some(ty) => self.normalize_and_check_type_formation(ty.clone(), global_var.loc, 0),
             None => match global_var.expr.as_ref().and_then(|expr| expr.ty.clone()) {
                 Some(ty) => Some(ty),
                 None => {
@@ -97,7 +97,7 @@ impl<'a> AnalysisContext<'a> {
 
     pub(crate) fn analyze_variable(&mut self, var: &mut TypedVarStmt) {
         if let Some(ty) = &var.ty {
-            var.ty = self.normalize_and_check_type_formation(ty.clone(), var.loc);
+            var.ty = self.normalize_and_check_type_formation(ty.clone(), var.loc, 0);
         }
 
         if let Some(expr) = &mut var.rhs {

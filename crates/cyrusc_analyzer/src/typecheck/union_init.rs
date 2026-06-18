@@ -18,7 +18,7 @@ impl<'a> AnalysisContext<'a> {
         union_init: &mut TypedUnionInitExpr,
         expected_type: Option<SemaType>,
     ) -> Option<SemaType> {
-        let mut operand = self.normalize_and_check_type_formation(union_init.operand.clone(), union_init.loc)?;
+        let mut operand = self.normalize_and_check_type_formation(union_init.operand.clone(), union_init.loc, 0)?;
 
         operand = self.expand_sema_type(operand, union_init.loc);
 

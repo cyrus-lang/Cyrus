@@ -37,7 +37,7 @@ impl<'a> AnalysisContext<'a> {
 
         let operand_type = self.analyze_expr_non_terminal(&mut func_call.operand, None)?;
 
-        self.normalize_type_args(&mut func_call.type_args);
+        self.normalize_type_args(&mut func_call.type_args, 0);
 
         let Some(mut func_type) = operand_type.as_func_type().cloned() else {
             let symbol_name = format_sema_type(operand_type, self.formatter);
@@ -67,7 +67,7 @@ impl<'a> AnalysisContext<'a> {
                 )?;
 
                 self.with_generic_env(generic_env, |this| {
-                    this.normalize_func_params(&mut func_decl.params, false);
+                    this.normalize_func_params(&mut func_decl.params, false, 0);
 
                     if !this.analyze_call(
                         &original_params,
@@ -99,7 +99,7 @@ impl<'a> AnalysisContext<'a> {
             }
             // normal function
             else {
-                self.normalize_func_params(&mut func_decl.params, false);
+                self.normalize_func_params(&mut func_decl.params, false, 0);
 
                 if !self.analyze_call(
                     &original_params,
@@ -133,10 +133,10 @@ impl<'a> AnalysisContext<'a> {
                 });
             }
 
-            self.normalize_func_type_params(&mut func_type.params, func_call.loc);
+            self.normalize_func_type_params(&mut func_type.params, func_call.loc, 0);
 
             func_type.ret_type =
-                Box::new(self.normalize_and_check_type_formation(*func_type.ret_type.clone(), func_call.loc)?);
+                Box::new(self.normalize_and_check_type_formation(*func_type.ret_type.clone(), func_call.loc, 0)?);
 
             let ret_type = self.check_func_type_call(&mut func_type, &mut func_call.args, func_call.loc)?;
 
@@ -158,7 +158,7 @@ impl<'a> AnalysisContext<'a> {
     ) -> Option<SemaType> {
         self.analyze_expr_non_terminal(&mut method_call.operand, None)?;
 
-        self.normalize_type_args(&mut method_call.type_args);
+        self.normalize_type_args(&mut method_call.type_args, 0);
 
         #[warn(unused_assignments)]
         let mut is_operand_instance = true;
@@ -181,7 +181,7 @@ impl<'a> AnalysisContext<'a> {
 
                     if decl_id.is_var_or_global_var() {
                         // extract variable type as use it as operand type for instance method calls.
-                        Some(self.resolve_symbol_type(decl_id, method_call.loc)?)
+                        Some(self.resolve_symbol_type(decl_id, method_call.loc, 0)?)
                     } else {
                         None
                     }
@@ -216,7 +216,7 @@ impl<'a> AnalysisContext<'a> {
             }
         };
 
-        operand_type = self.normalize_sema_type(operand_type, method_call.loc)?;
+        operand_type = self.normalize_sema_type(operand_type, method_call.loc, 0)?;
 
         let operand_includes_type_args = operand_type
             .as_named_type()
@@ -436,7 +436,7 @@ impl<'a> AnalysisContext<'a> {
             // but not return type at this moment (VERY IMPORTANT)
             //
             // normalize func params
-            this.normalize_func_params(&mut method_decl.func_decl.params, true);
+            this.normalize_func_params(&mut method_decl.func_decl.params, true, 0);
 
             // analyze call arguments
             if !this.analyze_call(
@@ -511,7 +511,7 @@ impl<'a> AnalysisContext<'a> {
                     //
                     // normalize ret type
                     method_decl.func_decl.ret_type =
-                        this.normalize_sema_type(method_decl.func_decl.ret_type.clone(), method_call.loc)?;
+                        this.normalize_sema_type(method_decl.func_decl.ret_type.clone(), method_call.loc, 0)?;
 
                     method_decl.func_decl.params = this.substitute_func_params(method_decl.func_decl.params.clone());
                     method_decl.func_decl.ret_type = this.substitute_type(&method_decl.func_decl.ret_type);
@@ -590,7 +590,7 @@ impl<'a> AnalysisContext<'a> {
         )?;
 
         self.with_generic_env(generic_env, |this| {
-            this.normalize_func_params(&mut interface_method_decl.func_decl.params, true);
+            this.normalize_func_params(&mut interface_method_decl.func_decl.params, true, 0);
 
             interface_method_decl.func_decl.params =
                 this.substitute_func_params(interface_method_decl.func_decl.params);
@@ -900,7 +900,7 @@ impl<'a> AnalysisContext<'a> {
             .zip(args.iter_mut())
             .enumerate()
         {
-            let Some(param_type) = self.normalize_and_check_type_formation(param.param_type(), param.loc()) else {
+            let Some(param_type) = self.normalize_and_check_type_formation(param.param_type(), param.loc(), 0) else {
                 continue;
             };
 
@@ -1053,7 +1053,7 @@ impl<'a> AnalysisContext<'a> {
             .zip(args.iter_mut())
             .enumerate()
         {
-            let param_type = self.normalize_and_check_type_formation(param.clone(), loc).unwrap();
+            let param_type = self.normalize_and_check_type_formation(param.clone(), loc, 0).unwrap();
 
             let arg_type = match self.analyze_expr(arg, Some(param_type.clone())) {
                 Some(sema_type) => sema_type,

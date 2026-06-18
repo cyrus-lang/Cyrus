@@ -73,7 +73,7 @@ impl<'a> AnalysisContext<'a> {
             func_decl.loc,
         );
 
-        func_decl.ret_type = match self.normalize_sema_type(func_decl.ret_type.clone(), func_decl.loc) {
+        func_decl.ret_type = match self.normalize_sema_type(func_decl.ret_type.clone(), func_decl.loc, 0) {
             Some(ty) => ty,
             None => return,
         };
@@ -82,7 +82,7 @@ impl<'a> AnalysisContext<'a> {
             self.check_type_formation(func_decl.ret_type.clone(), func_decl.loc);
         }
 
-        self.normalize_func_params(&mut func_decl.params, is_not_generic_func);
+        self.normalize_func_params(&mut func_decl.params, is_not_generic_func, 0);
 
         self.analyze_generic_bounds(&func_decl.generic_params);
     }

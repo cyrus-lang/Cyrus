@@ -142,7 +142,7 @@ impl<'a> AnalysisContext<'a> {
                 for tuple_field in fields {
                     if !tuple_field.ty.contains_generic_param() {
                         tuple_field.ty =
-                            match self.normalize_and_check_type_formation(tuple_field.ty.clone(), tuple_field.loc) {
+                            match self.normalize_and_check_type_formation(tuple_field.ty.clone(), tuple_field.loc, 0) {
                                 Some(ty) => ty,
                                 None => continue,
                             };
@@ -164,7 +164,7 @@ impl<'a> AnalysisContext<'a> {
                 for struct_field in fields {
                     if !struct_field.ty.contains_generic_param() {
                         struct_field.ty =
-                            match self.normalize_and_check_type_formation(struct_field.ty.clone(), struct_field.loc) {
+                            match self.normalize_and_check_type_formation(struct_field.ty.clone(), struct_field.loc, 0) {
                                 Some(ty) => ty,
                                 None => continue,
                             };

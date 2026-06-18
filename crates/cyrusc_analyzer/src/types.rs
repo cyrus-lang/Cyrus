@@ -164,11 +164,11 @@ impl<'a> AnalysisContext<'a> {
                 return false;
             };
 
-            let Some(mut ty1) = self.normalize_sema_type(field1.ty.clone(), loc) else {
+            let Some(mut ty1) = self.normalize_sema_type(field1.ty.clone(), loc, 0) else {
                 return false;
             };
 
-            let Some(mut ty2) = self.normalize_sema_type(field2.ty.clone(), loc) else {
+            let Some(mut ty2) = self.normalize_sema_type(field2.ty.clone(), loc, 0) else {
                 return false;
             };
 
@@ -196,11 +196,11 @@ impl<'a> AnalysisContext<'a> {
                 return false;
             };
 
-            let Some(mut ty1) = self.normalize_sema_type(field1.ty.clone(), loc) else {
+            let Some(mut ty1) = self.normalize_sema_type(field1.ty.clone(), loc, 0) else {
                 return false;
             };
 
-            let Some(mut ty2) = self.normalize_sema_type(field2.ty.clone(), loc) else {
+            let Some(mut ty2) = self.normalize_sema_type(field2.ty.clone(), loc, 0) else {
                 return false;
             };
 
@@ -251,11 +251,11 @@ impl<'a> AnalysisContext<'a> {
                         return false;
                     };
 
-                    let Some(mut ty1) = self.normalize_sema_type(ty1.clone(), loc) else {
+                    let Some(mut ty1) = self.normalize_sema_type(ty1.clone(), loc, 0) else {
                         return false;
                     };
 
-                    let Some(mut ty2) = self.normalize_sema_type(ty2.clone(), loc) else {
+                    let Some(mut ty2) = self.normalize_sema_type(ty2.clone(), loc, 0) else {
                         return false;
                     };
 
@@ -273,11 +273,11 @@ impl<'a> AnalysisContext<'a> {
                     }
 
                     for (t1, t2) in f1.iter().zip(f2) {
-                        let Some(mut ty1) = self.normalize_sema_type(t1.ty.clone(), loc) else {
+                        let Some(mut ty1) = self.normalize_sema_type(t1.ty.clone(), loc, 0) else {
                             return false;
                         };
 
-                        let Some(mut ty2) = self.normalize_sema_type(t2.ty.clone(), loc) else {
+                        let Some(mut ty2) = self.normalize_sema_type(t2.ty.clone(), loc, 0) else {
                             return false;
                         };
 
@@ -296,11 +296,11 @@ impl<'a> AnalysisContext<'a> {
                             return false;
                         };
 
-                        let Some(mut ty1) = self.normalize_sema_type(field1.ty.clone(), loc) else {
+                        let Some(mut ty1) = self.normalize_sema_type(field1.ty.clone(), loc, 0) else {
                             return false;
                         };
 
-                        let Some(mut ty2) = self.normalize_sema_type(field2.ty.clone(), loc) else {
+                        let Some(mut ty2) = self.normalize_sema_type(field2.ty.clone(), loc, 0) else {
                             return false;
                         };
 
@@ -518,7 +518,7 @@ impl<'a> AnalysisContext<'a> {
 
             let generic_env = GenericEnv::from_type_args(generic_params.clone(), &TypedTypeArgs(final_args));
 
-            let typedef_type = match self.normalize_and_check_type_formation(*typedef_decl.ty, loc) {
+            let typedef_type = match self.normalize_and_check_type_formation(*typedef_decl.ty, loc, 0) {
                 Some(ty) => ty,
                 None => return Ok(SemaType::Err(loc)),
             };

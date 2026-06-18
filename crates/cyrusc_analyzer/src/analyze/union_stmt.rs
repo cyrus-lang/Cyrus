@@ -70,7 +70,7 @@ impl<'a> AnalysisContext<'a> {
 
     fn analyze_union_fields(&mut self, union_decl_id: UnionDeclID, union_fields: &mut [TypedUnionField]) {
         for field in union_fields {
-            field.ty = match self.normalize_and_check_type_formation(field.ty.clone(), field.loc) {
+            field.ty = match self.normalize_and_check_type_formation(field.ty.clone(), field.loc, 0) {
                 Some(ty) => ty,
                 None => continue,
             };

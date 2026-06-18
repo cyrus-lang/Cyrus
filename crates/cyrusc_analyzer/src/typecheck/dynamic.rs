@@ -51,7 +51,7 @@ impl<'a> AnalysisContext<'a> {
         let object_impls_interface = object_impls
             .iter()
             .find(|implement_interface| {
-                if let Some(ty) = self.normalize_sema_type(implement_interface.ty.clone(), implement_interface.loc) {
+                if let Some(ty) = self.normalize_sema_type(implement_interface.ty.clone(), implement_interface.loc, 0) {
                     if ty.as_named_interface() == Some(interface_decl_id) {
                         true
                     } else {

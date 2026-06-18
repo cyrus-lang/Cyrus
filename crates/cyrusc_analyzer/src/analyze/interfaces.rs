@@ -105,7 +105,7 @@ impl<'a> AnalysisContext<'a> {
     ) {
         for implement_interface in impls {
             let Some(normalized_type) =
-                self.normalize_and_check_type_formation(implement_interface.ty.clone(), implement_interface.loc)
+                self.normalize_and_check_type_formation(implement_interface.ty.clone(), implement_interface.loc, 0)
             else {
                 continue;
             };
@@ -202,7 +202,7 @@ impl<'a> AnalysisContext<'a> {
         self.with_generic_env(generic_env, |this| {
             for implement_interface in impls {
                 let Some(normalized_type) =
-                    this.normalize_sema_type(implement_interface.ty.clone(), implement_interface.loc)
+                    this.normalize_sema_type(implement_interface.ty.clone(), implement_interface.loc, 0)
                 else {
                     continue;
                 };

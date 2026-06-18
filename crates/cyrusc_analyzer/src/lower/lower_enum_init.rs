@@ -192,7 +192,7 @@ impl<'a> AnalysisContext<'a> {
                 type_args = TypedTypeArgs::new();
             }
             TypedExprKind::SemaType { ty, .. } => {
-                let ty = match self.normalize_sema_type(ty.clone(), loc) {
+                let ty = match self.normalize_sema_type(ty.clone(), loc, 0) {
                     Some(ty) => ty,
                     None => return None,
                 };

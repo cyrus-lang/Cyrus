@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 The Cyrus Language
 
-use crate::{context::AnalysisContext, diagnostics::AnalyzerDiagKind};
+use crate::{context::AnalysisContext, diagnostics::AnalyzerDiagKind, typecheck::type_cache::TypeCacheEnterResult};
 use cyrusc_const_eval::{fold::ConstFolder, resolver::ConstResolver};
 use cyrusc_diagcentral::{Diag, DiagLevel};
 use cyrusc_source_loc::Loc;
@@ -23,26 +23,26 @@ use cyrusc_typed_ast::{
 impl<'a> AnalysisContext<'a> {
     /// Fully normalize AND validate a type
     /// This is what we call when an explicit type is used
-    pub fn normalize_and_check_type_formation(&mut self, ty: SemaType, loc: Loc) -> Option<SemaType> {
-        let ty = self.normalize_sema_type(ty, loc)?;
+    pub fn normalize_and_check_type_formation(&mut self, ty: SemaType, loc: Loc, indirection: u8) -> Option<SemaType> {
+        let ty = self.normalize_sema_type(ty, loc, indirection)?;
 
         self.check_type_formation(ty, loc)
     }
 
     // Fully normalize a type: remove UnresolvedSymbol, expand typedefs,
     // and recursively normalize children. Never returns UnresolvedSymbol.
-    pub fn normalize_sema_type(&mut self, ty: SemaType, loc: Loc) -> Option<SemaType> {
+    pub fn normalize_sema_type(&mut self, ty: SemaType, loc: Loc, indirection: u8) -> Option<SemaType> {
         match ty {
             SemaType::Placeholder => Some(ty),
             SemaType::InferVar(_) => Some(ty),
-            SemaType::Unresolved(unresolved_type) => self.normalize_unresolved_type(unresolved_type, loc),
-            SemaType::Named(ref named_type) => self.normalize_named_type(named_type),
+            SemaType::Unresolved(unresolved_type) => self.normalize_unresolved_type(unresolved_type, loc, indirection),
+            SemaType::Named(ref named_type) => self.normalize_named_type(named_type, indirection),
             SemaType::GenericParam(generic_param_id) => self.normalize_generic_param(generic_param_id),
-            SemaType::Pointer(inner) => self.normalize_pointer(*inner, loc),
-            SemaType::Const(inner) => self.normalize_const(*inner, loc),
-            SemaType::Array(arr) => self.normalize_array(arr, loc),
-            SemaType::FuncType(func_type) => self.normalize_func_type(func_type),
-            SemaType::Tuple(tuple_type) => self.normalize_tuple(tuple_type),
+            SemaType::Pointer(inner) => self.normalize_pointer(*inner, loc, indirection),
+            SemaType::Const(inner) => self.normalize_const(*inner, loc, indirection),
+            SemaType::Array(arr) => self.normalize_array(arr, loc, indirection),
+            SemaType::FuncType(func_type) => self.normalize_func_type(func_type, indirection),
+            SemaType::Tuple(tuple_type) => self.normalize_tuple(tuple_type, indirection),
             SemaType::SelfType(self_type) => self.normalize_self_type(self_type),
             SemaType::InterfaceObject(_) => Some(ty),
             SemaType::Plain(_) => Some(ty),
@@ -51,28 +51,45 @@ impl<'a> AnalysisContext<'a> {
         }
     }
 
-    fn normalize_named_type(&mut self, named_type: &NamedType) -> Option<SemaType> {
+    fn normalize_named_type(&mut self, named_type: &NamedType, indirection: u8) -> Option<SemaType> {
         match named_type.type_decl_id {
-            TypeDeclID::Enum(enum_decl_id) => self.normalize_enum_decl(enum_decl_id, &named_type.type_args),
-            TypeDeclID::Struct(struct_decl_id) => self.normalize_struct_decl(struct_decl_id, &named_type.type_args),
-            TypeDeclID::Union(union_decl_id) => self.normalize_union_decl(union_decl_id, &named_type.type_args),
+            TypeDeclID::Enum(enum_decl_id) => {
+                self.normalize_enum_decl(enum_decl_id, &named_type.type_args, indirection)
+            }
+            TypeDeclID::Struct(struct_decl_id) => {
+                self.normalize_struct_decl(struct_decl_id, &named_type.type_args, indirection)
+            }
+            TypeDeclID::Union(union_decl_id) => {
+                self.normalize_union_decl(union_decl_id, &named_type.type_args, indirection)
+            }
 
             TypeDeclID::Interface(_) | TypeDeclID::Typedef(_) => Some(SemaType::Named(named_type.clone())),
         }
     }
 
-    fn normalize_struct_decl(&mut self, struct_decl_id: StructDeclID, type_args: &TypedTypeArgs) -> Option<SemaType> {
+    fn normalize_struct_decl(
+        &mut self,
+        struct_decl_id: StructDeclID,
+        type_args: &TypedTypeArgs,
+        indirection: u8,
+    ) -> Option<SemaType> {
         let mut struct_decl = self.decl_tables.struct_decl(struct_decl_id);
 
+        let struct_type = SemaType::Named(NamedType {
+            type_decl_id: TypeDeclID::Struct(struct_decl_id),
+            type_args: type_args.clone(),
+        });
+
         if struct_decl.is_normalized {
-            return Some(SemaType::Named(NamedType {
-                type_decl_id: TypeDeclID::Struct(struct_decl_id),
-                type_args: type_args.clone(),
-            }));
+            return Some(struct_type);
         }
 
+        self.decl_tables.with_struct_decl_mut(struct_decl_id, |_struct_decl| {
+            _struct_decl.is_normalized = true;
+        });
+
         for field in &mut struct_decl.fields {
-            field.ty = match self.normalize_sema_type(field.ty.clone(), field.loc) {
+            field.ty = match self.normalize_sema_type(field.ty.clone(), field.loc, indirection) {
                 Some(ty) => ty,
                 None => continue,
             };
@@ -80,7 +97,6 @@ impl<'a> AnalysisContext<'a> {
 
         self.decl_tables.with_struct_decl_mut(struct_decl_id, |_struct_decl| {
             _struct_decl.fields = struct_decl.fields;
-            _struct_decl.is_normalized = true;
         });
 
         Some(SemaType::Named(NamedType {
@@ -89,7 +105,12 @@ impl<'a> AnalysisContext<'a> {
         }))
     }
 
-    fn normalize_union_decl(&mut self, union_decl_id: UnionDeclID, type_args: &TypedTypeArgs) -> Option<SemaType> {
+    fn normalize_union_decl(
+        &mut self,
+        union_decl_id: UnionDeclID,
+        type_args: &TypedTypeArgs,
+        indirection: u8,
+    ) -> Option<SemaType> {
         let mut union_decl = self.decl_tables.union_decl(union_decl_id);
 
         if union_decl.is_normalized {
@@ -99,8 +120,12 @@ impl<'a> AnalysisContext<'a> {
             }));
         }
 
+        self.decl_tables.with_union_decl_mut(union_decl_id, |_union_decl| {
+            _union_decl.is_normalized = true;
+        });
+
         for field in &mut union_decl.fields {
-            field.ty = match self.normalize_sema_type(field.ty.clone(), field.loc) {
+            field.ty = match self.normalize_sema_type(field.ty.clone(), field.loc, indirection) {
                 Some(ty) => ty,
                 None => continue,
             };
@@ -108,7 +133,6 @@ impl<'a> AnalysisContext<'a> {
 
         self.decl_tables.with_union_decl_mut(union_decl_id, |_union_decl| {
             _union_decl.fields = union_decl.fields;
-            _union_decl.is_normalized = true;
         });
 
         Some(SemaType::Named(NamedType {
@@ -117,7 +141,12 @@ impl<'a> AnalysisContext<'a> {
         }))
     }
 
-    fn normalize_enum_decl(&mut self, enum_decl_id: EnumDeclID, type_args: &TypedTypeArgs) -> Option<SemaType> {
+    fn normalize_enum_decl(
+        &mut self,
+        enum_decl_id: EnumDeclID,
+        type_args: &TypedTypeArgs,
+        _indirection: u8,
+    ) -> Option<SemaType> {
         let mut enum_decl = self.decl_tables.enum_decl(enum_decl_id);
 
         if enum_decl.is_normalized {
@@ -127,6 +156,10 @@ impl<'a> AnalysisContext<'a> {
             }));
         }
 
+        self.decl_tables.with_enum_decl_mut(enum_decl_id, |_enum_decl| {
+            _enum_decl.is_normalized = true;
+        });
+
         for variant in &mut enum_decl.variants {
             if let TypedEnumVariant::Valued { value, .. } = variant {
                 self.analyze_expr(value, enum_decl.tag_type.clone());
@@ -135,7 +168,6 @@ impl<'a> AnalysisContext<'a> {
 
         self.decl_tables.with_enum_decl_mut(enum_decl_id, |_enum_decl| {
             _enum_decl.variants = enum_decl.variants;
-            _enum_decl.is_normalized = true;
         });
 
         Some(SemaType::Named(NamedType {
@@ -144,20 +176,26 @@ impl<'a> AnalysisContext<'a> {
         }))
     }
 
-    fn normalize_unresolved_type(&mut self, unresolved_type: UnresolvedType, loc: Loc) -> Option<SemaType> {
+    fn normalize_unresolved_type(
+        &mut self,
+        unresolved_type: UnresolvedType,
+        loc: Loc,
+        indirection: u8,
+    ) -> Option<SemaType> {
         let ty = match unresolved_type {
             UnresolvedType::Decl(symbol_id) => self
                 .lookup_symbol_as_decl_id(symbol_id)
-                .and_then(|decl_id| self.resolve_symbol_type(decl_id, loc))?,
+                .and_then(|decl_id| self.resolve_symbol_type(decl_id, loc, indirection))?,
 
             UnresolvedType::GenericInst {
                 base_symbol_id,
                 mut type_args,
             } => {
-                let base_type = self.normalize_unresolved_type(UnresolvedType::Decl(base_symbol_id), loc)?;
+                let base_type =
+                    self.normalize_unresolved_type(UnresolvedType::Decl(base_symbol_id), loc, indirection)?;
 
                 if let Some(named_type) = base_type.as_named_type() {
-                    self.normalize_type_args(&mut type_args);
+                    self.normalize_type_args(&mut type_args, indirection);
 
                     SemaType::Named(NamedType {
                         type_decl_id: named_type.type_decl_id,
@@ -195,13 +233,13 @@ impl<'a> AnalysisContext<'a> {
         Some(self.expand_sema_type(ty, loc))
     }
 
-    fn normalize_func_type(&mut self, mut func_type: TypedFuncType) -> Option<SemaType> {
+    fn normalize_func_type(&mut self, mut func_type: TypedFuncType, indirection: u8) -> Option<SemaType> {
         let params_len = func_type.params.list.len();
         let params: Vec<_> = func_type
             .params
             .list
             .into_iter()
-            .filter_map(|param| self.normalize_sema_type(param, func_type.loc))
+            .filter_map(|param| self.normalize_sema_type(param, func_type.loc, indirection))
             .collect();
 
         if params.len() != params_len {
@@ -217,7 +255,7 @@ impl<'a> AnalysisContext<'a> {
                     func_type.params.variadic = Some(Box::new(TypedFuncTypeVariadicParam::UntypedCStyle));
                 }
                 TypedFuncTypeVariadicParam::Typed(sema_type) => {
-                    if let Some(normalized) = self.normalize_sema_type(sema_type, func_type.loc) {
+                    if let Some(normalized) = self.normalize_sema_type(sema_type, func_type.loc, indirection) {
                         func_type.params.variadic = Some(Box::new(TypedFuncTypeVariadicParam::Typed(normalized)));
                     } else {
                         return None;
@@ -226,24 +264,25 @@ impl<'a> AnalysisContext<'a> {
             }
         }
 
-        let normalized_ret = self.normalize_sema_type(*func_type.ret_type, func_type.loc)?;
+        let normalized_ret = self.normalize_sema_type(*func_type.ret_type, func_type.loc, indirection)?;
         func_type.ret_type = Box::new(normalized_ret);
 
         Some(SemaType::FuncType(func_type))
     }
 
-    fn normalize_func_decl_as_func_type(&mut self, func_decl: &FuncDecl) -> Option<SemaType> {
+    fn normalize_func_decl_as_func_type(&mut self, func_decl: &FuncDecl, indirection: u8) -> Option<SemaType> {
         let func_type = func_decl.as_func_type();
-        self.normalize_func_type(func_type)
+
+        self.normalize_func_type(func_type, indirection)
     }
 
-    fn normalize_tuple(&mut self, tuple_type: TypedTupleType) -> Option<SemaType> {
+    fn normalize_tuple(&mut self, tuple_type: TypedTupleType, indirection: u8) -> Option<SemaType> {
         let elements_len = tuple_type.elements.len();
 
         let elements: Vec<_> = tuple_type
             .elements
             .into_iter()
-            .filter_map(|ty| self.normalize_sema_type(ty, tuple_type.loc))
+            .filter_map(|ty| self.normalize_sema_type(ty, tuple_type.loc, indirection))
             .collect();
 
         // if we lost any types, return None
@@ -258,7 +297,12 @@ impl<'a> AnalysisContext<'a> {
     }
 
     // TODO: Implement slices.
-    fn normalize_array_capacity(&mut self, mut array: TypedArrayType, loc: Loc) -> Option<TypedArrayType> {
+    fn normalize_array_capacity(
+        &mut self,
+        mut array: TypedArrayType,
+        loc: Loc,
+        indirection: u8,
+    ) -> Option<TypedArrayType> {
         match &mut array.capacity {
             TypedArrayCapacity::Fixed(expr) => {
                 self.analyze_expr(expr, None);
@@ -284,23 +328,28 @@ impl<'a> AnalysisContext<'a> {
             }
         }
 
-        array.element_type = Box::new(self.normalize_sema_type(*array.element_type, loc)?);
+        array.element_type = Box::new(self.normalize_sema_type(*array.element_type, loc, indirection)?);
 
         Some(array)
     }
 
-    fn normalize_array(&mut self, array: TypedArrayType, loc: Loc) -> Option<SemaType> {
-        let array_type = self.normalize_array_capacity(array, loc)?;
+    fn normalize_array(&mut self, array: TypedArrayType, loc: Loc, indirection: u8) -> Option<SemaType> {
+        let array_type = self.normalize_array_capacity(array, loc, indirection)?;
         Some(SemaType::Array(array_type))
     }
 
     #[inline]
-    fn normalize_const(&mut self, inner: SemaType, loc: Loc) -> Option<SemaType> {
-        Some(SemaType::Const(Box::new(self.normalize_sema_type(inner, loc)?)))
+    fn normalize_const(&mut self, inner: SemaType, loc: Loc, indirection: u8) -> Option<SemaType> {
+        Some(SemaType::Const(Box::new(self.normalize_sema_type(
+            inner,
+            loc,
+            indirection,
+        )?)))
     }
 
-    fn normalize_pointer(&mut self, inner: SemaType, loc: Loc) -> Option<SemaType> {
-        let ty = self.normalize_sema_type(inner, loc)?;
+    fn normalize_pointer(&mut self, inner: SemaType, loc: Loc, indirection: u8) -> Option<SemaType> {
+        let ty = self.normalize_sema_type(inner, loc, indirection + 1)?;
+
         Some(SemaType::Pointer(Box::new(ty)))
     }
 
@@ -322,11 +371,11 @@ impl<'a> AnalysisContext<'a> {
             .or(Some(SemaType::SelfType(self_type)))
     }
 
-    pub(crate) fn normalize_type_args(&mut self, type_args: &mut TypedTypeArgs) {
+    pub(crate) fn normalize_type_args(&mut self, type_args: &mut TypedTypeArgs, indirection: u8) {
         for type_arg in type_args.iter_mut() {
             match type_arg {
                 TypedTypeArg::Type(ty, loc) => {
-                    *ty = match self.normalize_and_check_type_formation(ty.clone(), *loc) {
+                    *ty = match self.normalize_and_check_type_formation(ty.clone(), *loc, indirection) {
                         Some(sema_type) => sema_type,
                         None => continue,
                     };
@@ -336,13 +385,13 @@ impl<'a> AnalysisContext<'a> {
         }
     }
 
-    pub(crate) fn normalize_func_params(&mut self, params: &mut TypedFuncParams, validate: bool) {
+    pub(crate) fn normalize_func_params(&mut self, params: &mut TypedFuncParams, validate: bool, indirection: u8) {
         // analyze static arguments
         for param in params.list.iter_mut() {
             match param {
                 TypedFuncParamKind::FuncParam(typed_func_param) => {
                     let normalized_type = self
-                        .normalize_sema_type(typed_func_param.ty.clone(), typed_func_param.loc)
+                        .normalize_sema_type(typed_func_param.ty.clone(), typed_func_param.loc, indirection)
                         .unwrap();
 
                     typed_func_param.ty = normalized_type.clone();
@@ -353,7 +402,7 @@ impl<'a> AnalysisContext<'a> {
                 }
                 TypedFuncParamKind::SelfModifier(self_modifier) => {
                     let normalized_type = self
-                        .normalize_sema_type(self_modifier.ty.clone(), self_modifier.loc)
+                        .normalize_sema_type(self_modifier.ty.clone(), self_modifier.loc, indirection)
                         .unwrap();
 
                     if validate {
@@ -365,7 +414,7 @@ impl<'a> AnalysisContext<'a> {
 
         if let Some(variadic_params) = &mut params.variadic {
             if let TypedFuncVariadicParam::Typed { var_decl_id, ty, loc } = variadic_params {
-                let ty = match self.normalize_sema_type(ty.clone(), *loc) {
+                let ty = match self.normalize_sema_type(ty.clone(), *loc, indirection) {
                     Some(sema_type) => sema_type,
                     None => return,
                 };
@@ -383,10 +432,10 @@ impl<'a> AnalysisContext<'a> {
         }
     }
 
-    pub(crate) fn normalize_func_type_params(&mut self, params: &mut TypedFuncTypeParams, loc: Loc) {
+    pub(crate) fn normalize_func_type_params(&mut self, params: &mut TypedFuncTypeParams, loc: Loc, indirection: u8) {
         // analyze static arguments
         for param in params.list.iter_mut() {
-            let sema_type = self.normalize_sema_type(param.clone(), loc).unwrap();
+            let sema_type = self.normalize_sema_type(param.clone(), loc, indirection).unwrap();
             *param = sema_type.clone();
 
             self.validate_param_type(&sema_type, loc);
@@ -396,7 +445,7 @@ impl<'a> AnalysisContext<'a> {
             match *variadic_params.clone() {
                 TypedFuncTypeVariadicParam::UntypedCStyle => {}
                 TypedFuncTypeVariadicParam::Typed(sema_type) => {
-                    let sema_type = match self.normalize_sema_type(sema_type.clone(), loc) {
+                    let sema_type = match self.normalize_sema_type(sema_type.clone(), loc, indirection) {
                         Some(sema_type) => sema_type,
                         None => return,
                     };
@@ -408,39 +457,45 @@ impl<'a> AnalysisContext<'a> {
         }
     }
 
-    pub(crate) fn resolve_symbol_type(&mut self, decl_id: DeclID, loc: Loc) -> Option<SemaType> {
-        if let Some(cached_sema_ty) = self.type_cache.cache.get(&decl_id) {
-            return Some(cached_sema_ty.clone());
+    pub(crate) fn resolve_symbol_type(&mut self, decl_id: DeclID, loc: Loc, indirection: u8) -> Option<SemaType> {
+        if let Some(ty) = self.type_cache.get(decl_id) {
+            return Some(ty.clone());
         }
 
-        if self.type_cache.push(decl_id).is_err() {
-            let symbol_name = self.formatter.format_decl(decl_id);
+        match self.type_cache.enter(decl_id, indirection) {
+            TypeCacheEnterResult::Entered => {}
 
-            self.reporter.report(Diag {
-                level: DiagLevel::Error,
-                kind: Box::new(AnalyzerDiagKind::CyclicTypeDefinition { symbol_name }),
-                loc: Some(loc),
-                hint: None,
-            });
-            return None;
-        };
+            TypeCacheEnterResult::AlreadyResolving(frame) => {
+                // any indirection along the recursive edge makes it legal
+                if frame.indirection > 0 || indirection > 0 {
+                    return Some(SemaType::Named(NamedType {
+                        type_decl_id: decl_id.as_type_decl_id().unwrap(),
+                        type_args: TypedTypeArgs::new(),
+                    }));
+                }
 
-        let mut sema_type_opt = self.resolve_symbol_type_internal(decl_id);
+                let symbol_name = self.formatter.format_decl(decl_id);
 
-        if let Some(ty) = sema_type_opt.clone() {
-            sema_type_opt = self.normalize_sema_type(ty, loc);
+                self.reporter.report(Diag {
+                    level: DiagLevel::Error,
+                    kind: Box::new(AnalyzerDiagKind::CyclicTypeDefinition { symbol_name }),
+                    loc: Some(loc),
+                    hint: None,
+                });
+                return None;
+            }
         }
 
-        self.type_cache.pop(decl_id);
+        let mut ty = self.resolve_symbol_type_internal(decl_id, indirection)?;
 
-        if let Some(ref final_ty) = sema_type_opt {
-            self.type_cache.cache.insert(decl_id, final_ty.clone());
-        }
+        ty = self.normalize_sema_type(ty, loc, indirection)?;
 
-        sema_type_opt
+        self.type_cache.leave(decl_id, ty.clone());
+
+        Some(ty)
     }
 
-    fn resolve_symbol_type_internal(&mut self, decl_id: DeclID) -> Option<SemaType> {
+    fn resolve_symbol_type_internal(&mut self, decl_id: DeclID, indirection: u8) -> Option<SemaType> {
         match decl_id {
             DeclID::GlobalVar(global_var_decl_id) => {
                 let global_var_decl = self.decl_tables.global_var_decl(global_var_decl_id);
@@ -454,7 +509,8 @@ impl<'a> AnalysisContext<'a> {
             }
             DeclID::Func(func_decl_id) => {
                 let func_decl = self.decl_tables.func_decl(func_decl_id);
-                self.normalize_func_decl_as_func_type(&func_decl)
+
+                self.normalize_func_decl_as_func_type(&func_decl, indirection)
             }
             DeclID::Struct(strut_decl_id) => Some(SemaType::Named(NamedType {
                 type_decl_id: TypeDeclID::Struct(strut_decl_id),

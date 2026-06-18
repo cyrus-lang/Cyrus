@@ -172,13 +172,13 @@ impl<'a> AnalysisContext<'a> {
             let mut generic_param = self.decl_tables.generic_param(generic_param_id);
 
             if let Some(default_type) = &mut generic_param.default {
-                if let Some(ty) = self.normalize_sema_type(*default_type.clone(), generic_param.name.loc) {
+                if let Some(ty) = self.normalize_sema_type(*default_type.clone(), generic_param.name.loc, 0) {
                     *default_type = Box::new(ty);
                 }
             }
 
             for bound in &mut generic_param.bounds {
-                if let Some(ty) = self.normalize_sema_type(bound.ty.clone(), generic_param.name.loc) {
+                if let Some(ty) = self.normalize_sema_type(bound.ty.clone(), generic_param.name.loc, 0) {
                     if !ty.is_interface() {
                         let found = format_sema_type(ty.clone(), self.formatter);
 

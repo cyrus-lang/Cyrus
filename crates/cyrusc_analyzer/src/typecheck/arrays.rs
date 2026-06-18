@@ -76,7 +76,7 @@ impl<'a> AnalysisContext<'a> {
             });
         }
 
-        array.ty = match self.normalize_and_check_type_formation(array.ty.clone()?, array.loc) {
+        array.ty = match self.normalize_and_check_type_formation(array.ty.clone()?, array.loc, 0) {
             Some(ty) => Some(ty),
             None => return None,
         };
@@ -85,7 +85,7 @@ impl<'a> AnalysisContext<'a> {
             let expr_type: SemaType;
 
             if analyzed_first_element && element.ty.is_some() {
-                expr_type = match self.normalize_and_check_type_formation(element.ty.clone().unwrap(), element.loc) {
+                expr_type = match self.normalize_and_check_type_formation(element.ty.clone().unwrap(), element.loc, 0) {
                     Some(ty) => ty,
                     None => continue,
                 };

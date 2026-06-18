@@ -23,7 +23,7 @@ impl<'a> AnalysisContext<'a> {
         enum_init: &mut TypedEnumInit,
         expected_type: Option<SemaType>,
     ) -> Option<SemaType> {
-        let mut operand = self.normalize_and_check_type_formation(enum_init.operand.clone(), enum_init.loc)?;
+        let mut operand = self.normalize_and_check_type_formation(enum_init.operand.clone(), enum_init.loc, 0)?;
 
         operand = self.expand_sema_type(operand, enum_init.loc);
 

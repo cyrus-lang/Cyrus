@@ -59,7 +59,7 @@ impl<'a> AnalysisContext<'a> {
         mut expected_type: Option<SemaType>,
     ) -> Option<SemaType> {
         if let Some(ty) = &expected_type {
-            if let Some(ty) = self.normalize_sema_type(ty.clone(), expr.loc) {
+            if let Some(ty) = self.normalize_sema_type(ty.clone(), expr.loc, 0) {
                 expected_type = Some(ty);
             }
         }
@@ -79,7 +79,7 @@ impl<'a> AnalysisContext<'a> {
                 if let Some(decl_id) = decl_id_opt {
                     symbol_expr.to_resolved_decl_id(decl_id);
 
-                    self.resolve_symbol_type(decl_id, symbol_expr.loc())
+                    self.resolve_symbol_type(decl_id, symbol_expr.loc(), 0)
                 } else {
                     None
                 }
@@ -135,7 +135,7 @@ impl<'a> AnalysisContext<'a> {
             },
 
             TypedExprKind::SemaType { ty, .. } => {
-                let ty = self.normalize_sema_type(ty.clone(), expr.loc);
+                let ty = self.normalize_sema_type(ty.clone(), expr.loc, 0);
                 expr.ty = ty.clone();
                 return ty;
             }
@@ -145,7 +145,7 @@ impl<'a> AnalysisContext<'a> {
 
         let expr_type = expr_type?;
 
-        let normalized_type = self.normalize_and_check_type_formation(expr_type, expr.loc);
+        let normalized_type = self.normalize_and_check_type_formation(expr_type, expr.loc, 0);
 
         expr.ty = Some(normalized_type.clone()?);
 
@@ -263,7 +263,7 @@ impl<'a> AnalysisContext<'a> {
         mut expected_type: SemaType,
         loc: Loc,
     ) -> Option<()> {
-        expected_type = self.normalize_sema_type(expected_type.clone(), loc)?;
+        expected_type = self.normalize_sema_type(expected_type.clone(), loc, 0)?;
 
         expected_type = self.substitute_type(&expected_type);
 

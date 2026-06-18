@@ -55,7 +55,7 @@ impl<'a> AnalysisContext<'a> {
 
             self.validate_field_access(&field_access, field.vis, &inst_struct_decl.methods, &struct_name);
 
-            let field_type = self.normalize_sema_type(field.ty.clone(), field_access.loc)?;
+            let field_type = self.normalize_sema_type(field.ty.clone(), field_access.loc, 0)?;
             let field_index = inst_struct_decl
                 .fields
                 .iter()
@@ -94,7 +94,7 @@ impl<'a> AnalysisContext<'a> {
 
             self.validate_field_access(&field_access, vis, &inst_union_decl.methods, &union_name);
 
-            let field_type = self.normalize_sema_type(field.ty.clone(), field_access.loc)?;
+            let field_type = self.normalize_sema_type(field.ty.clone(), field_access.loc, 0)?;
 
             field_access.ty = Some(field_type.clone());
             field_access.dispatch = TypedFieldAccessDispatch::Union { union_decl_id };

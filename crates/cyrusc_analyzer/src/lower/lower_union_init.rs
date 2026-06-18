@@ -17,7 +17,7 @@ impl<'a> AnalysisContext<'a> {
             return;
         };
 
-        let Some(mut operand_type) = self.normalize_sema_type(struct_init.operand.clone(), struct_init.loc) else {
+        let Some(mut operand_type) = self.normalize_sema_type(struct_init.operand.clone(), struct_init.loc, 0) else {
             return;
         };
 
