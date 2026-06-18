@@ -141,12 +141,12 @@ impl DiagReporter {
 
         let line = lines[loc.line - 1];
 
-        out.push_str(line);
+        out.push_str(line.trim_end());
 
         // render hints
         if let Some(hint) = &diag.hint {
             out.push_str("\n\n");
-            out.push_str(&format!(" {}: {}\n", "hint", hint));
+            out.push_str(&format!("hint: {}\n", hint));
         }
 
         out
