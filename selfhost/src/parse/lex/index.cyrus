@@ -1,0 +1,31 @@
+import std::string{String};
+
+import parse::lex::tokens;
+
+pub struct Lexer {
+    source: String*;
+    pos: usize;
+    next_pos: usize;
+    cur: char;
+    line: usize;
+    col: usize;
+
+    pub fn new(source: String*) Self {
+        @assert(source->len() > 0);
+
+        const cur = source->get(0).unwrap();
+
+        return Self {
+            source,
+            cur,
+            pos: 0,
+            next_pos: 0,
+            line: 1,
+            col: 1,
+        };
+    }
+
+    pub fn next(&self) {
+
+    }
+}

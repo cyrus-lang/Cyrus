@@ -1,9 +1,8 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 The Cyrus Language
 
-use cyrusc_source_loc::Loc;
-
 use crate::literals::ASTLiteralExpr;
+use cyrusc_source_loc::Loc;
 use std::fmt;
 
 pub mod literals;
