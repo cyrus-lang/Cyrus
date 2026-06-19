@@ -1,0 +1,66 @@
+/*
+  Stdlib Random Number Generator (RNG)
+
+  "new()" uses unix clock as seed and there is no need to pass 
+  a seed to it
+
+  "seed(init_seed: uint64)" works with seed argumant that is passed to it
+
+  Note: Currently the RNG works only single threaded.
+*/
+
+import std::libc{printf};
+import std::libc{time};
+
+pub struct Random {
+
+  state: uint64;
+  
+  pub fn new() Self {
+
+    var init_seed_isize = time(null);
+    var init_seed = @cast(uint64, init_seed_isize);
+
+    init_seed ~= init_seed << 13;
+    init_seed ~= init_seed >> 17;
+    init_seed ~= init_seed << 5;
+
+    return Self { state: init_seed };
+  }
+
+  pub fn seed(init_seed: uint64) Self {
+
+    init_seed ~= init_seed << 13;
+    init_seed ~= init_seed >> 17;
+    init_seed ~= init_seed << 5;
+
+    return Self { state: init_seed };
+  }
+
+  pub fn gen(&self, min: int64, max: int64) int64 {
+
+    self->state ~= self->state << 13;
+    self->state ~= self->state >> 17;
+    self->state ~= self->state << 6;
+
+    var range: uint64 = @cast(uint64, max - min + 1);
+    
+    return min + @cast(int64, self->state % range);
+  }
+
+  fn rand_to_float(&self) float64 {
+
+    self->state ~= self->state << 13;
+    self->state ~= self->state >> 17;
+    self->state ~= self->state << 5;
+
+    return @cast(float64, self->state) / 18446744073709551615.0;
+  }
+
+  pub fn gen_float(&self, max: float64, min: float64) float64 {
+
+    var floated_rand = self->rand_to_float();
+
+    return min + floated_rand * (max - min);
+  }
+}
