@@ -1564,8 +1564,6 @@ fn is_comparison_operator(token_kind: &TokenKind) -> bool {
             | TokenKind::LessThan
             | TokenKind::GreaterEqual
             | TokenKind::GreaterThan
-            | TokenKind::And
-            | TokenKind::Or
     )
 }
 
