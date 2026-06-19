@@ -23,6 +23,12 @@ use cyrusc_typed_ast::{
 };
 use fx_hash::FxHashSet;
 
+use std::cell::RefCell;
+
+thread_local! {
+    static LOWERING_NAMED_TYPES: RefCell<Vec<String>> = RefCell::new(Vec::new());
+}
+
 pub fn lower_sema_type(decl_tables: &DeclTablesRegistry, target: &ABITarget, ty: &SemaType) -> CIRType {
     match ty {
         SemaType::Plain(plain_type) => CIRType::Plain(plain_type.clone()),
@@ -69,6 +75,62 @@ pub fn lower_sema_type(decl_tables: &DeclTablesRegistry, target: &ABITarget, ty:
 }
 
 pub fn lower_named_type(decl_tables: &DeclTablesRegistry, target: &ABITarget, named_type: &NamedType) -> CIRType {
+    if !matches!(
+        named_type.type_decl_id,
+        TypeDeclID::Struct(_) | TypeDeclID::Union(_) | TypeDeclID::Enum(_)
+    ) {
+        return lower_named_type_inner(decl_tables, target, named_type);
+    }
+
+    let key = format!("{:?}::{:?}", named_type.type_decl_id, named_type.type_args);
+
+    let is_recursing = LOWERING_NAMED_TYPES.with(|stack| stack.borrow().iter().any(|entry| entry == &key));
+
+    if is_recursing {
+        return recursive_named_type_placeholder(decl_tables, named_type);
+    }
+
+    LOWERING_NAMED_TYPES.with(|stack| {
+        stack.borrow_mut().push(key.clone());
+    });
+
+    let result = lower_named_type_inner(decl_tables, target, named_type);
+
+    LOWERING_NAMED_TYPES.with(|stack| {
+        stack.borrow_mut().pop();
+    });
+
+    result
+}
+
+fn recursive_named_type_placeholder(decl_tables: &DeclTablesRegistry, named_type: &NamedType) -> CIRType {
+    let (name, loc) = match named_type.type_decl_id {
+        TypeDeclID::Struct(struct_decl_id) => {
+            let struct_decl = decl_tables.struct_decl(struct_decl_id);
+            (struct_decl.name.clone(), struct_decl.loc)
+        }
+        TypeDeclID::Union(union_decl_id) => {
+            let union_decl = decl_tables.union_decl(union_decl_id);
+            (union_decl.name.clone(), union_decl.loc)
+        }
+        TypeDeclID::Enum(enum_decl_id) => {
+            let enum_decl = decl_tables.enum_decl(enum_decl_id);
+            (enum_decl.name.clone(), enum_decl.loc)
+        }
+        _ => unreachable!(),
+    };
+
+    CIRType::Struct(CIRStructType {
+        name,
+        fields: Vec::new(),
+        fields_info: Vec::new(),
+        repr_attr: None,
+        align: None,
+        loc,
+    })
+}
+
+fn lower_named_type_inner(decl_tables: &DeclTablesRegistry, target: &ABITarget, named_type: &NamedType) -> CIRType {
     match named_type.type_decl_id {
         TypeDeclID::Struct(struct_decl_id) => {
             let struct_decl = decl_tables.struct_decl(struct_decl_id);
