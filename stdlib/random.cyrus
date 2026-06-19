@@ -1,0 +1,100 @@
+/*
+ SPDX-License-Identifier: MIT
+ Copyright (c) 2026 The Cyrus Language
+*/
+
+import std::libc{printf};
+import std::libc{time};
+
+pub struct Random {
+
+  state: uint64;
+  
+  // Static method that creates an instance of 'Random' struct 
+  //and uses a UNIX time seed for first number
+  pub fn new() Self {
+
+    var init_seed_isize = time(null);
+    var init_seed = @cast(uint64, init_seed_isize);
+
+    // Xorshift algorithm
+    init_seed ~= init_seed << 13;
+    init_seed ~= init_seed >> 17;
+    init_seed ~= init_seed << 5;
+
+    return Self { state: init_seed };
+  }
+
+  // Static method that creates an instance of 'Random' struct 
+  //and uses an argumant as seed for first number
+  pub fn seed(init_seed: uint64) Self {
+
+    init_seed ~= init_seed << 13;
+    init_seed ~= init_seed >> 17;
+    init_seed ~= init_seed << 5;
+
+    return Self { state: init_seed };
+  }
+
+  // Generates a random int64 number in a given range
+  pub fn rand_int(&self, min: int64, max: int64) int64 {
+
+    self->state ~= self->state << 13;
+    self->state ~= self->state >> 17;
+    self->state ~= self->state << 6;
+
+    var range: uint64 = @cast(uint64, max - min + 1);
+    
+    return min + @cast(int64, self->state % range);
+  }
+
+  fn rand_to_float(&self) float64 {
+
+    self->state ~= self->state << 13;
+    self->state ~= self->state >> 17;
+    self->state ~= self->state << 5;
+
+    return @cast(float64, self->state) / 18446744073709551615.0;
+  }
+
+  // Generates a random float64 number in a given range
+  pub fn rand_float(&self, max: float64, min: float64) float64 {
+
+    var floated_rand = self->rand_to_float();
+
+    return min + floated_rand * (max - min);
+  }
+
+  // Generates a random upperclass character
+  pub fn rand_upperc(&self) char {
+
+    var rand_char_number = self->rand_int(0, @cast(int64, 'Z') - @cast(int64, 'A'));
+
+    var char_index = @cast(int64, 'A') + rand_char_number;
+
+    return @cast(char, char_index);
+  }
+
+  // Generates a random lowerclass character
+  pub fn rand_lowerc(&self) char {
+
+    var rand_char_number = self->rand_int(0, @cast(int64, 'z') - @cast(int64, 'a'));
+
+    var char_index = @cast(int64, 'a') + rand_char_number;
+
+    return @cast(char, char_index);
+  }
+
+  // Generates a random true or false
+  pub fn rand_bool(&self) bool {
+
+    var rand_key: int64 = self->rand_int(0, 1);
+
+    if (rand_key == 0) {
+      return false;
+    } else {
+      return true;
+    }
+  }
+
+}
