@@ -130,6 +130,7 @@ impl InferCtx {
                 self.bind(*id, ty.clone());
                 true
             }
+            (SemaType::Plain(p1), SemaType::Plain(p2)) => p1 == p2,
             (SemaType::Named(n1), SemaType::Named(n2)) => {
                 if n1.type_decl_id != n2.type_decl_id {
                     return false;
