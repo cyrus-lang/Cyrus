@@ -48,8 +48,138 @@ pub struct LibcAllocator : Allocator {
 	}
 }
 
-pub struct ArenaAllocator {
+const ARENA_DEFAULT_BLOCK_SIZE: usize = 4096;
+const ARENA_DEFAULT_ALIGNMENT: usize = 16;
 
+pub struct ArenaBlock {
+	pub data: void*;
+	pub cap: usize;
+	pub used: usize;
+	pub next: ArenaBlock*;
+}
+
+pub struct ArenaAllocator : Allocator {
+	backing: Allocator;
+	current: ArenaBlock*;
+	block_size: usize;
+
+	pub fn new(const backing: Allocator) Self {
+		return Self {
+			backing,
+			current: null,
+			block_size: ARENA_DEFAULT_BLOCK_SIZE,
+		};
+	}
+
+	pub fn with_block_size(const backing: Allocator, const block_size: usize) Self {
+		@assert(block_size != 0, "block size cannot be zero");
+
+		return Self {
+			backing,
+			current: null,
+			block_size,
+		};
+	}
+
+	fn new_block(&self, const min_size: usize) ArenaBlock* {
+		var size = self->block_size;
+
+		if (min_size > size) {
+			size = min_size;
+		}
+
+		var block: ArenaBlock* = self->backing.alloc(@sizeof(ArenaBlock));
+
+		if (block == null) {
+			@panic("arena failed to allocate block header");
+		}
+
+		const data = self->backing.alloc(size);
+
+		if (data == null) {
+			@panic("arena failed to allocate block data");
+		}
+
+		block->data = data;
+		block->cap = size;
+		block->used = 0;
+		block->next = self->current;
+
+		self->current = block;
+
+		return block;
+	}
+
+	pub fn alloc(&self, size: usize) void* {
+		return self->alloc_aligned(size, ARENA_DEFAULT_ALIGNMENT);
+	}
+
+	pub fn alloc_aligned(&self, size: usize, align: usize) void* {
+		@assert(is_power_of_two(align), "alignment must be power of two");
+
+		if (self->current == null) {
+			self->new_block(size + align);
+		}
+
+		var block = self->current;
+
+		var current_addr = @cast(uintptr, block->data) + block->used;
+		var aligned = align_up(current_addr, align);
+		var new_used = (aligned - @cast(uintptr, block->data)) + size;
+
+		if (new_used > block->cap) {
+			block = self->new_block(size + align);
+
+			current_addr = @cast(uintptr, block->data) + block->used;
+			aligned = align_up(current_addr, align);
+			new_used = (aligned - @cast(uintptr, block->data)) + size;
+		}
+
+		block->used = new_used;
+
+		return @cast(void*, aligned);
+	}
+
+	pub fn alloc_zeroed(&self, size: usize) void* {
+		const ptr = self->alloc(size);
+
+		if (ptr != null) {
+			@memset(ptr, 0, size);
+		}
+
+		return ptr;
+	}
+
+	pub fn realloc(&self, ptr: void*, size: usize) void* {
+		return self->alloc(size);
+	}
+
+	pub fn free(&self, ptr: void*) {
+	}
+
+	pub fn reset(&self) {
+		var block = self->current;
+
+		while (block != null) {
+			block->used = 0;
+			block = block->next;
+		}
+	}
+
+	pub fn deinit(&self) {
+		var block = self->current;
+
+		while (block != null) {
+			const next = block->next;
+
+			self->backing.free(block->data);
+			self->backing.free(@cast(void*, block));
+
+			block = next;
+		}
+
+		self->current = null;
+	}
 }
 
 pub struct BumpAllocator : Allocator {

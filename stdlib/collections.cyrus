@@ -306,3 +306,244 @@ pub struct Vector<T> {
 // pub struct LinkedList<T> {
 
 // }
+
+const initial_map_capacity: usize = 16;
+
+const SLOT_EMPTY: uint8 = 0;
+const SLOT_OCCUPIED: uint8 = 1;
+const SLOT_DELETED: uint8 = 2;
+
+pub struct HashMap<K, V> {
+    allocator: Allocator;
+    keys: K*;
+    values: V*;
+    states: uint8*;
+    cap: usize;
+    len: usize;
+    tombstones: usize;
+    hash_fn: fn(K*) uint64;
+    eq_fn: fn(K*, K*) bool;
+
+    pub inline fn new(const allocator: Allocator, hash_fn: fn(K*) uint64, eq_fn: fn(K*, K*) bool) Self {
+        return HashMap.with_capacity(allocator, initial_map_capacity, hash_fn, eq_fn);
+    }
+
+    pub inline fn with_capacity(const allocator: Allocator, const cap: usize, hash_fn: fn(K*) uint64, eq_fn: fn(K*, K*) bool) Self {
+        const real_cap = round_up_pow2(cap);
+
+        const keys: K* = allocator.alloc(real_cap * @sizeof(K));
+        const values: V* = allocator.alloc(real_cap * @sizeof(V));
+        const states: uint8* = allocator.alloc_zeroed(real_cap * @sizeof(uint8));
+
+        if (keys == null || values == null || states == null) {
+            @panic("hashmap allocation failed");
+        }
+
+        return Self {
+            allocator,
+            keys,
+            values,
+            states,
+            cap: real_cap,
+            len: 0,
+            tombstones: 0,
+            hash_fn,
+            eq_fn,
+        };
+    }
+
+    pub inline fn put(&self, key: K, value: V) {
+        if ((self->len + self->tombstones + 1) * 4 >= self->cap * 3) {
+            self->grow();
+        }
+
+        self->insert_no_grow(key, value);
+    }
+
+    fn insert_no_grow(&self, key: K, value: V) {
+        const hf = self->hash_fn;
+        const ef = self->eq_fn;
+
+        const hash = hf(&key);
+
+        var idx = @cast(usize, hash) & (self->cap - 1);
+        var tombstone_idx = self->cap;
+
+        while (true) {
+            const state = self->states[idx];
+
+            if (state == SLOT_EMPTY) {
+                var target = idx;
+
+                if (tombstone_idx != self->cap) {
+                    target = tombstone_idx;
+                    self->tombstones -= 1;
+                }
+
+                self->keys[target] = key;
+                self->values[target] = value;
+                self->states[target] = SLOT_OCCUPIED;
+                self->len += 1;
+
+                return;
+            }
+
+            if (state == SLOT_DELETED) {
+                if (tombstone_idx == self->cap) {
+                    tombstone_idx = idx;
+                }
+            } else {
+                if (ef(self->keys + idx, &key)) {
+                    self->values[idx] = value;
+
+                    return;
+                }
+            }
+
+            idx = (idx + 1) & (self->cap - 1);
+        }
+    }
+
+    pub inline fn get(&const self, key: K) Option<V> {
+        switch (self->find(&key)) {
+            case .Some(idx) => return .Some(self->values[idx]);
+            case .None => return .None;
+        }
+    }
+
+    pub inline fn get_ref(&const self, key: K) Option<V*> {
+        switch (self->find(&key)) {
+            case .Some(idx) => return .Some(self->values + idx);
+            case .None => return .None;
+        }
+    }
+
+    pub inline fn contains(&const self, key: K) bool {
+        return self->find(&key).is_some();
+    }
+
+    pub inline fn remove(&self, key: K) bool {
+        switch (self->find(&key)) {
+            case .Some(idx) => {
+                self->states[idx] = SLOT_DELETED;
+                self->len -= 1;
+                self->tombstones += 1;
+
+                return true;
+            }
+
+            case .None => return false;
+        }
+    }
+
+    pub inline fn len(&const self) usize {
+        return self->len;
+    }
+
+    pub inline fn cap(&const self) usize {
+        return self->cap;
+    }
+
+    pub inline fn is_empty(&const self) bool {
+        return self->len == 0;
+    }
+
+    pub inline fn clear(&self) {
+        @memset(self->states, 0, self->cap * @sizeof(uint8));
+
+        self->len = 0;
+        self->tombstones = 0;
+    }
+
+    pub inline fn free(&self) {
+        if (self->keys != null) {
+            self->allocator.free(@cast(void*, self->keys));
+            self->allocator.free(@cast(void*, self->values));
+            self->allocator.free(@cast(void*, self->states));
+
+            self->keys = null;
+            self->values = null;
+            self->states = null;
+            self->cap = 0;
+            self->len = 0;
+            self->tombstones = 0;
+        }
+    }
+
+    fn find(&const self, key: K*) Option<usize> {
+        const hf = self->hash_fn;
+        const ef = self->eq_fn;
+
+        const hash = hf(key);
+
+        var idx = @cast(usize, hash) & (self->cap - 1);
+        var probes: usize = 0;
+
+        while (probes < self->cap) {
+            const state = self->states[idx];
+
+            if (state == SLOT_EMPTY) {
+                return .None;
+            }
+
+            if (state == SLOT_OCCUPIED) {
+                if (ef(self->keys + idx, key)) {
+                    return .Some(idx);
+                }
+            }
+
+            idx = (idx + 1) & (self->cap - 1);
+            probes += 1;
+        }
+
+        return .None;
+    }
+
+    fn grow(&self) {
+        const old_cap = self->cap;
+        const old_keys = self->keys;
+        const old_values = self->values;
+        const old_states = self->states;
+
+        var new_cap = old_cap * 2;
+
+        if (new_cap == 0) {
+            new_cap = initial_map_capacity;
+        }
+
+        const new_keys: K* = self->allocator.alloc(new_cap * @sizeof(K));
+        const new_values: V* = self->allocator.alloc(new_cap * @sizeof(V));
+        const new_states: uint8* = self->allocator.alloc_zeroed(new_cap * @sizeof(uint8));
+
+        if (new_keys == null || new_values == null || new_states == null) {
+            @panic("hashmap reallocation failed");
+        }
+
+        self->keys = new_keys;
+        self->values = new_values;
+        self->states = new_states;
+        self->cap = new_cap;
+        self->len = 0;
+        self->tombstones = 0;
+
+        for (var i: usize = 0; i < old_cap; i++) {
+            if (old_states[i] == SLOT_OCCUPIED) {
+                self->insert_no_grow(old_keys[i], old_values[i]);
+            }
+        }
+
+        self->allocator.free(@cast(void*, old_keys));
+        self->allocator.free(@cast(void*, old_values));
+        self->allocator.free(@cast(void*, old_states));
+    }
+}
+
+inline fn round_up_pow2(v: usize) usize {
+    var n: usize = initial_map_capacity;
+
+    while (n < v) {
+        n *= 2;
+    }
+
+    return n;
+}

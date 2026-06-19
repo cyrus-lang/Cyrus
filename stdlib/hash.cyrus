@@ -1,0 +1,112 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 The Cyrus Language
+
+import std::libc{strlen};
+
+const FNV_OFFSET_BASIS_32: uint32 = 0x811c9dc5;
+const FNV_PRIME_32: uint32 = 0x01000193;
+
+const FNV_OFFSET_BASIS_64: uint64 = 0xcbf29ce484222325;
+const FNV_PRIME_64: uint64 = 0x00000100000001b3;
+
+const MURMUR_C1: uint32 = 0xcc9e2d51;
+const MURMUR_C2: uint32 = 0x1b873593;
+const MURMUR_R1: uint32 = 15;
+const MURMUR_R2: uint32 = 13;
+const MURMUR_M: uint32 = 5;
+const MURMUR_N: uint32 = 0xe6546b64;
+const MURMUR_FMIX1: uint32 = 0x85ebca6b;
+const MURMUR_FMIX2: uint32 = 0xc2b2ae35;
+
+pub inline fn rotl32(x: uint32, r: uint32) uint32 {
+    return (x << r) | (x >> (32 - r));
+}
+
+pub fn fnv1a_32(const data: const void*, const len: usize) uint32 {
+    const bytes = @cast(const uint8*, data);
+
+    var hash: uint32 = FNV_OFFSET_BASIS_32;
+
+    for (var i: usize = 0; i < len; i++) {
+        hash = hash ^ @cast(uint32, bytes[i]);
+        hash = hash * FNV_PRIME_32;
+    }
+
+    return hash;
+}
+
+pub fn fnv1a_64(const data: const void*, const len: usize) uint64 {
+    const bytes = @cast(const uint8*, data);
+
+    var hash: uint64 = FNV_OFFSET_BASIS_64;
+
+    for (var i: usize = 0; i < len; i++) {
+        hash = hash ^ @cast(uint64, bytes[i]);
+        hash = hash * FNV_PRIME_64;
+    }
+
+    return hash;
+}
+
+pub fn murmur3_32(const data: const void*, const len: usize, const seed: uint32) uint32 {
+    const bytes = @cast(const uint8*, data);
+
+    var hash: uint32 = seed;
+
+    const nblocks = len / 4;
+
+    for (var i: usize = 0; i < nblocks; i++) {
+        const base = i * 4;
+
+        var k: uint32 = @cast(uint32, bytes[base])
+            | (@cast(uint32, bytes[base + 1]) << 8)
+            | (@cast(uint32, bytes[base + 2]) << 16)
+            | (@cast(uint32, bytes[base + 3]) << 24);
+
+        k = k * MURMUR_C1;
+        k = rotl32(k, MURMUR_R1);
+        k = k * MURMUR_C2;
+
+        hash = hash ^ k;
+        hash = rotl32(hash, MURMUR_R2);
+        hash = (hash * MURMUR_M) + MURMUR_N;
+    }
+
+    const tail = nblocks * 4;
+    const remainder = len & 3;
+
+    var k1: uint32 = 0;
+
+    if (remainder >= 3) {
+        k1 = k1 ^ (@cast(uint32, bytes[tail + 2]) << 16);
+    }
+
+    if (remainder >= 2) {
+        k1 = k1 ^ (@cast(uint32, bytes[tail + 1]) << 8);
+    }
+
+    if (remainder >= 1) {
+        k1 = k1 ^ @cast(uint32, bytes[tail]);
+        k1 = k1 * MURMUR_C1;
+        k1 = rotl32(k1, MURMUR_R1);
+        k1 = k1 * MURMUR_C2;
+        hash = hash ^ k1;
+    }
+
+    hash = hash ^ @cast(uint32, len);
+    hash = hash ^ (hash >> 16);
+    hash = hash * MURMUR_FMIX1;
+    hash = hash ^ (hash >> 13);
+    hash = hash * MURMUR_FMIX2;
+    hash = hash ^ (hash >> 16);
+
+    return hash;
+}
+
+pub inline fn hash_bytes(const data: const void*, const len: usize) uint64 {
+    return fnv1a_64(data, len);
+}
+
+pub inline fn hash_str(const str: const char*) uint64 {
+    return fnv1a_64(@cast(const void*, str), strlen(str));
+}
