@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 The Cyrus Language
 
-import std::libc{memmove, realloc, malloc, free};
+import std::libc{memmove, realloc, free};
 import std::mem{Allocator};
 import std::option{Option};
 import std::iterator{Iterator};
@@ -9,6 +9,7 @@ import std::iterator{Iterator};
 const initial_array_capacity: usize = 16;
 
 pub struct Vector<T> {
+    allocator: Allocator;
     data: T*;
     cap: usize;
     len: usize;
@@ -24,6 +25,7 @@ pub struct Vector<T> {
         }
 
         return Self {
+            allocator,
             data,
             cap,
             len: 0,
@@ -42,7 +44,7 @@ pub struct Vector<T> {
             @panic("initial allocation failed");
         }
 
-        return Self { data, cap, len: 0 };
+        return Self { allocator, data, cap, len: 0 };
     }
 
     pub inline fn extend(&const self, const other: Self*) {
@@ -256,6 +258,17 @@ pub struct Vector<T> {
         return self->data;
     }
 
+    // FIXME
+    // pub inline fn iter(&const self) Iterator<T> {
+    //     const vector_iter: VectorIter<T> = VectorIter {
+    //         vector: self,
+    //         index: 0
+    //     };
+        
+    //     return dynamic vector_iter;
+    //     // @todo();
+    // }
+
     pub inline fn free(&self) {
         if (self->data != null) {
             free(self->data);
@@ -283,7 +296,7 @@ pub struct Vector<T> {
             new_cap *= 2;
         }
 
-        const new_data: T* = realloc(
+        const new_data: T* = self->allocator.realloc(
             self->data,
             // TODO: add integer overflow check 
             new_cap * @sizeof(T)
@@ -298,11 +311,63 @@ pub struct Vector<T> {
     }
 }
 
-// pub struct Node<T> {
-//     pub data: T*;
-//     pub next: Node*;
+// FIXME
+// pub struct VectorIter<T> : Iterator<T> {
+//     vector: Vector<T>*;
+//     index: usize;
+
+//     pub fn new(const vector: Vector<T>*) Self {
+//         return Self { vector, index: 0 };
+//     }
+
+//     pub fn next(&self) T* {
+//         const data = self->vector.data();
+//         const item = data[self->idx];
+//         self->idx++;
+//         return item;
+//     }
+
+//     pub fn next_const(&self) const T* {
+//         const data = self->vector.data();
+//         const item = data[self->idx];
+//         self->idx++;
+//         return item;
+//     }
 // }
 
-// pub struct LinkedList<T> {
+pub struct Map<K, V> {
+    entries: Vector<(K, V)>;
 
-// }
+    pub inline fn new(const allocator: Allocator) Self {
+        return Self { entries: Vector.new(allocator) };
+    }
+
+    pub fn set(&self, const key: K, const value: V) bool {
+        if (self->get(key).is_some()) {
+            return false;
+        }
+
+        self->entries.push((key, value));
+        return true;
+    }
+
+    pub fn get(&const self, const key: K) Option<V> {
+        const len = self->entries.len();
+        const data = self->entries.data_const();
+
+        // linear search
+        for (var i: usize = 0; i < len; i++) {
+            const item = data[i];
+            
+            if (item.0 == key) {
+                return .Some(item.1);
+            }
+        }
+
+        return .None;
+    }
+
+    pub inline fn free(&self) {
+        self->entries.free();
+    }
+}

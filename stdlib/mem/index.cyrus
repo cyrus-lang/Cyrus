@@ -48,10 +48,6 @@ pub struct LibcAllocator : Allocator {
 	}
 }
 
-pub struct ArenaAllocator {
-
-}
-
 pub struct BumpAllocator : Allocator {
 	ptr: void*;
 	cap: usize;

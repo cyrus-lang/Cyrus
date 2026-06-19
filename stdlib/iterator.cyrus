@@ -3,4 +3,5 @@
 
 pub interface Iterator<T> {
     fn next(&self) T*;
+    fn next_const(&self) const T*;
 }
