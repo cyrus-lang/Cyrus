@@ -848,7 +848,15 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         _hi: &ABIType,
         abi_ret_type: &ABIType,
     ) -> BasicValueEnum<'ll> {
-        let value = rvalue.value.into_struct_value();
+        let value = match &rvalue.kind {
+    InternalValueKind::RValue(val) => val.into_struct_value(),
+    InternalValueKind::LValue(ptr) => self.llvmbuilder.build_load(
+        rvalue.ty.clone().try_into().unwrap(),
+        *ptr,
+        "load.pair"
+    ).unwrap().into_struct_value(),
+    InternalValueKind::FuncValue(_) => unreachable!(),
+};
 
         let lo_val = self.llvmbuilder.build_extract_value(value, 0, "ret.lo").unwrap();
         let hi_val = self.llvmbuilder.build_extract_value(value, 1, "ret.hi").unwrap();
