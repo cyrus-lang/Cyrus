@@ -855,7 +855,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         _hi: &ABIType,
         abi_ret_type: &ABIType,
     ) -> BasicValueEnum<'ll> {
-        let value = rvalue.as_basic_value().into_struct_value();
+        let value = rvalue.value.into_struct_value();
 
         
         let lo_val = self.llvmbuilder.build_extract_value(value, 0, "ret.lo").unwrap();
