@@ -49,6 +49,7 @@ struct CIRLower<'a> {
     vtable_registry: Arc<VTableRegistry>,
     monomorph_registry: Arc<MonomorphRegistry>,
 
+    // TODO: Comment
     next_irv_id: IRValueID,
     decl_to_ir_value_map: FxHashMap<DeclID, IRValueID>,
     monomorph_to_ir_value_map: FxHashMap<MonomorphID, IRValueID>,
@@ -78,11 +79,11 @@ impl<'a> CIRLower<'a> {
             monomorph_registry,
             target,
             next_irv_id: IRValueID(0),
-            decl_to_ir_value_map: FxHashMap::default(),
-            global_var_decls: FxHashMap::default(),
-            func_decls: FxHashMap::default(),
-            monomorph_to_ir_value_map: FxHashMap::default(),
-            vtable_to_ir_value_map: FxHashMap::default(),
+            decl_to_ir_value_map: FxHashMap::new(),
+            global_var_decls: FxHashMap::new(),
+            func_decls: FxHashMap::new(),
+            monomorph_to_ir_value_map: FxHashMap::new(),
+            vtable_to_ir_value_map: FxHashMap::new(),
         }
     }
 
@@ -1235,7 +1236,7 @@ impl<'a> CIRLower<'a> {
             loc: inst_struct_decl.loc,
         };
 
-        let mut lowered_fields = FxHashMap::default();
+        let mut lowered_fields = FxHashMap::new();
 
         for field_init in &struct_init.fields {
             let lowered = self.lower_expr(&field_init.value);
@@ -2049,6 +2050,7 @@ impl<'a> CIRLower<'a> {
     }
 }
 
+// TODO: Refactor 
 // Helpers.
 impl<'a> CIRLower<'a> {
     #[inline]

@@ -17,7 +17,7 @@ impl InferCtx {
     pub fn new() -> Self {
         Self {
             next_var: 0,
-            bindings: FxHashMap::default(),
+            bindings: FxHashMap::new(),
         }
     }
 

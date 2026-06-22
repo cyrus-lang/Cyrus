@@ -201,7 +201,7 @@ pub fn build_semantic_bundle<'a>(
 
             let mut has_error = false;
             let mut analyzed_program_trees: Vec<Rc<RefCell<TypedProgramTree>>> = Vec::new();
-            let mut vtable_registries: FxHashMap<FileID, Arc<VTableRegistry>> = FxHashMap::default();
+            let mut vtable_registries: FxHashMap<FileID, Arc<VTableRegistry>> = FxHashMap::new();
 
             for program_tree_entry in &*resolved_program_trees {
                 let vtable_registry = Arc::new(VTableRegistry::new());

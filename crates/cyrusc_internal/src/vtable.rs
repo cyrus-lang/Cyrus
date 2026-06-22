@@ -61,7 +61,7 @@ impl VTableRegistry {
     pub fn new() -> Self {
         Self {
             inner: Arc::new(RwLock::new(VTableRegistryInner {
-                map: FxHashMap::default(),
+                map: FxHashMap::new(),
                 tables: Vec::new(),
             })),
         }
