@@ -7,7 +7,7 @@ use cyrusc_typed_ast::{
     stmts::{TypedBlockStmt, TypedFuncParams, TypedTypeArgs},
     types::SemaType,
 };
-use fx_hash::FxHashMap;
+use fx_hash::{FxHashMap, FxHashMapExt};
 use std::sync::RwLock;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]

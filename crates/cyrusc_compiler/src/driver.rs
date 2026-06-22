@@ -29,7 +29,7 @@ use cyrusc_scaffold_parser::{
 use cyrusc_source_loc::{FileID, SourceMap};
 use cyrusc_tui_utils::tui_error;
 use cyrusc_typed_ast::{TypedProgramTree, decls::table::DeclTablesRegistry};
-use fx_hash::FxHashMap;
+use fx_hash::{FxHashMap, FxHashMapExt};
 use inkwell::targets::{InitializationConfig, Target as InkwellTarget, TargetTriple};
 use std::{
     cell::RefCell,

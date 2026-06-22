@@ -2,7 +2,7 @@
 // Copyright (c) 2026 The Cyrus Language
 
 use cyrusc_typed_ast::GenericParamID;
-use fx_hash::FxHashMap;
+use fx_hash::{FxHashMap, FxHashMapExt};
 
 #[derive(Debug, Clone)]
 pub struct GenericScope {
