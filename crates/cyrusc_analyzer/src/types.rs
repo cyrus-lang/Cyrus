@@ -472,6 +472,7 @@ impl<'a> AnalysisContext<'a> {
                     self.tctx.clone(),
                     enum_decl_id,
                     &enum_decl,
+                    named_type.type_args.clone()
                 );
 
                 let tag_type = cir_enum_type.tag_type_or_infer_or_default();

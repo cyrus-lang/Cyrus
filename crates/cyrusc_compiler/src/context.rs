@@ -2,11 +2,19 @@
 // Copyright (c) 2026 The Cyrus Language
 
 use crate::{
-    codegen_traits::CodeGenBackend, linker::Linker, object_file_info::{ObjectFileInfo, collect_objects_file_names}, options::canonical_project_name, target_machine_info::TargetMachineInfo
+    codegen_traits::CodeGenBackend,
+    linker::Linker,
+    object_file_info::{ObjectFileInfo, collect_objects_file_names},
+    options::canonical_project_name,
+    target_machine_info::TargetMachineInfo,
 };
 use cyrusc_buildmanifest::BuildManifest;
 use cyrusc_diagcentral::exit_with_msg;
-use cyrusc_internal::{abi::target::ABITarget, cir::cir::CIRModule, compiler_options::{CompilerOption_LinkerOutputKind, CompilerOption_ModuleKind, CompilerOptions}};
+use cyrusc_internal::{
+    abi::target::ABITarget,
+    cir::{cir::CIRModule, typectx::CIRTypeContext},
+    compiler_options::{CompilerOption_LinkerOutputKind, CompilerOption_ModuleKind, CompilerOptions},
+};
 use cyrusc_tui_utils::{tui_compile_finished, tui_warning};
 use inkwell::targets::{Target as LLVMTarget, TargetTriple};
 use std::{
@@ -28,6 +36,8 @@ pub struct CodeGenContext {
 
     pub llvm_target: LLVMTarget,
     pub llvm_target_triple: TargetTriple,
+
+    pub tctx: Arc<CIRTypeContext>,
 }
 
 impl CodeGenContext {
@@ -40,6 +50,7 @@ impl CodeGenContext {
         master_module_file_path: PathBuf,
         linker_output_kind: CompilerOption_LinkerOutputKind,
         linker: Linker,
+        tctx: Arc<CIRTypeContext>,
     ) -> Self {
         Self {
             opts,
@@ -50,6 +61,7 @@ impl CodeGenContext {
             master_module_file_path,
             linker_output_kind,
             linker,
+            tctx,
         }
     }
 

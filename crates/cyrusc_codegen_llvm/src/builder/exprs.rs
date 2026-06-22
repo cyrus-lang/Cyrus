@@ -14,7 +14,7 @@ use cyrusc_ast::operators::{InfixOperator, PrefixOperator, UnaryOperator};
 use cyrusc_internal::{
     abi::{
         args::ABIFunctionInfo,
-        layout::{ABIFieldOffsetInfo, ABITypeLayout, type_layout},
+        layout::{ABIFieldOffsetInfo, ABITypeLayout},
         types::ABIType,
     },
     cir::{
@@ -551,7 +551,9 @@ impl<'ll> CodeGenIRBuilder<'ll> {
                     let struct_ptr_value = lvalue.as_basic_value().into_pointer_value();
                     let struct_type = lvalue.ty.clone();
 
-                    let layout = type_layout(&self.target.info, &struct_type);
+                    let type_id = self.tctx.register(struct_type.clone());
+                    let layout = self.tctx.get_or_compute_layout(type_id);
+
                     let llvm_struct_type = self.emit_ty(struct_type).into_struct_type();
 
                     let index = layout.lookup_field_index(*index).unwrap();
@@ -1341,19 +1343,20 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         let operand = self.emit_lvalue_address(&field_access.operand);
 
         // determine concrete struct type of operand
-        let cir_struct_ty = if let Some(inner) = field_access.operand.ty.pointer_inner() {
+        let struct_type = if let Some(inner) = field_access.operand.ty.pointer_inner() {
             inner.clone().as_struct().unwrap()
         } else {
             field_access.operand.ty.clone().as_struct().unwrap()
         };
 
-        let layout = type_layout(&self.target.info, &CIRType::Struct(cir_struct_ty.clone()));
+        let type_id = self.tctx.register(CIRType::Struct(struct_type.clone()));
+        let layout = self.tctx.get_or_compute_layout(type_id);
 
         let llvm_field_index = layout
             .lookup_field_index(field_index)
             .expect("layout must contain field");
 
-        let llvm_struct_type = self.emit_struct_type(cir_struct_ty);
+        let llvm_struct_type = self.emit_struct_type(struct_type);
 
         match operand.kind {
             InternalValueKind::LValue(ptr_value) => {
@@ -1383,7 +1386,9 @@ impl<'ll> CodeGenIRBuilder<'ll> {
 
         let cir_tuple_type = operand_value.ty.as_tuple().unwrap();
 
-        let layout = type_layout(&self.target.info, &CIRType::Tuple(cir_tuple_type.clone()));
+        let type_id = self.tctx.register(CIRType::Tuple(cir_tuple_type.clone()));
+        let layout = self.tctx.get_or_compute_layout(type_id);
+
         let field_index = layout.lookup_field_index(tuple_access.index).unwrap();
 
         let llvm_tuple_type = self.emit_tuple_ty(cir_tuple_type.clone());
@@ -1425,7 +1430,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
             .collect();
 
         let struct_type = CIRStructType {
-            decl_id: None,
+            unique_decl_key: None,
             name: None,
             fields,
             fields_info,
@@ -1685,7 +1690,9 @@ impl<'ll> CodeGenIRBuilder<'ll> {
     }
 
     fn emit_struct_init(&mut self, struct_init: &CIRStructInitExpr) -> InternalValue<'ll> {
-        let layout = type_layout(&self.target.info, &CIRType::Struct(struct_init.ty.clone()));
+        let type_id = self.tctx.register(CIRType::Struct(struct_init.ty.clone()));
+        let layout = self.tctx.get_or_compute_layout(type_id);
+
         let struct_type = self.emit_struct_type(struct_init.ty.clone());
 
         let mut all_const = true;
@@ -1743,7 +1750,9 @@ impl<'ll> CodeGenIRBuilder<'ll> {
                 })
                 .collect::<Vec<_>>();
 
-            let layout = type_layout(&self.target.info, &CIRType::Struct(struct_init.ty.clone()));
+            let type_id = self.tctx.register(CIRType::Struct(struct_init.ty.clone()));
+            let layout = self.tctx.get_or_compute_layout(type_id);
+
             struct_value = self.emit_struct_init_via_memcpy(&layout, struct_type, &field_values);
         } else {
             if all_const {

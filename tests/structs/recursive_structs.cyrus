@@ -1,0 +1,47 @@
+// @stdout: [0](10)[1](20)(30)
+
+import std::libc{printf, malloc, free};
+
+pub struct Tree {
+    pub value: int32;
+    pub children: Forest*;
+
+    pub fn display(&const self) {
+        printf("(%d)", self->value);
+    }
+}
+
+pub struct Forest {
+    pub trees: Tree*;
+    pub count: int32;
+
+    pub fn display(&const self) {
+        var i = 0;
+        while (i < self->count) {
+            const tree = &self->trees[i];
+            printf("[%d]", i);
+            tree->display();
+            i = i + 1;
+        }
+    }
+}
+
+pub fn main() {
+    const tree_count: int32 = 2;
+    var trees: Tree* = malloc(@sizeof(Tree) * @cast(usize, tree_count));
+    defer free(trees);
+
+    trees[0] = Tree {  value: 10,  children: null };
+
+    trees[1] = Tree { value: 20,  children: null };
+
+    const forest1 = Forest { trees: trees, count: tree_count };
+
+    forest1.display();
+
+    const forest2 = Forest { trees: null, count: 0 };
+
+    const tree3 = Tree { value: 30, children: &forest2 };
+
+    tree3.display();
+}

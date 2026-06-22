@@ -8,6 +8,7 @@ mod tests {
     use cyrusc_typed_ast::{
         VTableID,
         decls::{StructDeclID, UnionDeclID},
+        stmts::TypedTypeArgs,
         types::{PlainType, TypeDeclID},
     };
 
@@ -57,7 +58,7 @@ mod tests {
         let fields = fields.iter().map(|ty| ty.clone()).collect();
 
         CIRType::Struct(CIRStructType {
-            decl_id: Some(TypeDeclID::Struct(StructDeclID(0))), // fake
+            unique_decl_key: Some((TypeDeclID::Struct(StructDeclID(0)), TypedTypeArgs::default())), // fake
             name: None,
             fields,
             fields_info: Vec::new(), // won't be used
@@ -71,7 +72,7 @@ mod tests {
         let fields = fields.iter().map(|ty| ty.clone()).collect();
 
         CIRType::Union(CIRUnionType {
-            decl_id: TypeDeclID::Union(UnionDeclID(0)), // fake
+            unique_decl_key: (TypeDeclID::Union(UnionDeclID(0)), TypedTypeArgs::default()), // fake
             name: None,
             fields,
             fields_info: Vec::new(), // won't be used

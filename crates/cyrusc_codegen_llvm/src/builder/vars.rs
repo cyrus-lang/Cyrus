@@ -3,7 +3,7 @@
 
 use cyrusc_ast::{abi::Linkage, modifiers::GlobalVarModifiers};
 use cyrusc_internal::{
-    abi::layout::{ABITypeLayout, type_layout},
+    abi::layout::ABITypeLayout,
     cir::cir::{CIRGlobalVarStmt, CIRVarStmt, IRValueID},
 };
 use inkwell::{
@@ -40,7 +40,9 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         let global_value = llvm_module.add_global(ty, None, &cir_global_var.name);
         drop(llvm_module);
 
-        let layout = type_layout(&self.target.info, &cir_global_var.ty);
+        let type_id = self.tctx.register(cir_global_var.ty.clone());
+        let layout = self.tctx.get_or_compute_layout(type_id);
+
         self.emit_debug_global_var(&layout, &global_value, cir_global_var);
 
         if let Some(expr) = &cir_global_var.expr {
@@ -95,8 +97,10 @@ impl<'ll> CodeGenIRBuilder<'ll> {
 // Var.
 impl<'ll> CodeGenIRBuilder<'ll> {
     pub(crate) fn emit_var(&mut self, cir_var: &CIRVarStmt) {
+        let type_id = self.tctx.register(cir_var.ty.clone());
+        let layout = self.tctx.get_or_compute_layout(type_id);
+
         let ty: BasicTypeEnum<'ll> = self.emit_ty(cir_var.ty.clone()).try_into().unwrap();
-        let layout = type_layout(&self.target.info, &cir_var.ty);
 
         let ptr = self.llvmbuilder.build_alloca(ty, &cir_var.name).unwrap();
         let alloca_instr = ptr.as_instruction().unwrap();

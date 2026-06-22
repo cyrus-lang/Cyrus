@@ -1,13 +1,13 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 The Cyrus Language
 
-use crate::{abi::args::ABIFunctionInfo, cir::cir::CIREnumVariant};
+use crate::{
+    abi::args::ABIFunctionInfo,
+    cir::{cir::CIREnumVariant, typectx::UniqueDeclKey},
+};
 use cyrusc_ast::abi::{CallConv, ReprAttr};
 use cyrusc_source_loc::Loc;
-use cyrusc_typed_ast::{
-    VTableID,
-    types::{PlainType, TypeDeclID},
-};
+use cyrusc_typed_ast::{VTableID, types::PlainType};
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum CIRType {
@@ -51,7 +51,7 @@ pub struct CIRFuncType {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct CIRStructType {
-    pub decl_id: Option<TypeDeclID>,
+    pub unique_decl_key: Option<UniqueDeclKey>,
     pub name: Option<String>,
     pub fields: Vec<CIRType>,
     pub fields_info: Vec<(String, Loc)>,
@@ -62,7 +62,7 @@ pub struct CIRStructType {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct CIRUnionType {
-    pub decl_id: TypeDeclID,
+    pub unique_decl_key: UniqueDeclKey,
     pub name: Option<String>,
     pub fields: Vec<CIRType>,
     pub fields_info: Vec<(String, Loc)>,
@@ -73,7 +73,7 @@ pub struct CIRUnionType {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct CIREnumType {
-    pub decl_id: TypeDeclID,
+    pub unique_decl_key: UniqueDeclKey,
     pub name: Option<String>,
     pub variants: Vec<CIREnumVariant>,
     pub repr_attr: Option<ReprAttr>,
@@ -84,7 +84,7 @@ pub struct CIREnumType {
 
 pub fn cir_fat_ptr_type(loc: Loc) -> CIRType {
     CIRType::Struct(CIRStructType {
-        decl_id: None,
+        unique_decl_key: None,
         name: None,
         fields: vec![
             CIRType::Pointer(Box::new(CIRType::Plain(PlainType::Void))),
@@ -362,7 +362,7 @@ impl CIRTupleType {
             .collect();
 
         CIRStructType {
-            decl_id: None,
+            unique_decl_key: None,
             name: None,
             fields,
             fields_info,

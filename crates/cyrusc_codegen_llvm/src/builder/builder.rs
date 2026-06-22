@@ -11,7 +11,10 @@ use crate::{
 };
 use cyrusc_internal::{
     abi::{args::ABIFunctionInfo, target::ABITarget},
-    cir::cir::{CIRBlockStmt, CIRModule, CIRStmt, cir_func_decl_as_func_type, cir_func_def_as_decl},
+    cir::{
+        cir::{CIRBlockStmt, CIRModule, CIRStmt, cir_func_decl_as_func_type, cir_func_def_as_decl},
+        typectx::CIRTypeContext,
+    },
     vtable::VTableRegistry,
 };
 use cyrusc_source_loc::SourceMap;
@@ -40,6 +43,7 @@ pub(crate) struct CodeGenIRBuilder<'ll> {
     pub(crate) lambda_id: usize,
 
     pub(crate) dctx: DebugContext,
+    pub(crate) tctx: Arc<CIRTypeContext>,
 
     pub(crate) vtable_registry: Arc<VTableRegistry>,
     pub(crate) source_map: Arc<SourceMap>,
@@ -61,6 +65,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         llvmbuilder: &'ll Builder<'ll>,
         llvmtm: &'ll TargetMachine,
         dctx: DebugContext,
+        tctx: Arc<CIRTypeContext>,
         vtable_registry: Arc<VTableRegistry>,
         source_map: Arc<SourceMap>,
     ) -> Self {
@@ -86,6 +91,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
             lambda_id: 0,
             defer_stack: Vec::new(),
             dctx,
+            tctx,
             vtable_registry,
             source_map,
         }

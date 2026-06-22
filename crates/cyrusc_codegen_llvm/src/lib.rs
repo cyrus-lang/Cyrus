@@ -18,7 +18,11 @@ use cyrusc_compiler::{
     target_machine_info::TargetMachineInfo,
 };
 use cyrusc_diagcentral::exit_with_msg;
-use cyrusc_internal::{cir::cir::CIRModule, compiler_options::CompilerOptions, vtable::VTableRegistry};
+use cyrusc_internal::{
+    cir::{cir::CIRModule, typectx::CIRTypeContext},
+    compiler_options::CompilerOptions,
+    vtable::VTableRegistry,
+};
 use cyrusc_scaffold_parser::OBJECT_CACHE_DIR_FILENAME;
 use cyrusc_source_loc::SourceMap;
 use cyrusc_tui_utils::{tui_compiled, tui_skipped};
@@ -87,6 +91,7 @@ impl CodeGenLLVM {
         builder: Rc<Builder<'ctx>>,
         cir_module: &'ctx CIRModule,
         dctx: DebugContext,
+        tctx: Arc<CIRTypeContext>,
         vtable_registry: Arc<VTableRegistry>,
         source_map: Arc<SourceMap>,
     ) {
@@ -105,6 +110,7 @@ impl CodeGenLLVM {
             &builder,
             &self.llvm_target_machine,
             dctx,
+            tctx,
             vtable_registry,
             source_map,
         );
@@ -365,6 +371,7 @@ impl SeparateModuleSupport<'static, OwnedModule> for CodeGenLLVM {
                 builder,
                 cir_module,
                 dctx,
+                self.ctx.tctx.clone(),
                 cir_module.vtable_registry.clone(),
                 self.source_map.clone(),
             );
@@ -394,6 +401,7 @@ impl UnifiedModuleSupport<'static, OwnedModule> for CodeGenLLVM {
                 builder.clone(),
                 cir_module,
                 dctx,
+                self.ctx.tctx.clone(),
                 cir_module.vtable_registry.clone(),
                 self.source_map.clone(),
             );

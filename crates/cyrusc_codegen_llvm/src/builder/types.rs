@@ -9,7 +9,7 @@ use crate::llvm::debug_info::{
 };
 use crate::llvm::dwarf::{DW_ATE_BOOLEAN, DW_ATE_FLOAT, DW_ATE_SIGNED, DW_ATE_UNSIGNED, DW_ATE_UNSIGNED_CHAR};
 use cyrusc_internal::abi::args::{ABIArgKind, ABIFunctionInfo, ExpandKind};
-use cyrusc_internal::abi::layout::{ABIFieldOffsetInfo, type_layout};
+use cyrusc_internal::abi::layout::ABIFieldOffsetInfo;
 use cyrusc_internal::cir::cir::CIREnumVariant;
 use cyrusc_internal::cir::types::{
     CIRArrayType, CIREnumType, CIRFuncType, CIRStructType, CIRTupleType, CIRType, CIRUnionType,
@@ -34,7 +34,8 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         match ty {
             CIRType::Plain(plain_type) => {
                 let name = plain_type.to_string();
-                let layout = type_layout(&self.target.info, &CIRType::Plain(plain_type.clone()));
+                let type_id = self.tctx.register(CIRType::Plain(plain_type.clone()));
+                let layout = self.tctx.get_or_compute_layout(type_id);
                 let bits = layout.size * 8;
 
                 let encoding = match plain_type {
@@ -78,7 +79,9 @@ impl<'ll> CodeGenIRBuilder<'ll> {
                 unsafe { debug_pointer_type(&self.dctx, inner_ty_metadata, ptr_size_bits as u64, ptr_align, "T*") }
             }
             CIRType::Struct(struct_type) => unsafe {
-                let layout = type_layout(&self.target.info, &CIRType::Struct(struct_type.clone()));
+                let type_id = self.tctx.register(CIRType::Struct(struct_type.clone()));
+                let layout = self.tctx.get_or_compute_layout(type_id);
+
                 let size_bits = layout.size * 8;
                 let align_bits = layout.align * 8;
 
@@ -114,7 +117,8 @@ impl<'ll> CodeGenIRBuilder<'ll> {
                 )
             },
             CIRType::Tuple(tuple_type) => {
-                let layout = type_layout(&self.target.info, &CIRType::Tuple(tuple_type.clone()));
+                let type_id = self.tctx.register(CIRType::Tuple(tuple_type.clone()));
+                let layout = self.tctx.get_or_compute_layout(type_id);
 
                 let mut elements_metadata: Vec<LLVMMetadataRef> = tuple_type
                     .elements
@@ -155,7 +159,8 @@ impl<'ll> CodeGenIRBuilder<'ll> {
                 }
             }
             CIRType::Enum(enum_type) => {
-                let layout = type_layout(&self.target.info, &CIRType::Enum(enum_type.clone()));
+                let type_id = self.tctx.register(CIRType::Enum(enum_type.clone()));
+                let layout = self.tctx.get_or_compute_layout(type_id);
                 let size_bits = layout.size * 8;
                 let align_bits = layout.align * 8;
 
@@ -227,7 +232,8 @@ impl<'ll> CodeGenIRBuilder<'ll> {
                 }
             }
             CIRType::Union(union_type) => {
-                let layout = type_layout(&self.target.info, &CIRType::Union(union_type.clone()));
+                let type_id = self.tctx.register(CIRType::Union(union_type.clone()));
+                let layout = self.tctx.get_or_compute_layout(type_id);
 
                 let mut elements_metadata: Vec<LLVMMetadataRef> = union_type
                     .fields
@@ -273,8 +279,9 @@ impl<'ll> CodeGenIRBuilder<'ll> {
                 unsafe { debug_pointer_type(&self.dctx, subroutine_type, ptr_size_bits as u64, ptr_align, "T*") }
             }
             CIRType::Array(array_type) => {
+                let type_id = self.tctx.register(CIRType::Array(array_type.clone()));
+                let layout = self.tctx.get_or_compute_layout(type_id);
                 let element_ty_metadata = self.emit_debug_ty_metadata(&array_type.element_type);
-                let layout = type_layout(&self.target.info, &CIRType::Array(array_type.clone()));
 
                 unsafe {
                     debug_array_type(
@@ -287,7 +294,9 @@ impl<'ll> CodeGenIRBuilder<'ll> {
                 }
             }
             CIRType::Dynamic(dynamic_type) => {
-                let layout = type_layout(&self.target.info, &CIRType::Dynamic(dynamic_type.clone()));
+                let type_id = self.tctx.register(CIRType::Dynamic(dynamic_type.clone()));
+                let layout = self.tctx.get_or_compute_layout(type_id);
+
                 let ptr_size_bits = layout.size * 8;
                 let align_bits = layout.align * 8;
 
@@ -317,7 +326,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
 
     pub(crate) fn cir_dynamic_type(&self, data_ptr_inner_ty: CIRType, loc: Loc) -> CIRType {
         CIRType::Struct(CIRStructType {
-            decl_id: None,
+            unique_decl_key: None,
             name: None,
             fields: vec![
                 CIRType::Pointer(Box::new(data_ptr_inner_ty)),
@@ -378,8 +387,10 @@ impl<'ll> CodeGenIRBuilder<'ll> {
     }
 
     pub(crate) fn emit_struct_type(&self, struct_type: CIRStructType) -> StructType<'ll> {
+        let type_id = self.tctx.register(CIRType::Struct(struct_type.clone()));
+        let layout = self.tctx.get_or_compute_layout(type_id);
+
         let is_packed = struct_type.is_packed();
-        let layout = type_layout(&self.target.info, &CIRType::Struct(struct_type.clone()));
 
         let mut llvm_field_types: Vec<BasicTypeEnum<'ll>> = Vec::new();
         let mut next_field_index = 0;
@@ -428,7 +439,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         let struct_tuple_type = tuple_type.as_struct_type();
 
         Some(self.emit_struct_type(CIRStructType {
-            decl_id: None,
+            unique_decl_key: None,
             name: None,
             fields: struct_tuple_type.fields,
             fields_info: struct_tuple_type.fields_info,
@@ -515,15 +526,17 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         }
     }
 
-    pub(crate) fn emit_union_ty(&self, union_ty: CIRUnionType) -> BasicTypeEnum<'ll> {
-        let layout = type_layout(&self.target.info, &CIRType::Union(union_ty.clone()));
+    pub(crate) fn emit_union_ty(&self, union_type: CIRUnionType) -> BasicTypeEnum<'ll> {
+        let type_id = self.tctx.register(CIRType::Union(union_type.clone()));
+        let layout = self.tctx.get_or_compute_layout(type_id);
+
         let target_data = self.llvmtm.get_target_data();
 
         let mut ty = None;
         let mut max_align = 0;
         let mut max_size = 0;
 
-        for field_ty in &union_ty.fields {
+        for field_ty in &union_type.fields {
             let llvm_ty: BasicTypeEnum = self.emit_ty(field_ty.clone()).try_into().unwrap();
 
             let align = target_data.get_abi_alignment(&llvm_ty);

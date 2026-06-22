@@ -161,7 +161,7 @@ pub fn type_layout(info: &ABITargetInfo, ty: &CIRType) -> ABITypeLayout {
                         let tuple_struct_type = tuple_type.as_struct_type();
 
                         let struct_type = CIRStructType {
-                            decl_id: None,
+                            unique_decl_key: None,
                             name: None,
                             fields: tuple_struct_type.fields.clone(),
                             fields_info: tuple_struct_type.fields_info.clone(),

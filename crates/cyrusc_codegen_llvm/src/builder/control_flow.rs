@@ -10,11 +10,7 @@ use crate::{
     llvm::abi::abi_type::abi_type_to_llvm_type,
 };
 use cyrusc_internal::{
-    abi::{
-        args::ABIRetInfoKind,
-        layout::{ABITypeLayout, type_layout},
-        types::ABIType,
-    },
+    abi::{args::ABIRetInfoKind, layout::ABITypeLayout, types::ABIType},
     cir::{
         cir::{
             CIRBlockStmt, CIRBreakStmt, CIRContinueStmt, CIRForStmt, CIRGotoStmt, CIRIfStmt, CIRLabelStmt, CIRPattern,
@@ -291,7 +287,8 @@ impl<'ll> CodeGenIRBuilder<'ll> {
                         struct_type,
                         exported_fields,
                     } => {
-                        let layout = type_layout(&self.target.info, &CIRType::Struct(struct_type.clone()));
+                        let type_id = self.tctx.register(CIRType::Struct(struct_type.clone()));
+                        let layout = self.tctx.get_or_compute_layout(type_id);
 
                         self.emit_block(case_block);
 
@@ -686,8 +683,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         let cur_block = self.blockreg.cur_block.unwrap();
 
         if cur_block.get_terminator().is_none() {
-
-            self.emit_scope_defers();  //drain defer before branching 
+            self.emit_scope_defers(); //drain defer before branching 
             self.llvmbuilder.build_unconditional_branch(exit_block).unwrap();
         }
         self.blockreg.cur_block = None;
@@ -822,7 +818,8 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         let sret_ptr = sret_param.into_pointer_value();
 
         let struct_type = rvalue.ty.clone();
-        let struct_layout = type_layout(&self.target.info, &struct_type);
+        let type_id = self.tctx.register(struct_type.clone());
+        let struct_layout = self.tctx.get_or_compute_layout(type_id);
 
         let size_val = self.llvm_ctx.i64_type().const_int(struct_layout.size as u64, false);
 
@@ -838,13 +835,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         };
 
         self.llvmbuilder
-            .build_memcpy(
-                sret_ptr,
-                struct_layout.align,
-                src_ptr,
-                struct_layout.align,
-                size_val,
-            )
+            .build_memcpy(sret_ptr, struct_layout.align, src_ptr, struct_layout.align, size_val)
             .unwrap();
     }
 
@@ -860,7 +851,6 @@ impl<'ll> CodeGenIRBuilder<'ll> {
             _ => unreachable!("Direct pair return value must be an RValue"),
         };
 
-        
         let lo_ty: BasicTypeEnum<'ll> = abi_type_to_llvm_type(self.llvm_ctx, &self.target.info, lo)
             .try_into()
             .unwrap();
@@ -892,7 +882,6 @@ impl<'ll> CodeGenIRBuilder<'ll> {
 
         let hi_val = self.llvmbuilder.build_load(hi_ty, hi_ptr, "ret.hi").unwrap();
 
-        
         let ret_struct_ty: StructType = abi_type_to_llvm_type(self.llvm_ctx, &self.target.info, abi_ret_type)
             .try_into()
             .unwrap();

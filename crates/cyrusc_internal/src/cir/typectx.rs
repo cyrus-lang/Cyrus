@@ -5,6 +5,7 @@ use crate::abi::layout::{ABITypeLayout, type_layout};
 use crate::abi::target::ABITargetInfo;
 use crate::cir::cir::CIREnumVariant;
 use crate::cir::types::*;
+use cyrusc_typed_ast::stmts::TypedTypeArgs;
 use cyrusc_typed_ast::types::PlainType;
 use cyrusc_typed_ast::types::TypeDeclID;
 use fx_hash::{FxHashMap, FxHashSet, FxHashSetExt};
@@ -12,6 +13,8 @@ use std::sync::RwLock;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct CIRTypeContextID(usize);
+
+pub type UniqueDeclKey = (TypeDeclID, TypedTypeArgs);
 
 pub struct CIRTypeContext {
     /// All types in the context, indexed by CIRTypeContextID
@@ -33,9 +36,9 @@ enum CIRTypeKey {
     Pointer(Box<CIRTypeKey>),
     Array(Box<CIRTypeKey>, usize),
     Tuple(Vec<CIRTypeKey>),
-    Struct(TypeDeclID, Vec<CIRTypeKey>),
-    Union(TypeDeclID, Vec<CIRTypeKey>),
-    Enum(TypeDeclID, Vec<EnumVariantKey>, Box<CIRTypeKey>),
+    Struct(Option<UniqueDeclKey>, Vec<CIRTypeKey>),
+    Union(UniqueDeclKey, Vec<CIRTypeKey>),
+    Enum(UniqueDeclKey, Vec<EnumVariantKey>, Box<CIRTypeKey>),
     FuncType(Vec<CIRTypeKey>, Box<CIRTypeKey>, bool),
     Dynamic,
 }
@@ -184,23 +187,23 @@ impl CIRTypeContext {
                 CIRTypeKey::Tuple(elements)
             }
             CIRType::Struct(struct_type) => {
-                let fields: Vec<CIRTypeKey> = struct_type.fields.iter().map(|f| self.type_to_key(f)).collect();
+                match &struct_type.unique_decl_key {
+                    Some(unique_decl_key) => {
+                        // named struct: unique-decl-key is identity, no field recursion
+                        CIRTypeKey::Struct(Some(unique_decl_key.clone()), vec![])
+                    }
+                    None => {
+                        // anonymous struct: fields define identity
+                        let fields: Vec<CIRTypeKey> = struct_type.fields.iter().map(|f| self.type_to_key(f)).collect();
 
-                // IMPORTANT:
-                // Some types like tuple, fat-ptr are lowered directly into CIRStructType,
-                // so they never should achieve this point!
-                assert!(
-                    struct_type.decl_id.is_some(),
-                    "cannot generate type context key for struct type which has not a decl id"
-                );
-
-                // CIRTypeKey::Struct(struct_type.decl_id.unwrap(), vec![])
-                CIRTypeKey::Struct(struct_type.decl_id.unwrap(), fields)
+                        CIRTypeKey::Struct(None, fields)
+                    }
+                }
             }
             CIRType::Union(union_type) => {
                 let fields: Vec<CIRTypeKey> = union_type.fields.iter().map(|f| self.type_to_key(f)).collect();
 
-                CIRTypeKey::Union(union_type.decl_id, fields)
+                CIRTypeKey::Union(union_type.unique_decl_key.clone(), fields)
             }
             CIRType::Enum(enum_type) => {
                 let variants: Vec<EnumVariantKey> = enum_type
@@ -223,7 +226,7 @@ impl CIRTypeContext {
                     .map(|t| Box::new(self.type_to_key(t)))
                     .unwrap_or_else(|| Box::new(CIRTypeKey::Plain(PlainType::Int32)));
 
-                CIRTypeKey::Enum(enum_type.decl_id, variants, tag_key)
+                CIRTypeKey::Enum(enum_type.unique_decl_key.clone(), variants, tag_key)
             }
             CIRType::FuncType(func_type) => {
                 let params: Vec<CIRTypeKey> = func_type.params.iter().map(|p| self.type_to_key(p)).collect();

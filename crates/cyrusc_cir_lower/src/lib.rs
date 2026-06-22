@@ -635,9 +635,9 @@ impl<'a> CIRLower<'a> {
 
         let enum_decl = self.decl_tables.enum_decl(enum_decl_id);
 
-        let inst_enum_decl = instantiate_enum_decl_with_type_args(&enum_decl, type_args);
+        let inst_enum_decl = instantiate_enum_decl_with_type_args(&enum_decl, &type_args);
 
-        let enum_type = self.lower_enum_decl(enum_decl_id, &inst_enum_decl);
+        let enum_type = self.lower_enum_decl(enum_decl_id, &inst_enum_decl, type_args.clone());
 
         let mut cases = Vec::new();
 
@@ -694,7 +694,7 @@ impl<'a> CIRLower<'a> {
                                     .collect();
 
                                 CIRStructType {
-                                    decl_id: None,
+                                    unique_decl_key: None,
                                     name: None,
                                     fields: field_types,
                                     fields_info,
@@ -739,7 +739,7 @@ impl<'a> CIRLower<'a> {
                             let fields_info = fields.iter().map(|field| (field.name.as_string(), field.loc)).collect();
 
                             CIRStructType {
-                                decl_id: None,
+                                unique_decl_key: None,
                                 name: None,
                                 fields: field_types,
                                 fields_info,
@@ -1232,9 +1232,9 @@ impl<'a> CIRLower<'a> {
 
         let struct_decl = self.decl_tables.struct_decl(struct_decl_id);
 
-        let inst_struct_decl = instantiate_struct_decl_with_type_args(&struct_decl, type_args);
+        let inst_struct_decl = instantiate_struct_decl_with_type_args(&struct_decl, &type_args);
 
-        let struct_type = self.lower_struct_decl(struct_decl_id, &inst_struct_decl);
+        let struct_type = self.lower_struct_decl(struct_decl_id, &inst_struct_decl, type_args.clone());
 
         let mut lowered_fields = FxHashMap::new();
 
@@ -1263,9 +1263,9 @@ impl<'a> CIRLower<'a> {
 
         let union_decl = self.decl_tables.union_decl(union_decl_id);
 
-        let inst_union_decl = instantiate_union_decl_with_type_args(&union_decl, type_args);
+        let inst_union_decl = instantiate_union_decl_with_type_args(&union_decl, &type_args);
 
-        let union_type = self.lower_union_decl(union_decl_id, &inst_union_decl);
+        let union_type = self.lower_union_decl(union_decl_id, &inst_union_decl, type_args.clone());
 
         let lowered_expr = Box::new(self.lower_expr(&union_init.field.value));
 
@@ -1312,7 +1312,7 @@ impl<'a> CIRLower<'a> {
             }
         };
 
-        let enum_type = self.lower_enum_decl(enum_decl_id, &inst_enum_decl);
+        let enum_type = self.lower_enum_decl(enum_decl_id, &inst_enum_decl, type_args.clone());
 
         let tag = enum_type.lookup_variant_tag(&enum_init.name).unwrap();
 
@@ -2037,35 +2037,48 @@ impl<'a> CIRLower<'a> {
     }
 
     #[inline]
-    fn lower_enum_decl(&self, enum_decl_id: EnumDeclID, enum_decl: &EnumDecl) -> CIREnumType {
+    fn lower_enum_decl(&self, enum_decl_id: EnumDeclID, enum_decl: &EnumDecl, type_args: TypedTypeArgs) -> CIREnumType {
         lower_enum_decl(
             &self.decl_tables,
             self.target,
             self.tctx.clone(),
             enum_decl_id,
             enum_decl,
+            type_args,
         )
     }
 
     #[inline]
-    fn lower_struct_decl(&self, struct_decl_id: StructDeclID, struct_decl: &StructDecl) -> CIRStructType {
+    fn lower_struct_decl(
+        &self,
+        struct_decl_id: StructDeclID,
+        struct_decl: &StructDecl,
+        type_args: TypedTypeArgs,
+    ) -> CIRStructType {
         lower_struct_decl(
             &self.decl_tables,
             self.target,
             self.tctx.clone(),
             struct_decl_id,
             struct_decl,
+            type_args,
         )
     }
 
     #[inline]
-    fn lower_union_decl(&self, union_decl_id: UnionDeclID, union_decl: &UnionDecl) -> CIRUnionType {
+    fn lower_union_decl(
+        &self,
+        union_decl_id: UnionDeclID,
+        union_decl: &UnionDecl,
+        type_args: TypedTypeArgs,
+    ) -> CIRUnionType {
         lower_union_decl(
             &self.decl_tables,
             self.target,
             self.tctx.clone(),
             union_decl_id,
             union_decl,
+            type_args,
         )
     }
 

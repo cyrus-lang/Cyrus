@@ -2,10 +2,7 @@
 // Copyright (c) 2026 The Cyrus Language
 
 use crate::builder::builder::CodeGenIRBuilder;
-use cyrusc_internal::{
-    abi::layout::type_layout,
-    cir::{cir::CIRExpr, types::CIRType},
-};
+use cyrusc_internal::cir::{cir::CIRExpr, types::CIRType};
 use inkwell::{
     IntPredicate,
     types::BasicTypeEnum,
@@ -67,8 +64,9 @@ impl<'a> InternalValue<'a> {
 }
 
 impl<'ll> CodeGenIRBuilder<'ll> {
-    pub(crate) fn emit_store(&self, ptr: PointerValue<'ll>, mut rvalue: InternalValue<'ll>, target_cir_ty: CIRType) {
-        let layout = type_layout(&self.target.info, &target_cir_ty);
+    pub(crate) fn emit_store(&self, ptr: PointerValue<'ll>, mut rvalue: InternalValue<'ll>, target_cir_type: CIRType) {
+        let type_id = self.tctx.register(target_cir_type.clone());
+        let layout = self.tctx.get_or_compute_layout(type_id);
 
         // IMPORTANT!!
         // If you store null or a value in a zero-sized type, it will cause severe issues (UB)
@@ -76,12 +74,12 @@ impl<'ll> CodeGenIRBuilder<'ll> {
             return;
         }
 
-        if target_cir_ty.is_union() {
-            self.emit_union_init(&target_cir_ty.as_union().as_ref().unwrap(), ptr, rvalue);
+        if target_cir_type.is_union() {
+            self.emit_union_init(&target_cir_type.as_union().as_ref().unwrap(), ptr, rvalue);
             return;
         }
 
-        let llvm_target_type: BasicTypeEnum<'ll> = self.emit_ty(target_cir_ty.clone()).try_into().unwrap();
+        let llvm_target_type: BasicTypeEnum<'ll> = self.emit_ty(target_cir_type.clone()).try_into().unwrap();
 
         if let BasicTypeEnum::IntType(int_type) = llvm_target_type
             && rvalue.as_basic_value().is_int_value()

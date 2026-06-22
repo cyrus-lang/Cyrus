@@ -49,6 +49,7 @@ pub struct CodeGenContextBundle {
     pub llvm_target: InkwellTarget,
     pub llvm_target_triple: TargetTriple,
     pub source_map: Arc<SourceMap>,
+    pub tctx: Arc<CIRTypeContext>,
 }
 
 pub struct CodeGenSemanticBundle<'a> {
@@ -86,6 +87,7 @@ pub fn create_compiler_context(
     target: Arc<ABITarget>,
     llvm_target: InkwellTarget,
     llvm_target_triple: TargetTriple,
+    tctx: Arc<CIRTypeContext>,
 ) -> CodeGenContext {
     let base_path = opts.base_path.clone().map(|path| Path::new(&path).to_path_buf());
 
@@ -113,6 +115,7 @@ pub fn create_compiler_context(
         entry_module_file_path,
         linker_output_kind,
         linker,
+        tctx
     )
 }
 
@@ -306,6 +309,7 @@ pub fn build_compilation_bundle(opts: &mut CompilerOptions, file_path_opt: Optio
         entry_file: bundle.entry_file,
         build_dir: bundle.build_dir,
         source_map: bundle.source_map,
+        tctx: bundle.tctx.clone(),
         llvm_target_triple,
         llvm_target,
         target,
