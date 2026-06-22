@@ -30,7 +30,7 @@ pub struct TypeCache {
 impl TypeCache {
     pub fn new() -> Self {
         Self {
-            states: FxHashMap::default(),
+            states: FxHashMap::new(),
             stack: SmallVec::default(),
         }
     }

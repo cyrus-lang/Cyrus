@@ -173,7 +173,7 @@ impl<'a> AnalysisContext<'a> {
         params: &mut TypedFuncParams,
     ) -> TypedBlockStmt {
         let mut specialize_body = template_body.clone();
-        let mut decl_map = FxHashMap::default();
+        let mut decl_map = FxHashMap::new();
 
         // assign fresh decls for parameters (first-class locals)
         self.collect_and_instantiate_and_specialize_func_params(params, &mut decl_map);

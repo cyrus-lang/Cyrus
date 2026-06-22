@@ -13,7 +13,7 @@ impl GenericScope {
     #[inline]
     pub fn new() -> Self {
         Self {
-            params: FxHashMap::default(),
+            params: FxHashMap::new(),
         }
     }
 

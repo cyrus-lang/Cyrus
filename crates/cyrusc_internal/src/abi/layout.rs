@@ -13,6 +13,9 @@ use crate::{
 };
 use cyrusc_typed_ast::types::PlainType;
 
+// TODO: Consider to rename `ABITypeLayout` to `TypeLayout` and
+// move it into an other module or crate.
+
 #[derive(Debug, Clone)]
 pub struct ABITypeLayout {
     pub size: u32,
