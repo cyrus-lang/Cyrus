@@ -69,14 +69,17 @@ impl ConstValue {
     }
 }
 
-pub fn is_comptime_valid(expr: &TypedExprKind) -> bool {
+pub fn is_expr_const_evaluable(expr: &TypedExprKind) -> bool {
     match expr {
+        TypedExprKind::SemaType { .. } => true,
+
         TypedExprKind::Literal(_) => true,
         TypedExprKind::Lambda(_) => true,
-        TypedExprKind::Prefix(prefix) => is_comptime_valid(&prefix.operand.kind),
-        TypedExprKind::Infix(infix) => is_comptime_valid(&infix.lhs.kind) && is_comptime_valid(&infix.rhs.kind),
-        TypedExprKind::Unary(unary) => is_comptime_valid(&unary.operand.kind),
-        TypedExprKind::Tuple(_) | TypedExprKind::Array(_) => false,
+        TypedExprKind::Infix(infix) => {
+            is_expr_const_evaluable(&infix.lhs.kind) && is_expr_const_evaluable(&infix.rhs.kind)
+        }
+        TypedExprKind::Prefix(prefix) => is_expr_const_evaluable(&prefix.operand.kind),
+        TypedExprKind::Unary(unary) => is_expr_const_evaluable(&unary.operand.kind),
 
         TypedExprKind::StructInit(_)
         | TypedExprKind::UnionInit(_)
@@ -84,11 +87,10 @@ pub fn is_comptime_valid(expr: &TypedExprKind) -> bool {
         | TypedExprKind::UnnamedEnumValue(_)
         | TypedExprKind::EnumStructVariantInit(_)
         | TypedExprKind::EnumInit(_)
-        | TypedExprKind::UnnamedUnionValue(_) => true,
-
-        TypedExprKind::SemaType { .. } => true,
-
-        TypedExprKind::Symbol(_)
+        | TypedExprKind::UnnamedUnionValue(_)
+        | TypedExprKind::Tuple(_)
+        | TypedExprKind::Array(_)
+        | TypedExprKind::Symbol(_)
         | TypedExprKind::ArrayIndex(_)
         | TypedExprKind::TupleAccess(_)
         | TypedExprKind::Deref(_)
@@ -99,7 +101,9 @@ pub fn is_comptime_valid(expr: &TypedExprKind) -> bool {
         | TypedExprKind::Dynamic(_)
         | TypedExprKind::AddrOf(_) => false,
 
-        // IMPORTANT
+        // IMPORTANT:
+        // if a builtin achieves this point means it has a family other than `TypedBuiltinFamily::ConstEval`
+        // and cannot be evaluted in comptime.
         TypedExprKind::Builtin(_) => false,
 
         TypedExprKind::Poisoned => unreachable!(),

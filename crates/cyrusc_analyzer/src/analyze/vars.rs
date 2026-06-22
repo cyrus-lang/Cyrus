@@ -2,7 +2,7 @@
 // Copyright (c) 2026 The Cyrus Language
 
 use crate::{context::AnalysisContext, diagnostics::AnalyzerDiagKind};
-use cyrusc_const_eval::value::is_comptime_valid;
+use cyrusc_const_eval::value::is_expr_const_evaluable;
 use cyrusc_diagcentral::{Diag, DiagLevel};
 use cyrusc_source_loc::Loc;
 use cyrusc_typed_ast::{
@@ -19,7 +19,7 @@ impl<'a> AnalysisContext<'a> {
                 None => return,
             };
 
-            if !is_comptime_valid(&expr.kind) {
+            if !is_expr_const_evaluable(&expr.kind) {
                 self.reporter.report(Diag {
                     level: DiagLevel::Error,
                     kind: Box::new(AnalyzerDiagKind::GlobalVariableExprNotComptimeValid),
@@ -55,7 +55,7 @@ impl<'a> AnalysisContext<'a> {
         }
 
         if let Some(expr) = &global_var.expr {
-            if !is_comptime_valid(&expr.kind) && !matches!(global_var.ty, Some(SemaType::Const(..))) {
+            if !is_expr_const_evaluable(&expr.kind) && !matches!(global_var.ty, Some(SemaType::Const(..))) {
                 self.reporter.report(Diag {
                     level: DiagLevel::Error,
                     kind: Box::new(AnalyzerDiagKind::GlobalVariableExprNotComptimeValid),
