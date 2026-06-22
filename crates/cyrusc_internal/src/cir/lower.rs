@@ -5,6 +5,7 @@ use crate::{
     abi::target::ABITarget,
     cir::{
         cir::CIREnumVariant,
+        typectx::CIRTypeContext,
         types::{
             CIRArrayType, CIREnumType, CIRFuncType, CIRStructType, CIRTupleType, CIRType, CIRUnionType,
             cir_fat_ptr_type,
@@ -22,41 +23,71 @@ use cyrusc_typed_ast::{
     types::{NamedType, SemaType, TypeDeclID, TypedArrayCapacity, TypedFuncType},
 };
 use fx_hash::FxHashSet;
+use std::sync::Arc;
 
-// TODO: Add CIRTypeContext as dependency.
+pub fn lower_sema_type(
+    decl_tables: &DeclTablesRegistry,
+    target: &ABITarget,
+    tctx: Arc<CIRTypeContext>,
+    ty: &SemaType,
+) -> CIRType {
+    let cir_type = match ty {
+        SemaType::Plain(plain_type) => {
+            let cir = CIRType::Plain(plain_type.clone());
+            tctx.register(cir.clone());
+            cir
+        }
+        SemaType::Named(named_type) => lower_named_type(decl_tables, target, tctx, named_type),
+        SemaType::Tuple(tuple_type) => {
+            let elements: Vec<CIRType> = tuple_type
+                .elements
+                .iter()
+                .map(|sema_type| lower_sema_type(decl_tables, target, tctx.clone(), sema_type))
+                .collect();
 
-pub fn lower_sema_type(decl_tables: &DeclTablesRegistry, target: &ABITarget, ty: &SemaType) -> CIRType {
-    match ty {
-        SemaType::Plain(plain_type) => CIRType::Plain(plain_type.clone()),
-        SemaType::Named(named_type) => lower_named_type(decl_tables, target, named_type),
-        SemaType::InterfaceObject(interface_object) => cir_fat_ptr_type(interface_object.loc),
+            let cir = CIRType::Tuple(CIRTupleType {
+                elements,
+                loc: tuple_type.loc,
+            });
+            tctx.register(cir.clone());
+            cir
+        }
         SemaType::Array(array_type) => {
-            let element_type = lower_sema_type(decl_tables, target, &array_type.element_type);
-            
+            let element_type = lower_sema_type(decl_tables, target, tctx.clone(), &array_type.element_type);
+
             let len = match &array_type.capacity {
                 TypedArrayCapacity::Fixed(expr) => expr.literal_const_int_value().unwrap(),
                 TypedArrayCapacity::Dynamic => todo!(),
             };
 
-            CIRType::Array(CIRArrayType {
+            let cir = CIRType::Array(CIRArrayType {
                 element_type: Box::new(element_type),
                 len: len.as_int(),
-            })
+            });
+            tctx.register(cir.clone());
+            cir
         }
-        SemaType::Const(sema_type) => CIRType::Const(Box::new(lower_sema_type(decl_tables, target, &*sema_type))),
-        SemaType::Pointer(sema_type) => CIRType::Pointer(Box::new(lower_sema_type(decl_tables, target, &*sema_type))),
-        SemaType::FuncType(func_type) => CIRType::FuncType(lower_func_type(decl_tables, target, func_type)),
-        SemaType::Tuple(tuple_type) => {
-            let elements: Vec<CIRType> = tuple_type
-                .elements
-                .iter()
-                .map(|sema_type| lower_sema_type(decl_tables, target, sema_type))
-                .collect();
-
-            CIRType::Tuple(CIRTupleType {
-                elements,
-                loc: tuple_type.loc,
-            })
+        SemaType::Const(sema_type) => {
+            let inner = lower_sema_type(decl_tables, target, tctx.clone(), sema_type);
+            let cir = CIRType::Const(Box::new(inner));
+            tctx.register(cir.clone());
+            cir
+        }
+        SemaType::Pointer(sema_type) => {
+            let inner = lower_sema_type(decl_tables, target, tctx.clone(), sema_type);
+            let cir = CIRType::Pointer(Box::new(inner));
+            tctx.register(cir.clone());
+            cir
+        }
+        SemaType::FuncType(func_type) => {
+            let cir = CIRType::FuncType(lower_func_type(decl_tables, target, tctx.clone(), func_type));
+            tctx.register(cir.clone());
+            cir
+        }
+        SemaType::InterfaceObject(interface_object) => {
+            let cir = cir_fat_ptr_type(interface_object.loc);
+            tctx.register(cir.clone());
+            cir
         }
 
         SemaType::Unresolved(_)
@@ -65,38 +96,56 @@ pub fn lower_sema_type(decl_tables: &DeclTablesRegistry, target: &ABITarget, ty:
         | SemaType::InferVar(_)
         | SemaType::Placeholder
         | SemaType::Err(_) => unreachable!(),
-    }
-    .const_inner()
-    .clone()
+    };
+
+    cir_type.const_inner().clone()
 }
 
-pub fn lower_named_type(decl_tables: &DeclTablesRegistry, target: &ABITarget, named_type: &NamedType) -> CIRType {
+pub fn lower_named_type(
+    decl_tables: &DeclTablesRegistry,
+    target: &ABITarget,
+    tctx: Arc<CIRTypeContext>,
+    named_type: &NamedType,
+) -> CIRType {
     match named_type.type_decl_id {
         TypeDeclID::Struct(struct_decl_id) => {
             let struct_decl = decl_tables.struct_decl(struct_decl_id);
-
             let inst_struct_decl = instantiate_struct_decl_with_type_args(&struct_decl, &named_type.type_args);
 
-            CIRType::Struct(lower_struct_decl(decl_tables, target, &inst_struct_decl))
+            let placeholder = tctx.insert_type_placeholder();
+            let struct_ty = lower_struct_decl(decl_tables, target, tctx.clone(), &inst_struct_decl);
+            let cir = CIRType::Struct(struct_ty);
+            tctx.resolve_placeholder(placeholder, cir.clone());
+            tctx.register(cir.clone());
+            cir
         }
         TypeDeclID::Union(union_decl_id) => {
             let union_decl = decl_tables.union_decl(union_decl_id);
-
             let inst_union_decl = instantiate_union_decl_with_type_args(&union_decl, &named_type.type_args);
 
-            CIRType::Union(lower_union_decl(decl_tables, target, &inst_union_decl))
+            let placeholder = tctx.insert_type_placeholder();
+            let union_ty = lower_union_decl(decl_tables, target, tctx.clone(), &inst_union_decl);
+            let cir = CIRType::Union(union_ty);
+            tctx.resolve_placeholder(placeholder, cir.clone());
+            tctx.register(cir.clone());
+            cir
         }
         TypeDeclID::Enum(enum_decl_id) => {
             let enum_decl = decl_tables.enum_decl(enum_decl_id);
-
             let inst_enum_decl = instantiate_enum_decl_with_type_args(&enum_decl, &named_type.type_args);
 
-            CIRType::Enum(lower_enum_decl(decl_tables, target, &inst_enum_decl))
+            let placeholder = tctx.insert_type_placeholder();
+            let enum_ty = lower_enum_decl(decl_tables, target, tctx.clone(), &inst_enum_decl);
+            let cir = CIRType::Enum(enum_ty);
+            tctx.resolve_placeholder(placeholder, cir.clone());
+            tctx.register(cir.clone());
+            cir
         }
         TypeDeclID::Interface(interface_decl_id) => {
             let interface_decl = decl_tables.interface_decl(interface_decl_id);
-
-            cir_fat_ptr_type(interface_decl.loc)
+            let cir = cir_fat_ptr_type(interface_decl.loc);
+            tctx.register(cir.clone());
+            cir
         }
         TypeDeclID::Typedef(_) => unreachable!("unexpected unexpanded typedef"),
     }
@@ -105,12 +154,13 @@ pub fn lower_named_type(decl_tables: &DeclTablesRegistry, target: &ABITarget, na
 pub fn lower_struct_decl(
     decl_tables: &DeclTablesRegistry,
     target: &ABITarget,
+    tctx: Arc<CIRTypeContext>,
     struct_decl: &StructDecl,
 ) -> CIRStructType {
     let fields = struct_decl
         .fields
         .iter()
-        .map(|field| lower_sema_type(decl_tables, target, &field.ty))
+        .map(|field| lower_sema_type(decl_tables, target, tctx.clone(), &field.ty))
         .collect();
 
     let fields_info = struct_decl
@@ -129,7 +179,6 @@ pub fn lower_struct_decl(
     }
 }
 
-// TODO: Change doc comment
 /// Lowers a semantic `EnumDecl` into a `CIREnumType`.
 ///
 /// This converts each semantic variant into its CIR representation and
@@ -137,17 +186,22 @@ pub fn lower_struct_decl(
 /// variants are preserved when the enum is scalar‑optimizable. Remaining
 /// variants receive automatically assigned tags, ensuring all tags are
 /// unique.
-pub fn lower_enum_decl(decl_tables: &DeclTablesRegistry, target: &ABITarget, enum_decl: &EnumDecl) -> CIREnumType {    
+pub fn lower_enum_decl(
+    decl_tables: &DeclTablesRegistry,
+    target: &ABITarget,
+    tctx: Arc<CIRTypeContext>,
+    enum_decl: &EnumDecl,
+) -> CIREnumType {
     let mut variants: Vec<CIREnumVariant> = enum_decl
         .variants
         .iter()
-        .map(|variant| lower_enum_variant(decl_tables, target, enum_decl, variant))
+        .map(|variant| lower_enum_variant(decl_tables, target, tctx.clone(), enum_decl, variant))
         .collect();
 
     let tag_type = enum_decl
         .tag_type
         .clone()
-        .map(|sema_type| Box::new(lower_sema_type(decl_tables, target, &sema_type)));
+        .map(|sema_type| Box::new(lower_sema_type(decl_tables, target, tctx.clone(), &sema_type)));
 
     let mut cir_enum_type = CIREnumType {
         name: enum_decl.name.clone(),
@@ -201,11 +255,16 @@ pub fn lower_enum_decl(decl_tables: &DeclTablesRegistry, target: &ABITarget, enu
     cir_enum_type
 }
 
-pub fn lower_union_decl(decl_tables: &DeclTablesRegistry, target: &ABITarget, union_decl: &UnionDecl) -> CIRUnionType {
+pub fn lower_union_decl(
+    decl_tables: &DeclTablesRegistry,
+    target: &ABITarget,
+    tctx: Arc<CIRTypeContext>,
+    union_decl: &UnionDecl,
+) -> CIRUnionType {
     let fields = union_decl
         .fields
         .iter()
-        .map(|field| lower_sema_type(decl_tables, target, &field.ty))
+        .map(|field| lower_sema_type(decl_tables, target, tctx.clone(), &field.ty))
         .collect();
 
     let fields_info = union_decl
@@ -224,14 +283,19 @@ pub fn lower_union_decl(decl_tables: &DeclTablesRegistry, target: &ABITarget, un
     }
 }
 
-pub fn lower_func_type(decl_tables: &DeclTablesRegistry, target: &ABITarget, func_type: &TypedFuncType) -> CIRFuncType {
-    let ret = Box::new(lower_sema_type(decl_tables, target, &func_type.ret_type));
-    let params = lower_func_type_params(decl_tables, target, &func_type.params);
+pub fn lower_func_type(
+    decl_tables: &DeclTablesRegistry,
+    target: &ABITarget,
+    tctx: Arc<CIRTypeContext>,
+    func_type: &TypedFuncType,
+) -> CIRFuncType {
+    let ret_type = Box::new(lower_sema_type(decl_tables, target, tctx.clone(), &func_type.ret_type));
+    let params = lower_func_type_params(decl_tables, target, tctx.clone(), &func_type.params);
 
     let mut cir_type = CIRFuncType {
-        params: params,
+        params,
+        ret_type,
         is_var: func_type.params.variadic.is_some(),
-        ret_type: ret,
         callconv: CallConv::default(),
         abi_func_info: None,
     };
@@ -243,12 +307,13 @@ pub fn lower_func_type(decl_tables: &DeclTablesRegistry, target: &ABITarget, fun
 fn lower_func_type_params(
     decl_tables: &DeclTablesRegistry,
     target: &ABITarget,
+    tctx: Arc<CIRTypeContext>,
     func_type_params: &TypedFuncTypeParams,
 ) -> Vec<CIRType> {
     func_type_params
         .list
         .iter()
-        .map(|sema_type| lower_sema_type(decl_tables, target, sema_type))
+        .map(|sema_type| lower_sema_type(decl_tables, target, tctx.clone(), sema_type))
         .collect()
 }
 
@@ -260,11 +325,10 @@ fn lower_func_type_params(
 /// For `Valued` variants the returned tag is **temporary**. The final
 /// discriminant value is resolved later in [`lower_enum_decl`] based on
 /// explicit discriminants and enum layout rules.
-///
-/// This function is an internal helper and should **not be called directly**.
 fn lower_enum_variant(
     decl_tables: &DeclTablesRegistry,
     target: &ABITarget,
+    tctx: Arc<CIRTypeContext>,
     enum_decl: &EnumDecl,
     variant: &TypedEnumVariant,
 ) -> CIREnumVariant {
@@ -279,7 +343,7 @@ fn lower_enum_variant(
     match variant {
         TypedEnumVariant::Unit(ident) => CIREnumVariant::Unit(ident.as_string(), variant_idx),
         TypedEnumVariant::Valued { ident, value } => {
-            let cir_value_type = lower_sema_type(decl_tables, target, value.ty.as_ref().unwrap());
+            let cir_value_type = lower_sema_type(decl_tables, target, tctx.clone(), value.ty.as_ref().unwrap());
 
             // IMPORTANT
             // default=variant_idx
@@ -289,7 +353,7 @@ fn lower_enum_variant(
         TypedEnumVariant::Tuple { ident, fields } => {
             let fields = fields
                 .iter()
-                .map(|field| lower_sema_type(decl_tables, target, &field.ty))
+                .map(|field| lower_sema_type(decl_tables, target, tctx.clone(), &field.ty))
                 .collect();
 
             CIREnumVariant::Payload(ident.as_string(), fields, variant_idx)
@@ -297,7 +361,9 @@ fn lower_enum_variant(
         TypedEnumVariant::Struct { ident, fields } => {
             let fields = fields
                 .iter()
-                .map(|struct_variant_field| lower_sema_type(decl_tables, target, &struct_variant_field.ty))
+                .map(|struct_variant_field| {
+                    lower_sema_type(decl_tables, target, tctx.clone(), &struct_variant_field.ty)
+                })
                 .collect();
 
             CIREnumVariant::Payload(ident.as_string(), fields, variant_idx)

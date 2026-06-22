@@ -9,6 +9,7 @@ use cyrusc_internal::abi::layout::type_layout;
 use cyrusc_internal::abi::target::ABITarget;
 use cyrusc_internal::analyzer_state::AnalyzerState;
 use cyrusc_internal::cir::lower::lower_sema_type;
+use cyrusc_internal::cir::typectx::CIRTypeContext;
 use cyrusc_tokens::literals::LiteralKind;
 use cyrusc_typed_ast::builtins::{
     TypedBuiltin, TypedBuiltinFunc, TypedBuiltinKind, TypedBuiltinPhase, builtin_spec_of, lookup_builtin,
@@ -18,6 +19,7 @@ use cyrusc_typed_ast::decls::table::DeclTablesRegistry;
 use cyrusc_typed_ast::exprs::*;
 use cyrusc_typed_ast::types::SemaType;
 use std::collections::HashMap;
+use std::sync::Arc;
 
 pub struct ConstEvaluator<'a, R: ConstResolver> {
     pub resolver: &'a R,
@@ -25,6 +27,7 @@ pub struct ConstEvaluator<'a, R: ConstResolver> {
     evaluating: HashMap<DeclID, ()>,
     decl_tables: &'a DeclTablesRegistry,
     target: &'a ABITarget,
+    tctx: Arc<CIRTypeContext>,
     analyzer_state: &'a dyn AnalyzerState,
 }
 
@@ -33,6 +36,7 @@ impl<'a, R: ConstResolver> ConstEvaluator<'a, R> {
         resolver: &'a R,
         decl_tables: &'a DeclTablesRegistry,
         target: &'a ABITarget,
+        tctx: Arc<CIRTypeContext>,
         analyzer_state: &'a dyn AnalyzerState,
     ) -> Self {
         Self {
@@ -41,6 +45,7 @@ impl<'a, R: ConstResolver> ConstEvaluator<'a, R> {
             evaluating: HashMap::new(),
             decl_tables,
             target,
+            tctx,
             analyzer_state,
         }
     }
@@ -363,7 +368,7 @@ impl<'a, R: ConstResolver> ConstEvaluator<'a, R> {
             return Err(ConstEvalError::TypeError);
         };
 
-        let cir_type = lower_sema_type(self.decl_tables, self.target, &arg_type);
+        let cir_type = lower_sema_type(self.decl_tables, self.target, self.tctx.clone(), &arg_type);
         let layout = type_layout(&self.target.info, &cir_type);
 
         Ok(ConstValue::Int(layout.size.try_into().unwrap()))
@@ -373,7 +378,7 @@ impl<'a, R: ConstResolver> ConstEvaluator<'a, R> {
         let arg = builtin_func.args.first().unwrap();
         let arg_type = arg.ty.as_ref().unwrap();
 
-        let cir_type = lower_sema_type(self.decl_tables, self.target, &arg_type);
+        let cir_type = lower_sema_type(self.decl_tables, self.target, self.tctx.clone(), &arg_type);
         let layout = type_layout(&self.target.info, &cir_type);
 
         Ok(ConstValue::Int(layout.align.try_into().unwrap()))
@@ -389,7 +394,7 @@ impl<'a, R: ConstResolver> ConstEvaluator<'a, R> {
             .literal_const_string_value()
             .ok_or(ConstEvalError::TypeError)?;
 
-        let cir_type = lower_sema_type(self.decl_tables, self.target, ty);
+        let cir_type = lower_sema_type(self.decl_tables, self.target, self.tctx.clone(), ty);
         let layout = type_layout(&self.target.info, &cir_type);
 
         let struct_decl_id = ty.as_struct().ok_or(ConstEvalError::TypeError)?;

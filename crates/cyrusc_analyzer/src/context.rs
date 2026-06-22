@@ -14,8 +14,8 @@ use crate::{
 };
 use cyrusc_diagcentral::{Diag, DiagLevel, exit_with_single_diag, reporter::DiagReporter};
 use cyrusc_internal::{
-    abi::target::ABITarget, analyzer_state::AnalyzerState, flow_state::ControlRegion, monomorph::MonomorphRegistry,
-    symbols::SymbolQuery, vtable::VTableRegistry,
+    abi::target::ABITarget, analyzer_state::AnalyzerState, cir::typectx::CIRTypeContext, flow_state::ControlRegion,
+    monomorph::MonomorphRegistry, symbols::SymbolQuery, vtable::VTableRegistry,
 };
 use cyrusc_source_loc::{Loc, SourceMap};
 use cyrusc_typed_ast::{
@@ -31,6 +31,7 @@ pub struct AnalysisContext<'a> {
     pub program_tree: Rc<RefCell<TypedProgramTree>>,
     pub(crate) reporter: Arc<DiagReporter>,
     pub(crate) source_map: Arc<SourceMap>,
+    pub(crate) tctx: Arc<CIRTypeContext>,
     pub vtable_registry: Arc<VTableRegistry>,
     pub monomorph_registry: Arc<MonomorphRegistry>,
 
@@ -62,6 +63,7 @@ impl<'a> AnalysisContext<'a> {
         entry_points: Arc<EntryPoints>,
         monomorph_registry: Arc<MonomorphRegistry>,
         vtable_registry: Arc<VTableRegistry>,
+        tctx: Arc<CIRTypeContext>,
     ) -> Self {
         let func_env = FuncEnv::new();
         let generic_env_stack = Vec::new();
@@ -71,6 +73,7 @@ impl<'a> AnalysisContext<'a> {
         let reported_typedef_cycles = FxHashSet::new();
 
         Self {
+            tctx,
             typedef_expansion_stack,
             reported_typedef_cycles,
             generic_env_stack,

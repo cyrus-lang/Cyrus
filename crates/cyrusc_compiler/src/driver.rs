@@ -9,7 +9,7 @@ use cyrusc_diagcentral::{exit_with_msg, reporter::DiagReporter};
 use cyrusc_fs_utils::{ensure_output_dir, file_name_without_extension, get_directory_of_file};
 use cyrusc_internal::{
     abi::target::{ABITarget, ABITargetArch, ABITargetInfo, ABITargetOS, ABITargetObjectFormat, create_target_abi},
-    cir::cir::CIRModule,
+    cir::{cir::CIRModule, typectx::CIRTypeContext},
     compiler_options::{
         CompilerOption_BuildDir, CompilerOption_LinkerOutputKind, CompilerOption_ProjectType, CompilerOptions,
     },
@@ -54,6 +54,7 @@ pub struct CodeGenContextBundle {
 pub struct CodeGenSemanticBundle<'a> {
     pub analyzed_program_trees: Vec<Rc<RefCell<TypedProgramTree>>>,
     pub vtable_registries: FxHashMap<FileID, Arc<VTableRegistry>>,
+    pub tctx: Arc<CIRTypeContext>,
     pub monomorph_registry: Arc<MonomorphRegistry>,
     pub resolver: Box<Resolver<'a>>,
     pub decl_tables: Arc<DeclTablesRegistry>,
@@ -190,7 +191,7 @@ pub fn build_semantic_bundle<'a>(
                     exit(1)
                 }
             };
-            let target = Arc::new(ABITarget::new(target_info, target_abi));
+            let target = Arc::new(ABITarget::new(target_info.clone(), target_abi));
 
             // analyze modules
 
@@ -202,6 +203,8 @@ pub fn build_semantic_bundle<'a>(
             let mut has_error = false;
             let mut analyzed_program_trees: Vec<Rc<RefCell<TypedProgramTree>>> = Vec::new();
             let mut vtable_registries: FxHashMap<FileID, Arc<VTableRegistry>> = FxHashMap::new();
+
+            let tctx = Arc::new(CIRTypeContext::new(target_info));
 
             for program_tree_entry in &*resolved_program_trees {
                 let vtable_registry = Arc::new(VTableRegistry::new());
@@ -220,6 +223,7 @@ pub fn build_semantic_bundle<'a>(
                     entry_points.clone(),
                     monomorph_registry.clone(),
                     vtable_registry,
+                    tctx.clone(),
                 );
 
                 analyzer.analyze();
@@ -249,6 +253,7 @@ pub fn build_semantic_bundle<'a>(
                 entry_file,
                 build_dir,
                 target,
+                tctx,
             })
         }
         Err(_) => exit(1),
@@ -266,14 +271,14 @@ pub fn build_compilation_bundle(opts: &mut CompilerOptions, file_path_opt: Optio
         opts.source_dirs.push(dir_path);
     }
 
-    let codegen_semantic_bundle = build_semantic_bundle(opts, file_path_opt);
+    let bundle = build_semantic_bundle(opts, file_path_opt);
 
-    let target = codegen_semantic_bundle.target;
+    let target = bundle.target;
     let (llvm_target, llvm_target_triple) = create_compiler_context_target(&target.info);
 
     // prepare trees for codegen
 
-    let boxed_program_trees: Vec<Box<TypedProgramTree>> = codegen_semantic_bundle
+    let boxed_program_trees: Vec<Box<TypedProgramTree>> = bundle
         .analyzed_program_trees
         .into_iter()
         .map(|rc_refcell_tree| match Rc::try_unwrap(rc_refcell_tree) {
@@ -285,21 +290,22 @@ pub fn build_compilation_bundle(opts: &mut CompilerOptions, file_path_opt: Optio
     let cir_modules = lower_program_trees_in_parallel(
         opts.jobs,
         boxed_program_trees,
-        &*codegen_semantic_bundle.resolver,
-        &*codegen_semantic_bundle.resolver,
-        codegen_semantic_bundle.source_map.clone(),
-        codegen_semantic_bundle.decl_tables.clone(),
-        &codegen_semantic_bundle.vtable_registries,
-        codegen_semantic_bundle.monomorph_registry.clone(),
+        &*bundle.resolver,
+        &*bundle.resolver,
+        bundle.source_map.clone(),
+        bundle.decl_tables.clone(),
+        bundle.tctx.clone(),
+        &bundle.vtable_registries,
+        bundle.monomorph_registry.clone(),
         &target,
     );
 
     CodeGenContextBundle {
         opts: opts.clone(),
         program_trees: cir_modules,
-        entry_file: codegen_semantic_bundle.entry_file,
-        build_dir: codegen_semantic_bundle.build_dir,
-        source_map: codegen_semantic_bundle.source_map,
+        entry_file: bundle.entry_file,
+        build_dir: bundle.build_dir,
+        source_map: bundle.source_map,
         llvm_target_triple,
         llvm_target,
         target,

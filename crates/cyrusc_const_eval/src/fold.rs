@@ -1,8 +1,10 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 The Cyrus Language
 
+use std::sync::Arc;
+
 use crate::{diagnostics::ConstEvalError, evaluator::ConstEvaluator, resolver::ConstResolver, value::ConstValue};
-use cyrusc_internal::{abi::target::ABITarget, analyzer_state::AnalyzerState};
+use cyrusc_internal::{abi::target::ABITarget, analyzer_state::AnalyzerState, cir::typectx::CIRTypeContext};
 use cyrusc_tokens::literals::{IntLiteralKind, LiteralKind};
 use cyrusc_typed_ast::{builtins::TypedBuiltin, decls::table::DeclTablesRegistry, exprs::*};
 
@@ -15,10 +17,11 @@ impl<'a, R: ConstResolver> ConstFolder<'a, R> {
         resolver: &'a R,
         decl_tables: &'a DeclTablesRegistry,
         target: &'a ABITarget,
+        tctx: Arc<CIRTypeContext>,
         analyzer_state: &'a dyn AnalyzerState,
     ) -> Self {
         Self {
-            evaluator: ConstEvaluator::new(resolver, decl_tables, target, analyzer_state),
+            evaluator: ConstEvaluator::new(resolver, decl_tables, target, tctx, analyzer_state),
         }
     }
 

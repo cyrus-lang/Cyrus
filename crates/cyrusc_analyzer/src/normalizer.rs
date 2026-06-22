@@ -208,7 +208,7 @@ impl<'a> AnalysisContext<'a> {
             UnresolvedType::BuiltinFunc(mut builtin_func) => {
                 self.analyze_builtin_expr(&mut builtin_func);
 
-                let folder = ConstFolder::new(self, &self.decl_tables, self.target, self);
+                let folder = ConstFolder::new(self, &self.decl_tables, self.target, self.tctx.clone(), self);
 
                 if let Ok(const_value) =
                     folder.fold_builtin_func(TypedBuiltin::BuiltinFunc(*builtin_func.clone()), self)
