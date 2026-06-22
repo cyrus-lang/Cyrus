@@ -18,9 +18,9 @@ const PIPELINE_O1: &str = "default<O1>";
 const PIPELINE_O2: &str = "default<O2>";
 const PIPELINE_OZ: &str = "default<Oz>";
 
-const PIPELINE_AGGRESSIVE_CUSTOM: &str = "default<O3>,loop-unroll,loop-vectorize,mergefunc,globalopt,ipsccp";
+const PIPELINE_AGGRESSIVE_CUSTOM: &str = "default<O3>";
 
-const PIPELINE_SIZE: &str = "default<Os>,loop-unroll,mergefunc,globalopt,deadargelim";
+const PIPELINE_SIZE: &str = "default<Os>";
 
 fn get_optimization_pipeline(opt_level: CompilerOption_Optimize) -> &'static str {
     match opt_level {
