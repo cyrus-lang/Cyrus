@@ -303,7 +303,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
     pub(crate) fn emit_ty(&self, ty: CIRType) -> AnyTypeEnum<'ll> {
         match ty {
             CIRType::Const(inner_ty) => self.emit_ty(*inner_ty),
-            CIRType::Plain(plain_ty) => self.emit_plain_ty(plain_ty),
+            CIRType::Plain(plain_ty) => self.emit_plain_type(plain_ty),
             CIRType::Pointer(_) => self.llvm_ctx.ptr_type(AddressSpace::default()).as_any_type_enum(),
             CIRType::Struct(struct_type) => self.emit_struct_type(struct_type).as_any_type_enum(),
             CIRType::Enum(enum_type) => self.emit_enum_type(enum_type).as_any_type_enum(),
@@ -311,12 +311,13 @@ impl<'ll> CodeGenIRBuilder<'ll> {
             CIRType::Tuple(tuple_type) => self.emit_tuple_ty(tuple_type).as_any_type_enum(),
             CIRType::Array(array_ty) => self.emit_array_type(array_ty).as_any_type_enum(),
             CIRType::FuncType(..) => self.llvm_ctx.ptr_type(AddressSpace::default()).as_any_type_enum(),
-            CIRType::Dynamic(..) => self.emit_dynamic_ty().as_any_type_enum(),
+            CIRType::Dynamic(..) => self.emit_dynamic_type().as_any_type_enum(),
         }
     }
 
-    pub(crate) fn cir_dynamic_ty(&self, data_ptr_inner_ty: CIRType, loc: Loc) -> CIRType {
+    pub(crate) fn cir_dynamic_type(&self, data_ptr_inner_ty: CIRType, loc: Loc) -> CIRType {
         CIRType::Struct(CIRStructType {
+            decl_id: None,
             name: None,
             fields: vec![
                 CIRType::Pointer(Box::new(data_ptr_inner_ty)),
@@ -329,48 +330,50 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         })
     }
 
-    pub(crate) fn emit_dynamic_ty(&self) -> StructType<'ll> {
+    pub(crate) fn emit_dynamic_type(&self) -> StructType<'ll> {
         let vtable_ptr = self.llvm_ctx.ptr_type(AddressSpace::default()).as_basic_type_enum();
         let data_ptr = self.llvm_ctx.ptr_type(AddressSpace::default()).as_basic_type_enum();
 
         self.llvm_ctx.struct_type(&[data_ptr, vtable_ptr], false)
     }
 
-    pub(crate) fn emit_types(&self, tys: &[CIRType]) -> Vec<AnyTypeEnum<'ll>> {
-        tys.iter().map(|ty| self.emit_ty(ty.clone())).collect()
+    pub(crate) fn emit_types(&self, types: &[CIRType]) -> Vec<AnyTypeEnum<'ll>> {
+        types.iter().map(|ty| self.emit_ty(ty.clone())).collect()
     }
 
-    pub(crate) fn emit_plain_ty(&self, plain_ty: PlainType) -> AnyTypeEnum<'ll> {
-        let llvm_ctx = &self.llvm_ctx;
+    pub(crate) fn emit_plain_type(&self, plain_type: PlainType) -> AnyTypeEnum<'ll> {
+        let ctx = &self.llvm_ctx;
 
-        match plain_ty {
-            PlainType::UIntPtr | PlainType::IntPtr | PlainType::USize | PlainType::ISize => llvm_ctx
+        match plain_type {
+            // Platform dependent types
+            PlainType::UIntPtr | PlainType::IntPtr | PlainType::USize | PlainType::ISize => ctx
                 .ptr_sized_int_type(&self.llvmtm.get_target_data(), None)
                 .as_any_type_enum(),
-            PlainType::Int8 => llvm_ctx.i8_type().as_any_type_enum(),
-            PlainType::Int16 => llvm_ctx.i16_type().as_any_type_enum(),
-            PlainType::Int32 => llvm_ctx.i32_type().as_any_type_enum(),
-            PlainType::Int64 => llvm_ctx.i64_type().as_any_type_enum(),
-            PlainType::Int128 => llvm_ctx.i128_type().as_any_type_enum(),
-            PlainType::UInt8 => llvm_ctx.i8_type().as_any_type_enum(),
-            PlainType::UInt16 => llvm_ctx.i16_type().as_any_type_enum(),
-            PlainType::UInt32 => llvm_ctx.i32_type().as_any_type_enum(),
-            PlainType::UInt64 => llvm_ctx.i64_type().as_any_type_enum(),
-            PlainType::UInt128 => llvm_ctx.i128_type().as_any_type_enum(),
-            PlainType::Int => llvm_ctx.i32_type().as_any_type_enum(),
-            PlainType::UInt => llvm_ctx.i32_type().as_any_type_enum(),
-            PlainType::Float16 => llvm_ctx.f16_type().as_any_type_enum(),
-            PlainType::Float32 => llvm_ctx.f32_type().as_any_type_enum(),
-            PlainType::Float64 => llvm_ctx.f64_type().as_any_type_enum(),
-            PlainType::Float128 => llvm_ctx.f128_type().as_any_type_enum(),
-            PlainType::Char => llvm_ctx.i8_type().as_any_type_enum(),
+
+            PlainType::Int8 => ctx.i8_type().as_any_type_enum(),
+            PlainType::Int16 => ctx.i16_type().as_any_type_enum(),
+            PlainType::Int32 => ctx.i32_type().as_any_type_enum(),
+            PlainType::Int64 => ctx.i64_type().as_any_type_enum(),
+            PlainType::Int128 => ctx.i128_type().as_any_type_enum(),
+            PlainType::UInt8 => ctx.i8_type().as_any_type_enum(),
+            PlainType::UInt16 => ctx.i16_type().as_any_type_enum(),
+            PlainType::UInt32 => ctx.i32_type().as_any_type_enum(),
+            PlainType::UInt64 => ctx.i64_type().as_any_type_enum(),
+            PlainType::UInt128 => ctx.i128_type().as_any_type_enum(),
+            PlainType::Int => ctx.i32_type().as_any_type_enum(),
+            PlainType::UInt => ctx.i32_type().as_any_type_enum(),
+            PlainType::Float16 => ctx.f16_type().as_any_type_enum(),
+            PlainType::Float32 => ctx.f32_type().as_any_type_enum(),
+            PlainType::Float64 => ctx.f64_type().as_any_type_enum(),
+            PlainType::Float128 => ctx.f128_type().as_any_type_enum(),
+            PlainType::Char => ctx.i8_type().as_any_type_enum(),
+            PlainType::Void => ctx.void_type().as_any_type_enum(),
+            PlainType::Null => ctx.ptr_type(AddressSpace::default()).as_any_type_enum(),
             PlainType::Bool => {
                 // Booleans are stored as i8 in memory for stable layout and ABI compatibility.
                 // i1 is reserved for logical operations only.
-                llvm_ctx.i8_type().as_any_type_enum()
+                ctx.i8_type().as_any_type_enum()
             }
-            PlainType::Void => llvm_ctx.void_type().as_any_type_enum(),
-            PlainType::Null => llvm_ctx.ptr_type(AddressSpace::default()).as_any_type_enum(),
         }
     }
 
@@ -422,9 +425,10 @@ impl<'ll> CodeGenIRBuilder<'ll> {
             elements,
             loc: enum_type.loc,
         };
-        let struct_tuple_type = tuple_type.as_struct_ty();
+        let struct_tuple_type = tuple_type.as_struct_type();
 
         Some(self.emit_struct_type(CIRStructType {
+            decl_id: None,
             name: None,
             fields: struct_tuple_type.fields,
             fields_info: struct_tuple_type.fields_info,
@@ -549,7 +553,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
     }
 
     pub(crate) fn emit_tuple_ty(&self, tuple_type: CIRTupleType) -> StructType<'ll> {
-        let struct_type = tuple_type.as_struct_ty();
+        let struct_type = tuple_type.as_struct_type();
         self.emit_struct_type(struct_type)
     }
 

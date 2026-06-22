@@ -133,7 +133,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         let vtable_ptr = vtable_global.as_pointer_value();
 
         // construct pointers struct { data_ptr, vtable_ptr }
-        let dynamic_struct_type = self.emit_dynamic_ty(); // { ptr, ptr }
+        let dynamic_struct_type = self.emit_dynamic_type(); // { ptr, ptr }
 
         let mut dynamic_value = dynamic_struct_type.get_undef();
 
@@ -150,7 +150,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
             .into_struct_value();
 
         InternalValue::new(
-            self.cir_dynamic_ty(dynamic.data_expr.ty.clone(), dynamic.loc),
+            self.cir_dynamic_type(dynamic.data_expr.ty.clone(), dynamic.loc),
             InternalValueKind::RValue(dynamic_value.as_basic_value_enum()),
         )
     }
@@ -1424,16 +1424,19 @@ impl<'ll> CodeGenIRBuilder<'ll> {
             .map(|(i, _)| (i.to_string(), tuple.loc))
             .collect();
 
+        let struct_type = CIRStructType {
+            decl_id: None,
+            name: None,
+            fields,
+            fields_info,
+            repr_attr: None,
+            align: None,
+            loc: tuple.loc,
+        };
+
         let struct_value = self
             .emit_struct_init(&CIRStructInitExpr {
-                ty: CIRStructType {
-                    name: None,
-                    fields,
-                    fields_info,
-                    repr_attr: None,
-                    align: None,
-                    loc: tuple.loc,
-                },
+                ty: struct_type,
                 fields: tuple.elements.clone(),
             })
             .as_basic_value()

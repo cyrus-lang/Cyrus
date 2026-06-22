@@ -4,7 +4,10 @@
 use crate::{abi::args::ABIFunctionInfo, cir::cir::CIREnumVariant};
 use cyrusc_ast::abi::{CallConv, ReprAttr};
 use cyrusc_source_loc::Loc;
-use cyrusc_typed_ast::{VTableID, types::PlainType};
+use cyrusc_typed_ast::{
+    VTableID,
+    types::{PlainType, TypeDeclID},
+};
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum CIRType {
@@ -48,6 +51,7 @@ pub struct CIRFuncType {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct CIRStructType {
+    pub decl_id: Option<TypeDeclID>,
     pub name: Option<String>,
     pub fields: Vec<CIRType>,
     pub fields_info: Vec<(String, Loc)>,
@@ -58,6 +62,7 @@ pub struct CIRStructType {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct CIRUnionType {
+    pub decl_id: TypeDeclID,
     pub name: Option<String>,
     pub fields: Vec<CIRType>,
     pub fields_info: Vec<(String, Loc)>,
@@ -68,6 +73,7 @@ pub struct CIRUnionType {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct CIREnumType {
+    pub decl_id: TypeDeclID,
     pub name: Option<String>,
     pub variants: Vec<CIREnumVariant>,
     pub repr_attr: Option<ReprAttr>,
@@ -78,6 +84,7 @@ pub struct CIREnumType {
 
 pub fn cir_fat_ptr_type(loc: Loc) -> CIRType {
     CIRType::Struct(CIRStructType {
+        decl_id: None,
         name: None,
         fields: vec![
             CIRType::Pointer(Box::new(CIRType::Plain(PlainType::Void))),
@@ -344,7 +351,7 @@ impl CIRType {
 }
 
 impl CIRTupleType {
-    pub fn as_struct_ty(&self) -> CIRStructType {
+    pub fn as_struct_type(&self) -> CIRStructType {
         let fields = self.elements.iter().map(|ty| ty.clone()).collect();
 
         let fields_info = self
@@ -355,6 +362,7 @@ impl CIRTupleType {
             .collect();
 
         CIRStructType {
+            decl_id: None,
             name: None,
             fields,
             fields_info,

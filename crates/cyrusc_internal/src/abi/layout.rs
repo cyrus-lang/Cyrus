@@ -158,9 +158,10 @@ pub fn type_layout(info: &ABITargetInfo, ty: &CIRType) -> ABITypeLayout {
                             elements: field_types.clone(),
                             loc: enum_type.loc,
                         };
-                        let tuple_struct_type = tuple_type.as_struct_ty();
+                        let tuple_struct_type = tuple_type.as_struct_type();
 
                         let struct_type = CIRStructType {
+                            decl_id: None,
                             name: None,
                             fields: tuple_struct_type.fields.clone(),
                             fields_info: tuple_struct_type.fields_info.clone(),
@@ -209,7 +210,7 @@ pub fn type_layout(info: &ABITargetInfo, ty: &CIRType) -> ABITypeLayout {
         }
         CIRType::Tuple(tuple_type) => {
             // tuple lowered as struct in codegen
-            let struct_type = tuple_type.as_struct_ty();
+            let struct_type = tuple_type.as_struct_type();
             type_layout(info, &CIRType::Struct(struct_type))
         }
         CIRType::Array(array_type) => {

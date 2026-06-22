@@ -14,7 +14,7 @@ use crate::{
 };
 use cyrusc_ast::abi::CallConv;
 use cyrusc_typed_ast::{
-    decls::{EnumDecl, StructDecl, UnionDecl, table::DeclTablesRegistry},
+    decls::{EnumDecl, EnumDeclID, StructDecl, StructDeclID, UnionDecl, UnionDeclID, table::DeclTablesRegistry},
     stmts::{TypedEnumVariant, TypedFuncTypeParams},
     substitute::{
         instantiate_enum_decl_with_type_args, instantiate_struct_decl_with_type_args,
@@ -31,13 +31,14 @@ pub fn lower_sema_type(
     tctx: Arc<CIRTypeContext>,
     ty: &SemaType,
 ) -> CIRType {
-    let cir_type = match ty {
-        SemaType::Plain(plain_type) => {
-            let cir = CIRType::Plain(plain_type.clone());
-            tctx.register(cir.clone());
-            cir
-        }
+    match ty {
         SemaType::Named(named_type) => lower_named_type(decl_tables, target, tctx, named_type),
+
+        SemaType::Plain(plain_type) => {
+            let cir_type = CIRType::Plain(plain_type.clone());
+            tctx.register(cir_type.clone());
+            cir_type
+        }
         SemaType::Tuple(tuple_type) => {
             let elements: Vec<CIRType> = tuple_type
                 .elements
@@ -45,12 +46,10 @@ pub fn lower_sema_type(
                 .map(|sema_type| lower_sema_type(decl_tables, target, tctx.clone(), sema_type))
                 .collect();
 
-            let cir = CIRType::Tuple(CIRTupleType {
+            CIRType::Tuple(CIRTupleType {
                 elements,
                 loc: tuple_type.loc,
-            });
-            tctx.register(cir.clone());
-            cir
+            })
         }
         SemaType::Array(array_type) => {
             let element_type = lower_sema_type(decl_tables, target, tctx.clone(), &array_type.element_type);
@@ -60,35 +59,23 @@ pub fn lower_sema_type(
                 TypedArrayCapacity::Dynamic => todo!(),
             };
 
-            let cir = CIRType::Array(CIRArrayType {
+            CIRType::Array(CIRArrayType {
                 element_type: Box::new(element_type),
                 len: len.as_int(),
-            });
-            tctx.register(cir.clone());
-            cir
+            })
         }
         SemaType::Const(sema_type) => {
             let inner = lower_sema_type(decl_tables, target, tctx.clone(), sema_type);
-            let cir = CIRType::Const(Box::new(inner));
-            tctx.register(cir.clone());
-            cir
+            CIRType::Const(Box::new(inner))
         }
         SemaType::Pointer(sema_type) => {
             let inner = lower_sema_type(decl_tables, target, tctx.clone(), sema_type);
-            let cir = CIRType::Pointer(Box::new(inner));
-            tctx.register(cir.clone());
-            cir
+            CIRType::Pointer(Box::new(inner))
         }
         SemaType::FuncType(func_type) => {
-            let cir = CIRType::FuncType(lower_func_type(decl_tables, target, tctx.clone(), func_type));
-            tctx.register(cir.clone());
-            cir
+            CIRType::FuncType(lower_func_type(decl_tables, target, tctx.clone(), func_type))
         }
-        SemaType::InterfaceObject(interface_object) => {
-            let cir = cir_fat_ptr_type(interface_object.loc);
-            tctx.register(cir.clone());
-            cir
-        }
+        SemaType::InterfaceObject(interface_object) => cir_fat_ptr_type(interface_object.loc),
 
         SemaType::Unresolved(_)
         | SemaType::GenericParam(_)
@@ -96,9 +83,9 @@ pub fn lower_sema_type(
         | SemaType::InferVar(_)
         | SemaType::Placeholder
         | SemaType::Err(_) => unreachable!(),
-    };
-
-    cir_type.const_inner().clone()
+    }
+    .const_inner()
+    .clone()
 }
 
 pub fn lower_named_type(
@@ -109,43 +96,91 @@ pub fn lower_named_type(
 ) -> CIRType {
     match named_type.type_decl_id {
         TypeDeclID::Struct(struct_decl_id) => {
+            if tctx.is_lowering(TypeDeclID::Struct(struct_decl_id)) {
+                let struct_decl = decl_tables.struct_decl(struct_decl_id);
+
+                return CIRType::Struct(CIRStructType {
+                    decl_id: Some(TypeDeclID::Struct(struct_decl_id)),
+                    name: struct_decl.name.clone(),
+                    fields: vec![],
+                    fields_info: vec![],
+                    repr_attr: struct_decl.modifiers.repr_attr.clone(),
+                    align: struct_decl.align,
+                    loc: struct_decl.loc,
+                });
+            }
+
+            tctx.start_lowering(TypeDeclID::Struct(struct_decl_id));
+
             let struct_decl = decl_tables.struct_decl(struct_decl_id);
             let inst_struct_decl = instantiate_struct_decl_with_type_args(&struct_decl, &named_type.type_args);
+            let struct_type = lower_struct_decl(decl_tables, target, tctx.clone(), struct_decl_id, &inst_struct_decl);
+            let cir_type = CIRType::Struct(struct_type);
 
-            let placeholder = tctx.insert_type_placeholder();
-            let struct_ty = lower_struct_decl(decl_tables, target, tctx.clone(), &inst_struct_decl);
-            let cir = CIRType::Struct(struct_ty);
-            tctx.resolve_placeholder(placeholder, cir.clone());
-            tctx.register(cir.clone());
-            cir
+            tctx.finish_lowering(TypeDeclID::Struct(struct_decl_id));
+            tctx.register(cir_type.clone());
+
+            cir_type
         }
         TypeDeclID::Union(union_decl_id) => {
+            if tctx.is_lowering(TypeDeclID::Union(union_decl_id)) {
+                let union_decl = decl_tables.union_decl(union_decl_id);
+
+                return CIRType::Union(CIRUnionType {
+                    decl_id: TypeDeclID::Union(union_decl_id),
+                    name: union_decl.name.clone(),
+                    fields: vec![],
+                    fields_info: vec![],
+                    repr_attr: union_decl.modifiers.repr_attr.clone(),
+                    align: union_decl.align.clone(),
+                    loc: union_decl.loc,
+                });
+            }
+
+            tctx.start_lowering(TypeDeclID::Union(union_decl_id));
+
             let union_decl = decl_tables.union_decl(union_decl_id);
             let inst_union_decl = instantiate_union_decl_with_type_args(&union_decl, &named_type.type_args);
+            let union_type = lower_union_decl(decl_tables, target, tctx.clone(), union_decl_id, &inst_union_decl);
+            let cir_type = CIRType::Union(union_type);
 
-            let placeholder = tctx.insert_type_placeholder();
-            let union_ty = lower_union_decl(decl_tables, target, tctx.clone(), &inst_union_decl);
-            let cir = CIRType::Union(union_ty);
-            tctx.resolve_placeholder(placeholder, cir.clone());
-            tctx.register(cir.clone());
-            cir
+            tctx.finish_lowering(TypeDeclID::Union(union_decl_id));
+            tctx.register(cir_type.clone());
+
+            cir_type
         }
         TypeDeclID::Enum(enum_decl_id) => {
+            if tctx.is_lowering(TypeDeclID::Enum(enum_decl_id)) {
+                let enum_decl = decl_tables.enum_decl(enum_decl_id);
+
+                return CIRType::Enum(CIREnumType {
+                    decl_id: TypeDeclID::Enum(enum_decl_id),
+                    name: enum_decl.name.clone(),
+                    variants: vec![],
+                    tag_type: None,
+                    repr_attr: enum_decl.modifiers.repr_attr.clone(),
+                    align: enum_decl.align.clone(),
+                    loc: enum_decl.loc,
+                });
+            }
+
+            tctx.start_lowering(TypeDeclID::Enum(enum_decl_id));
+
             let enum_decl = decl_tables.enum_decl(enum_decl_id);
             let inst_enum_decl = instantiate_enum_decl_with_type_args(&enum_decl, &named_type.type_args);
+            let enum_type = lower_enum_decl(decl_tables, target, tctx.clone(), enum_decl_id, &inst_enum_decl);
+            let cir_type = CIRType::Enum(enum_type);
 
-            let placeholder = tctx.insert_type_placeholder();
-            let enum_ty = lower_enum_decl(decl_tables, target, tctx.clone(), &inst_enum_decl);
-            let cir = CIRType::Enum(enum_ty);
-            tctx.resolve_placeholder(placeholder, cir.clone());
-            tctx.register(cir.clone());
-            cir
+            tctx.finish_lowering(TypeDeclID::Enum(enum_decl_id));
+            tctx.register(cir_type.clone());
+
+            cir_type
         }
         TypeDeclID::Interface(interface_decl_id) => {
             let interface_decl = decl_tables.interface_decl(interface_decl_id);
-            let cir = cir_fat_ptr_type(interface_decl.loc);
-            tctx.register(cir.clone());
-            cir
+            let cir_type = cir_fat_ptr_type(interface_decl.loc);
+            tctx.register(cir_type.clone());
+            cir_type
         }
         TypeDeclID::Typedef(_) => unreachable!("unexpected unexpanded typedef"),
     }
@@ -155,6 +190,7 @@ pub fn lower_struct_decl(
     decl_tables: &DeclTablesRegistry,
     target: &ABITarget,
     tctx: Arc<CIRTypeContext>,
+    struct_decl_id: StructDeclID,
     struct_decl: &StructDecl,
 ) -> CIRStructType {
     let fields = struct_decl
@@ -170,6 +206,7 @@ pub fn lower_struct_decl(
         .collect();
 
     CIRStructType {
+        decl_id: Some(TypeDeclID::Struct(struct_decl_id)),
         name: struct_decl.name.clone(),
         fields,
         fields_info,
@@ -190,6 +227,7 @@ pub fn lower_enum_decl(
     decl_tables: &DeclTablesRegistry,
     target: &ABITarget,
     tctx: Arc<CIRTypeContext>,
+    enum_decl_id: EnumDeclID,
     enum_decl: &EnumDecl,
 ) -> CIREnumType {
     let mut variants: Vec<CIREnumVariant> = enum_decl
@@ -204,6 +242,7 @@ pub fn lower_enum_decl(
         .map(|sema_type| Box::new(lower_sema_type(decl_tables, target, tctx.clone(), &sema_type)));
 
     let mut cir_enum_type = CIREnumType {
+        decl_id: TypeDeclID::Enum(enum_decl_id),
         name: enum_decl.name.clone(),
         variants: variants.clone(),
         tag_type,
@@ -259,6 +298,7 @@ pub fn lower_union_decl(
     decl_tables: &DeclTablesRegistry,
     target: &ABITarget,
     tctx: Arc<CIRTypeContext>,
+    union_decl_id: UnionDeclID,
     union_decl: &UnionDecl,
 ) -> CIRUnionType {
     let fields = union_decl
@@ -274,6 +314,7 @@ pub fn lower_union_decl(
         .collect();
 
     CIRUnionType {
+        decl_id: TypeDeclID::Union(union_decl_id),
         name: union_decl.name.clone(),
         fields,
         fields_info,

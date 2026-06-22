@@ -6,11 +6,25 @@ use crate::abi::target::ABITargetInfo;
 use crate::cir::cir::CIREnumVariant;
 use crate::cir::types::*;
 use cyrusc_typed_ast::types::PlainType;
-use fx_hash::FxHashMap;
+use cyrusc_typed_ast::types::TypeDeclID;
+use fx_hash::{FxHashMap, FxHashSet, FxHashSetExt};
 use std::sync::RwLock;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct CIRTypeContextID(usize);
+
+pub struct CIRTypeContext {
+    /// All types in the context, indexed by CIRTypeContextID
+    types: RwLock<Vec<CIRTypeEntry>>,
+
+    /// Map from type key to handle for deduplication.
+    key_to_id: RwLock<FxHashMap<CIRTypeKey, CIRTypeContextID>>,
+
+    /// Target info for layout computation.
+    target_info: ABITargetInfo,
+
+    in_progress: RwLock<FxHashSet<TypeDeclID>>,
+}
 
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]
 enum CIRTypeKey {
@@ -19,9 +33,9 @@ enum CIRTypeKey {
     Pointer(Box<CIRTypeKey>),
     Array(Box<CIRTypeKey>, usize),
     Tuple(Vec<CIRTypeKey>),
-    Struct(Vec<CIRTypeKey>),
-    Union(Vec<CIRTypeKey>),
-    Enum(Vec<EnumVariantKey>, Box<CIRTypeKey>),
+    Struct(TypeDeclID, Vec<CIRTypeKey>),
+    Union(TypeDeclID, Vec<CIRTypeKey>),
+    Enum(TypeDeclID, Vec<EnumVariantKey>, Box<CIRTypeKey>),
     FuncType(Vec<CIRTypeKey>, Box<CIRTypeKey>, bool),
     Dynamic,
 }
@@ -57,22 +71,12 @@ impl CIRTypeEntry {
     }
 }
 
-pub struct CIRTypeContext {
-    /// All types in the context, indexed by CIRTypeContextID
-    types: RwLock<Vec<CIRTypeEntry>>,
-
-    /// Map from type key to handle for deduplication.
-    key_to_id: RwLock<FxHashMap<CIRTypeKey, CIRTypeContextID>>,
-
-    /// Target info for layout computation.
-    target_info: ABITargetInfo,
-}
-
 impl CIRTypeContext {
     pub fn new(target_info: ABITargetInfo) -> Self {
         Self {
             types: RwLock::new(Vec::new()),
             key_to_id: RwLock::new(FxHashMap::default()),
+            in_progress: RwLock::new(FxHashSet::new()),
             target_info,
         }
     }
@@ -125,13 +129,6 @@ impl CIRTypeContext {
         key_to_id.insert(key, id);
 
         id
-    }
-
-    /// Register a type and immediately compute its layout.
-    pub fn register_with_layout(&self, ty: CIRType) -> (CIRTypeContextID, ABITypeLayout) {
-        let id = self.register(ty);
-        let layout = self.get_or_compute_layout(id);
-        (id, layout)
     }
 
     pub fn get_type(&self, id: CIRTypeContextID) -> Option<CIRType> {
@@ -189,12 +186,21 @@ impl CIRTypeContext {
             CIRType::Struct(struct_type) => {
                 let fields: Vec<CIRTypeKey> = struct_type.fields.iter().map(|f| self.type_to_key(f)).collect();
 
-                CIRTypeKey::Struct(fields)
+                // IMPORTANT:
+                // Some types like tuple, fat-ptr are lowered directly into CIRStructType,
+                // so they never should achieve this point!
+                assert!(
+                    struct_type.decl_id.is_some(),
+                    "cannot generate type context key for struct type which has not a decl id"
+                );
+
+                // CIRTypeKey::Struct(struct_type.decl_id.unwrap(), vec![])
+                CIRTypeKey::Struct(struct_type.decl_id.unwrap(), fields)
             }
             CIRType::Union(union_type) => {
                 let fields: Vec<CIRTypeKey> = union_type.fields.iter().map(|f| self.type_to_key(f)).collect();
 
-                CIRTypeKey::Union(fields)
+                CIRTypeKey::Union(union_type.decl_id, fields)
             }
             CIRType::Enum(enum_type) => {
                 let variants: Vec<EnumVariantKey> = enum_type
@@ -217,7 +223,7 @@ impl CIRTypeContext {
                     .map(|t| Box::new(self.type_to_key(t)))
                     .unwrap_or_else(|| Box::new(CIRTypeKey::Plain(PlainType::Int32)));
 
-                CIRTypeKey::Enum(variants, tag_key)
+                CIRTypeKey::Enum(enum_type.decl_id, variants, tag_key)
             }
             CIRType::FuncType(func_type) => {
                 let params: Vec<CIRTypeKey> = func_type.params.iter().map(|p| self.type_to_key(p)).collect();
@@ -230,5 +236,22 @@ impl CIRTypeContext {
             }
             CIRType::Dynamic(_) => CIRTypeKey::Dynamic,
         }
+    }
+}
+
+impl CIRTypeContext {
+    pub fn start_lowering(&self, decl_id: TypeDeclID) {
+        let mut in_progress = self.in_progress.write().unwrap();
+        in_progress.insert(decl_id);
+    }
+
+    pub fn finish_lowering(&self, decl_id: TypeDeclID) {
+        let mut in_progress = self.in_progress.write().unwrap();
+        in_progress.remove(&decl_id);
+    }
+
+    pub fn is_lowering(&self, decl_id: TypeDeclID) -> bool {
+        let in_progress = self.in_progress.read().unwrap();
+        in_progress.contains(&decl_id)
     }
 }

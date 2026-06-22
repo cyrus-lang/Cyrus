@@ -5,7 +5,11 @@
 mod tests {
     use cyrusc_ast::abi::CallConv;
     use cyrusc_source_loc::{FileID, Loc};
-    use cyrusc_typed_ast::{VTableID, types::PlainType};
+    use cyrusc_typed_ast::{
+        VTableID,
+        decls::{StructDeclID, UnionDeclID},
+        types::{PlainType, TypeDeclID},
+    };
 
     use crate::{
         abi::{
@@ -53,6 +57,7 @@ mod tests {
         let fields = fields.iter().map(|ty| ty.clone()).collect();
 
         CIRType::Struct(CIRStructType {
+            decl_id: Some(TypeDeclID::Struct(StructDeclID(0))), // fake
             name: None,
             fields,
             fields_info: Vec::new(), // won't be used
@@ -66,6 +71,7 @@ mod tests {
         let fields = fields.iter().map(|ty| ty.clone()).collect();
 
         CIRType::Union(CIRUnionType {
+            decl_id: TypeDeclID::Union(UnionDeclID(0)), // fake
             name: None,
             fields,
             fields_info: Vec::new(), // won't be used
@@ -76,7 +82,10 @@ mod tests {
     }
 
     fn array_ty(ty: CIRType, len: usize) -> CIRType {
-        CIRType::Array(CIRArrayType { element_type: Box::new(ty), len })
+        CIRType::Array(CIRArrayType {
+            element_type: Box::new(ty),
+            len,
+        })
     }
 
     #[test]
@@ -260,9 +269,7 @@ mod tests {
     #[test]
     fn classify_dynamic_two_pointers() {
         let abi = abi();
-        let ty = CIRType::Dynamic(CIRDynamicType {
-            vtable_id: VTableID(0),
-        });
+        let ty = CIRType::Dynamic(CIRDynamicType { vtable_id: VTableID(0) });
 
         let (info, regs) = abi.classify_argument(&ty, 6, true);
 

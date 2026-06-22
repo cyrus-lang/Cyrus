@@ -560,21 +560,29 @@ impl<'a> CIRPrinter<'a> {
             CIRType::Const(inner) => format!("const {}", self.print_type(inner)),
             CIRType::Pointer(inner) => format!("{}*", self.print_type(inner)),
             CIRType::Struct(struct_type) => {
+                if let Some(name) = &struct_type.name {
+                    return name.clone();
+                }
+
                 let mut out = String::from("struct");
 
                 out.push_str(" { ");
 
-                let mut parts = Vec::new();
+                let mut fields = Vec::new();
                 for (idx, (fname, _loc)) in struct_type.fields_info.iter().enumerate() {
-                    let fty = &struct_type.fields[idx];
-                    parts.push(format!("{fname}: {}", self.print_type(fty)));
+                    let ty = &struct_type.fields[idx];
+                    fields.push(format!("{fname}: {}", self.print_type(ty)));
                 }
 
-                out.push_str(&parts.join(", "));
+                out.push_str(&fields.join(", "));
                 out.push_str(" }");
                 out
             }
             CIRType::Enum(enum_type) => {
+                if let Some(name) = &enum_type.name {
+                    return name.clone();
+                }
+
                 let mut out = String::from("enum");
                 out.push_str(" { ");
 
@@ -597,6 +605,10 @@ impl<'a> CIRPrinter<'a> {
                 out
             }
             CIRType::Union(union_type) => {
+                if let Some(name) = &union_type.name {
+                    return name.clone();
+                }
+
                 let mut out = String::from("union");
                 out.push_str(" { ");
 

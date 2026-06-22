@@ -163,7 +163,7 @@ impl X86_64 {
             }
             CIRType::Tuple(tuple_type) => {
                 // tuple lowered as struct in codegen
-                let struct_type = tuple_type.as_struct_ty();
+                let struct_type = tuple_type.as_struct_type();
 
                 if let Some((field_ty, field_offset)) = self.get_member_at_offset(&CIRType::Struct(struct_type), offset)
                 {
@@ -916,7 +916,7 @@ fn classify(
         }
         CIRType::Tuple(tuple_type) => {
             // tuple lowered as struct in codegen
-            let struct_type = tuple_type.as_struct_ty();
+            let struct_type = tuple_type.as_struct_type();
 
             classify_struct_or_union(
                 info,

@@ -11,6 +11,8 @@ use cyrusc_internal::cir::cir::*;
 use cyrusc_internal::cir::lower::lower_enum_decl;
 use cyrusc_internal::cir::lower::lower_func_type;
 use cyrusc_internal::cir::lower::lower_sema_type;
+use cyrusc_internal::cir::lower::lower_struct_decl;
+use cyrusc_internal::cir::lower::lower_union_decl;
 use cyrusc_internal::cir::typectx::CIRTypeContext;
 use cyrusc_internal::cir::types::*;
 use cyrusc_internal::monomorph::*;
@@ -32,7 +34,6 @@ use cyrusc_typed_ast::decls::table::DeclTablesRegistry;
 use cyrusc_typed_ast::decls::*;
 use cyrusc_typed_ast::exprs::*;
 use cyrusc_typed_ast::format::Formatter;
-use cyrusc_typed_ast::format::*;
 use cyrusc_typed_ast::stmts::*;
 use cyrusc_typed_ast::substitute::*;
 use cyrusc_typed_ast::types::*;
@@ -636,7 +637,7 @@ impl<'a> CIRLower<'a> {
 
         let inst_enum_decl = instantiate_enum_decl_with_type_args(&enum_decl, type_args);
 
-        let enum_type = self.lower_enum_decl(&inst_enum_decl);
+        let enum_type = self.lower_enum_decl(enum_decl_id, &inst_enum_decl);
 
         let mut cases = Vec::new();
 
@@ -693,6 +694,7 @@ impl<'a> CIRLower<'a> {
                                     .collect();
 
                                 CIRStructType {
+                                    decl_id: None,
                                     name: None,
                                     fields: field_types,
                                     fields_info,
@@ -737,6 +739,7 @@ impl<'a> CIRLower<'a> {
                             let fields_info = fields.iter().map(|field| (field.name.as_string(), field.loc)).collect();
 
                             CIRStructType {
+                                decl_id: None,
                                 name: None,
                                 fields: field_types,
                                 fields_info,
@@ -1231,28 +1234,7 @@ impl<'a> CIRLower<'a> {
 
         let inst_struct_decl = instantiate_struct_decl_with_type_args(&struct_decl, type_args);
 
-        let struct_name = format_struct_decl(&inst_struct_decl, self.formatter);
-
-        let fields = inst_struct_decl
-            .fields
-            .iter()
-            .map(|field| self.lower_sema_type(&field.ty))
-            .collect();
-
-        let fields_info = inst_struct_decl
-            .fields
-            .iter()
-            .map(|field| (field.name.clone(), field.loc))
-            .collect();
-
-        let struct_type = CIRStructType {
-            name: Some(struct_name),
-            fields,
-            fields_info,
-            align: inst_struct_decl.align.clone(),
-            repr_attr: inst_struct_decl.modifiers.repr_attr.clone(),
-            loc: inst_struct_decl.loc,
-        };
+        let struct_type = self.lower_struct_decl(struct_decl_id, &inst_struct_decl);
 
         let mut lowered_fields = FxHashMap::new();
 
@@ -1283,28 +1265,7 @@ impl<'a> CIRLower<'a> {
 
         let inst_union_decl = instantiate_union_decl_with_type_args(&union_decl, type_args);
 
-        let union_name = format_union_decl(&inst_union_decl, self.formatter);
-
-        let fields = inst_union_decl
-            .fields
-            .iter()
-            .map(|field| self.lower_sema_type(&field.ty))
-            .collect();
-
-        let fields_info = inst_union_decl
-            .fields
-            .iter()
-            .map(|field| (field.name.clone(), field.loc))
-            .collect();
-
-        let union_type = CIRUnionType {
-            name: Some(union_name),
-            fields,
-            fields_info,
-            repr_attr: inst_union_decl.modifiers.repr_attr.clone(),
-            align: inst_union_decl.align.clone(),
-            loc: inst_union_decl.loc,
-        };
+        let union_type = self.lower_union_decl(union_decl_id, &inst_union_decl);
 
         let lowered_expr = Box::new(self.lower_expr(&union_init.field.value));
 
@@ -1351,7 +1312,7 @@ impl<'a> CIRLower<'a> {
             }
         };
 
-        let enum_type = self.lower_enum_decl(&inst_enum_decl);
+        let enum_type = self.lower_enum_decl(enum_decl_id, &inst_enum_decl);
 
         let tag = enum_type.lookup_variant_tag(&enum_init.name).unwrap();
 
@@ -2068,8 +2029,7 @@ impl<'a> CIRLower<'a> {
     }
 }
 
-// TODO: Refactor
-// Helpers.
+// Types Helpers.
 impl<'a> CIRLower<'a> {
     #[inline]
     fn lower_sema_type(&self, ty: &SemaType) -> CIRType {
@@ -2077,13 +2037,51 @@ impl<'a> CIRLower<'a> {
     }
 
     #[inline]
-    fn lower_enum_decl(&self, enum_decl: &EnumDecl) -> CIREnumType {
-        lower_enum_decl(&self.decl_tables, self.target, self.tctx.clone(), enum_decl)
+    fn lower_enum_decl(&self, enum_decl_id: EnumDeclID, enum_decl: &EnumDecl) -> CIREnumType {
+        lower_enum_decl(
+            &self.decl_tables,
+            self.target,
+            self.tctx.clone(),
+            enum_decl_id,
+            enum_decl,
+        )
+    }
+
+    #[inline]
+    fn lower_struct_decl(&self, struct_decl_id: StructDeclID, struct_decl: &StructDecl) -> CIRStructType {
+        lower_struct_decl(
+            &self.decl_tables,
+            self.target,
+            self.tctx.clone(),
+            struct_decl_id,
+            struct_decl,
+        )
+    }
+
+    #[inline]
+    fn lower_union_decl(&self, union_decl_id: UnionDeclID, union_decl: &UnionDecl) -> CIRUnionType {
+        lower_union_decl(
+            &self.decl_tables,
+            self.target,
+            self.tctx.clone(),
+            union_decl_id,
+            union_decl,
+        )
     }
 
     #[inline]
     fn lower_func_type(&self, func_type: &TypedFuncType) -> CIRFuncType {
         lower_func_type(&self.decl_tables, self.target, self.tctx.clone(), func_type)
+    }
+}
+
+// IRValue Helpers.
+impl<'a> CIRLower<'a> {
+    #[inline(always)]
+    fn new_ir_value_id(&mut self) -> IRValueID {
+        let id = self.next_irv_id.0;
+        self.next_irv_id.0 += 1;
+        IRValueID(id)
     }
 
     fn get_or_declare_method_ir_value(&mut self, method_decl_id: MethodDeclID) -> IRValueID {
@@ -2252,13 +2250,6 @@ impl<'a> CIRLower<'a> {
             .insert(DeclID::GlobalVar(global_var_decl_id), irv_id);
 
         irv_id
-    }
-
-    #[inline(always)]
-    fn new_ir_value_id(&mut self) -> IRValueID {
-        let id = self.next_irv_id.0;
-        self.next_irv_id.0 += 1;
-        IRValueID(id)
     }
 }
 

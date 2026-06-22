@@ -466,7 +466,13 @@ impl<'a> AnalysisContext<'a> {
 
                 let enum_decl = self.decl_tables.enum_decl(enum_decl_id);
 
-                let cir_enum_type = lower_enum_decl(&self.decl_tables, self.target, self.tctx.clone(), &enum_decl);
+                let cir_enum_type = lower_enum_decl(
+                    &self.decl_tables,
+                    self.target,
+                    self.tctx.clone(),
+                    enum_decl_id,
+                    &enum_decl,
+                );
 
                 let tag_type = cir_enum_type.tag_type_or_infer_or_default();
 
