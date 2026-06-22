@@ -3,15 +3,18 @@ STDLIB ?= ../stdlib
 
 release:
 	$(COMPILER) build --profile=release \
-					    --optimize=o2 \
 						--stdlib=$(STDLIB) \
 						./src/main.cyrus \
+						--linker=clang \
+					    --optimize=o2 \
+						-z="-flto" \
 						-o ./build/cyrus
 					
 dev:
 	$(COMPILER) build -g --profile=debug \
-					    --optimize=o0 \
 						--stdlib=$(STDLIB) \
+						--linker=clang \
+					    --optimize=o0 \
 						./src/main.cyrus
 					
 	
