@@ -101,7 +101,7 @@ impl<'a, R: ConstResolver> ConstEvaluator<'a, R> {
 
         let expr = self
             .resolver
-            .resolve_symbol_expr(decl_id)
+            .get_var_rhs_expr(decl_id)
             .ok_or(ConstEvalError::UnsupportedExpr)?;
 
         let const_value = self.eval_expr(&expr, self.analyzer_state)?;

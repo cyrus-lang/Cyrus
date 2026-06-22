@@ -44,7 +44,7 @@ impl<'a> AnalysisContext<'a> {
         folder.fold_expr(expr, self);
     }
 
-    fn resolve_variable_rhs_expr(&self, decl_id: DeclID) -> Option<TypedExpr> {
+    fn get_var_rhs_expr(&self, decl_id: DeclID) -> Option<TypedExpr> {
         if let Some(var_decl_id) = decl_id.as_var() {
             let var_decl = self.decl_tables.var_decl(var_decl_id);
             
@@ -60,8 +60,8 @@ impl<'a> AnalysisContext<'a> {
 }
 
 impl<'a> ConstResolver for AnalysisContext<'a> {
-    fn resolve_symbol_expr(&self, decl_id: DeclID) -> Option<TypedExpr> {
-        self.resolve_variable_rhs_expr(decl_id)
+    fn get_var_rhs_expr(&self, decl_id: DeclID) -> Option<TypedExpr> {
+        self.get_var_rhs_expr(decl_id)
     }
 
     fn is_decl_const(&self, decl_id: DeclID) -> bool {
