@@ -5,7 +5,6 @@ use crate::{
     abi::{
         args::{ABIArgAttrs, ABIArgInfo, ABIArgKind, ABIFunctionInfo, ABIRetInfo, ABIRetInfoKind, ExpandKind},
         helpers::{Registers, cir_type_to_abi_type, is_cir_type_abi_aggregate},
-        layout::type_layout,
         target::{ABITargetInfo, ABITargetOS, RegisterClass, TargetABI},
         types::{ABIFloatKind, ABIType},
     },
@@ -996,9 +995,9 @@ fn classify_array(
     lo_class: *mut RegisterClass,
     hi_class: *mut RegisterClass,
 ) {
-    let layout = type_layout(info, &CIRType::Array(array_type.clone()));
+    let layout = tctx.layout_of(&CIRType::Array(array_type.clone()));
     let element_ty = &array_type.element_type;
-    let element_layout = type_layout(info, element_ty);
+    let element_layout = tctx.layout_of(element_ty);
 
     if layout.size > 16 {
         return; // keep memory class
@@ -1062,7 +1061,7 @@ fn classify_enum(
 
     // enums is a struct { tag, [i8; N] payload }
 
-    let layout = type_layout(info, ty);
+    let layout = tctx.layout_of(ty);
 
     // if size > 16 bytes, keep default memory class
     if layout.size > 16 {
@@ -1079,7 +1078,7 @@ fn classify_enum(
     // first, classify the tag field at offset 0
     let tag_ty = enum_type.tag_type_or_infer_or_default();
     let tag_offset = offset_base;
-    let tag_layout = type_layout(info, &tag_ty);
+    let tag_layout = tctx.layout_of(&tag_ty);
     let tag_size = tag_layout.size;
 
     let mut tag_lo = RegisterClass::NoClass;
@@ -1174,7 +1173,7 @@ fn classify_struct_or_union(
     unsafe { *current = RegisterClass::NoClass };
 
     for (i, field_type) in fields.iter().enumerate() {
-        let field_layout = type_layout(info, field_type);
+        let field_layout = tctx.layout_of(field_type);
 
         let field_offset = if is_union {
             offset_base

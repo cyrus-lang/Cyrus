@@ -845,7 +845,10 @@ impl PartialEq for TypedFuncType {
 
 impl PartialEq for TypedTupleType {
     fn eq(&self, other: &Self) -> bool {
-        self.elements == other.elements
+        self.elements
+            .iter()
+            .zip(&other.elements)
+            .all(|((ty1, _), (ty2, _))| ty1 == ty2)
     }
 }
 

@@ -1,12 +1,6 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 The Cyrus Language
 
-use crate::{
-    abi::target::{ABITargetArch, ABITargetInfo},
-    cir::{typectx::CIRTypeContext, types::CIRType},
-};
-use cyrusc_typed_ast::types::PlainType;
-
 #[derive(Debug, Clone)]
 pub struct ABITypeLayout {
     pub size: u32,
@@ -29,95 +23,6 @@ pub enum ABIFieldOffsetInfo {
         offset: u32,
         size: u32,
     },
-}
-
-pub fn type_layout_with_tctx(tctx: &CIRTypeContext, ty: &CIRType) -> ABITypeLayout {
-    match ty {
-        CIRType::Struct(id) | CIRType::Union(id) | CIRType::Enum(id) => tctx.get_or_compute_layout(*id),
-
-        _ => type_layout(&tctx.target_info, ty),
-    }
-}
-
-pub fn type_layout(info: &ABITargetInfo, ty: &CIRType) -> ABITypeLayout {
-    match ty {
-        CIRType::Struct(_) | CIRType::Union(_) | CIRType::Enum(_) => {
-            panic!("named types must be resolved via tctx before layout computation")
-        }
-
-        CIRType::Plain(plain_type) => plain_type_layout(info, plain_type),
-        CIRType::Const(ty) => type_layout(info, ty.const_inner()),
-        CIRType::Pointer(_) => {
-            let size = info.pointer_size();
-            ABITypeLayout::normal(size, size, Vec::new())
-        }
-        CIRType::FuncType(_) => {
-            let size = info.pointer_size();
-            ABITypeLayout::normal(size, size, Vec::new())
-        }
-        CIRType::Array(array_type) => {
-            let element_layout = type_layout(info, &array_type.element_type);
-            let total_size = element_layout.size * array_type.len as u32;
-
-            let mut field_offsets = Vec::new();
-            for i in 0..array_type.len {
-                field_offsets.push(ABIFieldOffsetInfo::Normal {
-                    index: i as u32,
-                    offset: element_layout.align * i as u32,
-                    original_index: i,
-                });
-            }
-
-            ABITypeLayout::aggregate(total_size, element_layout.align, field_offsets)
-        }
-        CIRType::Dynamic(_) => {
-            let size = info.pointer_size() * 2;
-            ABITypeLayout::normal(size, info.pointer_size(), Vec::new())
-        }
-    }
-}
-
-fn plain_type_layout(info: &ABITargetInfo, plain_type: &PlainType) -> ABITypeLayout {
-    use PlainType::*;
-
-    match plain_type {
-        UIntPtr | IntPtr | ISize | USize => {
-            let size = info.pointer_size();
-            ABITypeLayout::normal(size, size, Vec::new())
-        }
-
-        Int8 | UInt8 | Bool => ABITypeLayout::normal(1, 1, Vec::new()),
-        Int16 | UInt16 => ABITypeLayout::normal(2, 2, Vec::new()),
-        Int32 | UInt32 | Int | UInt => ABITypeLayout::normal(4, 4, Vec::new()),
-        Int64 | UInt64 => ABITypeLayout::normal(8, 8, Vec::new()),
-        Int128 | UInt128 => {
-            let align = match info.arch {
-                ABITargetArch::X86_64 | ABITargetArch::Aarch64 => 16,
-                ABITargetArch::RiscV64 => 16,
-                ABITargetArch::Wasm32 => 8,
-            };
-            ABITypeLayout::normal(16, align, Vec::new())
-        }
-
-        Float16 => ABITypeLayout::normal(2, 2, Vec::new()),
-        Float32 => ABITypeLayout::normal(4, 4, Vec::new()),
-        Float64 => ABITypeLayout::normal(8, 8, Vec::new()),
-        Float128 => {
-            let align = match info.arch {
-                ABITargetArch::X86_64 | ABITargetArch::Aarch64 => 16,
-                ABITargetArch::RiscV64 => 16,
-                ABITargetArch::Wasm32 => 8,
-            };
-            ABITypeLayout::normal(16, align, Vec::new())
-        }
-
-        Char => ABITypeLayout::normal(1, 1, Vec::new()),
-        Void => ABITypeLayout::normal(0, 1, Vec::new()),
-        Null => {
-            let size = info.pointer_size();
-            ABITypeLayout::normal(size, size, Vec::new())
-        }
-    }
 }
 
 impl ABITypeLayout {
