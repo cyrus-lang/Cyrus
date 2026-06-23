@@ -158,10 +158,15 @@ pub fn lower_struct_type(
     type_args: TypedTypeArgs,
 ) -> CIRType {
     if tctx.is_lowering(TypeDeclID::Struct(struct_decl_id)) {
-        let placeholder = tctx.insert_type_placeholder();
-        return CIRType::Struct(placeholder);
+        // return the SAME HANDLE that's being lowered (in-progress)
+        // we need to store and retrieve the in-progress handle
+        return CIRType::Struct(tctx.get_in_progress_handle(TypeDeclID::Struct(struct_decl_id)));
     }
-    tctx.start_lowering(TypeDeclID::Struct(struct_decl_id));
+
+    // IMPORTANT: create the handle BEFORE lowering fields
+    let type_id = tctx.insert_type_placeholder();
+    tctx.start_lowering(TypeDeclID::Struct(struct_decl_id), type_id);
+
     let struct_type = lower_struct_decl(
         decl_tables,
         target,
@@ -170,7 +175,7 @@ pub fn lower_struct_type(
         struct_decl,
         type_args,
     );
-    let type_id = tctx.insert_struct(struct_type.clone());
+
     tctx.finish_lowering(TypeDeclID::Struct(struct_decl_id));
     tctx.resolve_placeholder(type_id, CIRTypeDef::Struct(struct_type));
     CIRType::Struct(type_id)
@@ -185,13 +190,19 @@ pub fn lower_union_type(
     type_args: TypedTypeArgs,
 ) -> CIRType {
     if tctx.is_lowering(TypeDeclID::Union(union_decl_id)) {
-        let placeholder = tctx.insert_type_placeholder();
-        return CIRType::Union(placeholder);
+        // return the SAME HANDLE that's being lowered (in-progress)
+        // we need to store and retrieve the in-progress handle
+        return CIRType::Union(tctx.get_in_progress_handle(TypeDeclID::Union(union_decl_id)));
     }
-    tctx.start_lowering(TypeDeclID::Union(union_decl_id));
+
+    // IMPORTANT: create the handle BEFORE lowering fields
+    let type_id = tctx.insert_type_placeholder();
+    tctx.start_lowering(TypeDeclID::Union(union_decl_id), type_id);
+
     let union_type = lower_union_decl(decl_tables, target, tctx.clone(), union_decl_id, union_decl, type_args);
-    let type_id = tctx.insert_union(union_type);
+
     tctx.finish_lowering(TypeDeclID::Union(union_decl_id));
+    tctx.resolve_placeholder(type_id, CIRTypeDef::Union(union_type));
     CIRType::Union(type_id)
 }
 
@@ -204,13 +215,19 @@ pub fn lower_enum_type(
     type_args: TypedTypeArgs,
 ) -> CIRType {
     if tctx.is_lowering(TypeDeclID::Enum(enum_decl_id)) {
-        let placeholder = tctx.insert_type_placeholder();
-        return CIRType::Enum(placeholder);
+        // return the SAME HANDLE that's being lowered (in-progress)
+        // we need to store and retrieve the in-progress handle
+        return CIRType::Enum(tctx.get_in_progress_handle(TypeDeclID::Enum(enum_decl_id)));
     }
-    tctx.start_lowering(TypeDeclID::Enum(enum_decl_id));
+
+    // IMPORTANT: create the handle BEFORE lowering fields
+    let type_id = tctx.insert_type_placeholder();
+    tctx.start_lowering(TypeDeclID::Enum(enum_decl_id), type_id);
+
     let enum_type = lower_enum_decl(decl_tables, target, tctx.clone(), enum_decl_id, enum_decl, type_args);
-    let type_id = tctx.insert_enum(enum_type);
+
     tctx.finish_lowering(TypeDeclID::Enum(enum_decl_id));
+    tctx.resolve_placeholder(type_id, CIRTypeDef::Enum(enum_type));
     CIRType::Enum(type_id)
 }
 

@@ -10,7 +10,7 @@ use cyrusc_source_loc::{FileID, Loc};
 use cyrusc_typed_ast::stmts::TypedTypeArgs;
 use cyrusc_typed_ast::types::PlainType;
 use cyrusc_typed_ast::types::TypeDeclID;
-use fx_hash::{FxHashMap, FxHashSet};
+use fx_hash::FxHashMap;
 use std::sync::RwLock;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -24,7 +24,7 @@ pub struct CIRTypeContext {
     defs: RwLock<Vec<CIRTypeDef>>,
     key_to_id: RwLock<FxHashMap<CIRTypeKey, CIRTypeContextID>>,
     layouts: RwLock<FxHashMap<CIRTypeContextID, ABITypeLayout>>,
-    in_progress: RwLock<FxHashSet<TypeDeclID>>,
+    in_progress: RwLock<FxHashMap<TypeDeclID, CIRTypeContextID>>,
 }
 
 #[derive(Debug, Clone)]
@@ -57,11 +57,11 @@ impl CIRTypeContext {
     #[inline]
     pub fn new(target_info: ABITargetInfo) -> Self {
         Self {
+            target_info,
             defs: RwLock::new(Vec::new()),
             key_to_id: RwLock::new(FxHashMap::default()),
             layouts: RwLock::new(FxHashMap::default()),
-            target_info,
-            in_progress: RwLock::new(FxHashSet::default()),
+            in_progress: RwLock::new(FxHashMap::default()),
         }
     }
 
@@ -195,19 +195,25 @@ impl CIRTypeContext {
         }
     }
 
-    #[inline]
-    pub fn start_lowering(&self, decl_id: TypeDeclID) {
-        self.in_progress.write().unwrap().insert(decl_id);
+    pub fn start_lowering(&self, decl_id: TypeDeclID, handle: CIRTypeContextID) {
+        self.in_progress.write().unwrap().insert(decl_id, handle);
     }
 
-    #[inline]
     pub fn finish_lowering(&self, decl_id: TypeDeclID) {
         self.in_progress.write().unwrap().remove(&decl_id);
     }
 
-    #[inline]
     pub fn is_lowering(&self, decl_id: TypeDeclID) -> bool {
-        self.in_progress.read().unwrap().contains(&decl_id)
+        self.in_progress.read().unwrap().contains_key(&decl_id)
+    }
+
+    pub fn get_in_progress_handle(&self, decl_id: TypeDeclID) -> CIRTypeContextID {
+        self.in_progress
+            .read()
+            .unwrap()
+            .get(&decl_id)
+            .copied()
+            .expect("in-progress handle not found")
     }
 
     #[inline]

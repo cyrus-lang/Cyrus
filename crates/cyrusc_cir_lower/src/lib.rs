@@ -743,7 +743,7 @@ impl<'a> CIRLower<'a> {
                                     lower_sema_type(&self.decl_tables, self.target, self.tctx.clone(), &field.ty)
                                 })
                                 .collect();
-                            
+
                             let fields_info = fields.iter().map(|field| (field.name.as_string(), field.loc)).collect();
 
                             CIRStructType {
@@ -1337,12 +1337,7 @@ impl<'a> CIRLower<'a> {
         let fields_info = elements
             .iter()
             .enumerate()
-            .map(|(i, _)| {
-                // FIXME: Expected to have exact location of the element
-                // but hence it's not implemented correctly in the AST
-                // using tuple_type.loc for now.
-                (i.to_string(), tuple.loc)
-            })
+            .map(|(i, expr)| (i.to_string(), expr.loc))
             .collect();
 
         let struct_type = CIRStructType {
