@@ -457,7 +457,7 @@ pub struct CIREnumStmt {
 pub enum CIREnumVariant {
     Unit(String, u32),
     Valued(String, CIRType, u32),
-    Payload(String, Vec<CIRType>, u32),
+    Payload(String, CIRStructType, u32),
 }
 
 #[derive(Debug, Clone)]
@@ -567,9 +567,9 @@ impl CIREnumVariant {
     }
 
     #[inline]
-    pub fn as_fielded(&self) -> Option<&Vec<CIRType>> {
+    pub fn as_payload(&self) -> Option<&CIRStructType> {
         match self {
-            CIREnumVariant::Payload(_, fields, _) => Some(fields),
+            CIREnumVariant::Payload(_, struct_type, _) => Some(struct_type),
             _ => None,
         }
     }

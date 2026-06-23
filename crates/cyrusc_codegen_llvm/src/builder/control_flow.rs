@@ -208,11 +208,13 @@ impl<'ll> CodeGenIRBuilder<'ll> {
     fn emit_switch_on_enum(&mut self, switch_stmt: &CIRSwitchStmt) {
         let lvalue = self.emit_expr(&switch_stmt.value, &None);
         let rvalue = self.load_rvalue(lvalue);
-        let enum_type = rvalue.ty.as_enum().unwrap();
 
-        // enum has only tag (no payload)? optimize
+        let type_id = rvalue.ty.as_type_id().unwrap();
+        let enum_type = rvalue.ty.as_enum(&self.tctx).unwrap();
+
+        // enum has only tag (no payload)? then optimize
         {
-            let ty = self.emit_enum_type(enum_type.clone());
+            let ty = self.emit_enum_type(type_id);
 
             if ty.is_int_type() {
                 let enum_value = rvalue.as_basic_value().into_int_value();
@@ -252,7 +254,9 @@ impl<'ll> CodeGenIRBuilder<'ll> {
             .build_switch(enum_idx_int_value, else_block, &[])
             .unwrap();
 
-        let tag_type = self.emit_type(*enum_type.tag_type_or_infer_or_default()).into_int_type();
+        let tag_type = self
+            .emit_type(*enum_type.tag_type_or_infer_or_default())
+            .into_int_type();
 
         let mut cases: Vec<(IntValue<'ll>, BasicBlock<'ll>)> = Vec::new();
 
@@ -269,6 +273,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
 
                 match payload {
                     CIRVariantPayload::Unit => { /* no payload */ }
+
                     CIRVariantPayload::Single(irv_id, cir_type) => {
                         self.emit_block(case_block);
 
@@ -283,11 +288,12 @@ impl<'ll> CodeGenIRBuilder<'ll> {
 
                         self.insert_local_ir_value(*irv_id, LocalIRValue::LValue(alloca, cir_type.clone()));
                     }
+
                     CIRVariantPayload::Fields {
                         struct_type,
                         exported_fields,
                     } => {
-                        let type_id = self.tctx.register(CIRType::Struct(struct_type.clone()));
+                        let type_id = self.tctx.insert_struct(struct_type.clone());
                         let layout = self.tctx.get_or_compute_layout(type_id);
 
                         self.emit_block(case_block);
@@ -364,7 +370,9 @@ impl<'ll> CodeGenIRBuilder<'ll> {
 
         let rvalue_type = &switch_stmt.value.ty;
 
-        if let CIRType::Enum(enum_type) = rvalue_type {
+        if let CIRType::Enum(type_id) = rvalue_type {
+            let enum_type = self.tctx.get_enum(*type_id);
+
             if enum_type.is_scalar_optimizable() {
                 let enum_value = rvalue.as_basic_value().into_int_value();
 
@@ -818,7 +826,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         let sret_ptr = sret_param.into_pointer_value();
 
         let struct_type = rvalue.ty.clone();
-        let type_id = self.tctx.register(struct_type.clone());
+        let type_id = struct_type.as_type_id().unwrap();
         let struct_layout = self.tctx.get_or_compute_layout(type_id);
 
         let size_val = self.llvm_ctx.i64_type().const_int(struct_layout.size as u64, false);

@@ -112,7 +112,7 @@ pub fn substitute_sema_type_with_type_args(
             let elements = tuple
                 .elements
                 .iter()
-                .map(|ty| substitute_sema_type_with_type_args(ty, generic_params, type_args))
+                .map(|(ty, loc)| (substitute_sema_type_with_type_args(ty, generic_params, type_args), *loc))
                 .collect();
 
             SemaType::Tuple(TypedTupleType {

@@ -1354,14 +1354,14 @@ impl<'ll> CodeGenIRBuilder<'ll> {
             }
         };
 
-        let struct_type = ty.as_struct(&self.tctx).unwrap();
+        let type_id = ty.as_type_id().unwrap();
         let layout = self.tctx.layout_of(&ty);
 
         let llvm_field_index = layout
             .lookup_field_index(field_index)
             .expect("layout must contain field");
 
-        let llvm_struct_type = self.emit_struct_type(struct_type);
+        let llvm_struct_type = self.emit_struct_type(type_id);
 
         match operand.kind {
             InternalValueKind::LValue(ptr_value) => {
@@ -1390,19 +1390,22 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         let operand_value = self.emit_expr(&tuple_access.operand, &None);
 
         let ty = &operand_value.ty;
+        let type_id = ty.as_type_id().unwrap();
+
         let cir_struct_type = ty.as_struct(&self.tctx).unwrap();
         let layout = self.tctx.layout_of(ty);
 
         let field_index = layout.lookup_field_index(tuple_access.index).unwrap();
 
-        let llvm_tuple_type = self.emit_tuple_type(cir_struct_type.clone());
         let cir_field_type = &cir_struct_type.fields[tuple_access.index];
+
+        let struct_type = self.emit_struct_type(type_id);
 
         match operand_value.kind {
             InternalValueKind::LValue(addr) => {
                 let field_addr = self
                     .llvmbuilder
-                    .build_struct_gep(llvm_tuple_type, addr, field_index, "tuple_gep")
+                    .build_struct_gep(struct_type, addr, field_index, "tuple_gep")
                     .unwrap();
 
                 InternalValue::new(cir_field_type.clone(), InternalValueKind::LValue(field_addr))
@@ -1438,26 +1441,27 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         enum_init_expr: &CIREnumInitExpr,
         enum_type: &CIREnumType,
     ) -> InternalValue<'ll> {
+        let ty = enum_init_expr.enum_type.clone();
+
         let cir_tag_type = enum_type.tag_type_or_infer_or_default();
         let tag_type = self.emit_type(*cir_tag_type.clone()).into_int_type();
         let tag_value = tag_type.const_int(enum_init_expr.tag.try_into().unwrap(), cir_tag_type.is_signed_integer());
 
-        InternalValue::new(
-            CIRType::Enum(enum_type.clone()),
-            InternalValueKind::RValue(tag_value.as_basic_value_enum()),
-        )
+        InternalValue::new(ty, InternalValueKind::RValue(tag_value.as_basic_value_enum()))
     }
 
     fn emit_enum_init(&mut self, enum_init_expr: &CIREnumInitExpr) -> InternalValue<'ll> {
-        let enum_type = &enum_init_expr.enum_type;
+        let ty = &enum_init_expr.enum_type;
+        let type_id = enum_init_expr.enum_type.as_type_id().unwrap();
+        let enum_type = enum_init_expr.enum_type.as_enum(&self.tctx).unwrap();
 
         // handle c-compatible enum init
         if enum_type.is_scalar_optimizable() {
-            return self.emit_repr_c_enum_init(enum_init_expr, enum_type);
+            return self.emit_repr_c_enum_init(enum_init_expr, &enum_type);
         }
 
-        let enum_struct_ty = self.emit_enum_type(enum_type.clone()).into_struct_type();
-        let (payload_ty, _) = self.emit_enum_buffer_payload_ty(enum_type);
+        let enum_struct_ty = self.emit_enum_type(type_id).into_struct_type();
+        let (payload_type, _) = self.emit_enum_buffer_payload_type(&enum_type);
 
         let mut enum_value = enum_struct_ty.get_undef();
 
@@ -1473,7 +1477,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
 
         match &enum_init_expr.variant {
             CIREnumInitVariant::Unit => {
-                let zero_payload = payload_ty.const_zero();
+                let zero_payload = payload_type.const_zero();
                 enum_value = self
                     .llvmbuilder
                     .build_insert_value(enum_value, zero_payload, 1, "enum.zero_payload")
@@ -1484,7 +1488,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
                 let lvalue = self.emit_expr(expr, &None);
                 let rvalue = self.load_rvalue(lvalue);
 
-                let copied_payload = self.intrinsic_copy_payload_to_buffer(rvalue.as_basic_value(), payload_ty);
+                let copied_payload = self.intrinsic_copy_payload_to_buffer(rvalue.as_basic_value(), payload_type);
 
                 enum_value = self
                     .llvmbuilder
@@ -1514,7 +1518,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
                 }
 
                 let copied_payload =
-                    self.intrinsic_copy_payload_to_buffer(payload_value.as_basic_value_enum(), payload_ty);
+                    self.intrinsic_copy_payload_to_buffer(payload_value.as_basic_value_enum(), payload_type);
 
                 enum_value = self
                     .llvmbuilder
@@ -1524,14 +1528,18 @@ impl<'ll> CodeGenIRBuilder<'ll> {
             }
         }
 
-        InternalValue::new(
-            CIRType::Enum(enum_init_expr.enum_type.clone()),
-            InternalValueKind::RValue(enum_value.as_basic_value_enum()),
-        )
+        InternalValue::new(ty.clone(), InternalValueKind::RValue(enum_value.as_basic_value_enum()))
     }
 
-    pub(crate) fn emit_union_init(&self, union_ty: &CIRUnionType, ptr: PointerValue<'ll>, rvalue: InternalValue<'ll>) {
-        let llvm_union_type = self.emit_union_type(union_ty.clone());
+    pub(crate) fn emit_union_init(
+        &self,
+        union_type: &CIRUnionType,
+        ptr: PointerValue<'ll>,
+        rvalue: InternalValue<'ll>,
+    ) {
+        let type_id = self.tctx.insert_union(union_type.clone());
+
+        let llvm_union_type = self.emit_union_type(type_id);
 
         // union-to-union copy
         if rvalue.ty.is_union() {
@@ -1667,10 +1675,12 @@ impl<'ll> CodeGenIRBuilder<'ll> {
     }
 
     fn emit_struct_init(&mut self, struct_init: &CIRStructInitExpr) -> InternalValue<'ll> {
-        let type_id = self.tctx.register(CIRType::Struct(struct_init.ty.clone()));
-        let layout = self.tctx.get_or_compute_layout(type_id);
+        let ty = &struct_init.ty;
+        let type_id = ty.as_type_id().unwrap();
+        let layout = self.tctx.layout_of(ty);
 
-        let struct_type = self.emit_struct_type(struct_init.ty.clone());
+        let cir_struct_type = self.tctx.get_struct(type_id);
+        let struct_type = self.emit_struct_type(type_id);
 
         let mut all_const = true;
         let mut values: Vec<(Option<usize>, InternalValue<'ll>)> = Vec::new();
@@ -1678,14 +1688,14 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         for field_offset in &layout.field_offsets {
             match field_offset {
                 ABIFieldOffsetInfo::Normal { original_index, .. } => {
-                    let cir_field_type = &struct_init.ty.fields[*original_index];
+                    let cir_field_type = &cir_struct_type.fields[*original_index];
 
                     let expr = &struct_init.fields[*original_index];
                     let lvalue = self.emit_expr(expr, &Some(cir_field_type.clone()));
                     let mut rvalue = self.load_rvalue(lvalue);
 
                     let field_original_index = field_offset.original_index().unwrap();
-                    let target_type = struct_init.ty.fields.get(field_original_index).unwrap();
+                    let target_type = cir_struct_type.fields.get(field_original_index).unwrap();
 
                     if !self.llvmbuilder.get_insert_block().is_none() {
                         rvalue = self.emit_implicit_cast(target_type, rvalue);
@@ -1716,19 +1726,17 @@ impl<'ll> CodeGenIRBuilder<'ll> {
 
         let mut struct_value: StructValue<'ll>;
 
-        if must_init_via_memcpy(&struct_init.ty.fields) {
+        if must_init_via_memcpy(&cir_struct_type.fields) {
             let field_values = values
                 .iter()
                 .filter_map(|(original_index, value)| {
                     original_index.map(|i| {
-                        let field_ty = struct_init.ty.fields[i].clone();
-                        ((Some(i), value.clone()), field_ty)
+                        let field_type = cir_struct_type.fields[i].clone();
+
+                        ((Some(i), value.clone()), field_type)
                     })
                 })
                 .collect::<Vec<_>>();
-
-            let type_id = self.tctx.register(CIRType::Struct(struct_init.ty.clone()));
-            let layout = self.tctx.get_or_compute_layout(type_id);
 
             struct_value = self.emit_struct_init_via_memcpy(&layout, struct_type, &field_values);
         } else {
@@ -1757,10 +1765,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
             }
         }
 
-        InternalValue::new(
-            CIRType::Struct(struct_init.ty.clone()),
-            InternalValueKind::RValue(struct_value.into()),
-        )
+        InternalValue::new(ty.clone(), InternalValueKind::RValue(struct_value.into()))
     }
 
     fn emit_struct_init_via_memcpy(
@@ -1980,7 +1985,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
 
             let fat_ptr_struct_value = fat_ptr_value.as_basic_value().into_struct_value();
 
-            let struct_type = fat_ptr_value.ty.as_struct().unwrap();
+            let struct_type = fat_ptr_value.ty.as_struct(&self.tctx).unwrap();
             let data_type = struct_type.fields.first().cloned().unwrap();
 
             debug_assert!(data_type.is_pointer()); // always `void*`

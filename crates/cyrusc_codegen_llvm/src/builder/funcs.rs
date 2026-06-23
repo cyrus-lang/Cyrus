@@ -202,7 +202,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
 
                     let param_alloca = self.llvmbuilder.build_alloca(struct_type, "param").unwrap();
 
-                    let fields_cir_types = param.ty.struct_or_union_fields().unwrap();
+                    let fields_cir_types = param.ty.struct_or_union_fields(&self.tctx).unwrap();
 
                     match kind {
                         ExpandKind::Simple => {
@@ -647,7 +647,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         param_types: &[ABIType],
     ) {
         let struct_value = rvalue.as_basic_value().into_struct_value();
-        let fields_cir_types = rvalue.ty.struct_or_union_fields().unwrap();
+        let fields_cir_types = rvalue.ty.struct_or_union_fields(&self.tctx).unwrap();
 
         match kind {
             ExpandKind::Simple => {

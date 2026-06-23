@@ -12,7 +12,7 @@ use cyrusc_internal::abi::args::{ABIArgKind, ABIFunctionInfo, ExpandKind};
 use cyrusc_internal::abi::layout::ABIFieldOffsetInfo;
 use cyrusc_internal::cir::cir::CIREnumVariant;
 use cyrusc_internal::cir::typectx::CIRTypeContextID;
-use cyrusc_internal::cir::types::{CIRArrayType, CIREnumType, CIRFuncType, CIRStructType, CIRType};
+use cyrusc_internal::cir::types::{CIRArrayType, CIREnumType, CIRFuncType, CIRType};
 use cyrusc_typed_ast::types::PlainType;
 use inkwell::llvm_sys::prelude::{LLVMMetadataRef, LLVMTypeRef};
 use inkwell::{
@@ -30,9 +30,9 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         }
 
         match ty {
-            &CIRType::Plain(plain_type) => {
+            CIRType::Plain(plain_type) => {
                 let name = plain_type.to_string();
-                let layout = self.tctx.layout_of(&CIRType::Plain(plain_type));
+                let layout = self.tctx.layout_of(&CIRType::Plain(plain_type.clone()));
                 let bits = layout.size * 8;
 
                 let encoding = match plain_type {
@@ -160,14 +160,10 @@ impl<'ll> CodeGenIRBuilder<'ll> {
                                 CIREnumVariant::Valued(_, _, tag) => {
                                     (ident.clone(), *tag as i64, std::ptr::null_mut() as LLVMMetadataRef)
                                 }
-                                CIREnumVariant::Payload(_, elements, tag) => {
-                                    let tuple_type = CIRTupleType {
-                                        elements: elements.to_vec(),
-                                        loc: enum_type.loc,
-                                    };
+                                CIREnumVariant::Payload(_, struct_type, tag) => {
+                                    let type_id = self.tctx.insert_struct(struct_type.clone());
 
-                                    let tuple_type_metadata =
-                                        self.emit_debug_type_metadata(&CIRType::Tuple(tuple_type));
+                                    let tuple_type_metadata = self.emit_debug_type_metadata(&CIRType::Struct(type_id));
 
                                     (ident.clone(), *tag as i64, tuple_type_metadata)
                                 }
@@ -338,8 +334,8 @@ impl<'ll> CodeGenIRBuilder<'ll> {
             match field_offset {
                 ABIFieldOffsetInfo::Normal { .. } => {
                     // get the next actual field from the struct
-                    let field_ty = &struct_type.fields[next_field_index];
-                    let llvm_ty: BasicTypeEnum<'ll> = self.emit_type(field_ty.clone()).try_into().unwrap();
+                    let field_type = &struct_type.fields[next_field_index];
+                    let llvm_ty: BasicTypeEnum<'ll> = self.emit_type(field_type.clone()).try_into().unwrap();
                     llvm_field_types.push(llvm_ty);
                     next_field_index += 1;
                 }
@@ -370,35 +366,15 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         }
 
         let variant = &enum_type.variants[variant_idx];
-        let fields = variant.as_fielded()?.clone();
 
-        let fields_info = fields
-            .iter()
-            .enumerate()
-            .map(|(i, _)| {
-                // FIXME: Expected to have exact location of the element
-                // but hence it's not implemented correctly in the AST
-                // using tuple_type.loc for now.
-                (i.to_string(), enum_type.loc)
-            })
-            .collect();
-
-        let struct_type = CIRStructType {
-            decl_key: None,
-            name: None,
-            fields,
-            fields_info,
-            repr_attr: None,
-            align: None,
-            loc: enum_type.loc,
-        };
+        let struct_type = variant.as_payload()?.clone();
 
         let type_id = self.tctx.insert_struct(struct_type);
 
         Some(self.emit_struct_type(type_id))
     }
 
-    pub(crate) fn emit_enum_buffer_payload_ty(&self, enum_type: &CIREnumType) -> (ArrayType<'ll>, u64) {
+    pub(crate) fn emit_enum_buffer_payload_type(&self, enum_type: &CIREnumType) -> (ArrayType<'ll>, u64) {
         let target_data = self.llvmtm.get_target_data();
         let mut max_payload_size: u64 = 0;
         let mut max_payload_align: u64 = 1;
@@ -412,12 +388,12 @@ impl<'ll> CodeGenIRBuilder<'ll> {
                     let align = target_data.get_abi_alignment(&llvm_ty) as u64;
                     (size, align)
                 }
-                CIREnumVariant::Payload(_, field_tys, _) => {
-                    if field_tys.is_empty() {
+                CIREnumVariant::Payload(_, struct_type, _) => {
+                    if struct_type.fields.is_empty() {
                         (0, 1)
                     } else {
                         let llvm_fields: Vec<BasicTypeEnum<'ll>> = self
-                            .emit_types(field_tys)
+                            .emit_types(&struct_type.fields)
                             .iter()
                             .map(|ty| (*ty).try_into().unwrap())
                             .collect();
@@ -470,7 +446,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
             let cir_tag_type = enum_type.tag_type_or_infer_or_default();
             let tag_type: BasicTypeEnum<'ll> = self.emit_type(*cir_tag_type.clone()).try_into().unwrap();
 
-            let (payload_ty, _) = self.emit_enum_buffer_payload_ty(&enum_type);
+            let (payload_ty, _) = self.emit_enum_buffer_payload_type(&enum_type);
             self.llvm_ctx
                 .struct_type(&[tag_type.as_basic_type_enum(), payload_ty.into()], false)
                 .as_basic_type_enum()
@@ -487,8 +463,8 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         let mut max_align = 0;
         let mut max_size = 0;
 
-        for field_ty in &union_type.fields {
-            let llvm_ty: BasicTypeEnum = self.emit_type(field_ty.clone()).try_into().unwrap();
+        for field_type in &union_type.fields {
+            let llvm_ty: BasicTypeEnum = self.emit_type(field_type.clone()).try_into().unwrap();
 
             let align = target_data.get_abi_alignment(&llvm_ty);
             let size = target_data.get_store_size(&llvm_ty);

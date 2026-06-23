@@ -62,18 +62,11 @@ impl<'a> AnalysisContext<'a> {
 
         let mut path = Vec::new();
 
-        for (i, (pattern, sema_type)) in patterns.iter().zip(tuple_type.elements.iter()).enumerate() {
+        for (i, (pattern, (ty, _))) in patterns.iter().zip(tuple_type.elements.iter()).enumerate() {
             path.clear();
             path.push(i);
 
-            self.analyze_tuple_pattern(
-                pattern,
-                sema_type,
-                rhs,
-                export_tuple.is_const,
-                export_tuple.loc,
-                &mut path,
-            );
+            self.analyze_tuple_pattern(pattern, ty, rhs, export_tuple.is_const, export_tuple.loc, &mut path);
         }
 
         Some(())
@@ -170,9 +163,9 @@ impl<'a> AnalysisContext<'a> {
                     return;
                 }
 
-                for (i, (sub_pattern, sub_ty)) in patterns.iter().zip(&tuple_type.elements).enumerate() {
+                for (i, (sub_pattern, (sub_type, _))) in patterns.iter().zip(&tuple_type.elements).enumerate() {
                     path.push(i);
-                    self.analyze_tuple_pattern(sub_pattern, sub_ty, root_expr, stmt_is_const, loc, path);
+                    self.analyze_tuple_pattern(sub_pattern, sub_type, root_expr, stmt_is_const, loc, path);
                     path.pop();
                 }
             }
@@ -191,7 +184,7 @@ impl<'a> AnalysisContext<'a> {
 
         for element in elements {
             if let Some(ty) = &element.ty {
-                result_type.push(ty.clone());
+                result_type.push((ty.clone(), element.loc));
                 has_explicit_type = true;
                 continue;
             }
@@ -199,14 +192,15 @@ impl<'a> AnalysisContext<'a> {
             match &element.kind {
                 TypedTupleExportPatternKind::Tuple(_) => {
                     if let Some(inner) = self.build_expected_tuple_type_from_pattern(element) {
-                        result_type.push(inner);
+                        result_type.push((inner, element.loc));
+
                         has_explicit_type = true;
                     } else {
-                        result_type.push(self.func_env.infer.as_mut().unwrap().new_var());
+                        result_type.push((self.func_env.infer.as_mut().unwrap().new_var(), element.loc));
                     }
                 }
                 _ => {
-                    result_type.push(self.func_env.infer.as_mut().unwrap().new_var());
+                    result_type.push((self.func_env.infer.as_mut().unwrap().new_var(), element.loc));
                 }
             }
         }
@@ -235,7 +229,7 @@ impl<'a> AnalysisContext<'a> {
                 break;
             };
 
-            let element_type = tuple_type.elements.get(index).cloned().unwrap();
+            let (element_type, _) = tuple_type.elements.get(index).cloned().unwrap();
 
             expr = TypedExpr {
                 kind: TypedExprKind::TupleAccess(TypedTupleAccessExpr {

@@ -282,7 +282,10 @@ impl<'a> AnalysisContext<'a> {
         let elements: Vec<_> = tuple_type
             .elements
             .into_iter()
-            .filter_map(|ty| self.normalize_sema_type(ty, tuple_type.loc, indirection))
+             .filter_map(|(ty, loc)| {
+                self.normalize_sema_type(ty, tuple_type.loc, indirection)
+                    .map(|ty| (ty, loc))
+            })
             .collect();
 
         // if we lost any types, return None

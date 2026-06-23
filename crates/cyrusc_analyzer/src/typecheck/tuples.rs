@@ -19,7 +19,7 @@ impl<'a> AnalysisContext<'a> {
         tuple_value: &mut TypedTupleExpr,
         expected_type: Option<SemaType>,
     ) -> Option<SemaType> {
-        let mut elements: Vec<SemaType> = Vec::new();
+        let mut elements = Vec::new();
 
         let tuple_type_opt = match expected_type {
             Some(sema_type) => sema_type.as_tuple_type().cloned(),
@@ -30,11 +30,13 @@ impl<'a> AnalysisContext<'a> {
             let mut expected_type: Option<SemaType> = None;
 
             if let Some(tuple_type) = &tuple_type_opt {
-                expected_type = tuple_type.elements.get(i).cloned();
+                expected_type = tuple_type.elements.get(i).cloned().map(|(ty, _)| ty);
             }
 
             match self.analyze_expr(expr, expected_type) {
-                Some(sema_type) => elements.push(sema_type),
+                Some(ty) => {
+                    elements.push((ty, expr.loc))
+                },
                 None => continue,
             }
         }
@@ -84,7 +86,7 @@ impl<'a> AnalysisContext<'a> {
             return None;
         }
 
-        let element_type = tuple_type.elements.get(tuple_member_access.index).unwrap();
+        let (element_type, _) = tuple_type.elements.get(tuple_member_access.index).unwrap();
 
         Some(element_type.clone())
     }

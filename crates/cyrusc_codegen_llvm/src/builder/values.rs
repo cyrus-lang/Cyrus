@@ -65,8 +65,7 @@ impl<'a> InternalValue<'a> {
 
 impl<'ll> CodeGenIRBuilder<'ll> {
     pub(crate) fn emit_store(&self, ptr: PointerValue<'ll>, mut rvalue: InternalValue<'ll>, target_cir_type: CIRType) {
-        let type_id = self.tctx.register(target_cir_type.clone());
-        let layout = self.tctx.get_or_compute_layout(type_id);
+        let layout = self.tctx.layout_of(&target_cir_type);
 
         // IMPORTANT!!
         // If you store null or a value in a zero-sized type, it will cause severe issues (UB)
@@ -75,7 +74,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         }
 
         if target_cir_type.is_union() {
-            self.emit_union_init(&target_cir_type.as_union().as_ref().unwrap(), ptr, rvalue);
+            self.emit_union_init(&target_cir_type.as_union(&self.tctx).as_ref().unwrap(), ptr, rvalue);
             return;
         }
 

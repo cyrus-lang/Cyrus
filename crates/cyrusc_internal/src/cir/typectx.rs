@@ -66,7 +66,7 @@ impl CIRTypeContext {
 
     pub fn insert_type_placeholder(&self) -> CIRTypeContextID {
         let mut defs = self.defs.write().unwrap();
-        let id = CIRTypeContextID(defs.len());
+        let type_id = CIRTypeContextID(defs.len());
         defs.push(CIRTypeDef::Struct(CIRStructType {
             decl_key: None,
             name: None,
@@ -76,121 +76,121 @@ impl CIRTypeContext {
             align: None,
             loc: Loc::default(FileID(0)),
         }));
-        id
+        type_id
     }
 
     #[inline]
-    pub fn resolve_placeholder(&self, id: CIRTypeContextID, def: CIRTypeDef) {
+    pub fn resolve_placeholder(&self, type_id: CIRTypeContextID, def: CIRTypeDef) {
         let mut defs = self.defs.write().unwrap();
-        defs[id.0] = def;
+        defs[type_id.0] = def;
     }
 
     pub fn insert_struct(&self, struct_type: CIRStructType) -> CIRTypeContextID {
         let key = self.struct_key(&struct_type);
         {
             let key_to_id = self.key_to_id.read().unwrap();
-            if let Some(&id) = key_to_id.get(&key) {
-                return id;
+            if let Some(&type_id) = key_to_id.get(&key) {
+                return type_id;
             }
         }
         let mut defs = self.defs.write().unwrap();
         let mut key_to_id = self.key_to_id.write().unwrap();
-        if let Some(&id) = key_to_id.get(&key) {
-            return id;
+        if let Some(&type_id) = key_to_id.get(&key) {
+            return type_id;
         }
-        let id = CIRTypeContextID(defs.len());
+        let type_id = CIRTypeContextID(defs.len());
         defs.push(CIRTypeDef::Struct(struct_type));
-        key_to_id.insert(key, id);
-        id
+        key_to_id.insert(key, type_id);
+        type_id
     }
 
     pub fn insert_union(&self, union_type: CIRUnionType) -> CIRTypeContextID {
         let key = self.union_key(&union_type);
         {
             let key_to_id = self.key_to_id.read().unwrap();
-            if let Some(&id) = key_to_id.get(&key) {
-                return id;
+            if let Some(&type_id) = key_to_id.get(&key) {
+                return type_id;
             }
         }
         let mut defs = self.defs.write().unwrap();
         let mut key_to_id = self.key_to_id.write().unwrap();
-        if let Some(&id) = key_to_id.get(&key) {
-            return id;
+        if let Some(&type_id) = key_to_id.get(&key) {
+            return type_id;
         }
-        let id = CIRTypeContextID(defs.len());
+        let type_id = CIRTypeContextID(defs.len());
         defs.push(CIRTypeDef::Union(union_type));
-        key_to_id.insert(key, id);
-        id
+        key_to_id.insert(key, type_id);
+        type_id
     }
 
     pub fn insert_enum(&self, enum_type: CIREnumType) -> CIRTypeContextID {
         let key = self.enum_key(&enum_type);
         {
             let key_to_id = self.key_to_id.read().unwrap();
-            if let Some(&id) = key_to_id.get(&key) {
-                return id;
+            if let Some(&type_id) = key_to_id.get(&key) {
+                return type_id;
             }
         }
         let mut defs = self.defs.write().unwrap();
         let mut key_to_id = self.key_to_id.write().unwrap();
-        if let Some(&id) = key_to_id.get(&key) {
-            return id;
+        if let Some(&type_id) = key_to_id.get(&key) {
+            return type_id;
         }
-        let id = CIRTypeContextID(defs.len());
+        let type_id = CIRTypeContextID(defs.len());
         defs.push(CIRTypeDef::Enum(enum_type));
-        key_to_id.insert(key, id);
-        id
+        key_to_id.insert(key, type_id);
+        type_id
     }
 
     #[inline]
-    pub fn get_struct(&self, id: CIRTypeContextID) -> CIRStructType {
+    pub fn get_struct(&self, type_id: CIRTypeContextID) -> CIRStructType {
         let defs = self.defs.read().unwrap();
 
-        match &defs[id.0] {
+        match &defs[type_id.0] {
             CIRTypeDef::Struct(struct_type) => struct_type.clone(),
             _ => panic!("not a struct"),
         }
     }
 
     #[inline]
-    pub fn get_union(&self, id: CIRTypeContextID) -> CIRUnionType {
+    pub fn get_union(&self, type_id: CIRTypeContextID) -> CIRUnionType {
         let defs = self.defs.read().unwrap();
 
-        match &defs[id.0] {
+        match &defs[type_id.0] {
             CIRTypeDef::Union(union_type) => union_type.clone(),
             _ => panic!("not a union"),
         }
     }
 
     #[inline]
-    pub fn get_enum(&self, id: CIRTypeContextID) -> CIREnumType {
+    pub fn get_enum(&self, type_id: CIRTypeContextID) -> CIREnumType {
         let defs = self.defs.read().unwrap();
 
-        match &defs[id.0] {
+        match &defs[type_id.0] {
             CIRTypeDef::Enum(enum_type) => enum_type.clone(),
             _ => panic!("not an enum"),
         }
     }
 
-    pub fn get_or_compute_layout(&self, id: CIRTypeContextID) -> ABITypeLayout {
+    pub fn get_or_compute_layout(&self, type_id: CIRTypeContextID) -> ABITypeLayout {
         {
             let cache = self.layouts.read().unwrap();
-            if let Some(layout) = cache.get(&id) {
+            if let Some(layout) = cache.get(&type_id) {
                 return layout.clone();
             }
         }
-        let layout = self.compute_layout_for_def(id);
-        self.layouts.write().unwrap().insert(id, layout.clone());
+        let layout = self.compute_layout_for_def(type_id);
+        self.layouts.write().unwrap().insert(type_id, layout.clone());
         layout
     }
 
-    fn compute_layout_for_def(&self, id: CIRTypeContextID) -> ABITypeLayout {
+    fn compute_layout_for_def(&self, type_id: CIRTypeContextID) -> ABITypeLayout {
         let defs = self.defs.read().unwrap();
-        let def = &defs[id.0];
+        let def = &defs[type_id.0];
         let cir_type = match def {
-            CIRTypeDef::Struct(_) => CIRType::Struct(id),
-            CIRTypeDef::Union(_) => CIRType::Union(id),
-            CIRTypeDef::Enum(_) => CIRType::Enum(id),
+            CIRTypeDef::Struct(_) => CIRType::Struct(type_id),
+            CIRTypeDef::Union(_) => CIRType::Union(type_id),
+            CIRTypeDef::Enum(_) => CIRType::Enum(type_id),
         };
         type_layout(&self.target_info, &cir_type)
     }
@@ -245,8 +245,9 @@ impl CIRTypeContext {
             .map(|v| match v {
                 CIREnumVariant::Unit(..) => EnumVariantKey::Unit,
                 CIREnumVariant::Valued(_, ty, _) => EnumVariantKey::Valued(Box::new(self.type_to_key(ty))),
-                CIREnumVariant::Payload(_, fields, _) => {
-                    let keys: Vec<CIRTypeKey> = fields.iter().map(|f| self.type_to_key(f)).collect();
+                CIREnumVariant::Payload(_, struct_type, _) => {
+                    let keys: Vec<CIRTypeKey> = struct_type.fields.iter().map(|f| self.type_to_key(f)).collect();
+
                     EnumVariantKey::Payload(keys)
                 }
             })
@@ -263,23 +264,23 @@ impl CIRTypeContext {
             CIRType::Const(inner) => CIRTypeKey::Pointer(Box::new(self.type_to_key(inner))), // Const not stored, flatten
             CIRType::Pointer(inner) => CIRTypeKey::Pointer(Box::new(self.type_to_key(inner))),
             CIRType::Array(arr) => CIRTypeKey::Array(Box::new(self.type_to_key(&arr.element_type)), arr.len),
-            CIRType::Struct(id) => {
+            CIRType::Struct(type_id) => {
                 let defs = self.defs.read().unwrap();
-                match &defs[id.0] {
+                match &defs[type_id.0] {
                     CIRTypeDef::Struct(s) => self.struct_key(s),
                     _ => unreachable!(),
                 }
             }
-            CIRType::Union(id) => {
+            CIRType::Union(type_id) => {
                 let defs = self.defs.read().unwrap();
-                match &defs[id.0] {
+                match &defs[type_id.0] {
                     CIRTypeDef::Union(u) => self.union_key(u),
                     _ => unreachable!(),
                 }
             }
-            CIRType::Enum(id) => {
+            CIRType::Enum(type_id) => {
                 let defs = self.defs.read().unwrap();
-                match &defs[id.0] {
+                match &defs[type_id.0] {
                     CIRTypeDef::Enum(e) => self.enum_key(e),
                     _ => unreachable!(),
                 }

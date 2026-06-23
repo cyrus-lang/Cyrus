@@ -40,8 +40,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         let global_value = llvm_module.add_global(ty, None, &cir_global_var.name);
         drop(llvm_module);
 
-        let type_id = self.tctx.register(cir_global_var.ty.clone());
-        let layout = self.tctx.get_or_compute_layout(type_id);
+        let layout = self.tctx.layout_of(&cir_global_var.ty);
 
         self.emit_debug_global_var(&layout, &global_value, cir_global_var);
 
@@ -97,8 +96,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
 // Var.
 impl<'ll> CodeGenIRBuilder<'ll> {
     pub(crate) fn emit_var(&mut self, cir_var: &CIRVarStmt) {
-        let type_id = self.tctx.register(cir_var.ty.clone());
-        let layout = self.tctx.get_or_compute_layout(type_id);
+        let layout = self.tctx.layout_of(&cir_var.ty);
 
         let ty: BasicTypeEnum<'ll> = self.emit_type(cir_var.ty.clone()).try_into().unwrap();
 

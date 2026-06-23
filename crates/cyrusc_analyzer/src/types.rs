@@ -34,21 +34,27 @@ impl<'a> AnalysisContext<'a> {
     pub(crate) fn sema_type_contains_self_by_value(&self, field_type: &SemaType, named_type: NamedType) -> bool {
         match field_type {
             SemaType::Unresolved(_) => unreachable!(),
+
             SemaType::Named(_named_type) => *_named_type == named_type,
+
             SemaType::Pointer(_) => {
                 false // indirect
             }
+
             SemaType::FuncType(_) => {
                 // func type lowered as pointer-size value in codegen,
                 // hence it's never harmful for self-recursion situations.
                 false
             }
+
             SemaType::Const(inner) => self.sema_type_contains_self_by_value(inner, named_type),
+
             SemaType::Array(array_type) => self.sema_type_contains_self_by_value(&array_type.element_type, named_type),
+
             SemaType::Tuple(tuple_type) => tuple_type
                 .elements
                 .iter()
-                .any(|ty| self.sema_type_contains_self_by_value(ty, named_type.clone())),
+                .any(|(ty, _)| self.sema_type_contains_self_by_value(ty, named_type.clone())),
 
             SemaType::InterfaceObject(_)
             | SemaType::SelfType(_)
@@ -472,7 +478,7 @@ impl<'a> AnalysisContext<'a> {
                     self.tctx.clone(),
                     enum_decl_id,
                     &enum_decl,
-                    named_type.type_args.clone()
+                    named_type.type_args.clone(),
                 );
 
                 let cir_enum_type = ty.as_enum(&self.tctx).unwrap();
@@ -606,7 +612,7 @@ impl<'a> AnalysisContext<'a> {
                     .elements
                     .clone()
                     .into_iter()
-                    .map(|ty| self.expand_sema_type(ty, loc))
+                    .map(|(ty, loc)| (self.expand_sema_type(ty, loc), loc))
                     .collect();
 
                 SemaType::Tuple(TypedTupleType {
@@ -744,7 +750,7 @@ impl<'a> AnalysisContext<'a> {
                     let elements = tuple_type
                         .elements
                         .iter()
-                        .map(|ty| coerce_recursively(this, ty, interface_object, loc))
+                        .map(|(ty, loc)| (coerce_recursively(this, ty, interface_object, *loc), *loc))
                         .collect();
 
                     SemaType::Tuple(TypedTupleType {
@@ -848,8 +854,8 @@ impl<'a> AnalysisContext<'a> {
                     check_recursively(this, &func_type.ret_type, loc, has_error);
                 }
                 SemaType::Tuple(tuple_type) => {
-                    for el in &tuple_type.elements {
-                        if el.is_void() {
+                    for (element, _) in &tuple_type.elements {
+                        if element.is_void() {
                             this.reporter.report(Diag {
                                 level: DiagLevel::Error,
                                 kind: Box::new(AnalyzerDiagKind::VoidTupleElementNotAllowed),
@@ -858,7 +864,7 @@ impl<'a> AnalysisContext<'a> {
                             });
                             *has_error = true;
                         }
-                        check_recursively(this, el, loc, has_error);
+                        check_recursively(this, element, loc, has_error);
                     }
                 }
                 SemaType::SelfType(_) => {
@@ -934,8 +940,8 @@ impl<'a> AnalysisContext<'a> {
                     check_recursively(this, &func_type.ret_type, func_type.loc)
                 }
                 SemaType::Tuple(tuple_type) => {
-                    for elem in &tuple_type.elements {
-                        if !check_recursively(this, elem, tuple_type.loc) {
+                    for (element, _) in &tuple_type.elements {
+                        if !check_recursively(this, element, tuple_type.loc) {
                             return false;
                         }
                     }

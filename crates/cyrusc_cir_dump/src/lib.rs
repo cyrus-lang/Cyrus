@@ -601,8 +601,14 @@ impl<'a> CIRPrinter<'a> {
                         CIREnumVariant::Valued(name, _, tag) => {
                             parts.push(format!("{name} = {}", tag));
                         }
-                        CIREnumVariant::Payload(name, types, _) => {
-                            let elements = types.iter().map(|t| self.print_type(t)).collect::<Vec<_>>().join(", ");
+                        CIREnumVariant::Payload(name, struct_type, _) => {
+                            let elements = struct_type
+                                .fields
+                                .iter()
+                                .map(|t| self.print_type(t))
+                                .collect::<Vec<_>>()
+                                .join(", ");
+
                             parts.push(format!("{name}({elements})"));
                         }
                     }

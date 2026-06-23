@@ -181,18 +181,12 @@ pub fn enum_layout(info: &ABITargetInfo, enum_type: &CIREnumType) -> ABITypeLayo
                 let layout = type_layout(info, value_type);
                 (layout.size, layout.align)
             }
-            CIREnumVariant::Payload(_, fields, _) => {
-                let fields_info = fields
-                    .iter()
-                    .enumerate()
-                    .map(|(i, _)| (i.to_string(), enum_type.loc))
-                    .collect();
-
+            CIREnumVariant::Payload(_, struct_type, _) => {
                 let struct_type = CIRStructType {
                     decl_key: None,
                     name: None,
-                    fields: fields.clone(),
-                    fields_info,
+                    fields: struct_type.fields.clone(),
+                    fields_info: struct_type.fields_info.clone(),
                     repr_attr: None,
                     align: None,
                     loc: enum_type.loc,

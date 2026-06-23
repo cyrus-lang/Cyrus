@@ -38,19 +38,14 @@ pub fn lower_sema_type(
             let fields: Vec<CIRType> = tuple_type
                 .elements
                 .iter()
-                .map(|sema_type| lower_sema_type(decl_tables, target, tctx.clone(), sema_type))
+                .map(|(ty, _)| lower_sema_type(decl_tables, target, tctx.clone(), ty))
                 .collect();
 
             let fields_info = tuple_type
                 .elements
                 .iter()
                 .enumerate()
-                .map(|(i, _)| {
-                    // FIXME: Expected to have exact location of the element
-                    // but hence it's not implemented correctly in the AST
-                    // using tuple_type.loc for now.
-                    (i.to_string(), tuple_type.loc)
-                })
+                .map(|(i, &(_, loc))| (i.to_string(), loc))
                 .collect();
 
             let type_id = tctx.insert_struct(CIRStructType {
@@ -407,22 +402,52 @@ fn lower_enum_variant(
             CIREnumVariant::Valued(ident.as_string(), cir_value_type, variant_idx)
         }
         TypedEnumVariant::Tuple { ident, fields } => {
-            let fields = fields
+            let fields_types = fields
                 .iter()
                 .map(|field| lower_sema_type(decl_tables, target, tctx.clone(), &field.ty))
                 .collect();
 
-            CIREnumVariant::Payload(ident.as_string(), fields, variant_idx)
-        }
-        TypedEnumVariant::Struct { ident, fields } => {
-            let fields = fields
+            let fields_info = fields
                 .iter()
-                .map(|struct_variant_field| {
-                    lower_sema_type(decl_tables, target, tctx.clone(), &struct_variant_field.ty)
-                })
+                .enumerate()
+                .map(|(i, field)| (i.to_string(), field.loc))
                 .collect();
 
-            CIREnumVariant::Payload(ident.as_string(), fields, variant_idx)
+            let struct_type = CIRStructType {
+                decl_key: None,
+                name: None,
+                fields: fields_types,
+                fields_info,
+                repr_attr: None,
+                align: None,
+                loc: ident.loc,
+            };
+
+            CIREnumVariant::Payload(ident.as_string(), struct_type, variant_idx)
+        }
+        TypedEnumVariant::Struct { ident, fields } => {
+            let fields_types = fields
+                .iter()
+                .map(|field| lower_sema_type(decl_tables, target, tctx.clone(), &field.ty))
+                .collect();
+
+            let fields_info = fields
+                .iter()
+                .enumerate()
+                .map(|(i, field)| (i.to_string(), field.loc))
+                .collect();
+
+            let struct_type = CIRStructType {
+                decl_key: None,
+                name: None,
+                fields: fields_types,
+                fields_info,
+                repr_attr: None,
+                align: None,
+                loc: ident.loc,
+            };
+
+            CIREnumVariant::Payload(ident.as_string(), struct_type, variant_idx)
         }
     }
 }
