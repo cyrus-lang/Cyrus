@@ -57,6 +57,7 @@ pub(crate) struct CFLoop<'ll> {
     pub cond_block: Option<BasicBlock<'ll>>,
     pub inc_block: Option<BasicBlock<'ll>>,
     pub exit_block: BasicBlock<'ll>,
+    pub defer_depth: usize,
 }
 
 impl<'ll> CFLoop<'ll> {
@@ -64,11 +65,13 @@ impl<'ll> CFLoop<'ll> {
         cond_block: Option<BasicBlock<'ll>>,
         inc_block: Option<BasicBlock<'ll>>,
         exit_block: BasicBlock<'ll>,
+        defer_depth: usize,
     ) -> Self {
         Self {
             cond_block,
             inc_block,
             exit_block,
+            defer_depth,
         }
     }
 }
@@ -468,10 +471,11 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         let inc_block = for_stmt.increment.as_ref().map(|_| self.new_basic_block("for_inc"));
         let body_block = self.new_basic_block("for.body");
         let exit_block = self.new_basic_block("for.exit");
+        let loop_defer_depth = self.defer_stack.len();
+        self.blockreg.control_flow_stack.push(
+            CFEntry::Loop(CFLoop::new(cond_block, inc_block, exit_block, loop_defer_depth))
+        );
 
-        self.blockreg
-            .control_flow_stack
-            .push(CFEntry::Loop(CFLoop::new(cond_block, inc_block, exit_block)));
 
         if let Some(initializer) = &for_stmt.initializer {
             self.emit_var(initializer);
@@ -536,14 +540,14 @@ impl<'ll> CodeGenIRBuilder<'ll> {
 
     pub(crate) fn emit_while(&mut self, while_stmt: &CIRWhileStmt) {
         let cur_fn = self.cur_func.unwrap();
-
         let cond_block = self.llvm_ctx.append_basic_block(cur_fn, "while.cond");
         let body_block = self.llvm_ctx.append_basic_block(cur_fn, "while.body");
         let exit_block = self.llvm_ctx.append_basic_block(cur_fn, "while.exit");
+        let loop_defer_depth = self.defer_stack.len();
+        self.blockreg.control_flow_stack.push(
+            CFEntry::Loop(CFLoop::new(Some(cond_block), None, exit_block, loop_defer_depth))
+        );
 
-        self.blockreg
-            .control_flow_stack
-            .push(CFEntry::Loop(CFLoop::new(Some(cond_block), None, exit_block)));
 
         let cur_block = self.blockreg.cur_block.unwrap();
         self.llvmbuilder.position_at_end(cur_block);
@@ -679,15 +683,13 @@ impl<'ll> CodeGenIRBuilder<'ll> {
 impl<'ll> CodeGenIRBuilder<'ll> {
     pub(crate) fn emit_break(&mut self, _break_stmt: &CIRBreakStmt) {
         let entry = self.blockreg.control_flow_stack.last().unwrap();
-
         let CFEntry::Loop(cf_loop) = entry;
-
-        let exit_block = cf_loop.exit_block;
+        let exit_block   = cf_loop.exit_block;
+        let defer_depth  = cf_loop.defer_depth;
+        
         let cur_block = self.blockreg.cur_block.unwrap();
-
         if cur_block.get_terminator().is_none() {
-
-            self.emit_scope_defers();  //drain defer before branching 
+            self.emit_defers_down_to(defer_depth);
             self.llvmbuilder.build_unconditional_branch(exit_block).unwrap();
         }
         self.blockreg.cur_block = None;
@@ -695,15 +697,13 @@ impl<'ll> CodeGenIRBuilder<'ll> {
 
     pub(crate) fn emit_continue(&mut self, _continue_stmt: &CIRContinueStmt) {
         let entry = self.blockreg.control_flow_stack.last().unwrap();
-
         let CFEntry::Loop(cf_loop) = entry;
-
         let target_block = cf_loop.inc_block.or(cf_loop.cond_block).unwrap();
-
+        let defer_depth  = cf_loop.defer_depth;
+        
         let cur_block = self.blockreg.cur_block.unwrap();
-
         if cur_block.get_terminator().is_none() {
-            self.emit_scope_defers(); //drain current iteration defers before looping back
+            self.emit_defers_down_to(defer_depth + 1);
             self.llvmbuilder.build_unconditional_branch(target_block).unwrap();
         }
         self.blockreg.cur_block = None;
@@ -713,12 +713,13 @@ impl<'ll> CodeGenIRBuilder<'ll> {
 // Labels + Goto Jumps.
 impl<'ll> CodeGenIRBuilder<'ll> {
     pub(crate) fn emit_predefine_labels(&mut self, cir_block: &CIRBlockStmt) {
+        let depth = self.defer_stack.len();
         for cir_stmt in &cir_block.stmts {
             if let CIRStmt::Label(label_stmt) = cir_stmt {
                 let label_basic_block = self.new_basic_block(&format!("label.{}", label_stmt.name));
                 self.blockreg
                     .labels
-                    .insert(label_stmt.label_id.clone(), label_basic_block);
+                    .insert(label_stmt.label_id.clone(), (label_basic_block, depth));
             }
         }
     }
@@ -726,12 +727,12 @@ impl<'ll> CodeGenIRBuilder<'ll> {
     pub(crate) fn emit_label(&mut self, label_stmt: &CIRLabelStmt) {
         if let Some(parent_block) = self.blockreg.cur_block {
             if parent_block.get_terminator().is_none() {
-                let label_block = self.blockreg.labels.get(&label_stmt.label_id).unwrap();
+                let (label_block, _) = self.blockreg.labels.get(&label_stmt.label_id).unwrap();
                 self.llvmbuilder.build_unconditional_branch(*label_block).unwrap();
             }
         }
 
-        if let Some(basic_block) = self.blockreg.labels.get(&label_stmt.label_id) {
+        if let Some((basic_block, _)) = self.blockreg.labels.get(&label_stmt.label_id) {
             self.emit_block(*basic_block);
         } else {
             panic!("label block for '{}' not predefined", label_stmt.name);
@@ -739,12 +740,12 @@ impl<'ll> CodeGenIRBuilder<'ll> {
     }
 
     pub(crate) fn emit_goto(&mut self, goto_stmt: &CIRGotoStmt) {
-        let target_block = *self.blockreg.labels.get(&goto_stmt.label_id).unwrap();
+        let (target_block, target_depth) = *self.blockreg.labels.get(&goto_stmt.label_id).unwrap();
 
         let cur_block = self.blockreg.cur_block.unwrap();
 
         if cur_block.get_terminator().is_none() {
-            self.emit_scope_defers();
+            self.emit_defers_down_to(target_depth);
             self.llvmbuilder.build_unconditional_branch(target_block).unwrap();
         }
 
@@ -925,6 +926,19 @@ impl<'ll> CodeGenIRBuilder<'ll> {
 
         for stmt in scope.iter().rev() {
             self.emit_stmt(&stmt);
+        }
+    }
+
+    pub(crate) fn emit_defers_down_to(&mut self, target_depth: usize) {
+        let current_depth = self.defer_stack.len();
+        for depth in (target_depth..current_depth).rev() {
+            let scope = self.defer_stack[depth].clone();
+            for stmt in scope.iter().rev() {
+                if self.blockreg.cur_block.is_none() {
+                    return;
+                }
+                self.emit_stmt(&stmt);
+            }
         }
     }
 
