@@ -2,7 +2,7 @@
 // Copyright (c) 2026 The Cyrus Language
 
 use crate::{context::AnalysisContext, diagnostics::AnalyzerDiagKind};
-use cyrusc_const_eval::{fold::ConstFolder, value::is_comptime_valid};
+use cyrusc_const_eval::{fold::ConstFolder, value::is_expr_const_evaluable};
 use cyrusc_diagcentral::{Diag, DiagLevel};
 use cyrusc_typed_ast::{
     exprs::{TypedArrayExpr, TypedArrayIndexExpr, literal_expr_from_const_int},
@@ -119,7 +119,7 @@ impl<'a> AnalysisContext<'a> {
             TypedArrayCapacity::Fixed(expr) => {
                 self.analyze_expr(expr, None)?;
 
-                if !is_comptime_valid(&expr.kind) {
+                if !is_expr_const_evaluable(&expr.kind) {
                     self.reporter.report(Diag {
                         level: DiagLevel::Error,
                         kind: Box::new(AnalyzerDiagKind::ExprNotComptimeValid),
