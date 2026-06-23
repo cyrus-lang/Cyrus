@@ -20,7 +20,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         index: InternalValue<'ll>,
         array_length: u32,
     ) -> InternalValue<'ll> {
-        let pointee_basic_ty: BasicTypeEnum<'ll> = self.emit_ty(pointee_ty.clone()).try_into().unwrap();
+        let pointee_basic_ty: BasicTypeEnum<'ll> = self.emit_type(pointee_ty.clone()).try_into().unwrap();
 
         let target_data = self.llvmtm.get_target_data();
         let ptr_sized_int_type = self.llvm_ctx.ptr_sized_int_type(&target_data, None);

@@ -24,8 +24,8 @@ use inkwell::{
 };
 
 impl<'ll> CodeGenIRBuilder<'ll> {
-    pub(crate) fn emit_debug_ty_metadata(&self, ty: &CIRType) -> LLVMMetadataRef {
-        let llvm_ty = self.emit_ty(ty.clone());
+    pub(crate) fn emit_debug_type_metadata(&self, ty: &CIRType) -> LLVMMetadataRef {
+        let llvm_ty = self.emit_type(ty.clone());
 
         if let Some(metadata) = self.dctx.type_cache.get(&llvm_ty.as_type_ref()) {
             return *metadata;
@@ -69,11 +69,11 @@ impl<'ll> CodeGenIRBuilder<'ll> {
                 unsafe { debug_simple_type(&self.dctx, &name, bits as u64, encoding as u32) }
             }
             CIRType::Const(inner) => {
-                let inner_ty_metadata = self.emit_debug_ty_metadata(inner);
+                let inner_ty_metadata = self.emit_debug_type_metadata(inner);
                 unsafe { debug_const_type(&self.dctx, inner_ty_metadata) }
             }
             CIRType::Pointer(inner) => {
-                let inner_ty_metadata = self.emit_debug_ty_metadata(inner);
+                let inner_ty_metadata = self.emit_debug_type_metadata(inner);
                 let ptr_size_bits = self.target.info.pointer_size() * 8;
                 let ptr_align = self.target.info.pointer_align() * 8;
                 unsafe { debug_pointer_type(&self.dctx, inner_ty_metadata, ptr_size_bits as u64, ptr_align, "T*") }
@@ -90,7 +90,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
                     .iter()
                     .enumerate()
                     .map(|(i, ty)| {
-                        let field_type_metadata = self.emit_debug_ty_metadata(ty);
+                        let field_type_metadata = self.emit_debug_type_metadata(ty);
                         let offset_bits = layout.lookup_field_offset(i) * 8;
 
                         let (name, loc) = &struct_type.fields_info[i];
@@ -125,7 +125,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
                     .iter()
                     .enumerate()
                     .map(|(i, ty)| {
-                        let field_type_metadata = self.emit_debug_ty_metadata(ty);
+                        let field_type_metadata = self.emit_debug_type_metadata(ty);
                         let offset_bits = layout.lookup_field_offset(i) * 8;
 
                         let name = i.to_string();
@@ -166,7 +166,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
 
                 let enum_name = enum_type.name.clone().unwrap_or("<unnamed_enum>".to_string());
 
-                let tag_type = self.emit_debug_ty_metadata(&enum_type.tag_type_or_infer_or_default());
+                let tag_type = self.emit_debug_type_metadata(&enum_type.tag_type_or_infer_or_default());
 
                 if enum_type.is_scalar_optimizable() {
                     let variants: Vec<(String, i64)> = enum_type
@@ -210,7 +210,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
                                         loc: enum_type.loc,
                                     };
 
-                                    let tuple_type_metadata = self.emit_debug_ty_metadata(&CIRType::Tuple(tuple_type));
+                                    let tuple_type_metadata = self.emit_debug_type_metadata(&CIRType::Tuple(tuple_type));
 
                                     (ident.clone(), *tag as i64, tuple_type_metadata)
                                 }
@@ -240,7 +240,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
                     .iter()
                     .enumerate()
                     .map(|(i, ty)| {
-                        let field_type_metadata = self.emit_debug_ty_metadata(ty);
+                        let field_type_metadata = self.emit_debug_type_metadata(ty);
                         let offset_bits = layout.lookup_field_offset(i) * 8;
 
                         let (name, loc) = &union_type.fields_info[i];
@@ -281,7 +281,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
             CIRType::Array(array_type) => {
                 let type_id = self.tctx.register(CIRType::Array(array_type.clone()));
                 let layout = self.tctx.get_or_compute_layout(type_id);
-                let element_ty_metadata = self.emit_debug_ty_metadata(&array_type.element_type);
+                let element_ty_metadata = self.emit_debug_type_metadata(&array_type.element_type);
 
                 unsafe {
                     debug_array_type(
@@ -301,23 +301,23 @@ impl<'ll> CodeGenIRBuilder<'ll> {
                 let align_bits = layout.align * 8;
 
                 let cir_void_ptr_ty = CIRType::Pointer(Box::new(CIRType::Plain(PlainType::Void)));
-                let data_ptr_ty = self.emit_debug_ty_metadata(&cir_void_ptr_ty);
-                let vtable_ptr_ty = self.emit_debug_ty_metadata(&cir_void_ptr_ty);
+                let data_ptr_ty = self.emit_debug_type_metadata(&cir_void_ptr_ty);
+                let vtable_ptr_ty = self.emit_debug_type_metadata(&cir_void_ptr_ty);
 
                 unsafe { debug_dynamic_type(&self.dctx, data_ptr_ty, vtable_ptr_ty, ptr_size_bits as u64, align_bits) }
             }
         }
     }
 
-    pub(crate) fn emit_ty(&self, ty: CIRType) -> AnyTypeEnum<'ll> {
+    pub(crate) fn emit_type(&self, ty: CIRType) -> AnyTypeEnum<'ll> {
         match ty {
-            CIRType::Const(inner_ty) => self.emit_ty(*inner_ty),
+            CIRType::Const(inner_ty) => self.emit_type(*inner_ty),
             CIRType::Plain(plain_ty) => self.emit_plain_type(plain_ty),
             CIRType::Pointer(_) => self.llvm_ctx.ptr_type(AddressSpace::default()).as_any_type_enum(),
             CIRType::Struct(struct_type) => self.emit_struct_type(struct_type).as_any_type_enum(),
             CIRType::Enum(enum_type) => self.emit_enum_type(enum_type).as_any_type_enum(),
-            CIRType::Union(union_ty) => self.emit_union_ty(union_ty).as_any_type_enum(),
-            CIRType::Tuple(tuple_type) => self.emit_tuple_ty(tuple_type).as_any_type_enum(),
+            CIRType::Union(union_ty) => self.emit_union_type(union_ty).as_any_type_enum(),
+            CIRType::Tuple(tuple_type) => self.emit_tuple_type(tuple_type).as_any_type_enum(),
             CIRType::Array(array_ty) => self.emit_array_type(array_ty).as_any_type_enum(),
             CIRType::FuncType(..) => self.llvm_ctx.ptr_type(AddressSpace::default()).as_any_type_enum(),
             CIRType::Dynamic(..) => self.emit_dynamic_type().as_any_type_enum(),
@@ -347,7 +347,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
     }
 
     pub(crate) fn emit_types(&self, types: &[CIRType]) -> Vec<AnyTypeEnum<'ll>> {
-        types.iter().map(|ty| self.emit_ty(ty.clone())).collect()
+        types.iter().map(|ty| self.emit_type(ty.clone())).collect()
     }
 
     pub(crate) fn emit_plain_type(&self, plain_type: PlainType) -> AnyTypeEnum<'ll> {
@@ -400,7 +400,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
                 ABIFieldOffsetInfo::Normal { .. } => {
                     // get the next actual field from the struct
                     let field_ty = &struct_type.fields[next_field_index];
-                    let llvm_ty: BasicTypeEnum<'ll> = self.emit_ty(field_ty.clone()).try_into().unwrap();
+                    let llvm_ty: BasicTypeEnum<'ll> = self.emit_type(field_ty.clone()).try_into().unwrap();
                     llvm_field_types.push(llvm_ty);
                     next_field_index += 1;
                 }
@@ -458,7 +458,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
             let (payload_size, payload_align) = match variant {
                 CIREnumVariant::Unit(_, _) => (0, 1),
                 CIREnumVariant::Valued(_, value_type, _) => {
-                    let llvm_ty: BasicTypeEnum<'ll> = self.emit_ty(value_type.clone()).try_into().unwrap();
+                    let llvm_ty: BasicTypeEnum<'ll> = self.emit_type(value_type.clone()).try_into().unwrap();
                     let size = target_data.get_store_size(&llvm_ty);
                     let align = target_data.get_abi_alignment(&llvm_ty) as u64;
                     (size, align)
@@ -507,7 +507,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
 
     fn emit_repr_c_enum_ty(&self, enum_type: &CIREnumType) -> BasicTypeEnum<'ll> {
         let cir_tag_type = enum_type.tag_type_or_infer_or_default();
-        self.emit_ty(*cir_tag_type.clone()).try_into().unwrap()
+        self.emit_type(*cir_tag_type.clone()).try_into().unwrap()
     }
 
     pub(crate) fn emit_enum_type(&self, enum_type: CIREnumType) -> BasicTypeEnum<'ll> {
@@ -517,7 +517,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         } else {
             // cyrus special enum
             let cir_tag_type = enum_type.tag_type_or_infer_or_default();
-            let tag_type: BasicTypeEnum<'ll> = self.emit_ty(*cir_tag_type.clone()).try_into().unwrap();
+            let tag_type: BasicTypeEnum<'ll> = self.emit_type(*cir_tag_type.clone()).try_into().unwrap();
 
             let (payload_ty, _) = self.emit_enum_buffer_payload_ty(&enum_type);
             self.llvm_ctx
@@ -526,7 +526,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         }
     }
 
-    pub(crate) fn emit_union_ty(&self, union_type: CIRUnionType) -> BasicTypeEnum<'ll> {
+    pub(crate) fn emit_union_type(&self, union_type: CIRUnionType) -> BasicTypeEnum<'ll> {
         let type_id = self.tctx.register(CIRType::Union(union_type.clone()));
         let layout = self.tctx.get_or_compute_layout(type_id);
 
@@ -537,7 +537,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         let mut max_size = 0;
 
         for field_ty in &union_type.fields {
-            let llvm_ty: BasicTypeEnum = self.emit_ty(field_ty.clone()).try_into().unwrap();
+            let llvm_ty: BasicTypeEnum = self.emit_type(field_ty.clone()).try_into().unwrap();
 
             let align = target_data.get_abi_alignment(&llvm_ty);
             let size = target_data.get_store_size(&llvm_ty);
@@ -565,14 +565,14 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         }
     }
 
-    pub(crate) fn emit_tuple_ty(&self, tuple_type: CIRTupleType) -> StructType<'ll> {
+    pub(crate) fn emit_tuple_type(&self, tuple_type: CIRTupleType) -> StructType<'ll> {
         let struct_type = tuple_type.as_struct_type();
         self.emit_struct_type(struct_type)
     }
 
     pub(crate) fn emit_array_type(&self, array_ty: CIRArrayType) -> AnyTypeEnum<'ll> {
         let elm_ty: BasicTypeEnum<'ll> = self
-            .emit_ty(*array_ty.element_type)
+            .emit_type(*array_ty.element_type)
             .try_into()
             .expect("Array element must be a valid llvm type.");
         elm_ty.array_type(array_ty.len as u32).as_any_type_enum()

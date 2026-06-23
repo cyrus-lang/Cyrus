@@ -117,7 +117,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
 
                     llvm_param_index += 1;
 
-                    let ty: BasicTypeEnum<'ll> = self.emit_ty(param.ty.clone()).try_into().unwrap();
+                    let ty: BasicTypeEnum<'ll> = self.emit_type(param.ty.clone()).try_into().unwrap();
 
                     let param_alloca = self.llvmbuilder.build_alloca(ty, "param").unwrap();
 
@@ -143,7 +143,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
                         false,
                     );
 
-                    let param_type: BasicTypeEnum<'ll> = self.emit_ty(param.ty.clone()).try_into().unwrap();
+                    let param_type: BasicTypeEnum<'ll> = self.emit_type(param.ty.clone()).try_into().unwrap();
 
                     let lo = self.cur_func.unwrap().get_nth_param(llvm_param_index as u32).unwrap();
 
@@ -198,7 +198,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
                     );
                 }
                 ABIArgKind::Expand { kind } => {
-                    let struct_type: BasicTypeEnum<'ll> = self.emit_ty(param.ty.clone()).try_into().unwrap();
+                    let struct_type: BasicTypeEnum<'ll> = self.emit_type(param.ty.clone()).try_into().unwrap();
 
                     let param_alloca = self.llvmbuilder.build_alloca(struct_type, "param").unwrap();
 
@@ -274,7 +274,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
             }
 
             let param_name = param.name.clone().unwrap_or("<unnamed_param>".to_string());
-            let param_ty_metadata = self.emit_debug_ty_metadata(&param.ty);
+            let param_ty_metadata = self.emit_debug_type_metadata(&param.ty);
 
             unsafe {
                 create_debug_parameter(
@@ -417,7 +417,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
 impl<'ll> CodeGenIRBuilder<'ll> {
     pub(crate) fn emit_func_metadata(&self, func_type: &CIRFuncType) -> LLVMMetadataRef {
         let ret_ty_meta = if !func_type.ret_type.is_void() {
-            Some(self.emit_debug_ty_metadata(&func_type.ret_type))
+            Some(self.emit_debug_type_metadata(&func_type.ret_type))
         } else {
             None
         };
@@ -425,7 +425,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         let params_metadata: Vec<LLVMMetadataRef> = func_type
             .params
             .iter()
-            .map(|ty| self.emit_debug_ty_metadata(&ty))
+            .map(|ty| self.emit_debug_type_metadata(&ty))
             .collect();
 
         unsafe { debug_func_type(&self.dctx, ret_ty_meta, &params_metadata) }
@@ -484,7 +484,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
             } else {
                 // classify variadic argument value
                 let promoted_rvalue_type = self.target.target_abi.apply_variadic_argument_promote(&rvalue.ty);
-                let llvm_promoted_type = self.emit_ty(promoted_rvalue_type.clone());
+                let llvm_promoted_type = self.emit_type(promoted_rvalue_type.clone());
 
                 let promoted_value: BasicValueEnum<'ll> =
                     self.emit_cast(llvm_promoted_type, rvalue).try_into().unwrap();

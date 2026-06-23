@@ -78,7 +78,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         exported_fields: &Vec<(usize, IRValueID, CIRType)>,
     ) {
         for (field_index, irv_id, cir_ty) in exported_fields {
-            let llvm_field_type: BasicTypeEnum<'ll> = self.emit_ty(cir_ty.clone()).try_into().unwrap();
+            let llvm_field_type: BasicTypeEnum<'ll> = self.emit_type(cir_ty.clone()).try_into().unwrap();
             let llvm_field_index = enum_layout.lookup_field_index(*field_index).unwrap();
 
             // pointer to payload_struct.field_index
@@ -140,7 +140,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
                     CIRVariantPayload::Single(irv_id, cir_type) => {
                         self.emit_block(case_block);
 
-                        let llvm_type: BasicTypeEnum<'ll> = self.emit_ty(cir_type.clone()).try_into().unwrap();
+                        let llvm_type: BasicTypeEnum<'ll> = self.emit_type(cir_type.clone()).try_into().unwrap();
 
                         let alloca = self
                             .llvmbuilder
@@ -252,7 +252,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
             .build_switch(enum_idx_int_value, else_block, &[])
             .unwrap();
 
-        let tag_type = self.emit_ty(*enum_type.tag_type_or_infer_or_default()).into_int_type();
+        let tag_type = self.emit_type(*enum_type.tag_type_or_infer_or_default()).into_int_type();
 
         let mut cases: Vec<(IntValue<'ll>, BasicBlock<'ll>)> = Vec::new();
 
@@ -272,7 +272,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
                     CIRVariantPayload::Single(irv_id, cir_type) => {
                         self.emit_block(case_block);
 
-                        let llvm_type: BasicTypeEnum<'ll> = self.emit_ty(cir_type.clone()).try_into().unwrap();
+                        let llvm_type: BasicTypeEnum<'ll> = self.emit_type(cir_type.clone()).try_into().unwrap();
 
                         // reinterpret payload buffer
                         let enum_payload = self.extract_enum_payload(enum_struct_value);

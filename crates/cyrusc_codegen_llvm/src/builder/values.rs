@@ -79,7 +79,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
             return;
         }
 
-        let llvm_target_type: BasicTypeEnum<'ll> = self.emit_ty(target_cir_type.clone()).try_into().unwrap();
+        let llvm_target_type: BasicTypeEnum<'ll> = self.emit_type(target_cir_type.clone()).try_into().unwrap();
 
         if let BasicTypeEnum::IntType(int_type) = llvm_target_type
             && rvalue.as_basic_value().is_int_value()
@@ -200,7 +200,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
     pub(crate) fn load_rvalue(&self, internal_value: InternalValue<'ll>) -> InternalValue<'ll> {
         match internal_value.kind {
             InternalValueKind::LValue(pointer_value) => {
-                let ty: BasicTypeEnum<'ll> = self.emit_ty(internal_value.ty.clone()).try_into().unwrap();
+                let ty: BasicTypeEnum<'ll> = self.emit_type(internal_value.ty.clone()).try_into().unwrap();
                 let basic_value = self.llvmbuilder.build_load(ty, pointer_value, "rvalue").unwrap();
 
                 if internal_value.ty.is_bool() {

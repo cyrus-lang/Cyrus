@@ -161,7 +161,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         index: InternalValue<'ll>,
         cir_elm_ty: CIRType,
     ) -> InternalValue<'ll> {
-        let element_type: BasicTypeEnum<'ll> = self.emit_ty(cir_elm_ty.clone()).try_into().unwrap();
+        let element_type: BasicTypeEnum<'ll> = self.emit_type(cir_elm_ty.clone()).try_into().unwrap();
         let index_int = index.as_basic_value().into_int_value();
 
         let element_ptr: PointerValue<'ll> = unsafe {
@@ -439,7 +439,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
     }
 
     pub(crate) fn emit_implicit_cast(&self, target_type: &CIRType, rvalue: InternalValue<'ll>) -> InternalValue<'ll> {
-        let ty = self.emit_ty(target_type.clone());
+        let ty = self.emit_type(target_type.clone());
         let casted = self.emit_cast(ty, rvalue);
         InternalValue::new(
             target_type.clone(),
@@ -473,7 +473,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         }
 
         // zero-fill if array type is fixed-length and not fully initialized
-        let element_basic_ty: BasicTypeEnum<'ll> = self.emit_ty(*element_ty.clone()).try_into().unwrap();
+        let element_basic_ty: BasicTypeEnum<'ll> = self.emit_type(*element_ty.clone()).try_into().unwrap();
 
         while elements.len() < array_type.len() as usize {
             elements.push(element_basic_ty.const_zero());
@@ -522,7 +522,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         let first_element = unsafe {
             self.llvmbuilder
                 .build_in_bounds_gep(
-                    self.emit_ty(array_lvalue.ty.clone()).into_array_type(),
+                    self.emit_type(array_lvalue.ty.clone()).into_array_type(),
                     array_ptr,
                     &[zero, zero],
                     "array_decay",
@@ -554,7 +554,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
                     let type_id = self.tctx.register(struct_type.clone());
                     let layout = self.tctx.get_or_compute_layout(type_id);
 
-                    let llvm_struct_type = self.emit_ty(struct_type).into_struct_type();
+                    let llvm_struct_type = self.emit_type(struct_type).into_struct_type();
 
                     let index = layout.lookup_field_index(*index).unwrap();
 
@@ -585,7 +585,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
             DerefMode::Load => {
                 let inner_ty = rvalue.ty.pointer_inner().unwrap();
 
-                let llvm_ty: BasicTypeEnum<'ll> = self.emit_ty(inner_ty.clone()).try_into().unwrap();
+                let llvm_ty: BasicTypeEnum<'ll> = self.emit_type(inner_ty.clone()).try_into().unwrap();
                 let loaded_value = self.llvmbuilder.build_load(llvm_ty, ptr, "deref").unwrap();
                 InternalValue::new(inner_ty.clone(), InternalValueKind::RValue(loaded_value.into()))
             }
@@ -598,7 +598,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
     }
 
     fn emit_sizeof(&mut self, sizeof_expr: &CIRSizeOfExpr) -> InternalValue<'ll> {
-        let ty = self.emit_ty(sizeof_expr.ty.clone());
+        let ty = self.emit_type(sizeof_expr.ty.clone());
         let size_value = ty.size_of().unwrap();
         InternalValue::new(sizeof_expr.ty.clone(), InternalValueKind::RValue(size_value.into()))
     }
@@ -617,7 +617,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
                 self.llvm_ctx.i64_type().const_int(1, false)
             } else {
                 let is_signed = ty.is_signed_integer();
-                let basic_type: BasicTypeEnum<'ll> = self.emit_ty(ty.clone()).try_into().unwrap();
+                let basic_type: BasicTypeEnum<'ll> = self.emit_type(ty.clone()).try_into().unwrap();
                 basic_type.into_int_type().const_int(1, is_signed)
             }
         };
@@ -958,7 +958,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
             }
             (BasicValueEnum::PointerValue(lhs_ptr), BasicValueEnum::PointerValue(rhs_ptr)) => {
                 let pointee_type: BasicTypeEnum<'ll> = self
-                    .emit_ty(lhs_rvalue.ty.pointer_inner().unwrap().clone())
+                    .emit_type(lhs_rvalue.ty.pointer_inner().unwrap().clone())
                     .try_into()
                     .unwrap();
                 self.emit_pointer_diff(pointee_type, lhs_ptr, rhs_ptr)
@@ -974,7 +974,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         result_type: CIRType,
     ) -> InternalValue<'ll> {
         let pointee_type: BasicTypeEnum<'ll> = self
-            .emit_ty(result_type.pointer_inner().unwrap().clone())
+            .emit_type(result_type.pointer_inner().unwrap().clone())
             .try_into()
             .unwrap();
 
@@ -1004,7 +1004,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         result_type: CIRType,
     ) -> InternalValue<'ll> {
         let pointee_type: BasicTypeEnum<'ll> = self
-            .emit_ty(result_type.pointer_inner().unwrap().clone())
+            .emit_type(result_type.pointer_inner().unwrap().clone())
             .try_into()
             .unwrap();
 
@@ -1041,7 +1041,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
             .unwrap();
 
         let result_type = CIRType::Plain(PlainType::ISize);
-        let llvm_result_type: BasicTypeEnum<'ll> = self.emit_ty(result_type.clone()).try_into().unwrap();
+        let llvm_result_type: BasicTypeEnum<'ll> = self.emit_type(result_type.clone()).try_into().unwrap();
         let diff_casted = self
             .llvmbuilder
             .build_int_cast(diff_int_value, llvm_result_type.into_int_type(), "ptr.diff.cast")
@@ -1310,7 +1310,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
     fn emit_union_field_access(&mut self, field_access: &CIRFieldAccessExpr) -> InternalValue<'ll> {
         let operand = self.emit_lvalue_address(&field_access.operand);
 
-        let union_type: BasicTypeEnum<'ll> = self.emit_ty(field_access.operand.ty.clone()).try_into().unwrap();
+        let union_type: BasicTypeEnum<'ll> = self.emit_type(field_access.operand.ty.clone()).try_into().unwrap();
 
         let union_ptr = match operand.kind {
             InternalValueKind::LValue(ptr) => ptr,
@@ -1391,7 +1391,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
 
         let field_index = layout.lookup_field_index(tuple_access.index).unwrap();
 
-        let llvm_tuple_type = self.emit_tuple_ty(cir_tuple_type.clone());
+        let llvm_tuple_type = self.emit_tuple_type(cir_tuple_type.clone());
         let cir_field_type = &cir_tuple_type.elements[tuple_access.index];
 
         match operand_value.kind {
@@ -1462,7 +1462,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         enum_type: &CIREnumType,
     ) -> InternalValue<'ll> {
         let cir_tag_type = enum_type.tag_type_or_infer_or_default();
-        let tag_type = self.emit_ty(*cir_tag_type.clone()).into_int_type();
+        let tag_type = self.emit_type(*cir_tag_type.clone()).into_int_type();
         let tag_value = tag_type.const_int(enum_init_expr.tag.try_into().unwrap(), cir_tag_type.is_signed_integer());
 
         InternalValue::new(
@@ -1485,7 +1485,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         let mut enum_value = enum_struct_ty.get_undef();
 
         let cir_tag_type = enum_type.tag_type_or_infer_or_default();
-        let tag_type = self.emit_ty(*cir_tag_type.clone()).into_int_type();
+        let tag_type = self.emit_type(*cir_tag_type.clone()).into_int_type();
         let tag_value = tag_type.const_int(enum_init_expr.tag as u64, false);
 
         enum_value = self
@@ -1518,7 +1518,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
             CIREnumInitVariant::Payload(field_exprs) => {
                 let field_types: Vec<BasicTypeEnum<'ll>> = field_exprs
                     .iter()
-                    .map(|fld| self.emit_ty(fld.ty.clone()).try_into().unwrap())
+                    .map(|fld| self.emit_type(fld.ty.clone()).try_into().unwrap())
                     .collect();
 
                 let payload_struct_type = self.llvm_ctx.struct_type(&field_types, false);
@@ -1554,7 +1554,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
     }
 
     pub(crate) fn emit_union_init(&self, union_ty: &CIRUnionType, ptr: PointerValue<'ll>, rvalue: InternalValue<'ll>) {
-        let llvm_union_type = self.emit_union_ty(union_ty.clone());
+        let llvm_union_type = self.emit_union_type(union_ty.clone());
 
         // union-to-union copy
         if rvalue.ty.is_union() {
@@ -1931,7 +1931,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         self.emit_func_call_attributes(&abi_func_info, FuncCallKind::Indirect(call_site));
 
         if let Some(mut basic_value) = call_site.try_as_basic_value().basic() {
-            let actual_return_type: BasicTypeEnum<'ll> = self.emit_ty(*func_type.ret_type.clone()).try_into().unwrap();
+            let actual_return_type: BasicTypeEnum<'ll> = self.emit_type(*func_type.ret_type.clone()).try_into().unwrap();
 
             basic_value = self.intrinsic_coerce_through_alloca(basic_value, actual_return_type, "ifc.ret.coerce");
 
@@ -2030,7 +2030,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
                     (rvalue.clone(), rvalue)
                 } else {
                     if value.is_rvalue() && !value.ty.is_pointer() {
-                        let llvm_type: BasicTypeEnum<'ll> = self.emit_ty(value.ty.clone()).try_into().unwrap();
+                        let llvm_type: BasicTypeEnum<'ll> = self.emit_type(value.ty.clone()).try_into().unwrap();
 
                         let temp = self.llvmbuilder.build_alloca(llvm_type, "temp.self").unwrap();
                         self.llvmbuilder.build_store(temp, value.as_basic_value()).unwrap();
@@ -2085,7 +2085,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         let mut sret_alloca: Option<PointerValue<'ll>> = None;
 
         if abi_func_info.ret_info.kind.is_indirect_sret() {
-            let sret_type: BasicTypeEnum<'ll> = self.emit_ty(*func_type.ret_type.clone()).try_into().unwrap();
+            let sret_type: BasicTypeEnum<'ll> = self.emit_type(*func_type.ret_type.clone()).try_into().unwrap();
 
             let alloca = self.llvmbuilder.build_alloca(sret_type, "sret").unwrap();
 
@@ -2105,7 +2105,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         } else if let Some(mut basic_value) = call_site.try_as_basic_value().basic() {
             // REVIEW: Optimization Required
             // coerce back from abi return type to actual return type
-            let actual_return_type: BasicTypeEnum<'ll> = self.emit_ty(*func_type.ret_type.clone()).try_into().unwrap();
+            let actual_return_type: BasicTypeEnum<'ll> = self.emit_type(*func_type.ret_type.clone()).try_into().unwrap();
 
             basic_value = self.intrinsic_coerce_through_alloca(basic_value, actual_return_type, "coerce_ret");
 
@@ -2141,7 +2141,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
             // REVIEW: Optimization Required
             // coerce back from abi return type to actual return type
             let actual_return_type: BasicTypeEnum<'ll> =
-                self.emit_ty(*cir_func_type.ret_type.clone()).try_into().unwrap();
+                self.emit_type(*cir_func_type.ret_type.clone()).try_into().unwrap();
             basic_value = self.intrinsic_coerce_through_alloca(basic_value, actual_return_type, "coerce_ret");
 
             InternalValue::new(func_call.ret_type.clone(), InternalValueKind::RValue(basic_value))
@@ -2151,7 +2151,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
     }
 
     fn emit_literal(&self, lit: &CIRLiteral) -> InternalValue<'ll> {
-        let ty: BasicTypeEnum<'ll> = self.emit_ty(lit.ty.clone()).try_into().unwrap();
+        let ty: BasicTypeEnum<'ll> = self.emit_type(lit.ty.clone()).try_into().unwrap();
 
         let basic_value = match &lit.kind {
             CIRLiteralKind::Bool(value) => {

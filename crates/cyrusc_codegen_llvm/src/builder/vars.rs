@@ -36,7 +36,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
             return global_value;
         }
 
-        let ty: BasicTypeEnum<'ll> = self.emit_ty(cir_global_var.ty.clone()).try_into().unwrap();
+        let ty: BasicTypeEnum<'ll> = self.emit_type(cir_global_var.ty.clone()).try_into().unwrap();
         let global_value = llvm_module.add_global(ty, None, &cir_global_var.name);
         drop(llvm_module);
 
@@ -100,7 +100,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         let type_id = self.tctx.register(cir_var.ty.clone());
         let layout = self.tctx.get_or_compute_layout(type_id);
 
-        let ty: BasicTypeEnum<'ll> = self.emit_ty(cir_var.ty.clone()).try_into().unwrap();
+        let ty: BasicTypeEnum<'ll> = self.emit_type(cir_var.ty.clone()).try_into().unwrap();
 
         let ptr = self.llvmbuilder.build_alloca(ty, &cir_var.name).unwrap();
         let alloca_instr = ptr.as_instruction().unwrap();
@@ -133,7 +133,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         global_value: &GlobalValue<'ll>,
         cir_global_var: &CIRGlobalVarStmt,
     ) {
-        let ty_meta = self.emit_debug_ty_metadata(&cir_global_var.ty);
+        let ty_meta = self.emit_debug_type_metadata(&cir_global_var.ty);
 
         let is_local = !cir_global_var
             .modifiers
@@ -163,7 +163,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
     }
 
     fn emit_debug_var(&self, layout: &ABITypeLayout, ptr: &PointerValue<'ll>, cir_var: &CIRVarStmt) {
-        let var_ty_metadata = self.emit_debug_ty_metadata(&cir_var.ty);
+        let var_ty_metadata = self.emit_debug_type_metadata(&cir_var.ty);
 
         let var_meta = unsafe {
             create_debug_variable(

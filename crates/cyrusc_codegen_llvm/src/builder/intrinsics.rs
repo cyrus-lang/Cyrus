@@ -85,7 +85,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         let lvalue = self.emit_expr(&args[1], &None);
         let rvalue = self.load_rvalue(lvalue);
 
-        let llvm_target_type = self.emit_ty(target_type.clone());
+        let llvm_target_type = self.emit_type(target_type.clone());
 
         // SPECIAL CASES of cast handled here (explicit cast):
         if rvalue.ty.is_float() && llvm_target_type.is_int_type() {
