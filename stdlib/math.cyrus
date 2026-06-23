@@ -175,20 +175,4 @@ pub extern "C" {
     fn nan(tagp: types::c_char*) types::c_double;
     fn nanf(tagp: types::c_char*) types::c_float;
     fn nanl(tagp: types::c_char*) types::c_long_double;
-
-    fn ceil(x: types::c_double) types::c_double;
-    fn ceilf(x: types::c_float) types::c_float;
-    fn ceill(x: types::c_long_double) types::c_long_double;
-
-    fn floor(x: types::c_double) types::c_double;
-    fn floorf(x: types::c_float) types::c_float;
-    fn floorl(x: types::c_long_double) types::c_long_double;
-
-    fn trunc(x: types::c_double) types::c_double;
-    fn truncf(x: types::c_float) types::c_float;
-    fn truncl(x: types::c_long_double) types::c_long_double;
-
-    fn round(x: types::c_double) types::c_double;
-    fn roundf(x: types::c_float) types::c_float;
-    fn roundl(x: types::c_long_double) types::c_long_double;
 }
