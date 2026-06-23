@@ -5,7 +5,6 @@ use crate::diagnostics::ConstEvalError;
 use crate::resolver::ConstResolver;
 use crate::value::ConstValue;
 use cyrusc_ast::operators::{InfixOperator, PrefixOperator};
-use cyrusc_internal::abi::layout::type_layout;
 use cyrusc_internal::abi::target::ABITarget;
 use cyrusc_internal::analyzer_state::AnalyzerState;
 use cyrusc_internal::cir::lower::lower_sema_type;
@@ -369,7 +368,7 @@ impl<'a, R: ConstResolver> ConstEvaluator<'a, R> {
         };
 
         let cir_type = lower_sema_type(self.decl_tables, self.target, self.tctx.clone(), &arg_type);
-        let layout = type_layout(&self.target.info, &cir_type);
+        let layout = self.tctx.layout_of(&cir_type);
 
         Ok(ConstValue::Int(layout.size.try_into().unwrap()))
     }
@@ -379,7 +378,7 @@ impl<'a, R: ConstResolver> ConstEvaluator<'a, R> {
         let arg_type = arg.ty.as_ref().unwrap();
 
         let cir_type = lower_sema_type(self.decl_tables, self.target, self.tctx.clone(), &arg_type);
-        let layout = type_layout(&self.target.info, &cir_type);
+        let layout = self.tctx.layout_of(&cir_type);
 
         Ok(ConstValue::Int(layout.align.try_into().unwrap()))
     }
@@ -395,7 +394,7 @@ impl<'a, R: ConstResolver> ConstEvaluator<'a, R> {
             .ok_or(ConstEvalError::TypeError)?;
 
         let cir_type = lower_sema_type(self.decl_tables, self.target, self.tctx.clone(), ty);
-        let layout = type_layout(&self.target.info, &cir_type);
+        let layout = self.tctx.layout_of(&cir_type);
 
         let struct_decl_id = ty.as_struct().ok_or(ConstEvalError::TypeError)?;
         let struct_decl = self.decl_tables.struct_decl(struct_decl_id);

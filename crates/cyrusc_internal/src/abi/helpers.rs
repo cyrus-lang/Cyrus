@@ -3,7 +3,6 @@
 
 use crate::{
     abi::{
-        layout::type_layout,
         target::ABITargetArch,
         targets::x86_64::types::X86_64TargetDependentType,
         types::{ABIFloatKind, ABIType, TargetIntegerType},
@@ -70,7 +69,8 @@ pub fn cir_type_to_abi_type(tctx: Arc<CIRTypeContext>, cir_type: &CIRType) -> AB
                             // no payload
                         }
                         CIREnumVariant::Valued(_, value_type, _) => {
-                            let layout = type_layout(info, value_type);
+                            let layout = tctx.layout_of(value_type);
+
                             max_payload_size = max_payload_size.max(layout.size);
                         }
                         CIREnumVariant::Payload(_, struct_type, _) => {
@@ -78,7 +78,7 @@ pub fn cir_type_to_abi_type(tctx: Arc<CIRTypeContext>, cir_type: &CIRType) -> AB
                             let mut max_align = 1;
 
                             for field_type in &struct_type.fields {
-                                let layout = type_layout(info, field_type);
+                                let layout = tctx.layout_of(field_type);
                                 let field_align = layout.align;
                                 let field_size = layout.size;
 

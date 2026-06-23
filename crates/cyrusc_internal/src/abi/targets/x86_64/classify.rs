@@ -5,7 +5,7 @@ use crate::{
     abi::{
         args::{ABIArgAttrs, ABIArgInfo, ABIArgKind, ABIFunctionInfo, ABIRetInfo, ABIRetInfoKind, ExpandKind},
         helpers::{Registers, cir_type_to_abi_type, is_cir_type_abi_aggregate},
-        layout::{ABITypeLayout, type_layout},
+        layout::type_layout,
         target::{ABITargetInfo, ABITargetOS, RegisterClass, TargetABI},
         types::{ABIFloatKind, ABIType},
     },
@@ -29,16 +29,6 @@ pub struct X86_64 {
 impl X86_64 {
     pub fn new(info: ABITargetInfo, tctx: Arc<CIRTypeContext>) -> Self {
         Self { info, tctx }
-    }
-
-    #[inline]
-    fn layout_of(&self, ty: &CIRType) -> ABITypeLayout {
-        match ty {
-            CIRType::Struct(type_id) | CIRType::Union(type_id) | CIRType::Enum(type_id) => {
-                self.tctx.get_or_compute_layout(*type_id)
-            }
-            _ => type_layout(&self.info, ty),
-        }
     }
 
     fn classify_parameter(&self, ty: &CIRType, available_regs: &mut Registers, is_named: bool) -> ABIArgInfo {
@@ -75,7 +65,7 @@ impl X86_64 {
         }
 
         // byval alignment
-        let layout = type_layout(&self.info, ty);
+        let layout = self.tctx.layout_of(ty);
         let align = layout.align;
         let size = layout.size;
 
@@ -150,7 +140,7 @@ impl X86_64 {
                     if offset != 0 {
                         // fallback
                     } else {
-                        let layout = type_layout(&self.info, ty);
+                        let layout = self.tctx.layout_of(ty);
 
                         if self.bits_contain_no_user_data(source_type, source_offset + layout.size, source_offset + 8) {
                             return cir_type_to_abi_type(self.tctx.clone(), ty);
@@ -185,7 +175,7 @@ impl X86_64 {
             }
             CIRType::Array(array_type) => {
                 let element_ty = &array_type.element_type;
-                let element_layout = type_layout(&self.info, element_ty);
+                let element_layout = self.tctx.layout_of(element_ty);
                 let element_offset = (offset / element_layout.size) * element_layout.size;
                 return self.get_int_type_at_offset(element_ty, offset - element_offset, source_type, source_offset);
             }
@@ -202,7 +192,7 @@ impl X86_64 {
             }
         }
 
-        let layout = type_layout(&self.info, source_type);
+        let layout = self.tctx.layout_of(source_type);
         assert!(layout.size != source_offset);
 
         let remaining_bytes = layout.size - source_offset;
@@ -224,7 +214,7 @@ impl X86_64 {
         }
 
         for field_type in &union_type.fields {
-            let field_layout = self.layout_of(field_type);
+            let field_layout = self.tctx.layout_of(field_type);
 
             if offset < field_layout.size {
                 return Some((field_type.clone(), 0));
@@ -246,7 +236,7 @@ impl X86_64 {
         let fields = &struct_type.fields;
 
         for field_type in fields {
-            let field_layout = type_layout(&self.info, &field_type);
+            let field_layout = self.tctx.layout_of(&field_type);
             let align = field_layout.align;
 
             let padding = (align - (current_offset % align)) % align;
@@ -286,11 +276,11 @@ impl X86_64 {
         }
 
         if let Some(array_type) = ty.as_array() {
-            let element_ty = &array_type.element_type;
-            let element_layout = self.layout_of(&element_ty);
+            let element_type = &array_type.element_type;
+            let element_layout = self.tctx.layout_of(&element_type);
             let element_start = (offset / element_layout.size) * element_layout.size;
             let element_offset = offset - element_start;
-            return self.get_fp_type_at_offset(&element_ty, element_offset);
+            return self.get_fp_type_at_offset(&element_type, element_offset);
         }
 
         None
@@ -314,7 +304,7 @@ impl X86_64 {
             return Some(ABIType::Float(ABIFloatKind::F64));
         }
 
-        let source_layout = type_layout(&self.info, source_type);
+        let source_layout = self.tctx.layout_of(source_type);
         let source_size = source_layout.size - source_offset;
         let float_size = self.float_size(&float_kind);
 
@@ -371,7 +361,7 @@ impl X86_64 {
             let mut current_offset = 0;
 
             for field_type in fields {
-                let field_layout = type_layout(&self.info, field_type);
+                let field_layout = self.tctx.layout_of(field_type);
                 let align = field_layout.align;
 
                 // add padding before field (for structs, unions don't have padding)
@@ -397,7 +387,7 @@ impl X86_64 {
 
             true
         };
-        let layout = type_layout(&self.info, ty);
+        let layout = self.tctx.layout_of(ty);
 
         // if the bytes being queried are off the end of the type, there is no user data
         if layout.size <= start {
@@ -406,7 +396,7 @@ impl X86_64 {
 
         if let Some(array_type) = ty.as_array() {
             let element_ty = &array_type.element_type;
-            let element_layout = type_layout(&self.info, element_ty);
+            let element_layout = self.tctx.layout_of(element_ty);
             let element_size = element_layout.size;
 
             for i in 0..array_type.len {
