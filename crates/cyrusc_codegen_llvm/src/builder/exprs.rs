@@ -1676,6 +1676,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
 
     fn emit_struct_init(&mut self, struct_init: &CIRStructInitExpr) -> InternalValue<'ll> {
         let ty = &struct_init.ty;
+
         let type_id = ty.as_type_id().unwrap();
         let layout = self.tctx.layout_of(ty);
 

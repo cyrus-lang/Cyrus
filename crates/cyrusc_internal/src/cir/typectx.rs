@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 The Cyrus Language
 
-use crate::abi::layout::{ABITypeLayout, type_layout};
+use crate::abi::helpers::align_offset;
+use crate::abi::layout::{ABIFieldOffsetInfo, ABITypeLayout, type_layout};
 use crate::abi::target::ABITargetInfo;
 use crate::cir::cir::CIREnumVariant;
 use crate::cir::types::*;
@@ -184,15 +185,14 @@ impl CIRTypeContext {
         layout
     }
 
-    fn compute_layout_for_def(&self, type_id: CIRTypeContextID) -> ABITypeLayout {
+    fn compute_layout_for_def(&self, id: CIRTypeContextID) -> ABITypeLayout {
         let defs = self.defs.read().unwrap();
-        let def = &defs[type_id.0];
-        let cir_type = match def {
-            CIRTypeDef::Struct(_) => CIRType::Struct(type_id),
-            CIRTypeDef::Union(_) => CIRType::Union(type_id),
-            CIRTypeDef::Enum(_) => CIRType::Enum(type_id),
-        };
-        type_layout(&self.target_info, &cir_type)
+        let def = &defs[id.0];
+        match def {
+            CIRTypeDef::Struct(struct_type) => self.compute_struct_layout(struct_type),
+            CIRTypeDef::Union(union_type) => self.compute_union_layout(union_type),
+            CIRTypeDef::Enum(enum_type) => self.compute_enum_layout(enum_type),
+        }
     }
 
     pub fn layout_of(&self, ty: &CIRType) -> ABITypeLayout {
@@ -200,12 +200,8 @@ impl CIRTypeContext {
             CIRType::Struct(type_id) | CIRType::Union(type_id) | CIRType::Enum(type_id) => {
                 self.get_or_compute_layout(*type_id)
             }
-            CIRType::Plain(plain_type) => type_layout(&self.target_info, &CIRType::Plain(plain_type.clone())),
-            CIRType::Const(inner) => self.layout_of(inner),
-            CIRType::Pointer(_) => type_layout(&self.target_info, ty),
-            CIRType::Array(_) => type_layout(&self.target_info, ty),
-            CIRType::FuncType(_) => type_layout(&self.target_info, ty),
-            CIRType::Dynamic(_) => type_layout(&self.target_info, ty),
+
+            _ => type_layout(&self.target_info, ty),
         }
     }
 
@@ -291,5 +287,134 @@ impl CIRTypeContext {
             }
             CIRType::Dynamic(_) => CIRTypeKey::Dynamic,
         }
+    }
+}
+
+// Compute layouts for defs.
+impl CIRTypeContext {
+    pub fn compute_struct_layout(&self, struct_type: &CIRStructType) -> ABITypeLayout {
+        let mut offset = 0u32;
+        let mut max_align = 1u32;
+        let mut field_offsets = Vec::new();
+        let is_packed = struct_type.is_packed();
+        let mut field_offset_index = 0u32;
+
+        for (field_original_index, ty) in struct_type.fields.iter().enumerate() {
+            let field_layout = self.layout_of(ty);
+
+            let effective_field_align = if is_packed { 1 } else { field_layout.align };
+
+            if !is_packed {
+                let padding = (effective_field_align - (offset % effective_field_align)) % effective_field_align;
+
+                if padding > 0 {
+                    field_offsets.push(ABIFieldOffsetInfo::padding(field_offset_index, offset, padding));
+                    field_offset_index += 1;
+                    offset += padding;
+                }
+            }
+
+            field_offsets.push(ABIFieldOffsetInfo::normal(
+                field_offset_index,
+                offset,
+                field_original_index,
+            ));
+            field_offset_index += 1;
+
+            offset += field_layout.size;
+            max_align = max_align.max(field_layout.align);
+        }
+
+        if let Some(explicit_align) = struct_type.align {
+            max_align = max_align.max(explicit_align as u32);
+        }
+
+        if is_packed {
+            max_align = 1;
+        }
+
+        let total_size = align_offset(offset, max_align);
+
+        if total_size > offset {
+            field_offsets.push(ABIFieldOffsetInfo::padding(
+                field_offsets.len() as u32,
+                offset,
+                total_size - offset,
+            ));
+        }
+
+        ABITypeLayout::aggregate(total_size, max_align, field_offsets)
+    }
+
+    pub fn compute_union_layout(&self, union_type: &CIRUnionType) -> ABITypeLayout {
+        let mut max_size = 0u32;
+        let mut max_align = 1u32;
+        let mut field_offsets = Vec::new();
+
+        for (original_index, ty) in union_type.fields.iter().enumerate() {
+            let field_layout = self.layout_of(ty);
+
+            max_size = max_size.max(field_layout.size);
+            max_align = max_align.max(field_layout.align);
+
+            field_offsets.push(ABIFieldOffsetInfo::normal(original_index as u32, 0, original_index));
+        }
+
+        let total_size = align_offset(max_size, max_align);
+        ABITypeLayout::aggregate(total_size, max_align, field_offsets)
+    }
+
+    pub fn compute_enum_layout(&self, enum_type: &CIREnumType) -> ABITypeLayout {
+        let tag_type = enum_type.tag_type_or_infer_or_default();
+
+        if enum_type.is_scalar_optimizable() {
+            return self.layout_of(&tag_type);
+        }
+
+        let tag_layout = self.layout_of(&tag_type);
+        let tag_size = tag_layout.size;
+        let tag_align = tag_layout.align;
+
+        let mut max_payload_size = 0u32;
+        let mut max_payload_align = 1u32;
+
+        for variant in &enum_type.variants {
+            let (variant_size, variant_align) = match variant {
+                CIREnumVariant::Unit(_, _) => (0, 1),
+                CIREnumVariant::Valued(_, value_type, _) => {
+                    let layout = self.layout_of(value_type);
+                    (layout.size, layout.align)
+                }
+                CIREnumVariant::Payload(_, struct_type, _) => {
+                    let layout = self.compute_struct_layout(struct_type);
+
+                    (layout.size, layout.align)
+                }
+            };
+
+            max_payload_size = max_payload_size.max(variant_size);
+            max_payload_align = max_payload_align.max(variant_align);
+        }
+
+        if max_payload_size == 0 && enum_type.includes_payload() {
+            max_payload_size = 1;
+            max_payload_align = 1;
+        }
+
+        if let Some(align) = enum_type.align {
+            max_payload_align = max_payload_align.max(align as u32);
+        }
+
+        let payload_offset = ((tag_size + (max_payload_align - 1)) / max_payload_align) * max_payload_align;
+
+        let mut total_align = tag_align.max(max_payload_align);
+        if let Some(align) = enum_type.align {
+            total_align = total_align.max(align as u32);
+        }
+
+        let mut total_size = payload_offset + max_payload_size;
+        total_size = ((total_size + (total_align - 1)) / total_align) * total_align;
+
+        ABITypeLayout::aggregate(total_size, total_align, Vec::new())
     }
 }

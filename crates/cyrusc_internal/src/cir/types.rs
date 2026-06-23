@@ -158,6 +158,7 @@ impl CIRType {
         }
     }
 
+    #[inline]
     pub fn as_struct(&self, tctx: &CIRTypeContext) -> Option<CIRStructType> {
         match self {
             CIRType::Struct(type_id) => Some(tctx.get_struct(*type_id)),
@@ -165,6 +166,7 @@ impl CIRType {
         }
     }
 
+    #[inline]
     pub fn as_union(&self, tctx: &CIRTypeContext) -> Option<CIRUnionType> {
         match self {
             CIRType::Union(type_id) => Some(tctx.get_union(*type_id)),
@@ -172,6 +174,7 @@ impl CIRType {
         }
     }
 
+    #[inline]
     pub fn as_enum(&self, tctx: &CIRTypeContext) -> Option<CIREnumType> {
         match self {
             CIRType::Enum(type_id) => Some(tctx.get_enum(*type_id)),
@@ -179,6 +182,7 @@ impl CIRType {
         }
     }
 
+    #[inline]
     pub fn as_func(&self) -> Option<CIRFuncType> {
         match self.const_inner() {
             CIRType::FuncType(fn_ty) => Some(fn_ty.clone()),
@@ -186,6 +190,7 @@ impl CIRType {
         }
     }
 
+    #[inline]
     pub fn as_plain(&self) -> Option<PlainType> {
         match self.const_inner() {
             CIRType::Plain(plain_type) => Some(plain_type.clone()),
@@ -193,6 +198,7 @@ impl CIRType {
         }
     }
 
+    #[inline]
     pub fn as_array(&self) -> Option<CIRArrayType> {
         match self.const_inner() {
             CIRType::Array(arr_ty) => Some(arr_ty.clone()),
@@ -200,9 +206,10 @@ impl CIRType {
         }
     }
 
+    #[inline]
     pub fn as_type_id(&self) -> Option<CIRTypeContextID> {
         match self.const_inner() {
-            CIRType::Enum(type_id) => Some(*type_id),
+            CIRType::Struct(type_id) | CIRType::Union(type_id) | CIRType::Enum(type_id) => Some(*type_id),
             _ => None,
         }
     }

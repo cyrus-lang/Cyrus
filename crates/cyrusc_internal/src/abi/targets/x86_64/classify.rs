@@ -5,7 +5,7 @@ use crate::{
     abi::{
         args::{ABIArgAttrs, ABIArgInfo, ABIArgKind, ABIFunctionInfo, ABIRetInfo, ABIRetInfoKind, ExpandKind},
         helpers::{Registers, cir_type_to_abi_type, is_cir_type_abi_aggregate},
-        layout::{ABITypeLayout, struct_layout, type_layout, union_layout},
+        layout::{ABITypeLayout, type_layout},
         target::{ABITargetInfo, ABITargetOS, RegisterClass, TargetABI},
         types::{ABIFloatKind, ABIType},
     },
@@ -217,7 +217,7 @@ impl X86_64 {
     }
 
     fn get_union_member_at_offset(&self, union_type: &CIRUnionType, offset: u32) -> Option<(CIRType, u32)> {
-        let layout = union_layout(&self.info, union_type);
+        let layout = self.tctx.compute_union_layout(union_type);
 
         if layout.size < offset {
             return None;
@@ -235,15 +235,15 @@ impl X86_64 {
     }
 
     fn get_struct_member_at_offset(&self, struct_type: &CIRStructType, offset: u32) -> Option<(CIRType, u32)> {
-        let fields = &struct_type.fields;
-
-        let layout = struct_layout(&self.info, struct_type);
+        let layout = self.tctx.compute_struct_layout(struct_type);
 
         if layout.size < offset {
             return None;
         }
 
         let mut current_offset = 0;
+
+        let fields = &struct_type.fields;
 
         for field_type in fields {
             let field_layout = type_layout(&self.info, &field_type);
@@ -1155,31 +1155,25 @@ fn classify_struct_or_union(
     };
 
     let layout = if is_union {
-        union_layout(
-            info,
-            &CIRUnionType {
-                decl_key: None,
-                name: None,
-                fields: fields.clone(),
-                fields_info: vec![],
-                repr_attr: None,
-                align: None,
-                loc,
-            },
-        )
+        tctx.compute_union_layout(&CIRUnionType {
+            decl_key: None,
+            name: None,
+            fields: fields.clone(),
+            fields_info: vec![],
+            repr_attr: None,
+            align: None,
+            loc,
+        })
     } else {
-        struct_layout(
-            info,
-            &CIRStructType {
-                decl_key: None,
-                name: None,
-                fields: fields.clone(),
-                fields_info: vec![],
-                repr_attr: None,
-                align: None,
-                loc,
-            },
-        )
+        tctx.compute_struct_layout(&CIRStructType {
+            decl_key: None,
+            name: None,
+            fields: fields.clone(),
+            fields_info: vec![],
+            repr_attr: None,
+            align: None,
+            loc,
+        })
     };
     let size = layout.size;
 
