@@ -210,7 +210,8 @@ impl<'ll> CodeGenIRBuilder<'ll> {
                                         loc: enum_type.loc,
                                     };
 
-                                    let tuple_type_metadata = self.emit_debug_type_metadata(&CIRType::Tuple(tuple_type));
+                                    let tuple_type_metadata =
+                                        self.emit_debug_type_metadata(&CIRType::Tuple(tuple_type));
 
                                     (ident.clone(), *tag as i64, tuple_type_metadata)
                                 }
@@ -324,21 +325,6 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         }
     }
 
-    pub(crate) fn cir_dynamic_type(&self, data_ptr_inner_ty: CIRType, loc: Loc) -> CIRType {
-        CIRType::Struct(CIRStructType {
-            unique_decl_key: None,
-            name: None,
-            fields: vec![
-                CIRType::Pointer(Box::new(data_ptr_inner_ty)),
-                CIRType::Pointer(Box::new(CIRType::Plain(PlainType::Void))),
-            ],
-            fields_info: vec![("data_ptr".to_string(), loc), ("vtable_ptr".to_string(), loc)],
-            align: None,
-            repr_attr: None,
-            loc,
-        })
-    }
-
     pub(crate) fn emit_dynamic_type(&self) -> StructType<'ll> {
         let vtable_ptr = self.llvm_ctx.ptr_type(AddressSpace::default()).as_basic_type_enum();
         let data_ptr = self.llvm_ctx.ptr_type(AddressSpace::default()).as_basic_type_enum();
@@ -390,6 +376,14 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         let type_id = self.tctx.register(CIRType::Struct(struct_type.clone()));
         let layout = self.tctx.get_or_compute_layout(type_id);
 
+        // FIXME
+        if struct_type.fields.is_empty() && struct_type.name.is_some() {
+            panic!(
+                "codegen received empty named struct {:?}. Placeholder not resolved!",
+                struct_type.name
+            );
+        }
+
         let is_packed = struct_type.is_packed();
 
         let mut llvm_field_types: Vec<BasicTypeEnum<'ll>> = Vec::new();
@@ -436,13 +430,14 @@ impl<'ll> CodeGenIRBuilder<'ll> {
             elements,
             loc: enum_type.loc,
         };
-        let struct_tuple_type = tuple_type.as_struct_type();
+
+        let cir_struct_type = tuple_type.as_struct_type();
 
         Some(self.emit_struct_type(CIRStructType {
-            unique_decl_key: None,
+            decl_key: None,
             name: None,
-            fields: struct_tuple_type.fields,
-            fields_info: struct_tuple_type.fields_info,
+            fields: cir_struct_type.fields,
+            fields_info: cir_struct_type.fields_info,
             repr_attr: None,
             align: None,
             loc: enum_type.loc,

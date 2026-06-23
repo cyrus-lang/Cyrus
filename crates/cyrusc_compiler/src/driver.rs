@@ -115,7 +115,7 @@ pub fn create_compiler_context(
         entry_module_file_path,
         linker_output_kind,
         linker,
-        tctx
+        tctx,
     )
 }
 
@@ -187,7 +187,10 @@ pub fn build_semantic_bundle<'a>(
             // target
 
             let target_info = resolve_target_info_from_opts(&opts);
-            let target_abi = match create_target_abi(target_info.clone()) {
+
+            let tctx = Arc::new(CIRTypeContext::new(target_info));
+
+            let target_abi = match create_target_abi(target_info.clone(), tctx) {
                 Ok(target_abi) => target_abi,
                 Err(err) => {
                     tui_error(err);
@@ -206,8 +209,6 @@ pub fn build_semantic_bundle<'a>(
             let mut has_error = false;
             let mut analyzed_program_trees: Vec<Rc<RefCell<TypedProgramTree>>> = Vec::new();
             let mut vtable_registries: FxHashMap<FileID, Arc<VTableRegistry>> = FxHashMap::new();
-
-            let tctx = Arc::new(CIRTypeContext::new(target_info));
 
             for program_tree_entry in &*resolved_program_trees {
                 let vtable_registry = Arc::new(VTableRegistry::new());

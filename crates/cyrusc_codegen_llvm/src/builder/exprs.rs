@@ -19,6 +19,7 @@ use cyrusc_internal::{
     },
     cir::{
         cir::*,
+        lower::cir_fat_ptr_type,
         types::{CIRArrayType, CIREnumType, CIRFuncType, CIRStructType, CIRTupleType, CIRType, CIRUnionType},
     },
 };
@@ -149,8 +150,10 @@ impl<'ll> CodeGenIRBuilder<'ll> {
             .unwrap()
             .into_struct_value();
 
+        let fat_ptr_type = cir_fat_ptr_type(&self.tctx, Some(dynamic.data_expr.ty.clone()), dynamic.loc);
+
         InternalValue::new(
-            self.cir_dynamic_type(dynamic.data_expr.ty.clone(), dynamic.loc),
+            fat_ptr_type,
             InternalValueKind::RValue(dynamic_value.as_basic_value_enum()),
         )
     }
@@ -1430,7 +1433,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
             .collect();
 
         let struct_type = CIRStructType {
-            unique_decl_key: None,
+            decl_key: None,
             name: None,
             fields,
             fields_info,
@@ -1931,7 +1934,8 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         self.emit_func_call_attributes(&abi_func_info, FuncCallKind::Indirect(call_site));
 
         if let Some(mut basic_value) = call_site.try_as_basic_value().basic() {
-            let actual_return_type: BasicTypeEnum<'ll> = self.emit_type(*func_type.ret_type.clone()).try_into().unwrap();
+            let actual_return_type: BasicTypeEnum<'ll> =
+                self.emit_type(*func_type.ret_type.clone()).try_into().unwrap();
 
             basic_value = self.intrinsic_coerce_through_alloca(basic_value, actual_return_type, "ifc.ret.coerce");
 
@@ -2105,7 +2109,8 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         } else if let Some(mut basic_value) = call_site.try_as_basic_value().basic() {
             // REVIEW: Optimization Required
             // coerce back from abi return type to actual return type
-            let actual_return_type: BasicTypeEnum<'ll> = self.emit_type(*func_type.ret_type.clone()).try_into().unwrap();
+            let actual_return_type: BasicTypeEnum<'ll> =
+                self.emit_type(*func_type.ret_type.clone()).try_into().unwrap();
 
             basic_value = self.intrinsic_coerce_through_alloca(basic_value, actual_return_type, "coerce_ret");
 
