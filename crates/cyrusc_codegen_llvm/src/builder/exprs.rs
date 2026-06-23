@@ -20,7 +20,7 @@ use cyrusc_internal::{
     cir::{
         cir::*,
         lower::cir_fat_ptr_type,
-        types::{CIRArrayType, CIREnumType, CIRFuncType, CIRStructType, CIRTupleType, CIRType, CIRUnionType},
+        types::{CIRArrayType, CIREnumType, CIRFuncType, CIRType, CIRUnionType},
     },
 };
 use cyrusc_typed_ast::types::PlainType;
@@ -254,7 +254,9 @@ impl<'ll> CodeGenIRBuilder<'ll> {
             return value;
         }
 
-        if let CIRType::Enum(enum_type) = from_cir_type {
+        if let CIRType::Enum(type_id) = from_cir_type {
+            let enum_type = self.tctx.get_enum(*type_id);
+
             if !enum_type.includes_payload() {
                 if let BasicValueEnum::StructValue(struct_value) = value {
                     let tag = self.extract_enum_tag(struct_value);
@@ -553,9 +555,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
 
                     let struct_ptr_value = lvalue.as_basic_value().into_pointer_value();
                     let struct_type = lvalue.ty.clone();
-
-                    let type_id = self.tctx.register(struct_type.clone());
-                    let layout = self.tctx.get_or_compute_layout(type_id);
+                    let layout = self.tctx.layout_of(&struct_type);
 
                     let llvm_struct_type = self.emit_type(struct_type).into_struct_type();
 
@@ -1346,14 +1346,16 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         let operand = self.emit_lvalue_address(&field_access.operand);
 
         // determine concrete struct type of operand
-        let struct_type = if let Some(inner) = field_access.operand.ty.pointer_inner() {
-            inner.clone().as_struct().unwrap()
-        } else {
-            field_access.operand.ty.clone().as_struct().unwrap()
+        let ty = {
+            if let Some(inner) = field_access.operand.ty.pointer_inner() {
+                inner.clone()
+            } else {
+                field_access.operand.ty.clone()
+            }
         };
 
-        let type_id = self.tctx.register(CIRType::Struct(struct_type.clone()));
-        let layout = self.tctx.get_or_compute_layout(type_id);
+        let struct_type = ty.as_struct(&self.tctx).unwrap();
+        let layout = self.tctx.layout_of(&ty);
 
         let llvm_field_index = layout
             .lookup_field_index(field_index)
@@ -1387,15 +1389,14 @@ impl<'ll> CodeGenIRBuilder<'ll> {
     fn emit_tuple_access(&mut self, tuple_access: &CIRTupleAccessExpr) -> InternalValue<'ll> {
         let operand_value = self.emit_expr(&tuple_access.operand, &None);
 
-        let cir_tuple_type = operand_value.ty.as_tuple().unwrap();
-
-        let type_id = self.tctx.register(CIRType::Tuple(cir_tuple_type.clone()));
-        let layout = self.tctx.get_or_compute_layout(type_id);
+        let ty = &operand_value.ty;
+        let cir_struct_type = ty.as_struct(&self.tctx).unwrap();
+        let layout = self.tctx.layout_of(ty);
 
         let field_index = layout.lookup_field_index(tuple_access.index).unwrap();
 
-        let llvm_tuple_type = self.emit_tuple_type(cir_tuple_type.clone());
-        let cir_field_type = &cir_tuple_type.elements[tuple_access.index];
+        let llvm_tuple_type = self.emit_tuple_type(cir_struct_type.clone());
+        let cir_field_type = &cir_struct_type.fields[tuple_access.index];
 
         match operand_value.kind {
             InternalValueKind::LValue(addr) => {
@@ -1421,42 +1422,15 @@ impl<'ll> CodeGenIRBuilder<'ll> {
     }
 
     fn emit_tuple(&mut self, tuple: &CIRTupleExpr) -> InternalValue<'ll> {
-        let element_types = tuple.elements.iter().map(|elm| elm.ty.clone()).collect();
-
-        let fields = tuple.elements.iter().map(|expr| expr.ty.clone()).collect();
-
-        let fields_info = tuple
-            .elements
-            .iter()
-            .enumerate()
-            .map(|(i, _)| (i.to_string(), tuple.loc))
-            .collect();
-
-        let struct_type = CIRStructType {
-            decl_key: None,
-            name: None,
-            fields,
-            fields_info,
-            repr_attr: None,
-            align: None,
-            loc: tuple.loc,
-        };
-
         let struct_value = self
             .emit_struct_init(&CIRStructInitExpr {
-                ty: struct_type,
+                ty: tuple.ty.clone(),
                 fields: tuple.elements.clone(),
             })
             .as_basic_value()
             .into_struct_value();
 
-        InternalValue::new(
-            CIRType::Tuple(CIRTupleType {
-                elements: element_types,
-                loc: tuple.loc,
-            }),
-            InternalValueKind::RValue(struct_value.into()),
-        )
+        InternalValue::new(tuple.ty.clone(), InternalValueKind::RValue(struct_value.into()))
     }
 
     fn emit_repr_c_enum_init(

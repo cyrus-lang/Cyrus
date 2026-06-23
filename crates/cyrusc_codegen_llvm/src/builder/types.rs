@@ -11,10 +11,8 @@ use crate::llvm::dwarf::{DW_ATE_BOOLEAN, DW_ATE_FLOAT, DW_ATE_SIGNED, DW_ATE_UNS
 use cyrusc_internal::abi::args::{ABIArgKind, ABIFunctionInfo, ExpandKind};
 use cyrusc_internal::abi::layout::ABIFieldOffsetInfo;
 use cyrusc_internal::cir::cir::CIREnumVariant;
-use cyrusc_internal::cir::types::{
-    CIRArrayType, CIREnumType, CIRFuncType, CIRStructType, CIRTupleType, CIRType, CIRUnionType,
-};
-use cyrusc_source_loc::Loc;
+use cyrusc_internal::cir::typectx::CIRTypeContextID;
+use cyrusc_internal::cir::types::{CIRArrayType, CIREnumType, CIRFuncType, CIRStructType, CIRType};
 use cyrusc_typed_ast::types::PlainType;
 use inkwell::llvm_sys::prelude::{LLVMMetadataRef, LLVMTypeRef};
 use inkwell::{
@@ -32,10 +30,9 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         }
 
         match ty {
-            CIRType::Plain(plain_type) => {
+            &CIRType::Plain(plain_type) => {
                 let name = plain_type.to_string();
-                let type_id = self.tctx.register(CIRType::Plain(plain_type.clone()));
-                let layout = self.tctx.get_or_compute_layout(type_id);
+                let layout = self.tctx.layout_of(&CIRType::Plain(plain_type));
                 let bits = layout.size * 8;
 
                 let encoding = match plain_type {
@@ -78,9 +75,9 @@ impl<'ll> CodeGenIRBuilder<'ll> {
                 let ptr_align = self.target.info.pointer_align() * 8;
                 unsafe { debug_pointer_type(&self.dctx, inner_ty_metadata, ptr_size_bits as u64, ptr_align, "T*") }
             }
-            CIRType::Struct(struct_type) => unsafe {
-                let type_id = self.tctx.register(CIRType::Struct(struct_type.clone()));
-                let layout = self.tctx.get_or_compute_layout(type_id);
+            CIRType::Struct(type_id) => unsafe {
+                let struct_type = self.tctx.get_struct(*type_id);
+                let layout = self.tctx.get_or_compute_layout(*type_id);
 
                 let size_bits = layout.size * 8;
                 let align_bits = layout.align * 8;
@@ -116,51 +113,10 @@ impl<'ll> CodeGenIRBuilder<'ll> {
                     struct_type.loc.line.try_into().unwrap(),
                 )
             },
-            CIRType::Tuple(tuple_type) => {
-                let type_id = self.tctx.register(CIRType::Tuple(tuple_type.clone()));
-                let layout = self.tctx.get_or_compute_layout(type_id);
+            CIRType::Enum(type_id) => {
+                let enum_type = self.tctx.get_enum(*type_id);
+                let layout = self.tctx.get_or_compute_layout(*type_id);
 
-                let mut elements_metadata: Vec<LLVMMetadataRef> = tuple_type
-                    .elements
-                    .iter()
-                    .enumerate()
-                    .map(|(i, ty)| {
-                        let field_type_metadata = self.emit_debug_type_metadata(ty);
-                        let offset_bits = layout.lookup_field_offset(i) * 8;
-
-                        let name = i.to_string();
-
-                        unsafe {
-                            debug_member_type(
-                                &self.dctx,
-                                &name,
-                                field_type_metadata,
-                                offset_bits as u64,
-                                // FIXME: Expected to have exact location of the element
-                                // but hence it's not implemented correctly in the AST
-                                // using tuple_type.loc for now.
-                                tuple_type.loc.line as u32,
-                            )
-                        }
-                    })
-                    .collect();
-
-                let tuple_name = "<tuple>".to_string();
-
-                unsafe {
-                    debug_struct_type(
-                        &self.dctx,
-                        &tuple_name,
-                        &mut elements_metadata,
-                        layout.size as u64,
-                        layout.align,
-                        tuple_type.loc.line.try_into().unwrap(),
-                    )
-                }
-            }
-            CIRType::Enum(enum_type) => {
-                let type_id = self.tctx.register(CIRType::Enum(enum_type.clone()));
-                let layout = self.tctx.get_or_compute_layout(type_id);
                 let size_bits = layout.size * 8;
                 let align_bits = layout.align * 8;
 
@@ -232,9 +188,9 @@ impl<'ll> CodeGenIRBuilder<'ll> {
                     }
                 }
             }
-            CIRType::Union(union_type) => {
-                let type_id = self.tctx.register(CIRType::Union(union_type.clone()));
-                let layout = self.tctx.get_or_compute_layout(type_id);
+            CIRType::Union(type_id) => {
+                let union_type = self.tctx.get_union(*type_id);
+                let layout = self.tctx.get_or_compute_layout(*type_id);
 
                 let mut elements_metadata: Vec<LLVMMetadataRef> = union_type
                     .fields
@@ -280,8 +236,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
                 unsafe { debug_pointer_type(&self.dctx, subroutine_type, ptr_size_bits as u64, ptr_align, "T*") }
             }
             CIRType::Array(array_type) => {
-                let type_id = self.tctx.register(CIRType::Array(array_type.clone()));
-                let layout = self.tctx.get_or_compute_layout(type_id);
+                let layout = self.tctx.layout_of(&CIRType::Array(array_type.clone()));
                 let element_ty_metadata = self.emit_debug_type_metadata(&array_type.element_type);
 
                 unsafe {
@@ -294,9 +249,8 @@ impl<'ll> CodeGenIRBuilder<'ll> {
                     )
                 }
             }
-            CIRType::Dynamic(dynamic_type) => {
-                let type_id = self.tctx.register(CIRType::Dynamic(dynamic_type.clone()));
-                let layout = self.tctx.get_or_compute_layout(type_id);
+            CIRType::Dynamic(_) => {
+                let layout = self.tctx.layout_of(ty);
 
                 let ptr_size_bits = layout.size * 8;
                 let align_bits = layout.align * 8;
@@ -312,13 +266,12 @@ impl<'ll> CodeGenIRBuilder<'ll> {
 
     pub(crate) fn emit_type(&self, ty: CIRType) -> AnyTypeEnum<'ll> {
         match ty {
+            CIRType::Struct(type_id) => self.emit_struct_type(type_id).as_any_type_enum(),
+            CIRType::Enum(type_id) => self.emit_enum_type(type_id).as_any_type_enum(),
+            CIRType::Union(type_id) => self.emit_union_type(type_id).as_any_type_enum(),
             CIRType::Const(inner_ty) => self.emit_type(*inner_ty),
             CIRType::Plain(plain_ty) => self.emit_plain_type(plain_ty),
             CIRType::Pointer(_) => self.llvm_ctx.ptr_type(AddressSpace::default()).as_any_type_enum(),
-            CIRType::Struct(struct_type) => self.emit_struct_type(struct_type).as_any_type_enum(),
-            CIRType::Enum(enum_type) => self.emit_enum_type(enum_type).as_any_type_enum(),
-            CIRType::Union(union_ty) => self.emit_union_type(union_ty).as_any_type_enum(),
-            CIRType::Tuple(tuple_type) => self.emit_tuple_type(tuple_type).as_any_type_enum(),
             CIRType::Array(array_ty) => self.emit_array_type(array_ty).as_any_type_enum(),
             CIRType::FuncType(..) => self.llvm_ctx.ptr_type(AddressSpace::default()).as_any_type_enum(),
             CIRType::Dynamic(..) => self.emit_dynamic_type().as_any_type_enum(),
@@ -372,17 +325,9 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         }
     }
 
-    pub(crate) fn emit_struct_type(&self, struct_type: CIRStructType) -> StructType<'ll> {
-        let type_id = self.tctx.register(CIRType::Struct(struct_type.clone()));
+    pub(crate) fn emit_struct_type(&self, type_id: CIRTypeContextID) -> StructType<'ll> {
+        let struct_type = self.tctx.get_struct(type_id);
         let layout = self.tctx.get_or_compute_layout(type_id);
-
-        // FIXME
-        if struct_type.fields.is_empty() && struct_type.name.is_some() {
-            panic!(
-                "codegen received empty named struct {:?}. Placeholder not resolved!",
-                struct_type.name
-            );
-        }
 
         let is_packed = struct_type.is_packed();
 
@@ -425,23 +370,32 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         }
 
         let variant = &enum_type.variants[variant_idx];
-        let elements = variant.as_fielded()?.clone();
-        let tuple_type = CIRTupleType {
-            elements,
-            loc: enum_type.loc,
-        };
+        let fields = variant.as_fielded()?.clone();
 
-        let cir_struct_type = tuple_type.as_struct_type();
+        let fields_info = fields
+            .iter()
+            .enumerate()
+            .map(|(i, _)| {
+                // FIXME: Expected to have exact location of the element
+                // but hence it's not implemented correctly in the AST
+                // using tuple_type.loc for now.
+                (i.to_string(), enum_type.loc)
+            })
+            .collect();
 
-        Some(self.emit_struct_type(CIRStructType {
+        let struct_type = CIRStructType {
             decl_key: None,
             name: None,
-            fields: cir_struct_type.fields,
-            fields_info: cir_struct_type.fields_info,
+            fields,
+            fields_info,
             repr_attr: None,
             align: None,
             loc: enum_type.loc,
-        }))
+        };
+
+        let type_id = self.tctx.insert_struct(struct_type);
+
+        Some(self.emit_struct_type(type_id))
     }
 
     pub(crate) fn emit_enum_buffer_payload_ty(&self, enum_type: &CIREnumType) -> (ArrayType<'ll>, u64) {
@@ -505,7 +459,9 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         self.emit_type(*cir_tag_type.clone()).try_into().unwrap()
     }
 
-    pub(crate) fn emit_enum_type(&self, enum_type: CIREnumType) -> BasicTypeEnum<'ll> {
+    pub(crate) fn emit_enum_type(&self, type_id: CIRTypeContextID) -> BasicTypeEnum<'ll> {
+        let enum_type = self.tctx.get_enum(type_id);
+
         if enum_type.is_scalar_optimizable() {
             // c-compatible enum
             self.emit_repr_c_enum_ty(&enum_type)
@@ -521,8 +477,8 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         }
     }
 
-    pub(crate) fn emit_union_type(&self, union_type: CIRUnionType) -> BasicTypeEnum<'ll> {
-        let type_id = self.tctx.register(CIRType::Union(union_type.clone()));
+    pub(crate) fn emit_union_type(&self, type_id: CIRTypeContextID) -> BasicTypeEnum<'ll> {
+        let union_type = self.tctx.get_union(type_id);
         let layout = self.tctx.get_or_compute_layout(type_id);
 
         let target_data = self.llvmtm.get_target_data();
@@ -558,11 +514,6 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         } else {
             ty.unwrap()
         }
-    }
-
-    pub(crate) fn emit_tuple_type(&self, tuple_type: CIRTupleType) -> StructType<'ll> {
-        let struct_type = tuple_type.as_struct_type();
-        self.emit_struct_type(struct_type)
     }
 
     pub(crate) fn emit_array_type(&self, array_ty: CIRArrayType) -> AnyTypeEnum<'ll> {

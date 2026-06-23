@@ -188,9 +188,9 @@ pub fn build_semantic_bundle<'a>(
 
             let target_info = resolve_target_info_from_opts(&opts);
 
-            let tctx = Arc::new(CIRTypeContext::new(target_info));
+            let tctx = Arc::new(CIRTypeContext::new(target_info.clone()));
 
-            let target_abi = match create_target_abi(target_info.clone(), tctx) {
+            let target_abi = match create_target_abi(target_info.clone(), tctx.clone()) {
                 Ok(target_abi) => target_abi,
                 Err(err) => {
                     tui_error(err);

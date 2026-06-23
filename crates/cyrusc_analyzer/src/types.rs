@@ -4,7 +4,7 @@
 use crate::{context::AnalysisContext, diagnostics::AnalyzerDiagKind, env::generic_env::GenericEnv};
 use cyrusc_const_eval::fold::ConstFolder;
 use cyrusc_diagcentral::{Diag, DiagLevel};
-use cyrusc_internal::cir::lower::lower_enum_decl;
+use cyrusc_internal::cir::lower::lower_enum_type;
 use cyrusc_source_loc::Loc;
 use cyrusc_typed_ast::{
     decls::{EnumDecl, StructDecl, TypedefDeclID, UnionDecl},
@@ -466,7 +466,7 @@ impl<'a> AnalysisContext<'a> {
 
                 let enum_decl = self.decl_tables.enum_decl(enum_decl_id);
 
-                let cir_enum_type = lower_enum_decl(
+                let ty = lower_enum_type(
                     &self.decl_tables,
                     self.target,
                     self.tctx.clone(),
@@ -474,6 +474,8 @@ impl<'a> AnalysisContext<'a> {
                     &enum_decl,
                     named_type.type_args.clone()
                 );
+
+                let cir_enum_type = ty.as_enum(&self.tctx).unwrap();
 
                 let tag_type = cir_enum_type.tag_type_or_infer_or_default();
 

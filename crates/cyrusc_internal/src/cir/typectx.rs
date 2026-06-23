@@ -38,7 +38,6 @@ enum CIRTypeKey {
     Plain(PlainType),
     Pointer(Box<CIRTypeKey>),
     Array(Box<CIRTypeKey>, usize),
-    Tuple(Vec<CIRTypeKey>),
     Struct(Option<CIRTypeContextDeclKey>, Vec<CIRTypeKey>),
     Union(Option<CIRTypeContextDeclKey>, Vec<CIRTypeKey>),
     Enum(Option<CIRTypeContextDeclKey>, Vec<EnumVariantKey>, Box<CIRTypeKey>),

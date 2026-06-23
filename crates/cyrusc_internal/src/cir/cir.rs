@@ -179,7 +179,7 @@ pub enum CIRFieldAccessKind {
 
 #[derive(Debug, Clone)]
 pub struct CIRStructInitExpr {
-    pub ty: CIRStructType,
+    pub ty: CIRType,
     pub fields: Vec<CIRExpr>,
 }
 
@@ -188,13 +188,13 @@ pub struct CIREnumInitExpr {
     pub ident: String,
     pub tag: u32,
     pub variant: CIREnumInitVariant,
-    pub enum_type: CIREnumType,
+    pub enum_type: CIRType,
 }
 
 #[derive(Debug, Clone)]
 pub struct CIRUnionInitExpr {
-    pub expr: Box<CIRExpr>,
     pub ty: CIRType,
+    pub expr: Box<CIRExpr>,
 }
 
 #[derive(Debug, Clone)]
@@ -206,6 +206,7 @@ pub struct CIRTupleAccessExpr {
 #[derive(Debug, Clone)]
 pub struct CIRTupleExpr {
     pub elements: Vec<CIRExpr>,
+    pub ty: CIRType,
     pub loc: Loc,
 }
 

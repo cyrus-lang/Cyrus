@@ -111,93 +111,112 @@ pub fn lower_named_type(
 ) -> CIRType {
     match named_type.type_decl_id {
         TypeDeclID::Struct(struct_decl_id) => {
-            // IMPORTANT: prevent infinite recursion
-            if tctx.is_lowering(TypeDeclID::Struct(struct_decl_id)) {
-                let placeholder = tctx.insert_type_placeholder();
-
-                return CIRType::Struct(placeholder);
-            }
-
-            tctx.start_lowering(TypeDeclID::Struct(struct_decl_id));
-
             let struct_decl = decl_tables.struct_decl(struct_decl_id);
             let inst_struct_decl = instantiate_struct_decl_with_type_args(&struct_decl, &named_type.type_args);
-            let struct_type = lower_struct_decl(
+            lower_struct_type(
                 decl_tables,
                 target,
-                tctx.clone(),
+                tctx,
                 struct_decl_id,
                 &inst_struct_decl,
                 named_type.type_args.clone(),
-            );
-            let type_id = tctx.insert_struct(struct_type.clone());
-
-            tctx.finish_lowering(TypeDeclID::Struct(struct_decl_id));
-            tctx.resolve_placeholder(type_id, CIRTypeDef::Struct(struct_type));
-
-            CIRType::Struct(type_id)
+            )
         }
         TypeDeclID::Union(union_decl_id) => {
-            // IMPORTANT: prevent infinite recursion
-            if tctx.is_lowering(TypeDeclID::Union(union_decl_id)) {
-                let placeholder = tctx.insert_type_placeholder();
-
-                return CIRType::Union(placeholder);
-            }
-
-            tctx.start_lowering(TypeDeclID::Union(union_decl_id));
-
             let union_decl = decl_tables.union_decl(union_decl_id);
             let inst_union_decl = instantiate_union_decl_with_type_args(&union_decl, &named_type.type_args);
-            let union_type = lower_union_decl(
+            lower_union_type(
                 decl_tables,
                 target,
-                tctx.clone(),
+                tctx,
                 union_decl_id,
                 &inst_union_decl,
                 named_type.type_args.clone(),
-            );
-            let type_id = tctx.insert_union(union_type);
-
-            tctx.finish_lowering(TypeDeclID::Union(union_decl_id));
-
-            CIRType::Union(type_id)
+            )
         }
         TypeDeclID::Enum(enum_decl_id) => {
-            // IMPORTANT: prevent infinite recursion
-            if tctx.is_lowering(TypeDeclID::Enum(enum_decl_id)) {
-                let placeholder = tctx.insert_type_placeholder();
-
-                return CIRType::Enum(placeholder);
-            }
-
-            tctx.start_lowering(TypeDeclID::Enum(enum_decl_id));
-
             let enum_decl = decl_tables.enum_decl(enum_decl_id);
             let inst_enum_decl = instantiate_enum_decl_with_type_args(&enum_decl, &named_type.type_args);
-            let enum_type = lower_enum_decl(
+            lower_enum_type(
                 decl_tables,
                 target,
-                tctx.clone(),
+                tctx,
                 enum_decl_id,
                 &inst_enum_decl,
                 named_type.type_args.clone(),
-            );
-            let type_id = tctx.insert_enum(enum_type);
-
-            tctx.finish_lowering(TypeDeclID::Enum(enum_decl_id));
-
-            CIRType::Enum(type_id)
+            )
         }
-
         TypeDeclID::Interface(interface_decl_id) => {
             let interface_decl = decl_tables.interface_decl(interface_decl_id);
-
             cir_fat_ptr_type(&tctx, None, interface_decl.loc)
         }
-
         TypeDeclID::Typedef(_) => unreachable!("unexpected unexpanded typedef"),
     }
+}
+
+pub fn lower_struct_type(
+    decl_tables: &DeclTablesRegistry,
+    target: &ABITarget,
+    tctx: Arc<CIRTypeContext>,
+    struct_decl_id: StructDeclID,
+    struct_decl: &StructDecl,
+    type_args: TypedTypeArgs,
+) -> CIRType {
+    if tctx.is_lowering(TypeDeclID::Struct(struct_decl_id)) {
+        let placeholder = tctx.insert_type_placeholder();
+        return CIRType::Struct(placeholder);
+    }
+    tctx.start_lowering(TypeDeclID::Struct(struct_decl_id));
+    let struct_type = lower_struct_decl(
+        decl_tables,
+        target,
+        tctx.clone(),
+        struct_decl_id,
+        struct_decl,
+        type_args,
+    );
+    let type_id = tctx.insert_struct(struct_type.clone());
+    tctx.finish_lowering(TypeDeclID::Struct(struct_decl_id));
+    tctx.resolve_placeholder(type_id, CIRTypeDef::Struct(struct_type));
+    CIRType::Struct(type_id)
+}
+
+pub fn lower_union_type(
+    decl_tables: &DeclTablesRegistry,
+    target: &ABITarget,
+    tctx: Arc<CIRTypeContext>,
+    union_decl_id: UnionDeclID,
+    union_decl: &UnionDecl,
+    type_args: TypedTypeArgs,
+) -> CIRType {
+    if tctx.is_lowering(TypeDeclID::Union(union_decl_id)) {
+        let placeholder = tctx.insert_type_placeholder();
+        return CIRType::Union(placeholder);
+    }
+    tctx.start_lowering(TypeDeclID::Union(union_decl_id));
+    let union_type = lower_union_decl(decl_tables, target, tctx.clone(), union_decl_id, union_decl, type_args);
+    let type_id = tctx.insert_union(union_type);
+    tctx.finish_lowering(TypeDeclID::Union(union_decl_id));
+    CIRType::Union(type_id)
+}
+
+pub fn lower_enum_type(
+    decl_tables: &DeclTablesRegistry,
+    target: &ABITarget,
+    tctx: Arc<CIRTypeContext>,
+    enum_decl_id: EnumDeclID,
+    enum_decl: &EnumDecl,
+    type_args: TypedTypeArgs,
+) -> CIRType {
+    if tctx.is_lowering(TypeDeclID::Enum(enum_decl_id)) {
+        let placeholder = tctx.insert_type_placeholder();
+        return CIRType::Enum(placeholder);
+    }
+    tctx.start_lowering(TypeDeclID::Enum(enum_decl_id));
+    let enum_type = lower_enum_decl(decl_tables, target, tctx.clone(), enum_decl_id, enum_decl, type_args);
+    let type_id = tctx.insert_enum(enum_type);
+    tctx.finish_lowering(TypeDeclID::Enum(enum_decl_id));
+    CIRType::Enum(type_id)
 }
 
 fn lower_struct_decl(

@@ -253,7 +253,7 @@ pub(crate) fn command_emit_cir_dump(
 
     ensure_output_dir(&output_path);
 
-    process_cir_dump_for_modules(&bundle.program_trees, output_path);
+    process_cir_dump_for_modules(&bundle.program_trees, bundle.tctx.clone(), output_path);
 }
 
 pub(crate) fn command_object(mut opts: CompilerOptions, file_path: Option<String>, output_path: Option<String>) {

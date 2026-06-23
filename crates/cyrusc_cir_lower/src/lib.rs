@@ -9,9 +9,11 @@ use cyrusc_internal::abi::mangler::*;
 use cyrusc_internal::abi::target::ABITarget;
 use cyrusc_internal::cir::cir::*;
 use cyrusc_internal::cir::lower::cir_fat_ptr_type;
+use cyrusc_internal::cir::lower::lower_enum_type;
 use cyrusc_internal::cir::lower::lower_func_type;
-use cyrusc_internal::cir::lower::lower_named_type;
 use cyrusc_internal::cir::lower::lower_sema_type;
+use cyrusc_internal::cir::lower::lower_struct_type;
+use cyrusc_internal::cir::lower::lower_union_type;
 use cyrusc_internal::cir::typectx::CIRTypeContext;
 use cyrusc_internal::cir::types::*;
 use cyrusc_internal::monomorph::*;
@@ -391,12 +393,16 @@ impl<'a> CIRLower<'a> {
 
     fn get_tuple_element_type(&self, ty: &CIRType, index: usize) -> CIRType {
         match ty {
-            CIRType::Tuple(tuple_type) => tuple_type
-                .elements
-                .get(index)
-                .expect("tuple index out of bounds")
-                .clone(),
-            _ => panic!("expected tuple type"),
+            CIRType::Struct(id) => {
+                let struct_type = self.tctx.get_struct(*id);
+
+                struct_type
+                    .fields
+                    .get(index)
+                    .expect("tuple index out of bounds")
+                    .clone()
+            }
+            _ => unreachable!(),
         }
     }
 
@@ -636,7 +642,9 @@ impl<'a> CIRLower<'a> {
 
         let inst_enum_decl = instantiate_enum_decl_with_type_args(&enum_decl, &type_args);
 
-        let enum_type = self.lower_enum_decl(enum_decl_id, &inst_enum_decl, type_args.clone());
+        let ty = self.lower_enum_type(enum_decl_id, &inst_enum_decl, type_args.clone());
+
+        let enum_type = ty.as_enum(&self.tctx).unwrap();
 
         let mut cases = Vec::new();
 
@@ -735,6 +743,7 @@ impl<'a> CIRLower<'a> {
                                     lower_sema_type(&self.decl_tables, self.target, self.tctx.clone(), &field.ty)
                                 })
                                 .collect();
+                            
                             let fields_info = fields.iter().map(|field| (field.name.as_string(), field.loc)).collect();
 
                             CIRStructType {
@@ -1233,7 +1242,7 @@ impl<'a> CIRLower<'a> {
 
         let inst_struct_decl = instantiate_struct_decl_with_type_args(&struct_decl, &type_args);
 
-        let struct_type = self.lower_struct_decl(struct_decl_id, &inst_struct_decl, type_args.clone());
+        let ty = self.lower_struct_type(struct_decl_id, &inst_struct_decl, type_args.clone());
 
         let mut lowered_fields = FxHashMap::new();
 
@@ -1249,10 +1258,7 @@ impl<'a> CIRLower<'a> {
             .map(|decl_field| lowered_fields.get(&decl_field.name).unwrap().clone())
             .collect();
 
-        CIRExprKind::StructInit(CIRStructInitExpr {
-            ty: struct_type,
-            fields,
-        })
+        CIRExprKind::StructInit(CIRStructInitExpr { ty, fields })
     }
 
     fn lower_union_init(&mut self, union_init: &TypedUnionInitExpr) -> CIRExprKind {
@@ -1264,14 +1270,11 @@ impl<'a> CIRLower<'a> {
 
         let inst_union_decl = instantiate_union_decl_with_type_args(&union_decl, &type_args);
 
-        let union_type = self.lower_union_decl(union_decl_id, &inst_union_decl, type_args.clone());
+        let ty = self.lower_union_type(union_decl_id, &inst_union_decl, type_args.clone());
 
         let lowered_expr = Box::new(self.lower_expr(&union_init.field.value));
 
-        CIRExprKind::UnionInit(CIRUnionInitExpr {
-            ty: CIRType::Union(union_type),
-            expr: lowered_expr,
-        })
+        CIRExprKind::UnionInit(CIRUnionInitExpr { ty, expr: lowered_expr })
     }
 
     fn lower_enum_init(&mut self, enum_init: &TypedEnumInit) -> CIRExprKind {
@@ -1291,7 +1294,7 @@ impl<'a> CIRLower<'a> {
                     TypedEnumVariant::Unit(_) => CIREnumInitVariant::Unit,
                     TypedEnumVariant::Valued { value, .. } => {
                         let expr = self.lower_expr(value);
-                        
+
                         CIREnumInitVariant::Valued(Box::new(expr))
                     }
                     _ => unreachable!(),
@@ -1312,7 +1315,9 @@ impl<'a> CIRLower<'a> {
             }
         };
 
-        let enum_type = self.lower_enum_type(enum_decl_id, &inst_enum_decl, type_args.clone());
+        let ty = self.lower_enum_type(enum_decl_id, &inst_enum_decl, type_args.clone());
+
+        let enum_type = ty.as_enum(&self.tctx).unwrap();
 
         let tag = enum_type.lookup_variant_tag(&enum_init.name).unwrap();
 
@@ -1320,15 +1325,43 @@ impl<'a> CIRLower<'a> {
             ident: enum_init.name.clone(),
             tag,
             variant,
-            enum_type,
+            enum_type: ty,
         })
     }
 
     fn lower_tuple(&mut self, tuple: &TypedTupleExpr) -> CIRExprKind {
         let elements: Vec<CIRExpr> = tuple.elements.iter().map(|expr| self.lower_expr(expr)).collect();
 
+        let fields: Vec<CIRType> = elements.iter().map(|expr| expr.ty.clone()).collect();
+
+        let fields_info = elements
+            .iter()
+            .enumerate()
+            .map(|(i, _)| {
+                // FIXME: Expected to have exact location of the element
+                // but hence it's not implemented correctly in the AST
+                // using tuple_type.loc for now.
+                (i.to_string(), tuple.loc)
+            })
+            .collect();
+
+        let struct_type = CIRStructType {
+            decl_key: None,
+            name: None,
+            fields,
+            fields_info,
+            repr_attr: None,
+            align: None,
+            loc: tuple.loc,
+        };
+
+        let type_id = self.tctx.insert_struct(struct_type);
+
+        let ty = CIRType::Struct(type_id);
+
         CIRExprKind::Tuple(CIRTupleExpr {
             elements,
+            ty,
             loc: tuple.loc,
         })
     }
@@ -2037,30 +2070,49 @@ impl<'a> CIRLower<'a> {
     }
 
     #[inline]
-    fn lower_enum_type(&self, enum_decl_id: EnumDeclID, type_args: TypedTypeArgs) -> CIRType {
-        let named_type = NamedType {
-            type_decl_id: TypeDeclID::Enum(enum_decl_id),
+    fn lower_enum_type(&self, enum_decl_id: EnumDeclID, enum_decl: &EnumDecl, type_args: TypedTypeArgs) -> CIRType {
+        lower_enum_type(
+            &self.decl_tables,
+            self.target,
+            self.tctx.clone(),
+            enum_decl_id,
+            enum_decl,
             type_args,
-        };
-        lower_named_type(&self.decl_tables, self.target, self.tctx.clone(), &named_type)
+        )
     }
 
     #[inline]
-    fn lower_struct_type(&self, struct_decl_id: StructDeclID, type_args: TypedTypeArgs) -> CIRType {
-        let named_type = NamedType {
-            type_decl_id: TypeDeclID::Struct(struct_decl_id),
+    fn lower_struct_type(
+        &self,
+        struct_decl_id: StructDeclID,
+        struct_decl: &StructDecl,
+        type_args: TypedTypeArgs,
+    ) -> CIRType {
+        lower_struct_type(
+            &self.decl_tables,
+            self.target,
+            self.tctx.clone(),
+            struct_decl_id,
+            struct_decl,
             type_args,
-        };
-        lower_named_type(&self.decl_tables, self.target, self.tctx.clone(), &named_type)
+        )
     }
 
     #[inline]
-    fn lower_union_type(&self, union_decl_id: UnionDeclID, type_args: TypedTypeArgs) -> CIRType {
-        let named_type = NamedType {
-            type_decl_id: TypeDeclID::Union(union_decl_id),
+    fn lower_union_type(
+        &self,
+        union_decl_id: UnionDeclID,
+        union_decl: &UnionDecl,
+        type_args: TypedTypeArgs,
+    ) -> CIRType {
+        lower_union_type(
+            &self.decl_tables,
+            self.target,
+            self.tctx.clone(),
+            union_decl_id,
+            union_decl,
             type_args,
-        };
-        lower_named_type(&self.decl_tables, self.target, self.tctx.clone(), &named_type)
+        )
     }
 
     #[inline]

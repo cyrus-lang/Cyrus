@@ -2,7 +2,7 @@
 // Copyright (c) 2026 The Cyrus Language
 
 use crate::builder::{builder::CodeGenIRBuilder, irreg::LocalIRValue};
-use cyrusc_internal::{cir::{lower::cir_fat_ptr_type, types::cir_fat_ptr_type}, vtable::VTableInfo};
+use cyrusc_internal::{cir::lower::cir_fat_ptr_type, vtable::VTableInfo};
 use inkwell::{
     AddressSpace,
     module::Linkage,
