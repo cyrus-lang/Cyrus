@@ -36,6 +36,7 @@ use cyrusc_typed_ast::stmts::*;
 use cyrusc_typed_ast::substitute::*;
 use cyrusc_typed_ast::types::*;
 use fx_hash::FxHashMap;
+use fx_hash::FxHashMapExt;
 use std::sync::Arc;
 
 struct CIRLower<'a> {

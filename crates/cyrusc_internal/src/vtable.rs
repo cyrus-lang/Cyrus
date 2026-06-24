@@ -9,7 +9,7 @@ use cyrusc_typed_ast::{
     stmts::TypedTypeArgs,
     types::SemaType,
 };
-use fx_hash::FxHashMap;
+use fx_hash::{FxHashMap, FxHashMapExt};
 use std::sync::{Arc, RwLock};
 
 /// Key identifying a vtable: (concrete type, instantiated interface).

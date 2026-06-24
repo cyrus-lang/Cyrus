@@ -19,7 +19,7 @@ use cyrusc_typed_ast::{
     },
     types::SemaType,
 };
-use fx_hash::FxHashMap;
+use fx_hash::{FxHashMap, FxHashMapExt};
 
 type DeclMap = FxHashMap<VarDeclID, VarDeclID>;
 
