@@ -2,7 +2,7 @@
 // Copyright (c) 2026 The Cyrus Language
 
 use cyrusc_typed_ast::{decls::DeclID, types::SemaType};
-use fx_hash::FxHashMap;
+use fx_hash::{FxHashMap, FxHashMapExt};
 use smallvec::SmallVec;
 
 #[derive(Clone)]
@@ -30,8 +30,8 @@ pub struct TypeCache {
 impl TypeCache {
     pub fn new() -> Self {
         Self {
-            states: FxHashMap::default(),
-            stack: SmallVec::default(),
+            states: FxHashMap::new(),
+            stack: SmallVec::new(),
         }
     }
 

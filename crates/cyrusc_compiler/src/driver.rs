@@ -29,7 +29,7 @@ use cyrusc_scaffold_parser::{
 use cyrusc_source_loc::{FileID, SourceMap};
 use cyrusc_tui_utils::tui_error;
 use cyrusc_typed_ast::{TypedProgramTree, decls::table::DeclTablesRegistry};
-use fx_hash::FxHashMap;
+use fx_hash::{FxHashMap, FxHashMapExt};
 use inkwell::targets::{InitializationConfig, Target as InkwellTarget, TargetTriple};
 use std::{
     cell::RefCell,
@@ -201,7 +201,7 @@ pub fn build_semantic_bundle<'a>(
 
             let mut has_error = false;
             let mut analyzed_program_trees: Vec<Rc<RefCell<TypedProgramTree>>> = Vec::new();
-            let mut vtable_registries: FxHashMap<FileID, Arc<VTableRegistry>> = FxHashMap::default();
+            let mut vtable_registries: FxHashMap<FileID, Arc<VTableRegistry>> = FxHashMap::new();
 
             for program_tree_entry in &*resolved_program_trees {
                 let vtable_registry = Arc::new(VTableRegistry::new());
