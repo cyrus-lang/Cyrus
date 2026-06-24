@@ -472,10 +472,12 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         let body_block = self.new_basic_block("for.body");
         let exit_block = self.new_basic_block("for.exit");
         let loop_defer_depth = self.defer_stack.len();
-        self.blockreg.control_flow_stack.push(
-            CFEntry::Loop(CFLoop::new(cond_block, inc_block, exit_block, loop_defer_depth))
-        );
-
+        self.blockreg.control_flow_stack.push(CFEntry::Loop(CFLoop::new(
+            cond_block,
+            inc_block,
+            exit_block,
+            loop_defer_depth,
+        )));
 
         if let Some(initializer) = &for_stmt.initializer {
             self.emit_var(initializer);
@@ -544,10 +546,12 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         let body_block = self.llvm_ctx.append_basic_block(cur_fn, "while.body");
         let exit_block = self.llvm_ctx.append_basic_block(cur_fn, "while.exit");
         let loop_defer_depth = self.defer_stack.len();
-        self.blockreg.control_flow_stack.push(
-            CFEntry::Loop(CFLoop::new(Some(cond_block), None, exit_block, loop_defer_depth))
-        );
-
+        self.blockreg.control_flow_stack.push(CFEntry::Loop(CFLoop::new(
+            Some(cond_block),
+            None,
+            exit_block,
+            loop_defer_depth,
+        )));
 
         let cur_block = self.blockreg.cur_block.unwrap();
         self.llvmbuilder.position_at_end(cur_block);
@@ -684,13 +688,13 @@ impl<'ll> CodeGenIRBuilder<'ll> {
     pub(crate) fn emit_break(&mut self, _break_stmt: &CIRBreakStmt) {
         let entry = self.blockreg.control_flow_stack.last().unwrap();
         let CFEntry::Loop(cf_loop) = entry;
-        let exit_block   = cf_loop.exit_block;
-        let defer_depth  = cf_loop.defer_depth;
-        
+        let exit_block = cf_loop.exit_block;
+        let defer_depth = cf_loop.defer_depth;
+
         let cur_block = self.blockreg.cur_block.unwrap();
         if cur_block.get_terminator().is_none() {
             self.emit_defers_down_to(defer_depth);
-            
+
             self.llvmbuilder.build_unconditional_branch(exit_block).unwrap();
         }
         self.blockreg.cur_block = None;
@@ -700,8 +704,8 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         let entry = self.blockreg.control_flow_stack.last().unwrap();
         let CFEntry::Loop(cf_loop) = entry;
         let target_block = cf_loop.inc_block.or(cf_loop.cond_block).unwrap();
-        let defer_depth  = cf_loop.defer_depth;
-        
+        let defer_depth = cf_loop.defer_depth;
+
         let cur_block = self.blockreg.cur_block.unwrap();
         if cur_block.get_terminator().is_none() {
             self.emit_defers_down_to(defer_depth + 1);
@@ -851,19 +855,57 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         hi: &ABIType,
         abi_ret_type: &ABIType,
     ) -> BasicValueEnum<'ll> {
-        let value = match rvalue.kind {
+        let struct_value = match rvalue.kind {
             InternalValueKind::RValue(val) => val.into_struct_value(),
-            _ => unreachable!("Direct pair return value must be an RValue"),
+            _ => unreachable!("direct pair return value must be an rvalue"),
         };
 
-        let lo_val = self.llvmbuilder.build_extract_value(value, 0, "ret.lo").unwrap();
-        let hi_val = self.llvmbuilder.build_extract_value(value, 1, "ret.hi").unwrap();
-
-        let ret_struct_type: StructType = abi_type_to_llvm_type(self.llvm_ctx, &self.target.info, abi_ret_type)
+        let lo_ty: BasicTypeEnum<'ll> = abi_type_to_llvm_type(self.llvm_ctx, &self.target.info, lo)
             .try_into()
             .unwrap();
 
-        let mut pair_struct = ret_struct_type.get_undef();
+        let hi_ty: BasicTypeEnum<'ll> = abi_type_to_llvm_type(self.llvm_ctx, &self.target.info, hi)
+            .try_into()
+            .unwrap();
+
+        let pair_type = self.emit_abi_pair_llvm_type(lo, hi);
+
+        let ret_struct_type: StructType<'ll> = abi_type_to_llvm_type(self.llvm_ctx, &self.target.info, abi_ret_type)
+            .try_into()
+            .unwrap();
+
+        // optimization: if the source struct and return struct have the same type,
+        // we can return the value directly without extraction and rebuilding
+        if struct_value.get_type() == ret_struct_type {
+            return struct_value.into();
+        }
+
+        let src_alloca = self
+            .llvmbuilder
+            .build_alloca(struct_value.get_type(), "ret.src.alloca")
+            .unwrap();
+
+        self.llvmbuilder.build_store(src_alloca, struct_value).unwrap();
+
+        let lo_ptr = self
+            .llvmbuilder
+            .build_struct_gep(pair_type, src_alloca, 0, "ret.lo.ptr")
+            .unwrap();
+
+        let lo_val = self.llvmbuilder.build_load(lo_ty, lo_ptr, "ret.lo").unwrap();
+
+        let hi_ptr = self
+            .llvmbuilder
+            .build_struct_gep(pair_type, src_alloca, 1, "ret.hi.ptr")
+            .unwrap();
+
+        let hi_val = self.llvmbuilder.build_load(hi_ty, hi_ptr, "ret.hi").unwrap();
+
+        let ret_struct_ty: StructType = abi_type_to_llvm_type(self.llvm_ctx, &self.target.info, abi_ret_type)
+            .try_into()
+            .unwrap();
+
+        let mut pair_struct = ret_struct_ty.get_undef();
 
         pair_struct = self
             .llvmbuilder
