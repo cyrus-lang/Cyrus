@@ -203,14 +203,17 @@ impl CIRTypeContext {
         }
     }
 
+    #[inline]
     pub fn start_lowering(&self, decl_id: TypeDeclID, handle: CIRTypeContextID) {
         self.in_progress.write().unwrap().insert(decl_id, handle);
     }
 
+    #[inline]
     pub fn finish_lowering(&self, decl_id: TypeDeclID) {
         self.in_progress.write().unwrap().remove(&decl_id);
     }
 
+    #[inline]
     pub fn is_lowering(&self, decl_id: TypeDeclID) -> bool {
         self.in_progress.read().unwrap().contains_key(&decl_id)
     }

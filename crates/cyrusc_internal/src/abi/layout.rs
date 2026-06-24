@@ -7,7 +7,7 @@ pub struct ABITypeLayout {
     pub align: u32,
     pub field_offsets: Vec<ABIFieldOffsetInfo>,
 
-    #[allow(unused)]
+    #[cfg(debug_assertions)]
     pub is_aggregate: bool,
 }
 
@@ -31,6 +31,8 @@ impl ABITypeLayout {
             size,
             align,
             field_offsets,
+
+            #[cfg(debug_assertions)]
             is_aggregate: false,
         }
     }
@@ -40,6 +42,8 @@ impl ABITypeLayout {
             size,
             align,
             field_offsets,
+
+            #[cfg(debug_assertions)]
             is_aggregate: true,
         }
     }
