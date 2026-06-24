@@ -11,10 +11,9 @@ use cyrusc_typed_ast::{
 };
 use once_cell::sync::Lazy;
 
+pub static DEFAULT_ABI: Lazy<Cyrus_ABI_Impl> = Lazy::new(Cyrus_ABI_Impl::new);
 pub static CYRUS_ABI: Lazy<Cyrus_ABI_Impl> = Lazy::new(|| Cyrus_ABI_Impl::new());
 pub static C_ABI: Lazy<C_ABI_Impl> = Lazy::new(|| C_ABI_Impl::new());
-
-pub static DEFAULT_ABI: Lazy<Cyrus_ABI_Impl> = Lazy::new(Cyrus_ABI_Impl::new);
 
 /// Trait that defines how to generate ABI-safe names for the language.
 /// This allows multiple ABIs to coexist with different name mangling rules.
@@ -236,7 +235,7 @@ fn mangle_sema_type(sema_type: &SemaType) -> String {
                 .collect::<Vec<_>>()
                 .join("_");
 
-            format!("tuple_{elements}")
+            format!("({elements})")
         }
 
         SemaType::InferVar(_) => "_".to_string(),
@@ -253,6 +252,7 @@ fn mangle_sema_type(sema_type: &SemaType) -> String {
     }
 }
 
+#[inline]
 pub fn mangle_method(module_name: &str, id: &str, name: &str) -> String {
     CYRUS_ABI.method_name(module_name, id, name)
 }

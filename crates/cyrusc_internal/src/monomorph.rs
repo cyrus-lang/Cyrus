@@ -7,7 +7,7 @@ use cyrusc_typed_ast::{
     stmts::{TypedBlockStmt, TypedFuncParams, TypedTypeArgs},
     types::SemaType,
 };
-use fx_hash::FxHashMap;
+use fx_hash::{FxHashMap, FxHashMapExt};
 use std::sync::RwLock;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -52,8 +52,8 @@ impl MonomorphRegistry {
     pub fn new() -> Self {
         Self {
             inner: RwLock::new(MonomorphRegistryInner {
-                key_map: FxHashMap::default(),
-                func_to_monomorphs: FxHashMap::default(),
+                key_map: FxHashMap::new(),
+                func_to_monomorphs: FxHashMap::new(),
                 instances: Vec::new(),
                 monomorph_body: Vec::new(),
             }),
