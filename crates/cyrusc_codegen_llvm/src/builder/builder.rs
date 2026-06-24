@@ -50,7 +50,7 @@ pub(crate) struct BlockRegistry<'ll> {
     pub(crate) control_flow_stack: Vec<CFEntry<'ll>>,
     pub(crate) first_block: Option<BasicBlock<'ll>>,
     pub(crate) cur_block: Option<BasicBlock<'ll>>,
-    pub(crate) labels: HashMap<LabelID, BasicBlock<'ll>>,
+    pub(crate) labels: HashMap<LabelID, (BasicBlock<'ll>, usize)>,
 }
 
 impl<'ll> CodeGenIRBuilder<'ll> {

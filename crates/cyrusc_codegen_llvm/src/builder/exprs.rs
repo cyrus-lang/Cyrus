@@ -96,6 +96,9 @@ impl<'ll> CodeGenIRBuilder<'ll> {
                 LocalIRValue::LValue(pointer_value, ty) => {
                     InternalValue::new(ty, InternalValueKind::LValue(pointer_value))
                 }
+                LocalIRValue::RValue(val, ty) => {
+                    InternalValue::new(ty, InternalValueKind::RValue(val))
+                }
             };
 
             return internal_value;
@@ -316,11 +319,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
                         .into()
                 }
             }
-            (BasicTypeEnum::PointerType(_), BasicTypeEnum::PointerType(to_ptr)) => self
-                .llvmbuilder
-                .build_pointer_cast(value.into_pointer_value(), to_ptr, "ptrcast")
-                .unwrap()
-                .into(),
+            (BasicTypeEnum::PointerType(_), BasicTypeEnum::PointerType(_)) => value,
             (BasicTypeEnum::VectorType(_), BasicTypeEnum::VectorType(_)) => self
                 .llvmbuilder
                 .build_bit_cast(value, target_basic_type, "bitcast")
@@ -415,11 +414,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
             AnyTypeEnum::PointerType(ptr_type) => {
                 if basic_value.is_pointer_value() {
                     // ptr -> ptr
-                    AnyValueEnum::PointerValue(
-                        self.llvmbuilder
-                            .build_pointer_cast(basic_value.into_pointer_value(), ptr_type, "cast")
-                            .unwrap(),
-                    )
+                    AnyValueEnum::PointerValue(basic_value.into_pointer_value())
                 } else if basic_value.is_int_value() {
                     let is_signed = value.ty.is_signed_integer();
                     basic_value = self.widen_int_arg(value, is_signed).as_basic_value();
@@ -508,14 +503,35 @@ impl<'ll> CodeGenIRBuilder<'ll> {
 
     fn emit_addr_of(&mut self, addr_of: &CIRAddrOfExpr) -> InternalValue<'ll> {
         let operand = self.emit_expr(&addr_of.operand, &None);
+
+        let ptr = match operand.kind {
+            InternalValueKind::LValue(ptr) => ptr,
+            InternalValueKind::RValue(val) => {
+                let spill_alloca = self.llvmbuilder.build_alloca(val.get_type(), "addr.spill").unwrap();
+                self.llvmbuilder.build_store(spill_alloca, val).unwrap();
+                spill_alloca
+            }
+            _ => unreachable!("Cannot take the address of a function or undefined value"),
+        };
+
         InternalValue::new(
-            CIRType::Pointer(Box::new(operand.ty.clone())),
-            InternalValueKind::RValue(operand.as_basic_value()),
+            CIRType::Pointer(Box::new(operand.ty)),
+            InternalValueKind::RValue(ptr.as_basic_value_enum()),
         )
     }
 
+
     pub(crate) fn emit_decay_array_to_pointer(&self, array_lvalue: InternalValue<'ll>) -> InternalValue<'ll> {
-        let array_ptr = array_lvalue.as_basic_value().into_pointer_value();
+        let array_ptr = match array_lvalue.kind {
+            InternalValueKind::LValue(ptr) => ptr,
+            InternalValueKind::RValue(val) => {
+                let spill_alloca = self.llvmbuilder.build_alloca(val.get_type(), "array.decay.spill").unwrap();
+                self.llvmbuilder.build_store(spill_alloca, val).unwrap();
+                spill_alloca
+            }
+            _ => unreachable!("Cannot decay a non-LValue/RValue array"),
+        };
+
         let element_type = array_lvalue.ty.as_array().unwrap().element_type;
 
         let zero = self.llvm_ctx.i32_type().const_int(0, false);
@@ -603,7 +619,15 @@ impl<'ll> CodeGenIRBuilder<'ll> {
 
     fn emit_unary_expr(&mut self, unary_expr: &CIRUnaryExpr) -> InternalValue<'ll> {
         let lvalue = self.emit_lvalue_address(&unary_expr.operand);
-        let lvalue_ptr = lvalue.as_basic_value().into_pointer_value();
+        let lvalue_ptr = match lvalue.kind {
+            InternalValueKind::LValue(ptr) => ptr,
+            InternalValueKind::RValue(val) => {
+                let spill = self.llvmbuilder.build_alloca(val.get_type(), "unary.spill").unwrap();
+                self.llvmbuilder.build_store(spill, val).unwrap();
+                spill
+            }
+            _ => unreachable!("Cannot perform unary operation on non-LValue/RValue"),
+        };
 
         let rvalue = self.load_rvalue(lvalue);
 
