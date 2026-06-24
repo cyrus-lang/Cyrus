@@ -71,8 +71,8 @@ impl CIRTypeContext {
         defs.push(CIRTypeDef::Struct(CIRStructType {
             decl_key: None,
             name: None,
-            fields: vec![],
-            fields_info: vec![],
+            fields: Vec::new(),
+            fields_info: Vec::new(),
             repr_attr: None,
             align: None,
             loc: Loc::default(FileID(0)),

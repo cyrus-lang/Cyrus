@@ -311,7 +311,7 @@ impl<'a> CIRLower<'a> {
         });
 
         // start recursion with empty path
-        self.lower_export_pattern_recursive(&export_tuple.pattern, expr_var, ty, vec![], &mut vars);
+        self.lower_export_pattern_recursive(&export_tuple.pattern, expr_var, ty, Vec::new(), &mut vars);
 
         vars
     }

@@ -487,7 +487,7 @@ mod tests {
         let abi = abi(TCTX.clone());
 
         let fn_ty = CIRType::FuncType(CIRFuncType {
-            params: vec![],
+            params: Vec::new(),
             ret_type: Box::new(i32()),
             callconv: CallConv::SysV64,
             abi_func_info: None,
