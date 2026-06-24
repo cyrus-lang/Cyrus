@@ -2,7 +2,7 @@
 // Copyright (c) 2026 The Cyrus Language
 
 use cyrusc_internal::cir::{cir::IRValueID, types::CIRType};
-use inkwell::values::{FunctionValue, GlobalValue, PointerValue};
+use inkwell::values::{BasicValueEnum, FunctionValue, GlobalValue, PointerValue};
 use std::{cell::RefCell, collections::HashMap, rc::Rc};
 
 use crate::builder::builder::CodeGenIRBuilder;
@@ -21,6 +21,7 @@ pub enum LocalIRValue<'a> {
     Func(FunctionValue<'a>, CIRType),
     Global(GlobalValue<'a>, CIRType),
     LValue(PointerValue<'a>, CIRType),
+    RValue(BasicValueEnum<'a>, CIRType),
 }
 
 impl<'a> LocalIRValueRegistry<'a> {

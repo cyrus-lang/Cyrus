@@ -117,20 +117,12 @@ impl<'ll> CodeGenIRBuilder<'ll> {
 
                     llvm_param_index += 1;
 
-                    let ty: BasicTypeEnum<'ll> = self.emit_ty(param.ty.clone()).try_into().unwrap();
-
-                    let param_alloca = self.llvmbuilder.build_alloca(ty, "param").unwrap();
-
-                    self.llvmbuilder.build_store(param_alloca, llvm_param).unwrap();
-
                     self.insert_local_ir_value(
                         param.irv_id.unwrap(),
-                        LocalIRValue::LValue(param_alloca, param.ty.clone()),
+                        LocalIRValue::RValue(llvm_param, param.ty.clone()),
                     );
                 }
                 ABIArgKind::DirectPair { lo: lo_ty, hi: hi_ty } => {
-                    let ptr_type = self.llvm_ctx.ptr_type(AddressSpace::default());
-
                     let coerced_type = self.llvm_ctx.struct_type(
                         &[
                             abi_type_to_llvm_type(self.llvm_ctx, &self.target.info, lo_ty)
@@ -146,7 +138,6 @@ impl<'ll> CodeGenIRBuilder<'ll> {
                     let param_type: BasicTypeEnum<'ll> = self.emit_ty(param.ty.clone()).try_into().unwrap();
 
                     let lo = self.cur_func.unwrap().get_nth_param(llvm_param_index as u32).unwrap();
-
                     let hi = self
                         .cur_func
                         .unwrap()
@@ -157,22 +148,16 @@ impl<'ll> CodeGenIRBuilder<'ll> {
 
                     let param_alloca = self.llvmbuilder.build_alloca(param_type, "param").unwrap();
 
-                    // reinterpret memory as coercion struct
-                    let coerced_ptr = self
-                        .llvmbuilder
-                        .build_pointer_cast(param_alloca, ptr_type, "coerce.ptr")
-                        .unwrap();
-
                     let lo_ptr = self
                         .llvmbuilder
-                        .build_struct_gep(coerced_type, coerced_ptr, 0, "lo.ptr")
+                        .build_struct_gep(coerced_type, param_alloca, 0, "lo.ptr")
                         .unwrap();
 
                     self.llvmbuilder.build_store(lo_ptr, lo).unwrap();
 
                     let hi_ptr = self
                         .llvmbuilder
-                        .build_struct_gep(coerced_type, coerced_ptr, 1, "hi.ptr")
+                        .build_struct_gep(coerced_type, param_alloca, 1, "hi.ptr")
                         .unwrap();
 
                     self.llvmbuilder.build_store(hi_ptr, hi).unwrap();
@@ -182,6 +167,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
                         LocalIRValue::LValue(param_alloca, param.ty.clone()),
                     );
                 }
+                
                 ABIArgKind::Indirect { .. } => {
                     let param_alloca = self
                         .cur_func
