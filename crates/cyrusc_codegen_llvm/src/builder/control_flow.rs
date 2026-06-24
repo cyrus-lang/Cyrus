@@ -850,11 +850,10 @@ impl<'ll> CodeGenIRBuilder<'ll> {
     fn emit_compute_return_direct_pair(
         &mut self,
         rvalue: InternalValue<'ll>,
-        _lo: &ABIType,
-        _hi: &ABIType,
+        lo: &ABIType,
+        hi: &ABIType,
         abi_ret_type: &ABIType,
     ) -> BasicValueEnum<'ll> {
-        
         let value = match rvalue.kind {
             InternalValueKind::RValue(val) => val.into_struct_value(),
             _ => unreachable!("Direct pair return value must be an RValue"),
