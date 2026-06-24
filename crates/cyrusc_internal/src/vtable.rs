@@ -9,7 +9,7 @@ use cyrusc_typed_ast::{
     stmts::TypedTypeArgs,
     types::SemaType,
 };
-use fx_hash::FxHashMap;
+use fx_hash::{FxHashMap, FxHashMapExt};
 use std::sync::{Arc, RwLock};
 
 /// Key identifying a vtable: (concrete type, instantiated interface).
@@ -61,7 +61,7 @@ impl VTableRegistry {
     pub fn new() -> Self {
         Self {
             inner: Arc::new(RwLock::new(VTableRegistryInner {
-                map: FxHashMap::default(),
+                map: FxHashMap::new(),
                 tables: Vec::new(),
             })),
         }

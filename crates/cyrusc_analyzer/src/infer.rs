@@ -5,7 +5,7 @@ use cyrusc_typed_ast::{
     stmts::{TypedFuncTypeParams, TypedFuncTypeVariadicParam, TypedTypeArg},
     types::{InferVarID, NamedType, SemaType, TypedArrayType, TypedFuncType, TypedTupleType},
 };
-use fx_hash::FxHashMap;
+use fx_hash::{FxHashMap, FxHashMapExt};
 
 #[derive(Debug, Clone)]
 pub(crate) struct InferCtx {
@@ -17,7 +17,7 @@ impl InferCtx {
     pub fn new() -> Self {
         Self {
             next_var: 0,
-            bindings: FxHashMap::default(),
+            bindings: FxHashMap::new(),
         }
     }
 

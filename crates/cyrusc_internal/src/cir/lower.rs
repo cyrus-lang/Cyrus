@@ -23,6 +23,8 @@ use cyrusc_typed_ast::{
 };
 use fx_hash::FxHashSet;
 
+// TODO: Add CIRTypeContext as dependency.
+
 pub fn lower_sema_type(decl_tables: &DeclTablesRegistry, target: &ABITarget, ty: &SemaType) -> CIRType {
     match ty {
         SemaType::Plain(plain_type) => CIRType::Plain(plain_type.clone()),
@@ -127,6 +129,7 @@ pub fn lower_struct_decl(
     }
 }
 
+// TODO: Change doc comment
 /// Lowers a semantic `EnumDecl` into a `CIREnumType`.
 ///
 /// This converts each semantic variant into its CIR representation and
