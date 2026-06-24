@@ -31,7 +31,6 @@ pub type CIRTypeContextDeclKey = (TypeDeclID, TypedTypeArgs);
 /// during type lowering.
 pub struct CIRTypeContext {
     pub target_info: ABITargetInfo,
-
     defs: RwLock<Vec<CIRTypeDef>>,
     decl_to_id: RwLock<FxHashMap<(TypeDeclID, TypedTypeArgs), CIRTypeContextID>>,
     key_to_id: RwLock<FxHashMap<CIRTypeKey, CIRTypeContextID>>,
@@ -51,6 +50,8 @@ pub enum CIRTypeDef {
 /// Hash key for anonymous types.
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]
 enum CIRTypeKey {
+    Named(CIRTypeContextDeclKey),
+
     AnonStruct(Vec<CIRTypeKey>),
     AnonUnion(Vec<CIRTypeKey>),
     AnonEnum {
@@ -380,10 +381,7 @@ impl CIRTypeContext {
 
                 match &defs[type_id.0] {
                     CIRTypeDef::Struct(struct_type) => match &struct_type.decl_key {
-                        Some(_) => {
-                            dbg!(struct_type.clone());
-                            panic!("named struct should not reach type_to_key")
-                        }
+                        Some(decl_key) => CIRTypeKey::Named(decl_key.clone()),
                         None => self.struct_key(struct_type),
                     },
                     _ => unreachable!(),
@@ -395,7 +393,7 @@ impl CIRTypeContext {
 
                 match &defs[type_id.0] {
                     CIRTypeDef::Union(union_type) => match &union_type.decl_key {
-                        Some(_) => panic!("named union should not reach type_to_key"),
+                        Some(decl_key) => CIRTypeKey::Named(decl_key.clone()),
                         None => self.union_key(union_type),
                     },
                     _ => unreachable!(),
@@ -407,7 +405,7 @@ impl CIRTypeContext {
 
                 match &defs[type_id.0] {
                     CIRTypeDef::Enum(enum_type) => match &enum_type.decl_key {
-                        Some(_) => panic!("named enum should not reach type_to_key"),
+                        Some(decl_key) => CIRTypeKey::Named(decl_key.clone()),
                         None => self.enum_key(enum_type),
                     },
                     _ => unreachable!(),

@@ -273,7 +273,9 @@ impl<'ll> CodeGenIRBuilder<'ll> {
                 }
             }
 
-            self.emit_debug_param(param_index, param);
+            if self.dctx.is_some() {
+                self.emit_debug_param(param_index, param);
+            }
         }
     }
 
