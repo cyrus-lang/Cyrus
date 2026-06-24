@@ -17,8 +17,6 @@ pub struct File {
         const path_str = path->as_string_const().as_str_const();
         const mode_str = mode.as_str();
 
-        libc::printf("%s\n", path_str);
-
     	const file = libc::fopen(path_str, mode_str);
         if (!file) {
             return .Error("could not open the file");

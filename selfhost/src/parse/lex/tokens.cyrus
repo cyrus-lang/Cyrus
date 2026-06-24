@@ -1,0 +1,315 @@
+import std::string{String};
+
+pub enum Token {
+    Ident(String),
+    Literal(Literal),
+
+    // Operators
+    Plus,
+    Minus,
+    Slash,
+    Asterisk,
+    Percent,
+    Increment,
+    Decrement,
+
+    // Symbols
+    ShiftRight,
+    ShiftLeft,
+    Caret,
+    AmpTilde,
+    Tilde,
+    Assign,
+    Equal,
+    NotEqual,
+    Bang,
+    LeftParen,
+    RightParen,
+    LeftBrace,
+    RightBrace,
+    LeftBracket,
+    RightBracket,
+    Comma,
+    ThinArrow,
+    FatArrow,
+    Dot,
+    DoubleDot,
+    TripleDot,
+    DoubleQuote,
+    SingleQuote,
+    Pipe,
+    Ampersand,
+    Semicolon,
+    Colon,
+    DoubleColon,
+    LessThan,
+    GreaterThan,
+    LessEqual,
+    GreaterEqual,
+    And,
+    Or,
+    At,
+    Underscore,
+
+    // Keywords
+    Module,
+    Var,
+    Dynamic,
+    Goto,
+    Defer,
+    Union,
+    Interface,
+    Function,
+    Typedef,
+    Switch,
+    Case,
+    Default,
+    If,
+    Else,
+    Return,
+    For,
+    While,
+    Foreach,
+    Break,
+    Continue,
+    Struct,
+    Import,
+    In,
+    Enum,
+    True,
+    False,
+    Null,
+    As,
+
+    // Types
+    UIntPtr,
+    IntPtr,
+    ISize,
+    USize,
+    Int,
+    Int8,
+    Int16,
+    Int32,
+    Int64,
+    Int128,
+    UInt,
+    UInt8,
+    UInt16,
+    UInt32,
+    UInt64,
+    UInt128,
+    Float16,
+    Float32,
+    Float64,
+    Float128,
+    Char,
+    Void,
+    Bool,
+    Const,
+
+    // Modifiers
+    Weak,
+    LinkOnce,
+    Callconv,
+    Naked,
+    NoReturn,
+    Hot,
+    Cold,
+    Extern,
+    Public,
+    Inline,
+    NoInline,
+    AlwaysInline,
+    DllImport,
+    DllExport,
+    OptSize,
+    OptNone,
+    NoSanitize,
+    NoUnwind,
+    Section,
+    Repr,
+
+    EOF,
+
+    pub inline fn is_eof(&const self) bool {
+        switch (*self) {
+            case .EOF => return true;
+            default => return false;
+        }
+    }
+
+    pub fn as_str(&const self) const char* {
+        switch (*self) {
+            case .Ident(ident) => return ident.as_str_const();
+            case .Literal => return "literal"; // FIXME
+
+            case .Underscore => return "_";
+            case .Plus => return "+";
+            case .Minus => return "-";
+            case .Asterisk => return "*";
+            case .Slash => return "/";
+            case .Percent => return "%";
+            case .Assign => return "=";
+            case .Equal => return "==";
+            case .LeftParen => return "(";
+            case .RightParen => return ")";
+            case .LeftBrace => return "{{";
+            case .RightBrace => return "}}";
+            case .LeftBracket => return "[[";
+            case .RightBracket => return "]]";
+            case .At => return "@";
+            case .Comma => return ",";
+            case .DoubleDot => return "..";
+            case .TripleDot => return "...";
+            case .Dot => return ".";
+            case .DoubleQuote => return "\"";
+            case .SingleQuote => return "'";
+            case .Pipe => return "|";
+            case .Ampersand => return "&";
+            case .LessThan => return "<";
+            case .GreaterThan => return ">";
+            case .LessEqual => return "<=";
+            case .GreaterEqual => return ">=";
+            case .And => return "&&";
+            case .Or => return "||";
+            case .Semicolon => return ";";
+            case .Colon => return ":";
+            case .ThinArrow => return "->";
+            case .FatArrow => return "=>";
+            case .Dynamic => return "dynamic";
+            case .Var => return "var";
+            case .Module => return "mod";
+            case .Interface => return "interface";
+            case .Typedef => return "type";
+            case .Function => return "fn";
+            case .Switch => return "switch";
+            case .Case => return "case";
+            case .Default => return "default";
+            case .Struct => return "struct";
+            case .Import => return "import";
+            case .If => return "if";
+            case .Else => return "else";
+            case .Return => return "return";
+            case .For => return "for";
+            case .Foreach => return "foreach";
+            case .Break => return "break";
+            case .Continue => return "continue";
+            case .True => return "true";
+            case .False => return "false";
+            case .Null => return "null";
+            case .UIntPtr => return "uintptr";
+            case .IntPtr => return "intptr";
+            case .ISize => return "isize";
+            case .USize => return "usize";
+            case .Int => return "int";
+            case .Int8 => return "int8";
+            case .Int16 => return "int16";
+            case .Int32 => return "int32";
+            case .Int64 => return "int64";
+            case .Int128 => return "int128";
+            case .UInt => return "uint";
+            case .UInt8 => return "uint8";
+            case .UInt16 => return "uint16";
+            case .UInt32 => return "uint32";
+            case .UInt64 => return "uint64";
+            case .UInt128 => return "uint128";
+            case .Float16 => return "float16";
+            case .Float32 => return "float32";
+            case .Float64 => return "float64";
+            case .Float128 => return "float128";
+            case .Char => return "char";
+            case .Bool => return "bool";
+            case .Void => return "void";
+            case .Enum => return "enum";
+            case .In => return "in";
+            case .As => return "as";
+            case .Extern => return "extern";
+            case .Inline => return "inline";
+            case .Public => return "pub";
+            case .Const => return "const";
+            case .Weak => return "weak";
+            case .LinkOnce => return "linkonce";
+            case .Callconv => return "callconv";
+            case .Naked => return "naked";
+            case .NoReturn => return "noreturn";
+            case .Hot => return "hot";
+            case .Cold => return "cold";
+            case .DllImport => return "dllimport";
+            case .DllExport => return "dllexport";
+            case .OptSize => return "optsize";
+            case .OptNone => return "optnone";
+            case .NoSanitize => return "no_sanitize";
+            case .NoUnwind => return "nounwind";
+            case .Section => return "section";
+            case .Repr => return "repr";
+            case .Increment => return "++";
+            case .Decrement => return "--";
+            case .ShiftRight => return ">>";
+            case .ShiftLeft => return "<<";
+            case .Caret => return "^";
+            case .AmpTilde => return "&~";
+            case .Tilde => return "~";
+            case .NotEqual => return "!=";
+            case .Bang => return "!";
+            case .DoubleColon => return "\"";
+            case .Goto => return "goto";
+            case .Defer => return "defer";
+            case .Union => return "union";
+            case .While => return "while";
+            case .NoInline => return "noinline";
+            case .AlwaysInline => return "alwaysinline";
+
+            case .EOF => return "EOF";
+        }
+    }
+}
+
+pub enum Literal {
+    Int128 {
+        value: int128,
+        suffix: IntegerSuffix
+    },
+    UInt128 {
+        value: uint128,
+        suffix: IntegerSuffix
+    },
+    Float {
+        value: float64,
+        suffix: FloatSuffix
+    },
+    String {
+        value: String,
+        suffix: StringSuffix
+    },
+    Bool(bool),
+    Null
+}
+
+pub enum IntegerSuffix {
+    ISize,
+    USize,
+    Int,
+    Int8,
+    Int16,
+    Int32,
+    Int64,
+    Int128,
+    UInt,
+    UInt8,
+    UInt16,
+    UInt32,
+    UInt64,
+    UInt128,
+    Char,
+}
+
+pub enum FloatSuffix {
+    Float16,
+    Float32,
+    Float64,
+    Float128,
+}
+
+pub enum StringSuffix {
+    Byte
+}

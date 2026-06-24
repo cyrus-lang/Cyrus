@@ -1,0 +1,33 @@
+import std::mem{Allocator, LibcAllocator};
+import std::string{String};
+import std::os{File};
+import std::path{Path};
+
+import diags{compile_error};
+
+pub fn read_file_content(const file_name: const char*) String {
+    const allocator: Allocator = dynamic LibcAllocator.new();
+
+    var path = Path.new(allocator, file_name);
+    defer path.free();
+
+    var file: File;
+    switch (File.open(&path, .Read)) {
+        case .Value(_file) => file = _file;
+        case .Error(_) => {
+            compile_error("failed to open source file");
+            @unreachable();
+        }
+    }
+    defer file.close();
+
+    const result = file.read(allocator);
+
+    switch (result) {
+        case .Value(content) => return content;
+        case .Error(_) => {
+            compile_error("failed to read source file");
+            @unreachable();
+        }
+    }
+}

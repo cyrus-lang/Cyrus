@@ -1,0 +1,7 @@
+import std::libc{stderr, fprintf};
+import std::os{exit};
+
+pub fn compile_error(msg: const char*) {
+    fprintf(stderr, "error: %s\n", msg);
+    exit(.Failure);
+}

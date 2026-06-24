@@ -4,6 +4,7 @@
 import std::libc{strlen, strcmp, memmove, isspace, tolower, toupper};
 import std::mem{Allocator};
 import std::mem::buffer{Buffer};
+import std::option{Option};
 
 pub struct String {
     buffer: Buffer<char>;
@@ -130,6 +131,14 @@ pub struct String {
         for (var i: usize = 0; i < self->buffer.len(); i++) {
             str[i] = @cast(char, toupper(str[i]));
         }
+    }
+
+    pub inline fn get(&const self, const index: usize) Option<char> {
+        if (index > self->len()) {
+            return .None;
+        }
+
+        return .Some(self->as_str_const()[index]);
     }
 
     pub inline fn as_str(&self) char* {

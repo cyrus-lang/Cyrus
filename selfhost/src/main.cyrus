@@ -1,0 +1,21 @@
+import std::libc{printf};
+
+import parse::lex{Lexer};
+import diags{compile_error};
+import utils::file{read_file_content};
+
+pub fn main(argc: int, argv: char**) {
+    const file_name = argv[1];
+
+    if (!file_name) {
+        compile_error("no source file as input has given to compiler");
+        @unreachable();
+    }
+
+    var source = read_file_content(file_name);
+    defer source.free();
+
+    const lexer = Lexer.new(&source);
+    
+    printf("%s\n", source.as_str_const());
+}
