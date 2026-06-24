@@ -66,15 +66,17 @@ impl<'ll> CodeGenIRBuilder<'ll> {
             CIRExprKind::Type(_) => unreachable!(),
         };
 
-        unsafe {
-            set_debug_location(
-                &self.dctx,
-                self.llvm_ctx,
-                self.llvmbuilder,
-                expr.loc.line.try_into().unwrap(),
-                expr.loc.column.try_into().unwrap(),
-            )
-        };
+        if let Some(dctx) = &self.dctx {
+            unsafe {
+                set_debug_location(
+                    &dctx,
+                    self.llvm_ctx,
+                    self.llvmbuilder,
+                    expr.loc.line.try_into().unwrap(),
+                    expr.loc.column.try_into().unwrap(),
+                )
+            };
+        }
 
         if let Some(ty) = target_cir_type {
             if ty.is_pointer() && value.ty.is_array() {

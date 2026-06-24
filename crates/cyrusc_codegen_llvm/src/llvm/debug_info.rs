@@ -2,6 +2,7 @@
 // Copyright (c) 2026 The Cyrus Language
 
 use crate::llvm::dwarf::{DW_TAG_CONST_TYPE, DWARF_PRODUCER_NAME};
+use fx_hash::{FxHashMap, FxHashMapExt};
 use inkwell::{
     builder::Builder,
     context::{AsContextRef, Context},
@@ -17,7 +18,7 @@ use inkwell::{
         prelude::{LLVMDIBuilderRef, LLVMMetadataRef, LLVMModuleRef, LLVMTypeRef, LLVMValueRef},
     },
 };
-use std::{collections::HashMap, ffi::CString};
+use std::ffi::CString;
 
 #[derive(Debug, Clone)]
 pub struct DebugFile {
@@ -38,7 +39,7 @@ pub struct DebugContext {
     pub file: DebugFile,
     pub block_stack: Vec<BlockScope>,
     pub emit_expr_loc: bool,
-    pub type_cache: HashMap<LLVMTypeRef, LLVMMetadataRef>,
+    pub type_cache: FxHashMap<LLVMTypeRef, LLVMMetadataRef>,
 
     #[allow(unused)]
     pub runtime_version: u32,
@@ -50,15 +51,15 @@ impl DebugContext {
 
         let mut dctx = DebugContext {
             builder,
-            compile_unit: std::ptr::null_mut(),
-            func: std::ptr::null_mut(),
             file: DebugFile {
                 metadata: std::ptr::null_mut(),
             },
+            compile_unit: std::ptr::null_mut(),
+            func: std::ptr::null_mut(),
+            type_cache: FxHashMap::new(),
             block_stack: Vec::new(),
             runtime_version: 0,
             emit_expr_loc: true,
-            type_cache: HashMap::new(),
         };
 
         unsafe { create_compile_unit(&mut dctx, file_name, dir) };

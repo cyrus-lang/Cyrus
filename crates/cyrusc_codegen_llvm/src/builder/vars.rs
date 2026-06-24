@@ -42,7 +42,9 @@ impl<'ll> CodeGenIRBuilder<'ll> {
 
         let layout = self.tctx.layout_of(&cir_global_var.ty);
 
-        self.emit_debug_global_var(&layout, &global_value, cir_global_var);
+        if self.dctx.is_some() {
+            self.emit_debug_global_var(&layout, &global_value, cir_global_var);
+        }
 
         if let Some(expr) = &cir_global_var.expr {
             let lvalue = self.emit_expr(&expr, &Some(cir_global_var.ty.clone()));
@@ -103,7 +105,9 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         let ptr = self.llvmbuilder.build_alloca(ty, &cir_var.name).unwrap();
         let alloca_instr = ptr.as_instruction().unwrap();
 
-        self.emit_debug_var(&layout, &ptr, cir_var);
+        if self.dctx.is_some() {
+            self.emit_debug_var(&layout, &ptr, cir_var);
+        }
 
         if let Some(expr) = &cir_var.expr {
             let lvalue = self.emit_expr(expr, &Some(cir_var.ty.clone()));
@@ -131,6 +135,10 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         global_value: &GlobalValue<'ll>,
         cir_global_var: &CIRGlobalVarStmt,
     ) {
+        let Some(dctx) = &self.dctx else {
+            panic!("cannot emit global var debug info without having debug context");
+        };
+
         let ty_meta = self.emit_debug_type_metadata(&cir_global_var.ty);
 
         let is_local = !cir_global_var
@@ -140,14 +148,14 @@ impl<'ll> CodeGenIRBuilder<'ll> {
             .map(|l| l.is_extern())
             .unwrap_or(false);
 
-        let file = self.dctx.file.metadata;
+        let file = dctx.file.metadata;
 
         // globals should use the compile unit as scope
-        let scope = self.dctx.compile_unit;
+        let scope = dctx.compile_unit;
 
         unsafe {
             emit_global_debug(
-                &self.dctx,
+                &dctx,
                 global_value.as_value_ref(),
                 scope,
                 file,
@@ -161,21 +169,25 @@ impl<'ll> CodeGenIRBuilder<'ll> {
     }
 
     fn emit_debug_var(&self, layout: &ABITypeLayout, ptr: &PointerValue<'ll>, cir_var: &CIRVarStmt) {
-        let var_ty_metadata = self.emit_debug_type_metadata(&cir_var.ty);
+        let Some(dctx) = &self.dctx else {
+            panic!("cannot emit global var debug info without having debug context");
+        };
+
+        let var_ty_meta = self.emit_debug_type_metadata(&cir_var.ty);
 
         let var_meta = unsafe {
             create_debug_variable(
-                &self.dctx,
+                &dctx,
                 &cir_var.name,
                 cir_var.loc.line.try_into().unwrap(),
-                var_ty_metadata,
+                var_ty_meta,
                 layout.align,
             )
         };
 
         unsafe {
             emit_dbg_declare(
-                &self.dctx,
+                &dctx,
                 self.llvm_ctx,
                 self.llvmbuilder,
                 ptr.as_value_ref(),

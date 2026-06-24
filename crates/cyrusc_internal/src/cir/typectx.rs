@@ -180,6 +180,14 @@ impl CIRTypeContext {
                 return layout.clone();
             }
         }
+
+        // IMPORTANT
+        // insert a zero-sized placeholder to break recursion
+        self.layouts
+            .write()
+            .unwrap()
+            .insert(type_id, ABITypeLayout::aggregate(0, 1, Vec::new()));
+
         let layout = self.compute_layout_for_def(type_id);
         self.layouts.write().unwrap().insert(type_id, layout.clone());
         layout
@@ -251,36 +259,54 @@ impl CIRTypeContext {
     }
 
     fn type_to_key(&self, ty: &CIRType) -> CIRTypeKey {
-        match ty {
-            CIRType::Plain(p) => CIRTypeKey::Plain(p.clone()),
-            CIRType::Const(inner) => CIRTypeKey::Pointer(Box::new(self.type_to_key(inner))), // Const not stored, flatten
+        match ty.const_inner() {
+            CIRType::Const(_) => unreachable!(),
+
+            CIRType::Plain(plain_type) => CIRTypeKey::Plain(plain_type.clone()),
+
             CIRType::Pointer(inner) => CIRTypeKey::Pointer(Box::new(self.type_to_key(inner))),
-            CIRType::Array(arr) => CIRTypeKey::Array(Box::new(self.type_to_key(&arr.element_type)), arr.len),
+
+            CIRType::Array(array_type) => {
+                CIRTypeKey::Array(Box::new(self.type_to_key(&array_type.element_type)), array_type.len)
+            }
+
             CIRType::Struct(type_id) => {
                 let defs = self.defs.read().unwrap();
+
                 match &defs[type_id.0] {
-                    CIRTypeDef::Struct(s) => self.struct_key(s),
+                    CIRTypeDef::Struct(struct_type) => self.struct_key(struct_type),
                     _ => unreachable!(),
                 }
             }
+
             CIRType::Union(type_id) => {
                 let defs = self.defs.read().unwrap();
+
                 match &defs[type_id.0] {
                     CIRTypeDef::Union(u) => self.union_key(u),
                     _ => unreachable!(),
                 }
             }
+
             CIRType::Enum(type_id) => {
                 let defs = self.defs.read().unwrap();
+
                 match &defs[type_id.0] {
                     CIRTypeDef::Enum(e) => self.enum_key(e),
                     _ => unreachable!(),
                 }
             }
-            CIRType::FuncType(f) => {
-                let params: Vec<CIRTypeKey> = f.params.iter().map(|p| self.type_to_key(p)).collect();
-                CIRTypeKey::FuncType(params, Box::new(self.type_to_key(&f.ret_type)), f.is_var)
+
+            CIRType::FuncType(func_type) => {
+                let params: Vec<CIRTypeKey> = func_type.params.iter().map(|p| self.type_to_key(p)).collect();
+
+                CIRTypeKey::FuncType(
+                    params,
+                    Box::new(self.type_to_key(&func_type.ret_type)),
+                    func_type.is_var,
+                )
             }
+
             CIRType::Dynamic(_) => CIRTypeKey::Dynamic,
         }
     }

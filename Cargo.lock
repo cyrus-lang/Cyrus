@@ -340,6 +340,7 @@ dependencies = [
  "cyrusc_source_loc",
  "cyrusc_tui_utils",
  "cyrusc_typed_ast",
+ "fx-hash",
  "inkwell",
  "rayon",
 ]

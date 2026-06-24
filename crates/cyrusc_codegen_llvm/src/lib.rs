@@ -95,6 +95,8 @@ impl CodeGenLLVM {
         vtable_registry: Arc<VTableRegistry>,
         source_map: Arc<SourceMap>,
     ) {
+        let dctx = if self.opts.debuginfo_enabled { Some(dctx) } else { None };
+
         {
             let llvm_module = owned_module.module.borrow();
             llvm_module.set_triple(&self.llvm_target_machine.get_triple());
@@ -109,7 +111,7 @@ impl CodeGenLLVM {
             &self.ctx.target,
             &builder,
             &self.llvm_target_machine,
-            dctx,
+            dctx.clone(),
             tctx,
             vtable_registry,
             source_map,
@@ -128,8 +130,8 @@ impl CodeGenLLVM {
 
         tui_compiled(cir_module.file_path.clone());
 
-        unsafe { finalize_debug(&codegen_ir_builder.dctx) };
-        {
+        if let Some(dctx) = &dctx {
+            unsafe { finalize_debug(&dctx) };
             let llvm_module = owned_module.module.borrow();
 
             unsafe { emit_debug_module_flags(llvm_module.as_mut_ptr()) };

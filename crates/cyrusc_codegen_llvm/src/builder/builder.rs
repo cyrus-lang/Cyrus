@@ -6,6 +6,7 @@ use crate::{
     builder::{
         control_flow::CFEntry,
         irreg::{LocalIRValueRegistry, LocalIRValueRegistryRef},
+        types::CodegenIRBuilderTypeCache,
     },
     llvm::debug_info::{BlockScope, DebugContext, create_debug_lexical_block, debug_current_scope, set_debug_location},
 };
@@ -39,11 +40,14 @@ pub(crate) struct CodeGenIRBuilder<'ll> {
 
     pub(crate) cir_module: &'ll CIRModule,
 
-    // lambda abi name (auto increment)
+    // Lambda ABI name.
     pub(crate) lambda_id: usize,
 
-    pub(crate) dctx: DebugContext,
+    // Only if debug info enabled in compiler options.
+    pub(crate) dctx: Option<DebugContext>,
+
     pub(crate) tctx: Arc<CIRTypeContext>,
+    pub(crate) type_cache: CodegenIRBuilderTypeCache<'ll>,
 
     pub(crate) vtable_registry: Arc<VTableRegistry>,
     pub(crate) source_map: Arc<SourceMap>,
@@ -64,7 +68,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         target: &'ll ABITarget,
         llvmbuilder: &'ll Builder<'ll>,
         llvmtm: &'ll TargetMachine,
-        dctx: DebugContext,
+        dctx: Option<DebugContext>,
         tctx: Arc<CIRTypeContext>,
         vtable_registry: Arc<VTableRegistry>,
         source_map: Arc<SourceMap>,
@@ -94,6 +98,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
             tctx,
             vtable_registry,
             source_map,
+            type_cache: CodegenIRBuilderTypeCache::new(),
         }
     }
 
@@ -115,13 +120,20 @@ impl<'ll> CodeGenIRBuilder<'ll> {
                 let cir_func_ty = cir_func_decl_as_func_type(&func_decl);
                 let llvm_func_value = self.emit_func_decl(&func_decl);
                 self.set_current_func(llvm_func_value, func_def_stmt.abi_func_info.clone().unwrap());
-                let func_metadata = self.emit_func_metadata(&cir_func_ty);
+
+                let func_meta = {
+                    if self.dctx.is_some() {
+                        Some(self.emit_func_meta(&cir_func_ty))
+                    } else {
+                        None
+                    }
+                };
 
                 self.emit_func_body(
                     &func_decl.params,
                     &func_def_stmt.abi_func_info.as_ref().unwrap(),
                     &func_def_stmt.body,
-                    func_metadata,
+                    func_meta,
                     func_decl.loc,
                 );
             }
@@ -158,31 +170,37 @@ impl<'ll> CodeGenIRBuilder<'ll> {
             CIRStmt::Defer(_) => unreachable!(),
         }
 
-        unsafe {
-            set_debug_location(
-                &self.dctx,
-                self.llvm_ctx,
-                self.llvmbuilder,
-                stmt.loc().line.try_into().unwrap(),
-                stmt.loc().column.try_into().unwrap(),
-            )
-        };
+        if let Some(dctx) = &self.dctx {
+            unsafe {
+                set_debug_location(
+                    &dctx,
+                    self.llvm_ctx,
+                    self.llvmbuilder,
+                    stmt.loc().line.try_into().unwrap(),
+                    stmt.loc().column.try_into().unwrap(),
+                )
+            };
+        }
     }
 
     pub(crate) fn emit_scope_block(&mut self, block: &CIRBlockStmt) {
-        let parent = debug_current_scope(&self.dctx);
+        if let Some(dctx) = &mut self.dctx {
+            let parent = debug_current_scope(&dctx);
 
-        let lexical_block =
-            unsafe { create_debug_lexical_block(&self.dctx, parent, block.loc.line as u32, block.loc.column as u32) };
+            let lexical_block =
+                unsafe { create_debug_lexical_block(&dctx, parent, block.loc.line as u32, block.loc.column as u32) };
 
-        self.dctx.block_stack.push(BlockScope {
-            lexical_block,
-            inline_loc: std::ptr::null_mut(),
-        });
+            dctx.block_stack.push(BlockScope {
+                lexical_block,
+                inline_loc: std::ptr::null_mut(),
+            });
+        }
 
         self.emit_body(block);
 
-        self.dctx.block_stack.pop();
+        if let Some(dctx) = &mut self.dctx {
+            dctx.block_stack.pop();
+        }
     }
 
     pub(crate) fn emit_body(&mut self, block: &CIRBlockStmt) {

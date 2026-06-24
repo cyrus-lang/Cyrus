@@ -1364,12 +1364,12 @@ impl<'a> CIRLower<'a> {
     fn lower_lambda(&mut self, lambda: &TypedLambdaExpr) -> CIRExprKind {
         let params = self.lower_func_params(&lambda.params, false);
         let body = Box::new(self.lower_block(&lambda.body));
-        let ret = self.lower_sema_type(&lambda.ret_type);
+        let ret_type = self.lower_sema_type(&lambda.ret_type);
 
         let cir_func_type = CIRFuncType {
             params: params.list.iter().map(|param| param.ty.clone()).collect(),
             is_var: params.is_var,
-            ret_type: Box::new(ret.clone()),
+            ret_type: Box::new(ret_type.clone()),
             callconv: CallConv::default(),
             abi_func_info: None,
         };
@@ -1382,7 +1382,7 @@ impl<'a> CIRLower<'a> {
             irv_id,
             params,
             inline: lambda.inline,
-            ret,
+            ret: ret_type,
             body,
             abi_func_info,
             loc: lambda.loc,

@@ -8,24 +8,31 @@ use crate::llvm::debug_info::{
     debug_scalar_enum_type, debug_simple_type, debug_struct_type, debug_union_type,
 };
 use crate::llvm::dwarf::{DW_ATE_BOOLEAN, DW_ATE_FLOAT, DW_ATE_SIGNED, DW_ATE_UNSIGNED, DW_ATE_UNSIGNED_CHAR};
+use core::panic;
 use cyrusc_internal::abi::args::{ABIArgKind, ABIFunctionInfo, ExpandKind};
 use cyrusc_internal::abi::layout::ABIFieldOffsetInfo;
 use cyrusc_internal::cir::cir::CIREnumVariant;
 use cyrusc_internal::cir::typectx::CIRTypeContextID;
 use cyrusc_internal::cir::types::{CIRArrayType, CIREnumType, CIRFuncType, CIRType};
 use cyrusc_typed_ast::types::PlainType;
+use fx_hash::{FxHashMap, FxHashMapExt};
 use inkwell::llvm_sys::prelude::{LLVMMetadataRef, LLVMTypeRef};
 use inkwell::{
     AddressSpace,
     llvm_sys::{core::LLVMFunctionType, prelude::LLVMBool},
     types::{AnyType, AnyTypeEnum, ArrayType, AsTypeRef, BasicType, BasicTypeEnum, FunctionType, StructType},
 };
+use std::cell::RefCell;
 
 impl<'ll> CodeGenIRBuilder<'ll> {
     pub(crate) fn emit_debug_type_metadata(&self, ty: &CIRType) -> LLVMMetadataRef {
-        let llvm_ty = self.emit_type(ty.clone());
+        let Some(dctx) = &self.dctx else {
+            panic!("cannot emit type debug info without having debug context")
+        };
 
-        if let Some(metadata) = self.dctx.type_cache.get(&llvm_ty.as_type_ref()) {
+        let llvm_type = self.emit_type(ty.clone());
+
+        if let Some(metadata) = dctx.type_cache.get(&llvm_type.as_type_ref()) {
             return *metadata;
         }
 
@@ -63,17 +70,20 @@ impl<'ll> CodeGenIRBuilder<'ll> {
                     }
                 };
 
-                unsafe { debug_simple_type(&self.dctx, &name, bits as u64, encoding as u32) }
+                unsafe { debug_simple_type(&dctx, &name, bits as u64, encoding as u32) }
             }
             CIRType::Const(inner) => {
-                let inner_ty_metadata = self.emit_debug_type_metadata(inner);
-                unsafe { debug_const_type(&self.dctx, inner_ty_metadata) }
+                let inner_meta = self.emit_debug_type_metadata(inner);
+
+                unsafe { debug_const_type(&dctx, inner_meta) }
             }
             CIRType::Pointer(inner) => {
-                let inner_ty_metadata = self.emit_debug_type_metadata(inner);
+                let inner_meta = self.emit_debug_type_metadata(inner);
+
                 let ptr_size_bits = self.target.info.pointer_size() * 8;
                 let ptr_align = self.target.info.pointer_align() * 8;
-                unsafe { debug_pointer_type(&self.dctx, inner_ty_metadata, ptr_size_bits as u64, ptr_align, "T*") }
+
+                unsafe { debug_pointer_type(&dctx, inner_meta, ptr_size_bits as u64, ptr_align, "T*") }
             }
             CIRType::Struct(type_id) => unsafe {
                 let struct_type = self.tctx.get_struct(*type_id);
@@ -87,25 +97,20 @@ impl<'ll> CodeGenIRBuilder<'ll> {
                     .iter()
                     .enumerate()
                     .map(|(i, ty)| {
-                        let field_type_metadata = self.emit_debug_type_metadata(ty);
+                        let field_meta = self.emit_debug_type_metadata(ty);
+
                         let offset_bits = layout.lookup_field_offset(i) * 8;
 
                         let (name, loc) = &struct_type.fields_info[i];
 
-                        debug_member_type(
-                            &self.dctx,
-                            &name,
-                            field_type_metadata,
-                            offset_bits as u64,
-                            loc.line as u32,
-                        )
+                        debug_member_type(&dctx, &name, field_meta, offset_bits as u64, loc.line as u32)
                     })
                     .collect();
 
                 let struct_name = struct_type.name.clone().unwrap_or("<unnamed_struct>".to_string());
 
                 debug_struct_type(
-                    &self.dctx,
+                    &dctx,
                     &struct_name,
                     &mut elements_metadata,
                     size_bits as u64,
@@ -122,7 +127,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
 
                 let enum_name = enum_type.name.clone().unwrap_or("<unnamed_enum>".to_string());
 
-                let tag_type = self.emit_debug_type_metadata(&enum_type.tag_type_or_infer_or_default());
+                let tag_meta = self.emit_debug_type_metadata(&enum_type.tag_type_or_infer_or_default());
 
                 if enum_type.is_scalar_optimizable() {
                     let variants: Vec<(String, i64)> = enum_type
@@ -137,13 +142,13 @@ impl<'ll> CodeGenIRBuilder<'ll> {
 
                     unsafe {
                         debug_scalar_enum_type(
-                            &self.dctx,
+                            &dctx,
                             &enum_name,
                             &variants,
                             size_bits as u64,
                             align_bits,
                             enum_type.loc.line as u32,
-                            tag_type,
+                            tag_meta,
                         )
                     }
                 } else {
@@ -163,9 +168,9 @@ impl<'ll> CodeGenIRBuilder<'ll> {
                                 CIREnumVariant::Payload(_, struct_type, tag) => {
                                     let type_id = self.tctx.insert_struct(struct_type.clone());
 
-                                    let tuple_type_metadata = self.emit_debug_type_metadata(&CIRType::Struct(type_id));
+                                    let tuple_meta = self.emit_debug_type_metadata(&CIRType::Struct(type_id));
 
-                                    (ident.clone(), *tag as i64, tuple_type_metadata)
+                                    (ident.clone(), *tag as i64, tuple_meta)
                                 }
                             }
                         })
@@ -173,10 +178,10 @@ impl<'ll> CodeGenIRBuilder<'ll> {
 
                     unsafe {
                         debug_enum_type(
-                            &self.dctx,
+                            &dctx,
                             &enum_name,
                             enum_type.loc.line as u32,
-                            tag_type,
+                            tag_meta,
                             &variants,
                             size_bits as u64,
                             align_bits,
@@ -193,20 +198,13 @@ impl<'ll> CodeGenIRBuilder<'ll> {
                     .iter()
                     .enumerate()
                     .map(|(i, ty)| {
-                        let field_type_metadata = self.emit_debug_type_metadata(ty);
+                        let field_meta = self.emit_debug_type_metadata(ty);
+
                         let offset_bits = layout.lookup_field_offset(i) * 8;
 
                         let (name, loc) = &union_type.fields_info[i];
 
-                        unsafe {
-                            debug_member_type(
-                                &self.dctx,
-                                &name,
-                                field_type_metadata,
-                                offset_bits as u64,
-                                loc.line as u32,
-                            )
-                        }
+                        unsafe { debug_member_type(&dctx, &name, field_meta, offset_bits as u64, loc.line as u32) }
                     })
                     .collect();
 
@@ -214,7 +212,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
 
                 unsafe {
                     debug_union_type(
-                        &self.dctx,
+                        &dctx,
                         &union_name,
                         &mut elements_metadata,
                         layout.size as u64,
@@ -224,21 +222,22 @@ impl<'ll> CodeGenIRBuilder<'ll> {
                 }
             }
             CIRType::FuncType(func_type) => {
-                let subroutine_type = self.emit_func_metadata(func_type);
+                let subroutine_type = self.emit_func_meta(func_type);
 
                 let ptr_size_bits = self.target.info.pointer_size() * 8;
                 let ptr_align = self.target.info.pointer_align() * 8;
 
-                unsafe { debug_pointer_type(&self.dctx, subroutine_type, ptr_size_bits as u64, ptr_align, "T*") }
+                unsafe { debug_pointer_type(&dctx, subroutine_type, ptr_size_bits as u64, ptr_align, "T*") }
             }
             CIRType::Array(array_type) => {
+                let element_meta = self.emit_debug_type_metadata(&array_type.element_type);
+
                 let layout = self.tctx.layout_of(&CIRType::Array(array_type.clone()));
-                let element_ty_metadata = self.emit_debug_type_metadata(&array_type.element_type);
 
                 unsafe {
                     debug_array_type(
-                        &self.dctx,
-                        element_ty_metadata,
+                        &dctx,
+                        element_meta,
                         array_type.len as u64,
                         layout.size as u64,
                         layout.align,
@@ -252,10 +251,10 @@ impl<'ll> CodeGenIRBuilder<'ll> {
                 let align_bits = layout.align * 8;
 
                 let cir_void_ptr_ty = CIRType::Pointer(Box::new(CIRType::Plain(PlainType::Void)));
-                let data_ptr_ty = self.emit_debug_type_metadata(&cir_void_ptr_ty);
-                let vtable_ptr_ty = self.emit_debug_type_metadata(&cir_void_ptr_ty);
+                let data_ptr_meta = self.emit_debug_type_metadata(&cir_void_ptr_ty);
+                let vtable_ptr_meta = self.emit_debug_type_metadata(&cir_void_ptr_ty);
 
-                unsafe { debug_dynamic_type(&self.dctx, data_ptr_ty, vtable_ptr_ty, ptr_size_bits as u64, align_bits) }
+                unsafe { debug_dynamic_type(&dctx, data_ptr_meta, vtable_ptr_meta, ptr_size_bits as u64, align_bits) }
             }
         }
     }
@@ -322,9 +321,16 @@ impl<'ll> CodeGenIRBuilder<'ll> {
     }
 
     pub(crate) fn emit_struct_type(&self, type_id: CIRTypeContextID) -> StructType<'ll> {
-        let struct_type = self.tctx.get_struct(type_id);
-        let layout = self.tctx.get_or_compute_layout(type_id);
+        if let Some(cached_struct_type) = self.type_cache.get_struct(type_id) {
+            return cached_struct_type;
+        }
 
+        let struct_type = self.tctx.get_struct(type_id);
+        let name = struct_type.name.as_deref().unwrap_or(".anon");
+        let llvm_struct_type = self.llvm_ctx.opaque_struct_type(name);
+        self.type_cache.insert_struct(type_id, llvm_struct_type);
+
+        let layout = self.tctx.get_or_compute_layout(type_id);
         let is_packed = struct_type.is_packed();
 
         let mut llvm_field_types: Vec<BasicTypeEnum<'ll>> = Vec::new();
@@ -333,14 +339,12 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         for field_offset in &layout.field_offsets {
             match field_offset {
                 ABIFieldOffsetInfo::Normal { .. } => {
-                    // get the next actual field from the struct
                     let field_type = &struct_type.fields[next_field_index];
                     let llvm_ty: BasicTypeEnum<'ll> = self.emit_type(field_type.clone()).try_into().unwrap();
                     llvm_field_types.push(llvm_ty);
                     next_field_index += 1;
                 }
                 ABIFieldOffsetInfo::Padding { size, .. } => {
-                    // create padding array
                     let padding_array = self.llvm_ctx.i8_type().array_type(*size);
                     llvm_field_types.push(padding_array.as_basic_type_enum());
                 }
@@ -353,7 +357,81 @@ impl<'ll> CodeGenIRBuilder<'ll> {
             "mismatch between layout fields and struct fields"
         );
 
-        self.llvm_ctx.struct_type(&llvm_field_types, is_packed)
+        llvm_struct_type.set_body(&llvm_field_types, is_packed);
+        llvm_struct_type
+    }
+
+    pub(crate) fn emit_enum_type(&self, type_id: CIRTypeContextID) -> BasicTypeEnum<'ll> {
+        if let Some(cached_basic_type) = self.type_cache.get_enum(type_id) {
+            return cached_basic_type;
+        }
+
+        let enum_type = self.tctx.get_enum(type_id);
+
+        if enum_type.is_scalar_optimizable() {
+            // c-compatible enum
+            let llvm_basic_type = self.emit_repr_c_enum_ty(&enum_type);
+            self.type_cache.insert_enum(type_id, llvm_basic_type);
+            return llvm_basic_type;
+        } else {
+            // cyrus special enum
+            let name = enum_type.name.as_deref().unwrap_or(".anon");
+            let llvm_struct_type = self.llvm_ctx.opaque_struct_type(name);
+            self.type_cache
+                .insert_enum(type_id, llvm_struct_type.as_basic_type_enum());
+
+            let cir_tag_type = enum_type.tag_type_or_infer_or_default();
+            let tag_type: BasicTypeEnum<'ll> = self.emit_type(*cir_tag_type.clone()).try_into().unwrap();
+            let (payload_type, _) = self.emit_enum_buffer_payload_type(&enum_type);
+
+            llvm_struct_type.set_body(&[tag_type.as_basic_type_enum(), payload_type.into()], false);
+            llvm_struct_type.as_basic_type_enum()
+        }
+    }
+
+    pub(crate) fn emit_union_type(&self, type_id: CIRTypeContextID) -> BasicTypeEnum<'ll> {
+        if let Some(cached) = self.type_cache.get_union(type_id) {
+            return cached.as_basic_type_enum();
+        }
+
+        let union_type = self.tctx.get_union(type_id);
+        let name = union_type.name.as_deref().unwrap_or(".anon");
+        let llvm_struct = self.llvm_ctx.opaque_struct_type(name);
+        self.type_cache.insert_union(type_id, llvm_struct);
+
+        let layout = self.tctx.get_or_compute_layout(type_id);
+        let target_data = self.llvmtm.get_target_data();
+
+        let mut ty = None;
+        let mut max_align = 0;
+        let mut max_size = 0;
+
+        for field_type in &union_type.fields {
+            let llvm_ty: BasicTypeEnum = self.emit_type(field_type.clone()).try_into().unwrap();
+            let align = target_data.get_abi_alignment(&llvm_ty);
+            let size = target_data.get_store_size(&llvm_ty);
+
+            if align > max_align || (align == max_align && size > max_size) {
+                ty = Some(llvm_ty);
+                max_align = align;
+                max_size = size;
+            }
+        }
+
+        if max_size < layout.size as u64 {
+            let mut fields = vec![ty.unwrap()];
+            fields.push(
+                self.llvm_ctx
+                    .i8_type()
+                    .array_type((layout.size as u64 - max_size) as u32)
+                    .into(),
+            );
+            llvm_struct.set_body(&fields, false);
+        } else {
+            llvm_struct.set_body(&[ty.unwrap()], false);
+        }
+
+        llvm_struct.as_basic_type_enum()
     }
 
     pub(crate) fn emit_enum_fielded_variant_payload_type(
@@ -433,63 +511,6 @@ impl<'ll> CodeGenIRBuilder<'ll> {
     fn emit_repr_c_enum_ty(&self, enum_type: &CIREnumType) -> BasicTypeEnum<'ll> {
         let cir_tag_type = enum_type.tag_type_or_infer_or_default();
         self.emit_type(*cir_tag_type.clone()).try_into().unwrap()
-    }
-
-    pub(crate) fn emit_enum_type(&self, type_id: CIRTypeContextID) -> BasicTypeEnum<'ll> {
-        let enum_type = self.tctx.get_enum(type_id);
-
-        if enum_type.is_scalar_optimizable() {
-            // c-compatible enum
-            self.emit_repr_c_enum_ty(&enum_type)
-        } else {
-            // cyrus special enum
-            let cir_tag_type = enum_type.tag_type_or_infer_or_default();
-            let tag_type: BasicTypeEnum<'ll> = self.emit_type(*cir_tag_type.clone()).try_into().unwrap();
-
-            let (payload_ty, _) = self.emit_enum_buffer_payload_type(&enum_type);
-            self.llvm_ctx
-                .struct_type(&[tag_type.as_basic_type_enum(), payload_ty.into()], false)
-                .as_basic_type_enum()
-        }
-    }
-
-    pub(crate) fn emit_union_type(&self, type_id: CIRTypeContextID) -> BasicTypeEnum<'ll> {
-        let union_type = self.tctx.get_union(type_id);
-        let layout = self.tctx.get_or_compute_layout(type_id);
-
-        let target_data = self.llvmtm.get_target_data();
-
-        let mut ty = None;
-        let mut max_align = 0;
-        let mut max_size = 0;
-
-        for field_type in &union_type.fields {
-            let llvm_ty: BasicTypeEnum = self.emit_type(field_type.clone()).try_into().unwrap();
-
-            let align = target_data.get_abi_alignment(&llvm_ty);
-            let size = target_data.get_store_size(&llvm_ty);
-
-            if align > max_align || (align == max_align && size > max_size) {
-                ty = Some(llvm_ty);
-                max_align = align;
-                max_size = size;
-            }
-        }
-
-        if max_size < layout.size as u64 {
-            let mut fields = vec![ty.unwrap()];
-
-            fields.push(
-                self.llvm_ctx
-                    .i8_type()
-                    .array_type((layout.size as u64 - max_size) as u32)
-                    .into(),
-            );
-
-            self.llvm_ctx.struct_type(&fields, false).into()
-        } else {
-            ty.unwrap()
-        }
     }
 
     pub(crate) fn emit_array_type(&self, array_ty: CIRArrayType) -> AnyTypeEnum<'ll> {
@@ -597,5 +618,45 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         };
 
         unsafe { FunctionType::new(fn_ty) }
+    }
+}
+
+pub struct CodegenIRBuilderTypeCache<'ll> {
+    struct_cache: RefCell<FxHashMap<CIRTypeContextID, StructType<'ll>>>,
+    union_cache: RefCell<FxHashMap<CIRTypeContextID, StructType<'ll>>>,
+    enum_cache: RefCell<FxHashMap<CIRTypeContextID, BasicTypeEnum<'ll>>>,
+}
+
+impl<'ll> CodegenIRBuilderTypeCache<'ll> {
+    pub fn new() -> Self {
+        Self {
+            struct_cache: RefCell::new(FxHashMap::new()),
+            union_cache: RefCell::new(FxHashMap::new()),
+            enum_cache: RefCell::new(FxHashMap::new()),
+        }
+    }
+
+    pub fn get_struct(&self, id: CIRTypeContextID) -> Option<StructType<'ll>> {
+        self.struct_cache.borrow().get(&id).copied()
+    }
+
+    pub fn insert_struct(&self, id: CIRTypeContextID, ty: StructType<'ll>) {
+        self.struct_cache.borrow_mut().insert(id, ty);
+    }
+
+    pub fn get_union(&self, id: CIRTypeContextID) -> Option<StructType<'ll>> {
+        self.union_cache.borrow().get(&id).copied()
+    }
+
+    pub fn insert_union(&self, id: CIRTypeContextID, ty: StructType<'ll>) {
+        self.union_cache.borrow_mut().insert(id, ty);
+    }
+
+    pub fn get_enum(&self, id: CIRTypeContextID) -> Option<BasicTypeEnum<'ll>> {
+        self.enum_cache.borrow().get(&id).copied()
+    }
+
+    pub fn insert_enum(&self, id: CIRTypeContextID, ty: BasicTypeEnum<'ll>) {
+        self.enum_cache.borrow_mut().insert(id, ty);
     }
 }
