@@ -106,8 +106,15 @@ pub fn lower_named_type(
 ) -> CIRType {
     match named_type.type_decl_id {
         TypeDeclID::Struct(struct_decl_id) => {
+            if let Some(existing_id) =
+                tctx.get_or_lower_struct((TypeDeclID::Struct(struct_decl_id), named_type.type_args.clone()))
+            {
+                return CIRType::Struct(existing_id);
+            }
+
             let struct_decl = decl_tables.struct_decl(struct_decl_id);
             let inst_struct_decl = instantiate_struct_decl_with_type_args(&struct_decl, &named_type.type_args);
+
             lower_struct_type(
                 decl_tables,
                 target,
@@ -157,6 +164,12 @@ pub fn lower_struct_type(
     struct_decl: &StructDecl,
     type_args: TypedTypeArgs,
 ) -> CIRType {
+    let decl_key = (TypeDeclID::Struct(struct_decl_id), type_args.clone());
+
+    if let Some(existing_id) = tctx.get_or_lower_struct(decl_key) {
+        return CIRType::Struct(existing_id);
+    }
+
     if tctx.is_lowering(TypeDeclID::Struct(struct_decl_id)) {
         // return the SAME HANDLE that's being lowered (in-progress)
         // we need to store and retrieve the in-progress handle
@@ -165,6 +178,7 @@ pub fn lower_struct_type(
 
     // IMPORTANT: create the handle BEFORE lowering fields
     let type_id = tctx.insert_type_placeholder();
+
     tctx.start_lowering(TypeDeclID::Struct(struct_decl_id), type_id);
 
     let struct_type = lower_struct_decl(
@@ -173,12 +187,17 @@ pub fn lower_struct_type(
         tctx.clone(),
         struct_decl_id,
         struct_decl,
-        type_args,
+        type_args.clone(),
     );
 
+    tctx.resolve_placeholder(type_id, CIRTypeDef::Struct(struct_type.clone()));
     tctx.finish_lowering(TypeDeclID::Struct(struct_decl_id));
-    tctx.resolve_placeholder(type_id, CIRTypeDef::Struct(struct_type));
-    CIRType::Struct(type_id)
+
+    let registered_id = tctx.insert_struct(struct_type);
+
+    tctx.set_lowered_struct((TypeDeclID::Struct(struct_decl_id), type_args.clone()), registered_id);
+
+    CIRType::Struct(registered_id)
 }
 
 pub fn lower_union_type(

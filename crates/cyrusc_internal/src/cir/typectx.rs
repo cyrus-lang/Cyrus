@@ -22,6 +22,7 @@ pub struct CIRTypeContext {
     pub target_info: ABITargetInfo,
 
     defs: RwLock<Vec<CIRTypeDef>>,
+    decl_to_id: RwLock<FxHashMap<(TypeDeclID, TypedTypeArgs), CIRTypeContextID>>,
     key_to_id: RwLock<FxHashMap<CIRTypeKey, CIRTypeContextID>>,
     layouts: RwLock<FxHashMap<CIRTypeContextID, ABITypeLayout>>,
     in_progress: RwLock<FxHashMap<TypeDeclID, CIRTypeContextID>>,
@@ -59,6 +60,7 @@ impl CIRTypeContext {
         Self {
             target_info,
             defs: RwLock::new(Vec::new()),
+            decl_to_id: RwLock::new(FxHashMap::default()),
             key_to_id: RwLock::new(FxHashMap::default()),
             layouts: RwLock::new(FxHashMap::default()),
             in_progress: RwLock::new(FxHashMap::default()),
@@ -86,10 +88,19 @@ impl CIRTypeContext {
         defs[type_id.0] = def;
     }
 
+    pub fn get_or_lower_struct(&self, decl_key: (TypeDeclID, TypedTypeArgs)) -> Option<CIRTypeContextID> {
+        self.decl_to_id.read().unwrap().get(&decl_key).copied()
+    }
+
+    pub fn set_lowered_struct(&self, decl_key: (TypeDeclID, TypedTypeArgs), id: CIRTypeContextID) {
+        self.decl_to_id.write().unwrap().insert(decl_key, id);
+    }
+
     pub fn insert_struct(&self, struct_type: CIRStructType) -> CIRTypeContextID {
         let key = self.struct_key(&struct_type);
         {
             let key_to_id = self.key_to_id.read().unwrap();
+
             if let Some(&type_id) = key_to_id.get(&key) {
                 return type_id;
             }
@@ -227,11 +238,18 @@ impl CIRTypeContext {
             .expect("in-progress handle not found")
     }
 
-    #[inline]
     fn struct_key(&self, struct_type: &CIRStructType) -> CIRTypeKey {
-        let fields: Vec<CIRTypeKey> = struct_type.fields.iter().map(|f| self.type_to_key(f)).collect();
-
-        CIRTypeKey::Struct(struct_type.decl_key.clone(), fields)
+        match &struct_type.decl_key {
+            Some(decl_key) => {
+                // named structs: key by decl_key only, ignore fields
+                CIRTypeKey::Struct(Some(decl_key.clone()), vec![])
+            }
+            None => {
+                // anonymous structs: key by fields
+                let fields: Vec<CIRTypeKey> = struct_type.fields.iter().map(|f| self.type_to_key(f)).collect();
+                CIRTypeKey::Struct(None, fields)
+            }
+        }
     }
 
     #[inline]
