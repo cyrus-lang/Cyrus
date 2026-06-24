@@ -130,14 +130,12 @@ impl<'ll> CodeGenIRBuilder<'ll> {
 // Debug Metadata.
 impl<'ll> CodeGenIRBuilder<'ll> {
     fn emit_debug_global_var(
-        &self,
+        &mut self,
         _layout: &ABITypeLayout,
         global_value: &GlobalValue<'ll>,
         cir_global_var: &CIRGlobalVarStmt,
     ) {
-        let Some(dctx) = &self.dctx else {
-            panic!("cannot emit global var debug info without having debug context");
-        };
+        assert!(self.dctx.is_some());
 
         let ty_meta = self.emit_debug_type_metadata(&cir_global_var.ty);
 
@@ -147,6 +145,8 @@ impl<'ll> CodeGenIRBuilder<'ll> {
             .clone()
             .map(|l| l.is_extern())
             .unwrap_or(false);
+
+        let dctx = self.dctx.as_ref().unwrap();
 
         let file = dctx.file.metadata;
 
@@ -168,12 +168,12 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         }
     }
 
-    fn emit_debug_var(&self, layout: &ABITypeLayout, ptr: &PointerValue<'ll>, cir_var: &CIRVarStmt) {
-        let Some(dctx) = &self.dctx else {
-            panic!("cannot emit global var debug info without having debug context");
-        };
+    fn emit_debug_var(&mut self, layout: &ABITypeLayout, ptr: &PointerValue<'ll>, cir_var: &CIRVarStmt) {
+        assert!(self.dctx.is_some());
 
         let var_ty_meta = self.emit_debug_type_metadata(&cir_var.ty);
+
+        let dctx = self.dctx.as_ref().unwrap();
 
         let var_meta = unsafe {
             create_debug_variable(

@@ -8,7 +8,6 @@ use crate::llvm::debug_info::{
     debug_scalar_enum_type, debug_simple_type, debug_struct_type, debug_union_type,
 };
 use crate::llvm::dwarf::{DW_ATE_BOOLEAN, DW_ATE_FLOAT, DW_ATE_SIGNED, DW_ATE_UNSIGNED, DW_ATE_UNSIGNED_CHAR};
-use core::panic;
 use cyrusc_internal::abi::args::{ABIArgKind, ABIFunctionInfo, ExpandKind};
 use cyrusc_internal::abi::layout::ABIFieldOffsetInfo;
 use cyrusc_internal::cir::cir::CIREnumVariant;
@@ -25,18 +24,16 @@ use inkwell::{
 use std::cell::RefCell;
 
 impl<'ll> CodeGenIRBuilder<'ll> {
-    pub(crate) fn emit_debug_type_metadata(&self, ty: &CIRType) -> LLVMMetadataRef {
-        let Some(dctx) = &self.dctx else {
-            panic!("cannot emit type debug info without having debug context")
-        };
+    pub(crate) fn emit_debug_type_metadata(&mut self, ty: &CIRType) -> LLVMMetadataRef {
+        assert!(self.dctx.is_some());
 
         let llvm_type = self.emit_type(ty.clone());
 
-        if let Some(metadata) = dctx.type_cache.get(&llvm_type.as_type_ref()) {
-            return *metadata;
+        if let Some(meta) = self.dctx.as_ref().unwrap().type_cache.get(&llvm_type.as_type_ref()) {
+            return *meta;
         }
 
-        match ty {
+        let meta = match ty {
             CIRType::Plain(plain_type) => {
                 let name = plain_type.to_string();
                 let layout = self.tctx.layout_of(&CIRType::Plain(plain_type.clone()));
@@ -70,12 +67,12 @@ impl<'ll> CodeGenIRBuilder<'ll> {
                     }
                 };
 
-                unsafe { debug_simple_type(&dctx, &name, bits as u64, encoding as u32) }
+                unsafe { debug_simple_type(self.dctx.as_ref().unwrap(), &name, bits as u64, encoding as u32) }
             }
             CIRType::Const(inner) => {
                 let inner_meta = self.emit_debug_type_metadata(inner);
 
-                unsafe { debug_const_type(&dctx, inner_meta) }
+                unsafe { debug_const_type(self.dctx.as_ref().unwrap(), inner_meta) }
             }
             CIRType::Pointer(inner) => {
                 let inner_meta = self.emit_debug_type_metadata(inner);
@@ -83,9 +80,29 @@ impl<'ll> CodeGenIRBuilder<'ll> {
                 let ptr_size_bits = self.target.info.pointer_size() * 8;
                 let ptr_align = self.target.info.pointer_align() * 8;
 
-                unsafe { debug_pointer_type(&dctx, inner_meta, ptr_size_bits as u64, ptr_align, "T*") }
+                unsafe {
+                    debug_pointer_type(
+                        self.dctx.as_ref().unwrap(),
+                        inner_meta,
+                        ptr_size_bits as u64,
+                        ptr_align,
+                        "T*",
+                    )
+                }
             }
-            CIRType::Struct(type_id) => unsafe {
+            CIRType::Struct(type_id) => {
+                // return cached metadata if already emitted
+                if let Some(metadata) = self.dctx.as_ref().unwrap().type_cache.get(&llvm_type.as_type_ref()) {
+                    return *metadata;
+                }
+
+                // insert placeholder to break recursion
+                self.dctx
+                    .as_mut()
+                    .unwrap()
+                    .type_cache
+                    .insert(llvm_type.as_type_ref(), std::ptr::null_mut());
+
                 let struct_type = self.tctx.get_struct(*type_id);
                 let layout = self.tctx.get_or_compute_layout(*type_id);
 
@@ -103,22 +120,53 @@ impl<'ll> CodeGenIRBuilder<'ll> {
 
                         let (name, loc) = &struct_type.fields_info[i];
 
-                        debug_member_type(&dctx, &name, field_meta, offset_bits as u64, loc.line as u32)
+                        unsafe {
+                            debug_member_type(
+                                self.dctx.as_ref().unwrap(),
+                                &name,
+                                field_meta,
+                                offset_bits as u64,
+                                loc.line as u32,
+                            )
+                        }
                     })
                     .collect();
 
                 let struct_name = struct_type.name.clone().unwrap_or("<unnamed_struct>".to_string());
 
-                debug_struct_type(
-                    &dctx,
-                    &struct_name,
-                    &mut elements_metadata,
-                    size_bits as u64,
-                    align_bits,
-                    struct_type.loc.line.try_into().unwrap(),
-                )
-            },
+                let meta = unsafe {
+                    debug_struct_type(
+                        self.dctx.as_ref().unwrap(),
+                        &struct_name,
+                        &mut elements_metadata,
+                        size_bits as u64,
+                        align_bits,
+                        struct_type.loc.line.try_into().unwrap(),
+                    )
+                };
+
+                // replace placeholder with real metadata
+                self.dctx
+                    .as_mut()
+                    .unwrap()
+                    .type_cache
+                    .insert(llvm_type.as_type_ref(), meta);
+
+                meta
+            }
             CIRType::Enum(type_id) => {
+                // return cached metadata if already emitted
+                if let Some(metadata) = self.dctx.as_ref().unwrap().type_cache.get(&llvm_type.as_type_ref()) {
+                    return *metadata;
+                }
+
+                // insert placeholder to break recursion
+                self.dctx
+                    .as_mut()
+                    .unwrap()
+                    .type_cache
+                    .insert(llvm_type.as_type_ref(), std::ptr::null_mut());
+
                 let enum_type = self.tctx.get_enum(*type_id);
                 let layout = self.tctx.get_or_compute_layout(*type_id);
 
@@ -142,7 +190,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
 
                     unsafe {
                         debug_scalar_enum_type(
-                            &dctx,
+                            self.dctx.as_ref().unwrap(),
                             &enum_name,
                             &variants,
                             size_bits as u64,
@@ -176,9 +224,9 @@ impl<'ll> CodeGenIRBuilder<'ll> {
                         })
                         .collect();
 
-                    unsafe {
+                    let meta = unsafe {
                         debug_enum_type(
-                            &dctx,
+                            self.dctx.as_ref().unwrap(),
                             &enum_name,
                             enum_type.loc.line as u32,
                             tag_meta,
@@ -186,10 +234,31 @@ impl<'ll> CodeGenIRBuilder<'ll> {
                             size_bits as u64,
                             align_bits,
                         )
-                    }
+                    };
+
+                    // replace placeholder with real metadata
+                    self.dctx
+                        .as_mut()
+                        .unwrap()
+                        .type_cache
+                        .insert(llvm_type.as_type_ref(), meta);
+
+                    meta
                 }
             }
             CIRType::Union(type_id) => {
+                // return cached metadata if already emitted
+                if let Some(metadata) = self.dctx.as_ref().unwrap().type_cache.get(&llvm_type.as_type_ref()) {
+                    return *metadata;
+                }
+
+                // insert placeholder to break recursion
+                self.dctx
+                    .as_mut()
+                    .unwrap()
+                    .type_cache
+                    .insert(llvm_type.as_type_ref(), std::ptr::null_mut());
+
                 let union_type = self.tctx.get_union(*type_id);
                 let layout = self.tctx.get_or_compute_layout(*type_id);
 
@@ -204,22 +273,39 @@ impl<'ll> CodeGenIRBuilder<'ll> {
 
                         let (name, loc) = &union_type.fields_info[i];
 
-                        unsafe { debug_member_type(&dctx, &name, field_meta, offset_bits as u64, loc.line as u32) }
+                        unsafe {
+                            debug_member_type(
+                                self.dctx.as_ref().unwrap(),
+                                &name,
+                                field_meta,
+                                offset_bits as u64,
+                                loc.line as u32,
+                            )
+                        }
                     })
                     .collect();
 
                 let union_name = union_type.name.clone().unwrap_or("<unnamed_union>".to_string());
 
-                unsafe {
+                let meta = unsafe {
                     debug_union_type(
-                        &dctx,
+                        self.dctx.as_ref().unwrap(),
                         &union_name,
                         &mut elements_metadata,
                         layout.size as u64,
                         layout.align,
                         union_type.loc.line.try_into().unwrap(),
                     )
-                }
+                };
+
+                // replace placeholder with real metadata
+                self.dctx
+                    .as_mut()
+                    .unwrap()
+                    .type_cache
+                    .insert(llvm_type.as_type_ref(), meta);
+
+                meta
             }
             CIRType::FuncType(func_type) => {
                 let subroutine_type = self.emit_func_meta(func_type);
@@ -227,7 +313,15 @@ impl<'ll> CodeGenIRBuilder<'ll> {
                 let ptr_size_bits = self.target.info.pointer_size() * 8;
                 let ptr_align = self.target.info.pointer_align() * 8;
 
-                unsafe { debug_pointer_type(&dctx, subroutine_type, ptr_size_bits as u64, ptr_align, "T*") }
+                unsafe {
+                    debug_pointer_type(
+                        self.dctx.as_ref().unwrap(),
+                        subroutine_type,
+                        ptr_size_bits as u64,
+                        ptr_align,
+                        "T*",
+                    )
+                }
             }
             CIRType::Array(array_type) => {
                 let element_meta = self.emit_debug_type_metadata(&array_type.element_type);
@@ -236,7 +330,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
 
                 unsafe {
                     debug_array_type(
-                        &dctx,
+                        self.dctx.as_ref().unwrap(),
                         element_meta,
                         array_type.len as u64,
                         layout.size as u64,
@@ -254,9 +348,26 @@ impl<'ll> CodeGenIRBuilder<'ll> {
                 let data_ptr_meta = self.emit_debug_type_metadata(&cir_void_ptr_ty);
                 let vtable_ptr_meta = self.emit_debug_type_metadata(&cir_void_ptr_ty);
 
-                unsafe { debug_dynamic_type(&dctx, data_ptr_meta, vtable_ptr_meta, ptr_size_bits as u64, align_bits) }
+                unsafe {
+                    debug_dynamic_type(
+                        self.dctx.as_ref().unwrap(),
+                        data_ptr_meta,
+                        vtable_ptr_meta,
+                        ptr_size_bits as u64,
+                        align_bits,
+                    )
+                }
             }
-        }
+        };
+
+        // store real metadata
+        self.dctx
+            .as_mut()
+            .unwrap()
+            .type_cache
+            .insert(llvm_type.as_type_ref(), meta);
+
+        meta
     }
 
     pub(crate) fn emit_type(&self, ty: CIRType) -> AnyTypeEnum<'ll> {

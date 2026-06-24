@@ -125,61 +125,123 @@ impl CIRTypeContext {
     }
 
     pub fn insert_struct(&self, struct_type: CIRStructType) -> CIRTypeContextID {
-        let key = self.struct_key(&struct_type);
-        {
-            let key_to_id = self.key_to_id.read().unwrap();
-
-            if let Some(&type_id) = key_to_id.get(&key) {
-                return type_id;
+        match struct_type.decl_key.clone() {
+            Some(decl_key) => {
+                {
+                    let decl_to_id = self.decl_to_id.read().unwrap();
+                    if let Some(&type_id) = decl_to_id.get(&decl_key) {
+                        return type_id;
+                    }
+                }
+                let mut defs = self.defs.write().unwrap();
+                let mut decl_to_id = self.decl_to_id.write().unwrap();
+                if let Some(&type_id) = decl_to_id.get(&decl_key) {
+                    return type_id;
+                }
+                let type_id = CIRTypeContextID(defs.len());
+                defs.push(CIRTypeDef::Struct(struct_type));
+                decl_to_id.insert(decl_key.clone(), type_id);
+                type_id
+            }
+            None => {
+                let key = self.struct_key(&struct_type);
+                {
+                    let key_to_id = self.key_to_id.read().unwrap();
+                    if let Some(&type_id) = key_to_id.get(&key) {
+                        return type_id;
+                    }
+                }
+                let mut defs = self.defs.write().unwrap();
+                let mut key_to_id = self.key_to_id.write().unwrap();
+                if let Some(&type_id) = key_to_id.get(&key) {
+                    return type_id;
+                }
+                let type_id = CIRTypeContextID(defs.len());
+                defs.push(CIRTypeDef::Struct(struct_type));
+                key_to_id.insert(key, type_id);
+                type_id
             }
         }
-        let mut defs = self.defs.write().unwrap();
-        let mut key_to_id = self.key_to_id.write().unwrap();
-        if let Some(&type_id) = key_to_id.get(&key) {
-            return type_id;
-        }
-        let type_id = CIRTypeContextID(defs.len());
-        defs.push(CIRTypeDef::Struct(struct_type));
-        key_to_id.insert(key, type_id);
-        type_id
     }
 
     pub fn insert_union(&self, union_type: CIRUnionType) -> CIRTypeContextID {
-        let key = self.union_key(&union_type);
-        {
-            let key_to_id = self.key_to_id.read().unwrap();
-            if let Some(&type_id) = key_to_id.get(&key) {
-                return type_id;
+        match union_type.decl_key.clone() {
+            Some(decl_key) => {
+                {
+                    let decl_to_id = self.decl_to_id.read().unwrap();
+                    if let Some(&type_id) = decl_to_id.get(&decl_key) {
+                        return type_id;
+                    }
+                }
+                let mut defs = self.defs.write().unwrap();
+                let mut decl_to_id = self.decl_to_id.write().unwrap();
+                if let Some(&type_id) = decl_to_id.get(&decl_key) {
+                    return type_id;
+                }
+                let type_id = CIRTypeContextID(defs.len());
+                defs.push(CIRTypeDef::Union(union_type));
+                decl_to_id.insert(decl_key.clone(), type_id);
+                type_id
+            }
+            None => {
+                let key = self.union_key(&union_type);
+                {
+                    let key_to_id = self.key_to_id.read().unwrap();
+                    if let Some(&type_id) = key_to_id.get(&key) {
+                        return type_id;
+                    }
+                }
+                let mut defs = self.defs.write().unwrap();
+                let mut key_to_id = self.key_to_id.write().unwrap();
+                if let Some(&type_id) = key_to_id.get(&key) {
+                    return type_id;
+                }
+                let type_id = CIRTypeContextID(defs.len());
+                defs.push(CIRTypeDef::Union(union_type));
+                key_to_id.insert(key, type_id);
+                type_id
             }
         }
-        let mut defs = self.defs.write().unwrap();
-        let mut key_to_id = self.key_to_id.write().unwrap();
-        if let Some(&type_id) = key_to_id.get(&key) {
-            return type_id;
-        }
-        let type_id = CIRTypeContextID(defs.len());
-        defs.push(CIRTypeDef::Union(union_type));
-        key_to_id.insert(key, type_id);
-        type_id
     }
 
     pub fn insert_enum(&self, enum_type: CIREnumType) -> CIRTypeContextID {
-        let key = self.enum_key(&enum_type);
-        {
-            let key_to_id = self.key_to_id.read().unwrap();
-            if let Some(&type_id) = key_to_id.get(&key) {
-                return type_id;
+        match enum_type.decl_key.clone() {
+            Some(decl_key) => {
+                {
+                    let decl_to_id = self.decl_to_id.read().unwrap();
+                    if let Some(&type_id) = decl_to_id.get(&decl_key) {
+                        return type_id;
+                    }
+                }
+                let mut defs = self.defs.write().unwrap();
+                let mut decl_to_id = self.decl_to_id.write().unwrap();
+                if let Some(&type_id) = decl_to_id.get(&decl_key) {
+                    return type_id;
+                }
+                let type_id = CIRTypeContextID(defs.len());
+                defs.push(CIRTypeDef::Enum(enum_type));
+                decl_to_id.insert(decl_key.clone(), type_id);
+                type_id
+            }
+            None => {
+                let key = self.enum_key(&enum_type);
+                {
+                    let key_to_id = self.key_to_id.read().unwrap();
+                    if let Some(&type_id) = key_to_id.get(&key) {
+                        return type_id;
+                    }
+                }
+                let mut defs = self.defs.write().unwrap();
+                let mut key_to_id = self.key_to_id.write().unwrap();
+                if let Some(&type_id) = key_to_id.get(&key) {
+                    return type_id;
+                }
+                let type_id = CIRTypeContextID(defs.len());
+                defs.push(CIRTypeDef::Enum(enum_type));
+                key_to_id.insert(key, type_id);
+                type_id
             }
         }
-        let mut defs = self.defs.write().unwrap();
-        let mut key_to_id = self.key_to_id.write().unwrap();
-        if let Some(&type_id) = key_to_id.get(&key) {
-            return type_id;
-        }
-        let type_id = CIRTypeContextID(defs.len());
-        defs.push(CIRTypeDef::Enum(enum_type));
-        key_to_id.insert(key, type_id);
-        type_id
     }
 
     #[inline]
@@ -318,7 +380,10 @@ impl CIRTypeContext {
 
                 match &defs[type_id.0] {
                     CIRTypeDef::Struct(struct_type) => match &struct_type.decl_key {
-                        Some(_) => panic!("named struct should not reach type_to_key"),
+                        Some(_) => {
+                            dbg!(struct_type.clone());
+                            panic!("named struct should not reach type_to_key")
+                        }
                         None => self.struct_key(struct_type),
                     },
                     _ => unreachable!(),

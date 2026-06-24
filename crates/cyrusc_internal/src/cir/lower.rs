@@ -106,6 +106,13 @@ pub fn lower_named_type(
 ) -> CIRType {
     match named_type.type_decl_id {
         TypeDeclID::Struct(struct_decl_id) => {
+            let decl_key = (TypeDeclID::Struct(struct_decl_id), named_type.type_args.clone());
+
+            // return already-lowered type to prevent duplicate handles for the same key
+            if let Some(existing_id) = tctx.get_or_lower_decl_to_id(decl_key) {
+                return CIRType::Struct(existing_id);
+            }
+
             let struct_decl = decl_tables.struct_decl(struct_decl_id);
             let inst_struct_decl = instantiate_struct_decl_with_type_args(&struct_decl, &named_type.type_args);
 

@@ -100,7 +100,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
 
 // Body.
 impl<'ll> CodeGenIRBuilder<'ll> {
-    pub(crate) fn emit_func_params(&self, func_params: CIRFuncParams, abi_func_info: &ABIFunctionInfo) {
+    pub(crate) fn emit_func_params(&mut self, func_params: CIRFuncParams, abi_func_info: &ABIFunctionInfo) {
         let mut llvm_param_index = 0;
 
         // handle hidden sret pointer
@@ -418,10 +418,8 @@ impl<'ll> CodeGenIRBuilder<'ll> {
 
 // ABI helpers.
 impl<'ll> CodeGenIRBuilder<'ll> {
-    pub(crate) fn emit_func_meta(&self, func_type: &CIRFuncType) -> LLVMMetadataRef {
-        let Some(dctx) = &self.dctx else {
-            panic!("cannot emit func debug info without having debug context");
-        };
+    pub(crate) fn emit_func_meta(&mut self, func_type: &CIRFuncType) -> LLVMMetadataRef {
+        assert!(self.dctx.is_some());
 
         let ret_type_meta = if !func_type.ret_type.is_void() {
             Some(self.emit_debug_type_metadata(&func_type.ret_type))
@@ -434,6 +432,8 @@ impl<'ll> CodeGenIRBuilder<'ll> {
             .iter()
             .map(|ty| self.emit_debug_type_metadata(&ty))
             .collect();
+
+        let dctx = self.dctx.as_ref().unwrap();
 
         unsafe { debug_func_type(&dctx, ret_type_meta, &params_metadata) }
     }
@@ -917,13 +917,13 @@ impl<'ll> CodeGenIRBuilder<'ll> {
 
 // Debug info helpers.
 impl<'ll> CodeGenIRBuilder<'ll> {
-    fn emit_debug_param(&self, param_index: usize, param: &CIRFuncParam) {
-        let Some(dctx) = &self.dctx else {
-            panic!("cannot emit param debug info without having debug context");
-        };
+    fn emit_debug_param(&mut self, param_index: usize, param: &CIRFuncParam) {
+        assert!(self.dctx.is_some());
 
         let param_name = param.name.clone().unwrap_or("<unnamed_param>".to_string());
         let param_ty_metadata = self.emit_debug_type_metadata(&param.ty);
+
+        let dctx = self.dctx.as_ref().unwrap();
 
         unsafe {
             create_debug_parameter(
