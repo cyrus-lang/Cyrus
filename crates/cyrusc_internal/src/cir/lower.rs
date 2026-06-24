@@ -106,12 +106,6 @@ pub fn lower_named_type(
 ) -> CIRType {
     match named_type.type_decl_id {
         TypeDeclID::Struct(struct_decl_id) => {
-            if let Some(existing_id) =
-                tctx.get_or_lower_struct((TypeDeclID::Struct(struct_decl_id), named_type.type_args.clone()))
-            {
-                return CIRType::Struct(existing_id);
-            }
-
             let struct_decl = decl_tables.struct_decl(struct_decl_id);
             let inst_struct_decl = instantiate_struct_decl_with_type_args(&struct_decl, &named_type.type_args);
 
@@ -127,6 +121,7 @@ pub fn lower_named_type(
         TypeDeclID::Union(union_decl_id) => {
             let union_decl = decl_tables.union_decl(union_decl_id);
             let inst_union_decl = instantiate_union_decl_with_type_args(&union_decl, &named_type.type_args);
+
             lower_union_type(
                 decl_tables,
                 target,
@@ -139,6 +134,7 @@ pub fn lower_named_type(
         TypeDeclID::Enum(enum_decl_id) => {
             let enum_decl = decl_tables.enum_decl(enum_decl_id);
             let inst_enum_decl = instantiate_enum_decl_with_type_args(&enum_decl, &named_type.type_args);
+
             lower_enum_type(
                 decl_tables,
                 target,
@@ -166,7 +162,8 @@ pub fn lower_struct_type(
 ) -> CIRType {
     let decl_key = (TypeDeclID::Struct(struct_decl_id), type_args.clone());
 
-    if let Some(existing_id) = tctx.get_or_lower_struct(decl_key) {
+    // return already-lowered type to prevent duplicate handles for the same key
+    if let Some(existing_id) = tctx.get_or_lower_decl_to_id(decl_key) {
         return CIRType::Struct(existing_id);
     }
 
@@ -195,7 +192,7 @@ pub fn lower_struct_type(
 
     let registered_id = tctx.insert_struct(struct_type);
 
-    tctx.set_lowered_struct((TypeDeclID::Struct(struct_decl_id), type_args.clone()), registered_id);
+    tctx.set_lowered_decl_to_id((TypeDeclID::Struct(struct_decl_id), type_args.clone()), registered_id);
 
     CIRType::Struct(registered_id)
 }
@@ -208,6 +205,13 @@ pub fn lower_union_type(
     union_decl: &UnionDecl,
     type_args: TypedTypeArgs,
 ) -> CIRType {
+    let decl_key = (TypeDeclID::Union(union_decl_id), type_args.clone());
+
+    // return already-lowered type to prevent duplicate handles for the same key
+    if let Some(existing_id) = tctx.get_or_lower_decl_to_id(decl_key) {
+        return CIRType::Union(existing_id);
+    }
+
     if tctx.is_lowering(TypeDeclID::Union(union_decl_id)) {
         // return the SAME HANDLE that's being lowered (in-progress)
         // we need to store and retrieve the in-progress handle
@@ -233,6 +237,13 @@ pub fn lower_enum_type(
     enum_decl: &EnumDecl,
     type_args: TypedTypeArgs,
 ) -> CIRType {
+    let decl_key = (TypeDeclID::Enum(enum_decl_id), type_args.clone());
+
+    // return already-lowered type to prevent duplicate handles for the same key
+    if let Some(existing_id) = tctx.get_or_lower_decl_to_id(decl_key) {
+        return CIRType::Enum(existing_id);
+    }
+
     if tctx.is_lowering(TypeDeclID::Enum(enum_decl_id)) {
         // return the SAME HANDLE that's being lowered (in-progress)
         // we need to store and retrieve the in-progress handle

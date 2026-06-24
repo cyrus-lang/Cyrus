@@ -11,13 +11,24 @@ use cyrusc_typed_ast::stmts::TypedTypeArgs;
 use cyrusc_typed_ast::types::PlainType;
 use cyrusc_typed_ast::types::TypeDeclID;
 use fx_hash::FxHashMap;
-use std::sync::RwLock;
+use std::sync::{OnceLock, RwLock};
 
+/// A unique handle to a canonical type stored in the context.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct CIRTypeContextID(usize);
 
+/// Uniquely identifies a named type declaration combined with its type arguments.
 pub type CIRTypeContextDeclKey = (TypeDeclID, TypedTypeArgs);
 
+/// The central type registry which owns all canonical type definitions.
+///
+/// Provides:
+/// - deduplication
+/// - interning
+/// - layout caching
+/// - recursion prevention
+///
+/// during type lowering.
 pub struct CIRTypeContext {
     pub target_info: ABITargetInfo,
 
@@ -26,8 +37,10 @@ pub struct CIRTypeContext {
     key_to_id: RwLock<FxHashMap<CIRTypeKey, CIRTypeContextID>>,
     layouts: RwLock<FxHashMap<CIRTypeContextID, ABITypeLayout>>,
     in_progress: RwLock<FxHashMap<TypeDeclID, CIRTypeContextID>>,
+    fat_ptr_type_id: OnceLock<CIRTypeContextID>,
 }
 
+/// A canonical type definition stored in the context arena.
 #[derive(Debug, Clone)]
 pub enum CIRTypeDef {
     Struct(CIRStructType),
@@ -35,15 +48,22 @@ pub enum CIRTypeDef {
     Enum(CIREnumType),
 }
 
+/// Hash key for anonymous types.
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]
 enum CIRTypeKey {
+    AnonStruct(Vec<CIRTypeKey>),
+    AnonUnion(Vec<CIRTypeKey>),
+    AnonEnum {
+        variants: Vec<EnumVariantKey>,
+        tag: Box<CIRTypeKey>,
+    },
+
     Plain(PlainType),
     Pointer(Box<CIRTypeKey>),
     Array(Box<CIRTypeKey>, usize),
-    Struct(Option<CIRTypeContextDeclKey>, Vec<CIRTypeKey>),
-    Union(Option<CIRTypeContextDeclKey>, Vec<CIRTypeKey>),
-    Enum(Option<CIRTypeContextDeclKey>, Vec<EnumVariantKey>, Box<CIRTypeKey>),
     FuncType(Vec<CIRTypeKey>, Box<CIRTypeKey>, bool),
+
+    // Pre-registered type.
     Dynamic,
 }
 
@@ -57,14 +77,20 @@ enum EnumVariantKey {
 impl CIRTypeContext {
     #[inline]
     pub fn new(target_info: ABITargetInfo) -> Self {
-        Self {
+        let ctx = Self {
             target_info,
             defs: RwLock::new(Vec::new()),
             decl_to_id: RwLock::new(FxHashMap::default()),
             key_to_id: RwLock::new(FxHashMap::default()),
             layouts: RwLock::new(FxHashMap::default()),
             in_progress: RwLock::new(FxHashMap::default()),
-        }
+            fat_ptr_type_id: OnceLock::new(),
+        };
+
+        let fat_ptr_type_id = ctx.create_fat_ptr_type();
+        ctx.fat_ptr_type_id.set(fat_ptr_type_id).unwrap();
+
+        ctx
     }
 
     pub fn insert_type_placeholder(&self) -> CIRTypeContextID {
@@ -88,11 +114,13 @@ impl CIRTypeContext {
         defs[type_id.0] = def;
     }
 
-    pub fn get_or_lower_struct(&self, decl_key: (TypeDeclID, TypedTypeArgs)) -> Option<CIRTypeContextID> {
+    #[inline]
+    pub fn get_or_lower_decl_to_id(&self, decl_key: CIRTypeContextDeclKey) -> Option<CIRTypeContextID> {
         self.decl_to_id.read().unwrap().get(&decl_key).copied()
     }
 
-    pub fn set_lowered_struct(&self, decl_key: (TypeDeclID, TypedTypeArgs), id: CIRTypeContextID) {
+    #[inline]
+    pub fn set_lowered_decl_to_id(&self, decl_key: CIRTypeContextDeclKey, id: CIRTypeContextID) {
         self.decl_to_id.write().unwrap().insert(decl_key, id);
     }
 
@@ -238,25 +266,16 @@ impl CIRTypeContext {
             .expect("in-progress handle not found")
     }
 
+    #[inline]
     fn struct_key(&self, struct_type: &CIRStructType) -> CIRTypeKey {
-        match &struct_type.decl_key {
-            Some(decl_key) => {
-                // named structs: key by decl_key only, ignore fields
-                CIRTypeKey::Struct(Some(decl_key.clone()), vec![])
-            }
-            None => {
-                // anonymous structs: key by fields
-                let fields: Vec<CIRTypeKey> = struct_type.fields.iter().map(|f| self.type_to_key(f)).collect();
-                CIRTypeKey::Struct(None, fields)
-            }
-        }
+        let fields: Vec<CIRTypeKey> = struct_type.fields.iter().map(|f| self.type_to_key(f)).collect();
+        CIRTypeKey::AnonStruct(fields)
     }
 
     #[inline]
     fn union_key(&self, union_type: &CIRUnionType) -> CIRTypeKey {
         let fields: Vec<CIRTypeKey> = union_type.fields.iter().map(|f| self.type_to_key(f)).collect();
-
-        CIRTypeKey::Union(union_type.decl_key.clone(), fields)
+        CIRTypeKey::AnonUnion(fields)
     }
 
     fn enum_key(&self, enum_type: &CIREnumType) -> CIRTypeKey {
@@ -276,7 +295,10 @@ impl CIRTypeContext {
 
         let tag_key = self.type_to_key(&enum_type.tag_type_or_infer_or_default());
 
-        CIRTypeKey::Enum(enum_type.decl_key.clone(), variants, Box::new(tag_key))
+        CIRTypeKey::AnonEnum {
+            variants,
+            tag: Box::new(tag_key),
+        }
     }
 
     fn type_to_key(&self, ty: &CIRType) -> CIRTypeKey {
@@ -295,7 +317,10 @@ impl CIRTypeContext {
                 let defs = self.defs.read().unwrap();
 
                 match &defs[type_id.0] {
-                    CIRTypeDef::Struct(struct_type) => self.struct_key(struct_type),
+                    CIRTypeDef::Struct(struct_type) => match &struct_type.decl_key {
+                        Some(_) => panic!("named struct should not reach type_to_key"),
+                        None => self.struct_key(struct_type),
+                    },
                     _ => unreachable!(),
                 }
             }
@@ -304,7 +329,10 @@ impl CIRTypeContext {
                 let defs = self.defs.read().unwrap();
 
                 match &defs[type_id.0] {
-                    CIRTypeDef::Union(u) => self.union_key(u),
+                    CIRTypeDef::Union(union_type) => match &union_type.decl_key {
+                        Some(_) => panic!("named union should not reach type_to_key"),
+                        None => self.union_key(union_type),
+                    },
                     _ => unreachable!(),
                 }
             }
@@ -313,7 +341,10 @@ impl CIRTypeContext {
                 let defs = self.defs.read().unwrap();
 
                 match &defs[type_id.0] {
-                    CIRTypeDef::Enum(e) => self.enum_key(e),
+                    CIRTypeDef::Enum(enum_type) => match &enum_type.decl_key {
+                        Some(_) => panic!("named enum should not reach type_to_key"),
+                        None => self.enum_key(enum_type),
+                    },
                     _ => unreachable!(),
                 }
             }
@@ -330,6 +361,33 @@ impl CIRTypeContext {
 
             CIRType::Dynamic(_) => CIRTypeKey::Dynamic,
         }
+    }
+}
+
+// Pre-registered types.
+impl CIRTypeContext {
+    #[inline]
+    pub fn fat_ptr_type(&self) -> CIRType {
+        CIRType::Struct(*self.fat_ptr_type_id.get().expect("fat_ptr_type not initialized"))
+    }
+
+    fn create_fat_ptr_type(&self) -> CIRTypeContextID {
+        let struct_type = CIRStructType {
+            decl_key: None,
+            name: Some("__fat_ptr".into()),
+            fields: vec![
+                CIRType::Pointer(Box::new(CIRType::Plain(PlainType::Void))),
+                CIRType::Pointer(Box::new(CIRType::Plain(PlainType::Void))),
+            ],
+            fields_info: vec![
+                ("data_ptr".into(), Loc::default(FileID(0))),
+                ("vtable_ptr".into(), Loc::default(FileID(0))),
+            ],
+            repr_attr: None,
+            align: None,
+            loc: Loc::default(FileID(0)),
+        };
+        self.insert_struct(struct_type)
     }
 }
 
