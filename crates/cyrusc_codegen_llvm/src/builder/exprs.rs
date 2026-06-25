@@ -233,12 +233,30 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         let rhs_lvalue = self.emit_expr(&assign.rhs, &Some(assign.lhs.ty.clone()));
         let rhs_value = self.load_rvalue(rhs_lvalue);
 
+        let lhs_ptr = if lhs_lvalue.as_basic_value().is_pointer_value() {
+            lhs_lvalue.as_basic_value().into_pointer_value()
+        } else {
+            let int_val = lhs_lvalue.as_basic_value().into_int_value();
+            let spill = self.llvmbuilder.build_alloca(int_val.get_type(), "assign.spill").unwrap();
+            self.llvmbuilder.build_store(spill, int_val).unwrap();
+            spill
+        };
+
         self.llvmbuilder
             .build_store(
-                lhs_lvalue.as_basic_value().into_pointer_value(),
+                lhs_ptr,
                 rhs_value.as_basic_value(),
             )
             .unwrap();
+
+        if let CIRExprKind::Load(value_ref) = &assign.lhs.kind {
+            if let Some(LocalIRValue::RValue(_, _)) = self.lookup_local_ir_value(value_ref.irv_id) {
+                self.insert_local_ir_value(
+                    value_ref.irv_id,
+                    LocalIRValue::RValue(rhs_value.as_basic_value(), assign.lhs.ty.clone()),
+                );
+            }
+        }
 
         rhs_value
     }
@@ -654,12 +672,10 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         match unary_expr.op {
             UnaryOperator::PreIncrement => {
                 let new_value = if is_pointer {
-                    // ptr + 1
                     let ptr = rvalue.as_basic_value().into_pointer_value();
                     let value = self.emit_pointer_add(ptr, unit_int_value, ty.clone());
                     value
                 } else {
-                    // normal integer/float increment
                     let unit_value = InternalValue::new(
                         ty.clone(),
                         InternalValueKind::RValue(BasicValueEnum::IntValue(unit_int_value)),
@@ -672,11 +688,19 @@ impl<'ll> CodeGenIRBuilder<'ll> {
                     .build_store(lvalue_ptr, new_value.as_basic_value())
                     .unwrap();
 
+                if let CIRExprKind::Load(value_ref) = &unary_expr.operand.kind {
+                    if let Some(LocalIRValue::RValue(_, _)) = self.lookup_local_ir_value(value_ref.irv_id) {
+                        self.insert_local_ir_value(
+                            value_ref.irv_id,
+                            LocalIRValue::RValue(new_value.as_basic_value(), ty.clone()),
+                        );
+                    }
+                }
+
                 new_value
             }
             UnaryOperator::PreDecrement => {
                 let new_value = if is_pointer {
-                    // ptr - 1
                     let ptr = rvalue.as_basic_value().into_pointer_value();
                     let value = self.emit_pointer_sub(ptr, unit_int_value, ty.clone());
                     value
@@ -693,12 +717,20 @@ impl<'ll> CodeGenIRBuilder<'ll> {
                     .build_store(lvalue_ptr, new_value.as_basic_value())
                     .unwrap();
 
+                if let CIRExprKind::Load(value_ref) = &unary_expr.operand.kind {
+                    if let Some(LocalIRValue::RValue(_, _)) = self.lookup_local_ir_value(value_ref.irv_id) {
+                        self.insert_local_ir_value(
+                            value_ref.irv_id,
+                            LocalIRValue::RValue(new_value.as_basic_value(), ty.clone()),
+                        );
+                    }
+                }
+
                 new_value
             }
             UnaryOperator::PostIncrement => {
                 let old_value = rvalue.clone();
                 let new_value = if is_pointer {
-                    // ptr + 1
                     let ptr = rvalue.as_basic_value().into_pointer_value();
                     self.emit_pointer_add(ptr, unit_int_value, ty.clone())
                 } else {
@@ -712,6 +744,15 @@ impl<'ll> CodeGenIRBuilder<'ll> {
                 self.llvmbuilder
                     .build_store(lvalue_ptr, new_value.as_basic_value())
                     .unwrap();
+
+                if let CIRExprKind::Load(value_ref) = &unary_expr.operand.kind {
+                    if let Some(LocalIRValue::RValue(_, _)) = self.lookup_local_ir_value(value_ref.irv_id) {
+                        self.insert_local_ir_value(
+                            value_ref.irv_id,
+                            LocalIRValue::RValue(new_value.as_basic_value(), ty.clone()),
+                        );
+                    }
+                }
 
                 old_value
             }
@@ -731,6 +772,15 @@ impl<'ll> CodeGenIRBuilder<'ll> {
                 self.llvmbuilder
                     .build_store(lvalue_ptr, new_value.as_basic_value())
                     .unwrap();
+
+                if let CIRExprKind::Load(value_ref) = &unary_expr.operand.kind {
+                    if let Some(LocalIRValue::RValue(_, _)) = self.lookup_local_ir_value(value_ref.irv_id) {
+                        self.insert_local_ir_value(
+                            value_ref.irv_id,
+                            LocalIRValue::RValue(new_value.as_basic_value(), ty.clone()),
+                        );
+                    }
+                }
 
                 old_value
             }
@@ -1399,14 +1449,29 @@ impl<'ll> CodeGenIRBuilder<'ll> {
                 InternalValue::new(field_type, InternalValueKind::LValue(field_ptr))
             }
             InternalValueKind::RValue(struct_val) => {
-                let struct_value = struct_val.into_struct_value();
+                if struct_val.is_int_value() {
+                    let int_val = struct_val.into_int_value();
+                    let spill = self.llvmbuilder.build_alloca(llvm_struct_type, "struct_field.spill").unwrap();
+                    let int_ptr_ty = int_val.get_type().ptr_type(inkwell::AddressSpace::default());
+                    let cast_spill = self.llvmbuilder.build_pointer_cast(spill, int_ptr_ty, "spill_cast").unwrap();
+                    self.llvmbuilder.build_store(cast_spill, int_val).unwrap();
 
-                let field_value = self
-                    .llvmbuilder
-                    .build_extract_value(struct_value, llvm_field_index, "field_extract")
-                    .unwrap();
+                    let field_ptr = self
+                        .llvmbuilder
+                        .build_struct_gep(llvm_struct_type, spill, llvm_field_index, "field_gep")
+                        .unwrap();
 
-                InternalValue::new(field_type, InternalValueKind::RValue(field_value))
+                    InternalValue::new(field_type, InternalValueKind::LValue(field_ptr))
+                } else {
+                    let struct_value = struct_val.into_struct_value();
+
+                    let field_value = self
+                        .llvmbuilder
+                        .build_extract_value(struct_value, llvm_field_index, "field_extract")
+                        .unwrap();
+
+                    InternalValue::new(field_type, InternalValueKind::RValue(field_value))
+                }
             }
             _ => unreachable!(),
         }
