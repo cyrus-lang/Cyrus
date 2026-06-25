@@ -187,7 +187,7 @@ impl EntryPoints {
 
         if entry_points.len() == 1 {
             // valid
-        } else if entry_points.len() == 0 {
+        } else if entry_points.is_empty(){
             exit_with_single_diag!(Diag {
                 level: DiagLevel::Error,
                 kind: Box::new(AnalyzerDiagKind::MissingEntryPoint),

@@ -825,6 +825,20 @@ impl<'a> AnalysisContext<'a> {
                             check_recursively(this, inner, loc, has_error);
                         }
                     }
+
+                    if let Some(union_decl_id) = named_type.type_decl_id.as_union() {
+                        let union_decl = this.decl_tables.union_decl(union_decl_id);
+
+                        if union_decl.fields.is_empty() {
+                            this.reporter.report(Diag {
+                                level: DiagLevel::Error,
+                                kind: Box::new(AnalyzerDiagKind::UnionTypeMustContainAtLeastOneField),
+                                loc: Some(loc),
+                                hint: None,
+                            });
+                            *has_error = true;
+                        }
+                    }
                 }
                 SemaType::Array(array_type) => {
                     if array_type.element_type.is_void() {
@@ -902,7 +916,7 @@ impl<'a> AnalysisContext<'a> {
         if has_error { None } else { Some(ty) }
     }
 
-    pub(crate) fn check_type_arity(&mut self, ty: SemaType, loc: Loc) -> Option<SemaType> {
+    pub(crate) fn check_type_arity(&mut self, ty: SemaType, loc: Loc) -> Option<()> {
         fn check_recursively(this: &mut AnalysisContext, ty: &SemaType, loc: Loc) -> bool {
             match ty {
                 SemaType::Named(named_type) => {
@@ -965,7 +979,7 @@ impl<'a> AnalysisContext<'a> {
         }
 
         if check_recursively(self, &ty, loc) {
-            Some(ty)
+            Some(())
         } else {
             None
         }
