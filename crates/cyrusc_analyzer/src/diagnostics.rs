@@ -382,6 +382,9 @@ pub enum AnalyzerDiagKind {
     #[error("Cannot access member of non-tuple value.")]
     TupleMemberAccessOnNonTupleOperand,
 
+    #[error("Cannot access member of an empty tuple.")]
+    MemberAccessOnEmptyTuple,
+
     #[error("Invalid variable declaration in tuple destructuring: nested '{mutability}' is not allowed.")]
     InvalidNestedExportTuple { mutability: String },
 
