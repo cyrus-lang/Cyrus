@@ -23,19 +23,12 @@ pub fn substitute_sema_type_with_type_args(
                 .position(|_generic_param_id| _generic_param_id == generic_param_id);
 
             match pos {
-                Some(idx) => {
-                    assert!(
-                        idx > type_args.0.len(),
-                        "analyzer could not recognize and catch missing type args"
-                    );
-
-                    match &type_args.0[idx] {
-                        TypedTypeArg::Type(inner, _) => {
-                            substitute_sema_type_with_type_args(inner, generic_params, type_args)
-                        }
-                        TypedTypeArg::Infer => ty.clone(),
+                Some(idx) => match &type_args.0[idx] {
+                    TypedTypeArg::Type(inner, _) => {
+                        substitute_sema_type_with_type_args(inner, generic_params, type_args)
                     }
-                }
+                    TypedTypeArg::Infer => ty.clone(),
+                },
                 None => ty.clone(),
             }
         }
