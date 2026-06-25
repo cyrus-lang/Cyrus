@@ -109,7 +109,7 @@ pub fn lower_named_type(
             let decl_key = (TypeDeclID::Struct(struct_decl_id), named_type.type_args.clone());
 
             // return already-lowered type to prevent duplicate handles for the same key
-            if let Some(existing_id) = tctx.get_or_lower_decl_to_id(decl_key) {
+            if let Some(existing_id) = tctx.get_or_lower_decl_to_id(&decl_key) {
                 return CIRType::Struct(existing_id);
             }
 
@@ -126,6 +126,13 @@ pub fn lower_named_type(
             )
         }
         TypeDeclID::Union(union_decl_id) => {
+            let decl_key = (TypeDeclID::Union(union_decl_id), named_type.type_args.clone());
+
+            // return already-lowered type to prevent duplicate handles for the same key
+            if let Some(existing_id) = tctx.get_or_lower_decl_to_id(&decl_key) {
+                return CIRType::Union(existing_id);
+            }
+
             let union_decl = decl_tables.union_decl(union_decl_id);
             let inst_union_decl = instantiate_union_decl_with_type_args(&union_decl, &named_type.type_args);
 
@@ -139,6 +146,13 @@ pub fn lower_named_type(
             )
         }
         TypeDeclID::Enum(enum_decl_id) => {
+            let decl_key = (TypeDeclID::Enum(enum_decl_id), named_type.type_args.clone());
+
+            // return already-lowered type to prevent duplicate handles for the same key
+            if let Some(existing_id) = tctx.get_or_lower_decl_to_id(&decl_key) {
+                return CIRType::Enum(existing_id);
+            }
+
             let enum_decl = decl_tables.enum_decl(enum_decl_id);
             let inst_enum_decl = instantiate_enum_decl_with_type_args(&enum_decl, &named_type.type_args);
 
@@ -153,6 +167,7 @@ pub fn lower_named_type(
         }
         TypeDeclID::Interface(interface_decl_id) => {
             let interface_decl = decl_tables.interface_decl(interface_decl_id);
+
             cir_fat_ptr_type(&tctx, None, interface_decl.loc)
         }
         TypeDeclID::Typedef(_) => unreachable!("unexpected unexpanded typedef"),
@@ -170,20 +185,22 @@ pub fn lower_struct_type(
     let decl_key = (TypeDeclID::Struct(struct_decl_id), type_args.clone());
 
     // return already-lowered type to prevent duplicate handles for the same key
-    if let Some(existing_id) = tctx.get_or_lower_decl_to_id(decl_key) {
+    if let Some(existing_id) = tctx.get_or_lower_decl_to_id(&decl_key) {
         return CIRType::Struct(existing_id);
     }
 
-    if tctx.is_lowering(TypeDeclID::Struct(struct_decl_id)) {
+    if tctx.is_lowering(&decl_key) {
+        println!("is_lowering true for {:#?}", decl_key);
+
         // return the SAME HANDLE that's being lowered (in-progress)
         // we need to store and retrieve the in-progress handle
-        return CIRType::Struct(tctx.get_in_progress_handle(TypeDeclID::Struct(struct_decl_id)));
+        return CIRType::Struct(tctx.get_in_progress_handle(&decl_key));
     }
 
     // IMPORTANT: create the handle BEFORE lowering fields
     let type_id = tctx.insert_type_placeholder();
 
-    tctx.start_lowering(TypeDeclID::Struct(struct_decl_id), type_id);
+    tctx.start_lowering(decl_key.clone(), type_id);
 
     let struct_type = lower_struct_decl(
         decl_tables,
@@ -195,7 +212,7 @@ pub fn lower_struct_type(
     );
 
     tctx.resolve_placeholder(type_id, CIRTypeDef::Struct(struct_type.clone()));
-    tctx.finish_lowering(TypeDeclID::Struct(struct_decl_id));
+    tctx.finish_lowering(&decl_key);
 
     let registered_id = tctx.insert_struct(struct_type);
 
@@ -215,23 +232,23 @@ pub fn lower_union_type(
     let decl_key = (TypeDeclID::Union(union_decl_id), type_args.clone());
 
     // return already-lowered type to prevent duplicate handles for the same key
-    if let Some(existing_id) = tctx.get_or_lower_decl_to_id(decl_key) {
+    if let Some(existing_id) = tctx.get_or_lower_decl_to_id(&decl_key) {
         return CIRType::Union(existing_id);
     }
 
-    if tctx.is_lowering(TypeDeclID::Union(union_decl_id)) {
+    if tctx.is_lowering(&decl_key) {
         // return the SAME HANDLE that's being lowered (in-progress)
         // we need to store and retrieve the in-progress handle
-        return CIRType::Union(tctx.get_in_progress_handle(TypeDeclID::Union(union_decl_id)));
+        return CIRType::Union(tctx.get_in_progress_handle(&decl_key));
     }
 
     // IMPORTANT: create the handle BEFORE lowering fields
     let type_id = tctx.insert_type_placeholder();
-    tctx.start_lowering(TypeDeclID::Union(union_decl_id), type_id);
+    tctx.start_lowering(decl_key.clone(), type_id);
 
     let union_type = lower_union_decl(decl_tables, target, tctx.clone(), union_decl_id, union_decl, type_args);
 
-    tctx.finish_lowering(TypeDeclID::Union(union_decl_id));
+    tctx.finish_lowering(&decl_key);
     tctx.resolve_placeholder(type_id, CIRTypeDef::Union(union_type));
     CIRType::Union(type_id)
 }
@@ -247,23 +264,23 @@ pub fn lower_enum_type(
     let decl_key = (TypeDeclID::Enum(enum_decl_id), type_args.clone());
 
     // return already-lowered type to prevent duplicate handles for the same key
-    if let Some(existing_id) = tctx.get_or_lower_decl_to_id(decl_key) {
+    if let Some(existing_id) = tctx.get_or_lower_decl_to_id(&decl_key) {
         return CIRType::Enum(existing_id);
     }
 
-    if tctx.is_lowering(TypeDeclID::Enum(enum_decl_id)) {
+    if tctx.is_lowering(&decl_key) {
         // return the SAME HANDLE that's being lowered (in-progress)
         // we need to store and retrieve the in-progress handle
-        return CIRType::Enum(tctx.get_in_progress_handle(TypeDeclID::Enum(enum_decl_id)));
+        return CIRType::Enum(tctx.get_in_progress_handle(&decl_key));
     }
 
     // IMPORTANT: create the handle BEFORE lowering fields
     let type_id = tctx.insert_type_placeholder();
-    tctx.start_lowering(TypeDeclID::Enum(enum_decl_id), type_id);
+    tctx.start_lowering(decl_key.clone(), type_id);
 
     let enum_type = lower_enum_decl(decl_tables, target, tctx.clone(), enum_decl_id, enum_decl, type_args);
 
-    tctx.finish_lowering(TypeDeclID::Enum(enum_decl_id));
+    tctx.finish_lowering(&decl_key);
     tctx.resolve_placeholder(type_id, CIRTypeDef::Enum(enum_type));
     CIRType::Enum(type_id)
 }

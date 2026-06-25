@@ -432,8 +432,8 @@ impl<'ll> CodeGenIRBuilder<'ll> {
     }
 
     pub(crate) fn emit_struct_type(&self, type_id: CIRTypeContextID) -> StructType<'ll> {
-        if let Some(cached_struct_type) = self.type_cache.get_struct(type_id) {
-            return cached_struct_type;
+        if let Some(cached) = self.type_cache.get_struct(type_id) {
+            return cached;
         }
 
         let struct_type = self.tctx.get_struct(type_id);

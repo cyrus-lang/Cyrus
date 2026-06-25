@@ -35,7 +35,7 @@ pub struct CIRTypeContext {
     decl_to_id: RwLock<FxHashMap<(TypeDeclID, TypedTypeArgs), CIRTypeContextID>>,
     key_to_id: RwLock<FxHashMap<CIRTypeKey, CIRTypeContextID>>,
     layouts: RwLock<FxHashMap<CIRTypeContextID, ABITypeLayout>>,
-    in_progress: RwLock<FxHashMap<TypeDeclID, CIRTypeContextID>>,
+    in_progress: RwLock<FxHashMap<CIRTypeContextDeclKey, CIRTypeContextID>>,
     fat_ptr_type_id: OnceLock<CIRTypeContextID>,
 }
 
@@ -116,7 +116,7 @@ impl CIRTypeContext {
     }
 
     #[inline]
-    pub fn get_or_lower_decl_to_id(&self, decl_key: CIRTypeContextDeclKey) -> Option<CIRTypeContextID> {
+    pub fn get_or_lower_decl_to_id(&self, decl_key: &CIRTypeContextDeclKey) -> Option<CIRTypeContextID> {
         self.decl_to_id.read().unwrap().get(&decl_key).copied()
     }
 
@@ -306,38 +306,40 @@ impl CIRTypeContext {
     }
 
     #[inline]
-    pub fn start_lowering(&self, decl_id: TypeDeclID, handle: CIRTypeContextID) {
-        self.in_progress.write().unwrap().insert(decl_id, handle);
+    pub fn start_lowering(&self, decl_key: CIRTypeContextDeclKey, handle: CIRTypeContextID) {
+        self.in_progress.write().unwrap().insert(decl_key, handle);
     }
 
     #[inline]
-    pub fn finish_lowering(&self, decl_id: TypeDeclID) {
-        self.in_progress.write().unwrap().remove(&decl_id);
+    pub fn finish_lowering(&self, decl_key: &CIRTypeContextDeclKey) {
+        self.in_progress.write().unwrap().remove(&decl_key);
     }
 
     #[inline]
-    pub fn is_lowering(&self, decl_id: TypeDeclID) -> bool {
-        self.in_progress.read().unwrap().contains_key(&decl_id)
+    pub fn is_lowering(&self, decl_key: &CIRTypeContextDeclKey) -> bool {
+        self.in_progress.read().unwrap().contains_key(decl_key)
     }
 
-    pub fn get_in_progress_handle(&self, decl_id: TypeDeclID) -> CIRTypeContextID {
+    pub fn get_in_progress_handle(&self, decl_key: &CIRTypeContextDeclKey) -> CIRTypeContextID {
         self.in_progress
             .read()
             .unwrap()
-            .get(&decl_id)
+            .get(decl_key)
             .copied()
             .expect("in-progress handle not found")
     }
 
     #[inline]
     fn struct_key(&self, struct_type: &CIRStructType) -> CIRTypeKey {
-        let fields: Vec<CIRTypeKey> = struct_type.fields.iter().map(|f| self.type_to_key(f)).collect();
+        let fields: Vec<CIRTypeKey> = struct_type.fields.iter().map(|ty| self.type_to_key(ty)).collect();
+
         CIRTypeKey::AnonStruct(fields)
     }
 
     #[inline]
     fn union_key(&self, union_type: &CIRUnionType) -> CIRTypeKey {
-        let fields: Vec<CIRTypeKey> = union_type.fields.iter().map(|f| self.type_to_key(f)).collect();
+        let fields: Vec<CIRTypeKey> = union_type.fields.iter().map(|ty| self.type_to_key(ty)).collect();
+
         CIRTypeKey::AnonUnion(fields)
     }
 
@@ -345,11 +347,11 @@ impl CIRTypeContext {
         let variants: Vec<EnumVariantKey> = enum_type
             .variants
             .iter()
-            .map(|v| match v {
+            .map(|variant| match variant {
                 CIREnumVariant::Unit(..) => EnumVariantKey::Unit,
                 CIREnumVariant::Valued(_, ty, _) => EnumVariantKey::Valued(Box::new(self.type_to_key(ty))),
                 CIREnumVariant::Payload(_, struct_type, _) => {
-                    let keys: Vec<CIRTypeKey> = struct_type.fields.iter().map(|f| self.type_to_key(f)).collect();
+                    let keys: Vec<CIRTypeKey> = struct_type.fields.iter().map(|ty| self.type_to_key(ty)).collect();
 
                     EnumVariantKey::Payload(keys)
                 }
