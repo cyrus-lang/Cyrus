@@ -188,7 +188,7 @@ pub struct CIREnumInitExpr {
     pub ident: String,
     pub tag: u32,
     pub variant: CIREnumInitVariant,
-    pub enum_type: CIRType,
+    pub ty: CIRType,
 }
 
 #[derive(Debug, Clone)]

@@ -1326,7 +1326,7 @@ impl<'a> CIRLower<'a> {
             ident: enum_init.name.clone(),
             tag,
             variant,
-            enum_type: ty,
+            ty,
         })
     }
 

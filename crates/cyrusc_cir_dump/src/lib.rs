@@ -454,7 +454,7 @@ impl<'a> CIRPrinter<'a> {
                 format!("union {{ {value} }}")
             }
             CIRExprKind::EnumInit(enum_init) => {
-                let enum_type = enum_init.enum_type.as_enum(&self.tctx).unwrap();
+                let enum_type = enum_init.ty.as_enum(&self.tctx).unwrap();
 
                 let variant_name = enum_type.lookup_variant(&enum_init.ident).unwrap().ident();
 

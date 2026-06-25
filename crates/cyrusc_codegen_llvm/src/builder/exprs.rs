@@ -1537,7 +1537,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         enum_init_expr: &CIREnumInitExpr,
         enum_type: &CIREnumType,
     ) -> InternalValue<'ll> {
-        let ty = enum_init_expr.enum_type.clone();
+        let ty = enum_init_expr.ty.clone();
 
         let cir_tag_type = enum_type.tag_type_or_infer_or_default();
         let tag_type = self.emit_type(*cir_tag_type.clone()).into_int_type();
@@ -1547,9 +1547,9 @@ impl<'ll> CodeGenIRBuilder<'ll> {
     }
 
     fn emit_enum_init(&mut self, enum_init_expr: &CIREnumInitExpr) -> InternalValue<'ll> {
-        let ty = &enum_init_expr.enum_type;
-        let type_id = enum_init_expr.enum_type.as_type_id().unwrap();
-        let enum_type = enum_init_expr.enum_type.as_enum(&self.tctx).unwrap();
+        let ty = &enum_init_expr.ty;
+        let type_id = enum_init_expr.ty.as_type_id().unwrap();
+        let enum_type = enum_init_expr.ty.as_enum(&self.tctx).unwrap();
 
         // handle c-compatible enum init
         if enum_type.is_scalar_optimizable() {
