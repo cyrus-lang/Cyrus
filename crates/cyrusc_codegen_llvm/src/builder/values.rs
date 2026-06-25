@@ -68,7 +68,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         let layout = self.tctx.layout_of(&target_cir_type);
 
         // IMPORTANT!!
-        // If you store null or a value in a zero-sized type, it will cause severe issues (UB)
+        // If you store null or a value in a zero-sized type, it will cause UB
         if layout.size == 0 {
             return;
         }
