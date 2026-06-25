@@ -235,16 +235,16 @@ impl<'ll> CodeGenIRBuilder<'ll> {
             lhs_lvalue.as_basic_value().into_pointer_value()
         } else {
             let int_val = lhs_lvalue.as_basic_value().into_int_value();
-            let spill = self.llvmbuilder.build_alloca(int_val.get_type(), "assign.spill").unwrap();
+            let spill = self
+                .llvmbuilder
+                .build_alloca(int_val.get_type(), "assign.spill")
+                .unwrap();
             self.llvmbuilder.build_store(spill, int_val).unwrap();
             spill
         };
 
         self.llvmbuilder
-            .build_store(
-                lhs_ptr,
-                rhs_value.as_basic_value(),
-            )
+            .build_store(lhs_ptr, rhs_value.as_basic_value())
             .unwrap();
 
         if let CIRExprKind::Load(value_ref) = &assign.lhs.kind {
@@ -542,7 +542,6 @@ impl<'ll> CodeGenIRBuilder<'ll> {
             InternalValueKind::RValue(ptr.as_basic_value_enum()),
         )
     }
-
 
     pub(crate) fn emit_decay_array_to_pointer(&self, array_lvalue: InternalValue<'ll>) -> InternalValue<'ll> {
         let array_ptr = match array_lvalue.kind {
