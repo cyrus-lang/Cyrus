@@ -182,6 +182,7 @@ def main():
         output_dir = None
         compiler_path = "cyrus"
         compiler_flags = "" 
+        fail = False;
 
         i = 3
         while i < len(sys.argv):
@@ -194,6 +195,9 @@ def main():
             elif sys.argv[i] == "--output":
                 output_dir = sys.argv[i + 1]
                 i += 2
+            elif sys.argv[i] == "--fail":
+                fail = True
+                i += 1
             else:
                 raise Exception(f"Unknown argument: {sys.argv[i]}")
 
@@ -217,7 +221,7 @@ def main():
         if not test_files:
             print(f"No .cyrus files found in '{path_arg}'. Exiting.")
             return
-
+        
         output_path = Path(output_dir)
         output_path.mkdir(parents=True, exist_ok=True)
 
@@ -246,9 +250,12 @@ def main():
                 
                 if status == "passed":
                     passed_tests.append(name)
-                    print(f"[ok] {name}")
+                    
+                    if not fail:
+                        print(f"[ok] {name}")
                 else:
                     failed_tests.append((name, reason))
+                    
                     print(f"[error] {name}:\n")
                     print("    " + reason.strip().replace('\n', '\n    '))
                     print()

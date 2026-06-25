@@ -67,3 +67,11 @@ testsuite:
 		--output ./tmp/tests \
 		--compiler $(COMPILER) \
 		--flags "--stdlib=$(STDLIB) --quiet"
+
+testsuite-fail:
+	python3 ./tests/test_suite.py \
+		-d tests \
+		--output ./tmp/tests \
+		--compiler $(COMPILER) \
+		--fail \
+		--flags "--stdlib=$(STDLIB) --quiet"
