@@ -26,7 +26,6 @@ use cyrusc_internal::{
 };
 use cyrusc_source_loc::Loc;
 use inkwell::{
-    AddressSpace,
     context::AsContextRef,
     llvm_sys::{
         core::{
@@ -100,7 +99,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
 
 // Body.
 impl<'ll> CodeGenIRBuilder<'ll> {
-    pub(crate) fn emit_func_params(&self, func_params: CIRFuncParams, abi_func_info: &ABIFunctionInfo) {
+    pub(crate) fn emit_func_params(&mut self, func_params: CIRFuncParams, abi_func_info: &ABIFunctionInfo) {
         let mut llvm_param_index = 0;
 
         // handle hidden sret pointer
@@ -108,8 +107,8 @@ impl<'ll> CodeGenIRBuilder<'ll> {
             llvm_param_index += 1;
         }
 
-        for (i, param) in func_params.list.iter().enumerate() {
-            let abi_arg_info = &abi_func_info.params_infos[i];
+        for (param_index, param) in func_params.list.iter().enumerate() {
+            let abi_arg_info = &abi_func_info.params_infos[param_index];
 
             match &abi_arg_info.kind {
                 ABIArgKind::Direct { .. } | ABIArgKind::DirectCoerce { .. } | ABIArgKind::Extend { .. } => {
@@ -135,7 +134,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
                         false,
                     );
 
-                    let param_type: BasicTypeEnum<'ll> = self.emit_ty(param.ty.clone()).try_into().unwrap();
+                    let param_type: BasicTypeEnum<'ll> = self.emit_type(param.ty.clone()).try_into().unwrap();
 
                     let lo = self.cur_func.unwrap().get_nth_param(llvm_param_index as u32).unwrap();
                     let hi = self
@@ -167,7 +166,6 @@ impl<'ll> CodeGenIRBuilder<'ll> {
                         LocalIRValue::LValue(param_alloca, param.ty.clone()),
                     );
                 }
-                
                 ABIArgKind::Indirect { .. } => {
                     let param_alloca = self
                         .cur_func
@@ -184,11 +182,11 @@ impl<'ll> CodeGenIRBuilder<'ll> {
                     );
                 }
                 ABIArgKind::Expand { kind } => {
-                    let struct_type: BasicTypeEnum<'ll> = self.emit_ty(param.ty.clone()).try_into().unwrap();
+                    let struct_type: BasicTypeEnum<'ll> = self.emit_type(param.ty.clone()).try_into().unwrap();
 
                     let param_alloca = self.llvmbuilder.build_alloca(struct_type, "param").unwrap();
 
-                    let fields_cir_types = param.ty.struct_or_union_fields().unwrap();
+                    let fields_cir_types = param.ty.struct_or_union_fields(&self.tctx).unwrap();
 
                     match kind {
                         ExpandKind::Simple => {
@@ -259,18 +257,9 @@ impl<'ll> CodeGenIRBuilder<'ll> {
                 }
             }
 
-            let param_name = param.name.clone().unwrap_or("<unnamed_param>".to_string());
-            let param_ty_metadata = self.emit_debug_ty_metadata(&param.ty);
-
-            unsafe {
-                create_debug_parameter(
-                    &self.dctx,
-                    &param_name,
-                    param.loc.line as u32,
-                    param_ty_metadata,
-                    (i + 1) as u32,
-                )
-            };
+            if self.dctx.is_some() {
+                self.emit_debug_param(param_index, param);
+            }
         }
     }
 
@@ -279,35 +268,41 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         func_params: &CIRFuncParams,
         abi_func_info: &ABIFunctionInfo,
         cir_block: &CIRBlockStmt,
-        func_metadata: LLVMMetadataRef,
+        func_meta: Option<LLVMMetadataRef>,
         loc: Loc,
     ) {
         debug_assert!(self.cur_func.is_some());
-        debug_assert!(self.dctx.compile_unit != std::ptr::null_mut());
+
+        #[cfg(debug_assertions)]
+        if let Some(dctx) = &self.dctx {
+            debug_assert!(dctx.compile_unit != std::ptr::null_mut());
+        }
 
         let cur_func = self.cur_func.unwrap();
         let cur_func_name = cur_func.get_name().to_str().unwrap();
-        let parent_dctx_func = self.dctx.func;
+        let parent_dctx_func = self.dctx.as_ref().map(|dctx| dctx.func);
 
-        unsafe {
-            emit_debug_function(
-                &mut self.dctx,
-                cur_func.as_value_ref(),
-                cur_func_name,
-                loc.line.try_into().unwrap(),
-                func_metadata,
-            )
-        };
+        if let Some(dctx) = &mut self.dctx {
+            unsafe {
+                emit_debug_function(
+                    dctx,
+                    cur_func.as_value_ref(),
+                    cur_func_name,
+                    loc.line.try_into().unwrap(),
+                    func_meta.unwrap(),
+                )
+            };
 
-        unsafe {
-            set_debug_location(
-                &self.dctx,
-                self.llvm_ctx,
-                self.llvmbuilder,
-                loc.line.try_into().unwrap(),
-                loc.column.try_into().unwrap(),
-            )
-        };
+            unsafe {
+                set_debug_location(
+                    &dctx,
+                    self.llvm_ctx,
+                    self.llvmbuilder,
+                    loc.line.try_into().unwrap(),
+                    loc.column.try_into().unwrap(),
+                )
+            };
+        }
 
         self.ensure_entry_block();
         self.blockreg.labels.clear();
@@ -315,7 +310,9 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         self.emit_body(cir_block);
         self.ensure_void_fn_terminated();
 
-        self.dctx.func = parent_dctx_func;
+        if let Some(dctx) = &mut self.dctx {
+            dctx.func = parent_dctx_func.unwrap();
+        }
     }
 
     pub(crate) fn ensure_void_fn_terminated(&mut self) {
@@ -364,14 +361,20 @@ impl<'ll> CodeGenIRBuilder<'ll> {
             apply_inlining_func(self.llvm_ctx, &llvm_func_value, Inlining::Inline);
         }
 
-        let func_metadata = self.emit_func_metadata(&cir_func_type);
+        let func_meta = {
+            if self.dctx.is_some() {
+                Some(self.emit_func_meta(&cir_func_type))
+            } else {
+                None
+            }
+        };
 
         self.set_current_func(llvm_func_value, lambda.abi_func_info.clone());
         self.emit_func_body(
             &lambda.params,
             &lambda.abi_func_info,
             &lambda.body,
-            func_metadata,
+            func_meta,
             lambda.loc,
         );
 
@@ -401,9 +404,11 @@ impl<'ll> CodeGenIRBuilder<'ll> {
 
 // ABI helpers.
 impl<'ll> CodeGenIRBuilder<'ll> {
-    pub(crate) fn emit_func_metadata(&self, func_type: &CIRFuncType) -> LLVMMetadataRef {
-        let ret_ty_meta = if !func_type.ret_type.is_void() {
-            Some(self.emit_debug_ty_metadata(&func_type.ret_type))
+    pub(crate) fn emit_func_meta(&mut self, func_type: &CIRFuncType) -> LLVMMetadataRef {
+        assert!(self.dctx.is_some());
+
+        let ret_type_meta = if !func_type.ret_type.is_void() {
+            Some(self.emit_debug_type_metadata(&func_type.ret_type))
         } else {
             None
         };
@@ -411,10 +416,12 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         let params_metadata: Vec<LLVMMetadataRef> = func_type
             .params
             .iter()
-            .map(|ty| self.emit_debug_ty_metadata(&ty))
+            .map(|ty| self.emit_debug_type_metadata(&ty))
             .collect();
 
-        unsafe { debug_func_type(&self.dctx, ret_ty_meta, &params_metadata) }
+        let dctx = self.dctx.as_ref().unwrap();
+
+        unsafe { debug_func_type(&dctx, ret_type_meta, &params_metadata) }
     }
 
     pub(crate) fn emit_abi_arg(
@@ -470,7 +477,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
             } else {
                 // classify variadic argument value
                 let promoted_rvalue_type = self.target.target_abi.apply_variadic_argument_promote(&rvalue.ty);
-                let llvm_promoted_type = self.emit_ty(promoted_rvalue_type.clone());
+                let llvm_promoted_type = self.emit_type(promoted_rvalue_type.clone());
 
                 let promoted_value: BasicValueEnum<'ll> =
                     self.emit_cast(llvm_promoted_type, rvalue).try_into().unwrap();
@@ -633,7 +640,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         param_types: &[ABIType],
     ) {
         let struct_value = rvalue.as_basic_value().into_struct_value();
-        let fields_cir_types = rvalue.ty.struct_or_union_fields().unwrap();
+        let fields_cir_types = rvalue.ty.struct_or_union_fields(&self.tctx).unwrap();
 
         match kind {
             ExpandKind::Simple => {
@@ -891,5 +898,27 @@ impl<'ll> CodeGenIRBuilder<'ll> {
                 LLVMAddCallSiteAttribute(call_site.as_value_ref(), i as u32 + 1 + llvm_param_index_offset, attr);
             }
         }
+    }
+}
+
+// Debug info helpers.
+impl<'ll> CodeGenIRBuilder<'ll> {
+    fn emit_debug_param(&mut self, param_index: usize, param: &CIRFuncParam) {
+        assert!(self.dctx.is_some());
+
+        let param_name = param.name.clone().unwrap_or("<unnamed_param>".to_string());
+        let param_ty_metadata = self.emit_debug_type_metadata(&param.ty);
+
+        let dctx = self.dctx.as_ref().unwrap();
+
+        unsafe {
+            create_debug_parameter(
+                &dctx,
+                &param_name,
+                param.loc.line as u32,
+                param_ty_metadata,
+                (param_index + 1) as u32,
+            )
+        };
     }
 }

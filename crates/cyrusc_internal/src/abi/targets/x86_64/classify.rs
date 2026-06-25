@@ -5,25 +5,29 @@ use crate::{
     abi::{
         args::{ABIArgAttrs, ABIArgInfo, ABIArgKind, ABIFunctionInfo, ABIRetInfo, ABIRetInfoKind, ExpandKind},
         helpers::{Registers, cir_type_to_abi_type, is_cir_type_abi_aggregate},
-        layout::type_layout,
         target::{ABITargetInfo, ABITargetOS, RegisterClass, TargetABI},
         types::{ABIFloatKind, ABIType},
     },
-    cir::types::{CIRArrayType, CIRFuncType, CIRType},
+    cir::{
+        typectx::CIRTypeContext,
+        types::{CIRArrayType, CIRFuncType, CIRStructType, CIRType, CIRUnionType},
+    },
     is_integer_type,
 };
 use cyrusc_ast::abi::CallConv;
 use cyrusc_typed_ast::types::PlainType;
+use std::sync::Arc;
 
 const MIN_ABI_STACK_ALIGN: u32 = 16;
 
 pub struct X86_64 {
     info: ABITargetInfo,
+    tctx: Arc<CIRTypeContext>,
 }
 
 impl X86_64 {
-    pub fn new(info: ABITargetInfo) -> Self {
-        Self { info }
+    pub fn new(info: ABITargetInfo, tctx: Arc<CIRTypeContext>) -> Self {
+        Self { info, tctx }
     }
 
     fn classify_parameter(&self, ty: &CIRType, available_regs: &mut Registers, is_named: bool) -> ABIArgInfo {
@@ -40,7 +44,7 @@ impl X86_64 {
         // if this is a scalar LLVM value then assume LLVM will pass it in the right place naturally
         if !is_cir_type_abi_aggregate(ty) {
             if ty.is_integer_or_bool() {
-                let abi_ty = cir_type_to_abi_type(&self.info, ty);
+                let abi_ty = cir_type_to_abi_type(self.tctx.clone(), ty);
                 let is_signed = ty.is_signed_integer();
 
                 return ABIArgInfo {
@@ -60,7 +64,7 @@ impl X86_64 {
         }
 
         // byval alignment
-        let layout = type_layout(&self.info, ty);
+        let layout = self.tctx.layout_of(ty);
         let align = layout.align;
         let size = layout.size;
 
@@ -80,7 +84,7 @@ impl X86_64 {
 
         if align < 8 {
             // realigned indirect (with specified alignment)
-            let abi_type = cir_type_to_abi_type(&self.info, ty);
+            let abi_type = cir_type_to_abi_type(self.tctx.clone(), ty);
 
             ABIArgInfo {
                 kind: ABIArgKind::Indirect { align: 8, ty: abi_type },
@@ -93,7 +97,7 @@ impl X86_64 {
             }
         } else {
             // regular byval indirect
-            let abi_type = cir_type_to_abi_type(&self.info, ty);
+            let abi_type = cir_type_to_abi_type(self.tctx.clone(), ty);
 
             ABIArgInfo {
                 kind: ABIArgKind::Indirect { align, ty: abi_type },
@@ -118,7 +122,7 @@ impl X86_64 {
                 | PlainType::Int64
                 | PlainType::UInt64 => {
                     if offset != 0 {
-                        return cir_type_to_abi_type(&self.info, ty);
+                        return cir_type_to_abi_type(self.tctx.clone(), ty);
                     }
                 }
 
@@ -135,10 +139,10 @@ impl X86_64 {
                     if offset != 0 {
                         // fallback
                     } else {
-                        let layout = type_layout(&self.info, ty);
+                        let layout = self.tctx.layout_of(ty);
 
                         if self.bits_contain_no_user_data(source_type, source_offset + layout.size, source_offset + 8) {
-                            return cir_type_to_abi_type(&self.info, ty);
+                            return cir_type_to_abi_type(self.tctx.clone(), ty);
                         }
                     }
                 }
@@ -158,26 +162,19 @@ impl X86_64 {
             }
             CIRType::Pointer(_) | CIRType::FuncType(_) => {
                 if offset == 0 {
-                    return cir_type_to_abi_type(&self.info, ty);
+                    return cir_type_to_abi_type(self.tctx.clone(), ty);
                 }
             }
-            CIRType::Tuple(tuple_type) => {
-                // tuple lowered as struct in codegen
-                let struct_type = tuple_type.as_struct_ty();
+            CIRType::Struct(type_id) => {
+                let struct_type = self.tctx.get_struct(*type_id);
 
-                if let Some((field_ty, field_offset)) = self.get_member_at_offset(&CIRType::Struct(struct_type), offset)
-                {
-                    return self.get_int_type_at_offset(&field_ty, offset - field_offset, source_type, source_offset);
-                }
-            }
-            CIRType::Struct(_) => {
-                if let Some((field_ty, field_offset)) = self.get_member_at_offset(ty, offset) {
-                    return self.get_int_type_at_offset(&field_ty, offset - field_offset, source_type, source_offset);
+                if let Some((field_type, field_offset)) = self.get_struct_member_at_offset(&struct_type, offset) {
+                    return self.get_int_type_at_offset(&field_type, offset - field_offset, source_type, source_offset);
                 }
             }
             CIRType::Array(array_type) => {
                 let element_ty = &array_type.element_type;
-                let element_layout = type_layout(&self.info, element_ty);
+                let element_layout = self.tctx.layout_of(element_ty);
                 let element_offset = (offset / element_layout.size) * element_layout.size;
                 return self.get_int_type_at_offset(element_ty, offset - element_offset, source_type, source_offset);
             }
@@ -194,7 +191,7 @@ impl X86_64 {
             }
         }
 
-        let layout = type_layout(&self.info, source_type);
+        let layout = self.tctx.layout_of(source_type);
         assert!(layout.size != source_offset);
 
         let remaining_bytes = layout.size - source_offset;
@@ -208,10 +205,26 @@ impl X86_64 {
         }
     }
 
-    fn get_member_at_offset(&self, ty: &CIRType, offset: u32) -> Option<(CIRType, u32)> {
-        let fields = ty.as_struct()?.fields;
+    fn get_union_member_at_offset(&self, union_type: &CIRUnionType, offset: u32) -> Option<(CIRType, u32)> {
+        let layout = self.tctx.compute_union_layout(union_type);
 
-        let layout = type_layout(&self.info, ty);
+        if layout.size < offset {
+            return None;
+        }
+
+        for field_type in &union_type.fields {
+            let field_layout = self.tctx.layout_of(field_type);
+
+            if offset < field_layout.size {
+                return Some((field_type.clone(), 0));
+            }
+        }
+
+        None
+    }
+
+    fn get_struct_member_at_offset(&self, struct_type: &CIRStructType, offset: u32) -> Option<(CIRType, u32)> {
+        let layout = self.tctx.compute_struct_layout(struct_type);
 
         if layout.size < offset {
             return None;
@@ -219,8 +232,10 @@ impl X86_64 {
 
         let mut current_offset = 0;
 
-        for field_ty in fields {
-            let field_layout = type_layout(&self.info, &field_ty);
+        let fields = &struct_type.fields;
+
+        for field_type in fields {
+            let field_layout = self.tctx.layout_of(&field_type);
             let align = field_layout.align;
 
             let padding = (align - (current_offset % align)) % align;
@@ -231,7 +246,7 @@ impl X86_64 {
             }
 
             if current_offset <= offset && offset < current_offset + field_layout.size {
-                return Some((field_ty, current_offset));
+                return Some((field_type.clone(), current_offset));
             }
 
             current_offset += field_layout.size;
@@ -242,21 +257,29 @@ impl X86_64 {
 
     fn get_fp_type_at_offset(&self, ty: &CIRType, offset: u32) -> Option<ABIType> {
         if offset == 0 && ty.is_float() {
-            return Some(cir_type_to_abi_type(&self.info, ty));
+            return Some(cir_type_to_abi_type(self.tctx.clone(), ty));
         }
 
-        if ty.is_struct() || ty.is_union() {
-            if let Some((field_ty, field_offset)) = self.get_member_at_offset(ty, offset) {
-                return self.get_fp_type_at_offset(&field_ty, offset - field_offset);
+        if let CIRType::Struct(id) = ty {
+            let struct_type = self.tctx.get_struct(*id);
+            if let Some((field_type, field_offset)) = self.get_struct_member_at_offset(&struct_type, offset) {
+                return self.get_fp_type_at_offset(&field_type, offset - field_offset);
+            }
+        }
+
+        if let CIRType::Union(id) = ty {
+            let union_type = self.tctx.get_union(*id);
+            if let Some((field_type, field_offset)) = self.get_union_member_at_offset(&union_type, offset) {
+                return self.get_fp_type_at_offset(&field_type, offset - field_offset);
             }
         }
 
         if let Some(array_type) = ty.as_array() {
-            let element_ty = &array_type.element_type;
-            let element_layout = type_layout(&self.info, &element_ty);
+            let element_type = &array_type.element_type;
+            let element_layout = self.tctx.layout_of(&element_type);
             let element_start = (offset / element_layout.size) * element_layout.size;
             let element_offset = offset - element_start;
-            return self.get_fp_type_at_offset(&element_ty, element_offset);
+            return self.get_fp_type_at_offset(&element_type, element_offset);
         }
 
         None
@@ -280,7 +303,7 @@ impl X86_64 {
             return Some(ABIType::Float(ABIFloatKind::F64));
         }
 
-        let source_layout = type_layout(&self.info, source_type);
+        let source_layout = self.tctx.layout_of(source_type);
         let source_size = source_layout.size - source_offset;
         let float_size = self.float_size(&float_kind);
 
@@ -336,8 +359,8 @@ impl X86_64 {
         let check_for_struct_or_union = |fields: &Vec<CIRType>, is_union: bool| {
             let mut current_offset = 0;
 
-            for field_ty in fields {
-                let field_layout = type_layout(&self.info, field_ty);
+            for field_type in fields {
+                let field_layout = self.tctx.layout_of(field_type);
                 let align = field_layout.align;
 
                 // add padding before field (for structs, unions don't have padding)
@@ -354,7 +377,7 @@ impl X86_64 {
 
                 let field_start = if field_offset < start { start - field_offset } else { 0 };
 
-                if !self.bits_contain_no_user_data(field_ty, field_start, end - field_offset) {
+                if !self.bits_contain_no_user_data(field_type, field_start, end - field_offset) {
                     return false;
                 }
 
@@ -363,7 +386,7 @@ impl X86_64 {
 
             true
         };
-        let layout = type_layout(&self.info, ty);
+        let layout = self.tctx.layout_of(ty);
 
         // if the bytes being queried are off the end of the type, there is no user data
         if layout.size <= start {
@@ -372,7 +395,7 @@ impl X86_64 {
 
         if let Some(array_type) = ty.as_array() {
             let element_ty = &array_type.element_type;
-            let element_layout = type_layout(&self.info, element_ty);
+            let element_layout = self.tctx.layout_of(element_ty);
             let element_size = element_layout.size;
 
             for i in 0..array_type.len {
@@ -392,9 +415,9 @@ impl X86_64 {
 
             // no overlap found
             true
-        } else if let Some(struct_type) = ty.as_struct() {
+        } else if let Some(struct_type) = ty.as_struct(&self.tctx) {
             check_for_struct_or_union(&struct_type.fields, false)
-        } else if let Some(union_ty) = ty.as_union() {
+        } else if let Some(union_ty) = ty.as_union(&self.tctx) {
             check_for_struct_or_union(&union_ty.fields, true)
         } else {
             false
@@ -418,7 +441,7 @@ impl X86_64 {
                 if let Some(ty) = coerce_to {
                     types.push(ty.clone());
                 } else {
-                    types.push(cir_type_to_abi_type(&self.info, param_type));
+                    types.push(cir_type_to_abi_type(self.tctx.clone(), param_type));
                 }
             }
             ABIArgKind::DirectCoerce { ty } => {
@@ -432,18 +455,18 @@ impl X86_64 {
                 types.push(ty.clone());
             }
             ABIArgKind::Extend { .. } => {
-                types.push(cir_type_to_abi_type(&self.info, param_type));
+                types.push(cir_type_to_abi_type(self.tctx.clone(), param_type));
             }
             ABIArgKind::Expand { kind } => match kind {
                 ExpandKind::Struct { .. } => {
                     assert!(param_type.is_struct() || param_type.is_union());
-                    let fields = param_type.struct_or_union_fields().unwrap();
+                    let fields = param_type.struct_or_union_fields(&self.tctx).unwrap();
 
                     for field in fields {
-                        types.push(cir_type_to_abi_type(&self.info, &field));
+                        types.push(cir_type_to_abi_type(self.tctx.clone(), &field));
                     }
                 }
-                _ => return vec![cir_type_to_abi_type(&self.info, param_type)],
+                _ => return vec![cir_type_to_abi_type(self.tctx.clone(), param_type)],
             },
             ABIArgKind::Ignore => {
                 // skip
@@ -461,13 +484,13 @@ impl X86_64 {
         let mut params_infos = Vec::new();
 
         for param_ty in &cir_func_type.params {
-            let abi_param_type = cir_type_to_abi_type(&self.info, param_ty);
+            let abi_param_type = cir_type_to_abi_type(self.tctx.clone(), param_ty);
 
             params_types.push(abi_param_type);
             params_infos.push(ABIArgInfo::direct());
         }
 
-        let ret_abi_type = cir_type_to_abi_type(&self.info, &cir_func_type.ret_type);
+        let ret_abi_type = cir_type_to_abi_type(self.tctx.clone(), &cir_func_type.ret_type);
 
         let ret_info = if cir_func_type.ret_type.is_void() {
             ABIRetInfo {
@@ -542,7 +565,7 @@ impl TargetABI for X86_64 {
 
         let mut lo_class = RegisterClass::NoClass;
         let mut hi_class = RegisterClass::NoClass;
-        classify(&self.info, ty, 0, &mut lo_class, &mut hi_class);
+        classify(&self.info, &self.tctx, ty, 0, &mut lo_class, &mut hi_class);
 
         assert!(
             hi_class != RegisterClass::Memory || lo_class == RegisterClass::Memory,
@@ -566,11 +589,11 @@ impl TargetABI for X86_64 {
                 needed_regs.int_regs += 1;
 
                 if ty.is_integer_or_bool() {
-                    result_type = Some(cir_type_to_abi_type(&self.info, ty));
-                } else if let Some(enum_type) = ty.as_enum() {
+                    result_type = Some(cir_type_to_abi_type(self.tctx.clone(), ty));
+                } else if let Some(enum_type) = ty.as_enum(&self.tctx) {
                     if enum_type.is_scalar_optimizable() {
                         let tag_type = enum_type.tag_type_or_infer_or_default();
-                        result_type = Some(cir_type_to_abi_type(&self.info, &tag_type));
+                        result_type = Some(cir_type_to_abi_type(self.tctx.clone(), &tag_type));
                     }
                 } else {
                     result_type = Some(self.get_int_type_at_offset(ty, 0, ty, 0));
@@ -646,7 +669,7 @@ impl TargetABI for X86_64 {
         }
 
         if let Some(result) = &result_type {
-            let abi_type = cir_type_to_abi_type(&self.info, ty);
+            let abi_type = cir_type_to_abi_type(self.tctx.clone(), ty);
 
             // if abi type already matches, pass directly
             if *result == abi_type {
@@ -770,16 +793,14 @@ impl TargetABI for X86_64 {
             CIRType::Array(array_type) => CIRType::Pointer(array_type.element_type.clone()),
 
             CIRType::Pointer(_) | CIRType::FuncType(_) => ty.clone(),
-            CIRType::Struct(_) | CIRType::Tuple(_) | CIRType::Dynamic(_) | CIRType::Enum(_) | CIRType::Union(_) => {
-                ty.clone()
-            }
+            CIRType::Struct(_) | CIRType::Dynamic(_) | CIRType::Enum(_) | CIRType::Union(_) => ty.clone(),
         }
     }
 
     fn classify_return(&self, cir_ret_type: &CIRType) -> ABIRetInfo {
         let mut lo_class = RegisterClass::NoClass;
         let mut hi_class = RegisterClass::NoClass;
-        classify(&self.info, cir_ret_type, 0, &mut lo_class, &mut hi_class);
+        classify(&self.info, &self.tctx, cir_ret_type, 0, &mut lo_class, &mut hi_class);
 
         assert!(
             hi_class != RegisterClass::Memory || lo_class == RegisterClass::Memory,
@@ -796,7 +817,7 @@ impl TargetABI for X86_64 {
             RegisterClass::NoClass => {
                 if hi_class == RegisterClass::NoClass {
                     return ABIRetInfo {
-                        abi_type: cir_type_to_abi_type(&self.info, cir_ret_type),
+                        abi_type: cir_type_to_abi_type(self.tctx.clone(), cir_ret_type),
                         kind: ABIRetInfoKind::Ignore,
                         cir_ret_type: Box::new(cir_ret_type.clone()),
                     };
@@ -810,7 +831,7 @@ impl TargetABI for X86_64 {
             RegisterClass::SSEUP => unreachable!(),
             RegisterClass::Memory => {
                 return ABIRetInfo {
-                    abi_type: cir_type_to_abi_type(&self.info, cir_ret_type),
+                    abi_type: cir_type_to_abi_type(self.tctx.clone(), cir_ret_type),
                     kind: ABIRetInfoKind::Indirect { sret: true },
                     cir_ret_type: Box::new(cir_ret_type.clone()),
                 };
@@ -859,7 +880,7 @@ impl TargetABI for X86_64 {
         }
 
         if let Some(result) = result_type {
-            let abi_type = cir_type_to_abi_type(&self.info, cir_ret_type);
+            let abi_type = cir_type_to_abi_type(self.tctx.clone(), cir_ret_type);
 
             if result == abi_type {
                 return ABIRetInfo {
@@ -874,16 +895,16 @@ impl TargetABI for X86_64 {
                 kind: ABIRetInfoKind::Direct {
                     coerce_to: Some(result),
                 },
-                cir_ret_type: Box::new(cir_ret_type.clone())
+                cir_ret_type: Box::new(cir_ret_type.clone()),
             };
         }
 
         // fallback
-        let abi_type = cir_type_to_abi_type(&self.info, cir_ret_type);
+        let abi_type = cir_type_to_abi_type(self.tctx.clone(), cir_ret_type);
         ABIRetInfo {
             abi_type,
             kind: ABIRetInfoKind::Direct { coerce_to: None },
-            cir_ret_type: Box::new(cir_ret_type.clone())
+            cir_ret_type: Box::new(cir_ret_type.clone()),
         }
     }
 
@@ -894,6 +915,7 @@ impl TargetABI for X86_64 {
 
 fn classify(
     info: &ABITargetInfo,
+    tctx: &CIRTypeContext,
     ty: &CIRType,
     offset_base: u32,
     lo_class: *mut RegisterClass,
@@ -906,35 +928,25 @@ fn classify(
     unsafe { *current = RegisterClass::Memory };
 
     match ty {
+        CIRType::Struct(_) | CIRType::Union(_) => {
+            classify_struct_or_union(info, tctx, ty, offset_base, current, lo_class, hi_class)
+        }
+
+        CIRType::Enum(_) => classify_enum(info, tctx, ty, offset_base, lo_class, hi_class),
+
         CIRType::Plain(plain_type) => classify_plain_type(plain_type, offset_base, lo_class, hi_class),
-        CIRType::Const(inner) => classify(info, inner, offset_base, lo_class, hi_class),
+        CIRType::Const(inner) => classify(info, tctx, inner, offset_base, lo_class, hi_class),
         CIRType::Pointer(_) | CIRType::FuncType(_) => {
             unsafe { *current = RegisterClass::Integer };
         }
-        CIRType::Struct(_) | CIRType::Union(_) => {
-            classify_struct_or_union(info, ty, offset_base, current, lo_class, hi_class)
-        }
-        CIRType::Tuple(tuple_type) => {
-            // tuple lowered as struct in codegen
-            let struct_type = tuple_type.as_struct_ty();
-
-            classify_struct_or_union(
-                info,
-                &CIRType::Struct(struct_type),
-                offset_base,
-                current,
-                lo_class,
-                hi_class,
-            );
-        }
-        CIRType::Array(array_type) => classify_array(info, array_type, offset_base, lo_class, hi_class),
-        CIRType::Dynamic(_) => classify_dynamic(info, offset_base, lo_class, hi_class),
-        CIRType::Enum(_) => classify_enum(info, ty, offset_base, lo_class, hi_class),
+        CIRType::Array(array_type) => classify_array(info, tctx, array_type, offset_base, lo_class, hi_class),
+        CIRType::Dynamic(_) => classify_dynamic(info, tctx, offset_base, lo_class, hi_class),
     }
 }
 
 fn classify_dynamic(
     info: &ABITargetInfo,
+    tctx: &CIRTypeContext,
     offset_base: u32,
     lo_class: *mut RegisterClass,
     hi_class: *mut RegisterClass,
@@ -948,6 +960,7 @@ fn classify_dynamic(
     // first pointer (data_ptr)
     classify(
         info,
+        tctx,
         &CIRType::Pointer(Box::new(CIRType::Plain(PlainType::Void))),
         offset_base,
         &mut temp_lo,
@@ -963,6 +976,7 @@ fn classify_dynamic(
 
     classify(
         info,
+        tctx,
         &CIRType::Pointer(Box::new(CIRType::Plain(PlainType::Void))),
         offset_base + 8,
         &mut temp_lo2,
@@ -975,14 +989,15 @@ fn classify_dynamic(
 
 fn classify_array(
     info: &ABITargetInfo,
+    tctx: &CIRTypeContext,
     array_type: &CIRArrayType,
     offset_base: u32,
     lo_class: *mut RegisterClass,
     hi_class: *mut RegisterClass,
 ) {
-    let layout = type_layout(info, &CIRType::Array(array_type.clone()));
+    let layout = tctx.layout_of(&CIRType::Array(array_type.clone()));
     let element_ty = &array_type.element_type;
-    let element_layout = type_layout(info, element_ty);
+    let element_layout = tctx.layout_of(element_ty);
 
     if layout.size > 16 {
         return; // keep memory class
@@ -1012,7 +1027,7 @@ fn classify_array(
         let mut field_lo = RegisterClass::NoClass;
         let mut field_hi = RegisterClass::NoClass;
 
-        classify(info, element_ty, offset, &mut field_lo, &mut field_hi);
+        classify(info, tctx, element_ty, offset, &mut field_lo, &mut field_hi);
 
         offset += element_layout.size;
 
@@ -1029,23 +1044,24 @@ fn classify_array(
 
 fn classify_enum(
     info: &ABITargetInfo,
+    tctx: &CIRTypeContext,
     ty: &CIRType,
     offset_base: u32,
     lo_class: *mut RegisterClass,
     hi_class: *mut RegisterClass,
 ) {
-    let enum_type = ty.as_enum().unwrap();
+    let enum_type = ty.as_enum(tctx).unwrap();
 
     if enum_type.is_scalar_optimizable() {
         // enum is an integer
         let tag_ty = enum_type.tag_type_or_infer_or_default();
-        classify(info, &tag_ty, offset_base, lo_class, hi_class);
+        classify(info, tctx, &tag_ty, offset_base, lo_class, hi_class);
         return;
     }
 
     // enums is a struct { tag, [i8; N] payload }
 
-    let layout = type_layout(info, ty);
+    let layout = tctx.layout_of(ty);
 
     // if size > 16 bytes, keep default memory class
     if layout.size > 16 {
@@ -1062,12 +1078,12 @@ fn classify_enum(
     // first, classify the tag field at offset 0
     let tag_ty = enum_type.tag_type_or_infer_or_default();
     let tag_offset = offset_base;
-    let tag_layout = type_layout(info, &tag_ty);
+    let tag_layout = tctx.layout_of(&tag_ty);
     let tag_size = tag_layout.size;
 
     let mut tag_lo = RegisterClass::NoClass;
     let mut tag_hi = RegisterClass::NoClass;
-    classify(info, &tag_ty, tag_offset, &mut tag_lo, &mut tag_hi);
+    classify(info, tctx, &tag_ty, tag_offset, &mut tag_lo, &mut tag_hi);
 
     unsafe { *lo_class = classify_merge(*lo_class, tag_lo) };
     unsafe { *hi_class = classify_merge(*hi_class, tag_hi) };
@@ -1090,7 +1106,14 @@ fn classify_enum(
 
         let mut payload_lo = RegisterClass::NoClass;
         let mut payload_hi = RegisterClass::NoClass;
-        classify(info, &payload_ty, payload_offset, &mut payload_lo, &mut payload_hi);
+        classify(
+            info,
+            tctx,
+            &payload_ty,
+            payload_offset,
+            &mut payload_lo,
+            &mut payload_hi,
+        );
 
         unsafe { *lo_class = classify_merge(*lo_class, payload_lo) };
         unsafe { *hi_class = classify_merge(*hi_class, payload_hi) };
@@ -1101,36 +1124,56 @@ fn classify_enum(
 
 fn classify_struct_or_union(
     info: &ABITargetInfo,
+    tctx: &CIRTypeContext,
     ty: &CIRType,
     offset_base: u32,
     current: *mut RegisterClass,
     lo_class: *mut RegisterClass,
     hi_class: *mut RegisterClass,
 ) {
-    let layout = type_layout(info, ty);
+    let (fields, is_union, loc) = match ty {
+        CIRType::Struct(type_id) => {
+            let struct_type = tctx.get_struct(*type_id);
+            (struct_type.fields, false, struct_type.loc)
+        }
+        CIRType::Union(type_id) => {
+            let union_type = tctx.get_union(*type_id);
+            (union_type.fields, true, union_type.loc)
+        }
+        _ => unreachable!(),
+    };
+
+    let layout = if is_union {
+        tctx.compute_union_layout(&CIRUnionType {
+            decl_key: None,
+            name: None,
+            fields: fields.clone(),
+            fields_info: Vec::new(),
+            repr_attr: None,
+            align: None,
+            loc,
+        })
+    } else {
+        tctx.compute_struct_layout(&CIRStructType {
+            decl_key: None,
+            name: None,
+            fields: fields.clone(),
+            fields_info: Vec::new(),
+            repr_attr: None,
+            align: None,
+            loc,
+        })
+    };
     let size = layout.size;
 
     if size > 16 {
         return;
     }
 
-    // FIXME
-    // if ty.has_variable_array return;
-
     unsafe { *current = RegisterClass::NoClass };
 
-    let fields = if let Some(s) = ty.as_struct() {
-        s.fields.clone()
-    } else if let Some(u) = ty.as_union() {
-        u.fields.clone()
-    } else {
-        unreachable!()
-    };
-
-    let is_union = ty.is_union();
-
-    for (i, field_ty) in fields.iter().enumerate() {
-        let field_layout = type_layout(info, field_ty);
+    for (i, field_type) in fields.iter().enumerate() {
+        let field_layout = tctx.layout_of(field_type);
 
         let field_offset = if is_union {
             offset_base
@@ -1138,7 +1181,6 @@ fn classify_struct_or_union(
             offset_base + layout.lookup_field_offset(i)
         };
 
-        // alignment rule
         if field_offset % field_layout.align != 0 {
             unsafe { *lo_class = RegisterClass::Memory };
             classify_post_merge(size, lo_class, hi_class);
@@ -1148,7 +1190,7 @@ fn classify_struct_or_union(
         let mut field_lo = RegisterClass::NoClass;
         let mut field_hi = RegisterClass::NoClass;
 
-        classify(info, field_ty, field_offset, &mut field_lo, &mut field_hi);
+        classify(info, tctx, field_type, field_offset, &mut field_lo, &mut field_hi);
 
         unsafe { *lo_class = classify_merge(*lo_class, field_lo) };
         unsafe { *hi_class = classify_merge(*hi_class, field_hi) };

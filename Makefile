@@ -34,8 +34,11 @@ resolver:
 resolver_dump_global_symbols:
 	$(CARGO_RUN) -p cyrusc_resolver --bin cyrusc_resolver_debugger -- $(INPUT) ./tmp/global_symbols_dump $(COMMON_FLAGS) --stdlib=$(STDLIB) && code ./tmp/global_symbols_dump
 
-cir_walk analyzer parser lexer:
+cir_walk parser lexer:
 	$(CARGO_RUN) -p cyrusc_$@ -- $(INPUT) $(COMMON_FLAGS) --stdlib=$(STDLIB)
+
+semantic-only:
+	$(CARGO_RUN) -- semantic-only $(INPUT) --stdlib=$(STDLIB) $(ARGS)
 
 emit-llvm:
 	$(CARGO_RUN) -- emit-llvm $(INPUT) -o $(LLVM_OUT) --stdlib=$(STDLIB) $(ARGS)
@@ -63,4 +66,12 @@ testsuite:
 		-d tests \
 		--output ./tmp/tests \
 		--compiler $(COMPILER) \
+		--flags "--stdlib=$(STDLIB) --quiet"
+
+testsuite-fail:
+	python3 ./tests/test_suite.py \
+		-d tests \
+		--output ./tmp/tests \
+		--compiler $(COMPILER) \
+		--fail \
 		--flags "--stdlib=$(STDLIB) --quiet"

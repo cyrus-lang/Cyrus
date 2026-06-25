@@ -18,7 +18,11 @@ use cyrusc_compiler::{
     target_machine_info::TargetMachineInfo,
 };
 use cyrusc_diagcentral::exit_with_msg;
-use cyrusc_internal::{cir::cir::CIRModule, compiler_options::CompilerOptions, vtable::VTableRegistry};
+use cyrusc_internal::{
+    cir::{cir::CIRModule, typectx::CIRTypeContext},
+    compiler_options::CompilerOptions,
+    vtable::VTableRegistry,
+};
 use cyrusc_scaffold_parser::OBJECT_CACHE_DIR_FILENAME;
 use cyrusc_source_loc::SourceMap;
 use cyrusc_tui_utils::{tui_compiled, tui_skipped};
@@ -87,9 +91,12 @@ impl CodeGenLLVM {
         builder: Rc<Builder<'ctx>>,
         cir_module: &'ctx CIRModule,
         dctx: DebugContext,
+        tctx: Arc<CIRTypeContext>,
         vtable_registry: Arc<VTableRegistry>,
         source_map: Arc<SourceMap>,
     ) {
+        let dctx = if self.opts.debuginfo_enabled { Some(dctx) } else { None };
+
         {
             let llvm_module = owned_module.module.borrow();
             llvm_module.set_triple(&self.llvm_target_machine.get_triple());
@@ -104,7 +111,8 @@ impl CodeGenLLVM {
             &self.ctx.target,
             &builder,
             &self.llvm_target_machine,
-            dctx,
+            dctx.clone(),
+            tctx,
             vtable_registry,
             source_map,
         );
@@ -122,8 +130,8 @@ impl CodeGenLLVM {
 
         tui_compiled(cir_module.file_path.clone());
 
-        unsafe { finalize_debug(&codegen_ir_builder.dctx) };
-        {
+        if let Some(dctx) = &dctx {
+            unsafe { finalize_debug(&dctx) };
             let llvm_module = owned_module.module.borrow();
 
             unsafe { emit_debug_module_flags(llvm_module.as_mut_ptr()) };
@@ -365,6 +373,7 @@ impl SeparateModuleSupport<'static, OwnedModule> for CodeGenLLVM {
                 builder,
                 cir_module,
                 dctx,
+                self.ctx.tctx.clone(),
                 cir_module.vtable_registry.clone(),
                 self.source_map.clone(),
             );
@@ -394,6 +403,7 @@ impl UnifiedModuleSupport<'static, OwnedModule> for CodeGenLLVM {
                 builder.clone(),
                 cir_module,
                 dctx,
+                self.ctx.tctx.clone(),
                 cir_module.vtable_registry.clone(),
                 self.source_map.clone(),
             );

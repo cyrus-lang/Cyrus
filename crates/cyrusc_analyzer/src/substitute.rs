@@ -93,14 +93,18 @@ impl<'a> AnalysisContext<'a> {
                 SemaType::Pointer(Box::new(self.substitute_self_type(*inner.clone(), self_type)))
             }
 
-            SemaType::Tuple(tuple) => SemaType::Tuple(TypedTupleType {
-                elements: tuple
+            SemaType::Tuple(tuple) => {
+                let elements = tuple
                     .elements
                     .iter()
-                    .map(|ty| self.substitute_self_type(ty.clone(), self_type))
-                    .collect(),
-                loc: tuple.loc,
-            }),
+                    .map(|(ty, loc)| (self.substitute_self_type(ty.clone(), self_type), *loc))
+                    .collect();
+
+                SemaType::Tuple(TypedTupleType {
+                    elements,
+                    loc: tuple.loc,
+                })
+            }
 
             SemaType::FuncType(func) => {
                 let params = func

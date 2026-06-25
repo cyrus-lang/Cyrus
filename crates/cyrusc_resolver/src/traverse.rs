@@ -612,7 +612,8 @@ impl<'a> Resolver<'a> {
         let mut elements = Vec::new();
 
         for type_spec in tuple.type_list {
-            elements.push(self.resolve_type(type_spec, tuple.loc)?);
+            let loc = type_spec.loc();
+            elements.push((self.resolve_type(type_spec, tuple.loc)?, loc));
         }
 
         Some(SemaType::Tuple(TypedTupleType {
@@ -643,7 +644,7 @@ impl<'a> Resolver<'a> {
         let mut fields = Vec::with_capacity(union_type.fields.len());
 
         for field in &union_type.fields {
-            let ty = self.resolve_type(field.field_ty.clone(), field.loc)?;
+            let ty = self.resolve_type(field.field_type.clone(), field.loc)?;
 
             fields.push(TypedUnionField {
                 name: field.ident.as_string(),

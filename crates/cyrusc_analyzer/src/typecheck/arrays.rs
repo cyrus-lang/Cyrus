@@ -40,8 +40,7 @@ impl<'a> AnalysisContext<'a> {
         if array.ty.is_none() {
             if let Some(first_elem) = array.elements.first_mut() {
                 if let Some(sema_type) = self.analyze_expr(first_elem, expected_element_type.clone()) {
-                    let elements_count_expr =
-                        literal_expr_from_const_int(elements_count, first_elem.loc);
+                    let elements_count_expr = literal_expr_from_const_int(elements_count, first_elem.loc);
 
                     array.ty = Some(SemaType::Array(TypedArrayType {
                         element_type: Box::new(sema_type),
@@ -128,7 +127,7 @@ impl<'a> AnalysisContext<'a> {
                     });
                 }
 
-                let mut folder = ConstFolder::new(self, &self.decl_tables, self.target, self);
+                let mut folder = ConstFolder::new(self, &self.decl_tables, self.target, self.tctx.clone(), self);
                 folder.expr_as_const_int(&expr, self).unwrap()
             }
             TypedArrayCapacity::Dynamic => todo!(),

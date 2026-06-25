@@ -200,7 +200,7 @@ impl fmt::Display for UnnamedUnionType {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "union {{ ")?;
         for (i, field) in self.fields.iter().enumerate() {
-            write!(f, "{} = {}", field.ident, field.field_ty)?;
+            write!(f, "{} = {}", field.ident, field.field_type)?;
             if i == self.fields.len() - 1 {
                 write!(f, " ")?;
             } else {

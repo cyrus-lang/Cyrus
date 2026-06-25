@@ -4,7 +4,7 @@
 use crate::{context::AnalysisContext, diagnostics::AnalyzerDiagKind, env::generic_env::GenericEnv};
 use cyrusc_const_eval::fold::ConstFolder;
 use cyrusc_diagcentral::{Diag, DiagLevel};
-use cyrusc_internal::cir::lower::lower_enum_decl;
+use cyrusc_internal::cir::lower::lower_enum_type;
 use cyrusc_source_loc::Loc;
 use cyrusc_typed_ast::{
     decls::{EnumDecl, StructDecl, TypedefDeclID, UnionDecl},
@@ -34,21 +34,27 @@ impl<'a> AnalysisContext<'a> {
     pub(crate) fn sema_type_contains_self_by_value(&self, field_type: &SemaType, named_type: NamedType) -> bool {
         match field_type {
             SemaType::Unresolved(_) => unreachable!(),
+
             SemaType::Named(_named_type) => *_named_type == named_type,
+
             SemaType::Pointer(_) => {
                 false // indirect
             }
+
             SemaType::FuncType(_) => {
                 // func type lowered as pointer-size value in codegen,
                 // hence it's never harmful for self-recursion situations.
                 false
             }
+
             SemaType::Const(inner) => self.sema_type_contains_self_by_value(inner, named_type),
+
             SemaType::Array(array_type) => self.sema_type_contains_self_by_value(&array_type.element_type, named_type),
+
             SemaType::Tuple(tuple_type) => tuple_type
                 .elements
                 .iter()
-                .any(|ty| self.sema_type_contains_self_by_value(ty, named_type.clone())),
+                .any(|(ty, _)| self.sema_type_contains_self_by_value(ty, named_type.clone())),
 
             SemaType::InterfaceObject(_)
             | SemaType::SelfType(_)
@@ -385,7 +391,7 @@ impl<'a> AnalysisContext<'a> {
     fn is_const_str_assignable_to_array(&mut self, value_type: TypedArrayType, target_type: TypedArrayType) -> bool {
         match (value_type.capacity, target_type.capacity) {
             (TypedArrayCapacity::Fixed(value_capacity_expr), TypedArrayCapacity::Fixed(target_capacity_expr)) => {
-                let mut folder = ConstFolder::new(self, &self.decl_tables, self.target, self);
+                let mut folder = ConstFolder::new(self, &self.decl_tables, self.target, self.tctx.clone(), self);
 
                 let value_capacity = folder.expr_as_const_int(&value_capacity_expr, self).unwrap();
                 let target_capacity = folder.expr_as_const_int(&target_capacity_expr, self).unwrap();
@@ -466,7 +472,16 @@ impl<'a> AnalysisContext<'a> {
 
                 let enum_decl = self.decl_tables.enum_decl(enum_decl_id);
 
-                let cir_enum_type = lower_enum_decl(&self.decl_tables, self.target, &enum_decl);
+                let ty = lower_enum_type(
+                    &self.decl_tables,
+                    self.target,
+                    self.tctx.clone(),
+                    enum_decl_id,
+                    &enum_decl,
+                    named_type.type_args.clone(),
+                );
+
+                let cir_enum_type = ty.as_enum(&self.tctx).unwrap();
 
                 let tag_type = cir_enum_type.tag_type_or_infer_or_default();
 
@@ -597,7 +612,7 @@ impl<'a> AnalysisContext<'a> {
                     .elements
                     .clone()
                     .into_iter()
-                    .map(|ty| self.expand_sema_type(ty, loc))
+                    .map(|(ty, loc)| (self.expand_sema_type(ty, loc), loc))
                     .collect();
 
                 SemaType::Tuple(TypedTupleType {
@@ -735,7 +750,7 @@ impl<'a> AnalysisContext<'a> {
                     let elements = tuple_type
                         .elements
                         .iter()
-                        .map(|ty| coerce_recursively(this, ty, interface_object, loc))
+                        .map(|(ty, loc)| (coerce_recursively(this, ty, interface_object, *loc), *loc))
                         .collect();
 
                     SemaType::Tuple(TypedTupleType {
@@ -839,8 +854,8 @@ impl<'a> AnalysisContext<'a> {
                     check_recursively(this, &func_type.ret_type, loc, has_error);
                 }
                 SemaType::Tuple(tuple_type) => {
-                    for el in &tuple_type.elements {
-                        if el.is_void() {
+                    for (element, _) in &tuple_type.elements {
+                        if element.is_void() {
                             this.reporter.report(Diag {
                                 level: DiagLevel::Error,
                                 kind: Box::new(AnalyzerDiagKind::VoidTupleElementNotAllowed),
@@ -849,7 +864,7 @@ impl<'a> AnalysisContext<'a> {
                             });
                             *has_error = true;
                         }
-                        check_recursively(this, el, loc, has_error);
+                        check_recursively(this, element, loc, has_error);
                     }
                 }
                 SemaType::SelfType(_) => {
@@ -925,8 +940,8 @@ impl<'a> AnalysisContext<'a> {
                     check_recursively(this, &func_type.ret_type, func_type.loc)
                 }
                 SemaType::Tuple(tuple_type) => {
-                    for elem in &tuple_type.elements {
-                        if !check_recursively(this, elem, tuple_type.loc) {
+                    for (element, _) in &tuple_type.elements {
+                        if !check_recursively(this, element, tuple_type.loc) {
                             return false;
                         }
                     }

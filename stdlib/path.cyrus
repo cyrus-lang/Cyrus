@@ -122,6 +122,11 @@ pub struct Path {
         const str = self->inner.as_str_const();
         const len = self->inner.len();
 
+        // only check up to 10 characters OR the actual length, whichever is smaller
+        var check_len: usize;
+        if (len < 10) { check_len = len; }
+        else { check_len = 10; }
+
         for (var i: usize = 0; i < 10; i++) {
             if (str[i] == '.' && (i == 0 || str[i - 1] == separator())) {
                 return true;
@@ -137,6 +142,10 @@ pub struct Path {
         const str = self->inner.as_str_const();
         const len = self->inner.len();
         
+        if (len < 2) {
+            return false;
+        }
+
         for (var i: usize = 0; i < len - 1; i++) {
             if (str[i] == '.' && str[i + 1] == '.') {
                 return true;

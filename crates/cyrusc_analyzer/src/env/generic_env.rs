@@ -138,10 +138,18 @@ impl GenericEnv {
                     loc: func.loc,
                 })
             }
-            SemaType::Tuple(tuple) => SemaType::Tuple(TypedTupleType {
-                elements: tuple.elements.iter().map(|t| self.substitute_sema_type(t)).collect(),
-                loc: tuple.loc,
-            }),
+            SemaType::Tuple(tuple) => {
+                let elements = tuple
+                    .elements
+                    .iter()
+                    .map(|(ty, loc)| (self.substitute_sema_type(ty), *loc))
+                    .collect();
+
+                SemaType::Tuple(TypedTupleType {
+                    elements,
+                    loc: tuple.loc,
+                })
+            }
             SemaType::GenericParam(id) => match self.lookup(*id) {
                 Some(ty) => ty.clone(),
                 None => ty.clone(),
