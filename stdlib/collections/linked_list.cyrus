@@ -7,28 +7,26 @@ import std::option{Option};
 pub struct SinglyNode<T> {
     pub next: SinglyNode<T>*;
     pub value: T;
+
+    /// Insert a new node after the current one.
+    pub fn insert_after(&self, new_node: SinglyNode<T>*) {
+        @assert(new_node != null, "new node cannot be null");
+
+        new_node->next = self->next;
+        self->next = new_node;
+    }
 }
 
 pub struct SinglyLinkedList<T> {
-    allocator: Allocator;
     pub first: SinglyNode<T>*;
 
     pub fn new(const allocator: Allocator) Self {
-        return Self { allocator, first: null };
+        return Self { first: null };
     }
 
     pub fn prepend(&self, new_node: SinglyNode<T>*) {
         new_node->next = self->first;
         self->first = new_node;
-    }
-
-    /// Insert a new node after the current one.
-    pub fn insert_after(&self, node: SinglyNode<T>*, new_node: SinglyNode<T>*) {
-        @assert(node != null, "node cannot be null");
-        @assert(new_node != null, "new node cannot be null");
-
-        new_node->next = node->next;
-        node->next = new_node;
     }
 
     /// Remove a node from the list.
