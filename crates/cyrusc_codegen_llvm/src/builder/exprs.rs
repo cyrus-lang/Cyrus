@@ -99,9 +99,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
                 LocalIRValue::LValue(pointer_value, ty) => {
                     InternalValue::new(ty, InternalValueKind::LValue(pointer_value))
                 }
-                LocalIRValue::RValue(val, ty) => {
-                    InternalValue::new(ty, InternalValueKind::RValue(val))
-                }
+                LocalIRValue::RValue(val, ty) => InternalValue::new(ty, InternalValueKind::RValue(val)),
             };
 
             return internal_value;
@@ -237,16 +235,16 @@ impl<'ll> CodeGenIRBuilder<'ll> {
             lhs_lvalue.as_basic_value().into_pointer_value()
         } else {
             let int_val = lhs_lvalue.as_basic_value().into_int_value();
-            let spill = self.llvmbuilder.build_alloca(int_val.get_type(), "assign.spill").unwrap();
+            let spill = self
+                .llvmbuilder
+                .build_alloca(int_val.get_type(), "assign.spill")
+                .unwrap();
             self.llvmbuilder.build_store(spill, int_val).unwrap();
             spill
         };
 
         self.llvmbuilder
-            .build_store(
-                lhs_ptr,
-                rhs_value.as_basic_value(),
-            )
+            .build_store(lhs_ptr, rhs_value.as_basic_value())
             .unwrap();
 
         if let CIRExprKind::Load(value_ref) = &assign.lhs.kind {
@@ -545,12 +543,14 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         )
     }
 
-
     pub(crate) fn emit_decay_array_to_pointer(&self, array_lvalue: InternalValue<'ll>) -> InternalValue<'ll> {
         let array_ptr = match array_lvalue.kind {
             InternalValueKind::LValue(ptr) => ptr,
             InternalValueKind::RValue(val) => {
-                let spill_alloca = self.llvmbuilder.build_alloca(val.get_type(), "array.decay.spill").unwrap();
+                let spill_alloca = self
+                    .llvmbuilder
+                    .build_alloca(val.get_type(), "array.decay.spill")
+                    .unwrap();
                 self.llvmbuilder.build_store(spill_alloca, val).unwrap();
                 spill_alloca
             }
@@ -1449,12 +1449,17 @@ impl<'ll> CodeGenIRBuilder<'ll> {
                 InternalValue::new(field_type, InternalValueKind::LValue(field_ptr))
             }
             InternalValueKind::RValue(struct_val) => {
+                // TODO: This can be optimized via extracting bits from the integer at the correct offset
+                // But only if ABI representation is integer (must be performed strictly).
+
                 if struct_val.is_int_value() {
                     let int_val = struct_val.into_int_value();
-                    let spill = self.llvmbuilder.build_alloca(llvm_struct_type, "struct_field.spill").unwrap();
-                    let int_ptr_ty = int_val.get_type().ptr_type(inkwell::AddressSpace::default());
-                    let cast_spill = self.llvmbuilder.build_pointer_cast(spill, int_ptr_ty, "spill_cast").unwrap();
-                    self.llvmbuilder.build_store(cast_spill, int_val).unwrap();
+                    let spill = self
+                        .llvmbuilder
+                        .build_alloca(llvm_struct_type, "struct_field.spill")
+                        .unwrap();
+
+                    self.llvmbuilder.build_store(spill, int_val).unwrap();
 
                     let field_ptr = self
                         .llvmbuilder
