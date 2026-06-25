@@ -71,8 +71,8 @@ impl<'a> AnalysisContext<'a> {
 
         // inbounds check for tuple type
 
-        if tuple_type.elements.len() == 0 {
-             self.reporter.report(Diag {
+        if tuple_type.elements.is_empty() {
+            self.reporter.report(Diag {
                 level: DiagLevel::Error,
                 kind: Box::new(AnalyzerDiagKind::MemberAccessOnEmptyTuple),
                 loc: Some(tuple_member_access.loc),
