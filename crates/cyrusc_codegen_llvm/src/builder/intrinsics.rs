@@ -44,7 +44,8 @@ impl<'ll> CodeGenIRBuilder<'ll> {
     fn emit_intrinsic_memcpy(&mut self, args: &[CIRExpr]) -> InternalValue<'ll> {
         let cir_void_ptr = CIRType::Pointer(Box::new(CIRType::Plain(PlainType::Void)));
         let cir_int64 = CIRType::Plain(PlainType::Int64);
-
+        let dest_align = 1_u32;
+        let src_align = 1_u32;
         // ptr
         let dest = {
             let lvalue = self.emit_expr(&args[0], &Some(cir_void_ptr.clone()));
@@ -69,8 +70,8 @@ impl<'ll> CodeGenIRBuilder<'ll> {
             casted.as_basic_value().into_int_value()
         };
 
-        let dest_align = self.target.info.pointer_align();
-        let src_align = self.target.info.pointer_align();
+        let dest_align = 1_u32;
+        let src_align = 1_u32;
 
         self.llvmbuilder
             .build_memcpy(dest, dest_align, src, src_align, size)
@@ -181,8 +182,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
             let casted = self.emit_implicit_cast(&cir_int64, rvalue);
             casted.as_basic_value().into_int_value()
         };
-
-        let align = self.target.info.pointer_align();
+        let align = 1_u32;
 
         self.llvmbuilder.build_memset(dest, align, value, size).unwrap();
 
@@ -799,16 +799,6 @@ impl<'ll> CodeGenIRBuilder<'ll> {
                 .unwrap()
         };
 
-        let lhs_cast = self
-            .llvmbuilder
-            .build_pointer_cast(lhs_ptr, i8_ptr_type, "lhs_cast")
-            .unwrap();
-
-        let rhs_cast = self
-            .llvmbuilder
-            .build_pointer_cast(rhs_ptr, i8_ptr_type, "rhs_cast")
-            .unwrap();
-
         let byte_size = target_data.get_bit_size(&lhs_arr.get_type()) / 8;
         let len_val = ptr_sized_int_type.const_int(byte_size as u64, false);
 
@@ -816,7 +806,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
             .llvmbuilder
             .build_call(
                 memcmp,
-                &[lhs_cast.into(), rhs_cast.into(), len_val.into()],
+                &[lhs_ptr.into(), rhs_ptr.into(), len_val.into()],
                 "memcmp_call",
             )
             .unwrap()
