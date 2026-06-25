@@ -4,12 +4,12 @@
 import std::mem{Allocator, LibcAllocator};
 import std::option{Option};
 
-struct SinglyNode<T> {
+pub struct SinglyNode<T> {
     pub next: SinglyNode<T>*;
     pub value: T;
 }
 
-struct SinglyLinkedList<T> {
+pub struct SinglyLinkedList<T> {
     allocator: Allocator;
     pub first: SinglyNode<T>*;
 
