@@ -1,0 +1,21 @@
+// @stdout: 30 20 10
+
+import std::libc{printf};
+
+struct Link {
+    pub value: int64;
+    pub next: Link*;
+}
+
+pub fn main() {
+    var link: Link = Link { value: 10, next: null };
+    var link2: Link = Link { value: 20, next: &link };
+    var link3: Link = Link { value: 30, next: &link2 };
+
+    printf(
+        "%d %d %d\n",
+        link3.value,
+        link3.next->value,
+        link3.next->next->value
+    );
+}
