@@ -234,12 +234,12 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         let lhs_ptr = if lhs_lvalue.as_basic_value().is_pointer_value() {
             lhs_lvalue.as_basic_value().into_pointer_value()
         } else {
-            let int_val = lhs_lvalue.as_basic_value().into_int_value();
+            let reg_val = lhs_lvalue.as_basic_value();
             let spill = self
                 .llvmbuilder
-                .build_alloca(int_val.get_type(), "assign.spill")
+                .build_alloca(reg_val.get_type(), "assign.spill")
                 .unwrap();
-            self.llvmbuilder.build_store(spill, int_val).unwrap();
+            self.llvmbuilder.build_store(spill, reg_val).unwrap();
             spill
         };
 
@@ -1449,17 +1449,20 @@ impl<'ll> CodeGenIRBuilder<'ll> {
                 InternalValue::new(field_type, InternalValueKind::LValue(field_ptr))
             }
             InternalValueKind::RValue(struct_val) => {
-                // TODO: This can be optimized via extracting bits from the integer at the correct offset
-                // But only if ABI representation is integer (must be performed strictly).
-
-                if struct_val.is_int_value() {
-                    let int_val = struct_val.into_int_value();
+                if struct_val.is_int_value() || struct_val.is_float_value() {
                     let spill = self
                         .llvmbuilder
                         .build_alloca(llvm_struct_type, "struct_field.spill")
                         .unwrap();
-
-                    self.llvmbuilder.build_store(spill, int_val).unwrap();
+                    let cast_ptr = self
+                        .llvmbuilder
+                        .build_pointer_cast(
+                            spill,
+                            struct_val.get_type().ptr_type(inkwell::AddressSpace::default()),
+                            "spill.cast",
+                        )
+                        .unwrap();
+                    self.llvmbuilder.build_store(cast_ptr, struct_val).unwrap();
 
                     let field_ptr = self
                         .llvmbuilder
