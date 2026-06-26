@@ -16,5 +16,5 @@ pub fn main() {
     printf("%d ", @sizeof(KV<int32, char>));
     printf("%d ", @sizeof(Box<()>));
     printf("%d ", @sizeof(KV<(), ()>));
-    printf("%dn\", @sizeof(KV<(), void>));
+    printf("%d\n", @sizeof(KV<(), void>));
 }
