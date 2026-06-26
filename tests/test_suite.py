@@ -46,14 +46,11 @@ def unique_name(path: Path) -> str:
 
 
 def build_and_run(file_path, metadata, compiler_path, compiler_flags, output_dir):
-    # isolate temp per test
     with tempfile.TemporaryDirectory() as tmpdir:
         tmpdir = Path(tmpdir)
-
-        output_binary = tmpdir / unique_name(file_path)
-
+        suffix = ".exe" if os.name == "nt" else ""
+        output_binary = tmpdir / f"{unique_name(file_path)}{suffix}"
         output_binary.parent.mkdir(parents=True, exist_ok=True)
-
         env = os.environ.copy()
         env["TMPDIR"] = str(tmpdir)
         env["TEMP"] = str(tmpdir)
@@ -95,10 +92,9 @@ def build_and_run(file_path, metadata, compiler_path, compiler_flags, output_dir
             env=env
         )
 
-        actual_stdout = run_result.stdout.strip()
+        actual_stdout = run_result.stdout.replace("\r\n", "\n").strip()
         expected_stdout = (metadata.get("stdout") or "").strip()
-
-        actual_stderr = run_result.stderr.strip()
+        actual_stderr = run_result.stderr.replace("\r\n", "\n").strip()
         expected_stderr = (metadata.get("stderr") or "").strip()
         
         if actual_stdout != expected_stdout:
