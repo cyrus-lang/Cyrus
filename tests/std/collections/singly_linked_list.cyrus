@@ -1,4 +1,5 @@
 // @stdout: 10 20 30
+
 import std::collections::linked_list{SinglyNode, SinglyLinkedList};
 import std::mem{Allocator, LibcAllocator};
 import std::libc{printf};
