@@ -266,8 +266,6 @@ impl<'source_file> Parser<'source_file> {
         // valid: `Record<T>`, `module::Symbol<int64>`
         // invalid: `5 < T >` (5 is not path-like), `(a + b) < T >` (expression not path-like)
         if !self.current_expr_is_path_like(last_parsed_expr) {
-            dbg!("here 2");
-
             return TypeArgStartDetail {
                 includes_type_args: false,
                 is_array_init: false,
