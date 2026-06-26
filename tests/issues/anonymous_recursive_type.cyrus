@@ -1,0 +1,11 @@
+// @stdout: ok
+
+import std::libc{printf};
+
+type XX = struct {
+    value: XX*
+};
+
+pub fn main() {
+    printf("ok\n");
+}
