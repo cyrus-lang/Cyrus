@@ -1,29 +1,29 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 The Cyrus Language
 
-use crate::{abi::args::ABIFunctionInfo, cir::cir::CIREnumVariant};
+use crate::{
+    abi::args::ABIFunctionInfo,
+    cir::{
+        cir::CIREnumVariant,
+        typectx::{CIRTypeContext, CIRTypeContextDeclKey, CIRTypeContextID},
+    },
+};
 use cyrusc_ast::abi::{CallConv, ReprAttr};
 use cyrusc_source_loc::Loc;
 use cyrusc_typed_ast::{VTableID, types::PlainType};
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum CIRType {
+    Struct(CIRTypeContextID),
+    Enum(CIRTypeContextID),
+    Union(CIRTypeContextID),
+
     Plain(PlainType),
     Const(Box<CIRType>),
     Pointer(Box<CIRType>),
-    Struct(CIRStructType),
-    Enum(CIREnumType),
-    Union(CIRUnionType),
     FuncType(CIRFuncType),
-    Tuple(CIRTupleType),
     Array(CIRArrayType),
     Dynamic(CIRDynamicType),
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub struct CIRTupleType {
-    pub elements: Vec<CIRType>,
-    pub loc: Loc,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -48,6 +48,7 @@ pub struct CIRFuncType {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct CIRStructType {
+    pub decl_key: Option<CIRTypeContextDeclKey>,
     pub name: Option<String>,
     pub fields: Vec<CIRType>,
     pub fields_info: Vec<(String, Loc)>,
@@ -58,6 +59,7 @@ pub struct CIRStructType {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct CIRUnionType {
+    pub decl_key: Option<CIRTypeContextDeclKey>,
     pub name: Option<String>,
     pub fields: Vec<CIRType>,
     pub fields_info: Vec<(String, Loc)>,
@@ -68,26 +70,13 @@ pub struct CIRUnionType {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct CIREnumType {
+    pub decl_key: Option<CIRTypeContextDeclKey>,
     pub name: Option<String>,
     pub variants: Vec<CIREnumVariant>,
     pub repr_attr: Option<ReprAttr>,
     pub align: Option<usize>,
     pub tag_type: Option<Box<CIRType>>,
     pub loc: Loc,
-}
-
-pub fn cir_fat_ptr_type(loc: Loc) -> CIRType {
-    CIRType::Struct(CIRStructType {
-        name: None,
-        fields: vec![
-            CIRType::Pointer(Box::new(CIRType::Plain(PlainType::Void))),
-            CIRType::Pointer(Box::new(CIRType::Plain(PlainType::Void))),
-        ],
-        fields_info: vec![("data_ptr".to_string(), loc), ("vtable_ptr".to_string(), loc)],
-        repr_attr: None,
-        align: None,
-        loc: loc,
-    })
 }
 
 impl CIREnumType {
@@ -159,13 +148,41 @@ impl CIREnumType {
 }
 
 impl CIRType {
-    pub fn as_tuple(&self) -> Option<CIRTupleType> {
-        match self.const_inner() {
-            CIRType::Tuple(tuple) => Some(tuple.clone()),
+    pub fn struct_or_union_fields(&self, tctx: &CIRTypeContext) -> Option<Vec<CIRType>> {
+        if let Some(struct_type) = self.as_struct(tctx) {
+            Some(struct_type.fields)
+        } else if let Some(union_type) = self.as_union(tctx) {
+            Some(union_type.fields)
+        } else {
+            None
+        }
+    }
+
+    #[inline]
+    pub fn as_struct(&self, tctx: &CIRTypeContext) -> Option<CIRStructType> {
+        match self {
+            CIRType::Struct(type_id) => Some(tctx.get_struct(*type_id)),
             _ => None,
         }
     }
 
+    #[inline]
+    pub fn as_union(&self, tctx: &CIRTypeContext) -> Option<CIRUnionType> {
+        match self {
+            CIRType::Union(type_id) => Some(tctx.get_union(*type_id)),
+            _ => None,
+        }
+    }
+
+    #[inline]
+    pub fn as_enum(&self, tctx: &CIRTypeContext) -> Option<CIREnumType> {
+        match self {
+            CIRType::Enum(type_id) => Some(tctx.get_enum(*type_id)),
+            _ => None,
+        }
+    }
+
+    #[inline]
     pub fn as_func(&self) -> Option<CIRFuncType> {
         match self.const_inner() {
             CIRType::FuncType(fn_ty) => Some(fn_ty.clone()),
@@ -173,6 +190,7 @@ impl CIRType {
         }
     }
 
+    #[inline]
     pub fn as_plain(&self) -> Option<PlainType> {
         match self.const_inner() {
             CIRType::Plain(plain_type) => Some(plain_type.clone()),
@@ -180,6 +198,7 @@ impl CIRType {
         }
     }
 
+    #[inline]
     pub fn as_array(&self) -> Option<CIRArrayType> {
         match self.const_inner() {
             CIRType::Array(arr_ty) => Some(arr_ty.clone()),
@@ -187,32 +206,10 @@ impl CIRType {
         }
     }
 
-    pub fn as_enum(&self) -> Option<CIREnumType> {
+    #[inline]
+    pub fn as_type_id(&self) -> Option<CIRTypeContextID> {
         match self.const_inner() {
-            CIRType::Enum(enum_type) => Some(enum_type.clone()),
-            _ => None,
-        }
-    }
-
-    pub fn as_struct(&self) -> Option<CIRStructType> {
-        match self.const_inner() {
-            CIRType::Struct(struct_type) => Some(struct_type.clone()),
-            _ => None,
-        }
-    }
-
-    pub fn struct_or_union_fields(&self) -> Option<Vec<CIRType>> {
-        match self.const_inner() {
-            CIRType::Struct(struct_type) => Some(struct_type.fields.clone()),
-            CIRType::Union(union_ty) => Some(union_ty.fields.clone()),
-            _ => None,
-        }
-        .map(|fields| fields.iter().map(|ty| ty.clone()).collect::<Vec<CIRType>>())
-    }
-
-    pub fn as_union(&self) -> Option<CIRUnionType> {
-        match self.const_inner() {
-            CIRType::Union(union_ty) => Some(union_ty.clone()),
+            CIRType::Struct(type_id) | CIRType::Union(type_id) | CIRType::Enum(type_id) => Some(*type_id),
             _ => None,
         }
     }
@@ -233,7 +230,6 @@ impl CIRType {
 
             CIRType::Struct(_) => false,
             CIRType::Union(_) => false,
-            CIRType::Tuple(_) => false,
             CIRType::Array(_) => false,
             CIRType::Dynamic(_) => false,
             CIRType::FuncType(_) => false,
@@ -339,28 +335,6 @@ impl CIRType {
         match self {
             CIRType::Const(inner) => inner.const_inner(),
             other => other,
-        }
-    }
-}
-
-impl CIRTupleType {
-    pub fn as_struct_ty(&self) -> CIRStructType {
-        let fields = self.elements.iter().map(|ty| ty.clone()).collect();
-
-        let fields_info = self
-            .elements
-            .iter()
-            .enumerate()
-            .map(|(i, _)| (i.to_string(), self.loc))
-            .collect();
-
-        CIRStructType {
-            name: None,
-            fields,
-            fields_info,
-            repr_attr: None,
-            align: None,
-            loc: self.loc,
         }
     }
 }

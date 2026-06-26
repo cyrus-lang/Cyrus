@@ -474,6 +474,12 @@ impl TypedGenericParams {
     }
 }
 
+impl Default for TypedTypeArgs {
+    fn default() -> Self {
+        Self(Default::default())
+    }
+}
+
 impl TypedTypeArgs {
     #[inline]
     pub fn new() -> Self {

@@ -3,7 +3,7 @@
 
 use crate::{
     abi::args::ABIFunctionInfo,
-    cir::types::{CIREnumType, CIRFuncType, CIRStructType, CIRType, CIRUnionType},
+    cir::types::{CIREnumType, CIRFuncType, CIRStructType, CIRType},
     vtable::VTableRegistry,
 };
 use cyrusc_ast::{
@@ -179,7 +179,7 @@ pub enum CIRFieldAccessKind {
 
 #[derive(Debug, Clone)]
 pub struct CIRStructInitExpr {
-    pub ty: CIRStructType,
+    pub ty: CIRType,
     pub fields: Vec<CIRExpr>,
 }
 
@@ -188,13 +188,13 @@ pub struct CIREnumInitExpr {
     pub ident: String,
     pub tag: u32,
     pub variant: CIREnumInitVariant,
-    pub enum_type: CIREnumType,
+    pub ty: CIRType,
 }
 
 #[derive(Debug, Clone)]
 pub struct CIRUnionInitExpr {
-    pub expr: Box<CIRExpr>,
     pub ty: CIRType,
+    pub expr: Box<CIRExpr>,
 }
 
 #[derive(Debug, Clone)]
@@ -206,6 +206,7 @@ pub struct CIRTupleAccessExpr {
 #[derive(Debug, Clone)]
 pub struct CIRTupleExpr {
     pub elements: Vec<CIRExpr>,
+    pub ty: CIRType,
     pub loc: Loc,
 }
 
@@ -456,7 +457,7 @@ pub struct CIREnumStmt {
 pub enum CIREnumVariant {
     Unit(String, u32),
     Valued(String, CIRType, u32),
-    Payload(String, Vec<CIRType>, u32),
+    Payload(String, CIRStructType, u32),
 }
 
 #[derive(Debug, Clone)]
@@ -504,7 +505,7 @@ pub fn cir_expr_as_const_integer_value<T: Integer>(expr: &CIRExpr) -> Option<T> 
     match &expr.kind {
         CIRExprKind::Literal(literal) => match literal.kind {
             CIRLiteralKind::Integer(value, _) => Some(value.as_int()),
-            
+
             _ => None,
         },
         _ => None,
@@ -546,42 +547,6 @@ pub fn cir_func_decl_as_func_type(func_decl: &CIRFuncDeclStmt) -> CIRFuncType {
     }
 }
 
-#[inline]
-pub fn cir_struct_as_struct_type(struct_stmt: &CIRStructStmt) -> CIRStructType {
-    CIRStructType {
-        name: Some(struct_stmt.name.clone()),
-        fields: struct_stmt.fields.clone(),
-        fields_info: struct_stmt.fields_info.clone(),
-        repr_attr: struct_stmt.modifiers.repr_attr.clone(),
-        align: struct_stmt.align.clone(),
-        loc: struct_stmt.loc,
-    }
-}
-
-#[inline]
-pub fn cir_enum_as_enum_type(enum_stmt: &CIREnumStmt) -> CIREnumType {
-    CIREnumType {
-        name: Some(enum_stmt.name.clone()),
-        variants: enum_stmt.variants.clone(),
-        tag_type: enum_stmt.tag_type.clone(),
-        repr_attr: enum_stmt.modifiers.repr_attr.clone(),
-        align: enum_stmt.align.clone(),
-        loc: enum_stmt.loc,
-    }
-}
-
-#[inline]
-pub fn cir_union_as_union_type(union_stmt: &CIRUnionStmt) -> CIRUnionType {
-    CIRUnionType {
-        name: Some(union_stmt.name.clone()),
-        fields: union_stmt.fields.clone(),
-        fields_info: union_stmt.fields_info.clone(),
-        repr_attr: union_stmt.modifiers.repr_attr.clone(),
-        align: union_stmt.align.clone(),
-        loc: union_stmt.loc,
-    }
-}
-
 impl CIRExprKind {
     #[inline]
     pub fn as_type(&self) -> Option<&CIRType> {
@@ -602,9 +567,9 @@ impl CIREnumVariant {
     }
 
     #[inline]
-    pub fn as_fielded(&self) -> Option<&Vec<CIRType>> {
+    pub fn as_payload(&self) -> Option<&CIRStructType> {
         match self {
-            CIREnumVariant::Payload(_, fields, _) => Some(fields),
+            CIREnumVariant::Payload(_, struct_type, _) => Some(struct_type),
             _ => None,
         }
     }

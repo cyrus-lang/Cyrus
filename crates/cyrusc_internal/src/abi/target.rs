@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 The Cyrus Language
 
+use std::sync::Arc;
+
 use crate::{
     abi::{
         args::{ABIArgInfo, ABIFunctionInfo, ABIRetInfo},
@@ -8,7 +10,10 @@ use crate::{
         targets::x86_64::classify::X86_64,
         types::{ABIFloatKind, ABIType},
     },
-    cir::types::{CIRFuncType, CIRType},
+    cir::{
+        typectx::CIRTypeContext,
+        types::{CIRFuncType, CIRType},
+    },
 };
 
 pub trait TargetABI: Send + Sync {
@@ -19,10 +24,13 @@ pub trait TargetABI: Send + Sync {
     fn apply_variadic_argument_promote(&self, ty: &CIRType) -> CIRType;
 }
 
-pub fn create_target_abi<'a>(target_info: ABITargetInfo) -> Result<Box<dyn TargetABI + 'a>, String> {
+pub fn create_target_abi<'a>(
+    target_info: ABITargetInfo,
+    tctx: Arc<CIRTypeContext>,
+) -> Result<Box<dyn TargetABI + 'a>, String> {
     match (target_info.arch, target_info.os, target_info.format) {
         (ABITargetArch::X86_64, ABITargetOS::Linux, ABITargetObjectFormat::Elf) => {
-            Ok(Box::new(X86_64::new(target_info)))
+            Ok(Box::new(X86_64::new(target_info, tctx)))
         }
         (ABITargetArch::Aarch64, ABITargetOS::Linux, ABITargetObjectFormat::Elf) => {
             unimplemented!("AArch64 Linux ABI not implemented yet")

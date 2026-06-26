@@ -857,7 +857,7 @@ impl<'source_file> Parser<'source_file> {
 
                 fields.push(UnnamedUnionTypeField {
                     ident: field_name,
-                    field_ty: field_type_specifier,
+                    field_type: field_type_specifier,
                     loc: Loc::new(self.file_id(), line, column, start, end),
                 });
 

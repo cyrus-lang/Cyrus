@@ -89,7 +89,7 @@ pub enum PlainType {
 
 #[derive(Debug, Clone, Eq)]
 pub struct TypedTupleType {
-    pub elements: Vec<SemaType>,
+    pub elements: Vec<(SemaType, Loc)>,
     pub loc: Loc,
 }
 
@@ -547,7 +547,7 @@ impl SemaType {
             SemaType::InferVar(_) => true,
             SemaType::Pointer(inner) | SemaType::Const(inner) => inner.contains_infer_var(),
             SemaType::Array(array) => array.element_type.contains_infer_var(),
-            SemaType::Tuple(tuple) => tuple.elements.iter().any(|t| t.contains_infer_var()),
+            SemaType::Tuple(tuple) => tuple.elements.iter().any(|(ty, _)| ty.contains_infer_var()),
             SemaType::FuncType(func) => {
                 func.params.list.iter().any(|ty| ty.contains_infer_var())
                     || func
@@ -582,7 +582,7 @@ impl SemaType {
 
             SemaType::Pointer(inner) | SemaType::Const(inner) => inner.contains_generic_param(),
             SemaType::Array(array) => array.element_type.contains_generic_param(),
-            SemaType::Tuple(tuple) => tuple.elements.iter().any(|t| t.contains_generic_param()),
+            SemaType::Tuple(tuple) => tuple.elements.iter().any(|(ty, _)| ty.contains_generic_param()),
             SemaType::FuncType(func) => {
                 func.params.list.iter().any(|ty| ty.contains_generic_param())
                     || func
@@ -635,7 +635,7 @@ impl SemaType {
                     inner(&func_ty.ret_type)
                 }
                 SemaType::Tuple(ty) => {
-                    for ty in &ty.elements {
+                    for (ty, _) in &ty.elements {
                         if inner(ty) {
                             return true;
                         }
@@ -845,7 +845,10 @@ impl PartialEq for TypedFuncType {
 
 impl PartialEq for TypedTupleType {
     fn eq(&self, other: &Self) -> bool {
-        self.elements == other.elements
+        self.elements
+            .iter()
+            .zip(&other.elements)
+            .all(|((ty1, _), (ty2, _))| ty1 == ty2)
     }
 }
 

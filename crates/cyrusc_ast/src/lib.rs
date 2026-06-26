@@ -160,7 +160,7 @@ pub struct UnnamedUnionType {
 #[derive(Debug, Clone)]
 pub struct UnnamedUnionTypeField {
     pub ident: Ident,
-    pub field_ty: TypeSpecifier,
+    pub field_type: TypeSpecifier,
     pub loc: Loc,
 }
 
@@ -1314,7 +1314,7 @@ impl PartialEq for UnnamedUnionType {
 
 impl PartialEq for UnnamedUnionTypeField {
     fn eq(&self, other: &Self) -> bool {
-        self.ident == other.ident && self.field_ty == other.field_ty
+        self.ident == other.ident && self.field_type == other.field_type
     }
 }
 

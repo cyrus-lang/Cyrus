@@ -44,8 +44,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
     fn emit_intrinsic_memcpy(&mut self, args: &[CIRExpr]) -> InternalValue<'ll> {
         let cir_void_ptr = CIRType::Pointer(Box::new(CIRType::Plain(PlainType::Void)));
         let cir_int64 = CIRType::Plain(PlainType::Int64);
-        let dest_align = 1_u32;
-        let src_align = 1_u32;
+
         // ptr
         let dest = {
             let lvalue = self.emit_expr(&args[0], &Some(cir_void_ptr.clone()));
@@ -86,7 +85,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         let lvalue = self.emit_expr(&args[1], &None);
         let rvalue = self.load_rvalue(lvalue);
 
-        let llvm_target_type = self.emit_ty(target_type.clone());
+        let llvm_target_type = self.emit_type(target_type.clone());
 
         // SPECIAL CASES of cast handled here (explicit cast):
         if rvalue.ty.is_float() && llvm_target_type.is_int_type() {
@@ -804,11 +803,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
 
         let cmp = self
             .llvmbuilder
-            .build_call(
-                memcmp,
-                &[lhs_ptr.into(), rhs_ptr.into(), len_val.into()],
-                "memcmp_call",
-            )
+            .build_call(memcmp, &[lhs_ptr.into(), rhs_ptr.into(), len_val.into()], "memcmp_call")
             .unwrap()
             .try_as_basic_value()
             .basic()

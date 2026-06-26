@@ -16,7 +16,6 @@ pub enum ABIType {
     Struct(Vec<ABIType>, bool),
     Union(Vec<ABIType>),
     TargetIntegerType(TargetIntegerType),
-    // Enum(...) // TODO
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

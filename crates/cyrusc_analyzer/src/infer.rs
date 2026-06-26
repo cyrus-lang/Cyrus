@@ -86,10 +86,18 @@ impl InferCtx {
                     loc: func.loc,
                 })
             }
-            SemaType::Tuple(tuple) => SemaType::Tuple(TypedTupleType {
-                elements: tuple.elements.iter().map(|e| self.resolve(e)).collect(),
-                loc: tuple.loc,
-            }),
+            SemaType::Tuple(tuple) => {
+                let elements = tuple
+                    .elements
+                    .iter()
+                    .map(|(ty, loc)| (self.resolve(ty), *loc))
+                    .collect();
+
+                SemaType::Tuple(TypedTupleType {
+                    elements,
+                    loc: tuple.loc,
+                })
+            }
 
             SemaType::InterfaceObject(_) | SemaType::SelfType(_) | SemaType::Plain(_) => ty.clone(),
 
@@ -102,13 +110,18 @@ impl InferCtx {
     fn occurs_check(&self, var: InferVarID, ty: &SemaType) -> bool {
         match ty {
             SemaType::InferVar(id) => *id == var,
+
             SemaType::Named(named) => named.type_args.iter().any(|arg| match arg {
                 TypedTypeArg::Type(t, _) => self.occurs_check(var, t),
                 _ => false,
             }),
-            SemaType::Tuple(t) => t.elements.iter().any(|e| self.occurs_check(var, e)),
-            SemaType::Array(a) => self.occurs_check(var, &a.element_type),
+
+            SemaType::Tuple(tuple_type) => tuple_type.elements.iter().any(|(ty, _)| self.occurs_check(var, ty)),
+
+            SemaType::Array(array_type) => self.occurs_check(var, &array_type.element_type),
+
             SemaType::Pointer(inner) => self.occurs_check(var, inner),
+
             _ => false,
         }
     }
@@ -123,6 +136,7 @@ impl InferCtx {
 
         match (&a, &b) {
             (SemaType::InferVar(id1), SemaType::InferVar(id2)) if id1 == id2 => true,
+
             (SemaType::InferVar(id), ty) | (ty, SemaType::InferVar(id)) => {
                 if self.occurs_check(*id, ty) {
                     return false;
@@ -130,6 +144,7 @@ impl InferCtx {
                 self.bind(*id, ty.clone());
                 true
             }
+
             (SemaType::Named(n1), SemaType::Named(n2)) => {
                 if n1.type_decl_id != n2.type_decl_id {
                     return false;
@@ -141,20 +156,29 @@ impl InferCtx {
                 }
                 true
             }
+
             (SemaType::Tuple(t1), SemaType::Tuple(t2)) => {
                 t1.elements.len() == t2.elements.len()
-                    && t1.elements.iter().zip(&t2.elements).all(|(a, b)| self.unify(a, b))
+                    && t1
+                        .elements
+                        .iter()
+                        .zip(&t2.elements)
+                        .all(|((a, _), (b, _))| self.unify(a, b))
             }
+
             (SemaType::Array(a1), SemaType::Array(a2)) => self.unify(&a1.element_type, &a2.element_type),
+
             (SemaType::Pointer(p1), SemaType::Pointer(p2)) => self.unify(p1, p2),
+
             (SemaType::Const(c1), SemaType::Const(c2)) => self.unify(c1, c2),
+            
             (SemaType::FuncType(f1), SemaType::FuncType(f2)) => self.unify_func(f1, f2),
 
             // unify: array-to-pointer decay
             (SemaType::Array(arr), SemaType::Pointer(ptr)) | (SemaType::Pointer(ptr), SemaType::Array(arr)) => {
                 self.unify(&arr.element_type, &ptr)
             }
-            
+
             _ => false,
         }
     }

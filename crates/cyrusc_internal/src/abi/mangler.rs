@@ -227,11 +227,11 @@ fn mangle_sema_type(sema_type: &SemaType) -> String {
                 format!("func_{ret_type}_{params}")
             }
         }
-        SemaType::Tuple(typed_tuple_type) => {
-            let elements = typed_tuple_type
+        SemaType::Tuple(tuple_type) => {
+            let elements = tuple_type
                 .elements
                 .iter()
-                .map(mangle_sema_type)
+                .map(|(ty, _)| mangle_sema_type(ty))
                 .collect::<Vec<_>>()
                 .join("_");
 

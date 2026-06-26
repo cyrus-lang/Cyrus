@@ -417,7 +417,7 @@ pub fn format_sema_type(ty: SemaType, formatter: &dyn Formatter) -> String {
                 tuple_type
                     .elements
                     .iter()
-                    .map(|t| format_sema_type(t.clone(), formatter))
+                    .map(|(ty, _)| format_sema_type(ty.clone(), formatter))
                     .collect::<Vec<String>>()
                     .join(", ")
             )

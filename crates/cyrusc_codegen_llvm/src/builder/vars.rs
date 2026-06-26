@@ -3,7 +3,7 @@
 
 use cyrusc_ast::{abi::Linkage, modifiers::GlobalVarModifiers};
 use cyrusc_internal::{
-    abi::layout::{ABITypeLayout, type_layout},
+    abi::layout::ABITypeLayout,
     cir::cir::{CIRGlobalVarStmt, CIRVarStmt, IRValueID},
 };
 use inkwell::{
@@ -36,12 +36,15 @@ impl<'ll> CodeGenIRBuilder<'ll> {
             return global_value;
         }
 
-        let ty: BasicTypeEnum<'ll> = self.emit_ty(cir_global_var.ty.clone()).try_into().unwrap();
+        let ty: BasicTypeEnum<'ll> = self.emit_type(cir_global_var.ty.clone()).try_into().unwrap();
         let global_value = llvm_module.add_global(ty, None, &cir_global_var.name);
         drop(llvm_module);
 
-        let layout = type_layout(&self.target.info, &cir_global_var.ty);
-        self.emit_debug_global_var(&layout, &global_value, cir_global_var);
+        let layout = self.tctx.layout_of(&cir_global_var.ty);
+
+        if self.dctx.is_some() {
+            self.emit_debug_global_var(&layout, &global_value, cir_global_var);
+        }
 
         if let Some(expr) = &cir_global_var.expr {
             let lvalue = self.emit_expr(&expr, &Some(cir_global_var.ty.clone()));
@@ -95,13 +98,16 @@ impl<'ll> CodeGenIRBuilder<'ll> {
 // Var.
 impl<'ll> CodeGenIRBuilder<'ll> {
     pub(crate) fn emit_var(&mut self, cir_var: &CIRVarStmt) {
-        let ty: BasicTypeEnum<'ll> = self.emit_ty(cir_var.ty.clone()).try_into().unwrap();
-        let layout = type_layout(&self.target.info, &cir_var.ty);
+        let layout = self.tctx.layout_of(&cir_var.ty);
+
+        let ty: BasicTypeEnum<'ll> = self.emit_type(cir_var.ty.clone()).try_into().unwrap();
 
         let ptr = self.llvmbuilder.build_alloca(ty, &cir_var.name).unwrap();
         let alloca_instr = ptr.as_instruction().unwrap();
 
-        self.emit_debug_var(&layout, &ptr, cir_var);
+        if self.dctx.is_some() {
+            self.emit_debug_var(&layout, &ptr, cir_var);
+        }
 
         if let Some(expr) = &cir_var.expr {
             let lvalue = self.emit_expr(expr, &Some(cir_var.ty.clone()));
@@ -124,12 +130,14 @@ impl<'ll> CodeGenIRBuilder<'ll> {
 // Debug Metadata.
 impl<'ll> CodeGenIRBuilder<'ll> {
     fn emit_debug_global_var(
-        &self,
+        &mut self,
         _layout: &ABITypeLayout,
         global_value: &GlobalValue<'ll>,
         cir_global_var: &CIRGlobalVarStmt,
     ) {
-        let ty_meta = self.emit_debug_ty_metadata(&cir_global_var.ty);
+        assert!(self.dctx.is_some());
+
+        let ty_meta = self.emit_debug_type_metadata(&cir_global_var.ty);
 
         let is_local = !cir_global_var
             .modifiers
@@ -138,14 +146,16 @@ impl<'ll> CodeGenIRBuilder<'ll> {
             .map(|l| l.is_extern())
             .unwrap_or(false);
 
-        let file = self.dctx.file.metadata;
+        let dctx = self.dctx.as_ref().unwrap();
+
+        let file = dctx.file.metadata;
 
         // globals should use the compile unit as scope
-        let scope = self.dctx.compile_unit;
+        let scope = dctx.compile_unit;
 
         unsafe {
             emit_global_debug(
-                &self.dctx,
+                &dctx,
                 global_value.as_value_ref(),
                 scope,
                 file,
@@ -158,22 +168,26 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         }
     }
 
-    fn emit_debug_var(&self, layout: &ABITypeLayout, ptr: &PointerValue<'ll>, cir_var: &CIRVarStmt) {
-        let var_ty_metadata = self.emit_debug_ty_metadata(&cir_var.ty);
+    fn emit_debug_var(&mut self, layout: &ABITypeLayout, ptr: &PointerValue<'ll>, cir_var: &CIRVarStmt) {
+        assert!(self.dctx.is_some());
+
+        let var_ty_meta = self.emit_debug_type_metadata(&cir_var.ty);
+
+        let dctx = self.dctx.as_ref().unwrap();
 
         let var_meta = unsafe {
             create_debug_variable(
-                &self.dctx,
+                &dctx,
                 &cir_var.name,
                 cir_var.loc.line.try_into().unwrap(),
-                var_ty_metadata,
+                var_ty_meta,
                 layout.align,
             )
         };
 
         unsafe {
             emit_dbg_declare(
-                &self.dctx,
+                &dctx,
                 self.llvm_ctx,
                 self.llvmbuilder,
                 ptr.as_value_ref(),
