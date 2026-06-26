@@ -1,0 +1,13 @@
+-target/
+-build/
+-debug/
+-release/
+-.git/
+-node_modules/
+-venv/
+-target/debug/
+-target/release/
+*.rlib
+*.rmeta
+*.d
+*.op
