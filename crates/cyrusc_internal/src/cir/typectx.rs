@@ -11,6 +11,7 @@ use cyrusc_typed_ast::stmts::TypedTypeArgs;
 use cyrusc_typed_ast::types::PlainType;
 use cyrusc_typed_ast::types::TypeDeclID;
 use fx_hash::FxHashMap;
+use std::fmt;
 use std::sync::{OnceLock, RwLock};
 
 /// A unique handle to a canonical type stored in the context.
@@ -596,5 +597,11 @@ fn plain_type_layout(info: &ABITargetInfo, plain_type: &PlainType) -> ABITypeLay
             let size = info.pointer_size();
             ABITypeLayout::normal(size, size, Vec::new())
         }
+    }
+}
+
+impl fmt::Display for CIRTypeContextID {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.0)
     }
 }
