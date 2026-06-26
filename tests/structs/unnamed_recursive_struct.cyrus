@@ -1,0 +1,17 @@
+// @stdout: 10 20 10
+
+import std::libc{printf};
+
+type Link = struct {
+    value: int64,
+    next: Link*
+};
+
+pub fn main() {
+    const link1 = Link { value: 10, next: null };
+    const link2 = Link { value: 20, next: &link1 };
+
+    printf("%d ", link1.value);
+    printf("%d ", link2.value);
+    printf("%d\n", link2.next->value);
+}
