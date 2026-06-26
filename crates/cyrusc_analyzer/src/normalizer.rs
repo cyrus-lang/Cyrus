@@ -230,7 +230,7 @@ impl<'a> AnalysisContext<'a> {
             }
         };
 
-        Some(self.expand_sema_type(ty, loc))
+        Some(ty.clone())
     }
 
     fn normalize_func_type(&mut self, mut func_type: TypedFuncType, indirection: u8) -> Option<SemaType> {

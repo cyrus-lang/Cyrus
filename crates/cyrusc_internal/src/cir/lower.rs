@@ -167,7 +167,12 @@ pub fn lower_named_type(
 
             cir_fat_ptr_type(&tctx, None, interface_decl.loc)
         }
-        TypeDeclID::Typedef(_) => unreachable!("unexpected unexpanded typedef"),
+
+        TypeDeclID::Typedef(typedef_decl_id) => {
+            let typedef = decl_tables.typedef_decl(typedef_decl_id);
+
+            lower_sema_type(decl_tables, target, tctx, &typedef.ty)
+        },
     }
 }
 

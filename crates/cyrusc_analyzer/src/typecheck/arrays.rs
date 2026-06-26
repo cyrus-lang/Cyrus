@@ -28,11 +28,8 @@ impl<'a> AnalysisContext<'a> {
 
         let mut analyzed_first_element = false;
 
-        let expected_element_type = expected_type.and_then(|sema_type| {
-            sema_type
-                .as_array_type()
-                .map(|array_type| *array_type.element_type.clone())
-        });
+        let expected_element_type =
+            expected_type.and_then(|ty| ty.as_array_type().map(|array_type| *array_type.element_type.clone()));
 
         let elements_count = array.elements.len();
 
@@ -79,6 +76,9 @@ impl<'a> AnalysisContext<'a> {
             Some(ty) => Some(ty),
             None => return None,
         };
+
+        // expand array type
+        array.ty = Some(self.expand_sema_type(array.ty.clone().unwrap(), array.loc));
 
         for (i, element) in array.elements.iter_mut().enumerate() {
             let expr_type: SemaType;

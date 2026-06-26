@@ -17,15 +17,18 @@ impl<'a> AnalysisContext<'a> {
         infix: &mut TypedInfixExpr,
         expected_type: Option<SemaType>,
     ) -> Option<SemaType> {
-        let lhs_type = match self.analyze_expr(&mut infix.lhs, expected_type.clone()) {
+        let mut lhs_type = match self.analyze_expr(&mut infix.lhs, expected_type.clone()) {
             Some(ty) => ty.const_inner().clone(),
             None => return None,
         };
 
-        let rhs_type = match self.analyze_expr(&mut infix.rhs, Some(lhs_type.clone())) {
+        let mut rhs_type = match self.analyze_expr(&mut infix.rhs, Some(lhs_type.clone())) {
             Some(ty) => ty.const_inner().clone(),
             None => return None,
         };
+
+        lhs_type = self.expand_sema_type(lhs_type, infix.loc);
+        rhs_type = self.expand_sema_type(rhs_type, infix.loc);
 
         match infix.op {
             InfixOperator::Add => {
@@ -146,10 +149,13 @@ impl<'a> AnalysisContext<'a> {
         prefix: &mut TypedPrefixExpr,
         expected_type: Option<SemaType>,
     ) -> Option<SemaType> {
-        let operand_type = match self.analyze_expr(&mut prefix.operand, expected_type) {
+        let mut operand_type = match self.analyze_expr(&mut prefix.operand, expected_type) {
             Some(sema_type) => sema_type.const_inner().clone(),
             None => return None,
         };
+
+        // expand operand type
+        operand_type = self.expand_sema_type(operand_type, prefix.loc);
 
         match prefix.op {
             PrefixOperator::BitwiseNot => {
@@ -253,9 +259,9 @@ impl<'a> AnalysisContext<'a> {
     pub(crate) fn analyze_unary(&mut self, unary: &mut TypedUnaryExpr) -> Option<SemaType> {
         let expected_type = unary.operand.ty.clone();
 
-        let operand_type = self.analyze_expr(&mut unary.operand, expected_type)?;
+        let mut operand_type = self.analyze_expr(&mut unary.operand, expected_type)?;
 
-        if operand_type.is_const() {
+        if self.is_const_qualified_lvalue(&unary.operand) {
             self.reporter.report(Diag {
                 level: DiagLevel::Error,
                 kind: Box::new(AnalyzerDiagKind::CannotAssignToConstLValue),
@@ -276,7 +282,10 @@ impl<'a> AnalysisContext<'a> {
             });
         }
 
-        if !((operand_type.is_integer()) || unary.operand.ty.as_ref()?.is_pointer()) {
+        // expand operand type
+        operand_type = self.expand_sema_type(operand_type, unary.loc);
+
+        if !((operand_type.is_integer()) || operand_type.is_pointer()) {
             self.reporter.report(Diag {
                 level: DiagLevel::Error,
                 kind: Box::new(AnalyzerDiagKind::InvalidUnary {
