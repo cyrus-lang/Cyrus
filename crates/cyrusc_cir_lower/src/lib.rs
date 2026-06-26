@@ -444,18 +444,22 @@ impl<'a> CIRLower<'a> {
 
     pub fn lower_switch(&mut self, switch_stmt: &TypedSwitchStmt) -> CIRStmt {
         let operand = self.lower_expr(&switch_stmt.operand);
-        let operand_ty = switch_stmt.operand.ty.as_ref().unwrap().const_inner();
+        let operand_type = switch_stmt.operand.ty.as_ref().unwrap().const_inner();
 
         let default = switch_stmt.default_case.as_ref().map(|block| self.lower_block(block));
 
-        let is_enum = operand_ty.is_enum();
+        let is_enum = operand_type.is_enum();
 
         if is_enum {
             self.lower_switch_on_enum(operand, default, switch_stmt)
         } else {
             let lower_as_chained_if = switch_stmt.cases.iter().any(|case| {
                 case.patterns.iter().any(|pattern| match &pattern.kind {
-                    TypedSwitchCasePatternKind::Range(_) => true, // desugar
+                    TypedSwitchCasePatternKind::Range(_) => {
+                        // desugar-ed in lower_switch_as_chained_if
+                        true
+                    }
+
                     TypedSwitchCasePatternKind::Expr(expr) => {
                         let ty = expr.ty.as_ref().unwrap();
 
@@ -465,6 +469,7 @@ impl<'a> CIRLower<'a> {
                             false
                         }
                     }
+
                     _ => unreachable!(),
                 })
             });

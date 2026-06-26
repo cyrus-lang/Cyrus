@@ -52,16 +52,19 @@ impl<'a> AnalysisContext<'a> {
     /// element if the access is valid.
     pub(crate) fn analyze_tuple_access(
         &mut self,
-        tuple_member_access: &mut TypedTupleAccessExpr,
+        member_access: &mut TypedTupleAccessExpr,
         expected_type: Option<SemaType>,
     ) -> Option<SemaType> {
-        let operand_type = self.analyze_expr(&mut tuple_member_access.operand, expected_type)?;
+        let mut operand_type = self.analyze_expr(&mut member_access.operand, expected_type)?;
+
+        // expand operand type
+        operand_type = self.expand_sema_type(operand_type, member_access.loc);
 
         if !operand_type.const_inner().as_tuple_type().is_some() {
             self.reporter.report(Diag {
                 level: DiagLevel::Error,
                 kind: Box::new(AnalyzerDiagKind::TupleMemberAccessOnNonTupleOperand),
-                loc: Some(tuple_member_access.loc),
+                loc: Some(member_access.loc),
                 hint: None,
             });
             return None;
@@ -75,26 +78,26 @@ impl<'a> AnalysisContext<'a> {
             self.reporter.report(Diag {
                 level: DiagLevel::Error,
                 kind: Box::new(AnalyzerDiagKind::MemberAccessOnEmptyTuple),
-                loc: Some(tuple_member_access.loc),
+                loc: Some(member_access.loc),
                 hint: None,
             });
             return None;
         }
 
-        if tuple_member_access.index > (tuple_type.elements.len() - 1) {
+        if member_access.index > (tuple_type.elements.len() - 1) {
             self.reporter.report(Diag {
                 level: DiagLevel::Error,
                 kind: Box::new(AnalyzerDiagKind::TupleIndexOutOfRange {
-                    index: tuple_member_access.index.try_into().unwrap(),
+                    index: member_access.index.try_into().unwrap(),
                     length: tuple_type.elements.len(),
                 }),
-                loc: Some(tuple_member_access.loc),
+                loc: Some(member_access.loc),
                 hint: None,
             });
             return None;
         }
 
-        let (element_type, _) = tuple_type.elements.get(tuple_member_access.index).unwrap();
+        let (element_type, _) = tuple_type.elements.get(member_access.index).unwrap();
 
         Some(element_type.clone())
     }

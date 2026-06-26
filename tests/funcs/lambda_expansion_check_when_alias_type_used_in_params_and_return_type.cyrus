@@ -1,0 +1,14 @@
+// @stdout: 5
+
+import std::libc{printf};
+
+type Int = int64;
+type Handler = fn(Int, Int) Int;
+
+const handler: Handler = fn(x: Int, y: Int) Int {
+    return x + y;
+};
+
+pub fn main() {
+    printf("%d\n", handler(2, 3));
+}

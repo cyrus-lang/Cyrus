@@ -21,6 +21,7 @@ impl<'a> AnalysisContext<'a> {
     ) -> Option<SemaType> {
         let mut operand = self.normalize_and_check_type_formation(struct_init.operand.clone(), struct_init.loc, 0)?;
 
+        // expand operand type
         operand = self.expand_sema_type(operand, struct_init.loc);
 
         let Some(named_type) = operand.as_named_type() else {
@@ -53,7 +54,8 @@ impl<'a> AnalysisContext<'a> {
                     continue;
                 };
 
-                let Some(mut expected_field_type) = this.normalize_sema_type(struct_field.ty.clone(), field.loc, 0) else {
+                let Some(mut expected_field_type) = this.normalize_sema_type(struct_field.ty.clone(), field.loc, 0)
+                else {
                     continue;
                 };
 
@@ -102,7 +104,7 @@ impl<'a> AnalysisContext<'a> {
             self.infer_struct_decl_from_expected_type(expected_type.clone())
         {
             let struct_name = format_struct_decl(&struct_decl, self.formatter);
-            
+
             let generic_env = self.create_inference_generic_env(
                 &struct_name,
                 struct_decl.generic_params.clone(),

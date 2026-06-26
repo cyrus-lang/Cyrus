@@ -15,15 +15,27 @@ use cyrusc_typed_ast::{
         TypedSwitchCasePattern, TypedSwitchCasePatternKind, TypedSwitchStmt, TypedWhileStmt,
     },
     substitute::instantiate_enum_decl_with_type_args,
-    types::SemaType,
+    types::{PlainType, SemaType},
 };
 use fx_hash::{FxHashSet, FxHashSetExt};
 
+// Switch.
 impl<'a> AnalysisContext<'a> {
     pub(crate) fn analyze_switch(&mut self, switch_stmt: &mut TypedSwitchStmt) -> FlowState {
-        let Some(operand_type) = self.analyze_expr(&mut switch_stmt.operand, None) else {
+        if self.analyze_expr(&mut switch_stmt.operand, None).is_none() {
             return FlowState::Reachable;
+        }
+
+        // expand operand type
+        switch_stmt.operand.ty = {
+            if let Some(ty) = &switch_stmt.operand.ty {
+                Some(self.expand_sema_type(ty.clone(), switch_stmt.loc))
+            } else {
+                return FlowState::Reachable;
+            }
         };
+
+        let operand_type = switch_stmt.operand.ty.clone().unwrap();
 
         self.with_control_region(ControlRegion::Switch, |this| {
             if switch_stmt.cases.is_empty() {
@@ -41,7 +53,8 @@ impl<'a> AnalysisContext<'a> {
             } else if operand_type.is_plain_type() || operand_type.is_char_pointer() {
                 this.analyze_switch_on_value(switch_stmt, &operand_type)
             } else {
-                let expr_type = format_sema_type(operand_type, this.formatter);
+                let expr_type = format_sema_type(operand_type.clone(), this.formatter);
+
                 this.reporter.report(Diag {
                     level: DiagLevel::Error,
                     kind: Box::new(AnalyzerDiagKind::SwitchOperandIsNotEnum { expr_type }),
@@ -520,6 +533,7 @@ impl<'a> AnalysisContext<'a> {
     }
 }
 
+// If / While / For / Return / Break
 impl<'a> AnalysisContext<'a> {
     pub(crate) fn analyze_if_stmt(&mut self, if_stmt: &mut TypedIfStmt) -> FlowState {
         let then_state = self.analyze_block_stmt(&mut if_stmt.then_block);
@@ -574,9 +588,20 @@ impl<'a> AnalysisContext<'a> {
     pub(crate) fn analyze_return(&mut self, ret: &mut TypedReturnStmt) -> FlowState {
         let func_type = self.func_env.current_func.clone().unwrap();
 
-        let Some(ret_type) = self.normalize_and_check_type_formation(*func_type.ret_type, ret.loc, 0) else {
-            return FlowState::Reachable;
+        let mut ret_type = match {
+            if let Some(arg) = &mut ret.arg {
+                self.analyze_expr(arg, Some(*func_type.ret_type.clone()))
+            } else {
+                // void as fallback return type
+                Some(SemaType::Plain(PlainType::Void))
+            }
+        } {
+            Some(ty) => ty,
+            None => return FlowState::Reachable,
         };
+
+        // expand return type
+        ret_type = self.expand_sema_type(ret_type.clone(), ret.loc);
 
         if ret_type.is_void() && ret.arg.is_some() {
             self.reporter.report(Diag {

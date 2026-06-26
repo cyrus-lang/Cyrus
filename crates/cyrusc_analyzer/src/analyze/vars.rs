@@ -14,10 +14,10 @@ use cyrusc_typed_ast::{
 impl<'a> AnalysisContext<'a> {
     pub(crate) fn analyze_global_var(&mut self, global_var: &mut TypedGlobalVarStmt) {
         if let Some(mut expr) = global_var.expr.clone() {
-            match self.analyze_expr(&mut expr, global_var.ty.clone()) {
-                Some(sema_type) => Some(sema_type),
-                None => return,
-            };
+            if self.analyze_expr(&mut expr, global_var.ty.clone()).is_none() {
+                global_var.ty = Some(SemaType::Err(global_var.loc));
+                return;
+            }
 
             if !is_expr_const_evaluable(&expr.kind) {
                 self.reporter.report(Diag {
@@ -37,6 +37,8 @@ impl<'a> AnalysisContext<'a> {
             None => match global_var.expr.as_ref().and_then(|expr| expr.ty.clone()) {
                 Some(ty) => Some(ty),
                 None => {
+                    global_var.ty = Some(SemaType::Err(global_var.loc));
+
                     self.reporter.report(Diag {
                         level: DiagLevel::Error,
                         kind: Box::new(AnalyzerDiagKind::GlobalVarRequiresTypeAnnotation),
@@ -52,6 +54,9 @@ impl<'a> AnalysisContext<'a> {
             if !self.validate_variable_type(ty, global_var.expr.is_some(), global_var.loc) {
                 return;
             }
+
+            // expand type
+            global_var.ty = Some(self.expand_sema_type(ty.clone(), global_var.loc));
         }
 
         if let Some(expr) = &global_var.expr {
@@ -120,6 +125,8 @@ impl<'a> AnalysisContext<'a> {
             if !self.validate_variable_type(ty, var.rhs.is_some(), var.loc) {
                 return;
             }
+
+            var.ty = Some(self.expand_sema_type(ty.clone(), var.loc));
         }
 
         if let Some(expr) = &mut var.rhs {

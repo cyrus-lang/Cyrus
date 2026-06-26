@@ -20,6 +20,7 @@ impl<'a> AnalysisContext<'a> {
     ) -> Option<SemaType> {
         let mut operand = self.normalize_and_check_type_formation(union_init.operand.clone(), union_init.loc, 0)?;
 
+        // expand operand type
         operand = self.expand_sema_type(operand, union_init.loc);
 
         let Some(named_type) = operand.as_named_type() else {
