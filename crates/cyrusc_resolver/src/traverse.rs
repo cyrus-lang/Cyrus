@@ -824,24 +824,22 @@ impl<'a> Resolver<'a> {
 
     fn resolve_typedef(&mut self, typedef: &ASTTypedefStmt) -> Option<TypedStmt> {
         let symbol_id = self.lookup_symbol_id(self.current_scope.unwrap(), &typedef.ident.value)?;
-
         let generic_params = self.resolve_generic_params(&typedef.generic_params)?;
-
         self.with_generic_scope(&generic_params.clone(), |this| {
-            let sema_type = this.resolve_type(typedef.type_spec.clone(), typedef.loc)?;
-
             let typedef_decl_id = this.decl_tables.insert_typedef(TypedefDecl {
                 name: typedef.ident.as_string(),
                 generic_params: generic_params.clone(),
-                ty: Box::new(sema_type.clone()),
+                ty: Box::new(SemaType::Placeholder),
                 vis: typedef.vis.clone(),
                 loc: typedef.loc,
             });
-
             this.with_global_symbol_mut(symbol_id, |symbol_entry| {
                 symbol_entry.kind = SymbolEntryKind::Typedef(typedef_decl_id)
             });
-
+            let sema_type = this.resolve_type(typedef.type_spec.clone(), typedef.loc)?;
+            this.decl_tables.with_typedef_decl_mut(typedef_decl_id, |decl| {
+                decl.ty = Box::new(sema_type.clone());
+            });
             Some(TypedStmt::Typedef(TypedTypedefStmt {
                 typedef_decl_id,
                 name: typedef.ident.as_string(),
