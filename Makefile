@@ -3,6 +3,14 @@
 JOBS     ?= 24
 PROFILE  ?= debug
 
+ifeq ($(OS),Windows_NT)
+	EXE = .exe
+	PY_CMD = python
+else
+	EXE = 
+	PY_CMD = python3
+endif
+
 INPUT    ?= ./tmp/main.cyrus
 STDLIB   ?= ./stdlib
 LLVM_OUT ?= ./tmp/llvmir
@@ -11,7 +19,7 @@ CIR_DUMP_OUT ?= ./tmp/cir_dump
 ARGS     ?=
 
 TARGET_DIR = ./target/$(PROFILE)
-COMPILER   = $(TARGET_DIR)/cyrus
+COMPILER   = $(TARGET_DIR)/cyrus$(EXE)
 
 ifeq ($(PROFILE),release)
 	CARGO_PROFILE_FLAG = --release
@@ -61,15 +69,15 @@ build:
 test: build testsuite
 	$(CARGO_TEST) --all $(ARGS)
 
-testsuite:
-	python3 ./tests/test_suite.py \
+testsuite: build
+	$(PY_CMD) ./tests/test_suite.py \
 		-d tests \
 		--output ./tmp/tests \
 		--compiler $(COMPILER) \
 		--flags "--stdlib=$(STDLIB) --quiet"
 
-testsuite-fail:
-	python3 ./tests/test_suite.py \
+testsuite-fail: build
+	$(PY_CMD) ./tests/test_suite.py \
 		-d tests \
 		--output ./tmp/tests \
 		--compiler $(COMPILER) \
