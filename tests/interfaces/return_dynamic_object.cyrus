@@ -1,0 +1,23 @@
+// @stdout: meow 
+
+import std::libc{printf};
+
+interface Animal {
+    fn bark(&const self) const char*;
+}
+
+struct Cat : Animal {
+    fn bark(&const self) const char* {
+        return "meow";
+    }
+}
+
+fn my_cat() Animal {
+    return dynamic Cat{};
+}
+
+pub fn main() {
+    const animal = my_cat();
+    
+    printf("%s\n", animal.bark());
+}

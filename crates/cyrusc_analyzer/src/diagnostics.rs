@@ -175,6 +175,9 @@ pub enum AnalyzerDiagKind {
     #[error("Union initialization must contain exactly one field.")]
     UnionInitMustContainExactlyOneField,
 
+    #[error("Union type must contain at least one field.")]
+    UnionTypeMustContainAtLeastOneField,
+
     #[error("Switch pattern of type '{pattern_type}' is not compatible with switch operand of type '{operand_type}'.")]
     IncompatibleSwitchPatternType { pattern_type: String, operand_type: String },
 
@@ -381,6 +384,9 @@ pub enum AnalyzerDiagKind {
 
     #[error("Cannot access member of non-tuple value.")]
     TupleMemberAccessOnNonTupleOperand,
+
+    #[error("Cannot access member of an empty tuple.")]
+    MemberAccessOnEmptyTuple,
 
     #[error("Invalid variable declaration in tuple destructuring: nested '{mutability}' is not allowed.")]
     InvalidNestedExportTuple { mutability: String },

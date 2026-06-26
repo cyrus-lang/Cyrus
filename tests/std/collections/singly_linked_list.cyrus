@@ -1,0 +1,23 @@
+// @stdout: 10 20 30
+
+import std::collections::linked_list{SinglyNode, SinglyLinkedList};
+import std::mem{Allocator, LibcAllocator};
+import std::libc{printf};
+
+pub fn main() {
+    const allocator: Allocator = dynamic LibcAllocator.new();
+
+    var list: SinglyLinkedList<int> = SinglyLinkedList.new(allocator);
+
+    var node1 = SinglyNode { value: 10, next: null };
+    var node2 = SinglyNode { value: 20, next: &node1 };
+    var node3 = SinglyNode { value: 30, next: &node2 };
+
+    list.prepend(&node3);
+    list.prepend(&node2);
+    list.prepend(&node1);
+
+    printf("%d ", list.first->value);
+    printf("%d ", list.first->next->value);
+    printf("%d ", list.first->next->next->value);
+}

@@ -34,9 +34,7 @@ impl<'a> AnalysisContext<'a> {
             }
 
             match self.analyze_expr(expr, expected_type) {
-                Some(ty) => {
-                    elements.push((ty, expr.loc))
-                },
+                Some(ty) => elements.push((ty, expr.loc)),
                 None => continue,
             }
         }
@@ -72,6 +70,16 @@ impl<'a> AnalysisContext<'a> {
         let tuple_type = operand_type.as_tuple_type().unwrap();
 
         // inbounds check for tuple type
+
+        if tuple_type.elements.is_empty() {
+            self.reporter.report(Diag {
+                level: DiagLevel::Error,
+                kind: Box::new(AnalyzerDiagKind::MemberAccessOnEmptyTuple),
+                loc: Some(tuple_member_access.loc),
+                hint: None,
+            });
+            return None;
+        }
 
         if tuple_member_access.index > (tuple_type.elements.len() - 1) {
             self.reporter.report(Diag {

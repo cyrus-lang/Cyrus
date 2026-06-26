@@ -254,6 +254,8 @@ impl<'a> AnalysisContext<'a> {
         if let Some(ty) = &mut operand.ty {
             *ty = self.expand_sema_type(ty.clone(), builtin_func.loc);
             *ty = self.substitute_type(ty);
+
+            self.check_type_arity(ty.clone(), builtin_func.loc)?;
         }
 
         let ret_type = SemaType::Plain(PlainType::USize);
