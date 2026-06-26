@@ -505,13 +505,7 @@ impl<'source_file> Parser<'source_file> {
 
             TokenKind::True | TokenKind::False | TokenKind::Null => true,
 
-            // FIXME !!!
-            // We can't blindly say it disqualifies type args,
-            // we must keep track of opening '{', '(',
-            // and if opening started after first_expr,
-            // then it disqualifies.
             TokenKind::RightParen => false,
-            // TokenKind::RightParen => true,
             TokenKind::RightBrace => false,
             TokenKind::Semicolon => false,
 
