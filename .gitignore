@@ -1,3 +1,10 @@
+# Backups
+*~
+\#*\#
+
+# Auto saves
+auto-save-list/
+
 target
 *.ll
 tmp/**
