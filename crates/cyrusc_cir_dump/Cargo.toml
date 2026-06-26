@@ -11,3 +11,4 @@ cyrusc_ast = { path = "../cyrusc_ast", version = "*" }
 cyrusc_diagcentral = { path = "../cyrusc_diagcentral", version = "*" }
 cyrusc_tokens = { path = "../cyrusc_tokens", version = "*" }
 cyrusc_internal = { path = "../cyrusc_internal", version = "*" }
+fx-hash = "0.1.0"

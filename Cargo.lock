@@ -306,6 +306,7 @@ dependencies = [
  "cyrusc_strescape",
  "cyrusc_tokens",
  "cyrusc_typed_ast",
+ "fx-hash",
 ]
 
 [[package]]
