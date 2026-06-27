@@ -1,0 +1,20 @@
+// @stdout: 8 8 0 0 0
+
+import std::libc{printf};
+
+struct Box<T> {
+  value: T;
+}
+
+struct KV<K, V> {
+  key: K;
+  val: V;
+}
+
+pub fn main() {
+    printf("%d ", @sizeof(Box<uint64>));
+    printf("%d ", @sizeof(KV<int32, char>));
+    printf("%d ", @sizeof(Box<()>));
+    printf("%d ", @sizeof(KV<(), ()>));
+    printf("%d\n", @sizeof(KV<(), void>));
+}
