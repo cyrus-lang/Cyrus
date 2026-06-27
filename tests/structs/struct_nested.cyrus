@@ -1,4 +1,5 @@
 // @stdout: Cyrus 42
+
 import std::libc{printf};
 
 struct Inner {

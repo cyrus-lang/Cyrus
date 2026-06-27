@@ -1,18 +1,15 @@
 // @stdout: 5 0
+
 import std::libc{printf};
 
 enum MaybeInt {
     Some(int),
     None,
 
-    pub fn value_or(&const self, dflt: int) int {
+    pub fn value_or(&const self, def: int) int {
         switch (*self) {
-            case .Some(v) => {
-                return v;
-            }
-            case .None => {
-                return dflt;
-            }
+            case .Some(v) => return v;
+            case .None => return def;
         }
     }
 }

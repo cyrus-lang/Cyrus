@@ -1,4 +1,5 @@
 // @stdout: Alice 25 Bob 30
+
 import std::libc{printf};
 
 struct Person {

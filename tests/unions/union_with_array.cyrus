@@ -1,4 +1,5 @@
 // @stdout: 1 2 3
+
 import std::libc{printf};
 
 union Buffer {

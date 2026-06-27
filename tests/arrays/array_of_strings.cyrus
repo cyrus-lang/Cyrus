@@ -1,4 +1,5 @@
 // @stdout: hello world from Cyrus
+
 import std::libc{printf};
 
 pub fn main() {

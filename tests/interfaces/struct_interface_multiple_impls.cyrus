@@ -1,4 +1,5 @@
 // @stdout: Woof! Meow!
+
 import std::libc{printf};
 
 interface Speaker {

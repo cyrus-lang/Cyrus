@@ -1,4 +1,5 @@
 // @stdout: hello
+
 import std::libc{printf};
 
 fn greet() {

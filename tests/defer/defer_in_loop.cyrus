@@ -1,4 +1,5 @@
 // @stdout: A A B B C C
+
 import std::libc{printf};
 
 pub fn main() {
