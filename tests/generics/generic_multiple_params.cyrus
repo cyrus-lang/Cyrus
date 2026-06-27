@@ -1,0 +1,17 @@
+// @stdout: 3 4.500000 hello
+import std::libc{printf};
+
+struct Triple<A, B, C> {
+    pub first: A;
+    pub second: B;
+    pub third: C;
+
+    pub fn new(a: A, b: B, c: C) Self {
+        return Self { first: a, second: b, third: c };
+    }
+}
+
+pub fn main() {
+    const t = Triple.new(3, 4.5, "hello");
+    printf("%d %f %s\n", t.first, t.second, t.third);
+}

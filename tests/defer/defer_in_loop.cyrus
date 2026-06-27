@@ -1,0 +1,12 @@
+// @stdout: A A B B C C
+import std::libc{printf};
+
+pub fn main() {
+    const arr = char*[3]{"A", "B", "C"};
+
+    for (var i: usize = 0; i < 3; i++) {
+        const item = arr[i];
+        printf("%s ", item);
+        defer printf("%s ", item);
+    }
+}

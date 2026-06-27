@@ -1,0 +1,8 @@
+// @stdout: 8
+import std::libc{printf};
+
+type MyInt = int64;
+
+pub fn main() {
+    printf("%d\n", @alignof(MyInt));
+}

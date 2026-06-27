@@ -1,0 +1,15 @@
+// @stdout: x=10, y=20
+import std::libc{printf};
+
+struct Point {
+    pub x: int;
+    pub y: int;
+}
+
+pub fn main() {
+    const x = 10;
+    const y = 20;
+
+    const p = Point { x, y };
+    printf("x=%d, y=%d\n", p.x, p.y);
+}

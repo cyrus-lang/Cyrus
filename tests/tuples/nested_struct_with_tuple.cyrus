@@ -1,0 +1,11 @@
+// @stdout: pair: (3, 7)
+import std::libc{printf};
+
+struct Pair {
+    pub data: (int, int);
+}
+
+pub fn main() {
+    const p = Pair { data: (3, 7) };
+    printf("pair: (%d, %d)\n", p.data.0, p.data.1);
+}

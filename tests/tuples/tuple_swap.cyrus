@@ -1,0 +1,13 @@
+// @stdout: x=10, y=5
+import std::libc{printf};
+
+pub fn main() {
+    var x = 5;
+    var y = 10;
+
+    const tmp = (x, y);
+    x = tmp.1;
+    y = tmp.0;
+
+    printf("x=%d, y=%d\n", x, y);
+}

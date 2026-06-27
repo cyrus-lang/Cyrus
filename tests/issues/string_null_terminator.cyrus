@@ -1,0 +1,11 @@
+// @stdout: 5
+import std::libc{printf};
+
+pub fn main() {
+    const s = "hello";
+    var len = 0;
+    while (s[len] != '\0') {
+        len = len + 1;
+    }
+    printf("%d\n", len);
+}

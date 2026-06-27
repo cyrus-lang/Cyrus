@@ -1,0 +1,26 @@
+// @stdout: 6 12
+import std::libc{printf};
+
+enum Operation {
+    Add,
+    Mul,
+
+    pub fn eval(&const self, x: int, y: int) int {
+        switch (*self) {
+            case .Add => {
+                return x + y;
+            }
+            case .Mul => {
+                return x * y;
+            }
+        }
+    }
+}
+
+pub fn main() {
+    const op1 = Operation.Add;
+    const op2 = Operation.Mul;
+
+    printf("%d ", op1.eval(2, 4));
+    printf("%d\n", op2.eval(3, 4));
+}

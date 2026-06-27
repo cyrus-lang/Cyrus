@@ -1,0 +1,16 @@
+// @stdout: 10 20
+import std::libc{printf};
+
+var global_counter: int = 0;
+
+fn increment() {
+    global_counter = global_counter + 10;
+}
+
+pub fn main() {
+    increment();
+    printf("%d ", global_counter);
+
+    global_counter = global_counter + 10;
+    printf("%d\n", global_counter);
+}

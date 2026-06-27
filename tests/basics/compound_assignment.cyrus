@@ -1,0 +1,36 @@
+// @stdout: 7 4 20 3 1 2 11 8
+import std::libc{printf};
+
+pub fn main() {
+    var a: int32 = 5;
+    a += 2;
+    printf("%d ", a);
+
+    var b: int32 = 7;
+    b -= 3;
+    printf("%d ", b);
+
+    var c: int32 = 4;
+    c *= 5;
+    printf("%d ", c);
+
+    var d: int32 = 10;
+    d /= 3;
+    printf("%d ", d);
+
+    var e: int32 = 10;
+    e %= 3;
+    printf("%d ", e);
+
+    var f: uint32 = 6;
+    f &= 2;
+    printf("%d ", f);
+
+    var g: uint32 = 9;
+    g ~= 2;
+    printf("%d ", g);
+
+    var h: uint32 = 1;
+    h <<= 3;
+    printf("%d\n", h);
+}

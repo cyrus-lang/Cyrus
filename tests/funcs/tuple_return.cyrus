@@ -1,0 +1,11 @@
+// @stdout: 3 2
+import std::libc{printf};
+
+fn div_mod(x: int, y: int) (int, int) {
+    return (x / y, x % y);
+}
+
+pub fn main() {
+    const (q, r) = div_mod(17, 5);
+    printf("%d %d\n", q, r);
+}

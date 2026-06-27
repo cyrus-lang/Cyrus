@@ -1,0 +1,10 @@
+// @stdout: ok
+import std::libc{printf};
+
+fn do_nothing() {
+}
+
+pub fn main() {
+    do_nothing();
+    printf("ok\n");
+}

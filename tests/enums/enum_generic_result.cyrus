@@ -1,0 +1,41 @@
+// @stdout: 42 error: file not found
+import std::libc{printf};
+
+enum Result<T, E> {
+    Ok(T),
+    Err(E),
+
+    pub fn is_ok(&self) bool {
+        switch (self) {
+            case .Ok => {
+                return true;
+            }
+            case .Err => {
+                return false;
+            }
+        }
+    }
+}
+
+pub fn main() {
+    const ok: Result<int, char*> = .Ok(42);
+    const err: Result<int, char*> = .Err("file not found");
+
+    switch (ok) {
+        case .Ok(val) => {
+            printf("%d ", val);
+        }
+        case .Err(msg) => {
+            printf("err: %s", msg);
+        }
+    }
+
+    switch (err) {
+        case .Ok(val) => {
+            printf("%d", val);
+        }
+        case .Err(msg) => {
+            printf("error: %s\n", msg);
+        }
+    }
+}
