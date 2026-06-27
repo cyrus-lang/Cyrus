@@ -1,0 +1,10 @@
+// @stdout: 6 6 4 4
+import std::libc{printf};
+
+pub fn main() {
+    var x = 5;
+    printf("%d ", ++x);
+    printf("%d ", x--);
+    printf("%d ", --x);
+    printf("%d\n", x++);
+}

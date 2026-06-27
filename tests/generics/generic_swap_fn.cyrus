@@ -1,0 +1,11 @@
+// @stdout: 7 3
+import std::libc{printf};
+
+fn swap<T>(a: T, b: T) (T, T) {
+    return (b, a);
+}
+
+pub fn main() {
+    const (x, y) = swap(3, 7);
+    printf("%d %d\n", x, y);
+}

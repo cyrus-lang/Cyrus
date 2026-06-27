@@ -1,0 +1,10 @@
+// @stdout: start start
+import std::libc{printf};
+
+pub fn main() {
+    var msg: char* = "start";
+    defer msg = "end";
+
+    printf("%s ", msg);
+    printf("%s\n", msg);
+}

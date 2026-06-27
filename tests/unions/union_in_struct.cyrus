@@ -1,0 +1,20 @@
+// @stdout: int: 42 string: hello
+import std::libc{printf};
+
+union Data {
+    int_val: int;
+    str_val: char*;
+}
+
+struct Container {
+    pub tag: char*;
+    pub data: Data;
+}
+
+pub fn main() {
+    var c = Container { tag: "int", data: Data { int_val: 42 } };
+    printf("int: %d ", c.data.int_val);
+
+    c.data.str_val = "hello";
+    printf("string: %s\n", c.data.str_val);
+}

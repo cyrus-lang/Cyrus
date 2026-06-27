@@ -1,0 +1,10 @@
+// @stdout: hello from void
+import std::libc{printf};
+
+fn greet() void {
+    printf("hello from void");
+}
+
+pub fn main() {
+    greet();
+}

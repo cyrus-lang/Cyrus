@@ -1,0 +1,9 @@
+// @stdout: 255 -1
+import std::libc{printf};
+
+pub fn main() {
+    const a: int32 = @cast(int32, 0xFFFFFFFF);
+    const b: int16 = @cast(int16, 0xFFFFFFFF);
+
+    printf("%d %d\n", a & 0xFF, b);
+}

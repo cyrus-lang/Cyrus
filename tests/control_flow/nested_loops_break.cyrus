@@ -1,0 +1,14 @@
+// @stdout: 1 2 3 4 2 4 6 8 3 6 9 4 8
+import std::libc{printf};
+
+pub fn main() {
+    for (var i = 1; i <= 4; i++) {
+        for (var j = 1; j <= 4; j++) {
+            const val = i * j;
+            if (val > 10) {
+                break;
+            }
+            printf("%d ", val);
+        }
+    }
+}
