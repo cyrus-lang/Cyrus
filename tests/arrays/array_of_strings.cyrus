@@ -1,0 +1,11 @@
+// @stdout: hello world from Cyrus
+
+import std::libc{printf};
+
+pub fn main() {
+    const words = char*[4]{"hello", "world", "from", "Cyrus"};
+
+    for (var i: usize = 0; i < 4; i++) {
+        printf("%s ", words[i]);
+    }
+}

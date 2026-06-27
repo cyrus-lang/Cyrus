@@ -25,6 +25,7 @@ impl<'a> AnalysisContext<'a> {
     }
 
     pub(crate) fn is_const_qualified_lvalue(&self, expr: &TypedExpr) -> bool {
+        // declaration-level constness
         if matches!(expr.val_cat, ValueCategory::LValue(Mutability::Const)) {
             return true;
         }

@@ -254,6 +254,8 @@ impl<'a> AnalysisContext<'a> {
         if let Some(ty) = &mut operand.ty {
             *ty = self.expand_sema_type(ty.clone(), builtin_func.loc);
             *ty = self.substitute_type(ty);
+
+            self.check_type_arity(ty.clone(), builtin_func.loc)?;
         }
 
         let ret_type = SemaType::Plain(PlainType::USize);
@@ -339,9 +341,7 @@ impl<'a> AnalysisContext<'a> {
 
         self.analyze_expr_non_terminal(operand, None);
 
-        if let Some(ty) = &mut operand.ty {
-            *ty = self.expand_sema_type(ty.clone(), builtin_func.loc);
-        }
+        self.check_type_arity(operand.ty.clone()?, builtin_func.loc)?;
 
         operand.ty.clone()
     }
@@ -366,7 +366,8 @@ impl<'a> AnalysisContext<'a> {
         target_type = self.expand_sema_type(target_type, builtin_func.loc);
         target_type = self.substitute_type(&target_type);
 
-        let value_type = value_expr.ty.as_ref()?;
+        let mut value_type = value_expr.ty.as_ref()?.clone();
+        value_type = self.expand_sema_type(value_type, builtin_func.loc);
 
         if !self.is_explicit_cast_allowed(value_type.clone(), target_type.clone(), builtin_func.loc) {
             let value_type = format_sema_type(value_type.clone(), self.formatter);
@@ -624,6 +625,8 @@ impl<'a> AnalysisContext<'a> {
         Some(ret_type)
     }
 
+    // FIXME: replace analyze_expr_non_terminal with analyze_cond
+    // and allow syntactic shorthand for `X != null`: `X`
     fn analyze_builtin_assert(&mut self, builtin_func: &mut TypedBuiltinFunc) -> Option<SemaType> {
         let param_types = [
             SemaType::Plain(PlainType::Bool),                              // cond (bool)

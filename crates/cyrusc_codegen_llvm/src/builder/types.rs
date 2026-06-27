@@ -518,12 +518,12 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         let mut max_size = 0;
 
         for field_type in &union_type.fields {
-            let llvm_ty: BasicTypeEnum = self.emit_type(field_type.clone()).try_into().unwrap();
-            let align = target_data.get_abi_alignment(&llvm_ty);
-            let size = target_data.get_store_size(&llvm_ty);
+            let llvm_type: BasicTypeEnum = self.emit_type(field_type.clone()).try_into().unwrap();
+            let align = target_data.get_abi_alignment(&llvm_type);
+            let size = target_data.get_store_size(&llvm_type);
 
             if align > max_align || (align == max_align && size > max_size) {
-                ty = Some(llvm_ty);
+                ty = Some(llvm_type);
                 max_align = align;
                 max_size = size;
             }

@@ -1,0 +1,19 @@
+// @stdout: Alice 25 Bob 30
+
+import std::libc{printf};
+
+struct Person {
+    pub name: char*;
+    pub age: int;
+}
+
+pub fn main() {
+    const people = Person[2]{
+        Person { name: "Alice", age: 25 },
+        Person { name: "Bob", age: 30 }
+    };
+
+    for (var i: usize = 0; i < 2; i++) {
+        printf("%s %d ", people[i].name, people[i].age);
+    }
+}

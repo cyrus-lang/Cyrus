@@ -1,0 +1,15 @@
+// @stdout: null 42
+
+import std::libc{printf};
+
+pub fn main() {
+    var ptr: int* = null;
+
+    if (ptr == null) {
+        printf("null ");
+    }
+
+    var val = 42;
+    ptr = &val;
+    printf("%d\n", *ptr);
+}

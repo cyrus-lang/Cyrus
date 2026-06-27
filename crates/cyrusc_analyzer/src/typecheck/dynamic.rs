@@ -18,7 +18,10 @@ impl<'a> AnalysisContext<'a> {
         dynamic: &mut TypedDynamicExpr,
         expected_type: Option<SemaType>,
     ) -> Option<SemaType> {
-        let operand_type = self.analyze_expr(&mut dynamic.operand, None)?;
+        let mut operand_type = self.analyze_expr(&mut dynamic.operand, None)?;
+
+        // expand operand type
+        operand_type = self.expand_sema_type(operand_type, dynamic.loc);
 
         if dynamic.operand.kind.is_dynamic() {
             self.reporter.report(Diag {

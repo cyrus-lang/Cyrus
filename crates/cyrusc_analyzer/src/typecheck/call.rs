@@ -35,7 +35,10 @@ impl<'a> AnalysisContext<'a> {
                 .as_resolved_decl_id()
                 .and_then(|decl_id| decl_id.as_func()));
 
-        let operand_type = self.analyze_expr_non_terminal(&mut func_call.operand, None)?;
+        let mut operand_type = self.analyze_expr_non_terminal(&mut func_call.operand, None)?;
+
+        // expand operand type
+        operand_type = self.expand_sema_type(operand_type, func_call.loc);
 
         self.normalize_type_args(&mut func_call.type_args, 0);
 
@@ -218,10 +221,14 @@ impl<'a> AnalysisContext<'a> {
 
         operand_type = self.normalize_sema_type(operand_type, method_call.loc, 0)?;
 
+        // unexpanded operand type includes type args?
         let operand_includes_type_args = operand_type
             .as_named_type()
             .map(|named_type| named_type.type_args.len() > 0)
             .unwrap_or(false);
+
+        // expand operand type
+        operand_type = self.expand_sema_type(operand_type, method_call.loc);
 
         let is_operand_interface = operand_type.as_interface_object().is_some() || operand_type.is_interface();
 

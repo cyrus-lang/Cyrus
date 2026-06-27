@@ -1,0 +1,15 @@
+// @stdout: Cyrus (1999)
+
+import std::libc{printf};
+
+struct Book {
+    pub title: char*;
+    pub year: int;
+}
+
+pub fn main() {
+    const book = Book { title: "Cyrus", year: 1999 };
+    const title = book.title;
+    const year = book.year;
+    printf("%s (%d)\n", title, year);
+}

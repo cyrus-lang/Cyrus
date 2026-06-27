@@ -1,0 +1,11 @@
+// @stdout: 7
+
+import std::libc{printf};
+
+pub fn main() {
+    var val = 7;
+    var ptr = &val;
+    var pptr = &ptr;
+
+    printf("%d\n", **pptr);
+}

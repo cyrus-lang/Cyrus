@@ -324,15 +324,15 @@ impl<'source_file> Parser<'source_file> {
                                 let is_array_init = self.check_for_array_init_after_generic(i + 1);
 
                                 return TypeArgStartDetail {
-                                    includes_type_args: true, // Yes, there were type arguments
-                                    is_array_init,            // True if this is array initialization
+                                    includes_type_args: true, // yes, there were type arguments
+                                    is_array_init,            // true if this is array initialization
                                 };
                             }
                             // `Type<T> { ... }` or `Type<T>.member(...)`
-                            // Both patterns are valid after a generic type expression:
+                            // both patterns are valid after a generic type expression:
                             // - `{ ... }` indicates a struct or enum variant initialization with generics
                             // - `.` indicates a field or method access on a generic type (e.g., `Object<int>.member(10)`)
-                            // This branch ensures such cases are recognized as valid generic constructs, not disqualified comparisons.
+                            // this branch ensures such cases are recognized as valid generic constructs, not disqualified comparisons.
                             else if next_token.kind == TokenKind::LeftBrace || next_token.kind == TokenKind::Dot {
                                 return TypeArgStartDetail {
                                     includes_type_args: true, // yes, there were type arguments before the braces
@@ -353,8 +353,8 @@ impl<'source_file> Parser<'source_file> {
                             }
 
                             // this is the key logic that distinguishes:
-                            // 1. Type arguments: `Record<V=int[2]>` followed by nothing or an identifier
-                            // 2. Comparison chain: `x < y > 5` where `5` disqualifies as type argument
+                            // 1. type args: `Record<int[2]>` followed by nothing or an identifier
+                            // 2. comparison chain: `x < y > 5` where `5` disqualifies as type argument
                             //
                             // if the token after '>' would disqualify type arguments,
                             // then this was actually a comparison expression, not generics.
@@ -505,9 +505,8 @@ impl<'source_file> Parser<'source_file> {
 
             TokenKind::True | TokenKind::False | TokenKind::Null => true,
 
-            TokenKind::RightParen => true,
-            TokenKind::RightBrace => true,
-
+            TokenKind::RightParen => false,
+            TokenKind::RightBrace => false,
             TokenKind::Semicolon => false,
 
             // ------------------------------------------------------------

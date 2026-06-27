@@ -1,0 +1,13 @@
+// @stdout: 1 2 3
+
+import std::libc{printf};
+
+union Buffer {
+    bytes: char*;
+    data: int[3];
+}
+
+pub fn main() {
+    var buf = Buffer { data: int[3]{1, 2, 3} };
+    printf("%d %d %d\n", buf.data[0], buf.data[1], buf.data[2]);
+}

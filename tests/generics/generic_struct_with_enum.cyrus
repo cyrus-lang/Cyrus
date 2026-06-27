@@ -1,0 +1,32 @@
+// @stdout: Ok(100) Err(failed)
+
+import std::libc{printf};
+
+enum MyResult<T, E> {
+    Ok(T),
+    Err(E),
+}
+
+fn handle_ok<T, E>(r: MyResult<T, E>) {
+    switch (r) {
+        case .Ok(v) => printf("Ok(%d) ", v);
+        case .Err(_) => {}
+    }
+}
+
+fn handle_err<T, E>(r: MyResult<T, E>) {
+    switch (r) {
+        case .Ok(_) => {}
+        case .Err(m) => {
+            printf("Err(%s)\n", m);
+        }
+    }
+}
+
+pub fn main() {
+    const r1: MyResult<int, char*> = .Ok(100);
+    const r2: MyResult<int, char*> = .Err("failed");
+
+    handle_ok(r1);
+    handle_err(r2);
+}

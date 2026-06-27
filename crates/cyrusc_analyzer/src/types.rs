@@ -71,6 +71,7 @@ impl<'a> AnalysisContext<'a> {
         rhs_type = self.expand_sema_type(rhs_type, loc);
 
         match (rhs_type.const_inner().clone(), lhs_type.const_inner().clone()) {
+            // to prevent error propagation
             (SemaType::Err(_), _) | (_, SemaType::Err(_)) => {
                 return true;
             }
@@ -78,31 +79,46 @@ impl<'a> AnalysisContext<'a> {
             (SemaType::Plain(plain_type1), SemaType::Plain(plain_type2)) => {
                 self.is_plain_type_assignable_to(plain_type1, plain_type2)
             }
+
+            // interface <-> interface
             (SemaType::InterfaceObject(interface_object1), SemaType::InterfaceObject(interface_object2)) => self
                 .is_named_type_assignable_to(interface_object1.interface_type, interface_object2.interface_type, loc),
+
+            // REVIEW
+            // interface -> named
             (SemaType::InterfaceObject(interface_object), SemaType::Named(named_type2)) => {
                 self.is_named_type_assignable_to(interface_object.interface_type, named_type2, loc)
             }
+
+            // named <-> named
             (SemaType::Named(named_type1), SemaType::Named(named_type2)) => {
                 self.is_named_type_assignable_to(named_type1, named_type2, loc)
             }
 
+            // array <-> array
             (SemaType::Array(array_type1), SemaType::Array(array_type2)) => {
                 let valid_capacity = self.is_const_str_assignable_to_array(array_type1.clone(), array_type2.clone());
 
                 valid_capacity && self.is_assignable_to(*array_type1.element_type, *array_type2.element_type, loc)
             }
+
             // array-to-pointer decay
             (SemaType::Array(array_type), SemaType::Pointer(inner)) => {
                 self.is_assignable_to(*array_type.element_type, *inner, loc)
             }
+
+            // pointer <-> pointer
             (SemaType::Pointer(inner1), SemaType::Pointer(inner2)) => {
                 (inner1.is_void() || inner2.is_void()) || self.is_assignable_to(*inner1, *inner2, loc)
             }
+
+            // tuple <-> tuple
             (SemaType::Tuple(tuple_type1), SemaType::Tuple(tuple_type2)) => tuple_type1 == tuple_type2,
+
+            // func type <-> func type
             (SemaType::FuncType(func_type1), SemaType::FuncType(func_type2)) => func_type1 == func_type2,
 
-            // allowed: null -> T*
+            // null -> T*
             (SemaType::Plain(PlainType::Null), SemaType::Pointer(..)) => true,
 
             _ => false,
@@ -540,6 +556,7 @@ impl<'a> AnalysisContext<'a> {
 
             let substituted = generic_env.substitute_sema_type(&typedef_type);
 
+            // FIXME: Probably we should not expand !
             Ok(self.expand_sema_type(substituted, loc))
         });
 
@@ -576,8 +593,9 @@ impl<'a> AnalysisContext<'a> {
 
     pub(crate) fn expand_sema_type(&mut self, ty: SemaType, loc: Loc) -> SemaType {
         match &ty {
-            SemaType::InferVar(_) => ty,
             SemaType::Placeholder => ty,
+            SemaType::InferVar(_) => ty,
+
             SemaType::Named(named_type) => match &named_type.type_decl_id {
                 TypeDeclID::Typedef(typedef_decl_id) => {
                     self.expand_typedef(*typedef_decl_id, &named_type.type_args, loc)
@@ -600,13 +618,17 @@ impl<'a> AnalysisContext<'a> {
                     })
                 }
             },
+
             SemaType::Pointer(inner) => SemaType::Pointer(Box::new(self.expand_sema_type(*inner.clone(), loc))),
+
             SemaType::Const(inner) => SemaType::Const(Box::new(self.expand_sema_type(*inner.clone(), loc))),
+
             SemaType::Array(array) => SemaType::Array(TypedArrayType {
                 element_type: Box::new(self.expand_sema_type(*array.element_type.clone(), loc)),
                 capacity: array.capacity.clone(),
                 loc: array.loc,
             }),
+
             SemaType::Tuple(tuple) => {
                 let elements = tuple
                     .elements
@@ -620,6 +642,7 @@ impl<'a> AnalysisContext<'a> {
                     loc: tuple.loc,
                 })
             }
+
             SemaType::FuncType(func) => {
                 let params = TypedFuncTypeParams {
                     list: func
@@ -639,6 +662,7 @@ impl<'a> AnalysisContext<'a> {
                         })
                     }),
                 };
+
                 let ret_type = Box::new(self.expand_sema_type(*func.ret_type.clone(), loc));
 
                 SemaType::FuncType(TypedFuncType {
@@ -648,13 +672,13 @@ impl<'a> AnalysisContext<'a> {
                     loc: func.loc,
                 })
             }
-            SemaType::Plain(_)
-            | SemaType::GenericParam(_)
+
+            SemaType::Err(_)
+            | SemaType::Plain(_)
             | SemaType::SelfType(_)
             | SemaType::Unresolved(_)
+            | SemaType::GenericParam(_)
             | SemaType::InterfaceObject(_) => ty,
-
-            SemaType::Err(_) => ty,
         }
     }
 }
@@ -825,6 +849,20 @@ impl<'a> AnalysisContext<'a> {
                             check_recursively(this, inner, loc, has_error);
                         }
                     }
+
+                    if let Some(union_decl_id) = named_type.type_decl_id.as_union() {
+                        let union_decl = this.decl_tables.union_decl(union_decl_id);
+
+                        if union_decl.fields.is_empty() {
+                            this.reporter.report(Diag {
+                                level: DiagLevel::Error,
+                                kind: Box::new(AnalyzerDiagKind::UnionTypeMustContainAtLeastOneField),
+                                loc: Some(loc),
+                                hint: None,
+                            });
+                            *has_error = true;
+                        }
+                    }
                 }
                 SemaType::Array(array_type) => {
                     if array_type.element_type.is_void() {
@@ -902,7 +940,7 @@ impl<'a> AnalysisContext<'a> {
         if has_error { None } else { Some(ty) }
     }
 
-    pub(crate) fn check_type_arity(&mut self, ty: SemaType, loc: Loc) -> Option<SemaType> {
+    pub(crate) fn check_type_arity(&mut self, ty: SemaType, loc: Loc) -> Option<()> {
         fn check_recursively(this: &mut AnalysisContext, ty: &SemaType, loc: Loc) -> bool {
             match ty {
                 SemaType::Named(named_type) => {
@@ -965,7 +1003,7 @@ impl<'a> AnalysisContext<'a> {
         }
 
         if check_recursively(self, &ty, loc) {
-            Some(ty)
+            Some(())
         } else {
             None
         }

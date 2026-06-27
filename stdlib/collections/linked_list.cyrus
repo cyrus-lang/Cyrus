@@ -1,0 +1,59 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 The Cyrus Language
+
+import std::mem{Allocator, LibcAllocator};
+import std::option{Option};
+
+pub struct SinglyNode<T> {
+    pub next: SinglyNode<T>*;
+    pub value: T;
+
+    /// Insert a new node after the current one.
+    pub fn insert_after(&self, new_node: SinglyNode<T>*) {
+        @assert(new_node != null, "new node cannot be null");
+
+        new_node->next = self->next;
+        self->next = new_node;
+    }
+}
+
+pub struct SinglyLinkedList<T> {
+    pub first: SinglyNode<T>*;
+
+    pub fn new(const allocator: Allocator) Self {
+        return Self { first: null };
+    }
+
+    pub fn prepend(&self, new_node: SinglyNode<T>*) {
+        new_node->next = self->first;
+        self->first = new_node;
+    }
+
+    /// Remove a node from the list.
+    pub fn remove(&self, const node: SinglyNode<T>*) {
+        @assert(node != null, "node cannot be null");
+        
+        if (self->first == node) {
+            self->first = node->next;
+        } else {
+            var current = self->first;
+
+            while (current->next != node) {
+                // iter
+                current = node->next;
+            }
+            
+            current->next = node->next;
+        }
+    }
+
+    pub fn pop_first(&self) Option<SinglyNode<T>*> {
+        if (!self->first) {
+            return .None;
+        }
+
+        const first = self->first;
+        self->first = first->next;
+        return .Some(first);
+    }
+}

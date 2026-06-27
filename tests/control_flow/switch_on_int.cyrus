@@ -1,0 +1,18 @@
+// @stdout: one three other
+
+import std::libc{printf};
+
+fn describe(x: int) {
+    switch (x) {
+        case 1 => printf("one ");
+        case 2 => printf("two ");
+        case 3 => printf("three ");
+        default => printf("other ");
+    }
+}
+
+pub fn main() {
+    describe(1);
+    describe(3);
+    describe(5);
+}

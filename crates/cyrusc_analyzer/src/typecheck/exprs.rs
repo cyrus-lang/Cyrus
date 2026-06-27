@@ -60,7 +60,8 @@ impl<'a> AnalysisContext<'a> {
     ) -> Option<SemaType> {
         if let Some(ty) = &expected_type {
             if let Some(ty) = self.normalize_sema_type(ty.clone(), expr.loc, 0) {
-                expected_type = Some(ty);
+                // expand expected type
+                expected_type = Some(self.expand_sema_type(ty, expr.loc));
             }
         }
 
@@ -250,10 +251,15 @@ impl<'a> AnalysisContext<'a> {
     }
 
     pub(crate) fn analyze_cond_expr(&mut self, cond: &mut TypedExpr) {
-        if let Some(ty) = self.analyze_expr(cond, Some(SemaType::Plain(PlainType::Bool))) {
+        if let Some(mut ty) = self.analyze_expr(cond, Some(SemaType::Plain(PlainType::Bool))) {
+            ty = self.expand_sema_type(ty.clone(), cond.loc);
+
             if !(ty.is_bool() || ty.is_integer()) {
                 self.report_not_cond_expr(cond.loc);
             }
+
+            // store expanded type
+            cond.ty = Some(ty);
         }
     }
 

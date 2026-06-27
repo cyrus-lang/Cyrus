@@ -1,0 +1,9 @@
+// @stdout: 1 4
+
+import std::libc{printf};
+
+pub fn main() {
+    var t = (1, 2);
+    t.1 = 4;
+    printf("%d %d\n", t.0, t.1);
+}

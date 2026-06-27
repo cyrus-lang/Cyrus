@@ -15,12 +15,17 @@ impl<'a> AnalysisContext<'a> {
 
         lambda.ret_type = self.normalize_and_check_type_formation(lambda.ret_type.clone(), lambda.loc, 0)?;
 
-        let func_type = TypedFuncType {
+        let mut func_type = TypedFuncType {
             params,
             ret_type: Box::new(lambda.ret_type.clone()),
             is_public: true,
             loc: lambda.loc,
         };
+
+        func_type = self
+            .expand_sema_type(SemaType::FuncType(func_type), lambda.loc)
+            .as_func_type()
+            .unwrap().clone();
 
         let func_name = "<unnamed>";
 

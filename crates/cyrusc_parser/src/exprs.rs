@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 The Cyrus Language
+
 use crate::Diag;
 use crate::Parser;
 use crate::diagnostics::ParserDiagKind;
@@ -323,14 +324,16 @@ impl<'source_file> Parser<'source_file> {
         let type_arg_start_detail = self.is_type_arg_start(expr.clone());
 
         if type_arg_start_detail.includes_type_args {
-            if !type_arg_start_detail.is_array_init {
-                self.next_token(); // consume current token of expr
-                type_args = self.parse_type_args()?;
-            } else {
+            if type_arg_start_detail.is_array_init {
                 // handle generic array init
                 let type_spec = self.parse_type_specifier()?;
                 self.next_token();
+
                 return Ok(self.parse_array(type_spec)?);
+            } else {
+                self.next_token(); // consume current token of expr
+
+                type_args = self.parse_type_args()?;
             }
         }
 
@@ -389,12 +392,28 @@ impl<'source_file> Parser<'source_file> {
                 Ok(expr)
             }
         } else {
-            // type args are given to the wrong expression
-            if !type_args.is_empty() {
-                return Err(self.error_invalid_token());
-            }
+            if type_args.is_empty() {
+                // if we don't have type args means its not a candidate for
+                // generic array / struct init, func call, hence
+                // we can treat it as a result of a normal prefix expr
+                Ok(expr)
+            } else {
+                // likely to be a type like: `Box<int>`
+                if let ASTExpr::ModuleImport(module_import) = expr {
+                    let end = self.current_token().loc.end;
 
-            Ok(expr)
+                    let type_spec = TypeSpecifier::GenericInst(GenericInst {
+                        base: Box::new(TypeSpecifier::ModuleImport(module_import)),
+                        type_args,
+                        loc: Loc::new(self.file_id(), line, column, start, end),
+                    });
+
+                    Ok(ASTExpr::TypeSpecifier(type_spec))
+                } else {
+                    // type args are given to the wrong expression
+                    return Err(self.error_invalid_token());
+                }
+            }
         }
     }
 
