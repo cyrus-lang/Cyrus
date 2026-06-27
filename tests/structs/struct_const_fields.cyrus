@@ -1,4 +1,5 @@
 // @stdout: Cyrus (1999)
+
 import std::libc{printf};
 
 struct Book {

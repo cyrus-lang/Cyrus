@@ -1,4 +1,5 @@
 // @stdout: 3 4.500000 hello
+
 import std::libc{printf};
 
 struct Triple<A, B, C> {

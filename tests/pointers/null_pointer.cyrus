@@ -1,4 +1,5 @@
 // @stdout: null 42
+
 import std::libc{printf};
 
 pub fn main() {

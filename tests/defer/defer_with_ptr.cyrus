@@ -1,4 +1,5 @@
 // @stdout: start start
+
 import std::libc{printf};
 
 pub fn main() {

@@ -1,4 +1,5 @@
 // @stdout: 4 16
+
 import std::libc{printf};
 
 enum Small {

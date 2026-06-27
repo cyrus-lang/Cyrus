@@ -1,4 +1,5 @@
 // @stdout: 120
+
 import std::libc{printf};
 
 interface Calculator {

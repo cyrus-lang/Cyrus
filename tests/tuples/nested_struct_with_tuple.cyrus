@@ -1,4 +1,5 @@
 // @stdout: pair: (3, 7)
+
 import std::libc{printf};
 
 struct Pair {

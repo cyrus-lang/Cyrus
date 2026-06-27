@@ -1,4 +1,5 @@
 // @stdout: int: 42 string: hello
+
 import std::libc{printf};
 
 union Data {

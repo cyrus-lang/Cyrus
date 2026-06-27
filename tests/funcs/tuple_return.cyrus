@@ -1,4 +1,5 @@
 // @stdout: 3 2
+
 import std::libc{printf};
 
 fn div_mod(x: int, y: int) (int, int) {

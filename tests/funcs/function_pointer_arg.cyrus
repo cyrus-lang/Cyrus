@@ -1,4 +1,5 @@
 // @stdout: 25
+
 import std::libc{printf};
 
 type IntOp = fn(int, int) int;

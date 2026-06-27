@@ -1,4 +1,5 @@
 // @stdout: 8
+
 import std::libc{printf};
 
 type MyInt = int64;

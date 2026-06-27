@@ -1,4 +1,5 @@
 // @stdout: x=10, y=20
+
 import std::libc{printf};
 
 struct Point {

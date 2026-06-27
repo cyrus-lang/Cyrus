@@ -1,4 +1,5 @@
 // @stdout: 255 -1
+
 import std::libc{printf};
 
 pub fn main() {

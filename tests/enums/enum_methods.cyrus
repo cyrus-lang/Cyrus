@@ -1,4 +1,5 @@
 // @stdout: 6 12
+
 import std::libc{printf};
 
 enum Operation {
@@ -7,12 +8,8 @@ enum Operation {
 
     pub fn eval(&const self, x: int, y: int) int {
         switch (*self) {
-            case .Add => {
-                return x + y;
-            }
-            case .Mul => {
-                return x * y;
-            }
+            case .Add => return x + y;
+            case .Mul => return x * y;
         }
     }
 }

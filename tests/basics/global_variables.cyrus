@@ -1,4 +1,5 @@
 // @stdout: 10 20
+
 import std::libc{printf};
 
 var global_counter: int = 0;

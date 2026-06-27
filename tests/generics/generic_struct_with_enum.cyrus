@@ -1,4 +1,5 @@
 // @stdout: Ok(100) Err(failed)
+
 import std::libc{printf};
 
 enum MyResult<T, E> {
@@ -8,9 +9,7 @@ enum MyResult<T, E> {
 
 fn handle_ok<T, E>(r: MyResult<T, E>) {
     switch (r) {
-        case .Ok(v) => {
-            printf("Ok(%d) ", v);
-        }
+        case .Ok(v) => printf("Ok(%d) ", v);
         case .Err(_) => {}
     }
 }
