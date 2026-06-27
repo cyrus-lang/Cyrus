@@ -208,10 +208,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         }
     }
 
-    fn emit_switch_on_enum(&mut self, switch_stmt: &CIRSwitchStmt) {
-        let lvalue = self.emit_expr(&switch_stmt.value, &None);
-        let rvalue = self.load_rvalue(lvalue);
-
+    fn emit_switch_on_enum(&mut self, rvalue: &InternalValue<'ll>, switch_stmt: &CIRSwitchStmt) {
         let type_id = rvalue.ty.as_type_id().unwrap();
         let enum_type = rvalue.ty.as_enum(&self.tctx).unwrap();
 
@@ -285,7 +282,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
                         // reinterpret payload buffer
                         let enum_payload = self.extract_enum_payload(enum_struct_value);
 
-                        let alloca = self.llvmbuilder.build_alloca(llvm_type, "reinterpret.variant").unwrap();
+                        let alloca = self.llvmbuilder.build_alloca(llvm_type, "enum.variant.spill").unwrap();
 
                         self.llvmbuilder.build_store(alloca, enum_payload).unwrap();
 
@@ -381,7 +378,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
 
                 self.emit_switch_on_scalar_enum(switch_stmt, enum_value);
             } else {
-                self.emit_switch_on_enum(switch_stmt);
+                self.emit_switch_on_enum(&rvalue, switch_stmt);
             }
             return;
         }
