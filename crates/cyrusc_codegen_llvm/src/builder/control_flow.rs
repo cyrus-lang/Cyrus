@@ -282,7 +282,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
                         // reinterpret payload buffer
                         let enum_payload = self.extract_enum_payload(enum_struct_value);
 
-                        let alloca = self.llvmbuilder.build_alloca(llvm_type, "enum.variant.spill").unwrap();
+                        let alloca = self.llvmbuilder.build_alloca(llvm_type, "enum.variant.cast").unwrap();
 
                         self.llvmbuilder.build_store(alloca, enum_payload).unwrap();
 
