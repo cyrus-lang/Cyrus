@@ -24,6 +24,11 @@ pub struct Path {
         var found = false;
 
         const str = self->inner.as_str_const();
+        const len = self->inner.len();
+
+        if (str == null || len == 0) {
+            return Path.new(self->allocator, ".");
+        }
 
         for (var i: usize = 0; i < self->inner.len(); i++) {
             if (str[i] == separator()) {
@@ -57,23 +62,30 @@ pub struct Path {
         const str = self->inner.as_str_const();
         const len = self->inner.len();
 
-        var last: usize;
+        if (str == null || len == 0) {
+            return Path.new(self->allocator, ".");
+        }
 
+        var last: usize = len;
+        
+        // find the last separator
         for (var i: usize = 0; i < len; i++) {
             if (str[i] == separator()) {
                 last = i + 1;
             }
         }
-
+        
+        // if no separator found or only trailing separators
         if (last >= len) {
             return Path.new(self->allocator, ".");
         }
-
+        
+        // extract the filename
         var file_name = String.new(self->allocator);
         for (var i: usize = last; i < len; i++) {
             file_name.push(str[i]);
         }
-
+        
         return Self {
             allocator: self->allocator, 
             inner: file_name
@@ -86,6 +98,9 @@ pub struct Path {
 
         const other_str = other->inner.as_str_const();
         const other_len = other->inner.len();
+
+        @assert(self_str != null, "self path string cannot be null");
+        @assert(other_str != null, "other path string cannot be null");
 
         const self_ends_with_slash = self_len > 0 && self_str[self_len - 1] == separator();
 
@@ -164,7 +179,7 @@ pub struct Path {
     /// POSIX ONLY!
     /// Path is absolute if it starts with `/`.
     pub inline fn is_absolute(&const self) bool {
-        return !self->inner.is_empty() && self->inner.as_str_const()[0] == separator();
+        return (!self->inner.is_empty()) && self->inner.as_str_const()[0] == separator();
     }
 
     /// POSIX ONLY!

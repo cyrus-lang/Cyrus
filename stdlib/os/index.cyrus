@@ -2,7 +2,7 @@
 // Copyright (c) 2026 The Cyrus Language
 
 import std::libc::types{c_file};
-import std::errors{ErrorOr};
+import std::errors{ErrorOr, ErrorStr};
 import std::mem{Allocator};
 import std::string{String};
 import std::path{Path};
@@ -13,7 +13,7 @@ pub struct File {
     file: c_file*;
     mode: OpeningModes;
     
-    pub fn open(const path: const Path*, const mode: OpeningModes) ErrorOr<Self> {        
+    pub fn open(const path: const Path*, const mode: OpeningModes) ErrorOr<Self, ErrorStr> {        
         const path_str = path->as_string_const().as_str_const();
         const mode_str = mode.as_str();
 
@@ -31,10 +31,10 @@ pub struct File {
         });
     }
 
-    pub fn flush(&const self) ErrorOr<()> {
+    pub fn flush(&const self) ErrorOr<(), ()> {
         const result = libc::fflush(self->file);
         if (result != 0) {
-            return .Error("failed to flush file buffer");
+            return .Error(());
         }
         return .Value(());
     }
@@ -45,7 +45,7 @@ pub struct File {
         return result == 0;
     }
 
-    pub fn read(&const self, const allocator: Allocator) ErrorOr<String> {
+    pub fn read(&const self, const allocator: Allocator) ErrorOr<String, ErrorStr> {
         libc::fseek(self->file, 0, FileSeek.End.as_num());
         const size = @cast(usize, libc::ftell(self->file));
         libc::rewind(self->file);
@@ -69,18 +69,18 @@ pub struct File {
         return .Value(content);
     }
 
-    pub fn write(&self, const content: const char*) ErrorOr<usize> {
+    pub fn write(&self, const content: const char*) ErrorOr<usize, ()> {
         const content_len = libc::strlen(content);
 
         const bytes = libc::fwrite(content, 1, content_len, self->file);
         if (bytes == 0) {
-            return .Error("failed to write to file");
+            return .Error(());
         } 
 
         return .Value(bytes);
     }
 
-    pub fn append(&self, const content: const char*) ErrorOr<usize> {
+    pub fn append(&self, const content: const char*) ErrorOr<usize, ErrorStr> {
         switch (self->mode) {
             case .Append | .AppendBinary | .AppendRead | .AppendReadBinary => {}
             default => { return .Error("file not opened in append mode"); }
@@ -115,13 +115,13 @@ pub struct File {
         }
     }
 
-    pub fn rename(const old_path: const Path*, const new_path: const Path*) ErrorOr<()> {
+    pub fn rename(const old_path: const Path*, const new_path: const Path*) ErrorOr<(), ()s> {
         const old_path_str = old_path->as_string_const().as_str_const();
         const new_path_str = new_path->as_string_const().as_str_const();
 
         const result = libc::rename(old_path_str, new_path_str);
         if (result != 0) {
-            return .Error("failed to rename file");
+            return .Error(());
         }
 
         return .Value(());
