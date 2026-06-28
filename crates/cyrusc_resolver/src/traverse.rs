@@ -665,7 +665,6 @@ impl<'a> Resolver<'a> {
             modifiers: union_modifiers,
             align: union_type.align,
             loc: union_type.loc,
-
             is_normalized: false,
         });
 
@@ -695,7 +694,6 @@ impl<'a> Resolver<'a> {
             modifiers: enum_modifiers,
             align: enum_type.align,
             loc: enum_type.loc,
-
             is_normalized: false,
         });
 
@@ -734,7 +732,6 @@ impl<'a> Resolver<'a> {
             modifiers: struct_modifiers,
             align: struct_type.align,
             loc: struct_type.loc,
-
             is_normalized: false,
         });
 
@@ -1018,45 +1015,44 @@ impl<'a> Resolver<'a> {
         let generic_params = self.resolve_generic_params(&union_decl.generic_params)?;
 
         self.with_generic_scope(&generic_params.clone(), |this| {
-            let mut typed_union_fields = Vec::with_capacity(union_decl.fields.len());
-
-            for field in &union_decl.fields {
-                let sema_type = match this.resolve_type(field.ty.clone(), field.loc) {
-                    Some(ty) => ty,
-                    None => continue,
-                };
-
-                typed_union_fields.push(TypedUnionField {
-                    name: field.name.as_string(),
-                    ty: sema_type,
-                    loc: field.loc,
-                });
-            }
-
-            this.report_if_duplicate_method_names(&name, &union_decl.methods);
-
             let impls = this.resolve_object_implements_interfaces(&union_decl.impls, union_decl.loc)?;
 
             let union_decl_id = this.decl_tables.insert_union(UnionDecl {
                 name: Some(name.clone()),
-                fields: typed_union_fields.clone(),
+                fields: Vec::new(),          // placeholder
                 methods: MethodDecls::new(), // placeholder
                 impls: impls.clone(),
                 generic_params: generic_params.clone(),
                 modifiers: union_decl.modifiers.clone(),
                 align: union_decl.align.clone(),
                 loc,
-
                 is_normalized: false,
             });
 
+            // register symbol
             this.with_global_symbol_mut(symbol_id, |symbol_entry| {
                 symbol_entry.kind = SymbolEntryKind::Union(union_decl_id)
             });
 
+            let typed_union_fields: Vec<TypedUnionField> = union_decl
+                .fields
+                .iter()
+                .filter_map(|field| {
+                    this.resolve_type(field.ty.clone(), field.loc)
+                        .map(|ty| TypedUnionField {
+                            name: field.name.as_string(),
+                            ty,
+                            loc: field.loc,
+                        })
+                })
+                .collect();
+
+            this.report_if_duplicate_method_names(&name, &union_decl.methods);
+
             let methods = this.resolve_methods(&union_decl.methods, symbol_id, &name);
 
             this.decl_tables.with_union_decl_mut(union_decl_id, |_union_decl| {
+                _union_decl.fields = typed_union_fields.clone();
                 _union_decl.methods = methods.clone();
             });
 
@@ -1180,10 +1176,6 @@ impl<'a> Resolver<'a> {
         let generic_params = self.resolve_generic_params(&enum_decl.generic_params)?;
 
         self.with_generic_scope(&generic_params.clone(), |this| {
-            let variants = this.resolve_enum_variants(&enum_decl.variants)?;
-
-            this.report_if_duplicate_method_names(&name, &enum_decl.methods);
-
             let tag_type = match &enum_decl.tag_type {
                 Some(ty) => this.resolve_type(ty.clone(), enum_decl.loc),
                 None => None,
@@ -1193,7 +1185,7 @@ impl<'a> Resolver<'a> {
 
             let enum_decl_id = this.decl_tables.insert_enum(EnumDecl {
                 name: Some(name.clone()),
-                variants: variants.clone(),
+                variants: Vec::new(),        // placeholder
                 methods: MethodDecls::new(), // placeholder
                 impls: impls.clone(),
                 generic_params: generic_params.clone(),
@@ -1201,17 +1193,22 @@ impl<'a> Resolver<'a> {
                 modifiers: enum_decl.modifiers.clone(),
                 align: enum_decl.align.clone(),
                 loc,
-
                 is_normalized: false,
             });
 
+            // register symbol
             this.with_global_symbol_mut(symbol_id, |symbol_entry| {
                 symbol_entry.kind = SymbolEntryKind::Enum(enum_decl_id)
             });
 
+            let variants = this.resolve_enum_variants(&enum_decl.variants)?;
+
+            this.report_if_duplicate_method_names(&name, &enum_decl.methods);
+
             let methods = this.resolve_methods(&enum_decl.methods, symbol_id, &name);
 
             this.decl_tables.with_enum_decl_mut(enum_decl_id, |_enum_decl| {
+                _enum_decl.variants = variants.clone();
                 _enum_decl.methods = methods.clone();
             });
 
@@ -1396,6 +1393,25 @@ impl<'a> Resolver<'a> {
         let generic_params = self.resolve_generic_params(&struct_decl.generic_params)?;
 
         self.with_generic_scope(&generic_params.clone(), |this| {
+            let impls = this.resolve_object_implements_interfaces(&struct_decl.impls, struct_decl.loc)?;
+
+            let struct_decl_id = this.decl_tables.insert_struct(StructDecl {
+                name: Some(name.clone()),
+                fields: Vec::new(),          // placeholder
+                methods: MethodDecls::new(), // placeholder
+                generic_params: generic_params.clone(),
+                impls: impls.clone(),
+                modifiers: struct_decl.modifiers.clone(),
+                align: struct_decl.align.clone(),
+                loc,
+                is_normalized: false,
+            });
+
+            // register symbol
+            this.with_global_symbol_mut(symbol_id, |symbol_entry| {
+                symbol_entry.kind = SymbolEntryKind::Struct(struct_decl_id)
+            });
+
             let typed_struct_fields: Vec<TypedStructField> = struct_decl
                 .fields
                 .iter()
@@ -1412,28 +1428,12 @@ impl<'a> Resolver<'a> {
 
             this.report_if_duplicate_method_names(&name, &struct_decl.methods);
 
-            let impls = this.resolve_object_implements_interfaces(&struct_decl.impls, struct_decl.loc)?;
-
-            let struct_decl_id = this.decl_tables.insert_struct(StructDecl {
-                name: Some(name.clone()),
-                fields: typed_struct_fields.clone(),
-                generic_params: generic_params.clone(),
-                impls: impls.clone(),
-                methods: MethodDecls::new(), // placeholder
-                modifiers: struct_decl.modifiers.clone(),
-                align: struct_decl.align.clone(),
-                loc,
-
-                is_normalized: false,
-            });
-
-            this.with_global_symbol_mut(symbol_id, |symbol_entry| {
-                symbol_entry.kind = SymbolEntryKind::Struct(struct_decl_id)
-            });
-
             let methods = this.resolve_methods(&struct_decl.methods, symbol_id, &name);
 
+            // replace the placeholder with the complete struct
             this.decl_tables.with_struct_decl_mut(struct_decl_id, |_struct_decl| {
+                _struct_decl.fields = typed_struct_fields.clone();
+                _struct_decl.impls = impls.clone();
                 _struct_decl.methods = methods.clone();
             });
 

@@ -39,8 +39,8 @@ COMMON_FLAGS = $(ARGS)
 resolver:
 	$(CARGO_RUN) -p cyrusc_resolver --bin cyrusc_resolver -- $(INPUT) $(COMMON_FLAGS) --stdlib=$(STDLIB)
 
-resolver_dump_global_symbols:
-	$(CARGO_RUN) -p cyrusc_resolver --bin cyrusc_resolver_debugger -- $(INPUT) ./tmp/global_symbols_dump $(COMMON_FLAGS) --stdlib=$(STDLIB) && code ./tmp/global_symbols_dump
+resolver-dump:
+	$(CARGO_RUN) -p cyrusc_resolver --bin cyrusc_resolver_dump -- $(INPUT) ./tmp/global_symbols_dump $(COMMON_FLAGS) --stdlib=$(STDLIB) && code ./tmp/global_symbols_dump
 
 cir_walk parser lexer:
 	$(CARGO_RUN) -p cyrusc_$@ -- $(INPUT) $(COMMON_FLAGS) --stdlib=$(STDLIB)
