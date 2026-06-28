@@ -91,7 +91,11 @@ def build_and_run(file_path, metadata, compiler_path, compiler_flags, output_dir
             text=True,
             env=env
         )
-
+        
+        # Check return status code first
+        if run_result.returncode != 0:
+            raise Exception(f"Test execution failed with exit code {run_result.returncode}:\n")
+            
         actual_stdout = run_result.stdout.replace("\r\n", "\n").strip()
         expected_stdout = (metadata.get("stdout") or "").strip()
         actual_stderr = run_result.stderr.replace("\r\n", "\n").strip()
