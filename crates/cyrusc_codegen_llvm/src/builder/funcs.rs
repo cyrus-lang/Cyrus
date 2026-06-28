@@ -35,7 +35,7 @@ use inkwell::{
         prelude::LLVMMetadataRef,
     },
     types::{AsTypeRef, BasicTypeEnum, StructType},
-    values::{AsValueRef, BasicMetadataValueEnum, BasicValue, BasicValueEnum, CallSiteValue, FunctionValue},
+    values::{AsValueRef, BasicMetadataValueEnum, BasicValueEnum, CallSiteValue, FunctionValue},
 };
 
 pub(crate) enum FuncCallKind<'ll> {

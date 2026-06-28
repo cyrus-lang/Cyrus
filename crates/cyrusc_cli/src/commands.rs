@@ -19,7 +19,6 @@ use cyrusc_lexer::Lexer;
 use cyrusc_parser::SourceParser;
 use cyrusc_source_loc::SourceMap;
 use std::fs;
-use std::io::{self, Write};
 use std::path::Path;
 use std::process::{Command, exit};
 use std::rc::Rc;
