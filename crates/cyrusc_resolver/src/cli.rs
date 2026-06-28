@@ -14,7 +14,7 @@ use cyrusc_source_loc::SourceMap;
 use cyrusc_typed_ast::decls::table::DeclTablesRegistry;
 use std::{env, path::Path, process::exit, sync::Arc, vec};
 
-pub fn main() {
+fn main() {
     let args: Vec<String> = env::args().collect();
     let file_path = args[1].clone();
 
@@ -59,7 +59,13 @@ pub fn main() {
 
             let decl_tables = Arc::new(DeclTablesRegistry::new());
 
-            let mut resolver = Resolver::new(&opts, Box::new(fs_module_loader), source_map.clone(), reporter, decl_tables);
+            let mut resolver = Resolver::new(
+                &opts,
+                Box::new(fs_module_loader),
+                source_map.clone(),
+                reporter,
+                decl_tables,
+            );
 
             let module_symbol_id = resolver.create_entry_module_symbol_id(Path::new(&file_path), file_id);
 
