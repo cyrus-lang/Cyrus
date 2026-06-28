@@ -5,9 +5,9 @@
 pub type ErrorStr = const char*;
 
 /// A result type representing either a successful value `V` or an error message.
-pub enum ErrorOr<V> {
+pub enum ErrorOr<V, E = ErrorStr> {
 	Value(V),
-	Error(ErrorStr)
+	Error(E)
 
 	/// Unwraps the contained value, panicking with the error message if this is an Error.
     pub fn unwrap(&const self) V {

@@ -25,7 +25,6 @@ pub struct Random {
   // Static method that creates an instance of 'Random' struct 
   // and uses an argumant as seed for first number
   pub fn seed(init_seed: uint64) Self {
-
     init_seed ~= init_seed << 13;
     init_seed ~= init_seed >> 17;
     init_seed ~= init_seed << 5;
@@ -35,7 +34,6 @@ pub struct Random {
 
   // Generates a random int64 number in a given range
   pub fn rand_int(&self, min: int64, max: int64) int64 {
-
     self->state ~= self->state << 13;
     self->state ~= self->state >> 17;
     self->state ~= self->state << 6;
@@ -46,7 +44,6 @@ pub struct Random {
   }
 
   fn rand_to_float(&self) float64 {
-
     self->state ~= self->state << 13;
     self->state ~= self->state >> 17;
     self->state ~= self->state << 5;
@@ -64,34 +61,30 @@ pub struct Random {
 
   // Generates a random upperclass character
   pub fn rand_upperc(&self) char {
+    var rnd = self->rand_int(0, @cast(int64, 'Z') - @cast(int64, 'A'));
 
-    var rand_char_number = self->rand_int(0, @cast(int64, 'Z') - @cast(int64, 'A'));
-
-    var char_index = @cast(int64, 'A') + rand_char_number;
+    var char_index = @cast(int64, 'A') + rnd;
 
     return @cast(char, char_index);
   }
 
   // Generates a random lowerclass character
   pub fn rand_lowerc(&self) char {
+    var rnd = self->rand_int(0, @cast(int64, 'z') - @cast(int64, 'a'));
 
-    var rand_char_number = self->rand_int(0, @cast(int64, 'z') - @cast(int64, 'a'));
-
-    var char_index = @cast(int64, 'a') + rand_char_number;
+    var char_index = @cast(int64, 'a') + rnd;
 
     return @cast(char, char_index);
   }
 
   // Generates a random true or false
   pub fn rand_bool(&self) bool {
+    var rnd: int64 = self->rand_int(0, 1);
 
-    var rand_key: int64 = self->rand_int(0, 1);
-
-    if (rand_key == 0) {
+    if (rnd == 0) {
       return false;
     } else {
       return true;
     }
   }
-
 }

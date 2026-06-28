@@ -6,13 +6,9 @@ pub enum Option<T> {
     None
 
     pub inline fn unwrap(&const self) T {
-        if (self->is_none()) {
-            @panic("called `Option.unwrap()` on a `None` value");
-        }
-
         switch (*self) {
             case .Some(value) => return value;
-            default => @unreachable();
+            default => @panic("called `Option.unwrap()` on a `None` value");
         }
     }
     

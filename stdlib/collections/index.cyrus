@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 The Cyrus Language
 
-import std::libc{memmove, realloc, free};
+import std::libc{memmove, malloc};
 import std::mem{Allocator};
 import std::option{Option};
 import std::iterator{Iterator};
@@ -18,7 +18,9 @@ pub struct Vector<T> {
     pub inline fn new(const allocator: Allocator) Self {
         const cap = initial_array_capacity;
 
-        const data: T* = allocator.alloc(cap * @sizeof(T));
+        // FIXME: Using allocator.alloc instead of malloc causes a crash in the test suite. Need to investigate why.
+        // const data: T* = allocator.alloc(cap * @sizeof(T));
+        const data: T* = malloc(cap * @sizeof(T));
 
         if (!data) {
             @panic("allocation failed");
@@ -38,7 +40,9 @@ pub struct Vector<T> {
             @assert(cap != 0, "initial capacity cannot be zero");
         }
 
-        const data: T* = allocator.alloc(cap * @sizeof(T));
+        // FIXME: Using allocator.alloc instead of malloc causes a crash in the test suite. Need to investigate why.
+        // const data: T* = allocator.alloc(cap * @sizeof(T));
+        const data: T* = malloc(cap * @sizeof(T));
 
         if (data == null) {
             @panic("initial allocation failed");
@@ -271,7 +275,7 @@ pub struct Vector<T> {
 
     pub inline fn free(&self) {
         if (self->data != null) {
-            free(self->data);
+            self->allocator.free(self->data);
 
             self->data = null;
             self->len = 0;
