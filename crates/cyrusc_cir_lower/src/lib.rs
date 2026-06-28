@@ -54,14 +54,15 @@ struct CIRLower<'a> {
     vtable_registry: Arc<VTableRegistry>,
     monomorph_registry: Arc<MonomorphRegistry>,
 
-    // TODO: Comment
     next_irv_id: IRValueID,
     decl_to_ir_value_map: FxHashMap<DeclID, IRValueID>,
     monomorph_to_ir_value_map: FxHashMap<MonomorphID, IRValueID>,
     vtable_to_ir_value_map: FxHashMap<VTableID, IRValueID>,
     func_decls: FxHashMap<IRValueID, CIRFuncDeclStmt>,
     global_var_decls: FxHashMap<IRValueID, CIRGlobalVarStmt>,
+    main_function: Option<CIRMainFunction>,
 }
+
 
 impl<'a> CIRLower<'a> {
     pub fn new(
@@ -91,6 +92,7 @@ impl<'a> CIRLower<'a> {
             func_decls: FxHashMap::new(),
             monomorph_to_ir_value_map: FxHashMap::new(),
             vtable_to_ir_value_map: FxHashMap::new(),
+            main_function: None
         }
     }
 
@@ -111,6 +113,7 @@ impl<'a> CIRLower<'a> {
             vtable_registry: self.vtable_registry.clone(),
             vtable_to_ir_value_map: self.vtable_to_ir_value_map.clone(),
             monomorph_to_ir_value_map: self.monomorph_to_ir_value_map.clone(),
+            main_function: self.main_function.clone(),
         }
     }
 
@@ -1151,6 +1154,14 @@ impl<'a> CIRLower<'a> {
         let body = self.lower_block(&func_def.body);
 
         let ret_type = self.lower_sema_type(&func_def.ret_type);
+
+        // ABI wrapper for void main function
+        if func_def.name == "main" {
+            self.main_function = Some(CIRMainFunction {
+                irv_id,
+                actual_ret_type: ret_type.clone(),
+            })
+        }
 
         if let Some(func_decl_id) = func_def.func_decl_id {
             self.decl_to_ir_value_map.insert(DeclID::Func(func_decl_id), irv_id);
