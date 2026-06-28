@@ -40,6 +40,8 @@ pub(crate) fn command_new(project_name: String, lib: bool) {
 }
 
 pub(crate) fn command_run(mut opts: CompilerOptions, file_path: Option<String>, program_args: Vec<String>) {
+    let start_time = std::time::Instant::now();
+
     let mut bundle = build_compilation_bundle(&mut opts, file_path);
 
     let ctx = Rc::new(create_compiler_context(
@@ -81,27 +83,37 @@ pub(crate) fn command_run(mut opts: CompilerOptions, file_path: Option<String>, 
         exit_with_msg!(err);
     }
 
+    let compile_duration = start_time.elapsed();
+    let compile_ms = compile_duration.as_millis();
+
     match Command::new(&temp_exe.path)
         .stdin(std::process::Stdio::inherit())
         .stdout(std::process::Stdio::inherit())
         .stderr(std::process::Stdio::inherit())
         .args(program_args)
-        .output()
+        .status()
     {
-        Ok(output) => {
-            io::stdout().write_all(&output.stdout).unwrap();
-            io::stderr().write_all(&output.stderr).unwrap();
+        Ok(status) => {
+            if !opts.quiet {
+                println!(
+                    "Program run with status code {}, took {} ms to compile.",
+                    status.code().unwrap_or(-1),
+                    compile_ms
+                );
+            }
         }
         Err(err) => {
-            eprintln!(
-                "failed to execute temporary program '{}': {err}",
+            exit_with_msg!(format!(
+                "Failed to execute program '{}': {err}",
                 temp_exe.path.display()
-            );
+            ));
         }
     }
 }
 
 pub(crate) fn command_build(mut opts: CompilerOptions, file_path: Option<String>, output_path_opt: Option<String>) {
+    let start_time = std::time::Instant::now();
+
     let mut bundle = build_compilation_bundle(&mut opts, file_path);
 
     let output_path_opt = output_path_opt.map(|path| Path::new(&path).to_path_buf());
@@ -138,6 +150,13 @@ pub(crate) fn command_build(mut opts: CompilerOptions, file_path: Option<String>
 
     if let Err(err) = ctx.trigger_linker(object_files, &output_path) {
         exit_with_msg!(err);
+    }
+
+    let compile_duration = start_time.elapsed();
+    let compile_ms = compile_duration.as_millis();
+
+    if !opts.quiet {
+        println!("Build completed, took {} ms to compile.", compile_ms);
     }
 }
 
