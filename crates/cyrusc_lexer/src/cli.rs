@@ -7,8 +7,7 @@ use cyrusc_lexer::Lexer;
 use cyrusc_source_loc::SourceMap;
 use std::{env, sync::Arc};
 
-// FIXME: Move to cyrusc_compiler/driver.rs
-pub fn main() {
+fn main() {
     let args: Vec<String> = env::args().collect();
     let file_path = args[1].clone();
     let (file_content, file_name) = read_file(file_path.clone());

@@ -3,7 +3,10 @@
 
 use cyrusc_diagcentral::reporter::DiagReporter;
 use cyrusc_fs_utils::get_directory_of_file;
-use cyrusc_internal::{compiler_options::CompilerOptions, symbols::symbols::{SymbolEntry, SymbolEntryKind}};
+use cyrusc_internal::{
+    compiler_options::CompilerOptions,
+    symbols::symbols::{SymbolEntry, SymbolEntryKind},
+};
 use cyrusc_parser::SourceParser;
 use cyrusc_resolver::{
     Resolver,
@@ -23,7 +26,7 @@ use std::{
     vec,
 };
 
-pub fn main() {
+fn main() {
     let args: Vec<String> = env::args().collect();
 
     if args.len() < 3 {
