@@ -772,8 +772,6 @@ impl<'ll> CodeGenIRBuilder<'ll> {
             && let Some(ir_value) = self.lookup_local_ir_value(cir_main.irv_id)
             && let Some(main_fn) = ir_value.as_func()
         {
-            let main_fn = main_fn;
-
             if *main_fn == cur_fn {
                 // emit implicit return zero
                 self.emit_implicit_return_zero();
