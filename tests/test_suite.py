@@ -45,7 +45,7 @@ def unique_name(path: Path) -> str:
     return f"{path.stem}_{h}"
 
 
-def build_and_run(file_path, metadata, compiler_path, compiler_flags, output_dir):
+def build_and_run(file_path, metadata, compiler_path, compiler_flags, output_dir, run_number=1, total_runs=1):
     with tempfile.TemporaryDirectory() as tmpdir:
         tmpdir = Path(tmpdir)
         suffix = ".exe" if os.name == "nt" else ""
@@ -100,16 +100,18 @@ def build_and_run(file_path, metadata, compiler_path, compiler_flags, output_dir
         if actual_stdout != expected_stdout:
             raise Exception(
                 f"Expected stdout:\n   {expected_stdout}\nGot stdout:\n   {actual_stdout}\nGot stderr:\n   {actual_stderr}\n"
+                f"(Run {run_number}/{total_runs})"
             )
 
         if actual_stderr != expected_stderr:
             raise Exception(
                 f"Expected stderr:\n   {expected_stderr}\nGot stderr:\n   {actual_stderr}"
+                f"(Run {run_number}/{total_runs})"
             )
 
         # Check return status code first
         if expected_stderr.strip() == "" and run_result.returncode != 0:
-            raise Exception(f"Test execution failed with exit code {run_result.returncode}:\n")
+            raise Exception(f"Test execution failed with exit code {run_result.returncode} (Run {run_number}/{total_runs}):\n")
 
 def extract_test_metadata(content, file_name):
     metadata = {
@@ -141,7 +143,7 @@ def extract_test_metadata(content, file_name):
     return metadata
 
 
-def run_single_test(test_file, base_path, compiler_path, compiler_flags, output_path):
+def run_single_test(test_file, base_path, compiler_path, compiler_flags, output_path, repeat_count=1):
     # compute relative name for nice display
     try:
         relative_name = str(test_file.relative_to(base_path))
@@ -150,30 +152,51 @@ def run_single_test(test_file, base_path, compiler_path, compiler_flags, output_
         # when running a single file and base is its parent
         relative_name = test_file.name
 
-    try:
-        content = test_file.read_text()
-        metadata = extract_test_metadata(content, test_file.name)
+    # Run the test N times
+    failures = []
+    for run_num in range(1, repeat_count + 1):
+        try:
+            content = test_file.read_text()
+            metadata = extract_test_metadata(content, test_file.name)
 
-        build_and_run(
-            test_file,
-            metadata,
-            compiler_path,
-            compiler_flags,
-            output_path
-        )
-
+            build_and_run(
+                test_file,
+                metadata,
+                compiler_path,
+                compiler_flags,
+                output_path,
+                run_number=run_num,
+                total_runs=repeat_count
+            )
+            
+            # If we get here, this run passed
+            if repeat_count > 1:
+                print(f"  [run {run_num}/{repeat_count}] passed")
+                
+        except Exception as e:
+            failures.append((run_num, str(e)))
+            if repeat_count > 1:
+                print(f"  [run {run_num}/{repeat_count}] failed")
+    
+    # Determine overall result
+    if failures:
+        # Build a detailed failure message
+        failure_details = []
+        for run_num, error in failures:
+            failure_details.append(f"Run {run_num}/{repeat_count} failed:\n{error}")
+        return ("failed", relative_name, "\n".join(failure_details))
+    else:
         return ("passed", relative_name, None)
-    except Exception as e:
-        return ("failed", relative_name, str(e))
 
 
 def main():
     try:
         if len(sys.argv) < 5 or sys.argv[1] not in ("-d", "--directory"):
             print("Usage: main.py -d <test_path> [--compiler <compiler_path>] "
-            "[--flags '<extra_flags>'] --output <output_dir>\n"
+            "[--flags '<extra_flags>'] --output <output_dir> [--repeat <N>]\n"
             "  <test_path> can be a directory (runs all .cyrus files inside recursively) "
-            "or a single .cyrus file.")
+            "or a single .cyrus file.\n"
+            "  --repeat <N>: Run each test N times (default: 1)")
             exit(1);
             
 
@@ -181,7 +204,8 @@ def main():
         output_dir = None
         compiler_path = "cyrus"
         compiler_flags = "" 
-        fail = False;
+        fail = False
+        repeat_count = 1
 
         i = 3
         while i < len(sys.argv):
@@ -194,6 +218,14 @@ def main():
             elif sys.argv[i] == "--output":
                 output_dir = sys.argv[i + 1]
                 i += 2
+            elif sys.argv[i] == "--repeat":
+                try:
+                    repeat_count = int(sys.argv[i + 1])
+                    if repeat_count < 1:
+                        raise ValueError("Repeat count must be >= 1")
+                    i += 2
+                except ValueError as e:
+                    raise Exception(f"Invalid --repeat value: {sys.argv[i + 1]}. Must be a positive integer.")
             elif sys.argv[i] == "--fail":
                 fail = True
                 i += 1
@@ -225,6 +257,9 @@ def main():
         output_path.mkdir(parents=True, exist_ok=True)
 
         print_compiler_version(compiler_path)
+        
+        if repeat_count > 1:
+            print(f"Running each test {repeat_count} times to detect flaky failures.\n")
 
         passed_tests = []
         failed_tests = []
@@ -239,7 +274,8 @@ def main():
                     base_path,
                     compiler_path,
                     compiler_flags,
-                    output_path
+                    output_path,
+                    repeat_count
                 ): test_file
                 for test_file in test_files
             }
@@ -251,7 +287,10 @@ def main():
                     passed_tests.append(name)
                     
                     if not fail:
-                        print(f"[ok] {name}")
+                        if repeat_count > 1:
+                            print(f"[ok] {name} (all {repeat_count} runs passed)")
+                        else:
+                            print(f"[ok] {name}")
                 else:
                     failed_tests.append((name, reason))
                     
@@ -268,6 +307,11 @@ def main():
         print(f"Total: {total}")
         print(f"Passed: {len(passed_tests)}")
         print(f"Failed: {len(failed_tests)}")
+        
+        if repeat_count > 1:
+            print(f"Each test was run {repeat_count} times.")
+            print(f"A test is marked as 'passed' only if ALL {repeat_count} runs succeed.")
+            print(f"A test is marked as 'failed' if any run fails.")
 
         if failed_tests:
             sys.exit(1)
