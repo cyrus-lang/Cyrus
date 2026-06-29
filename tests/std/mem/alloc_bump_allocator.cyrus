@@ -1,0 +1,40 @@
+// @stdout: sum: 1225
+
+import std::mem{Allocator, BumpAllocator};
+import std::libc{printf, malloc, free};
+
+struct Object {
+    allocator: Allocator;
+    sum: usize;
+
+    pub fn new(const allocator: Allocator) Self { 
+        return Self { allocator, sum: 0 };
+    }
+
+    pub fn alloc_many_and_sum(&self) {
+        for (var i: usize = 0; i < 50; i++) {
+            var ptr: usize* = self->allocator.alloc(@sizeof(int));
+            defer self->allocator.free(ptr);
+
+            *ptr = i;
+            self->sum += *ptr;
+        }
+    }
+
+    pub fn result(&const self) usize {
+        return self->sum;
+    }
+}
+
+const PAGE_SIZE: usize = 4096;
+
+pub fn main() {
+    var page = malloc(PAGE_SIZE);
+    defer free(page);
+
+    var allocator: Allocator = dynamic BumpAllocator.new(page, PAGE_SIZE);
+
+    var obj = Object.new(allocator);
+    obj.alloc_many_and_sum();
+    printf("sum: %d\n", obj.result());
+}

@@ -1,0 +1,11 @@
+// @stdout: 8 16 24 24
+
+import std::mem{align_up};
+import std::libc{printf};
+
+pub fn main() {
+    printf("%d ", align_up(5, 8));
+    printf("%d ", align_up(12, 8));
+    printf("%d ", align_up(17, 8));
+    printf("%d\n", align_up(24, 8));
+}
