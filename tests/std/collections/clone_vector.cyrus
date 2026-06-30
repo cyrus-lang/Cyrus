@@ -15,10 +15,12 @@ pub fn main() {
     vec.push(3);
     
     var clone = vec.clone(allocator);
+    defer clone.free();
 
     clone.push(10);
     
     for (var i: usize = 0; i < clone.len(); i++) {
-        printf("%d ", clone.get(i));
+        printf("%d ", clone.get(i).unwrap());
     }
+    printf("\n");
 }

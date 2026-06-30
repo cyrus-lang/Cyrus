@@ -1,0 +1,22 @@
+// @stdout: 0 1000
+
+import std::mem{Allocator, LibcAllocator};
+import std::collections{Vector};
+import std::libc{printf};
+
+pub fn main() {
+    var allocator: Allocator = dynamic LibcAllocator.new();
+    
+    var vec: Vector<int32> = Vector.new(allocator);
+    defer vec.free();
+
+    for (var i: int32 = 0; i <= 1000; i++) {
+        vec.push(i);
+    }
+
+    const len = vec.len();
+    const first = vec.get(0).unwrap();
+    const last = vec.get(len - 1).unwrap();
+
+    printf("%d %d\n", first, last);
+}
