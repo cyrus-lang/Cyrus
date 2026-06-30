@@ -3,8 +3,8 @@
 import std::libc{printf};
 
 struct Pair<K, V> {
-    pub key: K;
-    pub value: V;
+    pub key: K,
+    pub value: V
 }
 
 fn format_bool(x: bool) char* {

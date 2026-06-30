@@ -3,8 +3,8 @@
 import std::libc{printf, malloc, free};
 
 pub struct Tree {
-    pub value: int32;
-    pub children: Forest*;
+    pub value: int32,
+    pub children: Forest*,
 
     pub fn display(&const self) {
         printf("(%d)", self->value);
@@ -12,8 +12,8 @@ pub struct Tree {
 }
 
 pub struct Forest {
-    pub trees: Tree*;
-    pub count: int32;
+    pub trees: Tree*,
+    pub count: int32,
 
     pub fn display(&const self) {
         var i = 0;

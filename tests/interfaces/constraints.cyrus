@@ -8,7 +8,7 @@ interface MyConstraint {
 }
 
 struct Object : MyConstraint {
-    name: char*;
+    name: char*,
 
     pub fn new(name: char*) Self {
         return Self { name };

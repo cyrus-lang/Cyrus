@@ -3,9 +3,9 @@
 import std::libc{printf};
 
 struct MyGenericStruct<K, V, H> {
-    pub a: K;
-    pub b: V;
-    pub c: H;
+    pub a: K,
+    pub b: V,
+    pub c: H
 }
 
 pub fn main() {

@@ -3,8 +3,8 @@
 import std::libc{printf};
 
 struct Point<T> {
-    pub x: T;
-    pub y: T;
+    pub x: T,
+    pub y: T,
 
 	pub fn display(&const self) {
 		printf("x: %d, y: %d\n", self->x, self->y);

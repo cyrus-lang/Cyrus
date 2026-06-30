@@ -3,8 +3,8 @@
 import std::libc{printf};
 
 union Value {
-    int_val: int;
-    float_val: float64;
+    int_val: int,
+    float_val: float64,
 
     pub fn display(&const self) {
         printf("int=%d\n", self->int_val);

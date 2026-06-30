@@ -3,7 +3,7 @@
 import std::libc{printf};
 
 struct Box<T> {
-    pub value: T;
+    pub value: T,
 
     pub fn inst(&self, x: T) Self* {
         self->value = x;

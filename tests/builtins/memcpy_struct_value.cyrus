@@ -3,9 +3,9 @@
 import std::libc{printf};
 
 struct Data {
-    pub id: int32;
-    pub score: float64;
-    pub flag: bool;
+    pub id: int32,
+    pub score: float64,
+    pub flag: bool
 }
 
 pub fn main() {

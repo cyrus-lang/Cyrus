@@ -3,8 +3,8 @@
 import std::libc{printf, exit};
 
 union Payload {
-    text_value: char*;
-    int_value: int;
+    text_value: char*,
+    int_value: int
 }
 
 enum PayloadKind {
@@ -13,8 +13,8 @@ enum PayloadKind {
 }
 
 struct TaggedPayload {
-    pub tag: PayloadKind;
-    pub data: Payload;
+    pub tag: PayloadKind,
+    pub data: Payload,
 
     pub fn new_text_value(text: char*) Self {
         return Self { tag: PayloadKind.Text, data: Payload { text_value: text } };

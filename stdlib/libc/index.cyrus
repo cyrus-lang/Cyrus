@@ -83,18 +83,18 @@ pub extern(c) {
 // stdlib
 
 pub repr(c) struct CDivResult {
-    quot: types::c_int;
-    rem: types::c_int;
+    quot: types::c_int,
+    rem: types::c_int
 }
 
 pub repr(c) struct CLongDivResult {
-    quot: types::c_long;
-    rem: types::c_long;
+    quot: types::c_long,
+    rem: types::c_long
 }
 
 pub repr(c) struct CLongLongDivResult {
-    quot: types::c_long_long;
-    rem: types::c_long_long;
+    quot: types::c_long_long,
+    rem: types::c_long_long
 }
 
 pub extern(c) {
@@ -355,27 +355,27 @@ pub extern(c) {
 // time 
 
 pub repr(c) struct CTimeSpec {
-    tv_sec: types::c_long;
-    tv_nsec: types::c_long;
+    tv_sec: types::c_long,
+    tv_nsec: types::c_long
 }
 
 pub repr(c) struct CTimeVal {
-    tv_sec: types::c_long;
-    tv_usec: types::c_long;
+    tv_sec: types::c_long,
+    tv_usec: types::c_long
 }
 
 pub repr(c) struct CTm {
-    tm_sec: types::c_int;
-    tm_min: types::c_int;
-    tm_hour: types::c_int;
-    tm_mday: types::c_int;
-    tm_mon: types::c_int;
-    tm_year: types::c_int;
-    tm_wday: types::c_int;
-    tm_yday: types::c_int;
-    tm_isdst: types::c_int;
-    tm_gmtoff: types::c_long;
-    tm_zone: types::c_char*;
+    tm_sec: types::c_int,
+    tm_min: types::c_int,
+    tm_hour: types::c_int,
+    tm_mday: types::c_int,
+    tm_mon: types::c_int,
+    tm_year: types::c_int,
+    tm_wday: types::c_int,
+    tm_yday: types::c_int,
+    tm_isdst: types::c_int,
+    tm_gmtoff: types::c_long,
+    tm_zone: types::c_char*
 }
 
 pub extern(c) {
@@ -437,30 +437,30 @@ pub const SIGTTOU: types::c_int = 22;
 // locale
 
 pub repr(c) struct CLocaleConv {
-    decimal_point: types::c_char*;
-    thousands_sep: types::c_char*;
-    grouping: types::c_char*;
-    int_curr_symbol: types::c_char*;
-    currency_symbol: types::c_char*;
-    mon_decimal_point: types::c_char*;
-    mon_thousands_sep: types::c_char*;
-    mon_grouping: types::c_char*;
-    positive_sign: types::c_char*;
-    negative_sign: types::c_char*;
-    int_frac_digits: types::c_char;
-    frac_digits: types::c_char;
-    p_cs_precedes: types::c_char;
-    p_sep_by_space: types::c_char;
-    n_cs_precedes: types::c_char;
-    n_sep_by_space: types::c_char;
-    p_sign_posn: types::c_char;
-    n_sign_posn: types::c_char;
-    int_p_cs_precedes: types::c_char;
-    int_p_sep_by_space: types::c_char;
-    int_n_cs_precedes: types::c_char;
-    int_n_sep_by_space: types::c_char;
-    int_p_sign_posn: types::c_char;
-    int_n_sign_posn: types::c_char;
+    decimal_point: types::c_char*,
+    thousands_sep: types::c_char*,
+    grouping: types::c_char*,
+    int_curr_symbol: types::c_char*,
+    currency_symbol: types::c_char*,
+    mon_decimal_point: types::c_char*,
+    mon_thousands_sep: types::c_char*,
+    mon_grouping: types::c_char*,
+    positive_sign: types::c_char*,
+    negative_sign: types::c_char*,
+    int_frac_digits: types::c_char,
+    frac_digits: types::c_char,
+    p_cs_precedes: types::c_char,
+    p_sep_by_space: types::c_char,
+    n_cs_precedes: types::c_char,
+    n_sep_by_space: types::c_char,
+    p_sign_posn: types::c_char,
+    n_sign_posn: types::c_char,
+    int_p_cs_precedes: types::c_char,
+    int_p_sep_by_space: types::c_char,
+    int_n_cs_precedes: types::c_char,
+    int_n_sep_by_space: types::c_char,
+    int_p_sign_posn: types::c_char,
+    int_n_sign_posn: types::c_char
 }
 
 pub extern(c) {

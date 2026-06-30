@@ -3,12 +3,12 @@
 import std::libc{printf};
 
 struct Box<T> {
-  value: T;
+  value: T
 }
 
 struct KV<K, V> {
-  key: K;
-  val: V;
+  key: K,
+  val: V
 }
 
 pub fn main() {
