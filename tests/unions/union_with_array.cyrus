@@ -2,12 +2,12 @@
 
 import std::libc{printf};
 
-union Buffer {
+union Payload {
     bytes: char*;
     data: int[3];
 }
 
 pub fn main() {
-    var buf = Buffer { data: int[3]{1, 2, 3} };
-    printf("%d %d %d\n", buf.data[0], buf.data[1], buf.data[2]);
+    var p = Payload { data: int[3]{1, 2, 3} };
+    printf("%d %d %d\n", p.data[0], p.data[1], p.data[2]);
 }
