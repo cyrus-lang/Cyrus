@@ -3,8 +3,8 @@
 import std::libc{printf};
 
 struct Point {
-    pub x: int;
-    pub y: int;
+    pub x: int,
+    pub y: int
 }
 
 pub fn main() {

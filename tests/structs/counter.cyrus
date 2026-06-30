@@ -3,7 +3,7 @@
 import std::libc{printf};
 
 struct Counter {
-    pub count: int;
+    pub count: int,
 
     pub fn new(initial: int) Self { 
         return Self { count: initial };

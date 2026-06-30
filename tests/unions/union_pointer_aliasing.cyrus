@@ -3,8 +3,8 @@
 import std::libc{printf};
 
 union Union {
-    p: char*;
-    i: int64;
+    p: char*,
+    i: int64
 }
 
 pub fn main() {

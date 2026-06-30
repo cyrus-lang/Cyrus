@@ -49,9 +49,9 @@ pub struct LibcAllocator : Allocator {
 }
 
 pub struct BumpAllocator : Allocator {
-	ptr: void*;
-	cap: usize;
-	offset: usize;
+	ptr: void*,
+	cap: usize,
+	offset: usize,
 
 	pub inline fn new(ptr: void*, size: usize) Self {
 		return Self{

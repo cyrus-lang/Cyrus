@@ -3,9 +3,9 @@
 import std::libc{printf};
 
 struct Triple<A, B, C> {
-    pub first: A;
-    pub second: B;
-    pub third: C;
+    pub first: A,
+    pub second: B,
+    pub third: C,
 
     pub fn new(a: A, b: B, c: C) Self {
         return Self { first: a, second: b, third: c };

@@ -3,7 +3,7 @@
 import std::libc{printf};
 
 struct Wrapper<T> {
-    pub value: T;
+    pub value: T
 }
 
 pub fn main() {

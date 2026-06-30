@@ -9,9 +9,9 @@ import std::path{Path};
 import std::libc;
 
 pub struct File {
-    path: Path*;
-    file: c_file*;
-    mode: OpeningModes;
+    path: Path*,
+    file: c_file*,
+    mode: OpeningModes,
     
     pub fn open(const path: const Path*, const mode: OpeningModes) ErrorOr<Self, ErrorStr> {        
         const path_str = path->as_string_const().as_str_const();

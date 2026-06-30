@@ -3,8 +3,8 @@
 import std::libc{printf};
 
 struct IOError<V, E = uint64> {
-    pub value: V;
-    pub error: E;
+    pub value: V,
+    pub error: E,
 
     pub fn new(const value: V, const error: E) Self {
         return Self { value, error };

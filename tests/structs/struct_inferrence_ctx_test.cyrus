@@ -3,8 +3,8 @@
 import std::libc{printf};
 
 struct Record<K, V> {
-	key: K;
-	value: V;
+	key: K,
+	value: V,
 
 	pub fn new(const key: K, const value: V) Self {
 		return Self{key, value};

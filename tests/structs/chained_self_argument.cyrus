@@ -3,8 +3,8 @@
 import std::libc { printf };
 
 struct Object {
-    pub ptr: usize*;
-    pub counter: usize;
+    pub ptr: usize*,
+    pub counter: usize,
 
     pub fn new(ptr: usize*) Self {
         return Self {

@@ -4,8 +4,8 @@ import std::mem{Allocator, BumpAllocator};
 import std::libc{printf, malloc, free};
 
 struct Object {
-    allocator: Allocator;
-    sum: usize;
+    allocator: Allocator,
+    sum: usize,
 
     pub fn new(const allocator: Allocator) Self { 
         return Self { allocator, sum: 0 };

@@ -92,9 +92,6 @@ impl<'a> AnalysisContext<'a> {
 
             // named <-> named
             (SemaType::Named(named_type1), SemaType::Named(named_type2)) => {
-                dbg!(named_type1.clone());
-                dbg!(named_type2.clone());
-
                 self.is_named_type_assignable_to(named_type1, named_type2, loc)
             }
 

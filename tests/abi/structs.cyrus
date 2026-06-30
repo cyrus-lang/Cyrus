@@ -5,8 +5,8 @@ import std::libc{printf};
 import std::libc::types{c_int, c_float, c_double, c_long};
 
 repr(c) struct Pair {
-    pub a: c_int;
-    pub b: c_int;
+    pub a: c_int,
+    pub b: c_int
 }
 
 extern(c) fn make_pair(a: c_int, b: c_int) Pair;
@@ -14,60 +14,60 @@ extern(c) fn make_pair(a: c_int, b: c_int) Pair;
 extern(c) fn sum_pair(pair: Pair) c_int;
 
 repr(c) struct FloatPair {
-    pub a: c_float;
-    pub b: c_float;
+    pub a: c_float,
+    pub b: c_float
 }
 
 extern(c) fn sum_float_pair(float_pair: FloatPair) c_float;
 
 repr(c) struct MixedIntegerSSE {
-    pub a: c_int;
-    pub b: c_double;
+    pub a: c_int,
+    pub b: c_double
 }
 
 extern(c) fn sum_mixed_integer_sse(mixed_integer_sse: MixedIntegerSSE) c_double;
 
 repr(c) struct LargeStruct {
-    pub a: c_int;
-    pub b: c_int;
-    pub c: c_float;
-    pub d: c_double;
-    pub ptr: c_int*;
+    pub a: c_int,
+    pub b: c_int,
+    pub c: c_float,
+    pub d: c_double,
+    pub ptr: c_int*
 }
 
 extern(c) fn print_large_struct(v: LargeStruct) c_double;
 
 repr(c) struct TripleStruct {
-    pub a: c_long;
-    pub b: c_long;
-    pub c: c_long;
+    pub a: c_long,
+    pub b: c_long,
+    pub c: c_long
 }
 
 extern(c) fn make_triple(a: c_long, b: c_long, c: c_long) TripleStruct;
 
 repr(c) struct NestedStructInner {
-    pub x: c_int;
-    pub y: c_int;
+    pub x: c_int,
+    pub y: c_int,
 }
 
 repr(c) struct NestedStructOuter {
-    pub inner: NestedStructInner;
-    pub z: c_double;
+    pub inner: NestedStructInner,
+    pub z: c_double
 }
 
 extern(c) fn nested_struct_sum(outer: NestedStructOuter) c_double;
 
 repr(c) struct Float4 {
-    a: c_float;
-    b: c_float;
-    c: c_float;
-    d: c_float;
+    a: c_float,
+    b: c_float,
+    c: c_float,
+    d: c_float
 }
 
 extern(c) fn sum_float4(v: Float4) c_float;
 
 repr(c) struct Cross {
-    a: c_int[3];
+    a: c_int[3]
 }
 
 extern(c) fn cross_sum(cross: Cross) c_int;

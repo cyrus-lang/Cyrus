@@ -5,8 +5,8 @@ import std::mem{Allocator, LibcAllocator};
 import std::option{Option};
 
 pub struct SinglyNode<T> {
-    pub next: SinglyNode<T>*;
-    pub value: T;
+    pub next: SinglyNode<T>*,
+    pub value: T,
 
     /// Insert a new node after the current one.
     pub fn insert_after(&self, new_node: SinglyNode<T>*) {
@@ -18,7 +18,7 @@ pub struct SinglyNode<T> {
 }
 
 pub struct SinglyLinkedList<T> {
-    pub first: SinglyNode<T>*;
+    pub first: SinglyNode<T>*,
 
     pub fn new(const allocator: Allocator) Self {
         return Self { first: null };

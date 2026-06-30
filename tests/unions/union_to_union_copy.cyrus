@@ -3,9 +3,9 @@
 import std::libc{printf};
 
 union PaddedUnion {
-    a: int32;
-    b: int64;
-    c: int8[12];
+    a: int32,
+    b: int64,
+    c: int8[12]
 }
 
 pub fn main() {

@@ -632,7 +632,11 @@ impl<'source_file> Parser<'source_file> {
             loc: Loc::new(self.file_id(), line, column, start, end),
         };
 
-        self.expect_semicolon()?;
+        if self.current_token_is(TokenKind::RightBrace) {
+            return Ok(field);
+        }
+
+        self.expect_current(TokenKind::Comma)?;
 
         Ok(field)
     }
@@ -942,7 +946,12 @@ impl<'source_file> Parser<'source_file> {
             loc: Loc::new(self.file_id(), line, column, start, end),
         };
 
-        self.expect_semicolon()?;
+        if self.current_token_is(TokenKind::RightBrace) {
+            return Ok(field);
+        }
+
+        self.expect_current(TokenKind::Comma)?;
+
         Ok(field)
     }
 
@@ -1979,7 +1988,7 @@ impl<'source_file> Parser<'source_file> {
 
                     let stmts = self.parse_stmt(None, false)?;
                     self.next_token();
-                    
+
                     let end = self.current_token().loc.end;
 
                     default_case = Some(ASTBlockStmt {
