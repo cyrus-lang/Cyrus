@@ -437,8 +437,8 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         }
 
         let struct_type = self.tctx.get_struct(type_id);
-        let name = struct_type.name.as_deref().unwrap_or(".anon");
-        let llvm_struct_type = self.llvm_ctx.opaque_struct_type(name);
+        let name = format!("{}.{}", struct_type.name.as_deref().unwrap_or(".anon"), type_id);
+        let llvm_struct_type = self.llvm_ctx.opaque_struct_type(&name);
         self.type_cache.insert_struct(type_id, llvm_struct_type);
 
         let layout = self.tctx.get_or_compute_layout(type_id);
@@ -486,8 +486,8 @@ impl<'ll> CodeGenIRBuilder<'ll> {
             return llvm_basic_type;
         } else {
             // cyrus special enum
-            let name = enum_type.name.as_deref().unwrap_or(".anon");
-            let llvm_struct_type = self.llvm_ctx.opaque_struct_type(name);
+            let name = format!("{}.{}", enum_type.name.as_deref().unwrap_or(".anon"), type_id);
+            let llvm_struct_type = self.llvm_ctx.opaque_struct_type(&name);
             self.type_cache
                 .insert_enum(type_id, llvm_struct_type.as_basic_type_enum());
 
@@ -506,8 +506,8 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         }
 
         let union_type = self.tctx.get_union(type_id);
-        let name = union_type.name.as_deref().unwrap_or(".anon");
-        let llvm_struct = self.llvm_ctx.opaque_struct_type(name);
+        let name = format!("{}.{}", union_type.name.as_deref().unwrap_or(".anon"), type_id);
+        let llvm_struct = self.llvm_ctx.opaque_struct_type(&name);
         self.type_cache.insert_union(type_id, llvm_struct);
 
         let layout = self.tctx.get_or_compute_layout(type_id);
