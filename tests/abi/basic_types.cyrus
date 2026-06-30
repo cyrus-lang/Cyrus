@@ -4,13 +4,13 @@
 import std::libc{printf};
 import std::libc::types{c_int, c_long, c_float, c_double};
 
-extern "C" fn add_ints(a: c_int, b: c_int) c_int;
+extern(c) fn add_ints(a: c_int, b: c_int) c_int;
 
-extern "C" fn add_longs(a: c_long, b: c_long) c_long;
+extern(c) fn add_longs(a: c_long, b: c_long) c_long;
 
-extern "C" fn add_doubles(a: c_double, b: c_double) c_double;
+extern(c) fn add_doubles(a: c_double, b: c_double) c_double;
 
-extern "C" fn add_floats(a: c_float, b: c_float) c_float;
+extern(c) fn add_floats(a: c_float, b: c_float) c_float;
 
 pub fn main() {
     printf("add_ints=%d ", add_ints(2, 3));

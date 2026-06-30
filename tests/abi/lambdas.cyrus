@@ -10,7 +10,7 @@ const handler = fn(x: c_double, y: c_double) c_double {
     return x + y;
 };
 
-extern "C" fn call_callback_fn(cbk: CallbackFn);
+extern(c) fn call_callback_fn(cbk: CallbackFn);
 
 pub fn main() {
     call_callback_fn(handler);

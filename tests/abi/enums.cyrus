@@ -10,7 +10,7 @@ repr(c) enum Color {
     Blue = 3
 }
 
-extern "C" fn enum_color(color: Color) c_int;
+extern(c) fn enum_color(color: Color) c_int;
 
 pub fn main() {
     const color = Color.Red;

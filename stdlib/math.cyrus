@@ -3,7 +3,7 @@
 
 import std::libc::types;
 
-pub extern "C" {
+pub extern(c) {
     fn sin(x: types::c_double) types::c_double;
     fn sinf(x: types::c_float) types::c_float;
     fn sinl(x: types::c_long_double) types::c_long_double;

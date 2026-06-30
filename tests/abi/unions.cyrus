@@ -10,7 +10,7 @@ repr(c) union UnionPayload {
     float_value: c_float;
 }
 
-extern "C" fn display_union_payload(payload: UnionPayload, kind: c_int);
+extern(c) fn display_union_payload(payload: UnionPayload, kind: c_int);
 
 repr(c) struct WithNestedUnion {
     pub tag: c_int;
@@ -20,7 +20,7 @@ repr(c) struct WithNestedUnion {
     };
 }
 
-extern "C" fn nested_union(v: WithNestedUnion) c_double;
+extern(c) fn nested_union(v: WithNestedUnion) c_double;
 
 repr(c) union WithNestedStruct {
     id: c_int;
@@ -30,7 +30,7 @@ repr(c) union WithNestedStruct {
     };
 }
 
-extern "C" fn nested_struct_inside_union(v: WithNestedStruct, use_struct: c_int) c_double;
+extern(c) fn nested_struct_inside_union(v: WithNestedStruct, use_struct: c_int) c_double;
 
 pub fn main() {
     display_union_payload(union { int_value: 10 }, 1);

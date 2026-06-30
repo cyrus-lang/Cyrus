@@ -4,11 +4,11 @@
 import std::libc{printf};
 import std::libc::types{c_int, c_long};
 
-extern "C" const global_counter: c_int;
+extern(c) const global_counter: c_int;
 
-extern "C" fn get_global() c_int;
+extern(c) fn get_global() c_int;
 
-extern "C" fn set_global(v: c_int);
+extern(c) fn set_global(v: c_int);
 
 pub fn main() {
     const local_counter = global_counter;
