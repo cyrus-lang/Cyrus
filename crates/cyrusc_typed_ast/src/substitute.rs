@@ -153,7 +153,6 @@ pub fn instantiate_struct_decl_with_type_args(struct_decl: &StructDecl, type_arg
         modifiers: struct_decl.modifiers.clone(),
         align: struct_decl.align,
         loc: struct_decl.loc,
-
         is_normalized: true,
     }
 }
@@ -180,7 +179,6 @@ pub fn instantiate_union_decl_with_type_args(union_decl: &UnionDecl, type_args: 
         modifiers: union_decl.modifiers.clone(),
         align: union_decl.align,
         loc: union_decl.loc,
-
         is_normalized: true,
     }
 }
@@ -241,7 +239,6 @@ pub fn instantiate_enum_decl_with_type_args(enum_decl: &EnumDecl, type_args: &Ty
         tag_type: enum_decl.tag_type.clone(),
         align: enum_decl.align,
         loc: enum_decl.loc,
-
         is_normalized: true,
     }
 }

@@ -433,7 +433,7 @@ pub struct TypedGenericParam {
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]
 pub struct TypedTypeArgs(pub Vec<TypedTypeArg>);
 
-#[derive(Debug, Clone, Eq, PartialEq)]
+#[derive(Debug, Clone, Eq)]
 pub enum TypedTypeArg {
     Type(SemaType, Loc),
     Infer,
@@ -471,6 +471,11 @@ impl TypedGenericParams {
         let mut inst = self.0.clone();
         inst.extend(other.0);
         Self(inst)
+    }
+
+    #[inline]
+    pub fn contains(&self, id: &GenericParamID) -> bool {
+        self.0.contains(id)
     }
 }
 
@@ -870,6 +875,16 @@ impl PartialEq for TypedTupleExpr {
 impl PartialEq for TypedTupleAccessExpr {
     fn eq(&self, other: &Self) -> bool {
         self.operand == other.operand && self.index == other.index
+    }
+}
+
+impl PartialEq for TypedTypeArg {
+    fn eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (TypedTypeArg::Type(ty1, ..), TypedTypeArg::Type(ty2, ..)) => ty1 == ty2,
+            (TypedTypeArg::Infer, TypedTypeArg::Infer) => true,
+            _ => false,
+        }
     }
 }
 
