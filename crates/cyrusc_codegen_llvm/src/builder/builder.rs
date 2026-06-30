@@ -117,13 +117,14 @@ impl<'ll> CodeGenIRBuilder<'ll> {
             CIRStmt::Variable(var_stmt) => self.emit_var(var_stmt),
             CIRStmt::FuncDef(func_def_stmt) => {
                 let func_decl = cir_func_def_as_decl(func_def_stmt);
-                let cir_func_ty = cir_func_decl_as_func_type(&func_decl);
+                let cir_func_type = cir_func_decl_as_func_type(&func_decl);
                 let llvm_func_value = self.emit_func_decl(&func_decl);
+
                 self.set_current_func(llvm_func_value, func_def_stmt.abi_func_info.clone().unwrap());
 
                 let func_meta = {
                     if self.dctx.is_some() {
-                        Some(self.emit_func_meta(&cir_func_ty))
+                        Some(self.emit_func_meta(&cir_func_type))
                     } else {
                         None
                     }

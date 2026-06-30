@@ -13,8 +13,10 @@ pub fn main() {
     name.trim();
 
     const str = name.as_str_const();
-    
-    @assert(str[name.len()] == '\0');
 
-    printf("%s, %d\n", str, name.len());
+    for (var i: usize = 0; i < name.len(); i++) {
+        printf("%c", str[i]);
+    }
+
+    printf(", %d\n", name.len());
 }

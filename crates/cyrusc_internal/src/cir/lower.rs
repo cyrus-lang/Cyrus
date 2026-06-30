@@ -172,7 +172,7 @@ pub fn lower_named_type(
             let typedef = decl_tables.typedef_decl(typedef_decl_id);
 
             lower_sema_type(decl_tables, target, tctx, &typedef.ty)
-        },
+        }
     }
 }
 
@@ -211,12 +211,10 @@ pub fn lower_struct_type(
         type_args.clone(),
     );
 
-    let registered_id = tctx.insert_struct(struct_type.clone());
-
     // replace placeholder with real type
     tctx.update_def(type_id, CIRTypeDef::Struct(struct_type));
 
-    CIRType::Struct(registered_id)
+    CIRType::Struct(type_id)
 }
 
 pub fn lower_union_type(
@@ -247,12 +245,10 @@ pub fn lower_union_type(
 
     let union_type = lower_union_decl(decl_tables, target, tctx.clone(), union_decl_id, union_decl, type_args);
 
-    let registered_id = tctx.insert_union(union_type.clone());
-
     // replace placeholder with real type
     tctx.update_def(type_id, CIRTypeDef::Union(union_type));
 
-    CIRType::Union(registered_id)
+    CIRType::Union(type_id)
 }
 
 pub fn lower_enum_type(
@@ -283,12 +279,10 @@ pub fn lower_enum_type(
 
     let enum_type = lower_enum_decl(decl_tables, target, tctx.clone(), enum_decl_id, enum_decl, type_args);
 
-    let registered_id = tctx.insert_enum(enum_type.clone());
-
     // replace placeholder with real type
     tctx.update_def(type_id, CIRTypeDef::Enum(enum_type));
 
-    CIRType::Enum(registered_id)
+    CIRType::Enum(type_id)
 }
 
 fn lower_struct_decl(

@@ -30,7 +30,7 @@ use inkwell::{
         prelude::{LLVMBasicBlockRef, LLVMValueRef},
     },
     types::{BasicTypeEnum, StructType},
-    values::{AsValueRef, BasicValueEnum, FunctionValue, InstructionOpcode, IntValue},
+    values::{AsValueRef, BasicValue, BasicValueEnum, FunctionValue, InstructionOpcode, IntValue},
 };
 use inkwell::{
     llvm_sys::{
@@ -208,10 +208,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         }
     }
 
-    fn emit_switch_on_enum(&mut self, switch_stmt: &CIRSwitchStmt) {
-        let lvalue = self.emit_expr(&switch_stmt.value, &None);
-        let rvalue = self.load_rvalue(lvalue);
-
+    fn emit_switch_on_enum(&mut self, rvalue: &InternalValue<'ll>, switch_stmt: &CIRSwitchStmt) {
         let type_id = rvalue.ty.as_type_id().unwrap();
         let enum_type = rvalue.ty.as_enum(&self.tctx).unwrap();
 
@@ -285,7 +282,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
                         // reinterpret payload buffer
                         let enum_payload = self.extract_enum_payload(enum_struct_value);
 
-                        let alloca = self.llvmbuilder.build_alloca(llvm_type, "reinterpret.variant").unwrap();
+                        let alloca = self.llvmbuilder.build_alloca(llvm_type, "enum.variant.cast").unwrap();
 
                         self.llvmbuilder.build_store(alloca, enum_payload).unwrap();
 
@@ -381,7 +378,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
 
                 self.emit_switch_on_scalar_enum(switch_stmt, enum_value);
             } else {
-                self.emit_switch_on_enum(switch_stmt);
+                self.emit_switch_on_enum(&rvalue, switch_stmt);
             }
             return;
         }
@@ -770,6 +767,18 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         let cur_abi_func_info = self.cur_abi_func_info.clone().unwrap();
         let ret_info = &cur_abi_func_info.ret_info;
 
+        // emit implicit return zero, if main function has void return type
+        if let Some(cir_main) = &self.cir_module.main_function
+            && let Some(ir_value) = self.lookup_local_ir_value(cir_main.irv_id)
+            && let Some(main_fn) = ir_value.as_func()
+        {
+            if *main_fn == cur_fn {
+                // emit implicit return zero
+                self.emit_implicit_return_zero();
+                return;
+            }
+        }
+
         match (&return_stmt.arg, &ret_info.kind) {
             (None, _) => {
                 self.emit_all_defers();
@@ -781,6 +790,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
 
                 self.llvmbuilder.build_return(None).unwrap();
             }
+
             (Some(expr), ABIRetInfoKind::Indirect { sret }) => {
                 let lvalue = self.emit_expr(expr, &Some(*ret_info.cir_ret_type.clone()));
                 let rvalue = self.load_rvalue(lvalue.clone());
@@ -820,6 +830,52 @@ impl<'ll> CodeGenIRBuilder<'ll> {
                 self.emit_all_defers();
                 self.llvmbuilder.build_return(Some(&return_value)).unwrap();
             }
+        }
+    }
+
+    fn emit_implicit_return_zero(&mut self) {
+        if let Some(cur_block) = &self.blockreg.cur_block {
+            self.llvmbuilder.position_at_end(*cur_block);
+            if cur_block.get_terminator().is_some() {
+                return;
+            }
+
+            let cir_ret_type = self.zero_return_type_for_void_main_function();
+            let llvm_ret_type: BasicTypeEnum<'ll> = self.emit_type(cir_ret_type).try_into().unwrap();
+
+            let zero_int = llvm_ret_type.const_zero();
+
+            self.llvmbuilder
+                .build_return(Some(&zero_int.as_basic_value_enum()))
+                .unwrap();
+        }
+    }
+
+    pub(crate) fn ensure_void_function_terminated(&mut self) {
+        let cur_fn = self.cur_func.unwrap();
+
+        if let Some(cir_main) = &self.cir_module.main_function
+            && let Some(ir_value) = self.lookup_local_ir_value(cir_main.irv_id)
+        {
+            let main_fn = ir_value.as_func().unwrap();
+
+            // detect ABI wrapped main function
+            // and emit implicit return zero instructionn
+            if *main_fn == cur_fn && cir_main.actual_ret_type.is_void() {
+                self.emit_all_defers();
+                self.emit_implicit_return_zero();
+                return;
+            }
+        }
+
+        if let Some(cur_block) = &self.blockreg.cur_block {
+            self.llvmbuilder.position_at_end(*cur_block);
+            if cur_block.get_terminator().is_some() {
+                return;
+            }
+
+            self.emit_all_defers();
+            self.llvmbuilder.build_return(None).unwrap();
         }
     }
 

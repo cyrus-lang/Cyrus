@@ -128,8 +128,6 @@ impl CodeGenLLVM {
             optimize_module_with_custom_passes(&llvm_module, opt_level).unwrap();
         }
 
-        tui_compiled(cir_module.file_path.clone());
-
         if let Some(dctx) = &dctx {
             unsafe { finalize_debug(&dctx) };
             let llvm_module = owned_module.module.borrow();
@@ -139,6 +137,10 @@ impl CodeGenLLVM {
             if let Err(err) = llvm_module.verify() {
                 eprintln!("LLVM Module Error: {}", err)
             }
+        }
+
+        if !self.opts.quiet {
+            tui_compiled(cir_module.file_path.clone());
         }
     }
 

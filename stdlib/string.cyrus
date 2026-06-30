@@ -1,62 +1,62 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 The Cyrus Language
 
-import std::libc{strlen, strcmp, memmove, isspace, tolower, toupper};
+import std::libc{strlen, strcmp, memmove, isspace, tolower, toupper, printf};
 import std::mem{Allocator};
-import std::mem::buffer{Buffer};
+import std::collections{Vector};
 
 pub struct String {
-    buffer: Buffer<char>;
+    vec: Vector<char>;
 
     pub fn new(const allocator: Allocator) Self {
-        var buffer: Buffer<char> = Buffer.new(allocator);
+        var vec: Vector<char> = Vector.new(allocator);
 
-        buffer.push('\0'); // null-terminated
+        vec.push('\0'); // null-terminated
 
-        return Self { buffer };
+        return Self { vec };
     }
 
-    // TODO: Add method: From slice.
+    pub fn with_capacity(const allocator: Allocator, const cap: usize) Self {
+        var vec: Vector<char> = Vector.with_capacity(allocator, cap);
+
+        vec.push('\0');
+        
+        return Self { vec };
+    }
 
     pub fn from_str(const allocator: Allocator, const str: const char*) Self {
         @assert(str != null, "input string cannot be null");
 
         const len = strlen(str);
 
-        var buffer: Buffer<char> = Buffer.new(allocator);
+        var vec: Vector<char> = Vector.new(allocator);
 
         for (var i: usize = 0; i < len; i++) {
-            buffer.push(str[i]);
+            vec.push(str[i]);
         }
 
-        buffer.push('\0');
+        vec.push('\0');
         
-        return Self { buffer };
+        return Self { vec };
     }
 
-    pub fn with_capacity(const allocator: Allocator, const cap: usize) Self {
-        var buffer: Buffer<char> = Buffer.with_capacity(allocator, cap);
-
-        buffer.push('\0');
-        
-        return Self { buffer };
-    }
+    // TODO: Add method: From slice.
 
     pub fn reserve(&self, const extra: usize) {
         const required = self->len() + extra + 1;
-
+        
         if (required > self->cap()) {
-            self->buffer.reserve(required);
+            self->vec.reserve(required);
         }
     }
 
     pub fn push(&self, const ch: char) {        
-        var data = self->buffer.data();
+        var data = self->vec.data();
         var current = &data[self->len()];
 
         *current = ch;
 
-        self->buffer.push('\0');
+        self->vec.push('\0');
     }
 
     pub fn push_str(&self, const str: char*) {
@@ -64,15 +64,15 @@ pub struct String {
 
         const len = strlen(str);
 
-        self->buffer.pop();
+        self->vec.pop();
 
         self->reserve(len);
 
         for (var i: usize = 0; i < len; i++) {
-            self->buffer.push(str[i]);
+            self->vec.push(str[i]);
         }
         
-        self->buffer.push('\0');
+        self->vec.push('\0');
     }
     
     // TODO: Add method: replace
@@ -84,42 +84,49 @@ pub struct String {
 
     pub fn trim_start(&self) {
         const str = self->as_str_const();
-        const len = self->buffer.len();
+        const len = self->vec.len();
 
-        // count whitespace
-        var j: usize;
-        while (j < len && isspace(str[j]) != 0) {
-            j++;
+        var start: usize = 0;
+        while (start < len - 1 && isspace(str[start]) != 0) {
+            start++;
         }
 
-        // move string to starting point
-        const n = len - j;
+        if (start == 0) {
+            return;
+        }
 
-        memmove(str, str + j, n);
+        if (start >= len - 1) {
+            self->clear();
+            return;
+        }
 
-        while (j > 0) {
-            self->buffer.pop();
-            j--;
+        const n = len - start;
+        memmove(@cast(void*, str), @cast(const void*, str + start), n);
+
+        while (start > 0) {
+            self->vec.pop();
+            start--;
         }
     }
 
     pub fn trim_end(&self) {
         const str = self->as_str_const();
-        const len = self->buffer.len();
+        var len = self->len();
 
-        for (var i: usize = len - 1; i > 0; i--) {
-            if (isspace(str[i])) {
-                self->buffer.pop();
-            }
+        if (len <= 1) {
+            return;
         }
 
-        self->buffer.push('\0');
+        while (len > 1 && isspace(str[len - 1]) != 0) {
+            self->vec.pop();
+            len--;
+        }
     }
 
     pub fn to_lower(&self) {
         var str = self->as_str();
 
-        for (var i: usize = 0; i < self->buffer.len(); i++) {
+        for (var i: usize = 0; i < self->vec.len(); i++) {
             str[i] = @cast(char, tolower(str[i]));
         }
     }
@@ -127,17 +134,17 @@ pub struct String {
     pub fn to_upper(&self) {
         var str = self->as_str();
 
-        for (var i: usize = 0; i < self->buffer.len(); i++) {
+        for (var i: usize = 0; i < self->vec.len(); i++) {
             str[i] = @cast(char, toupper(str[i]));
         }
     }
 
     pub inline fn as_str(&self) char* {
-        return self->buffer.data();
+        return self->vec.data();
     }
 
     pub inline fn as_str_const(&const self) const char* {
-        return self->buffer.data_const();
+        return self->vec.data_const();
     }
 
     pub inline fn is_empty(&const self) bool {
@@ -145,11 +152,11 @@ pub struct String {
     }
 
     pub inline fn cap(&const self) usize {
-        return self->buffer.cap();
+        return self->vec.cap();
     }
 
     pub inline fn len(&const self) usize {
-        return self->buffer.len() - 1; // exclude '\0'
+        return self->vec.len() - 1; // exclude '\0'
     }
 
     pub inline fn eq(&const self, other: Self*) bool {
@@ -157,11 +164,11 @@ pub struct String {
     }
 
     pub inline fn clear(&self) {
-        self->buffer.clear();
-        self->buffer.push('\0');
+        self->vec.clear();
+        self->vec.push('\0');
     }
 
     pub inline fn free(&self) {
-        self->buffer.free();
+        self->vec.free();
     }
 }

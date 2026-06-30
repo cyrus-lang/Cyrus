@@ -94,7 +94,10 @@ impl CodeGenContext {
 
         self.save_cir_modules_source_hash_in_build_manifest(cir_modules);
 
-        tui_compile_finished();
+        if !self.opts.quiet {
+            tui_compile_finished();
+        }
+
         modules
     }
 

@@ -26,5 +26,5 @@ name = "cyrusc_resolver"
 path = "./src/cli.rs"
 
 [[bin]]
-name = "cyrusc_resolver_debugger"
+name = "cyrusc_resolver_dump"
 path = "./src/debugger_cli.rs"

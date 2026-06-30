@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 The Cyrus Language
 
-import std::libc{memmove, realloc, free};
+import std::libc{memmove, malloc, printf};
 import std::mem{Allocator};
 import std::option{Option};
 import std::iterator{Iterator};
@@ -18,7 +18,9 @@ pub struct Vector<T> {
     pub inline fn new(const allocator: Allocator) Self {
         const cap = initial_array_capacity;
 
-        const data: T* = allocator.alloc(cap * @sizeof(T));
+        // FIXME: Using allocator.alloc instead of malloc causes a crash in the test suite. Need to investigate why.
+        // const data: T* = allocator.alloc(cap * @sizeof(T));
+        const data: T* = malloc(cap * @sizeof(T));
 
         if (!data) {
             @panic("allocation failed");
@@ -34,11 +36,12 @@ pub struct Vector<T> {
 
     /// Pre-allocate memory to avoid initial reallocations.
     pub inline fn with_capacity(const allocator: Allocator, const cap: usize) Self {
-        @debug() {
-            @assert(cap != 0, "initial capacity cannot be zero");
-        }
+        @debug() 
+        @assert(cap != 0, "initial capacity cannot be zero");
 
-        const data: T* = allocator.alloc(cap * @sizeof(T));
+        // FIXME: Using allocator.alloc instead of malloc causes a crash in the test suite. Need to investigate why.
+        // const data: T* = allocator.alloc(cap * @sizeof(T));
+        const data: T* = malloc(cap * @sizeof(T));
 
         if (data == null) {
             @panic("initial allocation failed");
@@ -54,10 +57,8 @@ pub struct Vector<T> {
             self->reserve(original_len);
             
             memmove(
-                // TODO: add integer overflow check 
                 self->data + original_len,
                 self->data,
-                // TODO: add integer overflow check 
                 original_len * @sizeof(T)
             );
 
@@ -74,11 +75,6 @@ pub struct Vector<T> {
             return;
         }
 
-        // TODO: add integer overflow check 
-        // if (count > USIZE_MAX - self->len) {
-        //     @panic("capacity overflow");
-        // }
-
         const old_len = self->len;
 
         self->reserve(count);
@@ -86,11 +82,9 @@ pub struct Vector<T> {
         memmove(
             self->data + old_len,
             ptr,
-            // TODO: add integer overflow check 
             count * @sizeof(T)
         );
 
-        // TODO: add integer overflow check 
         self->len = old_len + count;
     }
 
@@ -121,11 +115,6 @@ pub struct Vector<T> {
         if (required < self->len) {
             @panic("array capacity overflow");
         }
-        
-        // TODO: add integer overflow check 
-        // if (extra > USIZE_MAX - self->len) {
-        //     @panic("capacity overflow");
-        // }
 
         if (required <= self->cap) {
             return;
@@ -179,20 +168,24 @@ pub struct Vector<T> {
         return .None;
     }
 
-    pub inline fn get(&const self, const index: usize) T {
-        if (index >= self->len) {
-            @panic("index out of bounds");
-        }
-
-        return *(self->data + index);
+    pub inline fn get_unchecked(&const self, const index: usize) T* {
+        return self->data + index;
     }
 
-    pub inline fn get_ref(&const self, const index: usize) T* {
+    pub inline fn get(&const self, const index: usize) Option<T> {
         if (index >= self->len) {
-            @panic("index out of bounds");
+            return .None;
         }
 
-        return self->data + index;
+        return .Some(*(self->data + index));
+    }
+
+    pub inline fn get_ref(&const self, const index: usize) Option<T*> {
+        if (index >= self->len) {
+            return .None;
+        }
+
+        return .Some(self->data + index);
     }
 
     pub inline fn contains(&const self, const value: T) bool {
@@ -204,10 +197,6 @@ pub struct Vector<T> {
         }
 
         return false;
-    }
-
-    pub inline fn get_unchecked(&const self, const index: usize) T* {
-        return self->data + index;
     }
 
     pub inline fn len(&const self) usize {
@@ -237,7 +226,6 @@ pub struct Vector<T> {
 
         const value = self->data[index];
 
-        // TODO: add integer overflow check 
         const src = self->data + index + 1;
         const dst = self->data + index;
 
@@ -271,8 +259,7 @@ pub struct Vector<T> {
 
     pub inline fn free(&self) {
         if (self->data != null) {
-            free(self->data);
-
+            self->allocator.free(self->data);
             self->data = null;
             self->len = 0;
             self->cap = 0;
@@ -292,15 +279,10 @@ pub struct Vector<T> {
 
         // exponential growth (2x)
         while (new_cap < min_cap) {
-            // TODO: add integer overflow check 
             new_cap *= 2;
         }
 
-        const new_data: T* = self->allocator.realloc(
-            self->data,
-            // TODO: add integer overflow check 
-            new_cap * @sizeof(T)
-        );
+        const new_data: T* = self->allocator.realloc(self->data, new_cap * @sizeof(T));
 
         if (new_data == null) {
             @panic("realloc failed");

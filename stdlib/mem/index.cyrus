@@ -13,7 +13,7 @@ pub interface Allocator {
 
 pub struct LibcAllocator : Allocator {
 	pub inline fn new() Self {
-		return Self{};
+		return Self {};
 	}
 
 	pub inline fn alloc(&self, size: usize) void* {

@@ -19,12 +19,13 @@ use cyrusc_ast::{
 };
 use cyrusc_internal::{
     abi::{
-        args::{ABIArgInfo, ABIArgKind, ABIFunctionInfo, ExpandKind},
+        args::{ABIArgInfo, ABIArgKind, ABIFunctionInfo, ABIRetInfoKind, ExpandKind},
         types::ABIType,
     },
     cir::{cir::*, types::*},
 };
 use cyrusc_source_loc::Loc;
+use cyrusc_typed_ast::types::PlainType;
 use inkwell::{
     context::AsContextRef,
     llvm_sys::{
@@ -45,7 +46,13 @@ pub(crate) enum FuncCallKind<'ll> {
 // Declaration.
 impl<'ll> CodeGenIRBuilder<'ll> {
     pub(crate) fn emit_func_decl(&mut self, func_decl: &CIRFuncDeclStmt) -> FunctionValue<'ll> {
-        let cir_func_type = cir_func_decl_as_func_type(func_decl);
+        let mut cir_func_type = cir_func_decl_as_func_type(func_decl);
+
+        if let Some(cir_main) = &self.cir_module.main_function
+            && cir_main.irv_id == func_decl.irv_id
+        {
+            self.add_implicit_return_type_to_main_function(&mut cir_func_type);
+        }
 
         let llvm_func_type = self.emit_func_type(cir_func_type.clone());
 
@@ -308,28 +315,10 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         self.blockreg.labels.clear();
         self.emit_func_params(func_params.clone(), abi_func_info);
         self.emit_body(cir_block);
-        self.ensure_void_fn_terminated();
+        self.ensure_void_function_terminated();
 
         if let Some(dctx) = &mut self.dctx {
             dctx.func = parent_dctx_func.unwrap();
-        }
-    }
-
-    pub(crate) fn ensure_void_fn_terminated(&mut self) {
-        let cur_fn = self.cur_func.unwrap();
-
-        if cur_fn.get_type().get_return_type().is_some() {
-            return; // works only for void return type
-        }
-
-        if let Some(cur_block) = &self.blockreg.cur_block {
-            self.llvmbuilder.position_at_end(*cur_block);
-            if cur_block.get_terminator().is_some() {
-                return;
-            }
-
-            self.emit_all_defers();
-            self.llvmbuilder.build_return(None).unwrap();
         }
     }
 }
@@ -399,6 +388,42 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         let name = format!("lambda.{}", id);
         self.lambda_id += 1;
         name
+    }
+}
+
+// Main function.
+impl<'ll> CodeGenIRBuilder<'ll> {
+    fn add_implicit_return_type_to_main_function(&self, cir_func_type: &mut CIRFuncType) {
+        if !(cir_func_type.ret_type.is_integer() || cir_func_type.ret_type.is_void()) {
+            panic!("main function return type must be an integer or void");
+        }
+
+        if cir_func_type.ret_type.is_integer() {
+            return;
+        }
+
+        let cir_ret_type = self.zero_return_type_for_void_main_function();
+        let abi_ret_info = cir_func_type.abi_func_info.as_mut().unwrap();
+
+        let layout = self.tctx.layout_of(&cir_ret_type);
+        let int_width = layout.size * 8;
+
+        cir_func_type.ret_type = Box::new(cir_ret_type.clone());
+        abi_ret_info.ret_info.cir_ret_type = Box::new(cir_ret_type);
+        abi_ret_info.ret_info.abi_type = ABIType::Integer(int_width);
+        abi_ret_info.ret_info.kind = ABIRetInfoKind::Direct { coerce_to: None };
+    }
+
+    pub(crate) fn zero_return_type_for_void_main_function(&self) -> CIRType {
+        let int_bit_width = self.target.info.c_int_bit_width();
+
+        match int_bit_width {
+            16 => CIRType::Plain(PlainType::Int16),
+            32 => CIRType::Plain(PlainType::Int32),
+            64 => CIRType::Plain(PlainType::Int64),
+
+            _ => panic!("unsupported int size: {}", int_bit_width),
+        }
     }
 }
 

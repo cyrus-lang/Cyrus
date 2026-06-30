@@ -17,6 +17,7 @@ use cyrusc_typed_ast::{
     LabelID, VTableID,
     builtins::TypedBuiltinSpec,
     decls::{MethodDecls, MonomorphID},
+    types::PlainType,
 };
 use fx_hash::FxHashMap;
 use std::{fmt::Debug, sync::Arc};
@@ -34,6 +35,13 @@ pub struct CIRModule {
     pub vtable_registry: Arc<VTableRegistry>,
     pub vtable_to_ir_value_map: FxHashMap<VTableID, IRValueID>,
     pub monomorph_to_ir_value_map: FxHashMap<MonomorphID, IRValueID>,
+    pub main_function: Option<CIRMainFunction>,
+}
+
+#[derive(Debug, Clone)]
+pub struct CIRMainFunction {
+    pub irv_id: IRValueID,
+    pub actual_ret_type: CIRType,
 }
 
 #[derive(Debug, Clone)]
@@ -498,6 +506,20 @@ pub struct CIRGotoStmt {
 pub struct CIRDeferStmt {
     pub operand: Box<CIRStmt>,
     pub loc: Loc,
+}
+
+/// Creates a zero literal of the appropriate integer type for the target.
+pub fn cir_signed_int_literal(plain_type: PlainType, loc: Loc) -> CIRExpr {
+    let ty = CIRType::Plain(plain_type);
+
+    CIRExpr {
+        kind: CIRExprKind::Literal(CIRLiteral {
+            kind: CIRLiteralKind::Integer(IntLiteralKind::Signed(0), true),
+            ty: ty.clone(),
+        }),
+        ty,
+        loc,
+    }
 }
 
 #[inline]

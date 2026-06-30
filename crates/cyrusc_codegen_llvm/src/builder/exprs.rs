@@ -234,13 +234,13 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         let lhs_ptr = if lhs_lvalue.as_basic_value().is_pointer_value() {
             lhs_lvalue.as_basic_value().into_pointer_value()
         } else {
-            let reg_val = lhs_lvalue.as_basic_value();
-            let spill = self
-                .llvmbuilder
-                .build_alloca(reg_val.get_type(), "assign.spill")
-                .unwrap();
-            self.llvmbuilder.build_store(spill, reg_val).unwrap();
-            spill
+            let value = lhs_lvalue.as_basic_value();
+
+            let alloca = self.llvmbuilder.build_alloca(value.get_type(), "assign.cast").unwrap();
+
+            self.llvmbuilder.build_store(alloca, value).unwrap();
+
+            alloca
         };
 
         self.llvmbuilder
@@ -503,7 +503,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
             for (i, elem) in elements.iter().enumerate() {
                 val = self
                     .llvmbuilder
-                    .build_insert_value(val, *elem, i as u32, "insert")
+                    .build_insert_value(val, *elem, i as u32, "array.insert")
                     .unwrap()
                     .into_array_value();
             }
@@ -514,7 +514,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
             for (i, elem) in elements.iter().enumerate() {
                 value = self
                     .llvmbuilder
-                    .build_insert_value(value, *elem, i as u32, "insert")
+                    .build_insert_value(value, *elem, i as u32, "array.insert")
                     .unwrap()
                     .into_array_value();
             }
@@ -530,11 +530,11 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         let ptr = match operand.kind {
             InternalValueKind::LValue(ptr) => ptr,
             InternalValueKind::RValue(val) => {
-                let spill_alloca = self.llvmbuilder.build_alloca(val.get_type(), "addr.spill").unwrap();
-                self.llvmbuilder.build_store(spill_alloca, val).unwrap();
-                spill_alloca
+                let alloca = self.llvmbuilder.build_alloca(val.get_type(), "addr.cast").unwrap();
+                self.llvmbuilder.build_store(alloca, val).unwrap();
+                alloca
             }
-            _ => unreachable!("Cannot take the address of a function or undefined value"),
+            _ => unreachable!("cannot take the address of a function or undefined value"),
         };
 
         InternalValue::new(
@@ -547,12 +547,11 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         let array_ptr = match array_lvalue.kind {
             InternalValueKind::LValue(ptr) => ptr,
             InternalValueKind::RValue(val) => {
-                let spill_alloca = self
-                    .llvmbuilder
-                    .build_alloca(val.get_type(), "array.decay.spill")
-                    .unwrap();
-                self.llvmbuilder.build_store(spill_alloca, val).unwrap();
-                spill_alloca
+                let alloca = self.llvmbuilder.build_alloca(val.get_type(), "array.decay").unwrap();
+
+                self.llvmbuilder.build_store(alloca, val).unwrap();
+
+                alloca
             }
             _ => unreachable!("Cannot decay a non-LValue/RValue array"),
         };
@@ -647,9 +646,9 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         let lvalue_ptr = match lvalue.kind {
             InternalValueKind::LValue(ptr) => ptr,
             InternalValueKind::RValue(val) => {
-                let spill = self.llvmbuilder.build_alloca(val.get_type(), "unary.spill").unwrap();
-                self.llvmbuilder.build_store(spill, val).unwrap();
-                spill
+                let alloca = self.llvmbuilder.build_alloca(val.get_type(), "unary.cast").unwrap();
+                self.llvmbuilder.build_store(alloca, val).unwrap();
+                alloca
             }
             _ => unreachable!("Cannot perform unary operation on non-LValue/RValue"),
         };
@@ -1393,14 +1392,11 @@ impl<'ll> CodeGenIRBuilder<'ll> {
 
         let union_ptr = match operand.kind {
             InternalValueKind::LValue(ptr) => ptr,
-
-            // RValue spill to stack
             InternalValueKind::RValue(basic_val) => {
-                let temp = self.llvmbuilder.build_alloca(union_type, "union.temp").unwrap();
-                self.llvmbuilder.build_store(temp, basic_val).unwrap();
-                temp
+                let alloca = self.llvmbuilder.build_alloca(union_type, "union.temp").unwrap();
+                self.llvmbuilder.build_store(alloca, basic_val).unwrap();
+                alloca
             }
-
             _ => unreachable!(),
         };
 
@@ -1450,23 +1446,16 @@ impl<'ll> CodeGenIRBuilder<'ll> {
             }
             InternalValueKind::RValue(struct_val) => {
                 if struct_val.is_int_value() || struct_val.is_float_value() {
-                    let spill = self
+                    let alloca = self
                         .llvmbuilder
-                        .build_alloca(llvm_struct_type, "struct_field.spill")
+                        .build_alloca(llvm_struct_type, "struct_field.cast")
                         .unwrap();
-                    let cast_ptr = self
-                        .llvmbuilder
-                        .build_pointer_cast(
-                            spill,
-                            struct_val.get_type().ptr_type(inkwell::AddressSpace::default()),
-                            "spill.cast",
-                        )
-                        .unwrap();
-                    self.llvmbuilder.build_store(cast_ptr, struct_val).unwrap();
+
+                    self.llvmbuilder.build_store(alloca, struct_val).unwrap();
 
                     let field_ptr = self
                         .llvmbuilder
-                        .build_struct_gep(llvm_struct_type, spill, llvm_field_index, "field_gep")
+                        .build_struct_gep(llvm_struct_type, alloca, llvm_field_index, "field_gep")
                         .unwrap();
 
                     InternalValue::new(field_type, InternalValueKind::LValue(field_ptr))
@@ -1857,7 +1846,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
                             struct_value,
                             rvalue.as_basic_value(),
                             index.try_into().unwrap(),
-                            "insert",
+                            "struct.insert",
                         )
                         .unwrap()
                         .into_struct_value();
@@ -2186,14 +2175,17 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         if let Some(ptr) = sret_alloca {
             InternalValue::new(ret_type.clone(), InternalValueKind::LValue(ptr.into()))
         } else if let Some(mut basic_value) = call_site.try_as_basic_value().basic() {
-            // REVIEW: Optimization Required
-            // coerce back from abi return type to actual return type
             let actual_return_type: BasicTypeEnum<'ll> =
                 self.emit_type(*func_type.ret_type.clone()).try_into().unwrap();
 
-            basic_value = self.intrinsic_coerce_through_alloca(basic_value, actual_return_type, "coerce_ret");
+            // optimization, do not coerce if it matches actual return type
+            if actual_return_type == basic_value.get_type() {
+                InternalValue::new(ret_type.clone(), InternalValueKind::RValue(basic_value))
+            } else {
+                basic_value = self.intrinsic_coerce_through_alloca(basic_value, actual_return_type, "coerce_ret");
 
-            InternalValue::new(ret_type.clone(), InternalValueKind::RValue(basic_value))
+                InternalValue::new(ret_type.clone(), InternalValueKind::RValue(basic_value))
+            }
         } else {
             self.emit_null(ret_type.clone())
         }

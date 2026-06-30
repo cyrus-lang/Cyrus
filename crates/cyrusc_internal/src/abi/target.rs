@@ -139,6 +139,14 @@ impl ABITargetInfo {
         }
     }
 
+    /// Returns the bit width of C `int` for this target.
+    pub fn c_int_bit_width(&self) -> u32 {
+        match self.arch {
+            ABITargetArch::X86_64 | ABITargetArch::Aarch64 | ABITargetArch::RiscV64 => 32,
+            ABITargetArch::Wasm32 => 32,
+        }
+    }
+
     pub fn is_64bit(&self) -> bool {
         self.int_bit_width() == 64
     }

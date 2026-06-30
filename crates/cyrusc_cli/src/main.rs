@@ -14,7 +14,7 @@ mod enums;
 mod options;
 mod scaffold;
 
-pub fn main() {
+fn main() {
     let args = Args::parse();
 
     dispatch(args);
