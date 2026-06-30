@@ -4,8 +4,8 @@
 import std::libc{printf};
 import std::libc::types{c_int};
 
-extern "C" fn write_int(ptr: c_int*, value: c_int);
-extern "C" fn read_int(ptr: c_int*) c_int;
+extern(c) fn write_int(ptr: c_int*, value: c_int);
+extern(c) fn read_int(ptr: c_int*) c_int;
 
 pub fn main() {
     const x: c_int = 10;

@@ -315,13 +315,16 @@ impl<'source_file> Parser<'source_file> {
         if matches!(token.kind, TokenKind::Extern) {
             self.next_token();
 
-            if matches!(self.current_token().kind, TokenKind::Literal(..)) {
-                let extern_abi = self.parse_string_without_prefix()?;
+            if self.current_token_is(TokenKind::LeftParen) {
+                self.next_token();
+                let extern_abi = self.parse_ident()?;
                 self.next_token();
 
-                let Ok(callconv) = CallConv::try_from(extern_abi.clone()) else {
-                    return Err(self.error_at_token(&token, ParserDiagKind::InvalidABI(extern_abi)));
+                let Ok(callconv) = CallConv::try_from(extern_abi.as_string()) else {
+                    return Err(self.error_at_token(&token, ParserDiagKind::InvalidABI(extern_abi.as_string())));
                 };
+
+                self.expect_current(TokenKind::RightParen)?;
 
                 return Ok(Some(Linkage::Extern(Some(callconv))));
             }

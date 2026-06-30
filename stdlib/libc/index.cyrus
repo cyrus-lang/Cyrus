@@ -5,7 +5,7 @@ import std::libc::types;
 
 // stdio
 
-pub extern "C" {
+pub extern(c) {
     var stdin:  types::c_file*;
     var stdout: types::c_file*;
     var stderr: types::c_file*;
@@ -97,7 +97,7 @@ pub repr(c) struct CLongLongDivResult {
     rem: types::c_long_long;
 }
 
-pub extern "C" {
+pub extern(c) {
     fn atof(nptr: types::c_char*) types::c_double;
     fn atoi(nptr: types::c_char*) types::c_int;
     fn atol(nptr: types::c_char*) types::c_long;
@@ -179,7 +179,7 @@ pub extern "C" {
 
 // string
 
-pub extern "C" {
+pub extern(c) {
     fn memcpy(
         dest: types::c_void*,
         src: types::c_void*,
@@ -293,7 +293,7 @@ pub extern "C" {
 // errno
 
 // FIXME
-// pub extern "C" fn __errno_location() types::c_int*;
+// pub extern(c) fn __errno_location() types::c_int*;
 
 // pub inline fn errno() types::c_int* {
 //     return __errno_location();
@@ -334,7 +334,7 @@ pub const EDOM: types::c_int = 33;
 
 // ctype
 
-pub extern "C" {
+pub extern(c) {
     fn isalnum(c: types::c_int) types::c_int;
     fn isalpha(c: types::c_int) types::c_int;
     fn isblank(c: types::c_int) types::c_int;
@@ -378,7 +378,7 @@ pub repr(c) struct CTm {
     tm_zone: types::c_char*;
 }
 
-pub extern "C" {
+pub extern(c) {
     fn clock() types::c_long;
     fn difftime(time1: types::c_long, time0: types::c_long) types::c_double;
     fn mktime(tm: CTm*) types::c_long;
@@ -407,7 +407,7 @@ pub extern "C" {
 
 pub type CSignalHandler = fn(types::c_int) types::c_void;
 
-pub extern "C" {
+pub extern(c) {
     fn signal(sig: types::c_int, handler: CSignalHandler) CSignalHandler;
     fn raise(sig: types::c_int) types::c_int;
 }
@@ -463,7 +463,7 @@ pub repr(c) struct CLocaleConv {
     int_n_sign_posn: types::c_char;
 }
 
-pub extern "C" {
+pub extern(c) {
     fn setlocale(category: types::c_int, locale: types::c_char*) types::c_char*;
     fn localeconv() CLocaleConv*;
 }
@@ -478,6 +478,6 @@ pub const LC_ALL: types::c_int = 6;
 
 // uninst
 
-pub extern "C" {
+pub extern(c) {
     fn access(pathname: types::c_char*, mode: types::c_int) types::c_int;
 }

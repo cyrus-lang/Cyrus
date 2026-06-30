@@ -4,7 +4,7 @@
 use crate::builtins::TypedBuiltinFunc;
 use crate::decls::{EnumDeclID, InterfaceDeclID, StructDeclID, TypedefDeclID, UnionDeclID};
 use crate::exprs::{TypedExpr, TypedSelfType};
-use crate::stmts::{TypedFuncTypeParams, TypedFuncTypeVariadicParam, TypedGenericParams, TypedTypeArg, TypedTypeArgs};
+use crate::stmts::{TypedFuncTypeParams, TypedFuncTypeVariadicParam, TypedTypeArg, TypedTypeArgs};
 use crate::{GenericParamID, SymbolID, VTableID};
 use cyrusc_source_loc::Loc;
 use cyrusc_tokens::TokenKind;
