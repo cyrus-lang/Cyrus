@@ -3,7 +3,7 @@
 import std::libc{printf};
 
 struct Box<T> {
-    pub value: T;
+    pub value: T,
 
     pub fn new(value: T) Self {
         return Self { value };
@@ -11,7 +11,7 @@ struct Box<T> {
 }
 
 struct Container<T> {
-    pub box: Box<T>;
+    pub box: Box<T>
 }
 
 pub fn main() {

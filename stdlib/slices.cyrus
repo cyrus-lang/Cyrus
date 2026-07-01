@@ -4,8 +4,8 @@
 import std::option{Option};
 
 pub struct Slice<T> {
-    ptr: T*;
-    len: usize;
+    ptr: T*,
+    len: usize,
 
     pub inline fn new(const ptr: T*, const len: usize) Self {
         return Self { ptr, len };

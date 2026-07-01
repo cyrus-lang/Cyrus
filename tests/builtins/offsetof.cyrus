@@ -3,8 +3,8 @@
 import std::libc{printf};
 
 struct Foo {
-    a: int;
-    b: int*;
+    a: int,
+    b: int*
 }
 
 pub fn main() {

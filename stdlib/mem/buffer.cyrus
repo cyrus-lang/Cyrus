@@ -5,7 +5,7 @@ import std::collections{Vector};
 import std::mem{Allocator};
 
 pub struct Buffer<T> {
-    buffer: Vector<T>;
+    buffer: Vector<T>,
 
     pub inline fn new(const allocator: Allocator) Self {
         var buffer: Vector<T> = Vector.with_capacity(allocator, @sizeof(T));

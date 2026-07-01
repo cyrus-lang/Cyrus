@@ -3,7 +3,7 @@
 import std::libc{printf};
 
 struct Box<T> {
-    value: T;
+    value: T
 }
 
 type MyAlias = Box<int32>;

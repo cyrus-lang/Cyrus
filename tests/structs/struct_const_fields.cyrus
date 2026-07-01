@@ -3,8 +3,8 @@
 import std::libc{printf};
 
 struct Book {
-    pub title: char*;
-    pub year: int;
+    pub title: char*,
+    pub year: int
 }
 
 pub fn main() {

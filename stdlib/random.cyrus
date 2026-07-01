@@ -5,7 +5,7 @@ import std::libc{printf};
 import std::libc{time};
 
 pub struct Random {
-  state: uint64;
+  state: uint64,
   
   // Static method that creates an instance of 'Random' struct 
   // and uses a UNIX time seed for first number

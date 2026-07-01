@@ -9,10 +9,10 @@ import std::iterator{Iterator};
 const initial_array_capacity: usize = 16;
 
 pub struct Vector<T> {
-    allocator: Allocator;
-    data: T*;
-    cap: usize;
-    len: usize;
+    allocator: Allocator,
+    data: T*,
+    cap: usize,
+    len: usize,
 
     /// Create a new array using a specific allocator.
     pub inline fn new(const allocator: Allocator) Self {
@@ -318,7 +318,7 @@ pub struct Vector<T> {
 // }
 
 pub struct Map<K, V> {
-    entries: Vector<(K, V)>;
+    entries: Vector<(K, V)>,
 
     pub inline fn new(const allocator: Allocator) Self {
         return Self { entries: Vector.new(allocator) };

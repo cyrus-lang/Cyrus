@@ -7,7 +7,7 @@ interface Shape<T> {
 }
 
 struct Square : Shape<float64> {
-	side: float64;
+	side: float64,
 
 	pub fn new(const side: float64) Self {
 		return Self { side };
@@ -19,8 +19,8 @@ struct Square : Shape<float64> {
 }
 
 struct Rectangle<T> : Shape<T> {
-	x: T;
-	y: T;
+	x: T,
+	y: T,
 
 	pub fn new(const x: T, const y: T) Self {
 		return Self { x, y };

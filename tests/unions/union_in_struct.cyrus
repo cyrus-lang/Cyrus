@@ -3,13 +3,13 @@
 import std::libc{printf};
 
 union Data {
-    int_val: int;
-    str_val: char*;
+    int_val: int,
+    str_val: char*
 }
 
 struct Container {
-    pub tag: char*;
-    pub data: Data;
+    pub tag: char*,
+    pub data: Data
 }
 
 pub fn main() {

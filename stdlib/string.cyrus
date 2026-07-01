@@ -6,7 +6,7 @@ import std::mem{Allocator};
 import std::collections{Vector};
 
 pub struct String {
-    vec: Vector<char>;
+    vec: Vector<char>,
 
     pub fn new(const allocator: Allocator) Self {
         var vec: Vector<char> = Vector.new(allocator);

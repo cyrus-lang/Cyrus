@@ -3,15 +3,15 @@
 import std::libc{printf, exit};
 
 struct Sample {
-    pub a: float64;
-    pub b: float64;
+    pub a: float64,
+    pub b: float64
 }
 
 union Payload {
-    int_value: int64;
-    text_value: char*;
-    float_value: float64;
-    struct_value: Sample;
+    int_value: int64,
+    text_value: char*,
+    float_value: float64,
+    struct_value: Sample
 }
 
 pub fn main() {

@@ -3,8 +3,8 @@
 import std::libc{printf};
 
 struct Link {
-    pub value: int64;
-    pub next: Link*;
+    pub value: int64,
+    pub next: Link*
 }
 
 pub fn main() {

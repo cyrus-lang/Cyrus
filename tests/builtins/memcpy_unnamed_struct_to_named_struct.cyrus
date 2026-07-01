@@ -3,8 +3,8 @@
 import std::libc{printf};
 
 struct Data {
-    pub name: char*;
-    pub age: uint;
+    pub name: char*,
+    pub age: uint
 }
 
 pub fn main() {

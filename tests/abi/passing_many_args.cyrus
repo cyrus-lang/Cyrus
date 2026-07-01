@@ -4,7 +4,7 @@
 import std::libc{printf};
 import std::libc::types{c_long, c_double};
 
-extern "C" fn many_ints(
+extern(c) fn many_ints(
     a: c_long,
     b: c_long,
     c: c_long,
@@ -17,7 +17,7 @@ extern "C" fn many_ints(
     j: c_long
 ) c_long;
 
-extern "C" fn many_floats(
+extern(c) fn many_floats(
     a: c_double,
     b: c_double,
     c: c_double,

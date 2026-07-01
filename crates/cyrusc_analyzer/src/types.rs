@@ -128,7 +128,7 @@ impl<'a> AnalysisContext<'a> {
     fn is_named_type_assignable_to(&mut self, named_type1: NamedType, named_type2: NamedType, loc: Loc) -> bool {
         match (named_type1.type_decl_id, named_type2.type_decl_id) {
             (TypeDeclID::Struct(id1), TypeDeclID::Struct(id2)) => {
-                if id1 == id2 {
+                if id1 == id2 && named_type1.type_args == named_type2.type_args {
                     return true;
                 }
 
@@ -141,7 +141,7 @@ impl<'a> AnalysisContext<'a> {
                 self.is_struct_decl_assignable_to(&decl1, &decl2, env1, env2, loc)
             }
             (TypeDeclID::Union(id1), TypeDeclID::Union(id2)) => {
-                if id1 == id2 {
+                if id1 == id2 && named_type1.type_args == named_type2.type_args {
                     return true;
                 }
 
@@ -154,7 +154,7 @@ impl<'a> AnalysisContext<'a> {
                 self.is_union_decl_assignable_to(&decl1, &decl2, env1, env2, loc)
             }
             (TypeDeclID::Enum(id1), TypeDeclID::Enum(id2)) => {
-                if id1 == id2 {
+                if id1 == id2 && named_type1.type_args == named_type2.type_args {
                     return true;
                 }
 
@@ -451,35 +451,6 @@ impl<'a> AnalysisContext<'a> {
             | (SemaType::Plain(PlainType::IntPtr), SemaType::Pointer(..))
             | (SemaType::Plain(PlainType::UIntPtr), SemaType::Pointer(..)) => true,
 
-            // NOTE
-            //
-            // At the semantic/typecheck layer we intentionally allow casts between
-            // enums and integer/bool scalar types without validating the enum’s
-            // underlying representation yet.
-            //
-            // The reason is architectural: the semantic layer only answers the
-            // question “is this cast conceptually legal?”, not "how exactly should it
-            // be lowered?”. Determining the actual integer representation of an enum
-            // (its tag type) is a lowering concern that is handled
-            // later in the CIR stage.
-            //
-            //
-            // Therefore here we accept the following conversions:
-            // enum -> integer/bool ^ integer/bool -> enum
-            //
-            //
-            // as long as the non‑enum side is a scalar integer or bool. This keeps the
-            // typechecker simple and avoids pulling enum layout/lowering knowledge
-            // into this phase.
-            //
-            // During CIR lowering the expression:
-            //
-            // @cast(IntType, enumValue)
-            //
-            // is resolved using the enum's tag type. At that
-            // point we perform the precise lowering (and any required compile‑time validation)
-            // through the cast builtin implementation.
-            //
             (SemaType::Named(named_type), SemaType::Plain(plain_type))
             | (SemaType::Plain(plain_type), SemaType::Named(named_type)) => {
                 let Some(enum_decl_id) = named_type.type_decl_id.as_enum() else {

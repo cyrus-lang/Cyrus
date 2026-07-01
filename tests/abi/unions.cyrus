@@ -5,32 +5,32 @@ import std::libc{printf};
 import std::libc::types{c_int, c_char, c_float, c_double};
 
 repr(c) union UnionPayload {
-    int_value: c_int;
-    text_value: c_char*;
-    float_value: c_float;
+    int_value: c_int,
+    text_value: c_char*,
+    float_value: c_float
 }
 
-extern "C" fn display_union_payload(payload: UnionPayload, kind: c_int);
+extern(c) fn display_union_payload(payload: UnionPayload, kind: c_int);
 
 repr(c) struct WithNestedUnion {
-    pub tag: c_int;
+    pub tag: c_int,
     pub data: repr(c) union {
         i: c_int,
         f: c_float
-    };
+    }
 }
 
-extern "C" fn nested_union(v: WithNestedUnion) c_double;
+extern(c) fn nested_union(v: WithNestedUnion) c_double;
 
 repr(c) union WithNestedStruct {
-    id: c_int;
+    id: c_int,
     coords: repr(c) struct {
         a: c_double,
         b: c_double
-    };
+    }
 }
 
-extern "C" fn nested_struct_inside_union(v: WithNestedStruct, use_struct: c_int) c_double;
+extern(c) fn nested_struct_inside_union(v: WithNestedStruct, use_struct: c_int) c_double;
 
 pub fn main() {
     display_union_payload(union { int_value: 10 }, 1);
