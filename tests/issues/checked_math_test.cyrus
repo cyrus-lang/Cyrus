@@ -1,0 +1,12 @@
+import std::math::checked;
+
+pub fn main() {
+    var max_val: int = 2147483647;
+    var step: int = 1;
+    
+    var overflow_result = checked::checked_add<int>(max_val, step);
+    
+    var safe_a: int = 50;
+    var safe_b: int = 50;
+    var safe_result = checked::checked_add<int>(safe_a, safe_b);
+}

@@ -48,8 +48,7 @@ impl SourceParser {
 
     #[inline]
     pub fn display_errors(&self) {
-        self.reporter.display_first();
-        self.reporter.diags_mut().clear();
+        self.reporter.display();
     }
 }
 
@@ -287,6 +286,18 @@ impl<'source_file> Parser<'source_file> {
         self.peek_must_be_semicolon()?;
         self.next_token();
         Ok(())
+    }
+
+    pub(crate) fn synchronize(&mut self) {
+        loop {
+            if self.current_token_is(TokenKind::Semicolon)
+                || self.current_token_is(TokenKind::RightBrace)
+                || self.current_token_is(TokenKind::EOF)
+            {
+                break;
+            }
+            self.next_token();
+        }
     }
 
     fn prev_token(&self) -> Token {

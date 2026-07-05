@@ -319,11 +319,21 @@ impl<'source_file> Parser<'source_file> {
         }
 
         loop {
-            let stmt = self.parse_stmt(None, false)?.first().unwrap().clone();
-            block_stmt.push(stmt);
+            match self.parse_stmt(None, false) {
+                Ok(stmts) => {
+                    for stmt in stmts {
+                        block_stmt.push(stmt);
+                    }
+                }
+                Err(diag) => {
+                    self.reporter.report(diag);
+                    self.synchronize();
+                }
+            }
 
             match self.peek_token().kind {
                 TokenKind::RightBrace => break,
+                TokenKind::EOF => break,
                 _ => {
                     self.next_token();
                 }

@@ -1,0 +1,5 @@
+fn main() {
+    var x: int = ; 
+    var y: int = 10;
+    var z: int = 20
+}
