@@ -319,6 +319,7 @@ impl<'source_file> Parser<'source_file> {
         }
 
         loop {
+            let mut sync_occurred = false;
             match self.parse_stmt(None, false) {
                 Ok(stmts) => {
                     for stmt in stmts {
@@ -328,7 +329,12 @@ impl<'source_file> Parser<'source_file> {
                 Err(diag) => {
                     self.reporter.report(diag);
                     self.synchronize();
+                    sync_occurred = true;
                 }
+            }
+
+            if sync_occurred && (self.current_token_is(TokenKind::RightBrace) || self.current_token_is(TokenKind::EOF)) {
+                break;
             }
 
             match self.peek_token().kind {
@@ -340,7 +346,9 @@ impl<'source_file> Parser<'source_file> {
             }
         }
 
-        self.expect_peek(TokenKind::RightBrace)?;
+        if !self.current_token_is(TokenKind::RightBrace) {
+            self.expect_peek(TokenKind::RightBrace)?;
+        }
 
         let end = self.current_token().loc.end;
 
