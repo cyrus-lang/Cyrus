@@ -318,6 +318,7 @@ impl<'source_file> Parser<'source_file> {
             });
         }
 
+        let mut loop_broke_at_sync_brace = false;
         loop {
             let mut sync_occurred = false;
             match self.parse_stmt(None, false) {
@@ -334,6 +335,9 @@ impl<'source_file> Parser<'source_file> {
             }
 
             if sync_occurred && (self.current_token_is(TokenKind::RightBrace) || self.current_token_is(TokenKind::EOF)) {
+                if self.current_token_is(TokenKind::RightBrace) {
+                    loop_broke_at_sync_brace = true;
+                }
                 break;
             }
 
@@ -346,7 +350,9 @@ impl<'source_file> Parser<'source_file> {
             }
         }
 
-        if !self.current_token_is(TokenKind::RightBrace) {
+        if loop_broke_at_sync_brace {
+            // Already synchronized to outer block's RightBrace as current token.
+        } else {
             self.expect_peek(TokenKind::RightBrace)?;
         }
 
