@@ -1075,11 +1075,19 @@ impl<'ll> CodeGenIRBuilder<'ll> {
                     ],
                     true,
                 );
-                let fprintf_fn_value = match self.llvm_module.borrow().get_function("fprintf") {
+                let fprintf_fn_value = {
+                    let opt = self.llvm_module.borrow().get_function("fprintf");
+                    opt
+                };
+                let fprintf_fn_value = match fprintf_fn_value {
                     Some(llvm_func_value) => llvm_func_value,
                     None => self.llvm_module.borrow_mut().add_function("fprintf", fprintf_type, None),
                 };
-                let stderr_global = match self.llvm_module.borrow().get_global("stderr") {
+                let stderr_global = {
+                    let opt = self.llvm_module.borrow().get_global("stderr");
+                    opt
+                };
+                let stderr_global = match stderr_global {
                     Some(global_value) => global_value,
                     None => {
                         let global_value = self.llvm_module.borrow_mut().add_global(ptr_type, None, "stderr");
@@ -1102,7 +1110,11 @@ impl<'ll> CodeGenIRBuilder<'ll> {
                     )
                     .unwrap();
                 let error_status_code = i32_type.const_int(1, false);
-                let exit_fn_value = match self.llvm_module.borrow().get_function("exit") {
+                let exit_fn_value = {
+                    let opt = self.llvm_module.borrow().get_function("exit");
+                    opt
+                };
+                let exit_fn_value = match exit_fn_value {
                     Some(llvm_func_value) => llvm_func_value,
                     None => {
                         let exit_fn_type = void_type.fn_type(
