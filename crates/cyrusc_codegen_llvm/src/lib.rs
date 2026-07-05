@@ -115,6 +115,7 @@ impl CodeGenLLVM {
             tctx,
             vtable_registry,
             source_map,
+            self.opts.profile.clone(),
         );
 
         codegen_ir_builder.emit_module();
