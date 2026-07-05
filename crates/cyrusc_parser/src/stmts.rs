@@ -351,7 +351,6 @@ impl<'source_file> Parser<'source_file> {
         }
 
         if loop_broke_at_sync_brace {
-            // Already synchronized to outer block's RightBrace as current token.
         } else {
             self.expect_peek(TokenKind::RightBrace)?;
         }

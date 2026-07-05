@@ -496,10 +496,12 @@ impl<'ll> CodeGenIRBuilder<'ll> {
             self.emit_block(cond_bb);
             let cond = self.emit_cond(cond_expr);
 
-            if cond_bb.get_terminator().is_none() {
-                self.llvmbuilder
-                    .build_conditional_branch(cond, body_block, exit_block)
-                    .unwrap();
+            if let Some(cur_block) = &self.blockreg.cur_block {
+                if cur_block.get_terminator().is_none() {
+                    self.llvmbuilder
+                        .build_conditional_branch(cond, body_block, exit_block)
+                        .unwrap();
+                }
             }
         }
 
@@ -507,9 +509,11 @@ impl<'ll> CodeGenIRBuilder<'ll> {
             self.emit_block(inc_bb);
             self.emit_expr(inc_expr, &None);
 
-            if inc_bb.get_terminator().is_none() {
-                let next_after_inc = cond_block.unwrap_or(body_block);
-                self.llvmbuilder.build_unconditional_branch(next_after_inc).unwrap();
+            if let Some(cur_block) = &self.blockreg.cur_block {
+                if cur_block.get_terminator().is_none() {
+                    let next_after_inc = cond_block.unwrap_or(body_block);
+                    self.llvmbuilder.build_unconditional_branch(next_after_inc).unwrap();
+                }
             }
         }
 
