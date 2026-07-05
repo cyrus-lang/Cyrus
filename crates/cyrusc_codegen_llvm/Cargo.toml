@@ -19,4 +19,3 @@ cyrusc_tui_utils = { path = "../cyrusc_tui_utils", version = "*" }
 cyrusc_fs_utils = { path = "../cyrusc_fs_utils", version = "*" }
 rayon = "1.11.0"
 fx-hash = "0.1.0"
-either = "1.0"

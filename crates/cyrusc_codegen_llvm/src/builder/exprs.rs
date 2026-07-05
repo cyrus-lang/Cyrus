@@ -1029,10 +1029,11 @@ impl<'ll> CodeGenIRBuilder<'ll> {
             .llvmbuilder
             .build_call(intrinsic_fn, &[lhs.into(), rhs.into()], "overflow_res")
             .unwrap();
-        let result_struct = match call_site.try_as_basic_value() {
-            either::Either::Left(val) => val.into_struct_value(),
-            either::Either::Right(_) => panic!("Intrinsic call did not return a basic value"),
-        };
+        let result_struct = call_site
+            .try_as_basic_value()
+            .basic()
+            .unwrap()
+            .into_struct_value();
         let math_result = self
             .llvmbuilder
             .build_extract_value(result_struct, 0, "math_res")
