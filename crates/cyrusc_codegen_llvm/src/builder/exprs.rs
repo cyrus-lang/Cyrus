@@ -1051,15 +1051,79 @@ impl<'ll> CodeGenIRBuilder<'ll> {
             .build_conditional_branch(overflow_flag, panic_block, cont_block)
             .unwrap();
         self.llvmbuilder.position_at_end(panic_block);
-        let module = self.llvm_module.borrow();
-        let panic_fn = match module.get_function("cyrus_runtime_panic") {
+        let panic_fn = {
+            let module = self.llvm_module.borrow();
+            module.get_function("cyrus_runtime_panic")
+        };
+        let panic_fn = match panic_fn {
             Some(func) => func,
             None => {
                 let fn_type = self.llvm_ctx.void_type().fn_type(&[], false);
-                module.add_function("cyrus_runtime_panic", fn_type, None)
+                let func = self.llvm_module.borrow_mut().add_function("cyrus_runtime_panic", fn_type, None);
+                func.set_linkage(inkwell::module::Linkage::Internal);
+                let current_builder_block = self.llvmbuilder.get_insert_block();
+                let entry_block = self.llvm_ctx.append_basic_block(func, "entry");
+                self.llvmbuilder.position_at_end(entry_block);
+                let panic_msg = self.emit_cstring("thread 'main' panicked: integer overflow\n".to_string());
+                let ptr_type = self.llvm_ctx.ptr_type(inkwell::AddressSpace::default());
+                let void_type = self.llvm_ctx.void_type();
+                let i32_type = self.llvm_ctx.i32_type();
+                let fprintf_type = i32_type.fn_type(
+                    &[
+                        inkwell::types::BasicMetadataTypeEnum::from(ptr_type),
+                        inkwell::types::BasicMetadataTypeEnum::from(ptr_type),
+                    ],
+                    true,
+                );
+                let fprintf_fn_value = match self.llvm_module.borrow().get_function("fprintf") {
+                    Some(llvm_func_value) => llvm_func_value,
+                    None => self.llvm_module.borrow_mut().add_function("fprintf", fprintf_type, None),
+                };
+                let stderr_global = match self.llvm_module.borrow().get_global("stderr") {
+                    Some(global_value) => global_value,
+                    None => {
+                        let global_value = self.llvm_module.borrow_mut().add_global(ptr_type, None, "stderr");
+                        global_value.set_linkage(inkwell::module::Linkage::External);
+                        global_value
+                    }
+                };
+                let stderr_val = self
+                    .llvmbuilder
+                    .build_load(ptr_type, stderr_global.as_pointer_value(), "stderr_val")
+                    .unwrap();
+                self.llvmbuilder
+                    .build_call(
+                        fprintf_fn_value,
+                        &[
+                            inkwell::values::BasicMetadataValueEnum::from(stderr_val),
+                            inkwell::values::BasicMetadataValueEnum::from(panic_msg),
+                        ],
+                        "call",
+                    )
+                    .unwrap();
+                let error_status_code = i32_type.const_int(1, false);
+                let exit_fn_value = match self.llvm_module.borrow().get_function("exit") {
+                    Some(llvm_func_value) => llvm_func_value,
+                    None => {
+                        let exit_fn_type = void_type.fn_type(
+                            &[
+                                inkwell::types::BasicMetadataTypeEnum::from(i32_type),
+                            ],
+                            false,
+                        );
+                        self.llvm_module.borrow_mut().add_function("exit", exit_fn_type, None)
+                    }
+                };
+                self.llvmbuilder
+                    .build_call(exit_fn_value, &[error_status_code.into()], "call")
+                    .unwrap();
+                self.llvmbuilder.build_unreachable().unwrap();
+                if let Some(block) = current_builder_block {
+                    self.llvmbuilder.position_at_end(block);
+                }
+                func
             }
         };
-        drop(module);
         self.llvmbuilder.build_call(panic_fn, &[], "").unwrap();
         self.llvmbuilder.build_unreachable().unwrap();
         self.llvmbuilder.position_at_end(cont_block);
