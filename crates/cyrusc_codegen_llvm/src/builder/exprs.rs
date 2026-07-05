@@ -1025,19 +1025,22 @@ impl<'ll> CodeGenIRBuilder<'ll> {
             None => module.add_function(&intrinsic_name, fn_type, None),
         };
         drop(module);
-        let call_result = self
+        let call_site = self
             .llvmbuilder
-            .build_call(intrinsic_fn, &[lhs.into(), rhs.into()], "call")
+            .build_call(intrinsic_fn, &[lhs.into(), rhs.into()], "overflow_res")
             .unwrap();
-        let call_val = call_result.try_as_basic_value().left().unwrap().into_struct_value();
+        let result_struct = match call_site.try_as_basic_value() {
+            either::Either::Left(val) => val.into_struct_value(),
+            either::Either::Right(_) => panic!("Intrinsic call did not return a basic value"),
+        };
         let math_result = self
             .llvmbuilder
-            .build_extract_value(call_val, 0, "math_res")
+            .build_extract_value(result_struct, 0, "math_res")
             .unwrap()
             .into_int_value();
         let overflow_flag = self
             .llvmbuilder
-            .build_extract_value(call_val, 1, "overflow_flag")
+            .build_extract_value(result_struct, 1, "overflow_flag")
             .unwrap()
             .into_int_value();
         let cur_fn = self.cur_func.unwrap();
