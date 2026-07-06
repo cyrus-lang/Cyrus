@@ -284,7 +284,7 @@ impl CIRType {
 
     pub fn is_char(&self) -> bool {
         match self.const_inner() {
-            CIRType::Plain(plain_type) => plain_type.is_char(),
+            CIRType::Plain(plain_type) => plain_type.is_uint8(),
             _ => false,
         }
     }

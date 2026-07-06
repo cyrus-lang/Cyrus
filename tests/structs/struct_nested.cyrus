@@ -3,7 +3,7 @@
 import std::libc{printf};
 
 struct Inner {
-    pub value: int
+    pub value: int32
 }
 
 struct Outer {

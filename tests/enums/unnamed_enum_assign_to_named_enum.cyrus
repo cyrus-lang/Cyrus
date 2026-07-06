@@ -8,7 +8,7 @@ enum Color {
 }
 
 pub fn main() {
-	const x: enum { Int(int), Text(uint8*) } = .Text("Cyrus!");
+	const x: enum { Int(int32), Text(uint8*) } = .Text("Cyrus!");
 
 	const y: Color = .Red;
 
@@ -17,7 +17,7 @@ pub fn main() {
 
 		switch (x) {
 			case .Int(int_value) => {
-				printf("int(%d)\n", int_value);
+				printf("int32(%d)\n", int_value);
 			}
 			case .Text(text_value) => {
 				printf("text(%s)\n", text_value);

@@ -1,9 +1,9 @@
-// @stdout: int: 42 string: hello
+// @stdout: integer: 42 string: hello
 
 import std::libc{printf};
 
 union Data {
-    int_val: int,
+    int_val: int32,
     str_val: uint8*
 }
 
@@ -13,8 +13,8 @@ struct Container {
 }
 
 pub fn main() {
-    var c = Container { tag: "int", data: Data { int_val: 42 } };
-    printf("int: %d ", c.data.int_val);
+    var c = Container { tag: "integer", data: Data { int_val: 42 } };
+    printf("integer: %d ", c.data.int_val);
 
     c.data.str_val = "hello";
     printf("string: %s\n", c.data.str_val);

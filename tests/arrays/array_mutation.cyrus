@@ -3,7 +3,7 @@
 import std::libc{printf};
 
 pub fn main() {
-    var arr = int[3]{1, 2, 3};
+    var arr = int32[3]{1, 2, 3};
     arr[0] = 10;
     arr[1] = 20;
     arr[2] = 30;

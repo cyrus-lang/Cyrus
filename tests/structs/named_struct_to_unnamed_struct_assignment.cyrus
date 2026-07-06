@@ -3,14 +3,14 @@
 import std::libc{printf};
 
 struct MyStruct {
-    pub a: int,
+    pub a: int32,
     pub b: float64,
     pub c: uint8
 }
 
 pub fn main() {
     const inst = MyStruct { a: 10, b: 3.14, c: 'z' };
-    const ustruct: struct { a: int, b: float64, c: uint8 } = inst;
+    const ustruct: struct { a: int32, b: float64, c: uint8 } = inst;
 
     printf("%d %f %c", ustruct.a, ustruct.b, ustruct.c);
 }

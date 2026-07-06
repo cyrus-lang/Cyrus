@@ -6,8 +6,8 @@ interface IValidator<T> {
     fn validate(&const self, value: T) bool;
 }
 
-struct NumberValidator: IValidator<int> {
-	pub fn validate(&const self, value: int) bool {
+struct NumberValidator: IValidator<int32> {
+	pub fn validate(&const self, value: int32) bool {
 		if (value > 5) {
 			return true;
 		} else {
@@ -17,7 +17,7 @@ struct NumberValidator: IValidator<int> {
 }
 
 pub fn main() {
-	const validator: IValidator<int> = dynamic NumberValidator{};
+	const validator: IValidator<int32> = dynamic NumberValidator{};
 
 	if (validator.validate(10)) {
 		printf("yes\n");

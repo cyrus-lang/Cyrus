@@ -4,10 +4,10 @@ import std::libc{printf};
 
 union Payload {
     bytes: uint8*,
-    data: int[3]
+    data: int32[3]
 }
 
 pub fn main() {
-    var p = Payload { data: int[3]{1, 2, 3} };
+    var p = Payload { data: int32[3]{1, 2, 3} };
     printf("%d %d %d\n", p.data[0], p.data[1], p.data[2]);
 }

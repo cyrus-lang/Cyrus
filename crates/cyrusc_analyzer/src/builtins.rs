@@ -190,7 +190,7 @@ impl<'a> AnalysisContext<'a> {
     }
 
     fn analyze_builtin_func_name(&mut self, builtin_func: &mut TypedBuiltinFunc) -> Option<SemaType> {
-        let ret_type = SemaType::Pointer(Box::new(SemaType::Plain(PlainType::Char)));
+        let ret_type = SemaType::Pointer(Box::new(SemaType::Plain(PlainType::UInt8)));
 
         builtin_func.ret_type = Some(ret_type.clone());
 
@@ -198,7 +198,7 @@ impl<'a> AnalysisContext<'a> {
     }
 
     fn analyze_builtin_module_name(&mut self, builtin_func: &mut TypedBuiltinFunc) -> Option<SemaType> {
-        let ret_type = SemaType::Pointer(Box::new(SemaType::Plain(PlainType::Char)));
+        let ret_type = SemaType::Pointer(Box::new(SemaType::Plain(PlainType::UInt8)));
 
         builtin_func.ret_type = Some(ret_type.clone());
 
@@ -206,7 +206,7 @@ impl<'a> AnalysisContext<'a> {
     }
 
     fn analyze_builtin_file_name(&mut self, builtin_func: &mut TypedBuiltinFunc) -> Option<SemaType> {
-        let ret_type = SemaType::Pointer(Box::new(SemaType::Plain(PlainType::Char)));
+        let ret_type = SemaType::Pointer(Box::new(SemaType::Plain(PlainType::UInt8)));
 
         builtin_func.ret_type = Some(ret_type.clone());
 
@@ -479,7 +479,7 @@ impl<'a> AnalysisContext<'a> {
 
     fn analyze_builtin_panic(&mut self, builtin_func: &mut TypedBuiltinFunc) -> Option<SemaType> {
         let param_types = [
-            SemaType::Pointer(Box::new(SemaType::Plain(PlainType::Char))), // msg? (char*)
+            SemaType::Pointer(Box::new(SemaType::Plain(PlainType::UInt8))), // msg? (char*)
         ];
 
         for (arg, expected_type) in builtin_func.args.iter_mut().zip(param_types.iter()) {
@@ -516,7 +516,7 @@ impl<'a> AnalysisContext<'a> {
 
     fn analyze_builtin_todo(&mut self, builtin_func: &mut TypedBuiltinFunc) -> Option<SemaType> {
         let param_types = [
-            SemaType::Pointer(Box::new(SemaType::Plain(PlainType::Char))), // msg? (char*)
+            SemaType::Pointer(Box::new(SemaType::Plain(PlainType::UInt8))), // msg? (char*)
         ];
 
         for (arg, expected_type) in builtin_func.args.iter_mut().zip(param_types.iter()) {
@@ -553,7 +553,7 @@ impl<'a> AnalysisContext<'a> {
 
     fn analyze_builtin_unimplemented(&mut self, builtin_func: &mut TypedBuiltinFunc) -> Option<SemaType> {
         let param_types = [
-            SemaType::Pointer(Box::new(SemaType::Plain(PlainType::Char))), // msg? (char*)
+            SemaType::Pointer(Box::new(SemaType::Plain(PlainType::UInt8))), // msg? (char*)
         ];
 
         for (arg, expected_type) in builtin_func.args.iter_mut().zip(param_types.iter()) {
@@ -590,7 +590,7 @@ impl<'a> AnalysisContext<'a> {
 
     fn analyze_builtin_unreachable(&mut self, builtin_func: &mut TypedBuiltinFunc) -> Option<SemaType> {
         let param_types = [
-            SemaType::Pointer(Box::new(SemaType::Plain(PlainType::Char))), // msg? (char*)
+            SemaType::Pointer(Box::new(SemaType::Plain(PlainType::UInt8))), // msg? (char*)
         ];
 
         for (arg, expected_type) in builtin_func.args.iter_mut().zip(param_types.iter()) {
@@ -630,7 +630,7 @@ impl<'a> AnalysisContext<'a> {
     fn analyze_builtin_assert(&mut self, builtin_func: &mut TypedBuiltinFunc) -> Option<SemaType> {
         let param_types = [
             SemaType::Plain(PlainType::Bool),                              // cond (bool)
-            SemaType::Pointer(Box::new(SemaType::Plain(PlainType::Char))), // msg? (char*)
+            SemaType::Pointer(Box::new(SemaType::Plain(PlainType::UInt8))), // msg? (char*)
         ];
 
         for (arg, expected_type) in builtin_func.args.iter_mut().zip(param_types.iter()) {

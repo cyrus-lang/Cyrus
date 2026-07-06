@@ -3,9 +3,9 @@
 import std::libc{printf};
 
 struct Counter {
-    pub count: int,
+    pub count: int32,
 
-    pub fn new(initial: int) Self { 
+    pub fn new(initial: int32) Self { 
         return Self { count: initial };
     }
 

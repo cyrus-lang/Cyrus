@@ -15,7 +15,7 @@ struct Pair<K, V> {
 }
 
 pub fn main() {
-    const arr = Pair<int, uint8>[5] {
+    const arr = Pair<int32, uint8>[5] {
         Pair.new(1, 'C'),
         Pair.new(2, 'Y'),
         Pair.new(3, 'R'),

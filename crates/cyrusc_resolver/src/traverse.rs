@@ -2648,22 +2648,22 @@ impl<'a> Resolver<'a> {
                 let len_expr = literal_expr_from_const_int(len, loc);
 
                 Some(SemaType::Array(TypedArrayType {
-                    element_type: Box::new(SemaType::Plain(PlainType::Char)),
+                    element_type: Box::new(SemaType::Plain(PlainType::UInt8)),
                     capacity: TypedArrayCapacity::Fixed(Box::new(len_expr)),
                     loc,
                 }))
             }
 
-            Some(StringPrefix::C) => Some(SemaType::Pointer(Box::new(SemaType::Plain(PlainType::Char)))),
+            Some(StringPrefix::C) => Some(SemaType::Pointer(Box::new(SemaType::Plain(PlainType::UInt8)))),
 
-            None => Some(SemaType::Pointer(Box::new(SemaType::Plain(PlainType::Char)))),
+            None => Some(SemaType::Pointer(Box::new(SemaType::Plain(PlainType::UInt8)))),
         }
     }
 
     fn resolve_plain_literal_type(&self, kind: &LiteralKind) -> Option<SemaType> {
         match kind {
             LiteralKind::Bool(_) => Some(SemaType::Plain(PlainType::Bool)),
-            LiteralKind::Char(_) => Some(SemaType::Plain(PlainType::Char)),
+            LiteralKind::Char(_) => Some(SemaType::Plain(PlainType::UInt8)),
             LiteralKind::Null => Some(SemaType::Pointer(Box::new(SemaType::Plain(PlainType::Void)))),
             _ => None,
         }

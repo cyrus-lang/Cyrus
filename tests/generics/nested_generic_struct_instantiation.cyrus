@@ -13,7 +13,7 @@ fn format_bool(x: bool) uint8* {
 }
 
 pub fn main() {
-    const inst = Pair<uint, _> {
+    const inst = Pair<uint32, _> {
         key: 1,
         value: Pair<uint8*, bool> {
             key: "Cyrus",

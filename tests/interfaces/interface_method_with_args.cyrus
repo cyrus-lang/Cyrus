@@ -3,11 +3,11 @@
 import std::libc{printf};
 
 interface Calculator {
-    fn compute(&const self, x: int) int;
+    fn compute(&const self, x: int32) int32;
 }
 
 struct Factorial : Calculator {
-    pub fn compute(&const self, x: int) int {
+    pub fn compute(&const self, x: int32) int32 {
         if (x <= 1) {
             return 1;
         }

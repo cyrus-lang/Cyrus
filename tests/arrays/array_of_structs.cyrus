@@ -4,7 +4,7 @@ import std::libc{printf};
 
 struct Person {
     pub name: uint8*,
-    pub age: int
+    pub age: int32
 }
 
 pub fn main() {

@@ -29,7 +29,12 @@ pub type c_signed_char = int8;
 
 pub type c_unsigned_char = uint8;
 
-pub type c_char = int8;
+// FIXME: change formar type to c_char* after fixing type issues.
+// 
+// char is signed in Linux/Macos/Windows + gcc/clang/MSVC
+// but unsigned ARM or some embedded targets.
+// pub type c_char = int8;
+pub type c_char = uint8;
 
 pub type c_short = int16;
 

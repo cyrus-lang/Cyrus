@@ -2,7 +2,7 @@
 
 import std::libc{printf};
 
-fn describe(x: int) {
+fn describe(x: int32) {
     switch (x) {
         case 1 => printf("one ");
         case 2 => printf("two ");

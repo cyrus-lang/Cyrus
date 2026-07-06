@@ -568,7 +568,7 @@ fn plain_type_layout(info: &ABITargetInfo, plain_type: &PlainType) -> ABITypeLay
 
         Int8 | UInt8 | Bool => ABITypeLayout::normal(1, 1, Vec::new()),
         Int16 | UInt16 => ABITypeLayout::normal(2, 2, Vec::new()),
-        Int32 | UInt32 | Int | UInt => ABITypeLayout::normal(4, 4, Vec::new()),
+        Int32 | UInt32 => ABITypeLayout::normal(4, 4, Vec::new()),
         Int64 | UInt64 => ABITypeLayout::normal(8, 8, Vec::new()),
         Int128 | UInt128 => {
             let align = match info.arch {
@@ -591,7 +591,6 @@ fn plain_type_layout(info: &ABITargetInfo, plain_type: &PlainType) -> ABITypeLay
             ABITypeLayout::normal(16, align, Vec::new())
         }
 
-        Char => ABITypeLayout::normal(1, 1, Vec::new()),
         Void => ABITypeLayout::normal(0, 1, Vec::new()),
         Null => {
             let size = info.pointer_size();

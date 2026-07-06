@@ -26,7 +26,7 @@ use inkwell::{
     llvm_sys::{
         core::{
             LLVMAddCase, LLVMBuildBr, LLVMBuildCondBr, LLVMConstIntGetZExtValue, LLVMDeleteBasicBlock,
-            LLVMGetFirstInstruction, LLVMIsAConstantInt,
+            LLVMIsAConstantInt,
         },
         prelude::{LLVMBasicBlockRef, LLVMValueRef},
     },
@@ -617,12 +617,6 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         }
 
         let cond = self.emit_cond(&if_stmt.cond);
-
-        let llvm_cur_block = self
-            .blockreg
-            .cur_block
-            .as_ref()
-            .map(|basic_block| basic_block.as_mut_ptr());
 
         #[allow(unused_assignments)]
         let mut exit_in_use = true;

@@ -3,7 +3,7 @@
 import std::libc{printf};
 
 pub fn main() {
-    const lambda = fn(x: int, y: int) int {
+    const lambda = fn(x: int32, y: int32) int32 {
         return x + y;
     };
 

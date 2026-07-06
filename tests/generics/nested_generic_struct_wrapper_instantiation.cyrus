@@ -8,8 +8,8 @@ struct Wrapper<T> {
 
 pub fn main() {
     // explicit type args
-    const inst1 = Wrapper<Wrapper<uint>> {
-        value: Wrapper<uint> {
+    const inst1 = Wrapper<Wrapper<uint32>> {
+        value: Wrapper<uint32> {
             value: 3
         }
     };
@@ -26,7 +26,7 @@ pub fn main() {
     printf("%d ", inst2.value.value);
 
     // init later
-    var inst3: Wrapper<Wrapper<int>>;
+    var inst3: Wrapper<Wrapper<int32>>;
     inst3.value = Wrapper {
         value: 9
     };

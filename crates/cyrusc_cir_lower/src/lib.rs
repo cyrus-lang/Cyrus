@@ -466,7 +466,7 @@ impl<'a> CIRLower<'a> {
                     TypedSwitchCasePatternKind::Expr(expr) => {
                         let ty = expr.ty.as_ref().unwrap();
 
-                        if !(ty.is_integer() || ty.is_char() || ty.is_bool()) {
+                        if !(ty.is_integer() || ty.is_uint8() || ty.is_bool()) {
                             true
                         } else {
                             false

@@ -1,13 +1,13 @@
-// @stdout: int=42
+// @stdout: value=42
 
 import std::libc{printf};
 
 union Value {
-    int_val: int,
+    int_val: int32,
     float_val: float64,
 
     pub fn display(&const self) {
-        printf("int=%d\n", self->int_val);
+        printf("value=%d\n", self->int_val);
     }
 }
 

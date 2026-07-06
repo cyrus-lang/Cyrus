@@ -402,7 +402,7 @@ mod tests {
         let abi = abi(TCTX.clone());
         let promoted = abi.apply_variadic_argument_promote(&i8());
 
-        assert!(matches!(promoted, CIRType::Plain(PlainType::Int)));
+        assert!(matches!(promoted, CIRType::Plain(PlainType::Int32)));
     }
 
     #[test]

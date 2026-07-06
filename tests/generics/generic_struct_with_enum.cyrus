@@ -24,8 +24,8 @@ fn handle_err<T, E>(r: MyResult<T, E>) {
 }
 
 pub fn main() {
-    const r1: MyResult<int, uint8*> = .Ok(100);
-    const r2: MyResult<int, uint8*> = .Err("failed");
+    const r1: MyResult<int32, uint8*> = .Ok(100);
+    const r2: MyResult<int32, uint8*> = .Err("failed");
 
     handle_ok(r1);
     handle_err(r2);

@@ -65,13 +65,11 @@ pub enum PlainType {
     IntPtr,
     ISize,
     USize,
-    Int,
     Int8,
     Int16,
     Int32,
     Int64,
     Int128,
-    UInt,
     UInt8,
     UInt16,
     UInt32,
@@ -81,7 +79,6 @@ pub enum PlainType {
     Float32,
     Float64,
     Float128,
-    Char,
     Bool,
     Void,
     Null,
@@ -183,18 +180,17 @@ pub fn map_integer_suffix_to_sema_type(suffix: &TokenKind) -> Option<SemaType> {
         TokenKind::IntPtr => PlainType::IntPtr,
         TokenKind::USize => PlainType::USize,
         TokenKind::ISize => PlainType::ISize,
-        TokenKind::Int => PlainType::Int,
         TokenKind::Int8 => PlainType::Int8,
         TokenKind::Int16 => PlainType::Int16,
         TokenKind::Int32 => PlainType::Int32,
         TokenKind::Int64 => PlainType::Int64,
         TokenKind::Int128 => PlainType::Int128,
-        TokenKind::UInt => PlainType::UInt,
         TokenKind::UInt8 => PlainType::UInt8,
         TokenKind::UInt16 => PlainType::UInt16,
         TokenKind::UInt32 => PlainType::UInt32,
         TokenKind::UInt64 => PlainType::UInt64,
         TokenKind::UInt128 => PlainType::UInt128,
+
         _ => return None,
     }))
 }
@@ -415,17 +411,17 @@ impl SemaType {
     }
 
     #[inline]
-    pub fn is_char(&self) -> bool {
+    pub fn is_uint8(&self) -> bool {
         match self.const_inner() {
-            SemaType::Plain(PlainType::Char) => true,
+            SemaType::Plain(PlainType::UInt8) => true,
             _ => false,
         }
     }
 
     #[inline]
-    pub fn is_char_pointer(&self) -> bool {
+    pub fn is_uint8_pointer(&self) -> bool {
         match self.const_inner() {
-            SemaType::Pointer(inner) => inner.is_char(),
+            SemaType::Pointer(inner) => inner.is_uint8(),
             _ => false,
         }
     }
@@ -663,25 +659,15 @@ impl PlainType {
         match self {
             PlainType::UIntPtr | PlainType::IntPtr | PlainType::ISize | PlainType::USize => true,
 
-            PlainType::Int
-            | PlainType::Int8
-            | PlainType::Int16
-            | PlainType::Int32
-            | PlainType::Int64
-            | PlainType::Int128 => true,
+            PlainType::Int8 | PlainType::Int16 | PlainType::Int32 | PlainType::Int64 | PlainType::Int128 => true,
 
-            PlainType::UInt
-            | PlainType::UInt8
-            | PlainType::UInt16
-            | PlainType::UInt32
-            | PlainType::UInt64
-            | PlainType::UInt128 => true,
+            PlainType::UInt8 | PlainType::UInt16 | PlainType::UInt32 | PlainType::UInt64 | PlainType::UInt128 => true,
 
             // floating point numbers
             PlainType::Float16 | PlainType::Float32 | PlainType::Float64 | PlainType::Float128 => true,
 
             // char and bool are scalars
-            PlainType::Char | PlainType::Bool => true,
+            PlainType::Bool => true,
 
             // void and null are not scalars
             PlainType::Void | PlainType::Null => false,
@@ -699,8 +685,9 @@ impl PlainType {
     }
 
     #[inline]
-    pub fn is_char(&self) -> bool {
-        matches!(self, PlainType::Char)
+
+    pub fn is_uint8(&self) -> bool {
+        matches!(self, PlainType::UInt8)
     }
 
     #[inline]
@@ -716,13 +703,11 @@ impl PlainType {
                 | PlainType::IntPtr
                 | PlainType::ISize
                 | PlainType::USize
-                | PlainType::Int
                 | PlainType::Int8
                 | PlainType::Int16
                 | PlainType::Int32
                 | PlainType::Int64
                 | PlainType::Int128
-                | PlainType::UInt
                 | PlainType::UInt8
                 | PlainType::UInt16
                 | PlainType::UInt32
@@ -743,30 +728,24 @@ impl PlainType {
     pub fn is_signed(&self) -> bool {
         match self {
             PlainType::UIntPtr
-            | PlainType::UInt
             | PlainType::UInt8
             | PlainType::UInt16
             | PlainType::UInt32
             | PlainType::UInt64
             | PlainType::UInt128
-            | PlainType::USize
-            | PlainType::Bool
-            | PlainType::Char
-            | PlainType::Void
-            | PlainType::Null
-            | PlainType::Float16
-            | PlainType::Float32
-            | PlainType::Float64
-            | PlainType::Float128 => false,
+            | PlainType::USize => false,
 
             PlainType::ISize
             | PlainType::IntPtr
-            | PlainType::Int
             | PlainType::Int8
             | PlainType::Int16
             | PlainType::Int32
             | PlainType::Int64
             | PlainType::Int128 => true,
+
+            PlainType::Bool | PlainType::Void | PlainType::Null => false,
+
+            PlainType::Float16 | PlainType::Float32 | PlainType::Float64 | PlainType::Float128 => false,
         }
     }
 
@@ -775,23 +754,19 @@ impl PlainType {
         use PlainType::*;
 
         match ty {
-            // char has the same rank is int8
-            Char => Some(2),
-
             // integers
             Int8 | UInt8 => Some(2),
             Int16 | UInt16 => Some(3),
             Int32 | UInt32 => Some(4),
-            Int | UInt => Some(5),
-            Int64 | UInt64 => Some(6),
-            IntPtr | UIntPtr | ISize | USize => Some(7),
-            Int128 | UInt128 => Some(8),
+            Int64 | UInt64 => Some(5),
+            IntPtr | UIntPtr | ISize | USize => Some(6),
+            Int128 | UInt128 => Some(7),
 
             // floats
-            Float16 => Some(9),
-            Float32 => Some(10),
-            Float64 => Some(11),
-            Float128 => Some(12),
+            Float16 => Some(8),
+            Float32 => Some(9),
+            Float64 => Some(10),
+            Float128 => Some(11),
 
             _ => None,
         }
@@ -861,13 +836,11 @@ impl TryFrom<TokenKind> for SemaType {
             TokenKind::USize => PlainType::USize,
             TokenKind::IntPtr => PlainType::IntPtr,
             TokenKind::UIntPtr => PlainType::UIntPtr,
-            TokenKind::Int => PlainType::Int,
             TokenKind::Int8 => PlainType::Int8,
             TokenKind::Int16 => PlainType::Int16,
             TokenKind::Int32 => PlainType::Int32,
             TokenKind::Int64 => PlainType::Int64,
             TokenKind::Int128 => PlainType::Int128,
-            TokenKind::UInt => PlainType::UInt,
             TokenKind::UInt8 => PlainType::UInt8,
             TokenKind::UInt16 => PlainType::UInt16,
             TokenKind::UInt32 => PlainType::UInt32,
@@ -879,7 +852,6 @@ impl TryFrom<TokenKind> for SemaType {
             TokenKind::Float128 => PlainType::Float128,
             TokenKind::Bool => PlainType::Bool,
             TokenKind::Void => PlainType::Void,
-            TokenKind::Char => PlainType::Char,
             _ => return Err(()),
         };
 
@@ -894,13 +866,11 @@ impl fmt::Display for PlainType {
             PlainType::IntPtr => "intptr",
             PlainType::ISize => "isize",
             PlainType::USize => "usize",
-            PlainType::Int => "int",
             PlainType::Int8 => "int8",
             PlainType::Int16 => "int16",
             PlainType::Int32 => "int32",
             PlainType::Int64 => "int64",
             PlainType::Int128 => "int128",
-            PlainType::UInt => "uint",
             PlainType::UInt8 => "uint8",
             PlainType::UInt16 => "uint16",
             PlainType::UInt32 => "uint32",
@@ -910,7 +880,6 @@ impl fmt::Display for PlainType {
             PlainType::Float32 => "float32",
             PlainType::Float64 => "float64",
             PlainType::Float128 => "float128",
-            PlainType::Char => "char",
             PlainType::Bool => "bool",
             PlainType::Void => "void",
             PlainType::Null => "null",

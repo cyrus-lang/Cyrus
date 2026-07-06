@@ -7,7 +7,7 @@ use crate::llvm::debug_info::{
     debug_array_type, debug_const_type, debug_dynamic_type, debug_enum_type, debug_member_type, debug_pointer_type,
     debug_scalar_enum_type, debug_simple_type, debug_struct_type, debug_union_type,
 };
-use crate::llvm::dwarf::{DW_ATE_BOOLEAN, DW_ATE_FLOAT, DW_ATE_SIGNED, DW_ATE_UNSIGNED, DW_ATE_UNSIGNED_CHAR};
+use crate::llvm::dwarf::{DW_ATE_BOOLEAN, DW_ATE_FLOAT, DW_ATE_SIGNED, DW_ATE_UNSIGNED};
 use cyrusc_internal::abi::args::{ABIArgKind, ABIFunctionInfo, ExpandKind};
 use cyrusc_internal::abi::layout::ABIFieldOffsetInfo;
 use cyrusc_internal::cir::cir::CIREnumVariant;
@@ -40,8 +40,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
                 let bits = layout.size * 8;
 
                 let encoding = match plain_type {
-                    PlainType::Int
-                    | PlainType::Int8
+                    PlainType::Int8
                     | PlainType::Int16
                     | PlainType::Int32
                     | PlainType::Int64
@@ -49,8 +48,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
                     | PlainType::ISize
                     | PlainType::IntPtr => DW_ATE_SIGNED,
 
-                    PlainType::UInt
-                    | PlainType::UInt8
+                    PlainType::UInt8
                     | PlainType::UInt16
                     | PlainType::UInt32
                     | PlainType::UInt64
@@ -60,7 +58,6 @@ impl<'ll> CodeGenIRBuilder<'ll> {
 
                     PlainType::Float16 | PlainType::Float32 | PlainType::Float64 | PlainType::Float128 => DW_ATE_FLOAT,
                     PlainType::Bool => DW_ATE_BOOLEAN,
-                    PlainType::Char => DW_ATE_UNSIGNED_CHAR,
 
                     PlainType::Void | PlainType::Null => {
                         return std::ptr::null_mut() as LLVMMetadataRef;
@@ -414,13 +411,10 @@ impl<'ll> CodeGenIRBuilder<'ll> {
             PlainType::UInt32 => ctx.i32_type().as_any_type_enum(),
             PlainType::UInt64 => ctx.i64_type().as_any_type_enum(),
             PlainType::UInt128 => ctx.i128_type().as_any_type_enum(),
-            PlainType::Int => ctx.i32_type().as_any_type_enum(),
-            PlainType::UInt => ctx.i32_type().as_any_type_enum(),
             PlainType::Float16 => ctx.f16_type().as_any_type_enum(),
             PlainType::Float32 => ctx.f32_type().as_any_type_enum(),
             PlainType::Float64 => ctx.f64_type().as_any_type_enum(),
             PlainType::Float128 => ctx.f128_type().as_any_type_enum(),
-            PlainType::Char => ctx.i8_type().as_any_type_enum(),
             PlainType::Void => ctx.void_type().as_any_type_enum(),
             PlainType::Null => ctx.ptr_type(AddressSpace::default()).as_any_type_enum(),
             PlainType::Bool => {

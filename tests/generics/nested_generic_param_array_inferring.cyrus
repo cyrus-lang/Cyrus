@@ -7,6 +7,6 @@ fn make_2d<T>(x: T[2]) T[2] {
 }
 
 pub fn main() {
-    const m2d = make_2d(int[2]{1, 2});
+    const m2d = make_2d(int32[2]{1, 2});
     printf("%d %d\n", m2d[0], m2d[1]);
 }

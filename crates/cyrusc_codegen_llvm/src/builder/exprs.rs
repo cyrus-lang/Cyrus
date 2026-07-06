@@ -963,7 +963,8 @@ impl<'ll> CodeGenIRBuilder<'ll> {
                 let and_not_value = self.llvmbuilder.build_and(lhs, not_rhs, "and_not").unwrap();
 
                 InternalValue::new(
-                    CIRType::Plain(PlainType::Int), // result is integer, not Bool
+                    // REVIEW: this does not look good here
+                    CIRType::Plain(PlainType::Int32), // result is integer, not bool
                     InternalValueKind::RValue(and_not_value.into()),
                 )
             }

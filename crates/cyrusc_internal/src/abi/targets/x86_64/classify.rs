@@ -127,15 +127,12 @@ impl X86_64 {
                 }
 
                 PlainType::Bool
-                | PlainType::Char
                 | PlainType::UInt8
                 | PlainType::Int8
                 | PlainType::UInt16
                 | PlainType::Int16
                 | PlainType::UInt32
-                | PlainType::Int32
-                | PlainType::UInt
-                | PlainType::Int => {
+                | PlainType::Int32 => {
                     if offset != 0 {
                         // fallback
                     } else {
@@ -754,19 +751,18 @@ impl TargetABI for X86_64 {
                 // pointers and pointer-sized types remain as-is
                 PlainType::UIntPtr | PlainType::IntPtr | PlainType::ISize | PlainType::USize => ty.clone(),
 
-                // integer types smaller than int (32-bit) get promoted to int
+                // promote integer types smaller than int32
                 PlainType::Int8 | PlainType::Int16 => {
                     if plain_type.is_signed() {
-                        CIRType::Plain(PlainType::Int)
+                        CIRType::Plain(PlainType::Int32)
                     } else {
                         CIRType::Plain(PlainType::UInt32)
                     }
                 }
                 PlainType::UInt8 | PlainType::UInt16 => CIRType::Plain(PlainType::UInt32),
 
-                // int and int32 remain as-is (int-sized)
-                PlainType::Int | PlainType::Int32 => ty.clone(),
-                PlainType::UInt | PlainType::UInt32 => ty.clone(),
+                // int and int32/uint32 remain as-is (int-sized)
+                PlainType::Int32 | PlainType::UInt32 => ty.clone(),
 
                 // larger integers remain as-is
                 PlainType::Int64 | PlainType::UInt64 => ty.clone(),
@@ -781,11 +777,8 @@ impl TargetABI for X86_64 {
                 // float64 and float128 remain as-is
                 PlainType::Float64 | PlainType::Float128 => ty.clone(),
 
-                // char promotes to int
-                PlainType::Char => CIRType::Plain(PlainType::Int),
-
                 // bool promotes to int
-                PlainType::Bool => CIRType::Plain(PlainType::Int),
+                PlainType::Bool => CIRType::Plain(PlainType::Int32),
 
                 PlainType::Void | PlainType::Null => panic!("void or null type in varargs"),
             },
@@ -1218,10 +1211,7 @@ fn classify_plain_type(
         | PlainType::UInt32
         | PlainType::Int64
         | PlainType::UInt64
-        | PlainType::Char
         | PlainType::Bool
-        | PlainType::Int
-        | PlainType::UInt
         | PlainType::ISize
         | PlainType::USize
         | PlainType::IntPtr

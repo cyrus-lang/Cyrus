@@ -827,7 +827,7 @@ impl TypedSwitchStmt {
             case.patterns.iter().any(|pattern| match &pattern.kind {
                 TypedSwitchCasePatternKind::Expr(expr, ..) => {
                     let sema_type = expr.ty.as_ref().unwrap();
-                    sema_type.is_char() || sema_type.is_integer()
+                    sema_type.is_uint8() || sema_type.is_integer()
                 }
                 _ => false,
             })

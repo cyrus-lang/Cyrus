@@ -3,10 +3,10 @@
 import std::libc{printf};
 
 enum MaybeInt {
-    Some(int),
+    Some(int32),
     None,
 
-    pub fn value_or(&const self, def: int) int {
+    pub fn value_or(&const self, def: int32) int32 {
         switch (*self) {
             case .Some(v) => return v;
             case .None => return def;

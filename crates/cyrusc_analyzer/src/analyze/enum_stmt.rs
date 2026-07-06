@@ -251,7 +251,7 @@ impl<'a> AnalysisContext<'a> {
     fn validate_enum_tag_type(&mut self, tag_type: &Option<SemaType>, loc: Loc) {
         if let Some(tag_type) = tag_type {
             let tag_type = tag_type.const_inner();
-            let valid = tag_type.is_integer() || tag_type.is_char() || tag_type.is_bool();
+            let valid = tag_type.is_integer() || tag_type.is_uint8() || tag_type.is_bool();
 
             if !valid {
                 let got = format_sema_type(tag_type.clone(), self.formatter);

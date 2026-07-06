@@ -11,9 +11,9 @@ struct Box<T> {
 }
 
 struct Integer {
-    pub box: Box<int>,
+    pub box: Box<int32>,
 
-    pub fn new(value: int) Self {
+    pub fn new(value: int32) Self {
         const box = Box.new(value);
 
         return Self { box };
