@@ -91,11 +91,11 @@ impl<'source_file> Parser<'source_file> {
                 });
             }
 
-            let is_associative = is_comparison_operator(&self.peek_token().kind);
-            let infix_banned_precedence = if is_associative {
-                None
-            } else {
+            let is_non_associative = is_comparison_operator(&self.peek_token().kind);
+            let infix_banned_precedence = if is_non_associative {
                 Some(operator_precedence)
+            } else {
+                None
             };
 
             if peek_token.kind != TokenKind::EOF && minimum_precedence < operator_precedence {
