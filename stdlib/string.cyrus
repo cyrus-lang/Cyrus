@@ -101,7 +101,7 @@ pub struct String {
         }
 
         const n = len - start;
-        memmove(@cast(void*, str), @cast(const void*, str + start), n);
+        memmove(@cast(void*, str), @cast(void*, str + start), n);
 
         while (start > 0) {
             self->vec.pop();
