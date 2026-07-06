@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 The Cyrus Language
+
 use crate::{
     builder::{
         builder::CodeGenIRBuilder,
@@ -44,19 +45,19 @@ use inkwell::{
 };
 
 #[derive(Debug, Clone)]
-pub(crate) enum CFEntry<'ll> {
-    Loop(CFLoop<'ll>),
+pub(crate) enum ControlRegion<'ll> {
+    Loop(LoopControlRegion<'ll>),
 }
 
 #[derive(Debug, Clone)]
-pub(crate) struct CFLoop<'ll> {
+pub(crate) struct LoopControlRegion<'ll> {
     pub cond_block: Option<BasicBlock<'ll>>,
     pub inc_block: Option<BasicBlock<'ll>>,
     pub exit_block: BasicBlock<'ll>,
     pub defer_depth: usize,
 }
 
-impl<'ll> CFLoop<'ll> {
+impl<'ll> LoopControlRegion<'ll> {
     pub(crate) fn new(
         cond_block: Option<BasicBlock<'ll>>,
         inc_block: Option<BasicBlock<'ll>>,
@@ -474,12 +475,14 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         let body_block = self.new_basic_block("for.body");
         let exit_block = self.new_basic_block("for.exit");
         let loop_defer_depth = self.defer_stack.len();
-        self.blockreg.control_flow_stack.push(CFEntry::Loop(CFLoop::new(
-            cond_block,
-            inc_block,
-            exit_block,
-            loop_defer_depth,
-        )));
+        self.blockreg
+            .control_flow_stack
+            .push(ControlRegion::Loop(LoopControlRegion::new(
+                cond_block,
+                inc_block,
+                exit_block,
+                loop_defer_depth,
+            )));
 
         if let Some(initializer) = &for_stmt.initializer {
             self.emit_var(initializer);
@@ -552,12 +555,14 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         let body_block = self.llvm_ctx.append_basic_block(cur_fn, "while.body");
         let exit_block = self.llvm_ctx.append_basic_block(cur_fn, "while.exit");
         let loop_defer_depth = self.defer_stack.len();
-        self.blockreg.control_flow_stack.push(CFEntry::Loop(CFLoop::new(
-            Some(cond_block),
-            None,
-            exit_block,
-            loop_defer_depth,
-        )));
+        self.blockreg
+            .control_flow_stack
+            .push(ControlRegion::Loop(LoopControlRegion::new(
+                Some(cond_block),
+                None,
+                exit_block,
+                loop_defer_depth,
+            )));
 
         let cur_block = self.blockreg.cur_block.unwrap();
         self.llvmbuilder.position_at_end(cur_block);
@@ -693,7 +698,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
 impl<'ll> CodeGenIRBuilder<'ll> {
     pub(crate) fn emit_break(&mut self, _break_stmt: &CIRBreakStmt) {
         let entry = self.blockreg.control_flow_stack.last().unwrap();
-        let CFEntry::Loop(cf_loop) = entry;
+        let ControlRegion::Loop(cf_loop) = entry;
         let exit_block = cf_loop.exit_block;
         let defer_depth = cf_loop.defer_depth;
 
@@ -708,7 +713,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
 
     pub(crate) fn emit_continue(&mut self, _continue_stmt: &CIRContinueStmt) {
         let entry = self.blockreg.control_flow_stack.last().unwrap();
-        let CFEntry::Loop(cf_loop) = entry;
+        let ControlRegion::Loop(cf_loop) = entry;
         let target_block = cf_loop.inc_block.or(cf_loop.cond_block).unwrap();
         let defer_depth = cf_loop.defer_depth;
 
