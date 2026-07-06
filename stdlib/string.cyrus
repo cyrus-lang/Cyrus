@@ -1,9 +1,10 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 The Cyrus Language
 
-import std::libc{strlen, strcmp, memmove, isspace, tolower, toupper, printf};
-import std::mem{Allocator};
+import std::libc{strlen, strcmp, memmove, isspace, tolower, toupper};
 import std::collections{Vector};
+import std::mem{Allocator};
+import std::slices{Slice};
 
 pub struct String {
     vec: Vector<char>,
@@ -40,7 +41,19 @@ pub struct String {
         return Self { vec };
     }
 
-    // TODO: Add method: From slice.
+    pub fn from_slice(const allocator: Allocator, const slice: const Slice<char>) Self {
+        var vec: Vector<char> = Vector.new(allocator);
+
+        for (var i: usize = 0; i < slice.len(); i++) {
+            const item = slice.get_const(i).unwrap();
+
+            vec.push(*item);
+        }
+
+        vec.push('\0');
+        
+        return Self { vec };
+    }
 
     pub fn reserve(&self, const extra: usize) {
         const required = self->len() + extra + 1;

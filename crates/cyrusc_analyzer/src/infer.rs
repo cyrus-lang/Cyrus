@@ -29,6 +29,10 @@ impl InferCtx {
     }
 
     fn bind(&mut self, var: InferVarID, ty: SemaType) {
+        // in unification if first layer is const,
+        // we deliberately drop it since constness is unrelated.
+        let ty = ty.const_inner().clone();
+
         self.bindings.insert(var, ty);
     }
 
@@ -171,7 +175,7 @@ impl InferCtx {
             (SemaType::Pointer(p1), SemaType::Pointer(p2)) => self.unify(p1, p2),
 
             (SemaType::Const(c1), SemaType::Const(c2)) => self.unify(c1, c2),
-            
+
             (SemaType::FuncType(f1), SemaType::FuncType(f2)) => self.unify_func(f1, f2),
 
             // unify: array-to-pointer decay
