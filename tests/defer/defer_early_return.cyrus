@@ -2,11 +2,11 @@
 
 import std::libc{printf};
 
-fn log(x: int) {
+fn log(x: int32) {
     printf("%d", x);
 }
 
-fn test(n: int) {
+fn test(n: int32) {
     defer log(200);
 
     log(1);

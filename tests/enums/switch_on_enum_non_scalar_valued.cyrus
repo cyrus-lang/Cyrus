@@ -5,7 +5,7 @@ import std::libc{printf};
 enum Color {
     Red, 
     Green = "green!",
-    Custom(uint, uint, uint)
+    Custom(uint32, uint32, uint32)
 }
 
 pub fn main() {

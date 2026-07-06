@@ -4,7 +4,7 @@ import std::libc{printf};
 
 struct Data {
     pub name: uint8*,
-    pub age: uint
+    pub age: uint32
 }
 
 pub fn main() {

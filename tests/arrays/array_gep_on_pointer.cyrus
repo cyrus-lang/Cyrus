@@ -3,7 +3,7 @@
 import std::libc{printf, malloc};
 
 pub fn main() {
-    var ptr: int* = malloc(4 * 2);
+    var ptr: int32* = malloc(4 * 2);
 
     ptr[0] = 10;
     ptr[1] = 20;

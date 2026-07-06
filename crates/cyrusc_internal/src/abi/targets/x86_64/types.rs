@@ -49,9 +49,8 @@ impl From<&PlainType> for X86_64TargetDependentType {
             PlainType::UIntPtr => X86_64TargetDependentType::UIntPtr,
             PlainType::ISize => X86_64TargetDependentType::ISize,
             PlainType::USize => X86_64TargetDependentType::USize,
-            PlainType::Int => X86_64TargetDependentType::Int,
-            PlainType::UInt => X86_64TargetDependentType::UInt,
-            _ => panic!("Not a target-dependent type: {:?}", plain_type),
+
+            _ => panic!("not a target-dependent type: {:?}", plain_type),
         }
     }
 }

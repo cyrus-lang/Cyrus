@@ -3,7 +3,7 @@
 import std::libc{printf};
 
 struct Pair {
-    pub data: (int, int)
+    pub data: (int32, int32)
 }
 
 pub fn main() {

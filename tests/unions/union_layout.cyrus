@@ -1,10 +1,10 @@
-// @stdout: text: Cyrus! int: 2500
+// @stdout: text: Cyrus! integer: 2500
 
 import std::libc{printf, exit};
 
 union Payload {
     text_value: uint8*,
-    int_value: int
+    int_value: int32
 }
 
 enum PayloadKind {
@@ -20,7 +20,7 @@ struct TaggedPayload {
         return Self { tag: PayloadKind.Text, data: Payload { text_value: text } };
     }
 
-    pub fn new_int_value(val: int) Self {
+    pub fn new_int_value(val: int32) Self {
         return Self { tag: PayloadKind.Int, data: Payload { int_value: val } };
     }
 }
@@ -29,7 +29,7 @@ fn display_tagged_payload(tp: TaggedPayload*) {
     if (tp->tag == PayloadKind.Text) {
         printf("text: %s ", tp->data);
     } else if (tp->tag == PayloadKind.Int) {
-        printf("int: %d ", tp->data);
+        printf("integer: %d ", tp->data);
     } else {
         printf("panic: unsupported payload kind");
         exit(1);

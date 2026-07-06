@@ -4,7 +4,7 @@ import std::libc{printf};
 
 struct Book {
     pub title: uint8*,
-    pub year: int
+    pub year: int32
 }
 
 pub fn main() {

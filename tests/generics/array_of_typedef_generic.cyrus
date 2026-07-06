@@ -7,7 +7,7 @@ struct Pair<K, V> {
     pub value: V
 }
 
-type IntPair = Pair<int, int>;
+type IntPair = Pair<int32, int32>;
 type IntPairList = IntPair[2];
 
 pub fn main() {

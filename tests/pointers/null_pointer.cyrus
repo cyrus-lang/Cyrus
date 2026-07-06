@@ -3,7 +3,7 @@
 import std::libc{printf};
 
 pub fn main() {
-    var ptr: int* = null;
+    var ptr: int32* = null;
 
     if (ptr == null) {
         printf("null ");

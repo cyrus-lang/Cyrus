@@ -2,7 +2,7 @@
 
 import std::libc{printf};
 
-fn fibonacci(n: int) int {
+fn fibonacci(n: int32) int32 {
     if (n == 0) {
         return 0;
     } else if (n == 1) {

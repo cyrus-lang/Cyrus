@@ -2,7 +2,7 @@
 
 import std::libc{printf};
 
-fn div_mod(x: int, y: int) (int, int) {
+fn div_mod(x: int32, y: int32) (int32, int32) {
     return (x / y, x % y);
 }
 

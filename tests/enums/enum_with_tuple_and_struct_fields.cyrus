@@ -5,10 +5,10 @@ import std::libc{printf};
 enum Task {
     Compute(struct {
         id: uint64,
-        priority: int
+        priority: int32
     }),
     Delay(uint32),
-    Range((int, int))
+    Range((int32, int32))
 }
 
 fn process_task(t: Task) {

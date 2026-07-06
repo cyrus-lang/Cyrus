@@ -124,7 +124,7 @@ pub fn cir_type_to_abi_type(tctx: Arc<CIRTypeContext>, cir_type: &CIRType) -> AB
         CIRType::Plain(plain_type) => {
             match plain_type {
                 // Target-dependent types
-                UIntPtr | IntPtr | ISize | USize | Int | UInt => match info.arch {
+                UIntPtr | IntPtr | ISize | USize => match info.arch {
                     ABITargetArch::X86_64 => ABIType::TargetIntegerType(TargetIntegerType::X86_64(
                         X86_64TargetDependentType::from(plain_type),
                     )),
@@ -144,7 +144,7 @@ pub fn cir_type_to_abi_type(tctx: Arc<CIRTypeContext>, cir_type: &CIRType) -> AB
                 Float64 => ABIType::Float(ABIFloatKind::F64),
                 Float128 => ABIType::Float(ABIFloatKind::F128),
 
-                Char | Bool => ABIType::Integer(8),
+                Bool => ABIType::Integer(8),
                 Void => ABIType::Void,
                 Null => ABIType::Pointer,
             }

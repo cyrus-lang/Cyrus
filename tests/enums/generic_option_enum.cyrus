@@ -19,7 +19,7 @@ fn display_option<T>(opt: Option<T>) {
 }
 
 pub fn main() {
-	var opt: Option<int> = .None;
+	var opt: Option<int32> = .None;
 	display_option(opt);
 	
 	opt = .Some(10);

@@ -3,6 +3,6 @@
 import std::libc{printf};
 
 pub fn main() {
-    const array = int[3] {1, 2, 3};
+    const array = int32[3] {1, 2, 3};
     printf("%d %d %d\n", array[0], array[1], array[2]);
 }

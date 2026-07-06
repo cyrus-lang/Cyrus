@@ -2,7 +2,7 @@
 
 import std::libc{printf};
 
-fn log(x: int) {
+fn log(x: int32) {
     printf("%d", x);
 }
 

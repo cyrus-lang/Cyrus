@@ -2,9 +2,9 @@
 
 import std::libc{printf};
 
-type FnType = fn(int, int) int;
+type FnType = fn(int32, int32) int32;
 
-fn mul(a: int, b: int) int {
+fn mul(a: int32, b: int32) int32 {
     return a * b;
 }
 

@@ -3,7 +3,7 @@
 import std::libc{printf};
 
 struct MyStruct {
-    pub a: int,
+    pub a: int32,
     pub b: float64,
     pub c: uint8
 }

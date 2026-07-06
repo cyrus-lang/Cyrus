@@ -2,13 +2,13 @@
 
 import std::libc{printf};
 
-type IntOp = fn(int, int) int;
+type IntOp = fn(int32, int32) int32;
 
-fn apply(x: int, y: int, op: IntOp) int {
+fn apply(x: int32, y: int32, op: IntOp) int32 {
     return op(x, y);
 }
 
-fn mul(a: int, b: int) int {
+fn mul(a: int32, b: int32) int32 {
     return a * b;
 }
 

@@ -7,7 +7,7 @@ import std::libc{printf};
 pub fn main() {
     const allocator: Allocator = dynamic LibcAllocator.new();
 
-    var list: SinglyLinkedList<int> = SinglyLinkedList.new(allocator);
+    var list: SinglyLinkedList<int32> = SinglyLinkedList.new(allocator);
 
     var node1 = SinglyNode { value: 10, next: null };
     var node2 = SinglyNode { value: 20, next: &node1 };

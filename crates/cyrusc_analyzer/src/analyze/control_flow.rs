@@ -50,7 +50,7 @@ impl<'a> AnalysisContext<'a> {
 
             if operand_type.is_enum() {
                 this.analyze_switch_on_enum(switch_stmt, &operand_type)
-            } else if operand_type.is_plain_type() || operand_type.is_char_pointer() {
+            } else if operand_type.is_plain_type() || operand_type.is_uint8_pointer() {
                 this.analyze_switch_on_value(switch_stmt, &operand_type)
             } else {
                 let expr_type = format_sema_type(operand_type.clone(), this.formatter);

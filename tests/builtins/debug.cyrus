@@ -6,7 +6,7 @@ import std::libc{printf};
 @debug() {
     const x = 10;
 
-    fn foo(y: int) {
+    fn foo(y: int32) {
         printf("debug mode (%d) - ", y);
     }
 }

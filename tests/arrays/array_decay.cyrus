@@ -2,17 +2,17 @@
 
 import std::libc{printf};
 
-pub fn ptr_arith(i: usize, nums: int*) int {
+pub fn ptr_arith(i: usize, nums: int32*) int32 {
     return *(nums + i);
 }
 
-pub fn array_index(i: usize, nums: int*) int {
+pub fn array_index(i: usize, nums: int32*) int32 {
     return nums[i];
 }
 
 pub fn main() {
-    const nums = const int[3]{1, 2, 3};
-    const ptr: const int* = nums; // compiler decays automatically
+    const nums = int32[3]{1, 2, 3};
+    const ptr: int32* = nums; // compiler decays automatically
 
     printf("%d, %d, %d ", ptr[0], ptr[1], ptr[2]);
 

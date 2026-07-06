@@ -6,7 +6,7 @@ enum Operation {
     Add,
     Mul,
 
-    pub fn eval(&const self, x: int, y: int) int {
+    pub fn eval(&const self, x: int32, y: int32) int32 {
         switch (*self) {
             case .Add => return x + y;
             case .Mul => return x * y;

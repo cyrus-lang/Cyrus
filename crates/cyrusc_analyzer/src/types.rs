@@ -372,32 +372,6 @@ impl<'a> AnalysisContext<'a> {
                 }
             }
 
-            // Char To Integer
-            (value_type @ Char, target_type) => {
-                let is_integer = target_type.is_integer();
-
-                if let (Some(rank1), Some(rank2)) = (
-                    PlainType::plain_type_rank(&value_type),
-                    PlainType::plain_type_rank(&target_type),
-                ) {
-                    rank1 <= rank2 && is_integer
-                } else {
-                    false
-                }
-            }
-
-            // Integer to Char
-            (value_type, target_type @ Char) => {
-                if let (Some(rank1), Some(rank2)) = (
-                    PlainType::plain_type_rank(&value_type),
-                    PlainType::plain_type_rank(&target_type),
-                ) {
-                    rank1 <= rank2
-                } else {
-                    false
-                }
-            }
-
             (Bool, Int8 | UInt8) | (Int8 | UInt8, Bool) => true,
 
             _ => false,
@@ -440,10 +414,6 @@ impl<'a> AnalysisContext<'a> {
 
             // Bool to anything integer-ish (common in C-style languages)
             (SemaType::Plain(PlainType::Bool), SemaType::Plain(target)) if target.is_integer() => true,
-
-            // Char to integer and back
-            (SemaType::Plain(PlainType::Char), SemaType::Plain(target)) if target.is_integer() => true,
-            (SemaType::Plain(value), SemaType::Plain(PlainType::Char)) if value.is_integer() => true,
 
             // void* <-> intptr/uintptr
             (SemaType::Pointer(..), SemaType::Plain(PlainType::IntPtr))

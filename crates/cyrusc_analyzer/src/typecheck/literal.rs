@@ -61,21 +61,21 @@ impl<'a> AnalysisContext<'a> {
 
                 let ty = if let Some(prefix) = prefix_opt {
                     match prefix {
-                        StringPrefix::C => SemaType::Pointer(Box::new(SemaType::Plain(PlainType::Char))),
+                        StringPrefix::C => SemaType::Pointer(Box::new(SemaType::Plain(PlainType::UInt8))),
                         StringPrefix::B => SemaType::Array(TypedArrayType {
-                            element_type: Box::new(SemaType::Const(Box::new(SemaType::Plain(PlainType::Char)))),
+                            element_type: Box::new(SemaType::Const(Box::new(SemaType::Plain(PlainType::UInt8)))),
                             capacity: TypedArrayCapacity::Fixed(Box::new(capacity)),
                             loc: literal.loc,
                         }),
                     }
                 } else {
-                    SemaType::Pointer(Box::new(SemaType::Plain(PlainType::Char)))
+                    SemaType::Pointer(Box::new(SemaType::Plain(PlainType::UInt8)))
                 };
 
                 Some(ty)
             }
             LiteralKind::Bool(_) => Some(SemaType::Plain(PlainType::Bool)),
-            LiteralKind::Char(_) => Some(SemaType::Plain(PlainType::Char)),
+            LiteralKind::Char(_) => Some(SemaType::Plain(PlainType::UInt8)),
             LiteralKind::Null => Some(SemaType::Plain(PlainType::Null)),
         };
 
@@ -109,7 +109,7 @@ fn infer_integer_type(
     }
 
     // default integer type
-    Ok(SemaType::Plain(PlainType::Int))
+    Ok(SemaType::Plain(PlainType::Int32))
 }
 
 fn infer_float_type(
