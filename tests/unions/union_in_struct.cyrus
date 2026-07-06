@@ -4,11 +4,11 @@ import std::libc{printf};
 
 union Data {
     int_val: int,
-    str_val: char*
+    str_val: uint8*
 }
 
 struct Container {
-    pub tag: char*,
+    pub tag: uint8*,
     pub data: Data
 }
 

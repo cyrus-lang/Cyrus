@@ -7,7 +7,7 @@ pub fn main() {
     const file_name = "./tests/std/libc/example_content.txt";
 
     var file: c_file*;
-    var buffer: char[1024];
+    var buffer: uint8[1024];
     var bytes_read: usize;
     var total_bytes: usize;
 

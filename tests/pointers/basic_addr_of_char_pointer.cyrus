@@ -3,8 +3,8 @@
 import std::libc{printf};
 
 pub fn main() {
-    const name: char* = "Cyrus";
-    const ref: char** = &name;
+    const name: uint8* = "Cyrus";
+    const ref: uint8** = &name;
     
     printf("%s\n", *ref);
 }

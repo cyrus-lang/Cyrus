@@ -2,7 +2,7 @@
 // Copyright (c) 2026 The Cyrus Language
 
 /// A const string literal for error message.
-pub type ErrorStr = const char*;
+pub type ErrorStr = const uint8*;
 
 /// A result type representing either a successful value `V` or an error message.
 pub enum ErrorOr<V, E = ErrorStr> {

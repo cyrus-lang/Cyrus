@@ -8,7 +8,7 @@ enum Color {
     Black
 }
 
-fn format_color(color: Color) const char* {
+fn format_color(color: Color) const uint8* {
     switch (color) {
         case .Red => {
             return "red\n";

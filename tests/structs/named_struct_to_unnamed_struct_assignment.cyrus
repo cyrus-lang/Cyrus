@@ -5,12 +5,12 @@ import std::libc{printf};
 struct MyStruct {
     pub a: int,
     pub b: float64,
-    pub c: char
+    pub c: uint8
 }
 
 pub fn main() {
     const inst = MyStruct { a: 10, b: 3.14, c: 'z' };
-    const ustruct: struct { a: int, b: float64, c: char } = inst;
+    const ustruct: struct { a: int, b: float64, c: uint8 } = inst;
 
     printf("%d %f %c", ustruct.a, ustruct.b, ustruct.c);
 }

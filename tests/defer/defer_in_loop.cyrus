@@ -3,7 +3,7 @@
 import std::libc{printf};
 
 pub fn main() {
-    const arr = char*[3]{"A", "B", "C"};
+    const arr = uint8*[3]{"A", "B", "C"};
 
     for (var i: usize = 0; i < 3; i++) {
         const item = arr[i];

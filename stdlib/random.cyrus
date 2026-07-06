@@ -60,21 +60,21 @@ pub struct Random {
   }
 
   // Generates a random upperclass character
-  pub fn rand_upperc(&self) char {
+  pub fn rand_upperc(&self) uint8 {
     var rnd = self->rand_int(0, @cast(int64, 'Z') - @cast(int64, 'A'));
 
     var char_index = @cast(int64, 'A') + rnd;
 
-    return @cast(char, char_index);
+    return @cast(uint8, char_index);
   }
 
   // Generates a random lowerclass character
-  pub fn rand_lowerc(&self) char {
+  pub fn rand_lowerc(&self) uint8 {
     var rnd = self->rand_int(0, @cast(int64, 'z') - @cast(int64, 'a'));
 
     var char_index = @cast(int64, 'a') + rnd;
 
-    return @cast(char, char_index);
+    return @cast(uint8, char_index);
   }
 
   // Generates a random true or false

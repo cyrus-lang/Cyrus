@@ -3,7 +3,7 @@
 import std::libc{printf};
 
 pub fn main() {
-    var names = char*[3]{"Greatest", "Programming", "Language"};
+    var names = uint8*[3]{"Greatest", "Programming", "Language"};
 
     names[0] = "Cyrus";
 

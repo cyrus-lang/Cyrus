@@ -3,17 +3,17 @@
 import std::libc{printf};
 
 interface Speaker {
-    fn speak(&const self) const char*;
+    fn speak(&const self) const uint8*;
 }
 
 struct Dog : Speaker {
-    pub fn speak(&const self) const char* {
+    pub fn speak(&const self) const uint8* {
         return "Woof!";
     }
 }
 
 struct Cat : Speaker {
-    pub fn speak(&const self) const char* {
+    pub fn speak(&const self) const uint8* {
         return "Meow!";
     }
 }

@@ -11,7 +11,7 @@ pub struct Path {
     allocator: Allocator,
     inner: String,
 
-    pub inline fn new(const allocator: Allocator, const name: char*) Self {
+    pub inline fn new(const allocator: Allocator, const name: uint8*) Self {
         const inner = String.from_str(allocator, name);
 
         return Self { allocator, inner };
@@ -202,11 +202,11 @@ pub struct Path {
 }
 
 /// POSIX ONLY!
-inline fn is_separator(ch: char) bool {
+inline fn is_separator(ch: uint8) bool {
     return ch == '/';
 }
 
 /// POSIX ONLY!
-inline fn separator() char {
+inline fn separator() uint8 {
     return '/';
 }

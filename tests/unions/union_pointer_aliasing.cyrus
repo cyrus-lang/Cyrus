@@ -3,7 +3,7 @@
 import std::libc{printf};
 
 union Union {
-    p: char*,
+    p: uint8*,
     i: int64
 }
 

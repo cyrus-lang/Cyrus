@@ -7,7 +7,7 @@ struct Pair<K, V> {
     pub value: V
 }
 
-fn format_bool(x: bool) char* {
+fn format_bool(x: bool) uint8* {
     if (x) { return "true"; }
     else { return "false"; }
 }
@@ -15,7 +15,7 @@ fn format_bool(x: bool) char* {
 pub fn main() {
     const inst = Pair<uint, _> {
         key: 1,
-        value: Pair<char*, bool> {
+        value: Pair<uint8*, bool> {
             key: "Cyrus",
             value: true
         }

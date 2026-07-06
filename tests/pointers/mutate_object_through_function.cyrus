@@ -2,7 +2,7 @@
 
 import std::libc{printf};
 
-type const_str = char*;
+type const_str = uint8*;
 
 fn mutate_const_str(str: const_str*) {
     *str = "Cyrus";
@@ -13,7 +13,7 @@ fn display_const_str(str: const_str) {
 }
 
 pub fn main() {
-    const name: char* = "unknown";
+    const name: uint8* = "unknown";
 
     mutate_const_str(&name);
     display_const_str(name);

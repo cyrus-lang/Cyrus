@@ -9,7 +9,7 @@ enum Small {
 
 enum WithData {
     Int(int64),
-    Text(char*),
+    Text(uint8*),
 }
 
 pub fn main() {

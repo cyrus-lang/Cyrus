@@ -18,7 +18,7 @@ pub fn main() {
     const inst: struct { 
         a: uint32, 
         b: float64,
-        c: char
+        c: uint8
     } = generic;
     
     printf("%d %f %c", inst.a, inst.b, inst.c);

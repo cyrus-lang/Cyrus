@@ -1,7 +1,7 @@
 import std::libc{printf};
 
 pub fn main() {
-    const poem: char* = "Line one\nLine two\nLine three";
-    const backslash: char = '\\';
-    const quote: char* = "She said: \"Cyrus is great!\""; 
+    const poem: uint8* = "Line one\nLine two\nLine three";
+    const backslash: uint8 = '\\';
+    const quote: uint8* = "She said: \"Cyrus is great!\""; 
 }

@@ -13,7 +13,7 @@ struct KV<K, V> {
 
 pub fn main() {
     printf("%d ", @sizeof(Box<uint64>));
-    printf("%d ", @sizeof(KV<int32, char>));
+    printf("%d ", @sizeof(KV<int32, uint8>));
     printf("%d ", @sizeof(Box<()>));
     printf("%d ", @sizeof(KV<(), ()>));
     printf("%d\n", @sizeof(KV<(), void>));

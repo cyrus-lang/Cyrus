@@ -2,7 +2,7 @@
 
 import std::libc{printf};
 
-fn my_str() char* { return "Cyrus"; }
+fn my_str() uint8* { return "Cyrus"; }
 
 pub fn main() {
     const x = "Cyrus";

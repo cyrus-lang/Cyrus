@@ -3,11 +3,11 @@
 import std::libc{printf};
 
 union Value {
-    text_value: char*,
+    text_value: uint8*,
     int_value: int64
 }
 
-fn value_as_text(v: Value) char* {
+fn value_as_text(v: Value) uint8* {
     return v.text_value;
 }
 
