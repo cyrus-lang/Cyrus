@@ -77,22 +77,26 @@ impl<'source_file> Parser<'source_file> {
             };
 
             // check for banned precedence (chained non-associative operators)
-            if let Some(banned_precedence) = banned_precedence {
-                if operator_precedence == banned_precedence {
-                    let invalid_token = self.peek_token().clone();
-                    self.next_token(); // consume the bad operator
+            if let Some(banned_precedence) = banned_precedence
+                && banned_precedence == operator_precedence
+            {
+                let invalid_token = self.peek_token().clone();
+                self.next_token(); // consume the bad operator
 
-                    return Err(Diag {
-                        kind: Box::new(ParserDiagKind::ChainedComparisonOperator),
-                        level: DiagLevel::Error,
-                        loc: Some(invalid_token.loc),
-                        hint: Some(format!("Cannot chain '{}' operators.", invalid_token.kind)),
-                    });
-                }
+                return Err(Diag {
+                    kind: Box::new(ParserDiagKind::ChainedComparisonOperator),
+                    level: DiagLevel::Error,
+                    loc: Some(invalid_token.loc),
+                    hint: Some(format!("Cannot chain '{}' operators.", invalid_token.kind)),
+                });
             }
 
-            let is_non_assoc = is_comparison_operator(&self.peek_token().kind);
-            let infix_banned_precedence = if is_non_assoc { Some(operator_precedence) } else { None };
+            let is_associative = is_comparison_operator(&self.peek_token().kind);
+            let infix_banned_precedence = if is_associative {
+                None
+            } else {
+                Some(operator_precedence)
+            };
 
             if peek_token.kind != TokenKind::EOF && minimum_precedence < operator_precedence {
                 match self.parse_infix_expr_with_banned(
