@@ -4,7 +4,7 @@
 use crate::{
     OwnedModule,
     builder::{
-        control_flow::CFEntry,
+        control_flow::ControlRegion,
         irreg::{LocalIRValueRegistry, LocalIRValueRegistryRef},
         types::CodegenIRBuilderTypeCache,
     },
@@ -55,7 +55,7 @@ pub(crate) struct CodeGenIRBuilder<'ll> {
 
 #[derive(Debug, Clone)]
 pub(crate) struct BlockRegistry<'ll> {
-    pub(crate) control_flow_stack: Vec<CFEntry<'ll>>,
+    pub(crate) control_flow_stack: Vec<ControlRegion<'ll>>,
     pub(crate) first_block: Option<BasicBlock<'ll>>,
     pub(crate) cur_block: Option<BasicBlock<'ll>>,
     pub(crate) labels: HashMap<LabelID, (BasicBlock<'ll>, usize)>,
