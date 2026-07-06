@@ -7,7 +7,7 @@ struct Inner {
 }
 
 struct Outer {
-    pub name: char*,
+    pub name: uint8*,
     pub inner: Inner
 }
 

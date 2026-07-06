@@ -20,7 +20,7 @@ struct Record<K, V> {
 }
 
 pub fn main() {
-	var users: Record<uint64, char*>[3] = {
+	var users: Record<uint64, uint8*>[3] = {
 		Record.new(1uint64, "Cyrus"),
 		Record.new(2uint64, "The"),
 		Record.new(3uint64, "?")

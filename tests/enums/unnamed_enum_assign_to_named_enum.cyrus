@@ -8,7 +8,7 @@ enum Color {
 }
 
 pub fn main() {
-	const x: enum { Int(int), Text(char*) } = .Text("Cyrus!");
+	const x: enum { Int(int), Text(uint8*) } = .Text("Cyrus!");
 
 	const y: Color = .Red;
 

@@ -4,7 +4,7 @@ import std::libc{printf};
 
 enum Value {
     Int(int64),
-    Text(char*)
+    Text(uint8*)
 }
 
 pub fn main() {

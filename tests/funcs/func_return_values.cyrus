@@ -6,11 +6,11 @@ fn get_number() float64 {
     return 12.5;
 }
 
-fn get_char() char {
+fn get_char() uint8 {
     return 'X';
 }
 
-fn get_const_str() char* {
+fn get_const_str() uint8* {
     return "Cyrus!";
 }
 

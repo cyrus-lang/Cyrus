@@ -3,7 +3,7 @@
 import std::libc{printf};
 
 union Value {
-    text_value: char*,
+    text_value: uint8*,
     int_value: int64
 }
 

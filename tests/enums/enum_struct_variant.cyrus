@@ -7,7 +7,7 @@ enum Error {
 
     Custom {
         id: uint32,
-        msg: const char*
+        msg: const uint8*
     }
 }
 

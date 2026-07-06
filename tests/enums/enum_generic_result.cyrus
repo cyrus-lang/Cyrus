@@ -15,8 +15,8 @@ enum Result<T, E> {
 }
 
 pub fn main() {
-    const ok: Result<int, char*> = .Ok(42);
-    const err: Result<int, char*> = .Err("file not found");
+    const ok: Result<int, uint8*> = .Ok(42);
+    const err: Result<int, uint8*> = .Err("file not found");
 
     switch (ok) {
         case .Ok(val) => printf("%d ", val);

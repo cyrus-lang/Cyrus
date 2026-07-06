@@ -7,7 +7,7 @@ enum Color {
 	Blue
 }
 
-fn get_color_str(x: const enum { Red, Blue }) char* {
+fn get_color_str(x: const enum { Red, Blue }) uint8* {
 	switch (x) {
 		case .Red => {
 			return "Red";

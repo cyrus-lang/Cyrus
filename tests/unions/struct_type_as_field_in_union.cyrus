@@ -9,7 +9,7 @@ struct Sample {
 
 union Payload {
     int_value: int64,
-    text_value: char*,
+    text_value: uint8*,
     float_value: float64,
     struct_value: Sample
 }

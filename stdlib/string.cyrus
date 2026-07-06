@@ -7,10 +7,10 @@ import std::mem{Allocator};
 import std::slices{Slice};
 
 pub struct String {
-    vec: Vector<char>,
+    vec: Vector<uint8>,
 
     pub fn new(const allocator: Allocator) Self {
-        var vec: Vector<char> = Vector.new(allocator);
+        var vec: Vector<uint8> = Vector.new(allocator);
 
         vec.push('\0'); // null-terminated
 
@@ -18,19 +18,19 @@ pub struct String {
     }
 
     pub fn with_capacity(const allocator: Allocator, const cap: usize) Self {
-        var vec: Vector<char> = Vector.with_capacity(allocator, cap);
+        var vec: Vector<uint8> = Vector.with_capacity(allocator, cap);
 
         vec.push('\0');
         
         return Self { vec };
     }
 
-    pub fn from_str(const allocator: Allocator, const str: const char*) Self {
+    pub fn from_str(const allocator: Allocator, const str: const uint8*) Self {
         @assert(str != null, "input string cannot be null");
 
         const len = strlen(str);
 
-        var vec: Vector<char> = Vector.new(allocator);
+        var vec: Vector<uint8> = Vector.new(allocator);
 
         for (var i: usize = 0; i < len; i++) {
             vec.push(str[i]);
@@ -41,8 +41,8 @@ pub struct String {
         return Self { vec };
     }
 
-    pub fn from_slice(const allocator: Allocator, const slice: const Slice<char>) Self {
-        var vec: Vector<char> = Vector.new(allocator);
+    pub fn from_slice(const allocator: Allocator, const slice: const Slice<uint8>) Self {
+        var vec: Vector<uint8> = Vector.new(allocator);
 
         for (var i: usize = 0; i < slice.len(); i++) {
             const item = slice.get_const(i).unwrap();
@@ -63,7 +63,7 @@ pub struct String {
         }
     }
 
-    pub fn push(&self, const ch: char) {        
+    pub fn push(&self, const ch: uint8) {        
         var data = self->vec.data();
         var current = &data[self->len()];
 
@@ -72,7 +72,7 @@ pub struct String {
         self->vec.push('\0');
     }
 
-    pub fn push_str(&self, const str: char*) {
+    pub fn push_str(&self, const str: uint8*) {
         @assert(str != null, "input string cannot be null");
 
         const len = strlen(str);
@@ -140,7 +140,7 @@ pub struct String {
         var str = self->as_str();
 
         for (var i: usize = 0; i < self->vec.len(); i++) {
-            str[i] = @cast(char, tolower(str[i]));
+            str[i] = @cast(uint8, tolower(str[i]));
         }
     }
 
@@ -148,15 +148,15 @@ pub struct String {
         var str = self->as_str();
 
         for (var i: usize = 0; i < self->vec.len(); i++) {
-            str[i] = @cast(char, toupper(str[i]));
+            str[i] = @cast(uint8, toupper(str[i]));
         }
     }
 
-    pub inline fn as_str(&self) char* {
+    pub inline fn as_str(&self) uint8* {
         return self->vec.data();
     }
 
-    pub inline fn as_str_const(&const self) const char* {
+    pub inline fn as_str_const(&const self) const uint8* {
         return self->vec.data_const();
     }
 

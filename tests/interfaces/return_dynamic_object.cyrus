@@ -3,11 +3,11 @@
 import std::libc{printf};
 
 interface Animal {
-    fn bark(&const self) const char*;
+    fn bark(&const self) const uint8*;
 }
 
 struct Cat : Animal {
-    fn bark(&const self) const char* {
+    fn bark(&const self) const uint8* {
         return "meow";
     }
 }

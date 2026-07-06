@@ -3,7 +3,7 @@
 import std::libc{printf};
 
 pub fn main() {
-    var msg: char* = "start";
+    var msg: uint8* = "start";
     defer msg = "end";
 
     printf("%s ", msg);

@@ -3,7 +3,7 @@
 import std::libc{printf};
 
 union Payload {
-    bytes: char*,
+    bytes: uint8*,
     data: int[3]
 }
 

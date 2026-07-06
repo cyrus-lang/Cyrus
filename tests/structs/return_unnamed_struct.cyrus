@@ -2,7 +2,7 @@
 
 import std::libc{printf};
 
-fn new_person(name: char*, age: uint32) struct { name: char*, age: uint32 } {
+fn new_person(name: uint8*, age: uint32) struct { name: uint8*, age: uint32 } {
     return struct { name, age };
 }
 

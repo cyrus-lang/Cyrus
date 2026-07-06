@@ -3,7 +3,7 @@
 import std::libc{printf, exit};
 
 union Payload {
-    text_value: char*,
+    text_value: uint8*,
     int_value: int
 }
 
@@ -16,7 +16,7 @@ struct TaggedPayload {
     pub tag: PayloadKind,
     pub data: Payload,
 
-    pub fn new_text_value(text: char*) Self {
+    pub fn new_text_value(text: uint8*) Self {
         return Self { tag: PayloadKind.Text, data: Payload { text_value: text } };
     }
 

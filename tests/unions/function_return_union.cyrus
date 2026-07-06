@@ -4,10 +4,10 @@ import std::libc{printf};
 
 union Value {
     int_value: int64,
-    text_value: char*
+    text_value: uint8*
 }
 
-fn new_text_value(text_value: char*) Value {
+fn new_text_value(text_value: uint8*) Value {
     return Value { text_value };
 }
 
