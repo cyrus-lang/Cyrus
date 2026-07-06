@@ -1102,24 +1102,3 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         }
     }
 }
-
-// fn llvm_get_current_block_if_in_use(current_block: &mut Option<LLVMBasicBlockRef>) -> Option<LLVMBasicBlockRef> {
-//     if let Some(block) = *current_block {
-//         if llvm_basic_block_is_unused(block) {
-//             unsafe { LLVMDeleteBasicBlock(block) };
-
-//             *current_block = None;
-//             return None;
-//         }
-
-//         return Some(block);
-//     }
-//     None
-// }
-
-// fn llvm_basic_block_is_unused(block: LLVMBasicBlockRef) -> bool {
-//     let first_instr = unsafe { LLVMGetFirstInstruction(block) };
-//     let first_use = unsafe { LLVMGetFirstUse(LLVMBasicBlockAsValue(block)) };
-
-//     first_instr.is_null() && first_use.is_null()
-// }
