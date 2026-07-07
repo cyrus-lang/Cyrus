@@ -2,6 +2,7 @@
 // Copyright (c) 2026 The Cyrus Language
 
 import std::libc{strlen, strcmp, memmove, isspace, tolower, toupper};
+import std::libc::types{c_int};
 import std::collections{Vector};
 import std::mem{Allocator};
 import std::slices{Slice};
@@ -96,16 +97,12 @@ pub struct String {
     }
 
     pub fn trim_start(&self) {
-        const str = self->as_str_const();
+        var str: const uint8* = self->as_str_const();
         const len = self->vec.len();
 
         var start: usize = 0;
-        while (start < len - 1 && isspace(str[start]) != 0) {
+        while (start < len - 1 && isspace(@cast(c_int, str[start])) != 0) {
             start++;
-        }
-
-        if (start == 0) {
-            return;
         }
 
         if (start >= len - 1) {
@@ -114,6 +111,7 @@ pub struct String {
         }
 
         const n = len - start;
+
         memmove(@cast(void*, str), @cast(void*, str + start), n);
 
         while (start > 0) {
@@ -130,7 +128,7 @@ pub struct String {
             return;
         }
 
-        while (len > 1 && isspace(str[len - 1]) != 0) {
+        while (len > 1 && isspace(@cast(c_int, str[len - 1])) != 0) {
             self->vec.pop();
             len--;
         }
@@ -140,7 +138,7 @@ pub struct String {
         var str = self->as_str();
 
         for (var i: usize = 0; i < self->vec.len(); i++) {
-            str[i] = @cast(uint8, tolower(str[i]));
+            str[i] = @cast(uint8, tolower(@cast(c_int, str[i])));
         }
     }
 
@@ -148,7 +146,7 @@ pub struct String {
         var str = self->as_str();
 
         for (var i: usize = 0; i < self->vec.len(); i++) {
-            str[i] = @cast(uint8, toupper(str[i]));
+            str[i] = @cast(uint8, toupper(@cast(c_int, str[i])));
         }
     }
 

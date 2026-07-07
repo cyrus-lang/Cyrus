@@ -629,7 +629,7 @@ impl<'a> AnalysisContext<'a> {
     // and allow syntactic shorthand for `X != null`: `X`
     fn analyze_builtin_assert(&mut self, builtin_func: &mut TypedBuiltinFunc) -> Option<SemaType> {
         let param_types = [
-            SemaType::Plain(PlainType::Bool),                              // cond (bool)
+            SemaType::Plain(PlainType::Bool),                               // cond (bool)
             SemaType::Pointer(Box::new(SemaType::Plain(PlainType::UInt8))), // msg? (char*)
         ];
 

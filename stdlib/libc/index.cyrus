@@ -335,21 +335,20 @@ pub const EDOM: types::c_int = 33;
 // ctype
 
 pub extern(c) {
-    fn isalnum(c: types::c_char) types::c_char;
-    fn isalpha(c: types::c_char) types::c_char;
-    fn isblank(c: types::c_char) types::c_char;
-    fn iscntrl(c: types::c_char) types::c_char;
-    fn isdigit(c: types::c_char) types::c_char;
-    fn isgraph(c: types::c_char) types::c_char;
-    fn islower(c: types::c_char) types::c_char;
-    fn isprint(c: types::c_char) types::c_char;
-    fn ispunct(c: types::c_char) types::c_char;
-    fn isspace(c: types::c_char) types::c_char;
-    fn isupper(c: types::c_char) types::c_char;
-    fn isxdigit(c: types::c_char) types::c_char;
-
-    fn tolower(c: types::c_char) types::c_char;
-    fn toupper(c: types::c_char) types::c_char;
+    fn isalnum(c: types::c_int) types::c_int;
+    fn isalpha(c: types::c_int) types::c_int;
+    fn isblank(c: types::c_int) types::c_int;
+    fn iscntrl(c: types::c_int) types::c_int;
+    fn isdigit(c: types::c_int) types::c_int;
+    fn isgraph(c: types::c_int) types::c_int;
+    fn islower(c: types::c_int) types::c_int;
+    fn isprint(c: types::c_int) types::c_int;
+    fn ispunct(c: types::c_int) types::c_int;
+    fn isspace(c: types::c_int) types::c_int;
+    fn isupper(c: types::c_int) types::c_int;
+    fn isxdigit(c: types::c_int) types::c_int;
+    fn tolower(c: types::c_int) types::c_int;
+    fn toupper(c: types::c_int) types::c_int;
 }
 
 // time 
