@@ -77,6 +77,21 @@ def build_and_run(file_path, metadata, compiler_path, compiler_flags, output_dir
             build_cmd += shlex.split(extra_args)
         
         build_result = subprocess.run(build_cmd, capture_output=True, text=True, env=env)
+
+        annotations = metadata.get("errorAnnotations") or []
+        if annotations:
+            combined = (build_result.stdout or "") + "\n" + (build_result.stderr or "")
+            diagnostics = parse_compiler_diagnostics(combined)
+            problems = match_error_annotations(annotations, diagnostics, file_path)
+            if problems:
+                detail = "\n".join(f"  - {p}" for p in problems)
+                raise Exception(
+                    f"Error-annotation mismatch:\n{detail}\n\n"
+                    f"--- compiler output ---\n{combined.strip()}\n"
+                    f"(Run {run_number}/{total_runs})"
+                )
+            return
+
         if build_result.returncode != 0:
             raise Exception(f"Build error:\n{build_result.stderr}")
 
@@ -113,6 +128,108 @@ def build_and_run(file_path, metadata, compiler_path, compiler_flags, output_dir
         if expected_stderr.strip() == "" and run_result.returncode != 0:
             raise Exception(f"Test execution failed with exit code {run_result.returncode} (Run {run_number}/{total_runs}):\n")
 
+LEVEL_KEYWORDS = {
+    "ERROR": "error",
+    "WARNING": "warning",
+    "WARN": "warning",
+    "UNIMPLEMENTED": "unimplemented",
+    "UNIMPL": "unimplemented",
+}
+
+ANNOTATION_RE = re.compile(
+    r"//~(?P<adjust>[\^v|]*)\s*(?P<level>" + "|".join(LEVEL_KEYWORDS) + r")\b[ \t]*(?P<msg>.*?)\s*$"
+)
+
+DIAG_RE = re.compile(
+    r"^\[(?P<level>error|warning|unimplemented)\]"
+    r"\[(?P<path>.+):(?P<line>\d+):(?P<col>\d+)\]:[ ]?(?P<msg>.*)$"
+)
+
+
+def extract_error_annotations(content):
+    annotations = []
+    prev_target = None
+
+    for lineno, raw_line in enumerate(content.splitlines(), start=1):
+        match = ANNOTATION_RE.search(raw_line)
+        if not match:
+            continue
+
+        adjust = match.group("adjust")
+        level = LEVEL_KEYWORDS[match.group("level")]
+        msg = match.group("msg").strip()
+
+        if "|" in adjust:
+            target = prev_target if prev_target is not None else lineno
+        else:
+            target = lineno - adjust.count("^") + adjust.count("v")
+
+        prev_target = target
+        annotations.append({
+            "line": target,
+            "level": level,
+            "msg": msg,
+            "comment_line": lineno,
+        })
+
+    return annotations
+
+
+def parse_compiler_diagnostics(text):
+    diagnostics = []
+    for line in text.replace("\r\n", "\n").split("\n"):
+        match = DIAG_RE.match(line)
+        if match:
+            diagnostics.append({
+                "level": match.group("level"),
+                "path": match.group("path"),
+                "line": int(match.group("line")),
+                "col": int(match.group("col")),
+                "msg": match.group("msg").strip(),
+            })
+    return diagnostics
+
+
+def match_error_annotations(annotations, diagnostics, test_path):
+    norm_test = os.path.normpath(str(test_path))
+    in_file = [d for d in diagnostics if os.path.normpath(d["path"]) == norm_test]
+    other = [d for d in diagnostics if os.path.normpath(d["path"]) != norm_test]
+
+    used = [False] * len(in_file)
+    problems = []
+
+    for exp in annotations:
+        matched = False
+        for i, diag in enumerate(in_file):
+            if used[i]:
+                continue
+            if (diag["level"] == exp["level"]
+                    and diag["line"] == exp["line"]
+                    and exp["msg"] in diag["msg"]):
+                used[i] = True
+                matched = True
+                break
+        if not matched:
+            wanted = f'matching "{exp["msg"]}"' if exp["msg"] else "(any message)"
+            problems.append(
+                f'expected {exp["level"]} on line {exp["line"]} {wanted}, '
+                f'but no such diagnostic was produced'
+            )
+
+    for i, diag in enumerate(in_file):
+        if not used[i]:
+            problems.append(
+                f'unexpected {diag["level"]} on line {diag["line"]}: "{diag["msg"]}"'
+            )
+
+    for diag in other:
+        problems.append(
+            f'unexpected {diag["level"]} in {diag["path"]}:{diag["line"]}: "{diag["msg"]}"'
+        )
+
+    return problems
+
+
 def extract_test_metadata(content, file_name):
     metadata = {
         "stdout": "",
@@ -120,7 +237,8 @@ def extract_test_metadata(content, file_name):
         "stdin": "",
         "args": "",
         "beforeCompile": "",
-        "compilerArgs": ""
+        "compilerArgs": "",
+        "errorAnnotations": [],
     }
 
     patterns = {
@@ -140,6 +258,8 @@ def extract_test_metadata(content, file_name):
                 value = value.replace(r'\n', '\n').replace(r'\t', '\t').replace(r'\r', '\r')
             metadata[key] = value
 
+    metadata["errorAnnotations"] = extract_error_annotations(content)
+
     return metadata
 
 
@@ -152,13 +272,13 @@ def run_single_test(test_file, base_path, compiler_path, compiler_flags, output_
         # when running a single file and base is its parent
         relative_name = test_file.name
 
+    content = test_file.read_text()
+    metadata = extract_test_metadata(content, test_file.name)
+
     # Run the test N times
     failures = []
     for run_num in range(1, repeat_count + 1):
         try:
-            content = test_file.read_text()
-            metadata = extract_test_metadata(content, test_file.name)
-
             build_and_run(
                 test_file,
                 metadata,
@@ -196,16 +316,24 @@ def main():
             "[--flags '<extra_flags>'] --output <output_dir> [--repeat <N>]\n"
             "  <test_path> can be a directory (runs all .cyrus files inside recursively) "
             "or a single .cyrus file.\n"
-            "  --repeat <N>: Run each test N times (default: 1)")
+            "  --repeat <N>: Run each test N times (default: 1)\n"
+            "  --jobs <N>: Number of tests to run in parallel (default: auto).\n"
+            "\n"
+            "  Runtime tests use directives: // @stdout: // @stderr: // @stdin: // @args:\n"
+            "  Compile-fail tests embed expected diagnostics inline (rustc x.py style):\n"
+            "      const y: bool = x + 1;  //~ ERROR Cannot assign value of type 'int32'\n"
+            "      let z = foo();          //~^ ERROR unknown symbol   (^ = one line up)\n"
+            "  Levels: ERROR | WARNING | UNIMPLEMENTED. Message is matched as a substring.")
             exit(1);
             
 
         path_arg = sys.argv[2]
         output_dir = None
         compiler_path = "cyrus"
-        compiler_flags = "" 
+        compiler_flags = ""
         fail = False
         repeat_count = 1
+        jobs = None
 
         i = 3
         while i < len(sys.argv):
@@ -226,6 +354,14 @@ def main():
                     i += 2
                 except ValueError as e:
                     raise Exception(f"Invalid --repeat value: {sys.argv[i + 1]}. Must be a positive integer.")
+            elif sys.argv[i] == "--jobs":
+                try:
+                    jobs = int(sys.argv[i + 1])
+                    if jobs < 1:
+                        raise ValueError("Jobs count must be >= 1")
+                    i += 2
+                except ValueError:
+                    raise Exception(f"Invalid --jobs value: {sys.argv[i + 1]}. Must be a positive integer.")
             elif sys.argv[i] == "--fail":
                 fail = True
                 i += 1
@@ -264,7 +400,11 @@ def main():
         passed_tests = []
         failed_tests = []
 
-        max_workers = min(16, os.cpu_count() or 4)
+        if jobs is not None:
+            max_workers = jobs
+        else:
+            max_workers = min(24, (os.cpu_count() or 4) * 3)
+        max_workers = max(1, min(max_workers, len(test_files)))
 
         with ThreadPoolExecutor(max_workers=max_workers) as executor:
             futures = {
