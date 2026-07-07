@@ -522,12 +522,23 @@ pub fn cir_signed_int_literal(plain_type: PlainType, loc: Loc) -> CIRExpr {
     }
 }
 
+/// Creates a string literal.
+pub fn cir_string_literal(value: &str, loc: Loc) -> CIRExpr {
+    CIRExpr {
+        kind: CIRExprKind::Literal(CIRLiteral {
+            kind: CIRLiteralKind::CString(value.to_string()),
+            ty: CIRType::Pointer(Box::new(CIRType::Plain(PlainType::UInt8))),
+        }),
+        ty: CIRType::Pointer(Box::new(CIRType::Plain(PlainType::UInt8))),
+        loc,
+    }
+}
+
 #[inline]
 pub fn cir_expr_as_const_integer_value<T: Integer>(expr: &CIRExpr) -> Option<T> {
     match &expr.kind {
         CIRExprKind::Literal(literal) => match literal.kind {
             CIRLiteralKind::Integer(value, _) => Some(value.as_int()),
-
             _ => None,
         },
         _ => None,
