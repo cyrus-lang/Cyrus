@@ -84,7 +84,11 @@ impl<'source_file> Parser<'source_file> {
         } else if self.current_token_is(TokenKind::Typedef) {
             let typedef_modifiers = modifiers.into_typedef_modifiers(loc)?;
             return Ok(vec![self.parse_typedef(typedef_modifiers.vis)?]);
-        } else if (self.current_token_is(TokenKind::Var) || self.current_token_is(TokenKind::Const)) && toplevel {
+        } else if (self.current_token_is(TokenKind::Static)
+            || self.current_token_is(TokenKind::Var)
+            || self.current_token_is(TokenKind::Const))
+            && toplevel
+        {
             return Ok(vec![self.parse_global_var(modifiers.clone())?]);
         } else if self.current_token_is(TokenKind::Interface) {
             let interface_modifiers = modifiers.into_interface_modifiers(loc)?;
@@ -1689,6 +1693,15 @@ impl<'source_file> Parser<'source_file> {
         let loc = self.current_token().loc;
         let (line, column, start) = (loc.line, loc.column, loc.start);
 
+        let is_static = {
+            if self.current_token_is(TokenKind::Static) {
+                self.next_token();
+                true
+            } else {
+                false
+            }
+        };
+
         let is_const = {
             if self.current_token_is(TokenKind::Const) {
                 self.next_token();
@@ -1748,6 +1761,7 @@ impl<'source_file> Parser<'source_file> {
             type_spec: var_ty,
             expr,
             is_const,
+            is_static,
             is_undef: false,
             modifiers: global_var_modifiers,
             loc: Loc::new(self.file_id(), line, column, start, end),

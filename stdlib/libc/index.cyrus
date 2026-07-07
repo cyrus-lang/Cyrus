@@ -6,9 +6,9 @@ import std::libc::types;
 // stdio
 
 pub extern(c) {
-    var stdin:  types::c_file*;
-    var stdout: types::c_file*;
-    var stderr: types::c_file*;
+    static var stdin:  types::c_file*;
+    static var stdout: types::c_file*;
+    static var stderr: types::c_file*;
 
     fn printf(format: types::c_char*, ...) types::c_int;
     fn fprintf(stream: types::c_file*, format: types::c_char*, ...) types::c_int;

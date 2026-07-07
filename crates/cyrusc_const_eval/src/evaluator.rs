@@ -58,13 +58,17 @@ impl<'a, R: ConstResolver> ConstEvaluator<'a, R> {
             TypedExprKind::Symbol(symbol_expr) => {
                 let decl_id = symbol_expr.as_decl_id().unwrap();
 
-                // const-eval in analyzer layer is only
-                // valid for `const and non-static global vars`
-                if decl_id.is_global_var() {
-                    self.eval_symbol(decl_id)
-                } else {
-                    return Err(ConstEvalError::UnsupportedExpr);
+                if let Some(global_var_decl_id) = decl_id.as_global_var() {
+                    let global_var = self.decl_tables.global_var_decl(global_var_decl_id);
+
+                    // const-eval in analyzer layer is only
+                    // valid for `const and non-static global vars`
+                    if !global_var.is_static {
+                        return self.eval_symbol(decl_id);
+                    }
                 }
+
+                return Err(ConstEvalError::UnsupportedExpr);
             }
             TypedExprKind::Literal(lit) => self.eval_literal(lit),
             TypedExprKind::Prefix(prefix) => self.eval_prefix(prefix),

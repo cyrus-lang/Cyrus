@@ -72,6 +72,7 @@ pub enum TokenKind {
     // Keywords
     Module,
     Var,
+    Static,
     Dynamic,
     Goto,
     Defer,
@@ -252,6 +253,7 @@ impl fmt::Display for TokenKind {
             TokenKind::Undefined => write!(f, "undefined"),
             TokenKind::Dynamic => write!(f, "dynamic"),
             TokenKind::Var => write!(f, "var"),
+            TokenKind::Static => write!(f, "static"),
             TokenKind::Module => write!(f, "mod"),
             TokenKind::Interface => write!(f, "interface"),
             TokenKind::Typedef => write!(f, "type"),

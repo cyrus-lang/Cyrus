@@ -48,7 +48,8 @@ impl SourceParser {
 
     #[inline]
     pub fn display_errors(&self) {
-        self.reporter.display();
+        self.reporter.display_first();
+        self.reporter.diags_mut().clear();
     }
 }
 

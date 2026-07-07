@@ -19,10 +19,20 @@ impl<'a> AnalysisContext<'a> {
                 return;
             }
 
-            if !is_expr_const_evaluable(&expr.kind) {
+            if !global_var.is_static && !is_expr_const_evaluable(&expr.kind) {
                 self.reporter.report(Diag {
                     level: DiagLevel::Error,
-                    kind: Box::new(AnalyzerDiagKind::GlobalVariableExprNotComptimeValid),
+                    kind: Box::new(AnalyzerDiagKind::NotConstEvaluableGlobalVariableExpr),
+                    loc: Some(global_var.loc),
+                    hint: None,
+                });
+                return;
+            }
+
+            if global_var.is_static && !expr.is_comptime_expr() {
+                self.reporter.report(Diag {
+                    level: DiagLevel::Error,
+                    kind: Box::new(AnalyzerDiagKind::NotComptimeStaticGlobalVariableExpr),
                     loc: Some(global_var.loc),
                     hint: None,
                 });
@@ -63,7 +73,7 @@ impl<'a> AnalysisContext<'a> {
             if !is_expr_const_evaluable(&expr.kind) && !matches!(global_var.ty, Some(SemaType::Const(..))) {
                 self.reporter.report(Diag {
                     level: DiagLevel::Error,
-                    kind: Box::new(AnalyzerDiagKind::GlobalVariableExprNotComptimeValid),
+                    kind: Box::new(AnalyzerDiagKind::NotConstEvaluableGlobalVariableExpr),
                     loc: Some(global_var.loc),
                     hint: None,
                 });
@@ -100,6 +110,19 @@ impl<'a> AnalysisContext<'a> {
                 loc: Some(global_var.loc),
                 hint: None,
             });
+        }
+
+        if global_var.is_const && global_var.is_undef {
+            self.reporter.report(Diag {
+                level: DiagLevel::Error,
+                kind: Box::new(AnalyzerDiagKind::UndefinedConstVariable),
+                loc: Some(global_var.loc),
+                hint: None,
+            });
+        }
+
+        if !global_var.is_static {
+            self.validate_non_static_global_var_modifiers(global_var);
         }
 
         self.decl_tables
@@ -167,6 +190,33 @@ impl<'a> AnalysisContext<'a> {
             var_decl.rhs = var.rhs.clone();
             var_decl.ty = var.ty.clone();
         });
+    }
+
+    fn validate_non_static_global_var_modifiers(&self, global_var: &TypedGlobalVarStmt) {
+        let modifiers = &global_var.modifiers;
+
+        if modifiers.weak
+            || !modifiers.placement.is_empty()
+            || modifiers.export.is_some()
+            || modifiers.linkage.is_some()
+            || modifiers.section.is_some()
+        {
+            self.reporter.report(Diag {
+                level: DiagLevel::Error,
+                kind: Box::new(AnalyzerDiagKind::InvalidModifierForNonStaticGlobalVar),
+                loc: Some(global_var.loc),
+                hint: None,
+            });
+        }
+
+        if !global_var.is_const {
+            self.reporter.report(Diag {
+                level: DiagLevel::Error,
+                kind: Box::new(AnalyzerDiagKind::NonStaticNonConstGlobalVar),
+                loc: Some(global_var.loc),
+                hint: None,
+            });
+        }
     }
 
     fn validate_variable_type(&mut self, ty: &SemaType, is_init: bool, loc: Loc) -> bool {

@@ -159,6 +159,15 @@ pub enum AnalyzerDiagKind {
     #[error("Undefined value cannot be used without type annoation.")]
     UndefinedWithoutTypeAnnotation,
 
+    #[error("Undefined cannot be used with const variables.")]
+    UndefinedConstVariable,
+
+    #[error("Invalid modifiers for non static global variable.")]
+    InvalidModifierForNonStaticGlobalVar,
+
+    #[error("Non static, const global var is forbidden due to potential side effects.")]
+    NonStaticNonConstGlobalVar,
+
     #[error("Enum variant '{variant_name}' expects {expected} fields, but {provided} arguments were provided.")]
     EnumVariantArgCountMismatch {
         variant_name: String,
@@ -352,8 +361,11 @@ pub enum AnalyzerDiagKind {
         expected: String,
     },
 
-    #[error("Global variable expression is not valid at compile time.")]
-    GlobalVariableExprNotComptimeValid,
+    #[error("Global variable expression is not const evaluable.")]
+    NotConstEvaluableGlobalVariableExpr,
+
+    #[error("Static global variable expression is valid at comptime.")]
+    NotComptimeStaticGlobalVariableExpr,
 
     #[error("Expression is not valid at compile time.")]
     ExprNotComptimeValid,

@@ -167,6 +167,7 @@ pub struct GlobalVarDecl {
     pub ty: Option<SemaType>,
     pub rhs: Option<TypedExpr>,
     pub is_const: bool,
+    pub is_static: bool,
     pub analyzed: bool,
     pub modifiers: GlobalVarModifiers,
     pub loc: Loc,

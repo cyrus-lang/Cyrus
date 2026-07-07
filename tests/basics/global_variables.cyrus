@@ -2,7 +2,7 @@
 
 import std::libc{printf};
 
-var global_counter: int32 = 0;
+static var global_counter: int32 = 0;
 
 fn increment() {
     global_counter = global_counter + 10;

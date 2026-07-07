@@ -485,6 +485,7 @@ pub struct ASTGlobalVarStmt {
     pub expr: Option<ASTExpr>,
     pub is_const: bool,
     pub is_undef: bool,
+    pub is_static: bool,
     pub modifiers: GlobalVarModifiers,
     pub loc: Loc,
 }

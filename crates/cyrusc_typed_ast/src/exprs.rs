@@ -31,7 +31,7 @@ pub enum ValueCategory {
     Unknown,
     RValue,
     LValue(Mutability),
-    Type
+    Type,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -413,6 +413,30 @@ impl TypedExpr {
     #[inline]
     pub fn is_rvalue(&self) -> bool {
         self.val_cat == ValueCategory::RValue
+    }
+
+    pub fn is_comptime_expr(&self) -> bool {
+        match &self.kind {
+            TypedExprKind::Literal(_) => true,
+            TypedExprKind::Lambda(_) => true,
+
+            TypedExprKind::Array(array) => array.elements.iter().all(|element| element.is_comptime_expr()),
+            TypedExprKind::Tuple(tuple) => tuple.elements.iter().all(|element| element.is_comptime_expr()),
+
+            TypedExprKind::EnumInit(enum_init) => match &enum_init.arg {
+                TypedEnumInitArgs::Unit => true,
+                TypedEnumInitArgs::Tuple(exprs) => exprs.iter().all(|element| element.is_comptime_expr()),
+                TypedEnumInitArgs::Struct(field_inits) => {
+                    field_inits.iter().all(|field_init| field_init.value.is_comptime_expr())
+                }
+            },
+            TypedExprKind::StructInit(struct_init) => {
+                struct_init.fields.iter().all(|field| field.value.is_comptime_expr())
+            }
+            TypedExprKind::UnionInit(union_init) => union_init.field.value.is_comptime_expr(),
+
+            _ => false,
+        }
     }
 }
 

@@ -1249,6 +1249,7 @@ impl<'a> Resolver<'a> {
             rhs: typed_expr.clone(),
             analyzed: true,
             is_const: global_var.is_const,
+            is_static: global_var.is_static,
             modifiers: global_var.modifiers.clone(),
             loc,
         });
@@ -1265,6 +1266,7 @@ impl<'a> Resolver<'a> {
             expr: typed_expr,
             modifiers: global_var.modifiers.clone(),
             is_const: global_var.is_const,
+            is_static: global_var.is_static,
             is_undef: global_var.is_undef,
             loc,
         }))

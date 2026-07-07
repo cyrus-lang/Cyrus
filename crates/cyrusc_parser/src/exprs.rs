@@ -1452,6 +1452,7 @@ fn can_start_expr(kind: &TokenKind) -> bool {
         | TokenKind::Decrement => true,
 
         TokenKind::Undefined
+        | TokenKind::Static
         | TokenKind::EOF
         | TokenKind::Semicolon
         | TokenKind::RightParen

@@ -5,7 +5,7 @@ import std::libc{printf};
 type Int = int64;
 type Handler = fn(Int, Int) Int;
 
-pub var globalHandler: Handler*;
+pub static var globalHandler: Handler*;
 
 pub fn main() {
     var defaultHandler: Handler = fn(x: Int, y: Int) Int {

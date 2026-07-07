@@ -742,6 +742,7 @@ impl<'source_map, 'source_file> Lexer<'source_map, 'source_file> {
 fn lookup_identifier(ident: String) -> TokenKind {
     match ident.as_str() {
         "undefined" => TokenKind::Undefined,
+        "static" => TokenKind::Static,
         "dynamic" => TokenKind::Dynamic,
         "mod" => TokenKind::Module,
         "var" => TokenKind::Var,
