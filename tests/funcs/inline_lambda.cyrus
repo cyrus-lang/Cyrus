@@ -1,0 +1,11 @@
+// @stdout: 15
+
+import std::libc{printf};
+
+pub fn main() {
+     var handler = inline fn(x: int32) int32 {
+          return x + 10;
+     };
+
+     printf("%d\n", handler(5));
+}
