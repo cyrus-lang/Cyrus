@@ -1,0 +1,9 @@
+// @stdout: 10
+
+import std::libc{printf};
+
+pub fn main() {
+     var x: int32 = undefined;
+     x = 10;
+     printf("%d\n", x);
+}

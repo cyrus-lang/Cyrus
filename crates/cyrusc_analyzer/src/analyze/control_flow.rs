@@ -567,7 +567,7 @@ impl<'a> AnalysisContext<'a> {
 
     pub(crate) fn analyze_for_loop(&mut self, typed_for: &mut TypedForStmt) -> FlowState {
         if let Some(initializer) = &mut typed_for.initializer {
-            self.analyze_variable(initializer);
+            self.analyze_var(initializer);
         }
 
         if let Some(cond) = &mut typed_for.cond {

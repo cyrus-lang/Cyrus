@@ -104,7 +104,7 @@ impl<'a> AnalysisContext<'a> {
                 FlowState::Reachable
             }
             TypedStmt::Variable(var) => {
-                self.analyze_variable(var);
+                self.analyze_var(var);
                 FlowState::Reachable
             }
             TypedStmt::BlockStmt(block) => self.analyze_block_stmt(block),

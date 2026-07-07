@@ -67,6 +67,7 @@ pub enum TokenKind {
     Or,
     At,
     Underscore,
+    Undefined,
 
     // Keywords
     Module,
@@ -248,6 +249,7 @@ impl fmt::Display for TokenKind {
             TokenKind::Colon => write!(f, ":"),
             TokenKind::ThinArrow => write!(f, "->"),
             TokenKind::FatArrow => write!(f, "=>"),
+            TokenKind::Undefined => write!(f, "undefined"),
             TokenKind::Dynamic => write!(f, "dynamic"),
             TokenKind::Var => write!(f, "var"),
             TokenKind::Module => write!(f, "mod"),

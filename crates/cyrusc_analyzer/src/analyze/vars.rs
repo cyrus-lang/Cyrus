@@ -93,6 +93,15 @@ impl<'a> AnalysisContext<'a> {
             }
         }
 
+        if global_var.ty.is_none() && global_var.is_undef {
+            self.reporter.report(Diag {
+                level: DiagLevel::Error,
+                kind: Box::new(AnalyzerDiagKind::UndefinedWithoutTypeAnnotation),
+                loc: Some(global_var.loc),
+                hint: None,
+            });
+        }
+
         self.decl_tables
             .with_global_var_decl_mut(global_var.global_var_decl_id, |global_var_decl| {
                 global_var_decl.rhs = global_var.expr.clone();
@@ -100,7 +109,7 @@ impl<'a> AnalysisContext<'a> {
             });
     }
 
-    pub(crate) fn analyze_variable(&mut self, var: &mut TypedVarStmt) {
+    pub(crate) fn analyze_var(&mut self, var: &mut TypedVarStmt) {
         if let Some(ty) = &var.ty {
             var.ty = self.normalize_and_check_type_formation(ty.clone(), var.loc, 0);
         }
@@ -143,6 +152,15 @@ impl<'a> AnalysisContext<'a> {
                     });
                 }
             }
+        }
+
+        if var.ty.is_none() && var.is_undef {
+            self.reporter.report(Diag {
+                level: DiagLevel::Error,
+                kind: Box::new(AnalyzerDiagKind::UndefinedWithoutTypeAnnotation),
+                loc: Some(var.loc),
+                hint: None,
+            });
         }
 
         self.decl_tables.with_var_decl_mut(var.var_decl_id, |var_decl| {

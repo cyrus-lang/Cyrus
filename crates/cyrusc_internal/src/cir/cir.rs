@@ -300,6 +300,7 @@ pub struct CIRGlobalVarStmt {
     pub name: String,
     pub ty: CIRType,
     pub expr: Option<CIRExpr>,
+    pub is_undef: bool,
     pub modifiers: GlobalVarModifiers,
     pub loc: Loc,
 }
@@ -310,6 +311,7 @@ pub struct CIRVarStmt {
     pub name: String,
     pub ty: CIRType,
     pub expr: Option<CIRExpr>,
+    pub is_undef: bool,
     pub loc: Loc,
 }
 

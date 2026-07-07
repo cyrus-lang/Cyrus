@@ -156,6 +156,9 @@ pub enum AnalyzerDiagKind {
     #[error("The type 'void' cannot be used in this context.")]
     VoidVariableType,
 
+    #[error("Undefined value cannot be used without type annoation.")]
+    UndefinedWithoutTypeAnnotation,
+
     #[error("Enum variant '{variant_name}' expects {expected} fields, but {provided} arguments were provided.")]
     EnumVariantArgCountMismatch {
         variant_name: String,

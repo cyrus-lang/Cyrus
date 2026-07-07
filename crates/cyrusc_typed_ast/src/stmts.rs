@@ -204,6 +204,7 @@ pub struct TypedGlobalVarStmt {
     pub ty: Option<SemaType>,
     pub expr: Option<TypedExpr>,
     pub is_const: bool,
+    pub is_undef: bool,
     pub modifiers: GlobalVarModifiers,
     pub loc: Loc,
 }
@@ -232,6 +233,7 @@ pub struct TypedVarStmt {
     pub ty: Option<SemaType>,
     pub rhs: Option<TypedExpr>,
     pub is_const: bool,
+    pub is_undef: bool,
     pub loc: Loc,
 }
 

@@ -1265,6 +1265,7 @@ impl<'a> Resolver<'a> {
             expr: typed_expr,
             modifiers: global_var.modifiers.clone(),
             is_const: global_var.is_const,
+            is_undef: global_var.is_undef,
             loc,
         }))
     }
@@ -2072,6 +2073,7 @@ impl<'a> Resolver<'a> {
             ty,
             rhs,
             is_const: var.is_const,
+            is_undef: var.is_undef,
             loc: var.loc,
         })
     }

@@ -63,7 +63,6 @@ struct CIRLower<'a> {
     main_function: Option<CIRMainFunction>,
 }
 
-
 impl<'a> CIRLower<'a> {
     pub fn new(
         program_tree: Box<TypedProgramTree>,
@@ -92,7 +91,7 @@ impl<'a> CIRLower<'a> {
             func_decls: FxHashMap::new(),
             monomorph_to_ir_value_map: FxHashMap::new(),
             vtable_to_ir_value_map: FxHashMap::new(),
-            main_function: None
+            main_function: None,
         }
     }
 
@@ -311,6 +310,7 @@ impl<'a> CIRLower<'a> {
             name: "__tuple_expr".to_string(),
             ty: ty.clone(),
             expr: Some(tuple_expr),
+            is_undef: false,
             loc: export_tuple.loc,
         });
 
@@ -378,6 +378,7 @@ impl<'a> CIRLower<'a> {
                     name: var_name,
                     ty: var_ty,
                     expr: Some(current_expr),
+                    is_undef: false,
                     loc: var_decl.loc,
                 });
             }
@@ -936,6 +937,7 @@ impl<'a> CIRLower<'a> {
             name: mangled_name,
             ty,
             expr,
+            is_undef: global_var.is_undef,
             modifiers: global_var.modifiers.clone(),
             loc: global_var.loc,
         };
@@ -963,6 +965,7 @@ impl<'a> CIRLower<'a> {
             name: mangled_name,
             ty,
             expr: None,
+            is_undef: false,
             modifiers: global_var_decl.modifiers.clone(),
             loc: global_var_decl.loc,
         }
@@ -992,6 +995,7 @@ impl<'a> CIRLower<'a> {
             name: var.name.clone(),
             ty,
             expr,
+            is_undef: var.is_undef,
             loc: var.loc,
         }
     }
@@ -1882,6 +1886,7 @@ impl<'a> CIRLower<'a> {
             name: vtable_abi_name.to_string(),
             ty: vtable_type,
             expr: None, // no initializer
+            is_undef: false,
             modifiers: GlobalVarModifiers {
                 linkage: None,
                 ..Default::default()

@@ -96,7 +96,7 @@ impl<'source_file> Parser<'source_file> {
             if modifiers != UnresolvedModifiers::default() {}
 
             let stmt = match self.current_token().kind {
-                TokenKind::Var | TokenKind::Const => self.parse_variable(),
+                TokenKind::Var | TokenKind::Const => self.parse_var(),
                 TokenKind::Defer => self.parse_defer(),
                 TokenKind::If => self.parse_if(),
                 TokenKind::Return => self.parse_return(),
@@ -1302,7 +1302,7 @@ impl<'source_file> Parser<'source_file> {
 
         let mut initializer: Option<ASTVarStmt> = None;
         if !self.current_token_is(TokenKind::Semicolon) {
-            if let ASTStmt::Variable(var) = self.parse_variable()? {
+            if let ASTStmt::Variable(var) = self.parse_var()? {
                 initializer = Some(var);
             }
         }
@@ -1462,7 +1462,7 @@ impl<'source_file> Parser<'source_file> {
         }))
     }
 
-    fn parse_variable(&mut self) -> Result<ASTStmt, Diag> {
+    fn parse_var(&mut self) -> Result<ASTStmt, Diag> {
         let loc = self.current_token().loc;
         let (line, column, start) = (loc.line, loc.column, loc.start);
 
@@ -1490,11 +1490,11 @@ impl<'source_file> Parser<'source_file> {
             ));
         }
 
-        let mut variable_type: Option<TypeSpecifier> = None;
+        let mut var_ty: Option<TypeSpecifier> = None;
         if self.current_token_is(TokenKind::Colon) {
             self.next_token(); // consume the colon
 
-            variable_type = Some(self.parse_type_specifier()?);
+            var_ty = Some(self.parse_type_specifier()?);
             self.next_token();
         }
 
@@ -1503,13 +1503,30 @@ impl<'source_file> Parser<'source_file> {
 
             return Ok(ASTStmt::Variable(ASTVarStmt {
                 ident,
-                ty: variable_type,
+                ty: var_ty,
                 rhs: None,
                 is_const,
+                is_undef: false,
                 loc: Loc::new(self.file_id(), line, column, start, end),
             }));
         }
         self.expect_current(TokenKind::Assign)?;
+
+        if self.current_token_is(TokenKind::Undefined) {
+            self.next_token();
+            self.must_be_semicolon()?;
+
+            let end = self.current_token().loc.end;
+
+            return Ok(ASTStmt::Variable(ASTVarStmt {
+                ident,
+                rhs: None,
+                ty: var_ty,
+                is_const,
+                is_undef: true,
+                loc: Loc::new(self.file_id(), line, column, start, end),
+            }));
+        }
 
         let expr = self.parse_expr(Precedence::Lowest)?;
         self.expect_peek_semicolon()?;
@@ -1519,8 +1536,9 @@ impl<'source_file> Parser<'source_file> {
         Ok(ASTStmt::Variable(ASTVarStmt {
             ident,
             rhs: Some(expr),
-            ty: variable_type,
+            ty: var_ty,
             is_const,
+            is_undef: false,
             loc: Loc::new(self.file_id(), line, column, start, end),
         }))
     }
@@ -1686,16 +1704,33 @@ impl<'source_file> Parser<'source_file> {
         let ident = self.parse_ident()?;
         self.next_token();
 
-        let mut type_spec: Option<TypeSpecifier> = None;
+        let mut var_ty: Option<TypeSpecifier> = None;
         if self.current_token_is(TokenKind::Colon) {
             self.next_token();
-            type_spec = Some(self.parse_type_specifier()?);
+            var_ty = Some(self.parse_type_specifier()?);
             self.next_token();
         }
 
         let expr = {
             if self.current_token_is(TokenKind::Assign) {
                 self.next_token();
+
+                if self.current_token_is(TokenKind::Undefined) {
+                    self.next_token();
+                    self.must_be_semicolon()?;
+
+                    let end = self.current_token().loc.end;
+
+                    return Ok(ASTStmt::Variable(ASTVarStmt {
+                        ident,
+                        rhs: None,
+                        ty: var_ty,
+                        is_const,
+                        is_undef: true,
+                        loc: Loc::new(self.file_id(), line, column, start, end),
+                    }));
+                }
+
                 let expr = Some(self.parse_expr(Precedence::Lowest)?);
                 self.next_token();
                 expr
@@ -1710,9 +1745,10 @@ impl<'source_file> Parser<'source_file> {
 
         Ok(ASTStmt::GlobalVar(ASTGlobalVarStmt {
             ident,
-            type_spec,
+            type_spec: var_ty,
             expr,
             is_const,
+            is_undef: false,
             modifiers: global_var_modifiers,
             loc: Loc::new(self.file_id(), line, column, start, end),
         }))

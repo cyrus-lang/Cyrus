@@ -52,8 +52,10 @@ impl<'ll> CodeGenIRBuilder<'ll> {
             global_value.set_initializer(&rvalue);
         } else {
             if cir_global_var.modifiers.linkage.is_none() {
-                // zero init
-                global_value.set_initializer(&ty.const_zero());
+                if !cir_global_var.is_undef {
+                    // zero init only if not declared undefined
+                    global_value.set_initializer(&ty.const_zero());
+                }
             }
         }
 
@@ -114,11 +116,13 @@ impl<'ll> CodeGenIRBuilder<'ll> {
             let rvalue = self.load_rvalue(lvalue);
             self.emit_store(ptr, rvalue, cir_var.ty.clone());
         } else {
-            // zero init
-            let zero_internal_value =
-                InternalValue::new(cir_var.ty.clone(), InternalValueKind::RValue(ty.const_zero()));
+            if !cir_var.is_undef {
+                // zero init only if not declared undefined
+                let zero_internal_value =
+                    InternalValue::new(cir_var.ty.clone(), InternalValueKind::RValue(ty.const_zero()));
 
-            self.emit_store(ptr, zero_internal_value, cir_var.ty.clone());
+                self.emit_store(ptr, zero_internal_value, cir_var.ty.clone());
+            }
         }
 
         alloca_instr.set_alignment(layout.align).unwrap();
