@@ -1,0 +1,7 @@
+import std::libc{printf};
+
+pub fn main() {
+    const x = 20;
+    const y: bool = x + 1;   //~ ERROR Cannot assign value of type 'int32' to variable of type 'bool'
+    printf("%d\n", y);
+}

@@ -1,0 +1,8 @@
+import std::libc{printf};
+
+pub fn main() {
+    const x = 20;
+    const y = *x;
+    //~^ ERROR Cannot dereference non-pointer value
+    printf("%d\n", y);
+}
