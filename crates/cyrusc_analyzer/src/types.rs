@@ -398,7 +398,7 @@ impl<'a> AnalysisContext<'a> {
             return true;
         }
 
-        match (value_type, target_type) {
+        match (value_type.const_inner(), target_type.const_inner()) {
             // Any integer to any integer
             (SemaType::Plain(value), SemaType::Plain(target)) if value.is_integer() && target.is_integer() => true,
 
