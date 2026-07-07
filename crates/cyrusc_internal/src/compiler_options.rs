@@ -108,7 +108,7 @@ pub enum CompilerOption_CodeModel {
     Large,
 }
 
-#[derive(Debug, Clone)]
+#[derive(PartialEq, Eq, Clone, Copy, Debug)]
 pub enum CompilerOption_Profile {
     Debug,
     Release,

@@ -16,6 +16,7 @@ use cyrusc_internal::{
         cir::{CIRBlockStmt, CIRModule, CIRStmt, cir_func_decl_as_func_type, cir_func_def_as_decl},
         typectx::CIRTypeContext,
     },
+    compiler_options::CompilerOption_Profile,
     vtable::VTableRegistry,
 };
 use cyrusc_source_loc::SourceMap;
@@ -37,20 +38,14 @@ pub(crate) struct CodeGenIRBuilder<'ll> {
     pub(crate) cur_abi_func_info: Option<ABIFunctionInfo>,
     pub(crate) blockreg: BlockRegistry<'ll>,
     pub(crate) defer_stack: Vec<Vec<CIRStmt>>,
-
     pub(crate) cir_module: &'ll CIRModule,
-
-    // Lambda ABI name.
     pub(crate) lambda_id: usize,
-
-    // Only if debug info enabled in compiler options.
     pub(crate) dctx: Option<DebugContext>,
-
     pub(crate) tctx: Arc<CIRTypeContext>,
     pub(crate) type_cache: CodegenIRBuilderTypeCache<'ll>,
-
     pub(crate) vtable_registry: Arc<VTableRegistry>,
     pub(crate) source_map: Arc<SourceMap>,
+    pub(crate) profile: CompilerOption_Profile,
 }
 
 #[derive(Debug, Clone)]
@@ -72,15 +67,13 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         tctx: Arc<CIRTypeContext>,
         vtable_registry: Arc<VTableRegistry>,
         source_map: Arc<SourceMap>,
+        profile: CompilerOption_Profile,
     ) -> Self {
         let llvm_module = unsafe {
             std::mem::transmute::<Rc<RefCell<Module<'static>>>, Rc<RefCell<Module<'ll>>>>(owned_module.module.clone())
         };
-
         let irreg = Rc::new(RefCell::new(LocalIRValueRegistry::new()));
-
         let blockreg = BlockRegistry::default();
-
         Self {
             target,
             cir_module,
@@ -99,6 +92,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
             vtable_registry,
             source_map,
             type_cache: CodegenIRBuilderTypeCache::new(),
+            profile,
         }
     }
 

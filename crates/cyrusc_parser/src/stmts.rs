@@ -318,19 +318,42 @@ impl<'source_file> Parser<'source_file> {
             });
         }
 
+        let mut loop_broke_at_sync_brace = false;
         loop {
-            let stmt = self.parse_stmt(None, false)?.first().unwrap().clone();
-            block_stmt.push(stmt);
+            let mut synced = false;
+            match self.parse_stmt(None, false) {
+                Ok(stmts) => {
+                    for stmt in stmts {
+                        block_stmt.push(stmt);
+                    }
+                }
+                Err(diag) => {
+                    self.reporter.report(diag);
+                    self.synchronize();
+                    synced = true;
+                }
+            }
+
+            if synced && (self.current_token_is(TokenKind::RightBrace) || self.current_token_is(TokenKind::EOF)) {
+                if self.current_token_is(TokenKind::RightBrace) {
+                    loop_broke_at_sync_brace = true;
+                }
+                break;
+            }
 
             match self.peek_token().kind {
                 TokenKind::RightBrace => break,
+                TokenKind::EOF => break,
                 _ => {
                     self.next_token();
                 }
             }
         }
 
-        self.expect_peek(TokenKind::RightBrace)?;
+        if loop_broke_at_sync_brace {
+        } else {
+            self.expect_peek(TokenKind::RightBrace)?;
+        }
 
         let end = self.current_token().loc.end;
 
