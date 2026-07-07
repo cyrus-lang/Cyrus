@@ -188,7 +188,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         self.emit_null(cir_void_ptr)
     }
 
-    fn emit_intrinsic_panic(&mut self, args: &[CIRExpr], loc: Loc) -> InternalValue<'ll> {
+    pub(crate) fn emit_intrinsic_panic(&mut self, args: &[CIRExpr], loc: Loc) -> InternalValue<'ll> {
         let cir_void_ptr = CIRType::Pointer(Box::new(CIRType::Plain(PlainType::Void)));
 
         let ptr_type = self.llvm_ctx.ptr_type(inkwell::AddressSpace::default());

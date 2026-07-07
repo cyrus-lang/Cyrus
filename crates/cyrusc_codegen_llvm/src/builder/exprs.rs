@@ -46,8 +46,8 @@ impl<'ll> CodeGenIRBuilder<'ll> {
             CIRExprKind::Load(value_ref) => self.emit_load(value_ref),
             CIRExprKind::Literal(literal) => self.emit_literal(literal),
             CIRExprKind::Prefix(prefix_expr) => self.emit_prefix_expr(prefix_expr),
-            CIRExprKind::Infix(infix_expr) => self.emit_infix_expr(infix_expr),
-            CIRExprKind::Unary(unary_expr) => self.emit_unary_expr(unary_expr),
+            CIRExprKind::Infix(infix_expr) => self.emit_infix_expr(infix_expr, expr.loc),
+            CIRExprKind::Unary(unary_expr) => self.emit_unary_expr(unary_expr, expr.loc),
             CIRExprKind::SizeOf(sizeof_expr) => self.emit_sizeof(sizeof_expr),
             CIRExprKind::Assign(assign_expr) => self.emit_assign(assign_expr),
             CIRExprKind::AddrOf(addr_of_expr) => self.emit_addr_of(addr_of_expr),
@@ -642,7 +642,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         InternalValue::new(sizeof_expr.ty.clone(), InternalValueKind::RValue(size_value.into()))
     }
 
-    fn emit_unary_expr(&mut self, unary_expr: &CIRUnaryExpr) -> InternalValue<'ll> {
+    fn emit_unary_expr(&mut self, unary_expr: &CIRUnaryExpr, loc: Loc) -> InternalValue<'ll> {
         let lvalue = self.emit_lvalue_address(&unary_expr.operand);
         let lvalue_ptr = match lvalue.kind {
             InternalValueKind::LValue(ptr) => ptr,
@@ -681,7 +681,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
                         InternalValueKind::RValue(BasicValueEnum::IntValue(unit_int_value)),
                     );
 
-                    self.emit_add(rvalue.clone(), unit_value, unary_expr.loc)
+                    self.emit_add(rvalue.clone(), unit_value, loc)
                 };
 
                 self.llvmbuilder
@@ -710,7 +710,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
                         InternalValueKind::RValue(BasicValueEnum::IntValue(unit_int_value)),
                     );
 
-                    self.emit_sub(rvalue.clone(), unit_value, unary_expr.loc)
+                    self.emit_sub(rvalue.clone(), unit_value, loc)
                 };
 
                 self.llvmbuilder
@@ -738,7 +738,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
                         ty.clone(),
                         InternalValueKind::RValue(BasicValueEnum::IntValue(unit_int_value)),
                     );
-                    self.emit_add(rvalue, unit_value, unary_expr.loc)
+                    self.emit_add(rvalue, unit_value, loc)
                 };
 
                 self.llvmbuilder
@@ -766,7 +766,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
                         ty.clone(),
                         InternalValueKind::RValue(BasicValueEnum::IntValue(unit_int_value)),
                     );
-                    self.emit_sub(rvalue, unit_value, unary_expr.loc)
+                    self.emit_sub(rvalue, unit_value, loc)
                 };
 
                 self.llvmbuilder
@@ -787,7 +787,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         }
     }
 
-    fn emit_infix_expr(&mut self, infix_expr: &CIRInfixExpr) -> InternalValue<'ll> {
+    fn emit_infix_expr(&mut self, infix_expr: &CIRInfixExpr, loc: Loc) -> InternalValue<'ll> {
         let lhs_lvalue = self.emit_expr(&infix_expr.lhs, &None);
         let rhs_lvalue = self.emit_expr(&infix_expr.rhs, &None);
 
@@ -801,9 +801,9 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         let get_signed = || rhs_rvalue.ty.as_plain().unwrap().is_signed();
 
         match infix_expr.op {
-            InfixOperator::Add => self.emit_add(lhs_rvalue, rhs_rvalue, infix_expr.loc),
-            InfixOperator::Sub => self.emit_sub(lhs_rvalue, rhs_rvalue, infix_expr.loc),
-            InfixOperator::Mul => self.emit_mul(lhs_rvalue, rhs_rvalue, infix_expr.loc),
+            InfixOperator::Add => self.emit_add(lhs_rvalue, rhs_rvalue, loc),
+            InfixOperator::Sub => self.emit_sub(lhs_rvalue, rhs_rvalue, loc),
+            InfixOperator::Mul => self.emit_mul(lhs_rvalue, rhs_rvalue, loc),
             InfixOperator::Div => self.emit_div(lhs_rvalue, rhs_rvalue),
             InfixOperator::Rem => self.emit_rem(lhs_rvalue, rhs_rvalue),
             InfixOperator::LessThan => {
