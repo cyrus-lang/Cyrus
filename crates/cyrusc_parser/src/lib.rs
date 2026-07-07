@@ -292,6 +292,8 @@ impl<'source_file> Parser<'source_file> {
         loop {
             if self.current_token_is(TokenKind::Semicolon)
                 || self.current_token_is(TokenKind::RightBrace)
+                || self.current_token_is(TokenKind::RightParen)
+                || self.current_token_is(TokenKind::RightBracket)
                 || self.current_token_is(TokenKind::EOF)
             {
                 break;

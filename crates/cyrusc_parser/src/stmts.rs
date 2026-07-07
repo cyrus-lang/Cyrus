@@ -320,7 +320,7 @@ impl<'source_file> Parser<'source_file> {
 
         let mut loop_broke_at_sync_brace = false;
         loop {
-            let mut sync_occurred = false;
+            let mut synced = false;
             match self.parse_stmt(None, false) {
                 Ok(stmts) => {
                     for stmt in stmts {
@@ -330,11 +330,11 @@ impl<'source_file> Parser<'source_file> {
                 Err(diag) => {
                     self.reporter.report(diag);
                     self.synchronize();
-                    sync_occurred = true;
+                    synced = true;
                 }
             }
 
-            if sync_occurred && (self.current_token_is(TokenKind::RightBrace) || self.current_token_is(TokenKind::EOF)) {
+            if synced && (self.current_token_is(TokenKind::RightBrace) || self.current_token_is(TokenKind::EOF)) {
                 if self.current_token_is(TokenKind::RightBrace) {
                     loop_broke_at_sync_brace = true;
                 }

@@ -24,6 +24,7 @@ use cyrusc_internal::{
     },
 };
 use cyrusc_typed_ast::types::PlainType;
+use cyrusc_source_loc::Loc;
 use inkwell::{
     AddressSpace, FloatPredicate, IntPredicate,
     types::{AnyTypeEnum, ArrayType, BasicType, BasicTypeEnum, StructType},
@@ -680,7 +681,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
                         InternalValueKind::RValue(BasicValueEnum::IntValue(unit_int_value)),
                     );
 
-                    self.emit_add(rvalue.clone(), unit_value)
+                    self.emit_add(rvalue.clone(), unit_value, unary_expr.loc)
                 };
 
                 self.llvmbuilder
@@ -709,7 +710,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
                         InternalValueKind::RValue(BasicValueEnum::IntValue(unit_int_value)),
                     );
 
-                    self.emit_sub(rvalue.clone(), unit_value)
+                    self.emit_sub(rvalue.clone(), unit_value, unary_expr.loc)
                 };
 
                 self.llvmbuilder
@@ -737,7 +738,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
                         ty.clone(),
                         InternalValueKind::RValue(BasicValueEnum::IntValue(unit_int_value)),
                     );
-                    self.emit_add(rvalue, unit_value)
+                    self.emit_add(rvalue, unit_value, unary_expr.loc)
                 };
 
                 self.llvmbuilder
@@ -765,7 +766,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
                         ty.clone(),
                         InternalValueKind::RValue(BasicValueEnum::IntValue(unit_int_value)),
                     );
-                    self.emit_sub(rvalue, unit_value)
+                    self.emit_sub(rvalue, unit_value, unary_expr.loc)
                 };
 
                 self.llvmbuilder
@@ -800,9 +801,9 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         let get_signed = || rhs_rvalue.ty.as_plain().unwrap().is_signed();
 
         match infix_expr.op {
-            InfixOperator::Add => self.emit_add(lhs_rvalue, rhs_rvalue),
-            InfixOperator::Sub => self.emit_sub(lhs_rvalue, rhs_rvalue),
-            InfixOperator::Mul => self.emit_mul(lhs_rvalue, rhs_rvalue),
+            InfixOperator::Add => self.emit_add(lhs_rvalue, rhs_rvalue, infix_expr.loc),
+            InfixOperator::Sub => self.emit_sub(lhs_rvalue, rhs_rvalue, infix_expr.loc),
+            InfixOperator::Mul => self.emit_mul(lhs_rvalue, rhs_rvalue, infix_expr.loc),
             InfixOperator::Div => self.emit_div(lhs_rvalue, rhs_rvalue),
             InfixOperator::Rem => self.emit_rem(lhs_rvalue, rhs_rvalue),
             InfixOperator::LessThan => {
@@ -1006,6 +1007,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         rhs: IntValue<'ll>,
         is_signed: bool,
         result_type: CIRType,
+        loc: Loc,
     ) -> InternalValue<'ll> {
         let int_type = lhs.get_type();
         let width = int_type.get_bit_width();
@@ -1051,105 +1053,32 @@ impl<'ll> CodeGenIRBuilder<'ll> {
             .build_conditional_branch(overflow_flag, panic_block, cont_block)
             .unwrap();
         self.llvmbuilder.position_at_end(panic_block);
-        let panic_fn = {
-            let module = self.llvm_module.borrow();
-            module.get_function("cyrus_runtime_panic")
+        let msg_expr = CIRExpr {
+            kind: CIRExprKind::Literal(CIRLiteral {
+                kind: CIRLiteralKind::CString("integer overflow".to_string()),
+                ty: CIRType::Pointer(Box::new(CIRType::Plain(PlainType::Char))),
+            }),
+            ty: CIRType::Pointer(Box::new(CIRType::Plain(PlainType::Char))),
+            loc,
         };
-        let panic_fn = match panic_fn {
-            Some(func) => func,
-            None => {
-                let fn_type = self.llvm_ctx.void_type().fn_type(&[], false);
-                let func = self.llvm_module.borrow_mut().add_function("cyrus_runtime_panic", fn_type, None);
-                func.set_linkage(inkwell::module::Linkage::Internal);
-                let current_builder_block = self.llvmbuilder.get_insert_block();
-                let entry_block = self.llvm_ctx.append_basic_block(func, "entry");
-                self.llvmbuilder.position_at_end(entry_block);
-                let panic_msg = self.emit_cstring("thread 'main' panicked: integer overflow\n".to_string());
-                let ptr_type = self.llvm_ctx.ptr_type(inkwell::AddressSpace::default());
-                let void_type = self.llvm_ctx.void_type();
-                let i32_type = self.llvm_ctx.i32_type();
-                let fprintf_type = i32_type.fn_type(
-                    &[
-                        inkwell::types::BasicMetadataTypeEnum::from(ptr_type),
-                        inkwell::types::BasicMetadataTypeEnum::from(ptr_type),
-                    ],
-                    true,
-                );
-                let fprintf_fn_value = {
-                    let opt = self.llvm_module.borrow().get_function("fprintf");
-                    opt
-                };
-                let fprintf_fn_value = match fprintf_fn_value {
-                    Some(llvm_func_value) => llvm_func_value,
-                    None => self.llvm_module.borrow_mut().add_function("fprintf", fprintf_type, None),
-                };
-                let stderr_global = {
-                    let opt = self.llvm_module.borrow().get_global("stderr");
-                    opt
-                };
-                let stderr_global = match stderr_global {
-                    Some(global_value) => global_value,
-                    None => {
-                        let global_value = self.llvm_module.borrow_mut().add_global(ptr_type, None, "stderr");
-                        global_value.set_linkage(inkwell::module::Linkage::External);
-                        global_value
-                    }
-                };
-                let stderr_val = self
-                    .llvmbuilder
-                    .build_load(ptr_type, stderr_global.as_pointer_value(), "stderr_val")
-                    .unwrap();
-                self.llvmbuilder
-                    .build_call(
-                        fprintf_fn_value,
-                        &[
-                            inkwell::values::BasicMetadataValueEnum::from(stderr_val),
-                            inkwell::values::BasicMetadataValueEnum::from(panic_msg),
-                        ],
-                        "call",
-                    )
-                    .unwrap();
-                let error_status_code = i32_type.const_int(1, false);
-                let exit_fn_value = {
-                    let opt = self.llvm_module.borrow().get_function("exit");
-                    opt
-                };
-                let exit_fn_value = match exit_fn_value {
-                    Some(llvm_func_value) => llvm_func_value,
-                    None => {
-                        let exit_fn_type = void_type.fn_type(
-                            &[
-                                inkwell::types::BasicMetadataTypeEnum::from(i32_type),
-                            ],
-                            false,
-                        );
-                        self.llvm_module.borrow_mut().add_function("exit", exit_fn_type, None)
-                    }
-                };
-                self.llvmbuilder
-                    .build_call(exit_fn_value, &[error_status_code.into()], "call")
-                    .unwrap();
-                self.llvmbuilder.build_unreachable().unwrap();
-                if let Some(block) = current_builder_block {
-                    self.llvmbuilder.position_at_end(block);
-                }
-                func
-            }
-        };
-        self.llvmbuilder.build_call(panic_fn, &[], "").unwrap();
-        self.llvmbuilder.build_unreachable().unwrap();
+        self.emit_intrinsic_panic(&[msg_expr], loc);
         self.llvmbuilder.position_at_end(cont_block);
         self.blockreg.cur_block = Some(cont_block);
         let basic_value = BasicValueEnum::IntValue(math_result);
         InternalValue::new(result_type, InternalValueKind::RValue(basic_value))
     }
 
-    fn emit_add(&mut self, lhs_rvalue: InternalValue<'ll>, rhs_rvalue: InternalValue<'ll>) -> InternalValue<'ll> {
+    fn emit_add(
+        &mut self,
+        lhs_rvalue: InternalValue<'ll>,
+        rhs_rvalue: InternalValue<'ll>,
+        loc: Loc,
+    ) -> InternalValue<'ll> {
         match (lhs_rvalue.as_basic_value(), rhs_rvalue.as_basic_value()) {
             (BasicValueEnum::IntValue(lhs), BasicValueEnum::IntValue(rhs)) => {
                 if self.profile == cyrusc_internal::compiler_options::CompilerOption_Profile::Debug {
                     let is_signed = lhs_rvalue.ty.is_signed_integer();
-                    self.emit_checked_int_op("add", lhs, rhs, is_signed, lhs_rvalue.ty.clone())
+                    self.emit_checked_int_op("add", lhs, rhs, is_signed, lhs_rvalue.ty.clone(), loc)
                 } else {
                     let basic_value = BasicValueEnum::IntValue(self.llvmbuilder.build_int_add(lhs, rhs, "add").unwrap());
                     InternalValue::new(lhs_rvalue.ty.clone(), InternalValueKind::RValue(basic_value))
@@ -1170,12 +1099,17 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         }
     }
 
-    fn emit_sub(&mut self, lhs_rvalue: InternalValue<'ll>, rhs_rvalue: InternalValue<'ll>) -> InternalValue<'ll> {
+    fn emit_sub(
+        &mut self,
+        lhs_rvalue: InternalValue<'ll>,
+        rhs_rvalue: InternalValue<'ll>,
+        loc: Loc,
+    ) -> InternalValue<'ll> {
         match (lhs_rvalue.as_basic_value(), rhs_rvalue.as_basic_value()) {
             (BasicValueEnum::IntValue(lhs), BasicValueEnum::IntValue(rhs)) => {
                 if self.profile == cyrusc_internal::compiler_options::CompilerOption_Profile::Debug {
                     let is_signed = lhs_rvalue.ty.is_signed_integer();
-                    self.emit_checked_int_op("sub", lhs, rhs, is_signed, lhs_rvalue.ty.clone())
+                    self.emit_checked_int_op("sub", lhs, rhs, is_signed, lhs_rvalue.ty.clone(), loc)
                 } else {
                     let basic_value = BasicValueEnum::IntValue(self.llvmbuilder.build_int_sub(lhs, rhs, "sub").unwrap());
                     InternalValue::new(lhs_rvalue.ty.clone(), InternalValueKind::RValue(basic_value))
@@ -1283,12 +1217,17 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         InternalValue::new(result_type, InternalValueKind::RValue(diff_casted.into()))
     }
 
-    fn emit_mul(&mut self, lhs_rvalue: InternalValue<'ll>, rhs_rvalue: InternalValue<'ll>) -> InternalValue<'ll> {
+    fn emit_mul(
+        &mut self,
+        lhs_rvalue: InternalValue<'ll>,
+        rhs_rvalue: InternalValue<'ll>,
+        loc: Loc,
+    ) -> InternalValue<'ll> {
         match (lhs_rvalue.as_basic_value(), rhs_rvalue.as_basic_value()) {
             (BasicValueEnum::IntValue(lhs), BasicValueEnum::IntValue(rhs)) => {
                 if self.profile == cyrusc_internal::compiler_options::CompilerOption_Profile::Debug {
                     let is_signed = lhs_rvalue.ty.is_signed_integer();
-                    self.emit_checked_int_op("mul", lhs, rhs, is_signed, lhs_rvalue.ty.clone())
+                    self.emit_checked_int_op("mul", lhs, rhs, is_signed, lhs_rvalue.ty.clone(), loc)
                 } else {
                     let basic_value = BasicValueEnum::IntValue(self.llvmbuilder.build_int_mul(lhs, rhs, "mul").unwrap());
                     InternalValue::new(lhs_rvalue.ty.clone(), InternalValueKind::RValue(basic_value))
