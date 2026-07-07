@@ -111,7 +111,6 @@ pub struct String {
         }
 
         const n = len - start;
-
         memmove(@cast(void*, str), @cast(void*, str + start), n);
 
         while (start > 0) {
