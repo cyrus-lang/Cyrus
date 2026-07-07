@@ -11,7 +11,7 @@ pub enum ParserDiagKind {
     #[error("{0}")]
     InvalidModifier(String),
 
-    #[error("Invalid ABI: '{0}'.")]
+    #[error("Invalid ABI '{0}'.")]
     InvalidABI(String),
 
     #[error("Expected token '{0}'.")]

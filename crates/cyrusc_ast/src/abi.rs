@@ -124,7 +124,7 @@ pub fn validate_flags(flags: &[OptionalFlag]) -> Result<Vec<OptionalFlag>, Strin
             }
             _ => {
                 if !seen.insert(flag.clone()) {
-                    return Err(format!("Duplicate flag: '{:?}'.", flag));
+                    return Err(format!("Duplicate flag '{:?}'.", flag));
                 }
             }
         }

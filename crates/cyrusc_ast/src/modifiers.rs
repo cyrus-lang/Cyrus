@@ -13,7 +13,6 @@ pub struct FuncModifiers {
     pub export: Option<ExportKind>,
     pub callconv: Option<CallConv>,
     pub optional_flags: Vec<OptionalFlag>,
-    pub placement: Vec<SectionAttr>,
     pub section: Option<SectionAttr>,
     pub vis: Visibility,
 }
@@ -28,7 +27,6 @@ impl Default for FuncModifiers {
             callconv: None,
             section: None,
             optional_flags: Vec::new(),
-            placement: Vec::new(),
             vis: Visibility::default(),
         }
     }
@@ -55,10 +53,6 @@ impl FuncModifiers {
 
     pub fn add_optional_flag(&mut self, flag: OptionalFlag) {
         self.optional_flags.push(flag);
-    }
-
-    pub fn add_placement(&mut self, section: SectionAttr) {
-        self.placement.push(section);
     }
 }
 
@@ -134,7 +128,6 @@ pub struct GlobalVarModifiers {
     pub linkage: Option<Linkage>,
     pub export: Option<ExportKind>,
     pub section: Option<SectionAttr>,
-    pub placement: Vec<SectionAttr>,
     pub weak: bool,
 }
 
@@ -145,7 +138,6 @@ impl Default for GlobalVarModifiers {
             linkage: None,
             export: None,
             section: None,
-            placement: Vec::new(),
             weak: false,
         }
     }

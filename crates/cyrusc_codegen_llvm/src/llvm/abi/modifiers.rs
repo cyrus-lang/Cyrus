@@ -123,9 +123,6 @@ pub(crate) fn apply_func_modifiers<'ll>(llvm_ctx: &'ll Context, func: &FunctionV
         func.set_call_conventions(llvm_callconv);
     }
 
-    for section in &modifiers.placement {
-        func.set_section(Some(section.0.as_str()));
-    }
     if let Some(section) = &modifiers.section {
         func.set_section(Some(section.0.as_str()));
     }

@@ -21,7 +21,7 @@ pub(crate) struct UnresolvedModifiers {
     pub export: Option<ExportKind>,
     pub callconv: Option<CallConv>,
     pub optional_flags: Vec<OptionalFlag>,
-    pub placement: Vec<SectionAttr>,
+    pub section: Vec<SectionAttr>,
     pub repr_attr: Option<ReprAttr>,
 }
 
@@ -47,7 +47,7 @@ pub(crate) struct FieldModifiers {
 
 impl<'source_file> Parser<'source_file> {
     pub(crate) fn parse_unresolved_modifiers(&mut self) -> Result<UnresolvedModifiers, Diag> {
-        let mut mods = UnresolvedModifiers {
+        let mut modifiers = UnresolvedModifiers {
             visibility: None,
             linkage: None,
             inline: None,
@@ -56,7 +56,7 @@ impl<'source_file> Parser<'source_file> {
             callconv: None,
             repr_attr: None,
             optional_flags: Vec::new(),
-            placement: Vec::new(),
+            section: Vec::new(),
         };
 
         loop {
@@ -66,13 +66,13 @@ impl<'source_file> Parser<'source_file> {
             macro_rules! try_set_once {
                 ($field:ident, $parser_method:ident, $err_msg:expr) => {
                     if let Some(value) = self.$parser_method(token.clone()) {
-                        if mods.$field.is_some() {
+                        if modifiers.$field.is_some() {
                             return Err(self.error_at_token(
                                 &token,
                                 ParserDiagKind::InvalidModifier($err_msg.to_string()),
                             ));
                         }
-                        mods.$field = Some(value);
+                        modifiers.$field = Some(value);
                         consumed = true;
                     }
                 };
@@ -82,13 +82,13 @@ impl<'source_file> Parser<'source_file> {
                 ($field:ident, $parser_method:ident, $err_msg:expr) => {
                     match self.$parser_method(token.clone())? {
                         Some(value) => {
-                            if mods.$field.is_some() {
+                            if modifiers.$field.is_some() {
                                 return Err(self.error_at_token(
                                     &token,
                                     ParserDiagKind::InvalidModifier($err_msg.to_string()),
                                 ));
                             }
-                            mods.$field = Some(value);
+                            modifiers.$field = Some(value);
                             consumed = true;
                         }
                         None => {}
@@ -107,7 +107,7 @@ impl<'source_file> Parser<'source_file> {
             match self.parse_optional_flag(token.clone()) {
                 Ok(optional_flag) => {
                     if let Some(flag) = optional_flag {
-                        mods.optional_flags.push(flag);
+                        modifiers.optional_flags.push(flag);
                         consumed = true;
                     }
                 }
@@ -116,12 +116,12 @@ impl<'source_file> Parser<'source_file> {
                 }
             }
 
-            if let Err(err) = validate_flags(&mods.optional_flags) {
+            if let Err(err) = validate_flags(&modifiers.optional_flags) {
                 return Err(self.error_at_token(&token, ParserDiagKind::InvalidModifier(err)));
             }
 
-            if let Ok(Some(section)) = self.parse_placement(token.clone()) {
-                mods.placement.push(SectionAttr(section));
+            if let Ok(Some(section)) = self.parse_section(token.clone()) {
+                modifiers.section.push(SectionAttr(section));
                 consumed = true;
             }
 
@@ -130,7 +130,7 @@ impl<'source_file> Parser<'source_file> {
             }
         }
 
-        Ok(mods)
+        Ok(modifiers)
     }
 
     pub(crate) fn parse_enum_tag_type(&mut self) -> Result<Option<TypeSpecifier>, Diag> {
@@ -203,7 +203,7 @@ impl<'source_file> Parser<'source_file> {
         Ok(Some(repr_attr))
     }
 
-    pub(crate) fn parse_placement(&mut self, token: Token) -> Result<Option<String>, Diag> {
+    pub(crate) fn parse_section(&mut self, token: Token) -> Result<Option<String>, Diag> {
         if matches!(token.kind, TokenKind::Section) {
             self.next_token();
             self.expect_current(TokenKind::LeftParen)?;
@@ -362,7 +362,7 @@ impl UnresolvedModifiers {
             || self.callconv.is_some()
             || self.repr_attr.is_some()
             || !self.optional_flags.is_empty()
-            || !self.placement.is_empty()
+            || !self.section.is_empty()
         {
             return Err(Diag {
                 kind: Box::new(ParserDiagKind::InvalidModifier(
@@ -380,7 +380,7 @@ impl UnresolvedModifiers {
     pub(crate) fn into_func_modifiers(self, loc: Loc) -> Result<FuncModifiers, Diag> {
         let vis = self.visibility.unwrap_or_default();
 
-        if !self.placement.is_empty() && self.placement.len() > 1 {
+        if !self.section.is_empty() && self.section.len() > 1 {
             return Err(Diag {
                 kind: Box::new(ParserDiagKind::InvalidModifier(
                     "Multiple section placements are not allowed for functions.".to_string(),
@@ -391,7 +391,7 @@ impl UnresolvedModifiers {
             });
         }
 
-        let section = self.placement.get(0).cloned();
+        let section = self.section.get(0).cloned();
 
         let func_modifiers = FuncModifiers {
             vis,
@@ -401,7 +401,6 @@ impl UnresolvedModifiers {
             export: self.export,
             callconv: self.callconv,
             optional_flags: self.optional_flags,
-            placement: self.placement,
             section,
         };
 
@@ -439,7 +438,7 @@ impl UnresolvedModifiers {
             || self.export.is_some()
             || self.callconv.is_some()
             || !self.optional_flags.is_empty()
-            || !self.placement.is_empty()
+            || !self.section.is_empty()
         {
             return Err(Diag {
             kind: Box::new(ParserDiagKind::InvalidModifier(
@@ -488,7 +487,7 @@ impl UnresolvedModifiers {
             || self.export.is_some()
             || self.callconv.is_some()
             || !self.optional_flags.is_empty()
-            || !self.placement.is_empty()
+            || !self.section.is_empty()
         {
             return Err(Diag {
             kind: Box::new(ParserDiagKind::InvalidModifier(
@@ -556,7 +555,7 @@ impl UnresolvedModifiers {
             || self.export.is_some()
             || self.callconv.is_some()
             || !self.optional_flags.is_empty()
-            || !self.placement.is_empty()
+            || !self.section.is_empty()
         {
             return Err(Diag {
             kind: Box::new(ParserDiagKind::InvalidModifier(
@@ -628,7 +627,7 @@ impl UnresolvedModifiers {
             });
         }
 
-        if self.placement.len() > 1 {
+        if self.section.len() > 1 {
             return Err(Diag {
                 kind: Box::new(ParserDiagKind::InvalidModifier(
                     "Multiple section placements are not allowed for global variables.".to_string(),
@@ -661,15 +660,16 @@ impl UnresolvedModifiers {
             });
         }
 
-        let section = self.placement.get(0).cloned();
+        let section = self.section.get(0).cloned();
+
+        let weak = matches!(self.linkage, Some(Linkage::Weak));
 
         Ok(GlobalVarModifiers {
             vis,
             linkage: self.linkage.clone(),
             export: self.export,
             section,
-            placement: self.placement,
-            weak: matches!(self.linkage, Some(Linkage::Weak)),
+            weak,
         })
     }
 
@@ -683,7 +683,7 @@ impl UnresolvedModifiers {
             || self.callconv.is_some()
             || self.repr_attr.is_some()
             || !self.optional_flags.is_empty()
-            || !self.placement.is_empty()
+            || !self.section.is_empty()
         {
             return Err(Diag {
                 kind: Box::new(ParserDiagKind::InvalidModifier(
@@ -708,7 +708,7 @@ impl UnresolvedModifiers {
             || self.repr_attr.is_some()
             || self.callconv.is_some()
             || !self.optional_flags.is_empty()
-            || !self.placement.is_empty()
+            || !self.section.is_empty()
         {
             return Err(Diag {
                 kind: Box::new(ParserDiagKind::InvalidModifier(
@@ -726,7 +726,7 @@ impl UnresolvedModifiers {
     pub(crate) fn into_method_modifiers(self, loc: Loc) -> Result<FuncModifiers, Diag> {
         let vis = self.visibility.unwrap_or_default();
 
-        if self.export.is_some() || self.linkage.is_some() || !self.placement.is_empty() {
+        if self.export.is_some() || self.linkage.is_some() || !self.section.is_empty() {
             return Err(Diag {
                 kind: Box::new(ParserDiagKind::InvalidModifier(
                     "Methods cannot use export, linkage, or section placement.".into(),
@@ -747,8 +747,7 @@ impl UnresolvedModifiers {
             optional_flags: self.optional_flags,
             linkage,
             export: None,
-            section: None,
-            placement: Vec::new(),
+            section: None
         })
     }
 
@@ -762,7 +761,7 @@ impl UnresolvedModifiers {
             || self.prologue.is_some()
             || self.repr_attr.is_some()
             || !self.optional_flags.is_empty()
-            || !self.placement.is_empty()
+            || !self.section.is_empty()
         {
             return Err(Diag {
                 kind: Box::new(ParserDiagKind::InvalidModifier(

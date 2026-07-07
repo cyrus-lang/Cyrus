@@ -195,12 +195,7 @@ impl<'a> AnalysisContext<'a> {
     fn validate_non_static_global_var_modifiers(&self, global_var: &TypedGlobalVarStmt) {
         let modifiers = &global_var.modifiers;
 
-        if modifiers.weak
-            || !modifiers.placement.is_empty()
-            || modifiers.export.is_some()
-            || modifiers.linkage.is_some()
-            || modifiers.section.is_some()
-        {
+        if modifiers.weak || modifiers.export.is_some() || modifiers.linkage.is_some() || modifiers.section.is_some() {
             self.reporter.report(Diag {
                 level: DiagLevel::Error,
                 kind: Box::new(AnalyzerDiagKind::InvalidModifierForNonStaticGlobalVar),
