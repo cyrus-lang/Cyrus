@@ -545,11 +545,8 @@ pub enum AnalyzerDiagKind {
         method_name: String,
     },
 
-    #[error("Interface method return type cannot contain 'Self'.")]
-    InterfaceMethodReturnTypeContainsSelf {
-        interface_name: String,
-        method_name: String,
-    },
+    #[error("Interface '{interface_name}' is not dynamic-compatible.")]
+    InterfaceMethodIsGeneric { interface_name: String },
 
     // ------- UNIMPLEMENTED -------
 

@@ -57,10 +57,14 @@ impl<'ll> CodeGenIRBuilder<'ll> {
                         llvm_func_value.as_global_value().as_pointer_value()
                     } else {
                         // method is concrete, use cir_method_decls
-                        let irv_id = vtable_info.cir_method_decls.as_ref().unwrap()[idx];
-
-                        let llvm_func_value = self.get_or_declare_function(irv_id).as_func().cloned().unwrap();
-                        llvm_func_value.as_global_value().as_pointer_value()
+                        if let Some(irv_id) = vtable_info.cir_method_decls.as_ref().unwrap()[idx] {
+                            let llvm_func_value = self.get_or_declare_function(irv_id).as_func().cloned().unwrap();
+                            llvm_func_value.as_global_value().as_pointer_value()
+                        } else {
+                            // generic method of the non-generic interface never monomorphized,
+                            // so fallback to empty slot
+                            self.llvm_ctx.ptr_type(AddressSpace::default()).const_null()
+                        }
                     }
                 };
 

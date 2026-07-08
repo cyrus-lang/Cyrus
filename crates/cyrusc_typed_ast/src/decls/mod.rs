@@ -156,6 +156,7 @@ pub struct InterfaceDecl {
     pub name: String,
     pub methods: MethodDecls,
     pub generic_params: TypedGenericParams,
+    pub is_interface_dynamically_dispatchable: bool,
     pub vis: Visibility,
     pub loc: Loc,
 }

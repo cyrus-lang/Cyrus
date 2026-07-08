@@ -190,6 +190,8 @@ impl<'a> AnalysisContext<'a> {
                         });
                     }
 
+                    self.check_type_correctness(ty.clone(), bound.loc);
+
                     bound.ty = ty;
                 }
             }

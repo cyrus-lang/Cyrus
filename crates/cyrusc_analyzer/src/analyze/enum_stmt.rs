@@ -164,7 +164,8 @@ impl<'a> AnalysisContext<'a> {
                 for struct_field in fields {
                     if !struct_field.ty.contains_generic_param() {
                         struct_field.ty =
-                            match self.normalize_and_check_type_formation(struct_field.ty.clone(), struct_field.loc, 0) {
+                            match self.normalize_and_check_type_formation(struct_field.ty.clone(), struct_field.loc, 0)
+                            {
                                 Some(ty) => ty,
                                 None => continue,
                             };
@@ -273,8 +274,6 @@ impl<'a> AnalysisContext<'a> {
         loc: Loc,
     ) {
         let sema_type = sema_type.const_inner();
-
-        if sema_type.is_void() {}
 
         let ty = NamedType {
             type_decl_id: TypeDeclID::Enum(enum_decl_id),

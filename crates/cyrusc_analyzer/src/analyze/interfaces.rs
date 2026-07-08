@@ -14,6 +14,8 @@ use cyrusc_typed_ast::{
 
 impl<'a> AnalysisContext<'a> {
     pub(crate) fn analyze_interface(&mut self, interface: &TypedInterfaceStmt) {
+        let mut is_interface_dynamically_dispatchable = true;
+
         let interface_name = &interface.name;
 
         self.nameconv_check_interface_name(&interface_name, interface.loc);
@@ -24,7 +26,7 @@ impl<'a> AnalysisContext<'a> {
             let method_decl = self.decl_tables.method_decl(*method_decl_id);
             let func_decl = method_decl.func_decl;
 
-            if let Some(self_modifier) = func_decl.params.get_self_modifier() {
+            let params_start = if let Some(self_modifier) = func_decl.params.get_self_modifier() {
                 if !self_modifier.kind.is_referenced() {
                     self.reporter.report(Diag {
                         level: DiagLevel::Error,
@@ -33,6 +35,7 @@ impl<'a> AnalysisContext<'a> {
                         hint: None,
                     });
                 }
+                1
             } else {
                 self.reporter.report(Diag {
                     level: DiagLevel::Error,
@@ -40,11 +43,11 @@ impl<'a> AnalysisContext<'a> {
                     loc: Some(func_decl.loc),
                     hint: None,
                 });
-                continue;
-            }
+                0
+            };
 
             // skip the self param (index 0)
-            let params = &func_decl.params.list[1..];
+            let params = &func_decl.params.list[params_start..];
 
             for param_kind in params {
                 let ty = param_kind.param_type();
@@ -62,16 +65,12 @@ impl<'a> AnalysisContext<'a> {
                 }
             }
 
+            if func_decl.is_generic() {
+                is_interface_dynamically_dispatchable = false;
+            }
+
             if func_decl.ret_type.contains_self_type() {
-                self.reporter.report(Diag {
-                    level: DiagLevel::Error,
-                    kind: Box::new(AnalyzerDiagKind::InterfaceMethodReturnTypeContainsSelf {
-                        interface_name: interface_name.clone(),
-                        method_name: func_decl.name.clone(),
-                    }),
-                    loc: Some(func_decl.loc),
-                    hint: None,
-                });
+                is_interface_dynamically_dispatchable = false;
             }
 
             if methods.contains(&func_decl.name) {
@@ -89,6 +88,11 @@ impl<'a> AnalysisContext<'a> {
 
             methods.push(func_decl.name.clone());
         }
+
+        self.decl_tables
+            .with_interface_decl_mut(interface.interface_decl_id, |interface_decl| {
+                interface_decl.is_interface_dynamically_dispatchable = is_interface_dynamically_dispatchable;
+            })
     }
 
     /// Validates that an object correctly implements its declared interfaces.
@@ -155,10 +159,10 @@ impl<'a> AnalysisContext<'a> {
                     continue;
                 }
 
-                if !is_object_generic {
-                    let method_decl_id = method_decls.get(&func_decl.name).unwrap();
-                    let method_decl = self.decl_tables.method_decl(method_decl_id);
+                let method_decl_id = method_decls.get(&func_decl.name).unwrap();
+                let method_decl = self.decl_tables.method_decl(method_decl_id);
 
+                if !is_object_generic && !method_decl.func_decl.is_generic() {
                     // check method declaration mismatch
                     if method_decl.func_decl != func_decl {
                         self.reporter.report(Diag {
@@ -177,7 +181,7 @@ impl<'a> AnalysisContext<'a> {
 
             if !is_object_generic
                 && self
-                    .check_type_arity(sema_type.clone(), implement_interface.loc)
+                    .check_type_correctness(sema_type.clone(), implement_interface.loc)
                     .is_none()
             {
                 continue;
@@ -239,8 +243,17 @@ impl<'a> AnalysisContext<'a> {
 
                     // object method
 
-                    let method_decl_id = method_decls.get(&interface_method_decl.name).unwrap();
+                    let Some(method_decl_id) = method_decls.get(&interface_method_decl.name) else {
+                        continue;
+                    };
+
                     let method_decl = &mut this.decl_tables.method_decl(method_decl_id).func_decl;
+
+                    if method_decl.is_generic() {
+                        // SKIP comparison for generic methods
+                        // generic methods will be validated during monomorphization
+                        continue;
+                    }
 
                     let self_modifier = method_decl.params.get_self_modifier_mut().unwrap();
                     self_modifier.ty = this.substitute_self_type(self_modifier.ty.clone(), object_type);
@@ -264,7 +277,7 @@ impl<'a> AnalysisContext<'a> {
                 }
 
                 if this
-                    .check_type_arity(sema_type.clone(), implement_interface.loc)
+                    .check_type_correctness(sema_type.clone(), implement_interface.loc)
                     .is_none()
                 {
                     continue;

@@ -110,9 +110,9 @@ impl<'a> AnalysisContext<'a> {
             interface_decl
                 .methods
                 .iter()
-                .map(|(method_name, _)| {
-                    let method_decl_id = object_methods.get(method_name).unwrap();
-                    (method_name.clone(), method_decl_id)
+                .filter_map(|(method_name, _)| {
+                    let method_decl_id = object_methods.get(method_name)?;
+                    Some((method_name.clone(), method_decl_id))
                 })
                 .collect(),
         );

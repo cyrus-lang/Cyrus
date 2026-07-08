@@ -15,11 +15,10 @@ pub struct LibcAllocator : Allocator {
 		return Self {};
 	}
 
-	// pub inline fn create<T>(&self, value: T)  {
-	// 	var x: T;
-		// var ptr = self->alloc(@sizeof(T));
-		// *ptr = value;
-		// return ptr;
+	// pub inline fn create<T>(&const self, value: T) T* {
+	// 	var ptr = self->alloc(@sizeof(T));
+	// 	*ptr = value;
+	// 	return ptr;
 	// }
 
 	pub inline fn alloc(&const self, size: usize) void* {
