@@ -988,6 +988,7 @@ impl<'a> Resolver<'a> {
                 name: name.clone(),
                 methods: interface_methods.clone(),
                 generic_params: generic_params.clone(),
+                is_interface_dynamically_dispatchable: true,
                 vis: interface.vis.clone(),
                 loc,
             });

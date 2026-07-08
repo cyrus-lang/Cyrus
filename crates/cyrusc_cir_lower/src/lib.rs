@@ -1906,19 +1906,23 @@ impl<'a> CIRLower<'a> {
                 .iter()
                 .enumerate()
                 .map(|(idx, (_, method_decl_id))| {
-                    if vtable_info.is_interface_generic {
+                    let is_monomorph_vtable = vtable_info.is_interface_generic
+                        || vtable_info.monomorphized_methods.iter().any(|m| m.is_some());
+
+                    if is_monomorph_vtable {
                         if let Some(monomorph_id) = vtable_info.monomorphized_methods.get(idx).unwrap() {
                             // both interface and method are generics,
                             // that's why we need to monomorphize
                             let (irv_id, _, _) = self.get_or_declare_monomorph_method_ir_value(*monomorph_id);
 
-                            irv_id
+                            Some(irv_id)
                         } else {
                             // interface is generic, but method is concrete (non-generic)
-                            self.get_or_declare_method_ir_value(*method_decl_id)
+                            Some(self.get_or_declare_method_ir_value(*method_decl_id))
                         }
                     } else {
-                        self.get_or_declare_method_ir_value(*method_decl_id)
+                        // concrete (non-generic) method
+                        Some(self.get_or_declare_method_ir_value(*method_decl_id))
                     }
                 })
                 .collect();

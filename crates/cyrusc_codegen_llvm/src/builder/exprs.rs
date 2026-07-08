@@ -1031,14 +1031,14 @@ impl<'ll> CodeGenIRBuilder<'ll> {
 
         let call_site = self
             .llvmbuilder
-            .build_call(intrinsic_fn, &[lhs.into(), rhs.into()], "overflow_res")
+            .build_call(intrinsic_fn, &[lhs.into(), rhs.into()], "overflow_result")
             .unwrap();
 
         let result_struct = call_site.try_as_basic_value().basic().unwrap().into_struct_value();
 
         let math_result = self
             .llvmbuilder
-            .build_extract_value(result_struct, 0, "math_res")
+            .build_extract_value(result_struct, 0, "result")
             .unwrap()
             .into_int_value();
 
@@ -1130,7 +1130,6 @@ impl<'ll> CodeGenIRBuilder<'ll> {
                 self.emit_pointer_sub(ptr, index, lhs_rvalue.ty.clone())
             }
             (BasicValueEnum::PointerValue(lhs_ptr), BasicValueEnum::PointerValue(rhs_ptr)) => {
-
                 let cir_pointee_type = lhs_rvalue.ty.pointer_inner().unwrap().clone();
 
                 let pointee_type: BasicTypeEnum<'ll> = if cir_pointee_type.is_void() {

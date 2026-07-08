@@ -905,6 +905,95 @@ impl<'a> AnalysisContext<'a> {
                             TypedTypeArg::Infer => { /* infer is allowed, but NOT after monomorph */ }
                         }
                     }
+
+                    if let Some(interface_decl_id) = named_type.type_decl_id.as_interface() {
+                        let interface_decl = this.decl_tables.interface_decl(interface_decl_id);
+
+                        if !interface_decl.is_interface_dynamically_dispatchable {
+                            this.reporter.report(Diag {
+                                level: DiagLevel::Error,
+                                kind: Box::new(AnalyzerDiagKind::InterfaceMethodIsGeneric {
+                                    interface_name: interface_decl.name.clone(),
+                                }),
+                                loc: Some(loc),
+                                hint: None,
+                            });
+                            return false;
+                        }
+                    }
+
+                    true
+                }
+
+                SemaType::Const(inner) | SemaType::Pointer(inner) => check_recursively(this, inner, loc),
+                SemaType::Array(array_type) => check_recursively(this, &array_type.element_type, array_type.loc),
+                SemaType::FuncType(func_type) => {
+                    for param_ty in &func_type.params.list {
+                        if !check_recursively(this, param_ty, func_type.loc) {
+                            return false;
+                        }
+                    }
+                    check_recursively(this, &func_type.ret_type, func_type.loc)
+                }
+                SemaType::Tuple(tuple_type) => {
+                    for (element, _) in &tuple_type.elements {
+                        if !check_recursively(this, element, tuple_type.loc) {
+                            return false;
+                        }
+                    }
+                    true
+                }
+
+                SemaType::InterfaceObject(_) => true,
+                SemaType::Plain(_) => true,
+
+                SemaType::SelfType(_)
+                | SemaType::GenericParam(_)
+                | SemaType::InferVar(_)
+                | SemaType::Unresolved(_)
+                | SemaType::Err(_)
+                | SemaType::Placeholder => true,
+            }
+        }
+
+        if ty.is_err() {
+            return None;
+        }
+
+        if check_recursively(self, &ty, loc) {
+            Some(())
+        } else {
+            None
+        }
+    }
+
+    // Only used when interface dynamically dispatchable is not important, like
+    // in generic bounds, implemented interfaces by object, etc.
+    pub(crate) fn check_type_correctness(&mut self, ty: SemaType, loc: Loc) -> Option<()> {
+        fn check_recursively(this: &mut AnalysisContext, ty: &SemaType, loc: Loc) -> bool {
+            match ty {
+                SemaType::Named(named_type) => {
+                    // wrong number of args?
+                    if this.check_missing_type_args(named_type, loc) {
+                        return false;
+                    }
+
+                    // infer vars remaining?
+                    if this.check_unresolved_infer_vars(named_type, loc) {
+                        return false;
+                    }
+
+                    for arg in named_type.type_args.iter() {
+                        match arg {
+                            TypedTypeArg::Type(inner, inner_loc) => {
+                                if !check_recursively(this, inner, *inner_loc) {
+                                    return false;
+                                }
+                            }
+                            TypedTypeArg::Infer => { /* infer is allowed, but NOT after monomorph */ }
+                        }
+                    }
+
                     true
                 }
 

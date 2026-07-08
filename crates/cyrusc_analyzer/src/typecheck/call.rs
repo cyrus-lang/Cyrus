@@ -584,12 +584,16 @@ impl<'a> AnalysisContext<'a> {
 
         let mut interface_method_decl = self.decl_tables.method_decl(interface_method_decl_id);
 
-        let original_params = interface_method_decl.func_decl.params.clone();
+        let original_func_params = interface_method_decl.func_decl.params.clone();
 
-        let generic_params = interface_decl.generic_params.clone();
+        let final_generics_params = interface_method_decl
+            .func_decl
+            .generic_params
+            .extend(interface_decl.generic_params.clone());
+
         let generic_env = self.create_inference_generic_env(
             &interface_decl.name,
-            generic_params,
+            final_generics_params,
             &interface_type_args,
             method_call.loc,
         )?;
@@ -603,7 +607,7 @@ impl<'a> AnalysisContext<'a> {
             interface_method_decl.func_decl.ret_type = this.substitute_type(&interface_method_decl.func_decl.ret_type);
 
             if !this.analyze_call(
-                &original_params,
+                &original_func_params,
                 &mut interface_method_decl.func_decl,
                 &mut method_call.args,
                 method_call.loc,
@@ -691,7 +695,14 @@ impl<'a> AnalysisContext<'a> {
                 monomorph_id,
                 is_instance_method,
             } => {
+                // IMPORTANT: update vtable method
+                self.vtable_registry
+                    .with_vtable_info_mut(interface_object.vtable_id, |_vtable_info| {
+                        _vtable_info.monomorphized_methods[method_index] = Some(*monomorph_id);
+                    });
+
                 debug_assert!(*is_instance_method);
+
                 TypedInterfaceCallDispatch::StaticMonomorphized {
                     monomorph_id: *monomorph_id,
                 }
@@ -699,6 +710,7 @@ impl<'a> AnalysisContext<'a> {
             TypedMethodCallDispatch::Normal { method_decl_id } => TypedInterfaceCallDispatch::StaticNormal {
                 method_decl_id: *method_decl_id,
             },
+
             TypedMethodCallDispatch::Unresolved | TypedMethodCallDispatch::Interface { .. } => unreachable!(),
         };
 

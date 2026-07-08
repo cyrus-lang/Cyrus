@@ -1,0 +1,9 @@
+interface Animal {
+     fn id<T>(&const self, rank: T) T;
+}
+
+fn foo(animal: Animal) {
+    //~^ ERROR Interface 'Animal' is not dynamic-compatible.
+}
+
+pub fn main() { }

@@ -30,7 +30,7 @@ pub struct VTableInfo {
 
     /// Populated during CIR lowering.
     /// Codegen will rely on this for function declarations.
-    pub cir_method_decls: Option<Vec<IRValueID>>,
+    pub cir_method_decls: Option<Vec<Option<IRValueID>>>,
 
     pub monomorphized_methods: Vec<Option<MonomorphID>>,
 
