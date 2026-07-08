@@ -1,0 +1,48 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 The Cyrus Language
+
+import std::mem{Allocator, is_power_of_two};
+import std::libc{
+	malloc,
+	calloc,
+	realloc,
+	posix_memalign,
+	free
+};
+
+pub struct LibcAllocator : Allocator {
+	pub inline fn new() Self {
+		return Self {};
+	}
+
+	pub inline fn alloc(&self, size: usize) void* {
+		return malloc(size);
+	}
+
+	pub inline fn alloc_aligned(&self, size: usize, align: usize) void* {
+		@assert(is_power_of_two(align), "alignment must be power of two");
+		@assert(align >= @sizeof(void*), "alignment must be >= sizeof(void*)");
+
+		var ptr: void* = null;
+
+		const result = posix_memalign(&ptr, align, size);
+
+		if (result != 0) {
+			return null;
+		}
+
+		return ptr;
+	}
+
+	pub inline fn alloc_zeroed(&self, size: usize) void* {
+		return calloc(1, size);
+	}
+
+	pub inline fn realloc(&self, ptr: void*, size: usize) void* {
+		return realloc(ptr, size);
+	}
+
+	pub inline fn free(&self, ptr: void*) {
+		free(ptr);
+	}
+}

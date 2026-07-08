@@ -1,7 +1,8 @@
 // @stdout: 0 1000
 
-import std::mem{Allocator, LibcAllocator};
+import std::mem::alloc::libc{LibcAllocator};
 import std::collections{Vector};
+import std::mem{Allocator};
 import std::libc{printf};
 
 pub fn main() {

@@ -1,7 +1,8 @@
 // @stdout: file_name: file
 
-import std::mem{Allocator, LibcAllocator};
+import std::mem::alloc::libc{LibcAllocator};
 import std::string{String};
+import std::mem{Allocator};
 import std::libc{printf};
 import std::path{Path};
 

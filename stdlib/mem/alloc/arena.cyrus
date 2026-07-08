@@ -1,0 +1,16 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 The Cyrus Language
+
+// pub struct ArenaAllocator {
+// 	nodes: SinglyLinkedList<ArenaNode>,
+
+// 	pub fn new() {
+
+// 	}
+// }
+
+// pub struct ArenaNode {
+// 	pub size: usize,
+// 	pub index: usize,
+// 	pub ptr: void*
+// }

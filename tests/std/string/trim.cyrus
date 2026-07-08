@@ -1,6 +1,7 @@
 // @stdout: Hello World, 11
 
-import std::mem{Allocator, LibcAllocator};
+import std::mem::alloc::libc{LibcAllocator};
+import std::mem{Allocator};
 import std::string{String};
 import std::libc{printf};
 
