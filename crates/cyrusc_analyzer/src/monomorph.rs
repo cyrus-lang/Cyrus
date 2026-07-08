@@ -63,7 +63,6 @@ impl<'a> AnalysisContext<'a> {
             let template_body = self.decl_tables.body(body_id);
 
             let mut specialized_body = self.specialize_func_body(&template_body, &mut method_decl.func_decl.params);
-
             let diag_len = self.reporter.len();
 
             self.analyze_func_body(&mut specialized_body, &method_decl.func_decl.ret_type);
@@ -265,7 +264,7 @@ impl<'a> AnalysisContext<'a> {
             }
         }
 
-        let new_var_decl_id = self.decl_tables.insert_var(template_var_decl.clone());
+        let new_var_decl_id = self.decl_tables.insert_var(var_decl);
 
         let old_var_decl_id = var_decl_id;
 

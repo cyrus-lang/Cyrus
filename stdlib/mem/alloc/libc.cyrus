@@ -15,7 +15,14 @@ pub struct LibcAllocator : Allocator {
 		return Self {};
 	}
 
-	pub inline fn alloc(&self, size: usize) void* {
+	// pub inline fn create<T>(&self, value: T)  {
+	// 	var x: T;
+		// var ptr = self->alloc(@sizeof(T));
+		// *ptr = value;
+		// return ptr;
+	// }
+
+	pub inline fn alloc(&const self, size: usize) void* {
 		return malloc(size);
 	}
 
@@ -34,15 +41,15 @@ pub struct LibcAllocator : Allocator {
 		return ptr;
 	}
 
-	pub inline fn alloc_zeroed(&self, size: usize) void* {
+	pub inline fn alloc_zeroed(&const self, size: usize) void* {
 		return calloc(1, size);
 	}
 
-	pub inline fn realloc(&self, ptr: void*, size: usize) void* {
+	pub inline fn realloc(&const self, ptr: void*, size: usize) void* {
 		return realloc(ptr, size);
 	}
 
-	pub inline fn free(&self, ptr: void*) {
+	pub inline fn free(&const self, ptr: void*) {
 		free(ptr);
 	}
 }

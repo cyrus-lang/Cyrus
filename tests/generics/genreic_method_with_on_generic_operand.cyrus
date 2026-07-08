@@ -1,0 +1,16 @@
+// @stdout: 10
+
+import std::libc{printf};
+
+struct Foo {
+     pub fn foo<T>(const self, x: T) T {
+        var y: T = x;
+        return y;
+     }
+}
+
+pub fn main() {
+    const inst = Foo{};
+     
+    printf("%d\n", inst.foo(10));
+}

@@ -1320,17 +1320,16 @@ impl<'a> Resolver<'a> {
         method_decls
     }
 
-    fn resolve_method_bodies(&mut self, method_decls: &MethodDecls, ast_methods: &[ASTFuncDefStmt]) {
-        for ast_method in ast_methods {
-            let Some(method_decl_id) = method_decls.get(&ast_method.ident.value) else {
+    fn resolve_method_bodies(&mut self, method_decls: &MethodDecls, methods: &[ASTFuncDefStmt]) {
+        for func_def in methods {
+            let Some(method_decl_id) = method_decls.get(&func_def.ident.value) else {
                 continue;
             };
+
+            let method_decl = self.decl_tables.method_decl(method_decl_id);
+            let generic_params = &method_decl.func_decl.generic_params;
 
             let scope = LocalScope::new();
-
-            let Some(generic_params) = self.resolve_generic_params(&ast_method.generic_params) else {
-                continue;
-            };
 
             let Some(typed_body) = self.with_generic_scope(&generic_params, |this| {
                 with_local_scope!(this, scope.clone(), {
@@ -1345,7 +1344,7 @@ impl<'a> Resolver<'a> {
                         *_method_decl = method_decl;
                     });
 
-                    this.resolve_block_stmt(&ast_method.body)
+                    this.resolve_block_stmt(&func_def.body)
                 })
             }) else {
                 continue;
