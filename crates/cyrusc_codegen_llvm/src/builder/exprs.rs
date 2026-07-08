@@ -1130,10 +1130,14 @@ impl<'ll> CodeGenIRBuilder<'ll> {
                 self.emit_pointer_sub(ptr, index, lhs_rvalue.ty.clone())
             }
             (BasicValueEnum::PointerValue(lhs_ptr), BasicValueEnum::PointerValue(rhs_ptr)) => {
-                let pointee_type: BasicTypeEnum<'ll> = self
-                    .emit_type(lhs_rvalue.ty.pointer_inner().unwrap().clone())
-                    .try_into()
-                    .unwrap();
+
+                let cir_pointee_type = lhs_rvalue.ty.pointer_inner().unwrap().clone();
+
+                let pointee_type: BasicTypeEnum<'ll> = if cir_pointee_type.is_void() {
+                    self.llvm_ctx.ptr_type(AddressSpace::default()).into()
+                } else {
+                    self.emit_type(cir_pointee_type).try_into().unwrap()
+                };
 
                 self.emit_pointer_diff(pointee_type, lhs_ptr, rhs_ptr)
             }
@@ -1147,10 +1151,13 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         index: IntValue<'ll>,
         result_type: CIRType,
     ) -> InternalValue<'ll> {
-        let pointee_type: BasicTypeEnum<'ll> = self
-            .emit_type(result_type.pointer_inner().unwrap().clone())
-            .try_into()
-            .unwrap();
+        let cir_pointee_type = result_type.pointer_inner().unwrap().clone();
+
+        let pointee_type: BasicTypeEnum<'ll> = if cir_pointee_type.is_void() {
+            self.llvm_ctx.ptr_type(AddressSpace::default()).into()
+        } else {
+            self.emit_type(cir_pointee_type).try_into().unwrap()
+        };
 
         let i64_type = self.llvm_ctx.i64_type();
         let gep_index = if index.get_type() == i64_type {
@@ -1177,10 +1184,13 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         index: IntValue<'ll>,
         result_type: CIRType,
     ) -> InternalValue<'ll> {
-        let pointee_type: BasicTypeEnum<'ll> = self
-            .emit_type(result_type.pointer_inner().unwrap().clone())
-            .try_into()
-            .unwrap();
+        let cir_pointee_type = result_type.pointer_inner().unwrap().clone();
+
+        let pointee_type: BasicTypeEnum<'ll> = if cir_pointee_type.is_void() {
+            self.llvm_ctx.ptr_type(AddressSpace::default()).into()
+        } else {
+            self.emit_type(cir_pointee_type).try_into().unwrap()
+        };
 
         // negate the index for subtraction
         let i64_type = self.llvm_ctx.i64_type();

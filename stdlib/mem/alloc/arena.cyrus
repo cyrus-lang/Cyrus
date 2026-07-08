@@ -1,16 +1,88 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 The Cyrus Language
 
-// pub struct ArenaAllocator {
-// 	nodes: SinglyLinkedList<ArenaNode>,
+import std::collections::linked_list{SinglyLinkedList, SinglyNode};
+import std::mem{Allocator};
 
-// 	pub fn new() {
+import std::libc{printf};
 
-// 	}
-// }
+pub const ARENA_DEFAULT_ALIGNMENT = @sizeof(usize); // PTR SIZE
 
-// pub struct ArenaNode {
-// 	pub size: usize,
-// 	pub index: usize,
-// 	pub ptr: void*
-// }
+pub struct ArenaAllocator {
+    child_allocator: Allocator,
+	nodes: SinglyLinkedList<ArenaNode>,
+    size: usize,
+
+	pub fn new(const child_allocator: Allocator, const size: usize) Self {
+        var nodes: SinglyLinkedList<ArenaNode> = SinglyLinkedList.new();
+        var arena = Self {
+            child_allocator,
+            nodes,
+            size: 0
+        };
+        arena.create_node(size);
+        return arena;
+	}
+
+    pub fn alloc(&self, size: usize) void* {
+        self->grow();
+
+        switch (self->nodes.peek_first()) {
+            case .Some(node) => {
+                var arena = &node->value;
+                arena->size += size;
+                return arena->ptr + size;
+            }
+            case .None => return null;
+        }
+    }
+
+    pub fn destroy(&self) {
+        while (self->nodes.head != null) {
+            switch (self->nodes.pop_first()) {
+                case .Some(node) => {
+                    self->child_allocator.free(node->value.ptr);
+                    self->child_allocator.free(node);
+                }
+                case .None => break;
+            }
+        }
+    }
+
+    fn create_node(&self, const size: usize) {
+        printf("created node: %lu\n", size);
+
+        var node: SinglyNode<ArenaNode>* =
+            self->child_allocator.alloc(@sizeof(SinglyNode<ArenaNode>));
+
+        const ptr = self->child_allocator.alloc(size);
+        *node = SinglyNode {
+            value: ArenaNode {
+                ptr,
+                size: 0,
+            },
+            next: null
+        };
+        self->nodes.append(node);
+        self->size += size;
+    }
+
+    fn grow(&self) {
+        switch (self->nodes.peek_first()) {
+            case .Some(node) => {
+                var arena = &node->value;
+
+                if (arena->size > self->size) {
+                    // double size
+                    self->create_node(self->size);
+                }
+            }
+            case .None => @unreachable();
+        }
+    } 
+}
+
+struct ArenaNode {
+	pub ptr: void*,
+	pub size: usize,
+}
