@@ -1,6 +1,7 @@
 // @stdout: sum: 1225
 
-import std::mem{Allocator, BumpAllocator};
+import std::mem{Allocator};
+import std::mem::alloc::bump{BumpAllocator};
 import std::libc{printf, malloc, free};
 
 struct Object {
