@@ -8,53 +8,139 @@ import std::option{Option};
 pub struct SinglyNode<T> {
     pub next: SinglyNode<T>*,
     pub value: T,
-
-    /// Insert a new node after the current one.
-    pub fn insert_after(&self, new_node: SinglyNode<T>*) {
-        @assert(new_node != null, "new node cannot be null");
-
-        new_node->next = self->next;
-        self->next = new_node;
-    }
 }
 
 pub struct SinglyLinkedList<T> {
-    pub first: SinglyNode<T>*,
+    pub head: SinglyNode<T>*,
+    pub size: usize,
 
     pub fn new() Self {
-        return Self { first: null };
+        return Self { head: null, size: 0 };
     }
 
-    pub fn prepend(&self, new_node: SinglyNode<T>*) {
-        new_node->next = self->first;
-        self->first = new_node;
+    /// Append a node to the end of the list
+    pub fn append(&self, new_node: SinglyNode<T>*) {
+        @assert(new_node != null, "new node cannot be null");
+        
+        new_node->next = null;
+        
+        if (self->head == null) {
+            self->head = new_node;
+        } else {
+            var current = self->head;
+            while (current->next != null) {
+                current = current->next;
+            }
+            current->next = new_node;
+        }
+        self->size += 1;
     }
 
     /// Remove a node from the list.
-    pub fn remove(&self, const node: SinglyNode<T>*) {
+    pub fn remove(&self, node: SinglyNode<T>*) {
         @assert(node != null, "node cannot be null");
         
-        if (self->first == node) {
-            self->first = node->next;
+        if (self->head == node) {
+            self->head = node->next;
         } else {
-            var current = self->first;
-
-            while (current->next != node) {
-                // iter
-                current = node->next;
+            var current = self->head;
+            
+            while (current != null && current->next != node) {
+                current = current->next;
             }
             
+            @assert(current != null && current->next == node, "node not found in list");
             current->next = node->next;
         }
+        self->size -= 1;
     }
 
+    /// Remove the first node.
     pub fn pop_first(&self) Option<SinglyNode<T>*> {
-        if (!self->first) {
+        if (self->head == null) {
             return .None;
         }
 
-        const first = self->first;
-        self->first = first->next;
+        var first = self->head;
+        self->head = first->next;
+        self->size -= 1;
+        first->next = null; // detach the node
         return .Some(first);
+    }
+
+    /// Remove the last node.
+    pub fn pop_last(&self) Option<SinglyNode<T>*> {
+        if (self->head == null) {
+            return .None;
+        }
+
+        if (self->head->next == null) {
+            const last = self->head;
+            self->head = null;
+            self->size -= 1;
+            return .Some(last);
+        }
+
+        var current = self->head;
+        while (current->next->next != null) {
+            current = current->next;
+        }
+
+        const last = current->next;
+        current->next = null;
+        self->size -= 1;
+        return .Some(last);
+    }
+
+    /// Get the first node.
+    pub fn peek_first(&self) Option<SinglyNode<T>*> {
+        if (self->head == null) {
+            return .None;
+        }
+        return .Some(self->head);
+    }
+
+    /// Get the last node.
+    pub fn peek_last(&self) Option<SinglyNode<T>*> {
+        if (self->head == null) {
+            return .None;
+        }
+        
+        var current = self->head;
+        while (current->next != null) {
+            current = current->next;
+        }
+        return .Some(current);
+    }
+
+    /// Reverse the list in-place.
+    pub fn reverse(&self) {
+        if (self->head == null || self->head->next == null) {
+            return;
+        }
+        
+        var prev: SinglyNode<T>* = null;
+        var current = self->head;
+        var next: SinglyNode<T>* = null;
+        
+        while (current != null) {
+            next = current->next;
+            current->next = prev;
+            prev = current;
+            current = next;
+        }
+        
+        self->head = prev;
+    }
+
+    /// Check if the list is empty.
+    pub fn is_empty(&self) bool {
+        return self->head == null;
+    }
+
+    /// Clear the list.
+    pub fn clear(&self) {
+        self->head = null;
+        self->size = 0;
     }
 }
