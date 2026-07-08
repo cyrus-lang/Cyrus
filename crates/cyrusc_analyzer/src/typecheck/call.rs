@@ -408,7 +408,6 @@ impl<'a> AnalysisContext<'a> {
                 loc: Some(method_call.loc),
                 hint: Some("Use an object to call this method, e.g. 'obj.method(...)'.".to_string()),
             });
-
             return None;
         }
 
@@ -421,7 +420,6 @@ impl<'a> AnalysisContext<'a> {
                 loc: Some(method_call.loc),
                 hint: Some("Call static methods on the type, e.g. 'TypeName.method(...)'.".to_string()),
             });
-
             return None;
         }
 
