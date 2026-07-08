@@ -1,20 +1,30 @@
-// @stdout: 10 20 30
+// @stdout: 10 10 20 30 30 10
 
 import std::collections::linked_list{SinglyNode, SinglyLinkedList};
 import std::libc{printf};
 
 pub fn main() {
-    var list: SinglyLinkedList<int32> = SinglyLinkedList.new();
+     var list: SinglyLinkedList<int32> = SinglyLinkedList.new();
 
-    var node1 = SinglyNode { value: 10, next: null };
-    var node2 = SinglyNode { value: 20, next: &node1 };
-    var node3 = SinglyNode { value: 30, next: &node2 };
+     var node1 = SinglyNode { value: 10, next: null };
+     var node2 = SinglyNode { value: 20, next: null };
+     var node3 = SinglyNode { value: 30, next: null };
 
-    list.prepend(&node3);
-    list.prepend(&node2);
-    list.prepend(&node1);
+     list.append(&node1);
+     list.append(&node2);
+     list.append(&node3);
 
-    printf("%d ", list.first->value);
-    printf("%d ", list.first->next->value);
-    printf("%d ", list.first->next->next->value);
+     const x = list.peek_first().unwrap();
+     printf("%d ", x->value);
+     printf("%d ", list.head->value);
+     printf("%d ", list.head->next->value);
+     printf("%d ", list.head->next->next->value);
+     @assert(list.head->next->next->next == null);
+
+     const y = list.pop_last().unwrap();
+     printf("%d ", y->value);
+
+     list.remove(&node2);
+     const z = list.peek_first().unwrap();
+     printf("%d\n", z->value);
 }
