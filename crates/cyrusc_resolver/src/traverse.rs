@@ -1328,28 +1328,34 @@ impl<'a> Resolver<'a> {
 
             let scope = LocalScope::new();
 
-            let typed_body = with_local_scope!(self, scope.clone(), {
-                let mut method_decl = self.decl_tables.method_decl(method_decl_id);
+            let Some(generic_params) = self.resolve_generic_params(&ast_method.generic_params) else {
+                continue;
+            };
 
-                self.insert_func_params_into_current_scope(
-                    &mut method_decl.func_decl.params.list,
-                    &mut method_decl.func_decl.params.variadic,
-                );
+            let Some(typed_body) = self.with_generic_scope(&generic_params, |this| {
+                with_local_scope!(this, scope.clone(), {
+                    let mut method_decl = this.decl_tables.method_decl(method_decl_id);
 
-                self.decl_tables.with_method_decl_mut(method_decl_id, |_method_decl| {
-                    *_method_decl = method_decl;
-                });
+                    this.insert_func_params_into_current_scope(
+                        &mut method_decl.func_decl.params.list,
+                        &mut method_decl.func_decl.params.variadic,
+                    );
 
-                self.resolve_block_stmt(&ast_method.body)
+                    this.decl_tables.with_method_decl_mut(method_decl_id, |_method_decl| {
+                        *_method_decl = method_decl;
+                    });
+
+                    this.resolve_block_stmt(&ast_method.body)
+                })
+            }) else {
+                continue;
+            };
+
+            let body_id = self.decl_tables.insert_body(typed_body);
+
+            self.decl_tables.with_method_decl_mut(method_decl_id, |_method_decl| {
+                _method_decl.body = Some(body_id);
             });
-
-            if let Some(typed_body) = typed_body {
-                let body_id = self.decl_tables.insert_body(typed_body);
-
-                self.decl_tables.with_method_decl_mut(method_decl_id, |_method_decl| {
-                    _method_decl.body = Some(body_id);
-                });
-            }
         }
     }
 
