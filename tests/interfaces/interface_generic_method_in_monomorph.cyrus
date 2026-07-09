@@ -1,0 +1,30 @@
+// @stdout: 10 50 cat
+
+import std::libc{printf};
+
+interface Animal {
+     fn id<T>(&const self, rank: T) T;
+     fn name(&const self) uint8*;
+}
+
+struct Cat : Animal {
+     x: int32,
+
+     pub fn id<T>(&const self, rank: T) T {
+          return rank * 10;
+     }
+
+     pub fn name(&const self) uint8* {
+          return "cat";
+     }
+}
+
+fn monomorph_animal_id<T: Animal>(x: T) {
+     printf("%d ", x.id(1));
+     printf("%d ", x.id(5));
+     printf("%s\n", x.name());
+}
+
+pub fn main() {
+     monomorph_animal_id(Cat { x: 10 });
+}
