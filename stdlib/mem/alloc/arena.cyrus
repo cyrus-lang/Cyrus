@@ -2,12 +2,15 @@
 // Copyright (c) 2026 The Cyrus Language
 
 import std::collections::linked_list{SinglyLinkedList, SinglyNode};
-import std::mem{Allocator};
+import std::mem{Allocator, align_up};
 
 pub const ARENA_DEFAULT_ALIGNMENT = @sizeof(usize); // PTR SIZE
 
-// TODO: After implementing comptime features for the language,
-// we'll add more strategies for block creation and allocation.
+struct ArenaNode {
+	pub ptr: void*,
+	pub capacity: usize,
+	pub used: usize,
+}
 
 pub struct ArenaAllocator : Allocator {
     child_allocator: Allocator,
@@ -21,24 +24,33 @@ pub struct ArenaAllocator : Allocator {
 	}
 
     pub fn alloc(&self, size: usize) void* {
+        return self->alloc_aligned(size, ARENA_DEFAULT_ALIGNMENT);
+    }
+
+    fn alloc_aligned(&self, size: usize, align: usize) void* {
         switch (self->nodes.peek_first()) {
             case .Some(node) => {
                 var arena = &node->value;
                 var ptr = arena->ptr;
-                self->ensure_capacity(size);
-                arena->used += size;
+
+                var offset = align_up(@cast(uintptr, ptr), align);
+
+                self->ensure_capacity(offset);
+                arena->used += offset;
                 return ptr;
             }
             case .None => return null;
         }
     }
 
-    fn alloc_zeroed(&const self, size: usize) void* {
-        @todo();
-    }
+    fn alloc_zeroed(&self, size: usize) void* {
+		const ptr = self->alloc(size);
 
-	fn alloc_aligned(&const self, size: usize, align: usize) void* {
-        @todo();
+		if (ptr != null) {
+			@memset(ptr, 0, size);
+		}
+
+		return ptr;
     }
 
     pub fn reset(&self) {
@@ -48,7 +60,7 @@ pub struct ArenaAllocator : Allocator {
             current = current->next;
         }
     }
-    
+
     pub fn destroy(&self) {
         while (self->nodes.head != null) {
             switch (self->nodes.pop_first()) {
@@ -97,10 +109,4 @@ pub struct ArenaAllocator : Allocator {
 	fn free(&const self, ptr: void*) void {
         @panic("arena allocator does not support free");
     }
-}
-
-struct ArenaNode {
-	pub ptr: void*,
-	pub capacity: usize,
-	pub used: usize,
 }
