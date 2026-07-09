@@ -912,7 +912,7 @@ impl<'a> AnalysisContext<'a> {
                         if !interface_decl.is_interface_dynamically_dispatchable {
                             this.reporter.report(Diag {
                                 level: DiagLevel::Error,
-                                kind: Box::new(AnalyzerDiagKind::InterfaceMethodIsGeneric {
+                                kind: Box::new(AnalyzerDiagKind::NotDynamicCompatibleInterface {
                                     interface_name: interface_decl.name.clone(),
                                 }),
                                 loc: Some(loc),

@@ -51,6 +51,18 @@ impl<'a> AnalysisContext<'a> {
 
         let interface_decl = self.decl_tables.interface_decl(interface_decl_id);
 
+        if !interface_decl.is_interface_dynamically_dispatchable {
+            self.reporter.report(Diag {
+                level: DiagLevel::Error,
+                kind: Box::new(AnalyzerDiagKind::NotDynamicCompatibleInterface {
+                    interface_name: interface_decl.name.clone(),
+                }),
+                loc: Some(dynamic.loc),
+                hint: None,
+            });
+            return None;
+        }
+
         let object_impls_interface = object_impls
             .iter()
             .find(|implement_interface| {
