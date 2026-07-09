@@ -4,39 +4,51 @@
 import std::collections::linked_list{SinglyLinkedList, SinglyNode};
 import std::mem{Allocator};
 
-import std::libc{printf};
-
 pub const ARENA_DEFAULT_ALIGNMENT = @sizeof(usize); // PTR SIZE
 
-pub struct ArenaAllocator {
+// TODO: After implementing comptime features for the language,
+// we'll add more strategies for block creation and allocation.
+
+pub struct ArenaAllocator : Allocator {
     child_allocator: Allocator,
 	nodes: SinglyLinkedList<ArenaNode>,
-    size: usize,
 
-	pub fn new(const child_allocator: Allocator, const size: usize) Self {
+	pub fn new(const child_allocator: Allocator, const capacity: usize) Self {
         var nodes: SinglyLinkedList<ArenaNode> = SinglyLinkedList.new();
-        var arena = Self {
-            child_allocator,
-            nodes,
-            size: 0
-        };
-        arena.create_node(size);
+        var arena = Self { child_allocator, nodes };
+        arena.create_node(capacity);
         return arena;
 	}
 
     pub fn alloc(&self, size: usize) void* {
-        self->grow();
-
         switch (self->nodes.peek_first()) {
             case .Some(node) => {
                 var arena = &node->value;
-                arena->size += size;
-                return arena->ptr + size;
+                var ptr = arena->ptr;
+                self->ensure_capacity(size);
+                arena->used += size;
+                return ptr;
             }
             case .None => return null;
         }
     }
 
+    fn alloc_zeroed(&const self, size: usize) void* {
+        @todo();
+    }
+
+	fn alloc_aligned(&const self, size: usize, align: usize) void* {
+        @todo();
+    }
+
+    pub fn reset(&self) {
+        var current = self->nodes.head;
+        while (current->next != null) {
+            current->value.used = 0;
+            current = current->next;
+        }
+    }
+    
     pub fn destroy(&self) {
         while (self->nodes.head != null) {
             switch (self->nodes.pop_first()) {
@@ -49,38 +61,46 @@ pub struct ArenaAllocator {
         }
     }
 
-    fn create_node(&self, const size: usize) {
+    fn create_node(&self, const capacity: usize) {
         var node: SinglyNode<ArenaNode>* =
             self->child_allocator.alloc(@sizeof(SinglyNode<ArenaNode>));
 
-        const ptr = self->child_allocator.alloc(size);
+        const ptr = self->child_allocator.alloc(capacity);
         *node = SinglyNode {
             value: ArenaNode {
                 ptr,
-                size: 0,
+                capacity,
+                used: 0
             },
             next: null
         };
         self->nodes.append(node);
-        self->size += size;
     }
 
-    fn grow(&self) {
+    fn ensure_capacity(&self, const size: usize) {
         switch (self->nodes.peek_first()) {
             case .Some(node) => {
                 var arena = &node->value;
 
-                if (arena->size > self->size) {
-                    // double size
-                    self->create_node(self->size);
+                if (arena->used + size > arena->capacity) {
+                    self->create_node(node->value.capacity);
                 }
             }
             case .None => @unreachable();
         }
-    } 
+    }
+
+    fn realloc(&const self, ptr: void*, size: usize) void* {
+        @panic("arena allocator does not support realloc");
+    }
+
+	fn free(&const self, ptr: void*) void {
+        @panic("arena allocator does not support free");
+    }
 }
 
 struct ArenaNode {
 	pub ptr: void*,
-	pub size: usize,
+	pub capacity: usize,
+	pub used: usize,
 }
