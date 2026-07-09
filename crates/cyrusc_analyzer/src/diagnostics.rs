@@ -546,7 +546,7 @@ pub enum AnalyzerDiagKind {
     },
 
     #[error("Interface '{interface_name}' is not dynamic-compatible.")]
-    InterfaceMethodIsGeneric { interface_name: String },
+    NotDynamicCompatibleInterface { interface_name: String },
 
     // ------- UNIMPLEMENTED -------
 

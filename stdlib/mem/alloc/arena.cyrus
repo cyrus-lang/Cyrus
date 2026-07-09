@@ -50,8 +50,6 @@ pub struct ArenaAllocator {
     }
 
     fn create_node(&self, const size: usize) {
-        printf("created node: %lu\n", size);
-
         var node: SinglyNode<ArenaNode>* =
             self->child_allocator.alloc(@sizeof(SinglyNode<ArenaNode>));
 

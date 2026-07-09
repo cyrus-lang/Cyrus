@@ -4,7 +4,6 @@
 import std::libc;
 
 pub interface Allocator {
-	// fn create<T>(&const self, value: T) T*;
 	fn alloc(&const self, size: usize) void*;
 	fn alloc_zeroed(&const self, size: usize) void*;
 	fn alloc_aligned(&const self, size: usize, align: usize) void*;
