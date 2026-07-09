@@ -1,0 +1,25 @@
+// @stdout: sum: 5050 
+
+import std::mem::alloc::arena{ArenaAllocator};
+import std::mem::alloc::libc{LibcAllocator};
+import std::mem{Allocator};
+import std::libc{printf};
+
+pub fn main() {
+     const allocator: Allocator = dynamic LibcAllocator.new();
+     var arena = ArenaAllocator.new(allocator, 16);
+     var sum: int32 = 0;
+     for (var i = 0; i <= 100; i++) {
+          var x: int32* = arena.alloc(4);
+          @assert(x != null, "alloc failed");
+          
+          *x = i;
+          sum += *x;
+
+          if (i == 20) {
+               arena.reset();
+          }
+     }
+     arena.destroy();
+     printf("sum: %d\n", sum);
+}
