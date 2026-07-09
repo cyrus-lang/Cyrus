@@ -70,7 +70,7 @@ pub struct BumpAllocator : Allocator {
 		self->offset = 0;
 	}
 
-	pub inline fn free(&self, ptr: void*) void {
+	pub inline fn free(&self, ptr: void*) {
 		// no-operation
 	}
 }
