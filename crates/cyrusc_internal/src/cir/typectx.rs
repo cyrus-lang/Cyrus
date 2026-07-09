@@ -10,9 +10,9 @@ use cyrusc_source_loc::{FileID, Loc};
 use cyrusc_typed_ast::stmts::TypedTypeArgs;
 use cyrusc_typed_ast::types::PlainType;
 use cyrusc_typed_ast::types::TypeDeclID;
-use fx_hash::FxHashMap;
+use fx_hash::{FxHashMap, FxHashMapExt};
 use std::fmt;
-use std::sync::{OnceLock, RwLock};
+use std::sync::{Arc, Mutex, OnceLock, RwLock};
 
 /// A unique handle to a canonical type stored in the context.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -35,6 +35,7 @@ pub struct CIRTypeContext {
     defs: RwLock<Vec<CIRTypeDef>>,
     key_to_id: RwLock<FxHashMap<CIRTypeKey, CIRTypeContextID>>,
     layouts: RwLock<FxHashMap<CIRTypeContextID, ABITypeLayout>>,
+    layout_locks: RwLock<FxHashMap<CIRTypeContextID, Arc<Mutex<()>>>>,
     in_progress: RwLock<FxHashMap<CIRTypeContextDeclKey, CIRTypeContextID>>,
     fat_ptr_type_id: OnceLock<CIRTypeContextID>,
 }
@@ -83,6 +84,7 @@ impl CIRTypeContext {
             defs: RwLock::new(Vec::new()),
             key_to_id: RwLock::new(FxHashMap::default()),
             layouts: RwLock::new(FxHashMap::default()),
+            layout_locks: RwLock::new(FxHashMap::new()),
             in_progress: RwLock::new(FxHashMap::default()),
             fat_ptr_type_id: OnceLock::new(),
         };
@@ -191,6 +193,7 @@ impl CIRTypeContext {
     }
 
     pub fn get_or_compute_layout(&self, type_id: CIRTypeContextID) -> ABITypeLayout {
+        // check if already computed
         {
             let cache = self.layouts.read().unwrap();
             if let Some(layout) = cache.get(&type_id) {
@@ -198,12 +201,24 @@ impl CIRTypeContext {
             }
         }
 
-        // IMPORTANT
-        // insert a zero-sized placeholder to break recursion
-        self.layouts
-            .write()
-            .unwrap()
-            .insert(type_id, ABITypeLayout::aggregate(0, 1, Vec::new()));
+        // IMPORTANT(to prevent data race):
+        // get or create a per-type mutex
+        let lock = {
+            let mut locks = self.layout_locks.write().unwrap();
+            locks.entry(type_id).or_insert_with(|| Arc::new(Mutex::new(()))).clone()
+        };
+
+        // thread lock this type
+        let _guard = lock.lock().unwrap();
+
+        // IMPORTANT(to prevent data race):
+        // DOUBLE-CHECK after acquiring the lock
+        {
+            let cache = self.layouts.read().unwrap();
+            if let Some(layout) = cache.get(&type_id) {
+                return layout.clone();
+            }
+        }
 
         let layout = self.compute_layout_for_def(type_id);
         self.layouts.write().unwrap().insert(type_id, layout.clone());

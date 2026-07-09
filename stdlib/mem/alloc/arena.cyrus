@@ -107,6 +107,6 @@ pub struct ArenaAllocator : Allocator {
     }
 
 	fn free(&const self, ptr: void*) void {
-        @panic("ArenaAllocator does not support free");
+        @panic("ArenaAllocator does not support free.");
     }
 }
