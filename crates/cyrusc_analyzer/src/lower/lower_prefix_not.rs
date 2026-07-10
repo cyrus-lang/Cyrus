@@ -11,6 +11,41 @@ use cyrusc_typed_ast::{
 
 /// Lowers a logical negation on a pointer operand into a null comparison.
 impl<'a> AnalysisContext<'a> {
+    pub(crate) fn lower_cond_pointer_as_null_check(&mut self, expr: &mut TypedExpr) -> Option<TypedExpr> {
+        let null_literal_expr = TypedExpr {
+            kind: TypedExprKind::Literal(TypedLiteralExpr {
+                ty: Some(SemaType::Pointer(Box::new(SemaType::Plain(PlainType::Void)))),
+                kind: LiteralKind::Null,
+                loc: expr.loc,
+            }),
+            ty: expr.ty.clone(),
+            val_cat: ValueCategory::RValue,
+            analyzed: false,
+            loc: expr.loc,
+        };
+
+        if expr.ty.as_ref()?.is_pointer() {
+            let lhs = expr.clone();
+
+            let new_infix_expr = TypedExprKind::Infix(TypedInfixExpr {
+                op: InfixOperator::NotEqual,
+                lhs: Box::new(lhs),
+                rhs: Box::new(null_literal_expr),
+                loc: expr.loc,
+            });
+
+            Some(TypedExpr {
+                kind: new_infix_expr,
+                ty: Some(SemaType::Plain(PlainType::Bool)),
+                val_cat: ValueCategory::RValue,
+                analyzed: false,
+                loc: expr.loc,
+            })
+        } else {
+            None
+        }
+    }
+
     pub(crate) fn lower_prefix_not_pointer(
         &mut self,
         expected_type: Option<SemaType>,
