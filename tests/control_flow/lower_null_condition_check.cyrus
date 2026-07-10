@@ -1,0 +1,12 @@
+// @stdout: x is null
+
+import std::libc{printf};
+
+pub fn main() {
+     var x: int32* = null;
+     if (x) {
+          printf("x is %d\n", x);
+     } else {
+          printf("x is null\n");
+     }
+}

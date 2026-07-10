@@ -254,12 +254,15 @@ impl<'a> AnalysisContext<'a> {
         if let Some(mut ty) = self.analyze_expr(cond, Some(SemaType::Plain(PlainType::Bool))) {
             ty = self.expand_sema_type(ty.clone(), cond.loc);
 
-            if !(ty.is_bool() || ty.is_integer()) {
+            if !(ty.is_bool() || ty.is_integer() || ty.is_pointer()) {
                 self.report_not_cond_expr(cond.loc);
             }
 
-            // store expanded type
-            cond.ty = Some(ty);
+            if ty.is_pointer() {
+                *cond = self.lower_cond_pointer_as_null_check(cond).unwrap();
+            } else {
+                cond.ty = Some(ty);
+            }
         }
     }
 
