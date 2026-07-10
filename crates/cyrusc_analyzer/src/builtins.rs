@@ -628,37 +628,33 @@ impl<'a> AnalysisContext<'a> {
     // FIXME: replace analyze_expr_non_terminal with analyze_cond
     // and allow syntactic shorthand for `X != null`: `X`
     fn analyze_builtin_assert(&mut self, builtin_func: &mut TypedBuiltinFunc) -> Option<SemaType> {
-        let param_types = [
-            SemaType::Plain(PlainType::Bool),                               // cond (bool)
-            SemaType::Pointer(Box::new(SemaType::Plain(PlainType::UInt8))), // msg? (char*)
-        ];
+        self.analyze_cond_expr(builtin_func.args.first_mut().unwrap());
 
-        for (arg, expected_type) in builtin_func.args.iter_mut().zip(param_types.iter()) {
-            self.analyze_expr_non_terminal(arg, Some(expected_type.clone()));
-        }
+        if let Some(msg) = builtin_func.args.get_mut(1) {
+            let expected_type = SemaType::Pointer(Box::new(SemaType::Plain(PlainType::UInt8)));
+            self.analyze_expr_non_terminal(msg, Some(expected_type.clone()));
 
-        for (idx, (arg, expected_type)) in builtin_func.args.iter().zip(param_types.iter()).enumerate() {
-            let Some(arg_type) = arg.ty.clone() else { return None };
+            let Some(arg_type) = msg.ty.clone() else {
+                return None;
+            };
 
             if !self.is_assignable_to(arg_type.clone(), expected_type.clone(), builtin_func.loc) {
                 let argument_type = format_sema_type(arg_type, self.formatter);
-                let param_type = format_sema_type(expected_type.clone(), self.formatter);
+                let param_type = format_sema_type(expected_type, self.formatter);
 
                 self.reporter.report(Diag {
                     level: DiagLevel::Error,
                     kind: Box::new(AnalyzerDiagKind::FuncCallParamTypeMismatch {
                         param_type,
                         argument_type,
-                        argument_idx: idx as u32,
+                        argument_idx: 1,
                     }),
                     loc: Some(builtin_func.loc),
                     hint: None,
                 });
                 return None;
             }
-        }
 
-        if let Some(msg) = builtin_func.args.get(1) {
             if msg.literal_const_string_value().is_none() {
                 self.reporter.report(Diag {
                     level: DiagLevel::Error,
