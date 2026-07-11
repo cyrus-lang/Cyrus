@@ -15,13 +15,9 @@ pub struct Vector<T> {
     len: usize,
 
     /// Create a new array using a specific allocator.
-    pub inline fn new(const allocator: Allocator) Self {
+    pub inline fn new(allocator: Allocator) Self {
         const cap = initial_array_capacity;
-
-        // FIXME: Using allocator.alloc instead of malloc causes a crash in the test suite. Need to investigate why.
-        // const data: T* = allocator.alloc(cap * @sizeof(T));
-        const data: T* = malloc(cap * @sizeof(T));
-
+        const data: T* = allocator.alloc(cap * @sizeof(T));
         if (!data) {
             @panic("allocation failed");
         }
@@ -35,13 +31,10 @@ pub struct Vector<T> {
     }
 
     /// Pre-allocate memory to avoid initial reallocations.
-    pub inline fn with_capacity(const allocator: Allocator, const cap: usize) Self {
+    pub inline fn with_capacity(allocator: Allocator, const cap: usize) Self {
         @assert(cap != 0, "initial capacity cannot be zero");
 
-        // FIXME: Using allocator.alloc instead of malloc causes a crash in the test suite. Need to investigate why.
-        // const data: T* = allocator.alloc(cap * @sizeof(T));
-        const data: T* = malloc(cap * @sizeof(T));
-
+        const data: T* = allocator.alloc(cap * @sizeof(T));
         if (data == null) {
             @panic("initial allocation failed");
         }
