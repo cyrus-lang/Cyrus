@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 The Cyrus Language
 
-import std::libc{memmove, malloc, printf};
+import std::libc{memmove, malloc};
 import std::mem{Allocator};
 import std::option{Option};
 import std::iterator{Iterator};
@@ -133,10 +133,10 @@ pub struct Vector<T> {
         if (self->len == 0) {
             @panic("cannot pop from empty array");
         }
-
+        
+        const ch = self->data[self->len];
         self->len--;
-
-        return self->data[self->len];
+        return ch;
     }
 
     pub inline fn insert(&self, index: usize, value: T) {

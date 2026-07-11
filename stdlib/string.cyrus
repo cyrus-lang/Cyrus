@@ -67,25 +67,17 @@ pub struct String {
     pub fn push(&self, const ch: uint8) {        
         var data = self->vec.data();
         var current = &data[self->len()];
-
         *current = ch;
-
         self->vec.push('\0');
     }
 
     pub fn push_str(&self, const str: uint8*) {
         @assert(str, "input string cannot be null");
-
-        const len = strlen(str);
-
-        self->vec.pop();
-
-        self->reserve(len);
-
-        for (var i: usize = 0; i < len; i++) {
+    
+        self->reserve(self->len());
+        for (var i: usize = 0; i < self->len(); i++) {
             self->vec.push(str[i]);
-        }
-        
+        }        
         self->vec.push('\0');
     }
     
