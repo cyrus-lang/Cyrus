@@ -1,0 +1,29 @@
+import std::libc{printf};
+
+import utils::file{read_file_content};
+import diags{compile_error};
+import parse::lex{Lexer};
+
+import parse::lex::tokens{Token, Literal};
+
+pub fn main(argc: int32, argv: uint8**) {
+    const token = Token.Literal(Literal.Integer {
+        value: .Signed(10),
+        suffix: .None
+    });
+
+    printf("token: %s\n", token.to_str());
+
+    // const file_name = argv[1];
+
+    // if (!file_name) {
+    //     compile_error("no input files");
+    // }
+
+    // var source = read_file_content(file_name);
+    // defer source.free();
+
+    // const lexer = Lexer.new(&source);
+    
+    // printf("%s\n", source.as_str_const());
+}

@@ -1,0 +1,40 @@
+import std::string{String};
+import std::collections{Vector};
+
+import parse::lex::tokens{
+    Token,
+    Literal,
+    IntegerSuffix,
+    FloatSuffix,
+    StringSuffix
+};
+
+pub struct Lexer {
+    source: String*,
+    pos: usize,
+    cur: uint8,
+    line: usize,
+    col: usize,
+
+    pub fn new(source: String*) Self {
+        @assert(source, "source cannot be null");
+
+        const cur = source->as_str_const()[0];
+
+        return Self {
+            source,
+            cur,
+            pos: 0,
+            line: 1,
+            col: 1,
+        };
+    }
+
+    pub fn tokenize(&self) Vector<Token> {
+        @todo();
+    }
+
+    pub fn next(&self) {
+        @todo();
+    }
+}

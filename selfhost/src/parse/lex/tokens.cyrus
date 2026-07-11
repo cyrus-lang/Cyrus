@@ -1,0 +1,477 @@
+import std::string{String};
+import std::option{Option};
+
+pub enum Token {
+    Ident(String),
+    Literal(Literal),
+
+    // Operators
+    Plus,
+    Minus,
+    Slash,
+    Asterisk,
+    Percent,
+    Increment,
+    Decrement,
+
+    // Symbols
+    ShiftRight,
+    ShiftLeft,
+    Caret,
+    AmpTilde,
+    Tilde,
+    Assign,
+    Equal,
+    NotEqual,
+    Bang,
+    LeftParen,
+    RightParen,
+    LeftBrace,
+    RightBrace,
+    LeftBracket,
+    RightBracket,
+    Comma,
+    ThinArrow,
+    FatArrow,
+    Dot,
+    DoubleDot,
+    TripleDot,
+    DoubleQuote,
+    SingleQuote,
+    Pipe,
+    Ampersand,
+    Semicolon,
+    Colon,
+    DoubleColon,
+    LessThan,
+    GreaterThan,
+    LessEqual,
+    GreaterEqual,
+    And,
+    Or,
+    At,
+    Underscore,
+
+    // Keywords
+    Module,
+    Var,
+    Dynamic,
+    Goto,
+    Defer,
+    Union,
+    Interface,
+    Function,
+    Typedef,
+    Switch,
+    Case,
+    Default,
+    If,
+    Else,
+    Return,
+    For,
+    While,
+    Foreach,
+    Break,
+    Continue,
+    Struct,
+    Import,
+    In,
+    Enum,
+    True,
+    False,
+    Null,
+    As,
+
+    // Types
+    UIntPtr,
+    IntPtr,
+    ISize,
+    USize,
+    Int,
+    Int8,
+    Int16,
+    Int32,
+    Int64,
+    Int128,
+    UInt,
+    UInt8,
+    UInt16,
+    UInt32,
+    UInt64,
+    UInt128,
+    Float16,
+    Float32,
+    Float64,
+    Float128,
+    Char,
+    Void,
+    Bool,
+    Const,
+
+    // Modifiers
+    Weak,
+    LinkOnce,
+    Callconv,
+    Naked,
+    NoReturn,
+    Hot,
+    Cold,
+    Extern,
+    Public,
+    Inline,
+    NoInline,
+    AlwaysInline,
+    DllImport,
+    DllExport,
+    OptSize,
+    OptNone,
+    NoSanitize,
+    NoUnwind,
+    Section,
+    Repr,
+
+    EOF,
+
+    pub inline fn is_eof(&const self) bool {
+        switch (*self) {
+            case .EOF => return true;
+            default => return false;
+        }
+    }
+
+    pub fn lookup_keyword(str: const uint8*) Option<Token> {
+        switch (str) {
+            case "dynamic" => return .Some(.Dynamic);
+            case "var" => return .Some(.Var);
+            case "mod" => return .Some(.Module);
+            case "interface" => return .Some(.Interface);
+            case "type" => return .Some(.Typedef);
+            case "fn" => return .Some(.Function);
+            case "switch" => return .Some(.Switch);
+            case "case" => return .Some(.Case);
+            case "default" => return .Some(.Default);
+            case "struct" => return .Some(.Struct);
+            case "import" => return .Some(.Import);
+            case "if" => return .Some(.If);
+            case "else" => return .Some(.Else);
+            case "return" => return .Some(.Return);
+            case "for" => return .Some(.For);
+            case "foreach" => return .Some(.Foreach);
+            case "break" => return .Some(.Break);
+            case "continue" => return .Some(.Continue);
+            case "true" => return .Some(.True);
+            case "false" => return .Some(.False);
+            case "null" => return .Some(.Null);
+            case "uintptr" => return .Some(.UIntPtr);
+            case "intptr" => return .Some(.IntPtr);
+            case "isize" => return .Some(.ISize);
+            case "usize" => return .Some(.USize);
+            case "int" => return .Some(.Int);
+            case "int8" => return .Some(.Int8);
+            case "int16" => return .Some(.Int16);
+            case "int32" => return .Some(.Int32);
+            case "int64" => return .Some(.Int64);
+            case "int128" => return .Some(.Int128);
+            case "uint" => return .Some(.UInt);
+            case "uint8" => return .Some(.UInt8);
+            case "uint16" => return .Some(.UInt16);
+            case "uint32" => return .Some(.UInt32);
+            case "uint64" => return .Some(.UInt64);
+            case "uint128" => return .Some(.UInt128);
+            case "float16" => return .Some(.Float16);
+            case "float32" => return .Some(.Float32);
+            case "float64" => return .Some(.Float64);
+            case "float128" => return .Some(.Float128);
+            case "char" => return .Some(.Char);
+            case "bool" => return .Some(.Bool);
+            case "void" => return .Some(.Void);
+            case "enum" => return .Some(.Enum);
+            case "in" => return .Some(.In);
+            case "as" => return .Some(.As);
+            case "extern" => return .Some(.Extern);
+            case "inline" => return .Some(.Inline);
+            case "pub" => return .Some(.Public);
+            case "const" => return .Some(.Const);
+            case "weak" => return .Some(.Weak);
+            case "linkonce" => return .Some(.LinkOnce);
+            case "callconv" => return .Some(.Callconv);
+            case "naked" => return .Some(.Naked);
+            case "noreturn" => return .Some(.NoReturn);
+            case "hot" => return .Some(.Hot);
+            case "cold" => return .Some(.Cold);
+            case "dllimport" => return .Some(.DllImport);
+            case "dllexport" => return .Some(.DllExport);
+            case "optsize" => return .Some(.OptSize);
+            case "optnone" => return .Some(.OptNone);
+            case "no_sanitize" => return .Some(.NoSanitize);
+            case "nounwind" => return .Some(.NoUnwind);
+            case "section" => return .Some(.Section);
+            case "repr" => return .Some(.Repr);
+            case "goto" => return .Some(.Goto);
+            case "defer" => return .Some(.Defer);
+            case "union" => return .Some(.Union);
+            case "while" => return .Some(.While);
+            case "noinline" => return .Some(.NoInline);
+            case "alwaysinline" => return .Some(.AlwaysInline);
+        }
+
+        return .None;
+    }
+
+    pub fn to_str(&const self) const uint8* {
+        switch (*self) {
+            case .Ident(ident) => return ident.as_str_const();
+            case .Literal(lit) => return lit.to_str();
+
+            case .Underscore => return "_";
+            case .Plus => return "+";
+            case .Minus => return "-";
+            case .Asterisk => return "*";
+            case .Slash => return "/";
+            case .Percent => return "%";
+            case .Assign => return "=";
+            case .Equal => return "==";
+            case .LeftParen => return "(";
+            case .RightParen => return ")";
+            case .LeftBrace => return "{{";
+            case .RightBrace => return "}}";
+            case .LeftBracket => return "[[";
+            case .RightBracket => return "]]";
+            case .At => return "@";
+            case .Comma => return ",";
+            case .DoubleDot => return "..";
+            case .TripleDot => return "...";
+            case .Dot => return ".";
+            case .DoubleQuote => return "\"";
+            case .SingleQuote => return "'";
+            case .Pipe => return "|";
+            case .Ampersand => return "&";
+            case .LessThan => return "<";
+            case .GreaterThan => return ">";
+            case .LessEqual => return "<=";
+            case .GreaterEqual => return ">=";
+            case .And => return "&&";
+            case .Or => return "||";
+            case .Semicolon => return ";";
+            case .Colon => return ":";
+            case .ThinArrow => return "->";
+            case .FatArrow => return "=>";
+            case .Dynamic => return "dynamic";
+            case .Var => return "var";
+            case .Module => return "mod";
+            case .Interface => return "interface";
+            case .Typedef => return "type";
+            case .Function => return "fn";
+            case .Switch => return "switch";
+            case .Case => return "case";
+            case .Default => return "default";
+            case .Struct => return "struct";
+            case .Import => return "import";
+            case .If => return "if";
+            case .Else => return "else";
+            case .Return => return "return";
+            case .For => return "for";
+            case .Foreach => return "foreach";
+            case .Break => return "break";
+            case .Continue => return "continue";
+            case .True => return "true";
+            case .False => return "false";
+            case .Null => return "null";
+            case .UIntPtr => return "uintptr";
+            case .IntPtr => return "intptr";
+            case .ISize => return "isize";
+            case .USize => return "usize";
+            case .Int => return "int";
+            case .Int8 => return "int8";
+            case .Int16 => return "int16";
+            case .Int32 => return "int32";
+            case .Int64 => return "int64";
+            case .Int128 => return "int128";
+            case .UInt => return "uint";
+            case .UInt8 => return "uint8";
+            case .UInt16 => return "uint16";
+            case .UInt32 => return "uint32";
+            case .UInt64 => return "uint64";
+            case .UInt128 => return "uint128";
+            case .Float16 => return "float16";
+            case .Float32 => return "float32";
+            case .Float64 => return "float64";
+            case .Float128 => return "float128";
+            case .Char => return "char";
+            case .Bool => return "bool";
+            case .Void => return "void";
+            case .Enum => return "enum";
+            case .In => return "in";
+            case .As => return "as";
+            case .Extern => return "extern";
+            case .Inline => return "inline";
+            case .Public => return "pub";
+            case .Const => return "const";
+            case .Weak => return "weak";
+            case .LinkOnce => return "linkonce";
+            case .Callconv => return "callconv";
+            case .Naked => return "naked";
+            case .NoReturn => return "noreturn";
+            case .Hot => return "hot";
+            case .Cold => return "cold";
+            case .DllImport => return "dllimport";
+            case .DllExport => return "dllexport";
+            case .OptSize => return "optsize";
+            case .OptNone => return "optnone";
+            case .NoSanitize => return "no_sanitize";
+            case .NoUnwind => return "nounwind";
+            case .Section => return "section";
+            case .Repr => return "repr";
+            case .Increment => return "++";
+            case .Decrement => return "--";
+            case .ShiftRight => return ">>";
+            case .ShiftLeft => return "<<";
+            case .Caret => return "^";
+            case .AmpTilde => return "&~";
+            case .Tilde => return "~";
+            case .NotEqual => return "!=";
+            case .Bang => return "!";
+            case .DoubleColon => return "\"";
+            case .Goto => return "goto";
+            case .Defer => return "defer";
+            case .Union => return "union";
+            case .While => return "while";
+            case .NoInline => return "noinline";
+            case .AlwaysInline => return "alwaysinline";
+
+            case .EOF => return "EOF";
+        }
+    }
+}
+
+pub enum Literal {
+    Integer {
+        value: enum {
+            Signed(int128),
+            Unsigned(uint128)
+        },
+        suffix: Option<IntegerSuffix>
+    },
+    Float {
+        value: float64,
+        suffix: Option<FloatSuffix>
+    },
+    String {
+        value: String,
+        suffix: Option<StringSuffix>
+    },
+    Bool(bool),
+    Null,
+
+    // TODO
+    pub fn to_str(&const self) const uint8* {
+        switch (*self) {
+            case .Integer { value, suffix } => {
+                @todo();
+            }
+            default => @todo();
+        }
+    }
+}
+
+pub enum IntegerSuffix {
+    ISize,
+    USize,
+    Int,
+    Int8,
+    Int16,
+    Int32,
+    Int64,
+    Int128,
+    UInt,
+    UInt8,
+    UInt16,
+    UInt32,
+    UInt64,
+    UInt128,
+    Char,
+
+    pub fn from_str(str: const uint8*) Option<IntegerSuffix> {
+        switch (str) {
+            case "isize" => return .Some(.ISize);
+            case "usize" => return .Some(.USize);
+            case "int" => return .Some(.Int);
+            case "int8" => return .Some(.Int8);
+            case "int16" => return .Some(.Int16);
+            case "int32" => return .Some(.Int32);
+            case "int64" => return .Some(.Int64);
+            case "int128" => return .Some(.Int128);
+            case "uint" => return .Some(.UInt);
+            case "uint8" => return .Some(.UInt8);
+            case "uint16" => return .Some(.UInt16);
+            case "uint32" => return .Some(.UInt32);
+            case "uint64" => return .Some(.UInt64);
+            case "uint128" => return .Some(.UInt128);
+            case "char" => return .Some(.Char);
+            default => return .None;
+        }
+    }
+
+    pub fn to_str(const self) const uint8* {
+        switch (self) {
+            case .ISize => return "isize";
+            case .USize => return "usize";
+            case .Int => return "int";
+            case .Int8 => return "int8";
+            case .Int16 => return "int16";
+            case .Int32 => return "int32";
+            case .Int64 => return "int64";
+            case .Int128 => return "int128";
+            case .UInt => return "uint";
+            case .UInt8 => return "uint8";
+            case .UInt16 => return "uint16";
+            case .UInt32 => return "uint32";
+            case .UInt64 => return "uint64";
+            case .UInt128 => return "uint128";
+            case .Char => return "char";
+        }
+    }
+}
+
+pub enum FloatSuffix {
+    Float16,
+    Float32,
+    Float64,
+    Float128,
+
+    pub fn from_str(str: const uint8*) Option<FloatSuffix> {
+        switch (str) {
+            case "float16" => return .Some(.Float16);
+            case "float32" => return .Some(.Float32);
+            case "float64" => return .Some(.Float64);
+            case "float128" => return .Some(.Float128);
+            default => return .None;
+        }
+    }
+
+    pub fn to_str(const self) const uint8* {
+        switch (self) {
+            case .Float16 => return "float16";
+            case .Float32 => return "float32";
+            case .Float64 => return "float64";
+            case .Float128 => return "float128";
+        }
+    }
+}
+
+pub enum StringSuffix {
+    Byte,
+
+    // pub fn from_str(str: const uint8*) Option<FloatSuffix> {
+    //     // switch (str) {
+    //     //     case "b" => return .Some(.Byte);
+    //     //     default => return .None;
+    //     // }
+    // }
+
+    // pub fn to_str(&const self) const uint8* {
+    //     // switch (*self) {
+    //     //     case .Byte => return "b";
+    //     // }
+    // }
+}
