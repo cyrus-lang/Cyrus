@@ -7,7 +7,7 @@ import std::string{String};
 pub type IOError = ErrorOr<(), ()>;
 
 pub interface Writer {
-    // TODO: Add writeAll method ti rewrite entire buffer.
+    fn write_all(&self, data: const uint8*) IOError;
     fn write(&self, data: const uint8*) IOError;
     fn writeln(&self, data: const uint8*) IOError;
     fn flush(&self) IOError;
@@ -24,6 +24,13 @@ pub struct StringWriter {
 
     pub fn to_str(&const self) String* {
         return self->buffer;
+    }
+
+    pub fn write_all(&self, data: const uint8*) IOError {
+        @assert(data, "data cannot be null");
+        self->buffer->clear();
+        self->buffer->push_str(data);
+        return .Value(());
     }
 
     pub fn write(&self, data: const uint8*) IOError {
