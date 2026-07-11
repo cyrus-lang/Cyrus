@@ -264,7 +264,7 @@ impl<'a> Resolver<'a> {
             return Some(symbol_id);
         }
 
-        if let Some(symbol_id) = self.lookup_symbol_id(self.current_scope.unwrap(), &ident.value) {
+        if let Some(symbol_id) = self.lookup_symbol_id(self.current_scope?, &ident.value) {
             return Some(symbol_id);
         }
 
@@ -300,7 +300,7 @@ impl<'a> Resolver<'a> {
             return None;
         };
 
-        let current_scope_id = self.current_scope.unwrap();
+        let current_scope_id = self.current_scope?;
 
         let mut current_symbol = match self.lookup_symbol_id(current_scope_id, &first_ident.value) {
             Some(symbol_id) => symbol_id,
@@ -496,7 +496,7 @@ impl<'a> Resolver<'a> {
             return Some(SemaType::GenericParam(generic_param_id));
         }
 
-        if let Some(symbol_id) = self.lookup_symbol_id(self.current_scope.unwrap(), &ident.value) {
+        if let Some(symbol_id) = self.lookup_symbol_id(self.current_scope?, &ident.value) {
             return Some(SemaType::Unresolved(UnresolvedType::Decl(symbol_id)));
         }
 
@@ -820,7 +820,7 @@ impl<'a> Resolver<'a> {
     }
 
     fn resolve_typedef(&mut self, typedef: &ASTTypedefStmt) -> Option<TypedStmt> {
-        let symbol_id = self.lookup_symbol_id(self.current_scope.unwrap(), &typedef.ident.value)?;
+        let symbol_id = self.lookup_symbol_id(self.current_scope?, &typedef.ident.value)?;
         let generic_params = self.resolve_generic_params(&typedef.generic_params)?;
         self.with_generic_scope(&generic_params.clone(), |this| {
             let typedef_decl_id = this.decl_tables.insert_typedef(TypedefDecl {
@@ -925,7 +925,7 @@ impl<'a> Resolver<'a> {
 
     fn resolve_interface_stmt(&mut self, interface: &ASTInterfaceStmt) -> Option<TypedStmt> {
         let name = interface.ident.as_string();
-        let symbol_id = self.lookup_symbol_id(self.current_scope.unwrap(), &name).unwrap();
+        let symbol_id = self.lookup_symbol_id(self.current_scope?, &name)?;
         let loc = interface.loc;
 
         let generic_params = self.resolve_generic_params(&interface.generic_params)?;
@@ -1010,7 +1010,7 @@ impl<'a> Resolver<'a> {
 
     fn resolve_union_stmt(&mut self, union_decl: &ASTUnionStmt) -> Option<TypedStmt> {
         let name = union_decl.ident.as_string();
-        let symbol_id = self.lookup_symbol_id(self.current_scope.unwrap(), &name).unwrap();
+        let symbol_id = self.lookup_symbol_id(self.current_scope?, &name)?;
         let loc = union_decl.loc;
 
         let generic_params = self.resolve_generic_params(&union_decl.generic_params)?;
@@ -1171,7 +1171,7 @@ impl<'a> Resolver<'a> {
 
     fn resolve_enum_stmt(&mut self, enum_decl: &ASTEnumStmt) -> Option<TypedStmt> {
         let name = enum_decl.ident.as_string();
-        let symbol_id = self.lookup_symbol_id(self.current_scope.unwrap(), &name).unwrap();
+        let symbol_id = self.lookup_symbol_id(self.current_scope?, &name)?;
         let loc = enum_decl.loc;
 
         let generic_params = self.resolve_generic_params(&enum_decl.generic_params)?;
@@ -1230,7 +1230,7 @@ impl<'a> Resolver<'a> {
 
     fn resolve_global_var_stmt(&mut self, global_var: &ASTGlobalVarStmt) -> Option<TypedStmt> {
         let name = global_var.ident.as_string();
-        let symbol_id = self.lookup_symbol_id(self.current_scope.unwrap(), &name).unwrap();
+        let symbol_id = self.lookup_symbol_id(self.current_scope?, &name)?;
         let loc = global_var.loc;
 
         let sema_type = match &global_var.type_spec {
@@ -1396,7 +1396,7 @@ impl<'a> Resolver<'a> {
 
     fn resolve_struct_stmt(&mut self, struct_decl: &ASTStructStmt) -> Option<TypedStmt> {
         let name = struct_decl.ident.as_string();
-        let symbol_id = self.lookup_symbol_id(self.current_scope.unwrap(), &name).unwrap();
+        let symbol_id = self.lookup_symbol_id(self.current_scope?, &name)?;
         let loc = struct_decl.loc;
 
         let generic_params = self.resolve_generic_params(&struct_decl.generic_params)?;
@@ -1585,7 +1585,7 @@ impl<'a> Resolver<'a> {
 
     fn resolve_func_decl(&mut self, ast_func_decl: &ASTFuncDeclStmt) -> Option<TypedStmt> {
         let name = ast_func_decl.usable_name();
-        let symbol_id = self.lookup_symbol_id(self.current_scope.unwrap(), &name).unwrap();
+        let symbol_id = self.lookup_symbol_id(self.current_scope?, &name)?;
 
         let generic_params = self.resolve_generic_params(&ast_func_decl.generic_params)?;
 
@@ -1639,7 +1639,7 @@ impl<'a> Resolver<'a> {
     }
 
     fn resolve_func_def(&mut self, func_def: &ASTFuncDefStmt) -> Option<TypedStmt> {
-        let symbol_id = self.lookup_symbol_id(self.current_scope.unwrap(), &func_def.ident.value)?;
+        let symbol_id = self.lookup_symbol_id(self.current_scope?, &func_def.ident.value)?;
 
         let scope = LocalScope::new();
 
