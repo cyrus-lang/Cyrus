@@ -1,0 +1,8 @@
+pub extern(c) {
+	fn fopen(filename: uint8*, mode: uint8*) void*;
+	fn fread(ptr: void*, size: usize, nmemb: usize, stream: void*) usize;
+	fn fwrite(ptr: void*, size: usize, nmemb: usize, stream: void*) usize;
+	fn fseek(stream: void*, offset: isize, whence: int32) int32;
+	fn ftell(stream: void*) isize;
+	fn fclose(stream: void*) int32;
+}
