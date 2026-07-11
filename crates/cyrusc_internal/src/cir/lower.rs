@@ -92,7 +92,10 @@ pub fn lower_sema_type(
         | SemaType::SelfType(_)
         | SemaType::InferVar(_)
         | SemaType::Placeholder
-        | SemaType::Err(_) => unreachable!(),
+        | SemaType::Err(_) => {
+            dbg!(ty.clone());
+            unreachable!()
+        },
     }
     .const_inner()
     .clone()

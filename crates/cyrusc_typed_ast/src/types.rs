@@ -230,6 +230,58 @@ impl UnresolvedType {
 }
 
 impl SemaType {
+    /// Returns true if this type contains `Unresolved` inside it.
+    pub fn includes_unresolved_type(&self) -> bool {
+        match self {
+            SemaType::Unresolved(_) => true,
+
+            SemaType::Err(_)
+            | SemaType::Plain(_)
+            | SemaType::SelfType(_)
+            | SemaType::GenericParam(_)
+            | SemaType::InferVar(_)
+            | SemaType::Placeholder => false,
+
+            SemaType::Named(named_type) => named_type.type_args.iter().any(|type_arg| match type_arg {
+                TypedTypeArg::Type(ty, _) => ty.includes_unresolved_type(),
+                TypedTypeArg::Infer => false,
+            }),
+
+            SemaType::Const(inner) | SemaType::Pointer(inner) => inner.includes_unresolved_type(),
+
+            SemaType::Array(array) => array.element_type.includes_unresolved_type(),
+
+            SemaType::FuncType(func) => {
+                func.params.list.iter().any(|ty| ty.includes_unresolved_type())
+                    || func
+                        .params
+                        .variadic
+                        .as_ref()
+                        .map(|variadic| match &**variadic {
+                            TypedFuncTypeVariadicParam::UntypedCStyle => false,
+                            TypedFuncTypeVariadicParam::Typed(ty) => ty.includes_unresolved_type(),
+                        })
+                        .unwrap_or(false)
+                    || func.ret_type.includes_unresolved_type()
+            }
+
+            SemaType::Tuple(tuple) => tuple.elements.iter().any(|(ty, _)| ty.includes_unresolved_type()),
+
+            SemaType::InterfaceObject(interface_obj) => {
+                // Check both the interface type and concrete type
+                interface_obj
+                    .interface_type
+                    .type_args
+                    .iter()
+                    .any(|type_arg| match type_arg {
+                        TypedTypeArg::Type(ty, _) => ty.includes_unresolved_type(),
+                        TypedTypeArg::Infer => false,
+                    })
+                    || interface_obj.concrete_type.includes_unresolved_type()
+            }
+        }
+    }
+
     #[inline]
     pub fn as_unresolved_decl_id(&self) -> Option<SymbolID> {
         match &self.const_inner() {

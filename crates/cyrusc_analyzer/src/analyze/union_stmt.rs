@@ -54,18 +54,18 @@ impl<'a> AnalysisContext<'a> {
 
         self.analyze_generic_bounds(&union_decl.generic_params);
 
+        let object_type_decl_id = TypeDeclID::Union(union_decl_id);
+
+        if !union_decl.is_generic() {
+            self.analyze_object_methods(object_type_decl_id, &union_decl.methods);
+        }
+
         self.analyze_object_implements_interfaces(
             &object_name,
             union_decl.is_generic(),
             &union_decl.impls,
             &union_decl.methods,
         );
-
-        let object_type_decl_id = TypeDeclID::Union(union_decl_id);
-
-        if !union_decl.is_generic() {
-            self.analyze_object_methods(object_type_decl_id, &union_decl.methods);
-        }
     }
 
     fn analyze_union_fields(&mut self, union_decl_id: UnionDeclID, union_fields: &mut [TypedUnionField]) {

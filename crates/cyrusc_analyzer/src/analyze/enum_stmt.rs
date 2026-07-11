@@ -58,18 +58,18 @@ impl<'a> AnalysisContext<'a> {
 
         self.analyze_generic_bounds(&enum_decl.generic_params);
 
+        let object_type_decl_id = TypeDeclID::Enum(enum_decl_id);
+
+        if !enum_decl.is_generic() {
+            self.analyze_object_methods(object_type_decl_id, &enum_decl.methods);
+        }
+
         self.analyze_object_implements_interfaces(
             &object_name,
             enum_decl.is_generic(),
             &enum_decl.impls,
             &enum_decl.methods,
         );
-
-        let object_type_decl_id = TypeDeclID::Enum(enum_decl_id);
-
-        if !enum_decl.is_generic() {
-            self.analyze_object_methods(object_type_decl_id, &enum_decl.methods);
-        }
 
         self.decl_tables.with_enum_decl_mut(enum_decl_id, |_enum_decl| {
             _enum_decl.variants = enum_decl.variants.clone();

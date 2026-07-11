@@ -61,7 +61,7 @@ impl<'a> AnalysisContext<'a> {
         };
 
         if let Some(ty) = &global_var.ty {
-            if !self.validate_variable_type(ty, global_var.expr.is_some(), global_var.loc) {
+            if !self.validate_variable_type(ty, global_var.expr.is_some() || global_var.is_undef, global_var.loc) {
                 return;
             }
 
@@ -154,7 +154,7 @@ impl<'a> AnalysisContext<'a> {
                 self.report_const_qualified_type_assigned_to_non_const_variable(var.loc);
             }
 
-            if !self.validate_variable_type(ty, var.rhs.is_some(), var.loc) {
+            if !self.validate_variable_type(ty, var.rhs.is_some() || var.is_undef, var.loc) {
                 return;
             }
 
