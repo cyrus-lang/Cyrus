@@ -1,2 +1,45 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 The Cyrus Language
+
+import std::errors{ErrorOr};
+import std::string{String};
+
+pub type IOError = ErrorOr<(), ()>;
+
+pub interface Writer {
+    fn write(&self, data: const uint8*) IOError;
+    fn writeln(&self, data: const uint8*) IOError;
+    fn flush(&self) IOError;
+    fn len(&const self) usize;
+}
+
+pub struct StringWriter {
+    buffer: String*,
+
+    pub fn new(const buffer: String*) Self {
+        return Self { buffer };
+    }
+
+    pub fn to_str(&const self) String* {
+        return self->buffer;
+    }
+
+    pub fn write(&self, data: const uint8*) IOError {
+        self->buffer->push_str(data);
+        return .Value(());
+    }
+
+    pub fn writeln(&self, data: const uint8*) IOError {
+        self->buffer->push_str(data);
+        self->buffer->push('\n');
+        return .Value(());
+    }
+
+    pub fn flush(&self) IOError {
+        return .Value(());
+    }
+    
+    pub fn len(&self) usize {
+        return self->buffer->len();
+    }
+}
