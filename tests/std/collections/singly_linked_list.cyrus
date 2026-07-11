@@ -19,7 +19,7 @@ pub fn main() {
      printf("%d ", list.head->value);
      printf("%d ", list.head->next->value);
      printf("%d ", list.head->next->next->value);
-     @assert(list.head->next->next->next == null);
+     @assert(!list.head->next->next->next);
 
      const y = list.pop_last().unwrap();
      printf("%d ", y->value);

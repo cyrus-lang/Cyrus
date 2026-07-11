@@ -11,7 +11,7 @@ pub fn main() {
      var sum: int32 = 0;
      for (var i = 0; i <= 100; i++) {
           var x: int32* = arena.alloc(4);
-          @assert(x != null, "alloc failed");
+          @assert(x, "alloc failed");
           
           *x = i;
           sum += *x;
