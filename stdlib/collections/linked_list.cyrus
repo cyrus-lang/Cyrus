@@ -20,7 +20,7 @@ pub struct SinglyLinkedList<T> {
 
     /// Append a node to the end of the list
     pub fn append(&self, new_node: SinglyNode<T>*) {
-        @assert(new_node != null, "new node cannot be null");
+        @assert(new_node, "new node cannot be null");
         
         new_node->next = null;
         
@@ -38,7 +38,7 @@ pub struct SinglyLinkedList<T> {
 
     /// Remove a node from the list.
     pub fn remove(&self, node: SinglyNode<T>*) {
-        @assert(node != null, "node cannot be null");
+        @assert(node, "node cannot be null");
         
         if (self->head == node) {
             self->head = node->next;

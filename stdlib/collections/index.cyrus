@@ -36,7 +36,6 @@ pub struct Vector<T> {
 
     /// Pre-allocate memory to avoid initial reallocations.
     pub inline fn with_capacity(const allocator: Allocator, const cap: usize) Self {
-        @debug() 
         @assert(cap != 0, "initial capacity cannot be zero");
 
         // FIXME: Using allocator.alloc instead of malloc causes a crash in the test suite. Need to investigate why.

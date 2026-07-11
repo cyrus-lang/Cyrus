@@ -27,7 +27,7 @@ pub struct String {
     }
 
     pub fn from_str(const allocator: Allocator, const str: const uint8*) Self {
-        @assert(str != null, "input string cannot be null");
+        @assert(str, "input string cannot be null");
 
         const len = strlen(str);
 
@@ -74,7 +74,7 @@ pub struct String {
     }
 
     pub fn push_str(&self, const str: uint8*) {
-        @assert(str != null, "input string cannot be null");
+        @assert(str, "input string cannot be null");
 
         const len = strlen(str);
 

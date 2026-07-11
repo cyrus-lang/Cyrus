@@ -99,8 +99,8 @@ pub struct Path {
         const other_str = other->inner.as_str_const();
         const other_len = other->inner.len();
 
-        @assert(self_str != null, "self path string cannot be null");
-        @assert(other_str != null, "other path string cannot be null");
+        @assert(self_str, "self path string cannot be null");
+        @assert(other_str, "other path string cannot be null");
 
         const self_ends_with_slash = self_len > 0 && self_str[self_len - 1] == separator();
 
