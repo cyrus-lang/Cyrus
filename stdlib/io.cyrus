@@ -7,6 +7,7 @@ import std::string{String};
 pub type IOError = ErrorOr<(), ()>;
 
 pub interface Writer {
+    // TODO: Add writeAll method ti rewrite entire buffer.
     fn write(&self, data: const uint8*) IOError;
     fn writeln(&self, data: const uint8*) IOError;
     fn flush(&self) IOError;

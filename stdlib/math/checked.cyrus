@@ -5,9 +5,11 @@ import std::option{Option};
 
 pub fn checked_add<T>(const a: T, const b: T) Option<T> {
     const is_signed = @cast(T, -1) < @cast(T, 0);
+
     if (is_signed) {
         const min = @cast(T, 1) << @cast(T, @sizeof(T) * 8 - 1);
         const max = ~min;
+
         if (b > @cast(T, 0) && a > max - b) {
             return .None;
         }
@@ -19,14 +21,17 @@ pub fn checked_add<T>(const a: T, const b: T) Option<T> {
             return .None;
         }
     }
+
     return .Some(a + b);
 }
 
 pub fn checked_sub<T>(const a: T, const b: T) Option<T> {
     const is_signed = @cast(T, -1) < @cast(T, 0);
+
     if (is_signed) {
         const min = @cast(T, 1) << @cast(T, @sizeof(T) * 8 - 1);
         const max = ~min;
+
         if (b > @cast(T, 0) && a < min + b) {
             return .None;
         }
@@ -38,14 +43,17 @@ pub fn checked_sub<T>(const a: T, const b: T) Option<T> {
             return .None;
         }
     }
+
     return .Some(a - b);
 }
 
 pub fn checked_mul<T>(const a: T, const b: T) Option<T> {
     const is_signed = @cast(T, -1) < @cast(T, 0);
+
     if (is_signed) {
         const min = @cast(T, 1) << @cast(T, @sizeof(T) * 8 - 1);
         const max = ~min;
+
         if (a > @cast(T, 0)) {
             if (b > @cast(T, 0)) {
                 if (a > max / b) {
@@ -72,5 +80,6 @@ pub fn checked_mul<T>(const a: T, const b: T) Option<T> {
             return .None;
         }
     }
+    
     return .Some(a * b);
 }
