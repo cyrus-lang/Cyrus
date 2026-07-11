@@ -12,17 +12,13 @@ pub struct String {
 
     pub fn new(const allocator: Allocator) Self {
         var vec: Vector<uint8> = Vector.new(allocator);
-
         vec.push('\0'); // null-terminated
-
         return Self { vec };
     }
 
     pub fn with_capacity(const allocator: Allocator, const cap: usize) Self {
         var vec: Vector<uint8> = Vector.with_capacity(allocator, cap);
-
-        vec.push('\0');
-        
+        vec.push('\0'); // null-terminated
         return Self { vec };
     }
 
@@ -32,13 +28,11 @@ pub struct String {
         const len = strlen(str);
 
         var vec: Vector<uint8> = Vector.new(allocator);
-
         for (var i: usize = 0; i < len; i++) {
             vec.push(str[i]);
         }
-
         vec.push('\0');
-        
+    
         return Self { vec };
     }
 
@@ -57,7 +51,7 @@ pub struct String {
     }
 
     pub fn reserve(&self, const extra: usize) {
-        const required = self->len() + extra + 1;
+        const required = self->len() + extra;
         
         if (required > self->cap()) {
             self->vec.reserve(required);
@@ -71,11 +65,14 @@ pub struct String {
         self->vec.push('\0');
     }
 
-    pub fn push_str(&self, const str: uint8*) {
+    pub fn push_str(&self, const str: const uint8*) {
         @assert(str, "input string cannot be null");
-    
-        self->reserve(self->len());
-        for (var i: usize = 0; i < self->len(); i++) {
+
+        const len = strlen(str);
+
+        self->reserve(len);
+        self->vec.pop();
+        for (var i: usize = 0; i < len; i++) {
             self->vec.push(str[i]);
         }        
         self->vec.push('\0');

@@ -18,6 +18,7 @@ pub struct StringWriter {
     buffer: String*,
 
     pub fn new(const buffer: String*) Self {
+        @assert(buffer, "buffer cannot be null");
         return Self { buffer };
     }
 
@@ -26,11 +27,13 @@ pub struct StringWriter {
     }
 
     pub fn write(&self, data: const uint8*) IOError {
+        @assert(data, "data cannot be null");
         self->buffer->push_str(data);
         return .Value(());
     }
 
     pub fn writeln(&self, data: const uint8*) IOError {
+        @assert(data, "data cannot be null");
         self->buffer->push_str(data);
         self->buffer->push('\n');
         return .Value(());

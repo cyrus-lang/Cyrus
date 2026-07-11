@@ -1,4 +1,4 @@
-// @stdout: empty
+// @stdout: Cyrus
 
 import std::mem::alloc::libc{LibcAllocator};
 import std::mem{Allocator};
@@ -11,7 +11,8 @@ pub fn main() {
     var name = String.new(allocator);
     defer name.free();
 
-    if (name.len() == 0) {
-        printf("empty\n");
-    }
+    name.push_str("Cyru");
+    name.push('s');
+
+    printf("%s\n", name.as_str());
 }
