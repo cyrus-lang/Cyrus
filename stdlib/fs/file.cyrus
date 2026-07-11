@@ -6,3 +6,7 @@ pub extern(c) {
 	fn ftell(stream: void*) isize;
 	fn fclose(stream: void*) int32;
 }
+
+pub struct File {
+	handle: void*
+}
