@@ -19,4 +19,19 @@ pub struct File {
 	pub inline fn close(&self) int32 {
 		return fclose(self->handle);
 	}
+
+	pub inline fn read_all(&self, buffer: void*, size: usize, count: usize) usize {
+		return fread(buffer, size, count, self->handle);
+	}
+
+	pub inline fn write_all(&self, buffer: void*, size: usize, count: usize) usize {
+		return fwrite(buffer, size, count, self->handle);
+	}
+
+	pub inline fn size(&self) isize {
+		fseek(self->handle, 0, 2);
+		const sz = ftell(self->handle);
+		fseek(self->handle, 0, 0);
+		return sz;
+	}
 }
