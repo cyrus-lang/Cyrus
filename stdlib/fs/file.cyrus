@@ -1,5 +1,5 @@
 pub extern(c) {
-	fn fopen(filename: uint8*, mode: uint8*) void*;
+	fn fopen(filename: char*, mode: char*) void*;
 	fn fread(ptr: void*, size: usize, nmemb: usize, stream: void*) usize;
 	fn fwrite(ptr: void*, size: usize, nmemb: usize, stream: void*) usize;
 	fn fseek(stream: void*, offset: isize, whence: int32) int32;
@@ -8,5 +8,15 @@ pub extern(c) {
 }
 
 pub struct File {
-	handle: void*
+	handle: void*,
+
+	pub inline fn open(path: char*, mode: char*) Self {
+		return Self{
+			handle: fopen(path, mode)
+		};
+	}
+
+	pub inline fn close(&self) int32 {
+		return fclose(self->handle);
+	}
 }
