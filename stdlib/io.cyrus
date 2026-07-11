@@ -66,27 +66,27 @@ pub struct MultiWriter {
     pub fn write_all(&self, data: const uint8*) IOError {
         @assert(data, "data cannot be null");
         for (var i: usize = 0; i < self->writers.len(); i++) {
-            // var writer = self->writers.get(i).unwrap();
-            // writer.write_all(data);
+            var writer = self->writers.get(i).unwrap();
+            writer.write_all(data);
         }
         return .Value(());
     }
 
     pub fn write(&self, data: const uint8*) IOError {
-        // @assert(data, "data cannot be null");
-        // for (var i: usize = 0; i < self->writers.len(); i++) {
-        //     // var writer = self->writers.get(i).unwrap();
-        //     // writer.write(data);
-        // }
+        @assert(data, "data cannot be null");
+        for (var i: usize = 0; i < self->writers.len(); i++) {
+            var writer = self->writers.get(i).unwrap();
+            writer.write(data);
+        }
         return .Value(());
     }
 
     pub fn writeln(&self, data: const uint8*) IOError {
-        // @assert(data, "data cannot be null");
-        // for (var i: usize = 0; i < self->writers.len(); i++) {
-        //     // var writer = self->writers.get(i).unwrap();
-        //     // writer.writeln(data);
-        // }
+        @assert(data, "data cannot be null");
+        for (var i: usize = 0; i < self->writers.len(); i++) {
+            var writer = self->writers.get(i).unwrap();
+            writer.writeln(data);
+        }
         return .Value(());
     }
 
@@ -96,10 +96,10 @@ pub struct MultiWriter {
     
     pub fn len(&self) usize {
         var sum: usize = 0;
-        // for (var i: usize = 0; i < self->writers.len(); i++) {
-        //     // const writer = self->writers.get(i).unwrap();
-        //     // sum += writer.len();
-        // }
+        for (var i: usize = 0; i < self->writers.len(); i++) {
+            const writer = self->writers.get(i).unwrap();
+            sum += writer.len();
+        }
         return sum;
     }
 }

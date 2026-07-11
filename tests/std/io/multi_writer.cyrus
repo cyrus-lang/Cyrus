@@ -1,0 +1,35 @@
+// @stdout: Cyrus The Great
+
+import std::mem::alloc::libc{LibcAllocator};
+import std::io{Writer, StringWriter, MultiWriter};
+import std::collections{Vector};
+import std::mem{Allocator};
+import std::string{String};
+import std::libc{printf};
+
+pub fn main() {
+    var allocator: Allocator = dynamic LibcAllocator.new();
+
+    var buffer1 = String.new(allocator);
+    defer buffer1.free();
+
+    var buffer2 = String.new(allocator);
+    defer buffer2.free();
+
+    var writer1 = StringWriter.new(&buffer1);
+    var writer2 = StringWriter.new(&buffer2);
+    
+    var writers: Vector<Writer> = Vector.new(allocator);
+    defer writers.free();
+    writers.push(dynamic writer1);
+    writers.push(dynamic writer2);
+
+    var multi_writer = MultiWriter.new(writers);
+    multi_writer.write("Cyrus ");
+    multi_writer.write("The ");
+    multi_writer.write("Great");
+    
+    @assert(buffer1.as_str() == buffer2.as_str(), "buffers must be equal");
+    
+    printf("%s\n", buffer1.as_str());
+}
