@@ -1,0 +1,39 @@
+// @stdout: bar, baz
+
+import std::libc{printf};
+
+enum Option<T> {
+    Some(T),
+    None
+}
+
+enum Foo {
+    Bar,
+    Baz,
+
+    pub fn bar() Self {
+        return .Bar;
+    }
+    
+    pub fn get_opt() Option<Self> {
+        return .Some(.Baz);
+    }
+}
+
+pub fn main() {
+    const bar = Foo.bar();
+    switch (bar) {
+        case .Bar => printf("bar, ");
+    }
+
+    const foo = Foo.get_opt();
+    switch (foo) {
+        case .Some(x) => {
+            switch (x) {
+                case .Baz => {
+                    printf("baz\n");
+                }
+            }
+        }
+    }
+}
