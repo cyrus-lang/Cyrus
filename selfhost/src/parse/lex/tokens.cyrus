@@ -390,12 +390,12 @@ pub enum Literal : Format {
                 }
             }
             case .String { value, suffix } => {
+                switch (suffix) {
+                    case .Some(s) => writer.write(s.to_str());
+                }
                 writer.write("\"");
                 writer.write(value.as_str_const());
                 writer.write("\"");
-                // switch (suffix) {
-                //     case .Some(s) => writer.write(s.to_str());
-                // }
             }
             case .Bool(value) => {
                 format_bool(writer, value);
@@ -425,7 +425,7 @@ pub enum IntegerSuffix {
     UInt128,
     Char,
 
-    pub fn from_str(str: const uint8*) Option<IntegerSuffix> {
+    pub fn from_str(str: const uint8*) Option<Self> {
         switch (str) {
             case "isize" => return .Some(.ISize);
             case "usize" => return .Some(.USize);
@@ -473,7 +473,7 @@ pub enum FloatSuffix {
     Float64,
     Float128,
 
-    pub fn from_str(str: const uint8*) Option<FloatSuffix> {
+    pub fn from_str(str: const uint8*) Option<Self> {
         switch (str) {
             case "float16" => return .Some(.Float16);
             case "float32" => return .Some(.Float32);
@@ -496,16 +496,16 @@ pub enum FloatSuffix {
 pub enum StringSuffix {
     Byte,
 
-    // pub fn from_str(str: const uint8*) Option<FloatSuffix> {
-    //     // switch (str) {
-    //     //     case "b" => return .Some(.Byte);
-    //     //     default => return .None;
-    //     // }
-    // }
+    pub fn from_str(str: const uint8*) Option<Self> {
+        switch (str) {
+            case "b" => return .Some(.Byte);
+            default => return .None;
+        }
+    }
 
-    // pub fn to_str(&const self) const uint8* {
-    //     // switch (*self) {
-    //     //     case .Byte => return "b";
-    //     // }
-    // }
+    pub fn to_str(&const self) const uint8* {
+        switch (*self) {
+            case .Byte => return "b";
+        }
+    }
 }
