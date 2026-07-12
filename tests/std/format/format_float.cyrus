@@ -1,4 +1,4 @@
-// @stdout: 1.200195, 3.155000, 5.555500
+// @stdout: 1.2002, 3.155, 5.5555
 
 import std::mem::alloc::libc{LibcAllocator};
 import std::io{Writer, StringWriter};

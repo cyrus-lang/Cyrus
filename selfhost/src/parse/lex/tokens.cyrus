@@ -5,7 +5,8 @@ import std::format{
     Formatter,
     format_int128,
     format_uint128,
-    format_float64
+    format_float64,
+    format_bool
 };
 
 pub enum Token : Formatter {
@@ -371,7 +372,6 @@ pub enum Literal : Formatter {
     Bool(bool),
     Null,
 
-    // TODO
     pub fn format(&const self, writer: Writer) bool {
         switch (*self) {
             case .Integer { value, suffix } => {
@@ -383,11 +383,27 @@ pub enum Literal : Formatter {
                         format_uint128(writer, x);
                     }
                 }
+                switch (suffix) {
+                    case .Some(s) => writer.write(s.to_str());
+                }
             }
             case .Float { value, suffix } => {
                 format_float64(writer, value);
             }
-            default => @todo();
+            case .String { value, suffix } => {
+                writer.write("\"");
+                writer.write(value.as_str_const());
+                writer.write("\"");
+                // switch (suffix) {
+                //     case .Some(s) => writer.write(s.to_str());
+                // }
+            }
+            case .Bool(value) => {
+                format_bool(writer, value);
+            }
+            case .Null => {
+                writer.write("null");
+            }
         }
         return true;
     }

@@ -15,14 +15,21 @@ pub fn main(argc: int32, argv: uint8**) {
     var format = String.new(allocator);
     defer format.free();
 
-    const token = Token.Literal(Literal.Float {
-        value: 3.14,
-        suffix: .None
-    });
-    // const token = Token.Literal(Literal.Integer {
-    //     value: .Signed(255),
+    // var name = String.from_str(allocator, "Taha");
+    // defer name.free();
+    // const token = Token.Literal(Literal.String {
+    //     value: name,
     //     suffix: .None
     // });
+    // const token = Token.Literal(Literal.Float {
+    //     value: 3.14,
+    //     suffix: .None
+    // });
+    // const token = Token.Literal(Literal.Integer {
+    //     value: .Signed(255),
+    //     suffix: .Some(.ISize)
+    // });
+    const token = Token.Literal(Literal.Null);
     
     var writer: Writer = dynamic StringWriter.new(&format);
 
