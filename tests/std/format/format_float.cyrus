@@ -6,7 +6,7 @@ import std::string{String};
 import std::mem{Allocator};
 import std::libc{printf};
 import std::format{
-     Formatter,
+     Format,
      format_float16,
      format_float32,
      format_float64,

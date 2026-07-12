@@ -2,14 +2,14 @@ import std::string{String};
 import std::option{Option};
 import std::io{Writer};
 import std::format{
-    Formatter,
+    Format,
     format_int128,
     format_uint128,
     format_float64,
     format_bool
 };
 
-pub enum Token : Formatter {
+pub enum Token : Format {
     Ident(String),
     Literal(Literal),
 
@@ -353,7 +353,7 @@ pub enum Token : Formatter {
     }
 }
 
-pub enum Literal : Formatter {
+pub enum Literal : Format {
     Integer {
         value: enum {
             Signed(int128),
