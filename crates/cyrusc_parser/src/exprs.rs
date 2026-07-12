@@ -1511,13 +1511,11 @@ fn can_start_expr(kind: &TokenKind) -> bool {
         | TokenKind::IntPtr
         | TokenKind::ISize
         | TokenKind::USize
-        | TokenKind::Int
         | TokenKind::Int8
         | TokenKind::Int16
         | TokenKind::Int32
         | TokenKind::Int64
         | TokenKind::Int128
-        | TokenKind::UInt
         | TokenKind::UInt8
         | TokenKind::UInt16
         | TokenKind::UInt32
@@ -1527,7 +1525,6 @@ fn can_start_expr(kind: &TokenKind) -> bool {
         | TokenKind::Float32
         | TokenKind::Float64
         | TokenKind::Float128
-        | TokenKind::Char
         | TokenKind::Void
         | TokenKind::Bool
         | TokenKind::Const
