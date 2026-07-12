@@ -376,20 +376,14 @@ pub enum Literal : Formatter {
         switch (*self) {
             case .Integer { value, suffix } => {
                 switch (value) {
-                    case .Signed(x) => {
-                        format_int128(writer, x);
-                    }
-                    case .Unsigned(x) => {
-                        format_uint128(writer, x);
-                    }
+                    case .Signed(x) => format_int128(writer, x);
+                    case .Unsigned(x) => format_uint128(writer, x);
                 }
                 switch (suffix) {
                     case .Some(s) => writer.write(s.to_str());
                 }
             }
-            case .Float { value, suffix } => {
-                format_float64(writer, value);
-            }
+            case .Float { value, suffix } => format_float64(writer, value);
             case .String { value, suffix } => {
                 writer.write("\"");
                 writer.write(value.as_str_const());
