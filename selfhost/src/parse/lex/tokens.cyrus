@@ -383,7 +383,12 @@ pub enum Literal : Formatter {
                     case .Some(s) => writer.write(s.to_str());
                 }
             }
-            case .Float { value, suffix } => format_float64(writer, value);
+            case .Float { value, suffix } => {
+                format_float64(writer, value);
+                switch (suffix) {
+                    case .Some(s) => writer.write(s.to_str());
+                }
+            }
             case .String { value, suffix } => {
                 writer.write("\"");
                 writer.write(value.as_str_const());
