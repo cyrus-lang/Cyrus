@@ -1,0 +1,32 @@
+// @stdout: 10, 20, 30, 40
+
+import std::mem::alloc::libc{LibcAllocator};
+import std::io{Writer, StringWriter};
+import std::string{String};
+import std::mem{Allocator};
+import std::libc{printf};
+import std::format{
+     Formatter,
+     format_int32,
+     format_uint32,
+     format_int64,
+     format_uint64,
+};
+
+pub fn main() {
+     var allocator: Allocator = dynamic LibcAllocator.new();
+
+     var buffer = String.new(allocator);
+     defer buffer.free();
+
+     var writer: Writer = dynamic StringWriter.new(&buffer);
+
+     format_int32(writer, 10);
+     writer.write(", ");
+     format_uint32(writer, 20);
+     writer.write(", ");
+     format_int64(writer, 30);
+     writer.write(", ");
+     format_uint64(writer, 40);
+     printf("%s\n", buffer.as_str());
+}
