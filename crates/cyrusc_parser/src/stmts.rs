@@ -796,16 +796,18 @@ impl<'source_file> Parser<'source_file> {
             }));
         }
 
-        variants.push(self.parse_enum_variant()?);
-
-        while self.current_token_is(TokenKind::Comma) {
-            self.expect_current(TokenKind::Comma)?;
-
+        loop {
             if self.current_token_is(TokenKind::RightBrace) {
                 break;
             }
 
+            if self.current_token_is(TokenKind::Comma) {
+                self.next_token();
+                continue;
+            }
+
             variants.push(self.parse_enum_variant()?);
+
             if self.peek_token_is(TokenKind::RightBrace)
                 || self.peek_token_is(TokenKind::Function)
                 || self.peek_token_is(TokenKind::Extern)
@@ -816,7 +818,7 @@ impl<'source_file> Parser<'source_file> {
             }
         }
 
-        // consume optional comma at the end of the variant
+        // consume optional comma of ending variant
         if self.current_token_is(TokenKind::Comma) {
             self.next_token();
         }
