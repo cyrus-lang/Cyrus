@@ -1,7 +1,14 @@
 import std::string{String};
 import std::option{Option};
+import std::io{Writer};
+import std::format{
+    Formatter,
+    format_int128,
+    format_uint128,
+    format_float64
+};
 
-pub enum Token {
+pub enum Token : Formatter {
     Ident(String),
     Literal(Literal),
 
@@ -218,133 +225,134 @@ pub enum Token {
         return .None;
     }
 
-    pub fn to_str(&const self) const uint8* {
+    pub fn format(&const self, writer: Writer) bool {
         switch (*self) {
-            case .Ident(ident) => return ident.as_str_const();
-            case .Literal(lit) => return lit.to_str();
+            case .Ident(ident) => writer.write(ident.as_str_const());
+            case .Literal(lit) => lit.format(writer);
 
-            case .Underscore => return "_";
-            case .Plus => return "+";
-            case .Minus => return "-";
-            case .Asterisk => return "*";
-            case .Slash => return "/";
-            case .Percent => return "%";
-            case .Assign => return "=";
-            case .Equal => return "==";
-            case .LeftParen => return "(";
-            case .RightParen => return ")";
-            case .LeftBrace => return "{{";
-            case .RightBrace => return "}}";
-            case .LeftBracket => return "[[";
-            case .RightBracket => return "]]";
-            case .At => return "@";
-            case .Comma => return ",";
-            case .DoubleDot => return "..";
-            case .TripleDot => return "...";
-            case .Dot => return ".";
-            case .DoubleQuote => return "\"";
-            case .SingleQuote => return "'";
-            case .Pipe => return "|";
-            case .Ampersand => return "&";
-            case .LessThan => return "<";
-            case .GreaterThan => return ">";
-            case .LessEqual => return "<=";
-            case .GreaterEqual => return ">=";
-            case .And => return "&&";
-            case .Or => return "||";
-            case .Semicolon => return ";";
-            case .Colon => return ":";
-            case .ThinArrow => return "->";
-            case .FatArrow => return "=>";
-            case .Dynamic => return "dynamic";
-            case .Var => return "var";
-            case .Module => return "mod";
-            case .Interface => return "interface";
-            case .Typedef => return "type";
-            case .Function => return "fn";
-            case .Switch => return "switch";
-            case .Case => return "case";
-            case .Default => return "default";
-            case .Struct => return "struct";
-            case .Import => return "import";
-            case .If => return "if";
-            case .Else => return "else";
-            case .Return => return "return";
-            case .For => return "for";
-            case .Foreach => return "foreach";
-            case .Break => return "break";
-            case .Continue => return "continue";
-            case .True => return "true";
-            case .False => return "false";
-            case .Null => return "null";
-            case .UIntPtr => return "uintptr";
-            case .IntPtr => return "intptr";
-            case .ISize => return "isize";
-            case .USize => return "usize";
-            case .Int => return "int";
-            case .Int8 => return "int8";
-            case .Int16 => return "int16";
-            case .Int32 => return "int32";
-            case .Int64 => return "int64";
-            case .Int128 => return "int128";
-            case .UInt => return "uint";
-            case .UInt8 => return "uint8";
-            case .UInt16 => return "uint16";
-            case .UInt32 => return "uint32";
-            case .UInt64 => return "uint64";
-            case .UInt128 => return "uint128";
-            case .Float16 => return "float16";
-            case .Float32 => return "float32";
-            case .Float64 => return "float64";
-            case .Float128 => return "float128";
-            case .Char => return "char";
-            case .Bool => return "bool";
-            case .Void => return "void";
-            case .Enum => return "enum";
-            case .In => return "in";
-            case .As => return "as";
-            case .Extern => return "extern";
-            case .Inline => return "inline";
-            case .Public => return "pub";
-            case .Const => return "const";
-            case .Weak => return "weak";
-            case .LinkOnce => return "linkonce";
-            case .Callconv => return "callconv";
-            case .Naked => return "naked";
-            case .NoReturn => return "noreturn";
-            case .Hot => return "hot";
-            case .Cold => return "cold";
-            case .DllImport => return "dllimport";
-            case .DllExport => return "dllexport";
-            case .OptSize => return "optsize";
-            case .OptNone => return "optnone";
-            case .NoSanitize => return "no_sanitize";
-            case .NoUnwind => return "nounwind";
-            case .Section => return "section";
-            case .Repr => return "repr";
-            case .Increment => return "++";
-            case .Decrement => return "--";
-            case .ShiftRight => return ">>";
-            case .ShiftLeft => return "<<";
-            case .Caret => return "^";
-            case .AmpTilde => return "&~";
-            case .Tilde => return "~";
-            case .NotEqual => return "!=";
-            case .Bang => return "!";
-            case .DoubleColon => return "\"";
-            case .Goto => return "goto";
-            case .Defer => return "defer";
-            case .Union => return "union";
-            case .While => return "while";
-            case .NoInline => return "noinline";
-            case .AlwaysInline => return "alwaysinline";
+            case .Underscore => writer.write("_");
+            case .Plus => writer.write("+");
+            case .Minus => writer.write("-");
+            case .Asterisk => writer.write("*");
+            case .Slash => writer.write("/");
+            case .Percent => writer.write("%");
+            case .Assign => writer.write("=");
+            case .Equal => writer.write("==");
+            case .LeftParen => writer.write("(");
+            case .RightParen => writer.write(")");
+            case .LeftBrace => writer.write("{");
+            case .RightBrace => writer.write("}");
+            case .LeftBracket => writer.write("[");
+            case .RightBracket => writer.write("]");
+            case .At => writer.write("@");
+            case .Comma => writer.write(",");
+            case .DoubleDot => writer.write("..");
+            case .TripleDot => writer.write("...");
+            case .Dot => writer.write(".");
+            case .DoubleQuote => writer.write("\"");
+            case .SingleQuote => writer.write("'");
+            case .Pipe => writer.write("|");
+            case .Ampersand => writer.write("&");
+            case .LessThan => writer.write("<");
+            case .GreaterThan => writer.write(">");
+            case .LessEqual => writer.write("<=");
+            case .GreaterEqual => writer.write(">=");
+            case .And => writer.write("&&");
+            case .Or => writer.write("||");
+            case .Semicolon => writer.write(";");
+            case .Colon => writer.write(":");
+            case .ThinArrow => writer.write("->");
+            case .FatArrow => writer.write("=>");
+            case .Dynamic => writer.write("dynamic");
+            case .Var => writer.write("var");
+            case .Module => writer.write("mod");
+            case .Interface => writer.write("interface");
+            case .Typedef => writer.write("type");
+            case .Function => writer.write("fn");
+            case .Switch => writer.write("switch");
+            case .Case => writer.write("case");
+            case .Default => writer.write("default");
+            case .Struct => writer.write("struct");
+            case .Import => writer.write("import");
+            case .If => writer.write("if");
+            case .Else => writer.write("else");
+            case .Return => writer.write("return");
+            case .For => writer.write("for");
+            case .Foreach => writer.write("foreach");
+            case .Break => writer.write("break");
+            case .Continue => writer.write("continue");
+            case .True => writer.write("true");
+            case .False => writer.write("false");
+            case .Null => writer.write("null");
+            case .UIntPtr => writer.write("uintptr");
+            case .IntPtr => writer.write("intptr");
+            case .ISize => writer.write("isize");
+            case .USize => writer.write("usize");
+            case .Int => writer.write("int");
+            case .Int8 => writer.write("int8");
+            case .Int16 => writer.write("int16");
+            case .Int32 => writer.write("int32");
+            case .Int64 => writer.write("int64");
+            case .Int128 => writer.write("int128");
+            case .UInt => writer.write("uint");
+            case .UInt8 => writer.write("uint8");
+            case .UInt16 => writer.write("uint16");
+            case .UInt32 => writer.write("uint32");
+            case .UInt64 => writer.write("uint64");
+            case .UInt128 => writer.write("uint128");
+            case .Float16 => writer.write("float16");
+            case .Float32 => writer.write("float32");
+            case .Float64 => writer.write("float64");
+            case .Float128 => writer.write("float128");
+            case .Char => writer.write("char");
+            case .Bool => writer.write("bool");
+            case .Void => writer.write("void");
+            case .Enum => writer.write("enum");
+            case .In => writer.write("in");
+            case .As => writer.write("as");
+            case .Extern => writer.write("extern");
+            case .Inline => writer.write("inline");
+            case .Public => writer.write("pub");
+            case .Const => writer.write("const");
+            case .Weak => writer.write("weak");
+            case .LinkOnce => writer.write("linkonce");
+            case .Callconv => writer.write("callconv");
+            case .Naked => writer.write("naked");
+            case .NoReturn => writer.write("noreturn");
+            case .Hot => writer.write("hot");
+            case .Cold => writer.write("cold");
+            case .DllImport => writer.write("dllimport");
+            case .DllExport => writer.write("dllexport");
+            case .OptSize => writer.write("optsize");
+            case .OptNone => writer.write("optnone");
+            case .NoSanitize => writer.write("no_sanitize");
+            case .NoUnwind => writer.write("nounwind");
+            case .Section => writer.write("section");
+            case .Repr => writer.write("repr");
+            case .Increment => writer.write("++");
+            case .Decrement => writer.write("--");
+            case .ShiftRight => writer.write(">>");
+            case .ShiftLeft => writer.write("<<");
+            case .Caret => writer.write("^");
+            case .AmpTilde => writer.write("&~");
+            case .Tilde => writer.write("~");
+            case .NotEqual => writer.write("!=");
+            case .Bang => writer.write("!");
+            case .DoubleColon => writer.write("::");
+            case .Goto => writer.write("goto");
+            case .Defer => writer.write("defer");
+            case .Union => writer.write("union");
+            case .While => writer.write("while");
+            case .NoInline => writer.write("noinline");
+            case .AlwaysInline => writer.write("alwaysinline");
 
-            case .EOF => return "EOF";
+            case .EOF => writer.write("EOF");
         }
+        return true;
     }
 }
 
-pub enum Literal {
+pub enum Literal : Formatter {
     Integer {
         value: enum {
             Signed(int128),
@@ -364,13 +372,24 @@ pub enum Literal {
     Null,
 
     // TODO
-    pub fn to_str(&const self) const uint8* {
+    pub fn format(&const self, writer: Writer) bool {
         switch (*self) {
             case .Integer { value, suffix } => {
-                @todo();
+                switch (value) {
+                    case .Signed(x) => {
+                        format_int128(writer, x);
+                    }
+                    case .Unsigned(x) => {
+                        format_uint128(writer, x);
+                    }
+                }
+            }
+            case .Float { value, suffix } => {
+                format_float64(writer, value);
             }
             default => @todo();
         }
+        return true;
     }
 }
 

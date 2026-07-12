@@ -1,18 +1,34 @@
-import std::libc{printf};
-
+import std::mem::alloc::libc{LibcAllocator};
 import utils::file{read_file_content};
+import std::io{Writer, StringWriter};
 import diags{compile_error};
+import std::mem{Allocator};
+import std::string{String};
 import parse::lex{Lexer};
+import std::libc{printf};
 
 import parse::lex::tokens{Token, Literal};
 
 pub fn main(argc: int32, argv: uint8**) {
-    const token = Token.Literal(Literal.Integer {
-        value: .Signed(10),
+    var allocator: Allocator = dynamic LibcAllocator.new();
+
+    var format = String.new(allocator);
+    defer format.free();
+
+    const token = Token.Literal(Literal.Float {
+        value: 3.14,
         suffix: .None
     });
+    // const token = Token.Literal(Literal.Integer {
+    //     value: .Signed(255),
+    //     suffix: .None
+    // });
+    
+    var writer: Writer = dynamic StringWriter.new(&format);
 
-    printf("token: %s\n", token.to_str());
+    token.format(writer);
+
+    printf("token: %s\n", format.as_str_const());
 
     // const file_name = argv[1];
 
