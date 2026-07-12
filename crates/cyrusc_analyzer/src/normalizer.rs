@@ -282,7 +282,7 @@ impl<'a> AnalysisContext<'a> {
         let elements: Vec<_> = tuple_type
             .elements
             .into_iter()
-             .filter_map(|(ty, loc)| {
+            .filter_map(|(ty, loc)| {
                 self.normalize_sema_type(ty, tuple_type.loc, indirection)
                     .map(|ty| (ty, loc))
             })
@@ -299,7 +299,6 @@ impl<'a> AnalysisContext<'a> {
         }))
     }
 
-    // TODO: Implement slices.
     fn normalize_array_capacity(
         &mut self,
         mut array: TypedArrayType,
@@ -378,7 +377,7 @@ impl<'a> AnalysisContext<'a> {
         for type_arg in type_args.iter_mut() {
             match type_arg {
                 TypedTypeArg::Type(ty, loc) => {
-                    *ty = match self.normalize_and_check_type_formation(ty.clone(), *loc, indirection) {
+                    *ty = match self.normalize_sema_type(ty.clone(), *loc, indirection) {
                         Some(sema_type) => sema_type,
                         None => continue,
                     };

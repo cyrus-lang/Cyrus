@@ -3,8 +3,8 @@
 
 use crate::context::AnalysisContext;
 use cyrusc_typed_ast::{
-    stmts::{TypedFuncParamKind, TypedFuncParams, TypedFuncTypeParams, TypedFuncTypeVariadicParam, TypedTypeArg},
-    types::{NamedType, SemaType, TypedArrayType, TypedFuncType, TypedTupleType},
+    stmts::{TypedFuncParamKind, TypedFuncParams, TypedFuncTypeVariadicParam, TypedTypeArg},
+    types::SemaType,
 };
 
 impl<'a> AnalysisContext<'a> {
@@ -12,11 +12,9 @@ impl<'a> AnalysisContext<'a> {
         let mut result = ty.clone();
 
         for generic_env in self.generic_env_stack.iter().rev() {
-            if result.is_self_type() {
-                if let Some(object_type) = &self.func_env.current_object {
-                    result = generic_env.substitute_sema_type(&object_type);
-                    continue;
-                }
+            if let Some(object_type) = &self.func_env.current_object {
+                result = self.substitute_self_type(result, object_type);
+                continue;
             }
 
             result = generic_env.substitute_sema_type(&result);
@@ -50,9 +48,7 @@ impl<'a> AnalysisContext<'a> {
         params
     }
 
-    pub fn substitute_self_type(&mut self, mut ty: SemaType, self_type: &SemaType) -> SemaType {
-        ty = self.substitute_type(&ty);
-
+    pub fn substitute_self_type(&self, ty: SemaType, self_type: &SemaType) -> SemaType {
         match ty {
             SemaType::InterfaceObject(_)
             | SemaType::Unresolved(_)
@@ -64,70 +60,66 @@ impl<'a> AnalysisContext<'a> {
 
             SemaType::SelfType(_) => self_type.clone(),
 
-            SemaType::Named(named) => {
-                let type_args = named
+            SemaType::Named(mut named) => {
+                named.type_args = named
                     .type_args
                     .iter()
                     .map(|arg| match arg {
                         TypedTypeArg::Type(ty, loc) => {
                             TypedTypeArg::Type(self.substitute_self_type(ty.clone(), self_type), *loc)
                         }
-
                         TypedTypeArg::Infer => TypedTypeArg::Infer,
                     })
                     .collect();
 
-                SemaType::Named(NamedType {
-                    type_decl_id: named.type_decl_id,
-                    type_args,
-                })
-            }
-            SemaType::Array(array) => SemaType::Array(TypedArrayType {
-                element_type: Box::new(self.substitute_self_type(*array.element_type.clone(), self_type)),
-                capacity: array.capacity.clone(),
-                loc: array.loc,
-            }),
-
-            SemaType::Const(inner) => SemaType::Const(Box::new(self.substitute_self_type(*inner.clone(), self_type))),
-            SemaType::Pointer(inner) => {
-                SemaType::Pointer(Box::new(self.substitute_self_type(*inner.clone(), self_type)))
+                SemaType::Named(named)
             }
 
-            SemaType::Tuple(tuple) => {
-                let elements = tuple
+            SemaType::Array(mut array) => {
+                array.element_type = Box::new(self.substitute_self_type(*array.element_type, self_type));
+                SemaType::Array(array)
+            }
+
+            SemaType::Const(mut inner) => {
+                *inner = self.substitute_self_type(*inner, self_type);
+                SemaType::Const(inner)
+            }
+
+            SemaType::Pointer(mut inner) => {
+                *inner = self.substitute_self_type(*inner, self_type);
+                SemaType::Pointer(inner)
+            }
+
+            SemaType::Tuple(mut tuple) => {
+                tuple.elements = tuple
                     .elements
-                    .iter()
-                    .map(|(ty, loc)| (self.substitute_self_type(ty.clone(), self_type), *loc))
+                    .into_iter()
+                    .map(|(ty, loc)| (self.substitute_self_type(ty, self_type), loc))
                     .collect();
 
-                SemaType::Tuple(TypedTupleType {
-                    elements,
-                    loc: tuple.loc,
-                })
+                SemaType::Tuple(tuple)
             }
 
-            SemaType::FuncType(func) => {
-                let params = func
+            SemaType::FuncType(mut func) => {
+                func.params.list = func
                     .params
                     .list
-                    .iter()
-                    .map(|ty| self.substitute_self_type(ty.clone(), self_type))
+                    .into_iter()
+                    .map(|ty| self.substitute_self_type(ty, self_type))
                     .collect();
 
-                let variadic = func.params.variadic.as_ref().map(|vbox| match vbox.as_ref() {
-                    TypedFuncTypeVariadicParam::UntypedCStyle => vbox.clone(),
-
-                    TypedFuncTypeVariadicParam::Typed(ty) => Box::new(TypedFuncTypeVariadicParam::Typed(
-                        self.substitute_self_type(ty.clone(), self_type),
-                    )),
+                func.params.variadic = func.params.variadic.map(|vbox| {
+                    Box::new(match vbox.as_ref() {
+                        TypedFuncTypeVariadicParam::UntypedCStyle => vbox.as_ref().clone(),
+                        TypedFuncTypeVariadicParam::Typed(ty) => {
+                            TypedFuncTypeVariadicParam::Typed(self.substitute_self_type(ty.clone(), self_type))
+                        }
+                    })
                 });
 
-                SemaType::FuncType(TypedFuncType {
-                    params: TypedFuncTypeParams { list: params, variadic },
-                    ret_type: Box::new(self.substitute_self_type(*func.ret_type.clone(), self_type)),
-                    is_public: func.is_public,
-                    loc: func.loc,
-                })
+                func.ret_type = Box::new(self.substitute_self_type(*func.ret_type, self_type));
+
+                SemaType::FuncType(func)
             }
         }
     }

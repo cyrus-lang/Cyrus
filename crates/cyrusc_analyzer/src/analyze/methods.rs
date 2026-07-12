@@ -94,10 +94,6 @@ impl<'a> AnalysisContext<'a> {
             match param_kind {
                 TypedFuncParamKind::FuncParam(func_param) => {
                     func_param.ty = self.substitute_self_type(func_param.ty.clone(), concrete_self_type);
-
-                    if let Some(infer) = &self.func_env.infer {
-                        func_param.ty = infer.resolve(&func_param.ty);
-                    }
                 }
                 TypedFuncParamKind::SelfModifier(self_modifier) => {
                     self_modifier.ty = self.substitute_self_type(self_modifier.ty.clone(), concrete_self_type);
@@ -108,6 +104,12 @@ impl<'a> AnalysisContext<'a> {
                         });
                 }
             }
+        }
+
+        if let Some(ret_type) =
+            self.normalize_sema_type(method_decl.func_decl.ret_type.clone(), method_decl.func_decl.loc, 0)
+        {
+            method_decl.func_decl.ret_type = ret_type;
         }
 
         let mut substituted_ret_type =
