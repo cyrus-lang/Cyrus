@@ -561,14 +561,6 @@ impl<'source_file> Parser<'source_file> {
         let mut fields = Vec::new();
 
         loop {
-            if self.current_token_is(TokenKind::RightBrace) {
-                return Err(self.error_with_hint(
-                    &self.current_token(),
-                    ParserDiagKind::InvalidToken(self.current_token().kind),
-                    "Consider to add a field to enum struct variant or remove the braces.",
-                ));
-            }
-
             let loc = self.current_token().loc;
             let (line, column, start) = (loc.line, loc.column, loc.start);
 
@@ -589,6 +581,10 @@ impl<'source_file> Parser<'source_file> {
             });
 
             if self.current_token_is(TokenKind::RightBrace) {
+                self.next_token();
+                break;
+            } else if self.current_token_is(TokenKind::Comma) && self.peek_token_is(TokenKind::RightBrace) {
+                self.next_token();
                 self.next_token();
                 break;
             } else {
