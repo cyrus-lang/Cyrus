@@ -285,7 +285,7 @@ impl fmt::Display for UnnamedStructType {
 impl fmt::Display for PrefixOperator {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            PrefixOperator::Bang => write!(f, "&"),
+            PrefixOperator::Bang => write!(f, "!"),
             PrefixOperator::Minus => write!(f, "-"),
             PrefixOperator::BitwiseNot => write!(f, "~"),
         }
