@@ -49,8 +49,13 @@ pub enum AnalyzerDiagKind {
     #[error("Cannot infer dynamic interface type.")]
     CannotInferDynamicInterfaceType,
 
-    #[error("Cannot apply 'dynamic' to an already dynamic value.")]
+    #[error("Cannot apply dynamic to an already dynamic value.")]
     InvalidMultipleDynamicType,
+
+    #[error("Cannot apply dynamic to type '{type_name}'.")]
+    InvalidDynamicType {
+        type_name: String
+    },
 
     #[error(
         "Method '{method_name}' requires mutable access to 'self', but instance of type '{type_name}' is declared 'const'."

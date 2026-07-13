@@ -6,13 +6,18 @@ use cyrusc_const_eval::resolver::ConstResolver;
 use cyrusc_diagcentral::{Diag, DiagLevel};
 use cyrusc_source_loc::Loc;
 use cyrusc_typed_ast::{
-    debug_assert_func_decl_resolved, decls::{DeclID, FuncDecl, MethodDecl, MethodDecls}, exprs::{
+    debug_assert_func_decl_resolved,
+    decls::{DeclID, FuncDecl, MethodDecl, MethodDecls},
+    exprs::{
         TypedExpr, TypedFuncCall, TypedFuncCallDispatch, TypedInterfaceCallDispatch, TypedMethodCall,
         TypedMethodCallDispatch,
-    }, format::{format_func_type, format_sema_type}, stmts::{
+    },
+    format::{format_func_type, format_sema_type},
+    stmts::{
         TypedFuncParamKind, TypedFuncParams, TypedFuncTypeVariadicParam, TypedFuncVariadicParam, TypedGenericParams,
         TypedTypeArgs,
-    }, types::{InterfaceObjectType, NamedType, SemaType, TypeDeclID, TypedFuncType},
+    },
+    types::{InterfaceObjectType, NamedType, SemaType, TypeDeclID, TypedFuncType},
 };
 
 impl<'a> AnalysisContext<'a> {
@@ -109,8 +114,6 @@ impl<'a> AnalysisContext<'a> {
                 ) {
                     return None;
                 }
-
-                func_decl.ret_type = func_decl.ret_type.clone();
 
                 func_call.dispatch = TypedFuncCallDispatch::Normal {
                     func_decl_id: func_decl_id,
