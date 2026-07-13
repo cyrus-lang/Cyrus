@@ -19,7 +19,6 @@ use cyrusc_internal::{
     },
     cir::{
         cir::*,
-        lower::cir_fat_ptr_type,
         types::{CIRArrayType, CIREnumType, CIRFuncType, CIRType, CIRUnionType},
     },
 };
@@ -154,7 +153,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
             .unwrap()
             .into_struct_value();
 
-        let fat_ptr_type = cir_fat_ptr_type(&self.tctx, Some(dynamic.data_expr.ty.clone()), dynamic.loc);
+        let fat_ptr_type = self.tctx.fat_ptr_type();
 
         InternalValue::new(
             fat_ptr_type,

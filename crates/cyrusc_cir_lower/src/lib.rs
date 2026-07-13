@@ -8,7 +8,6 @@ use cyrusc_ast::operators::InfixOperator;
 use cyrusc_internal::abi::mangler::*;
 use cyrusc_internal::abi::target::ABITarget;
 use cyrusc_internal::cir::cir::*;
-use cyrusc_internal::cir::lower::cir_fat_ptr_type;
 use cyrusc_internal::cir::lower::lower_enum_type;
 use cyrusc_internal::cir::lower::lower_func_type;
 use cyrusc_internal::cir::lower::lower_sema_type;
@@ -1879,7 +1878,7 @@ impl<'a> CIRLower<'a> {
 
         let irv_id = self.new_ir_value_id();
 
-        let vtable_type = cir_fat_ptr_type(&self.tctx, None, loc);
+        let vtable_type = self.tctx.fat_ptr_type();
 
         let cir_global = CIRGlobalVarStmt {
             irv_id,

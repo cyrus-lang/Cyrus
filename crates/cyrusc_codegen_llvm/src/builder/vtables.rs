@@ -2,7 +2,7 @@
 // Copyright (c) 2026 The Cyrus Language
 
 use crate::builder::{builder::CodeGenIRBuilder, irreg::LocalIRValue};
-use cyrusc_internal::{cir::lower::cir_fat_ptr_type, vtable::VTableInfo};
+use cyrusc_internal::vtable::VTableInfo;
 use inkwell::{
     AddressSpace,
     module::Linkage,
@@ -30,10 +30,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
 
             global_value.set_linkage(Linkage::Internal);
 
-            self.insert_local_ir_value(
-                irv_id,
-                LocalIRValue::Global(global_value, cir_fat_ptr_type(&self.tctx, None, vtable_info.loc)),
-            );
+            self.insert_local_ir_value(irv_id, LocalIRValue::Global(global_value, self.tctx.fat_ptr_type()));
         }
     }
 
