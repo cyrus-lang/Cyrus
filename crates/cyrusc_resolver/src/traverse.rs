@@ -746,8 +746,8 @@ impl<'a> Resolver<'a> {
             .iter()
             .map(|type_arg| match type_arg {
                 TypeArg::Type(type_spec) => {
-                    let sema_type = self.resolve_type(type_spec.clone(), type_spec.loc())?;
-                    Some(TypedTypeArg::Type(sema_type, type_spec.loc()))
+                    let ty = self.resolve_type(type_spec.clone(), type_spec.loc())?;
+                    Some(TypedTypeArg::Type(ty, type_spec.loc()))
                 }
                 TypeArg::Infer => Some(TypedTypeArg::Infer),
             })
@@ -2139,8 +2139,14 @@ impl<'a> Resolver<'a> {
     #[inline]
     fn resolve_module_import_expr(&mut self, module_import: &ASTModuleImport) -> Option<TypedExpr> {
         if let Some(ident) = module_import.as_ident() {
-            // FIXME: Order of resolution is not correct.
-            // Generic param as type resolution must be after `try-in-local-first`.
+            // try to resolve ident in local first
+            if self.resolve_local_scope_symbol(&ident.value).is_some()
+                && let Some(expr) = self.resolve_ident_expr(&ident)
+            {
+                return Some(expr);
+            }
+
+            // try to resolve as generic param
             if let Some(generic_param_id) = self.resolve_generic_param_as_type(&ident) {
                 return Some(TypedExpr {
                     kind: TypedExprKind::SemaType {
