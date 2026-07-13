@@ -192,7 +192,7 @@ impl<'a> Resolver<'a> {
                     }
 
                     *is_module_safe_to_be_resolved = false;
-                    continue;
+                    return;
                 }
             };
 
@@ -208,7 +208,7 @@ impl<'a> Resolver<'a> {
                     });
 
                     *is_module_safe_to_be_resolved = false;
-                    continue;
+                    return;
                 }
             }
 
