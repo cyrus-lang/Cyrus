@@ -167,7 +167,9 @@ impl<'a> AnalysisContext<'a> {
                 self.is_enum_decl_assignable_to(&decl1, &decl2, env1, env2, loc)
             }
 
-            (TypeDeclID::Interface(id1), TypeDeclID::Interface(id2)) => id1 == id2,
+            (TypeDeclID::Interface(id1), TypeDeclID::Interface(id2)) => {
+                id1 == id2 && named_type1.type_args == named_type2.type_args
+            }
 
             _ => false,
         }
