@@ -226,6 +226,7 @@ impl<'a> Resolver<'a> {
                 visiting.done.insert(loaded_module.file_id);
 
                 *is_module_safe_to_be_resolved = false;
+                return;
             }
 
             // insert file module
