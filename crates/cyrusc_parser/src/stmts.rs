@@ -1278,15 +1278,10 @@ impl<'source_file> Parser<'source_file> {
 
         // Check for non-conditional for loop
         if self.current_token_is(TokenKind::LeftBrace) {
-            let body: Box<ASTBlockStmt>;
-            if self.current_token_is(TokenKind::LeftBrace) {
-                body = Box::new(self.parse_block()?);
+            let body = Box::new(self.parse_block()?);
 
-                if self.peek_token_is(TokenKind::Semicolon) {
-                    self.next_token();
-                }
-            } else {
-                return Err(self.error_at_current(ParserDiagKind::MissingOpeningBrace));
+            if self.peek_token_is(TokenKind::Semicolon) {
+                self.next_token();
             }
 
             let end = self.current_token().loc.end;
