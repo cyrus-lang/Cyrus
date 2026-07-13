@@ -468,7 +468,7 @@ impl<'source_map, 'source_file> Lexer<'source_map, 'source_file> {
 
                 self.reporter.report(Diag {
                     level: DiagLevel::Error,
-                    kind: Box::new(LexicalDiagKind::InvalidChar(self.ch)),
+                    kind: Box::new(LexicalDiagKind::InvalidEscapeSequence),
                     loc: Some(Loc::new(self.file_id(), line, column, start, end)),
                     hint: Some(err.to_string()),
                 });
