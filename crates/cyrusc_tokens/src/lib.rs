@@ -317,7 +317,7 @@ impl fmt::Display for TokenKind {
             TokenKind::Tilde => write!(f, "~"),
             TokenKind::NotEqual => write!(f, "!="),
             TokenKind::Bang => write!(f, "!"),
-            TokenKind::DoubleColon => write!(f, "\""),
+            TokenKind::DoubleColon => write!(f, "::"),
             TokenKind::Goto => write!(f, "goto"),
             TokenKind::Defer => write!(f, "defer"),
             TokenKind::Union => write!(f, "union"),
