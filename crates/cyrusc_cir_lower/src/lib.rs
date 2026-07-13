@@ -2053,11 +2053,11 @@ impl<'a> CIRLower<'a> {
             LiteralKind::Float(value, ..) => CIRLiteralKind::Float(*value),
             LiteralKind::Bool(value) => CIRLiteralKind::Bool(*value),
             LiteralKind::Char(value) => CIRLiteralKind::Char(*value),
-            LiteralKind::Null => CIRLiteralKind::Null,
-            LiteralKind::String(value, prefix_opt) => match prefix_opt.clone().unwrap_or(StringPrefix::C) {
-                StringPrefix::C => CIRLiteralKind::CString(value.clone()),
-                StringPrefix::B => CIRLiteralKind::ByteString(value.clone()),
+            LiteralKind::String(value, prefix_opt) => match prefix_opt.clone() {
+                Some(StringPrefix::Byte) => CIRLiteralKind::ByteString(value.clone()),
+                _ => CIRLiteralKind::CString(value.clone()),
             },
+            LiteralKind::Null => CIRLiteralKind::Null,
         };
 
         let ty = self.lower_sema_type(&literal.ty.clone().unwrap());

@@ -2653,7 +2653,7 @@ impl<'a> Resolver<'a> {
         loc: Loc,
     ) -> Option<SemaType> {
         match string_prefix {
-            Some(StringPrefix::B) => {
+            Some(StringPrefix::Byte) => {
                 let len = string_value.len() + 1;
                 let len_expr = literal_expr_from_const_int(len, loc);
 
@@ -2663,8 +2663,6 @@ impl<'a> Resolver<'a> {
                     loc,
                 }))
             }
-
-            Some(StringPrefix::C) => Some(SemaType::Pointer(Box::new(SemaType::Plain(PlainType::UInt8)))),
 
             None => Some(SemaType::Pointer(Box::new(SemaType::Plain(PlainType::UInt8)))),
         }

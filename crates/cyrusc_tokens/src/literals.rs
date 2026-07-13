@@ -87,8 +87,7 @@ pub enum IntLiteralKind {
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum StringPrefix {
-    C, // C-style string which is const char*
-    B, // Bytes string
+    Byte, // Bytes string
 }
 
 impl IntLiteralKind {
@@ -114,8 +113,7 @@ impl fmt::Display for LiteralKind {
             LiteralKind::String(string_type, prefix) => {
                 if let Some(prefix) = prefix {
                     match prefix {
-                        StringPrefix::C => write!(f, "c")?,
-                        StringPrefix::B => write!(f, "b")?,
+                        StringPrefix::Byte => write!(f, "b")?,
                     };
                 }
                 write!(f, "\"{}\"", string_type)

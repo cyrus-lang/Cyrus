@@ -182,14 +182,9 @@ impl<'source_map, 'source_file> Lexer<'source_map, 'source_file> {
     }
 
     fn read_ident_or_prefix(&mut self) -> TokenKind {
-        if self.ch == 'c' && self.peek_char() == '"' {
-            self.read_char();
-            return self.read_string_literal(Some(StringPrefix::C));
-        }
-
         if self.ch == 'b' && self.peek_char() == '"' {
             self.read_char();
-            return self.read_string_literal(Some(StringPrefix::B));
+            return self.read_string_literal(Some(StringPrefix::Byte));
         }
 
         self.read_ident()
@@ -477,8 +472,6 @@ impl<'source_map, 'source_file> Lexer<'source_map, 'source_file> {
                     loc: Some(Loc::new(self.file_id(), line, column, start, end)),
                     hint: Some(err.to_string()),
                 });
-
-                self.read_char();
                 return TokenKind::Invalid;
             }
         };
