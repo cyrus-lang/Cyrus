@@ -1674,7 +1674,7 @@ impl<'source_file> Parser<'source_file> {
 
         self.must_be_semicolon()?;
 
-        let end = self.peek_token().loc.end;
+        let end = self.current_token().loc.end;
 
         Ok(ASTStmt::Return(ASTReturnStmt {
             argument: Some(argument),

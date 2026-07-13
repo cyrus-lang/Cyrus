@@ -273,7 +273,6 @@ impl<'source_file> Parser<'source_file> {
 
                     if self.current_token_is(TokenKind::Comma) {
                         // considered as tuple construction, not grouped expr
-                        self.next_token();
                         self.parse_tuple_value(Some(expr))?
                     } else {
                         expr
@@ -683,18 +682,29 @@ impl<'source_file> Parser<'source_file> {
 
         let mut elements: Vec<ASTExpr> = vec![first];
 
+        self.expect_current(TokenKind::Comma)?;
+
         loop {
+            // optional comma
+            if self.current_token_is(TokenKind::RightParen) {
+                let end = self.current_token().loc.end;
+
+                return Ok(ASTExpr::Tuple(ASTTupleValueExpr {
+                    elements,
+                    loc: Loc::new(self.file_id(), line, column, start, end),
+                }));
+            }
+
             let expr = self.parse_expr(Precedence::Lowest)?;
             self.next_token();
 
             elements.push(expr);
 
-            match self.current_token().kind {
-                TokenKind::Comma => {
-                    self.next_token();
-                    continue;
-                }
-                _ => break,
+            if self.current_token_is(TokenKind::Comma) {
+                self.next_token();
+                continue;
+            } else {
+                break;
             }
         }
 
