@@ -17,7 +17,7 @@ impl<'a> AnalysisContext<'a> {
     pub(crate) fn analyze_enum_stmt(&mut self, enum_stmt: &mut TypedEnumStmt) {
         let mut enum_decl = self.decl_tables.enum_decl(enum_stmt.enum_decl_id);
 
-        if enum_stmt.is_generic() {
+        if !enum_stmt.is_generic() {
             let object_type = SemaType::Named(NamedType {
                 type_decl_id: TypeDeclID::Enum(enum_stmt.enum_decl_id),
                 type_args: TypedTypeArgs::new(),

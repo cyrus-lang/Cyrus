@@ -383,10 +383,10 @@ impl<'a> AnalysisContext<'a> {
             (TypedArrayCapacity::Fixed(value_capacity_expr), TypedArrayCapacity::Fixed(target_capacity_expr)) => {
                 let mut folder = ConstFolder::new(self, &self.decl_tables, self.target, self.tctx.clone(), self);
 
-                let value_capacity = folder.expr_as_const_int(&value_capacity_expr, self).unwrap();
-                let target_capacity = folder.expr_as_const_int(&target_capacity_expr, self).unwrap();
+                let value_capacity = folder.expr_as_const_int(&value_capacity_expr, self);
+                let target_capacity = folder.expr_as_const_int(&target_capacity_expr, self);
 
-                value_capacity == target_capacity
+                matches!((value_capacity, target_capacity), (v, t) if v == t)
             }
             _ => false, // not valid
         }
