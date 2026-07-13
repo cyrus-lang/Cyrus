@@ -318,7 +318,7 @@ pub fn compiler_options_from_scaffold(scaffold: &ScaffoldConfig) -> CompilerOpti
         if let Some(opt) = &compiler.optimize {
             // parse the optimize flag in a case-insensitive way
             opts.opt_level = match opt.to_lowercase().as_str() {
-                "none" => Some(CompilerOption_Optimize::O1),
+                "none" => Some(CompilerOption_Optimize::O0),
                 "o1" => Some(CompilerOption_Optimize::O1),
                 "o2" => Some(CompilerOption_Optimize::O2),
                 "o3" => Some(CompilerOption_Optimize::O3),

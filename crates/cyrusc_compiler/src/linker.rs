@@ -65,7 +65,7 @@ impl Linker {
         if self.opts.linker_options.no_pie {
             cmd.arg("-no-pie");
         }
-        if !self.opts.linker_options.link_static && (self.opts.linker_options.pie || self.opts.linker_options.no_pie) {
+        if !self.opts.linker_options.link_static && self.opts.linker_options.pie {
             cmd.args(["-ldl", "-rdynamic"]);
         }
         if self.opts.linker_options.link_static {
