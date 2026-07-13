@@ -31,7 +31,7 @@ impl<'source_file> Parser<'source_file> {
 
                     let stmts = self.parse_stmt(grouped_modifiers, toplevel)?;
 
-                    if !stmts.len() == 1 {
+                    if stmts.len() != 1 {
                         return Err(self.error_invalid_token());
                     }
 
