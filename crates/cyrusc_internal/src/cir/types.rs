@@ -214,28 +214,6 @@ impl CIRType {
         }
     }
 
-    pub fn is_scalar(&self) -> bool {
-        match self.const_inner() {
-            // plain types like int, float, bool, char, etc.
-            CIRType::Plain(plain_type) => plain_type.is_scalar(),
-
-            // const does not affect scalar-ness
-            CIRType::Const(inner) => inner.is_scalar(),
-
-            // pointers are scalar regardless of pointee
-            CIRType::Pointer(_) => true,
-
-            // enums are scalar if they lower to an integer
-            CIRType::Enum(_) => true,
-
-            CIRType::Struct(_) => false,
-            CIRType::Union(_) => false,
-            CIRType::Array(_) => false,
-            CIRType::Dynamic(_) => false,
-            CIRType::FuncType(_) => false,
-        }
-    }
-
     pub fn is_array(&self) -> bool {
         match self.const_inner() {
             CIRType::Array(_) => true,
