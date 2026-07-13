@@ -1515,6 +1515,7 @@ impl PartialEq for UnnamedEnumValueKind {
         match (self, other) {
             (UnnamedEnumValueKind::Plain, UnnamedEnumValueKind::Plain) => true,
             (UnnamedEnumValueKind::Tuple(exprs1), UnnamedEnumValueKind::Tuple(exprs2)) => exprs1 == exprs2,
+            (UnnamedEnumValueKind::Struct(fields1), UnnamedEnumValueKind::Struct(fields2)) => fields1 == fields2,
             _ => false,
         }
     }

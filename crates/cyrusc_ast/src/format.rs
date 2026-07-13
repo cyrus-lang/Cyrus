@@ -411,7 +411,7 @@ impl fmt::Display for ASTExpr {
                 write!(f, ".{}", unnamed_enum_value.ident.as_string())?;
 
                 match &unnamed_enum_value.kind {
-                    UnnamedEnumValueKind::Plain => todo!(),
+                    UnnamedEnumValueKind::Plain => {}
                     UnnamedEnumValueKind::Tuple(exprs) => {
                         write!(f, "({})", format_expr_series(exprs))?;
                     }
