@@ -75,7 +75,6 @@ impl DiagReporter {
         }
 
         diags.clear();
-        drop(diags);
     }
 
     #[inline]
@@ -139,7 +138,7 @@ impl DiagReporter {
 
         let lines: Vec<&str> = source_file.content.lines().collect();
 
-        let line = lines[loc.line - 1];
+        let line = lines[loc.line.saturating_sub(1)];
 
         out.push_str(line.trim_end());
 
