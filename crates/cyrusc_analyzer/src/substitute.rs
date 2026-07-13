@@ -14,7 +14,6 @@ impl<'a> AnalysisContext<'a> {
         for generic_env in self.generic_env_stack.iter().rev() {
             if let Some(object_type) = &self.func_env.current_object {
                 result = self.substitute_self_type(result, object_type);
-                continue;
             }
 
             result = generic_env.substitute_sema_type(&result);
