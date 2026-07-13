@@ -10,7 +10,6 @@ use crate::{
     },
 };
 use cyrusc_ast::abi::CallConv;
-use cyrusc_source_loc::Loc;
 use cyrusc_typed_ast::{
     decls::{EnumDecl, EnumDeclID, StructDecl, StructDeclID, UnionDecl, UnionDeclID, table::DeclTablesRegistry},
     stmts::{TypedEnumVariant, TypedFuncTypeParams, TypedTypeArgs},
@@ -18,7 +17,7 @@ use cyrusc_typed_ast::{
         instantiate_enum_decl_with_type_args, instantiate_struct_decl_with_type_args,
         instantiate_union_decl_with_type_args,
     },
-    types::{NamedType, PlainType, SemaType, TypeDeclID, TypedArrayCapacity, TypedFuncType},
+    types::{NamedType, SemaType, TypeDeclID, TypedArrayCapacity, TypedFuncType},
 };
 use fx_hash::FxHashSet;
 use std::sync::Arc;
