@@ -491,8 +491,18 @@ pub fn get_executable_output_path(
 pub fn get_final_build_directory_path(build_dir: &CompilerOption_BuildDir) -> PathBuf {
     fn temp_build_dir() -> PathBuf {
         let temp_dir = env::temp_dir();
-        ensure_output_dir(&temp_dir);
-        temp_dir
+
+        // create unique subdirectory using PID and timestamp
+        let unique_dir = temp_dir.join(format!(
+            "cyrusc_build_{}_{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_millis()
+        ));
+        ensure_output_dir(&unique_dir);
+        unique_dir
     }
 
     match build_dir {
