@@ -183,9 +183,21 @@ impl<'a> AnalysisContext<'a> {
         indirection: u8,
     ) -> Option<SemaType> {
         let ty = match unresolved_type {
-            UnresolvedType::Decl(symbol_id) => self
-                .lookup_symbol_as_decl_id(symbol_id)
-                .and_then(|decl_id| self.resolve_symbol_type(decl_id, loc, indirection))?,
+            UnresolvedType::Decl(symbol_id) => self.lookup_symbol_as_decl_id(symbol_id).and_then(|decl_id| {
+                if decl_id.as_type_decl_id().is_none() {
+                    let symbol_name = self.formatter.format_decl(decl_id);
+
+                    self.reporter.report(Diag {
+                        level: DiagLevel::Error,
+                        kind: Box::new(AnalyzerDiagKind::NonTypeSymbol { symbol_name }),
+                        loc: Some(loc),
+                        hint: None,
+                    });
+                    return None;
+                }
+
+                self.resolve_symbol_type(decl_id, loc, indirection)
+            })?,
 
             UnresolvedType::GenericInst {
                 base_symbol_id,
