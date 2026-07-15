@@ -26,7 +26,7 @@ use inkwell::{
     values::FunctionValue,
     llvm_sys::{
         core::{LLVMGetCurrentDebugLocation2, LLVMSetCurrentDebugLocation2},
-        prelude::LLVMMetadataRef,
+        prelude::{LLVMBuilderRef, LLVMMetadataRef},
     },
 };
 use std::{cell::RefCell, collections::HashMap, rc::Rc, sync::Arc};
@@ -243,16 +243,16 @@ impl<'ll> Default for BlockRegistry<'ll> {
     }
 }
 
-pub struct DebugLocationGuard<'a, 'll> {
-    builder: &'a CodeGenIRBuilder<'ll>,
+pub struct DebugLocationGuard {
+    builder: LLVMBuilderRef,
     saved_loc: Option<LLVMMetadataRef>,
 }
 
-impl<'a, 'll> DebugLocationGuard<'a, 'll> {
-    pub fn new(builder: &'a CodeGenIRBuilder<'ll>) -> Self {
-        let saved_loc = if builder.dctx.is_some() {
+impl DebugLocationGuard {
+    pub fn new(builder_ref: LLVMBuilderRef, dctx_exists: bool) -> Self {
+        let saved_loc = if dctx_exists {
             unsafe {
-                let loc = LLVMGetCurrentDebugLocation2(builder.llvmbuilder.as_mut_ptr());
+                let loc = LLVMGetCurrentDebugLocation2(builder_ref);
                 if !loc.is_null() {
                     Some(loc)
                 } else {
@@ -265,19 +265,19 @@ impl<'a, 'll> DebugLocationGuard<'a, 'll> {
 
         if saved_loc.is_some() {
             unsafe {
-                LLVMSetCurrentDebugLocation2(builder.llvmbuilder.as_mut_ptr(), std::ptr::null_mut());
+                LLVMSetCurrentDebugLocation2(builder_ref, std::ptr::null_mut());
             }
         }
 
-        Self { builder, saved_loc }
+        Self { builder: builder_ref, saved_loc }
     }
 }
 
-impl<'a, 'll> Drop for DebugLocationGuard<'a, 'll> {
+impl Drop for DebugLocationGuard {
     fn drop(&mut self) {
         if let Some(loc) = self.saved_loc {
             unsafe {
-                LLVMSetCurrentDebugLocation2(self.builder.llvmbuilder.as_mut_ptr(), loc);
+                LLVMSetCurrentDebugLocation2(self.builder, loc);
             }
         }
     }

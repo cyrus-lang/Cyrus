@@ -212,6 +212,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
                     BasicValueEnum::PointerValue(val) => val.as_instruction(),
                     BasicValueEnum::StructValue(val) => val.as_instruction(),
                     BasicValueEnum::VectorValue(val) => val.as_instruction(),
+                    _ => None,
                 };
                 if let Some(inst) = load_inst {
                     let layout = self.tctx.layout_of(&internal_value.ty);

@@ -23,7 +23,7 @@ use inkwell::{
 // These intrinsics published via builtin to user side.
 impl<'ll> CodeGenIRBuilder<'ll> {
     pub(crate) fn emit_builtin_call(&mut self, call: &CIRCall, builtin_spec: &TypedBuiltinSpec) -> InternalValue<'ll> {
-        let _guard = DebugLocationGuard::new(self);
+        let _guard = DebugLocationGuard::new(self.llvmbuilder.as_mut_ptr(), self.dctx.is_some());
         debug_assert!(builtin_spec.phase == TypedBuiltinPhase::Codegen);
         debug_assert!(builtin_spec.form == TypedBuiltinForm::Expr);
 
@@ -190,7 +190,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
     }
 
     pub(crate) fn emit_intrinsic_panic(&mut self, args: &[CIRExpr], loc: Loc) -> InternalValue<'ll> {
-        let _guard = DebugLocationGuard::new(self);
+        let _guard = DebugLocationGuard::new(self.llvmbuilder.as_mut_ptr(), self.dctx.is_some());
         let cir_void_ptr = CIRType::Pointer(Box::new(CIRType::Plain(PlainType::Void)));
 
         let ptr_type = self.llvm_ctx.ptr_type(inkwell::AddressSpace::default());
