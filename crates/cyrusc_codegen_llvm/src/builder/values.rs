@@ -205,15 +205,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
                 let ty: BasicTypeEnum<'ll> = self.emit_type(internal_value.ty.clone()).try_into().unwrap();
                 let basic_value = self.llvmbuilder.build_load(ty, pointer_value, "rvalue").unwrap();
 
-                let load_inst = match basic_value {
-                    BasicValueEnum::ArrayValue(val) => val.as_instruction(),
-                    BasicValueEnum::IntValue(val) => val.as_instruction(),
-                    BasicValueEnum::FloatValue(val) => val.as_instruction(),
-                    BasicValueEnum::PointerValue(val) => val.as_instruction(),
-                    BasicValueEnum::StructValue(val) => val.as_instruction(),
-                    BasicValueEnum::VectorValue(val) => val.as_instruction(),
-                    _ => None,
-                };
+                let load_inst = basic_value.as_instruction_value();
                 if let Some(inst) = load_inst {
                     let layout = self.tctx.layout_of(&internal_value.ty);
                     if layout.align > 0 {
