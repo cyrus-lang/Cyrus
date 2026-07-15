@@ -24,6 +24,10 @@ use cyrusc_typed_ast::LabelID;
 use inkwell::{
     basic_block::BasicBlock, builder::Builder, context::Context, module::Module, targets::TargetMachine,
     values::FunctionValue,
+    llvm_sys::{
+        core::{LLVMGetCurrentDebugLocation2, LLVMSetCurrentDebugLocation2},
+        prelude::LLVMMetadataRef,
+    },
 };
 use std::{cell::RefCell, collections::HashMap, rc::Rc, sync::Arc};
 
@@ -235,6 +239,46 @@ impl<'ll> Default for BlockRegistry<'ll> {
             cur_block: Default::default(),
             first_block: Default::default(),
             labels: Default::default(),
+        }
+    }
+}
+
+pub struct DebugLocationGuard<'a, 'll> {
+    builder: &'a CodeGenIRBuilder<'ll>,
+    saved_loc: Option<LLVMMetadataRef>,
+}
+
+impl<'a, 'll> DebugLocationGuard<'a, 'll> {
+    pub fn new(builder: &'a CodeGenIRBuilder<'ll>) -> Self {
+        let saved_loc = if builder.dctx.is_some() {
+            unsafe {
+                let loc = LLVMGetCurrentDebugLocation2(builder.llvmbuilder.as_mut_ptr());
+                if !loc.is_null() {
+                    Some(loc)
+                } else {
+                    None
+                }
+            }
+        } else {
+            None
+        };
+
+        if saved_loc.is_some() {
+            unsafe {
+                LLVMSetCurrentDebugLocation2(builder.llvmbuilder.as_mut_ptr(), std::ptr::null_mut());
+            }
+        }
+
+        Self { builder, saved_loc }
+    }
+}
+
+impl<'a, 'll> Drop for DebugLocationGuard<'a, 'll> {
+    fn drop(&mut self) {
+        if let Some(loc) = self.saved_loc {
+            unsafe {
+                LLVMSetCurrentDebugLocation2(self.builder.llvmbuilder.as_mut_ptr(), loc);
+            }
         }
     }
 }
