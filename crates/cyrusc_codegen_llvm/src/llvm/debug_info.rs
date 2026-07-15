@@ -606,8 +606,9 @@ pub unsafe fn debug_func_type(
 
     if let Some(ret) = ret_type {
         types.push(ret);
-    }else {
+    } else {
         types.push(std::ptr::null_mut());
+    }
 
     for p in params {
         types.push(*p);
