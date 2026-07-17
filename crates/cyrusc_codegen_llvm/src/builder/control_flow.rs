@@ -1078,8 +1078,11 @@ impl<'ll> CodeGenIRBuilder<'ll> {
                 return;
             }
 
+            if self.blockreg.cur_block.unwrap().get_terminator().is_none() {
+                LLVMBuildBr(self.llvmbuilder.as_mut_ptr(), next_block);
+            }
+
             self.blockreg.cur_block = None;
-            LLVMBuildBr(self.llvmbuilder.as_mut_ptr(), next_block);
         }
     }
 
@@ -1088,8 +1091,12 @@ impl<'ll> CodeGenIRBuilder<'ll> {
             if !self.llvm_emit_check_block_branch() {
                 return;
             }
+
+            if self.blockreg.cur_block.unwrap().get_terminator().is_none() {
+                LLVMBuildCondBr(self.llvmbuilder.as_mut_ptr(), cond, then_block, else_block);
+            }
+
             self.blockreg.cur_block = None;
-            LLVMBuildCondBr(self.llvmbuilder.as_mut_ptr(), cond, then_block, else_block);
         }
     }
 

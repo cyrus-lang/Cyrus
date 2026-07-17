@@ -1132,7 +1132,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
                 let cir_pointee_type = lhs_rvalue.ty.pointer_inner().unwrap().clone();
 
                 let pointee_type: BasicTypeEnum<'ll> = if cir_pointee_type.is_void() {
-                    self.llvm_ctx.ptr_type(AddressSpace::default()).into()
+                    self.llvm_ctx.i8_type().into()
                 } else {
                     self.emit_type(cir_pointee_type).try_into().unwrap()
                 };
@@ -1152,7 +1152,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         let cir_pointee_type = result_type.pointer_inner().unwrap().clone();
 
         let pointee_type: BasicTypeEnum<'ll> = if cir_pointee_type.is_void() {
-            self.llvm_ctx.ptr_type(AddressSpace::default()).into()
+            self.llvm_ctx.i8_type().into()
         } else {
             self.emit_type(cir_pointee_type).try_into().unwrap()
         };
@@ -1185,7 +1185,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         let cir_pointee_type = result_type.pointer_inner().unwrap().clone();
 
         let pointee_type: BasicTypeEnum<'ll> = if cir_pointee_type.is_void() {
-            self.llvm_ctx.ptr_type(AddressSpace::default()).into()
+            self.llvm_ctx.i8_type().into()
         } else {
             self.emit_type(cir_pointee_type).try_into().unwrap()
         };

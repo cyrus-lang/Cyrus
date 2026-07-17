@@ -116,7 +116,10 @@ impl<'ll> CodeGenIRBuilder<'ll> {
             rvalue = InternalValue::new(rvalue.ty.clone(), InternalValueKind::RValue(widened.into()));
         }
 
-        self.llvmbuilder.build_store(ptr, rvalue.as_basic_value()).unwrap();
+        let store_inst = self.llvmbuilder.build_store(ptr, rvalue.as_basic_value()).unwrap();
+        if layout.align > 0 {
+            store_inst.set_alignment(layout.align).unwrap();
+        }
     }
 
     pub(crate) fn widen_int_arg(&self, value: InternalValue<'ll>, signed: bool) -> InternalValue<'ll> {
@@ -201,6 +204,14 @@ impl<'ll> CodeGenIRBuilder<'ll> {
             InternalValueKind::LValue(pointer_value) => {
                 let ty: BasicTypeEnum<'ll> = self.emit_type(internal_value.ty.clone()).try_into().unwrap();
                 let basic_value = self.llvmbuilder.build_load(ty, pointer_value, "rvalue").unwrap();
+
+                let load_inst = basic_value.as_instruction_value();
+                if let Some(inst) = load_inst {
+                    let layout = self.tctx.layout_of(&internal_value.ty);
+                    if layout.align > 0 {
+                        inst.set_alignment(layout.align).unwrap();
+                    }
+                }
 
                 if internal_value.ty.is_bool() {
                     InternalValue::new(
