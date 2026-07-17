@@ -12,41 +12,21 @@ import parse::lex::tokens{Token, Literal};
 pub fn main(argc: int32, argv: uint8**) {
     var allocator: Allocator = dynamic LibcAllocator.new();
 
-    var format = String.new(allocator);
-    defer format.free();
+    const file_name = argv[1];
+    if (!file_name) {
+        compile_error("no input files");
+    }
 
-    // var name = String.from_str(allocator, "Taha");
-    // defer name.free();
-    // const token = Token.Literal(Literal.String {
-    //     value: name,
-    //     suffix: .None
-    // });
-    // const token = Token.Literal(Literal.Float {
-    //     value: 3.14,
-    //     suffix: .None
-    // });
-    // const token = Token.Literal(Literal.Integer {
-    //     value: .Signed(255),
-    //     suffix: .Some(.ISize)
-    // });
-    const token = Token.Literal(Literal.Null);
+    var source = read_file_content(file_name);
+    defer source.free();
+
+    var lexer = Lexer.new(allocator, &source);
     
-    var writer: Writer = dynamic StringWriter.new(&format);
+    var tokens = lexer.tokenize();
+    defer tokens.free();
 
-    token.format(writer);
+    printf("%lu\n", tokens.len());
 
-    printf("token: %s\n", format.as_str_const());
-
-    // const file_name = argv[1];
-
-    // if (!file_name) {
-    //     compile_error("no input files");
-    // }
-
-    // var source = read_file_content(file_name);
-    // defer source.free();
-
-    // const lexer = Lexer.new(&source);
     
     // printf("%s\n", source.as_str_const());
 }

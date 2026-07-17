@@ -2,8 +2,9 @@
 // Copyright (c) 2026 The Cyrus Language
 
 import std::libc{strlen, strcmp, memmove, isspace, tolower, toupper};
-import std::libc::types{c_int};
 import std::collections{Vector};
+import std::libc::types{c_int};
+import std::option{Option};
 import std::mem{Allocator};
 import std::slices{Slice};
 
@@ -136,6 +137,14 @@ pub struct String {
         for (var i: usize = 0; i < self->vec.len(); i++) {
             str[i] = @cast(uint8, toupper(@cast(c_int, str[i])));
         }
+    }
+
+    pub inline fn get(&const self, index: usize) Option<uint8> {
+        if (index > self->len()) {
+            return .None;
+        }
+
+        return .Some(self->as_str_const()[index]);
     }
 
     pub inline fn as_str(&self) uint8* {

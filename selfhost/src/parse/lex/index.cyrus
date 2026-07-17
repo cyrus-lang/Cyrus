@@ -1,29 +1,32 @@
-import std::string{String};
 import std::collections{Vector};
+import std::string{String};
+import std::mem{Allocator};
+
+import std::libc{printf};
 
 import parse::lex::tokens{
     Token,
+    TokenKind,
     Literal,
     IntegerSuffix,
     FloatSuffix,
-    StringSuffix
+    StringSuffix,
+    Loc
 };
 
 pub struct Lexer {
+    allocator: Allocator,
     source: String*,
     pos: usize,
-    cur: uint8,
     line: usize,
     col: usize,
 
-    pub fn new(source: String*) Self {
+    pub fn new(allocator: Allocator, source: String*) Self {
         @assert(source, "source cannot be null");
 
-        const cur = source->as_str_const()[0];
-
         return Self {
+            allocator,
             source,
-            cur,
             pos: 0,
             line: 1,
             col: 1,
@@ -31,10 +34,160 @@ pub struct Lexer {
     }
 
     pub fn tokenize(&self) Vector<Token> {
+        var tokens: Vector<Token> = Vector.new(self->allocator);
+
+        var token: Token = undefined;
+
+            printf("reading token\n");
+        // while (token.kind != .EOF) {
+
+        // }
+            token = self->next();
+
+            tokens.push(token);
+
+        return tokens;
+    }
+
+    pub fn next(&self) Token {
+        // self->skip_whitespace();
+        // self->skip_comments();
+
+        if (self->pos == self->source->len()) {
+            const loc = self->loc(self->line, self->col);
+            return Token { kind: .EOF, loc };
+        }
+
+        const loc = self->loc(self->line, self->col);
+        const kind = self->read_kind();
+
+        return Token { kind, loc };
+    }
+
+    pub fn read_kind(&self) TokenKind {
+        switch (self->source->get(self->pos)) {
+            case .Some(ch) => {
+                switch (ch) {
+                    case '\0' => return .EOF;
+
+                    case 'a'..='z' | 'A'..='Z' | '_' => return self->read_ident_or_prefix();
+                    case '0'..='9' => return self->read_integer();
+                    case '"' => return self->read_str();
+                    case '\'' => return self->read_char();
+
+                    case '+' => return self->read_plus();
+                    case '-' => return self->read_minus();
+                    case '*' => return self->read_asterisk();
+                    case '/' => return self->read_slash();
+                    case ':' => return self->read_colon();
+                    case '=' => return self->read_equal();
+                    case '!' => return self->read_bang();
+                    case '<' => return self->read_less();
+                    case '>' => return self->read_greater();
+                    case '&' => return self->read_amp();
+                    case '|' => return self->read_pipe();
+                    case '.' => return self->read_dot();
+
+                    case '~' => return .Tilde;
+                    case '*' => return .Asterisk;
+                    case '/' => return .Slash;
+                    case '%' => return .Percent;
+                    case '^' => return .Caret;
+                    case '(' => return .LeftParen;
+                    case ')' => return .RightParen;
+                    case '{' => return .LeftBrace;
+                    case '}' => return .RightBrace;
+                    case '[' => return .LeftBracket;
+                    case ']' => return .RightBracket;
+                    case ',' => return .Comma;
+                    case ';' => return .Semicolon;
+                    case '@' => return .At;
+
+                    default => {
+                        // FIXME Report diagnostic.
+                        return .INVALID;
+                    }
+                }
+            }   
+            case .None => return .EOF;
+        }
+    }
+
+    fn read(&self) {
+        const next_pos = self->pos + 1;
+
+        if (next_pos >= self->source->len()) {
+            goto set_ending_char;
+        }
+
+        switch (self->source->get(next_pos)) {
+            case .Some(char) => {
+                if (char == '\n') {
+                    self->line++;
+                    self->col = 1;
+                } else {
+                    self->col++;
+                }
+            }
+            default => goto set_ending_char;
+        }
+
+    set_ending_char:
+        self->pos = '\0';
+        return;
+    }
+
+    inline fn read_single(&self, kind: TokenKind) TokenKind {
+        self->next();
+        return kind;
+    }
+
+    fn read_plus(&self) TokenKind {
+        // self->source.get(pos)
+        @todo();
+    }
+    
+    fn read_minus(&self) TokenKind { @todo(); }
+    fn read_asterisk(&self) TokenKind { @todo(); }
+    fn read_slash(&self) TokenKind { @todo(); }
+    fn read_colon(&self) TokenKind { @todo(); }
+    fn read_equal(&self) TokenKind { @todo(); }
+    fn read_bang(&self) TokenKind { @todo(); }
+    fn read_less(&self) TokenKind { @todo(); }
+    fn read_greater(&self) TokenKind { @todo(); }
+    fn read_amp(&self) TokenKind { @todo(); }
+    fn read_pipe(&self) TokenKind { @todo(); }
+    fn read_dot(&self) TokenKind { @todo(); }
+
+    fn read_integer(&self) TokenKind {
         @todo();
     }
 
-    pub fn next(&self) {
+    fn read_ident_or_prefix(&self) TokenKind {
         @todo();
+    }
+
+    fn read_ident(&self) TokenKind {
+        @todo();
+    }
+
+    fn read_str(&self) TokenKind {
+        @todo();
+    }
+
+    fn read_char(&self) TokenKind {
+        @todo();
+    }
+
+    fn skip_whitespace(&self) {
+        @todo();
+    }
+
+    fn skip_comments(&self) {
+        @todo();
+    }
+
+    fn loc(&const self, line: usize, col: usize) Loc {
+        return Loc { line, col };
     }
 }

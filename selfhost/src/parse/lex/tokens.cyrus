@@ -1,5 +1,9 @@
+import std::collections{Vector};
+import std::io{StringWriter};
 import std::string{String};
+import std::mem{Allocator};
 import std::option{Option};
+import std::libc{printf};
 import std::io{Writer};
 import std::format{
     Format,
@@ -9,7 +13,16 @@ import std::format{
     format_bool
 };
 
-pub enum Token : Format {
+pub struct Token : Format {
+    pub kind: TokenKind,
+    pub loc: Loc,
+
+    pub fn format(&const self, writer: Writer) bool {
+        return self->kind.format(writer);
+    }
+}
+
+pub enum TokenKind : Format {
     Ident(String),
     Literal(Literal),
 
@@ -139,6 +152,7 @@ pub enum Token : Format {
     Repr,
 
     EOF,
+    INVALID,
 
     pub inline fn is_eof(&const self) bool {
         switch (*self) {
@@ -147,7 +161,7 @@ pub enum Token : Format {
         }
     }
 
-    pub fn lookup_keyword(str: const uint8*) Option<Token> {
+    pub fn lookup_keyword(str: const uint8*) Option<Self> {
         switch (str) {
             case "dynamic" => return .Some(.Dynamic);
             case "var" => return .Some(.Var);
@@ -348,6 +362,7 @@ pub enum Token : Format {
             case .AlwaysInline => writer.write("alwaysinline");
 
             case .EOF => writer.write("EOF");
+            case .INVALID => writer.write("INVALID");
         }
         return true;
     }
@@ -507,5 +522,30 @@ pub enum StringSuffix {
         switch (*self) {
             case .Byte => return "b";
         }
+    }
+}
+
+pub struct Loc {
+    // file_id: FileId,
+    pub line: usize,
+    pub col: usize,
+}
+
+pub fn format_tokens(allocator: Allocator, tokens: Vector<Token>*) {
+    var fmt = String.new(allocator);
+    defer fmt.free();  
+
+    var fmt_writer: Writer = dynamic StringWriter.new(&fmt);
+
+    for (var i: usize = 0; i < tokens->len(); i++) {
+        const token = tokens->get(i).unwrap();
+        token.format(fmt_writer);
+        
+        printf(
+            "Token `%s`, Line: %lu, Column: %lu\n",
+            fmt.as_str_const(),
+            token.loc.line,
+            token.loc.col
+        );
     }
 }
