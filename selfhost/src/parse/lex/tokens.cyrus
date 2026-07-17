@@ -1,3 +1,4 @@
+import std::mem::alloc::libc{LibcAllocator};
 import std::collections{Vector};
 import std::io{StringWriter};
 import std::string{String};
@@ -525,21 +526,28 @@ pub enum StringSuffix {
     }
 }
 
+/// Represents precise location tracking within a source file.
 pub struct Loc {
+    // TODO: Enable file_id once multi-source support implemented.
     // file_id: FileId,
     pub line: usize,
     pub col: usize,
 }
 
-pub fn format_tokens(allocator: Allocator, tokens: Vector<Token>*) {
+/// Formats and writes a collection of tokens to stdout.
+/// This is primarily used for debugging and emitting lexer result.
+pub fn dump_tokens(tokens: const Vector<Token>*) {
+    var allocator: Allocator = dynamic LibcAllocator.new();
+
     var fmt = String.new(allocator);
     defer fmt.free();  
 
-    var fmt_writer: Writer = dynamic StringWriter.new(&fmt);
+    var writer: Writer = dynamic StringWriter.new(&fmt);
 
     for (var i: usize = 0; i < tokens->len(); i++) {
         const token = tokens->get(i).unwrap();
-        token.format(fmt_writer);
+        
+        token.format(writer);
         
         printf(
             "Token `%s`, Line: %lu, Column: %lu\n",
@@ -547,5 +555,27 @@ pub fn format_tokens(allocator: Allocator, tokens: Vector<Token>*) {
             token.loc.line,
             token.loc.col
         );
+
+        fmt.clear();
     }
+}
+
+/// Formats and writes a tokens to stdout.
+/// This is primarily used for debugging and emitting lexer result.
+pub fn dump_token(const token: Token) {
+    var allocator: Allocator = dynamic LibcAllocator.new();
+
+    var fmt = String.new(allocator);
+    defer fmt.free();  
+
+    var writer: Writer = dynamic StringWriter.new(&fmt);
+
+    token.format(writer);
+        
+    printf(
+        "Token `%s`, Line: %lu, Column: %lu\n",
+        fmt.as_str_const(),
+        token.loc.line,
+        token.loc.col
+    );
 }
