@@ -136,7 +136,9 @@ impl<'a> CIRLower<'a> {
                 lowered_stmts.push(CIRStmt::Variable(self.lower_var(var)));
             }
             TypedStmt::GlobalVar(global_var) => {
-                lowered_stmts.push(self.lower_global_var_stmt(&mut global_var.clone()));
+                if global_var.is_static {
+                    lowered_stmts.push(self.lower_global_var_stmt(&mut global_var.clone()));
+                }
             }
             TypedStmt::BlockStmt(block) => {
                 lowered_stmts.push(CIRStmt::Block(self.lower_block(block)));
