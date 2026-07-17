@@ -6,7 +6,7 @@ import std::libc::types{c_int, c_double};
 
 type CallbackFn = fn(c_double, c_double) c_double;
 
-const handler = fn(x: c_double, y: c_double) c_double {
+static const handler = fn(x: c_double, y: c_double) c_double {
     return x + y;
 };
 

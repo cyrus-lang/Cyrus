@@ -295,7 +295,7 @@ impl<'source_map, 'source_file> Lexer<'source_map, 'source_file> {
     fn read_dot(&mut self) -> TokenKind {
         self.read_char();
 
-        if self.peek_char() == '.' {
+        if self.ch == '.' && self.peek_char() == '.' {
             self.read_char();
             self.read_char();
             TokenKind::TripleDot
