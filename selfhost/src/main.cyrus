@@ -7,7 +7,10 @@ import std::string{String};
 import parse::lex{Lexer};
 import std::libc{printf};
 
-import parse::lex::tokens{Token, Literal, dump_tokens};
+import parse::lex::tokens{
+    Token,
+    dump_tokens,
+};
 
 pub fn main(argc: int32, argv: uint8**) {
     var allocator: Allocator = dynamic LibcAllocator.new();
@@ -22,8 +25,10 @@ pub fn main(argc: int32, argv: uint8**) {
 
     var lexer = Lexer.new(allocator, &source);
     
-    var tokens = lexer.tokenize();
-    defer tokens.free();
+    const token_pool = lexer.tokenize();
+    defer token_pool.free();
+
+    const tokens = token_pool.inner();
 
     printf("Tokens Count: %lu\n", tokens.len());
     dump_tokens(&tokens);

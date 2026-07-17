@@ -14,6 +14,33 @@ import std::format{
     format_bool
 };
 
+pub struct TokenPool {
+    tokens: Vector<Token>,
+
+    pub inline fn new(tokens: Vector<Token>) Self {
+        return Self { tokens };
+    }
+
+    pub inline fn inner(const self) Vector<Token> {
+        return self.tokens;
+    }
+
+    pub fn free(self) {
+        const token = self.tokens.get(0).unwrap();
+
+        for (var i: usize = 0; i < self.tokens.len(); i++) {
+            switch (token.kind) {
+                case .Ident(ident) => {
+                    printf("read_ident: %p\n", ident.as_str());
+                    ident.free();
+                }
+            }
+        }
+
+        self.tokens.free();
+    }
+}
+
 pub struct Token : Format {
     pub kind: TokenKind,
     pub loc: Loc,
@@ -279,6 +306,17 @@ pub enum TokenKind : Format {
             case .Colon => writer.write(":");
             case .ThinArrow => writer.write("->");
             case .FatArrow => writer.write("=>");
+            case .Increment => writer.write("++");
+            case .Decrement => writer.write("--");
+            case .ShiftRight => writer.write(">>");
+            case .ShiftLeft => writer.write("<<");
+            case .Caret => writer.write("^");
+            case .AmpTilde => writer.write("&~");
+            case .Tilde => writer.write("~");
+            case .NotEqual => writer.write("!=");
+            case .Bang => writer.write("!");
+            case .DoubleColon => writer.write("::");
+
             case .Dynamic => writer.write("dynamic");
             case .Var => writer.write("var");
             case .Module => writer.write("mod");
@@ -345,16 +383,6 @@ pub enum TokenKind : Format {
             case .NoUnwind => writer.write("nounwind");
             case .Section => writer.write("section");
             case .Repr => writer.write("repr");
-            case .Increment => writer.write("++");
-            case .Decrement => writer.write("--");
-            case .ShiftRight => writer.write(">>");
-            case .ShiftLeft => writer.write("<<");
-            case .Caret => writer.write("^");
-            case .AmpTilde => writer.write("&~");
-            case .Tilde => writer.write("~");
-            case .NotEqual => writer.write("!=");
-            case .Bang => writer.write("!");
-            case .DoubleColon => writer.write("::");
             case .Goto => writer.write("goto");
             case .Defer => writer.write("defer");
             case .Union => writer.write("union");
@@ -383,7 +411,7 @@ pub enum Literal : Format {
     },
     String {
         value: String,
-        suffix: Option<StringSuffix>
+        suffix: Option<StringPrefix>
     },
     Bool(bool),
     Null,
@@ -509,7 +537,7 @@ pub enum FloatSuffix {
     }
 }
 
-pub enum StringSuffix {
+pub enum StringPrefix {
     Byte,
 
     pub fn from_str(str: const uint8*) Option<Self> {
@@ -519,8 +547,8 @@ pub enum StringSuffix {
         }
     }
 
-    pub fn to_str(&const self) const uint8* {
-        switch (*self) {
+    pub fn to_str(const self) const uint8* {
+        switch (self) {
             case .Byte => return "b";
         }
     }

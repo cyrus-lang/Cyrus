@@ -1,20 +1,18 @@
 import std::collections{Vector};
 import std::string{String};
+import std::option{Option};
 import std::mem{Allocator};
-
 import std::libc{printf};
 
 import parse::lex::tokens{
+    TokenPool,
     Token,
     TokenKind,
     Literal,
     IntegerSuffix,
     FloatSuffix,
-    StringSuffix,
+    StringPrefix,
     Loc,
-
-    dump_token, // FIXME Remove later.
-    dump_tokens, // FIXME Remove later.
 };
 
 pub struct Lexer {
@@ -36,7 +34,7 @@ pub struct Lexer {
         };
     }
 
-    pub fn tokenize(&self) Vector<Token> {
+    pub fn tokenize(&self) TokenPool {
         var tokens: Vector<Token> = Vector.new(self->allocator);
 
         var token: Token = undefined;
@@ -50,7 +48,8 @@ pub struct Lexer {
             }
         }
 
-        return tokens;
+        // return TokenPool.new(tokens);
+        return TokenPool { tokens};
     }
 
     fn next(&self) Token {
@@ -84,8 +83,6 @@ pub struct Lexer {
 
                     case '+' => return self->read_plus();
                     case '-' => return self->read_minus();
-                    case '*' => return self->read_asterisk();
-                    case '/' => return self->read_slash();
                     case ':' => return self->read_colon();
                     case '=' => return self->read_equal();
                     case '!' => return self->read_bang();
@@ -95,9 +92,9 @@ pub struct Lexer {
                     case '|' => return self->read_pipe();
                     case '.' => return self->read_dot();
 
+                    case '/' => return self->read_single(.Slash);
                     case '~' => return self->read_single(.Tilde);
                     case '*' => return self->read_single(.Asterisk);
-                    case '/' => return self->read_single(.Slash);
                     case '%' => return self->read_single(.Percent);
                     case '^' => return self->read_single(.Caret);
                     case '(' => return self->read_single(.LeftParen);
@@ -120,13 +117,11 @@ pub struct Lexer {
         }
     }
 
-    /// Advances lexer by consuming a character
-    /// and updates line and column.
+    /// Advances lexer by consuming a character and updates line and column.
     fn read(&self) {
-
         const next_pos = self->pos + 1;
 
-        self->pos++;
+        self->pos++; // consume
 
         if (next_pos >= self->source->len()) {
             return;
@@ -144,52 +139,33 @@ pub struct Lexer {
         }
     }
 
-    /// Consumes the current token by advancing the lexer
-    /// and returns the provided token kind.
-    inline fn read_single(&self, kind: TokenKind) TokenKind {
-        self->read();
-        return kind;
-    }
-
-    fn peek(&const self) uint8 {
-        const next_pos = self->pos + 1;
-
-        switch (self->source->get(next_pos)) {
-            case .Some(char) => return char;
-            case .None => return '\0';
-        }
-    }
-
-    fn read_plus(&self) TokenKind {
-        // self->source.get(pos)
-        @todo();
-    }
-    
-    fn read_minus(&self) TokenKind { @todo(); }
-    fn read_asterisk(&self) TokenKind { @todo(); }
-    fn read_slash(&self) TokenKind { @todo(); }
-    fn read_colon(&self) TokenKind { @todo(); }
-    fn read_equal(&self) TokenKind { @todo(); }
-    fn read_bang(&self) TokenKind { @todo(); }
-    fn read_less(&self) TokenKind { @todo(); }
-    fn read_greater(&self) TokenKind { @todo(); }
-    fn read_amp(&self) TokenKind { @todo(); }
-    fn read_pipe(&self) TokenKind { @todo(); }
-    fn read_dot(&self) TokenKind { @todo(); }
-
-    fn read_integer(&self) TokenKind {
-        @todo();
-    }
-
     fn read_ident_or_prefix(&self) TokenKind {
-        @todo();
+        // TODO
+        // if (self->cur() == 'b' && self->peek() == '"') {
+        //     // return self->read_str(.Some(.Byte));
+        //     @todo();
+        // }
+
+        return self->read_ident();
     }
 
     fn read_ident(&self) TokenKind {
-        @todo();
+        if (self->cur() == '_') {
+            return .Underscore;
+        }
+
+        var ident = String.new(self->allocator);
+
+        while (is_alpha(self->cur())) {
+            ident.push(self->cur());
+            self->read();
+        }
+
+        return .Ident(ident);
     }
 
     fn read_str(&self) TokenKind {
+        // prefix: Option<StringPrefix>
         @todo();
     }
 
@@ -205,7 +181,169 @@ pub struct Lexer {
         @todo();
     }
 
-    fn loc(&const self, line: usize, col: usize) Loc {
+    fn read_plus(&self) TokenKind {
+        if (self->peek() == '+') {
+            self->read();
+            self->read();
+            return .Increment;
+        } else {
+            self->read();
+            return .Plus;
+        }
+    }
+    
+    fn read_minus(&self) TokenKind {
+        if (self->peek() == '-') {
+            self->read();
+            self->read();
+            return .Decrement;
+        } else if (self->peek() == '>') {
+            self->read();
+            self->read();
+            return .ThinArrow;
+        } else {
+            self->read();
+            return .Minus;
+        }
+    }
+
+    fn read_colon(&self) TokenKind {
+        self->read();
+
+        if (self->cur() == ':') {
+            self->read();
+            return .DoubleColon;
+        } else {
+            return .Colon;
+        }
+    }
+    
+    fn read_equal(&self) TokenKind {
+        self->read();
+
+        if (self->cur() == '=') {
+            self->read();
+            return .Equal;
+        } else if (self->cur() == '>') {
+            self->read();
+            return .FatArrow;
+        } else {
+            return .Assign;
+        }
+    }
+
+    fn read_bang(&self) TokenKind {
+        self->read();
+
+        if (self->cur() == '=') {
+            self->read();
+            return .NotEqual;
+        } else {
+            return .Bang;
+        }
+    }
+
+    fn read_less(&self) TokenKind {
+        self->read();
+
+        if (self->cur() == '=') {
+            self->read();
+            return .LessEqual;
+        } else if (self->cur() == '<') {
+            self->read();
+            return .ShiftLeft;
+        } else {
+            return .LessThan;
+        }
+    }
+
+    fn read_greater(&self) TokenKind {
+        self->read();
+
+        if (self->cur() == '=') {
+            self->read();
+            return .GreaterEqual;
+        } else {
+            // Notice that '>>' ambiguity is entrusted to the parser.
+            return .GreaterThan;
+        }
+    }
+    
+    fn read_amp(&self) TokenKind {
+        self->read();
+
+        if (self->cur() == '&') {
+            self->read();
+            self->read();
+            return .And;
+        } else if (self->cur() == '~') {
+            self->read();
+            self->read();
+            return .AmpTilde;
+        } else {
+            return .Ampersand;
+        }
+    }
+
+    fn read_pipe(&self) TokenKind {
+        self->read();
+
+        if (self->cur() == '/') {
+            self->read();
+            return .Or;
+        } else {
+            return .Pipe;
+        }
+    }
+
+    fn read_dot(&self) TokenKind {
+        self->read();
+        
+        if (self->cur() == '.' && self->peek() == '.') {
+            self->read();
+            return .TripleDot;
+        } else if (self->cur() == '.') {
+            self->read();
+            return .DoubleDot;
+        } else {
+            return .Dot;
+        }
+    }
+
+    fn read_integer(&self) TokenKind {
+        @todo();
+    }
+
+    // Helper Methods
+
+    /// Consumes the current token by advancing the lexer
+    /// and returns the provided token kind.
+    inline fn read_single(&self, kind: TokenKind) TokenKind {
+        self->read();
+        return kind;
+    }
+
+    inline fn peek(&const self) uint8 {
+        const next_pos = self->pos + 1;
+
+        switch (self->source->get(next_pos)) {
+            case .Some(char) => return char;
+            case .None => return '\0';
+        }
+    }
+
+    inline fn cur(&const self) uint8 {
+        return self->source->get(self->pos).unwrap();
+    }
+
+    inline fn loc(&const self, line: usize, col: usize) Loc {
         return Loc { line, col };
+    }
+}
+
+inline fn is_alpha(char: uint8) bool {
+    switch (char) {
+        case 'a'..='z' | 'A'..='Z' | '_' => return true;
+        default => return false;
     }
 }
