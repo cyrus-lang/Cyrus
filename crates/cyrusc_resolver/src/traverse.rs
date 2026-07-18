@@ -192,6 +192,54 @@ impl ComptimeEnv {
 
         Some(())
     }
+
+    pub fn evaluate_ast_expr(&self, expr: &ASTExpr) -> Option<ASTExpr> {
+        match expr {
+            ASTExpr::Intrinsic(IntrinsicKind::InfoOf(type_spec)) => {
+                Some(self.evaluate_info_of(type_spec))
+            }
+            ASTExpr::UnnamedStructValue(_) | ASTExpr::Literal(_) => {
+                Some(expr.clone())
+            }
+            _ => None,
+        }
+    }
+
+    pub fn evaluate_field(&self, operand: &ASTExpr, field: &Ident) -> Option<ASTExpr> {
+        let evaluated = self.evaluate_ast_expr(operand)?;
+        match evaluated {
+            ASTExpr::UnnamedStructValue(struct_val) => {
+                for f in &struct_val.fields {
+                    if f.name.value == field.value {
+                        return Some(*f.value.clone());
+                    }
+                }
+                None
+            }
+            _ => None,
+        }
+    }
+
+    pub fn evaluate_compile_error(&self, msg_expr: &ASTExpr, resolver: &mut Resolver) -> Option<()> {
+        let loc = msg_expr.loc();
+        let evaluated = self.evaluate_ast_expr(msg_expr);
+        let msg = evaluated.and_then(|e| match e {
+            ASTExpr::Literal(lit) => match &lit.kind {
+                LiteralKind::String(val, _) => Some(val.clone()),
+                _ => None,
+            }
+            _ => None,
+        }).unwrap_or_else(|| "Compile error".to_string());
+
+        resolver.reporter.report(Diag {
+            level: DiagLevel::Error,
+            kind: Box::new(cyrusc_diagcentral::CustomDiagKind::Custom(msg)),
+            loc: Some(loc),
+            hint: None,
+        });
+
+        None
+    }
 }
 
 
@@ -642,29 +690,26 @@ impl<'a> Resolver<'a> {
                 })
             }
 
-            IntrinsicKind::Field(operand_expr, _field_ident) => {
-                let _resolved_operand = self.resolve_expr(operand_expr);
+            IntrinsicKind::Field(operand_expr, field_ident) => {
                 let loc = operand_expr.loc();
-
-                Some(TypedExpr {
-                    kind: TypedExprKind::Poisoned,
-                    ty: None,
-                    val_cat: ValueCategory::Unknown,
-                    analyzed: false,
-                    loc,
-                })
+                let field_expr = self.comptime_env.evaluate_field(operand_expr, field_ident);
+                if let Some(ast_expr) = field_expr {
+                    self.resolve_expr(&ast_expr)
+                } else {
+                    Some(TypedExpr {
+                        kind: TypedExprKind::Poisoned,
+                        ty: None,
+                        val_cat: ValueCategory::Unknown,
+                        analyzed: false,
+                        loc,
+                    })
+                }
             }
 
             IntrinsicKind::CompileError(msg_expr) => {
-                let _resolved_msg = self.resolve_expr(msg_expr);
-                let loc = msg_expr.loc();
-
-                self.reporter.report(Diag {
-                    level: DiagLevel::Error,
-                    kind: Box::new(ResolverDiagKind::InvalidStatement),
-                    loc: Some(loc),
-                    hint: Some("@compile_error raised at compile time.".to_string()),
-                });
+                let comptime_env = std::mem::take(&mut self.comptime_env);
+                let _ = comptime_env.evaluate_compile_error(msg_expr, self);
+                self.comptime_env = comptime_env;
 
                 None
             }
