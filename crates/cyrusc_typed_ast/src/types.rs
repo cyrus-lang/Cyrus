@@ -706,6 +706,17 @@ impl SemaType {
 }
 
 impl PlainType {
+    pub fn map_integer_size_to_type(size: usize) -> Option<Self> {
+        Some(match size {
+            1 => PlainType::Int8,
+            2 => PlainType::Int16,
+            4 => PlainType::Int32,
+            8 => PlainType::Int64,
+            16 => PlainType::Int128,
+            _ => return None,
+        })
+    }
+
     #[inline]
     pub fn is_scalar(&self) -> bool {
         match self {
@@ -774,6 +785,21 @@ impl PlainType {
             self,
             PlainType::Float16 | PlainType::Float32 | PlainType::Float64 | PlainType::Float128
         )
+    }
+
+    #[inline]
+    pub fn is_float64(&self) -> bool {
+        matches!(self, PlainType::Float64)
+    }
+
+    #[inline]
+    pub fn is_float32(&self) -> bool {
+        matches!(self, PlainType::Float32)
+    }
+
+    #[inline]
+    pub fn is_float16(&self) -> bool {
+        matches!(self, PlainType::Float16)
     }
 
     #[inline]

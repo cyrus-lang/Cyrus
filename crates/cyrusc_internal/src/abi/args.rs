@@ -1,26 +1,25 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 The Cyrus Language
 
-use crate::{abi::types::ABIType, cir::types::CIRType};
+use crate::cir::types::CIRType;
 
 #[derive(Debug, Clone)]
 pub struct ABIFunctionInfo {
-    pub params_types: Vec<ABIType>,
+    pub params_types: Vec<CIRType>,
     pub params_infos: Vec<ABIArgInfo>,
-    pub ret_info: ABIRetInfo,
+    pub ret_info: Box<ABIRetInfo>,
 }
 
 #[derive(Debug, Clone)]
 pub struct ABIRetInfo {
-    pub abi_type: ABIType,
     pub kind: ABIRetInfoKind,
     pub cir_ret_type: Box<CIRType>,
 }
 
 #[derive(Debug, Clone)]
 pub enum ABIRetInfoKind {
-    Direct { coerce_to: Option<ABIType> },
-    DirectPair { lo: ABIType, hi: ABIType },
+    Direct { coerce_to: Option<CIRType> },
+    DirectPair { lo: CIRType, hi: CIRType },
     Indirect { sret: bool },
     Ignore,
 }
@@ -52,13 +51,13 @@ pub struct ABIArgAttrs {
 #[derive(Debug, Clone)]
 pub enum ABIArgKind {
     /// Direct register passing (maybe coerced)
-    Direct { coerce_to: Option<ABIType> },
+    Direct { coerce_to: Option<CIRType> },
 
     /// Passed in a pair of registers (lo/hi)
-    DirectPair { lo: ABIType, hi: ABIType },
+    DirectPair { lo: CIRType, hi: CIRType },
 
     /// Coerced to a different type and passed directly
-    DirectCoerce { ty: ABIType },
+    DirectCoerce { ty: CIRType },
 
     /// Expanded into multiple arguments
     Expand {
@@ -74,7 +73,7 @@ pub enum ABIArgKind {
         /// Required alignment
         align: u32,
         /// Type to pass indirectly
-        ty: ABIType,
+        ty: CIRType,
     },
 
     /// Ignored argument
@@ -90,8 +89,8 @@ pub enum ExpandKind {
     Coerced {
         offset_hi: u8,
         packed: bool,
-        lo: ABIType,
-        hi: ABIType,
+        lo: CIRType,
+        hi: CIRType,
     },
 
     /// Struct expansion with field count
@@ -120,7 +119,7 @@ impl ABIArgInfo {
     }
 
     #[inline]
-    pub fn direct_coerce(ty: ABIType) -> Self {
+    pub fn direct_coerce(ty: CIRType) -> Self {
         Self {
             param_index_start: 0,
             param_index_end: 0,
@@ -130,7 +129,7 @@ impl ABIArgInfo {
     }
 
     #[inline]
-    pub fn direct_pair(lo: ABIType, hi: ABIType) -> Self {
+    pub fn direct_pair(lo: CIRType, hi: CIRType) -> Self {
         Self {
             param_index_start: 0,
             param_index_end: 0,
@@ -140,7 +139,7 @@ impl ABIArgInfo {
     }
 
     #[inline]
-    pub fn indirect(ty: ABIType, alignment: u32) -> Self {
+    pub fn indirect(ty: CIRType, alignment: u32) -> Self {
         Self {
             param_index_start: 0,
             param_index_end: 0,

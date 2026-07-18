@@ -8,20 +8,14 @@ use crate::{
         values::{InternalValue, InternalValueKind},
     },
     c,
-    llvm::{
-        abi::{abi_type::abi_type_to_llvm_type, modifiers::*},
-        debug_info::*,
-    },
+    llvm::{abi::modifiers::*, debug_info::*},
 };
 use cyrusc_ast::{
     abi::{Inlining, Linkage},
     modifiers::FuncModifiers,
 };
 use cyrusc_internal::{
-    abi::{
-        args::{ABIArgInfo, ABIArgKind, ABIFunctionInfo, ABIRetInfoKind, ExpandKind},
-        types::ABIType,
-    },
+    abi::args::{ABIArgInfo, ABIArgKind, ABIFunctionInfo, ABIRetInfoKind, ExpandKind},
     cir::{cir::*, types::*},
 };
 use cyrusc_source_loc::Loc;
@@ -129,14 +123,10 @@ impl<'ll> CodeGenIRBuilder<'ll> {
                     );
                 }
                 ABIArgKind::DirectPair { lo: lo_ty, hi: hi_ty } => {
-                    let coerced_type = self.llvm_ctx.struct_type(
+                    let coerce_ty = self.llvm_ctx.struct_type(
                         &[
-                            abi_type_to_llvm_type(self.llvm_ctx, &self.target.info, lo_ty)
-                                .try_into()
-                                .unwrap(),
-                            abi_type_to_llvm_type(self.llvm_ctx, &self.target.info, hi_ty)
-                                .try_into()
-                                .unwrap(),
+                            self.emit_type(lo_ty.clone()).try_into().unwrap(),
+                            self.emit_type(hi_ty.clone()).try_into().unwrap(),
                         ],
                         false,
                     );
@@ -156,14 +146,14 @@ impl<'ll> CodeGenIRBuilder<'ll> {
 
                     let lo_ptr = self
                         .llvmbuilder
-                        .build_struct_gep(coerced_type, param_alloca, 0, "lo.ptr")
+                        .build_struct_gep(coerce_ty, param_alloca, 0, "lo.ptr")
                         .unwrap();
 
                     self.llvmbuilder.build_store(lo_ptr, lo).unwrap();
 
                     let hi_ptr = self
                         .llvmbuilder
-                        .build_struct_gep(coerced_type, param_alloca, 1, "hi.ptr")
+                        .build_struct_gep(coerce_ty, param_alloca, 1, "hi.ptr")
                         .unwrap();
 
                     self.llvmbuilder.build_store(hi_ptr, hi).unwrap();
@@ -405,12 +395,8 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         let cir_ret_type = self.zero_return_type_for_void_main_function();
         let abi_ret_info = cir_func_type.abi_func_info.as_mut().unwrap();
 
-        let layout = self.tctx.layout_of(&cir_ret_type);
-        let int_width = layout.size * 8;
-
         cir_func_type.ret_type = Box::new(cir_ret_type.clone());
         abi_ret_info.ret_info.cir_ret_type = Box::new(cir_ret_type);
-        abi_ret_info.ret_info.abi_type = ABIType::Integer(int_width);
         abi_ret_info.ret_info.kind = ABIRetInfoKind::Direct { coerce_to: None };
     }
 
@@ -451,7 +437,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
 
     pub(crate) fn emit_abi_arg(
         &mut self,
-        params_types: &[ABIType],
+        params_types: &[CIRType],
         abi_arg_info: &ABIArgInfo,
         lvalue: &InternalValue<'ll>,
         rvalue: &InternalValue<'ll>,
@@ -465,7 +451,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
                 self.emit_direct_pair_arg(out, lvalue, lo, hi);
             }
             ABIArgKind::DirectCoerce { ty } => {
-                self.emit_direct_coerce_arg(out, rvalue, ty);
+                self.emit_direct_coerce_arg(out, rvalue, &ty);
             }
             ABIArgKind::Expand { kind } => {
                 self.emit_expand_arg(out, rvalue, kind, &params_types);
@@ -474,7 +460,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
                 self.emit_extend_arg(out, rvalue.clone(), signed);
             }
             ABIArgKind::Indirect { align, ty } => {
-                self.emit_indirect_arg(out, rvalue, align, ty.clone(), abi_arg_info);
+                self.emit_indirect_arg(out, rvalue, align, &ty, abi_arg_info);
             }
             ABIArgKind::Ignore => {
                 // skip zero-sized types
@@ -486,7 +472,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         &mut self,
         args: &Vec<CIRExpr>,
         params_infos: &[ABIArgInfo],
-        params_types: &[ABIType],
+        params_types: &[CIRType],
         cir_params_types: &[CIRType],
     ) -> Vec<BasicMetadataValueEnum<'ll>> {
         let mut args_values = Vec::with_capacity(args.len());
@@ -519,7 +505,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
                         self.emit_direct_pair_arg(&mut args_values, &rvalue, lo, hi);
                     }
                     ABIArgKind::DirectCoerce { ty } => {
-                        self.emit_direct_coerce_arg(&mut args_values, &rvalue, ty);
+                        self.emit_direct_coerce_arg(&mut args_values, &rvalue, &ty);
                     }
                     _ => args_values.push(rvalue.as_basic_value().into()),
                 }
@@ -529,15 +515,10 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         args_values
     }
 
-    pub(crate) fn emit_abi_pair_llvm_type(&self, lo: &ABIType, hi: &ABIType) -> StructType<'ll> {
-        let lo_ty: BasicTypeEnum<'ll> = abi_type_to_llvm_type(self.llvm_ctx, &self.target.info, lo)
-            .try_into()
-            .unwrap();
-
-        let hi_ty: BasicTypeEnum<'ll> = abi_type_to_llvm_type(self.llvm_ctx, &self.target.info, hi)
-            .try_into()
-            .unwrap();
-
+    #[inline]
+    pub(crate) fn emit_abi_pair_llvm_type(&self, lo: &CIRType, hi: &CIRType) -> StructType<'ll> {
+        let lo_ty: BasicTypeEnum<'ll> = self.emit_type(lo.clone()).try_into().unwrap();
+        let hi_ty: BasicTypeEnum<'ll> = self.emit_type(hi.clone()).try_into().unwrap();
         self.llvm_ctx.struct_type(&[lo_ty.into(), hi_ty.into()], false)
     }
 
@@ -545,11 +526,11 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         &mut self,
         args_values: &mut Vec<BasicMetadataValueEnum<'ll>>,
         rvalue: &InternalValue<'ll>,
-        coerce_to: Option<ABIType>,
+        coerce_to: Option<CIRType>,
     ) {
-        if let Some(target_ty) = coerce_to {
+        if let Some(coerce_ty) = coerce_to {
             let coerced: BasicValueEnum<'ll> = self
-                .emit_cast_func_arg(rvalue.as_basic_value(), &rvalue.ty, target_ty.clone())
+                .emit_cast_func_arg(rvalue.as_basic_value(), &rvalue.ty.clone(), coerce_ty)
                 .try_into()
                 .unwrap();
 
@@ -564,26 +545,22 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         &mut self,
         args: &mut Vec<BasicMetadataValueEnum<'ll>>,
         value: &InternalValue<'ll>,
-        lo: ABIType,
-        hi: ABIType,
+        lo: CIRType,
+        hi: CIRType,
     ) {
         match &value.kind {
             InternalValueKind::LValue(ptr) => {
-                let pair_ty = self.emit_abi_pair_llvm_type(&lo, &hi);
+                let pair = self.emit_abi_pair_llvm_type(&lo, &hi);
 
-                let lo_ty: BasicTypeEnum<'ll> = abi_type_to_llvm_type(self.llvm_ctx, &self.target.info, &lo)
-                    .try_into()
-                    .unwrap();
+                let lo_ty: BasicTypeEnum<'ll> = self.emit_type(lo).try_into().unwrap();
 
-                let lo_ptr = self.llvmbuilder.build_struct_gep(pair_ty, *ptr, 0, "lo.ptr").unwrap();
+                let lo_ptr = self.llvmbuilder.build_struct_gep(pair, *ptr, 0, "lo.ptr").unwrap();
 
                 let lo_val = self.llvmbuilder.build_load(lo_ty, lo_ptr, "lo").unwrap();
 
-                let hi_ty: BasicTypeEnum<'ll> = abi_type_to_llvm_type(self.llvm_ctx, &self.target.info, &hi)
-                    .try_into()
-                    .unwrap();
+                let hi_ty: BasicTypeEnum<'ll> = self.emit_type(hi).try_into().unwrap();
 
-                let hi_ptr = self.llvmbuilder.build_struct_gep(pair_ty, *ptr, 1, "hi.ptr").unwrap();
+                let hi_ptr = self.llvmbuilder.build_struct_gep(pair, *ptr, 1, "hi.ptr").unwrap();
 
                 let hi_val = self.llvmbuilder.build_load(hi_ty, hi_ptr, "hi").unwrap();
 
@@ -647,14 +624,14 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         &mut self,
         args_values: &mut Vec<BasicMetadataValueEnum<'ll>>,
         rvalue: &InternalValue<'ll>,
-        coerce_to: ABIType,
+        coerce_to: &CIRType,
     ) {
-        let coerced: BasicMetadataValueEnum<'ll> = self
-            .emit_cast_func_arg(rvalue.as_basic_value(), &rvalue.ty, coerce_to)
+        let value: BasicMetadataValueEnum<'ll> = self
+            .emit_cast_func_arg(rvalue.as_basic_value(), &rvalue.ty.clone(), coerce_to.clone())
             .try_into()
             .unwrap();
 
-        args_values.push(coerced.into());
+        args_values.push(value.into());
     }
 
     fn emit_expand_arg(
@@ -662,7 +639,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         args_values: &mut Vec<BasicMetadataValueEnum<'ll>>,
         rvalue: &InternalValue<'ll>,
         kind: ExpandKind,
-        param_types: &[ABIType],
+        param_types: &[CIRType],
     ) {
         let struct_value = rvalue.as_basic_value().into_struct_value();
         let fields_cir_types = rvalue.ty.struct_or_union_fields(&self.tctx).unwrap();
@@ -670,7 +647,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         match kind {
             ExpandKind::Simple => {
                 // simple expansion, extract all fields
-                let num_fields = struct_value.count_fields();
+                let num_fields = fields_cir_types.len() as u32;
 
                 for i in 0..num_fields {
                     let field_value = self
@@ -698,9 +675,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
                     .build_extract_value(struct_value, 0, "expand.lo")
                     .unwrap();
 
-                let lo_llvm: BasicTypeEnum<'ll> = abi_type_to_llvm_type(self.llvm_ctx, &self.target.info, &lo)
-                    .try_into()
-                    .unwrap();
+                let lo_llvm: BasicTypeEnum<'ll> = self.emit_type(lo).try_into().unwrap();
 
                 let lo_coerced = if lo_llvm == lo_value.get_type() {
                     lo_value
@@ -708,8 +683,13 @@ impl<'ll> CodeGenIRBuilder<'ll> {
                     let field_cir_type = fields_cir_types.get(0).unwrap();
                     let param_type = &param_types[0 as usize];
 
+                    let llvm_param_type = self.emit_type(param_type.clone());
+
                     let casted: BasicValueEnum<'ll> = self
-                        .emit_cast_func_arg(lo_value, field_cir_type, param_type.clone())
+                        .emit_cast(
+                            llvm_param_type,
+                            InternalValue::new(field_cir_type.clone(), InternalValueKind::RValue(lo_value)),
+                        )
                         .try_into()
                         .unwrap();
 
@@ -724,9 +704,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
                     .build_extract_value(struct_value, offset_hi as u32, "expand.hi")
                     .unwrap();
 
-                let hi_llvm: BasicTypeEnum<'ll> = abi_type_to_llvm_type(self.llvm_ctx, &self.target.info, &hi)
-                    .try_into()
-                    .unwrap();
+                let hi_llvm: BasicTypeEnum<'ll> = self.emit_type(hi).try_into().unwrap();
 
                 let hi_coerced = if hi_llvm == hi_value.get_type() {
                     hi_value
@@ -735,7 +713,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
                     let param_type = &param_types[offset_hi as usize];
 
                     let casted: BasicValueEnum<'ll> = self
-                        .emit_cast_func_arg(lo_value, field_cir_type, param_type.clone())
+                        .emit_cast_func_arg(hi_value, field_cir_type, param_type.clone())
                         .try_into()
                         .unwrap();
 
@@ -787,20 +765,18 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         args_values: &mut Vec<BasicMetadataValueEnum<'ll>>,
         rvalue: &InternalValue<'ll>,
         align: u32,
-        ty: ABIType,
+        ty: &CIRType,
         abi_arg_info: &ABIArgInfo,
     ) {
         // pass indirectly via pointer
-        let llvm_ty: BasicTypeEnum<'ll> = abi_type_to_llvm_type(self.llvm_ctx, &self.target.info, &ty)
-            .try_into()
-            .unwrap();
+        let llvm_type: BasicTypeEnum<'ll> = self.emit_type(ty.clone()).try_into().unwrap();
 
         if rvalue.as_basic_value().is_pointer_value() && !abi_arg_info.attrs.by_val {
             // already a pointer, use directly
             args_values.push(rvalue.as_basic_value().into());
         } else {
             // create a copy
-            let alloca = self.llvmbuilder.build_alloca(llvm_ty, "indirect.arg").unwrap();
+            let alloca = self.llvmbuilder.build_alloca(llvm_type, "indirect.arg").unwrap();
 
             if align > 0 {
                 self.llvmbuilder
@@ -842,11 +818,10 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         let mut llvm_param_index_offset = 0;
 
         if abi_func_info.ret_info.kind.is_indirect_sret() {
-            let ret_ty = &abi_func_info.ret_info.abi_type;
-            let llvm_ret_ty = abi_type_to_llvm_type(self.llvm_ctx, &self.target.info, ret_ty);
+            let llvm_ret_type = self.emit_type(*abi_func_info.ret_info.cir_ret_type.clone());
 
             let attr = unsafe {
-                LLVMCreateTypeAttribute(self.llvm_ctx.as_ctx_ref(), sret_attr_kind, llvm_ret_ty.as_type_ref())
+                LLVMCreateTypeAttribute(self.llvm_ctx.as_ctx_ref(), sret_attr_kind, llvm_ret_type.as_type_ref())
             };
 
             unsafe {
@@ -858,8 +833,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
 
         for (i, param_info) in abi_func_info.params_infos.iter().enumerate() {
             if param_info.is_indirect_by_val() {
-                let struct_type = &abi_func_info.params_types[i];
-                let llvm_struct_type = abi_type_to_llvm_type(self.llvm_ctx, &self.target.info, struct_type);
+                let llvm_struct_type = self.emit_type(abi_func_info.params_types[i].clone());
 
                 let attr = unsafe {
                     LLVMCreateTypeAttribute(
@@ -892,11 +866,10 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         let mut llvm_param_index_offset = 0;
 
         if abi_func_info.ret_info.kind.is_indirect_sret() {
-            let ret_ty = &abi_func_info.ret_info.abi_type;
-            let llvm_ret_ty = abi_type_to_llvm_type(self.llvm_ctx, &self.target.info, ret_ty);
+            let llvm_ret_type = self.emit_type(*abi_func_info.ret_info.cir_ret_type.clone());
 
             let attr = unsafe {
-                LLVMCreateTypeAttribute(self.llvm_ctx.as_ctx_ref(), sret_attr_kind, llvm_ret_ty.as_type_ref())
+                LLVMCreateTypeAttribute(self.llvm_ctx.as_ctx_ref(), sret_attr_kind, llvm_ret_type.as_type_ref())
             };
 
             unsafe {
@@ -912,7 +885,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
             }
 
             let param_type = abi_func_info.params_types.get(i).unwrap().clone();
-            let pointee_type = abi_type_to_llvm_type(self.llvm_ctx, &self.target.info, &param_type);
+            let pointee_type = self.emit_type(param_type);
 
             let attr = unsafe {
                 LLVMCreateTypeAttribute(self.llvm_ctx.as_ctx_ref(), byval_attr_kind, pointee_type.as_type_ref())

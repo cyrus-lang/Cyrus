@@ -8,14 +8,13 @@ use crate::{
         irreg::LocalIRValue,
         values::{InternalValue, InternalValueKind},
     },
-    llvm::{abi::abi_type::abi_type_to_llvm_type, constness::is_basic_value_constant, debug_info::set_debug_location},
+    llvm::{constness::is_basic_value_constant, debug_info::set_debug_location},
 };
 use cyrusc_ast::operators::{InfixOperator, PrefixOperator, UnaryOperator};
 use cyrusc_internal::{
     abi::{
         args::ABIFunctionInfo,
         layout::{ABIFieldOffsetInfo, ABITypeLayout},
-        types::ABIType,
     },
     cir::{
         cir::*,
@@ -263,13 +262,10 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         &self,
         value: BasicValueEnum<'ll>,
         from_cir_type: &CIRType,
-        target_type: ABIType,
+        target_type: CIRType,
     ) -> BasicValueEnum<'ll> {
         let from_type = value.get_type();
-        let target_basic_type: BasicTypeEnum<'ll> =
-            abi_type_to_llvm_type(self.llvm_ctx, &self.target.info, &target_type)
-                .try_into()
-                .unwrap();
+        let target_basic_type: BasicTypeEnum<'ll> = self.emit_type(target_type.clone()).try_into().unwrap();
 
         if from_type == target_basic_type {
             return value;
@@ -314,21 +310,25 @@ impl<'ll> CodeGenIRBuilder<'ll> {
                         .unwrap()
                 }
             }
+            
             (BasicTypeEnum::PointerType(_), BasicTypeEnum::IntType(to_int)) => self
                 .llvmbuilder
                 .build_ptr_to_int(value.into_pointer_value(), to_int, "ptr_to_int")
                 .unwrap()
                 .into(),
+            
             (BasicTypeEnum::IntType(_), BasicTypeEnum::PointerType(to_ptr)) => self
                 .llvmbuilder
                 .build_int_to_ptr(value.into_int_value(), to_ptr, "int_to_ptr")
                 .unwrap()
                 .into(),
+            
             (BasicTypeEnum::FloatType(_), BasicTypeEnum::FloatType(to_float)) => self
                 .llvmbuilder
                 .build_float_cast(value.into_float_value(), to_float, "fpext")
                 .unwrap()
                 .into(),
+            
             (BasicTypeEnum::IntType(_), BasicTypeEnum::FloatType(to_float)) => {
                 if from_cir_type.is_signed_integer() {
                     self.llvmbuilder
@@ -342,24 +342,15 @@ impl<'ll> CodeGenIRBuilder<'ll> {
                         .into()
                 }
             }
+            
             (BasicTypeEnum::PointerType(_), BasicTypeEnum::PointerType(_)) => value,
+            
             (BasicTypeEnum::VectorType(_), BasicTypeEnum::VectorType(_)) => self
                 .llvmbuilder
                 .build_bit_cast(value, target_basic_type, "bitcast")
                 .unwrap(),
-            _ => {
-                let from_size = from_type.size_of();
-                let to_size = target_basic_type.size_of();
 
-                if from_size == to_size {
-                    self.llvmbuilder
-                        .build_bit_cast(value, target_basic_type, "bitcast")
-                        .unwrap()
-                } else {
-                    // fallback
-                    self.intrinsic_coerce_through_alloca(value, target_basic_type, "cast_func_arg")
-                }
-            }
+            _ => self.intrinsic_coerce_through_alloca(value, target_basic_type, "cast_func_arg"),
         }
     }
 
