@@ -1565,6 +1565,7 @@ impl<'a> CIRLower<'a> {
             TypedExprKind::StructInit(struct_init) => self.lower_struct_init(struct_init),
             TypedExprKind::UnionInit(union_init) => self.lower_union_init(union_init),
             TypedExprKind::EnumInit(enum_init) => self.lower_enum_init(enum_init),
+            TypedExprKind::Try(inner) => CIRExprKind::Try(Box::new(self.lower_expr(inner))),
 
             TypedExprKind::Builtin(builtin) => {
                 let stmt = self.lower_builtin(builtin).first().cloned().unwrap();

@@ -99,6 +99,7 @@ pub fn is_expr_const_evaluable(expr: &TypedExprKind) -> bool {
         | TypedExprKind::FuncCall(_)
         | TypedExprKind::Assign(_)
         | TypedExprKind::Dynamic(_)
+        | TypedExprKind::Try(_)
         | TypedExprKind::AddrOf(_) => false,
 
         // IMPORTANT:

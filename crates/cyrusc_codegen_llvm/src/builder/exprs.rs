@@ -63,6 +63,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
             CIRExprKind::Call(call) => self.emit_call(call),
             CIRExprKind::Lambda(lambda) => self.emit_lambda(lambda),
             CIRExprKind::Dynamic(dynamic) => self.emit_dynamic_expr(dynamic),
+            CIRExprKind::Try(inner) => self.emit_try(inner),
 
             CIRExprKind::Type(_) => unreachable!(),
         };
@@ -2375,6 +2376,138 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         };
 
         InternalValue::new(lit.ty.clone(), InternalValueKind::RValue(basic_value))
+    }
+
+    fn emit_try(&mut self, inner_expr: &CIRExpr) -> InternalValue<'ll> {
+        let cur_fn = self.cur_func.unwrap();
+
+        let object_name = match &inner_expr.ty {
+            CIRType::Struct(type_id) => {
+                let struct_type = self.tctx.get_struct(*type_id);
+                struct_type.name.clone().unwrap_or_default()
+            }
+            CIRType::Enum(type_id) => {
+                let enum_type = self.tctx.get_enum(*type_id);
+                enum_type.name.clone().unwrap_or_default()
+            }
+            CIRType::Union(type_id) => {
+                let union_type = self.tctx.get_union(*type_id);
+                union_type.name.clone().unwrap_or_default()
+            }
+            _ => panic!("Expected a struct, enum, or union for Try operand"),
+        };
+
+        let mut is_error_info = None;
+        let mut extract_error_info = None;
+        let mut extract_value_info = None;
+
+        for (&irv_id, func_decl) in &self.cir_module.func_decls {
+            let name = &func_decl.name;
+            if let Some(dot_idx) = name.rfind('.') {
+                let struct_part = &name[..dot_idx];
+                let method_part = &name[dot_idx + 1..];
+                if struct_part == object_name || struct_part.ends_with(&format!("${}", object_name)) {
+                    if method_part == "is_error" {
+                        is_error_info = Some((irv_id, func_decl.clone()));
+                    } else if method_part == "extract_error" {
+                        extract_error_info = Some((irv_id, func_decl.clone()));
+                    } else if method_part == "extract_value" {
+                        extract_value_info = Some((irv_id, func_decl.clone()));
+                    }
+                }
+            }
+            if let Some(double_underscore_idx) = name.rfind("__") {
+                let struct_part = &name[..double_underscore_idx];
+                let method_part = &name[double_underscore_idx + 2..];
+                if struct_part == object_name || struct_part.ends_with(&format!("_{}", object_name)) {
+                    if method_part == "is_error" {
+                        is_error_info = Some((irv_id, func_decl.clone()));
+                    } else if method_part == "extract_error" {
+                        extract_error_info = Some((irv_id, func_decl.clone()));
+                    } else if method_part == "extract_value" {
+                        extract_value_info = Some((irv_id, func_decl.clone()));
+                    }
+                }
+            }
+        }
+
+        if is_error_info.is_none() {
+            for (&irv_id, func_decl) in &self.cir_module.func_decls {
+                let name = &func_decl.name;
+                if name.contains(&object_name) {
+                    if name.ends_with("is_error") {
+                        is_error_info = Some((irv_id, func_decl.clone()));
+                    } else if name.ends_with("extract_error") {
+                        extract_error_info = Some((irv_id, func_decl.clone()));
+                    } else if name.ends_with("extract_value") {
+                        extract_value_info = Some((irv_id, func_decl.clone()));
+                    }
+                }
+            }
+        }
+
+        let (is_error_id, is_error_decl) = is_error_info.expect("is_error method not found");
+        let (extract_error_id, extract_error_decl) = extract_error_info.expect("extract_error method not found");
+        let (extract_value_id, extract_value_decl) = extract_value_info.expect("extract_value method not found");
+
+        let is_error_func_type = cir_func_decl_as_func_type(&is_error_decl);
+        let extract_error_func_type = cir_func_decl_as_func_type(&extract_error_decl);
+        let extract_value_func_type = cir_func_decl_as_func_type(&extract_value_decl);
+
+        let mut call_method = |builder: &mut Self, irv_id: IRValueID, func_type: CIRFuncType, ret_type: CIRType, name: String| {
+            let is_referenced = func_type.params.first().map_or(false, |ty| ty.is_pointer());
+            builder.emit_call(&CIRCall {
+                args: vec![],
+                ret_type,
+                dispatch: CIRCallDispatch::Method {
+                    irv_id,
+                    func_type,
+                    abi_name: name,
+                    self_meta: Some(CIRCallMethodSelfMetadata {
+                        operand: Box::new(inner_expr.clone()),
+                        use_fat_ptr_data: false,
+                        is_referenced,
+                    }),
+                },
+                loc: inner_expr.loc,
+            })
+        };
+
+        let is_error_res = call_method(
+            self,
+            is_error_id,
+            is_error_func_type,
+            is_error_decl.ret_type.clone(),
+            is_error_decl.name.clone()
+        );
+
+        let is_error_bool = self.load_rvalue(is_error_res).as_basic_value().into_int_value();
+
+        let early_return_block = self.llvm_ctx.append_basic_block(cur_fn, "try.early_return");
+        let cont_block = self.llvm_ctx.append_basic_block(cur_fn, "try.cont");
+
+        self.llvmbuilder.build_conditional_branch(is_error_bool, early_return_block, cont_block).unwrap();
+
+        self.emit_block(early_return_block);
+        let error_val = call_method(
+            self,
+            extract_error_id,
+            extract_error_func_type,
+            extract_error_decl.ret_type.clone(),
+            extract_error_decl.name.clone()
+        );
+        self.emit_return_value(error_val);
+
+        self.emit_block(cont_block);
+        let success_val = call_method(
+            self,
+            extract_value_id,
+            extract_value_func_type,
+            extract_value_decl.ret_type.clone(),
+            extract_value_decl.name.clone()
+        );
+
+        success_val
     }
 
     pub(crate) fn emit_null(&self, ty: CIRType) -> InternalValue<'ll> {

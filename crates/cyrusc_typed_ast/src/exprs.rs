@@ -65,6 +65,7 @@ pub enum TypedExprKind {
     SemaType { ty: SemaType, loc: Loc },
 
     Poisoned, // semantically wrong
+    Try(Box<TypedExpr>),
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -520,6 +521,7 @@ impl TypedExprKind {
             | TypedExprKind::EnumInit(_)
             | TypedExprKind::SemaType { .. } => false,
 
+            TypedExprKind::Try(_) => true,
             TypedExprKind::Poisoned => unreachable!(),
         }
     }

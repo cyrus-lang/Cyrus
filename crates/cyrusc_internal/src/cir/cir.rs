@@ -95,6 +95,7 @@ pub enum CIRExprKind {
     Dynamic(CIRDynamicExpr),
     Call(CIRCall),
     Type(CIRType),
+    Try(Box<CIRExpr>),
 }
 
 #[derive(Debug, Clone)]

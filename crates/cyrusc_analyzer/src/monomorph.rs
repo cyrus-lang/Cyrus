@@ -592,6 +592,9 @@ impl<'a> AnalysisContext<'a> {
             TypedExprKind::Dynamic(dynamic) => {
                 self.specialize_expr(&mut dynamic.operand, decl_map);
             }
+            TypedExprKind::Try(inner) => {
+                self.specialize_expr(inner, decl_map);
+            }
 
             TypedExprKind::Builtin(builtin) => match builtin {
                 TypedBuiltin::BuiltinFunc(builtin_func) => {

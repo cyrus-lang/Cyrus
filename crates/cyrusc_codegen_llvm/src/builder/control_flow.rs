@@ -832,6 +832,46 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         }
     }
 
+    pub(crate) fn emit_return_value(&mut self, err_val: InternalValue<'ll>) {
+        let cur_fn = self.cur_func.unwrap();
+        let cur_abi_func_info = self.cur_abi_func_info.clone().unwrap();
+        let ret_info = &cur_abi_func_info.ret_info;
+
+        match &ret_info.kind {
+            ABIRetInfoKind::Ignore => {
+                self.emit_all_defers();
+                self.llvmbuilder.build_return(None).unwrap();
+            }
+            ABIRetInfoKind::Indirect { sret } => {
+                let rvalue = self.load_rvalue(err_val.clone());
+                if *sret {
+                    self.emit_compute_indirect_sret(cur_fn, &err_val, &rvalue);
+                    self.emit_all_defers();
+                    self.llvmbuilder.build_return(None).unwrap();
+                }
+            }
+            ABIRetInfoKind::Direct { coerce_to } => {
+                let rvalue = self.load_rvalue(err_val);
+                let ret_ty = abi_type_to_llvm_type(self.llvm_ctx, &self.target.info, &ret_info.abi_type);
+                let value: BasicValueEnum<'ll> = if let Some(coerce) = coerce_to {
+                    let coerce_ty = abi_type_to_llvm_type(self.llvm_ctx, &self.target.info, coerce);
+                    self.emit_cast(coerce_ty, rvalue).try_into().unwrap()
+                } else {
+                    self.emit_cast(ret_ty, rvalue).try_into().unwrap()
+                };
+                let return_value = self.intrinsic_coerce_through_alloca(value, ret_ty.try_into().unwrap(), "coerce.ret");
+                self.emit_all_defers();
+                self.llvmbuilder.build_return(Some(&return_value)).unwrap();
+            }
+            ABIRetInfoKind::DirectPair { lo, hi } => {
+                let rvalue = self.load_rvalue(err_val);
+                let return_value = self.emit_compute_return_direct_pair(rvalue, lo, hi, &ret_info.abi_type);
+                self.emit_all_defers();
+                self.llvmbuilder.build_return(Some(&return_value)).unwrap();
+            }
+        }
+    }
+
     fn emit_implicit_return_zero(&mut self) {
         if let Some(cur_block) = &self.blockreg.cur_block {
             self.llvmbuilder.position_at_end(*cur_block);

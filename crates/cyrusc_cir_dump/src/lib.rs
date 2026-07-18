@@ -538,6 +538,7 @@ impl<'a> CIRPrinter<'a> {
             }
 
             CIRExprKind::Type(ty) => self.print_type(ty),
+            CIRExprKind::Try(inner) => format!("try {}", self.print_expr(inner)),
         }
     }
 

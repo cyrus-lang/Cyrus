@@ -121,6 +121,10 @@ impl<'a> AnalysisContext<'a> {
             TypedExprKind::ArrayIndex(array_index) => self.analyze_array_index(array_index),
             TypedExprKind::FieldAccess(field_access) => self.analyze_field_access(field_access),
             TypedExprKind::TupleAccess(tuple_access) => self.analyze_tuple_access(tuple_access, expected_type.clone()),
+            TypedExprKind::Try(inner) => {
+                self.analyze_expr(inner, None);
+                expr.ty.clone()
+            }
 
             TypedExprKind::Builtin(builtin) => match builtin {
                 TypedBuiltin::BuiltinFunc(builtin_func) => self.analyze_builtin_expr(builtin_func),
@@ -229,6 +233,7 @@ impl<'a> AnalysisContext<'a> {
             | TypedExprKind::Literal(_)
             | TypedExprKind::Unary(_)
             | TypedExprKind::Prefix(_)
+            | TypedExprKind::Try(_)
             | TypedExprKind::Infix(_) => ValueCategory::RValue,
 
             TypedExprKind::Builtin(_) => ValueCategory::RValue,

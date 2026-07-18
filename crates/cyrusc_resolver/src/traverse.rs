@@ -668,7 +668,7 @@ impl<'a> Resolver<'a> {
 
         if let Some((success_type, _error_type)) = try_args {
             Some(TypedExpr {
-                kind: TypedExprKind::Poisoned,
+                kind: TypedExprKind::Try(Box::new(inner)),
                 ty: Some(success_type),
                 val_cat: ValueCategory::RValue,
                 analyzed: false,

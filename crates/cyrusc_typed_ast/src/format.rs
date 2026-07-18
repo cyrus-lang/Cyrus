@@ -361,6 +361,7 @@ pub fn format_typed_expr(expr: &TypedExpr, formatter: &dyn Formatter) -> String 
         SemaType { ty, .. } => format_sema_type(ty.clone(), formatter),
         
         Poisoned => unreachable!(),
+        Try(inner) => format!("try {}", format_typed_expr(inner, formatter)),
     }
 }
 
