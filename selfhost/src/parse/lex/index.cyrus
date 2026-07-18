@@ -76,7 +76,21 @@ pub struct Lexer {
                 switch (char) {
                     case '\0' => return .EOF;
 
-                    case 'a'..='z' | 'A'..='Z' | '_' => return self->read_ident_or_prefix();
+                    case 'a'..='z' | 'A'..='Z' | '_' => {
+                        var ident = String.new(self->allocator);
+
+                        while (is_alpha(self->cur())) {
+                            ident.push(self->cur());
+                            self->read();
+                        }
+
+                        return .Ident(ident);
+
+                        // @todo();
+                        // return .Plus;
+
+                        // return self->read_ident_or_prefix();
+                    }
                     case '0'..='9' => return self->read_integer();
                     case '"' => return self->read_str();
                     case '\'' => return self->read_char();

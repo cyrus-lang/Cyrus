@@ -26,12 +26,11 @@ pub struct TokenPool {
     }
 
     pub fn free(self) {
-        const token = self.tokens.get(0).unwrap();
-
         for (var i: usize = 0; i < self.tokens.len(); i++) {
+            const token = self.tokens.get(i).unwrap();
+
             switch (token.kind) {
                 case .Ident(ident) => {
-                    printf("read_ident: %p\n", ident.as_str());
                     ident.free();
                 }
             }
