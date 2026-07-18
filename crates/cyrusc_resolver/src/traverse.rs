@@ -32,6 +32,7 @@ use cyrusc_typed_ast::exprs::*;
 use cyrusc_typed_ast::stmts::*;
 use cyrusc_typed_ast::types::*;
 use cyrusc_typed_ast::*;
+use cyrusc_typed_ast::format::Formatter;
 use fx_hash::FxHashSet;
 use fx_hash::FxHashSetExt;
 use std::collections::HashMap;
@@ -651,18 +652,112 @@ impl<'a> Resolver<'a> {
     }
 
     fn resolve_try_expr(&mut self, inner_expr: &ASTExpr) -> Option<TypedExpr> {
-        let _comptime_env = &self.comptime_env;
         let inner = self.resolve_expr(inner_expr)?;
         let loc = inner.loc;
-        let inner_ty = inner.ty.clone();
+        let inner_ty = inner.ty.clone()?;
 
-        Some(TypedExpr {
-            kind: TypedExprKind::Poisoned,
-            ty: inner_ty,
-            val_cat: ValueCategory::RValue,
-            analyzed: false,
-            loc,
-        })
+        let mut try_args = None;
+        if let Some(impls) = self.get_type_impls(&inner_ty) {
+            for imp in &impls {
+                if let Some(args) = self.extract_try_interface_args(&imp.ty) {
+                    try_args = Some(args);
+                    break;
+                }
+            }
+        }
+
+        if let Some((success_type, _error_type)) = try_args {
+            Some(TypedExpr {
+                kind: TypedExprKind::Poisoned,
+                ty: Some(success_type),
+                val_cat: ValueCategory::RValue,
+                analyzed: false,
+                loc,
+            })
+        } else {
+            self.reporter.report(Diag {
+                level: DiagLevel::Error,
+                kind: Box::new(cyrusc_diagcentral::CustomDiagKind::Custom(format!(
+                    "Type '{}' does not implement the Try interface",
+                    cyrusc_typed_ast::format::format_sema_type(inner_ty.clone(), self)
+                ))),
+                loc: Some(loc),
+                hint: None,
+            });
+            None
+        }
+    }
+
+    fn extract_try_interface_args(&self, ty: &SemaType) -> Option<(SemaType, SemaType)> {
+        match ty {
+            SemaType::Named(named) => {
+                if let TypeDeclID::Interface(interface_decl_id) = named.type_decl_id {
+                    let interface_decl = self.decl_tables.interface_decl(interface_decl_id);
+                    if interface_decl.name == "Try" {
+                        let args = &named.type_args.0;
+                        if args.len() == 2 {
+                            if let (TypedTypeArg::Type(t, _), TypedTypeArg::Type(e, _)) = (&args[0], &args[1]) {
+                                return Some((t.clone(), e.clone()));
+                            }
+                        }
+                    }
+                }
+            }
+            SemaType::Unresolved(UnresolvedType::GenericInst { base_symbol_id, type_args }) => {
+                let name = self.format_symbol_name(*base_symbol_id);
+                if name == "Try" {
+                    let args = &type_args.0;
+                    if args.len() == 2 {
+                        if let (TypedTypeArg::Type(t, _), TypedTypeArg::Type(e, _)) = (&args[0], &args[1]) {
+                            return Some((t.clone(), e.clone()));
+                        }
+                    }
+                }
+            }
+            _ => {}
+        }
+        None
+    }
+
+    fn get_type_impls(&self, ty: &SemaType) -> Option<Vec<TypedImplementInterface>> {
+        match ty {
+            SemaType::Named(named_type) => {
+                match named_type.type_decl_id {
+                    TypeDeclID::Struct(struct_decl_id) => {
+                        let struct_decl = self.decl_tables.struct_decl(struct_decl_id);
+                        Some(struct_decl.impls.clone())
+                    }
+                    TypeDeclID::Enum(enum_decl_id) => {
+                        let enum_decl = self.decl_tables.enum_decl(enum_decl_id);
+                        Some(enum_decl.impls.clone())
+                    }
+                    TypeDeclID::Union(union_decl_id) => {
+                        let union_decl = self.decl_tables.union_decl(union_decl_id);
+                        Some(union_decl.impls.clone())
+                    }
+                    _ => None,
+                }
+            }
+            SemaType::Unresolved(UnresolvedType::Decl(symbol_id)) => {
+                let symbol_entry = self.lookup_symbol_entry(*symbol_id)?;
+                match &symbol_entry.kind {
+                    SymbolEntryKind::Struct(struct_decl_id) => {
+                        let struct_decl = self.decl_tables.struct_decl(*struct_decl_id);
+                        Some(struct_decl.impls.clone())
+                    }
+                    SymbolEntryKind::Enum(enum_decl_id) => {
+                        let enum_decl = self.decl_tables.enum_decl(*enum_decl_id);
+                        Some(enum_decl.impls.clone())
+                    }
+                    SymbolEntryKind::Union(union_decl_id) => {
+                        let union_decl = self.decl_tables.union_decl(*union_decl_id);
+                        Some(union_decl.impls.clone())
+                    }
+                    _ => None,
+                }
+            }
+            _ => None,
+        }
     }
 
     fn resolve_intrinsic_expr(&mut self, kind: &IntrinsicKind) -> Option<TypedExpr> {
