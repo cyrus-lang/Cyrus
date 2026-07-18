@@ -4,7 +4,7 @@
 use crate::abi::{ReprAttr, Visibility};
 use crate::modifiers::{EnumModifiers, FuncModifiers, GlobalVarModifiers, StructModifiers, UnionModifiers};
 use crate::operators::{InfixOperator, PrefixOperator, UnaryOperator};
-use cyrusc_source_loc::Loc;
+use cyrusc_source_loc::{Loc, FileID};
 use cyrusc_tokens::TokenKind;
 use cyrusc_tokens::{Token, literals::ASTLiteralExpr};
 use std::fmt;
@@ -1630,3 +1630,44 @@ impl Eq for GenericInst {}
 impl Eq for SelfType {}
 impl Eq for EnumVariantStructField {}
 impl Eq for EnumVariantTupleField {}
+
+impl ASTExpr {
+    pub fn loc(&self) -> Loc {
+        match self {
+            ASTExpr::Ident(ident) => ident.loc,
+            ASTExpr::TypeSpecifier(type_spec) => type_spec.loc(),
+            ASTExpr::ModuleImport(module_import) => module_import.loc,
+            ASTExpr::Builtin(builtin) => builtin.loc(),
+            ASTExpr::Assign(assign) => assign.loc,
+            ASTExpr::Literal(literal) => literal.loc,
+            ASTExpr::Prefix(prefix) => prefix.loc,
+            ASTExpr::Infix(infix) => infix.loc,
+            ASTExpr::Unary(unary) => unary.loc,
+            ASTExpr::Array(array) => array.loc,
+            ASTExpr::UntypedArray(untyped_array) => untyped_array.loc,
+            ASTExpr::ArrayIndex(array_index) => array_index.loc,
+            ASTExpr::AddrOf(addr_of) => addr_of.loc,
+            ASTExpr::Deref(deref) => deref.loc,
+            ASTExpr::StructInit(struct_init) => struct_init.loc,
+            ASTExpr::FuncCall(func_call) => func_call.loc,
+            ASTExpr::FieldAccess(field_access) => field_access.loc,
+            ASTExpr::MethodCall(method_call) => method_call.loc,
+            ASTExpr::Lambda(lambda) => lambda.loc,
+            ASTExpr::Tuple(tuple) => tuple.loc,
+            ASTExpr::TupleAccess(tuple_access) => tuple_access.loc,
+            ASTExpr::Dynamic(dynamic) => dynamic.loc,
+            ASTExpr::EnumStructVariantInit(enum_struct_variant_init) => enum_struct_variant_init.loc,
+            ASTExpr::UnnamedStructValue(unnamed_struct_value) => unnamed_struct_value.loc,
+            ASTExpr::UnnamedUnionValue(unnamed_union_value) => unnamed_union_value.loc,
+            ASTExpr::UnnamedEnumValue(unnamed_enum_value) => unnamed_enum_value.loc,
+            ASTExpr::Try(expr) => expr.loc(),
+            ASTExpr::Intrinsic(intrinsic) => match intrinsic {
+                IntrinsicKind::InfoOf(type_spec) => type_spec.loc(),
+                IntrinsicKind::Type(args) => args.first().map(|e| e.loc()).unwrap_or_else(|| Loc::default(FileID(0))),
+                IntrinsicKind::Field(expr, _ident) => expr.loc(),
+                IntrinsicKind::CompileError(expr) => expr.loc(),
+            },
+        }
+    }
+}
+

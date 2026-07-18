@@ -16,7 +16,7 @@ use cyrusc_diagcentral::DiagLevel;
 use cyrusc_internal::local_scope::LocalScope;
 use cyrusc_internal::symbols::SymbolQuery;
 use cyrusc_internal::symbols::symbols::*;
-use cyrusc_source_loc::Loc;
+use cyrusc_source_loc::{Loc, FileID};
 use cyrusc_tokens::Token;
 use cyrusc_tokens::TokenKind;
 use cyrusc_tokens::literals::{ASTLiteralExpr, LiteralKind, StringPrefix};
@@ -34,6 +34,37 @@ use cyrusc_typed_ast::types::*;
 use cyrusc_typed_ast::*;
 use fx_hash::FxHashSet;
 use fx_hash::FxHashSetExt;
+use std::collections::HashMap;
+
+#[derive(Debug, Default)]
+pub struct ComptimeEnv {
+    pub static_values: HashMap<String, ComptimeValue>,
+}
+
+#[derive(Debug, Clone)]
+pub enum ComptimeValue {
+    Int(i128),
+    Bool(bool),
+    Str(String),
+    Void,
+}
+
+impl ComptimeEnv {
+    pub fn new() -> Self {
+        Self {
+            static_values: HashMap::new(),
+        }
+    }
+
+    pub fn define(&mut self, name: String, value: ComptimeValue) {
+        self.static_values.insert(name, value);
+    }
+
+    pub fn lookup(&self, name: &str) -> Option<&ComptimeValue> {
+        self.static_values.get(name)
+    }
+}
+
 
 // Resolver endpoints.
 impl<'a> Resolver<'a> {
@@ -436,8 +467,86 @@ impl<'a> Resolver<'a> {
 
             ASTExpr::TypeSpecifier(type_spec) => self.resolve_type_specifier_expr(type_spec),
 
-            ASTExpr::Try(_) => todo!("comptime try expression resolution (Phase 2)"),
-            ASTExpr::Intrinsic(_) => todo!("comptime intrinsic resolution (Phase 2)"),
+            ASTExpr::Try(inner_expr) => self.resolve_try_expr(inner_expr),
+
+            ASTExpr::Intrinsic(intrinsic_kind) => self.resolve_intrinsic_expr(intrinsic_kind),
+        }
+    }
+
+    fn resolve_try_expr(&mut self, inner_expr: &ASTExpr) -> Option<TypedExpr> {
+        let _comptime_env = &self.comptime_env;
+        let inner = self.resolve_expr(inner_expr)?;
+        let loc = inner.loc;
+        let inner_ty = inner.ty.clone();
+
+        Some(TypedExpr {
+            kind: TypedExprKind::Poisoned,
+            ty: inner_ty,
+            val_cat: ValueCategory::RValue,
+            analyzed: false,
+            loc,
+        })
+    }
+
+    fn resolve_intrinsic_expr(&mut self, kind: &IntrinsicKind) -> Option<TypedExpr> {
+        let _comptime_env = &self.comptime_env;
+
+        match kind {
+            IntrinsicKind::InfoOf(type_spec) => {
+                let loc = type_spec.loc();
+                let _resolved_ty = self.resolve_type(type_spec.clone(), loc);
+
+                Some(TypedExpr {
+                    kind: TypedExprKind::Poisoned,
+                    ty: Some(SemaType::Plain(PlainType::Void)),
+                    val_cat: ValueCategory::RValue,
+                    analyzed: false,
+                    loc,
+                })
+            }
+
+            IntrinsicKind::Type(args) => {
+                let loc = args.first().map(|e| e.loc()).unwrap_or_else(|| Loc::default(self.current_module_file_id.unwrap_or(FileID(0))));
+
+                for arg in args {
+                    let _ = self.resolve_expr(arg);
+                }
+
+                Some(TypedExpr {
+                    kind: TypedExprKind::Poisoned,
+                    ty: Some(SemaType::Plain(PlainType::Void)),
+                    val_cat: ValueCategory::RValue,
+                    analyzed: false,
+                    loc,
+                })
+            }
+
+            IntrinsicKind::Field(operand_expr, _field_ident) => {
+                let _resolved_operand = self.resolve_expr(operand_expr);
+                let loc = operand_expr.loc();
+
+                Some(TypedExpr {
+                    kind: TypedExprKind::Poisoned,
+                    ty: None,
+                    val_cat: ValueCategory::Unknown,
+                    analyzed: false,
+                    loc,
+                })
+            }
+
+            IntrinsicKind::CompileError(msg_expr) => {
+                let _resolved_msg = self.resolve_expr(msg_expr);
+                let loc = msg_expr.loc();
+
+                self.reporter.report(Diag {
+                    level: DiagLevel::Error,
+                    kind: Box::new(ResolverDiagKind::InvalidStatement),
+                    loc: Some(loc),
+                    hint: Some("@compile_error raised at compile time.".to_string()),
+                });
+
+                None
+            }
         }
     }
 

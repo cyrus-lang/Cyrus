@@ -94,6 +94,7 @@ pub struct Resolver<'a> {
 
     // ID allocator for all compiler entities
     pub(crate) id_gen: IDGen,
+    pub(crate) comptime_env: traverse::ComptimeEnv,
 }
 
 pub struct ResolvedProgramTree {
@@ -132,6 +133,7 @@ impl<'a> Resolver<'a> {
             module_symbols: HashMap::new(),
             current_module_file_id: None,
             current_object_symbol_id: None,
+            comptime_env: traverse::ComptimeEnv::new(),
         }
     }
 
