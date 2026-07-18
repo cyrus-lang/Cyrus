@@ -63,6 +63,135 @@ impl ComptimeEnv {
     pub fn lookup(&self, name: &str) -> Option<&ComptimeValue> {
         self.static_values.get(name)
     }
+
+    pub fn evaluate_info_of(&self, type_spec: &TypeSpecifier) -> ASTExpr {
+        let (size, align) = self.compute_size_and_align(type_spec);
+        let loc = type_spec.loc();
+
+        let size_field = UnnamedStructValueField {
+            name: Ident::new("size", loc),
+            value: Box::new(ASTExpr::Literal(ASTLiteralExpr {
+                kind: LiteralKind::Integer(cyrusc_tokens::literals::IntLiteralKind::Unsigned(size as u128), None),
+                loc,
+            })),
+            loc,
+        };
+
+        let align_field = UnnamedStructValueField {
+            name: Ident::new("align", loc),
+            value: Box::new(ASTExpr::Literal(ASTLiteralExpr {
+                kind: LiteralKind::Integer(cyrusc_tokens::literals::IntLiteralKind::Unsigned(align as u128), None),
+                loc,
+            })),
+            loc,
+        };
+
+        ASTExpr::UnnamedStructValue(ASTUnnamedStructValueExpr {
+            fields: vec![size_field, align_field],
+            repr_attr: None,
+            align: None,
+            loc,
+        })
+    }
+
+    fn compute_size_and_align(&self, type_spec: &TypeSpecifier) -> (usize, usize) {
+        match type_spec {
+            TypeSpecifier::TypeToken(token) => {
+                match token.kind {
+                    TokenKind::Int8 | TokenKind::UInt8 | TokenKind::Bool | TokenKind::Char => (1, 1),
+                    TokenKind::Int16 | TokenKind::UInt16 | TokenKind::Float16 => (2, 2),
+                    TokenKind::Int32 | TokenKind::UInt32 | TokenKind::Float32 | TokenKind::Int => (4, 4),
+                    TokenKind::Int64 | TokenKind::UInt64 | TokenKind::Float64 | TokenKind::IntPtr | TokenKind::UIntPtr | TokenKind::ISize | TokenKind::USize => (8, 8),
+                    TokenKind::Int128 | TokenKind::UInt128 | TokenKind::Float128 => (16, 16),
+                    TokenKind::Void => (0, 1),
+                    _ => (8, 8),
+                }
+            }
+            TypeSpecifier::Const(inner) => self.compute_size_and_align(inner),
+            TypeSpecifier::Deref(_) => (8, 8),
+            TypeSpecifier::Array(arr) => {
+                let (elem_size, elem_align) = self.compute_size_and_align(&arr.element_type);
+                let cap = match &arr.size {
+                    ArrayCapacity::Fixed(expr) => {
+                        if let ASTExpr::Literal(lit) = expr.as_ref() {
+                            if let LiteralKind::Integer(val, _) = &lit.kind {
+                                val.as_int()
+                            } else {
+                                1
+                            }
+                        } else {
+                            1
+                        }
+                    }
+                    ArrayCapacity::Dynamic => 0,
+                };
+                if cap == 0 {
+                    (16, 8)
+                } else {
+                    (elem_size * cap, elem_align)
+                }
+            }
+            TypeSpecifier::Tuple(tuple) => {
+                let mut size = 0;
+                let mut align = 1;
+                for ty in &tuple.type_list {
+                    let (elem_size, elem_align) = self.compute_size_and_align(ty);
+                    align = align.max(elem_align);
+                    size = (size + elem_align - 1) / elem_align * elem_align;
+                    size += elem_size;
+                }
+                size = (size + align - 1) / align * align;
+                (size, align)
+            }
+            _ => (8, 8),
+        }
+    }
+
+    pub fn evaluate_type(&self, args: &[ASTExpr], resolver: &mut Resolver) -> Option<()> {
+        if args.len() < 2 {
+            return None;
+        }
+
+        let alias_name = match &args[0] {
+            ASTExpr::Ident(ident) => ident.value.clone(),
+            ASTExpr::Literal(lit) => match &lit.kind {
+                LiteralKind::String(val, _) => val.clone(),
+                _ => return None,
+            }
+            _ => return None,
+        };
+
+        let type_spec = match &args[1] {
+            ASTExpr::TypeSpecifier(type_spec) => type_spec.clone(),
+            _ => return None,
+        };
+
+        let loc = args[0].loc();
+        let current_scope = resolver.current_scope.unwrap();
+
+        let symbol_id = resolver.global_symbols.insert_symbol_entry(SymbolEntry::unresolved(
+            Some(Visibility::Public),
+            Some(current_scope),
+            Some(loc),
+        ));
+        resolver.global_symbols.insert_symbol_name(current_scope, symbol_id, &alias_name);
+
+        let sema_type = resolver.resolve_type(type_spec.clone(), loc)?;
+
+        let typedef_decl_id = resolver.decl_tables.insert_typedef(TypedefDecl {
+            name: alias_name.clone(),
+            generic_params: TypedGenericParams::new(),
+            ty: Box::new(sema_type.clone()),
+            vis: Visibility::Public,
+            loc,
+        });
+
+        resolver.with_global_symbol_mut(symbol_id, |symbol_entry| {
+            symbol_entry.kind = SymbolEntryKind::Typedef(typedef_decl_id);
+        });
+
+        Some(())
+    }
 }
 
 
@@ -493,24 +622,16 @@ impl<'a> Resolver<'a> {
 
         match kind {
             IntrinsicKind::InfoOf(type_spec) => {
-                let loc = type_spec.loc();
-                let _resolved_ty = self.resolve_type(type_spec.clone(), loc);
-
-                Some(TypedExpr {
-                    kind: TypedExprKind::Poisoned,
-                    ty: Some(SemaType::Plain(PlainType::Void)),
-                    val_cat: ValueCategory::RValue,
-                    analyzed: false,
-                    loc,
-                })
+                let ast_struct = self.comptime_env.evaluate_info_of(type_spec);
+                self.resolve_expr(&ast_struct)
             }
 
             IntrinsicKind::Type(args) => {
                 let loc = args.first().map(|e| e.loc()).unwrap_or_else(|| Loc::default(self.current_module_file_id.unwrap_or(FileID(0))));
 
-                for arg in args {
-                    let _ = self.resolve_expr(arg);
-                }
+                let comptime_env = std::mem::take(&mut self.comptime_env);
+                let _ = comptime_env.evaluate_type(args, self);
+                self.comptime_env = comptime_env;
 
                 Some(TypedExpr {
                     kind: TypedExprKind::Poisoned,
