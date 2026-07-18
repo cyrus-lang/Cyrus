@@ -99,6 +99,14 @@ pub enum TokenKind {
     False,
     Null,
     As,
+    Comptime,
+    Try,
+
+    // Intrinsics
+    IntrinsicInfoOf,
+    IntrinsicType,
+    IntrinsicField,
+    IntrinsicCompileError,
 
     // Types
     UIntPtr,
@@ -299,6 +307,12 @@ impl fmt::Display for TokenKind {
             TokenKind::Enum => write!(f, "enum"),
             TokenKind::In => write!(f, "in"),
             TokenKind::As => write!(f, "as"),
+            TokenKind::Comptime => write!(f, "comptime"),
+            TokenKind::Try => write!(f, "try"),
+            TokenKind::IntrinsicInfoOf => write!(f, "@info_of"),
+            TokenKind::IntrinsicType => write!(f, "@type"),
+            TokenKind::IntrinsicField => write!(f, "@field"),
+            TokenKind::IntrinsicCompileError => write!(f, "@compile_error"),
             TokenKind::Extern => write!(f, "extern"),
             TokenKind::Inline => write!(f, "inline"),
             TokenKind::Public => write!(f, "pub"),

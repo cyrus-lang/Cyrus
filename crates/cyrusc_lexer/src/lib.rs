@@ -175,7 +175,7 @@ impl<'source_map, 'source_file> Lexer<'source_map, 'source_file> {
 
             ',' => self.single(TokenKind::Comma),
             ';' => self.single(TokenKind::Semicolon),
-            '@' => self.single(TokenKind::At),
+            '@' => return self.read_at_intrinsic(),
 
             _ => self.invalid_char(),
         }
@@ -193,6 +193,28 @@ impl<'source_map, 'source_file> Lexer<'source_map, 'source_file> {
         }
 
         self.read_ident()
+    }
+
+    fn read_at_intrinsic(&mut self) -> TokenKind {
+        self.read_char(); // consume '@'
+
+        if !self.ch.is_alphabetic() && self.ch != '_' {
+            return TokenKind::At;
+        }
+
+        let mut name = String::new();
+        while self.ch.is_alphanumeric() || self.ch == '_' {
+            name.push(self.ch);
+            self.read_char();
+        }
+
+        match name.as_str() {
+            "info_of" => TokenKind::IntrinsicInfoOf,
+            "type" => TokenKind::IntrinsicType,
+            "field" => TokenKind::IntrinsicField,
+            "compile_error" => TokenKind::IntrinsicCompileError,
+            _ => TokenKind::At,
+        }
     }
 
     fn read_colon(&mut self) -> TokenKind {
@@ -769,6 +791,8 @@ fn lookup_identifier(ident: String) -> TokenKind {
         "false" => TokenKind::False,
         "null" => TokenKind::Null,
         "as" => TokenKind::As,
+        "comptime" => TokenKind::Comptime,
+        "try" => TokenKind::Try,
         "in" => TokenKind::In,
         "enum" => TokenKind::Enum,
         "void" => TokenKind::Void,
