@@ -24,6 +24,14 @@ pub struct ProgramTree {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub enum IntrinsicKind {
+    InfoOf(TypeSpecifier),
+    Type(Vec<ASTExpr>),
+    Field(Box<ASTExpr>, Ident),
+    CompileError(Box<ASTExpr>),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ASTExpr {
     Ident(Ident),
     TypeSpecifier(TypeSpecifier),
@@ -51,6 +59,8 @@ pub enum ASTExpr {
     UnnamedStructValue(ASTUnnamedStructValueExpr),
     UnnamedUnionValue(ASTUnnamedUnionValueExpr),
     UnnamedEnumValue(ASTUnnamedEnumValueExpr),
+    Try(Box<ASTExpr>),
+    Intrinsic(IntrinsicKind),
 }
 
 #[derive(Debug, Clone)]
@@ -695,6 +705,7 @@ pub struct ASTFuncDeclStmt {
     pub ret_type: Option<TypeSpecifier>,
     pub modifiers: FuncModifiers,
     pub renamed_as: Option<Ident>,
+    pub is_comptime: bool,
     pub loc: Loc,
 }
 
@@ -985,6 +996,7 @@ impl ASTFuncDefStmt {
             ret_type: self.ret_type.clone(),
             modifiers: self.modifiers.clone(),
             renamed_as: None,
+            is_comptime: false,
             loc: self.loc,
         }
     }

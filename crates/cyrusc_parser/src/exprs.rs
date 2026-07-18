@@ -1449,7 +1449,12 @@ fn can_start_expr(kind: &TokenKind) -> bool {
         | TokenKind::LeftParen
         | TokenKind::LeftBrace
         | TokenKind::Increment
-        | TokenKind::Decrement => true,
+        | TokenKind::Decrement
+        | TokenKind::Try
+        | TokenKind::IntrinsicInfoOf
+        | TokenKind::IntrinsicType
+        | TokenKind::IntrinsicField
+        | TokenKind::IntrinsicCompileError => true,
 
         TokenKind::Undefined
         | TokenKind::Static
@@ -1507,6 +1512,7 @@ fn can_start_expr(kind: &TokenKind) -> bool {
         | TokenKind::In
         | TokenKind::Enum
         | TokenKind::As
+        | TokenKind::Comptime
         | TokenKind::UIntPtr
         | TokenKind::IntPtr
         | TokenKind::ISize

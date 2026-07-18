@@ -424,6 +424,13 @@ impl fmt::Display for ASTExpr {
             }
             ASTExpr::UnnamedStructValue(unnamed_struct_value) => write!(f, "{}", unnamed_struct_value),
             ASTExpr::UnnamedUnionValue(unnamed_union_value) => write!(f, "{}", unnamed_union_value),
+            ASTExpr::Try(operand) => write!(f, "try {}", operand),
+            ASTExpr::Intrinsic(kind) => match kind {
+                IntrinsicKind::InfoOf(ty) => write!(f, "@info_of<{}>", ty),
+                IntrinsicKind::Type(args) => write!(f, "@type({})", format_expr_series(args)),
+                IntrinsicKind::Field(operand, field) => write!(f, "@field({}, {})", operand, field),
+                IntrinsicKind::CompileError(msg) => write!(f, "@compile_error({})", msg),
+            },
         }
     }
 }

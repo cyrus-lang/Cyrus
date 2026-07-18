@@ -435,6 +435,9 @@ impl<'a> Resolver<'a> {
             },
 
             ASTExpr::TypeSpecifier(type_spec) => self.resolve_type_specifier_expr(type_spec),
+
+            ASTExpr::Try(_) => todo!("comptime try expression resolution (Phase 2)"),
+            ASTExpr::Intrinsic(_) => todo!("comptime intrinsic resolution (Phase 2)"),
         }
     }
 

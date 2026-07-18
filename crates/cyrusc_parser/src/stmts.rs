@@ -1581,6 +1581,7 @@ impl<'source_file> Parser<'source_file> {
                 ret_type: None,
                 modifiers,
                 renamed_as: None,
+                is_comptime: false,
                 loc: Loc::new(self.file_id(), line, column, start, end),
             }));
         } else if self.current_token_is(TokenKind::As) {
@@ -1598,6 +1599,7 @@ impl<'source_file> Parser<'source_file> {
                 ret_type: None,
                 modifiers,
                 renamed_as: Some(renamed_as),
+                is_comptime: false,
                 loc: Loc::new(self.file_id(), line, column, start, end),
             }));
         } else {
@@ -1615,6 +1617,7 @@ impl<'source_file> Parser<'source_file> {
                 ret_type,
                 modifiers,
                 renamed_as: None,
+                is_comptime: false,
                 loc: Loc::new(self.file_id(), line, column, start, end),
             }));
         } else if self.current_token_is(TokenKind::As) {
@@ -1642,6 +1645,7 @@ impl<'source_file> Parser<'source_file> {
                 ret_type,
                 modifiers,
                 renamed_as: Some(renamed_as),
+                is_comptime: false,
                 loc: Loc::new(self.file_id(), line, column, start, end),
             }));
         }
