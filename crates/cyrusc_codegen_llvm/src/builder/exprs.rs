@@ -2281,7 +2281,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
 
             let sret_ptr = {
                 if self.is_return && self.cur_sret.is_some() {
-                    // we are in a return statement and this function has an SRet param
+                    // We are in a return statement and this function has an SRet param
                     // pass the current function's SRet pointer directly
                     self.cur_sret.unwrap()
                 } else {
