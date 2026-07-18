@@ -202,6 +202,12 @@ impl<'source_map, 'source_file> Lexer<'source_map, 'source_file> {
             return TokenKind::At;
         }
 
+        let saved_pos = self.pos;
+        let saved_next_pos = self.next_pos;
+        let saved_ch = self.ch;
+        let saved_line = self.line;
+        let saved_column = self.column;
+
         let mut name = String::new();
         while self.ch.is_alphanumeric() || self.ch == '_' {
             name.push(self.ch);
@@ -213,7 +219,14 @@ impl<'source_map, 'source_file> Lexer<'source_map, 'source_file> {
             "type" => TokenKind::IntrinsicType,
             "field" => TokenKind::IntrinsicField,
             "compile_error" => TokenKind::IntrinsicCompileError,
-            _ => TokenKind::At,
+            _ => {
+                self.pos = saved_pos;
+                self.next_pos = saved_next_pos;
+                self.ch = saved_ch;
+                self.line = saved_line;
+                self.column = saved_column;
+                TokenKind::At
+            }
         }
     }
 
