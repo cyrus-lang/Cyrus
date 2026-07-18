@@ -368,6 +368,8 @@ impl CIRTypeContext {
             }
 
             CIRType::Dynamic(_) => CIRTypeKey::Dynamic,
+
+            CIRType::Vector { .. } => unreachable!(),
         }
     }
 }
@@ -403,6 +405,13 @@ impl CIRTypeContext {
 impl CIRTypeContext {
     pub fn layout_of(&self, ty: &CIRType) -> ABITypeLayout {
         match ty.const_inner() {
+            CIRType::Vector { element_type, lanes } => {
+                let element_layout = self.layout_of(element_type);
+                let size = element_layout.size * *lanes;
+                let align = element_layout.align;
+                ABITypeLayout::normal(size, align, Vec::new())
+            }
+
             CIRType::Struct(type_id) | CIRType::Union(type_id) | CIRType::Enum(type_id) => {
                 self.get_or_compute_layout(*type_id)
             }

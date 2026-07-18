@@ -8,10 +8,9 @@ use crate::{
         values::{InternalValue, InternalValueKind},
     },
     c,
-    llvm::abi::abi_type::abi_type_to_llvm_type,
 };
 use cyrusc_internal::{
-    abi::{args::ABIRetInfoKind, layout::ABITypeLayout, types::ABIType},
+    abi::{args::ABIRetInfoKind, layout::ABITypeLayout},
     cir::{
         cir::{
             CIRBlockStmt, CIRBreakStmt, CIRContinueStmt, CIRForStmt, CIRGotoStmt, CIRIfStmt, CIRLabelStmt, CIRPattern,
@@ -805,17 +804,17 @@ impl<'ll> CodeGenIRBuilder<'ll> {
                 let lvalue = self.emit_expr(expr, &Some(*ret_info.cir_ret_type.clone()));
                 let rvalue = self.load_rvalue(lvalue);
 
-                let ret_ty = abi_type_to_llvm_type(self.llvm_ctx, &self.target.info, &ret_info.abi_type);
+                let ret_type = self.emit_type(*ret_info.cir_ret_type.clone());
 
-                let value: BasicValueEnum<'ll> = if let Some(coerce) = coerce_to {
-                    let coerce_ty = abi_type_to_llvm_type(self.llvm_ctx, &self.target.info, coerce);
+                let value: BasicValueEnum<'ll> = if let Some(ty) = coerce_to {
+                    let coerce_ty = self.emit_type(ty.clone());
                     self.emit_cast(coerce_ty, rvalue).try_into().unwrap()
                 } else {
-                    self.emit_cast(ret_ty, rvalue).try_into().unwrap()
+                    self.emit_cast(ret_type, rvalue).try_into().unwrap()
                 };
 
                 let return_value =
-                    self.intrinsic_coerce_through_alloca(value, ret_ty.try_into().unwrap(), "coerce.ret");
+                    self.intrinsic_coerce_through_alloca(value, ret_type.try_into().unwrap(), "coerce.ret");
 
                 self.emit_all_defers();
                 self.llvmbuilder.build_return(Some(&return_value)).unwrap();
@@ -824,7 +823,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
                 let lvalue = self.emit_expr(expr, &Some(*ret_info.cir_ret_type.clone()));
                 let rvalue = self.load_rvalue(lvalue);
 
-                let return_value = self.emit_compute_return_direct_pair(rvalue, lo, hi, &ret_info.abi_type);
+                let return_value = self.emit_compute_return_direct_pair(rvalue, lo, hi, &ret_info.cir_ret_type);
 
                 self.emit_all_defers();
                 self.llvmbuilder.build_return(Some(&return_value)).unwrap();
@@ -912,32 +911,25 @@ impl<'ll> CodeGenIRBuilder<'ll> {
     fn emit_compute_return_direct_pair(
         &mut self,
         rvalue: InternalValue<'ll>,
-        lo: &ABIType,
-        hi: &ABIType,
-        abi_ret_type: &ABIType,
+        lo: &CIRType,
+        hi: &CIRType,
+        ret_type: &CIRType,
     ) -> BasicValueEnum<'ll> {
         let struct_value = match rvalue.kind {
             InternalValueKind::RValue(val) => val.into_struct_value(),
             _ => unreachable!("direct pair return value must be an rvalue"),
         };
 
-        let lo_ty: BasicTypeEnum<'ll> = abi_type_to_llvm_type(self.llvm_ctx, &self.target.info, lo)
-            .try_into()
-            .unwrap();
-
-        let hi_ty: BasicTypeEnum<'ll> = abi_type_to_llvm_type(self.llvm_ctx, &self.target.info, hi)
-            .try_into()
-            .unwrap();
+        let lo_ty: BasicTypeEnum<'ll> = self.emit_type(lo.clone()).try_into().unwrap();
+        let hi_ty: BasicTypeEnum<'ll> = self.emit_type(hi.clone()).try_into().unwrap();
 
         let pair_type = self.emit_abi_pair_llvm_type(lo, hi);
 
-        let ret_struct_type: StructType<'ll> = abi_type_to_llvm_type(self.llvm_ctx, &self.target.info, abi_ret_type)
-            .try_into()
-            .unwrap();
+        let struct_type: StructType<'ll> = self.emit_type(ret_type.clone()).try_into().unwrap();
 
         // optimization: if the source struct and return struct have the same type,
         // we can return the value directly without extraction and rebuilding
-        if struct_value.get_type() == ret_struct_type {
+        if struct_value.get_type() == struct_type {
             return struct_value.into();
         }
 
@@ -962,11 +954,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
 
         let hi_val = self.llvmbuilder.build_load(hi_ty, hi_ptr, "ret.hi").unwrap();
 
-        let ret_struct_ty: StructType = abi_type_to_llvm_type(self.llvm_ctx, &self.target.info, abi_ret_type)
-            .try_into()
-            .unwrap();
-
-        let mut pair_struct = ret_struct_ty.get_undef();
+        let mut pair_struct = struct_type.get_undef();
 
         pair_struct = self
             .llvmbuilder

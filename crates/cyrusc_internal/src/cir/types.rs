@@ -24,6 +24,9 @@ pub enum CIRType {
     FuncType(CIRFuncType),
     Array(CIRArrayType),
     Dynamic(CIRDynamicType),
+
+    // Used only in ABI, Not supported yet in the language.
+    Vector { element_type: Box<CIRType>, lanes: u32 },
 }
 
 #[derive(Debug, Clone, PartialEq)]

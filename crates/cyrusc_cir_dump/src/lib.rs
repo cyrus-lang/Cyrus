@@ -585,6 +585,8 @@ impl<'a> CIRPrinter<'a> {
 
     fn print_type(&mut self, ty: &CIRType) -> String {
         match ty {
+            CIRType::Vector { .. } => unreachable!(),
+
             CIRType::Plain(plain_type) => plain_type.to_string(),
 
             CIRType::Const(inner) => format!("const {}", self.print_type(inner)),
