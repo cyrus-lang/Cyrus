@@ -311,6 +311,21 @@ impl<'source_file> Parser<'source_file> {
                 })
             }
 
+            TokenKind::Try => {
+                self.next_token(); // consume try
+
+                let operand = self.parse_expr(Precedence::Prefix)?;
+
+                return Ok(ASTExpr::Try(Box::new(operand)));
+            }
+
+            TokenKind::IntrinsicInfoOf
+            | TokenKind::IntrinsicType
+            | TokenKind::IntrinsicField
+            | TokenKind::IntrinsicCompileError => {
+                return self.parse_intrinsic_expr();
+            }
+
             _ => {
                 let type_spec = self.parse_type_specifier()?;
 
@@ -419,6 +434,58 @@ impl<'source_file> Parser<'source_file> {
                 }
             }
         }
+    }
+
+    fn parse_intrinsic_expr(&mut self) -> Result<ASTExpr, Diag> {
+        let intrinsic_token_kind = self.current_token().kind;
+
+        let kind = match intrinsic_token_kind {
+            TokenKind::IntrinsicInfoOf => {
+                self.next_token(); // consume @info_of
+                self.expect_current(TokenKind::LessThan)?;
+                let ty = self.parse_type_specifier()?;
+                self.next_token();
+                self.expect_current(TokenKind::GreaterThan)?;
+                self.expect_current(TokenKind::LeftParen)?;
+                self.expect_current(TokenKind::RightParen)?;
+                IntrinsicKind::InfoOf(ty)
+            }
+
+            TokenKind::IntrinsicType => {
+                self.next_token(); // consume @type
+                let args = self.parse_expr_series(TokenKind::RightParen)?;
+                self.must_be_right_paren()?;
+                IntrinsicKind::Type(args)
+            }
+
+            TokenKind::IntrinsicField => {
+                self.next_token(); // consume @field
+                self.expect_current(TokenKind::LeftParen)?;
+                let operand = self.parse_expr(Precedence::Lowest)?;
+                self.next_token();
+                self.expect_current(TokenKind::Comma)?;
+                let field_name = self.parse_ident()?;
+                self.next_token();
+                self.expect_current(TokenKind::RightParen)?;
+                IntrinsicKind::Field(Box::new(operand), field_name)
+            }
+
+            TokenKind::IntrinsicCompileError => {
+                self.next_token(); // consume @compile_error
+                let args = self.parse_expr_series(TokenKind::RightParen)?;
+                self.must_be_right_paren()?;
+                let msg = args.into_iter().next().ok_or_else(|| {
+                    self.error_at_current(ParserDiagKind::ExpectedExprOrStmt)
+                })?;
+                IntrinsicKind::CompileError(Box::new(msg))
+            }
+
+            _ => return Err(self.error_invalid_token()),
+        };
+
+        let end = self.current_token().loc.end;
+        let _ = end;
+        Ok(ASTExpr::Intrinsic(kind))
     }
 
     fn parse_infix_expr_with_banned(

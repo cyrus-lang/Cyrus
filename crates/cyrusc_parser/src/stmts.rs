@@ -69,9 +69,13 @@ impl<'source_file> Parser<'source_file> {
         if self.current_token_is(TokenKind::Module) {
             let module_decl_modifiers = modifiers.into_module_decl_modifiers(loc)?;
             return Ok(vec![self.parse_module_decl(module_decl_modifiers.vis)?]);
+        } else if self.current_token_is(TokenKind::Comptime) && self.peek_token_is(TokenKind::Function) {
+            self.next_token(); // consume comptime
+            let func_modifiers = modifiers.into_func_modifiers(loc)?;
+            return Ok(vec![self.parse_func(func_modifiers, true)?]);
         } else if self.current_token_is(TokenKind::Function) {
             let func_modifiers = modifiers.into_func_modifiers(loc)?;
-            return Ok(vec![self.parse_func(func_modifiers)?]);
+            return Ok(vec![self.parse_func(func_modifiers, false)?]);
         } else if self.current_token_is(TokenKind::Struct) {
             let struct_modifiers = modifiers.into_struct_modifiers(loc)?;
             return Ok(vec![self.parse_struct(struct_modifiers, false)?]);
@@ -943,7 +947,7 @@ impl<'source_file> Parser<'source_file> {
     }
 
     fn parse_method(&mut self, modifiers: FuncModifiers) -> Result<ASTFuncDefStmt, Diag> {
-        if let ASTStmt::FuncDef(func_def) = self.parse_func(modifiers)? {
+        if let ASTStmt::FuncDef(func_def) = self.parse_func(modifiers, false)? {
             self.next_token(); // consume right brace
 
             Ok(func_def)
@@ -1115,7 +1119,7 @@ impl<'source_file> Parser<'source_file> {
         loop {
             match self.current_token().kind {
                 TokenKind::Function => {
-                    let func_decl = match self.parse_func(FuncModifiers::default())? {
+                    let func_decl = match self.parse_func(FuncModifiers::default(), false)? {
                         ASTStmt::FuncDecl(func_decl) => func_decl,
                         _ => {
                             return Err(self.error_invalid_token());
@@ -1547,7 +1551,7 @@ impl<'source_file> Parser<'source_file> {
         }))
     }
 
-    fn parse_func(&mut self, modifiers: FuncModifiers) -> Result<ASTStmt, Diag> {
+    fn parse_func(&mut self, modifiers: FuncModifiers, is_comptime: bool) -> Result<ASTStmt, Diag> {
         let loc = self.current_token().loc;
         let (line, column, start) = (loc.line, loc.column, loc.start);
 
@@ -1581,7 +1585,7 @@ impl<'source_file> Parser<'source_file> {
                 ret_type: None,
                 modifiers,
                 renamed_as: None,
-                is_comptime: false,
+                is_comptime,
                 loc: Loc::new(self.file_id(), line, column, start, end),
             }));
         } else if self.current_token_is(TokenKind::As) {
@@ -1599,7 +1603,7 @@ impl<'source_file> Parser<'source_file> {
                 ret_type: None,
                 modifiers,
                 renamed_as: Some(renamed_as),
-                is_comptime: false,
+                is_comptime,
                 loc: Loc::new(self.file_id(), line, column, start, end),
             }));
         } else {
@@ -1617,7 +1621,7 @@ impl<'source_file> Parser<'source_file> {
                 ret_type,
                 modifiers,
                 renamed_as: None,
-                is_comptime: false,
+                is_comptime,
                 loc: Loc::new(self.file_id(), line, column, start, end),
             }));
         } else if self.current_token_is(TokenKind::As) {
@@ -1645,7 +1649,7 @@ impl<'source_file> Parser<'source_file> {
                 ret_type,
                 modifiers,
                 renamed_as: Some(renamed_as),
-                is_comptime: false,
+                is_comptime,
                 loc: Loc::new(self.file_id(), line, column, start, end),
             }));
         }
