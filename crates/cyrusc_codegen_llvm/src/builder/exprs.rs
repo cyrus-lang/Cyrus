@@ -120,7 +120,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         let data_ptr = if data_basic_value.is_pointer_value() {
             data_basic_value.into_pointer_value()
         } else {
-            // Value is not addressable → allocate temp
+            // value is not addressable to allocate temp
             let temp = self
                 .llvmbuilder
                 .build_alloca(data_basic_value.get_type(), "dyn.tmp")

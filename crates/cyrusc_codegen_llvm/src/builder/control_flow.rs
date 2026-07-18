@@ -891,7 +891,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         let type_id = struct_type.as_type_id().unwrap();
         let struct_layout = self.tctx.get_or_compute_layout(type_id);
 
-        let size_val = self.llvm_ctx.i64_type().const_int(struct_layout.size as u64, false);
+        let size_value = self.llvm_ctx.i64_type().const_int(struct_layout.size as u64, false);
 
         let src_ptr = match &lvalue.kind {
             InternalValueKind::LValue(ptr) => *ptr,
@@ -905,7 +905,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         };
 
         self.llvmbuilder
-            .build_memcpy(sret_ptr, struct_layout.align, src_ptr, struct_layout.align, size_val)
+            .build_memmove(sret_ptr, struct_layout.align, src_ptr, struct_layout.align, size_value)
             .unwrap();
     }
 
