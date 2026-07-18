@@ -22,12 +22,16 @@ use cyrusc_internal::{
 use cyrusc_source_loc::SourceMap;
 use cyrusc_typed_ast::LabelID;
 use inkwell::{
-    basic_block::BasicBlock, builder::Builder, context::Context, module::Module, targets::TargetMachine,
-    values::FunctionValue,
+    basic_block::BasicBlock,
+    builder::Builder,
+    context::Context,
     llvm_sys::{
         core::{LLVMGetCurrentDebugLocation2, LLVMSetCurrentDebugLocation2},
         prelude::{LLVMBuilderRef, LLVMMetadataRef},
     },
+    module::Module,
+    targets::TargetMachine,
+    values::{FunctionValue, PointerValue},
 };
 use std::{cell::RefCell, collections::HashMap, rc::Rc, sync::Arc};
 
@@ -50,6 +54,10 @@ pub(crate) struct CodeGenIRBuilder<'ll> {
     pub(crate) vtable_registry: Arc<VTableRegistry>,
     pub(crate) source_map: Arc<SourceMap>,
     pub(crate) profile: CompilerOption_Profile,
+
+    // Used to prevent duplicate sret when chained function call happens.
+    pub(crate) cur_sret: Option<PointerValue<'ll>>,
+    pub(crate) is_return: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -97,6 +105,8 @@ impl<'ll> CodeGenIRBuilder<'ll> {
             source_map,
             type_cache: CodegenIRBuilderTypeCache::new(),
             profile,
+            cur_sret: None,
+            is_return: false,
         }
     }
 
@@ -253,11 +263,7 @@ impl DebugLocationGuard {
         let saved_loc = if dctx_exists {
             unsafe {
                 let loc = LLVMGetCurrentDebugLocation2(builder_ref);
-                if !loc.is_null() {
-                    Some(loc)
-                } else {
-                    None
-                }
+                if !loc.is_null() { Some(loc) } else { None }
             }
         } else {
             None
@@ -269,7 +275,10 @@ impl DebugLocationGuard {
             }
         }
 
-        Self { builder: builder_ref, saved_loc }
+        Self {
+            builder: builder_ref,
+            saved_loc,
+        }
     }
 }
 

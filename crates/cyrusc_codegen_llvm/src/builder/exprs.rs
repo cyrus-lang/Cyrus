@@ -2279,10 +2279,19 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         if abi_func_info.ret_info.kind.is_indirect_sret() {
             let sret_type: BasicTypeEnum<'ll> = self.emit_type(*func_type.ret_type.clone()).try_into().unwrap();
 
-            let alloca = self.llvmbuilder.build_alloca(sret_type, "sret").unwrap();
+            let sret_ptr = {
+                if self.is_return && self.cur_sret.is_some() {
+                    // we are in a return statement and this function has an SRet param
+                    // pass the current function's SRet pointer directly
+                    self.cur_sret.unwrap()
+                } else {
+                    // Normal case, allocate a new temporary
+                    self.llvmbuilder.build_alloca(sret_type, "sret").unwrap()
+                }
+            };
 
-            llvm_args.insert(0, alloca.into());
-            sret_alloca = Some(alloca);
+            llvm_args.insert(0, sret_ptr.into());
+            sret_alloca = Some(sret_ptr);
         }
 
         self.emit_func_call_attributes(&abi_func_info, FuncCallKind::Direct(llvm_func_value));
