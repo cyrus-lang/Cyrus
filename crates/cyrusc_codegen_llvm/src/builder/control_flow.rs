@@ -10,6 +10,8 @@ use crate::{
     c,
     llvm::abi::abi_type::abi_type_to_llvm_type,
 };
+use cyrusc_ast::operators::{InfixOperator, PrefixOperator};
+use cyrusc_tokens::literals::IntLiteralKind;
 use cyrusc_internal::{
     abi::{args::ABIRetInfoKind, layout::ABITypeLayout, types::ABIType},
     cir::{
@@ -470,6 +472,103 @@ impl<'ll> CodeGenIRBuilder<'ll> {
 // Loops.
 impl<'ll> CodeGenIRBuilder<'ll> {
     pub(crate) fn emit_for(&mut self, for_stmt: &CIRForStmt) {
+        if let Some((start, end, step, var_id)) = try_get_loop_bounds(for_stmt) {
+            let mut val = start;
+            let mut iterations = Vec::new();
+            let op = match &for_stmt.cond.as_ref().unwrap().kind {
+                CIRExprKind::Infix(infix) => infix.op,
+                _ => unreachable!(),
+            };
+            let check_cond = |i: i64| -> bool {
+                match op {
+                    InfixOperator::Less => i < end,
+                    InfixOperator::LessEqual => i <= end,
+                    InfixOperator::Greater => i > end,
+                    InfixOperator::GreaterEqual => i >= end,
+                    InfixOperator::NotEqual => i != end,
+                    _ => false,
+                }
+            };
+            while check_cond(val) {
+                iterations.push(val);
+                val += step;
+                if iterations.len() > 1000 {
+                    break;
+                }
+            }
+
+            if let Some(initializer) = &for_stmt.initializer {
+                self.emit_var(initializer);
+            }
+
+            let loop_var_ptr = match self.lookup_local_ir_value(var_id).unwrap() {
+                LocalIRValue::LValue(ptr, _) => ptr,
+                _ => panic!("Expected loop variable to be an LValue"),
+            };
+            let val_type = for_stmt.initializer.as_ref().unwrap().ty.clone();
+            let llvm_val_type: BasicTypeEnum<'ll> = self.emit_type(val_type.clone()).try_into().unwrap();
+
+            let exit_block = self.new_basic_block("for.unrolled.exit");
+            let mut body_blocks = Vec::new();
+            for i in 0..iterations.len() {
+                body_blocks.push(self.new_basic_block(&format!("for.unrolled.body.{}", i)));
+            }
+
+            let first_block = body_blocks.first().copied().unwrap_or(exit_block);
+            let cur_block = self.blockreg.cur_block.unwrap();
+            self.emit_block(cur_block);
+            if cur_block.get_terminator().is_none() {
+                self.llvmbuilder.build_unconditional_branch(first_block).unwrap();
+            }
+
+            let loop_defer_depth = self.defer_stack.len();
+
+            for (k, &iteration_val) in iterations.iter().enumerate() {
+                let current_body_bb = body_blocks[k];
+                let next_body_bb = if k + 1 < body_blocks.len() {
+                    body_blocks[k + 1]
+                } else {
+                    exit_block
+                };
+
+                self.blockreg.control_flow_stack.push(ControlRegion::Loop(LoopControlRegion::new(
+                    Some(next_body_bb),
+                    None,
+                    exit_block,
+                    loop_defer_depth,
+                )));
+
+                self.emit_block(current_body_bb);
+
+                let const_val = llvm_val_type.into_int_type().const_int(iteration_val as u64, false);
+                self.emit_store(
+                    loop_var_ptr,
+                    InternalValue::new(val_type.clone(), InternalValueKind::RValue(const_val.into())),
+                    val_type.clone(),
+                );
+
+                self.emit_body(&for_stmt.body);
+
+                if let Some(cur_bb) = &self.blockreg.cur_block {
+                    if cur_bb.get_terminator().is_none() {
+                        self.llvmbuilder.build_unconditional_branch(next_body_bb).unwrap();
+                    }
+                }
+
+                self.blockreg.control_flow_stack.pop();
+            }
+
+            let exit_in_use: bool = unsafe {
+                let first_use: *const LLVMUse = LLVMGetFirstUse(LLVMBasicBlockAsValue(exit_block.as_mut_ptr()));
+                !first_use.is_null()
+            };
+            if exit_in_use || iterations.is_empty() {
+                self.emit_block(exit_block);
+            }
+
+            return;
+        }
+
         let cond_block = for_stmt.cond.as_ref().map(|_| self.new_basic_block("for.cond"));
         let inc_block = for_stmt.increment.as_ref().map(|_| self.new_basic_block("for_inc"));
         let body_block = self.new_basic_block("for.body");
@@ -531,7 +630,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
                 if for_stmt.cond.is_some() {
                     next_block = inc_block.or(cond_block).unwrap_or(exit_block);
                 } else {
-                    next_block = body_block; // unconditional for loop
+                    next_block = body_block;
                 }
 
                 self.llvmbuilder.build_unconditional_branch(next_block).unwrap();
@@ -1146,4 +1245,82 @@ impl<'ll> CodeGenIRBuilder<'ll> {
             BasicBlock::new(llvm_bb).unwrap()
         }
     }
+}
+
+fn get_const_int(expr: &CIRExpr) -> Option<i64> {
+    match &expr.kind {
+        CIRExprKind::Literal(lit) => match &lit.kind {
+            CIRLiteralKind::Integer(IntLiteralKind::Signed(val), _) => Some(*val as i64),
+            CIRLiteralKind::Integer(IntLiteralKind::Unsigned(val), _) => Some(*val as i64),
+            _ => None,
+        }
+        _ => None,
+    }
+}
+
+fn try_get_loop_bounds(for_stmt: &CIRForStmt) -> Option<(i64, i64, i64, IRValueID)> {
+    let initializer = for_stmt.initializer.as_ref()?;
+    let var_id = initializer.irv_id;
+    let start = get_const_int(initializer.expr.as_ref()?)?;
+
+    let cond = for_stmt.cond.as_ref()?;
+    let (end, op) = match &cond.kind {
+        CIRExprKind::Infix(infix) => {
+            let end_val = get_const_int(&infix.rhs)?;
+            (end_val, infix.op)
+        }
+        _ => return None,
+    };
+
+    let step = match &for_stmt.increment.as_ref()?.kind {
+        CIRExprKind::Assign(assign) => {
+            match &assign.rhs.kind {
+                CIRExprKind::Infix(infix) => {
+                    if infix.op == InfixOperator::Plus {
+                        get_const_int(&infix.rhs)?
+                    } else if infix.op == InfixOperator::Minus {
+                        -get_const_int(&infix.rhs)?
+                    } else {
+                        return None;
+                    }
+                }
+                _ => return None,
+            }
+        }
+        CIRExprKind::Prefix(prefix) => {
+            if prefix.op == PrefixOperator::PlusPlus {
+                1
+            } else if prefix.op == PrefixOperator::MinusMinus {
+                -1
+            } else {
+                return None;
+            }
+        }
+        _ => return None,
+    };
+
+    let check_cond = |i: i64| -> bool {
+        match op {
+            InfixOperator::Less => i < end,
+            InfixOperator::LessEqual => i <= end,
+            InfixOperator::Greater => i > end,
+            InfixOperator::GreaterEqual => i >= end,
+            InfixOperator::NotEqual => i != end,
+            _ => false,
+        }
+    };
+
+    if !check_cond(start) {
+        return Some((start, start, step, var_id));
+    }
+    if step == 0 {
+        return None;
+    }
+    if step > 0 && start < end {
+    } else if step < 0 && start > end {
+    } else {
+        return None;
+    }
+
+    Some((start, end, step, var_id))
 }
