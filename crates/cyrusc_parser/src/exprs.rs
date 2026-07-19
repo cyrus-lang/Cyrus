@@ -1471,6 +1471,7 @@ fn can_start_expr(kind: &TokenKind) -> bool {
         | TokenKind::GreaterThan
         | TokenKind::And
         | TokenKind::Or
+        | TokenKind::QuestionQuestion
         | TokenKind::Pipe
         | TokenKind::AmpTilde
         | TokenKind::Caret
@@ -1569,6 +1570,7 @@ fn is_infix_operator(token_kind: &TokenKind) -> bool {
             | TokenKind::GreaterThan
             | TokenKind::And
             | TokenKind::Or
+            | TokenKind::QuestionQuestion
             | TokenKind::Ampersand
             | TokenKind::Pipe
             | TokenKind::Tilde
@@ -1591,6 +1593,7 @@ fn is_comparison_operator(token_kind: &TokenKind) -> bool {
             | TokenKind::GreaterThan
             | TokenKind::And
             | TokenKind::Or
+            | TokenKind::QuestionQuestion
     )
 }
 
@@ -1608,6 +1611,7 @@ fn map_infix_operator(token_kind: &TokenKind) -> Option<InfixOperator> {
         TokenKind::Equal => Some(InfixOperator::Equal),
         TokenKind::NotEqual => Some(InfixOperator::NotEqual),
         TokenKind::Or => Some(InfixOperator::Or),
+        TokenKind::QuestionQuestion => Some(InfixOperator::NullCoalesce),
         TokenKind::And => Some(InfixOperator::And),
         TokenKind::Ampersand => Some(InfixOperator::BitwiseAnd),
         TokenKind::Pipe => Some(InfixOperator::BitwiseOr),

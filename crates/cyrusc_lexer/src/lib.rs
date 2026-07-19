@@ -159,6 +159,7 @@ impl<'source_map, 'source_file> Lexer<'source_map, 'source_file> {
             '>' => return self.read_greater(),
             '&' => return self.read_amp(),
             '|' => return self.read_pipe(),
+            '?' => return self.read_question(),
 
             '~' => self.single(TokenKind::Tilde),
             '*' => self.single(TokenKind::Asterisk),
@@ -294,6 +295,17 @@ impl<'source_map, 'source_file> Lexer<'source_map, 'source_file> {
         } else {
             self.read_char();
             TokenKind::Pipe
+        }
+    }
+
+    fn read_question(&mut self) -> TokenKind {
+        if self.peek_char() == '?' {
+            self.read_char();
+            self.read_char();
+            TokenKind::QuestionQuestion
+        } else {
+            self.read_char();
+            TokenKind::Invalid
         }
     }
 

@@ -14,6 +14,7 @@ pub enum InfixOperator {
     Equal,
     NotEqual,
     Or,
+    NullCoalesce,
     And,
     BitwiseAnd,
     BitwiseOr,
