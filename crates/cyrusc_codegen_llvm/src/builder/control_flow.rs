@@ -10,7 +10,7 @@ use crate::{
     c,
     llvm::abi::abi_type::abi_type_to_llvm_type,
 };
-use cyrusc_ast::operators::{InfixOperator, PrefixOperator};
+use cyrusc_ast::operators::{InfixOperator, PrefixOperator, UnaryOperator};
 use cyrusc_tokens::literals::IntLiteralKind;
 use cyrusc_internal::{
     abi::{args::ABIRetInfoKind, layout::ABITypeLayout, types::ABIType},
@@ -18,6 +18,7 @@ use cyrusc_internal::{
         cir::{
             CIRBlockStmt, CIRBreakStmt, CIRContinueStmt, CIRForStmt, CIRGotoStmt, CIRIfStmt, CIRLabelStmt, CIRPattern,
             CIRReturnStmt, CIRStmt, CIRSwitchStmt, CIRVariantPayload, CIRWhileStmt, IRValueID,
+            CIRExpr, CIRExprKind, CIRLiteral, CIRLiteralKind,
         },
         types::CIRType,
     },
@@ -481,9 +482,9 @@ impl<'ll> CodeGenIRBuilder<'ll> {
             };
             let check_cond = |i: i64| -> bool {
                 match op {
-                    InfixOperator::Less => i < end,
+                    InfixOperator::LessThan => i < end,
                     InfixOperator::LessEqual => i <= end,
-                    InfixOperator::Greater => i > end,
+                    InfixOperator::GreaterThan => i > end,
                     InfixOperator::GreaterEqual => i >= end,
                     InfixOperator::NotEqual => i != end,
                     _ => false,
@@ -1276,9 +1277,9 @@ fn try_get_loop_bounds(for_stmt: &CIRForStmt) -> Option<(i64, i64, i64, IRValueI
         CIRExprKind::Assign(assign) => {
             match &assign.rhs.kind {
                 CIRExprKind::Infix(infix) => {
-                    if infix.op == InfixOperator::Plus {
+                    if infix.op == InfixOperator::Add {
                         get_const_int(&infix.rhs)?
-                    } else if infix.op == InfixOperator::Minus {
+                    } else if infix.op == InfixOperator::Sub {
                         -get_const_int(&infix.rhs)?
                     } else {
                         return None;
@@ -1287,10 +1288,10 @@ fn try_get_loop_bounds(for_stmt: &CIRForStmt) -> Option<(i64, i64, i64, IRValueI
                 _ => return None,
             }
         }
-        CIRExprKind::Prefix(prefix) => {
-            if prefix.op == PrefixOperator::PlusPlus {
+        CIRExprKind::Unary(unary) => {
+            if unary.op == UnaryOperator::PreIncrement || unary.op == UnaryOperator::PostIncrement {
                 1
-            } else if prefix.op == PrefixOperator::MinusMinus {
+            } else if unary.op == UnaryOperator::PreDecrement || unary.op == UnaryOperator::PostDecrement {
                 -1
             } else {
                 return None;
@@ -1301,9 +1302,9 @@ fn try_get_loop_bounds(for_stmt: &CIRForStmt) -> Option<(i64, i64, i64, IRValueI
 
     let check_cond = |i: i64| -> bool {
         match op {
-            InfixOperator::Less => i < end,
+            InfixOperator::LessThan => i < end,
             InfixOperator::LessEqual => i <= end,
-            InfixOperator::Greater => i > end,
+            InfixOperator::GreaterThan => i > end,
             InfixOperator::GreaterEqual => i >= end,
             InfixOperator::NotEqual => i != end,
             _ => false,

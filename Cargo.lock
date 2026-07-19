@@ -339,6 +339,7 @@ dependencies = [
  "cyrusc_internal",
  "cyrusc_scaffold_parser",
  "cyrusc_source_loc",
+ "cyrusc_tokens",
  "cyrusc_tui_utils",
  "cyrusc_typed_ast",
  "fx-hash",

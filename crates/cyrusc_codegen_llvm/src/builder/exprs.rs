@@ -2454,7 +2454,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         let extract_error_func_type = cir_func_decl_as_func_type(&extract_error_decl);
         let extract_value_func_type = cir_func_decl_as_func_type(&extract_value_decl);
 
-        let mut call_method = |builder: &mut Self, irv_id: IRValueID, func_type: CIRFuncType, ret_type: CIRType, name: String| {
+        let call_method = |builder: &mut Self, irv_id: IRValueID, func_type: CIRFuncType, ret_type: CIRType, name: String| {
             let is_referenced = func_type.params.first().map_or(false, |ty| ty.is_pointer());
             builder.emit_call(&CIRCall {
                 args: vec![],

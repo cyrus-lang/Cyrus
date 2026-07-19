@@ -9,6 +9,7 @@ cyrusc_source_loc = { path = "../cyrusc_source_loc", version = "*" }
 cyrusc_typed_ast = { path = "../cyrusc_typed_ast", version = "*" }
 cyrusc_buildmanifest = { path = "../cyrusc_buildmanifest", version = "*" }
 cyrusc_ast = { path = "../cyrusc_ast", version = "*" }
+cyrusc_tokens = { path = "../cyrusc_tokens", version = "*" }
 cyrusc_compiler = { path = "../cyrusc_compiler", version = "*" }
 cyrusc_internal = { path = "../cyrusc_internal", version = "*" }
 cyrusc_diagcentral = { path = "../cyrusc_diagcentral", version = "*" }
