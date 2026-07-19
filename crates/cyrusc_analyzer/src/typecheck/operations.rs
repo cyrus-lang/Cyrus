@@ -437,20 +437,18 @@ impl<'a> AnalysisContext<'a> {
 
     fn analyze_null_coalesce_expr(&mut self, lhs_type: SemaType, rhs_type: SemaType, _loc: Loc) -> Option<SemaType> {
         match (lhs_type.clone(), rhs_type.clone()) {
-            (SemaType::Plain(PlainType::Null), SemaType::Pointer(inner_pointer_type)) => {
-                Some(SemaType::Pointer(inner_pointer_type))
+            (SemaType::Plain(PlainType::Null), SemaType::Pointer(inner))
+            | (SemaType::Pointer(inner), SemaType::Plain(PlainType::Null)) => {
+                Some(SemaType::Pointer(inner))
             }
-            (SemaType::Pointer(inner_pointer_type), SemaType::Plain(PlainType::Null)) => {
-                Some(SemaType::Pointer(inner_pointer_type))
-            }
-            (SemaType::Pointer(inner_pointer_type1), SemaType::Pointer(inner_pointer_type2)) => {
-                if *inner_pointer_type1 == *inner_pointer_type2 {
-                    Some(SemaType::Pointer(inner_pointer_type1))
+            (SemaType::Pointer(inner1), SemaType::Pointer(inner2)) => {
+                if *inner1 == *inner2 {
+                    Some(SemaType::Pointer(inner1))
                 } else {
                     None
                 }
             }
-            (null_sema_ty @ SemaType::Plain(PlainType::Null), SemaType::Plain(PlainType::Null)) => Some(null_sema_ty),
+            (ty @ SemaType::Plain(PlainType::Null), SemaType::Plain(PlainType::Null)) => Some(ty),
             _ => None,
         }
     }
