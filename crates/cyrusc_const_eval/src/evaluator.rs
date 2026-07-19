@@ -208,6 +208,7 @@ impl<'a, R: ConstResolver> ConstEvaluator<'a, R> {
                 InfixOperator::NotEqual => return Ok(ConstValue::Bool(lhs != rhs)),
                 InfixOperator::Or => return Ok(ConstValue::Bool(lhs != 0 || rhs != 0)),
                 InfixOperator::And => return Ok(ConstValue::Bool(lhs != 0 && rhs != 0)),
+                InfixOperator::NullCoalesce => return Err(ConstEvalError::TypeError),
             };
 
             return Ok(ConstValue::Int(result));
