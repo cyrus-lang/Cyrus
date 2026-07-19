@@ -1,0 +1,38 @@
+pub struct ComptimeStringSlice {
+    pub ptr: const uint8*,
+    pub len: usize
+}
+
+pub fn equals(a: const uint8*, b: const uint8*) bool {
+    var i = 0;
+    while (true) {
+        const char_a = a[i];
+        const char_b = b[i];
+        if (char_a != char_b) {
+            return false;
+        }
+        if (char_a == 0) {
+            return true;
+        }
+        i++;
+    }
+}
+
+pub fn length(s: const uint8*) usize {
+    var len: usize = 0;
+    while (s[len] != 0) {
+        len++;
+    }
+    return len;
+}
+
+pub fn slice(s: const uint8*, start: usize, end: usize) ComptimeStringSlice {
+    const len = length(s);
+    if (start > len || end > len || start > end) {
+        @panic("string slice index out of bounds");
+    }
+    return ComptimeStringSlice {
+        ptr: s + start,
+        len: end - start
+    };
+}

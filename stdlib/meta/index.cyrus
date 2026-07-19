@@ -1,0 +1,26 @@
+pub enum TypeKind {
+    Struct,
+    Enum,
+    Union,
+    Integer,
+    Float,
+    Boolean,
+    Pointer,
+    Array,
+    Void
+}
+
+pub struct TypeField {
+    pub name: const uint8*,
+    pub offset: usize,
+    pub type_info: TypeInfo*
+}
+
+pub struct TypeInfo {
+    pub kind: TypeKind,
+    pub size: usize,
+    pub align: usize,
+    pub name: const uint8*,
+    pub fields: TypeField*,
+    pub field_count: usize
+}

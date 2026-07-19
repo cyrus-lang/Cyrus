@@ -1,0 +1,20 @@
+import std::comptime::string;
+
+pub inline fn equals(a: const uint8*, b: const uint8*) bool {
+    return string::equals(a, b);
+}
+
+pub inline fn length(s: const uint8*) usize {
+    return string::length(s);
+}
+
+pub inline fn slice(s: const uint8*, start: usize, end: usize) string::ComptimeStringSlice {
+    return string::slice(s, start, end);
+}
+
+pub comptime fn assert_type_size<T>(expected_size: usize) void {
+    const info = @info_of<T>();
+    if (info.size != expected_size) {
+        @compile_error("Type size mismatch");
+    }
+}

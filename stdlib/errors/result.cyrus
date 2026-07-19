@@ -1,0 +1,41 @@
+import std::errors{Try};
+
+pub enum Result<T, E> : Try<T, E> {
+    Ok(T),
+    Err(E)
+
+    pub fn is_error(&const self) bool {
+        switch (*self) {
+            case .Ok(_) => return false;
+            case .Err(_) => return true;
+        }
+    }
+
+    pub fn extract_error(&const self) E {
+        switch (*self) {
+            case .Err(err) => return err;
+            default => @panic("called `Result.extract_error()` on an `Ok` value");
+        }
+    }
+
+    pub fn extract_value(&const self) T {
+        switch (*self) {
+            case .Ok(val) => return val;
+            default => @panic("called `Result.extract_value()` on an `Err` value");
+        }
+    }
+
+    pub fn unwrap(&const self) T {
+        switch (*self) {
+            case .Ok(val) => return val;
+            case .Err(_) => @panic("called `Result.unwrap()` on an `Err` value");
+        }
+    }
+
+    pub fn unwrap_or(&const self, default: T) T {
+        switch (*self) {
+            case .Ok(val) => return val;
+            case .Err(_) => return default;
+        }
+    }
+}

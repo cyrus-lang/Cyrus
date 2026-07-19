@@ -1,0 +1,7 @@
+pub interface Try<T, E> {
+    fn unwrap(&const self) T;
+    fn unwrap_or(&const self, default: T) T;
+    fn is_error(&const self) bool;
+    fn extract_error(&const self) E;
+    fn extract_value(&const self) T;
+}
