@@ -2,7 +2,7 @@
 // Copyright (c) 2026 The Cyrus Language
 
 use crate::diagnostics::LexicalDiagKind;
-use cyrusc_diagcentral::{Diag, DiagLevel, exit_with_single_diag, reporter::DiagReporter};
+use cyrusc_diagcentral::{Diag, DiagLevel, reporter::DiagReporter};
 use cyrusc_source_loc::{FileID, Loc, SourceFile};
 use cyrusc_strescape::{ESCAPE_CHARS, escape_sequence_to_char, unescape_string};
 use cyrusc_tokens::{
@@ -362,12 +362,14 @@ impl<'source_map, 'source_file> Lexer<'source_map, 'source_file> {
         if self.is_eof() {
             let end = self.pos;
 
-            exit_with_single_diag!(Diag {
+            self.reporter.report(Diag {
                 level: DiagLevel::Error,
                 kind: Box::new(LexicalDiagKind::UnterminatedStringLiteral),
                 loc: Some(Loc::new(self.file_id(), line, column, start, end)),
                 hint: None,
             });
+            self.read_char();
+            return TokenKind::Invalid;
         }
 
         let value = if self.ch == '\\' {
