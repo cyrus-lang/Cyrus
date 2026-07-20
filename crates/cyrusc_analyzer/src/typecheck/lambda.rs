@@ -25,7 +25,8 @@ impl<'a> AnalysisContext<'a> {
         func_type = self
             .expand_sema_type(SemaType::FuncType(func_type), lambda.loc)
             .as_func_type()
-            .unwrap().clone();
+            .unwrap()
+            .clone();
 
         let func_name = "<unnamed>";
 

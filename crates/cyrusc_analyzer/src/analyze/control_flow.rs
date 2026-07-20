@@ -610,22 +610,25 @@ impl<'a> AnalysisContext<'a> {
     pub(crate) fn analyze_return(&mut self, ret: &mut TypedReturnStmt) -> FlowState {
         let func_type = self.func_env.current_func.clone().unwrap();
 
-        let mut ret_type = match {
+        let ret_type = &*func_type.ret_type;
+
+        let mut arg_type = {
             if let Some(arg) = &mut ret.arg {
-                self.analyze_expr(arg, Some(*func_type.ret_type.clone()))
+                if let Some(ty) = self.analyze_expr(arg, Some(ret_type.clone())) {
+                    ty
+                } else {
+                    return FlowState::Reachable;
+                }
             } else {
                 // void as fallback return type
-                Some(SemaType::Plain(PlainType::Void))
+                SemaType::Plain(PlainType::Void)
             }
-        } {
-            Some(ty) => ty,
-            None => return FlowState::Reachable,
         };
 
         // expand return type
-        ret_type = self.expand_sema_type(ret_type.clone(), ret.loc);
+        arg_type = self.expand_sema_type(arg_type.clone(), ret.loc);
 
-        if ret_type.is_void() && ret.arg.is_some() {
+        if arg_type.is_void() && ret.arg.is_some() {
             self.reporter.report(Diag {
                 level: DiagLevel::Error,
                 kind: Box::new(AnalyzerDiagKind::VoidFunctionReturnsValue),
@@ -638,7 +641,7 @@ impl<'a> AnalysisContext<'a> {
                     self.reporter.report(Diag {
                         level: DiagLevel::Error,
                         kind: Box::new(AnalyzerDiagKind::ReturnStatementTypeMismatch {
-                            expected: format_sema_type(ret_type.const_inner().clone(), self.formatter),
+                            expected: format_sema_type(arg_type.const_inner().clone(), self.formatter),
                             got: format_sema_type(expr_type.const_inner().clone(), self.formatter),
                         }),
                         loc: Some(ret.loc),
@@ -646,8 +649,8 @@ impl<'a> AnalysisContext<'a> {
                     });
                 }
             }
-        } else if !ret_type.is_void() && ret.arg.is_none() {
-            let argument_type = format_sema_type(ret_type.clone(), self.formatter);
+        } else if !arg_type.is_void() && ret.arg.is_none() {
+            let argument_type = format_sema_type(arg_type.clone(), self.formatter);
 
             self.reporter.report(Diag {
                 level: DiagLevel::Error,
