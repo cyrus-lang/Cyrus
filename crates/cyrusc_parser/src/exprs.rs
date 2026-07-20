@@ -724,8 +724,20 @@ impl<'source_file> Parser<'source_file> {
 
         self.next_token(); // consume function
         let params = self.parse_func_params()?;
-        let ret_type = self.parse_type_specifier()?;
-        self.next_token(); // last token of return type
+
+        let ret_type = {
+            if self.current_token_is(TokenKind::LeftBrace) {
+                let end = self.current_token().loc.end;
+                TypeSpecifier::TypeToken(Token {
+                    kind: TokenKind::Void,
+                    loc: Loc::new(self.file_id(), line, column, start, end),
+                })
+            } else {
+                let type_spec = self.parse_type_specifier()?;
+                self.next_token(); // last token of return type     
+                type_spec
+            }
+        };
 
         let body = self.parse_block()?;
 
