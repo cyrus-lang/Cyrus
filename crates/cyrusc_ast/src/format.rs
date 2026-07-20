@@ -308,6 +308,7 @@ impl fmt::Display for InfixOperator {
             InfixOperator::GreaterEqual => write!(f, ">="),
             InfixOperator::And => write!(f, "&&"),
             InfixOperator::Or => write!(f, "||"),
+            InfixOperator::NullCoalesce => write!(f, "??"),
             InfixOperator::BitwiseAnd => write!(f, "&"),
             InfixOperator::BitwiseOr => write!(f, "|"),
             InfixOperator::BitwiseXor => write!(f, "~"),
