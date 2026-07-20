@@ -4,7 +4,7 @@
 use crate::{context::CodeGenContext, linker::Linker};
 use cyrusc_analyzer::context::{AnalysisContext, AnalyzerConfig, EntryPoints};
 use cyrusc_buildmanifest::BuildManifest;
-use cyrusc_cir_lower::lower_program_trees_in_parallel;
+use cyrusc_cir_lower::lower_program_trees;
 use cyrusc_diagcentral::{exit_with_msg, reporter::DiagReporter};
 use cyrusc_fs_utils::{ensure_output_dir, file_name_without_extension, get_directory_of_file};
 use cyrusc_internal::{
@@ -291,8 +291,7 @@ pub fn build_compilation_bundle(opts: &mut CompilerOptions, file_path_opt: Optio
         })
         .collect();
 
-    let cir_modules = lower_program_trees_in_parallel(
-        opts.jobs,
+    let cir_modules = lower_program_trees(
         boxed_program_trees,
         &*bundle.resolver,
         &*bundle.resolver,

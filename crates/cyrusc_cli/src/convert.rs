@@ -25,7 +25,6 @@ impl CliCompilerOptions {
                     CliModuleMergeModeOption::Unified => Some(CompilerOption_ModuleKind::Unified),
                     CliModuleMergeModeOption::Separate => Some(CompilerOption_ModuleKind::Separate),
                 }),
-            jobs: self.jobs,
             sanitizer: self.sanitizer.iter().map(|s| s.convert()).collect(),
             linker_flags: self.linkerflags.clone(),
             linker_options: CompilerOption_Linker::default(),
