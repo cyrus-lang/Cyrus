@@ -1,0 +1,15 @@
+// @stdout: 1 0 1 0 1
+
+import std::libc{printf};
+
+pub fn main() {
+    var x: int32 = 1;
+    var y: int32 = 0;
+    var z: int32 = -1;
+
+    printf("%d ", x != 0);
+    printf("%d ", y != 0);
+    printf("%d ", z != 0);
+    printf("%d ", 0 != 0);
+    printf("%d\n", x == 1);
+}

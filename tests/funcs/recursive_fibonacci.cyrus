@@ -1,0 +1,22 @@
+// @stdout: 0 1 1 2 3 5 8 13 21 34
+
+import std::libc{printf};
+
+fn fib(n: int32) int32 {
+    if (n <= 0) {
+        return 0;
+    }
+    if (n == 1) {
+        return 1;
+    }
+    return fib(n - 1) + fib(n - 2);
+}
+
+pub fn main() {
+    var i: int32 = 0;
+    while (i < 10) {
+        printf("%d ", fib(i));
+        i++;
+    }
+    printf("\n");
+}

@@ -1,0 +1,20 @@
+// @stdout: 0 6 1, 0 0, 1 1 2000 2000
+
+import std::libc{printf};
+
+pub fn main() {
+    const a: int32 = 12;
+    const b: int32 = 34;
+    const c: int32 = 56;
+    const d: int32 = 78;
+    const e: int32 = 0;
+    const f: int32 = 1;
+
+    printf("%d ", (e != 0) || (e != 0 && f != 0));
+    printf("%d ", a | b ^ c & d);
+    printf("%d, %d ", a == a, a == b);
+    printf("%d, %d ", a != a, a != b);
+    printf("%d ", a != b && c != d);
+    printf("%d ", (a + b * c / f) - (a + b * c / f) + 2000);
+    printf("%d\n", 2000);
+}
