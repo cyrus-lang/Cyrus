@@ -53,9 +53,8 @@ pub struct Lexer {
     }
 
     fn next(&self) Token {
-        // TODO
-        // self->skip_whitespace();
-        // self->skip_comments();
+        self->skip_whitespace();
+        self->skip_comments();
 
         if (self->pos == self->source->len()) {
             return Token {
@@ -74,11 +73,9 @@ pub struct Lexer {
         switch (self->source->get(self->pos)) {
             case .Some(char) => {
                 switch (char) {
-                    case '\0' => return .EOF;
-
                     case 'a'..='z' | 'A'..='Z' | '_' => return self->read_ident_or_prefix();
                     case '0'..='9' => return self->read_integer();
-                    case '"' => return self->read_str();
+                    case '"' => return self->read_str(.None);
                     case '\'' => return self->read_char();
 
                     case '+' => return self->read_plus();
@@ -106,6 +103,8 @@ pub struct Lexer {
                     case ',' => return self->read_single(.Comma);
                     case ';' => return self->read_single(.Semicolon);
                     case '@' => return self->read_single(.At);
+                    
+                    case '\0' => return .EOF;
 
                     default => {
                         // FIXME Report diagnostic.
@@ -140,11 +139,9 @@ pub struct Lexer {
     }
 
     fn read_ident_or_prefix(&self) TokenKind {
-        // TODO
-        // if (self->cur() == 'b' && self->peek() == '"') {
-        //     // return self->read_str(.Some(.Byte));
-        //     @todo();
-        // }
+        if (self->cur() == 'b' && self->peek() == '"') {
+            return self->read_str(.Some(.Byte));
+        }
 
         return self->read_ident();
     }
@@ -164,8 +161,7 @@ pub struct Lexer {
         return .Ident(ident);
     }
 
-    fn read_str(&self) TokenKind {
-        // prefix: Option<StringPrefix>
+    fn read_str(&self, prefix: Option<StringPrefix>) TokenKind {
         @todo();
     }
 
@@ -174,11 +170,14 @@ pub struct Lexer {
     }
 
     fn skip_whitespace(&self) {
-        @todo();
+        while (!self->is_eof() && is_whitespace(self->cur())) {
+            self->read();
+        }
     }
 
+    // TODO
     fn skip_comments(&self) {
-        @todo();
+        
     }
 
     fn read_plus(&self) TokenKind {
@@ -323,6 +322,10 @@ pub struct Lexer {
         return kind;
     }
 
+    inline fn is_eof(&const self) bool {
+        return self->pos + 1 == self->source->len();
+    }
+
     inline fn peek(&const self) uint8 {
         const next_pos = self->pos + 1;
 
@@ -338,6 +341,15 @@ pub struct Lexer {
 
     inline fn loc(&const self, line: usize, col: usize) Loc {
         return Loc { line, col };
+    }
+}
+
+inline fn is_whitespace(char: uint8) bool {
+    switch (char) {
+        case ' ' | '\t' | '\n' | '\r' | '\v' | '\f' => {
+            return true;
+        }
+        default => return false;
     }
 }
 
