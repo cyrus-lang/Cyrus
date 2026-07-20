@@ -836,6 +836,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
             InfixOperator::Equal => self.emit_cmp_eq(lhs_rvalue, rhs_rvalue),
             InfixOperator::NotEqual => self.emit_cmp_neq(lhs_rvalue, rhs_rvalue),
             InfixOperator::Or => self.emit_logical_or(lhs_rvalue, rhs_rvalue),
+            InfixOperator::NullCoalesce => self.emit_null_coalesce_operator(lhs_rvalue, rhs_rvalue),
             InfixOperator::And => self.emit_logical_and(lhs_rvalue, rhs_rvalue),
             InfixOperator::BitwiseAnd => self.emit_bitwise_and(lhs_rvalue, rhs_rvalue),
             InfixOperator::BitwiseOr => self.emit_bitwise_or(lhs_rvalue, rhs_rvalue),
@@ -861,6 +862,12 @@ impl<'ll> CodeGenIRBuilder<'ll> {
                     InternalValueKind::RValue(or_value.into()),
                 )
             }
+            _ => unreachable!(),
+        }
+    }
+
+    fn emit_null_coalesce_operator(&self, lhs_rvalue: InternalValue<'ll>, rhs_rvalue: InternalValue<'ll>) -> InternalValue<'ll> {
+        match (lhs_rvalue.as_basic_value(), rhs_rvalue.as_basic_value()) {
             (BasicValueEnum::PointerValue(lhs), BasicValueEnum::PointerValue(rhs)) => {
                 self.emit_null_coalescing_pointers(lhs, rhs, lhs_rvalue.ty.clone())
             }

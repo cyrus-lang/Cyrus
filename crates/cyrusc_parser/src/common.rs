@@ -489,6 +489,7 @@ impl<'source_file> Parser<'source_file> {
             | TokenKind::GreaterEqual
             | TokenKind::And
             | TokenKind::Or
+            | TokenKind::QuestionQuestion
             | TokenKind::Pipe
             | TokenKind::Caret
             | TokenKind::AmpTilde

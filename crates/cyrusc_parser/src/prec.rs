@@ -7,6 +7,7 @@ pub enum Precedence {
     Lowest,
     Assign,      // =
     Or,          // ||
+    NullCoalesce, // ??
     And,         // &&
     Equals,      // ==, !=
     LessGreater, // >, <, >=, <=
@@ -23,6 +24,7 @@ pub fn token_precedence_of(token_kind: TokenKind) -> Option<Precedence> {
     match token_kind {
         TokenKind::Assign => Some(Precedence::Assign),
         TokenKind::Or => Some(Precedence::Or),
+        TokenKind::QuestionQuestion => Some(Precedence::NullCoalesce),
         TokenKind::And => Some(Precedence::And),
         TokenKind::Equal | TokenKind::NotEqual => Some(Precedence::Equals),
 
