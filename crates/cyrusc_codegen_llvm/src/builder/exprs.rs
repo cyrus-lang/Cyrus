@@ -19,7 +19,6 @@ use cyrusc_internal::{
     },
     cir::{
         cir::*,
-        lower::cir_fat_ptr_type,
         types::{CIRArrayType, CIREnumType, CIRFuncType, CIRType, CIRUnionType},
     },
 };
@@ -121,7 +120,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         let data_ptr = if data_basic_value.is_pointer_value() {
             data_basic_value.into_pointer_value()
         } else {
-            // Value is not addressable → allocate temp
+            // value is not addressable to allocate temp
             let temp = self
                 .llvmbuilder
                 .build_alloca(data_basic_value.get_type(), "dyn.tmp")
@@ -154,7 +153,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
             .unwrap()
             .into_struct_value();
 
-        let fat_ptr_type = cir_fat_ptr_type(&self.tctx, Some(dynamic.data_expr.ty.clone()), dynamic.loc);
+        let fat_ptr_type = self.tctx.fat_ptr_type();
 
         InternalValue::new(
             fat_ptr_type,
@@ -1405,7 +1404,10 @@ impl<'ll> CodeGenIRBuilder<'ll> {
             }
             _ => {
                 if lhs_rvalue.ty.is_enum() && rhs_rvalue.ty.is_enum() {
-                    return self.emit_compare_enum_variants(lhs_rvalue.clone(), rhs_rvalue.clone(), true);
+                    let enum_type = lhs_rvalue.ty.as_enum(&self.tctx).unwrap();
+                    let tag_type = enum_type.tag_type_or_infer_or_default();
+
+                    return self.emit_compare_enum_variants(lhs_rvalue.clone(), rhs_rvalue.clone(), &tag_type, true);
                 }
 
                 unreachable!()
@@ -1442,7 +1444,10 @@ impl<'ll> CodeGenIRBuilder<'ll> {
             }
             _ => {
                 if lhs_rvalue.ty.is_enum() && rhs_rvalue.ty.is_enum() {
-                    return self.emit_compare_enum_variants(lhs_rvalue.clone(), rhs_rvalue.clone(), false);
+                    let enum_type = lhs_rvalue.ty.as_enum(&self.tctx).unwrap();
+                    let tag_type = enum_type.tag_type_or_infer_or_default();
+
+                    return self.emit_compare_enum_variants(lhs_rvalue.clone(), rhs_rvalue.clone(), &tag_type, false);
                 }
 
                 unreachable!()
@@ -1791,7 +1796,6 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         self.emit_expr(&union_init_expr.expr, &None)
     }
 
-    // ANCHOR: Check extracting tag of repr-c enums.
     pub(crate) fn extract_enum_tag(&self, struct_value: StructValue<'ll>) -> IntValue<'ll> {
         self.llvmbuilder
             .build_extract_value(struct_value, 0, "extract")
@@ -1806,50 +1810,46 @@ impl<'ll> CodeGenIRBuilder<'ll> {
             .into_array_value()
     }
 
-    // ANCHOR: Check comparing repr-c enums.
     fn emit_compare_enum_variants(
         &mut self,
         lhs: InternalValue<'ll>,
         rhs: InternalValue<'ll>,
+        tag_type: &CIRType,
         cmp_eq: bool,
     ) -> InternalValue<'ll> {
         let struct_value1 = lhs.as_basic_value().into_struct_value();
         let struct_value2 = rhs.as_basic_value().into_struct_value();
 
+        let llvm_tag_type: BasicTypeEnum<'ll> = self.emit_type(tag_type.clone()).try_into().unwrap();
+
         let tag1 = self.extract_enum_tag(struct_value1);
         let tag2 = self.extract_enum_tag(struct_value2);
 
-        let tag_concrete_type = CIRType::Plain(PlainType::UInt32);
-        let tag_cmp_result = if cmp_eq {
-            self.emit_cmp_eq(
-                InternalValue::new(
-                    tag_concrete_type.clone(),
-                    InternalValueKind::RValue(tag1.as_basic_value_enum()),
-                ),
-                InternalValue::new(tag_concrete_type, InternalValueKind::RValue(tag2.as_basic_value_enum())),
-            )
+        let lhs_tag = InternalValue::new(tag_type.clone(), InternalValueKind::RValue(tag1.into()));
+        let rhs_tag = InternalValue::new(tag_type.clone(), InternalValueKind::RValue(tag2.into()));
+
+        let tag_result = if cmp_eq {
+            self.emit_cmp_eq(lhs_tag, rhs_tag)
         } else {
-            self.emit_cmp_neq(
-                InternalValue::new(
-                    tag_concrete_type.clone(),
-                    InternalValueKind::RValue(tag1.as_basic_value_enum()),
-                ),
-                InternalValue::new(tag_concrete_type, InternalValueKind::RValue(tag2.as_basic_value_enum())),
-            )
+            self.emit_cmp_neq(lhs_tag, rhs_tag)
         };
 
+        let tag_result_int_value = tag_result.as_basic_value().into_int_value();
+
         let current_func = self.cur_func.unwrap();
-        let payload_block = self.llvm_ctx.append_basic_block(current_func, "enum_cmp.payload");
-        let exit_block = self.llvm_ctx.append_basic_block(current_func, "enum_cmp.exit");
+        let payload_block = self.llvm_ctx.append_basic_block(current_func, "compare.enum.payload");
+        let exit_block = self.llvm_ctx.append_basic_block(current_func, "compare.enum.exit");
+
+        let (branch_true, branch_false) = if cmp_eq {
+            (payload_block, exit_block)
+        } else {
+            (exit_block, payload_block)
+        };
 
         let entry_block = self.blockreg.cur_block.unwrap();
 
         self.llvmbuilder
-            .build_conditional_branch(
-                tag_cmp_result.as_basic_value().into_int_value(),
-                payload_block,
-                exit_block,
-            )
+            .build_conditional_branch(tag_result.as_basic_value().into_int_value(), branch_true, branch_false)
             .unwrap();
 
         self.emit_block(payload_block);
@@ -1859,25 +1859,29 @@ impl<'ll> CodeGenIRBuilder<'ll> {
 
         let memcmp_result = self.intrinsic_array_memcmp(payload1, payload2);
 
-        let i32_zero = self.llvm_ctx.i32_type().const_zero();
-        let payload_eq = self
+        let zero_int = llvm_tag_type.const_zero().into_int_value();
+
+        let predicate = if cmp_eq { IntPredicate::EQ } else { IntPredicate::NE };
+
+        // comparison result
+        let payload_result = self
             .llvmbuilder
-            .build_int_compare(inkwell::IntPredicate::EQ, memcmp_result, i32_zero, "payload_eq")
+            .build_int_compare(predicate, memcmp_result, zero_int, "compare.payload.is_zero")
             .unwrap();
 
-        self.llvmbuilder.build_unconditional_branch(exit_block).unwrap();
+        let payload_result_bool = self.int_value_as_bool_i1(payload_result);
 
-        let payload_cmp_block = self.blockreg.cur_block.unwrap();
+        self.llvmbuilder.build_unconditional_branch(exit_block).unwrap();
 
         self.emit_block(exit_block);
 
         let phi = self
             .llvmbuilder
-            .build_phi(self.llvm_ctx.bool_type(), "enum_cmp_phi")
+            .build_phi(self.llvm_ctx.bool_type(), "compare.enum")
             .unwrap();
 
-        phi.add_incoming(&[(&self.llvm_ctx.bool_type().const_zero(), entry_block)]);
-        phi.add_incoming(&[(&payload_eq, payload_cmp_block)]);
+        phi.add_incoming(&[(&tag_result_int_value, entry_block)]);
+        phi.add_incoming(&[(&payload_result_bool, payload_block)]);
 
         InternalValue::new(
             CIRType::Plain(PlainType::Bool),
@@ -2282,10 +2286,19 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         if abi_func_info.ret_info.kind.is_indirect_sret() {
             let sret_type: BasicTypeEnum<'ll> = self.emit_type(*func_type.ret_type.clone()).try_into().unwrap();
 
-            let alloca = self.llvmbuilder.build_alloca(sret_type, "sret").unwrap();
+            let sret_ptr = {
+                if self.is_return && self.cur_sret.is_some() {
+                    // We are in a return statement and this function has an SRet param
+                    // pass the current function's SRet pointer directly
+                    self.cur_sret.unwrap()
+                } else {
+                    // Normal case, allocate a new temporary
+                    self.llvmbuilder.build_alloca(sret_type, "sret").unwrap()
+                }
+            };
 
-            llvm_args.insert(0, alloca.into());
-            sret_alloca = Some(alloca);
+            llvm_args.insert(0, sret_ptr.into());
+            sret_alloca = Some(sret_ptr);
         }
 
         self.emit_func_call_attributes(&abi_func_info, FuncCallKind::Direct(llvm_func_value));

@@ -1,0 +1,16 @@
+// @stdout: 20 10 30
+
+import std::libc{printf};
+
+pub fn main() {
+    var a: int32 = 10;
+    var b: int32 = 20;
+
+    var temp: int32 = a;
+    a = b;
+    b = temp;
+
+    printf("%d ", a);
+    printf("%d ", b);
+    printf("%d\n", 30);
+}

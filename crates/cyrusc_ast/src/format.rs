@@ -285,7 +285,7 @@ impl fmt::Display for UnnamedStructType {
 impl fmt::Display for PrefixOperator {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            PrefixOperator::Bang => write!(f, "&"),
+            PrefixOperator::Bang => write!(f, "!"),
             PrefixOperator::Minus => write!(f, "-"),
             PrefixOperator::BitwiseNot => write!(f, "~"),
         }
@@ -412,7 +412,7 @@ impl fmt::Display for ASTExpr {
                 write!(f, ".{}", unnamed_enum_value.ident.as_string())?;
 
                 match &unnamed_enum_value.kind {
-                    UnnamedEnumValueKind::Plain => todo!(),
+                    UnnamedEnumValueKind::Plain => {}
                     UnnamedEnumValueKind::Tuple(exprs) => {
                         write!(f, "({})", format_expr_series(exprs))?;
                     }

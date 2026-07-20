@@ -33,7 +33,17 @@ impl<'a> AnalysisContext<'a> {
             return None;
         }
 
-        let named_type = operand_type.as_named_type().unwrap();
+        let Some(named_type) = operand_type.as_named_type() else {
+            let type_name = format_sema_type(operand_type, self.formatter);
+
+            self.reporter.report(Diag {
+                level: DiagLevel::Error,
+                kind: Box::new(AnalyzerDiagKind::InvalidDynamicType { type_name }),
+                loc: Some(dynamic.loc),
+                hint: None,
+            });
+            return None;
+        };
         let object_generic_params = self.decl_tables.type_decl_generic_params(named_type.type_decl_id);
         let object_impls = self.implement_interfaces_of_named_type(named_type).unwrap();
         let object_name = self.formatter.format_type_decl(named_type.type_decl_id);

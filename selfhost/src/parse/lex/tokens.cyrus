@@ -1,0 +1,608 @@
+import std::mem::alloc::libc{LibcAllocator};
+import std::collections{Vector};
+import std::io{StringWriter};
+import std::string{String};
+import std::mem{Allocator};
+import std::option{Option};
+import std::libc{printf};
+import std::io{Writer};
+import std::format{
+    Format,
+    format_int128,
+    format_uint128,
+    format_float64,
+    format_bool
+};
+
+pub struct TokenPool {
+    tokens: Vector<Token>,
+
+    pub inline fn new(tokens: Vector<Token>) Self {
+        return Self { tokens };
+    }
+
+    pub inline fn inner(const self) Vector<Token> {
+        return self.tokens;
+    }
+
+    pub fn free(self) {
+        for (var i: usize = 0; i < self.tokens.len(); i++) {
+            const token = self.tokens.get(i).unwrap();
+
+            switch (token.kind) {
+                case .Ident(ident) => {
+                    ident.free();
+                }
+            }
+        }
+
+        self.tokens.free();
+    }
+}
+
+pub struct Token : Format {
+    pub kind: TokenKind,
+    pub loc: Loc,
+
+    pub fn format(&const self, writer: Writer) bool {
+        return self->kind.format(writer);
+    }
+}
+
+pub enum TokenKind : Format {
+    Ident(String),
+    Literal(Literal),
+
+    // Operators
+    Plus,
+    Minus,
+    Slash,
+    Asterisk,
+    Percent,
+    Increment,
+    Decrement,
+
+    // Symbols
+    ShiftRight,
+    ShiftLeft,
+    Caret,
+    AmpTilde,
+    Tilde,
+    Assign,
+    Equal,
+    NotEqual,
+    Bang,
+    LeftParen,
+    RightParen,
+    LeftBrace,
+    RightBrace,
+    LeftBracket,
+    RightBracket,
+    Comma,
+    ThinArrow,
+    FatArrow,
+    Dot,
+    DoubleDot,
+    TripleDot,
+    DoubleQuote,
+    SingleQuote,
+    Pipe,
+    Ampersand,
+    Semicolon,
+    Colon,
+    DoubleColon,
+    LessThan,
+    GreaterThan,
+    LessEqual,
+    GreaterEqual,
+    And,
+    Or,
+    At,
+    Underscore,
+
+    // Keywords
+    Module,
+    Var,
+    Dynamic,
+    Goto,
+    Defer,
+    Union,
+    Interface,
+    Function,
+    Typedef,
+    Switch,
+    Case,
+    Default,
+    If,
+    Else,
+    Return,
+    For,
+    While,
+    Foreach,
+    Break,
+    Continue,
+    Struct,
+    Import,
+    In,
+    Enum,
+    True,
+    False,
+    Null,
+    As,
+
+    // Types
+    UIntPtr,
+    IntPtr,
+    ISize,
+    USize,
+    Int,
+    Int8,
+    Int16,
+    Int32,
+    Int64,
+    Int128,
+    UInt,
+    UInt8,
+    UInt16,
+    UInt32,
+    UInt64,
+    UInt128,
+    Float16,
+    Float32,
+    Float64,
+    Float128,
+    Char,
+    Void,
+    Bool,
+    Const,
+
+    // Modifiers
+    Weak,
+    LinkOnce,
+    Callconv,
+    Naked,
+    NoReturn,
+    Hot,
+    Cold,
+    Extern,
+    Public,
+    Inline,
+    NoInline,
+    AlwaysInline,
+    DllImport,
+    DllExport,
+    OptSize,
+    OptNone,
+    NoSanitize,
+    NoUnwind,
+    Section,
+    Repr,
+
+    EOF,
+    INVALID,
+
+    pub inline fn is_eof(&const self) bool {
+        switch (*self) {
+            case .EOF => return true;
+            default => return false;
+        }
+    }
+
+    pub fn lookup_keyword(str: const uint8*) Option<Self> {
+        switch (str) {
+            case "dynamic" => return .Some(.Dynamic);
+            case "var" => return .Some(.Var);
+            case "mod" => return .Some(.Module);
+            case "interface" => return .Some(.Interface);
+            case "type" => return .Some(.Typedef);
+            case "fn" => return .Some(.Function);
+            case "switch" => return .Some(.Switch);
+            case "case" => return .Some(.Case);
+            case "default" => return .Some(.Default);
+            case "struct" => return .Some(.Struct);
+            case "import" => return .Some(.Import);
+            case "if" => return .Some(.If);
+            case "else" => return .Some(.Else);
+            case "return" => return .Some(.Return);
+            case "for" => return .Some(.For);
+            case "foreach" => return .Some(.Foreach);
+            case "break" => return .Some(.Break);
+            case "continue" => return .Some(.Continue);
+            case "true" => return .Some(.True);
+            case "false" => return .Some(.False);
+            case "null" => return .Some(.Null);
+            case "uintptr" => return .Some(.UIntPtr);
+            case "intptr" => return .Some(.IntPtr);
+            case "isize" => return .Some(.ISize);
+            case "usize" => return .Some(.USize);
+            case "int" => return .Some(.Int);
+            case "int8" => return .Some(.Int8);
+            case "int16" => return .Some(.Int16);
+            case "int32" => return .Some(.Int32);
+            case "int64" => return .Some(.Int64);
+            case "int128" => return .Some(.Int128);
+            case "uint" => return .Some(.UInt);
+            case "uint8" => return .Some(.UInt8);
+            case "uint16" => return .Some(.UInt16);
+            case "uint32" => return .Some(.UInt32);
+            case "uint64" => return .Some(.UInt64);
+            case "uint128" => return .Some(.UInt128);
+            case "float16" => return .Some(.Float16);
+            case "float32" => return .Some(.Float32);
+            case "float64" => return .Some(.Float64);
+            case "float128" => return .Some(.Float128);
+            case "char" => return .Some(.Char);
+            case "bool" => return .Some(.Bool);
+            case "void" => return .Some(.Void);
+            case "enum" => return .Some(.Enum);
+            case "in" => return .Some(.In);
+            case "as" => return .Some(.As);
+            case "extern" => return .Some(.Extern);
+            case "inline" => return .Some(.Inline);
+            case "pub" => return .Some(.Public);
+            case "const" => return .Some(.Const);
+            case "weak" => return .Some(.Weak);
+            case "linkonce" => return .Some(.LinkOnce);
+            case "callconv" => return .Some(.Callconv);
+            case "naked" => return .Some(.Naked);
+            case "noreturn" => return .Some(.NoReturn);
+            case "hot" => return .Some(.Hot);
+            case "cold" => return .Some(.Cold);
+            case "dllimport" => return .Some(.DllImport);
+            case "dllexport" => return .Some(.DllExport);
+            case "optsize" => return .Some(.OptSize);
+            case "optnone" => return .Some(.OptNone);
+            case "no_sanitize" => return .Some(.NoSanitize);
+            case "nounwind" => return .Some(.NoUnwind);
+            case "section" => return .Some(.Section);
+            case "repr" => return .Some(.Repr);
+            case "goto" => return .Some(.Goto);
+            case "defer" => return .Some(.Defer);
+            case "union" => return .Some(.Union);
+            case "while" => return .Some(.While);
+            case "noinline" => return .Some(.NoInline);
+            case "alwaysinline" => return .Some(.AlwaysInline);
+        }
+
+        return .None;
+    }
+
+    pub fn format(&const self, writer: Writer) bool {
+        switch (*self) {
+            case .Ident(ident) => writer.write(ident.as_str_const());
+            case .Literal(lit) => lit.format(writer);
+
+            case .Underscore => writer.write("_");
+            case .Plus => writer.write("+");
+            case .Minus => writer.write("-");
+            case .Asterisk => writer.write("*");
+            case .Slash => writer.write("/");
+            case .Percent => writer.write("%");
+            case .Assign => writer.write("=");
+            case .Equal => writer.write("==");
+            case .LeftParen => writer.write("(");
+            case .RightParen => writer.write(")");
+            case .LeftBrace => writer.write("{");
+            case .RightBrace => writer.write("}");
+            case .LeftBracket => writer.write("[");
+            case .RightBracket => writer.write("]");
+            case .At => writer.write("@");
+            case .Comma => writer.write(",");
+            case .DoubleDot => writer.write("..");
+            case .TripleDot => writer.write("...");
+            case .Dot => writer.write(".");
+            case .DoubleQuote => writer.write("\"");
+            case .SingleQuote => writer.write("'");
+            case .Pipe => writer.write("|");
+            case .Ampersand => writer.write("&");
+            case .LessThan => writer.write("<");
+            case .GreaterThan => writer.write(">");
+            case .LessEqual => writer.write("<=");
+            case .GreaterEqual => writer.write(">=");
+            case .And => writer.write("&&");
+            case .Or => writer.write("||");
+            case .Semicolon => writer.write(";");
+            case .Colon => writer.write(":");
+            case .ThinArrow => writer.write("->");
+            case .FatArrow => writer.write("=>");
+            case .Increment => writer.write("++");
+            case .Decrement => writer.write("--");
+            case .ShiftRight => writer.write(">>");
+            case .ShiftLeft => writer.write("<<");
+            case .Caret => writer.write("^");
+            case .AmpTilde => writer.write("&~");
+            case .Tilde => writer.write("~");
+            case .NotEqual => writer.write("!=");
+            case .Bang => writer.write("!");
+            case .DoubleColon => writer.write("::");
+
+            case .Dynamic => writer.write("dynamic");
+            case .Var => writer.write("var");
+            case .Module => writer.write("mod");
+            case .Interface => writer.write("interface");
+            case .Typedef => writer.write("type");
+            case .Function => writer.write("fn");
+            case .Switch => writer.write("switch");
+            case .Case => writer.write("case");
+            case .Default => writer.write("default");
+            case .Struct => writer.write("struct");
+            case .Import => writer.write("import");
+            case .If => writer.write("if");
+            case .Else => writer.write("else");
+            case .Return => writer.write("return");
+            case .For => writer.write("for");
+            case .Foreach => writer.write("foreach");
+            case .Break => writer.write("break");
+            case .Continue => writer.write("continue");
+            case .True => writer.write("true");
+            case .False => writer.write("false");
+            case .Null => writer.write("null");
+            case .UIntPtr => writer.write("uintptr");
+            case .IntPtr => writer.write("intptr");
+            case .ISize => writer.write("isize");
+            case .USize => writer.write("usize");
+            case .Int => writer.write("int");
+            case .Int8 => writer.write("int8");
+            case .Int16 => writer.write("int16");
+            case .Int32 => writer.write("int32");
+            case .Int64 => writer.write("int64");
+            case .Int128 => writer.write("int128");
+            case .UInt => writer.write("uint");
+            case .UInt8 => writer.write("uint8");
+            case .UInt16 => writer.write("uint16");
+            case .UInt32 => writer.write("uint32");
+            case .UInt64 => writer.write("uint64");
+            case .UInt128 => writer.write("uint128");
+            case .Float16 => writer.write("float16");
+            case .Float32 => writer.write("float32");
+            case .Float64 => writer.write("float64");
+            case .Float128 => writer.write("float128");
+            case .Char => writer.write("char");
+            case .Bool => writer.write("bool");
+            case .Void => writer.write("void");
+            case .Enum => writer.write("enum");
+            case .In => writer.write("in");
+            case .As => writer.write("as");
+            case .Extern => writer.write("extern");
+            case .Inline => writer.write("inline");
+            case .Public => writer.write("pub");
+            case .Const => writer.write("const");
+            case .Weak => writer.write("weak");
+            case .LinkOnce => writer.write("linkonce");
+            case .Callconv => writer.write("callconv");
+            case .Naked => writer.write("naked");
+            case .NoReturn => writer.write("noreturn");
+            case .Hot => writer.write("hot");
+            case .Cold => writer.write("cold");
+            case .DllImport => writer.write("dllimport");
+            case .DllExport => writer.write("dllexport");
+            case .OptSize => writer.write("optsize");
+            case .OptNone => writer.write("optnone");
+            case .NoSanitize => writer.write("no_sanitize");
+            case .NoUnwind => writer.write("nounwind");
+            case .Section => writer.write("section");
+            case .Repr => writer.write("repr");
+            case .Goto => writer.write("goto");
+            case .Defer => writer.write("defer");
+            case .Union => writer.write("union");
+            case .While => writer.write("while");
+            case .NoInline => writer.write("noinline");
+            case .AlwaysInline => writer.write("alwaysinline");
+
+            case .EOF => writer.write("EOF");
+            case .INVALID => writer.write("INVALID");
+        }
+        return true;
+    }
+}
+
+pub enum Literal : Format {
+    Integer {
+        value: enum {
+            Signed(int128),
+            Unsigned(uint128)
+        },
+        suffix: Option<IntegerSuffix>
+    },
+    Float {
+        value: float64,
+        suffix: Option<FloatSuffix>
+    },
+    String {
+        value: String,
+        suffix: Option<StringPrefix>
+    },
+    Bool(bool),
+    Null,
+
+    pub fn format(&const self, writer: Writer) bool {
+        switch (*self) {
+            case .Integer { value, suffix } => {
+                switch (value) {
+                    case .Signed(x) => format_int128(writer, x);
+                    case .Unsigned(x) => format_uint128(writer, x);
+                }
+                switch (suffix) {
+                    case .Some(s) => writer.write(s.to_str());
+                }
+            }
+            case .Float { value, suffix } => {
+                format_float64(writer, value);
+                switch (suffix) {
+                    case .Some(s) => writer.write(s.to_str());
+                }
+            }
+            case .String { value, suffix } => {
+                switch (suffix) {
+                    case .Some(s) => writer.write(s.to_str());
+                }
+                writer.write("\"");
+                writer.write(value.as_str_const());
+                writer.write("\"");
+            }
+            case .Bool(value) => {
+                format_bool(writer, value);
+            }
+            case .Null => {
+                writer.write("null");
+            }
+        }
+        return true;
+    }
+}
+
+pub enum IntegerSuffix {
+    ISize,
+    USize,
+    Int,
+    Int8,
+    Int16,
+    Int32,
+    Int64,
+    Int128,
+    UInt,
+    UInt8,
+    UInt16,
+    UInt32,
+    UInt64,
+    UInt128,
+    Char,
+
+    pub fn from_str(str: const uint8*) Option<Self> {
+        switch (str) {
+            case "isize" => return .Some(.ISize);
+            case "usize" => return .Some(.USize);
+            case "int" => return .Some(.Int);
+            case "int8" => return .Some(.Int8);
+            case "int16" => return .Some(.Int16);
+            case "int32" => return .Some(.Int32);
+            case "int64" => return .Some(.Int64);
+            case "int128" => return .Some(.Int128);
+            case "uint" => return .Some(.UInt);
+            case "uint8" => return .Some(.UInt8);
+            case "uint16" => return .Some(.UInt16);
+            case "uint32" => return .Some(.UInt32);
+            case "uint64" => return .Some(.UInt64);
+            case "uint128" => return .Some(.UInt128);
+            case "char" => return .Some(.Char);
+            default => return .None;
+        }
+    }
+
+    pub fn to_str(const self) const uint8* {
+        switch (self) {
+            case .ISize => return "isize";
+            case .USize => return "usize";
+            case .Int => return "int";
+            case .Int8 => return "int8";
+            case .Int16 => return "int16";
+            case .Int32 => return "int32";
+            case .Int64 => return "int64";
+            case .Int128 => return "int128";
+            case .UInt => return "uint";
+            case .UInt8 => return "uint8";
+            case .UInt16 => return "uint16";
+            case .UInt32 => return "uint32";
+            case .UInt64 => return "uint64";
+            case .UInt128 => return "uint128";
+            case .Char => return "char";
+        }
+    }
+}
+
+pub enum FloatSuffix {
+    Float16,
+    Float32,
+    Float64,
+    Float128,
+
+    pub fn from_str(str: const uint8*) Option<Self> {
+        switch (str) {
+            case "float16" => return .Some(.Float16);
+            case "float32" => return .Some(.Float32);
+            case "float64" => return .Some(.Float64);
+            case "float128" => return .Some(.Float128);
+            default => return .None;
+        }
+    }
+
+    pub fn to_str(const self) const uint8* {
+        switch (self) {
+            case .Float16 => return "float16";
+            case .Float32 => return "float32";
+            case .Float64 => return "float64";
+            case .Float128 => return "float128";
+        }
+    }
+}
+
+pub enum StringPrefix {
+    Byte,
+
+    pub fn from_str(str: const uint8*) Option<Self> {
+        switch (str) {
+            case "b" => return .Some(.Byte);
+            default => return .None;
+        }
+    }
+
+    pub fn to_str(const self) const uint8* {
+        switch (self) {
+            case .Byte => return "b";
+        }
+    }
+}
+
+/// Represents precise location tracking within a source file.
+pub struct Loc {
+    // TODO: Enable file_id once multi-source support implemented.
+    // file_id: FileId,
+    pub line: usize,
+    pub col: usize,
+}
+
+/// Formats and writes a collection of tokens to stdout.
+/// This is primarily used for debugging and emitting lexer result.
+pub fn dump_tokens(tokens: const Vector<Token>*) {
+    var allocator: Allocator = dynamic LibcAllocator.new();
+
+    var fmt = String.new(allocator);
+    defer fmt.free();  
+
+    var writer: Writer = dynamic StringWriter.new(&fmt);
+
+    for (var i: usize = 0; i < tokens->len(); i++) {
+        const token = tokens->get(i).unwrap();
+        
+        token.format(writer);
+        
+        printf(
+            "Token `%s`, Line: %lu, Column: %lu\n",
+            fmt.as_str_const(),
+            token.loc.line,
+            token.loc.col
+        );
+
+        fmt.clear();
+    }
+}
+
+/// Formats and writes a tokens to stdout.
+/// This is primarily used for debugging and emitting lexer result.
+pub fn dump_token(const token: Token) {
+    var allocator: Allocator = dynamic LibcAllocator.new();
+
+    var fmt = String.new(allocator);
+    defer fmt.free();  
+
+    var writer: Writer = dynamic StringWriter.new(&fmt);
+
+    token.format(writer);
+        
+    printf(
+        "Token `%s`, Line: %lu, Column: %lu\n",
+        fmt.as_str_const(),
+        token.loc.line,
+        token.loc.col
+    );
+}

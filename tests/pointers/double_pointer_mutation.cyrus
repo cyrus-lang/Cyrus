@@ -1,0 +1,13 @@
+// @stdout: 0 1
+
+import std::libc{printf};
+
+pub fn main() {
+    var x: int32 = 0;
+    var p: int32* = &x;
+    var pp: int32** = &p;
+
+    printf("%d ", *p);
+    **pp = 1;
+    printf("%d\n", x);
+}

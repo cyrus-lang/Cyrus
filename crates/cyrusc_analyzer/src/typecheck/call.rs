@@ -6,6 +6,7 @@ use cyrusc_const_eval::resolver::ConstResolver;
 use cyrusc_diagcentral::{Diag, DiagLevel};
 use cyrusc_source_loc::Loc;
 use cyrusc_typed_ast::{
+    debug_assert_func_decl_resolved,
     decls::{DeclID, FuncDecl, MethodDecl, MethodDecls},
     exprs::{
         TypedExpr, TypedFuncCall, TypedFuncCallDispatch, TypedInterfaceCallDispatch, TypedMethodCall,
@@ -113,8 +114,6 @@ impl<'a> AnalysisContext<'a> {
                 ) {
                     return None;
                 }
-
-                func_decl.ret_type = func_decl.ret_type.clone();
 
                 func_call.dispatch = TypedFuncCallDispatch::Normal {
                     func_decl_id: func_decl_id,
@@ -522,7 +521,7 @@ impl<'a> AnalysisContext<'a> {
                     method_decl.func_decl.ret_type = this.substitute_type(&method_decl.func_decl.ret_type);
 
                     #[cfg(debug_assertions)]
-                    debug_assert_func_decl_resolved(&method_decl.func_decl);
+                    debug_assert_func_decl_resolved!(&method_decl.func_decl);
 
                     let ret_type = method_decl.func_decl.ret_type.clone();
 
@@ -639,9 +638,13 @@ impl<'a> AnalysisContext<'a> {
                     .is_referenced()
             );
 
-            interface_method_decl.func_decl.ret_type = this.substitute_type(&interface_method_decl.func_decl.ret_type);
+            let mut ret_type = interface_method_decl.func_decl.ret_type.clone();
+            ret_type = this.normalize_sema_type(ret_type.clone(), method_call.loc, 0)?;
+            ret_type = this.substitute_type(&ret_type);
+            interface_method_decl.func_decl.ret_type = ret_type.clone();
 
-            let ret_type = interface_method_decl.func_decl.ret_type.clone();
+            #[cfg(debug_assertions)]
+            debug_assert_func_decl_resolved!(&interface_method_decl.func_decl);
 
             let method_index = interface_decl.method_index(&method_call.name).unwrap();
 
@@ -1128,26 +1131,4 @@ impl<'a> AnalysisContext<'a> {
 
         Some(*func_type.ret_type.clone())
     }
-}
-
-#[cfg(debug_assertions)]
-fn debug_assert_func_decl_resolved(func_decl: &FuncDecl) {
-    for func_param in &func_decl.params.list {
-        match func_param {
-            TypedFuncParamKind::FuncParam(func_param) => {
-                debug_assert!(!func_param.ty.is_unresolved(), "func decl param type is unresolved");
-            }
-            TypedFuncParamKind::SelfModifier(self_modifier) => {
-                debug_assert!(
-                    !self_modifier.ty.is_unresolved(),
-                    "func decl self_modifier type in unresolved"
-                );
-            }
-        }
-    }
-
-    debug_assert!(
-        !func_decl.ret_type.is_unresolved(),
-        "func decl return type is unresolved"
-    );
 }

@@ -78,7 +78,14 @@ impl GenericEnv {
     #[inline]
     pub fn substitute_sema_type(&self, ty: &SemaType) -> SemaType {
         match ty {
-            SemaType::Unresolved(_) | SemaType::InferVar(_) | SemaType::Plain(_) | SemaType::Placeholder => ty.clone(),
+            SemaType::SelfType(self_type) => SemaType::SelfType(self_type.clone()),
+
+            SemaType::Err(_)
+            | SemaType::Unresolved(_)
+            | SemaType::InferVar(_)
+            | SemaType::Plain(_)
+            | SemaType::Placeholder => ty.clone(),
+
             SemaType::Named(named_type) => {
                 let type_args = named_type
                     .type_args
@@ -154,9 +161,6 @@ impl GenericEnv {
                 Some(ty) => ty.clone(),
                 None => ty.clone(),
             },
-            SemaType::SelfType(self_type) => SemaType::SelfType(self_type.clone()),
-
-            SemaType::Err(_) => ty.clone(),
         }
     }
 }

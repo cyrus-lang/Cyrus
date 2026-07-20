@@ -49,8 +49,13 @@ pub enum AnalyzerDiagKind {
     #[error("Cannot infer dynamic interface type.")]
     CannotInferDynamicInterfaceType,
 
-    #[error("Cannot apply 'dynamic' to an already dynamic value.")]
+    #[error("Cannot apply dynamic to an already dynamic value.")]
     InvalidMultipleDynamicType,
+
+    #[error("Cannot apply dynamic to type '{type_name}'.")]
+    InvalidDynamicType {
+        type_name: String
+    },
 
     #[error(
         "Method '{method_name}' requires mutable access to 'self', but instance of type '{type_name}' is declared 'const'."
@@ -469,6 +474,9 @@ pub enum AnalyzerDiagKind {
 
     #[error("Symbol '{symbol_name}' is not an enum.")]
     NonEnumSymbol { symbol_name: String },
+
+    #[error("Symbol '{symbol_name}' is not a type.")]
+    NonTypeSymbol { symbol_name: String },
 
     #[error("Cannot use {elements} elements in an array of size {expected}.")]
     ArrayElementsCountMismatch { elements: u32, expected: u32 },

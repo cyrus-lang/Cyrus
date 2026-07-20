@@ -8,7 +8,6 @@ use cyrusc_ast::operators::InfixOperator;
 use cyrusc_internal::abi::mangler::*;
 use cyrusc_internal::abi::target::ABITarget;
 use cyrusc_internal::cir::cir::*;
-use cyrusc_internal::cir::lower::cir_fat_ptr_type;
 use cyrusc_internal::cir::lower::lower_enum_type;
 use cyrusc_internal::cir::lower::lower_func_type;
 use cyrusc_internal::cir::lower::lower_sema_type;
@@ -137,7 +136,9 @@ impl<'a> CIRLower<'a> {
                 lowered_stmts.push(CIRStmt::Variable(self.lower_var(var)));
             }
             TypedStmt::GlobalVar(global_var) => {
-                lowered_stmts.push(self.lower_global_var_stmt(&mut global_var.clone()));
+                if global_var.is_static {
+                    lowered_stmts.push(self.lower_global_var_stmt(&mut global_var.clone()));
+                }
             }
             TypedStmt::BlockStmt(block) => {
                 lowered_stmts.push(CIRStmt::Block(self.lower_block(block)));
@@ -1879,7 +1880,7 @@ impl<'a> CIRLower<'a> {
 
         let irv_id = self.new_ir_value_id();
 
-        let vtable_type = cir_fat_ptr_type(&self.tctx, None, loc);
+        let vtable_type = self.tctx.fat_ptr_type();
 
         let cir_global = CIRGlobalVarStmt {
             irv_id,
@@ -2053,11 +2054,11 @@ impl<'a> CIRLower<'a> {
             LiteralKind::Float(value, ..) => CIRLiteralKind::Float(*value),
             LiteralKind::Bool(value) => CIRLiteralKind::Bool(*value),
             LiteralKind::Char(value) => CIRLiteralKind::Char(*value),
-            LiteralKind::Null => CIRLiteralKind::Null,
-            LiteralKind::String(value, prefix_opt) => match prefix_opt.clone().unwrap_or(StringPrefix::C) {
-                StringPrefix::C => CIRLiteralKind::CString(value.clone()),
-                StringPrefix::B => CIRLiteralKind::ByteString(value.clone()),
+            LiteralKind::String(value, prefix_opt) => match prefix_opt.clone() {
+                Some(StringPrefix::Byte) => CIRLiteralKind::ByteString(value.clone()),
+                _ => CIRLiteralKind::CString(value.clone()),
             },
+            LiteralKind::Null => CIRLiteralKind::Null,
         };
 
         let ty = self.lower_sema_type(&literal.ty.clone().unwrap());

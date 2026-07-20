@@ -2,8 +2,9 @@
 // Copyright (c) 2026 The Cyrus Language
 
 import std::libc{strlen, strcmp, memmove, isspace, tolower, toupper};
-import std::libc::types{c_int};
 import std::collections{Vector};
+import std::libc::types{c_int};
+import std::option{Option};
 import std::mem{Allocator};
 import std::slices{Slice};
 
@@ -12,17 +13,13 @@ pub struct String {
 
     pub fn new(const allocator: Allocator) Self {
         var vec: Vector<uint8> = Vector.new(allocator);
-
         vec.push('\0'); // null-terminated
-
         return Self { vec };
     }
 
     pub fn with_capacity(const allocator: Allocator, const cap: usize) Self {
         var vec: Vector<uint8> = Vector.with_capacity(allocator, cap);
-
-        vec.push('\0');
-        
+        vec.push('\0'); // null-terminated
         return Self { vec };
     }
 
@@ -32,13 +29,11 @@ pub struct String {
         const len = strlen(str);
 
         var vec: Vector<uint8> = Vector.new(allocator);
-
         for (var i: usize = 0; i < len; i++) {
             vec.push(str[i]);
         }
-
         vec.push('\0');
-        
+    
         return Self { vec };
     }
 
@@ -57,7 +52,7 @@ pub struct String {
     }
 
     pub fn reserve(&self, const extra: usize) {
-        const required = self->len() + extra + 1;
+        const required = self->len() + extra;
         
         if (required > self->cap()) {
             self->vec.reserve(required);
@@ -67,25 +62,20 @@ pub struct String {
     pub fn push(&self, const ch: uint8) {        
         var data = self->vec.data();
         var current = &data[self->len()];
-
         *current = ch;
-
         self->vec.push('\0');
     }
 
-    pub fn push_str(&self, const str: uint8*) {
+    pub fn push_str(&self, const str: const uint8*) {
         @assert(str, "input string cannot be null");
 
         const len = strlen(str);
 
-        self->vec.pop();
-
         self->reserve(len);
-
+        self->vec.pop();
         for (var i: usize = 0; i < len; i++) {
             self->vec.push(str[i]);
-        }
-        
+        }        
         self->vec.push('\0');
     }
     
@@ -147,6 +137,14 @@ pub struct String {
         for (var i: usize = 0; i < self->vec.len(); i++) {
             str[i] = @cast(uint8, toupper(@cast(c_int, str[i])));
         }
+    }
+
+    pub inline fn get(&const self, index: usize) Option<uint8> {
+        if (index > self->len()) {
+            return .None;
+        }
+
+        return .Some(self->as_str_const()[index]);
     }
 
     pub inline fn as_str(&self) uint8* {

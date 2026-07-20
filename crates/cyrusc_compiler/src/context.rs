@@ -155,9 +155,7 @@ impl CodeGenContext {
 
         match self.linker_output_kind {
             CompilerOption_LinkerOutputKind::Executable => {
-                let output_path_cow = output_path.to_string_lossy();
-
-                self.linker.link_executable(&object_files, &output_path_cow.to_string())
+                self.linker.link_executable(&object_files, output_path.to_path_buf())
             }
             CompilerOption_LinkerOutputKind::SharedLib => {
                 let lib_name = canonical_project_name(&self.opts);

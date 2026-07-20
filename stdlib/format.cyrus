@@ -1,0 +1,97 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 The Cyrus Language
+
+import std::io{Writer, IOError};
+import std::libc{snprintf};
+
+const INT32_BUF_SIZE: usize = 12;
+const UINT32_BUF_SIZE: usize = 11;
+const INT64_BUF_SIZE: usize = 21;
+const UINT64_BUF_SIZE: usize = 21;
+const INT128_BUF_SIZE: usize = 41;
+const UINT128_BUF_SIZE: usize = 40;
+const FLOAT16_BUF_SIZE: usize = 48;
+const FLOAT32_BUF_SIZE: usize = 48;
+const FLOAT64_BUF_SIZE: usize = 64;
+const FLOAT128_BUF_SIZE: usize = 5000;
+
+pub interface Format {
+    fn format(&const self, writer: Writer) bool;
+}
+
+pub fn format_bool(writer: Writer, x: bool) {
+    switch (x) {
+        case true => writer.write("true");
+        case false => writer.write("false");
+    }
+}
+
+// NOTE: These integer formatters here are temporary,
+// we expect to implement more sophisticated formatter after
+// implementing comptime and reflection.
+
+pub fn format_int32(writer: Writer, x: int32) {
+    var buffer: uint8[INT32_BUF_SIZE];
+    snprintf(&buffer[0], INT32_BUF_SIZE, "%d", x);
+    writer.write(&buffer[0]);
+}
+
+pub fn format_uint32(writer: Writer, x: uint32) {
+    var buffer: uint8[UINT32_BUF_SIZE];
+    snprintf(&buffer[0], UINT32_BUF_SIZE, "%u", x);
+    writer.write(&buffer[0]);
+}
+
+pub fn format_int64(writer: Writer, x: int64) {
+    var buffer: uint8[INT64_BUF_SIZE];
+    snprintf(&buffer[0], INT64_BUF_SIZE, "%ld", x);
+    writer.write(&buffer[0]);
+}
+
+pub fn format_uint64(writer: Writer, x: uint64) {
+    var buffer: uint8[UINT64_BUF_SIZE];
+    snprintf(&buffer[0], UINT64_BUF_SIZE, "%lu", x);
+    writer.write(&buffer[0]);
+}
+
+pub fn format_int128(writer: Writer, x: int128) {
+    var buffer: uint8[INT128_BUF_SIZE];
+    snprintf(&buffer[0], INT128_BUF_SIZE, "%lld", x);
+    writer.write(&buffer[0]);
+}
+
+pub fn format_uint128(writer: Writer, x: uint128) {
+    var buffer: uint8[UINT128_BUF_SIZE];
+    snprintf(&buffer[0], UINT128_BUF_SIZE, "%llu", x);
+    writer.write(&buffer[0]);
+}
+
+pub fn format_float16(writer: Writer, x: float16) {
+    var buffer: uint8[FLOAT16_BUF_SIZE];
+    snprintf(&buffer[0], FLOAT16_BUF_SIZE, "%g", x);
+    writer.write(&buffer[0]);
+}
+
+pub fn format_float32(writer: Writer, x: float32) {
+    var buffer: uint8[FLOAT32_BUF_SIZE];
+    snprintf(&buffer[0], FLOAT32_BUF_SIZE, "%g", x);
+    writer.write(&buffer[0]);
+}
+
+pub fn format_float64(writer: Writer, x: float64) {
+    var buffer: uint8[FLOAT64_BUF_SIZE];
+    snprintf(&buffer[0], FLOAT64_BUF_SIZE, "%g", x);
+    writer.write(&buffer[0]);
+}
+
+// FIXME: UNSUPPORTED YET (#407)
+// 
+// pub fn format_float128(writer: Writer, x: float128) {
+//     var buffer: uint8[FLOAT128_BUF_SIZE];
+//     snprintf(&buffer[0], @sizeof(x), "%Lf", x);
+//     writer.write(&buffer[0]);
+// }
+
+// TODO: After implementing comptime and reflection features
+// we should add auto-format helpers here for sructs, unions, enums, 
+// tuples, and values.

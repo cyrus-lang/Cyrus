@@ -1,0 +1,22 @@
+// @stdout: 1 2 3 4 5 6 7 8 9
+
+import std::libc{printf};
+
+pub fn main() {
+    var arr: int32[3][3] = int32[3][3]{
+        int32[3]{1, 2, 3},
+        int32[3]{4, 5, 6},
+        int32[3]{7, 8, 9},
+    };
+
+    var i: int32 = 0;
+    while (i < 3) {
+        var j: int32 = 0;
+        while (j < 3) {
+            printf("%d ", arr[i][j]);
+            j++;
+        }
+        i++;
+    }
+    printf("\n");
+}

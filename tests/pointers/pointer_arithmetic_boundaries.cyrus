@@ -1,0 +1,14 @@
+// @stdout: 30 20 40 20 50
+
+import std::libc{printf};
+
+pub fn main() {
+    var arr: int32[5] = int32[5]{10, 20, 30, 40, 50};
+    var ptr: int32* = &arr[2];
+
+    printf("%d ", *ptr);
+    printf("%d ", *(ptr - 1));
+    printf("%d ", *(ptr + 1));
+    printf("%d ", *(&arr[4] - 3));
+    printf("%d\n", *(&arr[0] + 4));
+}

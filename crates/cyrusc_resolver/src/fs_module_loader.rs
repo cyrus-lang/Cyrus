@@ -214,7 +214,10 @@ impl ModuleLoader for FsModuleLoader {
             let module_file_path = &resolved_module_file.file_path;
 
             // verify file exists
-            if std::fs::read_to_string(module_file_path).is_err() {
+            if !std::fs::metadata(module_file_path)
+                .map(|m| m.is_file())
+                .unwrap_or(false)
+            {
                 loaded_modules_list.push(Err(Some(Box::new(ModuleFSLoaderDiagKind::ModuleNotFound {
                     module_name: format_module_segments(&sub_import.segments),
                 }))));

@@ -17,8 +17,6 @@ pub struct File {
         const path_str = path->as_string_const().as_str_const();
         const mode_str = mode.as_str();
 
-        libc::printf("%s\n", path_str);
-
     	const file = libc::fopen(path_str, mode_str);
         if (!file) {
             return .Error("could not open the file");
@@ -45,7 +43,7 @@ pub struct File {
         return result == 0;
     }
 
-    pub fn read(&const self, const allocator: Allocator) ErrorOr<String, ErrorStr> {
+    pub fn read(&const self, allocator: Allocator) ErrorOr<String, ErrorStr> {
         libc::fseek(self->file, 0, FileSeek.End.as_num());
         const size = @cast(usize, libc::ftell(self->file));
         libc::rewind(self->file);
@@ -115,7 +113,7 @@ pub struct File {
         }
     }
 
-    pub fn rename(const old_path: const Path*, const new_path: const Path*) ErrorOr<(), ()s> {
+    pub fn rename(const old_path: const Path*, const new_path: const Path*) ErrorOr<(), ()> {
         const old_path_str = old_path->as_string_const().as_str_const();
         const new_path_str = new_path->as_string_const().as_str_const();
 

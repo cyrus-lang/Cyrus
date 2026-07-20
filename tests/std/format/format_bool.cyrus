@@ -1,0 +1,22 @@
+// @stdout: true, false
+
+import std::mem::alloc::libc{LibcAllocator};
+import std::format{Format, format_bool};
+import std::io{Writer, StringWriter};
+import std::string{String};
+import std::mem{Allocator};
+import std::libc{printf};
+
+pub fn main() {
+     var allocator: Allocator = dynamic LibcAllocator.new();
+
+     var buffer = String.new(allocator);
+     defer buffer.free();
+
+     var writer: Writer = dynamic StringWriter.new(&buffer);
+
+     format_bool(writer, true);
+     writer.write(", ");
+     format_bool(writer, false);
+     printf("%s\n", buffer.as_str());
+}

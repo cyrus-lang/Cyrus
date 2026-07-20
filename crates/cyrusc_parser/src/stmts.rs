@@ -31,7 +31,7 @@ impl<'source_file> Parser<'source_file> {
 
                     let stmts = self.parse_stmt(grouped_modifiers, toplevel)?;
 
-                    if !stmts.len() == 1 {
+                    if stmts.len() != 1 {
                         return Err(self.error_invalid_token());
                     }
 
@@ -561,14 +561,6 @@ impl<'source_file> Parser<'source_file> {
         let mut fields = Vec::new();
 
         loop {
-            if self.current_token_is(TokenKind::RightBrace) {
-                return Err(self.error_with_hint(
-                    &self.current_token(),
-                    ParserDiagKind::InvalidToken(self.current_token().kind),
-                    "Consider to add a field to enum struct variant or remove the braces.",
-                ));
-            }
-
             let loc = self.current_token().loc;
             let (line, column, start) = (loc.line, loc.column, loc.start);
 
@@ -589,6 +581,10 @@ impl<'source_file> Parser<'source_file> {
             });
 
             if self.current_token_is(TokenKind::RightBrace) {
+                self.next_token();
+                break;
+            } else if self.current_token_is(TokenKind::Comma) && self.peek_token_is(TokenKind::RightBrace) {
+                self.next_token();
                 self.next_token();
                 break;
             } else {
@@ -800,16 +796,18 @@ impl<'source_file> Parser<'source_file> {
             }));
         }
 
-        variants.push(self.parse_enum_variant()?);
-
-        while self.current_token_is(TokenKind::Comma) {
-            self.expect_current(TokenKind::Comma)?;
-
+        loop {
             if self.current_token_is(TokenKind::RightBrace) {
                 break;
             }
 
+            if self.current_token_is(TokenKind::Comma) {
+                self.next_token();
+                continue;
+            }
+
             variants.push(self.parse_enum_variant()?);
+
             if self.peek_token_is(TokenKind::RightBrace)
                 || self.peek_token_is(TokenKind::Function)
                 || self.peek_token_is(TokenKind::Extern)
@@ -820,7 +818,7 @@ impl<'source_file> Parser<'source_file> {
             }
         }
 
-        // consume optional comma at the end of the variant
+        // consume optional comma of ending variant
         if self.current_token_is(TokenKind::Comma) {
             self.next_token();
         }
@@ -1280,15 +1278,10 @@ impl<'source_file> Parser<'source_file> {
 
         // Check for non-conditional for loop
         if self.current_token_is(TokenKind::LeftBrace) {
-            let body: Box<ASTBlockStmt>;
-            if self.current_token_is(TokenKind::LeftBrace) {
-                body = Box::new(self.parse_block()?);
+            let body = Box::new(self.parse_block()?);
 
-                if self.peek_token_is(TokenKind::Semicolon) {
-                    self.next_token();
-                }
-            } else {
-                return Err(self.error_at_current(ParserDiagKind::MissingOpeningBrace));
+            if self.peek_token_is(TokenKind::Semicolon) {
+                self.next_token();
             }
 
             let end = self.current_token().loc.end;
@@ -1681,7 +1674,7 @@ impl<'source_file> Parser<'source_file> {
 
         self.must_be_semicolon()?;
 
-        let end = self.peek_token().loc.end;
+        let end = self.current_token().loc.end;
 
         Ok(ASTStmt::Return(ASTReturnStmt {
             argument: Some(argument),
@@ -1933,7 +1926,7 @@ impl<'source_file> Parser<'source_file> {
         }
 
         // expression or range pattern
-        let expr = self.parse_expr(Precedence::Lowest)?;
+        let expr = self.parse_expr(Precedence::Prefix)?;
         self.next_token();
 
         // range exclusive:  a..b

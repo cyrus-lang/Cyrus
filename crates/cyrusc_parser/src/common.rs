@@ -285,8 +285,8 @@ impl<'source_file> Parser<'source_file> {
                     depth += 1;
 
                     // check that it's disqualified until the first greater-then token or not.
-                    let mut i = 2;
-                    while let Some(peek_token) = self.peek_n_token(i)
+                    let mut j = 2;
+                    while let Some(peek_token) = self.peek_n_token(j)
                         && peek_token.kind != TokenKind::GreaterThan
                     {
                         if self.token_disqualifies_type_arg(&peek_token.kind) {
@@ -296,7 +296,7 @@ impl<'source_file> Parser<'source_file> {
                             };
                         }
 
-                        i += 1;
+                        j += 1;
                     }
                 }
                 TokenKind::GreaterThan => {

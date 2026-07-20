@@ -106,13 +106,11 @@ pub enum TokenKind {
     IntPtr,
     ISize,
     USize,
-    Int,
     Int8,
     Int16,
     Int32,
     Int64,
     Int128,
-    UInt,
     UInt8,
     UInt16,
     UInt32,
@@ -122,7 +120,6 @@ pub enum TokenKind {
     Float32,
     Float64,
     Float128,
-    Char,
     Void,
     Bool,
     Const,
@@ -152,7 +149,6 @@ pub enum TokenKind {
 
 pub const PRIMITIVE_TYPES: &[TokenKind] = &[
     // signed integers
-    TokenKind::Int,
     TokenKind::Int8,
     TokenKind::Int16,
     TokenKind::Int32,
@@ -161,7 +157,6 @@ pub const PRIMITIVE_TYPES: &[TokenKind] = &[
     TokenKind::IntPtr,
     TokenKind::ISize,
     // unsigned integers
-    TokenKind::UInt,
     TokenKind::UInt8,
     TokenKind::UInt16,
     TokenKind::UInt32,
@@ -174,7 +169,6 @@ pub const PRIMITIVE_TYPES: &[TokenKind] = &[
     TokenKind::Float32,
     TokenKind::Float64,
     TokenKind::Float128,
-    TokenKind::Char,
     TokenKind::Bool,
     TokenKind::Void,
 ];
@@ -191,8 +185,7 @@ impl TokenKind {
     #[inline]
     pub fn is_unsigned(&self) -> bool {
         match self {
-            TokenKind::UInt
-            | TokenKind::UInt8
+            TokenKind::UInt8
             | TokenKind::UInt16
             | TokenKind::UInt32
             | TokenKind::UInt64
@@ -230,8 +223,8 @@ impl fmt::Display for TokenKind {
             TokenKind::RightParen => write!(f, ")"),
             TokenKind::LeftBrace => write!(f, "{{"),
             TokenKind::RightBrace => write!(f, "}}"),
-            TokenKind::LeftBracket => write!(f, "[["),
-            TokenKind::RightBracket => write!(f, "]]"),
+            TokenKind::LeftBracket => write!(f, "["),
+            TokenKind::RightBracket => write!(f, "]"),
             TokenKind::At => write!(f, "@"),
             TokenKind::Comma => write!(f, ","),
             TokenKind::DoubleDot => write!(f, ".."),
@@ -279,13 +272,11 @@ impl fmt::Display for TokenKind {
             TokenKind::IntPtr => write!(f, "intptr"),
             TokenKind::ISize => write!(f, "isize"),
             TokenKind::USize => write!(f, "usize"),
-            TokenKind::Int => write!(f, "int"),
             TokenKind::Int8 => write!(f, "int8"),
             TokenKind::Int16 => write!(f, "int16"),
             TokenKind::Int32 => write!(f, "int32"),
             TokenKind::Int64 => write!(f, "int64"),
             TokenKind::Int128 => write!(f, "int128"),
-            TokenKind::UInt => write!(f, "uint"),
             TokenKind::UInt8 => write!(f, "uint8"),
             TokenKind::UInt16 => write!(f, "uint16"),
             TokenKind::UInt32 => write!(f, "uint32"),
@@ -295,7 +286,6 @@ impl fmt::Display for TokenKind {
             TokenKind::Float32 => write!(f, "float32"),
             TokenKind::Float64 => write!(f, "float64"),
             TokenKind::Float128 => write!(f, "float128"),
-            TokenKind::Char => write!(f, "char"),
             TokenKind::Bool => write!(f, "bool"),
             TokenKind::Void => write!(f, "void"),
             TokenKind::Enum => write!(f, "enum"),
@@ -329,7 +319,7 @@ impl fmt::Display for TokenKind {
             TokenKind::Tilde => write!(f, "~"),
             TokenKind::NotEqual => write!(f, "!="),
             TokenKind::Bang => write!(f, "!"),
-            TokenKind::DoubleColon => write!(f, "\""),
+            TokenKind::DoubleColon => write!(f, "::"),
             TokenKind::Goto => write!(f, "goto"),
             TokenKind::Defer => write!(f, "defer"),
             TokenKind::Union => write!(f, "union"),

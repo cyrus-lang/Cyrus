@@ -778,58 +778,68 @@ impl<'ll> CodeGenIRBuilder<'ll> {
             }
         }
 
-        match (&return_stmt.arg, &ret_info.kind) {
+        self.with_return_state(|this| match (&return_stmt.arg, &ret_info.kind) {
             (None, _) => {
-                self.emit_all_defers();
-                self.llvmbuilder.build_return(None).unwrap();
+                this.emit_all_defers();
+                this.llvmbuilder.build_return(None).unwrap();
             }
             (Some(expr), ABIRetInfoKind::Ignore) => {
-                self.emit_expr(expr, &Some(*ret_info.cir_ret_type.clone()));
-                self.emit_all_defers();
-
-                self.llvmbuilder.build_return(None).unwrap();
+                this.emit_expr(expr, &Some(*ret_info.cir_ret_type.clone()));
+                this.emit_all_defers();
+                this.llvmbuilder.build_return(None).unwrap();
             }
 
             (Some(expr), ABIRetInfoKind::Indirect { sret }) => {
-                let lvalue = self.emit_expr(expr, &Some(*ret_info.cir_ret_type.clone()));
-                let rvalue = self.load_rvalue(lvalue.clone());
+                let lvalue = this.emit_expr(expr, &Some(*ret_info.cir_ret_type.clone()));
+                let rvalue = this.load_rvalue(lvalue.clone());
 
                 if *sret {
-                    self.emit_compute_indirect_sret(cur_fn, &lvalue, &rvalue);
-                    self.emit_all_defers();
-                    self.llvmbuilder.build_return(None).unwrap();
+                    // OPTIMIZATION: If value is already in the SRet slot, just return
+                    if let InternalValueKind::LValue(ptr) = &lvalue.kind {
+                        if let Some(cur_sret) = this.cur_sret {
+                            if *ptr == cur_sret {
+                                this.emit_all_defers();
+                                this.llvmbuilder.build_return(None).unwrap();
+                                return;
+                            }
+                        }
+                    }
+
+                    this.emit_compute_indirect_sret(cur_fn, &lvalue, &rvalue);
+                    this.emit_all_defers();
+                    this.llvmbuilder.build_return(None).unwrap();
                     return;
                 }
             }
             (Some(expr), ABIRetInfoKind::Direct { coerce_to }) => {
-                let lvalue = self.emit_expr(expr, &Some(*ret_info.cir_ret_type.clone()));
-                let rvalue = self.load_rvalue(lvalue);
+                let lvalue = this.emit_expr(expr, &Some(*ret_info.cir_ret_type.clone()));
+                let rvalue = this.load_rvalue(lvalue);
 
-                let ret_ty = abi_type_to_llvm_type(self.llvm_ctx, &self.target.info, &ret_info.abi_type);
+                let ret_ty = abi_type_to_llvm_type(this.llvm_ctx, &this.target.info, &ret_info.abi_type);
 
                 let value: BasicValueEnum<'ll> = if let Some(coerce) = coerce_to {
-                    let coerce_ty = abi_type_to_llvm_type(self.llvm_ctx, &self.target.info, coerce);
-                    self.emit_cast(coerce_ty, rvalue).try_into().unwrap()
+                    let coerce_ty = abi_type_to_llvm_type(this.llvm_ctx, &this.target.info, coerce);
+                    this.emit_cast(coerce_ty, rvalue).try_into().unwrap()
                 } else {
-                    self.emit_cast(ret_ty, rvalue).try_into().unwrap()
+                    this.emit_cast(ret_ty, rvalue).try_into().unwrap()
                 };
 
                 let return_value =
-                    self.intrinsic_coerce_through_alloca(value, ret_ty.try_into().unwrap(), "coerce.ret");
+                    this.intrinsic_coerce_through_alloca(value, ret_ty.try_into().unwrap(), "coerce.ret");
 
-                self.emit_all_defers();
-                self.llvmbuilder.build_return(Some(&return_value)).unwrap();
+                this.emit_all_defers();
+                this.llvmbuilder.build_return(Some(&return_value)).unwrap();
             }
             (Some(expr), ABIRetInfoKind::DirectPair { lo, hi }) => {
-                let lvalue = self.emit_expr(expr, &Some(*ret_info.cir_ret_type.clone()));
-                let rvalue = self.load_rvalue(lvalue);
+                let lvalue = this.emit_expr(expr, &Some(*ret_info.cir_ret_type.clone()));
+                let rvalue = this.load_rvalue(lvalue);
 
-                let return_value = self.emit_compute_return_direct_pair(rvalue, lo, hi, &ret_info.abi_type);
+                let return_value = this.emit_compute_return_direct_pair(rvalue, lo, hi, &ret_info.abi_type);
 
-                self.emit_all_defers();
-                self.llvmbuilder.build_return(Some(&return_value)).unwrap();
+                this.emit_all_defers();
+                this.llvmbuilder.build_return(Some(&return_value)).unwrap();
             }
-        }
+        });
     }
 
     fn emit_implicit_return_zero(&mut self) {
@@ -891,7 +901,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         let type_id = struct_type.as_type_id().unwrap();
         let struct_layout = self.tctx.get_or_compute_layout(type_id);
 
-        let size_val = self.llvm_ctx.i64_type().const_int(struct_layout.size as u64, false);
+        let size_value = self.llvm_ctx.i64_type().const_int(struct_layout.size as u64, false);
 
         let src_ptr = match &lvalue.kind {
             InternalValueKind::LValue(ptr) => *ptr,
@@ -905,7 +915,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         };
 
         self.llvmbuilder
-            .build_memcpy(sret_ptr, struct_layout.align, src_ptr, struct_layout.align, size_val)
+            .build_memmove(sret_ptr, struct_layout.align, src_ptr, struct_layout.align, size_value)
             .unwrap();
     }
 
@@ -1027,6 +1037,13 @@ impl<'ll> CodeGenIRBuilder<'ll> {
 
 // Helpers.
 impl<'ll> CodeGenIRBuilder<'ll> {
+    fn with_return_state<R>(&mut self, mut handler: impl FnMut(&mut Self) -> R) -> R {
+        self.is_return = true;
+        let result = handler(self);
+        self.is_return = false;
+        result
+    }
+
     pub(crate) fn ensure_entry_block(&mut self) {
         let entry_block = self.new_basic_block("entry");
         self.blockreg.first_block = Some(entry_block);

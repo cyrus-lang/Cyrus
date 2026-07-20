@@ -1,0 +1,42 @@
+// @stdout: abcdefg
+
+import std::libc{printf};
+
+enum Enum {
+    A,
+    B, 
+    Variant1(int64)
+    Variant2(int32, uint8, bool)
+}
+
+pub fn main() {
+    if (Enum.A == Enum.A) {
+        printf("a");
+    }
+
+    if (Enum.B == Enum.B) {
+        printf("b");
+    }
+    
+    if (Enum.A != Enum.B) {
+        printf("c");
+    }
+    
+    if (Enum.B != Enum.A) {
+        printf("d");
+    }
+
+    if (Enum.Variant1(10) != Enum.Variant1(20)) {
+        printf("e");
+    }
+
+    if (Enum.Variant2(5, 'x', true) == Enum.Variant2(5, 'x', true)) {
+        printf("f");
+    }
+
+    if (Enum.Variant2(1, 'z', true) == Enum.Variant2(1, 'z', true)) {
+        printf("g");
+    }
+
+    printf("\n");
+}

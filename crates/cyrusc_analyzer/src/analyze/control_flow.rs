@@ -373,7 +373,19 @@ impl<'a> AnalysisContext<'a> {
 
                     match enum_variant {
                         TypedEnumVariant::Tuple { fields, .. } => {
-                            if fields.len() != items.len() {}
+                            if fields.len() != items.len() {
+                                this.reporter.report(Diag {
+                                    level: DiagLevel::Error,
+                                    kind: Box::new(AnalyzerDiagKind::EnumVariantArgCountMismatch {
+                                        variant_name: ident.as_string(),
+                                        expected: fields.len() as u32,
+                                        provided: items.len() as u32,
+                                    }),
+                                    loc: Some(pattern.loc),
+                                    hint: None,
+                                });
+                                return;
+                            }
 
                             *exporting_pattern_count += 1;
 
@@ -414,11 +426,7 @@ impl<'a> AnalysisContext<'a> {
                 }
 
                 // .StructVariant { x, y, .. }
-                TypedSwitchCasePatternKind::EnumStructVariant {
-                    ident,
-                    items,
-                    has_rest: _,
-                } => {
+                TypedSwitchCasePatternKind::EnumStructVariant { ident, items, has_rest } => {
                     let Some(enum_variant) = find_variant(inst_enum_decl, ident) else {
                         this.reporter.report(Diag {
                             level: DiagLevel::Error,
@@ -448,6 +456,20 @@ impl<'a> AnalysisContext<'a> {
                     match enum_variant {
                         TypedEnumVariant::Struct { fields, .. } => {
                             let mut has_error = false;
+
+                            if !has_rest && fields.len() != items.len() {
+                                this.reporter.report(Diag {
+                                    level: DiagLevel::Error,
+                                    kind: Box::new(AnalyzerDiagKind::EnumVariantArgCountMismatch {
+                                        variant_name: ident.as_string(),
+                                        expected: fields.len() as u32,
+                                        provided: items.len() as u32,
+                                    }),
+                                    loc: Some(pattern.loc),
+                                    hint: None,
+                                });
+                                return;
+                            }
 
                             for item in items {
                                 let exists = fields.iter().any(|field| field.name == item.name);

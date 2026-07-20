@@ -1,0 +1,18 @@
+// @stdout: 1, 1, 1, 0, 0
+
+import std::libc{printf};
+
+fn is_abc(char: uint8) bool {
+    switch (char) {
+        case 'a' | 'b' | 'c' => return true;
+        default => return false;
+    }
+}
+
+pub fn main() {
+    printf("%d, ", is_abc('a'));
+    printf("%d, ", is_abc('b'));
+    printf("%d, ", is_abc('c'));
+    printf("%d, ", is_abc('e'));
+    printf("%d", is_abc('\n'));
+}

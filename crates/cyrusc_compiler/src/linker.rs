@@ -53,7 +53,7 @@ impl Linker {
     }
 
     /// Link object files into a binary executable
-    pub fn link_executable(&self, object_files: &[String], output_path: &str) -> Result<(), String> {
+    pub fn link_executable(&self, object_files: &[String], output_path: PathBuf) -> Result<(), String> {
         let mut cmd = Command::new(&self.linker_path);
 
         if self.opts.linker_options.link_static {
@@ -65,7 +65,7 @@ impl Linker {
         if self.opts.linker_options.no_pie {
             cmd.arg("-no-pie");
         }
-        if !self.opts.linker_options.link_static && (self.opts.linker_options.pie || self.opts.linker_options.no_pie) {
+        if !self.opts.linker_options.link_static && self.opts.linker_options.pie {
             cmd.args(["-ldl", "-rdynamic"]);
         }
         if self.opts.linker_options.link_static {

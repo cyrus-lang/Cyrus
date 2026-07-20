@@ -17,6 +17,7 @@ pub enum ABIFieldOffsetInfo {
         index: u32,
         offset: u32,
         original_index: usize,
+        size: usize,
     },
     Padding {
         index: u32,
@@ -64,11 +65,12 @@ impl ABITypeLayout {
         for entry in &self.field_offsets {
             if let ABIFieldOffsetInfo::Normal {
                 offset: field_offset,
+                size: field_size,
                 index,
                 ..
             } = entry
             {
-                if offset >= *field_offset && offset < (*field_offset + self.size) {
+                if offset >= *field_offset && (offset as usize) < ((*field_offset as usize) + *field_size) {
                     match best {
                         Some((_, best_size)) if best_size >= self.size => {}
                         _ => best = Some((*index as usize, self.size)),
@@ -97,11 +99,12 @@ impl ABITypeLayout {
 }
 
 impl ABIFieldOffsetInfo {
-    pub fn normal(index: u32, offset: u32, original_index: usize) -> Self {
+    pub fn normal(index: u32, offset: u32, original_index: usize, size: usize) -> Self {
         ABIFieldOffsetInfo::Normal {
             index,
             offset,
             original_index,
+            size,
         }
     }
 

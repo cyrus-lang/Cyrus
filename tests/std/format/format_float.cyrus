@@ -1,0 +1,33 @@
+// @stdout: 1.2002, 3.155, 5.5555
+
+import std::mem::alloc::libc{LibcAllocator};
+import std::io{Writer, StringWriter};
+import std::string{String};
+import std::mem{Allocator};
+import std::libc{printf};
+import std::format{
+     Format,
+     format_float16,
+     format_float32,
+     format_float64,
+     // format_float128,
+};
+
+pub fn main() {
+     var allocator: Allocator = dynamic LibcAllocator.new();
+
+     var buffer = String.new(allocator);
+     defer buffer.free();
+
+     var writer: Writer = dynamic StringWriter.new(&buffer);
+
+     format_float16(writer, 1.2);
+     writer.write(", ");
+     format_float32(writer, 3.155);
+     writer.write(", ");
+     format_float64(writer, 5.5555);
+     // writer.write(", ");
+     // FIXME
+     // format_float128(writer, 1234567.12345678);
+     printf("%s\n", buffer.as_str());
+}

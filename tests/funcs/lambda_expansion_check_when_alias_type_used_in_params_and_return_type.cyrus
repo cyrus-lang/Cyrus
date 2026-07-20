@@ -5,7 +5,7 @@ import std::libc{printf};
 type Int = int64;
 type Handler = fn(Int, Int) Int;
 
-const handler: Handler = fn(x: Int, y: Int) Int {
+static const handler: Handler = fn(x: Int, y: Int) Int {
     return x + y;
 };
 

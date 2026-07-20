@@ -167,7 +167,9 @@ impl<'a> AnalysisContext<'a> {
                 self.is_enum_decl_assignable_to(&decl1, &decl2, env1, env2, loc)
             }
 
-            (TypeDeclID::Interface(id1), TypeDeclID::Interface(id2)) => id1 == id2,
+            (TypeDeclID::Interface(id1), TypeDeclID::Interface(id2)) => {
+                id1 == id2 && named_type1.type_args == named_type2.type_args
+            }
 
             _ => false,
         }
@@ -383,10 +385,10 @@ impl<'a> AnalysisContext<'a> {
             (TypedArrayCapacity::Fixed(value_capacity_expr), TypedArrayCapacity::Fixed(target_capacity_expr)) => {
                 let mut folder = ConstFolder::new(self, &self.decl_tables, self.target, self.tctx.clone(), self);
 
-                let value_capacity = folder.expr_as_const_int(&value_capacity_expr, self).unwrap();
-                let target_capacity = folder.expr_as_const_int(&target_capacity_expr, self).unwrap();
+                let value_capacity = folder.expr_as_const_int(&value_capacity_expr, self);
+                let target_capacity = folder.expr_as_const_int(&target_capacity_expr, self);
 
-                value_capacity == target_capacity
+                matches!((value_capacity, target_capacity), (v, t) if v == t)
             }
             _ => false, // not valid
         }

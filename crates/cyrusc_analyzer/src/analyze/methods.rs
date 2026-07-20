@@ -3,6 +3,7 @@
 
 use crate::{context::AnalysisContext, infer::InferCtx};
 use cyrusc_typed_ast::{
+    debug_assert_func_decl_resolved,
     decls::{MethodDecl, MethodDeclID, MethodDecls},
     stmts::{TypedFuncParamKind, TypedTypeArgs},
     types::{NamedType, SemaType, TypeDeclID},
@@ -15,6 +16,9 @@ impl<'a> AnalysisContext<'a> {
             let mut method_decl = self.decl_tables.method_decl(*method_decl_id);
 
             self.analyze_method_decl(object_type_decl_id, &mut method_decl);
+
+            #[cfg(debug_assertions)]
+            debug_assert_func_decl_resolved!(&method_decl.func_decl);
 
             self.decl_tables.with_method_decl_mut(*method_decl_id, |_method_decl| {
                 *_method_decl = method_decl;
@@ -42,7 +46,7 @@ impl<'a> AnalysisContext<'a> {
         // If the method is non-generic, eagerly lower all SelfType occurrences
         // to the concrete object type. Generic methods defer SelfType substitution
         // to the call-site via the instantiated generic environment.
-        if !method_decl.func_decl.is_generic() {
+        if !method_decl.func_decl.is_generic() && !object_type_decl_id.is_interface() {
             let concrete_self_type = SemaType::Named(NamedType {
                 type_decl_id: object_type_decl_id,
                 type_args: TypedTypeArgs::new(),
@@ -90,10 +94,6 @@ impl<'a> AnalysisContext<'a> {
             match param_kind {
                 TypedFuncParamKind::FuncParam(func_param) => {
                     func_param.ty = self.substitute_self_type(func_param.ty.clone(), concrete_self_type);
-
-                    if let Some(infer) = &self.func_env.infer {
-                        func_param.ty = infer.resolve(&func_param.ty);
-                    }
                 }
                 TypedFuncParamKind::SelfModifier(self_modifier) => {
                     self_modifier.ty = self.substitute_self_type(self_modifier.ty.clone(), concrete_self_type);
@@ -104,6 +104,12 @@ impl<'a> AnalysisContext<'a> {
                         });
                 }
             }
+        }
+
+        if let Some(ret_type) =
+            self.normalize_sema_type(method_decl.func_decl.ret_type.clone(), method_decl.func_decl.loc, 0)
+        {
+            method_decl.func_decl.ret_type = ret_type;
         }
 
         let mut substituted_ret_type =

@@ -183,14 +183,9 @@ impl<'source_map, 'source_file> Lexer<'source_map, 'source_file> {
     }
 
     fn read_ident_or_prefix(&mut self) -> TokenKind {
-        if self.ch == 'c' && self.peek_char() == '"' {
-            self.read_char();
-            return self.read_string_literal(Some(StringPrefix::C));
-        }
-
         if self.ch == 'b' && self.peek_char() == '"' {
             self.read_char();
-            return self.read_string_literal(Some(StringPrefix::B));
+            return self.read_string_literal(Some(StringPrefix::Byte));
         }
 
         self.read_ident()
@@ -257,7 +252,7 @@ impl<'source_map, 'source_file> Lexer<'source_map, 'source_file> {
     }
 
     fn read_greater(&mut self) -> TokenKind {
-        // NOTE: '>>' ambiguity is entrusted to the parser (your original design)
+        // NOTE: '>>' ambiguity is entrusted to the parser
         if self.peek_char() == '=' {
             self.read_char();
             self.read_char();
@@ -487,12 +482,10 @@ impl<'source_map, 'source_file> Lexer<'source_map, 'source_file> {
 
                 self.reporter.report(Diag {
                     level: DiagLevel::Error,
-                    kind: Box::new(LexicalDiagKind::InvalidChar(self.ch)),
+                    kind: Box::new(LexicalDiagKind::InvalidEscapeSequence),
                     loc: Some(Loc::new(self.file_id(), line, column, start, end)),
                     hint: Some(err.to_string()),
                 });
-
-                self.read_char();
                 return TokenKind::Invalid;
             }
         };
@@ -811,13 +804,11 @@ fn lookup_identifier(ident: String) -> TokenKind {
         "intptr" => TokenKind::IntPtr,
         "isize" => TokenKind::ISize,
         "usize" => TokenKind::USize,
-        "int" => TokenKind::Int,
         "int8" => TokenKind::Int8,
         "int16" => TokenKind::Int16,
         "int32" => TokenKind::Int32,
         "int64" => TokenKind::Int64,
         "int128" => TokenKind::Int128,
-        "uint" => TokenKind::UInt,
         "uint8" => TokenKind::UInt8,
         "uint16" => TokenKind::UInt16,
         "uint32" => TokenKind::UInt32,
@@ -827,7 +818,6 @@ fn lookup_identifier(ident: String) -> TokenKind {
         "float32" => TokenKind::Float32,
         "float64" => TokenKind::Float64,
         "float128" => TokenKind::Float128,
-        "char" => TokenKind::Char,
         "bool" => TokenKind::Bool,
         _ => TokenKind::Ident(ident),
     }

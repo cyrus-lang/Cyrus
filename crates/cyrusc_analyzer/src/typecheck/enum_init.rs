@@ -62,7 +62,7 @@ impl<'a> AnalysisContext<'a> {
             &enum_name,
             enum_decl.generic_params.clone(),
             &named_type.type_args,
-            enum_decl.loc,
+            enum_init.loc,
         )?;
 
         self.with_generic_env(generic_env, |this| {

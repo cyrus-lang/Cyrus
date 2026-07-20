@@ -288,6 +288,11 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         let cur_func = self.cur_func.unwrap();
         let cur_func_name = cur_func.get_name().to_str().unwrap();
         let parent_dctx_func = self.dctx.as_ref().map(|dctx| dctx.func);
+        let parent_sret = self.cur_sret.clone();
+
+        if abi_func_info.ret_info.kind.is_indirect_sret() {
+            self.cur_sret = Some(cur_func.get_first_param().unwrap().into_pointer_value());
+        }
 
         if let Some(dctx) = &mut self.dctx {
             unsafe {
@@ -320,6 +325,8 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         if let Some(dctx) = &mut self.dctx {
             dctx.func = parent_dctx_func.unwrap();
         }
+
+        self.cur_sret = parent_sret;
     }
 }
 
@@ -842,11 +849,11 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         let mut llvm_param_index_offset = 0;
 
         if abi_func_info.ret_info.kind.is_indirect_sret() {
-            let ret_ty = &abi_func_info.ret_info.abi_type;
-            let llvm_ret_ty = abi_type_to_llvm_type(self.llvm_ctx, &self.target.info, ret_ty);
+            let ret_type = &abi_func_info.ret_info.abi_type;
+            let llvm_ret_type = abi_type_to_llvm_type(self.llvm_ctx, &self.target.info, ret_type);
 
             let attr = unsafe {
-                LLVMCreateTypeAttribute(self.llvm_ctx.as_ctx_ref(), sret_attr_kind, llvm_ret_ty.as_type_ref())
+                LLVMCreateTypeAttribute(self.llvm_ctx.as_ctx_ref(), sret_attr_kind, llvm_ret_type.as_type_ref())
             };
 
             unsafe {

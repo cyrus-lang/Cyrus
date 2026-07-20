@@ -183,9 +183,21 @@ impl<'a> AnalysisContext<'a> {
         indirection: u8,
     ) -> Option<SemaType> {
         let ty = match unresolved_type {
-            UnresolvedType::Decl(symbol_id) => self
-                .lookup_symbol_as_decl_id(symbol_id)
-                .and_then(|decl_id| self.resolve_symbol_type(decl_id, loc, indirection))?,
+            UnresolvedType::Decl(symbol_id) => self.lookup_symbol_as_decl_id(symbol_id).and_then(|decl_id| {
+                if decl_id.as_type_decl_id().is_none() {
+                    let symbol_name = self.formatter.format_decl(decl_id);
+
+                    self.reporter.report(Diag {
+                        level: DiagLevel::Error,
+                        kind: Box::new(AnalyzerDiagKind::NonTypeSymbol { symbol_name }),
+                        loc: Some(loc),
+                        hint: None,
+                    });
+                    return None;
+                }
+
+                self.resolve_symbol_type(decl_id, loc, indirection)
+            })?,
 
             UnresolvedType::GenericInst {
                 base_symbol_id,
@@ -282,7 +294,7 @@ impl<'a> AnalysisContext<'a> {
         let elements: Vec<_> = tuple_type
             .elements
             .into_iter()
-             .filter_map(|(ty, loc)| {
+            .filter_map(|(ty, loc)| {
                 self.normalize_sema_type(ty, tuple_type.loc, indirection)
                     .map(|ty| (ty, loc))
             })
@@ -299,7 +311,6 @@ impl<'a> AnalysisContext<'a> {
         }))
     }
 
-    // TODO: Implement slices.
     fn normalize_array_capacity(
         &mut self,
         mut array: TypedArrayType,
@@ -378,7 +389,7 @@ impl<'a> AnalysisContext<'a> {
         for type_arg in type_args.iter_mut() {
             match type_arg {
                 TypedTypeArg::Type(ty, loc) => {
-                    *ty = match self.normalize_and_check_type_formation(ty.clone(), *loc, indirection) {
+                    *ty = match self.normalize_sema_type(ty.clone(), *loc, indirection) {
                         Some(sema_type) => sema_type,
                         None => continue,
                     };

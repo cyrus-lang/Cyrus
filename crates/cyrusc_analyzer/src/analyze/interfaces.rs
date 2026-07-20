@@ -23,7 +23,14 @@ impl<'a> AnalysisContext<'a> {
         let mut methods: Vec<String> = Vec::new();
 
         for (_, method_decl_id) in interface.methods.iter() {
-            let method_decl = self.decl_tables.method_decl(*method_decl_id);
+            let mut method_decl = self.decl_tables.method_decl(*method_decl_id);
+
+            self.analyze_method_decl(TypeDeclID::Interface(interface.interface_decl_id), &mut method_decl);
+
+            self.decl_tables.with_method_decl_mut(*method_decl_id, |_method_decl| {
+                *_method_decl = method_decl.clone();
+            });
+
             let func_decl = method_decl.func_decl;
 
             let params_start = if let Some(self_modifier) = func_decl.params.get_self_modifier() {
@@ -137,6 +144,7 @@ impl<'a> AnalysisContext<'a> {
 
             for (_, method_decl_id) in interface_decl.methods.iter() {
                 let interface_method_decl = self.decl_tables.method_decl(*method_decl_id);
+
                 let func_decl = instantiate_method_decl(
                     &interface_method_decl,
                     &interface_decl.generic_params,
@@ -232,7 +240,6 @@ impl<'a> AnalysisContext<'a> {
 
                 for (_, method_decl_id) in interface_decl.methods.iter() {
                     // interface method
-
                     let interface_method_decl = &mut this.decl_tables.method_decl(*method_decl_id).func_decl;
 
                     let self_modifier = interface_method_decl.params.get_self_modifier_mut().unwrap();
@@ -242,7 +249,6 @@ impl<'a> AnalysisContext<'a> {
                     interface_method_decl.ret_type = this.substitute_type(&interface_method_decl.ret_type);
 
                     // object method
-
                     let Some(method_decl_id) = method_decls.get(&interface_method_decl.name) else {
                         continue;
                     };

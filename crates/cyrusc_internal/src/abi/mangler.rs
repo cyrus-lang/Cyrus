@@ -7,7 +7,7 @@ use cyrusc_ast::{
 };
 use cyrusc_typed_ast::{
     stmts::{TypedFuncTypeVariadicParam, TypedTypeArg, TypedTypeArgs},
-    types::{SemaType, TypeDeclID, TypedArrayCapacity},
+    types::{NamedType, SemaType, TypeDeclID, TypedArrayCapacity},
 };
 use once_cell::sync::Lazy;
 
@@ -163,27 +163,34 @@ fn mangle_type_args(type_args: &TypedTypeArgs) -> String {
         .join(",")
 }
 
-fn mangle_sema_type(sema_type: &SemaType) -> String {
-    match sema_type {
-        SemaType::Named(named_type) => {
-            let decl_id = match named_type.type_decl_id {
-                TypeDeclID::Struct(struct_decl_id) => format!("struct_{}", struct_decl_id.0),
-                TypeDeclID::Enum(enum_decl_id) => format!("enum_{}", enum_decl_id.0),
-                TypeDeclID::Union(union_decl_id) => format!("union_{}", union_decl_id.0),
-                TypeDeclID::Interface(interface_decl_id) => format!("interface_{}", interface_decl_id.0),
-                TypeDeclID::Typedef(_) => unreachable!(),
-            };
+fn mangle_named_type(named_type: &NamedType) -> String {
+    let decl_id = match named_type.type_decl_id {
+        TypeDeclID::Struct(struct_decl_id) => format!("struct_{}", struct_decl_id.0),
+        TypeDeclID::Enum(enum_decl_id) => format!("enum_{}", enum_decl_id.0),
+        TypeDeclID::Union(union_decl_id) => format!("union_{}", union_decl_id.0),
+        TypeDeclID::Interface(interface_decl_id) => format!("interface_{}", interface_decl_id.0),
+        TypeDeclID::Typedef(_) => unreachable!(),
+    };
 
-            if named_type.type_args.is_empty() {
-                format!("{decl_id}")
-            } else {
-                let type_args = mangle_type_args(&named_type.type_args);
+    if named_type.type_args.is_empty() {
+        format!("{decl_id}")
+    } else {
+        let type_args = mangle_type_args(&named_type.type_args);
 
-                format!("{decl_id}<{type_args}>")
-            }
-        }
+        format!("{decl_id}<{type_args}>")
+    }
+}
+
+fn mangle_sema_type(ty: &SemaType) -> String {
+    match ty {
+        SemaType::Named(named_type) => mangle_named_type(named_type),
+
         SemaType::InterfaceObject(interface_object) => {
-            mangle_sema_type(&SemaType::InterfaceObject(interface_object.clone()))
+            format!(
+                "{}(vtable_id: {})",
+                mangle_named_type(&interface_object.interface_type),
+                interface_object.vtable_id
+            )
         }
         SemaType::Plain(plain_type) => {
             // Use the provided to_string() method for PlainType

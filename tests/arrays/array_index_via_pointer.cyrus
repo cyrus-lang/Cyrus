@@ -1,0 +1,20 @@
+// @stdout: 0 1 2 3 4 5 6 7 8 9
+
+import std::libc{printf};
+
+pub fn main() {
+    var arr: int32[10] = undefined;
+    var i: int32 = 0;
+    while (i < 10) {
+        arr[i] = i;
+        i++;
+    }
+
+    var ptr: int32* = &arr[0];
+    i = 0;
+    while (i < 10) {
+        printf("%d ", ptr[i]);
+        i++;
+    }
+    printf("\n");
+}

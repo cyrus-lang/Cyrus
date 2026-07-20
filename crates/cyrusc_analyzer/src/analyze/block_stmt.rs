@@ -12,7 +12,7 @@ impl<'a> AnalysisContext<'a> {
         let mut terminated = false;
 
         let stmts = std::mem::take(&mut block_stmt.stmts);
-        let mut final_stmts = Vec::with_capacity(block_stmt.stmts.len());
+        let mut final_stmts = Vec::with_capacity(stmts.len());
 
         for mut stmt in stmts {
             let stmt_state = self.analyze_stmt(&mut stmt);

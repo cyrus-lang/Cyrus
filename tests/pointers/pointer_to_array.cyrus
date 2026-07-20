@@ -1,0 +1,13 @@
+// @stdout: 2 4 6 8 10
+
+import std::libc{printf};
+
+pub fn main() {
+    var arr: int32[5] = int32[5]{1, 2, 3, 4, 5};
+    var ptr: int32* = &arr[0];
+
+    for (var i: int32 = 0; i < 5; i++) {
+        printf("%d ", *(ptr + i) * 2);
+    }
+    printf("\n");
+}

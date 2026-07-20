@@ -20,6 +20,33 @@ use std::hash::Hash;
 
 pub mod table;
 
+#[macro_export]
+macro_rules! debug_assert_func_decl_resolved {
+    ($func_decl:expr) => {
+        for func_param in &$func_decl.params.list {
+            match func_param {
+                TypedFuncParamKind::FuncParam(func_param) => {
+                    debug_assert!(
+                        !func_param.ty.includes_unresolved_type(),
+                        "func decl param type is unresolved"
+                    );
+                }
+                TypedFuncParamKind::SelfModifier(self_modifier) => {
+                    debug_assert!(
+                        !self_modifier.ty.includes_unresolved_type(),
+                        "func decl self_modifier type in unresolved"
+                    );
+                }
+            }
+        }
+
+        debug_assert!(
+            !$func_decl.ret_type.includes_unresolved_type(),
+            "func decl return type is unresolved"
+        );
+    };
+}
+
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
 pub enum DeclID {
     Struct(StructDeclID),
@@ -77,7 +104,7 @@ pub struct StructDecl {
     pub align: Option<usize>,
     pub loc: Loc,
 
-    pub is_normalized: bool
+    pub is_normalized: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -91,7 +118,7 @@ pub struct UnionDecl {
     pub align: Option<usize>,
     pub loc: Loc,
 
-    pub is_normalized: bool
+    pub is_normalized: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -106,7 +133,7 @@ pub struct EnumDecl {
     pub align: Option<usize>,
     pub loc: Loc,
 
-    pub is_normalized: bool
+    pub is_normalized: bool,
 }
 
 #[derive(Debug, Clone)]

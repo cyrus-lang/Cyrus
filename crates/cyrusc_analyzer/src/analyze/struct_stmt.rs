@@ -58,18 +58,18 @@ impl<'a> AnalysisContext<'a> {
 
         self.analyze_generic_bounds(&struct_decl.generic_params);
 
+        let object_type_decl_id = TypeDeclID::Struct(struct_decl_id);
+
+        if !struct_decl.is_generic() {
+            self.analyze_object_methods(object_type_decl_id, &struct_decl.methods);
+        }
+
         self.analyze_object_implements_interfaces(
             &object_name,
             struct_decl.is_generic(),
             &struct_decl.impls,
             &struct_decl.methods,
         );
-
-        let object_type_decl_id = TypeDeclID::Struct(struct_decl_id);
-
-        if !struct_decl.is_generic() {
-            self.analyze_object_methods(object_type_decl_id, &struct_decl.methods);
-        }
     }
 
     fn analyze_struct_fields(&mut self, struct_decl_id: StructDeclID, struct_fields: &mut [TypedStructField]) {

@@ -10,7 +10,6 @@ use crate::{
     },
 };
 use cyrusc_ast::abi::CallConv;
-use cyrusc_source_loc::Loc;
 use cyrusc_typed_ast::{
     decls::{EnumDecl, EnumDeclID, StructDecl, StructDeclID, UnionDecl, UnionDeclID, table::DeclTablesRegistry},
     stmts::{TypedEnumVariant, TypedFuncTypeParams, TypedTypeArgs},
@@ -18,7 +17,7 @@ use cyrusc_typed_ast::{
         instantiate_enum_decl_with_type_args, instantiate_struct_decl_with_type_args,
         instantiate_union_decl_with_type_args,
     },
-    types::{NamedType, PlainType, SemaType, TypeDeclID, TypedArrayCapacity, TypedFuncType},
+    types::{NamedType, SemaType, TypeDeclID, TypedArrayCapacity, TypedFuncType},
 };
 use fx_hash::FxHashSet;
 use std::sync::Arc;
@@ -85,14 +84,17 @@ pub fn lower_sema_type(
             CIRType::FuncType(lower_func_type(decl_tables, target, tctx.clone(), func_type))
         }
 
-        SemaType::InterfaceObject(interface_object) => cir_fat_ptr_type(&tctx, None, interface_object.loc),
+        SemaType::InterfaceObject(_) => tctx.fat_ptr_type(),
 
         SemaType::Unresolved(_)
         | SemaType::GenericParam(_)
         | SemaType::SelfType(_)
         | SemaType::InferVar(_)
         | SemaType::Placeholder
-        | SemaType::Err(_) => unreachable!(),
+        | SemaType::Err(_) => {
+            dbg!(ty.clone());
+            unreachable!()
+        }
     }
     .const_inner()
     .clone()
@@ -162,17 +164,14 @@ pub fn lower_named_type(
                 named_type.type_args.clone(),
             )
         }
-        TypeDeclID::Interface(interface_decl_id) => {
-            let interface_decl = decl_tables.interface_decl(interface_decl_id);
-
-            cir_fat_ptr_type(&tctx, None, interface_decl.loc)
-        }
 
         TypeDeclID::Typedef(typedef_decl_id) => {
             let typedef = decl_tables.typedef_decl(typedef_decl_id);
 
             lower_sema_type(decl_tables, target, tctx, &typedef.ty)
         }
+
+        TypeDeclID::Interface(_) => tctx.fat_ptr_type(),
     }
 }
 
@@ -543,22 +542,4 @@ pub fn lower_func_type(
 
     cir_type.abi_func_info = Some(target.target_abi.classify_func(&cir_type).unwrap());
     cir_type
-}
-
-pub fn cir_fat_ptr_type(tctx: &CIRTypeContext, data_type: Option<CIRType>, loc: Loc) -> CIRType {
-    let struct_type = CIRStructType {
-        decl_key: None,
-        name: None,
-        fields: vec![
-            CIRType::Pointer(Box::new(data_type.unwrap_or(CIRType::Plain(PlainType::Void)))), // T* or void*
-            CIRType::Pointer(Box::new(CIRType::Plain(PlainType::Void))),
-        ],
-        fields_info: vec![("data_ptr".to_string(), loc), ("vtable_ptr".to_string(), loc)],
-        repr_attr: None,
-        align: None,
-        loc,
-    };
-
-    let type_id = tctx.insert_struct(struct_type);
-    CIRType::Struct(type_id)
 }

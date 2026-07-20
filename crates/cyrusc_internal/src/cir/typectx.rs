@@ -426,6 +426,7 @@ impl CIRTypeContext {
                         index: i as u32,
                         offset: element_layout.align * i as u32,
                         original_index: i,
+                        size: element_layout.size as usize,
                     });
                 }
 
@@ -471,6 +472,7 @@ impl CIRTypeContext {
                 field_offset_index,
                 offset,
                 field_original_index,
+                field_layout.size as usize,
             ));
             field_offset_index += 1;
 
@@ -510,7 +512,12 @@ impl CIRTypeContext {
             max_size = max_size.max(field_layout.size);
             max_align = max_align.max(field_layout.align);
 
-            field_offsets.push(ABIFieldOffsetInfo::normal(original_index as u32, 0, original_index));
+            field_offsets.push(ABIFieldOffsetInfo::normal(
+                original_index as u32,
+                0,
+                original_index,
+                field_layout.size as usize,
+            ));
         }
 
         let total_size = align_offset(max_size, max_align);

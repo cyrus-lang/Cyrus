@@ -61,8 +61,7 @@ impl<'a> AnalysisContext<'a> {
 
                 let ty = if let Some(prefix) = prefix_opt {
                     match prefix {
-                        StringPrefix::C => SemaType::Pointer(Box::new(SemaType::Plain(PlainType::UInt8))),
-                        StringPrefix::B => SemaType::Array(TypedArrayType {
+                        StringPrefix::Byte => SemaType::Array(TypedArrayType {
                             element_type: Box::new(SemaType::Const(Box::new(SemaType::Plain(PlainType::UInt8)))),
                             capacity: TypedArrayCapacity::Fixed(Box::new(capacity)),
                             loc: literal.loc,

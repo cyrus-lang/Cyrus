@@ -1,0 +1,23 @@
+// @stdout: Hello World, 11, Cyrus, 5
+
+import std::mem::alloc::libc{LibcAllocator};
+import std::io{StringWriter};
+import std::mem{Allocator};
+import std::string{String};
+import std::libc{printf};
+
+pub fn main() {
+     var allocator: Allocator = dynamic LibcAllocator.new();
+
+     var buffer = String.new(allocator);
+     defer buffer.free();
+
+     var writer = StringWriter.new(&buffer);
+     writer.write("Hello World");
+     printf("%s, ", buffer.as_str());
+     printf("%lu, ", writer.len());
+
+     writer.write_all("Cyrus");
+     printf("%s, ", buffer.as_str());
+     printf("%lu\n", writer.len());
+}

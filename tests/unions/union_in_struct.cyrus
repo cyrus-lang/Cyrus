@@ -1,21 +1,22 @@
-// @stdout: integer: 42 string: hello
+// @stdout: 10 20
 
 import std::libc{printf};
 
-union Data {
-    int_val: int32,
-    str_val: uint8*
+struct S {
+    pub tag: int32,
+    pub value: int32,
 }
 
-struct Container {
-    pub tag: uint8*,
-    pub data: Data
+union U {
+    s: S,
+    raw: int32[2],
 }
 
 pub fn main() {
-    var c = Container { tag: "integer", data: Data { int_val: 42 } };
-    printf("integer: %d ", c.data.int_val);
+    var u: U = undefined;
+    u.s.value = 10;
+    printf("%d ", u.s.value);
 
-    c.data.str_val = "hello";
-    printf("string: %s\n", c.data.str_val);
+    u.raw[1] = 20;
+    printf("%d\n", u.s.value);
 }

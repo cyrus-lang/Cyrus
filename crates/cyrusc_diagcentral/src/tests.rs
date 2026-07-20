@@ -30,7 +30,7 @@ mod tests {
         let diag = Diag {
             level: DiagLevel::Error,
             kind: Box::new(DummyDiagKind::Mismatch),
-            loc: Some(Loc::new(FileID(0), 0, 0, 3, 10)),
+            loc: Some(Loc::new(FileID(0), 1, 1, 3, 10)),
             hint: Some("A simple example of hint message.".to_string()),
         };
 

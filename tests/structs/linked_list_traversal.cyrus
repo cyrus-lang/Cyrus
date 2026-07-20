@@ -1,0 +1,21 @@
+// @stdout: 10 20 30
+
+import std::libc{printf};
+
+struct Node {
+    pub value: int32,
+    pub next: Node*,
+}
+
+pub fn main() {
+    var n3: Node = Node { value: 30, next: null };
+    var n2: Node = Node { value: 20, next: &n3 };
+    var n1: Node = Node { value: 10, next: &n2 };
+
+    var current: Node* = &n1;
+    while (current != null) {
+        printf("%d ", current->value);
+        current = current->next;
+    }
+    printf("\n");
+}

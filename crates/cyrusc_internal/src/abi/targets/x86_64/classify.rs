@@ -189,7 +189,6 @@ impl X86_64 {
         }
 
         let layout = self.tctx.layout_of(source_type);
-        assert!(layout.size != source_offset);
 
         let remaining_bytes = layout.size - source_offset;
 

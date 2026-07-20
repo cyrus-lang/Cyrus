@@ -1,0 +1,35 @@
+import std::mem::alloc::libc{LibcAllocator};
+import utils::file{read_file_content};
+import std::io{Writer, StringWriter};
+import diags{compile_error};
+import std::mem{Allocator};
+import std::string{String};
+import parse::lex{Lexer};
+import std::libc{printf};
+
+import parse::lex::tokens{
+    Token,
+    dump_tokens,
+};
+
+pub fn main(argc: int32, argv: uint8**) {
+    var allocator: Allocator = dynamic LibcAllocator.new();
+
+    const file_name = argv[1];
+    if (!file_name) {
+        compile_error("no input files");
+    }
+
+    var source = read_file_content(file_name);
+    defer source.free();
+
+    var lexer = Lexer.new(allocator, &source);
+    
+    const token_pool = lexer.tokenize();
+    defer token_pool.free();
+
+    const tokens = token_pool.inner();
+
+    printf("Tokens Count: %lu\n", tokens.len());
+    dump_tokens(&tokens);
+}

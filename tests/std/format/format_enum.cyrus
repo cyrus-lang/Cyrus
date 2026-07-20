@@ -1,0 +1,53 @@
+// @stdout: (10, 20, 30)
+
+import std::mem::alloc::libc{LibcAllocator};
+import std::io{Writer, StringWriter};
+import std::libc{printf, snprintf};
+import std::format{Format};
+import std::mem{Allocator};
+import std::string{String};
+
+enum Color : Format {
+     Red,
+     Blue,
+     Custom(int32, int32, int32)
+
+     pub fn format(&const self, writer: Writer) bool {
+          switch (*self) {
+               case .Red => writer.write_all("red");
+               case .Blue => writer.write_all("blue");
+               case .Custom(a, b, c) => {
+                    var buffer: uint8[@sizeof(a)];
+                    
+                    writer.write("(");
+                    snprintf(&buffer[0], @sizeof(a), "%d", a);
+                    writer.write(&buffer[0]);
+                    writer.write(",");
+                    snprintf(&buffer[0], @sizeof(a), " %d", b);
+                    writer.write(&buffer[0]);
+                    writer.write(",");
+                    snprintf(&buffer[0], @sizeof(a), " %d", c);
+                    writer.write(&buffer[0]);
+                    writer.write(")");
+               }
+          }
+          return true;
+     }
+}
+
+pub fn main() {
+     var allocator: Allocator = dynamic LibcAllocator.new();
+
+     var buffer = String.new(allocator);
+     defer buffer.free();
+     
+     var writer: Writer = dynamic StringWriter.new(&buffer);
+
+     const color = Color.Custom(10, 20, 30);
+
+     if (!color.format(writer)) {
+          @panic("format failed");
+     }
+
+     printf("%s\n", buffer.as_str());
+}

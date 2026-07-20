@@ -1,0 +1,13 @@
+// @stdout: 10 10 10 10
+
+import std::libc{printf};
+
+pub fn main() {
+    var x: int32 = 10;
+    var p: int32* = &x;
+
+    printf("%d ", *p);
+    printf("%d ", p[0]);
+    printf("%d ", *(&x));
+    printf("%d\n", (&x)[0]);
+}

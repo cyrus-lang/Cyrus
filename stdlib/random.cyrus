@@ -10,7 +10,6 @@ pub struct Random {
   // Static method that creates an instance of 'Random' struct 
   // and uses a UNIX time seed for first number
   pub fn new() Self {
-  
     var init_seed_isize = time(null);
     var init_seed = @cast(uint64, init_seed_isize);
 
@@ -53,27 +52,21 @@ pub struct Random {
 
   // Generates a random float64 number in a given range
   pub fn rand_float(&self, max: float64, min: float64) float64 {
-
     var floated_rand = self->rand_to_float();
-
     return min + floated_rand * (max - min);
   }
 
   // Generates a random upperclass character
   pub fn rand_upperc(&self) uint8 {
     var rnd = self->rand_int(0, @cast(int64, 'Z') - @cast(int64, 'A'));
-
     var char_index = @cast(int64, 'A') + rnd;
-
     return @cast(uint8, char_index);
   }
 
   // Generates a random lowerclass character
   pub fn rand_lowerc(&self) uint8 {
     var rnd = self->rand_int(0, @cast(int64, 'z') - @cast(int64, 'a'));
-
     var char_index = @cast(int64, 'a') + rnd;
-
     return @cast(uint8, char_index);
   }
 
