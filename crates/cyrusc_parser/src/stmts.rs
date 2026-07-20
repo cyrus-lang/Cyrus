@@ -1926,7 +1926,7 @@ impl<'source_file> Parser<'source_file> {
         }
 
         // expression or range pattern
-        let expr = self.parse_expr(Precedence::Lowest)?;
+        let expr = self.parse_expr(Precedence::Prefix)?;
         self.next_token();
 
         // range exclusive:  a..b
