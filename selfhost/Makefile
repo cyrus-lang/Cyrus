@@ -6,14 +6,12 @@ release:
 						--stdlib=$(STDLIB) \
 						--linker=clang \
 					    --optimize=o2 \
-						-z="-flto" \
-						--jobs 1
+						-z="-flto"
 
 debug:
 	$(COMPILER) build --profile=debug \
 						--sanitize=address -g \
 						--stdlib=$(STDLIB) \
 						--linker=clang \
-					    --optimize=o0 \
-						--jobs 1
+					    --optimize=o0
 	

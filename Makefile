@@ -74,7 +74,7 @@ testsuite: build
 		-d tests \
 		--output ./tmp/tests \
 		--compiler $(COMPILER) \
-		--flags "--stdlib=$(STDLIB) --quiet --jobs 1"
+		--flags "--stdlib=$(STDLIB) --quiet"
 
 testsuite-fail: build
 	$(PY_CMD) ./tests/test_suite.py \
@@ -82,4 +82,4 @@ testsuite-fail: build
 		--output ./tmp/tests \
 		--compiler $(COMPILER) \
 		--fail \
-		--flags "--stdlib=$(STDLIB) --quiet --jobs 1"
+		--flags "--stdlib=$(STDLIB) --quiet"

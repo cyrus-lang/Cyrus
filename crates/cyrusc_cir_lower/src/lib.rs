@@ -649,13 +649,12 @@ impl<'a> CIRLower<'a> {
         let type_args = &named_type.type_args;
         let enum_decl_id = named_type.type_decl_id.as_enum().unwrap();
 
+        let decl_key = (TypeDeclID::Enum(enum_decl_id), type_args.clone());
+        let type_id = self.tctx.get_named_type(&decl_key).unwrap();
+
         let enum_decl = self.decl_tables.enum_decl(enum_decl_id);
 
         let inst_enum_decl = instantiate_enum_decl_with_type_args(&enum_decl, &type_args);
-
-        let ty = self.lower_enum_type(enum_decl_id, &inst_enum_decl, type_args.clone());
-
-        let enum_type = ty.as_enum(&self.tctx).unwrap();
 
         let mut cases = Vec::new();
 
@@ -665,7 +664,7 @@ impl<'a> CIRLower<'a> {
             for typed_pattern in &typed_case.patterns {
                 let pattern = match &typed_pattern.kind {
                     TypedSwitchCasePatternKind::EnumUnit(ident) => {
-                        let tag = enum_type.lookup_variant_tag(&ident.value).unwrap();
+                        let tag = self.tctx.lookup_variant_tag(type_id, &ident.value).unwrap();
 
                         CIRPattern::Variant {
                             name: ident.to_string(),
@@ -674,7 +673,7 @@ impl<'a> CIRLower<'a> {
                         }
                     }
                     TypedSwitchCasePatternKind::EnumTupleVariant { ident, items } => {
-                        let tag = enum_type.lookup_variant_tag(&ident.value).unwrap();
+                        let tag = self.tctx.lookup_variant_tag(type_id, &ident.value).unwrap();
 
                         let variant = inst_enum_decl
                             .variants
@@ -733,7 +732,7 @@ impl<'a> CIRLower<'a> {
                         }
                     }
                     TypedSwitchCasePatternKind::EnumStructVariant { ident, items, .. } => {
-                        let tag = enum_type.lookup_variant_tag(&ident.value).unwrap();
+                        let tag = self.tctx.lookup_variant_tag(type_id, &ident.value).unwrap();
 
                         let variant = inst_enum_decl
                             .variants
@@ -1304,6 +1303,9 @@ impl<'a> CIRLower<'a> {
         let type_args = &named_type.type_args;
         let enum_decl_id = named_type.type_decl_id.as_enum().unwrap();
 
+        let decl_key = (TypeDeclID::Enum(enum_decl_id), type_args.clone());
+        let type_id = self.tctx.get_named_type(&decl_key).unwrap();
+
         let enum_decl = self.decl_tables.enum_decl(enum_decl_id);
 
         let inst_enum_decl = instantiate_enum_decl_with_type_args(&enum_decl, type_args);
@@ -1339,9 +1341,7 @@ impl<'a> CIRLower<'a> {
 
         let ty = self.lower_enum_type(enum_decl_id, &inst_enum_decl, type_args.clone());
 
-        let enum_type = ty.as_enum(&self.tctx).unwrap();
-
-        let tag = enum_type.lookup_variant_tag(&enum_init.name).unwrap();
+        let tag = self.tctx.lookup_variant_tag(type_id, &enum_init.name).unwrap();
 
         CIRExprKind::EnumInit(CIREnumInitExpr {
             ident: enum_init.name.clone(),
@@ -2322,8 +2322,7 @@ impl<'a> CIRLower<'a> {
 }
 
 #[inline(never)]
-pub fn lower_program_trees_in_parallel(
-    threads: Option<usize>,
+pub fn lower_program_trees(
     program_trees: Vec<Box<TypedProgramTree>>,
     query: &dyn SymbolQuery,
     formatter: &dyn Formatter,
@@ -2334,39 +2333,28 @@ pub fn lower_program_trees_in_parallel(
     monomorph_registry: Arc<MonomorphRegistry>,
     target: &ABITarget,
 ) -> Vec<Box<CIRModule>> {
-    use rayon::prelude::*;
+    program_trees
+        .iter()
+        .map(|program_tree| {
+            let vtable_registry = vtable_registries.get(&program_tree.file_id).cloned().unwrap();
 
-    let num_threads = threads.unwrap_or_else(|| num_cpus::get().max(1));
+            let module_name = query.lookup_module_name(program_tree.file_id).unwrap();
 
-    let pool = rayon::ThreadPoolBuilder::new()
-        .num_threads(num_threads)
-        .build()
-        .expect("failed to build thread pool");
+            let mut cir_walk = CIRLower::new(
+                program_tree.clone(),
+                module_name,
+                decl_tables.clone(),
+                formatter,
+                query,
+                tctx.clone(),
+                vtable_registry,
+                monomorph_registry.clone(),
+                target,
+            );
 
-    pool.install(|| {
-        program_trees
-            .into_par_iter()
-            .map(|program_tree| {
-                let vtable_registry = vtable_registries.get(&program_tree.file_id).cloned().unwrap();
+            let file_path = source_map.get_file(program_tree.file_id).unwrap().file_path.clone();
 
-                let module_name = query.lookup_module_name(program_tree.file_id).unwrap();
-
-                let mut cir_walk = CIRLower::new(
-                    program_tree.clone(),
-                    module_name,
-                    decl_tables.clone(),
-                    formatter,
-                    query,
-                    tctx.clone(),
-                    vtable_registry,
-                    monomorph_registry.clone(),
-                    target,
-                );
-
-                let file_path = source_map.get_file(program_tree.file_id).unwrap().file_path.clone();
-
-                Box::new(cir_walk.lower(file_path.to_string_lossy().to_string()))
-            })
-            .collect()
-    })
+            Box::new(cir_walk.lower(file_path.to_string_lossy().to_string()))
+        })
+        .collect()
 }

@@ -32,7 +32,6 @@ pub struct CompilerOptions {
     pub source_dirs: Vec<String>,
 
     pub opt_level: Option<CompilerOption_Optimize>,
-    pub jobs: Option<usize>,
 
     pub display_target_machine: bool,
     pub disable_modulefs_cache: bool,
@@ -142,7 +141,6 @@ impl Default for CompilerOptions {
             target: None,
             cpu: None,
             module_kind: None,
-            jobs: None,
             linker: None,
             base_path: None,
             project_type: None,

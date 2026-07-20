@@ -10,9 +10,10 @@ use cyrusc_source_loc::{FileID, Loc};
 use cyrusc_typed_ast::stmts::TypedTypeArgs;
 use cyrusc_typed_ast::types::PlainType;
 use cyrusc_typed_ast::types::TypeDeclID;
-use fx_hash::{FxHashMap, FxHashMapExt};
+use fx_hash::FxHashMap;
+use std::cell::RefCell;
 use std::fmt;
-use std::sync::{Arc, Mutex, OnceLock, RwLock};
+use std::sync::OnceLock;
 
 /// A unique handle to a canonical type stored in the context.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -32,13 +33,16 @@ pub type CIRTypeContextDeclKey = (TypeDeclID, TypedTypeArgs);
 /// during type lowering.
 pub struct CIRTypeContext {
     pub target_info: ABITargetInfo,
-    defs: RwLock<Vec<CIRTypeDef>>,
-    key_to_id: RwLock<FxHashMap<CIRTypeKey, CIRTypeContextID>>,
-    layouts: RwLock<FxHashMap<CIRTypeContextID, ABITypeLayout>>,
-    layout_locks: RwLock<FxHashMap<CIRTypeContextID, Arc<Mutex<()>>>>,
-    in_progress: RwLock<FxHashMap<CIRTypeContextDeclKey, CIRTypeContextID>>,
+    defs: RefCell<Vec<CIRTypeDef>>,
+    key_to_id: RefCell<FxHashMap<CIRTypeKey, CIRTypeContextID>>,
+    layouts: RefCell<FxHashMap<CIRTypeContextID, ABITypeLayout>>,
+    in_progress: RefCell<FxHashMap<CIRTypeContextDeclKey, CIRTypeContextID>>,
     fat_ptr_type_id: OnceLock<CIRTypeContextID>,
 }
+
+// SAFETY: We only use this single-threaded
+unsafe impl Sync for CIRTypeContext {}
+unsafe impl Send for CIRTypeContext {}
 
 /// A canonical type definition stored in the context arena.
 #[derive(Debug, Clone)]
@@ -81,92 +85,86 @@ impl CIRTypeContext {
     pub fn new(target_info: ABITargetInfo) -> Self {
         let ctx = Self {
             target_info,
-            defs: RwLock::new(Vec::new()),
-            key_to_id: RwLock::new(FxHashMap::default()),
-            layouts: RwLock::new(FxHashMap::default()),
-            layout_locks: RwLock::new(FxHashMap::new()),
-            in_progress: RwLock::new(FxHashMap::default()),
+            defs: RefCell::new(Vec::new()),
+            key_to_id: RefCell::new(FxHashMap::default()),
+            layouts: RefCell::new(FxHashMap::default()),
+            in_progress: RefCell::new(FxHashMap::default()),
             fat_ptr_type_id: OnceLock::new(),
         };
 
         let fat_ptr_type_id = ctx.create_fat_ptr_type();
         ctx.fat_ptr_type_id.set(fat_ptr_type_id).unwrap();
-
         ctx
     }
 
     pub fn get_named_type(&self, decl_key: &CIRTypeContextDeclKey) -> Option<CIRTypeContextID> {
         let key = CIRTypeKey::Named(decl_key.clone());
-        self.key_to_id.read().unwrap().get(&key).copied()
+        self.key_to_id.borrow().get(&key).copied()
     }
 
+    #[inline]
     pub fn update_def(&self, id: CIRTypeContextID, def: CIRTypeDef) {
-        self.defs.write().unwrap()[id.0] = def;
-        self.layouts.write().unwrap().remove(&id);
+        // update defs
+        self.defs.borrow_mut()[id.0] = def;
+
+        // invalidate layout cache
+        self.layouts.borrow_mut().remove(&id);
     }
 
     pub fn insert_struct(&self, struct_type: CIRStructType) -> CIRTypeContextID {
         let key = self.struct_key(&struct_type);
-        {
-            let key_to_id = self.key_to_id.read().unwrap();
-            if let Some(&type_id) = key_to_id.get(&key) {
-                return type_id;
-            }
-        }
-        let mut defs = self.defs.write().unwrap();
-        let mut key_to_id = self.key_to_id.write().unwrap();
-        if let Some(&type_id) = key_to_id.get(&key) {
+
+        if let Some(&type_id) = self.key_to_id.borrow().get(&key) {
             return type_id;
         }
-        let type_id = CIRTypeContextID(defs.len());
-        defs.push(CIRTypeDef::Struct(struct_type));
-        key_to_id.insert(key, type_id);
+
+        let type_id = {
+            let defs = self.defs.borrow();
+            CIRTypeContextID(defs.len())
+        };
+
+        self.defs.borrow_mut().push(CIRTypeDef::Struct(struct_type));
+        self.key_to_id.borrow_mut().insert(key, type_id);
         type_id
     }
 
     pub fn insert_union(&self, union_type: CIRUnionType) -> CIRTypeContextID {
         let key = self.union_key(&union_type);
-        {
-            let key_to_id = self.key_to_id.read().unwrap();
-            if let Some(&type_id) = key_to_id.get(&key) {
-                return type_id;
-            }
-        }
-        let mut defs = self.defs.write().unwrap();
-        let mut key_to_id = self.key_to_id.write().unwrap();
-        if let Some(&type_id) = key_to_id.get(&key) {
+
+        if let Some(&type_id) = self.key_to_id.borrow().get(&key) {
             return type_id;
         }
-        let type_id = CIRTypeContextID(defs.len());
-        defs.push(CIRTypeDef::Union(union_type));
-        key_to_id.insert(key, type_id);
+
+        let type_id = {
+            let defs = self.defs.borrow();
+            CIRTypeContextID(defs.len())
+        };
+
+        self.defs.borrow_mut().push(CIRTypeDef::Union(union_type));
+        self.key_to_id.borrow_mut().insert(key, type_id);
         type_id
     }
 
     pub fn insert_enum(&self, enum_type: CIREnumType) -> CIRTypeContextID {
         let key = self.enum_key(&enum_type);
-        {
-            let key_to_id = self.key_to_id.read().unwrap();
-            if let Some(&type_id) = key_to_id.get(&key) {
-                return type_id;
-            }
-        }
-        let mut defs = self.defs.write().unwrap();
-        let mut key_to_id = self.key_to_id.write().unwrap();
-        if let Some(&type_id) = key_to_id.get(&key) {
+
+        if let Some(&type_id) = self.key_to_id.borrow().get(&key) {
             return type_id;
         }
-        let type_id = CIRTypeContextID(defs.len());
-        defs.push(CIRTypeDef::Enum(enum_type));
-        key_to_id.insert(key, type_id);
+
+        let type_id = {
+            let defs = self.defs.borrow();
+            CIRTypeContextID(defs.len())
+        };
+
+        self.defs.borrow_mut().push(CIRTypeDef::Enum(enum_type));
+        self.key_to_id.borrow_mut().insert(key, type_id);
         type_id
     }
 
     #[inline]
     pub fn get_struct(&self, type_id: CIRTypeContextID) -> CIRStructType {
-        let defs = self.defs.read().unwrap();
-
-        match &defs[type_id.0] {
+        match &self.defs.borrow()[type_id.0] {
             CIRTypeDef::Struct(struct_type) => struct_type.clone(),
             _ => panic!("not a struct"),
         }
@@ -174,9 +172,7 @@ impl CIRTypeContext {
 
     #[inline]
     pub fn get_union(&self, type_id: CIRTypeContextID) -> CIRUnionType {
-        let defs = self.defs.read().unwrap();
-
-        match &defs[type_id.0] {
+        match &self.defs.borrow()[type_id.0] {
             CIRTypeDef::Union(union_type) => union_type.clone(),
             _ => panic!("not a union"),
         }
@@ -184,10 +180,15 @@ impl CIRTypeContext {
 
     #[inline]
     pub fn get_enum(&self, type_id: CIRTypeContextID) -> CIREnumType {
-        let defs = self.defs.read().unwrap();
-
-        match &defs[type_id.0] {
+        match &self.defs.borrow()[type_id.0] {
             CIRTypeDef::Enum(enum_type) => enum_type.clone(),
+            _ => panic!("not an enum"),
+        }
+    }
+
+    pub fn lookup_variant_tag(&self, type_id: CIRTypeContextID, variant_name: &str) -> Option<u32> {
+        match &self.defs.borrow()[type_id.0] {
+            CIRTypeDef::Enum(enum_type) => enum_type.lookup_variant_tag(variant_name),
             _ => panic!("not an enum"),
         }
     }
@@ -195,40 +196,20 @@ impl CIRTypeContext {
     pub fn get_or_compute_layout(&self, type_id: CIRTypeContextID) -> ABITypeLayout {
         // check if already computed
         {
-            let cache = self.layouts.read().unwrap();
-            if let Some(layout) = cache.get(&type_id) {
-                return layout.clone();
-            }
-        }
-
-        // IMPORTANT(to prevent data race):
-        // get or create a per-type mutex
-        let lock = {
-            let mut locks = self.layout_locks.write().unwrap();
-            locks.entry(type_id).or_insert_with(|| Arc::new(Mutex::new(()))).clone()
-        };
-
-        // thread lock this type
-        let _guard = lock.lock().unwrap();
-
-        // IMPORTANT(to prevent data race):
-        // DOUBLE-CHECK after acquiring the lock
-        {
-            let cache = self.layouts.read().unwrap();
-            if let Some(layout) = cache.get(&type_id) {
+            if let Some(layout) = self.layouts.borrow().get(&type_id) {
                 return layout.clone();
             }
         }
 
         let layout = self.compute_layout_for_def(type_id);
-        self.layouts.write().unwrap().insert(type_id, layout.clone());
+        self.layouts.borrow_mut().insert(type_id, layout.clone());
         layout
     }
 
     fn compute_layout_for_def(&self, id: CIRTypeContextID) -> ABITypeLayout {
-        let defs = self.defs.read().unwrap();
-        let def = &defs[id.0];
-        match def {
+        let def = { self.defs.borrow()[id.0].clone() };
+
+        match &def {
             CIRTypeDef::Struct(struct_type) => self.compute_struct_layout(struct_type),
             CIRTypeDef::Union(union_type) => self.compute_union_layout(union_type),
             CIRTypeDef::Enum(enum_type) => self.compute_enum_layout(enum_type),
@@ -237,23 +218,22 @@ impl CIRTypeContext {
 
     #[inline]
     pub fn start_lowering(&self, decl_key: CIRTypeContextDeclKey, handle: CIRTypeContextID) {
-        self.in_progress.write().unwrap().insert(decl_key, handle);
+        self.in_progress.borrow_mut().insert(decl_key, handle);
     }
 
     #[inline]
     pub fn finish_lowering(&self, decl_key: &CIRTypeContextDeclKey) {
-        self.in_progress.write().unwrap().remove(&decl_key);
+        self.in_progress.borrow_mut().remove(&decl_key);
     }
 
     #[inline]
     pub fn is_lowering(&self, decl_key: &CIRTypeContextDeclKey) -> bool {
-        self.in_progress.read().unwrap().contains_key(decl_key)
+        self.in_progress.borrow_mut().contains_key(decl_key)
     }
 
     pub fn get_in_progress_handle(&self, decl_key: &CIRTypeContextDeclKey) -> CIRTypeContextID {
         self.in_progress
-            .read()
-            .unwrap()
+            .borrow()
             .get(decl_key)
             .copied()
             .expect("in-progress handle not found")
@@ -322,38 +302,44 @@ impl CIRTypeContext {
             }
 
             CIRType::Struct(type_id) => {
-                let defs = self.defs.read().unwrap();
+                let struct_type = {
+                    match &self.defs.borrow()[type_id.0] {
+                        CIRTypeDef::Struct(struct_type) => struct_type.clone(),
+                        _ => unreachable!(),
+                    }
+                };
 
-                match &defs[type_id.0] {
-                    CIRTypeDef::Struct(struct_type) => match &struct_type.decl_key {
-                        Some(decl_key) => CIRTypeKey::Named(decl_key.clone()),
-                        None => self.struct_key(struct_type),
-                    },
-                    _ => unreachable!(),
+                match struct_type.decl_key {
+                    Some(decl_key) => CIRTypeKey::Named(decl_key),
+                    None => self.struct_key(&struct_type),
                 }
             }
 
             CIRType::Union(type_id) => {
-                let defs = self.defs.read().unwrap();
+                let union_type = {
+                    match &self.defs.borrow()[type_id.0] {
+                        CIRTypeDef::Union(union_type) => union_type.clone(),
+                        _ => unreachable!(),
+                    }
+                };
 
-                match &defs[type_id.0] {
-                    CIRTypeDef::Union(union_type) => match &union_type.decl_key {
-                        Some(decl_key) => CIRTypeKey::Named(decl_key.clone()),
-                        None => self.union_key(union_type),
-                    },
-                    _ => unreachable!(),
+                match union_type.decl_key {
+                    Some(decl_key) => CIRTypeKey::Named(decl_key),
+                    None => self.union_key(&union_type),
                 }
             }
 
             CIRType::Enum(type_id) => {
-                let defs = self.defs.read().unwrap();
+                let enum_type = {
+                    match &self.defs.borrow()[type_id.0] {
+                        CIRTypeDef::Enum(enum_type) => enum_type.clone(),
+                        _ => unreachable!(),
+                    }
+                };
 
-                match &defs[type_id.0] {
-                    CIRTypeDef::Enum(enum_type) => match &enum_type.decl_key {
-                        Some(decl_key) => CIRTypeKey::Named(decl_key.clone()),
-                        None => self.enum_key(enum_type),
-                    },
-                    _ => unreachable!(),
+                match enum_type.decl_key {
+                    Some(decl_key) => CIRTypeKey::Named(decl_key),
+                    None => self.enum_key(&enum_type),
                 }
             }
 

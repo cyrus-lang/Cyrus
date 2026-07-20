@@ -243,7 +243,6 @@ pub fn merge_compiler_options(opts: &CompilerOptions, other: &CompilerOptions) -
     }
 
     merge_option!(module_kind);
-    merge_option!(jobs);
     merge_option!(linker);
     merge_option!(base_path);
     merge_option!(project_type);
@@ -501,25 +500,5 @@ pub fn validate_compiler_options(opts: &CompilerOptions) {
             }
         }
         _ => {}
-    }
-
-    // job count validation
-    if let Some(jobs) = opts.jobs {
-        if jobs == 0 {
-            exit_with_msg!("Job count must be at least 1.".to_string());
-        }
-        if jobs > num_cpus::get() {
-            tui_warning(format!(
-                "Job count ({}) exceeds available CPU cores ({}). performance may degrade.",
-                jobs,
-                num_cpus::get(),
-            ));
-        }
-    }
-}
-
-mod num_cpus {
-    pub fn get() -> usize {
-        std::thread::available_parallelism().map(|n| n.get()).unwrap_or(1)
     }
 }
