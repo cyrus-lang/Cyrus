@@ -177,6 +177,7 @@ impl<'source_map, 'source_file> Lexer<'source_map, 'source_file> {
             ',' => self.single(TokenKind::Comma),
             ';' => self.single(TokenKind::Semicolon),
             '@' => self.single(TokenKind::At),
+            '`' => self.single(TokenKind::Backtick),
 
             _ => self.invalid_char(),
         }

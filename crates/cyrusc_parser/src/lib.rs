@@ -16,6 +16,8 @@ mod exprs;
 mod modifiers;
 mod prec;
 mod stmts;
+#[cfg(test)]
+mod tests;
 
 pub struct Parser<'source_file> {
     source_file: &'source_file SourceFile,
@@ -102,6 +104,16 @@ impl<'source_file> Parser<'source_file> {
     /// Finalizes the program parse by checking for errors.
     #[inline]
     fn finalize_program_parse(&self, program: ProgramTree) -> Result<ProgramTree, ()> {
+        // Backticks are tokenized so the parser can prefer a contextual diagnostic such as
+        // `InvalidInfixOperator`. Preserve their lexical rejection guarantee when parsing would
+        // otherwise succeed, including when recovery consumed one without reporting it.
+        if !self.reporter.has_errors() {
+            for token in self.tokens.iter().filter(|token| token.kind == TokenKind::Backtick) {
+                self.reporter
+                    .report(self.error_at_token(token, ParserDiagKind::InvalidToken(token.kind.clone())));
+            }
+        }
+
         if !self.reporter.has_errors() {
             Ok(program)
         } else {

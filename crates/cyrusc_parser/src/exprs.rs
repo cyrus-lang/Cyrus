@@ -73,6 +73,15 @@ impl<'source_file> Parser<'source_file> {
 
             // infix handling (respect precedence)
             let Some(operator_precedence) = token_precedence_of(peek_token.kind.clone()) else {
+                // Keep line breaks as statement boundaries; `@` can begin a builtin statement.
+                if self.current_token().loc.line == peek_token.loc.line
+                    && is_invalid_infix_operator_candidate(&peek_token.kind)
+                {
+                    self.next_token();
+
+                    return Err(self.error_at_current(ParserDiagKind::InvalidInfixOperator(self.current_token().kind)));
+                }
+
                 break;
             };
 
@@ -174,6 +183,10 @@ impl<'source_file> Parser<'source_file> {
 
             TokenKind::At => {
                 return Ok(ASTExpr::Builtin(self.parse_builtin(false)?));
+            }
+
+            TokenKind::Backtick => {
+                return Err(self.error_invalid_token());
             }
 
             TokenKind::Dot => self.parse_unnamed_enum_value()?,
@@ -1475,6 +1488,7 @@ fn can_start_expr(kind: &TokenKind) -> bool {
 
         TokenKind::Undefined
         | TokenKind::Static
+        | TokenKind::Backtick
         | TokenKind::EOF
         | TokenKind::Semicolon
         | TokenKind::RightParen
@@ -1571,6 +1585,10 @@ fn can_start_expr(kind: &TokenKind) -> bool {
         | TokenKind::Section
         | TokenKind::Invalid => false,
     }
+}
+
+fn is_invalid_infix_operator_candidate(token_kind: &TokenKind) -> bool {
+    matches!(token_kind, TokenKind::At | TokenKind::Backtick)
 }
 
 fn is_infix_operator(token_kind: &TokenKind) -> bool {

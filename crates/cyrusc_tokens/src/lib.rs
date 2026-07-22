@@ -67,6 +67,7 @@ pub enum TokenKind {
     Or,
     QuestionQuestion,
     At,
+    Backtick,
     Underscore,
     Undefined,
 
@@ -226,6 +227,7 @@ impl fmt::Display for TokenKind {
             TokenKind::LeftBracket => write!(f, "["),
             TokenKind::RightBracket => write!(f, "]"),
             TokenKind::At => write!(f, "@"),
+            TokenKind::Backtick => write!(f, "`"),
             TokenKind::Comma => write!(f, ","),
             TokenKind::DoubleDot => write!(f, ".."),
             TokenKind::TripleDot => write!(f, "..."),
