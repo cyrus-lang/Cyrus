@@ -22,6 +22,11 @@ impl<'source_file> Parser<'source_file> {
         toplevel: bool,
     ) -> Result<Vec<ASTStmt>, Diag> {
         if self.current_token_is(TokenKind::At) {
+            if self.peek_token().kind.is_ident_str("asm") {
+                let asm = self.parse_inline_asm()?;
+                self.expect_peek_semicolon()?;
+                return Ok(vec![ASTStmt::InlineAsm(asm)]);
+            }
             let mut builtin = self.parse_builtin(toplevel)?;
 
             if let Builtin::BuiltinFunc(builtin_func) = &mut builtin {
@@ -206,6 +211,150 @@ impl<'source_file> Parser<'source_file> {
                 loc: Loc::new(self.file_id(), line, column, start, end),
             }))
         }
+    }
+
+        
+    pub(crate) fn parse_inline_asm(&mut self) -> Result<ASTInlineAsm, Diag> {
+        let loc = self.current_token().loc;
+        let (line, column, start) = (loc.line, loc.column, loc.start);
+
+        self.next_token(); 
+
+        if !self.current_token().kind.is_ident_str("asm") {
+            return Err(self.error_invalid_token());
+        }
+        self.next_token();
+
+        let (template, is_inline) = if self.current_token_is(TokenKind::LeftBrace) {
+            self.next_token(); 
+            let lines = self.parse_asm_template_block()?;
+            self.expect_current(TokenKind::RightBrace)?;
+            (lines, false)
+        } else if self.current_token_is(TokenKind::LeftParen) {
+            self.next_token(); 
+            let s = self.parse_asm_string_literal()?;
+            (vec![s], true)
+        } else {
+            return Err(self.error_invalid_token());
+        };
+
+        let outputs = if self.current_token_is(TokenKind::Colon) {
+            self.next_token();
+            self.parse_asm_operands()?
+        } else {
+            Vec::new()
+        };
+
+        let inputs = if self.current_token_is(TokenKind::Colon) {
+            self.next_token();
+            self.parse_asm_operands()?
+        } else {
+            Vec::new()
+        };
+
+        let clobbers = if self.current_token_is(TokenKind::Colon) {
+            self.next_token();
+            self.parse_asm_clobbers()?
+        } else {
+            Vec::new()
+        };
+
+        if is_inline {
+            self.expect_current(TokenKind::RightParen)?;
+        }
+
+        let end = self.current_token().loc.end;
+
+        Ok(ASTInlineAsm {
+            template,
+            outputs,
+            inputs,
+            clobbers,
+            loc: Loc::new(self.file_id(), line, column, start, end),
+        })
+    }
+
+    fn parse_asm_template_block(&mut self) -> Result<Vec<String>, Diag> {
+        let mut lines = Vec::new();
+        while !self.current_token_is(TokenKind::RightBrace)
+            && !self.current_token_is(TokenKind::EOF)
+        {
+            lines.push(self.parse_asm_string_literal()?);
+        }
+        Ok(lines)
+    }
+
+    fn parse_asm_string_literal(&mut self) -> Result<String, Diag> {
+        use cyrusc_tokens::literals::LiteralKind;
+        match self.current_token().kind.clone() {
+            TokenKind::Literal(lit) => {
+                if let LiteralKind::String(s, _) = lit.kind {
+                    self.next_token();
+                    Ok(s)
+                } else {
+                    Err(self.error_at_current(ParserDiagKind::ExpectedStringLiteral))
+                }
+            }
+            _ => Err(self.error_at_current(ParserDiagKind::ExpectedStringLiteral)),
+        }
+    }
+
+    fn parse_asm_operands(&mut self) -> Result<Vec<AsmOperand>, Diag> {
+        let mut operands = Vec::new();
+        loop {
+            if self.current_token_is(TokenKind::Colon)
+                || self.current_token_is(TokenKind::RightParen)
+                || self.current_token_is(TokenKind::Semicolon)
+                || self.current_token_is(TokenKind::EOF)
+            {
+                break;
+            }
+
+            let loc = self.current_token().loc;
+            let constraint = self.parse_asm_string_literal()?;
+
+            self.expect_current(TokenKind::LeftParen)?;
+            let expr = self.parse_expr(Precedence::Lowest)?;
+            self.next_token();
+            self.expect_current(TokenKind::RightParen)?;
+
+            operands.push(AsmOperand {
+                constraint,
+                expr: Box::new(expr),
+                loc,
+            });
+
+            if self.current_token_is(TokenKind::Comma) {
+                self.next_token();
+            } else {
+                break;
+            }
+        }
+        Ok(operands)
+    }
+
+    fn parse_asm_clobbers(&mut self) -> Result<Vec<AsmClobber>, Diag> {
+        let mut clobbers = Vec::new();
+        loop {
+            if self.current_token_is(TokenKind::Colon)
+                || self.current_token_is(TokenKind::RightParen)
+                || self.current_token_is(TokenKind::Semicolon)
+                || self.current_token_is(TokenKind::EOF)
+            {
+                break;
+            }
+
+            let loc = self.current_token().loc;
+            let name = self.parse_asm_string_literal()?;
+            clobbers.push(AsmClobber { name, loc });
+
+            if self.current_token_is(TokenKind::Comma) {
+                self.next_token();
+            } else {
+                break;
+            }
+        }
+        Ok(clobbers)
     }
 
     fn parse_toplevel_stmts(&mut self) -> Result<Vec<ASTStmt>, Diag> {

@@ -91,6 +91,9 @@ pub enum ParserDiagKind {
 
     #[error("Group modifiers cannot be nested.")]
     GroupedModifiersCannotBeNested,
+    
+    #[error("Expected a string literal in inline assembly.")]
+    ExpectedStringLiteral,
 }
 
 impl<'source_file> Parser<'source_file> {
