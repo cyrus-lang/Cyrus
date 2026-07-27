@@ -1,8 +1,8 @@
 // @stdout: Cyrus The Great
 
-import std::mem::alloc::libc{LibcAllocator};
+import std::mem::libc{LibcAllocator};
 import std::io{Writer, StringWriter, MultiWriter};
-import std::collections{Vector};
+import std::collections{Vec};
 import std::mem{Allocator};
 import std::string{String};
 import std::libc{printf};
@@ -19,7 +19,7 @@ pub fn main() {
     var writer1 = StringWriter.new(&buffer1);
     var writer2 = StringWriter.new(&buffer2);
     
-    var writers: Vector<Writer> = Vector.new(allocator);
+    var writers: Vec<Writer> = Vec.new(allocator);
     defer writers.free();
     writers.push(dynamic writer1);
     writers.push(dynamic writer2);

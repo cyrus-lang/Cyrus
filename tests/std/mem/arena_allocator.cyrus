@@ -1,7 +1,7 @@
 // @stdout: sum: 5050 
 
-import std::mem::alloc::arena{ArenaAllocator};
-import std::mem::alloc::libc{LibcAllocator};
+import std::mem::arena{ArenaAllocator};
+import std::mem::libc{LibcAllocator};
 import std::mem{Allocator};
 import std::libc{printf};
 
