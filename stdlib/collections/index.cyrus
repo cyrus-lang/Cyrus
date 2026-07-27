@@ -6,9 +6,9 @@ import std::mem{Allocator};
 import std::option{Option};
 import std::iterator{Iterator};
 
-const initial_array_capacity: usize = 16;
+const INITIAL_ARRAY_CAPACITY: usize = 16;
 
-pub struct Vector<T> {
+pub struct Vec<T> {
     allocator: Allocator,
     data: T*,
     cap: usize,
@@ -16,7 +16,7 @@ pub struct Vector<T> {
 
     /// Create a new array using a specific allocator.
     pub inline fn new(allocator: Allocator) Self {
-        const cap = initial_array_capacity;
+        const cap = INITIAL_ARRAY_CAPACITY;
         const data: T* = allocator.alloc(cap * @sizeof(T));
         if (!data) {
             @panic("allocation failed");
@@ -82,7 +82,7 @@ pub struct Vector<T> {
 
     /// Deep copy of the array. 
     pub inline fn clone(&const self, const allocator: Allocator) Self {
-        var vec: Vector<T> = Vector.with_capacity(allocator, self->len);
+        var vec: Vec<T> = Vec.with_capacity(allocator, self->len);
         vec.extend_from_ptr(self->data, self->len);
         return vec;
     }
@@ -240,7 +240,7 @@ pub struct Vector<T> {
 
     // FIXME
     // pub inline fn iter(&const self) Iterator<T> {
-    //     const vector_iter: VectorIter<T> = VectorIter {
+    //     const vector_iter: VecIter<T> = VecIter {
     //         vector: self,
     //         index: 0
     //     };
@@ -264,7 +264,7 @@ pub struct Vector<T> {
         var new_cap: usize;
 
         if (self->cap == 0) {
-            new_cap = initial_array_capacity;
+            new_cap = INITIAL_ARRAY_CAPACITY;
         } else {
             new_cap = self->cap;
         }
@@ -286,11 +286,11 @@ pub struct Vector<T> {
 }
 
 // FIXME
-// pub struct VectorIter<T> : Iterator<T> {
-//     vector: Vector<T>*;
+// pub struct VecIter<T> : Iterator<T> {
+//     vector: Vec<T>*;
 //     index: usize;
 
-//     pub fn new(const vector: Vector<T>*) Self {
+//     pub fn new(const vector: Vec<T>*) Self {
 //         return Self { vector, index: 0 };
 //     }
 
@@ -310,10 +310,10 @@ pub struct Vector<T> {
 // }
 
 pub struct Map<K, V> {
-    entries: Vector<(K, V)>,
+    entries: Vec<(K, V)>,
 
     pub inline fn new(const allocator: Allocator) Self {
-        return Self { entries: Vector.new(allocator) };
+        return Self { entries: Vec.new(allocator) };
     }
 
     pub fn set(&self, const key: K, const value: V) bool {

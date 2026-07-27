@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 The Cyrus Language
 
-import std::collections{Vector};
+import std::collections{Vec};
 import std::errors{ErrorOr};
 import std::string{String};
 
@@ -57,9 +57,9 @@ pub struct StringWriter : Writer {
 }
 
 pub struct MultiWriter {
-    writers: Vector<Writer>,
+    writers: Vec<Writer>,
 
-    pub fn new(writers: Vector<Writer>) Self {
+    pub fn new(writers: Vec<Writer>) Self {
         return Self { writers };
     }
 
