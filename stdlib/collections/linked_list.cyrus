@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 The Cyrus Language
 
+import std::mem::libc{LibcAllocator};
 import std::mem{Allocator};
-import std::mem::alloc::libc{LibcAllocator};
 import std::option{Option};
 
 pub struct SinglyNode<T> {

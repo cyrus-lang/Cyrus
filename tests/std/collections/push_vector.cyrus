@@ -1,14 +1,14 @@
 // @stdout: 0 1000
 
-import std::mem::alloc::libc{LibcAllocator};
-import std::collections{Vector};
+import std::mem::libc{LibcAllocator};
+import std::collections{Vec};
 import std::mem{Allocator};
 import std::libc{printf};
 
 pub fn main() {
     var allocator: Allocator = dynamic LibcAllocator.new();
     
-    var vec: Vector<int32> = Vector.new(allocator);
+    var vec: Vec<int32> = Vec.new(allocator);
     defer vec.free();
 
     for (var i: int32 = 0; i <= 1000; i++) {
