@@ -51,6 +51,7 @@ pub enum ASTExpr {
     UnnamedStructValue(ASTUnnamedStructValueExpr),
     UnnamedUnionValue(ASTUnnamedUnionValueExpr),
     UnnamedEnumValue(ASTUnnamedEnumValueExpr),
+    InlineAsm(ASTInlineAsm),
 }
 
 #[derive(Debug, Clone)]
@@ -264,6 +265,28 @@ pub struct BuiltinBlock {
     pub loc: Loc,
 }
 
+#[derive(Debug, Clone)]
+pub struct AsmOperand {
+    pub constraint: String,
+    pub expr: Box<ASTExpr>,
+    pub loc: Loc,
+}
+
+#[derive(Debug, Clone)]
+pub struct AsmClobber {
+    pub name: String,
+    pub loc: Loc,
+}
+
+#[derive(Debug, Clone)]
+pub struct ASTInlineAsm {
+    pub template: Vec<String>,
+    pub outputs: Vec<AsmOperand>,
+    pub inputs: Vec<AsmOperand>,
+    pub clobbers: Vec<AsmClobber>,
+    pub loc: Loc,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ASTFuncCallExpr {
     pub operand: Box<ASTExpr>,
@@ -449,6 +472,7 @@ pub enum ASTStmt {
     Defer(ASTDeferStmt),
     Label(ASTLabelStmt),
     Goto(ASTGotoStmt),
+    InlineAsm(ASTInlineAsm),
 }
 
 #[derive(Debug, Clone)]
@@ -1029,7 +1053,8 @@ impl ASTStmt {
             | ASTStmt::Typedef(_)
             | ASTStmt::Defer(_)
             | ASTStmt::Label(_)
-            | ASTStmt::Goto(_) => None,
+            | ASTStmt::Goto(_)
+            | ASTStmt::InlineAsm(_) => None,
         }
     }
 
@@ -1061,7 +1086,8 @@ impl ASTStmt {
             | ASTStmt::Defer(_)
             | ASTStmt::Label(_)
             | ASTStmt::Goto(_)
-            | ASTStmt::Builtin(_) => None,
+            | ASTStmt::Builtin(_)
+            | ASTStmt::InlineAsm(_) => None,
         }
     }
 
@@ -1092,9 +1118,10 @@ impl ASTStmt {
             ASTStmt::Label(label) => label.loc,
             ASTStmt::Goto(goto) => goto.loc,
             ASTStmt::Builtin(builtin) => match builtin {
-                Builtin::BuiltinFunc(builtin_func) => builtin_func.loc,
-                Builtin::BuiltinBlock(builtin_block) => builtin_block.loc,
+            Builtin::BuiltinFunc(builtin_func) => builtin_func.loc,
+            Builtin::BuiltinBlock(builtin_block) => builtin_block.loc,
             },
+            ASTStmt::InlineAsm(asm) => asm.loc,
             ASTStmt::Expr(..) => unreachable!(),
         }
     }
@@ -1590,6 +1617,30 @@ impl PartialEq for ImplementInterface {
 impl Eq for ImplementInterface {}
 impl Eq for BuiltinFunc {}
 impl Eq for BuiltinBlock {}
+impl PartialEq for ASTInlineAsm {
+    fn eq(&self, other: &Self) -> bool {
+        self.template == other.template
+            && self.outputs.len() == other.outputs.len()
+            && self.inputs.len() == other.inputs.len()
+            && self.clobbers.len() == other.clobbers.len()
+    }
+}
+
+impl PartialEq for AsmOperand {
+    fn eq(&self, other: &Self) -> bool {
+        self.constraint == other.constraint && self.expr == other.expr
+    }
+}
+
+impl PartialEq for AsmClobber {
+    fn eq(&self, other: &Self) -> bool {
+        self.name == other.name
+    }
+}
+
+impl Eq for ASTInlineAsm {}
+impl Eq for AsmOperand {}
+impl Eq for AsmClobber {}
 impl Eq for ASTArrayExpr {}
 impl Eq for ASTUntypedArrayExpr {}
 impl Eq for ASTArrayIndexExpr {}

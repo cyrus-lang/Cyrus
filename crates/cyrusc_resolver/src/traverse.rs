@@ -211,6 +211,7 @@ impl<'a> Resolver<'a> {
             }
 
             ASTStmt::Defer(_) => unreachable!(),
+            ASTStmt::InlineAsm(_) => todo!(),
         }
     }
 
@@ -435,6 +436,7 @@ impl<'a> Resolver<'a> {
             },
 
             ASTExpr::TypeSpecifier(type_spec) => self.resolve_type_specifier_expr(type_spec),
+            ASTExpr::InlineAsm(_) => todo!(),
         }
     }
 

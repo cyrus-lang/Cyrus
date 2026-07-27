@@ -425,6 +425,7 @@ impl fmt::Display for ASTExpr {
             }
             ASTExpr::UnnamedStructValue(unnamed_struct_value) => write!(f, "{}", unnamed_struct_value),
             ASTExpr::UnnamedUnionValue(unnamed_union_value) => write!(f, "{}", unnamed_union_value),
+            ASTExpr::InlineAsm(asm) => write!(f, "{}", asm),
         }
     }
 }
@@ -498,5 +499,31 @@ impl fmt::Display for ASTUnnamedUnionValueExpr {
         }
 
         write!(f, " }}")
+    }
+}
+
+impl fmt::Display for ASTInlineAsm {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "@asm(")?;
+        for (i, t) in self.template.iter().enumerate() {
+            if i > 0 { write!(f, " ")?; }
+            write!(f, "\"{}\"", t)?;
+        }
+        write!(f, " : ")?;
+        for (i, op) in self.outputs.iter().enumerate() {
+            if i > 0 { write!(f, ", ")?; }
+            write!(f, "\"{}\"({})", op.constraint, op.expr)?;
+        }
+        write!(f, " : ")?;
+        for (i, op) in self.inputs.iter().enumerate() {
+            if i > 0 { write!(f, ", ")?; }
+            write!(f, "\"{}\"({})", op.constraint, op.expr)?;
+        }
+        write!(f, " : ")?;
+        for (i, cl) in self.clobbers.iter().enumerate() {
+            if i > 0 { write!(f, ", ")?; }
+            write!(f, "\"{}\"", cl.name)?;
+        }
+        write!(f, ")")
     }
 }

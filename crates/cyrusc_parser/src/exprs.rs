@@ -173,6 +173,9 @@ impl<'source_file> Parser<'source_file> {
             }
 
             TokenKind::At => {
+                if self.peek_token().kind.is_ident_str("asm") {
+                    return Ok(ASTExpr::InlineAsm(self.parse_inline_asm()?));
+                }
                 return Ok(ASTExpr::Builtin(self.parse_builtin(false)?));
             }
 
