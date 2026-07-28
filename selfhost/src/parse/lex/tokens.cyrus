@@ -1,5 +1,5 @@
-import std::mem::alloc::libc{LibcAllocator};
-import std::collections{Vector};
+import std::mem::libc{LibcAllocator};
+import std::collections{Vec};
 import std::io{StringWriter};
 import std::string{String};
 import std::mem{Allocator};
@@ -15,13 +15,13 @@ import std::format{
 };
 
 pub struct TokenPool {
-    tokens: Vector<Token>,
+    tokens: Vec<Token>,
 
-    pub inline fn new(tokens: Vector<Token>) Self {
+    pub inline fn new(tokens: Vec<Token>) Self {
         return Self { tokens };
     }
 
-    pub inline fn inner(const self) Vector<Token> {
+    pub inline fn inner(const self) Vec<Token> {
         return self.tokens;
     }
 
@@ -559,11 +559,13 @@ pub struct Loc {
     // file_id: FileId,
     pub line: usize,
     pub col: usize,
+    pub start: usize,
+    pub end: usize,
 }
 
 /// Formats and writes a collection of tokens to stdout.
 /// This is primarily used for debugging and emitting lexer result.
-pub fn dump_tokens(tokens: const Vector<Token>*) {
+pub fn dump_tokens(tokens: const Vec<Token>*) {
     var allocator: Allocator = dynamic LibcAllocator.new();
 
     var fmt = String.new(allocator);

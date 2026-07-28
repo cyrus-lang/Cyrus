@@ -35,7 +35,7 @@ pub struct Lexer {
     }
 
     pub fn tokenize(&self) TokenPool {
-        var tokens: Vector<Token> = Vector.new(self->allocator);
+        var tokens: Vector<Token> = Vec.new(self->allocator);
 
         var token: Token = undefined;
 
@@ -48,7 +48,6 @@ pub struct Lexer {
             }
         }
 
-        // return TokenPool.new(tokens);
         return TokenPool { tokens};
     }
 

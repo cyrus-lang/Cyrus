@@ -1,35 +1,232 @@
-import std::mem::alloc::libc{LibcAllocator};
-import utils::file{read_file_content};
+import std::mem::libc{LibcAllocator};
 import std::io{Writer, StringWriter};
-import diags{compile_error};
+import std::format{format_usize};
+import std::collections{Vec};
+import std::option{Option};
 import std::mem{Allocator};
 import std::string{String};
-import parse::lex{Lexer};
 import std::libc{printf};
 
-import parse::lex::tokens{
-    Token,
-    dump_tokens,
-};
+import parse::lex::tokens{Loc};
 
-pub fn main(argc: int32, argv: uint8**) {
+ DiagContext {
+       diags: Vec<Diag>,
+
+       pub inline fn new(const allocator: Allocator) Self {
+           const diags: Vec<Diag> = Vec.new(allocator);
+           
+           return Self { diags };
+       }
+       
+       pub inline fn report(&self, diag: Diag) {
+           self->diags.push(diag);
+       }
+
+       pub fn emit(&const self, const allocator: Allocator, writer: Writer) {
+           for (var i: usize; i < self->diags.len(); i++) {
+               const diag = self->diags.get(i).unwrap();
+               
+               diag.emit(writer);
+
+               if (i > self->diags.len()) {
+                  writer.write("\n");
+               }
+           }
+       }
+
+       pub fn free(&self) {
+           for (var i: usize; i < self->diags.len(); i++) {
+               var diag = self->diags.get(i).unwrap();
+
+               diag.free();
+           }
+
+           self->diags.free();
+       }
+}
+
+struct Diag {
+       mesg: String,
+       under: Option<String>,
+       subs: Vec<SubDiag>,
+       hints: Vec<String>,
+       loc: Loc,
+
+       pub fn new(const allocator: Allocator, mesg: String, under: Option<String>, loc: Loc) Self {
+           var subs: Vec<SubDiag> = Vec.new(allocator);
+           var hints: Vec<String> = Vec.new(allocator);
+           
+           return Self { mesg, subs, under, hints, loc };
+       }
+
+       pub inline fn add_hint(&self, hint: SubDiag) {
+           self->hints.push(hint);
+       }
+
+       pub inline fn add_sub(&self, sub: SubDiag) {
+           self->subs.push(sub);
+       }
+
+       pub fn emit(&const self, writer: Writer) {
+           // TODO:
+           // writer.write(self->loc.file_id);
+
+           writer.write("file-path.cyrus");
+           writer.write(":");
+           format_usize(writer, self->loc.line);
+           writer.write(":");
+           format_usize(writer, self->loc.col);
+           writer.write(": ");
+           writer.writeln(self->mesg.as_str_const());
+
+           writer.writeln("  |");
+           writer.write("  | ");
+
+           // TODO: fetch line-str from SourceContext and write here.
+           // TODO: Compute how many lines Span(start, end) evolves;
+           // we must emit all lines that are evolved, and underline them.
+           writer.writeln("var x: int32 = 0; // FAKE CODE");
+
+           writer.write("    ");
+           for (var i: usize = 0; i < self->loc.start; i++) {
+               writer.write(" ");
+           }
+           for (var i: usize = self->loc.start; i < self->loc.end; i++) {
+               writer.write("^");
+           }
+           writer.write("\n");
+                       
+           switch (self->under) {
+                  case .Some(str) => {
+                       writer.write("    ");
+                       for (var i: usize = 0; i < self->loc.start; i++) {
+                           writer.write(" ");
+                       }
+                       writer.write("> ");
+                       writer.write(str.as_str_const());
+                       writer.write("\n");
+                  }
+           }
+           
+           writer.write("  |");
+           
+           // TODO: Emit subs.
+           // TODO: Emit hints.
+           
+           // TODO:
+           // file:line:column: mesg
+           //   |
+           //   | var x: int32 = "foo"; // code
+           //                    ^^^^^
+           //                    > sub-diag mesg emitted here
+           //   |
+           // 
+           // hint: mesg1
+           // hint: mesg2
+       }
+
+       pub fn free(&self) {
+           self->mesg.free();
+
+           switch (self->under) {
+                  case .Some(str) => str.free();
+           }
+           
+           for (var i: usize; i < self->subs.len(); i++) {
+               var sub = self->subs.get(i).unwrap();
+
+               sub.free();
+           }
+
+           for (var i: usize; i < self->hints.len(); i++) {
+               var hint = self->hints.get(i).unwrap();
+
+               hint.free();
+           }
+
+           self->subs.free();
+           self->hints.free();
+       }
+}
+
+struct SubDiag {
+       mesg: String,
+       loc: Loc,
+
+       pub fn new(&self, mesg: String, loc: Loc) Self {
+           return Self { mesg, loc };
+       }
+
+       pub fn emit(&const self, writer: Writer) {
+           
+       }
+
+       pub inline fn free(&self) {
+           self->mesg.free();
+       }
+}
+
+
+pub fn main() {
     var allocator: Allocator = dynamic LibcAllocator.new();
 
-    const file_name = argv[1];
-    if (!file_name) {
-        compile_error("no input files");
-    }
-
-    var source = read_file_content(file_name);
-    defer source.free();
-
-    var lexer = Lexer.new(allocator, &source);
+    var dctx = DiagContext.new(allocator);
+    defer dctx.free();
     
-    const token_pool = lexer.tokenize();
-    defer token_pool.free();
+    const loc = Loc { line: 1, col: 1, start: 7, end: 12 };
+    const mesg = String.from_str(allocator, "Meow :3");
+    const under = String.from_str(allocator, "under mesg");
+    var diag = Diag.new(allocator, mesg, .Some(under), loc);
 
-    const tokens = token_pool.inner();
+    {
+            
+    }
+    
+    dctx.report(diag);
 
-    printf("Tokens Count: %lu\n", tokens.len());
-    dump_tokens(&tokens);
+    // emit into stdout
+    var out = String.new(allocator);
+    defer out.free();
+
+    var writer: Writer = dynamic StringWriter.new(&out);
+
+    dctx.emit(allocator, writer);
+
+    printf("%s\n", out.as_str());
 }
+
+// import std::mem::libc{LibcAllocator};
+// import utils::file{read_file_content};
+// import std::io{Writer, StringWriter};
+// import diags{compile_error};
+// import std::mem{Allocator};
+// import std::string{String};
+// import parse::lex{Lexer};
+// import std::libc{printf};
+
+// import parse::lex::tokens{
+//     Token,
+//     dump_tokens,
+// };
+
+// pub fn main(argc: int32, argv: uint8**) {
+//     var allocator: Allocator = dynamic LibcAllocator.new();
+
+//     const file_name = argv[1];
+//     if (!file_name) {
+//         compile_error("no input files");
+//     }
+
+//     var source = read_file_content(file_name);
+//     defer source.free();
+
+//     var lexer = Lexer.new(allocator, &source);
+    
+//     const token_pool = lexer.tokenize();
+//     defer token_pool.free();
+
+//     const tokens = token_pool.inner();
+
+//     printf("Tokens Count: %lu\n", tokens.len());
+//     dump_tokens(&tokens);
+// }
