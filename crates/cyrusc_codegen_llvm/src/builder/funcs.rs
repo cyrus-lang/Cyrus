@@ -846,8 +846,6 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         let byval_attr_kind = unsafe { LLVMGetEnumAttributeKindForName(c!("byval").as_ptr(), 5) };
         let sret_attr_kind = unsafe { LLVMGetEnumAttributeKindForName(c!("sret").as_ptr(), 4) };
 
-        let mut llvm_param_index_offset = 0;
-
         if abi_func_info.ret_info.kind.is_indirect_sret() {
             let ret_type = &abi_func_info.ret_info.abi_type;
             let llvm_ret_type = abi_type_to_llvm_type(self.llvm_ctx, &self.target.info, ret_type);
@@ -859,8 +857,6 @@ impl<'ll> CodeGenIRBuilder<'ll> {
             unsafe {
                 LLVMAddAttributeAtIndex(llvm_func_value.as_value_ref(), 1, attr);
             }
-
-            llvm_param_index_offset = 1;
         }
 
         for (i, param_info) in abi_func_info.params_infos.iter().enumerate() {
@@ -880,7 +876,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
                 unsafe {
                     LLVMAddAttributeAtIndex(
                         llvm_func_value.as_value_ref(),
-                        i as u32 + 1 + llvm_param_index_offset,
+                        i as u32 + 1 + param_info.param_index_start as u32,
                         attr,
                     );
                 }
