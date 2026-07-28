@@ -867,7 +867,11 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         }
     }
 
-    fn emit_null_coalesce_operator(&self, lhs_rvalue: InternalValue<'ll>, rhs_rvalue: InternalValue<'ll>) -> InternalValue<'ll> {
+    fn emit_null_coalesce_operator(
+        &self,
+        lhs_rvalue: InternalValue<'ll>,
+        rhs_rvalue: InternalValue<'ll>,
+    ) -> InternalValue<'ll> {
         match (lhs_rvalue.as_basic_value(), rhs_rvalue.as_basic_value()) {
             (BasicValueEnum::PointerValue(lhs), BasicValueEnum::PointerValue(rhs)) => {
                 self.emit_null_coalescing_pointers(lhs, rhs, lhs_rvalue.ty.clone())
@@ -2119,11 +2123,11 @@ impl<'ll> CodeGenIRBuilder<'ll> {
 
         llvm_args.append(&mut normal_args);
 
-        let llvm_fn_ty = self.emit_func_type(func_type.clone());
+        let llvm_func_type = self.emit_func_type(func_type.clone());
 
         let call_site = self
             .llvmbuilder
-            .build_indirect_call(llvm_fn_ty, fn_ptr, &llvm_args, "ifc.call")
+            .build_indirect_call(llvm_func_type, fn_ptr, &llvm_args, "ifc.call")
             .unwrap();
 
         // Attach ABI call attributes
@@ -2355,6 +2359,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
             // coerce back from abi return type to actual return type
             let actual_return_type: BasicTypeEnum<'ll> =
                 self.emit_type(*cir_func_type.ret_type.clone()).try_into().unwrap();
+
             basic_value = self.intrinsic_coerce_through_alloca(basic_value, actual_return_type, "coerce_ret");
 
             InternalValue::new(func_call.ret_type.clone(), InternalValueKind::RValue(basic_value))

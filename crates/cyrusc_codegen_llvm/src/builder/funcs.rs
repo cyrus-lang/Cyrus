@@ -846,6 +846,8 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         let byval_attr_kind = unsafe { LLVMGetEnumAttributeKindForName(c!("byval").as_ptr(), 5) };
         let sret_attr_kind = unsafe { LLVMGetEnumAttributeKindForName(c!("sret").as_ptr(), 4) };
 
+        let mut llvm_params_start = 0;
+
         if abi_func_info.ret_info.kind.is_indirect_sret() {
             let ret_type = &abi_func_info.ret_info.abi_type;
             let llvm_ret_type = abi_type_to_llvm_type(self.llvm_ctx, &self.target.info, ret_type);
@@ -857,12 +859,22 @@ impl<'ll> CodeGenIRBuilder<'ll> {
             unsafe {
                 LLVMAddAttributeAtIndex(llvm_func_value.as_value_ref(), 1, attr);
             }
+
+            llvm_params_start = 1;
         }
 
-        for (i, param_info) in abi_func_info.params_infos.iter().enumerate() {
+        for param_info in &abi_func_info.params_infos {
             if param_info.is_indirect_by_val() {
-                let struct_type = &abi_func_info.params_types[i];
+                // 0-based index
+                let idx = param_info.param_index_start as usize;
+
+                // 1-based index,
+                // llvm_params_start considers precense of sret
+                let attr_idx = llvm_params_start + idx + 1;
+
+                let struct_type = &abi_func_info.params_types[idx];
                 let llvm_struct_type = abi_type_to_llvm_type(self.llvm_ctx, &self.target.info, struct_type);
+                assert!(llvm_struct_type.is_struct_type(), "indirect param type is not struct");
 
                 let attr = unsafe {
                     LLVMCreateTypeAttribute(
@@ -872,13 +884,13 @@ impl<'ll> CodeGenIRBuilder<'ll> {
                     )
                 };
 
-                // index is 1-based, 0 is return
+                assert!(
+                    idx <= llvm_func_value.count_params() as usize,
+                    "attribute index can't be larger than function params"
+                );
+
                 unsafe {
-                    LLVMAddAttributeAtIndex(
-                        llvm_func_value.as_value_ref(),
-                        i as u32 + 1 + param_info.param_index_start as u32,
-                        attr,
-                    );
+                    LLVMAddAttributeAtIndex(llvm_func_value.as_value_ref(), attr_idx as u32, attr);
                 }
             }
         }
@@ -892,7 +904,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         let byval_attr_kind = unsafe { LLVMGetEnumAttributeKindForName(c!("byval").as_ptr(), 5) };
         let sret_attr_kind = unsafe { LLVMGetEnumAttributeKindForName(c!("sret").as_ptr(), 4) };
 
-        let mut llvm_param_index_offset = 0;
+        let mut llvm_params_start = 0;
 
         if abi_func_info.ret_info.kind.is_indirect_sret() {
             let ret_ty = &abi_func_info.ret_info.abi_type;
@@ -906,24 +918,34 @@ impl<'ll> CodeGenIRBuilder<'ll> {
                 LLVMAddCallSiteAttribute(call_site.as_value_ref(), 1, attr);
             }
 
-            llvm_param_index_offset = 1;
+            llvm_params_start = 1;
         }
 
-        for (i, param_info) in abi_func_info.params_infos.iter().enumerate() {
-            if !param_info.is_indirect_by_val() {
-                continue;
-            }
+        for param_info in &abi_func_info.params_infos {
+            if param_info.is_indirect_by_val() {
+                // 0-based index
+                let idx = param_info.param_index_start as usize;
 
-            let param_type = abi_func_info.params_types.get(i).unwrap().clone();
-            let pointee_type = abi_type_to_llvm_type(self.llvm_ctx, &self.target.info, &param_type);
+                // 1-based index,
+                // llvm_params_start considers precense of sret
+                let attr_idx = llvm_params_start + idx + 1;
 
-            let attr = unsafe {
-                LLVMCreateTypeAttribute(self.llvm_ctx.as_ctx_ref(), byval_attr_kind, pointee_type.as_type_ref())
-            };
+                let param_type = abi_func_info.params_types.get(idx).unwrap().clone();
 
-            // index is 1-based, 0 is return
-            unsafe {
-                LLVMAddCallSiteAttribute(call_site.as_value_ref(), i as u32 + 1 + llvm_param_index_offset, attr);
+                let pointee_type = abi_type_to_llvm_type(self.llvm_ctx, &self.target.info, &param_type);
+
+                let attr = unsafe {
+                    LLVMCreateTypeAttribute(self.llvm_ctx.as_ctx_ref(), byval_attr_kind, pointee_type.as_type_ref())
+                };
+
+                assert!(
+                    idx <= call_site.count_arguments() as usize,
+                    "attribute index can't be larger than call_site arguments"
+                );
+
+                unsafe {
+                    LLVMAddCallSiteAttribute(call_site.as_value_ref(), attr_idx as u32, attr);
+                }
             }
         }
     }

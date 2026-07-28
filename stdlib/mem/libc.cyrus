@@ -11,21 +11,15 @@ import std::libc{
 };
 
 pub struct LibcAllocator : Allocator {
-	pub inline fn new() Self {
+	pub fn new() Self {
 		return Self {};
 	}
-
-	// pub inline fn create<T>(&const self, value: T) T* {
-	// 	var ptr = self->alloc(@sizeof(T));
-	// 	*ptr = value;
-	// 	return ptr;
-	// }
-
-	pub inline fn alloc(&const self, size: usize) void* {
+	
+	pub fn alloc(&const self, size: usize) void* {
 		return malloc(size);
 	}
 
-	pub inline fn alloc_aligned(&self, size: usize, align: usize) void* {
+	pub fn alloc_aligned(&self, size: usize, align: usize) void* {
 		@assert(is_power_of_two(align), "alignment must be power of two");
 		@assert(align >= @sizeof(void*), "alignment must be >= sizeof(void*)");
 
@@ -40,15 +34,15 @@ pub struct LibcAllocator : Allocator {
 		return ptr;
 	}
 
-	pub inline fn alloc_zeroed(&const self, size: usize) void* {
+	pub fn alloc_zeroed(&const self, size: usize) void* {
 		return calloc(1, size);
 	}
 
-	pub inline fn realloc(&const self, ptr: void*, size: usize) void* {
+	pub fn realloc(&const self, ptr: void*, size: usize) void* {
 		return realloc(ptr, size);
 	}
 
-	pub inline fn free(&const self, ptr: void*) {
+	pub fn free(&const self, ptr: void*) {
 		free(ptr);
 	}
 }

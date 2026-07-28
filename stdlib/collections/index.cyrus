@@ -6,8 +6,6 @@ import std::mem{Allocator};
 import std::option{Option};
 import std::iterator{Iterator};
 
-const INITIAL_ARRAY_CAPACITY: usize = 16;
-
 pub struct Vec<T> {
     allocator: Allocator,
     data: T*,
@@ -16,7 +14,7 @@ pub struct Vec<T> {
 
     /// Create a new array using a specific allocator.
     pub inline fn new(allocator: Allocator) Self {
-        const cap = INITIAL_ARRAY_CAPACITY;
+        const cap: usize = 1;
         const data: T* = allocator.alloc(cap * @sizeof(T));
         if (!data) {
             @panic("allocation failed");
@@ -264,7 +262,7 @@ pub struct Vec<T> {
         var new_cap: usize;
 
         if (self->cap == 0) {
-            new_cap = INITIAL_ARRAY_CAPACITY;
+            new_cap = 1;
         } else {
             new_cap = self->cap;
         }
@@ -274,7 +272,10 @@ pub struct Vec<T> {
             new_cap *= 2;
         }
 
-        const new_data: T* = self->allocator.realloc(self->data, new_cap * @sizeof(T));
+        const new_data: T* = self->allocator.realloc(
+            self->data,
+            new_cap * @sizeof(T)
+        );
 
         if (new_data == null) {
             @panic("realloc failed");
