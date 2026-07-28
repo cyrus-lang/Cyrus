@@ -8,6 +8,7 @@ const INT32_BUF_SIZE: usize = 12;
 const UINT32_BUF_SIZE: usize = 11;
 const INT64_BUF_SIZE: usize = 21;
 const UINT64_BUF_SIZE: usize = 21;
+const USIZE_BUF_SIZE: usize = 21;
 const INT128_BUF_SIZE: usize = 41;
 const UINT128_BUF_SIZE: usize = 40;
 const FLOAT16_BUF_SIZE: usize = 48;
@@ -51,6 +52,12 @@ pub fn format_int64(writer: Writer, x: int64) {
 pub fn format_uint64(writer: Writer, x: uint64) {
     var buffer: uint8[UINT64_BUF_SIZE];
     snprintf(&buffer[0], UINT64_BUF_SIZE, "%lu", x);
+    writer.write(&buffer[0]);
+}
+
+pub fn format_usize(writer: Writer, x: usize) {
+    var buffer: uint8[USIZE_BUF_SIZE];
+    snprintf(&buffer[0], USIZE_BUF_SIZE, "%lu", x);
     writer.write(&buffer[0]);
 }
 
