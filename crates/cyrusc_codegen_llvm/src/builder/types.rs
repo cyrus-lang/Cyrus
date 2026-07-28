@@ -626,7 +626,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         elm_ty.array_type(array_ty.len as u32).as_any_type_enum()
     }
 
-    fn emit_func_ty_params(&self, abi_func_info: &ABIFunctionInfo) -> Vec<LLVMTypeRef> {
+    fn emit_func_type_params(&self, abi_func_info: &ABIFunctionInfo) -> Vec<LLVMTypeRef> {
         let mut param_types = Vec::new();
 
         for abi_arg_info in &abi_func_info.params_infos {
@@ -706,7 +706,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
             abi_type_to_llvm_type(self.llvm_ctx, &self.target.info, &abi_func_info.ret_info.abi_type)
         };
 
-        let mut param_types = self.emit_func_ty_params(abi_func_info);
+        let mut param_types = self.emit_func_type_params(abi_func_info);
 
         if abi_func_info.ret_info.kind.is_indirect_sret() {
             let ptr_type = self.llvm_ctx.ptr_type(AddressSpace::default());
