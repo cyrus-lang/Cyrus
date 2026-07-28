@@ -509,7 +509,7 @@ impl X86_64 {
         }
     }
 
-    fn classify_func_sysv(&self, fn_ty: &CIRFuncType) -> ABIFunctionInfo {
+    fn classify_func_sysv(&self, func_type: &CIRFuncType) -> ABIFunctionInfo {
         let mut available_regs = Registers {
             int_regs: 6,
             sse_regs: 8,
@@ -518,14 +518,14 @@ impl X86_64 {
         let mut params_types = Vec::new();
         let mut params_infos = Vec::new();
 
-        let ret_info = self.classify_return(&fn_ty.ret_type);
+        let ret_info = self.classify_return(&func_type.ret_type);
 
         // sret consumes one integer register in sysv
         if ret_info.kind.is_indirect() {
             available_regs.int_regs -= 1;
         }
 
-        for param_type in &fn_ty.params {
+        for param_type in &func_type.params {
             let abi_arg = self.classify_parameter(param_type, &mut available_regs, true);
 
             // index before expansion
