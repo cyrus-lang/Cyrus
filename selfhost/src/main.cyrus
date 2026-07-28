@@ -9,7 +9,7 @@ import std::libc{printf};
 
 import parse::lex::tokens{Loc};
 
- DiagContext {
+struct DiagContext {
        diags: Vec<Diag>,
 
        pub inline fn new(const allocator: Allocator) Self {
@@ -49,12 +49,12 @@ struct Diag {
        mesg: String,
        under: Option<String>,
        subs: Vec<SubDiag>,
-       hints: Vec<String>,
+       hints: Vec<SubDiag>,
        loc: Loc,
 
        pub fn new(const allocator: Allocator, mesg: String, under: Option<String>, loc: Loc) Self {
            var subs: Vec<SubDiag> = Vec.new(allocator);
-           var hints: Vec<String> = Vec.new(allocator);
+           var hints: Vec<SubDiag> = Vec.new(allocator);
            
            return Self { mesg, subs, under, hints, loc };
        }
@@ -178,10 +178,6 @@ pub fn main() {
     const under = String.from_str(allocator, "under mesg");
     var diag = Diag.new(allocator, mesg, .Some(under), loc);
 
-    {
-            
-    }
-    
     dctx.report(diag);
 
     // emit into stdout
