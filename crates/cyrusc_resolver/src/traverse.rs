@@ -1727,14 +1727,16 @@ impl<'a> Resolver<'a> {
         let then_block = Box::new(self.resolve_block_stmt(&if_stmt.then_block)?);
         self.exit_local_scope();
 
-        let else_block = if let Some(block) = &if_stmt.else_block {
-            let else_scope = LocalScope::new();
-            self.enter_local_scope(else_scope);
-            let block = self.resolve_block_stmt(block)?;
-            self.exit_local_scope();
-            Some(Box::new(block))
-        } else {
-            None
+        let else_block = {
+            if let Some(block) = &if_stmt.else_block {
+                let else_scope = LocalScope::new();
+                self.enter_local_scope(else_scope);
+                let block = self.resolve_block_stmt(block)?;
+                self.exit_local_scope();
+                Some(Box::new(block))
+            } else {
+                None
+            }
         };
 
         let mut branches = Vec::new();
@@ -1758,6 +1760,9 @@ impl<'a> Resolver<'a> {
         let mut typed_body: Vec<TypedStmt> = Vec::new();
         let mut defers: Vec<TypedDeferStmt> = Vec::new();
 
+        let scope = LocalScope::new();
+        self.enter_local_scope(scope);
+
         self.collect_labels_in_block(block_stmt);
 
         for stmt in &block_stmt.stmts {
@@ -1777,6 +1782,8 @@ impl<'a> Resolver<'a> {
                 }
             }
         }
+
+        self.exit_local_scope();
 
         Some(TypedBlockStmt {
             stmts: typed_body,
