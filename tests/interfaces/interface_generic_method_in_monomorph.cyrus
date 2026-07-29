@@ -3,18 +3,18 @@
 import std::libc{printf};
 
 interface Animal {
-     fn id<T>(&const self, rank: T) T;
-     fn name(&const self) uint8*;
+     fn id<T>(self: const Self*, rank: T) T;
+     fn name(self: const Self*) uint8*;
 }
 
 struct Cat : Animal {
      x: int32,
 
-     pub fn id<T>(&const self, rank: T) T {
+     pub fn id<T>(self: const Self*, rank: T) T {
           return rank * 10;
      }
 
-     pub fn name(&const self) uint8* {
+     pub fn name(self: const Self*) uint8* {
           return "cat";
      }
 }

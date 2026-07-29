@@ -1604,7 +1604,6 @@ impl<'a> CIRLower<'a> {
             TypedExprKind::Literal(literal) => self.lower_literal(literal),
             TypedExprKind::Prefix(prefix) => self.lower_prefix(prefix),
             TypedExprKind::Infix(infix) => self.lower_infix(infix),
-            TypedExprKind::Unary(unary) => self.lower_unary(unary),
             TypedExprKind::Assign(assign) => self.lower_assign(assign),
             TypedExprKind::AddrOf(addr_of) => self.lower_addr_of(addr_of),
             TypedExprKind::Deref(deref) => self.lower_deref(deref),
@@ -1676,7 +1675,7 @@ impl<'a> CIRLower<'a> {
                         Some(CIRCallMethodSelfMetadata {
                             operand: Box::new(operand),
                             use_fat_ptr_data: false,
-                            is_referenced: self_modifier.kind.is_referenced(),
+                            is_referenced: self_modifier.is_referenced(),
                         })
                     } else {
                         None
@@ -1752,7 +1751,7 @@ impl<'a> CIRLower<'a> {
                                 let self_modifier = method_decl.func_decl.params.get_self_modifier().unwrap();
 
                                 debug_assert!(
-                                    self_modifier.kind.is_referenced(),
+                                    self_modifier.is_referenced(),
                                     "interface method self modifier is always referenced"
                                 );
 
@@ -1794,7 +1793,7 @@ impl<'a> CIRLower<'a> {
                             let self_modifier = monomorph_instance.params.get_self_modifier().unwrap();
 
                             debug_assert!(
-                                self_modifier.kind.is_referenced(),
+                                self_modifier.is_referenced(),
                                 "interface method self modifier is always referenced"
                             );
 
@@ -1837,7 +1836,7 @@ impl<'a> CIRLower<'a> {
                         Some(CIRCallMethodSelfMetadata {
                             operand: Box::new(operand),
                             use_fat_ptr_data: false,
-                            is_referenced: self_modifier.kind.is_referenced(),
+                            is_referenced: self_modifier.is_referenced(),
                         })
                     } else {
                         None
@@ -2077,13 +2076,6 @@ impl<'a> CIRLower<'a> {
         CIRExprKind::Assign(CIRAssignExpr {
             lhs: Box::new(self.lower_expr(&assign.lhs)),
             rhs: Box::new(self.lower_expr(&assign.rhs)),
-        })
-    }
-
-    fn lower_unary(&mut self, unary: &TypedUnaryExpr) -> CIRExprKind {
-        CIRExprKind::Unary(CIRUnaryExpr {
-            op: unary.op.clone(),
-            operand: Box::new(self.lower_expr(&unary.operand)),
         })
     }
 

@@ -26,7 +26,7 @@ pub struct TokenPool {
     }
 
     pub fn free(self) {
-        for (var i: usize = 0; i < self.tokens.len(); i++) {
+        for (var i: usize = 0; i < self.tokens.len(); i += 1) {
             const token = self.tokens.get(i).unwrap();
 
             switch (token.kind) {
@@ -44,7 +44,7 @@ pub struct Token : Format {
     pub kind: TokenKind,
     pub loc: Loc,
 
-    pub fn format(&const self, writer: Writer) bool {
+    pub fn format(self: const Self*, writer: Writer) bool {
         return self->kind.format(writer);
     }
 }
@@ -181,7 +181,7 @@ pub enum TokenKind : Format {
     EOF,
     INVALID,
 
-    pub inline fn is_eof(&const self) bool {
+    pub inline fn is_eof(self: const Self*) bool {
         switch (*self) {
             case .EOF => return true;
             default => return false;
@@ -267,7 +267,7 @@ pub enum TokenKind : Format {
         return .None;
     }
 
-    pub fn format(&const self, writer: Writer) bool {
+    pub fn format(self: const Self*, writer: Writer) bool {
         switch (*self) {
             case .Ident(ident) => writer.write(ident.as_str_const());
             case .Literal(lit) => lit.format(writer);
@@ -415,7 +415,7 @@ pub enum Literal : Format {
     Bool(bool),
     Null,
 
-    pub fn format(&const self, writer: Writer) bool {
+    pub fn format(self: const Self*, writer: Writer) bool {
         switch (*self) {
             case .Integer { value, suffix } => {
                 switch (value) {
@@ -573,7 +573,7 @@ pub fn dump_tokens(tokens: const Vec<Token>*) {
 
     var writer: Writer = dynamic StringWriter.new(&fmt);
 
-    for (var i: usize = 0; i < tokens->len(); i++) {
+    for (var i: usize = 0; i < tokens->len(); i += 1) {
         const token = tokens->get(i).unwrap();
         
         token.format(writer);

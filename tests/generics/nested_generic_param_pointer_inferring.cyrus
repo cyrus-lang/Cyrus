@@ -9,7 +9,7 @@ struct Box<T> {
         return Self { raw: raw };
     }
 
-    pub fn raw_ptr(&const self) T* {
+    pub fn raw_ptr(self: const Self*) T* {
         return self->raw;
     }
 }

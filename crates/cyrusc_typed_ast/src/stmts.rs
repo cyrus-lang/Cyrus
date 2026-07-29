@@ -12,7 +12,7 @@ use crate::{
     types::SemaType,
 };
 use cyrusc_ast::{
-    Ident, Mutability, SelfModifierKind,
+    Ident, Mutability,
     abi::{ReprKind, Visibility},
     modifiers::{EnumModifiers, FuncModifiers, GlobalVarModifiers, StructModifiers, UnionModifiers},
 };
@@ -311,9 +311,7 @@ pub enum TypedFuncParamKind {
 pub struct TypedSelfModifier {
     // none if used in func decl (no body)
     pub var_decl_id: Option<VarDeclID>,
-
     pub ty: SemaType,
-    pub kind: SelfModifierKind,
     pub mutability: Mutability,
     pub loc: Loc,
 }
@@ -557,6 +555,13 @@ impl TypedEnumStmt {
 impl TypedUnionStmt {
     pub fn is_generic(&self) -> bool {
         !self.generic_params.is_empty()
+    }
+}
+
+impl TypedSelfModifier {
+    #[inline]
+    pub fn is_referenced(&self) -> bool {
+        self.ty.is_pointer()
     }
 }
 
@@ -861,7 +866,7 @@ impl PartialEq for TypedFuncParam {
 
 impl PartialEq for TypedSelfModifier {
     fn eq(&self, other: &Self) -> bool {
-        self.kind == other.kind
+        self.is_referenced() == other.is_referenced() && self.mutability == other.mutability
     }
 }
 

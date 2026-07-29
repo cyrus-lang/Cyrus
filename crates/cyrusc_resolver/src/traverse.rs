@@ -398,7 +398,6 @@ impl<'a> Resolver<'a> {
 
             ASTExpr::Infix(infix_expr) => self.resolve_infix_expr(infix_expr),
             ASTExpr::Prefix(prefix_expr) => self.resolve_prefix_expr(prefix_expr),
-            ASTExpr::Unary(unary) => self.resolve_unary_expr(unary),
             ASTExpr::Assign(assignment) => self.resolve_assign_expr(assignment),
             ASTExpr::FieldAccess(field_access) => self.resolve_field_access(field_access),
             ASTExpr::MethodCall(method_call) => self.resolve_method_call(method_call),
@@ -467,7 +466,7 @@ impl<'a> Resolver<'a> {
             TypeSpecifier::Tuple(tuple) => self.resolve_tuple_type(tuple),
             TypeSpecifier::FuncType(func) => self.resolve_func_type(*func, loc),
             TypeSpecifier::Array(array) => self.resolve_array_type(array, loc),
-            TypeSpecifier::Deref(inner) => {
+            TypeSpecifier::Pointer(inner) => {
                 let inner = self.resolve_type(*inner, loc)?;
 
                 Some(SemaType::Pointer(Box::new(inner)))
@@ -1563,17 +1562,11 @@ impl<'a> Resolver<'a> {
     }
 
     fn resolve_self_modifier_param(&mut self, self_modifier: &SelfModifier) -> TypedSelfModifier {
-        let self_type = SemaType::SelfType(TypedSelfType { loc: self_modifier.loc });
-
-        let ty = match &self_modifier.kind {
-            SelfModifierKind::Copied => self_type,
-            SelfModifierKind::Referenced => SemaType::Pointer(Box::new(self_type)),
-        };
+        let ty = self.resolve_type(self_modifier.ty.clone(), self_modifier.loc).unwrap();
 
         TypedSelfModifier {
             var_decl_id: None,
             ty,
-            kind: self_modifier.kind.clone(),
             mutability: self_modifier.mutability,
             loc: self_modifier.loc,
         }
@@ -2702,22 +2695,6 @@ impl<'a> Resolver<'a> {
             LiteralKind::Null => Some(SemaType::Pointer(Box::new(SemaType::Plain(PlainType::Void)))),
             _ => None,
         }
-    }
-
-    fn resolve_unary_expr(&mut self, unary: &ASTUnaryExpr) -> Option<TypedExpr> {
-        let operand = self.resolve_expr(&*unary.operand)?;
-
-        Some(TypedExpr {
-            kind: TypedExprKind::Unary(TypedUnaryExpr {
-                op: unary.op.clone(),
-                operand: Box::new(operand),
-                loc: unary.loc,
-            }),
-            ty: None,
-            val_cat: ValueCategory::Unknown,
-            analyzed: false,
-            loc: unary.loc,
-        })
     }
 
     fn resolve_array_index_expr(&mut self, array_index: &ASTArrayIndexExpr) -> Option<TypedExpr> {

@@ -3,7 +3,7 @@
 import std::libc{printf};
 
 interface Shape<T> {
-	fn area(&const self) T;
+	fn area(self: const Self*) T;
 }
 
 struct Square : Shape<float64> {
@@ -13,7 +13,7 @@ struct Square : Shape<float64> {
 		return Self { side };
 	}
 
-	pub fn area(&const self) float64 {
+	pub fn area(self: const Self*) float64 {
 		return self->side * self->side;
 	}
 }
@@ -26,7 +26,7 @@ struct Rectangle<T> : Shape<T> {
 		return Self { x, y };
 	}
 
-	pub fn area(&const self) T {
+	pub fn area(self: const Self*) T {
 		return self->x * self->y;
 	}
 }
@@ -45,7 +45,7 @@ pub fn main() {
 		squareX,
 	};
 
-	for (var i = 0; i < 3; i++) {
+	for (var i = 0; i < 3; i += 1) {
 		const shape = shapes[i];
 		printf("%f ", shape.area());
 	}

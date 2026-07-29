@@ -3,7 +3,7 @@
 
 use crate::abi::{ReprAttr, Visibility};
 use crate::modifiers::{EnumModifiers, FuncModifiers, GlobalVarModifiers, StructModifiers, UnionModifiers};
-use crate::operators::{InfixOperator, PrefixOperator, UnaryOperator};
+use crate::operators::{InfixOperator, PrefixOperator};
 use cyrusc_source_loc::Loc;
 use cyrusc_tokens::TokenKind;
 use cyrusc_tokens::{Token, literals::ASTLiteralExpr};
@@ -33,7 +33,6 @@ pub enum ASTExpr {
     Literal(ASTLiteralExpr),
     Prefix(ASTPrefixExpr),
     Infix(ASTInfixExpr),
-    Unary(ASTUnaryExpr),
     Array(ASTArrayExpr),
     UntypedArray(ASTUntypedArrayExpr),
     ArrayIndex(ASTArrayIndexExpr),
@@ -348,7 +347,7 @@ pub enum TypeSpecifier {
     Const(Box<TypeSpecifier>),
     Array(ArrayType),
     ModuleImport(ASTModuleImport),
-    Deref(Box<TypeSpecifier>),
+    Pointer(Box<TypeSpecifier>),
     UnnamedStruct(UnnamedStructType),
     UnnamedUnion(UnnamedUnionType),
     UnnamedEnum(UnnamedEnumType),
@@ -388,13 +387,6 @@ pub struct ArrayType {
 pub enum ArrayCapacity {
     Fixed(Box<ASTExpr>),
     Dynamic,
-}
-
-#[derive(Debug, Clone)]
-pub struct ASTUnaryExpr {
-    pub operand: Box<ASTExpr>,
-    pub op: UnaryOperator,
-    pub loc: Loc,
 }
 
 #[derive(Debug, Clone)]
@@ -786,15 +778,9 @@ pub enum AssignKind {
 
 #[derive(Debug, Clone)]
 pub struct SelfModifier {
-    pub kind: SelfModifierKind,
+    pub ty: TypeSpecifier,
     pub mutability: Mutability,
     pub loc: Loc,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum SelfModifierKind {
-    Copied,
-    Referenced,
 }
 
 #[derive(Debug, Clone)]
@@ -1119,8 +1105,8 @@ impl ASTStmt {
             ASTStmt::Label(label) => label.loc,
             ASTStmt::Goto(goto) => goto.loc,
             ASTStmt::Builtin(builtin) => match builtin {
-            Builtin::BuiltinFunc(builtin_func) => builtin_func.loc,
-            Builtin::BuiltinBlock(builtin_block) => builtin_block.loc,
+                Builtin::BuiltinFunc(builtin_func) => builtin_func.loc,
+                Builtin::BuiltinBlock(builtin_block) => builtin_block.loc,
             },
             ASTStmt::InlineAsm(asm) => asm.loc,
             ASTStmt::Expr(..) => unreachable!(),
@@ -1193,10 +1179,31 @@ impl ASTModuleImport {
 }
 
 impl TypeSpecifier {
+    #[inline]
+    pub fn is_pointer(&self) -> bool {
+        matches!(self, Self::Pointer(_))
+    }
+
+    #[inline]
+    pub fn is_self(&self) -> bool {
+        match self {
+            TypeSpecifier::SelfType(_) => true,
+            _ => false,
+        }
+    }
+
     pub fn as_type_token(&self) -> Option<&Token> {
         match self {
             TypeSpecifier::TypeToken(token) => Some(token),
             _ => None,
+        }
+    }
+
+    #[inline]
+    pub fn const_inner(&self) -> Self {
+        match self {
+            TypeSpecifier::Const(inner) => *inner.clone(),
+            _ => self.clone(),
         }
     }
 
@@ -1222,7 +1229,7 @@ impl TypeSpecifier {
             TypeSpecifier::Const(inner) => inner.loc(),
             TypeSpecifier::Array(array) => array.loc,
             TypeSpecifier::ModuleImport(module_import) => module_import.loc,
-            TypeSpecifier::Deref(type_spec) => type_spec.loc(),
+            TypeSpecifier::Pointer(type_spec) => type_spec.loc(),
             TypeSpecifier::UnnamedStruct(unnamed_struct_type) => unnamed_struct_type.loc,
             TypeSpecifier::UnnamedUnion(unnamed_union_type) => unnamed_union_type.loc,
             TypeSpecifier::UnnamedEnum(unnamed_enum_type) => unnamed_enum_type.loc,
@@ -1258,16 +1265,6 @@ impl AssignKind {
             AssignKind::BitwiseAndNotAssign => InfixOperator::BitwiseAndNot,
             AssignKind::LeftShiftAssign => InfixOperator::ShiftLeft,
             AssignKind::RightShiftAssign => InfixOperator::ShiftRight,
-        }
-    }
-}
-
-impl SelfModifierKind {
-    #[inline]
-    pub fn is_referenced(&self) -> bool {
-        match self {
-            SelfModifierKind::Copied => false,
-            SelfModifierKind::Referenced => true,
         }
     }
 }
@@ -1442,12 +1439,6 @@ impl PartialEq for ASTInfixExpr {
     }
 }
 
-impl PartialEq for ASTUnaryExpr {
-    fn eq(&self, other: &Self) -> bool {
-        self.operand == other.operand && self.op == other.op
-    }
-}
-
 impl PartialEq for ASTArrayExpr {
     fn eq(&self, other: &Self) -> bool {
         self.data_type == other.data_type && self.elements == other.elements
@@ -1572,16 +1563,10 @@ impl PartialEq for FuncParamKind {
         match (self, other) {
             (Self::FuncParam(func_param1), Self::FuncParam(func_param2)) => func_param1 == func_param2,
             (Self::SelfModifier(self_modifier1), Self::SelfModifier(self_modifier2)) => {
-                self_modifier1 == self_modifier2
+                self_modifier1.ty == self_modifier2.ty && self_modifier1.mutability == self_modifier2.mutability
             }
             _ => false,
         }
-    }
-}
-
-impl PartialEq for SelfModifier {
-    fn eq(&self, other: &Self) -> bool {
-        self.kind == other.kind
     }
 }
 
@@ -1655,7 +1640,6 @@ impl Eq for ASTDynamicExpr {}
 impl Eq for ASTUnnamedStructValueExpr {}
 impl Eq for ASTUnnamedUnionValueExpr {}
 impl Eq for ASTUnnamedEnumValueExpr {}
-impl Eq for ASTUnaryExpr {}
 impl Eq for ASTInfixExpr {}
 impl Eq for ASTAssignExpr {}
 impl Eq for ASTModuleImport {}

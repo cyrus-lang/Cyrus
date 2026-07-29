@@ -6,7 +6,7 @@ pub struct Tree {
     pub value: int32,
     pub children: Forest*,
 
-    pub fn display(&const self) {
+    pub fn display(self: const Self*) {
         printf("(%d)", self->value);
     }
 }
@@ -15,7 +15,7 @@ pub struct Forest {
     pub trees: Tree*,
     pub count: int32,
 
-    pub fn display(&const self) {
+    pub fn display(self: const Self*) {
         var i = 0;
         while (i < self->count) {
             const tree = &self->trees[i];
@@ -31,9 +31,8 @@ pub fn main() {
     var trees: Tree* = malloc(@sizeof(Tree) * @cast(usize, tree_count));
     defer free(trees);
 
-    trees[0] = Tree {  value: 10,  children: null };
-
-    trees[1] = Tree { value: 20,  children: null };
+    trees[0] = Tree { value: 10, children: null };
+    trees[1] = Tree { value: 20, children: null };
 
     const forest1 = Forest { trees: trees, count: tree_count };
 

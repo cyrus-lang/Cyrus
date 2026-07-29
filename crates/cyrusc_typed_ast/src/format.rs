@@ -12,7 +12,6 @@ use crate::{
     stmts::{TypedFuncParamKind, TypedFuncTypeVariadicParam, TypedFuncVariadicParam, TypedTypeArgs},
     types::{SemaType, TypedArrayCapacity, TypedFuncType, UnresolvedType},
 };
-use cyrusc_ast::operators::UnaryOperator;
 use cyrusc_source_loc::{Loc, SourceMap};
 
 /// Provides human‑readable formatting utilities for compiler diagnostics
@@ -135,15 +134,6 @@ pub fn format_typed_expr(expr: &TypedExpr, formatter: &dyn Formatter) -> String 
             inf.op,
             format_typed_expr(&inf.rhs, formatter)
         ),
-        Unary(unary) => {
-            let operand = format_typed_expr(&unary.operand, formatter);
-            match unary.op {
-                UnaryOperator::PreIncrement => format!("++{}", operand),
-                UnaryOperator::PreDecrement => format!("--{}", operand),
-                UnaryOperator::PostIncrement => format!("{}++", operand),
-                UnaryOperator::PostDecrement => format!("{}--", operand),
-            }
-        }
         Assign(assign) => {
             let lhs = format_typed_expr(&assign.lhs, formatter);
             let rhs = format_typed_expr(&assign.rhs, formatter);
@@ -361,7 +351,6 @@ pub fn format_typed_expr(expr: &TypedExpr, formatter: &dyn Formatter) -> String 
         SemaType { ty, .. } => format_sema_type(ty.clone(), formatter),
 
         InlineAsm(asm) => format!("@asm(\"{}\")", asm.template.join("\\n")),
-
         Poisoned => unreachable!(),
     }
 }

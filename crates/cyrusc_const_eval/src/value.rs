@@ -79,7 +79,6 @@ pub fn is_expr_const_evaluable(expr: &TypedExprKind) -> bool {
             is_expr_const_evaluable(&infix.lhs.kind) && is_expr_const_evaluable(&infix.rhs.kind)
         }
         TypedExprKind::Prefix(prefix) => is_expr_const_evaluable(&prefix.operand.kind),
-        TypedExprKind::Unary(unary) => is_expr_const_evaluable(&unary.operand.kind),
 
         TypedExprKind::StructInit(_)
         | TypedExprKind::UnionInit(_)

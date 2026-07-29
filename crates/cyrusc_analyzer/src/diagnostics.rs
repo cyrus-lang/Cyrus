@@ -53,9 +53,7 @@ pub enum AnalyzerDiagKind {
     InvalidMultipleDynamicType,
 
     #[error("Cannot apply dynamic to type '{type_name}'.")]
-    InvalidDynamicType {
-        type_name: String
-    },
+    InvalidDynamicType { type_name: String },
 
     #[error(
         "Method '{method_name}' requires mutable access to 'self', but instance of type '{type_name}' is declared 'const'."
@@ -513,12 +511,6 @@ pub enum AnalyzerDiagKind {
 
     #[error("Cannot apply infix operator between values of type '{lhs_type}' and '{rhs_type}'.")]
     InvalidInfix { lhs_type: String, rhs_type: String },
-
-    #[error("Cannot apply unary operator to value of type '{operand_type}'.")]
-    InvalidUnary { operand_type: String },
-
-    #[error("Unary operator cannot be applied to a temporary value of type '{operand_type}'.")]
-    UnaryOnTemporary { operand_type: String },
 
     #[error("Expected an interface in bound, but found type '{found}'.")]
     ExpectedInterfaceInBound { found: String },

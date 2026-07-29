@@ -11,7 +11,7 @@ use crate::{
 use cyrusc_ast::{
     AssignKind, Ident, Mutability,
     abi::ReprAttr,
-    operators::{InfixOperator, PrefixOperator, UnaryOperator},
+    operators::{InfixOperator, PrefixOperator},
 };
 use cyrusc_source_loc::Loc;
 use cyrusc_tokens::literals::{IntLiteralKind, Integer, LiteralKind};
@@ -40,7 +40,6 @@ pub enum TypedExprKind {
     Literal(TypedLiteralExpr),
     Prefix(TypedPrefixExpr),
     Infix(TypedInfixExpr),
-    Unary(TypedUnaryExpr),
     Assign(TypedAssignExpr),
     AddrOf(TypedAddrOfExpr),
     Deref(TypedDerefExpr),
@@ -148,13 +147,6 @@ pub struct TypedSelfType {
 pub struct TypedPrefixExpr {
     pub op: PrefixOperator,
     pub operand: Box<TypedExpr>,
-    pub loc: Loc,
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub struct TypedUnaryExpr {
-    pub operand: Box<TypedExpr>,
-    pub op: UnaryOperator,
     pub loc: Loc,
 }
 
@@ -528,7 +520,6 @@ impl TypedExprKind {
             | TypedExprKind::Literal(_)
             | TypedExprKind::Prefix(_)
             | TypedExprKind::Infix(_)
-            | TypedExprKind::Unary(_)
             | TypedExprKind::Assign(_)
             | TypedExprKind::AddrOf(_)
             | TypedExprKind::Array(_)

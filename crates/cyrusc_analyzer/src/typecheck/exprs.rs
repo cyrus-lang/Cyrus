@@ -89,7 +89,6 @@ impl<'a> AnalysisContext<'a> {
             TypedExprKind::Literal(literal) => self.analyze_literal(literal, expected_type.clone()),
             TypedExprKind::Prefix(prefix) => self.analyze_prefix(prefix, expected_type.clone()),
             TypedExprKind::Infix(infix) => self.analyze_infix(infix, expected_type.clone()),
-            TypedExprKind::Unary(unary) => self.analyze_unary(unary),
             TypedExprKind::AddrOf(addr_of) => self.analyze_addr_of(addr_of),
             TypedExprKind::Deref(deref) => self.analyze_deref(deref),
             TypedExprKind::Array(array) => self.analyze_array(array, expected_type.clone()),
@@ -229,7 +228,6 @@ impl<'a> AnalysisContext<'a> {
             | TypedExprKind::FuncCall(_)
             | TypedExprKind::MethodCall(_)
             | TypedExprKind::Literal(_)
-            | TypedExprKind::Unary(_)
             | TypedExprKind::Prefix(_)
             | TypedExprKind::Infix(_) => ValueCategory::RValue,
 

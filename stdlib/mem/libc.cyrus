@@ -15,11 +15,11 @@ pub struct LibcAllocator : Allocator {
 		return Self {};
 	}
 	
-	pub fn alloc(&const self, size: usize) void* {
+	pub fn alloc(self: Self*, size: usize) void* {
 		return malloc(size);
 	}
 
-	pub fn alloc_aligned(&self, size: usize, align: usize) void* {
+	pub fn alloc_aligned(self: Self*, size: usize, align: usize) void* {
 		@assert(is_power_of_two(align), "alignment must be power of two");
 		@assert(align >= @sizeof(void*), "alignment must be >= sizeof(void*)");
 
@@ -34,15 +34,15 @@ pub struct LibcAllocator : Allocator {
 		return ptr;
 	}
 
-	pub fn alloc_zeroed(&const self, size: usize) void* {
+	pub fn alloc_zeroed(self: Self*, size: usize) void* {
 		return calloc(1, size);
 	}
 
-	pub fn realloc(&const self, ptr: void*, size: usize) void* {
+	pub fn realloc(self: Self*, ptr: void*, size: usize) void* {
 		return realloc(ptr, size);
 	}
 
-	pub fn free(&const self, ptr: void*) {
+	pub fn free(self: Self*, ptr: void*) {
 		free(ptr);
 	}
 }

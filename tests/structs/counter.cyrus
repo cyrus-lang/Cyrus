@@ -9,15 +9,15 @@ struct Counter {
         return Self { count: initial };
     }
 
-    pub fn increment(&self) {
-        self->count++;
+    pub fn increment(self: Self*) {
+        self->count += 1;
     }
 
-    pub fn reset(&self) {
+    pub fn reset(self: Self*) {
         self->count = 0;
     }
 
-    pub fn display(self) {
+    pub fn display(self: Self) {
         printf("%d ", self.count);
     }
 }
@@ -26,7 +26,7 @@ pub fn main() {
     var counter = Counter.new(1);
     var ref: Counter* = &counter;
     
-    counter.count++;
+    counter.count += 1;
 
     {
         counter.increment();

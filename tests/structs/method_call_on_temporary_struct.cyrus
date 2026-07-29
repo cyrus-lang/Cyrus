@@ -5,7 +5,7 @@ import std::libc{printf};
 struct Foo {
     pub x: int32,
 
-    pub fn foo(&const self, y: int32) int32 {
+    pub fn foo(self: const Self*, y: int32) int32 {
         return self->x + y;
     }
 }

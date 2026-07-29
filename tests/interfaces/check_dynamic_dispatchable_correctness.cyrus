@@ -1,5 +1,5 @@
 interface Animal {
-     fn id<T>(&const self, rank: T) T;
+     fn id<T>(self: const Self*, rank: T) T;
 }
 
 fn foo(animal: Animal) {
