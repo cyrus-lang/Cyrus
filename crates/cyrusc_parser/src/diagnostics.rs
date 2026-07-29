@@ -91,9 +91,12 @@ pub enum ParserDiagKind {
 
     #[error("Group modifiers cannot be nested.")]
     GroupedModifiersCannotBeNested,
-    
+
     #[error("Expected a string literal in inline assembly.")]
     ExpectedStringLiteral,
+
+    #[error("Use 'while (true) {{ ... }}' instead of non conditional for loop.")]
+    UseWhileTrueInsteadOfNonConditionalForLoop,
 }
 
 impl<'source_file> Parser<'source_file> {
