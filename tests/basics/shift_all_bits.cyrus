@@ -7,7 +7,7 @@ pub fn main() {
     while (shift < 32) {
         const val: uint32 = @cast(uint32, 1) << @cast(uint32, shift);
         printf("%u ", val);
-        shift++;
+        shift += 1;
     }
     printf("\n");
 }

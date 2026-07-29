@@ -3,8 +3,8 @@
 import std::libc{printf};
 
 interface MyConstraint {
-    fn foo(&self, x: int32) int32;
-    fn bar(&self) uint8*;
+    fn foo(self: Self*, x: int32) int32;
+    fn bar(self: Self*) uint8*;
 }
 
 struct Object : MyConstraint {
@@ -14,11 +14,11 @@ struct Object : MyConstraint {
         return Self { name };
     }
 
-    pub fn foo(&self, x: int32) int32 {
+    pub fn foo(self: Self*, x: int32) int32 {
         return (x * 10) + 2;
     }
 
-    pub fn bar(&self) uint8* {
+    pub fn bar(self: Self*) uint8* {
         return self->name;
     }
 }
@@ -27,11 +27,11 @@ enum Choice : MyConstraint {
     A,
     B,
 
-    pub fn foo(&self, x: int32) int32 {
+    pub fn foo(self: Self*, x: int32) int32 {
         return -x;
     }
 
-    pub fn bar(&self) uint8* {
+    pub fn bar(self: Self*) uint8* {
         return "Choice";
     }
 }

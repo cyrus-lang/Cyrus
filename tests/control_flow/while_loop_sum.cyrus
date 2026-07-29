@@ -6,7 +6,7 @@ pub fn main() {
     var i: int32 = 1;
     while (i <= 10) {
         printf("%d ", i);
-        i++;
+        i += 1;
     }
     printf("\n");
 
@@ -14,7 +14,7 @@ pub fn main() {
     i = 1;
     while (i <= 10) {
         sum = sum + i;
-        i++;
+        i += 1;
     }
     printf("%d\n", sum);
 }

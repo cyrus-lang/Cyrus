@@ -6,7 +6,7 @@ union Value {
     int_val: int32,
     float_val: float64,
 
-    pub fn display(&const self) {
+    pub fn display(self: const Self*) {
         printf("value=%d\n", self->int_val);
     }
 }

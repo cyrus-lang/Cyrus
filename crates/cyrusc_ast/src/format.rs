@@ -69,15 +69,6 @@ impl fmt::Display for Ident {
     }
 }
 
-impl fmt::Display for UnaryOperator {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            UnaryOperator::PreIncrement | UnaryOperator::PostIncrement => write!(f, "++"),
-            UnaryOperator::PreDecrement | UnaryOperator::PostDecrement => write!(f, "--"),
-        }
-    }
-}
-
 impl fmt::Display for ASTFuncCallExpr {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}({})", self.operand, format_expr_series(&self.args))
@@ -144,7 +135,7 @@ impl fmt::Display for TypeSpecifier {
             TypeSpecifier::Ident(ident) => write!(f, "{}", ident),
             TypeSpecifier::ModuleImport(module_import) => write!(f, "{}", module_import),
             TypeSpecifier::Const(type_spec) => write!(f, "const {}", type_spec),
-            TypeSpecifier::Deref(type_spec) => write!(f, "{}*", type_spec),
+            TypeSpecifier::Pointer(type_spec) => write!(f, "{}*", type_spec),
             TypeSpecifier::Array(array_type_specifier) => {
                 write!(
                     f,
@@ -339,9 +330,6 @@ impl fmt::Display for ASTExpr {
                 write!(f, ") {}", lambda.ret_type.clone())?;
                 write!(f, "{{ {} }}", format_stmts(&lambda.body.stmts))
             }
-            ASTExpr::Unary(unary_expr) => {
-                write!(f, "{}{}", unary_expr.op.clone(), unary_expr.operand)
-            }
             ASTExpr::Ident(ident) => write!(f, "{}", ident.value),
             ASTExpr::Literal(literal) => write!(f, "{}", literal.to_string()),
             ASTExpr::Prefix(prefix_expr) => {
@@ -506,22 +494,30 @@ impl fmt::Display for ASTInlineAsm {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "@asm(")?;
         for (i, t) in self.template.iter().enumerate() {
-            if i > 0 { write!(f, " ")?; }
+            if i > 0 {
+                write!(f, " ")?;
+            }
             write!(f, "\"{}\"", t)?;
         }
         write!(f, " : ")?;
         for (i, op) in self.outputs.iter().enumerate() {
-            if i > 0 { write!(f, ", ")?; }
+            if i > 0 {
+                write!(f, ", ")?;
+            }
             write!(f, "\"{}\"({})", op.constraint, op.expr)?;
         }
         write!(f, " : ")?;
         for (i, op) in self.inputs.iter().enumerate() {
-            if i > 0 { write!(f, ", ")?; }
+            if i > 0 {
+                write!(f, ", ")?;
+            }
             write!(f, "\"{}\"({})", op.constraint, op.expr)?;
         }
         write!(f, " : ")?;
         for (i, cl) in self.clobbers.iter().enumerate() {
-            if i > 0 { write!(f, ", ")?; }
+            if i > 0 {
+                write!(f, ", ")?;
+            }
             write!(f, "\"{}\"", cl.name)?;
         }
         write!(f, ")")

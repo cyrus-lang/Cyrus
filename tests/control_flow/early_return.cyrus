@@ -3,7 +3,7 @@
 import std::libc{printf};
 
 pub fn main() {
-    for (var i = 0; i < 10; i++) {
+    for (var i = 0; i < 10; i += 1) {
         if (i == 2) {
             printf("early\n");
             return;

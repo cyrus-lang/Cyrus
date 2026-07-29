@@ -34,7 +34,7 @@ impl<'a> AnalysisContext<'a> {
             let func_decl = method_decl.func_decl;
 
             let params_start = if let Some(self_modifier) = func_decl.params.get_self_modifier() {
-                if !self_modifier.kind.is_referenced() {
+                if !self_modifier.is_referenced() {
                     self.reporter.report(Diag {
                         level: DiagLevel::Error,
                         kind: Box::new(AnalyzerDiagKind::InterfaceMethodsMustUseReferencedSelf),
@@ -121,9 +121,9 @@ impl<'a> AnalysisContext<'a> {
                 continue;
             };
 
-            let sema_type = self.expand_sema_type(normalized_type, implement_interface.loc);
+            let ty = self.expand_sema_type(normalized_type, implement_interface.loc);
 
-            let interface_decl_id = sema_type.as_named_interface();
+            let interface_decl_id = ty.as_named_interface();
 
             let interface_decl = match interface_decl_id {
                 Some(id) => self.decl_tables.interface_decl(id),
@@ -131,7 +131,7 @@ impl<'a> AnalysisContext<'a> {
                     self.reporter.report(Diag {
                         level: DiagLevel::Error,
                         kind: Box::new(AnalyzerDiagKind::NonInterfaceSymbol {
-                            symbol_name: format_sema_type(sema_type, self.formatter),
+                            symbol_name: format_sema_type(ty, self.formatter),
                         }),
                         loc: Some(implement_interface.loc),
                         hint: None,
@@ -140,7 +140,7 @@ impl<'a> AnalysisContext<'a> {
                 }
             };
 
-            let interface_type_args = &sema_type.as_named_type().unwrap().type_args;
+            let interface_type_args = &ty.as_named_type().unwrap().type_args;
 
             for (_, method_decl_id) in interface_decl.methods.iter() {
                 let interface_method_decl = self.decl_tables.method_decl(*method_decl_id);
@@ -189,7 +189,7 @@ impl<'a> AnalysisContext<'a> {
 
             if !is_object_generic
                 && self
-                    .check_type_correctness(sema_type.clone(), implement_interface.loc)
+                    .check_type_correctness(ty.clone(), implement_interface.loc)
                     .is_none()
             {
                 continue;

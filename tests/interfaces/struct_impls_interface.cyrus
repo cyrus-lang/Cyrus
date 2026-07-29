@@ -3,8 +3,8 @@
 import std::libc{printf, malloc, free};
 
 interface Allocator {
-    fn alloc(&self, size: usize) void*;
-    fn free(&self, ptr: void*) void;
+    fn alloc(self: Self*, size: usize) void*;
+    fn free(self: Self*, ptr: void*) void;
 }
 
 struct HeapAllocator : Allocator {
@@ -12,17 +12,17 @@ struct HeapAllocator : Allocator {
         return Self {};
     }
 
-    pub fn alloc(&const self, size: usize) void* {
+    pub fn alloc(self: Self*, size: usize) void* {
         return malloc(size);
     }
 
-    pub fn free(&const self, ptr: void*) void {
+    pub fn free(self: Self*, ptr: void*) void {
         free(ptr);
     }
 }
 
 pub fn main() {
-    const allocator = HeapAllocator.new();
+    var allocator = HeapAllocator.new();
     
     var ptr: int32* = allocator.alloc(4);
     

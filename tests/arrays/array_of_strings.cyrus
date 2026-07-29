@@ -5,7 +5,7 @@ import std::libc{printf};
 pub fn main() {
     const words = uint8*[4]{"hello", "world", "from", "Cyrus"};
 
-    for (var i: usize = 0; i < 4; i++) {
+    for (var i: usize = 0; i < 4; i += 1) {
         printf("%s ", words[i]);
     }
 }

@@ -8,7 +8,6 @@ use crate::prec::*;
 use cyrusc_ast::abi::ReprAttr;
 use cyrusc_ast::operators::InfixOperator;
 use cyrusc_ast::operators::PrefixOperator;
-use cyrusc_ast::operators::UnaryOperator;
 use cyrusc_ast::*;
 use cyrusc_diagcentral::DiagLevel;
 use cyrusc_source_loc::Loc;
@@ -45,28 +44,6 @@ impl<'source_file> Parser<'source_file> {
                 self.next_token();
                 lhs = self.parse_field_access(lhs)?;
                 continue;
-            }
-
-            if self.peek_token_is(TokenKind::Increment) {
-                self.next_token();
-
-                let end = self.current_token().loc.end;
-
-                return Ok(ASTExpr::Unary(ASTUnaryExpr {
-                    operand: Box::new(lhs),
-                    op: UnaryOperator::PostIncrement,
-                    loc: Loc::new(self.file_id(), lhs_line, lhs_column, lhs_start, end),
-                }));
-            } else if self.peek_token_is(TokenKind::Decrement) {
-                self.next_token();
-
-                let end = self.current_token().loc.end;
-
-                return Ok(ASTExpr::Unary(ASTUnaryExpr {
-                    operand: Box::new(lhs),
-                    op: UnaryOperator::PostDecrement,
-                    loc: Loc::new(self.file_id(), lhs_line, lhs_column, lhs_start, end),
-                }));
             }
 
             let peek_token = self.peek_token();
@@ -284,34 +261,6 @@ impl<'source_file> Parser<'source_file> {
             }
 
             TokenKind::LeftBrace => self.parse_untyped_array()?,
-
-            TokenKind::Increment => {
-                self.next_token();
-
-                let expr = self.parse_expr(Precedence::Prefix)?;
-
-                let end = self.current_token().loc.end;
-
-                ASTExpr::Unary(ASTUnaryExpr {
-                    op: UnaryOperator::PreIncrement,
-                    operand: Box::new(expr),
-                    loc: Loc::new(self.file_id(), line, column, start, end),
-                })
-            }
-
-            TokenKind::Decrement => {
-                self.next_token();
-
-                let expr = self.parse_expr(Precedence::Prefix)?;
-
-                let end = self.current_token().loc.end;
-
-                ASTExpr::Unary(ASTUnaryExpr {
-                    op: UnaryOperator::PreDecrement,
-                    operand: Box::new(expr),
-                    loc: Loc::new(self.file_id(), line, column, start, end),
-                })
-            }
 
             _ => {
                 let type_spec = self.parse_type_specifier()?;

@@ -8,7 +8,7 @@ pub fn main() {
     arr[1] = 20;
     arr[2] = 30;
 
-    for (var i: usize = 0; i < 3; i++) {
+    for (var i: usize = 0; i < 3; i += 1) {
         printf("%d ", arr[i]);
     }
 }

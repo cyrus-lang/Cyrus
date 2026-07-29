@@ -16,7 +16,7 @@ pub fn main() {
     var i: int32 = 0;
     while (i < 10) {
         printf("%d ", fib(i));
-        i++;
+        i += 1;
     }
     printf("\n");
 }

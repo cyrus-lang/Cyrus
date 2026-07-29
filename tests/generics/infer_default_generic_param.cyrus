@@ -10,19 +10,19 @@ struct IOError<V, E = uint64> {
         return Self { value, error };
     }
 
-    pub fn display_error(const self) {
+    pub fn display_error(const self: Self) {
         printf("%d ", self.error);
     }
 
-    pub fn display_value(const self) {
+    pub fn display_value(const self: Self) {
         printf("%s ", self.value);
     }
 
-    pub fn set_error(&self, const new_error: E) {
+    pub fn set_error(self: Self*, const new_error: E) {
         self->error = new_error;
     }
 
-    pub fn get_error(&const self) E {
+    pub fn get_error(self: const Self*) E {
         return self->error;
     }
 }

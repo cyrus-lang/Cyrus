@@ -19,7 +19,7 @@ pub struct Buffer<T> {
         return Self { buffer };
     }
 
-    pub inline fn reserve(&self, const extra: usize) {
+    pub inline fn reserve(self: Self*, const extra: usize) {
         const required = self->len() + extra + 1;
 
         if (required > self->cap()) {
@@ -27,43 +27,43 @@ pub struct Buffer<T> {
         }
     }
 
-    pub inline fn get(&self, index: usize) T {
+    pub inline fn get(self: Self*, index: usize) T {
         return self->data()[index];
     }
 
-    pub inline fn data(&self) T* {
+    pub inline fn data(self: Self*) T* {
         return self->buffer.data();
     }
 
-    pub inline fn data_const(&const self) const T* {
+    pub inline fn data_const(self: const Self*) const T* {
         return self->buffer.data_const();
     }
 
-    pub inline fn cap(&const self) usize {
+    pub inline fn cap(self: const Self*) usize {
         return self->buffer.cap();
     }
 
-    pub inline fn len(&const self) usize {
+    pub inline fn len(self: const Self*) usize {
         return self->buffer.len();
     }
 
-    pub inline fn push(&self, ch: T) {
+    pub inline fn push(self: Self*, ch: T) {
         self->buffer.push(ch);
     }
 
-    pub inline fn pop(&self) T {
+    pub inline fn pop(self: Self*) T {
         return self->buffer.pop();
     }
 
-    pub inline fn is_empty(&const self) bool {
+    pub inline fn is_empty(self: const Self*) bool {
         return self->len() == 0;
     }
 
-    pub inline fn clear(&self) {
+    pub inline fn clear(self: Self*) {
         self->buffer.clear();
     }
 
-    pub inline fn free(&self) {
+    pub inline fn free(self: Self*) {
         self->buffer.free();
     }
 }

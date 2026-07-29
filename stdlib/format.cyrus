@@ -17,7 +17,7 @@ const FLOAT64_BUF_SIZE: usize = 64;
 const FLOAT128_BUF_SIZE: usize = 5000;
 
 pub interface Format {
-    fn format(&const self, writer: Writer) bool;
+    fn format(self: const Self*, writer: Writer) bool;
 }
 
 pub fn format_bool(writer: Writer, x: bool) {

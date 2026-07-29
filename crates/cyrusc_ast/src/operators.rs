@@ -30,11 +30,3 @@ pub enum PrefixOperator {
     Minus,
     BitwiseNot,
 }
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum UnaryOperator {
-    PreIncrement,
-    PreDecrement,
-    PostIncrement,
-    PostDecrement,
-}

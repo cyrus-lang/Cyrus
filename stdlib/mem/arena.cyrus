@@ -23,11 +23,11 @@ pub struct ArenaAllocator : Allocator {
         return arena;
 	}
 
-    pub fn alloc(&self, size: usize) void* {
+    pub fn alloc(self: Self*, size: usize) void* {
         return self->alloc_aligned(size, ARENA_DEFAULT_ALIGNMENT);
     }
 
-    fn alloc_aligned(&self, size: usize, align: usize) void* {
+    fn alloc_aligned(self: Self*, size: usize, align: usize) void* {
         switch (self->nodes.peek_first()) {
             case .Some(node) => {
                 var arena = &node->value;
@@ -43,7 +43,7 @@ pub struct ArenaAllocator : Allocator {
         }
     }
 
-    fn alloc_zeroed(&self, size: usize) void* {
+    fn alloc_zeroed(self: Self*, size: usize) void* {
 		const ptr = self->alloc(size);
 
 		if (ptr != null) {
@@ -53,7 +53,7 @@ pub struct ArenaAllocator : Allocator {
 		return ptr;
     }
 
-    pub fn reset(&self) {
+    pub fn reset(self: Self*) {
         var current = self->nodes.head;
         while (current->next != null) {
             current->value.used = 0;
@@ -61,7 +61,7 @@ pub struct ArenaAllocator : Allocator {
         }
     }
 
-    pub fn destroy(&self) {
+    pub fn destroy(self: Self*) {
         while (self->nodes.head != null) {
             switch (self->nodes.pop_first()) {
                 case .Some(node) => {
@@ -73,7 +73,7 @@ pub struct ArenaAllocator : Allocator {
         }
     }
 
-    fn create_node(&self, const capacity: usize) {
+    fn create_node(self: Self*, const capacity: usize) {
         var node: SinglyNode<ArenaNode>* =
             self->child_allocator.alloc(@sizeof(SinglyNode<ArenaNode>));
 
@@ -89,7 +89,7 @@ pub struct ArenaAllocator : Allocator {
         self->nodes.append(node);
     }
 
-    fn ensure_capacity(&self, const size: usize) {
+    fn ensure_capacity(self: Self*, const size: usize) {
         switch (self->nodes.peek_first()) {
             case .Some(node) => {
                 var arena = &node->value;
@@ -102,11 +102,11 @@ pub struct ArenaAllocator : Allocator {
         }
     }
 
-    fn realloc(&const self, ptr: void*, size: usize) void* {
+    fn realloc(self: Self*, ptr: void*, size: usize) void* {
         @panic("ArenaAllocator does not support realloc.");
     }
 
-	fn free(&const self, ptr: void*) void {
+	fn free(self: Self*, ptr: void*) void {
         @panic("ArenaAllocator does not support free.");
     }
 }

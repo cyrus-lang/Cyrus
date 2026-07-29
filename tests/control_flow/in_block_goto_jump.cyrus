@@ -6,7 +6,7 @@ pub fn main() {
     var x: usize = 0;
 
 start:
-    x++;
+    x += 1;
 xxx:
     {
     a:

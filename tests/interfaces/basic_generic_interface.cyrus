@@ -3,11 +3,11 @@
 import std::libc{printf};
 
 interface IValidator<T> {
-    fn validate(&const self, value: T) bool;
+    fn validate(self: const Self*, value: T) bool;
 }
 
 struct NumberValidator: IValidator<int32> {
-	pub fn validate(&const self, value: int32) bool {
+	pub fn validate(self: const Self*, value: int32) bool {
 		if (value > 5) {
 			return true;
 		} else {

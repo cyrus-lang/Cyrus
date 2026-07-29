@@ -304,7 +304,6 @@ pub fn substitute_func_params_with_type_args(
                 TypedFuncParamKind::SelfModifier(TypedSelfModifier {
                     var_decl_id: self_modifier.var_decl_id,
                     ty,
-                    kind: self_modifier.kind.clone(),
                     mutability: self_modifier.mutability,
                     loc: self_modifier.loc,
                 })

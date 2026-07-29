@@ -6,7 +6,7 @@ pub fn main() {
     var x = 0;
 
 increment:
-    x++;
+    x += 1;
     
 check:
     if (x < 5) {
