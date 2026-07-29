@@ -1,0 +1,17 @@
+// @stdout: 15
+
+import std::libc{printf};
+
+struct Foo {
+    pub x: int32,
+
+    pub fn foo(&const self, y: int32) int32 {
+        return self->x + y;
+    }
+}
+
+pub fn main() {
+    const result = Foo { x: 10 }.foo(5);
+
+    printf("%d\n", result);
+}
