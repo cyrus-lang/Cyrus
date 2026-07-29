@@ -9,6 +9,11 @@ import std::libc{printf};
 
 import parse::lex::tokens{Loc};
 
+interface SubDiag {
+          fn render(&const self, writer: Writer);
+          fn free(&self);
+}
+
 struct DiagContext {
        diags: Vec<Diag>,
 
@@ -22,11 +27,11 @@ struct DiagContext {
            self->diags.push(diag);
        }
 
-       pub fn emit(&const self, const allocator: Allocator, writer: Writer) {
+       pub fn render(&const self, const allocator: Allocator, writer: Writer) {
            for (var i: usize; i < self->diags.len(); i++) {
                const diag = self->diags.get(i).unwrap();
                
-               diag.emit(writer);
+               diag.render(writer);
 
                if (i > self->diags.len()) {
                   writer.write("\n");
@@ -45,6 +50,56 @@ struct DiagContext {
        }
 }
 
+fn render_header(
+        writer: Writer,
+        const file_path: const uint8*,
+        const mesg: const uint8*,
+        const loc: Loc
+) {
+   // TODO:
+   // writer.write(self->loc.file_id);
+   writer.write(file_path);
+   writer.write(":");
+   format_usize(writer, loc.line);
+   writer.write(":");
+   format_usize(writer, loc.col);
+   writer.write(": ");
+   writer.writeln(mesg);
+}
+
+fn render_code(
+   writer: Writer,
+   const code: const uint8*,
+   const loc: Loc
+) {
+   writer.writeln("   |");
+   writer.write(" ");
+   format_usize(writer, loc.line);
+   writer.write(" ~ ");
+   writer.writeln(code);
+
+   // TODO: Add helper for space computation.
+   writer.write("     ");
+   for (var i: usize = 0; i < loc.start; i++) {
+       writer.write(" ");
+   }
+   for (var i: usize = loc.start; i < loc.end; i++) {
+       writer.write("^");
+   }
+   writer.write("\n");
+}
+
+fn render_under(writer: Writer, const mesg: const uint8*, const loc: Loc) {
+   // TODO: Add helper for space computation.
+   writer.write("     ");
+   for (var i: usize = 0; i < loc.start; i++) {
+       writer.write(" ");
+   }
+   writer.write("> ");
+   writer.write(mesg);
+   writer.write("\n");
+ }
+           
 struct Diag {
        mesg: String,
        under: Option<String>,
@@ -67,62 +122,27 @@ struct Diag {
            self->subs.push(sub);
        }
 
-       pub fn emit(&const self, writer: Writer) {
-           // TODO:
-           // writer.write(self->loc.file_id);
+       pub inline fn render_subs(&const self, writer: Writer) {
+           for (var i: usize; i < self->subs.len(); i++) {
+               const sub = self->subs.get(i).unwrap();
 
-           writer.write("file-path.cyrus");
-           writer.write(":");
-           format_usize(writer, self->loc.line);
-           writer.write(":");
-           format_usize(writer, self->loc.col);
-           writer.write(": ");
-           writer.writeln(self->mesg.as_str_const());
-
-           writer.writeln("  |");
-           writer.write("  | ");
-
-           // TODO: fetch line-str from SourceContext and write here.
-           // TODO: Compute how many lines Span(start, end) evolves;
-           // we must emit all lines that are evolved, and underline them.
-           writer.writeln("var x: int32 = 0; // FAKE CODE");
-
-           writer.write("    ");
-           for (var i: usize = 0; i < self->loc.start; i++) {
-               writer.write(" ");
+               sub.render(writer);
            }
-           for (var i: usize = self->loc.start; i < self->loc.end; i++) {
-               writer.write("^");
-           }
-           writer.write("\n");
-                       
+       }
+       
+       pub fn render(&const self, writer: Writer) {
+           render_header(writer, "./selfhost/src/main.cyrus", "something went wrong", self->loc);
+           render_code(writer, "var x: int32 = 0; // FAKE CODE", self->loc);
+
            switch (self->under) {
                   case .Some(str) => {
-                       writer.write("    ");
-                       for (var i: usize = 0; i < self->loc.start; i++) {
-                           writer.write(" ");
-                       }
-                       writer.write("> ");
-                       writer.write(str.as_str_const());
-                       writer.write("\n");
+                       render_under(writer, str.as_str_const(), self->loc);  
                   }
            }
            
-           writer.write("  |");
-           
-           // TODO: Emit subs.
-           // TODO: Emit hints.
-           
-           // TODO:
-           // file:line:column: mesg
-           //   |
-           //   | var x: int32 = "foo"; // code
-           //                    ^^^^^
-           //                    > sub-diag mesg emitted here
-           //   |
-           // 
-           // hint: mesg1
-           // hint: mesg2
+           self->render_subs(writer);
+
+           writer.write("   |");
        }
 
        pub fn free(&self) {
@@ -149,20 +169,35 @@ struct Diag {
        }
 }
 
-struct SubDiag {
+struct PrimSubDiag : SubDiag {
        mesg: String,
+       under: Option<String>,
        loc: Loc,
 
-       pub fn new(&self, mesg: String, loc: Loc) Self {
-           return Self { mesg, loc };
+       pub fn new(
+           const mesg: String,
+           const under: Option<String>,
+           const loc: Loc
+       ) Self {
+           return Self { mesg, under, loc };
        }
 
-       pub fn emit(&const self, writer: Writer) {
-           
-       }
+       pub fn render(&const self, writer: Writer) {
+           render_code(writer, "fn foo(x: uint32, ...) // FAKE CODE", self->loc);
 
+           switch (self->under) {
+                  case .Some(str) => {
+                       render_under(writer, str.as_str_const(), self->loc);  
+                  }
+           }
+       }
+       
        pub inline fn free(&self) {
            self->mesg.free();
+
+           switch (self->under) {
+                  case .Some(str) => str.free();
+           }
        }
 }
 
@@ -178,6 +213,16 @@ pub fn main() {
     const under = String.from_str(allocator, "under mesg");
     var diag = Diag.new(allocator, mesg, .Some(under), loc);
 
+    {
+        const loc2 = Loc { line: 5, col: 1, start: 3, end: 6 };
+        var mesg2 = String.from_str(allocator, "error originated from xxx (sub-diag)");
+        var under2 = String.from_str(allocator, "you better change this or die");
+        
+        var sub_diag: SubDiag = dynamic PrimSubDiag.new(mesg2, .Some(under2), loc2);
+
+        diag.add_sub(sub_diag);
+    }
+    
     dctx.report(diag);
 
     // emit into stdout
@@ -186,7 +231,7 @@ pub fn main() {
 
     var writer: Writer = dynamic StringWriter.new(&out);
 
-    dctx.emit(allocator, writer);
+    dctx.render(allocator, writer);
 
     printf("%s\n", out.as_str());
 }
