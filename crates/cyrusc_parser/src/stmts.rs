@@ -213,12 +213,11 @@ impl<'source_file> Parser<'source_file> {
         }
     }
 
-        
     pub(crate) fn parse_inline_asm(&mut self) -> Result<ASTInlineAsm, Diag> {
         let loc = self.current_token().loc;
         let (line, column, start) = (loc.line, loc.column, loc.start);
 
-        self.next_token(); 
+        self.next_token();
 
         if !self.current_token().kind.is_ident_str("asm") {
             return Err(self.error_invalid_token());
@@ -233,12 +232,12 @@ impl<'source_file> Parser<'source_file> {
         };
 
         let (template, is_inline) = if self.current_token_is(TokenKind::LeftBrace) {
-            self.next_token(); 
+            self.next_token();
             let lines = self.parse_asm_template_block()?;
             self.expect_current(TokenKind::RightBrace)?;
             (lines, false)
         } else if self.current_token_is(TokenKind::LeftParen) {
-            self.next_token(); 
+            self.next_token();
             let s = self.parse_asm_string_literal()?;
             (vec![s], true)
         } else {
@@ -284,9 +283,7 @@ impl<'source_file> Parser<'source_file> {
 
     fn parse_asm_template_block(&mut self) -> Result<Vec<String>, Diag> {
         let mut lines = Vec::new();
-        while !self.current_token_is(TokenKind::RightBrace)
-            && !self.current_token_is(TokenKind::EOF)
-        {
+        while !self.current_token_is(TokenKind::RightBrace) && !self.current_token_is(TokenKind::EOF) {
             lines.push(self.parse_asm_string_literal()?);
         }
         Ok(lines)
@@ -1433,23 +1430,9 @@ impl<'source_file> Parser<'source_file> {
 
         self.next_token(); // consume for token
 
-        // Check for non-conditional for loop
+        // Non-conditional for loop
         if self.current_token_is(TokenKind::LeftBrace) {
-            let body = Box::new(self.parse_block()?);
-
-            if self.peek_token_is(TokenKind::Semicolon) {
-                self.next_token();
-            }
-
-            let end = self.current_token().loc.end;
-
-            return Ok(ASTStmt::For(ASTForStmt {
-                initializer: None,
-                condition: None,
-                increment: None,
-                body,
-                loc: Loc::new(self.file_id(), line, column, start, end),
-            }));
+            return Err(self.error_at_current(ParserDiagKind::UseWhileTrueInsteadOfNonConditionalForLoop));
         }
 
         self.expect_current(TokenKind::LeftParen)?;

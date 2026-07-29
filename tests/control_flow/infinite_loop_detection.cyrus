@@ -5,11 +5,11 @@ import std::libc{printf};
 pub fn main() {
     var x = 0;
 
-    for {
+    while (true) {
         if (x == 3) {
             break;
         }
-        x = x + 1;
+        x += 1;
     }
 
     printf("%d\n", x);
