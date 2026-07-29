@@ -4,16 +4,16 @@ import std::libc{printf};
 
 pub fn main() {
     var arr: int32[10] = undefined;
-    for (var i: int32 = 0; i < 10; i++) {
+    for (var i: int32 = 0; i < 10; i += 1) {
         arr[i] = i * 1;
     }
 
     var sum: int32 = 0;
-    for (var i: int32 = 0; i < 10; i++) {
+    for (var i: int32 = 0; i < 10; i += 1) {
         sum = sum + arr[i];
     }
 
-    for (var i: int32 = 0; i < 10; i++) {
+    for (var i: int32 = 0; i < 10; i += 1) {
         printf("%d ", arr[i]);
     }
     printf("\n");

@@ -9,7 +9,7 @@ pub fn main() {
      const allocator: Allocator = dynamic LibcAllocator.new();
      var arena = ArenaAllocator.new(allocator, 16);
      var sum: int32 = 0;
-     for (var i = 0; i <= 100; i++) {
+     for (var i = 0; i <= 100; i += 1) {
           var x: int32* = arena.alloc(4);
           @assert(x, "alloc failed");
           

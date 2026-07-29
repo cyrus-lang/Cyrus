@@ -95,7 +95,7 @@ impl<'source_file> Parser<'source_file> {
         loop {
             if self.peek_token_is(TokenKind::Asterisk) {
                 self.next_token();
-                base_type = TypeSpecifier::Deref(Box::new(base_type));
+                base_type = TypeSpecifier::Pointer(Box::new(base_type));
             } else if self.peek_token_is(TokenKind::LeftBracket) {
                 self.next_token();
                 base_type = self.parse_array_type(base_type)?;

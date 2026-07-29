@@ -5,7 +5,7 @@ import std::libc{printf};
 pub fn main() {
     const arr = int32[3]{1, 2, 3};
     
-    for (var i: usize = 0; i < 3; i++) {
+    for (var i: usize = 0; i < 3; i += 1) {
         const item = arr[i];
 
         switch (item) {

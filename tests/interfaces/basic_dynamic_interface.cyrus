@@ -3,21 +3,21 @@
 import std::libc{printf};
 
 interface Animal {
-	fn sound(&const self) const uint8*;
+	fn sound(self: const Self*) const uint8*;
 }
 
 struct Cat : Animal {
-	pub fn sound(&const self) const uint8* {
+	pub fn sound(self: const Self*) const uint8* {
 		return "meow";
 	}
 
-    pub fn introduce(&const self) {
+    pub fn introduce(self: const Self*) {
         printf("this is meow :3");
     }
 }
 
 struct Ship : Animal {
-    fn sound(&const self) const uint8* {
+    fn sound(self: const Self*) const uint8* {
 		return "بعععع";
 	}   
 }

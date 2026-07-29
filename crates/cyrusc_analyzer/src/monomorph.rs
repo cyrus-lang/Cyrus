@@ -462,9 +462,6 @@ impl<'a> AnalysisContext<'a> {
                 self.specialize_expr(&mut infix.lhs, decl_map);
                 self.specialize_expr(&mut infix.rhs, decl_map);
             }
-            TypedExprKind::Unary(unary) => {
-                self.specialize_expr(&mut unary.operand, decl_map);
-            }
             TypedExprKind::Assign(assign) => {
                 self.specialize_expr(&mut assign.lhs, decl_map);
                 self.specialize_expr(&mut assign.rhs, decl_map);

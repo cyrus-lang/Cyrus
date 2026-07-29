@@ -10,8 +10,8 @@ import std::libc{printf};
 import parse::lex::tokens{Loc};
 
 interface SubDiag {
-          fn render(&const self, writer: Writer);
-          fn free(&self);
+          fn render(self: const Self*, writer: Writer);
+          fn free(const self: Self*);
 }
 
 struct DiagContext {
@@ -23,12 +23,12 @@ struct DiagContext {
            return Self { diags };
        }
        
-       pub inline fn report(&self, diag: Diag) {
+       pub inline fn report(const self: Self*, diag: Diag) {
            self->diags.push(diag);
        }
 
-       pub fn render(&const self, const allocator: Allocator, writer: Writer) {
-           for (var i: usize; i < self->diags.len(); i++) {
+       pub fn render(self: const Self*, const allocator: Allocator, writer: Writer) {
+           for (var i: usize; i < self->diags.len(); i += 1) {
                const diag = self->diags.get(i).unwrap();
                
                diag.render(writer);
@@ -39,8 +39,8 @@ struct DiagContext {
            }
        }
 
-       pub fn free(&self) {
-           for (var i: usize; i < self->diags.len(); i++) {
+       pub fn free(const self: Self*) {
+           for (var i: usize; i < self->diags.len(); i += 1) {
                var diag = self->diags.get(i).unwrap();
 
                diag.free();
@@ -80,10 +80,10 @@ fn render_code(
 
    // TODO: Add helper for space computation.
    writer.write("     ");
-   for (var i: usize = 0; i < loc.start; i++) {
+   for (var i: usize = 0; i < loc.start; i += 1) {
        writer.write(" ");
    }
-   for (var i: usize = loc.start; i < loc.end; i++) {
+   for (var i: usize = loc.start; i < loc.end; i += 1) {
        writer.write("^");
    }
    writer.write("\n");
@@ -92,7 +92,7 @@ fn render_code(
 fn render_under(writer: Writer, const mesg: const uint8*, const loc: Loc) {
    // TODO: Add helper for space computation.
    writer.write("     ");
-   for (var i: usize = 0; i < loc.start; i++) {
+   for (var i: usize = 0; i < loc.start; i += 1) {
        writer.write(" ");
    }
    writer.write("> ");
@@ -114,23 +114,23 @@ struct Diag {
            return Self { mesg, subs, under, hints, loc };
        }
 
-       pub inline fn add_hint(&self, hint: SubDiag) {
+       pub inline fn add_hint(const self: Self*, hint: SubDiag) {
            self->hints.push(hint);
        }
 
-       pub inline fn add_sub(&self, sub: SubDiag) {
+       pub inline fn add_sub(const self: Self*, sub: SubDiag) {
            self->subs.push(sub);
        }
 
-       pub inline fn render_subs(&const self, writer: Writer) {
-           for (var i: usize; i < self->subs.len(); i++) {
+       pub inline fn render_subs(self: const Self*, writer: Writer) {
+           for (var i: usize; i < self->subs.len(); i += 1) {
                const sub = self->subs.get(i).unwrap();
 
                sub.render(writer);
            }
        }
        
-       pub fn render(&const self, writer: Writer) {
+       pub fn render(self: const Self*, writer: Writer) {
            render_header(writer, "./selfhost/src/main.cyrus", "something went wrong", self->loc);
            render_code(writer, "var x: int32 = 0; // FAKE CODE", self->loc);
 
@@ -145,20 +145,20 @@ struct Diag {
            writer.write("   |");
        }
 
-       pub fn free(&self) {
+       pub fn free(const self: Self*) {
            self->mesg.free();
 
            switch (self->under) {
                   case .Some(str) => str.free();
            }
            
-           for (var i: usize; i < self->subs.len(); i++) {
+           for (var i: usize; i < self->subs.len(); i += 1) {
                var sub = self->subs.get(i).unwrap();
 
                sub.free();
            }
 
-           for (var i: usize; i < self->hints.len(); i++) {
+           for (var i: usize; i < self->hints.len(); i += 1) {
                var hint = self->hints.get(i).unwrap();
 
                hint.free();
@@ -182,7 +182,7 @@ struct PrimSubDiag : SubDiag {
            return Self { mesg, under, loc };
        }
 
-       pub fn render(&const self, writer: Writer) {
+       pub fn render(self: const Self*, writer: Writer) {
            render_code(writer, "fn foo(x: uint32, ...) // FAKE CODE", self->loc);
 
            switch (self->under) {
@@ -192,7 +192,7 @@ struct PrimSubDiag : SubDiag {
            }
        }
        
-       pub inline fn free(&self) {
+       pub inline fn free(const self: Self*) {
            self->mesg.free();
 
            switch (self->under) {

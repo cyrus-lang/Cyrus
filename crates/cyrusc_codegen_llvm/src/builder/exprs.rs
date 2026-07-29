@@ -10,7 +10,7 @@ use crate::{
     },
     llvm::{abi::abi_type::abi_type_to_llvm_type, constness::is_basic_value_constant, debug_info::set_debug_location},
 };
-use cyrusc_ast::operators::{InfixOperator, PrefixOperator, UnaryOperator};
+use cyrusc_ast::operators::{InfixOperator, PrefixOperator};
 use cyrusc_internal::{
     abi::{
         args::ABIFunctionInfo,
@@ -46,7 +46,6 @@ impl<'ll> CodeGenIRBuilder<'ll> {
             CIRExprKind::Literal(literal) => self.emit_literal(literal),
             CIRExprKind::Prefix(prefix_expr) => self.emit_prefix_expr(prefix_expr),
             CIRExprKind::Infix(infix_expr) => self.emit_infix_expr(infix_expr, expr.loc),
-            CIRExprKind::Unary(unary_expr) => self.emit_unary_expr(unary_expr, expr.loc),
             CIRExprKind::SizeOf(sizeof_expr) => self.emit_sizeof(sizeof_expr),
             CIRExprKind::Assign(assign_expr) => self.emit_assign(assign_expr),
             CIRExprKind::AddrOf(addr_of_expr) => self.emit_addr_of(addr_of_expr),
@@ -639,151 +638,6 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         let ty = self.emit_type(sizeof_expr.ty.clone());
         let size_value = ty.size_of().unwrap();
         InternalValue::new(sizeof_expr.ty.clone(), InternalValueKind::RValue(size_value.into()))
-    }
-
-    fn emit_unary_expr(&mut self, unary_expr: &CIRUnaryExpr, loc: Loc) -> InternalValue<'ll> {
-        let lvalue = self.emit_lvalue_address(&unary_expr.operand);
-        let lvalue_ptr = match lvalue.kind {
-            InternalValueKind::LValue(ptr) => ptr,
-            InternalValueKind::RValue(val) => {
-                let alloca = self.llvmbuilder.build_alloca(val.get_type(), "unary.cast").unwrap();
-                self.llvmbuilder.build_store(alloca, val).unwrap();
-                alloca
-            }
-            _ => unreachable!("Cannot perform unary operation on non-LValue/RValue"),
-        };
-
-        let rvalue = self.load_rvalue(lvalue);
-
-        let ty = rvalue.ty.clone();
-        let is_pointer = ty.is_pointer();
-
-        let unit_int_value = {
-            if is_pointer {
-                self.llvm_ctx.i64_type().const_int(1, false)
-            } else {
-                let is_signed = ty.is_signed_integer();
-                let basic_type: BasicTypeEnum<'ll> = self.emit_type(ty.clone()).try_into().unwrap();
-                basic_type.into_int_type().const_int(1, is_signed)
-            }
-        };
-
-        match unary_expr.op {
-            UnaryOperator::PreIncrement => {
-                let new_value = if is_pointer {
-                    let ptr = rvalue.as_basic_value().into_pointer_value();
-                    let value = self.emit_pointer_add(ptr, unit_int_value, ty.clone());
-                    value
-                } else {
-                    let unit_value = InternalValue::new(
-                        ty.clone(),
-                        InternalValueKind::RValue(BasicValueEnum::IntValue(unit_int_value)),
-                    );
-
-                    self.emit_add(rvalue.clone(), unit_value, loc)
-                };
-
-                self.llvmbuilder
-                    .build_store(lvalue_ptr, new_value.as_basic_value())
-                    .unwrap();
-
-                if let CIRExprKind::Load(value_ref) = &unary_expr.operand.kind {
-                    if let Some(LocalIRValue::RValue(_, _)) = self.lookup_local_ir_value(value_ref.irv_id) {
-                        self.insert_local_ir_value(
-                            value_ref.irv_id,
-                            LocalIRValue::RValue(new_value.as_basic_value(), ty.clone()),
-                        );
-                    }
-                }
-
-                new_value
-            }
-            UnaryOperator::PreDecrement => {
-                let new_value = if is_pointer {
-                    let ptr = rvalue.as_basic_value().into_pointer_value();
-                    let value = self.emit_pointer_sub(ptr, unit_int_value, ty.clone());
-                    value
-                } else {
-                    let unit_value = InternalValue::new(
-                        ty.clone(),
-                        InternalValueKind::RValue(BasicValueEnum::IntValue(unit_int_value)),
-                    );
-
-                    self.emit_sub(rvalue.clone(), unit_value, loc)
-                };
-
-                self.llvmbuilder
-                    .build_store(lvalue_ptr, new_value.as_basic_value())
-                    .unwrap();
-
-                if let CIRExprKind::Load(value_ref) = &unary_expr.operand.kind {
-                    if let Some(LocalIRValue::RValue(_, _)) = self.lookup_local_ir_value(value_ref.irv_id) {
-                        self.insert_local_ir_value(
-                            value_ref.irv_id,
-                            LocalIRValue::RValue(new_value.as_basic_value(), ty.clone()),
-                        );
-                    }
-                }
-
-                new_value
-            }
-            UnaryOperator::PostIncrement => {
-                let old_value = rvalue.clone();
-                let new_value = if is_pointer {
-                    let ptr = rvalue.as_basic_value().into_pointer_value();
-                    self.emit_pointer_add(ptr, unit_int_value, ty.clone())
-                } else {
-                    let unit_value = InternalValue::new(
-                        ty.clone(),
-                        InternalValueKind::RValue(BasicValueEnum::IntValue(unit_int_value)),
-                    );
-                    self.emit_add(rvalue, unit_value, loc)
-                };
-
-                self.llvmbuilder
-                    .build_store(lvalue_ptr, new_value.as_basic_value())
-                    .unwrap();
-
-                if let CIRExprKind::Load(value_ref) = &unary_expr.operand.kind {
-                    if let Some(LocalIRValue::RValue(_, _)) = self.lookup_local_ir_value(value_ref.irv_id) {
-                        self.insert_local_ir_value(
-                            value_ref.irv_id,
-                            LocalIRValue::RValue(new_value.as_basic_value(), ty.clone()),
-                        );
-                    }
-                }
-
-                old_value
-            }
-            UnaryOperator::PostDecrement => {
-                let old_value = rvalue.clone();
-                let new_value = if is_pointer {
-                    let ptr = rvalue.as_basic_value().into_pointer_value();
-                    self.emit_pointer_sub(ptr, unit_int_value, ty.clone())
-                } else {
-                    let unit_value = InternalValue::new(
-                        ty.clone(),
-                        InternalValueKind::RValue(BasicValueEnum::IntValue(unit_int_value)),
-                    );
-                    self.emit_sub(rvalue, unit_value, loc)
-                };
-
-                self.llvmbuilder
-                    .build_store(lvalue_ptr, new_value.as_basic_value())
-                    .unwrap();
-
-                if let CIRExprKind::Load(value_ref) = &unary_expr.operand.kind {
-                    if let Some(LocalIRValue::RValue(_, _)) = self.lookup_local_ir_value(value_ref.irv_id) {
-                        self.insert_local_ir_value(
-                            value_ref.irv_id,
-                            LocalIRValue::RValue(new_value.as_basic_value(), ty.clone()),
-                        );
-                    }
-                }
-
-                old_value
-            }
-        }
     }
 
     fn emit_infix_expr(&mut self, infix_expr: &CIRInfixExpr, loc: Loc) -> InternalValue<'ll> {

@@ -514,9 +514,6 @@ impl<'source_file> Parser<'source_file> {
     }
 
     pub(crate) fn parse_func_params(&mut self) -> Result<FuncParams, Diag> {
-        let loc = self.current_token().loc;
-        let (line, column, start) = (loc.line, loc.column, loc.start);
-
         self.expect_current(TokenKind::LeftParen)?;
 
         let params_start_token = self.current_token();
@@ -541,90 +538,78 @@ impl<'source_file> Parser<'source_file> {
                     variadic = Some(FuncVariadicParam::UntypedCStyle);
                     break;
                 }
-                TokenKind::Ampersand => {
-                    let token = self.current_token();
-                    self.next_token(); // ampersand
+                TokenKind::Const | TokenKind::Ident(_) => {
+                    let loc = self.current_token().loc;
+                    let start = loc.start;
+                    let line = loc.line;
+                    let column = loc.column;
 
                     let mutability = {
                         if self.current_token_is(TokenKind::Const) {
                             self.next_token();
-                            Mutability::Const
+                            Some(Mutability::Const)
                         } else {
-                            Mutability::Var
+                            None
                         }
                     };
 
+                    let ident_token = self.current_token();
                     let ident = self.parse_ident()?;
-                    self.next_token(); // consume ident
+                    self.next_token(); // consume the ident
 
-                    if &ident.value != "self" {
-                        return Err(
-                            self.error_at_token(&token, ParserDiagKind::ExpectedSelfModifier(ident.value.clone()))
-                        );
+                    let mut var_type: Option<TypeSpecifier> = None;
+
+                    if self.current_token_is(TokenKind::Colon) {
+                        self.next_token(); // consume the colon
+
+                        if self.current_token_is(TokenKind::TripleDot) {
+                            self.next_token(); // consume triple dot
+
+                            let variadic_data_type = self.parse_type_specifier()?;
+                            self.next_token();
+
+                            variadic = Some(FuncVariadicParam::Typed(ident, variadic_data_type));
+                            continue;
+                        } else {
+                            var_type = Some(self.parse_type_specifier()?);
+                            self.next_token();
+                        }
                     }
 
                     let end = self.current_token().loc.end;
 
-                    list.push(FuncParamKind::SelfModifier(SelfModifier {
-                        kind: SelfModifierKind::Referenced,
-                        mutability,
-                        loc: Loc::new(self.file_id(), line, column, start, end),
-                    }));
-
-                    self_modifier_count += 1;
-                }
-                TokenKind::Const | TokenKind::Ident(_) => {
-                    let start = self.current_token().loc.start;
-                    let line = self.current_token().loc.line;
-
-                    let mutability = {
-                        if self.current_token_is(TokenKind::Const) {
-                            self.next_token();
-                            Mutability::Const
-                        } else {
-                            Mutability::Var
-                        }
-                    };
-
-                    let ident = self.parse_ident()?;
-                    self.next_token(); // consume the ident
-
                     if ident.value == "self" {
-                        let end = self.current_token().loc.end;
-
-                        list.push(FuncParamKind::SelfModifier(SelfModifier {
-                            kind: SelfModifierKind::Copied,
-                            mutability,
-                            loc: Loc::new(self.file_id(), line, column, start, end),
-                        }));
-
                         self_modifier_count += 1;
-                    } else {
-                        let mut var_type: Option<TypeSpecifier> = None;
 
-                        if self.current_token_is(TokenKind::Colon) {
-                            self.next_token(); // consume the colon
+                        if let Some(ty) = var_type {
+                            let valid = ty.const_inner().is_self()
+                                || matches!(&ty, TypeSpecifier::Pointer(inner) if inner.const_inner().is_self());
 
-                            if self.current_token_is(TokenKind::TripleDot) {
-                                self.next_token(); // consume triple dot
-
-                                let variadic_data_type = self.parse_type_specifier()?;
-                                self.next_token();
-
-                                variadic = Some(FuncVariadicParam::Typed(ident, variadic_data_type));
-                                continue;
-                            } else {
-                                var_type = Some(self.parse_type_specifier()?);
-                                self.next_token();
+                            if !valid {
+                                return Err(self.error_at_token(&ident_token, ParserDiagKind::SelfModifierInvalidType));
                             }
+
+                            let mutability = {
+                                if ty.is_const() || matches!(&ty, TypeSpecifier::Pointer(inner) if inner.is_const()) {
+                                    Mutability::Const
+                                } else {
+                                    Mutability::Var
+                                }
+                            };
+
+                            list.push(FuncParamKind::SelfModifier(SelfModifier {
+                                ty,
+                                mutability,
+                                loc: Loc::new(self.file_id(), line, column, start, end),
+                            }));
+                        } else {
+                            return Err(self.error_at_token(&ident_token, ParserDiagKind::SelfModifierMissingType));
                         }
-
-                        let end = self.current_token().loc.end;
-
+                    } else {
                         list.push(FuncParamKind::FuncParam(FuncParam {
                             ident,
                             ty: var_type,
-                            mutability,
+                            mutability: mutability.unwrap_or(Mutability::Var),
                             loc: Loc::new(self.file_id(), line, column, start, end),
                         }));
                     }

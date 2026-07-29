@@ -4,7 +4,7 @@ import std::libc{printf};
 
 fn recursive_generic<T>(x: T) {
 	printf("%d ", x);
-	x++;
+	x += 1;
 	
 	if (x < 5) {
 		recursive_generic(x);

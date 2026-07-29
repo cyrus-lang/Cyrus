@@ -29,7 +29,7 @@ pub struct File {
         });
     }
 
-    pub fn flush(&const self) ErrorOr<(), ()> {
+    pub fn flush(self: const Self*) ErrorOr<(), ()> {
         const result = libc::fflush(self->file);
         if (result != 0) {
             return .Error(());
@@ -37,13 +37,13 @@ pub struct File {
         return .Value(());
     }
 
-    pub fn remove(&const self) bool {
+    pub fn remove(self: const Self*) bool {
         const path_str = self->path->as_string_const().as_str_const();
         const result = libc::remove(path_str);
         return result == 0;
     }
 
-    pub fn read(&const self, allocator: Allocator) ErrorOr<String, ErrorStr> {
+    pub fn read(self: const Self*, allocator: Allocator) ErrorOr<String, ErrorStr> {
         libc::fseek(self->file, 0, FileSeek.End.as_num());
         const size = @cast(usize, libc::ftell(self->file));
         libc::rewind(self->file);
@@ -67,7 +67,7 @@ pub struct File {
         return .Value(content);
     }
 
-    pub fn write(&self, const content: const uint8*) ErrorOr<usize, ()> {
+    pub fn write(const self: Self*, const content: const uint8*) ErrorOr<usize, ()> {
         const content_len = libc::strlen(content);
 
         const bytes = libc::fwrite(content, 1, content_len, self->file);
@@ -78,7 +78,7 @@ pub struct File {
         return .Value(bytes);
     }
 
-    pub fn append(&self, const content: const uint8*) ErrorOr<usize, ErrorStr> {
+    pub fn append(const self: Self*, const content: const uint8*) ErrorOr<usize, ErrorStr> {
         switch (self->mode) {
             case .Append | .AppendBinary | .AppendRead | .AppendReadBinary => {}
             default => { return .Error("file not opened in append mode"); }
@@ -125,11 +125,11 @@ pub struct File {
         return .Value(());
     }
 
-    pub inline fn eof(&const self) bool {
+    pub inline fn eof(self: const Self*) bool {
         return libc::feof(self->file) != 0;
     }
 
-    pub inline fn close(&self) {
+    pub inline fn close(const self: Self*) {
         libc::fclose(self->file);
     }
 }

@@ -59,9 +59,6 @@ pub enum ParserDiagKind {
     #[error("Cannot define self modifier several times in a function.")]
     SeveralSelfModifierUsed,
 
-    #[error("Self modifier ident must be 'self' not '{0}'.")]
-    ExpectedSelfModifier(String),
-
     #[error("Invalid infix operator '{0}'.")]
     InvalidInfixOperator(TokenKind),
 
@@ -97,6 +94,12 @@ pub enum ParserDiagKind {
 
     #[error("Use 'while (true) {{ ... }}' instead of non conditional for loop.")]
     UseWhileTrueInsteadOfNonConditionalForLoop,
+
+    #[error("Self modifier missing type.")]
+    SelfModifierMissingType,
+
+    #[error("Self modifier type is not valid. It must be 'Self*' or 'const Self*'.")]
+    SelfModifierInvalidType,
 }
 
 impl<'source_file> Parser<'source_file> {

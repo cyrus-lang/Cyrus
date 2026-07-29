@@ -10,7 +10,7 @@ pub fn main() {
     };
 
     var ptr: int32* = &x[0][0];
-    for (var i: int32 = 0; i < 9; i++) {
+    for (var i: int32 = 0; i < 9; i += 1) {
         printf("%d ", *(ptr + i));
     }
     printf("\n");

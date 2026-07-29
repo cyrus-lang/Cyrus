@@ -6,7 +6,7 @@ enum MaybeInt {
     Some(int32),
     None,
 
-    pub fn value_or(&const self, def: int32) int32 {
+    pub fn value_or(self: const Self*, def: int32) int32 {
         switch (*self) {
             case .Some(v) => return v;
             case .None => return def;

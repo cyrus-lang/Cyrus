@@ -7,11 +7,11 @@ pub fn main() {
 
     while (i < 5) {
         if (i == 2) {
-            i++;
+            i += 1;
             continue;
         }
         printf("%d ", i);
-        i++;
+        i += 1;
     }
     printf("\n");
 
@@ -21,7 +21,7 @@ pub fn main() {
             break;
         }
         printf("%d ", j);
-        j++;
+        j += 1;
     }
     printf("\n");
 
@@ -29,7 +29,7 @@ pub fn main() {
     var k: int32 = 1;
     while (k <= 4) {
         sum = sum + k;
-        k++;
+        k += 1;
     }
     printf("%d\n", sum);
 
@@ -37,7 +37,7 @@ pub fn main() {
     var m: int32 = 1;
     while (m <= 4) {
         acc = acc * m;
-        m++;
+        m += 1;
     }
     printf("%d\n", acc);
 }

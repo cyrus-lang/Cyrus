@@ -6,7 +6,7 @@ enum Result<T, E> {
     Ok(T),
     Err(E),
 
-    pub fn is_ok(&self) bool {
+    pub fn is_ok(self: const Self*) bool {
         switch (self) {
             case .Ok => return true;
             case .Err => return false;

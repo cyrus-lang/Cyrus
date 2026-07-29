@@ -11,7 +11,7 @@ pub fn main() {
     var vec: Vec<int32> = Vec.new(allocator);
     defer vec.free();
 
-    for (var i: int32 = 0; i <= 1000; i++) {
+    for (var i: int32 = 0; i <= 1000; i += 1) {
         vec.push(i);
     }
 
