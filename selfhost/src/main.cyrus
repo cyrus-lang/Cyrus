@@ -1,70 +1,75 @@
-import std::mem::libc{LibcAllocator};
-import std::io{Writer, StringWriter};
-import std::format{format_usize};
-import std::collections{Vec};
-import std::option{Option};
-import std::mem{Allocator};
-import std::string{String};
-import std::libc{printf};
+import (
+    std::mem::libc{LibcAllocator},
+    std::io{Writer, StringWriter},
+    std::format{format_usize},
+    std::collections{Vec},
+    std::option{Option},
+    std::mem{Allocator},
+    std::string{String},
+    std::libc{printf},
+);
 
-import parse::lex::tokens{Loc};
+import (
+    tokens{Loc}
+);
 
 interface SubDiag {
-          fn render(self: const Self*, writer: Writer);
-          fn free(const self: Self*);
+    fn render(self: const Self*, writer: Writer);
+    fn free(const self: Self*);
 }
 
 struct DiagContext {
-       diags: Vec<Diag>,
+    diags: Vec<Diag>,
+    
+    pub inline fn new(const allocator: Allocator) Self {
+        const diags: Vec<Diag> = Vec.new(allocator);
+        
+        return Self { diags };
+    }
+    
+    pub inline fn report(const self: Self*, diag: Diag) {
+        *self = *self;
+        self->diags.push(diag);
+    }
 
-       pub inline fn new(const allocator: Allocator) Self {
-           const diags: Vec<Diag> = Vec.new(allocator);
-           
-           return Self { diags };
-       }
-       
-       pub inline fn report(const self: Self*, diag: Diag) {
-           self->diags.push(diag);
-       }
+    pub fn render(const self: const Self*, const allocator: Allocator, writer: Writer) {
+        for (var i: usize; i < self->diags.len(); i += 1) {
+            const diag = self->diags.get(i).unwrap();
+            
+            diag.render(writer);
 
-       pub fn render(self: const Self*, const allocator: Allocator, writer: Writer) {
-           for (var i: usize; i < self->diags.len(); i += 1) {
-               const diag = self->diags.get(i).unwrap();
-               
-               diag.render(writer);
+            if (i > self->diags.len()) {
+                writer.write("\n");
+            }
+        }
+    }
 
-               if (i > self->diags.len()) {
-                  writer.write("\n");
-               }
-           }
-       }
+    pub fn free(const self: Self*) {
+        for (var i: usize; i < self->diags.len(); i += 1) {
+            var diag = self->diags.get(i).unwrap();
 
-       pub fn free(const self: Self*) {
-           for (var i: usize; i < self->diags.len(); i += 1) {
-               var diag = self->diags.get(i).unwrap();
+            diag.free();
+        }
 
-               diag.free();
-           }
-
-           self->diags.free();
-       }
+        self->diags.free();
+    }
 }
 
 fn render_header(
-        writer: Writer,
-        const file_path: const uint8*,
-        const mesg: const uint8*,
-        const loc: Loc
+    writer: Writer,
+    const file_path: const uint8*,
+    const mesg: const uint8*,
+    const loc: Loc
 ) {
-   // TODO:
-   // writer.write(self->loc.file_id);
-   writer.write(file_path);
-   writer.write(":");
-   format_usize(writer, loc.line);
-   writer.write(":");
-   format_usize(writer, loc.col);
-   writer.write(": ");
-   writer.writeln(mesg);
+    // TODO:
+    // writer.write(self->loc.file_id);
+    writer.write(file_path);
+    writer.write(":");
+    format_usize(writer, loc.line);
+    writer.write(":");
+    format_usize(writer, loc.col);
+    writer.write(": ");
+    writer.writeln(mesg);
 }
 
 fn render_code(
@@ -72,21 +77,21 @@ fn render_code(
    const code: const uint8*,
    const loc: Loc
 ) {
-   writer.writeln("   |");
-   writer.write(" ");
-   format_usize(writer, loc.line);
-   writer.write(" ~ ");
-   writer.writeln(code);
+    writer.writeln("   |");
+    writer.write(" ");
+    format_usize(writer, loc.line);
+    writer.write(" ~ ");
+    writer.writeln(code);
 
-   // TODO: Add helper for space computation.
-   writer.write("     ");
-   for (var i: usize = 0; i < loc.start; i += 1) {
-       writer.write(" ");
-   }
-   for (var i: usize = loc.start; i < loc.end; i += 1) {
-       writer.write("^");
-   }
-   writer.write("\n");
+    // TODO: Add helper for space computation.
+    writer.write("     ");
+    for (var i: usize = 0; i < loc.start; i += 1) {
+        writer.write(" ");
+    }
+    for (var i: usize = loc.start; i < loc.end; i += 1) {
+        writer.write("^");
+    }
+    writer.write("\n");
 }
 
 fn render_under(writer: Writer, const mesg: const uint8*, const loc: Loc) {
@@ -135,13 +140,14 @@ struct Diag {
            render_code(writer, "var x: int32 = 0; // FAKE CODE", self->loc);
 
            switch (self->under) {
-                  case .Some(str) => {
-                       render_under(writer, str.as_str_const(), self->loc);  
-                  }
+                case .Some(str) => {
+                    render_under(writer, str.as_str_const(), self->loc);  
+                }
            }
            
            self->render_subs(writer);
 
+            // FIXME add helper
            writer.write("   |");
        }
 
@@ -169,36 +175,48 @@ struct Diag {
        }
 }
 
+struct DiagRender {
+    diag: Diag,
+
+    pub fn new(diag: Diag) Self {
+        return Self { diag };
+    }
+
+    pub fn render(self: Self*) {
+        @todo();
+    }
+}
+
 struct PrimSubDiag : SubDiag {
-       mesg: String,
-       under: Option<String>,
-       loc: Loc,
+    mesg: String,
+    under: Option<String>,
+    loc: Loc,
 
-       pub fn new(
-           const mesg: String,
-           const under: Option<String>,
-           const loc: Loc
-       ) Self {
-           return Self { mesg, under, loc };
-       }
+    pub fn new(
+        const mesg: String,
+        const under: Option<String>,
+        const loc: Loc
+    ) Self {
+        return Self { mesg, under, loc };
+    }
 
-       pub fn render(self: const Self*, writer: Writer) {
-           render_code(writer, "fn foo(x: uint32, ...) // FAKE CODE", self->loc);
+    pub fn render(self: const Self*, writer: Writer) {
+        render_code(writer, "fn foo(x: uint32, ...) // FAKE CODE", self->loc);
 
-           switch (self->under) {
-                  case .Some(str) => {
-                       render_under(writer, str.as_str_const(), self->loc);  
-                  }
-           }
-       }
-       
-       pub inline fn free(const self: Self*) {
-           self->mesg.free();
+        switch (self->under) {
+            case .Some(str) => {
+                render_under(writer, str.as_str_const(), self->loc);  
+            }
+        }
+    }
+    
+    pub inline fn free(const self: Self*) {
+        self->mesg.free();
 
-           switch (self->under) {
-                  case .Some(str) => str.free();
-           }
-       }
+        switch (self->under) {
+            case .Some(str) => str.free();
+        }
+    }
 }
 
 
@@ -208,22 +226,57 @@ pub fn main() {
     var dctx = DiagContext.new(allocator);
     defer dctx.free();
     
-    const loc = Loc { line: 1, col: 1, start: 7, end: 12 };
-    const mesg = String.from_str(allocator, "Meow :3");
-    const under = String.from_str(allocator, "under mesg");
-    var diag = Diag.new(allocator, mesg, .Some(under), loc);
-
     {
-        const loc2 = Loc { line: 5, col: 1, start: 3, end: 6 };
-        var mesg2 = String.from_str(allocator, "error originated from xxx (sub-diag)");
-        var under2 = String.from_str(allocator, "you better change this or die");
-        
-        var sub_diag: SubDiag = dynamic PrimSubDiag.new(mesg2, .Some(under2), loc2);
+        const loc = Loc { line: 1, col: 1, start: 7, end: 12 };
+        const mesg = String.from_str(allocator, "Meow :3");
+        const under = String.from_str(allocator, "under mesg");
+        var diag = Diag.new(allocator, mesg, .Some(under), loc);
 
-        diag.add_sub(sub_diag);
+        {
+            const loc = Loc { line: 5, col: 1, start: 3, end: 6 };
+            var mesg = String.from_str(allocator, "error originated from xxx (sub-diag)");
+            var under = String.from_str(allocator, "you better change this or die");
+            var sub_diag: SubDiag = dynamic PrimSubDiag.new(mesg, .Some(under), loc);
+            diag.add_sub(sub_diag);
+        }
+        
+
+        {
+            const loc = Loc { line: 3, col: 1, start: 3, end: 6 };
+            var mesg = String.from_str(allocator, "error originated from yyyy (sub-diag)");
+            var under = String.from_str(allocator, "Noooooo");
+            var sub_diag: SubDiag = dynamic PrimSubDiag.new(mesg, .Some(under), loc);
+            diag.add_sub(sub_diag);
+        }
+        
+        dctx.report(diag);
     }
     
-    dctx.report(diag);
+    {
+        const loc = Loc { line: 1, col: 1, start: 7, end: 12 };
+        const mesg = String.from_str(allocator, "Meow :3");
+        const under = String.from_str(allocator, "under mesg");
+        var diag = Diag.new(allocator, mesg, .Some(under), loc);
+
+        {
+            const loc = Loc { line: 5, col: 1, start: 3, end: 6 };
+            var mesg = String.from_str(allocator, "error originated from xxx (sub-diag)");
+            var under = String.from_str(allocator, "you better change this or die");
+            var sub_diag: SubDiag = dynamic PrimSubDiag.new(mesg, .Some(under), loc);
+            diag.add_sub(sub_diag);
+        }
+        
+
+        {
+            const loc = Loc { line: 3, col: 1, start: 3, end: 6 };
+            var mesg = String.from_str(allocator, "error originated from yyyy (sub-diag)");
+            var under = String.from_str(allocator, "Noooooo");
+            var sub_diag: SubDiag = dynamic PrimSubDiag.new(mesg, .Some(under), loc);
+            diag.add_sub(sub_diag);
+        }
+        
+        dctx.report(diag);
+    }
 
     // emit into stdout
     var out = String.new(allocator);
@@ -237,18 +290,15 @@ pub fn main() {
 }
 
 // import std::mem::libc{LibcAllocator};
-// import utils::file{read_file_content};
 // import std::io{Writer, StringWriter};
+// import utils::fs{read_file_content};
 // import diags{compile_error};
 // import std::mem{Allocator};
 // import std::string{String};
 // import parse::lex{Lexer};
 // import std::libc{printf};
 
-// import parse::lex::tokens{
-//     Token,
-//     dump_tokens,
-// };
+// import tokens{Token, dump_tokens};
 
 // pub fn main(argc: int32, argv: uint8**) {
 //     var allocator: Allocator = dynamic LibcAllocator.new();
