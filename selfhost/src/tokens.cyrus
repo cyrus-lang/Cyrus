@@ -21,11 +21,7 @@ pub struct TokenPool {
         return Self { tokens };
     }
 
-    pub inline fn inner(const self) Vec<Token> {
-        return self.tokens;
-    }
-
-    pub fn free(self) {
+    pub fn free(self: Self) {
         for (var i: usize = 0; i < self.tokens.len(); i += 1) {
             const token = self.tokens.get(i).unwrap();
 
@@ -489,7 +485,7 @@ pub enum IntegerSuffix {
         }
     }
 
-    pub fn to_str(const self) const uint8* {
+    pub fn to_str(const self: Self) const uint8* {
         switch (self) {
             case .ISize => return "isize";
             case .USize => return "usize";
@@ -526,7 +522,7 @@ pub enum FloatSuffix {
         }
     }
 
-    pub fn to_str(const self) const uint8* {
+    pub fn to_str(const self: Self) const uint8* {
         switch (self) {
             case .Float16 => return "float16";
             case .Float32 => return "float32";
@@ -546,7 +542,7 @@ pub enum StringPrefix {
         }
     }
 
-    pub fn to_str(const self) const uint8* {
+    pub fn to_str(const self: Self) const uint8* {
         switch (self) {
             case .Byte => return "b";
         }
