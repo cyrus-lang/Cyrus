@@ -70,6 +70,21 @@ impl<'a> AnalysisContext<'a> {
         lhs_type = self.expand_sema_type(lhs_type, loc);
         rhs_type = self.expand_sema_type(rhs_type, loc);
 
+        // Constness matters
+        match (rhs_type.clone(), lhs_type.clone()) {
+            // pointer <-> pointer
+            (SemaType::Pointer(inner1), SemaType::Pointer(inner2)) => {
+                let is_lhs_const = inner2.is_const();
+                let is_rhs_const = inner1.is_const();
+
+                return !is_lhs_const && is_rhs_const
+                    || inner1.is_void()
+                    || inner2.is_void()
+                    || self.is_assignable_to(*inner1, *inner2, loc);
+            }
+            _ => {}
+        }
+
         match (rhs_type.const_inner().clone(), lhs_type.const_inner().clone()) {
             // to prevent error propagation
             (SemaType::Err(_), _) | (_, SemaType::Err(_)) => {
@@ -105,11 +120,6 @@ impl<'a> AnalysisContext<'a> {
             // array-to-pointer decay
             (SemaType::Array(array_type), SemaType::Pointer(inner)) => {
                 self.is_assignable_to(*array_type.element_type, *inner, loc)
-            }
-
-            // pointer <-> pointer
-            (SemaType::Pointer(inner1), SemaType::Pointer(inner2)) => {
-                (inner1.is_void() || inner2.is_void()) || self.is_assignable_to(*inner1, *inner2, loc)
             }
 
             // tuple <-> tuple

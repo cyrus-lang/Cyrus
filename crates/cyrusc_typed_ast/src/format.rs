@@ -382,11 +382,11 @@ pub fn format_sema_type(ty: SemaType, formatter: &dyn Formatter) -> String {
             format!("{}{}", name, format_type_args(&named_type.type_args, formatter))
         }
         SemaType::Plain(plain_type) => plain_type.to_string(),
-        SemaType::Array(typed_array_type) => {
+        SemaType::Array(array_type) => {
             let mut fmt = String::new();
-            fmt.push_str(&format_sema_type(*typed_array_type.element_type, formatter));
+            fmt.push_str(&format_sema_type(*array_type.element_type, formatter));
             fmt.push_str("[");
-            match typed_array_type.capacity {
+            match array_type.capacity {
                 TypedArrayCapacity::Fixed(expr) => {
                     fmt.push_str(&format_typed_expr(&expr, formatter));
                 }
@@ -395,11 +395,11 @@ pub fn format_sema_type(ty: SemaType, formatter: &dyn Formatter) -> String {
             fmt.push_str("]");
             fmt
         }
-        SemaType::Const(sema_type) => {
-            format!("const {}", format_sema_type(*sema_type, formatter))
+        SemaType::Const(ty) => {
+            format!("const {}", format_sema_type(*ty, formatter))
         }
-        SemaType::Pointer(sema_type) => {
-            format!("{}*", format_sema_type(*sema_type, formatter))
+        SemaType::Pointer(inner) => {
+            format!("{}*", format_sema_type(*inner, formatter))
         }
         SemaType::FuncType(func_type) => format_func_type(&func_type, formatter),
         SemaType::Tuple(tuple_type) => {

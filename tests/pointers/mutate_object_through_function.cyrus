@@ -13,7 +13,7 @@ fn display_const_str(var str: ConstStr) {
 }
 
 pub fn main() {
-    const name: uint8* = "unknown";
+    const name: const uint8* = "unknown";
 
     mutate_const_str(&name);
     display_const_str(name);
