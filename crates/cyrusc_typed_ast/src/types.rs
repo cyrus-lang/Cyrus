@@ -672,7 +672,7 @@ impl SemaType {
                     }
                     false
                 }
-                SemaType::Const(inner_ty) | SemaType::Pointer(inner_ty) => inner(inner_ty),
+                SemaType::Const(inner_type) | SemaType::Pointer(inner_type) => inner(inner_type),
                 SemaType::Array(array) => inner(&array.element_type),
                 SemaType::FuncType(func_ty) => {
                     for ty in &func_ty.params.list {

@@ -75,12 +75,10 @@ impl<'a> AnalysisContext<'a> {
     pub(crate) fn analyze_addr_of(&mut self, addr_of: &mut TypedAddrOfExpr) -> Option<SemaType> {
         let expected_type = addr_of.operand.ty.clone();
 
-        let operand_type = match self.analyze_expr(&mut addr_of.operand, expected_type) {
+        let mut operand_type = match self.analyze_expr(&mut addr_of.operand, expected_type) {
             Some(ty) => ty.const_inner().clone(),
             None => return None,
         };
-
-        let is_operand_const = self.is_const_qualified_lvalue(&addr_of.operand);
 
         if !addr_of.operand.is_lvalue() {
             self.reporter.report(Diag {
@@ -92,8 +90,13 @@ impl<'a> AnalysisContext<'a> {
             return None;
         }
 
+        let is_operand_const = addr_of.operand.val_cat.is_const_lvalue();
+
         if is_operand_const {
-            Some(SemaType::Pointer(Box::new(operand_type.as_const())))
+            let inner = operand_type.pointer_inner_mut();
+            *inner = inner.as_const();
+
+            Some(SemaType::Pointer(Box::new(operand_type)))
         } else {
             Some(SemaType::Pointer(Box::new(operand_type)))
         }
