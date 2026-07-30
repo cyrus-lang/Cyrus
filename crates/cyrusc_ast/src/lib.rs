@@ -1269,6 +1269,12 @@ impl AssignKind {
     }
 }
 
+impl Default for Mutability {
+    fn default() -> Self {
+        Self::Const
+    }
+}
+
 impl fmt::Display for AssignKind {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {

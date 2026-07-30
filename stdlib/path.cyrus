@@ -11,7 +11,7 @@ pub struct Path {
     allocator: Allocator,
     inner: String,
 
-    pub inline fn new(const allocator: Allocator, const name: uint8*) Self {
+    pub inline fn new(allocator: Allocator, name: uint8*) Self {
         const inner = String.from_str(allocator, name);
 
         return Self { allocator, inner };

@@ -3,7 +3,7 @@
 import std::libc{printf};
 
 struct Foo {
-    pub fn foo<T>(const self: Self, x: T) T {
+    pub fn foo<T>(self: Self, x: T) T {
         var y: T = x;
         return y;
     }

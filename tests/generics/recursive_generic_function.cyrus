@@ -2,7 +2,7 @@
 
 import std::libc{printf};
 
-fn recursive_generic<T>(x: T) {
+fn recursive_generic<T>(var x: T) {
 	printf("%d ", x);
 	x += 1;
 	
