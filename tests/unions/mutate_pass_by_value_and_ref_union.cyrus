@@ -7,7 +7,7 @@ union Value {
     int_value: int64
 }
 
-fn set_by_value(inst: Value) {
+fn set_by_value(var inst: Value) {
     inst.text_value = "pass_by_value never changes";
 }
 

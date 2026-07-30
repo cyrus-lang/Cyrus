@@ -5,7 +5,7 @@ import std::libc{printf, malloc, free};
 struct Box<T> {
     raw: T*,
 
-    pub fn new(const raw: T*) Self {
+    pub fn new(raw: T*) Self {
         return Self { raw: raw };
     }
 

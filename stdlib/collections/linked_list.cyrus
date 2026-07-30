@@ -19,7 +19,7 @@ pub struct SinglyLinkedList<T> {
     }
 
     /// Append a node to the end of the list
-    pub fn append(const self: Self*, new_node: SinglyNode<T>*) {
+    pub fn append(self: Self*, new_node: SinglyNode<T>*) {
         @assert(new_node, "new node cannot be null");
         
         new_node->next = null;
@@ -37,7 +37,7 @@ pub struct SinglyLinkedList<T> {
     }
 
     /// Remove a node from the list.
-    pub fn remove(const self: Self*, node: SinglyNode<T>*) {
+    pub fn remove(self: Self*, node: SinglyNode<T>*) {
         @assert(node, "node cannot be null");
         
         if (self->head == node) {
@@ -56,7 +56,7 @@ pub struct SinglyLinkedList<T> {
     }
 
     /// Remove the first node.
-    pub fn pop_first(const self: Self*) Option<SinglyNode<T>*> {
+    pub fn pop_first(self: Self*) Option<SinglyNode<T>*> {
         if (self->head == null) {
             return .None;
         }
@@ -69,7 +69,7 @@ pub struct SinglyLinkedList<T> {
     }
 
     /// Remove the last node.
-    pub fn pop_last(const self: Self*) Option<SinglyNode<T>*> {
+    pub fn pop_last(self: Self*) Option<SinglyNode<T>*> {
         if (self->head == null) {
             return .None;
         }
@@ -93,7 +93,7 @@ pub struct SinglyLinkedList<T> {
     }
 
     /// Get the first node.
-    pub fn peek_first(const self: Self*) Option<SinglyNode<T>*> {
+    pub fn peek_first(self: Self*) Option<SinglyNode<T>*> {
         if (self->head == null) {
             return .None;
         }
@@ -101,7 +101,7 @@ pub struct SinglyLinkedList<T> {
     }
 
     /// Get the last node.
-    pub fn peek_last(const self: Self*) Option<SinglyNode<T>*> {
+    pub fn peek_last(self: Self*) Option<SinglyNode<T>*> {
         if (self->head == null) {
             return .None;
         }
@@ -114,7 +114,7 @@ pub struct SinglyLinkedList<T> {
     }
 
     /// Reverse the list in-place.
-    pub fn reverse(const self: Self*) {
+    pub fn reverse(self: Self*) {
         if (self->head == null || self->head->next == null) {
             return;
         }
@@ -134,12 +134,12 @@ pub struct SinglyLinkedList<T> {
     }
 
     /// Check if the list is empty.
-    pub fn is_empty(const self: Self*) bool {
+    pub fn is_empty(self: Self*) bool {
         return self->head == null;
     }
 
     /// Clear the list.
-    pub fn clear(const self: Self*) {
+    pub fn clear(self: Self*) {
         self->head = null;
         self->size = 0;
     }

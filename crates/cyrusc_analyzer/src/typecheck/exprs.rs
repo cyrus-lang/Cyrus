@@ -211,7 +211,21 @@ impl<'a> AnalysisContext<'a> {
             TypedExprKind::AddrOf(_) => ValueCategory::RValue,
 
             // propagate (follows operand's value-category)
-            TypedExprKind::FieldAccess(field_access) => field_access.operand.val_cat,
+            TypedExprKind::FieldAccess(field_access) => {
+                // if field access uses thin-arrow,
+                // then follow operands-type instead of operand-lvalue
+                // to determine mutability.
+                if field_access.is_thin_arrow {
+                    if let Some(ty) = &field_access.operand.ty {
+                        if ty.pointer_inner().is_const() {
+                            return ValueCategory::LValue(Mutability::Const);
+                        } else {
+                            return ValueCategory::LValue(Mutability::Var);
+                        }
+                    }
+                }
+                field_access.operand.val_cat
+            }
             TypedExprKind::TupleAccess(tuple_access) => tuple_access.operand.val_cat,
             TypedExprKind::ArrayIndex(array_index) => array_index.operand.val_cat,
 

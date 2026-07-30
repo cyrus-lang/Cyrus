@@ -16,7 +16,7 @@ pub struct ArenaAllocator : Allocator {
     child_allocator: Allocator,
 	nodes: SinglyLinkedList<ArenaNode>,
 
-	pub fn new(const child_allocator: Allocator, const capacity: usize) Self {
+	pub fn new(child_allocator: Allocator, capacity: usize) Self {
         var nodes: SinglyLinkedList<ArenaNode> = SinglyLinkedList.new();
         var arena = Self { child_allocator, nodes };
         arena.create_node(capacity);
@@ -73,7 +73,7 @@ pub struct ArenaAllocator : Allocator {
         }
     }
 
-    fn create_node(self: Self*, const capacity: usize) {
+    fn create_node(self: Self*, capacity: usize) {
         var node: SinglyNode<ArenaNode>* =
             self->child_allocator.alloc(@sizeof(SinglyNode<ArenaNode>));
 
@@ -89,7 +89,7 @@ pub struct ArenaAllocator : Allocator {
         self->nodes.append(node);
     }
 
-    fn ensure_capacity(self: Self*, const size: usize) {
+    fn ensure_capacity(self: Self*, size: usize) {
         switch (self->nodes.peek_first()) {
             case .Some(node) => {
                 var arena = &node->value;

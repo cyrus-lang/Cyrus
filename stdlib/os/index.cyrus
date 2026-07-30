@@ -67,7 +67,7 @@ pub struct File {
         return .Value(content);
     }
 
-    pub fn write(const self: Self*, const content: const uint8*) ErrorOr<usize, ()> {
+    pub fn write(self: Self*, const content: const uint8*) ErrorOr<usize, ()> {
         const content_len = libc::strlen(content);
 
         const bytes = libc::fwrite(content, 1, content_len, self->file);
@@ -78,7 +78,7 @@ pub struct File {
         return .Value(bytes);
     }
 
-    pub fn append(const self: Self*, const content: const uint8*) ErrorOr<usize, ErrorStr> {
+    pub fn append(self: Self*, const content: const uint8*) ErrorOr<usize, ErrorStr> {
         switch (self->mode) {
             case .Append | .AppendBinary | .AppendRead | .AppendReadBinary => {}
             default => { return .Error("file not opened in append mode"); }
@@ -129,7 +129,7 @@ pub struct File {
         return libc::feof(self->file) != 0;
     }
 
-    pub inline fn close(const self: Self*) {
+    pub inline fn close(self: Self*) {
         libc::fclose(self->file);
     }
 }

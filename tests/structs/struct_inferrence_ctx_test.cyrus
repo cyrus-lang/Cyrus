@@ -6,7 +6,7 @@ struct Record<K, V> {
 	key: K,
 	value: V,
 
-	pub fn new(const key: K, const value: V) Self {
+	pub fn new(key: K, value: V) Self {
 		return Self{key, value};
 	}
 

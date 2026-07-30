@@ -485,7 +485,7 @@ pub enum IntegerSuffix {
         }
     }
 
-    pub fn to_str(const self: Self) const uint8* {
+    pub fn to_str(self: Self) const uint8* {
         switch (self) {
             case .ISize => return "isize";
             case .USize => return "usize";
@@ -522,7 +522,7 @@ pub enum FloatSuffix {
         }
     }
 
-    pub fn to_str(const self: Self) const uint8* {
+    pub fn to_str(self: Self) const uint8* {
         switch (self) {
             case .Float16 => return "float16";
             case .Float32 => return "float32";
@@ -542,7 +542,7 @@ pub enum StringPrefix {
         }
     }
 
-    pub fn to_str(const self: Self) const uint8* {
+    pub fn to_str(self: Self) const uint8* {
         switch (self) {
             case .Byte => return "b";
         }

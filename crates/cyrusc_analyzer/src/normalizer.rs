@@ -404,23 +404,23 @@ impl<'a> AnalysisContext<'a> {
         for param in params.list.iter_mut() {
             match param {
                 TypedFuncParamKind::FuncParam(typed_func_param) => {
-                    let normalized_type = self
-                        .normalize_sema_type(typed_func_param.ty.clone(), typed_func_param.loc, indirection)
-                        .unwrap();
+                    if let Some(normalized_type) =
+                        self.normalize_sema_type(typed_func_param.ty.clone(), typed_func_param.loc, indirection)
+                    {
+                        typed_func_param.ty = normalized_type.clone();
 
-                    typed_func_param.ty = normalized_type.clone();
-
-                    if validate {
-                        self.validate_param_type(&typed_func_param.ty, typed_func_param.loc);
+                        if validate {
+                            self.validate_param_type(&typed_func_param.ty, typed_func_param.loc);
+                        }
                     }
                 }
                 TypedFuncParamKind::SelfModifier(self_modifier) => {
-                    let normalized_type = self
-                        .normalize_sema_type(self_modifier.ty.clone(), self_modifier.loc, indirection)
-                        .unwrap();
-
-                    if validate {
-                        self.validate_param_type(&normalized_type, self_modifier.loc);
+                    if let Some(normalized_type) =
+                        self.normalize_sema_type(self_modifier.ty.clone(), self_modifier.loc, indirection)
+                    {
+                        if validate {
+                            self.validate_param_type(&normalized_type, self_modifier.loc);
+                        }
                     }
                 }
             }

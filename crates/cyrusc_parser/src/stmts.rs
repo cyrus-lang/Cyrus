@@ -538,16 +538,16 @@ impl<'source_file> Parser<'source_file> {
                     variadic = Some(FuncVariadicParam::UntypedCStyle);
                     break;
                 }
-                TokenKind::Const | TokenKind::Ident(_) => {
+                TokenKind::Var | TokenKind::Ident(_) => {
                     let loc = self.current_token().loc;
                     let start = loc.start;
                     let line = loc.line;
                     let column = loc.column;
 
                     let mutability = {
-                        if self.current_token_is(TokenKind::Const) {
+                        if self.current_token_is(TokenKind::Var) {
                             self.next_token();
-                            Some(Mutability::Const)
+                            Some(Mutability::Var)
                         } else {
                             None
                         }
@@ -589,17 +589,9 @@ impl<'source_file> Parser<'source_file> {
                                 return Err(self.error_at_token(&ident_token, ParserDiagKind::SelfModifierInvalidType));
                             }
 
-                            let mutability = {
-                                if ty.is_const() || matches!(&ty, TypeSpecifier::Pointer(inner) if inner.is_const()) {
-                                    Mutability::Const
-                                } else {
-                                    Mutability::Var
-                                }
-                            };
-
                             list.push(FuncParamKind::SelfModifier(SelfModifier {
                                 ty,
-                                mutability,
+                                mutability: mutability.unwrap_or_default(),
                                 loc: Loc::new(self.file_id(), line, column, start, end),
                             }));
                         } else {
@@ -609,7 +601,7 @@ impl<'source_file> Parser<'source_file> {
                         list.push(FuncParamKind::FuncParam(FuncParam {
                             ident,
                             ty: var_type,
-                            mutability: mutability.unwrap_or(Mutability::Var),
+                            mutability: mutability.unwrap_or_default(),
                             loc: Loc::new(self.file_id(), line, column, start, end),
                         }));
                     }

@@ -21,7 +21,7 @@ struct Object {
         self->counter += 1;
     }
 
-    pub fn call(const self: Self*) {
+    pub fn call(self: Self*) {
         self->inc();
     }
 }

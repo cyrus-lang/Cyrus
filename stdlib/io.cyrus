@@ -18,7 +18,7 @@ pub interface Writer {
 pub struct StringWriter : Writer {
     buffer: String*,
 
-    pub fn new(const buffer: String*) Self {
+    pub fn new(buffer: String*) Self {
         @assert(buffer, "buffer cannot be null");
         return Self { buffer };
     }
