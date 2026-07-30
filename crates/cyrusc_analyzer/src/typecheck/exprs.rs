@@ -135,6 +135,8 @@ impl<'a> AnalysisContext<'a> {
                 }
             },
 
+            TypedExprKind::InlineAsm(inline_asm) => self.analyze_inline_asm_expr(inline_asm),
+
             TypedExprKind::SemaType { ty, .. } => {
                 let ty = self.normalize_sema_type(ty.clone(), expr.loc, 0);
                 expr.ty = ty.clone();
@@ -232,6 +234,7 @@ impl<'a> AnalysisContext<'a> {
             | TypedExprKind::Infix(_) => ValueCategory::RValue,
 
             TypedExprKind::Builtin(_) => ValueCategory::RValue,
+            TypedExprKind::InlineAsm(_) => ValueCategory::RValue,
 
             TypedExprKind::SemaType { .. } | TypedExprKind::Poisoned => ValueCategory::Unknown,
 

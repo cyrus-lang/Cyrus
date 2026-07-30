@@ -8,7 +8,7 @@ use crate::{
         EnumDeclID, FuncDecl, FuncDeclID, GlobalVarDeclID, InterfaceDeclID, MethodDecls, StructDeclID, TypedefDeclID,
         UnionDeclID, VarDeclID,
     },
-    exprs::{TypedExpr, TypedLambdaExpr, TypedTupleAccessExpr, TypedTupleExpr},
+    exprs::{TypedExpr, TypedInlineAsm, TypedLambdaExpr, TypedTupleAccessExpr, TypedTupleExpr},
     types::SemaType,
 };
 use cyrusc_ast::{
@@ -44,6 +44,7 @@ pub enum TypedStmt {
     Label(TypedLabelStmt),
     Goto(TypedGotoStmt),
     Builtin(TypedBuiltin),
+    InlineAsm(TypedInlineAsm),
 }
 
 #[derive(Debug, Clone)]
@@ -614,6 +615,7 @@ impl TypedStmt {
             TypedStmt::Label(typed_label_stmt) => typed_label_stmt.loc,
             TypedStmt::Goto(typed_goto_stmt) => typed_goto_stmt.loc,
             TypedStmt::Builtin(typed_builtin) => typed_builtin.loc(),
+            TypedStmt::InlineAsm(asm) => asm.loc,
         }
     }
 }

@@ -395,7 +395,8 @@ impl<'a> AnalysisContext<'a> {
             | TypedStmt::Interface(_)
             | TypedStmt::Defer(_)
             | TypedStmt::Label(_)
-            | TypedStmt::Goto(_) => {}
+            | TypedStmt::Goto(_)
+            | TypedStmt::InlineAsm(_) => {}
         }
     }
 
@@ -608,7 +609,7 @@ impl<'a> AnalysisContext<'a> {
                 }
             },
 
-            TypedExprKind::Poisoned | TypedExprKind::Literal(_) | TypedExprKind::SemaType { .. } => {}
+            TypedExprKind::Poisoned | TypedExprKind::Literal(_) | TypedExprKind::SemaType { .. } | TypedExprKind::InlineAsm(_) => {}
         }
     }
 
@@ -741,7 +742,8 @@ impl<'a> AnalysisContext<'a> {
             | TypedStmt::Interface(_)
             | TypedStmt::Defer(_)
             | TypedStmt::Label(_)
-            | TypedStmt::Goto(_) => {}
+            | TypedStmt::Goto(_)
+            | TypedStmt::InlineAsm(_) => {}
         }
     }
 

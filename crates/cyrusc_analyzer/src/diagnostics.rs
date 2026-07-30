@@ -565,6 +565,23 @@ pub enum AnalyzerDiagKind {
     // -----------------------------
     #[error("{0}")]
     UnescapeError(UnescapeError),
+    
+    #[error("Inline assembly template cannot be empty.")]
+    AsmEmptyTemplate,
+
+    #[error("Output constraint '{constraint}' is invalid; must begin with '=' or '+'.")]
+    AsmInvalidOutputConstraint { constraint: String },
+
+    #[error("Input constraint '{constraint}' is invalid; must not begin with '=' or '+'.")]
+    AsmInvalidInputConstraint { constraint: String },
+
+    #[error("Inline assembly output operand is not an lvalue.")]
+    AsmOutputNotLValue,
+    
+    #[error(
+        "Multiple output operands are not yet supported when @asm is used as an expression."
+    )]
+    AsmMultipleOutputsNotSupported,
 }
 
 impl<'a> AnalysisContext<'a> {

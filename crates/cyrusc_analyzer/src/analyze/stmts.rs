@@ -43,6 +43,7 @@ impl<'a> AnalysisContext<'a> {
 
             // invalid at toplevel
             TypedStmt::Variable(_)
+            | TypedStmt::InlineAsm(_)
             | TypedStmt::TupleExport(_)
             | TypedStmt::BlockStmt(_)
             | TypedStmt::Defer(_)
@@ -123,6 +124,11 @@ impl<'a> AnalysisContext<'a> {
             // skipped
             TypedStmt::Goto(_) => FlowState::Reachable,
             TypedStmt::Label(_) => FlowState::Reachable,
+            
+            TypedStmt::InlineAsm(inline_asm) => {
+                self.analyze_inline_asm_stmt(inline_asm);
+                FlowState::Reachable
+            }
 
             // invalid statements
             _ => {

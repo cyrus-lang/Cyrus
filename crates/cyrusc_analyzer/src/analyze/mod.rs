@@ -14,3 +14,4 @@ pub(crate) mod tuple_export_stmt;
 pub(crate) mod typedef_stmt;
 pub(crate) mod union_stmt;
 pub(crate) mod vars;
+pub(crate) mod inline_asm;
