@@ -205,7 +205,7 @@ impl<'a> CIRLower<'a> {
                     self.lower_generic_methods(&union_stmt.methods, lowered_stmts);
                 }
             }
-            TypedStmt::Defer(_) | TypedStmt::Interface(..) | TypedStmt::Typedef(..) => {}
+            TypedStmt::Defer(_) | TypedStmt::Interface(..) | TypedStmt::Typedef(..) | TypedStmt::InlineAsm(_) => {}
 
             TypedStmt::Builtin(builtin) => {
                 let stmts = self.lower_builtin(builtin);
@@ -1579,6 +1579,7 @@ impl<'a> CIRLower<'a> {
             | TypedExprKind::UnnamedUnionValue(_) => unreachable!("unexpected unnamed constructor expression"),
 
             TypedExprKind::Poisoned => unreachable!("unexpected poisoned expression"),
+            TypedExprKind::InlineAsm(_) => todo!("inline asm expression lowering not yet implemented"),
         };
 
         CIRExpr {

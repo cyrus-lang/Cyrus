@@ -33,7 +33,7 @@ impl<'a> AnalysisContext<'a> {
                     kind: Box::new(AnalyzerDiagKind::AsmMultipleOutputsNotSupported),
                     loc: Some(asm.loc),
                     hint: Some(
-                        "Multiple output operands are not supported when @asm is used." //will be back to it 
+                        "Multiple output operands are not supported when @asm is used." //will be back for it 
                             .to_string(),
                     ),
                 });
