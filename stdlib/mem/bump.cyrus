@@ -20,7 +20,7 @@ pub struct BumpAllocator : Allocator {
 		};
 	}
 
-	pub inline fn alloc(const self: Self*, size: usize) void* {
+	pub inline fn alloc(self: Self*, size: usize) void* {
 		const current = self->offset;
 		const next = current + size;
 
@@ -34,7 +34,7 @@ pub struct BumpAllocator : Allocator {
 		return @cast(void*, ptr);
 	}
 
-	pub inline fn alloc_aligned(const self: Self*, size: usize, align: usize) void* {
+	pub inline fn alloc_aligned(self: Self*, size: usize, align: usize) void* {
 		@assert(is_power_of_two(align));
 
 		const current = @cast(uintptr, self->ptr) + self->offset;
@@ -52,7 +52,7 @@ pub struct BumpAllocator : Allocator {
 		return @cast(void*, aligned);
 	}
 
-	pub inline fn alloc_zeroed(const self: Self*, size: usize) void* {
+	pub inline fn alloc_zeroed(self: Self*, size: usize) void* {
 		const ptr = self->alloc(size);
 
 		if (ptr != null) {
@@ -62,15 +62,15 @@ pub struct BumpAllocator : Allocator {
 		return ptr;
 	}
 
-	pub inline fn realloc(const self: Self*, ptr: void*, size: usize) void* {
+	pub inline fn realloc(self: Self*, ptr: void*, size: usize) void* {
 		return null;
 	}
 
-	pub inline fn reset(const self: Self*) {
+	pub inline fn reset(self: Self*) {
 		self->offset = 0;
 	}
 
-	pub inline fn free(const self: Self*, ptr: void*) {
+	pub inline fn free(self: Self*, ptr: void*) {
 		// no-operation
 	}
 }

@@ -34,7 +34,7 @@ pub struct Lexer {
         };
     }
 
-    pub fn tokenize(const self: Self*) TokenPool {
+    pub fn tokenize(self: Self*) TokenPool {
         var tokens: Vector<Token> = Vec.new(self->allocator);
 
         var token: Token = undefined;
@@ -51,7 +51,7 @@ pub struct Lexer {
         return TokenPool { tokens};
     }
 
-    fn next(const self: Self*) Token {
+    fn next(self: Self*) Token {
         self->skip_whitespace();
         self->skip_comments();
 
@@ -68,7 +68,7 @@ pub struct Lexer {
         return Token { kind, loc };
     }
 
-    fn read_kind(const self: Self*) TokenKind {
+    fn read_kind(self: Self*) TokenKind {
         switch (self->source->get(self->pos)) {
             case .Some(char) => {
                 switch (char) {
@@ -116,7 +116,7 @@ pub struct Lexer {
     }
 
     /// Advances lexer by consuming a character and updates line and column.
-    fn read(const self: Self*) {
+    fn read(self: Self*) {
         const next_pos = self->pos + 1;
 
         self->pos += 1; // consume
@@ -137,7 +137,7 @@ pub struct Lexer {
         }
     }
 
-    fn read_ident_or_prefix(const self: Self*) TokenKind {
+    fn read_ident_or_prefix(self: Self*) TokenKind {
         if (self->cur() == 'b' && self->peek() == '"') {
             return self->read_str(.Some(.Byte));
         }
@@ -145,7 +145,7 @@ pub struct Lexer {
         return self->read_ident();
     }
 
-    fn read_ident(const self: Self*) TokenKind {
+    fn read_ident(self: Self*) TokenKind {
         if (self->cur() == '_') {
             return .Underscore;
         }
@@ -160,26 +160,26 @@ pub struct Lexer {
         return .Ident(ident);
     }
 
-    fn read_str(const self: Self*, prefix: Option<StringPrefix>) TokenKind {
+    fn read_str(self: Self*, prefix: Option<StringPrefix>) TokenKind {
         @todo();
     }
 
-    fn read_char(const self: Self*) TokenKind {
+    fn read_char(self: Self*) TokenKind {
         @todo();
     }
 
-    fn skip_whitespace(const self: Self*) {
+    fn skip_whitespace(self: Self*) {
         while (!self->is_eof() && is_whitespace(self->cur())) {
             self->read();
         }
     }
 
     // TODO
-    fn skip_comments(const self: Self*) {
+    fn skip_comments(self: Self*) {
         
     }
 
-    fn read_plus(const self: Self*) TokenKind {
+    fn read_plus(self: Self*) TokenKind {
         if (self->peek() == '+') {
             self->read();
             self->read();
@@ -190,7 +190,7 @@ pub struct Lexer {
         }
     }
     
-    fn read_minus(const self: Self*) TokenKind {
+    fn read_minus(self: Self*) TokenKind {
         if (self->peek() == '-') {
             self->read();
             self->read();
@@ -205,7 +205,7 @@ pub struct Lexer {
         }
     }
 
-    fn read_colon(const self: Self*) TokenKind {
+    fn read_colon(self: Self*) TokenKind {
         self->read();
 
         if (self->cur() == ':') {
@@ -216,7 +216,7 @@ pub struct Lexer {
         }
     }
     
-    fn read_equal(const self: Self*) TokenKind {
+    fn read_equal(self: Self*) TokenKind {
         self->read();
 
         if (self->cur() == '=') {
@@ -230,7 +230,7 @@ pub struct Lexer {
         }
     }
 
-    fn read_bang(const self: Self*) TokenKind {
+    fn read_bang(self: Self*) TokenKind {
         self->read();
 
         if (self->cur() == '=') {
@@ -241,7 +241,7 @@ pub struct Lexer {
         }
     }
 
-    fn read_less(const self: Self*) TokenKind {
+    fn read_less(self: Self*) TokenKind {
         self->read();
 
         if (self->cur() == '=') {
@@ -255,7 +255,7 @@ pub struct Lexer {
         }
     }
 
-    fn read_greater(const self: Self*) TokenKind {
+    fn read_greater(self: Self*) TokenKind {
         self->read();
 
         if (self->cur() == '=') {
@@ -267,7 +267,7 @@ pub struct Lexer {
         }
     }
     
-    fn read_amp(const self: Self*) TokenKind {
+    fn read_amp(self: Self*) TokenKind {
         self->read();
 
         if (self->cur() == '&') {
@@ -283,7 +283,7 @@ pub struct Lexer {
         }
     }
 
-    fn read_pipe(const self: Self*) TokenKind {
+    fn read_pipe(self: Self*) TokenKind {
         self->read();
 
         if (self->cur() == '/') {
@@ -294,7 +294,7 @@ pub struct Lexer {
         }
     }
 
-    fn read_dot(const self: Self*) TokenKind {
+    fn read_dot(self: Self*) TokenKind {
         self->read();
         
         if (self->cur() == '.' && self->peek() == '.') {
@@ -308,7 +308,7 @@ pub struct Lexer {
         }
     }
 
-    fn read_integer(const self: Self*) TokenKind {
+    fn read_integer(self: Self*) TokenKind {
         @todo();
     }
 
@@ -316,7 +316,7 @@ pub struct Lexer {
 
     /// Consumes the current token by advancing the lexer
     /// and returns the provided token kind.
-    inline fn read_single(const self: Self*, kind: TokenKind) TokenKind {
+    inline fn read_single(self: Self*, kind: TokenKind) TokenKind {
         self->read();
         return kind;
     }

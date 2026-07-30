@@ -2,13 +2,13 @@
 
 import std::libc{printf};
 
-type const_str = uint8*;
+type ConstStr = const uint8*;
 
-fn mutate_const_str(str: const_str*) {
+fn mutate_const_str(var str: ConstStr*) {
     *str = "Cyrus";
 }
 
-fn display_const_str(str: const_str) {
+fn display_const_str(var str: ConstStr) {
     printf("%s\n", str);
 }
 

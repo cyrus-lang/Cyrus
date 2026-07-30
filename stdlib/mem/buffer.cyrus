@@ -7,13 +7,13 @@ import std::mem{Allocator};
 pub struct Buffer<T> {
     buffer: Vector<T>,
 
-    pub inline fn new(const allocator: Allocator) Self {
+    pub inline fn new(allocator: Allocator) Self {
         var buffer: Vector<T> = Vector.with_capacity(allocator, @sizeof(T));
 
         return Self { buffer };
     }
 
-    pub inline fn with_capacity(const allocator: Allocator, cap: usize) Self {
+    pub inline fn with_capacity(allocator: Allocator, cap: usize) Self {
         var buffer: Vector<T> = Vector.with_capacity(allocator, cap * @sizeof(T));
 
         return Self { buffer };

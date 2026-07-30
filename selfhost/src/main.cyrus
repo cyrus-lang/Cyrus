@@ -15,24 +15,28 @@ import (
 
 interface SubDiag {
     fn render(self: const Self*, writer: Writer);
-    fn free(const self: Self*);
+    fn free(self: Self*);
 }
 
 struct DiagContext {
     diags: Vec<Diag>,
     
-    pub inline fn new(const allocator: Allocator) Self {
+    pub inline fn new(allocator: Allocator) Self {
         const diags: Vec<Diag> = Vec.new(allocator);
         
         return Self { diags };
     }
     
-    pub inline fn report(const self: Self*, diag: Diag) {
+    pub inline fn report(self: Self*, diag: Diag) {
         *self = *self;
         self->diags.push(diag);
     }
 
-    pub fn render(const self: const Self*, const allocator: Allocator, writer: Writer) {
+    pub fn render(
+        self: const Self*,
+        allocator: Allocator,
+        var writer: Writer
+    ) {
         for (var i: usize; i < self->diags.len(); i += 1) {
             const diag = self->diags.get(i).unwrap();
             
@@ -44,7 +48,7 @@ struct DiagContext {
         }
     }
 
-    pub fn free(const self: Self*) {
+    pub fn free(self: Self*) {
         for (var i: usize; i < self->diags.len(); i += 1) {
             var diag = self->diags.get(i).unwrap();
 
@@ -56,10 +60,10 @@ struct DiagContext {
 }
 
 fn render_header(
-    writer: Writer,
-    const file_path: const uint8*,
-    const mesg: const uint8*,
-    const loc: Loc
+    var writer: Writer,
+    file_path: const uint8*,
+    mesg: const uint8*,
+    loc: Loc
 ) {
     // TODO:
     // writer.write(self->loc.file_id);
@@ -74,8 +78,8 @@ fn render_header(
 
 fn render_code(
    writer: Writer,
-   const code: const uint8*,
-   const loc: Loc
+   code: const uint8*,
+   loc: Loc
 ) {
     writer.writeln("   |");
     writer.write(" ");
@@ -94,85 +98,85 @@ fn render_code(
     writer.write("\n");
 }
 
-fn render_under(writer: Writer, const mesg: const uint8*, const loc: Loc) {
+fn render_under(writer: Writer*, mesg: const uint8*, loc: Loc) {
    // TODO: Add helper for space computation.
-   writer.write("     ");
+   writer->write("     ");
    for (var i: usize = 0; i < loc.start; i += 1) {
-       writer.write(" ");
+       writer->write(" ");
    }
-   writer.write("> ");
-   writer.write(mesg);
-   writer.write("\n");
+   writer->write("> ");
+   writer->write(mesg);
+   writer->write("\n");
  }
            
 struct Diag {
-       mesg: String,
-       under: Option<String>,
-       subs: Vec<SubDiag>,
-       hints: Vec<SubDiag>,
-       loc: Loc,
+    mesg: String,
+    under: Option<String>,
+    subs: Vec<SubDiag>,
+    hints: Vec<SubDiag>,
+    loc: Loc,
 
-       pub fn new(const allocator: Allocator, mesg: String, under: Option<String>, loc: Loc) Self {
-           var subs: Vec<SubDiag> = Vec.new(allocator);
-           var hints: Vec<SubDiag> = Vec.new(allocator);
-           
-           return Self { mesg, subs, under, hints, loc };
-       }
+    pub fn new(allocator: Allocator, mesg: String, under: Option<String>, loc: Loc) Self {
+        var subs: Vec<SubDiag> = Vec.new(allocator);
+        var hints: Vec<SubDiag> = Vec.new(allocator);
+        
+        return Self { mesg, subs, under, hints, loc };
+    }
 
-       pub inline fn add_hint(const self: Self*, hint: SubDiag) {
-           self->hints.push(hint);
-       }
+    pub inline fn add_hint(self: Self*, hint: SubDiag) {
+        self->hints.push(hint);
+    }
 
-       pub inline fn add_sub(const self: Self*, sub: SubDiag) {
-           self->subs.push(sub);
-       }
+    pub inline fn add_sub(self: Self*, sub: SubDiag) {
+        self->subs.push(sub);
+    }
 
-       pub inline fn render_subs(self: const Self*, writer: Writer) {
-           for (var i: usize; i < self->subs.len(); i += 1) {
-               const sub = self->subs.get(i).unwrap();
+    pub inline fn render_subs(self: const Self*, writer: Writer) {
+        for (var i: usize; i < self->subs.len(); i += 1) {
+            const sub = self->subs.get(i).unwrap();
 
-               sub.render(writer);
-           }
-       }
-       
-       pub fn render(self: const Self*, writer: Writer) {
-           render_header(writer, "./selfhost/src/main.cyrus", "something went wrong", self->loc);
-           render_code(writer, "var x: int32 = 0; // FAKE CODE", self->loc);
+            sub.render(writer);
+        }
+    }
+    
+    pub fn render(self: const Self*, writer: Writer) {
+        render_header(writer, "./selfhost/src/main.cyrus", "something went wrong", self->loc);
+        render_code(writer, "var x: int32 = 0; // FAKE CODE", self->loc);
 
-           switch (self->under) {
-                case .Some(str) => {
-                    render_under(writer, str.as_str_const(), self->loc);  
-                }
-           }
-           
-           self->render_subs(writer);
+        switch (self->under) {
+            case .Some(str) => {
+                render_under(writer, str.as_str_const(), self->loc);  
+            }
+        }
+        
+        self->render_subs(writer);
 
-            // FIXME add helper
-           writer.write("   |");
-       }
+        // FIXME add helper
+        writer.write("   |");
+    }
 
-       pub fn free(const self: Self*) {
-           self->mesg.free();
+    pub fn free(self: Self*) {
+        self->mesg.free();
 
-           switch (self->under) {
-                  case .Some(str) => str.free();
-           }
-           
-           for (var i: usize; i < self->subs.len(); i += 1) {
-               var sub = self->subs.get(i).unwrap();
+        switch (self->under) {
+                case .Some(str) => str.free();
+        }
+        
+        for (var i: usize; i < self->subs.len(); i += 1) {
+            var sub = self->subs.get(i).unwrap();
 
-               sub.free();
-           }
+            sub.free();
+        }
 
-           for (var i: usize; i < self->hints.len(); i += 1) {
-               var hint = self->hints.get(i).unwrap();
+        for (var i: usize; i < self->hints.len(); i += 1) {
+            var hint = self->hints.get(i).unwrap();
 
-               hint.free();
-           }
+            hint.free();
+        }
 
-           self->subs.free();
-           self->hints.free();
-       }
+        self->subs.free();
+        self->hints.free();
+    }
 }
 
 struct DiagRender {
@@ -192,11 +196,7 @@ struct PrimSubDiag : SubDiag {
     under: Option<String>,
     loc: Loc,
 
-    pub fn new(
-        const mesg: String,
-        const under: Option<String>,
-        const loc: Loc
-    ) Self {
+    pub fn new(mesg: String, under: Option<String>, loc: Loc) Self {
         return Self { mesg, under, loc };
     }
 
@@ -210,7 +210,7 @@ struct PrimSubDiag : SubDiag {
         }
     }
     
-    pub inline fn free(const self: Self*) {
+    pub inline fn free(self: Self*) {
         self->mesg.free();
 
         switch (self->under) {

@@ -6,11 +6,11 @@ pub enum Foo {
     A = 10,
     B = 20,
 
-    pub fn as_num(const self: Self) int32 {
+    pub fn as_num(self: Self) int32 {
         return @cast(int32, self);
     }
 
-    pub fn from_num(const x: int32) Self {
+    pub fn from_num(x: int32) Self {
         return @cast(Foo, x);
     } 
 }

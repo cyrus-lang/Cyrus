@@ -2,6 +2,6 @@
 // Copyright (c) 2026 The Cyrus Language
 
 pub interface Iterator<T> {
-    fn next(const self: Self*) T*;
-    fn next_const(const self: Self*) const T*;
+    fn next(self: Self*) T*;
+    fn next_const(self: Self*) const T*;
 }
