@@ -234,7 +234,7 @@ impl fmt::Display for EnumVariant {
                 write!(f, ")")
             }
             EnumVariant::Struct { ident, fields } => {
-                write!(f, "{} {{", ident)?; // Start with identifier and opening brace
+                write!(f, "{} {{", ident)?; // Start with identifier and opening brace.
 
                 for (i, field_info) in fields.iter().enumerate() {
                     if i > 0 {
