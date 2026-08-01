@@ -8,6 +8,8 @@ import std::option{Option};
 import std::mem{Allocator};
 import std::slices{Slice};
 
+import std::libc{printf};
+
 pub struct String {
     vec: Vec<uint8>,
 
@@ -27,8 +29,8 @@ pub struct String {
         @assert(str, "input string cannot be null");
 
         const len = strlen(str);
-
-        var vec: Vec<uint8> = Vec.new(allocator);
+    
+        var vec: Vec<uint8> = Vec.with_capacity(allocator, len + 1);
         for (var i: usize = 0; i < len; i += 1) {
             vec.push(str[i]);
         }
@@ -38,13 +40,17 @@ pub struct String {
     }
 
     pub fn from_slice(allocator: Allocator, slice: const Slice<uint8>) Self {
-        var vec: Vec<uint8> = Vec.new(allocator);
-        for (var i: usize = 0; i < slice.len(); i += 1) {
+        const len = slice.len();
+
+        var vec: Vec<uint8> = Vec.with_capacity(allocator, len +1);
+
+        for (var i: usize = 0; i < len; i += 1) {
             const item = slice.get_const(i).unwrap();
 
             vec.push(*item);
         }
         vec.push('\0');
+
         return Self { vec };
     }
 
