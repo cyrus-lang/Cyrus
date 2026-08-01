@@ -520,6 +520,18 @@ Every language is a compromise. Cyrus optimizes for legibility, mechanical sympa
 - **If Rust feels heavy** and you find yourself fighting the borrow checker for simple data structures, Cyrus gives you modern tooling without the lifetime restrictions.
 - **If Go is too abstract** with its garbage collector and runtime, Cyrus brings you back down to the metal.
 
+## Installation
+
+The Cyrus compiler currently supports **Linux** (x86_64). Support for additional platforms will follow self-hosting.
+
+### Install Nightly
+
+Download the latest nightly binary for Linux from our [GitHub Actions artifacts](https://cyrus-lang.ir/en/docs/getting-started/install-compiler-binary#Install-compiler-binary).
+
+### Build from Source
+
+For instructions on building the compiler from source, see the [Build from Source guide](https://cyrus-lang.ir/en/docs/getting-started/build-from-source#Build-from-source).
+
 ## Current Status & Roadmap
 
 Cyrus is heavily under development as a language and compiler. We are currently focused on **self-hosting** the compiler, a major milestone that will unlock significant improvements across the toolchain.
