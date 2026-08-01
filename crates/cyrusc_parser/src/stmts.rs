@@ -225,6 +225,13 @@ impl<'source_file> Parser<'source_file> {
         }
         self.next_token();
 
+        let is_volatile = if self.current_token().kind.is_ident_str("volatile") {
+            self.next_token();
+            true
+        } else {
+            false
+        };
+
         let (template, is_inline) = if self.current_token_is(TokenKind::LeftBrace) {
             self.next_token(); 
             let lines = self.parse_asm_template_block()?;
@@ -270,6 +277,7 @@ impl<'source_file> Parser<'source_file> {
             outputs,
             inputs,
             clobbers,
+            is_volatile,
             loc: Loc::new(self.file_id(), line, column, start, end),
         })
     }

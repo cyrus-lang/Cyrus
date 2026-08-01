@@ -2894,7 +2894,7 @@ impl<'a> Resolver<'a> {
             outputs,
             inputs,
             clobbers,
-            is_volatile: false,
+            is_volatile: asm.is_volatile,
             loc: asm.loc,
         }
     }

@@ -504,7 +504,11 @@ impl fmt::Display for ASTUnnamedUnionValueExpr {
 
 impl fmt::Display for ASTInlineAsm {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "@asm(")?;
+        if self.is_volatile {
+            write!(f, "@asm volatile(")?;
+        } else {
+            write!(f, "@asm(")?;
+        }
         for (i, t) in self.template.iter().enumerate() {
             if i > 0 { write!(f, " ")?; }
             write!(f, "\"{}\"", t)?;

@@ -284,6 +284,7 @@ pub struct ASTInlineAsm {
     pub outputs: Vec<AsmOperand>,
     pub inputs: Vec<AsmOperand>,
     pub clobbers: Vec<AsmClobber>,
+    pub is_volatile: bool,
     pub loc: Loc,
 }
 
