@@ -129,6 +129,11 @@ impl<'ll> CodeGenIRBuilder<'ll> {
 
         let mut cases: Vec<(IntValue<'ll>, BasicBlock<'ll>)> = Vec::new();
 
+        // Track the last block of each case, because case block might
+        // jump into another block, so to determine `all_cases_return` we need
+        // to access latest block of each case.
+        let mut case_terminated_blocks: Vec<Option<BasicBlock<'ll>>> = Vec::new();
+
         for case in &switch_stmt.cases {
             let case_block = self.new_basic_block("switch_on_enum.case");
 
@@ -182,14 +187,18 @@ impl<'ll> CodeGenIRBuilder<'ll> {
                     self.llvmbuilder.build_unconditional_branch(exit_block).unwrap();
                 }
             }
+
+            case_terminated_blocks.push(self.blockreg.cur_block);
         }
 
-        let all_cases_return = cases.iter().all(|(_, bb)| {
-            bb.get_terminator().map_or(false, |inst| {
-                matches!(
-                    inst.get_opcode(),
-                    InstructionOpcode::Return | InstructionOpcode::Unreachable
-                )
+        let all_cases_return = case_terminated_blocks.iter().all(|opt| {
+            opt.map_or(false, |basic_block| {
+                basic_block.get_terminator().map_or(false, |inst| {
+                    matches!(
+                        inst.get_opcode(),
+                        InstructionOpcode::Return | InstructionOpcode::Unreachable
+                    )
+                })
             })
         });
 
@@ -260,6 +269,11 @@ impl<'ll> CodeGenIRBuilder<'ll> {
             .into_int_type();
 
         let mut cases: Vec<(IntValue<'ll>, BasicBlock<'ll>)> = Vec::new();
+
+        // Track the last block of each case, because case block might
+        // jump into another block, so to determine `all_cases_return` we need
+        // to access latest block of each case.
+        let mut case_terminated_blocks: Vec<Option<BasicBlock<'ll>>> = Vec::new();
 
         for case in &switch_stmt.cases {
             let case_block = self.new_basic_block("switch_on_enum.case");
@@ -340,14 +354,18 @@ impl<'ll> CodeGenIRBuilder<'ll> {
                     self.llvmbuilder.build_unconditional_branch(exit_block).unwrap();
                 }
             }
+
+            case_terminated_blocks.push(self.blockreg.cur_block);
         }
 
-        let all_cases_return = cases.iter().all(|(_, bb)| {
-            bb.get_terminator().map_or(false, |inst| {
-                matches!(
-                    inst.get_opcode(),
-                    InstructionOpcode::Return | InstructionOpcode::Unreachable
-                )
+        let all_cases_return = case_terminated_blocks.iter().all(|opt| {
+            opt.map_or(false, |basic_block| {
+                basic_block.get_terminator().map_or(false, |inst| {
+                    matches!(
+                        inst.get_opcode(),
+                        InstructionOpcode::Return | InstructionOpcode::Unreachable
+                    )
+                })
             })
         });
 
@@ -360,6 +378,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
             let first_use: *const LLVMUse = LLVMGetFirstUse(LLVMBasicBlockAsValue(exit_block.as_mut_ptr()));
             !first_use.is_null()
         };
+
         if exit_in_use {
             self.emit_block(exit_block);
         }
@@ -411,6 +430,11 @@ impl<'ll> CodeGenIRBuilder<'ll> {
 
         let mut cases: Vec<(IntValue<'ll>, BasicBlock<'ll>)> = Vec::new();
 
+        // Track the last block of each case, because case block might
+        // jump into another block, so to determine `all_cases_return` we need
+        // to access latest block of each case.
+        let mut case_terminated_blocks: Vec<Option<BasicBlock<'ll>>> = Vec::new();
+
         for case in &switch_stmt.cases {
             let case_block = self.new_basic_block("switch.case");
 
@@ -440,14 +464,18 @@ impl<'ll> CodeGenIRBuilder<'ll> {
                     self.llvmbuilder.build_unconditional_branch(exit_block).unwrap();
                 }
             }
+
+            case_terminated_blocks.push(self.blockreg.cur_block);
         }
 
-        let all_cases_return = cases.iter().all(|(_, bb)| {
-            bb.get_terminator().map_or(false, |inst| {
-                matches!(
-                    inst.get_opcode(),
-                    InstructionOpcode::Return | InstructionOpcode::Unreachable
-                )
+        let all_cases_return = case_terminated_blocks.iter().all(|opt| {
+            opt.map_or(false, |basic_block| {
+                basic_block.get_terminator().map_or(false, |inst| {
+                    matches!(
+                        inst.get_opcode(),
+                        InstructionOpcode::Return | InstructionOpcode::Unreachable
+                    )
+                })
             })
         });
 
