@@ -8,7 +8,7 @@ pub enum Option<T> {
     pub inline fn unwrap(self: const Self*) T {
         switch (*self) {
             case .Some(value) => return value;
-            default => @panic("called `Option.unwrap()` on a `None` value");
+            case .None => @panic("called `Option.unwrap()` on a `None` value");
         }
     }
     
