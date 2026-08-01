@@ -203,7 +203,7 @@ pub fn main() {
 
 ### Generics
 
-Generics enable type‑parametric code with full compile‑time safety. Only named types and functions can be generic—unnamed structs and anonymous functions are excluded.
+Generics enable type‑parametric code with full compile‑time safety. Only named types and functions can be generic unnamed structs and anonymous functions are excluded.
 
 Generic definitions are type‑checked at compile time without instantiation. The compiler validates logic upfront, catching errors early and minimizing compile overhead for heavily templated code.
 
@@ -522,17 +522,32 @@ Every language is a compromise. Cyrus optimizes for legibility, mechanical sympa
 
 ## Current Status & Roadmap
 
-Cyrus is heavily under development as a language and compiler.
+Cyrus is heavily under development as a language and compiler. We are currently focused on **self-hosting** the compiler, a major milestone that will unlock significant improvements across the toolchain.
 
-We are currently researching a few major systems, taking our time to ensure they align with our philosophy of explicit control:
+### Immediate Priorities
+
+- **Self-hosting:** The Cyrus compiler is being rewritten in Cyrus itself. This will validate the language design, improve compiler performance, and enable faster iteration.
+
+### Post-Self-Hosting Roadmap
+
+Once self-hosting is complete, we will focus on:
+
+- **Slices:** Safe, bounds‑checked array views; implementation will follow self‑hosting.
+- **Generic Instantiation Safety:** Currently behaves like C++ templates (checked at instantiation). After enhancing the analyzer, generics will be fully type-checked at compile time without instantiation, similar to Rust's approach.
+- **Attributes:** Will be introduced after self-hosting to reduce the number of modifier keywords in the language.
+- **Test Framework:** Internal test harness and comprehensive test suites will be built after self-hosting.
+- **Matrix Type:** SIMD‑capable multi‑dimensional array support (similar to vector types) will be added post‑self‑hosting.
+- **Variadic Arguments:** Type‑safe, variadic function parameters will be implemented after self‑hosting.
+
+### Longer-Term Research
+
+We are also evaluating several major systems, taking our time to ensure they align with our philosophy of explicit control:
 
 - **Concurrency:** Evaluating fibers, coroutines, and OS-level primitives.
-
 - **Error Handling:** Evaluating explicit, boilerplate-free mechanics that avoid hidden unwinding or runtime exceptions.
-
 - **Compile-Time Execution, Reflection, and Metaprogramming:** Exploring controlled, predictable mechanisms for code generation and type inspection without introducing heavy runtime overhead.
 
-> Cyrus is heavily under development and is not ready for production use. Syntax, and compiler behavior will change as the core infrastructure matures.
+> Cyrus is heavily under development and is not ready for production use. Syntax, semantics, and compiler behavior will change as the core infrastructure matures.
 
 **Cyrus is not trying to be the safest language in the world.** It is trying to be the most transparent, controllable, and maintainable systems language you've ever used.
 
