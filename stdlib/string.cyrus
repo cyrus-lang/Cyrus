@@ -2,8 +2,8 @@
 // Copyright (c) 2026 The Cyrus Language
 
 import std::libc{strlen, strcmp, memmove, isspace, tolower, toupper};
-import std::collections{Vec};
 import std::libc::types{c_int};
+import std::collections{Vec};
 import std::option{Option};
 import std::mem{Allocator};
 import std::slices{Slice};
