@@ -103,10 +103,10 @@ pub struct ArenaAllocator : Allocator {
     }
 
     fn realloc(self: Self*, ptr: void*, size: usize) void* {
-        @panic("ArenaAllocator does not support realloc.");
+        return null; // not supported
     }
 
 	fn free(self: Self*, ptr: void*) void {
-        @panic("ArenaAllocator does not support free.");
+        // not supported
     }
 }
