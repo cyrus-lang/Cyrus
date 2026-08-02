@@ -46,18 +46,12 @@ pub struct Diag {
     pub mesg: String,
     pub under: Option<String>,
     pub subs: Vec<SubDiag>,
-    pub hints: Vec<SubDiag>,
     pub loc: Loc,
 
     pub fn new(allocator: Allocator, mesg: String, under: Option<String>, loc: Loc) Self {
         var subs: Vec<SubDiag> = Vec.new(allocator);
-        var hints: Vec<SubDiag> = Vec.new(allocator);
         
-        return Self { mesg, subs, under, hints, loc };
-    }
-
-    pub inline fn add_hint(self: Self*, hint: SubDiag) {
-        self->hints.push(hint);
+        return Self { mesg, subs, under, loc };
     }
 
     pub inline fn add_sub(self: Self*, sub: SubDiag) {
@@ -77,14 +71,7 @@ pub struct Diag {
             sub.free();
         }
 
-        for (var i: usize; i < self->hints.len(); i += 1) {
-            var hint = self->hints.get(i).unwrap();
-
-            hint.free();
-        }
-
         self->subs.free();
-        self->hints.free();
     }
 }
 

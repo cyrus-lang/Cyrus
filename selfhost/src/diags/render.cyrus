@@ -6,6 +6,8 @@ import (
     std::mem{Allocator},
 );
 
+import std::libc{printf};
+
 import (
     diags{
         DiagContext,
@@ -15,8 +17,11 @@ import (
     tokens{Loc}
 );
 
+const MIN_PANEL_SPACE: uint32 = 5;
+
 pub struct CompilerDiagRender {
     dctx: DiagContext,
+    // sctx: SourceContext,
 
     pub fn new(dctx: DiagContext) Self {
         return Self { dctx };
@@ -24,6 +29,8 @@ pub struct CompilerDiagRender {
 
     pub fn render(self: Self*) String {
         const diags = self->dctx.diags();
+
+        const space = self->panel_space();
 
         const allocator: Allocator = dynamic LibcAllocator.new();
         var out = String.new(allocator);
@@ -33,19 +40,48 @@ pub struct CompilerDiagRender {
         for (var i: usize = 0; i < diags->len(); i += 1) {
             const diag = diags->get_ref(i).unwrap();
 
-            render_diag(writer, diag);
+            render_diag(writer, diag, space);
+
+            if (i < diags->len() - 1) {
+                writer.write("\n\n");
+            }
         }
 
         return out;
     }
+
+    pub fn panel_space(self: const Self*) uint32 {
+        const diags = self->dctx.diags();
+
+        var max_space: uint32 = MIN_PANEL_SPACE;
+
+        // max space of diags
+        for (var i: usize = 0; i < diags->len(); i += 1) {
+            const diag = diags->get_ref(i).unwrap();
+            const space = line_space(diag->loc.line);
+
+            if (space > max_space) {
+                max_space = space;
+            }
+
+            // max space of sub diags
+            for (var j: usize = 0; j < diag->subs.len(); j += 1) {
+                const diag = diag->subs.get_ref(j).unwrap();
+                const space = line_space(diag->loc.line);
+
+                if (space > max_space) {
+                    max_space = space;
+                }
+            }
+        }
+
+        // plus two for reserving whitespace 
+        // for the pipe and the space before it
+        return max_space + 2;
+    }
 }
 
-const PANEL_SPACE: uint16 = 5;
-
-fn render_diag(writer: Writer, diag: Diag*) {
-    // TODO: compute space
-    var space = PANEL_SPACE;
-
+fn render_diag(writer: Writer, diag: Diag*, space: uint32) {
     // FIXME: Mock data
     render_header(writer, "./selfhost/src/main.cyrus", "something went wrong", diag->loc);
     render_code(writer, "var x: int32 = 0; // FAKE CODE", diag->loc, space);
@@ -58,12 +94,11 @@ fn render_diag(writer: Writer, diag: Diag*) {
 
     // FIXME: Mock data
     render_subs(writer, diag);
-
     render_pipe(writer, space);
 }
 
 fn render_sub(writer: Writer, sub: SubDiag*) {
-    const space = PANEL_SPACE;
+    const space = MIN_PANEL_SPACE;
 
     render_code(writer, "var x: int32 = 0; // FAKE CODE", sub->loc, space);
 
@@ -94,12 +129,16 @@ fn render_code(
     var writer: Writer,
     code: const uint8*,
     loc: Loc,
-    space: uint16
+    space: uint32
 ) {
     render_pipe(writer, space);
     writer.write("\n");
-    writer.write(" ");
+
+    const offset = (space - line_digits(loc.line)) - 2;
+
+    render_space(writer, offset);
     format_usize(writer, loc.line);
+
     writer.write(" ~ ");
     writer.writeln(code);
 
@@ -109,7 +148,7 @@ fn render_code(
     writer.write("\n");
 }
 
-fn render_under(writer: Writer, mesg: const uint8*, loc: Loc, space: uint16) {
+fn render_under(writer: Writer, mesg: const uint8*, loc: Loc, space: uint32) {
     render_space(writer, space);
     render_space(writer, loc.start);
     writer.write("! ");
@@ -142,4 +181,23 @@ inline fn render_space<T>(writer: Writer, n: T) {
     for (var i: usize; i < n; i += 1) {
         writer.write(" ");
     }
+}
+
+inline fn line_space(var line: usize) uint32 {
+    const i = line_digits(line);
+
+    if (i < MIN_PANEL_SPACE) {
+        return MIN_PANEL_SPACE;
+    } else {
+        return i + 1;
+    }
+}
+
+inline fn line_digits(var line: usize) uint32 {
+    var i: uint32 = 0;
+    while (line > 0) {
+        line /= 10;
+        i += 1;
+    }
+    return i;
 }
