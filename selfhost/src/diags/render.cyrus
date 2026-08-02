@@ -93,13 +93,11 @@ fn render_diag(writer: Writer, diag: Diag*, space: uint32) {
     }
 
     // FIXME: Mock data
-    render_subs(writer, diag);
+    render_subs(writer, diag, space);
     render_pipe(writer, space);
 }
 
-fn render_sub(writer: Writer, sub: SubDiag*) {
-    const space = MIN_PANEL_SPACE;
-
+fn render_sub(writer: Writer, sub: SubDiag*, space: uint32) {
     render_code(writer, "var x: int32 = 0; // FAKE CODE", sub->loc, space);
 
     switch (sub->under) {
@@ -156,11 +154,11 @@ fn render_under(writer: Writer, mesg: const uint8*, loc: Loc, space: uint32) {
     writer.write("\n");
 }
 
-fn render_subs(writer: Writer, diag: Diag*) {
+fn render_subs(writer: Writer, diag: Diag*, space: uint32) {
     for (var i: usize; i < diag->subs.len(); i += 1) {
         const sub = diag->subs.get_ref(i).unwrap();
 
-        render_sub(writer, sub);
+        render_sub(writer, sub, space);
     }
 }
 
