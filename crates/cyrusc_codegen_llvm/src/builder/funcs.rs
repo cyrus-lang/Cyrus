@@ -123,10 +123,10 @@ impl<'ll> CodeGenIRBuilder<'ll> {
 
                     llvm_param_index += 1;
 
-                    self.insert_local_ir_value(
-                        param.irv_id.unwrap(),
-                        LocalIRValue::RValue(llvm_param, param.ty.clone()),
-                    );
+                    let alloca = self.llvmbuilder.build_alloca(llvm_param.get_type(), "param").unwrap();
+                    self.llvmbuilder.build_store(alloca, llvm_param).unwrap();
+
+                    self.insert_local_ir_value(param.irv_id.unwrap(), LocalIRValue::LValue(alloca, param.ty.clone()));
                 }
                 ABIArgKind::DirectPair { lo: lo_ty, hi: hi_ty } => {
                     let coerced_type = self.llvm_ctx.struct_type(
@@ -383,9 +383,9 @@ impl<'ll> CodeGenIRBuilder<'ll> {
             self.emit_block(basic_block);
         }
 
-        let cir_fn_ty = cir_func_decl_as_func_type(&cir_func_decl);
+        let cir_func_type = cir_func_decl_as_func_type(&cir_func_decl);
         InternalValue::new(
-            CIRType::FuncType(cir_fn_ty),
+            CIRType::FuncType(cir_func_type),
             InternalValueKind::FuncValue(llvm_func_value),
         )
     }
