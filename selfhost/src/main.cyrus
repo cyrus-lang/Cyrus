@@ -20,26 +20,33 @@ pub fn main() {
     defer dctx.free();
     
     {
-        const loc = Loc { line: 1, col: 1, start: 7, end: 12 };
+        const loc = Loc { line: 10000, col: 1, start: 7, end: 12 };
         const mesg = String.from_str(allocator, "Meow :3");
         const under = String.from_str(allocator, "under mesg");
         var diag = Diag.new(allocator, mesg, .Some(under), loc);
 
-        {
-            const loc = Loc { line: 5, col: 1, start: 4, end: 5 };
-            var mesg = String.from_str(allocator, "error originated from xxx (sub-diag)");
-            var under = String.from_str(allocator, "you better change this or die");
-            var sub_diag = SubDiag.new(.Hint, mesg, .Some(under), loc);
-            diag.add_sub(sub_diag);
-        }
-        {
-            const loc = Loc { line: 3, col: 1, start: 4, end: 5 };
-            var mesg = String.from_str(allocator, "error originated from yyyy (sub-diag)");
-            var under = String.from_str(allocator, "Noooooo");
-            var sub_diag = SubDiag.new(.Info, mesg, .Some(under), loc);
-            diag.add_sub(sub_diag);
-        }
+        // {
+        //     const loc = Loc { line: 50000000, col: 1, start: 4, end: 5 };
+        //     var mesg = String.from_str(allocator, "error originated from xxx (sub-diag)");
+        //     var under = String.from_str(allocator, "you better change this or die");
+        //     var sub_diag = SubDiag.new(.Hint, mesg, .Some(under), loc);
+        //     diag.add_sub(sub_diag);
+        // }
+        // {
+        //     const loc = Loc { line: 3, col: 1, start: 4, end: 5 };
+        //     var mesg = String.from_str(allocator, "error originated from yyyy (sub-diag)");
+        //     var under = String.from_str(allocator, "Noooooo");
+        //     var sub_diag = SubDiag.new(.Info, mesg, .Some(under), loc);
+        //     diag.add_sub(sub_diag);
+        // }
         
+        dctx.report(diag);
+    }
+
+    {
+        const loc = Loc { line: 5, col: 1, start: 7, end: 12 };
+        const mesg = String.from_str(allocator, "Meow :3");
+        var diag = Diag.new(allocator, mesg, .None, loc);
         dctx.report(diag);
     }
 
