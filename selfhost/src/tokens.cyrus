@@ -587,7 +587,7 @@ pub fn dump_tokens(tokens: const Vec<Token>*) {
 
 /// Formats and writes a tokens to stdout.
 /// This is primarily used for debugging and emitting lexer result.
-pub fn dump_token(const token: Token) {
+pub fn dump_token(token: Token) {
     var allocator: Allocator = dynamic LibcAllocator.new();
 
     var fmt = String.new(allocator);
