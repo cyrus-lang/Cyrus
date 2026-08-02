@@ -231,17 +231,9 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         let rhs_lvalue = self.emit_expr(&assign.rhs, &Some(assign.lhs.ty.clone()));
         let rhs_value = self.load_rvalue(rhs_lvalue);
 
-        let lhs_ptr = if lhs_lvalue.as_basic_value().is_pointer_value() {
-            lhs_lvalue.as_basic_value().into_pointer_value()
-        } else {
-            let value = lhs_lvalue.as_basic_value();
+        assert!(lhs_lvalue.as_basic_value().is_pointer_value());
 
-            let alloca = self.llvmbuilder.build_alloca(value.get_type(), "assign.cast").unwrap();
-
-            self.llvmbuilder.build_store(alloca, value).unwrap();
-
-            alloca
-        };
+        let lhs_ptr = lhs_lvalue.as_basic_value().into_pointer_value();
 
         self.llvmbuilder
             .build_store(lhs_ptr, rhs_value.as_basic_value())
@@ -314,21 +306,25 @@ impl<'ll> CodeGenIRBuilder<'ll> {
                         .unwrap()
                 }
             }
+
             (BasicTypeEnum::PointerType(_), BasicTypeEnum::IntType(to_int)) => self
                 .llvmbuilder
                 .build_ptr_to_int(value.into_pointer_value(), to_int, "ptr_to_int")
                 .unwrap()
                 .into(),
+
             (BasicTypeEnum::IntType(_), BasicTypeEnum::PointerType(to_ptr)) => self
                 .llvmbuilder
                 .build_int_to_ptr(value.into_int_value(), to_ptr, "int_to_ptr")
                 .unwrap()
                 .into(),
+
             (BasicTypeEnum::FloatType(_), BasicTypeEnum::FloatType(to_float)) => self
                 .llvmbuilder
                 .build_float_cast(value.into_float_value(), to_float, "fpext")
                 .unwrap()
                 .into(),
+
             (BasicTypeEnum::IntType(_), BasicTypeEnum::FloatType(to_float)) => {
                 if from_cir_type.is_signed_integer() {
                     self.llvmbuilder
@@ -342,7 +338,9 @@ impl<'ll> CodeGenIRBuilder<'ll> {
                         .into()
                 }
             }
+
             (BasicTypeEnum::PointerType(_), BasicTypeEnum::PointerType(_)) => value,
+
             (BasicTypeEnum::VectorType(_), BasicTypeEnum::VectorType(_)) => self
                 .llvmbuilder
                 .build_bit_cast(value, target_basic_type, "bitcast")
@@ -467,7 +465,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
 
     fn emit_array(&mut self, array: &CIRArrayExpr) -> InternalValue<'ll> {
         let cir_array_type = array.ty.as_array().unwrap();
-        let element_ty = cir_array_type.element_type.clone();
+        let cir_element_type = cir_array_type.element_type.clone();
 
         let array_type: ArrayType<'ll> = self.emit_array_type(cir_array_type.clone()).try_into().unwrap();
 
@@ -480,7 +478,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
             let mut rvalue = self.load_rvalue(lvalue);
 
             if !self.llvmbuilder.get_insert_block().is_none() {
-                rvalue = self.emit_implicit_cast(&element_ty, rvalue);
+                rvalue = self.emit_implicit_cast(&cir_element_type, rvalue);
             }
 
             if !is_basic_value_constant(rvalue.as_basic_value()) {
@@ -491,10 +489,10 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         }
 
         // zero-fill if array type is fixed-length and not fully initialized
-        let element_basic_ty: BasicTypeEnum<'ll> = self.emit_type(*element_ty.clone()).try_into().unwrap();
+        let element_type: BasicTypeEnum<'ll> = self.emit_type(*cir_element_type.clone()).try_into().unwrap();
 
         while elements.len() < array_type.len() as usize {
-            elements.push(element_basic_ty.const_zero());
+            elements.push(element_type.const_zero());
             all_const = false;
         }
 
@@ -621,11 +619,11 @@ impl<'ll> CodeGenIRBuilder<'ll> {
 
         match mode {
             DerefMode::Load => {
-                let inner_ty = rvalue.ty.pointer_inner().unwrap();
+                let inner_type = rvalue.ty.pointer_inner().unwrap();
 
-                let llvm_ty: BasicTypeEnum<'ll> = self.emit_type(inner_ty.clone()).try_into().unwrap();
-                let loaded_value = self.llvmbuilder.build_load(llvm_ty, ptr, "deref").unwrap();
-                InternalValue::new(inner_ty.clone(), InternalValueKind::RValue(loaded_value.into()))
+                let llvm_type: BasicTypeEnum<'ll> = self.emit_type(inner_type.clone()).try_into().unwrap();
+                let loaded_value = self.llvmbuilder.build_load(llvm_type, ptr, "deref").unwrap();
+                InternalValue::new(inner_type.clone(), InternalValueKind::RValue(loaded_value.into()))
             }
             DerefMode::Store => self.emit_lvalue_address(&CIRExpr {
                 kind: CIRExprKind::Deref(deref.clone()),
@@ -1108,16 +1106,19 @@ impl<'ll> CodeGenIRBuilder<'ll> {
             (BasicValueEnum::IntValue(lhs), BasicValueEnum::IntValue(rhs)) => {
                 if self.profile == cyrusc_internal::compiler_options::CompilerOption_Profile::Debug {
                     let is_signed = lhs_rvalue.ty.is_signed_integer();
+
                     self.emit_checked_int_op("mul", lhs, rhs, is_signed, lhs_rvalue.ty.clone(), loc)
                 } else {
                     let basic_value =
                         BasicValueEnum::IntValue(self.llvmbuilder.build_int_mul(lhs, rhs, "mul").unwrap());
+
                     InternalValue::new(lhs_rvalue.ty.clone(), InternalValueKind::RValue(basic_value))
                 }
             }
             (BasicValueEnum::FloatValue(lhs), BasicValueEnum::FloatValue(rhs)) => {
                 let basic_value =
                     BasicValueEnum::FloatValue(self.llvmbuilder.build_float_mul(lhs, rhs, "mul").unwrap());
+
                 InternalValue::new(lhs_rvalue.ty.clone(), InternalValueKind::RValue(basic_value))
             }
             _ => unreachable!(),
@@ -1127,13 +1128,22 @@ impl<'ll> CodeGenIRBuilder<'ll> {
     fn emit_div(&self, lhs_rvalue: InternalValue<'ll>, rhs_rvalue: InternalValue<'ll>) -> InternalValue<'ll> {
         match (lhs_rvalue.as_basic_value(), rhs_rvalue.as_basic_value()) {
             (BasicValueEnum::IntValue(lhs), BasicValueEnum::IntValue(rhs)) => {
-                let basic_value =
-                    BasicValueEnum::IntValue(self.llvmbuilder.build_int_signed_div(lhs, rhs, "div").unwrap());
+                let is_signed = lhs_rvalue.ty.is_signed_integer();
+
+                let basic_value = {
+                    if is_signed {
+                        BasicValueEnum::IntValue(self.llvmbuilder.build_int_signed_div(lhs, rhs, "div").unwrap())
+                    } else {
+                        BasicValueEnum::IntValue(self.llvmbuilder.build_int_unsigned_div(lhs, rhs, "div").unwrap())
+                    }
+                };
+
                 InternalValue::new(lhs_rvalue.ty.clone(), InternalValueKind::RValue(basic_value))
             }
             (BasicValueEnum::FloatValue(lhs), BasicValueEnum::FloatValue(rhs)) => {
                 let basic_value =
                     BasicValueEnum::FloatValue(self.llvmbuilder.build_float_div(lhs, rhs, "div").unwrap());
+
                 InternalValue::new(lhs_rvalue.ty.clone(), InternalValueKind::RValue(basic_value))
             }
             _ => unreachable!(),
@@ -1145,17 +1155,15 @@ impl<'ll> CodeGenIRBuilder<'ll> {
             (BasicValueEnum::IntValue(lhs), BasicValueEnum::IntValue(rhs)) => {
                 let is_signed = rhs_rvalue.ty.is_signed_integer();
 
-                if is_signed {
-                    let basic_value =
-                        BasicValueEnum::IntValue(self.llvmbuilder.build_int_signed_rem(lhs, rhs, "rem").unwrap());
+                let basic_value = {
+                    if is_signed {
+                        BasicValueEnum::IntValue(self.llvmbuilder.build_int_signed_rem(lhs, rhs, "rem").unwrap())
+                    } else {
+                        BasicValueEnum::IntValue(self.llvmbuilder.build_int_unsigned_rem(lhs, rhs, "rem").unwrap())
+                    }
+                };
 
-                    InternalValue::new(lhs_rvalue.ty.clone(), InternalValueKind::RValue(basic_value))
-                } else {
-                    let basic_value =
-                        BasicValueEnum::IntValue(self.llvmbuilder.build_int_unsigned_rem(lhs, rhs, "rem").unwrap());
-
-                    InternalValue::new(lhs_rvalue.ty.clone(), InternalValueKind::RValue(basic_value))
-                }
+                InternalValue::new(lhs_rvalue.ty.clone(), InternalValueKind::RValue(basic_value))
             }
             (BasicValueEnum::FloatValue(lhs), BasicValueEnum::FloatValue(rhs)) => {
                 let basic_value =
