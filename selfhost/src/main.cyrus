@@ -1,224 +1,17 @@
-import (
-    std::mem::libc{LibcAllocator},
-    std::io{Writer, StringWriter},
-    std::format{format_usize},
-    std::collections{Vec},
-    std::option{Option},
-    std::mem{Allocator},
-    std::string{String},
-    std::libc{printf},
-);
+import std::mem::libc{LibcAllocator};
+import std::mem{Allocator};
+import std::string{String};
+import std::libc{printf};
 
 import (
+    diags::render{CompilerDiagRender},
+    diags{
+        DiagContext,
+        Diag,
+        SubDiag,
+    },
     tokens{Loc}
 );
-
-interface SubDiag {
-    fn render(self: const Self*, writer: Writer);
-    fn free(self: Self*);
-}
-
-struct DiagContext {
-    diags: Vec<Diag>,
-    
-    pub inline fn new(allocator: Allocator) Self {
-        const diags: Vec<Diag> = Vec.new(allocator);
-        
-        return Self { diags };
-    }
-    
-    pub inline fn report(self: Self*, diag: Diag) {
-        *self = *self;
-        self->diags.push(diag);
-    }
-
-    pub fn render(
-        self: const Self*,
-        allocator: Allocator,
-        var writer: Writer
-    ) {
-        for (var i: usize; i < self->diags.len(); i += 1) {
-            const diag = self->diags.get(i).unwrap();
-            
-            diag.render(writer);
-
-            if (i > self->diags.len()) {
-                writer.write("\n");
-            }
-        }
-    }
-
-    pub fn free(self: Self*) {
-        for (var i: usize; i < self->diags.len(); i += 1) {
-            var diag = self->diags.get(i).unwrap();
-
-            diag.free();
-        }
-
-        self->diags.free();
-    }
-}
-
-fn render_header(
-    var writer: Writer,
-    file_path: const uint8*,
-    mesg: const uint8*,
-    loc: Loc
-) {
-    // TODO:
-    // writer.write(self->loc.file_id);
-    writer.write(file_path);
-    writer.write(":");
-    format_usize(writer, loc.line);
-    writer.write(":");
-    format_usize(writer, loc.col);
-    writer.write(": ");
-    writer.writeln(mesg);
-}
-
-fn render_code(
-   writer: Writer,
-   code: const uint8*,
-   loc: Loc
-) {
-    writer.writeln("   |");
-    writer.write(" ");
-    format_usize(writer, loc.line);
-    writer.write(" ~ ");
-    writer.writeln(code);
-
-    // TODO: Add helper for space computation.
-    writer.write("     ");
-    for (var i: usize = 0; i < loc.start; i += 1) {
-        writer.write(" ");
-    }
-    for (var i: usize = loc.start; i < loc.end; i += 1) {
-        writer.write("^");
-    }
-    writer.write("\n");
-}
-
-fn render_under(writer: Writer*, mesg: const uint8*, loc: Loc) {
-   // TODO: Add helper for space computation.
-   writer->write("     ");
-   for (var i: usize = 0; i < loc.start; i += 1) {
-       writer->write(" ");
-   }
-   writer->write("> ");
-   writer->write(mesg);
-   writer->write("\n");
- }
-           
-struct Diag {
-    mesg: String,
-    under: Option<String>,
-    subs: Vec<SubDiag>,
-    hints: Vec<SubDiag>,
-    loc: Loc,
-
-    pub fn new(allocator: Allocator, mesg: String, under: Option<String>, loc: Loc) Self {
-        var subs: Vec<SubDiag> = Vec.new(allocator);
-        var hints: Vec<SubDiag> = Vec.new(allocator);
-        
-        return Self { mesg, subs, under, hints, loc };
-    }
-
-    pub inline fn add_hint(self: Self*, hint: SubDiag) {
-        self->hints.push(hint);
-    }
-
-    pub inline fn add_sub(self: Self*, sub: SubDiag) {
-        self->subs.push(sub);
-    }
-
-    pub inline fn render_subs(self: const Self*, writer: Writer) {
-        for (var i: usize; i < self->subs.len(); i += 1) {
-            const sub = self->subs.get(i).unwrap();
-
-            sub.render(writer);
-        }
-    }
-    
-    pub fn render(self: const Self*, writer: Writer) {
-        render_header(writer, "./selfhost/src/main.cyrus", "something went wrong", self->loc);
-        render_code(writer, "var x: int32 = 0; // FAKE CODE", self->loc);
-
-        switch (self->under) {
-            case .Some(str) => {
-                render_under(writer, str.as_str_const(), self->loc);  
-            }
-        }
-        
-        self->render_subs(writer);
-
-        // FIXME add helper
-        writer.write("   |");
-    }
-
-    pub fn free(self: Self*) {
-        self->mesg.free();
-
-        switch (self->under) {
-                case .Some(str) => str.free();
-        }
-        
-        for (var i: usize; i < self->subs.len(); i += 1) {
-            var sub = self->subs.get(i).unwrap();
-
-            sub.free();
-        }
-
-        for (var i: usize; i < self->hints.len(); i += 1) {
-            var hint = self->hints.get(i).unwrap();
-
-            hint.free();
-        }
-
-        self->subs.free();
-        self->hints.free();
-    }
-}
-
-struct DiagRender {
-    diag: Diag,
-
-    pub fn new(diag: Diag) Self {
-        return Self { diag };
-    }
-
-    pub fn render(self: Self*) {
-        @todo();
-    }
-}
-
-struct PrimSubDiag : SubDiag {
-    mesg: String,
-    under: Option<String>,
-    loc: Loc,
-
-    pub fn new(mesg: String, under: Option<String>, loc: Loc) Self {
-        return Self { mesg, under, loc };
-    }
-
-    pub fn render(self: const Self*, writer: Writer) {
-        render_code(writer, "fn foo(x: uint32, ...) // FAKE CODE", self->loc);
-
-        switch (self->under) {
-            case .Some(str) => {
-                render_under(writer, str.as_str_const(), self->loc);  
-            }
-        }
-    }
-    
-    pub inline fn free(self: Self*) {
-        self->mesg.free();
-
-        switch (self->under) {
-            case .Some(str) => str.free();
-        }
-    }
-}
-
 
 pub fn main() {
     var allocator: Allocator = dynamic LibcAllocator.new();
@@ -233,66 +26,35 @@ pub fn main() {
         var diag = Diag.new(allocator, mesg, .Some(under), loc);
 
         {
-            const loc = Loc { line: 5, col: 1, start: 3, end: 6 };
+            const loc = Loc { line: 5, col: 1, start: 4, end: 5 };
             var mesg = String.from_str(allocator, "error originated from xxx (sub-diag)");
             var under = String.from_str(allocator, "you better change this or die");
-            var sub_diag: SubDiag = dynamic PrimSubDiag.new(mesg, .Some(under), loc);
+            var sub_diag = SubDiag.new(.Hint, mesg, .Some(under), loc);
             diag.add_sub(sub_diag);
         }
-        
-
         {
-            const loc = Loc { line: 3, col: 1, start: 3, end: 6 };
+            const loc = Loc { line: 3, col: 1, start: 4, end: 5 };
             var mesg = String.from_str(allocator, "error originated from yyyy (sub-diag)");
             var under = String.from_str(allocator, "Noooooo");
-            var sub_diag: SubDiag = dynamic PrimSubDiag.new(mesg, .Some(under), loc);
+            var sub_diag = SubDiag.new(.Info, mesg, .Some(under), loc);
             diag.add_sub(sub_diag);
         }
         
         dctx.report(diag);
     }
+
+    const dctxr = CompilerDiagRender.new(dctx);
     
-    {
-        const loc = Loc { line: 1, col: 1, start: 7, end: 12 };
-        const mesg = String.from_str(allocator, "Meow :3");
-        const under = String.from_str(allocator, "under mesg");
-        var diag = Diag.new(allocator, mesg, .Some(under), loc);
-
-        {
-            const loc = Loc { line: 5, col: 1, start: 3, end: 6 };
-            var mesg = String.from_str(allocator, "error originated from xxx (sub-diag)");
-            var under = String.from_str(allocator, "you better change this or die");
-            var sub_diag: SubDiag = dynamic PrimSubDiag.new(mesg, .Some(under), loc);
-            diag.add_sub(sub_diag);
-        }
-        
-
-        {
-            const loc = Loc { line: 3, col: 1, start: 3, end: 6 };
-            var mesg = String.from_str(allocator, "error originated from yyyy (sub-diag)");
-            var under = String.from_str(allocator, "Noooooo");
-            var sub_diag: SubDiag = dynamic PrimSubDiag.new(mesg, .Some(under), loc);
-            diag.add_sub(sub_diag);
-        }
-        
-        dctx.report(diag);
-    }
-
-    // emit into stdout
-    var out = String.new(allocator);
+    const out = dctxr.render();
     defer out.free();
-
-    var writer: Writer = dynamic StringWriter.new(&out);
-
-    dctx.render(allocator, writer);
 
     printf("%s\n", out.as_str());
 }
 
 // import std::mem::libc{LibcAllocator};
 // import std::io{Writer, StringWriter};
-// import utils::fs{read_file_content};
-// import diags{compile_error};
+// import utils::fs{read_file_to_string_or_exit};
+// import diags{exit_with_compile_error};
 // import std::mem{Allocator};
 // import std::string{String};
 // import parse::lex{Lexer};
@@ -305,10 +67,10 @@ pub fn main() {
 
 //     const file_name = argv[1];
 //     if (!file_name) {
-//         compile_error("no input files");
+//         exit_with_compile_error("no input files");
 //     }
 
-//     var source = read_file_content(file_name);
+//     var source = read_file_to_string_or_exit(file_name);
 //     defer source.free();
 
 //     var lexer = Lexer.new(allocator, &source);

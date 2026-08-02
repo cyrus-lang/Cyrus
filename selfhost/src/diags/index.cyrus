@@ -1,7 +1,123 @@
-import std::libc{stderr, fprintf};
-import std::os{exit};
+import (
+    std::mem::libc{LibcAllocator},
+    std::io{Writer, StringWriter},
+    std::libc{stderr, fprintf},
+    std::format{format_usize},
+    std::collections{Vec},
+    std::option{Option},
+    std::mem{Allocator},
+    std::string{String},
+    std::os{exit}
+);
 
-pub fn compile_error(msg: const uint8*) {
+import (
+    tokens{Loc}
+);
+
+pub struct DiagContext {
+    diags: Vec<Diag>,
+    
+    pub inline fn new(allocator: Allocator) Self {
+        const diags: Vec<Diag> = Vec.new(allocator);
+        
+        return Self { diags };
+    }
+    
+    pub inline fn report(self: Self*, diag: Diag) {
+        self->diags.push(diag);
+    }
+
+    pub inline fn diags(self: const Self*) Vec<Diag>* {
+        return &self->diags;
+    }
+
+    pub fn free(self: Self*) {
+        for (var i: usize; i < self->diags.len(); i += 1) {
+            var diag = self->diags.get(i).unwrap();
+
+            diag.free();
+        }
+
+        self->diags.free();
+    }
+}
+
+pub struct Diag {
+    pub mesg: String,
+    pub under: Option<String>,
+    pub subs: Vec<SubDiag>,
+    pub hints: Vec<SubDiag>,
+    pub loc: Loc,
+
+    pub fn new(allocator: Allocator, mesg: String, under: Option<String>, loc: Loc) Self {
+        var subs: Vec<SubDiag> = Vec.new(allocator);
+        var hints: Vec<SubDiag> = Vec.new(allocator);
+        
+        return Self { mesg, subs, under, hints, loc };
+    }
+
+    pub inline fn add_hint(self: Self*, hint: SubDiag) {
+        self->hints.push(hint);
+    }
+
+    pub inline fn add_sub(self: Self*, sub: SubDiag) {
+        self->subs.push(sub);
+    }
+
+    pub fn free(self: Self*) {
+        self->mesg.free();
+
+        switch (self->under) {
+                case .Some(str) => str.free();
+        }
+        
+        for (var i: usize; i < self->subs.len(); i += 1) {
+            var sub = self->subs.get(i).unwrap();
+
+            sub.free();
+        }
+
+        for (var i: usize; i < self->hints.len(); i += 1) {
+            var hint = self->hints.get(i).unwrap();
+
+            hint.free();
+        }
+
+        self->subs.free();
+        self->hints.free();
+    }
+}
+
+pub enum SubDiagKind {
+    Hint,
+    Info
+}
+
+pub struct SubDiag {
+    pub kind: SubDiagKind,
+    pub mesg: String,
+    pub under: Option<String>,
+    pub loc: Loc,
+
+    pub fn new(
+        kind: SubDiagKind,
+        mesg: String,
+        under: Option<String>,
+        loc: Loc
+    ) Self {
+        return Self { kind, mesg, under, loc };
+    }
+    
+    pub fn free(self: Self*) {
+        self->mesg.free();
+
+        switch (self->under) {
+            case .Some(str) => str.free();
+        }
+    }
+}
+
+pub fn exit_with_compile_error(msg: const uint8*) {
     fprintf(stderr, "error: %s\n", msg);
     exit(.Failure);
 }

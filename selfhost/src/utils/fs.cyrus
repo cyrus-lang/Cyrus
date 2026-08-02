@@ -4,9 +4,16 @@ import std::string{String};
 import std::os{File};
 import std::path{Path};
 
-import diags{compile_error};
+import diags{exit_with_compile_error};
 
-pub fn read_file_content(const file_name: const uint8*) String {
+// FIXME: This function is not very efficient, as it reads the entire file into memory.
+// It would be better to read the file in chunks and append to a String,
+// but for now this is good enough.
+//
+// Also it exits program if something went wrong.
+// Which I'm looking for to replace it with a more resilient helper method
+// in the future.
+pub fn read_file_to_string_or_exit(const file_name: const uint8*) String {
     const allocator: Allocator = dynamic LibcAllocator.new();
 
     var path = Path.new(allocator, file_name);
@@ -16,7 +23,7 @@ pub fn read_file_content(const file_name: const uint8*) String {
     switch (File.open(&path, .Read)) {
         case .Value(_file) => file = _file;
         case .Error(_) => {
-            compile_error("failed to open source file");
+            exit_with_compile_error("failed to open source file");
             @unreachable();
         }
     }
@@ -27,7 +34,7 @@ pub fn read_file_content(const file_name: const uint8*) String {
     switch (result) {
         case .Value(content) => return content;
         case .Error(_) => {
-            compile_error("failed to read source file");
+            exit_with_compile_error("failed to read source file");
             @unreachable();
         }
     }

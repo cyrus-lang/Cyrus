@@ -13,7 +13,7 @@ pub struct File {
     file: c_file*,
     mode: OpeningModes,
     
-    pub fn open(const path: const Path*, const mode: OpeningModes) ErrorOr<Self, ErrorStr> {        
+    pub fn open(path: const Path*, mode: OpeningModes) ErrorOr<Self, ErrorStr> {        
         const path_str = path->as_string_const().as_str_const();
         const mode_str = mode.as_str();
 
@@ -67,7 +67,7 @@ pub struct File {
         return .Value(content);
     }
 
-    pub fn write(self: Self*, const content: const uint8*) ErrorOr<usize, ()> {
+    pub fn write(self: Self*, content: const uint8*) ErrorOr<usize, ()> {
         const content_len = libc::strlen(content);
 
         const bytes = libc::fwrite(content, 1, content_len, self->file);
@@ -78,7 +78,7 @@ pub struct File {
         return .Value(bytes);
     }
 
-    pub fn append(self: Self*, const content: const uint8*) ErrorOr<usize, ErrorStr> {
+    pub fn append(self: Self*, content: const uint8*) ErrorOr<usize, ErrorStr> {
         switch (self->mode) {
             case .Append | .AppendBinary | .AppendRead | .AppendReadBinary => {}
             default => { return .Error("file not opened in append mode"); }
@@ -99,7 +99,7 @@ pub struct File {
         return .Value(bytes);
     }
 
-    pub fn exists(const path: const Path*) bool {
+    pub fn exists(path: const Path*) bool {
         const path_str = path->as_string_const().as_str_const();
         const mode_str = OpeningModes.Read.as_str();
 
@@ -113,7 +113,7 @@ pub struct File {
         }
     }
 
-    pub fn rename(const old_path: const Path*, const new_path: const Path*) ErrorOr<(), ()> {
+    pub fn rename(old_path: const Path*, new_path: const Path*) ErrorOr<(), ()> {
         const old_path_str = old_path->as_string_const().as_str_const();
         const new_path_str = new_path->as_string_const().as_str_const();
 
@@ -148,7 +148,7 @@ pub enum OpeningModes {
     AppendRead,
     AppendReadBinary,
 
-    pub fn as_str(const self) const uint8* {
+    pub fn as_str(self: Self) const uint8* {
         switch (self) {
             case .Read => return "r";
             case .ReadBinary => return "rb";
@@ -171,7 +171,7 @@ pub enum FileSeek {
     Cur = 1,
     End = 2,
 
-    pub inline fn as_num(const self) int32 {
+    pub inline fn as_num(self: Self) int32 {
         return @cast(int32, self);
     }
 }
@@ -185,7 +185,7 @@ pub enum ExitStatusCode {
     AllocationError = 5,
     FileOperationError = 6,
     
-    pub fn as_num(const self) int32 {
+    pub fn as_num(self: Self) int32 {
         return @cast(int32, self);
     }
 }

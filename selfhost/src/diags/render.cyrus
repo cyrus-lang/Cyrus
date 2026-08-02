@@ -1,0 +1,145 @@
+import (
+    std::mem::libc{LibcAllocator},
+    std::io{Writer, StringWriter},
+    std::format{format_usize},
+    std::string{String},
+    std::mem{Allocator},
+);
+
+import (
+    diags{
+        DiagContext,
+        SubDiag,
+        Diag,
+    },
+    tokens{Loc}
+);
+
+pub struct CompilerDiagRender {
+    dctx: DiagContext,
+
+    pub fn new(dctx: DiagContext) Self {
+        return Self { dctx };
+    }
+
+    pub fn render(self: Self*) String {
+        const diags = self->dctx.diags();
+
+        const allocator: Allocator = dynamic LibcAllocator.new();
+        var out = String.new(allocator);
+
+        var writer: Writer = dynamic StringWriter.new(&out);
+
+        for (var i: usize = 0; i < diags->len(); i += 1) {
+            const diag = diags->get_ref(i).unwrap();
+
+            render_diag(writer, diag);
+        }
+
+        return out;
+    }
+}
+
+const PANEL_SPACE: uint16 = 5;
+
+fn render_diag(writer: Writer, diag: Diag*) {
+    // TODO: compute space
+    var space = PANEL_SPACE;
+
+    // FIXME: Mock data
+    render_header(writer, "./selfhost/src/main.cyrus", "something went wrong", diag->loc);
+    render_code(writer, "var x: int32 = 0; // FAKE CODE", diag->loc, space);
+
+    switch (diag->under) {
+        case .Some(str) => {
+            render_under(writer, str.as_str_const(), diag->loc, space);  
+        }
+    }
+
+    // FIXME: Mock data
+    render_subs(writer, diag);
+
+    render_pipe(writer, space);
+}
+
+fn render_sub(writer: Writer, sub: SubDiag*) {
+    const space = PANEL_SPACE;
+
+    render_code(writer, "var x: int32 = 0; // FAKE CODE", sub->loc, space);
+
+    switch (sub->under) {
+        case .Some(str) => {
+            render_under(writer, str.as_str_const(), sub->loc, space);  
+        }
+    }
+}
+
+fn render_header(
+    var writer: Writer,
+    file_path: const uint8*,
+    mesg: const uint8*,
+    loc: Loc
+) {
+    // TODO: writer.write(self->loc.file_id);
+    writer.write(file_path);
+    writer.write(":");
+    format_usize(writer, loc.line);
+    writer.write(":");
+    format_usize(writer, loc.col);
+    writer.write(": ");
+    writer.writeln(mesg);
+}
+
+fn render_code(
+    var writer: Writer,
+    code: const uint8*,
+    loc: Loc,
+    space: uint16
+) {
+    render_pipe(writer, space);
+    writer.write("\n");
+    writer.write(" ");
+    format_usize(writer, loc.line);
+    writer.write(" ~ ");
+    writer.writeln(code);
+
+    render_space(writer, space);
+    render_space(writer, loc.start);
+    render_mark(writer, loc.end - loc.start);
+    writer.write("\n");
+}
+
+fn render_under(writer: Writer, mesg: const uint8*, loc: Loc, space: uint16) {
+    render_space(writer, space);
+    render_space(writer, loc.start);
+    writer.write("! ");
+    writer.write(mesg);
+    writer.write("\n");
+}
+
+fn render_subs(writer: Writer, diag: Diag*) {
+    for (var i: usize; i < diag->subs.len(); i += 1) {
+        const sub = diag->subs.get_ref(i).unwrap();
+
+        render_sub(writer, sub);
+    }
+}
+
+inline fn render_mark<T>(writer: Writer, n: T) {
+    for (var i: usize; i < n; i += 1) {
+        writer.write("^");
+    }
+}
+
+inline fn render_pipe<T>(writer: Writer, n: T) {
+    for (var i: usize; i < n - 1; i += 1) {
+        writer.write(" ");
+    }
+    writer.write("|");
+}
+
+inline fn render_space<T>(writer: Writer, n: T) {
+    for (var i: usize; i < n; i += 1) {
+        writer.write(" ");
+    }
+}
