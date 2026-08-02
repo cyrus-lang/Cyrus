@@ -30,7 +30,7 @@ use inkwell::{
         },
         prelude::{LLVMBasicBlockRef, LLVMValueRef},
     },
-    types::{BasicTypeEnum, StructType},
+    types::{AnyType, BasicTypeEnum, StructType},
     values::{AsValueRef, BasicValue, BasicValueEnum, FunctionValue, InstructionOpcode, IntValue},
 };
 use inkwell::{
@@ -442,7 +442,10 @@ impl<'ll> CodeGenIRBuilder<'ll> {
                 if let CIRPattern::Value(expr) = pattern {
                     let pattern_lvalue = self.emit_expr(expr, &None);
                     let pattern_rvalue = self.load_rvalue(pattern_lvalue);
-                    let pattern_int_value = pattern_rvalue.as_basic_value().into_int_value();
+
+                    let pattern_int_value = self
+                        .emit_cast(rvalue.as_basic_value().get_type().as_any_type_enum(), pattern_rvalue)
+                        .into_int_value();
 
                     unsafe {
                         LLVMAddCase(
