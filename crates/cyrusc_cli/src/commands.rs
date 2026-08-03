@@ -6,8 +6,9 @@ use cyrusc_codegen_llvm::CodeGenLLVM;
 use cyrusc_compiler::codegen_traits::CodeGenBackend;
 use cyrusc_compiler::driver::{
     build_compilation_bundle, build_semantic_bundle, create_compiler_context, get_assembly_dir_output_path,
-    get_bitcode_dir_output_path, get_executable_output_path, get_final_build_directory_path, get_llvm_dir_output_path,
-    get_object_dir_output_path, get_shared_lib_dir_output_path, get_static_lib_dir_output_path,
+    get_bitcode_dir_output_path, get_cir_dump_output_path, get_executable_output_path, get_final_build_directory_path,
+    get_llvm_dir_output_path, get_object_dir_output_path, get_shared_lib_dir_output_path,
+    get_static_lib_dir_output_path,
 };
 use cyrusc_compiler::object_file_info::ObjectFileInfo;
 use cyrusc_diagcentral::exit_with_msg;
@@ -266,8 +267,7 @@ pub(crate) fn command_emit_cir_dump(
 ) {
     let bundle = build_compilation_bundle(&mut opts, file_path);
 
-    let output_path_opt = output_path_opt.map(|path| Path::new(&path).to_path_buf());
-    let output_path = get_executable_output_path(&opts, &bundle.build_dir, &bundle.entry_file, output_path_opt);
+    let output_path = get_cir_dump_output_path(&bundle.build_dir, &output_path_opt);
 
     ensure_output_dir(&output_path);
 
