@@ -277,6 +277,10 @@ impl<'a> AnalysisContext<'a> {
         for stmt in &mut body.stmts {
             self.specialize_stmt(stmt, decl_map);
         }
+
+        for defer in &mut body.defers {
+            self.specialize_stmt(&mut defer.operand, decl_map);
+        }
     }
 
     fn specialize_var_stmt(&self, var_stmt: &mut TypedVarStmt, decl_map: &DeclMap) {
