@@ -1,7 +1,9 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 The Cyrus Language
 
+import std::option{Option};
+
 pub interface Iterator<T> {
-    fn next(self: Self*) T*;
-    fn next_const(self: Self*) const T*;
+    fn next(self: Self*) Option<T*>;
+    fn next_const(self: const Self*) Option<const T*>;
 }
