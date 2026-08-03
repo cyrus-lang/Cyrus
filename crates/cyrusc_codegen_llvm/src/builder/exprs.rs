@@ -685,36 +685,19 @@ impl<'ll> CodeGenIRBuilder<'ll> {
                     self.emit_cmp(lhs_rvalue, rhs_rvalue, IntPredicate::UGE, FloatPredicate::OGE)
                 }
             }
+
+            InfixOperator::And => self.emit_short_circuit_and(lhs_rvalue, rhs_rvalue),
+            InfixOperator::Or => self.emit_short_circuit_or(lhs_rvalue, rhs_rvalue),
+
             InfixOperator::Equal => self.emit_cmp_eq(lhs_rvalue, rhs_rvalue),
             InfixOperator::NotEqual => self.emit_cmp_neq(lhs_rvalue, rhs_rvalue),
-            InfixOperator::Or => self.emit_logical_or(lhs_rvalue, rhs_rvalue),
-            InfixOperator::NullCoalesce => self.emit_null_coalesce_operator(lhs_rvalue, rhs_rvalue),
-            InfixOperator::And => self.emit_logical_and(lhs_rvalue, rhs_rvalue),
             InfixOperator::BitwiseAnd => self.emit_bitwise_and(lhs_rvalue, rhs_rvalue),
             InfixOperator::BitwiseOr => self.emit_bitwise_or(lhs_rvalue, rhs_rvalue),
             InfixOperator::BitwiseXor => self.emit_xor(lhs_rvalue, rhs_rvalue),
             InfixOperator::BitwiseAndNot => self.emit_bitwise_and_not(lhs_rvalue, rhs_rvalue),
             InfixOperator::ShiftLeft => self.emit_shift_left(lhs_rvalue, rhs_rvalue),
             InfixOperator::ShiftRight => self.emit_shift_right(lhs_rvalue, rhs_rvalue),
-        }
-    }
-
-    fn emit_logical_or(&self, lhs_rvalue: InternalValue<'ll>, rhs_rvalue: InternalValue<'ll>) -> InternalValue<'ll> {
-        match (lhs_rvalue.as_basic_value(), rhs_rvalue.as_basic_value()) {
-            (BasicValueEnum::IntValue(mut lhs), BasicValueEnum::IntValue(mut rhs)) => {
-                if lhs_rvalue.ty.is_bool() || rhs_rvalue.ty.is_bool() {
-                    lhs = self.int_value_as_bool_i1(lhs);
-                    rhs = self.int_value_as_bool_i1(rhs);
-                }
-
-                let or_value = self.llvmbuilder.build_or(lhs, rhs, "lor").unwrap();
-
-                InternalValue::new(
-                    CIRType::Plain(PlainType::Bool),
-                    InternalValueKind::RValue(or_value.into()),
-                )
-            }
-            _ => unreachable!(),
+            InfixOperator::NullCoalesce => self.emit_null_coalesce_operator(lhs_rvalue, rhs_rvalue),
         }
     }
 
@@ -752,23 +735,100 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         )
     }
 
-    fn emit_logical_and(&self, lhs_rvalue: InternalValue<'ll>, rhs_rvalue: InternalValue<'ll>) -> InternalValue<'ll> {
-        match (lhs_rvalue.as_basic_value(), rhs_rvalue.as_basic_value()) {
-            (BasicValueEnum::IntValue(mut lhs), BasicValueEnum::IntValue(mut rhs)) => {
-                if lhs_rvalue.ty.is_bool() || rhs_rvalue.ty.is_bool() {
-                    lhs = self.int_value_as_bool_i1(lhs);
-                    rhs = self.int_value_as_bool_i1(rhs);
-                }
+    fn emit_short_circuit_and(&mut self, lhs: InternalValue<'ll>, rhs: InternalValue<'ll>) -> InternalValue<'ll> {
+        let cur_fn = self.cur_func.unwrap();
 
-                let and_value = self.llvmbuilder.build_and(lhs, rhs, "land").unwrap();
+        let cont_block = self.llvm_ctx.append_basic_block(cur_fn, "and_cont");
+        let rhs_block = self.llvm_ctx.append_basic_block(cur_fn, "and_rhs");
+        let false_block = self.llvm_ctx.append_basic_block(cur_fn, "and_false");
 
-                InternalValue::new(
-                    CIRType::Plain(PlainType::Bool),
-                    InternalValueKind::RValue(and_value.into()),
-                )
+        let lhs_bool = self.int_value_as_bool_i1(lhs.as_basic_value().into_int_value());
+
+        // if LHS is false, skip RHS
+        self.llvmbuilder
+            .build_conditional_branch(lhs_bool, rhs_block, false_block)
+            .unwrap();
+
+        // RHS only evaluated if LHS was true
+        self.emit_block(rhs_block);
+        let rhs_bool = self.int_value_as_bool_i1(rhs.as_basic_value().into_int_value());
+        if let Some(cur_block) = &self.blockreg.cur_block {
+            if cur_block.get_terminator().is_none() {
+                self.llvmbuilder.build_unconditional_branch(cont_block).unwrap();
             }
-            _ => unreachable!(),
         }
+
+        // result is false
+        self.emit_block(false_block);
+        let false_value = self.llvm_ctx.bool_type().const_int(0, false);
+        if let Some(cur_block) = &self.blockreg.cur_block {
+            if cur_block.get_terminator().is_none() {
+                self.llvmbuilder.build_unconditional_branch(cont_block).unwrap();
+            }
+        }
+
+        self.emit_block(cont_block);
+        let phi = self
+            .llvmbuilder
+            .build_phi(self.llvm_ctx.bool_type(), "and_result")
+            .unwrap();
+        phi.add_incoming(&[
+            (&rhs_bool.as_basic_value_enum(), rhs_block),
+            (&false_value.as_basic_value_enum(), false_block),
+        ]);
+
+        InternalValue::new(
+            CIRType::Plain(PlainType::Bool),
+            InternalValueKind::RValue(phi.as_basic_value().into()),
+        )
+    }
+
+    fn emit_short_circuit_or(&mut self, lhs: InternalValue<'ll>, rhs: InternalValue<'ll>) -> InternalValue<'ll> {
+        let cur_fn = self.cur_func.unwrap();
+
+        let cont_block = self.llvm_ctx.append_basic_block(cur_fn, "or_cont");
+        let rhs_block = self.llvm_ctx.append_basic_block(cur_fn, "or_rhs");
+        let true_block = self.llvm_ctx.append_basic_block(cur_fn, "or_true");
+
+        let lhs_bool = self.int_value_as_bool_i1(lhs.as_basic_value().into_int_value());
+
+        // if LHS is true, skip RHS entirely
+        self.llvmbuilder
+            .build_conditional_branch(lhs_bool, true_block, rhs_block)
+            .unwrap();
+
+        // RHS only evaluated if LHS was false
+        self.emit_block(rhs_block);
+        let rhs_bool = self.int_value_as_bool_i1(rhs.as_basic_value().into_int_value());
+        if let Some(cur_block) = &self.blockreg.cur_block {
+            if cur_block.get_terminator().is_none() {
+                self.llvmbuilder.build_unconditional_branch(cont_block).unwrap();
+            }
+        }
+
+        // result is true
+        self.emit_block(true_block);
+        let true_value = self.llvm_ctx.bool_type().const_int(1, false);
+        if let Some(cur_block) = &self.blockreg.cur_block {
+            if cur_block.get_terminator().is_none() {
+                self.llvmbuilder.build_unconditional_branch(cont_block).unwrap();
+            }
+        }
+
+        self.emit_block(cont_block);
+        let phi = self
+            .llvmbuilder
+            .build_phi(self.llvm_ctx.bool_type(), "or_result")
+            .unwrap();
+        phi.add_incoming(&[
+            (&rhs_bool.as_basic_value_enum(), rhs_block),
+            (&true_value.as_basic_value_enum(), true_block),
+        ]);
+
+        InternalValue::new(
+            CIRType::Plain(PlainType::Bool),
+            InternalValueKind::RValue(phi.as_basic_value().into()),
+        )
     }
 
     fn emit_xor(&self, lhs_rvalue: InternalValue<'ll>, rhs_rvalue: InternalValue<'ll>) -> InternalValue<'ll> {
@@ -789,7 +849,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         match (lhs_rvalue.as_basic_value(), rhs_rvalue.as_basic_value()) {
             (BasicValueEnum::IntValue(lhs), BasicValueEnum::IntValue(rhs)) => {
                 let and_value = self.llvmbuilder.build_and(lhs, rhs, "xor").unwrap();
-                
+
                 InternalValue::new(
                     CIRType::Plain(PlainType::Bool),
                     InternalValueKind::RValue(and_value.into()),
@@ -943,7 +1003,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
             (BasicValueEnum::IntValue(lhs), BasicValueEnum::IntValue(rhs)) => {
                 if self.profile == cyrusc_internal::compiler_options::CompilerOption_Profile::Debug {
                     let is_signed = lhs_rvalue.ty.is_signed_integer();
-                    
+
                     self.emit_checked_int_op("add", lhs, rhs, is_signed, lhs_rvalue.ty.clone(), loc)
                 } else {
                     let basic_value =
