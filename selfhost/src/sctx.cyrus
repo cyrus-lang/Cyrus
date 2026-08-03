@@ -1,0 +1,10 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 The Cyrus Language
+
+pub type FileId = usize;
+
+pub struct SourceContext {
+
+    next_id: usize,
+
+}

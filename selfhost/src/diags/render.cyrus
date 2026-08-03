@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 The Cyrus Language
+
 import (
     std::mem::libc{LibcAllocator},
     std::io{Writer, StringWriter},
@@ -21,10 +24,17 @@ const MIN_PANEL_SPACE: uint32 = 5;
 
 pub struct CompilerDiagRender {
     dctx: DiagContext,
+    writer: Writer,
+    out: String,
     // sctx: SourceContext,
 
     pub fn new(dctx: DiagContext) Self {
-        return Self { dctx };
+        const allocator: Allocator = dynamic LibcAllocator.new();
+        var out = String.new(allocator);
+
+        var writer: Writer = dynamic StringWriter.new(&out);
+
+        return Self { dctx, writer, out };
     }
 
     pub fn render(self: Self*) String {
@@ -32,22 +42,17 @@ pub struct CompilerDiagRender {
 
         const space = self->panel_space();
 
-        const allocator: Allocator = dynamic LibcAllocator.new();
-        var out = String.new(allocator);
-
-        var writer: Writer = dynamic StringWriter.new(&out);
-
         for (var i: usize = 0; i < diags->len(); i += 1) {
             const diag = diags->get_ref(i).unwrap();
 
-            render_diag(writer, diag, space);
+            self->render_diag(diag, space);
 
             if (i < diags->len() - 1) {
-                writer.write("\n\n");
+                self->writer.write("\n\n");
             }
         }
 
-        return out;
+        return self->out;
     }
 
     pub fn panel_space(self: const Self*) uint32 {
@@ -79,109 +84,108 @@ pub struct CompilerDiagRender {
         // for the pipe and the space before it
         return max_space + 2;
     }
-}
+    
+    fn render_diag(self: Self*, diag: Diag*, space: uint32) {
+        // FIXME: Mock data
+        self->render_header("./selfhost/src/main.cyrus", "something went wrong", diag->loc);
+        self->render_code("var x: int32 = 0; // FAKE CODE", diag->loc, space);
 
-fn render_diag(writer: Writer, diag: Diag*, space: uint32) {
-    // FIXME: Mock data
-    render_header(writer, "./selfhost/src/main.cyrus", "something went wrong", diag->loc);
-    render_code(writer, "var x: int32 = 0; // FAKE CODE", diag->loc, space);
+        switch (diag->under) {
+            case .Some(str) => {
+                self->render_under(str.as_str_const(), diag->loc, space);  
+            }
+        }
 
-    switch (diag->under) {
-        case .Some(str) => {
-            render_under(writer, str.as_str_const(), diag->loc, space);  
+        self->render_subs(diag, space);
+        self->render_pipe(space);
+    }
+
+    fn render_sub(self: Self*, sub: SubDiag*, space: uint32) {
+        // FIXME: Mock data
+        self->render_code("var x: int32 = 0; // FAKE CODE", sub->loc, space);
+
+        switch (sub->under) {
+            case .Some(str) => {
+                self->render_under(str.as_str_const(), sub->loc, space);  
+            }
         }
     }
 
-    // FIXME: Mock data
-    render_subs(writer, diag, space);
-    render_pipe(writer, space);
-}
+    fn render_header(
+        self: Self*,
+        file_path: const uint8*,
+        mesg: const uint8*,
+        loc: Loc
+    ) {
+        self->writer.write(file_path);
+        self->writer.write(":");
+        format_usize(self->writer, loc.line);
+        self->writer.write(":");
+        format_usize(self->writer, loc.col);
+        self->writer.write(": ");
+        self->writer.writeln(mesg);
+    }
 
-fn render_sub(writer: Writer, sub: SubDiag*, space: uint32) {
-    render_code(writer, "var x: int32 = 0; // FAKE CODE", sub->loc, space);
+    fn render_code(
+        self: Self*,
+        code: const uint8*,
+        loc: Loc,
+        space: uint32
+    ) {
+        self->render_pipe(space);
+        self->writer.write("\n");
 
-    switch (sub->under) {
-        case .Some(str) => {
-            render_under(writer, str.as_str_const(), sub->loc, space);  
+        const offset = (space - line_digits(loc.line)) - 2;
+
+        self->render_space(offset);
+        format_usize(self->writer, loc.line);
+
+        self->writer.write(" ~ ");
+        self->writer.writeln(code);
+
+        self->render_space(space);
+        self->render_space(loc.start);
+        self->render_mark(loc.end - loc.start);
+        self->writer.write("\n");
+    }
+
+    fn render_under(self: Self*, mesg: const uint8*, loc: Loc, space: uint32) {
+        self->render_space(space);
+        self->render_space(loc.start);
+        self->writer.write("! ");
+        self->writer.write(mesg);
+        self->writer.write("\n");
+    }
+
+    fn render_subs(self: Self*, diag: Diag*, space: uint32) {
+        for (var i: usize; i < diag->subs.len(); i += 1) {
+            const sub = diag->subs.get_ref(i).unwrap();
+
+            self->render_sub(sub, space);
+        }
+    }
+
+    inline fn render_mark<T>(self: Self*, n: T) {
+        for (var i: usize; i < n; i += 1) {
+            self->writer.write("^");
+        }
+    }
+
+    inline fn render_pipe<T>(self: Self*, n: T) {
+        for (var i: usize; i < n - 1; i += 1) {
+            self->writer.write(" ");
+        }
+        self->writer.write("|");
+    }
+
+    inline fn render_space<T>(self: Self*, n: T) {
+        for (var i: usize; i < n; i += 1) {
+            self->writer.write(" ");
         }
     }
 }
 
-fn render_header(
-    var writer: Writer,
-    file_path: const uint8*,
-    mesg: const uint8*,
-    loc: Loc
-) {
-    // TODO: writer.write(self->loc.file_id);
-    writer.write(file_path);
-    writer.write(":");
-    format_usize(writer, loc.line);
-    writer.write(":");
-    format_usize(writer, loc.col);
-    writer.write(": ");
-    writer.writeln(mesg);
-}
-
-fn render_code(
-    var writer: Writer,
-    code: const uint8*,
-    loc: Loc,
-    space: uint32
-) {
-    render_pipe(writer, space);
-    writer.write("\n");
-
-    const offset = (space - line_digits(loc.line)) - 2;
-
-    render_space(writer, offset);
-    format_usize(writer, loc.line);
-
-    writer.write(" ~ ");
-    writer.writeln(code);
-
-    render_space(writer, space);
-    render_space(writer, loc.start);
-    render_mark(writer, loc.end - loc.start);
-    writer.write("\n");
-}
-
-fn render_under(writer: Writer, mesg: const uint8*, loc: Loc, space: uint32) {
-    render_space(writer, space);
-    render_space(writer, loc.start);
-    writer.write("! ");
-    writer.write(mesg);
-    writer.write("\n");
-}
-
-fn render_subs(writer: Writer, diag: Diag*, space: uint32) {
-    for (var i: usize; i < diag->subs.len(); i += 1) {
-        const sub = diag->subs.get_ref(i).unwrap();
-
-        render_sub(writer, sub, space);
-    }
-}
-
-inline fn render_mark<T>(writer: Writer, n: T) {
-    for (var i: usize; i < n; i += 1) {
-        writer.write("^");
-    }
-}
-
-inline fn render_pipe<T>(writer: Writer, n: T) {
-    for (var i: usize; i < n - 1; i += 1) {
-        writer.write(" ");
-    }
-    writer.write("|");
-}
-
-inline fn render_space<T>(writer: Writer, n: T) {
-    for (var i: usize; i < n; i += 1) {
-        writer.write(" ");
-    }
-}
-
-inline fn line_space(var line: usize) uint32 {
+inline fn line_space(line: usize) uint32 {
     const i = line_digits(line);
 
     if (i < MIN_PANEL_SPACE) {
