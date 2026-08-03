@@ -1479,21 +1479,13 @@ impl<'a> CIRLower<'a> {
         for (_, &method_decl_id) in methods.iter() {
             let method_decl = self.decl_tables.method_decl(method_decl_id);
 
-            let method_def = {
-                // when a method achieve to this point it means object is not generic,
-                // but method is.
-                if method_decl.func_decl.is_generic() {
-                    if let Some(stmt) = self.lower_monomorphized_method_def(method_decl_id).first() {
-                        stmt.clone()
-                    } else {
-                        continue;
-                    }
-                } else {
-                    self.lower_method(method_decl_id, &method_decl, &object_name).unwrap()
-                }
-            };
-
-            stmts.push(method_def);
+            // when a method achieve to this point it means object is not generic,
+            // but method is.
+            if method_decl.func_decl.is_generic() {
+                stmts.extend(self.lower_monomorphized_method_def(method_decl_id));
+            } else {
+                stmts.push(self.lower_method(method_decl_id, &method_decl, &object_name).unwrap());
+            }
         }
 
         stmts
