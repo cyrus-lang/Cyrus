@@ -3,7 +3,7 @@
 
 import std::option{Option};
 
-pub fn checked_add<T>(const a: T, const b: T) Option<T> {
+pub fn checked_add<T>(a: T, b: T) Option<T> {
     const is_signed = @cast(T, -1) < @cast(T, 0);
 
     if (is_signed) {
@@ -25,7 +25,7 @@ pub fn checked_add<T>(const a: T, const b: T) Option<T> {
     return .Some(a + b);
 }
 
-pub fn checked_sub<T>(const a: T, const b: T) Option<T> {
+pub fn checked_sub<T>(a: T, b: T) Option<T> {
     const is_signed = @cast(T, -1) < @cast(T, 0);
 
     if (is_signed) {
@@ -47,7 +47,7 @@ pub fn checked_sub<T>(const a: T, const b: T) Option<T> {
     return .Some(a - b);
 }
 
-pub fn checked_mul<T>(const a: T, const b: T) Option<T> {
+pub fn checked_mul<T>(a: T, b: T) Option<T> {
     const is_signed = @cast(T, -1) < @cast(T, 0);
 
     if (is_signed) {

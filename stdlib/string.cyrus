@@ -8,8 +8,6 @@ import std::option{Option};
 import std::mem{Allocator};
 import std::slices{Slice};
 
-import std::libc{printf};
-
 pub struct String {
     vec: Vec<uint8>,
 
