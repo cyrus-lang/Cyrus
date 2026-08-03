@@ -639,65 +639,73 @@ impl<'ll> CodeGenIRBuilder<'ll> {
     }
 
     fn emit_infix_expr(&mut self, infix_expr: &CIRInfixExpr, loc: Loc) -> InternalValue<'ll> {
-        let lhs_lvalue = self.emit_expr(&infix_expr.lhs, &None);
-        let rhs_lvalue = self.emit_expr(&infix_expr.rhs, &None);
-
-        let mut lhs_rvalue = self.load_rvalue(lhs_lvalue.clone());
-        let mut rhs_rvalue = self.load_rvalue(rhs_lvalue.clone());
-
-        if lhs_rvalue.ty.is_integer() && rhs_rvalue.ty.is_integer() {
-            (lhs_rvalue, rhs_rvalue) = self.widen_int_pair(lhs_rvalue, rhs_rvalue);
-        }
-
-        let get_signed = || rhs_rvalue.ty.as_plain().unwrap().is_signed();
-
         match infix_expr.op {
-            InfixOperator::Add => self.emit_add(lhs_rvalue, rhs_rvalue, loc),
-            InfixOperator::Sub => self.emit_sub(lhs_rvalue, rhs_rvalue, loc),
-            InfixOperator::Mul => self.emit_mul(lhs_rvalue, rhs_rvalue, loc),
-            InfixOperator::Div => self.emit_div(lhs_rvalue, rhs_rvalue),
-            InfixOperator::Rem => self.emit_rem(lhs_rvalue, rhs_rvalue),
-            InfixOperator::LessThan => {
-                if get_signed() {
-                    self.emit_cmp(lhs_rvalue, rhs_rvalue, IntPredicate::SLT, FloatPredicate::OLT)
-                } else {
-                    self.emit_cmp(lhs_rvalue, rhs_rvalue, IntPredicate::ULT, FloatPredicate::OLT)
-                }
+            InfixOperator::And => {
+                return self.emit_short_circuit_and(&infix_expr.lhs, &infix_expr.rhs);
             }
-            InfixOperator::LessEqual => {
-                if get_signed() {
-                    self.emit_cmp(lhs_rvalue, rhs_rvalue, IntPredicate::SLE, FloatPredicate::OLE)
-                } else {
-                    self.emit_cmp(lhs_rvalue, rhs_rvalue, IntPredicate::ULE, FloatPredicate::OLE)
-                }
+            InfixOperator::Or => {
+                return self.emit_short_circuit_or(&infix_expr.lhs, &infix_expr.rhs);
             }
-            InfixOperator::GreaterThan => {
-                if get_signed() {
-                    self.emit_cmp(lhs_rvalue, rhs_rvalue, IntPredicate::SGT, FloatPredicate::OGT)
-                } else {
-                    self.emit_cmp(lhs_rvalue, rhs_rvalue, IntPredicate::UGT, FloatPredicate::OGT)
-                }
-            }
-            InfixOperator::GreaterEqual => {
-                if get_signed() {
-                    self.emit_cmp(lhs_rvalue, rhs_rvalue, IntPredicate::SGE, FloatPredicate::OGE)
-                } else {
-                    self.emit_cmp(lhs_rvalue, rhs_rvalue, IntPredicate::UGE, FloatPredicate::OGE)
-                }
-            }
+            _ => {
+                let lhs_lvalue = self.emit_expr(&infix_expr.lhs, &None);
+                let rhs_lvalue = self.emit_expr(&infix_expr.rhs, &None);
 
-            InfixOperator::And => self.emit_short_circuit_and(lhs_rvalue, rhs_rvalue),
-            InfixOperator::Or => self.emit_short_circuit_or(lhs_rvalue, rhs_rvalue),
+                let mut lhs_rvalue = self.load_rvalue(lhs_lvalue.clone());
+                let mut rhs_rvalue = self.load_rvalue(rhs_lvalue.clone());
 
-            InfixOperator::Equal => self.emit_cmp_eq(lhs_rvalue, rhs_rvalue),
-            InfixOperator::NotEqual => self.emit_cmp_neq(lhs_rvalue, rhs_rvalue),
-            InfixOperator::BitwiseAnd => self.emit_bitwise_and(lhs_rvalue, rhs_rvalue),
-            InfixOperator::BitwiseOr => self.emit_bitwise_or(lhs_rvalue, rhs_rvalue),
-            InfixOperator::BitwiseXor => self.emit_xor(lhs_rvalue, rhs_rvalue),
-            InfixOperator::BitwiseAndNot => self.emit_bitwise_and_not(lhs_rvalue, rhs_rvalue),
-            InfixOperator::ShiftLeft => self.emit_shift_left(lhs_rvalue, rhs_rvalue),
-            InfixOperator::ShiftRight => self.emit_shift_right(lhs_rvalue, rhs_rvalue),
-            InfixOperator::NullCoalesce => self.emit_null_coalesce_operator(lhs_rvalue, rhs_rvalue),
+                if lhs_rvalue.ty.is_integer() && rhs_rvalue.ty.is_integer() {
+                    (lhs_rvalue, rhs_rvalue) = self.widen_int_pair(lhs_rvalue, rhs_rvalue);
+                }
+
+                let get_signed = || rhs_rvalue.ty.as_plain().unwrap().is_signed();
+
+                match infix_expr.op {
+                    InfixOperator::And | InfixOperator::Or => unreachable!(),
+
+                    InfixOperator::Add => self.emit_add(lhs_rvalue, rhs_rvalue, loc),
+                    InfixOperator::Sub => self.emit_sub(lhs_rvalue, rhs_rvalue, loc),
+                    InfixOperator::Mul => self.emit_mul(lhs_rvalue, rhs_rvalue, loc),
+                    InfixOperator::Div => self.emit_div(lhs_rvalue, rhs_rvalue),
+                    InfixOperator::Rem => self.emit_rem(lhs_rvalue, rhs_rvalue),
+                    InfixOperator::LessThan => {
+                        if get_signed() {
+                            self.emit_cmp(lhs_rvalue, rhs_rvalue, IntPredicate::SLT, FloatPredicate::OLT)
+                        } else {
+                            self.emit_cmp(lhs_rvalue, rhs_rvalue, IntPredicate::ULT, FloatPredicate::OLT)
+                        }
+                    }
+                    InfixOperator::LessEqual => {
+                        if get_signed() {
+                            self.emit_cmp(lhs_rvalue, rhs_rvalue, IntPredicate::SLE, FloatPredicate::OLE)
+                        } else {
+                            self.emit_cmp(lhs_rvalue, rhs_rvalue, IntPredicate::ULE, FloatPredicate::OLE)
+                        }
+                    }
+                    InfixOperator::GreaterThan => {
+                        if get_signed() {
+                            self.emit_cmp(lhs_rvalue, rhs_rvalue, IntPredicate::SGT, FloatPredicate::OGT)
+                        } else {
+                            self.emit_cmp(lhs_rvalue, rhs_rvalue, IntPredicate::UGT, FloatPredicate::OGT)
+                        }
+                    }
+                    InfixOperator::GreaterEqual => {
+                        if get_signed() {
+                            self.emit_cmp(lhs_rvalue, rhs_rvalue, IntPredicate::SGE, FloatPredicate::OGE)
+                        } else {
+                            self.emit_cmp(lhs_rvalue, rhs_rvalue, IntPredicate::UGE, FloatPredicate::OGE)
+                        }
+                    }
+                    InfixOperator::Equal => self.emit_cmp_eq(lhs_rvalue, rhs_rvalue),
+                    InfixOperator::NotEqual => self.emit_cmp_neq(lhs_rvalue, rhs_rvalue),
+                    InfixOperator::BitwiseAnd => self.emit_bitwise_and(lhs_rvalue, rhs_rvalue),
+                    InfixOperator::BitwiseOr => self.emit_bitwise_or(lhs_rvalue, rhs_rvalue),
+                    InfixOperator::BitwiseXor => self.emit_xor(lhs_rvalue, rhs_rvalue),
+                    InfixOperator::BitwiseAndNot => self.emit_bitwise_and_not(lhs_rvalue, rhs_rvalue),
+                    InfixOperator::ShiftLeft => self.emit_shift_left(lhs_rvalue, rhs_rvalue),
+                    InfixOperator::ShiftRight => self.emit_shift_right(lhs_rvalue, rhs_rvalue),
+                    InfixOperator::NullCoalesce => self.emit_null_coalesce_operator(lhs_rvalue, rhs_rvalue),
+                }
+            }
         }
     }
 
@@ -735,99 +743,125 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         )
     }
 
-    fn emit_short_circuit_and(&mut self, lhs: InternalValue<'ll>, rhs: InternalValue<'ll>) -> InternalValue<'ll> {
+    fn emit_short_circuit_and(&mut self, lhs_expr: &CIRExpr, rhs_expr: &CIRExpr) -> InternalValue<'ll> {
         let cur_fn = self.cur_func.unwrap();
 
         let cont_block = self.llvm_ctx.append_basic_block(cur_fn, "and_cont");
         let rhs_block = self.llvm_ctx.append_basic_block(cur_fn, "and_rhs");
         let false_block = self.llvm_ctx.append_basic_block(cur_fn, "and_false");
 
-        let lhs_bool = self.int_value_as_bool_i1(lhs.as_basic_value().into_int_value());
-
-        // if LHS is false, skip RHS
-        self.llvmbuilder
-            .build_conditional_branch(lhs_bool, rhs_block, false_block)
+        let result_alloca = self
+            .llvmbuilder
+            .build_alloca(self.llvm_ctx.bool_type(), "and_result_storage")
             .unwrap();
 
-        // RHS only evaluated if LHS was true
-        self.emit_block(rhs_block);
-        let rhs_bool = self.int_value_as_bool_i1(rhs.as_basic_value().into_int_value());
+        let lhs_lvalue = self.emit_expr(lhs_expr, &None);
+        let lhs_rvalue = self.load_rvalue(lhs_lvalue);
+        let lhs_bool = self.int_value_as_bool_i1(lhs_rvalue.as_basic_value().into_int_value());
+
         if let Some(cur_block) = &self.blockreg.cur_block {
             if cur_block.get_terminator().is_none() {
+                self.blockreg.cur_block = None;
+                self.llvmbuilder
+                    .build_conditional_branch(lhs_bool, rhs_block, false_block)
+                    .unwrap();
+            }
+        }
+
+        self.emit_block(false_block);
+        let false_value = self.llvm_ctx.bool_type().const_int(0, false);
+        self.llvmbuilder.build_store(result_alloca, false_value).unwrap();
+        if let Some(cur_block) = &self.blockreg.cur_block {
+            if cur_block.get_terminator().is_none() {
+                self.blockreg.cur_block = None;
                 self.llvmbuilder.build_unconditional_branch(cont_block).unwrap();
             }
         }
 
-        // result is false
-        self.emit_block(false_block);
-        let false_value = self.llvm_ctx.bool_type().const_int(0, false);
+        self.emit_block(rhs_block);
+        let rhs_lvalue = self.emit_expr(rhs_expr, &None);
+        let rhs_rvalue = self.load_rvalue(rhs_lvalue);
+        let rhs_bool = self.int_value_as_bool_i1(rhs_rvalue.as_basic_value().into_int_value());
+
+        self.llvmbuilder.build_store(result_alloca, rhs_bool).unwrap();
+
         if let Some(cur_block) = &self.blockreg.cur_block {
             if cur_block.get_terminator().is_none() {
+                self.blockreg.cur_block = None;
                 self.llvmbuilder.build_unconditional_branch(cont_block).unwrap();
             }
         }
 
         self.emit_block(cont_block);
-        let phi = self
+        let result = self
             .llvmbuilder
-            .build_phi(self.llvm_ctx.bool_type(), "and_result")
+            .build_load(self.llvm_ctx.bool_type(), result_alloca, "and_result")
             .unwrap();
-        phi.add_incoming(&[
-            (&rhs_bool.as_basic_value_enum(), rhs_block),
-            (&false_value.as_basic_value_enum(), false_block),
-        ]);
 
         InternalValue::new(
             CIRType::Plain(PlainType::Bool),
-            InternalValueKind::RValue(phi.as_basic_value().into()),
+            InternalValueKind::RValue(result.into()),
         )
     }
 
-    fn emit_short_circuit_or(&mut self, lhs: InternalValue<'ll>, rhs: InternalValue<'ll>) -> InternalValue<'ll> {
+    fn emit_short_circuit_or(&mut self, lhs_expr: &CIRExpr, rhs_expr: &CIRExpr) -> InternalValue<'ll> {
         let cur_fn = self.cur_func.unwrap();
 
         let cont_block = self.llvm_ctx.append_basic_block(cur_fn, "or_cont");
         let rhs_block = self.llvm_ctx.append_basic_block(cur_fn, "or_rhs");
         let true_block = self.llvm_ctx.append_basic_block(cur_fn, "or_true");
 
-        let lhs_bool = self.int_value_as_bool_i1(lhs.as_basic_value().into_int_value());
-
-        // if LHS is true, skip RHS entirely
-        self.llvmbuilder
-            .build_conditional_branch(lhs_bool, true_block, rhs_block)
+        let result_alloca = self
+            .llvmbuilder
+            .build_alloca(self.llvm_ctx.bool_type(), "or_result_storage")
             .unwrap();
 
-        // RHS only evaluated if LHS was false
-        self.emit_block(rhs_block);
-        let rhs_bool = self.int_value_as_bool_i1(rhs.as_basic_value().into_int_value());
+        let lhs_lvalue = self.emit_expr(lhs_expr, &None);
+        let lhs_rvalue = self.load_rvalue(lhs_lvalue);
+        let lhs_bool = self.int_value_as_bool_i1(lhs_rvalue.as_basic_value().into_int_value());
+
         if let Some(cur_block) = &self.blockreg.cur_block {
             if cur_block.get_terminator().is_none() {
+                self.blockreg.cur_block = None;
+                self.llvmbuilder
+                    .build_conditional_branch(lhs_bool, true_block, rhs_block)
+                    .unwrap();
+            }
+        }
+
+        self.emit_block(true_block);
+        let true_value = self.llvm_ctx.bool_type().const_int(1, false);
+        self.llvmbuilder.build_store(result_alloca, true_value).unwrap();
+        if let Some(cur_block) = &self.blockreg.cur_block {
+            if cur_block.get_terminator().is_none() {
+                self.blockreg.cur_block = None;
                 self.llvmbuilder.build_unconditional_branch(cont_block).unwrap();
             }
         }
 
-        // result is true
-        self.emit_block(true_block);
-        let true_value = self.llvm_ctx.bool_type().const_int(1, false);
+        self.emit_block(rhs_block);
+        let rhs_lvalue = self.emit_expr(rhs_expr, &None);
+        let rhs_rvalue = self.load_rvalue(rhs_lvalue);
+        let rhs_bool = self.int_value_as_bool_i1(rhs_rvalue.as_basic_value().into_int_value());
+
+        self.llvmbuilder.build_store(result_alloca, rhs_bool).unwrap();
+
         if let Some(cur_block) = &self.blockreg.cur_block {
             if cur_block.get_terminator().is_none() {
+                self.blockreg.cur_block = None;
                 self.llvmbuilder.build_unconditional_branch(cont_block).unwrap();
             }
         }
 
         self.emit_block(cont_block);
-        let phi = self
+        let result = self
             .llvmbuilder
-            .build_phi(self.llvm_ctx.bool_type(), "or_result")
+            .build_load(self.llvm_ctx.bool_type(), result_alloca, "or_result")
             .unwrap();
-        phi.add_incoming(&[
-            (&rhs_bool.as_basic_value_enum(), rhs_block),
-            (&true_value.as_basic_value_enum(), true_block),
-        ]);
 
         InternalValue::new(
             CIRType::Plain(PlainType::Bool),
-            InternalValueKind::RValue(phi.as_basic_value().into()),
+            InternalValueKind::RValue(result.into()),
         )
     }
 
