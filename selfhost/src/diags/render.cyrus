@@ -165,20 +165,20 @@ pub struct CompilerDiagRender {
         }
     }
 
-    inline fn render_mark<T>(self: Self*, n: T) {
+    inline fn render_mark(self: Self*, n: usize) {
         for (var i: usize; i < n; i += 1) {
             self->writer.write("^");
         }
     }
 
-    inline fn render_pipe<T>(self: Self*, n: T) {
+    inline fn render_pipe(self: Self*, n: usize) {
         for (var i: usize; i < n - 1; i += 1) {
             self->writer.write(" ");
         }
         self->writer.write("|");
     }
 
-    inline fn render_space<T>(self: Self*, n: T) {
+    inline fn render_space(self: Self*, n: usize) {
         for (var i: usize; i < n; i += 1) {
             self->writer.write(" ");
         }

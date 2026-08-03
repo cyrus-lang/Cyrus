@@ -11,6 +11,13 @@ pub enum Option<T> {
             case .None => @panic("called `Option.unwrap()` on a `None` value");
         }
     }
+
+    pub inline fn expect(self: const Self*, msg: const uint8*) T {
+        switch (*self) {
+            case .Some(value) => return value;
+            case .None => @panic(msg);
+        }
+    }
     
     pub inline fn is_some(self: const Self*) bool {
         switch (*self) {
