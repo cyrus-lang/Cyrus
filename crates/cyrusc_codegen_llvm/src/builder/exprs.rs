@@ -789,6 +789,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         match (lhs_rvalue.as_basic_value(), rhs_rvalue.as_basic_value()) {
             (BasicValueEnum::IntValue(lhs), BasicValueEnum::IntValue(rhs)) => {
                 let and_value = self.llvmbuilder.build_and(lhs, rhs, "xor").unwrap();
+                
                 InternalValue::new(
                     CIRType::Plain(PlainType::Bool),
                     InternalValueKind::RValue(and_value.into()),
@@ -920,7 +921,8 @@ impl<'ll> CodeGenIRBuilder<'ll> {
 
         self.llvmbuilder.position_at_end(panic_block);
 
-        let msg_expr = cir_string_literal("integer overflow", loc);
+        let msg_expr = cir_string_literal(&format!("integer overflow in instruction '{}'", op), loc);
+
         self.emit_intrinsic_panic(&[msg_expr], loc);
 
         self.emit_block(cont_block);
@@ -941,10 +943,12 @@ impl<'ll> CodeGenIRBuilder<'ll> {
             (BasicValueEnum::IntValue(lhs), BasicValueEnum::IntValue(rhs)) => {
                 if self.profile == cyrusc_internal::compiler_options::CompilerOption_Profile::Debug {
                     let is_signed = lhs_rvalue.ty.is_signed_integer();
+                    
                     self.emit_checked_int_op("add", lhs, rhs, is_signed, lhs_rvalue.ty.clone(), loc)
                 } else {
                     let basic_value =
                         BasicValueEnum::IntValue(self.llvmbuilder.build_int_add(lhs, rhs, "add").unwrap());
+
                     InternalValue::new(lhs_rvalue.ty.clone(), InternalValueKind::RValue(basic_value))
                 }
             }
