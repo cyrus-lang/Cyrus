@@ -10,9 +10,6 @@ import std::iterator{Iterator};
 import std::mem{Allocator};
 import std::option{Option};
 
-// FIXME
-import std::libc{printf};
-
 pub struct Vec<T> {
     allocator: Allocator,
     data: T*,
@@ -107,7 +104,8 @@ pub struct Vec<T> {
     }
 
     pub fn reserve(self: Self*, extra: usize) {
-        const required = checked_add(self->len, extra).unwrap();
+        // const required = checked_add(self->len, extra).unwrap();
+        const required = self->len + extra;
 
         if (required < self->len) {
             @panic("array capacity overflow");

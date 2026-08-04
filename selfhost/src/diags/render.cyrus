@@ -25,19 +25,13 @@ const MIN_PANEL_SPACE: uint32 = 5;
 pub struct CompilerDiagRender {
     dctx: DiagContext,
     writer: Writer,
-    out: String,
     // sctx: SourceContext,
 
-    pub fn new(dctx: DiagContext) Self {
-        const allocator: Allocator = dynamic LibcAllocator.new();
-        var out = String.new(allocator);
-
-        var writer: Writer = dynamic StringWriter.new(&out);
-
-        return Self { dctx, writer, out };
+    pub fn new(dctx: DiagContext, writer: Writer) Self {
+        return Self { dctx, writer };
     }
 
-    pub fn render(self: Self*) String {
+    pub fn render(self: Self*) {
         const diags = self->dctx.diags();
 
         const space = self->panel_space();
@@ -51,8 +45,6 @@ pub struct CompilerDiagRender {
                 self->writer.write("\n\n");
             }
         }
-
-        return self->out;
     }
 
     pub fn panel_space(self: const Self*) uint32 {

@@ -65,7 +65,7 @@ pub struct Diag {
         self->mesg.free();
 
         switch (self->under) {
-                case .Some(str) => str.free();
+            case .Some(str) => str.free();
         }
         
         for (var i: usize; i < self->subs.len(); i += 1) {
