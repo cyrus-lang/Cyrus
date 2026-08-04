@@ -8,7 +8,7 @@ use crate::builder::{
 use cyrusc_internal::cir::{cir::CIRInlineAsm, types::CIRType};
 use cyrusc_typed_ast::types::PlainType;
 use inkwell::{
-    llvm_sys::core::{LLVMGetInlineAsm, LLVMInlineAsmDialect},
+    llvm_sys::{core::LLVMGetInlineAsm, LLVMInlineAsmDialect},
     types::{AsTypeRef, BasicMetadataTypeEnum, BasicType, BasicTypeEnum, FunctionType},
     values::BasicMetadataValueEnum,
 };
