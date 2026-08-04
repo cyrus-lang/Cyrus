@@ -537,6 +537,25 @@ impl<'a> CIRPrinter<'a> {
                 format!("dynamic {{ data: {}, vtable_id: {} }}", data, dynamic.vtable_id,)
             }
 
+            CIRExprKind::InlineAsm(asm) => {
+                let inputs: Vec<String> = asm.inputs.iter()
+                    .map(|op| format!("\"{}\"({})", op.constraint, self.print_expr(&op.expr)))
+                    .collect();
+                let outputs: Vec<String> = asm.outputs.iter()
+                    .map(|op| format!("\"{}\"({})", op.constraint, self.print_expr(&op.expr)))
+                    .collect();
+                let clobbers: Vec<String> = asm.clobbers.iter()
+                    .map(|c| format!("\"{}\"", c))
+                    .collect();
+                format!(
+                    "@asm({:?} : {} : {} : {})",
+                    asm.template,
+                    outputs.join(", "),
+                    inputs.join(", "),
+                    clobbers.join(", "),
+                )
+            }
+
             CIRExprKind::Type(ty) => self.print_type(ty),
         }
     }

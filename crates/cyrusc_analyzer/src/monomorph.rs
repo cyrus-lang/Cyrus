@@ -395,8 +395,16 @@ impl<'a> AnalysisContext<'a> {
             | TypedStmt::Interface(_)
             | TypedStmt::Defer(_)
             | TypedStmt::Label(_)
-            | TypedStmt::Goto(_)
-            | TypedStmt::InlineAsm(_) => {}
+            | TypedStmt::Goto(_) => {}
+
+            TypedStmt::InlineAsm(asm) => {
+                for op in &mut asm.outputs {
+                    self.specialize_expr(&mut op.expr, decl_map);
+                }
+                for op in &mut asm.inputs {
+                    self.specialize_expr(&mut op.expr, decl_map);
+                }
+            }
         }
     }
 
@@ -609,7 +617,16 @@ impl<'a> AnalysisContext<'a> {
                 }
             },
 
-            TypedExprKind::Poisoned | TypedExprKind::Literal(_) | TypedExprKind::SemaType { .. } | TypedExprKind::InlineAsm(_) => {}
+            TypedExprKind::Poisoned | TypedExprKind::Literal(_) | TypedExprKind::SemaType { .. } => {}
+
+            TypedExprKind::InlineAsm(asm) => {
+                for op in &mut asm.outputs {
+                    self.specialize_expr(&mut op.expr, decl_map);
+                }
+                for op in &mut asm.inputs {
+                    self.specialize_expr(&mut op.expr, decl_map);
+                }
+            }
         }
     }
 
@@ -743,7 +760,7 @@ impl<'a> AnalysisContext<'a> {
             | TypedStmt::Defer(_)
             | TypedStmt::Label(_)
             | TypedStmt::Goto(_)
-            | TypedStmt::InlineAsm(_) => {}
+            | TypedStmt::InlineAsm(_) => {}  // no var decls to collect inside asm
         }
     }
 

@@ -94,6 +94,7 @@ pub enum CIRExprKind {
     Lambda(CIRLambda),
     Dynamic(CIRDynamicExpr),
     Call(CIRCall),
+    InlineAsm(CIRInlineAsm),
     Type(CIRType),
 }
 
@@ -275,6 +276,23 @@ pub struct CIRPrefixExpr {
 pub struct CIRUnaryExpr {
     pub op: UnaryOperator,
     pub operand: Box<CIRExpr>,
+}
+
+#[derive(Debug, Clone)]
+pub struct CIRAsmOperand {
+    pub constraint: String,
+    pub expr: Box<CIRExpr>,
+}
+
+#[derive(Debug, Clone)]
+pub struct CIRInlineAsm {
+    pub template: String,
+    pub outputs: Vec<CIRAsmOperand>,
+    pub inputs: Vec<CIRAsmOperand>,
+    pub clobbers: Vec<String>,
+    pub is_volatile: bool,
+    pub ret_type: CIRType,
+    pub loc: Loc,
 }
 
 #[derive(Debug, Clone)]

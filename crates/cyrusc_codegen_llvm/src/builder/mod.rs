@@ -11,3 +11,4 @@ mod types;
 mod values;
 mod vars;
 mod vtables;
+mod inline_asm;
