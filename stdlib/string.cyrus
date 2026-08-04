@@ -1,12 +1,21 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 The Cyrus Language
 
-import std::libc{strlen, strcmp, memmove, isspace, tolower, toupper};
-import std::libc::types{c_int};
-import std::collections{Vec};
-import std::option{Option};
-import std::mem{Allocator};
-import std::slices{Slice};
+import (
+    std::libc{
+        strlen,
+        strcmp,
+        memmove,
+        isspace,
+        tolower,
+        toupper
+    },
+    std::libc::types{c_int},
+    std::collections{Vec},
+    std::option{Option},
+    std::mem{Allocator},
+    std::slices{Slice},
+);
 
 pub struct String {
     vec: Vec<uint8>,

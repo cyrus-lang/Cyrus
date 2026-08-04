@@ -1,4 +1,5 @@
 import std::mem::libc{LibcAllocator};
+import std::io{Writer, StringWriter};
 import std::mem{Allocator};
 import std::string{String};
 import std::libc{printf};
@@ -25,13 +26,13 @@ pub fn main() {
         const under = String.from_str(allocator, "under mesg");
         var diag = Diag.new(allocator, mesg, .Some(under), loc);
 
-        {
-            const loc = Loc { line: 5000, col: 1, start: 4, end: 5 };
-            var mesg = String.from_str(allocator, "error originated from xxx (sub-diag)");
-            var under = String.from_str(allocator, "you better change this or die");
-            var sub_diag = SubDiag.new(.Hint, mesg, .Some(under), loc);
-            diag.add_sub(sub_diag);
-        }
+        // {
+        //     const loc = Loc { line: 5000, col: 1, start: 4, end: 5 };
+        //     var mesg = String.from_str(allocator, "error originated from xxx (sub-diag)");
+        //     var under = String.from_str(allocator, "you better change this or die");
+        //     var sub_diag = SubDiag.new(.Hint, mesg, .Some(under), loc);
+        //     diag.add_sub(sub_diag);
+        // }
         // {
         //     const loc = Loc { line: 3, col: 1, start: 4, end: 5 };
         //     var mesg = String.from_str(allocator, "error originated from yyyy (sub-diag)");
@@ -50,10 +51,13 @@ pub fn main() {
         dctx.report(diag);
     }
 
-    const dctxr = CompilerDiagRender.new(dctx);
-    
-    const out = dctxr.render();
+    var out = String.new(allocator);
     defer out.free();
+
+    var writer: Writer = dynamic StringWriter.new(&out);
+
+    const dctxr = CompilerDiagRender.new(dctx, writer);
+    dctxr.render();
 
     printf("%s\n", out.as_str());
 }
