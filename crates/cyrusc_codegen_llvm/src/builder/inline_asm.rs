@@ -8,9 +8,9 @@ use crate::builder::{
 use cyrusc_internal::cir::{cir::CIRInlineAsm, types::CIRType};
 use cyrusc_typed_ast::types::PlainType;
 use inkwell::{
-    llvm_sys::core::LLVMGetInlineAsm,
-    types::{BasicMetadataTypeEnum, BasicType, BasicTypeEnum, FunctionType},
-    values::{BasicMetadataValueEnum, BasicValue},
+    llvm_sys::core::{LLVMGetInlineAsm, LLVMInlineAsmDialect},
+    types::{AsTypeRef, BasicMetadataTypeEnum, BasicType, BasicTypeEnum, FunctionType},
+    values::BasicMetadataValueEnum,
 };
 use std::ffi::CString;
 
@@ -88,26 +88,24 @@ impl<'ll> CodeGenIRBuilder<'ll> {
                 asm.template.len(),
                 constraint_cstr.as_ptr() as *mut _,
                 constraint_str.len(),
-                asm.is_volatile as i32,  
-                0,                        
-                0,                        
-                0,                        
+                asm.is_volatile as i32,
+                0,
+                LLVMInlineAsmDialect::LLVMInlineAsmDialectATT,
+                0,
             )
         };
 
         let asm_ptr = unsafe { inkwell::values::PointerValue::new(llvm_inline_asm) };
 
-       
         let call_site = self
             .llvmbuilder
             .build_indirect_call(fn_type, asm_ptr, &arg_values, "asm.call")
             .unwrap();
 
-       
         match reg_out_indices.len() {
             0 => {  }
             1 => {
-                if let Some(ret_val) = call_site.try_as_basic_value().left() {
+                if let Some(ret_val) = call_site.try_as_basic_value().basic() {
                     let op = &asm.outputs[reg_out_indices[0]];
                     let lvalue = self.emit_expr(&op.expr, &None);
                     if let InternalValueKind::LValue(ptr) = lvalue.kind {
@@ -116,8 +114,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
                 }
             }
             _ => {
-                
-                if let Some(ret_val) = call_site.try_as_basic_value().left() {
+                if let Some(ret_val) = call_site.try_as_basic_value().basic() {
                     let struct_val = ret_val.into_struct_value();
                     for (field_idx, &out_idx) in reg_out_indices.iter().enumerate() {
                         let field = self.llvmbuilder
