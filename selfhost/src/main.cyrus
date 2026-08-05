@@ -1,5 +1,5 @@
 import std::mem::libc{LibcAllocator};
-import std::io{Writer, StringWriter};
+import std::io{Writer, StderrWriter};
 import std::mem{Allocator};
 import std::string{String};
 import std::libc{printf};
@@ -51,15 +51,10 @@ pub fn main() {
         dctx.report(diag);
     }
 
-    var out = String.new(allocator);
-    defer out.free();
-
-    var writer: Writer = dynamic StringWriter.new(&out);
+    var writer: Writer = dynamic StderrWriter.new();
 
     const dctxr = CompilerDiagRender.new(dctx, writer);
     dctxr.render();
-
-    printf("%s\n", out.as_str());
 }
 
 // import std::mem::libc{LibcAllocator};

@@ -554,6 +554,8 @@ pub enum StringPrefix {
 
 /// Represents precise location tracking within a source file.
 pub struct Loc {
+    // TODO: Support multi line location.
+
     // TODO: Enable file_id once multi-source support implemented.
     // file_id: FileId,
     pub line: usize,
