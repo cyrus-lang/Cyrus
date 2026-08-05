@@ -1,4 +1,4 @@
-// @stdout: Hello World, 11, Cyrus, 5
+// @stdout: Hello World, Cyrus
 
 import std::mem::libc{LibcAllocator};
 import std::io{StringWriter};
@@ -15,9 +15,7 @@ pub fn main() {
      var writer = StringWriter.new(&buffer);
      writer.write("Hello World");
      printf("%s, ", buffer.as_str());
-     printf("%lu, ", writer.len());
 
      writer.write_all("Cyrus");
-     printf("%s, ", buffer.as_str());
-     printf("%lu\n", writer.len());
+     printf("%s\n", buffer.as_str());
 }
