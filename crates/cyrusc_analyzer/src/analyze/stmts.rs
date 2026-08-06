@@ -19,16 +19,32 @@ impl<'a> AnalysisContext<'a> {
             std::mem::take(&mut tree_borrowed.body)
         };
 
-        for typed_stmt in &mut body {
-            self.analyze_toplevel_stmt(typed_stmt);
-        }
+        self.analyze_toplevel_stmts(&mut body);
 
         self.program_tree.borrow_mut().body = body;
     }
 
-    pub(crate) fn analyze_toplevel_stmt(&mut self, typed_stmt: &mut TypedStmt) {
+    pub(crate) fn analyze_toplevel_stmts(&mut self, typed_stmts: &mut [TypedStmt]) {
+        for typed_stmt in &mut *typed_stmts {
+            match typed_stmt {
+                TypedStmt::GlobalVar(global_var) => self.analyze_global_var(global_var),
+                _ => continue,
+            }
+        }
+
+        for typed_stmt in &mut *typed_stmts {
+            self.analyze_toplevel_stmt(typed_stmt);
+        }
+    }
+
+    fn analyze_toplevel_stmt(&mut self, typed_stmt: &mut TypedStmt) {
         match typed_stmt {
-            TypedStmt::GlobalVar(global_var) => self.analyze_global_var(global_var),
+            TypedStmt::GlobalVar(_) => {
+                // Skipped, because it's intended to be analyzed
+                // before all of the other top level statements.
+                return;
+            }
+
             TypedStmt::FuncDef(func_def_stmt) => self.analyze_func_def(func_def_stmt),
             TypedStmt::FuncDecl(func_decl_stmt) => self.analyze_func_decl_stmt(func_decl_stmt),
             TypedStmt::Interface(interface) => self.analyze_interface(interface),
