@@ -145,9 +145,7 @@ impl<'a> AnalysisContext<'a> {
         builtin_block.is_toplevel = Some(is_toplevel);
 
         if is_toplevel {
-            for stmt in &mut builtin_block.block.stmts {
-                self.analyze_toplevel_stmt(stmt);
-            }
+            self.analyze_toplevel_stmts(&mut builtin_block.block.stmts);
 
             FlowState::Reachable
         } else {

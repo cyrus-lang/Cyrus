@@ -1,0 +1,13 @@
+// @stdout: 3
+
+import std::libc{printf};
+
+fn bar() {
+    printf("%d\n", PI);
+}
+
+const PI = 3;
+
+pub fn main() {
+    bar();
+}
