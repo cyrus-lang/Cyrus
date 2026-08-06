@@ -47,6 +47,7 @@ pub enum SymbolEntryKind {
 pub struct Module {
     pub scope_id: SymbolID,
     pub name: String,
+    pub ident: String,
     pub scope: ScopeTable,
 }
 
