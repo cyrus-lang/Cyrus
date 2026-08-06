@@ -13,7 +13,7 @@ pub struct File {
     file: c_file*,
     mode: OpeningModes,
     
-    pub fn open(path: const Path*, mode: OpeningModes) ErrorOr<Self, ErrorStr> {        
+    pub fn open(path: const Path*, mode: OpeningModes) ErrorOr<Self, ErrorStr> {
         const path_str = path->as_string_const().as_str_const();
         const mode_str = mode.as_str();
 

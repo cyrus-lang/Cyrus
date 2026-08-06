@@ -554,39 +554,86 @@ pub enum StringPrefix {
 
 /// Represents precise location tracking within a source file.
 pub struct Loc {
-    // TODO: Support multi line location.
-
     // TODO: Enable file_id once multi-source support implemented.
     // file_id: FileId,
-    pub line: usize,
-    pub col: usize,
+
+    // Line/Column (1-indexed).
+    pub start_line: usize,
+    pub start_col: usize,
+    pub end_line: usize,
+    pub end_col: usize,
+
+    // Withing soruce byte offset (0-indexed).
     pub start: usize,
     pub end: usize,
+
+    pub fn loc_merge(self: const Self*, other: const Self*) Self {
+        var merge: Self;
+        
+        // Start line
+        if (self->start_line < other->start_line) {
+            merge.start_line = self->start_line;
+        } else {
+            merge.start_line = other->start_line;
+        }
+        
+        // Start column
+        if (self->start_line < other->start_line) {
+            merge.start_col = self->start_col;
+        } else if (other->start_line < self->start_line) {
+            merge.start_col = other->start_col;
+        } else {
+            if (self->start_col < other->start_col) {
+                merge.start_col = self->start_col;
+            } else {
+                merge.start_col = other->start_col;
+            }
+        }
+        
+        // End line
+        if (self->end_line > other->end_line) {
+            merge.end_line = self->end_line;
+        } else {
+            merge.end_line = other->end_line;
+        }
+        
+        // End column
+        if (self->end_line > other->end_line) {
+            merge.end_col = self->end_col;
+        } else if (other->end_line > self->end_line) {
+            merge.end_col = other->end_col;
+        } else {
+            if (self->end_col > other->end_col) {
+                merge.end_col = self->end_col;
+            } else {
+                merge.end_col = other->end_col;
+            }
+        }
+        
+        // Byte offsets
+        if (self->start < other->start) {
+            merge.start = self->start;
+        } else {
+            merge.start = other->start;
+        }
+        
+        if (self->end > other->end) {
+            merge.end = self->end;
+        } else {
+            merge.end = other->end;
+        }
+        
+        return merge;
+    }
 }
 
 /// Formats and writes a collection of tokens to stdout.
 /// This is primarily used for debugging and emitting lexer result.
 pub fn dump_tokens(tokens: const Vec<Token>*) {
-    var allocator: Allocator = dynamic LibcAllocator.new();
-
-    var fmt = String.new(allocator);
-    defer fmt.free();  
-
-    var writer: Writer = dynamic StringWriter.new(&fmt);
-
     for (var i: usize = 0; i < tokens->len(); i += 1) {
         const token = tokens->get(i).unwrap();
         
-        token.format(writer);
-        
-        printf(
-            "Token `%s`, Line: %lu, Column: %lu\n",
-            fmt.as_str_const(),
-            token.loc.line,
-            token.loc.col
-        );
-
-        fmt.clear();
+        dump_token(token);
     }
 }
 
@@ -603,9 +650,11 @@ pub fn dump_token(token: Token) {
     token.format(writer);
         
     printf(
-        "Token `%s`, Line: %lu, Column: %lu\n",
+        "Token `%s`, Start Line: %lu, Start Column: %lu, End Line: %lu, End Column: %lu\n",
         fmt.as_str_const(),
-        token.loc.line,
-        token.loc.col
+        token.loc.start_line,
+        token.loc.start_col,
+        token.loc.end_line,
+        token.loc.end_col
     );
 }

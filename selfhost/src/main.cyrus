@@ -11,50 +11,47 @@ import (
         Diag,
         SubDiag,
     },
+    sctx{SourceContext, Source},
     tokens{Loc}
 );
+
+import std::path{Path};
+
 
 pub fn main() {
     var allocator: Allocator = dynamic LibcAllocator.new();
 
-    var dctx = DiagContext.new(allocator);
-    defer dctx.free();
+    // --------
+    // TODO SourceContext 
+    const path = Path.new(allocator, "/home/tahad/Code/Cyrus/Cyrus/tmp/foo.cyrus");
     
-    {
-        const loc = Loc { line: 10, col: 1, start: 7, end: 12 };
-        const mesg = String.from_str(allocator, "Meow :3");
-        const under = String.from_str(allocator, "under mesg");
-        var diag = Diag.new(allocator, mesg, .Some(under), loc);
+    switch (Source.open(allocator, 1, path)) {
+        case .Value(source) => {
+            defer source.free();
 
-        // {
-        //     const loc = Loc { line: 5000, col: 1, start: 4, end: 5 };
-        //     var mesg = String.from_str(allocator, "error originated from xxx (sub-diag)");
-        //     var under = String.from_str(allocator, "you better change this or die");
-        //     var sub_diag = SubDiag.new(.Hint, mesg, .Some(under), loc);
-        //     diag.add_sub(sub_diag);
-        // }
-        // {
-        //     const loc = Loc { line: 3, col: 1, start: 4, end: 5 };
-        //     var mesg = String.from_str(allocator, "error originated from yyyy (sub-diag)");
-        //     var under = String.from_str(allocator, "Noooooo");
-        //     var sub_diag = SubDiag.new(.Info, mesg, .Some(under), loc);
-        //     diag.add_sub(sub_diag);
-        // }
+            printf("%s\n", source.text.as_str_const());
+            
+        }
+        case .Error(_) => @panic("constructing source failed");
+    }
+    // --------
+
+    // var dctx = DiagContext.new(allocator);
+    // defer dctx.free();
+    
+    // {
+    //     const loc = Loc { start_line: 1, start_col: 1, end_line: 1, end_col: 1, start: 1, end: 1 };
+    //     const mesg = String.from_str(allocator, "Meow :3");
+    //     const under = String.from_str(allocator, "under mesg");
+    //     var diag = Diag.new(allocator, mesg, .Some(under), loc);
         
-        dctx.report(diag);
-    }
+    //     dctx.report(diag);
+    // }
 
-    {
-        const loc = Loc { line: 5, col: 1, start: 7, end: 12 };
-        const mesg = String.from_str(allocator, "Meow :3");
-        var diag = Diag.new(allocator, mesg, .None, loc);
-        dctx.report(diag);
-    }
+    // var writer: Writer = dynamic StderrWriter.new();
 
-    var writer: Writer = dynamic StderrWriter.new();
-
-    const dctxr = CompilerDiagRender.new(dctx, writer);
-    dctxr.render();
+    // const dctxr = CompilerDiagRender.new(dctx, writer);
+    // dctxr.render();
 }
 
 // import std::mem::libc{LibcAllocator};
