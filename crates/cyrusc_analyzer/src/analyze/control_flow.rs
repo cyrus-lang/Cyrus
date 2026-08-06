@@ -167,6 +167,7 @@ impl<'a> AnalysisContext<'a> {
 
                     pattern_range_table.push((lower.try_into().unwrap(), upper.try_into().unwrap()));
                 }
+
                 TypedSwitchCasePatternKind::Expr(expr) => {
                     let Some(expr_type) = this.analyze_expr(expr, Some(operand_type.clone())) else {
                         return None;
