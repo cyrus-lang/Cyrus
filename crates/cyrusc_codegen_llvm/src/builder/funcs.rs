@@ -616,7 +616,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
                 }
 
                 BasicValueEnum::IntValue(int_val) => {
-                    // Split i128 into two i64 values (low and high parts)
+                    // split i128 into two i64 values (low and high parts)
                     let i64_type = self.llvm_ctx.i64_type();
                     let i128_type = self.llvm_ctx.i128_type();
 

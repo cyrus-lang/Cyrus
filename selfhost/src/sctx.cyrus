@@ -45,30 +45,24 @@ pub struct Source {
     pub fn open(allocator: Allocator, id: SourceId, path: Path) ErrorOr<Self, ()> {
         const loffs: Vec<usize> = Vec.new(allocator);
 
-        // REVIEW: Would be simplified after implementing
-        // error handling for language. [DON'T WORRY :)]
+        var file: File = undefined;
         switch (File.open(&path, .Read)) {
-            case .Value(file) => {
-                switch (file.read(allocator)) {
-                    case .Value(text) => {
-                        var source = Self { id, path, text, loffs };
-                        source.compute_loffs();
-                        return .Value(source);       
-                    }
-                    case .Error(_) => return .Error(());
-                }
-            }
+            case .Value(_file) => file = _file;
             case .Error(_) => return .Error(());
         }
+
+        var text: String = undefined;
+        switch (file.read(allocator)) {
+            case .Value(_text) => text = _text;
+            case .Error(_) => return .Error(());
+        }
+
+        var source = Self { id, path, text, loffs };
+        source.compute_line_offsets();
+        return .Value(source);
     }
 
-    pub fn free(self: Self*) {
-        self->loffs.free();
-        self->text.free();
-        self->path.free();
-    }
-
-    fn compute_loffs(self: const Self*) {
+    fn compute_line_offsets(self: const Self*) {
         for (var i: usize = 0; i < self->text.len(); i += 1) {
             const char = self->text.get(i).unwrap();
 
@@ -76,6 +70,12 @@ pub struct Source {
                 self->loffs.push(i);
             }
         }
+    }
+
+    pub fn free(self: Self*) {
+        self->loffs.free();
+        self->text.free();
+        self->path.free();
     }
 }
 

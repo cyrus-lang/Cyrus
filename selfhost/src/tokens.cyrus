@@ -240,6 +240,10 @@ pub enum TokenKind : Format {
             case "inline" => return .Some(.Inline);
             case "pub" => return .Some(.Public);
             case "const" => return .Some(.Const);
+            case "goto" => return .Some(.Goto);
+            case "defer" => return .Some(.Defer);
+            case "union" => return .Some(.Union);
+            case "while" => return .Some(.While);
             case "weak" => return .Some(.Weak);
             case "linkonce" => return .Some(.LinkOnce);
             case "callconv" => return .Some(.Callconv);
@@ -255,10 +259,6 @@ pub enum TokenKind : Format {
             case "nounwind" => return .Some(.NoUnwind);
             case "section" => return .Some(.Section);
             case "repr" => return .Some(.Repr);
-            case "goto" => return .Some(.Goto);
-            case "defer" => return .Some(.Defer);
-            case "union" => return .Some(.Union);
-            case "while" => return .Some(.While);
             case "noinline" => return .Some(.NoInline);
             case "alwaysinline" => return .Some(.AlwaysInline);
         }
@@ -554,8 +554,8 @@ pub enum StringPrefix {
 
 /// Represents precise location tracking within a source file.
 pub struct Loc {
-    // TODO: Enable file_id once multi-source support implemented.
-    // file_id: FileId,
+    // TODO
+    // source_id: SourceId,
 
     // Line/Column (1-indexed).
     pub start_line: usize,
@@ -567,7 +567,7 @@ pub struct Loc {
     pub start: usize,
     pub end: usize,
 
-    pub fn loc_merge(self: const Self*, other: const Self*) Self {
+    pub fn merge(self: const Self*, other: const Self*) Self {
         var merge: Self;
         
         // Start line

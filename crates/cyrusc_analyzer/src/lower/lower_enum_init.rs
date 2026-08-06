@@ -184,7 +184,23 @@ impl<'a> AnalysisContext<'a> {
             TypedExprKind::Symbol(symbol_expr) => {
                 let decl_id = self.analyze_symbol_expr(symbol_expr)?;
 
-                let Some(_enum_decl_id) = decl_id.as_enum() else {
+                let enum_decl_id_opt = decl_id.as_enum().or({
+                    let ty = decl_id.as_type_decl_id().and_then(|type_decl_id| {
+                        self.normalize_sema_type(
+                            SemaType::Named(NamedType {
+                                type_decl_id,
+                                type_args: TypedTypeArgs::new(),
+                            }),
+                            loc,
+                            0,
+                        )
+                        .map(|ty| self.expand_sema_type(ty, loc))
+                    });
+
+                    ty.and_then(|ty| ty.as_enum())
+                });
+
+                let Some(_enum_decl_id) = enum_decl_id_opt else {
                     return None;
                 };
 
@@ -192,10 +208,12 @@ impl<'a> AnalysisContext<'a> {
                 type_args = TypedTypeArgs::new();
             }
             TypedExprKind::SemaType { ty, .. } => {
-                let ty = match self.normalize_sema_type(ty.clone(), loc, 0) {
+                let mut ty = match self.normalize_sema_type(ty.clone(), loc, 0) {
                     Some(ty) => ty,
                     None => return None,
                 };
+
+                ty = self.expand_sema_type(ty, loc);
 
                 let Some(named_type) = ty.as_named_type() else {
                     return None;
