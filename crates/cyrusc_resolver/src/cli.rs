@@ -74,7 +74,7 @@ fn main() {
                 .unwrap();
 
             if resolver.reporter.has_errors() {
-                resolver.reporter.display_first();
+                resolver.reporter.display();
                 exit(1);
             }
 
