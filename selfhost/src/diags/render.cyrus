@@ -34,11 +34,9 @@ pub struct CompilerDiagRender {
     pub fn render(self: Self*) {
         const diags = self->dctx.diags();
 
-        const space = self->panel_space();
-
         for (var i: usize = 0; i < diags->len(); i += 1) {
             const diag = diags->get_ref(i).unwrap();
-
+            const space = self->panel_space(diag);
             self->render_diag(diag, space);
 
             if (i < diags->len() - 1) {
@@ -47,34 +45,37 @@ pub struct CompilerDiagRender {
         }
     }
 
-    pub fn panel_space(self: const Self*) uint32 {
-        const diags = self->dctx.diags();
+    /// Per diag.
+    pub fn panel_space(self: const Self*, diag: const Diag*) uint32 {
+        // TODO: Extract involved code lines in diag panel. (Multi Line Support)
+        // FIXME
+        return MIN_PANEL_SPACE;
 
-        var max_space: uint32 = MIN_PANEL_SPACE;
+        // var max_space: uint32 = MIN_PANEL_SPACE;
 
-        // max space of diags
-        for (var i: usize = 0; i < diags->len(); i += 1) {
-            const diag = diags->get_ref(i).unwrap();
-            const space = line_space(diag->loc.line);
+        // // max space of diags
+        // for (var i: usize = 0; i < diags->len(); i += 1) {
+        //     const diag = diags->get_ref(i).unwrap();
+        //     const space = line_space(diag->loc.line);
 
-            if (space > max_space) {
-                max_space = space;
-            }
+        //     if (space > max_space) {
+        //         max_space = space;
+        //     }
 
-            // max space of sub diags
-            for (var j: usize = 0; j < diag->subs.len(); j += 1) {
-                const diag = diag->subs.get_ref(j).unwrap();
-                const space = line_space(diag->loc.line);
+        //     // max space of sub diags
+        //     for (var j: usize = 0; j < diag->subs.len(); j += 1) {
+        //         const diag = diag->subs.get_ref(j).unwrap();
+        //         const space = line_space(diag->loc.line);
 
-                if (space > max_space) {
-                    max_space = space;
-                }
-            }
-        }
+        //         if (space > max_space) {
+        //             max_space = space;
+        //         }
+        //     }
+        // }
 
-        // plus two for reserving whitespace 
-        // for the pipe and the space before it
-        return max_space + 2;
+        // // plus two for reserving whitespace 
+        // // for the pipe and the space before it
+        // return max_space + 2;
     }
     
     fn render_diag(self: Self*, diag: Diag*, space: uint32) {
@@ -109,13 +110,16 @@ pub struct CompilerDiagRender {
         mesg: const uint8*,
         loc: Loc
     ) {
-        self->writer.write(file_path);
-        self->writer.write(":");
-        format_usize(self->writer, loc.line);
-        self->writer.write(":");
-        format_usize(self->writer, loc.col);
-        self->writer.write(": ");
-        self->writer.writeln(mesg);
+        self->writer.writeln("header");
+        // TODO: Add multi-line-support
+
+        // self->writer.write(file_path);
+        // self->writer.write(":");
+        // format_usize(self->writer, loc.line);
+        // self->writer.write(":");
+        // format_usize(self->writer, loc.col);
+        // self->writer.write(": ");
+        // self->writer.writeln(mesg);
     }
 
     fn render_code(
@@ -124,29 +128,35 @@ pub struct CompilerDiagRender {
         loc: Loc,
         space: uint32
     ) {
-        self->render_pipe(space);
-        self->writer.write("\n");
+        self->writer.writeln("code");
+        // TODO: Add multi-line-support
 
-        const offset = (space - line_digits(loc.line)) - 2;
+        // self->render_pipe(space);
+        // self->writer.write("\n");
 
-        self->render_space(offset);
-        format_usize(self->writer, loc.line);
+        // const offset = (space - line_digits(loc.line)) - 2;
 
-        self->writer.write(" ~ ");
-        self->writer.writeln(code);
+        // self->render_space(offset);
+        // format_usize(self->writer, loc.line);
 
-        self->render_space(space);
-        self->render_space(loc.start);
-        self->render_mark(loc.end - loc.start);
-        self->writer.write("\n");
+        // self->writer.write(" ~ ");
+        // self->writer.writeln(code);
+
+        // self->render_space(space);
+        // self->render_space(loc.start);
+        // self->render_mark(loc.end - loc.start);
+        // self->writer.write("\n");
     }
 
     fn render_under(self: Self*, mesg: const uint8*, loc: Loc, space: uint32) {
-        self->render_space(space);
-        self->render_space(loc.start);
-        self->writer.write("! ");
-        self->writer.write(mesg);
-        self->writer.write("\n");
+        self->writer.writeln("under");
+        // TODO: Add multi-line-support
+
+        // self->render_space(space);
+        // self->render_space(loc.start);
+        // self->writer.write("! ");
+        // self->writer.write(mesg);
+        // self->writer.write("\n");
     }
 
     fn render_subs(self: Self*, diag: Diag*, space: uint32) {

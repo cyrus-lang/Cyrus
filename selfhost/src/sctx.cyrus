@@ -1,10 +1,92 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 The Cyrus Language
 
-pub type FileId = usize;
+import (
+    std::collections{Vec, Map},
+    std::errors{ErrorOr},
+    std::string{String},
+    std::mem{Allocator},
+    std::path{Path},
+    std::os{File},
+);
+
+pub type SourceId = usize;
 
 pub struct SourceContext {
+    map: Map<SourceId, Source>,
+    next_id: SourceId,
 
-    next_id: usize,
+    pub fn new(allocator: Allocator) Self {
+        const map: Map<SourceId, Source> = Map.new(allocator);
 
+        return Self { map, next_id: 1 };
+    }
+
+    pub fn get(self: const Self*, id: SourceId) Source {
+        return self->map.get(id).unwrap();
+    }
+
+    pub fn add(self: Self*, source: Source) {
+        self->next_id += 1;
+        
+        if (!self->map.set(self->next_id, source)) {
+            @panic("duplicate key when inserting source in SourceContext");
+        }
+    }
+}
+
+pub struct Source {
+    pub id: SourceId,
+    pub path: Path,
+    pub text: String,
+    // Byte offsets where each line start.
+    pub loffs: Vec<usize>,
+
+    pub fn open(allocator: Allocator, id: SourceId, path: Path) ErrorOr<Self, ()> {
+        const loffs: Vec<usize> = Vec.new(allocator);
+
+        // REVIEW: Would be simplified after implementing
+        // error handling for language. [DON'T WORRY :)]
+        switch (File.open(&path, .Read)) {
+            case .Value(file) => {
+                switch (file.read(allocator)) {
+                    case .Value(text) => {
+                        var source = Self { id, path, text, loffs };
+                        source.compute_loffs();
+                        return .Value(source);       
+                    }
+                    case .Error(_) => return .Error(());
+                }
+            }
+            case .Error(_) => return .Error(());
+        }
+    }
+
+    pub fn free(self: Self*) {
+        self->loffs.free();
+        self->text.free();
+        self->path.free();
+    }
+
+    fn compute_loffs(self: const Self*) {
+        for (var i: usize = 0; i < self->text.len(); i += 1) {
+            const char = self->text.get(i).unwrap();
+
+            if (is_newline(char)) {
+                self->loffs.push(i);
+            }
+        }
+    }
+}
+
+/// Checks if a character is a newline character (single byte).
+/// TODO: Add multi-byte UTF-8 support.
+inline fn is_newline(char: uint8) bool {
+    switch (char) {
+        case 10 => return true; // Line Feed (\n)
+        case 13 => return true; // Carriage Return (\r)
+        case 11 => return true; // Vertical Tab
+        case 12 => return true; // Form Feed
+        default => return false;
+    }
 }
