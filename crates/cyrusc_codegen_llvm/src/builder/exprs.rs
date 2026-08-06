@@ -21,6 +21,7 @@ use cyrusc_internal::{
         cir::*,
         types::{CIRArrayType, CIREnumType, CIRFuncType, CIRType, CIRUnionType},
     },
+    compiler_options::CompilerOption_Profile,
 };
 use cyrusc_source_loc::Loc;
 use cyrusc_typed_ast::types::PlainType;
@@ -948,7 +949,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
             (BasicValueEnum::IntValue(lhs), BasicValueEnum::IntValue(rhs)) => {
                 let signed = rhs_rvalue.ty.as_plain().unwrap().is_signed();
 
-                let shift_value = self.llvmbuilder.build_right_shift(lhs, rhs, signed, "lshift").unwrap();
+                let shift_value = self.llvmbuilder.build_right_shift(lhs, rhs, signed, "rshift").unwrap();
 
                 InternalValue::new(
                     CIRType::Plain(PlainType::Bool),
@@ -1035,7 +1036,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
     ) -> InternalValue<'ll> {
         match (lhs_rvalue.as_basic_value(), rhs_rvalue.as_basic_value()) {
             (BasicValueEnum::IntValue(lhs), BasicValueEnum::IntValue(rhs)) => {
-                if self.profile == cyrusc_internal::compiler_options::CompilerOption_Profile::Debug {
+                if self.profile == CompilerOption_Profile::Debug {
                     let is_signed = lhs_rvalue.ty.is_signed_integer();
 
                     self.emit_checked_int_op("add", lhs, rhs, is_signed, lhs_rvalue.ty.clone(), loc)
@@ -1049,6 +1050,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
             (BasicValueEnum::FloatValue(lhs), BasicValueEnum::FloatValue(rhs)) => {
                 let basic_value =
                     BasicValueEnum::FloatValue(self.llvmbuilder.build_float_add(lhs, rhs, "add").unwrap());
+
                 InternalValue::new(lhs_rvalue.ty.clone(), InternalValueKind::RValue(basic_value))
             }
             (BasicValueEnum::PointerValue(ptr), BasicValueEnum::IntValue(index)) => {
@@ -1069,7 +1071,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
     ) -> InternalValue<'ll> {
         match (lhs_rvalue.as_basic_value(), rhs_rvalue.as_basic_value()) {
             (BasicValueEnum::IntValue(lhs), BasicValueEnum::IntValue(rhs)) => {
-                if self.profile == cyrusc_internal::compiler_options::CompilerOption_Profile::Debug {
+                if self.profile == CompilerOption_Profile::Debug {
                     let is_signed = lhs_rvalue.ty.is_signed_integer();
 
                     self.emit_checked_int_op("sub", lhs, rhs, is_signed, lhs_rvalue.ty.clone(), loc)
@@ -1201,7 +1203,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
     ) -> InternalValue<'ll> {
         match (lhs_rvalue.as_basic_value(), rhs_rvalue.as_basic_value()) {
             (BasicValueEnum::IntValue(lhs), BasicValueEnum::IntValue(rhs)) => {
-                if self.profile == cyrusc_internal::compiler_options::CompilerOption_Profile::Debug {
+                if self.profile == CompilerOption_Profile::Debug {
                     let is_signed = lhs_rvalue.ty.is_signed_integer();
 
                     self.emit_checked_int_op("mul", lhs, rhs, is_signed, lhs_rvalue.ty.clone(), loc)

@@ -1,0 +1,14 @@
+// @stdout: A
+
+import std::libc{printf};
+
+type Enum = enum { A, B };
+
+pub fn main() {
+    const e: Enum = Enum.A;
+
+    switch (e) {
+        case .A => printf("A\n");
+        case .B => printf("B\n");
+    }
+}
