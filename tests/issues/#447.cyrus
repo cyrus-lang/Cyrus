@@ -1,0 +1,6 @@
+import std::libc;
+
+pub fn main() {
+    libc; //~ ERROR Unknown symbol 'libc'
+    const x = libc(); //~ ERROR Unknown symbol 'libc'
+}

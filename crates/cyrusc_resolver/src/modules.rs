@@ -413,7 +413,9 @@ impl<'a> Resolver<'a> {
             self.insert_module_name(loaded_module.file_id, &fs_module_name);
 
             // real modules always inserted to ROOT SCOPE!
-            real_module_symbol_id = self.global_symbols.insert_module_symbol(root_scope_id, &fs_module_name);
+            real_module_symbol_id =
+                self.global_symbols
+                    .insert_module_symbol(root_scope_id, &fs_module_name, &loaded_module.segment.value);
         }
 
         // build directory modules as visual-modules that contains
