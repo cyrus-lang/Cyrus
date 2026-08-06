@@ -82,7 +82,18 @@ impl<'a> AnalysisContext<'a> {
 
                     self.resolve_symbol_type(decl_id, symbol_expr.loc(), 0)
                 } else {
-                    None
+                    // This case is necessary because it's possible that, mistakenly,
+                    // user uses a symbol which is not a declaration like module/namespace symbol.
+
+                    let symbol_name = self.formatter.format_symbol_name(symbol_expr.as_symbol_id().unwrap());
+
+                    self.reporter.report(Diag {
+                        level: DiagLevel::Error,
+                        kind: Box::new(AnalyzerDiagKind::UnknownSymbol { symbol_name }),
+                        loc: Some(expr.loc),
+                        hint: None,
+                    });
+                    return None;
                 }
             }
 

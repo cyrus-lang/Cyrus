@@ -296,7 +296,9 @@ impl<'a> Resolver<'a> {
             return *symbol_id;
         }
 
-        let module_symbol_id = self.global_symbols.insert_module_symbol(parent_scope, module_name);
+        let module_symbol_id = self
+            .global_symbols
+            .insert_module_symbol(parent_scope, module_name, module_name);
 
         self.global_symbols
             .insert_symbol_name(parent_scope, module_symbol_id, module_name);
@@ -317,7 +319,8 @@ impl<'a> Resolver<'a> {
             };
         }
 
-        self.global_symbols.insert_module_symbol(parent_scope_id, module_name)
+        self.global_symbols
+            .insert_module_symbol(parent_scope_id, module_name, module_name)
     }
 
     fn with_global_symbol_mut<F, R>(&self, symbol_id: SymbolID, f: F) -> Option<R>
@@ -477,11 +480,12 @@ impl GlobalSymbolRegistry {
     }
 
     /// Allocate a new module symbol and bind it in the specified parent scope.
-    pub fn insert_module_symbol(&self, parent_scope_id: SymbolID, name: &str) -> SymbolID {
+    pub fn insert_module_symbol(&self, parent_scope_id: SymbolID, ident: &str, name: &str) -> SymbolID {
         let module_symbol_id = self.insert_symbol_entry(SymbolEntry::new(
             SymbolEntryKind::Module(Module {
                 scope_id: SymbolID::placeholder(), // temporarily placeholder
                 name: name.to_string(),
+                ident: ident.to_string(),
                 scope: ScopeTable::new(),
             }),
             None,
@@ -489,7 +493,7 @@ impl GlobalSymbolRegistry {
             None,
         ));
 
-        self.insert_symbol_name(parent_scope_id, module_symbol_id, name);
+        self.insert_symbol_name(parent_scope_id, module_symbol_id, ident);
 
         let mut inner = self.inner.write().unwrap();
 
@@ -711,14 +715,19 @@ impl<'a> Formatter for Resolver<'a> {
         match self.lookup_symbol_entry(symbol_id) {
             Some(symbol_entry) => match &symbol_entry.kind {
                 SymbolEntryKind::Unresolved => String::from(UNRESOLVED_SYMBOL),
+
                 SymbolEntryKind::Module(module) => module.name.clone(),
+
                 SymbolEntryKind::Namespace(namespace) => namespace.name.clone(),
+
                 SymbolEntryKind::Func(func_decl_id) => self.decl_tables.func_decl(*func_decl_id).name.clone(),
+
                 SymbolEntryKind::Method(method_decl_id) => {
                     let method_decl = self.decl_tables.method_decl(*method_decl_id);
                     let func_decl = method_decl.func_decl;
                     func_decl.name.clone()
                 }
+
                 SymbolEntryKind::Struct(struct_decl_id) => {
                     let struct_decl = self.decl_tables.struct_decl(*struct_decl_id);
 
@@ -728,6 +737,7 @@ impl<'a> Formatter for Resolver<'a> {
                         format_struct_decl(&struct_decl, self)
                     }
                 }
+
                 SymbolEntryKind::Enum(enum_decl_id) => {
                     let enum_decl = self.decl_tables.enum_decl(*enum_decl_id);
 
@@ -737,6 +747,7 @@ impl<'a> Formatter for Resolver<'a> {
                         format_enum_decl(&enum_decl, self)
                     }
                 }
+
                 SymbolEntryKind::Union(union_decl_id) => {
                     let union_decl = self.decl_tables.union_decl(*union_decl_id);
 
@@ -746,20 +757,26 @@ impl<'a> Formatter for Resolver<'a> {
                         format_union_decl(&union_decl, self)
                     }
                 }
+
                 SymbolEntryKind::Interface(interface_decl_id) => {
                     self.decl_tables.interface_decl(*interface_decl_id).name.clone()
                 }
+
                 SymbolEntryKind::Var(var_decl_id) => self.decl_tables.var_decl(*var_decl_id).name.clone(),
+
                 SymbolEntryKind::GlobalVar(global_var_decl_id) => {
                     self.decl_tables.global_var_decl(*global_var_decl_id).name.clone()
                 }
+
                 SymbolEntryKind::Typedef(typedef_decl_id) => {
                     self.decl_tables.typedef_decl(*typedef_decl_id).name.clone()
                 }
+
                 SymbolEntryKind::ProxiedSymbol { symbol_id, .. } => self
                     .lookup_symbol_entry(*symbol_id)
                     .map(|_| self.format_symbol_name(*symbol_id))
                     .unwrap_or_else(|| String::from(PROXIED_SYMBOL)),
+
                 SymbolEntryKind::ProxiedModule { symbol_id } => self
                     .lookup_symbol_entry(*symbol_id)
                     .map(|_| self.format_symbol_name(*symbol_id))
