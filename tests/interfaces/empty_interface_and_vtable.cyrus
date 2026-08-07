@@ -1,0 +1,13 @@
+// @stdout: ok
+
+import std::libc{printf};
+
+interface Interface {}
+
+struct Struct : Interface {}
+
+pub fn main() {
+    const dyn: Interface = dynamic Struct {};
+
+    printf("ok\n");
+}
