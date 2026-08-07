@@ -11,7 +11,7 @@ import (
         Diag,
         SubDiag,
     },
-    sctx{SourceContext, Source},
+    source{SourceContext, Source},
     tokens{Loc}
 );
 
@@ -29,8 +29,13 @@ pub fn main() {
         case .Value(source) => {
             defer source.free();
 
-            printf("%s\n", source.text.as_str_const());
-            
+            // const slice = source.get_line(2).unwrap();
+            const slice = source.get_lines(1, 2).unwrap();
+
+            for (var i: usize = 0; i < slice.len(); i += 1) {
+                printf("%c", slice.get(i).unwrap());
+            }
+            printf("\n");
         }
         case .Error(_) => @panic("constructing source failed");
     }
