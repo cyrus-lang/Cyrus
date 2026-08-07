@@ -299,6 +299,17 @@ impl X86_64 {
             return Some(ABIType::Float(ABIFloatKind::F64));
         }
 
+        // f128 uses SSE + SSEUP
+        if float_kind == ABIFloatKind::F128 {
+            // f128 needs 16-byte alignment
+            if (source_offset + offset) % 16 == 0 {
+                return Some(ABIType::Float(ABIFloatKind::F128));
+            } else {
+                // misaligned f128 spills to memory
+                return None;
+            }
+        }
+
         let source_layout = self.tctx.layout_of(source_type);
         let source_size = source_layout.size - source_offset;
         let float_size = self.float_size(&float_kind);
@@ -656,7 +667,14 @@ impl TargetABI for X86_64 {
                 assert!(lo_class != RegisterClass::NoClass, "empty first 8 bytes not allowed");
             }
             RegisterClass::SSEUP => {
-                unreachable!() // NOTE: Vector type not supported already.
+                assert!(lo_class == RegisterClass::SSE);
+
+                needed_regs.sse_regs += 1;
+
+                return (
+                    ABIArgInfo::direct_coerce(ABIType::Float(ABIFloatKind::F128)),
+                    needed_regs,
+                );
             }
         }
 
@@ -840,6 +858,20 @@ impl TargetABI for X86_64 {
                 }
             }
             RegisterClass::SSE => {
+                // check if this is f128 (hi_class == SSEUP)
+                if hi_class == RegisterClass::SSEUP {
+                    // f128 returns in a single SSE register pair
+                    let abi_type = ABIType::Float(ABIFloatKind::F128);
+
+                    return ABIRetInfo {
+                        abi_type: abi_type.clone(),
+                        kind: ABIRetInfoKind::Direct {
+                            coerce_to: Some(abi_type),
+                        },
+                        cir_ret_type: Box::new(cir_ret_type.clone()),
+                    };
+                }
+
                 result_type = Some(self.get_sse_type_at_offset(cir_ret_type, 0, cir_ret_type, 0).unwrap());
             }
         }
@@ -857,7 +889,7 @@ impl TargetABI for X86_64 {
                 high_part = Some(self.get_sse_type_at_offset(cir_ret_type, 8, cir_ret_type, 8).unwrap());
             }
             RegisterClass::SSEUP => {
-                unreachable!() // NOTE: Vector type not supported already.
+                unreachable!()
             }
         }
 
