@@ -1268,8 +1268,21 @@ fn classify_plain_type(
         }
 
         PlainType::Float128 => {
-            unsafe { *lo_class = RegisterClass::SSE };
-            unsafe { *hi_class = RegisterClass::SSEUP };
+            // f128 is split into two 8-byte halves:
+            // - low 8 bytes -> SSE,
+            // - high 8 bytes -> SSEUP
+            // both in the same XMM register
+            if offset_base < 8 {
+                unsafe { *lo_class = RegisterClass::SSE };
+
+                // set hi_class since it's part of the same 16-byte type
+                if offset_base == 0 {
+                    unsafe { *hi_class = RegisterClass::SSEUP };
+                }
+            } else {
+                // if we're in the high half
+                unsafe { *lo_class = RegisterClass::SSEUP };
+            }
         }
 
         PlainType::Void => {
@@ -1321,13 +1334,26 @@ fn classify_post_merge(size: u32, lo_class: *mut RegisterClass, hi_class: *mut R
         return;
     }
 
-    // if hi is SSEUP but lo isn't SSE or SSEUP, convert hi to SSE
+    // for f128 (size == 16): lo should be SSE, hi should be SSEUP
+    // if hi is SSEUP but lo isn't SSE,
+    // something is wrong -> (default to memory)
     if unsafe { *hi_class } == RegisterClass::SSEUP
         && unsafe { *lo_class } != RegisterClass::SSE
         && unsafe { *lo_class } != RegisterClass::SSEUP
     {
-        unsafe { *hi_class = RegisterClass::SSE };
+        // this shouldn't happen for valid f128, but handle gracefully
+        unsafe { *lo_class = RegisterClass::Memory };
+        unsafe { *hi_class = RegisterClass::Memory };
+        return;
     }
+
+    // if hi is SSEUP but lo is also SSEUP (unlikely),
+    // treat as memory
+    if unsafe { *hi_class } == RegisterClass::SSEUP && unsafe { *lo_class } == RegisterClass::SSEUP {
+        unsafe { *lo_class = RegisterClass::Memory };
+    }
+
+    // if lo is SSE and hi is SSEUP, that represents f128
 }
 
 fn try_use_registers(available_regs: &mut Registers, used: &Registers) -> bool {
