@@ -78,8 +78,6 @@ impl VTableRegistry {
         is_interface_generic: bool,
         loc: Loc,
     ) -> VTableID {
-        assert!(!methods.0.is_empty(), "vtable must contain at least one method");
-
         let key = VTableKey {
             ty: sema_type.clone(),
             interface: (interface_decl_id, interface_type_args.clone()),
