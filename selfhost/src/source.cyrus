@@ -5,10 +5,14 @@ import (
     std::collections{Vec, Map},
     std::errors{ErrorOr},
     std::string{String},
+    std::option{Option},
     std::mem{Allocator},
+    std::slices{Slice},
     std::path{Path},
     std::os{File},
 );
+
+import std::libc{printf};
 
 pub type SourceId = usize;
 
@@ -19,7 +23,7 @@ pub struct SourceContext {
     pub fn new(allocator: Allocator) Self {
         const map: Map<SourceId, Source> = Map.new(allocator);
 
-        return Self { map, next_id: 1 };
+        return Self { map, next_id: 0 };
     }
 
     pub fn get(self: const Self*, id: SourceId) Source {
@@ -27,20 +31,19 @@ pub struct SourceContext {
     }
 
     pub fn add(self: Self*, source: Source) {
-        self->next_id += 1;
-        
         if (!self->map.set(self->next_id, source)) {
             @panic("duplicate key when inserting source in SourceContext");
         }
+
+        self->next_id += 1;
     }
 }
 
 pub struct Source {
-    pub id: SourceId,
-    pub path: Path,
-    pub text: String,
-    // Byte offsets where each line start.
-    pub loffs: Vec<usize>,
+    pub id: SourceId,      // Auto Increment ID
+    pub path: Path,        // Path
+    pub text: String,      // Content
+    pub loffs: Vec<usize>, // Byte offsets where each line start.
 
     pub fn open(allocator: Allocator, id: SourceId, path: Path) ErrorOr<Self, ()> {
         const loffs: Vec<usize> = Vec.new(allocator);
@@ -63,12 +66,54 @@ pub struct Source {
     }
 
     fn compute_line_offsets(self: const Self*) {
+        // First line starts at byte offset zero
+        self->loffs.push(0);
+
         for (var i: usize = 0; i < self->text.len(); i += 1) {
             const char = self->text.get(i).unwrap();
 
             if (is_newline(char)) {
                 self->loffs.push(i);
             }
+        }
+    }
+
+    pub fn get_lines(self: const Self*, start: usize, end: usize) Option<Slice<uint8>> {
+        @assert(start < end, "invalid range of line numbers");
+
+        var ptr: uint8*;
+        var len: usize;
+
+        for (var i: usize = start; i < end + 1; i += 1) {
+            switch (self->get_line(i)) {
+                case .Some(slice) => {
+                    // Use first line's text pointer as buffer pointer
+                    // and compute selected lines range
+                    if (i == start) {
+                        ptr = slice.ptr();
+                    }
+
+                    len += slice.len();
+                }
+                case .None => return .None;
+            }
+        }
+
+        return .Some(Slice.new(ptr, len));
+    }
+
+    pub fn get_line(self: const Self*, n: usize) Option<Slice<uint8>> {
+        @assert(n > 0, "line number must be a 1-based index");
+
+        switch (self->loffs.get(n - 1)) {
+            case .Some(start_offset) => {
+                const end_offset = self->loffs.get(n).unwrap_or(self->text.len());
+                const offset = end_offset - start_offset;
+                const text = self->text.as_str_const();
+
+                return .Some(Slice.new(&text[start_offset + 1], offset - 1));
+            }
+            case .None => return .None;
         }
     }
 
@@ -80,7 +125,10 @@ pub struct Source {
 }
 
 /// Checks if a character is a newline character (single byte).
-/// TODO: Add multi-byte UTF-8 support.
+///
+///  TODO: Add multi-byte UTF-8 support.
+/// 
+/// REVIEW: Move to utils and use alias for chars.
 inline fn is_newline(char: uint8) bool {
     switch (char) {
         case 10 => return true; // Line Feed (\n)

@@ -11,7 +11,24 @@ pub struct Slice<T> {
         return Self { ptr, len };
     }
 
-    pub inline fn get(self: Self*, index: usize) Option<T*> {
+    pub inline fn ptr(self: Self*) T* {
+        return self->ptr;
+    }
+
+    pub inline fn ptr_const(self: const Self*) const T* {
+        return self->ptr;
+    }
+
+    pub inline fn get(self: Self*, index: usize) Option<T> {
+        if (index >= self->len) {
+            return .None;
+        }
+
+        return .Some(*(self->ptr + index));
+    }
+    
+
+    pub inline fn get_ref(self: Self*, index: usize) Option<T*> {
         if (index >= self->len) {
             return .None;
         }
