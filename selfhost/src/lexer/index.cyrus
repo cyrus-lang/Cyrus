@@ -1,11 +1,13 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 The Cyrus Language
 
-import std::collections{Vector};
-import std::string{String};
-import std::option{Option};
-import std::mem{Allocator};
-import std::libc{printf};
+import (
+    std::collections{Vector},
+    std::string{String},
+    std::option{Option},
+    std::mem{Allocator},
+    std::libc{printf},
+);
 
 import parse::lex::tokens{
     TokenPool,
@@ -79,7 +81,6 @@ pub struct Lexer {
                     case '0'..='9' => return self->read_integer();
                     case '"' => return self->read_str(.None);
                     case '\'' => return self->read_char();
-
                     case '+' => return self->read_plus();
                     case '-' => return self->read_minus();
                     case ':' => return self->read_colon();
@@ -90,7 +91,6 @@ pub struct Lexer {
                     case '&' => return self->read_amp();
                     case '|' => return self->read_pipe();
                     case '.' => return self->read_dot();
-
                     case '/' => return self->read_single(.Slash);
                     case '~' => return self->read_single(.Tilde);
                     case '*' => return self->read_single(.Asterisk);
@@ -105,7 +105,6 @@ pub struct Lexer {
                     case ',' => return self->read_single(.Comma);
                     case ';' => return self->read_single(.Semicolon);
                     case '@' => return self->read_single(.At);
-                    
                     case '\0' => return .EOF;
 
                     default => {
