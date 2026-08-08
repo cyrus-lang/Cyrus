@@ -2,7 +2,6 @@
 // Copyright (c) 2026 The Cyrus Language
 
 use crate::builder::builder::CodeGenIRBuilder;
-use crate::llvm::abi::abi_type::abi_type_to_llvm_type;
 use crate::llvm::debug_info::{
     debug_array_type, debug_const_type, debug_dynamic_type, debug_enum_type, debug_member_type, debug_pointer_type,
     debug_scalar_enum_type, debug_simple_type, debug_struct_type, debug_union_type,
@@ -12,7 +11,7 @@ use cyrusc_internal::abi::args::{ABIArgKind, ABIFunctionInfo, ExpandKind};
 use cyrusc_internal::abi::layout::ABIFieldOffsetInfo;
 use cyrusc_internal::cir::cir::CIREnumVariant;
 use cyrusc_internal::cir::typectx::CIRTypeContextID;
-use cyrusc_internal::cir::types::{CIRArrayType, CIREnumType, CIRFuncType, CIRType};
+use cyrusc_internal::cir::types::{CIRArrayType, CIREnumType, CIRFuncType, CIRType, CIRVectorType};
 use cyrusc_typed_ast::types::PlainType;
 use fx_hash::{FxHashMap, FxHashMapExt};
 use inkwell::llvm_sys::prelude::{LLVMMetadataRef, LLVMTypeRef};
@@ -355,6 +354,11 @@ impl<'ll> CodeGenIRBuilder<'ll> {
                     )
                 }
             }
+
+            CIRType::Vector(_) => {
+                // TODO Implement debug info emission for vector type.
+                return std::ptr::null_mut() as LLVMMetadataRef;
+            }
         };
 
         // store real metadata
@@ -372,12 +376,25 @@ impl<'ll> CodeGenIRBuilder<'ll> {
             CIRType::Struct(type_id) => self.emit_struct_type(type_id).as_any_type_enum(),
             CIRType::Enum(type_id) => self.emit_enum_type(type_id).as_any_type_enum(),
             CIRType::Union(type_id) => self.emit_union_type(type_id).as_any_type_enum(),
-            CIRType::Const(inner_ty) => self.emit_type(*inner_ty),
-            CIRType::Plain(plain_ty) => self.emit_plain_type(plain_ty),
+            CIRType::Const(inner) => self.emit_type(*inner),
+            CIRType::Plain(plain) => self.emit_plain_type(plain),
             CIRType::Pointer(_) => self.llvm_ctx.ptr_type(AddressSpace::default()).as_any_type_enum(),
-            CIRType::Array(array_ty) => self.emit_array_type(array_ty).as_any_type_enum(),
+            CIRType::Array(array) => self.emit_array_type(array).as_any_type_enum(),
             CIRType::FuncType(..) => self.llvm_ctx.ptr_type(AddressSpace::default()).as_any_type_enum(),
             CIRType::Dynamic(..) => self.emit_dynamic_type().as_any_type_enum(),
+            CIRType::Vector(vec) => self.emit_vector_type(vec),
+        }
+    }
+
+    fn emit_vector_type(&self, vec: CIRVectorType) -> AnyTypeEnum<'ll> {
+        let element_type: BasicTypeEnum<'ll> = self.emit_type(*vec.element_type).try_into().unwrap();
+
+        let lanes: u32 = vec.lanes.try_into().unwrap();
+
+        match element_type {
+            BasicTypeEnum::IntType(int_type) => AnyTypeEnum::VectorType(int_type.vec_type(lanes)),
+            BasicTypeEnum::FloatType(float_type) => AnyTypeEnum::VectorType(float_type.vec_type(lanes)),
+            _ => panic!("Unsupported vector element type: {:?}", element_type),
         }
     }
 
@@ -632,25 +649,25 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         for abi_arg_info in &abi_func_info.params_infos {
             match &abi_arg_info.kind {
                 ABIArgKind::DirectPair { lo, hi } => {
-                    let lo_type = abi_type_to_llvm_type(self.llvm_ctx, &self.target.info, lo);
-                    let hi_type = abi_type_to_llvm_type(self.llvm_ctx, &self.target.info, hi);
+                    let lo_type = self.emit_type(lo.clone());
+                    let hi_type = self.emit_type(hi.clone());
 
                     param_types.push(lo_type.as_type_ref());
                     param_types.push(hi_type.as_type_ref());
                 }
                 ABIArgKind::Direct { coerce_to } => {
-                    let param_type = if let Some(coerce_ty) = coerce_to {
-                        abi_type_to_llvm_type(self.llvm_ctx, &self.target.info, coerce_ty)
+                    let param_type = if let Some(ty) = coerce_to {
+                        self.emit_type(ty.clone())
                     } else {
                         // for direct without coercion, we need to find the type from params_types
                         let i = abi_arg_info.param_index_start as usize;
                         let abi_type = &abi_func_info.params_types[i];
-                        abi_type_to_llvm_type(self.llvm_ctx, &self.target.info, abi_type)
+                        self.emit_type(abi_type.clone())
                     };
                     param_types.push(param_type.as_type_ref());
                 }
                 ABIArgKind::DirectCoerce { ty } => {
-                    let param_type = abi_type_to_llvm_type(self.llvm_ctx, &self.target.info, ty);
+                    let param_type = self.emit_type(ty.clone());
                     param_types.push(param_type.as_type_ref());
                 }
                 ABIArgKind::Indirect { .. } => {
@@ -659,22 +676,22 @@ impl<'ll> CodeGenIRBuilder<'ll> {
                 }
                 ABIArgKind::Expand { kind } => match kind {
                     ExpandKind::Coerced { lo, hi, .. } => {
-                        let lo_type = abi_type_to_llvm_type(self.llvm_ctx, &self.target.info, lo);
+                        let lo_type = self.emit_type(lo.clone());
                         param_types.push(lo_type.as_type_ref());
 
-                        let hi_type = abi_type_to_llvm_type(self.llvm_ctx, &self.target.info, hi);
+                        let hi_type = self.emit_type(hi.clone());
                         param_types.push(hi_type.as_type_ref());
 
                         for i in abi_arg_info.param_index_start..=abi_arg_info.param_index_end {
                             let abi_type = &abi_func_info.params_types[i as usize];
-                            let param_type = abi_type_to_llvm_type(self.llvm_ctx, &self.target.info, abi_type);
+                            let param_type = self.emit_type(abi_type.clone());
                             param_types.push(param_type.as_type_ref());
                         }
                     }
                     ExpandKind::Simple | ExpandKind::Struct { .. } => {
                         for i in abi_arg_info.param_index_start..=abi_arg_info.param_index_end {
                             let abi_type = &abi_func_info.params_types[i as usize];
-                            let param_type = abi_type_to_llvm_type(self.llvm_ctx, &self.target.info, abi_type);
+                            let param_type = self.emit_type(abi_type.clone());
                             param_types.push(param_type.as_type_ref());
                         }
                     }
@@ -682,7 +699,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
                 ABIArgKind::Extend { .. } => {
                     let i = abi_arg_info.param_index_start as usize;
                     let abi_type = &abi_func_info.params_types[i];
-                    let param_type = abi_type_to_llvm_type(self.llvm_ctx, &self.target.info, abi_type);
+                    let param_type = self.emit_type(abi_type.clone());
                     param_types.push(param_type.as_type_ref());
                 }
                 ABIArgKind::Ignore => {
@@ -703,7 +720,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         } else if abi_func_info.ret_info.kind.is_ignore() {
             AnyTypeEnum::VoidType(self.llvm_ctx.void_type())
         } else {
-            abi_type_to_llvm_type(self.llvm_ctx, &self.target.info, &abi_func_info.ret_info.abi_type)
+            self.emit_type(abi_func_info.ret_info.abi_type.clone())
         };
 
         let mut param_types = self.emit_func_type_params(abi_func_info);

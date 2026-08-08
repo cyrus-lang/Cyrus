@@ -301,6 +301,10 @@ impl CIRTypeContext {
                 CIRTypeKey::Array(Box::new(self.type_to_key(&array_type.element_type)), array_type.len)
             }
 
+            CIRType::Vector(_) => {
+                unimplemented!("not supported in language yet");
+            }
+
             CIRType::Struct(type_id) => {
                 let struct_type = {
                     match &self.defs.borrow()[type_id.0] {
@@ -387,6 +391,19 @@ impl CIRTypeContext {
 
 // Compute layouts.
 impl CIRTypeContext {
+    pub fn get_integer_bit_width(&self, ty: &CIRType) -> Option<usize> {
+        let layout = self.layout_of(ty);
+        let size = layout.size;
+
+        ty.as_plain().and_then(|plain| {
+            if plain.is_integer_or_bool() {
+                Some((size * 8) as usize)
+            } else {
+                None
+            }
+        })
+    }
+
     pub fn layout_of(&self, ty: &CIRType) -> ABITypeLayout {
         match ty.const_inner() {
             CIRType::Struct(type_id) | CIRType::Union(type_id) | CIRType::Enum(type_id) => {
@@ -417,6 +434,10 @@ impl CIRTypeContext {
                 }
 
                 ABITypeLayout::aggregate(total_size, element_layout.align, field_offsets)
+            }
+
+            CIRType::Vector(_) => {
+                unimplemented!("not supported in language yet");
             }
 
             CIRType::FuncType(_) => {

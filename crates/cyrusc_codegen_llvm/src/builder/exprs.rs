@@ -8,14 +8,13 @@ use crate::{
         irreg::LocalIRValue,
         values::{InternalValue, InternalValueKind},
     },
-    llvm::{abi::abi_type::abi_type_to_llvm_type, constness::is_basic_value_constant, debug_info::set_debug_location},
+    llvm::{constness::is_basic_value_constant, debug_info::set_debug_location},
 };
 use cyrusc_ast::operators::{InfixOperator, PrefixOperator};
 use cyrusc_internal::{
     abi::{
         args::ABIFunctionInfo,
         layout::{ABIFieldOffsetInfo, ABITypeLayout},
-        types::ABIType,
     },
     cir::{
         cir::*,
@@ -255,13 +254,10 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         &self,
         value: BasicValueEnum<'ll>,
         from_cir_type: &CIRType,
-        target_type: ABIType,
+        target_type: CIRType,
     ) -> BasicValueEnum<'ll> {
         let from_type = value.get_type();
-        let target_basic_type: BasicTypeEnum<'ll> =
-            abi_type_to_llvm_type(self.llvm_ctx, &self.target.info, &target_type)
-                .try_into()
-                .unwrap();
+        let target_basic_type: BasicTypeEnum<'ll> = self.emit_type(target_type.clone()).try_into().unwrap();
 
         if from_type == target_basic_type {
             return value;

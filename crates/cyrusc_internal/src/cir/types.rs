@@ -23,12 +23,19 @@ pub enum CIRType {
     Pointer(Box<CIRType>),
     FuncType(CIRFuncType),
     Array(CIRArrayType),
+    Vector(CIRVectorType),
     Dynamic(CIRDynamicType),
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct CIRDynamicType {
     pub vtable_id: VTableID,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct CIRVectorType {
+    pub element_type: Box<CIRType>,
+    pub lanes: usize,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -148,6 +155,11 @@ impl CIREnumType {
 }
 
 impl CIRType {
+    #[inline]
+    pub fn void_ptr() -> Self {
+        Self::Pointer(Box::new(Self::Plain(PlainType::Void)))
+    }
+
     pub fn struct_or_union_fields(&self, tctx: &CIRTypeContext) -> Option<Vec<CIRType>> {
         if let Some(struct_type) = self.as_struct(tctx) {
             Some(struct_type.fields)

@@ -8,10 +8,9 @@ use crate::{
         values::{InternalValue, InternalValueKind},
     },
     c,
-    llvm::abi::abi_type::abi_type_to_llvm_type,
 };
 use cyrusc_internal::{
-    abi::{args::ABIRetInfoKind, layout::ABITypeLayout, types::ABIType},
+    abi::{args::ABIRetInfoKind, layout::ABITypeLayout},
     cir::{
         cir::{
             CIRBlockStmt, CIRBreakStmt, CIRContinueStmt, CIRForStmt, CIRGotoStmt, CIRIfStmt, CIRLabelStmt, CIRPattern,
@@ -815,13 +814,13 @@ impl<'ll> CodeGenIRBuilder<'ll> {
                 this.llvmbuilder.build_return(None).unwrap();
             }
             (Some(expr), ABIRetInfoKind::Ignore) => {
-                this.emit_expr(expr, &Some(*ret_info.cir_ret_type.clone()));
+                this.emit_expr(expr, &Some(*ret_info.ret_type.clone()));
                 this.emit_all_defers();
                 this.llvmbuilder.build_return(None).unwrap();
             }
 
             (Some(expr), ABIRetInfoKind::Indirect { sret }) => {
-                let lvalue = this.emit_expr(expr, &Some(*ret_info.cir_ret_type.clone()));
+                let lvalue = this.emit_expr(expr, &Some(*ret_info.ret_type.clone()));
                 let rvalue = this.load_rvalue(lvalue.clone());
 
                 if *sret {
@@ -843,26 +842,26 @@ impl<'ll> CodeGenIRBuilder<'ll> {
                 }
             }
             (Some(expr), ABIRetInfoKind::Direct { coerce_to }) => {
-                let lvalue = this.emit_expr(expr, &Some(*ret_info.cir_ret_type.clone()));
+                let lvalue = this.emit_expr(expr, &Some(*ret_info.ret_type.clone()));
                 let rvalue = this.load_rvalue(lvalue);
 
-                let ret_ty = abi_type_to_llvm_type(this.llvm_ctx, &this.target.info, &ret_info.abi_type);
+                let ret_type = this.emit_type(ret_info.abi_type.clone());
 
-                let value: BasicValueEnum<'ll> = if let Some(coerce) = coerce_to {
-                    let coerce_ty = abi_type_to_llvm_type(this.llvm_ctx, &this.target.info, coerce);
-                    this.emit_cast(coerce_ty, rvalue).try_into().unwrap()
+                let value: BasicValueEnum<'ll> = if let Some(ty) = coerce_to {
+                    let llvm_type = this.emit_type(ty.clone());
+                    this.emit_cast(llvm_type, rvalue).try_into().unwrap()
                 } else {
-                    this.emit_cast(ret_ty, rvalue).try_into().unwrap()
+                    this.emit_cast(ret_type, rvalue).try_into().unwrap()
                 };
 
                 let return_value =
-                    this.intrinsic_coerce_through_alloca(value, ret_ty.try_into().unwrap(), "coerce.ret");
+                    this.intrinsic_coerce_through_alloca(value, ret_type.try_into().unwrap(), "coerce.ret");
 
                 this.emit_all_defers();
                 this.llvmbuilder.build_return(Some(&return_value)).unwrap();
             }
             (Some(expr), ABIRetInfoKind::DirectPair { lo, hi }) => {
-                let lvalue = this.emit_expr(expr, &Some(*ret_info.cir_ret_type.clone()));
+                let lvalue = this.emit_expr(expr, &Some(*ret_info.ret_type.clone()));
                 let rvalue = this.load_rvalue(lvalue);
 
                 let return_value = this.emit_compute_return_direct_pair(rvalue, lo, hi, &ret_info.abi_type);
@@ -953,28 +952,22 @@ impl<'ll> CodeGenIRBuilder<'ll> {
     fn emit_compute_return_direct_pair(
         &mut self,
         rvalue: InternalValue<'ll>,
-        lo: &ABIType,
-        hi: &ABIType,
-        abi_ret_type: &ABIType,
+        lo: &CIRType,
+        hi: &CIRType,
+        abi_ret_type: &CIRType,
     ) -> BasicValueEnum<'ll> {
         let struct_value = match rvalue.kind {
             InternalValueKind::RValue(val) => val.into_struct_value(),
-            _ => unreachable!("direct pair return value must be an rvalue"),
+            _ => panic!("direct pair return value must be an rvalue"),
         };
 
-        let lo_ty: BasicTypeEnum<'ll> = abi_type_to_llvm_type(self.llvm_ctx, &self.target.info, lo)
-            .try_into()
-            .unwrap();
+        let lo_ty: BasicTypeEnum<'ll> = self.emit_type(lo.clone()).try_into().unwrap();
 
-        let hi_ty: BasicTypeEnum<'ll> = abi_type_to_llvm_type(self.llvm_ctx, &self.target.info, hi)
-            .try_into()
-            .unwrap();
+        let hi_ty: BasicTypeEnum<'ll> = self.emit_type(hi.clone()).try_into().unwrap();
 
         let pair_type = self.emit_abi_pair_llvm_type(lo, hi);
 
-        let ret_struct_type: StructType<'ll> = abi_type_to_llvm_type(self.llvm_ctx, &self.target.info, abi_ret_type)
-            .try_into()
-            .unwrap();
+        let ret_struct_type: StructType<'ll> = self.emit_type(abi_ret_type.clone()).try_into().unwrap();
 
         // optimization: if the source struct and return struct have the same type,
         // we can return the value directly without extraction and rebuilding
@@ -1003,9 +996,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
 
         let hi_val = self.llvmbuilder.build_load(hi_ty, hi_ptr, "ret.hi").unwrap();
 
-        let ret_struct_ty: StructType = abi_type_to_llvm_type(self.llvm_ctx, &self.target.info, abi_ret_type)
-            .try_into()
-            .unwrap();
+        let ret_struct_ty: StructType<'ll> = self.emit_type(abi_ret_type.clone()).try_into().unwrap();
 
         let mut pair_struct = ret_struct_ty.get_undef();
 

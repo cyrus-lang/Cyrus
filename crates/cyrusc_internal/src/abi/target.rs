@@ -8,7 +8,6 @@ use crate::{
         args::{ABIArgInfo, ABIFunctionInfo, ABIRetInfo},
         helpers::Registers,
         targets::x86_64::classify::X86_64,
-        types::{ABIFloatKind, ABIType},
     },
     cir::{
         typectx::CIRTypeContext,
@@ -117,25 +116,6 @@ impl ABITargetInfo {
             }
             (Wasm32, _) => "e-m:e-p:32:32-p10:8:8-p20:8:8-i64:64-n32:64-S128-ni:1:10:20",
             _ => panic!("Target combination not supported yet!"),
-        }
-    }
-
-    pub fn abi_size_of(&self, abi_type: &ABIType) -> u64 {
-        match abi_type {
-            ABIType::Integer(bits) => (*bits as u64 + 7) / 8,
-            ABIType::Float(kind) => match kind {
-                ABIFloatKind::F16 => 2,
-                ABIFloatKind::F32 => 4,
-                ABIFloatKind::F64 => 8,
-                ABIFloatKind::F128 => 16,
-            },
-            ABIType::Pointer => 8, // 64-bit pointers
-            ABIType::Vector { element_ty, lanes } => self.abi_size_of(element_ty) * (*lanes as u64),
-            ABIType::Array { element_ty, count } => self.abi_size_of(element_ty) * (*count as u64),
-            ABIType::Struct(fields, _) => fields.iter().map(|ty| self.abi_size_of(ty)).sum(),
-            ABIType::Union(fields) => fields.iter().map(|ty| self.abi_size_of(ty)).max().unwrap_or(1),
-            ABIType::TargetIntegerType(target_int) => target_int.size(self).into(),
-            ABIType::Void => 0,
         }
     }
 
