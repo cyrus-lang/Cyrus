@@ -105,56 +105,56 @@ impl<'a> Resolver<'a> {
                 return Vec::new();
             }
             ASTStmt::Builtin(builtin) => {
-                if let Some(stmt) = self.resolve_builtin(builtin).map(TypedStmt::Builtin) {
-                    return vec![stmt];
+                if let Some(stmt) = self.resolve_builtin(builtin).map(TypedStmtKind::Builtin) {
+                    return vec![TypedStmt::new(stmt)];
                 }
                 return Vec::new();
             }
             ASTStmt::GlobalVar(global_var) => {
                 if let Some(stmt) = self.resolve_global_var_stmt(global_var) {
-                    return vec![stmt];
+                    return vec![TypedStmt::new(stmt)];
                 }
                 return Vec::new();
             }
             ASTStmt::Typedef(typedef) => {
                 if let Some(stmt) = self.resolve_typedef(typedef) {
-                    return vec![stmt];
+                    return vec![TypedStmt::new(stmt)];
                 }
                 return Vec::new();
             }
             ASTStmt::FuncDef(func_def) => {
                 if let Some(stmt) = self.resolve_func_def(func_def) {
-                    return vec![stmt];
+                    return vec![TypedStmt::new(stmt)];
                 }
                 return Vec::new();
             }
             ASTStmt::FuncDecl(func_decl) => {
                 if let Some(stmt) = self.resolve_func_decl(func_decl) {
-                    return vec![stmt];
+                    return vec![TypedStmt::new(stmt)];
                 }
                 return Vec::new();
             }
             ASTStmt::Struct(struct_) => {
                 if let Some(stmt) = self.resolve_struct_stmt(struct_) {
-                    return vec![stmt];
+                    return vec![TypedStmt::new(stmt)];
                 }
                 return Vec::new();
             }
             ASTStmt::Enum(enum_) => {
                 if let Some(stmt) = self.resolve_enum_stmt(enum_) {
-                    return vec![stmt];
+                    return vec![TypedStmt::new(stmt)];
                 }
                 return Vec::new();
             }
             ASTStmt::Union(union_) => {
                 if let Some(stmt) = self.resolve_union_stmt(union_) {
-                    return vec![stmt];
+                    return vec![TypedStmt::new(stmt)];
                 }
                 return Vec::new();
             }
             ASTStmt::Interface(interface) => {
                 if let Some(stmt) = self.resolve_interface_stmt(interface) {
-                    return vec![stmt];
+                    return vec![TypedStmt::new(stmt)];
                 }
                 return Vec::new();
             }
@@ -173,21 +173,60 @@ impl<'a> Resolver<'a> {
 
     fn resolve_stmt(&mut self, stmt: &ASTStmt) -> Option<TypedStmt> {
         match stmt {
-            ASTStmt::ExportTuple(export_tuple) => self.resolve_export_tuple_stmt(export_tuple),
-            ASTStmt::Variable(variable) => self.resolve_var(variable).map(TypedStmt::Variable),
-            ASTStmt::Builtin(builtin) => self.resolve_builtin(builtin).map(TypedStmt::Builtin),
-            ASTStmt::Expr(expr) => self.resolve_expr(expr).map(TypedStmt::Expr),
-            ASTStmt::If(if_stmt) => self.resolve_if_stmt(if_stmt).map(TypedStmt::If),
-            ASTStmt::For(for_stmt) => self.resolve_for_stmt(for_stmt).map(TypedStmt::For),
-            ASTStmt::While(while_stmt) => self.resolve_while_stmt(while_stmt).map(TypedStmt::While),
-            ASTStmt::Switch(switch_stmt) => self.resolve_switch_stmt(switch_stmt).map(TypedStmt::Switch),
-            ASTStmt::BlockStmt(block) => self.resolve_block_stmt(block).map(TypedStmt::BlockStmt),
-            ASTStmt::Return(return_stmt) => self.resolve_return_stmt(return_stmt).map(TypedStmt::Return),
-            ASTStmt::Break(break_stmt) => self.resolve_break_stmt(break_stmt).map(TypedStmt::Break),
-            ASTStmt::Continue(continue_stmt) => self.resolve_continue_stmt(continue_stmt).map(TypedStmt::Continue),
-            ASTStmt::Label(label) => self.resolve_label_stmt(label),
+            ASTStmt::Variable(var) => self
+                .resolve_var(var)
+                .map(|stmt| TypedStmt::new(TypedStmtKind::Variable(stmt))),
 
-            ASTStmt::Goto(goto) => self.resolve_goto_stmt(goto),
+            ASTStmt::ExportTuple(export_tuple) => self.resolve_export_tuple_stmt(export_tuple),
+
+            ASTStmt::Builtin(builtin) => self
+                .resolve_builtin(builtin)
+                .map(TypedStmtKind::Builtin)
+                .map(TypedStmt::new),
+
+            ASTStmt::Expr(expr) => self.resolve_expr(expr).map(TypedStmtKind::Expr).map(TypedStmt::new),
+            
+            ASTStmt::If(if_stmt) => self.resolve_if_stmt(if_stmt).map(TypedStmtKind::If).map(TypedStmt::new),
+
+            ASTStmt::For(for_stmt) => self
+                .resolve_for_stmt(for_stmt)
+                .map(TypedStmtKind::For)
+                .map(TypedStmt::new),
+
+            ASTStmt::While(while_stmt) => self
+                .resolve_while_stmt(while_stmt)
+                .map(TypedStmtKind::While)
+                .map(TypedStmt::new),
+
+            ASTStmt::Switch(switch_stmt) => self
+                .resolve_switch_stmt(switch_stmt)
+                .map(TypedStmtKind::Switch)
+                .map(TypedStmt::new),
+
+            ASTStmt::BlockStmt(block) => self
+                .resolve_block_stmt(block)
+                .map(TypedStmtKind::BlockStmt)
+                .map(TypedStmt::new),
+
+            ASTStmt::Return(return_stmt) => self
+                .resolve_return_stmt(return_stmt)
+                .map(TypedStmtKind::Return)
+                .map(TypedStmt::new),
+
+            ASTStmt::Break(break_stmt) => self
+                .resolve_break_stmt(break_stmt)
+                .map(TypedStmtKind::Break)
+                .map(TypedStmt::new),
+
+            ASTStmt::Continue(continue_stmt) => self
+                .resolve_continue_stmt(continue_stmt)
+                .map(TypedStmtKind::Continue)
+                .map(TypedStmt::new),
+
+            ASTStmt::Label(label) => self.resolve_label_stmt(label).map(TypedStmt::new),
+
+            ASTStmt::Goto(goto) => self.resolve_goto_stmt(goto).map(TypedStmt::new),
+            
             ASTStmt::Foreach(_foreach_stmt) => unimplemented!(), // TODO
 
             // invalid statements
@@ -820,7 +859,7 @@ impl<'a> Resolver<'a> {
         }
     }
 
-    fn resolve_typedef(&mut self, typedef: &ASTTypedefStmt) -> Option<TypedStmt> {
+    fn resolve_typedef(&mut self, typedef: &ASTTypedefStmt) -> Option<TypedStmtKind> {
         let symbol_id = self.lookup_symbol_id(self.current_scope?, &typedef.ident.value)?;
         let generic_params = self.resolve_generic_params(&typedef.generic_params)?;
         self.with_generic_scope(&generic_params.clone(), |this| {
@@ -838,7 +877,7 @@ impl<'a> Resolver<'a> {
             this.decl_tables.with_typedef_decl_mut(typedef_decl_id, |decl| {
                 decl.ty = Box::new(sema_type.clone());
             });
-            Some(TypedStmt::Typedef(TypedTypedefStmt {
+            Some(TypedStmtKind::Typedef(TypedTypedefStmt {
                 typedef_decl_id,
                 name: typedef.ident.as_string(),
                 ty: sema_type,
@@ -924,7 +963,7 @@ impl<'a> Resolver<'a> {
         Some(TypedBuiltin::BuiltinBlock(built_block))
     }
 
-    fn resolve_interface_stmt(&mut self, interface: &ASTInterfaceStmt) -> Option<TypedStmt> {
+    fn resolve_interface_stmt(&mut self, interface: &ASTInterfaceStmt) -> Option<TypedStmtKind> {
         let name = interface.ident.as_string();
         let symbol_id = self.lookup_symbol_id(self.current_scope?, &name)?;
         let loc = interface.loc;
@@ -998,7 +1037,7 @@ impl<'a> Resolver<'a> {
                 symbol_entry.kind = SymbolEntryKind::Interface(interface_decl_id)
             });
 
-            Some(TypedStmt::Interface(TypedInterfaceStmt {
+            Some(TypedStmtKind::Interface(TypedInterfaceStmt {
                 name,
                 interface_decl_id,
                 methods: interface_methods,
@@ -1009,7 +1048,7 @@ impl<'a> Resolver<'a> {
         })
     }
 
-    fn resolve_union_stmt(&mut self, union_decl: &ASTUnionStmt) -> Option<TypedStmt> {
+    fn resolve_union_stmt(&mut self, union_decl: &ASTUnionStmt) -> Option<TypedStmtKind> {
         let name = union_decl.ident.as_string();
         let symbol_id = self.lookup_symbol_id(self.current_scope?, &name)?;
         let loc = union_decl.loc;
@@ -1058,7 +1097,7 @@ impl<'a> Resolver<'a> {
                 _union_decl.methods = methods.clone();
             });
 
-            Some(TypedStmt::Union(TypedUnionStmt {
+            Some(TypedStmtKind::Union(TypedUnionStmt {
                 union_decl_id,
                 name,
                 fields: typed_union_fields,
@@ -1170,7 +1209,7 @@ impl<'a> Resolver<'a> {
         Some(typed_variants)
     }
 
-    fn resolve_enum_stmt(&mut self, enum_decl: &ASTEnumStmt) -> Option<TypedStmt> {
+    fn resolve_enum_stmt(&mut self, enum_decl: &ASTEnumStmt) -> Option<TypedStmtKind> {
         let name = enum_decl.ident.as_string();
         let symbol_id = self.lookup_symbol_id(self.current_scope?, &name)?;
         let loc = enum_decl.loc;
@@ -1214,7 +1253,7 @@ impl<'a> Resolver<'a> {
                 _enum_decl.methods = methods.clone();
             });
 
-            Some(TypedStmt::Enum(TypedEnumStmt {
+            Some(TypedStmtKind::Enum(TypedEnumStmt {
                 enum_decl_id,
                 name,
                 variants,
@@ -1229,7 +1268,7 @@ impl<'a> Resolver<'a> {
         })
     }
 
-    fn resolve_global_var_stmt(&mut self, global_var: &ASTGlobalVarStmt) -> Option<TypedStmt> {
+    fn resolve_global_var_stmt(&mut self, global_var: &ASTGlobalVarStmt) -> Option<TypedStmtKind> {
         let name = global_var.ident.as_string();
         let symbol_id = self.lookup_symbol_id(self.current_scope?, &name)?;
         let loc = global_var.loc;
@@ -1260,7 +1299,7 @@ impl<'a> Resolver<'a> {
             symbol_entry.kind = SymbolEntryKind::GlobalVar(global_var_decl_id)
         });
 
-        Some(TypedStmt::GlobalVar(TypedGlobalVarStmt {
+        Some(TypedStmtKind::GlobalVar(TypedGlobalVarStmt {
             file_id: self.current_module_file_id.unwrap(),
             global_var_decl_id,
             name,
@@ -1395,7 +1434,7 @@ impl<'a> Resolver<'a> {
         Some(typed_impls)
     }
 
-    fn resolve_struct_stmt(&mut self, struct_decl: &ASTStructStmt) -> Option<TypedStmt> {
+    fn resolve_struct_stmt(&mut self, struct_decl: &ASTStructStmt) -> Option<TypedStmtKind> {
         let name = struct_decl.ident.as_string();
         let symbol_id = self.lookup_symbol_id(self.current_scope?, &name)?;
         let loc = struct_decl.loc;
@@ -1447,7 +1486,7 @@ impl<'a> Resolver<'a> {
                 _struct_decl.methods = methods.clone();
             });
 
-            Some(TypedStmt::Struct(TypedStructStmt {
+            Some(TypedStmtKind::Struct(TypedStructStmt {
                 struct_decl_id,
                 name,
                 fields: typed_struct_fields,
@@ -1578,7 +1617,7 @@ impl<'a> Resolver<'a> {
         }
     }
 
-    fn resolve_func_decl(&mut self, ast_func_decl: &ASTFuncDeclStmt) -> Option<TypedStmt> {
+    fn resolve_func_decl(&mut self, ast_func_decl: &ASTFuncDeclStmt) -> Option<TypedStmtKind> {
         let name = ast_func_decl.usable_name();
         let symbol_id = self.lookup_symbol_id(self.current_scope?, &name)?;
 
@@ -1617,7 +1656,7 @@ impl<'a> Resolver<'a> {
             symbol_entry.kind = SymbolEntryKind::Func(func_decl_id)
         });
 
-        Some(TypedStmt::FuncDecl(TypedFuncDeclStmt {
+        Some(TypedStmtKind::FuncDecl(TypedFuncDeclStmt {
             file_id: self.current_module_file_id.unwrap(),
             func_decl_id,
             name: ast_func_decl.ident.as_string(),
@@ -1633,7 +1672,7 @@ impl<'a> Resolver<'a> {
         }))
     }
 
-    fn resolve_func_def(&mut self, func_def: &ASTFuncDefStmt) -> Option<TypedStmt> {
+    fn resolve_func_def(&mut self, func_def: &ASTFuncDefStmt) -> Option<TypedStmtKind> {
         let symbol_id = self.lookup_symbol_id(self.current_scope?, &func_def.ident.value)?;
 
         let scope = LocalScope::new();
@@ -1699,7 +1738,7 @@ impl<'a> Resolver<'a> {
             })
         }
 
-        Some(TypedStmt::FuncDef(TypedFuncDefStmt {
+        Some(TypedStmtKind::FuncDef(TypedFuncDefStmt {
             func_decl_id: Some(func_decl_id),
             name: func_def.ident.as_string(),
             generic_params,
@@ -1763,7 +1802,7 @@ impl<'a> Resolver<'a> {
                 ASTStmt::Defer(defer) => {
                     if let Some(typed_stmt) = self.resolve_stmt(&defer.operand) {
                         defers.push(TypedDeferStmt {
-                            operand: Box::new(typed_stmt),
+                            operand: Box::new(typed_stmt.kind),
                             loc: defer.loc,
                         });
                     }
@@ -1790,12 +1829,12 @@ impl<'a> Resolver<'a> {
 
         let pattern = self.resolve_export_pattern(&export_tuple.pattern, export_tuple.is_const)?;
 
-        Some(TypedStmt::TupleExport(TypedTupleExportStmt {
+        Some(TypedStmt::new(TypedStmtKind::TupleExport(TypedTupleExportStmt {
             pattern,
             rhs: typed_rhs,
             is_const: export_tuple.is_const,
             loc: export_tuple.loc,
-        }))
+        })))
     }
 
     fn resolve_export_pattern(
@@ -2106,9 +2145,9 @@ impl<'a> Resolver<'a> {
         Some(TypedReturnStmt { arg, loc: ret.loc })
     }
 
-    fn resolve_goto_stmt(&self, goto: &ASTGotoStmt) -> Option<TypedStmt> {
+    fn resolve_goto_stmt(&self, goto: &ASTGotoStmt) -> Option<TypedStmtKind> {
         if let Some(label_id) = self.resolve_local_scope_label(&goto.name.value) {
-            Some(TypedStmt::Goto(TypedGotoStmt {
+            Some(TypedStmtKind::Goto(TypedGotoStmt {
                 name: goto.name.as_string(),
                 label_id: Some(label_id),
                 loc: goto.loc,
@@ -2126,12 +2165,12 @@ impl<'a> Resolver<'a> {
         }
     }
 
-    fn resolve_label_stmt(&mut self, label: &ASTLabelStmt) -> Option<TypedStmt> {
+    fn resolve_label_stmt(&mut self, label: &ASTLabelStmt) -> Option<TypedStmtKind> {
         let name = label.name.as_string();
 
         let label_id = self.resolve_local_scope_label(&name).unwrap();
 
-        Some(TypedStmt::Label(TypedLabelStmt {
+        Some(TypedStmtKind::Label(TypedLabelStmt {
             name,
             label_id,
             loc: label.loc,

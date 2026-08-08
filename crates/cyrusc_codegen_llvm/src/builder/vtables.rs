@@ -13,7 +13,10 @@ use inkwell::{
 impl<'ll> CodeGenIRBuilder<'ll> {
     pub(crate) fn emit_vtable_decls(&mut self) {
         for vtable_info in self.vtable_registry.iter() {
-            let irv_id = vtable_info.vtable_irv_id.unwrap();
+            // FOR SAFETY: prevent panic when dead code vtable achieves this point.
+            let Some(irv_id) = vtable_info.vtable_irv_id else {
+                continue;
+            };
 
             let method_decls = vtable_info.cir_method_decls.as_ref().unwrap();
 
@@ -54,7 +57,13 @@ impl<'ll> CodeGenIRBuilder<'ll> {
                         llvm_func_value.as_global_value().as_pointer_value()
                     } else {
                         // method is concrete, use cir_method_decls
-                        if let Some(irv_id) = vtable_info.cir_method_decls.as_ref().unwrap()[idx] {
+
+                        // FOR SAFETY: prevent panic when dead code vtable achieves this point.
+                        let Some(method_decls) = vtable_info.cir_method_decls.as_ref() else {
+                            continue;
+                        };
+
+                        if let Some(irv_id) = method_decls[idx] {
                             let llvm_func_value = self.get_or_declare_function(irv_id).as_func().cloned().unwrap();
                             llvm_func_value.as_global_value().as_pointer_value()
                         } else {
@@ -73,7 +82,12 @@ impl<'ll> CodeGenIRBuilder<'ll> {
     }
 
     fn emit_single_vtable(&mut self, vtable_info: &VTableInfo, fn_ptrs: Vec<PointerValue<'ll>>) {
-        let ir_value = self.lookup_local_ir_value(vtable_info.vtable_irv_id.unwrap()).unwrap();
+        // FOR SAFETY: prevent panic when dead code vtable achieves this point.
+        let Some(vtable_irv_id) = vtable_info.vtable_irv_id else {
+            return;
+        };
+
+        let ir_value = self.lookup_local_ir_value(vtable_irv_id).unwrap();
         let global_value = ir_value.as_global().unwrap();
 
         let struct_values: Vec<BasicValueEnum<'ll>> = fn_ptrs.iter().map(|ptr| ptr.as_basic_value_enum()).collect();

@@ -20,7 +20,13 @@ use cyrusc_source_loc::{FileID, Loc};
 use std::hash::Hash;
 
 #[derive(Debug, Clone)]
-pub enum TypedStmt {
+pub struct TypedStmt {
+    pub kind: TypedStmtKind,
+    pub is_dead: bool,
+}
+
+#[derive(Debug, Clone)]
+pub enum TypedStmtKind {
     Variable(TypedVarStmt),
     Typedef(TypedTypedefStmt),
     GlobalVar(TypedGlobalVarStmt),
@@ -85,7 +91,7 @@ pub enum TypedTupleExportPatternKind {
 
 #[derive(Debug, Clone)]
 pub struct TypedDeferStmt {
-    pub operand: Box<TypedStmt>,
+    pub operand: Box<TypedStmtKind>,
     pub loc: Loc,
 }
 
@@ -446,6 +452,12 @@ pub struct TypedBound {
     pub loc: Loc,
 }
 
+impl TypedStmt {
+    pub fn new(kind: TypedStmtKind) -> Self {
+        return Self { kind, is_dead: false };
+    }
+}
+
 impl TypedGenericParams {
     #[inline]
     pub fn new() -> Self {
@@ -593,32 +605,32 @@ impl TypedFuncParams {
     }
 }
 
-impl TypedStmt {
+impl TypedStmtKind {
     pub fn loc(&self) -> Loc {
         match self {
-            TypedStmt::Variable(typed_variable) => typed_variable.loc,
-            TypedStmt::Typedef(typed_typedef) => typed_typedef.loc,
-            TypedStmt::GlobalVar(typed_global_variable) => typed_global_variable.loc,
-            TypedStmt::FuncDef(typed_func_def) => typed_func_def.loc,
-            TypedStmt::FuncDecl(typed_func_decl) => typed_func_decl.loc,
-            TypedStmt::BlockStmt(typed_block_statement) => typed_block_statement.loc,
-            TypedStmt::If(typed_if) => typed_if.loc,
-            TypedStmt::Return(typed_return) => typed_return.loc,
-            TypedStmt::Break(typed_break) => typed_break.loc,
-            TypedStmt::Continue(typed_continue) => typed_continue.loc,
-            TypedStmt::For(typed_for) => typed_for.loc,
-            TypedStmt::Switch(typed_switch) => typed_switch.loc,
-            TypedStmt::Struct(struct_stmt) => struct_stmt.loc,
-            TypedStmt::Enum(typed_enum) => typed_enum.loc,
-            TypedStmt::Interface(typed_interface) => typed_interface.loc,
-            TypedStmt::Expr(typed_expr) => typed_expr.loc,
-            TypedStmt::While(while_stmt) => while_stmt.loc,
-            TypedStmt::Union(union_stmt) => union_stmt.loc,
-            TypedStmt::Defer(typed_defer) => typed_defer.loc,
-            TypedStmt::TupleExport(export_tuple_values) => export_tuple_values.loc,
-            TypedStmt::Label(typed_label_stmt) => typed_label_stmt.loc,
-            TypedStmt::Goto(typed_goto_stmt) => typed_goto_stmt.loc,
-            TypedStmt::Builtin(typed_builtin) => typed_builtin.loc(),
+            TypedStmtKind::Variable(typed_variable) => typed_variable.loc,
+            TypedStmtKind::Typedef(typed_typedef) => typed_typedef.loc,
+            TypedStmtKind::GlobalVar(typed_global_variable) => typed_global_variable.loc,
+            TypedStmtKind::FuncDef(typed_func_def) => typed_func_def.loc,
+            TypedStmtKind::FuncDecl(typed_func_decl) => typed_func_decl.loc,
+            TypedStmtKind::BlockStmt(typed_block_statement) => typed_block_statement.loc,
+            TypedStmtKind::If(typed_if) => typed_if.loc,
+            TypedStmtKind::Return(typed_return) => typed_return.loc,
+            TypedStmtKind::Break(typed_break) => typed_break.loc,
+            TypedStmtKind::Continue(typed_continue) => typed_continue.loc,
+            TypedStmtKind::For(typed_for) => typed_for.loc,
+            TypedStmtKind::Switch(typed_switch) => typed_switch.loc,
+            TypedStmtKind::Struct(struct_stmt) => struct_stmt.loc,
+            TypedStmtKind::Enum(typed_enum) => typed_enum.loc,
+            TypedStmtKind::Interface(typed_interface) => typed_interface.loc,
+            TypedStmtKind::Expr(typed_expr) => typed_expr.loc,
+            TypedStmtKind::While(while_stmt) => while_stmt.loc,
+            TypedStmtKind::Union(union_stmt) => union_stmt.loc,
+            TypedStmtKind::Defer(typed_defer) => typed_defer.loc,
+            TypedStmtKind::TupleExport(export_tuple_values) => export_tuple_values.loc,
+            TypedStmtKind::Label(typed_label_stmt) => typed_label_stmt.loc,
+            TypedStmtKind::Goto(typed_goto_stmt) => typed_goto_stmt.loc,
+            TypedStmtKind::Builtin(typed_builtin) => typed_builtin.loc(),
         }
     }
 }

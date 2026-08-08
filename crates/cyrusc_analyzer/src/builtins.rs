@@ -12,14 +12,14 @@ use cyrusc_typed_ast::{
     },
     exprs::TypedExprKind,
     format::{format_sema_type, format_struct_decl},
-    stmts::TypedStmt,
+    stmts::TypedStmtKind,
     types::{PlainType, SemaType},
 };
 
 // Builtins entry point.
 impl<'a> AnalysisContext<'a> {
-    pub(crate) fn analyze_builtin(&mut self, typed_stmt: &mut TypedStmt, is_toplevel: bool) -> FlowState {
-        let TypedStmt::Builtin(builtin) = typed_stmt else {
+    pub(crate) fn analyze_builtin(&mut self, typed_stmt: &mut TypedStmtKind, is_toplevel: bool) -> FlowState {
+        let TypedStmtKind::Builtin(builtin) = typed_stmt else {
             unreachable!()
         };
 
