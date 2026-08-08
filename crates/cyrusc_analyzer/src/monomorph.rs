@@ -13,7 +13,7 @@ use cyrusc_typed_ast::{
     },
     format::format_loc,
     stmts::{
-        TypedBlockStmt, TypedFuncParamKind, TypedFuncParams, TypedFuncVariadicParam, TypedIfStmt, TypedStmt,
+        TypedBlockStmt, TypedFuncParamKind, TypedFuncParams, TypedFuncVariadicParam, TypedIfStmt, TypedStmtKind,
         TypedSwitchCasePattern, TypedSwitchCasePatternKind, TypedTupleExportPattern, TypedTupleExportPatternKind,
         TypedTypeArgs, TypedVarStmt,
     },
@@ -179,7 +179,7 @@ impl<'a> AnalysisContext<'a> {
 
         // first pass: create fresh vars and fill decl_map
         for stmt in &mut specialize_body.stmts {
-            self.collect_and_instantiate_fresh_var_decls(stmt, &mut decl_map);
+            self.collect_and_instantiate_fresh_var_decls(&stmt.kind, &mut decl_map);
         }
 
         for defer in &mut specialize_body.defers {
@@ -275,7 +275,7 @@ impl<'a> AnalysisContext<'a> {
 impl<'a> AnalysisContext<'a> {
     fn specialize_var_decls_in_body(&self, body: &mut TypedBlockStmt, decl_map: &DeclMap) {
         for stmt in &mut body.stmts {
-            self.specialize_stmt(stmt, decl_map);
+            self.specialize_stmt(&mut stmt.kind, decl_map);
         }
 
         for defer in &mut body.defers {
@@ -307,7 +307,7 @@ impl<'a> AnalysisContext<'a> {
 
     fn specialize_block_stmt(&self, block_stmt: &mut TypedBlockStmt, decl_map: &DeclMap) {
         for stmt in &mut block_stmt.stmts {
-            self.specialize_stmt(stmt, decl_map);
+            self.specialize_stmt(&mut stmt.kind, decl_map);
         }
 
         for defer in &mut block_stmt.defers {
@@ -315,15 +315,15 @@ impl<'a> AnalysisContext<'a> {
         }
     }
 
-    fn specialize_stmt(&self, stmt: &mut TypedStmt, decl_map: &DeclMap) {
+    fn specialize_stmt(&self, stmt: &mut TypedStmtKind, decl_map: &DeclMap) {
         match stmt {
-            TypedStmt::Expr(expr) => {
+            TypedStmtKind::Expr(expr) => {
                 self.specialize_expr(expr, decl_map);
             }
-            TypedStmt::Variable(var_stmt) => {
+            TypedStmtKind::Variable(var_stmt) => {
                 self.specialize_var_stmt(var_stmt, decl_map);
             }
-            TypedStmt::TupleExport(tuple_export) => {
+            TypedStmtKind::TupleExport(tuple_export) => {
                 self.specialize_tuple_export_pattern(&mut tuple_export.pattern, decl_map);
 
                 if let Some(expr) = &mut tuple_export.rhs {
@@ -331,13 +331,13 @@ impl<'a> AnalysisContext<'a> {
                 }
             }
 
-            TypedStmt::BlockStmt(block_stmt) => {
+            TypedStmtKind::BlockStmt(block_stmt) => {
                 self.specialize_block_stmt(block_stmt, decl_map);
             }
-            TypedStmt::If(if_stmt) => {
+            TypedStmtKind::If(if_stmt) => {
                 self.specialize_if_stmt(if_stmt, decl_map);
             }
-            TypedStmt::For(for_stmt) => {
+            TypedStmtKind::For(for_stmt) => {
                 if let Some(var_stmt) = &mut for_stmt.initializer {
                     self.specialize_var_stmt(var_stmt, decl_map);
                 }
@@ -352,12 +352,12 @@ impl<'a> AnalysisContext<'a> {
 
                 self.specialize_block_stmt(&mut for_stmt.body, decl_map);
             }
-            TypedStmt::While(while_stmt) => {
+            TypedStmtKind::While(while_stmt) => {
                 self.specialize_expr(&mut while_stmt.cond, decl_map);
 
                 self.specialize_block_stmt(&mut while_stmt.body, decl_map);
             }
-            TypedStmt::Switch(switch_stmt) => {
+            TypedStmtKind::Switch(switch_stmt) => {
                 self.specialize_expr(&mut switch_stmt.operand, decl_map);
 
                 for case in &mut switch_stmt.cases {
@@ -366,15 +366,15 @@ impl<'a> AnalysisContext<'a> {
                     self.specialize_block_stmt(&mut case.body, decl_map);
                 }
             }
-            TypedStmt::Return(return_stmt) => {
+            TypedStmtKind::Return(return_stmt) => {
                 if let Some(arg) = &mut return_stmt.arg {
                     self.specialize_expr(arg, decl_map);
                 }
             }
 
-            TypedStmt::Continue(_) | TypedStmt::Break(_) => {}
+            TypedStmtKind::Continue(_) | TypedStmtKind::Break(_) => {}
 
-            TypedStmt::Builtin(builtin) => match builtin {
+            TypedStmtKind::Builtin(builtin) => match builtin {
                 TypedBuiltin::BuiltinFunc(builtin_func) => {
                     for arg in &mut builtin_func.args {
                         self.specialize_expr(arg, decl_map);
@@ -389,17 +389,17 @@ impl<'a> AnalysisContext<'a> {
                 }
             },
 
-            TypedStmt::FuncDef(_)
-            | TypedStmt::FuncDecl(_)
-            | TypedStmt::Typedef(_)
-            | TypedStmt::GlobalVar(_)
-            | TypedStmt::Struct(_)
-            | TypedStmt::Enum(_)
-            | TypedStmt::Union(_)
-            | TypedStmt::Interface(_)
-            | TypedStmt::Defer(_)
-            | TypedStmt::Label(_)
-            | TypedStmt::Goto(_) => {}
+            TypedStmtKind::FuncDef(_)
+            | TypedStmtKind::FuncDecl(_)
+            | TypedStmtKind::Typedef(_)
+            | TypedStmtKind::GlobalVar(_)
+            | TypedStmtKind::Struct(_)
+            | TypedStmtKind::Enum(_)
+            | TypedStmtKind::Union(_)
+            | TypedStmtKind::Interface(_)
+            | TypedStmtKind::Defer(_)
+            | TypedStmtKind::Label(_)
+            | TypedStmtKind::Goto(_) => {}
         }
     }
 
@@ -629,45 +629,45 @@ impl<'a> AnalysisContext<'a> {
 }
 
 impl<'a> AnalysisContext<'a> {
-    fn collect_and_instantiate_fresh_var_decls(&self, stmt: &TypedStmt, decl_map: &mut DeclMap) {
+    fn collect_and_instantiate_fresh_var_decls(&self, stmt: &TypedStmtKind, decl_map: &mut DeclMap) {
         match stmt {
-            TypedStmt::Variable(var_stmt) => {
+            TypedStmtKind::Variable(var_stmt) => {
                 self.instantiate_fresh_var_stmt(var_stmt, decl_map);
             }
-            TypedStmt::BlockStmt(block) => {
+            TypedStmtKind::BlockStmt(block) => {
                 for stmt in &block.stmts {
-                    self.collect_and_instantiate_fresh_var_decls(stmt, decl_map);
+                    self.collect_and_instantiate_fresh_var_decls(&stmt.kind, decl_map);
                 }
 
                 for defer in &block.defers {
                     self.collect_and_instantiate_fresh_var_decls(&defer.operand, decl_map);
                 }
             }
-            TypedStmt::For(for_stmt) => {
+            TypedStmtKind::For(for_stmt) => {
                 if let Some(initializer) = &for_stmt.initializer {
                     self.instantiate_fresh_var_stmt(initializer, decl_map);
                 }
 
                 for stmt in &for_stmt.body.stmts {
-                    self.collect_and_instantiate_fresh_var_decls(stmt, decl_map);
+                    self.collect_and_instantiate_fresh_var_decls(&stmt.kind, decl_map);
                 }
             }
-            TypedStmt::If(if_stmt) => {
+            TypedStmtKind::If(if_stmt) => {
                 self.collect_and_instantiate_fresh_var_decls_of_if_stmt(if_stmt, decl_map);
             }
-            TypedStmt::While(while_stmt) => {
+            TypedStmtKind::While(while_stmt) => {
                 for stmt in &while_stmt.body.stmts {
-                    self.collect_and_instantiate_fresh_var_decls(stmt, decl_map);
+                    self.collect_and_instantiate_fresh_var_decls(&stmt.kind, decl_map);
                 }
             }
-            TypedStmt::Switch(switch_stmt) => {
+            TypedStmtKind::Switch(switch_stmt) => {
                 for case in &switch_stmt.cases {
                     for pattern in &case.patterns {
                         self.collect_and_instantiate_fresh_var_decls_of_switch_pattern(pattern, decl_map);
                     }
 
                     for stmt in &case.body.stmts {
-                        self.collect_and_instantiate_fresh_var_decls(stmt, decl_map);
+                        self.collect_and_instantiate_fresh_var_decls(&stmt.kind, decl_map);
                     }
 
                     for defer in &case.body.defers {
@@ -675,10 +675,10 @@ impl<'a> AnalysisContext<'a> {
                     }
                 }
             }
-            TypedStmt::TupleExport(tuple_export) => {
+            TypedStmtKind::TupleExport(tuple_export) => {
                 self.collect_and_instantiate_fresh_var_decls_of_tuple_pattern(&tuple_export.pattern, decl_map);
             }
-            TypedStmt::Expr(expr) => match &expr.kind {
+            TypedStmtKind::Expr(expr) => match &expr.kind {
                 TypedExprKind::Lambda(lambda) => {
                     for param_kind in &lambda.params.list {
                         match param_kind {
@@ -714,12 +714,12 @@ impl<'a> AnalysisContext<'a> {
                 _ => {}
             },
 
-            TypedStmt::Builtin(builtin) => {
+            TypedStmtKind::Builtin(builtin) => {
                 match builtin {
                     TypedBuiltin::BuiltinFunc(_) => { /* no binding: skip */ }
                     TypedBuiltin::BuiltinBlock(builtin_block) => {
                         for stmt in &builtin_block.block.stmts {
-                            self.collect_and_instantiate_fresh_var_decls(stmt, decl_map);
+                            self.collect_and_instantiate_fresh_var_decls(&stmt.kind, decl_map);
                         }
 
                         for defer in &builtin_block.block.defers {
@@ -729,31 +729,31 @@ impl<'a> AnalysisContext<'a> {
                 }
             }
 
-            TypedStmt::Typedef(_)
-            | TypedStmt::GlobalVar(_)
-            | TypedStmt::FuncDef(_)
-            | TypedStmt::FuncDecl(_)
-            | TypedStmt::Return(_)
-            | TypedStmt::Break(_)
-            | TypedStmt::Continue(_)
-            | TypedStmt::Struct(_)
-            | TypedStmt::Enum(_)
-            | TypedStmt::Union(_)
-            | TypedStmt::Interface(_)
-            | TypedStmt::Defer(_)
-            | TypedStmt::Label(_)
-            | TypedStmt::Goto(_) => {}
+            TypedStmtKind::Typedef(_)
+            | TypedStmtKind::GlobalVar(_)
+            | TypedStmtKind::FuncDef(_)
+            | TypedStmtKind::FuncDecl(_)
+            | TypedStmtKind::Return(_)
+            | TypedStmtKind::Break(_)
+            | TypedStmtKind::Continue(_)
+            | TypedStmtKind::Struct(_)
+            | TypedStmtKind::Enum(_)
+            | TypedStmtKind::Union(_)
+            | TypedStmtKind::Interface(_)
+            | TypedStmtKind::Defer(_)
+            | TypedStmtKind::Label(_)
+            | TypedStmtKind::Goto(_) => {}
         }
     }
 
     fn collect_and_instantiate_fresh_var_decls_of_if_stmt(&self, if_stmt: &TypedIfStmt, decl_map: &mut DeclMap) {
         for stmt in &if_stmt.then_block.stmts {
-            self.collect_and_instantiate_fresh_var_decls(stmt, decl_map);
+            self.collect_and_instantiate_fresh_var_decls(&stmt.kind, decl_map);
         }
 
         if let Some(else_block) = &if_stmt.else_block {
             for stmt in &else_block.stmts {
-                self.collect_and_instantiate_fresh_var_decls(stmt, decl_map);
+                self.collect_and_instantiate_fresh_var_decls(&stmt.kind, decl_map);
             }
         }
 

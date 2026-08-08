@@ -15,14 +15,14 @@ impl<'a> AnalysisContext<'a> {
         let mut final_stmts = Vec::with_capacity(stmts.len());
 
         for mut stmt in stmts {
-            let stmt_state = self.analyze_stmt(&mut stmt);
+            let stmt_state = self.analyze_stmt(&mut stmt.kind);
 
             if terminated {
                 if self.config.warnings.enabled {
                     self.reporter.report(Diag {
                         level: DiagLevel::Warning,
                         kind: Box::new(AnalyzerDiagKind::UnreachableCode),
-                        loc: Some(stmt.loc()),
+                        loc: Some(stmt.kind.loc()),
                         hint: None,
                     });
                 }
