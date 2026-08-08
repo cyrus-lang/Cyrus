@@ -115,9 +115,9 @@ impl<'a> CIRLower<'a> {
         }
     }
 
-    fn lower_stmt(&mut self, stmt: &TypedStmt, lowered_stmts: &mut Vec<CIRStmt>) {
+    fn lower_stmt(&mut self, stmt: &TypedStmtKind, lowered_stmts: &mut Vec<CIRStmt>) {
         match stmt {
-            TypedStmt::FuncDef(func_def) => {
+            TypedStmtKind::FuncDef(func_def) => {
                 if func_def.is_generic() {
                     lowered_stmts.extend(self.lower_monomorphized_func_def(func_def.func_decl_id.unwrap()));
                 } else {
@@ -126,62 +126,62 @@ impl<'a> CIRLower<'a> {
                     lowered_stmts.push(CIRStmt::FuncDef(self.lower_func_def(irv_id, func_def, true)))
                 }
             }
-            TypedStmt::FuncDecl(func_decl) => {
+            TypedStmtKind::FuncDecl(func_decl) => {
                 lowered_stmts.push(CIRStmt::FuncDecl(self.lower_func_decl_stmt(func_decl, true)));
             }
-            TypedStmt::Switch(switch_stmt) => {
+            TypedStmtKind::Switch(switch_stmt) => {
                 lowered_stmts.push(self.lower_switch(switch_stmt));
             }
-            TypedStmt::Variable(var) => {
+            TypedStmtKind::Variable(var) => {
                 lowered_stmts.push(CIRStmt::Variable(self.lower_var(var)));
             }
-            TypedStmt::GlobalVar(global_var) => {
+            TypedStmtKind::GlobalVar(global_var) => {
                 if global_var.is_static {
                     lowered_stmts.push(self.lower_global_var_stmt(&mut global_var.clone()));
                 }
             }
-            TypedStmt::BlockStmt(block) => {
+            TypedStmtKind::BlockStmt(block) => {
                 lowered_stmts.push(CIRStmt::Block(self.lower_block(block)));
             }
-            TypedStmt::If(if_stmt) => {
+            TypedStmtKind::If(if_stmt) => {
                 lowered_stmts.push(self.lower_if(if_stmt));
             }
-            TypedStmt::Return(return_stmt) => {
+            TypedStmtKind::Return(return_stmt) => {
                 lowered_stmts.push(self.lower_return(return_stmt));
             }
-            TypedStmt::Break(break_stmt) => {
+            TypedStmtKind::Break(break_stmt) => {
                 lowered_stmts.push(self.lower_break(break_stmt));
             }
-            TypedStmt::Continue(continue_stmt) => {
+            TypedStmtKind::Continue(continue_stmt) => {
                 lowered_stmts.push(self.lower_continue(continue_stmt));
             }
-            TypedStmt::For(for_stmt) => {
+            TypedStmtKind::For(for_stmt) => {
                 lowered_stmts.push(self.lower_for(for_stmt));
             }
-            TypedStmt::While(while_stmt) => {
+            TypedStmtKind::While(while_stmt) => {
                 lowered_stmts.push(self.lower_while(while_stmt));
             }
-            TypedStmt::TupleExport(export_tuple_stmt) => {
+            TypedStmtKind::TupleExport(export_tuple_stmt) => {
                 self.lower_export_tuple_to_vars(export_tuple_stmt)
                     .iter()
                     .for_each(|var| {
                         lowered_stmts.push(CIRStmt::Variable(var.clone()));
                     });
             }
-            TypedStmt::Label(label) => {
+            TypedStmtKind::Label(label) => {
                 lowered_stmts.push(self.lower_label(label));
             }
-            TypedStmt::Goto(goto) => {
+            TypedStmtKind::Goto(goto) => {
                 lowered_stmts.push(self.lower_goto(goto));
             }
-            TypedStmt::Expr(expr) => {
+            TypedStmtKind::Expr(expr) => {
                 if expr.is_rvalue() {
                     lowered_stmts.push(CIRStmt::Expr(self.lower_expr(expr)));
                 } else {
                     // ignore
                 }
             }
-            TypedStmt::Struct(struct_stmt) => {
+            TypedStmtKind::Struct(struct_stmt) => {
                 if !struct_stmt.is_generic() {
                     let stmts = self.lower_non_generic_methods(&struct_stmt.name, &struct_stmt.methods);
                     lowered_stmts.extend(stmts);
@@ -189,7 +189,7 @@ impl<'a> CIRLower<'a> {
                     self.lower_generic_methods(&struct_stmt.methods, lowered_stmts);
                 }
             }
-            TypedStmt::Enum(enum_stmt) => {
+            TypedStmtKind::Enum(enum_stmt) => {
                 if !enum_stmt.is_generic() {
                     let stmts = self.lower_non_generic_methods(&enum_stmt.name, &enum_stmt.methods);
                     lowered_stmts.extend(stmts);
@@ -197,7 +197,7 @@ impl<'a> CIRLower<'a> {
                     self.lower_generic_methods(&enum_stmt.methods, lowered_stmts);
                 }
             }
-            TypedStmt::Union(union_stmt) => {
+            TypedStmtKind::Union(union_stmt) => {
                 if !union_stmt.is_generic() {
                     let stmts = self.lower_non_generic_methods(&union_stmt.name, &union_stmt.methods);
                     lowered_stmts.extend(stmts);
@@ -205,9 +205,8 @@ impl<'a> CIRLower<'a> {
                     self.lower_generic_methods(&union_stmt.methods, lowered_stmts);
                 }
             }
-
-            TypedStmt::Defer(_) | TypedStmt::Interface(..) | TypedStmt::Typedef(..) => {}
-            TypedStmt::InlineAsm(asm) => {
+            TypedStmtKind::Defer(_) | TypedStmtKind::Interface(..) | TypedStmtKind::Typedef(..) => {}
+            TypedStmtKind::InlineAsm(asm) => {
                 let cir_asm = self.lower_inline_asm(asm);
                 lowered_stmts.push(CIRStmt::Expr(CIRExpr {
                     kind: CIRExprKind::InlineAsm(cir_asm),
@@ -216,7 +215,7 @@ impl<'a> CIRLower<'a> {
                 }));
             }
 
-            TypedStmt::Builtin(builtin) => {
+            TypedStmtKind::Builtin(builtin) => {
                 let stmts = self.lower_builtin(builtin);
                 lowered_stmts.extend(stmts);
             }
@@ -256,7 +255,12 @@ impl<'a> CIRLower<'a> {
             let mut lowered_stmts = Vec::new();
 
             for stmt in &builtin_block.block.stmts {
-                self.lower_stmt(stmt, &mut lowered_stmts);
+                if stmt.is_dead {
+                    // eliminate dead code
+                    continue;
+                }
+
+                self.lower_stmt(&stmt.kind, &mut lowered_stmts);
             }
 
             lowered_stmts
@@ -336,7 +340,12 @@ impl<'a> CIRLower<'a> {
         let mut lowered_stmts = Vec::new();
 
         for stmt in stmts {
-            self.lower_stmt(stmt, &mut lowered_stmts);
+            if stmt.is_dead {
+                // eliminate dead code
+                continue;
+            }
+
+            self.lower_stmt(&stmt.kind, &mut lowered_stmts);
         }
 
         lowered_stmts

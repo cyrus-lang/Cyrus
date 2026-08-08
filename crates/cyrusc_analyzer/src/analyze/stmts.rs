@@ -6,9 +6,7 @@ use cyrusc_diagcentral::{Diag, DiagLevel};
 use cyrusc_internal::flow_state::FlowState;
 use cyrusc_source_loc::Loc;
 use cyrusc_typed_ast::{
-    builtins::{TypedBuiltin, is_builtin_unreachable},
-    exprs::{TypedExpr, TypedExprKind, ValueCategory},
-    stmts::TypedStmt,
+    builtins::{TypedBuiltin, is_builtin_unreachable}, exprs::{TypedExpr, TypedExprKind, ValueCategory}, stmts::{TypedStmt, TypedStmtKind},
 };
 
 impl<'a> AnalysisContext<'a> {
@@ -25,54 +23,54 @@ impl<'a> AnalysisContext<'a> {
     }
 
     pub(crate) fn analyze_toplevel_stmts(&mut self, typed_stmts: &mut [TypedStmt]) {
-        for typed_stmt in &mut *typed_stmts {
-            match typed_stmt {
-                TypedStmt::GlobalVar(global_var) => self.analyze_global_var(global_var),
+        for stmt in &mut *typed_stmts {
+            match &mut stmt.kind {
+                TypedStmtKind::GlobalVar(global_var) => self.analyze_global_var(global_var),
                 _ => continue,
             }
         }
 
-        for typed_stmt in &mut *typed_stmts {
-            self.analyze_toplevel_stmt(typed_stmt);
+        for stmt in &mut *typed_stmts {
+            self.analyze_toplevel_stmt(&mut stmt.kind);
         }
     }
 
-    fn analyze_toplevel_stmt(&mut self, typed_stmt: &mut TypedStmt) {
+    fn analyze_toplevel_stmt(&mut self, typed_stmt: &mut TypedStmtKind) {
         match typed_stmt {
-            TypedStmt::GlobalVar(_) => {
+            TypedStmtKind::GlobalVar(_) => {
                 // Skipped, because it's intended to be analyzed
                 // before all of the other top level statements.
                 return;
             }
 
-            TypedStmt::FuncDef(func_def_stmt) => self.analyze_func_def(func_def_stmt),
-            TypedStmt::FuncDecl(func_decl_stmt) => self.analyze_func_decl_stmt(func_decl_stmt),
-            TypedStmt::Interface(interface) => self.analyze_interface(interface),
-            TypedStmt::Struct(struct_stmt) => self.analyze_struct_stmt(struct_stmt),
-            TypedStmt::Enum(enum_stmt) => self.analyze_enum_stmt(enum_stmt),
-            TypedStmt::Union(union_stmt) => self.analyze_union_stmt(union_stmt),
-            TypedStmt::Typedef(typedef) => self.analyze_typedef(typedef),
+            TypedStmtKind::FuncDef(func_def_stmt) => self.analyze_func_def(func_def_stmt),
+            TypedStmtKind::FuncDecl(func_decl_stmt) => self.analyze_func_decl_stmt(func_decl_stmt),
+            TypedStmtKind::Interface(interface) => self.analyze_interface(interface),
+            TypedStmtKind::Struct(struct_stmt) => self.analyze_struct_stmt(struct_stmt),
+            TypedStmtKind::Enum(enum_stmt) => self.analyze_enum_stmt(enum_stmt),
+            TypedStmtKind::Union(union_stmt) => self.analyze_union_stmt(union_stmt),
+            TypedStmtKind::Typedef(typedef) => self.analyze_typedef(typedef),
 
-            TypedStmt::Builtin(_) => {
+            TypedStmtKind::Builtin(_) => {
                 self.analyze_builtin(typed_stmt, true);
             }
 
             // invalid at toplevel
-            TypedStmt::Variable(_)
-            | TypedStmt::TupleExport(_)
-            | TypedStmt::BlockStmt(_)
-            | TypedStmt::Defer(_)
-            | TypedStmt::If(_)
-            | TypedStmt::Return(_)
-            | TypedStmt::Break(_)
-            | TypedStmt::Continue(_)
-            | TypedStmt::For(_)
-            | TypedStmt::While(_)
-            | TypedStmt::Switch(_)
-            | TypedStmt::Label(_)
-            | TypedStmt::Goto(_)
-            | TypedStmt::Expr(_)
-            | TypedStmt::InlineAsm(_) => {
+            TypedStmtKind::Variable(_)
+            | TypedStmtKind::TupleExport(_)
+            | TypedStmtKind::BlockStmt(_)
+            | TypedStmtKind::Defer(_)
+            | TypedStmtKind::If(_)
+            | TypedStmtKind::Return(_)
+            | TypedStmtKind::Break(_)
+            | TypedStmtKind::Continue(_)
+            | TypedStmtKind::For(_)
+            | TypedStmtKind::While(_)
+            | TypedStmtKind::Switch(_)
+            | TypedStmtKind::Label(_)
+            | TypedStmtKind::Goto(_)
+            | TypedStmtKind::Expr(_)
+            | TypedStmtKind::InlineAsm(_) => {
                 self.reporter.report(Diag {
                     level: DiagLevel::Error,
                     kind: Box::new(AnalyzerDiagKind::InvalidStatement),
@@ -83,8 +81,8 @@ impl<'a> AnalysisContext<'a> {
         }
     }
 
-    pub(crate) fn analyze_stmt(&mut self, typed_stmt: &mut TypedStmt) -> FlowState {
-        if let TypedStmt::Builtin(builtin) = typed_stmt {
+    pub(crate) fn analyze_stmt(&mut self, typed_stmt: &mut TypedStmtKind) -> FlowState {
+        if let TypedStmtKind::Builtin(builtin) = typed_stmt {
             return match builtin {
                 TypedBuiltin::BuiltinFunc(builtin_func) => {
                     let loc = builtin_func.loc;
@@ -103,7 +101,7 @@ impl<'a> AnalysisContext<'a> {
                         return FlowState::Reachable;
                     }
 
-                    *typed_stmt = TypedStmt::Expr(builtin_expr);
+                    *typed_stmt = TypedStmtKind::Expr(builtin_expr);
 
                     if is_builtin_unreachable(&name) {
                         FlowState::Unreachable
@@ -116,32 +114,36 @@ impl<'a> AnalysisContext<'a> {
         }
 
         match typed_stmt {
-            TypedStmt::Expr(expr) => {
+            TypedStmtKind::BlockStmt(block) => self.analyze_block_stmt(block),
+
+            TypedStmtKind::Expr(expr) => {
                 self.analyze_expr(expr, expr.ty.clone());
                 FlowState::Reachable
             }
-            TypedStmt::Variable(var) => {
+
+            TypedStmtKind::Variable(var) => {
                 self.analyze_var(var);
                 FlowState::Reachable
             }
-            TypedStmt::BlockStmt(block) => self.analyze_block_stmt(block),
-            TypedStmt::TupleExport(export_tuple) => {
+
+            TypedStmtKind::TupleExport(export_tuple) => {
                 self.analyze_export_tuple_values(export_tuple);
                 FlowState::Reachable
             }
-            TypedStmt::If(if_stmt) => self.analyze_if_stmt(if_stmt),
-            TypedStmt::For(for_stmt) => self.analyze_for_loop(for_stmt),
-            TypedStmt::While(while_stmt) => self.analyze_while_loop(while_stmt),
-            TypedStmt::Break(break_stmt) => self.analyze_break(break_stmt),
-            TypedStmt::Continue(continue_stmt) => self.analyze_continue(continue_stmt),
-            TypedStmt::Return(return_stmt) => self.analyze_return(return_stmt),
-            TypedStmt::Switch(switch_stmt) => self.analyze_switch(switch_stmt),
+
+            TypedStmtKind::If(if_stmt) => self.analyze_if_stmt(if_stmt),
+            TypedStmtKind::For(for_stmt) => self.analyze_for_loop(for_stmt),
+            TypedStmtKind::While(while_stmt) => self.analyze_while_loop(while_stmt),
+            TypedStmtKind::Break(break_stmt) => self.analyze_break(break_stmt),
+            TypedStmtKind::Continue(continue_stmt) => self.analyze_continue(continue_stmt),
+            TypedStmtKind::Return(return_stmt) => self.analyze_return(return_stmt),
+            TypedStmtKind::Switch(switch_stmt) => self.analyze_switch(switch_stmt),
 
             // skipped
-            TypedStmt::Goto(_) => FlowState::Reachable,
-            TypedStmt::Label(_) => FlowState::Reachable,
+            TypedStmtKind::Goto(_) => FlowState::Reachable,
+            TypedStmtKind::Label(_) => FlowState::Reachable,
 
-            TypedStmt::InlineAsm(inline_asm) => {
+            TypedStmtKind::InlineAsm(inline_asm) => {
                 self.analyze_inline_asm_stmt(inline_asm);
                 FlowState::Reachable
             }
