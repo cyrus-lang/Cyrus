@@ -719,6 +719,10 @@ impl<'a> CIRPrinter<'a> {
             CIRType::Dynamic(dynamic) => {
                 format!("dynamic(vtable#{})", dynamic.vtable_id.0)
             }
+
+            CIRType::Vector(_) => {
+                unimplemented!("not supported in language yet");
+            }
         }
     }
 }
