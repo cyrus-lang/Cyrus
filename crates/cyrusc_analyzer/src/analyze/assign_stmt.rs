@@ -18,9 +18,7 @@ impl<'a> AnalysisContext<'a> {
             None => return,
         };
 
-        let is_const = self.is_const_qualified_lvalue(&assign.lhs);
-
-        if is_const {
+        if self.is_const_qualified_lvalue(&assign.lhs) {
             self.reporter.report(Diag {
                 level: DiagLevel::Error,
                 kind: Box::new(AnalyzerDiagKind::CannotAssignToConstLValue),
@@ -29,7 +27,10 @@ impl<'a> AnalysisContext<'a> {
             });
         }
 
-        assert!(assign.kind == AssignKind::Default);
+        assert!(
+            assign.kind == AssignKind::Default,
+            "assign statement did not canonicalized before analysis"
+        );
 
         if !self.is_assignable_to(rhs_type.clone(), lhs_type.clone(), assign.loc) {
             self.reporter.report(Diag {
