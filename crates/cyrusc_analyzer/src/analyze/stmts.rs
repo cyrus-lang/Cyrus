@@ -42,21 +42,21 @@ impl<'a> AnalysisContext<'a> {
             }
 
             // invalid at toplevel
-            TypedStmt::Variable(_)
-            | TypedStmt::InlineAsm(_)
-            | TypedStmt::TupleExport(_)
-            | TypedStmt::BlockStmt(_)
-            | TypedStmt::Defer(_)
-            | TypedStmt::If(_)
-            | TypedStmt::Return(_)
-            | TypedStmt::Break(_)
-            | TypedStmt::Continue(_)
-            | TypedStmt::For(_)
-            | TypedStmt::While(_)
-            | TypedStmt::Switch(_)
-            | TypedStmt::Label(_)
-            | TypedStmt::Goto(_)
-            | TypedStmt::Expr(_) => {
+            TypedStmtKind::Variable(_)
+            | TypedStmtKind::TupleExport(_)
+            | TypedStmtKind::BlockStmt(_)
+            | TypedStmtKind::Defer(_)
+            | TypedStmtKind::If(_)
+            | TypedStmtKind::Return(_)
+            | TypedStmtKind::Break(_)
+            | TypedStmtKind::Continue(_)
+            | TypedStmtKind::For(_)
+            | TypedStmtKind::While(_)
+            | TypedStmtKind::Switch(_)
+            | TypedStmtKind::Label(_)
+            | TypedStmtKind::Goto(_)
+            | TypedStmtKind::Expr(_)
+            | TypedStmtKind::InlineAsm(_) => {
                 self.reporter.report(Diag {
                     level: DiagLevel::Error,
                     kind: Box::new(AnalyzerDiagKind::InvalidStatement),
@@ -122,10 +122,10 @@ impl<'a> AnalysisContext<'a> {
             TypedStmt::Switch(switch_stmt) => self.analyze_switch(switch_stmt),
 
             // skipped
-            TypedStmt::Goto(_) => FlowState::Reachable,
-            TypedStmt::Label(_) => FlowState::Reachable,
-            
-            TypedStmt::InlineAsm(inline_asm) => {
+            TypedStmtKind::Goto(_) => FlowState::Reachable,
+            TypedStmtKind::Label(_) => FlowState::Reachable,
+
+            TypedStmtKind::InlineAsm(inline_asm) => {
                 self.analyze_inline_asm_stmt(inline_asm);
                 FlowState::Reachable
             }

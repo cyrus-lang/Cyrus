@@ -615,7 +615,7 @@ impl TypedStmt {
             TypedStmt::Label(typed_label_stmt) => typed_label_stmt.loc,
             TypedStmt::Goto(typed_goto_stmt) => typed_goto_stmt.loc,
             TypedStmt::Builtin(typed_builtin) => typed_builtin.loc(),
-            TypedStmt::InlineAsm(asm) => asm.loc,
+            TypedStmtKind::InlineAsm(asm) => asm.loc,
         }
     }
 }
