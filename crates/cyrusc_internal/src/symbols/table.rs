@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 The Cyrus Language
 
-use std::collections::HashMap;
 use cyrusc_typed_ast::SymbolID;
+use std::collections::HashMap;
 
 /// A collection of symbols and their metadata within a specific scope or module.
 #[derive(Debug, Clone)]

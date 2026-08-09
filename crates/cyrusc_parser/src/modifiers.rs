@@ -747,7 +747,7 @@ impl UnresolvedModifiers {
             optional_flags: self.optional_flags,
             linkage,
             export: None,
-            section: None
+            section: None,
         })
     }
 
