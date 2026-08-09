@@ -205,6 +205,7 @@ impl<'a> CIRLower<'a> {
                     self.lower_generic_methods(&union_stmt.methods, lowered_stmts);
                 }
             }
+
             TypedStmtKind::Defer(_) | TypedStmtKind::Interface(..) | TypedStmtKind::Typedef(..) => {}
             TypedStmtKind::InlineAsm(asm) => {
                 let cir_asm = self.lower_inline_asm(asm);
