@@ -449,4 +449,21 @@ mod tests {
         "#;
         assert!(parse_code(code).is_ok());
     }
+
+    #[test]
+    fn test_if_else_chain() {
+        let code = r#"
+            pub fn main() {
+                var x: int32 = 15;
+                if (x < 10) {
+                    var a: int32 = 1;
+                } else if (x < 20) {
+                    var b: int32 = 2;
+                } else {
+                    var c: int32 = 3;
+                }
+            }
+        "#;
+        assert!(parse_code(code).is_ok());
+    }
 }

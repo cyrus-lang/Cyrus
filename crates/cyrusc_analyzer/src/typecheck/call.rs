@@ -5,8 +5,11 @@ use crate::{context::AnalysisContext, diagnostics::AnalyzerDiagKind};
 use cyrusc_const_eval::resolver::ConstResolver;
 use cyrusc_diagcentral::{Diag, DiagLevel};
 use cyrusc_source_loc::Loc;
+#[allow(unused_imports)]
+use cyrusc_typed_ast::debug_assert_func_decl_resolved;
+#[allow(unused_imports)]
+use cyrusc_typed_ast::stmts::TypedFuncParamKind;
 use cyrusc_typed_ast::{
-    debug_assert_func_decl_resolved,
     decls::{DeclID, FuncDecl, MethodDecl, MethodDecls},
     exprs::{
         TypedExpr, TypedFuncCall, TypedFuncCallDispatch, TypedInterfaceCallDispatch, TypedMethodCall,
@@ -14,7 +17,7 @@ use cyrusc_typed_ast::{
     },
     format::{format_func_type, format_sema_type},
     stmts::{
-        TypedFuncParamKind, TypedFuncParams, TypedFuncTypeVariadicParam, TypedFuncVariadicParam, TypedGenericParams,
+        TypedFuncParams, TypedFuncTypeVariadicParam, TypedFuncVariadicParam, TypedGenericParams,
         TypedTypeArgs,
     },
     types::{InterfaceObjectType, NamedType, SemaType, TypeDeclID, TypedFuncType},
@@ -642,6 +645,7 @@ impl<'a> AnalysisContext<'a> {
             ret_type = this.normalize_sema_type(ret_type.clone(), method_call.loc, 0)?;
             ret_type = this.substitute_type(&ret_type);
             interface_method_decl.func_decl.ret_type = ret_type.clone();
+            let _ = &interface_method_decl;
 
             #[cfg(debug_assertions)]
             debug_assert_func_decl_resolved!(&interface_method_decl.func_decl);

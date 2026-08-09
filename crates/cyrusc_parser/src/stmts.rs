@@ -2259,6 +2259,10 @@ impl<'source_file> Parser<'source_file> {
 
         let consequent = Box::new(self.parse_block()?);
 
+        if self.peek_token_is(TokenKind::Else) {
+            self.next_token();
+        }
+
         while self.current_token_is(TokenKind::Else) {
             self.next_token(); // consume else token
 
