@@ -562,19 +562,40 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         lo: CIRType,
         hi: CIRType,
     ) {
+        let struct_original_indices = || {
+            // IMPORTANT: We need to use original index of fields
+            // because its possible for struct to have paddings.
+            let layout = self.tctx.layout_of(&value.ty);
+            let lo_index = layout.lookup_field_index(0).unwrap();
+            let hi_index = layout.lookup_field_index(1).unwrap();
+            (lo_index, hi_index)
+        };
+
         match &value.kind {
             InternalValueKind::LValue(ptr) => {
+                // IMPORTANT: Becaue we need to construct pair struct type
+                // manually (by having lo_ty, hi_ty), then original indices
+                // are not going to work here because we broke it.
+                // Then we simply use 0, 1 to access pair struct.
+                let (lo_index, hi_index) = (0, 1);
+
                 let pair_ty = self.emit_abi_pair_llvm_type(&lo, &hi);
 
                 let lo_ty: BasicTypeEnum<'ll> = self.emit_type(lo).try_into().unwrap();
 
-                let lo_ptr = self.llvmbuilder.build_struct_gep(pair_ty, *ptr, 0, "lo.ptr").unwrap();
+                let lo_ptr = self
+                    .llvmbuilder
+                    .build_struct_gep(pair_ty, *ptr, lo_index as u32, "lo.ptr")
+                    .unwrap();
 
                 let lo_val = self.llvmbuilder.build_load(lo_ty, lo_ptr, "lo").unwrap();
 
                 let hi_ty: BasicTypeEnum<'ll> = self.emit_type(hi).try_into().unwrap();
 
-                let hi_ptr = self.llvmbuilder.build_struct_gep(pair_ty, *ptr, 1, "hi.ptr").unwrap();
+                let hi_ptr = self
+                    .llvmbuilder
+                    .build_struct_gep(pair_ty, *ptr, hi_index as u32, "hi.ptr")
+                    .unwrap();
 
                 let hi_val = self.llvmbuilder.build_load(hi_ty, hi_ptr, "hi").unwrap();
 
@@ -583,9 +604,18 @@ impl<'ll> CodeGenIRBuilder<'ll> {
             }
 
             InternalValueKind::RValue(basic_value) => match basic_value {
-                BasicValueEnum::StructValue(struct_val) => {
-                    let lo_val = self.llvmbuilder.build_extract_value(*struct_val, 0, "lo").unwrap();
-                    let hi_val = self.llvmbuilder.build_extract_value(*struct_val, 1, "hi").unwrap();
+                BasicValueEnum::StructValue(struct_value) => {
+                    let (lo_index, hi_index) = struct_original_indices();
+
+                    let lo_val = self
+                        .llvmbuilder
+                        .build_extract_value(*struct_value, lo_index as u32, "lo")
+                        .unwrap();
+
+                    let hi_val = self
+                        .llvmbuilder
+                        .build_extract_value(*struct_value, hi_index as u32, "hi")
+                        .unwrap();
 
                     args.push(lo_val.into());
                     args.push(hi_val.into());
