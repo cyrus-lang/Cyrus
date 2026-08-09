@@ -1,0 +1,11 @@
+// @stdout: non-zero
+
+import std::libc{printf};
+
+pub fn main() {
+    var sp: int64 = 0;
+    @asm ("movq %%rsp, %0" : "=r"(sp) : : );
+    if (sp != 0) {
+        printf("non-zero\n");
+    }
+}

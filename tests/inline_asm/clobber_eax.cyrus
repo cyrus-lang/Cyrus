@@ -1,0 +1,9 @@
+// @stdout: 5
+
+import std::libc{printf};
+
+pub fn main() {
+    var result: int32 = 0;
+    @asm ("movl $5, %%eax; movl %%eax, %0" : "=r"(result) : : "eax");
+    printf("%d\n", result);
+}

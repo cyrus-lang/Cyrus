@@ -590,6 +590,7 @@ pub enum AnalyzerDiagKind {
     #[error(
         "Multiple output operands are not yet supported when @asm is used as an expression."
     )]
+    #[allow(dead_code)]
     AsmMultipleOutputsNotSupported,
 }
 

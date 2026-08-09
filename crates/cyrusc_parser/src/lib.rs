@@ -327,3 +327,126 @@ impl fmt::Debug for SourceParser {
 
 unsafe impl<'source_file> Send for Parser<'source_file> {}
 unsafe impl<'source_file> Sync for Parser<'source_file> {}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use cyrusc_source_loc::{SourceFile, SourceMap};
+    use std::path::PathBuf;
+
+    fn parse_code(code: &str) -> Result<ProgramTree, ()> {
+        let source_map = Arc::new(SourceMap::new());
+        let file_id = source_map.add_file("test.cyrus", code.to_string());
+        let reporter = Arc::new(DiagReporter::new(source_map));
+        let source_file = SourceFile {
+            file_id,
+            file_path: PathBuf::from("test.cyrus"),
+            content: code.to_string(),
+        };
+        let parser = SourceParser::new(reporter.clone());
+        let res = parser.parse_program(&source_file);
+        if res.is_err() {
+            reporter.display_first();
+        }
+        res
+    }
+
+    #[test]
+    fn test_nop() {
+        let code = r#"
+            import std::libc{printf};
+            pub fn main() {
+                @asm ("nop");
+                printf("ok\n");
+            }
+        "#;
+        assert!(parse_code(code).is_ok());
+    }
+
+    #[test]
+    fn test_add_two_numbers() {
+        let code = r#"
+            import std::libc{printf};
+            pub fn main() {
+                var result: int32 = 0;
+                var a: int32 = 10;
+                var b: int32 = 32;
+                @asm ("movl %1, %0; addl %2, %0" : "=r"(result) : "r"(a), "r"(b) : );
+                printf("%d\n", result);
+            }
+        "#;
+        assert!(parse_code(code).is_ok());
+    }
+
+    #[test]
+    fn test_clobber_eax() {
+        let code = r#"
+            import std::libc{printf};
+            pub fn main() {
+                var result: int32 = 0;
+                @asm ("movl $5, %%eax; movl %%eax, %0" : "=r"(result) : : "eax");
+                printf("%d\n", result);
+            }
+        "#;
+        assert!(parse_code(code).is_ok());
+    }
+
+    #[test]
+    fn test_increment() {
+        let code = r#"
+            import std::libc{printf};
+            pub fn main() {
+                var x: int32 = 10;
+                @asm volatile ("incl %0" : "+r"(x) : : );
+                printf("%d\n", x);
+            }
+        "#;
+        assert!(parse_code(code).is_ok());
+    }
+
+    #[test]
+    fn test_multi_line_block() {
+        let code = r#"
+            import std::libc{printf};
+            pub fn main() {
+                var x: int32 = 0;
+                @asm {
+                    "movl $50, %eax"
+                    "addl $50, %eax"
+                    "movl %eax, %0"
+                } : "=r"(x) : : "eax";
+                printf("%d\n", x);
+            }
+        "#;
+        assert!(parse_code(code).is_ok());
+    }
+
+    #[test]
+    fn test_read_stack_pointer() {
+        let code = r#"
+            import std::libc{printf};
+            pub fn main() {
+                var sp: int64 = 0;
+                @asm ("movq %%rsp, %0" : "=r"(sp) : : );
+                if (sp != 0) {
+                    printf("non-zero\n");
+                }
+            }
+        "#;
+        assert!(parse_code(code).is_ok());
+    }
+
+    #[test]
+    fn test_swap_with_xchg() {
+        let code = r#"
+            import std::libc{printf};
+            pub fn main() {
+                var a: int32 = 10;
+                var b: int32 = 20;
+                @asm ("xchgl %0, %1" : "+r"(a), "+r"(b) : : );
+                printf("b=%d a=%d\n", b, a);
+            }
+        "#;
+        assert!(parse_code(code).is_ok());
+    }
+}

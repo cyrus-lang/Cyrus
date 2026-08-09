@@ -24,7 +24,7 @@ impl<'source_file> Parser<'source_file> {
         if self.current_token_is(TokenKind::At) {
             if self.peek_token().kind.is_ident_str("asm") {
                 let asm = self.parse_inline_asm()?;
-                self.expect_peek_semicolon()?;
+                self.must_be_semicolon()?;
                 return Ok(vec![ASTStmt::InlineAsm(asm)]);
             }
             let mut builtin = self.parse_builtin(toplevel)?;
@@ -2254,14 +2254,10 @@ impl<'source_file> Parser<'source_file> {
         self.expect_current(TokenKind::LeftParen)?;
 
         let condition = self.parse_expr(Precedence::Lowest)?;
-        self.expect_peek(TokenKind::RightParen)?;
-        self.next_token(); // consume right paren
+        self.next_token();
+        self.expect_current(TokenKind::RightParen)?;
 
         let consequent = Box::new(self.parse_block()?);
-
-        if self.peek_token_is(TokenKind::Else) {
-            self.next_token(); // consume right brace
-        }
 
         while self.current_token_is(TokenKind::Else) {
             self.next_token(); // consume else token
