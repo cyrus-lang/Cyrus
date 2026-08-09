@@ -306,11 +306,18 @@ impl<'ll> CodeGenIRBuilder<'ll> {
             };
         }
 
+        // save and reset the defer stack for this function
+        let parent_defer_stack = self.defer_stack.clone();
+        self.defer_stack = Vec::new();
+
         self.ensure_entry_block();
         self.blockreg.labels.clear();
         self.emit_func_params(func_params.clone(), abi_func_info);
         self.emit_body(cir_block);
         self.ensure_void_function_terminated();
+
+        // restore the parent defer stack
+        self.defer_stack = parent_defer_stack;
 
         if let Some(dctx) = &mut self.dctx {
             dctx.func = parent_dctx_func.unwrap();

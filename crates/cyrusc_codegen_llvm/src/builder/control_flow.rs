@@ -1030,10 +1030,15 @@ impl<'ll> CodeGenIRBuilder<'ll> {
     }
 
     pub(crate) fn emit_defers_down_to(&mut self, target_depth: usize) {
-        let current_depth = self.defer_stack.len();
-        for depth in (target_depth..current_depth).rev() {
+        let depth = self.defer_stack.len();
+
+        for depth in (target_depth..depth).rev() {
             let scope = self.defer_stack[depth].clone();
             for stmt in scope.iter().rev() {
+                if let Some(cur_block) = self.blockreg.cur_block {
+                    self.emit_block(cur_block);
+                }
+
                 if self.blockreg.cur_block.is_none() {
                     return;
                 }
@@ -1047,6 +1052,10 @@ impl<'ll> CodeGenIRBuilder<'ll> {
 
         for scope in scopes.iter().rev() {
             for stmt in scope.iter().rev() {
+                if let Some(cur_block) = self.blockreg.cur_block {
+                    self.emit_block(cur_block);
+                }
+
                 if self.blockreg.cur_block.is_none() {
                     break;
                 }
