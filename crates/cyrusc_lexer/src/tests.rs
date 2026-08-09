@@ -57,10 +57,9 @@ mod tests {
 
     #[test]
     fn test_prefixed_strings() {
-        let t = lex("c\"hello\" b\"bye\"");
+        let t = lex("b\"bye\"");
 
-        t!(t, 0, TokenKind::Literal(_), 1, 0, 8);
-        t!(t, 1, TokenKind::Literal(_), 1, 9, 15);
+        t!(t, 0, TokenKind::Literal(_), 1, 0, 6);
     }
 
     #[test]

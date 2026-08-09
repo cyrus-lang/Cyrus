@@ -206,8 +206,8 @@ impl<'a> CIRLower<'a> {
                 }
             }
 
-            TypedStmtKind::Defer(_) | TypedStmtKind::Interface(..) | TypedStmtKind::Typedef(..) => {}
-            TypedStmtKind::InlineAsm(asm) => {
+            TypedStmt::Defer(_) | TypedStmt::Interface(..) | TypedStmt::Typedef(..) => {}
+            TypedStmt::InlineAsm(asm) => {
                 let cir_asm = self.lower_inline_asm(asm);
                 lowered_stmts.push(CIRStmt::Expr(CIRExpr {
                     kind: CIRExprKind::InlineAsm(cir_asm),
@@ -216,7 +216,7 @@ impl<'a> CIRLower<'a> {
                 }));
             }
 
-            TypedStmtKind::Builtin(builtin) => {
+            TypedStmt::Builtin(builtin) => {
                 let stmts = self.lower_builtin(builtin);
                 lowered_stmts.extend(stmts);
             }
