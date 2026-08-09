@@ -5,19 +5,19 @@ use cyrusc_tokens::TokenKind;
 #[derive(Debug, Copy, Clone, PartialEq, PartialOrd)]
 pub enum Precedence {
     Lowest,
-    Assign,      // =
-    Or,          // ||
+    Assign,       // =
+    Or,           // ||
     NullCoalesce, // ??
-    And,         // &&
-    Equals,      // ==, !=
-    LessGreater, // >, <, >=, <=
-    Sum,         // +, -
-    Product,     // *, /, %
-    Bitwise,     // &, |, ~, &~, ^, <<, >>
-    Prefix,      // -X, !X, &X
-    Call,        // my_function(x)
-    Index,       // array[index]
-    Field,       // . and ->
+    And,          // &&
+    Equals,       // ==, !=
+    LessGreater,  // >, <, >=, <=
+    Sum,          // +, -
+    Product,      // *, /, %
+    Bitwise,      // &, |, ~, &~, ^, <<, >>
+    Prefix,       // -X, !X, &X
+    Call,         // my_function(x)
+    Index,        // array[index]
+    Field,        // . and ->
 }
 
 pub fn token_precedence_of(token_kind: TokenKind) -> Option<Precedence> {

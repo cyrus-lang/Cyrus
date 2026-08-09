@@ -3,5 +3,5 @@
 
 pub mod cir;
 pub mod lower;
-pub mod types;
 pub mod typectx;
+pub mod types;

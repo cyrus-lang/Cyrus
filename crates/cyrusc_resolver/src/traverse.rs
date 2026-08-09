@@ -185,7 +185,7 @@ impl<'a> Resolver<'a> {
                 .map(TypedStmt::new),
 
             ASTStmt::Expr(expr) => self.resolve_expr(expr).map(TypedStmtKind::Expr).map(TypedStmt::new),
-            
+
             ASTStmt::If(if_stmt) => self.resolve_if_stmt(if_stmt).map(TypedStmtKind::If).map(TypedStmt::new),
 
             ASTStmt::For(for_stmt) => self
@@ -226,7 +226,7 @@ impl<'a> Resolver<'a> {
             ASTStmt::Label(label) => self.resolve_label_stmt(label).map(TypedStmt::new),
 
             ASTStmt::Goto(goto) => self.resolve_goto_stmt(goto).map(TypedStmt::new),
-            
+
             ASTStmt::Foreach(_foreach_stmt) => unimplemented!(), // TODO
 
             // invalid statements

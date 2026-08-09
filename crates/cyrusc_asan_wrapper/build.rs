@@ -22,7 +22,9 @@ fn main() {
     };
 
     if !llvm_config_ok {
-        println!("cargo:warning=llvm-config not found or target is Windows. Skipping C++ compilation of ASan wrapper and using stub.");
+        println!(
+            "cargo:warning=llvm-config not found or target is Windows. Skipping C++ compilation of ASan wrapper and using stub."
+        );
         let out_dir = env::var("OUT_DIR").unwrap();
         let dummy_path = Path::new(&out_dir).join("asan_dummy.cpp");
         let dummy_content = "extern \"C\" {\n    typedef struct {\n        bool address_sanitize;\n        bool thread_sanitize;\n        bool mem_sanitize;\n        bool hwaddress_sanitize;\n        bool recover;\n        bool asan_use_after_scope;\n        bool asan_use_after_return;\n    } SanitizerOptions;\n    void run_sanitizer_passes(void* module_ref, void* tm_ref, int opt_level, SanitizerOptions opts) {}\n}";
