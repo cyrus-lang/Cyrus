@@ -1,0 +1,31 @@
+// @stdout: id: 3, name: Cyrus
+
+import std::mem::libc{LibcAllocator};
+import std::collections{Vec};
+import std::mem{Allocator};
+import std::libc{printf};
+
+pub type Item = struct {
+	id: int32,
+	name: uint8*
+};
+
+pub fn main() {
+    var allocator: Allocator = dynamic LibcAllocator.new();
+    
+    var items: Vec<Item> = Vec.new(allocator);
+    defer items.free();
+
+    items.push(Item { id: 1, name: "C" });
+    items.push(Item { id: 2, name: "Rust" });
+    items.push(Item { id: 3, name: "Cyrus" });
+
+    const item = items.find(fn(item: const Item*) bool {
+		if (item->id == 3) {
+			return true;
+		} 
+		return false;
+	}).unwrap();
+	
+	printf("id: %d, name: %s\n", item->id, item->name);
+}
