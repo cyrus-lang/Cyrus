@@ -290,14 +290,8 @@ pub extern(c) {
     ) types::c_char*;
 }
 
-// errno
+pub extern(c) static var errno: types::c_int;
 
-// FIXME
-// pub extern(c) fn __errno_location() types::c_int*;
-
-// pub inline fn errno() types::c_int* {
-//     return __errno_location();
-// }
 pub const EPERM: types::c_int = 1;
 pub const ENOENT: types::c_int = 2;
 pub const ESRCH: types::c_int = 3;
@@ -331,6 +325,106 @@ pub const EROFS: types::c_int = 30;
 pub const EMLINK: types::c_int = 31;
 pub const EPIPE: types::c_int = 32;
 pub const EDOM: types::c_int = 33;
+pub const ERANGE: types::c_int = 34;
+pub const EDEADLK: types::c_int = 35;
+pub const ENAMETOOLONG: types::c_int = 36;
+pub const ENOLCK: types::c_int = 37;
+pub const ENOSYS: types::c_int = 38;
+pub const ENOTEMPTY: types::c_int = 39;
+pub const ELOOP: types::c_int = 40;
+pub const EWOULDBLOCK: types::c_int = 41;
+pub const ENOMSG: types::c_int = 42;
+pub const EIDRM: types::c_int = 43;
+pub const ECHRNG: types::c_int = 44;
+pub const EL2NSYNC: types::c_int = 45;
+pub const EL3HLT: types::c_int = 46;
+pub const EL3RST: types::c_int = 47;
+pub const ELNRNG: types::c_int = 48;
+pub const EUNATCH: types::c_int = 49;
+pub const ENOCSI: types::c_int = 50;
+pub const EL2HLT: types::c_int = 51;
+pub const EBADE: types::c_int = 52;
+pub const EBADR: types::c_int = 53;
+pub const EXFULL: types::c_int = 54;
+pub const ENOANO: types::c_int = 55;
+pub const EBADRQC: types::c_int = 56;
+pub const EBADSLT: types::c_int = 57;
+pub const EDEADLOCK: types::c_int = 58;
+pub const EBFONT: types::c_int = 59;
+pub const ENOSTR: types::c_int = 60;
+pub const ENODATA: types::c_int = 61;
+pub const ETIME: types::c_int = 62;
+pub const ENOSR: types::c_int = 63;
+pub const ENONET: types::c_int = 64;
+pub const ENOPKG: types::c_int = 65;
+pub const EREMOTE: types::c_int = 66;
+pub const ENOLINK: types::c_int = 67;
+pub const EADV: types::c_int = 68;
+pub const ESRMNT: types::c_int = 69;
+pub const ECOMM: types::c_int = 70;
+pub const EPROTO: types::c_int = 71;
+pub const EMULTIHOP: types::c_int = 72;
+pub const EDOTDOT: types::c_int = 73;
+pub const EBADMSG: types::c_int = 74;
+pub const EOVERFLOW: types::c_int = 75;
+pub const ENOTUNIQ: types::c_int = 76;
+pub const EBADFD: types::c_int = 77;
+pub const EREMCHG: types::c_int = 78;
+pub const ELIBACC: types::c_int = 79;
+pub const ELIBBAD: types::c_int = 80;
+pub const ELIBSCN: types::c_int = 81;
+pub const ELIBMAX: types::c_int = 82;
+pub const ELIBEXEC: types::c_int = 83;
+pub const EILSEQ: types::c_int = 84;
+pub const ERESTART: types::c_int = 85;
+pub const ESTRPIPE: types::c_int = 86;
+pub const EUSERS: types::c_int = 87;
+pub const ENOTSOCK: types::c_int = 88;
+pub const EDESTADDRREQ: types::c_int = 89;
+pub const EMSGSIZE: types::c_int = 90;
+pub const EPROTOTYPE: types::c_int = 91;
+pub const ENOPROTOOPT: types::c_int = 92;
+pub const EPROTONOSUPPORT: types::c_int = 93;
+pub const ESOCKTNOSUPPORT: types::c_int = 94;
+pub const EOPNOTSUPP: types::c_int = 95;
+pub const EPFNOSUPPORT: types::c_int = 96;
+pub const EAFNOSUPPORT: types::c_int = 97;
+pub const EADDRINUSE: types::c_int = 98;
+pub const EADDRNOTAVAIL: types::c_int = 99;
+pub const ENETDOWN: types::c_int = 100;
+pub const ENETUNREACH: types::c_int = 101;
+pub const ENETRESET: types::c_int = 102;
+pub const ECONNABORTED: types::c_int = 103;
+pub const ECONNRESET: types::c_int = 104;
+pub const ENOBUFS: types::c_int = 105;
+pub const EISCONN: types::c_int = 106;
+pub const ENOTCONN: types::c_int = 107;
+pub const ESHUTDOWN: types::c_int = 108;
+pub const ETOOMANYREFS: types::c_int = 109;
+pub const ETIMEDOUT: types::c_int = 110;
+pub const ECONNREFUSED: types::c_int = 111;
+pub const EHOSTDOWN: types::c_int = 112;
+pub const EHOSTUNREACH: types::c_int = 113;
+pub const EALREADY: types::c_int = 114;
+pub const EINPROGRESS: types::c_int = 115;
+pub const ESTALE: types::c_int = 116;
+pub const EUCLEAN: types::c_int = 117;
+pub const ENOTNAM: types::c_int = 118;
+pub const ENAVAIL: types::c_int = 119;
+pub const EISNAM: types::c_int = 120;
+pub const EREMOTEIO: types::c_int = 121;
+pub const EDQUOT: types::c_int = 122;
+pub const ENOMEDIUM: types::c_int = 123;
+pub const EMEDIUMTYPE: types::c_int = 124;
+pub const ECANCELED: types::c_int = 125;
+pub const ENOKEY: types::c_int = 126;
+pub const EKEYEXPIRED: types::c_int = 127;
+pub const EKEYREVOKED: types::c_int = 128;
+pub const EKEYREJECTED: types::c_int = 129;
+pub const EOWNERDEAD: types::c_int = 130;
+pub const ENOTRECOVERABLE: types::c_int = 131;
+pub const ERFKILL: types::c_int = 132;
+pub const EHWPOISON: types::c_int = 133;
 
 // ctype
 
