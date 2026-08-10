@@ -644,7 +644,7 @@ pub enum SwitchCasePatternKind {
     Wildcard,
 
     /// variable binding
-    Binding(Ident),
+    Binding { ident: Ident, mutability: Mutability },
 
     /// literal / constant expression
     Expr(ASTExpr),
