@@ -1,6 +1,10 @@
 enum Value {
     A(int64),
     B(bool),
+    C {
+        a: int32,
+        b: int32,
+    }
 }
 
 pub fn main() {
@@ -12,6 +16,10 @@ pub fn main() {
         }
         case .B(y) => {
             y = false; //~ ERROR Cannot assign to immutable lvalue
+        }
+        case .C { a, var b } => {
+            a = 1; //~ ERROR Cannot assign to immutable lvalue
+            b = 2;
         }
     }
 }
