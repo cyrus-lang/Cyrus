@@ -290,7 +290,23 @@ pub extern(c) {
     ) types::c_char*;
 }
 
-pub extern(c) static var errno: types::c_int;
+
+// FIXME: We already do not have thread_local support in our language
+// and that is the reason we made a dummy one to make libc WORK.
+// 
+// pub extern(c) thread_local static var errno: types::c_int;
+
+pub extern(c) fn __errno_location() types::c_int*;
+
+pub extern(c) fn errno() types::c_int {
+    return *__errno_location();
+}
+
+pub extern(c) fn set_errno(value: types::c_int) {
+    *__errno_location() = value;
+}
+
+// END
 
 pub const EPERM: types::c_int = 1;
 pub const ENOENT: types::c_int = 2;
