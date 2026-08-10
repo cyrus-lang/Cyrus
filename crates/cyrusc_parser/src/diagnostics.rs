@@ -100,6 +100,9 @@ pub enum ParserDiagKind {
 
     #[error("Self modifier type is not valid. It must be 'Self*' or 'const Self*'.")]
     SelfModifierInvalidType,
+
+    #[error("Invalid switch guard pattern.")]
+    InvalidSwitchGuardPattern,
 }
 
 impl<'source_file> Parser<'source_file> {

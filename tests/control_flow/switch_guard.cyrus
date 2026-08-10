@@ -1,0 +1,26 @@
+// @stdout: x: 15, a: 6, b: 8
+
+import std::libc{printf};
+
+enum Value {
+    Int(int64),
+    Struct { a: int32, b: int32 }
+}
+
+pub fn main() {
+    const val = Value.Int(5);
+
+	switch (val) case .Int(var x) default {
+		@panic("wanted int but got something else");
+	};
+	x += 10;
+	printf("x: %d, ", x);
+	
+	const val2 = Value.Struct { a: 6, b: 7};
+
+	switch (val2) case .Struct { a, var b } default {
+		@panic("wanted struct but got something else");
+	};
+	b += 1;
+	printf("a: %d, b: %d\n", a, b);
+}

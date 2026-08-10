@@ -203,6 +203,11 @@ impl<'a> Resolver<'a> {
                 .map(TypedStmtKind::Switch)
                 .map(TypedStmt::new),
 
+            ASTStmt::SwitchGuard(switch_guard_stmt) => self
+                .resolve_switch_guard_stmt(switch_guard_stmt)
+                .map(TypedStmtKind::Switch)
+                .map(TypedStmt::new),
+
             ASTStmt::BlockStmt(block) => self
                 .resolve_block_stmt(block)
                 .map(TypedStmtKind::BlockStmt)
@@ -1945,6 +1950,31 @@ impl<'a> Resolver<'a> {
             default_case,
             all_cases_covered: None,
             loc: switch.loc,
+        })
+    }
+
+    fn resolve_switch_guard_stmt(&mut self, switch_guard: &ASTSwitchGuardStmt) -> Option<TypedSwitchStmt> {
+        let operand = self.resolve_expr(&switch_guard.operand)?;
+
+        let patterns = self.resolve_switch_patterns(&switch_guard.case.patterns)?;
+
+        // dummy block for case
+        let body = Box::new(self.resolve_block_stmt(&switch_guard.case.body)?);
+
+        let case = TypedSwitchCase {
+            patterns,
+            body,
+            loc: switch_guard.loc,
+        };
+
+        let default_case = self.resolve_switch_default_case(&switch_guard.default_case)?;
+
+        Some(TypedSwitchStmt {
+            operand,
+            cases: vec![case],
+            default_case,
+            all_cases_covered: None,
+            loc: switch_guard.loc,
         })
     }
 
