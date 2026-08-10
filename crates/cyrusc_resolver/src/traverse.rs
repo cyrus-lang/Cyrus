@@ -185,7 +185,7 @@ impl<'a> Resolver<'a> {
                 .map(TypedStmt::new),
 
             ASTStmt::Expr(expr) => self.resolve_expr(expr).map(TypedStmtKind::Expr).map(TypedStmt::new),
-            
+
             ASTStmt::If(if_stmt) => self.resolve_if_stmt(if_stmt).map(TypedStmtKind::If).map(TypedStmt::new),
 
             ASTStmt::For(for_stmt) => self
@@ -226,7 +226,7 @@ impl<'a> Resolver<'a> {
             ASTStmt::Label(label) => self.resolve_label_stmt(label).map(TypedStmt::new),
 
             ASTStmt::Goto(goto) => self.resolve_goto_stmt(goto).map(TypedStmt::new),
-            
+
             ASTStmt::Foreach(_foreach_stmt) => unimplemented!(), // TODO
 
             // invalid statements
@@ -2877,62 +2877,62 @@ impl<'a> Resolver<'a> {
 
 impl<'a> Resolver<'a> {
     fn resolve_inline_asm(&mut self, asm: &ASTInlineAsm) -> TypedInlineAsm {
-    let outputs = asm
-        .outputs
-        .iter()
-        .map(|op| {
-            /* Use resolve_expr and fall back to a poisoned expression on failure
-             This preserves operand count so %0, %1 indices stay correct */
-            let expr = self.resolve_expr(&op.expr).unwrap_or_else(|| TypedExpr {
-                kind: TypedExprKind::Poisoned,
-                ty: None,
-                val_cat: ValueCategory::Unknown,
-                analyzed: false,
-                loc: op.loc,
-            });
-            TypedAsmOperand {
-                constraint: op.constraint.clone(),
-                expr: Box::new(expr),
-                loc: op.loc,
-            }
-        })
-        .collect();
+        let outputs = asm
+            .outputs
+            .iter()
+            .map(|op| {
+                /* Use resolve_expr and fall back to a poisoned expression on failure
+                This preserves operand count so %0, %1 indices stay correct */
+                let expr = self.resolve_expr(&op.expr).unwrap_or_else(|| TypedExpr {
+                    kind: TypedExprKind::Poisoned,
+                    ty: None,
+                    val_cat: ValueCategory::Unknown,
+                    analyzed: false,
+                    loc: op.loc,
+                });
+                TypedAsmOperand {
+                    constraint: op.constraint.clone(),
+                    expr: Box::new(expr),
+                    loc: op.loc,
+                }
+            })
+            .collect();
 
-    let inputs = asm
-        .inputs
-        .iter()
-        .map(|op| {
-            let expr = self.resolve_expr(&op.expr).unwrap_or_else(|| TypedExpr {
-                kind: TypedExprKind::Poisoned,
-                ty: None,
-                val_cat: ValueCategory::Unknown,
-                analyzed: false,
-                loc: op.loc,
-            });
-            TypedAsmOperand {
-                constraint: op.constraint.clone(),
-                expr: Box::new(expr),
-                loc: op.loc,
-            }
-        })
-        .collect();
+        let inputs = asm
+            .inputs
+            .iter()
+            .map(|op| {
+                let expr = self.resolve_expr(&op.expr).unwrap_or_else(|| TypedExpr {
+                    kind: TypedExprKind::Poisoned,
+                    ty: None,
+                    val_cat: ValueCategory::Unknown,
+                    analyzed: false,
+                    loc: op.loc,
+                });
+                TypedAsmOperand {
+                    constraint: op.constraint.clone(),
+                    expr: Box::new(expr),
+                    loc: op.loc,
+                }
+            })
+            .collect();
 
-    let clobbers = asm
-        .clobbers
-        .iter()
-        .map(|c| TypedAsmClobber {
-            name: c.name.clone(),
-            loc: c.loc,
-        })
-        .collect();
+        let clobbers = asm
+            .clobbers
+            .iter()
+            .map(|c| TypedAsmClobber {
+                name: c.name.clone(),
+                loc: c.loc,
+            })
+            .collect();
 
-    TypedInlineAsm {
-        template: asm.template.clone(),
-        outputs,
-        inputs,
-        clobbers,
-        is_volatile: asm.is_volatile,
-        loc: asm.loc,
+        TypedInlineAsm {
+            template: asm.template.clone(),
+            outputs,
+            inputs,
+            clobbers,
+            is_volatile: asm.is_volatile,
+            loc: asm.loc,
+        }
     }
-}
 }

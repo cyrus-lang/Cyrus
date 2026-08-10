@@ -11,7 +11,7 @@ mod tests;
 pub enum DiagLevel {
     Error,
     Warning,
-    Unimplemented
+    Unimplemented,
 }
 
 pub struct Diag {

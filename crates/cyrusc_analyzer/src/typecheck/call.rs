@@ -16,10 +16,7 @@ use cyrusc_typed_ast::{
         TypedMethodCallDispatch,
     },
     format::{format_func_type, format_sema_type},
-    stmts::{
-        TypedFuncParams, TypedFuncTypeVariadicParam, TypedFuncVariadicParam, TypedGenericParams,
-        TypedTypeArgs,
-    },
+    stmts::{TypedFuncParams, TypedFuncTypeVariadicParam, TypedFuncVariadicParam, TypedGenericParams, TypedTypeArgs},
     types::{InterfaceObjectType, NamedType, SemaType, TypeDeclID, TypedFuncType},
 };
 

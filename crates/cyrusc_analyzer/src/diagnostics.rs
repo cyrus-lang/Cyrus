@@ -557,7 +557,7 @@ pub enum AnalyzerDiagKind {
     // -----------------------------
     #[error("{0}")]
     UnescapeError(UnescapeError),
-    
+
     #[error("Inline assembly template cannot be empty.")]
     AsmEmptyTemplate,
 
@@ -579,9 +579,7 @@ pub enum AnalyzerDiagKind {
     #[error("Operand type '{found}' is not compatible with constraint '{constraint}'.")]
     AsmConstraintTypeMismatch { constraint: String, found: String },
 
-    #[error(
-        "Multiple output operands are not yet supported when @asm is used as an expression."
-    )]
+    #[error("Multiple output operands are not yet supported when @asm is used as an expression.")]
     #[allow(dead_code)]
     AsmMultipleOutputsNotSupported,
 }

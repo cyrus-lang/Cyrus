@@ -8,12 +8,11 @@ use crate::builder::{
 use cyrusc_internal::cir::{cir::CIRInlineAsm, types::CIRType};
 use cyrusc_typed_ast::types::PlainType;
 use inkwell::{
-    llvm_sys::{core::LLVMGetInlineAsm, LLVMInlineAsmDialect},
+    llvm_sys::{LLVMInlineAsmDialect, core::LLVMGetInlineAsm},
     types::{AsTypeRef, BasicMetadataTypeEnum, BasicType, BasicTypeEnum, FunctionType},
     values::BasicMetadataValueEnum,
 };
 use std::ffi::CString;
-
 
 fn convert_gcc_asm_to_llvm(template: &str) -> String {
     let mut result = String::with_capacity(template.len());
@@ -106,8 +105,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
             let ptr = match lvalue.kind {
                 InternalValueKind::LValue(ptr) => ptr,
                 _ => {
-                    let llvm_ty: BasicTypeEnum<'ll> =
-                        self.emit_type(lvalue.ty.clone()).try_into().unwrap();
+                    let llvm_ty: BasicTypeEnum<'ll> = self.emit_type(lvalue.ty.clone()).try_into().unwrap();
                     self.llvmbuilder.build_alloca(llvm_ty, "asm.mem.out").unwrap()
                 }
             };
@@ -118,8 +116,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         for expr in tied_input_exprs {
             let lvalue = self.emit_expr(expr, &None);
             let rvalue = self.load_rvalue(lvalue);
-            let llvm_ty: BasicTypeEnum<'ll> =
-                self.emit_type(expr.ty.clone()).try_into().unwrap();
+            let llvm_ty: BasicTypeEnum<'ll> = self.emit_type(expr.ty.clone()).try_into().unwrap();
             arg_values.push(rvalue.as_basic_value().into());
             param_types.push(llvm_ty.into());
         }
@@ -127,19 +124,14 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         for op in &asm.inputs {
             let lvalue = self.emit_expr(&op.expr, &None);
             let rvalue = self.load_rvalue(lvalue);
-            let llvm_ty: BasicTypeEnum<'ll> =
-                self.emit_type(op.expr.ty.clone()).try_into().unwrap();
+            let llvm_ty: BasicTypeEnum<'ll> = self.emit_type(op.expr.ty.clone()).try_into().unwrap();
             arg_values.push(rvalue.as_basic_value().into());
             param_types.push(llvm_ty.into());
         }
 
         let reg_out_types: Vec<BasicTypeEnum<'ll>> = reg_out_indices
             .iter()
-            .map(|&i| {
-                self.emit_type(asm.outputs[i].expr.ty.clone())
-                    .try_into()
-                    .unwrap()
-            })
+            .map(|&i| self.emit_type(asm.outputs[i].expr.ty.clone()).try_into().unwrap())
             .collect();
 
         let fn_type: FunctionType<'ll> = match reg_out_types.len() {
@@ -152,14 +144,14 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         };
 
         let formatted_template = convert_gcc_asm_to_llvm(&asm.template);
-        let asm_cstr        = CString::new(formatted_template.clone()).unwrap();
+        let asm_cstr = CString::new(formatted_template.clone()).unwrap();
         let constraint_cstr = CString::new(constraint_str.clone()).unwrap();
-        let is_volatile     = (asm.is_volatile || asm.outputs.is_empty()) as i32;
+        let is_volatile = (asm.is_volatile || asm.outputs.is_empty()) as i32;
 
         let llvm_inline_asm = unsafe {
             LLVMGetInlineAsm(
                 fn_type.as_type_ref(),
-                asm_cstr.as_ptr()        as *mut _,
+                asm_cstr.as_ptr() as *mut _,
                 formatted_template.len(),
                 constraint_cstr.as_ptr() as *mut _,
                 constraint_str.len(),
@@ -178,7 +170,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
             .unwrap();
 
         match reg_out_indices.len() {
-            0 => {  }
+            0 => {}
             1 => {
                 if let Some(ret_val) = call_site.try_as_basic_value().basic() {
                     let op = &asm.outputs[reg_out_indices[0]];
@@ -192,7 +184,8 @@ impl<'ll> CodeGenIRBuilder<'ll> {
                 if let Some(ret_val) = call_site.try_as_basic_value().basic() {
                     let struct_val = ret_val.into_struct_value();
                     for (field_idx, &out_idx) in reg_out_indices.iter().enumerate() {
-                        let field = self.llvmbuilder
+                        let field = self
+                            .llvmbuilder
                             .build_extract_value(struct_val, field_idx as u32, "asm.reg.out")
                             .unwrap();
                         let op = &asm.outputs[out_idx];

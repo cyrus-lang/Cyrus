@@ -16,7 +16,7 @@ impl<'a> AnalysisContext<'a> {
     pub(crate) fn analyze_field_access(&mut self, field_access: &mut TypedFieldAccess) -> Option<SemaType> {
         let mut operand_type = self.analyze_expr(&mut field_access.operand, None)?;
 
-        // expand operand type 
+        // expand operand type
         operand_type = self.expand_sema_type(operand_type, field_access.loc);
 
         let pure_operand_type = operand_type.const_inner().pointer_inner().clone();

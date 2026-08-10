@@ -10,7 +10,6 @@ use cyrusc_typed_ast::{
 };
 
 impl<'a> AnalysisContext<'a> {
-
     pub(crate) fn analyze_inline_asm_stmt(&mut self, asm: &mut TypedInlineAsm) {
         self.validate_asm_template(asm);
         self.validate_asm_outputs(asm);
@@ -20,10 +19,7 @@ impl<'a> AnalysisContext<'a> {
         self.validate_asm_constraint_types(asm);
     }
 
-    pub(crate) fn analyze_inline_asm_expr(
-        &mut self,
-        asm: &mut TypedInlineAsm,
-    ) -> Option<SemaType> {
+    pub(crate) fn analyze_inline_asm_expr(&mut self, asm: &mut TypedInlineAsm) -> Option<SemaType> {
         self.validate_asm_template(asm);
         self.validate_asm_outputs(asm);
         self.validate_asm_inputs(asm);
@@ -40,14 +36,11 @@ impl<'a> AnalysisContext<'a> {
                     .iter()
                     .filter_map(|op| op.expr.ty.clone().map(|ty| (ty, op.loc)))
                     .collect::<Vec<_>>();
-                
+
                 if elements.len() != asm.outputs.len() {
                     return None;
                 }
-                Some(SemaType::Tuple(TypedTupleType {
-                    elements,
-                    loc: asm.loc,
-                }))
+                Some(SemaType::Tuple(TypedTupleType { elements, loc: asm.loc }))
             }
         }
     }
@@ -65,7 +58,6 @@ impl<'a> AnalysisContext<'a> {
 
     fn validate_asm_outputs(&mut self, asm: &mut TypedInlineAsm) {
         for operand in &mut asm.outputs {
-            
             self.analyze_expr_non_terminal(&mut operand.expr, None);
 
             if !matches!(operand.expr.val_cat, ValueCategory::LValue(_)) {
@@ -73,10 +65,7 @@ impl<'a> AnalysisContext<'a> {
                     level: DiagLevel::Warning,
                     kind: Box::new(AnalyzerDiagKind::AsmOutputNotLValue),
                     loc: Some(operand.loc),
-                    hint: Some(
-                        "Output operand should be an lvalue."
-                            .to_string(),
-                    ),
+                    hint: Some("Output operand should be an lvalue.".to_string()),
                 });
             }
 
@@ -88,10 +77,7 @@ impl<'a> AnalysisContext<'a> {
                         constraint: operand.constraint.clone(),
                     }),
                     loc: Some(operand.loc),
-                    hint: Some(
-                        "Output constraints must start with '=' (write-only) or '+' (read-write)."
-                            .to_string(),
-                    ),
+                    hint: Some("Output constraints must start with '=' (write-only) or '+' (read-write).".to_string()),
                 });
             }
         }
@@ -99,7 +85,6 @@ impl<'a> AnalysisContext<'a> {
 
     fn validate_asm_inputs(&mut self, asm: &mut TypedInlineAsm) {
         for operand in &mut asm.inputs {
-            
             self.analyze_expr_non_terminal(&mut operand.expr, None);
 
             let c = operand.constraint.trim_matches(|ch| ch == '{' || ch == '}');
@@ -111,13 +96,11 @@ impl<'a> AnalysisContext<'a> {
                     }),
                     loc: Some(operand.loc),
                     hint: Some(
-                        "Input constraints must not start with '=' or '+'. Those are only for outputs."
-                            .to_string(),
+                        "Input constraints must not start with '=' or '+'. Those are only for outputs.".to_string(),
                     ),
                 });
             }
         }
-        
     }
 
     fn validate_asm_clobbers(&self, asm: &TypedInlineAsm) {
@@ -138,7 +121,8 @@ impl<'a> AnalysisContext<'a> {
             }
         }
     }
-        fn validate_asm_template_indices(&self, asm: &TypedInlineAsm) {
+
+    fn validate_asm_template_indices(&self, asm: &TypedInlineAsm) {
         let total_operands = asm.outputs.len() + asm.inputs.len();
 
         for line in &asm.template {
@@ -147,7 +131,7 @@ impl<'a> AnalysisContext<'a> {
                 if ch != '%' {
                     continue;
                 }
-                
+
                 let mut num_str = String::new();
                 while let Some(&(_, d)) = chars.peek() {
                     if d.is_ascii_digit() {
@@ -158,7 +142,7 @@ impl<'a> AnalysisContext<'a> {
                     }
                 }
                 if num_str.is_empty() {
-                    continue; 
+                    continue;
                 }
                 if let Ok(index) = num_str.parse::<usize>() {
                     if index >= total_operands {
@@ -178,19 +162,16 @@ impl<'a> AnalysisContext<'a> {
                         });
                     }
                 }
-                let _ = i; 
+                let _ = i;
             }
         }
     }
 
-        fn validate_asm_constraint_types(&self, asm: &TypedInlineAsm) {
+    fn validate_asm_constraint_types(&self, asm: &TypedInlineAsm) {
         let all_operands = asm.outputs.iter().chain(asm.inputs.iter());
 
         for operand in all_operands {
-           
-            let raw = operand
-                .constraint
-                .trim_matches(|ch| ch == '{' || ch == '}');
+            let raw = operand.constraint.trim_matches(|ch| ch == '{' || ch == '}');
             let bare = raw
                 .trim_start_matches('=')
                 .trim_start_matches('+')
@@ -198,25 +179,21 @@ impl<'a> AnalysisContext<'a> {
 
             let ty = match &operand.expr.ty {
                 Some(t) => t,
-                None => continue, 
+                None => continue,
             };
 
             let ok = match bare {
-                
                 "r" | "g" => is_integer_bool_or_pointer(ty),
-                
+
                 "m" => matches!(ty, SemaType::Pointer(_)),
-            
-                "i" => {
-                    is_integer_bool_or_pointer(ty)
-                        && is_expr_const_evaluable(&operand.expr.kind)
-                }
-                
+
+                "i" => is_integer_bool_or_pointer(ty) && is_expr_const_evaluable(&operand.expr.kind),
+
                 _ => true,
             };
 
             if !ok {
-                let found = format!("{:?}", ty); 
+                let found = format!("{:?}", ty);
                 self.reporter.report(Diag {
                     level: DiagLevel::Error,
                     kind: Box::new(AnalyzerDiagKind::AsmConstraintTypeMismatch {

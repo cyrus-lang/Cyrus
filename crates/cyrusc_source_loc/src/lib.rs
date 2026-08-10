@@ -56,7 +56,7 @@ impl SourceMap {
         if let Some(file_id) = self.lookup_source_file_by_path(file_path.as_ref().to_path_buf()) {
             return file_id;
         }
-        
+
         let id = self.next_id.fetch_add(1, Ordering::Relaxed);
         let file_id = FileID(id);
 

@@ -293,47 +293,47 @@ impl<'a> CIRLower<'a> {
     }
 
     fn lower_inline_asm(&mut self, asm: &TypedInlineAsm) -> CIRInlineAsm {
-    let template = asm.template.join("\n");
+        let template = asm.template.join("\n");
 
-    let outputs = asm
-        .outputs
-        .iter()
-        .map(|op| CIRAsmOperand {
-            constraint: op.constraint.clone(),
-            expr: Box::new(self.lower_expr(&op.expr)),
-        })
-        .collect();
+        let outputs = asm
+            .outputs
+            .iter()
+            .map(|op| CIRAsmOperand {
+                constraint: op.constraint.clone(),
+                expr: Box::new(self.lower_expr(&op.expr)),
+            })
+            .collect();
 
-    let inputs = asm
-        .inputs
-        .iter()
-        .map(|op| CIRAsmOperand {
-            constraint: op.constraint.clone(),
-            expr: Box::new(self.lower_expr(&op.expr)),
-        })
-        .collect();
+        let inputs = asm
+            .inputs
+            .iter()
+            .map(|op| CIRAsmOperand {
+                constraint: op.constraint.clone(),
+                expr: Box::new(self.lower_expr(&op.expr)),
+            })
+            .collect();
 
-    let clobbers: Vec<String> = asm.clobbers.iter().map(|c| c.name.clone()).collect();
+        let clobbers: Vec<String> = asm.clobbers.iter().map(|c| c.name.clone()).collect();
 
-    let ret_type = match asm.outputs.len() {
-        1 => {
-            // Fall back to Void if the output expression was poisoned
-            match asm.outputs[0].expr.ty.as_ref() {
-                Some(sema_ty) => self.lower_sema_type(sema_ty),
-                None => CIRType::Plain(PlainType::Void),
+        let ret_type = match asm.outputs.len() {
+            1 => {
+                // Fall back to Void if the output expression was poisoned
+                match asm.outputs[0].expr.ty.as_ref() {
+                    Some(sema_ty) => self.lower_sema_type(sema_ty),
+                    None => CIRType::Plain(PlainType::Void),
+                }
             }
-        }
-        _ => CIRType::Plain(PlainType::Void),
-    };
+            _ => CIRType::Plain(PlainType::Void),
+        };
 
-    CIRInlineAsm {
-        template,
-        outputs,
-        inputs,
-        clobbers,
-        is_volatile: asm.is_volatile,
-        ret_type,
-        loc: asm.loc,
+        CIRInlineAsm {
+            template,
+            outputs,
+            inputs,
+            clobbers,
+            is_volatile: asm.is_volatile,
+            ret_type,
+            loc: asm.loc,
         }
     }
 
@@ -1635,9 +1635,9 @@ impl<'a> CIRLower<'a> {
 
             TypedExprKind::Poisoned => unreachable!("unexpected poisoned expression"),
             TypedExprKind::InlineAsm(asm) => {
-            let cir_asm = self.lower_inline_asm(asm);
-            CIRExprKind::InlineAsm(cir_asm)
-        }
+                let cir_asm = self.lower_inline_asm(asm);
+                CIRExprKind::InlineAsm(cir_asm)
+            }
         };
 
         CIRExpr {
