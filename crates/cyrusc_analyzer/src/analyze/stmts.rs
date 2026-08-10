@@ -6,9 +6,7 @@ use cyrusc_diagcentral::{Diag, DiagLevel};
 use cyrusc_internal::flow_state::FlowState;
 use cyrusc_source_loc::Loc;
 use cyrusc_typed_ast::{
-    builtins::{TypedBuiltin, is_builtin_unreachable},
-    exprs::{TypedExpr, TypedExprKind, ValueCategory},
-    stmts::{TypedStmt, TypedStmtKind},
+    builtins::{TypedBuiltin, is_builtin_unreachable}, exprs::{TypedExpr, TypedExprKind, ValueCategory}, stmts::{TypedStmt, TypedStmtKind},
 };
 
 impl<'a> AnalysisContext<'a> {
