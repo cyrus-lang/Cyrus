@@ -79,7 +79,7 @@ impl C_ABI_Impl {
     }
 
     fn sanitize(name: &str) -> String {
-        let name = name.trim_start_matches('_');
+        // Only sanitize invalid characters, don't strip underscores
         name.chars()
             .map(|c| if c.is_ascii_alphanumeric() || c == '_' { c } else { '_' })
             .collect()
