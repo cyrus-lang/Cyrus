@@ -2077,9 +2077,9 @@ impl<'a> Resolver<'a> {
             }
 
             // ident binding
-            SwitchCasePatternKind::Binding(ident) => {
+            SwitchCasePatternKind::Binding { ident, mutability } => {
                 // treat like 'var ident'
-                let var_decl_id = self.insert_variable_decl(ident, None, None, false);
+                let var_decl_id = self.insert_variable_decl(ident, None, None, mutability.is_const());
 
                 self.insert_variable_symbol_to_current_scope(ident, var_decl_id)?;
 

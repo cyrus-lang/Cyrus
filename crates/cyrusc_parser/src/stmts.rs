@@ -1960,6 +1960,7 @@ impl<'source_file> Parser<'source_file> {
             }
 
             // .Variant { a, b: x, c: _, .. }
+            // .Variant { var a, var b: x, c: _, .. }
             if self.current_token_is(TokenKind::LeftBrace) {
                 self.next_token();
 
@@ -1974,18 +1975,32 @@ impl<'source_file> Parser<'source_file> {
                         break;
                     }
 
+                    let mutability = {
+                        if self.current_token_is(TokenKind::Var) {
+                            self.next_token();
+                            Mutability::Var
+                        } else {
+                            Mutability::Const
+                        }
+                    };
+
                     let field_loc = self.current_token().loc;
                     let field_name = self.parse_ident()?;
                     self.next_token();
 
-                    let pattern = if self.current_token_is(TokenKind::Colon) {
-                        self.next_token();
-                        self.parse_switch_pattern()?
-                    } else {
-                        // shorthand: { a } == { a: a }
-                        SwitchCasePattern {
-                            kind: SwitchCasePatternKind::Binding(field_name.clone()),
-                            loc: field_loc,
+                    let pattern = {
+                        if self.current_token_is(TokenKind::Colon) {
+                            self.next_token();
+                            self.parse_switch_pattern()?
+                        } else {
+                            // shorthand: { a } == { a: a }
+                            SwitchCasePattern {
+                                kind: SwitchCasePatternKind::Binding {
+                                    ident: field_name.clone(),
+                                    mutability,
+                                },
+                                loc: field_loc,
+                            }
                         }
                     };
 
@@ -2024,12 +2039,21 @@ impl<'source_file> Parser<'source_file> {
             });
         }
 
+        let mutability = {
+            if self.current_token_is(TokenKind::Var) {
+                self.next_token();
+                Mutability::Var
+            } else {
+                Mutability::Const
+            }
+        };
+
         if matches!(self.current_token().kind, TokenKind::Ident { .. }) {
             let ident = self.parse_ident()?;
             self.next_token();
 
             return Ok(SwitchCasePattern {
-                kind: SwitchCasePatternKind::Binding(ident),
+                kind: SwitchCasePatternKind::Binding { ident, mutability },
                 loc,
             });
         }

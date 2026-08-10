@@ -11,7 +11,7 @@ pub type Item = struct {
 };
 
 pub fn main() {
-    var allocator: Allocator = dynamic LibcAllocator.new();
+    const allocator: Allocator = dynamic LibcAllocator.new();
     
     var items: Vec<Item> = Vec.new(allocator);
     defer items.free();
