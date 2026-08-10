@@ -18,6 +18,7 @@ pub type IOError = ErrorOr<(), ()>;
 pub interface Writer {
     fn write_all(self: Self*, data: const uint8*) IOError;
     fn write(self: Self*, data: const uint8*) IOError;
+    fn write_char(self: Self*, char: uint8) IOError;
     fn writeln(self: Self*, data: const uint8*) IOError;
     fn flush(self: Self*) IOError;
 }
@@ -36,6 +37,11 @@ pub struct StdoutWriter : Writer {
     pub fn write(self: Self*, data: const uint8*) IOError {
         @assert(data, "data cannot be null");
         fprintf(stdout, "%s", data);
+        return .Value(());
+    }
+
+    pub fn write_char(self: Self*, char: uint8) IOError {
+        fprintf(stdout, "%c", char);
         return .Value(());
     }
 
@@ -68,6 +74,11 @@ pub struct StderrWriter : Writer {
     pub fn write(self: Self*, data: const uint8*) IOError {
         @assert(data, "data cannot be null");
         fprintf(stderr, "%s", data);
+        return .Value(());
+    }
+
+    pub fn write_char(self: Self*, char: uint8) IOError {
+        fprintf(stderr, "%c", char);
         return .Value(());
     }
 
@@ -106,6 +117,11 @@ pub struct StringWriter : Writer {
         self->buffer->push_str(data);
         return .Value(());
     }
+    
+    pub fn write_char(self: Self*, char: uint8) IOError {
+        self->buffer->push(char);
+        return .Value(());
+    }
 
     pub fn writeln(self: Self*, data: const uint8*) IOError {
         @assert(data, "data cannot be null");
@@ -123,7 +139,7 @@ pub struct StringWriter : Writer {
     }
 }
 
-pub struct MultiWriter {
+pub struct MultiWriter : Writer {
     writers: Vec<Writer>,
 
     pub fn new(writers: Vec<Writer>) Self {
@@ -144,6 +160,14 @@ pub struct MultiWriter {
         for (var i: usize = 0; i < self->writers.len(); i += 1) {
             var writer = self->writers.get(i).unwrap();
             writer.write(data);
+        }
+        return .Value(());
+    }
+
+    pub fn write_char(self: Self*, char: uint8) IOError {
+        for (var i: usize = 0; i < self->writers.len(); i += 1) {
+            var writer = self->writers.get(i).unwrap();
+            writer.write_char(char);
         }
         return .Value(());
     }
