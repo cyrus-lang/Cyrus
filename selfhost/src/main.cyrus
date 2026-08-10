@@ -1,8 +1,14 @@
-import std::mem::libc{LibcAllocator};
-import std::io{Writer, StderrWriter};
-import std::mem{Allocator};
-import std::string{String};
-import std::libc{printf};
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 The Cyrus Language
+
+import (
+    std::mem::libc{LibcAllocator},
+    std::io{Writer, StderrWriter},
+    std::mem{Allocator},
+    std::string{String},
+    std::libc{printf},
+    std::path{Path}
+);
 
 import (
     diags::render{CompilerDiagRender},
@@ -14,8 +20,6 @@ import (
     source{SourceContext, Source},
     tokens{Loc}
 );
-
-import std::path{Path};
 
 
 pub fn main() {
