@@ -105,8 +105,8 @@ impl<'a> AnalysisContext<'a> {
     }
 
     fn validate_asm_clobbers(&self, asm: &TypedInlineAsm) {
-        let mut seen: Vec<String> = Vec::new();
-        
+        let mut seen: Vec<String> = Vec::with_capacity(asm.clobbers.len());
+
         for clobber in &asm.clobbers {
             let name = clobber.name.to_lowercase();
 
@@ -130,12 +130,14 @@ impl<'a> AnalysisContext<'a> {
 
         for line in &asm.template {
             let mut chars = line.char_indices().peekable();
-            while let Some((i, ch)) = chars.next() {
+
+            while let Some((_, ch)) = chars.next() {
                 if ch != '%' {
                     continue;
                 }
 
                 let mut num_str = String::new();
+
                 while let Some(&(_, d)) = chars.peek() {
                     if d.is_ascii_digit() {
                         num_str.push(d);
@@ -144,9 +146,11 @@ impl<'a> AnalysisContext<'a> {
                         break;
                     }
                 }
+
                 if num_str.is_empty() {
                     continue;
                 }
+
                 if let Ok(index) = num_str.parse::<usize>() {
                     if index >= total_operands {
                         self.reporter.report(Diag {
@@ -165,7 +169,6 @@ impl<'a> AnalysisContext<'a> {
                         });
                     }
                 }
-                let _ = i;
             }
         }
     }
@@ -175,6 +178,7 @@ impl<'a> AnalysisContext<'a> {
 
         for operand in all_operands {
             let raw = operand.constraint.trim_matches(|ch| ch == '{' || ch == '}');
+
             let bare = raw
                 .trim_start_matches('=')
                 .trim_start_matches('+')
@@ -197,6 +201,7 @@ impl<'a> AnalysisContext<'a> {
 
             if !ok {
                 let found = format!("{:?}", ty);
+
                 self.reporter.report(Diag {
                     level: DiagLevel::Error,
                     kind: Box::new(AnalyzerDiagKind::AsmConstraintTypeMismatch {
@@ -218,7 +223,8 @@ impl<'a> AnalysisContext<'a> {
 
 fn is_integer_bool_or_pointer(ty: &SemaType) -> bool {
     match ty {
-        SemaType::Pointer(_) => true,
+        SemaType::Const(inner) => is_integer_bool_or_pointer(inner),
+
         SemaType::Plain(p) => matches!(
             p,
             PlainType::Bool
@@ -237,7 +243,9 @@ fn is_integer_bool_or_pointer(ty: &SemaType) -> bool {
                 | PlainType::UInt64
                 | PlainType::UInt128
         ),
-        SemaType::Const(inner) => is_integer_bool_or_pointer(inner),
+
+        SemaType::Pointer(_) => true,
+
         _ => false,
     }
 }
