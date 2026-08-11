@@ -90,7 +90,7 @@ pub enum ParserDiagKind {
     GroupedModifiersCannotBeNested,
 
     #[error("Expected a string literal in inline assembly.")]
-    ExpectedStringLiteral,
+    ExpectedAssemblyStringLiteral,
 
     #[error("Use 'while (true) {{ ... }}' instead of non conditional for loop.")]
     UseWhileTrueInsteadOfNonConditionalForLoop,

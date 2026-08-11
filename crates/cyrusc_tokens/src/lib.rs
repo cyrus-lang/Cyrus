@@ -197,6 +197,14 @@ impl TokenKind {
     }
 
     #[inline]
+    pub fn is_literal(&self) -> bool {
+        match self {
+            TokenKind::Literal(_) => true,
+            _ => false,
+        }
+    }
+
+    #[inline]
     pub fn is_eof(&self) -> bool {
         match self {
             TokenKind::EOF => true,

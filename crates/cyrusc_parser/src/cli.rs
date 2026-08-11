@@ -1,7 +1,7 @@
-use cyrusc_diagcentral::reporter::DiagReporter;
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 The Cyrus Language
 
+use cyrusc_diagcentral::reporter::DiagReporter;
 use cyrusc_fs_utils::read_file;
 use cyrusc_parser::SourceParser;
 use cyrusc_source_loc::SourceMap;
