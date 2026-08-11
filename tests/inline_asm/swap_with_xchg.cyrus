@@ -6,7 +6,12 @@ pub fn main() {
     var a: int32 = 10;
     var b: int32 = 20;
 
-    @asm ("xchgl %0, %1" : "+r"(a), "+r"(b) : : );
+    @asm(
+        "xchgl %0, %1"
+        : "+r"(a), "+r"(b)
+        :
+        :
+    );
 
     printf("b=%d a=%d\n", b, a);
 }

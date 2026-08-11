@@ -3,6 +3,7 @@
 import std::libc{printf};
 
 pub fn main() {
-    @asm ("nop");
+    @asm("nop");
+    
     printf("ok\n");
 }
