@@ -400,6 +400,15 @@ impl<'a> AnalysisContext<'a> {
             | TypedStmtKind::Defer(_)
             | TypedStmtKind::Label(_)
             | TypedStmtKind::Goto(_) => {}
+
+            TypedStmtKind::InlineAsm(asm) => {
+                for op in &mut asm.outputs {
+                    self.specialize_expr(&mut op.expr, decl_map);
+                }
+                for op in &mut asm.inputs {
+                    self.specialize_expr(&mut op.expr, decl_map);
+                }
+            }
         }
     }
 
@@ -610,6 +619,15 @@ impl<'a> AnalysisContext<'a> {
             },
 
             TypedExprKind::Poisoned | TypedExprKind::Literal(_) | TypedExprKind::SemaType { .. } => {}
+
+            TypedExprKind::InlineAsm(asm) => {
+                for op in &mut asm.outputs {
+                    self.specialize_expr(&mut op.expr, decl_map);
+                }
+                for op in &mut asm.inputs {
+                    self.specialize_expr(&mut op.expr, decl_map);
+                }
+            }
         }
     }
 
@@ -742,7 +760,8 @@ impl<'a> AnalysisContext<'a> {
             | TypedStmtKind::Interface(_)
             | TypedStmtKind::Defer(_)
             | TypedStmtKind::Label(_)
-            | TypedStmtKind::Goto(_) => {}
+            | TypedStmtKind::Goto(_)
+            | TypedStmtKind::InlineAsm(_) => {}
         }
     }
 

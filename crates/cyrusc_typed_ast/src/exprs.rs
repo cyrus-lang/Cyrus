@@ -60,10 +60,32 @@ pub enum TypedExprKind {
     TupleAccess(TypedTupleAccessExpr),
     Dynamic(TypedDynamicExpr),
     Builtin(TypedBuiltin),
+    InlineAsm(TypedInlineAsm),
 
     SemaType { ty: SemaType, loc: Loc },
 
     Poisoned, // semantically wrong
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct TypedAsmOperand {
+    pub constraint: String,
+    pub expr: Box<TypedExpr>,
+    pub loc: Loc,
+}
+#[derive(Debug, Clone, PartialEq)]
+pub struct TypedAsmClobber {
+    pub name: String,
+    pub loc: Loc,
+}
+#[derive(Debug, Clone, PartialEq)]
+pub struct TypedInlineAsm {
+    pub template: Vec<String>,
+    pub outputs: Vec<TypedAsmOperand>,
+    pub inputs: Vec<TypedAsmOperand>,
+    pub clobbers: Vec<TypedAsmClobber>,
+    pub is_volatile: bool,
+    pub loc: Loc,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -506,6 +528,7 @@ impl TypedExprKind {
             | TypedExprKind::Dynamic(_)
             | TypedExprKind::UnnamedUnionValue(_)
             | TypedExprKind::Builtin(_)
+            | TypedExprKind::InlineAsm(_)
             | TypedExprKind::EnumStructVariantInit(_)
             | TypedExprKind::UnionInit(_)
             | TypedExprKind::EnumInit(_)

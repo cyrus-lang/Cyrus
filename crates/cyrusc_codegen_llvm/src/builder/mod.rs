@@ -4,6 +4,7 @@ pub mod builder;
 mod control_flow;
 mod exprs;
 mod funcs;
+mod inline_asm;
 mod intrinsics;
 mod irreg;
 mod runtime;

@@ -71,7 +71,8 @@ impl<'a> AnalysisContext<'a> {
             | TypedStmtKind::Switch(_)
             | TypedStmtKind::Label(_)
             | TypedStmtKind::Goto(_)
-            | TypedStmtKind::Expr(_) => {
+            | TypedStmtKind::Expr(_)
+            | TypedStmtKind::InlineAsm(_) => {
                 self.reporter.report(Diag {
                     level: DiagLevel::Error,
                     kind: Box::new(AnalyzerDiagKind::InvalidStatement),
@@ -143,6 +144,11 @@ impl<'a> AnalysisContext<'a> {
             // skipped
             TypedStmtKind::Goto(_) => FlowState::Reachable,
             TypedStmtKind::Label(_) => FlowState::Reachable,
+
+            TypedStmtKind::InlineAsm(inline_asm) => {
+                self.analyze_inline_asm_stmt(inline_asm);
+                FlowState::Reachable
+            }
 
             // invalid statements
             _ => {

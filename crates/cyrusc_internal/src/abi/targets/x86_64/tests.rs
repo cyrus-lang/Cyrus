@@ -212,8 +212,7 @@ mod tests {
 
     #[test]
     fn classify_struct_small_integer_pack() {
-        let tctx = make_tctx();
-        let abi = abi(tctx);
+        let abi = abi(TCTX.clone());
         let ty = struct_type(vec![i32(), i32()]);
 
         let (info, regs) = abi.classify_argument(&ty, 6, true);

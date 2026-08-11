@@ -2,8 +2,9 @@
 // Copyright (c) 2026 The Cyrus Language
 
 use crate::{context::AnalysisContext, infer::InferCtx};
+#[allow(unused_imports)]
+use cyrusc_typed_ast::debug_assert_func_decl_resolved;
 use cyrusc_typed_ast::{
-    debug_assert_func_decl_resolved,
     decls::{MethodDecl, MethodDeclID, MethodDecls},
     stmts::{TypedFuncParamKind, TypedTypeArgs},
     types::{NamedType, SemaType, TypeDeclID},

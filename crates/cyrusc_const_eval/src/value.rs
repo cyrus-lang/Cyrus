@@ -104,6 +104,7 @@ pub fn is_expr_const_evaluable(expr: &TypedExprKind) -> bool {
         // if a builtin achieves this point means it has a family other than `TypedBuiltinFamily::ConstEval`
         // and cannot be evaluted in comptime.
         TypedExprKind::Builtin(_) => false,
+        TypedExprKind::InlineAsm(_) => false,
 
         TypedExprKind::Poisoned => unreachable!(),
     }

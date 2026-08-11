@@ -350,6 +350,7 @@ pub fn format_typed_expr(expr: &TypedExpr, formatter: &dyn Formatter) -> String 
 
         SemaType { ty, .. } => format_sema_type(ty.clone(), formatter),
 
+        InlineAsm(asm) => format!("@asm(\"{}\")", asm.template.join("\\n")),
         Poisoned => unreachable!(),
     }
 }
