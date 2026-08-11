@@ -2911,8 +2911,8 @@ impl<'a> Resolver<'a> {
             .outputs
             .iter()
             .map(|op| {
-                /* Use resolve_expr and fall back to a poisoned expression on failure
-                This preserves operand count so %0, %1 indices stay correct */
+                // Use resolve_expr and fall back to a poisoned expr on failure
+                // This preserves operand count so %0, %1 indices stay correct.
                 let expr = self.resolve_expr(&op.expr).unwrap_or_else(|| TypedExpr {
                     kind: TypedExprKind::Poisoned,
                     ty: None,

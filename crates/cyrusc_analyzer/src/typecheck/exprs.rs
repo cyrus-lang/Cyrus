@@ -256,7 +256,8 @@ impl<'a> AnalysisContext<'a> {
             | TypedExprKind::Infix(_) => ValueCategory::RValue,
 
             TypedExprKind::Builtin(_) => ValueCategory::RValue,
-            TypedExprKind::InlineAsm(_) => ValueCategory::RValue,
+
+            TypedExprKind::InlineAsm(_) => ValueCategory::Unknown,
 
             TypedExprKind::SemaType { .. } | TypedExprKind::Poisoned => ValueCategory::Unknown,
 

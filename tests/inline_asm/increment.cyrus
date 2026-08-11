@@ -4,6 +4,13 @@ import std::libc{printf};
 
 pub fn main() {
     var x: int32 = 10;
-    @asm volatile ("incl %0" : "+r"(x) : : );
+
+    @asm volatile(
+        "incl %0"
+        : "+r"(x)
+        :
+        :
+    );
+    
     printf("%d\n", x);
 }
