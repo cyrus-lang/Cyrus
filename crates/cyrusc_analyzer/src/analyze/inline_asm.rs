@@ -87,8 +87,9 @@ impl<'a> AnalysisContext<'a> {
         for operand in &mut asm.inputs {
             self.analyze_expr_non_terminal(&mut operand.expr, None);
 
-            let c = operand.constraint.trim_matches(|ch| ch == '{' || ch == '}');
-            if c.starts_with('=') || c.starts_with('+') {
+            let str = operand.constraint.trim_matches(|ch| ch == '{' || ch == '}');
+
+            if str.starts_with('=') || str.starts_with('+') {
                 self.reporter.report(Diag {
                     level: DiagLevel::Error,
                     kind: Box::new(AnalyzerDiagKind::AsmInvalidInputConstraint {
@@ -105,8 +106,10 @@ impl<'a> AnalysisContext<'a> {
 
     fn validate_asm_clobbers(&self, asm: &TypedInlineAsm) {
         let mut seen: Vec<String> = Vec::new();
+        
         for clobber in &asm.clobbers {
             let name = clobber.name.to_lowercase();
+
             if seen.contains(&name) {
                 self.reporter.report(Diag {
                     level: DiagLevel::Warning,

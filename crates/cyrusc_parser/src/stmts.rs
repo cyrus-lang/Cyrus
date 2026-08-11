@@ -241,7 +241,6 @@ impl<'source_file> Parser<'source_file> {
 
             while self.current_token().kind.is_literal() {
                 strs.push(self.parse_asm_string_literal()?);
-                self.next_token();
             }
 
             (strs, true)
@@ -306,6 +305,7 @@ impl<'source_file> Parser<'source_file> {
 
     fn parse_asm_operands(&mut self) -> Result<Vec<AsmOperand>, Diag> {
         let mut operands = Vec::new();
+
         loop {
             if self.current_token_is(TokenKind::Colon)
                 || self.current_token_is(TokenKind::RightParen)
@@ -335,6 +335,7 @@ impl<'source_file> Parser<'source_file> {
                 break;
             }
         }
+        
         Ok(operands)
     }
 
