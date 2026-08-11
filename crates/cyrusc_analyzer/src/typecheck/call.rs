@@ -508,40 +508,40 @@ impl<'a> AnalysisContext<'a> {
                         self_modifier.ty = this.substitute_self_type(self_modifier.ty.clone(), &pure_operand_type);
                     }
 
-                    // set func env object type
-                    this.func_env.current_object = Some(pure_operand_type.clone());
+                    this.with_object(Some(pure_operand_type.clone()), |this| {
+                        // NOTE: we need to clarify why we normalize return type later (VERY IMPORTANT)
+                        //
+                        // normalize ret type
+                        method_decl.func_decl.ret_type =
+                            this.normalize_sema_type(method_decl.func_decl.ret_type.clone(), method_call.loc, 0)?;
 
-                    // NOTE: we need to clarify why we normalize return type later (VERY IMPORTANT)
-                    //
-                    // normalize ret type
-                    method_decl.func_decl.ret_type =
-                        this.normalize_sema_type(method_decl.func_decl.ret_type.clone(), method_call.loc, 0)?;
+                        method_decl.func_decl.params =
+                            this.substitute_func_params(method_decl.func_decl.params.clone());
+                        method_decl.func_decl.ret_type = this.substitute_type(&method_decl.func_decl.ret_type);
 
-                    method_decl.func_decl.params = this.substitute_func_params(method_decl.func_decl.params.clone());
-                    method_decl.func_decl.ret_type = this.substitute_type(&method_decl.func_decl.ret_type);
+                        #[cfg(debug_assertions)]
+                        debug_assert_func_decl_resolved!(&method_decl.func_decl);
 
-                    #[cfg(debug_assertions)]
-                    debug_assert_func_decl_resolved!(&method_decl.func_decl);
+                        let ret_type = method_decl.func_decl.ret_type.clone();
 
-                    let ret_type = method_decl.func_decl.ret_type.clone();
+                        let monomorph_id = this.monomorphize_generic_method_call(
+                            pure_operand_type.clone(),
+                            method_decl_id,
+                            method_decl,
+                            final_type_args.clone(),
+                            false,
+                            method_call.loc,
+                        )?;
 
-                    let monomorph_id = this.monomorphize_generic_method_call(
-                        pure_operand_type.clone(),
-                        method_decl_id,
-                        method_decl,
-                        final_type_args.clone(),
-                        false,
-                        method_call.loc,
-                    )?;
+                        method_call.type_args = final_type_args;
+                        method_call.operand.ty = Some(operand_type.clone());
+                        method_call.dispatch = TypedMethodCallDispatch::Monomorph {
+                            monomorph_id,
+                            is_instance_method: is_instance_method_call,
+                        };
 
-                    method_call.type_args = final_type_args;
-                    method_call.operand.ty = Some(operand_type.clone());
-                    method_call.dispatch = TypedMethodCallDispatch::Monomorph {
-                        monomorph_id,
-                        is_instance_method: is_instance_method_call,
-                    };
-
-                    Some(ret_type)
+                        Some(ret_type)
+                    })
                 });
             }
             // normal static method
@@ -549,7 +549,9 @@ impl<'a> AnalysisContext<'a> {
                 method_call.operand.ty = Some(operand_type.clone());
                 method_call.dispatch = TypedMethodCallDispatch::Normal { method_decl_id };
 
-                Some(method_decl.func_decl.ret_type.clone())
+                this.with_object(Some(pure_operand_type.clone()), |this| {
+                    Some(this.substitute_type(&method_decl.func_decl.ret_type))
+                })
             }
         })
     }

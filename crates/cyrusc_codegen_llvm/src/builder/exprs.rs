@@ -1891,12 +1891,14 @@ impl<'ll> CodeGenIRBuilder<'ll> {
                         element_type: Box::new(CIRType::Plain(PlainType::Int8)),
                         len: *size as usize,
                     });
-                    let padding_array_value = self.llvm_ctx.i8_type().array_type(*size).const_zero();
+
+                    let padding_value = self.llvm_ctx.i8_type().array_type(*size).const_zero();
+
                     values.push((
                         None,
                         InternalValue::new(
                             cir_array_type,
-                            InternalValueKind::RValue(padding_array_value.as_basic_value_enum()),
+                            InternalValueKind::RValue(padding_value.as_basic_value_enum()),
                         ),
                     ));
                 }

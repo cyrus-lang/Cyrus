@@ -1968,6 +1968,7 @@ impl<'source_file> Parser<'source_file> {
             }
 
             // .Variant { a, b: x, c: _, .. }
+            // .Variant { var a, var b: x, c: _, .. }
             if self.current_token_is(TokenKind::LeftBrace) {
                 self.next_token();
 
@@ -1982,18 +1983,32 @@ impl<'source_file> Parser<'source_file> {
                         break;
                     }
 
+                    let mutability = {
+                        if self.current_token_is(TokenKind::Var) {
+                            self.next_token();
+                            Mutability::Var
+                        } else {
+                            Mutability::Const
+                        }
+                    };
+
                     let field_loc = self.current_token().loc;
                     let field_name = self.parse_ident()?;
                     self.next_token();
 
-                    let pattern = if self.current_token_is(TokenKind::Colon) {
-                        self.next_token();
-                        self.parse_switch_pattern()?
-                    } else {
-                        // shorthand: { a } == { a: a }
-                        SwitchCasePattern {
-                            kind: SwitchCasePatternKind::Binding(field_name.clone()),
-                            loc: field_loc,
+                    let pattern = {
+                        if self.current_token_is(TokenKind::Colon) {
+                            self.next_token();
+                            self.parse_switch_pattern()?
+                        } else {
+                            // shorthand: { a } == { a: a }
+                            SwitchCasePattern {
+                                kind: SwitchCasePatternKind::Binding {
+                                    ident: field_name.clone(),
+                                    mutability,
+                                },
+                                loc: field_loc,
+                            }
                         }
                     };
 
@@ -2032,12 +2047,21 @@ impl<'source_file> Parser<'source_file> {
             });
         }
 
+        let mutability = {
+            if self.current_token_is(TokenKind::Var) {
+                self.next_token();
+                Mutability::Var
+            } else {
+                Mutability::Const
+            }
+        };
+
         if matches!(self.current_token().kind, TokenKind::Ident { .. }) {
             let ident = self.parse_ident()?;
             self.next_token();
 
             return Ok(SwitchCasePattern {
-                kind: SwitchCasePatternKind::Binding(ident),
+                kind: SwitchCasePatternKind::Binding { ident, mutability },
                 loc,
             });
         }
@@ -2095,6 +2119,45 @@ impl<'source_file> Parser<'source_file> {
         })
     }
 
+    fn parse_switch_guard(&mut self, operand: ASTExpr) -> Result<ASTStmt, Diag> {
+        self.expect_current(TokenKind::Case)?;
+
+        let pattern = self.parse_switch_pattern()?;
+
+        if !matches!(
+            &pattern.kind,
+            SwitchCasePatternKind::EnumUnit(_)
+                | SwitchCasePatternKind::EnumTupleVariant { .. }
+                | SwitchCasePatternKind::EnumStructVariant { .. }
+                | SwitchCasePatternKind::Expr(_)
+                | SwitchCasePatternKind::Range(_)
+        ) {
+            return Err(self.error_at_current(ParserDiagKind::InvalidSwitchGuardPattern));
+        }
+
+        self.expect_current(TokenKind::Default)?;
+
+        let default_block = self.parse_block()?;
+        self.expect_current(TokenKind::RightBrace)?;
+
+        let loc = pattern.loc;
+
+        Ok(ASTStmt::SwitchGuard(ASTSwitchGuardStmt {
+            operand,
+            case: SwitchCase {
+                patterns: vec![pattern],
+                body: ASTBlockStmt {
+                    // dummy block
+                    stmts: Vec::new(),
+                    loc,
+                },
+                loc,
+            },
+            default_case: Some(default_block),
+            loc,
+        }))
+    }
+
     fn parse_switch(&mut self) -> Result<ASTStmt, Diag> {
         let loc = self.current_token().loc;
         let (line, column, start) = (loc.line, loc.column, loc.start);
@@ -2106,6 +2169,11 @@ impl<'source_file> Parser<'source_file> {
         self.next_token();
 
         self.expect_current(TokenKind::RightParen)?;
+
+        if self.current_token_is(TokenKind::Case) {
+            return self.parse_switch_guard(operand);
+        }
+
         self.expect_current(TokenKind::LeftBrace)?;
 
         let mut cases: Vec<SwitchCase> = Vec::new();

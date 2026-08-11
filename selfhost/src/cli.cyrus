@@ -1,0 +1,616 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 The Cyrus Language
+
+import (
+    std::libc{
+        fprintf,
+        stderr,
+        strlen,
+        strcmp,
+        strtod,
+        strtol,
+        ERANGE
+    },
+    std::libc::types{c_int, c_char},
+    std::io{Writer, StdoutWriter},
+    std::mem{Allocator, alloc},
+    std::collections{Vec},
+    std::option{Option},
+    std::string{String},
+    std::errors{ErrorOr},
+);
+
+import std::libc{printf};
+
+const HELP_MESG_WHITESPACE_OFFSET: usize = 16;
+
+pub type ProgramArgs = struct {
+    argv: const c_char**,
+    argc: c_int
+};
+
+pub type ActionFn = fn(void*) void;
+
+// pub struct ActionContext {
+//     // pub options: Vec<Option*>
+// }
+
+pub enum ParseError {
+    InvalidCommandOption {
+        cmd: uint8*,
+        opt: uint8*
+    },
+    InvalidOption,
+    UnknownOption(uint8*),
+    DuplicateOption(uint8*),
+    MissingOption(uint8*),
+    UnknownCommand(uint8*),
+    MissingValue(uint8*),
+    InvalidValue(uint8*),
+}
+
+pub enum Value {
+    Str(uint8*),
+    Int(int64),
+    Float(float64),
+    Bool(bool)
+}
+
+pub enum ArgType {
+    None,
+    Str,
+    Int,
+    Float,
+    Bool,
+}
+
+pub enum DupPolicy {
+    Error,
+    Last
+}
+
+pub struct Cli {
+    allocator: Allocator,
+    cmds: Cmds,
+    opts: Opts,
+    program_name: uint8*,
+
+    pub fn new(allocator: Allocator, program_name: uint8*) Self {
+        const cmds = Cmds.new(allocator);
+        const opts = Opts.new(allocator);
+
+        return Self {
+            allocator,
+            cmds,
+            opts,
+            program_name
+        };
+    }
+    
+    pub fn add_command(self: Self*, command: Cmd) {
+        self->cmds.add(&command);
+    }
+    
+    pub fn add_option(self: Self*, option: Opt) {
+        self->opts.add(&option);
+    }
+
+    pub fn parse_args(self: Self*, pargs: ProgramArgs) ErrorOr<Self*, ()> {
+        // Trigger main action if there is any,
+        // Or display help
+        if (pargs.argc < 2) {
+            // TODO Support optional main-action.
+            self->display_general_help();
+            return .Value(self);
+        }
+    
+        const arg = pargs.argv[1];
+        
+        switch (self->parse_command(arg, pargs)) {
+            case .Error(err) => {
+                // Display error
+                switch (err) {
+                    case .DuplicateOption(opt) => {
+                        fprintf(
+                            stderr,
+                            "Duplcate option: %s (not allowed)\n",
+                            opt
+                        );
+                    }
+                    case .InvalidOption => {
+                        fprintf(
+                            stderr,
+                            "Invalid option.\n"
+                        );
+                    }
+                    case .UnknownOption(opt) => {
+                        fprintf(
+                            stderr,
+                            "Uknown option: %s\n",
+                            opt
+                        );
+                    }
+                    case .MissingOption(opt) => {
+                        fprintf(
+                            stderr,
+                            "Missing option: %s (required)\n",
+                            opt
+                        );
+                    }
+                    case .MissingValue(opt) => {
+                        fprintf(
+                            stderr,
+                            "Option `%s` requires a value\n",
+                            opt
+                        );
+                    }
+                    case .InvalidValue(opt) => {
+                        fprintf(
+                            stderr,
+                            "Option `%s` does not accept a value (flag only)\n",
+                            opt
+                        );
+                    }
+                    case .UnknownCommand(cmd) => {
+                        fprintf(
+                            stderr,
+                            "Invalid command: %s\n",
+                            arg
+                        );
+                    }
+                    case .InvalidCommandOption { cmd, opt } => {
+                        fprintf(
+                            stderr,
+                            "Invalid option `%s` for command `%s`.",
+                            cmd,
+                            opt
+                        );
+                    }
+                    default => {
+                        @panic("unknown error");
+                    }
+                }
+
+                fprintf(stderr, "Please use --help to see usage.\n");
+                return .Error(());
+            }
+        }
+
+        // self->parse_option(pargs.argv[1], @cast(usize, pargs.argc));
+       
+       return .Value(self);
+    }
+
+    fn parse_command(self: Self*, name: const uint8*, pargs: ProgramArgs) ErrorOr<(), ParseError> {
+        const argc = @cast(usize, pargs.argc);
+            
+        // We expect arg to be command until first 
+        // option consumed, and after that we do not 
+        // consider any identifier to be a command, 
+        // but a value given to an option.
+        var any_opt = false;
+
+        var cmd: Cmd* = null;
+
+        for (var i: usize = 1; i < argc; i += 1) {
+            const arg = pargs.argv[i];
+
+            if (arg[0] == '-' && arg[1] == '-') {
+                any_opt = true;
+                switch (self->parse_option(&i, pargs)) {
+                    case .Error(err) => return .Error(err);
+                }
+                continue;
+            }
+            
+            if (!any_opt) {
+                switch (self->cmds.find(arg)) {
+                    case .Some(_cmd) => cmd = _cmd;
+                    case .None => return .Error(.UnknownCommand(arg));
+                }
+            }
+        }
+
+        // TODO: Check ask for help
+        // TODO: Handle is it sub command?
+        // TODO: Complain about required options
+        // TODO: Complain about required options
+        
+        // TODO: Return ActionFn
+        return .Value(());
+    }
+
+     fn parse_option(self: const Self*, i: usize*, pargs: ProgramArgs) ErrorOr<(), ParseError> {
+        const arg = pargs.argv[*i];
+
+        @assert(arg[0] == '-' || (arg[0] == '-' && arg[1] == '-'),
+            "program argumet does not start an option"
+        );
+
+        const len = strlen(arg);
+        const name = arg + 2; // skip dashes
+
+        // Check option name to be present
+        if (strcmp(name, "\0") == 0) {
+            return .Error(.InvalidOption);
+        }
+
+        var opt: Opt* = undefined;
+        switch (self->opts.find(name)) {
+            case .Some(_opt) => opt = _opt;
+            case .None => return .Error(.UnknownOption(name));
+        }
+
+        // Flag enabled, no matter
+        // what it's value is
+        opt->enabled = true;
+
+        switch (opt->arg_type) {
+            case .Some(ty) => {
+                // Consume value in iterator
+                *i += 1;
+
+                if (!pargs.argv[*i]) {
+                    return .Error(.MissingValue(arg));
+                }
+
+                self->parse_value(pargs.argv[*i]).unwrap();
+            }
+        }
+
+        return .Value(());
+    }
+
+    fn parse_value(self: Self*, arg: const uint8*) Option<Value> {
+        var success = false;
+
+        const bool_val = parse_bool(&success, arg);
+        
+        if (success) {
+            return .Some(.Bool(bool_val));
+        }
+
+        // TODO: Try int
+        // TODO: Try float
+        // TODO: Try str
+
+        @unimplemented("parse value is not implemented completely yet");
+    }
+
+    fn display_general_help(self: const Self*) {
+        var writer: Writer = dynamic StdoutWriter.new();
+
+        writer.write("Usage: ");
+        writer.write(self->program_name);
+        writer.writeln(" [COMMAND] [REQUIRED_OPTIONS] [OPTIONS]");
+
+        if (self->opts.len() > 0) {
+            writer.write("\n");
+            self->cmds.display_all(writer);
+        }
+
+        writer.write("\n");
+        self->cmds.display_all(writer);
+    }
+
+    pub fn free(self: Self*) {
+        self->cmds.free();
+        self->opts.free();
+    }
+}
+
+pub struct Cmds {
+    allocator: Allocator,
+    inner: Vec<Cmd*>,
+
+    pub fn new(allocator: Allocator) Self {
+        return Self {
+            allocator,
+            inner: Vec.new(allocator)
+        };
+    }
+
+    pub fn add(self: Self*, command: Cmd*) {
+        self->inner.push(alloc(self->allocator, *command));
+    }
+
+    pub fn find(self: Self*, name: const uint8*) Option<Cmd*> {
+        for (var i: usize = 0; i < self->inner.len(); i += 1) {
+            const cmd = self->inner.get(i).unwrap();
+
+            if (strcmp(cmd->name, name) == 0) {
+               return .Some(cmd);
+            }
+        }
+
+        return .None;
+    }
+
+    pub fn display_all(self: const Self*, writer: Writer) {
+        writer.writeln("Commands:");
+        for (var i: usize = 0; i < self->inner.len(); i += 1) {
+            const cmd = self->inner.get(i).unwrap();
+            
+            const len = strlen(cmd->name);
+
+            writer.write("  ");
+            writer.write(cmd->name);
+
+            switch (cmd->help) {
+                case .Some(text) => {
+                    write_spaces(
+                        writer,
+                        HELP_MESG_WHITESPACE_OFFSET - len
+                    );
+                    writer.write(text);
+                }
+            }
+
+            writer.write("\n");
+        }
+    }
+    
+    pub fn len(self: const Self*) usize {
+        return self->inner.len();
+    }
+
+    pub fn free(self: Self*) {
+        for (var i: usize = 0; i < self->inner.len(); i += 1) {
+            var command = self->inner.get(i).unwrap();
+            command->free();
+            self->allocator.free(command);
+        }
+
+        self->inner.free();
+    }
+}
+
+pub struct Opts {
+    allocator: Allocator,
+    inner: Vec<Opt*>,
+
+    pub fn new(allocator: Allocator) Self {
+        return Self {
+            allocator,
+            inner: Vec.new(allocator)
+        };
+    }
+
+    pub fn add(self: Self*, option: Opt*) {
+        self->inner.push(alloc(self->allocator, *option));
+    }
+
+    pub fn find(self: Self*, name: const uint8*) Option<Opt*> {
+        for (var i: usize = 0; i < self->inner.len(); i += 1) {
+            const opt = self->inner.get(i).unwrap();
+
+            // Check with short name
+            switch (opt->short_name) {
+                case .Some(char) => {
+                    // Convert uint8 to uint8* 
+                    // to be able to compare them
+                    const temp: uint8[2] = { char, '\0' };
+
+                    if (strcmp(temp, name) == 0) {
+                        return .Some(opt);
+                    }
+                }
+            }
+
+            // Check with long name
+            if (strcmp(opt->long_name, name) == 0) {
+               return .Some(opt);
+            }
+        }
+
+        return .None;
+    }
+
+    pub fn display_all(self: const Self*, writer: Writer) {
+        writer.writeln("Options:");
+        for (var i: usize = 0; i < self->inner.len(); i += 1) {
+            const option = self->inner.get(i).unwrap();
+
+            writer.write("  ");
+            
+            switch (option->short_name) {
+                case .Some(char) => {
+                    writer.write("-");
+                    writer.write_char(char);
+                }
+            }
+            
+            writer.write(", ");
+            writer.write("--");
+            writer.write(option->long_name);
+        }
+        writer.write("\n");
+    }
+
+    pub fn len(self: const Self*) usize {
+        return self->inner.len();
+    }
+
+    pub fn free(self: Self*) {
+        for (var i: usize = 0; i < self->inner.len(); i += 1) {
+            var command = self->inner.get(i).unwrap();
+            command->free();
+            self->allocator.free(command);
+        }
+
+        self->inner.free();
+    }
+}
+
+pub struct Cmd {
+    allocator: Allocator,
+    pub name: const uint8*,
+    pub options: Vec<Opt*>,
+    pub sub_commands: Vec<Cmd*>,
+    pub action: ActionFn,
+    pub help: Option<uint8*>,
+
+    pub fn new(allocator: Allocator, name: const uint8*, action: ActionFn) Self {
+        const options: Vec<Opt*> = Vec.new(allocator);
+        const sub_commands: Vec<Cmd*> = Vec.new(allocator);
+
+        return Self {
+            allocator,
+            name,
+            options,
+            sub_commands,
+            action,
+            help: .None
+        };
+    }
+
+    pub fn add_option(self: Self*, option: Opt*) Self* {
+        self->options.push(option);
+        return self;
+    }
+
+    pub fn add_sub_command(self: Self*, command: Cmd) Self* {
+        self->sub_commands.push(alloc(self->allocator, command));
+        return self;
+    }
+
+    pub fn help(self: Self*, mesg: uint8*) Self* {
+        self->help = .Some(mesg);
+        return self;
+    }
+
+    pub fn free(self: Self*) {
+        self->options.free();
+        self->sub_commands.free();
+
+        for (var i: usize; i < self->options.len(); i += 1) {
+            const option = self->options.get(i).unwrap();
+
+            self->allocator.free(option);
+        }
+    }
+}
+
+pub struct Opt {
+    pub short_name: Option<uint8>,
+    pub long_name: uint8*,
+    pub values: Vec<Value*>,
+    pub arg_type: Option<ArgType>,
+    pub enabled: bool,
+    required: bool,
+    policy: DupPolicy,
+    help: Option<uint8*>,
+
+    pub fn new(allocator: Allocator, long_name: uint8*) Self {
+        const values: Vec<Value*> = Vec.new(allocator);
+
+        return Self {
+            short_name: .None,
+            long_name,
+            values,
+            arg_type: .None,
+            enabled: false,
+            required: false,
+            policy: .Error,
+            help: .None
+        };
+    }
+
+    pub fn add_value(self: Self*, value: Value*) ErrorOr<(), ParseError> {
+        if (self->policy == .Error && !self->values.is_empty()) {
+           return .Error(.DuplicateOption(self->long_name));
+        }
+
+        if (self->policy == .Last && !self->values.is_empty()) {
+           @todo("implement duplicate policy last when adding option value");
+        }
+
+        self->values.push(value);
+        return .Value(());
+    }
+
+    pub fn short(self: Self*, char: uint8) Self* {
+        self->short_name = .Some(char);
+        return self;
+    }
+
+    pub fn required(self: Self*) Self* {
+        self->required = true;
+        return self;
+    }
+
+    pub fn arg(self: Self*, ty: ArgType) Self* {
+        self->arg_type = .Some(ty);
+        return self;
+    }
+
+    pub fn policy(self: Self*, new_dp: DupPolicy) Self* {
+        self->policy = new_dp;
+        return self;
+    }
+
+    pub fn help(self: Self*, mesg: uint8*) Self* {
+        self->help = .Some(mesg);
+        return self;
+    }
+
+    pub fn free(self: Self*) {
+        self->values.free();
+    }
+}
+
+inline fn parse_bool(success: bool*, arg: const uint8*) bool {
+    if (((strcmp(arg, "true") == 0 || strcmp(arg, "yes") == 0) ||
+        (strcmp(arg, "1") == 0 || strcmp(arg, "on") == 0)) || strcmp(arg, "enabled") == 0)
+    {
+        *success = true;
+        return true;
+    }
+
+    if (((strcmp(arg, "false") == 0 || strcmp(arg, "no") == 0) ||
+        (strcmp(arg, "0") == 0 || strcmp(arg, "off") == 0)) || strcmp(arg, "disabled") == 0)
+    {
+        *success = true;
+        return false;
+    }
+
+    return false;
+}
+
+inline fn parse_int(success: bool*, arg: const uint8*) int64 {
+    // var endptr: c_char*;
+    
+    // errno = 0;
+    // const result = strtol(arg, &endptr, 10);
+
+    // if ((errno == ERANGE || endptr == arg) || *endptr != '\0') {
+    //     *success = false;
+    //     return 0;
+    // }
+
+    // *success = true;
+    // return @cast(int64, result);
+    @todo();
+}
+
+inline fn parse_float(success: bool*, arg: const uint8*) float64 {
+    // var endptr: c_char*;
+    
+    // errno = 0;
+    // const result = strtod(arg, &endptr);
+
+    // if ((errno == ERANGE || endptr == arg) || *endptr != '\0') {
+    //     *success = false;
+    //     return 0.0;
+    // }
+
+    // *success = true;
+    // return @cast(float64, result);
+    @todo();
+}
+
+inline fn write_spaces(writer: Writer, n: usize) {
+    for (var i: usize = 0; i < n; i += 1) {
+        writer.write(" ");
+    }
+}

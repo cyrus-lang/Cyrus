@@ -152,6 +152,16 @@ pub struct Vec<T> {
         self->len += 1;
     }
 
+    pub fn find(self: const Self*, cond: fn(const T*) bool) Option<T*> {
+        for (var i: usize = 0; i < self->len; i += 1) {
+            if (cond(self->data + i)) {
+                return .Some(self->data + i);
+            }
+        }
+
+        return .None;
+    }
+
     /// Find the index of a value (Linear Search).
     pub fn index(self: const Self*, value: T) Option<usize> {
         for (var i: usize = 0; i < self->len; i += 1) {

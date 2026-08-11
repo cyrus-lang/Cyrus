@@ -453,6 +453,7 @@ pub enum ASTStmt {
     While(ASTWhileStmt),
     Foreach(ASTForeachStmt),
     Switch(ASTSwitchStmt),
+    SwitchGuard(ASTSwitchGuardStmt),
     BlockStmt(ASTBlockStmt),
     Interface(ASTInterfaceStmt),
     Struct(ASTStructStmt),
@@ -619,6 +620,14 @@ pub struct ASTForeachStmt {
 }
 
 #[derive(Debug, Clone)]
+pub struct ASTSwitchGuardStmt {
+    pub operand: ASTExpr,
+    pub case: SwitchCase,
+    pub default_case: Option<ASTBlockStmt>,
+    pub loc: Loc,
+}
+
+#[derive(Debug, Clone)]
 pub struct ASTSwitchStmt {
     pub operand: ASTExpr,
     pub cases: Vec<SwitchCase>,
@@ -645,7 +654,7 @@ pub enum SwitchCasePatternKind {
     Wildcard,
 
     /// variable binding
-    Binding(Ident),
+    Binding { ident: Ident, mutability: Mutability },
 
     /// literal / constant expression
     Expr(ASTExpr),
@@ -1028,6 +1037,7 @@ impl ASTStmt {
             | ASTStmt::While(_)
             | ASTStmt::Foreach(_)
             | ASTStmt::Switch(_)
+            | ASTStmt::SwitchGuard(_)
             | ASTStmt::BlockStmt(_)
             | ASTStmt::Import(_)
             | ASTStmt::Variable(_)
@@ -1067,6 +1077,7 @@ impl ASTStmt {
             | ASTStmt::While(_)
             | ASTStmt::Foreach(_)
             | ASTStmt::Switch(_)
+            | ASTStmt::SwitchGuard(_)
             | ASTStmt::BlockStmt(_)
             | ASTStmt::Break(_)
             | ASTStmt::Continue(_)
@@ -1092,6 +1103,7 @@ impl ASTStmt {
             ASTStmt::While(while_stmt) => while_stmt.loc,
             ASTStmt::Foreach(foreach) => foreach.loc,
             ASTStmt::Switch(switch) => switch.loc,
+            ASTStmt::SwitchGuard(switch_guard) => switch_guard.loc,
             ASTStmt::Struct(struct_stmt) => struct_stmt.loc,
             ASTStmt::Import(import) => import.loc,
             ASTStmt::BlockStmt(block_stmt) => block_stmt.loc,

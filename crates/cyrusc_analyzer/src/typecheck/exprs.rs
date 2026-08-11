@@ -209,9 +209,8 @@ impl<'a> AnalysisContext<'a> {
             TypedExprKind::Deref(deref) => {
                 let mutability = {
                     let is_type_const = deref.operand.ty.as_ref().map(|ty| ty.is_const()).unwrap_or(false);
-                    let is_val_cat_const = deref.operand.val_cat.is_const_lvalue();
 
-                    if is_type_const || is_val_cat_const {
+                    if is_type_const {
                         Mutability::Const
                     } else {
                         Mutability::Var
