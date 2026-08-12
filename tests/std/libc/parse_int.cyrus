@@ -1,0 +1,28 @@
+// @stdout: 123
+
+import std::libc{printf, errno, strtol, ERANGE};
+import std::libc::types{c_int, c_char};
+
+fn parse_int(ok: bool*, arg: const uint8*) int64 {
+    var endptr: c_char*;
+    
+    errno = 0;
+    const result = strtol(arg, &endptr, 10);
+
+    if ((errno == ERANGE || endptr == arg) || *endptr != '\0') {
+        *ok = false;
+        return 0;
+    }
+
+    *ok = true;
+    return @cast(int64, result);
+}
+
+pub fn main() {
+    var ok = false;
+
+    const result = parse_int(&ok, "123");
+    @assert(ok, "parse integer failed");
+
+    printf("%ld\n", result);
+}
