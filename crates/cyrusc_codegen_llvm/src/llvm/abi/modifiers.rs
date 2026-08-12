@@ -85,6 +85,8 @@ pub(crate) fn apply_global_var_modifiers<'ll>(global_value: &GlobalValue<'ll>, m
     if let Some(section) = &modifiers.section {
         global_value.set_section(Some(section.0.as_str()));
     }
+
+    global_value.set_thread_local(modifiers.thread_local);
 }
 
 pub(crate) fn apply_inlining_func<'a>(llvm_ctx: &'a Context, llvm_func_value: &FunctionValue<'a>, inline: Inlining) {
