@@ -9,7 +9,7 @@ pub fn main() {
         case "Cyrus!" => {
             printf("Cyrus The Great\n");
         }
-        default => {
+        else => {
             printf("unknown\n");
         }
     }

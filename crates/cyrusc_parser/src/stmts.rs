@@ -2136,7 +2136,7 @@ impl<'source_file> Parser<'source_file> {
             return Err(self.error_at_current(ParserDiagKind::InvalidSwitchGuardPattern));
         }
 
-        self.expect_current(TokenKind::Default)?;
+        self.expect_current(TokenKind::Else)?;
 
         let default_block = self.parse_block()?;
         self.must_be_right_brace()?;
@@ -2230,7 +2230,7 @@ impl<'source_file> Parser<'source_file> {
                     body: case_body,
                     loc: Loc::new(self.file_id(), line, column, start, end),
                 });
-            } else if self.current_token_is(TokenKind::Default) {
+            } else if self.current_token_is(TokenKind::Else) {
                 self.next_token();
                 self.expect_current(TokenKind::FatArrow)?;
 

@@ -135,6 +135,6 @@ inline fn is_newline(char: uint8) bool {
         case 13 => return true; // Carriage Return (\r)
         case 11 => return true; // Vertical Tab
         case 12 => return true; // Form Feed
-        default => return false;
+        else => return false;
     }
 }

@@ -761,7 +761,6 @@ fn lookup_identifier(ident: String) -> TokenKind {
         "fn" => TokenKind::Function,
         "switch" => TokenKind::Switch,
         "case" => TokenKind::Case,
-        "default" => TokenKind::Default,
         "struct" => TokenKind::Struct,
         "import" => TokenKind::Import,
         "if" => TokenKind::If,
