@@ -335,7 +335,7 @@ impl<'source_file> Parser<'source_file> {
                 break;
             }
         }
-        
+
         Ok(operands)
     }
 
@@ -2139,7 +2139,7 @@ impl<'source_file> Parser<'source_file> {
         self.expect_current(TokenKind::Default)?;
 
         let default_block = self.parse_block()?;
-        self.expect_current(TokenKind::RightBrace)?;
+        self.must_be_right_brace()?;
 
         let loc = pattern.loc;
 

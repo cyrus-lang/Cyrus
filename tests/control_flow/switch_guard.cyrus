@@ -12,7 +12,7 @@ pub fn main() {
 
 	switch (val) case .Int(var x) default {
 		@panic("wanted int but got something else");
-	};
+	}
 	x += 10;
 	printf("x: %d, ", x);
 	
