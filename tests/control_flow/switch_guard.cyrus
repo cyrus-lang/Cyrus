@@ -10,7 +10,7 @@ enum Value {
 pub fn main() {
     const val = Value.Int(5);
 
-	switch (val) case .Int(var x) default {
+	switch (val) case .Int(var x) else {
 		@panic("wanted int but got something else");
 	}
 	x += 10;
@@ -18,9 +18,9 @@ pub fn main() {
 	
 	const val2 = Value.Struct { a: 6, b: 7};
 
-	switch (val2) case .Struct { a, var b } default {
+	switch (val2) case .Struct { a, var b } else {
 		@panic("wanted struct but got something else");
-	};
+	}
 	b += 1;
 	printf("a: %d, b: %d\n", a, b);
 }

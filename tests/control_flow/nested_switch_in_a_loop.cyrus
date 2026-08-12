@@ -18,7 +18,7 @@ pub fn main() {
             case 3 => {
                 printf("C");
             }
-            default => {
+            else => {
                 printf("unknown");
             }
         }

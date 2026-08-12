@@ -166,7 +166,7 @@ pub struct Cli {
                             opt
                         );
                     }
-                    default => {
+                    else => {
                         @panic("unknown error");
                     }
                 }

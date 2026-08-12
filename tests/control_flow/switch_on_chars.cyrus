@@ -5,7 +5,7 @@ import std::libc{printf};
 fn is_abc(char: uint8) bool {
     switch (char) {
         case 'a' | 'b' | 'c' => return true;
-        default => return false;
+        else => return false;
     }
 }
 

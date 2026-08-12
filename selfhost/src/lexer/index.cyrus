@@ -107,7 +107,7 @@ pub struct Lexer {
                     case '@' => return self->read_single(.At);
                     case '\0' => return .EOF;
 
-                    default => {
+                    else => {
                         // FIXME Report diagnostic.
                         return .INVALID;
                     }
@@ -350,13 +350,13 @@ inline fn is_whitespace(char: uint8) bool {
         case ' ' | '\t' | '\n' | '\r' | '\v' | '\f' => {
             return true;
         }
-        default => return false;
+        else => return false;
     }
 }
 
 inline fn is_alpha(char: uint8) bool {
     switch (char) {
         case 'a'..='z' | 'A'..='Z' | '_' => return true;
-        default => return false;
+        else => return false;
     }
 }
