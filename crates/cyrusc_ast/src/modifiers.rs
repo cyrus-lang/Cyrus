@@ -128,6 +128,7 @@ pub struct GlobalVarModifiers {
     pub linkage: Option<Linkage>,
     pub export: Option<ExportKind>,
     pub section: Option<SectionAttr>,
+    pub thread_local: bool,
     pub weak: bool,
 }
 
@@ -138,6 +139,7 @@ impl Default for GlobalVarModifiers {
             linkage: None,
             export: None,
             section: None,
+            thread_local: false,
             weak: false,
         }
     }

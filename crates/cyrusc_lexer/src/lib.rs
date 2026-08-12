@@ -785,6 +785,7 @@ fn lookup_identifier(ident: String) -> TokenKind {
         "noinline" => TokenKind::NoInline,
         "pub" => TokenKind::Public,
         "const" => TokenKind::Const,
+        "thread_local" => TokenKind::ThreadLocal,
         "weak" => TokenKind::Weak,
         "linkonce" => TokenKind::LinkOnce,
         "callconv" => TokenKind::Callconv,

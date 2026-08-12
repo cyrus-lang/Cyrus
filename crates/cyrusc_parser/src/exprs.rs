@@ -1503,6 +1503,7 @@ fn can_start_expr(kind: &TokenKind) -> bool {
         | TokenKind::Void
         | TokenKind::Bool
         | TokenKind::Const
+        | TokenKind::ThreadLocal
         | TokenKind::Weak
         | TokenKind::LinkOnce
         | TokenKind::Callconv
