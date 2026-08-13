@@ -1,0 +1,29 @@
+// @stdout: 3, 3 | 1, 1
+
+import std::mem::libc{LibcAllocator};
+import std::collections{Vec};
+import std::mem{Allocator};
+import std::libc{printf};
+
+pub fn main() {
+    var allocator: Allocator = dynamic LibcAllocator.new();
+    
+    var vec: Vec<int32> = Vec.new(allocator);
+    defer vec.free();
+
+    vec.push(1);
+    vec.push(2);
+    vec.push(3);
+
+    const last = vec.last().unwrap();
+    const last_ref = vec.last_ref().unwrap();
+
+    const first = vec.first().unwrap();
+    const first_ref = vec.first_ref().unwrap();
+
+    printf("%d, ", last);
+    printf("%d | ", *last_ref);
+
+    printf("%d, ", first);
+    printf("%d\n", *first_ref);
+}

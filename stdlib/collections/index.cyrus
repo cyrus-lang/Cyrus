@@ -204,6 +204,34 @@ pub struct Vec<T> {
         return false;
     }
 
+    // FIXME: This must be `self: Self*`
+    // But compiler catches an error mistakenly:
+    // Redundant 'const' qualifier on an already-const type.
+    pub fn last(self: Self*) Option<T> {
+        if (self->len() < 1) {
+            return .None;
+        }
+        return self->get(self->len() - 1);
+    }
+
+    // FIXME: This must be `self: Self*`
+    // But compiler catches an error mistakenly:
+    // Redundant 'const' qualifier on an already-const type.
+    pub fn last_ref(self: Self*) Option<T*> {
+        if (self->len() < 1) {
+            return .None;
+        }
+        return self->get_ref(self->len() - 1);
+    }
+
+    pub fn first(self: const Self*) Option<T> {
+        return self->get(0);
+    }
+    
+    pub fn first_ref(self: const Self*) Option<const T*> {
+        return self->get_ref(0);
+    }
+
     pub fn remove(self: Self*, index: usize) T {
         if (index >= self->len) {
             @panic("index out of bounds");
