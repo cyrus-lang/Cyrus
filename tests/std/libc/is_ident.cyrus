@@ -1,0 +1,53 @@
+// @stdout: 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0
+
+import std::libc{
+    isalnum,
+    isalpha,
+    printf
+};
+import std::libc::types{c_int};
+
+fn is_ident(str: const uint8*) bool {
+    @assert(str, "str cannot be null");
+    
+    if (*str == '\0') {
+        return false;
+    }
+    
+    // First character must be a letter
+    const char = @cast(c_int, @cast(uint8, *str));
+    if (isalpha(char) == 0) {
+        return false;
+    }
+    
+    // Check remaining characters 
+    // Allow letters, digits, underscore, and dash
+    for (var i: usize = 1; str[i] != '\0'; i += 1) {
+        var char = @cast(c_int, @cast(uint8, str[i]));
+        if (isalnum(char) == 0 && (str[i] != '_' && str[i] != '-')) {
+            return false;
+        }
+    }
+    
+    return true;
+}
+
+pub fn main() {
+    // Ident 
+    printf("%d, ", is_ident("myVar"));        // 1 (true)
+    printf("%d, ", is_ident("hello"));        // 1 (true)
+    printf("%d, ", is_ident("my-var"));       // 1 (true) - dash allowed in middle
+    printf("%d, ", is_ident("my_var"));       // 1 (true) - underscore allowed in middle
+    printf("%d, ", is_ident("var-123"));      // 1 (true)
+    printf("%d, ", is_ident("abc_def-123"));  // 1 (true)
+    printf("%d, ", is_ident("my-var-"));      // 1 (true)  - dash allowed at end
+    printf("%d, ", is_ident("my_var_"));      // 1 (true)  - underscore allowed at end
+
+    // Not Ident
+    printf("%d, ", is_ident("-myVar"));       // 0 (false) - cannot start with dash
+    printf("%d, ", is_ident("_myVar"));       // 0 (false) - cannot start with underscore
+    printf("%d, ", is_ident("123var"));       // 0 (false) - cannot start with number
+    printf("%d, ", is_ident("my var"));       // 0 (false) - space not allowed
+    printf("%d, ", is_ident("my@var"));       // 0 (false) - @ not allowed
+    printf("%d\n", is_ident(""));             // 0 (false) - empty string
+}
