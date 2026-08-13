@@ -2,13 +2,13 @@
 // Copyright (c) 2026 The Cyrus Language
 
 import (
+    std::libc::types{c_int, c_char},
     std::libc{
-        fprintf, stderr, strlen,
+        fprintf, printf, strlen,
         strcmp, strtod, strtol,
         errno, isalpha, isalnum,
-        ERANGE
+        stderr, ERANGE
     },
-    std::libc::types{c_int, c_char},
     std::io{Writer, StdoutWriter},
     std::mem{Allocator, alloc},
     std::collections{Vec},
@@ -16,8 +16,6 @@ import (
     std::option{Option},
     std::string{String},
 );
-
-import std::libc{printf};
 
 const HELP_MESG_WHITESPACE_OFFSET: usize = 16;
 
@@ -147,7 +145,7 @@ pub struct Cli {
             // option consumed, and after that we do not 
             // consider any identifier to be a cmd, 
             // but a value given to an option.
-            if (arg[0] == '-' && arg[1] == '-') {
+            if (is_arg_an_opt(arg)) {
                 break;
             }
 
@@ -160,8 +158,14 @@ pub struct Cli {
         return .Value(struct { cmd, rem_args: argc - i });
     }
 
-    fn parse_option(self: const Self*, cmd: const Cmd*, i: usize*, pargs: ProgramArgs) ErrorOr<(), ParseError> {
+    fn parse_option(
+        self: const Self*,
+        cmd: const Cmd*,
+        i: usize*,
+        pargs: ProgramArgs
+    ) ErrorOr<(), ParseError> {
         var arg = pargs.argv[*i];
+        var next_arg = pargs.argv[*i + 1];
 
         const (single_dash, double_dash) = is_opt_dashed(arg);
 
@@ -184,7 +188,17 @@ pub struct Cli {
             return .Error(.InvalidOption { opt: arg });
         }
 
-        // TODO Support option value assign (--opt=val)
+        // FIXME: I get a segfault when calling is_opt_assign
+        // maybe i'll fix it later.
+        // opt=10
+        // const (is_assign, assign_index) = is_opt_assign(name);
+        // if (is_assign) {
+        //     @memcpy(name, name, assign_index + 1);
+        //     printf("%s\n", name);
+        //     @todo();
+        // }
+
+        var value: Value;
 
         switch (cmd->find_option(name)) case .Some(opt) else {
             return .Error(.UnknownOption { opt: name });
@@ -194,44 +208,45 @@ pub struct Cli {
         // what it's value is
         opt->enabled = true;
 
-        // REVIEW Refactor to a helper method
-        // called parse_opt_value
-        switch (opt->arg_type) {
-            case .Some(ty) => {
-                const next_arg = pargs.argv[*i + 1];
+        const ty = opt->arg_type.unwrap_or(.Bool);
 
-                if (is_arg_an_opt(next_arg)) {
-                    // Next arg is an option, 
-                    // We cannot parse any value
-                    return .Value(());
-                }
-                
-                if (ty.is_bool() && !next_arg) {
-                    // Option used as flag
-                    return .Value(());
-                }
+        if (ty.is_bool() && (!next_arg || is_arg_an_opt(next_arg))) {
+            // Option used as flag
+            value = .Bool(true);
+            goto register_value;
+        }
+        
+        // For non-boolean options, or boolean with explicit value
+        if (!next_arg) {
+            return .Error(.MissingValue { opt: arg });
+        }
 
-                if (!next_arg) {
-                    return .Error(.MissingValue { opt: arg });
-                }
+        if (is_arg_an_opt(next_arg)) {
+            // Next arg is an option, but we need a value
+            return .Error(.MissingValue { opt: arg });
+        }
 
-                // Consume value in iterator
-                *i += 1;
+        // Consume the value
+        *i += 1;
 
-                // Validate parsed value type
-                // with expected type
-                const value = self->parse_value(pargs.argv[*i]);
+        // Parse the value
+        value = self->parse_value(pargs.argv[*i]);
+    
+    register_value:
+        // Validate parsed value type
+        // with expected type
+        if (!is_value_valid(ty, value)) {
+            return .Error(.BadValueType {
+                opt: arg,
+                ty: ty.to_str()
+            });
+        }
 
-                if (!is_value_valid(ty, value)) {
-                    return .Error(.BadValueType {
-                        opt: arg,
-                        ty: ty.to_str()
-                    });
-                }
+        opt->add_value(value);
 
-                // Register value
-                opt->add_value(value);
-            }
+        // Option policy check
+        switch (opt->check()) {
+            case .Error(err) => return .Error(err);
         }
 
         return .Value(());
@@ -264,11 +279,6 @@ pub struct Cli {
         writer.write("Usage: ");
         writer.write(self->program_name);
         writer.writeln(" [COMMAND] [REQUIRED_OPTIONS] [OPTIONS]");
-
-        if (self->opts->len() > 0) {
-            writer.write("\n");
-            self->cmds.display_all(writer);
-        }
 
         writer.write("\n");
         self->cmds.display_all(writer);
@@ -605,12 +615,15 @@ pub struct Opt {
         };
     }
 
-    pub fn add_value(self: Self*, value: Value) ErrorOr<(), ParseError> {
-        if (self->policy == .Error && !self->values.is_empty()) {
+    pub fn add_value(self: Self*, value: Value) {
+        self->values.push(alloc(self->allocator, value));
+    }
+
+    pub fn check(self: const Self*) ErrorOr<(), ParseError> {
+        if (self->policy == .Error && self->values.len() > 1) {
            return .Error(.DuplicateOption { opt: self->long_name });
         }
 
-        self->values.push(alloc(self->allocator, value));
         return .Value(());
     }
 
@@ -743,10 +756,20 @@ inline fn parse_float(ok: bool*, arg: const uint8*) float64 {
     return @cast(float64, result);
 }
 
+// inline fn is_opt_assign(arg: const uint8*) (bool, usize) {
+// const len = @cast(usize, strlen(arg));
+// for (var i: usize = 0; i < len; i += 1) {
+//     if (arg[i] == '=') {
+//         return (true, i);
+//     }
+// }
+// return (false, 0);
+// }
+
 inline fn is_opt_dashed(arg: const uint8*) (bool, bool) {
     const single_dash = arg[0] == '-';
     const double_dash = arg[0] == '-' && arg[1] == '-';
-    return (single_dash && double_dash, double_dash);
+    return (single_dash, double_dash);
 }
 
 inline fn is_arg_an_opt(arg: const uint8*) bool {
