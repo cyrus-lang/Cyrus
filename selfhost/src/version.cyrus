@@ -1,0 +1,4 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 The Cyrus Language
+
+pub static const COMPILER_VERSION = "0.0.4-selfhost";
