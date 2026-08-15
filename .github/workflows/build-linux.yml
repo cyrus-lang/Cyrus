@@ -27,7 +27,7 @@ jobs:
             zlib1g zlib1g-dev libpolly-18-dev \
             upx libasan8 \
             ruby ruby-dev build-essential \
-            zip # for creating the zip package
+            zip
 
       - name: Install fpm (package builder)
         run: sudo gem install fpm
@@ -88,6 +88,18 @@ jobs:
             -p cyrus-${{ steps.version.outputs.VERSION }}.deb \
             usr/
 
+      # Create zip file
+      - name: Collect files for zip
+        run: |
+          mkdir cyrus
+          cp ./target/release/cyrus ./cyrus
+          cp ./scripts/install.sh ./cyrus
+          cp -r ./stdlib ./cyrus/
+
+      - name: Zip release files
+        run: |
+          zip -r -9 cyrus-linux-${{ steps.version.outputs.VERSION }}.zip ./cyrus
+
       # Generate PKGBUILD for Arch Linux
       - name: Generate PKGBUILD
         run: |
@@ -101,22 +113,15 @@ jobs:
           url="https://github.com/${{ github.repository }}"
           license=('MIT')
           depends=('zlib' 'llvm' 'clang' 'polly' 'gcc-libs')
-          makedepends=('cargo' 'rust' 'git' 'make' 'clang' 'llvm')
+          makedepends=('unzip')
           source=("cyrus-linux-${{ steps.version.outputs.VERSION }}.zip")
           sha256sums=('SKIP')
           
           package() {
-            # Extract the zip
             cd "${srcdir}"
             unzip -q "cyrus-linux-${{ steps.version.outputs.VERSION }}.zip"
-            
-            # Install binary
             install -Dm755 "./cyrus/cyrus" "${pkgdir}/usr/bin/cyrus"
-            
-            # Install stdlib
             cp -r "./cyrus/stdlib" "${pkgdir}/usr/share/cyrus/"
-            
-            # Install install script (optional)
             if [ -f "./cyrus/install.sh" ]; then
               install -Dm755 "./cyrus/install.sh" "${pkgdir}/usr/share/cyrus/install.sh"
             fi
@@ -125,55 +130,6 @@ jobs:
           
           echo "Generated PKGBUILD:"
           cat PKGBUILD
-
-      # Create zip file first (needed for PKGBUILD source)
-      - name: Collect files for zip
-        run: |
-          mkdir cyrus
-          cp ./target/release/cyrus ./cyrus
-          cp ./scripts/install.sh ./cyrus
-          cp -r ./stdlib ./cyrus/
-
-      - name: Zip release files
-        run: |
-          zip -r -9 cyrus-linux-${{ steps.version.outputs.VERSION }}.zip ./cyrus
-
-      # Build Arch package using PKGBUILD
-      - name: Build Arch package with PKGBUILD
-        run: |
-          # Install makepkg dependencies
-          sudo apt-get update
-          sudo apt-get install -y \
-            libarchive-tools \
-            pacman-pkgbuild-tools || true
-          
-          # Create a simple makepkg wrapper (since we're on Ubuntu)
-          # We'll use fpm to create the Arch package instead
-          mkdir -p ./arch-pkg/usr/bin
-          mkdir -p ./arch-pkg/usr/share/cyrus
-          
-          cp ./cyrus/cyrus ./arch-pkg/usr/bin/
-          cp -r ./cyrus/stdlib ./arch-pkg/usr/share/cyrus/
-          if [ -f "./cyrus/install.sh" ]; then
-            cp ./cyrus/install.sh ./arch-pkg/usr/share/cyrus/
-          fi
-          
-          # Use fpm to create Arch package
-          fpm -s dir -t pacman \
-            -n cyrus \
-            -v ${{ steps.version.outputs.VERSION }} \
-            --url "https://github.com/${{ github.repository }}" \
-            --description "Cyrus programming language" \
-            --license "MIT" \
-            --depends "zlib" \
-            --depends "llvm" \
-            --depends "clang" \
-            --depends "polly" \
-            --depends "gcc-libs" \
-            --architecture x86_64 \
-            -C ./arch-pkg \
-            -p cyrus-${{ steps.version.outputs.VERSION }}-x86_64.pkg.tar.xz \
-            usr/
 
       # Upload .deb artifact
       - name: Upload .deb artifact
@@ -196,14 +152,6 @@ jobs:
           name: cyrus-pkgbuild
           path: ./PKGBUILD
 
-      # Upload Arch package artifact
-      - name: Upload Arch package artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: cyrus-arch
-          path: ./cyrus-*.pkg.tar.xz
-
-  # Build .rpm package
   build-rpm:
     runs-on: fedora-latest
     steps:
@@ -280,7 +228,6 @@ jobs:
           name: cyrus-rpm
           path: ./cyrus-*.rpm
 
-  # Release
   release:
     needs: [build-linux, build-rpm]
     if: startsWith(github.ref, 'refs/tags/v')
@@ -298,6 +245,6 @@ jobs:
             ./release-files/cyrus-deb/*.deb
             ./release-files/cyrus-linux/*.zip
             ./release-files/cyrus-rpm/*.rpm
-            ./release-files/cyrus-arch/*.pkg.tar.xz
+            ./release-files/cyrus-pkgbuild/PKGBUILD
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
