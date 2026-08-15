@@ -26,7 +26,8 @@ jobs:
             llvm-18 llvm-18-dev clang-18 \
             zlib1g zlib1g-dev libpolly-18-dev \
             upx libasan8 \
-            ruby ruby-dev build-essential # for fpm
+            ruby ruby-dev build-essential \
+            zip # for creating the zip package
 
       - name: Install fpm (package builder)
         run: sudo gem install fpm
@@ -87,6 +88,45 @@ jobs:
             -p cyrus-${{ steps.version.outputs.VERSION }}.deb \
             usr/
 
+      # Generate PKGBUILD for Arch Linux
+      - name: Generate PKGBUILD
+        run: |
+          cat > PKGBUILD << 'EOF'
+          # Maintainer: Cyrus Developers <dev@cyrus-lang.org>
+          pkgname=cyrus
+          pkgver=${{ steps.version.outputs.VERSION }}
+          pkgrel=1
+          pkgdesc="Cyrus programming language"
+          arch=('x86_64')
+          url="https://github.com/${{ github.repository }}"
+          license=('MIT')
+          depends=('zlib' 'llvm' 'clang' 'polly' 'gcc-libs')
+          makedepends=('cargo' 'rust' 'git' 'make' 'clang' 'llvm')
+          source=("cyrus-linux-${{ steps.version.outputs.VERSION }}.zip")
+          sha256sums=('SKIP')
+          
+          package() {
+            # Extract the zip
+            cd "${srcdir}"
+            unzip -q "cyrus-linux-${{ steps.version.outputs.VERSION }}.zip"
+            
+            # Install binary
+            install -Dm755 "./cyrus/cyrus" "${pkgdir}/usr/bin/cyrus"
+            
+            # Install stdlib
+            cp -r "./cyrus/stdlib" "${pkgdir}/usr/share/cyrus/"
+            
+            # Install install script (optional)
+            if [ -f "./cyrus/install.sh" ]; then
+              install -Dm755 "./cyrus/install.sh" "${pkgdir}/usr/share/cyrus/install.sh"
+            fi
+          }
+          EOF
+          
+          echo "Generated PKGBUILD:"
+          cat PKGBUILD
+
+      # Create zip file first (needed for PKGBUILD source)
       - name: Collect files for zip
         run: |
           mkdir cyrus
@@ -98,17 +138,70 @@ jobs:
         run: |
           zip -r -9 cyrus-linux-${{ steps.version.outputs.VERSION }}.zip ./cyrus
 
+      # Build Arch package using PKGBUILD
+      - name: Build Arch package with PKGBUILD
+        run: |
+          # Install makepkg dependencies
+          sudo apt-get update
+          sudo apt-get install -y \
+            libarchive-tools \
+            pacman-pkgbuild-tools || true
+          
+          # Create a simple makepkg wrapper (since we're on Ubuntu)
+          # We'll use fpm to create the Arch package instead
+          mkdir -p ./arch-pkg/usr/bin
+          mkdir -p ./arch-pkg/usr/share/cyrus
+          
+          cp ./cyrus/cyrus ./arch-pkg/usr/bin/
+          cp -r ./cyrus/stdlib ./arch-pkg/usr/share/cyrus/
+          if [ -f "./cyrus/install.sh" ]; then
+            cp ./cyrus/install.sh ./arch-pkg/usr/share/cyrus/
+          fi
+          
+          # Use fpm to create Arch package
+          fpm -s dir -t pacman \
+            -n cyrus \
+            -v ${{ steps.version.outputs.VERSION }} \
+            --url "https://github.com/${{ github.repository }}" \
+            --description "Cyrus programming language" \
+            --license "MIT" \
+            --depends "zlib" \
+            --depends "llvm" \
+            --depends "clang" \
+            --depends "polly" \
+            --depends "gcc-libs" \
+            --architecture x86_64 \
+            -C ./arch-pkg \
+            -p cyrus-${{ steps.version.outputs.VERSION }}-x86_64.pkg.tar.xz \
+            usr/
+
+      # Upload .deb artifact
       - name: Upload .deb artifact
         uses: actions/upload-artifact@v4
         with:
           name: cyrus-deb
           path: ./cyrus-*.deb
 
+      # Upload zip artifact
       - name: Upload zip artifact
         uses: actions/upload-artifact@v4
         with:
           name: cyrus-linux
           path: ./cyrus-linux-*.zip
+
+      # Upload PKGBUILD artifact
+      - name: Upload PKGBUILD artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: cyrus-pkgbuild
+          path: ./PKGBUILD
+
+      # Upload Arch package artifact
+      - name: Upload Arch package artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: cyrus-arch
+          path: ./cyrus-*.pkg.tar.xz
 
   # Build .rpm package
   build-rpm:
@@ -187,85 +280,9 @@ jobs:
           name: cyrus-rpm
           path: ./cyrus-*.rpm
 
-  # Build arch package
-  build-arch:
-    runs-on: ubuntu-latest
-    container:
-      image: archlinux:latest
-    steps:
-      - name: Install dependencies
-        run: |
-          pacman -Syu --noconfirm
-          pacman -S --noconfirm \
-            base-devel llvm clang zlib polly upx \
-            ruby ruby-rdoc
-
-      - name: Install fpm
-        run: gem install fpm
-
-      - name: Install Rust
-        uses: actions-rs/toolchain@v1
-        with:
-          toolchain: stable
-          override: true
-
-      - name: Cache Rust
-        uses: Swatinem/rust-cache@v2
-
-      - name: Build
-        env:
-          LLVM_CONFIG: /usr/bin/llvm-config
-          CC: clang
-          CXX: clang++
-        run: |
-          ls -la .
-          chmod +x ./scripts/release.sh
-          ./scripts/release.sh
-
-      - name: Run tests
-        env:
-          LLVM_CONFIG: /usr/bin/llvm-config
-          CC: clang
-          CXX: clang++
-        run: make testsuite PROFILE=release
-
-      - name: Determine version
-        id: version
-        run: |
-          if [[ "${{ github.ref }}" == refs/tags/v* ]]; then
-            VERSION=${GITHUB_REF#refs/tags/v}
-          else
-            VERSION="0.0.0-$(git rev-parse --short HEAD)"
-          fi
-          echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
-
-      - name: Build Arch package
-        run: |
-          mkdir -p ./pkg/usr/bin
-          mkdir -p ./pkg/usr/share/cyrus
-          cp ./target/release/cyrus ./pkg/usr/bin/
-          cp -r ./stdlib ./pkg/usr/share/cyrus/
-          cp ./scripts/install.sh ./pkg/usr/share/cyrus/
-          fpm -s dir -t tar \
-            -n cyrus \
-            -v ${{ steps.version.outputs.VERSION }} \
-            --url "https://github.com/${{ github.repository }}" \
-            --description "Cyrus programming language" \
-            --license "MIT" \
-            -C ./pkg \
-            -p cyrus-${{ steps.version.outputs.VERSION }}.tar \
-            usr/
-          xz -v cyrus-${{ steps.version.outputs.VERSION }}.tar
-
-      - name: Upload Arch package artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: cyrus-arch
-          path: ./cyrus-*.pkg.tar.xz
-
   # Release
   release:
-    needs: [build-linux, build-rpm, build-arch]
+    needs: [build-linux, build-rpm]
     if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
     steps:
