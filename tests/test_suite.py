@@ -12,6 +12,13 @@ import os
 import tempfile
 import hashlib
 
+# ANSI escape sequence removal
+ANSI_ESCAPE = re.compile(r'\x1b\[[0-9;]*m')
+
+def strip_ansi(text):
+    return ANSI_ESCAPE.sub('', text)
+
+# Compiler version detection
 def get_compiler_version(compiler_path: str, timeout: float = 3.0) -> str | None:
     exe = compiler_path
     
@@ -38,13 +45,12 @@ def print_compiler_version(compiler_path: str):
     else:
         print(f"Warning: couldn't determine version for compiler '{compiler_path}'.\n")
 
-
+# Helper for unique output name
 def unique_name(path: Path) -> str:
-    # collision-free stable name
     h = hashlib.sha1(str(path).encode()).hexdigest()[:10]
     return f"{path.stem}_{h}"
 
-
+# Build & run a single test
 def build_and_run(file_path, metadata, compiler_path, compiler_flags, output_dir, run_number=1, total_runs=1):
     with tempfile.TemporaryDirectory() as tmpdir:
         tmpdir = Path(tmpdir)
@@ -81,6 +87,8 @@ def build_and_run(file_path, metadata, compiler_path, compiler_flags, output_dir
         annotations = metadata.get("errorAnnotations") or []
         if annotations:
             combined = (build_result.stdout or "") + "\n" + (build_result.stderr or "")
+            # Strip ANSI color codes before parsing
+            combined = strip_ansi(combined)
             diagnostics = parse_compiler_diagnostics(combined)
             problems = match_error_annotations(annotations, diagnostics, file_path)
             if problems:
@@ -124,27 +132,20 @@ def build_and_run(file_path, metadata, compiler_path, compiler_flags, output_dir
                 f"(Run {run_number}/{total_runs})"
             )
 
-        # Check return status code first
         if expected_stderr.strip() == "" and run_result.returncode != 0:
             raise Exception(f"Test execution failed with exit code {run_result.returncode} (Run {run_number}/{total_runs}):\n")
 
+# Annotation extraction from source
 LEVEL_KEYWORDS = {
     "ERROR": "error",
     "WARNING": "warning",
     "WARN": "warning",
-    "UNIMPLEMENTED": "unimplemented",
-    "UNIMPL": "unimplemented",
+    "UNIMPLEMENTED": "unimplemented"
 }
 
 ANNOTATION_RE = re.compile(
     r"//~(?P<adjust>[\^v|]*)\s*(?P<level>" + "|".join(LEVEL_KEYWORDS) + r")\b[ \t]*(?P<msg>.*?)\s*$"
 )
-
-DIAG_RE = re.compile(
-    r"^\[(?P<level>error|warning|unimplemented)\]"
-    r"\[(?P<path>.+):(?P<line>\d+):(?P<col>\d+)\]:[ ]?(?P<msg>.*)$"
-)
-
 
 def extract_error_annotations(content):
     annotations = []
@@ -174,38 +175,81 @@ def extract_error_annotations(content):
 
     return annotations
 
+# Parse Ariadne Diagnostics
+DIAG_START_RE = re.compile(r'^(?P<level>[Ee]rror|[Ww]arning|[Uu]nimplemented):\s*(?P<msg>.*?)\s*$')
+DIAG_LOCATION_RE = re.compile(
+    r'^\s*╭─\[\s*(?P<path>[^:]+?)\s*:\s*(?P<line>\d+)\s*:\s*(?P<col>\d+)\s*\]\s*$'
+)
 
 def parse_compiler_diagnostics(text):
+    """Parse Ariadne-style diagnostics from compiler output (ANSI already stripped)."""
     diagnostics = []
-    for line in text.replace("\r\n", "\n").split("\n"):
-        match = DIAG_RE.match(line)
-        if match:
-            diagnostics.append({
-                "level": match.group("level"),
-                "path": match.group("path"),
-                "line": int(match.group("line")),
-                "col": int(match.group("col")),
-                "msg": match.group("msg").strip(),
-            })
+    lines = text.replace("\r\n", "\n").split("\n")
+    
+    i = 0
+    while i < len(lines):
+        line = lines[i]
+        diag_match = DIAG_START_RE.match(line)
+        if diag_match:
+            level = diag_match.group("level").lower()
+            msg = diag_match.group("msg").strip()
+            
+            # Look ahead for location line (allow blank lines)
+            j = i + 1
+            loc_match = None
+            while j < len(lines) and j < i + 5:
+                loc_match = DIAG_LOCATION_RE.match(lines[j])
+                if loc_match:
+                    break
+                j += 1
+            
+            if loc_match:
+                path = loc_match.group("path").strip()
+                line_num = int(loc_match.group("line"))
+                col_num = int(loc_match.group("col"))
+                
+                # Skip to end of diagnostic (end marker or next diagnostic start)
+                k = j + 1
+                while k < len(lines):
+                    if lines[k].strip().startswith('───╯') or DIAG_START_RE.match(lines[k]):
+                        break
+                    k += 1
+                
+                diagnostics.append({
+                    "level": level,
+                    "path": path,
+                    "line": line_num,
+                    "col": col_num,
+                    "msg": msg,
+                })
+                i = k
+                continue
+            i += 1
+            continue
+        i += 1
     return diagnostics
 
-
+# Match expected annotations against actual diagnostics (by basename)
 def match_error_annotations(annotations, diagnostics, test_path):
-    norm_test = os.path.normpath(str(test_path))
-    in_file = [d for d in diagnostics if os.path.normpath(d["path"]) == norm_test]
-    other = [d for d in diagnostics if os.path.normpath(d["path"]) != norm_test]
-
+    test_basename = os.path.basename(str(test_path))
+    in_file = []
+    other = []
+    for diag in diagnostics:
+        if os.path.basename(diag["path"]) == test_basename:
+            in_file.append(diag)
+        else:
+            other.append(diag)
+    
     used = [False] * len(in_file)
     problems = []
-
     for exp in annotations:
         matched = False
         for i, diag in enumerate(in_file):
             if used[i]:
                 continue
-            if (diag["level"] == exp["level"]
-                    and diag["line"] == exp["line"]
-                    and exp["msg"] in diag["msg"]):
+            if (diag["level"] == exp["level"] and
+                diag["line"] == exp["line"] and
+                exp["msg"] in diag["msg"]):
                 used[i] = True
                 matched = True
                 break
@@ -215,21 +259,20 @@ def match_error_annotations(annotations, diagnostics, test_path):
                 f'expected {exp["level"]} on line {exp["line"]} {wanted}, '
                 f'but no such diagnostic was produced'
             )
-
+    
     for i, diag in enumerate(in_file):
         if not used[i]:
             problems.append(
                 f'unexpected {diag["level"]} on line {diag["line"]}: "{diag["msg"]}"'
             )
-
+    
     for diag in other:
         problems.append(
             f'unexpected {diag["level"]} in {diag["path"]}:{diag["line"]}: "{diag["msg"]}"'
         )
-
     return problems
 
-
+# Extract test metadata from source file
 def extract_test_metadata(content, file_name):
     metadata = {
         "stdout": "",
@@ -262,20 +305,16 @@ def extract_test_metadata(content, file_name):
 
     return metadata
 
-
+# Run a single test file (possibly multiple times)
 def run_single_test(test_file, base_path, compiler_path, compiler_flags, output_path, repeat_count=1):
-    # compute relative name for nice display
     try:
         relative_name = str(test_file.relative_to(base_path))
     except ValueError:
-        # fallback: if base_path is not a parent.
-        # when running a single file and base is its parent
         relative_name = test_file.name
 
     content = test_file.read_text()
     metadata = extract_test_metadata(content, test_file.name)
 
-    # Run the test N times
     failures = []
     for run_num in range(1, repeat_count + 1):
         try:
@@ -288,26 +327,20 @@ def run_single_test(test_file, base_path, compiler_path, compiler_flags, output_
                 run_number=run_num,
                 total_runs=repeat_count
             )
-            
-            # If we get here, this run passed
             if repeat_count > 1:
                 print(f"  [run {run_num}/{repeat_count}] passed")
-                
         except Exception as e:
             failures.append((run_num, str(e)))
             if repeat_count > 1:
                 print(f"  [run {run_num}/{repeat_count}] failed")
     
-    # Determine overall result
     if failures:
-        # Build a detailed failure message
         failure_details = []
         for run_num, error in failures:
             failure_details.append(f"Run {run_num}/{repeat_count} failed:\n{error}")
         return ("failed", relative_name, "\n".join(failure_details))
     else:
         return ("passed", relative_name, None)
-
 
 def main():
     try:
@@ -324,8 +357,7 @@ def main():
             "      const y: bool = x + 1;  //~ ERROR Cannot assign value of type 'int32'\n"
             "      let z = foo();          //~^ ERROR unknown symbol   (^ = one line up)\n"
             "  Levels: ERROR | WARNING | UNIMPLEMENTED. Message is matched as a substring.")
-            exit(1);
-            
+            exit(1)
 
         path_arg = sys.argv[2]
         output_dir = None
@@ -352,7 +384,7 @@ def main():
                     if repeat_count < 1:
                         raise ValueError("Repeat count must be >= 1")
                     i += 2
-                except ValueError as e:
+                except ValueError:
                     raise Exception(f"Invalid --repeat value: {sys.argv[i + 1]}. Must be a positive integer.")
             elif sys.argv[i] == "--jobs":
                 try:
@@ -375,10 +407,9 @@ def main():
         if not test_path.exists():
             raise Exception(f"Provided test path '{path_arg}' does not exist.")
 
-        # determine if we are testing a single file or a whole directory
         if test_path.is_file() and test_path.suffix == ".cyrus":
             test_files = [test_path]
-            base_path = test_path.parent  # for relative display
+            base_path = test_path.parent
         elif test_path.is_dir():
             test_files = list(test_path.rglob("*.cyrus"))
             base_path = test_path

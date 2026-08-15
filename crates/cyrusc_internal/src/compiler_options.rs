@@ -39,6 +39,7 @@ pub struct CompilerOptions {
     pub debuginfo_enabled: bool,
     pub quiet: bool,
     pub verbose: bool,
+    pub color: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -162,6 +163,7 @@ impl Default for CompilerOptions {
             debuginfo_enabled: false,
             quiet: false,
             verbose: false,
+            color: true,
         }
     }
 }

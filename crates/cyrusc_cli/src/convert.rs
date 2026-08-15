@@ -17,6 +17,7 @@ impl CliCompilerOptions {
         let base_path = Some(self.base_path.clone().unwrap_or(get_current_dir_as_base_path()));
 
         CompilerOptions {
+            color: self.color,
             profile: self.profile.convert(),
             abi: Some(self.abi.convert()),
             module_kind: self
