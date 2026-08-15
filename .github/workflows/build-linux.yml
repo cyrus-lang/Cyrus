@@ -218,6 +218,7 @@ jobs:
           CC: clang
           CXX: clang++
         run: |
+          ls -la .
           chmod +x ./scripts/release.sh
           ./scripts/release.sh
 
