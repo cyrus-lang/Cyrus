@@ -71,13 +71,16 @@ jobs:
             ./stdlib
             ./scripts/install.sh
 
-      - name: Upload zip artifact (for users who want portable binary)
+      - name: Upload version
         uses: actions/upload-artifact@v4
         with:
-          name: cyrus-portable
-          path: ./target/release/cyrus
+          name: cyrus-version
+          path: |
+            ./version.txt
+        run: |
+          echo "${{ steps.version.outputs.VERSION }}" > version.txt
 
-      - name: Generate PKGBUILD for Arch Linux
+      - name: Generate PKGBUILD
         run: |
           cat > PKGBUILD << 'EOF'
           # Maintainer: Cyrus Developers <dev@cyrus-lang.org>
@@ -92,7 +95,7 @@ jobs:
           makedepends=('unzip')
           source=("cyrus-linux-${{ steps.version.outputs.VERSION }}.zip")
           sha256sums=('SKIP')
-
+          
           package() {
             cd "${srcdir}"
             unzip -q "cyrus-linux-${{ steps.version.outputs.VERSION }}.zip"
@@ -104,9 +107,6 @@ jobs:
           }
           EOF
 
-          echo "Generated PKGBUILD:"
-          cat PKGBUILD
-
       - name: Upload PKGBUILD artifact
         uses: actions/upload-artifact@v4
         with:
@@ -117,6 +117,8 @@ jobs:
     runs-on: ubuntu-24.04
     needs: build
     steps:
+      - uses: actions/checkout@v4
+
       - name: Install fpm
         run: |
           sudo apt-get update
@@ -129,27 +131,24 @@ jobs:
           name: cyrus-binary
           path: ./binary
 
-      - name: Determine version
-        id: version
-        run: |
-          if [[ "${{ github.ref }}" == refs/tags/v* ]]; then
-            VERSION=${GITHUB_REF#refs/tags/v}
-          else
-            VERSION="0.0.0-$(git rev-parse --short HEAD)"
-          fi
-          echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
+      - name: Download version
+        uses: actions/download-artifact@v4
+        with:
+          name: cyrus-version
+          path: ./version
 
       - name: Build .deb package
         run: |
+          VERSION=$(cat ./version/version.txt)
           mkdir -p ./package/usr/bin
           mkdir -p ./package/usr/share/cyrus
           cp ./binary/cyrus ./package/usr/bin/
           cp -r ./binary/stdlib ./package/usr/share/cyrus/
           cp ./binary/install.sh ./package/usr/share/cyrus/
-
+          
           fpm -s dir -t deb \
             -n cyrus \
-            -v ${{ steps.version.outputs.VERSION }} \
+            -v $VERSION \
             --url "https://github.com/${{ github.repository }}" \
             --description "Cyrus programming language" \
             --license "MIT" \
@@ -157,7 +156,7 @@ jobs:
             --depends "libasan8" \
             --depends "libpolly-18-dev" \
             -C ./package \
-            -p cyrus-${{ steps.version.outputs.VERSION }}.deb \
+            -p cyrus-${VERSION}.deb \
             usr/
 
       - name: Upload .deb package
@@ -170,6 +169,8 @@ jobs:
     runs-on: fedora-latest
     needs: build
     steps:
+      - uses: actions/checkout@v4
+
       - name: Install fpm
         run: |
           sudo dnf install -y ruby ruby-devel gcc-c++ make
@@ -181,27 +182,24 @@ jobs:
           name: cyrus-binary
           path: ./binary
 
-      - name: Determine version
-        id: version
-        run: |
-          if [[ "${{ github.ref }}" == refs/tags/v* ]]; then
-            VERSION=${GITHUB_REF#refs/tags/v}
-          else
-            VERSION="0.0.0-$(git rev-parse --short HEAD)"
-          fi
-          echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
+      - name: Download version
+        uses: actions/download-artifact@v4
+        with:
+          name: cyrus-version
+          path: ./version
 
       - name: Build .rpm package
         run: |
+          VERSION=$(cat ./version/version.txt)
           mkdir -p ./package/usr/bin
           mkdir -p ./package/usr/share/cyrus
           cp ./binary/cyrus ./package/usr/bin/
           cp -r ./binary/stdlib ./package/usr/share/cyrus/
           cp ./binary/install.sh ./package/usr/share/cyrus/
-
+          
           fpm -s dir -t rpm \
             -n cyrus \
-            -v ${{ steps.version.outputs.VERSION }} \
+            -v $VERSION \
             --url "https://github.com/${{ github.repository }}" \
             --description "Cyrus programming language" \
             --license "MIT" \
@@ -209,7 +207,7 @@ jobs:
             --depends "libasan" \
             --depends "polly" \
             -C ./package \
-            -p cyrus-${{ steps.version.outputs.VERSION }}.rpm \
+            -p cyrus-${VERSION}.rpm \
             usr/
 
       - name: Upload .rpm package
@@ -235,6 +233,5 @@ jobs:
             ./release-files/cyrus-deb/*.deb
             ./release-files/cyrus-rpm/*.rpm
             ./release-files/cyrus-pkgbuild/PKGBUILD
-            ./release-files/cyrus-portable/cyrus
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
