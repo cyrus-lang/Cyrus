@@ -119,22 +119,6 @@ impl DiagReporter {
         let source_file = source_map.get_file(loc.file_id).unwrap().clone();
         let file_path = source_file.file_path.to_str().unwrap_or("unknown");
 
-        let level_str = match diag.level {
-            DiagLevel::Error => "error",
-            DiagLevel::Warning => "warning",
-            DiagLevel::Unimplemented => "unimplemented",
-        };
-
-        let structured_msg = format!(
-            "[{}][{}:{}:{}]: {}",
-            level_str, file_path, loc.line, loc.column, diag.kind
-        );
-
-        match diag.level {
-            DiagLevel::Error | DiagLevel::Unimplemented => eprintln!("{}", structured_msg),
-            DiagLevel::Warning => println!("{}", structured_msg),
-        }
-
         let kind = match diag.level {
             DiagLevel::Error => ReportKind::Error,
             DiagLevel::Warning => ReportKind::Warning,
