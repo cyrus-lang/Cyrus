@@ -13,21 +13,27 @@ permissions:
   contents: write
 
 jobs:
-  build-linux-ubuntu:
+  build:
     runs-on: ubuntu-24.04
+    outputs:
+      VERSION: ${{ steps.version.outputs.VERSION }}
     steps:
       - uses: actions/checkout@v4
 
       - name: Install dependencies
         run: |
           sudo apt-get update
-          sudo apt install -y software-properties-common llvm-18 llvm-18-dev clang-18 zlib1g zlib1g-dev libpolly-18-dev upx libasan8
+          sudo apt install -y \
+            software-properties-common \
+            llvm-18 llvm-18-dev clang-18 \
+            zlib1g zlib1g-dev libpolly-18-dev \
+            upx libasan8
 
       - name: Install Rust
-        uses: actions-rs/toolchain@v1
-        with:
-          toolchain: stable
-          override: true
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Rust dependencies
+        uses: Swatinem/rust-cache@v2
 
       - name: Build
         env:
@@ -45,37 +51,179 @@ jobs:
           CXX: clang++
         run: make testsuite PROFILE=release
 
-      - name: Collect files in single directory
+      - name: Determine package version
+        id: version
         run: |
-          mkdir cyrus
-          cp ./target/release/cyrus ./cyrus
-          cp ./scripts/install.sh ./cyrus
-          cp -r ./stdlib ./cyrus/
+          VERSION=$(cat ./CYRUS_COMPILER_VERSION | tr -d '[:space:]')
+          echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
 
-      - name: Zip release files
+      - name: Prepare binary artifact directory
         run: |
-          zip -r -9 cyrus-linux.zip ./cyrus
+          mkdir -p ./dist
+          cp ./target/release/cyrus ./dist/
+          cp -r ./stdlib ./dist/
+          if [ -f "./scripts/install.sh" ]; then
+            cp ./scripts/install.sh ./dist/
+          fi
 
-      - name: Upload as artifact
+      - name: Upload binary artifact
         uses: actions/upload-artifact@v4
         with:
-          name: cyrus-linux
-          path: ./cyrus-linux.zip
+          name: cyrus-${{ steps.version.outputs.VERSION }}-binary
+          path: ./dist
+
+      - name: Upload portable binary
+        uses: actions/upload-artifact@v4
+        with:
+          name: cyrus-${{ steps.version.outputs.VERSION }}-portable
+          path: ./target/release/cyrus
+
+      - name: Generate PKGBUILD
+        run: |
+          cat > PKGBUILD << EOF
+          # Maintainer: Cyrus Developers <dev@cyrus-lang.org>
+          pkgname=cyrus
+          pkgver=${{ steps.version.outputs.VERSION }}
+          pkgrel=1
+          pkgdesc="Cyrus programming language"
+          arch=('x86_64')
+          url="https://github.com/${{ github.repository }}"
+          license=('MIT')
+          depends=('zlib' 'llvm' 'clang' 'polly' 'gcc-libs')
+          makedepends=('unzip')
+          source=("cyrus-linux-${{ steps.version.outputs.VERSION }}.zip")
+          sha256sums=('SKIP')
+
+          package() {
+            cd "\${srcdir}"
+            unzip -q "cyrus-linux-${{ steps.version.outputs.VERSION }}.zip"
+            install -Dm755 "./cyrus/cyrus" "\${pkgdir}/usr/bin/cyrus"
+            cp -r "./cyrus/stdlib" "\${pkgdir}/usr/share/cyrus/"
+            if [ -f "./cyrus/install.sh" ]; then
+              install -Dm755 "./cyrus/install.sh" "\${pkgdir}/usr/share/cyrus/install.sh"
+            fi
+          }
+          EOF
+
+      - name: Upload PKGBUILD
+        uses: actions/upload-artifact@v4
+        with:
+          name: cyrus-${{ steps.version.outputs.VERSION }}-pkgbuild
+          path: ./PKGBUILD
+
+  build-deb:
+    runs-on: ubuntu-24.04
+    needs: build
+    steps:
+      - name: Install fpm
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ruby ruby-dev build-essential
+          sudo gem install fpm
+
+      - name: Download binary
+        uses: actions/download-artifact@v4
+        with:
+          name: cyrus-${{ needs.build.outputs.VERSION }}-binary
+          path: ./binary
+
+      - name: Build .deb package
+        env:
+          VERSION: ${{ needs.build.outputs.VERSION }}
+        run: |
+          mkdir -p ./package/usr/bin
+          mkdir -p ./package/usr/share/cyrus
+          cp ./binary/cyrus ./package/usr/bin/
+          cp -r ./binary/stdlib ./package/usr/share/cyrus/
+          if [ -f "./binary/install.sh" ]; then
+            cp ./binary/install.sh ./package/usr/share/cyrus/
+          fi
+          fpm -s dir -t deb \
+            -n cyrus \
+            -v $VERSION \
+            --url "https://github.com/${{ github.repository }}" \
+            --description "Cyrus programming language" \
+            --license "MIT" \
+            --depends "zlib1g" \
+            --depends "libasan8" \
+            --depends "libpolly-18-dev" \
+            -C ./package \
+            -p cyrus-${VERSION}.deb \
+            usr/
+
+      - name: Upload .deb package
+        uses: actions/upload-artifact@v4
+        with:
+          name: cyrus-${{ needs.build.outputs.VERSION }}-deb
+          path: ./cyrus-*.deb
+          compression-level: 0
+
+  build-rpm:
+    runs-on: ubuntu-latest
+    container:
+      image: opensuse/tumbleweed
+    needs: build
+    steps:
+      - name: Install fpm and build tools
+        run: |
+          zypper refresh
+          zypper install -y ruby ruby-devel gcc-c++ make rpm-build tar gzip
+          gem install --no-format-executable --bindir /usr/bin fpm
+
+      - name: Download binary
+        uses: actions/download-artifact@v4
+        with:
+          name: cyrus-${{ needs.build.outputs.VERSION }}-binary
+          path: ./binary
+
+      - name: Build .rpm package
+        env:
+          VERSION: ${{ needs.build.outputs.VERSION }}
+        run: |
+          mkdir -p ./package/usr/bin
+          mkdir -p ./package/usr/share/cyrus
+          cp ./binary/cyrus ./package/usr/bin/
+          cp -r ./binary/stdlib ./package/usr/share/cyrus/
+          if [ -f "./binary/install.sh" ]; then
+            cp ./binary/install.sh ./package/usr/share/cyrus/
+          fi
+          fpm -s dir -t rpm \
+            -n cyrus \
+            -v $VERSION \
+            --url "https://github.com/${{ github.repository }}" \
+            --description "Cyrus programming language" \
+            --license "MIT" \
+            --depends "zlib" \
+            --depends "libasan" \
+            --depends "polly" \
+            -C ./package \
+            -p cyrus-${VERSION}.rpm \
+            usr/
+
+      - name: Upload .rpm package
+        uses: actions/upload-artifact@v4
+        with:
+          name: cyrus-${{ needs.build.outputs.VERSION }}-rpm
+          path: ./cyrus-*.rpm
+          compression-level: 0
 
   release:
-    needs: build-linux-ubuntu
+    needs: [build, build-deb, build-rpm]
     if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
     steps:
-      - name: Download artifact
+      - name: Download all artifacts
         uses: actions/download-artifact@v4
         with:
-          name: cyrus-linux
           path: ./release-files
 
       - name: Create Release
         uses: softprops/action-gh-release@v2
         with:
-          files: ./release-files/cyrus-linux.zip
+          files: |
+            ./release-files/**/*.deb
+            ./release-files/**/*.rpm
+            ./release-files/**/PKGBUILD
+            ./release-files/**/cyrus
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
