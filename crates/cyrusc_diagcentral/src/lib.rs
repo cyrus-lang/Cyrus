@@ -5,9 +5,8 @@ use cyrusc_source_loc::Loc;
 use std::fmt::{self, Debug, Display};
 
 pub mod reporter;
-mod tests;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Copy)]
 pub enum DiagLevel {
     Error,
     Warning,
