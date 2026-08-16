@@ -21,6 +21,7 @@ use cyrusc_internal::{
 };
 use cyrusc_source_loc::SourceMap;
 use cyrusc_typed_ast::LabelID;
+use fx_hash::{FxHashMap, FxHashMapExt};
 use inkwell::{
     basic_block::BasicBlock,
     builder::Builder,
@@ -31,7 +32,7 @@ use inkwell::{
     },
     module::Module,
     targets::TargetMachine,
-    values::{FunctionValue, PointerValue},
+    values::{FunctionValue, GlobalValue, PointerValue},
 };
 use std::{cell::RefCell, collections::HashMap, rc::Rc, sync::Arc};
 
@@ -54,6 +55,7 @@ pub(crate) struct CodeGenIRBuilder<'ll> {
     pub(crate) vtable_registry: Arc<VTableRegistry>,
     pub(crate) source_map: Arc<SourceMap>,
     pub(crate) profile: CompilerOption_Profile,
+    pub(crate) string_cache: FxHashMap<String, GlobalValue<'ll>>,
 
     // Used to prevent duplicate sret when chained function call happens.
     pub(crate) cur_sret: Option<PointerValue<'ll>>,
@@ -81,11 +83,13 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         source_map: Arc<SourceMap>,
         profile: CompilerOption_Profile,
     ) -> Self {
+        let irreg = Rc::new(RefCell::new(LocalIRValueRegistry::new()));
+        let block_reg = BlockRegistry::default();
+
         let llvm_module = unsafe {
             std::mem::transmute::<Rc<RefCell<Module<'static>>>, Rc<RefCell<Module<'ll>>>>(owned_module.module.clone())
         };
-        let irreg = Rc::new(RefCell::new(LocalIRValueRegistry::new()));
-        let block_reg = BlockRegistry::default();
+
         Self {
             target,
             cir_module,
@@ -107,6 +111,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
             profile,
             cur_sret: None,
             is_return: false,
+            string_cache: FxHashMap::new(),
         }
     }
 
