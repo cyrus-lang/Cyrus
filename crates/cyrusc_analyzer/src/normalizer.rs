@@ -354,11 +354,7 @@ impl<'a> AnalysisContext<'a> {
 
     #[inline]
     fn normalize_const(&mut self, inner: SemaType, loc: Loc, indirection: u8) -> Option<SemaType> {
-        Some(SemaType::Const(Box::new(self.normalize_sema_type(
-            inner,
-            loc,
-            indirection,
-        )?)))
+        Some(self.normalize_sema_type(inner, loc, indirection)?.as_const())
     }
 
     fn normalize_pointer(&mut self, inner: SemaType, loc: Loc, indirection: u8) -> Option<SemaType> {
