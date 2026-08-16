@@ -5,7 +5,7 @@
 
 <img src="./docs/cyrus-example-code.png" align="right" width="570px" alt="Cyrus example code">
 
-<p>Cyrus is built to deliver:</p>
+<p>Cyrus is built around:</p>
 <ul>
   <li>Explicit control over the machine</li>
   <li>Clean, human-readable syntax</li>
@@ -15,33 +15,33 @@
   <li>A strictly imperative/procedural paradigm</li>
 </ul>
 
-<p>Cyrus was born out of frustration with the creeping complexity in modern languages. While ecosystems like Rust and Go offer incredible features, they also introduce steep learning curves, heavy runtimes, or restrictive abstractions that many systems programmers simply don't need or want.</p>
+<p>Cyrus started from a frustration with the growing complexity of modern languages. Rust and Go offer a lot, but they also bring steep learning curves, heavy runtimes, or abstractions that aren't always useful for systems programming.</p>
 
-<p>Cyrus makes a different bet: that simplicity, explicitness, and elegance can coexist without sacrificing a drop of performance.</p>
+<p>Cyrus takes a different approach: simplicity and explicitness should not require giving up performance.</p>
 
 <p>This language is built for:</p>
 <ul>
-  <li>Systems developers who love C but want a modern evolution without garbage collection.</li>
-  <li>Developers exhausted by Rust’s borrow checker but who still want modern, performant infrastructure.</li>
-  <li>Embedded and OS-level engineers who need zero hidden runtime overhead and absolute memory control.</li>
-  <li>Anyone looking for a beautiful, expressive, low-level language that respects your intelligence and experience.</li>
+  <li>Systems developers who like C but want a more modern language without garbage collection.</li>
+  <li>Developers who find Rust’s borrow checker too restrictive for some systems code but still want modern tooling and performance.</li>
+  <li>Embedded and OS-level engineers who need no hidden runtime overhead and direct control over memory.</li>
+  <li>Anyone looking for an expressive, low-level language with straightforward semantics.</li>
 </ul>
 
 ## Philosophy: Developer in Control
 
-Cyrus operates on a single, uncompromising principle: **The developer is in charge.**
+Cyrus follows a simple principle: **The developer is in charge.**
 
-The language doesn't try to outsmart you, hide the hardware, or wrap your decisions in automatic rules. We don't try to eliminate every bug through heavy compiler-enforced safety systems or introduce massive paradigm shifts.
+The language does not try to hide the hardware or make decisions on your behalf. It also does not aim to eliminate every class of bug through heavy compiler-enforced safety systems.
 
-Instead, Cyrus takes the proven concepts of systems programming and refines them. Every allocation, mutation, memory indirection, and dispatch strategy is explicitly declared in your code. When you read a Cyrus file, you know exactly what the machine is doing.
+Instead, Cyrus builds on familiar systems programming concepts and makes their behavior explicit. Allocations, mutations, memory indirection, and dispatch are visible in the code, so the relationship between the program and the machine stays clear.
 
 ## Explicit Semantics
 
-Cyrus requires explicit intent at every step. Nothing happens implicitly, quietly, or behind the scenes.
+Cyrus favors explicit intent. Important behavior should be visible in the code rather than happening quietly in the background.
 
 ### Mutability You Can See
 
-No need to scan backwards to figure out if a variable changes. The very first token tells you everything:
+A variable's mutability is visible at its declaration:
 
 ```cyrus
 const max_retries = 5; // immutable, forever
@@ -50,7 +50,7 @@ var current_try = 0;   // mutable
 
 ### No Silent Truncation
 
-C loves to silently convert types, dropping bits and masking bugs. Cyrus refuses to guess. Safe widening (like `int32` to `int64`) happens automatically, but if there is any risk of data loss or a signedness mismatch, you must explicitly authorize it with `@cast`:
+Cyrus avoids implicit conversions that can lose information. Safe widening (such as `int32` to `int64`) happens automatically, but conversions that may lose data or change signedness require an explicit `@cast`:
 
 ```cyrus
 const a: int32 = 300;
@@ -60,19 +60,19 @@ const c: int32 = @cast(int32, b); // OK: Explicit cast required
 
 ### Trackable Pointers
 
-In Cyrus, a glance is all it takes to know if you are crossing a memory boundary. We use `.` for direct access and `->` for pointer indirection:
+In Cyrus, pointer indirection is visible in the syntax. `.` is used for direct access and `->` for pointer indirection:
 
 ```cyrus
 var box = Box { value: 1 };
 var box2 = box.methodA(5)->methodB(50);
 var box3 = box2->fieldA;
 
-// The '->' tells you exactly where the pointer dereference happens
+// '->' marks the pointer dereference
 ```
 
 ### Manual, Predictable Memory
 
-There is no Garbage Collector. You allocate the memory, and you free it. The `defer` keyword ensures your cleanup runs exactly when the scope exits (in LIFO order), keeping resource management flat and readable:
+There is no garbage collector. You allocate and free memory yourself. The `defer` keyword runs cleanup when the scope exits, in LIFO order:
 
 ```cyrus
 import std::mem::libc{LibcAllocator};
@@ -90,7 +90,7 @@ pub fn main() {
 
 ## Total Machine Control
 
-Cyrus trusts you to know what you're doing. It gives you the raw tools to map memory and talk to the hardware, and we expect you to handle the responsibility.
+Cyrus gives you direct tools for working with memory and hardware, along with the responsibility that comes with them.
 
 - **Bring your own allocator:** Custom allocators (stack, bump, libc) are first-class citizens using the `Allocator` interface.
 - **Type punning:** Use `union` to reinterpret raw memory layouts without casting.
@@ -99,15 +99,15 @@ Cyrus trusts you to know what you're doing. It gives you the raw tools to map me
 
 ## Safety
 
-Control comes at a cost. We do not bubble wrap your code; `data races`, `dangling pointers`, and `use after free` errors remain possible. This is not a flaw but a deliberate tradeoff for direct, unfiltered access to the machine.
+This level of control comes with tradeoffs. `data races`, `dangling pointers`, and `use after free` errors are still possible by design.
 
-The runtime enforces `bounds checking`, `null pointer access`, and `integer overflow`. For deeper debugging, we support sanitizers like `ASan` and `TSan`.
+The runtime provides `bounds checking`, `null pointer access`, and `integer overflow` checks. For additional debugging, Cyrus supports sanitizers such as `ASan` and `TSan`.
 
 Variables are `zero initialized` by default. To opt out, use the `undefined` keyword to disable zero initialization.
 
 ## Language Overview
 
-Here is a glimpse of what Cyrus looks like. For complete and up-to-date details on learning the language, please check out our [Documentation](https://cyrus-lang.ir/en/docs/getting-started/introduction), which evolves continuously alongside the project.
+For complete and up-to-date language details, see the [Documentation](https://cyrus-lang.ir/en/docs/getting-started/introduction), which is updated as the project evolves.
 
 ### Structs
 
@@ -203,9 +203,9 @@ pub fn main() {
 
 ### Generics
 
-Generics enable type‑parametric code with full compile‑time safety. Only named types and functions can be generic unnamed structs and anonymous functions are excluded.
+Generics allow type-parametric code with compile-time checking. Only named types and functions can be generic; unnamed structs and anonymous functions are not supported.
 
-Generic definitions are type‑checked at compile time without instantiation. The compiler validates logic upfront, catching errors early and minimizing compile overhead for heavily templated code.
+Generic definitions are type-checked at compile time without requiring an instantiation. This catches errors earlier and avoids unnecessary work for heavily templated code.
 
 #### Generic Functions
 
@@ -253,7 +253,7 @@ pub fn main() {
 }
 ```
 
-Generic enums shine for optional values and results:
+Generic enums are useful for values such as options and results:
 
 ```cyrus
 enum Option<T> {
@@ -390,9 +390,9 @@ pub fn main() {
 
 ### Polymorphism
 
-Cyrus uses two distinct strategies for polymorphism: **call-site monomorphization** for static generics, and **creation-site dynamic dispatch** for runtime interface objects (fat pointers).
+Cyrus uses two strategies for polymorphism: **call-site monomorphization** for static generics and **creation-site dynamic dispatch** for runtime interface objects (fat pointers).
 
-By default, polymorphism is static. When you need runtime polymorphism and vtables, you must explicitly use the `dynamic` keyword:
+Polymorphism is static by default. For runtime polymorphism and vtables, use the `dynamic` keyword explicitly:
 
 ```cyrus
 interface Speaker {
@@ -415,7 +415,7 @@ pub fn main() {
 
 ### Memory Management
 
-Allocators are implemented as standard interfaces, allowing you to seamlessly swap between system allocators, arenas, and custom strategies.
+Allocators are standard interfaces, so system allocators, arenas, and custom strategies can be exchanged without changing the surrounding code.
 
 ```cyrus
 import std::mem::arena{ArenaAllocator};
@@ -447,9 +447,9 @@ pub fn main() {
 
 ### ABI / C Interoperation
 
-Cyrus provides seamless bidirectional C interoperation through the `extern(c)` ABI specification. This allows you to call C functions from Cyrus and expose Cyrus functions to C code.
+Cyrus supports bidirectional C interoperation through the `extern(c)` ABI. C functions can be called from Cyrus, and Cyrus functions can be exposed to C code.
 
-Calling C functions is straightforward:
+Calling C functions:
 
 ```cyrus
 import std::libc{printf, malloc, free};
@@ -463,7 +463,7 @@ pub fn main() {
 }
 ```
 
-Exporting Cyrus functions for use in C is equally simple:
+Exporting Cyrus functions to C:
 
 ```cyrus
 extern(c) fn add(a: int32, b: int32) int32 {
@@ -477,7 +477,7 @@ extern(c) fn greet(name: const uint8*) {
 
 ### The Road Ahead: `translate-c`
 
-We are actively researching `translate-c`, a tool that will automatically convert C headers and source files into idiomatic Cyrus code. This will make it significantly easier to migrate existing C projects incrementally, without requiring a full rewrite.
+We are researching `translate-c`, a tool for converting C headers and source files into Cyrus code. The goal is to make incremental migration of existing C projects practical without requiring a full rewrite.
 
 The `translate-c` tool aims to handle:
 
@@ -497,11 +497,11 @@ For this reason, we strongly recommend:
 - Avoiding assumptions about internal Cyrus type layouts in interop code
 - Treating Cyrus-to-Cyrus ABI as an implementation detail that may evolve
 
-We believe this tradeoff is worthwhile-prioritizing long-term optimization and clean design over short-term ABI stability. If you need a stable interface, use C as the common denominator.
+We consider this tradeoff worthwhile: long-term optimization and clean design take priority over short-term ABI stability. For a stable interface, use C as the common denominator.
 
 ## What Cyrus Refuses to Do
 
-Cyrus is built on the philosophy of deliberately omitting complexity. We actively leave out a wide range of features to keep the language predictable, transparent, and completely free of hidden magic.
+Cyrus deliberately leaves out features that add complexity. The goal is to keep the language predictable, transparent, and free of hidden behavior.
 
 | Omission                   | Why we left it out                                                                                                           |
 | -------------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
@@ -514,7 +514,7 @@ Cyrus is built on the philosophy of deliberately omitting complexity. We activel
 
 ## Where Cyrus Fits
 
-Every language is a compromise. Cyrus optimizes for legibility, mechanical sympathy, and developer authority.
+Every language makes tradeoffs. Cyrus prioritizes legibility, mechanical sympathy, and developer control.
 
 - **If C frustrates you** because it lacks a real module system, generics, and strict type safety, Cyrus gives you the control of C with the ergonomics of a modern language.
 - **If Rust feels heavy** and you find yourself fighting the borrow checker for simple data structures, Cyrus gives you modern tooling without the lifetime restrictions.
@@ -534,11 +534,11 @@ For instructions on building the compiler from source, see the [Build from Sourc
 
 ## Current Status & Roadmap
 
-Cyrus is heavily under development as a language and compiler. We are currently focused on **self-hosting** the compiler, a major milestone that will unlock significant improvements across the toolchain.
+Cyrus and its compiler are still under active development. The current focus is **self-hosting** the compiler, which will improve the toolchain and make development faster.
 
 ### Immediate Priorities
 
-- **Self-hosting:** The Cyrus compiler is being rewritten in Cyrus itself. This will validate the language design, improve compiler performance, and enable faster iteration.
+- **Self-hosting:** The Cyrus compiler is being rewritten in Cyrus itself. This will put the language design to a practical test, improve compiler performance, and make iteration faster.
 
 ### Post-Self-Hosting Roadmap
 
@@ -553,25 +553,25 @@ Once self-hosting is complete, we will focus on:
 
 ### Longer-Term Research
 
-We are also evaluating several major systems, taking our time to ensure they align with our philosophy of explicit control:
+We are also evaluating several larger systems to see how well they fit the language's focus on explicit control:
 
 - **Concurrency:** Evaluating fibers, coroutines, and OS-level primitives.
 - **Error Handling:** Evaluating explicit, boilerplate-free mechanics that avoid hidden unwinding or runtime exceptions.
 - **Compile-Time Execution, Reflection, and Metaprogramming:** Exploring controlled, predictable mechanisms for code generation and type inspection without introducing heavy runtime overhead.
 
-> Cyrus is heavily under development and is not ready for production use. Syntax, semantics, and compiler behavior will change as the core infrastructure matures.
+> Cyrus is under active development and is not ready for production use. Syntax, semantics, and compiler behavior may change as the core infrastructure matures.
 
-**Cyrus is not trying to be the safest language in the world.** It is trying to be the most transparent, controllable, and maintainable systems language you've ever used.
+**Cyrus is not trying to be the safest language in the world.** It aims to be a transparent, controllable, and maintainable systems language.
 
 ## Code of Conduct
 
-We are committed to fostering an open, welcoming, and inclusive community for everyone contributing to or engaging with Cyrus.
+We aim to maintain an open and welcoming community for everyone contributing to or using Cyrus.
 
 Please review our official [Code of Conduct](https://cyrus-lang.ir/en/docs/project/code-of-conduct#Cyrus-Code-of-Conduct) for detailed guidelines on expected behavior, community standards, and reporting procedures.
 
 ## Contributing
 
-We welcome contributions of all kinds, whether it is reporting bugs, improving documentation, or working on the compiler itself.
+Contributions are welcome, from bug reports and documentation improvements to compiler development.
 
 To get started, please check out our [Contribution Guide](https://cyrus-lang.ir/en/docs/project/contribution#Contributing-to-Cyrus) for instructions on setting up your development environment, pull request workflows, and coding standards.
 
