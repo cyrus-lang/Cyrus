@@ -90,11 +90,11 @@ impl<'ll> CodeGenIRBuilder<'ll> {
             if rvalue_bit_width != target_bit_width {
                 let signed = rvalue.ty.as_plain().map_or(false, |plain| plain.is_signed());
                 let widened = if signed {
-                    self.llvmbuilder
+                    self.llvm_builder
                         .build_int_s_extend(rvalue_int_value, int_type, "widen_store")
                         .unwrap()
                 } else {
-                    self.llvmbuilder
+                    self.llvm_builder
                         .build_int_z_extend(rvalue_int_value, int_type, "widen_store")
                         .unwrap()
                 };
@@ -109,14 +109,14 @@ impl<'ll> CodeGenIRBuilder<'ll> {
             let rvalue_float_value = rvalue.as_basic_value().into_float_value();
 
             let widened = self
-                .llvmbuilder
+                .llvm_builder
                 .build_float_ext(rvalue_float_value, float_type, "widen_store")
                 .unwrap();
 
             rvalue = InternalValue::new(rvalue.ty.clone(), InternalValueKind::RValue(widened.into()));
         }
 
-        let store_inst = self.llvmbuilder.build_store(ptr, rvalue.as_basic_value()).unwrap();
+        let store_inst = self.llvm_builder.build_store(ptr, rvalue.as_basic_value()).unwrap();
         if layout.align > 0 {
             store_inst.set_alignment(layout.align).unwrap();
         }
@@ -129,11 +129,11 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         let target_ty = self.llvm_ctx.custom_width_int_type(target_bit_width);
 
         let widened = if signed {
-            self.llvmbuilder
+            self.llvm_builder
                 .build_int_s_extend(int_value, target_ty, "sext")
                 .unwrap()
         } else {
-            self.llvmbuilder
+            self.llvm_builder
                 .build_int_z_extend(int_value, target_ty, "zext")
                 .unwrap()
         };
@@ -164,9 +164,9 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         let widen = |v: InternalValue<'ll>, iv: IntValue<'ll>| {
             let signed = v.ty.as_plain().unwrap().is_signed();
             let widened = if signed {
-                self.llvmbuilder.build_int_s_extend(iv, target_ty, "sext").unwrap()
+                self.llvm_builder.build_int_s_extend(iv, target_ty, "sext").unwrap()
             } else {
-                self.llvmbuilder.build_int_z_extend(iv, target_ty, "zext").unwrap()
+                self.llvm_builder.build_int_z_extend(iv, target_ty, "zext").unwrap()
             };
 
             InternalValue::new(v.ty.clone(), InternalValueKind::RValue(widened.into()))
@@ -184,7 +184,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         } else {
             let zero = int_value.get_type().const_zero();
 
-            self.llvmbuilder
+            self.llvm_builder
                 .build_int_compare(IntPredicate::NE, int_value, zero, "bool_cast")
                 .unwrap()
         }
@@ -203,7 +203,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         match internal_value.kind {
             InternalValueKind::LValue(pointer_value) => {
                 let ty: BasicTypeEnum<'ll> = self.emit_type(internal_value.ty.clone()).try_into().unwrap();
-                let basic_value = self.llvmbuilder.build_load(ty, pointer_value, "rvalue").unwrap();
+                let basic_value = self.llvm_builder.build_load(ty, pointer_value, "rvalue").unwrap();
 
                 let load_inst = basic_value.as_instruction_value();
                 if let Some(inst) = load_inst {

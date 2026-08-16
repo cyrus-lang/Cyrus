@@ -86,25 +86,25 @@ impl<'ll> CodeGenIRBuilder<'ll> {
 
             // pointer to payload_struct.field_index
             let gep = self
-                .llvmbuilder
+                .llvm_builder
                 .build_struct_gep(payload_struct_type, payload_alloca, llvm_field_index, "gep.field")
                 .unwrap();
 
-            let loaded_value = self.llvmbuilder.build_load(llvm_field_type, gep, "load.field").unwrap();
+            let loaded_value = self.llvm_builder.build_load(llvm_field_type, gep, "load.field").unwrap();
 
             let alloca = self
-                .llvmbuilder
+                .llvm_builder
                 .build_alloca(llvm_field_type, "export.field.alloca")
                 .unwrap();
 
-            self.llvmbuilder.build_store(alloca, loaded_value).unwrap();
+            self.llvm_builder.build_store(alloca, loaded_value).unwrap();
 
             self.insert_local_ir_value(*irv_id, LocalIRValue::LValue(alloca, cir_ty.clone()));
         }
     }
 
     fn emit_switch_on_scalar_enum(&mut self, switch_stmt: &CIRSwitchStmt, enum_value: IntValue<'ll>) {
-        let parent_block = self.blockreg.cur_block.unwrap();
+        let parent_block = self.block_reg.cur_block.unwrap();
         let exit_block = self.new_basic_block("switch_on_enum.exit");
 
         let else_block = if let Some(block_stmt) = &switch_stmt.default {
@@ -112,9 +112,9 @@ impl<'ll> CodeGenIRBuilder<'ll> {
             self.emit_block(else_block);
             self.emit_body(block_stmt);
 
-            if let Some(cur_block) = &self.blockreg.cur_block {
+            if let Some(cur_block) = &self.block_reg.cur_block {
                 if cur_block.get_terminator().is_none() {
-                    self.llvmbuilder.build_unconditional_branch(exit_block).unwrap();
+                    self.llvm_builder.build_unconditional_branch(exit_block).unwrap();
                 }
             }
 
@@ -124,7 +124,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         };
 
         self.emit_block(parent_block);
-        let switch_inst = self.llvmbuilder.build_switch(enum_value, else_block, &[]).unwrap();
+        let switch_inst = self.llvm_builder.build_switch(enum_value, else_block, &[]).unwrap();
 
         let mut cases: Vec<(IntValue<'ll>, BasicBlock<'ll>)> = Vec::new();
 
@@ -151,11 +151,11 @@ impl<'ll> CodeGenIRBuilder<'ll> {
                         let llvm_type: BasicTypeEnum<'ll> = self.emit_type(cir_type.clone()).try_into().unwrap();
 
                         let alloca = self
-                            .llvmbuilder
+                            .llvm_builder
                             .build_alloca(llvm_type, "scalar.enum.payload.alloca")
                             .unwrap();
 
-                        self.llvmbuilder.build_store(alloca, enum_value).unwrap();
+                        self.llvm_builder.build_store(alloca, enum_value).unwrap();
 
                         self.insert_local_ir_value(*irv_id, LocalIRValue::LValue(alloca, cir_type.clone()));
                     }
@@ -181,13 +181,13 @@ impl<'ll> CodeGenIRBuilder<'ll> {
             self.emit_block(case_block);
             self.emit_body(&case.body);
 
-            if let Some(cur_block) = &self.blockreg.cur_block {
+            if let Some(cur_block) = &self.block_reg.cur_block {
                 if cur_block.get_terminator().is_none() {
-                    self.llvmbuilder.build_unconditional_branch(exit_block).unwrap();
+                    self.llvm_builder.build_unconditional_branch(exit_block).unwrap();
                 }
             }
 
-            case_terminated_blocks.push(self.blockreg.cur_block);
+            case_terminated_blocks.push(self.block_reg.cur_block);
         }
 
         let all_cases_return = case_terminated_blocks.iter().all(|opt| {
@@ -203,7 +203,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
 
         if all_cases_return && switch_stmt.all_cases_covered {
             self.emit_block(exit_block);
-            self.llvmbuilder.build_unreachable().unwrap();
+            self.llvm_builder.build_unreachable().unwrap();
             return;
         }
 
@@ -236,7 +236,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         let enum_struct_value = rvalue.as_basic_value().into_struct_value();
         let enum_idx_int_value = self.extract_enum_tag(enum_struct_value);
 
-        let parent_block = self.blockreg.cur_block.unwrap();
+        let parent_block = self.block_reg.cur_block.unwrap();
         let exit_block = self.new_basic_block("switch_on_enum.exit");
 
         let else_block = {
@@ -245,9 +245,9 @@ impl<'ll> CodeGenIRBuilder<'ll> {
                 self.emit_block(else_block);
                 self.emit_body(block_stmt);
 
-                if let Some(cur_block) = &self.blockreg.cur_block {
+                if let Some(cur_block) = &self.block_reg.cur_block {
                     if cur_block.get_terminator().is_none() {
-                        self.llvmbuilder.build_unconditional_branch(exit_block).unwrap();
+                        self.llvm_builder.build_unconditional_branch(exit_block).unwrap();
                     }
                 }
 
@@ -259,7 +259,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
 
         self.emit_block(parent_block);
         let switch_inst = self
-            .llvmbuilder
+            .llvm_builder
             .build_switch(enum_idx_int_value, else_block, &[])
             .unwrap();
 
@@ -296,9 +296,9 @@ impl<'ll> CodeGenIRBuilder<'ll> {
                         // reinterpret payload buffer
                         let enum_payload = self.extract_enum_payload(enum_struct_value);
 
-                        let alloca = self.llvmbuilder.build_alloca(llvm_type, "enum.variant.cast").unwrap();
+                        let alloca = self.llvm_builder.build_alloca(llvm_type, "enum.variant.cast").unwrap();
 
-                        self.llvmbuilder.build_store(alloca, enum_payload).unwrap();
+                        self.llvm_builder.build_store(alloca, enum_payload).unwrap();
 
                         self.insert_local_ir_value(*irv_id, LocalIRValue::LValue(alloca, cir_type.clone()));
                     }
@@ -319,8 +319,8 @@ impl<'ll> CodeGenIRBuilder<'ll> {
                         let payload_struct_value =
                             self.intrinsic_copy_buffer_to_struct(enum_payload, payload_struct_type);
 
-                        let payload_alloca = self.llvmbuilder.build_alloca(payload_struct_type, "alloca").unwrap();
-                        self.llvmbuilder
+                        let payload_alloca = self.llvm_builder.build_alloca(payload_struct_type, "alloca").unwrap();
+                        self.llvm_builder
                             .build_store(payload_alloca, payload_struct_value)
                             .unwrap();
 
@@ -347,14 +347,14 @@ impl<'ll> CodeGenIRBuilder<'ll> {
             self.emit_block(case_block);
             self.emit_body(&case.body);
 
-            if let Some(cur_block) = &self.blockreg.cur_block {
-                self.llvmbuilder.position_at_end(*cur_block);
+            if let Some(cur_block) = &self.block_reg.cur_block {
+                self.llvm_builder.position_at_end(*cur_block);
                 if cur_block.get_terminator().is_none() {
-                    self.llvmbuilder.build_unconditional_branch(exit_block).unwrap();
+                    self.llvm_builder.build_unconditional_branch(exit_block).unwrap();
                 }
             }
 
-            case_terminated_blocks.push(self.blockreg.cur_block);
+            case_terminated_blocks.push(self.block_reg.cur_block);
         }
 
         let all_cases_return = case_terminated_blocks.iter().all(|opt| {
@@ -370,7 +370,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
 
         if all_cases_return && switch_stmt.all_cases_covered {
             self.emit_block(exit_block);
-            self.llvmbuilder.build_unreachable().unwrap();
+            self.llvm_builder.build_unreachable().unwrap();
         }
 
         let exit_in_use: bool = unsafe {
@@ -402,7 +402,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
             return;
         }
 
-        let parent_block = self.blockreg.cur_block.unwrap();
+        let parent_block = self.block_reg.cur_block.unwrap();
         let exit_block = self.new_basic_block("switch.exit");
 
         let else_block = if let Some(block_stmt) = &switch_stmt.default {
@@ -410,9 +410,9 @@ impl<'ll> CodeGenIRBuilder<'ll> {
             self.emit_block(else_block);
             self.emit_body(block_stmt);
 
-            if let Some(cur_block) = &self.blockreg.cur_block {
+            if let Some(cur_block) = &self.block_reg.cur_block {
                 if cur_block.get_terminator().is_none() {
-                    self.llvmbuilder.build_unconditional_branch(exit_block).unwrap();
+                    self.llvm_builder.build_unconditional_branch(exit_block).unwrap();
                 }
             }
 
@@ -423,7 +423,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
 
         self.emit_block(parent_block);
         let switch_inst = self
-            .llvmbuilder
+            .llvm_builder
             .build_switch(rvalue.as_basic_value().into_int_value(), else_block, &[])
             .unwrap();
 
@@ -461,13 +461,13 @@ impl<'ll> CodeGenIRBuilder<'ll> {
             self.emit_block(case_block);
             self.emit_body(&case.body);
 
-            if let Some(cur_block) = &self.blockreg.cur_block {
+            if let Some(cur_block) = &self.block_reg.cur_block {
                 if cur_block.get_terminator().is_none() {
-                    self.llvmbuilder.build_unconditional_branch(exit_block).unwrap();
+                    self.llvm_builder.build_unconditional_branch(exit_block).unwrap();
                 }
             }
 
-            case_terminated_blocks.push(self.blockreg.cur_block);
+            case_terminated_blocks.push(self.block_reg.cur_block);
         }
 
         let all_cases_return = case_terminated_blocks.iter().all(|opt| {
@@ -483,7 +483,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
 
         if all_cases_return && switch_stmt.all_cases_covered {
             self.emit_block(exit_block);
-            self.llvmbuilder.build_unreachable().unwrap();
+            self.llvm_builder.build_unreachable().unwrap();
         }
 
         let exit_in_use: bool = unsafe {
@@ -505,7 +505,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         let body_block = self.new_basic_block("for.body");
         let exit_block = self.new_basic_block("for.exit");
         let loop_defer_depth = self.defer_stack.len();
-        self.blockreg
+        self.block_reg
             .control_flow_stack
             .push(ControlRegion::Loop(LoopControlRegion::new(
                 cond_block,
@@ -518,20 +518,20 @@ impl<'ll> CodeGenIRBuilder<'ll> {
             self.emit_var(initializer);
         }
 
-        let cur_block = self.blockreg.cur_block.unwrap();
+        let cur_block = self.block_reg.cur_block.unwrap();
         self.emit_block(cur_block);
         if cur_block.get_terminator().is_none() {
             let first_block = cond_block.unwrap_or(body_block);
-            self.llvmbuilder.build_unconditional_branch(first_block).unwrap();
+            self.llvm_builder.build_unconditional_branch(first_block).unwrap();
         }
 
         if let (Some(cond_expr), Some(cond_bb)) = (&for_stmt.cond, cond_block) {
             self.emit_block(cond_bb);
             let cond = self.emit_cond(cond_expr);
 
-            if let Some(cur_block) = &self.blockreg.cur_block {
+            if let Some(cur_block) = &self.block_reg.cur_block {
                 if cur_block.get_terminator().is_none() {
-                    self.llvmbuilder
+                    self.llvm_builder
                         .build_conditional_branch(cond, body_block, exit_block)
                         .unwrap();
                 }
@@ -542,10 +542,10 @@ impl<'ll> CodeGenIRBuilder<'ll> {
             self.emit_block(inc_bb);
             self.emit_expr(inc_expr, &None);
 
-            if let Some(cur_block) = &self.blockreg.cur_block {
+            if let Some(cur_block) = &self.block_reg.cur_block {
                 if cur_block.get_terminator().is_none() {
                     let next_after_inc = cond_block.unwrap_or(body_block);
-                    self.llvmbuilder.build_unconditional_branch(next_after_inc).unwrap();
+                    self.llvm_builder.build_unconditional_branch(next_after_inc).unwrap();
                 }
             }
         }
@@ -553,7 +553,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         self.emit_block(body_block);
         self.emit_body(&for_stmt.body);
 
-        if let Some(cur_block) = &self.blockreg.cur_block {
+        if let Some(cur_block) = &self.block_reg.cur_block {
             if cur_block.get_terminator().is_none() {
                 self.emit_block(*cur_block);
 
@@ -564,7 +564,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
                     next_block = body_block; // unconditional for loop
                 }
 
-                self.llvmbuilder.build_unconditional_branch(next_block).unwrap();
+                self.llvm_builder.build_unconditional_branch(next_block).unwrap();
             }
         }
 
@@ -576,7 +576,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
             self.emit_block(exit_block);
         }
 
-        self.blockreg.control_flow_stack.pop();
+        self.block_reg.control_flow_stack.pop();
     }
 
     pub(crate) fn emit_while(&mut self, while_stmt: &CIRWhileStmt) {
@@ -585,7 +585,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         let body_block = self.llvm_ctx.append_basic_block(cur_fn, "while.body");
         let exit_block = self.llvm_ctx.append_basic_block(cur_fn, "while.exit");
         let loop_defer_depth = self.defer_stack.len();
-        self.blockreg
+        self.block_reg
             .control_flow_stack
             .push(ControlRegion::Loop(LoopControlRegion::new(
                 Some(cond_block),
@@ -594,32 +594,32 @@ impl<'ll> CodeGenIRBuilder<'ll> {
                 loop_defer_depth,
             )));
 
-        let cur_block = self.blockreg.cur_block.unwrap();
-        self.llvmbuilder.position_at_end(cur_block);
+        let cur_block = self.block_reg.cur_block.unwrap();
+        self.llvm_builder.position_at_end(cur_block);
         if cur_block.get_terminator().is_none() {
-            self.llvmbuilder.build_unconditional_branch(cond_block).unwrap();
+            self.llvm_builder.build_unconditional_branch(cond_block).unwrap();
         }
 
-        self.llvmbuilder.position_at_end(cond_block);
-        self.blockreg.cur_block = Some(cond_block);
+        self.llvm_builder.position_at_end(cond_block);
+        self.block_reg.cur_block = Some(cond_block);
 
         let cond = self.emit_cond(&while_stmt.cond);
 
-        let cond_block_now = self.blockreg.cur_block.unwrap();
+        let cond_block_now = self.block_reg.cur_block.unwrap();
         if cond_block_now.get_terminator().is_none() {
-            self.llvmbuilder
+            self.llvm_builder
                 .build_conditional_branch(cond, body_block, exit_block)
                 .unwrap();
         }
 
-        self.llvmbuilder.position_at_end(body_block);
-        self.blockreg.cur_block = Some(body_block);
+        self.llvm_builder.position_at_end(body_block);
+        self.block_reg.cur_block = Some(body_block);
         self.emit_body(&while_stmt.body);
 
-        if let Some(body_block_now) = &self.blockreg.cur_block {
+        if let Some(body_block_now) = &self.block_reg.cur_block {
             if body_block_now.get_terminator().is_none() {
-                self.llvmbuilder.build_unconditional_branch(cond_block).unwrap();
-                self.blockreg.cur_block = Some(cond_block);
+                self.llvm_builder.build_unconditional_branch(cond_block).unwrap();
+                self.block_reg.cur_block = Some(cond_block);
             }
         }
 
@@ -628,11 +628,11 @@ impl<'ll> CodeGenIRBuilder<'ll> {
             !first_use.is_null()
         };
         if exit_in_use {
-            self.llvmbuilder.position_at_end(exit_block);
-            self.blockreg.cur_block = Some(exit_block);
+            self.llvm_builder.position_at_end(exit_block);
+            self.block_reg.cur_block = Some(exit_block);
         }
 
-        self.blockreg.control_flow_stack.pop().unwrap();
+        self.block_reg.control_flow_stack.pop().unwrap();
     }
 }
 
@@ -664,18 +664,18 @@ impl<'ll> CodeGenIRBuilder<'ll> {
                     self.llvm_emit_br(else_block.as_mut_ptr());
                     then_block = exit_block;
                 }
-                self.blockreg.cur_block = None;
+                self.block_reg.cur_block = None;
             } else {
                 if then_block != else_block {
                     self.llvm_emit_cond_br(cond.as_value_ref(), then_block.as_mut_ptr(), else_block.as_mut_ptr());
-                    self.blockreg.cur_block = None;
+                    self.block_reg.cur_block = None;
                 } else {
                     exit_in_use =
                         LLVMGetFirstUse(LLVMBasicBlockAsValue(exit_block.as_mut_ptr())) != std::ptr::null_mut();
 
                     if exit_in_use {
                         self.llvm_emit_br(exit_block.as_mut_ptr());
-                        self.blockreg.cur_block = None;
+                        self.block_reg.cur_block = None;
                     }
                 }
             }
@@ -685,24 +685,24 @@ impl<'ll> CodeGenIRBuilder<'ll> {
             self.emit_block(then_block);
             self.emit_body(&if_stmt.then_block);
 
-            if let Some(cur_block) = self.blockreg.cur_block {
+            if let Some(cur_block) = self.block_reg.cur_block {
                 if cur_block.get_terminator().is_none() {
                     self.llvm_emit_br(exit_block.as_mut_ptr());
                 }
             }
-            self.blockreg.cur_block = None;
+            self.block_reg.cur_block = None;
         }
 
         if else_block != exit_block {
             self.emit_block(else_block);
             self.emit_body(if_stmt.else_block.as_ref().unwrap());
 
-            if let Some(cur_block) = &self.blockreg.cur_block {
+            if let Some(cur_block) = &self.block_reg.cur_block {
                 if cur_block.get_terminator().is_none() {
                     self.llvm_emit_br(exit_block.as_mut_ptr());
                 }
             }
-            self.blockreg.cur_block = None;
+            self.block_reg.cur_block = None;
         }
 
         let exit_in_use =
@@ -717,32 +717,32 @@ impl<'ll> CodeGenIRBuilder<'ll> {
 // Return + Continue
 impl<'ll> CodeGenIRBuilder<'ll> {
     pub(crate) fn emit_break(&mut self, _break_stmt: &CIRBreakStmt) {
-        let entry = self.blockreg.control_flow_stack.last().unwrap();
+        let entry = self.block_reg.control_flow_stack.last().unwrap();
         let ControlRegion::Loop(cf_loop) = entry;
         let exit_block = cf_loop.exit_block;
         let defer_depth = cf_loop.defer_depth;
 
-        let cur_block = self.blockreg.cur_block.unwrap();
+        let cur_block = self.block_reg.cur_block.unwrap();
         if cur_block.get_terminator().is_none() {
             self.emit_defers_down_to(defer_depth);
 
-            self.llvmbuilder.build_unconditional_branch(exit_block).unwrap();
+            self.llvm_builder.build_unconditional_branch(exit_block).unwrap();
         }
-        self.blockreg.cur_block = None;
+        self.block_reg.cur_block = None;
     }
 
     pub(crate) fn emit_continue(&mut self, _continue_stmt: &CIRContinueStmt) {
-        let entry = self.blockreg.control_flow_stack.last().unwrap();
+        let entry = self.block_reg.control_flow_stack.last().unwrap();
         let ControlRegion::Loop(cf_loop) = entry;
         let target_block = cf_loop.inc_block.or(cf_loop.cond_block).unwrap();
         let defer_depth = cf_loop.defer_depth;
 
-        let cur_block = self.blockreg.cur_block.unwrap();
+        let cur_block = self.block_reg.cur_block.unwrap();
         if cur_block.get_terminator().is_none() {
             self.emit_defers_down_to(defer_depth + 1);
-            self.llvmbuilder.build_unconditional_branch(target_block).unwrap();
+            self.llvm_builder.build_unconditional_branch(target_block).unwrap();
         }
-        self.blockreg.cur_block = None;
+        self.block_reg.cur_block = None;
     }
 }
 
@@ -753,7 +753,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         for cir_stmt in &cir_block.stmts {
             if let CIRStmt::Label(label_stmt) = cir_stmt {
                 let label_basic_block = self.new_basic_block(&format!("label.{}", label_stmt.name));
-                self.blockreg
+                self.block_reg
                     .labels
                     .insert(label_stmt.label_id.clone(), (label_basic_block, depth));
             }
@@ -761,14 +761,14 @@ impl<'ll> CodeGenIRBuilder<'ll> {
     }
 
     pub(crate) fn emit_label(&mut self, label_stmt: &CIRLabelStmt) {
-        if let Some(parent_block) = self.blockreg.cur_block {
+        if let Some(parent_block) = self.block_reg.cur_block {
             if parent_block.get_terminator().is_none() {
-                let (label_block, _) = self.blockreg.labels.get(&label_stmt.label_id).unwrap();
-                self.llvmbuilder.build_unconditional_branch(*label_block).unwrap();
+                let (label_block, _) = self.block_reg.labels.get(&label_stmt.label_id).unwrap();
+                self.llvm_builder.build_unconditional_branch(*label_block).unwrap();
             }
         }
 
-        if let Some((basic_block, _)) = self.blockreg.labels.get(&label_stmt.label_id) {
+        if let Some((basic_block, _)) = self.block_reg.labels.get(&label_stmt.label_id) {
             self.emit_block(*basic_block);
         } else {
             panic!("label block for '{}' not predefined", label_stmt.name);
@@ -776,16 +776,16 @@ impl<'ll> CodeGenIRBuilder<'ll> {
     }
 
     pub(crate) fn emit_goto(&mut self, goto_stmt: &CIRGotoStmt) {
-        let (target_block, target_depth) = *self.blockreg.labels.get(&goto_stmt.label_id).unwrap();
+        let (target_block, target_depth) = *self.block_reg.labels.get(&goto_stmt.label_id).unwrap();
 
-        let cur_block = self.blockreg.cur_block.unwrap();
+        let cur_block = self.block_reg.cur_block.unwrap();
 
         if cur_block.get_terminator().is_none() {
             self.emit_defers_down_to(target_depth);
-            self.llvmbuilder.build_unconditional_branch(target_block).unwrap();
+            self.llvm_builder.build_unconditional_branch(target_block).unwrap();
         }
 
-        self.blockreg.cur_block = None;
+        self.block_reg.cur_block = None;
     }
 }
 
@@ -811,12 +811,12 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         self.with_return_state(|this| match (&return_stmt.arg, &ret_info.kind) {
             (None, _) => {
                 this.emit_all_defers();
-                this.llvmbuilder.build_return(None).unwrap();
+                this.llvm_builder.build_return(None).unwrap();
             }
             (Some(expr), ABIRetInfoKind::Ignore) => {
                 this.emit_expr(expr, &Some(*ret_info.ret_type.clone()));
                 this.emit_all_defers();
-                this.llvmbuilder.build_return(None).unwrap();
+                this.llvm_builder.build_return(None).unwrap();
             }
 
             (Some(expr), ABIRetInfoKind::Indirect { sret }) => {
@@ -829,7 +829,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
                         if let Some(cur_sret) = this.cur_sret {
                             if *ptr == cur_sret {
                                 this.emit_all_defers();
-                                this.llvmbuilder.build_return(None).unwrap();
+                                this.llvm_builder.build_return(None).unwrap();
                                 return;
                             }
                         }
@@ -837,7 +837,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
 
                     this.emit_compute_indirect_sret(cur_fn, &lvalue, &rvalue);
                     this.emit_all_defers();
-                    this.llvmbuilder.build_return(None).unwrap();
+                    this.llvm_builder.build_return(None).unwrap();
                     return;
                 }
             }
@@ -858,7 +858,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
                     this.intrinsic_coerce_through_alloca(value, ret_type.try_into().unwrap(), "coerce.ret");
 
                 this.emit_all_defers();
-                this.llvmbuilder.build_return(Some(&return_value)).unwrap();
+                this.llvm_builder.build_return(Some(&return_value)).unwrap();
             }
             (Some(expr), ABIRetInfoKind::DirectPair { lo, hi }) => {
                 let lvalue = this.emit_expr(expr, &Some(*ret_info.ret_type.clone()));
@@ -867,14 +867,14 @@ impl<'ll> CodeGenIRBuilder<'ll> {
                 let return_value = this.emit_compute_return_direct_pair(rvalue, lo, hi, &ret_info.abi_type);
 
                 this.emit_all_defers();
-                this.llvmbuilder.build_return(Some(&return_value)).unwrap();
+                this.llvm_builder.build_return(Some(&return_value)).unwrap();
             }
         });
     }
 
     fn emit_implicit_return_zero(&mut self) {
-        if let Some(cur_block) = &self.blockreg.cur_block {
-            self.llvmbuilder.position_at_end(*cur_block);
+        if let Some(cur_block) = &self.block_reg.cur_block {
+            self.llvm_builder.position_at_end(*cur_block);
             if cur_block.get_terminator().is_some() {
                 return;
             }
@@ -884,7 +884,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
 
             let zero_int = llvm_ret_type.const_zero();
 
-            self.llvmbuilder
+            self.llvm_builder
                 .build_return(Some(&zero_int.as_basic_value_enum()))
                 .unwrap();
         }
@@ -907,14 +907,14 @@ impl<'ll> CodeGenIRBuilder<'ll> {
             }
         }
 
-        if let Some(cur_block) = &self.blockreg.cur_block {
-            self.llvmbuilder.position_at_end(*cur_block);
+        if let Some(cur_block) = &self.block_reg.cur_block {
+            self.llvm_builder.position_at_end(*cur_block);
             if cur_block.get_terminator().is_some() {
                 return;
             }
 
             self.emit_all_defers();
-            self.llvmbuilder.build_return(None).unwrap();
+            self.llvm_builder.build_return(None).unwrap();
         }
     }
 
@@ -936,15 +936,15 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         let src_ptr = match &lvalue.kind {
             InternalValueKind::LValue(ptr) => *ptr,
             InternalValueKind::RValue(val) => {
-                let temp_alloca = self.llvmbuilder.build_alloca(val.get_type(), "sret.temp").unwrap();
+                let temp_alloca = self.llvm_builder.build_alloca(val.get_type(), "sret.temp").unwrap();
 
-                self.llvmbuilder.build_store(temp_alloca, *val).unwrap();
+                self.llvm_builder.build_store(temp_alloca, *val).unwrap();
                 temp_alloca
             }
             InternalValueKind::FuncValue(_) => unreachable!(),
         };
 
-        self.llvmbuilder
+        self.llvm_builder
             .build_memmove(sret_ptr, struct_layout.align, src_ptr, struct_layout.align, size_value)
             .unwrap();
     }
@@ -976,38 +976,38 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         }
 
         let src_alloca = self
-            .llvmbuilder
+            .llvm_builder
             .build_alloca(struct_value.get_type(), "ret.src.alloca")
             .unwrap();
 
-        self.llvmbuilder.build_store(src_alloca, struct_value).unwrap();
+        self.llvm_builder.build_store(src_alloca, struct_value).unwrap();
 
         let lo_ptr = self
-            .llvmbuilder
+            .llvm_builder
             .build_struct_gep(pair_type, src_alloca, 0, "ret.lo.ptr")
             .unwrap();
 
-        let lo_val = self.llvmbuilder.build_load(lo_ty, lo_ptr, "ret.lo").unwrap();
+        let lo_val = self.llvm_builder.build_load(lo_ty, lo_ptr, "ret.lo").unwrap();
 
         let hi_ptr = self
-            .llvmbuilder
+            .llvm_builder
             .build_struct_gep(pair_type, src_alloca, 1, "ret.hi.ptr")
             .unwrap();
 
-        let hi_val = self.llvmbuilder.build_load(hi_ty, hi_ptr, "ret.hi").unwrap();
+        let hi_val = self.llvm_builder.build_load(hi_ty, hi_ptr, "ret.hi").unwrap();
 
         let ret_struct_ty: StructType<'ll> = self.emit_type(abi_ret_type.clone()).try_into().unwrap();
 
         let mut pair_struct = ret_struct_ty.get_undef();
 
         pair_struct = self
-            .llvmbuilder
+            .llvm_builder
             .build_insert_value(pair_struct, lo_val, 0, "insert.lo")
             .unwrap()
             .into_struct_value();
 
         pair_struct = self
-            .llvmbuilder
+            .llvm_builder
             .build_insert_value(pair_struct, hi_val, 1, "insert.hi")
             .unwrap()
             .into_struct_value();
@@ -1035,11 +1035,11 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         for depth in (target_depth..depth).rev() {
             let scope = self.defer_stack[depth].clone();
             for stmt in scope.iter().rev() {
-                if let Some(cur_block) = self.blockreg.cur_block {
+                if let Some(cur_block) = self.block_reg.cur_block {
                     self.emit_block(cur_block);
                 }
 
-                if self.blockreg.cur_block.is_none() {
+                if self.block_reg.cur_block.is_none() {
                     return;
                 }
                 self.emit_stmt(&stmt);
@@ -1052,11 +1052,11 @@ impl<'ll> CodeGenIRBuilder<'ll> {
 
         for scope in scopes.iter().rev() {
             for stmt in scope.iter().rev() {
-                if let Some(cur_block) = self.blockreg.cur_block {
+                if let Some(cur_block) = self.block_reg.cur_block {
                     self.emit_block(cur_block);
                 }
 
-                if self.blockreg.cur_block.is_none() {
+                if self.block_reg.cur_block.is_none() {
                     break;
                 }
 
@@ -1077,7 +1077,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
 
     pub(crate) fn ensure_entry_block(&mut self) {
         let entry_block = self.new_basic_block("entry");
-        self.blockreg.first_block = Some(entry_block);
+        self.block_reg.first_block = Some(entry_block);
 
         self.emit_block(entry_block);
     }
@@ -1090,20 +1090,20 @@ impl<'ll> CodeGenIRBuilder<'ll> {
                 LLVMAppendExistingBasicBlock(cur_fn.as_value_ref(), next_block.as_mut_ptr());
             }
 
-            self.llvmbuilder.position_at_end(next_block);
+            self.llvm_builder.position_at_end(next_block);
         }
 
-        self.blockreg.cur_block = Some(next_block);
+        self.block_reg.cur_block = Some(next_block);
     }
 
     fn llvm_emit_check_block_branch(&mut self) -> bool {
-        let cur_block = match self.blockreg.cur_block {
+        let cur_block = match self.block_reg.cur_block {
             Some(bb) => bb,
             None => return false,
         };
 
         // if it's the function's first block, never delete it.
-        if let Some(first) = self.blockreg.first_block {
+        if let Some(first) = self.block_reg.first_block {
             if cur_block.as_mut_ptr() == first.as_mut_ptr() {
                 return true;
             }
@@ -1113,7 +1113,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
 
         if first_use.is_null() {
             unsafe { LLVMDeleteBasicBlock(cur_block.as_mut_ptr()) };
-            self.blockreg.cur_block = None;
+            self.block_reg.cur_block = None;
             return false;
         }
 
@@ -1126,11 +1126,11 @@ impl<'ll> CodeGenIRBuilder<'ll> {
                 return;
             }
 
-            if self.blockreg.cur_block.unwrap().get_terminator().is_none() {
-                LLVMBuildBr(self.llvmbuilder.as_mut_ptr(), next_block);
+            if self.block_reg.cur_block.unwrap().get_terminator().is_none() {
+                LLVMBuildBr(self.llvm_builder.as_mut_ptr(), next_block);
             }
 
-            self.blockreg.cur_block = None;
+            self.block_reg.cur_block = None;
         }
     }
 
@@ -1140,11 +1140,11 @@ impl<'ll> CodeGenIRBuilder<'ll> {
                 return;
             }
 
-            if self.blockreg.cur_block.unwrap().get_terminator().is_none() {
-                LLVMBuildCondBr(self.llvmbuilder.as_mut_ptr(), cond, then_block, else_block);
+            if self.block_reg.cur_block.unwrap().get_terminator().is_none() {
+                LLVMBuildCondBr(self.llvm_builder.as_mut_ptr(), cond, then_block, else_block);
             }
 
-            self.blockreg.cur_block = None;
+            self.block_reg.cur_block = None;
         }
     }
 
