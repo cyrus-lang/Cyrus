@@ -104,7 +104,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
 
         let ty: BasicTypeEnum<'ll> = self.emit_type(cir_var.ty.clone()).try_into().unwrap();
 
-        let ptr = self.llvmbuilder.build_alloca(ty, &cir_var.name).unwrap();
+        let ptr = self.llvm_builder.build_alloca(ty, &cir_var.name).unwrap();
         let alloca_instr = ptr.as_instruction().unwrap();
 
         if self.dctx.is_some() {
@@ -193,7 +193,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
             emit_dbg_declare(
                 &dctx,
                 self.llvm_ctx,
-                self.llvmbuilder,
+                self.llvm_builder,
                 ptr.as_value_ref(),
                 var_meta,
                 cir_var.loc.line.try_into().unwrap(),

@@ -71,7 +71,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
                 set_debug_location(
                     &dctx,
                     self.llvm_ctx,
-                    self.llvmbuilder,
+                    self.llvm_builder,
                     expr.loc.line.try_into().unwrap(),
                     expr.loc.column.try_into().unwrap(),
                 )
@@ -122,11 +122,11 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         } else {
             // value is not addressable to allocate temp
             let temp = self
-                .llvmbuilder
+                .llvm_builder
                 .build_alloca(data_basic_value.get_type(), "dyn.tmp")
                 .unwrap();
 
-            self.llvmbuilder.build_store(temp, data_basic_value).unwrap();
+            self.llvm_builder.build_store(temp, data_basic_value).unwrap();
 
             temp
         };
@@ -142,13 +142,13 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         let mut dynamic_value = dynamic_struct_type.get_undef();
 
         dynamic_value = self
-            .llvmbuilder
+            .llvm_builder
             .build_insert_value(dynamic_value, data_ptr.as_basic_value_enum(), 0, "dyn.insert.data")
             .unwrap()
             .into_struct_value();
 
         dynamic_value = self
-            .llvmbuilder
+            .llvm_builder
             .build_insert_value(dynamic_value, vtable_ptr.as_basic_value_enum(), 1, "dyn.insert.vtable")
             .unwrap()
             .into_struct_value();
@@ -171,7 +171,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         let index_int = index.as_basic_value().into_int_value();
 
         let element_ptr: PointerValue<'ll> = unsafe {
-            self.llvmbuilder
+            self.llvm_builder
                 .build_in_bounds_gep(element_type, lvalue, &[index_int], "index")
                 .unwrap()
         };
@@ -218,8 +218,8 @@ impl<'ll> CodeGenIRBuilder<'ll> {
     }
 
     fn emit_temp_array_value_alloca(&self, array_value: &ArrayValue<'ll>) -> PointerValue<'ll> {
-        let ptr = self.llvmbuilder.build_alloca(array_value.get_type(), "temp").unwrap();
-        self.llvmbuilder
+        let ptr = self.llvm_builder.build_alloca(array_value.get_type(), "temp").unwrap();
+        self.llvm_builder
             .build_store(ptr, array_value.as_basic_value_enum())
             .unwrap();
         ptr
@@ -235,7 +235,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
 
         let lhs_ptr = lhs_lvalue.as_basic_value().into_pointer_value();
 
-        self.llvmbuilder
+        self.llvm_builder
             .build_store(lhs_ptr, rhs_value.as_basic_value())
             .unwrap();
 
@@ -282,54 +282,54 @@ impl<'ll> CodeGenIRBuilder<'ll> {
 
                 if from_width < to_width {
                     if from_cir_type.is_signed_integer() {
-                        self.llvmbuilder
+                        self.llvm_builder
                             .build_int_s_extend(value.into_int_value(), to_int, "sext")
                             .unwrap()
                             .into()
                     } else {
-                        self.llvmbuilder
+                        self.llvm_builder
                             .build_int_z_extend(value.into_int_value(), to_int, "zext")
                             .unwrap()
                             .into()
                     }
                 } else if from_width > to_width {
-                    self.llvmbuilder
+                    self.llvm_builder
                         .build_int_truncate(value.into_int_value(), to_int, "trunc")
                         .unwrap()
                         .into()
                 } else {
-                    self.llvmbuilder
+                    self.llvm_builder
                         .build_bit_cast(value, target_basic_type, "bitcast")
                         .unwrap()
                 }
             }
 
             (BasicTypeEnum::PointerType(_), BasicTypeEnum::IntType(to_int)) => self
-                .llvmbuilder
+                .llvm_builder
                 .build_ptr_to_int(value.into_pointer_value(), to_int, "ptr_to_int")
                 .unwrap()
                 .into(),
 
             (BasicTypeEnum::IntType(_), BasicTypeEnum::PointerType(to_ptr)) => self
-                .llvmbuilder
+                .llvm_builder
                 .build_int_to_ptr(value.into_int_value(), to_ptr, "int_to_ptr")
                 .unwrap()
                 .into(),
 
             (BasicTypeEnum::FloatType(_), BasicTypeEnum::FloatType(to_float)) => self
-                .llvmbuilder
+                .llvm_builder
                 .build_float_cast(value.into_float_value(), to_float, "fpext")
                 .unwrap()
                 .into(),
 
             (BasicTypeEnum::IntType(_), BasicTypeEnum::FloatType(to_float)) => {
                 if from_cir_type.is_signed_integer() {
-                    self.llvmbuilder
+                    self.llvm_builder
                         .build_signed_int_to_float(value.into_int_value(), to_float, "sitofp")
                         .unwrap()
                         .into()
                 } else {
-                    self.llvmbuilder
+                    self.llvm_builder
                         .build_unsigned_int_to_float(value.into_int_value(), to_float, "uitofp")
                         .unwrap()
                         .into()
@@ -339,7 +339,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
             (BasicTypeEnum::PointerType(_), BasicTypeEnum::PointerType(_)) => value,
 
             (BasicTypeEnum::VectorType(_), BasicTypeEnum::VectorType(_)) => self
-                .llvmbuilder
+                .llvm_builder
                 .build_bit_cast(value, target_basic_type, "bitcast")
                 .unwrap(),
             _ => {
@@ -347,7 +347,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
                 let to_size = target_basic_type.size_of();
 
                 if from_size == to_size {
-                    self.llvmbuilder
+                    self.llvm_builder
                         .build_bit_cast(value, target_basic_type, "bitcast")
                         .unwrap()
                 } else {
@@ -368,14 +368,14 @@ impl<'ll> CodeGenIRBuilder<'ll> {
 
                     if bit_width == 1 {
                         AnyValueEnum::IntValue(
-                            self.llvmbuilder
+                            self.llvm_builder
                                 .build_int_z_extend(basic_value.into_int_value(), int_type, "bool_zext")
                                 .unwrap(),
                         )
                     } else {
                         // int -> int
                         AnyValueEnum::IntValue(
-                            self.llvmbuilder
+                            self.llvm_builder
                                 .build_int_cast(basic_value.into_int_value(), int_type, "cast")
                                 .unwrap(),
                         )
@@ -387,13 +387,13 @@ impl<'ll> CodeGenIRBuilder<'ll> {
                     if int_type.get_bit_width() < ptr_width {
                         let ptr_int = self.llvm_ctx.custom_width_int_type(ptr_width);
                         let tmp = self
-                            .llvmbuilder
+                            .llvm_builder
                             .build_ptr_to_int(basic_value.into_pointer_value(), ptr_int, "ptr_to_int")
                             .unwrap();
-                        AnyValueEnum::IntValue(self.llvmbuilder.build_int_truncate(tmp, int_type, "ptr_trunc").unwrap())
+                        AnyValueEnum::IntValue(self.llvm_builder.build_int_truncate(tmp, int_type, "ptr_trunc").unwrap())
                     } else {
                         AnyValueEnum::IntValue(
-                            self.llvmbuilder
+                            self.llvm_builder
                                 .build_ptr_to_int(basic_value.into_pointer_value(), int_type, "ptr_to_int")
                                 .unwrap(),
                         )
@@ -408,20 +408,20 @@ impl<'ll> CodeGenIRBuilder<'ll> {
 
                     if is_signed {
                         AnyValueEnum::FloatValue(
-                            self.llvmbuilder
+                            self.llvm_builder
                                 .build_signed_int_to_float(basic_value.into_int_value(), float_type, "cast")
                                 .unwrap(),
                         )
                     } else {
                         AnyValueEnum::FloatValue(
-                            self.llvmbuilder
+                            self.llvm_builder
                                 .build_unsigned_int_to_float(basic_value.into_int_value(), float_type, "cast")
                                 .unwrap(),
                         )
                     }
                 } else if basic_value.is_float_value() {
                     AnyValueEnum::FloatValue(
-                        self.llvmbuilder
+                        self.llvm_builder
                             .build_float_cast(basic_value.into_float_value(), float_type, "cast")
                             .unwrap(),
                     )
@@ -439,7 +439,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
 
                     // int -> ptr
                     AnyValueEnum::PointerValue(
-                        self.llvmbuilder
+                        self.llvm_builder
                             .build_int_to_ptr(basic_value.into_int_value(), ptr_type, "int_to_ptr")
                             .unwrap(),
                     )
@@ -474,7 +474,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
             let lvalue = self.emit_expr(expr, &Some(*cir_array_type.element_type.clone()));
             let mut rvalue = self.load_rvalue(lvalue);
 
-            if !self.llvmbuilder.get_insert_block().is_none() {
+            if !self.llvm_builder.get_insert_block().is_none() {
                 rvalue = self.emit_implicit_cast(&cir_element_type, rvalue);
             }
 
@@ -497,7 +497,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
             let mut val = array_type.get_undef();
             for (i, elem) in elements.iter().enumerate() {
                 val = self
-                    .llvmbuilder
+                    .llvm_builder
                     .build_insert_value(val, *elem, i as u32, "array.insert")
                     .unwrap()
                     .into_array_value();
@@ -508,7 +508,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
             let mut value = array_type.get_undef();
             for (i, elem) in elements.iter().enumerate() {
                 value = self
-                    .llvmbuilder
+                    .llvm_builder
                     .build_insert_value(value, *elem, i as u32, "array.insert")
                     .unwrap()
                     .into_array_value();
@@ -525,8 +525,8 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         let ptr = match operand.kind {
             InternalValueKind::LValue(ptr) => ptr,
             InternalValueKind::RValue(val) => {
-                let alloca = self.llvmbuilder.build_alloca(val.get_type(), "addr.cast").unwrap();
-                self.llvmbuilder.build_store(alloca, val).unwrap();
+                let alloca = self.llvm_builder.build_alloca(val.get_type(), "addr.cast").unwrap();
+                self.llvm_builder.build_store(alloca, val).unwrap();
                 alloca
             }
             _ => unreachable!("cannot take the address of a function or undefined value"),
@@ -542,9 +542,9 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         let array_ptr = match array_lvalue.kind {
             InternalValueKind::LValue(ptr) => ptr,
             InternalValueKind::RValue(val) => {
-                let alloca = self.llvmbuilder.build_alloca(val.get_type(), "array.decay").unwrap();
+                let alloca = self.llvm_builder.build_alloca(val.get_type(), "array.decay").unwrap();
 
-                self.llvmbuilder.build_store(alloca, val).unwrap();
+                self.llvm_builder.build_store(alloca, val).unwrap();
 
                 alloca
             }
@@ -555,7 +555,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
 
         let zero = self.llvm_ctx.i32_type().const_int(0, false);
         let first_element = unsafe {
-            self.llvmbuilder
+            self.llvm_builder
                 .build_in_bounds_gep(
                     self.emit_type(array_lvalue.ty.clone()).into_array_type(),
                     array_ptr,
@@ -592,7 +592,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
                     let index = layout.lookup_field_index(*index).unwrap();
 
                     let field_ptr = self
-                        .llvmbuilder
+                        .llvm_builder
                         .build_struct_gep(llvm_struct_type, struct_ptr_value, index, "field_ptr")
                         .unwrap();
 
@@ -619,7 +619,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
                 let inner_type = rvalue.ty.pointer_inner().unwrap();
 
                 let llvm_type: BasicTypeEnum<'ll> = self.emit_type(inner_type.clone()).try_into().unwrap();
-                let loaded_value = self.llvmbuilder.build_load(llvm_type, ptr, "deref").unwrap();
+                let loaded_value = self.llvm_builder.build_load(llvm_type, ptr, "deref").unwrap();
                 InternalValue::new(inner_type.clone(), InternalValueKind::RValue(loaded_value.into()))
             }
             DerefMode::Store => self.emit_lvalue_address(&CIRExpr {
@@ -727,10 +727,10 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         ty: CIRType,
     ) -> InternalValue<'ll> {
         // cond: lhs == null
-        let is_null = self.llvmbuilder.build_is_null(lhs, "lhs_is_null").unwrap();
+        let is_null = self.llvm_builder.build_is_null(lhs, "lhs_is_null").unwrap();
 
         let selected = self
-            .llvmbuilder
+            .llvm_builder
             .build_select(is_null, rhs, lhs, "null_coalesce")
             .unwrap()
             .into_pointer_value();
@@ -749,7 +749,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         let false_block = self.llvm_ctx.append_basic_block(cur_fn, "and_false");
 
         let result_alloca = self
-            .llvmbuilder
+            .llvm_builder
             .build_alloca(self.llvm_ctx.bool_type(), "and_result_storage")
             .unwrap();
 
@@ -757,10 +757,10 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         let lhs_rvalue = self.load_rvalue(lhs_lvalue);
         let lhs_bool = self.int_value_as_bool_i1(lhs_rvalue.as_basic_value().into_int_value());
 
-        if let Some(cur_block) = &self.blockreg.cur_block {
+        if let Some(cur_block) = &self.block_reg.cur_block {
             if cur_block.get_terminator().is_none() {
-                self.blockreg.cur_block = None;
-                self.llvmbuilder
+                self.block_reg.cur_block = None;
+                self.llvm_builder
                     .build_conditional_branch(lhs_bool, rhs_block, false_block)
                     .unwrap();
             }
@@ -768,11 +768,11 @@ impl<'ll> CodeGenIRBuilder<'ll> {
 
         self.emit_block(false_block);
         let false_value = self.llvm_ctx.bool_type().const_int(0, false);
-        self.llvmbuilder.build_store(result_alloca, false_value).unwrap();
-        if let Some(cur_block) = &self.blockreg.cur_block {
+        self.llvm_builder.build_store(result_alloca, false_value).unwrap();
+        if let Some(cur_block) = &self.block_reg.cur_block {
             if cur_block.get_terminator().is_none() {
-                self.blockreg.cur_block = None;
-                self.llvmbuilder.build_unconditional_branch(cont_block).unwrap();
+                self.block_reg.cur_block = None;
+                self.llvm_builder.build_unconditional_branch(cont_block).unwrap();
             }
         }
 
@@ -781,18 +781,18 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         let rhs_rvalue = self.load_rvalue(rhs_lvalue);
         let rhs_bool = self.int_value_as_bool_i1(rhs_rvalue.as_basic_value().into_int_value());
 
-        self.llvmbuilder.build_store(result_alloca, rhs_bool).unwrap();
+        self.llvm_builder.build_store(result_alloca, rhs_bool).unwrap();
 
-        if let Some(cur_block) = &self.blockreg.cur_block {
+        if let Some(cur_block) = &self.block_reg.cur_block {
             if cur_block.get_terminator().is_none() {
-                self.blockreg.cur_block = None;
-                self.llvmbuilder.build_unconditional_branch(cont_block).unwrap();
+                self.block_reg.cur_block = None;
+                self.llvm_builder.build_unconditional_branch(cont_block).unwrap();
             }
         }
 
         self.emit_block(cont_block);
         let result = self
-            .llvmbuilder
+            .llvm_builder
             .build_load(self.llvm_ctx.bool_type(), result_alloca, "and_result")
             .unwrap();
 
@@ -810,7 +810,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         let true_block = self.llvm_ctx.append_basic_block(cur_fn, "or_true");
 
         let result_alloca = self
-            .llvmbuilder
+            .llvm_builder
             .build_alloca(self.llvm_ctx.bool_type(), "or_result_storage")
             .unwrap();
 
@@ -818,10 +818,10 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         let lhs_rvalue = self.load_rvalue(lhs_lvalue);
         let lhs_bool = self.int_value_as_bool_i1(lhs_rvalue.as_basic_value().into_int_value());
 
-        if let Some(cur_block) = &self.blockreg.cur_block {
+        if let Some(cur_block) = &self.block_reg.cur_block {
             if cur_block.get_terminator().is_none() {
-                self.blockreg.cur_block = None;
-                self.llvmbuilder
+                self.block_reg.cur_block = None;
+                self.llvm_builder
                     .build_conditional_branch(lhs_bool, true_block, rhs_block)
                     .unwrap();
             }
@@ -829,11 +829,11 @@ impl<'ll> CodeGenIRBuilder<'ll> {
 
         self.emit_block(true_block);
         let true_value = self.llvm_ctx.bool_type().const_int(1, false);
-        self.llvmbuilder.build_store(result_alloca, true_value).unwrap();
-        if let Some(cur_block) = &self.blockreg.cur_block {
+        self.llvm_builder.build_store(result_alloca, true_value).unwrap();
+        if let Some(cur_block) = &self.block_reg.cur_block {
             if cur_block.get_terminator().is_none() {
-                self.blockreg.cur_block = None;
-                self.llvmbuilder.build_unconditional_branch(cont_block).unwrap();
+                self.block_reg.cur_block = None;
+                self.llvm_builder.build_unconditional_branch(cont_block).unwrap();
             }
         }
 
@@ -842,18 +842,18 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         let rhs_rvalue = self.load_rvalue(rhs_lvalue);
         let rhs_bool = self.int_value_as_bool_i1(rhs_rvalue.as_basic_value().into_int_value());
 
-        self.llvmbuilder.build_store(result_alloca, rhs_bool).unwrap();
+        self.llvm_builder.build_store(result_alloca, rhs_bool).unwrap();
 
-        if let Some(cur_block) = &self.blockreg.cur_block {
+        if let Some(cur_block) = &self.block_reg.cur_block {
             if cur_block.get_terminator().is_none() {
-                self.blockreg.cur_block = None;
-                self.llvmbuilder.build_unconditional_branch(cont_block).unwrap();
+                self.block_reg.cur_block = None;
+                self.llvm_builder.build_unconditional_branch(cont_block).unwrap();
             }
         }
 
         self.emit_block(cont_block);
         let result = self
-            .llvmbuilder
+            .llvm_builder
             .build_load(self.llvm_ctx.bool_type(), result_alloca, "or_result")
             .unwrap();
 
@@ -866,7 +866,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
     fn emit_xor(&self, lhs_rvalue: InternalValue<'ll>, rhs_rvalue: InternalValue<'ll>) -> InternalValue<'ll> {
         match (lhs_rvalue.as_basic_value(), rhs_rvalue.as_basic_value()) {
             (BasicValueEnum::IntValue(lhs), BasicValueEnum::IntValue(rhs)) => {
-                let and_value = self.llvmbuilder.build_xor(lhs, rhs, "xor").unwrap();
+                let and_value = self.llvm_builder.build_xor(lhs, rhs, "xor").unwrap();
 
                 InternalValue::new(
                     CIRType::Plain(PlainType::Bool),
@@ -880,7 +880,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
     fn emit_bitwise_and(&self, lhs_rvalue: InternalValue<'ll>, rhs_rvalue: InternalValue<'ll>) -> InternalValue<'ll> {
         match (lhs_rvalue.as_basic_value(), rhs_rvalue.as_basic_value()) {
             (BasicValueEnum::IntValue(lhs), BasicValueEnum::IntValue(rhs)) => {
-                let and_value = self.llvmbuilder.build_and(lhs, rhs, "xor").unwrap();
+                let and_value = self.llvm_builder.build_and(lhs, rhs, "xor").unwrap();
 
                 InternalValue::new(
                     CIRType::Plain(PlainType::Bool),
@@ -894,7 +894,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
     fn emit_bitwise_or(&self, lhs_rvalue: InternalValue<'ll>, rhs_rvalue: InternalValue<'ll>) -> InternalValue<'ll> {
         match (lhs_rvalue.as_basic_value(), rhs_rvalue.as_basic_value()) {
             (BasicValueEnum::IntValue(lhs), BasicValueEnum::IntValue(rhs)) => {
-                let and_value = self.llvmbuilder.build_or(lhs, rhs, "or").unwrap();
+                let and_value = self.llvm_builder.build_or(lhs, rhs, "or").unwrap();
                 InternalValue::new(
                     CIRType::Plain(PlainType::Bool),
                     InternalValueKind::RValue(and_value.into()),
@@ -913,10 +913,10 @@ impl<'ll> CodeGenIRBuilder<'ll> {
             (BasicValueEnum::IntValue(lhs), BasicValueEnum::IntValue(rhs)) => {
                 // ~rhs = rhs XOR all ones
                 let all_ones = rhs.get_type().const_all_ones();
-                let not_rhs = self.llvmbuilder.build_xor(rhs, all_ones, "not_rhs").unwrap();
+                let not_rhs = self.llvm_builder.build_xor(rhs, all_ones, "not_rhs").unwrap();
 
                 // lhs AND (~rhs)
-                let and_not_value = self.llvmbuilder.build_and(lhs, not_rhs, "and_not").unwrap();
+                let and_not_value = self.llvm_builder.build_and(lhs, not_rhs, "and_not").unwrap();
 
                 InternalValue::new(
                     // REVIEW: this does not look good here
@@ -931,7 +931,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
     fn emit_shift_left(&self, lhs_rvalue: InternalValue<'ll>, rhs_rvalue: InternalValue<'ll>) -> InternalValue<'ll> {
         match (lhs_rvalue.as_basic_value(), rhs_rvalue.as_basic_value()) {
             (BasicValueEnum::IntValue(lhs), BasicValueEnum::IntValue(rhs)) => {
-                let shift_value = self.llvmbuilder.build_left_shift(lhs, rhs, "lshift").unwrap();
+                let shift_value = self.llvm_builder.build_left_shift(lhs, rhs, "lshift").unwrap();
                 InternalValue::new(
                     CIRType::Plain(PlainType::Bool),
                     InternalValueKind::RValue(shift_value.into()),
@@ -946,7 +946,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
             (BasicValueEnum::IntValue(lhs), BasicValueEnum::IntValue(rhs)) => {
                 let signed = rhs_rvalue.ty.as_plain().unwrap().is_signed();
 
-                let shift_value = self.llvmbuilder.build_right_shift(lhs, rhs, signed, "rshift").unwrap();
+                let shift_value = self.llvm_builder.build_right_shift(lhs, rhs, signed, "rshift").unwrap();
 
                 InternalValue::new(
                     CIRType::Plain(PlainType::Bool),
@@ -985,20 +985,20 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         };
 
         let call_site = self
-            .llvmbuilder
+            .llvm_builder
             .build_call(intrinsic_fn, &[lhs.into(), rhs.into()], "overflow_result")
             .unwrap();
 
         let result_struct = call_site.try_as_basic_value().basic().unwrap().into_struct_value();
 
         let math_result = self
-            .llvmbuilder
+            .llvm_builder
             .build_extract_value(result_struct, 0, "result")
             .unwrap()
             .into_int_value();
 
         let overflow_flag = self
-            .llvmbuilder
+            .llvm_builder
             .build_extract_value(result_struct, 1, "overflow_flag")
             .unwrap()
             .into_int_value();
@@ -1007,11 +1007,11 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         let panic_block = self.llvm_ctx.append_basic_block(cur_fn, "panic");
         let cont_block = self.llvm_ctx.append_basic_block(cur_fn, "cont");
 
-        self.llvmbuilder
+        self.llvm_builder
             .build_conditional_branch(overflow_flag, panic_block, cont_block)
             .unwrap();
 
-        self.llvmbuilder.position_at_end(panic_block);
+        self.llvm_builder.position_at_end(panic_block);
 
         let msg_expr = cir_string_literal(&format!("integer overflow in instruction '{}'", op), loc);
 
@@ -1039,14 +1039,14 @@ impl<'ll> CodeGenIRBuilder<'ll> {
                     self.emit_checked_int_op("add", lhs, rhs, is_signed, lhs_rvalue.ty.clone(), loc)
                 } else {
                     let basic_value =
-                        BasicValueEnum::IntValue(self.llvmbuilder.build_int_add(lhs, rhs, "add").unwrap());
+                        BasicValueEnum::IntValue(self.llvm_builder.build_int_add(lhs, rhs, "add").unwrap());
 
                     InternalValue::new(lhs_rvalue.ty.clone(), InternalValueKind::RValue(basic_value))
                 }
             }
             (BasicValueEnum::FloatValue(lhs), BasicValueEnum::FloatValue(rhs)) => {
                 let basic_value =
-                    BasicValueEnum::FloatValue(self.llvmbuilder.build_float_add(lhs, rhs, "add").unwrap());
+                    BasicValueEnum::FloatValue(self.llvm_builder.build_float_add(lhs, rhs, "add").unwrap());
 
                 InternalValue::new(lhs_rvalue.ty.clone(), InternalValueKind::RValue(basic_value))
             }
@@ -1074,14 +1074,14 @@ impl<'ll> CodeGenIRBuilder<'ll> {
                     self.emit_checked_int_op("sub", lhs, rhs, is_signed, lhs_rvalue.ty.clone(), loc)
                 } else {
                     let basic_value =
-                        BasicValueEnum::IntValue(self.llvmbuilder.build_int_sub(lhs, rhs, "sub").unwrap());
+                        BasicValueEnum::IntValue(self.llvm_builder.build_int_sub(lhs, rhs, "sub").unwrap());
 
                     InternalValue::new(lhs_rvalue.ty.clone(), InternalValueKind::RValue(basic_value))
                 }
             }
             (BasicValueEnum::FloatValue(lhs), BasicValueEnum::FloatValue(rhs)) => {
                 let basic_value =
-                    BasicValueEnum::FloatValue(self.llvmbuilder.build_float_sub(lhs, rhs, "sub").unwrap());
+                    BasicValueEnum::FloatValue(self.llvm_builder.build_float_sub(lhs, rhs, "sub").unwrap());
 
                 InternalValue::new(lhs_rvalue.ty.clone(), InternalValueKind::RValue(basic_value))
             }
@@ -1121,13 +1121,13 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         let gep_index = if index.get_type() == i64_type {
             index
         } else {
-            self.llvmbuilder.build_int_cast(index, i64_type, "index.cast").unwrap()
+            self.llvm_builder.build_int_cast(index, i64_type, "index.cast").unwrap()
         };
 
         // Create GEP instruction
         // LLVM automatically multiplies by sizeof(pointee)
         let gep_ptr = unsafe {
-            self.llvmbuilder
+            self.llvm_builder
                 .build_gep(pointee_type, ptr, &[gep_index], "ptr.add")
                 .unwrap()
         };
@@ -1155,14 +1155,14 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         let index_i64 = if index.get_type() == i64_type {
             index
         } else {
-            self.llvmbuilder.build_int_cast(index, i64_type, "i.cast").unwrap()
+            self.llvm_builder.build_int_cast(index, i64_type, "i.cast").unwrap()
         };
 
-        let neg_index = self.llvmbuilder.build_int_neg(index_i64, "i.neg").unwrap();
+        let neg_index = self.llvm_builder.build_int_neg(index_i64, "i.neg").unwrap();
 
         // Create GEP with negative index
         let gep_ptr = unsafe {
-            self.llvmbuilder
+            self.llvm_builder
                 .build_gep(pointee_type, ptr, &[neg_index], "ptr.sub")
                 .unwrap()
         };
@@ -1178,14 +1178,14 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         rhs_ptr: PointerValue<'ll>,
     ) -> InternalValue<'ll> {
         let diff_int_value = self
-            .llvmbuilder
+            .llvm_builder
             .build_ptr_diff(pointee_type, lhs_ptr, rhs_ptr, "ptr.diff")
             .unwrap();
 
         let result_type = CIRType::Plain(PlainType::ISize);
         let llvm_result_type: BasicTypeEnum<'ll> = self.emit_type(result_type.clone()).try_into().unwrap();
         let diff_casted = self
-            .llvmbuilder
+            .llvm_builder
             .build_int_cast(diff_int_value, llvm_result_type.into_int_type(), "ptr.diff.cast")
             .unwrap();
 
@@ -1206,14 +1206,14 @@ impl<'ll> CodeGenIRBuilder<'ll> {
                     self.emit_checked_int_op("mul", lhs, rhs, is_signed, lhs_rvalue.ty.clone(), loc)
                 } else {
                     let basic_value =
-                        BasicValueEnum::IntValue(self.llvmbuilder.build_int_mul(lhs, rhs, "mul").unwrap());
+                        BasicValueEnum::IntValue(self.llvm_builder.build_int_mul(lhs, rhs, "mul").unwrap());
 
                     InternalValue::new(lhs_rvalue.ty.clone(), InternalValueKind::RValue(basic_value))
                 }
             }
             (BasicValueEnum::FloatValue(lhs), BasicValueEnum::FloatValue(rhs)) => {
                 let basic_value =
-                    BasicValueEnum::FloatValue(self.llvmbuilder.build_float_mul(lhs, rhs, "mul").unwrap());
+                    BasicValueEnum::FloatValue(self.llvm_builder.build_float_mul(lhs, rhs, "mul").unwrap());
 
                 InternalValue::new(lhs_rvalue.ty.clone(), InternalValueKind::RValue(basic_value))
             }
@@ -1228,9 +1228,9 @@ impl<'ll> CodeGenIRBuilder<'ll> {
 
                 let basic_value = {
                     if is_signed {
-                        BasicValueEnum::IntValue(self.llvmbuilder.build_int_signed_div(lhs, rhs, "div").unwrap())
+                        BasicValueEnum::IntValue(self.llvm_builder.build_int_signed_div(lhs, rhs, "div").unwrap())
                     } else {
-                        BasicValueEnum::IntValue(self.llvmbuilder.build_int_unsigned_div(lhs, rhs, "div").unwrap())
+                        BasicValueEnum::IntValue(self.llvm_builder.build_int_unsigned_div(lhs, rhs, "div").unwrap())
                     }
                 };
 
@@ -1238,7 +1238,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
             }
             (BasicValueEnum::FloatValue(lhs), BasicValueEnum::FloatValue(rhs)) => {
                 let basic_value =
-                    BasicValueEnum::FloatValue(self.llvmbuilder.build_float_div(lhs, rhs, "div").unwrap());
+                    BasicValueEnum::FloatValue(self.llvm_builder.build_float_div(lhs, rhs, "div").unwrap());
 
                 InternalValue::new(lhs_rvalue.ty.clone(), InternalValueKind::RValue(basic_value))
             }
@@ -1253,9 +1253,9 @@ impl<'ll> CodeGenIRBuilder<'ll> {
 
                 let basic_value = {
                     if is_signed {
-                        BasicValueEnum::IntValue(self.llvmbuilder.build_int_signed_rem(lhs, rhs, "rem").unwrap())
+                        BasicValueEnum::IntValue(self.llvm_builder.build_int_signed_rem(lhs, rhs, "rem").unwrap())
                     } else {
-                        BasicValueEnum::IntValue(self.llvmbuilder.build_int_unsigned_rem(lhs, rhs, "rem").unwrap())
+                        BasicValueEnum::IntValue(self.llvm_builder.build_int_unsigned_rem(lhs, rhs, "rem").unwrap())
                     }
                 };
 
@@ -1263,7 +1263,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
             }
             (BasicValueEnum::FloatValue(lhs), BasicValueEnum::FloatValue(rhs)) => {
                 let basic_value =
-                    BasicValueEnum::FloatValue(self.llvmbuilder.build_float_rem(lhs, rhs, "rem").unwrap());
+                    BasicValueEnum::FloatValue(self.llvm_builder.build_float_rem(lhs, rhs, "rem").unwrap());
 
                 InternalValue::new(lhs_rvalue.ty.clone(), InternalValueKind::RValue(basic_value))
             }
@@ -1285,13 +1285,13 @@ impl<'ll> CodeGenIRBuilder<'ll> {
                     rhs = self.int_value_as_bool_i1(rhs);
                 }
 
-                let cmp = self.llvmbuilder.build_int_compare(int_pred, lhs, rhs, "cmp").unwrap();
+                let cmp = self.llvm_builder.build_int_compare(int_pred, lhs, rhs, "cmp").unwrap();
 
                 InternalValue::new(CIRType::Plain(PlainType::Bool), InternalValueKind::RValue(cmp.into()))
             }
             (BasicValueEnum::FloatValue(lhs), BasicValueEnum::FloatValue(rhs)) => {
                 let cmp = self
-                    .llvmbuilder
+                    .llvm_builder
                     .build_float_compare(float_pred, lhs, rhs, "cmp")
                     .unwrap();
 
@@ -1314,7 +1314,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         let zero = strcmp_result.get_type().const_zero();
 
         let cmp = self
-            .llvmbuilder
+            .llvm_builder
             .build_int_compare(IntPredicate::EQ, strcmp_result, zero, "streq")
             .unwrap();
 
@@ -1334,7 +1334,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
                 }
 
                 let cmp = self
-                    .llvmbuilder
+                    .llvm_builder
                     .build_int_compare(IntPredicate::EQ, lhs, rhs, "eq")
                     .unwrap();
 
@@ -1342,7 +1342,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
             }
             (BasicValueEnum::FloatValue(lhs), BasicValueEnum::FloatValue(rhs)) => {
                 let cmp = self
-                    .llvmbuilder
+                    .llvm_builder
                     .build_float_compare(FloatPredicate::OEQ, lhs, rhs, "eq")
                     .unwrap();
 
@@ -1359,7 +1359,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
                 }
 
                 let cmp = self
-                    .llvmbuilder
+                    .llvm_builder
                     .build_int_compare(IntPredicate::EQ, lhs, rhs, "eq")
                     .unwrap();
 
@@ -1386,21 +1386,21 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         match (lhs_rvalue.as_basic_value(), rhs_rvalue.as_basic_value()) {
             (BasicValueEnum::IntValue(lhs), BasicValueEnum::IntValue(rhs)) => {
                 let cmp = self
-                    .llvmbuilder
+                    .llvm_builder
                     .build_int_compare(IntPredicate::NE, lhs, rhs, "neq")
                     .unwrap();
                 InternalValue::new(CIRType::Plain(PlainType::Bool), InternalValueKind::RValue(cmp.into()))
             }
             (BasicValueEnum::FloatValue(lhs), BasicValueEnum::FloatValue(rhs)) => {
                 let cmp = self
-                    .llvmbuilder
+                    .llvm_builder
                     .build_float_compare(FloatPredicate::ONE, lhs, rhs, "neq")
                     .unwrap();
                 InternalValue::new(CIRType::Plain(PlainType::Bool), InternalValueKind::RValue(cmp.into()))
             }
             (BasicValueEnum::PointerValue(lhs), BasicValueEnum::PointerValue(rhs)) => {
                 let cmp = self
-                    .llvmbuilder
+                    .llvm_builder
                     .build_int_compare(IntPredicate::NE, lhs, rhs, "neq")
                     .unwrap();
                 InternalValue::new(CIRType::Plain(PlainType::Bool), InternalValueKind::RValue(cmp.into()))
@@ -1432,7 +1432,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
     fn emit_bitwise_not(&self, rvalue: InternalValue<'ll>) -> InternalValue<'ll> {
         match rvalue.as_basic_value() {
             BasicValueEnum::IntValue(int_value) => {
-                let basic_value = BasicValueEnum::IntValue(self.llvmbuilder.build_not(int_value, "neg").unwrap());
+                let basic_value = BasicValueEnum::IntValue(self.llvm_builder.build_not(int_value, "neg").unwrap());
                 InternalValue::new(rvalue.ty.clone(), InternalValueKind::RValue(basic_value))
             }
             _ => unreachable!(),
@@ -1442,13 +1442,13 @@ impl<'ll> CodeGenIRBuilder<'ll> {
     fn emit_negate(&self, rvalue: InternalValue<'ll>) -> InternalValue<'ll> {
         match rvalue.as_basic_value() {
             BasicValueEnum::IntValue(int_value) => {
-                let basic_value = BasicValueEnum::IntValue(self.llvmbuilder.build_int_neg(int_value, "neg").unwrap());
+                let basic_value = BasicValueEnum::IntValue(self.llvm_builder.build_int_neg(int_value, "neg").unwrap());
 
                 InternalValue::new(rvalue.ty.clone(), InternalValueKind::RValue(basic_value))
             }
             BasicValueEnum::FloatValue(float_value) => {
                 let basic_value =
-                    BasicValueEnum::FloatValue(self.llvmbuilder.build_float_neg(float_value, "neg").unwrap());
+                    BasicValueEnum::FloatValue(self.llvm_builder.build_float_neg(float_value, "neg").unwrap());
 
                 InternalValue::new(rvalue.ty.clone(), InternalValueKind::RValue(basic_value))
             }
@@ -1461,7 +1461,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
             BasicValueEnum::IntValue(mut int_value) => {
                 int_value = self.int_value_as_bool_i1(int_value);
 
-                let basic_value = BasicValueEnum::IntValue(self.llvmbuilder.build_not(int_value, "neg").unwrap());
+                let basic_value = BasicValueEnum::IntValue(self.llvm_builder.build_not(int_value, "neg").unwrap());
 
                 InternalValue::new(rvalue.ty.clone(), InternalValueKind::RValue(basic_value))
             }
@@ -1484,8 +1484,8 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         let union_ptr = match operand.kind {
             InternalValueKind::LValue(ptr) => ptr,
             InternalValueKind::RValue(basic_val) => {
-                let alloca = self.llvmbuilder.build_alloca(union_type, "union.temp").unwrap();
-                self.llvmbuilder.build_store(alloca, basic_val).unwrap();
+                let alloca = self.llvm_builder.build_alloca(union_type, "union.temp").unwrap();
+                self.llvm_builder.build_store(alloca, basic_val).unwrap();
                 alloca
             }
             _ => unreachable!(),
@@ -1529,7 +1529,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         match operand.kind {
             InternalValueKind::LValue(ptr_value) => {
                 let field_ptr = self
-                    .llvmbuilder
+                    .llvm_builder
                     .build_struct_gep(llvm_struct_type, ptr_value, llvm_field_index, "field_gep")
                     .unwrap();
 
@@ -1538,14 +1538,14 @@ impl<'ll> CodeGenIRBuilder<'ll> {
             InternalValueKind::RValue(struct_val) => {
                 if struct_val.is_int_value() || struct_val.is_float_value() {
                     let alloca = self
-                        .llvmbuilder
+                        .llvm_builder
                         .build_alloca(llvm_struct_type, "struct_field.cast")
                         .unwrap();
 
-                    self.llvmbuilder.build_store(alloca, struct_val).unwrap();
+                    self.llvm_builder.build_store(alloca, struct_val).unwrap();
 
                     let field_ptr = self
-                        .llvmbuilder
+                        .llvm_builder
                         .build_struct_gep(llvm_struct_type, alloca, llvm_field_index, "field_gep")
                         .unwrap();
 
@@ -1554,7 +1554,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
                     let struct_value = struct_val.into_struct_value();
 
                     let field_value = self
-                        .llvmbuilder
+                        .llvm_builder
                         .build_extract_value(struct_value, llvm_field_index, "field_extract")
                         .unwrap();
 
@@ -1583,7 +1583,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         match operand_value.kind {
             InternalValueKind::LValue(addr) => {
                 let field_addr = self
-                    .llvmbuilder
+                    .llvm_builder
                     .build_struct_gep(struct_type, addr, field_index, "tuple_gep")
                     .unwrap();
 
@@ -1593,7 +1593,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
                 let struct_value = val.into_struct_value();
 
                 let field_val = self
-                    .llvmbuilder
+                    .llvm_builder
                     .build_extract_value(struct_value, field_index, "tuple_extract")
                     .unwrap();
 
@@ -1649,7 +1649,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         let tag_value = tag_type.const_int(enum_init_expr.tag as u64, false);
 
         enum_value = self
-            .llvmbuilder
+            .llvm_builder
             .build_insert_value(enum_value, tag_value, 0, "enum.set_tag")
             .unwrap()
             .into_struct_value();
@@ -1658,7 +1658,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
             CIREnumInitVariant::Unit => {
                 let zero_payload = payload_type.const_zero();
                 enum_value = self
-                    .llvmbuilder
+                    .llvm_builder
                     .build_insert_value(enum_value, zero_payload, 1, "enum.zero_payload")
                     .unwrap()
                     .into_struct_value();
@@ -1670,7 +1670,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
                 let copied_payload = self.intrinsic_copy_payload_to_buffer(rvalue.as_basic_value(), payload_type);
 
                 enum_value = self
-                    .llvmbuilder
+                    .llvm_builder
                     .build_insert_value(enum_value, copied_payload, 1, "enum.set_payload")
                     .unwrap()
                     .into_struct_value();
@@ -1696,12 +1696,12 @@ impl<'ll> CodeGenIRBuilder<'ll> {
 
                     let field_type = enum_struct_type.fields.get(i).unwrap();
 
-                    if !self.llvmbuilder.get_insert_block().is_none() {
+                    if !self.llvm_builder.get_insert_block().is_none() {
                         rvalue = self.emit_implicit_cast(field_type, rvalue);
                     }
 
                     payload_value = self
-                        .llvmbuilder
+                        .llvm_builder
                         .build_insert_value(payload_value, rvalue.as_basic_value(), i as u32, "payload.insert")
                         .unwrap()
                         .into_struct_value();
@@ -1711,7 +1711,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
                     self.intrinsic_copy_payload_to_buffer(payload_value.as_basic_value_enum(), payload_type);
 
                 enum_value = self
-                    .llvmbuilder
+                    .llvm_builder
                     .build_insert_value(enum_value, copied_payload, 1, "enum.set_payload")
                     .unwrap()
                     .into_struct_value();
@@ -1743,26 +1743,26 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         if llvm_union_type.is_struct_type() {
             // get pointer to storage field (largest field)
             let union_ptr = self
-                .llvmbuilder
+                .llvm_builder
                 .build_struct_gep(llvm_union_type.into_struct_type(), ptr, 0, "union.storage")
                 .unwrap();
 
             let field_ptr = self
-                .llvmbuilder
+                .llvm_builder
                 .build_bit_cast(union_ptr, ptr_type, "union.field.ptr")
                 .unwrap()
                 .into_pointer_value();
 
-            self.llvmbuilder.build_store(field_ptr, value).unwrap();
+            self.llvm_builder.build_store(field_ptr, value).unwrap();
         } else {
             // union represented as largest field type (directly, without struct type as wrapper)
             let field_ptr = self
-                .llvmbuilder
+                .llvm_builder
                 .build_bit_cast(ptr, ptr_type, "union.field.ptr")
                 .unwrap()
                 .into_pointer_value();
 
-            self.llvmbuilder.build_store(field_ptr, value).unwrap();
+            self.llvm_builder.build_store(field_ptr, value).unwrap();
         }
     }
 
@@ -1771,14 +1771,14 @@ impl<'ll> CodeGenIRBuilder<'ll> {
     }
 
     pub(crate) fn extract_enum_tag(&self, struct_value: StructValue<'ll>) -> IntValue<'ll> {
-        self.llvmbuilder
+        self.llvm_builder
             .build_extract_value(struct_value, 0, "extract")
             .unwrap()
             .into_int_value()
     }
 
     pub(crate) fn extract_enum_payload(&self, struct_value: StructValue<'ll>) -> ArrayValue<'ll> {
-        self.llvmbuilder
+        self.llvm_builder
             .build_extract_value(struct_value, 1, "extract")
             .unwrap()
             .into_array_value()
@@ -1820,9 +1820,9 @@ impl<'ll> CodeGenIRBuilder<'ll> {
             (exit_block, payload_block)
         };
 
-        let entry_block = self.blockreg.cur_block.unwrap();
+        let entry_block = self.block_reg.cur_block.unwrap();
 
-        self.llvmbuilder
+        self.llvm_builder
             .build_conditional_branch(tag_result.as_basic_value().into_int_value(), branch_true, branch_false)
             .unwrap();
 
@@ -1839,18 +1839,18 @@ impl<'ll> CodeGenIRBuilder<'ll> {
 
         // comparison result
         let payload_result = self
-            .llvmbuilder
+            .llvm_builder
             .build_int_compare(predicate, memcmp_result, zero_int, "compare.payload.is_zero")
             .unwrap();
 
         let payload_result_bool = self.int_value_as_bool_i1(payload_result);
 
-        self.llvmbuilder.build_unconditional_branch(exit_block).unwrap();
+        self.llvm_builder.build_unconditional_branch(exit_block).unwrap();
 
         self.emit_block(exit_block);
 
         let phi = self
-            .llvmbuilder
+            .llvm_builder
             .build_phi(self.llvm_ctx.bool_type(), "compare.enum")
             .unwrap();
 
@@ -1887,7 +1887,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
                     let field_original_index = field_offset.original_index().unwrap();
                     let target_type = cir_struct_type.fields.get(field_original_index).unwrap();
 
-                    if !self.llvmbuilder.get_insert_block().is_none() {
+                    if !self.llvm_builder.get_insert_block().is_none() {
                         rvalue = self.emit_implicit_cast(target_type, rvalue);
                     }
 
@@ -1944,7 +1944,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
 
                 values.iter().enumerate().for_each(|(index, (_, rvalue))| {
                     struct_value = self
-                        .llvmbuilder
+                        .llvm_builder
                         .build_insert_value(
                             struct_value,
                             rvalue.as_basic_value(),
@@ -1966,7 +1966,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         struct_type: StructType<'ll>,
         values: &Vec<((Option<usize>, InternalValue<'ll>), CIRType)>,
     ) -> StructValue<'ll> {
-        let struct_ptr = self.llvmbuilder.build_alloca(struct_type, "struct.init").unwrap();
+        let struct_ptr = self.llvm_builder.build_alloca(struct_type, "struct.init").unwrap();
 
         for ((original_index, field_value), field_cir_ty) in values {
             if original_index.is_none() {
@@ -1977,14 +1977,14 @@ impl<'ll> CodeGenIRBuilder<'ll> {
             let llvm_index = layout.lookup_field_index(original_index.unwrap()).unwrap();
 
             let field_ptr = self
-                .llvmbuilder
+                .llvm_builder
                 .build_struct_gep(struct_type, struct_ptr, llvm_index as u32, "struct.field")
                 .unwrap();
 
             self.emit_store(field_ptr, field_value.clone(), field_cir_ty.clone());
         }
 
-        self.llvmbuilder
+        self.llvm_builder
             .build_load(struct_type, struct_ptr, "struct.rvalue")
             .unwrap()
             .into_struct_value()
@@ -2036,13 +2036,13 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         };
 
         let data_ptr = self
-            .llvmbuilder
+            .llvm_builder
             .build_extract_value(dyn_value, 0, "dyn.data")
             .unwrap()
             .into_pointer_value();
 
         let vtable_ptr = self
-            .llvmbuilder
+            .llvm_builder
             .build_extract_value(dyn_value, 1, "dyn.vtable")
             .unwrap()
             .into_pointer_value();
@@ -2051,13 +2051,13 @@ impl<'ll> CodeGenIRBuilder<'ll> {
 
         let method_gep = unsafe {
             let idx = self.llvm_ctx.i64_type().const_int(method_idx as u64, false);
-            self.llvmbuilder
+            self.llvm_builder
                 .build_gep(ptr_type, vtable_ptr, &[idx], "vtable.method.gep")
                 .unwrap()
         };
 
         let fn_ptr = self
-            .llvmbuilder
+            .llvm_builder
             .build_load(ptr_type, method_gep, "vtable.method.load")
             .unwrap()
             .into_pointer_value();
@@ -2097,7 +2097,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         let llvm_func_type = self.emit_func_type(func_type.clone());
 
         let call_site = self
-            .llvmbuilder
+            .llvm_builder
             .build_indirect_call(llvm_func_type, fn_ptr, &llvm_args, "ifc.call")
             .unwrap();
 
@@ -2184,7 +2184,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
 
             // let llvm_struct_type = self.emit_struct_type(struct_type);
             let data_ptr = self
-                .llvmbuilder
+                .llvm_builder
                 .build_extract_value(AggregateValueEnum::StructValue(fat_ptr_struct_value), 0, "fat_ptr.data")
                 .unwrap();
 
@@ -2207,8 +2207,8 @@ impl<'ll> CodeGenIRBuilder<'ll> {
                     if value.is_rvalue() && !value.ty.is_pointer() {
                         let llvm_type: BasicTypeEnum<'ll> = self.emit_type(value.ty.clone()).try_into().unwrap();
 
-                        let temp = self.llvmbuilder.build_alloca(llvm_type, "temp.self").unwrap();
-                        self.llvmbuilder.build_store(temp, value.as_basic_value()).unwrap();
+                        let temp = self.llvm_builder.build_alloca(llvm_type, "temp.self").unwrap();
+                        self.llvm_builder.build_store(temp, value.as_basic_value()).unwrap();
 
                         let lvalue = InternalValue::new(value.ty, InternalValueKind::LValue(temp));
 
@@ -2269,7 +2269,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
                     self.cur_sret.unwrap()
                 } else {
                     // Normal case, allocate a new temporary
-                    self.llvmbuilder.build_alloca(sret_type, "sret").unwrap()
+                    self.llvm_builder.build_alloca(sret_type, "sret").unwrap()
                 }
             };
 
@@ -2280,7 +2280,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         self.emit_func_call_attributes(&abi_func_info, FuncCallKind::Direct(llvm_func_value));
 
         let call_site = self
-            .llvmbuilder
+            .llvm_builder
             .build_call(llvm_func_value, &llvm_args, "call")
             .unwrap();
 
@@ -2319,7 +2319,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         let fn_ptr = operand.as_basic_value().into_pointer_value();
 
         let call_site = self
-            .llvmbuilder
+            .llvm_builder
             .build_indirect_call(llvm_func_type, fn_ptr, &llvm_args, "indirect_call")
             .unwrap();
 
