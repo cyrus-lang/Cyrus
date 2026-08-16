@@ -10,7 +10,7 @@ use crate::{
     },
     optimizer::optimize_module_with_custom_passes,
 };
-use cyrusc_buildmanifest::BuildManifest;
+use cyrusc_build_manifest::BuildManifest;
 use cyrusc_compiler::{
     codegen_traits::{CodeGenBackend, SeparateModuleSupport, UnifiedModuleSupport},
     context::CodeGenContext,
