@@ -390,7 +390,11 @@ impl<'ll> CodeGenIRBuilder<'ll> {
                             .llvm_builder
                             .build_ptr_to_int(basic_value.into_pointer_value(), ptr_int, "ptr_to_int")
                             .unwrap();
-                        AnyValueEnum::IntValue(self.llvm_builder.build_int_truncate(tmp, int_type, "ptr_trunc").unwrap())
+                        AnyValueEnum::IntValue(
+                            self.llvm_builder
+                                .build_int_truncate(tmp, int_type, "ptr_trunc")
+                                .unwrap(),
+                        )
                     } else {
                         AnyValueEnum::IntValue(
                             self.llvm_builder
@@ -2339,12 +2343,18 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         }
     }
 
-    fn emit_literal(&self, lit: &CIRLiteral) -> InternalValue<'ll> {
+    fn emit_literal(&mut self, lit: &CIRLiteral) -> InternalValue<'ll> {
         let ty: BasicTypeEnum<'ll> = self.emit_type(lit.ty.clone()).try_into().unwrap();
 
         let basic_value = match &lit.kind {
+            CIRLiteralKind::Char(value) => {
+                BasicValueEnum::IntValue(self.llvm_ctx.i8_type().const_int(*value as u64, false))
+            }
             CIRLiteralKind::Bool(value) => {
                 BasicValueEnum::IntValue(self.llvm_ctx.bool_type().const_int(*value as u64, false))
+            }
+            CIRLiteralKind::Null => {
+                BasicValueEnum::PointerValue(self.llvm_ctx.ptr_type(AddressSpace::default()).const_null())
             }
             CIRLiteralKind::Integer(value, _) => {
                 let int_type = ty.into_int_type();
@@ -2360,15 +2370,9 @@ impl<'ll> CodeGenIRBuilder<'ll> {
 
                 BasicValueEnum::IntValue(int_type.const_int_arbitrary_precision(&words))
             }
-            CIRLiteralKind::Float(value) => BasicValueEnum::FloatValue(ty.into_float_type().const_float(*value)),
-            CIRLiteralKind::Char(value) => {
-                BasicValueEnum::IntValue(self.llvm_ctx.i8_type().const_int(*value as u64, false))
-            }
-            CIRLiteralKind::Null => {
-                BasicValueEnum::PointerValue(self.llvm_ctx.ptr_type(AddressSpace::default()).const_null())
-            }
             CIRLiteralKind::CString(value) => self.emit_cstring(value.clone()),
             CIRLiteralKind::ByteString(value) => self.emit_bytestring(value.clone()),
+            CIRLiteralKind::Float(value) => BasicValueEnum::FloatValue(ty.into_float_type().const_float(*value)),
         };
 
         InternalValue::new(lit.ty.clone(), InternalValueKind::RValue(basic_value))
@@ -2380,19 +2384,25 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         InternalValue::new(ty, InternalValueKind::RValue(basic_value))
     }
 
-    pub(crate) fn emit_cstring(&self, value: String) -> BasicValueEnum<'ll> {
+    pub(crate) fn emit_cstring(&mut self, value: String) -> BasicValueEnum<'ll> {
+        if let Some(global_value) = self.string_cache.get(&value) {
+            return global_value.as_pointer_value().into();
+        }
+
         let const_str = self.llvm_ctx.const_string(value.as_bytes(), true);
 
         let llvm_module = self.llvm_module.borrow();
-        let global_str = llvm_module.add_global(const_str.get_type(), None, ".cstring");
-        global_str.set_initializer(&const_str);
-        global_str.set_constant(true);
-        global_str.set_unnamed_addr(true);
-        global_str.set_linkage(inkwell::module::Linkage::Private);
-        global_str.set_alignment(1);
+        let global_value = llvm_module.add_global(const_str.get_type(), None, ".cstring");
+        global_value.set_initializer(&const_str);
+        global_value.set_constant(true);
+        global_value.set_unnamed_addr(true);
+        global_value.set_linkage(inkwell::module::Linkage::Private);
+        global_value.set_alignment(1);
         drop(llvm_module);
 
-        global_str.as_pointer_value().into()
+        self.string_cache.insert(value, global_value);
+
+        global_value.as_pointer_value().into()
     }
 
     fn emit_bytestring(&self, value: String) -> BasicValueEnum<'ll> {
