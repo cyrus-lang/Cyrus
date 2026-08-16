@@ -3,23 +3,23 @@
 import std::libc{printf};
 
 enum Error {
-    NotFound = struct { id: 1uint32, msg: "not found" },
+    NotFound = struct { id: 1uint32, mesg: "not found" },
 
     Custom {
         id: uint32,
-        msg: const uint8*
+        mesg: const uint8*
     }
 }
 
 pub fn main() {
-    const err = Error.Custom { id: 2, msg: "custom error message" };
+    const err = Error.Custom { id: 2, mesg: "custom error message" };
 
     switch (err) {
         case .NotFound => {
             printf("not found\n");
         }
-        case .Custom { id, msg } => {
-            printf("id: %d, %s\n", id, msg);
+        case .Custom { id, mesg } => {
+            printf("id: %d, %s\n", id, mesg);
         }
     }
 }

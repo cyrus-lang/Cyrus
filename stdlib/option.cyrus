@@ -12,17 +12,17 @@ pub enum Option<T> {
         }
     }
 
-    pub inline fn unwrap_or(self: const Self*, or_value: T) T {
+    pub inline fn unwrap_or(self: const Self*, default: T) T {
         switch (*self) {
             case .Some(value) => return value;
-            case .None => return or_value;
+            case .None => return default;
         }
     }
 
-    pub inline fn expect(self: const Self*, msg: const uint8*) T {
+    pub inline fn expect(self: const Self*, mesg: const uint8*) T {
         switch (*self) {
             case .Some(value) => return value;
-            case .None => @panic(msg);
+            case .None => @panic(mesg);
         }
     }
     

@@ -107,7 +107,7 @@ pub struct SubDiag {
     }
 }
 
-pub fn exit_with_compile_error(msg: const uint8*) {
-    fprintf(stderr, "error: %s\n", msg);
+pub fn exit_with_compile_error(mesg: const uint8*) {
+    fprintf(stderr, "error: %s\n", mesg);
     exit(.Failure);
 }

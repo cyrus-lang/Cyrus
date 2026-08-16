@@ -20,11 +20,11 @@ pub fn main() {
 
     switch (ok) {
         case .Ok(val) => printf("%d ", val);
-        case .Err(msg) => printf("err: %s", msg);
+        case .Err(mesg) => printf("err: %s", mesg);
     }
 
     switch (err) {
         case .Ok(val) => printf("%d", val);
-        case .Err(msg) => printf("error: %s\n", msg);
+        case .Err(mesg) => printf("error: %s\n", mesg);
     }
 }
