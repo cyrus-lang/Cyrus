@@ -574,7 +574,7 @@ impl<'a> AnalysisContext<'a> {
 
             SemaType::Pointer(inner) => SemaType::Pointer(Box::new(self.expand_sema_type(*inner.clone(), loc))),
 
-            SemaType::Const(inner) => SemaType::Const(Box::new(self.expand_sema_type(*inner.clone(), loc))),
+            SemaType::Const(inner) => self.expand_sema_type(*inner.clone(), loc).as_const(),
 
             SemaType::Array(array) => SemaType::Array(TypedArrayType {
                 element_type: Box::new(self.expand_sema_type(*array.element_type.clone(), loc)),

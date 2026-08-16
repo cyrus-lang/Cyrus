@@ -204,19 +204,13 @@ pub struct Vec<T> {
         return false;
     }
 
-    // FIXME: This must be `self: Self*`
-    // But compiler catches an error mistakenly:
-    // Redundant 'const' qualifier on an already-const type.
-    pub fn last(self: Self*) Option<T> {
+    pub fn last(self: const Self*) Option<T> {
         if (self->len() < 1) {
             return .None;
         }
         return self->get(self->len() - 1);
     }
 
-    // FIXME: This must be `self: Self*`
-    // But compiler catches an error mistakenly:
-    // Redundant 'const' qualifier on an already-const type.
     pub fn last_ref(self: Self*) Option<T*> {
         if (self->len() < 1) {
             return .None;

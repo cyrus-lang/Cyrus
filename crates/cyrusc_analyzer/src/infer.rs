@@ -66,7 +66,7 @@ impl InferCtx {
                 capacity: array.capacity.clone(),
                 loc: array.loc,
             }),
-            SemaType::Const(inner) => SemaType::Const(Box::new(self.resolve(inner))),
+            SemaType::Const(inner) => self.resolve(inner).as_const(),
             SemaType::Pointer(inner) => SemaType::Pointer(Box::new(self.resolve(inner))),
             SemaType::FuncType(func) => {
                 let resolved_params = func.params.list.iter().map(|p| self.resolve(p)).collect();
