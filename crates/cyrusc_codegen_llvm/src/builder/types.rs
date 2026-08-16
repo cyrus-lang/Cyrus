@@ -429,10 +429,6 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         }
 
         let struct_type = self.tctx.get_struct(type_id);
-        let name = format!("{}.{}", struct_type.name.as_deref().unwrap_or(".anon"), type_id);
-        let llvm_struct_type = self.llvm_ctx.opaque_struct_type(&name);
-        self.type_cache.insert_struct(type_id, llvm_struct_type);
-
         let layout = self.tctx.get_or_compute_layout(type_id);
         let is_packed = struct_type.is_packed();
 
@@ -460,7 +456,9 @@ impl<'ll> CodeGenIRBuilder<'ll> {
             "mismatch between layout fields and struct fields"
         );
 
-        llvm_struct_type.set_body(&llvm_field_types, is_packed);
+        let llvm_struct_type = self.llvm_ctx.struct_type(&llvm_field_types, is_packed);
+        self.type_cache.insert_struct(type_id, llvm_struct_type);
+
         llvm_struct_type
     }
 
@@ -472,22 +470,21 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         let enum_type = self.tctx.get_enum(type_id);
 
         if enum_type.is_scalar_optimizable() {
-            // c-compatible enum
             let llvm_basic_type = self.emit_repr_c_enum_ty(&enum_type);
             self.type_cache.insert_enum(type_id, llvm_basic_type);
             return llvm_basic_type;
         } else {
-            // cyrus special enum
-            let name = format!("{}.{}", enum_type.name.as_deref().unwrap_or(".anon"), type_id);
-            let llvm_struct_type = self.llvm_ctx.opaque_struct_type(&name);
-            self.type_cache
-                .insert_enum(type_id, llvm_struct_type.as_basic_type_enum());
-
             let cir_tag_type = enum_type.tag_type_or_infer_or_default();
             let tag_type: BasicTypeEnum<'ll> = self.emit_type(*cir_tag_type.clone()).try_into().unwrap();
             let (payload_type, _) = self.emit_enum_buffer_payload_type(&enum_type);
 
-            llvm_struct_type.set_body(&[tag_type.as_basic_type_enum(), payload_type.into()], false);
+            let llvm_struct_type = self
+                .llvm_ctx
+                .struct_type(&[tag_type.as_basic_type_enum(), payload_type.into()], false);
+
+            self.type_cache
+                .insert_enum(type_id, llvm_struct_type.as_basic_type_enum());
+
             llvm_struct_type.as_basic_type_enum()
         }
     }
@@ -498,10 +495,6 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         }
 
         let union_type = self.tctx.get_union(type_id);
-        let name = format!("{}.{}", union_type.name.as_deref().unwrap_or(".anon"), type_id);
-        let llvm_struct = self.llvm_ctx.opaque_struct_type(&name);
-        self.type_cache.insert_union(type_id, llvm_struct);
-
         let layout = self.tctx.get_or_compute_layout(type_id);
         let target_data = self.llvmtm.get_target_data();
 
@@ -521,18 +514,22 @@ impl<'ll> CodeGenIRBuilder<'ll> {
             }
         }
 
-        if max_size < layout.size as u64 {
-            let mut fields = vec![ty.unwrap()];
-            fields.push(
-                self.llvm_ctx
-                    .i8_type()
-                    .array_type((layout.size as u64 - max_size) as u32)
-                    .into(),
-            );
-            llvm_struct.set_body(&fields, false);
-        } else {
-            llvm_struct.set_body(&[ty.unwrap()], false);
-        }
+        let llvm_struct = {
+            if max_size < layout.size as u64 {
+                let mut fields = vec![ty.unwrap()];
+                fields.push(
+                    self.llvm_ctx
+                        .i8_type()
+                        .array_type((layout.size as u64 - max_size) as u32)
+                        .into(),
+                );
+                self.llvm_ctx.struct_type(&fields, false)
+            } else {
+                self.llvm_ctx.struct_type(&[ty.unwrap()], false)
+            }
+        };
+
+        self.type_cache.insert_union(type_id, llvm_struct);
 
         llvm_struct.as_basic_type_enum()
     }
