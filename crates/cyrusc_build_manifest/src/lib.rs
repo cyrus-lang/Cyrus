@@ -152,11 +152,6 @@ impl BuildManifest {
     }
 
     #[inline]
-    pub fn initial_build(&mut self) {
-        self.initial_build = true;
-    }
-
-    #[inline]
     pub fn get_object<P: AsRef<Path>>(&self, object_name: P) -> Option<&PathBuf> {
         self.objects.get_key_value(object_name.as_ref()).map(|(_, path)| path)
     }

@@ -294,7 +294,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "cyrusc_buildmanifest"
+name = "cyrusc_build_manifest"
 version = "0.1.0"
 dependencies = [
  "blake3",
@@ -342,7 +342,7 @@ dependencies = [
  "cyrusc_analyzer",
  "cyrusc_asan_wrapper",
  "cyrusc_ast",
- "cyrusc_buildmanifest",
+ "cyrusc_build_manifest",
  "cyrusc_compiler",
  "cyrusc_diagcentral",
  "cyrusc_fs_utils",
@@ -362,7 +362,7 @@ version = "0.1.0"
 dependencies = [
  "cyrusc_analyzer",
  "cyrusc_ast",
- "cyrusc_buildmanifest",
+ "cyrusc_build_manifest",
  "cyrusc_cir_lower",
  "cyrusc_diagcentral",
  "cyrusc_fs_utils",

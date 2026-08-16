@@ -1,5 +1,5 @@
 [package]
-name = "cyrusc_buildmanifest"
+name = "cyrusc_build_manifest"
 version = "0.1.0"
 edition = "2024"
 

@@ -8,7 +8,7 @@ use crate::{
     options::canonical_project_name,
     target_machine_info::TargetMachineInfo,
 };
-use cyrusc_buildmanifest::BuildManifest;
+use cyrusc_build_manifest::BuildManifest;
 use cyrusc_diagcentral::exit_with_msg;
 use cyrusc_internal::{
     abi::target::ABITarget,
