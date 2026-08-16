@@ -936,6 +936,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         match (lhs_rvalue.as_basic_value(), rhs_rvalue.as_basic_value()) {
             (BasicValueEnum::IntValue(lhs), BasicValueEnum::IntValue(rhs)) => {
                 let shift_value = self.llvm_builder.build_left_shift(lhs, rhs, "lshift").unwrap();
+                
                 InternalValue::new(
                     CIRType::Plain(PlainType::Bool),
                     InternalValueKind::RValue(shift_value.into()),
@@ -1770,10 +1771,12 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         }
     }
 
+    #[inline]
     fn emit_union_init_value(&mut self, union_init_expr: &CIRUnionInitExpr) -> InternalValue<'ll> {
         self.emit_expr(&union_init_expr.expr, &None)
     }
 
+    #[inline]
     pub(crate) fn extract_enum_tag(&self, struct_value: StructValue<'ll>) -> IntValue<'ll> {
         self.llvm_builder
             .build_extract_value(struct_value, 0, "extract")
@@ -1781,6 +1784,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
             .into_int_value()
     }
 
+    #[inline]
     pub(crate) fn extract_enum_payload(&self, struct_value: StructValue<'ll>) -> ArrayValue<'ll> {
         self.llvm_builder
             .build_extract_value(struct_value, 1, "extract")
@@ -2410,6 +2414,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
     }
 }
 
+#[inline]
 fn must_init_via_memcpy(fields: &Vec<CIRType>) -> bool {
     fields.iter().any(|ty| ty.is_union())
 }
