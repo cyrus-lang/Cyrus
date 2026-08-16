@@ -166,6 +166,10 @@ impl<'ll> CodeGenIRBuilder<'ll> {
                 let enum_type = self.tctx.get_enum(*type_id);
                 let layout = self.tctx.get_or_compute_layout(*type_id);
 
+                let cir_tag_type = enum_type.tag_type_or_infer_or_default();
+                let tag_layout = self.tctx.layout_of(&cir_tag_type);
+                let (_, enum_payload_size) = self.emit_enum_buffer_payload_type(&enum_type);
+
                 let size_bits = layout.size * 8;
                 let align_bits = layout.align * 8;
 
@@ -196,37 +200,14 @@ impl<'ll> CodeGenIRBuilder<'ll> {
                         )
                     }
                 } else {
-                    let variants: Vec<(String, i64, LLVMMetadataRef)> = enum_type
-                        .variants
-                        .iter()
-                        .map(|variant| {
-                            let ident = variant.ident();
-
-                            match variant {
-                                CIREnumVariant::Unit(_, tag) => {
-                                    (ident.clone(), *tag as i64, std::ptr::null_mut() as LLVMMetadataRef)
-                                }
-                                CIREnumVariant::Valued(_, _, tag) => {
-                                    (ident.clone(), *tag as i64, std::ptr::null_mut() as LLVMMetadataRef)
-                                }
-                                CIREnumVariant::Payload(_, struct_type, tag) => {
-                                    let type_id = self.tctx.insert_struct(struct_type.clone());
-
-                                    let tuple_meta = self.emit_debug_type_metadata(&CIRType::Struct(type_id));
-
-                                    (ident.clone(), *tag as i64, tuple_meta)
-                                }
-                            }
-                        })
-                        .collect();
-
                     let meta = unsafe {
                         debug_enum_type(
                             self.dctx.as_ref().unwrap(),
                             &enum_name,
                             enum_type.loc.line as u32,
                             tag_meta,
-                            &variants,
+                            tag_layout.size,
+                            enum_payload_size,
                             size_bits as u64,
                             align_bits,
                         )

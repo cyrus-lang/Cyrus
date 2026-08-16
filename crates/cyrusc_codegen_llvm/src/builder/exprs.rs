@@ -1639,10 +1639,10 @@ impl<'ll> CodeGenIRBuilder<'ll> {
             return self.emit_repr_c_enum_init(enum_init_expr, &enum_type);
         }
 
-        let enum_struct_ty = self.emit_enum_type(type_id).into_struct_type();
+        let enum_struct_type = self.emit_enum_type(type_id).into_struct_type();
         let (payload_type, _) = self.emit_enum_buffer_payload_type(&enum_type);
 
-        let mut enum_value = enum_struct_ty.get_undef();
+        let mut enum_value = enum_struct_type.get_undef();
 
         let cir_tag_type = enum_type.tag_type_or_infer_or_default();
         let tag_type = self.emit_type(*cir_tag_type.clone()).into_int_type();
@@ -1687,7 +1687,18 @@ impl<'ll> CodeGenIRBuilder<'ll> {
 
                 for (i, field_expr) in field_exprs.iter().enumerate() {
                     let lvalue = self.emit_expr(&field_expr, &None);
-                    let rvalue = self.load_rvalue(lvalue);
+                    let mut rvalue = self.load_rvalue(lvalue);
+
+                    let enum_struct_type = match enum_type.lookup_variant(&enum_init_expr.ident).unwrap() {
+                        CIREnumVariant::Payload(_, struct_type, _) => struct_type,
+                        _ => unreachable!(),
+                    };
+
+                    let field_type = enum_struct_type.fields.get(i).unwrap();
+
+                    if !self.llvmbuilder.get_insert_block().is_none() {
+                        rvalue = self.emit_implicit_cast(field_type, rvalue);
+                    }
 
                     payload_value = self
                         .llvmbuilder

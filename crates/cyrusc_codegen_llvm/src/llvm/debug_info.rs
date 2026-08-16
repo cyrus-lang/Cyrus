@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 The Cyrus Language
 
-use crate::llvm::dwarf::{DW_TAG_CONST_TYPE, DWARF_PRODUCER_NAME};
+use crate::llvm::dwarf::{DW_ATE_UNSIGNED, DW_TAG_CONST_TYPE, DWARF_PRODUCER_NAME};
 use fx_hash::{FxHashMap, FxHashMapExt};
 use inkwell::{
     builder::Builder,
@@ -245,64 +245,45 @@ pub unsafe fn debug_enum_type(
     name: &str,
     line: u32,
     tag_type: LLVMMetadataRef,
-    variants: &[(String, i64, LLVMMetadataRef)],
+    tag_size: u32,
+    enum_payload_size: u64,
     size_bits: u64,
     align_bits: u32,
 ) -> LLVMMetadataRef {
     let scope = debug_current_scope(dctx);
 
-    // payload union
-
-    let union_name = format!("{}$payload", name);
-    let union_name_cstr = CString::new(union_name.clone()).unwrap();
-
-    let mut union_fields: Vec<LLVMMetadataRef> = Vec::new();
-
-    for (variant_name, _, payload_ty) in variants {
-        let cname = CString::new(variant_name.as_str()).unwrap();
-
-        let member = unsafe {
-            LLVMDIBuilderCreateMemberType(
+    let payload_buffer_ty = if enum_payload_size > 0 {
+        let byte_type = unsafe {
+            LLVMDIBuilderCreateBasicType(
                 dctx.builder,
-                scope,
-                cname.as_ptr(),
-                variant_name.len(),
-                dctx.file.metadata,
-                line,
-                0,
-                0,
-                0,
+                CString::new("unsigned char").unwrap().as_ptr(),
+                13,
+                enum_payload_size * 8,
+                DW_ATE_UNSIGNED as u32,
                 LLVMDIFlagZero,
-                *payload_ty,
             )
         };
 
-        union_fields.push(member);
-    }
+        let sub_range = unsafe { LLVMDIBuilderGetOrCreateSubrange(dctx.builder, 0, enum_payload_size as i64) };
+        let mut ranges = vec![sub_range];
 
-    let payload_union = unsafe {
-        LLVMDIBuilderCreateUnionType(
-            dctx.builder,
-            scope,
-            union_name_cstr.as_ptr(),
-            union_name.len(),
-            dctx.file.metadata,
-            line,
-            size_bits,
-            align_bits,
-            LLVMDIFlagZero,
-            union_fields.as_mut_ptr(),
-            union_fields.len() as u32,
-            0,
-            union_name_cstr.as_ptr(),
-            union_name.len(),
-        )
+        unsafe {
+            LLVMDIBuilderCreateArrayType(
+                dctx.builder,
+                enum_payload_size * 8,
+                align_bits,
+                byte_type,
+                ranges.as_mut_ptr(),
+                ranges.len() as u32,
+            )
+        }
+    } else {
+        unreachable!()
     };
 
     // tag field
 
     let tag_name = CString::new("tag").unwrap();
-
     let tag_member = unsafe {
         LLVMDIBuilderCreateMemberType(
             dctx.builder,
@@ -311,18 +292,15 @@ pub unsafe fn debug_enum_type(
             3,
             dctx.file.metadata,
             line,
-            8,
-            8,
+            tag_size as u64,
+            tag_size,
             0,
             LLVMDIFlagZero,
             tag_type,
         )
     };
 
-    // payload field
-
     let payload_name = CString::new("payload").unwrap();
-
     let payload_member = unsafe {
         LLVMDIBuilderCreateMemberType(
             dctx.builder,
@@ -331,17 +309,15 @@ pub unsafe fn debug_enum_type(
             7,
             dctx.file.metadata,
             line,
-            size_bits - 8,
-            align_bits,
-            8,
+            enum_payload_size,
+            enum_payload_size as u32,
+            tag_size as u64,
             LLVMDIFlagZero,
-            payload_union,
+            payload_buffer_ty,
         )
     };
 
     let mut members = vec![tag_member, payload_member];
-
-    // final struct
 
     let cname = CString::new(name).unwrap();
 
@@ -359,7 +335,7 @@ pub unsafe fn debug_enum_type(
             std::ptr::null_mut(),
             members.as_mut_ptr(),
             members.len() as u32,
-            0,
+            dctx.runtime_version,
             std::ptr::null_mut(),
             cname.as_ptr(),
             name.len(),
