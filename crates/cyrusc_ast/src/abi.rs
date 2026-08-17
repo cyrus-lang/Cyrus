@@ -6,8 +6,8 @@ use std::collections::HashSet;
 
 macro_rules! define_call_convs {
     ($( $variant:ident => $str:expr ),* $(,)?) => {
-        #[derive(Debug, Clone, PartialEq, Eq)]
-        pub enum CallConv {
+        #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+        pub enum Callconv {
             $( $variant ),*
         }
 
@@ -22,29 +22,29 @@ macro_rules! define_call_convs {
 
         impl std::error::Error for ParseCallConvError {}
 
-        impl std::convert::TryFrom<String> for CallConv {
+        impl std::convert::TryFrom<String> for Callconv {
             type Error = ParseCallConvError;
 
             fn try_from(value: String) -> Result<Self, Self::Error> {
-                CallConv::try_from(value.as_str())
+                Callconv::try_from(value.as_str())
             }
         }
 
-        impl std::convert::TryFrom<&str> for CallConv {
+        impl std::convert::TryFrom<&str> for Callconv {
             type Error = ParseCallConvError;
 
             fn try_from(value: &str) -> Result<Self, Self::Error> {
                 match value.to_lowercase().as_str() {
-                    $( $str => Ok(CallConv::$variant), )*
+                    $( $str => Ok(Callconv::$variant), )*
                     other => Err(ParseCallConvError(other.to_string())),
                 }
             }
         }
 
-        impl std::fmt::Display for CallConv {
+        impl std::fmt::Display for Callconv {
             fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
                 match self {
-                    $( CallConv::$variant => write!(f, "{}", $str), )*
+                    $( Callconv::$variant => $str.fmt(f), )*
                 }
             }
         }
@@ -142,14 +142,14 @@ pub fn validate_flags(flags: &[OptionalFlag]) -> Result<Vec<OptionalFlag>, Strin
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Inlining {
-    Inline,
-    NoInline,
-    AlwaysInline,
+    Hint,
+    Never,
+    Always,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Linkage {
-    Extern(Option<CallConv>),
+    Extern(Callconv),
     Weak,
     LinkOnce,
 }
@@ -176,7 +176,7 @@ pub struct ReprAttr {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Visibility {
+pub enum VisibilityModifier {
     Public,
     Private,
 }
@@ -186,7 +186,7 @@ pub enum Prologue {
     Naked,
 }
 
-impl Default for CallConv {
+impl Default for Callconv {
     fn default() -> Self {
         Self::System
     }
@@ -250,19 +250,19 @@ impl ReprAttr {
     }
 }
 
-impl Default for Visibility {
+impl Default for VisibilityModifier {
     fn default() -> Self {
-        Visibility::Private
+        VisibilityModifier::Private
     }
 }
 
-impl Visibility {
+impl VisibilityModifier {
     pub fn is_private(&self) -> bool {
-        *self == Visibility::Private
+        *self == VisibilityModifier::Private
     }
 
     pub fn is_public(&self) -> bool {
-        *self == Visibility::Public
+        *self == VisibilityModifier::Public
     }
 }
 
@@ -281,11 +281,11 @@ impl Linkage {
     }
 }
 
-impl fmt::Display for Visibility {
+impl fmt::Display for VisibilityModifier {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Visibility::Public => write!(f, "pub"),
-            Visibility::Private => write!(f, ""),
+            VisibilityModifier::Public => write!(f, "pub"),
+            VisibilityModifier::Private => write!(f, ""),
         }
     }
 }

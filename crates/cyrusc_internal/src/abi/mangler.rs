@@ -2,7 +2,7 @@
 // Copyright (c) 2026 The Cyrus Language
 
 use cyrusc_ast::{
-    abi::{CallConv, Linkage},
+    abi::{Callconv, Linkage},
     modifiers::{FuncModifiers, GlobalVarModifiers},
 };
 use cyrusc_typed_ast::{
@@ -266,22 +266,17 @@ pub fn mangle_method(module_name: &str, id: &str, name: &str) -> String {
 
 pub fn abi_mangler_from_linkage(linkage: &Linkage) -> &'static dyn ABINameMangler {
     match linkage {
-        Linkage::Extern(call_conv_opt) => match call_conv_opt {
-            Some(call_conv) => match call_conv {
-                CallConv::C
-                | CallConv::Stdcall
-                | CallConv::Fastcall
-                | CallConv::Thiscall
-                | CallConv::Vectorcall
-                | CallConv::SysV64
-                | CallConv::Win64
-                | CallConv::System => &*C_ABI,
+        Linkage::Extern(callconv) => match callconv {
+            Callconv::C
+            | Callconv::Stdcall
+            | Callconv::Fastcall
+            | Callconv::Thiscall
+            | Callconv::Vectorcall
+            | Callconv::SysV64
+            | Callconv::Win64
+            | Callconv::System => &*C_ABI,
 
-                CallConv::Naked | CallConv::Interrupt | CallConv::Fast | CallConv::Cold | CallConv::Aapcs => {
-                    &*CYRUS_ABI
-                }
-            },
-            None => &*C_ABI,
+            Callconv::Naked | Callconv::Interrupt | Callconv::Fast | Callconv::Cold | Callconv::Aapcs => &*CYRUS_ABI,
         },
         Linkage::Weak => &*CYRUS_ABI,
         Linkage::LinkOnce => &*CYRUS_ABI,

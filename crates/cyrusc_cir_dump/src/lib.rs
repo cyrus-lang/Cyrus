@@ -483,13 +483,11 @@ impl<'a> CIRPrinter<'a> {
             }
             CIRExprKind::Lambda(lambda) => {
                 let params = self.print_params(&lambda.params);
-                let ret = self.print_type(&lambda.ret);
+                let ret_type = self.print_type(&lambda.ret);
                 let id = lambda.irv_id.0;
 
-                let inline_flag = if lambda.inline { " inline" } else { "" };
-
                 // header
-                let mut out = format!("lambda%{}{} ({}) {} {{", id, inline_flag, params, ret);
+                let mut out = format!("lambda%{} ({}) {} {{", id, params, ret_type);
 
                 // body
                 let saved_len = self.out.len();

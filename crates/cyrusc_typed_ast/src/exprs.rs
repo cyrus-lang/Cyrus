@@ -121,7 +121,6 @@ pub struct TypedLambdaExpr {
     pub params: TypedFuncParams,
     pub body: Box<TypedBlockStmt>,
     pub ret_type: SemaType,
-    pub inline: bool,
     pub loc: Loc,
 }
 

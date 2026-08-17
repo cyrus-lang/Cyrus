@@ -2,7 +2,7 @@
 // Copyright (c) 2026 The Cyrus Language
 
 use crate::{context::AnalysisContext, diagnostics::AnalyzerDiagKind};
-use cyrusc_ast::abi::Visibility;
+use cyrusc_ast::abi::VisibilityModifier;
 use cyrusc_diagcentral::{Diag, DiagLevel};
 use cyrusc_source_loc::Loc;
 use cyrusc_typed_ast::{
@@ -102,7 +102,7 @@ impl<'a> AnalysisContext<'a> {
             };
 
             // unions never involved with visibility violation
-            let vis = Visibility::Public;
+            let vis = VisibilityModifier::Public;
 
             self.validate_field_access(
                 &operand_type,
@@ -141,7 +141,7 @@ impl<'a> AnalysisContext<'a> {
         operand_type: &SemaType,
         field_name: &str,
         object_name: &str,
-        field_vis: Visibility,
+        field_vis: VisibilityModifier,
         method_decls: &MethodDecls,
         is_thin_arrow: bool,
         loc: Loc,

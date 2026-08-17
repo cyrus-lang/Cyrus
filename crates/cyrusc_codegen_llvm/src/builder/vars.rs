@@ -1,12 +1,12 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 The Cyrus Language
 
-use cyrusc_ast::{abi::Linkage, modifiers::GlobalVarModifiers};
 use cyrusc_internal::{
     abi::layout::ABITypeLayout,
     cir::cir::{CIRGlobalVarStmt, CIRVarStmt, IRValueID},
 };
 use inkwell::{
+    module::Linkage,
     types::BasicTypeEnum,
     values::{AsValueRef, GlobalValue, PointerValue},
 };
@@ -76,19 +76,16 @@ impl<'ll> CodeGenIRBuilder<'ll> {
             }
         }
 
-        let mut global_decl = self
+        let global_decl = self
             .cir_module
             .global_var_decls
             .get(&irv_id)
             .cloned()
             .expect("Missing CIR global declaration");
 
-        global_decl.modifiers = GlobalVarModifiers {
-            linkage: Some(Linkage::Extern(None)),
-            ..global_decl.modifiers
-        };
-
         let llvm_global = self.emit_global_var(&global_decl);
+
+        llvm_global.set_linkage(Linkage::External);
 
         InternalValue::new(
             global_decl.ty.clone(),

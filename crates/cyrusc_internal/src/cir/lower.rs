@@ -9,7 +9,7 @@ use crate::{
         types::{CIRArrayType, CIREnumType, CIRFuncType, CIRStructType, CIRType, CIRUnionType},
     },
 };
-use cyrusc_ast::abi::CallConv;
+use cyrusc_ast::abi::Callconv;
 use cyrusc_typed_ast::{
     decls::{EnumDecl, EnumDeclID, StructDecl, StructDeclID, UnionDecl, UnionDeclID, table::DeclTablesRegistry},
     stmts::{TypedEnumVariant, TypedFuncTypeParams, TypedTypeArgs},
@@ -536,7 +536,7 @@ pub fn lower_func_type(
         params,
         ret_type,
         is_var: func_type.params.variadic.is_some(),
-        callconv: CallConv::default(),
+        callconv: Callconv::default(),
         abi_func_info: None,
     };
 

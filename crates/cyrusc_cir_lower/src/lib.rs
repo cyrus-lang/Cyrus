@@ -2,7 +2,7 @@
 // Copyright (c) 2026 The Cyrus Language
 
 use cyrusc_ast::Mutability;
-use cyrusc_ast::abi::CallConv;
+use cyrusc_ast::abi::Callconv;
 use cyrusc_ast::modifiers::GlobalVarModifiers;
 use cyrusc_ast::operators::InfixOperator;
 use cyrusc_internal::abi::mangler::*;
@@ -1459,7 +1459,7 @@ impl<'a> CIRLower<'a> {
             params: params.list.iter().map(|param| param.ty.clone()).collect(),
             is_var: params.is_var,
             ret_type: Box::new(ret_type.clone()),
-            callconv: CallConv::default(),
+            callconv: Callconv::default(),
             abi_func_info: None,
         };
 
@@ -1470,7 +1470,6 @@ impl<'a> CIRLower<'a> {
         CIRExprKind::Lambda(CIRLambda {
             irv_id,
             params,
-            inline: lambda.inline,
             ret: ret_type,
             body,
             abi_func_info,

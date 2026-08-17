@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 The Cyrus Language
 
-use cyrusc_ast::abi::Visibility;
+use cyrusc_ast::abi::VisibilityModifier;
 use cyrusc_diagcentral::reporter::DiagReporter;
 use cyrusc_internal::compiler_options::CompilerOptions;
 use cyrusc_internal::generic_scope::GenericScope;
@@ -462,7 +462,7 @@ impl GlobalSymbolRegistry {
         parent_scope_id: SymbolID,
         name: &str,
         loc: Loc,
-        vis_opt: Option<Visibility>,
+        vis_opt: Option<VisibilityModifier>,
     ) -> SymbolID {
         let namespace_symbol = self.insert_symbol_entry(SymbolEntry::new(
             SymbolEntryKind::Namespace(Namespace {

@@ -109,7 +109,6 @@ impl fmt::Display for LiteralKind {
                 }
                 write!(f, "")
             }
-            LiteralKind::Bool(bool) => write!(f, "{}", bool),
             LiteralKind::String(string_type, prefix) => {
                 if let Some(prefix) = prefix {
                     match prefix {
@@ -125,7 +124,8 @@ impl fmt::Display for LiteralKind {
                 }
                 write!(f, "")
             }
-            LiteralKind::Char(ch) => write!(f, "{}", ch),
+            LiteralKind::Bool(v) => write!(f, "{}", v),
+            LiteralKind::Char(v) => write!(f, "{}", v),
             LiteralKind::Null => write!(f, "null"),
         }
     }

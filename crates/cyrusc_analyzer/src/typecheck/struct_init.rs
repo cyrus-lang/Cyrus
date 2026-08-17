@@ -2,7 +2,7 @@
 // Copyright (c) 2026 The Cyrus Language
 
 use crate::{context::AnalysisContext, diagnostics::AnalyzerDiagKind};
-use cyrusc_ast::{abi::Visibility, modifiers::StructModifiers};
+use cyrusc_ast::{abi::VisibilityModifier, modifiers::StructModifiers};
 use cyrusc_diagcentral::{Diag, DiagLevel};
 use cyrusc_typed_ast::{
     decls::{MethodDecls, StructDecl, StructDeclID},
@@ -191,7 +191,7 @@ impl<'a> AnalysisContext<'a> {
             .map(|field| TypedStructField {
                 name: field.name.clone(),
                 ty: SemaType::Placeholder,
-                vis: Visibility::Public,
+                vis: VisibilityModifier::Public,
                 loc: field.loc,
             })
             .collect();
@@ -203,7 +203,7 @@ impl<'a> AnalysisContext<'a> {
             methods: MethodDecls::new(),
             generic_params: TypedGenericParams::new(),
             modifiers: StructModifiers {
-                vis: Visibility::Public,
+                vis: VisibilityModifier::Public,
                 repr_attr: struct_value.repr_attr.clone(),
             },
             align: struct_value.align,
