@@ -13,7 +13,7 @@ use crate::{
     },
     is_integer_type,
 };
-use cyrusc_ast::abi::CallConv;
+use cyrusc_ast::abi::Callconv;
 use cyrusc_source_loc::{FileID, Loc};
 use cyrusc_typed_ast::types::PlainType;
 use std::sync::Arc;
@@ -697,48 +697,48 @@ impl TargetABI for X86_64 {
     fn classify_func(&self, fn_ty: &CIRFuncType) -> Result<ABIFunctionInfo, String> {
         match fn_ty.callconv {
             // SysV64, explicit System V AMD64 ABI
-            CallConv::SysV64 => Ok(self.classify_func_sysv(fn_ty)),
+            Callconv::SysV64 => Ok(self.classify_func_sysv(fn_ty)),
 
             // C default convention, platform dependent
-            CallConv::System | CallConv::C => match self.info.os {
+            Callconv::System | Callconv::C => match self.info.os {
                 ABITargetOS::Linux | ABITargetOS::MacOS => Ok(self.classify_func_sysv(fn_ty)),
                 ABITargetOS::Windows => unimplemented!("Windows ABI not implemented yet."),
                 ABITargetOS::Unknown => unreachable!(),
             },
 
             // Win64, explicit Windows x64 ABI
-            CallConv::Win64 => unimplemented!("Windows ABI not implemented yet."),
+            Callconv::Win64 => unimplemented!("Windows ABI not implemented yet."),
 
             // Naked, no prologue/epilogue, just bare function
-            CallConv::Naked => Ok(self.classify_func_naked(fn_ty)),
+            Callconv::Naked => Ok(self.classify_func_naked(fn_ty)),
 
             // Interrupt handler
-            CallConv::Interrupt => Err("Interrupt calling convention not supported yet.".to_string()),
+            Callconv::Interrupt => Err("Interrupt calling convention not supported yet.".to_string()),
 
             // Fast optimization hint, same as C convention
-            CallConv::Fast => match self.info.os {
+            Callconv::Fast => match self.info.os {
                 ABITargetOS::Linux | ABITargetOS::MacOS => Ok(self.classify_func_sysv(fn_ty)),
                 ABITargetOS::Windows => unimplemented!("Windows ABI not implemented yet."),
                 _ => unreachable!(),
             },
 
             // Cold optimization hint, same as C convention
-            CallConv::Cold => match self.info.os {
+            Callconv::Cold => match self.info.os {
                 ABITargetOS::Linux | ABITargetOS::MacOS => Ok(self.classify_func_sysv(fn_ty)),
                 ABITargetOS::Windows => unimplemented!("Windows ABI not implemented yet."),
                 _ => unreachable!(),
             },
 
             // ARM convention on x86-64 - error
-            CallConv::Aapcs => Err("AAPCS is ARM-only and not supported on x86-64.".to_string()),
+            Callconv::Aapcs => Err("AAPCS is ARM-only and not supported on x86-64.".to_string()),
 
             // 32-bit x86 conventions - not supported on x86-64
-            CallConv::Stdcall => Err("Stdcall is a 32-bit x86 convention, not supported on x86-64.".to_string()),
-            CallConv::Fastcall => Err("Fastcall is a 32-bit x86 convention, not supported on x86-64.".to_string()),
-            CallConv::Thiscall => Err("Thiscall is a 32-bit x86 convention, not supported on x86-64.".to_string()),
+            Callconv::Stdcall => Err("Stdcall is a 32-bit x86 convention, not supported on x86-64.".to_string()),
+            Callconv::Fastcall => Err("Fastcall is a 32-bit x86 convention, not supported on x86-64.".to_string()),
+            Callconv::Thiscall => Err("Thiscall is a 32-bit x86 convention, not supported on x86-64.".to_string()),
 
             // Vectorcall - available on both x86 and x86-64
-            CallConv::Vectorcall => {
+            Callconv::Vectorcall => {
                 // Vectorcall has its own rules - would need separate implementation
                 // For now, fallback to platform default
                 match self.info.os {

@@ -11,6 +11,7 @@ cyrusc_tokens = { path = "../cyrusc_tokens", version = "*" }
 cyrusc_lexer = { path = "../cyrusc_lexer", version = "*" }
 cyrusc_diagcentral = { path = "../cyrusc_diagcentral", version = "*" }
 cyrusc_fs_utils = { path = "../cyrusc_fs_utils", version = "*" }
+fx-hash = "0.1.0"
 thiserror = "2.0.17"
 thiserror-impl = "2.0.17"
 

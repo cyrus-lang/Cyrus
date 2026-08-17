@@ -123,7 +123,6 @@ pub struct CIRLambda {
     pub irv_id: IRValueID,
     pub params: CIRFuncParams,
     pub ret: CIRType,
-    pub inline: bool,
     pub body: Box<CIRBlockStmt>,
     pub abi_func_info: ABIFunctionInfo,
     pub loc: Loc,

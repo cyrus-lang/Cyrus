@@ -6,7 +6,7 @@ use crate::Parser;
 use crate::diagnostics::ParserDiagKind;
 use crate::modifiers::UnresolvedModifiers;
 use crate::prec::Precedence;
-use cyrusc_ast::abi::Visibility;
+use cyrusc_ast::abi::VisibilityModifier;
 use cyrusc_ast::modifiers::EnumModifiers;
 use cyrusc_ast::modifiers::FuncModifiers;
 use cyrusc_ast::modifiers::StructModifiers;
@@ -23,15 +23,20 @@ impl<'source_file> Parser<'source_file> {
         toplevel: bool,
     ) -> Result<Vec<ASTStmt>, Diag> {
         if self.current_token_is(TokenKind::At) {
+            // Builtin `@asm` has a special syntax and
+            // cannot be handled via parse_builtin
             if self.peek_token().kind.is_ident_str("asm") {
                 let asm = self.parse_inline_asm()?;
                 self.must_be_semicolon()?;
                 return Ok(vec![ASTStmt::InlineAsm(asm)]);
             }
+
             let mut builtin = self.parse_builtin(toplevel)?;
 
             if let Builtin::BuiltinFunc(builtin_func) = &mut builtin {
-                // reform builtin: syntactic builtin
+                // Reform builtin func as builtin block
+                // with connecting a single statement to it
+                // (e.g. `@debug() printf("foo")`)
                 if !self.peek_token_is(TokenKind::Semicolon) {
                     self.expect_current(TokenKind::RightParen)?;
 
@@ -72,78 +77,93 @@ impl<'source_file> Parser<'source_file> {
             return self.parse_grouped_modifiers(Some(modifiers), toplevel);
         }
 
-        if self.current_token_is(TokenKind::Module) {
-            let module_decl_modifiers = modifiers.into_module_decl_modifiers(loc)?;
-            return Ok(vec![self.parse_module_decl(module_decl_modifiers.vis)?]);
-        } else if self.current_token_is(TokenKind::Function) {
-            let func_modifiers = modifiers.into_func_modifiers(loc)?;
-            return Ok(vec![self.parse_func(func_modifiers)?]);
-        } else if self.current_token_is(TokenKind::Struct) {
-            let struct_modifiers = modifiers.into_struct_modifiers(loc)?;
-            return Ok(vec![self.parse_struct(struct_modifiers, false)?]);
-        } else if self.current_token_is(TokenKind::Enum) {
-            let enum_modifiers = modifiers.into_enum_modifiers(loc)?;
-            return Ok(vec![self.parse_enum(enum_modifiers)?]);
-        } else if self.current_token_is(TokenKind::Union) {
-            let union_modifiers = modifiers.into_union_modifiers(loc)?;
-            return Ok(vec![self.parse_union(union_modifiers)?]);
-        } else if self.current_token_is(TokenKind::Typedef) {
-            let typedef_modifiers = modifiers.into_typedef_modifiers(loc)?;
-            return Ok(vec![self.parse_typedef(typedef_modifiers.vis)?]);
-        } else if (self.current_token_is(TokenKind::Static)
-            || self.current_token_is(TokenKind::Var)
-            || self.current_token_is(TokenKind::Const))
-            && toplevel
-        {
-            return Ok(vec![self.parse_global_var(modifiers.clone())?]);
-        } else if self.current_token_is(TokenKind::Interface) {
-            let interface_modifiers = modifiers.into_interface_modifiers(loc)?;
-            return Ok(vec![self.parse_interface(interface_modifiers.vis)?]);
+        if self.current_token_is(TokenKind::LeftBracket) {
+            let attr = self.parse_attr()?;
+            self.attrs_stack.push(attr);
+            return Ok(Vec::new());
         }
 
-        if !toplevel {
-            // modifiers should not be used with non-top-level stmts.
-            if modifiers != UnresolvedModifiers::default() {}
+        let mut parsed_stmts = (|| {
+            if self.current_token_is(TokenKind::Module) {
+                let module_decl_modifiers = modifiers.into_module_decl_modifiers(loc)?;
+                return Ok(vec![self.parse_module_decl(module_decl_modifiers.vis)?]);
+            } else if self.current_token_is(TokenKind::Function) {
+                let func_modifiers = modifiers.into_func_modifiers(loc)?;
+                return Ok(vec![self.parse_func(func_modifiers)?]);
+            } else if self.current_token_is(TokenKind::Struct) {
+                let struct_modifiers = modifiers.into_struct_modifiers(loc)?;
+                return Ok(vec![self.parse_struct(struct_modifiers, false)?]);
+            } else if self.current_token_is(TokenKind::Enum) {
+                let enum_modifiers = modifiers.into_enum_modifiers(loc)?;
+                return Ok(vec![self.parse_enum(enum_modifiers)?]);
+            } else if self.current_token_is(TokenKind::Union) {
+                let union_modifiers = modifiers.into_union_modifiers(loc)?;
+                return Ok(vec![self.parse_union(union_modifiers)?]);
+            } else if self.current_token_is(TokenKind::Typedef) {
+                let typedef_modifiers = modifiers.into_typedef_modifiers(loc)?;
+                return Ok(vec![self.parse_typedef(typedef_modifiers.vis)?]);
+            } else if (self.current_token_is(TokenKind::Static)
+                || self.current_token_is(TokenKind::Var)
+                || self.current_token_is(TokenKind::Const))
+                && toplevel
+            {
+                return Ok(vec![self.parse_global_var(modifiers.clone())?]);
+            } else if self.current_token_is(TokenKind::Interface) {
+                let interface_modifiers = modifiers.into_interface_modifiers(loc)?;
+                return Ok(vec![self.parse_interface(interface_modifiers.vis)?]);
+            }
 
-            let stmt = match self.current_token().kind {
-                TokenKind::Var | TokenKind::Const => self.parse_var(),
-                TokenKind::Defer => self.parse_defer(),
-                TokenKind::If => self.parse_if(),
-                TokenKind::Return => self.parse_return(),
-                TokenKind::For => self.parse_for_loop(),
-                TokenKind::While => self.parse_while_loop(),
-                TokenKind::Foreach => self.parse_foreach(),
-                TokenKind::Break => self.parse_break(),
-                TokenKind::Continue => self.parse_continue(),
-                TokenKind::Switch => self.parse_switch(),
-                TokenKind::Goto => self.parse_goto(),
-                TokenKind::LeftBrace => {
-                    let block_stmt = self.parse_block()?;
-                    Ok(ASTStmt::BlockStmt(block_stmt))
-                }
-                _ => {
-                    if matches!(self.current_token().kind, TokenKind::Ident { .. })
-                        && self.peek_token_is(TokenKind::Colon)
-                    {
-                        return Ok(vec![self.parse_label()?]);
+            if !toplevel {
+                // Modifiers should not be used with non top-level statements
+                if modifiers != UnresolvedModifiers::default() {}
+
+                let stmt = match self.current_token().kind {
+                    TokenKind::Var | TokenKind::Const => self.parse_var()?,
+                    TokenKind::Defer => self.parse_defer()?,
+                    TokenKind::If => self.parse_if()?,
+                    TokenKind::Return => self.parse_return()?,
+                    TokenKind::For => self.parse_for_loop()?,
+                    TokenKind::While => self.parse_while_loop()?,
+                    TokenKind::Foreach => self.parse_foreach()?,
+                    TokenKind::Break => self.parse_break()?,
+                    TokenKind::Continue => self.parse_continue()?,
+                    TokenKind::Switch => self.parse_switch()?,
+                    TokenKind::Goto => self.parse_goto()?,
+                    TokenKind::LeftBrace => {
+                        let block_stmt = self.parse_block()?;
+                        ASTStmt::BlockStmt(block_stmt)
                     }
+                    _ => {
+                        if matches!(self.current_token().kind, TokenKind::Ident { .. })
+                            && self.peek_token_is(TokenKind::Colon)
+                        {
+                            return Ok(vec![self.parse_label()?]);
+                        }
 
-                    self.parse_expr_stmt()
-                }
-            };
+                        self.parse_expr_stmt()?
+                    }
+                };
 
-            Ok(vec![stmt?])
-        } else {
-            match self.current_token().kind {
-                TokenKind::Import => Ok(vec![self.parse_import()?]),
-                _ => {
-                    return Err(self.error_invalid_token());
+                Ok(vec![stmt])
+            } else {
+                match self.current_token().kind {
+                    TokenKind::Import => Ok(vec![self.parse_import()?]),
+                    _ => return Err(self.error_invalid_token()),
                 }
             }
+        })()?;
+
+        self.check_attrs(&self.attrs_stack)?;
+        
+        for stmt in &mut parsed_stmts {
+            self.stmt_accepts_attrs(&stmt, &self.attrs_stack)?;
+            self.finalize_attrs(stmt, &self.attrs_stack);
         }
+
+        Ok(parsed_stmts)
     }
 
-    fn parse_module_decl(&mut self, vis: Visibility) -> Result<ASTStmt, Diag> {
+    fn parse_module_decl(&mut self, vis: VisibilityModifier) -> Result<ASTStmt, Diag> {
         let loc = self.current_token().loc;
         let (line, column, start) = (loc.line, loc.column, loc.start);
 
@@ -387,6 +407,73 @@ impl<'source_file> Parser<'source_file> {
         Ok(stmts)
     }
 
+    pub(crate) fn parse_block(&mut self) -> Result<ASTBlockStmt, Diag> {
+        let loc = self.current_token().loc;
+        let (line, column, start) = (loc.line, loc.column, loc.start);
+
+        if self.peek_token_is(TokenKind::EOF) {
+            return Err(self.error_at_current(ParserDiagKind::MissingClosingBrace));
+        }
+
+        self.expect_current(TokenKind::LeftBrace)?;
+
+        let mut block_stmt: Vec<ASTStmt> = Vec::new();
+
+        // detect empty block
+        if self.current_token_is(TokenKind::RightBrace) {
+            let end = self.current_token().loc.end;
+
+            return Ok(ASTBlockStmt {
+                stmts: block_stmt,
+                loc: Loc::new(self.file_id(), line, column, start, end),
+            });
+        }
+
+        let mut loop_broke_at_sync_brace = false;
+
+        loop {
+            let mut synced = false;
+
+            match self.parse_stmt(None, false) {
+                Ok(stmts) => {
+                    for stmt in stmts {
+                        block_stmt.push(stmt);
+                    }
+                }
+                Err(diag) => {
+                    self.reporter.report(diag);
+                    self.synchronize();
+                    synced = true;
+                }
+            }
+
+            if synced && (self.current_token_is(TokenKind::RightBrace) || self.current_token_is(TokenKind::EOF)) {
+                if self.current_token_is(TokenKind::RightBrace) {
+                    loop_broke_at_sync_brace = true;
+                }
+                break;
+            }
+
+            match self.peek_token().kind {
+                TokenKind::RightBrace => break,
+                TokenKind::EOF => break,
+                _ => self.next_token(),
+            };
+        }
+
+        if loop_broke_at_sync_brace {
+        } else {
+            self.expect_peek(TokenKind::RightBrace)?;
+        }
+
+        let end = self.current_token().loc.end;
+
+        Ok(ASTBlockStmt {
+            stmts: block_stmt,
+            loc: Loc::new(self.file_id(), line, column, start, end),
+        })
+    }
+
     fn parse_grouped_modifiers(
         &mut self,
         grouped_modifiers: Option<UnresolvedModifiers>,
@@ -453,73 +540,6 @@ impl<'source_file> Parser<'source_file> {
             name,
             loc: Loc::new(self.file_id(), line, column, start, end),
         }))
-    }
-
-    pub(crate) fn parse_block(&mut self) -> Result<ASTBlockStmt, Diag> {
-        let loc = self.current_token().loc;
-        let (line, column, start) = (loc.line, loc.column, loc.start);
-
-        if self.peek_token_is(TokenKind::EOF) {
-            return Err(self.error_at_current(ParserDiagKind::MissingClosingBrace));
-        }
-
-        self.expect_current(TokenKind::LeftBrace)?;
-
-        let mut block_stmt: Vec<ASTStmt> = Vec::new();
-
-        // detect empty block
-        if self.current_token_is(TokenKind::RightBrace) {
-            let end = self.current_token().loc.end;
-
-            return Ok(ASTBlockStmt {
-                stmts: block_stmt,
-                loc: Loc::new(self.file_id(), line, column, start, end),
-            });
-        }
-
-        let mut loop_broke_at_sync_brace = false;
-        loop {
-            let mut synced = false;
-            match self.parse_stmt(None, false) {
-                Ok(stmts) => {
-                    for stmt in stmts {
-                        block_stmt.push(stmt);
-                    }
-                }
-                Err(diag) => {
-                    self.reporter.report(diag);
-                    self.synchronize();
-                    synced = true;
-                }
-            }
-
-            if synced && (self.current_token_is(TokenKind::RightBrace) || self.current_token_is(TokenKind::EOF)) {
-                if self.current_token_is(TokenKind::RightBrace) {
-                    loop_broke_at_sync_brace = true;
-                }
-                break;
-            }
-
-            match self.peek_token().kind {
-                TokenKind::RightBrace => break,
-                TokenKind::EOF => break,
-                _ => {
-                    self.next_token();
-                }
-            }
-        }
-
-        if loop_broke_at_sync_brace {
-        } else {
-            self.expect_peek(TokenKind::RightBrace)?;
-        }
-
-        let end = self.current_token().loc.end;
-
-        Ok(ASTBlockStmt {
-            stmts: block_stmt,
-            loc: Loc::new(self.file_id(), line, column, start, end),
-        })
     }
 
     pub(crate) fn parse_func_params(&mut self) -> Result<FuncParams, Diag> {
@@ -860,10 +880,9 @@ impl<'source_file> Parser<'source_file> {
             }
 
             let modifiers = self.parse_unresolved_modifiers()?;
-            let loc = self.current_token().loc;
 
             if self.current_token_is(TokenKind::Function) {
-                let func_modifiers = modifiers.into_method_modifiers(loc)?;
+                let func_modifiers = modifiers.into_method_modifiers()?;
                 let method = self.parse_method(func_modifiers)?;
                 methods.push(method);
                 continue;
@@ -944,7 +963,6 @@ impl<'source_file> Parser<'source_file> {
                 || self.peek_token_is(TokenKind::Function)
                 || self.peek_token_is(TokenKind::Extern)
                 || self.peek_token_is(TokenKind::Public)
-                || self.peek_token_is(TokenKind::Inline)
             {
                 break;
             }
@@ -973,11 +991,10 @@ impl<'source_file> Parser<'source_file> {
                 continue;
             }
 
-            let loc = self.current_token().loc;
             let modifiers = self.parse_unresolved_modifiers()?;
 
             if self.current_token_is(TokenKind::Function) {
-                let func_modifiers = modifiers.into_method_modifiers(loc)?;
+                let func_modifiers = modifiers.into_method_modifiers()?;
                 let method = self.parse_method(func_modifiers)?;
                 methods.push(method);
                 continue;
@@ -1052,7 +1069,7 @@ impl<'source_file> Parser<'source_file> {
                 continue;
             }
 
-            let func_modifiers = modifiers.into_method_modifiers(loc)?;
+            let func_modifiers = modifiers.into_method_modifiers()?;
             let method = self.parse_method(func_modifiers)?;
             methods.push(method);
         }
@@ -1082,7 +1099,7 @@ impl<'source_file> Parser<'source_file> {
         }
     }
 
-    fn parse_struct_field(&mut self, vis: Option<Visibility>) -> Result<StructField, Diag> {
+    fn parse_struct_field(&mut self, vis: Option<VisibilityModifier>) -> Result<StructField, Diag> {
         let loc = self.current_token().loc;
         let (line, column, start) = (loc.line, loc.column, loc.start);
 
@@ -1209,7 +1226,7 @@ impl<'source_file> Parser<'source_file> {
         }
     }
 
-    fn parse_interface(&mut self, vis: Visibility) -> Result<ASTStmt, Diag> {
+    fn parse_interface(&mut self, vis: VisibilityModifier) -> Result<ASTStmt, Diag> {
         let loc = self.current_token().loc;
         let (line, column, start) = (loc.line, loc.column, loc.start);
 
@@ -1823,7 +1840,7 @@ impl<'source_file> Parser<'source_file> {
             }
         };
 
-        let global_var_modifiers = modifiers.into_global_var_modifiers(loc)?;
+        let global_var_modifiers = modifiers.into_global_var_modifiers()?;
 
         let ident = self.parse_ident()?;
         self.next_token();
@@ -1879,7 +1896,7 @@ impl<'source_file> Parser<'source_file> {
         }))
     }
 
-    fn parse_typedef(&mut self, vis: Visibility) -> Result<ASTStmt, Diag> {
+    fn parse_typedef(&mut self, vis: VisibilityModifier) -> Result<ASTStmt, Diag> {
         let loc = self.current_token().loc;
         let (line, column, start) = (loc.line, loc.column, loc.start);
 

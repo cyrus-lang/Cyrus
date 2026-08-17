@@ -11,7 +11,7 @@ use crate::{
     types::{SemaType, TypeDeclID, TypedFuncType},
 };
 use cyrusc_ast::{
-    abi::{ReprKind, Visibility},
+    abi::{ReprKind, VisibilityModifier},
     modifiers::{EnumModifiers, FuncModifiers, GlobalVarModifiers, StructModifiers, UnionModifiers},
 };
 use cyrusc_source_loc::{FileID, Loc};
@@ -174,7 +174,7 @@ pub struct TypedefDecl {
     pub name: String,
     pub ty: Box<SemaType>,
     pub generic_params: TypedGenericParams,
-    pub vis: Visibility,
+    pub vis: VisibilityModifier,
     pub loc: Loc,
 }
 
@@ -184,7 +184,7 @@ pub struct InterfaceDecl {
     pub methods: MethodDecls,
     pub generic_params: TypedGenericParams,
     pub is_interface_dynamically_dispatchable: bool,
-    pub vis: Visibility,
+    pub vis: VisibilityModifier,
     pub loc: Loc,
 }
 

@@ -3,6 +3,7 @@
 
 use crate::Parser;
 use cyrusc_diagcentral::{Diag, DiagKind, DiagLevel};
+use cyrusc_source_loc::Loc;
 use cyrusc_tokens::{Token, TokenKind};
 use thiserror::Error;
 
@@ -34,6 +35,9 @@ pub enum ParserDiagKind {
 
     #[error("Tuple type must contain at least two elements.")]
     SingleElementTupleType,
+
+    #[error("Missing closing bracket ']'.")]
+    MissingClosingBracket,
 
     #[error("Missing closing brace '}}'.")]
     MissingClosingBrace,
@@ -67,6 +71,9 @@ pub enum ParserDiagKind {
 
     #[error("String literals cannot have prefixes in this context.")]
     StringPrefixNotAllowed,
+
+    #[error("Expected string literal but got something else.")]
+    ExpectedStringLiteral,
 
     #[error("Integer literals cannot have suffixes in this context.")]
     IntegerSuffixNotAllowed,
@@ -103,6 +110,15 @@ pub enum ParserDiagKind {
 
     #[error("Invalid switch guard pattern.")]
     InvalidSwitchGuardPattern,
+
+    #[error("{0}")]
+    InvalidAttribute(String),
+
+    #[error("Duplicate attribute '{0}'.")]
+    DuplicateAttribute(String),
+
+    #[error("Attribute '{0}' cannot be applied to this statement.")]
+    AttributeCannotBeAppliedTo(String),
 }
 
 impl<'source_file> Parser<'source_file> {
@@ -138,6 +154,16 @@ impl<'source_file> Parser<'source_file> {
             kind: Box::new(kind),
             level: DiagLevel::Error,
             loc: Some(token.loc),
+            hint: None,
+        }
+    }
+
+    #[inline]
+    pub(crate) fn error_at_loc(&self, kind: ParserDiagKind, loc: Loc) -> Diag {
+        Diag {
+            kind: Box::new(kind),
+            level: DiagLevel::Error,
+            loc: Some(loc),
             hint: None,
         }
     }

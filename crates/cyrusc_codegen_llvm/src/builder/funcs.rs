@@ -10,10 +10,7 @@ use crate::{
     c,
     llvm::{abi::modifiers::*, debug_info::*},
 };
-use cyrusc_ast::{
-    abi::{Inlining, Linkage},
-    modifiers::FuncModifiers,
-};
+use cyrusc_ast::modifiers::FuncModifiers;
 use cyrusc_internal::{
     abi::args::{ABIArgInfo, ABIArgKind, ABIFunctionInfo, ABIRetInfoKind, ExpandKind},
     cir::{cir::*, types::*},
@@ -28,6 +25,7 @@ use inkwell::{
         },
         prelude::LLVMMetadataRef,
     },
+    module::Linkage,
     types::{AsTypeRef, BasicTypeEnum, StructType},
     values::{AsValueRef, BasicMetadataValueEnum, BasicValueEnum, CallSiteValue, FunctionValue},
 };
@@ -75,19 +73,16 @@ impl<'ll> CodeGenIRBuilder<'ll> {
             }
         }
 
-        let mut func_decl = self
+        let func_decl = self
             .cir_module
             .func_decls
             .get(&irv_id)
             .cloned()
             .expect("missing cir function declaration");
 
-        func_decl.modifiers = FuncModifiers {
-            linkage: Some(Linkage::Extern(None)),
-            ..func_decl.modifiers
-        };
-
         let llvm_func_value = self.emit_func_decl(&func_decl);
+
+        llvm_func_value.set_linkage(Linkage::External);
 
         let cir_func_type = cir_func_decl_as_func_type(&func_decl);
 
@@ -349,10 +344,8 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         cir_func_decl.abi_func_info = Some(self.target.target_abi.classify_func(&cir_func_type).unwrap());
 
         let llvm_func_value = self.emit_func_decl(&cir_func_decl);
-        llvm_func_value.set_linkage(inkwell::module::Linkage::Private);
-        if lambda.inline {
-            apply_inlining_func(self.llvm_ctx, &llvm_func_value, Inlining::Inline);
-        }
+
+        llvm_func_value.set_linkage(Linkage::Private);
 
         let func_meta = {
             if self.dctx.is_some() {

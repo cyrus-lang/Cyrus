@@ -2,7 +2,7 @@
 // Copyright (c) 2026 The Cyrus Language
 
 use crate::symbols::table::ScopeTable;
-use cyrusc_ast::abi::Visibility;
+use cyrusc_ast::abi::VisibilityModifier;
 use cyrusc_source_loc::Loc;
 use cyrusc_typed_ast::{
     SymbolID,
@@ -16,7 +16,7 @@ use cyrusc_typed_ast::{
 pub struct SymbolEntry {
     pub parent_scope_id: Option<SymbolID>,
     pub kind: SymbolEntryKind,
-    pub vis_opt: Option<Visibility>,
+    pub vis_opt: Option<VisibilityModifier>,
     pub used: bool,
     pub loc: Option<Loc>,
 }
@@ -61,7 +61,7 @@ pub struct Namespace {
 impl SymbolEntry {
     pub fn new(
         kind: SymbolEntryKind,
-        vis: Option<Visibility>,
+        vis: Option<VisibilityModifier>,
         parent_scope_id: Option<SymbolID>,
         loc: Option<Loc>,
     ) -> Self {
@@ -75,7 +75,7 @@ impl SymbolEntry {
     }
 
     #[inline]
-    pub fn unresolved(vis: Option<Visibility>, parent_scope_id: Option<SymbolID>, loc: Option<Loc>) -> Self {
+    pub fn unresolved(vis: Option<VisibilityModifier>, parent_scope_id: Option<SymbolID>, loc: Option<Loc>) -> Self {
         Self {
             parent_scope_id,
             kind: SymbolEntryKind::Unresolved,

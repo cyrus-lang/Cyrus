@@ -13,7 +13,7 @@ use crate::{
 };
 use cyrusc_ast::{
     Ident, Mutability,
-    abi::{ReprKind, Visibility},
+    abi::{ReprKind, VisibilityModifier},
     modifiers::{EnumModifiers, FuncModifiers, GlobalVarModifiers, StructModifiers, UnionModifiers},
 };
 use cyrusc_source_loc::{FileID, Loc};
@@ -108,7 +108,7 @@ pub struct TypedInterfaceStmt {
     pub interface_decl_id: InterfaceDeclID,
     pub methods: MethodDecls,
     pub generic_params: TypedGenericParams,
-    pub vis: Visibility,
+    pub vis: VisibilityModifier,
     pub loc: Loc,
 }
 
@@ -193,7 +193,7 @@ pub struct TypedUnionField {
 pub struct TypedStructField {
     pub name: String,
     pub ty: SemaType,
-    pub vis: Visibility,
+    pub vis: VisibilityModifier,
     pub loc: Loc,
 }
 
@@ -223,7 +223,7 @@ pub struct TypedTypedefStmt {
     pub name: String,
     pub ty: SemaType,
     pub generic_params: TypedGenericParams,
-    pub vis: Visibility,
+    pub vis: VisibilityModifier,
     pub loc: Loc,
 }
 

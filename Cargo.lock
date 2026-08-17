@@ -444,6 +444,7 @@ dependencies = [
  "cyrusc_lexer",
  "cyrusc_source_loc",
  "cyrusc_tokens",
+ "fx-hash",
  "thiserror",
  "thiserror-impl",
 ]

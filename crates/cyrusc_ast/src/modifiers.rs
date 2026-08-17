@@ -2,7 +2,8 @@
 // Copyright (c) 2026 The Cyrus Language
 
 use crate::abi::{
-    CallConv, ExportKind, Inlining, Linkage, OptionalFlag, Prologue, ReprAttr, ReprKind, SectionAttr, Visibility,
+    Callconv, ExportKind, Inlining, Linkage, OptionalFlag, Prologue, ReprAttr, ReprKind,
+    SectionAttr, VisibilityModifier as Visibility,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -11,7 +12,7 @@ pub struct FuncModifiers {
     pub inline: Option<Inlining>,
     pub prologue: Option<Prologue>,
     pub export: Option<ExportKind>,
-    pub callconv: Option<CallConv>,
+    pub callconv: Option<Callconv>,
     pub optional_flags: Vec<OptionalFlag>,
     pub section: Option<SectionAttr>,
     pub vis: Visibility,
@@ -40,7 +41,7 @@ impl FuncModifiers {
 
         if let Some(Prologue::Naked) = self.prologue {
             if let Some(cc) = &self.callconv {
-                if *cc != CallConv::Naked {
+                if *cc != Callconv::Naked {
                     return Err("Naked prologue must use callconv(naked).".into());
                 }
             } else {

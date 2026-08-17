@@ -14,7 +14,7 @@ mod tests {
             types::{CIRArrayType, CIRDynamicType, CIRFuncType, CIRStructType, CIRType, CIRUnionType},
         },
     };
-    use cyrusc_ast::abi::CallConv;
+    use cyrusc_ast::abi::Callconv;
     use cyrusc_source_loc::{FileID, Loc};
     use cyrusc_typed_ast::{VTableID, types::PlainType};
     use std::sync::{Arc, LazyLock};
@@ -362,7 +362,7 @@ mod tests {
         let fn_ty = CIRFuncType {
             params: vec![i64(), i64(), i64(), i64(), i64(), i64(), i64()],
             ret_type: Box::new(CIRType::Plain(PlainType::Void)),
-            callconv: CallConv::SysV64,
+            callconv: Callconv::SysV64,
             abi_func_info: None,
             is_var: false,
         };
@@ -386,7 +386,7 @@ mod tests {
         let fn_ty = CIRFuncType {
             params,
             ret_type: Box::new(CIRType::Plain(PlainType::Void)),
-            callconv: CallConv::SysV64,
+            callconv: Callconv::SysV64,
             abi_func_info: None,
             is_var: false,
         };
@@ -488,7 +488,7 @@ mod tests {
         let fn_ty = CIRType::FuncType(CIRFuncType {
             params: Vec::new(),
             ret_type: Box::new(i32()),
-            callconv: CallConv::SysV64,
+            callconv: Callconv::SysV64,
             abi_func_info: None,
             is_var: false,
         });

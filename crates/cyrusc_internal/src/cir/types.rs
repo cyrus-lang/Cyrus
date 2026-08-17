@@ -8,7 +8,7 @@ use crate::{
         typectx::{CIRTypeContext, CIRTypeContextDeclKey, CIRTypeContextID},
     },
 };
-use cyrusc_ast::abi::{CallConv, ReprAttr};
+use cyrusc_ast::abi::{Callconv, ReprAttr};
 use cyrusc_source_loc::Loc;
 use cyrusc_typed_ast::{VTableID, types::PlainType};
 
@@ -49,7 +49,7 @@ pub struct CIRFuncType {
     pub params: Vec<CIRType>,
     pub is_var: bool,
     pub ret_type: Box<CIRType>,
-    pub callconv: CallConv,
+    pub callconv: Callconv,
     pub abi_func_info: Option<ABIFunctionInfo>,
 }
 

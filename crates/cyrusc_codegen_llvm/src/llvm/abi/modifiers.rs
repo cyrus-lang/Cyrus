@@ -31,9 +31,9 @@ fn llvm_linkage(linkage: &Linkage) -> LLVMLinkage {
 
 fn llvm_inline(inline: &Inlining) -> &'static str {
     match inline {
-        Inlining::Inline => "inlinehint",
-        Inlining::NoInline => "noinline",
-        Inlining::AlwaysInline => "alwaysinline",
+        Inlining::Hint => "inlinehint",
+        Inlining::Never => "noinline",
+        Inlining::Always => "alwaysinline",
     }
 }
 
