@@ -3,31 +3,15 @@
 
 use crate::llvm::abi::callconv::LLVMCallConv;
 use cyrusc_ast::{
-    abi::{ExportKind, Inlining, Linkage, OptionalFlag, Prologue},
+    abi::{Inlining, OptionalFlag, Prologue},
     modifiers::{FuncModifiers, GlobalVarModifiers},
 };
 use inkwell::{
-    DLLStorageClass,
     attributes::{Attribute, AttributeLoc},
     context::Context,
     module::Linkage as LLVMLinkage,
     values::{FunctionValue, GlobalValue},
 };
-
-fn llvm_dll_storage_class(export: &ExportKind) -> DLLStorageClass {
-    match export {
-        ExportKind::DllImport => DLLStorageClass::Import,
-        ExportKind::DllExport => DLLStorageClass::Export,
-    }
-}
-
-fn llvm_linkage(linkage: &Linkage) -> LLVMLinkage {
-    match linkage {
-        Linkage::Extern(_) => LLVMLinkage::External,
-        Linkage::Weak => LLVMLinkage::WeakAny,
-        Linkage::LinkOnce => LLVMLinkage::LinkOnceAny,
-    }
-}
 
 fn llvm_inline(inline: &Inlining) -> &'static str {
     match inline {
@@ -70,40 +54,38 @@ fn apply_optional_flags<'ll>(llvm_ctx: &'ll Context, func: &FunctionValue<'ll>, 
 }
 
 pub(crate) fn apply_global_var_modifiers<'ll>(global_value: &GlobalValue<'ll>, modifiers: &GlobalVarModifiers) {
-    if let Some(export) = &modifiers.export {
-        global_value.set_dll_storage_class(llvm_dll_storage_class(export));
-    }
-
-    if let Some(linkage) = &modifiers.linkage {
-        global_value.set_linkage(llvm_linkage(linkage));
+    if modifiers.extrn.is_some() {
+        global_value.set_linkage(LLVMLinkage::External);
     }
 
     if modifiers.weak {
-        global_value.set_unnamed_addr(true);
+        global_value.set_linkage(LLVMLinkage::ExternalWeak);
+    }
+
+    if modifiers.link_once {
+        global_value.set_linkage(LLVMLinkage::LinkOnceODR);
+    }
+
+    if modifiers.thread_local {
+        global_value.set_thread_local(true);
     }
 
     if let Some(section) = &modifiers.section {
-        global_value.set_section(Some(section.0.as_str()));
+        global_value.set_section(Some(section.as_str()));
     }
-
-    global_value.set_thread_local(modifiers.thread_local);
-}
-
-pub(crate) fn apply_inlining_func<'a>(llvm_ctx: &'a Context, llvm_func_value: &FunctionValue<'a>, inline: Inlining) {
-    let attr_name = llvm_inline(&inline);
-    let enum_kind_id = Attribute::get_named_enum_kind_id(attr_name);
-    let enum_attr = llvm_ctx.create_enum_attribute(enum_kind_id, 0);
-    llvm_func_value.add_attribute(AttributeLoc::Function, enum_attr);
 }
 
 pub(crate) fn apply_func_modifiers<'ll>(llvm_ctx: &'ll Context, func: &FunctionValue<'ll>, modifiers: &FuncModifiers) {
-    if let Some(export) = &modifiers.export {
-        func.as_global_value()
-            .set_dll_storage_class(llvm_dll_storage_class(export));
+    if modifiers.extrn.is_some() {
+        func.set_linkage(LLVMLinkage::External);
     }
 
-    if let Some(linkage) = &modifiers.linkage {
-        func.set_linkage(llvm_linkage(linkage));
+    if modifiers.weak {
+        func.set_linkage(LLVMLinkage::ExternalWeak);
+    }
+
+    if modifiers.link_once {
+        func.set_linkage(LLVMLinkage::LinkOnceODR);
     }
 
     if let Some(inline) = &modifiers.inline {
@@ -126,7 +108,7 @@ pub(crate) fn apply_func_modifiers<'ll>(llvm_ctx: &'ll Context, func: &FunctionV
     }
 
     if let Some(section) = &modifiers.section {
-        func.set_section(Some(section.0.as_str()));
+        func.set_section(Some(section.as_str()));
     }
 
     apply_optional_flags(llvm_ctx, func, &modifiers.optional_flags);

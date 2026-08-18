@@ -5,7 +5,7 @@ import std::libc::types;
 
 // stdio
 
-pub extern(c) {
+pub extern "C" {
     static var stdin:  types::c_file*;
     static var stdout: types::c_file*;
     static var stderr: types::c_file*;
@@ -97,7 +97,7 @@ pub repr(c) struct CLongLongDivResult {
     rem: types::c_long_long
 }
 
-pub extern(c) {
+pub extern "C" {
     fn atof(nptr: types::c_char*) types::c_double;
     fn atoi(nptr: types::c_char*) types::c_int;
     fn atol(nptr: types::c_char*) types::c_long;
@@ -179,7 +179,7 @@ pub extern(c) {
 
 // string
 
-pub extern(c) {
+pub extern "C" {
     fn memcpy(
         dest: types::c_void*,
         src: types::c_void*,
@@ -290,7 +290,7 @@ pub extern(c) {
     ) types::c_char*;
 }
 
-pub extern(c) thread_local static var errno: types::c_int;
+pub extern "C" thread_local static var errno: types::c_int;
 
 pub const EPERM: types::c_int = 1;
 pub const ENOENT: types::c_int = 2;
@@ -428,7 +428,7 @@ pub const EHWPOISON: types::c_int = 133;
 
 // ctype
 
-pub extern(c) {
+pub extern "C" {
     fn isalnum(c: types::c_int) types::c_int;
     fn isalpha(c: types::c_int) types::c_int;
     fn isblank(c: types::c_int) types::c_int;
@@ -471,7 +471,7 @@ pub repr(c) struct CTm {
     tm_zone: types::c_char*
 }
 
-pub extern(c) {
+pub extern "C" {
     fn clock() types::c_long;
     fn difftime(time1: types::c_long, time0: types::c_long) types::c_double;
     fn mktime(tm: CTm*) types::c_long;
@@ -500,7 +500,7 @@ pub extern(c) {
 
 pub type CSignalHandler = fn(types::c_int) types::c_void;
 
-pub extern(c) {
+pub extern "C" {
     fn signal(sig: types::c_int, handler: CSignalHandler) CSignalHandler;
     fn raise(sig: types::c_int) types::c_int;
 }
@@ -556,7 +556,7 @@ pub repr(c) struct CLocaleConv {
     int_n_sign_posn: types::c_char
 }
 
-pub extern(c) {
+pub extern "C" {
     fn setlocale(category: types::c_int, locale: types::c_char*) types::c_char*;
     fn localeconv() CLocaleConv*;
 }
@@ -571,6 +571,6 @@ pub const LC_ALL: types::c_int = 6;
 
 // uninst
 
-pub extern(c) {
+pub extern "C" {
     fn access(pathname: types::c_char*, mode: types::c_int) types::c_int;
 }

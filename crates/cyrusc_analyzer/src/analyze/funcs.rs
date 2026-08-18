@@ -102,7 +102,7 @@ impl<'a> AnalysisContext<'a> {
 
     fn analyze_entry_func(&mut self, func_def: &mut TypedFuncDefStmt) {
         let is_public = func_def.modifiers.vis.is_public();
-        let is_extern = func_def.modifiers.linkage.is_some();
+        let is_extern = func_def.modifiers.extrn.is_some();
 
         if func_def.name == "main" {
             self.entry_points.add(func_def.loc);

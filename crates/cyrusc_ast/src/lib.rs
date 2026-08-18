@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 The Cyrus Language
 
-use crate::abi::{ReprAttr, VisibilityModifier};
+use crate::abi::{ReprAttr, Visibility};
 use crate::modifiers::{EnumModifiers, FuncModifiers, GlobalVarModifiers, StructModifiers, UnionModifiers};
 use crate::operators::{InfixOperator, PrefixOperator};
 use cyrusc_source_loc::Loc;
@@ -57,7 +57,7 @@ pub enum ASTExpr {
 #[derive(Debug, Clone)]
 pub struct ASTModuleDecl {
     pub ident: Ident,
-    pub vis: VisibilityModifier,
+    pub vis: Visibility,
     pub stmts: Vec<ASTStmt>,
     pub loc: Loc,
 }
@@ -394,7 +394,7 @@ pub enum ArrayCapacity {
 pub struct FuncType {
     pub params: FuncTypeParams,
     pub ret_type: Box<TypeSpecifier>,
-    pub vis_opt: Option<VisibilityModifier>,
+    pub vis_opt: Option<Visibility>,
     pub loc: Loc,
 }
 
@@ -493,7 +493,7 @@ pub struct ASTInterfaceStmt {
     pub ident: Ident,
     pub methods: Vec<ASTFuncDeclStmt>,
     pub generic_params: GenericParams,
-    pub vis: VisibilityModifier,
+    pub vis: Visibility,
     pub loc: Loc,
 }
 
@@ -514,7 +514,7 @@ pub struct ASTTypedefStmt {
     pub ident: Ident,
     pub type_spec: TypeSpecifier,
     pub generic_params: GenericParams,
-    pub vis: VisibilityModifier,
+    pub vis: Visibility,
     pub loc: Loc,
 }
 
@@ -583,7 +583,7 @@ pub struct ASTStructInitExpr {
 #[derive(Debug, Clone)]
 pub struct StructField {
     pub name: Ident,
-    pub vis: VisibilityModifier,
+    pub vis: Visibility,
     pub ty: TypeSpecifier,
     pub loc: Loc,
 }
@@ -1021,7 +1021,7 @@ impl ASTFuncDeclStmt {
 }
 
 impl ASTStmt {
-    pub fn vis(&self) -> Option<VisibilityModifier> {
+    pub fn vis(&self) -> Option<Visibility> {
         match self {
             ASTStmt::ModuleDecl(module_decl) => Some(module_decl.vis),
             ASTStmt::FuncDef(func_def) => Some(func_def.modifiers.vis),

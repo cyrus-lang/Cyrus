@@ -51,11 +51,9 @@ impl<'ll> CodeGenIRBuilder<'ll> {
             let rvalue = self.load_rvalue(lvalue).as_basic_value();
             global_value.set_initializer(&rvalue);
         } else {
-            if cir_global_var.modifiers.linkage.is_none() {
-                if !cir_global_var.is_undef {
-                    // zero init only if not declared undefined
-                    global_value.set_initializer(&ty.const_zero());
-                }
+            if cir_global_var.modifiers.extrn.is_none() && !cir_global_var.is_undef {
+                // Zero init only if not declared undefined
+                global_value.set_initializer(&ty.const_zero());
             }
         }
 
@@ -140,12 +138,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
 
         let ty_meta = self.emit_debug_type_metadata(&cir_global_var.ty);
 
-        let is_local = !cir_global_var
-            .modifiers
-            .linkage
-            .clone()
-            .map(|l| l.is_extern())
-            .unwrap_or(false);
+        let is_local = cir_global_var.modifiers.extrn.is_none();
 
         let dctx = self.dctx.as_ref().unwrap();
 

@@ -1,24 +1,36 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 The Cyrus Language
 
-use crate::abi::{Callconv, Inlining};
+use crate::abi::{Callconv, Inlining, ReprAttr};
 use cyrusc_source_loc::Loc;
 use std::fmt;
 
+#[derive(Debug, Clone)]
 pub struct Attr {
     pub kind: AttrKind,
     pub loc: Loc,
 }
 
+#[derive(Debug, Clone)]
 pub enum AttrKind {
+    Link(LinkAttr),
     Inline(Inlining),
     Callconv(Callconv),
     NoSanitize(String),
+    Section(String),
+    Repr(ReprAttr),
+    ThreadLocal,
     Naked,
     Cold,
     Hot,
     OptNone,
     OptSize,
+}
+
+#[derive(Debug, Clone, Copy, Eq, PartialEq)]
+pub enum LinkAttr {
+    Weak,
+    LinkOnce,
 }
 
 impl fmt::Display for Attr {
@@ -47,6 +59,27 @@ impl fmt::Display for AttrKind {
             AttrKind::Cold => write!(f, "cold")?,
             AttrKind::Hot => write!(f, "hot")?,
             AttrKind::Naked => write!(f, "naked")?,
+            AttrKind::Section(name) => write!(f, "section({name})")?,
+            AttrKind::Repr(repr_attr) => {
+                write!(f, "repr(")?;
+                repr_attr
+                    .items
+                    .iter()
+                    .map(|(item, _)| item.to_string())
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                write!(f, ")")?;
+            }
+            AttrKind::ThreadLocal => write!(f, "thread_local")?,
+            AttrKind::Link(link_attr) => {
+                write!(f, "link")?;
+                write!(f, "(")?;
+                match link_attr {
+                    LinkAttr::Weak => write!(f, "weak")?,
+                    LinkAttr::LinkOnce => write!(f, "once")?,
+                };
+                write!(f, ")")?;
+            }
         };
         write!(f, "]]")?;
         Ok(())
