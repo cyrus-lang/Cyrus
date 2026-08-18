@@ -1,34 +1,33 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 The Cyrus Language
 
-use crate::abi::{
-    Callconv, ExportKind, Inlining, Linkage, OptionalFlag, Prologue, ReprAttr, ReprKind,
-    SectionAttr, VisibilityModifier as Visibility,
-};
+use crate::abi::{Callconv, Extern, Inlining, OptionalFlag, Prologue, ReprAttr, ReprKind, Visibility};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FuncModifiers {
-    pub linkage: Option<Linkage>,
+    pub vis: Visibility,
+    pub extrn: Option<Extern>,
     pub inline: Option<Inlining>,
     pub prologue: Option<Prologue>,
-    pub export: Option<ExportKind>,
     pub callconv: Option<Callconv>,
     pub optional_flags: Vec<OptionalFlag>,
-    pub section: Option<SectionAttr>,
-    pub vis: Visibility,
+    pub section: Option<String>,
+    pub link_once: bool,
+    pub weak: bool,
 }
 
 impl Default for FuncModifiers {
     fn default() -> Self {
         Self {
-            linkage: None,
+            extrn: None,
             inline: None,
             prologue: None,
-            export: None,
             callconv: None,
             section: None,
             optional_flags: Vec::new(),
             vis: Visibility::default(),
+            link_once: false,
+            weak: false,
         }
     }
 }
@@ -90,7 +89,7 @@ impl Default for EnumModifiers {
 impl EnumModifiers {
     pub fn validate(&self) -> Result<(), String> {
         if let Some(repr_attr) = &self.repr_attr {
-            if let Some(kind) = repr_attr.kind() {
+            if let Some((kind, _)) = repr_attr.kind() {
                 match kind {
                     ReprKind::C | ReprKind::Cyrus => {
                         if repr_attr.is_packed() {
@@ -126,22 +125,22 @@ impl Default for UnionModifiers {
 #[derive(Debug, Clone)]
 pub struct GlobalVarModifiers {
     pub vis: Visibility,
-    pub linkage: Option<Linkage>,
-    pub export: Option<ExportKind>,
-    pub section: Option<SectionAttr>,
+    pub extrn: Option<Extern>,
+    pub section: Option<String>,
     pub thread_local: bool,
     pub weak: bool,
+    pub link_once: bool,
 }
 
 impl Default for GlobalVarModifiers {
     fn default() -> Self {
         Self {
             vis: Visibility::default(),
-            linkage: None,
-            export: None,
+            extrn: None,
             section: None,
             thread_local: false,
             weak: false,
+            link_once: false,
         }
     }
 }

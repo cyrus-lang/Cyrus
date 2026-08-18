@@ -4,7 +4,7 @@
 use crate::Resolver;
 use crate::diagnostics::ResolverDiagKind;
 use crate::with_local_scope;
-use cyrusc_ast::abi::VisibilityModifier;
+use cyrusc_ast::abi::Visibility;
 use cyrusc_ast::format::format_module_segments;
 use cyrusc_ast::modifiers::EnumModifiers;
 use cyrusc_ast::modifiers::FuncModifiers;
@@ -764,7 +764,7 @@ impl<'a> Resolver<'a> {
         let mut fields = Vec::with_capacity(struct_type.fields.len());
 
         // unnamed struct field visibility is always public
-        let field_vis = VisibilityModifier::Public;
+        let field_vis = Visibility::Public;
 
         for field in &struct_type.fields {
             let ty = self.resolve_type(field.ty.clone(), field.loc)?;
@@ -1025,7 +1025,7 @@ impl<'a> Resolver<'a> {
                         params: TypedFuncParams { list: params, variadic },
                         ret_type,
                         modifiers: FuncModifiers {
-                            vis: VisibilityModifier::Public,
+                            vis: Visibility::Public,
                             ..Default::default()
                         },
                         loc: func_decl_stmt.loc,

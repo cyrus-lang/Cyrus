@@ -13,7 +13,7 @@ use crate::{
 };
 use cyrusc_ast::{
     Ident, Mutability,
-    abi::{ReprKind, VisibilityModifier},
+    abi::{ReprKind, Visibility},
     modifiers::{EnumModifiers, FuncModifiers, GlobalVarModifiers, StructModifiers, UnionModifiers},
 };
 use cyrusc_source_loc::{FileID, Loc};
@@ -108,7 +108,7 @@ pub struct TypedInterfaceStmt {
     pub interface_decl_id: InterfaceDeclID,
     pub methods: MethodDecls,
     pub generic_params: TypedGenericParams,
-    pub vis: VisibilityModifier,
+    pub vis: Visibility,
     pub loc: Loc,
 }
 
@@ -193,7 +193,7 @@ pub struct TypedUnionField {
 pub struct TypedStructField {
     pub name: String,
     pub ty: SemaType,
-    pub vis: VisibilityModifier,
+    pub vis: Visibility,
     pub loc: Loc,
 }
 
@@ -223,7 +223,7 @@ pub struct TypedTypedefStmt {
     pub name: String,
     pub ty: SemaType,
     pub generic_params: TypedGenericParams,
-    pub vis: VisibilityModifier,
+    pub vis: Visibility,
     pub loc: Loc,
 }
 
@@ -656,7 +656,7 @@ impl TypedBuiltin {
 impl TypedEnumStmt {
     pub fn is_repr_c(&self) -> bool {
         if let Some(repr_attr) = &self.modifiers.repr_attr {
-            if let Some(kind) = repr_attr.kind() {
+            if let Some((kind, _)) = repr_attr.kind() {
                 return match kind {
                     ReprKind::C => true,
                     ReprKind::Cyrus => false,

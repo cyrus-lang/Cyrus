@@ -3,6 +3,7 @@
 
 use cyrusc_ast::Mutability;
 use cyrusc_ast::abi::Callconv;
+use cyrusc_ast::abi::Extern;
 use cyrusc_ast::modifiers::GlobalVarModifiers;
 use cyrusc_ast::operators::InfixOperator;
 use cyrusc_internal::abi::mangler::*;
@@ -1948,7 +1949,10 @@ impl<'a> CIRLower<'a> {
             expr: None, // no initializer
             is_undef: false,
             modifiers: GlobalVarModifiers {
-                linkage: None,
+                // We will have more complicated rules for choosing
+                // correct linkage type in the future, to optimize
+                // vtables away. But for now, extern works simply.
+                extrn: Some(Extern::Cyrus),
                 ..Default::default()
             },
             loc,

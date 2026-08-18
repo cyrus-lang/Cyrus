@@ -4,6 +4,8 @@
 use core::fmt;
 use std::collections::HashSet;
 
+use cyrusc_source_loc::Loc;
+
 macro_rules! define_call_convs {
     ($( $variant:ident => $str:expr ),* $(,)?) => {
         #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -67,10 +69,10 @@ define_call_convs! {
     System => "system",
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ExportKind {
-    DllImport,
-    DllExport,
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum Extern {
+    C,
+    Cyrus,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -147,16 +149,6 @@ pub enum Inlining {
     Always,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Linkage {
-    Extern(Callconv),
-    Weak,
-    LinkOnce,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct SectionAttr(pub String);
-
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum ReprKind {
     C,
@@ -172,11 +164,11 @@ pub enum ReprAttrKind {
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct ReprAttr {
-    pub items: Vec<ReprAttrKind>,
+    pub items: Vec<(ReprAttrKind, Loc)>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum VisibilityModifier {
+pub enum Visibility {
     Public,
     Private,
 }
@@ -197,7 +189,7 @@ impl ReprAttr {
         Self { items: Vec::new() }
     }
 
-    pub fn add(&mut self, item: ReprAttrKind) -> Result<(), String> {
+    pub fn add(&mut self, item: ReprAttrKind, loc: Loc) -> Result<(), String> {
         // check for duplicate kind
         if let ReprAttrKind::Kind(_) = &item {
             if let Some(_) = self.kind() {
@@ -210,12 +202,12 @@ impl ReprAttr {
             if self.is_packed() {
                 return Err("Duplicate packed modifier.".into());
             }
-            self.items.push(ReprAttrKind::Packed);
+            self.items.push((ReprAttrKind::Packed, loc));
             return Ok(());
         }
 
         if let ReprAttrKind::Kind(kind) = item {
-            self.items.push(ReprAttrKind::Kind(kind));
+            self.items.push((ReprAttrKind::Kind(kind), loc));
         }
 
         Ok(())
@@ -223,7 +215,7 @@ impl ReprAttr {
 
     pub fn is_packed(&self) -> bool {
         for item in &self.items {
-            if let ReprAttrKind::Packed = item {
+            if let ReprAttrKind::Packed = item.0 {
                 return true;
             }
         }
@@ -239,10 +231,10 @@ impl ReprAttr {
         }
     }
 
-    pub fn kind(&self) -> Option<ReprKind> {
-        self.items.iter().find_map(|i| {
-            if let ReprAttrKind::Kind(k) = i {
-                Some(k.clone())
+    pub fn kind(&self) -> Option<(ReprKind, Loc)> {
+        self.items.iter().find_map(|(attr, loc)| {
+            if let ReprAttrKind::Kind(kind) = attr {
+                Some((kind.clone(), *loc))
             } else {
                 None
             }
@@ -250,19 +242,19 @@ impl ReprAttr {
     }
 }
 
-impl Default for VisibilityModifier {
+impl Default for Visibility {
     fn default() -> Self {
-        VisibilityModifier::Private
+        Visibility::Private
     }
 }
 
-impl VisibilityModifier {
+impl Visibility {
     pub fn is_private(&self) -> bool {
-        *self == VisibilityModifier::Private
+        *self == Visibility::Private
     }
 
     pub fn is_public(&self) -> bool {
-        *self == VisibilityModifier::Public
+        *self == Visibility::Public
     }
 }
 
@@ -272,20 +264,11 @@ impl Prologue {
     }
 }
 
-impl Linkage {
-    pub fn is_extern(&self) -> bool {
-        match self {
-            Linkage::Extern(_) => true,
-            _ => false,
-        }
-    }
-}
-
-impl fmt::Display for VisibilityModifier {
+impl fmt::Display for Visibility {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            VisibilityModifier::Public => write!(f, "pub"),
-            VisibilityModifier::Private => write!(f, ""),
+            Visibility::Public => write!(f, "pub"),
+            Visibility::Private => write!(f, ""),
         }
     }
 }
@@ -295,7 +278,7 @@ impl fmt::Display for ReprAttr {
         let items_fmt = self
             .items
             .iter()
-            .map(|item| item.to_string())
+            .map(|(item, _)| item.to_string())
             .collect::<Vec<String>>()
             .join(", ");
 

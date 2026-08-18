@@ -632,7 +632,7 @@ impl CIREnumVariant {
 impl CIREnumType {
     pub fn is_repr_c(&self) -> bool {
         if let Some(repr_attr) = &self.repr_attr {
-            if let Some(kind) = repr_attr.kind() {
+            if let Some((kind, _)) = repr_attr.kind() {
                 return match kind {
                     ReprKind::C => true,
                     ReprKind::Cyrus => false,

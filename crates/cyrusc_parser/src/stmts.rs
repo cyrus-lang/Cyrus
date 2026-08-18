@@ -6,7 +6,7 @@ use crate::Parser;
 use crate::diagnostics::ParserDiagKind;
 use crate::modifiers::UnresolvedModifiers;
 use crate::prec::Precedence;
-use cyrusc_ast::abi::VisibilityModifier;
+use cyrusc_ast::abi::Visibility;
 use cyrusc_ast::modifiers::EnumModifiers;
 use cyrusc_ast::modifiers::FuncModifiers;
 use cyrusc_ast::modifiers::StructModifiers;
@@ -88,7 +88,7 @@ impl<'source_file> Parser<'source_file> {
                 let module_decl_modifiers = modifiers.into_module_decl_modifiers(loc)?;
                 return Ok(vec![self.parse_module_decl(module_decl_modifiers.vis)?]);
             } else if self.current_token_is(TokenKind::Function) {
-                let func_modifiers = modifiers.into_func_modifiers(loc)?;
+                let func_modifiers = modifiers.into_func_modifiers()?;
                 return Ok(vec![self.parse_func(func_modifiers)?]);
             } else if self.current_token_is(TokenKind::Struct) {
                 let struct_modifiers = modifiers.into_struct_modifiers(loc)?;
@@ -154,16 +154,17 @@ impl<'source_file> Parser<'source_file> {
         })()?;
 
         self.check_attrs(&self.attrs_stack)?;
-        
+
         for stmt in &mut parsed_stmts {
             self.stmt_accepts_attrs(&stmt, &self.attrs_stack)?;
             self.finalize_attrs(stmt, &self.attrs_stack);
+            self.attrs_stack.clear();
         }
 
         Ok(parsed_stmts)
     }
 
-    fn parse_module_decl(&mut self, vis: VisibilityModifier) -> Result<ASTStmt, Diag> {
+    fn parse_module_decl(&mut self, vis: Visibility) -> Result<ASTStmt, Diag> {
         let loc = self.current_token().loc;
         let (line, column, start) = (loc.line, loc.column, loc.start);
 
@@ -1099,7 +1100,7 @@ impl<'source_file> Parser<'source_file> {
         }
     }
 
-    fn parse_struct_field(&mut self, vis: Option<VisibilityModifier>) -> Result<StructField, Diag> {
+    fn parse_struct_field(&mut self, vis: Option<Visibility>) -> Result<StructField, Diag> {
         let loc = self.current_token().loc;
         let (line, column, start) = (loc.line, loc.column, loc.start);
 
@@ -1226,7 +1227,7 @@ impl<'source_file> Parser<'source_file> {
         }
     }
 
-    fn parse_interface(&mut self, vis: VisibilityModifier) -> Result<ASTStmt, Diag> {
+    fn parse_interface(&mut self, vis: Visibility) -> Result<ASTStmt, Diag> {
         let loc = self.current_token().loc;
         let (line, column, start) = (loc.line, loc.column, loc.start);
 
@@ -1896,7 +1897,7 @@ impl<'source_file> Parser<'source_file> {
         }))
     }
 
-    fn parse_typedef(&mut self, vis: VisibilityModifier) -> Result<ASTStmt, Diag> {
+    fn parse_typedef(&mut self, vis: Visibility) -> Result<ASTStmt, Diag> {
         let loc = self.current_token().loc;
         let (line, column, start) = (loc.line, loc.column, loc.start);
 

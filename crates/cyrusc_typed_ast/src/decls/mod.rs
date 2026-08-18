@@ -11,7 +11,7 @@ use crate::{
     types::{SemaType, TypeDeclID, TypedFuncType},
 };
 use cyrusc_ast::{
-    abi::{ReprKind, VisibilityModifier},
+    abi::{ReprKind, Visibility},
     modifiers::{EnumModifiers, FuncModifiers, GlobalVarModifiers, StructModifiers, UnionModifiers},
 };
 use cyrusc_source_loc::{FileID, Loc};
@@ -174,7 +174,7 @@ pub struct TypedefDecl {
     pub name: String,
     pub ty: Box<SemaType>,
     pub generic_params: TypedGenericParams,
-    pub vis: VisibilityModifier,
+    pub vis: Visibility,
     pub loc: Loc,
 }
 
@@ -184,7 +184,7 @@ pub struct InterfaceDecl {
     pub methods: MethodDecls,
     pub generic_params: TypedGenericParams,
     pub is_interface_dynamically_dispatchable: bool,
-    pub vis: VisibilityModifier,
+    pub vis: Visibility,
     pub loc: Loc,
 }
 
@@ -225,7 +225,7 @@ impl EnumDecl {
     #[inline]
     pub fn is_repr_c(&self) -> bool {
         if let Some(repr_attr) = &self.modifiers.repr_attr {
-            if let Some(kind) = repr_attr.kind() {
+            if let Some((kind, _)) = repr_attr.kind() {
                 return match kind {
                     ReprKind::C => true,
                     ReprKind::Cyrus => false,

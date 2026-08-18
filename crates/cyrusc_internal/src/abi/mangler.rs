@@ -2,7 +2,7 @@
 // Copyright (c) 2026 The Cyrus Language
 
 use cyrusc_ast::{
-    abi::{Callconv, Linkage},
+    abi::Extern,
     modifiers::{FuncModifiers, GlobalVarModifiers},
 };
 use cyrusc_typed_ast::{
@@ -105,15 +105,15 @@ impl ABINameMangler for C_ABI_Impl {
 }
 
 pub fn mangle_global_var(modifiers: &GlobalVarModifiers, module_name: &str, var_name: &str) -> String {
-    match &modifiers.linkage {
-        Some(linkage) => abi_mangler_from_linkage(linkage).global_var_name(module_name, var_name),
+    match &modifiers.extrn {
+        Some(extrn) => abi_mangler_from_linkage(extrn).global_var_name(module_name, var_name),
         None => CYRUS_ABI.global_var_name(module_name, var_name),
     }
 }
 
 pub fn mangle_func(modifiers: &FuncModifiers, module_name: &str, name: &str) -> String {
-    match &modifiers.linkage {
-        Some(linkage) => abi_mangler_from_linkage(linkage).func_name(module_name, name),
+    match &modifiers.extrn {
+        Some(extrn) => abi_mangler_from_linkage(extrn).func_name(module_name, name),
         None => CYRUS_ABI.func_name(module_name, name),
     }
 }
@@ -264,21 +264,9 @@ pub fn mangle_method(module_name: &str, id: &str, name: &str) -> String {
     CYRUS_ABI.method_name(module_name, id, name)
 }
 
-pub fn abi_mangler_from_linkage(linkage: &Linkage) -> &'static dyn ABINameMangler {
-    match linkage {
-        Linkage::Extern(callconv) => match callconv {
-            Callconv::C
-            | Callconv::Stdcall
-            | Callconv::Fastcall
-            | Callconv::Thiscall
-            | Callconv::Vectorcall
-            | Callconv::SysV64
-            | Callconv::Win64
-            | Callconv::System => &*C_ABI,
-
-            Callconv::Naked | Callconv::Interrupt | Callconv::Fast | Callconv::Cold | Callconv::Aapcs => &*CYRUS_ABI,
-        },
-        Linkage::Weak => &*CYRUS_ABI,
-        Linkage::LinkOnce => &*CYRUS_ABI,
+pub fn abi_mangler_from_linkage(extrn: &Extern) -> &'static dyn ABINameMangler {
+    match extrn {
+        Extern::C => &*C_ABI,
+        Extern::Cyrus => &*CYRUS_ABI,
     }
 }

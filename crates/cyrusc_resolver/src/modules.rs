@@ -2,7 +2,7 @@
 // Copyright (c) 2026 The Cyrus Language
 
 use crate::{ResolvedProgramTree, Resolver, diagnostics::ResolverDiagKind};
-use cyrusc_ast::{ASTImportStmt, ModuleSegment, ModuleSegmentSingle, ProgramTree, abi::VisibilityModifier};
+use cyrusc_ast::{ASTImportStmt, ModuleSegment, ModuleSegmentSingle, ProgramTree, abi::Visibility};
 use cyrusc_diagcentral::{Diag, DiagLevel};
 use cyrusc_internal::{
     module_loader::{LoadedModule, ModuleAlias},
@@ -452,7 +452,7 @@ impl<'a> Resolver<'a> {
         return real_module_symbol_id;
     }
 
-    fn report_if_imported_private_symbol(&mut self, single_name: String, vis: VisibilityModifier, loc: Loc) {
+    fn report_if_imported_private_symbol(&mut self, single_name: String, vis: Visibility, loc: Loc) {
         if vis.is_private() {
             self.reporter.report(Diag {
                 level: DiagLevel::Error,

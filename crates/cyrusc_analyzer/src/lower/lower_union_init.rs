@@ -2,7 +2,7 @@
 // Copyright (c) 2026 The Cyrus Language
 
 use crate::{context::AnalysisContext, diagnostics::AnalyzerDiagKind};
-use cyrusc_ast::{abi::VisibilityModifier, modifiers::UnionModifiers};
+use cyrusc_ast::{abi::Visibility, modifiers::UnionModifiers};
 use cyrusc_diagcentral::{Diag, DiagLevel};
 use cyrusc_typed_ast::{
     decls::{MethodDecls, UnionDecl},
@@ -159,7 +159,7 @@ impl<'a> AnalysisContext<'a> {
             methods: MethodDecls::new(),
             generic_params: TypedGenericParams::new(),
             modifiers: UnionModifiers {
-                vis: VisibilityModifier::Public,
+                vis: Visibility::Public,
                 repr_attr: None,
             },
             align: None,
