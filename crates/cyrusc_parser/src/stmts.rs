@@ -22,6 +22,15 @@ impl<'source_file> Parser<'source_file> {
         grouped_modifiers: Option<UnresolvedModifiers>,
         toplevel: bool,
     ) -> Result<Vec<ASTStmt>, Diag> {
+        // Parsing attribute has the highest priority here,
+        // we return it immediately so caller could properly
+        // connect it into the statement it wants.
+        if self.current_token_is(TokenKind::LeftBracket) {
+            let attr = self.parse_attr()?;
+            self.attrs_stack.push(attr);
+            return Ok(Vec::new());
+        }
+
         if self.current_token_is(TokenKind::At) {
             // Builtin `@asm` has a special syntax and
             // cannot be handled via parse_builtin
@@ -75,12 +84,6 @@ impl<'source_file> Parser<'source_file> {
             }
 
             return self.parse_grouped_modifiers(Some(modifiers), toplevel);
-        }
-
-        if self.current_token_is(TokenKind::LeftBracket) {
-            let attr = self.parse_attr()?;
-            self.attrs_stack.push(attr);
-            return Ok(Vec::new());
         }
 
         let mut parsed_stmts = (|| {
@@ -153,12 +156,14 @@ impl<'source_file> Parser<'source_file> {
             }
         })()?;
 
-        self.check_attrs(&self.attrs_stack)?;
+        if toplevel {
+            self.check_attrs(&self.attrs_stack)?;
 
-        for stmt in &mut parsed_stmts {
-            self.stmt_accepts_attrs(&stmt, &self.attrs_stack)?;
-            self.finalize_attrs(stmt, &self.attrs_stack);
-            self.attrs_stack.clear();
+            for stmt in &mut parsed_stmts {
+                self.stmt_accepts_attrs(&stmt, &self.attrs_stack)?;
+                self.finalize_attrs(stmt, &self.attrs_stack)?;
+                self.attrs_stack.clear();
+            }
         }
 
         Ok(parsed_stmts)
@@ -873,23 +878,7 @@ impl<'source_file> Parser<'source_file> {
                 continue;
             }
 
-            if self.current_token_is(TokenKind::Function) {
-                let func_modifiers = FuncModifiers::default();
-                let method = self.parse_method(func_modifiers)?;
-                methods.push(method);
-                continue;
-            }
-
-            let modifiers = self.parse_unresolved_modifiers()?;
-
-            if self.current_token_is(TokenKind::Function) {
-                let func_modifiers = modifiers.into_method_modifiers()?;
-                let method = self.parse_method(func_modifiers)?;
-                methods.push(method);
-                continue;
-            }
-
-            break;
+            methods.push(self.parse_method(None)?);
         }
 
         let end = self.current_token().loc.end;
@@ -964,6 +953,8 @@ impl<'source_file> Parser<'source_file> {
                 || self.peek_token_is(TokenKind::Function)
                 || self.peek_token_is(TokenKind::Extern)
                 || self.peek_token_is(TokenKind::Public)
+                // LeftBracket because of attribute
+                || self.peek_token_is(TokenKind::LeftBracket)
             {
                 break;
             }
@@ -985,23 +976,7 @@ impl<'source_file> Parser<'source_file> {
                 return Err(self.error_at_current(ParserDiagKind::MissingClosingBrace));
             }
 
-            if self.current_token_is(TokenKind::Function) {
-                let func_modifiers = FuncModifiers::default();
-                let method = self.parse_method(func_modifiers)?;
-                methods.push(method);
-                continue;
-            }
-
-            let modifiers = self.parse_unresolved_modifiers()?;
-
-            if self.current_token_is(TokenKind::Function) {
-                let func_modifiers = modifiers.into_method_modifiers()?;
-                let method = self.parse_method(func_modifiers)?;
-                methods.push(method);
-                continue;
-            }
-
-            break;
+            methods.push(self.parse_method(None)?);
         }
 
         let end = self.current_token().loc.end;
@@ -1070,9 +1045,7 @@ impl<'source_file> Parser<'source_file> {
                 continue;
             }
 
-            let func_modifiers = modifiers.into_method_modifiers()?;
-            let method = self.parse_method(func_modifiers)?;
-            methods.push(method);
+            methods.push(self.parse_method(Some(modifiers))?);
         }
 
         let end = self.current_token().loc.end;
@@ -1090,13 +1063,42 @@ impl<'source_file> Parser<'source_file> {
         }))
     }
 
-    fn parse_method(&mut self, modifiers: FuncModifiers) -> Result<ASTFuncDefStmt, Diag> {
-        if let ASTStmt::FuncDef(func_def) = self.parse_func(modifiers)? {
+    // Detects attributes and modifiers and parses method definition subsequently.
+    fn parse_method(&mut self, mut modifiers: Option<UnresolvedModifiers>) -> Result<ASTFuncDefStmt, Diag> {
+        let is_attr_used = self.current_token_is(TokenKind::LeftBracket);
+
+        if is_attr_used {
+            self.parse_stmt(None, true)?;
+            self.next_token();
+        }
+
+        if matches!(&modifiers, Some(unres) if *unres == UnresolvedModifiers::default()) {
+            // If parent modifiers is equivalent to default,
+            // we need to try once more time to parse modifiers
+            // to be sure it parsed correctly after attributes.
+            modifiers = Some(self.parse_unresolved_modifiers()?);
+        }
+
+        if modifiers.is_none() {
+            modifiers = Some(self.parse_unresolved_modifiers()?);
+        }
+
+        // If it parsed an attribute, we need to parse_stmt again
+        // to get the method definition
+        let mut stmts = self.parse_stmt(modifiers.clone(), true)?;
+
+        if stmts.len() == 1
+            && let Some(ASTStmt::FuncDef(func_def)) = stmts.first_mut()
+        {
             self.next_token(); // consume right brace
 
-            Ok(func_def)
+            if let Some(modifiers) = modifiers {
+                func_def.modifiers = modifiers.into_method_modifiers()?;
+            }
+
+            Ok(func_def.clone())
         } else {
-            Err(self.error_at_current(ParserDiagKind::MethodMustHaveABody))
+            Err(self.error_at_current(ParserDiagKind::ExpectedMethodDefinition))
         }
     }
 

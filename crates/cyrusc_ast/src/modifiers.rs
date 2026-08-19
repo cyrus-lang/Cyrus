@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 The Cyrus Language
 
-use crate::abi::{Callconv, Extern, Inlining, OptionalFlag, Prologue, ReprAttr, ReprKind, Visibility};
+use crate::abi::*;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FuncModifiers {
@@ -43,10 +43,10 @@ impl FuncModifiers {
         if let Some(Prologue::Naked) = self.prologue {
             if let Some(cc) = &self.callconv {
                 if *cc != Callconv::Naked {
-                    return Err("Naked prologue must use callconv(naked).".into());
+                    return Err("Naked prologue must use '[[callconv(naked)]]'.".into());
                 }
             } else {
-                return Err("Naked prologue requires callconv(naked).".into());
+                return Err("Naked prologue requires '[[callconv(naked)]]'.".into());
             }
         }
 
@@ -85,27 +85,6 @@ impl Default for EnumModifiers {
             vis: Visibility::default(),
             repr_attr: None,
         }
-    }
-}
-
-impl EnumModifiers {
-    pub fn validate(&self) -> Result<(), String> {
-        if let Some(repr_attr) = &self.repr_attr {
-            if let Some((kind, _)) = repr_attr.kind() {
-                match kind {
-                    ReprKind::C | ReprKind::Cyrus => {
-                        if repr_attr.is_packed() {
-                            return Err("Cannot combine 'packed' with enum layout.".into());
-                        }
-                    }
-                    ReprKind::Transparent => {
-                        return Err("Repr 'transparent' cannot be applied to enums.".into());
-                    }
-                }
-            }
-        }
-
-        Ok(())
     }
 }
 

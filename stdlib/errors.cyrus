@@ -10,7 +10,8 @@ pub enum ErrorOr<V, E = ErrorStr> {
 	Error(E)
 
 	/// Unwraps the contained value, panicking with the error message if this is an Error.
-    pub fn unwrap(self: const Self*) V {
+    [[inline]]
+	pub fn unwrap(self: const Self*) V {
     	switch (*self) {
 			case .Value(value) => return value;
 			case .Error(err) => @panic(err);
@@ -18,7 +19,8 @@ pub enum ErrorOr<V, E = ErrorStr> {
     }
 
 	/// Returns true if contains an error, false otherwise.
-	pub inline fn is_error(self: const Self*) bool {
+	[[inline]]
+	pub fn is_error(self: const Self*) bool {
 		switch (*self) {
 			case .Value(_) => return false;
 			case .Error(_) => return true;
@@ -26,7 +28,8 @@ pub enum ErrorOr<V, E = ErrorStr> {
 	}
 	
 	/// Returns true if contains a value, false otherwise.
-	pub inline fn is_value(self: const Self*) bool {
+	[[inline]]
+	pub fn is_value(self: const Self*) bool {
 		switch (*self) {
 			case .Value(_) => return true;
 			case .Error(_) => return false;

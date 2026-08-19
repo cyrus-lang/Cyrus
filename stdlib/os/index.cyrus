@@ -125,11 +125,13 @@ pub struct File {
         return .Value(());
     }
 
-    pub inline fn eof(self: const Self*) bool {
+    [[inline]]
+    pub fn eof(self: const Self*) bool {
         return libc::feof(self->file) != 0;
     }
 
-    pub inline fn close(self: Self*) {
+    [[inline]]
+    pub fn close(self: Self*) {
         libc::fclose(self->file);
     }
 }
@@ -171,7 +173,8 @@ pub enum FileSeek {
     Cur = 1,
     End = 2,
 
-    pub inline fn as_num(self: Self) int32 {
+    [[inline]]
+    pub fn as_num(self: Self) int32 {
         return @cast(int32, self);
     }
 }
@@ -190,6 +193,7 @@ pub enum ExitStatusCode {
     }
 }
 
-pub inline fn exit(code: ExitStatusCode) {
+[[inline]]
+pub fn exit(code: ExitStatusCode) {
     libc::exit(code.as_num());
 }

@@ -11,18 +11,21 @@ pub interface Allocator {
 	fn free(self: Self*, ptr: void*) void;
 }
 
-pub inline fn alloc<T>(allocator: Allocator, value: T) T* {
+[[inline]]
+pub fn alloc<T>(allocator: Allocator, value: T) T* {
 	var heap: T* = allocator.alloc(@sizeof(T));
 	*heap = value;
 	return heap;
 }
 
-pub inline fn align_up(ptr: uintptr, align: usize) uintptr {
+[[inline]]
+pub fn align_up(ptr: uintptr, align: usize) uintptr {
 	@assert(is_power_of_two(align), "alignment must be power of two");
 	
 	return (ptr + (align - 1)) & ~(align - 1);
 }
 
-pub inline fn is_power_of_two<T>(v: T) bool {
+[[inline]]
+pub fn is_power_of_two<T>(v: T) bool {
 	return v != 0 && (v & (v - 1)) == 0;
 }

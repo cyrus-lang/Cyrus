@@ -676,7 +676,8 @@ pub enum ArgType {
     Float,
     Bool,
 
-    pub inline fn to_str(self: Self) uint8* {
+    [[inline]]
+    pub fn to_str(self: Self) uint8* {
         switch (self) {
             case .Str => return "string";
             case .Int => return "integer";
@@ -685,7 +686,8 @@ pub enum ArgType {
         }
     }
 
-    pub inline fn is_bool(self: Self) bool {
+    [[inline]]
+    pub fn is_bool(self: Self) bool {
         switch (self) {
             case .Bool => return true;
             else => return false;
@@ -698,7 +700,8 @@ pub enum DupPolicy {
     Last
 }
 
-inline fn is_value_valid(ty: ArgType, value: Value) bool {
+[[inline]]
+fn is_value_valid(ty: ArgType, value: Value) bool {
     switch (value) {
         case .Float(_) => if (ty == .Float) { return true; }
         case .Bool(_)  => if (ty == .Bool) { return true; }
@@ -708,7 +711,8 @@ inline fn is_value_valid(ty: ArgType, value: Value) bool {
     return false;
 }
 
-inline fn parse_bool(ok: bool*, arg: const uint8*) bool {
+[[inline]]
+fn parse_bool(ok: bool*, arg: const uint8*) bool {
     if (((strcmp(arg, "true") == 0 || strcmp(arg, "yes") == 0) ||
         (strcmp(arg, "on") == 0)) || strcmp(arg, "enabled") == 0)
     {
@@ -726,7 +730,8 @@ inline fn parse_bool(ok: bool*, arg: const uint8*) bool {
     return false;
 }
 
-inline fn parse_int(ok: bool*, arg: const uint8*) int64 {
+[[inline]]
+fn parse_int(ok: bool*, arg: const uint8*) int64 {
     var endptr: c_char*;
 
     errno = 0;
@@ -741,7 +746,8 @@ inline fn parse_int(ok: bool*, arg: const uint8*) int64 {
     return @cast(int64, result);
 }
 
-inline fn parse_float(ok: bool*, arg: const uint8*) float64 {
+[[inline]]
+fn parse_float(ok: bool*, arg: const uint8*) float64 {
     var endptr: c_char*;
     
     errno = 0;
@@ -756,7 +762,8 @@ inline fn parse_float(ok: bool*, arg: const uint8*) float64 {
     return @cast(float64, result);
 }
 
-// inline fn is_opt_assign(arg: const uint8*) (bool, usize) {
+// [[inline]]
+// fn is_opt_assign(arg: const uint8*) (bool, usize) {
 // const len = @cast(usize, strlen(arg));
 // for (var i: usize = 0; i < len; i += 1) {
 //     if (arg[i] == '=') {
@@ -766,13 +773,15 @@ inline fn parse_float(ok: bool*, arg: const uint8*) float64 {
 // return (false, 0);
 // }
 
-inline fn is_opt_dashed(arg: const uint8*) (bool, bool) {
+[[inline]]
+fn is_opt_dashed(arg: const uint8*) (bool, bool) {
     const single_dash = arg[0] == '-';
     const double_dash = arg[0] == '-' && arg[1] == '-';
     return (single_dash, double_dash);
 }
 
-inline fn is_arg_an_opt(arg: const uint8*) bool {
+[[inline]]
+fn is_arg_an_opt(arg: const uint8*) bool {
     if (!arg) {
         return false;
     }
@@ -792,7 +801,8 @@ inline fn is_arg_an_opt(arg: const uint8*) bool {
     return false;
 }
 
-inline fn is_ident(str: const uint8*) bool {
+[[inline]]
+fn is_ident(str: const uint8*) bool {
     @assert(str, "str cannot be null");
     
     if (*str == '\0') {
@@ -817,7 +827,8 @@ inline fn is_ident(str: const uint8*) bool {
     return true;
 }
 
-inline fn write_spaces(writer: Writer, n: usize) {
+[[inline]]
+fn write_spaces(writer: Writer, n: usize) {
     for (var i: usize = 0; i < n; i += 1) {
         writer.write(" ");
     }

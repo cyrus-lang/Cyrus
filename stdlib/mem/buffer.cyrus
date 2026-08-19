@@ -7,19 +7,22 @@ import std::mem{Allocator};
 pub struct Buffer<T> {
     buffer: Vector<T>,
 
-    pub inline fn new(allocator: Allocator) Self {
+    [[inline]]
+    pub fn new(allocator: Allocator) Self {
         var buffer: Vector<T> = Vector.with_capacity(allocator, @sizeof(T));
 
         return Self { buffer };
     }
 
-    pub inline fn with_capacity(allocator: Allocator, cap: usize) Self {
+    [[inline]]
+    pub fn with_capacity(allocator: Allocator, cap: usize) Self {
         var buffer: Vector<T> = Vector.with_capacity(allocator, cap * @sizeof(T));
 
         return Self { buffer };
     }
 
-    pub inline fn reserve(self: Self*, const extra: usize) {
+    [[inline]]
+    pub fn reserve(self: Self*, const extra: usize) {
         const required = self->len() + extra + 1;
 
         if (required > self->cap()) {
@@ -27,43 +30,53 @@ pub struct Buffer<T> {
         }
     }
 
-    pub inline fn get(self: Self*, index: usize) T {
+    [[inline]]
+    pub fn get(self: Self*, index: usize) T {
         return self->data()[index];
     }
 
-    pub inline fn data(self: Self*) T* {
+    [[inline]]
+    pub fn data(self: Self*) T* {
         return self->buffer.data();
     }
 
-    pub inline fn data_const(self: const Self*) const T* {
+    [[inline]]
+    pub fn data_const(self: const Self*) const T* {
         return self->buffer.data_const();
     }
 
-    pub inline fn cap(self: const Self*) usize {
+    [[inline]]
+    pub fn cap(self: const Self*) usize {
         return self->buffer.cap();
     }
 
-    pub inline fn len(self: const Self*) usize {
+    [[inline]]
+    pub fn len(self: const Self*) usize {
         return self->buffer.len();
     }
 
-    pub inline fn push(self: Self*, ch: T) {
+    [[inline]]
+    pub fn push(self: Self*, ch: T) {
         self->buffer.push(ch);
     }
 
-    pub inline fn pop(self: Self*) T {
+    [[inline]]
+    pub fn pop(self: Self*) T {
         return self->buffer.pop();
     }
 
-    pub inline fn is_empty(self: const Self*) bool {
+    [[inline]]
+    pub fn is_empty(self: const Self*) bool {
         return self->len() == 0;
     }
 
-    pub inline fn clear(self: Self*) {
+    [[inline]]
+    pub fn clear(self: Self*) {
         self->buffer.clear();
     }
 
-    pub inline fn free(self: Self*) {
+    [[inline]]
+    pub fn free(self: Self*) {
         self->buffer.free();
     }
 }
