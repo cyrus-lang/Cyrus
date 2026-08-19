@@ -720,7 +720,6 @@ pub struct ASTFuncDeclStmt {
     pub params: FuncParams,
     pub ret_type: Option<TypeSpecifier>,
     pub modifiers: FuncModifiers,
-    pub renamed_as: Option<Ident>,
     pub loc: Loc,
 }
 
@@ -1004,18 +1003,7 @@ impl ASTFuncDefStmt {
             params: self.params.clone(),
             ret_type: self.ret_type.clone(),
             modifiers: self.modifiers.clone(),
-            renamed_as: None,
             loc: self.loc,
-        }
-    }
-}
-
-impl ASTFuncDeclStmt {
-    /// Returns the function's effective name, preferring the renamed version if available.
-    pub fn usable_name(&self) -> String {
-        match &self.renamed_as {
-            Some(ident) => ident.value.clone(),
-            None => self.ident.value.clone(),
         }
     }
 }

@@ -91,9 +91,6 @@ pub enum ResolverDiagKind {
 
     #[error("Duplicate declaration of method '{method_name}' in '{struct_name}'.")]
     DuplicateMethodName { struct_name: String, method_name: String },
-
-    #[error("Interface methods cannot be renamed.")]
-    RenameInterfaceMethod,
 }
 
 impl DiagKind for ResolverDiagKind {}

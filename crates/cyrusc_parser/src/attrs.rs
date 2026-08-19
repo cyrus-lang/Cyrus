@@ -133,6 +133,15 @@ impl<'source_file> Parser<'source_file> {
                     loc: Loc::new(self.file_id(), line, column, start, end),
                 }
             }
+            "link_name" => {
+                let name = self.parse_attr_strval()?;
+                let end = self.current_token().loc.end;
+
+                Attr {
+                    kind: AttrKind::LinkName(name),
+                    loc: Loc::new(self.file_id(), line, column, start, end),
+                }
+            }
             "section" => {
                 let name = self.parse_attr_strval()?;
                 let end = self.current_token().loc.end;
@@ -350,6 +359,7 @@ impl<'source_file> Parser<'source_file> {
 
         let is_thread_local = find_attr!(attrs, AttrKind::ThreadLocal);
         let is_nosanitize = find_attr!(attrs, AttrKind::NoSanitize(_));
+        let is_link_name = find_attr!(attrs, AttrKind::LinkName(_));
         let is_callconv = find_attr!(attrs, AttrKind::Callconv(_));
         let is_section = find_attr!(attrs, AttrKind::Section(_));
         let is_inline = find_attr!(attrs, AttrKind::Inline(_));
@@ -386,7 +396,8 @@ impl<'source_file> Parser<'source_file> {
             invalid_attrs,
             is_func || is_global_var => [
                 is_section,
-                is_link
+                is_link,
+                is_link_name
             ]
         );
 
@@ -447,6 +458,7 @@ impl<'source_file> Parser<'source_file> {
                 AttrKind::Repr(_) => "repr".to_string(),
                 AttrKind::Link(_) => "link".to_string(),
                 AttrKind::ThreadLocal => "thread_local".to_string(),
+                AttrKind::LinkName(_) => "link_name".to_string(),
             };
 
             if seen.insert(key, attr.loc).is_some() {
@@ -627,6 +639,9 @@ impl<'source_file> Parser<'source_file> {
             AttrKind::ThreadLocal => {
                 modifiers.thread_local = true;
             }
+            AttrKind::LinkName(name) => {
+                modifiers.link_name = Some(name.clone());
+            }
             _ => unreachable!(),
         }
     }
@@ -667,6 +682,9 @@ impl<'source_file> Parser<'source_file> {
                 if *link_attr == LinkAttr::LinkOnce {
                     modifiers.link_once = true;
                 }
+            }
+            AttrKind::LinkName(name) => {
+                modifiers.link_name = Some(name.clone());
             }
             _ => unreachable!(),
         }

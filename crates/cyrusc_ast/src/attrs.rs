@@ -14,6 +14,7 @@ pub struct Attr {
 #[derive(Debug, Clone)]
 pub enum AttrKind {
     Link(LinkAttr),
+    LinkName(String),
     Inline(Inlining),
     Callconv(Callconv),
     NoSanitize(String),
@@ -92,6 +93,7 @@ impl fmt::Display for AttrKind {
                 };
                 write!(f, ")")?;
             }
+            AttrKind::LinkName(name) => write!(f, "link_name({})", name)?,
         };
         write!(f, "]]")?;
         Ok(())
