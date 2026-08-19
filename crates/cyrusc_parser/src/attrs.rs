@@ -169,7 +169,7 @@ impl<'source_file> Parser<'source_file> {
             }
             _ => {
                 return Err(self.error_at_loc(
-                    ParserDiagKind::InvalidAttribute("Invalid attribute.".to_string()),
+                    ParserDiagKind::InvalidAttribute("Unknown attribute.".to_string()),
                     ident.loc,
                 ));
             }
@@ -410,6 +410,20 @@ impl<'source_file> Parser<'source_file> {
             }
         }
 
+        // Weak cannot be applied to function definitions
+        if let Some((_, loc)) = find_attr!(attrs, AttrKind::Link(LinkAttr::Weak))
+            && matches!(stmt, ASTStmt::FuncDef(_))
+        {
+            return Err(Diag {
+                kind: Box::new(ParserDiagKind::InvalidModifier(
+                    "Attributes '[[link(weak)]]' cannot be applied to function definition.".to_string(),
+                )),
+                level: DiagLevel::Error,
+                loc: Some(loc),
+                hint: None,
+            });
+        }
+
         Ok(())
     }
 
@@ -514,11 +528,11 @@ impl<'source_file> Parser<'source_file> {
         if repr.is_packed() {
             return Err(Diag {
                 kind: Box::new(ParserDiagKind::InvalidModifier(
-                    "repr(packed) is not supported for enums.".to_string(),
+                    "'[[repr(packed)]]' is not supported for enums.".to_string(),
                 )),
                 level: DiagLevel::Error,
                 loc: Some(loc),
-                hint: Some("Packed enums are not safe. Use repr(C) with a fixed-size tag field instead.".to_string()),
+                hint: None,
             });
         }
 
@@ -529,7 +543,7 @@ impl<'source_file> Parser<'source_file> {
                 ReprKind::Transparent => {
                     return Err(Diag {
                         kind: Box::new(ParserDiagKind::InvalidModifier(
-                            "'repr(transparent)' is not valid for enums.".to_string(),
+                            "'[[repr(transparent)]]' is not valid for enums.".to_string(),
                         )),
                         level: DiagLevel::Error,
                         loc: Some(loc),
