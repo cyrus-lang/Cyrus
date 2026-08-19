@@ -77,10 +77,11 @@ impl<'a> AnalysisContext<'a> {
                 let is_lhs_const = inner2.is_const();
                 let is_rhs_const = inner1.is_const();
 
-                return !is_lhs_const && is_rhs_const
-                    || inner1.is_void()
-                    || inner2.is_void()
-                    || self.is_assignable_to(*inner1, *inner2, loc);
+                if !is_lhs_const && is_rhs_const {
+                    return false;
+                }
+
+                return inner1.is_void() || inner2.is_void() || self.is_assignable_to(*inner1, *inner2, loc);
             }
             _ => {}
         }

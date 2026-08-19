@@ -3,8 +3,8 @@
 import std::libc{printf};
 
 pub fn main() {
-	const arr: int32[10];
-	const ptr: int32* = &arr[0];
+	var arr: int32[10];
+	var ptr: int32* = &arr[0];
 	var ptr2: int32* = ptr + 5;
 
 	*ptr2 = 99;
