@@ -19,12 +19,17 @@ pub enum AttrKind {
     NoSanitize(String),
     Section(String),
     Repr(ReprAttr),
+    Opt(OptAttr),
     ThreadLocal,
     Naked,
     Cold,
     Hot,
-    OptNone,
-    OptSize,
+}
+
+#[derive(Debug, Clone, Copy, Eq, PartialEq)]
+pub enum OptAttr {
+    None,
+    Size,
 }
 
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
@@ -54,8 +59,15 @@ impl fmt::Display for AttrKind {
             }
             AttrKind::Callconv(callconv) => write!(f, "callconv({callconv})")?,
             AttrKind::NoSanitize(name) => write!(f, "nosanitize(\"{name}\")")?,
-            AttrKind::OptNone => write!(f, "optimize(none)")?,
-            AttrKind::OptSize => write!(f, "optimize(size)")?,
+            AttrKind::Opt(opt_attr) => {
+                write!(f, "opt")?;
+                write!(f, "(")?;
+                match opt_attr {
+                    OptAttr::None => write!(f, "none")?,
+                    OptAttr::Size => write!(f, "size")?,
+                }
+                write!(f, ")")?;
+            }
             AttrKind::Cold => write!(f, "cold")?,
             AttrKind::Hot => write!(f, "hot")?,
             AttrKind::Naked => write!(f, "naked")?,

@@ -21,9 +21,9 @@ fn llvm_inline(inline: &Inlining) -> &'static str {
     }
 }
 
-fn llvm_prologue(prologue: &Prologue) -> Option<&'static str> {
+fn llvm_prologue(prologue: &Prologue) -> &'static str {
     match prologue {
-        Prologue::Naked => Some("naked"),
+        Prologue::Naked => "naked",
     }
 }
 
@@ -96,10 +96,16 @@ pub(crate) fn apply_func_modifiers<'ll>(llvm_ctx: &'ll Context, func: &FunctionV
     }
 
     if let Some(prologue) = &modifiers.prologue {
-        if let Some(attr_name) = llvm_prologue(prologue) {
-            let attr = llvm_ctx.create_string_attribute(attr_name, "");
-            func.add_attribute(AttributeLoc::Function, attr);
-        }
+        let attr_name = llvm_prologue(prologue);
+
+        let attr = llvm_ctx.create_string_attribute(attr_name, "");
+        func.add_attribute(AttributeLoc::Function, attr);
+
+        // Naked function shall have `frame-pointer=none` to support all targets properly.
+        // Check this out:
+        // https://github.com/llvm/llvm-project/pull/106014
+        let attr = llvm_ctx.create_string_attribute("frame-pointer", "none");
+        func.add_attribute(AttributeLoc::Function, attr);
     }
 
     if let Some(callconv) = &modifiers.callconv {
