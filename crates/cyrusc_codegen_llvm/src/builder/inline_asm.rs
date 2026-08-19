@@ -87,8 +87,13 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         for op in &asm.inputs {
             constraints.push(op.constraint.clone());
         }
+        let mut has_align_stack = false;
         for clobber in &asm.clobbers {
-            constraints.push(format!("~{{{}}}", clobber));
+            if clobber.eq_ignore_ascii_case("alignstack") {
+                has_align_stack = true;
+            } else {
+                constraints.push(format!("~{{{}}}", clobber));
+            }
         }
         let constraint_str = constraints.join(",");
 
@@ -156,7 +161,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
                 constraint_cstr.as_ptr() as *mut _,
                 constraint_str.len(),
                 is_volatile,
-                1,
+                has_align_stack as i32,
                 LLVMInlineAsmDialect::LLVMInlineAsmDialectATT,
                 0,
             )
