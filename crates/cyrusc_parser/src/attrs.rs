@@ -568,17 +568,17 @@ impl<'source_file> Parser<'source_file> {
         Ok(())
     }
 
-    pub(crate) fn finalize_attrs(&self, stmt: &mut ASTStmt, attrs: &[Attr]) {
+    pub(crate) fn finalize_attrs(&self, stmt: &mut ASTStmt, attrs: &[Attr]) -> Result<(), Diag> {
         for attr in attrs {
             match stmt {
                 ASTStmt::GlobalVar(global_var) => {
                     self.apply_attrs_on_global_var_modifiers(attr, &mut global_var.modifiers);
                 }
                 ASTStmt::FuncDef(func_def) => {
-                    self.apply_attrs_on_func_modifiers(attr, &mut func_def.modifiers);
+                    self.apply_attrs_on_func_modifiers(attr, &mut func_def.modifiers)?;
                 }
                 ASTStmt::FuncDecl(func_decl) => {
-                    self.apply_attrs_on_func_modifiers(attr, &mut func_decl.modifiers);
+                    self.apply_attrs_on_func_modifiers(attr, &mut func_decl.modifiers)?;
                 }
                 ASTStmt::Struct(struct_stmt) => {
                     self.apply_attrs_on_struct_modifiers(attr, &mut struct_stmt.modifiers);
@@ -592,6 +592,7 @@ impl<'source_file> Parser<'source_file> {
                 _ => continue,
             }
         }
+        Ok(())
     }
 
     // Apply
@@ -646,7 +647,7 @@ impl<'source_file> Parser<'source_file> {
         }
     }
 
-    fn apply_attrs_on_func_modifiers(&self, attr: &Attr, modifiers: &mut FuncModifiers) {
+    fn apply_attrs_on_func_modifiers(&self, attr: &Attr, modifiers: &mut FuncModifiers) -> Result<(), Diag> {
         match &attr.kind {
             AttrKind::NoSanitize(name) => {
                 modifiers
@@ -687,6 +688,17 @@ impl<'source_file> Parser<'source_file> {
                 modifiers.link_name = Some(name.clone());
             }
             _ => unreachable!(),
+        };
+
+        if let Err(err) = modifiers.validate() {
+            return Err(Diag {
+                kind: Box::new(ParserDiagKind::InvalidModifier(err)),
+                level: DiagLevel::Error,
+                loc: Some(attr.loc),
+                hint: None,
+            });
         }
+
+        Ok(())
     }
 }

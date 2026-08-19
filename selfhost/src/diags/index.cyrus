@@ -19,18 +19,21 @@ import (
 
 pub struct DiagContext {
     diags: Vec<Diag>,
-    
-    pub inline fn new(allocator: Allocator) Self {
+
+    [[inline]]
+    pub fn new(allocator: Allocator) Self {
         const diags: Vec<Diag> = Vec.new(allocator);
         
         return Self { diags };
     }
-    
-    pub inline fn report(self: Self*, diag: Diag) {
+
+    [[inline]]
+    pub fn report(self: Self*, diag: Diag) {
         self->diags.push(diag);
     }
 
-    pub inline fn diags(self: const Self*) Vec<Diag>* {
+    [[inline]]
+    pub fn diags(self: const Self*) Vec<Diag>* {
         return &self->diags;
     }
 
@@ -57,7 +60,8 @@ pub struct Diag {
         return Self { mesg, subs, under, loc };
     }
 
-    pub inline fn add_sub(self: Self*, sub: SubDiag) {
+    [[inline]]
+    pub fn add_sub(self: Self*, sub: SubDiag) {
         self->subs.push(sub);
     }
 

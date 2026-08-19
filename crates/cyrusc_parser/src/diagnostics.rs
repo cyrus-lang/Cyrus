@@ -21,6 +21,9 @@ pub enum ParserDiagKind {
     #[error("Unexpected token: '{0}'.")]
     InvalidToken(TokenKind),
 
+    #[error("Expected method definition.")]
+    ExpectedMethodDefinition,
+
     #[error("Expected type token but got '{0}'.")]
     InvalidTypeToken(TokenKind),
 
@@ -86,9 +89,6 @@ pub enum ParserDiagKind {
 
     #[error("Variable declaration requires an explicit type or an initializer expression.")]
     IncompleteVariableDeclaration,
-
-    #[error("Declared method must have a body.")]
-    MethodMustHaveABody,
 
     #[error("Cannot use grouped modifiers here.")]
     InvalidGroupedModifiers,

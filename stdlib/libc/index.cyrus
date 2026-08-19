@@ -82,17 +82,20 @@ pub extern "C" {
 
 // stdlib
 
-pub repr(c) struct CDivResult {
+[[repr(c)]]
+pub struct CDivResult {
     quot: types::c_int,
     rem: types::c_int
 }
 
-pub repr(c) struct CLongDivResult {
+[[repr(c)]]
+pub struct CLongDivResult {
     quot: types::c_long,
     rem: types::c_long
 }
 
-pub repr(c) struct CLongLongDivResult {
+[[repr(c)]]
+pub struct CLongLongDivResult {
     quot: types::c_long_long,
     rem: types::c_long_long
 }
@@ -290,7 +293,8 @@ pub extern "C" {
     ) types::c_char*;
 }
 
-pub extern "C" thread_local static var errno: types::c_int;
+[[thread_local]]
+pub extern "C" static var errno: types::c_int;
 
 pub const EPERM: types::c_int = 1;
 pub const ENOENT: types::c_int = 2;
@@ -447,17 +451,20 @@ pub extern "C" {
 
 // time 
 
-pub repr(c) struct CTimeSpec {
+[[repr(c)]]
+pub struct CTimeSpec {
     tv_sec: types::c_long,
     tv_nsec: types::c_long
 }
 
-pub repr(c) struct CTimeVal {
+[[repr(c)]]
+pub struct CTimeVal {
     tv_sec: types::c_long,
     tv_usec: types::c_long
 }
 
-pub repr(c) struct CTm {
+[[repr(c)]]
+pub struct CTm {
     tm_sec: types::c_int,
     tm_min: types::c_int,
     tm_hour: types::c_int,
@@ -529,7 +536,8 @@ pub const SIGTTOU: types::c_int = 22;
 
 // locale
 
-pub repr(c) struct CLocaleConv {
+[[repr(c)]]
+pub struct CLocaleConv {
     decimal_point: types::c_char*,
     thousands_sep: types::c_char*,
     grouping: types::c_char*,

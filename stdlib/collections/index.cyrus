@@ -17,7 +17,8 @@ pub struct Vec<T> {
     len: usize,
 
     /// Create a new array using a specific allocator.
-    pub inline fn new(allocator: Allocator) Self {
+    [[inline]]
+    pub fn new(allocator: Allocator) Self {
         const data: T* = allocator.alloc(@sizeof(T));
         if (!data) {
             @panic("allocation failed");
@@ -32,7 +33,8 @@ pub struct Vec<T> {
     }
 
     /// Pre-allocate memory to avoid initial reallocations.
-    pub inline fn with_capacity(allocator: Allocator, cap: usize) Self {
+    [[inline]]
+    pub fn with_capacity(allocator: Allocator, cap: usize) Self {
         @assert(cap != 0, "initial capacity cannot be zero");
 
         const size = checked_mul(cap, @sizeof(T)).unwrap();
@@ -83,7 +85,8 @@ pub struct Vec<T> {
     }
 
     /// Deep copy of the array. 
-    pub inline fn clone(self: const Self*, allocator: Allocator) Self {
+    [[inline]]
+    pub fn clone(self: const Self*, allocator: Allocator) Self {
         var vec: Vec<T> = Vec.with_capacity(allocator, self->len);
         vec.extend_from_ptr(self->data, self->len);
         return vec;
@@ -181,7 +184,8 @@ pub struct Vec<T> {
         return .Some(*(self->data + index));
     }
 
-    pub inline fn get_ref(self: const Self*, index: usize) Option<T*> {
+    [[inline]]
+    pub fn get_ref(self: const Self*, index: usize) Option<T*> {
         if (index >= self->len) {
             return .None;
         }
@@ -189,7 +193,8 @@ pub struct Vec<T> {
         return .Some(self->data + index);
     }
 
-    pub inline fn get_unchecked(self: const Self*, index: usize) T* {
+    [[inline]]
+    pub fn get_unchecked(self: const Self*, index: usize) T* {
         return self->data + index;
     }
 
@@ -245,39 +250,48 @@ pub struct Vec<T> {
         return value;
     }
 
-    pub inline fn len(self: const Self*) usize {
+    [[inline]]
+    pub fn len(self: const Self*) usize {
         return self->len;
     }
 
-    pub inline fn cap(self: const Self*) usize {
+    [[inline]]
+    pub fn cap(self: const Self*) usize {
         return self->cap;
     }
 
-    pub inline fn is_empty(self: const Self*) bool {
+    [[inline]]
+    pub fn is_empty(self: const Self*) bool {
         return self->len == 0;
     }
 
-    pub inline fn clear(self: Self*) {
+    [[inline]]
+    pub fn clear(self: Self*) {
         self->len = 0;
     }
 
-    pub inline fn reset(self: Self*) {
+    [[inline]]
+    pub fn reset(self: Self*) {
         self->len = 0;
     }
 
-    pub inline fn data(self: Self*) T* {
+    [[inline]]
+    pub fn data(self: Self*) T* {
         return self->data;
     }
 
-    pub inline fn data_const(self: const Self*) const T* {
+    [[inline]]
+    pub fn data_const(self: const Self*) const T* {
         return self->data;
     }
 
-    pub inline fn into_iter(self: const Self*) VecIter<T> {
+    [[inline]]
+    pub fn into_iter(self: const Self*) VecIter<T> {
         return struct { vec: self, idx: 0 };
     }
 
-    pub inline fn free(self: Self*) {
+    [[inline]]
+    pub fn free(self: Self*) {
         if (self->data != null) {
             self->allocator.free(self->data);
             self->data = null;
@@ -346,7 +360,8 @@ pub struct VecIter<T> : Iterator<T> {
 pub struct Map<K, V> {
     entries: Vec<(K, V)>,
 
-    pub inline fn new(allocator: Allocator) Self {
+    [[inline]]
+    pub fn new(allocator: Allocator) Self {
         return Self { entries: Vec.new(allocator) };
     }
 
@@ -375,7 +390,8 @@ pub struct Map<K, V> {
         return .None;
     }
 
-    pub inline fn free(self: Self*) {
+    [[inline]]
+    pub fn free(self: Self*) {
         self->entries.free();
     }
 }

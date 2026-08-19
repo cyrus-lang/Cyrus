@@ -447,7 +447,7 @@ pub fn main() {
 
 ### ABI / C Interoperation
 
-Cyrus provides seamless bidirectional C interoperation through the `extern(c)` ABI specification. This allows you to call C functions from Cyrus and expose Cyrus functions to C code.
+Cyrus provides seamless bidirectional C interoperation through the `extern "c"` ABI specification. This allows you to call C functions from Cyrus and expose Cyrus functions to C code.
 
 Calling C functions is straightforward:
 
@@ -466,11 +466,11 @@ pub fn main() {
 Exporting Cyrus functions for use in C is equally simple:
 
 ```cyrus
-extern(c) fn add(a: int32, b: int32) int32 {
+extern "c" fn add(a: int32, b: int32) int32 {
     return a + b;
 }
 
-extern(c) fn greet(name: const uint8*) {
+extern "c" fn greet(name: const uint8*) {
     printf("Hello, %s!\n", name);
 }
 ```
@@ -493,7 +493,7 @@ Cyrus does **not** guarantee a stable ABI. We reserve the right to change callin
 
 For this reason, we strongly recommend:
 
-- Using the **C ABI** (`extern(c)`) for all cross-language boundaries
+- Using the **C ABI** (`extern "c"`) for all cross-language boundaries
 - Avoiding assumptions about internal Cyrus type layouts in interop code
 - Treating Cyrus-to-Cyrus ABI as an implementation detail that may evolve
 
