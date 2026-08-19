@@ -5,13 +5,13 @@ use crate::{Parser, diagnostics::ParserDiagKind};
 use cyrusc_ast::{
     ASTStmt,
     abi::{Callconv, Inlining, OptionalFlag, Prologue, ReprAttr, ReprAttrKind, ReprKind},
-    attrs::{Attr, AttrKind, LinkAttr},
+    attrs::{Attr, AttrKind, LinkAttr, OptAttr},
     modifiers::{EnumModifiers, FuncModifiers, GlobalVarModifiers, StructModifiers, UnionModifiers},
 };
 use cyrusc_diagcentral::{Diag, DiagLevel};
 use cyrusc_source_loc::Loc;
 use cyrusc_tokens::TokenKind;
-use fx_hash::{FxHashSet, FxHashSetExt};
+use fx_hash::FxHashMap;
 
 #[macro_export]
 macro_rules! find_attr {
@@ -43,13 +43,19 @@ macro_rules! find_attr {
         })
     }};
 }
+
 #[macro_export]
 macro_rules! attr_legit {
-    ($($attr_opt:expr),+ => $cond:expr, $invalid_fn:expr) => {{
+    ($state:expr, $($cond:expr => [$($attr_opt:expr),*]),+ $(,)?) => {{
         $(
-            if !$cond && let Some((attr, loc)) = &$attr_opt {
-                $invalid_fn(attr.clone(), *loc)?;
-            }
+            $(
+                if let Some((attr, loc)) = &$attr_opt {
+                    if !$cond {
+                        // Store the invalid attr and loc for later reporting
+                        $state.push((attr.clone(), *loc));
+                    }
+                }
+            )*
         )+
     }};
 }
@@ -72,6 +78,15 @@ impl<'source_file> Parser<'source_file> {
 
                 Attr {
                     kind: AttrKind::Inline(inline_attr),
+                    loc: Loc::new(self.file_id(), line, column, start, end),
+                }
+            }
+            "opt" => {
+                let opt_attr = self.parse_opt_attr()?;
+                let end = self.current_token().loc.end;
+
+                Attr {
+                    kind: AttrKind::Opt(opt_attr),
                     loc: Loc::new(self.file_id(), line, column, start, end),
                 }
             }
@@ -184,6 +199,26 @@ impl<'source_file> Parser<'source_file> {
 
         self.expect_current(TokenKind::RightParen)?;
         Ok(link_attr)
+    }
+
+    fn parse_opt_attr(&mut self) -> Result<OptAttr, Diag> {
+        self.expect_current(TokenKind::LeftParen)?;
+
+        let ident = self.parse_ident()?;
+        self.next_token();
+
+        let opt_attr = match ident.value.as_str() {
+            "none" => OptAttr::None,
+            "size" => OptAttr::Size,
+            _ => {
+                return Err(self.error_at_loc(
+                    ParserDiagKind::InvalidModifier("Invalid opt kind in attribute.".to_string()),
+                    ident.loc,
+                ));
+            }
+        };
+        self.expect_current(TokenKind::RightParen)?;
+        Ok(opt_attr)
     }
 
     fn parse_repr(&mut self) -> Result<ReprAttr, Diag> {
@@ -311,7 +346,8 @@ impl<'source_file> Parser<'source_file> {
         let is_union = matches!(stmt, ASTStmt::Union(_));
         let is_enum = matches!(stmt, ASTStmt::Enum(_));
 
-        let is_opt = find_attr!(attrs, AttrKind::OptNone | AttrKind::OptSize);
+        let is_object = is_struct || is_union || is_enum;
+
         let is_thread_local = find_attr!(attrs, AttrKind::ThreadLocal);
         let is_nosanitize = find_attr!(attrs, AttrKind::NoSanitize(_));
         let is_callconv = find_attr!(attrs, AttrKind::Callconv(_));
@@ -320,30 +356,46 @@ impl<'source_file> Parser<'source_file> {
         let is_repr = find_attr!(attrs, AttrKind::Repr(_));
         let is_link = find_attr!(attrs, AttrKind::Link(_));
         let is_naked = find_attr!(attrs, AttrKind::Naked);
+        let is_opt = find_attr!(attrs, AttrKind::Opt(_));
         let is_cold = find_attr!(attrs, AttrKind::Cold);
         let is_hot = find_attr!(attrs, AttrKind::Hot);
 
-        let invalid = |attr: String, loc: Loc| -> Result<(), Diag> {
-            return Err(self.error_at_loc(ParserDiagKind::AttributeCannotBeAppliedTo(attr), loc));
-        };
+        // Invalid attributes
+        let mut invalid_attrs = Vec::new();
 
         attr_legit!(
-            is_opt,
-            is_callconv,
-            is_inline,
-            is_naked,
-            is_nosanitize,
-            is_section,
-            is_cold,
-            is_hot,
-            is_link
-            => is_func, invalid
+            invalid_attrs,
+            is_func => [
+                is_opt,
+                is_callconv,
+                is_inline,
+                is_naked,
+                is_nosanitize,
+                is_cold,
+                is_hot
+            ],
+            is_global_var => [
+                is_thread_local
+            ],
+            is_object => [
+                is_repr
+            ]
         );
 
-        attr_legit!(is_section, is_thread_local => is_global_var, invalid);
+        attr_legit!(
+            invalid_attrs,
+            is_func || is_global_var => [
+                is_section,
+                is_link
+            ]
+        );
 
-        attr_legit!(is_repr => is_struct || is_union || is_enum, invalid);
+        // Report the first invalid attribute
+        if let Some((attr, loc)) = invalid_attrs.first() {
+            return Err(self.error_at_loc(ParserDiagKind::AttributeCannotBeAppliedTo(attr.clone()), *loc));
+        }
 
+        // Validate Repr
         for attr in attrs {
             if let AttrKind::Repr(repr) = &attr.kind {
                 if is_struct {
@@ -362,73 +414,44 @@ impl<'source_file> Parser<'source_file> {
     }
 
     pub(crate) fn check_attrs(&self, attrs: &[Attr]) -> Result<(), Diag> {
-        let mut seen = FxHashSet::new();
+        let mut seen = FxHashMap::<String, Loc>::default();
 
         let dup = |attr: &Attr| -> Result<(), Diag> {
             return Err(self.error_at_loc(ParserDiagKind::DuplicateAttribute(attr.kind.to_string()), attr.loc));
         };
 
         for attr in attrs {
-            match attr.kind {
-                AttrKind::OptNone | AttrKind::OptSize => {
-                    if !seen.insert("optimize") {
-                        dup(attr)?;
-                    }
-                }
-                AttrKind::NoSanitize(_) => {
-                    if !seen.insert("nosanitize") {
-                        dup(attr)?;
-                    }
-                }
-                AttrKind::Section(_) => {
-                    if !seen.insert("section") {
-                        dup(attr)?;
-                    }
-                }
-                AttrKind::Callconv(_) => {
-                    if !seen.insert("callconv") {
-                        dup(attr)?;
-                    }
-                }
-                AttrKind::Inline(_) => {
-                    if !seen.insert("inline") {
-                        dup(attr)?;
-                    }
-                }
-                AttrKind::Naked => {
-                    if !seen.insert("naked") {
-                        dup(attr)?;
-                    }
-                }
-                AttrKind::Cold => {
-                    if !seen.insert("cold") {
-                        dup(attr)?;
-                    }
-                }
-                AttrKind::Hot => {
-                    if !seen.insert("hot") {
-                        dup(attr)?;
-                    }
-                }
-                AttrKind::Repr(_) => {
-                    if !seen.insert("repr") {
-                        dup(attr)?;
-                    }
-                }
-                AttrKind::Link(_) => {
-                    if !seen.insert("link") {
-                        dup(attr)?;
-                    }
-                }
-                AttrKind::ThreadLocal => {
-                    if !seen.insert("thread_local") {
-                        dup(attr)?;
-                    }
-                }
+            let key = match attr.kind {
+                AttrKind::Opt(_) => "opt".to_string(),
+                AttrKind::NoSanitize(_) => "nosanitize".to_string(),
+                AttrKind::Section(_) => "section".to_string(),
+                AttrKind::Callconv(_) => "callconv".to_string(),
+                AttrKind::Inline(_) => "inline".to_string(),
+                AttrKind::Naked => "naked".to_string(),
+                AttrKind::Cold => "cold".to_string(),
+                AttrKind::Hot => "hot".to_string(),
+                AttrKind::Repr(_) => "repr".to_string(),
+                AttrKind::Link(_) => "link".to_string(),
+                AttrKind::ThreadLocal => "thread_local".to_string(),
+            };
+
+            if seen.insert(key, attr.loc).is_some() {
+                dup(attr)?;
             }
         }
 
-        // TODO Check hot/cold not be used together
+        if seen.contains_key("cold") && seen.contains_key("hot") {
+            let loc = seen.get("cold").or_else(|| seen.get("hot")).copied().unwrap();
+
+            return Err(Diag {
+                kind: Box::new(ParserDiagKind::InvalidModifier(
+                    "Attributes '[[cold]]' and '[[hot]]' cannot be used together.".to_string(),
+                )),
+                level: DiagLevel::Error,
+                loc: Some(loc),
+                hint: None,
+            });
+        }
 
         Ok(())
     }
@@ -579,7 +602,6 @@ impl<'source_file> Parser<'source_file> {
             AttrKind::Section(name) => {
                 modifiers.section = Some(name.clone());
             }
-            // AttrKind::Weak
             AttrKind::Link(link_attr) => {
                 if *link_attr == LinkAttr::Weak {
                     modifiers.weak = true;
@@ -588,7 +610,6 @@ impl<'source_file> Parser<'source_file> {
                     modifiers.link_once = true;
                 }
             }
-            // AttrKind::Weak
             AttrKind::ThreadLocal => {
                 modifiers.thread_local = true;
             }
@@ -621,12 +642,10 @@ impl<'source_file> Parser<'source_file> {
             AttrKind::Hot => {
                 modifiers.optional_flags.push(OptionalFlag::Hot);
             }
-            AttrKind::OptNone => {
-                modifiers.optional_flags.push(OptionalFlag::OptNone);
-            }
-            AttrKind::OptSize => {
-                modifiers.optional_flags.push(OptionalFlag::OptSize);
-            }
+            AttrKind::Opt(opt_attr) => match opt_attr {
+                OptAttr::None => modifiers.optional_flags.push(OptionalFlag::OptNone),
+                OptAttr::Size => modifiers.optional_flags.push(OptionalFlag::OptSize),
+            },
             AttrKind::Link(link_attr) => {
                 if *link_attr == LinkAttr::Weak {
                     modifiers.weak = true;
