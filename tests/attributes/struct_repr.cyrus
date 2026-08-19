@@ -1,0 +1,26 @@
+[[repr(c)]]
+struct Foo {
+    x: int32,
+    y: bool
+    // PADDING: 3 bytes
+}
+
+[[repr(cyrus)]]
+struct Bar {
+    x: int32,
+    y: bool
+    // PADDING: 3 bytes
+}
+
+[[repr(c, packed)]]
+struct Baz {
+    x: int32,
+    y: bool
+    // NO PADDING
+}
+
+pub fn main() {
+    const foo = Foo { x: 1, y: true };
+    const bar = Bar { x: 1, y: true };
+    const baz = Baz { x: 1, y: true };
+}
