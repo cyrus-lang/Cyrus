@@ -6,6 +6,7 @@ use crate::abi::{Callconv, Extern, Inlining, OptionalFlag, Prologue, ReprAttr, R
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FuncModifiers {
     pub vis: Visibility,
+    pub link_name: Option<String>,
     pub extrn: Option<Extern>,
     pub inline: Option<Inlining>,
     pub prologue: Option<Prologue>,
@@ -19,6 +20,7 @@ pub struct FuncModifiers {
 impl Default for FuncModifiers {
     fn default() -> Self {
         Self {
+            link_name: None,
             extrn: None,
             inline: None,
             prologue: None,
@@ -125,6 +127,7 @@ impl Default for UnionModifiers {
 #[derive(Debug, Clone)]
 pub struct GlobalVarModifiers {
     pub vis: Visibility,
+    pub link_name: Option<String>,
     pub extrn: Option<Extern>,
     pub section: Option<String>,
     pub thread_local: bool,
@@ -136,6 +139,7 @@ impl Default for GlobalVarModifiers {
     fn default() -> Self {
         Self {
             vis: Visibility::default(),
+            link_name: None,
             extrn: None,
             section: None,
             thread_local: false,

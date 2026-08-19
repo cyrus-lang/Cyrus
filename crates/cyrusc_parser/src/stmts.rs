@@ -1709,24 +1709,6 @@ impl<'source_file> Parser<'source_file> {
                 params,
                 ret_type: None,
                 modifiers,
-                renamed_as: None,
-                loc: Loc::new(self.file_id(), line, column, start, end),
-            }));
-        } else if self.current_token_is(TokenKind::As) {
-            self.next_token(); // consume as
-
-            let renamed_as = self.parse_ident()?;
-            self.next_token();
-
-            let end = self.current_token().loc.end;
-
-            return Ok(ASTStmt::FuncDecl(ASTFuncDeclStmt {
-                ident: func_name,
-                generic_params,
-                params,
-                ret_type: None,
-                modifiers,
-                renamed_as: Some(renamed_as),
                 loc: Loc::new(self.file_id(), line, column, start, end),
             }));
         } else {
@@ -1743,34 +1725,6 @@ impl<'source_file> Parser<'source_file> {
                 params,
                 ret_type,
                 modifiers,
-                renamed_as: None,
-                loc: Loc::new(self.file_id(), line, column, start, end),
-            }));
-        } else if self.current_token_is(TokenKind::As) {
-            self.next_token();
-
-            // parse renamed func decl
-            let renamed_as = self.parse_ident()?;
-
-            if self.peek_token_is(TokenKind::Semicolon) {
-                self.next_token();
-            } else if self.peek_token_is(TokenKind::LeftBrace) {
-                return Err(self.error_with_hint(
-                    &self.peek_token(),
-                    ParserDiagKind::InvalidToken(self.peek_token().kind),
-                    "Function declaration does not accept a body. Use a semicolon ';' instead of a body '{ ... }'.",
-                ));
-            }
-
-            let end = self.current_token().loc.end;
-
-            return Ok(ASTStmt::FuncDecl(ASTFuncDeclStmt {
-                ident: func_name,
-                generic_params,
-                params,
-                ret_type,
-                modifiers,
-                renamed_as: Some(renamed_as),
                 loc: Loc::new(self.file_id(), line, column, start, end),
             }));
         }
