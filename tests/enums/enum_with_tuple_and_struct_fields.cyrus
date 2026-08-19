@@ -22,7 +22,7 @@ fn process_task(t: Task) {
         case .Range(bounds) => {
             printf("Range(start: %d, end: %d) | ", bounds.0, bounds.1);
         }
-        default => {
+        else => {
             printf("Unknown Task | ");
         }
     }

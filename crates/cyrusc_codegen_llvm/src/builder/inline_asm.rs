@@ -110,8 +110,8 @@ impl<'ll> CodeGenIRBuilder<'ll> {
             let ptr = match lvalue.kind {
                 InternalValueKind::LValue(ptr) => ptr,
                 _ => {
-                    let llvm_ty: BasicTypeEnum<'ll> = self.emit_type(lvalue.ty.clone()).try_into().unwrap();
-                    self.llvmbuilder.build_alloca(llvm_ty, "asm.mem.out").unwrap()
+                    let llvm_type: BasicTypeEnum<'ll> = self.emit_type(lvalue.ty.clone()).try_into().unwrap();
+                    self.llvm_builder.build_alloca(llvm_type, "asm.mem.out").unwrap()
                 }
             };
             arg_values.push(ptr.into());
@@ -170,7 +170,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         let asm_ptr = unsafe { inkwell::values::PointerValue::new(llvm_inline_asm) };
 
         let call_site = self
-            .llvmbuilder
+            .llvm_builder
             .build_indirect_call(fn_type, asm_ptr, &arg_values, "asm.call")
             .unwrap();
 
@@ -181,7 +181,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
                     let op = &asm.outputs[reg_out_indices[0]];
                     let lvalue = self.emit_expr(&op.expr, &None);
                     if let InternalValueKind::LValue(ptr) = lvalue.kind {
-                        self.llvmbuilder.build_store(ptr, ret_val).unwrap();
+                        self.llvm_builder.build_store(ptr, ret_val).unwrap();
                     }
                 }
             }
@@ -190,13 +190,13 @@ impl<'ll> CodeGenIRBuilder<'ll> {
                     let struct_val = ret_val.into_struct_value();
                     for (field_idx, &out_idx) in reg_out_indices.iter().enumerate() {
                         let field = self
-                            .llvmbuilder
+                            .llvm_builder
                             .build_extract_value(struct_val, field_idx as u32, "asm.reg.out")
                             .unwrap();
                         let op = &asm.outputs[out_idx];
                         let lvalue = self.emit_expr(&op.expr, &None);
                         if let InternalValueKind::LValue(ptr) = lvalue.kind {
-                            self.llvmbuilder.build_store(ptr, field).unwrap();
+                            self.llvm_builder.build_store(ptr, field).unwrap();
                         }
                     }
                 }

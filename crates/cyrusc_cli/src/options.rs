@@ -11,15 +11,15 @@ use std::env;
 #[derive(Parser, Debug, Clone)]
 pub(crate) struct CliCompilerOptions {
     #[clap(
-        long,
-        default_value_t = String::new(),
-        help = "Compile for a specific architecture and operating system target (e.g., x86_64-pc-linux-gnu). Defaults to the host target if not specified."
-    )]
+            long,
+            default_value_t = String::new(),
+            help = "Compile for a specific architecture and operating system target (e.g., x86_64-pc-linux-gnu). Defaults to the host target if not specified."
+        )]
     pub target: String,
 
     #[clap(long, default_value_t = String::new(),
-        help = "Specify the target CPU name (e.g., skylake, broadwell, generic). Defaults to host CPU if not specified."
-    )]
+            help = "Specify the target CPU name (e.g., skylake, broadwell, generic). Defaults to host CPU if not specified."
+        )]
     pub cpu: String,
 
     #[clap(long, value_enum, default_value_t = CliOptimizeLevelOption::O0, help = "Set optimization level.", ignore_case = true)]
@@ -92,27 +92,27 @@ pub(crate) struct CliCompilerOptions {
     pub sanitizer: Vec<CliSanitizerOption>,
 
     #[clap(long, value_enum, default_value_t = CliRelocModeOption::default(),
-    help = "Set the relocation model for code generation."
-    )]
+        help = "Set the relocation model for code generation."
+        )]
     pub reloc_mode: CliRelocModeOption,
 
     #[clap(long, value_enum, default_value_t = CliCodeModelOption::Default,
-    help = "Set the code model for code generation."
-    )]
+        help = "Set the code model for code generation."
+        )]
     pub code_model: CliCodeModelOption,
 
     #[clap(long, value_enum, default_value_t = CliProfileOption::Debug,
-    help = "Build profile configuration."
-    )]
+        help = "Build profile configuration."
+        )]
     pub profile: CliProfileOption,
 
     #[clap(long, value_enum, default_value_t = CliABIOption::Cyrus,
-    help =
-    "Select the ABI name mangling scheme for code generation. \
-Choices determine how function, global variable, and type names \
-are represented in the generated output. For example, 'c' produces \
-C-compatible names, while 'cyrus' uses the compiler's default mangling."
-    )]
+        help =
+        "Select the ABI name mangling scheme for code generation. \
+    Choices determine how function, global variable, and type names \
+    are represented in the generated output. For example, 'c' produces \
+    C-compatible names, while 'cyrus' uses the compiler's default mangling."
+        )]
     pub abi: CliABIOption,
 
     #[clap(long, help = "Number of threads to use for compilation.")]
@@ -125,6 +125,14 @@ C-compatible names, while 'cyrus' uses the compiler's default mangling."
         help = "Module merge mode: 'unified' for serial, 'separate' for parallel."
     )]
     pub module_merge_mode: Option<CliModuleMergeModeOption>,
+
+    #[clap(
+        long = "color",
+        help = "Enable or disable colored terminal output.",
+        value_parser = clap::builder::BoolishValueParser::new(),
+        default_value_t = true
+    )]
+    pub color: bool,
 }
 
 #[derive(Parser, Debug, Clone)]

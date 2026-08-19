@@ -25,7 +25,7 @@ pub(crate) fn project_file_required() {
 pub(crate) fn compiler_option_from_scaffold_parser(base_path: Option<String>) -> Option<ScaffoldConfig> {
     let base_path = base_path.map(|path| Path::new(&path).to_path_buf()).unwrap_or_default();
 
-    // resolve project file path
+    // Resolve project file path
     let project_file = env::current_dir()
         .unwrap_or_else(|_| PathBuf::from("."))
         .join(&base_path)
@@ -43,7 +43,7 @@ pub(crate) fn compiler_option_from_scaffold_parser(base_path: Option<String>) ->
     }
 }
 
-pub(crate) fn merge_and_validate_scaffold_config_with_codegen_options(
+pub(crate) fn integrate_scaffold_config(
     opts: &mut CompilerOptions,
     scaffold_config_opt: &Option<ScaffoldConfig>,
 ) {

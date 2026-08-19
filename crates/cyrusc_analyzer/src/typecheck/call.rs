@@ -642,8 +642,6 @@ impl<'a> AnalysisContext<'a> {
             let mut ret_type = interface_method_decl.func_decl.ret_type.clone();
             ret_type = this.normalize_sema_type(ret_type.clone(), method_call.loc, 0)?;
             ret_type = this.substitute_type(&ret_type);
-            interface_method_decl.func_decl.ret_type = ret_type.clone();
-            let _ = &interface_method_decl;
 
             #[cfg(debug_assertions)]
             debug_assert_func_decl_resolved!(&interface_method_decl.func_decl);

@@ -81,7 +81,7 @@ pub struct File {
     pub fn append(self: Self*, content: const uint8*) ErrorOr<usize, ErrorStr> {
         switch (self->mode) {
             case .Append | .AppendBinary | .AppendRead | .AppendReadBinary => {}
-            default => { return .Error("file not opened in append mode"); }
+            else => { return .Error("file not opened in append mode"); }
         }
 
         const result = libc::fseek(self->file, 0, FileSeek.End.as_num());

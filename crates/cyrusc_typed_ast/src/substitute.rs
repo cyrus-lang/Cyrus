@@ -18,18 +18,16 @@ pub fn substitute_sema_type_with_type_args(
 ) -> SemaType {
     match ty {
         SemaType::GenericParam(generic_param_id) => {
-            let pos = generic_params
+            let Some(pos) = generic_params
                 .iter()
-                .position(|_generic_param_id| _generic_param_id == generic_param_id);
+                .position(|_generic_param_id| _generic_param_id == generic_param_id)
+            else {
+                return ty.clone();
+            };
 
-            match pos {
-                Some(idx) => match &type_args.0[idx] {
-                    TypedTypeArg::Type(inner, _) => {
-                        substitute_sema_type_with_type_args(inner, generic_params, type_args)
-                    }
-                    TypedTypeArg::Infer => ty.clone(),
-                },
-                None => ty.clone(),
+            match &type_args.0[pos] {
+                TypedTypeArg::Type(inner, _) => substitute_sema_type_with_type_args(inner, generic_params, type_args),
+                TypedTypeArg::Infer => ty.clone(),
             }
         }
 

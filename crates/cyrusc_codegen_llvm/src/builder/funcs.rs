@@ -117,8 +117,8 @@ impl<'ll> CodeGenIRBuilder<'ll> {
 
                     llvm_param_index += 1;
 
-                    let alloca = self.llvmbuilder.build_alloca(llvm_param.get_type(), "param").unwrap();
-                    self.llvmbuilder.build_store(alloca, llvm_param).unwrap();
+                    let alloca = self.llvm_builder.build_alloca(llvm_param.get_type(), "param").unwrap();
+                    self.llvm_builder.build_store(alloca, llvm_param).unwrap();
 
                     self.insert_local_ir_value(param.irv_id.unwrap(), LocalIRValue::LValue(alloca, param.ty.clone()));
                 }
@@ -142,21 +142,21 @@ impl<'ll> CodeGenIRBuilder<'ll> {
 
                     llvm_param_index += 2;
 
-                    let param_alloca = self.llvmbuilder.build_alloca(param_type, "param").unwrap();
+                    let param_alloca = self.llvm_builder.build_alloca(param_type, "param").unwrap();
 
                     let lo_ptr = self
-                        .llvmbuilder
+                        .llvm_builder
                         .build_struct_gep(coerced_type, param_alloca, 0, "lo.ptr")
                         .unwrap();
 
-                    self.llvmbuilder.build_store(lo_ptr, lo).unwrap();
+                    self.llvm_builder.build_store(lo_ptr, lo).unwrap();
 
                     let hi_ptr = self
-                        .llvmbuilder
+                        .llvm_builder
                         .build_struct_gep(coerced_type, param_alloca, 1, "hi.ptr")
                         .unwrap();
 
-                    self.llvmbuilder.build_store(hi_ptr, hi).unwrap();
+                    self.llvm_builder.build_store(hi_ptr, hi).unwrap();
 
                     self.insert_local_ir_value(
                         param.irv_id.unwrap(),
@@ -181,7 +181,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
                 ABIArgKind::Expand { kind } => {
                     let struct_type: BasicTypeEnum<'ll> = self.emit_type(param.ty.clone()).try_into().unwrap();
 
-                    let param_alloca = self.llvmbuilder.build_alloca(struct_type, "param").unwrap();
+                    let param_alloca = self.llvm_builder.build_alloca(struct_type, "param").unwrap();
 
                     let fields_cir_types = param.ty.struct_or_union_fields(&self.tctx).unwrap();
 
@@ -195,11 +195,11 @@ impl<'ll> CodeGenIRBuilder<'ll> {
                                 llvm_param_index += 1;
 
                                 let field_ptr = self
-                                    .llvmbuilder
+                                    .llvm_builder
                                     .build_struct_gep(struct_type, param_alloca, i as u32, "expand.field.ptr")
                                     .unwrap();
 
-                                self.llvmbuilder.build_store(field_ptr, llvm_param).unwrap();
+                                self.llvm_builder.build_store(field_ptr, llvm_param).unwrap();
                             }
                         }
                         ExpandKind::Struct { field_count } => {
@@ -209,11 +209,11 @@ impl<'ll> CodeGenIRBuilder<'ll> {
                                 llvm_param_index += 1;
 
                                 let field_ptr = self
-                                    .llvmbuilder
+                                    .llvm_builder
                                     .build_struct_gep(struct_type, param_alloca, i as u32, "expand.struct.ptr")
                                     .unwrap();
 
-                                self.llvmbuilder.build_store(field_ptr, llvm_param).unwrap();
+                                self.llvm_builder.build_store(field_ptr, llvm_param).unwrap();
                             }
                         }
                         ExpandKind::Coerced { offset_hi, .. } => {
@@ -223,11 +223,11 @@ impl<'ll> CodeGenIRBuilder<'ll> {
                             llvm_param_index += 1;
 
                             let lo_ptr = self
-                                .llvmbuilder
+                                .llvm_builder
                                 .build_struct_gep(struct_type, param_alloca, 0, "expand.lo.ptr")
                                 .unwrap();
 
-                            self.llvmbuilder.build_store(lo_ptr, lo_param).unwrap();
+                            self.llvm_builder.build_store(lo_ptr, lo_param).unwrap();
 
                             // second expanded param
                             let hi_param = self.cur_func.unwrap().get_nth_param(llvm_param_index as u32).unwrap();
@@ -235,11 +235,11 @@ impl<'ll> CodeGenIRBuilder<'ll> {
                             llvm_param_index += 1;
 
                             let hi_ptr = self
-                                .llvmbuilder
+                                .llvm_builder
                                 .build_struct_gep(struct_type, param_alloca, *offset_hi as u32, "expand.hi.ptr")
                                 .unwrap();
 
-                            self.llvmbuilder.build_store(hi_ptr, hi_param).unwrap();
+                            self.llvm_builder.build_store(hi_ptr, hi_param).unwrap();
                         }
                     }
 
@@ -299,7 +299,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
                 set_debug_location(
                     &dctx,
                     self.llvm_ctx,
-                    self.llvmbuilder,
+                    self.llvm_builder,
                     loc.line.try_into().unwrap(),
                     loc.column.try_into().unwrap(),
                 )
@@ -311,7 +311,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         self.defer_stack = Vec::new();
 
         self.ensure_entry_block();
-        self.blockreg.labels.clear();
+        self.block_reg.labels.clear();
         self.emit_func_params(func_params.clone(), abi_func_info);
         self.emit_body(cir_block);
         self.ensure_void_function_terminated();
@@ -332,7 +332,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
     pub(crate) fn emit_lambda(&mut self, lambda: &CIRLambda) -> InternalValue<'ll> {
         let parent_func = self.cur_func.clone();
         let parent_cur_abi_func_info = self.cur_abi_func_info.clone();
-        let parent_blockreg = self.blockreg.clone();
+        let parent_blockreg = self.block_reg.clone();
 
         let lambda_name = self.next_lambda_id();
         let mut cir_func_decl = CIRFuncDeclStmt {
@@ -375,8 +375,8 @@ impl<'ll> CodeGenIRBuilder<'ll> {
             self.set_current_func(cur_func, parent_cur_abi_func_info.unwrap());
         }
 
-        self.blockreg = parent_blockreg;
-        if let Some(basic_block) = self.blockreg.cur_block {
+        self.block_reg = parent_blockreg;
+        if let Some(basic_block) = self.block_reg.cur_block {
             self.emit_block(basic_block);
         }
 
@@ -584,20 +584,20 @@ impl<'ll> CodeGenIRBuilder<'ll> {
                 let lo_ty: BasicTypeEnum<'ll> = self.emit_type(lo).try_into().unwrap();
 
                 let lo_ptr = self
-                    .llvmbuilder
+                    .llvm_builder
                     .build_struct_gep(pair_ty, *ptr, lo_index as u32, "lo.ptr")
                     .unwrap();
 
-                let lo_val = self.llvmbuilder.build_load(lo_ty, lo_ptr, "lo").unwrap();
+                let lo_val = self.llvm_builder.build_load(lo_ty, lo_ptr, "lo").unwrap();
 
                 let hi_ty: BasicTypeEnum<'ll> = self.emit_type(hi).try_into().unwrap();
 
                 let hi_ptr = self
-                    .llvmbuilder
+                    .llvm_builder
                     .build_struct_gep(pair_ty, *ptr, hi_index as u32, "hi.ptr")
                     .unwrap();
 
-                let hi_val = self.llvmbuilder.build_load(hi_ty, hi_ptr, "hi").unwrap();
+                let hi_val = self.llvm_builder.build_load(hi_ty, hi_ptr, "hi").unwrap();
 
                 args.push(lo_val.into());
                 args.push(hi_val.into());
@@ -608,12 +608,12 @@ impl<'ll> CodeGenIRBuilder<'ll> {
                     let (lo_index, hi_index) = struct_original_indices();
 
                     let lo_val = self
-                        .llvmbuilder
+                        .llvm_builder
                         .build_extract_value(*struct_value, lo_index as u32, "lo")
                         .unwrap();
 
                     let hi_val = self
-                        .llvmbuilder
+                        .llvm_builder
                         .build_extract_value(*struct_value, hi_index as u32, "hi")
                         .unwrap();
 
@@ -622,8 +622,8 @@ impl<'ll> CodeGenIRBuilder<'ll> {
                 }
 
                 BasicValueEnum::ArrayValue(array_val) => {
-                    let lo_val = self.llvmbuilder.build_extract_value(*array_val, 0, "lo").unwrap();
-                    let hi_val = self.llvmbuilder.build_extract_value(*array_val, 1, "hi").unwrap();
+                    let lo_val = self.llvm_builder.build_extract_value(*array_val, 0, "lo").unwrap();
+                    let hi_val = self.llvm_builder.build_extract_value(*array_val, 1, "hi").unwrap();
 
                     args.push(lo_val.into());
                     args.push(hi_val.into());
@@ -637,18 +637,18 @@ impl<'ll> CodeGenIRBuilder<'ll> {
                     let is_signed = value.ty.is_signed_integer();
 
                     // extract low 64 bits (mask with 0xFFFFFFFFFFFFFFFF)
-                    let low_value = self.llvmbuilder.build_int_truncate(*int_val, i64_type, "lo").unwrap();
+                    let low_value = self.llvm_builder.build_int_truncate(*int_val, i64_type, "lo").unwrap();
 
                     // extract high 64 bits (shift right by 64)
 
                     let shift_amount = i128_type.const_int(64, is_signed);
                     let high_val_i128 = self
-                        .llvmbuilder
+                        .llvm_builder
                         .build_right_shift(*int_val, shift_amount, false, "hi.tmp")
                         .unwrap();
 
                     let high_value = self
-                        .llvmbuilder
+                        .llvm_builder
                         .build_int_truncate(high_val_i128, i64_type, "hi")
                         .unwrap();
 
@@ -695,7 +695,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
 
                 for i in 0..num_fields {
                     let field_value = self
-                        .llvmbuilder
+                        .llvm_builder
                         .build_extract_value(struct_value, i, "expand.field")
                         .unwrap();
 
@@ -715,7 +715,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
 
                 // extract and coerce low part
                 let lo_value = self
-                    .llvmbuilder
+                    .llvm_builder
                     .build_extract_value(struct_value, 0, "expand.lo")
                     .unwrap();
 
@@ -739,7 +739,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
 
                 // extract and coerce high part (may be at different index)
                 let hi_value = self
-                    .llvmbuilder
+                    .llvm_builder
                     .build_extract_value(struct_value, offset_hi as u32, "expand.hi")
                     .unwrap();
 
@@ -766,7 +766,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
 
                 for i in 0..field_count as u32 {
                     let field_value = self
-                        .llvmbuilder
+                        .llvm_builder
                         .build_extract_value(struct_value, i, "expand.struct")
                         .unwrap();
 
@@ -815,16 +815,16 @@ impl<'ll> CodeGenIRBuilder<'ll> {
             args_values.push(rvalue.as_basic_value().into());
         } else {
             // create a copy
-            let alloca = self.llvmbuilder.build_alloca(llvm_ty, "indirect.arg").unwrap();
+            let alloca = self.llvm_builder.build_alloca(llvm_ty, "indirect.arg").unwrap();
 
             if align > 0 {
-                self.llvmbuilder
+                self.llvm_builder
                     .build_store(alloca, rvalue.as_basic_value())
                     .unwrap()
                     .set_alignment(align)
                     .unwrap();
             } else {
-                self.llvmbuilder.build_store(alloca, rvalue.as_basic_value()).unwrap();
+                self.llvm_builder.build_store(alloca, rvalue.as_basic_value()).unwrap();
             }
 
             args_values.push(alloca.into());

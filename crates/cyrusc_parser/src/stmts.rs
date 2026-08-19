@@ -14,6 +14,7 @@ use cyrusc_ast::modifiers::UnionModifiers;
 use cyrusc_ast::*;
 use cyrusc_source_loc::Loc;
 use cyrusc_tokens::TokenKind;
+use cyrusc_tokens::literals::LiteralKind;
 
 impl<'source_file> Parser<'source_file> {
     pub(crate) fn parse_stmt(
@@ -224,45 +225,52 @@ impl<'source_file> Parser<'source_file> {
         }
         self.next_token();
 
-        let is_volatile = if self.current_token().kind.is_ident_str("volatile") {
-            self.next_token();
-            true
-        } else {
-            false
+        let is_volatile = {
+            if self.current_token().kind.is_ident_str("volatile") {
+                self.next_token();
+                true
+            } else {
+                false
+            }
         };
 
-        let (template, is_inline) = if self.current_token_is(TokenKind::LeftBrace) {
-            self.next_token();
-            let lines = self.parse_asm_template_block()?;
-            self.expect_current(TokenKind::RightBrace)?;
-            (lines, false)
-        } else if self.current_token_is(TokenKind::LeftParen) {
-            self.next_token();
-            let s = self.parse_asm_string_literal()?;
-            (vec![s], true)
-        } else {
-            return Err(self.error_invalid_token());
+        let (template, is_inline) = {
+            self.expect_current(TokenKind::LeftParen)?;
+
+            let mut strs = Vec::new();
+
+            while self.current_token().kind.is_literal() {
+                strs.push(self.parse_asm_string_literal()?);
+            }
+
+            (strs, true)
         };
 
-        let outputs = if self.current_token_is(TokenKind::Colon) {
-            self.next_token();
-            self.parse_asm_operands()?
-        } else {
-            Vec::new()
+        let outputs = {
+            if self.current_token_is(TokenKind::Colon) {
+                self.next_token();
+                self.parse_asm_operands()?
+            } else {
+                Vec::new()
+            }
         };
 
-        let inputs = if self.current_token_is(TokenKind::Colon) {
-            self.next_token();
-            self.parse_asm_operands()?
-        } else {
-            Vec::new()
+        let inputs = {
+            if self.current_token_is(TokenKind::Colon) {
+                self.next_token();
+                self.parse_asm_operands()?
+            } else {
+                Vec::new()
+            }
         };
 
-        let clobbers = if self.current_token_is(TokenKind::Colon) {
-            self.next_token();
-            self.parse_asm_clobbers()?
-        } else {
-            Vec::new()
+        let clobbers = {
+            if self.current_token_is(TokenKind::Colon) {
+                self.next_token();
+                self.parse_asm_clobbers()?
+            } else {
+                Vec::new()
+            }
         };
 
         if is_inline {
@@ -281,31 +289,23 @@ impl<'source_file> Parser<'source_file> {
         })
     }
 
-    fn parse_asm_template_block(&mut self) -> Result<Vec<String>, Diag> {
-        let mut lines = Vec::new();
-        while !self.current_token_is(TokenKind::RightBrace) && !self.current_token_is(TokenKind::EOF) {
-            lines.push(self.parse_asm_string_literal()?);
-        }
-        Ok(lines)
-    }
-
     fn parse_asm_string_literal(&mut self) -> Result<String, Diag> {
-        use cyrusc_tokens::literals::LiteralKind;
         match self.current_token().kind.clone() {
             TokenKind::Literal(lit) => {
                 if let LiteralKind::String(s, _) = lit.kind {
                     self.next_token();
                     Ok(s)
                 } else {
-                    Err(self.error_at_current(ParserDiagKind::ExpectedStringLiteral))
+                    Err(self.error_at_current(ParserDiagKind::ExpectedAssemblyStringLiteral))
                 }
             }
-            _ => Err(self.error_at_current(ParserDiagKind::ExpectedStringLiteral)),
+            _ => Err(self.error_at_current(ParserDiagKind::ExpectedAssemblyStringLiteral)),
         }
     }
 
     fn parse_asm_operands(&mut self) -> Result<Vec<AsmOperand>, Diag> {
         let mut operands = Vec::new();
+
         loop {
             if self.current_token_is(TokenKind::Colon)
                 || self.current_token_is(TokenKind::RightParen)
@@ -335,6 +335,7 @@ impl<'source_file> Parser<'source_file> {
                 break;
             }
         }
+
         Ok(operands)
     }
 
@@ -2135,10 +2136,10 @@ impl<'source_file> Parser<'source_file> {
             return Err(self.error_at_current(ParserDiagKind::InvalidSwitchGuardPattern));
         }
 
-        self.expect_current(TokenKind::Default)?;
+        self.expect_current(TokenKind::Else)?;
 
         let default_block = self.parse_block()?;
-        self.expect_current(TokenKind::RightBrace)?;
+        self.must_be_right_brace()?;
 
         let loc = pattern.loc;
 
@@ -2229,7 +2230,7 @@ impl<'source_file> Parser<'source_file> {
                     body: case_body,
                     loc: Loc::new(self.file_id(), line, column, start, end),
                 });
-            } else if self.current_token_is(TokenKind::Default) {
+            } else if self.current_token_is(TokenKind::Else) {
                 self.next_token();
                 self.expect_current(TokenKind::FatArrow)?;
 

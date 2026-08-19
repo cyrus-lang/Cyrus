@@ -83,7 +83,6 @@ pub enum TokenKind {
     Typedef,
     Switch,
     Case,
-    Default,
     If,
     Else,
     Return,
@@ -134,6 +133,7 @@ pub enum TokenKind {
     Cold,
     Extern,
     Public,
+    ThreadLocal,
     Inline,
     NoInline,
     AlwaysInline,
@@ -197,6 +197,14 @@ impl TokenKind {
     }
 
     #[inline]
+    pub fn is_literal(&self) -> bool {
+        match self {
+            TokenKind::Literal(_) => true,
+            _ => false,
+        }
+    }
+
+    #[inline]
     pub fn is_eof(&self) -> bool {
         match self {
             TokenKind::EOF => true,
@@ -255,7 +263,6 @@ impl fmt::Display for TokenKind {
             TokenKind::Function => write!(f, "fn"),
             TokenKind::Switch => write!(f, "switch"),
             TokenKind::Case => write!(f, "case"),
-            TokenKind::Default => write!(f, "default"),
             TokenKind::Struct => write!(f, "struct"),
             TokenKind::Import => write!(f, "import"),
             TokenKind::If => write!(f, "if"),
@@ -294,6 +301,7 @@ impl fmt::Display for TokenKind {
             TokenKind::Extern => write!(f, "extern"),
             TokenKind::Inline => write!(f, "inline"),
             TokenKind::Public => write!(f, "pub"),
+            TokenKind::ThreadLocal => write!(f, "thread_local"),
             TokenKind::Const => write!(f, "const"),
             TokenKind::Weak => write!(f, "weak"),
             TokenKind::LinkOnce => write!(f, "linkonce"),

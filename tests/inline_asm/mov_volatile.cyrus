@@ -1,0 +1,18 @@
+// @stdout: 0x3f8
+
+import std::libc{printf};
+
+pub fn main() {
+    var port: int32 = 0x3F8;
+    var data: int32 = 65;   
+    
+    @asm volatile(
+        "movl %1, %%eax;"
+        "movl %%eax, %0"
+        : "=r"(data)
+        : "r"(data)
+        : "eax"
+    );
+    
+    printf("0x%x\n", port);
+}

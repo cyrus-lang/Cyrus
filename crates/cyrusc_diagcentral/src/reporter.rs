@@ -2,6 +2,7 @@
 // Copyright (c) 2026 The Cyrus Language
 
 use crate::{Diag, DiagKind, DiagLevel};
+use ariadne::{Color, Label, Report, ReportKind, Source};
 use cyrusc_source_loc::SourceMap;
 use std::{
     cell::{Ref, RefCell, RefMut},
@@ -53,11 +54,7 @@ impl DiagReporter {
         let mut diags = self.diags.borrow_mut();
 
         if let Some(diag) = diags.first() {
-            match diag.level {
-                DiagLevel::Error => eprintln!("{}", self.render(diag)),
-                DiagLevel::Warning => println!("{}", self.render(diag)),
-                DiagLevel::Unimplemented => println!("{}", self.render(diag)),
-            }
+            self.render_ariadne(diag);
         }
 
         diags.clear();
@@ -67,11 +64,7 @@ impl DiagReporter {
         let mut diags = self.diags.borrow_mut();
 
         for diag in diags.iter() {
-            match diag.level {
-                DiagLevel::Error => eprintln!("{}", self.render(diag)),
-                DiagLevel::Warning => println!("{}", self.render(diag)),
-                DiagLevel::Unimplemented => println!("{}", self.render(diag)),
-            }
+            self.render_ariadne(diag);
         }
 
         diags.clear();
@@ -80,8 +73,7 @@ impl DiagReporter {
     #[inline]
     pub fn display_single(diag: Diag) {
         let reporter = DiagReporter::new_with_no_source_map();
-        let output = reporter.render(&diag);
-        eprintln!("{}", output);
+        reporter.render_ariadne(&diag);
     }
 
     #[inline]
@@ -101,54 +93,67 @@ impl DiagReporter {
     pub fn len(&self) -> usize {
         self.diags.borrow().len()
     }
-}
 
-impl DiagReporter {
-    pub(crate) fn render(&self, diag: &Diag) -> String {
-        let mut out = String::new();
-
-        let level_text = {
-            match diag.level {
+    fn render_ariadne(&self, diag: &Diag) {
+        if diag.loc.is_none() || self.source_map.is_none() {
+            let level_str = match diag.level {
                 DiagLevel::Error => "error",
                 DiagLevel::Warning => "warning",
                 DiagLevel::Unimplemented => "unimplemented",
-            }
-        };
+            };
 
-        if diag.loc.is_none() || self.source_map.is_none() {
-            out.push_str(&format!("[{}]", level_text));
-            out.push_str(&format!(": {}", diag.kind));
-            out.push('\n');
-            return out;
+            let mut msg = format!("{}: {}", level_str, diag.kind);
+            if let Some(hint) = &diag.hint {
+                msg.push_str(&format!("\n\nhint: {}", hint));
+            }
+
+            match diag.level {
+                DiagLevel::Error | DiagLevel::Unimplemented => eprintln!("{}", msg),
+                DiagLevel::Warning => println!("{}", msg),
+            }
+            return;
         }
 
         let loc = diag.loc.unwrap();
         let source_map = self.source_map.as_ref().unwrap();
-        let source_file = { source_map.get_file(loc.file_id).unwrap().clone() };
+        let source_file = source_map.get_file(loc.file_id).unwrap().clone();
+        let file_path = source_file.file_path.to_str().unwrap_or("unknown");
 
-        out.push_str(&format!("[{}]", level_text));
-        out.push_str(&format!(
-            "[{}:{}:{}]",
-            source_file.file_path.to_str().unwrap(),
-            loc.line,
-            loc.column,
-        ));
-        out.push_str(&format!(": {}", diag.kind));
-        out.push('\n');
+        let kind = match diag.level {
+            DiagLevel::Error => ReportKind::Error,
+            DiagLevel::Warning => ReportKind::Warning,
+            DiagLevel::Unimplemented => ReportKind::Error,
+        };
 
-        let lines: Vec<&str> = source_file.content.lines().collect();
+        let color = match diag.level {
+            DiagLevel::Error => Color::Red,
+            DiagLevel::Warning => Color::Yellow,
+            DiagLevel::Unimplemented => Color::Magenta,
+        };
 
-        let line = lines[loc.line.saturating_sub(1)];
+        let label_msg = match diag.level {
+            DiagLevel::Error => "error occurred here",
+            DiagLevel::Warning => "warning triggered here",
+            DiagLevel::Unimplemented => "unimplemented feature used here",
+        };
 
-        out.push_str(line.trim_end());
+        let mut report = Report::build(kind, (file_path, loc.start..loc.end))
+            .with_message(diag.kind.to_string())
+            .with_label(
+                Label::new((file_path, loc.start..loc.end))
+                    .with_message(label_msg)
+                    .with_color(color),
+            );
 
-        // render hints
         if let Some(hint) = &diag.hint {
-            out.push_str("\n\n");
-            out.push_str(&format!("hint: {}\n", hint));
+            report = report.with_note(hint);
         }
 
-        out
+        let report = report.finish();
+
+        let mut stderr = std::io::stderr();
+        let source = Source::from(source_file.content.as_str());
+        let _ = report.write((file_path, source), &mut stderr);
     }
 }
 
@@ -170,9 +175,9 @@ impl fmt::Display for CustomDiagKind {
 #[macro_export]
 macro_rules! exit_with_msg {
     ($msg:expr) => {
-        cyrusc_diagcentral::reporter::DiagReporter::display_single(cyrusc_diagcentral::Diag {
-            level: cyrusc_diagcentral::DiagLevel::Error,
-            kind: Box::new(cyrusc_diagcentral::reporter::CustomDiagKind::Custom($msg)),
+        $crate::reporter::DiagReporter::display_single($crate::Diag {
+            level: $crate::DiagLevel::Error,
+            kind: Box::new($crate::reporter::CustomDiagKind::Custom($msg.to_string())),
             loc: None,
             hint: None,
         });
@@ -183,7 +188,7 @@ macro_rules! exit_with_msg {
 #[macro_export]
 macro_rules! exit_with_single_diag {
     ($diag:expr) => {
-        cyrusc_diagcentral::reporter::DiagReporter::display_single($diag);
+        $crate::reporter::DiagReporter::display_single($diag);
         std::process::exit(1);
     };
 }

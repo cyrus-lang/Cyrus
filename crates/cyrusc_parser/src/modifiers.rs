@@ -23,6 +23,7 @@ pub(crate) struct UnresolvedModifiers {
     pub optional_flags: Vec<OptionalFlag>,
     pub section: Vec<SectionAttr>,
     pub repr_attr: Option<ReprAttr>,
+    pub thread_local: Option<()>,
 }
 
 #[derive(Debug, Clone)]
@@ -57,6 +58,7 @@ impl<'source_file> Parser<'source_file> {
             repr_attr: None,
             optional_flags: Vec::new(),
             section: Vec::new(),
+            thread_local: None,
         };
 
         loop {
@@ -96,6 +98,11 @@ impl<'source_file> Parser<'source_file> {
                 };
             }
 
+            try_set_once!(
+                thread_local,
+                parse_thread_local,
+                "Threadlocal modifier already specified."
+            );
             try_set_once!(visibility, parse_vis, "Visibility modifier already specified.");
             try_set_once!(inline, parse_inlining, "Inlining modifier already specified.");
             try_set_once!(prologue, parse_prologue, "Prologue modifier already specified.");
@@ -341,6 +348,15 @@ impl<'source_file> Parser<'source_file> {
         }
     }
 
+    pub(crate) fn parse_thread_local(&mut self, token: Token) -> Option<()> {
+        if matches!(token.kind, TokenKind::ThreadLocal) {
+            self.next_token();
+            Some(())
+        } else {
+            None
+        }
+    }
+
     pub(crate) fn parse_vis(&mut self, token: Token) -> Option<Visibility> {
         if matches!(token.kind, TokenKind::Public) {
             self.next_token();
@@ -361,6 +377,7 @@ impl UnresolvedModifiers {
             || self.export.is_some()
             || self.callconv.is_some()
             || self.repr_attr.is_some()
+            || self.thread_local.is_some()
             || !self.optional_flags.is_empty()
             || !self.section.is_empty()
         {
@@ -422,7 +439,18 @@ impl UnresolvedModifiers {
                 )),
                 level: DiagLevel::Error,
                 loc: Some(loc),
-                hint: Some("only data types like structs and enums can have a 'repr' attribute.".to_string()),
+                hint: Some("Only data types like structs and enums can have a 'repr' attribute.".to_string()),
+            });
+        }
+
+        if self.thread_local.is_some() {
+            return Err(Diag {
+                kind: Box::new(ParserDiagKind::InvalidModifier(
+                    "Attribute 'thread_local' cannot be applied to functions.".to_string(),
+                )),
+                level: DiagLevel::Error,
+                loc: Some(loc),
+                hint: None,
             });
         }
 
@@ -437,6 +465,7 @@ impl UnresolvedModifiers {
             || self.prologue.is_some()
             || self.export.is_some()
             || self.callconv.is_some()
+            || self.thread_local.is_some()
             || !self.optional_flags.is_empty()
             || !self.section.is_empty()
         {
@@ -486,6 +515,7 @@ impl UnresolvedModifiers {
             || self.prologue.is_some()
             || self.export.is_some()
             || self.callconv.is_some()
+            || self.thread_local.is_some()
             || !self.optional_flags.is_empty()
             || !self.section.is_empty()
         {
@@ -554,6 +584,7 @@ impl UnresolvedModifiers {
             || self.prologue.is_some()
             || self.export.is_some()
             || self.callconv.is_some()
+            || self.thread_local.is_some()
             || !self.optional_flags.is_empty()
             || !self.section.is_empty()
         {
@@ -668,6 +699,7 @@ impl UnresolvedModifiers {
             vis,
             linkage: self.linkage.clone(),
             export: self.export,
+            thread_local: self.thread_local.is_some(),
             section,
             weak,
         })
@@ -681,6 +713,7 @@ impl UnresolvedModifiers {
             || self.prologue.is_some()
             || self.export.is_some()
             || self.callconv.is_some()
+            || self.thread_local.is_some()
             || self.repr_attr.is_some()
             || !self.optional_flags.is_empty()
             || !self.section.is_empty()
@@ -706,6 +739,7 @@ impl UnresolvedModifiers {
             || self.prologue.is_some()
             || self.export.is_some()
             || self.repr_attr.is_some()
+            || self.thread_local.is_some()
             || self.callconv.is_some()
             || !self.optional_flags.is_empty()
             || !self.section.is_empty()
@@ -725,6 +759,17 @@ impl UnresolvedModifiers {
 
     pub(crate) fn into_method_modifiers(self, loc: Loc) -> Result<FuncModifiers, Diag> {
         let vis = self.visibility.unwrap_or_default();
+
+        if self.thread_local.is_some() {
+            return Err(Diag {
+                kind: Box::new(ParserDiagKind::InvalidModifier(
+                    "Attribute 'thread_local' cannot be applied to methods.".to_string(),
+                )),
+                level: DiagLevel::Error,
+                loc: Some(loc),
+                hint: None,
+            });
+        }
 
         if self.export.is_some() || self.linkage.is_some() || !self.section.is_empty() {
             return Err(Diag {
@@ -760,6 +805,7 @@ impl UnresolvedModifiers {
             || self.callconv.is_some()
             || self.prologue.is_some()
             || self.repr_attr.is_some()
+            || self.thread_local.is_some()
             || !self.optional_flags.is_empty()
             || !self.section.is_empty()
         {

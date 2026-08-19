@@ -1469,7 +1469,6 @@ fn can_start_expr(kind: &TokenKind) -> bool {
         | TokenKind::Typedef
         | TokenKind::Switch
         | TokenKind::Case
-        | TokenKind::Default
         | TokenKind::If
         | TokenKind::Else
         | TokenKind::Return
@@ -1503,6 +1502,7 @@ fn can_start_expr(kind: &TokenKind) -> bool {
         | TokenKind::Void
         | TokenKind::Bool
         | TokenKind::Const
+        | TokenKind::ThreadLocal
         | TokenKind::Weak
         | TokenKind::LinkOnce
         | TokenKind::Callconv

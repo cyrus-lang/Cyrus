@@ -16,7 +16,7 @@ fn display_os_error(err: OSError) {
         case .Custom(errno, msg) => {
             printf("custom(%d, %s)", errno, msg);
         }
-        default => {
+        else => {
             printf("unknown error");
         }
     }

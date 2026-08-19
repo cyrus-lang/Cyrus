@@ -290,9 +290,7 @@ pub extern(c) {
     ) types::c_char*;
 }
 
-
-// FIXME
-// pub extern(c) thread_local static var errno: types::c_int;
+pub extern(c) thread_local static var errno: types::c_int;
 
 pub const EPERM: types::c_int = 1;
 pub const ENOENT: types::c_int = 2;

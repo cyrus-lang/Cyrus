@@ -183,7 +183,7 @@ pub enum TokenKind : Format {
     pub inline fn is_eof(self: const Self*) bool {
         switch (*self) {
             case .EOF => return true;
-            default => return false;
+            else => return false;
         }
     }
 
@@ -484,7 +484,7 @@ pub enum IntegerSuffix {
             case "uint64" => return .Some(.UInt64);
             case "uint128" => return .Some(.UInt128);
             case "char" => return .Some(.Char);
-            default => return .None;
+            else => return .None;
         }
     }
 
@@ -521,7 +521,7 @@ pub enum FloatSuffix {
             case "float32" => return .Some(.Float32);
             case "float64" => return .Some(.Float64);
             case "float128" => return .Some(.Float128);
-            default => return .None;
+            else => return .None;
         }
     }
 
@@ -541,7 +541,7 @@ pub enum StringPrefix {
     pub fn from_str(str: const uint8*) Option<Self> {
         switch (str) {
             case "b" => return .Some(.Byte);
-            default => return .None;
+            else => return .None;
         }
     }
 

@@ -21,6 +21,7 @@ use cyrusc_internal::{
 };
 use cyrusc_source_loc::SourceMap;
 use cyrusc_typed_ast::LabelID;
+use fx_hash::{FxHashMap, FxHashMapExt};
 use inkwell::{
     basic_block::BasicBlock,
     builder::Builder,
@@ -31,20 +32,20 @@ use inkwell::{
     },
     module::Module,
     targets::TargetMachine,
-    values::{FunctionValue, PointerValue},
+    values::{FunctionValue, GlobalValue, PointerValue},
 };
 use std::{cell::RefCell, collections::HashMap, rc::Rc, sync::Arc};
 
 pub(crate) struct CodeGenIRBuilder<'ll> {
     pub(crate) target: &'ll ABITarget,
     pub(crate) llvm_ctx: &'ll Context,
-    pub(crate) llvmbuilder: &'ll Builder<'ll>,
+    pub(crate) llvm_builder: &'ll Builder<'ll>,
     pub(crate) llvm_module: Rc<RefCell<Module<'ll>>>,
     pub(crate) llvmtm: &'ll TargetMachine,
     pub(crate) irreg: LocalIRValueRegistryRef<'ll>,
     pub(crate) cur_func: Option<FunctionValue<'ll>>,
     pub(crate) cur_abi_func_info: Option<ABIFunctionInfo>,
-    pub(crate) blockreg: BlockRegistry<'ll>,
+    pub(crate) block_reg: BlockRegistry<'ll>,
     pub(crate) defer_stack: Vec<Vec<CIRStmt>>,
     pub(crate) cir_module: &'ll CIRModule,
     pub(crate) lambda_id: usize,
@@ -54,6 +55,7 @@ pub(crate) struct CodeGenIRBuilder<'ll> {
     pub(crate) vtable_registry: Arc<VTableRegistry>,
     pub(crate) source_map: Arc<SourceMap>,
     pub(crate) profile: CompilerOption_Profile,
+    pub(crate) string_cache: FxHashMap<String, GlobalValue<'ll>>,
 
     // Used to prevent duplicate sret when chained function call happens.
     pub(crate) cur_sret: Option<PointerValue<'ll>>,
@@ -73,7 +75,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         owned_module: &'ll OwnedModule,
         cir_module: &'ll CIRModule,
         target: &'ll ABITarget,
-        llvmbuilder: &'ll Builder<'ll>,
+        llvm_builder: &'ll Builder<'ll>,
         llvmtm: &'ll TargetMachine,
         dctx: Option<DebugContext>,
         tctx: Arc<CIRTypeContext>,
@@ -81,22 +83,24 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         source_map: Arc<SourceMap>,
         profile: CompilerOption_Profile,
     ) -> Self {
+        let irreg = Rc::new(RefCell::new(LocalIRValueRegistry::new()));
+        let block_reg = BlockRegistry::default();
+
         let llvm_module = unsafe {
             std::mem::transmute::<Rc<RefCell<Module<'static>>>, Rc<RefCell<Module<'ll>>>>(owned_module.module.clone())
         };
-        let irreg = Rc::new(RefCell::new(LocalIRValueRegistry::new()));
-        let blockreg = BlockRegistry::default();
+
         Self {
             target,
             cir_module,
             llvm_ctx: &owned_module.context,
-            llvmbuilder,
+            llvm_builder,
             llvm_module,
             llvmtm,
             irreg,
             cur_func: None,
             cur_abi_func_info: None,
-            blockreg,
+            block_reg,
             lambda_id: 0,
             defer_stack: Vec::new(),
             dctx,
@@ -107,6 +111,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
             profile,
             cur_sret: None,
             is_return: false,
+            string_cache: FxHashMap::new(),
         }
     }
 
@@ -184,7 +189,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
                 set_debug_location(
                     &dctx,
                     self.llvm_ctx,
-                    self.llvmbuilder,
+                    self.llvm_builder,
                     stmt.loc().line.try_into().unwrap(),
                     stmt.loc().column.try_into().unwrap(),
                 )
@@ -218,7 +223,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         self.defer_stack.push(block.defers.clone());
 
         for stmt in &block.stmts {
-            if let Some(basic_block) = &self.blockreg.cur_block {
+            if let Some(basic_block) = &self.block_reg.cur_block {
                 if basic_block.get_terminator().is_some() {
                     break;
                 }
@@ -227,7 +232,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
             self.emit_stmt(stmt);
         }
 
-        if let Some(basic_block) = &self.blockreg.cur_block {
+        if let Some(basic_block) = &self.block_reg.cur_block {
             if !basic_block.get_terminator().is_some() {
                 self.emit_scope_defers();
             }

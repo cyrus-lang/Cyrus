@@ -23,7 +23,7 @@ use inkwell::{
 // These intrinsics published via builtin to user side.
 impl<'ll> CodeGenIRBuilder<'ll> {
     pub(crate) fn emit_builtin_call(&mut self, call: &CIRCall, builtin_spec: &TypedBuiltinSpec) -> InternalValue<'ll> {
-        let _guard = DebugLocationGuard::new(self.llvmbuilder.as_mut_ptr(), self.dctx.is_some());
+        let _guard = DebugLocationGuard::new(self.llvm_builder.as_mut_ptr(), self.dctx.is_some());
         debug_assert!(builtin_spec.phase == TypedBuiltinPhase::Codegen);
         debug_assert!(builtin_spec.form == TypedBuiltinForm::Expr);
 
@@ -73,7 +73,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         let dest_align = 1_u32;
         let src_align = 1_u32;
 
-        self.llvmbuilder
+        self.llvm_builder
             .build_memcpy(dest, dest_align, src, src_align, size)
             .unwrap();
 
@@ -96,7 +96,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
 
             let casted_value = {
                 if is_target_int_signed {
-                    self.llvmbuilder
+                    self.llvm_builder
                         .build_float_to_signed_int(
                             rvalue.as_basic_value().into_float_value(),
                             llvm_target_type.into_int_type(),
@@ -105,7 +105,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
                         .unwrap()
                         .as_basic_value_enum()
                 } else {
-                    self.llvmbuilder
+                    self.llvm_builder
                         .build_float_to_unsigned_int(
                             rvalue.as_basic_value().into_float_value(),
                             llvm_target_type.into_int_type(),
@@ -126,7 +126,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
 
             let casted_value = {
                 if is_int_signed {
-                    self.llvmbuilder
+                    self.llvm_builder
                         .build_signed_int_to_float(
                             rvalue.as_basic_value().into_int_value(),
                             llvm_target_type.into_float_type(),
@@ -135,7 +135,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
                         .unwrap()
                         .as_basic_value_enum()
                 } else {
-                    self.llvmbuilder
+                    self.llvm_builder
                         .build_unsigned_int_to_float(
                             rvalue.as_basic_value().into_int_value(),
                             llvm_target_type.into_float_type(),
@@ -184,13 +184,13 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         };
         let align = 1_u32;
 
-        self.llvmbuilder.build_memset(dest, align, value, size).unwrap();
+        self.llvm_builder.build_memset(dest, align, value, size).unwrap();
 
         self.emit_null(cir_void_ptr)
     }
 
     pub(crate) fn emit_intrinsic_panic(&mut self, args: &[CIRExpr], loc: Loc) -> InternalValue<'ll> {
-        let _guard = DebugLocationGuard::new(self.llvmbuilder.as_mut_ptr(), self.dctx.is_some());
+        let _guard = DebugLocationGuard::new(self.llvm_builder.as_mut_ptr(), self.dctx.is_some());
         let cir_void_ptr = CIRType::Pointer(Box::new(CIRType::Plain(PlainType::Void)));
 
         let ptr_type = self.llvm_ctx.ptr_type(inkwell::AddressSpace::default());
@@ -237,7 +237,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         };
 
         let stderr = self
-            .llvmbuilder
+            .llvm_builder
             .build_load(ptr_type, stderr_global.as_pointer_value(), "stderr")
             .unwrap();
 
@@ -251,7 +251,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         // thread name
         let thread_name = self.intrinsic_emit_current_thread_name();
 
-        self.llvmbuilder
+        self.llvm_builder
             .build_call(
                 fprintf,
                 &[
@@ -269,9 +269,9 @@ impl<'ll> CodeGenIRBuilder<'ll> {
 
         let trap = self.intrinsic_get_or_insert_trap();
 
-        self.llvmbuilder.build_call(trap, &[], "").unwrap();
+        self.llvm_builder.build_call(trap, &[], "").unwrap();
 
-        self.llvmbuilder.build_unreachable().unwrap();
+        self.llvm_builder.build_unreachable().unwrap();
 
         self.emit_null(cir_void_ptr)
     }
@@ -318,7 +318,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         };
 
         let stderr = self
-            .llvmbuilder
+            .llvm_builder
             .build_load(ptr_type, stderr_global.as_pointer_value(), "stderr")
             .unwrap();
 
@@ -330,7 +330,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
 
         let thread_name = self.intrinsic_emit_current_thread_name();
 
-        self.llvmbuilder
+        self.llvm_builder
             .build_call(
                 fprintf,
                 &[
@@ -348,9 +348,9 @@ impl<'ll> CodeGenIRBuilder<'ll> {
 
         let trap = self.intrinsic_get_or_insert_trap();
 
-        self.llvmbuilder.build_call(trap, &[], "").unwrap();
+        self.llvm_builder.build_call(trap, &[], "").unwrap();
 
-        self.llvmbuilder.build_unreachable().unwrap();
+        self.llvm_builder.build_unreachable().unwrap();
 
         self.emit_null(cir_void_ptr)
     }
@@ -400,7 +400,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         };
 
         let stderr = self
-            .llvmbuilder
+            .llvm_builder
             .build_load(ptr_type, stderr_global.as_pointer_value(), "stderr")
             .unwrap();
 
@@ -412,7 +412,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
 
         let thread_name = self.intrinsic_emit_current_thread_name();
 
-        self.llvmbuilder
+        self.llvm_builder
             .build_call(
                 fprintf,
                 &[
@@ -430,9 +430,9 @@ impl<'ll> CodeGenIRBuilder<'ll> {
 
         let trap = self.intrinsic_get_or_insert_trap();
 
-        self.llvmbuilder.build_call(trap, &[], "").unwrap();
+        self.llvm_builder.build_call(trap, &[], "").unwrap();
 
-        self.llvmbuilder.build_unreachable().unwrap();
+        self.llvm_builder.build_unreachable().unwrap();
 
         self.emit_null(cir_void_ptr)
     }
@@ -482,7 +482,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         };
 
         let stderr = self
-            .llvmbuilder
+            .llvm_builder
             .build_load(ptr_type, stderr_global.as_pointer_value(), "stderr")
             .unwrap();
 
@@ -494,7 +494,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
 
         let thread_name = self.intrinsic_emit_current_thread_name();
 
-        self.llvmbuilder
+        self.llvm_builder
             .build_call(
                 fprintf,
                 &[
@@ -512,10 +512,10 @@ impl<'ll> CodeGenIRBuilder<'ll> {
 
         let trap = self.intrinsic_get_or_insert_trap();
 
-        self.llvmbuilder.build_call(trap, &[], "").unwrap();
+        self.llvm_builder.build_call(trap, &[], "").unwrap();
 
         // llvm unreachable
-        self.llvmbuilder.build_unreachable().unwrap();
+        self.llvm_builder.build_unreachable().unwrap();
 
         self.emit_null(cir_void_ptr)
     }
@@ -536,7 +536,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         let ok_block = self.llvm_ctx.append_basic_block(cur_func, "assert.ok");
         let fail_block = self.llvm_ctx.append_basic_block(cur_func, "assert.fail");
 
-        self.llvmbuilder
+        self.llvm_builder
             .build_conditional_branch(cond, ok_block, fail_block)
             .unwrap();
 
@@ -583,7 +583,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         };
 
         let stderr = self
-            .llvmbuilder
+            .llvm_builder
             .build_load(ptr_type, stderr_global.as_pointer_value(), "stderr")
             .unwrap();
 
@@ -597,7 +597,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         // thread name
         let thread_name = self.intrinsic_emit_current_thread_name();
 
-        self.llvmbuilder
+        self.llvm_builder
             .build_call(
                 fprintf,
                 &[
@@ -615,9 +615,9 @@ impl<'ll> CodeGenIRBuilder<'ll> {
 
         let trap = self.intrinsic_get_or_insert_trap();
 
-        self.llvmbuilder.build_call(trap, &[], "").unwrap();
+        self.llvm_builder.build_call(trap, &[], "").unwrap();
 
-        self.llvmbuilder.build_unreachable().unwrap();
+        self.llvm_builder.build_unreachable().unwrap();
 
         self.emit_block(ok_block);
 
@@ -641,36 +641,36 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         }
 
         let dst_alloca = self
-            .llvmbuilder
+            .llvm_builder
             .build_alloca(dst_ty, &format!("{name}.dst.alloca"))
             .unwrap();
 
         let src_alloca = self
-            .llvmbuilder
+            .llvm_builder
             .build_alloca(src_ty, &format!("{name}.src.alloca"))
             .unwrap();
 
-        self.llvmbuilder.build_store(src_alloca, value).unwrap();
+        self.llvm_builder.build_store(src_alloca, value).unwrap();
 
         let i8_ptr_type = self.llvm_ctx.ptr_type(inkwell::AddressSpace::default());
 
         let dst_ptr = self
-            .llvmbuilder
+            .llvm_builder
             .build_bit_cast(dst_alloca, i8_ptr_type, &format!("{name}.dst.ptr"))
             .unwrap()
             .into_pointer_value();
 
         let src_ptr = self
-            .llvmbuilder
+            .llvm_builder
             .build_bit_cast(src_alloca, i8_ptr_type, &format!("{name}.src.ptr"))
             .unwrap()
             .into_pointer_value();
 
         let size = dst_ty.size_of().unwrap();
 
-        self.llvmbuilder.build_memcpy(dst_ptr, 1, src_ptr, 1, size).unwrap();
+        self.llvm_builder.build_memcpy(dst_ptr, 1, src_ptr, 1, size).unwrap();
 
-        self.llvmbuilder.build_load(dst_ty, dst_alloca, name).unwrap()
+        self.llvm_builder.build_load(dst_ty, dst_alloca, name).unwrap()
     }
 
     pub(crate) fn intrinsic_optimized_memcpy(&self, dest: PointerValue<'ll>, rvalue: BasicValueEnum<'ll>) {
@@ -684,7 +684,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
             || ty.is_array_type()
             || ty.is_vector_type()
         {
-            self.llvmbuilder.build_store(dest, rvalue).unwrap();
+            self.llvm_builder.build_store(dest, rvalue).unwrap();
             return;
         }
 
@@ -717,12 +717,12 @@ impl<'ll> CodeGenIRBuilder<'ll> {
             global.as_pointer_value()
         } else {
             // fallback
-            let tmp = self.llvmbuilder.build_alloca(ty, "memcpy.temp").unwrap();
-            self.llvmbuilder.build_store(tmp, rvalue).unwrap();
+            let tmp = self.llvm_builder.build_alloca(ty, "memcpy.temp").unwrap();
+            self.llvm_builder.build_store(tmp, rvalue).unwrap();
             tmp
         };
 
-        self.llvmbuilder
+        self.llvm_builder
             .build_memcpy(dest, dest_align, src_ptr, src_align, size_value)
             .unwrap();
     }
@@ -748,7 +748,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         };
 
         let cmp_result = self
-            .llvmbuilder
+            .llvm_builder
             .build_call(strcmp_func, &[lhs_ptr.into(), rhs_ptr.into()], "strcmp_call")
             .unwrap()
             .try_as_basic_value()
@@ -781,21 +781,21 @@ impl<'ll> CodeGenIRBuilder<'ll> {
             }
         };
 
-        let lhs_alloca = self.llvmbuilder.build_alloca(lhs_arr.get_type(), "lhs_alloca").unwrap();
-        let rhs_alloca = self.llvmbuilder.build_alloca(rhs_arr.get_type(), "rhs_alloca").unwrap();
+        let lhs_alloca = self.llvm_builder.build_alloca(lhs_arr.get_type(), "lhs_alloca").unwrap();
+        let rhs_alloca = self.llvm_builder.build_alloca(rhs_arr.get_type(), "rhs_alloca").unwrap();
 
-        self.llvmbuilder.build_store(lhs_alloca, lhs_arr).unwrap();
-        self.llvmbuilder.build_store(rhs_alloca, rhs_arr).unwrap();
+        self.llvm_builder.build_store(lhs_alloca, lhs_arr).unwrap();
+        self.llvm_builder.build_store(rhs_alloca, rhs_arr).unwrap();
 
         let zero = self.llvm_ctx.i32_type().const_zero();
         let gep_idx = &[zero, zero];
         let lhs_ptr = unsafe {
-            self.llvmbuilder
+            self.llvm_builder
                 .build_in_bounds_gep(lhs_arr.get_type(), lhs_alloca, gep_idx, "lhs_gep")
                 .unwrap()
         };
         let rhs_ptr = unsafe {
-            self.llvmbuilder
+            self.llvm_builder
                 .build_in_bounds_gep(rhs_arr.get_type(), rhs_alloca, gep_idx, "rhs_gep")
                 .unwrap()
         };
@@ -804,7 +804,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         let len_val = ptr_sized_int_type.const_int(byte_size as u64, false);
 
         let cmp = self
-            .llvmbuilder
+            .llvm_builder
             .build_call(memcmp, &[lhs_ptr.into(), rhs_ptr.into(), len_val.into()], "memcmp_call")
             .unwrap()
             .try_as_basic_value()
@@ -833,14 +833,14 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         mut value: BasicValueEnum<'ll>,
         array_type: ArrayType<'ll>,
     ) -> ArrayValue<'ll> {
-        let alloca = self.llvmbuilder.build_alloca(array_type, "alloca").unwrap();
+        let alloca = self.llvm_builder.build_alloca(array_type, "alloca").unwrap();
 
         value = self.intrinsic_coerce_through_alloca(value, BasicTypeEnum::ArrayType(array_type), "coerce");
 
         self.intrinsic_optimized_memcpy(alloca, value);
 
         // load back the array
-        self.llvmbuilder
+        self.llvm_builder
             .build_load(array_type, alloca, "load")
             .unwrap()
             .into_array_value()
@@ -864,7 +864,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
             return global.as_pointer_value();
         }
 
-        let builder = &self.llvmbuilder;
+        let builder = &self.llvm_builder;
 
         let global_value = builder.build_global_string_ptr(value, name).unwrap();
 
@@ -906,20 +906,20 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         // allocate thread-name buffer
         // POSIX thread names are typically <= 16 bytes.
         let buf = self
-            .llvmbuilder
+            .llvm_builder
             .build_array_alloca(i8_type, i64_type.const_int(64, false), "thread_name_buf")
             .unwrap();
 
         // pthread_self()
         let thread = self
-            .llvmbuilder
+            .llvm_builder
             .build_call(pthread_self_fn, &[], "pthread_self")
             .unwrap()
             .try_as_basic_value()
             .unwrap_basic();
 
         // pthread_getname_np(thread, buf, 64)
-        self.llvmbuilder
+        self.llvm_builder
             .build_call(
                 pthread_getname_np_fn,
                 &[thread.into(), buf.into(), i64_type.const_int(64, false).into()],

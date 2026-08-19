@@ -206,9 +206,13 @@ impl<'a> CIRLower<'a> {
                 }
             }
 
-            TypedStmtKind::Defer(_) | TypedStmtKind::Interface(..) | TypedStmtKind::Typedef(..) => {}
+            TypedStmtKind::Builtin(builtin) => {
+                lowered_stmts.extend(self.lower_builtin(builtin));
+            }
+
             TypedStmtKind::InlineAsm(asm) => {
                 let cir_asm = self.lower_inline_asm(asm);
+
                 lowered_stmts.push(CIRStmt::Expr(CIRExpr {
                     kind: CIRExprKind::InlineAsm(cir_asm),
                     ty: CIRType::Plain(PlainType::Void),
@@ -216,10 +220,8 @@ impl<'a> CIRLower<'a> {
                 }));
             }
 
-            TypedStmtKind::Builtin(builtin) => {
-                let stmts = self.lower_builtin(builtin);
-                lowered_stmts.extend(stmts);
-            }
+            // skipped
+            TypedStmtKind::Defer(_) | TypedStmtKind::Interface(..) | TypedStmtKind::Typedef(..) => {}
         }
     }
 
@@ -316,13 +318,14 @@ impl<'a> CIRLower<'a> {
         let clobbers: Vec<String> = asm.clobbers.iter().map(|c| c.name.clone()).collect();
 
         let ret_type = match asm.outputs.len() {
-            1 => {
-                // Fall back to Void if the output expression was poisoned
-                match asm.outputs[0].expr.ty.as_ref() {
-                    Some(sema_ty) => self.lower_sema_type(sema_ty),
-                    None => CIRType::Plain(PlainType::Void),
+            1 => match asm.outputs[0].expr.ty.as_ref() {
+                Some(ty) => self.lower_sema_type(ty),
+                None => {
+                    // fall back to `void`
+                    // if the output expr was poisoned
+                    CIRType::Plain(PlainType::Void)
                 }
-            }
+            },
             _ => CIRType::Plain(PlainType::Void),
         };
 
@@ -1628,16 +1631,14 @@ impl<'a> CIRLower<'a> {
                 stmt.as_expr().unwrap().kind.clone()
             }
 
+            TypedExprKind::InlineAsm(asm) => CIRExprKind::InlineAsm(self.lower_inline_asm(asm)),
+
             TypedExprKind::UnnamedStructValue(_)
             | TypedExprKind::UnnamedEnumValue(_)
             | TypedExprKind::EnumStructVariantInit(_)
             | TypedExprKind::UnnamedUnionValue(_) => unreachable!("unexpected unnamed constructor expression"),
 
             TypedExprKind::Poisoned => unreachable!("unexpected poisoned expression"),
-            TypedExprKind::InlineAsm(asm) => {
-                let cir_asm = self.lower_inline_asm(asm);
-                CIRExprKind::InlineAsm(cir_asm)
-            }
         };
 
         CIRExpr {

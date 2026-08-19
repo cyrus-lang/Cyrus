@@ -31,18 +31,18 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         // implicit cast index and length type
         if index_int_value.get_type().get_bit_width() > array_length_int_value.get_type().get_bit_width() {
             array_length_int_value = self
-                .llvmbuilder
+                .llvm_builder
                 .build_int_cast(array_length_int_value, index_int_value.get_type(), "cast")
                 .unwrap();
         } else {
             index_int_value = self
-                .llvmbuilder
+                .llvm_builder
                 .build_int_cast(index_int_value, array_length_int_value.get_type(), "cast")
                 .unwrap();
         }
 
         let compare_result = self
-            .llvmbuilder
+            .llvm_builder
             .build_int_compare(
                 inkwell::IntPredicate::ULT,
                 index_int_value,
@@ -63,11 +63,11 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         let failure_block = self.llvm_ctx.append_basic_block(cur_fn, "inbounds_check.failure");
         let success_block = self.llvm_ctx.append_basic_block(cur_fn, "inbounds_check.success");
 
-        self.llvmbuilder
+        self.llvm_builder
             .build_conditional_branch(compare_result, success_block, failure_block)
             .unwrap();
 
-        self.llvmbuilder.position_at_end(failure_block);
+        self.llvm_builder.position_at_end(failure_block);
 
         let panic_msg = self.emit_cstring(format!(
             "panic: Index out of bounds!\nAttempted to access index %d in an array of size {}.",
@@ -105,11 +105,11 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         };
 
         let stderr_val = self
-            .llvmbuilder
+            .llvm_builder
             .build_load(ptr_type, stderr_global.as_pointer_value(), "stderr_val")
             .unwrap();
 
-        self.llvmbuilder
+        self.llvm_builder
             .build_call(
                 fprintf_fn_value,
                 &[
@@ -138,19 +138,19 @@ impl<'ll> CodeGenIRBuilder<'ll> {
             }
         };
 
-        self.llvmbuilder
+        self.llvm_builder
             .build_call(exit_fn_value, &[error_status_code.into()], "call")
             .unwrap();
 
-        self.llvmbuilder.build_unreachable().unwrap();
+        self.llvm_builder.build_unreachable().unwrap();
 
-        self.llvmbuilder.position_at_end(success_block);
-        self.blockreg.cur_block = Some(success_block);
+        self.llvm_builder.position_at_end(success_block);
+        self.block_reg.cur_block = Some(success_block);
 
         let ordered_indexes: Vec<IntValue<'ll>> = vec![index.as_basic_value().into_int_value()];
 
         let pointer_value = unsafe {
-            self.llvmbuilder
+            self.llvm_builder
                 .build_in_bounds_gep(pointee_basic_ty, ptr, &ordered_indexes, "gep")
                 .unwrap()
         };
