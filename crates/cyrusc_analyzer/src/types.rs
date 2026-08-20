@@ -70,7 +70,7 @@ impl<'a> AnalysisContext<'a> {
         lhs_type = self.expand_sema_type(lhs_type, loc);
         rhs_type = self.expand_sema_type(rhs_type, loc);
 
-        // Constness matters
+        // Constness DOES matter
         match (rhs_type.clone(), lhs_type.clone()) {
             // pointer <-> pointer
             (SemaType::Pointer(inner1), SemaType::Pointer(inner2)) => {
