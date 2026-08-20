@@ -36,7 +36,7 @@ struct LargeStruct {
     pub b: c_int,
     pub c: c_float,
     pub d: c_double,
-    pub ptr: c_int*
+    pub ptr: const c_int*
 }
 
 extern "c" fn print_large_struct(v: LargeStruct) c_double;

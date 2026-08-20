@@ -11,7 +11,7 @@ fn set_by_value(var inst: Value) {
     inst.text_value = "pass_by_value never changes";
 }
 
-fn set_by_ref(inst: Value*) {
+fn set_by_ref(inst: const Value*) {
     inst->text_value = "mutated";
 }
 

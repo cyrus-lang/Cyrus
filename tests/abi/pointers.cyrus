@@ -4,13 +4,14 @@
 import std::libc{printf};
 import std::libc::types{c_int};
 
-extern "c" fn write_int(ptr: c_int*, value: c_int);
-extern "c" fn read_int(ptr: c_int*) c_int;
+extern "c" fn write_int(ptr: const c_int*, value: c_int);
+extern "c" fn read_int(ptr: const c_int*) c_int;
 
 pub fn main() {
     const x: c_int = 10;
+    
     write_int(&x, 5);
     printf("write_int=%d ", x);
-
+    
     printf("read_int=%d ", read_int(&x));
 }

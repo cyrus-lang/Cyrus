@@ -12,6 +12,22 @@ use cyrusc_typed_ast::{
 };
 
 impl<'a> AnalysisContext<'a> {
+    fn is_type_comparable(&mut self, mut rhs_type: SemaType, mut lhs_type: SemaType, loc: Loc) -> bool {
+        lhs_type = self.expand_sema_type(lhs_type, loc);
+        rhs_type = self.expand_sema_type(rhs_type, loc);
+
+        // Constness DOES NOT matter
+        match (rhs_type.clone(), lhs_type.clone()) {
+            // pointer <-> pointer
+            (SemaType::Pointer(inner1), SemaType::Pointer(inner2)) => {
+                return inner1.is_void() || inner2.is_void() || self.is_assignable_to(*inner1, *inner2, loc);
+            }
+            _ => {}
+        }
+
+        self.is_assignable_to(rhs_type, lhs_type, loc)
+    }
+
     pub(crate) fn analyze_infix(
         &mut self,
         infix: &mut TypedInfixExpr,
@@ -305,7 +321,9 @@ impl<'a> AnalysisContext<'a> {
 
         if lhs_type.is_enum() && rhs_type.is_enum() {
             return Some(SemaType::Plain(PlainType::Bool));
-        } else if !self.is_assignable_to(rhs_type.clone(), lhs_type.clone(), loc) {
+        }
+
+        if !self.is_type_comparable(rhs_type.clone(), lhs_type.clone(), loc) {
             self.reporter.report(Diag {
                 level: DiagLevel::Error,
                 kind: Box::new(AnalyzerDiagKind::InvalidInfix {
@@ -350,7 +368,7 @@ impl<'a> AnalysisContext<'a> {
         let lhs_type = lhs_type.const_inner();
         let rhs_type = rhs_type.const_inner();
 
-        if !self.is_assignable_to(rhs_type.clone(), lhs_type.clone(), loc) {
+        if !self.is_type_comparable(rhs_type.clone(), lhs_type.clone(), loc) {
             self.reporter.report(Diag {
                 level: DiagLevel::Error,
                 kind: Box::new(AnalyzerDiagKind::InvalidInfix {
