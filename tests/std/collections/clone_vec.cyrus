@@ -21,7 +21,7 @@ pub fn main() {
     clone.push(10);
     
     for (var i: usize = 0; i < clone.len(); i += 1) {
-        printf("%d ", clone.get(i).unwrap());
+        printf("%d ", clone.get_owned(i).unwrap());
     }
     printf("\n");
 }
