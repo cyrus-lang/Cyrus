@@ -36,9 +36,6 @@ pub enum ParserDiagKind {
     #[error("Comparison operators cannot be chained.")]
     ChainedComparisonOperator,
 
-    #[error("Tuple type must contain at least two elements.")]
-    SingleElementTupleType,
-
     #[error("Missing closing bracket ']'.")]
     MissingClosingBracket,
 

@@ -210,7 +210,7 @@ fn mangle_sema_type(ty: &SemaType) -> String {
             format!("const {}", mangle_sema_type(inner_type))
         }
         SemaType::Pointer(inner_type) => {
-            format!("{}*", mangle_sema_type(inner_type))
+            format!("({})*", mangle_sema_type(inner_type))
         }
         SemaType::FuncType(func_type) => {
             let ret_type = mangle_sema_type(&func_type.ret_type);

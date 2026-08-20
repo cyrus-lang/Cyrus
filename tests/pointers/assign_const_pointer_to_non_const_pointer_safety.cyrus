@@ -4,7 +4,7 @@ pub fn main() {
     {
         const i = 10; 
         foo(&i);
-        //~^ ERROR Argument at index 0 has type 'const int32*', but the expected parameter type is 'int32*'
+        //~^ ERROR Argument at index 0 has type '(const int32)*', but the expected parameter type is '(int32)*'
 
         var j = 20;
         foo(&j);
