@@ -38,9 +38,11 @@ pub fn main() {
 
     forest1.display();
 
-    const forest2 = Forest { trees: null, count: 0 };
+    var forest2 = Forest { trees: null, count: 0 };
 
     const tree3 = Tree { value: 30, children: &forest2 };
 
     tree3.display();
+	
+	printf("\n");
 }
