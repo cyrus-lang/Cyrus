@@ -149,7 +149,7 @@ pub struct MultiWriter : Writer {
     pub fn write_all(self: Self*, data: const uint8*) IOError {
         @assert(data, "data cannot be null");
         for (var i: usize = 0; i < self->writers.len(); i += 1) {
-            var writer = self->writers.get(i).unwrap();
+            var writer = self->writers.get_owned(i).unwrap();
             writer.write_all(data);
         }
         return .Value(());
@@ -158,7 +158,7 @@ pub struct MultiWriter : Writer {
     pub fn write(self: Self*, data: const uint8*) IOError {
         @assert(data, "data cannot be null");
         for (var i: usize = 0; i < self->writers.len(); i += 1) {
-            var writer = self->writers.get(i).unwrap();
+            var writer = self->writers.get_owned(i).unwrap();
             writer.write(data);
         }
         return .Value(());
@@ -166,7 +166,7 @@ pub struct MultiWriter : Writer {
 
     pub fn write_char(self: Self*, char: uint8) IOError {
         for (var i: usize = 0; i < self->writers.len(); i += 1) {
-            var writer = self->writers.get(i).unwrap();
+            var writer = self->writers.get_owned(i).unwrap();
             writer.write_char(char);
         }
         return .Value(());
@@ -175,7 +175,7 @@ pub struct MultiWriter : Writer {
     pub fn writeln(self: Self*, data: const uint8*) IOError {
         @assert(data, "data cannot be null");
         for (var i: usize = 0; i < self->writers.len(); i += 1) {
-            var writer = self->writers.get(i).unwrap();
+            var writer = self->writers.get_owned(i).unwrap();
             writer.writeln(data);
         }
         return .Value(());
@@ -184,7 +184,7 @@ pub struct MultiWriter : Writer {
     pub fn flush(self: Self*) IOError {
         var err: IOError = .Value(());
         for (var i: usize = 0; i < self->writers.len(); i += 1) {
-            var writer = self->writers.get(i).unwrap();
+            var writer = self->writers.get_owned(i).unwrap();
             err = writer.flush();
         }
         return err;

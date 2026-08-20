@@ -596,7 +596,7 @@ impl<'a> CIRPrinter<'a> {
 
             CIRType::Const(inner) => format!("const {}", self.print_type(inner)),
 
-            CIRType::Pointer(inner) => format!("{}*", self.print_type(inner)),
+            CIRType::Pointer(inner) => format!("({})*", self.print_type(inner)),
 
             CIRType::Struct(type_id) => {
                 let struct_type = self.tctx.get_struct(*type_id);

@@ -625,11 +625,12 @@ impl<'source_file> Parser<'source_file> {
 
         self.must_be_right_paren()?;
 
-        if type_list.len() <= 1 {
-            return Err(self.error_at_current_with_hint(
-                ParserDiagKind::SingleElementTupleType,
-                "If you only need a single element, remove the tuple syntax and use the type directly.",
-            ));
+        if type_list.len() == 1 {
+            // If a single type is surronded by paranthesis,
+            // It will not be considered as tuple,
+            // Because we might need to give this group
+            // higher priority. For example, in pointer constness.
+            return Ok(type_list.first().cloned().unwrap());   
         }
 
         let end = self.current_token().loc.end;
