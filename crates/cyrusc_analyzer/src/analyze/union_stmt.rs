@@ -117,7 +117,7 @@ impl<'a> AnalysisContext<'a> {
             return;
         }
 
-        if let Some(kind) = repr_attr.kind() {
+        if let Some((kind, _)) = repr_attr.kind() {
             match kind {
                 ReprKind::C | ReprKind::Cyrus => { /* valid */ }
                 ReprKind::Transparent => {

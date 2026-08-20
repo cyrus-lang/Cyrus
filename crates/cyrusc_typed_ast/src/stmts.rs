@@ -275,7 +275,6 @@ pub struct TypedFuncDeclStmt {
     pub params: TypedFuncParams,
     pub ret_type: SemaType,
     pub modifiers: FuncModifiers,
-    pub renamed_as: Option<String>,
     pub loc: Loc,
 }
 
@@ -656,7 +655,7 @@ impl TypedBuiltin {
 impl TypedEnumStmt {
     pub fn is_repr_c(&self) -> bool {
         if let Some(repr_attr) = &self.modifiers.repr_attr {
-            if let Some(kind) = repr_attr.kind() {
+            if let Some((kind, _)) = repr_attr.kind() {
                 return match kind {
                     ReprKind::C => true,
                     ReprKind::Cyrus => false,
@@ -784,7 +783,7 @@ impl TypedFuncDeclStmt {
     pub fn as_func_decl(&self) -> FuncDecl {
         FuncDecl {
             file_id: self.file_id,
-            name: self.usable_name(),
+            name: self.name.clone(),
             params: self.params.clone(),
             generic_params: self.generic_params.clone(),
             ret_type: self.ret_type.clone(),
@@ -792,14 +791,6 @@ impl TypedFuncDeclStmt {
             loc: self.loc,
             body: None,
             is_func_decl: true,
-        }
-    }
-
-    /// Returns the function's effective name, preferring the renamed version if available.
-    pub fn usable_name(&self) -> String {
-        match &self.renamed_as {
-            Some(name) => name.clone(),
-            None => self.name.clone(),
         }
     }
 }

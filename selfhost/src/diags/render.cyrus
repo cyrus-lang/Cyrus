@@ -167,27 +167,31 @@ pub struct CompilerDiagRender {
         }
     }
 
-    inline fn render_mark(self: Self*, n: usize) {
+    [[inline]]
+    fn render_mark(self: Self*, n: usize) {
         for (var i: usize; i < n; i += 1) {
             self->writer.write("^");
         }
     }
 
-    inline fn render_pipe(self: Self*, n: usize) {
+    [[inline]]
+    fn render_pipe(self: Self*, n: usize) {
         for (var i: usize; i < n - 1; i += 1) {
             self->writer.write(" ");
         }
         self->writer.write("|");
     }
 
-    inline fn render_space(self: Self*, n: usize) {
+    [[inline]]
+    fn render_space(self: Self*, n: usize) {
         for (var i: usize; i < n; i += 1) {
             self->writer.write(" ");
         }
     }
 }
 
-inline fn line_space(line: usize) uint32 {
+[[inline]]
+fn line_space(line: usize) uint32 {
     const i = line_digits(line);
 
     if (i < MIN_PANEL_SPACE) {
@@ -197,7 +201,8 @@ inline fn line_space(line: usize) uint32 {
     }
 }
 
-inline fn line_digits(var line: usize) uint32 {
+[[inline]]
+fn line_digits(var line: usize) uint32 {
     var i: uint32 = 0;
     while (line > 0) {
         line /= 10;

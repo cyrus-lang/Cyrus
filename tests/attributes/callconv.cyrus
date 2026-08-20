@@ -1,0 +1,10 @@
+[[callconv(c)]]
+fn foo() {}
+
+[[callconv(sysv64)]]
+fn bar() {}
+
+pub fn main() {
+    foo();
+    bar();
+}

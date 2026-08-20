@@ -1,12 +1,12 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 The Cyrus Language
 
-use cyrusc_ast::{abi::Linkage, modifiers::GlobalVarModifiers};
 use cyrusc_internal::{
     abi::layout::ABITypeLayout,
     cir::cir::{CIRGlobalVarStmt, CIRVarStmt, IRValueID},
 };
 use inkwell::{
+    module::Linkage,
     types::BasicTypeEnum,
     values::{AsValueRef, GlobalValue, PointerValue},
 };
@@ -51,11 +51,9 @@ impl<'ll> CodeGenIRBuilder<'ll> {
             let rvalue = self.load_rvalue(lvalue).as_basic_value();
             global_value.set_initializer(&rvalue);
         } else {
-            if cir_global_var.modifiers.linkage.is_none() {
-                if !cir_global_var.is_undef {
-                    // zero init only if not declared undefined
-                    global_value.set_initializer(&ty.const_zero());
-                }
+            if cir_global_var.modifiers.extrn.is_none() && !cir_global_var.is_undef {
+                // Zero init only if not declared undefined
+                global_value.set_initializer(&ty.const_zero());
             }
         }
 
@@ -76,19 +74,16 @@ impl<'ll> CodeGenIRBuilder<'ll> {
             }
         }
 
-        let mut global_decl = self
+        let global_decl = self
             .cir_module
             .global_var_decls
             .get(&irv_id)
             .cloned()
             .expect("Missing CIR global declaration");
 
-        global_decl.modifiers = GlobalVarModifiers {
-            linkage: Some(Linkage::Extern(None)),
-            ..global_decl.modifiers
-        };
-
         let llvm_global = self.emit_global_var(&global_decl);
+
+        llvm_global.set_linkage(Linkage::External);
 
         InternalValue::new(
             global_decl.ty.clone(),
@@ -143,12 +138,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
 
         let ty_meta = self.emit_debug_type_metadata(&cir_global_var.ty);
 
-        let is_local = !cir_global_var
-            .modifiers
-            .linkage
-            .clone()
-            .map(|l| l.is_extern())
-            .unwrap_or(false);
+        let is_local = cir_global_var.modifiers.extrn.is_none();
 
         let dctx = self.dctx.as_ref().unwrap();
 

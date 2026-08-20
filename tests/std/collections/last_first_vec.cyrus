@@ -15,11 +15,11 @@ pub fn main() {
     vec.push(2);
     vec.push(3);
 
-    const last = vec.last().unwrap();
-    const last_ref = vec.last_ref().unwrap();
+    const last = vec.last_owned().unwrap();
+    const last_ref = vec.last().unwrap();
 
-    const first = vec.first().unwrap();
-    const first_ref = vec.first_ref().unwrap();
+    const first = vec.first_owned().unwrap();
+    const first_ref = vec.first().unwrap();
 
     printf("%d, ", last);
     printf("%d | ", *last_ref);

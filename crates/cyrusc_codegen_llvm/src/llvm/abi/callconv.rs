@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 The Cyrus Language
 
-use cyrusc_ast::abi::CallConv;
+use cyrusc_ast::abi::Callconv;
 
 #[derive(Debug, Clone, Copy)]
 pub enum LLVMCallConv {
@@ -17,27 +17,27 @@ pub enum LLVMCallConv {
     X86VectorCall = 80,
 }
 
-impl From<&CallConv> for LLVMCallConv {
-    fn from(conv: &CallConv) -> Self {
+impl From<&Callconv> for LLVMCallConv {
+    fn from(conv: &Callconv) -> Self {
         match conv {
-            CallConv::C => LLVMCallConv::CCallConv,
-            CallConv::Fast => LLVMCallConv::FastCallConv,
-            CallConv::Cold => LLVMCallConv::ColdCallConv,
-            CallConv::Aapcs => LLVMCallConv::ArmAapcsCallConv,
-            CallConv::Stdcall => LLVMCallConv::X86StdcallCallConv,
-            CallConv::Fastcall => LLVMCallConv::X86FastcallCallConv,
-            CallConv::Thiscall => LLVMCallConv::X86ThisCall,
-            CallConv::Vectorcall => LLVMCallConv::X86VectorCall,
-            CallConv::SysV64 => LLVMCallConv::X86_64SysV,
-            CallConv::Win64 => LLVMCallConv::X86_64Win64,
-            CallConv::System => {
+            Callconv::C => LLVMCallConv::CCallConv,
+            Callconv::Fast => LLVMCallConv::FastCallConv,
+            Callconv::Cold => LLVMCallConv::ColdCallConv,
+            Callconv::Aapcs => LLVMCallConv::ArmAapcsCallConv,
+            Callconv::Stdcall => LLVMCallConv::X86StdcallCallConv,
+            Callconv::Fastcall => LLVMCallConv::X86FastcallCallConv,
+            Callconv::Thiscall => LLVMCallConv::X86ThisCall,
+            Callconv::Vectorcall => LLVMCallConv::X86VectorCall,
+            Callconv::SysV64 => LLVMCallConv::X86_64SysV,
+            Callconv::Win64 => LLVMCallConv::X86_64Win64,
+            Callconv::System => {
                 if cfg!(target_os = "windows") {
                     LLVMCallConv::X86_64Win64
                 } else {
                     LLVMCallConv::X86_64SysV
                 }
             }
-            CallConv::Naked | CallConv::Interrupt => LLVMCallConv::CCallConv,
+            Callconv::Naked | Callconv::Interrupt => LLVMCallConv::CCallConv,
         }
     }
 }

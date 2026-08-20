@@ -65,11 +65,13 @@ impl<'source_file> Parser<'source_file> {
             if let LiteralKind::String(value, prefix) = &literal.kind {
                 if prefix.is_none() {
                     return Ok(value.clone());
+                } else {
+                    return Err(self.error_at_token(&token, ParserDiagKind::StringPrefixNotAllowed));
                 }
             }
         }
 
-        Err(self.error_at_token(&token, ParserDiagKind::StringPrefixNotAllowed))
+        Err(self.error_at_token(&token, ParserDiagKind::ExpectedStringLiteral))
     }
 
     /// Determines whether a token can begin a type specifier in the grammar.
@@ -623,11 +625,12 @@ impl<'source_file> Parser<'source_file> {
 
         self.must_be_right_paren()?;
 
-        if type_list.len() <= 1 {
-            return Err(self.error_at_current_with_hint(
-                ParserDiagKind::SingleElementTupleType,
-                "If you only need a single element, remove the tuple syntax and use the type directly.",
-            ));
+        if type_list.len() == 1 {
+            // If a single type is surronded by paranthesis,
+            // It will not be considered as tuple,
+            // Because we might need to give this group
+            // higher priority. For example, in pointer constness.
+            return Ok(type_list.first().cloned().unwrap());   
         }
 
         let end = self.current_token().loc.end;
@@ -649,20 +652,6 @@ impl<'source_file> Parser<'source_file> {
                 self.next_token(); // consume const
                 let inner_type = self.parse_base_type_token()?;
                 Ok(TypeSpecifier::Const(Box::new(inner_type)))
-            }
-
-            TokenKind::Repr => {
-                let repr_attr = self.parse_repr_attr(token)?.unwrap();
-
-                if self.current_token_is(TokenKind::Struct) {
-                    self.parse_unnamed_struct_type(Some(repr_attr))
-                } else if self.current_token_is(TokenKind::Union) {
-                    self.parse_unnamed_union_type(Some(repr_attr))
-                } else if self.current_token_is(TokenKind::Enum) {
-                    self.parse_unnamed_enum_type(Some(repr_attr))
-                } else {
-                    todo!();
-                }
             }
 
             TokenKind::Struct => self.parse_unnamed_struct_type(None),

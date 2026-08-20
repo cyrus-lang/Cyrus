@@ -991,16 +991,6 @@ impl<'a> Resolver<'a> {
             let mut interface_methods = MethodDecls::new();
 
             for func_decl_stmt in &interface.methods {
-                if func_decl_stmt.renamed_as.is_some() {
-                    this.reporter.report(Diag {
-                        level: DiagLevel::Error,
-                        kind: Box::new(ResolverDiagKind::RenameInterfaceMethod),
-                        loc: Some(func_decl_stmt.loc),
-                        hint: None,
-                    });
-                    continue;
-                }
-
                 let method_generic_params = this.resolve_generic_params(&func_decl_stmt.generic_params)?;
 
                 let (params, variadic, ret_type) = this.with_generic_scope(&method_generic_params, |this| {
@@ -1635,7 +1625,7 @@ impl<'a> Resolver<'a> {
     }
 
     fn resolve_func_decl(&mut self, ast_func_decl: &ASTFuncDeclStmt) -> Option<TypedStmtKind> {
-        let name = ast_func_decl.usable_name();
+        let name = &ast_func_decl.ident.value;
         let symbol_id = self.lookup_symbol_id(self.current_scope?, &name)?;
 
         let generic_params = self.resolve_generic_params(&ast_func_decl.generic_params)?;
@@ -1654,9 +1644,8 @@ impl<'a> Resolver<'a> {
         let func_decl = FuncDecl {
             is_func_decl: true,
             body: None,
-
             file_id: self.current_module_file_id.unwrap(),
-            name,
+            name: name.clone(),
             generic_params: generic_params.clone(),
             params: TypedFuncParams {
                 list: func_params.clone(),
@@ -1684,7 +1673,6 @@ impl<'a> Resolver<'a> {
             },
             ret_type,
             modifiers: ast_func_decl.modifiers.clone(),
-            renamed_as: ast_func_decl.renamed_as.as_ref().map(|id| id.as_string()),
             loc: ast_func_decl.loc,
         }))
     }
@@ -2417,7 +2405,6 @@ impl<'a> Resolver<'a> {
                     params: TypedFuncParams { list: params, variadic },
                     body,
                     ret_type,
-                    inline: lambda.inline,
                     loc: lambda.loc,
                 }),
                 ty: None,

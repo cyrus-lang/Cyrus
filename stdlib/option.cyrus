@@ -5,35 +5,40 @@ pub enum Option<T> {
     Some(T),
     None
 
-    pub inline fn unwrap(self: const Self*) T {
+    [[inline]]
+    pub fn unwrap(self: const Self*) T {
         switch (*self) {
             case .Some(value) => return value;
             case .None => @panic("called `Option.unwrap()` on a `None` value");
         }
     }
 
-    pub inline fn unwrap_or(self: const Self*, or_value: T) T {
+    [[inline]]
+    pub fn unwrap_or(self: const Self*, default: T) T {
         switch (*self) {
             case .Some(value) => return value;
-            case .None => return or_value;
+            case .None => return default;
         }
     }
 
-    pub inline fn expect(self: const Self*, msg: const uint8*) T {
+    [[inline]]
+    pub fn expect(self: const Self*, mesg: const uint8*) T {
         switch (*self) {
             case .Some(value) => return value;
-            case .None => @panic(msg);
+            case .None => @panic(mesg);
         }
     }
     
-    pub inline fn is_some(self: const Self*) bool {
+    [[inline]]
+    pub fn is_some(self: const Self*) bool {
         switch (*self) {
             case .Some(_) => return true;
             case .None => return false;
         }
     }
 
-    pub inline fn is_none(self: const Self*) bool {
+    [[inline]]
+    pub fn is_none(self: const Self*) bool {
         switch (*self) {
             case .Some(_) => return false;
             case .None => return true;

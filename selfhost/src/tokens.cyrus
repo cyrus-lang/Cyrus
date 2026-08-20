@@ -20,7 +20,8 @@ import std::format{
 pub struct TokenPool {
     tokens: Vec<Token>,
 
-    pub inline fn new(tokens: Vec<Token>) Self {
+    [[inline]]
+    pub fn new(tokens: Vec<Token>) Self {
         return Self { tokens };
     }
 
@@ -43,6 +44,7 @@ pub struct Token : Format {
     pub kind: TokenKind,
     pub loc: Loc,
 
+    [[inline]]
     pub fn format(self: const Self*, writer: Writer) bool {
         return self->kind.format(writer);
     }
@@ -180,7 +182,8 @@ pub enum TokenKind : Format {
     EOF,
     INVALID,
 
-    pub inline fn is_eof(self: const Self*) bool {
+    [[inline]]
+    pub fn is_eof(self: const Self*) bool {
         switch (*self) {
             case .EOF => return true;
             else => return false;

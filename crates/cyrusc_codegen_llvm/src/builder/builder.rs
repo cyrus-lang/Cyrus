@@ -152,20 +152,11 @@ impl<'ll> CodeGenIRBuilder<'ll> {
                 );
             }
             CIRStmt::GlobalVar(global_var_stmt) => {
-                let is_extern = global_var_stmt
-                    .modifiers
-                    .linkage
-                    .as_ref()
-                    .map(|linkage| linkage.is_extern())
-                    .unwrap_or(false);
-
-                if !is_extern {
-                    self.emit_global_var(global_var_stmt);
-                }
+                self.emit_global_var(global_var_stmt);
             }
             CIRStmt::FuncDecl(_) => {
-                // early emitting causes symtab bloat;
-                // only emitted when used.
+                // Only emitted when symbol is used,
+                // to prevent symbol table bloat.
             }
             CIRStmt::Block(block_stmt) => self.emit_scope_block(block_stmt),
             CIRStmt::Expr(expr) => {

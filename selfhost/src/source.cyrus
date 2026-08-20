@@ -129,7 +129,8 @@ pub struct Source {
 ///  TODO: Add multi-byte UTF-8 support.
 /// 
 /// REVIEW: Move to utils and use alias for chars.
-inline fn is_newline(char: uint8) bool {
+[[inline]]
+fn is_newline(char: uint8) bool {
     switch (char) {
         case 10 => return true; // Line Feed (\n)
         case 13 => return true; // Carriage Return (\r)

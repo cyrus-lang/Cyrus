@@ -16,8 +16,8 @@ pub fn main() {
     }
 
     const len = vec.len();
-    const first = vec.get(0).unwrap();
-    const last = vec.get(len - 1).unwrap();
+    const first = vec.first_owned().unwrap();
+    const last = vec.last_owned().unwrap();
 
     printf("%d %d\n", first, last);
 }

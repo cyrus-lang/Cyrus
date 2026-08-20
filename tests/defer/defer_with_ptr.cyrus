@@ -3,9 +3,9 @@
 import std::libc{printf};
 
 pub fn main() {
-    var msg: uint8* = "start";
-    defer msg = "end";
+    var mesg: uint8* = "start";
+    defer mesg = "end";
 
-    printf("%s ", msg);
-    printf("%s\n", msg);
+    printf("%s ", mesg);
+    printf("%s\n", mesg);
 }

@@ -14,6 +14,7 @@ use std::{
 };
 
 pub mod abi;
+pub mod attrs;
 pub mod format;
 pub mod modifiers;
 pub mod operators;
@@ -698,7 +699,6 @@ pub struct ASTLambdaExpr {
     pub params: FuncParams,
     pub body: Box<ASTBlockStmt>,
     pub ret_type: TypeSpecifier,
-    pub inline: bool,
     pub loc: Loc,
 }
 
@@ -720,7 +720,6 @@ pub struct ASTFuncDeclStmt {
     pub params: FuncParams,
     pub ret_type: Option<TypeSpecifier>,
     pub modifiers: FuncModifiers,
-    pub renamed_as: Option<Ident>,
     pub loc: Loc,
 }
 
@@ -1004,18 +1003,7 @@ impl ASTFuncDefStmt {
             params: self.params.clone(),
             ret_type: self.ret_type.clone(),
             modifiers: self.modifiers.clone(),
-            renamed_as: None,
             loc: self.loc,
-        }
-    }
-}
-
-impl ASTFuncDeclStmt {
-    /// Returns the function's effective name, preferring the renamed version if available.
-    pub fn usable_name(&self) -> String {
-        match &self.renamed_as {
-            Some(ident) => ident.value.clone(),
-            None => self.ident.value.clone(),
         }
     }
 }
@@ -1560,7 +1548,7 @@ impl PartialEq for UnnamedEnumValueKind {
 
 impl PartialEq for ASTLambdaExpr {
     fn eq(&self, other: &Self) -> bool {
-        self.params == other.params && self.ret_type == other.ret_type && self.inline == other.inline
+        self.params == other.params && self.ret_type == other.ret_type
     }
 }
 

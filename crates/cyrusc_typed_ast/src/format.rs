@@ -399,7 +399,7 @@ pub fn format_sema_type(ty: SemaType, formatter: &dyn Formatter) -> String {
             format!("const {}", format_sema_type(*ty, formatter))
         }
         SemaType::Pointer(inner) => {
-            format!("{}*", format_sema_type(*inner, formatter))
+            format!("({})*", format_sema_type(*inner, formatter))
         }
         SemaType::FuncType(func_type) => format_func_type(&func_type, formatter),
         SemaType::Tuple(tuple_type) => {

@@ -2,7 +2,8 @@
 // Copyright (c) 2026 The Cyrus Language
 
 use cyrusc_ast::Mutability;
-use cyrusc_ast::abi::CallConv;
+use cyrusc_ast::abi::Callconv;
+use cyrusc_ast::abi::Extern;
 use cyrusc_ast::modifiers::GlobalVarModifiers;
 use cyrusc_ast::operators::InfixOperator;
 use cyrusc_internal::abi::mangler::*;
@@ -995,13 +996,19 @@ impl<'a> CIRLower<'a> {
 
         let expr = global_var.expr.clone().and_then(|expr| Some(self.lower_expr(&expr)));
 
-        let mangled_name = mangle_global_var(&global_var.modifiers, &self.module_name, &global_var.name);
+        let name = {
+            if let Some(name) = &global_var.modifiers.link_name {
+                name.clone()
+            } else {
+                mangle_global_var(&global_var.modifiers, &self.module_name, &global_var.name)
+            }
+        };
 
         let irv_id = self.new_ir_value_id();
 
         let global_var_stmt = CIRGlobalVarStmt {
             irv_id,
-            name: mangled_name,
+            name,
             ty,
             expr,
             is_undef: global_var.is_undef,
@@ -1025,11 +1032,18 @@ impl<'a> CIRLower<'a> {
             .unwrap();
 
         let module_name = self.query.lookup_module_name(global_var_decl.file_id).unwrap();
-        let mangled_name = mangle_global_var(&global_var_decl.modifiers, &module_name, &global_var_decl.name);
+
+        let name = {
+            if let Some(name) = &global_var_decl.modifiers.link_name {
+                name.clone()
+            } else {
+                mangle_global_var(&global_var_decl.modifiers, &module_name, &global_var_decl.name)
+            }
+        };
 
         CIRGlobalVarStmt {
             irv_id,
-            name: mangled_name,
+            name,
             ty,
             expr: None,
             is_undef: false,
@@ -1252,7 +1266,9 @@ impl<'a> CIRLower<'a> {
         let cir_func_type = cir_func_decl_as_func_type(&cir_func_def_as_decl(&cir_func_def));
         cir_func_def.abi_func_info = Some(self.target.target_abi.classify_func(&cir_func_type).unwrap());
 
-        if mangle_name {
+        if let Some(name) = &func_def.modifiers.link_name {
+            cir_func_def.name = name.clone();
+        } else if mangle_name {
             let mangled_name = mangle_func(&cir_func_def.modifiers, &self.module_name, &cir_func_def.name);
 
             cir_func_def.name = mangled_name.clone();
@@ -1271,12 +1287,16 @@ impl<'a> CIRLower<'a> {
 
         let ret_type = self.lower_sema_type(&func_decl.ret_type);
 
-        let func_name = if mangle_name {
-            let module_name = self.query.lookup_module_name(func_decl.file_id).unwrap();
+        let func_name = {
+            if let Some(name) = &func_decl.modifiers.link_name {
+                name.clone()
+            } else if mangle_name {
+                let module_name = self.query.lookup_module_name(func_decl.file_id).unwrap();
 
-            mangle_func(&func_decl.modifiers, &module_name, &func_decl.name)
-        } else {
-            func_decl.name.clone()
+                mangle_func(&func_decl.modifiers, &module_name, &func_decl.name)
+            } else {
+                func_decl.name.clone()
+            }
         };
 
         let irv_id = self.new_ir_value_id();
@@ -1459,7 +1479,7 @@ impl<'a> CIRLower<'a> {
             params: params.list.iter().map(|param| param.ty.clone()).collect(),
             is_var: params.is_var,
             ret_type: Box::new(ret_type.clone()),
-            callconv: CallConv::default(),
+            callconv: Callconv::default(),
             abi_func_info: None,
         };
 
@@ -1470,7 +1490,6 @@ impl<'a> CIRLower<'a> {
         CIRExprKind::Lambda(CIRLambda {
             irv_id,
             params,
-            inline: lambda.inline,
             ret: ret_type,
             body,
             abi_func_info,
@@ -1949,7 +1968,10 @@ impl<'a> CIRLower<'a> {
             expr: None, // no initializer
             is_undef: false,
             modifiers: GlobalVarModifiers {
-                linkage: None,
+                // We will have more complicated rules for choosing
+                // correct linkage type in the future, to optimize
+                // vtables away. But for now, extern works simply.
+                extrn: Some(Extern::Cyrus),
                 ..Default::default()
             },
             loc,

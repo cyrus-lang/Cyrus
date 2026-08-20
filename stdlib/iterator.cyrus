@@ -3,7 +3,14 @@
 
 import std::option{Option};
 
-pub interface Iterator<T> {
+pub interface Iter<T> {
     fn next(self: Self*) Option<T*>;
-    fn next_const(self: const Self*) Option<const T*>;
+}
+
+pub interface IterConst<T> {
+    fn next(self: Self*) Option<const T*>;
+}
+
+pub interface IterOwned<T> {
+    fn next(self: Self*) Option<T>;
 }

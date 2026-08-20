@@ -1,0 +1,21 @@
+fn foo(i: int32*) {}
+
+pub fn main() {    
+    {
+        const i = 10; 
+        foo(&i);
+        //~^ ERROR Argument at index 0 has type '(const int32)*', but the expected parameter type is '(int32)*'
+
+        var j = 20;
+        foo(&j);
+    }
+
+    {
+        const arr: int32[10];
+        var ptr: const int32* = &arr[0];
+        var ptr2: const int32* = ptr + 5;
+
+        *ptr2 = 99;
+        //~^ ERROR Cannot assign to immutable lvalue
+    }
+}

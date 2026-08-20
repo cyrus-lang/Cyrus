@@ -123,7 +123,6 @@ pub struct CIRLambda {
     pub irv_id: IRValueID,
     pub params: CIRFuncParams,
     pub ret: CIRType,
-    pub inline: bool,
     pub body: Box<CIRBlockStmt>,
     pub abi_func_info: ABIFunctionInfo,
     pub loc: Loc,
@@ -633,7 +632,7 @@ impl CIREnumVariant {
 impl CIREnumType {
     pub fn is_repr_c(&self) -> bool {
         if let Some(repr_attr) = &self.repr_attr {
-            if let Some(kind) = repr_attr.kind() {
+            if let Some((kind, _)) = repr_attr.kind() {
                 return match kind {
                     ReprKind::C => true,
                     ReprKind::Cyrus => false,

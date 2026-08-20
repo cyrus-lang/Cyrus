@@ -4,7 +4,7 @@ import std::libc{printf};
 
 type Link = struct {
     value: int64,
-    next: Link*
+    next: const Link*
 };
 
 pub fn main() {

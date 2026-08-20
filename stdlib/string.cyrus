@@ -91,13 +91,14 @@ pub struct String {
     
     // TODO: Add method: replace
 
-    pub inline fn trim(self: Self*) {
+    [[inline]]
+    pub fn trim(self: Self*) {
         self->trim_start();
         self->trim_end();
     }
 
     pub fn trim_start(self: Self*) {
-        var str: const uint8* = self->as_str_const();
+        var str: uint8* = self->as_str();
         const len = self->vec.len();
 
         var start: usize = 0;
@@ -111,7 +112,11 @@ pub struct String {
         }
 
         const n = len - start;
-        memmove(@cast(void*, str), @cast(void*, str + start), n);
+        memmove(
+            @cast(void*, str),
+            @cast(void*, str + start),
+            n
+        );
 
         while (start > 0) {
             self->vec.pop();
@@ -149,7 +154,8 @@ pub struct String {
         }
     }
 
-    pub inline fn get(self: const Self*, index: usize) Option<uint8> {
+    [[inline]]
+    pub fn get(self: const Self*, index: usize) Option<uint8> {
         if (index > self->len()) {
             return .None;
         }
@@ -157,36 +163,44 @@ pub struct String {
         return .Some(self->as_str_const()[index]);
     }
 
-    pub inline fn as_str(self: Self*) uint8* {
+    [[inline]]
+    pub fn as_str(self: Self*) uint8* {
         return self->vec.data();
     }
 
-    pub inline fn as_str_const(self: const Self*) const uint8* {
+    [[inline]]
+    pub fn as_str_const(self: const Self*) const uint8* {
         return self->vec.data_const();
     }
 
-    pub inline fn is_empty(self: const Self*) bool {
+    [[inline]]
+    pub fn is_empty(self: const Self*) bool {
         return self->len() == 0;
     }
 
-    pub inline fn cap(self: const Self*) usize {
+    [[inline]]
+    pub fn cap(self: const Self*) usize {
         return self->vec.cap();
     }
 
-    pub inline fn len(self: const Self*) usize {
+    [[inline]]
+    pub fn len(self: const Self*) usize {
         return self->vec.len() - 1; // exclude '\0'
     }
 
-    pub inline fn eq(self: const Self*, other: Self*) bool {
+    [[inline]]
+    pub fn eq(self: const Self*, other: Self*) bool {
         return strcmp(self->as_str_const(), other->as_str_const()) == 0;
     }
 
-    pub inline fn clear(self: Self*) {
+    [[inline]]
+    pub fn clear(self: Self*) {
         self->vec.clear();
         self->vec.push('\0');
     }
 
-    pub inline fn free(self: Self*) {
+    [[inline]]
+    pub fn free(self: Self*) {
         self->vec.free();
     }
 }

@@ -11,7 +11,8 @@ pub struct Path {
     allocator: Allocator,
     inner: String,
 
-    pub inline fn new(allocator: Allocator, name: uint8*) Self {
+    [[inline]]
+    pub fn new(allocator: Allocator, name: uint8*) Self {
         const inner = String.from_str(allocator, name);
 
         return Self { allocator, inner };
@@ -133,7 +134,7 @@ pub struct Path {
 
     /// POSIX ONLY!
     /// Check if path has a dot.
-    pub inline fn has_dot(self: const Self*) bool {
+    pub fn has_dot(self: const Self*) bool {
         const str = self->inner.as_str_const();
         const len = self->inner.len();
 
@@ -172,43 +173,51 @@ pub struct Path {
 
     /// POSIX ONLY!
     /// Check if path has a root `/`.
-    pub inline fn has_root(self: const Self*) bool {
+    [[inline]]
+    pub fn has_root(self: const Self*) bool {
         return self->inner.as_str_const()[0] == separator();
     }
 
     /// POSIX ONLY!
     /// Path is absolute if it starts with `/`.
-    pub inline fn is_absolute(self: const Self*) bool {
+    [[inline]]
+    pub fn is_absolute(self: const Self*) bool {
         return (!self->inner.is_empty()) && self->inner.as_str_const()[0] == separator();
     }
 
     /// POSIX ONLY!
     // Path is relative if it's not absolute.
-    pub inline fn is_relative(self: const Self*) bool {
+    [[inline]]
+    pub fn is_relative(self: const Self*) bool {
         return !self->is_absolute();
     }
 
-    pub inline fn as_string(self: Self*) String {
+    [[inline]]
+    pub fn as_string(self: Self*) String {
         // FIXME: Return String*.
         return self->inner;
     }
 
-    pub inline fn as_string_const(self: const Self*) const String {
+    [[inline]]
+    pub fn as_string_const(self: const Self*) const String {
         // FIXME: Return const String*.
         return self->inner;
     }
 
-    pub inline fn free(self: Self*) {
+    [[inline]]
+    pub fn free(self: Self*) {
         self->inner.free();
     }
 }
 
 /// POSIX ONLY!
-inline fn is_separator(ch: uint8) bool {
+[[inline]]
+fn is_separator(ch: uint8) bool {
     return ch == '/';
 }
 
 /// POSIX ONLY!
-inline fn separator() uint8 {
+[[inline]]
+fn separator() uint8 {
     return '/';
 }

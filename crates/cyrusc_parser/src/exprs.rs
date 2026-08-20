@@ -107,47 +107,11 @@ impl<'source_file> Parser<'source_file> {
         let (line, column, start) = (loc.line, loc.column, loc.start);
 
         let mut expr = match &self.current_token().kind {
-            TokenKind::Repr => {
-                let repr_attr = self.parse_repr_attr(self.current_token())?.unwrap();
-
-                if self.current_token_is(TokenKind::Struct) {
-                    self.parse_unnamed_struct_value(Some(repr_attr))?
-                } else if self.current_token_is(TokenKind::Union) {
-                    let end = self.current_token().loc.end;
-
-                    return Err(Diag {
-                        kind: Box::new(ParserDiagKind::InvalidModifier(
-                            "Repr attribute cannot be applied to unnamed union values.".to_string(),
-                        )),
-                        level: DiagLevel::Error,
-                        loc: Some(Loc::new(self.file_id(), line, column, start, end)),
-                        hint: None,
-                    });
-                } else {
-                    return Err(self.error_invalid_token());
-                }
-            }
-
             TokenKind::Struct => self.parse_unnamed_struct_value(None)?,
 
             TokenKind::Union => self.parse_unnamed_union_value()?,
 
-            TokenKind::Inline | TokenKind::Function => {
-                let is_inline = {
-                    if self.current_token_is(TokenKind::Inline) {
-                        self.next_token();
-                        true
-                    } else {
-                        false
-                    }
-                };
-
-                if self.current_token_is(TokenKind::Function) {
-                    self.parse_lambda_expr(is_inline)?
-                } else {
-                    return Err(self.error_invalid_token());
-                }
-            }
+            TokenKind::Function => self.parse_lambda_expr()?,
 
             TokenKind::At => {
                 if self.peek_token().kind.is_ident_str("asm") {
@@ -670,7 +634,7 @@ impl<'source_file> Parser<'source_file> {
         }))
     }
 
-    fn parse_lambda_expr(&mut self, inline: bool) -> Result<ASTExpr, Diag> {
+    fn parse_lambda_expr(&mut self) -> Result<ASTExpr, Diag> {
         let loc = self.current_token().loc;
         let (line, column, start) = (loc.line, loc.column, loc.start);
 
@@ -699,7 +663,6 @@ impl<'source_file> Parser<'source_file> {
             params,
             body: Box::new(body),
             ret_type,
-            inline,
             loc: Loc::new(self.file_id(), line, column, start, end),
         }))
     }
@@ -1404,10 +1367,8 @@ fn can_start_expr(kind: &TokenKind) -> bool {
     match kind {
         TokenKind::Ident { .. }
         | TokenKind::Literal(_)
-        | TokenKind::Repr
         | TokenKind::Struct
         | TokenKind::Union
-        | TokenKind::Inline
         | TokenKind::Function
         | TokenKind::At
         | TokenKind::Dot
@@ -1502,25 +1463,8 @@ fn can_start_expr(kind: &TokenKind) -> bool {
         | TokenKind::Void
         | TokenKind::Bool
         | TokenKind::Const
-        | TokenKind::ThreadLocal
-        | TokenKind::Weak
-        | TokenKind::LinkOnce
-        | TokenKind::Callconv
-        | TokenKind::Naked
-        | TokenKind::NoReturn
-        | TokenKind::Hot
-        | TokenKind::Cold
         | TokenKind::Extern
         | TokenKind::Public
-        | TokenKind::NoInline
-        | TokenKind::AlwaysInline
-        | TokenKind::DllImport
-        | TokenKind::DllExport
-        | TokenKind::OptSize
-        | TokenKind::OptNone
-        | TokenKind::NoSanitize
-        | TokenKind::NoUnwind
-        | TokenKind::Section
         | TokenKind::Invalid => false,
     }
 }

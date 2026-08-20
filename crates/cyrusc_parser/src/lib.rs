@@ -2,7 +2,7 @@
 // Copyright (c) 2026 The Cyrus Language
 
 use crate::diagnostics::ParserDiagKind;
-use cyrusc_ast::*;
+use cyrusc_ast::{attrs::Attr, *};
 use cyrusc_diagcentral::Diag;
 use cyrusc_diagcentral::reporter::DiagReporter;
 use cyrusc_lexer::Lexer;
@@ -10,6 +10,7 @@ use cyrusc_source_loc::{FileID, Loc, SourceFile};
 use cyrusc_tokens::{Token, TokenKind};
 use std::{fmt, rc::Rc, sync::Arc};
 
+mod attrs;
 mod common;
 mod diagnostics;
 mod exprs;
@@ -23,6 +24,7 @@ pub struct Parser<'source_file> {
     tokens: Vec<Token>,
     pos: usize,
     last_loc: Loc,
+    attrs_stack: Vec<Attr>,
 }
 
 pub struct SourceParser {
@@ -61,14 +63,15 @@ impl SourceParser {
 
 impl<'source_file> Parser<'source_file> {
     pub fn new(reporter: Arc<DiagReporter>, source_file: &'source_file SourceFile, tokens: Vec<Token>) -> Self {
-        let initial_loc = Loc::default(source_file.file_id);
+        let init_loc = Loc::default(source_file.file_id);
 
         Parser {
             source_file,
             reporter,
             tokens,
             pos: 0,
-            last_loc: initial_loc,
+            last_loc: init_loc,
+            attrs_stack: Vec::new(),
         }
     }
 
@@ -254,6 +257,15 @@ impl<'source_file> Parser<'source_file> {
     pub(crate) fn must_be_right_brace(&self) -> Result<(), Diag> {
         if !self.current_token_is(TokenKind::RightBrace) {
             Err(self.error_at_token(&self.prev_token(), ParserDiagKind::MissingClosingBrace))
+        } else {
+            Ok(())
+        }
+    }
+
+    /// Check if current token is a right bracket ']' and report error if not
+    pub(crate) fn must_be_left_bracket(&self) -> Result<(), Diag> {
+        if !self.current_token_is(TokenKind::RightBracket) {
+            Err(self.error_at_token(&self.prev_token(), ParserDiagKind::MissingClosingBracket))
         } else {
             Ok(())
         }

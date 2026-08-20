@@ -4,33 +4,36 @@
 import std::libc{printf};
 import std::libc::types{c_int, c_char, c_float, c_double};
 
-repr(c) union UnionPayload {
+[[repr(c)]]
+union UnionPayload {
     int_value: c_int,
     text_value: c_char*,
     float_value: c_float
 }
 
-extern(c) fn display_union_payload(payload: UnionPayload, kind: c_int);
+extern "c" fn display_union_payload(payload: UnionPayload, kind: c_int);
 
-repr(c) struct WithNestedUnion {
+[[repr(c)]]
+struct WithNestedUnion {
     pub tag: c_int,
-    pub data: repr(c) union {
+    pub data: union {
         i: c_int,
         f: c_float
     }
 }
 
-extern(c) fn nested_union(v: WithNestedUnion) c_double;
+extern "c" fn nested_union(v: WithNestedUnion) c_double;
 
-repr(c) union WithNestedStruct {
+[[repr(c)]]
+union WithNestedStruct {
     id: c_int,
-    coords: repr(c) struct {
+    coords: struct {
         a: c_double,
         b: c_double
     }
 }
 
-extern(c) fn nested_struct_inside_union(v: WithNestedStruct, use_struct: c_int) c_double;
+extern "c" fn nested_struct_inside_union(v: WithNestedStruct, use_struct: c_int) c_double;
 
 pub fn main() {
     display_union_payload(union { int_value: 10 }, 1);
@@ -44,7 +47,7 @@ pub fn main() {
     printf("nested_union=%f ", nested_union(with_nested_union));
 
     const with_nested_struct = WithNestedStruct {
-        coords: repr(c) struct {
+        coords: struct {
             a: 3.3,
             b: 8.7
         }

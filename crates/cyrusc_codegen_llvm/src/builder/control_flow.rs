@@ -20,6 +20,7 @@ use cyrusc_internal::{
     },
 };
 use inkwell::{
+    attributes::AttributeLoc,
     basic_block::BasicBlock,
     context::AsContextRef,
     llvm_sys::{
@@ -90,7 +91,10 @@ impl<'ll> CodeGenIRBuilder<'ll> {
                 .build_struct_gep(payload_struct_type, payload_alloca, llvm_field_index, "gep.field")
                 .unwrap();
 
-            let loaded_value = self.llvm_builder.build_load(llvm_field_type, gep, "load.field").unwrap();
+            let loaded_value = self
+                .llvm_builder
+                .build_load(llvm_field_type, gep, "load.field")
+                .unwrap();
 
             let alloca = self
                 .llvm_builder
@@ -892,6 +896,13 @@ impl<'ll> CodeGenIRBuilder<'ll> {
 
     pub(crate) fn ensure_void_function_terminated(&mut self) {
         let cur_fn = self.cur_func.unwrap();
+
+        // Do not terminate naked function automatically.
+        // User is responsible for it.
+        if cur_fn.get_string_attribute(AttributeLoc::Function, "naked").is_some() {
+            self.llvm_builder.build_unreachable().unwrap();
+            return;
+        }
 
         if let Some(cir_main) = &self.cir_module.main_function
             && let Some(ir_value) = self.lookup_local_ir_value(cir_main.irv_id)

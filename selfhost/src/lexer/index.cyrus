@@ -318,16 +318,19 @@ pub struct Lexer {
 
     /// Consumes the current token by advancing the lexer
     /// and returns the provided token kind.
-    inline fn read_single(self: Self*, kind: TokenKind) TokenKind {
+    [[inline]]
+    fn read_single(self: Self*, kind: TokenKind) TokenKind {
         self->read();
         return kind;
     }
 
-    inline fn is_eof(self: const Self*) bool {
+    [[inline]]
+    fn is_eof(self: const Self*) bool {
         return self->pos + 1 == self->source->len();
     }
 
-    inline fn peek(self: const Self*) uint8 {
+    [[inline]]
+    fn peek(self: const Self*) uint8 {
         const next_pos = self->pos + 1;
 
         switch (self->source->get(next_pos)) {
@@ -336,16 +339,19 @@ pub struct Lexer {
         }
     }
 
-    inline fn cur(self: const Self*) uint8 {
+    [[inline]]
+    fn cur(self: const Self*) uint8 {
         return self->source->get(self->pos).unwrap();
     }
 
-    inline fn loc(self: const Self*, line: usize, col: usize) Loc {
+    [[inline]]
+    fn loc(self: const Self*, line: usize, col: usize) Loc {
         return Loc { line, col };
     }
 }
 
-inline fn is_whitespace(char: uint8) bool {
+[[inline]]
+fn is_whitespace(char: uint8) bool {
     switch (char) {
         case ' ' | '\t' | '\n' | '\r' | '\v' | '\f' => {
             return true;
@@ -354,7 +360,8 @@ inline fn is_whitespace(char: uint8) bool {
     }
 }
 
-inline fn is_alpha(char: uint8) bool {
+[[inline]]
+fn is_alpha(char: uint8) bool {
     switch (char) {
         case 'a'..='z' | 'A'..='Z' | '_' => return true;
         else => return false;

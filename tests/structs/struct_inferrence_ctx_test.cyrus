@@ -10,11 +10,13 @@ struct Record<K, V> {
 		return Self{key, value};
 	}
 
-	pub inline fn key(self: const Self*) K {
+	[[inline]]
+	pub fn key(self: const Self*) K {
 		return self->key;
 	}
 
-	pub inline fn value(self: const Self*) V {
+	[[inline]]
+	pub fn value(self: const Self*) V {
 		return self->value;
 	}
 }

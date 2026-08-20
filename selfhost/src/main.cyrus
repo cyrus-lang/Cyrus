@@ -43,11 +43,11 @@ pub fn main(argc: c_int, argv: c_char**) {
     const color_opt = opts.add(*cli::Opt.new(allocator, "color").help("Colored output"));
 
     const new_cmd = 
-        *cli::Cmd.new(allocator, "new", command_new)
+        cli::Cmd.new(allocator, "new", command_new)
         .help("Create new project");
 
     const run_cmd = 
-        *cli::Cmd.new(allocator, "run", command_new)
+        cli::Cmd.new(allocator, "run", command_new)
         .help("Build and run")
         ->add_option(verbose_opt)
         ->add_option(quiet_opt)
@@ -57,7 +57,7 @@ pub fn main(argc: c_int, argv: c_char**) {
         ->add_option(jobs_opt);
     
     const build_cmd = 
-        *cli::Cmd.new(allocator, "build", command_build)
+        cli::Cmd.new(allocator, "build", command_build)
         .help("Build project")
         ->add_option(verbose_opt)
         ->add_option(quiet_opt)
@@ -67,7 +67,7 @@ pub fn main(argc: c_int, argv: c_char**) {
         ->add_option(jobs_opt);
     
     const test_cmd = 
-        *cli::Cmd.new(allocator, "test", command_build)
+        cli::Cmd.new(allocator, "test", command_build)
         .help("Run tests")
         ->add_option(verbose_opt)
         ->add_option(quiet_opt)
@@ -75,34 +75,34 @@ pub fn main(argc: c_int, argv: c_char**) {
         ->add_option(jobs_opt);
     
     const clean_cmd = 
-        *cli::Cmd.new(allocator, "clean", command_build)
+        cli::Cmd.new(allocator, "clean", command_build)
         .help("Clean build artifacts");
     
     const add_cmd = 
-        *cli::Cmd.new(allocator, "add", command_build)
+        cli::Cmd.new(allocator, "add", command_build)
         .help("Add dependency");
     
     const remove_cmd = 
-        *cli::Cmd.new(allocator, "remove", command_build)
+        cli::Cmd.new(allocator, "remove", command_build)
         .help("Remove dependency");
     
     const update_cmd = 
-        *cli::Cmd.new(allocator, "update", command_build)
+        cli::Cmd.new(allocator, "update", command_build)
         .help("Update dependencies");
     
     const version_cmd = 
-        *cli::Cmd.new(allocator, "version", command_version)
+        cli::Cmd.new(allocator, "version", command_version)
         .help("Compiler version");
 
-    parser.add_command(new_cmd);
-    parser.add_command(run_cmd);
-    parser.add_command(build_cmd);
-    parser.add_command(test_cmd);
-    parser.add_command(clean_cmd);
-    parser.add_command(add_cmd);
-    parser.add_command(remove_cmd);
-    parser.add_command(update_cmd);
-    parser.add_command(version_cmd);
+    parser.add_command(*new_cmd);
+    parser.add_command(*run_cmd);
+    parser.add_command(*build_cmd);
+    parser.add_command(*test_cmd);
+    parser.add_command(*clean_cmd);
+    parser.add_command(*add_cmd);
+    parser.add_command(*remove_cmd);
+    parser.add_command(*update_cmd);
+    parser.add_command(*version_cmd);
 
     parser.parse_args(struct { argc, argv });
 }

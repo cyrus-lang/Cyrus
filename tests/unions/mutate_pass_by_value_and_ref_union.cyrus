@@ -8,6 +8,7 @@ union Value {
 }
 
 fn set_by_value(var inst: Value) {
+    // Operates on a copy
     inst.text_value = "pass_by_value never changes";
 }
 
@@ -16,7 +17,7 @@ fn set_by_ref(inst: Value*) {
 }
 
 pub fn main() {
-    const inst = Value { text_value: "cyrus" };
+    var inst = Value { text_value: "cyrus" };
 
     set_by_ref(&inst);
     set_by_value(inst);
