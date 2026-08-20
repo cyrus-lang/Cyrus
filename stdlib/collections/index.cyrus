@@ -6,7 +6,7 @@ import std::math::checked{
     checked_add,
 };
 import std::libc{memmove, malloc};
-import std::iterator{Iterator};
+import std::iterator{Iter, IterConst, IterOwned};
 import std::mem{Allocator};
 import std::option{Option};
 
@@ -176,6 +176,7 @@ pub struct Vec<T> {
         return .None;
     }
 
+    // FIXME
     pub fn get(self: const Self*, index: usize) Option<T> {
         if (index >= self->len) {
             return .None;
@@ -184,6 +185,7 @@ pub struct Vec<T> {
         return .Some(*(self->data + index));
     }
 
+    // FIXME
     [[inline]]
     pub fn get_ref(self: const Self*, index: usize) Option<T*> {
         if (index >= self->len) {
@@ -209,6 +211,7 @@ pub struct Vec<T> {
         return false;
     }
 
+    // FIXME
     pub fn last(self: const Self*) Option<T> {
         if (self->len() < 1) {
             return .None;
@@ -216,6 +219,7 @@ pub struct Vec<T> {
         return self->get(self->len() - 1);
     }
 
+    // FIXME
     pub fn last_ref(self: Self*) Option<T*> {
         if (self->len() < 1) {
             return .None;
@@ -223,10 +227,12 @@ pub struct Vec<T> {
         return self->get_ref(self->len() - 1);
     }
 
+    // FIXME
     pub fn first(self: const Self*) Option<T> {
         return self->get(0);
     }
     
+    // FIXME
     pub fn first_ref(self: const Self*) Option<const T*> {
         return self->get_ref(0);
     }
@@ -286,8 +292,18 @@ pub struct Vec<T> {
     }
 
     [[inline]]
-    pub fn into_iter(self: const Self*) VecIter<T> {
-        return struct { vec: self, idx: 0 };
+    pub fn iter(self: Self*) VecIter<T> {
+        return VecIter<T> { vec: self, idx: 0 };
+    }
+
+    [[inline]]
+    pub fn iter_const(self: Self*) VecIterConst<T> {
+        return VecIterConst<T> { vec: self, idx: 0 };
+    }
+
+    [[inline]]
+    pub fn iter_owned(self: Self*) VecIterOwned<T> {
+        return VecIterOwned<T> { vec: self, idx: 0 };
     }
 
     [[inline]]
@@ -330,11 +346,27 @@ pub struct Vec<T> {
     }
 }
 
-pub struct VecIter<T> : Iterator<T> {
-    vec: const Vec<T>*,
+pub struct VecIter<T> : Iter<T> {
+    vec: Vec<T>*,
     idx: usize,
 
     pub fn next(self: Self*) Option<T*> {
+        if (self->idx + 1 > self->vec->len()) {
+            return .None;
+        }
+
+        var data = self->vec->data();
+        const item = &data[self->idx];
+        self->idx += 1;
+        return .Some(item);
+    }
+}
+
+pub struct VecIterConst<T> : IterConst<T> {
+    vec: const Vec<T>*,
+    idx: usize,
+
+    pub fn next(self: Self*) Option<const T*> {
         if (self->idx + 1 > self->vec->len()) {
             return .None;
         }
@@ -344,14 +376,19 @@ pub struct VecIter<T> : Iterator<T> {
         self->idx += 1;
         return .Some(item);
     }
+}
 
-    pub fn next_const(self: const Self*) Option<const T*> {
+pub struct VecIterOwned<T> : IterConst<T> {
+    vec: const Vec<T>*,
+    idx: usize,
+
+    pub fn next(self: Self*) Option<T> {
         if (self->idx + 1 > self->vec->len()) {
             return .None;
         }
-        
+
         const data = self->vec->data();
-        const item = &data[self->idx];
+        const item = data[self->idx];
         self->idx += 1;
         return .Some(item);
     }

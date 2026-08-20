@@ -8,14 +8,14 @@ import std::libc{printf};
 pub fn main() {
     var allocator: Allocator = dynamic LibcAllocator.new();
     
-    var vec: Vec<int32> = Vec.new(allocator);
+    const vec: Vec<int32> = Vec.new(allocator);
     defer vec.free();
 
     vec.push(10);
     vec.push(20);
     vec.push(30);
 
-    const iter = vec.into_iter();
+    const iter = vec.iter();
 
     printf("%d ", *iter.next().unwrap());
     printf("%d ", *iter.next().unwrap());

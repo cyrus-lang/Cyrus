@@ -98,7 +98,7 @@ pub struct String {
     }
 
     pub fn trim_start(self: Self*) {
-        var str: const uint8* = self->as_str_const();
+        var str: uint8* = self->as_str();
         const len = self->vec.len();
 
         var start: usize = 0;
@@ -112,7 +112,11 @@ pub struct String {
         }
 
         const n = len - start;
-        memmove(@cast(void*, str), @cast(void*, str + start), n);
+        memmove(
+            @cast(void*, str),
+            @cast(void*, str + start),
+            n
+        );
 
         while (start > 0) {
             self->vec.pop();
