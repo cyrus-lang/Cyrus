@@ -176,18 +176,7 @@ pub struct Vec<T> {
         return .None;
     }
 
-    // FIXME
-    pub fn get(self: const Self*, index: usize) Option<T> {
-        if (index >= self->len) {
-            return .None;
-        }
-
-        return .Some(*(self->data + index));
-    }
-
-    // FIXME
-    [[inline]]
-    pub fn get_ref(self: const Self*, index: usize) Option<T*> {
+    pub fn get(self: Self*, index: usize) Option<T*> {
         if (index >= self->len) {
             return .None;
         }
@@ -196,8 +185,73 @@ pub struct Vec<T> {
     }
 
     [[inline]]
-    pub fn get_unchecked(self: const Self*, index: usize) T* {
+    pub fn get_const(self: const Self*, index: usize) Option<const T*> {
+        if (index >= self->len) {
+            return .None;
+        }
+
+        return .Some(self->data + index);
+    }
+
+    [[inline]]
+    pub fn get_owned(self: const Self*, index: usize) Option<T> {
+        if (index >= self->len) {
+            return .None;
+        }
+
+        return .Some(*(self->data + index));
+    }
+
+    [[inline]]
+    pub fn get_unchecked(self: Self*, index: usize) T* {
         return self->data + index;
+    }
+
+    [[inline]]
+    pub fn get_unchecked_const(self: const Self*, index: usize) const T* {
+        return self->data + index;
+    }
+    
+    [[inline]]
+    pub fn last(self: Self*) Option<T*> {
+        if (self->len() < 1) {
+            return .None;
+        }
+
+        return self->get(self->len() - 1);
+    }   
+
+    [[inline]]
+    pub fn last_const(self: const Self*) Option<const T*> {
+        if (self->len() < 1) {
+            return .None;
+        }
+
+        return self->get_const(self->len() - 1);
+    }
+
+    [[inline]]
+    pub fn last_owned(self: const Self*) Option<T> {
+        if (self->len() < 1) {
+            return .None;
+        }
+
+        return self->get_owned(self->len() - 1);
+    }
+
+    [[inline]]
+    pub fn first(self: Self*) Option<T*> {
+        return self->get(0);
+    }
+    
+    [[inline]]
+    pub fn first_const(self: const Self*) Option<const T*> {
+        return self->get_const(0);
+    }
+    
+    [[inline]]
+    pub fn first_owned(self: const Self*) Option<T> {
+        return self->get_owned(0);
     }
 
     pub fn contains(self: const Self*, value: T) bool {
@@ -209,33 +263,7 @@ pub struct Vec<T> {
         }
 
         return false;
-    }
-
-    // FIXME
-    pub fn last(self: const Self*) Option<T> {
-        if (self->len() < 1) {
-            return .None;
-        }
-        return self->get(self->len() - 1);
-    }
-
-    // FIXME
-    pub fn last_ref(self: Self*) Option<T*> {
-        if (self->len() < 1) {
-            return .None;
-        }
-        return self->get_ref(self->len() - 1);
-    }
-
-    // FIXME
-    pub fn first(self: const Self*) Option<T> {
-        return self->get(0);
-    }
-    
-    // FIXME
-    pub fn first_ref(self: const Self*) Option<const T*> {
-        return self->get_ref(0);
-    }
+    }   
 
     pub fn remove(self: Self*, index: usize) T {
         if (index >= self->len) {
