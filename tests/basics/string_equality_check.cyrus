@@ -1,14 +1,22 @@
-// @stdout: 1 0 
+// @stdout: 1 0, abc
 
 import std::libc{printf};
 
 fn my_str() uint8* { return "Cyrus"; }
 
 pub fn main() {
-    const x = "Cyrus";
-    const y = my_str();
+    {
+        const x = "Cyrus";
+        const y = my_str();
+        const z = "a" == "b";
+        printf("%d %d", x == y, z);
+    }
+    {
+        const str1: const uint8[4] = {'a', 'b', 'c', '\0'};
+        const str2 = "abc";
 
-    const z = "a" == "b";
-
-    printf("%d %d\n", x == y, z);
+        if (&str1[0] == str2) {
+            printf(", abc\n");
+        }
+    }
 }
