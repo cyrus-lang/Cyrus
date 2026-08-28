@@ -199,7 +199,8 @@ pub struct Vec<T> {
             return .None;
         }
 
-        return .Some(*(self->data + index));
+        const item = self->data + index;
+        return .Some(*item);
     }
 
     [[inline]]

@@ -2,14 +2,7 @@
 // Copyright (c) 2026 The Cyrus Language
 
 use cyrusc_internal::compiler_options::CompilerOption_Optimize;
-use inkwell::{
-    llvm_sys::transforms::pass_builder::{
-        LLVMCreatePassBuilderOptions, LLVMDisposePassBuilderOptions, LLVMPassBuilderOptionsSetDebugLogging,
-        LLVMPassBuilderOptionsSetLoopUnrolling, LLVMPassBuilderOptionsSetLoopVectorization,
-        LLVMPassBuilderOptionsSetVerifyEach, LLVMRunPasses,
-    },
-    module::Module,
-};
+use inkwell::{llvm_sys::transforms::pass_builder::*, module::Module};
 use std::ffi::CString;
 
 // Standard optimization pipelines
@@ -27,9 +20,9 @@ fn get_optimization_pipeline(opt_level: CompilerOption_Optimize) -> &'static str
         CompilerOption_Optimize::O0 => PIPELINE_O0,
         CompilerOption_Optimize::O1 => PIPELINE_O1,
         CompilerOption_Optimize::O2 => PIPELINE_O2,
-        CompilerOption_Optimize::O3 => PIPELINE_AGGRESSIVE_CUSTOM, // Extra passes on top of O3
-        CompilerOption_Optimize::Os => PIPELINE_SIZE,              // Enhanced size optimization
-        CompilerOption_Optimize::Oz => PIPELINE_OZ,                // Plain Oz (most aggressive size)
+        CompilerOption_Optimize::O3 => PIPELINE_AGGRESSIVE_CUSTOM,
+        CompilerOption_Optimize::Os => PIPELINE_SIZE,
+        CompilerOption_Optimize::Oz => PIPELINE_OZ,
     }
 }
 

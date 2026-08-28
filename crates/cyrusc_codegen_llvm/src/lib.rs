@@ -20,7 +20,7 @@ use cyrusc_compiler::{
 use cyrusc_diagcentral::exit_with_msg;
 use cyrusc_internal::{
     cir::{cir::CIRModule, typectx::CIRTypeContext},
-    compiler_options::CompilerOptions,
+    compiler_options::{CompilerOption_PIEMode, CompilerOptions},
     vtable::VTableRegistry,
 };
 use cyrusc_scaffold_parser::OBJECT_CACHE_DIR_FILENAME;
@@ -69,8 +69,8 @@ impl CodeGenLLVM {
             target,
             target_triple,
             opts.cpu.clone(),
-            llvm_reloc_mode(opts.reloc_mode.clone()),
-            llvm_code_model(opts.code_model.clone()),
+            llvm_reloc_mode(opts.reloc_mode),
+            llvm_code_model(opts.code_model),
             llvm_opt_level(opts.opt_level.unwrap_or_default()),
         );
 
@@ -324,7 +324,7 @@ impl CodeGenBackend<'static, OwnedModule> for CodeGenLLVM {
                 reloc_mode: self.opts.reloc_mode.to_string(),
                 code_model: self.opts.code_model.to_string(),
                 link_static: self.opts.linker_options.link_static,
-                pie: self.opts.linker_options.pie,
+                pie: self.opts.linker_options.pie_mode == CompilerOption_PIEMode::PIE,
                 data_layout,
                 endianness,
                 pointer_size_bits,
