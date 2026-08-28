@@ -1065,21 +1065,23 @@ impl<'source_file> Parser<'source_file> {
 
     // Detects attributes and modifiers and parses method definition subsequently.
     fn parse_method(&mut self, mut modifiers: Option<UnresolvedModifiers>) -> Result<ASTFuncDefStmt, Diag> {
-        let is_attr_used = self.current_token_is(TokenKind::LeftBracket);
+        let is_attr = self.current_token_is(TokenKind::LeftBracket);
 
-        if is_attr_used {
-            self.parse_stmt(None, true)?;
+        if is_attr {
+            let stmts = self.parse_stmt(modifiers.clone(), true)?;
+
+            // Check that it only parsed attribute, not a real statement.
+            if !stmts.is_empty() {
+                return Err(self.error_invalid_token());
+            }
+
             self.next_token();
         }
 
         if matches!(&modifiers, Some(unres) if *unres == UnresolvedModifiers::default()) {
             // If parent modifiers is equivalent to default,
-            // we need to try once more time to parse modifiers
+            // we need to try one more time to parse modifiers
             // to be sure it parsed correctly after attributes.
-            modifiers = Some(self.parse_unresolved_modifiers()?);
-        }
-
-        if modifiers.is_none() {
             modifiers = Some(self.parse_unresolved_modifiers()?);
         }
 
