@@ -14,6 +14,9 @@ pub interface Allocator {
 [[inline]]
 pub fn alloc<T>(allocator: Allocator, value: T) T* {
 	var heap: T* = allocator.alloc(@sizeof(T));
+	if (!heap) {
+		return null;
+	}
 	*heap = value;
 	return heap;
 }
