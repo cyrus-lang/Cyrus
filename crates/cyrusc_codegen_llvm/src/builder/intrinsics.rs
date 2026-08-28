@@ -676,7 +676,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
     pub(crate) fn intrinsic_optimized_memcpy(&self, dest: PointerValue<'ll>, rvalue: BasicValueEnum<'ll>) {
         let ty = rvalue.get_type();
 
-        // Fast path: direct store
+        // fast path: direct store
         if ty.is_int_type()
             || ty.is_float_type()
             || ty.is_pointer_type()
@@ -692,7 +692,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         self.intrinsic_memcpy(dest, rvalue);
     }
 
-    pub(crate) fn intrinsic_memcpy(&self, dest: PointerValue<'ll>, rvalue: BasicValueEnum<'ll>) {
+    fn intrinsic_memcpy(&self, dest: PointerValue<'ll>, rvalue: BasicValueEnum<'ll>) {
         let target_data = self.llvmtm.get_target_data();
         let ty = rvalue.get_type();
 
@@ -781,8 +781,14 @@ impl<'ll> CodeGenIRBuilder<'ll> {
             }
         };
 
-        let lhs_alloca = self.llvm_builder.build_alloca(lhs_arr.get_type(), "lhs_alloca").unwrap();
-        let rhs_alloca = self.llvm_builder.build_alloca(rhs_arr.get_type(), "rhs_alloca").unwrap();
+        let lhs_alloca = self
+            .llvm_builder
+            .build_alloca(lhs_arr.get_type(), "lhs_alloca")
+            .unwrap();
+        let rhs_alloca = self
+            .llvm_builder
+            .build_alloca(rhs_arr.get_type(), "rhs_alloca")
+            .unwrap();
 
         self.llvm_builder.build_store(lhs_alloca, lhs_arr).unwrap();
         self.llvm_builder.build_store(rhs_alloca, rhs_arr).unwrap();
