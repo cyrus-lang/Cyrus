@@ -139,7 +139,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         // construct pointers struct { data_ptr, vtable_ptr }
         let dynamic_struct_type = self.emit_dynamic_type(); // { ptr, ptr }
 
-        let mut dynamic_value = dynamic_struct_type.get_undef();
+        let mut dynamic_value = dynamic_struct_type.const_zero();
 
         dynamic_value = self
             .llvm_builder
@@ -498,7 +498,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         }
 
         let array_value = if all_const {
-            let mut val = array_type.get_undef();
+            let mut val = array_type.const_zero();
             for (i, elem) in elements.iter().enumerate() {
                 val = self
                     .llvm_builder
@@ -509,7 +509,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
             val
         } else {
             // build runtime array by inserting each element
-            let mut value = array_type.get_undef();
+            let mut value = array_type.const_zero();
             for (i, elem) in elements.iter().enumerate() {
                 value = self
                     .llvm_builder
@@ -1639,7 +1639,6 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         let type_id = enum_init_expr.ty.as_type_id().unwrap();
         let enum_type = enum_init_expr.ty.as_enum(&self.tctx).unwrap();
 
-        // handle c-compatible enum init
         if enum_type.is_scalar_optimizable() {
             return self.emit_repr_c_enum_init(enum_init_expr, &enum_type);
         }
@@ -1647,38 +1646,41 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         let enum_struct_type = self.emit_enum_type(type_id).into_struct_type();
         let (payload_type, _) = self.emit_enum_buffer_payload_type(&enum_type);
 
-        let mut enum_value = enum_struct_type.get_undef();
+        let enum_alloca = self.llvm_builder.build_alloca(enum_struct_type, "enum.alloca").unwrap();
 
         let cir_tag_type = enum_type.tag_type_or_infer_or_default();
         let tag_type = self.emit_type(*cir_tag_type.clone()).into_int_type();
         let tag_value = tag_type.const_int(enum_init_expr.tag as u64, false);
 
-        enum_value = self
+        let tag_ptr = self
             .llvm_builder
-            .build_insert_value(enum_value, tag_value, 0, "enum.set_tag")
-            .unwrap()
-            .into_struct_value();
+            .build_struct_gep(enum_struct_type, enum_alloca, 0, "enum.tag.ptr")
+            .unwrap();
+        self.llvm_builder.build_store(tag_ptr, tag_value).unwrap();
 
         match &enum_init_expr.variant {
             CIREnumInitVariant::Unit => {
                 let zero_payload = payload_type.const_zero();
-                enum_value = self
+
+                let payload_ptr = self
                     .llvm_builder
-                    .build_insert_value(enum_value, zero_payload, 1, "enum.zero_payload")
-                    .unwrap()
-                    .into_struct_value();
+                    .build_struct_gep(enum_struct_type, enum_alloca, 1, "enum.payload.ptr")
+                    .unwrap();
+
+                self.llvm_builder.build_store(payload_ptr, zero_payload).unwrap();
             }
             CIREnumInitVariant::Valued(expr) => {
                 let lvalue = self.emit_expr(expr, &None);
                 let rvalue = self.load_rvalue(lvalue);
 
-                let copied_payload = self.intrinsic_copy_payload_to_buffer(rvalue.as_basic_value(), payload_type);
-
-                enum_value = self
+                let payload_ptr = self
                     .llvm_builder
-                    .build_insert_value(enum_value, copied_payload, 1, "enum.set_payload")
-                    .unwrap()
-                    .into_struct_value();
+                    .build_struct_gep(enum_struct_type, enum_alloca, 1, "enum.payload.ptr")
+                    .unwrap();
+
+                self.llvm_builder
+                    .build_store(payload_ptr, rvalue.as_basic_value())
+                    .unwrap();
             }
             CIREnumInitVariant::Payload(field_exprs) => {
                 let field_types: Vec<BasicTypeEnum<'ll>> = field_exprs
@@ -1688,7 +1690,10 @@ impl<'ll> CodeGenIRBuilder<'ll> {
 
                 let payload_struct_type = self.llvm_ctx.struct_type(&field_types, false);
 
-                let mut payload_value = payload_struct_type.get_undef();
+                let payload_ptr = self
+                    .llvm_builder
+                    .build_struct_gep(enum_struct_type, enum_alloca, 1, "enum.payload.ptr")
+                    .unwrap();
 
                 for (i, field_expr) in field_exprs.iter().enumerate() {
                     let lvalue = self.emit_expr(&field_expr, &None);
@@ -1705,25 +1710,24 @@ impl<'ll> CodeGenIRBuilder<'ll> {
                         rvalue = self.emit_implicit_cast(field_type, rvalue);
                     }
 
-                    payload_value = self
+                    let field_ptr = self
                         .llvm_builder
-                        .build_insert_value(payload_value, rvalue.as_basic_value(), i as u32, "payload.insert")
-                        .unwrap()
-                        .into_struct_value();
+                        .build_struct_gep(payload_struct_type, payload_ptr, i as u32, "payload.field.ptr")
+                        .unwrap();
+
+                    self.llvm_builder
+                        .build_store(field_ptr, rvalue.as_basic_value())
+                        .unwrap();
                 }
-
-                let copied_payload =
-                    self.intrinsic_copy_payload_to_buffer(payload_value.as_basic_value_enum(), payload_type);
-
-                enum_value = self
-                    .llvm_builder
-                    .build_insert_value(enum_value, copied_payload, 1, "enum.set_payload")
-                    .unwrap()
-                    .into_struct_value();
             }
         }
 
-        InternalValue::new(ty.clone(), InternalValueKind::RValue(enum_value.as_basic_value_enum()))
+        let loaded = self
+            .llvm_builder
+            .build_load(enum_struct_type, enum_alloca, "enum.load")
+            .unwrap();
+
+        InternalValue::new(ty.clone(), InternalValueKind::RValue(loaded))
     }
 
     pub(crate) fn emit_union_init(
@@ -1948,7 +1952,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
 
                 struct_value = struct_type.const_named_struct(&field_values);
             } else {
-                struct_value = struct_type.get_undef();
+                struct_value = struct_type.const_zero();
 
                 values.iter().enumerate().for_each(|(index, (_, rvalue))| {
                     struct_value = self

@@ -16,7 +16,7 @@ use cyrusc_typed_ast::{
 };
 use inkwell::{
     AddressSpace,
-    types::{ArrayType, BasicType, BasicTypeEnum, StructType},
+    types::{BasicType, BasicTypeEnum, StructType},
     values::{ArrayValue, BasicValue, BasicValueEnum, FunctionValue, IntValue, PointerValue, StructValue},
 };
 
@@ -821,6 +821,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         cmp.into_int_value()
     }
 
+    // FIXME Remove
     pub(crate) fn intrinsic_copy_buffer_to_struct(
         &self,
         buffer: ArrayValue<'ll>,
@@ -832,24 +833,6 @@ impl<'ll> CodeGenIRBuilder<'ll> {
             "coerce",
         )
         .into_struct_value()
-    }
-
-    pub(crate) fn intrinsic_copy_payload_to_buffer(
-        &self,
-        mut value: BasicValueEnum<'ll>,
-        array_type: ArrayType<'ll>,
-    ) -> ArrayValue<'ll> {
-        let alloca = self.llvm_builder.build_alloca(array_type, "alloca").unwrap();
-
-        value = self.intrinsic_coerce_through_alloca(value, BasicTypeEnum::ArrayType(array_type), "coerce");
-
-        self.intrinsic_optimized_memcpy(alloca, value);
-
-        // load back the array
-        self.llvm_builder
-            .build_load(array_type, alloca, "load")
-            .unwrap()
-            .into_array_value()
     }
 
     fn intrinsic_get_or_insert_trap(&self) -> FunctionValue<'ll> {
