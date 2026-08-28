@@ -439,7 +439,7 @@ impl<'a> AnalysisContext<'a> {
     fn analyze_builtin_memcpy(&mut self, builtin_func: &mut TypedBuiltinFunc) -> Option<SemaType> {
         let param_types = [
             SemaType::Pointer(Box::new(SemaType::Plain(PlainType::Void))), // dest
-            SemaType::Pointer(Box::new(SemaType::Plain(PlainType::Void))), // src
+            SemaType::Pointer(Box::new(SemaType::Plain(PlainType::Void).as_const())), // src
             SemaType::Plain(PlainType::USize),                             // size
         ];
 
