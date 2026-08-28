@@ -432,6 +432,8 @@ pub struct Cmd {
 
     pub fn new(allocator: Allocator, name: const uint8*, action: ActionFn) Self {
         const sub_cmds: Cmds* = alloc(allocator, Cmds.new(allocator));
+        @assert(sub_cmds, "allocation failed for sub_cmds");
+        
         const opts: Vec<Opt*> = Vec.new(allocator);
 
         return Self {

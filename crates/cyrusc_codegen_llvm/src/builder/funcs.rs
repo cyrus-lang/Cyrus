@@ -839,7 +839,6 @@ impl<'ll> CodeGenIRBuilder<'ll> {
 
         let mut llvm_params_start = 0;
 
-        // 1. Handle indirect return (sret) attribute at index 1 if present
         if abi_func_info.ret_info.kind.is_indirect_sret() {
             let ret_type = &abi_func_info.ret_info.abi_type;
             let llvm_ret_type = self.emit_type(ret_type.clone());
@@ -855,9 +854,10 @@ impl<'ll> CodeGenIRBuilder<'ll> {
             llvm_params_start = 1;
         }
 
-        for (idx, param_info) in abi_func_info.params_infos.iter().enumerate() {
+        for param_info in &abi_func_info.params_infos {
             if param_info.is_indirect_by_val() {
-                // 1-based index accounting for sret offset
+                let idx = param_info.param_index_start as usize;
+
                 let attr_idx = llvm_params_start + idx + 1;
 
                 let ty = &abi_func_info.params_types[idx];
