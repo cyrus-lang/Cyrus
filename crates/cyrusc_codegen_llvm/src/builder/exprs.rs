@@ -1683,17 +1683,24 @@ impl<'ll> CodeGenIRBuilder<'ll> {
                     .unwrap();
             }
             CIREnumInitVariant::Payload(field_exprs) => {
+                // IMPORTANT: Zero out the entire payload buffer first
+                // to ensure padded slots value is consistent.
+                // If we don't do this, it may cause UB when
+                // comparing two equal enums.
+                let zero_payload = payload_type.const_zero();
+
+                let payload_ptr = self
+                    .llvm_builder
+                    .build_struct_gep(enum_struct_type, enum_alloca, 1, "enum.payload.ptr")
+                    .unwrap();
+                self.llvm_builder.build_store(payload_ptr, zero_payload).unwrap();
+
                 let field_types: Vec<BasicTypeEnum<'ll>> = field_exprs
                     .iter()
                     .map(|fld| self.emit_type(fld.ty.clone()).try_into().unwrap())
                     .collect();
 
                 let payload_struct_type = self.llvm_ctx.struct_type(&field_types, false);
-
-                let payload_ptr = self
-                    .llvm_builder
-                    .build_struct_gep(enum_struct_type, enum_alloca, 1, "enum.payload.ptr")
-                    .unwrap();
 
                 for (i, field_expr) in field_exprs.iter().enumerate() {
                     let lvalue = self.emit_expr(&field_expr, &None);
