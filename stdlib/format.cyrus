@@ -1,7 +1,10 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 The Cyrus Language
 
-import std::io{Writer, IOError};
+import std::io{StringWriter, Writer, IOError};
+import std::mem::libc{LibcAllocator};
+import std::mem{Allocator};
+import std::string{String};
 import std::libc{snprintf};
 
 const INT32_BUF_SIZE: usize = 12;
@@ -18,6 +21,17 @@ const FLOAT128_BUF_SIZE: usize = 5000;
 
 pub interface Format {
     fn format(self: const Self*, writer: Writer) bool;
+}
+
+pub fn format(f: Format) String {
+    var allocator: Allocator = dynamic LibcAllocator.new();
+
+    var out = String.new(allocator);
+    var writer: Writer = dynamic StringWriter.new(&out);
+
+    f.format(writer);
+
+    return out;
 }
 
 pub fn format_bool(writer: Writer, x: bool) {

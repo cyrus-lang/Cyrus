@@ -1,15 +1,15 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 The Cyrus Language
 
-import std::libc::types{c_file};
 import std::errors{ErrorOr, ErrorStr};
+import std::libc::types{c_file};
 import std::mem{Allocator};
 import std::string{String};
 import std::path{Path};
 import std::libc;
 
 pub struct File {
-    path: Path*,
+    path: const Path*,
     file: c_file*,
     mode: OpeningModes,
     

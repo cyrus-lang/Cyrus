@@ -1,0 +1,37 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 The Cyrus Language
+
+import (
+    std::mem{Allocator},
+    std::path{Path},
+    std::os{File},
+);
+
+import (
+    lexer{Lexer, SourceTokens}
+);
+
+import std::libc{printf};
+
+// Driver handler responsible for tokenizing source content.
+// Will terminate the compiler if any error raised.
+pub fn tokenize_source(
+    allocator: Allocator,
+    path: const Path*
+) SourceTokens {
+    // TODO: Construct arena for tokens !
+
+    switch (File.open(path, .Read)) case .Value(file) else {
+        @panic("could not open file");
+    }
+    defer file.close();
+
+    switch (file.read(allocator)) case .Value(source) else {
+        @panic("could not read file");
+    }
+    defer source.free();
+
+    var lexer = Lexer.new(allocator, &source);
+    
+    return lexer.tokenize();
+}
