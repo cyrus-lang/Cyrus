@@ -1,16 +1,22 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 The Cyrus Language
 
+/* REVIEW
+    We'll add hashing support to our lexer after stage1 completed.
+    Nice resources to check out later:
+    https://xnacly.me/posts/2025/fast-lexer-strategies/
+*/
+
 import (
-    std::collections{Vector},
+    std::collections{Vec},
+    std::mem{Allocator},
     std::string{String},
     std::option{Option},
-    std::mem{Allocator},
     std::libc{printf},
 );
 
-import parse::lex::tokens{
-    TokenPool,
+import tokens{
+    SourceTokens,
     Token,
     TokenKind,
     Literal,
@@ -22,12 +28,12 @@ import parse::lex::tokens{
 
 pub struct Lexer {
     allocator: Allocator,
-    source: String*,
+    source: const String*,
     pos: usize,
     line: usize,
     col: usize,
 
-    pub fn new(allocator: Allocator, source: String*) Self {
+    pub fn new(allocator: Allocator, source: const String*) Self {
         @assert(source, "source cannot be null");
 
         return Self {
@@ -39,9 +45,10 @@ pub struct Lexer {
         };
     }
 
-    pub fn tokenize(self: Self*) TokenPool {
-        var tokens: Vector<Token> = Vec.new(self->allocator);
+    pub fn tokenize(self: Self*) SourceTokens {
+        var tokens: Vec<Token> = Vec.new(self->allocator);
 
+        // FIXME Unsafe!
         var token: Token = undefined;
 
         while (true) {
@@ -53,7 +60,16 @@ pub struct Lexer {
             }
         }
 
-        return TokenPool { tokens};
+        return SourceTokens { tokens};
+    }
+
+    [[inline]]
+    fn loc(self: const Self*) Loc {
+        return Loc {
+            line: self->line, 
+            start: self->pos,
+            end: self->pos,
+        };
     }
 
     fn next(self: Self*) Token {
@@ -63,14 +79,17 @@ pub struct Lexer {
         if (self->pos == self->source->len()) {
             return Token {
                 kind: .EOF,
-                loc: self->loc(self->line, self->col)
+                loc: self->loc()
             };
         }
 
-        const loc = self->loc(self->line, self->col);
+        const loc = self->loc();
         const kind = self->read_kind();
 
-        return Token { kind, loc };
+        return Token {
+            kind,
+            loc: loc.merge(self->loc())
+        };
     }
 
     fn read_kind(self: Self*) TokenKind {
@@ -342,11 +361,6 @@ pub struct Lexer {
     [[inline]]
     fn cur(self: const Self*) uint8 {
         return self->source->get(self->pos).unwrap();
-    }
-
-    [[inline]]
-    fn loc(self: const Self*, line: usize, col: usize) Loc {
-        return Loc { line, col };
     }
 }
 
