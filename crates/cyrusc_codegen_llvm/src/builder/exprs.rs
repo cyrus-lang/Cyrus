@@ -8,7 +8,7 @@ use crate::{
         irreg::LocalIRValue,
         values::{InternalValue, InternalValueKind},
     },
-    llvm::{constness::is_basic_value_constant, debug_info::set_debug_location},
+    llvm::{abi::callconv::LLVMCallConv, constness::is_basic_value_constant, debug_info::set_debug_location},
 };
 use cyrusc_ast::operators::{InfixOperator, PrefixOperator};
 use cyrusc_internal::{
@@ -26,9 +26,10 @@ use cyrusc_source_loc::Loc;
 use cyrusc_typed_ast::types::PlainType;
 use inkwell::{
     AddressSpace, FloatPredicate, IntPredicate,
+    llvm_sys::core::LLVMSetInstructionCallConv,
     types::{AnyTypeEnum, ArrayType, BasicType, BasicTypeEnum, StructType},
     values::{
-        AggregateValueEnum, AnyValueEnum, ArrayValue, BasicMetadataValueEnum, BasicValue, BasicValueEnum,
+        AggregateValueEnum, AnyValueEnum, ArrayValue, AsValueRef, BasicMetadataValueEnum, BasicValue, BasicValueEnum,
         FunctionValue, IntValue, PointerValue, StructValue,
     },
 };
@@ -936,7 +937,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         match (lhs_rvalue.as_basic_value(), rhs_rvalue.as_basic_value()) {
             (BasicValueEnum::IntValue(lhs), BasicValueEnum::IntValue(rhs)) => {
                 let shift_value = self.llvm_builder.build_left_shift(lhs, rhs, "lshift").unwrap();
-                
+
                 InternalValue::new(
                     CIRType::Plain(PlainType::Bool),
                     InternalValueKind::RValue(shift_value.into()),
@@ -2260,7 +2261,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
     fn emit_call_with_args(
         &mut self,
         abi_func_info: &ABIFunctionInfo,
-        func_type: &CIRFuncType,
+        cir_func_type: &CIRFuncType,
         ret_type: &CIRType,
         llvm_func_value: FunctionValue<'ll>,
         mut llvm_args: Vec<BasicMetadataValueEnum<'ll>>,
@@ -2268,7 +2269,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         let mut sret_alloca: Option<PointerValue<'ll>> = None;
 
         if abi_func_info.ret_info.kind.is_indirect_sret() {
-            let sret_type: BasicTypeEnum<'ll> = self.emit_type(*func_type.ret_type.clone()).try_into().unwrap();
+            let sret_type: BasicTypeEnum<'ll> = self.emit_type(*cir_func_type.ret_type.clone()).try_into().unwrap();
 
             let sret_ptr = {
                 if self.is_return && self.cur_sret.is_some() {
@@ -2292,11 +2293,18 @@ impl<'ll> CodeGenIRBuilder<'ll> {
             .build_call(llvm_func_value, &llvm_args, "call")
             .unwrap();
 
+        unsafe {
+            LLVMSetInstructionCallConv(
+                call_site.as_value_ref(),
+                LLVMCallConv::from(&cir_func_type.callconv).as_u32(),
+            )
+        };
+
         if let Some(ptr) = sret_alloca {
             InternalValue::new(ret_type.clone(), InternalValueKind::LValue(ptr.into()))
         } else if let Some(mut basic_value) = call_site.try_as_basic_value().basic() {
             let actual_return_type: BasicTypeEnum<'ll> =
-                self.emit_type(*func_type.ret_type.clone()).try_into().unwrap();
+                self.emit_type(*cir_func_type.ret_type.clone()).try_into().unwrap();
 
             // optimization, do not coerce if it matches actual return type
             if actual_return_type == basic_value.get_type() {
@@ -2330,6 +2338,13 @@ impl<'ll> CodeGenIRBuilder<'ll> {
             .llvm_builder
             .build_indirect_call(llvm_func_type, fn_ptr, &llvm_args, "indirect_call")
             .unwrap();
+
+        unsafe {
+            LLVMSetInstructionCallConv(
+                call_site.as_value_ref(),
+                LLVMCallConv::from(&cir_func_type.callconv).as_u32(),
+            )
+        };
 
         self.emit_func_call_attributes(&abi_func_info, FuncCallKind::Indirect(call_site));
 

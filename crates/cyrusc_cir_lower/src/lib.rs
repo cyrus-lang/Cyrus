@@ -1315,8 +1315,9 @@ impl<'a> CIRLower<'a> {
             loc: func_decl.loc,
         };
 
-        let cir_func_type = cir_func_decl_as_func_type(&cir_func_decl);
+        let mut cir_func_type = cir_func_decl_as_func_type(&cir_func_decl);
         cir_func_decl.abi_func_info = Some(self.target.target_abi.classify_func(&cir_func_type).unwrap());
+        cir_func_type.abi_func_info = cir_func_decl.abi_func_info.clone();
 
         self.func_decls.insert(irv_id, cir_func_decl.clone());
 

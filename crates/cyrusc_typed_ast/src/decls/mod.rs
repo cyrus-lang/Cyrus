@@ -11,7 +11,7 @@ use crate::{
     types::{SemaType, TypeDeclID, TypedFuncType},
 };
 use cyrusc_ast::{
-    abi::{ReprKind, Visibility},
+    abi::{Callconv, ReprKind, Visibility},
     modifiers::{EnumModifiers, FuncModifiers, GlobalVarModifiers, StructModifiers, UnionModifiers},
 };
 use cyrusc_source_loc::{FileID, Loc};
@@ -350,6 +350,7 @@ impl FuncDecl {
         TypedFuncType {
             params,
             ret_type: Box::new(self.ret_type.clone()),
+            callconv: self.modifiers.callconv.unwrap_or(Callconv::default()),
             is_public,
             loc: self.loc,
         }

@@ -2,6 +2,7 @@
 // Copyright (c) 2026 The Cyrus Language
 
 use crate::context::AnalysisContext;
+use cyrusc_ast::abi::Callconv;
 use cyrusc_typed_ast::{
     exprs::TypedLambdaExpr,
     types::{SemaType, TypedFuncType},
@@ -18,6 +19,7 @@ impl<'a> AnalysisContext<'a> {
         let mut func_type = TypedFuncType {
             params,
             ret_type: Box::new(lambda.ret_type.clone()),
+            callconv: Callconv::default(),
             is_public: true,
             loc: lambda.loc,
         };

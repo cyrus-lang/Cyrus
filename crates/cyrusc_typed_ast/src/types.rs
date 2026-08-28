@@ -6,6 +6,7 @@ use crate::decls::{EnumDeclID, InterfaceDeclID, StructDeclID, TypedefDeclID, Uni
 use crate::exprs::{TypedExpr, TypedSelfType};
 use crate::stmts::{TypedFuncTypeParams, TypedFuncTypeVariadicParam, TypedTypeArg, TypedTypeArgs};
 use crate::{GenericParamID, SymbolID, VTableID};
+use cyrusc_ast::abi::Callconv;
 use cyrusc_source_loc::Loc;
 use cyrusc_tokens::TokenKind;
 use std::fmt;
@@ -95,6 +96,7 @@ pub struct TypedFuncType {
     pub params: TypedFuncTypeParams,
     pub ret_type: Box<SemaType>,
     pub is_public: bool,
+    pub callconv: Callconv,
     pub loc: Loc,
 }
 
