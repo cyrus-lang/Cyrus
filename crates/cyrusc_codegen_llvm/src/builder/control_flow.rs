@@ -85,7 +85,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
             let llvm_field_type: BasicTypeEnum<'ll> = self.emit_type(cir_ty.clone()).try_into().unwrap();
             let llvm_field_index = enum_layout.lookup_field_index(*field_index).unwrap();
 
-            // pointer to payload_struct.field_index
+            // pointer to payload_struct[field_index]
             let gep = self
                 .llvm_builder
                 .build_struct_gep(payload_struct_type, payload_alloca, llvm_field_index, "gep.field")
@@ -238,7 +238,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         }
 
         let enum_struct_value = rvalue.as_basic_value().into_struct_value();
-        let enum_idx_int_value = self.extract_enum_tag(enum_struct_value);
+        let index_int_value = self.extract_enum_tag(enum_struct_value);
 
         let parent_block = self.block_reg.cur_block.unwrap();
         let exit_block = self.new_basic_block("switch_on_enum.exit");
@@ -264,7 +264,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         self.emit_block(parent_block);
         let switch_inst = self
             .llvm_builder
-            .build_switch(enum_idx_int_value, else_block, &[])
+            .build_switch(index_int_value, else_block, &[])
             .unwrap();
 
         let tag_type = self
@@ -320,10 +320,12 @@ impl<'ll> CodeGenIRBuilder<'ll> {
 
                         let payload_struct_type =
                             self.emit_enum_fielded_variant_payload_type(*tag, &enum_type).unwrap();
+
                         let payload_struct_value =
                             self.intrinsic_copy_buffer_to_struct(enum_payload, payload_struct_type);
 
                         let payload_alloca = self.llvm_builder.build_alloca(payload_struct_type, "alloca").unwrap();
+
                         self.llvm_builder
                             .build_store(payload_alloca, payload_struct_value)
                             .unwrap();

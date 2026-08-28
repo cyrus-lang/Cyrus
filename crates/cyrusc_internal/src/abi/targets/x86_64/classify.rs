@@ -3,15 +3,11 @@
 
 use crate::{
     abi::{
-        args::{ABIArgAttrs, ABIArgInfo, ABIArgKind, ABIFunctionInfo, ABIRetInfo, ABIRetInfoKind, ExpandKind},
-        helpers::{Registers, is_cir_type_aggregate},
-        target::{ABITargetInfo, ABITargetOS, RegisterClass, TargetABI},
-    },
-    cir::{
+        args::{ABIArgAttrs, ABIArgInfo, ABIArgKind, ABIFunctionInfo, ABIRetInfo, ABIRetInfoKind, ExpandKind}, helpers::{Registers, align_up, is_cir_type_aggregate}, target::{ABITargetInfo, ABITargetOS, RegisterClass, TargetABI},
+    }, cir::{
         typectx::CIRTypeContext,
         types::{CIRArrayType, CIRFuncType, CIRStructType, CIRType, CIRUnionType, CIRVectorType},
-    },
-    is_integer_type,
+    }, is_integer_type,
 };
 use cyrusc_ast::abi::Callconv;
 use cyrusc_source_loc::{FileID, Loc};
@@ -198,7 +194,9 @@ impl X86_64 {
             CIRType::Plain(PlainType::Int64)
         } else {
             // span across multiple registers
-            CIRType::Plain(PlainType::map_integer_size_to_type((layout.size - source_offset) as usize).unwrap())
+            let offset = (layout.size - source_offset) as usize;
+            let aligned = align_up(offset, 8);
+            CIRType::Plain(PlainType::map_integer_size_to_type(aligned).unwrap())
         }
     }
 
