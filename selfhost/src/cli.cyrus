@@ -17,7 +17,7 @@ import (
     std::string{String},
 );
 
-const HELP_MESG_WHITESPACE_OFFSET: usize = 16;
+const HELP_WS_LEN: usize = 16;
 
 pub type ProgramArgs = struct {
     argv: const c_char**,
@@ -73,8 +73,6 @@ pub struct Cli {
     }
     
     pub fn parse_args(self: Self*, pargs: ProgramArgs) ErrorOr<Self*, ()> {
-        // Trigger main action if there is any,
-        // Or display help
         if (pargs.argc < 2) {
             self->display_general_help();
             return .Value(self);
@@ -97,6 +95,10 @@ pub struct Cli {
                 self->display_parse_error(err);
                 return .Error(());
             }
+        }
+
+        if (self->opts->enabled("help")) {
+            cmd->display_help();
         }
 
         (cmd->action)(ActionCtx {
@@ -417,6 +419,7 @@ pub struct Cmds {
 
     pub fn display_all(self: const Self*, writer: Writer) {
         writer.writeln("Commands:");
+
         for (var i: usize = 0; i < self->inner.len(); i += 1) {
             const cmd = self->inner.get_owned(i).unwrap();
             
@@ -429,7 +432,7 @@ pub struct Cmds {
                 case .Some(text) => {
                     write_spaces(
                         writer,
-                        HELP_MESG_WHITESPACE_OFFSET - len
+                        HELP_WS_LEN - len
                     );
                     writer.write(text);
                 }
@@ -519,6 +522,39 @@ pub struct Cmd {
         return self;
     }
 
+    pub fn display_help(self: const Self*) {
+        var writer: Writer = dynamic StdoutWriter.new();
+
+        writer.write("Options ");
+        writer.write("[");
+        writer.write(self->name);
+        writer.writeln("]");
+
+        for (var i: usize = 0; i < self->opts.len(); i += 1) {
+            const opt = self->opts.get_owned(i).unwrap();
+
+            const space_len: usize = 2;
+            const dash_len: usize = 2;
+            const name_len = strlen(opt->long_name);
+            const len = space_len + dash_len + name_len;
+
+            writer.write("  --");
+            writer.write(opt->long_name);
+
+            switch (opt->help) {
+                case .Some(text) => {
+                    write_spaces(
+                        writer,
+                        HELP_WS_LEN - len
+                    );
+                    writer.write(text);
+                }
+            }
+
+            writer.write("\n");
+        }
+    }
+
     pub fn free(self: Self*) {
         for (var i: usize = 0; i < self->opts.len(); i += 1) {
             const opt = self->opts.get_owned(i).unwrap();
@@ -540,7 +576,7 @@ pub struct Opts {
         var self = Self { allocator, inner: Vec.new(allocator) };
 
         // Handle help option internally
-        self.add(*Opt.new(allocator, "help").short('h')->help("Show usage"));
+        self.add(*Opt.new(allocator, "help").short('h')->help("Show help"));
 
         return self;
     }
@@ -632,9 +668,9 @@ pub struct Opt {
     pub values: Vec<Value*>,
     pub arg_type: Option<ArgType>,
     pub enabled: bool,
-    required: bool,
-    policy: DupPolicy,
-    help: Option<uint8*>,
+    pub required: bool,
+    pub policy: DupPolicy,
+    pub help: Option<uint8*>,
 
     pub fn new(allocator: Allocator, long_name: uint8*) Self {
         const values: Vec<Value*> = Vec.new(allocator);
