@@ -141,6 +141,7 @@ impl GenericEnv {
                 SemaType::FuncType(TypedFuncType {
                     params: TypedFuncTypeParams { list: params, variadic },
                     ret_type,
+                    callconv: func.callconv,
                     is_public: func.is_public,
                     loc: func.loc,
                 })

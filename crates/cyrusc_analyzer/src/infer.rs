@@ -86,6 +86,7 @@ impl InferCtx {
                         variadic: resolved_variadic,
                     },
                     ret_type: resolved_ret,
+                     callconv: func.callconv,
                     is_public: func.is_public,
                     loc: func.loc,
                 })

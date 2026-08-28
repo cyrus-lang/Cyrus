@@ -3,12 +3,9 @@
 import std::libc{printf};
 
 enum Task {
-    Compute(struct {
-        id: uint64,
-        priority: int32
-    }),
-    Delay(uint32),
+    Compute(struct {id: uint64, priority: int32 }),
     Range((int32, int32))
+    Delay(uint32),
 }
 
 fn process_task(t: Task) {

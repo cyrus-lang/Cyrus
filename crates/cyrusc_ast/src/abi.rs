@@ -180,7 +180,7 @@ pub enum Prologue {
 
 impl Default for Callconv {
     fn default() -> Self {
-        Self::System
+        Self::C
     }
 }
 

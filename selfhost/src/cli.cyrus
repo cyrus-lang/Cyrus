@@ -72,7 +72,7 @@ pub struct Cli {
             return .Value(self);
         }
 
-        var cmd: Cmd* = undefined;
+        var cmd: Cmd*;
 
         switch (self->parse_command(pargs)) {
             case .Value(detail) => {
@@ -486,7 +486,7 @@ pub struct Cmd {
     }
 
     pub fn free(self: Self*) {
-        for (var i: usize; i < self->opts.len(); i += 1) {
+        for (var i: usize = 0; i < self->opts.len(); i += 1) {
             const opt = self->opts.get_owned(i).unwrap();
             opt->free();
         }
