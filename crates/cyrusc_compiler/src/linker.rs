@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 The Cyrus Language
 
-use cyrusc_internal::compiler_options::{CompilerOption_Optimize, CompilerOption_RelocMode, CompilerOptions};
+use cyrusc_internal::compiler_options::*;
 use std::env::consts::{FAMILY, OS};
 use std::path::PathBuf;
 use std::process::Command;
@@ -59,15 +59,20 @@ impl Linker {
         if self.opts.linker_options.link_static {
             cmd.arg("-static");
         }
-        if self.opts.linker_options.pie {
-            cmd.args(["-pie", "-fPIE"]);
+
+        match self.opts.linker_options.pie_mode {
+            CompilerOption_PIEMode::PIE => {
+                cmd.args(["-pie", "-fPIE"]);
+
+                if !self.opts.linker_options.link_static {
+                    cmd.args(["-ldl", "-rdynamic"]);
+                }
+            }
+            CompilerOption_PIEMode::NOPIE => {
+                cmd.arg("-no-pie");
+            }
         }
-        if self.opts.linker_options.no_pie {
-            cmd.arg("-no-pie");
-        }
-        if !self.opts.linker_options.link_static && self.opts.linker_options.pie {
-            cmd.args(["-ldl", "-rdynamic"]);
-        }
+
         if self.opts.linker_options.link_static {
             cmd.arg("-lc");
         }
@@ -83,20 +88,6 @@ impl Linker {
 
         for library in &self.opts.library_paths {
             cmd.arg(format!("-L{}", library));
-        }
-
-        if let Some(opt_level) = self.opts.opt_level {
-            match opt_level {
-                CompilerOption_Optimize::O0 => {}
-
-                CompilerOption_Optimize::O1
-                | CompilerOption_Optimize::O2
-                | CompilerOption_Optimize::O3
-                | CompilerOption_Optimize::Os
-                | CompilerOption_Optimize::Oz => {
-                    cmd.arg("-flto");
-                }
-            }
         }
 
         if let Some(opt_level) = self.opts.opt_level {
@@ -134,7 +125,7 @@ impl Linker {
 
         let output = cmd.output().map_err(|e| format!("Failed to execute linker: {}", e))?;
         if !output.status.success() {
-            return Err(format!("Linker error: {}", String::from_utf8_lossy(&output.stderr)));
+            return Err(String::from_utf8_lossy(&output.stderr).to_string());
         }
 
         Ok(())
@@ -233,7 +224,7 @@ impl Linker {
 
         let output = cmd.output().map_err(|e| format!("Failed to execute linker: {}", e))?;
         if !output.status.success() {
-            return Err(format!("Linker error: {}", String::from_utf8_lossy(&output.stderr)));
+            return Err(String::from_utf8_lossy(&output.stderr).to_string());
         }
 
         Ok(output_path)

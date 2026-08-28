@@ -19,7 +19,8 @@ pub(crate) fn create_target_machine(
     code_model: CodeModel,
     opt_level: OptimizationLevel,
 ) -> TargetMachine {
-    InkwellTarget::initialize_all(&InitializationConfig::default());
+    // TODO: Make target initilization smart when cross compiling.
+    InkwellTarget::initialize_native(&InitializationConfig::default()).unwrap();
 
     let cpu_name = cpu.unwrap_or(TargetMachine::get_host_cpu_name().to_str().unwrap().to_string());
     let features = TargetMachine::get_host_cpu_features().to_str().unwrap().to_string();

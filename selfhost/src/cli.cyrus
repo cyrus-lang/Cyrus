@@ -31,21 +31,15 @@ pub struct ActionCtx {
 }
 
 pub enum ParseError {
-    InvalidCommandOption {
-        cmd: uint8*,
-        opt: uint8*
-    },
-    BadValueType {
-        opt: uint8*,
-        ty: uint8*
-    },
-    DuplicateOption { opt: uint8* },
-    InvalidOption { opt: uint8* },
-    UnknownOption { opt: uint8* },
-    UnknownCommand { cmd: uint8* },
-    MissingOption { opt: uint8* },
-    MissingValue { opt: uint8* },
-    InvalidValue { opt: uint8* },
+    InvalidCommandOption { cmd: const uint8*, opt: const uint8* },
+    BadValueType { opt: const uint8*, ty: const uint8* },
+    DuplicateOption { opt: const uint8* },
+    InvalidOption { opt: const uint8* },
+    UnknownOption { opt: const uint8* },
+    UnknownCommand { cmd: const uint8* },
+    MissingOption { opt: const uint8* },
+    MissingValue { opt: const uint8* },
+    InvalidValue { opt: const uint8* },
 }
 
 pub struct Cli {
@@ -92,7 +86,9 @@ pub struct Cli {
                 }
             }
             case .Error(err) => {
-                self->display_parse_error(err);
+                printf("err: %d\n", err);
+                // FIXME;
+                // self->display_parse_error(err);
                 return .Error(());
             }
         }
@@ -133,7 +129,7 @@ pub struct Cli {
 
         // Consume first command
         switch (self->cmds.find(arg)) {
-            case .Some(_cmd) => { cmd = _cmd; i += 1; }
+            case .Some(x) => { cmd = x; i += 1; }
             case .None => return .Error(.UnknownCommand { cmd: arg });
         }
 
@@ -174,7 +170,7 @@ pub struct Cli {
         }
 
         const len = strlen(arg);
-        var name: uint8* = undefined;
+        var name: const uint8* = undefined;
 
         // Skip dashes
         if (double_dash) {
@@ -377,8 +373,8 @@ pub struct Cmds {
 
     pub fn find(self: Self*, name: const uint8*) Option<Cmd*> {
         for (var i: usize = 0; i < self->inner.len(); i += 1) {
-            const cmd = self->inner.get(i).unwrap();
-
+            const cmd = self->inner.get_owned(i).unwrap();
+            printf("cmd: %s\n", cmd->name);
             if (strcmp(cmd->name, name) == 0) {
                return .Some(cmd);
             }
@@ -390,7 +386,7 @@ pub struct Cmds {
     pub fn display_all(self: const Self*, writer: Writer) {
         writer.writeln("Commands:");
         for (var i: usize = 0; i < self->inner.len(); i += 1) {
-            const cmd = self->inner.get(i).unwrap();
+            const cmd = self->inner.get_owned(i).unwrap();
             
             const len = strlen(cmd->name);
 
@@ -417,7 +413,7 @@ pub struct Cmds {
 
     pub fn free(self: Self*) {
         for (var i: usize = 0; i < self->inner.len(); i += 1) {
-            var cmd = self->inner.get(i).unwrap();
+            var cmd = self->inner.get_owned(i).unwrap();
             cmd->free();
             self->allocator.free(cmd);
         }
@@ -455,7 +451,7 @@ pub struct Cmd {
 
     pub fn find_option(self: Self*, name: const uint8*) Option<Opt*> {
         for (var i: usize = 0; i < self->opts.len(); i += 1) {
-            const opt = self->opts.get(i).unwrap();
+            const opt = self->opts.get_owned(i).unwrap();
 
             // Check with short name
             switch (opt->short_name) {
@@ -491,7 +487,7 @@ pub struct Cmd {
 
     pub fn free(self: Self*) {
         for (var i: usize; i < self->opts.len(); i += 1) {
-            const opt = self->opts.get(i).unwrap();
+            const opt = self->opts.get_owned(i).unwrap();
             opt->free();
         }
 
@@ -521,7 +517,7 @@ pub struct Opts {
 
     pub fn find(self: Self*, name: const uint8*) Option<Opt*> {
         for (var i: usize = 0; i < self->inner.len(); i += 1) {
-            const opt = self->inner.get(i).unwrap();
+            const opt = self->inner.get_owned(i).unwrap();
 
             // Check with short name
             switch (opt->short_name) {
@@ -555,7 +551,7 @@ pub struct Opts {
     pub fn display_all(self: const Self*, writer: Writer) {
         writer.writeln("Options:");
         for (var i: usize = 0; i < self->inner.len(); i += 1) {
-            const option = self->inner.get(i).unwrap();
+            const option = self->inner.get_owned(i).unwrap();
 
             writer.write("  ");
             
@@ -579,7 +575,7 @@ pub struct Opts {
 
     pub fn free(self: Self*) {
         for (var i: usize = 0; i < self->inner.len(); i += 1) {
-            var cmd = self->inner.get(i).unwrap();
+            var cmd = self->inner.get_owned(i).unwrap();
             cmd->free();
             self->allocator.free(cmd);
         }
@@ -654,7 +650,7 @@ pub struct Opt {
 
     pub fn free(self: Self*) {
         for (var i: usize = 0; i < self->values.len(); i += 1) {
-            const value = self->values.get(i).unwrap();
+            const value = self->values.get_owned(i).unwrap();
 
             self->allocator.free(value);    
         }
@@ -664,7 +660,7 @@ pub struct Opt {
 }
 
 pub enum Value {
-    Str(uint8*),
+    Str(const uint8*),
     Int(int64),
     Float(float64),
     Bool(bool)
@@ -704,9 +700,9 @@ pub enum DupPolicy {
 fn is_value_valid(ty: ArgType, value: Value) bool {
     switch (value) {
         case .Float(_) => if (ty == .Float) { return true; }
-        case .Bool(_)  => if (ty == .Bool) { return true; }
-        case .Str(_)   => if (ty == .Str) { return true; }
-        case .Int(_)   => if (ty == .Int) { return true; }
+        case .Bool(_) => if (ty == .Bool) { return true; }
+        case .Str(_) => if (ty == .Str) { return true; }
+        case .Int(_) => if (ty == .Int) { return true; }
     }
     return false;
 }

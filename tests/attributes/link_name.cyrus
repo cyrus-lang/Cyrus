@@ -1,7 +1,7 @@
 [[link_name("pi")]]
 static var PI: float64 = 3.14;
 
-[[link_name("@foo.bar")]]
+[[link_name("foo$bar")]]
 fn foo() {}
 
 pub fn main() {
