@@ -67,14 +67,15 @@ pub struct Cli {
     }
     
     pub fn add_command(self: Self*, cmd: Cmd) {
-        self->cmds.add(cmd);
+        const help_opt = self->opts->get_help_opt();
+        var heap = self->cmds.add(cmd);
+        heap->add_option(help_opt);
     }
     
     pub fn parse_args(self: Self*, pargs: ProgramArgs) ErrorOr<Self*, ()> {
         // Trigger main action if there is any,
         // Or display help
         if (pargs.argc < 2) {
-            // TODO Support optional main-action.
             self->display_general_help();
             return .Value(self);
         }
@@ -172,7 +173,12 @@ pub struct Cli {
         pargs: ProgramArgs
     ) ErrorOr<(), ParseError> {
         var arg = pargs.argv[*i];
-        var next_arg = pargs.argv[*i + 1];
+        
+        var next_arg: const uint8*;
+
+        if (*i <= @cast(usize, pargs.argc)) {
+            next_arg = pargs.argv[*i + 1];
+        }
 
         const len = strlen(arg);
 
@@ -207,7 +213,7 @@ pub struct Cli {
             opt_name[assign_index] = '\0';
 
             @assert(name[assign_index] == '=', "assign index is wrong");
-            assign_index += 1; // skip it
+            assign_index += 1; // Skip it
 
             @memcpy(&opt_val[0], name + assign_index, assign_index);
             opt_val[name_len] = '\0';
@@ -391,8 +397,10 @@ pub struct Cmds {
         };
     }
 
-    pub fn add(self: Self*, cmd: Cmd) {
-        self->inner.push(alloc_init(self->allocator, cmd));
+    pub fn add(self: Self*, cmd: Cmd) Cmd* {
+        var heap = alloc_init(self->allocator, cmd);
+        self->inner.push(heap);
+        return heap;
     }
 
     pub fn find(self: Self*, name: const uint8*) Option<Cmd*> {
@@ -448,9 +456,9 @@ pub struct Cmds {
 
 pub struct Cmd {
     allocator: Allocator,
+    opts: Vec<Opt*>,
     pub name: const uint8*,
     pub sub_cmds: Cmds*,
-    pub opts: Vec<Opt*>,
     pub action: ActionFn,
     pub help: Option<uint8*>,
 
@@ -529,10 +537,17 @@ pub struct Opts {
     inner: Vec<Opt*>,
 
     pub fn new(allocator: Allocator) Self {
-        return Self {
-            allocator,
-            inner: Vec.new(allocator)
-        };
+        var self = Self { allocator, inner: Vec.new(allocator) };
+
+        // Handle help option internally
+        self.add(*Opt.new(allocator, "help").short('h')->help("Show usage"));
+
+        return self;
+    }
+
+    [[inline]]
+    pub fn get_help_opt(self: const Self*) Opt* {
+        return self->inner.get_owned(0).unwrap();
     }
 
     pub fn add(self: Self*, opt: Opt) Opt* {

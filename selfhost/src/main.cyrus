@@ -32,16 +32,18 @@ pub fn main(argc: c_int, argv: c_char**) {
 
     var opts = cli::Opts.new(allocator);
     defer opts.free();
+
+    printf("opts len: %d\n", opts.len());
     
     var parser = cli::Cli.new(allocator, &opts, "cyrus");
     defer parser.free();
 
-    const verbose_opt = opts.add(*cli::Opt.new(allocator, "verbose").short('v')->help("Increase verbosity"));
-    const quiet_opt = opts.add(*cli::Opt.new(allocator, "quiet").short('q')->help("Suppress output"));
+    const jobs_opt = opts.add(*cli::Opt.new(allocator, "jobs").short('j')->arg(.Int)->help("Number of parallel jobs"));
     const release_opt = opts.add(*cli::Opt.new(allocator, "release").short('r')->help("Build in release mode"));
     const debug_opt = opts.add(*cli::Opt.new(allocator, "debug").short('g')->help("Build with debug symbols"));
+    const verbose_opt = opts.add(*cli::Opt.new(allocator, "verbose").short('v')->help("Increase verbosity"));
+    const quiet_opt = opts.add(*cli::Opt.new(allocator, "quiet").short('q')->help("Suppress output"));
     const target_opt = opts.add(*cli::Opt.new(allocator, "target").short('t')->help("Target triple"));
-    const jobs_opt = opts.add(*cli::Opt.new(allocator, "jobs").short('j')->arg(.Int)->help("Number of parallel jobs"));
     const color_opt = opts.add(*cli::Opt.new(allocator, "color").help("Colored output"));
 
     const new_cmd = 
