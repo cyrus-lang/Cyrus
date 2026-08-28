@@ -860,16 +860,11 @@ impl<'ll> CodeGenIRBuilder<'ll> {
                 // 1-based index accounting for sret offset
                 let attr_idx = llvm_params_start + idx + 1;
 
-                let struct_type = &abi_func_info.params_types[idx];
-                let llvm_struct_type = self.emit_type(struct_type.clone());
-                assert!(llvm_struct_type.is_struct_type(), "indirect param type is not struct");
+                let ty = &abi_func_info.params_types[idx];
+                let llvm_type = self.emit_type(ty.clone());
 
                 let attr = unsafe {
-                    LLVMCreateTypeAttribute(
-                        self.llvm_ctx.as_ctx_ref(),
-                        byval_attr_kind,
-                        llvm_struct_type.as_type_ref(),
-                    )
+                    LLVMCreateTypeAttribute(self.llvm_ctx.as_ctx_ref(), byval_attr_kind, llvm_type.as_type_ref())
                 };
 
                 unsafe {
@@ -932,16 +927,11 @@ impl<'ll> CodeGenIRBuilder<'ll> {
 
                 let attr_idx = llvm_params_start + idx + 1;
 
-                let struct_type = &abi_func_info.params_types[idx];
-                let llvm_struct_type = self.emit_type(struct_type.clone());
-                assert!(llvm_struct_type.is_struct_type(), "indirect param type is not struct");
+                let ty = &abi_func_info.params_types[idx];
+                let llvm_type = self.emit_type(ty.clone());
 
                 let attr = unsafe {
-                    LLVMCreateTypeAttribute(
-                        self.llvm_ctx.as_ctx_ref(),
-                        byval_attr_kind,
-                        llvm_struct_type.as_type_ref(),
-                    )
+                    LLVMCreateTypeAttribute(self.llvm_ctx.as_ctx_ref(), byval_attr_kind, llvm_type.as_type_ref())
                 };
 
                 assert!(
