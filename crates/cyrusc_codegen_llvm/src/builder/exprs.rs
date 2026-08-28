@@ -8,7 +8,7 @@ use crate::{
         irreg::LocalIRValue,
         values::{InternalValue, InternalValueKind},
     },
-    llvm::{abi::callconv::LLVMCallConv, constness::is_basic_value_constant, debug_info::set_debug_location},
+    llvm::{constness::is_basic_value_constant, debug_info::set_debug_location},
 };
 use cyrusc_ast::operators::{InfixOperator, PrefixOperator};
 use cyrusc_internal::{
@@ -26,10 +26,9 @@ use cyrusc_source_loc::Loc;
 use cyrusc_typed_ast::types::PlainType;
 use inkwell::{
     AddressSpace, FloatPredicate, IntPredicate,
-    llvm_sys::core::LLVMSetInstructionCallConv,
     types::{AnyTypeEnum, ArrayType, BasicType, BasicTypeEnum, StructType},
     values::{
-        AggregateValueEnum, AnyValueEnum, ArrayValue, AsValueRef, BasicMetadataValueEnum, BasicValue, BasicValueEnum,
+        AggregateValueEnum, AnyValueEnum, ArrayValue, BasicMetadataValueEnum, BasicValue, BasicValueEnum,
         FunctionValue, IntValue, PointerValue, StructValue,
     },
 };
@@ -2286,19 +2285,13 @@ impl<'ll> CodeGenIRBuilder<'ll> {
             sret_alloca = Some(sret_ptr);
         }
 
-        self.emit_func_call_attributes(&abi_func_info, FuncCallKind::Direct(llvm_func_value));
-
         let call_site = self
             .llvm_builder
             .build_call(llvm_func_value, &llvm_args, "call")
             .unwrap();
 
-        unsafe {
-            LLVMSetInstructionCallConv(
-                call_site.as_value_ref(),
-                LLVMCallConv::from(&cir_func_type.callconv).as_u32(),
-            )
-        };
+        self.emit_call_site_attributes(&cir_func_type, abi_func_info, &call_site);
+        self.emit_func_call_attributes(&abi_func_info, FuncCallKind::Direct(llvm_func_value));
 
         if let Some(ptr) = sret_alloca {
             InternalValue::new(ret_type.clone(), InternalValueKind::LValue(ptr.into()))
@@ -2339,13 +2332,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
             .build_indirect_call(llvm_func_type, fn_ptr, &llvm_args, "indirect_call")
             .unwrap();
 
-        unsafe {
-            LLVMSetInstructionCallConv(
-                call_site.as_value_ref(),
-                LLVMCallConv::from(&cir_func_type.callconv).as_u32(),
-            )
-        };
-
+        self.emit_call_site_attributes(&cir_func_type, &abi_func_info, &call_site);
         self.emit_func_call_attributes(&abi_func_info, FuncCallKind::Indirect(call_site));
 
         if let Some(mut basic_value) = call_site.try_as_basic_value().basic() {
