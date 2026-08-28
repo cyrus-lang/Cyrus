@@ -11,7 +11,9 @@ import (
 import version;
 import cli;
 
-fn command_new(ctx: cli::ActionCtx) { @todo(); }
+fn command_new(ctx: cli::ActionCtx) {
+    @todo();
+}
 
 fn command_build(ctx: cli::ActionCtx) {
     printf("Build command triggered.\n");

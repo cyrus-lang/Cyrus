@@ -91,8 +91,7 @@ pub fn lower_sema_type(
         | SemaType::InferVar(_)
         | SemaType::Placeholder
         | SemaType::Err(_) => {
-            dbg!(ty.clone());
-            unreachable!()
+            panic!("encountered with unresolved symbol in lower sema type: {:#?}", ty)
         }
     }
     .const_inner()

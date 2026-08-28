@@ -10,7 +10,7 @@ import (
         stderr, ERANGE
     },
     std::io{Writer, StdoutWriter},
-    std::mem{Allocator, alloc},
+    std::mem{Allocator, alloc_init},
     std::collections{Vec},
     std::errors{ErrorOr},
     std::option{Option},
@@ -40,6 +40,13 @@ pub enum ParseError {
     MissingOption { opt: const uint8* },
     MissingValue { opt: const uint8* },
     InvalidValue { opt: const uint8* },
+}
+
+pub enum Value {
+    Str(String),
+    Int(int64),
+    Float(float64),
+    Bool(bool)
 }
 
 pub struct Cli {
@@ -86,9 +93,7 @@ pub struct Cli {
                 }
             }
             case .Error(err) => {
-                printf("err: %d\n", err);
-                // FIXME;
-                // self->display_parse_error(err);
+                self->display_parse_error(err);
                 return .Error(());
             }
         }
@@ -145,6 +150,12 @@ pub struct Cli {
                 break;
             }
 
+            const (is_assign, _) = is_opt_assign(arg);
+
+            if (is_assign) {
+                break;
+            }
+
             switch (cmd->sub_cmds->find(arg)) {
                 case .Some(_cmd) => cmd = _cmd;
                 case .None => return .Error(.UnknownCommand { cmd: arg });
@@ -163,36 +174,47 @@ pub struct Cli {
         var arg = pargs.argv[*i];
         var next_arg = pargs.argv[*i + 1];
 
+        const len = strlen(arg);
+
         const (single_dash, double_dash) = is_opt_dashed(arg);
 
         if (!(single_dash || double_dash)) {
             return .Error(.InvalidOption { opt: arg });
         }
 
-        const len = strlen(arg);
         var name: const uint8* = undefined;
 
         // Skip dashes
-        if (double_dash) {
-            name = arg + 2; // double dash
-        } else {
-            name = arg + 1; // single dash
-        }
+        if (double_dash) { name = arg + 2; } // Double dash
+        else { name = arg + 1; } // Single dash
     
         // Check option name to be present
         if (strcmp(name, "\0") == 0) {
             return .Error(.InvalidOption { opt: arg });
         }
 
-        // FIXME: I get a segfault when calling is_opt_assign
-        // maybe i'll fix it later.
-        // opt=10
-        // const (is_assign, assign_index) = is_opt_assign(name);
-        // if (is_assign) {
-        //     @memcpy(name, name, assign_index + 1);
-        //     printf("%s\n", name);
-        //     @todo();
-        // }
+        const (is_assign, var assign_index) = is_opt_assign(name);
+
+        // REVIEW: We might need to replace fixed-size buffers
+        // with a dynamically growable one.
+        if (is_assign) {
+            const name_len = strlen(name);
+
+            var opt_name: uint8[256];
+            var opt_val: uint8[256];
+            
+            @memcpy(&opt_name[0], name, assign_index + 1);
+            opt_name[assign_index] = '\0';
+
+            @assert(name[assign_index] == '=', "assign index is wrong");
+            assign_index += 1; // skip it
+
+            @memcpy(&opt_val[0], name + assign_index, assign_index);
+            opt_val[name_len] = '\0';
+            
+            name = &opt_name[0];
+            next_arg = &opt_val[0];
+        }
 
         var value: Value;
 
@@ -214,21 +236,23 @@ pub struct Cli {
         
         // For non-boolean options, or boolean with explicit value
         if (!next_arg) {
-            return .Error(.MissingValue { opt: arg });
+            return .Error(.MissingValue { opt: name });
         }
 
         if (is_arg_an_opt(next_arg)) {
             // Next arg is an option, but we need a value
-            return .Error(.MissingValue { opt: arg });
+            return .Error(.MissingValue { opt: name });
         }
 
         // Consume the value
         *i += 1;
 
         // Parse the value
-        value = self->parse_value(pargs.argv[*i]);
+        value = self->parse_value(next_arg);
     
     register_value:
+        opt->add_value(value);
+
         // Validate parsed value type
         // with expected type
         if (!is_value_valid(ty, value)) {
@@ -237,8 +261,6 @@ pub struct Cli {
                 ty: ty.to_str()
             });
         }
-
-        opt->add_value(value);
 
         // Option policy check
         switch (opt->check()) {
@@ -265,8 +287,8 @@ pub struct Cli {
         if (ok) {
             return .Float(float_value);
         }
-        
-        return .Str(arg);
+
+        return .Str(String.from_str(self->allocator, arg));
     }
 
     fn display_general_help(self: const Self*) {
@@ -348,11 +370,13 @@ pub struct Cli {
                 );
             }
         }
-        fprintf(stderr, "Please use --help to see usage.\n");
+        
+        fprintf(stderr, "Please use command `help` to see usage.\n");
     }
 
     pub fn free(self: Self*) {
         self->cmds.free();
+        self->opts->free();
     }
 }
 
@@ -368,13 +392,13 @@ pub struct Cmds {
     }
 
     pub fn add(self: Self*, cmd: Cmd) {
-        self->inner.push(alloc(self->allocator, cmd));
+        self->inner.push(alloc_init(self->allocator, cmd));
     }
 
     pub fn find(self: Self*, name: const uint8*) Option<Cmd*> {
         for (var i: usize = 0; i < self->inner.len(); i += 1) {
             const cmd = self->inner.get_owned(i).unwrap();
-            printf("cmd: %s\n", cmd->name);
+
             if (strcmp(cmd->name, name) == 0) {
                return .Some(cmd);
             }
@@ -431,7 +455,7 @@ pub struct Cmd {
     pub help: Option<uint8*>,
 
     pub fn new(allocator: Allocator, name: const uint8*, action: ActionFn) Self {
-        const sub_cmds: Cmds* = alloc(allocator, Cmds.new(allocator));
+        const sub_cmds: Cmds* = alloc_init(allocator, Cmds.new(allocator));
         @assert(sub_cmds, "allocation failed for sub_cmds");
         
         const opts: Vec<Opt*> = Vec.new(allocator);
@@ -512,7 +536,7 @@ pub struct Opts {
     }
 
     pub fn add(self: Self*, opt: Opt) Opt* {
-        const opt = alloc(self->allocator, opt);
+        const opt = alloc_init(self->allocator, opt);
         self->inner.push(opt);
         return opt;
     }
@@ -577,9 +601,9 @@ pub struct Opts {
 
     pub fn free(self: Self*) {
         for (var i: usize = 0; i < self->inner.len(); i += 1) {
-            var cmd = self->inner.get_owned(i).unwrap();
-            cmd->free();
-            self->allocator.free(cmd);
+            var opt = self->inner.get_owned(i).unwrap();
+            opt->free();
+            self->allocator.free(opt);
         }
 
         self->inner.free();
@@ -614,7 +638,7 @@ pub struct Opt {
     }
 
     pub fn add_value(self: Self*, value: Value) {
-        self->values.push(alloc(self->allocator, value));
+        self->values.push(alloc_init(self->allocator, value));
     }
 
     pub fn check(self: const Self*) ErrorOr<(), ParseError> {
@@ -654,18 +678,15 @@ pub struct Opt {
         for (var i: usize = 0; i < self->values.len(); i += 1) {
             const value = self->values.get_owned(i).unwrap();
 
+            switch (*value) {
+                case .Str(str) => str.free();
+            }
+
             self->allocator.free(value);    
         }
 
         self->values.free();
     }
-}
-
-pub enum Value {
-    Str(const uint8*),
-    Int(int64),
-    Float(float64),
-    Bool(bool)
 }
 
 pub enum ArgType {
@@ -760,16 +781,16 @@ fn parse_float(ok: bool*, arg: const uint8*) float64 {
     return @cast(float64, result);
 }
 
-// [[inline]]
-// fn is_opt_assign(arg: const uint8*) (bool, usize) {
-// const len = @cast(usize, strlen(arg));
-// for (var i: usize = 0; i < len; i += 1) {
-//     if (arg[i] == '=') {
-//         return (true, i);
-//     }
-// }
-// return (false, 0);
-// }
+[[inline]]
+fn is_opt_assign(arg: const uint8*) (bool, usize) {
+    const len = @cast(usize, strlen(arg));
+    for (var i: usize = 0; i < len; i += 1) {
+        if (arg[i] == '=') {
+            return (true, i);
+        }
+    }
+    return (false, 0);
+}
 
 [[inline]]
 fn is_opt_dashed(arg: const uint8*) (bool, bool) {
