@@ -97,8 +97,11 @@ pub struct Cli {
             }
         }
 
+        // If help option is enabled, only show options
+        // and DO NOT trigger action.
         if (self->opts->enabled("help")) {
             cmd->display_help();
+            return .Value(self);
         }
 
         (cmd->action)(ActionCtx {
