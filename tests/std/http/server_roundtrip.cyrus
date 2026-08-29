@@ -1,0 +1,42 @@
+// @stdout: HTTP/1.1 200 OK\nContent-Type: text/plain\nContent-Length: 11\n\nhello=cyrus
+
+import std::mem::libc{LibcAllocator};
+import std::http{Request, Response, HttpStatus};
+import std::http::server{Server};
+import std::http::router{Router};
+import std::net{TcpStream};
+import std::mem{Allocator};
+import std::libc{printf, strlen};
+
+fn greet(request: const Request*, response: Response*) {
+    response->set_status(HttpStatus.Ok);
+    response->set_content_type("text/plain");
+    response->set_body("hello=");
+    response->append_body(request->body());
+}
+
+pub fn main() {
+    var allocator: Allocator = dynamic LibcAllocator.new();
+
+    var router = Router.new(allocator);
+    defer router.free();
+
+    router.post("/greet", greet);
+
+    var server = Server.bind(allocator, &router, "127.0.0.1", 47830).unwrap();
+    defer server.close();
+
+    var client = TcpStream.connect("127.0.0.1", 47830).unwrap();
+    defer client.close();
+
+    const request = "POST /greet HTTP/1.1\r\nHost: local\r\nContent-Length: 5\r\n\r\ncyrus";
+    client.write(request, strlen(request));
+
+    server.serve_once().unwrap();
+
+    var inbox: uint8[512];
+    const received = client.read(&inbox[0], 511).unwrap();
+    inbox[received] = '\0';
+
+    printf("%s", &inbox[0]);
+}

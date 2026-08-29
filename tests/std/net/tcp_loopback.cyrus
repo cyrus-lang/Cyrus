@@ -1,0 +1,29 @@
+// @stdout: ping pong
+
+import std::net{TcpListener, TcpStream};
+import std::libc{printf};
+
+pub fn main() {
+    var listener = TcpListener.bind("127.0.0.1", 47829, 8).unwrap();
+    defer listener.close();
+
+    var client = TcpStream.connect("127.0.0.1", 47829).unwrap();
+    defer client.close();
+
+    var peer = listener.accept().unwrap();
+    defer peer.close();
+
+    client.write("ping", 4);
+
+    var inbox: uint8[16];
+    const received = peer.read(&inbox[0], 15).unwrap();
+    inbox[received] = '\0';
+
+    peer.write("pong", 4);
+
+    var outbox: uint8[16];
+    const answered = client.read(&outbox[0], 15).unwrap();
+    outbox[answered] = '\0';
+
+    printf("%s %s\n", &inbox[0], &outbox[0]);
+}

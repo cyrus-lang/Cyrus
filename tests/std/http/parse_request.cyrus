@@ -1,0 +1,30 @@
+// @stdout: POST /users id=7 HTTP/1.1\n3 localhost text/plain 5 hello\n
+
+import std::mem::libc{LibcAllocator};
+import std::http{Request};
+import std::mem{Allocator};
+import std::libc{printf, strlen};
+
+pub fn main() {
+    var allocator: Allocator = dynamic LibcAllocator.new();
+
+    const raw = "POST /users?id=7 HTTP/1.1\r\nHost: localhost\r\nContent-Type: text/plain\r\nContent-Length: 5\r\n\r\nhello";
+
+    var request = Request.parse(allocator, raw, strlen(raw)).unwrap();
+    defer request.free();
+
+    printf("%s %s %s %s\n",
+        request.method().as_str(),
+        request.path(),
+        request.query(),
+        request.version()
+    );
+
+    printf("%lu %s %s %lu %s\n",
+        request.header_count(),
+        request.header("host").unwrap(),
+        request.header("CONTENT-TYPE").unwrap(),
+        request.content_length(),
+        request.body()
+    );
+}

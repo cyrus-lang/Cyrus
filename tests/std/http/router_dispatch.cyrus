@@ -1,0 +1,44 @@
+// @stdout: 200 home\n200 static\n405 405 Method Not Allowed\n404 404 Not Found\n
+
+import std::mem::libc{LibcAllocator};
+import std::http{Request, Response, HttpStatus};
+import std::http::router{Router};
+import std::mem{Allocator};
+import std::libc{printf, strlen};
+
+fn home(request: const Request*, response: Response*) {
+    response->set_status(HttpStatus.Ok);
+    response->set_body("home");
+}
+
+fn assets(request: const Request*, response: Response*) {
+    response->set_status(HttpStatus.Ok);
+    response->set_body("static");
+}
+
+fn dispatch(allocator: Allocator, router: const Router*, raw: const uint8*) {
+    var request = Request.parse(allocator, raw, strlen(raw)).unwrap();
+    defer request.free();
+
+    var response = Response.new(allocator);
+    defer response.free();
+
+    router->dispatch(&request, &response);
+
+    printf("%d %s\n", response.status().code(), response.body());
+}
+
+pub fn main() {
+    var allocator: Allocator = dynamic LibcAllocator.new();
+
+    var router = Router.new(allocator);
+    defer router.free();
+
+    router.get("/", home);
+    router.get("/assets/*", assets);
+
+    dispatch(allocator, &router, "GET / HTTP/1.1\r\nHost: local\r\n\r\n");
+    dispatch(allocator, &router, "GET /assets/app.css HTTP/1.1\r\nHost: local\r\n\r\n");
+    dispatch(allocator, &router, "POST / HTTP/1.1\r\nHost: local\r\n\r\n");
+    dispatch(allocator, &router, "GET /missing HTTP/1.1\r\nHost: local\r\n\r\n");
+}
