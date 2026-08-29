@@ -63,7 +63,7 @@ pub struct Logger {
     pub fn new(writer: Writer) Self {
         return Self {
             writer,
-            min_level: LogLevel.Info,
+            min_level: .Info,
             colored: false,
             timestamped: false,
             scope: null,
@@ -152,32 +152,32 @@ pub struct Logger {
 
     [[inline]]
     pub fn trace(self: Self*, mesg: const uint8*) {
-        self->log(LogLevel.Trace, mesg);
+        self->log(.Trace, mesg);
     }
 
     [[inline]]
     pub fn debug(self: Self*, mesg: const uint8*) {
-        self->log(LogLevel.Debug, mesg);
+        self->log(.Debug, mesg);
     }
 
     [[inline]]
     pub fn info(self: Self*, mesg: const uint8*) {
-        self->log(LogLevel.Info, mesg);
+        self->log(.Info, mesg);
     }
 
     [[inline]]
     pub fn warn(self: Self*, mesg: const uint8*) {
-        self->log(LogLevel.Warn, mesg);
+        self->log(.Warn, mesg);
     }
 
     [[inline]]
     pub fn error(self: Self*, mesg: const uint8*) {
-        self->log(LogLevel.Error, mesg);
+        self->log(.Error, mesg);
     }
 
     [[inline]]
     pub fn fatal(self: Self*, mesg: const uint8*) {
-        self->log(LogLevel.Fatal, mesg);
+        self->log(.Fatal, mesg);
     }
 }
 
