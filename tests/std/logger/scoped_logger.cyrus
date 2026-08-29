@@ -5,10 +5,10 @@ import std::io{Writer, StderrWriter};
 import std::libc{printf};
 
 pub fn main() {
-    var stderr_writer = StderrWriter.new();
-    var writer: Writer = dynamic stderr_writer;
+    const stderr_writer = StderrWriter.new();
+    const writer: Writer = dynamic stderr_writer;
 
-    var logger = Logger.with_level(writer, LogLevel.Warn);
+    const logger = Logger.with_level(writer, LogLevel.Warn);
     logger.set_scope("db");
 
     logger.info("connected");
