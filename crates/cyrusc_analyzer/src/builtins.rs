@@ -477,7 +477,7 @@ impl<'a> AnalysisContext<'a> {
 
     fn analyze_builtin_panic(&mut self, builtin_func: &mut TypedBuiltinFunc) -> Option<SemaType> {
         let param_types = [
-            SemaType::Pointer(Box::new(SemaType::Plain(PlainType::UInt8))), // msg? (char*)
+            SemaType::Pointer(Box::new(SemaType::Const(Box::new(SemaType::Plain(PlainType::UInt8))))), // msg? (const char*)
         ];
 
         for (arg, expected_type) in builtin_func.args.iter_mut().zip(param_types.iter()) {
