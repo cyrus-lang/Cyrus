@@ -70,7 +70,20 @@ pub struct Server {
         var raw = String.new(self->allocator);
 
         switch (self->read_message(&stream, &raw)) {
-            case .Value(_) => {}
+            case .Value(within_limit) => {
+                if (!within_limit) {
+                    var oversized = Response.new(self->allocator);
+                    oversized.set_status(HttpStatus.PayloadTooLarge);
+                    oversized.set_content_type("text/plain");
+                    oversized.set_body("413 Payload Too Large");
+                    oversized.write_to(&stream);
+                    oversized.free();
+
+                    raw.free();
+                    stream.close();
+                    return .Value(());
+                }
+            }
             case .Error(err) => {
                 raw.free();
                 stream.close();
@@ -135,7 +148,7 @@ pub struct Server {
         return .Value(());
     }
 
-    fn read_message(self: Self*, stream: TcpStream*, raw: String*) ErrorOr<(), ErrorStr> {
+    fn read_message(self: Self*, stream: TcpStream*, raw: String*) ErrorOr<bool, ErrorStr> {
         var chunk: uint8[READ_CHUNK_SIZE];
         var headers_end: usize = 0;
         var expected: usize = 0;
@@ -145,10 +158,6 @@ pub struct Server {
                 if (raw->len() >= headers_end + expected) {
                     break;
                 }
-            }
-
-            if (raw->len() >= self->max_request_size) {
-                return .Error("http request exceeds the maximum allowed size");
             }
 
             var count: usize = 0;
@@ -165,18 +174,26 @@ pub struct Server {
             chunk[count] = '\0';
             raw->push_str(&chunk[0]);
 
+            if (raw->len() > self->max_request_size) {
+                return .Value(false);
+            }
+
             if (headers_end == 0) {
                 switch (header_terminator(raw->as_str_const())) {
                     case .Some(index) => {
                         headers_end = index;
                         expected = scan_content_length(raw->as_str_const(), raw->len());
+
+                        if (headers_end + expected > self->max_request_size) {
+                            return .Value(false);
+                        }
                     }
                     case .None => {}
                 }
             }
         }
 
-        return .Value(());
+        return .Value(true);
     }
 
     [[inline]]
