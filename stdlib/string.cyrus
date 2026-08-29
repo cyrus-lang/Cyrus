@@ -2,19 +2,22 @@
 // Copyright (c) 2026 The Cyrus Language
 
 import (
+    std::libc::types{c_int, c_char},
+    std::collections{Vec},
+    std::option{Option},
+    std::mem{Allocator},
+    std::slices{Slice},
     std::libc{
         strlen,
         strcmp,
         memmove,
         isspace,
         tolower,
-        toupper
+        toupper,
+        strtol,
+        errno,
+        ERANGE
     },
-    std::libc::types{c_int},
-    std::collections{Vec},
-    std::option{Option},
-    std::mem{Allocator},
-    std::slices{Slice},
 );
 
 pub struct String {
@@ -203,4 +206,17 @@ pub struct String {
     pub fn free(self: Self*) {
         self->vec.free();
     }
+}
+
+fn try_str_as_num(str: const uint8*) Option<int64> {
+    var endptr: c_char*;
+
+    errno = 0;
+    const result = strtol(str, &endptr, 10);
+
+    if ((errno == ERANGE || endptr == str) || *endptr != '\0') {
+        return .None;
+    }
+
+    return .Some(@cast(int64, result));
 }
