@@ -208,7 +208,7 @@ pub struct String {
     }
 }
 
-fn try_str_as_num(str: const uint8*) Option<int64> {
+pub fn try_str_as_int64(str: const uint8*) Option<int64> {
     var endptr: c_char*;
 
     errno = 0;
@@ -219,4 +219,29 @@ fn try_str_as_num(str: const uint8*) Option<int64> {
     }
 
     return .Some(@cast(int64, result));
+}
+
+pub fn try_str_as_octal(buf: const uint8*) Option<uint32> {
+    const len = strlen(buf);
+
+    if (len == 0 || len > 3) {
+        return .None;
+    }
+    
+    var value: uint32 = 0;
+    
+    for (var i: usize = 0; i < len; i += 1) {
+        const char = buf[i];
+        
+        // Validate octal digit (0-7)
+        if (char < '0' || char > '7') {
+            return .None;
+        }
+        
+        const digit = char - '0';
+        
+        value = (value * 8) + digit;
+    }
+    
+    return .Some(value);
 }

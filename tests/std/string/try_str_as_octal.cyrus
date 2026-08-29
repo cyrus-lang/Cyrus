@@ -1,0 +1,20 @@
+// @stdout: 301, 6, ok
+
+import std::string{try_str_as_octal};
+import std::libc{printf};
+
+pub fn main() {
+    {
+        const num = try_str_as_octal("455").unwrap();
+        printf("%ld, ", num);
+    }
+    {
+        const num = try_str_as_octal("6").unwrap();
+        printf("%ld, ", num);
+    }
+    {
+        switch (try_str_as_octal("meow")) {
+            case .None => printf("ok\n");
+        }
+    }
+}
