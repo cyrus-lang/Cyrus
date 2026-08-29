@@ -634,7 +634,7 @@ pub fn escape_sequence_to_char(seq: uint8) uint8 {
         case '\'' => return '\'';
         case '"' => return '"';
     }
-    @unreachable();
+    return seq;
 }
 
 [[inline]]
