@@ -51,10 +51,10 @@ pub struct CSockAddrIn {
 
 pub extern "C" {
     fn socket(domain: c_int, socket_type: c_int, protocol: c_int) c_int;
-    fn bind(sockfd: c_int, addr: const c_void*, addrlen: c_uint) c_int;
+    fn bind(sockfd: c_int, addr: const CSockAddr*, addrlen: c_uint) c_int;
     fn listen(sockfd: c_int, backlog: c_int) c_int;
-    fn accept(sockfd: c_int, addr: c_void*, addrlen: c_uint*) c_int;
-    fn connect(sockfd: c_int, addr: const c_void*, addrlen: c_uint) c_int;
+    fn accept(sockfd: c_int, addr: CSockAddr*, addrlen: c_uint*) c_int;
+    fn connect(sockfd: c_int, addr: const CSockAddr*, addrlen: c_uint) c_int;
     fn setsockopt(sockfd: c_int, level: c_int, optname: c_int, optval: const c_void*, optlen: c_uint) c_int;
     fn getsockopt(sockfd: c_int, level: c_int, optname: c_int, optval: c_void*, optlen: c_uint*) c_int;
     fn send(sockfd: c_int, buf: const c_void*, len: c_size, flags: c_int) c_ssize;
@@ -127,7 +127,9 @@ pub struct TcpStream {
             return .Error(last_error());
         }
 
-        if (connect(fd, @cast(void*, &addr), @cast(c_uint, @sizeof(CSockAddrIn))) < 0) {
+        const generic: CSockAddr* = @cast(void*, &addr);
+
+        if (connect(fd, generic, @cast(c_uint, @sizeof(CSockAddrIn))) < 0) {
             const err = last_error();
             close(fd);
             return .Error(err);
@@ -205,7 +207,9 @@ pub struct TcpListener {
             return .Error(err);
         }
 
-        if (bind(fd, @cast(void*, &addr), @cast(c_uint, @sizeof(CSockAddrIn))) < 0) {
+        const generic: CSockAddr* = @cast(void*, &addr);
+
+        if (bind(fd, generic, @cast(c_uint, @sizeof(CSockAddrIn))) < 0) {
             const err = last_error();
             close(fd);
             return .Error(err);
@@ -234,7 +238,7 @@ pub struct TcpListener {
         var peer: CSockAddr;
         var peer_len: c_uint = @cast(c_uint, @sizeof(CSockAddr));
 
-        const fd = accept(self->fd, @cast(void*, &peer), &peer_len);
+        const fd = accept(self->fd, &peer, &peer_len);
 
         if (fd < 0) {
             return .Error(last_error());
