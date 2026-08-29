@@ -1,6 +1,6 @@
 // @stderr: [WARN] db: retrying\n[FATAL] db: unrecoverable\n
 
-import std::logger{Logger, LogLevel};
+import std::logger{Logger};
 import std::io{Writer, StderrWriter};
 import std::libc{printf};
 
@@ -8,13 +8,13 @@ pub fn main() {
     const stderr_writer = StderrWriter.new();
     const writer: Writer = dynamic stderr_writer;
 
-    const logger = Logger.with_level(writer, LogLevel.Warn);
+    const logger = Logger.with_level(writer, .Warn);
     logger.set_scope("db");
 
     logger.info("connected");
     logger.warn("retrying");
     logger.fatal("unrecoverable");
 
-    logger.set_level(LogLevel.Off);
+    logger.set_level(.Off);
     logger.fatal("silenced");
 }
