@@ -176,7 +176,7 @@ pub struct Request {
     pub fn new(allocator: Allocator) Self {
         return Self {
             allocator,
-            method: HttpMethod.Unknown,
+            method: .Unknown,
             target: String.new(allocator),
             path: String.new(allocator),
             query: String.new(allocator),
@@ -368,7 +368,7 @@ pub struct Response {
     pub fn new(allocator: Allocator) Self {
         return Self {
             allocator,
-            status: HttpStatus.Ok,
+            status: .Ok,
             headers: Vec.new(allocator),
             body: String.new(allocator),
         };
@@ -496,7 +496,7 @@ pub struct Response {
 
         self->headers.clear();
         self->body.clear();
-        self->status = HttpStatus.Ok;
+        self->status = .Ok;
     }
 
     pub fn free(self: Self*) {
@@ -514,9 +514,7 @@ pub fn eq_ignore_case(left: const uint8*, right: const uint8*) bool {
     @assert(left, "left cannot be null");
     @assert(right, "right cannot be null");
 
-    var i: usize = 0;
-
-    while (left[i] != '\0' && right[i] != '\0') {
+    for (var i: usize = 0; true; i += 1) {
         const a = tolower(@cast(c_int, left[i]));
         const b = tolower(@cast(c_int, right[i]));
 
@@ -524,10 +522,12 @@ pub fn eq_ignore_case(left: const uint8*, right: const uint8*) bool {
             return false;
         }
 
-        i += 1;
+        if (a == 0) {
+            return true;
+        }
     }
 
-    return left[i] == right[i];
+    return true;
 }
 
 pub fn header_terminator(data: const uint8*) Option<usize> {
@@ -562,11 +562,9 @@ pub fn scan_content_length(data: const uint8*, len: usize) usize {
 
         const colon = find_byte(data, current_end, cursor, ':');
 
-        if (colon < current_end) {
-            if (range_eq_ignore_case(data, cursor, colon, "content-length")) {
-                const value_start = skip_spaces(data, current_end, colon + 1);
-                return strtoul(data + value_start, null, 10);
-            }
+        if (colon < current_end && range_eq_ignore_case(data, cursor, colon, "content-length")) {
+            const value_start = skip_spaces(data, current_end, colon + 1);
+            return strtoul(data + value_start, null, 10);
         }
 
         cursor = next_line(data, len, current_end);
@@ -595,37 +593,33 @@ fn range_eq_ignore_case(data: const uint8*, start: usize, end: usize, name: cons
 }
 
 fn find_byte(data: const uint8*, len: usize, start: usize, needle: uint8) usize {
-    var i = start;
-
-    while (i < len) {
+    for (var i = start; i < len; i += 1) {
         if (data[i] == needle) {
             return i;
         }
-
-        i += 1;
     }
 
     return len;
 }
 
 fn skip_spaces(data: const uint8*, len: usize, start: usize) usize {
-    var i = start;
-
-    while (i < len && data[i] == ' ') {
-        i += 1;
+    for (var i = start; i < len; i += 1) {
+        if (data[i] != ' ') {
+            return i;
+        }
     }
 
-    return i;
+    return len;
 }
 
 fn line_end(data: const uint8*, len: usize, start: usize) usize {
-    var i = start;
-
-    while (i < len && (data[i] != '\r' && data[i] != '\n')) {
-        i += 1;
+    for (var i = start; i < len; i += 1) {
+        if (data[i] == '\r' || data[i] == '\n') {
+            return i;
+        }
     }
 
-    return i;
+    return len;
 }
 
 fn next_line(data: const uint8*, len: usize, end: usize) usize {
@@ -645,11 +639,8 @@ fn next_line(data: const uint8*, len: usize, end: usize) usize {
 fn copy_range(allocator: Allocator, data: const uint8*, start: usize, end: usize) String {
     var out = String.new(allocator);
 
-    var i = start;
-
-    while (i < end) {
+    for (var i = start; i < end; i += 1) {
         out.push(data[i]);
-        i += 1;
     }
 
     return out;

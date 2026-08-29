@@ -63,37 +63,37 @@ pub struct Router {
 
     [[inline]]
     pub fn get(self: Self*, path: const uint8*, handler: Handler) {
-        self->add(HttpMethod.Get, path, handler);
+        self->add(.Get, path, handler);
     }
 
     [[inline]]
     pub fn head(self: Self*, path: const uint8*, handler: Handler) {
-        self->add(HttpMethod.Head, path, handler);
+        self->add(.Head, path, handler);
     }
 
     [[inline]]
     pub fn post(self: Self*, path: const uint8*, handler: Handler) {
-        self->add(HttpMethod.Post, path, handler);
+        self->add(.Post, path, handler);
     }
 
     [[inline]]
     pub fn put(self: Self*, path: const uint8*, handler: Handler) {
-        self->add(HttpMethod.Put, path, handler);
+        self->add(.Put, path, handler);
     }
 
     [[inline]]
     pub fn delete(self: Self*, path: const uint8*, handler: Handler) {
-        self->add(HttpMethod.Delete, path, handler);
+        self->add(.Delete, path, handler);
     }
 
     [[inline]]
     pub fn patch(self: Self*, path: const uint8*, handler: Handler) {
-        self->add(HttpMethod.Patch, path, handler);
+        self->add(.Patch, path, handler);
     }
 
     [[inline]]
     pub fn options(self: Self*, path: const uint8*, handler: Handler) {
-        self->add(HttpMethod.Options, path, handler);
+        self->add(.Options, path, handler);
     }
 
     [[inline]]
@@ -136,7 +136,6 @@ pub struct Router {
                 handler(request, response);
                 return true;
             }
-            case .None => {}
         }
 
         switch (self->fallback) {
@@ -144,15 +143,14 @@ pub struct Router {
                 handler(request, response);
                 return true;
             }
-            case .None => {}
         }
 
         if (self->allows(request->path())) {
-            response->set_status(HttpStatus.MethodNotAllowed);
+            response->set_status(.MethodNotAllowed);
             response->set_content_type("text/plain");
             response->set_body("405 Method Not Allowed");
         } else {
-            response->set_status(HttpStatus.NotFound);
+            response->set_status(.NotFound);
             response->set_content_type("text/plain");
             response->set_body("404 Not Found");
         }
@@ -170,23 +168,19 @@ pub fn path_matches(pattern: const uint8*, path: const uint8*) bool {
     @assert(pattern, "pattern cannot be null");
     @assert(path, "path cannot be null");
 
-    var i: usize = 0;
-
-    while (pattern[i] != '\0') {
+    for (var i: usize = 0; true; i += 1) {
         if (pattern[i] == '*') {
             return true;
+        }
+
+        if (pattern[i] == '\0') {
+            return path[i] == '\0' || (path[i] == '/' && path[i + 1] == '\0');
         }
 
         if (pattern[i] != path[i]) {
             return false;
         }
-
-        i += 1;
     }
 
-    if (path[i] == '\0') {
-        return true;
-    }
-
-    return path[i] == '/' && path[i + 1] == '\0';
+    return false;
 }
