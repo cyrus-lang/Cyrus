@@ -571,7 +571,6 @@ pub struct Loc {
         if (self.start < other.start) {
             merge.start = self.start;
         }
-        
         if (self.end > other.end) {
             merge.end = self.end;
         }
