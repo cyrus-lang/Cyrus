@@ -444,12 +444,16 @@ pub enum Literal : Format {
                 writer.write(value.as_str_const());
                 writer.write("\"");
             }
-            case .Char(value) => {
+            case .Char(var char) => {
+                const escaped = char_to_escape_sequence(char);
                 writer.write_char('\'');
-                writer.write_char(value);
+                if (is_escaped_char(char)) {
+                    writer.write_char('\\');
+                }
+                writer.write_char(escaped);
                 writer.write_char('\'');
             }
-            case .Bool(value) => format_bool(writer, value);
+            case .Bool(char) => format_bool(writer, char);
             case .Null => writer.write("null");
         }
         return true;
@@ -613,4 +617,66 @@ pub fn dump_token(token: Token) {
         token.loc.start,
         token.loc.end
     );
+}
+
+[[inline]]
+pub fn escape_sequence_to_char(seq: uint8) uint8 {
+    switch (seq) {
+        case '0' => return '\0';
+        case 'n' => return '\n';
+        case 't' => return '\t';
+        case 'r' => return '\r';
+        case 'b' => return '\b';
+        case 'a' => return '\a';
+        case 'v' => return '\v';
+        case 'f' => return '\f';
+        case '\\' => return '\\';
+        case '\'' => return '\'';
+        case '"' => return '"';
+    }
+    @unreachable();
+}
+
+[[inline]]
+pub fn char_to_escape_sequence(char: uint8) uint8 {
+    switch (char) {
+        case '\0' => return '0';
+        case '\n' => return 'n';
+        case '\t' => return 't';
+        case '\r' => return 'r';
+        case '\b' => return 'b';
+        case '\a' => return 'a';
+        case '\v' => return 'v';
+        case '\f' => return 'f';
+        case '\\' => return '\\';
+        case '\'' => return '\'';
+        case '"' => return '"';
+    }
+    return char;
+}
+
+[[inline]]
+pub fn is_escape_sequence_char(char: uint8) bool {
+    if (char == '0' || char == 'n' || char == 't' ||
+        char == 'r' || char == 'b' || char == 'a' ||
+        char == 'v' || char == 'f' || char == '"' ||
+        char == '\\' || char ==  '\'')
+    {
+        return true;
+    } else {
+        return false;
+    }
+}
+
+[[inline]]
+pub fn is_escaped_char(char: uint8) bool {
+    if (char == '\0' || char == '\n' || char == '\t' ||
+        char == '\r' || char == '\b' || char == '\a' ||
+        char == '\v' || char == '\f' || char == '\"' ||
+        char == '\\' || char ==  '\'')
+    {
+        return true;
+    } else {
+        return false;
+    }
 }
