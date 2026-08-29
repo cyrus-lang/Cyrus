@@ -320,7 +320,7 @@ pub struct Connection {
             return .Error("could not allocate a postgres connection");
         }
 
-        if (PQstatus(conn) != ConnStatus.Ok.as_num()) {
+        if (ConnStatus.from_num(PQstatus(conn)) != .Ok) {
             PQfinish(conn);
             return .Error("could not connect to the postgres server");
         }
@@ -352,7 +352,7 @@ pub struct Connection {
 
     [[inline]]
     pub fn is_ok(self: const Self*) bool {
-        return self->status().as_num() == ConnStatus.Ok.as_num();
+        return self->status() == .Ok;
     }
 
     [[inline]]
