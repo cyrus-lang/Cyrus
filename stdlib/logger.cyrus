@@ -1,0 +1,197 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 The Cyrus Language
+
+import (
+    std::libc{time, localtime_r, strftime, CTm},
+    std::libc::types{c_long},
+    std::io{Writer},
+);
+
+const TIMESTAMP_BUF_SIZE: usize = 32;
+
+pub enum LogLevel {
+    Trace = 0,
+    Debug = 1,
+    Info = 2,
+    Warn = 3,
+    Error = 4,
+    Fatal = 5,
+    Off = 6,
+
+    [[inline]]
+    pub fn as_num(self: Self) int32 {
+        return @cast(int32, self);
+    }
+
+    [[inline]]
+    pub fn from_num(value: int32) Self {
+        return @cast(LogLevel, value);
+    }
+
+    pub fn as_str(self: Self) const uint8* {
+        switch (self) {
+            case .Trace => return "TRACE";
+            case .Debug => return "DEBUG";
+            case .Info => return "INFO";
+            case .Warn => return "WARN";
+            case .Error => return "ERROR";
+            case .Fatal => return "FATAL";
+            case .Off => return "OFF";
+        }
+    }
+
+    pub fn color(self: Self) const uint8* {
+        switch (self) {
+            case .Trace => return "\x1b[90m";
+            case .Debug => return "\x1b[36m";
+            case .Info => return "\x1b[32m";
+            case .Warn => return "\x1b[33m";
+            case .Error => return "\x1b[31m";
+            case .Fatal => return "\x1b[35m";
+            case .Off => return "";
+        }
+    }
+}
+
+pub struct Logger {
+    writer: Writer,
+    min_level: LogLevel,
+    colored: bool,
+    timestamped: bool,
+    scope: const uint8*,
+
+    pub fn new(writer: Writer) Self {
+        return Self {
+            writer,
+            min_level: LogLevel.Info,
+            colored: false,
+            timestamped: false,
+            scope: null,
+        };
+    }
+
+    pub fn with_level(writer: Writer, min_level: LogLevel) Self {
+        return Self {
+            writer,
+            min_level,
+            colored: false,
+            timestamped: false,
+            scope: null,
+        };
+    }
+
+    [[inline]]
+    pub fn set_level(self: Self*, min_level: LogLevel) {
+        self->min_level = min_level;
+    }
+
+    [[inline]]
+    pub fn level(self: const Self*) LogLevel {
+        return self->min_level;
+    }
+
+    [[inline]]
+    pub fn set_colored(self: Self*, colored: bool) {
+        self->colored = colored;
+    }
+
+    [[inline]]
+    pub fn set_timestamped(self: Self*, timestamped: bool) {
+        self->timestamped = timestamped;
+    }
+
+    [[inline]]
+    pub fn set_scope(self: Self*, scope: const uint8*) {
+        self->scope = scope;
+    }
+
+    [[inline]]
+    pub fn enabled(self: const Self*, level: LogLevel) bool {
+        return level.as_num() >= self->min_level.as_num();
+    }
+
+    pub fn log(self: Self*, level: LogLevel, mesg: const uint8*) {
+        @assert(mesg, "mesg cannot be null");
+
+        if (!self->enabled(level)) {
+            return;
+        }
+
+        var writer = self->writer;
+
+        if (self->colored) {
+            writer.write(level.color());
+        }
+
+        if (self->timestamped) {
+            var buffer: uint8[TIMESTAMP_BUF_SIZE];
+            format_timestamp(&buffer[0], TIMESTAMP_BUF_SIZE);
+            writer.write(&buffer[0]);
+            writer.write_char(' ');
+        }
+
+        writer.write_char('[');
+        writer.write(level.as_str());
+        writer.write_char(']');
+        writer.write_char(' ');
+
+        if (self->scope != null) {
+            writer.write(self->scope);
+            writer.write(": ");
+        }
+
+        writer.write(mesg);
+
+        if (self->colored) {
+            writer.write("\x1b[0m");
+        }
+
+        writer.write_char('\n');
+        writer.flush();
+    }
+
+    [[inline]]
+    pub fn trace(self: Self*, mesg: const uint8*) {
+        self->log(LogLevel.Trace, mesg);
+    }
+
+    [[inline]]
+    pub fn debug(self: Self*, mesg: const uint8*) {
+        self->log(LogLevel.Debug, mesg);
+    }
+
+    [[inline]]
+    pub fn info(self: Self*, mesg: const uint8*) {
+        self->log(LogLevel.Info, mesg);
+    }
+
+    [[inline]]
+    pub fn warn(self: Self*, mesg: const uint8*) {
+        self->log(LogLevel.Warn, mesg);
+    }
+
+    [[inline]]
+    pub fn error(self: Self*, mesg: const uint8*) {
+        self->log(LogLevel.Error, mesg);
+    }
+
+    [[inline]]
+    pub fn fatal(self: Self*, mesg: const uint8*) {
+        self->log(LogLevel.Fatal, mesg);
+    }
+}
+
+pub fn format_timestamp(buffer: uint8*, size: usize) usize {
+    @assert(buffer, "buffer cannot be null");
+
+    var out = buffer;
+    var now: c_long = time(null);
+    var tm: CTm;
+
+    if (localtime_r(&now, &tm) == null) {
+        out[0] = '\0';
+        return 0;
+    }
+
+    return strftime(out, size, "%Y-%m-%d %H:%M:%S", &tm);
+}
