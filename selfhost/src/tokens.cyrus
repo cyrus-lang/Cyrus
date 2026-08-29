@@ -1,21 +1,23 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 The Cyrus Language
 
-import std::mem::libc{LibcAllocator};
-import std::collections{Vec};
-import std::io{StringWriter};
-import std::string{String};
-import std::mem{Allocator};
-import std::option{Option};
-import std::libc{printf};
-import std::io{Writer};
-import std::format{
-    Format,
-    format_int128,
-    format_uint128,
-    format_float64,
-    format_bool
-};
+import (
+    std::mem::libc{LibcAllocator},
+    std::collections{Vec},
+    std::io{StringWriter},
+    std::string{String},
+    std::mem{Allocator},
+    std::option{Option},
+    std::libc{printf},
+    std::io{Writer},
+    std::format{
+        Format,
+        format_int128,
+        format_uint128,
+        format_float64,
+        format_bool
+    }
+);
 
 pub struct SourceTokens {
     // pub source_id: SourceId,
@@ -413,6 +415,7 @@ pub enum Literal : Format {
         value: String,
         suffix: Option<StringPrefix>
     },
+    Char(uint8),
     Bool(bool),
     Null,
 
@@ -441,12 +444,13 @@ pub enum Literal : Format {
                 writer.write(value.as_str_const());
                 writer.write("\"");
             }
-            case .Bool(value) => {
-                format_bool(writer, value);
+            case .Char(value) => {
+                writer.write_char('\'');
+                writer.write_char(value);
+                writer.write_char('\'');
             }
-            case .Null => {
-                writer.write("null");
-            }
+            case .Bool(value) => format_bool(writer, value);
+            case .Null => writer.write("null");
         }
         return true;
     }
@@ -563,16 +567,16 @@ pub struct Loc {
         var merge = self;
         
         // Start line
-        if (self.line < other.line) {
+        if (other.line < merge.line) {
             merge.line = other.line;
         }
         
         // Byte offsets
-        if (self.start < other.start) {
-            merge.start = self.start;
+        if (other.start < merge.start) {
+            merge.start = other.start;
         }
-        if (self.end > other.end) {
-            merge.end = self.end;
+        if (other.end > merge.end) {
+            merge.end = other.end;
         }
         
         return merge;
