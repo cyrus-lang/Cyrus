@@ -114,11 +114,8 @@ pub struct TcpStream {
     }
 
     pub fn connect(address: const uint8*, port: uint16) ErrorOr<Self, ErrorStr> {
-        var addr: CSockAddrIn;
-
-        switch (make_ipv4_addr(address, port)) {
-            case .Value(value) => addr = value;
-            case .Error(err) => return .Error(err);
+        switch (make_ipv4_addr(address, port)) case .Value(var addr) else {
+            return .Error("invalid ipv4 address");
         }
 
         const fd = socket(AF_INET, SOCK_STREAM, 0);
@@ -186,11 +183,8 @@ pub struct TcpListener {
     fd: c_int,
 
     pub fn bind(address: const uint8*, port: uint16, backlog: int32) ErrorOr<Self, ErrorStr> {
-        var addr: CSockAddrIn;
-
-        switch (make_ipv4_addr(address, port)) {
-            case .Value(value) => addr = value;
-            case .Error(err) => return .Error(err);
+        switch (make_ipv4_addr(address, port)) case .Value(var addr) else {
+            return .Error("invalid ipv4 address");
         }
 
         const fd = socket(AF_INET, SOCK_STREAM, 0);

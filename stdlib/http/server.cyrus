@@ -28,16 +28,16 @@ pub struct Server {
     ) ErrorOr<Self, ErrorStr> {
         @assert(router, "router cannot be null");
 
-        switch (TcpListener.bind(address, port, DEFAULT_BACKLOG)) {
-            case .Value(listener) => {
-                return .Value(Self {
-                    allocator,
-                    listener,
-                    router,
-                    max_request_size: DEFAULT_MAX_REQUEST_SIZE,
-                    running: false,
-                });
-            }
+        const bound = TcpListener.bind(address, port, DEFAULT_BACKLOG);
+
+        switch (bound) {
+            case .Value(listener) => return .Value(Self {
+                allocator,
+                listener,
+                router,
+                max_request_size: DEFAULT_MAX_REQUEST_SIZE,
+                running: false,
+            });
             case .Error(err) => return .Error(err);
         }
     }
@@ -73,7 +73,7 @@ pub struct Server {
             case .Value(within_limit) => {
                 if (!within_limit) {
                     var oversized = Response.new(self->allocator);
-                    oversized.set_status(HttpStatus.PayloadTooLarge);
+                    oversized.set_status(.PayloadTooLarge);
                     oversized.set_content_type("text/plain");
                     oversized.set_body("413 Payload Too Large");
                     oversized.write_to(&stream);
@@ -118,7 +118,7 @@ pub struct Server {
             }
             case .Error(err) => {
                 var response = Response.new(self->allocator);
-                response.set_status(HttpStatus.BadRequest);
+                response.set_status(.BadRequest);
                 response.set_content_type("text/plain");
                 response.set_body("400 Bad Request");
                 response.write_to(&stream);
@@ -139,10 +139,7 @@ pub struct Server {
         self->running = true;
 
         while (self->running) {
-            switch (self->serve_once()) {
-                case .Value(_) => {}
-                case .Error(_) => {}
-            }
+            self->serve_once();
         }
 
         return .Value(());
@@ -188,7 +185,6 @@ pub struct Server {
                             return .Value(false);
                         }
                     }
-                    case .None => {}
                 }
             }
         }
