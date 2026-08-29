@@ -1,0 +1,51 @@
+// @stdout: ping pong
+
+import std::net{TcpListener, TcpStream};
+import std::libc{printf, exit};
+
+fn fail(mesg: const uint8*) {
+    printf("%s\n", mesg);
+    exit(1);
+}
+
+pub fn main() {
+    var listener: TcpListener;
+    var client: TcpStream;
+    var peer: TcpStream;
+
+    switch (TcpListener.bind("127.0.0.1", 47829, 8)) {
+        case .Value(bound) => listener = bound;
+        case .Error(err) => { fail(err); return; }
+    }
+    defer listener.close();
+
+    switch (TcpStream.connect("127.0.0.1", 47829)) {
+        case .Value(connected) => client = connected;
+        case .Error(err) => { fail(err); return; }
+    }
+    defer client.close();
+
+    switch (listener.accept()) {
+        case .Value(accepted) => peer = accepted;
+        case .Error(err) => { fail(err); return; }
+    }
+    defer peer.close();
+
+    client.write("ping", 4);
+
+    var inbox: uint8[16];
+    switch (peer.read(&inbox[0], 15)) {
+        case .Value(count) => inbox[count] = '\0';
+        case .Error(err) => { fail(err); return; }
+    }
+
+    peer.write("pong", 4);
+
+    var outbox: uint8[16];
+    switch (client.read(&outbox[0], 15)) {
+        case .Value(count) => outbox[count] = '\0';
+        case .Error(err) => { fail(err); return; }
+    }
+
+    printf("%s %s\n", &inbox[0], &outbox[0]);
+}

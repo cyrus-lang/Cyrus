@@ -1,0 +1,63 @@
+// @stdout: HTTP/1.1 200 OK\nContent-Type: text/plain\nContent-Length: 11\n\nhello=cyrus
+
+import std::mem::libc{LibcAllocator};
+import std::http{Request, Response, HttpStatus};
+import std::http::server{Server};
+import std::http::router{Router};
+import std::libc{printf, strlen, exit};
+import std::net{TcpStream};
+import std::mem{Allocator};
+
+fn greet(request: const Request*, response: Response*) {
+    response->set_status(HttpStatus.Ok);
+    response->set_content_type("text/plain");
+    response->set_body("hello=");
+    response->append_body(request->body());
+}
+
+fn fail(mesg: const uint8*) {
+    printf("%s\n", mesg);
+    exit(1);
+}
+
+pub fn main() {
+    var allocator: Allocator = dynamic LibcAllocator.new();
+
+    var router = Router.new(allocator);
+    defer router.free();
+
+    router.post("/greet", greet);
+
+    var server: Server;
+
+    switch (Server.bind(allocator, &router, "127.0.0.1", 47830)) {
+        case .Value(bound) => server = bound;
+        case .Error(err) => { fail(err); return; }
+    }
+    defer server.close();
+
+    var client: TcpStream;
+
+    switch (TcpStream.connect("127.0.0.1", 47830)) {
+        case .Value(connected) => client = connected;
+        case .Error(err) => { fail(err); return; }
+    }
+    defer client.close();
+
+    const request = "POST /greet HTTP/1.1\r\nHost: local\r\nContent-Length: 5\r\n\r\ncyrus";
+    client.write(request, strlen(request));
+
+    switch (server.serve_once()) {
+        case .Value(_) => {}
+        case .Error(err) => { fail(err); return; }
+    }
+
+    var inbox: uint8[512];
+
+    switch (client.read(&inbox[0], 511)) {
+        case .Value(count) => inbox[count] = '\0';
+        case .Error(err) => { fail(err); return; }
+    }
+
+    printf("%s", &inbox[0]);
+}
