@@ -16,10 +16,6 @@ import (
     cli,
 );
 
-// FIXME
-import intern::fs{read_file_to_string_or_exit};
-import lexer{Lexer};
-
 fn command_new(ctx: cli::ActionCtx) {
     @todo();
 }
@@ -34,6 +30,8 @@ fn command_build(ctx: cli::ActionCtx) {
 
 fn command_lex(ctx: cli::ActionCtx) {
     const allocator: Allocator = dynamic LibcAllocator.new();
+
+    // TODO Get path from CLI 
 
     const path = Path.new(allocator, "/home/tahad/Code/Cyrus/Cyrus/tmp/main.cyrus");
     defer path.free();

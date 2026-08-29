@@ -19,8 +19,6 @@ pub fn tokenize_source(
     allocator: Allocator,
     path: const Path*
 ) SourceTokens {
-    // TODO: Construct arena for tokens !
-
     switch (File.open(path, .Read)) case .Value(file) else {
         @panic("could not open file");
     }
