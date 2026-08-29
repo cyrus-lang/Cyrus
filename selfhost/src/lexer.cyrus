@@ -32,11 +32,7 @@ pub struct Lexer {
     pos: usize,
     line: usize,
     col: usize,
-    
-    // TODO: Construct arena for tokens !
-    // FIXME: Remove allocator and construct arena via input allocator
-    // and only store arena.
-
+     
     [[inline]]
     pub fn new(allocator: Allocator, source: const String*) Self {
         @assert(source, "source cannot be null");
@@ -92,7 +88,7 @@ pub struct Lexer {
             case .Some(char) => {
                 switch (char) {
                     case 'a'..='z' | 'A'..='Z' | '_' => return self->read_ident_or_prefix();
-                    case '0'..='9' => return self->read_integer();
+                    case '0'..='9' => return self->read_integer_literal();
                     case '"' => return self->read_string_literal(.None);
                     case '\'' => return self->read_char_literal();
                     case '+' => return self->read_plus();
@@ -177,17 +173,56 @@ pub struct Lexer {
         return .Ident(ident);
     }
 
+    // TODO
     fn read_string_literal(self: Self*, prefix: Option<StringPrefix>) TokenKind {
         @todo();
     }
 
     fn read_char_literal(self: Self*) TokenKind {
+        self->read();
+
+        if (self->is_eof()) {
+            @panic("unterminated char literal");
+        }
+
+        var char: uint8;
+
+        // Escaping Sequence Char
+        if (self->cur() == '\\') {
+            self->read();
+            
+            if (!is_escape_char(self->cur())) {
+                @panic("invalid escape char");
+            }
+            
+            char = escape_sequence_to_char(self->cur());
+            self->read();
+        } 
+        // Normal Char
+        else {
+            // REVIEW Add len_utf8 safety check
+            char = self->cur();
+            self->read();
+        }
+
+        if (self->cur() != '\'') {
+            @panic("unterminated char literal");
+            return .INVALID;
+        }
+
+        self->read();
+
+        return .Literal(.Char(char));
+    }
+
+    // TODO
+    fn read_integer_literal(self: Self*) TokenKind {
         @todo();
     }
 
     [[inline]]
     fn skip_ws(self: Self*) {
-        while (!self->is_eof() && is_whitespace(self->cur())) {
+        while (!self->is_eof() && is_ws(self->cur())) {
             self->read();
         }
     }
@@ -380,10 +415,6 @@ pub struct Lexer {
         }
     }
 
-    fn read_integer(self: Self*) TokenKind {
-        @todo();
-    }
-
     // Helper Methods
 
     /// Consumes the current token by advancing the lexer
@@ -419,13 +450,44 @@ pub struct Lexer {
         return Loc {
             line: self->line, 
             start: self->pos,
-            end: self->pos + 1, // Inclusive
+            end: self->pos
         };
     }
 }
 
 [[inline]]
-fn is_whitespace(char: uint8) bool {
+fn escape_sequence_to_char(seq: uint8) uint8 {
+    switch (seq) {
+        case '0' => return '\0';
+        case 'n' => return '\n';
+        case 't' => return '\t';
+        case 'r' => return '\r';
+        // case 'b' => return '\x08';
+        // case 'a' => return '\x07';
+        // case 'v' => return '\x0B';
+        // case 'f' => return '\x0C';
+        case '\\' => return '\\';
+        case '\'' => return '\'';
+        case '"' => return '"';
+    }
+    @unreachable();
+}
+
+[[inline]]
+fn is_escape_char(char: uint8) bool {
+    if (char == '0' || char == 'n' || char == 't' ||
+        char == 'r' || char == 'b' || char == 'a' ||
+        char == 'v' || char == 'f' || char == '"' ||
+        char == '\\' || char ==  '\'')
+    {
+        return true;
+    } else {
+        return false;
+    }
+}
+
+[[inline]]
+fn is_ws(char: uint8) bool {
     switch (char) {
         case ' ' | '\t' | '\n' | '\r' | '\v' | '\f' => {
             return true;

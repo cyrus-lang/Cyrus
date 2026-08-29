@@ -26,7 +26,7 @@ impl<'source_file> Parser<'source_file> {
     pub(crate) fn parse_expr_with_banned_precedence(
         &mut self,
         minimum_precedence: Precedence,
-        banned_precedence: Option<Precedence>,
+        _banned_precedence: Option<Precedence>,
     ) -> Result<ASTExpr, Diag> {
         let loc = self.current_token().loc;
         let (mut lhs_line, mut lhs_column, mut lhs_start) = (loc.line, loc.column, loc.start);
@@ -53,20 +53,21 @@ impl<'source_file> Parser<'source_file> {
                 break;
             };
 
-            // check for banned precedence (chained non-associative operators)
-            if let Some(banned_precedence) = banned_precedence
-                && banned_precedence == operator_precedence
-            {
-                let invalid_token = self.peek_token().clone();
-                self.next_token(); // consume the bad operator
+            // FIXME
+            // // check for banned precedence (chained non-associative operators)
+            // if let Some(banned_precedence) = banned_precedence
+            //     && banned_precedence == operator_precedence
+            // {
+            //     let invalid_token = self.peek_token().clone();
+            //     self.next_token(); // consume the bad operator
 
-                return Err(Diag {
-                    kind: Box::new(ParserDiagKind::ChainedComparisonOperator),
-                    level: DiagLevel::Error,
-                    loc: Some(invalid_token.loc),
-                    hint: Some(format!("Cannot chain '{}' operators.", invalid_token.kind)),
-                });
-            }
+            //     return Err(Diag {
+            //         kind: Box::new(ParserDiagKind::ChainedComparisonOperator),
+            //         level: DiagLevel::Error,
+            //         loc: Some(invalid_token.loc),
+            //         hint: Some(format!("Cannot chain '{}' operators.", invalid_token.kind)),
+            //     });
+            // }
 
             let is_non_associative = is_comparison_operator(&self.peek_token().kind);
             let infix_banned_precedence = if is_non_associative {
