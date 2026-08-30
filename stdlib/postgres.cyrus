@@ -14,54 +14,58 @@ import (
     std::option{Option},
 );
 
-pub type PGconn = uint8[0];
+pub mod binding {
+    // Opaque, waiting for `opaque type` support.
+    pub type PGConn = uint8[0];
 
-pub type PGresult = uint8[0];
+    // Opaque, waiting for `opaque type` support.
+    pub type PGResult = uint8[0];
 
-pub extern "C" {
-    fn PQlibVersion() c_int;
+    pub extern "C" {
+        fn PQlibVersion() c_int;
 
-    fn PQconnectdb(conninfo: const c_char*) PGconn*;
-    fn PQfinish(conn: PGconn*) c_void;
-    fn PQreset(conn: PGconn*) c_void;
-    fn PQstatus(conn: PGconn*) c_int;
-    fn PQerrorMessage(conn: PGconn*) c_char*;
-    fn PQdb(conn: PGconn*) c_char*;
-    fn PQuser(conn: PGconn*) c_char*;
-    fn PQhost(conn: PGconn*) c_char*;
-    fn PQport(conn: PGconn*) c_char*;
-    fn PQserverVersion(conn: PGconn*) c_int;
+        fn PQconnectdb(conninfo: const c_char*) PGConn*;
+        fn PQfinish(conn: PGConn*) c_void;
+        fn PQreset(conn: PGConn*) c_void;
+        fn PQstatus(conn: PGConn*) c_int;
+        fn PQerrorMessage(conn: PGConn*) c_char*;
+        fn PQdb(conn: PGConn*) c_char*;
+        fn PQuser(conn: PGConn*) c_char*;
+        fn PQhost(conn: PGConn*) c_char*;
+        fn PQport(conn: PGConn*) c_char*;
+        fn PQserverVersion(conn: PGConn*) c_int;
 
-    fn PQexec(conn: PGconn*, query: const c_char*) PGresult*;
+        fn PQexec(conn: PGConn*, query: const c_char*) PGResult*;
 
-    fn PQexecParams(
-        conn: PGconn*,
-        command: const c_char*,
-        nparams: c_int,
-        param_types: const c_uint*,
-        param_values: const c_char**,
-        param_lengths: const c_int*,
-        param_formats: const c_int*,
-        result_format: c_int
-    ) PGresult*;
+        fn PQexecParams(
+            conn: PGConn*,
+            command: const c_char*,
+            nparams: c_int,
+            param_types: const c_uint*,
+            param_values: const c_char**,
+            param_lengths: const c_int*,
+            param_formats: const c_int*,
+            result_format: c_int
+        ) PGResult*;
 
-    fn PQresultStatus(res: PGresult*) c_int;
-    fn PQresStatus(status: c_int) c_char*;
-    fn PQresultErrorMessage(res: PGresult*) c_char*;
-    fn PQntuples(res: PGresult*) c_int;
-    fn PQnfields(res: PGresult*) c_int;
-    fn PQfname(res: PGresult*, field_num: c_int) c_char*;
-    fn PQfnumber(res: PGresult*, field_name: const c_char*) c_int;
-    fn PQgetvalue(res: PGresult*, tup_num: c_int, field_num: c_int) c_char*;
-    fn PQgetisnull(res: PGresult*, tup_num: c_int, field_num: c_int) c_int;
-    fn PQgetlength(res: PGresult*, tup_num: c_int, field_num: c_int) c_int;
-    fn PQcmdStatus(res: PGresult*) c_char*;
-    fn PQcmdTuples(res: PGresult*) c_char*;
-    fn PQclear(res: PGresult*) c_void;
+        fn PQresultStatus(res: PGResult*) c_int;
+        fn PQresStatus(status: c_int) c_char*;
+        fn PQresultErrorMessage(res: PGResult*) c_char*;
+        fn PQntuples(res: PGResult*) c_int;
+        fn PQnfields(res: PGResult*) c_int;
+        fn PQfname(res: PGResult*, field_num: c_int) c_char*;
+        fn PQfnumber(res: PGResult*, field_name: const c_char*) c_int;
+        fn PQgetvalue(res: PGResult*, tup_num: c_int, field_num: c_int) c_char*;
+        fn PQgetisnull(res: PGResult*, tup_num: c_int, field_num: c_int) c_int;
+        fn PQgetlength(res: PGResult*, tup_num: c_int, field_num: c_int) c_int;
+        fn PQcmdStatus(res: PGResult*) c_char*;
+        fn PQcmdTuples(res: PGResult*) c_char*;
+        fn PQclear(res: PGResult*) c_void;
 
-    fn PQescapeLiteral(conn: PGconn*, str: const c_char*, len: c_size) c_char*;
-    fn PQescapeIdentifier(conn: PGconn*, str: const c_char*, len: c_size) c_char*;
-    fn PQfreemem(ptr: c_void*) c_void;
+        fn PQescapeLiteral(conn: PGConn*, str: const c_char*, len: c_size) c_char*;
+        fn PQescapeIdentifier(conn: PGConn*, str: const c_char*, len: c_size) c_char*;
+        fn PQfreemem(ptr: c_void*) c_void;
+    }
 }
 
 pub enum ConnStatus {
@@ -81,12 +85,12 @@ pub enum ConnStatus {
     CheckStandby = 13,
 
     [[inline]]
-    pub fn as_num(self: Self) int32 {
-        return @cast(int32, self);
+    pub fn as_num(self: Self) c_int {
+        return @cast(c_int, self);
     }
 
     [[inline]]
-    pub fn from_num(value: int32) Self {
+    pub fn from_num(value: c_int) Self {
         return @cast(ConnStatus, value);
     }
 
@@ -125,12 +129,12 @@ pub enum ExecStatus {
     PipelineAborted = 11,
 
     [[inline]]
-    pub fn as_num(self: Self) int32 {
-        return @cast(int32, self);
+    pub fn as_num(self: Self) c_int {
+        return @cast(c_int, self);
     }
 
     [[inline]]
-    pub fn from_num(value: int32) Self {
+    pub fn from_num(value: c_int) Self {
         return @cast(ExecStatus, value);
     }
 
@@ -161,22 +165,22 @@ pub enum ExecStatus {
 }
 
 pub struct QueryResult {
-    res: PGresult*,
+    res: binding::PGResult*,
 
     [[inline]]
-    pub fn from_raw(res: PGresult*) Self {
+    pub fn from_raw(res: binding::PGResult*) Self {
         @assert(res, "result cannot be null");
         return Self { res };
     }
 
     [[inline]]
-    pub fn as_raw(self: const Self*) PGresult* {
+    pub fn as_raw(self: const Self*) binding::PGResult* {
         return self->res;
     }
 
     [[inline]]
     pub fn status(self: const Self*) ExecStatus {
-        return ExecStatus.from_num(PQresultStatus(self->res));
+        return ExecStatus.from_num(binding::PQresultStatus(self->res));
     }
 
     [[inline]]
@@ -186,22 +190,21 @@ pub struct QueryResult {
 
     [[inline]]
     pub fn error_mesg(self: const Self*) const uint8* {
-        return PQresultErrorMessage(self->res);
+        return binding::PQresultErrorMessage(self->res);
     }
 
     [[inline]]
     pub fn command_status(self: const Self*) const uint8* {
-        return PQcmdStatus(self->res);
+        return binding::PQcmdStatus(self->res);
     }
 
     [[inline]]
     pub fn affected_rows(self: const Self*) const uint8* {
-        return PQcmdTuples(self->res);
+        return binding::PQcmdTuples(self->res);
     }
 
-    [[inline]]
     pub fn rows(self: const Self*) usize {
-        const count = PQntuples(self->res);
+        const count = binding::PQntuples(self->res);
 
         if (count < 0) {
             return 0;
@@ -210,9 +213,8 @@ pub struct QueryResult {
         return @cast(usize, count);
     }
 
-    [[inline]]
     pub fn cols(self: const Self*) usize {
-        const count = PQnfields(self->res);
+        const count = binding::PQnfields(self->res);
 
         if (count < 0) {
             return 0;
@@ -231,7 +233,7 @@ pub struct QueryResult {
             return .None;
         }
 
-        const name = PQfname(self->res, @cast(c_int, col));
+        const name = binding::PQfname(self->res, @cast(c_int, col));
 
         if (name == null) {
             return .None;
@@ -243,7 +245,7 @@ pub struct QueryResult {
     pub fn field_index(self: const Self*, name: const uint8*) Option<usize> {
         @assert(name, "field name cannot be null");
 
-        const index = PQfnumber(self->res, name);
+        const index = binding::PQfnumber(self->res, name);
 
         if (index < 0) {
             return .None;
@@ -257,19 +259,15 @@ pub struct QueryResult {
             return true;
         }
 
-        return PQgetisnull(self->res, @cast(c_int, row), @cast(c_int, col)) != 0;
+        return binding::PQgetisnull(self->res, @cast(c_int, row), @cast(c_int, col)) != 0;
     }
 
     pub fn get(self: const Self*, row: usize, col: usize) Option<const uint8*> {
-        if (row >= self->rows() || col >= self->cols()) {
-            return .None;
-        }
-
         if (self->is_null(row, col)) {
             return .None;
         }
 
-        const value = PQgetvalue(self->res, @cast(c_int, row), @cast(c_int, col));
+        const value = binding::PQgetvalue(self->res, @cast(c_int, row), @cast(c_int, col));
 
         if (value == null) {
             return .None;
@@ -290,7 +288,7 @@ pub struct QueryResult {
             return 0;
         }
 
-        const len = PQgetlength(self->res, @cast(c_int, row), @cast(c_int, col));
+        const len = binding::PQgetlength(self->res, @cast(c_int, row), @cast(c_int, col));
 
         if (len < 0) {
             return 0;
@@ -302,26 +300,26 @@ pub struct QueryResult {
     [[inline]]
     pub fn free(self: Self*) {
         if (self->res != null) {
-            PQclear(self->res);
+            binding::PQclear(self->res);
             self->res = null;
         }
     }
 }
 
 pub struct Connection {
-    conn: PGconn*,
+    conn: binding::PGConn*,
 
     pub fn open(conninfo: const uint8*) ErrorOr<Self, ErrorStr> {
         @assert(conninfo, "conninfo cannot be null");
 
-        const conn = PQconnectdb(conninfo);
+        const conn = binding::PQconnectdb(conninfo);
 
         if (conn == null) {
             return .Error("could not allocate a postgres connection");
         }
 
-        if (ConnStatus.from_num(PQstatus(conn)) != .Ok) {
-            PQfinish(conn);
+        if (ConnStatus.from_num(binding::PQstatus(conn)) != .Ok) {
+            binding::PQfinish(conn);
             return .Error("could not connect to the postgres server");
         }
 
@@ -331,7 +329,7 @@ pub struct Connection {
     pub fn open_unchecked(conninfo: const uint8*) Option<Self> {
         @assert(conninfo, "conninfo cannot be null");
 
-        const conn = PQconnectdb(conninfo);
+        const conn = binding::PQconnectdb(conninfo);
 
         if (conn == null) {
             return .None;
@@ -341,13 +339,13 @@ pub struct Connection {
     }
 
     [[inline]]
-    pub fn as_raw(self: const Self*) PGconn* {
+    pub fn as_raw(self: const Self*) binding::PGConn* {
         return self->conn;
     }
 
     [[inline]]
     pub fn status(self: const Self*) ConnStatus {
-        return ConnStatus.from_num(PQstatus(self->conn));
+        return ConnStatus.from_num(binding::PQstatus(self->conn));
     }
 
     [[inline]]
@@ -357,43 +355,43 @@ pub struct Connection {
 
     [[inline]]
     pub fn error_mesg(self: const Self*) const uint8* {
-        return PQerrorMessage(self->conn);
+        return binding::PQerrorMessage(self->conn);
     }
 
     [[inline]]
     pub fn database(self: const Self*) const uint8* {
-        return PQdb(self->conn);
+        return binding::PQdb(self->conn);
     }
 
     [[inline]]
     pub fn user(self: const Self*) const uint8* {
-        return PQuser(self->conn);
+        return binding::PQuser(self->conn);
     }
 
     [[inline]]
     pub fn host(self: const Self*) const uint8* {
-        return PQhost(self->conn);
+        return binding::PQhost(self->conn);
     }
 
     [[inline]]
     pub fn port(self: const Self*) const uint8* {
-        return PQport(self->conn);
+        return binding::PQport(self->conn);
     }
 
     [[inline]]
-    pub fn server_version(self: const Self*) int32 {
-        return PQserverVersion(self->conn);
+    pub fn server_version(self: const Self*) c_int {
+        return binding::PQserverVersion(self->conn);
     }
 
     [[inline]]
     pub fn reset(self: Self*) {
-        PQreset(self->conn);
+        binding::PQreset(self->conn);
     }
 
     pub fn exec(self: Self*, query: const uint8*) ErrorOr<QueryResult, ErrorStr> {
         @assert(query, "query cannot be null");
 
-        const res = PQexec(self->conn, query);
+        const res = binding::PQexec(self->conn, query);
 
         if (res == null) {
             return .Error("could not execute the query");
@@ -417,7 +415,7 @@ pub struct Connection {
     ) ErrorOr<QueryResult, ErrorStr> {
         @assert(query, "query cannot be null");
 
-        const res = PQexecParams(
+        const res = binding::PQexecParams(
             self->conn,
             query,
             @cast(c_int, nparams),
@@ -442,10 +440,10 @@ pub struct Connection {
         return .Value(result);
     }
 
-    pub fn escape_literal(self: Self*, value: const uint8*) ErrorOr<uint8*, ErrorStr> {
+    pub fn escape_literal(self: Self*, value: const uint8*) ErrorOr<c_char*, ErrorStr> {
         @assert(value, "value cannot be null");
 
-        const escaped = PQescapeLiteral(self->conn, value, strlen(value));
+        const escaped = binding::PQescapeLiteral(self->conn, value, @cast(c_size, strlen(value)));
 
         if (escaped == null) {
             return .Error("could not escape the literal");
@@ -454,10 +452,10 @@ pub struct Connection {
         return .Value(escaped);
     }
 
-    pub fn escape_identifier(self: Self*, value: const uint8*) ErrorOr<uint8*, ErrorStr> {
+    pub fn escape_identifier(self: Self*, value: const uint8*) ErrorOr<c_char*, ErrorStr> {
         @assert(value, "value cannot be null");
 
-        const escaped = PQescapeIdentifier(self->conn, value, strlen(value));
+        const escaped = binding::PQescapeIdentifier(self->conn, value, @cast(c_size, strlen(value)));
 
         if (escaped == null) {
             return .Error("could not escape the identifier");
@@ -467,20 +465,20 @@ pub struct Connection {
     }
 
     [[inline]]
-    pub fn free_escaped(escaped: uint8*) {
-        PQfreemem(escaped);
+    pub fn free_escaped(escaped: c_char*) {
+        binding::PQfreemem(@cast(void*, escaped));
     }
 
     [[inline]]
     pub fn close(self: Self*) {
         if (self->conn != null) {
-            PQfinish(self->conn);
+            binding::PQfinish(self->conn);
             self->conn = null;
         }
     }
 }
 
 [[inline]]
-pub fn lib_version() int32 {
-    return PQlibVersion();
+pub fn lib_version() c_int {
+    return binding::PQlibVersion();
 }
