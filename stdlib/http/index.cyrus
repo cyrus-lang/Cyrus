@@ -2,7 +2,7 @@
 // Copyright (c) 2026 The Cyrus Language
 
 import (
-    std::libc{strlen, strstr, strtoul, tolower, snprintf},
+    std::libc{strtoul, tolower, snprintf},
     std::libc::types{c_int},
     std::errors{ErrorOr, ErrorStr},
     std::collections{Vec},
@@ -10,6 +10,7 @@ import (
     std::mem{Allocator},
     std::string{String},
     std::net{TcpStream},
+    std::http::internal,
 );
 
 const NUMBER_BUF_SIZE: usize = 24;
@@ -191,79 +192,79 @@ pub struct Request {
 
         var request = Request.new(allocator);
 
-        const first_end = line_end(data, len, 0);
+        const first_end = internal::line_end(data, len, 0);
 
         if (first_end == 0) {
             request.free();
             return .Error("malformed http request line");
         }
 
-        const method_end = find_byte(data, first_end, 0, ' ');
+        const method_end = internal::find_byte(data, first_end, 0, ' ');
 
         if (method_end >= first_end) {
             request.free();
             return .Error("malformed http request line");
         }
 
-        const target_start = skip_spaces(data, first_end, method_end);
-        const target_end = find_byte(data, first_end, target_start, ' ');
+        const target_start = internal::skip_spaces(data, first_end, method_end);
+        const target_end = internal::find_byte(data, first_end, target_start, ' ');
 
         if (target_start >= first_end) {
             request.free();
             return .Error("malformed http request line");
         }
 
-        var method_name = copy_range(allocator, data, 0, method_end);
+        var method_name = internal::copy_range(allocator, data, 0, method_end);
         request.method = HttpMethod.from_str(method_name.as_str_const());
         method_name.free();
 
         request.target.free();
-        request.target = copy_range(allocator, data, target_start, target_end);
+        request.target = internal::copy_range(allocator, data, target_start, target_end);
 
-        const query_start = find_byte(data, target_end, target_start, '?');
+        const query_start = internal::find_byte(data, target_end, target_start, '?');
 
         request.path.free();
-        request.path = copy_range(allocator, data, target_start, query_start);
+        request.path = internal::copy_range(allocator, data, target_start, query_start);
 
         request.query.free();
 
         if (query_start < target_end) {
-            request.query = copy_range(allocator, data, query_start + 1, target_end);
+            request.query = internal::copy_range(allocator, data, query_start + 1, target_end);
         } else {
             request.query = String.new(allocator);
         }
 
-        const version_start = skip_spaces(data, first_end, target_end);
+        const version_start = internal::skip_spaces(data, first_end, target_end);
 
         request.version.free();
-        request.version = copy_range(allocator, data, version_start, first_end);
+        request.version = internal::copy_range(allocator, data, version_start, first_end);
 
-        var cursor = next_line(data, len, first_end);
+        var cursor = internal::next_line(data, len, first_end);
 
         while (cursor < len) {
-            const current_end = line_end(data, len, cursor);
+            const current_end = internal::line_end(data, len, cursor);
 
             if (current_end == cursor) {
-                cursor = next_line(data, len, current_end);
+                cursor = internal::next_line(data, len, current_end);
                 break;
             }
 
-            const colon = find_byte(data, current_end, cursor, ':');
+            const colon = internal::find_byte(data, current_end, cursor, ':');
 
             if (colon < current_end) {
-                const value_start = skip_spaces(data, current_end, colon + 1);
+                const value_start = internal::skip_spaces(data, current_end, colon + 1);
 
-                var name = copy_range(allocator, data, cursor, colon);
-                var value = copy_range(allocator, data, value_start, current_end);
+                var name = internal::copy_range(allocator, data, cursor, colon);
+                var value = internal::copy_range(allocator, data, value_start, current_end);
 
                 request.headers.push(Header { name, value });
             }
 
-            cursor = next_line(data, len, current_end);
+            cursor = internal::next_line(data, len, current_end);
         }
 
         request.body.free();
-        request.body = copy_range(allocator, data, cursor, len);
+        request.body = internal::copy_range(allocator, data, cursor, len);
 
         return .Value(request);
     }
@@ -528,120 +529,4 @@ pub fn eq_ignore_case(left: const uint8*, right: const uint8*) bool {
     }
 
     return true;
-}
-
-pub fn header_terminator(data: const uint8*) Option<usize> {
-    @assert(data, "data cannot be null");
-
-    const found = strstr(data, "\r\n\r\n");
-
-    if (found != null) {
-        return .Some(@cast(usize, found - data) + 4);
-    }
-
-    const relaxed = strstr(data, "\n\n");
-
-    if (relaxed != null) {
-        return .Some(@cast(usize, relaxed - data) + 2);
-    }
-
-    return .None;
-}
-
-pub fn scan_content_length(data: const uint8*, len: usize) usize {
-    @assert(data, "data cannot be null");
-
-    var cursor = next_line(data, len, line_end(data, len, 0));
-
-    while (cursor < len) {
-        const current_end = line_end(data, len, cursor);
-
-        if (current_end == cursor) {
-            return 0;
-        }
-
-        const colon = find_byte(data, current_end, cursor, ':');
-
-        if (colon < current_end && range_eq_ignore_case(data, cursor, colon, "content-length")) {
-            const value_start = skip_spaces(data, current_end, colon + 1);
-            return strtoul(data + value_start, null, 10);
-        }
-
-        cursor = next_line(data, len, current_end);
-    }
-
-    return 0;
-}
-
-fn range_eq_ignore_case(data: const uint8*, start: usize, end: usize, name: const uint8*) bool {
-    const name_len = strlen(name);
-
-    if (end - start != name_len) {
-        return false;
-    }
-
-    for (var i: usize = 0; i < name_len; i += 1) {
-        const a = tolower(@cast(c_int, data[start + i]));
-        const b = tolower(@cast(c_int, name[i]));
-
-        if (a != b) {
-            return false;
-        }
-    }
-
-    return true;
-}
-
-fn find_byte(data: const uint8*, len: usize, start: usize, needle: uint8) usize {
-    for (var i = start; i < len; i += 1) {
-        if (data[i] == needle) {
-            return i;
-        }
-    }
-
-    return len;
-}
-
-fn skip_spaces(data: const uint8*, len: usize, start: usize) usize {
-    for (var i = start; i < len; i += 1) {
-        if (data[i] != ' ') {
-            return i;
-        }
-    }
-
-    return len;
-}
-
-fn line_end(data: const uint8*, len: usize, start: usize) usize {
-    for (var i = start; i < len; i += 1) {
-        if (data[i] == '\r' || data[i] == '\n') {
-            return i;
-        }
-    }
-
-    return len;
-}
-
-fn next_line(data: const uint8*, len: usize, end: usize) usize {
-    var i = end;
-
-    if (i < len && data[i] == '\r') {
-        i += 1;
-    }
-
-    if (i < len && data[i] == '\n') {
-        i += 1;
-    }
-
-    return i;
-}
-
-fn copy_range(allocator: Allocator, data: const uint8*, start: usize, end: usize) String {
-    var out = String.new(allocator);
-
-    for (var i = start; i < end; i += 1) {
-        out.push(data[i]);
-    }
-
-    return out;
 }
