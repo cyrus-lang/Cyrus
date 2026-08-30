@@ -656,7 +656,7 @@ pub fn char_to_escape_sequence(char: uint8) uint8 {
 }
 
 [[inline]]
-pub fn is_escape_sequence_char(char: uint8) bool {
+pub fn is_valid_escape(char: uint8) bool {
     if (char == '0' || char == 'n' || char == 't' ||
         char == 'r' || char == 'b' || char == 'a' ||
         char == 'v' || char == 'f' || char == '"' ||

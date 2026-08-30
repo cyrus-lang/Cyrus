@@ -8,11 +8,17 @@
 */
 
 import (
+    std::string{String, try_str_as_octal},
+    std::libc::types{c_char},
     std::collections{Vec},
     std::mem{Allocator},
-    std::string{String},
     std::option{Option},
-    std::libc{printf},
+    std::libc{
+        printf,
+        strtol,
+        errno,
+        ERANGE
+    },
 );
 
 import tokens{
@@ -25,7 +31,7 @@ import tokens{
     StringPrefix,
     Loc,
     escape_sequence_to_char,
-    is_escape_sequence_char
+    is_valid_escape
 };
 
 pub struct Lexer {
@@ -192,8 +198,30 @@ pub struct Lexer {
         // Escaping Sequence Char
         if (self->cur() == '\\') {
             self->read();
+
+            // HEX
+            if (self->cur() == 'x') {
+                @todo("parse hex");
+            }
+                
+            // UNICODE
+            if (self->cur() == 'u') {
+                @todo("parse uni");
+            }
             
-            if (!is_escape_sequence_char(self->cur())) {
+            // OCTAL
+            if (is_digit(self->cur())) {
+                switch (self->read_char_octal()) {
+                    case .Some(_char) => {
+                        char = _char;
+                        goto closing;
+                    }
+                    case .None => return .INVALID;
+                }
+            }
+
+            // Standard ASCII
+            if (!is_valid_escape(self->cur())) {
                 @panic("invalid escape char");
             }
             
@@ -207,14 +235,49 @@ pub struct Lexer {
             self->read();
         }
 
+    closing:
         if (self->cur() != '\'') {
             @panic("unterminated char literal");
             return .INVALID;
         }
-
         self->read();
-
         return .Literal(.Char(char));
+    }
+
+    fn read_char_octal(self: Self*) Option<uint8> {
+        var buf: uint8[4];
+        var i: usize = 0;
+
+        // Octal char only allows three digits
+        while (i < 3 && !self->is_eof()) {
+            buf[i] = self->cur();
+            self->read();
+            i += 1;
+        }
+
+        // Must have at least one digit
+        if (i == 0) {
+            @panic("octal char must have at least one digit");
+            return .None;
+        }
+
+        buf[i] = '\0';
+
+        switch (try_str_as_octal(&buf[0])) case .Some(octal) else {
+            @panic("given number is not octal");
+            return .None;
+        }
+        
+        if (octal > 255) {
+            @panic("octal char digits must be in range 0 to 255");
+            return .None;    
+        }
+
+        if (self->cur() != '\'' && is_digit(self->cur())) {
+            @panic("octal digits must be three");
+        }
+
+        return .Some(@cast(uint8, octal));
     }
 
     // TODO
@@ -473,4 +536,14 @@ fn is_alpha(char: uint8) bool {
         case 'a'..='z' | 'A'..='Z' | '_' => return true;
         else => return false;
     }
+}
+
+[[inline]]
+fn is_digit(char: uint8) bool {
+    return (char >= '0' && char <= '9');
+}
+
+[[inline]]
+fn is_octal_digit(char: uint8) bool {
+    return char >= '0' && char <= '7';
 }
