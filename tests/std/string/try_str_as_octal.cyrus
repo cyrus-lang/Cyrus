@@ -4,17 +4,13 @@ import std::string{try_str_as_octal};
 import std::libc{printf};
 
 pub fn main() {
-    {
-        const num = try_str_as_octal("455").unwrap();
-        printf("%ld, ", num);
-    }
-    {
-        const num = try_str_as_octal("6").unwrap();
-        printf("%ld, ", num);
-    }
-    {
-        switch (try_str_as_octal("meow")) {
-            case .None => printf("ok\n");
-        }
+    const num = try_str_as_octal("455").unwrap();
+    printf("%ld, ", num);
+    
+    const num2 = try_str_as_octal("6").unwrap();
+    printf("%ld, ", num2);
+    
+    switch (try_str_as_octal("meow")) {
+        case .None => printf("ok\n");
     }
 }

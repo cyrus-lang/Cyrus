@@ -4,17 +4,13 @@ import std::string{try_str_as_int64};
 import std::libc{printf};
 
 pub fn main() {
-    {
-        const num = try_str_as_int64("123").unwrap();
-        printf("%ld, ", num);
-    }
-    {
-        const num = try_str_as_int64("1234567").unwrap();
-        printf("%ld, ", num);
-    }
-    {
-        switch (try_str_as_int64("meow")) {
-            case .None => printf("ok\n");
-        }
+    const num = try_str_as_int64("123").unwrap();
+    printf("%ld, ", num);
+    
+    const num2 = try_str_as_int64("1234567").unwrap();
+    printf("%ld, ", num2);
+    
+    switch (try_str_as_int64("meow")) {
+        case .None => printf("ok\n");
     }
 }
