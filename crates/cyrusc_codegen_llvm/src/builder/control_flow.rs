@@ -782,16 +782,16 @@ impl<'ll> CodeGenIRBuilder<'ll> {
     }
 
     pub(crate) fn emit_goto(&mut self, goto_stmt: &CIRGotoStmt) {
-        let (target_block, target_depth) = *self.block_reg.labels.get(&goto_stmt.label_id).unwrap();
+        if let Some((target_block, target_depth)) = self.block_reg.labels.get(&goto_stmt.label_id).cloned()
+            && let Some(cur_block) = self.block_reg.cur_block
+        {
+            if cur_block.get_terminator().is_none() {
+                self.emit_defers_down_to(target_depth);
+                self.llvm_builder.build_unconditional_branch(target_block).unwrap();
+            }
 
-        let cur_block = self.block_reg.cur_block.unwrap();
-
-        if cur_block.get_terminator().is_none() {
-            self.emit_defers_down_to(target_depth);
-            self.llvm_builder.build_unconditional_branch(target_block).unwrap();
+            self.block_reg.cur_block = None;
         }
-
-        self.block_reg.cur_block = None;
     }
 }
 
