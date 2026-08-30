@@ -2,12 +2,13 @@
 // Copyright (c) 2026 The Cyrus Language
 
 import (
-    std::http{Request, Response, HttpStatus, header_terminator, scan_content_length},
+    std::http{Request, Response, HttpStatus},
     std::net{TcpListener, TcpStream, DEFAULT_BACKLOG},
     std::errors{ErrorOr, ErrorStr},
     std::mem{Allocator},
     std::string{String},
     std::http::router{Router},
+    std::http::internal,
 );
 
 const READ_CHUNK_SIZE: usize = 4096;
@@ -176,10 +177,10 @@ pub struct Server {
             }
 
             if (headers_end == 0) {
-                switch (header_terminator(raw->as_str_const())) {
+                switch (internal::header_terminator(raw->as_str_const())) {
                     case .Some(index) => {
                         headers_end = index;
-                        expected = scan_content_length(raw->as_str_const(), raw->len());
+                        expected = internal::scan_content_length(raw->as_str_const(), raw->len());
 
                         if (headers_end + expected > self->max_request_size) {
                             return .Value(false);
