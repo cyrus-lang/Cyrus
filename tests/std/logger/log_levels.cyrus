@@ -1,20 +1,11 @@
 // @stdout: [INFO] server started\n[WARN] disk almost full\n[ERROR] connection refused\n
 
-import std::mem::libc{LibcAllocator};
-import std::logger{Logger, LogLevel};
-import std::io{Writer, StringWriter};
-import std::mem{Allocator};
-import std::string{String};
-import std::libc{printf};
+import std::io{Writer, StdoutWriter};
+import std::logger{Logger};
 
 pub fn main() {
-    var allocator: Allocator = dynamic LibcAllocator.new();
-
-    var buffer = String.new(allocator);
-    defer buffer.free();
-
-    var string_writer = StringWriter.new(&buffer);
-    var writer: Writer = dynamic string_writer;
+    var stdout_writer = StdoutWriter.new();
+    var writer: Writer = dynamic stdout_writer;
 
     var logger = Logger.new(writer);
 
@@ -23,6 +14,4 @@ pub fn main() {
     logger.info("server started");
     logger.warn("disk almost full");
     logger.error("connection refused");
-
-    printf("%s", buffer.as_str());
 }
