@@ -1,0 +1,22 @@
+// @stderr: thread 'unreachable_got' hit TODO at tests/control_flow/unreachable_goto_label.cyrus:15:10\nnot yet implemented
+
+import std::libc{printf};
+
+pub fn main() {
+    const x = true;
+
+    if (x) {
+        goto label;
+    }
+
+    if (!x) {
+        @todo();
+    } else {
+        @todo();
+    }
+
+    printf("meow\n");
+
+label:
+    printf("label\n");
+}
