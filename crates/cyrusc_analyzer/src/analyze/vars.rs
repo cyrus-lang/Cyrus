@@ -226,15 +226,6 @@ impl<'a> AnalysisContext<'a> {
             });
         }
 
-        if ty.const_inner().is_const() && !is_init {
-            self.reporter.report(Diag {
-                level: DiagLevel::Error,
-                kind: Box::new(AnalyzerDiagKind::ConstVariableMustBeInitialized),
-                loc: Some(loc),
-                hint: Some("Declare the variable with an initializer or remove the 'const' qualifier.".to_string()),
-            });
-        }
-
         if ty.const_inner().is_interface() && !is_init {
             self.reporter.report(Diag {
                 level: DiagLevel::Error,
