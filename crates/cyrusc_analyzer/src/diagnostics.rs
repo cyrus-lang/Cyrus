@@ -43,6 +43,9 @@ pub enum AnalyzerDiagKind {
     #[error("Global variable requires explicit type annotation.")]
     GlobalVarRequiresTypeAnnotation,
 
+    #[error("Const variable must be initilized.")]
+    ConstVariableMustBeInitialized,
+
     #[error("Type cannot be used in this context.")]
     TypeCannotBeUsedInThisContext,
 
@@ -272,9 +275,6 @@ pub enum AnalyzerDiagKind {
 
     #[error("Rhs of the shift must be unsigned integer.")]
     RhsOfShiftMustBeUnsignedInteger,
-
-    #[error("Constant variable must be initialized with a value.")]
-    ConstVariableMustBeInitialized,
 
     #[error("Interface type value must be initialized.")]
     InterfaceTypeMustBeInitialized,

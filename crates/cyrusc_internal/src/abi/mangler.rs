@@ -201,7 +201,7 @@ fn mangle_sema_type(ty: &SemaType) -> String {
 
             let capacity = match &typed_array_type.capacity {
                 TypedArrayCapacity::Fixed(expr) => expr.literal_const_int_value().unwrap().to_string(),
-                TypedArrayCapacity::Dynamic => "".to_string(),
+                TypedArrayCapacity::Slice => "".to_string(),
             };
 
             format!("{element}[{capacity}]")

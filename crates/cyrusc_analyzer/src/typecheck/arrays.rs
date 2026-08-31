@@ -130,7 +130,7 @@ impl<'a> AnalysisContext<'a> {
                 let mut folder = ConstFolder::new(self, &self.decl_tables, self.target, self.tctx.clone(), self);
                 folder.expr_as_const_int(&expr, self).unwrap()
             }
-            TypedArrayCapacity::Dynamic => todo!(),
+            TypedArrayCapacity::Slice => todo!(),
         };
 
         if array.elements.len() != array_capacity.try_into().unwrap() {

@@ -690,7 +690,7 @@ impl<'a> Resolver<'a> {
                 let expr = self.resolve_expr(&expr)?;
                 TypedArrayCapacity::Fixed(Box::new(expr))
             }
-            ArrayCapacity::Dynamic => TypedArrayCapacity::Dynamic,
+            ArrayCapacity::Dynamic => TypedArrayCapacity::Slice,
         };
 
         Some(SemaType::Array(TypedArrayType {
