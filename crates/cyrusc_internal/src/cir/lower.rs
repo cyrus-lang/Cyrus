@@ -63,7 +63,7 @@ pub fn lower_sema_type(
 
             let len = match &array_type.capacity {
                 TypedArrayCapacity::Fixed(expr) => expr.literal_const_int_value().unwrap(),
-                TypedArrayCapacity::Dynamic => todo!(),
+                TypedArrayCapacity::Slice => todo!(),
             };
 
             CIRType::Array(CIRArrayType {

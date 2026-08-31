@@ -390,7 +390,7 @@ pub fn format_sema_type(ty: SemaType, formatter: &dyn Formatter) -> String {
                 TypedArrayCapacity::Fixed(expr) => {
                     fmt.push_str(&format_typed_expr(&expr, formatter));
                 }
-                TypedArrayCapacity::Dynamic => {}
+                TypedArrayCapacity::Slice => {}
             }
             fmt.push_str("]");
             fmt

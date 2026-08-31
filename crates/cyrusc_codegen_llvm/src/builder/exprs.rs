@@ -497,27 +497,21 @@ impl<'ll> CodeGenIRBuilder<'ll> {
             all_const = false;
         }
 
-        let array_value = if all_const {
-            let mut val = array_type.const_zero();
-            for (i, elem) in elements.iter().enumerate() {
-                val = self
-                    .llvm_builder
-                    .build_insert_value(val, *elem, i as u32, "array.insert")
-                    .unwrap()
-                    .into_array_value();
+        let array_value = {
+            if all_const {
+                unsafe { ArrayValue::new_const_array(&element_type, &elements) }
+            } else {
+                // build runtime array by inserting each element
+                let mut value = array_type.const_zero();
+                for (i, elem) in elements.iter().enumerate() {
+                    value = self
+                        .llvm_builder
+                        .build_insert_value(value, *elem, i as u32, "array.insert")
+                        .unwrap()
+                        .into_array_value();
+                }
+                value
             }
-            val
-        } else {
-            // build runtime array by inserting each element
-            let mut value = array_type.const_zero();
-            for (i, elem) in elements.iter().enumerate() {
-                value = self
-                    .llvm_builder
-                    .build_insert_value(value, *elem, i as u32, "array.insert")
-                    .unwrap()
-                    .into_array_value();
-            }
-            value
         };
 
         InternalValue::new(array.ty.clone(), InternalValueKind::RValue(array_value.into()))
@@ -1634,6 +1628,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         InternalValue::new(ty, InternalValueKind::RValue(tag_value.as_basic_value_enum()))
     }
 
+    // FIXME Optimize, FIX, Support Const Enum Init
     fn emit_enum_init(&mut self, enum_init_expr: &CIREnumInitExpr) -> InternalValue<'ll> {
         let ty = &enum_init_expr.ty;
         let type_id = enum_init_expr.ty.as_type_id().unwrap();
@@ -1656,6 +1651,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
             .llvm_builder
             .build_struct_gep(enum_struct_type, enum_alloca, 0, "enum.tag.ptr")
             .unwrap();
+
         self.llvm_builder.build_store(tag_ptr, tag_value).unwrap();
 
         match &enum_init_expr.variant {

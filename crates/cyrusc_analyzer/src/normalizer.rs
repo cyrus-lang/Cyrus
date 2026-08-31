@@ -331,7 +331,7 @@ impl<'a> AnalysisContext<'a> {
                     return None;
                 }
             }
-            TypedArrayCapacity::Dynamic => {
+            TypedArrayCapacity::Slice => {
                 self.reporter.report(Diag {
                     level: DiagLevel::Unimplemented,
                     kind: Box::new(AnalyzerDiagKind::UnimplementedFeatureSlice),
