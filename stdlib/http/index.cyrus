@@ -1,0 +1,532 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 The Cyrus Language
+
+import (
+    std::libc{strtoul, tolower, snprintf},
+    std::libc::types{c_int},
+    std::errors{ErrorOr, ErrorStr},
+    std::collections{Vec},
+    std::option{Option},
+    std::mem{Allocator},
+    std::string{String},
+    std::net{TcpStream},
+    std::http::internal,
+);
+
+const NUMBER_BUF_SIZE: usize = 24;
+
+pub enum HttpMethod {
+    Get,
+    Head,
+    Post,
+    Put,
+    Delete,
+    Connect,
+    Options,
+    Trace,
+    Patch,
+    Unknown,
+
+    pub fn as_str(self: Self) const uint8* {
+        switch (self) {
+            case .Get => return "GET";
+            case .Head => return "HEAD";
+            case .Post => return "POST";
+            case .Put => return "PUT";
+            case .Delete => return "DELETE";
+            case .Connect => return "CONNECT";
+            case .Options => return "OPTIONS";
+            case .Trace => return "TRACE";
+            case .Patch => return "PATCH";
+            case .Unknown => return "UNKNOWN";
+        }
+    }
+
+    pub fn from_str(value: const uint8*) Self {
+        @assert(value, "method cannot be null");
+
+        switch (value) {
+            case "GET" => return .Get;
+            case "HEAD" => return .Head;
+            case "POST" => return .Post;
+            case "PUT" => return .Put;
+            case "DELETE" => return .Delete;
+            case "CONNECT" => return .Connect;
+            case "OPTIONS" => return .Options;
+            case "TRACE" => return .Trace;
+            case "PATCH" => return .Patch;
+            else => return .Unknown;
+        }
+    }
+}
+
+pub enum HttpStatus {
+    Continue = 100,
+    Ok = 200,
+    Created = 201,
+    Accepted = 202,
+    NoContent = 204,
+    MovedPermanently = 301,
+    Found = 302,
+    NotModified = 304,
+    BadRequest = 400,
+    Unauthorized = 401,
+    Forbidden = 403,
+    NotFound = 404,
+    MethodNotAllowed = 405,
+    RequestTimeout = 408,
+    Conflict = 409,
+    PayloadTooLarge = 413,
+    UriTooLong = 414,
+    UnsupportedMediaType = 415,
+    TooManyRequests = 429,
+    InternalServerError = 500,
+    NotImplemented = 501,
+    BadGateway = 502,
+    ServiceUnavailable = 503,
+    GatewayTimeout = 504,
+    VersionNotSupported = 505,
+
+    [[inline]]
+    pub fn code(self: Self) int32 {
+        return @cast(int32, self);
+    }
+
+    [[inline]]
+    pub fn from_code(code: int32) Self {
+        return @cast(HttpStatus, code);
+    }
+
+    pub fn reason(self: Self) const uint8* {
+        switch (self) {
+            case .Continue => return "Continue";
+            case .Ok => return "OK";
+            case .Created => return "Created";
+            case .Accepted => return "Accepted";
+            case .NoContent => return "No Content";
+            case .MovedPermanently => return "Moved Permanently";
+            case .Found => return "Found";
+            case .NotModified => return "Not Modified";
+            case .BadRequest => return "Bad Request";
+            case .Unauthorized => return "Unauthorized";
+            case .Forbidden => return "Forbidden";
+            case .NotFound => return "Not Found";
+            case .MethodNotAllowed => return "Method Not Allowed";
+            case .RequestTimeout => return "Request Timeout";
+            case .Conflict => return "Conflict";
+            case .PayloadTooLarge => return "Payload Too Large";
+            case .UriTooLong => return "URI Too Long";
+            case .UnsupportedMediaType => return "Unsupported Media Type";
+            case .TooManyRequests => return "Too Many Requests";
+            case .InternalServerError => return "Internal Server Error";
+            case .NotImplemented => return "Not Implemented";
+            case .BadGateway => return "Bad Gateway";
+            case .ServiceUnavailable => return "Service Unavailable";
+            case .GatewayTimeout => return "Gateway Timeout";
+            case .VersionNotSupported => return "HTTP Version Not Supported";
+        }
+    }
+}
+
+pub struct Header {
+    name: String,
+    value: String,
+
+    pub fn new(allocator: Allocator, name: const uint8*, value: const uint8*) Self {
+        return Self {
+            name: String.from_str(allocator, name),
+            value: String.from_str(allocator, value),
+        };
+    }
+
+    [[inline]]
+    pub fn name(self: const Self*) const uint8* {
+        return self->name.as_str_const();
+    }
+
+    [[inline]]
+    pub fn value(self: const Self*) const uint8* {
+        return self->value.as_str_const();
+    }
+
+    [[inline]]
+    pub fn set_value(self: Self*, value: const uint8*) {
+        @assert(value, "header value cannot be null");
+
+        self->value.clear();
+        self->value.push_str(value);
+    }
+
+    [[inline]]
+    pub fn free(self: Self*) {
+        self->name.free();
+        self->value.free();
+    }
+}
+
+pub struct Request {
+    allocator: Allocator,
+    method: HttpMethod,
+    target: String,
+    path: String,
+    query: String,
+    version: String,
+    headers: Vec<Header>,
+    body: String,
+
+    pub fn new(allocator: Allocator) Self {
+        return Self {
+            allocator,
+            method: .Unknown,
+            target: String.new(allocator),
+            path: String.new(allocator),
+            query: String.new(allocator),
+            version: String.new(allocator),
+            headers: Vec.new(allocator),
+            body: String.new(allocator),
+        };
+    }
+
+    pub fn parse(allocator: Allocator, data: const uint8*, len: usize) ErrorOr<Self, ErrorStr> {
+        @assert(data, "data cannot be null");
+
+        var request = Request.new(allocator);
+
+        const first_end = internal::line_end(data, len, 0);
+
+        if (first_end == 0) {
+            request.free();
+            return .Error("malformed http request line");
+        }
+
+        const method_end = internal::find_byte(data, first_end, 0, ' ');
+
+        if (method_end >= first_end) {
+            request.free();
+            return .Error("malformed http request line");
+        }
+
+        const target_start = internal::skip_spaces(data, first_end, method_end);
+        const target_end = internal::find_byte(data, first_end, target_start, ' ');
+
+        if (target_start >= first_end) {
+            request.free();
+            return .Error("malformed http request line");
+        }
+
+        var method_name = internal::copy_range(allocator, data, 0, method_end);
+        request.method = HttpMethod.from_str(method_name.as_str_const());
+        method_name.free();
+
+        request.target.free();
+        request.target = internal::copy_range(allocator, data, target_start, target_end);
+
+        const query_start = internal::find_byte(data, target_end, target_start, '?');
+
+        request.path.free();
+        request.path = internal::copy_range(allocator, data, target_start, query_start);
+
+        request.query.free();
+
+        if (query_start < target_end) {
+            request.query = internal::copy_range(allocator, data, query_start + 1, target_end);
+        } else {
+            request.query = String.new(allocator);
+        }
+
+        const version_start = internal::skip_spaces(data, first_end, target_end);
+
+        request.version.free();
+        request.version = internal::copy_range(allocator, data, version_start, first_end);
+
+        var cursor = internal::next_line(data, len, first_end);
+
+        while (cursor < len) {
+            const current_end = internal::line_end(data, len, cursor);
+
+            if (current_end == cursor) {
+                cursor = internal::next_line(data, len, current_end);
+                break;
+            }
+
+            const colon = internal::find_byte(data, current_end, cursor, ':');
+
+            if (colon < current_end) {
+                const value_start = internal::skip_spaces(data, current_end, colon + 1);
+
+                var name = internal::copy_range(allocator, data, cursor, colon);
+                var value = internal::copy_range(allocator, data, value_start, current_end);
+
+                request.headers.push(Header { name, value });
+            }
+
+            cursor = internal::next_line(data, len, current_end);
+        }
+
+        request.body.free();
+        request.body = internal::copy_range(allocator, data, cursor, len);
+
+        return .Value(request);
+    }
+
+    [[inline]]
+    pub fn method(self: const Self*) HttpMethod {
+        return self->method;
+    }
+
+    [[inline]]
+    pub fn target(self: const Self*) const uint8* {
+        return self->target.as_str_const();
+    }
+
+    [[inline]]
+    pub fn path(self: const Self*) const uint8* {
+        return self->path.as_str_const();
+    }
+
+    [[inline]]
+    pub fn query(self: const Self*) const uint8* {
+        return self->query.as_str_const();
+    }
+
+    [[inline]]
+    pub fn version(self: const Self*) const uint8* {
+        return self->version.as_str_const();
+    }
+
+    [[inline]]
+    pub fn body(self: const Self*) const uint8* {
+        return self->body.as_str_const();
+    }
+
+    [[inline]]
+    pub fn body_len(self: const Self*) usize {
+        return self->body.len();
+    }
+
+    [[inline]]
+    pub fn header_count(self: const Self*) usize {
+        return self->headers.len();
+    }
+
+    pub fn header_at(self: const Self*, index: usize) Option<const Header*> {
+        return self->headers.get_const(index);
+    }
+
+    pub fn header(self: const Self*, name: const uint8*) Option<const uint8*> {
+        @assert(name, "header name cannot be null");
+
+        for (var i: usize = 0; i < self->headers.len(); i += 1) {
+            const current = self->headers.get_const(i).unwrap();
+
+            if (eq_ignore_case(current->name(), name)) {
+                return .Some(current->value());
+            }
+        }
+
+        return .None;
+    }
+
+    pub fn has_header(self: const Self*, name: const uint8*) bool {
+        return self->header(name).is_some();
+    }
+
+    pub fn content_length(self: const Self*) usize {
+        switch (self->header("content-length")) {
+            case .Some(value) => return strtoul(value, null, 10);
+            case .None => return 0;
+        }
+    }
+
+    pub fn keep_alive(self: const Self*) bool {
+        switch (self->header("connection")) {
+            case .Some(value) => return eq_ignore_case(value, "keep-alive");
+            case .None => return false;
+        }
+    }
+
+    pub fn free(self: Self*) {
+        for (var i: usize = 0; i < self->headers.len(); i += 1) {
+            var current = self->headers.get(i).unwrap();
+            current->free();
+        }
+
+        self->headers.free();
+        self->target.free();
+        self->path.free();
+        self->query.free();
+        self->version.free();
+        self->body.free();
+    }
+}
+
+pub struct Response {
+    allocator: Allocator,
+    status: HttpStatus,
+    headers: Vec<Header>,
+    body: String,
+
+    pub fn new(allocator: Allocator) Self {
+        return Self {
+            allocator,
+            status: .Ok,
+            headers: Vec.new(allocator),
+            body: String.new(allocator),
+        };
+    }
+
+    [[inline]]
+    pub fn status(self: const Self*) HttpStatus {
+        return self->status;
+    }
+
+    [[inline]]
+    pub fn set_status(self: Self*, status: HttpStatus) {
+        self->status = status;
+    }
+
+    pub fn set_header(self: Self*, name: const uint8*, value: const uint8*) {
+        @assert(name, "header name cannot be null");
+        @assert(value, "header value cannot be null");
+
+        for (var i: usize = 0; i < self->headers.len(); i += 1) {
+            var current = self->headers.get(i).unwrap();
+
+            if (eq_ignore_case(current->name(), name)) {
+                current->set_value(value);
+                return;
+            }
+        }
+
+        self->headers.push(Header.new(self->allocator, name, value));
+    }
+
+    [[inline]]
+    pub fn set_content_type(self: Self*, value: const uint8*) {
+        self->set_header("Content-Type", value);
+    }
+
+    pub fn header(self: const Self*, name: const uint8*) Option<const uint8*> {
+        @assert(name, "header name cannot be null");
+
+        for (var i: usize = 0; i < self->headers.len(); i += 1) {
+            const current = self->headers.get_const(i).unwrap();
+
+            if (eq_ignore_case(current->name(), name)) {
+                return .Some(current->value());
+            }
+        }
+
+        return .None;
+    }
+
+    [[inline]]
+    pub fn header_count(self: const Self*) usize {
+        return self->headers.len();
+    }
+
+    pub fn set_body(self: Self*, data: const uint8*) {
+        @assert(data, "body cannot be null");
+
+        self->body.clear();
+        self->body.push_str(data);
+    }
+
+    [[inline]]
+    pub fn append_body(self: Self*, data: const uint8*) {
+        @assert(data, "body cannot be null");
+
+        self->body.push_str(data);
+    }
+
+    [[inline]]
+    pub fn body(self: const Self*) const uint8* {
+        return self->body.as_str_const();
+    }
+
+    [[inline]]
+    pub fn body_len(self: const Self*) usize {
+        return self->body.len();
+    }
+
+    pub fn serialize(self: const Self*) String {
+        var out = String.new(self->allocator);
+        var buffer: uint8[NUMBER_BUF_SIZE];
+
+        out.push_str("HTTP/1.1 ");
+        snprintf(&buffer[0], NUMBER_BUF_SIZE, "%d", self->status.code());
+        out.push_str(&buffer[0]);
+        out.push_str(" ");
+        out.push_str(self->status.reason());
+        out.push_str("\r\n");
+
+        for (var i: usize = 0; i < self->headers.len(); i += 1) {
+            const current = self->headers.get_const(i).unwrap();
+
+            if (eq_ignore_case(current->name(), "content-length")) {
+                continue;
+            }
+
+            out.push_str(current->name());
+            out.push_str(": ");
+            out.push_str(current->value());
+            out.push_str("\r\n");
+        }
+
+        out.push_str("Content-Length: ");
+        snprintf(&buffer[0], NUMBER_BUF_SIZE, "%lu", self->body.len());
+        out.push_str(&buffer[0]);
+        out.push_str("\r\n\r\n");
+        out.push_str(self->body.as_str_const());
+
+        return out;
+    }
+
+    pub fn write_to(self: const Self*, stream: TcpStream*) ErrorOr<usize, ErrorStr> {
+        var payload = self->serialize();
+        defer payload.free();
+
+        return stream->write(payload.as_str_const(), payload.len());
+    }
+
+    pub fn reset(self: Self*) {
+        for (var i: usize = 0; i < self->headers.len(); i += 1) {
+            var current = self->headers.get(i).unwrap();
+            current->free();
+        }
+
+        self->headers.clear();
+        self->body.clear();
+        self->status = .Ok;
+    }
+
+    pub fn free(self: Self*) {
+        for (var i: usize = 0; i < self->headers.len(); i += 1) {
+            var current = self->headers.get(i).unwrap();
+            current->free();
+        }
+
+        self->headers.free();
+        self->body.free();
+    }
+}
+
+pub fn eq_ignore_case(left: const uint8*, right: const uint8*) bool {
+    @assert(left, "left cannot be null");
+    @assert(right, "right cannot be null");
+
+    for (var i: usize = 0; true; i += 1) {
+        const a = tolower(@cast(c_int, left[i]));
+        const b = tolower(@cast(c_int, right[i]));
+
+        if (a != b) {
+            return false;
+        }
+
+        if (a == 0) {
+            return true;
+        }
+    }
+
+    return true;
+}

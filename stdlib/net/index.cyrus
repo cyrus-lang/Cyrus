@@ -1,0 +1,251 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 The Cyrus Language
+
+import (
+    std::libc::types{
+        c_int,
+        c_uint,
+        c_char,
+        c_void,
+        c_size,
+        c_ssize
+    },
+    std::libc{errno, strerror},
+    std::errors{ErrorOr, ErrorStr},
+);
+
+pub const AF_INET: c_int = 2;
+pub const AF_INET6: c_int = 10;
+pub const SOCK_STREAM: c_int = 1;
+pub const SOCK_DGRAM: c_int = 2;
+pub const IPPROTO_TCP: c_int = 6;
+pub const SOL_SOCKET: c_int = 1;
+pub const SO_REUSEADDR: c_int = 2;
+pub const SO_KEEPALIVE: c_int = 9;
+pub const SHUT_RD: c_int = 0;
+pub const SHUT_WR: c_int = 1;
+pub const SHUT_RDWR: c_int = 2;
+pub const MSG_NOSIGNAL: c_int = 16384;
+pub const INADDR_ANY: uint32 = 0;
+pub const INADDR_NONE: uint32 = 4294967295;
+pub const DEFAULT_BACKLOG: int32 = 128;
+
+[[repr(c)]]
+pub struct CInAddr {
+    pub s_addr: uint32
+}
+
+[[repr(c)]]
+pub struct CSockAddr {
+    pub sa_family: uint16,
+    pub sa_data: uint8[14]
+}
+
+[[repr(c)]]
+pub struct CSockAddrIn {
+    pub sin_family: uint16,
+    pub sin_port: uint16,
+    pub sin_addr: CInAddr,
+    pub sin_zero: uint8[8]
+}
+
+pub extern "C" {
+    fn socket(domain: c_int, socket_type: c_int, protocol: c_int) c_int;
+    fn bind(sockfd: c_int, addr: const CSockAddr*, addrlen: c_uint) c_int;
+    fn listen(sockfd: c_int, backlog: c_int) c_int;
+    fn accept(sockfd: c_int, addr: CSockAddr*, addrlen: c_uint*) c_int;
+    fn connect(sockfd: c_int, addr: const CSockAddr*, addrlen: c_uint) c_int;
+    fn setsockopt(sockfd: c_int, level: c_int, optname: c_int, optval: const c_void*, optlen: c_uint) c_int;
+    fn getsockopt(sockfd: c_int, level: c_int, optname: c_int, optval: c_void*, optlen: c_uint*) c_int;
+    fn send(sockfd: c_int, buf: const c_void*, len: c_size, flags: c_int) c_ssize;
+    fn recv(sockfd: c_int, buf: c_void*, len: c_size, flags: c_int) c_ssize;
+    fn shutdown(sockfd: c_int, how: c_int) c_int;
+    fn close(fd: c_int) c_int;
+    fn htons(hostshort: uint16) uint16;
+    fn htonl(hostlong: uint32) uint32;
+    fn ntohs(netshort: uint16) uint16;
+    fn ntohl(netlong: uint32) uint32;
+    fn inet_addr(cp: const c_char*) uint32;
+    fn inet_ntoa(addr: CInAddr) c_char*;
+}
+
+[[inline]]
+pub fn last_error() ErrorStr {
+    return strerror(errno);
+}
+
+pub fn make_ipv4_addr(address: const uint8*, port: uint16) ErrorOr<CSockAddrIn, ErrorStr> {
+    @assert(address, "address cannot be null");
+
+    const host = inet_addr(address);
+
+    if (host == INADDR_NONE) {
+        return .Error("invalid ipv4 address");
+    }
+
+    var addr: CSockAddrIn;
+    addr.sin_family = @cast(uint16, AF_INET);
+    addr.sin_port = htons(port);
+    addr.sin_addr = CInAddr { s_addr: host };
+
+    for (var i: usize = 0; i < 8; i += 1) {
+        addr.sin_zero[i] = 0;
+    }
+
+    return .Value(addr);
+}
+
+pub struct TcpStream {
+    fd: c_int,
+
+    [[inline]]
+    pub fn from_fd(fd: c_int) Self {
+        return Self { fd };
+    }
+
+    [[inline]]
+    pub fn fd(self: const Self*) c_int {
+        return self->fd;
+    }
+
+    [[inline]]
+    pub fn is_open(self: const Self*) bool {
+        return self->fd >= 0;
+    }
+
+    pub fn connect(address: const uint8*, port: uint16) ErrorOr<Self, ErrorStr> {
+        switch (make_ipv4_addr(address, port)) case .Value(var addr) else {
+            return .Error("invalid ipv4 address");
+        }
+
+        const fd = socket(AF_INET, SOCK_STREAM, 0);
+
+        if (fd < 0) {
+            return .Error(last_error());
+        }
+
+        const generic: CSockAddr* = @cast(void*, &addr);
+
+        if (connect(fd, generic, @cast(c_uint, @sizeof(CSockAddrIn))) < 0) {
+            const err = last_error();
+            close(fd);
+            return .Error(err);
+        }
+
+        return .Value(Self { fd });
+    }
+
+    pub fn read(self: Self*, buffer: uint8*, len: usize) ErrorOr<usize, ErrorStr> {
+        @assert(buffer, "buffer cannot be null");
+
+        const received = recv(self->fd, @cast(void*, buffer), len, 0);
+
+        if (received < 0) {
+            return .Error(last_error());
+        }
+
+        return .Value(@cast(usize, received));
+    }
+
+    pub fn write(self: Self*, data: const uint8*, len: usize) ErrorOr<usize, ErrorStr> {
+        @assert(data, "data cannot be null");
+
+        var sent: usize = 0;
+
+        while (sent < len) {
+            const written = send(self->fd, @cast(const void*, data + sent), len - sent, MSG_NOSIGNAL);
+
+            if (written <= 0) {
+                return .Error(last_error());
+            }
+
+            sent += @cast(usize, written);
+        }
+
+        return .Value(sent);
+    }
+
+    [[inline]]
+    pub fn shutdown(self: Self*) {
+        shutdown(self->fd, SHUT_RDWR);
+    }
+
+    [[inline]]
+    pub fn close(self: Self*) {
+        if (self->fd >= 0) {
+            close(self->fd);
+            self->fd = -1;
+        }
+    }
+}
+
+pub struct TcpListener {
+    fd: c_int,
+
+    pub fn bind(address: const uint8*, port: uint16, backlog: int32) ErrorOr<Self, ErrorStr> {
+        switch (make_ipv4_addr(address, port)) case .Value(var addr) else {
+            return .Error("invalid ipv4 address");
+        }
+
+        const fd = socket(AF_INET, SOCK_STREAM, 0);
+
+        if (fd < 0) {
+            return .Error(last_error());
+        }
+
+        var reuse: c_int = 1;
+
+        if (setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, @cast(void*, &reuse), @cast(c_uint, @sizeof(c_int))) < 0) {
+            const err = last_error();
+            close(fd);
+            return .Error(err);
+        }
+
+        const generic: CSockAddr* = @cast(void*, &addr);
+
+        if (bind(fd, generic, @cast(c_uint, @sizeof(CSockAddrIn))) < 0) {
+            const err = last_error();
+            close(fd);
+            return .Error(err);
+        }
+
+        if (listen(fd, backlog) < 0) {
+            const err = last_error();
+            close(fd);
+            return .Error(err);
+        }
+
+        return .Value(Self { fd });
+    }
+
+    [[inline]]
+    pub fn fd(self: const Self*) c_int {
+        return self->fd;
+    }
+
+    [[inline]]
+    pub fn is_open(self: const Self*) bool {
+        return self->fd >= 0;
+    }
+
+    pub fn accept(self: Self*) ErrorOr<TcpStream, ErrorStr> {
+        var peer: CSockAddr;
+        var peer_len: c_uint = @cast(c_uint, @sizeof(CSockAddr));
+
+        const fd = accept(self->fd, &peer, &peer_len);
+
+        if (fd < 0) {
+            return .Error(last_error());
+        }
+
+        return .Value(TcpStream.from_fd(fd));
+    }
+
+    [[inline]]
+    pub fn close(self: Self*) {
+        if (self->fd >= 0) {
+            close(self->fd);
+            self->fd = -1;
+        }
+    }
+}

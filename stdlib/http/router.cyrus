@@ -1,0 +1,186 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 The Cyrus Language
+
+import (
+    std::http{Request, Response, HttpMethod, HttpStatus},
+    std::collections{Vec},
+    std::option{Option},
+    std::mem{Allocator},
+);
+
+pub type Handler = fn(const Request*, Response*) void;
+
+pub struct Route {
+    method: HttpMethod,
+    path: const uint8*,
+    handler: Handler,
+
+    pub fn new(method: HttpMethod, path: const uint8*, handler: Handler) Self {
+        @assert(path, "route path cannot be null");
+
+        return Self { method, path, handler };
+    }
+
+    [[inline]]
+    pub fn method(self: const Self*) HttpMethod {
+        return self->method;
+    }
+
+    [[inline]]
+    pub fn path(self: const Self*) const uint8* {
+        return self->path;
+    }
+
+    [[inline]]
+    pub fn handler(self: const Self*) Handler {
+        return self->handler;
+    }
+
+    pub fn matches(self: const Self*, method: HttpMethod, path: const uint8*) bool {
+        if (self->method != method) {
+            return false;
+        }
+
+        return path_matches(self->path, path);
+    }
+}
+
+pub struct Router {
+    routes: Vec<Route>,
+    fallback: Option<Handler>,
+
+    pub fn new(allocator: Allocator) Self {
+        return Self {
+            routes: Vec.new(allocator),
+            fallback: .None,
+        };
+    }
+
+    [[inline]]
+    pub fn add(self: Self*, method: HttpMethod, path: const uint8*, handler: Handler) {
+        self->routes.push(Route.new(method, path, handler));
+    }
+
+    [[inline]]
+    pub fn get(self: Self*, path: const uint8*, handler: Handler) {
+        self->add(.Get, path, handler);
+    }
+
+    [[inline]]
+    pub fn head(self: Self*, path: const uint8*, handler: Handler) {
+        self->add(.Head, path, handler);
+    }
+
+    [[inline]]
+    pub fn post(self: Self*, path: const uint8*, handler: Handler) {
+        self->add(.Post, path, handler);
+    }
+
+    [[inline]]
+    pub fn put(self: Self*, path: const uint8*, handler: Handler) {
+        self->add(.Put, path, handler);
+    }
+
+    [[inline]]
+    pub fn delete(self: Self*, path: const uint8*, handler: Handler) {
+        self->add(.Delete, path, handler);
+    }
+
+    [[inline]]
+    pub fn patch(self: Self*, path: const uint8*, handler: Handler) {
+        self->add(.Patch, path, handler);
+    }
+
+    [[inline]]
+    pub fn options(self: Self*, path: const uint8*, handler: Handler) {
+        self->add(.Options, path, handler);
+    }
+
+    [[inline]]
+    pub fn set_fallback(self: Self*, handler: Handler) {
+        self->fallback = .Some(handler);
+    }
+
+    [[inline]]
+    pub fn len(self: const Self*) usize {
+        return self->routes.len();
+    }
+
+    pub fn find(self: const Self*, method: HttpMethod, path: const uint8*) Option<Handler> {
+        for (var i: usize = 0; i < self->routes.len(); i += 1) {
+            const route = self->routes.get_const(i).unwrap();
+
+            if (route->matches(method, path)) {
+                return .Some(route->handler());
+            }
+        }
+
+        return .None;
+    }
+
+    pub fn allows(self: const Self*, path: const uint8*) bool {
+        for (var i: usize = 0; i < self->routes.len(); i += 1) {
+            const route = self->routes.get_const(i).unwrap();
+
+            if (path_matches(route->path(), path)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    pub fn dispatch(self: const Self*, request: const Request*, response: Response*) bool {
+        switch (self->find(request->method(), request->path())) {
+            case .Some(handler) => {
+                handler(request, response);
+                return true;
+            }
+        }
+
+        switch (self->fallback) {
+            case .Some(handler) => {
+                handler(request, response);
+                return true;
+            }
+        }
+
+        if (self->allows(request->path())) {
+            response->set_status(.MethodNotAllowed);
+            response->set_content_type("text/plain");
+            response->set_body("405 Method Not Allowed");
+        } else {
+            response->set_status(.NotFound);
+            response->set_content_type("text/plain");
+            response->set_body("404 Not Found");
+        }
+
+        return false;
+    }
+
+    [[inline]]
+    pub fn free(self: Self*) {
+        self->routes.free();
+    }
+}
+
+pub fn path_matches(pattern: const uint8*, path: const uint8*) bool {
+    @assert(pattern, "pattern cannot be null");
+    @assert(path, "path cannot be null");
+
+    for (var i: usize = 0; true; i += 1) {
+        if (pattern[i] == '*') {
+            return true;
+        }
+
+        if (pattern[i] == '\0') {
+            return path[i] == '\0' || (path[i] == '/' && path[i + 1] == '\0');
+        }
+
+        if (pattern[i] != path[i]) {
+            return false;
+        }
+    }
+
+    return false;
+}

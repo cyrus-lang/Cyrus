@@ -1,0 +1,201 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 The Cyrus Language
+
+import (
+    std::http{Request, Response, HttpStatus},
+    std::net{TcpListener, TcpStream, DEFAULT_BACKLOG},
+    std::errors{ErrorOr, ErrorStr},
+    std::mem{Allocator},
+    std::string{String},
+    std::http::router{Router},
+    std::http::internal,
+);
+
+const READ_CHUNK_SIZE: usize = 4096;
+const DEFAULT_MAX_REQUEST_SIZE: usize = 1048576;
+
+pub struct Server {
+    allocator: Allocator,
+    listener: TcpListener,
+    router: Router*,
+    max_request_size: usize,
+    running: bool,
+
+    pub fn bind(
+        allocator: Allocator,
+        router: Router*,
+        address: const uint8*,
+        port: uint16
+    ) ErrorOr<Self, ErrorStr> {
+        @assert(router, "router cannot be null");
+
+        const bound = TcpListener.bind(address, port, DEFAULT_BACKLOG);
+
+        switch (bound) {
+            case .Value(listener) => return .Value(Self {
+                allocator,
+                listener,
+                router,
+                max_request_size: DEFAULT_MAX_REQUEST_SIZE,
+                running: false,
+            });
+            case .Error(err) => return .Error(err);
+        }
+    }
+
+    [[inline]]
+    pub fn set_max_request_size(self: Self*, size: usize) {
+        @assert(size != 0, "maximum request size cannot be zero");
+
+        self->max_request_size = size;
+    }
+
+    [[inline]]
+    pub fn is_running(self: const Self*) bool {
+        return self->running;
+    }
+
+    [[inline]]
+    pub fn stop(self: Self*) {
+        self->running = false;
+    }
+
+    pub fn serve_once(self: Self*) ErrorOr<(), ErrorStr> {
+        var stream: TcpStream;
+
+        switch (self->listener.accept()) {
+            case .Value(accepted) => stream = accepted;
+            case .Error(err) => return .Error(err);
+        }
+
+        var raw = String.new(self->allocator);
+
+        switch (self->read_message(&stream, &raw)) {
+            case .Value(within_limit) => {
+                if (!within_limit) {
+                    var oversized = Response.new(self->allocator);
+                    oversized.set_status(.PayloadTooLarge);
+                    oversized.set_content_type("text/plain");
+                    oversized.set_body("413 Payload Too Large");
+                    oversized.write_to(&stream);
+                    oversized.free();
+
+                    raw.free();
+                    stream.close();
+                    return .Value(());
+                }
+            }
+            case .Error(err) => {
+                raw.free();
+                stream.close();
+                return .Error(err);
+            }
+        }
+
+        if (raw.is_empty()) {
+            raw.free();
+            stream.close();
+            return .Value(());
+        }
+
+        switch (Request.parse(self->allocator, raw.as_str_const(), raw.len())) {
+            case .Value(parsed) => {
+                var request = parsed;
+                var response = Response.new(self->allocator);
+
+                self->router->dispatch(&request, &response);
+
+                const result = response.write_to(&stream);
+
+                response.free();
+                request.free();
+                raw.free();
+                stream.close();
+
+                switch (result) {
+                    case .Value(_) => return .Value(());
+                    case .Error(err) => return .Error(err);
+                }
+            }
+            case .Error(err) => {
+                var response = Response.new(self->allocator);
+                response.set_status(.BadRequest);
+                response.set_content_type("text/plain");
+                response.set_body("400 Bad Request");
+                response.write_to(&stream);
+                response.free();
+
+                raw.free();
+                stream.close();
+                return .Error(err);
+            }
+        }
+    }
+
+    pub fn serve(self: Self*) ErrorOr<(), ErrorStr> {
+        if (!self->listener.is_open()) {
+            return .Error("the server listener is closed");
+        }
+
+        self->running = true;
+
+        while (self->running) {
+            self->serve_once();
+        }
+
+        return .Value(());
+    }
+
+    fn read_message(self: Self*, stream: TcpStream*, raw: String*) ErrorOr<bool, ErrorStr> {
+        var chunk: uint8[READ_CHUNK_SIZE];
+        var headers_end: usize = 0;
+        var expected: usize = 0;
+
+        while (true) {
+            if (headers_end != 0) {
+                if (raw->len() >= headers_end + expected) {
+                    break;
+                }
+            }
+
+            var count: usize = 0;
+
+            switch (stream->read(&chunk[0], READ_CHUNK_SIZE - 1)) {
+                case .Value(received) => count = received;
+                case .Error(err) => return .Error(err);
+            }
+
+            if (count == 0) {
+                break;
+            }
+
+            chunk[count] = '\0';
+            raw->push_str(&chunk[0]);
+
+            if (raw->len() > self->max_request_size) {
+                return .Value(false);
+            }
+
+            if (headers_end == 0) {
+                switch (internal::header_terminator(raw->as_str_const())) {
+                    case .Some(index) => {
+                        headers_end = index;
+                        expected = internal::scan_content_length(raw->as_str_const(), raw->len());
+
+                        if (headers_end + expected > self->max_request_size) {
+                            return .Value(false);
+                        }
+                    }
+                }
+            }
+        }
+
+        return .Value(true);
+    }
+
+    [[inline]]
+    pub fn close(self: Self*) {
+        self->running = false;
+        self->listener.close();
+    }
+}
