@@ -54,6 +54,10 @@ fn apply_optional_flags<'ll>(llvm_ctx: &'ll Context, func: &FunctionValue<'ll>, 
 }
 
 pub(crate) fn apply_global_var_modifiers<'ll>(global_value: &GlobalValue<'ll>, modifiers: &GlobalVarModifiers) {
+    if modifiers.vis.is_private() {
+        global_value.set_linkage(LLVMLinkage::Private);
+    }
+
     if modifiers.extrn.is_some() {
         global_value.set_linkage(LLVMLinkage::External);
     }

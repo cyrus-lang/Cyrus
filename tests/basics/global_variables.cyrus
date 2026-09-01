@@ -1,4 +1,4 @@
-// @stdout: 10 20 | 1 2 3 | name: Cyrus, age: 10 | (1.1, 2.2, 3.3)
+// @stdout: 10 20 | 1 2 3 | name: Cyrus, age: 2500 | (1.1, 2.2, 3.3)
 
 import std::libc{printf};
 
@@ -6,7 +6,7 @@ static var global_counter: int32 = 0;
 
 static var my_arr: int32[3] = {1, 2, 3};
 
-static var my_struct = struct { name: "Cyrus", age: 10 };
+static var my_struct = struct { name: "Cyrus", age: 2500 };
 
 static var my_tuple = (1.1, 2.2, 3.3);
 

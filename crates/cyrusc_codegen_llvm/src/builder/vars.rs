@@ -1,16 +1,6 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 The Cyrus Language
 
-use cyrusc_internal::{
-    abi::layout::ABITypeLayout,
-    cir::cir::{CIRGlobalVarStmt, CIRVarStmt, IRValueID},
-};
-use inkwell::{
-    module::Linkage,
-    types::BasicTypeEnum,
-    values::{AsValueRef, GlobalValue, PointerValue},
-};
-
 use crate::{
     builder::{
         builder::CodeGenIRBuilder,
@@ -22,6 +12,21 @@ use crate::{
         debug_info::{create_debug_variable, emit_dbg_declare, emit_global_debug},
     },
 };
+use cyrusc_internal::{
+    abi::layout::ABITypeLayout,
+    cir::cir::{CIRExpr, CIRExprKind, CIRGlobalVarStmt, CIRVarStmt, IRValueID},
+};
+use inkwell::{
+    module::Linkage,
+    types::BasicTypeEnum,
+    values::{AsValueRef, GlobalValue, PointerValue},
+};
+
+#[derive(Debug, Clone)]
+pub(crate) struct GlobalVarLazyInitializer<'a> {
+    pub global_value: GlobalValue<'a>,
+    pub expr: CIRExpr,
+}
 
 // GlobalVar.
 impl<'ll> CodeGenIRBuilder<'ll> {
@@ -47,12 +52,20 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         }
 
         if let Some(expr) = &cir_global_var.expr {
-            let lvalue = self.emit_expr(&expr, &Some(cir_global_var.ty.clone()));
-            let rvalue = self.load_rvalue(lvalue).as_basic_value();
-            global_value.set_initializer(&rvalue);
+            if global_var_expr_includes_enum_init(&expr.kind) {
+                self.global_var_lazy_initializers.push(GlobalVarLazyInitializer {
+                    global_value,
+                    expr: expr.clone(),
+                });
+                global_value.set_initializer(&ty.const_zero());
+            } else {
+                let lvalue = self.emit_expr(&expr, &Some(cir_global_var.ty.clone()));
+                let rvalue = self.load_rvalue(lvalue).as_basic_value();
+                global_value.set_initializer(&rvalue);
+            }
         } else {
+            // Zero init only if not declared undefined
             if cir_global_var.modifiers.extrn.is_none() && !cir_global_var.is_undef {
-                // Zero init only if not declared undefined
                 global_value.set_initializer(&ty.const_zero());
             }
         }
@@ -92,7 +105,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
     }
 }
 
-// Var.
+// Local Variable.
 impl<'ll> CodeGenIRBuilder<'ll> {
     pub(crate) fn emit_var(&mut self, cir_var: &CIRVarStmt) {
         let layout = self.tctx.layout_of(&cir_var.ty);
@@ -190,5 +203,57 @@ impl<'ll> CodeGenIRBuilder<'ll> {
                 cir_var.loc.column.try_into().unwrap(),
             )
         };
+    }
+}
+
+fn global_var_expr_includes_enum_init(expr_kind: &CIRExprKind) -> bool {
+    match expr_kind {
+        CIRExprKind::EnumInit(_) => true,
+
+        CIRExprKind::Prefix(_)
+        | CIRExprKind::Infix(_)
+        | CIRExprKind::Literal(_)
+        | CIRExprKind::Load(_)
+        | CIRExprKind::InlineAsm(_)
+        | CIRExprKind::Type(_)
+        | CIRExprKind::Lambda(_) => false,
+
+        CIRExprKind::Dynamic(dynamic) => global_var_expr_includes_enum_init(&dynamic.data_expr.kind),
+
+        CIRExprKind::Assign(assign) => {
+            global_var_expr_includes_enum_init(&assign.lhs.kind) || global_var_expr_includes_enum_init(&assign.rhs.kind)
+        }
+
+        CIRExprKind::AddrOf(addr_of) => global_var_expr_includes_enum_init(&addr_of.operand.kind),
+
+        CIRExprKind::Deref(deref) => global_var_expr_includes_enum_init(&deref.operand.kind),
+
+        CIRExprKind::ArrayIndex(array_index) => global_var_expr_includes_enum_init(&array_index.operand.kind),
+
+        CIRExprKind::Array(array) => array
+            .elements
+            .iter()
+            .any(|expr| global_var_expr_includes_enum_init(&expr.kind)),
+
+        CIRExprKind::Tuple(tuple) => tuple
+            .elements
+            .iter()
+            .any(|expr| global_var_expr_includes_enum_init(&expr.kind)),
+
+        CIRExprKind::TupleAccess(tuple_access) => global_var_expr_includes_enum_init(&tuple_access.operand.kind),
+
+        CIRExprKind::StructInit(struct_init) => struct_init
+            .fields
+            .iter()
+            .any(|expr| global_var_expr_includes_enum_init(&expr.kind)),
+
+        CIRExprKind::Call(call) => call
+            .args
+            .iter()
+            .any(|expr| global_var_expr_includes_enum_init(&expr.kind)),
+
+        CIRExprKind::UnionInit(union_init) => global_var_expr_includes_enum_init(&union_init.expr.kind),
+
+        CIRExprKind::FieldAccess(field_access) => global_var_expr_includes_enum_init(&field_access.operand.kind),
     }
 }
