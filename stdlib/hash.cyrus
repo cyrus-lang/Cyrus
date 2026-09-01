@@ -1,0 +1,56 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 The Cyrus Language
+
+import std::libc{strlen, strcmp};
+
+pub fn hash_bytes(bytes: const uint8*, len: usize) uint64 {
+    var hash: uint64 = 5381;
+    for (var i: usize = 0; i < len; i += 1) {
+        hash = hash ^ (hash << 5) ^ @cast(uint64, bytes[i]);
+    }
+    return hash;
+}
+
+pub fn hash_string(str: const uint8**) uint64 {
+    const s = *str;
+    if (s == null) {
+        return 0;
+    }
+    const len = strlen(s);
+    return hash_bytes(s, len);
+}
+
+
+pub fn hash_usize(val: const usize*) uint64 {
+    var x: uint64 = @cast(uint64, *val);
+    // Murmur3-style finalizer using only XOR and shifts
+    x = x ^ (x >> 33);
+    x = x ^ (x >> 17);
+    x = x ^ (x >> 16);
+    return x;
+}
+
+pub fn hash_ptr(ptr: const void**) uint64 {
+    const bytes: const uint8* = @cast(const uint8*, @cast(uintptr, ptr));
+    return hash_bytes(bytes, @sizeof(const void*));
+}
+
+pub fn eq_usize(a: const usize*, b: const usize*) bool {
+    return *a == *b;
+}
+
+pub fn eq_string(a: const uint8**, b: const uint8**) bool {
+    const sa = *a;
+    const sb = *b;
+    if (sa == sb) {
+        return true;
+    }
+    if (sa == null || sb == null) {
+        return false;
+    }
+    return strcmp(sa, sb) == 0;
+}
+
+pub fn eq_ptr(a: const void**, b: const void**) bool {
+    return *a == *b;
+}
