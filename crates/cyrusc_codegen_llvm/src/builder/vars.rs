@@ -43,6 +43,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
 
         let ty: BasicTypeEnum<'ll> = self.emit_type(cir_global_var.ty.clone()).try_into().unwrap();
         let global_value = llvm_module.add_global(ty, None, &cir_global_var.name);
+        
         drop(llvm_module);
 
         let layout = self.tctx.layout_of(&cir_global_var.ty);

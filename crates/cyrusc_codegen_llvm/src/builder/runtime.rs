@@ -85,7 +85,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
     ) -> InternalValue<'ll> {
         let pointee_basic_ty: BasicTypeEnum<'ll> = self.emit_type(pointee_ty.clone()).try_into().unwrap();
 
-        let target_data = self.llvmtm.get_target_data();
+        let target_data = self.llvm_target_machine.get_target_data();
         let ptr_sized_int_type = self.llvm_ctx.ptr_sized_int_type(&target_data, None);
         let mut array_length_int_value = ptr_sized_int_type.const_int(array_length.into(), false);
 

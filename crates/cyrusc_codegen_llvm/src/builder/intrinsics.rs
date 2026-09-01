@@ -693,7 +693,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
     }
 
     fn intrinsic_memcpy(&self, dest: PointerValue<'ll>, rvalue: BasicValueEnum<'ll>) {
-        let target_data = self.llvmtm.get_target_data();
+        let target_data = self.llvm_target_machine.get_target_data();
         let ty = rvalue.get_type();
 
         let size_in_bytes = target_data.get_store_size(&ty);
@@ -762,7 +762,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
     pub(crate) fn intrinsic_array_memcmp(&self, lhs_arr: ArrayValue<'ll>, rhs_arr: ArrayValue<'ll>) -> IntValue<'ll> {
         let i32_type = self.llvm_ctx.i32_type();
         let i8_ptr_type = self.llvm_ctx.ptr_type(AddressSpace::default());
-        let target_data = self.llvmtm.get_target_data();
+        let target_data = self.llvm_target_machine.get_target_data();
         let ptr_sized_int_type = self.llvm_ctx.ptr_sized_int_type(&target_data, None);
 
         let module = self.llvm_module.borrow();
