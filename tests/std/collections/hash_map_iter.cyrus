@@ -1,0 +1,65 @@
+// @stdout: hash_map_iter ok
+
+import std::collections::hash_map{HashMap};
+import std::mem::libc{LibcAllocator};
+import std::mem{Allocator};
+import std::hash{hash_usize, eq_usize};
+import std::libc{printf};
+
+pub fn main() {
+    const allocator: Allocator = dynamic LibcAllocator.new();
+
+    var map: HashMap<usize, usize> = HashMap.with_hasher(
+        allocator,
+        8,
+        hash_usize,
+        eq_usize,
+        @cast(usize, 0),
+        @cast(usize, 0)
+    );
+    defer map.deinit();
+
+    map.insert(1, 10);
+    map.insert(2, 20);
+
+    var iter_mut = map.iter();
+    while (true) {
+        var opt = iter_mut.next();
+        if (opt.is_none()) {
+            break;
+        }
+        var entry = opt.unwrap();
+        *entry.1 += 5;
+    }
+
+    var iter_c = map.iter_const();
+    var count_c: usize = 0;
+    while (true) {
+        var opt = iter_c.next();
+        if (opt.is_none()) {
+            break;
+        }
+        count_c += 1;
+    }
+
+    var iter_o = map.iter_owned();
+    var count_o: usize = 0;
+    while (true) {
+        var opt = iter_o.next();
+        if (opt.is_none()) {
+            break;
+        }
+        count_o += 1;
+    }
+
+    const k1: usize = 1;
+    const k2: usize = 2;
+    const val1 = *map.get(&k1).unwrap();
+    const val2 = *map.get(&k2).unwrap();
+
+    if (((((val1 == 15) && (val2 == 25)) && (count_c == 2)) && (count_o == 2))) {
+        printf("hash_map_iter ok\n");
+    } else {
+        printf("hash_map_iter fail\n");
+    }
+}

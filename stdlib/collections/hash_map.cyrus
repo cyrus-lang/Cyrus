@@ -23,10 +23,10 @@ pub struct HashEntry<K, V> {
 
 pub struct HashMap<K, V> {
     allocator: Allocator,
-    entries: Vec<HashEntry<K, V>>,
+    pub entries: Vec<HashEntry<K, V>>,
     len: usize,
     tombstones: usize,
-    cap: usize,
+    pub cap: usize,
     hash_fn: fn(const K*) uint64,
     eq_fn: fn(const K*, const K*) bool,
     default_key: K,
@@ -286,14 +286,44 @@ pub struct HashMap<K, V> {
         self->free();
     }
 
-    pub fn iter(self: const Self*) HashMapIter<K, V> {
+    [[inline]]
+    pub fn iter(self: Self*) HashMapIter<K, V> {
         return HashMapIter<K, V> { map: self, idx: 0 };
+    }
+
+    [[inline]]
+    pub fn iter_const(self: Self*) HashMapIterConst<K, V> {
+        return HashMapIterConst<K, V> { map: self, idx: 0 };
+    }
+
+    [[inline]]
+    pub fn iter_owned(self: Self*) HashMapIterOwned<K, V> {
+        return HashMapIterOwned<K, V> { map: self, idx: 0 };
     }
 }
 
 pub struct HashMapIter<K, V> {
-    pub map: const HashMap<K, V>*,
-    pub idx: usize,
+    map: HashMap<K, V>*,
+    idx: usize,
+
+    pub fn next(self: Self*) Option<(K*, V*)> {
+        const cap = self->map->cap;
+        var data = self->map->entries.data();
+
+        while (self->idx < cap) {
+            const entry = &data[self->idx];
+            self->idx += 1;
+            if (entry->state == .Occupied) {
+                return .Some((&entry->key, &entry->value));
+            }
+        }
+        return .None;
+    }
+}
+
+pub struct HashMapIterConst<K, V> {
+    map: const HashMap<K, V>*,
+    idx: usize,
 
     pub fn next(self: Self*) Option<(const K*, const V*)> {
         const cap = self->map->cap;
@@ -306,7 +336,25 @@ pub struct HashMapIter<K, V> {
                 return .Some((&entry->key, &entry->value));
             }
         }
+        return .None;
+    }
+}
 
+pub struct HashMapIterOwned<K, V> {
+    map: const HashMap<K, V>*,
+    idx: usize,
+
+    pub fn next(self: Self*) Option<(K, V)> {
+        const cap = self->map->cap;
+        const data = self->map->entries.data_const();
+
+        while (self->idx < cap) {
+            const entry = &data[self->idx];
+            self->idx += 1;
+            if (entry->state == .Occupied) {
+                return .Some((entry->key, entry->value));
+            }
+        }
         return .None;
     }
 }
