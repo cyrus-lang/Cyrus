@@ -382,7 +382,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
                     }
                 } else if basic_value.is_pointer_value() {
                     // ptr -> int
-                    let ptr_width = self.llvmtm.get_target_data().get_pointer_byte_size(None) * 8;
+                    let ptr_width = self.llvm_target_machine.get_target_data().get_pointer_byte_size(None) * 8;
 
                     if int_type.get_bit_width() < ptr_width {
                         let ptr_int = self.llvm_ctx.custom_width_int_type(ptr_width);
