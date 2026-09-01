@@ -425,8 +425,6 @@ impl<'a> CIRPrinter<'a> {
                 }
             },
 
-            CIRExprKind::SizeOf(sizeof) => format!("sizeof({})", self.print_type(&sizeof.ty)),
-
             CIRExprKind::Array(array) => {
                 let elements = array
                     .elements

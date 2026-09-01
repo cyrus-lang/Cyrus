@@ -8,11 +8,74 @@ use crate::builder::{
 use cyrusc_internal::cir::types::CIRType;
 use inkwell::{
     AddressSpace,
+    module::Linkage,
     types::{BasicMetadataTypeEnum, BasicTypeEnum},
     values::{BasicMetadataValueEnum, IntValue, PointerValue},
 };
 
+const GLOBAL_VAR_CTORS_FN_NAME: &str = "__cyrus_global_var_ctors";
+
 impl<'ll> CodeGenIRBuilder<'ll> {
+    pub fn emit_global_var_ctors_function(&mut self) {
+        if self.global_var_lazy_initializers.is_empty() {
+            return;
+        }
+
+        if self
+            .llvm_module
+            .borrow()
+            .get_function(GLOBAL_VAR_CTORS_FN_NAME)
+            .is_some()
+        {
+            return;
+        }
+
+        let void_type = self.llvm_ctx.void_type();
+        let ctor_fn_type = void_type.fn_type(&[], false);
+
+        let llvm_func =
+            self.llvm_module
+                .borrow()
+                .add_function(GLOBAL_VAR_CTORS_FN_NAME, ctor_fn_type, Some(Linkage::Internal));
+
+        let entry_block = self.llvm_ctx.append_basic_block(llvm_func, "entry");
+        self.llvm_builder.position_at_end(entry_block);
+
+        for ctor in std::mem::take(&mut self.global_var_lazy_initializers) {
+            let lvalue = self.emit_expr(&ctor.expr, &None);
+            let rvalue = self.load_rvalue(lvalue);
+            self.emit_store(ctor.global_value.as_pointer_value(), rvalue, ctor.expr.ty.clone());
+        }
+
+        self.llvm_builder.position_at_end(entry_block);
+        self.llvm_builder.build_return(None).unwrap();
+
+        let i32_type = self.llvm_ctx.i32_type();
+        let ptr_type = self.llvm_ctx.ptr_type(inkwell::AddressSpace::default());
+
+        let priority = i32_type.const_int(65535, false); // standard default priority
+        let fn_ptr = llvm_func.as_global_value().as_pointer_value();
+        let null_data = ptr_type.const_null();
+
+        let ctor_struct_val = self
+            .llvm_ctx
+            .const_struct(&[priority.into(), fn_ptr.into(), null_data.into()], false);
+
+        // create 1-element array constant: [1 x { i32, void ()*, i8* }]
+        let ctor_struct_type = ctor_struct_val.get_type();
+        let ctor_array_type = ctor_struct_type.array_type(1);
+        let ctor_array_val = ctor_struct_type.const_array(&[ctor_struct_val]);
+
+        // emit the appending @llvm.global_ctors global
+        let global_ctors =
+            self.llvm_module
+                .borrow()
+                .add_global(ctor_array_type, Some(AddressSpace::default()), "llvm.global_ctors");
+
+        global_ctors.set_linkage(Linkage::Appending);
+        global_ctors.set_initializer(&ctor_array_val);
+    }
+
     pub(crate) fn emit_inbounds_checked_array_index(
         &mut self,
         ptr: PointerValue<'ll>,

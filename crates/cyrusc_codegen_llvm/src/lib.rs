@@ -97,14 +97,6 @@ impl CodeGenLLVM {
     ) {
         let dctx = if self.opts.debuginfo_enabled { Some(dctx) } else { None };
 
-        {
-            let llvm_module = owned_module.module.borrow();
-            llvm_module.set_triple(&self.llvm_target_machine.get_triple());
-            llvm_module.set_data_layout(&self.llvm_target_machine.get_target_data().get_data_layout());
-
-            enable_asan_for_owned_module(&self.opts, owned_module, &self.llvm_target_machine);
-        }
-
         let mut codegen_ir_builder = CodeGenIRBuilder::new(
             owned_module,
             cir_module,
@@ -119,6 +111,16 @@ impl CodeGenLLVM {
         );
 
         codegen_ir_builder.emit_module();
+
+        codegen_ir_builder.emit_global_var_ctors_function();
+
+        {
+            let llvm_module = owned_module.module.borrow();
+            llvm_module.set_triple(&self.llvm_target_machine.get_triple());
+            llvm_module.set_data_layout(&self.llvm_target_machine.get_target_data().get_data_layout());
+
+            enable_asan_for_owned_module(&self.opts, owned_module, &self.llvm_target_machine);
+        }
 
         // run optimizer
         {

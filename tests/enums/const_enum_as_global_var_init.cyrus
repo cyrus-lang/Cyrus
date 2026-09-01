@@ -1,0 +1,33 @@
+// @stdout: (10, 20) | { 1.100000, 2.200000 } | name: Cyrus, age: 2500 | name: Cyrus, age: 2500
+
+import std::libc{printf};
+
+enum Enum {
+    Tuple(int32, int32),
+    Struct { x: float64, y: float64 },
+    Value = struct { name: "Cyrus", age: 2500 }
+}
+
+static var MY_ENUM1: Enum = .Tuple(10, 20);
+static var MY_ENUM2: Enum = .Struct { x: 1.1, y: 2.2 };
+static var MY_ENUM3: Enum = .Value;
+static var MY_ENUM4 = struct { id: 1, value: Enum.Value };
+
+pub fn main() {
+    switch (MY_ENUM1) {
+        case .Tuple(x, y) => printf("(%d, %d) | ", x, y);
+    }
+    switch (MY_ENUM2) {
+        case .Struct { x, y } => printf("{ %f, %f } | ", x, y);
+    }
+    switch (MY_ENUM3) {
+        case .Value(strukt) => {
+            printf("name: %s, age: %d | ", strukt.name, strukt.age);
+        }
+    }
+    switch (MY_ENUM4.value) {
+        case .Value(strukt) => {
+            printf("name: %s, age: %d\n", strukt.name, strukt.age);
+        }
+    }
+}

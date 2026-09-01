@@ -7,6 +7,7 @@ use crate::{
         control_flow::ControlRegion,
         irreg::{LocalIRValueRegistry, LocalIRValueRegistryRef},
         types::CodegenIRBuilderTypeCache,
+        vars::GlobalVarLazyInitializer,
     },
     llvm::debug_info::{BlockScope, DebugContext, create_debug_lexical_block, debug_current_scope, set_debug_location},
 };
@@ -56,6 +57,7 @@ pub(crate) struct CodeGenIRBuilder<'ll> {
     pub(crate) source_map: Arc<SourceMap>,
     pub(crate) profile: CompilerOption_Profile,
     pub(crate) string_cache: FxHashMap<String, GlobalValue<'ll>>,
+    pub(crate) global_var_lazy_initializers: Vec<GlobalVarLazyInitializer<'ll>>,
 
     // Used to prevent duplicate sret when chained function call happens.
     pub(crate) cur_sret: Option<PointerValue<'ll>>,
@@ -112,6 +114,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
             cur_sret: None,
             is_return: false,
             string_cache: FxHashMap::new(),
+            global_var_lazy_initializers: Vec::new(),
         }
     }
 
@@ -121,6 +124,9 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         for cir_stmt in &self.cir_module.stmts {
             self.emit_stmt(cir_stmt);
         }
+
+        self.llvm_builder.unset_current_debug_location();
+        self.dctx = None;
 
         self.emit_vtable_defs();
     }
