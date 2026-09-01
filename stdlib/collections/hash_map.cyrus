@@ -1,0 +1,312 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 The Cyrus Language
+
+import (
+    std::mem{Allocator},
+    std::collections{Vec},
+    std::option{Option},
+    std::hash{hash_usize, eq_usize},
+);
+
+pub enum EntryState {
+    Empty,
+    Occupied,
+    Deleted
+}
+
+pub struct HashEntry<K, V> {
+    pub state: EntryState,
+    pub hash: uint64,
+    pub key: K,
+    pub value: V,
+}
+
+pub struct HashMap<K, V> {
+    allocator: Allocator,
+    entries: Vec<HashEntry<K, V>>,
+    len: usize,
+    tombstones: usize,
+    cap: usize,
+    hash_fn: fn(const K*) uint64,
+    eq_fn: fn(const K*, const K*) bool,
+    default_key: K,
+    default_value: V,
+
+    pub fn with_hasher(
+        allocator: Allocator,
+        initial_cap: usize,
+        hash_fn: fn(const K*) uint64,
+        eq_fn: fn(const K*, const K*) bool,
+        default_key: K,
+        default_value: V
+    ) Self {
+        var cap: usize = 16;
+        while (cap < initial_cap) {
+            cap *= 2;
+        }
+
+        var entries: Vec<HashEntry<K, V>> = Vec.with_capacity(allocator, cap);
+        for (var i: usize = 0; i < cap; i += 1) {
+            entries.push(HashEntry<K, V> {
+                state: .Empty,
+                hash: 0,
+                key: default_key,
+                value: default_value,
+            });
+        }
+
+        return Self {
+            allocator,
+            entries,
+            len: 0,
+            tombstones: 0,
+            cap,
+            hash_fn,
+            eq_fn,
+            default_key,
+            default_value,
+        };
+    }
+
+    pub fn reserve(self: Self*, extra: usize) {
+        const required = self->len + self->tombstones + extra;
+        // Grow when required > 75% of cap (avoids multiplication overflow checks)
+        // cap * 3/4 == (cap >> 1) + (cap >> 2)
+        const threshold = (self->cap >> 1) + (self->cap >> 2);
+        if (required > threshold) {
+            var new_cap = self->cap;
+            while (new_cap <= required || (new_cap >> 1) + (new_cap >> 2) < required) {
+                new_cap = new_cap << 1;
+            }
+            self->grow(new_cap);
+        }
+    }
+
+    fn grow(self: Self*, new_cap: usize) {
+        const old_entries = self->entries;
+        const old_cap = self->cap;
+
+        var new_entries: Vec<HashEntry<K, V>> = Vec.with_capacity(self->allocator, new_cap);
+        for (var i: usize = 0; i < new_cap; i += 1) {
+            new_entries.push(HashEntry<K, V> {
+                state: .Empty,
+                hash: 0,
+                key: self->default_key,
+                value: self->default_value,
+            });
+        }
+
+        const new_mask = new_cap - 1;
+        const old_data = old_entries.data_const();
+        var new_data = new_entries.data();
+
+        for (var i: usize = 0; i < old_cap; i += 1) {
+            const entry = &old_data[i];
+            if (entry->state == .Occupied) {
+                var idx = @cast(usize, entry->hash) & new_mask;
+                while (new_data[idx].state != .Empty) {
+                    idx = (idx + 1) & new_mask;
+                }
+                new_data[idx] = HashEntry<K, V> {
+                    state: .Occupied,
+                    hash: entry->hash,
+                    key: entry->key,
+                    value: entry->value,
+                };
+            }
+        }
+
+        var mutable_old = old_entries;
+        mutable_old.free();
+
+        self->entries = new_entries;
+        self->cap = new_cap;
+        self->tombstones = 0;
+    }
+
+    fn find_slot(self: const Self*, key: const K*, hash: uint64) Option<usize> {
+        const mask = self->cap - 1;
+        var idx = @cast(usize, hash) & mask;
+        const data = self->entries.data_const();
+
+        for (var i: usize = 0; i < self->cap; i += 1) {
+            const entry = &data[idx];
+            if (entry->state == .Empty) {
+                return .None;
+            }
+            if (entry->state == .Occupied) {
+                if (entry->hash == hash) {
+                    if ((self->eq_fn)(key, &entry->key)) {
+                        return .Some(idx);
+                    }
+                }
+            }
+            idx = (idx + 1) & mask;
+        }
+
+        return .None;
+    }
+
+    pub fn insert(self: Self*, key: K, value: V) Option<V> {
+        self->reserve(1);
+
+        const hash = (self->hash_fn)(&key);
+        const mask = self->cap - 1;
+        var idx = @cast(usize, hash) & mask;
+        var data = self->entries.data();
+
+        var first_tombstone: Option<usize> = .None;
+
+        for (var i: usize = 0; i < self->cap; i += 1) {
+            const entry = &data[idx];
+
+            if (entry->state == .Occupied) {
+                if (entry->hash == hash) {
+                    if ((self->eq_fn)(&key, &entry->key)) {
+                        const old_val = entry->value;
+                        entry->value = value;
+                        return .Some(old_val);
+                    }
+                }
+            }
+
+            if (entry->state == .Deleted) {
+                if (first_tombstone.is_none()) {
+                    first_tombstone = .Some(idx);
+                }
+            }
+
+            if (entry->state == .Empty) {
+                var insert_idx = idx;
+                if (first_tombstone.is_some()) {
+                    insert_idx = first_tombstone.unwrap();
+                    self->tombstones -= 1;
+                }
+
+                data[insert_idx] = HashEntry<K, V> {
+                    state: .Occupied,
+                    hash,
+                    key,
+                    value,
+                };
+                self->len += 1;
+                return .None;
+            }
+
+            idx = (idx + 1) & mask;
+        }
+
+        if (first_tombstone.is_some()) {
+            const insert_idx = first_tombstone.unwrap();
+            self->tombstones -= 1;
+            data[insert_idx] = HashEntry<K, V> {
+                state: .Occupied,
+                hash,
+                key,
+                value,
+            };
+            self->len += 1;
+            return .None;
+        }
+
+        @panic("HashMap insert failed: no empty or tombstone slot found");
+    }
+
+    pub fn get(self: const Self*, key: const K*) Option<const V*> {
+        const hash = (self->hash_fn)(key);
+        const slot_opt = self->find_slot(key, hash);
+        if (slot_opt.is_none()) {
+            return .None;
+        }
+        const idx = slot_opt.unwrap();
+        const data = self->entries.data_const();
+        return .Some(&data[idx].value);
+    }
+
+    pub fn get_mut(self: Self*, key: const K*) Option<V*> {
+        const hash = (self->hash_fn)(key);
+        const slot_opt = self->find_slot(key, hash);
+        if (slot_opt.is_none()) {
+            return .None;
+        }
+        const idx = slot_opt.unwrap();
+        var data = self->entries.data();
+        return .Some(&data[idx].value);
+    }
+
+    pub fn contains_key(self: const Self*, key: const K*) bool {
+        return self->get(key).is_some();
+    }
+
+    pub fn remove(self: Self*, key: const K*) Option<V> {
+        const hash = (self->hash_fn)(key);
+        const slot_opt = self->find_slot(key, hash);
+        if (slot_opt.is_none()) {
+            return .None;
+        }
+
+        const idx = slot_opt.unwrap();
+        var data = self->entries.data();
+        const old_val = data[idx].value;
+
+        data[idx].state = .Deleted;
+        self->len -= 1;
+        self->tombstones += 1;
+
+        return .Some(old_val);
+    }
+
+    [[inline]]
+    pub fn len(self: const Self*) usize {
+        return self->len;
+    }
+
+    [[inline]]
+    pub fn is_empty(self: const Self*) bool {
+        return self->len == 0;
+    }
+
+    pub fn clear(self: Self*) {
+        var data = self->entries.data();
+        for (var i: usize = 0; i < self->cap; i += 1) {
+            data[i].state = .Empty;
+        }
+        self->len = 0;
+        self->tombstones = 0;
+    }
+
+    pub fn free(self: Self*) {
+        self->entries.free();
+        self->len = 0;
+        self->tombstones = 0;
+        self->cap = 0;
+    }
+
+    pub fn deinit(self: Self*) {
+        self->free();
+    }
+
+    pub fn iter(self: const Self*) HashMapIter<K, V> {
+        return HashMapIter<K, V> { map: self, idx: 0 };
+    }
+}
+
+pub struct HashMapIter<K, V> {
+    pub map: const HashMap<K, V>*,
+    pub idx: usize,
+
+    pub fn next(self: Self*) Option<(const K*, const V*)> {
+        const cap = self->map->cap;
+        const data = self->map->entries.data_const();
+
+        while (self->idx < cap) {
+            const entry = &data[self->idx];
+            self->idx += 1;
+            if (entry->state == .Occupied) {
+                return .Some((&entry->key, &entry->value));
+            }
+        }
+
+        return .None;
+    }
+}
