@@ -43,7 +43,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
 
         let ty: BasicTypeEnum<'ll> = self.emit_type(cir_global_var.ty.clone()).try_into().unwrap();
         let global_value = llvm_module.add_global(ty, None, &cir_global_var.name);
-        
+
         drop(llvm_module);
 
         let layout = self.tctx.layout_of(&cir_global_var.ty);
@@ -97,7 +97,8 @@ impl<'ll> CodeGenIRBuilder<'ll> {
 
         let llvm_global = self.emit_global_var(&global_decl);
 
-        llvm_global.set_linkage(Linkage::External);
+        // AvailableExternally offers more inlining oppurtunities for the optimizer
+        llvm_global.set_linkage(Linkage::AvailableExternally);
 
         InternalValue::new(
             global_decl.ty.clone(),
