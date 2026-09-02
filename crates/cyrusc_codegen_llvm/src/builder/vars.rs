@@ -82,10 +82,10 @@ impl<'ll> CodeGenIRBuilder<'ll> {
     }
 
     pub(crate) fn get_or_declare_global(&mut self, irv_id: IRValueID) -> InternalValue<'ll> {
-        if let Some(local) = self.lookup_local_ir_value(irv_id) {
-            if let LocalIRValue::Global(global, ty) = local {
-                return InternalValue::new(ty, InternalValueKind::LValue(global.as_pointer_value()));
-            }
+        if let Some(ir_value) = self.lookup_local_ir_value(irv_id)
+            && let LocalIRValue::Global(global, ty) = ir_value
+        {
+            return InternalValue::new(ty, InternalValueKind::LValue(global.as_pointer_value()));
         }
 
         let global_decl = self
