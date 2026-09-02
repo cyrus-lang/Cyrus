@@ -4,11 +4,11 @@
 import std::collections::linked_list{SinglyLinkedList, SinglyNode};
 import std::mem{Allocator, align_up};
 
-pub const ARENA_DEFAULT_ALIGNMENT = @sizeof(usize); // PTR SIZE
+pub const ARENA_DEFAULT_ALIGN = @sizeof(usize); // PTR SIZE
 
 struct ArenaNode {
 	pub ptr: void*,
-	pub capacity: usize,
+	pub cap: usize,
 	pub used: usize,
 }
 
@@ -16,31 +16,30 @@ pub struct ArenaAllocator : Allocator {
     child_allocator: Allocator,
 	nodes: SinglyLinkedList<ArenaNode>,
 
-	pub fn new(child_allocator: Allocator, capacity: usize) Self {
+	pub fn new(child_allocator: Allocator, cap: usize) Self {
         var nodes: SinglyLinkedList<ArenaNode> = SinglyLinkedList.new();
         var arena = Self { child_allocator, nodes };
-        arena.create_node(capacity);
+        arena.create_node(cap);
         return arena;
 	}
 
     pub fn alloc(self: Self*, size: usize) void* {
-        return self->alloc_aligned(size, ARENA_DEFAULT_ALIGNMENT);
+        return self->alloc_aligned(size, ARENA_DEFAULT_ALIGN);
     }
 
     fn alloc_aligned(self: Self*, size: usize, align: usize) void* {
-        switch (self->nodes.peek_first()) {
-            case .Some(node) => {
-                var arena = &node->value;
-                var ptr = arena->ptr;
-
-                var offset = align_up(@cast(uintptr, ptr), align);
-
-                self->ensure_capacity(offset);
-                arena->used += offset;
-                return ptr;
-            }
-            case .None => return null;
+        switch (self->nodes.peek_first()) case .Some(node) else {    
+            return null;
         }
+
+        var arena = &node->value;
+        var ptr = arena->ptr;
+
+        var offset = align_up(@cast(uintptr, ptr), align);
+
+        self->ensure_capacity(offset);
+        arena->used += offset;
+        return ptr;
     }
 
     fn alloc_zeroed(self: Self*, size: usize) void* {
@@ -63,25 +62,24 @@ pub struct ArenaAllocator : Allocator {
 
     pub fn destroy(self: Self*) {
         while (self->nodes.head != null) {
-            switch (self->nodes.pop_first()) {
-                case .Some(node) => {
-                    self->child_allocator.free(node->value.ptr);
-                    self->child_allocator.free(node);
-                }
-                case .None => break;
+            switch (self->nodes.pop_first()) case .Some(node) else {
+                break;
             }
+            
+            self->child_allocator.free(node->value.ptr);
+            self->child_allocator.free(node);
         }
     }
 
-    fn create_node(self: Self*, capacity: usize) {
+    fn create_node(self: Self*, cap: usize) {
         var node: SinglyNode<ArenaNode>* =
             self->child_allocator.alloc(@sizeof(SinglyNode<ArenaNode>));
 
-        const ptr = self->child_allocator.alloc(capacity);
+        const ptr = self->child_allocator.alloc(cap);
         *node = SinglyNode {
             value: ArenaNode {
                 ptr,
-                capacity,
+                cap,
                 used: 0
             },
             next: null
@@ -90,23 +88,21 @@ pub struct ArenaAllocator : Allocator {
     }
 
     fn ensure_capacity(self: Self*, size: usize) {
-        switch (self->nodes.peek_first()) {
-            case .Some(node) => {
-                var arena = &node->value;
+        switch (self->nodes.peek_first()) case .Some(node) else {
+            @unreachable();
+        }
 
-                if (arena->used + size > arena->capacity) {
-                    self->create_node(node->value.capacity);
-                }
-            }
-            case .None => @unreachable();
+        var arena = &node->value;
+
+        if (arena->used + size > arena->cap) {
+            self->create_node(node->value.cap);
         }
     }
 
     fn realloc(self: Self*, ptr: void*, size: usize) void* {
-        return null; // not supported
+        return self->alloc(size);
     }
 
-	fn free(self: Self*, ptr: void*) void {
-        // not supported
-    }
+    /// Not supported in arena allocator.
+	fn free(self: Self*, ptr: void*) void {}
 }
