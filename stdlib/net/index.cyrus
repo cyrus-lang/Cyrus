@@ -2,6 +2,8 @@
 // Copyright (c) 2026 The Cyrus Language
 
 import (
+    std::errors{ErrorOr, ErrorStr},
+    std::libc{errno, strerror},
     std::libc::types{
         c_int,
         c_uint,
@@ -9,9 +11,7 @@ import (
         c_void,
         c_size,
         c_ssize
-    },
-    std::libc{errno, strerror},
-    std::errors{ErrorOr, ErrorStr},
+    }
 );
 
 pub const AF_INET: c_int = 2;
