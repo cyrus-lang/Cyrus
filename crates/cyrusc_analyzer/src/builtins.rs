@@ -477,7 +477,7 @@ impl<'a> AnalysisContext<'a> {
 
     fn analyze_builtin_panic(&mut self, builtin_func: &mut TypedBuiltinFunc) -> Option<SemaType> {
         let param_types = [
-            SemaType::Pointer(Box::new(SemaType::Plain(PlainType::UInt8))), // msg? (char*)
+            SemaType::Pointer(Box::new(SemaType::Plain(PlainType::UInt8).as_const())), // msg? (const char*)
         ];
 
         for (arg, expected_type) in builtin_func.args.iter_mut().zip(param_types.iter()) {
@@ -514,7 +514,7 @@ impl<'a> AnalysisContext<'a> {
 
     fn analyze_builtin_todo(&mut self, builtin_func: &mut TypedBuiltinFunc) -> Option<SemaType> {
         let param_types = [
-            SemaType::Pointer(Box::new(SemaType::Plain(PlainType::UInt8))), // msg? (char*)
+            SemaType::Pointer(Box::new(SemaType::Plain(PlainType::UInt8).as_const())), // msg? (const char*)
         ];
 
         for (arg, expected_type) in builtin_func.args.iter_mut().zip(param_types.iter()) {
@@ -551,7 +551,7 @@ impl<'a> AnalysisContext<'a> {
 
     fn analyze_builtin_unimplemented(&mut self, builtin_func: &mut TypedBuiltinFunc) -> Option<SemaType> {
         let param_types = [
-            SemaType::Pointer(Box::new(SemaType::Plain(PlainType::UInt8))), // msg? (char*)
+            SemaType::Pointer(Box::new(SemaType::Plain(PlainType::UInt8).as_const())), // msg? (const char*)
         ];
 
         for (arg, expected_type) in builtin_func.args.iter_mut().zip(param_types.iter()) {
@@ -588,7 +588,7 @@ impl<'a> AnalysisContext<'a> {
 
     fn analyze_builtin_unreachable(&mut self, builtin_func: &mut TypedBuiltinFunc) -> Option<SemaType> {
         let param_types = [
-            SemaType::Pointer(Box::new(SemaType::Plain(PlainType::UInt8))), // msg? (char*)
+            SemaType::Pointer(Box::new(SemaType::Plain(PlainType::UInt8).as_const())), // msg? (const char*)
         ];
 
         for (arg, expected_type) in builtin_func.args.iter_mut().zip(param_types.iter()) {
@@ -629,7 +629,7 @@ impl<'a> AnalysisContext<'a> {
         self.analyze_cond_expr(builtin_func.args.first_mut().unwrap());
 
         if let Some(msg) = builtin_func.args.get_mut(1) {
-            let expected_type = SemaType::Pointer(Box::new(SemaType::Plain(PlainType::UInt8)));
+            let expected_type = SemaType::Pointer(Box::new(SemaType::Plain(PlainType::UInt8).as_const())); // msg? (const char*)
             self.analyze_expr_non_terminal(msg, Some(expected_type.clone()));
 
             let Some(arg_type) = msg.ty.clone() else {
