@@ -2047,10 +2047,11 @@ impl<'source_file> Parser<'source_file> {
         let expr = self.parse_expr(Precedence::Prefix)?;
         self.next_token();
 
-        // range exclusive:  a..b
+        // range exclusive: a...b
         if self.current_token_is(TokenKind::TripleDot) {
             self.next_token();
-            let upper = self.parse_expr(Precedence::Lowest)?;
+
+            let upper = self.parse_expr(Precedence::Prefix)?;
             self.next_token();
 
             let end = self.current_token().loc.end;
@@ -2068,8 +2069,8 @@ impl<'source_file> Parser<'source_file> {
 
         // range inclusive:  a..=b
         if self.current_token_is(TokenKind::DoubleDot) && self.peek_token_is(TokenKind::Assign) {
-            self.next_token(); // ..
-            self.next_token(); // =
+            self.next_token(); // consume double dot
+            self.next_token(); // consume assign
 
             let upper = self.parse_expr(Precedence::Prefix)?;
             self.next_token();
