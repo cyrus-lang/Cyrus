@@ -15,11 +15,6 @@ fn greet(request: const Request*, response: Response*) {
     response->append_body(request->body());
 }
 
-fn fail(mesg: const uint8*) {
-    printf("%s\n", mesg);
-    exit(1);
-}
-
 pub fn main() {
     var allocator: Allocator = dynamic LibcAllocator.new();
 
@@ -32,15 +27,15 @@ pub fn main() {
 
     switch (Server.bind(allocator, &router, "127.0.0.1", 47830)) {
         case .Value(bound) => server = bound;
-        case .Error(err) => { fail(err); return; }
+        case .Error(err) => @panic(err);
     }
     defer server.close();
 
     var client: TcpStream;
 
     switch (TcpStream.connect("127.0.0.1", 47830)) {
-        case .Value(connected) => client = connected;
-        case .Error(err) => { fail(err); return; }
+        case .Value(_client) => client = _client;
+        case .Error(err) => @panic(err);
     }
     defer client.close();
 
@@ -48,15 +43,14 @@ pub fn main() {
     client.write(request, strlen(request));
 
     switch (server.serve_once()) {
-        case .Value(_) => {}
-        case .Error(err) => { fail(err); return; }
+        case .Error(err) => @panic(err);
     }
 
     var inbox: uint8[512];
 
     switch (client.read(&inbox[0], 511)) {
         case .Value(count) => inbox[count] = '\0';
-        case .Error(err) => { fail(err); return; }
+        case .Error(err) => @panic(err);
     }
 
     printf("%s", &inbox[0]);
