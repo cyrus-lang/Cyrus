@@ -30,7 +30,11 @@ pub(crate) struct GlobalVarLazyInitializer<'a> {
 
 // GlobalVar.
 impl<'ll> CodeGenIRBuilder<'ll> {
-    pub(crate) fn emit_global_var(&mut self, cir_global_var: &CIRGlobalVarStmt) -> GlobalValue<'ll> {
+    pub(crate) fn emit_global_var(
+        &mut self,
+        cir_global_var: &CIRGlobalVarStmt,
+        declare_only: bool,
+    ) -> GlobalValue<'ll> {
         if let Some(ir_value) = self.lookup_local_ir_value(cir_global_var.irv_id) {
             return *ir_value.as_global().unwrap();
         }
@@ -52,22 +56,24 @@ impl<'ll> CodeGenIRBuilder<'ll> {
             self.emit_debug_global_var(&layout, &global_value, cir_global_var);
         }
 
-        if let Some(expr) = &cir_global_var.expr {
-            if global_var_expr_includes_enum_init(&expr.kind) {
-                self.global_var_lazy_initializers.push(GlobalVarLazyInitializer {
-                    global_value,
-                    expr: expr.clone(),
-                });
-                global_value.set_initializer(&ty.const_zero());
+        if !declare_only {
+            if let Some(expr) = &cir_global_var.expr {
+                if global_var_expr_includes_enum_init(&expr.kind) {
+                    self.global_var_lazy_initializers.push(GlobalVarLazyInitializer {
+                        global_value,
+                        expr: expr.clone(),
+                    });
+                    global_value.set_initializer(&ty.const_zero());
+                } else {
+                    let lvalue = self.emit_expr(&expr, &Some(cir_global_var.ty.clone()));
+                    let rvalue = self.load_rvalue(lvalue).as_basic_value();
+                    global_value.set_initializer(&rvalue);
+                }
             } else {
-                let lvalue = self.emit_expr(&expr, &Some(cir_global_var.ty.clone()));
-                let rvalue = self.load_rvalue(lvalue).as_basic_value();
-                global_value.set_initializer(&rvalue);
-            }
-        } else {
-            // Zero init only if not declared undefined
-            if cir_global_var.modifiers.extrn.is_none() && !cir_global_var.is_undef {
-                global_value.set_initializer(&ty.const_zero());
+                // Zero init only if not declared undefined
+                if cir_global_var.modifiers.extrn.is_none() && !cir_global_var.is_undef {
+                    global_value.set_initializer(&ty.const_zero());
+                }
             }
         }
 
@@ -95,10 +101,10 @@ impl<'ll> CodeGenIRBuilder<'ll> {
             .cloned()
             .expect("Missing CIR global declaration");
 
-        let llvm_global = self.emit_global_var(&global_decl);
+        let llvm_global = self.emit_global_var(&global_decl, true);
 
-        // AvailableExternally offers more inlining oppurtunities for the optimizer
-        llvm_global.set_linkage(Linkage::AvailableExternally);
+        llvm_global.set_linkage(Linkage::External);
+        llvm_global.set_externally_initialized(true);
 
         InternalValue::new(
             global_decl.ty.clone(),

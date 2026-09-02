@@ -1,0 +1,10 @@
+// @stdout: PI: 3.140000 | INT: 123
+// @compilerArgs: --module-merge-mode=separate
+
+import std::libc{printf};
+import _bar;
+
+pub fn main() {
+    printf("PI: %f | ", _bar::PI);
+    printf("INT: %d\n", _bar::INT);
+}
