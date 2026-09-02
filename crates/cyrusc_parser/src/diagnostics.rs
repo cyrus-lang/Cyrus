@@ -34,7 +34,7 @@ pub enum ParserDiagKind {
     ExpectedExpressionAfterOperator(TokenKind),
 
     #[error("Comparison operators cannot be chained.")]
-    _ChainedComparisonOperator,
+    ChainedComparisonOperator,
 
     #[error("Missing closing bracket ']'.")]
     MissingClosingBracket,
