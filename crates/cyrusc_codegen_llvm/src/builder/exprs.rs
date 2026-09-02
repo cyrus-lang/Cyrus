@@ -2394,7 +2394,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
                 BasicValueEnum::IntValue(int_type.const_int_arbitrary_precision(&words))
             }
             CIRLiteralKind::CString(value) => self.emit_cstring(value.clone()),
-            CIRLiteralKind::ByteString(value) => self.emit_bytestring(value.clone()),
+            CIRLiteralKind::ByteString(value) => self.emit_byte_string(value.clone()),
             CIRLiteralKind::Float(value) => BasicValueEnum::FloatValue(ty.into_float_type().const_float(*value)),
         };
 
@@ -2428,8 +2428,8 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         global_value.as_pointer_value().into()
     }
 
-    fn emit_bytestring(&self, value: String) -> BasicValueEnum<'ll> {
-        self.llvm_ctx.const_string(value.as_bytes(), true).into()
+    fn emit_byte_string(&self, value: String) -> BasicValueEnum<'ll> {
+        self.llvm_ctx.const_string(value.as_bytes(), false).into()
     }
 }
 
