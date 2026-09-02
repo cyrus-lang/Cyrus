@@ -161,7 +161,7 @@ jobs:
   build-rpm:
     runs-on: ubuntu-latest
     container:
-      image: opensuse/tumbleweed
+      image: opensuse/leap
     needs: build
     steps:
       - name: Install fpm and build tools
