@@ -40,7 +40,7 @@ fn command_lex(ctx: cli::ActionCtx) {
     defer source_tokens.free();
 
     dump_tokens(&source_tokens.tokens);
-    printf("Read %lu tokens from `%s`", source_tokens.tokens.len(), "meow.cyrus");
+    printf("Read %lu tokens from `%s`\n", source_tokens.tokens.len(), "meow.cyrus");
 }
 
 fn command_version(ctx: cli::ActionCtx) {

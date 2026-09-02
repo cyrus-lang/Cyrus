@@ -158,7 +158,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
                 );
             }
             CIRStmt::GlobalVar(global_var_stmt) => {
-                self.emit_global_var(global_var_stmt);
+                self.emit_global_var(global_var_stmt, false);
             }
             CIRStmt::FuncDecl(_) => {
                 // Only emitted when symbol is used,

@@ -1,0 +1,2 @@
+pub static const PI: float64 = 3.14;
+pub static const INT: int64 = 123;
