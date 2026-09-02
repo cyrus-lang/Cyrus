@@ -85,7 +85,7 @@ impl<'a> AnalysisContext<'a> {
             flow_states.push(FlowState::Reachable);
         }
 
-        if self.all_flow_states_return(&flow_states) {
+        if self.all_flow_states_terminate(&flow_states) {
             FlowState::Returns
         } else if self.all_flow_states_are_unreachable(&flow_states) {
             FlowState::Unreachable
@@ -715,11 +715,6 @@ impl<'a> AnalysisContext<'a> {
     #[inline]
     fn all_flow_states_are_unreachable(&self, flow_states: &[FlowState]) -> bool {
         flow_states.iter().all(|fs| matches!(fs, FlowState::Unreachable))
-    }
-
-    #[inline]
-    fn all_flow_states_return(&self, flow_states: &[FlowState]) -> bool {
-        flow_states.iter().all(|fs| matches!(fs, FlowState::Returns))
     }
 
     #[inline]
