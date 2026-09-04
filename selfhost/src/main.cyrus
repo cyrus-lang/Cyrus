@@ -114,7 +114,7 @@ pub fn main(argc: c_int, argv: c_char**) {
     
     const lex_cmd = 
         cli::Cmd.new(allocator, "lex", command_lex)
-        .help("Dump file tokens (for debug)");
+        .help("Dump file tokens");
     
     const version_cmd = 
         cli::Cmd.new(allocator, "version", command_version)

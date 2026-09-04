@@ -65,7 +65,7 @@ pub struct Cli {
             program_name
         };
     }
-    
+
     pub fn add_command(self: Self*, cmd: Cmd) {
         const help_opt = self->opts->get_help_opt();
         var heap = self->cmds.add(cmd);
@@ -78,6 +78,11 @@ pub struct Cli {
             return .Value(self);
         }
 
+        if (pargs.argv[1] == "help") {
+            self->display_general_help();
+            return .Value(self);
+        }
+        
         var cmd: Cmd*;
 
         switch (self->parse_command(pargs)) {
@@ -136,13 +141,11 @@ pub struct Cli {
         var i: usize = 1;
         var arg = pargs.argv[i];
 
-        var cmd: Cmd*;
-
         // Consume first command
-        switch (self->cmds.find(arg)) {
-            case .Some(x) => { cmd = x; i += 1; }
-            case .None => return .Error(.UnknownCommand { cmd: arg });
+        switch (self->cmds.find(arg)) case .Some(var cmd) else {
+            return .Error(.UnknownCommand { cmd: arg });
         }
+        i += 1;
 
         // Handle sub commands
         for (; i < argc; i += 1) {
@@ -425,7 +428,6 @@ pub struct Cmds {
 
         for (var i: usize = 0; i < self->inner.len(); i += 1) {
             const cmd = self->inner.get_owned(i).unwrap();
-            
             const len = strlen(cmd->name);
 
             writer.write("  ");
@@ -433,16 +435,19 @@ pub struct Cmds {
 
             switch (cmd->help) {
                 case .Some(text) => {
-                    write_spaces(
-                        writer,
-                        HELP_WS_LEN - len
-                    );
+                    write_spaces(writer, HELP_WS_LEN - len);
                     writer.write(text);
                 }
             }
-
+            
             writer.write("\n");
         }
+
+        writer.write("  ");
+        writer.write("help");
+        write_spaces(writer, HELP_WS_LEN - 4);
+        writer.write("Shows commands");
+        writer.write("\n");
     }
     
     pub fn len(self: const Self*) usize {
