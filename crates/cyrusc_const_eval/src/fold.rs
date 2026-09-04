@@ -82,6 +82,14 @@ impl<'a, R: ConstResolver> ConstFolder<'a, R> {
                 };
 
                 expr.kind = TypedExprKind::Literal(literal);
+            } else if let Some(char_value) = const_value.as_char() {
+                let literal = TypedLiteralExpr {
+                    ty: expr.ty.clone(),
+                    kind: LiteralKind::Char(char_value),
+                    loc: expr.loc,
+                };
+
+                expr.kind = TypedExprKind::Literal(literal);
             }
         }
     }
