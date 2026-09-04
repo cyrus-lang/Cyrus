@@ -940,11 +940,11 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         let sret_param = cur_fn.get_first_param().unwrap();
         let sret_ptr = sret_param.into_pointer_value();
 
-        let struct_type = rvalue.ty.clone();
-        let type_id = struct_type.as_type_id().unwrap();
-        let struct_layout = self.tctx.get_or_compute_layout(type_id);
+        let ty = rvalue.ty.clone();
+        let type_id = ty.as_type_id().unwrap();
+        let layout = self.tctx.get_or_compute_layout(type_id);
 
-        let size_value = self.llvm_ctx.i64_type().const_int(struct_layout.size as u64, false);
+        let size_value = self.llvm_ctx.i64_type().const_int(layout.size as u64, false);
 
         let src_ptr = match &lvalue.kind {
             InternalValueKind::LValue(ptr) => *ptr,
@@ -958,7 +958,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         };
 
         self.llvm_builder
-            .build_memmove(sret_ptr, struct_layout.align, src_ptr, struct_layout.align, size_value)
+            .build_memmove(sret_ptr, layout.align, src_ptr, layout.align, size_value)
             .unwrap();
     }
 

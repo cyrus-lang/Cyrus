@@ -1,4 +1,4 @@
-// @stdout: 4 16
+// @stdout: 4 12
 
 import std::libc{printf};
 
