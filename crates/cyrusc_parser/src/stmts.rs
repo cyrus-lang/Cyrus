@@ -1095,7 +1095,9 @@ impl<'source_file> Parser<'source_file> {
             self.next_token(); // consume right brace
 
             if let Some(modifiers) = modifiers {
-                func_def.modifiers = modifiers.into_method_modifiers()?;
+                // If any attribute was before method statement, it is attached into `func_def.modifiers`,
+                // that's why we need to merge it we `modifiers`.
+                func_def.modifiers = modifiers.into_method_modifiers_and_merge(func_def.modifiers.clone())?;
             }
 
             Ok(func_def.clone())
