@@ -62,7 +62,7 @@ impl<'a, R: ConstResolver> ConstEvaluator<'a, R> {
                     let global_var = self.decl_tables.global_var_decl(global_var_decl_id);
 
                     // const-eval in analyzer layer is only
-                    // valid for `const and non-static global vars`
+                    // valid for non-static global vars
                     if !global_var.is_static {
                         return self.eval_symbol(decl_id);
                     }
@@ -83,12 +83,21 @@ impl<'a, R: ConstResolver> ConstEvaluator<'a, R> {
     }
 
     fn eval_literal(&self, literal: &TypedLiteralExpr) -> Result<ConstValue, ConstEvalError> {
+        // NOTE: currently const evaluation for null and prefiex string is not supported yet.
+        // but it shall be implemented in comptime evaluation in the future.
         match &literal.kind {
             LiteralKind::Integer(int_value, _) => Ok(ConstValue::Int(int_value.as_int())),
             LiteralKind::Float(float_value, _) => Ok(ConstValue::Float(*float_value)),
             LiteralKind::Bool(bool_value) => Ok(ConstValue::Bool(*bool_value)),
+            LiteralKind::String(value, string_prefix) => {
+                if string_prefix.is_some() {
+                    return Err(ConstEvalError::UnsupportedExpr);
+                }
 
-            _ => Err(ConstEvalError::UnsupportedExpr),
+                Ok(ConstValue::String(value.clone()))
+            }
+            LiteralKind::Char(value) => Ok(ConstValue::Char(*value)),
+            LiteralKind::Null => return Err(ConstEvalError::UnsupportedExpr),
         }
     }
 
@@ -167,7 +176,6 @@ impl<'a, R: ConstResolver> ConstEvaluator<'a, R> {
                 InfixOperator::GreaterEqual => ConstValue::Bool(lhs >= rhs),
                 InfixOperator::Equal => ConstValue::Bool(lhs == rhs),
                 InfixOperator::NotEqual => ConstValue::Bool(lhs != rhs),
-
                 _ => return Err(ConstEvalError::TypeError),
             };
 
@@ -227,6 +235,7 @@ impl<'a, R: ConstResolver> ConstEvaluator<'a, R> {
                 ConstValue::Int(value) => Ok(ConstValue::Int(value)),
                 ConstValue::Bool(value) => Ok(ConstValue::Int(if value { 1 } else { 0 })),
                 ConstValue::Float(value) => Ok(ConstValue::Int(value as i128)),
+                ConstValue::Char(value) => Ok(ConstValue::Char(value)),
                 ConstValue::String(_) => return Err(ConstEvalError::TypeError),
                 ConstValue::Type(_) => return Err(ConstEvalError::TypeError),
             };
@@ -237,6 +246,7 @@ impl<'a, R: ConstResolver> ConstEvaluator<'a, R> {
                 ConstValue::Bool(value) => Ok(ConstValue::Bool(value)),
                 ConstValue::Int(value) => Ok(ConstValue::Bool(value != 0)),
                 ConstValue::Float(value) => Ok(ConstValue::Bool(value != 0.0)),
+                ConstValue::Char(value) => Ok(ConstValue::Char(value)),
                 ConstValue::String(_) => return Err(ConstEvalError::TypeError),
                 ConstValue::Type(_) => return Err(ConstEvalError::TypeError),
             };
@@ -247,6 +257,7 @@ impl<'a, R: ConstResolver> ConstEvaluator<'a, R> {
                 ConstValue::Float(value) => Ok(ConstValue::Float(value)),
                 ConstValue::Int(value) => Ok(ConstValue::Float(value as f64)),
                 ConstValue::Bool(value) => Ok(ConstValue::Float(if value { 1.0 } else { 0.0 })),
+                ConstValue::Char(value) => Ok(ConstValue::Char(value)),
                 ConstValue::String(_) => return Err(ConstEvalError::TypeError),
                 ConstValue::Type(_) => return Err(ConstEvalError::TypeError),
             };
