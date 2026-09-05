@@ -53,7 +53,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         let i32_type = self.llvm_ctx.i32_type();
         let ptr_type = self.llvm_ctx.ptr_type(inkwell::AddressSpace::default());
 
-        let priority = i32_type.const_int(65535, false); // standard default priority
+        let priority = i32_type.const_int(65535, false);
         let fn_ptr = llvm_func.as_global_value().as_pointer_value();
         let null_data = ptr_type.const_null();
 
@@ -61,7 +61,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
             .llvm_ctx
             .const_struct(&[priority.into(), fn_ptr.into(), null_data.into()], false);
 
-        // create 1-element array constant: [1 x { i32, void ()*, i8* }]
+        // create 1-element array constant: [1 x { i32, void*, ptr }]
         let ctor_struct_type = ctor_struct_val.get_type();
         let ctor_array_type = ctor_struct_type.array_type(1);
         let ctor_array_val = ctor_struct_type.const_array(&[ctor_struct_val]);
@@ -132,7 +132,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
 
         self.llvm_builder.position_at_end(failure_block);
 
-        let panic_msg = self.emit_cstring(format!(
+        let panic_msg = self.emit_const_str(format!(
             "panic: Index out of bounds!\nAttempted to access index %d in an array of size {}.",
             array_length
         ));

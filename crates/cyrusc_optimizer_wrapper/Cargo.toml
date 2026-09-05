@@ -1,0 +1,11 @@
+[package]
+name = "cyrusc_optimizer_wrapper"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+inkwell = { version = "0.10.0", features = ["llvm22-1"] }
+cyrusc_internal = { path = "../cyrusc_internal", version = "*" }
+
+[build-dependencies]
+cc = "1.2.45"

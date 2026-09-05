@@ -2,57 +2,32 @@
 // Copyright (c) 2026 The Cyrus Language
 
 use cyrusc_internal::compiler_options::CompilerOption_Optimize;
-use inkwell::{llvm_sys::transforms::pass_builder::*, module::Module};
-use std::ffi::CString;
+use cyrusc_optimizer_wrapper::{CyrusLLVMOptimizer, CyrusOptLevel, CyrusOptimizerConfig};
+use inkwell::module::Module;
 
-// Standard optimization pipelines
-const PIPELINE_O0: &str = "default<O0>";
-const PIPELINE_O1: &str = "default<O1>";
-const PIPELINE_O2: &str = "default<O2>";
-const PIPELINE_OZ: &str = "default<Oz>";
-
-const PIPELINE_AGGRESSIVE_CUSTOM: &str = "default<O3>";
-
-const PIPELINE_SIZE: &str = "default<Os>";
-
-fn get_optimization_pipeline(opt_level: CompilerOption_Optimize) -> &'static str {
-    match opt_level {
-        CompilerOption_Optimize::O0 => PIPELINE_O0,
-        CompilerOption_Optimize::O1 => PIPELINE_O1,
-        CompilerOption_Optimize::O2 => PIPELINE_O2,
-        CompilerOption_Optimize::O3 => PIPELINE_AGGRESSIVE_CUSTOM,
-        CompilerOption_Optimize::Os => PIPELINE_SIZE,
-        CompilerOption_Optimize::Oz => PIPELINE_OZ,
-    }
+pub fn optimize_module_debug<'ctx>(
+    module: &Module<'ctx>,
+    target_machine: Option<&mut inkwell::targets::TargetMachine>,
+) -> Result<(), String> {
+    let optimizer = CyrusLLVMOptimizer::new(target_machine);
+    let config = CyrusOptimizerConfig::debug();
+    optimizer.optimize(module, CyrusOptLevel::O0, Some(&config))
 }
 
-pub fn optimize_module_with_custom_passes<'ctx>(
+pub fn optimize_module_release<'ctx>(
     module: &Module<'ctx>,
     opt_level: CompilerOption_Optimize,
+    target_machine: Option<&mut inkwell::targets::TargetMachine>,
 ) -> Result<(), String> {
-    let module_ptr = module.as_mut_ptr();
-    let options = unsafe { LLVMCreatePassBuilderOptions() };
-
-    unsafe {
-        LLVMPassBuilderOptionsSetVerifyEach(options, 0);
-        LLVMPassBuilderOptionsSetDebugLogging(options, 0);
-        LLVMPassBuilderOptionsSetLoopVectorization(options, 1);
-        LLVMPassBuilderOptionsSetLoopUnrolling(options, 1);
-    }
-
-    let pipeline = get_optimization_pipeline(opt_level);
-
-    let pipeline_cstr = CString::new(pipeline).unwrap();
-
-    let result = unsafe { LLVMRunPasses(module_ptr, pipeline_cstr.as_ptr(), std::ptr::null_mut(), options) };
-
-    unsafe {
-        LLVMDisposePassBuilderOptions(options);
-    }
-
-    if result == std::ptr::null_mut() {
-        Ok(())
-    } else {
-        Err("optimization failed".to_string())
-    }
+    let is_debug = opt_level == CompilerOption_Optimize::O0;
+    let optimizer = CyrusLLVMOptimizer::new(target_machine);
+    let level = match opt_level {
+        CompilerOption_Optimize::O0 => CyrusOptLevel::O0,
+        CompilerOption_Optimize::O1 => CyrusOptLevel::O1,
+        CompilerOption_Optimize::O2 => CyrusOptLevel::O2,
+        CompilerOption_Optimize::O3 => CyrusOptLevel::O3,
+        CompilerOption_Optimize::Os => CyrusOptLevel::Os,
+        CompilerOption_Optimize::Oz => CyrusOptLevel::Oz,
+    };
+    optimizer.optimize_simple(module, level, is_debug)
 }

@@ -13,43 +13,19 @@ use inkwell::{
     values::{FunctionValue, GlobalValue},
 };
 
-fn llvm_inline(inline: &Inlining) -> &'static str {
-    match inline {
-        Inlining::Hint => "inlinehint",
-        Inlining::Never => "noinline",
-        Inlining::Always => "alwaysinline",
-    }
-}
-
-fn llvm_prologue(prologue: &Prologue) -> &'static str {
-    match prologue {
-        Prologue::Naked => "naked",
-    }
-}
-
 fn apply_optional_flags<'ll>(llvm_ctx: &'ll Context, func: &FunctionValue<'ll>, flags: &[OptionalFlag]) {
     for flag in flags {
         let attr = match flag {
-            OptionalFlag::NoReturn => {
-                Some(llvm_ctx.create_enum_attribute(Attribute::get_named_enum_kind_id("noreturn"), 0))
-            }
-            OptionalFlag::NoUnwind => {
-                Some(llvm_ctx.create_enum_attribute(Attribute::get_named_enum_kind_id("nounwind"), 0))
-            }
-            OptionalFlag::Cold => Some(llvm_ctx.create_enum_attribute(Attribute::get_named_enum_kind_id("cold"), 0)),
-            OptionalFlag::Hot => Some(llvm_ctx.create_enum_attribute(Attribute::get_named_enum_kind_id("hot"), 0)),
-            OptionalFlag::OptSize => {
-                Some(llvm_ctx.create_enum_attribute(Attribute::get_named_enum_kind_id("optsize"), 0))
-            }
-            OptionalFlag::OptNone => {
-                Some(llvm_ctx.create_enum_attribute(Attribute::get_named_enum_kind_id("optnone"), 0))
-            }
-            OptionalFlag::NoSanitize(kind) => Some(llvm_ctx.create_string_attribute("no_sanitize", kind)),
+            OptionalFlag::NoReturn => llvm_ctx.create_enum_attribute(Attribute::get_named_enum_kind_id("noreturn"), 0),
+            OptionalFlag::NoUnwind => llvm_ctx.create_enum_attribute(Attribute::get_named_enum_kind_id("nounwind"), 0),
+            OptionalFlag::OptSize => llvm_ctx.create_enum_attribute(Attribute::get_named_enum_kind_id("optsize"), 0),
+            OptionalFlag::OptNone => llvm_ctx.create_enum_attribute(Attribute::get_named_enum_kind_id("optnone"), 0),
+            OptionalFlag::Cold => llvm_ctx.create_enum_attribute(Attribute::get_named_enum_kind_id("cold"), 0),
+            OptionalFlag::Hot => llvm_ctx.create_enum_attribute(Attribute::get_named_enum_kind_id("hot"), 0),
+            OptionalFlag::NoSanitize(kind) => llvm_ctx.create_string_attribute("no_sanitize", kind),
         };
 
-        if let Some(a) = attr {
-            func.add_attribute(AttributeLoc::Function, a);
-        }
+        func.add_attribute(AttributeLoc::Function, attr);
     }
 }
 
@@ -93,10 +69,11 @@ pub(crate) fn apply_func_modifiers<'ll>(llvm_ctx: &'ll Context, func: &FunctionV
     }
 
     if let Some(inline) = &modifiers.inline {
-        let attr_name = llvm_inline(inline);
-        let enum_kind_id = Attribute::get_named_enum_kind_id(attr_name);
-        let enum_attr = llvm_ctx.create_enum_attribute(enum_kind_id, 0);
-        func.add_attribute(AttributeLoc::Function, enum_attr);
+        apply_inline_modifier(llvm_ctx, func, *inline);
+    }
+
+    if modifiers.optional_flags.contains(&OptionalFlag::OptNone) {
+        apply_inline_modifier(llvm_ctx, func, Inlining::Never);
     }
 
     if let Some(prologue) = &modifiers.prologue {
@@ -122,4 +99,25 @@ pub(crate) fn apply_func_modifiers<'ll>(llvm_ctx: &'ll Context, func: &FunctionV
     }
 
     apply_optional_flags(llvm_ctx, func, &modifiers.optional_flags);
+}
+
+fn apply_inline_modifier<'ll>(llvm_ctx: &'ll Context, func: &FunctionValue<'ll>, inline: Inlining) {
+    let attr_name = llvm_inline(inline);
+    let enum_kind_id = Attribute::get_named_enum_kind_id(attr_name);
+    let enum_attr = llvm_ctx.create_enum_attribute(enum_kind_id, 0);
+    func.add_attribute(AttributeLoc::Function, enum_attr);
+}
+
+fn llvm_inline(inline: Inlining) -> &'static str {
+    match inline {
+        Inlining::Hint => "inlinehint",
+        Inlining::Never => "noinline",
+        Inlining::Always => "alwaysinline",
+    }
+}
+
+fn llvm_prologue(prologue: &Prologue) -> &'static str {
+    match prologue {
+        Prologue::Naked => "naked",
+    }
 }

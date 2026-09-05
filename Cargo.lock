@@ -347,6 +347,7 @@ dependencies = [
  "cyrusc_diagcentral",
  "cyrusc_fs_utils",
  "cyrusc_internal",
+ "cyrusc_optimizer_wrapper",
  "cyrusc_scaffold_parser",
  "cyrusc_source_loc",
  "cyrusc_tui_utils",
@@ -431,6 +432,15 @@ dependencies = [
  "cyrusc_tokens",
  "thiserror",
  "thiserror-impl",
+]
+
+[[package]]
+name = "cyrusc_optimizer_wrapper"
+version = "0.1.0"
+dependencies = [
+ "cc",
+ "cyrusc_internal",
+ "inkwell",
 ]
 
 [[package]]
