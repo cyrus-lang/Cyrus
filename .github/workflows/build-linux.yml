@@ -72,12 +72,6 @@ jobs:
           name: cyrus-${{ steps.version.outputs.VERSION }}-binary
           path: ./dist
 
-      - name: Upload portable binary
-        uses: actions/upload-artifact@v4
-        with:
-          name: cyrus-${{ steps.version.outputs.VERSION }}-portable
-          path: ./target/release/cyrus
-
       - name: Generate PKGBUILD
         run: |
           cat > PKGBUILD << EOF
