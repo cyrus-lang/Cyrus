@@ -2,6 +2,7 @@
 // Copyright (c) 2026 The Cyrus Language
 
 use crate::llvm::dwarf::{DW_ATE_UNSIGNED, DW_TAG_CONST_TYPE, DWARF_PRODUCER_NAME};
+use cyrusc_internal::compiler_options::{CompilerOption_PIEMode, CompilerOptions};
 use fx_hash::{FxHashMap, FxHashMapExt};
 use inkwell::{
     builder::Builder,
@@ -731,14 +732,26 @@ unsafe fn module_flag(
     unsafe { LLVMAddModuleFlag(module, behavior, cname.as_ptr(), name.len(), metadata_value) };
 }
 
-pub unsafe fn emit_debug_module_flags(ctx: LLVMContextRef, module: LLVMModuleRef) {
+pub unsafe fn emit_debug_module_flags(ctx: LLVMContextRef, module: LLVMModuleRef, opts: &CompilerOptions) {
     use LLVMModuleFlagBehavior::*;
+
+    let is_static = opts.linker_options.link_static;
+    let pie_mode = opts.linker_options.pie_mode;
+
+    if pie_mode == CompilerOption_PIEMode::PIE {
+        unsafe { module_flag(ctx, module, LLVMModuleFlagBehaviorOverride, "PIE Level", 2) };
+        unsafe { module_flag(ctx, module, LLVMModuleFlagBehaviorOverride, "PIC Level", 2) };
+    } else if !is_static {
+        unsafe { module_flag(ctx, module, LLVMModuleFlagBehaviorOverride, "PIC Level", 2) };
+        unsafe { module_flag(ctx, module, LLVMModuleFlagBehaviorOverride, "PIE Level", 0) };
+    } else {
+        unsafe { module_flag(ctx, module, LLVMModuleFlagBehaviorOverride, "PIC Level", 0) };
+        unsafe { module_flag(ctx, module, LLVMModuleFlagBehaviorOverride, "PIE Level", 0) };
+    }
 
     unsafe { module_flag(ctx, module, LLVMModuleFlagBehaviorWarning, "Dwarf Version", 4) };
     unsafe { module_flag(ctx, module, LLVMModuleFlagBehaviorWarning, "Debug Info Version", 3) };
     unsafe { module_flag(ctx, module, LLVMModuleFlagBehaviorWarning, "wchar_size", 4) };
-    unsafe { module_flag(ctx, module, LLVMModuleFlagBehaviorOverride, "PIE Level", 2) };
-    unsafe { module_flag(ctx, module, LLVMModuleFlagBehaviorOverride, "PIC Level", 2) };
     unsafe { module_flag(ctx, module, LLVMModuleFlagBehaviorError, "uwtable", 2) };
     unsafe { module_flag(ctx, module, LLVMModuleFlagBehaviorWarning, "frame-pointer", 2) };
 }
