@@ -135,7 +135,7 @@ impl CodeGenLLVM {
             unsafe { finalize_debug(&dctx) };
             let llvm_module = owned_module.module.borrow();
 
-            unsafe { emit_debug_module_flags(llvm_module.as_mut_ptr()) };
+            unsafe { emit_debug_module_flags(owned_module.context.raw(), llvm_module.as_mut_ptr()) };
 
             if let Err(err) = llvm_module.verify() {
                 eprintln!("LLVM Module Error: {}", err)

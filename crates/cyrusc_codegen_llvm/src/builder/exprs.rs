@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 The Cyrus Language
 
+use std::num::NonZero;
+
 use crate::{
     builder::{
         builder::CodeGenIRBuilder,
@@ -385,7 +387,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
                     let ptr_width = self.llvm_target_machine.get_target_data().get_pointer_byte_size(None) * 8;
 
                     if int_type.get_bit_width() < ptr_width {
-                        let ptr_int = self.llvm_ctx.custom_width_int_type(ptr_width);
+                        let ptr_int = self.llvm_ctx.custom_width_int_type(NonZero::new(ptr_width).unwrap()).unwrap();
                         let tmp = self
                             .llvm_builder
                             .build_ptr_to_int(basic_value.into_pointer_value(), ptr_int, "ptr_to_int")
