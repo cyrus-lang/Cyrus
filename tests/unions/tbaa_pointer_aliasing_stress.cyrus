@@ -1,0 +1,16 @@
+// @stdout: 42 100
+
+import std::libc{printf};
+
+union AliasUnion {
+    i64_val: int64,
+    i32_val: int32,
+}
+
+pub fn main() {
+    var u: AliasUnion = AliasUnion { i64_val: 42 };
+    printf("%d ", u.i32_val);
+    
+    u.i32_val = 100;
+    printf("%d\n", u.i32_val);
+}

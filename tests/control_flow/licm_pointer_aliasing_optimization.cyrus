@@ -1,0 +1,27 @@
+// @stdout: 3575
+
+import std::libc{printf};
+
+pub fn main() {
+    var accum: int32 = 0;
+    var base: int32 = 10;
+    var arr: int32[10] = int32[10]{0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
+    var p: int32* = &arr[0];
+
+    var i: int32 = 0;
+    while (i < 10) {
+        var j: int32 = 0;
+        while (j < 10) {
+            if (j % 2 == 0) {
+                *p = *p + i;
+            } else {
+                *p = *p + base;
+            }
+            j = j + 1;
+        }
+        accum = accum + *p;
+        i = i + 1;
+    }
+
+    printf("%d\n", accum);
+}
