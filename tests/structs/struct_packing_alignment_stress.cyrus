@@ -1,0 +1,24 @@
+// @stdout: 10 20 30 40
+
+import std::libc{printf};
+
+struct Inner {
+    pub a: int8,
+    pub b: int32,
+}
+
+struct Outer {
+    pub inner: Inner,
+    pub c: int16,
+    pub d: int64,
+}
+
+pub fn main() {
+    var o: Outer = Outer {
+        inner: Inner { a: 10, b: 20 },
+        c: 30,
+        d: 40,
+    };
+
+    printf("%d %d %d %d\n", @cast(int32, o.inner.a), o.inner.b, @cast(int32, o.c), @cast(int32, o.d));
+}

@@ -1,0 +1,22 @@
+// @stdout: 100 200 300
+
+import std::libc{printf};
+
+fn compute(x: int32) int32 {
+    if (x > 10) {
+        if (x > 20) {
+            if (x > 30) {
+                return 300;
+            }
+            return 200;
+        }
+        return 100;
+    }
+    return 0;
+}
+
+pub fn main() {
+    printf("%d ", compute(15));
+    printf("%d ", compute(25));
+    printf("%d\n", compute(35));
+}
