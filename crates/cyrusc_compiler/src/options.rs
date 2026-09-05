@@ -396,10 +396,6 @@ fn validate_compiler_options_path_relationships(opts: &CompilerOptions, errors: 
 }
 
 pub fn validate_compiler_options(opts: &CompilerOptions) {
-    if opts.debuginfo_enabled && opts.opt_level != Some(CompilerOption_Optimize::O0) {
-        exit_with_msg!("Debug info emission '-g' can only be used with optimization level O0".to_string());
-    }
-
     if !opts.sanitizer.is_empty() {
         if !opts.debuginfo_enabled {
             tui_warning(

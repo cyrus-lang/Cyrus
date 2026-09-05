@@ -71,7 +71,7 @@ pub struct Cli {
         var heap = self->cmds.add(cmd);
         heap->add_option(help_opt);
     }
-    
+
     pub fn parse_args(self: Self*, pargs: ProgramArgs) ErrorOr<Self*, ()> {
         if (pargs.argc < 2) {
             self->display_general_help();
@@ -82,38 +82,36 @@ pub struct Cli {
             self->display_general_help();
             return .Value(self);
         }
-        
-        var cmd: Cmd*;
 
         switch (self->parse_command(pargs)) {
-            case .Value(detail) => {
-                cmd = detail.cmd;
+            case .Value(result) => {
+                const cmd = result.cmd;
 
-                switch (self->parse_remaining_args(cmd, pargs, detail.rem_args)) {
+                switch (self->parse_remaining_args(cmd, pargs, result.rem_args)) {
                     case .Error(err) => {
                         self->display_parse_error(err);
                         return .Error(());
                     }
                 }
+
+                // If help option is enabled, only show options
+                // and DO NOT trigger action.
+                if (self->opts->enabled("help")) {
+                    cmd->display_help();
+                    return .Value(self);
+                }
+
+                // FIXME
+                @assert(cmd, "cmd not set properly");
+                (cmd->action)(ActionCtx { opts: self->opts });
+
+                return .Value(self);
             }
             case .Error(err) => {
                 self->display_parse_error(err);
                 return .Error(());
             }
         }
-
-        // If help option is enabled, only show options
-        // and DO NOT trigger action.
-        if (self->opts->enabled("help")) {
-            cmd->display_help();
-            return .Value(self);
-        }
-
-        (cmd->action)(ActionCtx {
-            opts: self->opts
-        });
-
-        return .Value(self);
     }
 
     fn parse_remaining_args(self: Self*, cmd: const Cmd*, pargs: ProgramArgs, rem_args: usize) ErrorOr<(), ParseError> {
@@ -166,7 +164,7 @@ pub struct Cli {
             }
 
             switch (cmd->sub_cmds->find(arg)) {
-                case .Some(_cmd) => cmd = _cmd;
+                case .Some(x) => cmd = x;
                 case .None => return .Error(.UnknownCommand { cmd: arg });
             }
         }
