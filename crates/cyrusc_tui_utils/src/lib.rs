@@ -23,10 +23,6 @@ pub fn tui_skipped(file_name: String) {
     print_status("skipped", Some(&file_name));
 }
 
-pub fn tui_compile_finished() {
-    print_status("finished", None);
-}
-
 pub fn tui_error(msg: String) {
     print_diag("error", &msg);
 }

@@ -387,7 +387,10 @@ impl<'ll> CodeGenIRBuilder<'ll> {
                     let ptr_width = self.llvm_target_machine.get_target_data().get_pointer_byte_size(None) * 8;
 
                     if int_type.get_bit_width() < ptr_width {
-                        let ptr_int = self.llvm_ctx.custom_width_int_type(NonZero::new(ptr_width).unwrap()).unwrap();
+                        let ptr_int = self
+                            .llvm_ctx
+                            .custom_width_int_type(NonZero::new(ptr_width).unwrap())
+                            .unwrap();
                         let tmp = self
                             .llvm_builder
                             .build_ptr_to_int(basic_value.into_pointer_value(), ptr_int, "ptr_to_int")
@@ -2395,7 +2398,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
 
                 BasicValueEnum::IntValue(int_type.const_int_arbitrary_precision(&words))
             }
-            CIRLiteralKind::CString(value) => self.emit_cstring(value.clone()),
+            CIRLiteralKind::CString(value) => self.emit_const_str(value.clone()),
             CIRLiteralKind::ByteString(value) => self.emit_byte_string(value.clone()),
             CIRLiteralKind::Float(value) => BasicValueEnum::FloatValue(ty.into_float_type().const_float(*value)),
         };
@@ -2409,7 +2412,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         InternalValue::new(ty, InternalValueKind::RValue(basic_value))
     }
 
-    pub(crate) fn emit_cstring(&mut self, value: String) -> BasicValueEnum<'ll> {
+    pub(crate) fn emit_const_str(&mut self, value: String) -> BasicValueEnum<'ll> {
         if let Some(global_value) = self.string_cache.get(&value) {
             return global_value.as_pointer_value().into();
         }

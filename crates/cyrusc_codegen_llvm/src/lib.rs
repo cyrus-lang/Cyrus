@@ -8,7 +8,7 @@ use crate::{
         debug_info::{DebugContext, emit_debug_module_flags, finalize_debug},
         target_machine::{create_target_machine, llvm_code_model, llvm_opt_level, llvm_reloc_mode},
     },
-    optimizer::optimize_module_with_custom_passes,
+    optimizer::{optimize_module_debug, optimize_module_release},
 };
 use cyrusc_build_manifest::BuildManifest;
 use cyrusc_compiler::{
@@ -20,7 +20,7 @@ use cyrusc_compiler::{
 use cyrusc_diagcentral::exit_with_msg;
 use cyrusc_internal::{
     cir::{cir::CIRModule, typectx::CIRTypeContext},
-    compiler_options::{CompilerOption_PIEMode, CompilerOptions},
+    compiler_options::{CompilerOption_PIEMode, CompilerOption_Profile, CompilerOptions},
     vtable::VTableRegistry,
 };
 use cyrusc_scaffold_parser::OBJECT_CACHE_DIR_FILENAME;
@@ -48,7 +48,7 @@ pub struct CodeGenLLVM {
     ctx: Rc<CodeGenContext>,
     opts: CompilerOptions,
     build_dir: PathBuf,
-    llvm_target_machine: TargetMachine,
+    llvm_target_machine: Arc<Mutex<TargetMachine>>,
     build_manifest: Arc<Mutex<BuildManifest>>,
     entry_module_file_path: PathBuf,
     source_map: Arc<SourceMap>,
@@ -78,10 +78,10 @@ impl CodeGenLLVM {
             ctx,
             opts,
             build_dir,
-            llvm_target_machine,
+            source_map,
             build_manifest,
             entry_module_file_path,
-            source_map,
+            llvm_target_machine: Arc::new(Mutex::new(llvm_target_machine)),
         }
     }
 
@@ -97,38 +97,50 @@ impl CodeGenLLVM {
     ) {
         let dctx = if self.opts.debuginfo_enabled { Some(dctx) } else { None };
 
-        let mut codegen_ir_builder = CodeGenIRBuilder::new(
-            owned_module,
-            cir_module,
-            &self.ctx.target,
-            &builder,
-            &self.llvm_target_machine,
-            dctx.clone(),
-            tctx,
-            vtable_registry,
-            source_map,
-            self.opts.profile.clone(),
-        );
+        {
+            let llvm_target_machine = self.llvm_target_machine.lock().unwrap();
 
-        codegen_ir_builder.emit_module();
+            let mut codegen_ir_builder = CodeGenIRBuilder::new(
+                owned_module,
+                cir_module,
+                &self.ctx.target,
+                &builder,
+                &llvm_target_machine,
+                dctx.clone(),
+                tctx,
+                vtable_registry,
+                source_map,
+                self.opts.profile.clone(),
+            );
 
-        codegen_ir_builder.emit_global_var_ctors_function();
+            codegen_ir_builder.emit_module();
+            codegen_ir_builder.emit_global_var_ctors_function();
+        }
 
         {
+            let llvm_target_machine = self.llvm_target_machine.lock().unwrap();
             let llvm_module = owned_module.module.borrow();
-            llvm_module.set_triple(&self.llvm_target_machine.get_triple());
-            llvm_module.set_data_layout(&self.llvm_target_machine.get_target_data().get_data_layout());
+            llvm_module.set_triple(&llvm_target_machine.get_triple());
+            llvm_module.set_data_layout(&llvm_target_machine.get_target_data().get_data_layout());
 
-            enable_asan_for_owned_module(&self.opts, owned_module, &self.llvm_target_machine);
+            enable_asan_for_owned_module(&self.opts, owned_module, &llvm_target_machine);
         }
 
         // run optimizer
         {
+            let mut llvm_target_machine = self.llvm_target_machine.lock().unwrap();
             let llvm_module = owned_module.module.borrow();
 
             let opt_level = self.opts.opt_level.unwrap_or_default();
 
-            optimize_module_with_custom_passes(&llvm_module, opt_level).unwrap();
+            match self.opts.profile {
+                CompilerOption_Profile::Debug => {
+                    optimize_module_debug(&llvm_module, Some(&mut llvm_target_machine)).unwrap();
+                }
+                CompilerOption_Profile::Release => {
+                    optimize_module_release(&llvm_module, opt_level, Some(&mut llvm_target_machine)).unwrap();
+                }
+            }
         }
 
         if let Some(dctx) = &dctx {
@@ -172,15 +184,14 @@ impl CodeGenLLVM {
     }
 
     pub fn save_modules_as_assembly(&self, owned_modules: &Vec<OwnedModule>, assembly_dir_path: &PathBuf) {
+        let llvm_target_machine = self.llvm_target_machine.lock().unwrap();
+
         for owned_module in owned_modules {
             let module = owned_module.module.borrow();
             let mut assembly_path = assembly_dir_path.join(module.get_name().to_str().unwrap());
             assembly_path.set_extension("asm");
 
-            if let Err(llvm_str) = self
-                .llvm_target_machine
-                .write_to_file(&module, FileType::Assembly, &assembly_path)
-            {
+            if let Err(llvm_str) = llvm_target_machine.write_to_file(&module, FileType::Assembly, &assembly_path) {
                 exit_with_msg!(llvm_str.to_string());
             }
             drop(module);
@@ -188,15 +199,14 @@ impl CodeGenLLVM {
     }
 
     pub fn save_modules_as_object(&self, owned_modules: &Vec<OwnedModule>, object_dir_path: &PathBuf) {
+        let llvm_target_machine = self.llvm_target_machine.lock().unwrap();
+
         for owned_module in owned_modules {
             let module = owned_module.module.borrow();
             let mut object_path = object_dir_path.join(module.get_name().to_str().unwrap());
             object_path.set_extension("o");
 
-            if let Err(llvm_str) = self
-                .llvm_target_machine
-                .write_to_file(&module, FileType::Object, &object_path)
-            {
+            if let Err(llvm_str) = llvm_target_machine.write_to_file(&module, FileType::Object, &object_path) {
                 exit_with_msg!(llvm_str.to_string());
             }
             drop(module);
@@ -257,9 +267,10 @@ impl CodeGenBackend<'static, OwnedModule> for CodeGenLLVM {
         }
 
         {
+            let llvm_target_machine = self.llvm_target_machine.lock().unwrap();
             let module = owned_module.module.borrow();
 
-            self.llvm_target_machine
+            llvm_target_machine
                 .write_to_file(&module, FileType::Object, &object_path)
                 .expect("Failed to write LLVM object file")
         }
@@ -270,6 +281,8 @@ impl CodeGenBackend<'static, OwnedModule> for CodeGenLLVM {
     }
 
     fn target_machine_info(&self) -> TargetMachineInfo {
+        let llvm_target_machine = self.llvm_target_machine.lock().unwrap();
+
         InkwellTarget::initialize_all(&InitializationConfig::default());
 
         let cpu = if let Some(cpu) = &self.opts.cpu {
@@ -279,7 +292,7 @@ impl CodeGenBackend<'static, OwnedModule> for CodeGenLLVM {
         };
         let features = TargetMachine::get_host_cpu_features().to_string();
 
-        let target_triple = self.llvm_target_machine.get_triple();
+        let target_triple = llvm_target_machine.get_triple();
 
         let target = InkwellTarget::from_triple(&target_triple).unwrap();
         let target_machine = match target.create_target_machine(

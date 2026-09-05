@@ -16,6 +16,7 @@ members = [
     "crates/cyrusc_build_manifest",
     "crates/cyrusc_scaffold_parser",
     "crates/cyrusc_asan_wrapper",
+    "crates/cyrusc_optimizer_wrapper",
     "crates/cyrusc_tokens",
     "crates/cyrusc_internal",
     "crates/cyrusc_cir_lower",
