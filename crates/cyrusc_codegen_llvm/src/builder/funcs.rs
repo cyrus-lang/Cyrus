@@ -8,7 +8,10 @@ use crate::{
         values::{InternalValue, InternalValueKind},
     },
     c,
-    llvm::{abi::modifiers::*, debug_info::*},
+    llvm::{
+        abi::{callconv::LLVMCallConv, modifiers::*},
+        debug_info::*,
+    },
 };
 use cyrusc_ast::modifiers::FuncModifiers;
 use cyrusc_internal::{
@@ -21,7 +24,8 @@ use inkwell::{
     context::AsContextRef,
     llvm_sys::{
         core::{
-            LLVMAddAttributeAtIndex, LLVMAddCallSiteAttribute, LLVMCreateTypeAttribute, LLVMGetEnumAttributeKindForName,
+            LLVMAddAttributeAtIndex, LLVMAddCallSiteAttribute, LLVMCreateTypeAttribute,
+            LLVMGetEnumAttributeKindForName, LLVMSetInstructionCallConv,
         },
         prelude::LLVMMetadataRef,
     },
@@ -824,6 +828,59 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         }
     }
 
+    pub(crate) fn emit_call_site_attributes(
+        &mut self,
+        cir_func_type: &CIRFuncType,
+        abi_func_info: &ABIFunctionInfo,
+        call_site: &CallSiteValue<'ll>,
+    ) {
+        let byval_attr_kind = unsafe { LLVMGetEnumAttributeKindForName(c!("byval").as_ptr(), 5) };
+        let sret_attr_kind = unsafe { LLVMGetEnumAttributeKindForName(c!("sret").as_ptr(), 4) };
+
+        let mut llvm_params_start = 0;
+
+        if abi_func_info.ret_info.kind.is_indirect_sret() {
+            let ret_type = &abi_func_info.ret_info.abi_type;
+            let llvm_ret_type = self.emit_type(ret_type.clone());
+
+            let attr = unsafe {
+                LLVMCreateTypeAttribute(self.llvm_ctx.as_ctx_ref(), sret_attr_kind, llvm_ret_type.as_type_ref())
+            };
+
+            unsafe {
+                LLVMAddCallSiteAttribute(call_site.as_value_ref(), 1, attr);
+            }
+
+            llvm_params_start = 1;
+        }
+
+        for param_info in &abi_func_info.params_infos {
+            if param_info.is_indirect_by_val() {
+                let idx = param_info.param_index_start as usize;
+
+                let attr_idx = llvm_params_start + idx + 1;
+
+                let ty = &abi_func_info.params_types[idx];
+                let llvm_type = self.emit_type(ty.clone());
+
+                let attr = unsafe {
+                    LLVMCreateTypeAttribute(self.llvm_ctx.as_ctx_ref(), byval_attr_kind, llvm_type.as_type_ref())
+                };
+
+                unsafe {
+                    LLVMAddCallSiteAttribute(call_site.as_value_ref(), attr_idx as u32, attr);
+                }
+            }
+        }
+
+        unsafe {
+            LLVMSetInstructionCallConv(
+                call_site.as_value_ref(),
+                LLVMCallConv::from(&cir_func_type.callconv).as_u32(),
+            );
+        }
+    }
+
     pub(crate) fn emit_func_call_attributes(
         &mut self,
         abi_func_info: &ABIFunctionInfo,
@@ -866,23 +923,15 @@ impl<'ll> CodeGenIRBuilder<'ll> {
 
         for param_info in &abi_func_info.params_infos {
             if param_info.is_indirect_by_val() {
-                // 0-based index
                 let idx = param_info.param_index_start as usize;
 
-                // 1-based index,
-                // llvm_params_start considers precense of sret
                 let attr_idx = llvm_params_start + idx + 1;
 
-                let struct_type = &abi_func_info.params_types[idx];
-                let llvm_struct_type = self.emit_type(struct_type.clone());
-                assert!(llvm_struct_type.is_struct_type(), "indirect param type is not struct");
+                let ty = &abi_func_info.params_types[idx];
+                let llvm_type = self.emit_type(ty.clone());
 
                 let attr = unsafe {
-                    LLVMCreateTypeAttribute(
-                        self.llvm_ctx.as_ctx_ref(),
-                        byval_attr_kind,
-                        llvm_struct_type.as_type_ref(),
-                    )
+                    LLVMCreateTypeAttribute(self.llvm_ctx.as_ctx_ref(), byval_attr_kind, llvm_type.as_type_ref())
                 };
 
                 assert!(

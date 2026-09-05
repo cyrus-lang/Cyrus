@@ -85,7 +85,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
             let llvm_field_type: BasicTypeEnum<'ll> = self.emit_type(cir_ty.clone()).try_into().unwrap();
             let llvm_field_index = enum_layout.lookup_field_index(*field_index).unwrap();
 
-            // pointer to payload_struct.field_index
+            // pointer to payload_struct[field_index]
             let gep = self
                 .llvm_builder
                 .build_struct_gep(payload_struct_type, payload_alloca, llvm_field_index, "gep.field")
@@ -238,7 +238,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         }
 
         let enum_struct_value = rvalue.as_basic_value().into_struct_value();
-        let enum_idx_int_value = self.extract_enum_tag(enum_struct_value);
+        let index_int_value = self.extract_enum_tag(enum_struct_value);
 
         let parent_block = self.block_reg.cur_block.unwrap();
         let exit_block = self.new_basic_block("switch_on_enum.exit");
@@ -264,7 +264,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         self.emit_block(parent_block);
         let switch_inst = self
             .llvm_builder
-            .build_switch(enum_idx_int_value, else_block, &[])
+            .build_switch(index_int_value, else_block, &[])
             .unwrap();
 
         let tag_type = self
@@ -320,10 +320,12 @@ impl<'ll> CodeGenIRBuilder<'ll> {
 
                         let payload_struct_type =
                             self.emit_enum_fielded_variant_payload_type(*tag, &enum_type).unwrap();
+
                         let payload_struct_value =
                             self.intrinsic_copy_buffer_to_struct(enum_payload, payload_struct_type);
 
                         let payload_alloca = self.llvm_builder.build_alloca(payload_struct_type, "alloca").unwrap();
+
                         self.llvm_builder
                             .build_store(payload_alloca, payload_struct_value)
                             .unwrap();
@@ -780,16 +782,16 @@ impl<'ll> CodeGenIRBuilder<'ll> {
     }
 
     pub(crate) fn emit_goto(&mut self, goto_stmt: &CIRGotoStmt) {
-        let (target_block, target_depth) = *self.block_reg.labels.get(&goto_stmt.label_id).unwrap();
+        if let Some((target_block, target_depth)) = self.block_reg.labels.get(&goto_stmt.label_id).cloned()
+            && let Some(cur_block) = self.block_reg.cur_block
+        {
+            if cur_block.get_terminator().is_none() {
+                self.emit_defers_down_to(target_depth);
+                self.llvm_builder.build_unconditional_branch(target_block).unwrap();
+            }
 
-        let cur_block = self.block_reg.cur_block.unwrap();
-
-        if cur_block.get_terminator().is_none() {
-            self.emit_defers_down_to(target_depth);
-            self.llvm_builder.build_unconditional_branch(target_block).unwrap();
+            self.block_reg.cur_block = None;
         }
-
-        self.block_reg.cur_block = None;
     }
 }
 
@@ -938,11 +940,11 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         let sret_param = cur_fn.get_first_param().unwrap();
         let sret_ptr = sret_param.into_pointer_value();
 
-        let struct_type = rvalue.ty.clone();
-        let type_id = struct_type.as_type_id().unwrap();
-        let struct_layout = self.tctx.get_or_compute_layout(type_id);
+        let ty = rvalue.ty.clone();
+        let type_id = ty.as_type_id().unwrap();
+        let layout = self.tctx.get_or_compute_layout(type_id);
 
-        let size_value = self.llvm_ctx.i64_type().const_int(struct_layout.size as u64, false);
+        let size_value = self.llvm_ctx.i64_type().const_int(layout.size as u64, false);
 
         let src_ptr = match &lvalue.kind {
             InternalValueKind::LValue(ptr) => *ptr,
@@ -956,7 +958,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         };
 
         self.llvm_builder
-            .build_memmove(sret_ptr, struct_layout.align, src_ptr, struct_layout.align, size_value)
+            .build_memmove(sret_ptr, layout.align, src_ptr, layout.align, size_value)
             .unwrap();
     }
 

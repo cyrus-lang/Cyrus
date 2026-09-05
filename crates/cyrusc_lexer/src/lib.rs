@@ -37,7 +37,7 @@ impl<'diag, 'source_file> Lexer<'diag, 'source_file> {
             column: 1,
         };
 
-        lexer.read_char();
+        lexer.read();
         lexer
     }
 
@@ -74,7 +74,7 @@ impl<'diag, 'source_file> Lexer<'diag, 'source_file> {
         }
     }
 
-    fn read_char(&mut self) {
+    fn read(&mut self) {
         if self.next_pos >= self.input().len() {
             self.pos = self.input().len();
             self.ch = '\0';
@@ -82,6 +82,7 @@ impl<'diag, 'source_file> Lexer<'diag, 'source_file> {
         }
 
         let remaining_input = &self.input()[self.next_pos..];
+
         if let Some(ch) = remaining_input.chars().next() {
             self.ch = ch;
             self.pos = self.next_pos;
@@ -99,7 +100,7 @@ impl<'diag, 'source_file> Lexer<'diag, 'source_file> {
 
     #[inline]
     fn single(&mut self, kind: TokenKind) -> TokenKind {
-        self.read_char();
+        self.read();
         kind
     }
 
@@ -110,7 +111,7 @@ impl<'diag, 'source_file> Lexer<'diag, 'source_file> {
             loc: Some(Loc::new(self.file_id(), self.line, self.column, self.pos, self.pos)),
             hint: None,
         });
-        self.read_char();
+        self.read();
         TokenKind::Invalid
     }
 
@@ -184,7 +185,7 @@ impl<'source_map, 'source_file> Lexer<'source_map, 'source_file> {
 
     fn read_ident_or_prefix(&mut self) -> TokenKind {
         if self.ch == 'b' && self.peek_char() == '"' {
-            self.read_char();
+            self.read();
             return self.read_string_literal(Some(StringPrefix::Byte));
         }
 
@@ -193,11 +194,11 @@ impl<'source_map, 'source_file> Lexer<'source_map, 'source_file> {
 
     fn read_colon(&mut self) -> TokenKind {
         if self.peek_char() == ':' {
-            self.read_char(); // consume first :
-            self.read_char(); // consume second :
+            self.read(); // consume first :
+            self.read(); // consume second :
             TokenKind::DoubleColon
         } else {
-            self.read_char(); // consume :
+            self.read(); // consume :
             TokenKind::Colon
         }
     }
@@ -205,17 +206,17 @@ impl<'source_map, 'source_file> Lexer<'source_map, 'source_file> {
     fn read_equal(&mut self) -> TokenKind {
         match self.peek_char() {
             '=' => {
-                self.read_char();
-                self.read_char();
+                self.read();
+                self.read();
                 TokenKind::Equal
             }
             '>' => {
-                self.read_char();
-                self.read_char();
+                self.read();
+                self.read();
                 TokenKind::FatArrow
             }
             _ => {
-                self.read_char();
+                self.read();
                 TokenKind::Assign
             }
         }
@@ -223,11 +224,11 @@ impl<'source_map, 'source_file> Lexer<'source_map, 'source_file> {
 
     fn read_bang(&mut self) -> TokenKind {
         if self.peek_char() == '=' {
-            self.read_char();
-            self.read_char();
+            self.read();
+            self.read();
             TokenKind::NotEqual
         } else {
-            self.read_char();
+            self.read();
             TokenKind::Bang
         }
     }
@@ -235,17 +236,17 @@ impl<'source_map, 'source_file> Lexer<'source_map, 'source_file> {
     fn read_less(&mut self) -> TokenKind {
         match self.peek_char() {
             '=' => {
-                self.read_char();
-                self.read_char();
+                self.read();
+                self.read();
                 TokenKind::LessEqual
             }
             '<' => {
-                self.read_char();
-                self.read_char();
+                self.read();
+                self.read();
                 TokenKind::ShiftLeft
             }
             _ => {
-                self.read_char();
+                self.read();
                 TokenKind::LessThan
             }
         }
@@ -254,11 +255,11 @@ impl<'source_map, 'source_file> Lexer<'source_map, 'source_file> {
     fn read_greater(&mut self) -> TokenKind {
         // NOTE: '>>' ambiguity is entrusted to the parser
         if self.peek_char() == '=' {
-            self.read_char();
-            self.read_char();
+            self.read();
+            self.read();
             TokenKind::GreaterEqual
         } else {
-            self.read_char();
+            self.read();
             TokenKind::GreaterThan
         }
     }
@@ -266,17 +267,17 @@ impl<'source_map, 'source_file> Lexer<'source_map, 'source_file> {
     fn read_amp(&mut self) -> TokenKind {
         match self.peek_char() {
             '&' => {
-                self.read_char();
-                self.read_char();
+                self.read();
+                self.read();
                 TokenKind::And
             }
             '~' => {
-                self.read_char();
-                self.read_char();
+                self.read();
+                self.read();
                 TokenKind::AmpTilde
             }
             _ => {
-                self.read_char();
+                self.read();
                 TokenKind::Ampersand
             }
         }
@@ -284,35 +285,35 @@ impl<'source_map, 'source_file> Lexer<'source_map, 'source_file> {
 
     fn read_pipe(&mut self) -> TokenKind {
         if self.peek_char() == '|' {
-            self.read_char();
-            self.read_char();
+            self.read();
+            self.read();
             TokenKind::Or
         } else {
-            self.read_char();
+            self.read();
             TokenKind::Pipe
         }
     }
 
     fn read_question(&mut self) -> TokenKind {
         if self.peek_char() == '?' {
-            self.read_char();
-            self.read_char();
+            self.read();
+            self.read();
             TokenKind::QuestionQuestion
         } else {
-            self.read_char();
+            self.read();
             TokenKind::Invalid
         }
     }
 
     fn read_dot(&mut self) -> TokenKind {
-        self.read_char();
+        self.read();
 
         if self.ch == '.' && self.peek_char() == '.' {
-            self.read_char();
-            self.read_char();
+            self.read();
+            self.read();
             TokenKind::TripleDot
         } else if self.ch == '.' {
-            self.read_char();
+            self.read();
             TokenKind::DoubleDot
         } else {
             TokenKind::Dot
@@ -322,17 +323,17 @@ impl<'source_map, 'source_file> Lexer<'source_map, 'source_file> {
     fn read_minus(&mut self) -> TokenKind {
         match self.peek_char() {
             '-' => {
-                self.read_char();
-                self.read_char();
+                self.read();
+                self.read();
                 TokenKind::Decrement
             }
             '>' => {
-                self.read_char();
-                self.read_char();
+                self.read();
+                self.read();
                 TokenKind::ThinArrow
             }
             _ => {
-                self.read_char();
+                self.read();
                 TokenKind::Minus
             }
         }
@@ -340,11 +341,11 @@ impl<'source_map, 'source_file> Lexer<'source_map, 'source_file> {
 
     fn read_plus(&mut self) -> TokenKind {
         if self.peek_char() == '+' {
-            self.read_char();
-            self.read_char();
+            self.read();
+            self.read();
             TokenKind::Increment
         } else {
-            self.read_char();
+            self.read();
             TokenKind::Plus
         }
     }
@@ -352,7 +353,7 @@ impl<'source_map, 'source_file> Lexer<'source_map, 'source_file> {
     fn read_char_literal(&mut self) -> TokenKind {
         let (line, column, start) = (self.line, self.column, self.pos);
 
-        self.read_char(); // skip opening quote
+        self.read(); // skip opening quote
 
         if self.is_eof() {
             let end = self.pos;
@@ -363,13 +364,13 @@ impl<'source_map, 'source_file> Lexer<'source_map, 'source_file> {
                 loc: Some(Loc::new(self.file_id(), line, column, start, end)),
                 hint: None,
             });
-            self.read_char();
+            self.read();
             return TokenKind::Invalid;
         }
 
         let value = if self.ch == '\\' {
             // escape sequence
-            self.read_char();
+            self.read();
 
             if !ESCAPE_CHARS.contains(&self.ch) {
                 let column = self.column;
@@ -381,13 +382,13 @@ impl<'source_map, 'source_file> Lexer<'source_map, 'source_file> {
                     loc: Some(Loc::new(self.file_id(), line, column, start, end)),
                     hint: Some("Valid escapes include \\n, \\t, \\\\, \\', ...".to_string()),
                 });
-                self.read_char();
+                self.read();
                 return TokenKind::Invalid;
             }
 
             let escaped_str = escape_sequence_to_char(self.ch).unwrap();
 
-            self.read_char();
+            self.read();
             escaped_str
         } else {
             // normal char
@@ -401,12 +402,12 @@ impl<'source_map, 'source_file> Lexer<'source_map, 'source_file> {
                     loc: Some(Loc::new(self.file_id(), line, column, start, end)),
                     hint: Some("Use a string literal for multi-byte characters or emojis.".to_string()),
                 });
-                self.read_char();
+                self.read();
                 return TokenKind::Invalid;
             }
 
             let c = self.ch;
-            self.read_char();
+            self.read();
             c
         };
 
@@ -420,11 +421,11 @@ impl<'source_map, 'source_file> Lexer<'source_map, 'source_file> {
                 loc: Some(Loc::new(self.file_id(), line, column, start, end)),
                 hint: Some("Character literals may contain exactly one character.".to_string()),
             });
-            self.read_char();
+            self.read();
             return TokenKind::Invalid;
         }
 
-        self.read_char(); // consume closing quote
+        self.read(); // consume closing quote
 
         let end = self.pos;
 
@@ -437,7 +438,7 @@ impl<'source_map, 'source_file> Lexer<'source_map, 'source_file> {
     fn read_string_literal(&mut self, prefix: Option<StringPrefix>) -> TokenKind {
         let (line, column, start) = (self.line, self.column, self.pos);
 
-        self.read_char(); // skip opening quote (or prefix char)
+        self.read(); // skip opening quote (or prefix char)
 
         let mut raw = String::new();
 
@@ -451,29 +452,29 @@ impl<'source_map, 'source_file> Lexer<'source_map, 'source_file> {
                     loc: Some(Loc::new(self.file_id(), line, column, start, end)),
                     hint: None,
                 });
-                self.read_char();
+                self.read();
                 return TokenKind::Invalid;
             }
 
             match self.ch {
                 '\\' => {
                     raw.push('\\');
-                    self.read_char();
+                    self.read();
                     raw.push(self.ch);
-                    self.read_char();
+                    self.read();
                 }
                 '"' => {
                     break;
                 }
                 _ => {
                     raw.push(self.ch);
-                    self.read_char();
+                    self.read();
                 }
             }
         }
 
         // consume closing "
-        self.read_char();
+        self.read();
 
         let unescaped = match unescape_string(&raw) {
             Ok(str) => str,
@@ -507,24 +508,24 @@ impl<'source_map, 'source_file> Lexer<'source_map, 'source_file> {
         let base = if self.ch == '0' {
             match self.peek_char().to_ascii_lowercase() {
                 'x' => {
-                    self.read_char(); // consume '0'
-                    self.read_char(); // consume 'x' or 'X'
+                    self.read(); // consume '0'
+                    self.read(); // consume 'x' or 'X'
                     while self.ch.is_ascii_hexdigit() || self.ch == '_' {
                         if self.ch != '_' {
                             number.push(self.ch);
                         }
-                        self.read_char();
+                        self.read();
                     }
                     16
                 }
                 'b' => {
-                    self.read_char(); // consume '0'
-                    self.read_char(); // consume 'b' or 'B'
+                    self.read(); // consume '0'
+                    self.read(); // consume 'b' or 'B'
                     while self.ch == '0' || self.ch == '1' || self.ch == '_' {
                         if self.ch != '_' {
                             number.push(self.ch);
                         }
-                        self.read_char();
+                        self.read();
                     }
                     2
                 }
@@ -540,32 +541,32 @@ impl<'source_map, 'source_file> Lexer<'source_map, 'source_file> {
                 if self.ch != '_' {
                     number.push(self.ch);
                 }
-                self.read_char();
+                self.read();
             }
 
             if self.ch == '.' && self.peek_char().is_ascii_digit() {
                 is_float = true;
                 number.push(self.ch);
-                self.read_char();
+                self.read();
                 while self.ch.is_ascii_digit() || self.ch == '_' {
                     if self.ch != '_' {
                         number.push(self.ch);
                     }
-                    self.read_char();
+                    self.read();
                 }
             }
 
             if self.ch == 'e' || self.ch == 'E' {
                 is_float = true;
                 number.push(self.ch);
-                self.read_char();
+                self.read();
                 if self.ch == '+' || self.ch == '-' {
                     number.push(self.ch);
-                    self.read_char();
+                    self.read();
                 }
                 while self.ch.is_ascii_digit() {
                     number.push(self.ch);
-                    self.read_char();
+                    self.read();
                 }
             }
         }
@@ -585,7 +586,7 @@ impl<'source_map, 'source_file> Lexer<'source_map, 'source_file> {
                         hint: None,
                     });
 
-                    self.read_char();
+                    self.read();
                     return TokenKind::Invalid;
                 }
             }
@@ -613,7 +614,7 @@ impl<'source_map, 'source_file> Lexer<'source_map, 'source_file> {
                                 loc: Some(Loc::new(self.file_id(), line, column, start, end)),
                                 hint: Some("Integer literal exceeds 128-bit signed limits".to_string()),
                             });
-                            self.read_char();
+                            self.read();
                             return TokenKind::Invalid;
                         }
 
@@ -628,7 +629,7 @@ impl<'source_map, 'source_file> Lexer<'source_map, 'source_file> {
                         loc: Some(Loc::new(self.file_id(), line, column, start, end)),
                         hint: None,
                     });
-                    self.read_char();
+                    self.read();
                     return TokenKind::Invalid;
                 }
             };
@@ -649,7 +650,7 @@ impl<'source_map, 'source_file> Lexer<'source_map, 'source_file> {
 
         while self.ch.is_alphanumeric() || self.ch == '_' {
             final_ident.push(self.ch);
-            self.read_char();
+            self.read();
         }
 
         if final_ident == "_" {
@@ -666,7 +667,7 @@ impl<'source_map, 'source_file> Lexer<'source_map, 'source_file> {
 
             while self.ch.is_alphanumeric() || self.ch == '_' {
                 suffix.push(self.ch);
-                self.read_char();
+                self.read();
             }
 
             Some(Box::new(lookup_identifier(suffix)))
@@ -678,7 +679,7 @@ impl<'source_map, 'source_file> Lexer<'source_map, 'source_file> {
     #[inline]
     fn skip_whitespace(&mut self) {
         while is_whitespace(self.ch) && !self.is_eof() {
-            self.read_char();
+            self.read();
         }
     }
 
@@ -688,35 +689,35 @@ impl<'source_map, 'source_file> Lexer<'source_map, 'source_file> {
 
             if self.peek_char() == '/' {
                 // handle single-line comment
-                self.read_char(); // consume '/'
-                self.read_char(); // consume second '/'
+                self.read(); // consume '/'
+                self.read(); // consume second '/'
 
                 while !self.is_eof() && self.ch != '\n' {
-                    self.read_char();
+                    self.read();
                 }
 
                 if !self.is_eof() && self.ch == '\n' {
-                    self.read_char();
+                    self.read();
                 }
             } else if self.peek_char() == '*' {
                 // handle multi-line (possibly nested) comment
-                self.read_char(); // consume '/'
-                self.read_char(); // consume '*'
+                self.read(); // consume '/'
+                self.read(); // consume '*'
 
                 let mut depth = 1;
                 while !self.is_eof() && depth > 0 {
                     if self.ch == '/' && self.peek_char() == '*' {
                         // new nested comment
-                        self.read_char();
-                        self.read_char();
+                        self.read();
+                        self.read();
                         depth += 1;
                     } else if self.ch == '*' && self.peek_char() == '/' {
                         // closing comment
-                        self.read_char();
-                        self.read_char();
+                        self.read();
+                        self.read();
                         depth -= 1;
                     } else {
-                        self.read_char();
+                        self.read();
                     }
                 }
 
@@ -730,13 +731,13 @@ impl<'source_map, 'source_file> Lexer<'source_map, 'source_file> {
                         hint: None,
                     });
 
-                    self.read_char();
+                    self.read();
                     return;
                 }
 
                 // skip any newlines after comment
                 while !self.is_eof() && self.ch == '\n' {
-                    self.read_char();
+                    self.read();
                 }
             }
 

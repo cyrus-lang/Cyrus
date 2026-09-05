@@ -10,14 +10,14 @@ import (
         stderr, ERANGE
     },
     std::io{Writer, StdoutWriter},
-    std::mem{Allocator, alloc},
+    std::mem{Allocator, alloc_init},
     std::collections{Vec},
     std::errors{ErrorOr},
     std::option{Option},
     std::string{String},
 );
 
-const HELP_MESG_WHITESPACE_OFFSET: usize = 16;
+const HELP_WS_LEN: usize = 16;
 
 pub type ProgramArgs = struct {
     argv: const c_char**,
@@ -31,21 +31,22 @@ pub struct ActionCtx {
 }
 
 pub enum ParseError {
-    InvalidCommandOption {
-        cmd: uint8*,
-        opt: uint8*
-    },
-    BadValueType {
-        opt: uint8*,
-        ty: uint8*
-    },
-    DuplicateOption { opt: uint8* },
-    InvalidOption { opt: uint8* },
-    UnknownOption { opt: uint8* },
-    UnknownCommand { cmd: uint8* },
-    MissingOption { opt: uint8* },
-    MissingValue { opt: uint8* },
-    InvalidValue { opt: uint8* },
+    InvalidCommandOption { cmd: const uint8*, opt: const uint8* },
+    BadValueType { opt: const uint8*, ty: const uint8* },
+    DuplicateOption { opt: const uint8* },
+    InvalidOption { opt: const uint8* },
+    UnknownOption { opt: const uint8* },
+    UnknownCommand { cmd: const uint8* },
+    MissingOption { opt: const uint8* },
+    MissingValue { opt: const uint8* },
+    InvalidValue { opt: const uint8* },
+}
+
+pub enum Value {
+    Str(String),
+    Int(int64),
+    Float(float64),
+    Bool(bool)
 }
 
 pub struct Cli {
@@ -64,44 +65,53 @@ pub struct Cli {
             program_name
         };
     }
-    
+
     pub fn add_command(self: Self*, cmd: Cmd) {
-        self->cmds.add(cmd);
+        const help_opt = self->opts->get_help_opt();
+        var heap = self->cmds.add(cmd);
+        heap->add_option(help_opt);
     }
-    
+
     pub fn parse_args(self: Self*, pargs: ProgramArgs) ErrorOr<Self*, ()> {
-        // Trigger main action if there is any,
-        // Or display help
         if (pargs.argc < 2) {
-            // TODO Support optional main-action.
             self->display_general_help();
             return .Value(self);
         }
 
-        var cmd: Cmd* = undefined;
+        if (pargs.argv[1] == "help") {
+            self->display_general_help();
+            return .Value(self);
+        }
 
         switch (self->parse_command(pargs)) {
-            case .Value(detail) => {
-                cmd = detail.cmd;
+            case .Value(result) => {
+                const cmd = result.cmd;
 
-                switch (self->parse_remaining_args(cmd, pargs, detail.rem_args)) {
+                switch (self->parse_remaining_args(cmd, pargs, result.rem_args)) {
                     case .Error(err) => {
                         self->display_parse_error(err);
                         return .Error(());
                     }
                 }
+
+                // If help option is enabled, only show options
+                // and DO NOT trigger action.
+                if (self->opts->enabled("help")) {
+                    cmd->display_help();
+                    return .Value(self);
+                }
+
+                // FIXME
+                @assert(cmd, "cmd not set properly");
+                (cmd->action)(ActionCtx { opts: self->opts });
+
+                return .Value(self);
             }
             case .Error(err) => {
                 self->display_parse_error(err);
                 return .Error(());
             }
         }
-
-        (cmd->action)(ActionCtx {
-            opts: self->opts
-        });
-
-        return .Value(self);
     }
 
     fn parse_remaining_args(self: Self*, cmd: const Cmd*, pargs: ProgramArgs, rem_args: usize) ErrorOr<(), ParseError> {
@@ -129,13 +139,11 @@ pub struct Cli {
         var i: usize = 1;
         var arg = pargs.argv[i];
 
-        var cmd: Cmd*;
-
         // Consume first command
-        switch (self->cmds.find(arg)) {
-            case .Some(_cmd) => { cmd = _cmd; i += 1; }
-            case .None => return .Error(.UnknownCommand { cmd: arg });
+        switch (self->cmds.find(arg)) case .Some(var cmd) else {
+            return .Error(.UnknownCommand { cmd: arg });
         }
+        i += 1;
 
         // Handle sub commands
         for (; i < argc; i += 1) {
@@ -149,8 +157,14 @@ pub struct Cli {
                 break;
             }
 
+            const (is_assign, _) = is_opt_assign(arg);
+
+            if (is_assign) {
+                break;
+            }
+
             switch (cmd->sub_cmds->find(arg)) {
-                case .Some(_cmd) => cmd = _cmd;
+                case .Some(x) => cmd = x;
                 case .None => return .Error(.UnknownCommand { cmd: arg });
             }
         }
@@ -165,7 +179,14 @@ pub struct Cli {
         pargs: ProgramArgs
     ) ErrorOr<(), ParseError> {
         var arg = pargs.argv[*i];
-        var next_arg = pargs.argv[*i + 1];
+        
+        var next_arg: const uint8*;
+
+        if (*i <= @cast(usize, pargs.argc)) {
+            next_arg = pargs.argv[*i + 1];
+        }
+
+        const len = strlen(arg);
 
         const (single_dash, double_dash) = is_opt_dashed(arg);
 
@@ -173,30 +194,39 @@ pub struct Cli {
             return .Error(.InvalidOption { opt: arg });
         }
 
-        const len = strlen(arg);
-        var name: uint8* = undefined;
+        var name: const uint8* = undefined;
 
         // Skip dashes
-        if (double_dash) {
-            name = arg + 2; // double dash
-        } else {
-            name = arg + 1; // single dash
-        }
+        if (double_dash) { name = arg + 2; } // Double dash
+        else { name = arg + 1; } // Single dash
     
         // Check option name to be present
         if (strcmp(name, "\0") == 0) {
             return .Error(.InvalidOption { opt: arg });
         }
 
-        // FIXME: I get a segfault when calling is_opt_assign
-        // maybe i'll fix it later.
-        // opt=10
-        // const (is_assign, assign_index) = is_opt_assign(name);
-        // if (is_assign) {
-        //     @memcpy(name, name, assign_index + 1);
-        //     printf("%s\n", name);
-        //     @todo();
-        // }
+        const (is_assign, var assign_index) = is_opt_assign(name);
+
+        // REVIEW: We might need to replace fixed-size buffers
+        // with a dynamically growable one.
+        if (is_assign) {
+            const name_len = strlen(name);
+
+            var opt_name: uint8[256];
+            var opt_val: uint8[256];
+            
+            @memcpy(&opt_name[0], name, assign_index + 1);
+            opt_name[assign_index] = '\0';
+
+            @assert(name[assign_index] == '=', "assign index is wrong");
+            assign_index += 1; // Skip it
+
+            @memcpy(&opt_val[0], name + assign_index, assign_index);
+            opt_val[name_len] = '\0';
+            
+            name = &opt_name[0];
+            next_arg = &opt_val[0];
+        }
 
         var value: Value;
 
@@ -218,21 +248,23 @@ pub struct Cli {
         
         // For non-boolean options, or boolean with explicit value
         if (!next_arg) {
-            return .Error(.MissingValue { opt: arg });
+            return .Error(.MissingValue { opt: name });
         }
 
         if (is_arg_an_opt(next_arg)) {
             // Next arg is an option, but we need a value
-            return .Error(.MissingValue { opt: arg });
+            return .Error(.MissingValue { opt: name });
         }
 
         // Consume the value
         *i += 1;
 
         // Parse the value
-        value = self->parse_value(pargs.argv[*i]);
+        value = self->parse_value(next_arg);
     
     register_value:
+        opt->add_value(value);
+
         // Validate parsed value type
         // with expected type
         if (!is_value_valid(ty, value)) {
@@ -241,8 +273,6 @@ pub struct Cli {
                 ty: ty.to_str()
             });
         }
-
-        opt->add_value(value);
 
         // Option policy check
         switch (opt->check()) {
@@ -269,8 +299,8 @@ pub struct Cli {
         if (ok) {
             return .Float(float_value);
         }
-        
-        return .Str(arg);
+
+        return .Str(String.from_str(self->allocator, arg));
     }
 
     fn display_general_help(self: const Self*) {
@@ -352,11 +382,13 @@ pub struct Cli {
                 );
             }
         }
-        fprintf(stderr, "Please use --help to see usage.\n");
+        
+        fprintf(stderr, "Please use command `help` to see usage.\n");
     }
 
     pub fn free(self: Self*) {
         self->cmds.free();
+        self->opts->free();
     }
 }
 
@@ -371,13 +403,15 @@ pub struct Cmds {
         };
     }
 
-    pub fn add(self: Self*, cmd: Cmd) {
-        self->inner.push(alloc(self->allocator, cmd));
+    pub fn add(self: Self*, cmd: Cmd) Cmd* {
+        var heap = alloc_init(self->allocator, cmd);
+        self->inner.push(heap);
+        return heap;
     }
 
     pub fn find(self: Self*, name: const uint8*) Option<Cmd*> {
         for (var i: usize = 0; i < self->inner.len(); i += 1) {
-            const cmd = self->inner.get(i).unwrap();
+            const cmd = self->inner.get_owned(i).unwrap();
 
             if (strcmp(cmd->name, name) == 0) {
                return .Some(cmd);
@@ -389,9 +423,9 @@ pub struct Cmds {
 
     pub fn display_all(self: const Self*, writer: Writer) {
         writer.writeln("Commands:");
+
         for (var i: usize = 0; i < self->inner.len(); i += 1) {
-            const cmd = self->inner.get(i).unwrap();
-            
+            const cmd = self->inner.get_owned(i).unwrap();
             const len = strlen(cmd->name);
 
             writer.write("  ");
@@ -399,16 +433,19 @@ pub struct Cmds {
 
             switch (cmd->help) {
                 case .Some(text) => {
-                    write_spaces(
-                        writer,
-                        HELP_MESG_WHITESPACE_OFFSET - len
-                    );
+                    write_spaces(writer, HELP_WS_LEN - len);
                     writer.write(text);
                 }
             }
-
+            
             writer.write("\n");
         }
+
+        writer.write("  ");
+        writer.write("help");
+        write_spaces(writer, HELP_WS_LEN - 4);
+        writer.write("Shows commands");
+        writer.write("\n");
     }
     
     pub fn len(self: const Self*) usize {
@@ -417,7 +454,7 @@ pub struct Cmds {
 
     pub fn free(self: Self*) {
         for (var i: usize = 0; i < self->inner.len(); i += 1) {
-            var cmd = self->inner.get(i).unwrap();
+            var cmd = self->inner.get_owned(i).unwrap();
             cmd->free();
             self->allocator.free(cmd);
         }
@@ -428,14 +465,16 @@ pub struct Cmds {
 
 pub struct Cmd {
     allocator: Allocator,
+    opts: Vec<Opt*>,
     pub name: const uint8*,
     pub sub_cmds: Cmds*,
-    pub opts: Vec<Opt*>,
     pub action: ActionFn,
     pub help: Option<uint8*>,
 
     pub fn new(allocator: Allocator, name: const uint8*, action: ActionFn) Self {
-        const sub_cmds: Cmds* = alloc(allocator, Cmds.new(allocator));
+        const sub_cmds: Cmds* = alloc_init(allocator, Cmds.new(allocator));
+        @assert(sub_cmds, "allocation failed for sub_cmds");
+        
         const opts: Vec<Opt*> = Vec.new(allocator);
 
         return Self {
@@ -455,7 +494,7 @@ pub struct Cmd {
 
     pub fn find_option(self: Self*, name: const uint8*) Option<Opt*> {
         for (var i: usize = 0; i < self->opts.len(); i += 1) {
-            const opt = self->opts.get(i).unwrap();
+            const opt = self->opts.get_owned(i).unwrap();
 
             // Check with short name
             switch (opt->short_name) {
@@ -489,9 +528,42 @@ pub struct Cmd {
         return self;
     }
 
+    pub fn display_help(self: const Self*) {
+        var writer: Writer = dynamic StdoutWriter.new();
+
+        writer.write("Options ");
+        writer.write("[");
+        writer.write(self->name);
+        writer.writeln("]");
+
+        for (var i: usize = 0; i < self->opts.len(); i += 1) {
+            const opt = self->opts.get_owned(i).unwrap();
+
+            const space_len: usize = 2;
+            const dash_len: usize = 2;
+            const name_len = strlen(opt->long_name);
+            const len = space_len + dash_len + name_len;
+
+            writer.write("  --");
+            writer.write(opt->long_name);
+
+            switch (opt->help) {
+                case .Some(text) => {
+                    write_spaces(
+                        writer,
+                        HELP_WS_LEN - len
+                    );
+                    writer.write(text);
+                }
+            }
+
+            writer.write("\n");
+        }
+    }
+
     pub fn free(self: Self*) {
-        for (var i: usize; i < self->opts.len(); i += 1) {
-            const opt = self->opts.get(i).unwrap();
+        for (var i: usize = 0; i < self->opts.len(); i += 1) {
+            const opt = self->opts.get_owned(i).unwrap();
             opt->free();
         }
 
@@ -507,21 +579,28 @@ pub struct Opts {
     inner: Vec<Opt*>,
 
     pub fn new(allocator: Allocator) Self {
-        return Self {
-            allocator,
-            inner: Vec.new(allocator)
-        };
+        var self = Self { allocator, inner: Vec.new(allocator) };
+
+        // Handle help option internally
+        self.add(*Opt.new(allocator, "help").short('h')->help("Show help"));
+
+        return self;
+    }
+
+    [[inline]]
+    pub fn get_help_opt(self: const Self*) Opt* {
+        return self->inner.get_owned(0).unwrap();
     }
 
     pub fn add(self: Self*, opt: Opt) Opt* {
-        const opt = alloc(self->allocator, opt);
+        const opt = alloc_init(self->allocator, opt);
         self->inner.push(opt);
         return opt;
     }
 
     pub fn find(self: Self*, name: const uint8*) Option<Opt*> {
         for (var i: usize = 0; i < self->inner.len(); i += 1) {
-            const opt = self->inner.get(i).unwrap();
+            const opt = self->inner.get_owned(i).unwrap();
 
             // Check with short name
             switch (opt->short_name) {
@@ -555,7 +634,7 @@ pub struct Opts {
     pub fn display_all(self: const Self*, writer: Writer) {
         writer.writeln("Options:");
         for (var i: usize = 0; i < self->inner.len(); i += 1) {
-            const option = self->inner.get(i).unwrap();
+            const option = self->inner.get_owned(i).unwrap();
 
             writer.write("  ");
             
@@ -579,9 +658,9 @@ pub struct Opts {
 
     pub fn free(self: Self*) {
         for (var i: usize = 0; i < self->inner.len(); i += 1) {
-            var cmd = self->inner.get(i).unwrap();
-            cmd->free();
-            self->allocator.free(cmd);
+            var opt = self->inner.get_owned(i).unwrap();
+            opt->free();
+            self->allocator.free(opt);
         }
 
         self->inner.free();
@@ -595,9 +674,9 @@ pub struct Opt {
     pub values: Vec<Value*>,
     pub arg_type: Option<ArgType>,
     pub enabled: bool,
-    required: bool,
-    policy: DupPolicy,
-    help: Option<uint8*>,
+    pub required: bool,
+    pub policy: DupPolicy,
+    pub help: Option<uint8*>,
 
     pub fn new(allocator: Allocator, long_name: uint8*) Self {
         const values: Vec<Value*> = Vec.new(allocator);
@@ -616,7 +695,7 @@ pub struct Opt {
     }
 
     pub fn add_value(self: Self*, value: Value) {
-        self->values.push(alloc(self->allocator, value));
+        self->values.push(alloc_init(self->allocator, value));
     }
 
     pub fn check(self: const Self*) ErrorOr<(), ParseError> {
@@ -654,20 +733,17 @@ pub struct Opt {
 
     pub fn free(self: Self*) {
         for (var i: usize = 0; i < self->values.len(); i += 1) {
-            const value = self->values.get(i).unwrap();
+            const value = self->values.get_owned(i).unwrap();
+
+            switch (*value) {
+                case .Str(str) => str.free();
+            }
 
             self->allocator.free(value);    
         }
 
         self->values.free();
     }
-}
-
-pub enum Value {
-    Str(uint8*),
-    Int(int64),
-    Float(float64),
-    Bool(bool)
 }
 
 pub enum ArgType {
@@ -704,9 +780,9 @@ pub enum DupPolicy {
 fn is_value_valid(ty: ArgType, value: Value) bool {
     switch (value) {
         case .Float(_) => if (ty == .Float) { return true; }
-        case .Bool(_)  => if (ty == .Bool) { return true; }
-        case .Str(_)   => if (ty == .Str) { return true; }
-        case .Int(_)   => if (ty == .Int) { return true; }
+        case .Bool(_) => if (ty == .Bool) { return true; }
+        case .Str(_) => if (ty == .Str) { return true; }
+        case .Int(_) => if (ty == .Int) { return true; }
     }
     return false;
 }
@@ -762,16 +838,16 @@ fn parse_float(ok: bool*, arg: const uint8*) float64 {
     return @cast(float64, result);
 }
 
-// [[inline]]
-// fn is_opt_assign(arg: const uint8*) (bool, usize) {
-// const len = @cast(usize, strlen(arg));
-// for (var i: usize = 0; i < len; i += 1) {
-//     if (arg[i] == '=') {
-//         return (true, i);
-//     }
-// }
-// return (false, 0);
-// }
+[[inline]]
+fn is_opt_assign(arg: const uint8*) (bool, usize) {
+    const len = @cast(usize, strlen(arg));
+    for (var i: usize = 0; i < len; i += 1) {
+        if (arg[i] == '=') {
+            return (true, i);
+        }
+    }
+    return (false, 0);
+}
 
 [[inline]]
 fn is_opt_dashed(arg: const uint8*) (bool, bool) {

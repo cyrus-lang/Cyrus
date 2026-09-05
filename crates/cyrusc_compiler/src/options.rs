@@ -3,8 +3,8 @@
 
 use cyrusc_diagcentral::exit_with_msg;
 use cyrusc_internal::compiler_options::{
-    CompilerOption_BuildDir, CompilerOption_CodeModel, CompilerOption_Optimize, CompilerOption_Profile,
-    CompilerOption_RelocMode, CompilerOption_Sanitizer, CompilerOptions,
+    CompilerOption_BuildDir, CompilerOption_CodeModel, CompilerOption_Optimize, CompilerOption_PIEMode,
+    CompilerOption_Profile, CompilerOption_RelocMode, CompilerOption_Sanitizer, CompilerOptions,
 };
 use cyrusc_scaffold_parser::ScaffoldConfig;
 use cyrusc_tui_utils::{tui_error, tui_note, tui_warning};
@@ -275,8 +275,7 @@ pub fn merge_compiler_options(opts: &CompilerOptions, other: &CompilerOptions) -
     };
 
     merged.linker_options.link_static = opts.linker_options.link_static || other.linker_options.link_static;
-    merged.linker_options.pie = opts.linker_options.pie || other.linker_options.pie;
-    merged.linker_options.no_pie = opts.linker_options.no_pie || other.linker_options.no_pie;
+    merged.linker_options.pie_mode = opts.linker_options.pie_mode;
 
     if matches!(opts.reloc_mode, CompilerOption_RelocMode::Default) {
         merged.reloc_mode = other.reloc_mode.clone();
@@ -397,10 +396,6 @@ fn validate_compiler_options_path_relationships(opts: &CompilerOptions, errors: 
 }
 
 pub fn validate_compiler_options(opts: &CompilerOptions) {
-    if opts.debuginfo_enabled && opts.opt_level != Some(CompilerOption_Optimize::O0) {
-        exit_with_msg!("Debug info emission '-g' can only be used with optimization level O0".to_string());
-    }
-
     if !opts.sanitizer.is_empty() {
         if !opts.debuginfo_enabled {
             tui_warning(
@@ -441,15 +436,11 @@ pub fn validate_compiler_options(opts: &CompilerOptions) {
     }
 
     // linker validation
-    if opts.linker_options.link_static && opts.linker_options.pie {
+    if opts.linker_options.link_static && opts.linker_options.pie_mode == CompilerOption_PIEMode::PIE {
         tui_warning(
             "Static linking with PIE may not be supported on all targets. Consider using '--static' without '--pie' or vice versa."
                 .to_string(),
         );
-    }
-
-    if opts.linker_options.no_pie && opts.linker_options.pie {
-        exit_with_msg!("Cannot specify both '--pie' and '--no-pie'.".to_string());
     }
 
     // profile validation

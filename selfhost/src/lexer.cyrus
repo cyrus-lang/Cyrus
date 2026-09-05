@@ -1,0 +1,757 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 The Cyrus Language
+
+/* REVIEW
+    We'll add hashing support to our lexer after stage1 completed.
+    Nice resources to check out later:
+    https://xnacly.me/posts/2025/fast-lexer-strategies/
+*/
+
+import (
+    std::libc::types{c_char},
+    std::collections{Vec},
+    std::mem{Allocator},
+    std::string{String},
+    std::option{Option},
+    std::libc{
+        printf,
+        strtol,
+        strlen,
+        errno,
+        ERANGE
+    },
+);
+
+import tokens{
+    Token,
+    TokenKind,
+    Literal,
+    IntegerSuffix,
+    FloatSuffix,
+    StringPrefix,
+    Loc,
+    escape_sequence_to_char,
+    is_valid_escape
+};
+
+pub struct Lexer {
+    allocator: Allocator,
+    source: const String*,
+    pos: usize,
+    line: usize,
+    col: usize,
+     
+    [[inline]]
+    pub fn new(allocator: Allocator, source: const String*) Self {
+        @assert(source, "source cannot be null");
+
+        return Self {
+            allocator,
+            source,
+            pos: 0,
+            line: 1,
+            col: 1,
+        };
+    }
+
+    pub fn tokenize(self: Self*) Vec<Token> {
+        var tokens: Vec<Token> = Vec.new(self->allocator);
+
+        var token: Token = undefined;
+
+        while (true) {
+            token = self->next();
+            tokens.push(token);
+            
+            if (token.kind == .EOF || token.kind == .INVALID) {
+                break;
+            }
+        }
+
+        return tokens;
+    }
+
+    fn next(self: Self*) Token {
+        self->skip_ws();
+        self->skip_comments();
+
+        if (self->pos == self->source->len()) {
+            return Token {
+                kind: .EOF,
+                loc: self->loc()
+            };
+        }
+
+        const loc = self->loc();
+        const kind = self->read_kind();
+
+        return Token {
+            kind,
+            loc: loc.merge(self->loc())
+        };
+    }
+
+    fn read_kind(self: Self*) TokenKind {
+        switch (self->source->get(self->pos)) case .Some(char) else {
+            return .EOF;
+        }
+
+        switch (char) {
+            case 'a'..='z' | 'A'..='Z' | '_' => return self->read_ident_or_prefix();
+            case '0'..='9' => return self->read_integer_literal();
+            case '"' => return self->read_string_literal(.None);
+            case '\'' => return self->read_char_literal();
+            case '+' => return self->read_plus();
+            case '-' => return self->read_minus();
+            case ':' => return self->read_colon();
+            case '=' => return self->read_equal();
+            case '!' => return self->read_bang();
+            case '<' => return self->read_less();
+            case '>' => return self->read_greater();
+            case '&' => return self->read_amp();
+            case '|' => return self->read_pipe();
+            case '.' => return self->read_dot();
+            case '/' => return self->read_single(.Slash);
+            case '~' => return self->read_single(.Tilde);
+            case '*' => return self->read_single(.Asterisk);
+            case '%' => return self->read_single(.Percent);
+            case '^' => return self->read_single(.Caret);
+            case '(' => return self->read_single(.LeftParen);
+            case ')' => return self->read_single(.RightParen);
+            case '{' => return self->read_single(.LeftBrace);
+            case '}' => return self->read_single(.RightBrace);
+            case '[' => return self->read_single(.LeftBracket);
+            case ']' => return self->read_single(.RightBracket);
+            case ',' => return self->read_single(.Comma);
+            case ';' => return self->read_single(.Semicolon);
+            case '@' => return self->read_single(.At);
+            case '\0' => return .EOF;
+
+            else => {
+                // FIXME Report diagnostic.
+                printf("invalid: `%c`\n", char);
+                return .INVALID;
+            }
+        }
+    }
+
+    /// Advances lexer by consuming a character and updates line and column.
+    fn read(self: Self*) {
+        if (self->pos >= self->source->len()) {
+            return;
+        }
+
+        const next_pos = self->pos + 1;
+
+        self->pos += 1; // consume
+
+        switch (self->source->get(next_pos)) {
+            case .Some(char) => {
+                if (char == '\n') {
+                    self->line += 1;
+                    self->col = 1;
+                } else {
+                    self->col += 1;
+                }
+            }
+        }
+    }
+
+    fn read_ident_or_prefix(self: Self*) TokenKind {
+        if (self->cur() == 'b' && self->peek() == '"') {
+            return self->read_string_literal(.Some(.Byte));
+        }
+
+        return self->read_ident();
+    }
+
+    fn read_ident(self: Self*) TokenKind {
+        if (self->cur() == '_') {
+            return .Underscore;
+        }
+
+        var ident = String.new(self->allocator);
+
+        while (is_alpha(self->cur())) {
+            ident.push(self->cur());
+            self->read();
+        }
+
+        return .Ident(ident);
+    }
+
+    fn read_string_literal(self: Self*, suffix: Option<StringPrefix>) TokenKind {
+        self->read();
+
+        var value = String.new(self->allocator);
+
+        while (true) {
+            if (self->is_eof()) {
+                // FIXME
+                @panic("unterminated string literal");
+            }
+
+            const char = self->cur();
+
+            switch (char) {
+                case '"' => break;
+                else => value.push(char);
+            }
+
+            self->read();
+        }
+
+        self->read();
+
+        // TODO: Unespcae string
+
+        return .Literal(.String { value, suffix });
+    }
+
+    fn read_char_literal(self: Self*) TokenKind {
+        self->read();
+
+        var char: uint8;
+
+        // Escaping Sequence Char
+        if (self->cur() == '\\') {
+            self->read();
+
+            // HEX
+            if (self->cur() == 'x') {
+                switch (self->read_char_hex()) {
+                    case .Some(x) => char = x;
+                    case .None => return .INVALID;
+                }
+            }
+            // UNICODE
+            else if (self->cur() == 'u') {
+                switch (self->read_char_unicode()) {
+                    case .Some(x) => char = x;
+                    case .None => return .INVALID;
+                }
+            }
+            // OCTAL
+            else if (is_digit(self->cur())) {
+                switch (self->read_char_octal()) {
+                    case .Some(x) => char = x;
+                    case .None => return .INVALID;
+                }
+            }  
+            // Standard ASCII
+            else {
+                if (self->is_eof()) {
+                    // FIXME
+                    @panic("unterminated char literal");
+                }
+                
+                if (!is_valid_escape(self->cur())) {
+                    @panic("invalid escape char");
+                }
+                
+                char = escape_sequence_to_char(self->cur());
+                self->read();
+            }
+        } 
+        // Normal Char
+        else {
+            if (self->is_eof()) {
+                // FIXME
+                @panic("unterminated char literal");
+            }
+            
+            // REVIEW Add len_utf8 safety check
+            char = self->cur();
+            self->read();
+        }
+
+        if (self->is_eof() || self->cur() != '\'') {
+            // FIXME
+            @panic("unterminated char literal");
+        }
+
+        self->read();
+        return .Literal(.Char(char));
+    }
+
+    fn read_char_unicode(self: Self*) Option<uint8> {
+        self->read();
+
+        var buf: uint8[5];
+        var i: usize = 0;
+
+        while (i < 4 && !self->is_eof() && self->cur() != '\'') {
+            buf[i] = self->cur();
+            self->read();
+            i += 1;
+        }
+
+        // Must have at least one digit
+        if (i == 0) {
+            @panic("unicode char must have at least one digit");
+            // FIXME
+            // return .None;
+        }
+
+        buf[i] = '\0';
+
+        switch (try_str_as_unicode(&buf[0])) case .Some(unicode) else {
+            @panic("given number is not unicode");
+            // FIXME
+            // return .None;
+        }
+        
+        if (unicode > 255) {
+            @panic("unicode char value must be in range 0x00 to 0xFF (0-255)");
+            // FIXME
+            // return .None;    
+        }
+
+        if (self->cur() != '\'' && is_digit(self->cur())) {
+            @panic("unicode digits must be two");
+        }
+
+        return .Some(@cast(uint8, unicode));
+    }
+
+    fn read_char_hex(self: Self*) Option<uint8> {
+        self->read();
+
+        var buf: uint8[4];
+        var i: usize = 0;
+
+        while (i < 2 && !self->is_eof() && self->cur() != '\'') {
+            buf[i] = self->cur();
+            self->read();
+            i += 1;
+        }
+
+        // Must have at least one digit
+        if (i == 0) {
+            @panic("hex char must have at least one digit");
+            // FIXME
+            // return .None;
+        }
+
+        buf[i] = '\0';
+
+        switch (try_str_as_hex(&buf[0])) case .Some(hex) else {
+            @panic("given number is not hex");
+            // FIXME
+            // return .None;
+        }
+        
+        if (hex > 255) {
+            @panic("hex char value must be in range 0x00 to 0xFF (0-255)");
+            // FIXME
+            // return .None;    
+        }
+
+        if (self->cur() != '\'' && is_digit(self->cur())) {
+            @panic("hex digits must be two");
+        }
+
+        return .Some(@cast(uint8, hex));
+    }
+
+    fn read_char_octal(self: Self*) Option<uint8> {
+        var buf: uint8[4];
+        var i: usize = 0;
+
+        // Octal char only allows three digits
+        while (i < 3 && !self->is_eof() && self->cur() != '\'') {
+            buf[i] = self->cur();
+            self->read();
+            i += 1;
+        }
+
+        // Must have at least one digit
+        if (i == 0) {
+            @panic("octal char must have at least one digit");
+            // FIXME
+            // return .None;
+        }
+
+        buf[i] = '\0';
+
+        switch (try_str_as_octal(&buf[0])) case .Some(octal) else {
+            @panic("given number is not octal");
+            // FIXME
+            // return .None;
+        }
+        
+        if (octal > 255) {
+            @panic("octal char digits must be in range 0 to 255");
+            // FIXME
+            // return .None;    
+        }
+
+        if (self->cur() != '\'' && is_digit(self->cur())) {
+            @panic("octal digits must be three");
+        }
+
+        return .Some(@cast(uint8, octal));
+    }
+
+    // TODO
+    fn read_integer_literal(self: Self*) TokenKind {
+        @todo();
+    }
+
+    [[inline]]
+    fn skip_ws(self: Self*) {
+        while (!self->is_eof() && is_ws(self->cur())) {
+            self->read();
+        }
+    }
+
+    fn skip_comments(self: Self*) {
+        while (self->cur() == '/' && (self->peek() == '/' || self->peek() == '*')) {
+            const loc = self->loc();
+
+            // Single Line
+            if (self->peek() == '/') {
+                self->read();
+                self->read();
+                
+                while (!self->is_eof() && self->cur() != '\n') {
+                    self->read();
+                }
+                
+                if (!self->is_eof() && self->cur() == '\n') {
+                    self->read();
+                }
+            } 
+            // Multi Line
+            else if (self->peek() == '*') {
+                self->read(); // Consume `/`
+                self->read(); // Consume `*`
+
+                var depth: usize = 1;
+
+                while (!self->is_eof() && depth > 0) {
+                    // Nested
+                    if (self->cur() == '/' && self->peek() == '*') {
+                        self->read();
+                        self->read();
+                        depth += 1;
+                    }
+                    // Closing 
+                    else if (self->cur() == '*' && self->peek() == '/') {
+                        self->read();
+                        self->read();
+                        depth -= 1;
+                    } else {
+                        self->read();
+                    }
+                }
+
+                if (depth > 0) {
+                    // FIXME Diag
+                    printf("comment opened at line %lu\n", loc.line);
+                    const loc = self->loc();
+                    printf("current line %lu\n", loc.line);
+                    @panic("unclosed comment");
+                }
+
+                // skip any newlines after comment
+                while (!self->is_eof() && self->cur() == '\n') {
+                    self->read();
+                }
+            }
+
+            self->skip_ws();
+        }
+    }
+
+    fn read_plus(self: Self*) TokenKind {
+        if (self->peek() == '+') {
+            self->read();
+            self->read();
+            return .Increment;
+        } else {
+            self->read();
+            return .Plus;
+        }
+    }
+    
+    fn read_minus(self: Self*) TokenKind {
+        if (self->peek() == '-') {
+            self->read();
+            self->read();
+            return .Decrement;
+        } else if (self->peek() == '>') {
+            self->read();
+            self->read();
+            return .ThinArrow;
+        } else {
+            self->read();
+            return .Minus;
+        }
+    }
+
+    fn read_colon(self: Self*) TokenKind {
+        self->read();
+
+        if (self->cur() == ':') {
+            self->read();
+            return .DoubleColon;
+        } else {
+            return .Colon;
+        }
+    }
+    
+    fn read_equal(self: Self*) TokenKind {
+        self->read();
+
+        if (self->cur() == '=') {
+            self->read();
+            return .Equal;
+        } else if (self->cur() == '>') {
+            self->read();
+            return .FatArrow;
+        } else {
+            return .Assign;
+        }
+    }
+
+    fn read_bang(self: Self*) TokenKind {
+        self->read();
+
+        if (self->cur() == '=') {
+            self->read();
+            return .NotEqual;
+        } else {
+            return .Bang;
+        }
+    }
+
+    fn read_less(self: Self*) TokenKind {
+        self->read();
+
+        if (self->cur() == '=') {
+            self->read();
+            return .LessEqual;
+        } else if (self->cur() == '<') {
+            self->read();
+            return .ShiftLeft;
+        } else {
+            return .LessThan;
+        }
+    }
+
+    fn read_greater(self: Self*) TokenKind {
+        self->read();
+
+        if (self->cur() == '=') {
+            self->read();
+            return .GreaterEqual;
+        } else {
+            // Notice that '>>' ambiguity is entrusted to the parser.
+            return .GreaterThan;
+        }
+    }
+    
+    fn read_amp(self: Self*) TokenKind {
+        self->read();
+
+        if (self->cur() == '&') {
+            self->read();
+            self->read();
+            return .And;
+        } else if (self->cur() == '~') {
+            self->read();
+            self->read();
+            return .AmpTilde;
+        } else {
+            return .Ampersand;
+        }
+    }
+
+    fn read_pipe(self: Self*) TokenKind {
+        self->read();
+
+        if (self->cur() == '/') {
+            self->read();
+            return .Or;
+        } else {
+            return .Pipe;
+        }
+    }
+
+    fn read_dot(self: Self*) TokenKind {
+        self->read();
+        
+        if (self->cur() == '.' && self->peek() == '.') {
+            self->read();
+            return .TripleDot;
+        } else if (self->cur() == '.') {
+            self->read();
+            return .DoubleDot;
+        } else {
+            return .Dot;
+        }
+    }
+
+    // Helper Methods
+
+    /// Consumes the current token by advancing the lexer
+    /// and returns the provided token kind.
+    [[inline]]
+    fn read_single(self: Self*, kind: TokenKind) TokenKind {
+        self->read();
+        return kind;
+    }
+
+    [[inline]]
+    fn is_eof(self: const Self*) bool {
+        return self->pos >= self->source->len();
+    }
+
+    [[inline]]
+    fn peek(self: const Self*) uint8 {
+        const next_pos = self->pos + 1;
+
+        switch (self->source->get(next_pos)) {
+            case .Some(char) => return char;
+            case .None => return '\0';
+        }
+    }
+
+    [[inline]]
+    fn cur(self: const Self*) uint8 {
+        return self->source->get(self->pos).unwrap();
+    }
+
+    [[inline]]
+    fn loc(self: const Self*) Loc {
+        return Loc {
+            line: self->line, 
+            start: self->pos,
+            end: self->pos
+        };
+    }
+}
+
+fn try_str_as_unicode(str: const uint8*) Option<uint8> {
+    @assert(str, "str cannot be empty");
+
+    const len = strlen(str);
+
+    // Unicode escapes must be exactly 4 or 8 hex digits
+    if (len == 0 || (len != 4 && len != 8)) {
+        return .None;
+    }
+    
+    var value: uint32 = 0;
+    
+    for (var i: usize = 0; i < len; i += 1) {
+        const char = str[i];
+        var digit: uint32 = 0;
+        
+        // Validate hex digit (0-9, A-F, a-f)
+        switch (char) {
+            case '0'..='9' => digit = char - '0';
+            case 'A'..='F' => digit = 10 + (char - 'A');
+            case 'a'..='f' => digit = 10 + (char - 'a');
+            else => return .None;
+        }
+        
+        value = (value * 16) + digit;
+        
+        if (value > 255) {
+            return .None;
+        }
+    }
+    
+    if (value > 255) {
+        return .None;
+    }
+    
+    return .Some(@cast(uint8, value));
+}
+
+fn try_str_as_octal(str: const uint8*) Option<uint32> {
+    @assert(str, "str cannot be empty");
+    
+    const len = strlen(str);
+
+    if (len == 0 || len > 3) {
+        return .None;
+    }
+    
+    var value: uint32 = 0;
+    
+    for (var i: usize = 0; i < len; i += 1) {
+        const char = str[i];
+        
+        // Validate octal digit (0-7)
+        if (char < '0' || char > '7') {
+            return .None;
+        }
+        
+        const digit = char - '0';
+        
+        value = (value * 8) + digit;
+    }
+    
+    return .Some(value);
+}
+
+fn try_str_as_hex(str: const uint8*) Option<uint32> {
+    @assert(str, "str cannot be empty");
+
+    const len = strlen(str);
+
+    // Hex char should have 1-2 hex digits
+    if (len == 0 || len > 2) {
+        return .None;
+    }
+    
+    var value: uint32 = 0;
+    
+    for (var i: usize = 0; i < len; i += 1) {
+        const char = str[i];
+        var digit: uint32 = 0;
+        
+        // Validate hex digit (0-9, A-F, a-f)
+        switch (char) {
+            case '0'..='9' => digit = char - '0';
+            case 'A'..='F' => digit = 10 + (char - 'A');
+            case 'a'..='f' => digit = 10 + (char - 'a');
+            else => return .None;
+        }
+        
+        value = (value * 16) + digit;
+    }
+    
+    return .Some(value);
+}
+
+[[inline]]
+fn is_ws(char: uint8) bool {
+    switch (char) {
+        case ' ' | '\t' | '\n' | '\r' | '\v' | '\f' => {
+            return true;
+        }
+        else => return false;
+    }
+}
+
+[[inline]]
+fn is_alpha(char: uint8) bool {
+    switch (char) {
+        case 'a'..='z' | 'A'..='Z' | '_' => return true;
+        else => return false;
+    }
+}
+
+[[inline]]
+fn is_digit(char: uint8) bool {
+    return (char >= '0' && char <= '9');
+}
+
+[[inline]]
+fn is_octal_digit(char: uint8) bool {
+    return char >= '0' && char <= '7';
+}

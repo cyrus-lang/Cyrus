@@ -13,6 +13,10 @@ pub(crate) fn align_offset(offset: u32, align: u32) -> u32 {
     (offset + align - 1) / align * align
 }
 
+pub(crate) fn align_up(value: usize, alignment: usize) -> usize {
+    (value + alignment - 1) & !(alignment - 1)
+}
+
 #[inline]
 pub(crate) fn is_cir_type_aggregate(cir_type: &CIRType) -> bool {
     match cir_type {

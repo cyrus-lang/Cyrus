@@ -7,6 +7,7 @@ use crate::{
         control_flow::ControlRegion,
         irreg::{LocalIRValueRegistry, LocalIRValueRegistryRef},
         types::CodegenIRBuilderTypeCache,
+        vars::GlobalVarLazyInitializer,
     },
     llvm::debug_info::{BlockScope, DebugContext, create_debug_lexical_block, debug_current_scope, set_debug_location},
 };
@@ -41,7 +42,7 @@ pub(crate) struct CodeGenIRBuilder<'ll> {
     pub(crate) llvm_ctx: &'ll Context,
     pub(crate) llvm_builder: &'ll Builder<'ll>,
     pub(crate) llvm_module: Rc<RefCell<Module<'ll>>>,
-    pub(crate) llvmtm: &'ll TargetMachine,
+    pub(crate) llvm_target_machine: &'ll TargetMachine,
     pub(crate) irreg: LocalIRValueRegistryRef<'ll>,
     pub(crate) cur_func: Option<FunctionValue<'ll>>,
     pub(crate) cur_abi_func_info: Option<ABIFunctionInfo>,
@@ -56,6 +57,7 @@ pub(crate) struct CodeGenIRBuilder<'ll> {
     pub(crate) source_map: Arc<SourceMap>,
     pub(crate) profile: CompilerOption_Profile,
     pub(crate) string_cache: FxHashMap<String, GlobalValue<'ll>>,
+    pub(crate) global_var_lazy_initializers: Vec<GlobalVarLazyInitializer<'ll>>,
 
     // Used to prevent duplicate sret when chained function call happens.
     pub(crate) cur_sret: Option<PointerValue<'ll>>,
@@ -76,7 +78,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         cir_module: &'ll CIRModule,
         target: &'ll ABITarget,
         llvm_builder: &'ll Builder<'ll>,
-        llvmtm: &'ll TargetMachine,
+        llvm_target_machine: &'ll TargetMachine,
         dctx: Option<DebugContext>,
         tctx: Arc<CIRTypeContext>,
         vtable_registry: Arc<VTableRegistry>,
@@ -96,7 +98,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
             llvm_ctx: &owned_module.context,
             llvm_builder,
             llvm_module,
-            llvmtm,
+            llvm_target_machine,
             irreg,
             cur_func: None,
             cur_abi_func_info: None,
@@ -112,6 +114,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
             cur_sret: None,
             is_return: false,
             string_cache: FxHashMap::new(),
+            global_var_lazy_initializers: Vec::new(),
         }
     }
 
@@ -121,6 +124,9 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         for cir_stmt in &self.cir_module.stmts {
             self.emit_stmt(cir_stmt);
         }
+
+        self.llvm_builder.unset_current_debug_location();
+        self.dctx = None;
 
         self.emit_vtable_defs();
     }
@@ -152,7 +158,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
                 );
             }
             CIRStmt::GlobalVar(global_var_stmt) => {
-                self.emit_global_var(global_var_stmt);
+                self.emit_global_var(global_var_stmt, false);
             }
             CIRStmt::FuncDecl(_) => {
                 // Only emitted when symbol is used,

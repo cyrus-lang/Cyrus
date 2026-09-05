@@ -1,24 +1,27 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 The Cyrus Language
 
-import std::mem::libc{LibcAllocator};
-import std::collections{Vec};
-import std::io{StringWriter};
-import std::string{String};
-import std::mem{Allocator};
-import std::option{Option};
-import std::libc{printf};
-import std::io{Writer};
-import std::format{
-    Format,
-    format_int128,
-    format_uint128,
-    format_float64,
-    format_bool
-};
+import (
+    std::mem::libc{LibcAllocator},
+    std::collections{Vec},
+    std::io{StringWriter},
+    std::string{String},
+    std::mem{Allocator},
+    std::option{Option},
+    std::libc{printf},
+    std::io{Writer},
+    std::format{
+        Format,
+        format_int128,
+        format_uint128,
+        format_float64,
+        format_bool
+    }
+);
 
-pub struct TokenPool {
-    tokens: Vec<Token>,
+pub struct SourceTokens {
+    // pub source_id: SourceId,
+    pub tokens: Vec<Token>,
 
     [[inline]]
     pub fn new(tokens: Vec<Token>) Self {
@@ -27,13 +30,9 @@ pub struct TokenPool {
 
     pub fn free(self: Self) {
         for (var i: usize = 0; i < self.tokens.len(); i += 1) {
-            const token = self.tokens.get(i).unwrap();
+            const token = self.tokens.get_owned(i).unwrap();
 
-            switch (token.kind) {
-                case .Ident(ident) => {
-                    ident.free();
-                }
-            }
+            token.free();
         }
 
         self.tokens.free();
@@ -47,6 +46,18 @@ pub struct Token : Format {
     [[inline]]
     pub fn format(self: const Self*, writer: Writer) bool {
         return self->kind.format(writer);
+    }
+
+    [[inline]]
+    pub fn free(self: Self*) {
+        switch (self->kind) {
+            case .Ident(ident) => ident.free();
+            case .Literal(lit) => {
+                switch (lit) {
+                    case .String { value, .. } => value.free();
+                }
+            }
+        }
     }
 }
 
@@ -414,6 +425,7 @@ pub enum Literal : Format {
         value: String,
         suffix: Option<StringPrefix>
     },
+    Char(uint8),
     Bool(bool),
     Null,
 
@@ -442,12 +454,17 @@ pub enum Literal : Format {
                 writer.write(value.as_str_const());
                 writer.write("\"");
             }
-            case .Bool(value) => {
-                format_bool(writer, value);
+            case .Char(var char) => {
+                const escaped = char_to_escape_sequence(char);
+                writer.write_char('\'');
+                if (is_escaped_char(char)) {
+                    writer.write_char('\\');
+                }
+                writer.write_char(escaped);
+                writer.write_char('\'');
             }
-            case .Null => {
-                writer.write("null");
-            }
+            case .Bool(char) => format_bool(writer, char);
+            case .Null => writer.write("null");
         }
         return true;
     }
@@ -555,75 +572,25 @@ pub enum StringPrefix {
     }
 }
 
-/// Represents precise location tracking within a source file.
 pub struct Loc {
-    // TODO
-    // source_id: SourceId,
-
-    // Line/Column (1-indexed).
-    pub start_line: usize,
-    pub start_col: usize,
-    pub end_line: usize,
-    pub end_col: usize,
-
-    // Withing soruce byte offset (0-indexed).
+    pub line: usize, // 1-indexed
     pub start: usize,
     pub end: usize,
 
-    pub fn merge(self: const Self*, other: const Self*) Self {
-        var merge: Self;
+    pub fn merge(self: Self, other: Self) Self {
+        var merge = self;
         
         // Start line
-        if (self->start_line < other->start_line) {
-            merge.start_line = self->start_line;
-        } else {
-            merge.start_line = other->start_line;
-        }
-        
-        // Start column
-        if (self->start_line < other->start_line) {
-            merge.start_col = self->start_col;
-        } else if (other->start_line < self->start_line) {
-            merge.start_col = other->start_col;
-        } else {
-            if (self->start_col < other->start_col) {
-                merge.start_col = self->start_col;
-            } else {
-                merge.start_col = other->start_col;
-            }
-        }
-        
-        // End line
-        if (self->end_line > other->end_line) {
-            merge.end_line = self->end_line;
-        } else {
-            merge.end_line = other->end_line;
-        }
-        
-        // End column
-        if (self->end_line > other->end_line) {
-            merge.end_col = self->end_col;
-        } else if (other->end_line > self->end_line) {
-            merge.end_col = other->end_col;
-        } else {
-            if (self->end_col > other->end_col) {
-                merge.end_col = self->end_col;
-            } else {
-                merge.end_col = other->end_col;
-            }
+        if (other.line < merge.line) {
+            merge.line = other.line;
         }
         
         // Byte offsets
-        if (self->start < other->start) {
-            merge.start = self->start;
-        } else {
-            merge.start = other->start;
+        if (other.start < merge.start) {
+            merge.start = other.start;
         }
-        
-        if (self->end > other->end) {
-            merge.end = self->end;
-        } else {
-            merge.end = other->end;
+        if (other.end > merge.end) {
+            merge.end = other.end;
         }
         
         return merge;
@@ -631,18 +598,19 @@ pub struct Loc {
 }
 
 /// Formats and writes a collection of tokens to stdout.
-/// This is primarily used for debugging and emitting lexer result.
 pub fn dump_tokens(tokens: const Vec<Token>*) {
     for (var i: usize = 0; i < tokens->len(); i += 1) {
         const token = tokens->get(i).unwrap();
-        
-        dump_token(token);
+
+        dump_token(*token);
     }
 }
 
 /// Formats and writes a tokens to stdout.
 /// This is primarily used for debugging and emitting lexer result.
 pub fn dump_token(token: Token) {
+    // REVIEW: Refactor, use `format` helper method from stdlib.
+
     var allocator: Allocator = dynamic LibcAllocator.new();
 
     var fmt = String.new(allocator);
@@ -653,11 +621,72 @@ pub fn dump_token(token: Token) {
     token.format(writer);
         
     printf(
-        "Token `%s`, Start Line: %lu, Start Column: %lu, End Line: %lu, End Column: %lu\n",
+        "Token `%s`, Line: %lu, Start: %lu, End: %lu\n",
         fmt.as_str_const(),
-        token.loc.start_line,
-        token.loc.start_col,
-        token.loc.end_line,
-        token.loc.end_col
+        token.loc.line,
+        token.loc.start,
+        token.loc.end
     );
+}
+
+[[inline]]
+pub fn escape_sequence_to_char(seq: uint8) uint8 {
+    switch (seq) {
+        case '0' => return '\0';
+        case 'n' => return '\n';
+        case 't' => return '\t';
+        case 'r' => return '\r';
+        case 'b' => return '\b';
+        case 'a' => return '\a';
+        case 'v' => return '\v';
+        case 'f' => return '\f';
+        case '\\' => return '\\';
+        case '\'' => return '\'';
+        case '"' => return '"';
+    }
+    return seq;
+}
+
+[[inline]]
+pub fn char_to_escape_sequence(char: uint8) uint8 {
+    switch (char) {
+        case '\0' => return '0';
+        case '\n' => return 'n';
+        case '\t' => return 't';
+        case '\r' => return 'r';
+        case '\b' => return 'b';
+        case '\a' => return 'a';
+        case '\v' => return 'v';
+        case '\f' => return 'f';
+        case '\\' => return '\\';
+        case '\'' => return '\'';
+        case '"' => return '"';
+    }
+    return char;
+}
+
+[[inline]]
+pub fn is_valid_escape(char: uint8) bool {
+    if (char == '0' || char == 'n' || char == 't' ||
+        char == 'r' || char == 'b' || char == 'a' ||
+        char == 'v' || char == 'f' || char == '"' ||
+        char == '\\' || char ==  '\'')
+    {
+        return true;
+    } else {
+        return false;
+    }
+}
+
+[[inline]]
+pub fn is_escaped_char(char: uint8) bool {
+    if (char == '\0' || char == '\n' || char == '\t' ||
+        char == '\r' || char == '\b' || char == '\a' ||
+        char == '\v' || char == '\f' || char == '\"' ||
+        char == '\\' || char ==  '\'')
+    {
+        return true;
+    } else {
+        return false;
+    }
 }

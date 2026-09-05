@@ -36,18 +36,22 @@ pub(crate) fn enable_asan_for_owned_module(opts: &CompilerOptions, owned_module:
             .sanitizer
             .iter()
             .any(|s| matches!(s, CompilerOption_Sanitizer::Address)),
+        
         thread_sanitize: opts
             .sanitizer
             .iter()
             .any(|s| matches!(s, CompilerOption_Sanitizer::Thread)),
+        
         mem_sanitize: opts
             .sanitizer
             .iter()
             .any(|s| matches!(s, CompilerOption_Sanitizer::Memory)),
+        
         hwaddress_sanitize: opts
             .sanitizer
             .iter()
             .any(|s| matches!(s, CompilerOption_Sanitizer::HWAddress)),
+        
         recover: false,
         asan_use_after_scope: true,
         asan_use_after_return: false,

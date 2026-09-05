@@ -1065,21 +1065,23 @@ impl<'source_file> Parser<'source_file> {
 
     // Detects attributes and modifiers and parses method definition subsequently.
     fn parse_method(&mut self, mut modifiers: Option<UnresolvedModifiers>) -> Result<ASTFuncDefStmt, Diag> {
-        let is_attr_used = self.current_token_is(TokenKind::LeftBracket);
+        let is_attr = self.current_token_is(TokenKind::LeftBracket);
 
-        if is_attr_used {
-            self.parse_stmt(None, true)?;
+        if is_attr {
+            let stmts = self.parse_stmt(modifiers.clone(), true)?;
+
+            // Check that it only parsed attribute, not a real statement.
+            if !stmts.is_empty() {
+                return Err(self.error_invalid_token());
+            }
+
             self.next_token();
         }
 
         if matches!(&modifiers, Some(unres) if *unres == UnresolvedModifiers::default()) {
             // If parent modifiers is equivalent to default,
-            // we need to try once more time to parse modifiers
+            // we need to try one more time to parse modifiers
             // to be sure it parsed correctly after attributes.
-            modifiers = Some(self.parse_unresolved_modifiers()?);
-        }
-
-        if modifiers.is_none() {
             modifiers = Some(self.parse_unresolved_modifiers()?);
         }
 
@@ -1093,7 +1095,9 @@ impl<'source_file> Parser<'source_file> {
             self.next_token(); // consume right brace
 
             if let Some(modifiers) = modifiers {
-                func_def.modifiers = modifiers.into_method_modifiers()?;
+                // If any attribute was before method statement, it is attached into `func_def.modifiers`,
+                // that's why we need to merge it we `modifiers`.
+                func_def.modifiers = modifiers.into_method_modifiers_and_merge(func_def.modifiers.clone())?;
             }
 
             Ok(func_def.clone())
@@ -2045,10 +2049,11 @@ impl<'source_file> Parser<'source_file> {
         let expr = self.parse_expr(Precedence::Prefix)?;
         self.next_token();
 
-        // range exclusive:  a..b
+        // range exclusive: a...b
         if self.current_token_is(TokenKind::TripleDot) {
             self.next_token();
-            let upper = self.parse_expr(Precedence::Lowest)?;
+
+            let upper = self.parse_expr(Precedence::Prefix)?;
             self.next_token();
 
             let end = self.current_token().loc.end;
@@ -2066,8 +2071,8 @@ impl<'source_file> Parser<'source_file> {
 
         // range inclusive:  a..=b
         if self.current_token_is(TokenKind::DoubleDot) && self.peek_token_is(TokenKind::Assign) {
-            self.next_token(); // ..
-            self.next_token(); // =
+            self.next_token(); // consume double dot
+            self.next_token(); // consume assign
 
             let upper = self.parse_expr(Precedence::Prefix)?;
             self.next_token();

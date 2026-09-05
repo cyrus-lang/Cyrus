@@ -78,7 +78,6 @@ pub enum CIRExprKind {
     Literal(CIRLiteral),
     Prefix(CIRPrefixExpr),
     Infix(CIRInfixExpr),
-    SizeOf(CIRSizeOfExpr),
     Assign(CIRAssignExpr),
     AddrOf(CIRAddrOfExpr),
     Deref(CIRDerefExpr),

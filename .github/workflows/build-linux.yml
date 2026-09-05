@@ -14,7 +14,7 @@ permissions:
 
 jobs:
   build:
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     outputs:
       VERSION: ${{ steps.version.outputs.VERSION }}
     steps:
@@ -25,8 +25,8 @@ jobs:
           sudo apt-get update
           sudo apt install -y \
             software-properties-common \
-            llvm-18 llvm-18-dev clang-18 \
-            zlib1g zlib1g-dev libpolly-18-dev \
+            llvm-22 llvm-22-dev clang-22 \
+            zlib1g zlib1g-dev libpolly-22-dev \
             upx libasan8
 
       - name: Install Rust
@@ -37,7 +37,7 @@ jobs:
 
       - name: Build
         env:
-          LLVM_CONFIG: /usr/bin/llvm-config-18
+          LLVM_CONFIG: /usr/bin/llvm-config-22
           CC: clang
           CXX: clang++
         run: |
@@ -46,7 +46,7 @@ jobs:
 
       - name: Run tests
         env:
-          LLVM_CONFIG: /usr/bin/llvm-config-18
+          LLVM_CONFIG: /usr/bin/llvm-config-22
           CC: clang
           CXX: clang++
         run: make testsuite PROFILE=release
@@ -71,12 +71,6 @@ jobs:
         with:
           name: cyrus-${{ steps.version.outputs.VERSION }}-binary
           path: ./dist
-
-      - name: Upload portable binary
-        uses: actions/upload-artifact@v4
-        with:
-          name: cyrus-${{ steps.version.outputs.VERSION }}-portable
-          path: ./target/release/cyrus
 
       - name: Generate PKGBUILD
         run: |
@@ -112,7 +106,7 @@ jobs:
           path: ./PKGBUILD
 
   build-deb:
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     needs: build
     steps:
       - name: Install fpm
@@ -146,7 +140,7 @@ jobs:
             --license "MIT" \
             --depends "zlib1g" \
             --depends "libasan8" \
-            --depends "libpolly-18-dev" \
+            --depends "libpolly-22-dev" \
             -C ./package \
             -p cyrus-${VERSION}.deb \
             usr/
@@ -161,7 +155,7 @@ jobs:
   build-rpm:
     runs-on: ubuntu-latest
     container:
-      image: opensuse/tumbleweed
+      image: opensuse/leap
     needs: build
     steps:
       - name: Install fpm and build tools

@@ -90,7 +90,7 @@ pub enum CompilerOption_Endianness {
     Big,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CompilerOption_RelocMode {
     Default,
     Static,
@@ -98,7 +98,7 @@ pub enum CompilerOption_RelocMode {
     DynamicNoPic,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CompilerOption_CodeModel {
     Default,
     Tiny,
@@ -117,8 +117,13 @@ pub enum CompilerOption_Profile {
 #[derive(Debug, Clone)]
 pub struct CompilerOption_Linker {
     pub link_static: bool,
-    pub pie: bool,
-    pub no_pie: bool,
+    pub pie_mode: CompilerOption_PIEMode,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CompilerOption_PIEMode {
+    PIE,
+    NOPIE,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -199,8 +204,7 @@ impl Default for CompilerOption_Linker {
     fn default() -> Self {
         Self {
             link_static: false,
-            pie: true,
-            no_pie: false,
+            pie_mode: CompilerOption_PIEMode::PIE,
         }
     }
 }

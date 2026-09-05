@@ -1,0 +1,17 @@
+// @stdout: 10, 3.140000, meow, a, 1
+
+import std::libc{printf};
+
+const INT = 10;
+const DOUBLE = 3.14;
+const NAME = "meow";
+const CHAR = 'a';
+const BOOL = true;
+
+pub fn main() {
+    printf("%d, ", INT);
+    printf("%f, ", DOUBLE);
+    printf("%s, ", NAME);
+    printf("%c, ", CHAR);
+    printf("%d\n", BOOL);
+}

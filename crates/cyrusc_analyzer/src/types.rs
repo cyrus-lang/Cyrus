@@ -622,6 +622,7 @@ impl<'a> AnalysisContext<'a> {
                 SemaType::FuncType(TypedFuncType {
                     params,
                     ret_type,
+                    callconv: func.callconv,
                     is_public: func.is_public,
                     loc: func.loc,
                 })
@@ -761,6 +762,7 @@ impl<'a> AnalysisContext<'a> {
                     SemaType::FuncType(TypedFuncType {
                         params,
                         ret_type: Box::new(ret_type),
+                        callconv: func_type.callconv,
                         is_public: func_type.is_public,
                         loc: func_type.loc,
                     })

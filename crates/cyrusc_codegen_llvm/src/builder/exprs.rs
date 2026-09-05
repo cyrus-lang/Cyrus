@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 The Cyrus Language
 
+use std::num::NonZero;
+
 use crate::{
     builder::{
         builder::CodeGenIRBuilder,
@@ -26,6 +28,7 @@ use cyrusc_source_loc::Loc;
 use cyrusc_typed_ast::types::PlainType;
 use inkwell::{
     AddressSpace, FloatPredicate, IntPredicate,
+    module::Linkage,
     types::{AnyTypeEnum, ArrayType, BasicType, BasicTypeEnum, StructType},
     values::{
         AggregateValueEnum, AnyValueEnum, ArrayValue, BasicMetadataValueEnum, BasicValue, BasicValueEnum,
@@ -46,7 +49,6 @@ impl<'ll> CodeGenIRBuilder<'ll> {
             CIRExprKind::Literal(literal) => self.emit_literal(literal),
             CIRExprKind::Prefix(prefix_expr) => self.emit_prefix_expr(prefix_expr),
             CIRExprKind::Infix(infix_expr) => self.emit_infix_expr(infix_expr, expr.loc),
-            CIRExprKind::SizeOf(sizeof_expr) => self.emit_sizeof(sizeof_expr),
             CIRExprKind::Assign(assign_expr) => self.emit_assign(assign_expr),
             CIRExprKind::AddrOf(addr_of_expr) => self.emit_addr_of(addr_of_expr),
             CIRExprKind::Deref(deref_expr) => self.emit_deref(deref_expr, DerefMode::Load),
@@ -139,7 +141,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         // construct pointers struct { data_ptr, vtable_ptr }
         let dynamic_struct_type = self.emit_dynamic_type(); // { ptr, ptr }
 
-        let mut dynamic_value = dynamic_struct_type.get_undef();
+        let mut dynamic_value = dynamic_struct_type.const_zero();
 
         dynamic_value = self
             .llvm_builder
@@ -382,10 +384,13 @@ impl<'ll> CodeGenIRBuilder<'ll> {
                     }
                 } else if basic_value.is_pointer_value() {
                     // ptr -> int
-                    let ptr_width = self.llvmtm.get_target_data().get_pointer_byte_size(None) * 8;
+                    let ptr_width = self.llvm_target_machine.get_target_data().get_pointer_byte_size(None) * 8;
 
                     if int_type.get_bit_width() < ptr_width {
-                        let ptr_int = self.llvm_ctx.custom_width_int_type(ptr_width);
+                        let ptr_int = self
+                            .llvm_ctx
+                            .custom_width_int_type(NonZero::new(ptr_width).unwrap())
+                            .unwrap();
                         let tmp = self
                             .llvm_builder
                             .build_ptr_to_int(basic_value.into_pointer_value(), ptr_int, "ptr_to_int")
@@ -497,27 +502,21 @@ impl<'ll> CodeGenIRBuilder<'ll> {
             all_const = false;
         }
 
-        let array_value = if all_const {
-            let mut val = array_type.get_undef();
-            for (i, elem) in elements.iter().enumerate() {
-                val = self
-                    .llvm_builder
-                    .build_insert_value(val, *elem, i as u32, "array.insert")
-                    .unwrap()
-                    .into_array_value();
+        let array_value = {
+            if all_const {
+                unsafe { ArrayValue::new_const_array(&element_type, &elements) }
+            } else {
+                // build runtime array by inserting each element
+                let mut value = array_type.const_zero();
+                for (i, elem) in elements.iter().enumerate() {
+                    value = self
+                        .llvm_builder
+                        .build_insert_value(value, *elem, i as u32, "array.insert")
+                        .unwrap()
+                        .into_array_value();
+                }
+                value
             }
-            val
-        } else {
-            // build runtime array by inserting each element
-            let mut value = array_type.get_undef();
-            for (i, elem) in elements.iter().enumerate() {
-                value = self
-                    .llvm_builder
-                    .build_insert_value(value, *elem, i as u32, "array.insert")
-                    .unwrap()
-                    .into_array_value();
-            }
-            value
         };
 
         InternalValue::new(array.ty.clone(), InternalValueKind::RValue(array_value.into()))
@@ -632,12 +631,6 @@ impl<'ll> CodeGenIRBuilder<'ll> {
                 loc: deref.operand.loc,
             }),
         }
-    }
-
-    fn emit_sizeof(&mut self, sizeof_expr: &CIRSizeOfExpr) -> InternalValue<'ll> {
-        let ty = self.emit_type(sizeof_expr.ty.clone());
-        let size_value = ty.size_of().unwrap();
-        InternalValue::new(sizeof_expr.ty.clone(), InternalValueKind::RValue(size_value.into()))
     }
 
     fn emit_infix_expr(&mut self, infix_expr: &CIRInfixExpr, loc: Loc) -> InternalValue<'ll> {
@@ -936,7 +929,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         match (lhs_rvalue.as_basic_value(), rhs_rvalue.as_basic_value()) {
             (BasicValueEnum::IntValue(lhs), BasicValueEnum::IntValue(rhs)) => {
                 let shift_value = self.llvm_builder.build_left_shift(lhs, rhs, "lshift").unwrap();
-                
+
                 InternalValue::new(
                     CIRType::Plain(PlainType::Bool),
                     InternalValueKind::RValue(shift_value.into()),
@@ -1639,48 +1632,83 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         let type_id = enum_init_expr.ty.as_type_id().unwrap();
         let enum_type = enum_init_expr.ty.as_enum(&self.tctx).unwrap();
 
-        // handle c-compatible enum init
         if enum_type.is_scalar_optimizable() {
             return self.emit_repr_c_enum_init(enum_init_expr, &enum_type);
         }
 
-        let enum_struct_type = self.emit_enum_type(type_id).into_struct_type();
-        let (payload_type, _) = self.emit_enum_buffer_payload_type(&enum_type);
-
-        let mut enum_value = enum_struct_type.get_undef();
+        let llvm_enum_type = self.emit_enum_type(type_id).into_struct_type();
+        let (buffer_type, _) = self.emit_enum_buffer_payload_type(&enum_type);
 
         let cir_tag_type = enum_type.tag_type_or_infer_or_default();
         let tag_type = self.emit_type(*cir_tag_type.clone()).into_int_type();
         let tag_value = tag_type.const_int(enum_init_expr.tag as u64, false);
 
-        enum_value = self
+        let is_global = self.llvm_builder.get_insert_block().is_none();
+
+        if !is_global {
+            let value =
+                self.emit_enum_init_with_alloca(enum_init_expr, &enum_type, llvm_enum_type, buffer_type, tag_value);
+
+            InternalValue::new(ty.clone(), InternalValueKind::RValue(value))
+        } else {
+            panic!("if global var includes enum init in it's initializer expression, it must be initialized lazily");
+        }
+    }
+
+    fn emit_enum_init_with_alloca(
+        &mut self,
+        enum_init_expr: &CIREnumInitExpr,
+        enum_type: &CIREnumType,
+        llvm_enum_type: StructType<'ll>,
+        buffer_type: ArrayType<'ll>,
+        tag_value: IntValue<'ll>,
+    ) -> BasicValueEnum<'ll> {
+        let enum_alloca = self.llvm_builder.build_alloca(llvm_enum_type, "enum.alloca").unwrap();
+
+        let tag_ptr = self
             .llvm_builder
-            .build_insert_value(enum_value, tag_value, 0, "enum.set_tag")
-            .unwrap()
-            .into_struct_value();
+            .build_struct_gep(llvm_enum_type, enum_alloca, 0, "enum.tag.ptr")
+            .unwrap();
+
+        self.llvm_builder.build_store(tag_ptr, tag_value).unwrap();
 
         match &enum_init_expr.variant {
             CIREnumInitVariant::Unit => {
-                let zero_payload = payload_type.const_zero();
-                enum_value = self
+                let zero_payload = buffer_type.const_zero();
+
+                let payload_ptr = self
                     .llvm_builder
-                    .build_insert_value(enum_value, zero_payload, 1, "enum.zero_payload")
-                    .unwrap()
-                    .into_struct_value();
+                    .build_struct_gep(llvm_enum_type, enum_alloca, 1, "enum.payload.ptr")
+                    .unwrap();
+
+                self.llvm_builder.build_store(payload_ptr, zero_payload).unwrap();
             }
             CIREnumInitVariant::Valued(expr) => {
                 let lvalue = self.emit_expr(expr, &None);
                 let rvalue = self.load_rvalue(lvalue);
 
-                let copied_payload = self.intrinsic_copy_payload_to_buffer(rvalue.as_basic_value(), payload_type);
-
-                enum_value = self
+                let payload_ptr = self
                     .llvm_builder
-                    .build_insert_value(enum_value, copied_payload, 1, "enum.set_payload")
-                    .unwrap()
-                    .into_struct_value();
+                    .build_struct_gep(llvm_enum_type, enum_alloca, 1, "enum.payload.ptr")
+                    .unwrap();
+
+                self.llvm_builder
+                    .build_store(payload_ptr, rvalue.as_basic_value())
+                    .unwrap();
             }
             CIREnumInitVariant::Payload(field_exprs) => {
+                // IMPORTANT: Zero out the entire payload buffer first
+                // to ensure padded slots value is consistent.
+                // If we don't do this, it may cause UB when
+                // comparing two equal enums.
+                let zero_payload = buffer_type.const_zero();
+
+                let payload_ptr = self
+                    .llvm_builder
+                    .build_struct_gep(llvm_enum_type, enum_alloca, 1, "enum.payload.ptr")
+                    .unwrap();
+                self.llvm_builder.build_store(payload_ptr, zero_payload).unwrap();
+
                 let field_types: Vec<BasicTypeEnum<'ll>> = field_exprs
                     .iter()
                     .map(|fld| self.emit_type(fld.ty.clone()).try_into().unwrap())
@@ -1688,42 +1716,36 @@ impl<'ll> CodeGenIRBuilder<'ll> {
 
                 let payload_struct_type = self.llvm_ctx.struct_type(&field_types, false);
 
-                let mut payload_value = payload_struct_type.get_undef();
-
                 for (i, field_expr) in field_exprs.iter().enumerate() {
                     let lvalue = self.emit_expr(&field_expr, &None);
                     let mut rvalue = self.load_rvalue(lvalue);
 
-                    let enum_struct_type = match enum_type.lookup_variant(&enum_init_expr.ident).unwrap() {
+                    let variant_enum_type = match enum_type.lookup_variant(&enum_init_expr.ident).unwrap() {
                         CIREnumVariant::Payload(_, struct_type, _) => struct_type,
                         _ => unreachable!(),
                     };
 
-                    let field_type = enum_struct_type.fields.get(i).unwrap();
+                    let field_type = variant_enum_type.fields.get(i).unwrap();
 
                     if !self.llvm_builder.get_insert_block().is_none() {
                         rvalue = self.emit_implicit_cast(field_type, rvalue);
                     }
 
-                    payload_value = self
+                    let field_ptr = self
                         .llvm_builder
-                        .build_insert_value(payload_value, rvalue.as_basic_value(), i as u32, "payload.insert")
-                        .unwrap()
-                        .into_struct_value();
+                        .build_struct_gep(payload_struct_type, payload_ptr, i as u32, "payload.field.ptr")
+                        .unwrap();
+
+                    self.llvm_builder
+                        .build_store(field_ptr, rvalue.as_basic_value())
+                        .unwrap();
                 }
-
-                let copied_payload =
-                    self.intrinsic_copy_payload_to_buffer(payload_value.as_basic_value_enum(), payload_type);
-
-                enum_value = self
-                    .llvm_builder
-                    .build_insert_value(enum_value, copied_payload, 1, "enum.set_payload")
-                    .unwrap()
-                    .into_struct_value();
             }
         }
 
-        InternalValue::new(ty.clone(), InternalValueKind::RValue(enum_value.as_basic_value_enum()))
+        self.llvm_builder
+            .build_load(llvm_enum_type, enum_alloca, "enum.load")
+            .unwrap()
     }
 
     pub(crate) fn emit_union_init(
@@ -1948,7 +1970,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
 
                 struct_value = struct_type.const_named_struct(&field_values);
             } else {
-                struct_value = struct_type.get_undef();
+                struct_value = struct_type.const_zero();
 
                 values.iter().enumerate().for_each(|(index, (_, rvalue))| {
                     struct_value = self
@@ -2260,7 +2282,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
     fn emit_call_with_args(
         &mut self,
         abi_func_info: &ABIFunctionInfo,
-        func_type: &CIRFuncType,
+        cir_func_type: &CIRFuncType,
         ret_type: &CIRType,
         llvm_func_value: FunctionValue<'ll>,
         mut llvm_args: Vec<BasicMetadataValueEnum<'ll>>,
@@ -2268,7 +2290,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         let mut sret_alloca: Option<PointerValue<'ll>> = None;
 
         if abi_func_info.ret_info.kind.is_indirect_sret() {
-            let sret_type: BasicTypeEnum<'ll> = self.emit_type(*func_type.ret_type.clone()).try_into().unwrap();
+            let sret_type: BasicTypeEnum<'ll> = self.emit_type(*cir_func_type.ret_type.clone()).try_into().unwrap();
 
             let sret_ptr = {
                 if self.is_return && self.cur_sret.is_some() {
@@ -2285,18 +2307,19 @@ impl<'ll> CodeGenIRBuilder<'ll> {
             sret_alloca = Some(sret_ptr);
         }
 
-        self.emit_func_call_attributes(&abi_func_info, FuncCallKind::Direct(llvm_func_value));
-
         let call_site = self
             .llvm_builder
             .build_call(llvm_func_value, &llvm_args, "call")
             .unwrap();
 
+        self.emit_call_site_attributes(&cir_func_type, abi_func_info, &call_site);
+        self.emit_func_call_attributes(&abi_func_info, FuncCallKind::Direct(llvm_func_value));
+
         if let Some(ptr) = sret_alloca {
             InternalValue::new(ret_type.clone(), InternalValueKind::LValue(ptr.into()))
         } else if let Some(mut basic_value) = call_site.try_as_basic_value().basic() {
             let actual_return_type: BasicTypeEnum<'ll> =
-                self.emit_type(*func_type.ret_type.clone()).try_into().unwrap();
+                self.emit_type(*cir_func_type.ret_type.clone()).try_into().unwrap();
 
             // optimization, do not coerce if it matches actual return type
             if actual_return_type == basic_value.get_type() {
@@ -2331,6 +2354,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
             .build_indirect_call(llvm_func_type, fn_ptr, &llvm_args, "indirect_call")
             .unwrap();
 
+        self.emit_call_site_attributes(&cir_func_type, &abi_func_info, &call_site);
         self.emit_func_call_attributes(&abi_func_info, FuncCallKind::Indirect(call_site));
 
         if let Some(mut basic_value) = call_site.try_as_basic_value().basic() {
@@ -2374,8 +2398,8 @@ impl<'ll> CodeGenIRBuilder<'ll> {
 
                 BasicValueEnum::IntValue(int_type.const_int_arbitrary_precision(&words))
             }
-            CIRLiteralKind::CString(value) => self.emit_cstring(value.clone()),
-            CIRLiteralKind::ByteString(value) => self.emit_bytestring(value.clone()),
+            CIRLiteralKind::CString(value) => self.emit_const_str(value.clone()),
+            CIRLiteralKind::ByteString(value) => self.emit_byte_string(value.clone()),
             CIRLiteralKind::Float(value) => BasicValueEnum::FloatValue(ty.into_float_type().const_float(*value)),
         };
 
@@ -2388,7 +2412,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         InternalValue::new(ty, InternalValueKind::RValue(basic_value))
     }
 
-    pub(crate) fn emit_cstring(&mut self, value: String) -> BasicValueEnum<'ll> {
+    pub(crate) fn emit_const_str(&mut self, value: String) -> BasicValueEnum<'ll> {
         if let Some(global_value) = self.string_cache.get(&value) {
             return global_value.as_pointer_value().into();
         }
@@ -2400,7 +2424,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         global_value.set_initializer(&const_str);
         global_value.set_constant(true);
         global_value.set_unnamed_addr(true);
-        global_value.set_linkage(inkwell::module::Linkage::Private);
+        global_value.set_linkage(Linkage::Private);
         global_value.set_alignment(1);
         drop(llvm_module);
 
@@ -2409,8 +2433,8 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         global_value.as_pointer_value().into()
     }
 
-    fn emit_bytestring(&self, value: String) -> BasicValueEnum<'ll> {
-        self.llvm_ctx.const_string(value.as_bytes(), true).into()
+    fn emit_byte_string(&self, value: String) -> BasicValueEnum<'ll> {
+        self.llvm_ctx.const_string(value.as_bytes(), false).into()
     }
 }
 

@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 The Cyrus Language
 
+use std::num::NonZero;
+
 use crate::builder::builder::CodeGenIRBuilder;
 use cyrusc_internal::cir::{cir::CIRExpr, types::CIRType};
 use inkwell::{
@@ -126,15 +128,19 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         let target_bit_width = self.target.info.int_bit_width();
 
         let int_value = value.as_basic_value().into_int_value();
-        let target_ty = self.llvm_ctx.custom_width_int_type(target_bit_width);
+
+        let target_type = self
+            .llvm_ctx
+            .custom_width_int_type(NonZero::new(target_bit_width).unwrap())
+            .unwrap();
 
         let widened = if signed {
             self.llvm_builder
-                .build_int_s_extend(int_value, target_ty, "sext")
+                .build_int_s_extend(int_value, target_type, "sext")
                 .unwrap()
         } else {
             self.llvm_builder
-                .build_int_z_extend(int_value, target_ty, "zext")
+                .build_int_z_extend(int_value, target_type, "zext")
                 .unwrap()
         };
 
@@ -158,22 +164,33 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         }
 
         // target width
-        let target_bw = lhs_bw.max(rhs_bw);
-        let target_ty = self.llvm_ctx.custom_width_int_type(target_bw);
+        let target_bit_width = lhs_bw.max(rhs_bw);
+        let target_type = self
+            .llvm_ctx
+            .custom_width_int_type(NonZero::new(target_bit_width).unwrap())
+            .unwrap();
 
         let widen = |v: InternalValue<'ll>, iv: IntValue<'ll>| {
             let signed = v.ty.as_plain().unwrap().is_signed();
             let widened = if signed {
-                self.llvm_builder.build_int_s_extend(iv, target_ty, "sext").unwrap()
+                self.llvm_builder.build_int_s_extend(iv, target_type, "sext").unwrap()
             } else {
-                self.llvm_builder.build_int_z_extend(iv, target_ty, "zext").unwrap()
+                self.llvm_builder.build_int_z_extend(iv, target_type, "zext").unwrap()
             };
 
             InternalValue::new(v.ty.clone(), InternalValueKind::RValue(widened.into()))
         };
 
-        let lhs_w = if lhs_bw < target_bw { widen(lhs, lhs_iv) } else { lhs };
-        let rhs_w = if rhs_bw < target_bw { widen(rhs, rhs_iv) } else { rhs };
+        let lhs_w = if lhs_bw < target_bit_width {
+            widen(lhs, lhs_iv)
+        } else {
+            lhs
+        };
+        let rhs_w = if rhs_bw < target_bit_width {
+            widen(rhs, rhs_iv)
+        } else {
+            rhs
+        };
 
         (lhs_w, rhs_w)
     }

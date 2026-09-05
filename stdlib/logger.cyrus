@@ -91,8 +91,8 @@ pub struct Logger {
     }
 
     [[inline]]
-    pub fn set_colored(self: Self*, colored: bool) {
-        self->colored = colored;
+    pub fn set_colored(self: Self*, enabled: bool) {
+        self->colored = enabled;
     }
 
     [[inline]]
@@ -181,7 +181,7 @@ pub struct Logger {
     }
 }
 
-pub fn format_timestamp(buffer: uint8*, size: usize) usize {
+fn format_timestamp(buffer: uint8*, size: usize) usize {
     @assert(buffer, "buffer cannot be null");
 
     var out = buffer;

@@ -16,7 +16,7 @@ use cyrusc_typed_ast::{
 };
 use inkwell::{
     AddressSpace,
-    types::{ArrayType, BasicType, BasicTypeEnum, StructType},
+    types::{BasicType, BasicTypeEnum, StructType},
     values::{ArrayValue, BasicValue, BasicValueEnum, FunctionValue, IntValue, PointerValue, StructValue},
 };
 
@@ -676,7 +676,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
     pub(crate) fn intrinsic_optimized_memcpy(&self, dest: PointerValue<'ll>, rvalue: BasicValueEnum<'ll>) {
         let ty = rvalue.get_type();
 
-        // Fast path: direct store
+        // fast path: direct store
         if ty.is_int_type()
             || ty.is_float_type()
             || ty.is_pointer_type()
@@ -692,8 +692,8 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         self.intrinsic_memcpy(dest, rvalue);
     }
 
-    pub(crate) fn intrinsic_memcpy(&self, dest: PointerValue<'ll>, rvalue: BasicValueEnum<'ll>) {
-        let target_data = self.llvmtm.get_target_data();
+    fn intrinsic_memcpy(&self, dest: PointerValue<'ll>, rvalue: BasicValueEnum<'ll>) {
+        let target_data = self.llvm_target_machine.get_target_data();
         let ty = rvalue.get_type();
 
         let size_in_bytes = target_data.get_store_size(&ty);
@@ -762,7 +762,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
     pub(crate) fn intrinsic_array_memcmp(&self, lhs_arr: ArrayValue<'ll>, rhs_arr: ArrayValue<'ll>) -> IntValue<'ll> {
         let i32_type = self.llvm_ctx.i32_type();
         let i8_ptr_type = self.llvm_ctx.ptr_type(AddressSpace::default());
-        let target_data = self.llvmtm.get_target_data();
+        let target_data = self.llvm_target_machine.get_target_data();
         let ptr_sized_int_type = self.llvm_ctx.ptr_sized_int_type(&target_data, None);
 
         let module = self.llvm_module.borrow();
@@ -781,8 +781,14 @@ impl<'ll> CodeGenIRBuilder<'ll> {
             }
         };
 
-        let lhs_alloca = self.llvm_builder.build_alloca(lhs_arr.get_type(), "lhs_alloca").unwrap();
-        let rhs_alloca = self.llvm_builder.build_alloca(rhs_arr.get_type(), "rhs_alloca").unwrap();
+        let lhs_alloca = self
+            .llvm_builder
+            .build_alloca(lhs_arr.get_type(), "lhs_alloca")
+            .unwrap();
+        let rhs_alloca = self
+            .llvm_builder
+            .build_alloca(rhs_arr.get_type(), "rhs_alloca")
+            .unwrap();
 
         self.llvm_builder.build_store(lhs_alloca, lhs_arr).unwrap();
         self.llvm_builder.build_store(rhs_alloca, rhs_arr).unwrap();
@@ -815,6 +821,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         cmp.into_int_value()
     }
 
+    // FIXME Remove
     pub(crate) fn intrinsic_copy_buffer_to_struct(
         &self,
         buffer: ArrayValue<'ll>,
@@ -826,24 +833,6 @@ impl<'ll> CodeGenIRBuilder<'ll> {
             "coerce",
         )
         .into_struct_value()
-    }
-
-    pub(crate) fn intrinsic_copy_payload_to_buffer(
-        &self,
-        mut value: BasicValueEnum<'ll>,
-        array_type: ArrayType<'ll>,
-    ) -> ArrayValue<'ll> {
-        let alloca = self.llvm_builder.build_alloca(array_type, "alloca").unwrap();
-
-        value = self.intrinsic_coerce_through_alloca(value, BasicTypeEnum::ArrayType(array_type), "coerce");
-
-        self.intrinsic_optimized_memcpy(alloca, value);
-
-        // load back the array
-        self.llvm_builder
-            .build_load(array_type, alloca, "load")
-            .unwrap()
-            .into_array_value()
     }
 
     fn intrinsic_get_or_insert_trap(&self) -> FunctionValue<'ll> {

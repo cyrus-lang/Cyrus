@@ -2,12 +2,12 @@
 // Copyright (c) 2026 The Cyrus Language
 
 import (
-    std::http{Request, Response, HttpStatus},
     std::net{TcpListener, TcpStream, DEFAULT_BACKLOG},
+    std::http{Request, Response, HttpStatus},
     std::errors{ErrorOr, ErrorStr},
+    std::http::router{Router},
     std::mem{Allocator},
     std::string{String},
-    std::http::router{Router},
     std::http::internal,
 );
 
@@ -73,19 +73,22 @@ pub struct Server {
         switch (self->read_message(&stream, &raw)) {
             case .Value(within_limit) => {
                 if (!within_limit) {
-                    var oversized = Response.new(self->allocator);
-                    oversized.set_status(.PayloadTooLarge);
-                    oversized.set_content_type("text/plain");
-                    oversized.set_body("413 Payload Too Large");
-                    oversized.write_to(&stream);
-                    oversized.free();
+                    var resp = Response.new(self->allocator);
+                    defer resp.free();
+                    
+                    resp.set_status(.PayloadTooLarge);
+                    resp.set_content_type("text/plain");
+                    resp.set_body("413 Payload Too Large");
+                    resp.write_to(&stream);
 
+                    // REVIEW use defer
                     raw.free();
                     stream.close();
                     return .Value(());
                 }
             }
             case .Error(err) => {
+                // REVIEW use defer
                 raw.free();
                 stream.close();
                 return .Error(err);
@@ -93,6 +96,7 @@ pub struct Server {
         }
 
         if (raw.is_empty()) {
+            // REVIEW use defer
             raw.free();
             stream.close();
             return .Value(());
@@ -118,12 +122,13 @@ pub struct Server {
                 }
             }
             case .Error(err) => {
-                var response = Response.new(self->allocator);
-                response.set_status(.BadRequest);
-                response.set_content_type("text/plain");
-                response.set_body("400 Bad Request");
-                response.write_to(&stream);
-                response.free();
+                var resp = Response.new(self->allocator);
+                defer resp.free();
+
+                resp.set_status(.BadRequest);
+                resp.set_content_type("text/plain");
+                resp.set_body("400 Bad Request");
+                resp.write_to(&stream);
 
                 raw.free();
                 stream.close();

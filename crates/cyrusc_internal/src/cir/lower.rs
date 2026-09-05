@@ -9,7 +9,6 @@ use crate::{
         types::{CIRArrayType, CIREnumType, CIRFuncType, CIRStructType, CIRType, CIRUnionType},
     },
 };
-use cyrusc_ast::abi::Callconv;
 use cyrusc_typed_ast::{
     decls::{EnumDecl, EnumDeclID, StructDecl, StructDeclID, UnionDecl, UnionDeclID, table::DeclTablesRegistry},
     stmts::{TypedEnumVariant, TypedFuncTypeParams, TypedTypeArgs},
@@ -64,7 +63,7 @@ pub fn lower_sema_type(
 
             let len = match &array_type.capacity {
                 TypedArrayCapacity::Fixed(expr) => expr.literal_const_int_value().unwrap(),
-                TypedArrayCapacity::Dynamic => todo!(),
+                TypedArrayCapacity::Slice => todo!(),
             };
 
             CIRType::Array(CIRArrayType {
@@ -92,8 +91,7 @@ pub fn lower_sema_type(
         | SemaType::InferVar(_)
         | SemaType::Placeholder
         | SemaType::Err(_) => {
-            dbg!(ty.clone());
-            unreachable!()
+            panic!("encountered with unresolved symbol in lower sema type: {:#?}", ty)
         }
     }
     .const_inner()
@@ -536,7 +534,7 @@ pub fn lower_func_type(
         params,
         ret_type,
         is_var: func_type.params.variadic.is_some(),
-        callconv: Callconv::default(),
+        callconv: func_type.callconv,
         abi_func_info: None,
     };
 

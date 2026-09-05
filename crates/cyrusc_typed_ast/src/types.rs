@@ -6,8 +6,10 @@ use crate::decls::{EnumDeclID, InterfaceDeclID, StructDeclID, TypedefDeclID, Uni
 use crate::exprs::{TypedExpr, TypedSelfType};
 use crate::stmts::{TypedFuncTypeParams, TypedFuncTypeVariadicParam, TypedTypeArg, TypedTypeArgs};
 use crate::{GenericParamID, SymbolID, VTableID};
+use cyrusc_ast::abi::Callconv;
 use cyrusc_source_loc::Loc;
 use cyrusc_tokens::TokenKind;
+use cyrusc_tokens::literals::IntLiteralKind;
 use std::fmt;
 use std::hash::{Hash, Hasher};
 
@@ -95,6 +97,7 @@ pub struct TypedFuncType {
     pub params: TypedFuncTypeParams,
     pub ret_type: Box<SemaType>,
     pub is_public: bool,
+    pub callconv: Callconv,
     pub loc: Loc,
 }
 
@@ -105,10 +108,10 @@ pub struct TypedArrayType {
     pub loc: Loc,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone)]
 pub enum TypedArrayCapacity {
     Fixed(Box<TypedExpr>),
-    Dynamic,
+    Slice,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -866,7 +869,29 @@ impl Hash for TypedTupleType {
 
 impl Hash for TypedArrayCapacity {
     fn hash<H: Hasher>(&self, state: &mut H) {
-        core::mem::discriminant(self).hash(state);
+        match self {
+            TypedArrayCapacity::Fixed(typed_expr) => match typed_expr.literal_const_int_value().unwrap() {
+                IntLiteralKind::Signed(val) => val.hash(state),
+                IntLiteralKind::Unsigned(val) => val.hash(state),
+            },
+            TypedArrayCapacity::Slice => todo!(),
+        }
+    }
+}
+
+impl PartialEq for TypedArrayCapacity {
+    fn eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (TypedArrayCapacity::Fixed(a), TypedArrayCapacity::Fixed(b)) => {
+                match (a.literal_const_int_value(), b.literal_const_int_value()) {
+                    (Some(IntLiteralKind::Signed(a_val)), Some(IntLiteralKind::Signed(b_val))) => a_val == b_val,
+                    (Some(IntLiteralKind::Unsigned(a_val)), Some(IntLiteralKind::Unsigned(b_val))) => a_val == b_val,
+                    _ => false,
+                }
+            }
+            (TypedArrayCapacity::Slice, TypedArrayCapacity::Slice) => true,
+            _ => false,
+        }
     }
 }
 

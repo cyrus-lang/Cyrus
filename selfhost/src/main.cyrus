@@ -6,12 +6,19 @@ import (
     std::mem::libc{LibcAllocator},
     std::mem{Allocator},
     std::libc{printf},
+    std::path{Path},
 );
 
-import version;
-import cli;
+import (
+    tokens{dump_tokens},
+    version,
+    driver,
+    cli,
+);
 
-fn command_new(ctx: cli::ActionCtx) { @todo(); }
+fn command_new(ctx: cli::ActionCtx) {
+    @todo();
+}
 
 fn command_build(ctx: cli::ActionCtx) {
     printf("Build command triggered.\n");
@@ -19,6 +26,21 @@ fn command_build(ctx: cli::ActionCtx) {
     if (ctx.opts->enabled("jobs")) {
         printf("Jobs option enabled.\n");
     }
+}
+
+fn command_lex(ctx: cli::ActionCtx) {
+    const allocator: Allocator = dynamic LibcAllocator.new();
+
+    // TODO Get path from CLI 
+
+    const path = Path.new(allocator, "/home/tahad/Code/Cyrus/Cyrus/tmp/main.cyrus");
+    defer path.free();
+
+    var source_tokens = driver::tokenize_source(allocator, &path);
+    defer source_tokens.free();
+
+    dump_tokens(&source_tokens.tokens);
+    printf("Read %lu tokens from `%s`\n", source_tokens.tokens.len(), "meow.cyrus");
 }
 
 fn command_version(ctx: cli::ActionCtx) {
@@ -34,12 +56,12 @@ pub fn main(argc: c_int, argv: c_char**) {
     var parser = cli::Cli.new(allocator, &opts, "cyrus");
     defer parser.free();
 
-    const verbose_opt = opts.add(*cli::Opt.new(allocator, "verbose").short('v')->help("Increase verbosity"));
-    const quiet_opt = opts.add(*cli::Opt.new(allocator, "quiet").short('q')->help("Suppress output"));
+    const jobs_opt = opts.add(*cli::Opt.new(allocator, "jobs").short('j')->arg(.Int)->help("Number of parallel jobs"));
     const release_opt = opts.add(*cli::Opt.new(allocator, "release").short('r')->help("Build in release mode"));
     const debug_opt = opts.add(*cli::Opt.new(allocator, "debug").short('g')->help("Build with debug symbols"));
+    const verbose_opt = opts.add(*cli::Opt.new(allocator, "verbose").short('v')->help("Increase verbosity"));
+    const quiet_opt = opts.add(*cli::Opt.new(allocator, "quiet").short('q')->help("Suppress output"));
     const target_opt = opts.add(*cli::Opt.new(allocator, "target").short('t')->help("Target triple"));
-    const jobs_opt = opts.add(*cli::Opt.new(allocator, "jobs").short('j')->arg(.Int)->help("Number of parallel jobs"));
     const color_opt = opts.add(*cli::Opt.new(allocator, "color").help("Colored output"));
 
     const new_cmd = 
@@ -90,6 +112,10 @@ pub fn main(argc: c_int, argv: c_char**) {
         cli::Cmd.new(allocator, "update", command_build)
         .help("Update dependencies");
     
+    const lex_cmd = 
+        cli::Cmd.new(allocator, "lex", command_lex)
+        .help("Dump file tokens");
+    
     const version_cmd = 
         cli::Cmd.new(allocator, "version", command_version)
         .help("Compiler version");
@@ -102,6 +128,7 @@ pub fn main(argc: c_int, argv: c_char**) {
     parser.add_command(*add_cmd);
     parser.add_command(*remove_cmd);
     parser.add_command(*update_cmd);
+    parser.add_command(*lex_cmd);
     parser.add_command(*version_cmd);
 
     parser.parse_args(struct { argc, argv });
@@ -175,21 +202,20 @@ pub fn main(argc: c_int, argv: c_char**) {
 
 // import std::mem::libc{LibcAllocator};
 // import std::io{Writer, StringWriter};
-// import utils::fs{read_file_to_string_or_exit};
-// import diags{exit_with_compile_error};
 // import std::mem{Allocator};
 // import std::string{String};
-// import parse::lex{Lexer};
 // import std::libc{printf};
+// import lexer{Lexer};
 
 // import tokens{Token, dump_tokens};
+// 
 
 // pub fn main(argc: int32, argv: uint8**) {
-//     var allocator: Allocator = dynamic LibcAllocator.new();
+//     const allocator: Allocator = dynamic LibcAllocator.new();
 
 //     const file_name = argv[1];
 //     if (!file_name) {
-//         exit_with_compile_error("no input files");
+//         @panic("no input files");
 //     }
 
 //     var source = read_file_to_string_or_exit(file_name);
@@ -197,11 +223,11 @@ pub fn main(argc: c_int, argv: c_char**) {
 
 //     var lexer = Lexer.new(allocator, &source);
     
-//     const token_pool = lexer.tokenize();
+//     var token_pool = lexer.tokenize();
 //     defer token_pool.free();
 
-//     const tokens = token_pool.inner();
+//     var tokens = &token_pool.tokens;
 
-//     printf("Tokens Count: %lu\n", tokens.len());
-//     dump_tokens(&tokens);
+//     printf("Tokens Count: %lu\n", tokens->len());
+//     dump_tokens(tokens);
 // }

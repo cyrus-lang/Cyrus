@@ -3,15 +3,11 @@
 
 use crate::{
     abi::{
-        args::{ABIArgAttrs, ABIArgInfo, ABIArgKind, ABIFunctionInfo, ABIRetInfo, ABIRetInfoKind, ExpandKind},
-        helpers::{Registers, is_cir_type_aggregate},
-        target::{ABITargetInfo, ABITargetOS, RegisterClass, TargetABI},
-    },
-    cir::{
+        args::{ABIArgAttrs, ABIArgInfo, ABIArgKind, ABIFunctionInfo, ABIRetInfo, ABIRetInfoKind, ExpandKind}, helpers::{Registers, align_up, is_cir_type_aggregate}, target::{ABITargetInfo, ABITargetOS, RegisterClass, TargetABI},
+    }, cir::{
         typectx::CIRTypeContext,
         types::{CIRArrayType, CIRFuncType, CIRStructType, CIRType, CIRUnionType, CIRVectorType},
-    },
-    is_integer_type,
+    }, is_integer_type,
 };
 use cyrusc_ast::abi::Callconv;
 use cyrusc_source_loc::{FileID, Loc};
@@ -198,7 +194,9 @@ impl X86_64 {
             CIRType::Plain(PlainType::Int64)
         } else {
             // span across multiple registers
-            CIRType::Plain(PlainType::map_integer_size_to_type((layout.size - source_offset) as usize).unwrap())
+            let offset = (layout.size - source_offset) as usize;
+            let aligned = align_up(offset, 8);
+            CIRType::Plain(PlainType::map_integer_size_to_type(aligned).unwrap())
         }
     }
 
@@ -510,7 +508,7 @@ impl X86_64 {
         }
     }
 
-    fn classify_func_sysv(&self, func_type: &CIRFuncType) -> ABIFunctionInfo {
+    fn classify_func_sysv(&self, cir_func_type: &CIRFuncType) -> ABIFunctionInfo {
         let mut available_regs = Registers {
             int_regs: 6,
             sse_regs: 8,
@@ -519,14 +517,14 @@ impl X86_64 {
         let mut params_types = Vec::new();
         let mut params_infos = Vec::new();
 
-        let ret_info = self.classify_return(&func_type.ret_type);
+        let ret_info = self.classify_return(&cir_func_type.ret_type);
 
         // sret consumes one integer register in sysv
         if ret_info.kind.is_indirect() {
             available_regs.int_regs -= 1;
         }
 
-        for param_type in &func_type.params {
+        for param_type in &cir_func_type.params {
             let abi_arg = self.classify_parameter(param_type, &mut available_regs, true);
 
             // index before expansion
@@ -694,14 +692,14 @@ impl TargetABI for X86_64 {
         (ABIArgInfo::direct(), needed_regs)
     }
 
-    fn classify_func(&self, fn_ty: &CIRFuncType) -> Result<ABIFunctionInfo, String> {
-        match fn_ty.callconv {
+    fn classify_func(&self, ty: &CIRFuncType) -> Result<ABIFunctionInfo, String> {
+        match ty.callconv {
             // SysV64, explicit System V AMD64 ABI
-            Callconv::SysV64 => Ok(self.classify_func_sysv(fn_ty)),
+            Callconv::SysV64 => Ok(self.classify_func_sysv(ty)),
 
             // C default convention, platform dependent
             Callconv::System | Callconv::C => match self.info.os {
-                ABITargetOS::Linux | ABITargetOS::MacOS => Ok(self.classify_func_sysv(fn_ty)),
+                ABITargetOS::Linux | ABITargetOS::MacOS => Ok(self.classify_func_sysv(ty)),
                 ABITargetOS::Windows => unimplemented!("Windows ABI not implemented yet."),
                 ABITargetOS::Unknown => unreachable!(),
             },
@@ -710,21 +708,21 @@ impl TargetABI for X86_64 {
             Callconv::Win64 => unimplemented!("Windows ABI not implemented yet."),
 
             // Naked, no prologue/epilogue, just bare function
-            Callconv::Naked => Ok(self.classify_func_naked(fn_ty)),
+            Callconv::Naked => Ok(self.classify_func_naked(ty)),
 
             // Interrupt handler
             Callconv::Interrupt => Err("Interrupt calling convention not supported yet.".to_string()),
 
             // Fast optimization hint, same as C convention
             Callconv::Fast => match self.info.os {
-                ABITargetOS::Linux | ABITargetOS::MacOS => Ok(self.classify_func_sysv(fn_ty)),
+                ABITargetOS::Linux | ABITargetOS::MacOS => Ok(self.classify_func_sysv(ty)),
                 ABITargetOS::Windows => unimplemented!("Windows ABI not implemented yet."),
                 _ => unreachable!(),
             },
 
             // Cold optimization hint, same as C convention
             Callconv::Cold => match self.info.os {
-                ABITargetOS::Linux | ABITargetOS::MacOS => Ok(self.classify_func_sysv(fn_ty)),
+                ABITargetOS::Linux | ABITargetOS::MacOS => Ok(self.classify_func_sysv(ty)),
                 ABITargetOS::Windows => unimplemented!("Windows ABI not implemented yet."),
                 _ => unreachable!(),
             },
@@ -743,7 +741,7 @@ impl TargetABI for X86_64 {
                 // For now, fallback to platform default
                 match self.info.os {
                     ABITargetOS::Windows => unimplemented!("Vectorcall on Windows not implemented yet."),
-                    _ => Ok(self.classify_func_sysv(fn_ty)), // Vectorcall on non-Windows? Probably fallback
+                    _ => Ok(self.classify_func_sysv(ty)), // Vectorcall on non-Windows? Probably fallback
                 }
             }
         }

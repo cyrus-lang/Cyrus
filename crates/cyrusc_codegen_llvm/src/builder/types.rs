@@ -396,7 +396,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         match plain_type {
             // Platform dependent types
             PlainType::UIntPtr | PlainType::IntPtr | PlainType::USize | PlainType::ISize => ctx
-                .ptr_sized_int_type(&self.llvmtm.get_target_data(), None)
+                .ptr_sized_int_type(&self.llvm_target_machine.get_target_data(), None)
                 .as_any_type_enum(),
 
             PlainType::Int8 => ctx.i8_type().as_any_type_enum(),
@@ -496,7 +496,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
 
         let union_type = self.tctx.get_union(type_id);
         let layout = self.tctx.get_or_compute_layout(type_id);
-        let target_data = self.llvmtm.get_target_data();
+        let target_data = self.llvm_target_machine.get_target_data();
 
         let mut ty = None;
         let mut max_align = 0;
@@ -553,7 +553,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
     }
 
     pub(crate) fn emit_enum_buffer_payload_type(&self, enum_type: &CIREnumType) -> (ArrayType<'ll>, u64) {
-        let target_data = self.llvmtm.get_target_data();
+        let target_data = self.llvm_target_machine.get_target_data();
         let mut max_payload_size: u64 = 0;
         let mut max_payload_align: u64 = 1;
 

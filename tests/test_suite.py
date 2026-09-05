@@ -408,10 +408,13 @@ def main():
             raise Exception(f"Provided test path '{path_arg}' does not exist.")
 
         if test_path.is_file() and test_path.suffix == ".cyrus":
-            test_files = [test_path]
+            if not test_path.name.startswith('_'):
+                test_files = [test_path]
+            else:
+                test_files = []
             base_path = test_path.parent
         elif test_path.is_dir():
-            test_files = list(test_path.rglob("*.cyrus"))
+            test_files = [f for f in test_path.rglob("*.cyrus") if not f.name.startswith('_')]
             base_path = test_path
         else:
             raise Exception(f"Provided test path '{path_arg}' is neither a .cyrus file nor a directory.")
