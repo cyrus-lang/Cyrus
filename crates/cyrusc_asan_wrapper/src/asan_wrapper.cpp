@@ -26,6 +26,11 @@ typedef struct {
   bool asan_use_after_return;
 } SanitizerOptions;
 
+static bool hasNoSanitizeModuleFlag(llvm::Module &M, const char *flagName) {
+  auto *Flag = M.getModuleFlag(flagName);
+  return Flag != nullptr;
+}
+
 void run_sanitizer_passes(LLVMModuleRef module_ref,
                           llvm::TargetMachine *Machine, int opt_level,
                           SanitizerOptions opts) {
@@ -74,39 +79,45 @@ void run_sanitizer_passes(LLVMModuleRef module_ref,
     break;
   }
 
-  // build the default per-module optimization pipeline
   llvm::ModulePassManager MPM = PB.buildPerModuleDefaultPipeline(level);
 
-  // add sanitizer passes
   if (opts.mem_sanitize) {
-    llvm::MemorySanitizerOptions MSO(/*TrackOrigins=*/true, opts.recover, false,
-                                     false);
-    MPM.addPass(llvm::MemorySanitizerPass(MSO));
+    if (!hasNoSanitizeModuleFlag(*Mod, "nosanitize_memory")) {
+      llvm::MemorySanitizerOptions MSO(/*TrackOrigins=*/true, opts.recover,
+                                       false, false);
+      MPM.addPass(llvm::MemorySanitizerPass(MSO));
+    }
   }
 
   if (opts.thread_sanitize) {
-    MPM.addPass(llvm::ModuleThreadSanitizerPass());
-    MPM.addPass(
-        llvm::createModuleToFunctionPassAdaptor(llvm::ThreadSanitizerPass()));
+    if (!hasNoSanitizeModuleFlag(*Mod, "nosanitize_thread")) {
+      MPM.addPass(llvm::ModuleThreadSanitizerPass());
+      MPM.addPass(
+          llvm::createModuleToFunctionPassAdaptor(llvm::ThreadSanitizerPass()));
+    }
   }
 
   if (opts.address_sanitize) {
-    llvm::AddressSanitizerOptions ASO;
-    ASO.CompileKernel = false;
-    ASO.Recover = opts.recover;
-    ASO.UseAfterScope = opts.asan_use_after_scope;
-    ASO.UseAfterReturn = opts.asan_use_after_return
-                             ? llvm::AsanDetectStackUseAfterReturnMode::Always
-                             : llvm::AsanDetectStackUseAfterReturnMode::Never;
+    if (!hasNoSanitizeModuleFlag(*Mod, "nosanitize_address")) {
+      llvm::AddressSanitizerOptions ASO;
+      ASO.CompileKernel = false;
+      ASO.Recover = opts.recover;
+      ASO.UseAfterScope = opts.asan_use_after_scope;
+      ASO.UseAfterReturn = opts.asan_use_after_return
+                               ? llvm::AsanDetectStackUseAfterReturnMode::Always
+                               : llvm::AsanDetectStackUseAfterReturnMode::Never;
 
-    bool is_windows = Machine->getTargetTriple().isOSWindows();
-    MPM.addPass(llvm::AddressSanitizerPass(ASO, false, !is_windows,
-                                           llvm::AsanDtorKind::None));
+      bool is_windows = Machine->getTargetTriple().isOSWindows();
+      MPM.addPass(llvm::AddressSanitizerPass(ASO, false, !is_windows,
+                                             llvm::AsanDtorKind::None));
+    }
   }
 
   if (opts.hwaddress_sanitize) {
-    MPM.addPass(
-        llvm::HWAddressSanitizerPass({false, opts.recover, opt_level == 0}));
+    if (!hasNoSanitizeModuleFlag(*Mod, "nosanitize_hwaddress")) {
+      MPM.addPass(
+          llvm::HWAddressSanitizerPass({false, opts.recover, opt_level == 0}));
+    }
   }
 
   // function-level optimization passes
