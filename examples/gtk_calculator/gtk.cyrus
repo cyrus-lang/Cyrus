@@ -1,0 +1,45 @@
+// SPDX-License-Identifier: MIT
+// GTK3 Bindings for Cyrus
+
+import std::libc::types;
+
+pub const GTK_WINDOW_TOPLEVEL: types::c_int = 0;
+pub const GTK_ORIENTATION_HORIZONTAL: types::c_int = 0;
+pub const GTK_ORIENTATION_VERTICAL: types::c_int = 1;
+
+pub extern "C" {
+    fn gtk_init(argc: types::c_int*, argv: types::c_char***) types::c_void;
+    fn gtk_window_new(window_type: types::c_int) types::c_void*;
+    fn gtk_window_set_title(window: types::c_void*, title: const types::c_char*) types::c_void;
+    fn gtk_window_set_default_size(window: types::c_void*, width: types::c_int, height: types::c_int) types::c_void;
+    fn gtk_window_set_resizable(window: types::c_void*, resizable: types::c_bool) types::c_void;
+    fn gtk_container_add(container: types::c_void*, widget: types::c_void*) types::c_void;
+    fn gtk_container_set_border_width(container: types::c_void*, border_width: types::c_uint) types::c_void;
+    fn gtk_widget_show_all(widget: types::c_void*) types::c_void;
+    fn gtk_widget_set_size_request(widget: types::c_void*, width: types::c_int, height: types::c_int) types::c_void;
+    fn gtk_main() types::c_void;
+    fn gtk_main_quit() types::c_void;
+
+    fn gtk_button_new_with_label(label: const types::c_char*) types::c_void*;
+    fn gtk_entry_new() types::c_void*;
+    fn gtk_box_new(orientation: types::c_int, spacing: types::c_int) types::c_void*;
+    fn gtk_grid_new() types::c_void*;
+    fn gtk_grid_attach(grid: types::c_void*, child: types::c_void*, left: types::c_int, top: types::c_int, width: types::c_int, height: types::c_int) types::c_void;
+    fn gtk_grid_set_row_homogeneous(grid: types::c_void*, homogeneous: types::c_bool) types::c_void;
+    fn gtk_grid_set_column_homogeneous(grid: types::c_void*, homogeneous: types::c_bool) types::c_void;
+    fn gtk_grid_set_row_spacing(grid: types::c_void*, spacing: types::c_uint) types::c_void;
+    fn gtk_grid_set_column_spacing(grid: types::c_void*, spacing: types::c_uint) types::c_void;
+
+    fn gtk_entry_get_text(entry: types::c_void*) const types::c_char*;
+    fn gtk_entry_set_text(entry: types::c_void*, text: const types::c_char*) types::c_void;
+    fn gtk_editable_insert_text(editable: types::c_void*, text: const types::c_char*, length: types::c_int, position: types::c_int*) types::c_void;
+
+    fn g_signal_connect_data(
+        instance: types::c_void*,
+        detailed_signal: const types::c_char*,
+        c_handler: fn(types::c_void*, types::c_void*) types::c_void,
+        data: types::c_void*,
+        destroy_data: types::c_void*,
+        connect_flags: types::c_int
+    ) types::c_unsigned_long;
+}
