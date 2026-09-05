@@ -32,9 +32,7 @@ pub struct SourceTokens {
         for (var i: usize = 0; i < self.tokens.len(); i += 1) {
             const token = self.tokens.get_owned(i).unwrap();
 
-            switch (token.kind) {
-                case .Ident(ident) => ident.free();
-            }
+            token.free();
         }
 
         self.tokens.free();
@@ -48,6 +46,18 @@ pub struct Token : Format {
     [[inline]]
     pub fn format(self: const Self*, writer: Writer) bool {
         return self->kind.format(writer);
+    }
+
+    [[inline]]
+    pub fn free(self: Self*) {
+        switch (self->kind) {
+            case .Ident(ident) => ident.free();
+            case .Literal(lit) => {
+                switch (lit) {
+                    case .String { value, .. } => value.free();
+                }
+            }
+        }
     }
 }
 

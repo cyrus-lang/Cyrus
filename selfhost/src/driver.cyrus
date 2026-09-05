@@ -8,10 +8,9 @@ import (
 );
 
 import (
-    lexer{Lexer, SourceTokens}
+    tokens{SourceTokens},
+    lexer{Lexer}
 );
-
-import std::libc{printf};
 
 // Driver handler responsible for tokenizing source content.
 // Will terminate the compiler if any error raised.
@@ -31,5 +30,5 @@ pub fn tokenize_source(
 
     var lexer = Lexer.new(allocator, &source);
     
-    return lexer.tokenize();
+    return SourceTokens.new(lexer.tokenize());
 }

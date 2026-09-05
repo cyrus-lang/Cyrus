@@ -23,7 +23,6 @@ import (
 );
 
 import tokens{
-    SourceTokens,
     Token,
     TokenKind,
     Literal,
@@ -55,7 +54,7 @@ pub struct Lexer {
         };
     }
 
-    pub fn tokenize(self: Self*) SourceTokens {
+    pub fn tokenize(self: Self*) Vec<Token> {
         var tokens: Vec<Token> = Vec.new(self->allocator);
 
         var token: Token = undefined;
@@ -69,7 +68,7 @@ pub struct Lexer {
             }
         }
 
-        return SourceTokens { tokens };
+        return tokens;
     }
 
     fn next(self: Self*) Token {
@@ -181,9 +180,32 @@ pub struct Lexer {
         return .Ident(ident);
     }
 
-    // TODO
-    fn read_string_literal(self: Self*, prefix: Option<StringPrefix>) TokenKind {
-        @todo();
+    fn read_string_literal(self: Self*, suffix: Option<StringPrefix>) TokenKind {
+        self->read();
+
+        var value = String.new(self->allocator);
+
+        while (true) {
+            if (self->is_eof()) {
+                // FIXME
+                @panic("unterminated string literal");
+            }
+
+            const char = self->cur();
+
+            switch (char) {
+                case '"' => break;
+                else => value.push(char);
+            }
+
+            self->read();
+        }
+
+        self->read();
+
+        // TODO: Unespcae string
+
+        return .Literal(.String { value, suffix });
     }
 
     fn read_char_literal(self: Self*) TokenKind {
