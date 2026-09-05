@@ -11,11 +11,11 @@ use inkwell::{
         LLVMModuleFlagBehavior,
         core::{
             LLVMAddModuleFlag, LLVMConstInt, LLVMGetGlobalParent, LLVMGetInsertBlock, LLVMGetMDKindIDInContext,
-            LLVMGetModuleContext, LLVMGetModuleFlag, LLVMGlobalSetMetadata, LLVMInt32Type,
+            LLVMGetModuleContext, LLVMGetModuleFlag, LLVMGlobalSetMetadata, LLVMInt32TypeInContext,
             LLVMSetCurrentDebugLocation2, LLVMValueAsMetadata,
         },
         debuginfo::*,
-        prelude::{LLVMDIBuilderRef, LLVMMetadataRef, LLVMModuleRef, LLVMTypeRef, LLVMValueRef},
+        prelude::{LLVMContextRef, LLVMDIBuilderRef, LLVMMetadataRef, LLVMModuleRef, LLVMTypeRef, LLVMValueRef},
     },
 };
 use std::ffi::CString;
@@ -694,7 +694,7 @@ pub unsafe fn emit_dbg_declare(
     let loc = unsafe { create_debug_location_with_inline(dctx, ctx, line, col, scope) };
 
     unsafe {
-        LLVMDIBuilderInsertDeclareAtEnd(
+        LLVMDIBuilderInsertDeclareRecordAtEnd(
             dctx.builder,
             storage,
             var_meta,
@@ -709,7 +709,13 @@ pub unsafe fn finalize_debug(dctx: &DebugContext) {
     unsafe { LLVMDIBuilderFinalize(dctx.builder) };
 }
 
-unsafe fn module_flag(module: LLVMModuleRef, behavior: LLVMModuleFlagBehavior, name: &str, value: u32) {
+unsafe fn module_flag(
+    ctx: LLVMContextRef,
+    module: LLVMModuleRef,
+    behavior: LLVMModuleFlagBehavior,
+    name: &str,
+    value: u32,
+) {
     let cname = CString::new(name).unwrap();
 
     // check if flag already exists
@@ -719,23 +725,20 @@ unsafe fn module_flag(module: LLVMModuleRef, behavior: LLVMModuleFlagBehavior, n
         return;
     }
 
-    let int_value = unsafe { LLVMConstInt(LLVMInt32Type(), value as u64, 0) };
+    let int_value = unsafe { LLVMConstInt(LLVMInt32TypeInContext(ctx), value as u64, 0) };
     let metadata_value = unsafe { LLVMValueAsMetadata(int_value) };
 
     unsafe { LLVMAddModuleFlag(module, behavior, cname.as_ptr(), name.len(), metadata_value) };
 }
 
-pub unsafe fn emit_debug_module_flags(module: LLVMModuleRef) {
+pub unsafe fn emit_debug_module_flags(ctx: LLVMContextRef, module: LLVMModuleRef) {
     use LLVMModuleFlagBehavior::*;
 
-    unsafe { module_flag(module, LLVMModuleFlagBehaviorWarning, "Dwarf Version", 4) };
-    unsafe { module_flag(module, LLVMModuleFlagBehaviorWarning, "Debug Info Version", 3) };
-    unsafe { module_flag(module, LLVMModuleFlagBehaviorWarning, "wchar_size", 4) };
-
-    unsafe { module_flag(module, LLVMModuleFlagBehaviorOverride, "PIE Level", 2) };
-    unsafe { module_flag(module, LLVMModuleFlagBehaviorOverride, "PIC Level", 2) };
-
-    unsafe { module_flag(module, LLVMModuleFlagBehaviorError, "uwtable", 2) };
-
-    unsafe { module_flag(module, LLVMModuleFlagBehaviorWarning, "frame-pointer", 2) };
+    unsafe { module_flag(ctx, module, LLVMModuleFlagBehaviorWarning, "Dwarf Version", 4) };
+    unsafe { module_flag(ctx, module, LLVMModuleFlagBehaviorWarning, "Debug Info Version", 3) };
+    unsafe { module_flag(ctx, module, LLVMModuleFlagBehaviorWarning, "wchar_size", 4) };
+    unsafe { module_flag(ctx, module, LLVMModuleFlagBehaviorOverride, "PIE Level", 2) };
+    unsafe { module_flag(ctx, module, LLVMModuleFlagBehaviorOverride, "PIC Level", 2) };
+    unsafe { module_flag(ctx, module, LLVMModuleFlagBehaviorError, "uwtable", 2) };
+    unsafe { module_flag(ctx, module, LLVMModuleFlagBehaviorWarning, "frame-pointer", 2) };
 }
