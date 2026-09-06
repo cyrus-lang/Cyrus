@@ -17,9 +17,15 @@ mod tests {
     use cyrusc_ast::abi::Callconv;
     use cyrusc_source_loc::{FileID, Loc};
     use cyrusc_typed_ast::{VTableID, types::PlainType};
-    use std::sync::{Arc, LazyLock};
+    use std::sync::Arc;
 
-    pub static TCTX: LazyLock<Arc<CIRTypeContext>> = LazyLock::new(|| make_tctx());
+    thread_local! {
+        pub static TCTX: Arc<CIRTypeContext> = make_tctx();
+    }
+
+    fn tctx() -> Arc<CIRTypeContext> {
+        TCTX.with(|t| t.clone())
+    }
 
     fn make_tctx() -> Arc<CIRTypeContext> {
         let info = ABITargetInfo {
@@ -80,7 +86,7 @@ mod tests {
             loc: Loc::default(FileID(0)),
         };
 
-        let type_id = TCTX.insert_struct(struct_type);
+        let type_id = tctx().insert_struct(struct_type);
         CIRType::Struct(type_id)
     }
 
@@ -101,7 +107,7 @@ mod tests {
             loc: Loc::default(FileID(0)),
         };
 
-        let type_id = TCTX.insert_union(union_type);
+        let type_id = tctx().insert_union(union_type);
         CIRType::Union(type_id)
     }
 
@@ -114,7 +120,7 @@ mod tests {
 
     #[test]
     fn classify_i32_argument_integer() {
-        let abi = abi(TCTX.clone());
+        let abi = abi(tctx());
         let (info, regs) = abi.classify_argument(&i32(), 6, true);
 
         assert!(matches!(
@@ -127,7 +133,7 @@ mod tests {
 
     #[test]
     fn classify_i64_argument_integer() {
-        let abi = abi(TCTX.clone());
+        let abi = abi(tctx());
         let (info, regs) = abi.classify_argument(&i64(), 6, true);
 
         assert!(matches!(
@@ -140,7 +146,7 @@ mod tests {
 
     #[test]
     fn classify_f32_argument_sse() {
-        let abi = abi(TCTX.clone());
+        let abi = abi(tctx());
         let (info, regs) = abi.classify_argument(&f32(), 6, true);
 
         assert!(matches!(
@@ -153,7 +159,7 @@ mod tests {
 
     #[test]
     fn classify_f64_argument_sse() {
-        let abi = abi(TCTX.clone());
+        let abi = abi(tctx());
         let (info, regs) = abi.classify_argument(&f64(), 6, true);
 
         assert!(matches!(
@@ -166,7 +172,7 @@ mod tests {
 
     #[test]
     fn classify_struct_two_i64_direct_pair() {
-        let abi = abi(TCTX.clone());
+        let abi = abi(tctx());
         let ty = struct_type(vec![i64(), i64()]);
 
         let (info, regs) = abi.classify_argument(&ty, 6, true);
@@ -181,7 +187,7 @@ mod tests {
 
     #[test]
     fn classify_struct_two_f64_sse_pair() {
-        let abi = abi(TCTX.clone());
+        let abi = abi(tctx());
         let ty = struct_type(vec![f64(), f64()]);
 
         let (info, regs) = abi.classify_argument(&ty, 6, true);
@@ -196,7 +202,7 @@ mod tests {
 
     #[test]
     fn classify_struct_int_float_pair() {
-        let abi = abi(TCTX.clone());
+        let abi = abi(tctx());
         let ty = struct_type(vec![i32(), f64()]);
 
         let (info, regs) = abi.classify_argument(&ty, 6, true);
@@ -212,7 +218,7 @@ mod tests {
 
     #[test]
     fn classify_struct_small_integer_pack() {
-        let abi = abi(TCTX.clone());
+        let abi = abi(tctx());
         let ty = struct_type(vec![i32(), i32()]);
 
         let (info, regs) = abi.classify_argument(&ty, 6, true);
@@ -226,7 +232,7 @@ mod tests {
 
     #[test]
     fn classify_struct_large_memory() {
-        let abi = abi(TCTX.clone());
+        let abi = abi(tctx());
         let ty = struct_type(vec![i64(), i64(), i64()]);
 
         let (info, _) = abi.classify_argument(&ty, 6, true);
@@ -236,7 +242,7 @@ mod tests {
 
     #[test]
     fn classify_union_integer_float() {
-        let abi = abi(TCTX.clone());
+        let abi = abi(tctx());
         let ty = union_type(vec![i64(), f64()]);
 
         let (info, regs) = abi.classify_argument(&ty, 6, true);
@@ -250,7 +256,7 @@ mod tests {
 
     #[test]
     fn classify_array_two_f32_vector() {
-        let abi = abi(TCTX.clone());
+        let abi = abi(tctx());
         let ty = array_type(f32(), 2);
 
         let (info, regs) = abi.classify_argument(&ty, 6, true);
@@ -264,7 +270,7 @@ mod tests {
 
     #[test]
     fn classify_array_four_f32_two_sse() {
-        let abi = abi(TCTX.clone());
+        let abi = abi(tctx());
         let ty = array_type(f32(), 4);
 
         let (info, regs) = abi.classify_argument(&ty, 6, true);
@@ -279,7 +285,7 @@ mod tests {
 
     #[test]
     fn classify_return_dynamic_interface_object() {
-        let abi = abi(TCTX.clone());
+        let abi = abi(tctx());
         let ty = CIRType::Dynamic(CIRDynamicType { vtable_id: VTableID(1) });
 
         let ret = abi.classify_return(&ty);
@@ -292,7 +298,7 @@ mod tests {
 
     #[test]
     fn classify_dynamic_two_pointers() {
-        let abi = abi(TCTX.clone());
+        let abi = abi(tctx());
         let ty = CIRType::Dynamic(CIRDynamicType { vtable_id: VTableID(0) });
 
         let (info, regs) = abi.classify_argument(&ty, 6, true);
@@ -307,7 +313,7 @@ mod tests {
 
     #[test]
     fn classify_return_i64() {
-        let abi = abi(TCTX.clone());
+        let abi = abi(tctx());
         let ret = abi.classify_return(&i64());
 
         match ret.kind {
@@ -318,7 +324,7 @@ mod tests {
 
     #[test]
     fn classify_return_two_i64_struct() {
-        let abi = abi(TCTX.clone());
+        let abi = abi(tctx());
         let ty = struct_type(vec![i64(), i64()]);
 
         let ret = abi.classify_return(&ty);
@@ -331,7 +337,7 @@ mod tests {
 
     #[test]
     fn classify_return_double_pair() {
-        let abi = abi(TCTX.clone());
+        let abi = abi(tctx());
         let ty = struct_type(vec![f64(), f64()]);
 
         let ret = abi.classify_return(&ty);
@@ -344,7 +350,7 @@ mod tests {
 
     #[test]
     fn classify_return_large_struct_sret() {
-        let abi = abi(TCTX.clone());
+        let abi = abi(tctx());
         let ty = struct_type(vec![i64(), i64(), i64()]);
 
         let ret = abi.classify_return(&ty);
@@ -357,7 +363,7 @@ mod tests {
 
     #[test]
     fn sysv_integer_register_exhaustion() {
-        let abi = abi(TCTX.clone());
+        let abi = abi(tctx());
 
         let fn_ty = CIRFuncType {
             params: vec![i64(), i64(), i64(), i64(), i64(), i64(), i64()],
@@ -379,7 +385,7 @@ mod tests {
 
     #[test]
     fn sysv_sse_register_exhaustion() {
-        let abi = abi(TCTX.clone());
+        let abi = abi(tctx());
 
         let params = vec![f64(), f64(), f64(), f64(), f64(), f64(), f64(), f64(), f64()];
 
@@ -398,7 +404,7 @@ mod tests {
 
     #[test]
     fn variadic_promotion_int8() {
-        let abi = abi(TCTX.clone());
+        let abi = abi(tctx());
         let promoted = abi.apply_variadic_argument_promote(&i8());
 
         assert!(matches!(promoted, CIRType::Plain(PlainType::Int32)));
@@ -406,7 +412,7 @@ mod tests {
 
     #[test]
     fn variadic_promotion_float32() {
-        let abi = abi(TCTX.clone());
+        let abi = abi(tctx());
         let promoted = abi.apply_variadic_argument_promote(&f32());
 
         assert!(matches!(promoted, CIRType::Plain(PlainType::Float64)));
@@ -414,7 +420,7 @@ mod tests {
 
     #[test]
     fn variadic_array_decay() {
-        let abi = abi(TCTX.clone());
+        let abi = abi(tctx());
         let promoted = abi.apply_variadic_argument_promote(&array_type(u8(), 8));
 
         assert!(matches!(promoted, CIRType::Pointer(_)));
@@ -422,7 +428,7 @@ mod tests {
 
     #[test]
     fn classify_return_i32() {
-        let abi = abi(TCTX.clone());
+        let abi = abi(tctx());
         let ret = abi.classify_return(&i32());
 
         assert!(matches!(ret.kind, ABIRetInfoKind::Direct { .. }));
@@ -430,7 +436,7 @@ mod tests {
 
     #[test]
     fn classify_return_f32() {
-        let abi = abi(TCTX.clone());
+        let abi = abi(tctx());
         let ret = abi.classify_return(&f32());
 
         assert!(matches!(ret.kind, ABIRetInfoKind::Direct { .. }));
@@ -438,7 +444,7 @@ mod tests {
 
     #[test]
     fn classify_return_f64() {
-        let abi = abi(TCTX.clone());
+        let abi = abi(tctx());
         let ret = abi.classify_return(&f64());
 
         assert!(matches!(ret.kind, ABIRetInfoKind::Direct { .. }));
@@ -446,7 +452,7 @@ mod tests {
 
     #[test]
     fn classify_return_i128() {
-        let abi = abi(TCTX.clone());
+        let abi = abi(tctx());
         let ty = CIRType::Plain(PlainType::Int128);
 
         let ret = abi.classify_return(&ty);
@@ -459,7 +465,7 @@ mod tests {
 
     #[test]
     fn classify_return_u128() {
-        let abi = abi(TCTX.clone());
+        let abi = abi(tctx());
         let ty = CIRType::Plain(PlainType::UInt128);
 
         let ret = abi.classify_return(&ty);
@@ -472,7 +478,7 @@ mod tests {
 
     #[test]
     fn classify_return_pointer() {
-        let abi = abi(TCTX.clone());
+        let abi = abi(tctx());
 
         let ty = CIRType::Pointer(Box::new(i32()));
 
@@ -483,7 +489,7 @@ mod tests {
 
     #[test]
     fn classify_return_function_pointer() {
-        let abi = abi(TCTX.clone());
+        let abi = abi(tctx());
 
         let fn_ty = CIRType::FuncType(CIRFuncType {
             params: Vec::new(),
@@ -500,7 +506,7 @@ mod tests {
 
     #[test]
     fn classify_return_struct_single_i64() {
-        let abi = abi(TCTX.clone());
+        let abi = abi(tctx());
         let ty = struct_type(vec![i64()]);
 
         let ret = abi.classify_return(&ty);
@@ -510,7 +516,7 @@ mod tests {
 
     #[test]
     fn classify_return_struct_i32_i32() {
-        let abi = abi(TCTX.clone());
+        let abi = abi(tctx());
         let ty = struct_type(vec![i32(), i32()]);
 
         let ret = abi.classify_return(&ty);
@@ -520,7 +526,7 @@ mod tests {
 
     #[test]
     fn classify_return_struct_i64_i32() {
-        let abi = abi(TCTX.clone());
+        let abi = abi(tctx());
         let ty = struct_type(vec![i64(), i32()]);
 
         let ret = abi.classify_return(&ty);
@@ -533,7 +539,7 @@ mod tests {
 
     #[test]
     fn classify_return_struct_float_int() {
-        let abi = abi(TCTX.clone());
+        let abi = abi(tctx());
         let ty = struct_type(vec![f64(), i64()]);
 
         let ret = abi.classify_return(&ty);
@@ -546,7 +552,7 @@ mod tests {
 
     #[test]
     fn classify_return_struct_three_i32() {
-        let abi = abi(TCTX.clone());
+        let abi = abi(tctx());
         let ty = struct_type(vec![i32(), i32(), i32()]);
 
         let ret = abi.classify_return(&ty);
@@ -559,7 +565,7 @@ mod tests {
 
     #[test]
     fn classify_return_struct_exact_16_bytes() {
-        let abi = abi(TCTX.clone());
+        let abi = abi(tctx());
         let ty = struct_type(vec![i64(), i64()]);
 
         let ret = abi.classify_return(&ty);
@@ -572,7 +578,7 @@ mod tests {
 
     #[test]
     fn classify_return_array_two_i64() {
-        let abi = abi(TCTX.clone());
+        let abi = abi(tctx());
         let ty = array_type(i64(), 2);
 
         let ret = abi.classify_return(&ty);
@@ -585,7 +591,7 @@ mod tests {
 
     #[test]
     fn classify_return_array_three_i64_memory() {
-        let abi = abi(TCTX.clone());
+        let abi = abi(tctx());
         let ty = array_type(i64(), 3);
 
         let ret = abi.classify_return(&ty);
@@ -598,7 +604,7 @@ mod tests {
 
     #[test]
     fn classify_return_array_two_f64() {
-        let abi = abi(TCTX.clone());
+        let abi = abi(tctx());
         let ty = array_type(f64(), 2);
 
         let ret = abi.classify_return(&ty);
@@ -611,7 +617,7 @@ mod tests {
 
     #[test]
     fn classify_return_union_i64_f64() {
-        let abi = abi(TCTX.clone());
+        let abi = abi(tctx());
         let ty = union_type(vec![i64(), f64()]);
 
         let ret = abi.classify_return(&ty);
@@ -621,7 +627,7 @@ mod tests {
 
     #[test]
     fn classify_return_union_large_memory() {
-        let abi = abi(TCTX.clone());
+        let abi = abi(tctx());
         let ty = union_type(vec![array_type(u8(), 24)]);
 
         let ret = abi.classify_return(&ty);
@@ -634,7 +640,7 @@ mod tests {
 
     #[test]
     fn classify_return_nested_struct_pair() {
-        let abi = abi(TCTX.clone());
+        let abi = abi(tctx());
 
         let inner = struct_type(vec![i64(), i64()]);
         let outer = struct_type(vec![inner]);
@@ -649,7 +655,7 @@ mod tests {
 
     #[test]
     fn classify_return_struct_with_array_field() {
-        let abi = abi(TCTX.clone());
+        let abi = abi(tctx());
 
         let ty = struct_type(vec![array_type(i32(), 4)]);
 
@@ -663,7 +669,7 @@ mod tests {
 
     #[test]
     fn classify_return_void_ignore() {
-        let abi = abi(TCTX.clone());
+        let abi = abi(tctx());
 
         let ret = abi.classify_return(&CIRType::Plain(PlainType::Void));
 

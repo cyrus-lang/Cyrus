@@ -1,0 +1,25 @@
+// @stdout: 4950
+
+import std::libc{printf};
+
+pub fn main() {
+    var arr: int32[100] = undefined;
+    var p: int32* = &arr[0];
+    var i: int32 = 0;
+    while (i < 100) {
+        *p = i;
+        p = p + 1;
+        i = i + 1;
+    }
+
+    var sum: int32 = 0;
+    p = &arr[0];
+    var j: int32 = 0;
+    while (j < 100) {
+        sum = sum + *p;
+        p = p + 1;
+        j = j + 1;
+    }
+
+    printf("%d\n", sum);
+}
