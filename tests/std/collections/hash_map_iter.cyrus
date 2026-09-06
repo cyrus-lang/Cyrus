@@ -19,8 +19,11 @@ pub fn main() {
     );
     defer map.free();
 
-    map.insert(1, 10);
-    map.insert(2, 20);
+    const k1: usize = 1;
+    const k2: usize = 2;
+
+    map.insert(k1, 10);
+    map.insert(k2, 20);
 
     var iter_mut = map.iter();
     while (true) {
@@ -52,8 +55,8 @@ pub fn main() {
         count_o += 1;
     }
 
-    const val1 = *map.get(1).unwrap();
-    const val2 = *map.get(2).unwrap();
+    const val1 = *map.get(k1).unwrap();
+    const val2 = *map.get(k2).unwrap();
 
     if (((((val1 == 15) && (val2 == 25)) && (count_c == 2)) && (count_o == 2))) {
         printf("hash_map_iter ok\n");
