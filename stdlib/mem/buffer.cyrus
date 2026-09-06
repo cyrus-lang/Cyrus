@@ -1,22 +1,22 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 The Cyrus Language
 
-import std::collections{Vector};
+import std::collections{Vec};
 import std::mem{Allocator};
 
 pub struct Buffer<T> {
-    buffer: Vector<T>,
+    buffer: Vec<T>,
 
     [[inline]]
     pub fn new(allocator: Allocator) Self {
-        var buffer: Vector<T> = Vector.with_capacity(allocator, 1);
+        var buffer: Vec<T> = Vec.with_capacity(allocator, 1);
 
         return Self { buffer };
     }
 
     [[inline]]
     pub fn with_capacity(allocator: Allocator, cap: usize) Self {
-        var buffer: Vector<T> = Vector.with_capacity(allocator, cap);
+        var buffer: Vec<T> = Vec.with_capacity(allocator, cap);
 
         return Self { buffer };
     }
