@@ -578,7 +578,8 @@ impl CIRTypeContext {
             total_align = total_align.max(align as u32);
         }
 
-        let total_size = tag_size + max_payload_size;
+        let payload_offset = align_offset(tag_size, max_payload_align);
+        let total_size = align_offset(payload_offset + max_payload_size, total_align);
         
         ABITypeLayout::aggregate(total_size, total_align, Vec::new())
     }
