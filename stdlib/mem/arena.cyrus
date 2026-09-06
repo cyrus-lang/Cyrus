@@ -4,7 +4,7 @@
 import std::collections::linked_list{SinglyLinkedList, SinglyNode};
 import std::mem{Allocator, align_up, is_power_of_two};
 
-pub const ARENA_DEFAULT_ALIGNMENT = @sizeof(usize);
+pub const ARENA_DEFAULT_ALIGNMENT = @sizeof(uintptr);
 
 struct ArenaNode {
     pub ptr: uint8*,
@@ -39,49 +39,50 @@ pub struct ArenaAllocator : Allocator {
             return null;
         }
 
-        switch (self->nodes.peek_first()) {
-            case .Some(node) => {
-                var arena = &node->value;
-                const base_addr = @cast(uintptr, arena->ptr) + arena->used;
-                const aligned_addr = align_up(base_addr, align);
-                const padding = aligned_addr - base_addr;
-                const total_needed = padding + size;
-
-                if (arena->used + total_needed <= arena->capacity) {
-                    arena->used += total_needed;
-                    return @cast(void*, aligned_addr);
-                }
-
-                var next_cap = self->default_capacity;
-                if (total_needed > next_cap) {
-                    next_cap = total_needed;
-                }
-
-                self->create_node(next_cap);
-
-                switch (self->nodes.peek_first()) {
-                    case .Some(new_node) => {
-                        var new_arena = &new_node->value;
-                        const new_base = @cast(uintptr, new_arena->ptr);
-                        const new_aligned = align_up(new_base, align);
-                        const new_padding = new_aligned - new_base;
-                        const new_total = new_padding + size;
-
-                        new_arena->used += new_total;
-                        return @cast(void*, new_aligned);
-                    }
-                    case .None => return null;
-                }
-            }
-            case .None => return null;
+        switch (self->nodes.peek_first()) case .Some(node) else {
+            return null;
         }
+
+        var arena = &node->value;
+        const base_addr = @cast(uintptr, arena->ptr) + arena->used;
+        const aligned_addr = align_up(base_addr, align);
+        const padding = aligned_addr - base_addr;
+        const total_needed = padding + size;
+
+        if (arena->used + total_needed <= arena->capacity) {
+            arena->used += total_needed;
+            return @cast(void*, aligned_addr);
+        }
+
+        var next_cap = self->default_capacity;
+
+        if (total_needed > next_cap) {
+            next_cap = total_needed;
+        }
+
+        self->create_node(next_cap);
+
+        switch (self->nodes.peek_first()) case .Some(new_node) else {
+            return null;
+        }
+
+        var new_arena = &new_node->value;
+        const new_base = @cast(uintptr, new_arena->ptr);
+        const new_aligned = align_up(new_base, align);
+        const new_padding = new_aligned - new_base;
+        const new_total = new_padding + size;
+
+        new_arena->used += new_total;
+        return @cast(void*, new_aligned);
     }
 
     pub fn alloc_zeroed(self: Self*, size: usize) void* {
         const ptr = self->alloc(size);
+        
         if (ptr != null) {
             @memset(ptr, 0, size);
         }
+        
         return ptr;
     }
 
@@ -89,14 +90,17 @@ pub struct ArenaAllocator : Allocator {
         if (ptr == null) {
             return self->alloc(size);
         }
+
         if (size == 0) {
             return null;
         }
 
         const new_ptr = self->alloc(size);
+
         if (new_ptr != null) {
             @memset(new_ptr, 0, size);
         }
+        
         return new_ptr;
     }
 
@@ -105,6 +109,7 @@ pub struct ArenaAllocator : Allocator {
 
     pub fn reset(self: Self*) {
         var current = self->nodes.head;
+        
         while (current != null) {
             current->value.used = 0;
             current = current->next;
@@ -113,20 +118,21 @@ pub struct ArenaAllocator : Allocator {
 
     pub fn destroy(self: Self*) {
         while (self->nodes.head != null) {
-            switch (self->nodes.pop_first()) {
-                case .Some(node) => {
-                    self->child_allocator.free(node->value.ptr);
-                    self->child_allocator.free(node);
-                }
-                case .None => break;
+            switch (self->nodes.pop_first()) case .Some(node) else {
+                break;
             }
+
+            self->child_allocator.free(node->value.ptr);
+            self->child_allocator.free(node);
         }
     }
 
     fn create_node(self: Self*, capacity: usize) {
-        var node: SinglyNode<ArenaNode>* = self->child_allocator.alloc(@sizeof(SinglyNode<ArenaNode>));
         const ptr: uint8* = self->child_allocator.alloc(capacity);
-
+        
+        var node: SinglyNode<ArenaNode>* = 
+            self->child_allocator.alloc(@sizeof(SinglyNode<ArenaNode>));
+        
         *node = SinglyNode {
             value: ArenaNode {
                 ptr,

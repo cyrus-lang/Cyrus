@@ -1,12 +1,12 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 The Cyrus Language
 
+import std::libc{memmove};
 import std::mem{
     Allocator,
     is_power_of_two,
     align_up
 };
-import std::libc{memmove};
 
 pub struct FixedBufferAllocator : Allocator {
     buffer: uint8*,
@@ -18,6 +18,7 @@ pub struct FixedBufferAllocator : Allocator {
     [[inline]]
     pub fn new(buffer: uint8*, cap: usize) Self {
         @assert(buffer != null, "buffer cannot be null");
+
         return Self {
             buffer,
             cap,
@@ -85,6 +86,7 @@ pub struct FixedBufferAllocator : Allocator {
                 return ptr;
             } else {
                 const diff = size - self->last_alloc_size;
+
                 if (self->offset + diff <= self->cap) {
                     self->offset += diff;
                     self->last_alloc_size = size;
@@ -94,11 +96,13 @@ pub struct FixedBufferAllocator : Allocator {
         }
 
         const new_ptr = self->alloc(size);
+
         if (new_ptr == null) {
             return null;
         }
 
         var copy_size = size;
+        
         if (copy_size > self->last_alloc_size) {
             copy_size = self->last_alloc_size;
         }

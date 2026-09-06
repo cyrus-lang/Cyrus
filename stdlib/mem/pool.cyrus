@@ -23,17 +23,34 @@ pub struct PoolAllocator : Allocator {
     [[inline]]
     pub fn new(buffer: uint8*, buffer_cap: usize, chunk_size: usize) Self {
         @assert(buffer != null, "buffer cannot be null");
+        @assert(buffer_cap > 0, "buffer capacity must be greater than zero");
         @assert(chunk_size > 0, "chunk size must be greater than zero");
 
         var actual_chunk = chunk_size;
+
         if (actual_chunk < @sizeof(PoolChunk)) {
             actual_chunk = @sizeof(PoolChunk);
         }
 
-        actual_chunk = @cast(usize, align_up(@cast(uintptr, actual_chunk), @sizeof(usize)));
+        // Every chunk must be sufficiently aligned for PoolChunk
+        const chunk_align = @alignof(PoolChunk);
+
+        @assert(is_power_of_two(chunk_align), "PoolChunk alignment must be a power of two");
+
+        actual_chunk = align_up(actual_chunk, chunk_align);
+
+        // The buffer itself must satisfy the pool's alignment requirement
+        @assert(
+            @cast(uintptr, buffer) % @cast(uintptr, chunk_align) == 0,
+            "buffer is not sufficiently aligned"
+        );
 
         const total_chunks = buffer_cap / actual_chunk;
-        @assert(total_chunks > 0, "buffer is too small for even one chunk");
+
+        @assert(
+            total_chunks > 0,
+            "buffer is too small for even one chunk"
+        );
 
         var pool = Self {
             buffer,
@@ -46,6 +63,7 @@ pub struct PoolAllocator : Allocator {
         };
 
         pool.init_free_list();
+
         return pool;
     }
 
@@ -55,23 +73,50 @@ pub struct PoolAllocator : Allocator {
 
         for (var i: usize = 0; i < self->total_chunks; i += 1) {
             const chunk_offset = i * self->actual_chunk_size;
+
+            // FIXME (compiler bug): Directly cast to PoolChunk* instead of void*
             var chunk: PoolChunk* = @cast(void*, self->buffer + chunk_offset);
+
             chunk->next = self->free_list;
             self->free_list = chunk;
         }
     }
 
+    /// Returns true when ptr points to the beginning of a valid pool chunk.
+    [[inline]]
+    fn owns(self: const Self*, ptr: void*) bool {
+        if (ptr == null) {
+            return false;
+        }
+
+        const address = @cast(uintptr, ptr);
+        const begin = @cast(uintptr, self->buffer);
+
+        if (address < begin) {
+            return false;
+        }
+
+        const offset = address - begin;
+
+        if (offset >= self->buffer_cap) {
+            return false;
+        }
+
+        return offset % self->actual_chunk_size == 0;
+    }
+
     [[inline]]
     pub fn alloc(self: Self*, size: usize) void* {
         if (size > self->chunk_size) {
-            return null; // Cannot allocate bigger than chunk_size
+            return null;
         }
 
         if (self->free_list == null) {
-            return null; 
+            return null;
         }
 
         var chunk = self->free_list;
+
         self->free_list = chunk->next;
         self->used_chunks += 1;
 
@@ -81,9 +126,11 @@ pub struct PoolAllocator : Allocator {
     [[inline]]
     pub fn alloc_aligned(self: Self*, size: usize, align: usize) void* {
         @assert(is_power_of_two(align), "alignment must be a power of two");
-        
-        if (align > @sizeof(usize)) {
-            return null; 
+
+        // Pool chunks are aligned to PoolChunk's alignment.
+        // Higher alignments cannot be guaranteed by this allocator
+        if (align > @alignof(PoolChunk)) {
+            return null;
         }
 
         return self->alloc(size);
@@ -92,9 +139,11 @@ pub struct PoolAllocator : Allocator {
     [[inline]]
     pub fn alloc_zeroed(self: Self*, size: usize) void* {
         const ptr = self->alloc(size);
+
         if (ptr != null) {
-            @memset(ptr, 0, self->actual_chunk_size);
+            @memset(ptr, 0, size);
         }
+
         return ptr;
     }
 
@@ -109,11 +158,13 @@ pub struct PoolAllocator : Allocator {
             return null;
         }
 
+        @assert(self->owns(ptr), "pointer does not belong to pool");
+
         if (size <= self->chunk_size) {
-            return ptr; 
+            return ptr;
         }
 
-        return null; 
+        return null;
     }
 
     [[inline]]
@@ -122,13 +173,15 @@ pub struct PoolAllocator : Allocator {
             return;
         }
 
+        @assert(self->owns(ptr), "pointer does not belong to pool");
+        @assert(self->used_chunks > 0, "invalid pool free");
+
         var chunk: PoolChunk* = ptr;
+
         chunk->next = self->free_list;
         self->free_list = chunk;
 
-        if (self->used_chunks > 0) {
-            self->used_chunks -= 1;
-        }
+        self->used_chunks -= 1;
     }
 
     [[inline]]
