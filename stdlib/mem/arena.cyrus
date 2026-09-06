@@ -111,7 +111,7 @@ pub struct ArenaAllocator : Allocator {
         }
     }
 
-    pub fn deinit(self: Self*) {
+    pub fn destroy(self: Self*) {
         while (self->nodes.head != null) {
             switch (self->nodes.pop_first()) {
                 case .Some(node) => {
@@ -121,10 +121,6 @@ pub struct ArenaAllocator : Allocator {
                 case .None => break;
             }
         }
-    }
-
-    pub fn destroy(self: Self*) {
-        self->deinit();
     }
 
     fn create_node(self: Self*, capacity: usize) {
