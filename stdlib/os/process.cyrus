@@ -5,6 +5,10 @@ import std::mem{Allocator};
 import std::string{String};
 import std::errors{ErrorOr, ErrorStr};
 
+// NOTE: Currently Cyrus only supports SYSV X86_64 target
+// immediately after compiler support more targets
+// we will support os tools target-independently.
+
 pub extern "C" {
     fn system(command: const uint8*) int32;
     fn exit(status: int32);

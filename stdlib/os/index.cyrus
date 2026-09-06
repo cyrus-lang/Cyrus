@@ -8,6 +8,10 @@ import std::string{String};
 import std::path{Path};
 import std::libc;
 
+// NOTE: Currently Cyrus only supports SYSV X86_64 target
+// immediately after compiler support more targets
+// we will support os tools target-independently.
+
 pub struct File {
     path: const Path*,
     file: c_file*,
