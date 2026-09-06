@@ -17,24 +17,21 @@ pub fn main() {
     map.insert(20, 200);
     map.insert(30, 300);
 
-    const key10: usize = 10;
-    const key20: usize = 20;
-
-    const val10 = map.get(&key10);
+    const val10 = map.get(10);
     if (val10.is_some() && *val10.unwrap() == 100) {
         printf("OK: insert and get\n");
     }
 
     // Update
     map.insert(10, 999);
-    const val10_updated = map.get(&key10);
+    const val10_updated = map.get(10);
     if (val10_updated.is_some() && *val10_updated.unwrap() == 999) {
         printf("OK: update existing key\n");
     }
 
     // Removal and Tombstone
-    map.remove(&key20);
-    const val20 = map.get(&key20);
+    map.remove(20);
+    const val20 = map.get(20);
     if (val20.is_none() && map.len() == 2) {
         printf("OK: remove key\n");
     }
@@ -46,7 +43,7 @@ pub fn main() {
 
     var all_correct: bool = true;
     for (var i: usize = 100; i < 200; i += 1) {
-        const val = map.get(&i);
+        const val = map.get(i);
         if (val.is_none() || *val.unwrap() != i * 10) {
             all_correct = false;
         }
