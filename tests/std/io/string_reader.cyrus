@@ -1,0 +1,26 @@
+// @stdout: read: 5, char:  , ok
+
+import std::io{StringReader, Reader};
+import std::libc{printf, strlen};
+
+pub fn main() {
+    const text = "Hello World";
+    const text_len = strlen(text);
+
+    var sr = StringReader.new(text, text_len);
+    const reader: Reader = dynamic sr;
+
+    var buf: uint8[6];
+    const n = reader.read(&buf[0], 5).unwrap();
+    buf[n] = '\0';
+
+    const ch = reader.read_char().unwrap();
+
+    printf("read: %lu, char: %c, ", n, ch);
+
+    if ((n == 5 && ch == ' ') && sr.remaining() == 5) {
+        printf("ok\n");
+    } else {
+        printf("fail\n");
+    }
+}

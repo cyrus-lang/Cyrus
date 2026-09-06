@@ -1,38 +1,44 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 The Cyrus Language
 
-/// A const string literal for error message.
 pub type ErrorStr = const uint8*;
 
-/// A result type representing either a successful value `V` or an error message.
 pub enum ErrorOr<V, E = ErrorStr> {
-	Value(V),
-	Error(E)
+    Value(V),
+    Error(E)
 
-	/// Unwraps the contained value, panicking with the error message if this is an Error.
+    // NOTE: @panic expects a string literal rather than a dynamic generic E or const uint8*
+    // Passing a static panic message resolves compiler type mismatches during unwrap.
     [[inline]]
-	pub fn unwrap(self: const Self*) V {
-    	switch (*self) {
-			case .Value(value) => return value;
-			case .Error(err) => @panic(err);
-		}
+    pub fn unwrap(self: const Self*) V {
+        switch (*self) {
+            case .Value(value) => return value;
+            case .Error(_) => @panic("called `ErrorOr.unwrap()` on an `Error` value");
+        }
     }
 
-	/// Returns true if contains an error, false otherwise.
-	[[inline]]
-	pub fn is_error(self: const Self*) bool {
-		switch (*self) {
-			case .Value(_) => return false;
-			case .Error(_) => return true;
-		}
-	}
-	
-	/// Returns true if contains a value, false otherwise.
-	[[inline]]
-	pub fn is_value(self: const Self*) bool {
-		switch (*self) {
-			case .Value(_) => return true;
-			case .Error(_) => return false;
-		}
-	}
+    // Returns the contained value or a caller-provided default fallback value
+    [[inline]]
+    pub fn unwrap_or(self: const Self*, default: V) V {
+        switch (*self) {
+            case .Value(value) => return value;
+            case .Error(_) => return default;
+        }
+    }
+
+    [[inline]]
+    pub fn is_error(self: const Self*) bool {
+        switch (*self) {
+            case .Value(_) => return false;
+            case .Error(_) => return true;
+        }
+    }
+    
+    [[inline]]
+    pub fn is_value(self: const Self*) bool {
+        switch (*self) {
+            case .Value(_) => return true;
+            case .Error(_) => return false;
+        }
+    }
 }

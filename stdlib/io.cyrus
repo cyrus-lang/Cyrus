@@ -6,10 +6,16 @@ import (
         fprintf,
         stdout,
         stderr,
-        fflush
+        stdin,
+        fflush,
+        fread,
+        getchar,
+        memmove,
+        strlen
     },
     std::collections{Vec},
-    std::errors{ErrorOr},
+    std::errors{ErrorOr, ErrorStr},
+    std::option{Option},
     std::string{String}
 );
 
@@ -21,6 +27,11 @@ pub interface Writer {
     fn write_char(self: Self*, char: uint8) IOError;
     fn writeln(self: Self*, data: const uint8*) IOError;
     fn flush(self: Self*) IOError;
+}
+
+pub interface Reader {
+    fn read(self: Self*, dest: uint8*, max_len: usize) ErrorOr<usize, ErrorStr>;
+    fn read_char(self: Self*) Option<uint8>;
 }
 
 pub struct StdoutWriter : Writer {
@@ -107,7 +118,6 @@ pub struct StringWriter : Writer {
 
     pub fn write_all(self: Self*, data: const uint8*) IOError {
         @assert(data, "data cannot be null");
-        self->buffer->clear();
         self->buffer->push_str(data);
         return .Value(());
     }
@@ -150,7 +160,10 @@ pub struct MultiWriter : Writer {
         @assert(data, "data cannot be null");
         for (var i: usize = 0; i < self->writers.len(); i += 1) {
             var writer = self->writers.get_owned(i).unwrap();
-            writer.write_all(data);
+            const res = writer.write_all(data);
+            if (res.is_error()) {
+                return res;
+            }
         }
         return .Value(());
     }
@@ -159,7 +172,10 @@ pub struct MultiWriter : Writer {
         @assert(data, "data cannot be null");
         for (var i: usize = 0; i < self->writers.len(); i += 1) {
             var writer = self->writers.get_owned(i).unwrap();
-            writer.write(data);
+            const res = writer.write(data);
+            if (res.is_error()) {
+                return res;
+            }
         }
         return .Value(());
     }
@@ -167,7 +183,10 @@ pub struct MultiWriter : Writer {
     pub fn write_char(self: Self*, char: uint8) IOError {
         for (var i: usize = 0; i < self->writers.len(); i += 1) {
             var writer = self->writers.get_owned(i).unwrap();
-            writer.write_char(char);
+            const res = writer.write_char(char);
+            if (res.is_error()) {
+                return res;
+            }
         }
         return .Value(());
     }
@@ -176,17 +195,276 @@ pub struct MultiWriter : Writer {
         @assert(data, "data cannot be null");
         for (var i: usize = 0; i < self->writers.len(); i += 1) {
             var writer = self->writers.get_owned(i).unwrap();
-            writer.writeln(data);
+            const res = writer.writeln(data);
+            if (res.is_error()) {
+                return res;
+            }
         }
         return .Value(());
     }
 
     pub fn flush(self: Self*) IOError {
-        var err: IOError = .Value(());
+        var has_error: bool = false;
         for (var i: usize = 0; i < self->writers.len(); i += 1) {
             var writer = self->writers.get_owned(i).unwrap();
-            err = writer.flush();
+            const res = writer.flush();
+            if (res.is_error()) {
+                has_error = true;
+            }
         }
-        return err;
+        if (has_error) {
+            return .Error(());
+        }
+        return .Value(());
+    }
+}
+
+pub struct StdinReader : Reader {
+    pub fn new() Self {
+        return Self {};
+    }
+
+    pub fn read(self: Self*, dest: uint8*, max_len: usize) ErrorOr<usize, ErrorStr> {
+        @assert(dest != null, "dest buffer cannot be null");
+
+        if (max_len == 0) {
+            return .Value(0);
+        }
+
+        const bytes_read = fread(dest, 1, max_len, stdin);
+        return .Value(bytes_read);
+    }
+
+    pub fn read_char(self: Self*) Option<uint8> {
+        const ch = getchar();
+        if (ch < 0) {
+            return .None;
+        }
+        return .Some(@cast(uint8, ch));
+    }
+}
+
+pub struct StringReader : Reader {
+    data: const uint8*,
+    len: usize,
+    pos: usize,
+
+    pub fn new(data: const uint8*, len: usize) Self {
+        @assert(data != null, "data cannot be null");
+        return Self {
+            data,
+            len,
+            pos: 0
+        };
+    }
+
+    pub fn read(self: Self*, dest: uint8*, max_len: usize) ErrorOr<usize, ErrorStr> {
+        @assert(dest != null, "dest buffer cannot be null");
+
+        if (self->pos >= self->len || max_len == 0) {
+            return .Value(0);
+        }
+
+        var to_read = self->len - self->pos;
+        if (to_read > max_len) {
+            to_read = max_len;
+        }
+
+        memmove(dest, self->data + self->pos, to_read);
+        self->pos += to_read;
+        return .Value(to_read);
+    }
+
+    pub fn read_char(self: Self*) Option<uint8> {
+        if (self->pos >= self->len) {
+            return .None;
+        }
+
+        const ch = self->data[self->pos];
+        self->pos += 1;
+        return .Some(ch);
+    }
+
+    pub fn reset(self: Self*) {
+        self->pos = 0;
+    }
+
+    pub fn remaining(self: const Self*) usize {
+        if (self->pos >= self->len) {
+            return 0;
+        }
+        return self->len - self->pos;
+    }
+}
+
+pub struct BufferedWriter : Writer {
+    underlying: Writer,
+    buf: uint8*,
+    cap: usize,
+    len: usize,
+
+    pub fn new(underlying: Writer, buf: uint8*, cap: usize) Self {
+        @assert(buf != null, "buffer cannot be null");
+        @assert(cap > 0, "capacity must be greater than zero");
+        return Self {
+            underlying,
+            buf,
+            cap,
+            len: 0
+        };
+    }
+
+    pub fn write_all(self: Self*, data: const uint8*) IOError {
+        return self->write(data);
+    }
+
+    pub fn write(self: Self*, data: const uint8*) IOError {
+        @assert(data != null, "data cannot be null");
+        const str_len = strlen(data);
+        var offset: usize = 0;
+        while (offset < str_len) {
+            if (self->len >= self->cap) {
+                const flush_res = self->flush();
+                if (flush_res.is_error()) {
+                    return flush_res;
+                }
+            }
+            const current_available = self->cap - self->len;
+            var to_copy = str_len - offset;
+            if (to_copy > current_available) {
+                to_copy = current_available;
+            }
+            memmove(self->buf + self->len, data + offset, to_copy);
+            self->len += to_copy;
+            offset += to_copy;
+        }
+        return .Value(());
+    }
+
+    pub fn write_char(self: Self*, char: uint8) IOError {
+        if (self->len >= self->cap) {
+            const flush_res = self->flush();
+            if (flush_res.is_error()) {
+                return flush_res;
+            }
+        }
+        self->buf[self->len] = char;
+        self->len += 1;
+        return .Value(());
+    }
+
+    pub fn writeln(self: Self*, data: const uint8*) IOError {
+        const res = self->write(data);
+        if (res.is_error()) {
+            return res;
+        }
+        return self->write_char('\n');
+    }
+
+    pub fn flush(self: Self*) IOError {
+        if (self->len == 0) {
+            return .Value(());
+        }
+        for (var i: usize = 0; i < self->len; i += 1) {
+            const res = self->underlying.write_char(self->buf[i]);
+            if (res.is_error()) {
+                return res;
+            }
+        }
+        self->len = 0;
+        return self->underlying.flush();
+    }
+
+    pub fn buffered_len(self: const Self*) usize {
+        return self->len;
+    }
+}
+
+pub struct BufferedReader : Reader {
+    underlying: Reader,
+    buf: uint8*,
+    cap: usize,
+    pos: usize,
+    valid: usize,
+
+    pub fn new(underlying: Reader, buf: uint8*, cap: usize) Self {
+        @assert(buf != null, "buffer cannot be null");
+        @assert(cap > 0, "capacity must be greater than zero");
+        return Self {
+            underlying,
+            buf,
+            cap,
+            pos: 0,
+            valid: 0
+        };
+    }
+
+    pub fn read(self: Self*, dest: uint8*, max_len: usize) ErrorOr<usize, ErrorStr> {
+        @assert(dest != null, "dest buffer cannot be null");
+        if (max_len == 0) {
+            return .Value(0);
+        }
+
+        var total_read: usize = 0;
+        while (total_read < max_len) {
+            if (self->pos >= self->valid) {
+                const fill_res = self->fill_buffer();
+                switch (fill_res) {
+                    case .Error(err) => {
+                        if (total_read > 0) {
+                            return .Value(total_read);
+                        }
+                        return .Error(err);
+                    }
+                    case .Value(_) => {}
+                }
+
+                if (self->valid == 0) {
+                    break;
+                }
+            }
+
+            const available = self->valid - self->pos;
+            const needed = max_len - total_read;
+            var to_copy = available;
+            if (to_copy > needed) {
+                to_copy = needed;
+            }
+
+            memmove(dest + total_read, self->buf + self->pos, to_copy);
+            self->pos += to_copy;
+            total_read += to_copy;
+        }
+
+        return .Value(total_read);
+    }
+
+    pub fn read_char(self: Self*) Option<uint8> {
+        if (self->pos >= self->valid) {
+            const fill_res = self->fill_buffer();
+            switch (fill_res) {
+                case .Error(_) => return .None;
+                case .Value(_) => {}
+            }
+            if (self->valid == 0) {
+                return .None;
+            }
+        }
+        const ch = self->buf[self->pos];
+        self->pos += 1;
+        return .Some(ch);
+    }
+
+    fn fill_buffer(self: Self*) ErrorOr<(), ErrorStr> {
+        self->pos = 0;
+        self->valid = 0;
+        const read_res = self->underlying.read(self->buf, self->cap);
+        switch (read_res) {
+            case .Value(bytes) => {
+                self->valid = bytes;
+                return .Value(());
+            }
+            case .Error(err) => return .Error(err);
+        }
     }
 }
