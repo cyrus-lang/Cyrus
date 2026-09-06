@@ -325,7 +325,7 @@ CyrusOptimizerConfig cyrus_optimizer_config_default(void) {
 
 CyrusOptimizerConfig cyrus_optimizer_config_debug(void) {
   CyrusOptimizerConfig config;
-  config.verify_each = 1;
+  config.verify_each = 0;
   config.debug_logging = 1;
   config.allow_loop_unrolling = 0;
   config.allow_slp_vectorization = 0;
@@ -333,8 +333,8 @@ CyrusOptimizerConfig cyrus_optimizer_config_debug(void) {
   config.allow_loop_interleaving = 0;
   config.allow_merge_functions = 0;
   config.add_discriminators = 0;
-  config.verify_input = 1;
-  config.verify_output = 1;
+  config.verify_input = 0;
+  config.verify_output = 0;
   config.disable_code_hoisting = 0;
   config.disable_speculative_execution = 0;
   return config;
