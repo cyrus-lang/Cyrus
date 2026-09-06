@@ -1,0 +1,58 @@
+// @stdout: OK: insert and get\nOK: update existing key\nOK: remove key\nOK: table expansion and growth
+
+import std::mem::libc{LibcAllocator};
+import std::collections::hash_map{HashMap};
+import std::mem{Allocator};
+import std::libc{printf};
+import std::hash{hash_usize, eq_usize};
+
+pub fn main() {
+    var allocator: Allocator = dynamic LibcAllocator.new();
+
+    var map: HashMap<usize, usize> = HashMap.with_hasher(allocator, 16, hash_usize, eq_usize, @cast(usize, 0), @cast(usize, 0));
+    defer map.free();
+
+    // Insert and Get
+    map.insert(10, 100);
+    map.insert(20, 200);
+    map.insert(30, 300);
+
+    const key10: usize = 10;
+    const key20: usize = 20;
+
+    const val10 = map.get(&key10);
+    if (val10.is_some() && *val10.unwrap() == 100) {
+        printf("OK: insert and get\n");
+    }
+
+    // Update
+    map.insert(10, 999);
+    const val10_updated = map.get(&key10);
+    if (val10_updated.is_some() && *val10_updated.unwrap() == 999) {
+        printf("OK: update existing key\n");
+    }
+
+    // Removal and Tombstone
+    map.remove(&key20);
+    const val20 = map.get(&key20);
+    if (val20.is_none() && map.len() == 2) {
+        printf("OK: remove key\n");
+    }
+
+    // Table Growth and Resizing 
+    for (var i: usize = 100; i < 200; i += 1) {
+        map.insert(i, i * 10);
+    }
+
+    var all_correct: bool = true;
+    for (var i: usize = 100; i < 200; i += 1) {
+        const val = map.get(&i);
+        if (val.is_none() || *val.unwrap() != i * 10) {
+            all_correct = false;
+        }
+    }
+
+    if (all_correct && map.len() == 102) {
+        printf("OK: table expansion and growth\n");
+    }
+}
