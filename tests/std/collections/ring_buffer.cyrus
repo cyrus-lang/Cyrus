@@ -1,0 +1,40 @@
+// @stdout: ring_buffer ok
+
+import std::collections::ring_buffer{RingBuffer};
+import std::mem::libc{LibcAllocator};
+import std::mem{Allocator};
+import std::libc{printf};
+
+pub fn main() {
+    const allocator: Allocator = dynamic LibcAllocator.new();
+
+    var rb: RingBuffer<int32> = RingBuffer.with_capacity(allocator, 4);
+    defer rb.free();
+
+    rb.push_back(10);
+    rb.push_back(20);
+    rb.push_front(5);
+
+    const first = rb.pop_front().unwrap();
+    const last = rb.pop_back().unwrap();
+    const mid = rb.pop_front().unwrap();
+    const empty_pop = rb.pop_front();
+
+    for (var i: int32 = 0; i < 20; i += 1) {
+        rb.push_back(i);
+    }
+
+    var all_correct = true;
+    for (var i: int32 = 0; i < 20; i += 1) {
+        const val = rb.pop_front().unwrap();
+        if (val != i) {
+            all_correct = false;
+        }
+    }
+
+    if ((((((first == 5 && last == 20) && mid == 10) && empty_pop.is_none()) && all_correct) && rb.is_empty())) {
+        printf("ring_buffer ok\n");
+    } else {
+        printf("ring_buffer fail\n");
+    }
+}
