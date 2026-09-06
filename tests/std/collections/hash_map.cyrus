@@ -13,25 +13,29 @@ pub fn main() {
     defer map.free();
 
     // Insert and Get
-    map.insert(10, 100);
-    map.insert(20, 200);
-    map.insert(30, 300);
+    const k10: usize = 10;
+    const k20: usize = 20;
+    const k30: usize = 30;
 
-    const val10 = map.get(10);
+    map.insert(k10, 100);
+    map.insert(k20, 200);
+    map.insert(k30, 300);
+
+    const val10 = map.get(k10);
     if (val10.is_some() && *val10.unwrap() == 100) {
         printf("OK: insert and get\n");
     }
 
     // Update
-    map.insert(10, 999);
-    const val10_updated = map.get(10);
+    map.insert(k10, 999);
+    const val10_updated = map.get(k10);
     if (val10_updated.is_some() && *val10_updated.unwrap() == 999) {
         printf("OK: update existing key\n");
     }
 
     // Removal and Tombstone
-    map.remove(20);
-    const val20 = map.get(20);
+    map.remove(k20);
+    const val20 = map.get(k20);
     if (val20.is_none() && map.len() == 2) {
         printf("OK: remove key\n");
     }
