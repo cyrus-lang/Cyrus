@@ -1,0 +1,51 @@
+// @stdout: hex ok
+
+import std::encoding::hex;
+import std::mem::libc{LibcAllocator};
+import std::mem{Allocator};
+import std::libc{printf, strcmp, strlen};
+import std::collections{Vec};
+import std::string{String};
+
+pub fn main() {
+    const allocator: Allocator = dynamic LibcAllocator.new();
+
+    const raw_input = "Hello";
+    const raw_len = strlen(raw_input);
+
+    var hex_str = hex::encode(allocator, raw_input, raw_len);
+    defer hex_str.free();
+
+    const is_hex_match = strcmp(hex_str.as_str_const(), "48656c6c6f") == 0;
+
+    var is_decoded_ok = false;
+    var decoded_res = hex::decode(allocator, hex_str.as_str_const(), hex_str.len());
+    switch (decoded_res) {
+        case .Value(var decoded_vec) => {
+            defer decoded_vec.free();
+            if (decoded_vec.len() == 5) {
+                const d = decoded_vec.data_const();
+                if (((d[0] == 'H') && (d[4] == 'o'))) {
+                    is_decoded_ok = true;
+                }
+            }
+        }
+        case .Error(_) => {}
+    }
+
+    var is_buf_ok = false;
+    var buf: uint8[16];
+    const enc_buf_res = hex::encode_to_buf(raw_input, raw_len, &buf[0], 16);
+    if (enc_buf_res.is_some()) {
+        buf[10] = '\0';
+        if (strcmp(&buf[0], "48656c6c6f") == 0) {
+            is_buf_ok = true;
+        }
+    }
+
+    if (((is_hex_match && is_decoded_ok) && is_buf_ok)) {
+        printf("hex ok\n");
+    } else {
+        printf("hex fail\n");
+    }
+}

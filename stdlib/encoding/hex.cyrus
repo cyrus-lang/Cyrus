@@ -1,0 +1,139 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 The Cyrus Language
+
+import std::mem{Allocator};
+import std::string{String};
+import std::collections{Vec};
+import std::option{Option};
+import std::errors{ErrorOr, ErrorStr};
+
+fn hex_char(nibble: uint8) uint8 {
+    if (nibble < 10) {
+        return '0' + nibble;
+    }
+    return ('a' + nibble) - 10;
+}
+
+fn hex_upper_char(nibble: uint8) uint8 {
+    if (nibble < 10) {
+        return '0' + nibble;
+    }
+    return ('A' + nibble) - 10;
+}
+
+fn hex_nibble(ch: uint8) Option<uint8> {
+    if (((ch >= '0') && (ch <= '9'))) {
+        return .Some(ch - '0');
+    }
+    if (((ch >= 'a') && (ch <= 'f'))) {
+        return .Some((ch - 'a') + 10);
+    }
+    if (((ch >= 'A') && (ch <= 'F'))) {
+        return .Some((ch - 'A') + 10);
+    }
+    return .None;
+}
+
+pub fn encoded_len(src_len: usize) usize {
+    return src_len * 2;
+}
+
+pub fn decoded_len(hex_len: usize) usize {
+    return hex_len / 2;
+}
+
+pub fn encode(allocator: Allocator, src: const uint8*, src_len: usize) String {
+    var out = String.with_capacity(allocator, (src_len * 2) + 1);
+    for (var i: usize = 0; i < src_len; i += 1) {
+        const b = src[i];
+        const hi = b / 16;
+        const lo = b % 16;
+        out.push(hex_char(hi));
+        out.push(hex_char(lo));
+    }
+    return out;
+}
+
+pub fn encode_upper(allocator: Allocator, src: const uint8*, src_len: usize) String {
+    var out = String.with_capacity(allocator, (src_len * 2) + 1);
+    for (var i: usize = 0; i < src_len; i += 1) {
+        const b = src[i];
+        const hi = b / 16;
+        const lo = b % 16;
+        out.push(hex_upper_char(hi));
+        out.push(hex_upper_char(lo));
+    }
+    return out;
+}
+
+pub fn encode_to_buf(src: const uint8*, src_len: usize, var dest: uint8*, dest_len: usize) Option<usize> {
+    const needed = src_len * 2;
+    if (dest_len < needed) {
+        return .None;
+    }
+    for (var i: usize = 0; i < src_len; i += 1) {
+        const b = src[i];
+        const hi = b / 16;
+        const lo = b % 16;
+        dest[i * 2] = hex_char(hi);
+        dest[(i * 2) + 1] = hex_char(lo);
+    }
+    return .Some(needed);
+}
+
+pub fn decode(allocator: Allocator, hex_str: const uint8*, hex_len: usize) ErrorOr<Vec<uint8>, ErrorStr> {
+    if ((hex_len % 2) != 0) {
+        return .Error("hex string must have an even length");
+    }
+
+    const out_len = hex_len / 2;
+    if (out_len == 0) {
+        var empty_out: Vec<uint8> = Vec.new(allocator);
+        return .Value(empty_out);
+    }
+
+    var out: Vec<uint8> = Vec.with_capacity(allocator, out_len);
+
+    for (var i: usize = 0; i < out_len; i += 1) {
+        const hi_opt = hex_nibble(hex_str[i * 2]);
+        const lo_opt = hex_nibble(hex_str[(i * 2) + 1]);
+
+        if (((hi_opt.is_none()) || (lo_opt.is_none()))) {
+            out.free();
+            return .Error("invalid hex character");
+        }
+
+        const hi = hi_opt.unwrap();
+        const lo = lo_opt.unwrap();
+        const byte_val = (hi * 16) + lo;
+        out.push(byte_val);
+    }
+
+    return .Value(out);
+}
+
+pub fn decode_to_buf(hex_str: const uint8*, hex_len: usize, var dest: uint8*, dest_len: usize) ErrorOr<usize, ErrorStr> {
+    if ((hex_len % 2) != 0) {
+        return .Error("hex string must have an even length");
+    }
+
+    const needed = hex_len / 2;
+    if (dest_len < needed) {
+        return .Error("destination buffer too small");
+    }
+
+    for (var i: usize = 0; i < needed; i += 1) {
+        const hi_opt = hex_nibble(hex_str[i * 2]);
+        const lo_opt = hex_nibble(hex_str[(i * 2) + 1]);
+
+        if (((hi_opt.is_none()) || (lo_opt.is_none()))) {
+            return .Error("invalid hex character");
+        }
+
+        const hi = hi_opt.unwrap();
+        const lo = lo_opt.unwrap();
+        dest[i] = (hi * 16) + lo;
+    }
+
+    return .Value(needed);
+}

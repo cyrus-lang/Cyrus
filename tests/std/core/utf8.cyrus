@@ -1,0 +1,36 @@
+// @stdout: utf8 ok
+
+import std::core::utf8;
+import std::libc{printf, strlen};
+
+pub fn main() {
+    const ascii = "Hello";
+    const ascii_len = strlen(ascii);
+    const is_ascii_valid = utf8::is_valid(ascii, ascii_len);
+    const ascii_count = utf8::count_codepoints(ascii, ascii_len).unwrap_or(0) == 5;
+
+    const utf8_sample = "Привет";
+    const utf8_sample_len = strlen(utf8_sample);
+    const is_utf8_valid = utf8::is_valid(utf8_sample, utf8_sample_len);
+    const utf8_count = utf8::count_codepoints(utf8_sample, utf8_sample_len).unwrap_or(0) == 6;
+
+    var iter = utf8::Utf8CharIter.new(utf8_sample, utf8_sample_len);
+    var iter_count: usize = 0;
+    while (true) {
+        const cp_opt = iter.next();
+        if (cp_opt.is_none()) {
+            break;
+        }
+        iter_count += 1;
+    }
+
+    var enc_buf: uint8[4];
+    const enc_len = utf8::encode_codepoint(0x24, &enc_buf[0], 4).unwrap_or(0);
+    const is_enc_ok = ((enc_len == 1) && (enc_buf[0] == '$'));
+
+    if ((((((is_ascii_valid && ascii_count) && is_utf8_valid) && utf8_count) && (iter_count == 6)) && is_enc_ok)) {
+        printf("utf8 ok\n");
+    } else {
+        printf("utf8 fail\n");
+    }
+}
