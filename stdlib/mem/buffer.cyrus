@@ -9,14 +9,14 @@ pub struct Buffer<T> {
 
     [[inline]]
     pub fn new(allocator: Allocator) Self {
-        var buffer: Vector<T> = Vector.with_capacity(allocator, @sizeof(T));
+        var buffer: Vector<T> = Vector.with_capacity(allocator, 1);
 
         return Self { buffer };
     }
 
     [[inline]]
     pub fn with_capacity(allocator: Allocator, cap: usize) Self {
-        var buffer: Vector<T> = Vector.with_capacity(allocator, cap * @sizeof(T));
+        var buffer: Vector<T> = Vector.with_capacity(allocator, cap);
 
         return Self { buffer };
     }
@@ -78,5 +78,10 @@ pub struct Buffer<T> {
     [[inline]]
     pub fn free(self: Self*) {
         self->buffer.free();
+    }
+
+    [[inline]]
+    pub fn deinit(self: Self*) {
+        self->free();
     }
 }

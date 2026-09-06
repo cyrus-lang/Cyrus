@@ -1,0 +1,139 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 The Cyrus Language
+
+import std::mem{
+    Allocator,
+    is_power_of_two,
+    align_up
+};
+import std::libc{memmove};
+
+pub struct FixedBufferAllocator : Allocator {
+    buffer: uint8*,
+    cap: usize,
+    offset: usize,
+    last_alloc_ptr: void*,
+    last_alloc_size: usize,
+
+    [[inline]]
+    pub fn new(buffer: uint8*, cap: usize) Self {
+        @assert(buffer != null, "buffer cannot be null");
+        return Self {
+            buffer,
+            cap,
+            offset: 0,
+            last_alloc_ptr: null,
+            last_alloc_size: 0,
+        };
+    }
+
+    [[inline]]
+    pub fn alloc(self: Self*, size: usize) void* {
+        return self->alloc_aligned(size, @sizeof(usize));
+    }
+
+    [[inline]]
+    pub fn alloc_aligned(self: Self*, size: usize, align: usize) void* {
+        @assert(is_power_of_two(align), "alignment must be a power of two");
+
+        if (size == 0) {
+            return null;
+        }
+
+        const current_addr = @cast(uintptr, self->buffer) + self->offset;
+        const aligned_addr = align_up(current_addr, align);
+        const padding = aligned_addr - current_addr;
+        const total_needed = padding + size;
+
+        // Check if the allocation fits in the remaining buffer space
+        if (self->offset + total_needed > self->cap) {
+            return null;
+        }
+
+        self->offset += total_needed;
+        const ptr = @cast(void*, aligned_addr);
+        self->last_alloc_ptr = ptr;
+        self->last_alloc_size = size;
+
+        return ptr;
+    }
+
+    [[inline]]
+    pub fn alloc_zeroed(self: Self*, size: usize) void* {
+        const ptr = self->alloc(size);
+        if (ptr != null) {
+            @memset(ptr, 0, size);
+        }
+        return ptr;
+    }
+
+    [[inline]]
+    pub fn realloc(self: Self*, ptr: void*, size: usize) void* {
+        if (ptr == null) {
+            return self->alloc(size);
+        }
+
+        if (size == 0) {
+            self->free(ptr);
+            return null;
+        }
+
+        if (ptr == self->last_alloc_ptr) {
+            if (size <= self->last_alloc_size) {
+                self->offset -= (self->last_alloc_size - size);
+                self->last_alloc_size = size;
+                return ptr;
+            } else {
+                const diff = size - self->last_alloc_size;
+                if (self->offset + diff <= self->cap) {
+                    self->offset += diff;
+                    self->last_alloc_size = size;
+                    return ptr;
+                }
+            }
+        }
+
+        const new_ptr = self->alloc(size);
+        if (new_ptr == null) {
+            return null;
+        }
+
+        var copy_size = size;
+        if (copy_size > self->last_alloc_size) {
+            copy_size = self->last_alloc_size;
+        }
+
+        memmove(new_ptr, ptr, copy_size);
+        return new_ptr;
+    }
+
+    [[inline]]
+    pub fn free(self: Self*, ptr: void*) {
+        if (ptr == null) {
+            return;
+        }
+
+        if (ptr == self->last_alloc_ptr) {
+            self->offset -= self->last_alloc_size;
+            self->last_alloc_ptr = null;
+            self->last_alloc_size = 0;
+        }
+    }
+
+    [[inline]]
+    pub fn reset(self: Self*) {
+        self->offset = 0;
+        self->last_alloc_ptr = null;
+        self->last_alloc_size = 0;
+    }
+
+    [[inline]]
+    pub fn bytes_used(self: const Self*) usize {
+        return self->offset;
+    }
+
+    [[inline]]
+    pub fn bytes_remaining(self: const Self*) usize {
+        return self->cap - self->offset;
+    }
+}
