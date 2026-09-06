@@ -1,0 +1,123 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 The Cyrus Language
+
+import std::libc{timespec_get, CTimeSpec, time};
+import std::libc::types{c_int, c_long};
+
+const TIME_UTC: c_int = 1;
+
+pub extern "C" {
+    fn usleep(usec: uint32) c_int;
+}
+
+pub struct Duration {
+    nanos: uint64,
+
+    [[inline]]
+    pub fn from_nanos(nanos: uint64) Self {
+        return Self { nanos };
+    }
+
+    [[inline]]
+    pub fn from_micros(micros: uint64) Self {
+        return Self { nanos: micros * 1000 };
+    }
+
+    [[inline]]
+    pub fn from_millis(millis: uint64) Self {
+        return Self { nanos: millis * 1000000 };
+    }
+
+    [[inline]]
+    pub fn from_secs(secs: uint64) Self {
+        return Self { nanos: secs * 1000000000 };
+    }
+
+    [[inline]]
+    pub fn as_nanos(self: const Self*) uint64 {
+        return self->nanos;
+    }
+
+    [[inline]]
+    pub fn as_micros(self: const Self*) uint64 {
+        return self->nanos / 1000;
+    }
+
+    [[inline]]
+    pub fn as_millis(self: const Self*) uint64 {
+        return self->nanos / 1000000;
+    }
+
+    [[inline]]
+    pub fn as_secs(self: const Self*) uint64 {
+        return self->nanos / 1000000000;
+    }
+
+    [[inline]]
+    pub fn as_secs_float(self: const Self*) float64 {
+        return @cast(float64, self->nanos) / 1000000000.0;
+    }
+
+    [[inline]]
+    pub fn add(self: const Self*, other: const Self*) Self {
+        return Self { nanos: self->nanos + other->nanos };
+    }
+
+    [[inline]]
+    pub fn sub(self: const Self*, other: const Self*) Self {
+        if (other->nanos > self->nanos) {
+            return Self { nanos: 0 };
+        }
+        return Self { nanos: self->nanos - other->nanos };
+    }
+}
+
+pub struct Instant {
+    nanos: uint64,
+
+    pub fn now() Self {
+        var ts: CTimeSpec = CTimeSpec {
+            tv_sec: 0,
+            tv_nsec: 0
+        };
+
+        const res = timespec_get(&ts, TIME_UTC);
+        if (res != 0) {
+            const total = (@cast(uint64, ts.tv_sec) * 1000000000) + @cast(uint64, ts.tv_nsec);
+            return Self { nanos: total };
+        }
+
+        const fallback_sec = @cast(uint64, time(null));
+        return Self { nanos: fallback_sec * 1000000000 };
+    }
+
+    [[inline]]
+    pub fn elapsed(self: const Self*) Duration {
+        const current = Instant.now();
+        return current.duration_since(self);
+    }
+
+    [[inline]]
+    pub fn duration_since(self: const Self*, earlier: const Self*) Duration {
+        if (earlier->nanos > self->nanos) {
+            return Duration.from_nanos(0);
+        }
+        return Duration.from_nanos(self->nanos - earlier->nanos);
+    }
+}
+
+[[inline]]
+pub fn sleep_us(micros: uint32) {
+    usleep(micros);
+}
+
+[[inline]]
+pub fn sleep_ms(millis: uint32) {
+    usleep(millis * 1000);
+}
+
+[[inline]]
+pub fn sleep(duration: Duration) {
+    const micros = @cast(uint32, duration.as_micros());
+    usleep(micros);
+}

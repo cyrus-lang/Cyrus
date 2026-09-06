@@ -1,0 +1,25 @@
+// @stdout: process ok
+
+import std::os::process{Command, execute};
+import std::mem::libc{LibcAllocator};
+import std::mem{Allocator};
+import std::libc{printf};
+
+pub fn main() {
+    const allocator: Allocator = dynamic LibcAllocator.new();
+
+    const exit_code = execute("echo 'test' > /dev/null");
+
+    var cmd = Command.new(allocator, "echo");
+    defer cmd.deinit();
+    cmd.arg("hello_from_cyrus");
+
+    var output = cmd.output(allocator).unwrap();
+    defer output.free();
+
+    if ((exit_code == 0 && output.len() >= 16)) {
+        printf("process ok\n");
+    } else {
+        printf("process fail\n");
+    }
+}
