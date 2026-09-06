@@ -1,4 +1,4 @@
-// @stdout: Hello World, Cyrus
+// @stdout: Hello World, Hello WorldCyrus
 
 import std::mem::libc{LibcAllocator};
 import std::io{StringWriter};
