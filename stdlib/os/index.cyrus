@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 The Cyrus Language
 
-import std::errors{ErrorOr, ErrorStr};
 import std::libc::types{c_file};
+import std::errors{ErrorOr, ErrorStr};
 import std::mem{Allocator};
 import std::string{String};
 import std::path{Path};
@@ -125,6 +125,18 @@ pub struct File {
         return .Value(());
     }
 
+    pub fn seek(self: Self*, offset: int64, whence: FileSeek) ErrorOr<usize, ErrorStr> {
+        const result = libc::fseek(self->file, @cast(int32, offset), whence.as_num());
+        if (result != 0) {
+            return .Error("failed to seek in file");
+        }
+        const pos = libc::ftell(self->file);
+        if (pos < 0) {
+            return .Error("failed to get file position after seek");
+        }
+        return .Value(@cast(usize, pos));
+    }
+
     [[inline]]
     pub fn eof(self: const Self*) bool {
         return libc::feof(self->file) != 0;
@@ -133,6 +145,11 @@ pub struct File {
     [[inline]]
     pub fn close(self: Self*) {
         libc::fclose(self->file);
+    }
+
+    [[inline]]
+    pub fn deinit(self: Self*) {
+        self->close();
     }
 }
 

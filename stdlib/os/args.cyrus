@@ -1,0 +1,57 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 The Cyrus Language
+
+import std::option{Option};
+
+pub struct Args {
+    argv: const uint8**,
+    argc: usize,
+    index: usize,
+
+    pub fn new(argc: int32, argv: const uint8**) Self {
+        var count: usize = 0;
+        if (argc > 0) {
+            count = @cast(usize, argc);
+        }
+        return Self {
+            argv,
+            argc: count,
+            index: 0
+        };
+    }
+
+    pub fn len(self: const Self*) usize {
+        return self->argc;
+    }
+
+    pub fn get(self: const Self*, idx: usize) Option<const uint8*> {
+        if (idx >= self->argc || self->argv == null) {
+            return .None;
+        }
+        return .Some(self->argv[idx]);
+    }
+
+    pub fn next(self: Self*) Option<const uint8*> {
+        if (self->index >= self->argc || self->argv == null) {
+            return .None;
+        }
+        const arg = self->argv[self->index];
+        self->index += 1;
+        return .Some(arg);
+    }
+
+    pub fn program_name(self: const Self*) Option<const uint8*> {
+        return self->get(0);
+    }
+
+    pub fn reset(self: Self*) {
+        self->index = 0;
+    }
+
+    pub fn remaining(self: const Self*) usize {
+        if (self->index >= self->argc) {
+            return 0;
+        }
+        return self->argc - self->index;
+    }
+}
