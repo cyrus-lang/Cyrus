@@ -1,0 +1,39 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 The Cyrus Language
+
+import std::option{Option};
+import std::string{String};
+import std::mem{Allocator};
+
+const DEFAULT_DIR_MODE: uint32 = 493; // 0755 in octal
+
+pub extern "C" {
+    fn mkdir(path: const uint8*, mode: uint32) int32;
+    fn rmdir(path: const uint8*) int32;
+    fn chdir(path: const uint8*) int32;
+    fn getcwd(buf: uint8*, size: usize) uint8*;
+}
+
+pub fn create_dir(path: const uint8*) bool {
+    @assert(path != null, "path cannot be null");
+    return mkdir(path, DEFAULT_DIR_MODE) == 0;
+}
+
+pub fn remove_dir(path: const uint8*) bool {
+    @assert(path != null, "path cannot be null");
+    return rmdir(path) == 0;
+}
+
+pub fn set_current_dir(path: const uint8*) bool {
+    @assert(path != null, "path cannot be null");
+    return chdir(path) == 0;
+}
+
+pub fn get_current_dir(allocator: Allocator) Option<String> {
+    var buffer: uint8[1024];
+    const res = getcwd(&buffer[0], 1024);
+    if (res == null) {
+        return .None;
+    }
+    return .Some(String.from_str(allocator, &buffer[0]));
+}

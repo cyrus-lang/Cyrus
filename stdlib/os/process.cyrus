@@ -1,0 +1,76 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 The Cyrus Language
+
+import std::mem{Allocator};
+import std::string{String};
+import std::errors{ErrorOr, ErrorStr};
+
+pub extern "C" {
+    fn system(command: const uint8*) int32;
+    fn exit(status: int32);
+    fn popen(command: const uint8*, mode: const uint8*) void*;
+    fn pclose(stream: void*) int32;
+    fn fread(ptr: void*, size: usize, nmemb: usize, stream: void*) usize;
+}
+
+pub fn exit_process(code: int32) {
+    exit(code);
+}
+
+pub fn execute(command: const uint8*) int32 {
+    @assert(command != null, "command cannot be null");
+    return system(command);
+}
+
+pub struct Command {
+    allocator: Allocator,
+    cmd_line: String,
+
+    pub fn new(allocator: Allocator, program: const uint8*) Self {
+        @assert(program != null, "program cannot be null");
+        var cmd_line = String.from_str(allocator, program);
+        return Self {
+            allocator,
+            cmd_line
+        };
+    }
+
+    pub fn arg(self: Self*, argument: const uint8*) {
+        @assert(argument != null, "argument cannot be null");
+        self->cmd_line.push(' ');
+        self->cmd_line.push_str(argument);
+    }
+
+    pub fn execute(self: const Self*) int32 {
+        const full_cmd = self->cmd_line.as_str_const();
+        return system(full_cmd);
+    }
+
+    pub fn output(self: const Self*, allocator: Allocator) ErrorOr<String, ErrorStr> {
+        const full_cmd = self->cmd_line.as_str_const();
+        const pipe = popen(full_cmd, "r");
+        if (pipe == null) {
+            return .Error("failed to spawn process pipe");
+        }
+
+        var result = String.new(allocator);
+        var buffer: uint8[256];
+
+        while (true) {
+            const bytes_read = fread(&buffer[0], 1, 256, pipe);
+            if (bytes_read == 0) {
+                break;
+            }
+            for (var i: usize = 0; i < bytes_read; i += 1) {
+                result.push(buffer[i]);
+            }
+        }
+
+        pclose(pipe);
+        return .Value(result);
+    }
+
+    pub fn deinit(self: Self*) {
+        self->cmd_line.free();
+    }
+}
