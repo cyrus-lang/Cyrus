@@ -79,9 +79,4 @@ pub struct Buffer<T> {
     pub fn free(self: Self*) {
         self->buffer.free();
     }
-
-    [[inline]]
-    pub fn deinit(self: Self*) {
-        self->free();
-    }
 }
