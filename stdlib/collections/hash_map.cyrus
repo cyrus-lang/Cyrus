@@ -273,10 +273,6 @@ pub struct HashMap<K, V> {
         self->cap = 0;
     }
 
-    pub fn deinit(self: Self*) {
-        self->free();
-    }
-
     [[inline]]
     pub fn iter(self: Self*) HashMapIter<K, V> {
         return HashMapIter<K, V> { map: self, idx: 0 };
