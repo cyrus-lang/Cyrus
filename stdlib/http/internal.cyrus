@@ -1,13 +1,11 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 The Cyrus Language
 
-import (
-    std::libc{strlen, strstr, strtoul, tolower},
-    std::libc::types{c_int},
-    std::option{Option},
-    std::mem{Allocator},
-    std::string{String},
-);
+import std::libc{strlen, strstr, strtoul, tolower};
+import std::libc::types{c_int};
+import std::option{Option};
+import std::mem{Allocator};
+import std::string{String};
 
 pub fn header_terminator(data: const uint8*) Option<usize> {
     @assert(data, "data cannot be null");

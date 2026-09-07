@@ -1,21 +1,16 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 The Cyrus Language
 
-import (
-    std::mem::libc{LibcAllocator},
-    std::io{Writer, StringWriter},
-    std::libc{stderr, fprintf},
-    std::format{format_usize},
-    std::collections{Vec},
-    std::option{Option},
-    std::mem{Allocator},
-    std::string{String},
-    std::os{exit}
-);
-
-import (
-    tokens{Loc}
-);
+import std::io{Writer, StringWriter};
+import std::mem::libc{LibcAllocator};
+import std::libc{stderr, fprintf};
+import std::format{format_usize};
+import std::collections{Vec};
+import std::option{Option};
+import std::mem{Allocator};
+import std::string{String};
+import std::os{exit};
+import tokens{Loc};
 
 pub struct DiagContext {
     diags: Vec<Diag>,

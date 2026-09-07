@@ -1,20 +1,15 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 The Cyrus Language
 
-import (
-    std::libc::types{c_int, c_char},
-    std::mem::libc{LibcAllocator},
-    std::mem{Allocator},
-    std::libc{printf},
-    std::path{Path},
-);
-
-import (
-    tokens{dump_tokens},
-    version,
-    driver,
-    cli,
-);
+import std::libc::types{c_int, c_char};
+import std::mem::libc{LibcAllocator};
+import tokens{dump_tokens};
+import std::mem{Allocator};
+import std::libc{printf};
+import std::path{Path};
+import version;
+import driver;
+import cli;
 
 fn command_new(ctx: cli::ActionCtx) {
     @todo();

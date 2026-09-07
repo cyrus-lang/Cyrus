@@ -1,18 +1,18 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 The Cyrus Language
 
-import (
-    std::collections{Vec, Map},
-    std::errors{ErrorOr},
-    std::string{String},
-    std::option{Option},
-    std::mem{Allocator},
-    std::slices{Slice},
-    std::path{Path},
-    std::os{File},
-);
-
+import std::collections{Vec, Map};
+import std::errors{ErrorOr};
+import std::string{String};
+import std::mem{Allocator};
+import std::option{Option};
 import std::libc{printf};
+import std::slices{Slice};
+import std::path{Path};
+import std::os{File};
+import version;
+import driver;
+import cli;
 
 pub type SourceId = usize;
 

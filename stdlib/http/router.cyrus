@@ -1,12 +1,10 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 The Cyrus Language
 
-import (
-    std::http{Request, Response, HttpMethod, HttpStatus},
-    std::collections{Vec},
-    std::option{Option},
-    std::mem{Allocator},
-);
+import std::http{Request, Response, HttpMethod, HttpStatus};
+import std::collections{Vec};
+import std::option{Option};
+import std::mem{Allocator};
 
 pub type Handler = fn(const Request*, Response*) void;
 

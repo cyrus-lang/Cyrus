@@ -1,16 +1,11 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 The Cyrus Language
 
-import (
-    std::mem{Allocator},
-    std::path{Path},
-    std::os{File},
-);
-
-import (
-    tokens{SourceTokens},
-    lexer{Lexer}
-);
+import std::mem{Allocator};
+import std::path{Path};
+import std::os{File};
+import tokens{SourceTokens};
+import lexer{Lexer};
 
 // Driver handler responsible for tokenizing source content.
 // Will terminate the compiler if any error raised.

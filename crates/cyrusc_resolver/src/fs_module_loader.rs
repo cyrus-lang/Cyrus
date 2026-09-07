@@ -200,48 +200,50 @@ impl ModuleLoader for FsModuleLoader {
         let mut parsed_program_trees: Vec<(FileID, Rc<ProgramTree>, &ModulePath, ResolvedModuleFile)> = Vec::new();
         let mut loaded_modules_list: Vec<Result<LoadedModule, Option<Box<dyn DiagKindClone>>>> = Vec::new();
 
-        for sub_import in &import.paths {
-            let resolved_module_file = match self
-                .get_imported_module_file_path(sub_import.segments.clone(), current_module_file_path.clone())
-            {
-                Ok(path) => path,
-                Err(diag) => {
-                    loaded_modules_list.push(Err(Some(Box::new(diag))));
-                    continue;
-                }
-            };
-
-            let module_file_path = &resolved_module_file.file_path;
-
-            // verify file exists
-            if !std::fs::metadata(module_file_path)
-                .map(|m| m.is_file())
-                .unwrap_or(false)
-            {
-                loaded_modules_list.push(Err(Some(Box::new(ModuleFSLoaderDiagKind::ModuleNotFound {
-                    module_name: format_module_segments(&sub_import.segments),
-                }))));
-                continue;
+        let resolved_module_file = match self
+            .get_imported_module_file_path(import.module_path.segments.clone(), current_module_file_path.clone())
+        {
+            Ok(path) => path,
+            Err(diag) => {
+                loaded_modules_list.push(Err(Some(Box::new(diag))));
+                return Vec::new();
             }
+        };
 
-            // register file in SourceMap
-            let file_id = self.source_map.add_file_by_loading(module_file_path.clone());
+        let module_file_path = &resolved_module_file.file_path;
 
-            let source_file = { self.source_map.get_file(file_id).unwrap().clone() };
-
-            let Ok(program_tree) = self.source_parser.parse_program(&source_file) else {
-                // REVIEW: REFACTOR REQUIRE
-                // Redesign more abstracted.
-                loaded_modules_list.push(Err(None));
-                continue;
-            };
-
-            let program_tree_rc = Rc::new(ProgramTree {
-                body: Rc::clone(&program_tree.body),
-            });
-
-            parsed_program_trees.push((file_id, program_tree_rc, sub_import, resolved_module_file));
+        // verify file exists
+        if !std::fs::metadata(module_file_path)
+            .map(|m| m.is_file())
+            .unwrap_or(false)
+        {
+            loaded_modules_list.push(Err(Some(Box::new(ModuleFSLoaderDiagKind::ModuleNotFound {
+                module_name: format_module_segments(&import.module_path.segments),
+            }))));
+            return Vec::new();
         }
+
+        // register file in SourceMap
+        let file_id = self.source_map.add_file_by_loading(module_file_path.clone());
+
+        let source_file = { self.source_map.get_file(file_id).unwrap().clone() };
+
+        // FIXME: This isn't correct, we used a single diagnostic reporter for all layers
+        // and that is why it looks messy here. If used one for each layer then here 
+        // we could predictably know that where parse_program reports it's diagnostics.
+        // Anyway, I'll redesign this part in stage1 I guess.
+        let Ok(program_tree) = self.source_parser.parse_program(&source_file) else {
+            // REVIEW: REFACTOR REQUIRE
+            // Redesign more abstracted.
+            loaded_modules_list.push(Err(None));
+            return Vec::new();
+        };
+
+        let program_tree_rc = Rc::new(ProgramTree {
+            body: Rc::clone(&program_tree.body),
+        });
+
+        parsed_program_trees.push((file_id, program_tree_rc, &import.module_path, resolved_module_file));
 
         // if any module failed parsing/path resolution, stop immediately
         if loaded_modules_list.iter().any(|result| result.is_err()) {

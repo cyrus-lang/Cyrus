@@ -7,20 +7,16 @@
     https://xnacly.me/posts/2025/fast-lexer-strategies/
 */
 
-import (
-    std::libc::types{c_char},
-    std::collections{Vec},
-    std::mem{Allocator},
-    std::string{String},
-    std::option{Option},
-    std::libc{
-        printf,
-        strtol,
-        strlen,
-        errno,
-        ERANGE
-    },
-);
+import std::libc::types{c_char};
+import std::collections{Vec};
+import std::mem{Allocator};
+import std::string{String};
+import std::option{Option};
+import std::libc{
+    printf, strtol,
+    strlen, errno,
+    ERANGE
+};
 
 import tokens{
     Token,

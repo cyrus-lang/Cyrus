@@ -1,23 +1,15 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 The Cyrus Language
 
-import (
-    std::errors{ErrorOr, ErrorStr},
-    std::collections{Vec},
-    std::option{Option},
-    std::string{String},
-    std::libc{
-        fprintf,
-        stdout,
-        stderr,
-        stdin,
-        fflush,
-        fread,
-        getchar,
-        memmove,
-        strlen
-    },
-);
+import std::errors{ErrorOr, ErrorStr};
+import std::collections{Vec};
+import std::option{Option};
+import std::string{String};
+import std::libc{
+    fprintf, stdout, stderr, 
+    getchar, memmove, strlen,
+    stdin, fflush, fread, 
+};
 
 pub type IOError = ErrorOr<(), ()>;
 
