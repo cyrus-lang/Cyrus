@@ -1,0 +1,123 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 The Cyrus Language
+
+import (
+    std::libc{strlen, strstr, strtoul, tolower},
+    std::libc::types{c_int},
+    std::option{Option},
+    std::mem{Allocator},
+    std::string{String},
+);
+
+pub fn header_terminator(data: const uint8*) Option<usize> {
+    @assert(data, "data cannot be null");
+
+    const found = strstr(data, "\r\n\r\n");
+
+    if (found != null) {
+        return .Some(@cast(usize, found - data) + 4);
+    }
+
+    const relaxed = strstr(data, "\n\n");
+
+    if (relaxed != null) {
+        return .Some(@cast(usize, relaxed - data) + 2);
+    }
+
+    return .None;
+}
+
+pub fn scan_content_length(data: const uint8*, len: usize) usize {
+    @assert(data, "data cannot be null");
+
+    var cursor = next_line(data, len, line_end(data, len, 0));
+
+    while (cursor < len) {
+        const current_end = line_end(data, len, cursor);
+
+        if (current_end == cursor) {
+            return 0;
+        }
+
+        const colon = find_byte(data, current_end, cursor, ':');
+
+        if (colon < current_end && range_eq_ignore_case(data, cursor, colon, "content-length")) {
+            const value_start = skip_spaces(data, current_end, colon + 1);
+            return strtoul(data + value_start, null, 10);
+        }
+
+        cursor = next_line(data, len, current_end);
+    }
+
+    return 0;
+}
+
+pub fn range_eq_ignore_case(data: const uint8*, start: usize, end: usize, name: const uint8*) bool {
+    const name_len = strlen(name);
+
+    if (end - start != name_len) {
+        return false;
+    }
+
+    for (var i: usize = 0; i < name_len; i += 1) {
+        if (tolower(@cast(c_int, data[start + i])) != tolower(@cast(c_int, name[i]))) {
+            return false;
+        }
+    }
+
+    return true;
+}
+
+pub fn find_byte(data: const uint8*, len: usize, start: usize, needle: uint8) usize {
+    for (var i = start; i < len; i += 1) {
+        if (data[i] == needle) {
+            return i;
+        }
+    }
+
+    return len;
+}
+
+pub fn skip_spaces(data: const uint8*, len: usize, start: usize) usize {
+    for (var i = start; i < len; i += 1) {
+        if (data[i] != ' ') {
+            return i;
+        }
+    }
+
+    return len;
+}
+
+pub fn line_end(data: const uint8*, len: usize, start: usize) usize {
+    for (var i = start; i < len; i += 1) {
+        if (data[i] == '\r' || data[i] == '\n') {
+            return i;
+        }
+    }
+
+    return len;
+}
+
+pub fn next_line(data: const uint8*, len: usize, end: usize) usize {
+    var i = end;
+
+    if (i < len && data[i] == '\r') {
+        i += 1;
+    }
+
+    if (i < len && data[i] == '\n') {
+        i += 1;
+    }
+
+    return i;
+}
+
+pub fn copy_range(allocator: Allocator, data: const uint8*, start: usize, end: usize) String {
+    var out = String.new(allocator);
+
+    for (var i = start; i < end; i += 1) {
+        out.push(data[i]);
+    }
+
+    return out;
+}

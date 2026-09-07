@@ -1,0 +1,14 @@
+// @stdout: 99
+
+import std::libc{printf};
+
+pub fn main() {
+    var val: int32 = 10;
+    @asm volatile(
+        "movl $99, (%0)"
+        :
+        : "r"(&val)
+        : "memory"
+    );
+    printf("%d\n", val);
+}

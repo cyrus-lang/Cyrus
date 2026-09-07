@@ -69,10 +69,19 @@ impl<'source_file> Parser<'source_file> {
             }
 
             let is_non_associative = is_comparison_operator(&self.peek_token().kind);
-            let infix_banned_precedence = if is_non_associative {
-                Some(operator_precedence)
-            } else {
-                None
+
+            let infix_banned_precedence = {
+                if is_non_associative {
+                    Some(operator_precedence)
+                } else if let Some(banned) = banned_precedence
+                    && operator_precedence > banned
+                {
+                    // propagate through higher precedence operators
+                    Some(banned)
+                } else {
+                    // stop at lower or equal precedence
+                    None
+                }
             };
 
             if peek_token.kind != TokenKind::EOF && minimum_precedence < operator_precedence {
@@ -1497,6 +1506,7 @@ fn is_infix_operator(token_kind: &TokenKind) -> bool {
     )
 }
 
+#[inline]
 fn is_comparison_operator(token_kind: &TokenKind) -> bool {
     matches!(
         token_kind,
@@ -1506,9 +1516,6 @@ fn is_comparison_operator(token_kind: &TokenKind) -> bool {
             | TokenKind::LessThan
             | TokenKind::GreaterEqual
             | TokenKind::GreaterThan
-            | TokenKind::And
-            | TokenKind::Or
-            | TokenKind::QuestionQuestion
     )
 }
 

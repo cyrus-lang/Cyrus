@@ -129,8 +129,9 @@ pub(crate) struct CliCompilerOptions {
     #[clap(
         long = "color",
         help = "Enable or disable colored terminal output.",
+        default_value_t = true,
+        action = clap::ArgAction::Set,
         value_parser = clap::builder::BoolishValueParser::new(),
-        default_value_t = true
     )]
     pub color: bool,
 }

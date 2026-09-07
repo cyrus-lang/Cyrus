@@ -15,7 +15,7 @@ use cyrusc_internal::{
     cir::{cir::CIRModule, typectx::CIRTypeContext},
     compiler_options::{CompilerOption_LinkerOutputKind, CompilerOption_ModuleKind, CompilerOptions},
 };
-use cyrusc_tui_utils::{tui_compile_finished, tui_warning};
+use cyrusc_tui_utils::tui_warning;
 use inkwell::targets::{Target as LLVMTarget, TargetTriple};
 use std::{
     path::PathBuf,
@@ -93,10 +93,6 @@ impl CodeGenContext {
         };
 
         self.save_cir_modules_source_hash_in_build_manifest(cir_modules);
-
-        if !self.opts.quiet {
-            tui_compile_finished();
-        }
 
         modules
     }

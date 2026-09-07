@@ -9,11 +9,7 @@ use cyrusc_ast::operators::InfixOperator;
 use cyrusc_internal::abi::mangler::*;
 use cyrusc_internal::abi::target::ABITarget;
 use cyrusc_internal::cir::cir::*;
-use cyrusc_internal::cir::lower::lower_enum_type;
-use cyrusc_internal::cir::lower::lower_func_type;
-use cyrusc_internal::cir::lower::lower_sema_type;
-use cyrusc_internal::cir::lower::lower_struct_type;
-use cyrusc_internal::cir::lower::lower_union_type;
+use cyrusc_internal::cir::lower::*;
 use cyrusc_internal::cir::typectx::CIRTypeContext;
 use cyrusc_internal::cir::types::*;
 use cyrusc_internal::monomorph::*;
@@ -1315,8 +1311,9 @@ impl<'a> CIRLower<'a> {
             loc: func_decl.loc,
         };
 
-        let cir_func_type = cir_func_decl_as_func_type(&cir_func_decl);
+        let mut cir_func_type = cir_func_decl_as_func_type(&cir_func_decl);
         cir_func_decl.abi_func_info = Some(self.target.target_abi.classify_func(&cir_func_type).unwrap());
+        cir_func_type.abi_func_info = cir_func_decl.abi_func_info.clone();
 
         self.func_decls.insert(irv_id, cir_func_decl.clone());
 

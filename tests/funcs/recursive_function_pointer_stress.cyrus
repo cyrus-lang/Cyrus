@@ -1,0 +1,16 @@
+// @stdout: 55
+
+import std::libc{printf};
+
+fn recurse_calc(n: int32) int32 {
+    if (n <= 1) {
+        return n;
+    }
+    return n + recurse_calc(n - 1);
+}
+
+pub fn main() {
+    var f: fn(int32) int32 = recurse_calc;
+    var res: int32 = f(10);
+    printf("%d\n", res);
+}

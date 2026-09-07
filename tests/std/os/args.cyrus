@@ -1,0 +1,30 @@
+// @stdout: args ok
+
+import std::os::args{Args};
+import std::libc{printf, strcmp};
+
+pub fn main() {
+    var dummy_argv: const uint8*[3];
+    dummy_argv[0] = "my_program";
+    dummy_argv[1] = "--verbose";
+    dummy_argv[2] = "input.txt";
+
+    var args = Args.new(3, &dummy_argv[0]);
+
+    const prog = args.program_name().unwrap();
+    const is_prog_match = strcmp(prog, "my_program") == 0;
+
+    var first = args.next().unwrap();
+    var second = args.next().unwrap();
+    var third = args.next().unwrap();
+    var none_arg = args.next();
+
+    const is_second_match = strcmp(second, "--verbose") == 0;
+    const is_third_match = strcmp(third, "input.txt") == 0;
+
+    if (((((is_prog_match && is_second_match) && is_third_match) && none_arg.is_none()) && args.len() == 3)) {
+        printf("args ok\n");
+    } else {
+        printf("args fail\n");
+    }
+}

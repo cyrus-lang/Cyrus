@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-inkwell = { version = "0.7.0", features = ["llvm18-1"] }
+inkwell = { version = "0.10.0", features = ["llvm22-1"] }
 cyrusc_source_loc = { path = "../cyrusc_source_loc", version = "*" }
 cyrusc_typed_ast = { path = "../cyrusc_typed_ast", version = "*" }
 cyrusc_build_manifest = { path = "../cyrusc_build_manifest", version = "*" }
@@ -15,6 +15,7 @@ cyrusc_diagcentral = { path = "../cyrusc_diagcentral", version = "*" }
 cyrusc_scaffold_parser = { path = "../cyrusc_scaffold_parser", version = "*" }
 cyrusc_analyzer = { path = "../cyrusc_analyzer", version = "*" }
 cyrusc_asan_wrapper = { path = "../cyrusc_asan_wrapper", version = "*" }
+cyrusc_optimizer_wrapper = { path = "../cyrusc_optimizer_wrapper", version = "*" }
 cyrusc_tui_utils = { path = "../cyrusc_tui_utils", version = "*" }
 cyrusc_fs_utils = { path = "../cyrusc_fs_utils", version = "*" }
 rayon = "1.11.0"

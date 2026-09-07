@@ -15,89 +15,90 @@
 #include "llvm/Transforms/Scalar/JumpThreading.h"
 #include <optional>
 
-extern "C"
-{
-  typedef struct
-  {
-    bool address_sanitize;
-    bool thread_sanitize;
-    bool mem_sanitize;
-    bool hwaddress_sanitize;
-    bool recover;
-    bool asan_use_after_scope;
-    bool asan_use_after_return;
-  } SanitizerOptions;
+extern "C" {
+typedef struct {
+  bool address_sanitize;
+  bool thread_sanitize;
+  bool mem_sanitize;
+  bool hwaddress_sanitize;
+  bool recover;
+  bool asan_use_after_scope;
+  bool asan_use_after_return;
+} SanitizerOptions;
 
-  void run_sanitizer_passes(LLVMModuleRef module_ref,
-                            llvm::TargetMachine *Machine, int opt_level,
-                            SanitizerOptions opts)
-  {
-    if (!module_ref || !Machine)
-      return;
+static bool hasNoSanitizeModuleFlag(llvm::Module &M, const char *flagName) {
+  auto *Flag = M.getModuleFlag(flagName);
+  return Flag != nullptr;
+}
 
-    llvm::Module *Mod = llvm::unwrap(module_ref);
+void run_sanitizer_passes(LLVMModuleRef module_ref,
+                          llvm::TargetMachine *Machine, int opt_level,
+                          SanitizerOptions opts) {
+  if (!module_ref || !Machine)
+    return;
 
-    llvm::PassInstrumentationCallbacks PIC;
-    llvm::PipelineTuningOptions PTO{};
-    PTO.LoopUnrolling = true;
-    PTO.LoopInterleaving = true;
-    PTO.LoopVectorization = true;
-    PTO.SLPVectorization = true;
-    PTO.MergeFunctions = true;
+  llvm::Module *Mod = llvm::unwrap(module_ref);
 
-    llvm::PassBuilder PB(Machine, PTO, std::nullopt, &PIC);
+  llvm::PassInstrumentationCallbacks PIC;
+  llvm::PipelineTuningOptions PTO{};
+  PTO.LoopUnrolling = true;
+  PTO.LoopInterleaving = true;
+  PTO.LoopVectorization = true;
+  PTO.SLPVectorization = true;
+  PTO.MergeFunctions = true;
 
-    llvm::LoopAnalysisManager LAM;
-    llvm::FunctionAnalysisManager FAM;
-    llvm::CGSCCAnalysisManager CGAM;
-    llvm::ModuleAnalysisManager MAM;
+  llvm::PassBuilder PB(Machine, PTO, std::nullopt, &PIC);
 
-    PB.registerLoopAnalyses(LAM);
-    PB.registerFunctionAnalyses(FAM);
-    PB.registerCGSCCAnalyses(CGAM);
-    PB.registerModuleAnalyses(MAM);
-    PB.crossRegisterProxies(LAM, FAM, CGAM, MAM);
+  llvm::LoopAnalysisManager LAM;
+  llvm::FunctionAnalysisManager FAM;
+  llvm::CGSCCAnalysisManager CGAM;
+  llvm::ModuleAnalysisManager MAM;
 
-    llvm::OptimizationLevel level;
-    switch (opt_level)
-    {
-    case 0:
-      level = llvm::OptimizationLevel::O0;
-      break;
-    case 1:
-      level = llvm::OptimizationLevel::O1;
-      break;
-    case 2:
-      level = llvm::OptimizationLevel::O2;
-      break;
-    case 3:
-      level = llvm::OptimizationLevel::O3;
-      break;
-    default:
-      level = llvm::OptimizationLevel::O2;
-      break;
-    }
+  PB.registerLoopAnalyses(LAM);
+  PB.registerFunctionAnalyses(FAM);
+  PB.registerCGSCCAnalyses(CGAM);
+  PB.registerModuleAnalyses(MAM);
+  PB.crossRegisterProxies(LAM, FAM, CGAM, MAM);
 
-    // build the default per-module optimization pipeline
-    llvm::ModulePassManager MPM = PB.buildPerModuleDefaultPipeline(level, false);
+  llvm::OptimizationLevel level;
+  switch (opt_level) {
+  case 0:
+    level = llvm::OptimizationLevel::O0;
+    break;
+  case 1:
+    level = llvm::OptimizationLevel::O1;
+    break;
+  case 2:
+    level = llvm::OptimizationLevel::O2;
+    break;
+  case 3:
+    level = llvm::OptimizationLevel::O3;
+    break;
+  default:
+    level = llvm::OptimizationLevel::O2;
+    break;
+  }
 
-    // add sanitizer passes
-    if (opts.mem_sanitize)
-    {
-      llvm::MemorySanitizerOptions MSO(/*TrackOrigins=*/true, opts.recover, false,
-                                       false);
+  llvm::ModulePassManager MPM = PB.buildPerModuleDefaultPipeline(level);
+
+  if (opts.mem_sanitize) {
+    if (!hasNoSanitizeModuleFlag(*Mod, "nosanitize_memory")) {
+      llvm::MemorySanitizerOptions MSO(/*TrackOrigins=*/true, opts.recover,
+                                       false, false);
       MPM.addPass(llvm::MemorySanitizerPass(MSO));
     }
+  }
 
-    if (opts.thread_sanitize)
-    {
+  if (opts.thread_sanitize) {
+    if (!hasNoSanitizeModuleFlag(*Mod, "nosanitize_thread")) {
       MPM.addPass(llvm::ModuleThreadSanitizerPass());
       MPM.addPass(
           llvm::createModuleToFunctionPassAdaptor(llvm::ThreadSanitizerPass()));
     }
+  }
 
-    if (opts.address_sanitize)
-    {
+  if (opts.address_sanitize) {
+    if (!hasNoSanitizeModuleFlag(*Mod, "nosanitize_address")) {
       llvm::AddressSanitizerOptions ASO;
       ASO.CompileKernel = false;
       ASO.Recover = opts.recover;
@@ -110,23 +111,25 @@ extern "C"
       MPM.addPass(llvm::AddressSanitizerPass(ASO, false, !is_windows,
                                              llvm::AsanDtorKind::None));
     }
+  }
 
-    if (opts.hwaddress_sanitize)
-    {
+  if (opts.hwaddress_sanitize) {
+    if (!hasNoSanitizeModuleFlag(*Mod, "nosanitize_hwaddress")) {
       MPM.addPass(
           llvm::HWAddressSanitizerPass({false, opts.recover, opt_level == 0}));
     }
-
-    // function-level optimization passes
-    llvm::FunctionPassManager FPM;
-    FPM.addPass(llvm::EarlyCSEPass(true));
-    FPM.addPass(llvm::InstCombinePass());
-    FPM.addPass(llvm::JumpThreadingPass());
-    FPM.addPass(llvm::GVNPass());
-    FPM.addPass(llvm::InstCombinePass());
-
-    MPM.addPass(llvm::createModuleToFunctionPassAdaptor(std::move(FPM)));
-
-    MPM.run(*Mod, MAM);
   }
+
+  // function-level optimization passes
+  llvm::FunctionPassManager FPM;
+  FPM.addPass(llvm::EarlyCSEPass(true));
+  FPM.addPass(llvm::InstCombinePass());
+  FPM.addPass(llvm::JumpThreadingPass());
+  FPM.addPass(llvm::GVNPass());
+  FPM.addPass(llvm::InstCombinePass());
+
+  MPM.addPass(llvm::createModuleToFunctionPassAdaptor(std::move(FPM)));
+
+  MPM.run(*Mod, MAM);
+}
 } // extern "C"

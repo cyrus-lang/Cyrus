@@ -6,6 +6,7 @@ use cyrusc_typed_ast::{exprs::TypedExprKind, types::SemaType};
 #[derive(Debug, Clone, PartialEq)]
 pub enum ConstValue {
     Int(i128),
+    Char(char),
     Bool(bool),
     Float(f64),
     String(String),
@@ -21,6 +22,19 @@ impl ConstValue {
             ConstValue::Float(_) => None,
             ConstValue::String(_) => None,
             ConstValue::Type(_) => None,
+            ConstValue::Char(_) => None,
+        }
+    }
+
+    #[inline]
+    pub fn as_char(&self) -> Option<char> {
+        match self {
+            ConstValue::Char(char_value) => Some(*char_value),
+            ConstValue::Int(_) => None,
+            ConstValue::Bool(_) => None,
+            ConstValue::Float(_) => None,
+            ConstValue::String(_) => None,
+            ConstValue::Type(_) => None,
         }
     }
 
@@ -32,6 +46,7 @@ impl ConstValue {
             ConstValue::Float(_) => None,
             ConstValue::String(_) => None,
             ConstValue::Type(_) => None,
+            ConstValue::Char(_) => None,
         }
     }
 
@@ -43,6 +58,7 @@ impl ConstValue {
             ConstValue::Bool(_) => None,
             ConstValue::String(_) => None,
             ConstValue::Type(_) => None,
+            ConstValue::Char(_) => None,
         }
     }
 
@@ -54,6 +70,7 @@ impl ConstValue {
             ConstValue::Bool(_) => None,
             ConstValue::Float(_) => None,
             ConstValue::Type(_) => None,
+            ConstValue::Char(_) => None,
         }
     }
 
@@ -65,6 +82,7 @@ impl ConstValue {
             ConstValue::Int(_) => None,
             ConstValue::Bool(_) => None,
             ConstValue::Float(_) => None,
+            ConstValue::Char(_) => None,
         }
     }
 }

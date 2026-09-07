@@ -16,7 +16,7 @@ impl CliCompilerOptions {
         let linker = self.linker.clone().unwrap_or(default_linker().to_string());
         let base_path = Some(self.base_path.clone().unwrap_or(get_current_dir_as_base_path()));
 
-        CompilerOptions {
+        let mut opts = CompilerOptions {
             color: self.color,
             profile: self.profile.convert(),
             abi: Some(self.abi.convert()),
@@ -71,7 +71,18 @@ impl CliCompilerOptions {
             } else {
                 Some(self.cpu.clone())
             },
+        };
+
+        // Configure relocation mode based on PIE, if not provided explicitly.
+        if opts.reloc_mode == CompilerOption_RelocMode::Default {
+            if opts.linker_options.pie_mode == CompilerOption_PIEMode::PIE {
+                opts.reloc_mode = CompilerOption_RelocMode::PIC;
+            } else {
+                opts.reloc_mode = CompilerOption_RelocMode::Static;
+            }
         }
+
+        opts
     }
 }
 
@@ -115,8 +126,16 @@ impl CliLinkerOptions {
     pub fn convert(&self) -> CompilerOption_Linker {
         CompilerOption_Linker {
             link_static: self.r#static,
-            pie: self.pie,
-            no_pie: self.no_pie,
+            pie_mode: {
+                if self.pie {
+                    CompilerOption_PIEMode::PIE
+                } else if self.no_pie {
+                    CompilerOption_PIEMode::NOPIE
+                } else {
+                    // FALLBACK AS DEFAULT
+                    CompilerOption_PIEMode::PIE
+                }
+            },
         }
     }
 }

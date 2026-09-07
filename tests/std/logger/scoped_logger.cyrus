@@ -1,30 +1,20 @@
-// @stdout: [WARN] db: retrying\n[FATAL] db: unrecoverable\n
+// @stderr: [WARN] db: retrying\n[FATAL] db: unrecoverable\n
 
-import std::mem::libc{LibcAllocator};
-import std::logger{Logger, LogLevel};
-import std::io{Writer, StringWriter};
-import std::mem{Allocator};
-import std::string{String};
+import std::logger{Logger};
+import std::io{Writer, StderrWriter};
 import std::libc{printf};
 
 pub fn main() {
-    var allocator: Allocator = dynamic LibcAllocator.new();
+    const stderr_writer = StderrWriter.new();
+    const writer: Writer = dynamic stderr_writer;
 
-    var buffer = String.new(allocator);
-    defer buffer.free();
-
-    var string_writer = StringWriter.new(&buffer);
-    var writer: Writer = dynamic string_writer;
-
-    var logger = Logger.with_level(writer, LogLevel.Warn);
+    const logger = Logger.with_level(writer, .Warn);
     logger.set_scope("db");
 
     logger.info("connected");
     logger.warn("retrying");
     logger.fatal("unrecoverable");
 
-    logger.set_level(LogLevel.Off);
+    logger.set_level(.Off);
     logger.fatal("silenced");
-
-    printf("%s", buffer.as_str());
 }

@@ -102,10 +102,10 @@ pub fn substitute_sema_type_with_type_args(
                 params: TypedFuncTypeParams { list, variadic },
                 ret_type: Box::new(ret_type),
                 is_public: func_type.is_public,
+                callconv: func_type.callconv,
                 loc: func_type.loc,
             })
         }
-
         SemaType::Tuple(tuple) => {
             let elements = tuple
                 .elements

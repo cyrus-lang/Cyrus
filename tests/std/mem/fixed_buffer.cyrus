@@ -1,0 +1,28 @@
+// @stdout: used: 40, shrunk: 20, ok
+
+import std::mem::fixed_buffer{FixedBufferAllocator};
+import std::mem{Allocator};
+import std::libc{printf};
+
+pub fn main() {
+    var raw_buf: uint8[1024];
+    var fb = FixedBufferAllocator.new(&raw_buf[0], 1024);
+    const allocator: Allocator = dynamic fb;
+
+    var nums: int32* = @cast(int32*, allocator.alloc(10 * @sizeof(int32)));
+    @assert(nums != null, "allocation should succeed");
+
+    nums[0] = 42;
+    nums[9] = 100;
+
+    printf("used: %lu, ", fb.bytes_used());
+
+    nums = @cast(int32*, allocator.realloc(nums, 5 * @sizeof(int32)));
+    printf("shrunk: %lu, ", fb.bytes_used());
+
+    if (nums[0] == 42) {
+        printf("ok\n");
+    } else {
+        printf("fail\n");
+    }
+}

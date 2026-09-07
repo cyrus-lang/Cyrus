@@ -17,7 +17,7 @@ cyrusc_tui_utils = { path = "../cyrusc_tui_utils", version = "*" }
 cyrusc_diagcentral = { path = "../cyrusc_diagcentral", version = "*" }
 cyrusc_internal = { path = "../cyrusc_internal", version = "*" }
 cyrusc_cir_lower = { path = "../cyrusc_cir_lower", version = "*" }
-inkwell = { version = "0.7.0", features = ["llvm18-1"] }
+inkwell = { version = "0.10.0", features = ["llvm22-1"] }
 serde = { version = "1.0.219", features = ["derive"] }
 which = "8.0.0"
 fx-hash = "0.1.0"

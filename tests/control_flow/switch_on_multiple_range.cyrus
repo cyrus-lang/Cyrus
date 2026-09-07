@@ -1,0 +1,19 @@
+// @stdout: ok ok
+
+import std::libc{printf};
+
+fn foo(char: uint8) bool {
+    switch (char) {
+        case 'a'...'z' | '0'...'9' => return true;
+        else => return false;
+    }
+}
+
+pub fn main() {
+    if (foo('a')) {
+        printf("ok ");
+    }
+    if (foo('1')) {
+        printf("ok\n");
+    }
+}

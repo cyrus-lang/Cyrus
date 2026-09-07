@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 The Cyrus Language
+
 use inkwell::llvm_sys::prelude::LLVMModuleRef;
 use inkwell::llvm_sys::target_machine::LLVMTargetMachineRef;
 use inkwell::module::Module;

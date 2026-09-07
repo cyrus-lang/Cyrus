@@ -30,7 +30,6 @@ pub struct Slice<T> {
 
         return .Some(*(self->ptr + index));
     }
-    
 
     [[inline]]
     pub fn get_ref(self: Self*, index: usize) Option<T*> {

@@ -1,0 +1,25 @@
+// @stdout: HTTP/1.1 201 Created\nContent-Type: application/json\nX-Powered-By: cyrus\nContent-Length: 13\n\n{"ok":true}
+
+import std::mem::libc{LibcAllocator};
+import std::http{Response, HttpStatus};
+import std::mem{Allocator};
+import std::libc{printf};
+
+pub fn main() {
+    var allocator: Allocator = dynamic LibcAllocator.new();
+
+    var response = Response.new(allocator);
+    defer response.free();
+
+    response.set_status(HttpStatus.Created);
+    response.set_content_type("text/plain");
+    response.set_content_type("application/json");
+    response.set_header("X-Powered-By", "cyrus");
+    response.set_body("{\"ok\":true}");
+    response.append_body("\r\n");
+
+    var payload = response.serialize();
+    defer payload.free();
+
+    printf("%s", payload.as_str());
+}

@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 The Cyrus Language
 
-import std::libc{printf};
 import std::string{String};
 import std::mem{Allocator};
 import std::option{Option};
@@ -12,7 +11,7 @@ pub struct Path {
     inner: String,
 
     [[inline]]
-    pub fn new(allocator: Allocator, name: uint8*) Self {
+    pub fn new(allocator: Allocator, name: const uint8*) Self {
         const inner = String.from_str(allocator, name);
 
         return Self { allocator, inner };

@@ -168,7 +168,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
 
                 let cir_tag_type = enum_type.tag_type_or_infer_or_default();
                 let tag_layout = self.tctx.layout_of(&cir_tag_type);
-                let (_, enum_payload_size) = self.emit_enum_buffer_payload_type(&enum_type);
+                let (_, enum_payload_size, _) = self.emit_enum_buffer_payload_type(&enum_type);
 
                 let size_bits = layout.size * 8;
                 let align_bits = layout.align * 8;
@@ -396,7 +396,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         match plain_type {
             // Platform dependent types
             PlainType::UIntPtr | PlainType::IntPtr | PlainType::USize | PlainType::ISize => ctx
-                .ptr_sized_int_type(&self.llvmtm.get_target_data(), None)
+                .ptr_sized_int_type(&self.llvm_target_machine.get_target_data(), None)
                 .as_any_type_enum(),
 
             PlainType::Int8 => ctx.i8_type().as_any_type_enum(),
@@ -476,11 +476,19 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         } else {
             let cir_tag_type = enum_type.tag_type_or_infer_or_default();
             let tag_type: BasicTypeEnum<'ll> = self.emit_type(*cir_tag_type.clone()).try_into().unwrap();
-            let (payload_type, _) = self.emit_enum_buffer_payload_type(&enum_type);
+
+            let target_data = self.llvm_target_machine.get_target_data();
+            let tag_store_size = target_data.get_store_size(&tag_type);
+
+            let layout = self.tctx.get_or_compute_layout(type_id);
+            let abi_total_size = layout.size as u64;
+
+            let buffer_size = abi_total_size.saturating_sub(tag_store_size);
+            let payload_buffer_ty = self.llvm_ctx.i8_type().array_type(buffer_size as u32);
 
             let llvm_struct_type = self
                 .llvm_ctx
-                .struct_type(&[tag_type.as_basic_type_enum(), payload_type.into()], false);
+                .struct_type(&[tag_type.as_basic_type_enum(), payload_buffer_ty.into()], false);
 
             self.type_cache
                 .insert_enum(type_id, llvm_struct_type.as_basic_type_enum());
@@ -496,7 +504,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
 
         let union_type = self.tctx.get_union(type_id);
         let layout = self.tctx.get_or_compute_layout(type_id);
-        let target_data = self.llvmtm.get_target_data();
+        let target_data = self.llvm_target_machine.get_target_data();
 
         let mut ty = None;
         let mut max_align = 0;
@@ -552,8 +560,8 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         Some(self.emit_struct_type(type_id))
     }
 
-    pub(crate) fn emit_enum_buffer_payload_type(&self, enum_type: &CIREnumType) -> (ArrayType<'ll>, u64) {
-        let target_data = self.llvmtm.get_target_data();
+    pub(crate) fn emit_enum_buffer_payload_type(&self, enum_type: &CIREnumType) -> (ArrayType<'ll>, u64, u64) {
+        let target_data = self.llvm_target_machine.get_target_data();
         let mut max_payload_size: u64 = 0;
         let mut max_payload_align: u64 = 1;
 
@@ -586,8 +594,8 @@ impl<'ll> CodeGenIRBuilder<'ll> {
 
             if payload_size > max_payload_size {
                 max_payload_size = payload_size;
-                max_payload_align = payload_align;
             }
+            max_payload_align = max_payload_align.max(payload_align);
         }
 
         if max_payload_size == 0 {
@@ -605,7 +613,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         let aligned_size = ((max_payload_size + (max_payload_align - 1)) / max_payload_align) * max_payload_align;
 
         let payload_buffer_ty = self.llvm_ctx.i8_type().array_type(aligned_size as u32);
-        (payload_buffer_ty, aligned_size)
+        (payload_buffer_ty, aligned_size, max_payload_align)
     }
 
     fn emit_repr_c_enum_ty(&self, enum_type: &CIREnumType) -> BasicTypeEnum<'ll> {

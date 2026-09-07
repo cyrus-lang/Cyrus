@@ -68,7 +68,7 @@ pub enum CliABIOption {
 
 impl Default for CliRelocModeOption {
     fn default() -> Self {
-        Self::PIC
+        Self::Default
     }
 }
 

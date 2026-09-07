@@ -77,7 +77,5 @@ pub struct BumpAllocator : Allocator {
 	}
 
 	[[inline]]
-	pub fn free(self: Self*, ptr: void*) {
-		// no-operation
-	}
+	pub fn free(self: Self*, ptr: void*) {}
 }

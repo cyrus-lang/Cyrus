@@ -270,12 +270,13 @@ impl UnresolvedModifiers {
         Ok(TypedefModifiers { vis })
     }
 
-    pub(crate) fn into_method_modifiers(&self) -> Result<FuncModifiers, Diag> {
+    pub(crate) fn into_method_modifiers_and_merge(&self, other: FuncModifiers) -> Result<FuncModifiers, Diag> {
         let vis = self.vis.unwrap_or_default();
 
         Ok(FuncModifiers {
             vis,
-            ..Default::default()
+            extrn: self.extrn.or(other.extrn),
+            ..other
         })
     }
 

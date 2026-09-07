@@ -1,0 +1,32 @@
+// @stdout: 1 2 3 4 5 6 7 8 9 10
+
+import std::libc{printf};
+
+pub fn main() {
+    defer printf("10\n");
+    {
+        defer printf("9 ");
+        {
+            defer printf("8 ");
+            {
+                defer printf("7 ");
+                {
+                    defer printf("6 ");
+                    {
+                        defer printf("5 ");
+                        {
+                            defer printf("4 ");
+                            {
+                                defer printf("3 ");
+                                {
+                                    defer printf("2 ");
+                                    printf("1 ");
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}

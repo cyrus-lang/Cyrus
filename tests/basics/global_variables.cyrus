@@ -1,8 +1,14 @@
-// @stdout: 10 20
+// @stdout: 10 20 | 1 2 3 | name: Cyrus, age: 2500 | (1.1, 2.2, 3.3)
 
 import std::libc{printf};
 
 static var global_counter: int32 = 0;
+
+static var my_arr: int32[3] = {1, 2, 3};
+
+static var my_struct = struct { name: "Cyrus", age: 2500 };
+
+static var my_tuple = (1.1, 2.2, 3.3);
 
 fn increment() {
     global_counter = global_counter + 10;
@@ -13,5 +19,9 @@ pub fn main() {
     printf("%d ", global_counter);
 
     global_counter = global_counter + 10;
-    printf("%d\n", global_counter);
+    printf("%d | ", global_counter);
+
+    printf("%d %d %d | ", my_arr[0], my_arr[1], my_arr[2]);
+    printf("name: %s, age: %d | ", my_struct.name, my_struct.age);
+    printf("(%g, %g, %g)\n", my_tuple.0, my_tuple.1, my_tuple.2);
 }

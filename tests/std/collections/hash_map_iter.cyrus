@@ -1,0 +1,49 @@
+// @stdout: hash_map_iter ok
+
+import std::collections::hash_map{HashMap};
+import std::mem::libc{LibcAllocator};
+import std::mem{Allocator};
+import std::hash{hash_usize, eq_usize};
+import std::libc{printf};
+
+pub fn main() {
+    const allocator: Allocator = dynamic LibcAllocator.new();
+
+    var map: HashMap<usize, usize> = HashMap.with_hasher(
+        allocator,
+        8,
+        hash_usize,
+        eq_usize,
+        @cast(usize, 0),
+        @cast(usize, 0)
+    );
+    defer map.free();
+
+    const k1: usize = 1;
+    const k2: usize = 2;
+
+    map.insert(k1, 10);
+    map.insert(k2, 20);
+
+    var iter = map.iter_owned();
+    var count: usize = 0;
+
+    while (true) {
+        var opt = iter.next();
+
+        if (opt.is_none()) {
+            break;
+        }
+        
+        count += 1;
+    }
+
+    const val1 = *map.get(k1).unwrap();
+    const val2 = *map.get(k2).unwrap();
+    
+    if (((val1 == 10) && (val2 == 20)) && count == 2) {
+        printf("hash_map_iter ok\n");
+    } else {
+        printf("hash_map_iter fail\n");
+    }
+}

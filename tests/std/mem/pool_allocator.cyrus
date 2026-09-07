@@ -1,0 +1,38 @@
+// @stdout: pool test passed
+
+import std::mem::pool{PoolAllocator};
+import std::mem{Allocator};
+import std::libc{printf};
+
+struct Node {
+    pub id: int32,
+    pub val: int32,
+}
+
+pub fn main() {
+    var raw_buf: uint8[512];
+    var pool = PoolAllocator.new(&raw_buf[0], 512, @sizeof(Node));
+    const allocator: Allocator = dynamic pool;
+
+    var a: Node* = allocator.alloc(@sizeof(Node));
+    var b: Node* = allocator.alloc(@sizeof(Node));
+    @assert(a != null && b != null, "allocations should succeed");
+
+    a->id = 1;
+    a->val = 100;
+    b->id = 2;
+    b->val = 200;
+
+    allocator.free(a);
+
+    var c: Node* = allocator.alloc(@sizeof(Node));
+    @assert(c != null, "re-allocation should succeed");
+    c->id = 3;
+    c->val = 300;
+
+    if (b->val == 200 && c->val == 300) {
+        printf("pool test passed\n");
+    } else {
+        printf("pool test failed\n");
+    }
+}

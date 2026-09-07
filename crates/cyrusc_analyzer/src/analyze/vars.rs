@@ -69,37 +69,25 @@ impl<'a> AnalysisContext<'a> {
             global_var.ty = Some(self.expand_sema_type(ty.clone(), global_var.loc));
         }
 
-        if let Some(expr) = &global_var.expr {
-            if !is_expr_const_evaluable(&expr.kind) && !matches!(global_var.ty, Some(SemaType::Const(..))) {
+        if let Some(expr) = &global_var.expr
+            && let Some(target_type) = &global_var.ty
+        {
+            if self.is_const_qualified_type_assigned_to_non_const_variable(&target_type, global_var.is_const) {
+                self.report_const_qualified_type_assigned_to_non_const_variable(global_var.loc);
+            }
+
+            let expr_type = expr.ty.clone().unwrap();
+
+            if *expr_type.const_inner() != *target_type.const_inner() {
                 self.reporter.report(Diag {
                     level: DiagLevel::Error,
-                    kind: Box::new(AnalyzerDiagKind::NotConstEvaluableGlobalVariableExpr),
+                    kind: Box::new(AnalyzerDiagKind::AssignmentTypeMismatch {
+                        lhs_type: format_sema_type(target_type.clone(), self.formatter),
+                        rhs_type: format_sema_type(expr_type.clone(), self.formatter),
+                    }),
                     loc: Some(global_var.loc),
-                    hint: None,
+                    hint: Some("Global variable initializers must exactly match the declared type.".into()),
                 });
-                return;
-            }
-        }
-
-        if let Some(expr) = &global_var.expr {
-            if let Some(target_type) = &global_var.ty {
-                if self.is_const_qualified_type_assigned_to_non_const_variable(&target_type, global_var.is_const) {
-                    self.report_const_qualified_type_assigned_to_non_const_variable(global_var.loc);
-                }
-
-                let expr_type = expr.ty.clone().unwrap();
-
-                if *expr_type.const_inner() != *target_type.const_inner() {
-                    self.reporter.report(Diag {
-                        level: DiagLevel::Error,
-                        kind: Box::new(AnalyzerDiagKind::AssignmentTypeMismatch {
-                            lhs_type: format_sema_type(target_type.clone(), self.formatter),
-                            rhs_type: format_sema_type(expr_type.clone(), self.formatter),
-                        }),
-                        loc: Some(global_var.loc),
-                        hint: Some("Global variable initializers must exactly match the declared type.".into()),
-                    });
-                }
             }
         }
 
@@ -116,6 +104,15 @@ impl<'a> AnalysisContext<'a> {
             self.reporter.report(Diag {
                 level: DiagLevel::Error,
                 kind: Box::new(AnalyzerDiagKind::UndefinedConstVariable),
+                loc: Some(global_var.loc),
+                hint: None,
+            });
+        }
+
+        if global_var.is_const && global_var.expr.is_none() {
+            self.reporter.report(Diag {
+                level: DiagLevel::Error,
+                kind: Box::new(AnalyzerDiagKind::ConstVariableMustBeInitialized),
                 loc: Some(global_var.loc),
                 hint: None,
             });
@@ -226,15 +223,6 @@ impl<'a> AnalysisContext<'a> {
                 kind: Box::new(AnalyzerDiagKind::VoidVariableType),
                 loc: Some(loc),
                 hint: None,
-            });
-        }
-
-        if ty.const_inner().is_const() && !is_init {
-            self.reporter.report(Diag {
-                level: DiagLevel::Error,
-                kind: Box::new(AnalyzerDiagKind::ConstVariableMustBeInitialized),
-                loc: Some(loc),
-                hint: Some("Declare the variable with an initializer or remove the 'const' qualifier.".to_string()),
             });
         }
 

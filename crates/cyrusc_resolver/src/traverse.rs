@@ -4,6 +4,7 @@
 use crate::Resolver;
 use crate::diagnostics::ResolverDiagKind;
 use crate::with_local_scope;
+use cyrusc_ast::abi::Callconv;
 use cyrusc_ast::abi::Visibility;
 use cyrusc_ast::format::format_module_segments;
 use cyrusc_ast::modifiers::EnumModifiers;
@@ -624,6 +625,8 @@ impl<'a> Resolver<'a> {
         Some(SemaType::FuncType(TypedFuncType {
             params: TypedFuncTypeParams { list: params, variadic },
             ret_type: Box::new(ret_type),
+            // Lambda's callconv cannot be changed (always default)
+            callconv: Callconv::default(),
             is_public: true,
             loc,
         }))
@@ -687,7 +690,7 @@ impl<'a> Resolver<'a> {
                 let expr = self.resolve_expr(&expr)?;
                 TypedArrayCapacity::Fixed(Box::new(expr))
             }
-            ArrayCapacity::Dynamic => TypedArrayCapacity::Dynamic,
+            ArrayCapacity::Dynamic => TypedArrayCapacity::Slice,
         };
 
         Some(SemaType::Array(TypedArrayType {
