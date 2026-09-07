@@ -1,19 +1,18 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 The Cyrus Language
 
-import (
-    std::libc{strtoul, tolower, snprintf},
-    std::libc::types{c_int},
-    std::errors{ErrorOr, ErrorStr},
-    std::collections{Vec},
-    std::option{Option},
-    std::mem{Allocator},
-    std::string{String},
-    std::net{TcpStream},
-    std::http::internal,
-);
+import std::libc{strtoul, tolower, snprintf, strlen};
+import std::errors{ErrorOr, ErrorStr};
+import std::libc::types{c_int};
+import std::collections{Vec};
+import std::option{Option};
+import std::mem{Allocator};
+import std::string{String};
+import std::net{TcpStream};
+import std::http::internal;
 
 const NUMBER_BUF_SIZE: usize = 24;
+const CLIENT_BUF_SIZE: usize = 4096;
 
 pub enum HttpMethod {
     Get,
@@ -530,3 +529,5 @@ pub fn eq_ignore_case(left: const uint8*, right: const uint8*) bool {
 
     return true;
 }
+
+

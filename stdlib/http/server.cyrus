@@ -67,74 +67,83 @@ pub struct Server {
             case .Value(accepted) => stream = accepted;
             case .Error(err) => return .Error(err);
         }
+        defer stream.close();
 
-        var raw = String.new(self->allocator);
+        while (true) {
+            var raw = String.new(self->allocator);
 
-        switch (self->read_message(&stream, &raw)) {
-            case .Value(within_limit) => {
-                if (!within_limit) {
+            switch (self->read_message(&stream, &raw)) {
+                case .Value(within_limit) => {
+                    if (!within_limit) {
+                        var resp = Response.new(self->allocator);
+                        defer resp.free();
+                        
+                        resp.set_status(.PayloadTooLarge);
+                        resp.set_content_type("text/plain");
+                        resp.set_body("413 Payload Too Large");
+                        resp.write_to(&stream);
+
+                        raw.free();
+                        return .Value(());
+                    }
+                }
+                case .Error(err) => {
+                    raw.free();
+                    return .Error(err);
+                }
+            }
+
+            if (raw.is_empty()) {
+                raw.free();
+                break;
+            }
+
+            var keep_alive = false;
+
+            switch (Request.parse(self->allocator, raw.as_str_const(), raw.len())) {
+                case .Value(var request) => {
+                    var response = Response.new(self->allocator);
+
+                    keep_alive = request.keep_alive();
+
+                    if (keep_alive) {
+                        response.set_header("Connection", "keep-alive");
+                    } else {
+                        response.set_header("Connection", "close");
+                    }
+
+                    self->router->dispatch(&request, &response);
+
+                    const result = response.write_to(&stream);
+
+                    response.free();
+                    request.free();
+                    raw.free();
+
+                    switch (result) {
+                        case .Error(err) => return .Error(err);
+                    }
+                }
+                case .Error(err) => {
                     var resp = Response.new(self->allocator);
                     defer resp.free();
-                    
-                    resp.set_status(.PayloadTooLarge);
+
+                    resp.set_status(.BadRequest);
                     resp.set_content_type("text/plain");
-                    resp.set_body("413 Payload Too Large");
+                    resp.set_body("400 Bad Request");
                     resp.write_to(&stream);
 
-                    // REVIEW use defer
                     raw.free();
-                    stream.close();
-                    return .Value(());
+                    return .Error(err);
                 }
             }
-            case .Error(err) => {
-                // REVIEW use defer
-                raw.free();
-                stream.close();
-                return .Error(err);
+
+            if (!keep_alive) {
+                break;
             }
         }
 
-        if (raw.is_empty()) {
-            // REVIEW use defer
-            raw.free();
-            stream.close();
-            return .Value(());
-        }
-
-        switch (Request.parse(self->allocator, raw.as_str_const(), raw.len())) {
-            case .Value(parsed) => {
-                var request = parsed;
-                var response = Response.new(self->allocator);
-
-                self->router->dispatch(&request, &response);
-
-                const result = response.write_to(&stream);
-
-                response.free();
-                request.free();
-                raw.free();
-                stream.close();
-
-                switch (result) {
-                    case .Value(_) => return .Value(());
-                    case .Error(err) => return .Error(err);
-                }
-            }
-            case .Error(err) => {
-                var resp = Response.new(self->allocator);
-                defer resp.free();
-
-                resp.set_status(.BadRequest);
-                resp.set_content_type("text/plain");
-                resp.set_body("400 Bad Request");
-                resp.write_to(&stream);
-
-                raw.free();
-                stream.close();
-                return .Error(err);
-            }
-        }
+        return .Value(());
     }
 
     pub fn serve(self: Self*) ErrorOr<(), ErrorStr> {
