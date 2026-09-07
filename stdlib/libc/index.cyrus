@@ -6,7 +6,7 @@ import std::libc::types;
 // stdio
 
 pub extern "C" {
-    static var stdin:  types::c_file*;
+    static var stdin: types::c_file*;
     static var stdout: types::c_file*;
     static var stderr: types::c_file*;
 
