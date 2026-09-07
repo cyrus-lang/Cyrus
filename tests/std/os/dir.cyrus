@@ -1,0 +1,22 @@
+// @stdout: dir ok
+
+import std::os::dir;
+import std::mem::libc{LibcAllocator};
+import std::mem{Allocator};
+import std::libc{printf};
+
+pub fn main() {
+    const allocator: Allocator = dynamic LibcAllocator.new();
+
+    var cwd = dir::get_current_dir(allocator).unwrap();
+    defer cwd.free();
+
+    const created = dir::create_dir("cyrus_temp_test_dir");
+    const removed = dir::remove_dir("cyrus_temp_test_dir");
+
+    if (((cwd.len() > 0 && created) && removed)) {
+        printf("dir ok\n");
+    } else {
+        printf("dir fail\n");
+    }
+}

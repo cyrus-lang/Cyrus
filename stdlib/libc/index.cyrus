@@ -6,7 +6,7 @@ import std::libc::types;
 // stdio
 
 pub extern "C" {
-    static var stdin:  types::c_file*;
+    static var stdin: types::c_file*;
     static var stdout: types::c_file*;
     static var stderr: types::c_file*;
 
@@ -453,54 +453,46 @@ pub extern "C" {
 
 [[repr(c)]]
 pub struct CTimeSpec {
-    tv_sec: types::c_long,
-    tv_nsec: types::c_long
+    pub tv_sec: types::c_long,
+    pub tv_nsec: types::c_long
 }
 
 [[repr(c)]]
 pub struct CTimeVal {
-    tv_sec: types::c_long,
-    tv_usec: types::c_long
+    pub tv_sec: types::c_long,
+    pub tv_usec: types::c_long
 }
 
 [[repr(c)]]
 pub struct CTm {
-    tm_sec: types::c_int,
-    tm_min: types::c_int,
-    tm_hour: types::c_int,
-    tm_mday: types::c_int,
-    tm_mon: types::c_int,
-    tm_year: types::c_int,
-    tm_wday: types::c_int,
-    tm_yday: types::c_int,
-    tm_isdst: types::c_int,
-    tm_gmtoff: types::c_long,
-    tm_zone: types::c_char*
+    pub tm_sec: types::c_int,
+    pub tm_min: types::c_int,
+    pub tm_hour: types::c_int,
+    pub tm_mday: types::c_int,
+    pub tm_mon: types::c_int,
+    pub tm_year: types::c_int,
+    pub tm_wday: types::c_int,
+    pub tm_yday: types::c_int,
+    pub tm_isdst: types::c_int,
+    pub tm_gmtoff: types::c_long,
+    pub tm_zone: types::c_char*
 }
 
 pub extern "C" {
     fn clock() types::c_long;
+    fn time(timer: types::c_long*) types::c_long;
+    fn timespec_get(ts: CTimeSpec*, base: types::c_int) types::c_int;
     fn difftime(time1: types::c_long, time0: types::c_long) types::c_double;
     fn mktime(tm: CTm*) types::c_long;
-    fn time(timer: types::c_long*) types::c_long;
-
     fn asctime(tm: const CTm*) types::c_char*;
+    fn asctime_r(tm: const CTm*, buf: types::c_char*) types::c_char*;
     fn ctime(timer: const types::c_long*) types::c_char*;
-
+    fn ctime_r(timer: const types::c_long*, buf: types::c_char*) types::c_char*;
     fn gmtime(timer: const types::c_long*) CTm*;
-    fn localtime(timer: const types::c_long*) CTm*;
-
     fn gmtime_r(timer: const types::c_long*, result: CTm*) CTm*;
+    fn localtime(timer: const types::c_long*) CTm*;
     fn localtime_r(timer: const types::c_long*, result: CTm*) CTm*;
-
-    fn strftime(
-        s: types::c_char*,
-        max: types::c_size,
-        format: const types::c_char*,
-        tm: const CTm*
-    ) types::c_size;
-
-    fn timespec_get(ts: CTimeSpec*, base: types::c_int) types::c_int;
+    fn strftime(str: types::c_char*, maxsize: types::c_size, format: const types::c_char*, timeptr: const CTm*) types::c_size;
 }
 
 // signal 

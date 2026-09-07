@@ -160,8 +160,15 @@ jobs:
     steps:
       - name: Install fpm and build tools
         run: |
-          zypper refresh
-          zypper install -y ruby ruby-devel gcc-c++ make rpm-build tar gzip
+          # Configure zypper timeouts to prevent Curl error (28) on slow CDN mirrors
+          echo "download.transfer_timeout = 300" >> /etc/zypp/zypp.conf
+          echo "download.connect_timeout = 60" >> /etc/zypp/zypp.conf
+          echo "download.max_concurrent_connections = 1" >> /etc/zypp/zypp.conf
+          # Retry zypper refresh in case of transient mirror network drops
+          for i in 1 2 3 4 5; do
+            zypper --gpg-auto-import-keys refresh && break || sleep 5
+          done
+          zypper --non-interactive install -y ruby ruby-devel gcc-c++ make rpm-build tar gzip
           gem install --no-format-executable --bindir /usr/bin fpm
 
       - name: Download binary
