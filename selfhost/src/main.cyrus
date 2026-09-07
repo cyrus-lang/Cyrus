@@ -48,7 +48,7 @@ pub fn main(argc: c_int, argv: c_char**) {
     var opts = cli::Opts.new(allocator);
     defer opts.free();
     
-    var parser = cli::Cli.new(allocator, &opts, "cyrus");
+    var parser = cli::CLI.new(allocator, &opts, "cyrus");
     defer parser.free();
 
     const jobs_opt = opts.add(*cli::Opt.new(allocator, "jobs").short('j')->arg(.Int)->help("Number of parallel jobs"));

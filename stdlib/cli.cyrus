@@ -8,12 +8,12 @@ import std::collections{Vec};
 import std::errors{ErrorOr};
 import std::option{Option};
 import std::string{String};
-import std::libc;
+import std::libc{
     fprintf, printf, strlen,
     strcmp, strtod, strtol,
     errno, isalpha, isalnum,
     stderr, ERANGE
-},
+};
 
 const HELP_WS_LEN: usize = 16;
 
