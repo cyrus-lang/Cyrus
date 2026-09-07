@@ -21,14 +21,14 @@ pub fn main() {
     map.insert(k20, 200);
     map.insert(k30, 300);
 
-    const val10 = map.get(k10);
+    const val10 = map.get_const(k10);
     if (val10.is_some() && *val10.unwrap() == 100) {
         printf("OK: insert and get\n");
     }
 
     // Update
     map.insert(k10, 999);
-    const val10_updated = map.get(k10);
+    const val10_updated = map.get_const(k10);
     if (val10_updated.is_some() && *val10_updated.unwrap() == 999) {
         printf("OK: update existing key\n");
     }
