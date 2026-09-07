@@ -1,0 +1,21 @@
+// @stdout: aabc
+
+import std::mem::libc{LibcAllocator};
+import std::mem{Allocator};
+import std::libc{printf};
+import _app;
+
+pub fn main() {
+    const allocator: Allocator = dynamic LibcAllocator.new();
+
+    const inst1 = _app::inst(allocator, 2, {_app::PROGRAM_NAME, "new"});
+    defer allocator.free(inst1);
+    
+    const inst2 = _app::inst(allocator, 5, {_app::PROGRAM_NAME, "build", "-i", "42", "-v"});
+    defer allocator.free(inst2);
+
+    const inst3 = _app::inst(allocator, 4, {_app::PROGRAM_NAME, "build", "--str-val", "hello"});
+    defer allocator.free(inst3);
+
+    printf("\n");
+}

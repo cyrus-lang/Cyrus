@@ -1,0 +1,13 @@
+// @stderr: Uknown option: invalid-opt\nPlease use command `help` to see usage.
+
+import std::mem::libc{LibcAllocator};
+import std::mem{Allocator};
+import std::libc{printf};
+import _app;
+
+pub fn main() {
+    const allocator: Allocator = dynamic LibcAllocator.new();
+
+    const inst = _app::inst(allocator, 3, {_app::PROGRAM_NAME, "build", "--invalid-opt"});
+    defer allocator.free(inst);
+}

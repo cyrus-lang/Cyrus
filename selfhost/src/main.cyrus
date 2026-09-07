@@ -7,9 +7,9 @@ import tokens{dump_tokens};
 import std::mem{Allocator};
 import std::libc{printf};
 import std::path{Path};
+import std::cli;
 import version;
 import driver;
-import cli;
 
 fn command_new(ctx: cli::ActionCtx) {
     @todo();
@@ -26,7 +26,7 @@ fn command_build(ctx: cli::ActionCtx) {
 fn command_lex(ctx: cli::ActionCtx) {
     const allocator: Allocator = dynamic LibcAllocator.new();
 
-    // TODO Get path from CLI 
+    // TODO Get path from App 
 
     const path = Path.new(allocator, "/home/tahad/Code/Cyrus/Cyrus/tmp/main.cyrus");
     defer path.free();
@@ -48,8 +48,8 @@ pub fn main(argc: c_int, argv: c_char**) {
     var opts = cli::Opts.new(allocator);
     defer opts.free();
     
-    var parser = cli::CLI.new(allocator, &opts, "cyrus");
-    defer parser.free();
+    var app = cli::App.new(allocator, &opts, "cyrus");
+    defer app.free();
 
     const jobs_opt = opts.add(*cli::Opt.new(allocator, "jobs").short('j')->arg(.Int)->help("Number of parallel jobs"));
     const release_opt = opts.add(*cli::Opt.new(allocator, "release").short('r')->help("Build in release mode"));
@@ -115,18 +115,18 @@ pub fn main(argc: c_int, argv: c_char**) {
         cli::Cmd.new(allocator, "version", command_version)
         .help("Compiler version");
 
-    parser.add_command(*new_cmd);
-    parser.add_command(*run_cmd);
-    parser.add_command(*build_cmd);
-    parser.add_command(*test_cmd);
-    parser.add_command(*clean_cmd);
-    parser.add_command(*add_cmd);
-    parser.add_command(*remove_cmd);
-    parser.add_command(*update_cmd);
-    parser.add_command(*lex_cmd);
-    parser.add_command(*version_cmd);
+    app.register(*new_cmd);
+    app.register(*run_cmd);
+    app.register(*build_cmd);
+    app.register(*test_cmd);
+    app.register(*clean_cmd);
+    app.register(*add_cmd);
+    app.register(*remove_cmd);
+    app.register(*update_cmd);
+    app.register(*lex_cmd);
+    app.register(*version_cmd);
 
-    parser.parse_args(struct { argc, argv });
+    app.run(struct { argc, argv });
 }
 
 // ---------------------------

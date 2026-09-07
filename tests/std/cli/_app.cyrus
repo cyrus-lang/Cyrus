@@ -1,0 +1,54 @@
+import std::libc::types{c_int, c_char};
+import std::mem{Allocator, alloc_init};
+import std::libc{printf};
+import std::cli;
+
+pub const PROGRAM_NAME = "my_app";
+
+pub fn inst(allocator: Allocator, argc: c_int, argv: const c_char**) cli::App* {
+    var opts = cli::Opts.new(allocator);
+    defer opts.free();
+    
+    var app = cli::App.new(allocator, &opts, "my_app");
+    defer app.free();
+
+    const opt_int = opts.add(*cli::Opt.new(allocator, "int-val").short('i')->arg(.Int)->help("Example integer option"));
+    const opt_str = opts.add(*cli::Opt.new(allocator, "str-val").short('s')->arg(.Str)->help("String option"));
+    const opt_bool = opts.add(*cli::Opt.new(allocator, "bool-val").short('v')->arg(.Bool)->help("Boolean flag"));
+
+    const new_cmd = 
+        cli::Cmd.new(allocator, "new", command_new)
+        .help("Create new project");
+    
+    const build_cmd = 
+        cli::Cmd.new(allocator, "build", command_build)
+        .help("Build project")
+        ->add_option(opt_int)
+        ->add_option(opt_str)
+        ->add_option(opt_bool);
+
+    app.register(*new_cmd);
+    app.register(*build_cmd);
+
+    app.run(struct { argc, argv });
+
+    return alloc_init(allocator, app);
+}
+
+fn command_new(ctx: cli::ActionCtx) {
+    printf("a");
+}
+
+fn command_build(ctx: cli::ActionCtx) {
+    if (ctx.opts->enabled("int-val")) {
+        printf("a");
+    }
+    
+    if (ctx.opts->enabled("bool-val")) {
+        printf("b");
+    }
+    
+    if (ctx.opts->enabled("str-val")) {
+        printf("c");
+    }
+}

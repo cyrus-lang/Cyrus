@@ -1,0 +1,13 @@
+// @stderr: Unknown cmd: unknown\nPlease use command `help` to see usage.
+
+import std::mem::libc{LibcAllocator};
+import std::mem{Allocator};
+import std::libc{printf};
+import _app;
+
+pub fn main() {
+    const allocator: Allocator = dynamic LibcAllocator.new();
+
+    const inst1 = _app::inst(allocator, 2, {_app::PROGRAM_NAME, "unknown"});
+    defer allocator.free(inst1);
+}
