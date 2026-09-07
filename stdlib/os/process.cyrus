@@ -21,7 +21,7 @@ pub fn exit_process(code: int32) {
     exit(code);
 }
 
-pub fn execute(command: const uint8*) int32 {
+pub fn exec(command: const uint8*) int32 {
     @assert(command != null, "command cannot be null");
     return system(command);
 }
@@ -45,7 +45,7 @@ pub struct Command {
         self->cmd_line.push_str(argument);
     }
 
-    pub fn execute(self: const Self*) int32 {
+    pub fn exec(self: const Self*) int32 {
         const full_cmd = self->cmd_line.as_str_const();
         return system(full_cmd);
     }
@@ -74,7 +74,7 @@ pub struct Command {
         return .Value(result);
     }
 
-    pub fn deinit(self: Self*) {
+    pub fn free(self: Self*) {
         self->cmd_line.free();
     }
 }
