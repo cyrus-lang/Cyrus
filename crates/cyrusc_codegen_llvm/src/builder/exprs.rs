@@ -1637,7 +1637,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         }
 
         let llvm_enum_type = self.emit_enum_type(type_id).into_struct_type();
-        let (buffer_type, _) = self.emit_enum_buffer_payload_type(&enum_type);
+        let buffer_type = llvm_enum_type.get_field_type_at_index(1).unwrap().into_array_type();
 
         let cir_tag_type = enum_type.tag_type_or_infer_or_default();
         let tag_type = self.emit_type(*cir_tag_type.clone()).into_int_type();

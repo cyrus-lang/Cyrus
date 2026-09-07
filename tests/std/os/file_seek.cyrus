@@ -1,0 +1,44 @@
+// @stdout: seek ok
+
+import std::os{File, OpeningModes, FileSeek};
+import std::path{Path};
+import std::mem::libc{LibcAllocator};
+import std::mem{Allocator};
+import std::libc{printf};
+
+pub fn main() {
+    const allocator: Allocator = dynamic LibcAllocator.new();
+
+    const path = Path.new(allocator, "cyrus_seek_test.tmp");
+    defer path.free();
+
+    var write_file_res = File.open(&path, OpeningModes.Write);
+    if (write_file_res.is_error()) {
+        printf("seek fail: open write\n");
+        return;
+    }
+
+    var write_file = write_file_res.unwrap();
+    write_file.write("0123456789");
+    write_file.deinit();
+
+    var read_file_res = File.open(&path, OpeningModes.Read);
+    if (read_file_res.is_error()) {
+        printf("seek fail: open read\n");
+        return;
+    }
+
+    var read_file = read_file_res.unwrap();
+    const seek_res = read_file.seek(4, FileSeek.Set);
+    if (seek_res.is_error() || seek_res.unwrap() != 4) {
+        printf("seek fail: seek\n");
+        read_file.deinit();
+        read_file.remove();
+        return;
+    }
+
+    read_file.deinit();
+    read_file.remove();
+
+    printf("seek ok\n");
+}

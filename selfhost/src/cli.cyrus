@@ -101,8 +101,6 @@ pub struct Cli {
                     return .Value(self);
                 }
 
-                // FIXME
-                @assert(cmd, "cmd not set properly");
                 (cmd->action)(ActionCtx { opts: self->opts });
 
                 return .Value(self);
@@ -182,7 +180,7 @@ pub struct Cli {
         
         var next_arg: const uint8*;
 
-        if (*i <= @cast(usize, pargs.argc)) {
+        if (*i + 1 < @cast(usize, pargs.argc)) {
             next_arg = pargs.argv[*i + 1];
         }
 
@@ -207,25 +205,21 @@ pub struct Cli {
 
         const (is_assign, var assign_index) = is_opt_assign(name);
 
-        // REVIEW: We might need to replace fixed-size buffers
-        // with a dynamically growable one.
         if (is_assign) {
-            const name_len = strlen(name);
+            const val_len = strlen(name + assign_index + 1);
+            var opt_name = @cast(uint8*, self->allocator.alloc(assign_index + 1));
+            var opt_val = @cast(uint8*, self->allocator.alloc(val_len + 1));
 
-            var opt_name: uint8[256];
-            var opt_val: uint8[256];
-            
-            @memcpy(&opt_name[0], name, assign_index + 1);
+            @memcpy(opt_name, name, assign_index);
             opt_name[assign_index] = '\0';
 
             @assert(name[assign_index] == '=', "assign index is wrong");
-            assign_index += 1; // Skip it
 
-            @memcpy(&opt_val[0], name + assign_index, assign_index);
-            opt_val[name_len] = '\0';
+            @memcpy(opt_val, name + assign_index + 1, val_len);
+            opt_val[val_len] = '\0';
             
-            name = &opt_name[0];
-            next_arg = &opt_val[0];
+            name = opt_name;
+            next_arg = opt_val;
         }
 
         var value: Value;
