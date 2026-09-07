@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 The Cyrus Language
 
-use std::num::NonZero;
-
 use crate::{
     builder::{
         builder::CodeGenIRBuilder,
@@ -35,6 +33,7 @@ use inkwell::{
         FunctionValue, IntValue, PointerValue, StructValue,
     },
 };
+use std::num::NonZero;
 
 #[allow(unused)]
 pub enum DerefMode {
@@ -98,10 +97,8 @@ impl<'ll> CodeGenIRBuilder<'ll> {
                 LocalIRValue::Global(global_value, ty) => {
                     InternalValue::new(ty, InternalValueKind::LValue(global_value.as_pointer_value()))
                 }
-                LocalIRValue::LValue(pointer_value, ty) => {
-                    InternalValue::new(ty, InternalValueKind::LValue(pointer_value))
-                }
-                LocalIRValue::RValue(val, ty) => InternalValue::new(ty, InternalValueKind::RValue(val)),
+                LocalIRValue::LValue(ptr, ty) => InternalValue::new(ty, InternalValueKind::LValue(ptr)),
+                LocalIRValue::RValue(value, ty) => InternalValue::new(ty, InternalValueKind::RValue(value)),
             };
 
             return internal_value;

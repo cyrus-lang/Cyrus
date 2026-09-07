@@ -1,0 +1,58 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 The Cyrus Language
+
+import std::http{Request, Response, HttpStatus};
+import std::mem::libc{LibcAllocator};
+import std::http::server{Server};
+import std::http::router{Router};
+import std::libc{printf, strlen};
+import std::mem{Allocator};
+
+fn handle_home(req: const Request*, res: Response*) {
+    res->set_status(HttpStatus.Ok);
+    res->set_content_type("text/plain");
+    res->set_body("Welcome to the Cyrus HTTP Server!");
+}
+
+fn handle_greet(req: const Request*, res: Response*) {
+    res->set_status(HttpStatus.Ok);
+    res->set_content_type("text/plain");
+    res->set_body("Hello, ");
+    res->append_body(req->body());
+    res->append_body("!\n");
+}
+
+fn handle_json(req: const Request*, res: Response*) {
+    res->set_status(HttpStatus.Ok);
+    res->set_content_type("application/json");
+    res->set_body("{\"language\": \"Cyrus\", \"status\": \"functional\", \"ok\": true}");
+}
+
+pub fn main() {
+    var allocator: Allocator = dynamic LibcAllocator.new();
+
+    var router = Router.new(allocator);
+    defer router.free();
+
+    router.get("/", handle_home);
+    router.post("/greet", handle_greet);
+    router.get("/json", handle_json);
+
+    var server: Server;
+    switch (Server.bind(allocator, &router, "127.0.0.1", 8080)) {
+        case .Value(bound) => server = bound;
+        case .Error(err) => {
+            printf("Failed to bind server: %s\n", err);
+            return;
+        }
+    }
+    defer server.close();
+
+    printf("Server running on http://127.0.0.1:8080\n");
+
+    switch (server.serve()) {
+        case .Error(err) => {
+            printf("Server error: %s\n", err);
+        }
+    }
+}
