@@ -44,38 +44,43 @@ pub enum Value {
     Str(String),
     Int(int64),
     Float(float64),
-    Bool(bool)
+    Bool(bool),
+
+    [[inline]]
+    pub fn free(self: Self*) {
+        switch (*self) {
+            case .Str(str) => str.free();
+        }
+    }
 }
 
-pub struct CLI {
+pub struct App {
     allocator: Allocator,
     cmds: Cmds,
     opts: Opts*,
+    args: Vec<Value>,
     program_name: uint8*,
 
     pub fn new(allocator: Allocator, opts: Opts*, program_name: uint8*) Self {
+        const args: Vec<Value> = Vec.new(allocator);
         const cmds = Cmds.new(allocator);
 
         return Self {
             allocator,
             cmds,
             opts,
+            args,
             program_name
         };
     }
 
-    pub fn add_command(self: Self*, cmd: Cmd) {
-        const help_opt = self->opts->get_help_opt();
-        var heap = self->cmds.add(cmd);
-        heap->add_option(help_opt);
-    }
-
-    pub fn parse_args(self: Self*, pargs: ProgramArgs) ErrorOr<Self*, ()> {
+    pub fn run(self: Self*, pargs: ProgramArgs) ErrorOr<Self*, ()> {
         if (pargs.argc < 2) {
             self->display_general_help();
             return .Value(self);
         }
 
+        // Handle command help internally.
         if (pargs.argv[1] == "help") {
             self->display_general_help();
             return .Value(self);
@@ -99,6 +104,7 @@ pub struct CLI {
                     return .Value(self);
                 }
 
+                // Trigger action
                 (cmd->action)(ActionCtx { opts: self->opts });
 
                 return .Value(self);
@@ -109,6 +115,26 @@ pub struct CLI {
             }
         }
     }
+
+    /// Adds the command into the registry.
+    pub fn register(self: Self*, cmd: Cmd) {
+        const help_opt = self->opts->get_help_opt();
+        var heap = self->cmds.add(cmd);
+        heap->add_option(help_opt);
+    }
+
+    pub fn free(self: Self*) {
+        for (var i: usize = 0; i < self->args.len(); i += 1) {
+            const value = self->args.get(i).unwrap();    
+            value->free();
+        }
+
+        self->cmds.free();
+        self->args.free();
+        self->opts->free();
+    }
+
+    // Internal
 
     fn parse_remaining_args(self: Self*, cmd: const Cmd*, pargs: ProgramArgs, rem_args: usize) ErrorOr<(), Error> {
         if (rem_args == 0) {
@@ -135,11 +161,24 @@ pub struct CLI {
         var i: usize = 1;
         var arg = pargs.argv[i];
 
-        // Consume first command
+        // First command is necessary, but extra commands, if not defined,
+        // it should be considered as an argument.
         switch (self->cmds.find(arg)) case .Some(var cmd) else {
             return .Error(.UnknownCommand { cmd: arg });
         }
+
         i += 1;
+        
+        // Handle args: We expect to parse input args until 
+        // we achieve an option or end of args.
+        while (i < argc) {
+            if (!arg || is_arg_an_opt(pargs.argv[i])) {
+                break;
+            }
+
+            self->args.push(self->parse_value(arg));
+            i += 1;
+        }
 
         // Handle sub commands
         for (; i < argc; i += 1) {
@@ -160,14 +199,14 @@ pub struct CLI {
             }
 
             switch (cmd->sub_cmds->find(arg)) {
-                case .Some(x) => cmd = x;
+                case .Some(sub_cmd) => cmd = sub_cmd;
                 case .None => return .Error(.UnknownCommand { cmd: arg });
             }
         }
         
         return .Value(struct { cmd, rem_args: argc - i });
     }
-
+    
     fn parse_option(
         self: const Self*,
         cmd: const Cmd*,
@@ -204,6 +243,10 @@ pub struct CLI {
         const (is_assign, var assign_index) = is_opt_assign(name);
 
         if (is_assign) {
+            // REVIEW: We have to make a buffer for 
+            // storing option name and value because language 
+            // currently do not have a strong support of slices.
+
             const val_len = strlen(name + assign_index + 1);
             var opt_name = @cast(uint8*, self->allocator.alloc(assign_index + 1));
             var opt_val = @cast(uint8*, self->allocator.alloc(val_len + 1));
@@ -275,6 +318,8 @@ pub struct CLI {
     }
 
     fn parse_value(self: Self*, arg: const uint8*) Value {
+        @assert(arg, "arg cannot be null");
+
         var ok = false;
 
         const bool_value = parse_bool(&ok, arg);
@@ -378,10 +423,6 @@ pub struct CLI {
         fprintf(stderr, "Please use command `help` to see usage.\n");
     }
 
-    pub fn free(self: Self*) {
-        self->cmds.free();
-        self->opts->free();
-    }
 }
 
 pub struct Cmds {
@@ -663,7 +704,7 @@ pub struct Opt {
     allocator: Allocator,
     pub short_name: Option<uint8>,
     pub long_name: uint8*,
-    pub values: Vec<Value*>,
+    pub values: Vec<Value>,
     pub arg_type: Option<ArgType>,
     pub enabled: bool,
     pub required: bool,
@@ -671,7 +712,7 @@ pub struct Opt {
     pub help: Option<uint8*>,
 
     pub fn new(allocator: Allocator, long_name: uint8*) Self {
-        const values: Vec<Value*> = Vec.new(allocator);
+        const values: Vec<Value> = Vec.new(allocator);
 
         return Self {
             allocator,
@@ -687,7 +728,7 @@ pub struct Opt {
     }
 
     pub fn add_value(self: Self*, value: Value) {
-        self->values.push(alloc_init(self->allocator, value));
+        self->values.push(value);
     }
 
     pub fn check(self: const Self*) ErrorOr<(), Error> {
@@ -725,13 +766,8 @@ pub struct Opt {
 
     pub fn free(self: Self*) {
         for (var i: usize = 0; i < self->values.len(); i += 1) {
-            const value = self->values.get_owned(i).unwrap();
-
-            switch (*value) {
-                case .Str(str) => str.free();
-            }
-
-            self->allocator.free(value);    
+            const value = self->values.get(i).unwrap();
+            value->free();   
         }
 
         self->values.free();
