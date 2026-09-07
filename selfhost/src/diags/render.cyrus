@@ -1,24 +1,14 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 The Cyrus Language
 
-import (
-    std::mem::libc{LibcAllocator},
-    std::io{Writer, StringWriter},
-    std::format{format_usize},
-    std::string{String},
-    std::mem{Allocator},
-);
-
+import diags{DiagContext, SubDiag, Diag};
+import std::io{Writer, StringWriter};
+import std::mem::libc{LibcAllocator};
+import std::format{format_usize};
+import std::string{String};
+import std::mem{Allocator};
 import std::libc{printf};
-
-import (
-    diags{
-        DiagContext,
-        SubDiag,
-        Diag,
-    },
-    tokens{Loc}
-);
+import tokens{Loc};
 
 const MIN_PANEL_SPACE: uint32 = 5;
 

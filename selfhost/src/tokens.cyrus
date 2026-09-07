@@ -1,23 +1,15 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 The Cyrus Language
 
-import (
-    std::mem::libc{LibcAllocator},
-    std::collections{Vec},
-    std::io{StringWriter},
-    std::string{String},
-    std::mem{Allocator},
-    std::option{Option},
-    std::libc{printf},
-    std::io{Writer},
-    std::format{
-        Format,
-        format_int128,
-        format_uint128,
-        format_float64,
-        format_bool
-    }
-);
+import std::format{Format, format_int128, format_uint128, format_float64, format_bool};
+import std::mem::libc{LibcAllocator};
+import std::collections{Vec};
+import std::io{StringWriter};
+import std::string{String};
+import std::mem{Allocator};
+import std::option{Option};
+import std::libc{printf};
+import std::io{Writer};
 
 pub struct SourceTokens {
     // pub source_id: SourceId,

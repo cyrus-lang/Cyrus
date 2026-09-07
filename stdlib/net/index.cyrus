@@ -1,18 +1,12 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 The Cyrus Language
 
-import (
-    std::errors{ErrorOr, ErrorStr},
-    std::libc{errno, strerror},
-    std::libc::types{
-        c_int,
-        c_uint,
-        c_char,
-        c_void,
-        c_size,
-        c_ssize
-    }
-);
+import std::errors{ErrorOr, ErrorStr};
+import std::libc{errno, strerror};
+import std::libc::types{
+    c_int, c_uint, c_char,
+    c_void, c_size, c_ssize
+};
 
 pub const AF_INET: c_int = 2;
 pub const AF_INET6: c_int = 10;

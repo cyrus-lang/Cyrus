@@ -556,7 +556,7 @@ pub struct ModulePath {
 
 #[derive(Debug, Clone)]
 pub struct ASTImportStmt {
-    pub paths: Vec<ModulePath>,
+    pub module_path: ModulePath,
     pub loc: Loc,
 }
 

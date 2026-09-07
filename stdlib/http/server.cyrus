@@ -1,15 +1,13 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 The Cyrus Language
 
-import (
-    std::net{TcpListener, TcpStream, DEFAULT_BACKLOG},
-    std::http{Request, Response, HttpStatus},
-    std::errors{ErrorOr, ErrorStr},
-    std::http::router{Router},
-    std::mem{Allocator},
-    std::string{String},
-    std::http::internal,
-);
+import std::net{TcpListener, TcpStream, DEFAULT_BACKLOG};
+import std::http{Request, Response, HttpStatus};
+import std::errors{ErrorOr, ErrorStr};
+import std::http::router{Router};
+import std::http::internal;
+import std::mem{Allocator};
+import std::string{String};
 
 const READ_CHUNK_SIZE: usize = 4096;
 const DEFAULT_MAX_REQUEST_SIZE: usize = 1048576;

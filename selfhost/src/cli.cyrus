@@ -1,21 +1,19 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 The Cyrus Language
 
-import (
-    std::libc::types{c_int, c_char},
-    std::libc{
-        fprintf, printf, strlen,
-        strcmp, strtod, strtol,
-        errno, isalpha, isalnum,
-        stderr, ERANGE
-    },
-    std::io{Writer, StdoutWriter},
-    std::mem{Allocator, alloc_init},
-    std::collections{Vec},
-    std::errors{ErrorOr},
-    std::option{Option},
-    std::string{String},
-);
+import std::mem{Allocator, alloc_init};
+import std::libc::types{c_int, c_char};
+import std::io{Writer, StdoutWriter};
+import std::collections{Vec};
+import std::errors{ErrorOr};
+import std::option{Option};
+import std::string{String};
+import std::libc;
+    fprintf, printf, strlen,
+    strcmp, strtod, strtol,
+    errno, isalpha, isalnum,
+    stderr, ERANGE
+},
 
 const HELP_WS_LEN: usize = 16;
 

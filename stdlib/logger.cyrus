@@ -1,11 +1,9 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 The Cyrus Language
 
-import (
-    std::libc{time, localtime_r, strftime, CTm},
-    std::libc::types{c_long},
-    std::io{Writer},
-);
+import std::libc{time, localtime_r, strftime, CTm};
+import std::libc::types{c_long};
+import std::io{Writer};
 
 const TIMESTAMP_BUF_SIZE: usize = 32;
 

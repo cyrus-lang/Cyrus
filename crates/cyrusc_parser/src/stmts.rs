@@ -1307,48 +1307,15 @@ impl<'source_file> Parser<'source_file> {
 
         self.next_token(); // consume import keyword
 
-        let mut paths: Vec<ModulePath> = Vec::new();
-
-        if self.current_token_is(TokenKind::LeftParen) {
-            self.expect_current(TokenKind::LeftParen)?;
-
-            loop {
-                let mut module_path = self.parse_module_path()?;
-                module_path = self.parse_import_module_path(module_path.clone())?;
-                paths.push(module_path);
-
-                match self.current_token().kind {
-                    TokenKind::RightParen => {
-                        break;
-                    }
-                    TokenKind::Comma => {
-                        self.next_token();
-
-                        if self.current_token_is(TokenKind::RightParen) {
-                            break;
-                        } else {
-                            continue;
-                        }
-                    }
-                    _ => {
-                        return Err(self.error_invalid_token());
-                    }
-                }
-            }
-
-            self.expect_current(TokenKind::RightParen)?;
-        } else {
-            let mut module_path = self.parse_module_path()?;
-            module_path = self.parse_import_module_path(module_path.clone())?;
-            paths = vec![module_path];
-        }
+        let module_path = self.parse_module_path()?;
+        let module_path = self.parse_import_module_path(module_path.clone())?;
 
         self.must_be_semicolon()?;
 
         let end = self.current_token().loc.end;
 
         return Ok(ASTStmt::Import(ASTImportStmt {
-            paths,
+            module_path,
             loc: Loc::new(self.file_id(), line, column, start, end),
         }));
     }
