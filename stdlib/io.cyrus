@@ -2,6 +2,10 @@
 // Copyright (c) 2026 The Cyrus Language
 
 import (
+    std::errors{ErrorOr, ErrorStr},
+    std::collections{Vec},
+    std::option{Option},
+    std::string{String},
     std::libc{
         fprintf,
         stdout,
@@ -13,10 +17,6 @@ import (
         memmove,
         strlen
     },
-    std::collections{Vec},
-    std::errors{ErrorOr, ErrorStr},
-    std::option{Option},
-    std::string{String}
 );
 
 pub type IOError = ErrorOr<(), ()>;
@@ -236,11 +236,13 @@ pub struct StdinReader : Reader {
     }
 
     pub fn read_char(self: Self*) Option<uint8> {
-        const ch = getchar();
-        if (ch < 0) {
+        const char = getchar();
+
+        if (char < 0) {
             return .None;
         }
-        return .Some(@cast(uint8, ch));
+
+        return .Some(@cast(uint8, char));
     }
 }
 
@@ -251,6 +253,7 @@ pub struct StringReader : Reader {
 
     pub fn new(data: const uint8*, len: usize) Self {
         @assert(data != null, "data cannot be null");
+        
         return Self {
             data,
             len,
@@ -266,6 +269,7 @@ pub struct StringReader : Reader {
         }
 
         var to_read = self->len - self->pos;
+
         if (to_read > max_len) {
             to_read = max_len;
         }
@@ -293,6 +297,7 @@ pub struct StringReader : Reader {
         if (self->pos >= self->len) {
             return 0;
         }
+
         return self->len - self->pos;
     }
 }
@@ -306,6 +311,7 @@ pub struct BufferedWriter : Writer {
     pub fn new(underlying: Writer, buf: uint8*, cap: usize) Self {
         @assert(buf != null, "buffer cannot be null");
         @assert(cap > 0, "capacity must be greater than zero");
+
         return Self {
             underlying,
             buf,
@@ -320,34 +326,45 @@ pub struct BufferedWriter : Writer {
 
     pub fn write(self: Self*, data: const uint8*) IOError {
         @assert(data != null, "data cannot be null");
-        const str_len = strlen(data);
+
+        const len = strlen(data);
+
         var offset: usize = 0;
-        while (offset < str_len) {
+
+        while (offset < len) {
             if (self->len >= self->cap) {
                 const flush_res = self->flush();
+                
                 if (flush_res.is_error()) {
                     return flush_res;
                 }
             }
+
             const current_available = self->cap - self->len;
-            var to_copy = str_len - offset;
+            
+            var to_copy = len - offset;
+            
             if (to_copy > current_available) {
                 to_copy = current_available;
             }
+            
             memmove(self->buf + self->len, data + offset, to_copy);
             self->len += to_copy;
             offset += to_copy;
         }
+
         return .Value(());
     }
 
     pub fn write_char(self: Self*, char: uint8) IOError {
         if (self->len >= self->cap) {
             const flush_res = self->flush();
+            
             if (flush_res.is_error()) {
                 return flush_res;
             }
         }
+
         self->buf[self->len] = char;
         self->len += 1;
         return .Value(());
@@ -355,9 +372,11 @@ pub struct BufferedWriter : Writer {
 
     pub fn writeln(self: Self*, data: const uint8*) IOError {
         const res = self->write(data);
+        
         if (res.is_error()) {
             return res;
         }
+        
         return self->write_char('\n');
     }
 
@@ -365,12 +384,15 @@ pub struct BufferedWriter : Writer {
         if (self->len == 0) {
             return .Value(());
         }
+        
         for (var i: usize = 0; i < self->len; i += 1) {
             const res = self->underlying.write_char(self->buf[i]);
+            
             if (res.is_error()) {
                 return res;
             }
         }
+        
         self->len = 0;
         return self->underlying.flush();
     }
@@ -390,6 +412,7 @@ pub struct BufferedReader : Reader {
     pub fn new(underlying: Reader, buf: uint8*, cap: usize) Self {
         @assert(buf != null, "buffer cannot be null");
         @assert(cap > 0, "capacity must be greater than zero");
+        
         return Self {
             underlying,
             buf,
@@ -401,14 +424,17 @@ pub struct BufferedReader : Reader {
 
     pub fn read(self: Self*, dest: uint8*, max_len: usize) ErrorOr<usize, ErrorStr> {
         @assert(dest != null, "dest buffer cannot be null");
+        
         if (max_len == 0) {
             return .Value(0);
         }
 
         var total_read: usize = 0;
+        
         while (total_read < max_len) {
             if (self->pos >= self->valid) {
                 const fill_res = self->fill_buffer();
+                
                 switch (fill_res) {
                     case .Error(err) => {
                         if (total_read > 0) {
@@ -416,7 +442,6 @@ pub struct BufferedReader : Reader {
                         }
                         return .Error(err);
                     }
-                    case .Value(_) => {}
                 }
 
                 if (self->valid == 0) {
@@ -426,7 +451,9 @@ pub struct BufferedReader : Reader {
 
             const available = self->valid - self->pos;
             const needed = max_len - total_read;
+            
             var to_copy = available;
+            
             if (to_copy > needed) {
                 to_copy = needed;
             }
@@ -442,14 +469,16 @@ pub struct BufferedReader : Reader {
     pub fn read_char(self: Self*) Option<uint8> {
         if (self->pos >= self->valid) {
             const fill_res = self->fill_buffer();
-            switch (fill_res) {
-                case .Error(_) => return .None;
-                case .Value(_) => {}
+            
+            if (fill_res.is_error()) {
+                return .None;
             }
+            
             if (self->valid == 0) {
                 return .None;
             }
         }
+        
         const ch = self->buf[self->pos];
         self->pos += 1;
         return .Some(ch);
@@ -458,7 +487,9 @@ pub struct BufferedReader : Reader {
     fn fill_buffer(self: Self*) ErrorOr<(), ErrorStr> {
         self->pos = 0;
         self->valid = 0;
+        
         const read_res = self->underlying.read(self->buf, self->cap);
+        
         switch (read_res) {
             case .Value(bytes) => {
                 self->valid = bytes;
