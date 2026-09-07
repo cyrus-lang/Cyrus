@@ -20,7 +20,7 @@ pub fn main() {
 
     var write_file = write_file_res.unwrap();
     write_file.write("0123456789");
-    write_file.deinit();
+    write_file.free();
 
     var read_file_res = File.open(&path, OpeningModes.Read);
     if (read_file_res.is_error()) {
@@ -32,12 +32,12 @@ pub fn main() {
     const seek_res = read_file.seek(4, FileSeek.Set);
     if (seek_res.is_error() || seek_res.unwrap() != 4) {
         printf("seek fail: seek\n");
-        read_file.deinit();
+        read_file.free();
         read_file.remove();
         return;
     }
 
-    read_file.deinit();
+    read_file.free();
     read_file.remove();
 
     printf("seek ok\n");
