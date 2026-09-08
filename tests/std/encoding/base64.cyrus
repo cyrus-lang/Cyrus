@@ -1,0 +1,52 @@
+// @stdout: base64 ok
+
+import std::encoding::base64;
+import std::mem::libc{LibcAllocator};
+import std::mem{Allocator};
+import std::libc{printf, strcmp, strlen};
+import std::collections{Vec};
+import std::string{String};
+
+pub fn main() {
+    const allocator: Allocator = dynamic LibcAllocator.new();
+
+    const raw_input = "Hello, World!";
+    const raw_len = strlen(raw_input);
+
+    var b64_str = base64::encode(allocator, raw_input, raw_len);
+    defer b64_str.free();
+
+    const is_enc_match = strcmp(b64_str.as_str_const(), "SGVsbG8sIFdvcmxkIQ==") == 0;
+
+    var is_dec_ok = false;
+    var decoded_res = base64::decode(allocator, b64_str.as_str_const(), b64_str.len());
+    switch (decoded_res) {
+        case .Value(var decoded_vec) => {
+            defer decoded_vec.free();
+            if (decoded_vec.len() == 13) {
+                const d = decoded_vec.data_const();
+                if (((d[0] == 'H') && (d[12] == '!'))) {
+                    is_dec_ok = true;
+                }
+            }
+        }
+        case .Error(_) => {}
+    }
+
+    var is_buf_ok = false;
+    var buf: uint8[32];
+    const enc_buf_res = base64::encode_to_buf(raw_input, raw_len, &buf[0], 32);
+    if (enc_buf_res.is_some()) {
+        const out_len = enc_buf_res.unwrap();
+        buf[out_len] = '\0';
+        if (strcmp(&buf[0], "SGVsbG8sIFdvcmxkIQ==") == 0) {
+            is_buf_ok = true;
+        }
+    }
+
+    if (((is_enc_match && is_dec_ok) && is_buf_ok)) {
+        printf("base64 ok\n");
+    } else {
+        printf("base64 fail\n");
+    }
+}

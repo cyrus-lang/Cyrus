@@ -1,0 +1,43 @@
+// @stdout: string enhancements ok
+
+import std::string{String};
+import std::mem::libc{LibcAllocator};
+import std::mem{Allocator};
+import std::libc{printf, strcmp};
+import std::collections{Vec};
+import std::slices{Slice};
+
+pub fn main() {
+    const allocator: Allocator = dynamic LibcAllocator.new();
+
+    var str = String.from_str(allocator, "apple,banana,cherry,date");
+    defer str.free();
+
+    const has_banana = str.contains("banana");
+    const starts_apple = str.starts_with("apple");
+    const ends_date = str.ends_with("date");
+
+    var split_iter = str.split(",");
+    var token_count: usize = 0;
+    while (true) {
+        const next_tok = split_iter.next();
+        if (next_tok.is_none()) {
+            break;
+        }
+        token_count += 1;
+    }
+
+    var sub = str.substring(allocator, 6, 6);
+    defer sub.free();
+    const is_sub_ok = strcmp(sub.as_str_const(), "banana") == 0;
+
+    var replaced = String.replace_all(allocator, str.as_str_const(), "banana", "orange");
+    defer replaced.free();
+    const is_repl_ok = strcmp(replaced.as_str_const(), "apple,orange,cherry,date") == 0;
+
+    if (((((has_banana && starts_apple) && ends_date) && (token_count == 4)) && (is_sub_ok && is_repl_ok))) {
+        printf("string enhancements ok\n");
+    } else {
+        printf("string enhancements fail\n");
+    }
+}

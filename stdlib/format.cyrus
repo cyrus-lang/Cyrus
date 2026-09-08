@@ -1,11 +1,10 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 The Cyrus Language
 
-import std::io{StringWriter, Writer, IOError};
-import std::mem::libc{LibcAllocator};
+import std::io{Writer, IOError};
+import std::libc{snprintf};
 import std::mem{Allocator};
 import std::string{String};
-import std::libc{snprintf};
 
 const INT32_BUF_SIZE: usize = 12;
 const UINT32_BUF_SIZE: usize = 11;
@@ -21,17 +20,6 @@ const FLOAT128_BUF_SIZE: usize = 5000;
 
 pub interface Format {
     fn format(self: const Self*, writer: Writer) bool;
-}
-
-pub fn format(f: Format) String {
-    var allocator: Allocator = dynamic LibcAllocator.new();
-
-    var out = String.new(allocator);
-    var writer: Writer = dynamic StringWriter.new(&out);
-
-    f.format(writer);
-
-    return out;
 }
 
 pub fn format_bool(writer: Writer, x: bool) {
@@ -116,3 +104,116 @@ pub fn format_float64(writer: Writer, x: float64) {
 // TODO: After implementing comptime and reflection features
 // we should add auto-format helpers here for sructs, unions, enums, 
 // tuples, and values.
+
+pub struct StringBuilder : Writer {
+    str: String,
+
+    pub fn new(allocator: Allocator) Self {
+        return StringBuilder {
+            str: String.new(allocator),
+        };
+    }
+
+    pub fn with_capacity(allocator: Allocator, cap: usize) Self {
+        return StringBuilder {
+            str: String.with_capacity(allocator, cap),
+        };
+    }
+
+    pub fn append(self: Self*, s: const uint8*) {
+        @assert(s != null, "string cannot be null");
+        self->str.push_str(s);
+    }
+
+    pub fn append_char(self: Self*, ch: uint8) {
+        self->str.push(ch);
+    }
+
+    pub fn append_bool(self: Self*, val: bool) {
+        if (val) {
+            self->str.push_str("true");
+        } else {
+            self->str.push_str("false");
+        }
+    }
+
+    pub fn append_int(self: Self*, val: int64) {
+        var buf: uint8[INT64_BUF_SIZE];
+        snprintf(&buf[0], INT64_BUF_SIZE, "%ld", val);
+        self->str.push_str(&buf[0]);
+    }
+
+    pub fn append_uint(self: Self*, val: uint64) {
+        var buf: uint8[UINT64_BUF_SIZE];
+        snprintf(&buf[0], UINT64_BUF_SIZE, "%lu", val);
+        self->str.push_str(&buf[0]);
+    }
+
+    pub fn append_float(self: Self*, val: float64) {
+        var buf: uint8[FLOAT64_BUF_SIZE];
+        snprintf(&buf[0], FLOAT64_BUF_SIZE, "%g", val);
+        self->str.push_str(&buf[0]);
+    }
+
+    pub fn append_line(self: Self*, s: const uint8*) {
+        @assert(s != null, "string cannot be null");
+        self->str.push_str(s);
+        self->str.push('\n');
+    }
+
+    pub fn write_all(self: Self*, data: const uint8*) IOError {
+        @assert(data != null, "data cannot be null");
+        self->str.push_str(data);
+        return .Value(());
+    }
+
+    pub fn write(self: Self*, data: const uint8*) IOError {
+        @assert(data != null, "data cannot be null");
+        self->str.push_str(data);
+        return .Value(());
+    }
+
+    pub fn write_char(self: Self*, char: uint8) IOError {
+        self->str.push(char);
+        return .Value(());
+    }
+
+    pub fn writeln(self: Self*, data: const uint8*) IOError {
+        @assert(data != null, "data cannot be null");
+        self->str.push_str(data);
+        self->str.push('\n');
+        return .Value(());
+    }
+
+    pub fn flush(self: Self*) IOError {
+        return .Value(());
+    }
+
+    pub fn as_str(self: Self*) uint8* {
+        return self->str.as_str();
+    }
+
+    pub fn as_str_const(self: const Self*) const uint8* {
+        return self->str.as_str_const();
+    }
+
+    pub fn len(self: const Self*) usize {
+        return self->str.len();
+    }
+
+    pub fn is_empty(self: const Self*) bool {
+        return self->str.len() == 0;
+    }
+
+    pub fn clear(self: Self*) {
+        self->str.clear();
+    }
+
+    pub fn to_string(self: const Self*, allocator: Allocator) String {
+        return self->str.clone(allocator);
+    }
+
+    pub fn free(self: Self*) {
+        self->str.free();
+    }
+}

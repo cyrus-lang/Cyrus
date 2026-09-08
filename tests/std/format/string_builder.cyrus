@@ -1,0 +1,30 @@
+// @stdout: string builder ok
+
+import std::format{StringBuilder};
+import std::mem::libc{LibcAllocator};
+import std::mem{Allocator};
+import std::libc{printf, strcmp};
+
+pub fn main() {
+    const allocator: Allocator = dynamic LibcAllocator.new();
+
+    var sb = StringBuilder.new(allocator);
+    defer sb.free();
+
+    sb.append("Count: ");
+    sb.append_int(42);
+    sb.append(", Status: ");
+    sb.append_bool(true);
+
+    const match1 = strcmp(sb.as_str_const(), "Count: 42, Status: true") == 0;
+
+    var s = sb.to_string(allocator);
+    defer s.free();
+    const match2 = strcmp(s.as_str_const(), "Count: 42, Status: true") == 0;
+
+    if ((match1 && match2)) {
+        printf("string builder ok\n");
+    } else {
+        printf("string builder fail\n");
+    }
+}

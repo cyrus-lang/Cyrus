@@ -7,64 +7,125 @@ import std::option{Option};
 import std::mem{Allocator};
 import std::slices{Slice};
 import std::libc{
-    strlen, strcmp, memmove,
-    isspace, tolower, toupper,
+    strlen, strcmp, strncmp, strstr,
+    memmove, isspace, tolower, toupper,
     strtol, errno, ERANGE
 };
+import std::iterator{IterOwned};
+import std::core::utf8{Utf8CharIter, count_codepoints};
+
+pub struct StringSplitIter : IterOwned<Slice<uint8>> {
+    src: const uint8*,
+    src_len: usize,
+    delim: const uint8*,
+    delim_len: usize,
+    pos: usize,
+    finished: bool,
+
+    pub fn new(src: const uint8*, src_len: usize, delim: const uint8*, delim_len: usize) Self {
+        return StringSplitIter {
+            src,
+            src_len,
+            delim,
+            delim_len,
+            pos: 0,
+            finished: false,
+        };
+    }
+
+    pub fn next(self: Self*) Option<Slice<uint8>> {
+        if (self->finished) {
+            return .None;
+        }
+
+        if (self->delim_len == 0) {
+            if (self->pos < self->src_len) {
+                const ptr = @cast(uint8*, @cast(uintptr, self->src + self->pos));
+                var sl: Slice<uint8> = Slice.new(ptr, 1);
+                self->pos += 1;
+                return .Some(sl);
+            }
+            self->finished = true;
+            return .None;
+        }
+
+        if (self->pos > self->src_len) {
+            self->finished = true;
+            return .None;
+        }
+
+        var i = self->pos;
+        while ((i + self->delim_len) <= self->src_len) {
+            if (strncmp(self->src + i, self->delim, self->delim_len) == 0) {
+                const match_start = self->pos;
+                const match_len = i - match_start;
+                self->pos = i + self->delim_len;
+                const ptr = @cast(uint8*, @cast(uintptr, self->src + match_start));
+                var sl: Slice<uint8> = Slice.new(ptr, match_len);
+                return .Some(sl);
+            }
+            i += 1;
+        }
+
+        const match_start = self->pos;
+        const match_len = self->src_len - match_start;
+        self->pos = self->src_len + 1;
+        self->finished = true;
+        const ptr = @cast(uint8*, @cast(uintptr, self->src + match_start));
+        var sl: Slice<uint8> = Slice.new(ptr, match_len);
+        return .Some(sl);
+    }
+}
 
 pub struct String {
     vec: Vec<uint8>,
 
     pub fn new(allocator: Allocator) Self {
         var vec: Vec<uint8> = Vec.new(allocator);
-        vec.push('\0'); // null-terminated
-        return Self { vec };
+        vec.push('\0');
+        return String { vec };
     }
 
     pub fn with_capacity(allocator: Allocator, cap: usize) Self {
         var vec: Vec<uint8> = Vec.with_capacity(allocator, cap);
-        vec.push('\0'); // null-terminated
-        return Self { vec };
+        vec.push('\0');
+        return String { vec };
     }
 
     pub fn from_str(allocator: Allocator, str: const uint8*) Self {
-        @assert(str, "input string cannot be null");
-
+        @assert(str != null, "input string cannot be null");
         const len = strlen(str);
-    
         var vec: Vec<uint8> = Vec.with_capacity(allocator, len + 1);
         for (var i: usize = 0; i < len; i += 1) {
             vec.push(str[i]);
         }
         vec.push('\0');
-    
-        return Self { vec };
+        return String { vec };
     }
 
     pub fn from_slice(allocator: Allocator, slice: const Slice<uint8>) Self {
         const len = slice.len();
-
-        var vec: Vec<uint8> = Vec.with_capacity(allocator, len +1);
-
+        var vec: Vec<uint8> = Vec.with_capacity(allocator, len + 1);
         for (var i: usize = 0; i < len; i += 1) {
             const item = slice.get_const(i).unwrap();
-
             vec.push(*item);
         }
         vec.push('\0');
+        return String { vec };
+    }
 
-        return Self { vec };
+    pub fn clone(self: const Self*, allocator: Allocator) Self {
+        return String.from_str(allocator, self->as_str_const());
     }
 
     pub fn reserve(self: Self*, extra: usize) {
         const required = self->len() + extra;
-        
         if (required > self->cap()) {
             self->vec.reserve(required);
         }
     }
 
-    pub fn push(self: Self*, ch: uint8) {        
+    pub fn push(self: Self*, ch: uint8) {
         var data = self->vec.data();
         var current = &data[self->len()];
         *current = ch;
@@ -72,19 +133,225 @@ pub struct String {
     }
 
     pub fn push_str(self: Self*, str: const uint8*) {
-        @assert(str, "input string cannot be null");
-
+        @assert(str != null, "input string cannot be null");
         const len = strlen(str);
-
         self->reserve(len);
         self->vec.pop();
         for (var i: usize = 0; i < len; i += 1) {
             self->vec.push(str[i]);
-        }        
+        }
         self->vec.push('\0');
     }
-    
-    // TODO: Add method: replace
+
+    pub fn pop(self: Self*) Option<uint8> {
+        if (self->len() == 0) {
+            return .None;
+        }
+        self->vec.pop();
+        const ch = self->vec.pop();
+        self->vec.push('\0');
+        return .Some(ch);
+    }
+
+    pub fn substring(self: const Self*, allocator: Allocator, start: usize, length: usize) Self {
+        const self_len = self->len();
+        if (start >= self_len) {
+            return String.new(allocator);
+        }
+        var actual_len = length;
+        if ((start + actual_len) > self_len) {
+            actual_len = self_len - start;
+        }
+        var vec: Vec<uint8> = Vec.with_capacity(allocator, actual_len + 1);
+        const src = self->as_str_const() + start;
+        for (var i: usize = 0; i < actual_len; i += 1) {
+            vec.push(src[i]);
+        }
+        vec.push('\0');
+        return String { vec };
+    }
+
+    pub fn as_slice(self: const Self*) Slice<uint8> {
+        const ptr = @cast(uint8*, @cast(uintptr, self->as_str_const()));
+        var sl: Slice<uint8> = Slice.new(ptr, self->len());
+        return sl;
+    }
+
+    pub fn slice_range(self: const Self*, start: usize, end: usize) Slice<uint8> {
+        const len = self->len();
+        var s = start;
+        var e = end;
+        if (s > len) {
+            s = len;
+        }
+        if (e > len) {
+            e = len;
+        }
+        if (s >= e) {
+            const ptr = @cast(uint8*, @cast(uintptr, self->as_str_const() + s));
+            var sl: Slice<uint8> = Slice.new(ptr, 0);
+            return sl;
+        }
+        const ptr = @cast(uint8*, @cast(uintptr, self->as_str_const() + s));
+        var sl: Slice<uint8> = Slice.new(ptr, e - s);
+        return sl;
+    }
+
+    pub fn contains(self: const Self*, substr: const uint8*) bool {
+        @assert(substr != null, "substr cannot be null");
+        return strstr(self->as_str_const(), substr) != null;
+    }
+
+    pub fn starts_with(self: const Self*, prefix: const uint8*) bool {
+        @assert(prefix != null, "prefix cannot be null");
+        const prefix_len = strlen(prefix);
+        if (prefix_len > self->len()) {
+            return false;
+        }
+        return strncmp(self->as_str_const(), prefix, prefix_len) == 0;
+    }
+
+    pub fn ends_with(self: const Self*, suffix: const uint8*) bool {
+        @assert(suffix != null, "suffix cannot be null");
+        const suffix_len = strlen(suffix);
+        const self_len = self->len();
+        if (suffix_len > self_len) {
+            return false;
+        }
+        const offset = self_len - suffix_len;
+        return strcmp(self->as_str_const() + offset, suffix) == 0;
+    }
+
+    pub fn index_of(self: const Self*, substr: const uint8*) Option<usize> {
+        @assert(substr != null, "substr cannot be null");
+        const ptr = strstr(self->as_str_const(), substr);
+        if (ptr == null) {
+            return .None;
+        }
+        const idx = @cast(usize, @cast(uintptr, ptr) - @cast(uintptr, self->as_str_const()));
+        return .Some(idx);
+    }
+
+    pub fn index_of_char(self: const Self*, ch: uint8) Option<usize> {
+        const str = self->as_str_const();
+        const len = self->len();
+        for (var i: usize = 0; i < len; i += 1) {
+            if (str[i] == ch) {
+                return .Some(i);
+            }
+        }
+        return .None;
+    }
+
+    pub fn last_index_of(self: const Self*, substr: const uint8*) Option<usize> {
+        @assert(substr != null, "substr cannot be null");
+        const sub_len = strlen(substr);
+        const self_len = self->len();
+        if (sub_len > self_len) {
+            return .None;
+        }
+        if (sub_len == 0) {
+            return .Some(self_len);
+        }
+        const str = self->as_str_const();
+        var i: usize = self_len - sub_len;
+        while (true) {
+            if (strncmp(str + i, substr, sub_len) == 0) {
+                return .Some(i);
+            }
+            if (i == 0) {
+                break;
+            }
+            i -= 1;
+        }
+        return .None;
+    }
+
+    pub fn replace_all(allocator: Allocator, src: const uint8*, target: const uint8*, replacement: const uint8*) String {
+        @assert(src != null, "src cannot be null");
+        @assert(target != null, "target cannot be null");
+        @assert(replacement != null, "replacement cannot be null");
+        const src_len = strlen(src);
+        const target_len = strlen(target);
+        if (((target_len == 0) || (src_len == 0))) {
+            return String.from_str(allocator, src);
+        }
+        var result = String.new(allocator);
+        var i: usize = 0;
+        while (i < src_len) {
+            if ((((i + target_len) <= src_len) && (strncmp(src + i, target, target_len) == 0))) {
+                result.push_str(replacement);
+                i += target_len;
+            } else {
+                result.push(src[i]);
+                i += 1;
+            }
+        }
+        return result;
+    }
+
+    pub fn replace(self: Self*, allocator: Allocator, target: const uint8*, replacement: const uint8*) {
+        var new_str = String.replace_all(allocator, self->as_str_const(), target, replacement);
+        self->free();
+        *self = new_str;
+    }
+
+    pub fn split(self: const Self*, delimiter: const uint8*) StringSplitIter {
+        @assert(delimiter != null, "delimiter cannot be null");
+        return StringSplitIter.new(self->as_str_const(), self->len(), delimiter, strlen(delimiter));
+    }
+
+    pub fn join(allocator: Allocator, parts: const Vec<String>*, separator: const uint8*) String {
+        @assert(parts != null, "parts cannot be null");
+        @assert(separator != null, "separator cannot be null");
+        var res = String.new(allocator);
+        const count = parts->len();
+        for (var i: usize = 0; i < count; i += 1) {
+            const item = parts->get_const(i).unwrap();
+            res.push_str(item->as_str_const());
+            if ((i + 1) < count) {
+                res.push_str(separator);
+            }
+        }
+        return res;
+    }
+
+    pub fn join_slices(allocator: Allocator, parts: const Vec<Slice<uint8>>*, separator: const uint8*) String {
+        @assert(parts != null, "parts cannot be null");
+        @assert(separator != null, "separator cannot be null");
+        var res = String.new(allocator);
+        const count = parts->len();
+        for (var i: usize = 0; i < count; i += 1) {
+            const s = parts->get_const(i).unwrap();
+            const ptr = s->ptr_const();
+            const len = s->len();
+            for (var j: usize = 0; j < len; j += 1) {
+                res.push(ptr[j]);
+            }
+            if ((i + 1) < count) {
+                res.push_str(separator);
+            }
+        }
+        return res;
+    }
+
+    pub fn repeat(allocator: Allocator, str: const uint8*, count: usize) String {
+        @assert(str != null, "str cannot be null");
+        const len = strlen(str);
+        var res = String.with_capacity(allocator, (len * count) + 1);
+        for (var i: usize = 0; i < count; i += 1) {
+            res.push_str(str);
+        }
+        return res;
+    }
+
+    pub fn chars(self: const Self*) Utf8CharIter {
+        return Utf8CharIter.new(self->as_str_const(), self->len());
+    }
+
+    pub fn char_len(self: const Self*) Option<usize> {
+        return count_codepoints(self->as_str_const(), self->len());
+    }
 
     [[inline]]
     pub fn trim(self: Self*) {
@@ -97,11 +364,11 @@ pub struct String {
         const len = self->vec.len();
 
         var start: usize = 0;
-        while (start < len - 1 && isspace(@cast(c_int, str[start])) != 0) {
+        while ((start < (len - 1)) && (isspace(@cast(c_int, str[start])) != 0)) {
             start += 1;
         }
 
-        if (start >= len - 1) {
+        if (start >= (len - 1)) {
             self->clear();
             return;
         }
@@ -127,7 +394,7 @@ pub struct String {
             return;
         }
 
-        while (len > 1 && isspace(@cast(c_int, str[len - 1])) != 0) {
+        while ((len > 1) && (isspace(@cast(c_int, str[len - 1])) != 0)) {
             self->vec.pop();
             len -= 1;
         }
@@ -135,7 +402,6 @@ pub struct String {
 
     pub fn to_lower(self: Self*) {
         var str = self->as_str();
-
         for (var i: usize = 0; i < self->vec.len(); i += 1) {
             str[i] = @cast(uint8, tolower(@cast(c_int, str[i])));
         }
@@ -143,7 +409,6 @@ pub struct String {
 
     pub fn to_upper(self: Self*) {
         var str = self->as_str();
-
         for (var i: usize = 0; i < self->vec.len(); i += 1) {
             str[i] = @cast(uint8, toupper(@cast(c_int, str[i])));
         }
@@ -154,7 +419,6 @@ pub struct String {
         if (index > self->len()) {
             return .None;
         }
-
         return .Some(self->as_str_const()[index]);
     }
 
@@ -180,7 +444,7 @@ pub struct String {
 
     [[inline]]
     pub fn len(self: const Self*) usize {
-        return self->vec.len() - 1; // exclude '\0'
+        return self->vec.len() - 1;
     }
 
     [[inline]]
@@ -201,7 +465,7 @@ pub struct String {
 }
 
 pub fn try_str_as_int64(str: const uint8*) Option<int64> {
-    @assert(str, "str cannot be empty");
+    @assert(str != null, "str cannot be null");
 
     var endptr: c_char*;
 

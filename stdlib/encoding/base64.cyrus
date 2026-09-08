@@ -1,0 +1,402 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 The Cyrus Language
+
+import std::mem{Allocator};
+import std::string{String};
+import std::collections{Vec};
+import std::option{Option};
+import std::errors{ErrorOr, ErrorStr};
+
+fn b64_char(val: uint8) uint8 {
+    if (val < 26) {
+        return 'A' + val;
+    }
+    if (val < 52) {
+        return ('a' + val) - 26;
+    }
+    if (val < 62) {
+        return ('0' + val) - 52;
+    }
+    if (val == 62) {
+        return '+';
+    }
+    if (val == 63) {
+        return '/';
+    }
+    return '=';
+}
+
+fn b64_url_char(val: uint8) uint8 {
+    if (val < 26) {
+        return 'A' + val;
+    }
+    if (val < 52) {
+        return ('a' + val) - 26;
+    }
+    if (val < 62) {
+        return ('0' + val) - 52;
+    }
+    if (val == 62) {
+        return '-';
+    }
+    if (val == 63) {
+        return '_';
+    }
+    return '=';
+}
+
+fn b64_value(ch: uint8) Option<uint8> {
+    if (((ch >= 'A') && (ch <= 'Z'))) {
+        return .Some(ch - 'A');
+    }
+    if (((ch >= 'a') && (ch <= 'z'))) {
+        return .Some((ch - 'a') + 26);
+    }
+    if (((ch >= '0') && (ch <= '9'))) {
+        return .Some((ch - '0') + 52);
+    }
+    if (((ch == '+') || (ch == '-'))) {
+        return .Some(62);
+    }
+    if (((ch == '/') || (ch == '_'))) {
+        return .Some(63);
+    }
+    return .None;
+}
+
+pub fn encoded_len(src_len: usize) usize {
+    if (src_len == 0) {
+        return 0;
+    }
+    return ((src_len + 2) / 3) * 4;
+}
+
+pub fn decoded_len_upper_bound(b64_len: usize) usize {
+    if (b64_len == 0) {
+        return 0;
+    }
+    return (b64_len / 4) * 3;
+}
+
+pub fn encode(allocator: Allocator, src: const uint8*, src_len: usize) String {
+    const out_len = encoded_len(src_len);
+    var out = String.with_capacity(allocator, out_len + 1);
+    if (((src_len == 0) || (src == null))) {
+        return out;
+    }
+
+    var i: usize = 0;
+    while ((i + 3) <= src_len) {
+        const b0 = src[i];
+        const b1 = src[i + 1];
+        const b2 = src[i + 2];
+
+        const c0 = (b0 >> 2) & 0x3F;
+        const c1 = ((b0 & 0x03) << 4) | ((b1 >> 4) & 0x0F);
+        const c2 = ((b1 & 0x0F) << 2) | ((b2 >> 6) & 0x03);
+        const c3 = b2 & 0x3F;
+
+        out.push(b64_char(c0));
+        out.push(b64_char(c1));
+        out.push(b64_char(c2));
+        out.push(b64_char(c3));
+
+        i += 3;
+    }
+
+    const rem = src_len - i;
+    if (rem == 1) {
+        const b0 = src[i];
+        const c0 = (b0 >> 2) & 0x3F;
+        const c1 = (b0 & 0x03) << 4;
+
+        out.push(b64_char(c0));
+        out.push(b64_char(c1));
+        out.push('=');
+        out.push('=');
+    } else if (rem == 2) {
+        const b0 = src[i];
+        const b1 = src[i + 1];
+        const c0 = (b0 >> 2) & 0x3F;
+        const c1 = ((b0 & 0x03) << 4) | ((b1 >> 4) & 0x0F);
+        const c2 = (b1 & 0x0F) << 2;
+
+        out.push(b64_char(c0));
+        out.push(b64_char(c1));
+        out.push(b64_char(c2));
+        out.push('=');
+    }
+
+    return out;
+}
+
+pub fn encode_to_buf(src: const uint8*, src_len: usize, var dest: uint8*, dest_len: usize) Option<usize> {
+    const needed = encoded_len(src_len);
+    if (dest_len < needed) {
+        return .None;
+    }
+    if (src_len == 0) {
+        return .Some(0);
+    }
+
+    var i: usize = 0;
+    var out_idx: usize = 0;
+    while ((i + 3) <= src_len) {
+        const b0 = src[i];
+        const b1 = src[i + 1];
+        const b2 = src[i + 2];
+
+        const c0 = (b0 >> 2) & 0x3F;
+        const c1 = ((b0 & 0x03) << 4) | ((b1 >> 4) & 0x0F);
+        const c2 = ((b1 & 0x0F) << 2) | ((b2 >> 6) & 0x03);
+        const c3 = b2 & 0x3F;
+
+        dest[out_idx] = b64_char(c0);
+        dest[out_idx + 1] = b64_char(c1);
+        dest[out_idx + 2] = b64_char(c2);
+        dest[out_idx + 3] = b64_char(c3);
+
+        out_idx += 4;
+        i += 3;
+    }
+
+    const rem = src_len - i;
+    if (rem == 1) {
+        const b0 = src[i];
+        const c0 = (b0 >> 2) & 0x3F;
+        const c1 = (b0 & 0x03) << 4;
+
+        dest[out_idx] = b64_char(c0);
+        dest[out_idx + 1] = b64_char(c1);
+        dest[out_idx + 2] = '=';
+        dest[out_idx + 3] = '=';
+        out_idx += 4;
+    } else if (rem == 2) {
+        const b0 = src[i];
+        const b1 = src[i + 1];
+        const c0 = (b0 >> 2) & 0x3F;
+        const c1 = ((b0 & 0x03) << 4) | ((b1 >> 4) & 0x0F);
+        const c2 = (b1 & 0x0F) << 2;
+
+        dest[out_idx] = b64_char(c0);
+        dest[out_idx + 1] = b64_char(c1);
+        dest[out_idx + 2] = b64_char(c2);
+        dest[out_idx + 3] = '=';
+        out_idx += 4;
+    }
+
+    return .Some(out_idx);
+}
+
+pub fn encode_url(allocator: Allocator, src: const uint8*, src_len: usize) String {
+    const out_len = encoded_len(src_len);
+    var out = String.with_capacity(allocator, out_len + 1);
+    if (((src_len == 0) || (src == null))) {
+        return out;
+    }
+
+    var i: usize = 0;
+    while ((i + 3) <= src_len) {
+        const b0 = src[i];
+        const b1 = src[i + 1];
+        const b2 = src[i + 2];
+
+        const c0 = (b0 >> 2) & 0x3F;
+        const c1 = ((b0 & 0x03) << 4) | ((b1 >> 4) & 0x0F);
+        const c2 = ((b1 & 0x0F) << 2) | ((b2 >> 6) & 0x03);
+        const c3 = b2 & 0x3F;
+
+        out.push(b64_url_char(c0));
+        out.push(b64_url_char(c1));
+        out.push(b64_url_char(c2));
+        out.push(b64_url_char(c3));
+
+        i += 3;
+    }
+
+    const rem = src_len - i;
+    if (rem == 1) {
+        const b0 = src[i];
+        const c0 = (b0 >> 2) & 0x3F;
+        const c1 = (b0 & 0x03) << 4;
+
+        out.push(b64_url_char(c0));
+        out.push(b64_url_char(c1));
+    } else if (rem == 2) {
+        const b0 = src[i];
+        const b1 = src[i + 1];
+        const c0 = (b0 >> 2) & 0x3F;
+        const c1 = ((b0 & 0x03) << 4) | ((b1 >> 4) & 0x0F);
+        const c2 = (b1 & 0x0F) << 2;
+
+        out.push(b64_url_char(c0));
+        out.push(b64_url_char(c1));
+        out.push(b64_url_char(c2));
+    }
+
+    return out;
+}
+
+pub fn decode(allocator: Allocator, b64_str: const uint8*, b64_len: usize) ErrorOr<Vec<uint8>, ErrorStr> {
+    if (b64_len == 0) {
+        var empty_vec: Vec<uint8> = Vec.new(allocator);
+        return .Value(empty_vec);
+    }
+    if ((b64_len % 4) != 0) {
+        return .Error("invalid base64 length");
+    }
+
+    const cap = decoded_len_upper_bound(b64_len);
+    var out: Vec<uint8> = Vec.with_capacity(allocator, cap + 1);
+
+    var i: usize = 0;
+    while (i < b64_len) {
+        const c0 = b64_str[i];
+        const c1 = b64_str[i + 1];
+        const c2 = b64_str[i + 2];
+        const c3 = b64_str[i + 3];
+
+        if (((c0 == '=') || (c1 == '='))) {
+            out.free();
+            return .Error("invalid base64 padding");
+        }
+
+        const v0_opt = b64_value(c0);
+        const v1_opt = b64_value(c1);
+        if (((v0_opt.is_none()) || (v1_opt.is_none()))) {
+            out.free();
+            return .Error("invalid base64 character");
+        }
+
+        const v0 = v0_opt.unwrap();
+        const v1 = v1_opt.unwrap();
+
+        if (c2 == '=') {
+            if (((c3 != '=') || ((i + 4) != b64_len))) {
+                out.free();
+                return .Error("invalid base64 padding");
+            }
+            const byte0 = (v0 << 2) | (v1 >> 4);
+            out.push(byte0);
+            break;
+        } else if (c3 == '=') {
+            if ((i + 4) != b64_len) {
+                out.free();
+                return .Error("invalid base64 padding");
+            }
+            const v2_opt = b64_value(c2);
+            if (v2_opt.is_none()) {
+                out.free();
+                return .Error("invalid base64 character");
+            }
+            const v2 = v2_opt.unwrap();
+            const byte0 = (v0 << 2) | (v1 >> 4);
+            const byte1 = ((v1 & 0x0F) << 4) | (v2 >> 2);
+            out.push(byte0);
+            out.push(byte1);
+            break;
+        } else {
+            const v2_opt = b64_value(c2);
+            const v3_opt = b64_value(c3);
+            if (((v2_opt.is_none()) || (v3_opt.is_none()))) {
+                out.free();
+                return .Error("invalid base64 character");
+            }
+            const v2 = v2_opt.unwrap();
+            const v3 = v3_opt.unwrap();
+
+            const byte0 = (v0 << 2) | (v1 >> 4);
+            const byte1 = ((v1 & 0x0F) << 4) | (v2 >> 2);
+            const byte2 = ((v2 & 0x03) << 6) | v3;
+
+            out.push(byte0);
+            out.push(byte1);
+            out.push(byte2);
+        }
+
+        i += 4;
+    }
+
+    return .Value(out);
+}
+
+pub fn decode_to_buf(b64_str: const uint8*, b64_len: usize, var dest: uint8*, dest_len: usize) ErrorOr<usize, ErrorStr> {
+    if (b64_len == 0) {
+        return .Value(0);
+    }
+    if ((b64_len % 4) != 0) {
+        return .Error("invalid base64 length");
+    }
+
+    var i: usize = 0;
+    var out_idx: usize = 0;
+
+    while (i < b64_len) {
+        const c0 = b64_str[i];
+        const c1 = b64_str[i + 1];
+        const c2 = b64_str[i + 2];
+        const c3 = b64_str[i + 3];
+
+        if (((c0 == '=') || (c1 == '='))) {
+            return .Error("invalid base64 padding");
+        }
+
+        const v0_opt = b64_value(c0);
+        const v1_opt = b64_value(c1);
+        if (((v0_opt.is_none()) || (v1_opt.is_none()))) {
+            return .Error("invalid base64 character");
+        }
+
+        const v0 = v0_opt.unwrap();
+        const v1 = v1_opt.unwrap();
+
+        if (c2 == '=') {
+            if (((c3 != '=') || ((i + 4) != b64_len))) {
+                return .Error("invalid base64 padding");
+            }
+            if (out_idx >= dest_len) {
+                return .Error("destination buffer too small");
+            }
+            dest[out_idx] = (v0 << 2) | (v1 >> 4);
+            out_idx += 1;
+            break;
+        } else if (c3 == '=') {
+            if ((i + 4) != b64_len) {
+                return .Error("invalid base64 padding");
+            }
+            const v2_opt = b64_value(c2);
+            if (v2_opt.is_none()) {
+                return .Error("invalid base64 character");
+            }
+            const v2 = v2_opt.unwrap();
+            if ((out_idx + 2) > dest_len) {
+                return .Error("destination buffer too small");
+            }
+            dest[out_idx] = (v0 << 2) | (v1 >> 4);
+            dest[out_idx + 1] = ((v1 & 0x0F) << 4) | (v2 >> 2);
+            out_idx += 2;
+            break;
+        } else {
+            const v2_opt = b64_value(c2);
+            const v3_opt = b64_value(c3);
+            if (((v2_opt.is_none()) || (v3_opt.is_none()))) {
+                return .Error("invalid base64 character");
+            }
+            const v2 = v2_opt.unwrap();
+            const v3 = v3_opt.unwrap();
+
+            if ((out_idx + 3) > dest_len) {
+                return .Error("destination buffer too small");
+            }
+
+            dest[out_idx] = (v0 << 2) | (v1 >> 4);
+            dest[out_idx + 1] = ((v1 & 0x0F) << 4) | (v2 >> 2);
+            dest[out_idx + 2] = ((v2 & 0x03) << 6) | v3;
+            out_idx += 3;
+        }
+
+        i += 4;
+    }
+
+    return .Value(out_idx);
+}

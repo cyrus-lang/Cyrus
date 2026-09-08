@@ -1,0 +1,249 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 The Cyrus Language
+
+import std::option{Option};
+import std::iterator{IterOwned};
+
+pub fn sequence_len(lead_byte: uint8) Option<usize> {
+    if ((lead_byte & @cast(uint8, 0x80)) == @cast(uint8, 0)) {
+        return .Some(1);
+    }
+    if ((lead_byte & @cast(uint8, 0xE0)) == @cast(uint8, 0xC0)) {
+        if (lead_byte < @cast(uint8, 0xC2)) {
+            return .None;
+        }
+        return .Some(2);
+    }
+    if ((lead_byte & @cast(uint8, 0xF0)) == @cast(uint8, 0xE0)) {
+        return .Some(3);
+    }
+    if ((lead_byte & @cast(uint8, 0xF8)) == @cast(uint8, 0xF0)) {
+        if (lead_byte > @cast(uint8, 0xF4)) {
+            return .None;
+        }
+        return .Some(4);
+    }
+    return .None;
+}
+
+pub fn decode_codepoint(bytes: const uint8*, len: usize, var bytes_read: usize*) Option<uint32> {
+    if ((len == 0) || (bytes == null)) {
+        return .None;
+    }
+
+    const b0 = bytes[0];
+
+    if ((b0 & @cast(uint8, 0x80)) == @cast(uint8, 0)) {
+        if (bytes_read != null) {
+            *bytes_read = 1;
+        }
+        return .Some(@cast(uint32, b0));
+    }
+
+    if ((b0 & @cast(uint8, 0xE0)) == @cast(uint8, 0xC0)) {
+        if ((len < 2) || (b0 < @cast(uint8, 0xC2))) {
+            return .None;
+        }
+        const b1 = bytes[1];
+        if ((b1 & @cast(uint8, 0xC0)) != @cast(uint8, 0x80)) {
+            return .None;
+        }
+        if (bytes_read != null) {
+            *bytes_read = 2;
+        }
+        const cp = ((@cast(uint32, b0 & @cast(uint8, 0x1F))) << @cast(uint32, 6)) |
+                    @cast(uint32, b1 & @cast(uint8, 0x3F));
+        return .Some(cp);
+    }
+
+    if ((b0 & @cast(uint8, 0xF0)) == @cast(uint8, 0xE0)) {
+        if (len < 3) {
+            return .None;
+        }
+        const b1 = bytes[1];
+        const b2 = bytes[2];
+        if ((((b1 & @cast(uint8, 0xC0)) != @cast(uint8, 0x80)) || ((b2 & @cast(uint8, 0xC0)) != @cast(uint8, 0x80)))) {
+            return .None;
+        }
+        if (((b0 == @cast(uint8, 0xE0)) && (b1 < @cast(uint8, 0xA0)))) {
+            return .None;
+        }
+        if (((b0 == @cast(uint8, 0xED)) && (b1 > @cast(uint8, 0x9F)))) {
+            return .None;
+        }
+        if (bytes_read != null) {
+            *bytes_read = 3;
+        }
+        const cp = ((@cast(uint32, b0 & @cast(uint8, 0x0F))) << @cast(uint32, 12)) |
+                  (((@cast(uint32, b1 & @cast(uint8, 0x3F))) << @cast(uint32, 6)) |
+                    @cast(uint32, b2 & @cast(uint8, 0x3F)));
+        return .Some(cp);
+    }
+
+    if ((b0 & @cast(uint8, 0xF8)) == @cast(uint8, 0xF0)) {
+        if ((len < 4) || (b0 > @cast(uint8, 0xF4))) {
+            return .None;
+        }
+        const b1 = bytes[1];
+        const b2 = bytes[2];
+        const b3 = bytes[3];
+        if ((((b1 & @cast(uint8, 0xC0)) != @cast(uint8, 0x80)) ||
+             (((b2 & @cast(uint8, 0xC0)) != @cast(uint8, 0x80)) ||
+              ((b3 & @cast(uint8, 0xC0)) != @cast(uint8, 0x80))))) {
+            return .None;
+        }
+        if (((b0 == @cast(uint8, 0xF0)) && (b1 < @cast(uint8, 0x90)))) {
+            return .None;
+        }
+        if (((b0 == @cast(uint8, 0xF4)) && (b1 > @cast(uint8, 0x8F)))) {
+            return .None;
+        }
+        if (bytes_read != null) {
+            *bytes_read = 4;
+        }
+        const cp = ((@cast(uint32, b0 & @cast(uint8, 0x07))) << @cast(uint32, 18)) |
+                  (((@cast(uint32, b1 & @cast(uint8, 0x3F))) << @cast(uint32, 12)) |
+                  (((@cast(uint32, b2 & @cast(uint8, 0x3F))) << @cast(uint32, 6)) |
+                    @cast(uint32, b3 & @cast(uint8, 0x3F))));
+        return .Some(cp);
+    }
+
+    return .None;
+}
+
+pub fn encode_codepoint(codepoint: uint32, var dest: uint8*, dest_len: usize) Option<usize> {
+    if ((dest == null) || (dest_len == 0)) {
+        return .None;
+    }
+
+    if (codepoint <= @cast(uint32, 0x7F)) {
+        dest[0] = @cast(uint8, codepoint);
+        return .Some(1);
+    }
+
+    if (codepoint <= @cast(uint32, 0x7FF)) {
+        if (dest_len < 2) {
+            return .None;
+        }
+        const b0 = @cast(uint32, 0xC0) | ((codepoint >> @cast(uint32, 6)) & @cast(uint32, 0x1F));
+        const b1 = @cast(uint32, 0x80) | (codepoint & @cast(uint32, 0x3F));
+        dest[0] = @cast(uint8, b0);
+        dest[1] = @cast(uint8, b1);
+        return .Some(2);
+    }
+
+    if (codepoint <= @cast(uint32, 0xFFFF)) {
+        if ((dest_len < 3) || (((codepoint >= @cast(uint32, 0xD800)) && (codepoint <= @cast(uint32, 0xDFFF))))) {
+            return .None;
+        }
+        const b0 = @cast(uint32, 0xE0) | ((codepoint >> @cast(uint32, 12)) & @cast(uint32, 0x0F));
+        const b1 = @cast(uint32, 0x80) | ((codepoint >> @cast(uint32, 6)) & @cast(uint32, 0x3F));
+        const b2 = @cast(uint32, 0x80) | (codepoint & @cast(uint32, 0x3F));
+        dest[0] = @cast(uint8, b0);
+        dest[1] = @cast(uint8, b1);
+        dest[2] = @cast(uint8, b2);
+        return .Some(3);
+    }
+
+    if (codepoint <= @cast(uint32, 0x10FFFF)) {
+        if (dest_len < 4) {
+            return .None;
+        }
+        const b0 = @cast(uint32, 0xF0) | ((codepoint >> @cast(uint32, 18)) & @cast(uint32, 0x07));
+        const b1 = @cast(uint32, 0x80) | ((codepoint >> @cast(uint32, 12)) & @cast(uint32, 0x3F));
+        const b2 = @cast(uint32, 0x80) | ((codepoint >> @cast(uint32, 6)) & @cast(uint32, 0x3F));
+        const b3 = @cast(uint32, 0x80) | (codepoint & @cast(uint32, 0x3F));
+        dest[0] = @cast(uint8, b0);
+        dest[1] = @cast(uint8, b1);
+        dest[2] = @cast(uint8, b2);
+        dest[3] = @cast(uint8, b3);
+        return .Some(4);
+    }
+
+    return .None;
+}
+
+pub fn is_valid(bytes: const uint8*, len: usize) bool {
+    if (len == 0) {
+        return true;
+    }
+    if (bytes == null) {
+        return false;
+    }
+
+    var offset: usize = 0;
+    while (offset < len) {
+        var consumed: usize = 0;
+        const cp = decode_codepoint(bytes + offset, len - offset, &consumed);
+        if ((cp.is_none() || (consumed == 0))) {
+            return false;
+        }
+        offset += consumed;
+    }
+
+    return offset == len;
+}
+
+pub fn count_codepoints(bytes: const uint8*, len: usize) Option<usize> {
+    if (len == 0) {
+        return .Some(0);
+    }
+    if (bytes == null) {
+        return .None;
+    }
+
+    var count: usize = 0;
+    var offset: usize = 0;
+    while (offset < len) {
+        var consumed: usize = 0;
+        const cp = decode_codepoint(bytes + offset, len - offset, &consumed);
+        if ((cp.is_none() || (consumed == 0))) {
+            return .None;
+        }
+        count += 1;
+        offset += consumed;
+    }
+
+    return .Some(count);
+}
+
+pub struct Utf8CharIter : IterOwned<uint32> {
+    bytes: const uint8*,
+    len: usize,
+    pos: usize,
+
+    pub fn new(bytes: const uint8*, len: usize) Self {
+        return Self {
+            bytes,
+            len,
+            pos: 0
+        };
+    }
+
+    pub fn next(self: Self*) Option<uint32> {
+        if (self->pos >= self->len) {
+            return .None;
+        }
+
+        var consumed: usize = 0;
+        const cp = decode_codepoint(self->bytes + self->pos, self->len - self->pos, &consumed);
+        if ((cp.is_none() || (consumed == 0))) {
+            self->pos = self->len;
+            return .None;
+        }
+
+        self->pos += consumed;
+        return cp;
+    }
+
+    pub fn remaining_bytes(self: const Self*) usize {
+        if (self->pos >= self->len) {
+            return 0;
+        }
+        return self->len - self->pos;
+    }
+
+    pub fn offset(self: const Self*) usize {
+        return self->pos;
+    }
+}
