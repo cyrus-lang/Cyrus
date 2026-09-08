@@ -1,0 +1,151 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 The Cyrus Language
+
+import std::mem{Allocator};
+import std::option{Option};
+
+pub struct BinaryHeap<T> {
+    allocator: Allocator,
+    data: T*,
+    cap: usize,
+    len: usize,
+    cmp_fn: fn(const T*, const T*) bool,
+
+    pub fn with_comparator(
+        allocator: Allocator, 
+        initial_cap: usize, 
+        cmp_fn: fn(const T*, const T*) bool
+    ) Self {
+        var cap: usize = 16;
+        while (cap < initial_cap) {
+            cap *= 2;
+        }
+
+        var data: T* = allocator.alloc(cap * @sizeof(T));
+        if (data == null) {
+            @panic("failed to allocate memory for BinaryHeap");
+        }
+
+        return Self {
+            allocator,
+            data,
+            cap,
+            len: 0,
+            cmp_fn,
+        };
+    }
+
+    pub fn push(self: Self*, item: T) {
+        if (self->len == self->cap) {
+            self->grow(self->cap * 2);
+        }
+
+        self->data[self->len] = item;
+        self->sift_up(self->len);
+        self->len += 1;
+    }
+
+    pub fn pop(self: Self*) Option<T> {
+        if (self->len == 0) {
+            return .None;
+        }
+
+        const top = self->data[0];
+        self->len -= 1;
+
+        if (self->len > 0) {
+            self->data[0] = self->data[self->len];
+            self->sift_down(0);
+        }
+
+        return .Some(top);
+    }
+
+    pub fn peek(self: const Self*) Option<const T*> {
+        if (self->len == 0) {
+            return .None;
+        }
+        return .Some(&self->data[0]);
+    }
+
+    fn sift_up(self: Self*, index: usize) {
+        var i = index;
+        while (i > 0) {
+            const parent = (i - 1) / 2;
+            if ((self->cmp_fn)(&self->data[i], &self->data[parent])) {
+                const temp = self->data[i];
+                self->data[i] = self->data[parent];
+                self->data[parent] = temp;
+                i = parent;
+            } else {
+                break;
+            }
+        }
+    }
+
+    fn sift_down(self: Self*, index: usize) {
+        var i = index;
+        while (true) {
+            const left = (i * 2) + 1;
+            const right = (i * 2) + 2;
+            var smallest = i;
+
+            if (left < self->len) {
+                if ((self->cmp_fn)(&self->data[left], &self->data[smallest])) {
+                    smallest = left;
+                }
+            }
+
+            if (right < self->len) {
+                if ((self->cmp_fn)(&self->data[right], &self->data[smallest])) {
+                    smallest = right;
+                }
+            }
+
+            if (smallest != i) {
+                const temp = self->data[i];
+                self->data[i] = self->data[smallest];
+                self->data[smallest] = temp;
+                i = smallest;
+            } else {
+                break;
+            }
+        }
+    }
+
+    fn grow(self: Self*, new_cap: usize) {
+        var new_data: T* = self->allocator.alloc(new_cap * @sizeof(T));
+        if (new_data == null) {
+            @panic("failed to grow BinaryHeap");
+        }
+
+        for (var i: usize = 0; i < self->len; i += 1) {
+            new_data[i] = self->data[i];
+        }
+
+        self->allocator.free(self->data);
+        self->data = new_data;
+        self->cap = new_cap;
+    }
+
+    pub fn len(self: const Self*) usize {
+        return self->len;
+    }
+
+    pub fn is_empty(self: const Self*) bool {
+        return self->len == 0;
+    }
+
+    pub fn clear(self: Self*) {
+        self->len = 0;
+    }
+
+    pub fn free(self: Self*) {
+        if (self->data != null) {
+            self->allocator.free(self->data);
+            self->data = null;
+            self->len = 0;
+            self->cap = 0;
+        }
+    }
+}

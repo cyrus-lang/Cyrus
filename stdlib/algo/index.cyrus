@@ -1,0 +1,103 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 The Cyrus Language
+
+import std::option{Option};
+
+pub fn insertion_sort<T>(var data: T*, len: usize, cmp_fn: fn(const T*, const T*) bool) {
+    if (len <= 1) {
+        return;
+    }
+
+    for (var i: usize = 1; i < len; i += 1) {
+        const key = data[i];
+        var j: usize = i;
+        while (j > 0 && cmp_fn(&key, &data[j - 1])) {
+            data[j] = data[j - 1];
+            j -= 1;
+        }
+        data[j] = key;
+    }
+}
+
+pub fn sort<T>(var data: T*, len: usize, cmp_fn: fn(const T*, const T*) bool) {
+    if (len <= 1) {
+        return;
+    }
+
+    if (len <= 16) {
+        insertion_sort(data, len, cmp_fn);
+        return;
+    }
+
+    const pivot_idx = len - 1;
+    var i: usize = 0;
+
+    for (var j: usize = 0; j < pivot_idx; j += 1) {
+        if (cmp_fn(&data[j], &data[pivot_idx])) {
+            const temp = data[i];
+            data[i] = data[j];
+            data[j] = temp;
+            i += 1;
+        }
+    }
+
+    const temp = data[i];
+    data[i] = data[pivot_idx];
+    data[pivot_idx] = temp;
+
+    sort(data, i, cmp_fn);
+
+    const right_start = i + 1;
+    if (right_start < len) {
+        const right_len = len - right_start;
+        sort(data + right_start, right_len, cmp_fn);
+    }
+}
+
+pub fn is_sorted<T>(data: T*, len: usize, cmp_fn: fn(const T*, const T*) bool) bool {
+    if (len <= 1) {
+        return true;
+    }
+
+    for (var i: usize = 1; i < len; i += 1) {
+        const prev = i - 1;
+        if (cmp_fn(&data[i], &data[prev])) {
+            return false;
+        }
+    }
+    return true;
+}
+
+pub fn binary_search<T>(
+    data: T*,
+    len: usize,
+    target: const T*,
+    cmp_fn: fn(const T*, const T*) int32
+) Option<usize> {
+    if (len == 0) {
+        return .None;
+    }
+
+    var low: usize = 0;
+    var high: usize = len - 1;
+
+    while (low <= high) {
+        const mid = low + ((high - low) / 2);
+        const cmp = cmp_fn(&data[mid], target);
+
+        if (cmp == 0) {
+            return .Some(mid);
+        }
+
+        if (cmp < 0) {
+            low = mid + 1;
+        } else {
+            if (mid == 0) {
+                break;
+            }
+            high = mid - 1;
+        }
+    }
+
+    return .None;
+}
