@@ -244,7 +244,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         // location info
         let source_file = self.source_map.get_file(loc.file_id).unwrap();
         let file_path = source_file.file_path.to_str().unwrap();
-        let file = self.intrinsic_get_or_insert_global_cstr("__const.panic.file", file_path);
+        let file = self.intrinsic_get_or_insert_global_string(&format!("__const.panic.\"{}\"", file_path), file_path);
         let line = self.llvm_ctx.i32_type().const_int(loc.line as u64, false);
         let column = self.llvm_ctx.i32_type().const_int(loc.column as u64, false);
 
@@ -285,12 +285,12 @@ impl<'ll> CodeGenIRBuilder<'ll> {
             let lvalue = self.emit_expr(expr, &None);
             self.load_rvalue(lvalue).as_basic_value()
         } else {
-            self.intrinsic_get_or_insert_global_cstr("__const.todo.default", "not yet implemented")
+            self.intrinsic_get_or_insert_global_string("__const.todo.default", "not yet implemented")
                 .into()
         };
 
         let format_ptr =
-            self.intrinsic_get_or_insert_global_cstr("__const.todo.format", "thread '%s' hit TODO at %s:%d:%d\n%s\n");
+            self.intrinsic_get_or_insert_global_string("__const.todo.format", "thread '%s' hit TODO at %s:%d:%d\n%s\n");
 
         let fprintf = {
             let module = self.llvm_module.borrow();
@@ -324,7 +324,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
 
         let source_file = self.source_map.get_file(loc.file_id).unwrap();
         let file_path = source_file.file_path.to_str().unwrap();
-        let file = self.intrinsic_get_or_insert_global_cstr("__const.todo.file", file_path);
+        let file = self.intrinsic_get_or_insert_global_string(&format!("__const.todo.\"{}\"", file_path), file_path);
         let line = self.llvm_ctx.i32_type().const_int(loc.line as u64, false);
         let column = self.llvm_ctx.i32_type().const_int(loc.column as u64, false);
 
@@ -364,12 +364,12 @@ impl<'ll> CodeGenIRBuilder<'ll> {
             let lvalue = self.emit_expr(expr, &None);
             self.load_rvalue(lvalue).as_basic_value()
         } else {
-            self.intrinsic_get_or_insert_global_cstr("__const.unimplemented.default", "feature is not implemented")
+            self.intrinsic_get_or_insert_global_string("__const.unimplemented.default", "feature is not implemented")
                 .into()
         };
 
         // REVIEW: Refactor with making a helper method for this.
-        let format_ptr = self.intrinsic_get_or_insert_global_cstr(
+        let format_ptr = self.intrinsic_get_or_insert_global_string(
             "__const.unimplemented.format",
             "thread '%s' hit UNIMPLEMENTED code at %s:%d:%d\n%s\n",
         );
@@ -406,7 +406,8 @@ impl<'ll> CodeGenIRBuilder<'ll> {
 
         let source_file = self.source_map.get_file(loc.file_id).unwrap();
         let file_path = source_file.file_path.to_str().unwrap();
-        let file = self.intrinsic_get_or_insert_global_cstr("__const.unimplemented.file", file_path);
+        let file =
+            self.intrinsic_get_or_insert_global_string(&format!("__const.unimplemented.\"{}\"", file_path), file_path);
         let line = self.llvm_ctx.i32_type().const_int(loc.line as u64, false);
         let column = self.llvm_ctx.i32_type().const_int(loc.column as u64, false);
 
@@ -446,12 +447,12 @@ impl<'ll> CodeGenIRBuilder<'ll> {
             let lvalue = self.emit_expr(expr, &None);
             self.load_rvalue(lvalue).as_basic_value()
         } else {
-            self.intrinsic_get_or_insert_global_cstr("__const.unreachable.default", "entered unreachable code")
+            self.intrinsic_get_or_insert_global_string("__const.unreachable.default", "entered unreachable code")
                 .into()
         };
 
         // REVIEW: Refactor with making a helper method for this.
-        let format_ptr = self.intrinsic_get_or_insert_global_cstr(
+        let format_ptr = self.intrinsic_get_or_insert_global_string(
             "__const.unreachable.format",
             "thread '%s' entered unreachable code at %s:%d:%d\n%s\n",
         );
@@ -488,7 +489,8 @@ impl<'ll> CodeGenIRBuilder<'ll> {
 
         let source_file = self.source_map.get_file(loc.file_id).unwrap();
         let file_path = source_file.file_path.to_str().unwrap();
-        let file = self.intrinsic_get_or_insert_global_cstr("__const.unreachable.file", file_path);
+        let file =
+            self.intrinsic_get_or_insert_global_string(&format!("__const.unreachable.\"{}\"", file_path), file_path);
         let line = self.llvm_ctx.i32_type().const_int(loc.line as u64, false);
         let column = self.llvm_ctx.i32_type().const_int(loc.column as u64, false);
 
@@ -590,7 +592,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         // location info
         let source_file = self.source_map.get_file(loc.file_id).unwrap();
         let file_path = source_file.file_path.to_str().unwrap();
-        let file = self.intrinsic_get_or_insert_global_cstr("__const.panic.file", file_path);
+        let file = self.intrinsic_get_or_insert_global_string(&format!("__const.panic.\"{}\"", file_path), file_path);
         let line = self.llvm_ctx.i32_type().const_int(loc.line as u64, false);
         let column = self.llvm_ctx.i32_type().const_int(loc.column as u64, false);
 
@@ -755,7 +757,6 @@ impl<'ll> CodeGenIRBuilder<'ll> {
             .basic()
             .unwrap();
 
-        drop(module);
         cmp_result.into_int_value()
     }
 
@@ -766,6 +767,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         let ptr_sized_int_type = self.llvm_ctx.ptr_sized_int_type(&target_data, None);
 
         let module = self.llvm_module.borrow();
+
         let memcmp = match module.get_function("memcmp") {
             Some(func) => func,
             None => {
@@ -785,6 +787,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
             .llvm_builder
             .build_alloca(lhs_arr.get_type(), "lhs_alloca")
             .unwrap();
+
         let rhs_alloca = self
             .llvm_builder
             .build_alloca(rhs_arr.get_type(), "rhs_alloca")
@@ -817,7 +820,6 @@ impl<'ll> CodeGenIRBuilder<'ll> {
             .basic()
             .unwrap();
 
-        drop(module);
         cmp.into_int_value()
     }
 
@@ -846,7 +848,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         }
     }
 
-    fn intrinsic_get_or_insert_global_cstr(&self, name: &str, value: &str) -> PointerValue<'ll> {
+    fn intrinsic_get_or_insert_global_string(&self, name: &str, value: &str) -> PointerValue<'ll> {
         let module = self.llvm_module.borrow();
 
         if let Some(global) = module.get_global(name) {
@@ -921,17 +923,17 @@ impl<'ll> CodeGenIRBuilder<'ll> {
 
     #[inline]
     fn intrinsic_get_or_insert_panic_format(&self) -> PointerValue<'ll> {
-        self.intrinsic_get_or_insert_global_cstr("__const.panic.format", "thread '%s' panicked at %s:%d:%d\n%s\n")
+        self.intrinsic_get_or_insert_global_string("__const.panic.format", "thread '%s' panicked at %s:%d:%d\n%s\n")
     }
 
     #[inline]
     fn intrinsic_get_or_insert_explicit_panic_msg(&self) -> PointerValue<'ll> {
-        self.intrinsic_get_or_insert_global_cstr("__const.panic.explicit", "explicit panic")
+        self.intrinsic_get_or_insert_global_string("__const.panic.explicit", "explicit panic")
     }
 
     #[inline]
     fn intrinsic_get_or_insert_assert_format(&self) -> PointerValue<'ll> {
-        self.intrinsic_get_or_insert_global_cstr(
+        self.intrinsic_get_or_insert_global_string(
             "__const.assert.format",
             "thread '%s' panicked at %s:%d:%d\nassertion failed: %s\n",
         )
@@ -939,6 +941,6 @@ impl<'ll> CodeGenIRBuilder<'ll> {
 
     #[inline]
     fn intrinsic_get_or_insert_assert_failed_msg(&self) -> PointerValue<'ll> {
-        self.intrinsic_get_or_insert_global_cstr("__const.assert.failed", "unknown")
+        self.intrinsic_get_or_insert_global_string("__const.assert.failed", "unknown")
     }
 }
