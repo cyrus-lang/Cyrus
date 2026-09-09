@@ -153,10 +153,6 @@ impl CodeGenLLVM {
                 eprintln!("LLVM Module Error: {}", err)
             }
         }
-
-        if !self.opts.quiet {
-            tui_compiled(cir_module.file_path.clone());
-        }
     }
 
     pub fn save_modules_as_llvm_ir(&self, owned_modules: &Vec<OwnedModule>, llvm_ir_dir_path: &PathBuf) {
@@ -225,7 +221,12 @@ impl CodeGenLLVM {
     fn load_object_file_cache(&self, object_name: &String) -> Option<PathBuf> {
         {
             let build_manifest = self.build_manifest.lock().unwrap();
-            build_manifest.get_object(object_name).cloned()
+            if let Some(path) = build_manifest.get_object(object_name) {
+                if path.exists() {
+                    return Some(path.clone());
+                }
+            }
+            None
         }
     }
 }
@@ -249,18 +250,20 @@ impl CodeGenBackend<'static, OwnedModule> for CodeGenLLVM {
                 .unwrap()
         };
 
-        // use obj-cache
+        let cache_name = owned_module.unique_cache_name();
+
+        // use object cache
         if !owned_module.module_merge_mode_is_unified
             && !need_to_be_recompiled(&self.ctx, &owned_module.module_file_path)
         {
-            if let Some(cached_object_path) = self.load_object_file_cache(&owned_module.module_name) {
+            if let Some(cached_object_path) = self.load_object_file_cache(&cache_name) {
                 return ObjectFileInfo::new(cached_object_path.clone(), object_file_size(&cached_object_path));
             }
         }
 
         let object_path = Path::new(&self.build_dir)
             .join(OBJECT_CACHE_DIR_FILENAME)
-            .join(format!("{}.o", owned_module.module_name.clone()));
+            .join(format!("{}.o", cache_name));
 
         if let Some(dir) = object_path.parent() {
             std::fs::create_dir_all(dir).expect("Failed to create directories for object file");
@@ -275,7 +278,7 @@ impl CodeGenBackend<'static, OwnedModule> for CodeGenLLVM {
                 .expect("Failed to write LLVM object file")
         }
 
-        self.store_object_file_cache(&owned_module.module_name.clone(), &object_path);
+        self.store_object_file_cache(&cache_name, &object_path);
 
         ObjectFileInfo::new(object_path.clone(), object_file_size(&object_path))
     }
@@ -374,18 +377,20 @@ impl SeparateModuleSupport<'static, OwnedModule> for CodeGenLLVM {
 
             // skip emit module if recompilation is not forced
             if !recompile_forced {
-                tui_skipped(cir_module.file_path.clone());
+                if !self.opts.quiet {
+                    tui_skipped(cir_module.file_path.clone());
+                }
                 modules.push(owned_module);
                 continue;
             }
 
             let dctx = {
-                let llvmmodule_ref = owned_module.module.borrow().as_mut_ptr();
-                unsafe { DebugContext::new(llvmmodule_ref, owned_module.module_file_path.to_str().unwrap(), ".") }
+                let llvm_module_ref = owned_module.module.borrow().as_mut_ptr();
+                unsafe { DebugContext::new(llvm_module_ref, owned_module.module_file_path.to_str().unwrap(), ".") }
             };
 
-            // emit llvm-ir
             let builder = owned_module.create_builder();
+
             self.process_module_with_local_context(
                 &owned_module,
                 builder,
@@ -395,6 +400,10 @@ impl SeparateModuleSupport<'static, OwnedModule> for CodeGenLLVM {
                 cir_module.vtable_registry.clone(),
                 self.source_map.clone(),
             );
+
+            if !self.opts.quiet {
+                tui_compiled(cir_module.file_path.clone());
+            }
 
             modules.push(owned_module);
         }
@@ -410,8 +419,8 @@ impl UnifiedModuleSupport<'static, OwnedModule> for CodeGenLLVM {
 
         for cir_module in cir_modules {
             let dctx = {
-                let llvmmodule_ref = owned_module.module.borrow().as_mut_ptr();
-                unsafe { DebugContext::new(llvmmodule_ref, &cir_module.file_path, ".") }
+                let llvm_module_ref = owned_module.module.borrow().as_mut_ptr();
+                unsafe { DebugContext::new(llvm_module_ref, &cir_module.file_path, ".") }
             };
 
             let builder = owned_module.create_builder();
@@ -425,6 +434,10 @@ impl UnifiedModuleSupport<'static, OwnedModule> for CodeGenLLVM {
                 cir_module.vtable_registry.clone(),
                 self.source_map.clone(),
             );
+
+            if !self.opts.quiet {
+                tui_compiled(cir_module.file_path.clone());
+            }
         }
 
         owned_module
@@ -451,6 +464,14 @@ impl OwnedModule {
             module_file_path: file_path.as_ref().to_path_buf(),
             module_merge_mode_is_unified,
         }
+    }
+
+    pub fn unique_cache_name(&self) -> String {
+        let canonical_path = std::fs::canonicalize(&self.module_file_path).unwrap_or(self.module_file_path.clone());
+        let hash = blake3::hash(canonical_path.to_string_lossy().as_bytes())
+            .to_hex()
+            .to_string();
+        format!("{}_{}", self.module_name, &hash[..12])
     }
 
     pub fn create_builder(&self) -> Rc<Builder<'_>> {

@@ -24,7 +24,8 @@ use cyrusc_resolver::{
 };
 use cyrusc_scaffold_parser::{
     ASSEMBLY_DIR_PATH, BITCODE_DIR_PATH, CIR_DUMP_DIR_PATH, LLVM_IR_DIR_PATH, OBJECT_CACHE_DIR_FILENAME,
-    OBJECT_DIR_FILENAME, OUTPUT_DIR_FILENAME, SHARED_LIB_DIR_PATH, SRC_CACHE_DIR_PATH, STATIC_LIB_DIR_PATH,
+    OBJECT_DIR_FILENAME, OUTPUT_DIR_FILENAME, PROJECT_FILE_PATH, SHARED_LIB_DIR_PATH, SRC_CACHE_DIR_PATH,
+    STATIC_LIB_DIR_PATH, parse_project_toml,
 };
 use cyrusc_source_loc::{FileID, SourceMap};
 use cyrusc_tui_utils::tui_error;
@@ -92,7 +93,7 @@ pub fn create_compiler_context(
     let base_path = opts.base_path.clone().map(|path| Path::new(&path).to_path_buf());
 
     let entry_module_file_path = get_entry_module_file_path(&opts, &base_path, &file_path);
-    let build_dir = get_final_build_directory_path(&opts.build_dir);
+    let build_dir = get_final_build_directory_path(&opts.build_dir, &base_path);
 
     let build_manifest = Arc::new(Mutex::new(BuildManifest::load_manifest_or_make_new(
         &base_path.unwrap_or_default(),
@@ -129,7 +130,7 @@ pub fn build_semantic_bundle<'a>(
     // resolve entry module file path & build directory path
 
     let entry_file = get_entry_module_file_path(opts, &base_path, &file_path);
-    let build_dir = get_final_build_directory_path(&opts.build_dir);
+    let build_dir = get_final_build_directory_path(&opts.build_dir, &base_path);
     ensure_build_dir_subs_exist(&base_path, build_dir.clone());
 
     // create source map
@@ -265,11 +266,7 @@ pub fn build_semantic_bundle<'a>(
 }
 
 pub fn build_compilation_bundle(opts: &mut CompilerOptions, file_path_opt: Option<String>) -> CodeGenContextBundle {
-    // disable modulefs cache if compiling a single file
-
     if let Some(file_path) = &file_path_opt {
-        opts.disable_modulefs_cache = true;
-
         // use the same directory as source directory
         let dir_path = get_directory_of_file(file_path).unwrap();
         opts.source_dirs.push(dir_path);
@@ -487,7 +484,7 @@ pub fn get_executable_output_path(
     return file_path;
 }
 
-pub fn get_final_build_directory_path(build_dir: &CompilerOption_BuildDir) -> PathBuf {
+pub fn get_final_build_directory_path(build_dir: &CompilerOption_BuildDir, base_path: &Option<PathBuf>) -> PathBuf {
     fn temp_build_dir() -> PathBuf {
         let temp_dir = env::temp_dir();
 
@@ -506,7 +503,26 @@ pub fn get_final_build_directory_path(build_dir: &CompilerOption_BuildDir) -> Pa
 
     match build_dir {
         CompilerOption_BuildDir::Provided(dir_path_str) => PathBuf::from(dir_path_str),
-        CompilerOption_BuildDir::Default => temp_build_dir(),
+        CompilerOption_BuildDir::Default => {
+            let base = base_path.clone().unwrap_or_default();
+            let current_dir = env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
+            let project_root = current_dir.join(&base);
+            let project_toml_path = project_root.join(PROJECT_FILE_PATH);
+
+            if project_toml_path.exists() {
+                if let Ok(config) = parse_project_toml(&project_toml_path) {
+                    if let Some(compiler) = config.compiler {
+                        if let Some(toml_build_dir) = compiler.build_dir {
+                            let resolved_build_dir = project_root.join(toml_build_dir);
+                            ensure_output_dir(&resolved_build_dir);
+                            return resolved_build_dir;
+                        }
+                    }
+                }
+            }
+
+            temp_build_dir()
+        }
     }
 }
 
