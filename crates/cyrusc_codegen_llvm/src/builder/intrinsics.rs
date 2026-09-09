@@ -10,14 +10,11 @@ use cyrusc_internal::cir::{
     types::CIRType,
 };
 use cyrusc_source_loc::Loc;
-use cyrusc_typed_ast::{
-    builtins::{TypedBuiltinForm, TypedBuiltinKind, TypedBuiltinPhase, TypedBuiltinSpec},
-    types::PlainType,
-};
+use cyrusc_typed_ast::{builtins::*, types::PlainType};
 use inkwell::{
     AddressSpace,
-    types::{BasicType, BasicTypeEnum, StructType},
-    values::{ArrayValue, BasicValue, BasicValueEnum, FunctionValue, IntValue, PointerValue, StructValue},
+    types::{BasicType, BasicTypeEnum},
+    values::*,
 };
 
 // These intrinsics published via builtin to user side.
@@ -821,20 +818,6 @@ impl<'ll> CodeGenIRBuilder<'ll> {
             .unwrap();
 
         cmp.into_int_value()
-    }
-
-    // FIXME Remove
-    pub(crate) fn intrinsic_copy_buffer_to_struct(
-        &self,
-        buffer: ArrayValue<'ll>,
-        struct_type: StructType<'ll>,
-    ) -> StructValue<'ll> {
-        self.intrinsic_coerce_through_alloca(
-            BasicValueEnum::ArrayValue(buffer),
-            BasicTypeEnum::StructType(struct_type),
-            "coerce",
-        )
-        .into_struct_value()
     }
 
     fn intrinsic_get_or_insert_trap(&self) -> FunctionValue<'ll> {

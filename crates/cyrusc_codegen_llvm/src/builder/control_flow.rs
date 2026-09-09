@@ -321,8 +321,13 @@ impl<'ll> CodeGenIRBuilder<'ll> {
                         let payload_struct_type =
                             self.emit_enum_fielded_variant_payload_type(*tag, &enum_type).unwrap();
 
-                        let payload_struct_value =
-                            self.intrinsic_copy_buffer_to_struct(enum_payload, payload_struct_type);
+                        let payload_struct_value = self
+                            .intrinsic_coerce_through_alloca(
+                                BasicValueEnum::ArrayValue(enum_payload),
+                                BasicTypeEnum::StructType(payload_struct_type),
+                                "coerce",
+                            )
+                            .into_struct_value();
 
                         let payload_alloca = self.llvm_builder.build_alloca(payload_struct_type, "alloca").unwrap();
 
