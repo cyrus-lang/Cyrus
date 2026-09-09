@@ -424,10 +424,11 @@ impl CIRTypeContext {
                 let total_size = element_layout.size * array_type.len as u32;
 
                 let mut field_offsets = Vec::new();
+                
                 for i in 0..array_type.len {
                     field_offsets.push(ABIFieldOffsetInfo::Normal {
                         index: i as u32,
-                        offset: element_layout.align * i as u32,
+                        offset: element_layout.size * i as u32,
                         original_index: i,
                         size: element_layout.size as usize,
                     });

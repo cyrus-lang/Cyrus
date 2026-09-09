@@ -9,12 +9,17 @@ pub struct Registers {
     pub sse_regs: u32,
 }
 
+#[inline]
 pub(crate) fn align_offset(offset: u32, align: u32) -> u32 {
+    if align == 0 {
+        return 0;
+    }
     (offset + align - 1) / align * align
 }
 
-pub(crate) fn align_up(value: usize, alignment: usize) -> usize {
-    (value + alignment - 1) & !(alignment - 1)
+#[inline]
+pub(crate) fn align_up(value: usize, align: usize) -> usize {
+    (value + align - 1) & !(align - 1)
 }
 
 #[inline]
