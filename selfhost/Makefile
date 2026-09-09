@@ -6,12 +6,14 @@ release:
 						--stdlib=$(STDLIB) \
 						--linker=clang \
 					    --optimize=o2 \
-						-z="-flto"
+						-z="-flto" \
+						--module-merge-mode=separate
 
 debug:
 	$(COMPILER) build --profile=debug \
 						--sanitize=address -g \
 						--stdlib=$(STDLIB) \
 						--linker=clang \
-					    --optimize=o0
+					    --optimize=o0 \
+						--module-merge-mode=separate
 	
