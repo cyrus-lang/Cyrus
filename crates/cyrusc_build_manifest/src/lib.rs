@@ -73,12 +73,16 @@ impl BuildManifest {
         Ok(hasher.finalize().to_hex().to_string())
     }
 
+    fn canonicalize_source_path<P: AsRef<Path> + ?Sized>(path: &P) -> PathBuf {
+        fs::canonicalize(path).unwrap_or_else(|_| path.as_ref().to_path_buf())
+    }
+
     pub fn update_source_hash<P: AsRef<Path>>(&mut self, source_file: P, new_hash: &str) -> io::Result<()> {
-        let path = source_file.as_ref();
-        if let Some(hash_path) = self.sources.get_mut(path) {
+        let canonical_path = Self::canonicalize_source_path(&source_file);
+        if let Some(hash_path) = self.sources.get_mut(&canonical_path) {
             fs::write(hash_path, new_hash)?;
         } else {
-            self.insert_source_code(path, new_hash)?;
+            self.insert_source_code(&canonical_path, new_hash)?;
         }
         Ok(())
     }
@@ -94,13 +98,15 @@ impl BuildManifest {
         fs::create_dir_all(hash_file_path.parent().unwrap())?;
         fs::write(&hash_file_path, content_hash)?;
 
-        let canonical = fs::canonicalize(&hash_file_path).unwrap_or(hash_file_path);
-        self.sources.insert(source_file_path.as_ref().to_path_buf(), canonical);
+        let canonical_hash_path = fs::canonicalize(&hash_file_path).unwrap_or(hash_file_path);
+        let canonical_source_path = Self::canonicalize_source_path(source_file_path);
+        self.sources.insert(canonical_source_path, canonical_hash_path);
         Ok(())
     }
 
     pub fn is_source_changed<P: AsRef<Path> + ?Sized>(&self, source_path: &P) -> io::Result<bool> {
-        if let Some(hash_path) = self.sources.get(source_path.as_ref()) {
+        let canonical_path = Self::canonicalize_source_path(source_path);
+        if let Some(hash_path) = self.sources.get(&canonical_path) {
             let old_hash = fs::read_to_string(hash_path).unwrap_or_default();
             let new_hash = self.hash_source_code(source_path)?;
             Ok(new_hash != old_hash)
@@ -129,6 +135,7 @@ impl BuildManifest {
             Ok(file_content) => match serde_json::from_str::<BuildManifest>(&file_content) {
                 Ok(mut build_manifest) => {
                     build_manifest.mark_initial_build_complete();
+                    let _ = build_manifest.save_manifest();
                     return build_manifest;
                 }
                 Err(err) => {
@@ -168,6 +175,7 @@ impl BuildManifest {
 
     #[inline]
     pub fn has_source<P: AsRef<Path>>(&self, source_path: P) -> bool {
-        self.sources.contains_key(source_path.as_ref())
+        let canonical_path = Self::canonicalize_source_path(&source_path);
+        self.sources.contains_key(&canonical_path)
     }
 }

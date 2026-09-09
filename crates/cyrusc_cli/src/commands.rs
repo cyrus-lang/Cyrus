@@ -161,7 +161,8 @@ pub(crate) fn command_build(mut opts: CompilerOptions, file_path: Option<String>
 }
 
 pub(crate) fn command_clean(opts: CompilerOptions) {
-    let build_dir = get_final_build_directory_path(&opts.build_dir);
+    let base_path = opts.base_path.clone().map(|path| Path::new(&path).to_path_buf());
+    let build_dir = get_final_build_directory_path(&opts.build_dir, &base_path);
 
     if build_dir.exists() {
         if let Err(err) = fs::remove_dir_all(build_dir) {
@@ -171,6 +172,8 @@ pub(crate) fn command_clean(opts: CompilerOptions) {
 }
 
 pub(crate) fn command_emit_llvm(mut opts: CompilerOptions, file_path: Option<String>, output_path: Option<String>) {
+    opts.disable_modulefs_cache = true;
+
     let mut bundle = build_compilation_bundle(&mut opts, file_path);
 
     let llvm_ir_dir = get_llvm_dir_output_path(&bundle.build_dir, &output_path);
@@ -201,6 +204,8 @@ pub(crate) fn command_emit_llvm(mut opts: CompilerOptions, file_path: Option<Str
 }
 
 pub(crate) fn command_emit_bitcode(mut opts: CompilerOptions, file_path: Option<String>, output_path: Option<String>) {
+    opts.disable_modulefs_cache = true;
+
     let mut bundle = build_compilation_bundle(&mut opts, file_path);
 
     let bitcode_dir = get_bitcode_dir_output_path(&bundle.build_dir, &output_path);
@@ -231,6 +236,8 @@ pub(crate) fn command_emit_bitcode(mut opts: CompilerOptions, file_path: Option<
 }
 
 pub(crate) fn command_emit_asm(mut opts: CompilerOptions, file_path: Option<String>, output_path: Option<String>) {
+    opts.disable_modulefs_cache = true;
+
     let mut bundle = build_compilation_bundle(&mut opts, file_path);
 
     let assembly_dir = get_assembly_dir_output_path(&bundle.build_dir, &output_path);
@@ -275,6 +282,8 @@ pub(crate) fn command_emit_cir_dump(
 }
 
 pub(crate) fn command_object(mut opts: CompilerOptions, file_path: Option<String>, output_path: Option<String>) {
+    opts.disable_modulefs_cache = true;
+    
     let mut bundle = build_compilation_bundle(&mut opts, file_path);
 
     let object_dir = get_object_dir_output_path(&bundle.build_dir, &output_path);
