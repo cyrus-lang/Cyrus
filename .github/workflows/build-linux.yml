@@ -14,20 +14,43 @@ permissions:
 
 jobs:
   build:
-    runs-on: ubuntu-26.04
+    runs-on: ubuntu-latest
+    container:
+      image: debian:trixie
+
     outputs:
       VERSION: ${{ steps.version.outputs.VERSION }}
+
     steps:
       - uses: actions/checkout@v4
 
       - name: Install dependencies
         run: |
-          sudo apt-get update
-          sudo apt install -y \
-            software-properties-common \
-            llvm-22 llvm-22-dev clang-22 \
-            zlib1g zlib1g-dev libpolly-22-dev \
-            upx libasan8
+          apt-get update
+          apt-get install -y \
+            ca-certificates \
+            curl \
+            gnupg \
+            wget \
+            build-essential \
+            zlib1g \
+            zlib1g-dev \
+            upx-ucl \
+            libasan8
+
+          wget -qO- https://apt.llvm.org/llvm-snapshot.gpg.key \
+            | gpg --dearmor -o /usr/share/keyrings/llvm.gpg
+
+          echo "deb [signed-by=/usr/share/keyrings/llvm.gpg] https://apt.llvm.org/trixie/ llvm-toolchain-trixie-22 main" \
+            > /etc/apt/sources.list.d/llvm.list
+
+          apt-get update
+
+          apt-get install -y \
+            llvm-22 \
+            llvm-22-dev \
+            clang-22 \
+            libpolly-22-dev
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
@@ -38,8 +61,8 @@ jobs:
       - name: Build
         env:
           LLVM_CONFIG: /usr/bin/llvm-config-22
-          CC: clang
-          CXX: clang++
+          CC: clang-22
+          CXX: clang++-22
         run: |
           chmod +x ./scripts/release.sh
           ./scripts/release.sh
@@ -47,15 +70,15 @@ jobs:
       - name: Run tests
         env:
           LLVM_CONFIG: /usr/bin/llvm-config-22
-          CC: clang
-          CXX: clang++
+          CC: clang-22
+          CXX: clang++-22
         run: make testsuite PROFILE=release
 
       - name: Determine package version
         id: version
         run: |
           VERSION=$(cat ./CYRUS_COMPILER_VERSION | tr -d '[:space:]')
-          echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
+          echo "VERSION=$VERSION" >> "$GITHUB_OUTPUT"
 
       - name: Prepare binary artifact directory
         run: |
@@ -106,14 +129,22 @@ jobs:
           path: ./PKGBUILD
 
   build-deb:
-    runs-on: ubuntu-26.04
+    runs-on: ubuntu-latest
+    container:
+      image: debian:trixie
+
     needs: build
+
     steps:
       - name: Install fpm
         run: |
-          sudo apt-get update
-          sudo apt-get install -y ruby ruby-dev build-essential
-          sudo gem install fpm
+          apt-get update
+          apt-get install -y \
+            ca-certificates \
+            ruby \
+            ruby-dev \
+            build-essential
+          gem install --no-format-executable --bindir /usr/bin fpm
 
       - name: Download binary
         uses: actions/download-artifact@v4
@@ -129,12 +160,14 @@ jobs:
           mkdir -p ./package/usr/share/cyrus
           cp ./binary/cyrus ./package/usr/bin/
           cp -r ./binary/stdlib ./package/usr/share/cyrus/
+
           if [ -f "./binary/install.sh" ]; then
             cp ./binary/install.sh ./package/usr/share/cyrus/
           fi
+
           fpm -s dir -t deb \
             -n cyrus \
-            -v $VERSION \
+            -v "$VERSION" \
             --url "https://github.com/${{ github.repository }}" \
             --description "Cyrus programming language" \
             --license "MIT" \
@@ -142,7 +175,7 @@ jobs:
             --depends "libasan8" \
             --depends "libpolly-22-dev" \
             -C ./package \
-            -p cyrus-${VERSION}.deb \
+            -p "cyrus-${VERSION}.deb" \
             usr/
 
       - name: Upload .deb package
@@ -156,19 +189,29 @@ jobs:
     runs-on: ubuntu-latest
     container:
       image: opensuse/leap
+
     needs: build
+
     steps:
       - name: Install fpm and build tools
         run: |
-          # Configure zypper timeouts to prevent Curl error (28) on slow CDN mirrors
           echo "download.transfer_timeout = 300" >> /etc/zypp/zypp.conf
           echo "download.connect_timeout = 60" >> /etc/zypp/zypp.conf
           echo "download.max_concurrent_connections = 1" >> /etc/zypp/zypp.conf
-          # Retry zypper refresh in case of transient mirror network drops
+
           for i in 1 2 3 4 5; do
             zypper --gpg-auto-import-keys refresh && break || sleep 5
           done
-          zypper --non-interactive install -y ruby ruby-devel gcc-c++ make rpm-build tar gzip
+
+          zypper --non-interactive install -y \
+            ruby \
+            ruby-devel \
+            gcc-c++ \
+            make \
+            rpm-build \
+            tar \
+            gzip
+
           gem install --no-format-executable --bindir /usr/bin fpm
 
       - name: Download binary
@@ -185,12 +228,14 @@ jobs:
           mkdir -p ./package/usr/share/cyrus
           cp ./binary/cyrus ./package/usr/bin/
           cp -r ./binary/stdlib ./package/usr/share/cyrus/
+
           if [ -f "./binary/install.sh" ]; then
             cp ./binary/install.sh ./package/usr/share/cyrus/
           fi
+
           fpm -s dir -t rpm \
             -n cyrus \
-            -v $VERSION \
+            -v "$VERSION" \
             --url "https://github.com/${{ github.repository }}" \
             --description "Cyrus programming language" \
             --license "MIT" \
@@ -198,7 +243,7 @@ jobs:
             --depends "libasan" \
             --depends "polly" \
             -C ./package \
-            -p cyrus-${VERSION}.rpm \
+            -p "cyrus-${VERSION}.rpm" \
             usr/
 
       - name: Upload .rpm package
@@ -211,12 +256,21 @@ jobs:
   release:
     needs: [build, build-deb, build-rpm]
     if: startsWith(github.ref, 'refs/tags/v')
+
     runs-on: ubuntu-latest
+    container:
+      image: debian:trixie
+
     steps:
       - name: Download all artifacts
         uses: actions/download-artifact@v4
         with:
           path: ./release-files
+
+      - name: Install release tools
+        run: |
+          apt-get update
+          apt-get install -y ca-certificates
 
       - name: Create Release
         uses: softprops/action-gh-release@v2
