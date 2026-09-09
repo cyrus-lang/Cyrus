@@ -17,7 +17,7 @@ pub struct Linker {
 const DEFAULT_LINKERS: &[(&str, &str)] = &[("linux", "gcc"), ("macos", "clang"), ("windows", "link.exe")];
 
 pub fn default_linker() -> &'static str {
-    // ty to find an exact OS match first
+    // Try to find an exact OS match first
     for (os, linker) in DEFAULT_LINKERS {
         if *os == OS {
             return linker;
