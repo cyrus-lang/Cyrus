@@ -718,18 +718,20 @@ impl<'ll> CodeGenIRBuilder<'ll> {
 
                 let lo_llvm: BasicTypeEnum<'ll> = self.emit_type(lo.clone()).try_into().unwrap();
 
-                let lo_coerced = if lo_llvm == lo_value.get_type() {
-                    lo_value
-                } else {
-                    let field_cir_type = fields_cir_types.get(0).unwrap();
-                    let param_type = &param_types[0 as usize];
+                let lo_coerced = {
+                    if lo_llvm == lo_value.get_type() {
+                        lo_value
+                    } else {
+                        let field_cir_type = fields_cir_types.get(0).unwrap();
+                        let param_type = &param_types[0 as usize];
 
-                    let casted: BasicValueEnum<'ll> = self
-                        .emit_cast_func_arg(lo_value, field_cir_type, param_type.clone())
-                        .try_into()
-                        .unwrap();
+                        let casted: BasicValueEnum<'ll> = self
+                            .emit_cast_func_arg(lo_value, field_cir_type, param_type.clone())
+                            .try_into()
+                            .unwrap();
 
-                    casted
+                        casted
+                    }
                 };
 
                 args_values.push(lo_coerced.into());
@@ -742,18 +744,20 @@ impl<'ll> CodeGenIRBuilder<'ll> {
 
                 let hi_llvm: BasicTypeEnum<'ll> = self.emit_type(hi.clone()).try_into().unwrap();
 
-                let hi_coerced = if hi_llvm == hi_value.get_type() {
-                    hi_value
-                } else {
-                    let field_cir_type = fields_cir_types.get(offset_hi as usize).unwrap();
-                    let param_type = &param_types[offset_hi as usize];
+                let hi_coerced = {
+                    if hi_llvm == hi_value.get_type() {
+                        hi_value
+                    } else {
+                        let field_cir_type = fields_cir_types.get(offset_hi as usize).unwrap();
+                        let param_type = &param_types[offset_hi as usize];
 
-                    let casted: BasicValueEnum<'ll> = self
-                        .emit_cast_func_arg(lo_value, field_cir_type, param_type.clone())
-                        .try_into()
-                        .unwrap();
+                        let casted: BasicValueEnum<'ll> = self
+                            .emit_cast_func_arg(hi_value, field_cir_type, param_type.clone())
+                            .try_into()
+                            .unwrap();
 
-                    casted
+                        casted
+                    }
                 };
 
                 args_values.push(hi_coerced.into());
