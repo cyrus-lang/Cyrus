@@ -36,7 +36,9 @@ jobs:
             zlib1g \
             zlib1g-dev \
             upx-ucl \
-            libasan8
+            libasan8 \
+            libzstd-dev \
+            libzstd1
 
           wget -qO- https://apt.llvm.org/llvm-snapshot.gpg.key \
             | gpg --dearmor -o /usr/share/keyrings/llvm.gpg
@@ -106,7 +108,7 @@ jobs:
           arch=('x86_64')
           url="https://github.com/${{ github.repository }}"
           license=('MIT')
-          depends=('zlib' 'llvm' 'clang' 'polly' 'gcc-libs')
+          depends=('zlib' 'llvm' 'clang' 'polly' 'gcc-libs' 'zstd')
           makedepends=('unzip')
           source=("cyrus-linux-${{ steps.version.outputs.VERSION }}.zip")
           sha256sums=('SKIP')
@@ -174,6 +176,7 @@ jobs:
             --depends "zlib1g" \
             --depends "libasan8" \
             --depends "libpolly-22-dev" \
+            --depends "libzstd1" \
             -C ./package \
             -p "cyrus-${VERSION}.deb" \
             usr/
@@ -242,6 +245,7 @@ jobs:
             --depends "zlib" \
             --depends "libasan" \
             --depends "polly" \
+            --depends "libzstd" \
             -C ./package \
             -p "cyrus-${VERSION}.rpm" \
             usr/
