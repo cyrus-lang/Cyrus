@@ -22,10 +22,11 @@ pub type ProgramArgs = struct {
     argc: c_int
 };
 
-pub type ActionFn = fn(ActionCtx) void;
+pub type ActionFn = fn(ActionContext) void;
 
-pub struct ActionCtx {
-    pub opts: Opts*
+pub struct ActionContext {
+    pub opts: const Opts*,
+    pub args: const Args*
 }
 
 pub enum Error {
@@ -41,10 +42,10 @@ pub enum Error {
 }
 
 pub enum Value {
-    Str(String),
     Int(int64),
-    Float(float64),
     Bool(bool),
+    Str(String),
+    Float(float64),
 
     [[inline]]
     pub fn free(self: Self*) {
@@ -104,8 +105,17 @@ pub struct App {
                     return .Value(self);
                 }
 
+                const args = Args.new(&self->args);
+
+                if (!validate(&args, cmd)) {
+                    return .Error(());
+                }
+
                 // Trigger action
-                (cmd->action)(ActionCtx { opts: self->opts });
+                (cmd->action)(ActionContext {
+                    opts: self->opts,
+                    args: &args,
+                });
 
                 return .Value(self);
             }
@@ -172,10 +182,12 @@ pub struct App {
         // Handle args: We expect to parse input args until 
         // we achieve an option or end of args.
         while (i < argc) {
-            if (!arg || is_arg_an_opt(pargs.argv[i])) {
+            const arg = pargs.argv[i];
+
+            if (!arg || is_arg_an_opt(arg)) {
                 break;
             }
-
+            
             self->args.push(self->parse_value(arg));
             i += 1;
         }
@@ -336,7 +348,7 @@ pub struct App {
         if (ok) {
             return .Float(float_value);
         }
-
+        
         return .Str(String.from_str(self->allocator, arg));
     }
 
@@ -422,7 +434,20 @@ pub struct App {
         
         fprintf(stderr, "Please use command `help` to see usage.\n");
     }
+}
 
+pub struct Args {
+    values: const Vec<Value>*,
+
+    [[inline]]
+    pub fn new(values: const Vec<Value>*) Self {
+        return Self { values };
+    }
+
+    [[inline]]
+    pub fn values(self: const Self*) const Vec<Value>* {
+        return self->values;
+    }
 }
 
 pub struct Cmds {
@@ -503,11 +528,13 @@ pub struct Cmd {
     pub sub_cmds: Cmds*,
     pub action: ActionFn,
     pub help: Option<uint8*>,
+    pub expected_args: Vec<ValueType>,
 
     pub fn new(allocator: Allocator, name: const uint8*, action: ActionFn) Self {
         const sub_cmds: Cmds* = alloc_init(allocator, Cmds.new(allocator));
         @assert(sub_cmds, "allocation failed for sub_cmds");
         
+        const expected_args: Vec<ValueType> = Vec.new(allocator);
         const opts: Vec<Opt*> = Vec.new(allocator);
 
         return Self {
@@ -515,6 +542,7 @@ pub struct Cmd {
             name,
             opts,
             sub_cmds,
+            expected_args,
             action,
             help: .None
         };
@@ -553,6 +581,11 @@ pub struct Cmd {
 
     pub fn add_sub_command(self: Self*, cmd: Cmd) Self* {
         self->sub_cmds->add(cmd);
+        return self;
+    }
+
+    pub fn argument(self: Self*, ty: ValueType) Self* {
+        self->expected_args.push(ty);
         return self;
     }
 
@@ -603,6 +636,7 @@ pub struct Cmd {
         self->opts.free();
 
         self->sub_cmds->free();
+        self->expected_args.free();
         self->allocator.free(self->sub_cmds);
     }
 }
@@ -705,7 +739,7 @@ pub struct Opt {
     pub short_name: Option<uint8>,
     pub long_name: uint8*,
     pub values: Vec<Value>,
-    pub arg_type: Option<ArgType>,
+    pub arg_type: Option<ValueType>,
     pub enabled: bool,
     pub required: bool,
     pub policy: DupPolicy,
@@ -749,7 +783,7 @@ pub struct Opt {
         return self;
     }
 
-    pub fn arg(self: Self*, ty: ArgType) Self* {
+    pub fn arg(self: Self*, ty: ValueType) Self* {
         self->arg_type = .Some(ty);
         return self;
     }
@@ -774,7 +808,7 @@ pub struct Opt {
     }
 }
 
-pub enum ArgType {
+pub enum ValueType {
     Str,
     Int,
     Float,
@@ -804,8 +838,71 @@ pub enum DupPolicy {
     Last
 }
 
+pub fn validate(args: const Args*, cmd: const Cmd*) bool {
+    const expected_args = &cmd->expected_args;
+    const values = args->values();
+
+    const expected_len = expected_args->len();
+    const got_len = values->len();
+
+    const help = fn() {
+        fprintf(stderr, "Please use `--help` to see how it works.\n");
+    };
+
+    const argument_type_error = fn(idx: usize, got: const uint8*, expected: const uint8*) {
+        fprintf(
+            stderr,
+            "Argument at index %lu got type %s but expected to be %s\n",
+            idx, 
+            got, 
+            expected
+        );
+    };
+    
+    if (expected_len != got_len) {
+        fprintf(
+            stderr,
+            "Command `%s` expects %lu arguments but got %lu\n",
+            cmd->name,
+            expected_len,
+            got_len
+        );
+        return false;
+    }
+
+    for (var i: usize = 0; i < values->len(); i += 1) {
+        const value = values->get_owned(i).unwrap();
+        const ty = expected_args->get_owned(i).unwrap();
+
+        switch (value) {
+            case .Str(_) => if (ty != .Str) { 
+                argument_type_error(i, "string", ty.to_str());
+                help();
+                return false;
+            }
+            case .Int(_) => if (ty != .Int) { 
+                argument_type_error(i, "integer", ty.to_str());
+                help();
+                return false;
+            }
+            case .Float(_) => if (ty != .Float) { 
+                argument_type_error(i, "float", ty.to_str());
+                help();
+                return false;
+            }
+            case .Bool(_) => if (ty != .Bool) { 
+                argument_type_error(i, "bool", ty.to_str());
+                help();
+                return false;
+            }
+        }
+    }
+
+    return true;
+}
+
 [[inline]]
-fn is_value_valid(ty: ArgType, value: Value) bool {
+fn is_value_valid(ty: ValueType, value: Value) bool {
     switch (value) {
         case .Float(_) => if (ty == .Float) { return true; }
         case .Bool(_) => if (ty == .Bool) { return true; }

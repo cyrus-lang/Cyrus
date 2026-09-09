@@ -35,11 +35,11 @@ pub fn inst(allocator: Allocator, argc: c_int, argv: const c_char**) cli::App* {
     return alloc_init(allocator, app);
 }
 
-fn command_new(ctx: cli::ActionCtx) {
+fn command_new(ctx: cli::ActionContext) {
     printf("a");
 }
 
-fn command_build(ctx: cli::ActionCtx) {
+fn command_build(ctx: cli::ActionContext) {
     if (ctx.opts->enabled("int-val")) {
         printf("a");
     }

@@ -11,11 +11,11 @@ import std::cli;
 import version;
 import driver;
 
-fn command_new(ctx: cli::ActionCtx) {
+fn command_new(ctx: cli::ActionContext) {
     @todo();
 }
 
-fn command_build(ctx: cli::ActionCtx) {
+fn command_build(ctx: cli::ActionContext) {
     printf("Build command triggered.\n");
 
     if (ctx.opts->enabled("jobs")) {
@@ -23,7 +23,7 @@ fn command_build(ctx: cli::ActionCtx) {
     }
 }
 
-fn command_lex(ctx: cli::ActionCtx) {
+fn command_lex(ctx: cli::ActionContext) {
     const allocator: Allocator = dynamic LibcAllocator.new();
 
     // TODO Get path from App 
@@ -38,7 +38,7 @@ fn command_lex(ctx: cli::ActionCtx) {
     printf("Read %lu tokens from `%s`\n", source_tokens.tokens.len(), "meow.cyrus");
 }
 
-fn command_version(ctx: cli::ActionCtx) {
+fn command_version(ctx: cli::ActionContext) {
     printf("Cyrus %s\n", version::COMPILER_VERSION);
 }
 

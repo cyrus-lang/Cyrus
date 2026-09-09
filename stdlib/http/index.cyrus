@@ -115,7 +115,7 @@ pub enum HttpStatus {
             case .Conflict => return "Conflict";
             case .PayloadTooLarge => return "Payload Too Large";
             case .UriTooLong => return "URI Too Long";
-            case .UnsupportedMediaType => return "Unsupported Media Type";
+            case .UnsupportedMediaType => return "Unsupported Media ValueType";
             case .TooManyRequests => return "Too Many Requests";
             case .InternalServerError => return "Internal Server Error";
             case .NotImplemented => return "Not Implemented";
