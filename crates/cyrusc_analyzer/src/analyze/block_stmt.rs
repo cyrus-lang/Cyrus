@@ -18,6 +18,8 @@ impl<'a> AnalysisContext<'a> {
             let stmt_state = self.analyze_stmt(&mut stmt.kind);
 
             if terminated {
+                stmt.is_dead = true;
+
                 if self.config.warnings.enabled && !self.reporter.has_errors() {
                     self.reporter.report(Diag {
                         level: DiagLevel::Warning,
@@ -26,6 +28,7 @@ impl<'a> AnalysisContext<'a> {
                         hint: None,
                     });
                 }
+
                 continue;
             }
 
@@ -50,6 +53,10 @@ impl<'a> AnalysisContext<'a> {
 
         for defer in &mut block_stmt.defers {
             self.analyze_stmt(&mut defer.operand);
+
+            if terminated {
+                defer.is_dead = true;
+            }
         }
 
         flow_state

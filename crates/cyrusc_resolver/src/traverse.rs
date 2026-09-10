@@ -1809,10 +1809,7 @@ impl<'a> Resolver<'a> {
             match stmt {
                 ASTStmt::Defer(defer) => {
                     if let Some(typed_stmt) = self.resolve_stmt(&defer.operand) {
-                        defers.push(TypedDeferStmt {
-                            operand: Box::new(typed_stmt.kind),
-                            loc: defer.loc,
-                        });
+                        defers.push(TypedDeferStmt::new(Box::new(typed_stmt.kind), defer.loc));
                     }
                 }
                 _ => {
