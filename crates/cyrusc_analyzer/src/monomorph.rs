@@ -187,7 +187,7 @@ impl<'a> AnalysisContext<'a> {
         }
 
         for defer in &mut specialize_body.defers {
-            self.collect_and_instantiate_fresh_var_decls(&mut defer.operand, &mut decl_map);
+            self.collect_and_instantiate_fresh_var_decls(&mut defer.operand.kind, &mut decl_map);
         }
 
         // second pass: rewrite refs using decl_map
@@ -283,7 +283,7 @@ impl<'a> AnalysisContext<'a> {
         }
 
         for defer in &mut body.defers {
-            self.specialize_stmt(&mut defer.operand, decl_map);
+            self.specialize_stmt(&mut defer.operand.kind, decl_map);
         }
     }
 
@@ -315,7 +315,7 @@ impl<'a> AnalysisContext<'a> {
         }
 
         for defer in &mut block_stmt.defers {
-            self.specialize_stmt(&mut defer.operand, decl_map);
+            self.specialize_stmt(&mut defer.operand.kind, decl_map);
         }
     }
 
@@ -662,7 +662,7 @@ impl<'a> AnalysisContext<'a> {
                 }
 
                 for defer in &block.defers {
-                    self.collect_and_instantiate_fresh_var_decls(&defer.operand, decl_map);
+                    self.collect_and_instantiate_fresh_var_decls(&defer.operand.kind, decl_map);
                 }
             }
             TypedStmtKind::For(for_stmt) => {
@@ -693,7 +693,7 @@ impl<'a> AnalysisContext<'a> {
                     }
 
                     for defer in &case.body.defers {
-                        self.collect_and_instantiate_fresh_var_decls(&defer.operand, decl_map);
+                        self.collect_and_instantiate_fresh_var_decls(&defer.operand.kind, decl_map);
                     }
                 }
             }
@@ -745,7 +745,7 @@ impl<'a> AnalysisContext<'a> {
                         }
 
                         for defer in &builtin_block.block.defers {
-                            self.collect_and_instantiate_fresh_var_decls(&defer.operand, decl_map);
+                            self.collect_and_instantiate_fresh_var_decls(&defer.operand.kind, decl_map);
                         }
                     }
                 }

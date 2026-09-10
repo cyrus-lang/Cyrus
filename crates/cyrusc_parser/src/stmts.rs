@@ -127,7 +127,6 @@ impl<'source_file> Parser<'source_file> {
                     TokenKind::Return => self.parse_return()?,
                     TokenKind::For => self.parse_for_loop()?,
                     TokenKind::While => self.parse_while_loop()?,
-                    TokenKind::Foreach => self.parse_foreach()?,
                     TokenKind::Break => self.parse_break()?,
                     TokenKind::Continue => self.parse_continue()?,
                     TokenKind::Switch => self.parse_switch()?,
@@ -1332,44 +1331,6 @@ impl<'source_file> Parser<'source_file> {
             return Err(self.error_at_current(ParserDiagKind::MissingOpeningBrace));
         }
         Ok(body)
-    }
-
-    fn parse_foreach(&mut self) -> Result<ASTStmt, Diag> {
-        let loc = self.current_token().loc;
-        let (line, column, start) = (loc.line, loc.column, loc.start);
-
-        self.next_token(); // consume foreach
-        self.expect_current(TokenKind::LeftParen)?;
-
-        let item_identifier = self.parse_ident()?;
-        self.next_token();
-
-        let mut index_identifier: Option<Ident> = None;
-
-        if self.current_token_is(TokenKind::Comma) {
-            self.next_token(); // consume comma
-            index_identifier = Some(self.parse_ident()?);
-            self.next_token();
-        }
-
-        self.expect_current(TokenKind::In)?;
-
-        let expr = self.parse_expr(Precedence::Lowest)?;
-        self.next_token();
-
-        self.expect_current(TokenKind::RightParen)?;
-
-        let body = self.parse_block()?;
-
-        let end = self.current_token().loc.end;
-
-        Ok(ASTStmt::Foreach(ASTForeachStmt {
-            item: item_identifier,
-            index: index_identifier,
-            expr,
-            body: Box::new(body),
-            loc: Loc::new(self.file_id(), line, column, start, end),
-        }))
     }
 
     fn parse_while_loop(&mut self) -> Result<ASTStmt, Diag> {

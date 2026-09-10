@@ -315,7 +315,7 @@ pub enum AnalyzerDiagKind {
     #[error("Invalid usage of the break statement. It must be inside a loop/switch statement.")]
     InvalidBreakStatement,
 
-    #[error("Top-level statements cannot be used within a block scope; only at compilation unit level.")]
+    #[error("Statement cannot be used in this context.")]
     InvalidStatement,
 
     #[error("Builtin '@cast' requires a type as its first argument.")]

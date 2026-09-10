@@ -172,11 +172,7 @@ impl<'a> CIRLower<'a> {
                 lowered_stmts.push(self.lower_goto(goto));
             }
             TypedStmtKind::Expr(expr) => {
-                if expr.is_rvalue() {
-                    lowered_stmts.push(CIRStmt::Expr(self.lower_expr(expr)));
-                } else {
-                    // ignore
-                }
+                lowered_stmts.push(CIRStmt::Expr(self.lower_expr(expr)));
             }
             TypedStmtKind::Struct(struct_stmt) => {
                 if !struct_stmt.is_generic() {
@@ -352,11 +348,11 @@ impl<'a> CIRLower<'a> {
         lowered_stmts
     }
 
+    #[inline]
     fn lower_defer(&mut self, defer: &TypedDeferStmt) -> CIRStmt {
         let mut lowered_stmts = Vec::new();
-        self.lower_stmt(&defer.operand, &mut lowered_stmts);
+        self.lower_stmt(&defer.operand.kind, &mut lowered_stmts);
         assert_eq!(lowered_stmts.len(), 1);
-
         let operand = lowered_stmts.first().unwrap();
         operand.clone()
     }
@@ -1332,21 +1328,15 @@ impl<'a> CIRLower<'a> {
         let mut defers = Vec::new();
 
         for stmt in &block.stmts {
-            if stmt.is_dead {
-                // IMPORTANT: eliminate dead code and prevent defer drain
-                return CIRBlockStmt {
-                    stmts: lowered_stmts,
-                    defers,
-                    loc: block.loc,
-                };
+            // IMPORTANT: eliminate dead code and prevent defer drain
+            if !stmt.is_dead {
+                self.lower_stmt(&stmt.kind, &mut lowered_stmts);
             }
-
-            self.lower_stmt(&stmt.kind, &mut lowered_stmts);
         }
 
-        for stmt in &block.defers {
-            if !stmt.is_dead {
-                defers.push(self.lower_defer(stmt));
+        for defer in &block.defers {
+            if !defer.operand.is_dead {
+                defers.push(self.lower_defer(defer));
             }
         }
 
