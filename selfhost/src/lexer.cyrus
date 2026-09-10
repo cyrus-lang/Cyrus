@@ -10,8 +10,13 @@
 import std::libc::types{c_char};
 import std::collections{Vec};
 import std::mem{Allocator};
-import std::string{String};
 import std::option{Option};
+import std::string{
+    String,
+    try_str_as_int128,
+    try_str_as_uint128,
+    try_str_as_float64
+};
 import std::libc{
     printf, strtol,
     strlen, errno,
@@ -93,7 +98,7 @@ pub struct Lexer {
         }
 
         switch (char) {
-            case 'a'..='z' | 'A'..='Z' | '_' => return self->read_ident_or_prefix();
+            case 'a'..='z' | 'A'..='Z' | '_' => return self->read_ident_or_prefix_or_keyword();
             case '0'..='9' => return self->read_integer_literal();
             case '"' => return self->read_string_literal(.None);
             case '\'' => return self->read_char_literal();
@@ -153,27 +158,42 @@ pub struct Lexer {
         }
     }
 
-    fn read_ident_or_prefix(self: Self*) TokenKind {
+    fn read_ident_or_prefix_or_keyword(self: Self*) TokenKind {
         if (self->cur() == 'b' && self->peek() == '"') {
             return self->read_string_literal(.Some(.Byte));
         }
 
-        return self->read_ident();
+        return self->read_ident_or_keyword();
     }
 
-    fn read_ident(self: Self*) TokenKind {
-        if (self->cur() == '_') {
+    // TODO: Hash keywords
+    fn read_ident_or_keyword(self: Self*) TokenKind {
+        var str = self->read_ident();
+
+        switch (TokenKind.lookup_keyword(str.as_str_const())) {
+            case .Some(token_kind) => {
+                str.free();
+                return token_kind;
+            }
+        }
+
+        if (str.as_str_const() == "_") {
             return .Underscore;
         }
 
+        return .Ident(str);
+    }
+
+    [[inline]]
+    fn read_ident(self: Self*) String {
         var ident = String.new(self->allocator);
 
-        while (is_alpha(self->cur())) {
+        while (is_alphanumeric(self->cur())) {
             ident.push(self->cur());
             self->read();
         }
 
-        return .Ident(ident);
+        return ident;
     }
 
     fn read_string_literal(self: Self*, suffix: Option<StringPrefix>) TokenKind {
@@ -389,9 +409,104 @@ pub struct Lexer {
         return .Some(@cast(uint8, octal));
     }
 
-    // TODO
     fn read_integer_literal(self: Self*) TokenKind {
-        @todo();
+        var base = 10uint32;
+        var is_float = false;
+
+        var number = String.new(self->allocator);
+        defer number.free();
+
+        if (self->cur() == '0') {
+            if (self->cur() == 'x') {
+                base = 16;
+                @todo("hex");
+            } else if (self->cur() == 'b') {
+                base = 2;
+                @todo("byte");
+            }
+        }
+
+        if (base == 10) {
+            while (is_digit(self->cur()) || self->cur() == '_') {
+                if (self->cur() != '_') {
+                    number.push(self->cur());
+                }
+                self->read();
+            }
+
+            if (self->cur() == '.' && is_digit(self->peek())) {
+                is_float = true;
+                number.push(self->cur());
+                self->read();
+
+                while (is_digit(self->cur()) || self->cur() == '_') {
+                    if (self->cur() != '_') {
+                        number.push(self->cur());
+                    }
+                    self->read();
+                }
+            }
+
+            // TODO: Handle `E` for floats
+        }
+
+        // FIXME: 0x000.0
+
+        if (is_float) {
+            const suffix = self->read_float_suffix();
+
+            switch (try_str_as_float64(number.as_str_const())) case .Some(value) else {
+                @panic("float does not fit into float64"); // FIXME
+            }
+            
+            return .Literal(.Float { value, suffix: .None });
+        } else {
+            const (suffix, is_unsigned) = self->read_integer_suffix();
+
+            if (is_unsigned || base != 10) {
+                switch (try_str_as_uint128(number.as_str_const())) case .Some(value) else {
+                    @panic("integer does not fit into u128"); // FIXME    
+                }
+                
+                return .Literal(.Integer { value: .Unsigned(value), suffix: .None });
+            } else {
+                switch (try_str_as_int128(number.as_str_const())) case .Some(value) else {
+                    @panic("integer does not fit into i128"); // FIXME   
+                }
+                
+                return .Literal(.Integer { value: .Signed(value), suffix: .None });
+            }
+        }
+    }
+
+    fn read_integer_suffix(self: Self*) (Option<IntegerSuffix>, bool) {
+        if (self->cur() == 'i' || self->cur() == 'u') {
+            var suffix = self->read_ident();
+            defer suffix.free();
+
+            switch (TokenKind.lookup_keyword(suffix.as_str_const())) {
+                case .Some(token_kind) => {
+                    return (token_kind.as_integer_suffix(), token_kind.is_unsigned_integer());
+                }
+            }
+        }
+
+        return (.None, false);
+    }
+
+    fn read_float_suffix(self: Self*) Option<FloatSuffix> {
+        if (self->cur() == 'f') {
+            var suffix = self->read_ident();
+            defer suffix.free();
+
+            switch (TokenKind.lookup_keyword(suffix.as_str_const())) {
+                case .Some(token_kind) => {
+                    return token_kind.as_float_suffix();
+                }
+            }
+        }
+
+        return .None;
     }
 
     [[inline]]
@@ -735,9 +850,9 @@ fn is_ws(char: uint8) bool {
 }
 
 [[inline]]
-fn is_alpha(char: uint8) bool {
+fn is_alphanumeric(char: uint8) bool {
     switch (char) {
-        case 'a'..='z' | 'A'..='Z' | '_' => return true;
+        case 'a'..='z' | 'A'..='Z' | '_' | '0'..='9' => return true;
         else => return false;
     }
 }

@@ -139,13 +139,11 @@ pub enum TokenKind : Format {
     IntPtr,
     ISize,
     USize,
-    Int,
     Int8,
     Int16,
     Int32,
     Int64,
     Int128,
-    UInt,
     UInt8,
     UInt16,
     UInt32,
@@ -155,33 +153,15 @@ pub enum TokenKind : Format {
     Float32,
     Float64,
     Float128,
-    Char,
     Void,
     Bool,
     Const,
 
     // Modifiers
-    Weak,
-    LinkOnce,
-    Callconv,
-    Naked,
-    NoReturn,
-    Hot,
-    Cold,
     Extern,
     Public,
-    Inline,
-    NoInline,
-    AlwaysInline,
-    DllImport,
-    DllExport,
-    OptSize,
-    OptNone,
-    NoSanitize,
-    NoUnwind,
-    Section,
-    Repr,
 
+    // LEXER INTERNALL
     EOF,
     INVALID,
 
@@ -189,6 +169,48 @@ pub enum TokenKind : Format {
     pub fn is_eof(self: const Self*) bool {
         switch (*self) {
             case .EOF => return true;
+            else => return false;
+        }
+    }
+
+    pub fn as_integer_suffix(self: const Self*) Option<IntegerSuffix> {
+        switch (*self) {
+            case .ISize => return .Some(.ISize);
+            case .USize => return .Some(.USize);
+            case .Int8 => return .Some(.Int8);
+            case .Int16 => return .Some(.Int16);
+            case .Int32 => return .Some(.Int32);
+            case .Int64 => return .Some(.Int64);
+            case .Int128 => return .Some(.Int128);
+            case .UInt8 => return .Some(.UInt8);
+            case .UInt16 => return .Some(.UInt16);
+            case .UInt32 => return .Some(.UInt32);
+            case .UInt64 => return .Some(.UInt64);
+            case .UInt128 =>return .Some(.UInt128);
+            else => return .None;
+        }
+    }
+
+    pub fn as_float_suffix(self: const Self*) Option<FloatSuffix> {
+        switch (*self) {
+            case .Float16 => return .Some(.Float16);
+            case .Float32 => return .Some(.Float32);
+            case .Float64 => return .Some(.Float64);
+            case .Float128 => return .Some(.Float128);
+            else => return .None;
+        }
+    }
+
+    pub fn is_signed_integer(self: const Self*) bool {
+        switch (*self) {
+            case .ISize | .Int8 | .Int16 | .Int32 | .Int64 | .Int128 => return true;
+            else => return false;
+        }
+    }
+
+    pub fn is_unsigned_integer(self: const Self*) bool {
+        switch (*self) {
+            case .USize | .UInt8 | .UInt16 | .UInt32 | .UInt64 | .UInt128 => return true;
             else => return false;
         }
     }
@@ -220,13 +242,11 @@ pub enum TokenKind : Format {
             case "intptr" => return .Some(.IntPtr);
             case "isize" => return .Some(.ISize);
             case "usize" => return .Some(.USize);
-            case "int" => return .Some(.Int);
             case "int8" => return .Some(.Int8);
             case "int16" => return .Some(.Int16);
             case "int32" => return .Some(.Int32);
             case "int64" => return .Some(.Int64);
             case "int128" => return .Some(.Int128);
-            case "uint" => return .Some(.UInt);
             case "uint8" => return .Some(.UInt8);
             case "uint16" => return .Some(.UInt16);
             case "uint32" => return .Some(.UInt32);
@@ -236,37 +256,16 @@ pub enum TokenKind : Format {
             case "float32" => return .Some(.Float32);
             case "float64" => return .Some(.Float64);
             case "float128" => return .Some(.Float128);
-            case "char" => return .Some(.Char);
             case "bool" => return .Some(.Bool);
             case "void" => return .Some(.Void);
             case "enum" => return .Some(.Enum);
-            case "in" => return .Some(.In);
-            case "as" => return .Some(.As);
             case "extern" => return .Some(.Extern);
-            case "inline" => return .Some(.Inline);
             case "pub" => return .Some(.Public);
             case "const" => return .Some(.Const);
             case "goto" => return .Some(.Goto);
             case "defer" => return .Some(.Defer);
             case "union" => return .Some(.Union);
             case "while" => return .Some(.While);
-            case "weak" => return .Some(.Weak);
-            case "linkonce" => return .Some(.LinkOnce);
-            case "callconv" => return .Some(.Callconv);
-            case "naked" => return .Some(.Naked);
-            case "noreturn" => return .Some(.NoReturn);
-            case "hot" => return .Some(.Hot);
-            case "cold" => return .Some(.Cold);
-            case "dllimport" => return .Some(.DllImport);
-            case "dllexport" => return .Some(.DllExport);
-            case "optsize" => return .Some(.OptSize);
-            case "optnone" => return .Some(.OptNone);
-            case "no_sanitize" => return .Some(.NoSanitize);
-            case "nounwind" => return .Some(.NoUnwind);
-            case "section" => return .Some(.Section);
-            case "repr" => return .Some(.Repr);
-            case "noinline" => return .Some(.NoInline);
-            case "alwaysinline" => return .Some(.AlwaysInline);
         }
 
         return .None;
@@ -329,14 +328,12 @@ pub enum TokenKind : Format {
             case .Function => writer.write("fn");
             case .Switch => writer.write("switch");
             case .Case => writer.write("case");
-            case .Default => writer.write("default");
             case .Struct => writer.write("struct");
             case .Import => writer.write("import");
             case .If => writer.write("if");
             case .Else => writer.write("else");
             case .Return => writer.write("return");
             case .For => writer.write("for");
-            case .Foreach => writer.write("foreach");
             case .Break => writer.write("break");
             case .Continue => writer.write("continue");
             case .True => writer.write("true");
@@ -346,13 +343,11 @@ pub enum TokenKind : Format {
             case .IntPtr => writer.write("intptr");
             case .ISize => writer.write("isize");
             case .USize => writer.write("usize");
-            case .Int => writer.write("int");
             case .Int8 => writer.write("int8");
             case .Int16 => writer.write("int16");
             case .Int32 => writer.write("int32");
             case .Int64 => writer.write("int64");
             case .Int128 => writer.write("int128");
-            case .UInt => writer.write("uint");
             case .UInt8 => writer.write("uint8");
             case .UInt16 => writer.write("uint16");
             case .UInt32 => writer.write("uint32");
@@ -362,37 +357,16 @@ pub enum TokenKind : Format {
             case .Float32 => writer.write("float32");
             case .Float64 => writer.write("float64");
             case .Float128 => writer.write("float128");
-            case .Char => writer.write("char");
             case .Bool => writer.write("bool");
             case .Void => writer.write("void");
             case .Enum => writer.write("enum");
-            case .In => writer.write("in");
-            case .As => writer.write("as");
-            case .Extern => writer.write("extern");
-            case .Inline => writer.write("inline");
             case .Public => writer.write("pub");
             case .Const => writer.write("const");
-            case .Weak => writer.write("weak");
-            case .LinkOnce => writer.write("linkonce");
-            case .Callconv => writer.write("callconv");
-            case .Naked => writer.write("naked");
-            case .NoReturn => writer.write("noreturn");
-            case .Hot => writer.write("hot");
-            case .Cold => writer.write("cold");
-            case .DllImport => writer.write("dllimport");
-            case .DllExport => writer.write("dllexport");
-            case .OptSize => writer.write("optsize");
-            case .OptNone => writer.write("optnone");
-            case .NoSanitize => writer.write("no_sanitize");
-            case .NoUnwind => writer.write("nounwind");
-            case .Section => writer.write("section");
-            case .Repr => writer.write("repr");
             case .Goto => writer.write("goto");
             case .Defer => writer.write("defer");
             case .Union => writer.write("union");
             case .While => writer.write("while");
-            case .NoInline => writer.write("noinline");
-            case .AlwaysInline => writer.write("alwaysinline");
+            case .Extern => writer.write("extern");
 
             case .EOF => writer.write("EOF");
             case .INVALID => writer.write("INVALID");
@@ -465,37 +439,31 @@ pub enum Literal : Format {
 pub enum IntegerSuffix {
     ISize,
     USize,
-    Int,
     Int8,
     Int16,
     Int32,
     Int64,
     Int128,
-    UInt,
     UInt8,
     UInt16,
     UInt32,
     UInt64,
     UInt128,
-    Char,
 
     pub fn from_str(str: const uint8*) Option<Self> {
         switch (str) {
             case "isize" => return .Some(.ISize);
             case "usize" => return .Some(.USize);
-            case "int" => return .Some(.Int);
             case "int8" => return .Some(.Int8);
             case "int16" => return .Some(.Int16);
             case "int32" => return .Some(.Int32);
             case "int64" => return .Some(.Int64);
             case "int128" => return .Some(.Int128);
-            case "uint" => return .Some(.UInt);
             case "uint8" => return .Some(.UInt8);
             case "uint16" => return .Some(.UInt16);
             case "uint32" => return .Some(.UInt32);
             case "uint64" => return .Some(.UInt64);
             case "uint128" => return .Some(.UInt128);
-            case "char" => return .Some(.Char);
             else => return .None;
         }
     }
@@ -504,19 +472,16 @@ pub enum IntegerSuffix {
         switch (self) {
             case .ISize => return "isize";
             case .USize => return "usize";
-            case .Int => return "int";
             case .Int8 => return "int8";
             case .Int16 => return "int16";
             case .Int32 => return "int32";
             case .Int64 => return "int64";
             case .Int128 => return "int128";
-            case .UInt => return "uint";
             case .UInt8 => return "uint8";
             case .UInt16 => return "uint16";
             case .UInt32 => return "uint32";
             case .UInt64 => return "uint64";
             case .UInt128 => return "uint128";
-            case .Char => return "char";
         }
     }
 }
