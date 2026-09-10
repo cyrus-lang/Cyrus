@@ -1,0 +1,23 @@
+// @stdout: 5
+
+import std::libc{printf};
+
+struct Foo {
+    pub fn bar(self: const Self*) int32 {
+        return 5;
+    }
+
+    pub fn foo(self: const Self*) int32 {
+        return self->bar();
+        
+        var x = 10;
+        defer x += 5;
+        
+        printf("%d\n", x);
+    }
+}
+
+pub fn main() {
+    const inst = Foo{};
+    printf("%d\n", inst.foo());
+}

@@ -1328,11 +1328,30 @@ impl<'a> CIRLower<'a> {
     }
 
     fn lower_block(&mut self, block: &TypedBlockStmt) -> CIRBlockStmt {
-        let stmts = self.lower_stmts(&block.stmts);
-        let defers = block.defers.iter().map(|defer| self.lower_defer(defer)).collect();
+        let mut lowered_stmts = Vec::new();
+        let mut defers = Vec::new();
+
+        for stmt in &block.stmts {
+            if stmt.is_dead {
+                // IMPORTANT: eliminate dead code and prevent defer drain
+                return CIRBlockStmt {
+                    stmts: lowered_stmts,
+                    defers,
+                    loc: block.loc,
+                };
+            }
+
+            self.lower_stmt(&stmt.kind, &mut lowered_stmts);
+        }
+
+        for stmt in &block.defers {
+            if !stmt.is_dead {
+                defers.push(self.lower_defer(stmt));
+            }
+        }
 
         CIRBlockStmt {
-            stmts,
+            stmts: lowered_stmts,
             defers,
             loc: block.loc,
         }
