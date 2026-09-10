@@ -22,7 +22,6 @@ use cyrusc_typed_ast::{
     TypedProgramTree,
     decls::{TypedefDeclID, table::DeclTablesRegistry},
     format::{Formatter, format_loc},
-    stmts::TypedDeferStmt,
 };
 use fx_hash::{FxHashSet, FxHashSetExt};
 
@@ -49,8 +48,6 @@ pub struct AnalysisContext<'a> {
 
     pub(crate) typedef_expansion_stack: Vec<TypedefDeclID>,
     pub(crate) reported_typedef_cycles: FxHashSet<Vec<TypedefDeclID>>,
-
-    pub(crate) defer_stack: Vec<TypedDeferStmt>,
 }
 
 impl<'a> AnalysisContext<'a> {
@@ -69,7 +66,6 @@ impl<'a> AnalysisContext<'a> {
         tctx: Arc<CIRTypeContext>,
     ) -> Self {
         let func_env = FuncEnv::new();
-        let defer_stack = Vec::new();
         let generic_env_stack = Vec::new();
         let type_cache = TypeCache::new();
         let control_stack = Vec::new();
@@ -95,7 +91,6 @@ impl<'a> AnalysisContext<'a> {
             entry_points,
             vtable_registry,
             monomorph_registry,
-            defer_stack,
         }
     }
 }
