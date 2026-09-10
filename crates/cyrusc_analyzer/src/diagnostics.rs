@@ -297,8 +297,8 @@ pub enum AnalyzerDiagKind {
     #[error("Missing return statement.")]
     MissingReturn,
 
-    #[error("Return statement requires an argument of type '{argument_type}'.")]
-    ReturnStatementNeedsAnArgument { argument_type: String },
+    #[error("Return statement requires an argument of type '{arg_type}'.")]
+    ReturnStatementNeedsAnArgument { arg_type: String },
 
     #[error("Return statement argument must be a value of type '{expected}' but got '{got}'.")]
     ReturnStatementTypeMismatch { expected: String, got: String },

@@ -59,6 +59,10 @@ impl<'a> AnalysisContext<'a> {
 
         // analyze monomorphized body if not analyzed yet
         if !is_generic_interface_method_call && !monomorph_instance.analyzed {
+            self.monomorph_registry.update(monomorph_id, |inst| {
+                inst.analyzed = true;
+            });
+
             let body_id = method_decl.body.unwrap();
             let template_body = self.decl_tables.body(body_id);
 
