@@ -84,6 +84,7 @@ impl<'a> AnalysisContext<'a> {
     }
 
     pub(crate) fn analyze_stmt(&mut self, typed_stmt: &mut TypedStmtKind) -> FlowState {
+        // REVIEW: Write helper method for this.
         if let TypedStmtKind::Builtin(builtin) = typed_stmt {
             return match builtin {
                 TypedBuiltin::BuiltinFunc(builtin_func) => {

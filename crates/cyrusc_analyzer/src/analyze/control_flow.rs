@@ -563,9 +563,9 @@ impl<'a> AnalysisContext<'a> {
 // If / While / For / Return / Break
 impl<'a> AnalysisContext<'a> {
     pub(crate) fn analyze_if_stmt(&mut self, if_stmt: &mut TypedIfStmt) -> FlowState {
-        let then_state = self.analyze_block_stmt(&mut if_stmt.then_block);
-
         self.analyze_cond_expr(&mut if_stmt.cond);
+
+        let then_state = self.analyze_block_stmt(&mut if_stmt.then_block);
 
         let else_state = {
             if let Some(block_stmt) = &mut if_stmt.else_block {
@@ -718,7 +718,7 @@ impl<'a> AnalysisContext<'a> {
     }
 
     #[inline]
-    fn all_flow_states_terminate(&self, flow_states: &[FlowState]) -> bool {
+    pub(crate) fn all_flow_states_terminate(&self, flow_states: &[FlowState]) -> bool {
         flow_states
             .iter()
             .all(|fs| matches!(fs, FlowState::Returns | FlowState::Unreachable))
