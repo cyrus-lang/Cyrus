@@ -92,8 +92,7 @@ pub enum TypedTupleExportPatternKind {
 
 #[derive(Debug, Clone)]
 pub struct TypedDeferStmt {
-    pub operand: Box<TypedStmtKind>,
-    pub is_dead: bool,
+    pub operand: Box<TypedStmt>,
     pub loc: Loc,
 }
 
@@ -491,17 +490,6 @@ impl TypedGenericParams {
     #[inline]
     pub fn contains(&self, id: &GenericParamID) -> bool {
         self.0.contains(id)
-    }
-}
-
-impl TypedDeferStmt {
-    #[inline]
-    pub fn new(operand: Box<TypedStmtKind>, loc: Loc) -> Self {
-        return Self {
-            operand,
-            loc,
-            is_dead: false,
-        };
     }
 }
 

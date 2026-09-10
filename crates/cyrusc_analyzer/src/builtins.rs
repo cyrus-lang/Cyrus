@@ -10,7 +10,7 @@ use cyrusc_typed_ast::{
         TypedBuiltin, TypedBuiltinBlock, TypedBuiltinForm, TypedBuiltinFunc, TypedBuiltinKind, TypedBuiltinSpec,
         builtin_spec_of, is_builtin_unreachable, lookup_builtin,
     },
-    exprs::TypedExprKind,
+    exprs::{TypedExpr, TypedExprKind, ValueCategory},
     format::{format_sema_type, format_struct_decl},
     stmts::TypedStmtKind,
     types::{PlainType, SemaType},
@@ -18,6 +18,41 @@ use cyrusc_typed_ast::{
 
 // Builtins entry point.
 impl<'a> AnalysisContext<'a> {
+    pub(crate) fn analyze_builtin_func_used_as_stmt(&mut self, typed_stmt: &mut TypedStmtKind) -> FlowState {
+        let TypedStmtKind::Builtin(builtin) = typed_stmt else {
+            unreachable!();
+        };
+
+        match builtin {
+            TypedBuiltin::BuiltinFunc(builtin_func) => {
+                let loc = builtin_func.loc;
+                let name = builtin_func.name.value.clone();
+                let builtin_func_clone = builtin_func.clone();
+
+                let mut builtin_expr = TypedExpr {
+                    kind: TypedExprKind::Builtin(TypedBuiltin::BuiltinFunc(builtin_func_clone)),
+                    ty: None,
+                    val_cat: ValueCategory::RValue,
+                    analyzed: false,
+                    loc,
+                };
+
+                if self.analyze_expr(&mut builtin_expr, None).is_none() {
+                    return FlowState::Reachable;
+                }
+
+                *typed_stmt = TypedStmtKind::Expr(builtin_expr);
+
+                if is_builtin_unreachable(&name) {
+                    FlowState::Unreachable
+                } else {
+                    FlowState::Reachable
+                }
+            }
+            TypedBuiltin::BuiltinBlock(_) => self.analyze_builtin(typed_stmt, false),
+        }
+    }
+
     pub(crate) fn analyze_builtin(&mut self, typed_stmt: &mut TypedStmtKind, is_toplevel: bool) -> FlowState {
         let TypedStmtKind::Builtin(builtin) = typed_stmt else {
             unreachable!()
