@@ -43,10 +43,12 @@ impl FlowState {
     /// Used when analyzing branching constructs (e.g., `if`, `switch`) to
     /// compute the resulting reachability state after the branches join.
     pub fn merge(&self, other: FlowState) -> FlowState {
+        use FlowState::*;
         match (self, other) {
-            (FlowState::Returns, FlowState::Returns) => FlowState::Returns,
-            (FlowState::Unreachable, FlowState::Unreachable) => FlowState::Unreachable,
-            _ => FlowState::Reachable,
+            (Returns, Returns) => Returns,
+            (Returns, Unreachable) | (Unreachable, Returns) => Unreachable,
+            (Unreachable, Unreachable) => Unreachable,
+            _ => Reachable,
         }
     }
 }
