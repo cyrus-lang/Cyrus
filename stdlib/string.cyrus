@@ -9,7 +9,8 @@ import std::slices{Slice};
 import std::libc{
     strlen, strcmp, memmove,
     isspace, tolower, toupper,
-    strtol, errno, ERANGE
+    strtol, strtoll, strtoull,
+    strtod, errno, ERANGE
 };
 
 pub struct String {
@@ -215,4 +216,47 @@ pub fn try_str_as_int64(str: const uint8*) Option<int64> {
     return .Some(@cast(int64, result));
 }
 
-// TODO: try_str_as_float
+pub fn try_str_as_int128(str: const uint8*) Option<int128> {
+    @assert(str, "str cannot be empty");
+
+    var endptr: c_char*;
+
+    errno = 0;
+    const result = strtoll(str, &endptr, 10);
+
+    if ((errno == ERANGE || endptr == str) || *endptr != '\0') {
+        return .None;
+    }
+
+    return .Some(@cast(int128, result));
+}
+
+pub fn try_str_as_uint128(str: const uint8*) Option<uint128> {
+    @assert(str, "str cannot be empty");
+
+    var endptr: c_char*;
+
+    errno = 0;
+    const result = strtoull(str, &endptr, 10);
+
+    if ((errno == ERANGE || endptr == str) || *endptr != '\0') {
+        return .None;
+    }
+
+    return .Some(@cast(uint128, result));
+}
+
+pub fn try_str_as_float64(str: const uint8*) Option<float64> {
+    @assert(str, "str cannot be empty");
+
+    var endptr: c_char*;
+
+    errno = 0;
+    const result = strtod(str, &endptr);
+
+    if ((errno == ERANGE || endptr == str) || *endptr != '\0') {
+        return .None;
+    }
+
+    return .Some(@cast(float64, result));
+}

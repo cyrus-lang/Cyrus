@@ -666,7 +666,7 @@ impl<'source_map, 'source_file> Lexer<'source_map, 'source_file> {
 
     #[inline]
     fn read_literal_suffix(&mut self) -> Option<Box<TokenKind>> {
-        if matches!(self.ch, 'f' | 'u' | 'i' | 's') {
+        if matches!(self.ch, 'f' | 'u' | 'i') {
             let mut suffix = String::new();
 
             while self.ch.is_alphanumeric() || self.ch == '_' {
