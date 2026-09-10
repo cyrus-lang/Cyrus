@@ -339,6 +339,7 @@ dependencies = [
 name = "cyrusc_codegen_llvm"
 version = "0.1.0"
 dependencies = [
+ "blake3",
  "cyrusc_analyzer",
  "cyrusc_asan_wrapper",
  "cyrusc_ast",
