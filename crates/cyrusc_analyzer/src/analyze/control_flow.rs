@@ -15,7 +15,7 @@ use cyrusc_typed_ast::{
         TypedSwitchCasePattern, TypedSwitchCasePatternKind, TypedSwitchStmt, TypedWhileStmt,
     },
     substitute::instantiate_enum_decl_with_type_args,
-    types::{PlainType, SemaType},
+    types::SemaType,
 };
 use fx_hash::{FxHashSet, FxHashSetExt};
 
@@ -617,52 +617,44 @@ impl<'a> AnalysisContext<'a> {
 
         let ret_type = &*func_type.ret_type;
 
-        let mut arg_type = {
-            if let Some(arg) = &mut ret.arg {
-                if let Some(ty) = self.analyze_expr(arg, Some(ret_type.clone())) {
-                    ty
-                } else {
-                    return FlowState::Reachable;
-                }
-            } else {
-                // void as fallback return type
-                SemaType::Plain(PlainType::Void)
+        if let Some(arg) = &mut ret.arg {
+            let Some(arg_type) = self.analyze_expr(arg, Some(ret_type.clone())) else {
+                return FlowState::Reachable;
+            };
+
+            let expanded_arg_type = self.expand_sema_type(arg_type.clone(), ret.loc);
+
+            if expanded_arg_type.is_void() {
+                self.reporter.report(Diag {
+                    level: DiagLevel::Error,
+                    kind: Box::new(AnalyzerDiagKind::VoidFunctionReturnsValue),
+                    loc: Some(ret.loc),
+                    hint: None,
+                });
+            } else if !self.is_assignable_to(arg_type.clone(), ret_type.clone(), arg.loc) {
+                self.reporter.report(Diag {
+                    level: DiagLevel::Error,
+                    kind: Box::new(AnalyzerDiagKind::ReturnStatementTypeMismatch {
+                        expected: format_sema_type(ret_type.const_inner().clone(), self.formatter),
+                        got: format_sema_type(arg_type.const_inner().clone(), self.formatter),
+                    }),
+                    loc: Some(ret.loc),
+                    hint: None,
+                });
             }
-        };
+        } else {
+            let expanded_ret_type = self.expand_sema_type(ret_type.clone(), ret.loc);
 
-        // expand return type
-        arg_type = self.expand_sema_type(arg_type.clone(), ret.loc);
+            if !expanded_ret_type.is_void() {
+                let arg_type = format_sema_type(ret_type.clone(), self.formatter);
 
-        if arg_type.is_void() && ret.arg.is_some() {
-            self.reporter.report(Diag {
-                level: DiagLevel::Error,
-                kind: Box::new(AnalyzerDiagKind::VoidFunctionReturnsValue),
-                loc: Some(ret.loc),
-                hint: None,
-            });
-        } else if let Some(expr) = &mut ret.arg {
-            if let Some(expr_type) = self.analyze_expr(expr, Some(ret_type.clone())) {
-                if !self.is_assignable_to(expr_type.clone(), ret_type.clone(), expr.loc) {
-                    self.reporter.report(Diag {
-                        level: DiagLevel::Error,
-                        kind: Box::new(AnalyzerDiagKind::ReturnStatementTypeMismatch {
-                            expected: format_sema_type(arg_type.const_inner().clone(), self.formatter),
-                            got: format_sema_type(expr_type.const_inner().clone(), self.formatter),
-                        }),
-                        loc: Some(ret.loc),
-                        hint: None,
-                    });
-                }
+                self.reporter.report(Diag {
+                    level: DiagLevel::Error,
+                    kind: Box::new(AnalyzerDiagKind::ReturnStatementNeedsAnArgument { arg_type }),
+                    loc: Some(ret.loc),
+                    hint: None,
+                });
             }
-        } else if !arg_type.is_void() && ret.arg.is_none() {
-            let argument_type = format_sema_type(arg_type.clone(), self.formatter);
-
-            self.reporter.report(Diag {
-                level: DiagLevel::Error,
-                kind: Box::new(AnalyzerDiagKind::ReturnStatementNeedsAnArgument { argument_type }),
-                loc: Some(ret.loc),
-                hint: None,
-            });
         }
 
         FlowState::Returns

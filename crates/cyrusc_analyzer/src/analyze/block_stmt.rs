@@ -18,7 +18,7 @@ impl<'a> AnalysisContext<'a> {
             let stmt_state = self.analyze_stmt(&mut stmt.kind);
 
             if terminated {
-                if self.config.warnings.enabled {
+                if self.config.warnings.enabled && !self.reporter.has_errors() {
                     self.reporter.report(Diag {
                         level: DiagLevel::Warning,
                         kind: Box::new(AnalyzerDiagKind::UnreachableCode),
