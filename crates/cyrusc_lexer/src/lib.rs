@@ -50,7 +50,7 @@ impl<'diag, 'source_file> Lexer<'diag, 'source_file> {
     /// Returns the input source string.
     #[inline]
     pub fn input(&self) -> &str {
-        &self.source_file.content
+        &self.source_file.text
     }
 
     pub fn tokenize(&mut self) -> Vec<Token> {

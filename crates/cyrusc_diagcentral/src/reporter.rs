@@ -152,7 +152,7 @@ impl DiagReporter {
         let report = report.finish();
 
         let mut stderr = std::io::stderr();
-        let source = Source::from(source_file.content.as_str());
+        let source = Source::from(source_file.text.as_str());
         let _ = report.write((file_path, source), &mut stderr);
     }
 }
