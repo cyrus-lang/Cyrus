@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 The Cyrus Language
 
-import std::format{Format, format_int128, format_uint128, format_float64, format_bool};
+import std::mem::arena{ArenaAllocator};
 import std::mem::libc{LibcAllocator};
 import std::collections{Vec};
 import std::io{StringWriter};
@@ -10,39 +10,52 @@ import std::mem{Allocator};
 import std::option{Option};
 import std::libc{printf};
 import std::io{Writer};
+import std::format{
+    Format,
+    format_int128,
+    format_uint128,
+    format_float64,
+    format_bool
+};
 
 pub struct SourceTokens {
     // pub source_id: SourceId,
     pub tokens: Vec<Token>,
+    pub arena: ArenaAllocator,
 
     [[inline]]
-    pub fn new(tokens: Vec<Token>) Self {
-        return Self { tokens };
+    pub fn new(tokens: Vec<Token>, arena: ArenaAllocator) Self {
+        return Self { tokens, arena };
     }
 
-    pub fn free(self: Self) {
-        for (var i: usize = 0; i < self.tokens.len(); i += 1) {
-            const token = self.tokens.get_owned(i).unwrap();
-
+    pub fn free(self: Self*) {
+        for (var i: usize = 0; i < self->tokens.len(); i += 1) {
+            const token = self->tokens.get_owned(i).unwrap();
             token.free();
         }
 
-        self.tokens.free();
+        self->tokens.free();
+        self->arena.destroy();
     }
 }
 
 pub struct Token : Format {
-    pub kind: TokenKind,
+    pub kind: TokenKind*,
     pub loc: Loc,
 
     [[inline]]
+    pub fn new(kind: TokenKind*, loc: Loc) Self {
+        return Self { kind, loc }; 
+    }
+
+    [[inline]]
     pub fn format(self: const Self*, writer: Writer) bool {
-        return self->kind.format(writer);
+        return self->kind->format(writer);
     }
 
     [[inline]]
     pub fn free(self: Self*) {
-        switch (self->kind) {
+        switch (*self->kind) {
             case .Ident(ident) => ident.free();
             case .Literal(lit) => {
                 switch (lit) {

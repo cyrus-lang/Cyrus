@@ -1,10 +1,11 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 The Cyrus Language
 
+import std::mem::arena{ArenaAllocator};
+import tokens{SourceTokens};
 import std::mem{Allocator};
 import std::path{Path};
 import std::os{File};
-import tokens{SourceTokens};
 import lexer{Lexer};
 
 // Driver handler responsible for tokenizing source content.
@@ -23,7 +24,9 @@ pub fn tokenize_source(
     }
     defer source.free();
 
-    var lexer = Lexer.new(allocator, &source);
+    const arena = ArenaAllocator.new(allocator, 4096);
+
+    var lexer = Lexer.new(allocator, arena, &source);
     
-    return SourceTokens.new(lexer.tokenize());
+    return SourceTokens.new(lexer.tokenize(), arena);
 }
