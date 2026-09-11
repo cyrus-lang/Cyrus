@@ -26,7 +26,7 @@ pub fn tokenize_source(
 
     var arena = ArenaAllocator.new(allocator, 65536);
 
-    var lexer = Lexer.new(allocator, &arena, &source);
+    var lexer = Lexer.new(allocator, arena, &source);
     
     return SourceTokens.new(lexer.tokenize(), arena);
 }
