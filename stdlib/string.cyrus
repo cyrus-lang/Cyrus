@@ -65,10 +65,9 @@ pub struct String {
         }
     }
 
-    pub fn push(self: Self*, ch: uint8) {        
-        var data = self->vec.data();
-        var current = &data[self->len()];
-        *current = ch;
+    pub fn push(self: Self*, char: uint8) {        
+        self->vec.pop();
+        self->vec.push(char);
         self->vec.push('\0');
     }
 
