@@ -761,9 +761,11 @@ impl<'ll> CodeGenIRBuilder<'ll> {
 impl<'ll> CodeGenIRBuilder<'ll> {
     pub(crate) fn emit_predefine_labels(&mut self, cir_block: &CIRBlockStmt) {
         let depth = self.defer_stack.len();
+
         for cir_stmt in &cir_block.stmts {
             if let CIRStmt::Label(label_stmt) = cir_stmt {
                 let label_basic_block = self.new_basic_block(&format!("label.{}", label_stmt.name));
+
                 self.block_reg
                     .labels
                     .insert(label_stmt.label_id.clone(), (label_basic_block, depth));
@@ -796,6 +798,57 @@ impl<'ll> CodeGenIRBuilder<'ll> {
             }
 
             self.block_reg.cur_block = None;
+        }
+    }
+}
+
+// Defers.
+impl<'ll> CodeGenIRBuilder<'ll> {
+    pub(crate) fn emit_scope_defers(&mut self) {
+        let scope = match self.defer_stack.last() {
+            Some(scope) => scope.clone(),
+            None => return,
+        };
+
+        for stmt in scope.iter().rev() {
+            self.emit_stmt(&stmt);
+        }
+    }
+
+    pub(crate) fn emit_defers_down_to(&mut self, target_depth: usize) {
+        let depth = self.defer_stack.len();
+
+        for depth in (target_depth..depth).rev() {
+            let scope = self.defer_stack[depth].clone();
+
+            for stmt in scope.iter().rev() {
+                if let Some(cur_block) = self.block_reg.cur_block {
+                    self.emit_block(cur_block);
+                }
+
+                if self.block_reg.cur_block.is_none() {
+                    return;
+                }
+                self.emit_stmt(&stmt);
+            }
+        }
+    }
+
+    pub(crate) fn emit_all_defers(&mut self) {
+        let scopes = self.defer_stack.iter().cloned().collect::<Vec<_>>();
+
+        for scope in scopes.iter().rev() {
+            for stmt in scope.iter().rev() {
+                if let Some(cur_block) = self.block_reg.cur_block {
+                    self.emit_block(cur_block);
+                }
+
+                if self.block_reg.cur_block.is_none() {
+                    break;
+                }
+
+                self.emit_stmt(&stmt);
+            }
         }
     }
 }
@@ -1031,56 +1084,6 @@ impl<'ll> CodeGenIRBuilder<'ll> {
             .into_struct_value();
 
         pair_struct.into()
-    }
-}
-
-// Defers.
-impl<'ll> CodeGenIRBuilder<'ll> {
-    pub(crate) fn emit_scope_defers(&mut self) {
-        let scope = match self.defer_stack.last() {
-            Some(scope) => scope.clone(),
-            None => return,
-        };
-
-        for stmt in scope.iter().rev() {
-            self.emit_stmt(&stmt);
-        }
-    }
-
-    pub(crate) fn emit_defers_down_to(&mut self, target_depth: usize) {
-        let depth = self.defer_stack.len();
-
-        for depth in (target_depth..depth).rev() {
-            let scope = self.defer_stack[depth].clone();
-            for stmt in scope.iter().rev() {
-                if let Some(cur_block) = self.block_reg.cur_block {
-                    self.emit_block(cur_block);
-                }
-
-                if self.block_reg.cur_block.is_none() {
-                    return;
-                }
-                self.emit_stmt(&stmt);
-            }
-        }
-    }
-
-    pub(crate) fn emit_all_defers(&mut self) {
-        let scopes = self.defer_stack.iter().cloned().collect::<Vec<_>>();
-
-        for scope in scopes.iter().rev() {
-            for stmt in scope.iter().rev() {
-                if let Some(cur_block) = self.block_reg.cur_block {
-                    self.emit_block(cur_block);
-                }
-
-                if self.block_reg.cur_block.is_none() {
-                    break;
-                }
-
-                self.emit_stmt(&stmt);
-            }
-        }
     }
 }
 
