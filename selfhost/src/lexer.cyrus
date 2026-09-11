@@ -81,7 +81,7 @@ pub struct Lexer {
 
         if (self->pos == self->source->len()) {
             return Token {
-                kind: alloc_init(dynamic self->arena, TokenKind.EOF),
+                kind: self->init_kind(.EOF),
                 loc: self->loc()
             };
         }
@@ -89,12 +89,12 @@ pub struct Lexer {
         const loc = self->loc();
         const kind = self->read_kind();
 
-        return Token.new(alloc_init(dynamic self->arena, kind), loc.merge(self->loc()));
+        return Token.new(kind, loc.merge(self->loc()));
     }
 
-    fn read_kind(self: Self*) TokenKind {
+    fn read_kind(self: Self*) TokenKind* {
         switch (self->source->get(self->pos)) case .Some(char) else {
-            return .EOF;
+            return self->init_kind(.EOF);
         }
 
         switch (char) {
@@ -126,11 +126,11 @@ pub struct Lexer {
             case ',' => return self->read_single(.Comma);
             case ';' => return self->read_single(.Semicolon);
             case '@' => return self->read_single(.At);
-            case '\0' => return .EOF;
+            case '\0' => return self->init_kind(.EOF);
 
             else => {
                 @panic("invalid char");
-                return .INVALID;
+                // return self->init_kind(.INVALID);
             }
         }
     }
@@ -157,7 +157,7 @@ pub struct Lexer {
         }
     }
 
-    fn read_ident_or_prefix_or_keyword(self: Self*) TokenKind {
+    fn read_ident_or_prefix_or_keyword(self: Self*) TokenKind* {
         if (self->cur() == 'b' && self->peek() == '"') {
             return self->read_string_literal(.Some(.Byte));
         }
@@ -166,21 +166,21 @@ pub struct Lexer {
     }
 
     // TODO: Hash keywords
-    fn read_ident_or_keyword(self: Self*) TokenKind {
+    fn read_ident_or_keyword(self: Self*) TokenKind* {
         var str = self->read_ident();
 
         switch (TokenKind.lookup_keyword(str.as_str_const())) {
             case .Some(token_kind) => {
                 str.free();
-                return token_kind;
+                return self->init_kind(token_kind);
             }
         }
 
         if (str.as_str_const() == "_") {
-            return .Underscore;
+            return self->init_kind(.Underscore);
         }
 
-        return .Ident(str);
+        return self->init_kind(.Ident(str));
     }
 
     [[inline]]
@@ -195,7 +195,7 @@ pub struct Lexer {
         return ident;
     }
 
-    fn read_string_literal(self: Self*, suffix: Option<StringPrefix>) TokenKind {
+    fn read_string_literal(self: Self*, suffix: Option<StringPrefix>) TokenKind* {
         self->read();
 
         var value = String.new(self->allocator);
@@ -219,10 +219,10 @@ pub struct Lexer {
 
         // TODO: Unespcae string
 
-        return .Literal(.String { value, suffix });
+        return self->init_kind(.Literal(.String { value, suffix }));
     }
 
-    fn read_char_literal(self: Self*) TokenKind {
+    fn read_char_literal(self: Self*) TokenKind* {
         self->read();
 
         var char: uint8;
@@ -235,21 +235,21 @@ pub struct Lexer {
             if (self->cur() == 'x') {
                 switch (self->read_char_hex()) {
                     case .Some(x) => char = x;
-                    case .None => return .INVALID;
+                    case .None => return self->init_kind(.INVALID);
                 }
             }
             // UNICODE
             else if (self->cur() == 'u') {
                 switch (self->read_char_unicode()) {
                     case .Some(x) => char = x;
-                    case .None => return .INVALID;
+                    case .None => return self->init_kind(.INVALID);
                 }
             }
             // OCTAL
             else if (is_digit(self->cur())) {
                 switch (self->read_char_octal()) {
                     case .Some(x) => char = x;
-                    case .None => return .INVALID;
+                    case .None => return self->init_kind(.INVALID);
                 }
             }  
             // Standard ASCII
@@ -282,7 +282,7 @@ pub struct Lexer {
         }
 
         self->read();
-        return .Literal(.Char(char));
+        return self->init_kind(.Literal(.Char(char)));
     }
 
     fn read_char_unicode(self: Self*) Option<uint8> {
@@ -428,7 +428,7 @@ pub struct Lexer {
         return number;
     }
 
-    fn read_integer_literal(self: Self*) TokenKind {
+    fn read_integer_literal(self: Self*) TokenKind* {
         var base = 10uint32;
         var is_float = false;
 
@@ -494,7 +494,7 @@ pub struct Lexer {
                 @panic("float does not fit into float64");
             }
             
-            return .Literal(.Float { value, suffix: .None });
+            return self->init_kind(.Literal(.Float { value, suffix: .None }));
         } else {
             const (suffix, is_unsigned) = self->read_integer_suffix();
 
@@ -503,25 +503,25 @@ pub struct Lexer {
                     @panic("hex does not fit into uint8");
                 }
                 
-                return .Literal(.Integer { value: .Unsigned(value), suffix });
+                return self->init_kind(.Literal(.Integer { value: .Unsigned(value), suffix }));
             } else if (base == 2) {
                 switch (try_str_as_binary(number.as_str_const())) case .Some(value) else {
                     @panic("binary does not fit into uint8");
                 }
                 
-                return .Literal(.Integer { value: .Unsigned(value), suffix });
+                return self->init_kind(.Literal(.Integer { value: .Unsigned(value), suffix }));
             } else if (is_unsigned || base != 10) {
                 switch (try_str_as_uint128(number.as_str_const())) case .Some(value) else {
                     @panic("integer does not fit into u128");    
                 }
                 
-                return .Literal(.Integer { value: .Unsigned(value), suffix });
+                return self->init_kind(.Literal(.Integer { value: .Unsigned(value), suffix }));
             } else {
                 switch (try_str_as_int128(number.as_str_const())) case .Some(value) else {
                     @panic("integer does not fit into i128");   
                 }
                 
-                return .Literal(.Integer { value: .Signed(value), suffix });
+                return self->init_kind(.Literal(.Integer { value: .Signed(value), suffix }));
             }
         }
     }
@@ -621,143 +621,148 @@ pub struct Lexer {
         }
     }
 
-    fn read_plus(self: Self*) TokenKind {
+    fn read_plus(self: Self*) TokenKind* {
         if (self->peek() == '+') {
             self->read();
             self->read();
-            return .Increment;
+            return self->init_kind(.Increment);
         } else {
             self->read();
-            return .Plus;
+            return self->init_kind(.Plus);
         }
     }
     
-    fn read_minus(self: Self*) TokenKind {
+    fn read_minus(self: Self*) TokenKind* {
         if (self->peek() == '-') {
             self->read();
             self->read();
-            return .Decrement;
+            return self->init_kind(.Decrement);
         } else if (self->peek() == '>') {
             self->read();
             self->read();
-            return .ThinArrow;
+            return self->init_kind(.ThinArrow);
         } else {
             self->read();
-            return .Minus;
+            return self->init_kind(.Minus);
         }
     }
 
-    fn read_colon(self: Self*) TokenKind {
+    fn read_colon(self: Self*) TokenKind* {
         self->read();
 
         if (self->cur() == ':') {
             self->read();
-            return .DoubleColon;
+            return self->init_kind(.DoubleColon);
         } else {
-            return .Colon;
+            return self->init_kind(.Colon);
         }
     }
     
-    fn read_equal(self: Self*) TokenKind {
+    fn read_equal(self: Self*) TokenKind* {
         self->read();
 
         if (self->cur() == '=') {
             self->read();
-            return .Equal;
+            return self->init_kind(.Equal);
         } else if (self->cur() == '>') {
             self->read();
-            return .FatArrow;
+            return self->init_kind(.FatArrow);
         } else {
-            return .Assign;
+            return self->init_kind(.Assign);
         }
     }
 
-    fn read_bang(self: Self*) TokenKind {
+    fn read_bang(self: Self*) TokenKind* {
         self->read();
 
         if (self->cur() == '=') {
             self->read();
-            return .NotEqual;
+            return self->init_kind(.NotEqual);
         } else {
-            return .Bang;
+            return self->init_kind(.Bang);
         }
     }
 
-    fn read_less(self: Self*) TokenKind {
+    fn read_less(self: Self*) TokenKind* {
         self->read();
 
         if (self->cur() == '=') {
             self->read();
-            return .LessEqual;
+            return self->init_kind(.LessEqual);
         } else if (self->cur() == '<') {
             self->read();
-            return .ShiftLeft;
+            return self->init_kind(.ShiftLeft);
         } else {
-            return .LessThan;
+            return self->init_kind(.LessThan);
         }
     }
 
-    fn read_greater(self: Self*) TokenKind {
+    fn read_greater(self: Self*) TokenKind* {
         self->read();
 
         if (self->cur() == '=') {
             self->read();
-            return .GreaterEqual;
+            return self->init_kind(.GreaterEqual);
         } else {
             // Notice that '>>' ambiguity is entrusted to the parser.
-            return .GreaterThan;
+            return self->init_kind(.GreaterThan);
         }
     }
     
-    fn read_amp(self: Self*) TokenKind {
+    fn read_amp(self: Self*) TokenKind* {
         self->read();
 
         if (self->cur() == '&') {
             self->read();
             self->read();
-            return .And;
+            return self->init_kind(.And);
         } else if (self->cur() == '~') {
             self->read();
             self->read();
-            return .AmpTilde;
+            return self->init_kind(.AmpTilde);
         } else {
-            return .Ampersand;
+            return self->init_kind(.Ampersand);
         }
     }
 
-    fn read_pipe(self: Self*) TokenKind {
+    fn read_pipe(self: Self*) TokenKind* {
         self->read();
 
         if (self->cur() == '/') {
             self->read();
-            return .Or;
+            return self->init_kind(.Or);
         } else {
-            return .Pipe;
+            return self->init_kind(.Pipe);
         }
     }
 
-    fn read_dot(self: Self*) TokenKind {
+    fn read_dot(self: Self*) TokenKind* {
         self->read();
         
         if (self->cur() == '.' && self->peek() == '.') {
             self->read();
-            return .TripleDot;
+            return self->init_kind(.TripleDot);
         } else if (self->cur() == '.') {
             self->read();
-            return .DoubleDot;
+            return self->init_kind(.DoubleDot);
         } else {
-            return .Dot;
+            return self->init_kind(.Dot);
         }
     }
 
     // Helper Methods
 
+    [[inline]]
+    fn init_kind(self: Self*, kind: TokenKind) TokenKind* {
+        return alloc_init(dynamic self->arena, kind);
+    }
+
     /// Consumes the current token by advancing the lexer
     /// and returns the provided token kind.
     [[inline]]
-    fn read_single(self: Self*, kind: TokenKind) TokenKind {
+    fn read_single(self: Self*, kind: TokenKind) TokenKind* {
         self->read();
-        return kind;
+        return self->init_kind(kind);
     }
 
     [[inline]]

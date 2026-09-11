@@ -54,10 +54,11 @@ pub struct ArenaAllocator : Allocator {
             return @cast(void*, aligned_addr);
         }
 
+        const needed = total_needed + align;
         var next_cap = self->default_capacity;
 
-        if (total_needed > next_cap) {
-            next_cap = total_needed;
+        if (needed > next_cap) {
+            next_cap = needed;
         }
 
         self->create_node(next_cap);
