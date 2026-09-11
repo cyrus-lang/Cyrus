@@ -38,14 +38,14 @@ import tokens{
 
 pub struct Lexer {
     allocator: Allocator,
-    arena: ArenaAllocator,
+    arena: ArenaAllocator*,
     source: const String*,
     pos: usize,
     line: usize,
     col: usize,
      
     [[inline]]
-    pub fn new(allocator: Allocator, arena: ArenaAllocator, source: const String*) Self {
+    pub fn new(allocator: Allocator, arena: ArenaAllocator*, source: const String*) Self {
         @assert(source, "source cannot be null");
 
         return Self {
@@ -754,7 +754,7 @@ pub struct Lexer {
 
     [[inline]]
     fn init_kind(self: Self*, kind: TokenKind) TokenKind* {
-        return alloc_init(dynamic self->arena, kind);
+        return alloc_init(dynamic *self->arena, kind);
     }
 
     /// Consumes the current token by advancing the lexer

@@ -105,8 +105,7 @@ pub struct ArenaAllocator : Allocator {
         return new_ptr;
     }
 
-    pub fn free(self: Self*, ptr: void*) void {
-    }
+    pub fn free(self: Self*, ptr: void*) void {}
 
     pub fn reset(self: Self*) {
         var current = self->nodes.head;

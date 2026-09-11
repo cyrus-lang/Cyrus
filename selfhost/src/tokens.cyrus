@@ -57,10 +57,8 @@ pub struct Token : Format {
     pub fn free(self: Self*) {
         switch (*self->kind) {
             case .Ident(ident) => ident.free();
-            case .Literal(lit) => {
-                switch (lit) {
-                    case .String { value, .. } => value.free();
-                }
+            case .Literal(lit) => switch (lit) {
+                case .String { value, .. } => value.free();
             }
         }
     }
