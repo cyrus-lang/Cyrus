@@ -401,9 +401,12 @@ impl<'a> AnalysisContext<'a> {
             | TypedStmtKind::Enum(_)
             | TypedStmtKind::Union(_)
             | TypedStmtKind::Interface(_)
-            | TypedStmtKind::Defer(_)
             | TypedStmtKind::Label(_)
             | TypedStmtKind::Goto(_) => {}
+
+            TypedStmtKind::Defer(defer) => {
+                self.specialize_stmt(&mut defer.operand.kind, decl_map);
+            }
 
             TypedStmtKind::InlineAsm(asm) => {
                 for op in &mut asm.outputs {
@@ -762,10 +765,13 @@ impl<'a> AnalysisContext<'a> {
             | TypedStmtKind::Enum(_)
             | TypedStmtKind::Union(_)
             | TypedStmtKind::Interface(_)
-            | TypedStmtKind::Defer(_)
             | TypedStmtKind::Label(_)
             | TypedStmtKind::Goto(_)
             | TypedStmtKind::InlineAsm(_) => {}
+
+            TypedStmtKind::Defer(defer) => {
+                self.collect_and_instantiate_fresh_var_decls(&defer.operand.kind, decl_map);
+            }
         }
     }
 
