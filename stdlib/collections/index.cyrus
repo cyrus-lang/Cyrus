@@ -107,12 +107,7 @@ pub struct Vec<T> {
     }
 
     pub fn reserve(self: Self*, extra: usize) {
-        // const required = checked_add(self->len, extra).unwrap();
-        const required = self->len + extra;
-
-        if (required < self->len) {
-            @panic("array capacity overflow");
-        }
+        const required = checked_add(self->len, extra).unwrap();
 
         if (required <= self->cap) {
             return;
@@ -133,9 +128,9 @@ pub struct Vec<T> {
             @panic("cannot pop from empty array");
         }
         
-        const ch = self->data[self->len];
+        const char = self->data[self->len - 1];
         self->len -= 1;
-        return ch;
+        return char;
     }
 
     pub fn insert(self: Self*, index: usize, value: T) {
@@ -361,7 +356,7 @@ pub struct Vec<T> {
 
         const new_data: T* = self->allocator.realloc(
             self->data,
-            new_cap * @sizeof(T)
+            checked_mul(new_cap, @sizeof(T)).unwrap()
         );
 
         if (new_data == null) {
