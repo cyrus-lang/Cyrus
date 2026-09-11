@@ -133,6 +133,9 @@ impl<'ll> CodeGenIRBuilder<'ll> {
 
     pub(crate) fn emit_stmt(&mut self, stmt: &CIRStmt) {
         match stmt {
+            CIRStmt::Expr(expr) => {
+                self.emit_expr(expr, &None);
+            }
             CIRStmt::Variable(var_stmt) => self.emit_var(var_stmt),
             CIRStmt::FuncDef(func_def_stmt) => {
                 let func_decl = cir_func_def_as_decl(func_def_stmt);
@@ -165,9 +168,6 @@ impl<'ll> CodeGenIRBuilder<'ll> {
                 // to prevent symbol table bloat.
             }
             CIRStmt::Block(block_stmt) => self.emit_scope_block(block_stmt),
-            CIRStmt::Expr(expr) => {
-                self.emit_expr(expr, &None);
-            }
             CIRStmt::Switch(switch_stmt) => self.emit_switch(switch_stmt),
             CIRStmt::If(if_stmt) => self.emit_if(if_stmt),
             CIRStmt::For(for_stmt) => self.emit_for(for_stmt),
@@ -219,9 +219,10 @@ impl<'ll> CodeGenIRBuilder<'ll> {
     }
 
     pub(crate) fn emit_body(&mut self, block: &CIRBlockStmt) {
-        self.emit_predefine_labels(block);
-
+        // Push defer stack
         self.defer_stack.push(Vec::new());
+
+        self.emit_predefine_labels(block);
 
         for stmt in &block.stmts {
             if let Some(basic_block) = &self.block_reg.cur_block {
@@ -233,12 +234,14 @@ impl<'ll> CodeGenIRBuilder<'ll> {
             self.emit_stmt(stmt);
         }
 
+        // Drain scope defers
         if let Some(basic_block) = &self.block_reg.cur_block {
             if !basic_block.get_terminator().is_some() {
                 self.emit_scope_defers();
             }
         }
 
+        // Pop defer stack
         self.defer_stack.pop();
     }
 

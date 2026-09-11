@@ -345,7 +345,6 @@ pub struct Lexer {
         // Must have at least one digit
         if (i == 0) {
             @panic("hex char must have at least one digit");
-            // FIXME
             // return .None;
         }
 
@@ -353,13 +352,11 @@ pub struct Lexer {
 
         switch (try_str_as_hex(&buf[0])) case .Some(hex) else {
             @panic("given number is not hex");
-            // FIXME
             // return .None;
         }
         
         if (hex > 255) {
             @panic("hex char value must be in range 0x00 to 0xFF (0-255)");
-            // FIXME
             // return .None;    
         }
 
@@ -409,72 +406,140 @@ pub struct Lexer {
         return .Some(@cast(uint8, octal));
     }
 
+    fn read_decimal_integer(self: Self*) String {
+        var number = String.new(self->allocator);
+
+        // Only digit is allowed in decimal integer
+        while (is_digit(self->cur()) || self->cur() == '_') {
+            if (self->cur() != '_') {
+                number.push(self->cur());
+            }
+            self->read();
+        }
+
+        return number;
+    }
+
+    fn read_hexadecimal_integer(self: Self*) String {
+        var number = String.new(self->allocator);
+
+        // Alphanumeric
+        while (is_alphanumeric(self->cur()) || self->cur() == '_') {
+            if (self->cur() != '_') {
+                number.push(self->cur());
+            }
+            self->read();
+        }
+
+        return number;
+    }
+
+    fn read_binary_integer(self: Self*) String {
+        var number = String.new(self->allocator);
+
+        // Zero/One
+        while (self->cur() == '0' || self->cur() == '1' || self->cur() == '_') {
+            if (self->cur() != '_') {
+                number.push(self->cur());
+            }
+            self->read();
+        }
+
+        return number;
+    }
+
     fn read_integer_literal(self: Self*) TokenKind {
         var base = 10uint32;
         var is_float = false;
 
-        var number = String.new(self->allocator);
+        var number: String = undefined;
         defer number.free();
-
+        
         if (self->cur() == '0') {
-            if (self->cur() == 'x') {
+            if (self->peek() == 'x') { // Hexadecimal
+                self->read();
+                self->read();
                 base = 16;
-                @todo("hex");
-            } else if (self->cur() == 'b') {
+                number = self->read_hexadecimal_integer();
+            } else if (self->peek() == 'b') { // Binary
+                self->read();
+                self->read();
                 base = 2;
-                @todo("byte");
+                number = self->read_binary_integer();
+            } else {
+                number = self->read_decimal_integer();
             }
+        } else {
+            number = self->read_decimal_integer();
         }
 
-        if (base == 10) {
-            while (is_digit(self->cur()) || self->cur() == '_') {
-                if (self->cur() != '_') {
-                    number.push(self->cur());
-                }
-                self->read();
-            }
-
+        if (!self->is_eof()) {
             if (self->cur() == '.' && is_digit(self->peek())) {
                 is_float = true;
                 number.push(self->cur());
                 self->read();
 
-                while (is_digit(self->cur()) || self->cur() == '_') {
+                // Mantissa
+                while (!self->is_eof() && is_digit(self->cur()) || self->cur() == '_') {
                     if (self->cur() != '_') {
                         number.push(self->cur());
                     }
                     self->read();
                 }
+            } else {
+                @panic("non-decimal number cannot have mantissa");
             }
-
-            // TODO: Handle `E` for floats
         }
 
-        // FIXME: 0x000.0
+        if (self->cur() == 'e' || self->cur() == 'E') {
+            is_float = true;
+            number.push(self->cur());
+            self->read();
+            if (self->cur() == '+' || self->cur() == '-') {
+                number.push(self->cur());
+                self->read();
+            }
+            while (is_digit(self->cur())) {
+                number.push(self->cur());
+                self->read();
+            }
+        }
 
         if (is_float) {
             const suffix = self->read_float_suffix();
 
             switch (try_str_as_float64(number.as_str_const())) case .Some(value) else {
-                @panic("float does not fit into float64"); // FIXME
+                @panic("float does not fit into float64");
             }
             
             return .Literal(.Float { value, suffix: .None });
         } else {
             const (suffix, is_unsigned) = self->read_integer_suffix();
 
-            if (is_unsigned || base != 10) {
-                switch (try_str_as_uint128(number.as_str_const())) case .Some(value) else {
-                    @panic("integer does not fit into u128"); // FIXME    
+            if (base == 16) {
+                switch (try_str_as_hex(number.as_str_const())) case .Some(value) else {
+                    @panic("hex does not fit into uint8");
                 }
                 
-                return .Literal(.Integer { value: .Unsigned(value), suffix: .None });
+                return .Literal(.Integer { value: .Unsigned(value), suffix });
+            } else if (base == 2) {
+                switch (try_str_as_binary(number.as_str_const())) case .Some(value) else {
+                    @panic("binary does not fit into uint8");
+                }
+                
+                return .Literal(.Integer { value: .Unsigned(value), suffix });
+            } else if (is_unsigned || base != 10) {
+                switch (try_str_as_uint128(number.as_str_const())) case .Some(value) else {
+                    @panic("integer does not fit into u128");    
+                }
+                
+                return .Literal(.Integer { value: .Unsigned(value), suffix });
             } else {
                 switch (try_str_as_int128(number.as_str_const())) case .Some(value) else {
-                    @panic("integer does not fit into i128"); // FIXME   
+                    @panic("integer does not fit into i128");   
                 }
                 
-                return .Literal(.Integer { value: .Signed(value), suffix: .None });
+                return .Literal(.Integer { value: .Signed(value), suffix });
             }
         }
     }
@@ -834,6 +899,39 @@ fn try_str_as_hex(str: const uint8*) Option<uint32> {
         }
         
         value = (value * 16) + digit;
+    }
+    
+    return .Some(value);
+}
+
+fn try_str_as_binary(str: const uint8*) Option<uint32> {
+    @assert(str, "str cannot be empty");
+
+    const len = strlen(str);
+
+    // Binary should have 1-8 binary digits
+    if (len == 0 || len > 8) {
+        return .None;
+    }
+    
+    var value: uint32 = 0;
+    
+    for (var i: usize = 0; i < len; i += 1) {
+        const char = str[i];
+        var digit: uint32 = 0;
+        
+        // Validate binary digit (0 or 1)
+        switch (char) {
+            case '0' => digit = 0;
+            case '1' => digit = 1;
+            else => return .None;
+        }
+        
+        value = (value * 2) + digit;
+        
+        if (value > 255) {
+            return .None;
+        }
     }
     
     return .Some(value);

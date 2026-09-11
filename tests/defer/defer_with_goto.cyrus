@@ -1,0 +1,22 @@
+// @stdout: B C A D1
+
+import std::libc{printf};
+
+fn test_goto(x: int32) {
+    defer printf("D1");
+
+    if (x == 1) {
+        printf("B ");
+        if (x != 5) {
+            printf("C ");
+            goto label1;
+        }
+    }
+
+label1: 
+    printf("A ");
+}
+
+pub fn main() {
+    test_goto(1);
+}
