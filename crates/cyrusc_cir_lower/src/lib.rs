@@ -213,8 +213,16 @@ impl<'a> CIRLower<'a> {
                 }));
             }
 
-            // skipped
-            TypedStmtKind::Defer(_) | TypedStmtKind::Interface(..) | TypedStmtKind::Typedef(..) => {}
+            TypedStmtKind::Defer(defer) => {
+                if !defer.operand.is_dead {
+                    let lowered_operand = self.lower_defer(defer);
+                    lowered_stmts.push(CIRStmt::Defer(CIRDeferStmt {
+                        operand: Box::new(lowered_operand),
+                        loc: defer.loc,
+                    }));
+                }
+            }
+            TypedStmtKind::Interface(..) | TypedStmtKind::Typedef(..) => {}
         }
     }
 
@@ -1325,7 +1333,6 @@ impl<'a> CIRLower<'a> {
 
     fn lower_block(&mut self, block: &TypedBlockStmt) -> CIRBlockStmt {
         let mut lowered_stmts = Vec::new();
-        let mut defers = Vec::new();
 
         for stmt in &block.stmts {
             // IMPORTANT: eliminate dead code and prevent defer drain
@@ -1334,15 +1341,9 @@ impl<'a> CIRLower<'a> {
             }
         }
 
-        for defer in &block.defers {
-            if !defer.operand.is_dead {
-                defers.push(self.lower_defer(defer));
-            }
-        }
-
         CIRBlockStmt {
             stmts: lowered_stmts,
-            defers,
+            defers: Vec::new(),
             loc: block.loc,
         }
     }

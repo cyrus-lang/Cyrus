@@ -178,7 +178,11 @@ impl<'ll> CodeGenIRBuilder<'ll> {
             CIRStmt::Break(break_stmt) => self.emit_break(break_stmt),
             CIRStmt::Continue(continue_stmt) => self.emit_continue(continue_stmt),
 
-            CIRStmt::Defer(_) => unreachable!(),
+            CIRStmt::Defer(defer_stmt) => {
+                if let Some(scope) = self.defer_stack.last_mut() {
+                    scope.push(*defer_stmt.operand.clone());
+                }
+            }
         }
 
         if let Some(dctx) = &self.dctx {
@@ -217,7 +221,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
     pub(crate) fn emit_body(&mut self, block: &CIRBlockStmt) {
         self.emit_predefine_labels(block);
 
-        self.defer_stack.push(block.defers.clone());
+        self.defer_stack.push(Vec::new());
 
         for stmt in &block.stmts {
             if let Some(basic_block) = &self.block_reg.cur_block {
