@@ -24,7 +24,7 @@ pub fn tokenize_source(
     }
     defer source.free();
 
-    const arena = ArenaAllocator.new(allocator, 4096);
+    const arena = ArenaAllocator.new(allocator, 65536);
 
     var lexer = Lexer.new(allocator, arena, &source);
     
