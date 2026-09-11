@@ -7,9 +7,10 @@
     https://xnacly.me/posts/2025/fast-lexer-strategies/
 */
 
+import std::mem::arena{ArenaAllocator};
+import std::mem{Allocator, alloc_init};
 import std::libc::types{c_char};
 import std::collections{Vec};
-import std::mem{Allocator};
 import std::option{Option};
 import std::string{
     String,
@@ -37,21 +38,23 @@ import tokens{
 
 pub struct Lexer {
     allocator: Allocator,
+    arena: ArenaAllocator,
     source: const String*,
     pos: usize,
     line: usize,
     col: usize,
      
     [[inline]]
-    pub fn new(allocator: Allocator, source: const String*) Self {
+    pub fn new(allocator: Allocator, arena: ArenaAllocator, source: const String*) Self {
         @assert(source, "source cannot be null");
 
         return Self {
             allocator,
+            arena,
             source,
             pos: 0,
             line: 1,
-            col: 1,
+            col: 1
         };
     }
 
@@ -64,7 +67,7 @@ pub struct Lexer {
             token = self->next();
             tokens.push(token);
             
-            if (token.kind == .EOF || token.kind == .INVALID) {
+            if (*token.kind == .EOF || *token.kind == .INVALID) {
                 break;
             }
         }
@@ -78,7 +81,7 @@ pub struct Lexer {
 
         if (self->pos == self->source->len()) {
             return Token {
-                kind: .EOF,
+                kind: alloc_init(dynamic self->arena, TokenKind.EOF),
                 loc: self->loc()
             };
         }
@@ -86,10 +89,7 @@ pub struct Lexer {
         const loc = self->loc();
         const kind = self->read_kind();
 
-        return Token {
-            kind,
-            loc: loc.merge(self->loc())
-        };
+        return Token.new(alloc_init(dynamic self->arena, kind), loc.merge(self->loc()));
     }
 
     fn read_kind(self: Self*) TokenKind {
@@ -129,8 +129,7 @@ pub struct Lexer {
             case '\0' => return .EOF;
 
             else => {
-                // FIXME Report diagnostic.
-                printf("invalid: `%c`\n", char);
+                @panic("invalid char");
                 return .INVALID;
             }
         }
@@ -203,7 +202,6 @@ pub struct Lexer {
 
         while (true) {
             if (self->is_eof()) {
-                // FIXME
                 @panic("unterminated string literal");
             }
 
@@ -257,7 +255,6 @@ pub struct Lexer {
             // Standard ASCII
             else {
                 if (self->is_eof()) {
-                    // FIXME
                     @panic("unterminated char literal");
                 }
                 
@@ -272,7 +269,6 @@ pub struct Lexer {
         // Normal Char
         else {
             if (self->is_eof()) {
-                // FIXME
                 @panic("unterminated char literal");
             }
             
@@ -282,7 +278,6 @@ pub struct Lexer {
         }
 
         if (self->is_eof() || self->cur() != '\'') {
-            // FIXME
             @panic("unterminated char literal");
         }
 
@@ -305,22 +300,16 @@ pub struct Lexer {
         // Must have at least one digit
         if (i == 0) {
             @panic("unicode char must have at least one digit");
-            // FIXME
-            // return .None;
         }
 
         buf[i] = '\0';
 
         switch (try_str_as_unicode(&buf[0])) case .Some(unicode) else {
             @panic("given number is not unicode");
-            // FIXME
-            // return .None;
         }
         
         if (unicode > 255) {
-            @panic("unicode char value must be in range 0x00 to 0xFF (0-255)");
-            // FIXME
-            // return .None;    
+            @panic("unicode char value must be in range 0x00 to 0xFF (0-255)"); 
         }
 
         if (self->cur() != '\'' && is_digit(self->cur())) {
@@ -345,19 +334,16 @@ pub struct Lexer {
         // Must have at least one digit
         if (i == 0) {
             @panic("hex char must have at least one digit");
-            // return .None;
         }
 
         buf[i] = '\0';
 
         switch (try_str_as_hex(&buf[0])) case .Some(hex) else {
             @panic("given number is not hex");
-            // return .None;
         }
         
         if (hex > 255) {
-            @panic("hex char value must be in range 0x00 to 0xFF (0-255)");
-            // return .None;    
+            @panic("hex char value must be in range 0x00 to 0xFF (0-255)");   
         }
 
         if (self->cur() != '\'' && is_digit(self->cur())) {
@@ -381,22 +367,16 @@ pub struct Lexer {
         // Must have at least one digit
         if (i == 0) {
             @panic("octal char must have at least one digit");
-            // FIXME
-            // return .None;
         }
 
         buf[i] = '\0';
 
         switch (try_str_as_octal(&buf[0])) case .Some(octal) else {
             @panic("given number is not octal");
-            // FIXME
-            // return .None;
         }
         
         if (octal > 255) {
             @panic("octal char digits must be in range 0 to 255");
-            // FIXME
-            // return .None;    
         }
 
         if (self->cur() != '\'' && is_digit(self->cur())) {
@@ -475,19 +455,21 @@ pub struct Lexer {
 
         if (!self->is_eof()) {
             if (self->cur() == '.' && is_digit(self->peek())) {
+                if (base != 10) {
+                    @panic("non-decimal number cannot have mantissa");
+                }
+
                 is_float = true;
                 number.push(self->cur());
                 self->read();
 
                 // Mantissa
-                while (!self->is_eof() && is_digit(self->cur()) || self->cur() == '_') {
+                while (!self->is_eof() && (is_digit(self->cur()) || self->cur() == '_')) {
                     if (self->cur() != '_') {
                         number.push(self->cur());
                     }
                     self->read();
                 }
-            } else {
-                @panic("non-decimal number cannot have mantissa");
             }
         }
 
@@ -623,14 +605,13 @@ pub struct Lexer {
                 }
 
                 if (depth > 0) {
-                    // FIXME Diag
                     printf("comment opened at line %lu\n", loc.line);
                     const loc = self->loc();
                     printf("current line %lu\n", loc.line);
                     @panic("unclosed comment");
                 }
 
-                // skip any newlines after comment
+                // Skip any newlines after comment
                 while (!self->is_eof() && self->cur() == '\n') {
                     self->read();
                 }
