@@ -38,14 +38,14 @@ import tokens{
 
 pub struct Lexer {
     allocator: Allocator,
-    arena: ArenaAllocator*,
+    arena: ArenaAllocator,
     source: const String*,
     pos: usize,
     line: usize,
     col: usize,
      
     [[inline]]
-    pub fn new(allocator: Allocator, arena: ArenaAllocator*, source: const String*) Self {
+    pub fn new(allocator: Allocator, arena: ArenaAllocator, source: const String*) Self {
         @assert(source, "source cannot be null");
 
         return Self {
@@ -75,6 +75,7 @@ pub struct Lexer {
         return tokens;
     }
 
+    [[inline(always)]]
     fn next(self: Self*) Token {
         self->skip_ws();
         self->skip_comments();
@@ -92,6 +93,7 @@ pub struct Lexer {
         return Token.new(kind, loc.merge(self->loc()));
     }
 
+    [[inline(always)]]
     fn read_kind(self: Self*) TokenKind* {
         switch (self->source->get(self->pos)) case .Some(char) else {
             return self->init_kind(.EOF);
@@ -157,6 +159,7 @@ pub struct Lexer {
         }
     }
 
+    [[inline]]
     fn read_ident_or_prefix_or_keyword(self: Self*) TokenKind* {
         if (self->cur() == 'b' && self->peek() == '"') {
             return self->read_string_literal(.Some(.Byte));
@@ -166,6 +169,7 @@ pub struct Lexer {
     }
 
     // TODO: Hash keywords
+    [[inline]]
     fn read_ident_or_keyword(self: Self*) TokenKind* {
         var str = self->read_ident();
 
@@ -177,10 +181,11 @@ pub struct Lexer {
         }
 
         if (str.as_str_const() == "_") {
+            str.free();
             return self->init_kind(.Underscore);
         }
 
-        return self->init_kind(.Ident(str));
+        return self->init_ident(str);
     }
 
     [[inline]]
@@ -195,6 +200,7 @@ pub struct Lexer {
         return ident;
     }
 
+    [[inline]]
     fn read_string_literal(self: Self*, suffix: Option<StringPrefix>) TokenKind* {
         self->read();
 
@@ -219,9 +225,10 @@ pub struct Lexer {
 
         // TODO: Unespcae string
 
-        return self->init_kind(.Literal(.String { value, suffix }));
+        return self->init_string_literal(value, suffix);
     }
 
+    [[inline]]
     fn read_char_literal(self: Self*) TokenKind* {
         self->read();
 
@@ -428,6 +435,7 @@ pub struct Lexer {
         return number;
     }
 
+    [[inline]]
     fn read_integer_literal(self: Self*) TokenKind* {
         var base = 10uint32;
         var is_float = false;
@@ -621,6 +629,7 @@ pub struct Lexer {
         }
     }
 
+    [[inline]]
     fn read_plus(self: Self*) TokenKind* {
         if (self->peek() == '+') {
             self->read();
@@ -632,6 +641,7 @@ pub struct Lexer {
         }
     }
     
+    [[inline]]
     fn read_minus(self: Self*) TokenKind* {
         if (self->peek() == '-') {
             self->read();
@@ -647,6 +657,7 @@ pub struct Lexer {
         }
     }
 
+    [[inline]]
     fn read_colon(self: Self*) TokenKind* {
         self->read();
 
@@ -658,6 +669,7 @@ pub struct Lexer {
         }
     }
     
+    [[inline]]
     fn read_equal(self: Self*) TokenKind* {
         self->read();
 
@@ -672,6 +684,7 @@ pub struct Lexer {
         }
     }
 
+    [[inline]]
     fn read_bang(self: Self*) TokenKind* {
         self->read();
 
@@ -683,6 +696,7 @@ pub struct Lexer {
         }
     }
 
+    [[inline]]
     fn read_less(self: Self*) TokenKind* {
         self->read();
 
@@ -697,6 +711,7 @@ pub struct Lexer {
         }
     }
 
+    [[inline]]
     fn read_greater(self: Self*) TokenKind* {
         self->read();
 
@@ -709,6 +724,7 @@ pub struct Lexer {
         }
     }
     
+    [[inline]]
     fn read_amp(self: Self*) TokenKind* {
         self->read();
 
@@ -725,6 +741,7 @@ pub struct Lexer {
         }
     }
 
+    [[inline]]
     fn read_pipe(self: Self*) TokenKind* {
         self->read();
 
@@ -736,6 +753,7 @@ pub struct Lexer {
         }
     }
 
+    [[inline]]
     fn read_dot(self: Self*) TokenKind* {
         self->read();
         
@@ -754,7 +772,25 @@ pub struct Lexer {
 
     [[inline]]
     fn init_kind(self: Self*, kind: TokenKind) TokenKind* {
-        return alloc_init(dynamic *self->arena, kind);
+        const kind = alloc_init(dynamic self->arena, kind);
+        @assert(kind, "token kind allocation failed");
+        return kind;
+    }
+
+    [[inline]]
+    fn init_ident(self: Self*, str: String) TokenKind* {
+        var heap: TokenKind* = self->arena.alloc(@sizeof(TokenKind));
+        @assert(heap, "ident allocation failed");
+        *heap = TokenKind.Ident(str);
+        return heap;
+    }
+
+    [[inline]]
+    fn init_string_literal(self: Self*, value: String, suffix: Option<StringPrefix>) TokenKind* {
+        var heap: TokenKind* = self->arena.alloc(@sizeof(TokenKind));
+        @assert(heap, "string literal allocation failed");
+        *heap = TokenKind.Literal(Literal.String { value, suffix });
+        return heap;
     }
 
     /// Consumes the current token by advancing the lexer
