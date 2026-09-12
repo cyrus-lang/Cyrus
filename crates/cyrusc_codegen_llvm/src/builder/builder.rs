@@ -119,7 +119,15 @@ impl<'ll> CodeGenIRBuilder<'ll> {
     pub(crate) fn alloca_with_scope_lifetime(&mut self, ty: BasicTypeEnum<'ll>, name: &str) -> PointerValue<'ll> {
         let ptr = self.create_alloca_in_entry_block(ty, name);
 
-        self.lifetime_markers.emit_start(self.llvm_builder, ptr);
+        let cur_fn = self.cur_func.unwrap();
+        let entry_block = cur_fn.get_first_basic_block().unwrap();
+        let temp_builder = self.llvm_ctx.create_builder();
+        let next_instr = ptr.as_instruction().unwrap().get_next_instruction();
+        match next_instr {
+            Some(instr) => temp_builder.position_before(&instr),
+            None => temp_builder.position_at_end(entry_block),
+        }
+        self.lifetime_markers.emit_start(&temp_builder, ptr);
 
         self.block_reg
             .alloca_ending_lifetime_stack
