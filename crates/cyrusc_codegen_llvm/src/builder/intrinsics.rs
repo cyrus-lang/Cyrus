@@ -539,7 +539,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
             .build_conditional_branch(cond, ok_block, fail_block)
             .unwrap();
 
-        self.emit_block(fail_block);
+        self.emit_basic_block(fail_block);
 
         let ptr_type = self.llvm_ctx.ptr_type(inkwell::AddressSpace::default());
 
@@ -618,7 +618,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
 
         self.llvm_builder.build_unreachable().unwrap();
 
-        self.emit_block(ok_block);
+        self.emit_basic_block(ok_block);
 
         self.emit_null(CIRType::Pointer(Box::new(CIRType::Plain(PlainType::Void))))
     }

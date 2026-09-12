@@ -113,7 +113,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
 
         let else_block = if let Some(block_stmt) = &switch_stmt.default {
             let else_block = self.new_basic_block("switch_on_enum.default");
-            self.emit_block(else_block);
+            self.emit_basic_block(else_block);
             self.emit_body(block_stmt);
 
             if let Some(cur_block) = &self.block_reg.cur_block {
@@ -127,7 +127,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
             exit_block
         };
 
-        self.emit_block(parent_block);
+        self.emit_basic_block(parent_block);
         let switch_inst = self.llvm_builder.build_switch(enum_value, else_block, &[]).unwrap();
 
         let mut cases: Vec<(IntValue<'ll>, BasicBlock<'ll>)> = Vec::new();
@@ -150,7 +150,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
                 match payload {
                     CIRVariantPayload::Unit => { /* no payload */ }
                     CIRVariantPayload::Single(irv_id, cir_type) => {
-                        self.emit_block(case_block);
+                        self.emit_basic_block(case_block);
 
                         let llvm_type: BasicTypeEnum<'ll> = self.emit_type(cir_type.clone()).try_into().unwrap();
 
@@ -179,10 +179,10 @@ impl<'ll> CodeGenIRBuilder<'ll> {
 
                 cases.push((pattern_value, case_block));
 
-                self.emit_block(case_block);
+                self.emit_basic_block(case_block);
             }
 
-            self.emit_block(case_block);
+            self.emit_basic_block(case_block);
             self.emit_body(&case.body);
 
             if let Some(cur_block) = &self.block_reg.cur_block {
@@ -206,7 +206,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         });
 
         if all_cases_return && switch_stmt.all_cases_covered {
-            self.emit_block(exit_block);
+            self.emit_basic_block(exit_block);
             self.llvm_builder.build_unreachable().unwrap();
             return;
         }
@@ -217,7 +217,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         };
 
         if exit_in_use {
-            self.emit_block(exit_block);
+            self.emit_basic_block(exit_block);
         }
     }
 
@@ -246,7 +246,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         let else_block = {
             if let Some(block_stmt) = &switch_stmt.default {
                 let else_block = self.new_basic_block("switch_on_enum.default");
-                self.emit_block(else_block);
+                self.emit_basic_block(else_block);
                 self.emit_body(block_stmt);
 
                 if let Some(cur_block) = &self.block_reg.cur_block {
@@ -261,7 +261,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
             }
         };
 
-        self.emit_block(parent_block);
+        self.emit_basic_block(parent_block);
         let switch_inst = self
             .llvm_builder
             .build_switch(index_int_value, else_block, &[])
@@ -280,7 +280,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
 
         for case in &switch_stmt.cases {
             let case_block = self.new_basic_block("switch_on_enum.case");
-            self.emit_block(case_block);
+            self.emit_basic_block(case_block);
 
             for pattern in &case.patterns {
                 let CIRPattern::Variant { tag, payload, .. } = pattern else {
@@ -293,7 +293,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
                     CIRVariantPayload::Unit => { /* no payload */ }
 
                     CIRVariantPayload::Single(irv_id, cir_type) => {
-                        self.emit_block(case_block);
+                        self.emit_basic_block(case_block);
 
                         let llvm_type: BasicTypeEnum<'ll> = self.emit_type(cir_type.clone()).try_into().unwrap();
 
@@ -314,7 +314,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
                         let type_id = self.tctx.insert_struct(struct_type.clone());
                         let layout = self.tctx.get_or_compute_layout(type_id);
 
-                        self.emit_block(case_block);
+                        self.emit_basic_block(case_block);
 
                         let enum_payload = self.extract_enum_payload(enum_struct_value);
 
@@ -355,7 +355,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
                 cases.push((pattern_int_value, case_block));
             }
 
-            self.emit_block(case_block);
+            self.emit_basic_block(case_block);
             self.emit_body(&case.body);
 
             if let Some(cur_block) = &self.block_reg.cur_block {
@@ -380,7 +380,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         });
 
         if all_cases_return && switch_stmt.all_cases_covered {
-            self.emit_block(exit_block);
+            self.emit_basic_block(exit_block);
             self.llvm_builder.build_unreachable().unwrap();
         }
 
@@ -390,7 +390,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         };
 
         if exit_in_use {
-            self.emit_block(exit_block);
+            self.emit_basic_block(exit_block);
         }
     }
 
@@ -418,7 +418,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
 
         let else_block = if let Some(block_stmt) = &switch_stmt.default {
             let else_block = self.new_basic_block("switch.default");
-            self.emit_block(else_block);
+            self.emit_basic_block(else_block);
             self.emit_body(block_stmt);
 
             if let Some(cur_block) = &self.block_reg.cur_block {
@@ -432,7 +432,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
             exit_block
         };
 
-        self.emit_block(parent_block);
+        self.emit_basic_block(parent_block);
         let switch_inst = self
             .llvm_builder
             .build_switch(rvalue.as_basic_value().into_int_value(), else_block, &[])
@@ -469,7 +469,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
                 }
             }
 
-            self.emit_block(case_block);
+            self.emit_basic_block(case_block);
             self.emit_body(&case.body);
 
             if let Some(cur_block) = &self.block_reg.cur_block {
@@ -493,7 +493,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         });
 
         if all_cases_return && switch_stmt.all_cases_covered {
-            self.emit_block(exit_block);
+            self.emit_basic_block(exit_block);
             self.llvm_builder.build_unreachable().unwrap();
         }
 
@@ -503,7 +503,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         };
 
         if exit_in_use {
-            self.emit_block(exit_block);
+            self.emit_basic_block(exit_block);
         }
     }
 }
@@ -530,14 +530,14 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         }
 
         let cur_block = self.block_reg.cur_block.unwrap();
-        self.emit_block(cur_block);
+        self.emit_basic_block(cur_block);
         if cur_block.get_terminator().is_none() {
             let first_block = cond_block.unwrap_or(body_block);
             self.llvm_builder.build_unconditional_branch(first_block).unwrap();
         }
 
         if let (Some(cond_expr), Some(cond_bb)) = (&for_stmt.cond, cond_block) {
-            self.emit_block(cond_bb);
+            self.emit_basic_block(cond_bb);
             let cond = self.emit_cond(cond_expr);
 
             if let Some(cur_block) = &self.block_reg.cur_block {
@@ -550,7 +550,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         }
 
         if let (Some(inc_expr), Some(inc_bb)) = (&for_stmt.increment, inc_block) {
-            self.emit_block(inc_bb);
+            self.emit_basic_block(inc_bb);
             self.emit_expr(inc_expr, &None);
 
             if let Some(cur_block) = &self.block_reg.cur_block {
@@ -561,12 +561,12 @@ impl<'ll> CodeGenIRBuilder<'ll> {
             }
         }
 
-        self.emit_block(body_block);
+        self.emit_basic_block(body_block);
         self.emit_body(&for_stmt.body);
 
         if let Some(cur_block) = &self.block_reg.cur_block {
             if cur_block.get_terminator().is_none() {
-                self.emit_block(*cur_block);
+                self.emit_basic_block(*cur_block);
 
                 let next_block: BasicBlock<'ll>;
                 if for_stmt.cond.is_some() {
@@ -584,7 +584,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
             !first_use.is_null()
         };
         if exit_in_use {
-            self.emit_block(exit_block);
+            self.emit_basic_block(exit_block);
         }
 
         self.block_reg.control_flow_stack.pop();
@@ -693,7 +693,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         }
 
         if then_block != exit_block {
-            self.emit_block(then_block);
+            self.emit_basic_block(then_block);
             self.emit_body(&if_stmt.then_block);
 
             if let Some(cur_block) = self.block_reg.cur_block {
@@ -705,7 +705,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         }
 
         if else_block != exit_block {
-            self.emit_block(else_block);
+            self.emit_basic_block(else_block);
             self.emit_body(if_stmt.else_block.as_ref().unwrap());
 
             if let Some(cur_block) = &self.block_reg.cur_block {
@@ -720,7 +720,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
             unsafe { LLVMGetFirstUse(LLVMBasicBlockAsValue(exit_block.as_mut_ptr())) != std::ptr::null_mut() };
 
         if exit_in_use {
-            self.emit_block(exit_block);
+            self.emit_basic_block(exit_block);
         }
     }
 }
@@ -782,7 +782,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         }
 
         if let Some((basic_block, _)) = self.block_reg.labels.get(&label_stmt.label_id) {
-            self.emit_block(*basic_block);
+            self.emit_basic_block(*basic_block);
         } else {
             panic!("label block for '{}' not predefined", label_stmt.name);
         }
@@ -823,7 +823,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
 
             for stmt in scope.iter().rev() {
                 if let Some(cur_block) = self.block_reg.cur_block {
-                    self.emit_block(cur_block);
+                    self.emit_basic_block(cur_block);
                 }
 
                 if self.block_reg.cur_block.is_none() {
@@ -840,7 +840,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         for scope in scopes.iter().rev() {
             for stmt in scope.iter().rev() {
                 if let Some(cur_block) = self.block_reg.cur_block {
-                    self.emit_block(cur_block);
+                    self.emit_basic_block(cur_block);
                 }
 
                 if self.block_reg.cur_block.is_none() {
@@ -1100,10 +1100,10 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         let entry_block = self.new_basic_block("entry");
         self.block_reg.first_block = Some(entry_block);
 
-        self.emit_block(entry_block);
+        self.emit_basic_block(entry_block);
     }
 
-    pub(crate) fn emit_block(&mut self, next_block: BasicBlock<'ll>) {
+    pub(crate) fn emit_basic_block(&mut self, next_block: BasicBlock<'ll>) {
         let cur_fn = self.cur_func.unwrap();
 
         unsafe {

@@ -760,7 +760,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
             }
         }
 
-        self.emit_block(false_block);
+        self.emit_basic_block(false_block);
         let false_value = self.llvm_ctx.bool_type().const_int(0, false);
         self.llvm_builder.build_store(result_alloca, false_value).unwrap();
         if let Some(cur_block) = &self.block_reg.cur_block {
@@ -770,7 +770,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
             }
         }
 
-        self.emit_block(rhs_block);
+        self.emit_basic_block(rhs_block);
         let rhs_lvalue = self.emit_expr(rhs_expr, &None);
         let rhs_rvalue = self.load_rvalue(rhs_lvalue);
         let rhs_bool = self.int_value_as_bool_i1(rhs_rvalue.as_basic_value().into_int_value());
@@ -784,7 +784,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
             }
         }
 
-        self.emit_block(cont_block);
+        self.emit_basic_block(cont_block);
         let result = self
             .llvm_builder
             .build_load(self.llvm_ctx.bool_type(), result_alloca, "and_result")
@@ -821,7 +821,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
             }
         }
 
-        self.emit_block(true_block);
+        self.emit_basic_block(true_block);
         let true_value = self.llvm_ctx.bool_type().const_int(1, false);
         self.llvm_builder.build_store(result_alloca, true_value).unwrap();
         if let Some(cur_block) = &self.block_reg.cur_block {
@@ -831,7 +831,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
             }
         }
 
-        self.emit_block(rhs_block);
+        self.emit_basic_block(rhs_block);
         let rhs_lvalue = self.emit_expr(rhs_expr, &None);
         let rhs_rvalue = self.load_rvalue(rhs_lvalue);
         let rhs_bool = self.int_value_as_bool_i1(rhs_rvalue.as_basic_value().into_int_value());
@@ -845,7 +845,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
             }
         }
 
-        self.emit_block(cont_block);
+        self.emit_basic_block(cont_block);
         let result = self
             .llvm_builder
             .build_load(self.llvm_ctx.bool_type(), result_alloca, "or_result")
@@ -1012,7 +1012,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
 
         self.emit_intrinsic_panic(&[msg_expr], loc);
 
-        self.emit_block(cont_block);
+        self.emit_basic_block(cont_block);
 
         InternalValue::new(
             result_type,
@@ -1853,7 +1853,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
             .build_conditional_branch(tag_result.as_basic_value().into_int_value(), branch_true, branch_false)
             .unwrap();
 
-        self.emit_block(payload_block);
+        self.emit_basic_block(payload_block);
 
         let payload1 = self.extract_enum_payload(struct_value1);
         let payload2 = self.extract_enum_payload(struct_value2);
@@ -1874,7 +1874,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
 
         self.llvm_builder.build_unconditional_branch(exit_block).unwrap();
 
-        self.emit_block(exit_block);
+        self.emit_basic_block(exit_block);
 
         let phi = self
             .llvm_builder
