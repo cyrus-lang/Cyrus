@@ -9,7 +9,10 @@ use crate::{
         types::CodegenIRBuilderTypeCache,
         vars::GlobalVarLazyInitializer,
     },
-    llvm::debug_info::{BlockScope, DebugContext, create_debug_lexical_block, debug_current_scope, set_debug_location},
+    llvm::{
+        debug_info::{BlockScope, DebugContext, create_debug_lexical_block, debug_current_scope, set_debug_location},
+        lifetime::LLVMLifetimeMarkers,
+    },
 };
 use cyrusc_internal::{
     abi::{args::ABIFunctionInfo, target::ABITarget},
@@ -33,6 +36,7 @@ use inkwell::{
     },
     module::Module,
     targets::TargetMachine,
+    types::BasicTypeEnum,
     values::{FunctionValue, GlobalValue, PointerValue},
 };
 use std::{cell::RefCell, collections::HashMap, rc::Rc, sync::Arc};
@@ -58,8 +62,9 @@ pub(crate) struct CodeGenIRBuilder<'ll> {
     pub(crate) profile: CompilerOption_Profile,
     pub(crate) string_cache: FxHashMap<String, GlobalValue<'ll>>,
     pub(crate) global_var_lazy_initializers: Vec<GlobalVarLazyInitializer<'ll>>,
+    pub(crate) lifetime_markers: LLVMLifetimeMarkers<'ll>,
 
-    // Used to prevent duplicate sret when chained function call happens.
+    // Used to prevent duplicate sret when chained function call happens
     pub(crate) cur_sret: Option<PointerValue<'ll>>,
     pub(crate) is_return: bool,
 }
@@ -70,6 +75,100 @@ pub(crate) struct BlockRegistry<'ll> {
     pub(crate) first_block: Option<BasicBlock<'ll>>,
     pub(crate) cur_block: Option<BasicBlock<'ll>>,
     pub(crate) labels: HashMap<LabelID, (BasicBlock<'ll>, usize)>,
+    pub(crate) alloca_ending_lifetime_stack: Vec<Vec<PointerValue<'ll>>>,
+}
+
+impl<'ll> CodeGenIRBuilder<'ll> {
+    pub(crate) fn push_lifetime_scope(&mut self) {
+        self.block_reg.alloca_ending_lifetime_stack.push(Vec::new());
+    }
+
+    pub(crate) fn pop_lifetime_scope(&mut self) {
+        let scope = self
+            .block_reg
+            .alloca_ending_lifetime_stack
+            .pop()
+            .expect("attempted to pop an empty scope stack");
+
+        if let Some(basic_block) = self.block_reg.cur_block {
+            if basic_block.get_terminator().is_none() {
+                for ptr in scope.into_iter().rev() {
+                    self.lifetime_markers.emit_end(self.llvm_builder, ptr);
+                }
+            }
+        }
+    }
+
+    fn emit_scope_lifetime_ends_down_to(&self, target_depth: usize) {
+        assert!(
+            target_depth <= self.block_reg.alloca_ending_lifetime_stack.len(),
+            "target scope depth exceeds current scope depth"
+        );
+
+        if let Some(basic_block) = self.block_reg.cur_block {
+            if basic_block.get_terminator().is_none() {
+                for scope in self.block_reg.alloca_ending_lifetime_stack[target_depth..].iter().rev() {
+                    for &ptr in scope.iter().rev() {
+                        self.lifetime_markers.emit_end(self.llvm_builder, ptr);
+                    }
+                }
+            }
+        }
+    }
+
+    pub(crate) fn alloca_with_scope_lifetime(&mut self, ty: BasicTypeEnum<'ll>, name: &str) -> PointerValue<'ll> {
+        let ptr = self.create_alloca_in_entry_block(ty, name);
+
+        let cur_fn = self.cur_func.unwrap();
+        let entry_block = cur_fn.get_first_basic_block().unwrap();
+        let temp_builder = self.llvm_ctx.create_builder();
+        let next_instr = ptr.as_instruction().unwrap().get_next_instruction();
+        match next_instr {
+            Some(instr) => temp_builder.position_before(&instr),
+            None => temp_builder.position_at_end(entry_block),
+        }
+        self.lifetime_markers.emit_start(&temp_builder, ptr);
+
+        self.block_reg
+            .alloca_ending_lifetime_stack
+            .last_mut()
+            .unwrap()
+            .push(ptr);
+
+        ptr
+    }
+
+    #[inline]
+    pub(crate) fn drain_alloca_ending_lifetime_stack(&self) {
+        if let Some(basic_block) = self.block_reg.cur_block {
+            if basic_block.get_terminator().is_none() {
+                self.emit_scope_lifetime_ends_down_to(self.current_lifetime_scope_depth());
+            }
+        }
+    }
+
+    #[inline]
+    pub(crate) fn create_alloca_in_entry_block(&mut self, ty: BasicTypeEnum<'ll>, name: &str) -> PointerValue<'ll> {
+        let cur_fn = self.cur_func.unwrap();
+        let entry_block = cur_fn.get_first_basic_block().unwrap();
+
+        // We need to make a temp builder because if we insert our
+        // alloca into function's entry block with the self.llvm_builder
+        // it will ruin LLVMBuilder's instruction positioning and we'll
+        // get empty blocks in result.
+        let temp_builder = self.llvm_ctx.create_builder();
+
+        match entry_block.get_first_instruction() {
+            Some(first_instr) => temp_builder.position_before(&first_instr),
+            None => temp_builder.position_at_end(entry_block),
+        }
+
+        temp_builder.build_alloca(ty, name).unwrap()
+    }
+
+    fn current_lifetime_scope_depth(&self) -> usize {
+        self.block_reg.alloca_ending_lifetime_stack.len()
+    }
 }
 
 impl<'ll> CodeGenIRBuilder<'ll> {
@@ -87,6 +186,11 @@ impl<'ll> CodeGenIRBuilder<'ll> {
     ) -> Self {
         let irreg = Rc::new(RefCell::new(LocalIRValueRegistry::new()));
         let block_reg = BlockRegistry::default();
+
+        let lifetime_markers = {
+            let llvm_module = owned_module.module.borrow();
+            LLVMLifetimeMarkers::get_or_insert(owned_module.context, &llvm_module)
+        };
 
         let llvm_module = unsafe {
             std::mem::transmute::<Rc<RefCell<Module<'static>>>, Rc<RefCell<Module<'ll>>>>(owned_module.module.clone())
@@ -115,6 +219,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
             is_return: false,
             string_cache: FxHashMap::new(),
             global_var_lazy_initializers: Vec::new(),
+            lifetime_markers,
         }
     }
 
@@ -133,6 +238,9 @@ impl<'ll> CodeGenIRBuilder<'ll> {
 
     pub(crate) fn emit_stmt(&mut self, stmt: &CIRStmt) {
         match stmt {
+            CIRStmt::Expr(expr) => {
+                self.emit_expr(expr, &None);
+            }
             CIRStmt::Variable(var_stmt) => self.emit_var(var_stmt),
             CIRStmt::FuncDef(func_def_stmt) => {
                 let func_decl = cir_func_def_as_decl(func_def_stmt);
@@ -165,9 +273,6 @@ impl<'ll> CodeGenIRBuilder<'ll> {
                 // to prevent symbol table bloat.
             }
             CIRStmt::Block(block_stmt) => self.emit_scope_block(block_stmt),
-            CIRStmt::Expr(expr) => {
-                self.emit_expr(expr, &None);
-            }
             CIRStmt::Switch(switch_stmt) => self.emit_switch(switch_stmt),
             CIRStmt::If(if_stmt) => self.emit_if(if_stmt),
             CIRStmt::For(for_stmt) => self.emit_for(for_stmt),
@@ -178,7 +283,11 @@ impl<'ll> CodeGenIRBuilder<'ll> {
             CIRStmt::Break(break_stmt) => self.emit_break(break_stmt),
             CIRStmt::Continue(continue_stmt) => self.emit_continue(continue_stmt),
 
-            CIRStmt::Defer(_) => unreachable!(),
+            CIRStmt::Defer(defer_stmt) => {
+                if let Some(scope) = self.defer_stack.last_mut() {
+                    scope.push(*defer_stmt.operand.clone());
+                }
+            }
         }
 
         if let Some(dctx) = &self.dctx {
@@ -215,9 +324,11 @@ impl<'ll> CodeGenIRBuilder<'ll> {
     }
 
     pub(crate) fn emit_body(&mut self, block: &CIRBlockStmt) {
-        self.emit_predefine_labels(block);
+        self.defer_stack.push(Vec::new());
 
-        self.defer_stack.push(block.defers.clone());
+        self.push_lifetime_scope();
+
+        self.emit_predefine_labels(block);
 
         for stmt in &block.stmts {
             if let Some(basic_block) = &self.block_reg.cur_block {
@@ -229,13 +340,17 @@ impl<'ll> CodeGenIRBuilder<'ll> {
             self.emit_stmt(stmt);
         }
 
+        // Drain scope defers
         if let Some(basic_block) = &self.block_reg.cur_block {
-            if !basic_block.get_terminator().is_some() {
+            if basic_block.get_terminator().is_none() {
                 self.emit_scope_defers();
             }
         }
 
         self.defer_stack.pop();
+
+        self.drain_alloca_ending_lifetime_stack();
+        self.pop_lifetime_scope();
     }
 
     pub(crate) fn set_current_func(&mut self, llvm_func_value: FunctionValue<'ll>, abi_func_info: ABIFunctionInfo) {
@@ -247,9 +362,10 @@ impl<'ll> CodeGenIRBuilder<'ll> {
 impl<'ll> Default for BlockRegistry<'ll> {
     fn default() -> Self {
         Self {
+            alloca_ending_lifetime_stack: Default::default(),
             control_flow_stack: Default::default(),
-            cur_block: Default::default(),
             first_block: Default::default(),
+            cur_block: Default::default(),
             labels: Default::default(),
         }
     }

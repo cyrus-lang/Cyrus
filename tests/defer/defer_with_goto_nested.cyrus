@@ -1,0 +1,26 @@
+// @stdout: Start D3 D2 D1 End
+
+import std::libc{printf};
+
+fn test_goto_nested() {
+    printf("Start ");
+    defer printf("End");
+
+    {
+        defer printf("D1 ");
+        {
+            defer printf("D2 ");
+            {
+                defer printf("D3 ");
+                goto target;
+            }
+        }
+    }
+
+target:
+    printf("");
+}
+
+pub fn main() {
+    test_goto_nested();
+}

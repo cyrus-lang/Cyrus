@@ -172,11 +172,7 @@ impl<'a> CIRLower<'a> {
                 lowered_stmts.push(self.lower_goto(goto));
             }
             TypedStmtKind::Expr(expr) => {
-                if expr.is_rvalue() {
-                    lowered_stmts.push(CIRStmt::Expr(self.lower_expr(expr)));
-                } else {
-                    // ignore
-                }
+                lowered_stmts.push(CIRStmt::Expr(self.lower_expr(expr)));
             }
             TypedStmtKind::Struct(struct_stmt) => {
                 if !struct_stmt.is_generic() {
@@ -217,8 +213,16 @@ impl<'a> CIRLower<'a> {
                 }));
             }
 
-            // skipped
-            TypedStmtKind::Defer(_) | TypedStmtKind::Interface(..) | TypedStmtKind::Typedef(..) => {}
+            TypedStmtKind::Defer(defer) => {
+                if !defer.operand.is_dead {
+                    let lowered_operand = self.lower_defer(defer);
+                    lowered_stmts.push(CIRStmt::Defer(CIRDeferStmt {
+                        operand: Box::new(lowered_operand),
+                        loc: defer.loc,
+                    }));
+                }
+            }
+            TypedStmtKind::Interface(..) | TypedStmtKind::Typedef(..) => {}
         }
     }
 
@@ -352,11 +356,11 @@ impl<'a> CIRLower<'a> {
         lowered_stmts
     }
 
+    #[inline]
     fn lower_defer(&mut self, defer: &TypedDeferStmt) -> CIRStmt {
         let mut lowered_stmts = Vec::new();
-        self.lower_stmt(&defer.operand, &mut lowered_stmts);
+        self.lower_stmt(&defer.operand.kind, &mut lowered_stmts);
         assert_eq!(lowered_stmts.len(), 1);
-
         let operand = lowered_stmts.first().unwrap();
         operand.clone()
     }
@@ -1328,12 +1332,18 @@ impl<'a> CIRLower<'a> {
     }
 
     fn lower_block(&mut self, block: &TypedBlockStmt) -> CIRBlockStmt {
-        let stmts = self.lower_stmts(&block.stmts);
-        let defers = block.defers.iter().map(|defer| self.lower_defer(defer)).collect();
+        let mut lowered_stmts = Vec::new();
+
+        for stmt in &block.stmts {
+            // IMPORTANT: eliminate dead code and prevent defer drain
+            if !stmt.is_dead {
+                self.lower_stmt(&stmt.kind, &mut lowered_stmts);
+            }
+        }
 
         CIRBlockStmt {
-            stmts,
-            defers,
+            stmts: lowered_stmts,
+            defers: Vec::new(),
             loc: block.loc,
         }
     }

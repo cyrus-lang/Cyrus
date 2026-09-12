@@ -59,6 +59,10 @@ impl<'a> AnalysisContext<'a> {
 
         // analyze monomorphized body if not analyzed yet
         if !is_generic_interface_method_call && !monomorph_instance.analyzed {
+            self.monomorph_registry.update(monomorph_id, |inst| {
+                inst.analyzed = true;
+            });
+
             let body_id = method_decl.body.unwrap();
             let template_body = self.decl_tables.body(body_id);
 
@@ -183,7 +187,7 @@ impl<'a> AnalysisContext<'a> {
         }
 
         for defer in &mut specialize_body.defers {
-            self.collect_and_instantiate_fresh_var_decls(&mut defer.operand, &mut decl_map);
+            self.collect_and_instantiate_fresh_var_decls(&mut defer.operand.kind, &mut decl_map);
         }
 
         // second pass: rewrite refs using decl_map
@@ -279,7 +283,7 @@ impl<'a> AnalysisContext<'a> {
         }
 
         for defer in &mut body.defers {
-            self.specialize_stmt(&mut defer.operand, decl_map);
+            self.specialize_stmt(&mut defer.operand.kind, decl_map);
         }
     }
 
@@ -311,7 +315,7 @@ impl<'a> AnalysisContext<'a> {
         }
 
         for defer in &mut block_stmt.defers {
-            self.specialize_stmt(&mut defer.operand, decl_map);
+            self.specialize_stmt(&mut defer.operand.kind, decl_map);
         }
     }
 
@@ -397,9 +401,12 @@ impl<'a> AnalysisContext<'a> {
             | TypedStmtKind::Enum(_)
             | TypedStmtKind::Union(_)
             | TypedStmtKind::Interface(_)
-            | TypedStmtKind::Defer(_)
             | TypedStmtKind::Label(_)
             | TypedStmtKind::Goto(_) => {}
+
+            TypedStmtKind::Defer(defer) => {
+                self.specialize_stmt(&mut defer.operand.kind, decl_map);
+            }
 
             TypedStmtKind::InlineAsm(asm) => {
                 for op in &mut asm.outputs {
@@ -658,7 +665,7 @@ impl<'a> AnalysisContext<'a> {
                 }
 
                 for defer in &block.defers {
-                    self.collect_and_instantiate_fresh_var_decls(&defer.operand, decl_map);
+                    self.collect_and_instantiate_fresh_var_decls(&defer.operand.kind, decl_map);
                 }
             }
             TypedStmtKind::For(for_stmt) => {
@@ -689,7 +696,7 @@ impl<'a> AnalysisContext<'a> {
                     }
 
                     for defer in &case.body.defers {
-                        self.collect_and_instantiate_fresh_var_decls(&defer.operand, decl_map);
+                        self.collect_and_instantiate_fresh_var_decls(&defer.operand.kind, decl_map);
                     }
                 }
             }
@@ -741,7 +748,7 @@ impl<'a> AnalysisContext<'a> {
                         }
 
                         for defer in &builtin_block.block.defers {
-                            self.collect_and_instantiate_fresh_var_decls(&defer.operand, decl_map);
+                            self.collect_and_instantiate_fresh_var_decls(&defer.operand.kind, decl_map);
                         }
                     }
                 }
@@ -758,10 +765,13 @@ impl<'a> AnalysisContext<'a> {
             | TypedStmtKind::Enum(_)
             | TypedStmtKind::Union(_)
             | TypedStmtKind::Interface(_)
-            | TypedStmtKind::Defer(_)
             | TypedStmtKind::Label(_)
             | TypedStmtKind::Goto(_)
             | TypedStmtKind::InlineAsm(_) => {}
+
+            TypedStmtKind::Defer(defer) => {
+                self.collect_and_instantiate_fresh_var_decls(&defer.operand.kind, decl_map);
+            }
         }
     }
 

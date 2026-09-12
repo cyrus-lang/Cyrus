@@ -233,8 +233,6 @@ impl<'a> Resolver<'a> {
 
             ASTStmt::Goto(goto) => self.resolve_goto_stmt(goto).map(TypedStmt::new),
 
-            ASTStmt::Foreach(_foreach_stmt) => unimplemented!(), // TODO
-
             // invalid statements
             ASTStmt::Enum(_)
             | ASTStmt::Union(_)
@@ -255,7 +253,13 @@ impl<'a> Resolver<'a> {
                 None
             }
 
-            ASTStmt::Defer(_) => unreachable!(),
+            ASTStmt::Defer(defer) => self.resolve_stmt(&defer.operand).map(|operand| {
+                TypedStmt::new(TypedStmtKind::Defer(TypedDeferStmt {
+                    operand: Box::new(TypedStmt::new(operand.kind)),
+                    loc: defer.loc,
+                }))
+            }),
+
             ASTStmt::InlineAsm(asm) => {
                 let typed_asm = self.resolve_inline_asm(asm);
                 Some(TypedStmt::new(TypedStmtKind::InlineAsm(typed_asm)))
@@ -1798,7 +1802,7 @@ impl<'a> Resolver<'a> {
 
     fn resolve_block_stmt(&mut self, block_stmt: &ASTBlockStmt) -> Option<TypedBlockStmt> {
         let mut typed_body: Vec<TypedStmt> = Vec::new();
-        let mut defers: Vec<TypedDeferStmt> = Vec::new();
+        let defers: Vec<TypedDeferStmt> = Vec::new();
 
         let scope = LocalScope::new();
         self.enter_local_scope(scope);
@@ -1806,20 +1810,8 @@ impl<'a> Resolver<'a> {
         self.collect_labels_in_block(block_stmt);
 
         for stmt in &block_stmt.stmts {
-            match stmt {
-                ASTStmt::Defer(defer) => {
-                    if let Some(typed_stmt) = self.resolve_stmt(&defer.operand) {
-                        defers.push(TypedDeferStmt {
-                            operand: Box::new(typed_stmt.kind),
-                            loc: defer.loc,
-                        });
-                    }
-                }
-                _ => {
-                    if let Some(typed_stmt) = self.resolve_stmt(stmt) {
-                        typed_body.push(typed_stmt);
-                    }
-                }
+            if let Some(typed_stmt) = self.resolve_stmt(stmt) {
+                typed_body.push(typed_stmt);
             }
         }
 

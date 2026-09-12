@@ -87,15 +87,18 @@ pub struct CyrusLLVMOptimizer {
 }
 
 impl CyrusLLVMOptimizer {
+    #[inline]
     pub fn new(target_machine: Option<&mut inkwell::targets::TargetMachine>) -> Self {
-        let tm_ptr = target_machine
+        let ptr = target_machine
             .map(|tm| tm.as_mut_ptr() as *mut c_void)
             .unwrap_or(ptr::null_mut());
 
-        let ctx = unsafe { cyrus_optimizer_create(tm_ptr) };
-        Self { ctx }
+        Self {
+            ctx: unsafe { cyrus_optimizer_create(ptr) },
+        }
     }
 
+    #[inline]
     pub fn set_target_machine(&mut self, target_machine: &mut inkwell::targets::TargetMachine) {
         unsafe {
             cyrus_optimizer_set_target_machine(self.ctx, target_machine.as_mut_ptr() as *mut c_void);

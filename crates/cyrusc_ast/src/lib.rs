@@ -452,7 +452,6 @@ pub enum ASTStmt {
     FuncDecl(ASTFuncDeclStmt),
     For(ASTForStmt),
     While(ASTWhileStmt),
-    Foreach(ASTForeachStmt),
     Switch(ASTSwitchStmt),
     SwitchGuard(ASTSwitchGuardStmt),
     BlockStmt(ASTBlockStmt),
@@ -607,15 +606,6 @@ pub struct ASTForStmt {
     pub initializer: Option<ASTVarStmt>,
     pub condition: Option<ASTExpr>,
     pub increment: Option<ASTExpr>,
-    pub body: Box<ASTBlockStmt>,
-    pub loc: Loc,
-}
-
-#[derive(Debug, Clone)]
-pub struct ASTForeachStmt {
-    pub item: Ident,
-    pub index: Option<Ident>,
-    pub expr: ASTExpr,
     pub body: Box<ASTBlockStmt>,
     pub loc: Loc,
 }
@@ -1023,7 +1013,6 @@ impl ASTStmt {
             ASTStmt::Builtin(_)
             | ASTStmt::For(_)
             | ASTStmt::While(_)
-            | ASTStmt::Foreach(_)
             | ASTStmt::Switch(_)
             | ASTStmt::SwitchGuard(_)
             | ASTStmt::BlockStmt(_)
@@ -1063,7 +1052,6 @@ impl ASTStmt {
             | ASTStmt::Return(_)
             | ASTStmt::For(_)
             | ASTStmt::While(_)
-            | ASTStmt::Foreach(_)
             | ASTStmt::Switch(_)
             | ASTStmt::SwitchGuard(_)
             | ASTStmt::BlockStmt(_)
@@ -1089,7 +1077,6 @@ impl ASTStmt {
             ASTStmt::FuncDecl(func_decl) => func_decl.loc,
             ASTStmt::For(for_stmt) => for_stmt.loc,
             ASTStmt::While(while_stmt) => while_stmt.loc,
-            ASTStmt::Foreach(foreach) => foreach.loc,
             ASTStmt::Switch(switch) => switch.loc,
             ASTStmt::SwitchGuard(switch_guard) => switch_guard.loc,
             ASTStmt::Struct(struct_stmt) => struct_stmt.loc,

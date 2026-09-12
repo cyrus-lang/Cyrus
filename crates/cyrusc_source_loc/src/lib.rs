@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 The Cyrus Language
 
+use cyrusc_fs_utils::read_file;
 use std::{
     collections::HashMap,
     path::{Path, PathBuf},
@@ -9,8 +10,6 @@ use std::{
         atomic::{AtomicU32, Ordering},
     },
 };
-
-use cyrusc_fs_utils::read_file;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct FileID(pub u32);
@@ -25,7 +24,7 @@ pub struct SourceMap {
 pub struct SourceFile {
     pub file_id: FileID,    // The unique identifier for this file
     pub file_path: PathBuf, // The original filename (e.g., "main.cyrus")
-    pub content: String,    // The full source code of the file
+    pub text: String,       // The full source code of the file
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -38,7 +37,7 @@ pub struct Loc {
 }
 
 impl SourceMap {
-    /// Creates a new, empty SourceMap.
+    #[inline]
     pub fn new() -> Self {
         Self {
             files: RwLock::new(HashMap::new()),
@@ -81,6 +80,7 @@ impl SourceMap {
 
     fn lookup_source_file_by_path(&self, path: PathBuf) -> Option<FileID> {
         let files = self.files.read().unwrap();
+
         files
             .iter()
             .find(|(_, source_file)| source_file.file_path == path)
@@ -89,16 +89,18 @@ impl SourceMap {
 }
 
 impl SourceFile {
-    pub fn new(file_id: FileID, file_path: PathBuf, content: String) -> Self {
+    #[inline]
+    pub fn new(file_id: FileID, file_path: PathBuf, text: String) -> Self {
         Self {
             file_id,
             file_path,
-            content,
+            text,
         }
     }
 }
 
 impl Loc {
+    #[inline]
     pub fn new(file_id: FileID, line: usize, column: usize, start: usize, end: usize) -> Self {
         Self {
             file_id,
@@ -109,6 +111,7 @@ impl Loc {
         }
     }
 
+    #[inline]
     pub fn default(file_id: FileID) -> Self {
         Self {
             file_id: file_id,

@@ -120,8 +120,10 @@ impl<'ll> CodeGenIRBuilder<'ll> {
 
         let ty: BasicTypeEnum<'ll> = self.emit_type(cir_var.ty.clone()).try_into().unwrap();
 
-        let ptr = self.llvm_builder.build_alloca(ty, &cir_var.name).unwrap();
+        let ptr = self.alloca_with_scope_lifetime(ty, &cir_var.name);
+
         let alloca_instr = ptr.as_instruction().unwrap();
+        alloca_instr.set_alignment(layout.align).unwrap();
 
         if self.dctx.is_some() {
             self.emit_debug_var(&layout, &ptr, cir_var);
@@ -140,8 +142,6 @@ impl<'ll> CodeGenIRBuilder<'ll> {
                 self.emit_store(ptr, zero_internal_value, cir_var.ty.clone());
             }
         }
-
-        alloca_instr.set_alignment(layout.align).unwrap();
 
         self.insert_local_ir_value(cir_var.irv_id, LocalIRValue::LValue(ptr, cir_var.ty.clone()));
     }

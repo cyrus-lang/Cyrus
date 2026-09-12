@@ -60,7 +60,6 @@ fn print_status(label: &str, file_name: Option<&str>) {
     let colored_label = match label {
         "compiled" => colorize(label, colors::GREEN),
         "skipped" => colorize(label, colors::YELLOW),
-        "finished" => colorize(label, colors::CYAN),
         _ => colorize(label, colors::BLUE),
     };
 

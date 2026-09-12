@@ -50,7 +50,7 @@ impl<'diag, 'source_file> Lexer<'diag, 'source_file> {
     /// Returns the input source string.
     #[inline]
     pub fn input(&self) -> &str {
-        &self.source_file.content
+        &self.source_file.text
     }
 
     pub fn tokenize(&mut self) -> Vec<Token> {
@@ -505,35 +505,37 @@ impl<'source_map, 'source_file> Lexer<'source_map, 'source_file> {
         let mut number = String::new();
         let mut is_float = false;
 
-        let base = if self.ch == '0' {
-            match self.peek_char().to_ascii_lowercase() {
-                'x' => {
-                    self.read(); // consume '0'
-                    self.read(); // consume 'x' or 'X'
-                    while self.ch.is_ascii_hexdigit() || self.ch == '_' {
-                        if self.ch != '_' {
-                            number.push(self.ch);
+        let base = {
+            if self.ch == '0' {
+                match self.peek_char().to_ascii_lowercase() {
+                    'x' => {
+                        self.read(); // consume '0'
+                        self.read(); // consume 'x' or 'X'
+                        while self.ch.is_ascii_hexdigit() || self.ch == '_' {
+                            if self.ch != '_' {
+                                number.push(self.ch);
+                            }
+                            self.read();
                         }
-                        self.read();
+                        16
                     }
-                    16
-                }
-                'b' => {
-                    self.read(); // consume '0'
-                    self.read(); // consume 'b' or 'B'
-                    while self.ch == '0' || self.ch == '1' || self.ch == '_' {
-                        if self.ch != '_' {
-                            number.push(self.ch);
+                    'b' => {
+                        self.read(); // consume '0'
+                        self.read(); // consume 'b' or 'B'
+                        while self.ch == '0' || self.ch == '1' || self.ch == '_' {
+                            if self.ch != '_' {
+                                number.push(self.ch);
+                            }
+                            self.read();
                         }
-                        self.read();
+                        2
                     }
-                    2
-                }
 
-                _ => 10, // fallback: DECIMAL
+                    _ => 10, // fallback: DECIMAL
+                }
+            } else {
+                10 // fallback: DECIMAL
             }
-        } else {
-            10 // fallback: DECIMAL
         };
 
         if base == 10 {
@@ -573,68 +575,70 @@ impl<'source_map, 'source_file> Lexer<'source_map, 'source_file> {
 
         let suffix = self.read_literal_suffix();
 
-        let token_kind = if is_float {
-            match number.parse::<f64>() {
-                Ok(value) => LiteralKind::Float(value, suffix),
-                Err(_) => {
-                    let end = self.pos;
+        let token_kind = {
+            if is_float {
+                match number.parse::<f64>() {
+                    Ok(value) => LiteralKind::Float(value, suffix),
+                    Err(_) => {
+                        let end = self.pos;
 
-                    self.reporter.report(Diag {
-                        level: DiagLevel::Error,
-                        kind: Box::new(LexicalDiagKind::InvalidFloatLiteral),
-                        loc: Some(Loc::new(self.file_id(), line, column, start, end)),
-                        hint: None,
-                    });
+                        self.reporter.report(Diag {
+                            level: DiagLevel::Error,
+                            kind: Box::new(LexicalDiagKind::InvalidFloatLiteral),
+                            loc: Some(Loc::new(self.file_id(), line, column, start, end)),
+                            hint: None,
+                        });
 
-                    self.read();
-                    return TokenKind::Invalid;
-                }
-            }
-        } else {
-            let is_unsigned = matches!(suffix, Some(ref token_kind) if token_kind.is_unsigned());
-
-            // always parse into a u128 to prevent early signed overflow
-            let int_literal_kind = match u128::from_str_radix(&number, base) {
-                Ok(value) => {
-                    if is_unsigned || base != 10 {
-                        // for unsigned or non-decimal types, allow full u128 range
-                        IntLiteralKind::Unsigned(value)
-                    } else {
-                        // for standard signed decimals, allow up to i128::MAX + 1
-                        // this accommodates the negative boundary condition (-170141183460469231731687303715884105728)
-                        // (Used in std::libc::limits)
-
-                        let max_lexer_value = (i128::MAX as u128) + 1;
-
-                        if value > max_lexer_value {
-                            let end = self.pos;
-                            self.reporter.report(Diag {
-                                level: DiagLevel::Error,
-                                kind: Box::new(LexicalDiagKind::InvalidIntegerLiteral),
-                                loc: Some(Loc::new(self.file_id(), line, column, start, end)),
-                                hint: Some("Integer literal exceeds 128-bit signed limits".to_string()),
-                            });
-                            self.read();
-                            return TokenKind::Invalid;
-                        }
-
-                        IntLiteralKind::Signed(value as i128)
+                        self.read();
+                        return TokenKind::Invalid;
                     }
                 }
-                Err(_) => {
-                    let end = self.pos;
-                    self.reporter.report(Diag {
-                        level: DiagLevel::Error,
-                        kind: Box::new(LexicalDiagKind::InvalidIntegerLiteral),
-                        loc: Some(Loc::new(self.file_id(), line, column, start, end)),
-                        hint: None,
-                    });
-                    self.read();
-                    return TokenKind::Invalid;
-                }
-            };
+            } else {
+                let is_unsigned = matches!(suffix, Some(ref token_kind) if token_kind.is_unsigned());
 
-            LiteralKind::Integer(int_literal_kind, suffix)
+                // always parse into a u128 to prevent early signed overflow
+                let int_literal_kind = match u128::from_str_radix(&number, base) {
+                    Ok(value) => {
+                        if is_unsigned || base != 10 {
+                            // for unsigned or non-decimal types, allow full u128 range
+                            IntLiteralKind::Unsigned(value)
+                        } else {
+                            // for standard signed decimals, allow up to i128::MAX + 1
+                            // this accommodates the negative boundary condition (-170141183460469231731687303715884105728)
+                            // (Used in std::libc::limits)
+
+                            let max_lexer_value = (i128::MAX as u128) + 1;
+
+                            if value > max_lexer_value {
+                                let end = self.pos;
+                                self.reporter.report(Diag {
+                                    level: DiagLevel::Error,
+                                    kind: Box::new(LexicalDiagKind::InvalidIntegerLiteral),
+                                    loc: Some(Loc::new(self.file_id(), line, column, start, end)),
+                                    hint: Some("Integer literal exceeds 128-bit signed limits".to_string()),
+                                });
+                                self.read();
+                                return TokenKind::Invalid;
+                            }
+
+                            IntLiteralKind::Signed(value as i128)
+                        }
+                    }
+                    Err(_) => {
+                        let end = self.pos;
+                        self.reporter.report(Diag {
+                            level: DiagLevel::Error,
+                            kind: Box::new(LexicalDiagKind::InvalidIntegerLiteral),
+                            loc: Some(Loc::new(self.file_id(), line, column, start, end)),
+                            hint: None,
+                        });
+                        self.read();
+                        return TokenKind::Invalid;
+                    }
+                };
+
+                LiteralKind::Integer(int_literal_kind, suffix)
+            }
         };
 
         let end = self.pos;
@@ -662,7 +666,7 @@ impl<'source_map, 'source_file> Lexer<'source_map, 'source_file> {
 
     #[inline]
     fn read_literal_suffix(&mut self) -> Option<Box<TokenKind>> {
-        if matches!(self.ch, 'f' | 'u' | 'i' | 's') {
+        if matches!(self.ch, 'f' | 'u' | 'i') {
             let mut suffix = String::new();
 
             while self.ch.is_alphanumeric() || self.ch == '_' {

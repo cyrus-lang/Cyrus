@@ -92,7 +92,7 @@ pub enum TypedTupleExportPatternKind {
 
 #[derive(Debug, Clone)]
 pub struct TypedDeferStmt {
-    pub operand: Box<TypedStmtKind>,
+    pub operand: Box<TypedStmt>,
     pub loc: Loc,
 }
 
@@ -453,6 +453,7 @@ pub struct TypedBound {
 }
 
 impl TypedStmt {
+    #[inline]
     pub fn new(kind: TypedStmtKind) -> Self {
         return Self { kind, is_dead: false };
     }
