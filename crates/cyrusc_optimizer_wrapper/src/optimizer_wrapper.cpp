@@ -87,12 +87,7 @@ private:
 class LLVMOptimizer {
 public:
   LLVMOptimizer(TargetMachine *target_machine = nullptr)
-      : target_machine_(target_machine) {
-    loop_am_ = std::make_unique<LoopAnalysisManager>();
-    function_am_ = std::make_unique<FunctionAnalysisManager>();
-    cgscc_am_ = std::make_unique<CGSCCAnalysisManager>();
-    module_am_ = std::make_unique<ModuleAnalysisManager>();
-  }
+      : target_machine_(target_machine) {}
 
   bool optimizeModule(Module &module, OptimizeLevel level,
                       const OptimizeConfig &config = OptimizeConfig{}) {
@@ -124,12 +119,23 @@ public:
     pipeline_opts.LoopInterleaving = config_.allow_loop_interleaving;
     pipeline_opts.MergeFunctions = config_.allow_merge_functions;
 
-    pass_builder_ = std::make_unique<PassBuilder>(
+    PassBuilder pass_builder(
         target_machine_, pipeline_opts, std::nullopt, &instrument_callbacks);
 
-    setupAnalysisManagers(module);
+    LoopAnalysisManager loop_am;
+    FunctionAnalysisManager function_am;
+    CGSCCAnalysisManager cgscc_am;
+    ModuleAnalysisManager module_am;
 
-    pass_builder_->registerPipelineStartEPCallback(
+    pass_builder.registerLoopAnalyses(loop_am);
+    pass_builder.registerFunctionAnalyses(function_am);
+    pass_builder.registerCGSCCAnalyses(cgscc_am);
+    pass_builder.registerModuleAnalyses(module_am);
+
+    pass_builder.crossRegisterProxies(loop_am, function_am, cgscc_am,
+                                       module_am);
+
+    pass_builder.registerPipelineStartEPCallback(
         [this](ModulePassManager &mpm, OptimizationLevel level) {
           if (config_.verify_input) {
             mpm.addPass(VerifierPass());
@@ -140,7 +146,7 @@ public:
           }
         });
 
-    pass_builder_->registerOptimizerLastEPCallback(
+    pass_builder.registerOptimizerLastEPCallback(
         [this](ModulePassManager &mpm, OptimizationLevel level,
                ThinOrFullLTOPhase phase) {
           if (config_.verify_output) {
@@ -153,14 +159,14 @@ public:
 
     ModulePassManager mpm;
     if (llvm_level == OptimizationLevel::O0) {
-      mpm = pass_builder_->buildO0DefaultPipeline(llvm_level);
+      mpm = pass_builder.buildO0DefaultPipeline(llvm_level);
     } else if (is_lto) {
-      mpm = pass_builder_->buildLTOPreLinkDefaultPipeline(llvm_level);
+      mpm = pass_builder.buildLTOPreLinkDefaultPipeline(llvm_level);
     } else {
-      mpm = pass_builder_->buildPerModuleDefaultPipeline(llvm_level);
+      mpm = pass_builder.buildPerModuleDefaultPipeline(llvm_level);
     }
 
-    mpm.run(module, *module_am_);
+    mpm.run(module, module_am);
 
     if (config_.verify_output) {
       std::string error;
@@ -216,36 +222,8 @@ private:
     }
   }
 
-  void setupAnalysisManagers(Module &module) {
-    if (target_machine_) {
-      const Triple &triple = target_machine_->getTargetTriple();
-      auto tlii = std::make_unique<TargetLibraryInfoImpl>(triple);
-      function_am_->registerPass(
-          [tlii = std::move(tlii)] { return TargetLibraryAnalysis(*tlii); });
-    } else {
-      Triple triple(module.getTargetTriple());
-      auto tlii = std::make_unique<TargetLibraryInfoImpl>(triple);
-      function_am_->registerPass(
-          [tlii = std::move(tlii)] { return TargetLibraryAnalysis(*tlii); });
-    }
-
-    pass_builder_->registerModuleAnalyses(*module_am_);
-    pass_builder_->registerCGSCCAnalyses(*cgscc_am_);
-    pass_builder_->registerFunctionAnalyses(*function_am_);
-    pass_builder_->registerLoopAnalyses(*loop_am_);
-
-    pass_builder_->crossRegisterProxies(*loop_am_, *function_am_, *cgscc_am_,
-                                        *module_am_);
-  }
-
   TargetMachine *target_machine_;
   OptimizeConfig config_;
-
-  std::unique_ptr<LoopAnalysisManager> loop_am_;
-  std::unique_ptr<FunctionAnalysisManager> function_am_;
-  std::unique_ptr<CGSCCAnalysisManager> cgscc_am_;
-  std::unique_ptr<ModuleAnalysisManager> module_am_;
-  std::unique_ptr<PassBuilder> pass_builder_;
 };
 
 } // namespace cyrus
