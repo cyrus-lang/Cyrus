@@ -374,7 +374,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
 
         self.block_reg = parent_blockreg;
         if let Some(basic_block) = self.block_reg.cur_block {
-            self.emit_block(basic_block);
+            self.emit_basic_block(basic_block);
         }
 
         let cir_func_type = cir_func_decl_as_func_type(&cir_func_decl);
