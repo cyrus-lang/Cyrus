@@ -208,6 +208,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         if all_cases_return && switch_stmt.all_cases_covered {
             self.emit_basic_block(exit_block);
             self.llvm_builder.build_unreachable().unwrap();
+            self.block_reg.cur_block = None;
             return;
         }
 
@@ -329,7 +330,10 @@ impl<'ll> CodeGenIRBuilder<'ll> {
                             )
                             .into_struct_value();
 
-                        let payload_alloca = self.llvm_builder.build_alloca(payload_struct_type, "alloca").unwrap();
+                        let payload_alloca = self
+                            .llvm_builder
+                            .build_alloca(payload_struct_type, "enum.payload.struct")
+                            .unwrap();
 
                         self.llvm_builder
                             .build_store(payload_alloca, payload_struct_value)
@@ -382,6 +386,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         if all_cases_return && switch_stmt.all_cases_covered {
             self.emit_basic_block(exit_block);
             self.llvm_builder.build_unreachable().unwrap();
+            self.block_reg.cur_block = None;
         }
 
         let exit_in_use: bool = unsafe {
@@ -495,6 +500,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         if all_cases_return && switch_stmt.all_cases_covered {
             self.emit_basic_block(exit_block);
             self.llvm_builder.build_unreachable().unwrap();
+            self.block_reg.cur_block = None;
         }
 
         let exit_in_use: bool = unsafe {
@@ -725,7 +731,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
     }
 }
 
-// Return + Continue
+// Break + Continue
 impl<'ll> CodeGenIRBuilder<'ll> {
     pub(crate) fn emit_break(&mut self, _break_stmt: &CIRBreakStmt) {
         let entry = self.block_reg.control_flow_stack.last().unwrap();
@@ -855,6 +861,17 @@ impl<'ll> CodeGenIRBuilder<'ll> {
 
 // Return.
 impl<'ll> CodeGenIRBuilder<'ll> {
+    #[inline]
+    fn drain_before_return(&mut self) {
+        self.emit_all_defers();
+        self.drain_alloca_ending_lifetime_stack();
+    }
+
+    fn emit_return_instruction(&mut self, val: Option<&dyn inkwell::values::BasicValue<'ll>>) {
+        self.llvm_builder.build_return(val).unwrap();
+        self.block_reg.cur_block = None;
+    }
+
     pub(crate) fn emit_return(&mut self, return_stmt: &CIRReturnStmt) {
         let cur_fn = self.cur_func.unwrap();
         let cur_abi_func_info = self.cur_abi_func_info.clone().unwrap();
@@ -874,13 +891,13 @@ impl<'ll> CodeGenIRBuilder<'ll> {
 
         self.with_return_state(|this| match (&return_stmt.arg, &ret_info.kind) {
             (None, _) => {
-                this.emit_all_defers();
-                this.llvm_builder.build_return(None).unwrap();
+                this.drain_before_return();
+                this.emit_return_instruction(None);
             }
             (Some(expr), ABIRetInfoKind::Ignore) => {
                 this.emit_expr(expr, &Some(*ret_info.ret_type.clone()));
-                this.emit_all_defers();
-                this.llvm_builder.build_return(None).unwrap();
+                this.drain_before_return();
+                this.emit_return_instruction(None);
             }
 
             (Some(expr), ABIRetInfoKind::Indirect { sret }) => {
@@ -892,16 +909,16 @@ impl<'ll> CodeGenIRBuilder<'ll> {
                     if let InternalValueKind::LValue(ptr) = &lvalue.kind {
                         if let Some(cur_sret) = this.cur_sret {
                             if *ptr == cur_sret {
-                                this.emit_all_defers();
-                                this.llvm_builder.build_return(None).unwrap();
+                                this.drain_before_return();
+                                this.emit_return_instruction(None);
                                 return;
                             }
                         }
                     }
 
                     this.emit_compute_indirect_sret(cur_fn, &lvalue, &rvalue);
-                    this.emit_all_defers();
-                    this.llvm_builder.build_return(None).unwrap();
+                    this.drain_before_return();
+                    this.emit_return_instruction(None);
                     return;
                 }
             }
@@ -921,8 +938,8 @@ impl<'ll> CodeGenIRBuilder<'ll> {
                 let return_value =
                     this.intrinsic_coerce_through_alloca(value, ret_type.try_into().unwrap(), "coerce.ret");
 
-                this.emit_all_defers();
-                this.llvm_builder.build_return(Some(&return_value)).unwrap();
+                this.drain_before_return();
+                this.emit_return_instruction(Some(&return_value));
             }
             (Some(expr), ABIRetInfoKind::DirectPair { lo, hi }) => {
                 let lvalue = this.emit_expr(expr, &Some(*ret_info.ret_type.clone()));
@@ -930,8 +947,8 @@ impl<'ll> CodeGenIRBuilder<'ll> {
 
                 let return_value = this.emit_compute_return_direct_pair(rvalue, lo, hi, &ret_info.abi_type);
 
-                this.emit_all_defers();
-                this.llvm_builder.build_return(Some(&return_value)).unwrap();
+                this.drain_before_return();
+                this.emit_return_instruction(Some(&return_value));
             }
         });
     }
@@ -940,6 +957,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         if let Some(cur_block) = &self.block_reg.cur_block {
             self.llvm_builder.position_at_end(*cur_block);
             if cur_block.get_terminator().is_some() {
+                self.block_reg.cur_block = None;
                 return;
             }
 
@@ -951,16 +969,20 @@ impl<'ll> CodeGenIRBuilder<'ll> {
             self.llvm_builder
                 .build_return(Some(&zero_int.as_basic_value_enum()))
                 .unwrap();
+            self.block_reg.cur_block = None;
         }
     }
 
     pub(crate) fn ensure_void_function_terminated(&mut self) {
         let cur_fn = self.cur_func.unwrap();
+        let cur_abi_func_info = self.cur_abi_func_info.clone().unwrap();
+        let ret_info = &cur_abi_func_info.ret_info;
 
         // Do not terminate naked function automatically.
         // User is responsible for it.
         if cur_fn.get_string_attribute(AttributeLoc::Function, "naked").is_some() {
             self.llvm_builder.build_unreachable().unwrap();
+            self.block_reg.cur_block = None;
             return;
         }
 
@@ -972,7 +994,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
             // detect ABI wrapped main function
             // and emit implicit return zero instructionn
             if *main_fn == cur_fn && cir_main.actual_ret_type.is_void() {
-                self.emit_all_defers();
+                self.drain_before_return();
                 self.emit_implicit_return_zero();
                 return;
             }
@@ -981,11 +1003,18 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         if let Some(cur_block) = &self.block_reg.cur_block {
             self.llvm_builder.position_at_end(*cur_block);
             if cur_block.get_terminator().is_some() {
+                self.block_reg.cur_block = None;
                 return;
             }
 
-            self.emit_all_defers();
-            self.llvm_builder.build_return(None).unwrap();
+            self.drain_before_return();
+
+            if ret_info.ret_type.is_void() {
+                self.llvm_builder.build_return(None).unwrap();
+            } else {
+                self.llvm_builder.build_unreachable().unwrap();
+            }
+            self.block_reg.cur_block = None;
         }
     }
 
@@ -1007,7 +1036,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         let src_ptr = match &lvalue.kind {
             InternalValueKind::LValue(ptr) => *ptr,
             InternalValueKind::RValue(val) => {
-                let temp_alloca = self.llvm_builder.build_alloca(val.get_type(), "sret.temp").unwrap();
+                let temp_alloca = self.alloca_with_scope_lifetime(val.get_type(), "sret.temp");
 
                 self.llvm_builder.build_store(temp_alloca, *val).unwrap();
                 temp_alloca

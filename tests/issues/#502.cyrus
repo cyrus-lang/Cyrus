@@ -1,0 +1,28 @@
+// @stdout: 1249975000
+
+import std::libc{printf};
+
+struct Data {
+    x: int64[50], // 8 * 50 = 400
+    y: int64[50] // 8 * 50 = 400
+}
+
+fn consume(data: Data*) {
+    @asm volatile("" : : "r"(data) :);
+}
+
+fn loop() {
+    var sum: usize = 0;
+
+    for (var i: usize = 0; i < 50_000; i += 1) {
+        var data: Data; // zero init
+        consume(&data);
+        sum += i;
+    }
+
+    printf("%d\n", sum);
+}
+
+pub fn main() {
+    loop();
+}

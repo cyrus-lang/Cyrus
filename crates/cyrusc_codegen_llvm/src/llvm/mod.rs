@@ -7,3 +7,4 @@ pub(crate) mod constness;
 pub(crate) mod debug_info;
 pub(crate) mod dwarf;
 pub(crate) mod target_machine;
+pub(crate) mod lifetime;
