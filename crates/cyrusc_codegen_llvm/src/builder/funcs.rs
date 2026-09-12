@@ -99,6 +99,11 @@ impl<'ll> CodeGenIRBuilder<'ll> {
 
 // Body.
 impl<'ll> CodeGenIRBuilder<'ll> {
+    // IMPORTANT: Never use alloca_with_scope_lifetime instead of build_alloca
+    // because after all those params are tied to function stack
+    // but using it will cause compiler panic because
+    // function registry is not set correctly
+    // in that moment yet.
     pub(crate) fn emit_func_params(&mut self, func_params: CIRFuncParams, abi_func_info: &ABIFunctionInfo) {
         let mut llvm_param_index = 0;
 
@@ -816,19 +821,19 @@ impl<'ll> CodeGenIRBuilder<'ll> {
             args_values.push(rvalue.as_basic_value().into());
         } else {
             // create a copy
-            let alloca = self.llvm_builder.build_alloca(llvm_ty, "indirect.arg").unwrap();
+            let ptr = self.alloca_with_scope_lifetime(llvm_ty, "indirect.arg");
 
             if align > 0 {
                 self.llvm_builder
-                    .build_store(alloca, rvalue.as_basic_value())
+                    .build_store(ptr, rvalue.as_basic_value())
                     .unwrap()
                     .set_alignment(align)
                     .unwrap();
             } else {
-                self.llvm_builder.build_store(alloca, rvalue.as_basic_value()).unwrap();
+                self.llvm_builder.build_store(ptr, rvalue.as_basic_value()).unwrap();
             }
 
-            args_values.push(alloca.into());
+            args_values.push(ptr.into());
         }
     }
 

@@ -111,7 +111,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
                 InternalValueKind::LValue(ptr) => ptr,
                 _ => {
                     let llvm_type: BasicTypeEnum<'ll> = self.emit_type(lvalue.ty.clone()).try_into().unwrap();
-                    self.llvm_builder.build_alloca(llvm_type, "asm.mem.out").unwrap()
+                    self.alloca_with_scope_lifetime(llvm_type, "asm.mem.out")
                 }
             };
             arg_values.push(ptr.into());

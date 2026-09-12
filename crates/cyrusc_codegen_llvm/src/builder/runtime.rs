@@ -30,6 +30,8 @@ impl<'ll> CodeGenIRBuilder<'ll> {
             return;
         }
 
+        // Create lazy initializer function
+
         let void_type = self.llvm_ctx.void_type();
         let ctor_fn_type = void_type.fn_type(&[], false);
 
@@ -38,8 +40,18 @@ impl<'ll> CodeGenIRBuilder<'ll> {
                 .borrow()
                 .add_function(GLOBAL_VAR_CTORS_FN_NAME, ctor_fn_type, Some(Linkage::Internal));
 
+        // IMPORTANT: setup function state properly
+
         let entry_block = self.llvm_ctx.append_basic_block(llvm_func, "entry");
         self.llvm_builder.position_at_end(entry_block);
+
+        self.block_reg.cur_block = Some(entry_block);
+        self.block_reg.first_block = Some(entry_block);
+        self.cur_func = Some(llvm_func);
+        self.cur_sret = None; // FOR SAFETY
+        self.cur_abi_func_info = None; // FOR SAFETY
+
+        self.push_lifetime_scope();
 
         for ctor in std::mem::take(&mut self.global_var_lazy_initializers) {
             let lvalue = self.emit_expr(&ctor.expr, &None);
@@ -48,7 +60,13 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         }
 
         self.llvm_builder.position_at_end(entry_block);
+
+        self.drain_alloca_ending_lifetime_stack();
+        self.pop_lifetime_scope();
+
         self.llvm_builder.build_return(None).unwrap();
+
+        // Create global variable
 
         let i32_type = self.llvm_ctx.i32_type();
         let ptr_type = self.llvm_ctx.ptr_type(inkwell::AddressSpace::default());

@@ -66,7 +66,7 @@ impl<'a> InternalValue<'a> {
 }
 
 impl<'ll> CodeGenIRBuilder<'ll> {
-    pub(crate) fn emit_store(&self, ptr: PointerValue<'ll>, mut rvalue: InternalValue<'ll>, target_cir_type: CIRType) {
+    pub(crate) fn emit_store(&mut self, ptr: PointerValue<'ll>, mut rvalue: InternalValue<'ll>, target_cir_type: CIRType) {
         let layout = self.tctx.layout_of(&target_cir_type);
 
         // IMPORTANT!!

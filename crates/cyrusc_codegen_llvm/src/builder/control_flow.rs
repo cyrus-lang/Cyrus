@@ -30,7 +30,7 @@ use inkwell::{
         },
         prelude::{LLVMBasicBlockRef, LLVMValueRef},
     },
-    types::{AnyType, BasicTypeEnum, StructType},
+    types::{AnyType, BasicType, BasicTypeEnum, StructType},
     values::{AsValueRef, BasicValue, BasicValueEnum, FunctionValue, InstructionOpcode, IntValue},
 };
 use inkwell::{
@@ -1075,10 +1075,8 @@ impl<'ll> CodeGenIRBuilder<'ll> {
             return struct_value.into();
         }
 
-        let src_alloca = self
-            .llvm_builder
-            .build_alloca(struct_value.get_type(), "ret.src.alloca")
-            .unwrap();
+        let src_alloca =
+            self.alloca_with_scope_lifetime(struct_value.get_type().as_basic_type_enum(), "ret.src.alloca");
 
         self.llvm_builder.build_store(src_alloca, struct_value).unwrap();
 
