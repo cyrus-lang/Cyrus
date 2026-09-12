@@ -107,7 +107,7 @@ impl CIREnumType {
                     None
                 }
             })
-            .unwrap_or_else(|| Box::new(CIRType::Plain(PlainType::Int32)))
+            .unwrap_or_else(|| Box::new(CIRType::Plain(PlainType::UInt8)))
     }
 
     #[inline]
