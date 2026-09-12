@@ -269,7 +269,9 @@ impl<'ll> CodeGenIRBuilder<'ll> {
             if !enum_type.includes_payload() {
                 if let BasicValueEnum::StructValue(struct_value) = value {
                     let tag = self.extract_enum_tag(struct_value);
-                    return self.emit_cast_func_arg(tag.into(), &CIRType::Plain(PlainType::Int32), target_type);
+                    let tag_type = enum_type.tag_type_or_infer_or_default();
+
+                    return self.emit_cast_func_arg(tag.into(), &tag_type, target_type);
                 }
             }
         }
@@ -1821,8 +1823,6 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         let struct_value1 = lhs.as_basic_value().into_struct_value();
         let struct_value2 = rhs.as_basic_value().into_struct_value();
 
-        let llvm_tag_type: BasicTypeEnum<'ll> = self.emit_type(tag_type.clone()).try_into().unwrap();
-
         let tag1 = self.extract_enum_tag(struct_value1);
         let tag2 = self.extract_enum_tag(struct_value2);
 
@@ -1860,7 +1860,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
 
         let memcmp_result = self.intrinsic_array_memcmp(payload1, payload2);
 
-        let zero_int = llvm_tag_type.const_zero().into_int_value();
+        let zero_int = self.llvm_ctx.i32_type().const_zero();
 
         let predicate = if cmp_eq { IntPredicate::EQ } else { IntPredicate::NE };
 
