@@ -627,7 +627,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
 // These intrinsics only used inside compiler (internally; no-publication).
 impl<'ll> CodeGenIRBuilder<'ll> {
     pub(crate) fn intrinsic_coerce_through_alloca(
-        &self,
+        &mut self,
         value: BasicValueEnum<'ll>,
         dst_ty: BasicTypeEnum<'ll>,
         name: &str,
@@ -639,15 +639,8 @@ impl<'ll> CodeGenIRBuilder<'ll> {
             return value;
         }
 
-        let dst_alloca = self
-            .llvm_builder
-            .build_alloca(dst_ty, &format!("{name}.dst.alloca"))
-            .unwrap();
-
-        let src_alloca = self
-            .llvm_builder
-            .build_alloca(src_ty, &format!("{name}.src.alloca"))
-            .unwrap();
+        let dst_alloca = self.alloca_with_scope_lifetime(dst_ty, &format!("{name}.dst.alloca"));
+        let src_alloca = self.alloca_with_scope_lifetime(src_ty, &format!("{name}.src.alloca"));
 
         self.llvm_builder.build_store(src_alloca, value).unwrap();
 
@@ -672,7 +665,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         self.llvm_builder.build_load(dst_ty, dst_alloca, name).unwrap()
     }
 
-    pub(crate) fn intrinsic_optimized_memcpy(&self, dest: PointerValue<'ll>, rvalue: BasicValueEnum<'ll>) {
+    pub(crate) fn intrinsic_optimized_memcpy(&mut self, dest: PointerValue<'ll>, rvalue: BasicValueEnum<'ll>) {
         let ty = rvalue.get_type();
 
         // fast path: direct store
@@ -688,10 +681,10 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         }
 
         // fallback to memcpy
-        self.intrinsic_memcpy(dest, rvalue);
+        self.intrinsic_forced_memcpy(dest, rvalue);
     }
 
-    fn intrinsic_memcpy(&self, dest: PointerValue<'ll>, rvalue: BasicValueEnum<'ll>) {
+    fn intrinsic_forced_memcpy(&mut self, dest: PointerValue<'ll>, rvalue: BasicValueEnum<'ll>) {
         let target_data = self.llvm_target_machine.get_target_data();
         let ty = rvalue.get_type();
 
@@ -716,9 +709,9 @@ impl<'ll> CodeGenIRBuilder<'ll> {
             global.as_pointer_value()
         } else {
             // fallback
-            let tmp = self.llvm_builder.build_alloca(ty, "memcpy.temp").unwrap();
-            self.llvm_builder.build_store(tmp, rvalue).unwrap();
-            tmp
+            let ptr = self.alloca_with_scope_lifetime(ty, "memcpy.temp");
+            self.llvm_builder.build_store(ptr, rvalue).unwrap();
+            ptr
         };
 
         self.llvm_builder
@@ -757,38 +750,37 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         cmp_result.into_int_value()
     }
 
-    pub(crate) fn intrinsic_array_memcmp(&self, lhs_arr: ArrayValue<'ll>, rhs_arr: ArrayValue<'ll>) -> IntValue<'ll> {
+    pub(crate) fn intrinsic_compare_array_values(
+        &mut self,
+        lhs_arr: ArrayValue<'ll>,
+        rhs_arr: ArrayValue<'ll>,
+    ) -> IntValue<'ll> {
         let i32_type = self.llvm_ctx.i32_type();
         let i8_ptr_type = self.llvm_ctx.ptr_type(AddressSpace::default());
         let target_data = self.llvm_target_machine.get_target_data();
         let ptr_sized_int_type = self.llvm_ctx.ptr_sized_int_type(&target_data, None);
 
-        let module = self.llvm_module.borrow();
+        let memcmp = {
+            let module = self.llvm_module.borrow();
 
-        let memcmp = match module.get_function("memcmp") {
-            Some(func) => func,
-            None => {
-                let fn_type = i32_type.fn_type(
-                    &[
-                        i8_ptr_type.into(),        // const void* lhs
-                        i8_ptr_type.into(),        // const void* rhs
-                        ptr_sized_int_type.into(), // usize len
-                    ],
-                    false,
-                );
-                module.add_function("memcmp", fn_type, None)
+            match module.get_function("memcmp") {
+                Some(func) => func,
+                None => {
+                    let fn_type = i32_type.fn_type(
+                        &[
+                            i8_ptr_type.into(),        // const void* lhs
+                            i8_ptr_type.into(),        // const void* rhs
+                            ptr_sized_int_type.into(), // usize len
+                        ],
+                        false,
+                    );
+                    module.add_function("memcmp", fn_type, None)
+                }
             }
         };
 
-        let lhs_alloca = self
-            .llvm_builder
-            .build_alloca(lhs_arr.get_type(), "lhs_alloca")
-            .unwrap();
-
-        let rhs_alloca = self
-            .llvm_builder
-            .build_alloca(rhs_arr.get_type(), "rhs_alloca")
-            .unwrap();
+        let lhs_alloca = self.alloca_with_scope_lifetime(lhs_arr.get_type().as_basic_type_enum(), "lhs_alloca");
+        let rhs_alloca = self.alloca_with_scope_lifetime(rhs_arr.get_type().as_basic_type_enum(), "rhs_alloca");
 
         self.llvm_builder.build_store(lhs_alloca, lhs_arr).unwrap();
         self.llvm_builder.build_store(rhs_alloca, rhs_arr).unwrap();

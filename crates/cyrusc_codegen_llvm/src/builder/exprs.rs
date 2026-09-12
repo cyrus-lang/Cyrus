@@ -116,18 +116,17 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         let data_value = self.emit_expr(&dynamic.data_expr, &None);
         let data_basic_value = data_value.as_basic_value();
 
-        let data_ptr = if data_basic_value.is_pointer_value() {
-            data_basic_value.into_pointer_value()
-        } else {
-            // value is not addressable to allocate temp
-            let temp = self
-                .llvm_builder
-                .build_alloca(data_basic_value.get_type(), "dyn.tmp")
-                .unwrap();
+        let data_ptr = {
+            if data_basic_value.is_pointer_value() {
+                data_basic_value.into_pointer_value()
+            } else {
+                // value is not addressable to allocate temp
+                let temp = self.alloca_with_scope_lifetime(data_basic_value.get_type(), "dynamic.temp");
 
-            self.llvm_builder.build_store(temp, data_basic_value).unwrap();
+                self.llvm_builder.build_store(temp, data_basic_value).unwrap();
 
-            temp
+                temp
+            }
         };
 
         let vtable_ir_value = self.lookup_local_ir_value(dynamic.vtable_irv_id).unwrap();
@@ -216,11 +215,14 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         }
     }
 
-    fn emit_temp_array_value_alloca(&self, array_value: &ArrayValue<'ll>) -> PointerValue<'ll> {
-        let ptr = self.llvm_builder.build_alloca(array_value.get_type(), "temp").unwrap();
+    #[inline]
+    fn emit_temp_array_value_alloca(&mut self, array_value: &ArrayValue<'ll>) -> PointerValue<'ll> {
+        let ptr = self.alloca_with_scope_lifetime(array_value.get_type().as_basic_type_enum(), "array.temp");
+
         self.llvm_builder
             .build_store(ptr, array_value.as_basic_value_enum())
             .unwrap();
+
         ptr
     }
 
@@ -251,7 +253,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
     }
 
     pub(crate) fn emit_cast_func_arg(
-        &self,
+        &mut self,
         value: BasicValueEnum<'ll>,
         from_cir_type: &CIRType,
         target_type: CIRType,
@@ -526,10 +528,10 @@ impl<'ll> CodeGenIRBuilder<'ll> {
 
         let ptr = match operand.kind {
             InternalValueKind::LValue(ptr) => ptr,
-            InternalValueKind::RValue(val) => {
-                let alloca = self.llvm_builder.build_alloca(val.get_type(), "addr.cast").unwrap();
-                self.llvm_builder.build_store(alloca, val).unwrap();
-                alloca
+            InternalValueKind::RValue(value) => {
+                let ptr = self.alloca_with_scope_lifetime(value.get_type(), "addr.cast");
+                self.llvm_builder.build_store(ptr, value).unwrap();
+                ptr
             }
             _ => unreachable!("cannot take the address of a function or undefined value"),
         };
@@ -540,17 +542,15 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         )
     }
 
-    pub(crate) fn emit_decay_array_to_pointer(&self, array_lvalue: InternalValue<'ll>) -> InternalValue<'ll> {
+    pub(crate) fn emit_decay_array_to_pointer(&mut self, array_lvalue: InternalValue<'ll>) -> InternalValue<'ll> {
         let array_ptr = match array_lvalue.kind {
             InternalValueKind::LValue(ptr) => ptr,
-            InternalValueKind::RValue(val) => {
-                let alloca = self.llvm_builder.build_alloca(val.get_type(), "array.decay").unwrap();
-
-                self.llvm_builder.build_store(alloca, val).unwrap();
-
-                alloca
+            InternalValueKind::RValue(value) => {
+                let ptr = self.alloca_with_scope_lifetime(value.get_type(), "array.decay.temp");
+                self.llvm_builder.build_store(ptr, value).unwrap();
+                ptr
             }
-            _ => unreachable!("Cannot decay a non-LValue/RValue array"),
+            _ => unreachable!("cannot decay a non-lvalue/rvalue array"),
         };
 
         let element_type = array_lvalue.ty.as_array().unwrap().element_type;
@@ -738,16 +738,15 @@ impl<'ll> CodeGenIRBuilder<'ll> {
     }
 
     fn emit_short_circuit_and(&mut self, lhs_expr: &CIRExpr, rhs_expr: &CIRExpr) -> InternalValue<'ll> {
+        let bool_type = self.llvm_ctx.bool_type();
+
         let cur_fn = self.cur_func.unwrap();
 
         let cont_block = self.llvm_ctx.append_basic_block(cur_fn, "and_cont");
         let rhs_block = self.llvm_ctx.append_basic_block(cur_fn, "and_rhs");
         let false_block = self.llvm_ctx.append_basic_block(cur_fn, "and_false");
 
-        let result_alloca = self
-            .llvm_builder
-            .build_alloca(self.llvm_ctx.bool_type(), "and_result_storage")
-            .unwrap();
+        let result_alloca = self.alloca_with_scope_lifetime(bool_type.as_basic_type_enum(), "and_result_storage");
 
         let lhs_lvalue = self.emit_expr(lhs_expr, &None);
         let lhs_rvalue = self.load_rvalue(lhs_lvalue);
@@ -799,16 +798,15 @@ impl<'ll> CodeGenIRBuilder<'ll> {
     }
 
     fn emit_short_circuit_or(&mut self, lhs_expr: &CIRExpr, rhs_expr: &CIRExpr) -> InternalValue<'ll> {
+        let bool_type = self.llvm_ctx.bool_type();
+
         let cur_fn = self.cur_func.unwrap();
 
         let cont_block = self.llvm_ctx.append_basic_block(cur_fn, "or_cont");
         let rhs_block = self.llvm_ctx.append_basic_block(cur_fn, "or_rhs");
         let true_block = self.llvm_ctx.append_basic_block(cur_fn, "or_true");
 
-        let result_alloca = self
-            .llvm_builder
-            .build_alloca(self.llvm_ctx.bool_type(), "or_result_storage")
-            .unwrap();
+        let result_alloca = self.alloca_with_scope_lifetime(bool_type.as_basic_type_enum(), "or_result_storage");
 
         let lhs_lvalue = self.emit_expr(lhs_expr, &None);
         let lhs_rvalue = self.load_rvalue(lhs_lvalue);
@@ -1481,9 +1479,9 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         let union_ptr = match operand.kind {
             InternalValueKind::LValue(ptr) => ptr,
             InternalValueKind::RValue(basic_val) => {
-                let alloca = self.llvm_builder.build_alloca(union_type, "union.temp").unwrap();
-                self.llvm_builder.build_store(alloca, basic_val).unwrap();
-                alloca
+                let ptr = self.alloca_with_scope_lifetime(union_type, "union.temp");
+                self.llvm_builder.build_store(ptr, basic_val).unwrap();
+                ptr
             }
             _ => unreachable!(),
         };
@@ -1521,29 +1519,26 @@ impl<'ll> CodeGenIRBuilder<'ll> {
             .lookup_field_index(field_index)
             .expect("layout must contain field");
 
-        let llvm_struct_type = self.emit_struct_type(type_id);
+        let struct_type = self.emit_struct_type(type_id);
 
         match operand.kind {
             InternalValueKind::LValue(ptr_value) => {
                 let field_ptr = self
                     .llvm_builder
-                    .build_struct_gep(llvm_struct_type, ptr_value, llvm_field_index, "field_gep")
+                    .build_struct_gep(struct_type, ptr_value, llvm_field_index, "field_gep")
                     .unwrap();
 
                 InternalValue::new(field_type, InternalValueKind::LValue(field_ptr))
             }
             InternalValueKind::RValue(struct_val) => {
                 if struct_val.is_int_value() || struct_val.is_float_value() {
-                    let alloca = self
-                        .llvm_builder
-                        .build_alloca(llvm_struct_type, "struct_field.cast")
-                        .unwrap();
+                    let ptr = self.alloca_with_scope_lifetime(struct_type.as_basic_type_enum(), "struct.field.cast");
 
-                    self.llvm_builder.build_store(alloca, struct_val).unwrap();
+                    self.llvm_builder.build_store(ptr, struct_val).unwrap();
 
                     let field_ptr = self
                         .llvm_builder
-                        .build_struct_gep(llvm_struct_type, alloca, llvm_field_index, "field_gep")
+                        .build_struct_gep(struct_type, ptr, llvm_field_index, "field.gep")
                         .unwrap();
 
                     InternalValue::new(field_type, InternalValueKind::LValue(field_ptr))
@@ -1552,7 +1547,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
 
                     let field_value = self
                         .llvm_builder
-                        .build_extract_value(struct_value, llvm_field_index, "field_extract")
+                        .build_extract_value(struct_value, llvm_field_index, "field.extract")
                         .unwrap();
 
                     InternalValue::new(field_type, InternalValueKind::RValue(field_value))
@@ -1657,16 +1652,16 @@ impl<'ll> CodeGenIRBuilder<'ll> {
     fn emit_enum_init_with_alloca(
         &mut self,
         enum_init_expr: &CIREnumInitExpr,
-        enum_type: &CIREnumType,
-        llvm_enum_type: StructType<'ll>,
+        cir_enum_type: &CIREnumType,
+        enum_struct_type: StructType<'ll>,
         buffer_type: ArrayType<'ll>,
         tag_value: IntValue<'ll>,
     ) -> BasicValueEnum<'ll> {
-        let enum_alloca = self.llvm_builder.build_alloca(llvm_enum_type, "enum.alloca").unwrap();
+        let enum_alloca = self.alloca_with_scope_lifetime(enum_struct_type.as_basic_type_enum(), "enum.alloca");
 
         let tag_ptr = self
             .llvm_builder
-            .build_struct_gep(llvm_enum_type, enum_alloca, 0, "enum.tag.ptr")
+            .build_struct_gep(enum_struct_type, enum_alloca, 0, "enum.tag.ptr")
             .unwrap();
 
         self.llvm_builder.build_store(tag_ptr, tag_value).unwrap();
@@ -1677,7 +1672,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
 
                 let payload_ptr = self
                     .llvm_builder
-                    .build_struct_gep(llvm_enum_type, enum_alloca, 1, "enum.payload.ptr")
+                    .build_struct_gep(enum_struct_type, enum_alloca, 1, "enum.payload.ptr")
                     .unwrap();
 
                 self.llvm_builder.build_store(payload_ptr, zero_payload).unwrap();
@@ -1688,7 +1683,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
 
                 let payload_ptr = self
                     .llvm_builder
-                    .build_struct_gep(llvm_enum_type, enum_alloca, 1, "enum.payload.ptr")
+                    .build_struct_gep(enum_struct_type, enum_alloca, 1, "enum.payload.ptr")
                     .unwrap();
 
                 self.llvm_builder
@@ -1704,7 +1699,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
 
                 let payload_ptr = self
                     .llvm_builder
-                    .build_struct_gep(llvm_enum_type, enum_alloca, 1, "enum.payload.ptr")
+                    .build_struct_gep(enum_struct_type, enum_alloca, 1, "enum.payload.ptr")
                     .unwrap();
                 self.llvm_builder.build_store(payload_ptr, zero_payload).unwrap();
 
@@ -1719,7 +1714,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
                     let lvalue = self.emit_expr(&field_expr, &None);
                     let mut rvalue = self.load_rvalue(lvalue);
 
-                    let variant_enum_type = match enum_type.lookup_variant(&enum_init_expr.ident).unwrap() {
+                    let variant_enum_type = match cir_enum_type.lookup_variant(&enum_init_expr.ident).unwrap() {
                         CIREnumVariant::Payload(_, struct_type, _) => struct_type,
                         _ => unreachable!(),
                     };
@@ -1743,12 +1738,12 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         }
 
         self.llvm_builder
-            .build_load(llvm_enum_type, enum_alloca, "enum.load")
+            .build_load(enum_struct_type, enum_alloca, "enum.load")
             .unwrap()
     }
 
     pub(crate) fn emit_union_init(
-        &self,
+        &mut self,
         union_type: &CIRUnionType,
         ptr: PointerValue<'ll>,
         rvalue: InternalValue<'ll>,
@@ -1858,7 +1853,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         let payload1 = self.extract_enum_payload(struct_value1);
         let payload2 = self.extract_enum_payload(struct_value2);
 
-        let memcmp_result = self.intrinsic_array_memcmp(payload1, payload2);
+        let memcmp_result = self.intrinsic_compare_array_values(payload1, payload2);
 
         let zero_int = self.llvm_ctx.i32_type().const_zero();
 
@@ -1988,12 +1983,12 @@ impl<'ll> CodeGenIRBuilder<'ll> {
     }
 
     fn emit_struct_init_via_memcpy(
-        &self,
+        &mut self,
         layout: &ABITypeLayout,
         struct_type: StructType<'ll>,
         values: &Vec<((Option<usize>, InternalValue<'ll>), CIRType)>,
     ) -> StructValue<'ll> {
-        let struct_ptr = self.llvm_builder.build_alloca(struct_type, "struct.init").unwrap();
+        let struct_ptr = self.alloca_with_scope_lifetime(struct_type.as_basic_type_enum(), "struct.init");
 
         for ((original_index, field_value), field_cir_ty) in values {
             if original_index.is_none() {
@@ -2234,10 +2229,11 @@ impl<'ll> CodeGenIRBuilder<'ll> {
                     if value.is_rvalue() && !value.ty.is_pointer() {
                         let llvm_type: BasicTypeEnum<'ll> = self.emit_type(value.ty.clone()).try_into().unwrap();
 
-                        let temp = self.llvm_builder.build_alloca(llvm_type, "temp.self").unwrap();
-                        self.llvm_builder.build_store(temp, value.as_basic_value()).unwrap();
+                        let ptr = self.alloca_with_scope_lifetime(llvm_type, "self.temp");
 
-                        let lvalue = InternalValue::new(value.ty, InternalValueKind::LValue(temp));
+                        self.llvm_builder.build_store(ptr, value.as_basic_value()).unwrap();
+
+                        let lvalue = InternalValue::new(value.ty, InternalValueKind::LValue(ptr));
 
                         (lvalue.clone(), lvalue)
                     } else {
@@ -2296,7 +2292,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
                     self.cur_sret.unwrap()
                 } else {
                     // Normal case, allocate a new temporary
-                    self.llvm_builder.build_alloca(sret_type, "sret").unwrap()
+                    self.alloca_with_scope_lifetime(sret_type, "sret")
                 }
             };
 
