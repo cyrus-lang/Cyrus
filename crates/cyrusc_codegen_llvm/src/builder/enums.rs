@@ -61,27 +61,25 @@ impl<'ll> CodeGenIRBuilder<'ll> {
             .build_struct_gep(enum_struct_type, enum_alloca, 0, "enum.tag.ptr")
             .unwrap();
 
+        let payload_ptr = self
+            .llvm_builder
+            .build_struct_gep(enum_struct_type, enum_alloca, 1, "enum.payload.ptr")
+            .unwrap();
+
         self.llvm_builder.build_store(tag_ptr, tag_value).unwrap();
 
         match &enum_init_expr.variant {
             CIREnumInitVariant::Unit => {
-                let zero_payload = buffer_type.const_zero();
+                let zero = self.llvm_ctx.i8_type().const_zero();
+                let buffer_size = buffer_type.size_of().unwrap();
 
-                let payload_ptr = self
-                    .llvm_builder
-                    .build_struct_gep(enum_struct_type, enum_alloca, 1, "enum.payload.ptr")
+                self.llvm_builder
+                    .build_memset(payload_ptr, 1, zero, buffer_size)
                     .unwrap();
-
-                self.llvm_builder.build_store(payload_ptr, zero_payload).unwrap();
             }
             CIREnumInitVariant::Valued(expr) => {
                 let lvalue = self.emit_expr(expr, &None);
                 let rvalue = self.load_rvalue(lvalue);
-
-                let payload_ptr = self
-                    .llvm_builder
-                    .build_struct_gep(enum_struct_type, enum_alloca, 1, "enum.payload.ptr")
-                    .unwrap();
 
                 self.llvm_builder
                     .build_store(payload_ptr, rvalue.as_basic_value())
@@ -94,10 +92,6 @@ impl<'ll> CodeGenIRBuilder<'ll> {
                 // comparing two equal enums.
                 let zero_payload = buffer_type.const_zero();
 
-                let payload_ptr = self
-                    .llvm_builder
-                    .build_struct_gep(enum_struct_type, enum_alloca, 1, "enum.payload.ptr")
-                    .unwrap();
                 self.llvm_builder.build_store(payload_ptr, zero_payload).unwrap();
 
                 let field_types: Vec<BasicTypeEnum<'ll>> = field_exprs
