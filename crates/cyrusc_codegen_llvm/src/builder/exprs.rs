@@ -236,9 +236,15 @@ impl<'ll> CodeGenIRBuilder<'ll> {
 
         let lhs_ptr = lhs_lvalue.as_basic_value().into_pointer_value();
 
-        self.llvm_builder
+        let layout = self.tctx.layout_of(&assign.lhs.ty);
+        let store_inst = self
+            .llvm_builder
             .build_store(lhs_ptr, rhs_value.as_basic_value())
             .unwrap();
+
+        if layout.align > 0 {
+            store_inst.set_alignment(layout.align).unwrap();
+        }
 
         if let CIRExprKind::Load(value_ref) = &assign.lhs.kind {
             if let Some(LocalIRValue::RValue(_, _)) = self.lookup_local_ir_value(value_ref.irv_id) {

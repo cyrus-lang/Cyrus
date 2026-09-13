@@ -67,6 +67,7 @@ pub(crate) enum CIRTypeKey {
     Plain(PlainType),
     Pointer(Box<CIRTypeKey>),
     Array(Box<CIRTypeKey>, usize),
+    Vector(Box<CIRTypeKey>, usize),
     FuncType(Vec<CIRTypeKey>, Box<CIRTypeKey>, bool),
 
     // Pre-registered type.
@@ -301,8 +302,8 @@ impl CIRTypeContext {
                 CIRTypeKey::Array(Box::new(self.type_to_key(&array_type.element_type)), array_type.len)
             }
 
-            CIRType::Vector(_) => {
-                unimplemented!("not supported in language yet");
+            CIRType::Vector(vector_type) => {
+                CIRTypeKey::Vector(Box::new(self.type_to_key(&vector_type.element_type)), vector_type.lanes)
             }
 
             CIRType::Struct(type_id) => {
@@ -437,8 +438,12 @@ impl CIRTypeContext {
                 ABITypeLayout::aggregate(total_size, element_layout.align, field_offsets)
             }
 
-            CIRType::Vector(_) => {
-                unimplemented!("not supported in language yet");
+            CIRType::Vector(vector_type) => {
+                let element_layout = self.layout_of(&vector_type.element_type);
+                let total_size = element_layout.size * vector_type.lanes as u32;
+                let mut align = element_layout.align * vector_type.lanes as u32;
+                align = align.max(element_layout.align);
+                ABITypeLayout::normal(total_size, align, Vec::new())
             }
 
             CIRType::FuncType(_) => {
@@ -581,8 +586,48 @@ impl CIRTypeContext {
 
         let payload_offset = align_offset(tag_size, max_payload_align);
         let total_size = align_offset(payload_offset + max_payload_size, total_align);
+
+        let mut field_offsets = Vec::new();
+        let mut field_offset_index = 0u32;
+
+        field_offsets.push(ABIFieldOffsetInfo::normal(
+            field_offset_index,
+            0,
+            0,
+            tag_size as usize,
+        ));
+        field_offset_index += 1;
+
+        if payload_offset > tag_size {
+            field_offsets.push(ABIFieldOffsetInfo::padding(
+                field_offset_index,
+                tag_size,
+                payload_offset - tag_size,
+            ));
+            field_offset_index += 1;
+        }
+
+        if max_payload_size > 0 || enum_type.includes_payload() {
+            field_offsets.push(ABIFieldOffsetInfo::normal(
+                field_offset_index,
+                payload_offset,
+                1,
+                max_payload_size as usize,
+            ));
+            field_offset_index += 1;
+        }
+
+        let payload_end = payload_offset + max_payload_size;
         
-        ABITypeLayout::aggregate(total_size, total_align, Vec::new())
+        if total_size > payload_end {
+            field_offsets.push(ABIFieldOffsetInfo::padding(
+                field_offset_index,
+                payload_end,
+                total_size - payload_end,
+            ));
+        }
+
+        ABITypeLayout::aggregate(total_size, total_align, field_offsets)
     }
 }
 
