@@ -668,6 +668,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
     pub(crate) fn intrinsic_optimized_memcpy(&mut self, dest: PointerValue<'ll>, rvalue: BasicValueEnum<'ll>) {
         let ty = rvalue.get_type();
 
+        // FIXME remove struct and array
         // fast path: direct store
         if ty.is_int_type()
             || ty.is_float_type()
@@ -684,7 +685,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         self.intrinsic_forced_memcpy(dest, rvalue);
     }
 
-    fn intrinsic_forced_memcpy(&mut self, dest: PointerValue<'ll>, rvalue: BasicValueEnum<'ll>) {
+    pub(crate) fn intrinsic_forced_memcpy(&mut self, dest: PointerValue<'ll>, rvalue: BasicValueEnum<'ll>) {
         let target_data = self.llvm_target_machine.get_target_data();
         let ty = rvalue.get_type();
 
@@ -694,24 +695,25 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         let src_align = target_data.get_abi_alignment(&ty);
         let dest_align = target_data.get_abi_alignment(&ty);
 
-        let src_ptr = if rvalue.is_const() {
-            // use global value if rvalue is a constant
-            let global = {
-                let module = self.llvm_module.borrow();
-                module.add_global(ty, None, "__const.memcpy")
-            };
+        let src_ptr = {
+            if rvalue.is_const() {
+                // use global value if rvalue is a constant
+                let global = {
+                    let module = self.llvm_module.borrow();
+                    module.add_global(ty, None, "__const.memcpy")
+                };
 
-            global.set_linkage(inkwell::module::Linkage::Private);
-            global.set_constant(true);
-            global.set_unnamed_address(inkwell::values::UnnamedAddress::Global);
-            global.set_initializer(&rvalue);
-
-            global.as_pointer_value()
-        } else {
-            // fallback
-            let ptr = self.alloca_with_scope_lifetime(ty, "memcpy.temp");
-            self.llvm_builder.build_store(ptr, rvalue).unwrap();
-            ptr
+                global.set_linkage(inkwell::module::Linkage::Private);
+                global.set_constant(true);
+                global.set_unnamed_address(inkwell::values::UnnamedAddress::Global);
+                global.set_initializer(&rvalue);
+                global.as_pointer_value()
+            } else {
+                // fallback
+                let ptr = self.alloca_with_scope_lifetime(ty, "memcpy.temp");
+                self.llvm_builder.build_store(ptr, rvalue).unwrap();
+                ptr
+            }
         };
 
         self.llvm_builder

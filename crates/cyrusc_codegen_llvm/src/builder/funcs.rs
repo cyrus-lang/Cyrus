@@ -122,6 +122,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
                     llvm_param_index += 1;
 
                     let alloca = self.llvm_builder.build_alloca(llvm_param.get_type(), "param").unwrap();
+                    
                     self.llvm_builder.build_store(alloca, llvm_param).unwrap();
 
                     self.insert_local_ir_value(param.irv_id.unwrap(), LocalIRValue::LValue(alloca, param.ty.clone()));
