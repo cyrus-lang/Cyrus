@@ -572,7 +572,7 @@ pub struct Lexer {
     }
 
     fn skip_comments(self: Self*) {
-        while (self->cur() == '/' && (self->peek() == '/' || self->peek() == '*')) {
+        while (!self->is_eof() && self->cur() == '/' && (self->peek() == '/' || self->peek() == '*')) {
             const loc = self->loc();
 
             // Single Line
@@ -818,7 +818,10 @@ pub struct Lexer {
 
     [[inline]]
     fn cur(self: const Self*) uint8 {
-        return self->source->get(self->pos).unwrap();
+        switch (self->source->get(self->pos)) {
+            case .Some(char) => return char;
+            case .None => return '\0';
+        }
     }
 
     [[inline]]

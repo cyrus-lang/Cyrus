@@ -163,7 +163,17 @@ impl<'ll> CodeGenIRBuilder<'ll> {
             None => temp_builder.position_at_end(entry_block),
         }
 
-        temp_builder.build_alloca(ty, name).unwrap()
+        let alloca = temp_builder.build_alloca(ty, name).unwrap();
+        let target_data = self.llvm_target_machine.get_target_data();
+        let align = target_data.get_abi_alignment(&ty);
+
+        if align > 0 {
+            if let Some(instr) = alloca.as_instruction() {
+                instr.set_alignment(align).unwrap();
+            }
+        }
+
+        alloca
     }
 
     fn current_lifetime_scope_depth(&self) -> usize {
