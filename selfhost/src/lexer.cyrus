@@ -19,9 +19,9 @@ import std::string{
     try_str_as_float64
 };
 import std::libc{
-    printf, strtol,
-    strlen, errno,
-    ERANGE
+    printf,
+    strtol,
+    strlen
 };
 
 import tokens{
@@ -192,7 +192,7 @@ pub struct Lexer {
     fn read_ident(self: Self*) String {
         var ident = String.new(self->allocator);
 
-        while (is_alphanumeric(self->cur())) {
+        while (!self->is_eof() && is_alphanumeric(self->cur())) {
             ident.push(self->cur());
             self->read();
         }
