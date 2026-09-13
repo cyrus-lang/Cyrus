@@ -61,33 +61,45 @@ impl<'ll> CodeGenIRBuilder<'ll> {
             .build_struct_gep(enum_struct_type, enum_alloca, 0, "enum.tag.ptr")
             .unwrap();
 
-        let payload_ptr = self
-            .llvm_builder
-            .build_struct_gep(enum_struct_type, enum_alloca, 1, "enum.payload.ptr")
-            .unwrap();
-
         self.llvm_builder.build_store(tag_ptr, tag_value).unwrap();
-
-        // IMPORTANT: Zero out the entire payload buffer first
-        // to ensure padded slots value is consistent.
-        // If we don't do this, it may cause UB when
-        // comparing two equal enums.
 
         match &enum_init_expr.variant {
             CIREnumInitVariant::Unit => {
-                let payload_size = buffer_type.size_of().unwrap();
+                let zero_payload = buffer_type.const_zero();
 
-                self.llvm_builder
-                    .build_memset(payload_ptr, 1, self.llvm_ctx.i8_type().const_zero(), payload_size)
+                let payload_ptr = self
+                    .llvm_builder
+                    .build_struct_gep(enum_struct_type, enum_alloca, 1, "enum.payload.ptr")
                     .unwrap();
+
+                self.llvm_builder.build_store(payload_ptr, zero_payload).unwrap();
             }
             CIREnumInitVariant::Valued(expr) => {
                 let lvalue = self.emit_expr(expr, &None);
                 let rvalue = self.load_rvalue(lvalue);
 
-                self.intrinsic_optimized_memcpy(payload_ptr, rvalue.as_basic_value());
+                let payload_ptr = self
+                    .llvm_builder
+                    .build_struct_gep(enum_struct_type, enum_alloca, 1, "enum.payload.ptr")
+                    .unwrap();
+
+                self.llvm_builder
+                    .build_store(payload_ptr, rvalue.as_basic_value())
+                    .unwrap();
             }
             CIREnumInitVariant::Payload(field_exprs) => {
+                // IMPORTANT: Zero out the entire payload buffer first
+                // to ensure padded slots value is consistent.
+                // If we don't do this, it may cause UB when
+                // comparing two equal enums.
+                let zero_payload = buffer_type.const_zero();
+
+                let payload_ptr = self
+                    .llvm_builder
+                    .build_struct_gep(enum_struct_type, enum_alloca, 1, "enum.payload.ptr")
+                    .unwrap();
+                self.llvm_builder.build_store(payload_ptr, zero_payload).unwrap();
+
                 let field_types: Vec<BasicTypeEnum<'ll>> = field_exprs
                     .iter()
                     .map(|fld| self.emit_type(fld.ty.clone()).try_into().unwrap())
@@ -95,36 +107,30 @@ impl<'ll> CodeGenIRBuilder<'ll> {
 
                 let payload_struct_type = self.llvm_ctx.struct_type(&field_types, false);
 
-                let mut payload_struct_value = payload_struct_type.const_zero();
-
                 for (i, field_expr) in field_exprs.iter().enumerate() {
                     let lvalue = self.emit_expr(&field_expr, &None);
                     let mut rvalue = self.load_rvalue(lvalue);
 
-                    let payload_type = match cir_enum_type.lookup_variant(&enum_init_expr.ident).unwrap() {
+                    let variant_enum_type = match cir_enum_type.lookup_variant(&enum_init_expr.ident).unwrap() {
                         CIREnumVariant::Payload(_, struct_type, _) => struct_type,
                         _ => unreachable!(),
                     };
 
-                    let field_type = payload_type.fields.get(i).unwrap();
+                    let field_type = variant_enum_type.fields.get(i).unwrap();
 
                     if !self.llvm_builder.get_insert_block().is_none() {
                         rvalue = self.emit_implicit_cast(field_type, rvalue);
                     }
 
-                    payload_struct_value = self
+                    let field_ptr = self
                         .llvm_builder
-                        .build_insert_value(
-                            payload_struct_value,
-                            rvalue.as_basic_value(),
-                            i as u32,
-                            "enum.payload.set_field",
-                        )
-                        .unwrap()
-                        .into_struct_value();
-                }
+                        .build_struct_gep(payload_struct_type, payload_ptr, i as u32, "payload.field.ptr")
+                        .unwrap();
 
-                self.intrinsic_optimized_memcpy(payload_ptr, payload_struct_value.as_basic_value_enum());
+                    self.llvm_builder
+                        .build_store(field_ptr, rvalue.as_basic_value())
+                        .unwrap();
+                }
             }
         }
 
@@ -132,6 +138,93 @@ impl<'ll> CodeGenIRBuilder<'ll> {
             .build_load(enum_struct_type, enum_alloca, "enum.load")
             .unwrap()
     }
+
+    // fn emit_enum_init_with_alloca(
+    //     &mut self,
+    //     enum_init_expr: &CIREnumInitExpr,
+    //     cir_enum_type: &CIREnumType,
+    //     enum_struct_type: StructType<'ll>,
+    //     buffer_type: ArrayType<'ll>,
+    //     tag_value: IntValue<'ll>,
+    // ) -> BasicValueEnum<'ll> {
+    //     let enum_alloca = self.alloca_with_scope_lifetime(enum_struct_type.as_basic_type_enum(), "enum.alloca");
+
+    //     let tag_ptr = self
+    //         .llvm_builder
+    //         .build_struct_gep(enum_struct_type, enum_alloca, 0, "enum.tag.ptr")
+    //         .unwrap();
+
+    //     let payload_ptr = self
+    //         .llvm_builder
+    //         .build_struct_gep(enum_struct_type, enum_alloca, 1, "enum.payload.ptr")
+    //         .unwrap();
+
+    //     self.llvm_builder.build_store(tag_ptr, tag_value).unwrap();
+
+    //     // IMPORTANT: Zero out the entire payload buffer first
+    //     // to ensure padded slots value is consistent.
+    //     // If we don't do this, it may cause UB when
+    //     // comparing two equal enums.
+
+    //     match &enum_init_expr.variant {
+    //         CIREnumInitVariant::Unit => {
+    //             let payload_size = buffer_type.size_of().unwrap();
+
+    //             self.llvm_builder
+    //                 .build_memset(payload_ptr, 1, self.llvm_ctx.i8_type().const_zero(), payload_size)
+    //                 .unwrap();
+    //         }
+    //         CIREnumInitVariant::Valued(expr) => {
+    //             let lvalue = self.emit_expr(expr, &None);
+    //             let rvalue = self.load_rvalue(lvalue);
+
+    //             self.intrinsic_optimized_memcpy(payload_ptr, rvalue.as_basic_value());
+    //         }
+    //         CIREnumInitVariant::Payload(field_exprs) => {
+    //             let field_types: Vec<BasicTypeEnum<'ll>> = field_exprs
+    //                 .iter()
+    //                 .map(|fld| self.emit_type(fld.ty.clone()).try_into().unwrap())
+    //                 .collect();
+
+    //             let payload_struct_type = self.llvm_ctx.struct_type(&field_types, false);
+
+    //             let mut payload_struct_value = payload_struct_type.const_zero();
+
+    //             for (i, field_expr) in field_exprs.iter().enumerate() {
+    //                 let lvalue = self.emit_expr(&field_expr, &None);
+    //                 let mut rvalue = self.load_rvalue(lvalue);
+
+    //                 let payload_type = match cir_enum_type.lookup_variant(&enum_init_expr.ident).unwrap() {
+    //                     CIREnumVariant::Payload(_, struct_type, _) => struct_type,
+    //                     _ => unreachable!(),
+    //                 };
+
+    //                 let field_type = payload_type.fields.get(i).unwrap();
+
+    //                 if !self.llvm_builder.get_insert_block().is_none() {
+    //                     rvalue = self.emit_implicit_cast(field_type, rvalue);
+    //                 }
+
+    //                 payload_struct_value = self
+    //                     .llvm_builder
+    //                     .build_insert_value(
+    //                         payload_struct_value,
+    //                         rvalue.as_basic_value(),
+    //                         i as u32,
+    //                         "enum.payload.set_field",
+    //                     )
+    //                     .unwrap()
+    //                     .into_struct_value();
+    //             }
+
+    //             self.intrinsic_optimized_memcpy(payload_ptr, payload_struct_value.as_basic_value_enum());
+    //         }
+    //     }
+
+    //     self.llvm_builder
+    //         .build_load(enum_struct_type, enum_alloca, "enum.load")
+    //         .unwrap()
+    // }
 
     fn emit_repr_c_enum_init(
         &mut self,
