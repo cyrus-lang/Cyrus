@@ -229,7 +229,7 @@ impl ModuleLoader for FsModuleLoader {
         let source_file = { self.source_map.get_file(file_id).unwrap().clone() };
 
         // FIXME: This isn't correct, we used a single diagnostic reporter for all layers
-        // and that is why it looks messy here. If used one for each layer then here 
+        // and that is why it looks messy here. If used one for each layer then here
         // we could predictably know that where parse_program reports it's diagnostics.
         // Anyway, I'll redesign this part in stage1 I guess.
         let Ok(program_tree) = self.source_parser.parse_program(&source_file) else {

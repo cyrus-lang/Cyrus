@@ -630,7 +630,7 @@ impl<'source_file> Parser<'source_file> {
             // It will not be considered as tuple,
             // Because we might need to give this group
             // higher priority. For example, in pointer constness.
-            return Ok(type_list.first().cloned().unwrap());   
+            return Ok(type_list.first().cloned().unwrap());
         }
 
         let end = self.current_token().loc.end;

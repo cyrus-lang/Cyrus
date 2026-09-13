@@ -3,11 +3,15 @@
 
 use crate::{
     abi::{
-        args::{ABIArgAttrs, ABIArgInfo, ABIArgKind, ABIFunctionInfo, ABIRetInfo, ABIRetInfoKind, ExpandKind}, helpers::{Registers, align_up, is_cir_type_aggregate}, target::{ABITargetInfo, ABITargetOS, RegisterClass, TargetABI},
-    }, cir::{
+        args::{ABIArgAttrs, ABIArgInfo, ABIArgKind, ABIFunctionInfo, ABIRetInfo, ABIRetInfoKind, ExpandKind},
+        helpers::{Registers, align_up, is_cir_type_aggregate},
+        target::{ABITargetInfo, ABITargetOS, RegisterClass, TargetABI},
+    },
+    cir::{
         typectx::CIRTypeContext,
         types::{CIRArrayType, CIRFuncType, CIRStructType, CIRType, CIRUnionType, CIRVectorType},
-    }, is_integer_type,
+    },
+    is_integer_type,
 };
 use cyrusc_ast::abi::Callconv;
 use cyrusc_source_loc::{FileID, Loc};

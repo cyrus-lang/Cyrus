@@ -71,7 +71,9 @@ impl<'a> AnalysisContext<'a> {
 
         let method_env = self.create_method_env(method_decl_id, func_type.clone(), Some(InferCtx::new()));
 
-        let body_id = method_decl.body.unwrap();
+        let Some(body_id) = method_decl.body else {
+            return;
+        };
 
         self.with_func_env(method_env, |this| {
             this.with_object(Some(object_type.clone()), |this| {

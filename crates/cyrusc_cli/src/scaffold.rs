@@ -43,10 +43,7 @@ pub(crate) fn compiler_option_from_scaffold_parser(base_path: Option<String>) ->
     }
 }
 
-pub(crate) fn integrate_scaffold_config(
-    opts: &mut CompilerOptions,
-    scaffold_config_opt: &Option<ScaffoldConfig>,
-) {
+pub(crate) fn integrate_scaffold_config(opts: &mut CompilerOptions, scaffold_config_opt: &Option<ScaffoldConfig>) {
     let Some(scaffold_config) = scaffold_config_opt else {
         return;
     };

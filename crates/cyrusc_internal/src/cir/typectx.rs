@@ -425,7 +425,7 @@ impl CIRTypeContext {
                 let total_size = element_layout.size * array_type.len as u32;
 
                 let mut field_offsets = Vec::new();
-                
+
                 for i in 0..array_type.len {
                     field_offsets.push(ABIFieldOffsetInfo::Normal {
                         index: i as u32,
@@ -590,12 +590,7 @@ impl CIRTypeContext {
         let mut field_offsets = Vec::new();
         let mut field_offset_index = 0u32;
 
-        field_offsets.push(ABIFieldOffsetInfo::normal(
-            field_offset_index,
-            0,
-            0,
-            tag_size as usize,
-        ));
+        field_offsets.push(ABIFieldOffsetInfo::normal(field_offset_index, 0, 0, tag_size as usize));
         field_offset_index += 1;
 
         if payload_offset > tag_size {
@@ -618,7 +613,7 @@ impl CIRTypeContext {
         }
 
         let payload_end = payload_offset + max_payload_size;
-        
+
         if total_size > payload_end {
             field_offsets.push(ABIFieldOffsetInfo::padding(
                 field_offset_index,
