@@ -74,7 +74,8 @@ impl<'ll> LoopControlRegion<'ll> {
 }
 
 impl<'ll> CodeGenIRBuilder<'ll> {
-    fn emit_switch_on_enum_export_fields(
+    #[inline]
+    fn emit_switch_on_enum_export_payload_fields(
         &mut self,
         enum_layout: &ABITypeLayout,
         payload_alloca: PointerValue<'ll>,
@@ -82,7 +83,6 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         exported_fields: &Vec<(usize, IRValueID, CIRType)>,
     ) {
         for (field_index, irv_id, cir_ty) in exported_fields {
-            let llvm_field_type: BasicTypeEnum<'ll> = self.emit_type(cir_ty.clone()).try_into().unwrap();
             let llvm_field_index = enum_layout.lookup_field_index(*field_index).unwrap();
 
             // pointer to payload_struct[field_index]
@@ -91,19 +91,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
                 .build_struct_gep(payload_struct_type, payload_alloca, llvm_field_index, "gep.field")
                 .unwrap();
 
-            let loaded_value = self
-                .llvm_builder
-                .build_load(llvm_field_type, gep, "load.field")
-                .unwrap();
-
-            let alloca = self
-                .llvm_builder
-                .build_alloca(llvm_field_type, "export.field.alloca")
-                .unwrap();
-
-            self.llvm_builder.build_store(alloca, loaded_value).unwrap();
-
-            self.insert_local_ir_value(*irv_id, LocalIRValue::LValue(alloca, cir_ty.clone()));
+            self.insert_local_ir_value(*irv_id, LocalIRValue::LValue(gep, cir_ty.clone()));
         }
     }
 
@@ -239,7 +227,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         }
 
         let enum_struct_value = rvalue.as_basic_value().into_struct_value();
-        let index_int_value = self.extract_enum_tag(enum_struct_value);
+        let tag_value = self.extract_enum_tag(enum_struct_value);
 
         let parent_block = self.block_reg.cur_block.unwrap();
         let exit_block = self.new_basic_block("switch_on_enum.exit");
@@ -263,10 +251,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         };
 
         self.emit_basic_block(parent_block);
-        let switch_inst = self
-            .llvm_builder
-            .build_switch(index_int_value, else_block, &[])
-            .unwrap();
+        let switch_inst = self.llvm_builder.build_switch(tag_value, else_block, &[]).unwrap();
 
         let tag_type = self
             .emit_type(*enum_type.tag_type_or_infer_or_default())
@@ -301,11 +286,11 @@ impl<'ll> CodeGenIRBuilder<'ll> {
                         // reinterpret payload buffer
                         let enum_payload = self.extract_enum_payload(enum_struct_value);
 
-                        let alloca = self.llvm_builder.build_alloca(llvm_type, "enum.variant.cast").unwrap();
+                        let ptr = self.llvm_builder.build_alloca(llvm_type, "enum.variant.cast").unwrap();
 
-                        self.llvm_builder.build_store(alloca, enum_payload).unwrap();
+                        self.intrinsic_optimized_memcpy(ptr, enum_payload.as_basic_value_enum());
 
-                        self.insert_local_ir_value(*irv_id, LocalIRValue::LValue(alloca, cir_type.clone()));
+                        self.insert_local_ir_value(*irv_id, LocalIRValue::LValue(ptr, cir_type.clone()));
                     }
 
                     CIRVariantPayload::Fields {
@@ -317,31 +302,31 @@ impl<'ll> CodeGenIRBuilder<'ll> {
 
                         self.emit_basic_block(case_block);
 
-                        let enum_payload = self.extract_enum_payload(enum_struct_value);
+                        let payload_buffer_value = self.extract_enum_payload(enum_struct_value);
 
                         let payload_struct_type =
                             self.emit_enum_fielded_variant_payload_type(*tag, &enum_type).unwrap();
 
                         let payload_struct_value = self
                             .intrinsic_coerce_through_alloca(
-                                BasicValueEnum::ArrayValue(enum_payload),
+                                BasicValueEnum::ArrayValue(payload_buffer_value),
                                 BasicTypeEnum::StructType(payload_struct_type),
                                 "coerce",
                             )
                             .into_struct_value();
 
-                        let payload_alloca = self
+                        let payload_ptr = self
                             .llvm_builder
                             .build_alloca(payload_struct_type, "enum.payload.struct")
                             .unwrap();
 
                         self.llvm_builder
-                            .build_store(payload_alloca, payload_struct_value)
+                            .build_store(payload_ptr, payload_struct_value)
                             .unwrap();
 
-                        self.emit_switch_on_enum_export_fields(
+                        self.emit_switch_on_enum_export_payload_fields(
                             &layout,
-                            payload_alloca,
+                            payload_ptr,
                             payload_struct_type,
                             exported_fields,
                         );
