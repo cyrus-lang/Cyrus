@@ -2,6 +2,7 @@
 // Copyright (c) 2026 The Cyrus Language
 pub mod builder;
 mod control_flow;
+mod enums;
 mod exprs;
 mod funcs;
 mod inline_asm;
@@ -12,4 +13,3 @@ mod types;
 mod values;
 mod vars;
 mod vtables;
-mod enums;

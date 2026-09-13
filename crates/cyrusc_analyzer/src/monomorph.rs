@@ -63,7 +63,10 @@ impl<'a> AnalysisContext<'a> {
                 inst.analyzed = true;
             });
 
-            let body_id = method_decl.body.unwrap();
+            let Some(body_id) = method_decl.body else {
+                return Some(monomorph_id);
+            };
+
             let template_body = self.decl_tables.body(body_id);
 
             let mut specialized_body = self.specialize_func_body(&template_body, &mut method_decl.func_decl.params);
@@ -128,7 +131,11 @@ impl<'a> AnalysisContext<'a> {
                 _monomorph_instance.analyzed = true;
             });
 
-            let body_id = func_decl.body.unwrap();
+            let Some(body_id) = func_decl.body else {
+                func_call.dispatch = TypedFuncCallDispatch::Monomorph { monomorph_id };
+                return Some(func_decl.ret_type.clone());
+            };
+            
             let template_body = self.decl_tables.body(body_id);
 
             let mut specialized_body = self.specialize_func_body(&template_body, &mut func_decl.params);

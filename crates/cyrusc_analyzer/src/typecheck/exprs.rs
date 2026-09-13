@@ -167,7 +167,7 @@ impl<'a> AnalysisContext<'a> {
         }
 
         // debug
-        if cfg!(debug_assertions) {
+        if cfg!(debug_assertions) && !self.reporter.has_errors() {
             if let Some(ty) = expr.ty.clone() {
                 assert!(!ty.is_unresolved());
             }

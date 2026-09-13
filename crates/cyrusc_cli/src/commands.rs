@@ -283,7 +283,7 @@ pub(crate) fn command_emit_cir_dump(
 
 pub(crate) fn command_object(mut opts: CompilerOptions, file_path: Option<String>, output_path: Option<String>) {
     opts.disable_modulefs_cache = true;
-    
+
     let mut bundle = build_compilation_bundle(&mut opts, file_path);
 
     let object_dir = get_object_dir_output_path(&bundle.build_dir, &output_path);
