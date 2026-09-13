@@ -67,8 +67,10 @@ impl<'ll> CodeGenIRBuilder<'ll> {
             casted.as_basic_value().into_int_value()
         };
 
-        let dest_align = 1_u32;
-        let src_align = 1_u32;
+        let target_data = self.llvm_target_machine.get_target_data();
+        let default_align = target_data.get_pointer_byte_size(None).max(8) as u32;
+        let dest_align = default_align;
+        let src_align = default_align;
 
         self.llvm_builder
             .build_memcpy(dest, dest_align, src, src_align, size)
@@ -179,7 +181,9 @@ impl<'ll> CodeGenIRBuilder<'ll> {
             let casted = self.emit_implicit_cast(&cir_int64, rvalue);
             casted.as_basic_value().into_int_value()
         };
-        let align = 1_u32;
+
+        let target_data = self.llvm_target_machine.get_target_data();
+        let align = target_data.get_pointer_byte_size(None).max(8) as u32;
 
         self.llvm_builder.build_memset(dest, align, value, size).unwrap();
 
