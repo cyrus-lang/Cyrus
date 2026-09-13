@@ -243,7 +243,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
             .unwrap();
 
         if layout.align > 0 {
-            store_inst.set_alignment(layout.align).unwrap();
+            store_inst.set_alignment(layout.align.min(8)).unwrap();
         }
 
         if let CIRExprKind::Load(value_ref) = &assign.lhs.kind {
