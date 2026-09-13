@@ -476,8 +476,8 @@ impl<'ll> CodeGenIRBuilder<'ll> {
             ABIArgKind::Extend { signed } => {
                 self.emit_extend_arg(out, rvalue.clone(), signed);
             }
-            ABIArgKind::Indirect { align, ty } => {
-                self.emit_indirect_arg(out, rvalue, align, ty.clone(), abi_arg_info);
+            ABIArgKind::Indirect { ty, .. } => {
+                self.emit_indirect_arg(out, rvalue, ty.clone(), abi_arg_info);
             }
             ABIArgKind::Ignore => {
                 // skip zero-sized types
@@ -809,7 +809,6 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         &mut self,
         args_values: &mut Vec<BasicMetadataValueEnum<'ll>>,
         rvalue: &InternalValue<'ll>,
-        align: u32,
         ty: CIRType,
         abi_arg_info: &ABIArgInfo,
     ) {
@@ -823,15 +822,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
             // create a copy
             let ptr = self.alloca_with_scope_lifetime(llvm_ty, "indirect.arg");
 
-            if align > 0 {
-                self.llvm_builder
-                    .build_store(ptr, rvalue.as_basic_value())
-                    .unwrap()
-                    .set_alignment(align)
-                    .unwrap();
-            } else {
-                self.llvm_builder.build_store(ptr, rvalue.as_basic_value()).unwrap();
-            }
+            self.intrinsic_optimized_memcpy(ptr, rvalue.as_basic_value());
 
             args_values.push(ptr.into());
         }

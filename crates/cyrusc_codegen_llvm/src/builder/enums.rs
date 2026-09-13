@@ -75,9 +75,11 @@ impl<'ll> CodeGenIRBuilder<'ll> {
 
         match &enum_init_expr.variant {
             CIREnumInitVariant::Unit => {
-                let zero_payload = buffer_type.const_zero();
+                let payload_size = buffer_type.size_of().unwrap();
 
-                self.intrinsic_optimized_memcpy(payload_ptr, zero_payload.as_basic_value_enum());
+                self.llvm_builder
+                    .build_memset(payload_ptr, 1, self.llvm_ctx.i8_type().const_zero(), payload_size)
+                    .unwrap();
             }
             CIREnumInitVariant::Valued(expr) => {
                 let lvalue = self.emit_expr(expr, &None);
