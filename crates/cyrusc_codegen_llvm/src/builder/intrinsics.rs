@@ -666,7 +666,13 @@ impl<'ll> CodeGenIRBuilder<'ll> {
 
         self.llvm_builder.build_memcpy(dst_ptr, 1, src_ptr, 1, size).unwrap();
 
-        self.llvm_builder.build_load(dst_ty, dst_alloca, name).unwrap()
+        let value = self.llvm_builder.build_load(dst_ty, dst_alloca, name).unwrap();
+
+        if let Some(inst) = value.as_instruction_value() {
+            inst.set_alignment(1).unwrap();
+        }
+
+        value
     }
 
     pub(crate) fn intrinsic_optimized_memcpy(&mut self, dest: PointerValue<'ll>, rvalue: BasicValueEnum<'ll>) {

@@ -151,7 +151,7 @@ pub struct String {
 
     [[inline]]
     pub fn get(self: const Self*, index: usize) Option<uint8> {
-        if (index > self->len()) {
+        if (index >= self->len()) {
             return .None;
         }
 

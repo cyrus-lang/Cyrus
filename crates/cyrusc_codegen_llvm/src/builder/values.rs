@@ -66,7 +66,12 @@ impl<'a> InternalValue<'a> {
 }
 
 impl<'ll> CodeGenIRBuilder<'ll> {
-    pub(crate) fn emit_store(&mut self, ptr: PointerValue<'ll>, mut rvalue: InternalValue<'ll>, target_cir_type: CIRType) {
+    pub(crate) fn emit_store(
+        &mut self,
+        ptr: PointerValue<'ll>,
+        mut rvalue: InternalValue<'ll>,
+        target_cir_type: CIRType,
+    ) {
         let layout = self.tctx.layout_of(&target_cir_type);
 
         // IMPORTANT!!
@@ -119,8 +124,9 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         }
 
         let store_inst = self.llvm_builder.build_store(ptr, rvalue.as_basic_value()).unwrap();
+
         if layout.align > 0 {
-            store_inst.set_alignment(layout.align).unwrap();
+            store_inst.set_alignment(layout.align.min(8)).unwrap();
         }
     }
 
@@ -226,7 +232,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
                 if let Some(inst) = load_inst {
                     let layout = self.tctx.layout_of(&internal_value.ty);
                     if layout.align > 0 {
-                        inst.set_alignment(layout.align).unwrap();
+                        inst.set_alignment(layout.align.min(8)).unwrap();
                     }
                 }
 
