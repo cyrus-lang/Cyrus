@@ -100,15 +100,9 @@ impl<'a> Resolver<'a> {
         let prev_file = self.current_module_file_id;
         self.current_module_file_id = Some(file_id);
 
-        // collect symbol names (first pass)
-        self.resolve_decl_names(&program_tree.body);
-
-        // This switch is used to prevent resolving the module,
-        // if any fault happened during parsing or importing a module (these happen inside self.resolve_import(...)),
-        // so we pass mutable reference to resolve_import and when flipped, we stop resolving current module.
         let mut is_module_safe_to_be_resolved = true;
 
-        // analyze `import statements` of this module
+        // analyze import statements of this module first
         for import in program_tree.import_stmts() {
             self.resolve_import(
                 module_symbol_id,
@@ -118,11 +112,13 @@ impl<'a> Resolver<'a> {
             );
 
             if !is_module_safe_to_be_resolved {
-                // IMPORTANT:
-                // Prevent cascading failures by stopping module resolution.
+                // IMPORTANT: Prevent cascading failures by stopping module resolution
                 return None;
             }
         }
+
+        // collect symbol names (first pass)
+        self.resolve_decl_names(&program_tree.body);
 
         // collect full definitions and details of the symbols (second pass)
         let body = self.resolve_decl_full(&program_tree);
