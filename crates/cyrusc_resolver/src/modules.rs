@@ -113,6 +113,13 @@ impl<'a> Resolver<'a> {
 
             if !is_module_safe_to_be_resolved {
                 // IMPORTANT: Prevent cascading failures by stopping module resolution
+                let mut analyzed = self.analyzed_files.lock().unwrap();
+                analyzed.remove(&file_id);
+                self.current_scope = prev_scope;
+                self.current_module_file_id = prev_file;
+                if is_master {
+                    visiting.active.remove(&file_id);
+                }
                 return None;
             }
         }
@@ -219,7 +226,6 @@ impl<'a> Resolver<'a> {
                     loc: Some(import.loc),
                     hint: Some("Break the cycle by removing one import.".to_string()),
                 });
-                visiting.done.insert(loaded_module.file_id);
 
                 *is_module_safe_to_be_resolved = false;
                 return;
@@ -260,8 +266,14 @@ impl<'a> Resolver<'a> {
                 .collect();
 
             if !namespace_segments.is_empty() {
-                module_symbol_id =
-                    self.resolve_namespace_segments_after_file(module_symbol_id, &namespace_segments, import.loc);
+                if let Some(resolved_symbol_id) =
+                    self.resolve_namespace_segments_after_file(module_symbol_id, &namespace_segments, import.loc)
+                {
+                    module_symbol_id = resolved_symbol_id;
+                } else {
+                    *is_module_safe_to_be_resolved = false;
+                    return;
+                }
             }
 
             // insert alias
@@ -298,7 +310,7 @@ impl<'a> Resolver<'a> {
         mut module_symbol_id: SymbolID,
         namespace_segments: &[&ModuleSegment],
         loc: Loc,
-    ) -> SymbolID {
+    ) -> Option<SymbolID> {
         for segment in namespace_segments {
             let name = segment.as_ident().unwrap().value;
 
@@ -312,7 +324,7 @@ impl<'a> Resolver<'a> {
                         name
                     )),
                 });
-                return module_symbol_id;
+                return None;
             };
 
             // ensure the symbol actually represents a namespace/module
@@ -321,7 +333,7 @@ impl<'a> Resolver<'a> {
             module_symbol_id = scope_id;
         }
 
-        module_symbol_id
+        Some(module_symbol_id)
     }
 
     fn resolve_import_single_symbols_from_module(
@@ -349,6 +361,7 @@ impl<'a> Resolver<'a> {
                     loc: Some(loc),
                     hint: None,
                 });
+                *is_module_safe_to_be_resolved = false;
                 continue;
             };
 
@@ -376,6 +389,7 @@ impl<'a> Resolver<'a> {
                     loc: Some(loc),
                     hint: None,
                 });
+                *is_module_safe_to_be_resolved = false;
                 continue;
             }
 
