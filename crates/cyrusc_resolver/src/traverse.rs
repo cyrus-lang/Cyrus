@@ -283,25 +283,26 @@ impl<'a> Resolver<'a> {
             }
         };
 
-        self.enter_scope_table(module_scope_id);
-        self.resolve_decl_names(&module_decl.stmts);
-        self.exit_scope_table();
+        self.with_scope_table_fn(module_scope_id, |this| {
+            this.resolve_decl_names(&module_decl.stmts);
+            Some(())
+        });
     }
 
     fn resolve_module_decl(&mut self, module_decl: &ASTModuleDecl) -> Vec<TypedStmt> {
-        let mut module_decl_stmts = Vec::new();
-
         let parent_scope_id = self.current_scope.unwrap();
         let module_scope_id = self
             .lookup_symbol_id_in_scope(parent_scope_id, &module_decl.ident.value)
             .unwrap();
 
-        self.enter_scope_table(module_scope_id);
-        for stmt in &module_decl.stmts {
-            module_decl_stmts.extend(self.resolve_toplevel_stmt(stmt));
-        }
-        self.exit_scope_table();
-        module_decl_stmts
+        self.with_scope_table_fn_vec(module_scope_id, |this| {
+            let mut module_decl_stmts = Vec::new();
+
+            for stmt in &module_decl.stmts {
+                module_decl_stmts.extend(this.resolve_toplevel_stmt(stmt));
+            }
+            module_decl_stmts
+        })
     }
 
     /// Resolve an identifier in the current lexical context.
@@ -1765,18 +1766,12 @@ impl<'a> Resolver<'a> {
     fn resolve_if_stmt(&mut self, if_stmt: &ASTIfStmt) -> Option<TypedIfStmt> {
         let cond = self.resolve_expr(&if_stmt.condition)?;
 
-        let then_scope = LocalScope::new();
-        self.enter_local_scope(then_scope);
-
-        let then_block = Box::new(self.resolve_block_stmt(&if_stmt.then_block)?);
-        self.exit_local_scope();
+        let then_block =
+            Box::new(self.with_local_scope_fn(LocalScope::new(), |this| this.resolve_block_stmt(&if_stmt.then_block))?);
 
         let else_block = {
             if let Some(block) = &if_stmt.else_block {
-                let else_scope = LocalScope::new();
-                self.enter_local_scope(else_scope);
-                let block = self.resolve_block_stmt(block)?;
-                self.exit_local_scope();
+                let block = self.with_local_scope_fn(LocalScope::new(), |this| this.resolve_block_stmt(block))?;
                 Some(Box::new(block))
             } else {
                 None
@@ -1801,26 +1796,23 @@ impl<'a> Resolver<'a> {
     }
 
     fn resolve_block_stmt(&mut self, block_stmt: &ASTBlockStmt) -> Option<TypedBlockStmt> {
-        let mut typed_body: Vec<TypedStmt> = Vec::new();
-        let defers: Vec<TypedDeferStmt> = Vec::new();
+        self.with_local_scope_fn(LocalScope::new(), |this| {
+            let mut typed_body: Vec<TypedStmt> = Vec::new();
+            let defers: Vec<TypedDeferStmt> = Vec::new();
 
-        let scope = LocalScope::new();
-        self.enter_local_scope(scope);
+            this.collect_labels_in_block(block_stmt);
 
-        self.collect_labels_in_block(block_stmt);
-
-        for stmt in &block_stmt.stmts {
-            if let Some(typed_stmt) = self.resolve_stmt(stmt) {
-                typed_body.push(typed_stmt);
+            for stmt in &block_stmt.stmts {
+                if let Some(typed_stmt) = this.resolve_stmt(stmt) {
+                    typed_body.push(typed_stmt);
+                }
             }
-        }
 
-        self.exit_local_scope();
-
-        Some(TypedBlockStmt {
-            stmts: typed_body,
-            defers,
-            loc: block_stmt.loc,
+            Some(TypedBlockStmt {
+                stmts: typed_body,
+                defers,
+                loc: block_stmt.loc,
+            })
         })
     }
 

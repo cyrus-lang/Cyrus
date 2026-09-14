@@ -159,6 +159,36 @@ impl<'a> Resolver<'a> {
         self.local_scopes.pop();
     }
 
+    pub fn with_local_scope_fn<R, F>(&mut self, scope: LocalScope, f: F) -> Option<R>
+    where
+        F: FnOnce(&mut Self) -> Option<R>,
+    {
+        self.enter_local_scope(scope);
+        let res = f(self);
+        self.exit_local_scope();
+        res
+    }
+
+    pub fn with_scope_table_fn<R, F>(&mut self, scope_id: SymbolID, f: F) -> Option<R>
+    where
+        F: FnOnce(&mut Self) -> Option<R>,
+    {
+        self.enter_scope_table(scope_id);
+        let res = f(self);
+        self.exit_scope_table();
+        res
+    }
+
+    pub fn with_scope_table_fn_vec<F>(&mut self, scope_id: SymbolID, f: F) -> Vec<TypedStmt>
+    where
+        F: FnOnce(&mut Self) -> Vec<TypedStmt>,
+    {
+        self.enter_scope_table(scope_id);
+        let res = f(self);
+        self.exit_scope_table();
+        res
+    }
+
     /// Returns an iterator over the active scope stack.
     ///
     /// The iterator yields scopes from the innermost scope outward toward
@@ -542,6 +572,10 @@ impl GlobalSymbolRegistry {
         let mut scope_id = self.resolve_concrete_scope_id(scope_id);
 
         loop {
+            if self.get_symbol_entry(scope_id).is_none() {
+                return None;
+            }
+            
             if let Some(symbol_id) = self.lookup_symbol_id_in_scope(scope_id, name) {
                 return Some(symbol_id);
             }
@@ -572,7 +606,9 @@ impl GlobalSymbolRegistry {
     /// happen in a consistent registry), the original ID is returned as
     /// a defensive fallback.
     fn resolve_concrete_scope_id(&self, scope_id: SymbolID) -> SymbolID {
-        let symbol_entry = self.get_symbol_entry(scope_id).expect("Symbol entry not found");
+        let Some(symbol_entry) = self.get_symbol_entry(scope_id) else {
+            return scope_id;
+        };
 
         match &symbol_entry.kind {
             SymbolEntryKind::ProxiedModule { symbol_id } => {
