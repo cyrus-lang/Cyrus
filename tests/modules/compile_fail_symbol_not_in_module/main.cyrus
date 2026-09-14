@@ -1,0 +1,3 @@
+import std::libc{nonexistent_symbol}; //~ ERROR Symbol 'nonexistent_symbol' not found anywhere.
+
+pub fn main() {}

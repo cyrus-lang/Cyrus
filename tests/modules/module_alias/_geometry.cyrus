@@ -1,0 +1,3 @@
+pub fn area(width: int32, height: int32) int32 {
+    return width * height;
+}
