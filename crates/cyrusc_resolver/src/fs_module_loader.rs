@@ -5,7 +5,7 @@ use cyrusc_ast::format::{format_module_segments, format_sub_modules};
 use cyrusc_ast::{
     ASTImportStmt, Ident, ModulePath, ModuleSegment, ProgramTree, last_sub_module_index, sub_module_segments,
 };
-use cyrusc_diagcentral::{Diag, DiagKindClone, DiagLevel, exit_with_single_diag};
+use cyrusc_diagcentral::DiagKindClone;
 use cyrusc_fs_utils::find_file_from_sources;
 use cyrusc_internal::module_loader::{LoadedModule, ModuleAlias, ModuleLoader, ResolvedModuleFile};
 use cyrusc_parser::SourceParser;
@@ -53,11 +53,11 @@ impl FsModuleLoader {
         let mut segments = sub_module_segments(segments);
 
         let stdlib_path = self.opts.stdlib_path.clone().map(|str| Path::new(&str).to_path_buf());
-        let stdlib_modules_path = || {
-            get_stdlib_modules_path(stdlib_path.as_ref())
+        let stdlib_modules_path = || -> Result<String, ModuleFSLoaderDiagKind> {
+            Ok(get_stdlib_modules_path(stdlib_path.as_ref())?
                 .to_str()
                 .unwrap()
-                .to_string()
+                .to_string())
         };
 
         let mut sources = self.opts.source_dirs.clone();
@@ -67,12 +67,15 @@ impl FsModuleLoader {
         let mut is_std = false;
         if matches!(segments.first(), Some(ident) if ident.value == "std") {
             segments.remove(0);
-            sources = vec![stdlib_modules_path()];
+            sources = vec![stdlib_modules_path()?];
             is_std = true;
         }
 
-        let mut resolved_module_file =
-            self.load_module_segments(current_module_file_path, &segments, sources, String::new())?;
+        let mut resolved_module_file = self.load_module_segments(&segments, sources, String::new())?;
+
+        if resolved_module_file.file_path == current_module_file_path {
+            return Err(ModuleFSLoaderDiagKind::ModuleCannotImportItself);
+        }
 
         if is_std {
             if let Some(ident) = first_segment {
@@ -88,7 +91,6 @@ impl FsModuleLoader {
     /// a directory containing `index.cyrus`. Reports missing or ambiguous modules.
     fn load_module_segments(
         &self,
-        current_module_file_path: PathBuf,
         sub_modules: &[Ident],
         sources: Vec<String>,
         initial_base_path: String,
@@ -111,15 +113,16 @@ impl FsModuleLoader {
             let dir_exists = if dir_path_buf.is_dir() {
                 Some(dir_path_buf.clone())
             } else {
-                find_file_from_sources(dir_path_buf.to_string_lossy().as_ref(), &sources)
-            };
-
-            // prevent importing the same file
-            if let Some(file_buf) = &file_exists {
-                if *file_buf == current_module_file_path {
-                    return Err(ModuleFSLoaderDiagKind::ModuleCannotImportItself);
+                let mut found = None;
+                for source in &sources {
+                    let candidate = Path::new(source).join(&dir_path_buf);
+                    if candidate.is_dir() {
+                        found = Some(candidate);
+                        break;
+                    }
                 }
-            }
+                found
+            };
 
             match (file_exists, dir_exists) {
                 // file + dir conflict
@@ -176,6 +179,23 @@ impl FsModuleLoader {
             .map(|s| s.to_string_lossy().to_string())
             .unwrap_or_else(|| "module".to_string());
 
+        if current_path.is_dir() {
+            let index_path = current_path.join("index.cyrus");
+
+            if index_path.exists() {
+                return Ok(ResolvedModuleFile {
+                    file_path: index_path,
+                    directory_modules,
+                    file_module_name: file_stem,
+                    consumed_segments: sub_modules.len(),
+                });
+            } else {
+                return Err(ModuleFSLoaderDiagKind::ModuleNotFound {
+                    module_name: format_sub_modules(sub_modules),
+                });
+            }
+        }
+
         Ok(ResolvedModuleFile {
             file_path: current_path,
             directory_modules,
@@ -206,7 +226,7 @@ impl ModuleLoader for FsModuleLoader {
             Ok(path) => path,
             Err(diag) => {
                 loaded_modules_list.push(Err(Some(Box::new(diag))));
-                return Vec::new();
+                return loaded_modules_list;
             }
         };
 
@@ -220,7 +240,7 @@ impl ModuleLoader for FsModuleLoader {
             loaded_modules_list.push(Err(Some(Box::new(ModuleFSLoaderDiagKind::ModuleNotFound {
                 module_name: format_module_segments(&import.module_path.segments),
             }))));
-            return Vec::new();
+            return loaded_modules_list;
         }
 
         // register file in SourceMap
@@ -236,7 +256,7 @@ impl ModuleLoader for FsModuleLoader {
             // REVIEW: REFACTOR REQUIRE
             // Redesign more abstracted.
             loaded_modules_list.push(Err(None));
-            return Vec::new();
+            return loaded_modules_list;
         };
 
         let program_tree_rc = Rc::new(ProgramTree {
@@ -350,19 +370,12 @@ impl ModuleLoader for FsModuleLoader {
 
 /// Resolves the active stdlib directory.
 /// Uses explicit configuration first, then falls back to environment-variable(`CYRUS_STDLIB_PATH`).
-fn get_stdlib_modules_path(stdlib_path: Option<&PathBuf>) -> PathBuf {
+fn get_stdlib_modules_path(stdlib_path: Option<&PathBuf>) -> Result<PathBuf, ModuleFSLoaderDiagKind> {
     match stdlib_path {
-        Some(stdlib_path) => stdlib_path.to_path_buf(),
+        Some(stdlib_path) => Ok(stdlib_path.to_path_buf()),
         None => match env::var("CYRUS_STDLIB_PATH") {
-            Ok(stdlib_path) => Path::new(&stdlib_path).to_path_buf(),
-            Err(_) => {
-                exit_with_single_diag!(Diag {
-                    level: DiagLevel::Error,
-                    kind: Box::new(ModuleFSLoaderDiagKind::StdlibNotFound),
-                    loc: None,
-                    hint: None
-                });
-            }
+            Ok(stdlib_path) => Ok(Path::new(&stdlib_path).to_path_buf()),
+            Err(_) => Err(ModuleFSLoaderDiagKind::StdlibNotFound),
         },
     }
 }
