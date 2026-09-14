@@ -667,9 +667,7 @@ impl<'a> AnalysisContext<'a> {
             let expected_type = SemaType::Pointer(Box::new(SemaType::Plain(PlainType::UInt8).as_const())); // msg? (const char*)
             self.analyze_expr_non_terminal(msg, Some(expected_type.clone()));
 
-            let Some(arg_type) = msg.ty.clone() else {
-                return None;
-            };
+            let arg_type = msg.ty.clone()?;
 
             if !self.is_assignable_to(arg_type.clone(), expected_type.clone(), builtin_func.loc) {
                 let argument_type = format_sema_type(arg_type, self.formatter);
