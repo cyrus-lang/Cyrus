@@ -1,0 +1,7 @@
+pub fn square(x: int32) int32 {
+    return x * x;
+}
+
+pub fn cube(x: int32) int32 {
+    return x * x * x;
+}

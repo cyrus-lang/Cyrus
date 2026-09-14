@@ -1,0 +1,9 @@
+// @stdout: 16 64
+
+import std::libc{printf};
+import _utils{square, cube};
+
+pub fn main() {
+    printf("%d ", square(4));
+    printf("%d\n", cube(4));
+}

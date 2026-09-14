@@ -1,19 +1,16 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 The Cyrus Language
 
-use cyrusc_ast::format::{format_module_segments, format_sub_modules};
-use cyrusc_ast::{
-    ASTImportStmt, Ident, ModulePath, ModuleSegment, ProgramTree, last_sub_module_index, sub_module_segments,
-};
+use crate::diagnostics::ModuleFSLoaderDiagKind;
+use cyrusc_ast::format::*;
+use cyrusc_ast::*;
 use cyrusc_diagcentral::DiagKindClone;
 use cyrusc_fs_utils::find_file_from_sources;
-use cyrusc_internal::module_loader::{LoadedModule, ModuleAlias, ModuleLoader, ResolvedModuleFile};
+use cyrusc_internal::module_loader::*;
 use cyrusc_parser::SourceParser;
 use cyrusc_source_loc::{FileID, SourceMap};
 use std::path::{Component, Path, PathBuf};
 use std::{env, rc::Rc, sync::Arc};
-
-use crate::diagnostics::ModuleFSLoaderDiagKind;
 
 /// Options controlling how modules are located on disk.
 /// Defines search roots for user code and optional standard library.
