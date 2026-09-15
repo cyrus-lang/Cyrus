@@ -14,5 +14,5 @@ pub fn main() {
 
     var parent = path.parent();
     defer parent.free();
-    printf("parent: %s\n", parent.as_string_const().as_str_const());
+    printf("parent: %s\n", parent.as_string().as_str_const());
 }

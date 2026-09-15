@@ -15,5 +15,5 @@ debug:
 						--stdlib=$(STDLIB) \
 						--linker=clang \
 					    --optimize=o0 \
-						--module-merge-mode=separate
+						--module-merge-mode=unified
 	

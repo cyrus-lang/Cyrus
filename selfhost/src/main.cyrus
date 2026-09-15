@@ -3,13 +3,19 @@
 
 import std::libc::types{c_int, c_char};
 import std::mem::libc{LibcAllocator};
-import tokens{dump_tokens};
+import tokens{dump_tokens, Loc};
 import std::mem{Allocator};
 import std::libc{printf};
 import std::path{Path};
 import std::cli;
 import version;
 import driver;
+
+import diags::render{CompilerDiagRender};
+import std::io{Writer, StderrWriter};
+import source{Source, SourceContext};
+import diags{DiagContext, Diag};
+import std::string{String};
 
 fn command_new(ctx: cli::ActionContext) {
     @todo();
@@ -21,6 +27,42 @@ fn command_build(ctx: cli::ActionContext) {
     if (ctx.opts->enabled("jobs")) {
         printf("Jobs option enabled.\n");
     }
+}
+
+fn command_test_diag(ctx: cli::ActionContext) {
+    const allocator: Allocator = dynamic LibcAllocator.new();
+
+    var writer: Writer = dynamic StderrWriter.new();
+
+    var dctx = DiagContext.new(allocator);
+    defer dctx.free();
+
+    const code =
+"pub fn main() {
+    const x = 10;
+}"; 
+    var path = Path.new(allocator, "~/Code/Cyrus/Cyrus/tmp/main.cyrus");
+    defer path.free();
+
+    var content = String.from_str(allocator, code);
+    defer content.free();
+
+    var source = Source.new(allocator, 0, path, content);
+    defer source.free();
+
+    {
+        const loc = Loc { line: 2, start: 20, end: 33 };
+        
+        const diag = *Diag
+            .new(allocator, "main mesg", loc)
+            .under("under mesg");
+        
+        dctx.report(diag);
+    }
+
+    CompilerDiagRender
+        .new(dctx, writer, source)
+        .render();
 }
 
 fn command_lex(ctx: cli::ActionContext) {
@@ -84,7 +126,7 @@ pub fn main(argc: c_int, argv: c_char**) {
         ->add_option(jobs_opt);
     
     const test_cmd = 
-        cli::Cmd.new(allocator, "test", command_build)
+        cli::Cmd.new(allocator, "test", command_test_diag) // FIXME fix
         .help("Run tests")
         ->add_option(verbose_opt)
         ->add_option(quiet_opt)

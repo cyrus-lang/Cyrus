@@ -28,14 +28,13 @@ pub struct DiagContext {
     }
 
     [[inline]]
-    pub fn diags(self: const Self*) Vec<Diag>* {
+    pub fn diags(self: const Self*) const (Vec<Diag>)* {
         return &self->diags;
     }
 
     pub fn free(self: Self*) {
         for (var i: usize; i < self->diags.len(); i += 1) {
-            var diag = self->diags.get(i).unwrap();
-
+            var diag = self->diags.get_owned(i).unwrap();
             diag.free();
         }
 
@@ -44,15 +43,34 @@ pub struct DiagContext {
 }
 
 pub struct Diag {
+    allocator: Allocator,
     pub mesg: String,
     pub under: Option<String>,
     pub subs: Vec<SubDiag>,
     pub loc: Loc,
 
-    pub fn new(allocator: Allocator, mesg: String, under: Option<String>, loc: Loc) Self {
+    [[inline]]
+    pub fn new(
+        allocator: Allocator,
+        mesg: const uint8*,
+        loc: Loc
+    ) Self {
+        const str = String.from_str(allocator, mesg);
         var subs: Vec<SubDiag> = Vec.new(allocator);
-        
-        return Self { mesg, subs, under, loc };
+
+        return Self {
+            allocator,
+            mesg: str, 
+            under: .None,
+            subs, 
+            loc
+        };
+    }
+
+    pub fn under(self: Self*, mesg: const uint8*) Self* {
+        const str = String.from_str(self->allocator, mesg);
+        self->under = .Some(str);
+        return self;
     }
 
     [[inline]]
@@ -68,8 +86,7 @@ pub struct Diag {
         }
         
         for (var i: usize; i < self->subs.len(); i += 1) {
-            var sub = self->subs.get(i).unwrap();
-
+            var sub = self->subs.get_owned(i).unwrap();
             sub.free();
         }
 
