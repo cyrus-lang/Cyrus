@@ -1,0 +1,13 @@
+// @stdout: 10
+
+import std::libc{printf};
+
+struct Unit {}
+
+fn foo<T>(u: T) {
+    printf("10\n");
+}
+
+pub fn main() {
+    foo(Unit {});
+}
