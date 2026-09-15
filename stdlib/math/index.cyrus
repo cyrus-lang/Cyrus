@@ -192,3 +192,11 @@ pub extern "C" {
     fn roundf(x: types::c_float) types::c_float;
     fn roundl(x: types::c_long_double) types::c_long_double;
 }
+
+[[inline]]
+pub fn saturating_sub<T>(a: T, b: T) T {
+    if (b > a) {
+        return 0;
+    }
+    return a - b;
+}

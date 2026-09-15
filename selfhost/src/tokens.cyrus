@@ -541,9 +541,9 @@ pub enum StringPrefix {
 }
 
 pub struct Loc {
-    pub line: usize, // 1-indexed
-    pub start: usize,
-    pub end: usize,
+    pub line: usize,  // 1-indexed
+    pub start: usize, // byte offset
+    pub end: usize,   // byte offset
 
     pub fn merge(self: Self, other: Self) Self {
         var merge = self;

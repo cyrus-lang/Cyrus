@@ -17,5 +17,5 @@ pub fn main() {
 
     var join = path.join(&file_name);
     defer join.free();
-    printf("join: %s\n", join.as_string_const().as_str_const());
+    printf("join: %s\n", join.as_string().as_str_const());
 }
