@@ -193,13 +193,6 @@ pub struct Path {
 
     [[inline]]
     pub fn as_string(self: Self*) String {
-        // FIXME: Return String*.
-        return self->inner;
-    }
-
-    [[inline]]
-    pub fn as_string_const(self: const Self*) const String {
-        // FIXME: Return const String*.
         return self->inner;
     }
 
