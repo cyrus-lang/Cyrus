@@ -73,6 +73,11 @@ pub struct Source {
                 self->loffs.push(i + 1); 
             }
         }
+
+        // FIXME Remove
+        for (var i: usize = 0; i < self->loffs.len(); i += 1) {
+            printf("line offset: %lu\n", self->loffs.get_owned(i).unwrap());
+        }
     }
 
     pub fn get_column(self: const Self*, line: usize, offset: usize) usize {
@@ -82,43 +87,56 @@ pub struct Source {
         return offset - line_start + 1;
     }
 
-    pub fn get_lines(self: const Self*, start: usize, end: usize) Option<(const uint8*, usize)> {
-        @assert(start < end, "invalid range of line numbers");
-
-        var ptr: const uint8*;
-        var len: usize;
-
-        for (var i: usize = start; i < end + 1; i += 1) {
-            switch (self->get_line(i)) case .Some(line) else {
-                return .None;
-            }
-            
-            // Use first line's content pointer as buffer pointer
-            // and compute selected lines range
-            if (i == start) {
-                ptr = line.0;
-            }
-
-            len += line.1;
-        }
-
-        return .Some((ptr, len));
+    [[inline]]
+    pub fn is_line_offset(self: const Self*, offset: usize) bool {
+        return self->loffs.contains(offset);
+    }
+    
+    [[inline]]
+    pub fn get_line_offset(self: const Self*, line: usize) usize {
+        return self->loffs.get_owned(line).unwrap();
     }
 
-    pub fn get_line(self: const Self*, n: usize) Option<(const uint8*, usize)> {
-        @assert(n > 0, "line number must be a 1-based index");
+    pub fn get_line(self: const Self*, offset: usize) Option<usize> {
+        if (self->loffs.len() == 0) {
+            return .None;
+        }
 
-        switch (self->loffs.get_owned(n - 1)) case .Some(start_offset) else {
+        var lo: usize = 0;
+        var hi: usize = self->loffs.len();
+        
+        while (lo < hi) {
+            const mid = lo + (hi - lo) / 2;
+
+            if (self->loffs.get_owned(mid).unwrap() <= offset) {
+                lo = mid + 1;
+            } else {
+                hi = mid;
+            }
+        }
+
+        if (lo == 0) {
+            // Offset is before the first line start
+            return .None; 
+        }
+
+        return .Some(lo); // 1-based line number
+    }
+
+    pub fn get_line_content(self: const Self*, line: usize) Option<(const uint8*, usize)> {
+        @assert(line > 0, "line number must be a 1-based index");
+
+        switch (self->loffs.get_owned(line - 1)) case .Some(start_offset) else {
             return .None;
         }
 
         const end_offset =
-            self->loffs.get_owned(n).unwrap_or(self->content.len());
+            self->loffs.get_owned(line).unwrap_or(self->content.len());
 
         const offset = end_offset - start_offset;
         const content = self->content.as_str_const();
 
-        return .Some((&content[start_offset + 1], offset - 1));
+        return .Some((&content[start_offset], offset - 1));
     }
 
     pub fn free(self: Self*) {

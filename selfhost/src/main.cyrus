@@ -36,6 +36,9 @@ fn command_test_diag(ctx: cli::ActionContext) {
 
     var dctx = DiagContext.new(allocator);
     defer dctx.free();
+    
+    var sctx = SourceContext.new(allocator);
+    defer sctx.free();
 
     const code =
 "pub fn main() {
@@ -54,7 +57,7 @@ fn command_test_diag(ctx: cli::ActionContext) {
         const loc = Loc { line: 2, start: 20, end: 33 };
         
         const diag = *Diag
-            .new(allocator, "main mesg", loc)
+            .new(allocator, "cannot assign value of type `int32` to lvalue of type `int16`", loc)
             .under("under mesg");
         
         dctx.report(diag);
