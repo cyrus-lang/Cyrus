@@ -17,7 +17,7 @@ use crate::{
 use cyrusc_internal::{
     abi::{args::ABIFunctionInfo, target::ABITarget},
     cir::{
-        cir::{CIRBlockStmt, CIRModule, CIRStmt, cir_func_decl_as_func_type, cir_func_def_as_decl},
+        cir::{CIRBlockStmt, CIRModule, CIRStmt},
         typectx::CIRTypeContext,
     },
     compiler_options::CompilerOption_Profile,
@@ -241,37 +241,19 @@ impl<'ll> CodeGenIRBuilder<'ll> {
             CIRStmt::Expr(expr) => {
                 self.emit_expr(expr, &None);
             }
+
             CIRStmt::Variable(var_stmt) => self.emit_var(var_stmt),
-            CIRStmt::FuncDef(func_def_stmt) => {
-                let func_decl = cir_func_def_as_decl(func_def_stmt);
-                let cir_func_type = cir_func_decl_as_func_type(&func_decl);
-                let llvm_func_value = self.emit_func_decl(&func_decl);
 
-                self.set_current_func(llvm_func_value, func_def_stmt.abi_func_info.clone().unwrap());
-
-                let func_meta = {
-                    if self.dctx.is_some() {
-                        Some(self.emit_func_meta(&cir_func_type))
-                    } else {
-                        None
-                    }
-                };
-
-                self.emit_func_body(
-                    &func_decl.params,
-                    &func_def_stmt.abi_func_info.as_ref().unwrap(),
-                    &func_def_stmt.body,
-                    func_meta,
-                    func_decl.loc,
-                );
-            }
             CIRStmt::GlobalVar(global_var_stmt) => {
                 self.emit_global_var(global_var_stmt, false);
             }
-            CIRStmt::FuncDecl(_) => {
-                // Only emitted when symbol is used,
-                // to prevent symbol table bloat.
-            }
+
+            CIRStmt::FuncDef(func_def_stmt) => self.emit_func_def(func_def_stmt),
+
+            // Function declaration will only be emitted when symbol is used
+            // (to prevent symbol table bloat)
+            CIRStmt::FuncDecl(_) => {}
+
             CIRStmt::Block(block_stmt) => self.emit_scope_block(block_stmt),
             CIRStmt::Switch(switch_stmt) => self.emit_switch(switch_stmt),
             CIRStmt::If(if_stmt) => self.emit_if(if_stmt),

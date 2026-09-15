@@ -2045,8 +2045,6 @@ impl<'ll> CodeGenIRBuilder<'ll> {
             &cir_func_type.params,
         );
 
-        let abi_func_info = self.target.target_abi.classify_func(cir_func_type).unwrap();
-
         self.emit_call_with_args(&abi_func_info, cir_func_type, ret_type, *llvm_func_value, llvm_args)
     }
 

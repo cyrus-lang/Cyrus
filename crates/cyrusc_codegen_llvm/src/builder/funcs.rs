@@ -41,6 +41,33 @@ pub(crate) enum FuncCallKind<'ll> {
 
 // Declaration.
 impl<'ll> CodeGenIRBuilder<'ll> {
+    #[inline]
+    pub(crate) fn emit_func_def(&mut self, func_def: &CIRFuncDefStmt) {
+        let func_decl = cir_func_def_as_decl(func_def);
+        let cir_func_type = cir_func_decl_as_func_type(&func_decl);
+        let llvm_func_value = self.emit_func_decl(&func_decl);
+
+        self.emit_direct_func_call_args_attributes(&llvm_func_value, func_def.abi_func_info.as_ref().unwrap());
+
+        self.set_current_func(llvm_func_value, func_def.abi_func_info.clone().unwrap());
+
+        let func_meta = {
+            if self.dctx.is_some() {
+                Some(self.emit_func_meta(&cir_func_type))
+            } else {
+                None
+            }
+        };
+
+        self.emit_func_body(
+            &func_decl.params,
+            &func_def.abi_func_info.as_ref().unwrap(),
+            &func_def.body,
+            func_meta,
+            func_decl.loc,
+        );
+    }
+
     pub(crate) fn emit_func_decl(&mut self, func_decl: &CIRFuncDeclStmt) -> FunctionValue<'ll> {
         let mut cir_func_type = cir_func_decl_as_func_type(func_decl);
 
@@ -917,7 +944,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         }
     }
 
-    fn emit_direct_func_call_args_attributes(
+    pub(crate) fn emit_direct_func_call_args_attributes(
         &mut self,
         llvm_func_value: &FunctionValue,
         abi_func_info: &ABIFunctionInfo,
