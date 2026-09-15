@@ -478,7 +478,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
                 self.emit_extend_arg(out, rvalue.clone(), signed);
             }
             ABIArgKind::Indirect { ty, .. } => {
-                self.emit_indirect_arg(out, rvalue, ty.clone(), abi_arg_info);
+                self.emit_indirect_arg(out, lvalue, rvalue, ty.clone(), abi_arg_info);
             }
             ABIArgKind::Ignore => {
                 // skip zero-sized types
@@ -809,6 +809,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
     fn emit_indirect_arg(
         &mut self,
         args_values: &mut Vec<BasicMetadataValueEnum<'ll>>,
+        lvalue: &InternalValue<'ll>,
         rvalue: &InternalValue<'ll>,
         ty: CIRType,
         abi_arg_info: &ABIArgInfo,
@@ -823,7 +824,26 @@ impl<'ll> CodeGenIRBuilder<'ll> {
             // create a copy
             let ptr = self.alloca_with_scope_lifetime(llvm_ty, "indirect.arg");
 
-            self.intrinsic_optimized_memcpy(ptr, rvalue.as_basic_value());
+            // IMPORTANT: Snapshot intentionally deferred to the call site.
+            // We need the memcpy to read from %src_ptr *after* any mutations
+            // have already written to it. That read-after-write
+            // dependency is what stops LLVM from hoisting this copy above those writes
+            // which it would otherwise do freely in module-merge-mode=separate, where
+            // it can't see inside the callee and has no alias information to reason about.
+            match &lvalue.kind {
+                InternalValueKind::LValue(src_ptr) => {
+                    let target_data = self.llvm_target_machine.get_target_data();
+                    let size_in_bytes = target_data.get_store_size(&llvm_ty);
+                    let size_value = self.llvm_ctx.i64_type().const_int(size_in_bytes, false);
+                    let default_align = target_data.get_pointer_byte_size(None).max(8) as u32;
+                    self.llvm_builder
+                        .build_memcpy(ptr, default_align, *src_ptr, default_align, size_value)
+                        .unwrap();
+                }
+                _ => {
+                    self.intrinsic_optimized_memcpy(ptr, rvalue.as_basic_value());
+                }
+            }
 
             args_values.push(ptr.into());
         }
