@@ -282,7 +282,10 @@ impl<'ll> CodeGenIRBuilder<'ll> {
                 }
                 ABIArgKind::Ignore => {
                     // zero sized type
-                    continue;
+                    if let Some(irv_id) = param.irv_id {
+                        let ty: BasicTypeEnum<'ll> = self.emit_type(param.ty.clone()).try_into().unwrap();
+                        self.insert_local_ir_value(irv_id, LocalIRValue::RValue(ty.const_zero(), param.ty.clone()));
+                    }
                 }
             }
 
