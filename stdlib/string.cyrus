@@ -194,7 +194,6 @@ pub struct String {
         self->vec.push('\0');
     }
 
-    [[inline]]
     pub fn free(self: Self*) {
         self->vec.free();
     }
