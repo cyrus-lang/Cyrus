@@ -15,11 +15,8 @@ import tokens{Loc};
 pub struct DiagContext {
     diags: Vec<Diag>,
 
-    [[inline]]
     pub fn new(allocator: Allocator) Self {
-        const diags: Vec<Diag> = Vec.new(allocator);
-        
-        return Self { diags };
+        return Self { diags: Vec.new(allocator) };
     }
 
     [[inline]]
@@ -50,22 +47,17 @@ pub struct Diag {
     pub notes: Vec<String>,
     pub loc: Loc,
 
-    [[inline]]
     pub fn new(
         allocator: Allocator,
         mesg: const uint8*,
         loc: Loc
     ) Self {
-        const mesg = String.from_str(allocator, mesg);
-        var helps: Vec<String> = Vec.new(allocator);
-        var notes: Vec<String> = Vec.new(allocator);
-
         return Self {
             allocator,
-            mesg: mesg, 
+            mesg: String.from_str(allocator, mesg), 
+            helps: Vec.new(allocator), 
+            notes: Vec.new(allocator),
             under: .None,
-            helps, 
-            notes,
             loc
         };
     }

@@ -43,8 +43,7 @@ pub struct Lexer {
     pos: usize,
     line: usize,
     col: usize,
-     
-    [[inline]]
+    
     pub fn new(allocator: Allocator, arena: ArenaAllocator, source: const String*) Self {
         @assert(source, "source cannot be null");
 
