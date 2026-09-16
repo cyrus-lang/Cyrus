@@ -214,6 +214,17 @@ pub enum ExitStatusCode {
     }
 }
 
+pub enum Fd {
+    Stdin = 0,
+    Stdout = 1,
+    Stderr = 2,
+
+    [[inline]]
+    pub fn as_num(self: Self) int32 {
+        return @cast(int32, self);
+    }
+}
+
 [[inline]]
 pub fn exit(code: ExitStatusCode) {
     libc::exit(code.as_num());

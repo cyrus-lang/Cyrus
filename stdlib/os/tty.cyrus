@@ -1,0 +1,18 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 The Cyrus Language
+
+import std::libc{isatty};
+import std::os::env;
+import std::os{Fd};
+
+pub fn is_color_supported(fd: Fd) bool {
+    if (isatty(fd.as_num()) != 1) {
+        return false;
+    }
+
+    if (env::has("NO_COLOR")) {
+        return false;
+    }
+
+    return true;
+}

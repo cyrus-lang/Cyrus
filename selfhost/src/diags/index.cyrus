@@ -46,7 +46,8 @@ pub struct Diag {
     allocator: Allocator,
     pub mesg: String,
     pub under: Option<String>,
-    pub subs: Vec<SubDiag>,
+    pub helps: Vec<String>,
+    pub notes: Vec<String>,
     pub loc: Loc,
 
     [[inline]]
@@ -55,27 +56,38 @@ pub struct Diag {
         mesg: const uint8*,
         loc: Loc
     ) Self {
-        const str = String.from_str(allocator, mesg);
-        var subs: Vec<SubDiag> = Vec.new(allocator);
+        const mesg = String.from_str(allocator, mesg);
+        var helps: Vec<String> = Vec.new(allocator);
+        var notes: Vec<String> = Vec.new(allocator);
 
         return Self {
             allocator,
-            mesg: str, 
+            mesg: mesg, 
             under: .None,
-            subs, 
+            helps, 
+            notes,
             loc
         };
+    }
+    
+    [[inline]]
+    pub fn help(self: Self*, mesg: const uint8*) Self* {
+        const mesg = String.from_str(self->allocator, mesg);
+        self->helps.push(mesg);
+        return self;
+    }
+
+    [[inline]]
+    pub fn note(self: Self*, mesg: const uint8*) Self* {
+        const mesg = String.from_str(self->allocator, mesg);
+        self->notes.push(mesg);
+        return self;
     }
 
     pub fn under(self: Self*, mesg: const uint8*) Self* {
         const str = String.from_str(self->allocator, mesg);
         self->under = .Some(str);
         return self;
-    }
-
-    [[inline]]
-    pub fn add_sub(self: Self*, sub: SubDiag) {
-        self->subs.push(sub);
     }
 
     pub fn free(self: Self*) {
@@ -85,12 +97,18 @@ pub struct Diag {
             case .Some(str) => str.free();
         }
         
-        for (var i: usize; i < self->subs.len(); i += 1) {
-            var sub = self->subs.get_owned(i).unwrap();
-            sub.free();
+        for (var i: usize; i < self->helps.len(); i += 1) {
+            var str = self->helps.get_owned(i).unwrap();
+            str.free();
+        }
+        
+        for (var i: usize; i < self->notes.len(); i += 1) {
+            var str = self->notes.get_owned(i).unwrap();
+            str.free();
         }
 
-        self->subs.free();
+        self->helps.free();
+        self->notes.free();
     }
 }
 

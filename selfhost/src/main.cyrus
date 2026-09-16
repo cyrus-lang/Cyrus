@@ -56,9 +56,12 @@ fn command_test_diag(ctx: cli::ActionContext) {
     {
         const loc = Loc { line: 2, start: 20, end: 33 };
         
-        const diag = *Diag
-            .new(allocator, "cannot assign value of type `int32` to lvalue of type `int16`", loc)
-            .under("under mesg");
+        const diag = *Diag.new(allocator, "cannot assign value of type `int32` to lvalue of type `int16`", loc)
+            .under("this binding is declared with type `int16`")
+            ->help("consider explicitly annotating the type: `const x: int16 = 10;`")
+            ->help("or change the declared type to `int32` if the wider range is intended")
+            ->note("integer literals default to `int32` when no type annotation is present")
+            ->note("expected `int16`, found `int32`");
         
         dctx.report(diag);
     }
