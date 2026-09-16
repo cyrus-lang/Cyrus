@@ -1,7 +1,9 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 The Cyrus Language
 
-import std::collections{Vec, Map};
+import std::collections::hash_map{HashMap};
+import std::hash{hash_usize, eq_usize};
+import std::collections{Vec};
 import std::errors{ErrorOr};
 import std::string{String};
 import std::mem{Allocator};
@@ -13,26 +15,33 @@ import std::os{File};
 pub type SourceId = usize;
 
 pub struct SourceContext {
-    // TODO: Use HashMap instead
-    map: Map<SourceId, Source>,
+    map: HashMap<SourceId, Source>,
     next_id: SourceId,
 
-    [[inline]]
     pub fn new(allocator: Allocator) Self {
-        const map: Map<SourceId, Source> = Map.new(allocator);
+        // FIXME remove default_value
+        const default_value: Source = undefined;
+        const map: HashMap<SourceId, Source> = HashMap.with_hasher(
+            allocator, 
+            16, 
+            hash_usize, 
+            eq_usize, 
+            @cast(usize, 0), 
+            default_value
+        );
 
         return Self { map, next_id: 0 };
     }
 
     [[inline]]
-    pub fn get(self: const Self*, id: SourceId) Source {
-        return self->map.get(id).unwrap();
+    pub fn get(self: const Self*, id: SourceId) const Source* {
+        return self->map.get_const(id).unwrap();
     }
 
     pub fn add(self: Self*, source: Source) SourceId {
         const id = self->next_id;
-
-        if (!self->map.set(id, source)) {
+    
+        if (!self->map.insert(id, source)) {
             @panic("duplicate key when inserting source in SourceContext");
         }
 
@@ -40,21 +49,30 @@ pub struct SourceContext {
         return id;
     }
 
-    [[inline]]
     pub fn free(self: Self*) {
+        const iter = self->map.iter_owned();
+        
+        while (true) {
+            switch (iter.next()) case .Some(entry) else {
+                break;
+            }
+
+            const source = entry.1;
+            source.free();
+        }
+
         self->map.free();
     }
 }
 
 pub struct Source {
-    pub id: SourceId,      // Auto Increment ID
     pub content: String,   // Content
     pub path: Path,        // Path
-    pub loffs: Vec<usize>, // Byte offsets where each line start.
+    pub loffs: Vec<usize>, // Byte offsets where each line start
 
-    pub fn new(allocator: Allocator, id: SourceId, path: Path, content: String) Self {
+    pub fn new(allocator: Allocator, path: Path, content: String) Self {
         const loffs: Vec<usize> = Vec.new(allocator);
-        var source = Self { id, content, path, loffs };
+        var source = Self { content, path, loffs };
         source.compute_line_offsets();
         return source;
     }
@@ -134,9 +152,10 @@ pub struct Source {
         return .Some((&content[start_offset], offset - 1));
     }
 
-    [[inline]]
     pub fn free(self: Self*) {
+        self->content.free();
         self->loffs.free();
+        self->path.free();
     }
 }
 

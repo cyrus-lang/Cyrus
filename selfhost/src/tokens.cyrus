@@ -18,14 +18,15 @@ import std::format{
     format_bool
 };
 
+import source{SourceId};
+
 pub struct SourceTokens {
-    // pub source_id: SourceId,
+    pub source_id: SourceId,
     pub tokens: Vec<Token>,
     pub arena: ArenaAllocator,
 
-    [[inline]]
-    pub fn new(tokens: Vec<Token>, arena: ArenaAllocator) Self {
-        return Self { tokens, arena };
+    pub fn new(source_id: SourceId, tokens: Vec<Token>, arena: ArenaAllocator) Self {
+        return Self { source_id, tokens, arena };
     }
 
     pub fn free(self: Self*) {
@@ -53,14 +54,13 @@ pub struct Token : Format {
         return self->kind->format(writer);
     }
 
-    [[inline]]
     pub fn free(self: Self*) {
-        // switch (*self->kind) {
-        //     case .Ident(ident) => ident.free();
-        //     case .Literal(lit) => switch (lit) {
-        //         case .String { value, .. } => value.free();
-        //     }
-        // }
+        switch (*self->kind) {
+            case .Ident(ident) => ident.free();
+            case .Literal(lit) => switch (lit) {
+                case .String { value, .. } => value.free();
+            }
+        }
     }
 }
 
