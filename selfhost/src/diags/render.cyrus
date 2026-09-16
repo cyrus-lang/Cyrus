@@ -74,7 +74,7 @@ pub struct CompilerDiagRender {
     fn render_diag(self: Self*, diag: const Diag*, space: uint32) {
         const mesg = diag->mesg.as_str();
         const line = diag->loc.line;
-        const column = self->source.get_column(line, diag->loc.start);
+        const column = self->source.line_offset_to_column(line, diag->loc.start);
         const file_path =
             self->source.path.as_string().as_str();
 
@@ -118,9 +118,9 @@ pub struct CompilerDiagRender {
         self->render_line_number(loc.line - 1, line_number_offset);
         
         const content = self->source.content.as_str_const();
-        const current_line = self->source.get_line(loc.start).unwrap();
+        const current_line = self->source.nearest_line(loc.start).unwrap();
         const prev_line = saturating_sub(current_line, 1);
-        const current_line_start = self->source.get_line_offset(prev_line);
+        const current_line_start = self->source.offset_to_line(prev_line);
         const is_panel_expanded = prev_line != current_line && prev_line > 0;
 
         // Display previous line
@@ -176,10 +176,8 @@ pub struct CompilerDiagRender {
         self->writer.write("╰ ");
 
         if (self->colorize) {
-            // self->writer.write_char(' '); // BECAUSE OF TILDE SPACE
             colorize_fg(self->writer, .Cyan, mesg);
         } else {
-            // self->writer.write_char(' '); // BECAUSE OF TILDE SPACE
             self->writer.write(mesg);
         }
     }
@@ -229,7 +227,7 @@ pub struct CompilerDiagRender {
 
     fn render_line(self: Self*, n: usize) {
         const content = self->source.content.as_str_const();
-        const (ptr, len) = self->source.get_line_content(n).unwrap();
+        const (ptr, len) = self->source.get_line(n).unwrap();
 
         for (var i: usize = 0; i < len; i += 1) {    
             self->writer.write_char(content[i]);
