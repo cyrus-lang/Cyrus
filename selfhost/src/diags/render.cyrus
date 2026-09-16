@@ -46,7 +46,7 @@ pub struct CompilerDiagRender {
             self->render_diag(diag, space);
 
             if (i < diags->len() - 1) {
-                self->writer.write("\n\n");
+                self->writer.write("\n");
             }
         }
     }
@@ -173,17 +173,13 @@ pub struct CompilerDiagRender {
 
         self->render_space(offset);
         self->writer.write_char(' '); // BECAUSE OF TILDE SPACE
-        self->writer.write("|");
-
-        self->writer.write_char('\n');
-        self->render_pipe(space);
-        self->render_space(offset);
+        self->writer.write("╰ ");
 
         if (self->colorize) {
-            self->writer.write_char(' '); // BECAUSE OF TILDE SPACE
+            // self->writer.write_char(' '); // BECAUSE OF TILDE SPACE
             colorize_fg(self->writer, .Cyan, mesg);
         } else {
-            self->writer.write_char(' '); // BECAUSE OF TILDE SPACE
+            // self->writer.write_char(' '); // BECAUSE OF TILDE SPACE
             self->writer.write(mesg);
         }
     }
