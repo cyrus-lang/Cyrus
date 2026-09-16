@@ -151,7 +151,6 @@ pub struct File {
         libc::fclose(self->file);
     }
 
-    [[inline]]
     pub fn free(self: Self*) {
         self->close();
     }

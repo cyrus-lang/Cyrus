@@ -47,7 +47,6 @@ pub enum Value {
     Str(String),
     Float(float64),
 
-    [[inline]]
     pub fn free(self: Self*) {
         switch (*self) {
             case .Str(str) => str.free();

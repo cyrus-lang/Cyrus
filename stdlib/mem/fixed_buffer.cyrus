@@ -15,7 +15,6 @@ pub struct FixedBufferAllocator : Allocator {
     last_alloc_ptr: void*,
     last_alloc_size: usize,
 
-    [[inline]]
     pub fn new(buffer: uint8*, cap: usize) Self {
         @assert(buffer != null, "buffer cannot be null");
 
@@ -112,19 +111,6 @@ pub struct FixedBufferAllocator : Allocator {
     }
 
     [[inline]]
-    pub fn free(self: Self*, ptr: void*) {
-        if (ptr == null) {
-            return;
-        }
-
-        if (ptr == self->last_alloc_ptr) {
-            self->offset -= self->last_alloc_size;
-            self->last_alloc_ptr = null;
-            self->last_alloc_size = 0;
-        }
-    }
-
-    [[inline]]
     pub fn reset(self: Self*) {
         self->offset = 0;
         self->last_alloc_ptr = null;
@@ -139,5 +125,17 @@ pub struct FixedBufferAllocator : Allocator {
     [[inline]]
     pub fn bytes_remaining(self: const Self*) usize {
         return self->cap - self->offset;
+    }
+
+    pub fn free(self: Self*, ptr: void*) {
+        if (ptr == null) {
+            return;
+        }
+
+        if (ptr == self->last_alloc_ptr) {
+            self->offset -= self->last_alloc_size;
+            self->last_alloc_ptr = null;
+            self->last_alloc_size = 0;
+        }
     }
 }

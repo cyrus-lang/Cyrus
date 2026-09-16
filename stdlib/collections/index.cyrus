@@ -16,8 +16,6 @@ pub struct Vec<T> {
     cap: usize,
     len: usize,
 
-    /// Create a new array using a specific allocator.
-    [[inline]]
     pub fn new(allocator: Allocator) Self {
         const data: T* = allocator.alloc(@sizeof(T));
         if (!data) {
@@ -330,7 +328,6 @@ pub struct Vec<T> {
         return VecIterOwned<T> { vec: self, idx: 0 };
     }
 
-    [[inline]]
     pub fn free(self: Self*) {
         if (self->data != null) {
             self->allocator.free(self->data);
@@ -416,7 +413,6 @@ pub struct VecIterOwned<T> : IterConst<T> {
 pub struct Map<K, V> {
     entries: Vec<(K, V)>,
 
-    [[inline]]
     pub fn new(allocator: Allocator) Self {
         return Self { entries: Vec.new(allocator) };
     }
@@ -446,7 +442,6 @@ pub struct Map<K, V> {
         return .None;
     }
 
-    [[inline]]
     pub fn free(self: Self*) {
         self->entries.free();
     }
