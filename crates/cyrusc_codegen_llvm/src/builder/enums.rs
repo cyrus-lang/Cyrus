@@ -185,11 +185,46 @@ impl<'ll> CodeGenIRBuilder<'ll> {
             self.emit_cmp_neq(lhs_tag, rhs_tag)
         };
 
+        // If the enum has no payload variants tag comparison is sufficient
+        let enum_type = lhs.ty.as_enum(&self.tctx).unwrap();
+        let payload_variants: Vec<&CIREnumVariant> = enum_type
+            .variants
+            .iter()
+            .filter(|v| !matches!(v, CIREnumVariant::Unit(..)))
+            .collect();
+
+        if payload_variants.is_empty() {
+            return tag_result;
+        }
+
         let tag_result_int_value = tag_result.as_basic_value().into_int_value();
 
         let current_func = self.cur_func.unwrap();
         let payload_block = self.llvm_ctx.append_basic_block(current_func, "compare.enum.payload");
         let exit_block = self.llvm_ctx.append_basic_block(current_func, "compare.enum.exit");
+        
+        // Only compare payloads if tags match and the variant actually carries a payload
+
+        let cir_tag_type = enum_type.tag_type_or_infer_or_default();
+        let tag_type_llvm = self.emit_type(*cir_tag_type.clone()).into_int_type();
+
+        let mut is_payload_variant = None;
+        for variant in &payload_variants {
+            let variant_tag = tag_type_llvm.const_int(variant.tag() as u64, false);
+            let is_match = self
+                .llvm_builder
+                .build_int_compare(IntPredicate::EQ, tag1, variant_tag, "is_payload_variant")
+                .unwrap();
+            is_payload_variant = match is_payload_variant {
+                None => Some(is_match),
+                Some(prev) => Some(self.llvm_builder.build_or(prev, is_match, "or_payload").unwrap()),
+            };
+        }
+
+        let should_compare_payload = self
+            .llvm_builder
+            .build_and(tag_result.as_basic_value().into_int_value(), is_payload_variant.unwrap(), "should_cmp_payload")
+            .unwrap();
 
         let (branch_true, branch_false) = if cmp_eq {
             (payload_block, exit_block)
@@ -197,10 +232,22 @@ impl<'ll> CodeGenIRBuilder<'ll> {
             (exit_block, payload_block)
         };
 
+        let branch_cond = if cmp_eq {
+            should_compare_payload
+        } else {
+            self.llvm_builder
+                .build_or(
+                    tag_result.as_basic_value().into_int_value(),
+                    self.llvm_builder.build_not(is_payload_variant.unwrap(), "not_payload").unwrap(),
+                    "neq_branch_cond",
+                )
+                .unwrap()
+        };
+
         let entry_block = self.block_reg.cur_block.unwrap();
 
         self.llvm_builder
-            .build_conditional_branch(tag_result.as_basic_value().into_int_value(), branch_true, branch_false)
+            .build_conditional_branch(branch_cond, branch_true, branch_false)
             .unwrap();
 
         self.emit_basic_block(payload_block);
