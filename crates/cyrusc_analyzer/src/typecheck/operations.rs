@@ -33,14 +33,46 @@ impl<'a> AnalysisContext<'a> {
         infix: &mut TypedInfixExpr,
         expected_type: Option<SemaType>,
     ) -> Option<SemaType> {
-        let mut lhs_type = match self.analyze_expr(&mut infix.lhs, expected_type.clone()) {
-            Some(ty) => ty.const_inner().clone(),
-            None => return None,
-        };
+        // If LHS is an unnamed literal (A == x) analyze RHS first so its type can flow into LHS
+        let (mut lhs_type, mut rhs_type) = match infix.op {
+            InfixOperator::Equal | InfixOperator::NotEqual
+                if matches!(
+                    infix.lhs.kind,
+                    TypedExprKind::UnnamedEnumValue(_)
+                        | TypedExprKind::UnnamedStructValue(_)
+                        | TypedExprKind::UnnamedUnionValue(_)
+                ) && !matches!(
+                    infix.rhs.kind,
+                    TypedExprKind::UnnamedEnumValue(_)
+                        | TypedExprKind::UnnamedStructValue(_)
+                        | TypedExprKind::UnnamedUnionValue(_)
+                ) =>
+            {
+                let rhs = match self.analyze_expr(&mut infix.rhs, None) {
+                    Some(ty) => ty.const_inner().clone(),
+                    None => return None,
+                };
 
-        let mut rhs_type = match self.analyze_expr(&mut infix.rhs, Some(lhs_type.clone())) {
-            Some(ty) => ty.const_inner().clone(),
-            None => return None,
+                let lhs = match self.analyze_expr(&mut infix.lhs, Some(rhs.clone())) {
+                    Some(ty) => ty.const_inner().clone(),
+                    None => return None,
+                };
+
+                (lhs, rhs)
+            }
+            _ => {
+                let lhs = match self.analyze_expr(&mut infix.lhs, expected_type.clone()) {
+                    Some(ty) => ty.const_inner().clone(),
+                    None => return None,
+                };
+
+                let rhs = match self.analyze_expr(&mut infix.rhs, Some(lhs.clone())) {
+                    Some(ty) => ty.const_inner().clone(),
+                    None => return None,
+                };
+
+                (lhs, rhs)
+            }
         };
 
         lhs_type = self.expand_sema_type(lhs_type, infix.loc);
@@ -319,7 +351,21 @@ impl<'a> AnalysisContext<'a> {
         let lhs_type = lhs_type.const_inner();
         let rhs_type = rhs_type.const_inner();
 
+        // Disallow comparisons between two diff enum types
         if lhs_type.is_enum() && rhs_type.is_enum() {
+            if lhs_type != rhs_type {
+                self.reporter.report(Diag {
+                    level: DiagLevel::Error,
+                    kind: Box::new(AnalyzerDiagKind::InvalidInfix {
+                        lhs_type: format_sema_type(lhs_type.clone(), self.formatter),
+                        rhs_type: format_sema_type(rhs_type.clone(), self.formatter),
+                    }),
+                    loc: Some(loc),
+                    hint: None,
+                });
+                return None;
+            }
+
             return Some(SemaType::Plain(PlainType::Bool));
         }
 

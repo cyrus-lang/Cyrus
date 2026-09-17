@@ -1,0 +1,32 @@
+enum Color {
+    A,
+    B,
+    C,
+    Foo(int32),
+    Bar(bool)
+}
+
+pub fn main() {
+    const x = Color.Foo(10);
+    const y = Color.A;
+
+    @assert(!(x == .A));
+    @assert(x != .A);
+    @assert(!(.A == x));
+    @assert(.A != x);
+
+    @assert(y == .A);
+    @assert(.A == y);
+    @assert(!(y != .A));
+    @assert(!(.A != y));
+
+    @assert(.Foo(10) == x);
+    @assert(x == .Foo(10));
+    @assert(.Foo(20) != x);
+    @assert(x != .Foo(20));
+
+    @assert(Color.A == y);
+    @assert(y == Color.A);
+    @assert(Color.A != x);
+    @assert(x != Color.A);
+}
