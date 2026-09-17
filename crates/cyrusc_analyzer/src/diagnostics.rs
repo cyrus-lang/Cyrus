@@ -111,9 +111,6 @@ pub enum AnalyzerDiagKind {
     #[error("Type arguments supplied to non-generic type '{type_name}'.")]
     UnexpectedTypeArgs { type_name: String },
 
-    #[error("Type arguments cannot be applied to an instance.")]
-    InstanceCannotTakeTypeArgs,
-
     #[error("Could not resolve type for generic parameter '{param_name}'.")]
     UnresolvedGenericParameter { param_name: String },
 
