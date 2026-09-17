@@ -1930,25 +1930,34 @@ impl<'ll> CodeGenIRBuilder<'ll> {
 
         let mut llvm_args: Vec<BasicMetadataValueEnum<'ll>> = Vec::new();
 
-        let mut abi_param_index = 0;
+        let mut abi_param_type_index = 0;
+        let mut abi_param_info_index = 0;
 
         // emit self argument (if exists)
         if let Some(self_meta) = self_meta_opt {
             let (lvalue, rvalue) = self.emit_self_argument(self_meta.clone());
 
-            // use param index 0 for self
-            let self_param_types = &abi_func_info.params_types[0..1];
+            // This happens in cases where we are calling a method
+            // on an empty struct and byval Self argument.
+            // We should ignore emitting self argument to
+            // prevent compiler panic because ABI will not emit
+            // a param type for it.
             let self_abi_info = &abi_func_info.params_infos[0];
+            let self_llvm_type_count = if self_abi_info.is_ignore() { 0 } else { 1 };
+
+            // use param index 0 for self
+            let self_param_types =
+                &abi_func_info.params_types[abi_param_type_index..abi_param_type_index + self_llvm_type_count];
 
             self.emit_abi_arg(self_param_types, self_abi_info, &lvalue, &rvalue, &mut llvm_args);
 
-            abi_param_index = 1; // advance index
+            abi_param_type_index = self_llvm_type_count; // advance index
+            abi_param_info_index = 1; // advance index
         }
 
         // emit normal arguments
-        let remaining_param_infos = &abi_func_info.params_infos[abi_param_index..];
-
-        let remaining_param_types = &abi_func_info.params_types[abi_param_index..];
+        let remaining_param_infos = &abi_func_info.params_infos[abi_param_info_index..];
+        let remaining_param_types = &abi_func_info.params_types[abi_param_type_index..];
 
         let mut normal_args = self.emit_func_args(
             &call.args,
