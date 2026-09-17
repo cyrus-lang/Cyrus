@@ -200,8 +200,27 @@ impl<'source_file> Parser<'source_file> {
 
         self.must_be_left_paren()?;
 
-        let args = self.parse_expr_series(TokenKind::RightParen)?;
-        self.must_be_right_paren()?;
+        let args = if ident.value == "cast" {
+            let mut args = Vec::new();
+            // First argument of @cast is always a type specifier
+            self.next_token();
+            let type_spec = self.parse_type_specifier()?;
+            args.push(ASTExpr::TypeSpecifier(type_spec));
+
+            self.next_token();
+            self.expect_current(TokenKind::Comma)?;
+            // Second argument is the value expression to cast
+            args.push(self.parse_expr(Precedence::Lowest)?);
+
+            self.next_token();
+            self.must_be_right_paren()?;
+
+            args
+        } else {
+            let args = self.parse_expr_series(TokenKind::RightParen)?;
+            self.must_be_right_paren()?;
+            args
+        };
 
         if self.peek_token_is(TokenKind::LeftBrace) {
             self.next_token();

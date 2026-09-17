@@ -2612,8 +2612,40 @@ impl<'a> Resolver<'a> {
         let loc = type_spec.loc();
 
         let symbol_id = match type_spec {
-            TypeSpecifier::Ident(ident) => self.resolve_ident(&ident)?,
-            TypeSpecifier::ModuleImport(module_import) => self.resolve_module_import(module_import.clone())?,
+            TypeSpecifier::Ident(ident) => {
+                if let Some(generic_param_id) = self.resolve_generic_param_as_type(ident) {
+                    return Some(TypedExpr {
+                        kind: TypedExprKind::SemaType {
+                            ty: SemaType::GenericParam(generic_param_id),
+                            loc: ident.loc,
+                        },
+                        ty: None,
+                        val_cat: ValueCategory::Unknown,
+                        analyzed: false,
+                        loc,
+                    });
+                }
+
+                self.resolve_ident(ident)?
+            }
+            TypeSpecifier::ModuleImport(module_import) => {
+                if let Some(ident) = module_import.as_ident()
+                    && let Some(generic_param_id) = self.resolve_generic_param_as_type(&ident)
+                {
+                    return Some(TypedExpr {
+                        kind: TypedExprKind::SemaType {
+                            ty: SemaType::GenericParam(generic_param_id),
+                            loc: ident.loc,
+                        },
+                        ty: None,
+                        val_cat: ValueCategory::Unknown,
+                        analyzed: false,
+                        loc,
+                    });
+                }
+
+                self.resolve_module_import(module_import.clone())?
+            }
             _ => {
                 let ty = self.resolve_type(type_spec.clone(), loc)?;
 

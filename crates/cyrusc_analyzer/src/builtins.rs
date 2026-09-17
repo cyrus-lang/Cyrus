@@ -386,7 +386,7 @@ impl<'a> AnalysisContext<'a> {
         let type_expr = &builtin_func.args[0];
         let value_expr = &builtin_func.args[1];
 
-        let Some(mut target_type) = type_expr.kind.as_type_expr() else {
+        let Some(target_type) = type_expr.kind.as_type_expr() else {
             self.reporter.report(Diag {
                 level: DiagLevel::Error,
                 kind: Box::new(AnalyzerDiagKind::BuiltinCastRequiresTypeArgument),
@@ -396,6 +396,9 @@ impl<'a> AnalysisContext<'a> {
             return None;
         };
 
+        let Some(mut target_type) = self.normalize_sema_type(target_type, builtin_func.loc, 0) else {
+            return None;
+        };
         target_type = self.expand_sema_type(target_type, builtin_func.loc);
         target_type = self.substitute_type(&target_type);
 
