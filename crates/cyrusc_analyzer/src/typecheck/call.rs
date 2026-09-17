@@ -220,26 +220,10 @@ impl<'a> AnalysisContext<'a> {
 
         operand_type = self.normalize_sema_type(operand_type, method_call.loc, 0)?;
 
-        // unexpanded operand type includes type args?
-        let operand_includes_type_args = operand_type
-            .as_named_type()
-            .map(|named_type| named_type.type_args.len() > 0)
-            .unwrap_or(false);
-
         // expand operand type
         operand_type = self.expand_sema_type(operand_type, method_call.loc);
 
         let is_operand_interface = operand_type.as_interface_object().is_some() || operand_type.is_interface();
-
-        if !is_operand_instance && operand_includes_type_args {
-            self.reporter.report(Diag {
-                level: DiagLevel::Error,
-                kind: Box::new(AnalyzerDiagKind::InstanceCannotTakeTypeArgs),
-                loc: Some(method_call.loc),
-                hint: None,
-            });
-            return None;
-        }
 
         if is_operand_instance {
             self.analyze_instance_method_call(method_call, &operand_type, expected_type)
@@ -417,7 +401,7 @@ impl<'a> AnalysisContext<'a> {
                 level: DiagLevel::Error,
                 kind: Box::new(AnalyzerDiagKind::StaticMethodCallOnInstance { method_name }),
                 loc: Some(method_call.loc),
-                hint: Some("Call static methods on the type, e.g. 'TypeName.method(...)'.".to_string()),
+                hint: Some("Call static methods on the type, e.g. 'TypeName.method()'.".to_string()),
             });
             return None;
         }
@@ -470,10 +454,12 @@ impl<'a> AnalysisContext<'a> {
             this.unify_with_expected_type(
                 SemaType::Named(NamedType {
                     type_decl_id,
-                    type_args: inferred_type_args,
+                    type_args: inferred_type_args.clone(),
                 }),
                 &expected_type,
             );
+
+
 
             // apply defaults for generics
             this.apply_generic_defaults(method_decl.func_decl.generic_params.clone());
@@ -517,6 +503,7 @@ impl<'a> AnalysisContext<'a> {
 
                         method_decl.func_decl.params =
                             this.substitute_func_params(method_decl.func_decl.params.clone());
+
                         method_decl.func_decl.ret_type = this.substitute_type(&method_decl.func_decl.ret_type);
 
                         #[cfg(debug_assertions)]
