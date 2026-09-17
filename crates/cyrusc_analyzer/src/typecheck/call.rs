@@ -826,9 +826,18 @@ impl<'a> AnalysisContext<'a> {
     fn analyze_argument(&mut self, arg: &mut TypedExpr, mut expected_type: SemaType, loc: Loc) -> Option<SemaType> {
         expected_type = self.substitute_type(&expected_type);
 
-        let Some(mut arg_type) = self.analyze_expr(arg, Some(expected_type.clone())) else {
-            return None;
+        let mut arg_type = match self.analyze_expr(arg, Some(expected_type.clone())) {
+            Some(ty) => ty,
+            None => {
+                let err_ty = SemaType::Err(arg.loc);
+                arg.ty = Some(err_ty.clone());
+                return Some(err_ty);
+            }
         };
+
+        if arg_type.contains_error() || expected_type.contains_error() {
+            return Some(expected_type);
+        }
 
         arg_type = self.substitute_type(&arg_type);
 

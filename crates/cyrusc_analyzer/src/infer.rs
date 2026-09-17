@@ -135,7 +135,7 @@ impl InferCtx {
         let a = self.resolve(a);
         let b = self.resolve(b);
 
-        if a.is_err() || b.is_err() {
+        if a.contains_error() || b.contains_error() {
             return true;
         }
 

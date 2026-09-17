@@ -135,23 +135,48 @@ impl<'a> AnalysisContext<'a> {
         }
 
         if let Some(expr) = &mut var.rhs {
-            let Some(inferred_type) = self.analyze_expr(expr, var.ty.clone()) else {
-                return;
+            let inferred_type = match self.analyze_expr(expr, var.ty.clone()) {
+                Some(ty) => ty,
+                None => {
+                    let err_ty = SemaType::Err(var.loc);
+                    if var.ty.is_none() {
+                        var.ty = Some(err_ty.clone());
+                    }
+                    self.decl_tables.with_var_decl_mut(var.var_decl_id, |var_decl| {
+                        var_decl.rhs = var.rhs.clone();
+                        var_decl.ty = var.ty.clone();
+                    });
+                    return;
+                }
             };
 
             if var.ty.is_none() {
-                var.ty = Some(inferred_type);
+                var.ty = Some(inferred_type.clone());
             }
 
             var.ty = Some(self.coerce_interface_as_interface_object_if_possible(&var.ty.as_ref().unwrap(), &expr));
         }
 
         if let Some(ty) = &var.ty {
+            if ty.contains_error() {
+                self.decl_tables.with_var_decl_mut(var.var_decl_id, |var_decl| {
+                    var_decl.rhs = var.rhs.clone();
+                    var_decl.ty = var.ty.clone();
+                });
+                return;
+            }
+
             if self.is_const_qualified_type_assigned_to_non_const_variable(ty, var.is_const) {
                 self.report_const_qualified_type_assigned_to_non_const_variable(var.loc);
             }
 
             if !self.validate_variable_type(ty, var.rhs.is_some() || var.is_undef, var.loc) {
+                let err_ty = SemaType::Err(var.loc);
+                var.ty = Some(err_ty.clone());
+                self.decl_tables.with_var_decl_mut(var.var_decl_id, |var_decl| {
+                    var_decl.rhs = var.rhs.clone();
+                    var_decl.ty = var.ty.clone();
+                });
                 return;
             }
 
@@ -160,7 +185,9 @@ impl<'a> AnalysisContext<'a> {
 
         if let Some(expr) = &mut var.rhs {
             if let Some(target_type) = &var.ty {
-                if !self.is_assignable_to(expr.ty.clone().unwrap(), target_type.clone(), var.loc) {
+                if target_type.contains_error() || expr.ty.as_ref().map_or(false, |t| t.contains_error()) {
+                    // skip assignment type mismatch
+                } else if !self.is_assignable_to(expr.ty.clone().unwrap(), target_type.clone(), var.loc) {
                     self.reporter.report(Diag {
                         level: DiagLevel::Error,
                         kind: Box::new(AnalyzerDiagKind::AssignmentTypeMismatch {
@@ -172,6 +199,10 @@ impl<'a> AnalysisContext<'a> {
                     });
                 }
             }
+        }
+
+        if var.ty.is_none() {
+            var.ty = Some(SemaType::Err(var.loc));
         }
 
         if var.ty.is_none() && var.is_undef {

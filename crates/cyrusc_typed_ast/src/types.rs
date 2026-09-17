@@ -461,6 +461,61 @@ impl SemaType {
     }
 
     #[inline]
+    pub fn is_error(&self) -> bool {
+        matches!(self.const_inner(), SemaType::Err(_))
+    }
+
+    pub fn contains_error(&self) -> bool {
+        match self.const_inner() {
+            SemaType::Err(_) => true,
+            
+            SemaType::Unresolved(_)
+            | SemaType::Plain(_)
+            | SemaType::SelfType(_)
+            | SemaType::GenericParam(_)
+            | SemaType::InferVar(_)
+            | SemaType::Placeholder => false,
+
+            SemaType::Named(named_type) => named_type.type_args.iter().any(|type_arg| match type_arg {
+                TypedTypeArg::Type(ty, _) => ty.contains_error(),
+                TypedTypeArg::Infer => false,
+            }),
+
+            SemaType::Const(inner) | SemaType::Pointer(inner) => inner.contains_error(),
+
+            SemaType::Array(array) => array.element_type.contains_error(),
+
+            SemaType::FuncType(func) => {
+                func.params.list.iter().any(|ty| ty.contains_error())
+                    || func
+                        .params
+                        .variadic
+                        .as_ref()
+                        .map(|variadic| match &**variadic {
+                            TypedFuncTypeVariadicParam::UntypedCStyle => false,
+                            TypedFuncTypeVariadicParam::Typed(ty) => ty.contains_error(),
+                        })
+                        .unwrap_or(false)
+                    || func.ret_type.contains_error()
+            }
+
+            SemaType::Tuple(tuple) => tuple.elements.iter().any(|(ty, _)| ty.contains_error()),
+
+            SemaType::InterfaceObject(interface_obj) => {
+                interface_obj
+                    .interface_type
+                    .type_args
+                    .iter()
+                    .any(|type_arg| match type_arg {
+                        TypedTypeArg::Type(ty, _) => ty.contains_error(),
+                        TypedTypeArg::Infer => false,
+                    })
+                    || interface_obj.concrete_type.contains_error()
+            }
+        }
+    }
+
+    #[inline]
     pub fn is_unresolved(&self) -> bool {
         matches!(self, SemaType::Unresolved(_))
     }
