@@ -1,0 +1,38 @@
+// @stdout: hash_set ok
+
+import std::collections::hash_set{HashSet};
+import std::mem::libc{LibcAllocator};
+import std::mem{Allocator};
+import std::hash{hash_usize, eq_usize};
+import std::libc{printf};
+
+pub fn main() {
+    const allocator: Allocator = dynamic LibcAllocator.new();
+
+    var set: HashSet<usize> = HashSet.with_hasher(
+        allocator,
+        8,
+        hash_usize,
+        eq_usize,
+        0
+    );
+    defer set.free();
+
+    const ins1 = set.insert(10);
+    const ins2 = set.insert(20);
+    const ins3 = set.insert(30);
+    const ins_dup = set.insert(10);
+
+    const has10 = set.contains(10);
+    const has20 = set.contains(20);
+    const has40 = set.contains(40);
+
+    const rem20 = set.remove(20);
+    const still_has20 = set.contains(20);
+
+    if ((((((ins1 && ins2) && ins3) && !ins_dup) && (has10 && !has40)) && (rem20 && !still_has20)) && set.len() == 2) {
+        printf("hash_set ok\n");
+    } else {
+        printf("hash_set fail\n");
+    }
+}

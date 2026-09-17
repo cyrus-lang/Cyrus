@@ -1,0 +1,146 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 The Cyrus Language
+
+import std::mem{Allocator};
+import std::option{Option};
+
+pub struct RingBuffer<T> {
+    allocator: Allocator,
+    data: T*,
+    cap: usize,
+    head: usize,
+    len: usize,
+
+    pub fn new(allocator: Allocator) Self {
+        return RingBuffer.with_capacity(allocator, 16);
+    }
+
+    pub fn with_capacity(allocator: Allocator, capacity: usize) Self {
+        var cap: usize = 16;
+        while (cap < capacity) {
+            cap *= 2;
+        }
+
+        var data: T* = allocator.alloc(cap * @sizeof(T));
+        if (data == null) {
+            @panic("failed to allocate memory for RingBuffer");
+        }
+
+        return Self {
+            allocator,
+            data,
+            cap,
+            head: 0,
+            len: 0,
+        };
+    }
+
+    pub fn push_back(self: Self*, item: T) {
+        if (self->len == self->cap) {
+            self->grow(self->cap * 2);
+        }
+
+        const tail = (self->head + self->len) & (self->cap - 1);
+        self->data[tail] = item;
+        self->len += 1;
+    }
+
+    pub fn push_front(self: Self*, item: T) {
+        if (self->len == self->cap) {
+            self->grow(self->cap * 2);
+        }
+
+        self->head = (self->head + self->cap - 1) & (self->cap - 1);
+        self->data[self->head] = item;
+        self->len += 1;
+    }
+
+    pub fn pop_front(self: Self*) Option<T> {
+        if (self->len == 0) {
+            return .None;
+        }
+
+        const val = self->data[self->head];
+        self->head = (self->head + 1) & (self->cap - 1);
+        self->len -= 1;
+        return .Some(val);
+    }
+
+    pub fn pop_back(self: Self*) Option<T> {
+        if (self->len == 0) {
+            return .None;
+        }
+
+        const tail = (self->head + self->len - 1) & (self->cap - 1);
+        const val = self->data[tail];
+        self->len -= 1;
+        return .Some(val);
+    }
+
+    pub fn peek_front(self: const Self*) Option<const T*> {
+        if (self->len == 0) {
+            return .None;
+        }
+        return .Some(&self->data[self->head]);
+    }
+
+    pub fn peek_back(self: const Self*) Option<const T*> {
+        if (self->len == 0) {
+            return .None;
+        }
+        const tail = (self->head + self->len - 1) & (self->cap - 1);
+        return .Some(&self->data[tail]);
+    }
+
+    pub fn get(self: const Self*, index: usize) Option<const T*> {
+        if (index >= self->len) {
+            return .None;
+        }
+        const idx = (self->head + index) & (self->cap - 1);
+        return .Some(&self->data[idx]);
+    }
+
+    fn grow(self: Self*, new_cap: usize) {
+        var new_data: T* = self->allocator.alloc(new_cap * @sizeof(T));
+        if (new_data == null) {
+            @panic("failed to grow RingBuffer");
+        }
+
+        for (var i: usize = 0; i < self->len; i += 1) {
+            const old_idx = (self->head + i) & (self->cap - 1);
+            new_data[i] = self->data[old_idx];
+        }
+
+        self->allocator.free(self->data);
+        self->data = new_data;
+        self->head = 0;
+        self->cap = new_cap;
+    }
+
+    pub fn clear(self: Self*) {
+        self->head = 0;
+        self->len = 0;
+    }
+
+    pub fn len(self: const Self*) usize {
+        return self->len;
+    }
+
+    pub fn cap(self: const Self*) usize {
+        return self->cap;
+    }
+
+    pub fn is_empty(self: const Self*) bool {
+        return self->len == 0;
+    }
+
+    pub fn free(self: Self*) {
+        if (self->data != null) {
+            self->allocator.free(self->data);
+            self->data = null;
+            self->len = 0;
+            self->cap = 0;
+            self->head = 0;
+        }
+    }
+}

@@ -1,0 +1,42 @@
+// @stdout: heap ok
+
+import std::collections::heap{BinaryHeap};
+import std::mem::libc{LibcAllocator};
+import std::mem{Allocator};
+import std::libc{printf};
+
+fn min_comparator(a: const int32*, b: const int32*) bool {
+    return *a < *b;
+}
+
+pub fn main() {
+    const allocator: Allocator = dynamic LibcAllocator.new();
+
+    var heap: BinaryHeap<int32> = BinaryHeap.with_comparator(
+        allocator,
+        4,
+        min_comparator
+    );
+    defer heap.free();
+
+    heap.push(30);
+    heap.push(10);
+    heap.push(50);
+    heap.push(20);
+    heap.push(5);
+
+    const peek_first = *heap.peek().unwrap();
+
+    const p1 = heap.pop().unwrap();
+    const p2 = heap.pop().unwrap();
+    const p3 = heap.pop().unwrap();
+    const p4 = heap.pop().unwrap();
+    const p5 = heap.pop().unwrap();
+    const empty_pop = heap.pop();
+
+    if ((((((((peek_first == 5 && p1 == 5) && p2 == 10) && p3 == 20) && p4 == 30) && p5 == 50) && empty_pop.is_none()) && heap.is_empty())) {
+        printf("heap ok\n");
+    } else {
+        printf("heap fail\n");
+    }
+}
