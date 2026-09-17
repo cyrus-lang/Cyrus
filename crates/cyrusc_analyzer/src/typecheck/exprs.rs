@@ -153,26 +153,59 @@ impl<'a> AnalysisContext<'a> {
                 return ty;
             }
 
-            TypedExprKind::Poisoned => return None,
+            TypedExprKind::Poisoned => {
+                let err_ty = SemaType::Err(expr.loc);
+                expr.ty = Some(err_ty.clone());
+                return Some(err_ty);
+            }
         };
 
-        let expr_type = expr_type?;
+        let expr_type = match expr_type {
+            Some(ty) => ty,
+            None => {
+                if self.reporter.has_errors() {
+                    let err_ty = SemaType::Err(expr.loc);
+                    expr.ty = Some(err_ty.clone());
+                    return Some(err_ty);
+                }
+                return None;
+            }
+        };
+
+        if expr_type.contains_error() {
+            expr.ty = Some(expr_type.clone());
+            return Some(expr_type);
+        }
 
         let normalized_type = self.normalize_and_check_type_formation(expr_type, expr.loc, 0);
 
-        expr.ty = Some(normalized_type.clone()?);
+        let normalized_type = match normalized_type {
+            Some(ty) => ty,
+            None => {
+                if self.reporter.has_errors() {
+                    let err_ty = SemaType::Err(expr.loc);
+                    expr.ty = Some(err_ty.clone());
+                    return Some(err_ty);
+                }
+                return None;
+            }
+        };
+
+        expr.ty = Some(normalized_type.clone());
 
         if let Some(infer) = &self.func_env.infer {
-            expr.ty = Some(infer.resolve(&normalized_type.clone()?));
+            expr.ty = Some(infer.resolve(&normalized_type.clone()));
         }
 
         // debug
-        if cfg!(debug_assertions) && !self.reporter.has_errors() {
-            if let Some(ty) = expr.ty.clone() {
-                assert!(!ty.is_unresolved());
-            }
-            if expr.ty.is_none() {
-                panic!("expr.sema_type is empty!");
+        if cfg!(debug_assertions) {
+            if !self.reporter.has_errors() {
+                if let Some(ty) = expr.ty.clone() {
+                    assert!(!ty.is_unresolved());
+                }
+                if expr.ty.is_none() {
+                    panic!("expr.sema_type is empty!");
+                }
             }
         }
 
@@ -182,7 +215,7 @@ impl<'a> AnalysisContext<'a> {
 
         expr.val_cat = self.value_category_of_expr(expr);
 
-        normalized_type
+        Some(normalized_type)
     }
 
     fn value_category_of_expr(&self, expr: &TypedExpr) -> ValueCategory {

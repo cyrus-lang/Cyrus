@@ -67,6 +67,10 @@ impl<'a> AnalysisContext<'a> {
     }
 
     pub(crate) fn is_assignable_to(&mut self, mut rhs_type: SemaType, mut lhs_type: SemaType, loc: Loc) -> bool {
+        if rhs_type.contains_error() || lhs_type.contains_error() {
+            return true;
+        }
+
         lhs_type = self.expand_sema_type(lhs_type, loc);
         rhs_type = self.expand_sema_type(rhs_type, loc);
 
