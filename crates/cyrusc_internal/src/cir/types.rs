@@ -101,7 +101,7 @@ impl CIREnumType {
         self.tag_type
             .clone()
             .or_else(|| {
-                if self.includes_only_integer_payload() {
+                if self.includes_only_same_type_integer_payload() {
                     self.variant_expr_type()
                 } else {
                     None
@@ -113,7 +113,7 @@ impl CIREnumType {
     #[inline]
     pub fn is_scalar_optimizable(&self) -> bool {
         self.is_repr_c()
-            || (self.variant_expr_type().is_some() && self.includes_only_integer_payload())
+            || (self.variant_expr_type().is_some() && self.includes_only_same_type_integer_payload())
             || !self.includes_payload()
     }
 
@@ -145,9 +145,24 @@ impl CIREnumType {
         self.variants.iter().any(|v| !matches!(v, CIREnumVariant::Unit(_, _)))
     }
 
-    pub fn includes_only_integer_payload(&self) -> bool {
+    pub fn includes_only_same_type_integer_payload(&self) -> bool {
+        let is_valued_variant_signed = self
+            .variants
+            .first()
+            .map(|variant| match variant {
+                CIREnumVariant::Valued(_, ty, _) => ty.is_signed_integer(),
+                _ => false,
+            })
+            .unwrap_or(false);
+
         self.variants.iter().all(|v| match v {
-            CIREnumVariant::Valued(_, value_type, _) => value_type.is_integer_or_bool(),
+            CIREnumVariant::Valued(_, value_type, _) => {
+                if !value_type.is_integer_or_bool() {
+                    return false;
+                }
+
+                value_type.is_signed_integer() == is_valued_variant_signed
+            }
             CIREnumVariant::Unit(_, _) => true,
             CIREnumVariant::Payload(_, _, _) => false,
         })
