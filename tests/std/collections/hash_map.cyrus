@@ -1,15 +1,20 @@
 // @stdout: OK: insert and get\nOK: update existing key\nOK: remove key\nOK: table expansion and growth
 
-import std::mem::libc{LibcAllocator};
 import std::collections::hash_map{HashMap};
+import std::hash{hash_usize, eq_usize};
+import std::mem::libc{LibcAllocator};
 import std::mem{Allocator};
 import std::libc{printf};
-import std::hash{hash_usize, eq_usize};
 
 pub fn main() {
     var allocator: Allocator = dynamic LibcAllocator.new();
 
-    var map: HashMap<usize, usize> = HashMap.with_hasher(allocator, 16, hash_usize, eq_usize, @cast(usize, 0), @cast(usize, 0));
+    var map: HashMap<usize, usize> = HashMap.with_hasher(
+        allocator, 
+        16, 
+        hash_usize, 
+        eq_usize
+    );
     defer map.free();
 
     // Insert and Get
