@@ -1,0 +1,15 @@
+// @stdout: 42
+
+import std::libc{printf};
+
+struct Node {
+    pub value: int32,
+}
+
+pub fn main() {
+    var node = Node { value: 42 };
+    const raw_ptr: void* = &node;
+    const node_ptr = @cast(Node*, raw_ptr);
+
+    printf("%d\n", node_ptr->value);
+}
