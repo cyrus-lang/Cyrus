@@ -142,13 +142,7 @@ pub struct CompilerDiagRender {
         self->render_mark(mark_len);
 
         switch (under) {
-            case .Some(str) => {
-                self->render_under(
-                    str.as_str_const(), 
-                    column_offset, 
-                    space
-                );  
-            }
+            case .Some(str) => self->render_under(str.as_str_const(), column_offset, space);
         }
         
         self->writer.write_char('\n');
