@@ -3,6 +3,7 @@
 
 import std::mem::arena{ArenaAllocator};
 import std::io{Writer, StdoutWriter};
+import std::errors{ErrorOr};
 import std::mem{Allocator};
 import std::path{Path};
 import std::os{File};
@@ -46,7 +47,7 @@ pub struct LexicalResource {
     driver: CompilerDriver*,
 
     /// Driver handler responsible for tokenizing source content.
-    pub fn tokenize_source(self: Self*, path: Path) SourceTokens {
+    pub fn tokenize_source(self: Self*, path: Path) ErrorOr<SourceTokens, ()> {
         const allocator = self->driver->allocator;
 
         switch (File.open(&path, .Read)) case .Value(file) else {
@@ -65,9 +66,15 @@ pub struct LexicalResource {
         const lexer = Lexer.new(allocator, arena, &content, source_id, &self->driver->dctx);
         const tokens = SourceTokens.new(source_id, lexer.tokenize(), arena);
 
+        // Render diagnostics
         const writer: Writer = dynamic StdoutWriter.new();
         self->driver->render_diag_context(writer);
 
-        return tokens;
+        if (!self->driver->dctx.has_errors()) {
+            return .Value(tokens);
+        } else {
+            tokens.free();
+            return .Error(());
+        }
     }
 }

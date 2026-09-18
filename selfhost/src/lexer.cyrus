@@ -144,8 +144,13 @@ pub struct Lexer {
             case '\0' => return self->init_kind(.EOF);
 
             else => {
-                @panic("invalid char");
-                // return self->init_kind(.INVALID);
+                self->dctx->report(Diag.new(
+                    self->allocator, 
+                    .Error, 
+                    "invalid character", 
+                    Span { source_id: self->source_id, loc: self->loc() }
+                ));
+                return self->init_kind(.INVALID);
             }
         }
     }
@@ -215,13 +220,22 @@ pub struct Lexer {
 
     [[inline]]
     fn read_string_literal(self: Self*, suffix: Option<StringPrefix>) TokenKind* {
+        const loc = self->loc();
+
         self->read();
 
         var value = String.new(self->allocator);
 
         while (true) {
             if (self->is_eof()) {
-                @panic("unterminated string literal");
+                self->dctx->report(Diag.new(
+                    self->allocator, 
+                    .Error, 
+                    "unterminated string literal", 
+                    Span { source_id: self->source_id, loc }
+                ));
+                value.free();
+                return self->init_kind(.INVALID);
             }
 
             const char = self->cur();
@@ -275,11 +289,23 @@ pub struct Lexer {
             // Standard ASCII
             else {
                 if (self->is_eof()) {
-                    @panic("unterminated char literal");
+                    self->dctx->report(Diag.new(
+                        self->allocator,
+                        .Error,
+                        "unterminated character literal",
+                        Span { source_id: self->source_id, loc: self->loc() }
+                    ));
+                    return self->init_kind(.INVALID);
                 }
                 
                 if (!is_valid_escape(self->cur())) {
-                    @panic("invalid escape char");
+                   self->dctx->report(Diag.new(
+                        self->allocator,
+                        .Error,
+                        "invalid escape character",
+                        Span { source_id: self->source_id, loc: self->loc() }
+                    ));
+                    return self->init_kind(.INVALID);
                 }
                 
                 char = escape_sequence_to_char(self->cur());
@@ -289,7 +315,12 @@ pub struct Lexer {
         // Normal Char
         else {
             if (self->is_eof()) {
-                @panic("unterminated char literal");
+                const loc = self->loc();
+                const span = Span { source_id: self->source_id, loc };
+                self->dctx->report(
+                    Diag.new(self->allocator, .Error, "unterminated character literal", span)
+                );
+                return self->init_kind(.INVALID);
             }
             
             // REVIEW Add len_utf8 safety check
@@ -298,7 +329,13 @@ pub struct Lexer {
         }
 
         if (self->is_eof() || self->cur() != '\'') {
-            @panic("unterminated char literal");
+            self->dctx->report(Diag.new(
+                self->allocator,
+                .Error,
+                "unterminated character literal",
+                Span { source_id: self->source_id, loc: self->loc() }
+            ));
+            return self->init_kind(.INVALID);
         }
 
         self->read();
@@ -319,21 +356,45 @@ pub struct Lexer {
 
         // Must have at least one digit
         if (i == 0) {
-            @panic("unicode char must have at least one digit");
+            self->dctx->report(Diag.new(
+                self->allocator,
+                .Error,
+                "unicode character must have at least one digit",
+                Span { source_id: self->source_id, loc: self->loc() }
+            ));
+            return .None;
         }
 
         buf[i] = '\0';
 
         switch (try_str_as_unicode(&buf[0])) case .Some(unicode) else {
-            @panic("given number is not unicode");
+            self->dctx->report(Diag.new(
+                self->allocator,
+                .Error,
+                "given number is not unicode",
+                Span { source_id: self->source_id, loc: self->loc() }
+            ));
+            return .None;
         }
         
         if (unicode > 255) {
-            @panic("unicode char value must be in range 0x00 to 0xFF (0-255)"); 
+            self->dctx->report(Diag.new(
+                self->allocator,
+                .Error,
+                "unicode character value must be in range `0x00` to `0xff` (0-255)",
+                Span { source_id: self->source_id, loc: self->loc() }
+            ));
+            return .None;
         }
 
         if (self->cur() != '\'' && is_digit(self->cur())) {
-            @panic("unicode digits must be two");
+            self->dctx->report(Diag.new(
+                self->allocator,
+                .Error,
+                "unicode digits must be two",
+                Span { source_id: self->source_id, loc: self->loc() }
+            ));
+            return .None;
         }
 
         return .Some(@cast(uint8, unicode));
@@ -353,21 +414,45 @@ pub struct Lexer {
 
         // Must have at least one digit
         if (i == 0) {
-            @panic("hex char must have at least one digit");
+            self->dctx->report(Diag.new(
+                self->allocator,
+                .Error,
+                "hex character must have at least one digit",
+                Span { source_id: self->source_id, loc: self->loc() }
+            ));
+            return .None;
         }
 
         buf[i] = '\0';
 
         switch (try_str_as_hex(&buf[0])) case .Some(hex) else {
-            @panic("given number is not hex");
+            self->dctx->report(Diag.new(
+                self->allocator,
+                .Error,
+                "given number is not hex",
+                Span { source_id: self->source_id, loc: self->loc() }
+            ));
+            return .None;
         }
         
         if (hex > 255) {
-            @panic("hex char value must be in range 0x00 to 0xFF (0-255)");   
+            self->dctx->report(Diag.new(
+                self->allocator,
+                .Error,
+                "hex character value must be in range `0x00` to `0xff` (0-255)",
+                Span { source_id: self->source_id, loc: self->loc() }
+            ));
+            return .None;
         }
 
         if (self->cur() != '\'' && is_digit(self->cur())) {
-            @panic("hex digits must be two");
+            self->dctx->report(Diag.new(
+                self->allocator,
+                .Error,
+                "hex digits must be two",
+                Span { source_id: self->source_id, loc: self->loc() }
+            ));
+            return .None;
         }
 
         return .Some(@cast(uint8, hex));
@@ -386,21 +471,45 @@ pub struct Lexer {
 
         // Must have at least one digit
         if (i == 0) {
-            @panic("octal char must have at least one digit");
+            self->dctx->report(Diag.new(
+                self->allocator,
+                .Error,
+                "octal character must have at least one digit",
+                Span { source_id: self->source_id, loc: self->loc() }
+            ));
+            return .None;
         }
 
         buf[i] = '\0';
 
         switch (try_str_as_octal(&buf[0])) case .Some(octal) else {
-            @panic("given number is not octal");
+            self->dctx->report(Diag.new(
+                self->allocator,
+                .Error,
+                "given number is not octal",
+                Span { source_id: self->source_id, loc: self->loc() }
+            ));
+            return .None;
         }
         
         if (octal > 255) {
-            @panic("octal char digits must be in range 0 to 255");
+            self->dctx->report(Diag.new(
+                self->allocator,
+                .Error,
+                "octal character digits must be in range 0 to 255",
+                Span { source_id: self->source_id, loc: self->loc() }
+            ));
+            return .None;
         }
 
         if (self->cur() != '\'' && is_digit(self->cur())) {
-            @panic("octal digits must be three");
+            self->dctx->report(Diag.new(
+                self->allocator,
+                .Error,
+                "octal digits must be three",
+                Span { source_id: self->source_id, loc: self->loc() }
+            ));
+            return .None;
         }
 
         return .Some(@cast(uint8, octal));
@@ -477,7 +586,13 @@ pub struct Lexer {
         if (!self->is_eof()) {
             if (self->cur() == '.' && is_digit(self->peek())) {
                 if (base != 10) {
-                    @panic("non-decimal number cannot have mantissa");
+                    self->dctx->report(Diag.new(
+                        self->allocator,
+                        .Error,
+                        "non-decimal number cannot have mantissa",
+                        Span { source_id: self->source_id, loc: self->loc() }
+                    ));
+                    return self->init_kind(.INVALID);
                 }
 
                 is_float = true;
@@ -512,7 +627,13 @@ pub struct Lexer {
             const suffix = self->read_float_suffix();
 
             switch (try_str_as_float64(number.as_str_const())) case .Some(value) else {
-                @panic("float does not fit into float64");
+                self->dctx->report(Diag.new(
+                    self->allocator,
+                    .Error,
+                    "float does not fit into `float64`",
+                    Span { source_id: self->source_id, loc: self->loc() }
+                ));
+                return self->init_kind(.INVALID);
             }
             
             return self->init_kind(.Literal(.Float { value, suffix: .None }));
@@ -521,25 +642,49 @@ pub struct Lexer {
 
             if (base == 16) {
                 switch (try_str_as_hex(number.as_str_const())) case .Some(value) else {
-                    @panic("hex does not fit into uint8");
+                    self->dctx->report(Diag.new(
+                        self->allocator,
+                        .Error,
+                        "hex does not fit into `uint8`",
+                        Span { source_id: self->source_id, loc: self->loc() }
+                    ));
+                    return self->init_kind(.INVALID);
                 }
                 
                 return self->init_kind(.Literal(.Integer { value: .Unsigned(value), suffix }));
             } else if (base == 2) {
                 switch (try_str_as_binary(number.as_str_const())) case .Some(value) else {
-                    @panic("binary does not fit into uint8");
+                    self->dctx->report(Diag.new(
+                        self->allocator,
+                        .Error,
+                        "binary does not fit into `uint8`",
+                        Span { source_id: self->source_id, loc: self->loc() }
+                    ));
+                    return self->init_kind(.INVALID);
                 }
                 
                 return self->init_kind(.Literal(.Integer { value: .Unsigned(value), suffix }));
             } else if (is_unsigned || base != 10) {
                 switch (try_str_as_uint128(number.as_str_const())) case .Some(value) else {
-                    @panic("integer does not fit into u128");    
+                    self->dctx->report(Diag.new(
+                        self->allocator,
+                        .Error,
+                        "integer does not fit into `u128`",
+                        Span { source_id: self->source_id, loc: self->loc() }
+                    ));
+                    return self->init_kind(.INVALID);
                 }
                 
                 return self->init_kind(.Literal(.Integer { value: .Unsigned(value), suffix }));
             } else {
                 switch (try_str_as_int128(number.as_str_const())) case .Some(value) else {
-                    @panic("integer does not fit into i128");   
+                    self->dctx->report(Diag.new(
+                        self->allocator,
+                        .Error,
+                        "integer does not fit into `i128`",
+                        Span { source_id: self->source_id, loc: self->loc() }
+                    ));
+                    return self->init_kind(.INVALID);
                 }
                 
                 return self->init_kind(.Literal(.Integer { value: .Signed(value), suffix }));
@@ -628,11 +773,15 @@ pub struct Lexer {
                 }
 
                 if (depth > 0) {
-                    // ANCHOR
                     self->dctx->report(
-                        *Diag.new(self->allocator, "unclosed multi-line comment", self->source_id, loc)
-                            .under("comment is opened here")
-                            ->help("consider closing it with `*/`")
+                        Diag.new(
+                            self->allocator,
+                            .Error,
+                            "unclosed multi-line comment",
+                            Span { source_id: self->source_id, loc: self->loc() }
+                        )
+                        ->under("comment is opened here")
+                        ->help("consider closing it with `*/`")
                     );
                     return;
                 }

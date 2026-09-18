@@ -14,6 +14,67 @@ import std::os{exit};
 import tokens{Span, Loc};
 import source{SourceId};
 
+pub enum DiagLevel {
+    Error,
+    Warning,
+    Note,
+    Help,
+}
+
+pub enum LabelRole {
+    Primary,
+    Secondary,
+}
+
+pub struct Label {
+    pub span: Span,
+    pub mesg: Option<String>,
+    pub role: LabelRole,
+
+    pub fn new(span: Span, role: LabelRole) Self {
+        return Self { span, mesg: .None, role };
+    }
+
+    pub fn with_mesg(allocator: Allocator, span: Span, role: LabelRole, mesg: const uint8*) Self {
+        return Self { span, mesg: .Some(String.from_str(allocator, mesg)), role };
+    }
+
+    pub fn free(self: Self*) {
+        switch (self->mesg) {
+            case .Some(str) => str.free();
+            case .None => {}
+        }
+    }
+}
+
+pub enum SubDiagKind {
+    Note,
+    Help,
+    Info,
+}
+
+pub struct SubDiag {
+    pub kind: SubDiagKind,
+    pub mesg: String,
+    pub span: Option<Span>,
+
+    pub fn new(allocator: Allocator, kind: SubDiagKind, mesg: const uint8*, span: Option<Span>) Self {
+        return Self {
+            kind,
+            mesg: String.from_str(allocator, mesg),
+            span,
+        };
+    }
+
+    pub fn free(self: Self*) {
+        self->mesg.free();
+        switch (self->span) {
+            case .Some(span) => {}
+            case .None => {}
+        }
+    }
+}
+
 pub struct DiagContext {
     diags: Vec<Diag>,
 
@@ -22,14 +83,27 @@ pub struct DiagContext {
     }
 
     [[inline]]
-    pub fn report(self: Self*, diag: Diag) {
-        self->diags.push(diag);
+    pub fn report(self: Self*, diag_ptr: Diag*) {
+        self->diags.push(*diag_ptr);
+        diag_ptr->allocator.free(diag_ptr);
     }
 
     // FIXME Should return `const Vec<Diag>*` without requiring a grouped type
     [[inline]]
     pub fn diags(self: const Self*) const (Vec<Diag>)* {
         return &self->diags;
+    }
+
+    pub fn has_errors(self: const Self*) bool {
+        for (var i: usize = 0; i < self->diags.len(); i += 1) {
+            const diag = self->diags.get_const(i).unwrap();
+
+            if (diag->level == .Error) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     pub fn free(self: Self*) {
@@ -43,102 +117,84 @@ pub struct DiagContext {
 }
 
 pub struct Diag {
-    allocator: Allocator,
+    pub allocator: Allocator,
+    pub level: DiagLevel,
     pub mesg: String,
-    pub under: Option<String>,
-    pub helps: Vec<String>,
-    pub notes: Vec<String>,
     pub span: Span,
+    pub labels: Vec<Label>,
+    pub sub_diags: Vec<SubDiag>,
 
     pub fn new(
         allocator: Allocator,
+        level: DiagLevel,
         mesg: const uint8*,
-        source_id: SourceId,
-        loc: Loc
-    ) Self {
-        const span = Span { source_id, loc };
+        span: Span
+    ) Self* {
+        const self: Diag* = allocator.alloc(@sizeof(Diag));
+        @assert(self, "diag allocation failed");
 
-        return Self {
+        *self = Self {
             allocator,
+            level,
             mesg: String.from_str(allocator, mesg), 
-            helps: Vec.new(allocator), 
-            notes: Vec.new(allocator),
-            under: .None,
-            span
+            span,
+            labels: Vec.new(allocator),
+            sub_diags: Vec.new(allocator),
         };
+
+        return self;
     }
     
     [[inline]]
-    pub fn help(self: Self*, mesg: const uint8*) Self* {
-        const mesg = String.from_str(self->allocator, mesg);
-        self->helps.push(mesg);
+    pub fn under(self: Self*, mesg: const uint8*) Self* {
+        self->labels.push(Label.with_mesg(self->allocator, self->span, .Primary, mesg));
+        return self;
+    }
+
+    [[inline]]
+    pub fn secondary_span(self: Self*, span: Span, mesg: const uint8*) Self* {
+        self->labels.push(Label.with_mesg(self->allocator, span, .Secondary, mesg));
         return self;
     }
 
     [[inline]]
     pub fn note(self: Self*, mesg: const uint8*) Self* {
-        const mesg = String.from_str(self->allocator, mesg);
-        self->notes.push(mesg);
+        self->sub_diags.push(SubDiag.new(self->allocator, .Note, mesg, .None));
         return self;
     }
 
-    pub fn under(self: Self*, mesg: const uint8*) Self* {
-        const str = String.from_str(self->allocator, mesg);
-        self->under = .Some(str);
+    [[inline]]
+    pub fn note_at(self: Self*, span: Span, mesg: const uint8*) Self* {
+        self->sub_diags.push(SubDiag.new(self->allocator, .Note, mesg, .Some(span)));
+        return self;
+    }
+
+    [[inline]]
+    pub fn help(self: Self*, mesg: const uint8*) Self* {
+        self->sub_diags.push(SubDiag.new(self->allocator, .Help, mesg, .None));
+        return self;
+    }
+
+    [[inline]]
+    pub fn help_at(self: Self*, span: Span, mesg: const uint8*) Self* {
+        self->sub_diags.push(SubDiag.new(self->allocator, .Help, mesg, .Some(span)));
         return self;
     }
 
     pub fn free(self: Self*) {
         self->mesg.free();
 
-        switch (self->under) {
-            case .Some(str) => str.free();
+        for (var i: usize = 0; i < self->labels.len(); i += 1) {
+            var label = self->labels.get_owned(i).unwrap();
+            label.free();
         }
-        
-        for (var i: usize; i < self->helps.len(); i += 1) {
-            var str = self->helps.get_owned(i).unwrap();
-            str.free();
+        self->labels.free();
+
+        for (var i: usize = 0; i < self->sub_diags.len(); i += 1) {
+            var sub = self->sub_diags.get_owned(i).unwrap();
+            sub.free();
         }
-        
-        for (var i: usize; i < self->notes.len(); i += 1) {
-            var str = self->notes.get_owned(i).unwrap();
-            str.free();
-        }
-
-        self->helps.free();
-        self->notes.free();
-    }
-}
-
-pub enum SubDiagKind {
-    Hint,
-    Info
-}
-
-pub struct SubDiag {
-    pub kind: SubDiagKind,
-    pub mesg: String,
-    pub under: Option<String>,
-    pub span: Span,
-
-    pub fn new(
-        kind: SubDiagKind,
-        mesg: String,
-        under: Option<String>,
-        source_id: SourceId,
-        loc: Loc
-    ) Self {
-        const span = Span { source_id, loc };
-
-        return Self { kind, mesg, under, span };
-    }
-    
-    pub fn free(self: Self*) {
-        self->mesg.free();
-
-        switch (self->under) {
-            case .Some(str) => str.free();
-        }
+        self->sub_diags.free();
     }
 }
 
