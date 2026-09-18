@@ -1,15 +1,17 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 The Cyrus Language
 
-import std::io{Writer, StringWriter};
+import std::io{Writer, StringWriter, StderrWriter};
 import std::mem::libc{LibcAllocator};
 import std::libc{stderr, fprintf};
 import std::format{format_usize};
+import std::color{colorize_fg};
 import std::collections{Vec};
 import std::option{Option};
 import std::mem{Allocator};
 import std::string{String};
 import std::os{exit};
+import std::os::tty;
 
 import tokens{Span, Loc};
 import source{SourceId};
@@ -200,6 +202,15 @@ pub struct Diag {
 
 [[inline]]
 pub fn exit_with_compile_error(mesg: const uint8*) {
-    fprintf(stderr, "error: %s\n", mesg);
+    var writer: Writer = dynamic StderrWriter.new();
+
+    if (tty::is_color_supported(.Stderr)) {
+        colorize_fg(writer, .Red, "error: ");
+    } else {
+        writer.write("error: ");
+    }
+
+    writer.write(mesg);
+    writer.write_char('\n');
     exit(.Failure);
 }

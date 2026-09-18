@@ -13,10 +13,10 @@ import std::libc::types{c_char};
 import std::collections{Vec};
 import std::option{Option};
 import std::string{
-    String,
     try_str_as_int128,
     try_str_as_uint128,
-    try_str_as_float64
+    try_str_as_float64,
+    String
 };
 import std::libc{
     printf,

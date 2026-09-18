@@ -447,6 +447,68 @@ pub struct Args {
     pub fn values(self: const Self*) const Vec<Value>* {
         return self->values;
     }
+
+    [[inline]]
+    pub fn has(self: const Self*, idx: usize) bool {
+        return idx < self->values->len();
+    }
+
+    [[inline]]
+    pub fn get(self: const Self*, idx: usize) Option<const Value*> {
+        return self->values->get_const(idx);
+    }
+
+    [[inline]]
+    pub fn get_str(self: const Self*, idx: usize) Option<const uint8*> {
+        switch (self->get(idx)) {
+            case .Some(val) => {
+                switch (*val) {
+                    case .Str(s) => return .Some(s.as_str_const());
+                    else => return .None;
+                }
+            }
+            case .None => return .None;
+        }
+    }
+
+    [[inline]]
+    pub fn get_int(self: const Self*, idx: usize) Option<int64> {
+        switch (self->get(idx)) {
+            case .Some(val) => {
+                switch (*val) {
+                    case .Int(n) => return .Some(n);
+                    else => return .None;
+                }
+            }
+            case .None => return .None;
+        }
+    }
+
+    [[inline]]
+    pub fn get_float(self: const Self*, idx: usize) Option<float64> {
+        switch (self->get(idx)) {
+            case .Some(val) => {
+                switch (*val) {
+                    case .Float(f) => return .Some(f);
+                    else => return .None;
+                }
+            }
+            case .None => return .None;
+        }
+    }
+
+    [[inline]]
+    pub fn get_bool(self: const Self*, idx: usize) Option<bool> {
+        switch (self->get(idx)) {
+            case .Some(val) => {
+                switch (*val) {
+                    case .Bool(b) => return .Some(b);
+                    else => return .None;
+                }
+            }
+            case .None => return .None;
+        }
+    }
 }
 
 pub struct Cmds {
@@ -527,13 +589,13 @@ pub struct Cmd {
     pub sub_cmds: Cmds*,
     pub action: ActionFn,
     pub help: Option<uint8*>,
-    pub expected_args: Vec<ValueType>,
+    pub expected_args: Vec<ArgSpec>,
 
     pub fn new(allocator: Allocator, name: const uint8*, action: ActionFn) Self {
         const sub_cmds: Cmds* = alloc_init(allocator, Cmds.new(allocator));
         @assert(sub_cmds, "allocation failed for sub_cmds");
         
-        const expected_args: Vec<ValueType> = Vec.new(allocator);
+        const expected_args: Vec<ArgSpec> = Vec.new(allocator);
         const opts: Vec<Opt*> = Vec.new(allocator);
 
         return Self {
@@ -584,7 +646,12 @@ pub struct Cmd {
     }
 
     pub fn argument(self: Self*, ty: ValueType) Self* {
-        self->expected_args.push(ty);
+        self->expected_args.push(ArgSpec { ty, required: true });
+        return self;
+    }
+
+    pub fn optional_argument(self: Self*, ty: ValueType) Self* {
+        self->expected_args.push(ArgSpec { ty, required: false });
         return self;
     }
 
@@ -807,6 +874,11 @@ pub struct Opt {
     }
 }
 
+pub struct ArgSpec {
+    pub ty: ValueType,
+    pub required: bool
+}
+
 pub enum ValueType {
     Str,
     Int,
@@ -841,7 +913,16 @@ pub fn validate(args: const Args*, cmd: const Cmd*) bool {
     const expected_args = &cmd->expected_args;
     const values = args->values();
 
-    const expected_len = expected_args->len();
+    var min_args: usize = 0;
+    const max_args = expected_args->len();
+
+    for (var i: usize = 0; i < max_args; i += 1) {
+        const spec = expected_args->get_const(i).unwrap();
+        if (spec->required) {
+            min_args += 1;
+        }
+    }
+
     const got_len = values->len();
 
     const help = fn() {
@@ -858,20 +939,54 @@ pub fn validate(args: const Args*, cmd: const Cmd*) bool {
         );
     };
     
-    if (expected_len != got_len) {
-        fprintf(
-            stderr,
-            "Command `%s` expects %lu arguments but got %lu\n",
-            cmd->name,
-            expected_len,
-            got_len
-        );
+    if (got_len < min_args) {
+        if (min_args == max_args) {
+            fprintf(
+                stderr,
+                "Command `%s` expects %lu arguments but got %lu\n",
+                cmd->name,
+                min_args,
+                got_len
+            );
+        } else {
+            fprintf(
+                stderr,
+                "Command `%s` expects at least %lu arguments but got %lu\n",
+                cmd->name,
+                min_args,
+                got_len
+            );
+        }
+        help();
         return false;
     }
 
-    for (var i: usize = 0; i < values->len(); i += 1) {
+    if (got_len > max_args) {
+        if (min_args == max_args) {
+            fprintf(
+                stderr,
+                "Command `%s` expects %lu arguments but got %lu\n",
+                cmd->name,
+                max_args,
+                got_len
+            );
+        } else {
+            fprintf(
+                stderr,
+                "Command `%s` expects at most %lu arguments but got %lu\n",
+                cmd->name,
+                max_args,
+                got_len
+            );
+        }
+        help();
+        return false;
+    }
+
+    for (var i: usize = 0; i < got_len; i += 1) {
         const value = values->get_owned(i).unwrap();
-        const ty = expected_args->get_owned(i).unwrap();
+        const spec = expected_args->get_const(i).unwrap();
+        const ty = spec->ty;
 
         switch (value) {
             case .Str(_) => if (ty != .Str) { 
