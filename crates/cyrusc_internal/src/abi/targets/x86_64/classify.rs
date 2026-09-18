@@ -562,6 +562,23 @@ impl TargetABI for X86_64 {
             }
         };
 
+        // Codegen will emit i128 directly.
+        if is_integer_type!(ty, PlainType::Int128 | PlainType::UInt128) {
+            let is_signed = ty.is_signed_integer();
+            let attrs = ABIArgAttrs {
+                sign_ext: is_signed,
+                zero_ext: !is_signed,
+                ..Default::default()
+            };
+            return (
+                ABIArgInfo::direct_coerce(ty.clone()).with_attrs(attrs),
+                Registers {
+                    int_regs: 2,
+                    sse_regs: 0,
+                },
+            );
+        }
+
         let mut lo_class = RegisterClass::NoClass;
         let mut hi_class = RegisterClass::NoClass;
         classify(&self.info, &self.tctx, ty, 0, &mut lo_class, &mut hi_class);
