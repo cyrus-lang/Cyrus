@@ -15,7 +15,8 @@ import std::format{
     format_int128,
     format_uint128,
     format_float64,
-    format_bool
+    format_bool,
+    format
 };
 
 import source{SourceId};
@@ -580,17 +581,10 @@ pub fn dump_tokens(tokens: const Vec<Token>*) {
 
 /// Formats and writes a tokens to stdout.
 /// This is primarily used for debugging and emitting lexer result.
+[[inline]]
 pub fn dump_token(token: Token) {
-    // REVIEW: Refactor, use `format` helper method from stdlib.
-
-    var allocator: Allocator = dynamic LibcAllocator.new();
-
-    var fmt = String.new(allocator);
-    defer fmt.free();  
-
-    var writer: Writer = dynamic StringWriter.new(&fmt);
-
-    token.format(writer);
+    var fmt = format(dynamic token);
+    defer fmt.free();
         
     printf(
         "Token `%s`, Start: %u, End: %u\n",
