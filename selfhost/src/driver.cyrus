@@ -33,7 +33,10 @@ pub struct CompilerDriver {
         return LexicalResource { driver: self };
     }
 
-    pub fn render_diag_context(self: const Self*, writer: Writer) {
+    [[inline]]
+    pub fn render_diags(self: const Self*) {
+        const writer: Writer = dynamic StdoutWriter.new();
+        
         CompilerDiagRender.new(&self->dctx, &self->sctx, writer).render();
     }
 
@@ -66,9 +69,7 @@ pub struct LexicalResource {
         const lexer = Lexer.new(allocator, arena, &content, source_id, &self->driver->dctx);
         const tokens = SourceTokens.new(source_id, lexer.tokenize(), arena);
 
-        // Render diagnostics
-        const writer: Writer = dynamic StdoutWriter.new();
-        self->driver->render_diag_context(writer);
+        self->driver->render_diags();
 
         if (!self->driver->dctx.has_errors()) {
             return .Value(tokens);
