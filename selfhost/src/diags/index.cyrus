@@ -10,7 +10,9 @@ import std::option{Option};
 import std::mem{Allocator};
 import std::string{String};
 import std::os{exit};
-import tokens{Loc};
+
+import tokens{Span, Loc};
+import source{SourceId};
 
 pub struct DiagContext {
     diags: Vec<Diag>,
@@ -45,20 +47,23 @@ pub struct Diag {
     pub under: Option<String>,
     pub helps: Vec<String>,
     pub notes: Vec<String>,
-    pub loc: Loc,
+    pub span: Span,
 
     pub fn new(
         allocator: Allocator,
         mesg: const uint8*,
+        source_id: SourceId,
         loc: Loc
     ) Self {
+        const span = Span { source_id, loc };
+
         return Self {
             allocator,
             mesg: String.from_str(allocator, mesg), 
             helps: Vec.new(allocator), 
             notes: Vec.new(allocator),
             under: .None,
-            loc
+            span
         };
     }
     
@@ -113,15 +118,18 @@ pub struct SubDiag {
     pub kind: SubDiagKind,
     pub mesg: String,
     pub under: Option<String>,
-    pub loc: Loc,
+    pub span: Span,
 
     pub fn new(
         kind: SubDiagKind,
         mesg: String,
         under: Option<String>,
+        source_id: SourceId,
         loc: Loc
     ) Self {
-        return Self { kind, mesg, under, loc };
+        const span = Span { source_id, loc };
+
+        return Self { kind, mesg, under, span };
     }
     
     pub fn free(self: Self*) {
@@ -133,6 +141,7 @@ pub struct SubDiag {
     }
 }
 
+[[inline]]
 pub fn exit_with_compile_error(mesg: const uint8*) {
     fprintf(stderr, "error: %s\n", mesg);
     exit(.Failure);

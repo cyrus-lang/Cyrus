@@ -17,3 +17,5 @@ debug:
 					    --optimize=o0 \
 						--module-merge-mode=unified
 	
+clean: 
+	rm -rdf ./build

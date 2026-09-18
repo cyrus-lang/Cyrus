@@ -540,18 +540,22 @@ pub enum StringPrefix {
     }
 }
 
+pub struct Span {
+    pub source_id: SourceId,
+    pub loc: Loc,
+
+    [[inline]]
+    pub fn new(source_id: SourceId, loc: Loc) Self {
+        return Self { source_id, loc };
+    }
+}
+
 pub struct Loc {
-    pub line: usize,  // 1-indexed
-    pub start: usize, // byte offset
-    pub end: usize,   // byte offset
+    pub start: usize, // Byte offset
+    pub end: usize,   // Byte offset
 
     pub fn merge(self: Self, other: Self) Self {
         var merge = self;
-        
-        // Start line
-        if (other.line < merge.line) {
-            merge.line = other.line;
-        }
         
         // Byte offsets
         if (other.start < merge.start) {
@@ -589,9 +593,8 @@ pub fn dump_token(token: Token) {
     token.format(writer);
         
     printf(
-        "Token `%s`, Line: %lu, Start: %lu, End: %lu\n",
+        "Token `%s`, Start: %u, End: %u\n",
         fmt.as_str_const(),
-        token.loc.line,
         token.loc.start,
         token.loc.end
     );
