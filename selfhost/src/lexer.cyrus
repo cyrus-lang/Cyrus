@@ -257,6 +257,7 @@ pub struct Lexer {
 
     [[inline]]
     fn read_char_literal(self: Self*) TokenKind* {
+        const loc = self->loc();
         self->read();
 
         var char: uint8;
@@ -267,21 +268,21 @@ pub struct Lexer {
 
             // HEX
             if (self->cur() == 'x') {
-                switch (self->read_char_hex()) {
+                switch (self->read_char_hex(loc)) {
                     case .Some(x) => char = x;
                     case .None => return self->init_kind(.INVALID);
                 }
             }
             // UNICODE
             else if (self->cur() == 'u') {
-                switch (self->read_char_unicode()) {
+                switch (self->read_char_unicode(loc)) {
                     case .Some(x) => char = x;
                     case .None => return self->init_kind(.INVALID);
                 }
             }
             // OCTAL
             else if (is_digit(self->cur())) {
-                switch (self->read_char_octal()) {
+                switch (self->read_char_octal(loc)) {
                     case .Some(x) => char = x;
                     case .None => return self->init_kind(.INVALID);
                 }
@@ -293,7 +294,7 @@ pub struct Lexer {
                         self->allocator,
                         .Error,
                         "unterminated character literal",
-                        Span { source_id: self->source_id, loc: self->loc() }
+                        Span { source_id: self->source_id, loc }
                     ));
                     return self->init_kind(.INVALID);
                 }
@@ -303,7 +304,7 @@ pub struct Lexer {
                         self->allocator,
                         .Error,
                         "invalid escape character",
-                        Span { source_id: self->source_id, loc: self->loc() }
+                        Span { source_id: self->source_id, loc }
                     ));
                     return self->init_kind(.INVALID);
                 }
@@ -315,7 +316,6 @@ pub struct Lexer {
         // Normal Char
         else {
             if (self->is_eof()) {
-                const loc = self->loc();
                 const span = Span { source_id: self->source_id, loc };
                 self->dctx->report(
                     Diag.new(self->allocator, .Error, "unterminated character literal", span)
@@ -333,7 +333,7 @@ pub struct Lexer {
                 self->allocator,
                 .Error,
                 "unterminated character literal",
-                Span { source_id: self->source_id, loc: self->loc() }
+                Span { source_id: self->source_id, loc }
             ));
             return self->init_kind(.INVALID);
         }
@@ -342,7 +342,7 @@ pub struct Lexer {
         return self->init_kind(.Literal(.Char(char)));
     }
 
-    fn read_char_unicode(self: Self*) Option<uint8> {
+    fn read_char_unicode(self: Self*, loc: Loc) Option<uint8> {
         self->read();
 
         var buf: uint8[5];
@@ -360,7 +360,7 @@ pub struct Lexer {
                 self->allocator,
                 .Error,
                 "unicode character must have at least one digit",
-                Span { source_id: self->source_id, loc: self->loc() }
+                Span { source_id: self->source_id, loc }
             ));
             return .None;
         }
@@ -372,7 +372,7 @@ pub struct Lexer {
                 self->allocator,
                 .Error,
                 "given number is not unicode",
-                Span { source_id: self->source_id, loc: self->loc() }
+                Span { source_id: self->source_id, loc }
             ));
             return .None;
         }
@@ -382,7 +382,7 @@ pub struct Lexer {
                 self->allocator,
                 .Error,
                 "unicode character value must be in range `0x00` to `0xff` (0-255)",
-                Span { source_id: self->source_id, loc: self->loc() }
+                Span { source_id: self->source_id, loc }
             ));
             return .None;
         }
@@ -392,7 +392,7 @@ pub struct Lexer {
                 self->allocator,
                 .Error,
                 "unicode digits must be two",
-                Span { source_id: self->source_id, loc: self->loc() }
+                Span { source_id: self->source_id, loc }
             ));
             return .None;
         }
@@ -400,7 +400,7 @@ pub struct Lexer {
         return .Some(@cast(uint8, unicode));
     }
 
-    fn read_char_hex(self: Self*) Option<uint8> {
+    fn read_char_hex(self: Self*, loc: Loc) Option<uint8> {
         self->read();
 
         var buf: uint8[4];
@@ -418,7 +418,7 @@ pub struct Lexer {
                 self->allocator,
                 .Error,
                 "hex character must have at least one digit",
-                Span { source_id: self->source_id, loc: self->loc() }
+                Span { source_id: self->source_id, loc }
             ));
             return .None;
         }
@@ -430,7 +430,7 @@ pub struct Lexer {
                 self->allocator,
                 .Error,
                 "given number is not hex",
-                Span { source_id: self->source_id, loc: self->loc() }
+                Span { source_id: self->source_id, loc }
             ));
             return .None;
         }
@@ -440,7 +440,7 @@ pub struct Lexer {
                 self->allocator,
                 .Error,
                 "hex character value must be in range `0x00` to `0xff` (0-255)",
-                Span { source_id: self->source_id, loc: self->loc() }
+                Span { source_id: self->source_id, loc }
             ));
             return .None;
         }
@@ -450,7 +450,7 @@ pub struct Lexer {
                 self->allocator,
                 .Error,
                 "hex digits must be two",
-                Span { source_id: self->source_id, loc: self->loc() }
+                Span { source_id: self->source_id, loc }
             ));
             return .None;
         }
@@ -458,7 +458,7 @@ pub struct Lexer {
         return .Some(@cast(uint8, hex));
     }
 
-    fn read_char_octal(self: Self*) Option<uint8> {
+    fn read_char_octal(self: Self*, loc: Loc) Option<uint8> {
         var buf: uint8[4];
         var i: usize = 0;
 
@@ -475,7 +475,7 @@ pub struct Lexer {
                 self->allocator,
                 .Error,
                 "octal character must have at least one digit",
-                Span { source_id: self->source_id, loc: self->loc() }
+                Span { source_id: self->source_id, loc }
             ));
             return .None;
         }
@@ -487,7 +487,7 @@ pub struct Lexer {
                 self->allocator,
                 .Error,
                 "given number is not octal",
-                Span { source_id: self->source_id, loc: self->loc() }
+                Span { source_id: self->source_id, loc }
             ));
             return .None;
         }
@@ -497,7 +497,7 @@ pub struct Lexer {
                 self->allocator,
                 .Error,
                 "octal character digits must be in range 0 to 255",
-                Span { source_id: self->source_id, loc: self->loc() }
+                Span { source_id: self->source_id, loc }
             ));
             return .None;
         }
@@ -507,7 +507,7 @@ pub struct Lexer {
                 self->allocator,
                 .Error,
                 "octal digits must be three",
-                Span { source_id: self->source_id, loc: self->loc() }
+                Span { source_id: self->source_id, loc }
             ));
             return .None;
         }
