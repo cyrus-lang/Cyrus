@@ -13,7 +13,7 @@ import std::mem{Allocator};
 import std::os::tty;
 
 import diags{DiagContext, SubDiag, Diag};
-import source{Source};
+import source{Source, SourceContext};
 import tokens{Loc};
 
 // FIXME Remove
@@ -30,11 +30,11 @@ pub struct CompilerDiagRender {
     [[inline]]
     pub fn new(
         dctx: DiagContext,
+        source: Source,
         writer: Writer,
-        source: Source
     ) Self {
         const colorize = tty::is_color_supported(.Stderr);
-        return Self { dctx, writer, source, colorize };
+        return Self { dctx, source, writer, colorize };
     }
 
     pub fn render(self: Self*) {
@@ -82,7 +82,7 @@ pub struct CompilerDiagRender {
         self->render_panel(diag->under, diag->loc, space);
 
         self->render_helps(&diag->helps, space);
-        self->render_notes(&diag->helps, space);
+        self->render_notes(&diag->notes, space);
 
         self->render_pipe(space);
         self->writer.write_char('\n');
@@ -120,7 +120,7 @@ pub struct CompilerDiagRender {
         const content = self->source.content.as_str_const();
         const current_line = self->source.nearest_line(loc.start).unwrap();
         const prev_line = saturating_sub(current_line, 1);
-        const current_line_start = self->source.offset_to_line(prev_line);
+        const current_line_start = self->source.line_to_offset(prev_line);
         const is_panel_expanded = prev_line != current_line && prev_line > 0;
 
         // Display previous line
@@ -269,14 +269,14 @@ pub struct CompilerDiagRender {
         }
 
         for (var i: usize = 0; i < notes->len(); i += 1) {
-            const help = notes->get_owned(i).unwrap();
-            const mesg = help.as_str_const();
+            const note = notes->get_owned(i).unwrap();
+            const mesg = note.as_str_const();
 
             self->render_assign(space);
             if (self->colorize) {
                 colorize_fg(self->writer, .Green, " note: ");
             } else {
-                self->writer.write(" help: ");
+                self->writer.write(" note: ");
             }
             self->writer.write(mesg);
             self->writer.write_char('\n');

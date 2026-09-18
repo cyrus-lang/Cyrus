@@ -2,10 +2,12 @@
 // Copyright (c) 2026 The Cyrus Language
 
 import std::mem::arena{ArenaAllocator};
+import std::io{Writer, StdoutWriter};
 import std::mem{Allocator};
 import std::path{Path};
 import std::os{File};
 
+import diags::render{CompilerDiagRender};
 import source{Source, SourceContext};
 import tokens{SourceTokens};
 import diags{DiagContext};
@@ -26,8 +28,12 @@ pub struct CompilerDriver {
     }
 
     [[inline]]
-    pub fn create_lexical_resource(self: const Self*) LexicalResource {
+    pub fn create_lexical_resource(self: Self*) LexicalResource {
         return LexicalResource { driver: self };
+    }
+
+    pub fn render_diag_context(self: const Self*) {
+        @todo();
     }
 
     pub fn free(self: Self*) {
@@ -37,10 +43,10 @@ pub struct CompilerDriver {
 }
 
 pub struct LexicalResource {
-    driver: const CompilerDriver*,
+    driver: CompilerDriver*,
 
     /// Driver handler responsible for tokenizing source content.
-    pub fn tokenize_source(self: const Self*, path: Path) SourceTokens {
+    pub fn tokenize_source(self: Self*, path: Path) SourceTokens {
         const allocator = self->driver->allocator;
 
         switch (File.open(&path, .Read)) case .Value(file) else {
@@ -56,8 +62,11 @@ pub struct LexicalResource {
         const source_id = self->driver->sctx.add(source);
 
         const arena = ArenaAllocator.new(allocator, TOKENS_ARENA_SIZE);
-        const lexer = Lexer.new(allocator, arena, &content);
+        const lexer = Lexer.new(allocator, arena, &content, &self->driver->dctx);
         const tokens = SourceTokens.new(source_id, lexer.tokenize(), arena);
+
+        const writer: Writer = dynamic StdoutWriter.new();
+        CompilerDiagRender.new(self->driver->dctx, source, writer).render();
 
         return tokens;
     }
