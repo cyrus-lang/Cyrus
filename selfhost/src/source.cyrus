@@ -19,15 +19,11 @@ pub struct SourceContext {
     next_id: SourceId,
 
     pub fn new(allocator: Allocator) Self {
-        // FIXME remove default_value
-        const default_value: Source = undefined;
         const map: HashMap<SourceId, Source> = HashMap.with_hasher(
             allocator, 
             16, 
             hash_usize, 
-            eq_usize, 
-            @cast(usize, 0), 
-            default_value
+            eq_usize
         );
 
         return Self { map, next_id: 0 };
@@ -106,7 +102,7 @@ pub struct Source {
     }
 
     [[inline]]
-    pub fn offset_to_line(self: const Self*, line: usize) usize {
+    pub fn line_to_offset(self: const Self*, line: usize) usize {
         return self->loffs.get_owned(line).unwrap();
     }
 

@@ -24,6 +24,8 @@ import std::libc{
     strlen
 };
 
+import diags{DiagContext, Diag};
+import source{SourceId};
 import tokens{
     Token,
     TokenKind,
@@ -40,17 +42,24 @@ pub struct Lexer {
     allocator: Allocator,
     arena: ArenaAllocator,
     source: const String*,
+    dctx: DiagContext*,
     pos: usize,
     line: usize,
     col: usize,
     
-    pub fn new(allocator: Allocator, arena: ArenaAllocator, source: const String*) Self {
+    pub fn new(
+        allocator: Allocator, 
+        arena: ArenaAllocator, 
+        source: const String*,
+        dctx: DiagContext*
+    ) Self {
         @assert(source, "source cannot be null");
 
         return Self {
             allocator,
             arena,
             source,
+            dctx,
             pos: 0,
             line: 1,
             col: 1
@@ -589,6 +598,8 @@ pub struct Lexer {
             } 
             // Multi Line
             else if (self->peek() == '*') {
+                const loc = self->loc();
+
                 self->read(); // Consume `/`
                 self->read(); // Consume `*`
 
@@ -612,10 +623,13 @@ pub struct Lexer {
                 }
 
                 if (depth > 0) {
-                    printf("comment opened at line %lu\n", loc.line);
-                    const loc = self->loc();
-                    printf("current line %lu\n", loc.line);
-                    @panic("unclosed comment");
+                    // ANCHOR
+                    self->dctx->report(
+                        *Diag.new(self->allocator, "unclosed multi-line comment", loc)
+                            .under("comment is opened here")
+                            ->help("consider closing it with `*/`")
+                    );
+                    return;
                 }
 
                 // Skip any newlines after comment
