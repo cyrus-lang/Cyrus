@@ -12,52 +12,33 @@ import std::slices{Slice};
 import std::path{Path};
 import std::os{File};
 
-pub type SourceId = usize;
+pub type SourceId = uint32;
 
 pub struct SourceContext {
-    map: HashMap<SourceId, Source>,
-    next_id: SourceId,
+    sources: Vec<Source>,
 
     pub fn new(allocator: Allocator) Self {
-        const map: HashMap<SourceId, Source> = HashMap.with_hasher(
-            allocator, 
-            16, 
-            hash_usize, 
-            eq_usize
-        );
-
-        return Self { map, next_id: 0 };
+        return Self { sources: Vec.new(allocator) };
     }
 
     [[inline]]
     pub fn get(self: const Self*, id: SourceId) const Source* {
-        return self->map.get_const(id).unwrap();
+        return self->sources.get_const(@cast(usize, id)).unwrap();
     }
 
     pub fn add(self: Self*, source: Source) SourceId {
-        const id = self->next_id;
-    
-        if (!self->map.insert(id, source)) {
-            @panic("duplicate key when inserting source in SourceContext");
-        }
-
-        self->next_id += 1;
+        const id = @cast(SourceId, self->sources.len());
+        self->sources.push(source);
         return id;
     }
 
     pub fn free(self: Self*) {
-        const iter = self->map.iter_owned();
-        
-        while (true) {
-            switch (iter.next()) case .Some(entry) else {
-                break;
-            }
-
-            const source = entry.1;
+        for (var i: usize = 0; i < self->sources.len(); i += 1) {
+            var source = self->sources.get_owned(i).unwrap();
             source.free();
         }
 
-        self->map.free();
+        self->sources.free();
     }
 }
 
@@ -142,10 +123,25 @@ pub struct Source {
         const end_offset =
             self->loffs.get_owned(line).unwrap_or(self->content.len());
 
-        const offset = end_offset - start_offset;
-        const content = self->content.as_str_const();
+        if (start_offset >= end_offset || start_offset >= self->content.len()) {
+            return .None;
+        }
 
-        return .Some((&content[start_offset], offset - 1));
+        const content = self->content.as_str_const();
+        const ptr = &content[start_offset];
+        
+        var len = end_offset - start_offset;
+
+        // Removing possible newline at the end of the line
+        if (len > 0 && ptr[len - 1] == '\n') {
+            len -= 1;
+            
+            if (len > 0 && ptr[len - 1] == '\r') {
+                len -= 1;
+            }
+        }
+
+        return .Some((ptr, len));
     }
 
     pub fn free(self: Self*) {

@@ -34,6 +34,7 @@ import tokens{
     FloatSuffix,
     StringPrefix,
     Loc,
+    Span,
     escape_sequence_to_char,
     is_valid_escape
 };
@@ -42,6 +43,7 @@ pub struct Lexer {
     allocator: Allocator,
     arena: ArenaAllocator,
     source: const String*,
+    source_id: SourceId,
     dctx: DiagContext*,
     pos: usize,
     line: usize,
@@ -51,6 +53,7 @@ pub struct Lexer {
         allocator: Allocator, 
         arena: ArenaAllocator, 
         source: const String*,
+        source_id: SourceId,
         dctx: DiagContext*
     ) Self {
         @assert(source, "source cannot be null");
@@ -59,6 +62,7 @@ pub struct Lexer {
             allocator,
             arena,
             source,
+            source_id,
             dctx,
             pos: 0,
             line: 1,
@@ -89,16 +93,17 @@ pub struct Lexer {
         self->skip_comments();
 
         if (self->pos == self->source->len()) {
-            return Token {
-                kind: self->init_kind(.EOF),
-                loc: self->loc()
-            };
+            return Token.new(
+                self->init_kind(.EOF),
+                Loc { start: self->pos, end: self->pos }
+            );
         }
 
-        const loc = self->loc();
+        const start_pos = self->pos;
         const kind = self->read_kind();
+        const end_pos = self->pos;
 
-        return Token.new(kind, loc.merge(self->loc()));
+        return Token.new(kind, Loc { start: start_pos, end: end_pos });
     }
 
     [[inline(always)]]
@@ -625,7 +630,7 @@ pub struct Lexer {
                 if (depth > 0) {
                     // ANCHOR
                     self->dctx->report(
-                        *Diag.new(self->allocator, "unclosed multi-line comment", loc)
+                        *Diag.new(self->allocator, "unclosed multi-line comment", self->source_id, loc)
                             .under("comment is opened here")
                             ->help("consider closing it with `*/`")
                     );
@@ -840,7 +845,6 @@ pub struct Lexer {
     [[inline]]
     fn loc(self: const Self*) Loc {
         return Loc {
-            line: self->line, 
             start: self->pos,
             end: self->pos
         };

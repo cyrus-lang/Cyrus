@@ -14,7 +14,7 @@ import std::os::tty;
 
 import diags{DiagContext, SubDiag, Diag};
 import source{Source, SourceContext};
-import tokens{Loc};
+import tokens{Loc, Span};
 
 // FIXME Remove
 import std::libc{printf};
@@ -22,23 +22,23 @@ import std::libc{printf};
 const MIN_PANEL_SPACE: uint32 = 5;
 
 pub struct CompilerDiagRender {
-    dctx: DiagContext,
+    dctx: const DiagContext*,
+    sctx: const SourceContext*,
     writer: Writer,
-    source: Source,
     colorize: bool,
 
     [[inline]]
     pub fn new(
-        dctx: DiagContext,
-        source: Source,
+        dctx: const DiagContext*,
+        sctx: const SourceContext*,
         writer: Writer,
     ) Self {
         const colorize = tty::is_color_supported(.Stderr);
-        return Self { dctx, source, writer, colorize };
+        return Self { dctx, sctx, writer, colorize };
     }
 
     pub fn render(self: Self*) {
-        const diags = self->dctx.diags();
+        const diags = self->dctx->diags();
 
         for (var i: usize = 0; i < diags->len(); i += 1) {
             const diag = diags->get_const(i).unwrap();
@@ -52,34 +52,33 @@ pub struct CompilerDiagRender {
     }
 
     pub fn panel_space(self: const Self*, diag: const Diag*) uint32 {
-        const diags = self->dctx.diags();
+        const source = self->sctx->get(diag->span.source_id);
+        const start_line = source->nearest_line(diag->span.loc.start).unwrap_or(1);
+        const end_line = source->nearest_line(saturating_sub(diag->span.loc.end, 1)).unwrap_or(start_line);
+        const end_space = line_space(end_line);
 
-        var max_space: uint32 = MIN_PANEL_SPACE;
-
-        // Max space of diags
-        for (var i: usize = 0; i < diags->len(); i += 1) {
-            const diag = diags->get_const(i).unwrap();
-            const space = line_space(diag->loc.line);
-
-            if (space > max_space) {
-                max_space = space;
-            }
+        var max_space: uint32 = line_space(start_line);
+        
+        if (end_space > max_space) {
+            max_space = end_space;
+        }
+        if (max_space < MIN_PANEL_SPACE) {
+            max_space = MIN_PANEL_SPACE;
         }
 
-        // Plus two for reserving whitespace 
-        // for the pipe and the space before it
         return max_space + 2;
     }
     
     fn render_diag(self: Self*, diag: const Diag*, space: uint32) {
         const mesg = diag->mesg.as_str();
-        const line = diag->loc.line;
-        const column = self->source.line_offset_to_column(line, diag->loc.start);
-        const file_path =
-            self->source.path.as_string().as_str();
+        const span = diag->span;
+        const source = self->sctx->get(span.source_id);
+        const line = source->nearest_line(span.loc.start).unwrap_or(1);
+        const column = source->line_offset_to_column(line, span.loc.start);
+        const file_path = source->path.as_string().as_str();
 
         self->render_header(file_path, mesg, line, column);
-        self->render_panel(diag->under, diag->loc, space);
+        self->render_panel(diag->under, span, source, space);
 
         self->render_helps(&diag->helps, space);
         self->render_notes(&diag->notes, space);
@@ -108,45 +107,45 @@ pub struct CompilerDiagRender {
     fn render_panel(
         self: Self*,
         under: Option<String>,
-        loc: Loc,
+        span: Span,
+        source: const Source*,
         space: uint32
     ) {
         self->render_pipe(space);
         self->writer.write_char('\n');
 
-        const line_number_offset = (space - line_digits(loc.line)) - 2;
-        self->render_line_number(loc.line - 1, line_number_offset);
+        const line = source->nearest_line(span.loc.start).unwrap_or(1);
+        const line_number_offset = (space - line_digits(line)) - 2;
         
-        const content = self->source.content.as_str_const();
-        const current_line = self->source.nearest_line(loc.start).unwrap();
-        const prev_line = saturating_sub(current_line, 1);
-        const current_line_start = self->source.line_to_offset(prev_line);
-        const is_panel_expanded = prev_line != current_line && prev_line > 0;
+        const prev_line = saturating_sub(line, 1);
+        const is_panel_expanded = prev_line > 0 && prev_line < line;
 
-        // Display previous line
+        // Display previous line if expanded
         if (is_panel_expanded) {
-            self->render_line(prev_line);
-            self->render_line_number(loc.line, line_number_offset);
+            self->render_line_number(prev_line, line_number_offset);
+            self->render_line(source, prev_line);
         }
 
         // Display current line
-        for (var i: usize = current_line_start; i <= loc.end; i += 1) {
-            if (self->source.is_line_offset(i) && i != current_line_start) {
-                self->render_pipe(space);
-            }
-
-            self->writer.write_char(content[i]);
-        }
+        self->render_line_number(line, line_number_offset);
+        self->render_line(source, line);
 
         self->render_pipe(space);
-        self->render_space(loc.start - current_line_start);
-        self->render_mark(loc.end - loc.start);
+        const line_start = source->line_to_offset(line - 1);
+        const column_offset = span.loc.start - line_start;
+        self->render_space(column_offset);
+
+        var mark_len: usize = span.loc.end - span.loc.start;
+        if (mark_len == 0) {
+            mark_len = 1;
+        }
+        self->render_mark(mark_len);
 
         switch (under) {
             case .Some(str) => {
                 self->render_under(
                     str.as_str_const(), 
-                    loc.start - current_line_start, 
+                    column_offset, 
                     space
                 );  
             }
@@ -220,17 +219,16 @@ pub struct CompilerDiagRender {
 
     [[inline]]
     fn render_space(self: Self*, n: usize) {
-        for (var i: usize; i < n; i += 1) {
+        for (var i: usize = 0; i < n; i += 1) {
             self->writer.write(" ");
         }
     }
 
-    fn render_line(self: Self*, n: usize) {
-        const content = self->source.content.as_str_const();
-        const (ptr, len) = self->source.get_line(n).unwrap();
+    fn render_line(self: Self*, source: const Source*, n: usize) {
+        const (ptr, len) = source->get_line(n).unwrap();
 
         for (var i: usize = 0; i < len; i += 1) {    
-            self->writer.write_char(content[i]);
+            self->writer.write_char(ptr[i]);
         }
 
         self->writer.write_char('\n');
