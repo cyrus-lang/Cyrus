@@ -29,62 +29,6 @@ fn command_build(ctx: cli::ActionContext) {
     }
 }
 
-// FIXME Remove
-// fn command_test_diag(ctx: cli::ActionContext) {
-//     const allocator: Allocator = dynamic LibcAllocator.new();
-
-//     var writer: Writer = dynamic StderrWriter.new();
-
-//     var dctx = DiagContext.new(allocator);
-//     defer dctx.free();
-    
-//     var sctx = SourceContext.new(allocator);
-//     defer sctx.free();
-
-//     const code =
-// "pub fn main() {
-//     const x = 10;
-// }"; 
-//     var path = Path.new(allocator, "~/Code/Cyrus/Cyrus/tmp/main.cyrus");
-//     defer path.free();
-
-//     var content = String.from_str(allocator, code);
-//     defer content.free();
-
-//     var source = Source.new(allocator, 0, path, content);
-//     defer source.free();
-
-//     {
-//         const loc = Loc { line: 2, start: 20, end: 33 };
-        
-//         const diag = *Diag.new(allocator, "cannot assign value of type `int32` to lvalue of type `int16`", loc)
-//             .under("this binding is declared with type `int16`")
-//             ->help("consider explicitly annotating the type: `const x: int16 = 10;`")
-//             ->help("or change the declared type to `int32` if the wider range is intended")
-//             ->note("integer literals default to `int32` when no type annotation is present")
-//             ->note("expected `int16`, found `int32`");
-        
-//         dctx.report(diag);
-//     }
-
-//     {
-//         const loc = Loc { line: 2, start: 20, end: 33 };
-        
-//         const diag = *Diag.new(allocator, "cannot assign value of type `int32` to lvalue of type `int16`", loc)
-//             .under("this binding is declared with type `int16`")
-//             ->help("consider explicitly annotating the type: `const x: int16 = 10;`")
-//             ->help("or change the declared type to `int32` if the wider range is intended")
-//             ->note("integer literals default to `int32` when no type annotation is present")
-//             ->note("expected `int16`, found `int32`");
-        
-//         dctx.report(diag);
-//     }
-
-//     CompilerDiagRender
-//         .new(dctx, writer, source)
-//         .render();
-// }
-
 fn command_lex(ctx: cli::ActionContext) {
     const allocator: Allocator = dynamic LibcAllocator.new();
 
@@ -96,7 +40,9 @@ fn command_lex(ctx: cli::ActionContext) {
     // TODO Get path from App 
     const path = Path.new(allocator, "/home/tahad/Code/Cyrus/Cyrus/tmp/main.cyrus");
 
-    var source_tokens = lexical.tokenize_source(path);
+    switch (lexical.tokenize_source(path)) case .Value(var source_tokens) else {
+        return;
+    }
     defer source_tokens.free();
 
     dump_tokens(&source_tokens.tokens);
