@@ -3,65 +3,19 @@
 
 import std::libc::types{c_int, c_char};
 import std::mem::libc{LibcAllocator};
-import tokens{dump_tokens, Loc};
-import driver{CompilerDriver};
+import std::io{Writer, StderrWriter};
 import std::mem{Allocator};
+import std::string{String};
 import std::libc{printf};
 import std::path{Path};
 import std::cli;
-import version;
 
 import diags{DiagContext, Diag, exit_with_compile_error};
 import diags::render{CompilerDiagRender};
-import std::io{Writer, StderrWriter};
 import source{Source, SourceContext};
-import std::string{String};
-
-fn command_new(ctx: cli::ActionContext) {
-    @todo();
-}
-
-fn command_build(ctx: cli::ActionContext) {
-    printf("Build command triggered.\n");
-
-    if (ctx.opts->enabled("jobs")) {
-        printf("Jobs option enabled.\n");
-    }
-}
-
-fn command_tokenize(ctx: cli::ActionContext) {
-    const allocator: Allocator = dynamic LibcAllocator.new();
-
-    const driver = CompilerDriver.new(allocator);
-    defer driver.free();
-
-    const lexical = driver.create_lexical_resource();
-
-    switch (ctx.args->get_str(0)) {
-        case .Some(file_path) => {
-            const path = Path.new(allocator, file_path);
-
-            switch (lexical.tokenize_source(path)) case .Value(var source_tokens) else {
-                return;
-            }
-            defer source_tokens.free();
-
-            dump_tokens(&source_tokens.tokens);
-            printf("Read %lu tokens from `%s`\n", source_tokens.tokens.len(), path.as_string().as_str_const());
-        }
-        case .None => {
-            exit_with_compile_error("no input file provided");
-        }
-    }
-}
-
-fn command_parse(ctx: cli::ActionContext) {
-    @todo();
-}
-
-fn command_version(ctx: cli::ActionContext) {
-    printf("Cyrus %s\n", version::COMPILER_VERSION);
-}
+import tokens{dump_tokens, Loc};
+import driver{CompilerDriver};
+import version;
 
 pub fn main(argc: c_int, argv: c_char**) {
     const allocator: Allocator = dynamic LibcAllocator.new();
@@ -121,7 +75,6 @@ pub fn main(argc: c_int, argv: c_char**) {
         .help("Dump scanned tokens")
         ->optional_argument(.Str);
     
-    
     const parse_cmd = 
         cli::Cmd.new(allocator, "parse", command_parse)
         .help("Parse file")
@@ -141,4 +94,50 @@ pub fn main(argc: c_int, argv: c_char**) {
     app.register(*version_cmd);
 
     app.run(struct { argc, argv });
+}
+
+fn command_new(ctx: cli::ActionContext) {
+    @todo();
+}
+
+fn command_build(ctx: cli::ActionContext) {
+    printf("Build command triggered.\n");
+
+    if (ctx.opts->enabled("jobs")) {
+        printf("Jobs option enabled.\n");
+    }
+}
+
+fn command_tokenize(ctx: cli::ActionContext) {
+    const allocator: Allocator = dynamic LibcAllocator.new();
+
+    const driver = CompilerDriver.new(allocator);
+    defer driver.free();
+
+    const lexical = driver.create_lexical_resource();
+
+    switch (ctx.args->get_str(0)) {
+        case .Some(file_path) => {
+            const path = Path.new(allocator, file_path);
+
+            switch (lexical.tokenize_source(path)) case .Value(var source_tokens) else {
+                return;
+            }
+            defer source_tokens.free();
+
+            dump_tokens(&source_tokens.tokens);
+            printf("Read %lu tokens from `%s`\n", source_tokens.tokens.len(), path.as_string().as_str_const());
+        }
+        case .None => {
+            exit_with_compile_error("no input file provided");
+        }
+    }
+}
+
+fn command_parse(ctx: cli::ActionContext) {
+    @todo();
+}
+
+fn command_version(ctx: cli::ActionContext) {
+    printf("Cyrus %s\n", version::COMPILER_VERSION);
 }
