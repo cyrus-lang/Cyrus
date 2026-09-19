@@ -26,7 +26,11 @@ pub struct SourceTokens {
     pub tokens: Vec<Token>,
     pub arena: ArenaAllocator,
 
-    pub fn new(source_id: SourceId, tokens: Vec<Token>, arena: ArenaAllocator) Self {
+    pub fn new(
+        source_id: SourceId, 
+        tokens: Vec<Token>, 
+        arena: ArenaAllocator
+    ) Self {
         return Self { source_id, tokens, arena };
     }
 

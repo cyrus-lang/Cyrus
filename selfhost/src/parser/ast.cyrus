@@ -1,0 +1,61 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 The Cyrus Language
+
+import std::collections{Vec};
+import std::option{Option};
+import std::string{String};
+import std::mem{Allocator};
+
+import tokens{Span};
+
+pub type NodeId = usize;
+
+pub struct ASTProgram {
+    pub nodes: Vec<ASTNode>,
+    pub children: Vec<NodeId>,
+    pub statements: ASTNodeList,
+
+    pub fn new(allocator: Allocator) Self {
+        return Self {
+            nodes: Vec.new(allocator),
+            children: Vec.new(allocator),
+        };
+    }
+
+    pub fn create(self: Self*, node: ASTNode) NodeId {
+        const id = self->nodes.len();
+        self->nodes.push(node);
+        return id;
+    }
+}
+
+pub struct ASTNodeList {
+    pub start: usize,
+    pub len: usize,
+}
+
+pub enum ASTNode {
+    Import(ASTImport)   
+}
+
+pub struct ASTImport {
+    pub alias: Option<String>,
+    pub segments: Vec<ASTModuleSegment>,
+    pub relative_level: isize,
+    pub span: Span,
+}
+
+pub enum ASTModuleSegment {
+    Single(Vec<ASTModuleSegmentSingle>),
+    SubModule(ASTIdent),
+}
+
+pub struct ASTModuleSegmentSingle {
+    pub ident: ASTIdent,
+    pub renamed: Option<ASTIdent>,
+}
+
+pub struct ASTIdent {
+    pub str: String,
+    pub span: Span
+}

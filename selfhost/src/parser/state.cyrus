@@ -1,2 +1,159 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 The Cyrus Language
+
+import std::option{Option};
+
+import diags{DiagContext};
+import source{SourceId};
+import tokens{
+    Token, 
+    TokenKind, 
+    SourceTokens, 
+    Span
+};
+
+pub struct ParserState {
+    pub dctx: DiagContext*,
+    source_tokens: SourceTokens,
+    pos: usize,
+
+    [[inline]]
+    pub fn new(dctx: DiagContext*, source_tokens: SourceTokens) Self {
+        return Self { dctx, source_tokens, pos: 0 };
+    }
+
+    [[inline]]
+    pub fn source_id(self: const Self*) SourceId {
+        return self->source_tokens.source_id;
+    }
+
+    pub fn get(self: const Self*, idx: usize) Option<const Token*> {
+        return self->source_tokens
+            .tokens
+            .get_const(self->pos);
+    }
+
+    pub fn current(self: const Self*) const Token* {
+        return self->source_tokens
+            .tokens
+            .get_const(self->pos)
+            .unwrap();
+    }
+
+    [[inline]]
+    pub fn current_span(self: const Self*) Span {
+        const loc = self->current()->loc;
+        return Span.new(self->source_id(), loc);
+    }
+
+    pub fn next(self: Self*) Option<const Token*> {
+        switch (self->get(self->pos)) {
+            case .Some(token) => {
+                self->pos += 1;
+                return .Some(token);
+            }
+            case .None => {
+                return .None;
+            }
+        }
+    }
+
+    pub fn expect(self: Self*, kind: TokenKind) bool {
+        if (self->is(kind)) {
+            self->next();
+            return true;
+        }
+
+        const span = self->current_span();
+        // ANCHOR Diag
+        return false;
+    }
+
+    pub fn expect_peek(self: Self*, kind: TokenKind) bool {
+        if (self->is_peek(kind)) {
+            self->next();
+            return true;
+        }
+
+        const span = self->current_span();
+        // ANCHOR Diag
+        return false;
+    }
+
+    // TODO expect_left_paren
+    // TODO expect_peek_left_paren
+
+    pub fn is(self: const Self*, kind: TokenKind) bool {
+        switch (self->get(self->pos)) {
+            case .Some(token) => if (*token->kind == kind) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    pub fn is_literal(self: const Self*, kind: TokenKind) bool {
+        switch (self->get(self->pos)) {
+            case .Some(token) => switch (*token->kind) {
+                case .Literal(_) => return true;
+            }
+        }
+
+        return false;
+    }
+
+    pub fn is_ident(self: const Self*, kind: TokenKind) bool {
+        switch (self->get(self->pos)) {
+            case .Some(token) => switch (*token->kind) {
+                case .Ident(_) => return true;
+            }
+        }
+
+        return false;
+    }
+
+    pub fn is_peek(self: const Self*, kind: TokenKind) bool {
+        switch (self->get(self->pos + 1)) {
+            case .Some(token) => if (*token->kind == kind) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    pub fn is_peek_literal(self: const Self*, kind: TokenKind) bool {
+        switch (self->get(self->pos + 1)) {
+            case .Some(token) => switch (*token->kind) {
+                case .Literal(_) => return true;
+            }
+        }
+
+        return false;
+    }
+
+    pub fn is_peek_ident(self: const Self*, kind: TokenKind) bool {
+        switch (self->get(self->pos + 1)) {
+            case .Some(token) => switch (*token->kind) {
+                case .Ident(_) => return true;
+            }
+        }
+
+        return false;
+    }
+
+    pub fn sync(self: Self*) {
+        while (true) {
+            switch (*self->current()->kind) {
+                case .Semicolon
+                | .RightBrace
+                | .RightParen
+                | .RightBracket
+                | .EOF => break;
+            }
+
+            self->next();
+        }
+    }
+}

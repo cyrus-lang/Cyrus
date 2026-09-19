@@ -1,2 +1,25 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 The Cyrus Language
+
+import tokens{TokenKind};
+
+pub enum Prec {
+    Lowest       = 0,  // LOWEST
+    Assign       = 1,  // =
+    Or           = 2,  // ||
+    NullCoalesce = 3,  // ??
+    And          = 4,  // &&
+    Equals       = 5,  // ==, !=
+    LessGreater  = 6,  // >, <, >=, <=
+    Sum          = 7,  // +, -
+    Product      = 8,  // *, /, %
+    Bitwise      = 9,  // &, |, ~, &~, ^, <<, >>
+    Prefix       = 10, // -X, !X, &X
+    Call         = 11, // my_function(x)
+    Index        = 12, // array[index]
+    Field        = 13, // . and ->
+
+    pub fn prec_of(kind: TokenKind) Self {
+        @todo();
+    }
+}

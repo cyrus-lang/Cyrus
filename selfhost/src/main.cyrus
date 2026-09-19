@@ -116,26 +116,52 @@ fn command_tokenize(ctx: cli::ActionContext) {
 
     const lexical = driver.create_lexical_resource();
 
-    switch (ctx.args->get_str(0)) {
-        case .Some(file_path) => {
-            const path = Path.new(allocator, file_path);
-
-            switch (lexical.tokenize_source(path)) case .Value(var source_tokens) else {
-                return;
-            }
-            defer source_tokens.free();
-
-            dump_tokens(&source_tokens.tokens);
-            printf("Read %lu tokens from `%s`\n", source_tokens.tokens.len(), path.as_string().as_str_const());
-        }
-        case .None => {
-            exit_with_compile_error("no input file provided");
-        }
+    switch (ctx.args->get_str(0)) case .Some(file_path) else {
+        exit_with_compile_error("no input file provided");
+        @unreachable();
     }
+
+    const path = Path.new(allocator, file_path);
+
+    switch (lexical.tokenize_source(path)) case .Value(var source_tokens) else {
+        return;
+    }
+    defer source_tokens.free();
+
+    dump_tokens(&source_tokens.tokens);
+    
+    printf(
+        "Read %lu tokens from `%s`\n", 
+        source_tokens.tokens.len(), 
+        path.as_string().as_str_const()
+    );
 }
 
 fn command_parse(ctx: cli::ActionContext) {
-    @todo();
+    const allocator: Allocator = dynamic LibcAllocator.new();
+
+    const driver = CompilerDriver.new(allocator);
+    defer driver.free();
+
+    const lexical = driver.create_lexical_resource();
+
+    switch (ctx.args->get_str(0)) case .Some(file_path) else {
+        exit_with_compile_error("no input file provided");
+        @unreachable();
+    }
+
+    const path = Path.new(allocator, file_path);
+
+    switch (lexical.tokenize_source(path)) case .Value(var source_tokens) else {
+        return;
+    }
+    defer source_tokens.free();
+
+    switch (lexical.parse_source(source_tokens)) case .Value(var program) else {
+        return;
+    }
+
+    printf("Parsed.\n");
 }
 
 fn command_version(ctx: cli::ActionContext) {

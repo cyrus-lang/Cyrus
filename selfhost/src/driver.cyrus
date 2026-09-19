@@ -12,6 +12,7 @@ import diags::render{CompilerDiagRender};
 import source{Source, SourceContext};
 import tokens{SourceTokens};
 import diags{DiagContext};
+import parser{Parser};
 import lexer{Lexer};
 
 const TOKENS_ARENA_SIZE: usize = 65536;
@@ -67,15 +68,22 @@ pub struct LexicalResource {
 
         const arena = ArenaAllocator.new(allocator, TOKENS_ARENA_SIZE);
         const lexer = Lexer.new(allocator, arena, &content, source_id, &self->driver->dctx);
-        const tokens = SourceTokens.new(source_id, lexer.tokenize(), arena);
+        const source_tokens = SourceTokens.new(source_id, lexer.tokenize(), arena);
 
         self->driver->render_diags();
 
         if (!self->driver->dctx.has_errors()) {
-            return .Value(tokens);
+            return .Value(source_tokens);
         } else {
-            tokens.free();
+            source_tokens.free();
             return .Error(());
         }
+    }
+
+    /// Driver handler responsible for parsing source tokens.
+    pub fn parse_source(self: Self*, source_tokens: SourceTokens) ErrorOr<(), ()> {
+        const allocator = self->driver->allocator;
+
+        return Parser.parse(allocator, source_tokens, &self->driver->dctx);
     }
 }
