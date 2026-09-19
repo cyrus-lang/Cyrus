@@ -1,0 +1,12 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 The Cyrus Language
+
+import std::collections{Vec};
+
+pub struct CIRProgram {
+    body: Vec<CIRStmt>    
+}
+
+pub enum CIRStmt {
+    
+}

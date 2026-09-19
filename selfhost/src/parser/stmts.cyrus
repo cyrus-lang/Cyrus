@@ -1,2 +1,19 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 The Cyrus Language
+
+import .::state{ParserState};
+import diags{DiagContext};
+
+pub struct ParserStmts {
+    state: ParserState*,
+    dctx: DiagContext*,
+
+    [[inline]]
+    pub fn new(state: ParserState*, dctx: DiagContext*) Self {
+        return Self { state, dctx };
+    }
+
+    pub fn parse(self: Self*) {
+        @todo();
+    }
+}

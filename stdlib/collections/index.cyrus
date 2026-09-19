@@ -58,28 +58,27 @@ pub struct Vec<T> {
             );
 
             self->len = checked_add(self->len, original_len).unwrap();
-            return;
+        } else {
+            self->extend_from_ptr(other->data, other->len);
         }
-
-        self->extend_from_ptr(other->data, other->len);
     }
 
-    pub fn extend_from_ptr(self: Self*, ptr: T*, count: usize) {
-        if (count == 0) {
+    pub fn extend_from_ptr(self: Self*, ptr: T*, len: usize) {
+        if (len == 0) {
             return;
         }
 
         const old_len = self->len;
 
-        self->reserve(count);
+        self->reserve(len);
 
         memmove(
             self->data + old_len,
             ptr,
-            checked_mul(count, @sizeof(T)).unwrap()
+            checked_mul(len, @sizeof(T)).unwrap()
         );
 
-        self->len = checked_add(old_len, count).unwrap();
+        self->len = checked_add(old_len, len).unwrap();
     }
 
     /// Deep copy of the array. 

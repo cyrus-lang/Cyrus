@@ -42,7 +42,7 @@ import tokens{
 pub struct Lexer {
     allocator: Allocator,
     arena: ArenaAllocator,
-    source: const String*,
+    input: const String*,
     source_id: SourceId,
     dctx: DiagContext*,
     pos: usize,
@@ -52,16 +52,16 @@ pub struct Lexer {
     pub fn new(
         allocator: Allocator, 
         arena: ArenaAllocator, 
-        source: const String*,
+        input: const String*,
         source_id: SourceId,
         dctx: DiagContext*
     ) Self {
-        @assert(source, "source cannot be null");
+        @assert(input, "input cannot be null");
 
         return Self {
             allocator,
             arena,
-            source,
+            input,
             source_id,
             dctx,
             pos: 0,
@@ -92,7 +92,7 @@ pub struct Lexer {
         self->skip_ws();
         self->skip_comments();
 
-        if (self->pos == self->source->len()) {
+        if (self->pos == self->input->len()) {
             return Token.new(
                 self->init_kind(.EOF),
                 Loc { start: self->pos, end: self->pos }
@@ -108,7 +108,7 @@ pub struct Lexer {
 
     [[inline(always)]]
     fn read_kind(self: Self*) TokenKind* {
-        switch (self->source->get(self->pos)) case .Some(char) else {
+        switch (self->input->get(self->pos)) case .Some(char) else {
             return self->init_kind(.EOF);
         }
 
@@ -157,7 +157,7 @@ pub struct Lexer {
 
     /// Advances lexer by consuming a character and updates line and column.
     fn read(self: Self*) {
-        if (self->pos >= self->source->len()) {
+        if (self->pos >= self->input->len()) {
             return;
         }
 
@@ -165,7 +165,7 @@ pub struct Lexer {
 
         self->pos += 1; // consume
 
-        switch (self->source->get(next_pos)) {
+        switch (self->input->get(next_pos)) {
             case .Some(char) => {
                 if (char == '\n') {
                     self->line += 1;
@@ -970,14 +970,14 @@ pub struct Lexer {
 
     [[inline]]
     fn is_eof(self: const Self*) bool {
-        return self->pos >= self->source->len();
+        return self->pos >= self->input->len();
     }
 
     [[inline]]
     fn peek(self: const Self*) uint8 {
         const next_pos = self->pos + 1;
 
-        switch (self->source->get(next_pos)) {
+        switch (self->input->get(next_pos)) {
             case .Some(char) => return char;
             case .None => return '\0';
         }
@@ -985,7 +985,7 @@ pub struct Lexer {
 
     [[inline]]
     fn cur(self: const Self*) uint8 {
-        switch (self->source->get(self->pos)) {
+        switch (self->input->get(self->pos)) {
             case .Some(char) => return char;
             case .None => return '\0';
         }

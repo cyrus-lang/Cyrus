@@ -1,14 +1,33 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 The Cyrus Language
 
+import std::collections{Vec};
+import std::errors{ErrorOr};
+import std::mem{Allocator};
+
+import .::stmts{ParserStmts};
+import .::state{ParserState};
 import tokens{SourceTokens};
+import diags{DiagContext};
 
 pub struct Parser {
-    tokens: SourceTokens,
-    source_id: SourceId,
-    dctx: DiagContext*,
+    pub fn parse(
+        allocator: Allocator,
+        source_tokens: SourceTokens,
+        dctx: DiagContext*
+    ) ErrorOr<(), ()> {
+        const tokens = &source_tokens.tokens;
+    
+        var state = ParserState.new(dctx, source_tokens);
+        var stmts = ParserStmts.new(&state, dctx);
 
-    pub fn new(self: Self*) Self {
-        @todo()
+        // TODO ASTProgram.new()
+
+        for (var i: usize = 0; i < tokens->len(); i += 1) {
+            // TODO Parse Stmt
+        }    
+        
+        // ANCHOR Construct ASTProgram
+        return .Value(());
     }
 }
