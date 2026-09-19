@@ -1,20 +1,13 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 The Cyrus Language
 
-import std::libc{strlen, strcmp};
-
-pub fn hash_bytes(bytes: const uint8*, len: usize) uint64 {
-    var hash: uint64 = 5381;
-    for (var i: usize = 0; i < len; i += 1) {
-        hash = hash ^ (hash << 5) ^ @cast(uint64, bytes[i]);
-    }
-    return hash;
-}
+import std::libc{strlen};
 
 pub fn hash_str(str: const uint8*) uint64 {
     if (str == null) {
         return 0;
     }
+    
     const len = strlen(str);
     return hash_bytes(str, len);
 }
@@ -27,25 +20,41 @@ pub fn hash_usize(val: usize) uint64 {
     return x;
 }
 
+pub fn hash_bytes(bytes: const uint8*, len: usize) uint64 {
+    var hash: uint64 = 5381;
+
+    for (var i: usize = 0; i < len; i += 1) {
+        hash = hash ^ (hash << 5) ^ @cast(uint64, bytes[i]);
+    }
+
+    return hash;
+}
+
+[[inline]]
 pub fn hash_ptr(ptr: const void*) uint64 {
     const bytes: const uint8* = @cast(const uint8*, @cast(uintptr, ptr));
+    
     return hash_bytes(bytes, @sizeof(const void*));
 }
 
+pub fn eq_str(a: const uint8*, b: const uint8*) bool {
+    if (a == null || b == null) {
+        return false;
+    }
+    
+    if (a == b) {
+        return true;
+    }
+    
+    return false;
+}
+
+[[inline]]
 pub fn eq_usize(a: usize, b: usize) bool {
     return a == b;
 }
 
-pub fn eq_str(a: const uint8*, b: const uint8*) bool {
-    if (a == b) {
-        return true;
-    }
-    if ((a == null || b == null)) {
-        return false;
-    }
-    return strcmp(a, b) == 0;
-}
-
+[[inline]]
 pub fn eq_ptr(a: const void*, b: const void*) bool {
     return a == b;
 }

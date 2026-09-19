@@ -1,141 +1,161 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 The Cyrus Language
 
-import std::collections{Vec, Map};
+import std::collections::hash_map{HashMap};
+import std::hash{hash_usize, eq_usize};
+import std::collections{Vec};
 import std::errors{ErrorOr};
 import std::string{String};
 import std::mem{Allocator};
 import std::option{Option};
-import std::libc{printf};
 import std::slices{Slice};
 import std::path{Path};
 import std::os{File};
-import version;
-import driver;
-import cli;
 
-pub type SourceId = usize;
+pub type SourceId = uint32;
 
 pub struct SourceContext {
-    map: Map<SourceId, Source>,
-    next_id: SourceId,
+    sources: Vec<Source>,
 
     pub fn new(allocator: Allocator) Self {
-        const map: Map<SourceId, Source> = Map.new(allocator);
-
-        return Self { map, next_id: 0 };
+        return Self { sources: Vec.new(allocator) };
     }
 
-    pub fn get(self: const Self*, id: SourceId) Source {
-        return self->map.get(id).unwrap();
+    [[inline]]
+    pub fn get(self: const Self*, id: SourceId) const Source* {
+        return self->sources.get_const(@cast(usize, id)).unwrap();
     }
 
-    pub fn add(self: Self*, source: Source) {
-        if (!self->map.set(self->next_id, source)) {
-            @panic("duplicate key when inserting source in SourceContext");
+    pub fn add(self: Self*, source: Source) SourceId {
+        const id = @cast(SourceId, self->sources.len());
+        self->sources.push(source);
+        return id;
+    }
+
+    pub fn free(self: Self*) {
+        for (var i: usize = 0; i < self->sources.len(); i += 1) {
+            var source = self->sources.get_owned(i).unwrap();
+            source.free();
         }
 
-        self->next_id += 1;
+        self->sources.free();
     }
 }
 
 pub struct Source {
-    pub id: SourceId,      // Auto Increment ID
+    pub content: String,   // Content
     pub path: Path,        // Path
-    pub text: String,      // Content
-    pub loffs: Vec<usize>, // Byte offsets where each line start.
+    pub loffs: Vec<usize>, // Byte offsets where each line start
 
-    pub fn open(allocator: Allocator, id: SourceId, path: Path) ErrorOr<Self, ()> {
+    pub fn new(allocator: Allocator, path: Path, content: String) Self {
         const loffs: Vec<usize> = Vec.new(allocator);
-
-        var file: File = undefined;
-        switch (File.open(&path, .Read)) {
-            case .Value(_file) => file = _file;
-            case .Error(_) => return .Error(());
-        }
-
-        var text: String = undefined;
-        switch (file.read(allocator)) {
-            case .Value(_text) => text = _text;
-            case .Error(_) => return .Error(());
-        }
-
-        var source = Self { id, path, text, loffs };
+        var source = Self { content, path, loffs };
         source.compute_line_offsets();
-        return .Value(source);
+        return source;
     }
 
+    [[inline]]
     fn compute_line_offsets(self: const Self*) {
         // First line starts at byte offset zero
         self->loffs.push(0);
 
-        for (var i: usize = 0; i < self->text.len(); i += 1) {
-            const char = self->text.get(i).unwrap();
+        for (var i: usize = 0; i < self->content.len(); i += 1) {
+            const char = self->content.get(i).unwrap();
 
             if (is_newline(char)) {
-                self->loffs.push(i);
+                // Next line starts right after the newline
+                self->loffs.push(i + 1); 
             }
         }
     }
 
-    pub fn get_lines(self: const Self*, start: usize, end: usize) Option<Slice<uint8>> {
-        @assert(start < end, "invalid range of line numbers");
+    [[inline]]
+    pub fn line_offset_to_column(self: const Self*, line: usize, offset: usize) usize {
+        @assert(line > 0, "line number must be a 1-based index");
 
-        var ptr: uint8*;
-        var len: usize;
-
-        for (var i: usize = start; i < end + 1; i += 1) {
-            switch (self->get_line(i)) {
-                case .Some(slice) => {
-                    // Use first line's text pointer as buffer pointer
-                    // and compute selected lines range
-                    if (i == start) {
-                        ptr = slice.ptr();
-                    }
-
-                    len += slice.len();
-                }
-                case .None => return .None;
-            }
-        }
-
-        return .Some(Slice.new(ptr, len));
+        const line_start = self->loffs.get_owned(line - 1).unwrap();
+        return offset - line_start + 1;
     }
 
-    pub fn get_line(self: const Self*, n: usize) Option<Slice<uint8>> {
-        @assert(n > 0, "line number must be a 1-based index");
+    [[inline]]
+    pub fn is_line_offset(self: const Self*, offset: usize) bool {
+        return self->loffs.contains(offset);
+    }
 
-        switch (self->loffs.get(n - 1)) {
-            case .Some(start_offset) => {
-                const end_offset = self->loffs.get(n).unwrap_or(self->text.len());
-                const offset = end_offset - start_offset;
-                const text = self->text.as_str_const();
+    [[inline]]
+    pub fn line_to_offset(self: const Self*, line: usize) usize {
+        return self->loffs.get_owned(line).unwrap();
+    }
 
-                return .Some(Slice.new(&text[start_offset + 1], offset - 1));
-            }
-            case .None => return .None;
+    pub fn nearest_line(self: const Self*, offset: usize) Option<usize> {
+        if (self->loffs.len() == 0) {
+            return .None;
         }
+
+        var lo: usize = 0;
+        var hi: usize = self->loffs.len();
+        
+        while (lo < hi) {
+            const mid = lo + (hi - lo) / 2;
+
+            if (self->loffs.get_owned(mid).unwrap() <= offset) {
+                lo = mid + 1;
+            } else {
+                hi = mid;
+            }
+        }
+
+        if (lo == 0) {
+            // Offset is before the first line start
+            return .None; 
+        }
+
+        return .Some(lo); // 1-based line number
+    }
+
+    pub fn get_line(self: const Self*, line: usize) Option<(const uint8*, usize)> {
+        @assert(line > 0, "line number must be a 1-based index");
+
+        switch (self->loffs.get_owned(line - 1)) case .Some(start_offset) else {
+            return .None;
+        }
+
+        const end_offset =
+            self->loffs.get_owned(line).unwrap_or(self->content.len());
+
+        if (start_offset >= end_offset || start_offset >= self->content.len()) {
+            return .None;
+        }
+
+        const content = self->content.as_str_const();
+        const ptr = &content[start_offset];
+        
+        var len = end_offset - start_offset;
+
+        // Removing possible newline at the end of the line
+        if (len > 0 && ptr[len - 1] == '\n') {
+            len -= 1;
+            
+            if (len > 0 && ptr[len - 1] == '\r') {
+                len -= 1;
+            }
+        }
+
+        return .Some((ptr, len));
     }
 
     pub fn free(self: Self*) {
+        self->content.free();
         self->loffs.free();
-        self->text.free();
         self->path.free();
     }
 }
 
 /// Checks if a character is a newline character (single byte).
-///
-///  TODO: Add multi-byte UTF-8 support.
-/// 
-/// REVIEW: Move to utils and use alias for chars.
 [[inline]]
 fn is_newline(char: uint8) bool {
     switch (char) {
-        case 10 => return true; // Line Feed (\n)
-        case 13 => return true; // Carriage Return (\r)
-        case 11 => return true; // Vertical Tab
-        case 12 => return true; // Form Feed
+        case '\n' | '\r' | '\v' | '\f' => return true;
         else => return false;
     }
 }

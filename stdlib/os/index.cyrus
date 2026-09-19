@@ -18,7 +18,7 @@ pub struct File {
     mode: OpeningModes,
     
     pub fn open(path: const Path*, mode: OpeningModes) ErrorOr<Self, ErrorStr> {
-        const path_str = path->as_string_const().as_str_const();
+        const path_str = path->as_string().as_str_const();
         const mode_str = mode.as_str();
 
     	const file = libc::fopen(path_str, mode_str);
@@ -42,7 +42,7 @@ pub struct File {
     }
 
     pub fn remove(self: const Self*) bool {
-        const path_str = self->path->as_string_const().as_str_const();
+        const path_str = self->path->as_string().as_str_const();
         const result = libc::remove(path_str);
         return result == 0;
     }
@@ -104,7 +104,7 @@ pub struct File {
     }
 
     pub fn exists(path: const Path*) bool {
-        const path_str = path->as_string_const().as_str_const();
+        const path_str = path->as_string().as_str_const();
         const mode_str = OpeningModes.Read.as_str();
 
         const file = libc::fopen(path_str, mode_str);
@@ -118,8 +118,8 @@ pub struct File {
     }
 
     pub fn rename(old_path: const Path*, new_path: const Path*) ErrorOr<(), ()> {
-        const old_path_str = old_path->as_string_const().as_str_const();
-        const new_path_str = new_path->as_string_const().as_str_const();
+        const old_path_str = old_path->as_string().as_str_const();
+        const new_path_str = new_path->as_string().as_str_const();
 
         const result = libc::rename(old_path_str, new_path_str);
         if (result != 0) {
@@ -151,7 +151,6 @@ pub struct File {
         libc::fclose(self->file);
     }
 
-    [[inline]]
     pub fn free(self: Self*) {
         self->close();
     }
@@ -209,6 +208,17 @@ pub enum ExitStatusCode {
     AllocationError = 5,
     FileOperationError = 6,
     
+    pub fn as_num(self: Self) int32 {
+        return @cast(int32, self);
+    }
+}
+
+pub enum Fd {
+    Stdin = 0,
+    Stdout = 1,
+    Stderr = 2,
+
+    [[inline]]
     pub fn as_num(self: Self) int32 {
         return @cast(int32, self);
     }

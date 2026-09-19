@@ -1,0 +1,8 @@
+// @stdout: Root: 300
+
+import std::libc{printf};
+import ..::..::_root_mod;
+
+pub fn main() {
+    printf("Root: %d\n", _root_mod::get_root_val());
+}

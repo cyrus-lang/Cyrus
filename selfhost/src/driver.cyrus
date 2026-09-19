@@ -2,31 +2,80 @@
 // Copyright (c) 2026 The Cyrus Language
 
 import std::mem::arena{ArenaAllocator};
-import tokens{SourceTokens};
+import std::io{Writer, StdoutWriter};
+import std::errors{ErrorOr};
 import std::mem{Allocator};
 import std::path{Path};
 import std::os{File};
+
+import diags::render{CompilerDiagRender};
+import source{Source, SourceContext};
+import tokens{SourceTokens};
+import diags{DiagContext};
 import lexer{Lexer};
 
-// Driver handler responsible for tokenizing source content.
-// Will terminate the compiler if any error raised.
-pub fn tokenize_source(
-    allocator: Allocator,
-    path: const Path*
-) SourceTokens {
-    switch (File.open(path, .Read)) case .Value(file) else {
-        @panic("could not open file");
+const TOKENS_ARENA_SIZE: usize = 65536;
+
+pub struct CompilerDriver {
+    pub allocator: Allocator,
+    pub dctx: DiagContext,
+    pub sctx: SourceContext,
+
+    pub fn new(allocator: Allocator) Self {
+        const sctx = SourceContext.new(allocator);
+        const dctx = DiagContext.new(allocator);
+        
+        return Self { allocator, dctx, sctx };
     }
-    defer file.close();
 
-    switch (file.read(allocator)) case .Value(source) else {
-        @panic("could not read file");
+    [[inline]]
+    pub fn create_lexical_resource(self: Self*) LexicalResource {
+        return LexicalResource { driver: self };
     }
-    defer source.free();
 
-    var arena = ArenaAllocator.new(allocator, 65536);
+    [[inline]]
+    pub fn render_diags(self: const Self*) {
+        const writer: Writer = dynamic StdoutWriter.new();
+        
+        CompilerDiagRender.new(&self->dctx, &self->sctx, writer).render();
+    }
 
-    var lexer = Lexer.new(allocator, arena, &source);
-    
-    return SourceTokens.new(lexer.tokenize(), arena);
+    pub fn free(self: Self*) {
+        self->dctx.free();
+        self->sctx.free();
+    }
+}
+
+pub struct LexicalResource {
+    driver: CompilerDriver*,
+
+    /// Driver handler responsible for tokenizing source content.
+    pub fn tokenize_source(self: Self*, path: Path) ErrorOr<SourceTokens, ()> {
+        const allocator = self->driver->allocator;
+
+        switch (File.open(&path, .Read)) case .Value(file) else {
+            @panic("could not open file");
+        }
+        defer file.close();
+
+        switch (file.read(allocator)) case .Value(content) else {
+            @panic("could not read file");
+        }
+
+        const source = Source.new(allocator, path, content);
+        const source_id = self->driver->sctx.add(source);
+
+        const arena = ArenaAllocator.new(allocator, TOKENS_ARENA_SIZE);
+        const lexer = Lexer.new(allocator, arena, &content, source_id, &self->driver->dctx);
+        const tokens = SourceTokens.new(source_id, lexer.tokenize(), arena);
+
+        self->driver->render_diags();
+
+        if (!self->driver->dctx.has_errors()) {
+            return .Value(tokens);
+        } else {
+            tokens.free();
+            return .Error(());
+        }
+    }
 }

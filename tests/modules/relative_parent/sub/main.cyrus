@@ -1,0 +1,8 @@
+// @stdout: Parent: 200
+
+import std::libc{printf};
+import ..::_parent_mod;
+
+pub fn main() {
+    printf("Parent: %d\n", _parent_mod::get_parent_val());
+}

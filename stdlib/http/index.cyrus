@@ -156,7 +156,6 @@ pub struct Header {
         self->value.push_str(value);
     }
 
-    [[inline]]
     pub fn free(self: Self*) {
         self->name.free();
         self->value.free();

@@ -15,17 +15,19 @@ import std::format{
     format_int128,
     format_uint128,
     format_float64,
-    format_bool
+    format_bool,
+    format
 };
 
+import source{SourceId};
+
 pub struct SourceTokens {
-    // pub source_id: SourceId,
+    pub source_id: SourceId,
     pub tokens: Vec<Token>,
     pub arena: ArenaAllocator,
 
-    [[inline]]
-    pub fn new(tokens: Vec<Token>, arena: ArenaAllocator) Self {
-        return Self { tokens, arena };
+    pub fn new(source_id: SourceId, tokens: Vec<Token>, arena: ArenaAllocator) Self {
+        return Self { source_id, tokens, arena };
     }
 
     pub fn free(self: Self*) {
@@ -53,14 +55,13 @@ pub struct Token : Format {
         return self->kind->format(writer);
     }
 
-    [[inline]]
     pub fn free(self: Self*) {
-        // switch (*self->kind) {
-        //     case .Ident(ident) => ident.free();
-        //     case .Literal(lit) => switch (lit) {
-        //         case .String { value, .. } => value.free();
-        //     }
-        // }
+        switch (*self->kind) {
+            case .Ident(ident) => ident.free();
+            case .Literal(lit) => switch (lit) {
+                case .String { value, .. } => value.free();
+            }
+        }
     }
 }
 
@@ -540,18 +541,22 @@ pub enum StringPrefix {
     }
 }
 
+pub struct Span {
+    pub source_id: SourceId,
+    pub loc: Loc,
+
+    [[inline]]
+    pub fn new(source_id: SourceId, loc: Loc) Self {
+        return Self { source_id, loc };
+    }
+}
+
 pub struct Loc {
-    pub line: usize, // 1-indexed
-    pub start: usize,
-    pub end: usize,
+    pub start: usize, // Byte offset
+    pub end: usize,   // Byte offset
 
     pub fn merge(self: Self, other: Self) Self {
         var merge = self;
-        
-        // Start line
-        if (other.line < merge.line) {
-            merge.line = other.line;
-        }
         
         // Byte offsets
         if (other.start < merge.start) {
@@ -576,22 +581,14 @@ pub fn dump_tokens(tokens: const Vec<Token>*) {
 
 /// Formats and writes a tokens to stdout.
 /// This is primarily used for debugging and emitting lexer result.
+[[inline]]
 pub fn dump_token(token: Token) {
-    // REVIEW: Refactor, use `format` helper method from stdlib.
-
-    var allocator: Allocator = dynamic LibcAllocator.new();
-
-    var fmt = String.new(allocator);
-    defer fmt.free();  
-
-    var writer: Writer = dynamic StringWriter.new(&fmt);
-
-    token.format(writer);
+    var fmt = format(dynamic token);
+    defer fmt.free();
         
     printf(
-        "Token `%s`, Line: %lu, Start: %lu, End: %lu\n",
+        "Token `%s`, Start: %u, End: %u\n",
         fmt.as_str_const(),
-        token.loc.line,
         token.loc.start,
         token.loc.end
     );

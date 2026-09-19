@@ -293,6 +293,8 @@ pub extern "C" {
     ) types::c_char*;
 }
 
+pub extern "C" fn isatty(fd: types::c_int) types::c_int;
+
 [[thread_local]]
 pub extern "C" static var errno: types::c_int;
 

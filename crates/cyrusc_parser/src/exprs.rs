@@ -465,9 +465,29 @@ impl<'source_file> Parser<'source_file> {
         Ok(series)
     }
 
+    fn parse_relative_level(&mut self) -> Result<isize, Diag> {
+        let mut relative_level: isize = 0;
+        if self.current_token_is(TokenKind::Dot) {
+            self.next_token(); // consume '.'
+            self.expect_current(TokenKind::DoubleColon)?;
+            relative_level = -1;
+        } else if self.current_token_is(TokenKind::DoubleDot) {
+            let mut count: isize = -1;
+            while self.current_token_is(TokenKind::DoubleDot) {
+                self.next_token(); // consume '..'
+                self.expect_current(TokenKind::DoubleColon)?;
+                count -= 1;
+            }
+            relative_level = count;
+        }
+        Ok(relative_level)
+    }
+
     pub(crate) fn parse_module_import(&mut self) -> Result<ASTModuleImport, Diag> {
         let loc = self.current_token().loc;
         let (line, column, start) = (loc.line, loc.column, loc.start);
+
+        let relative_level = self.parse_relative_level()?;
 
         let mut segments = {
             let end = self.current_token().loc.end;
@@ -493,6 +513,7 @@ impl<'source_file> Parser<'source_file> {
 
             return Ok(ASTModuleImport {
                 segments,
+                relative_level,
                 loc: Loc::new(self.file_id(), line, column, start, end),
             });
         }
@@ -536,6 +557,7 @@ impl<'source_file> Parser<'source_file> {
 
         Ok(ASTModuleImport {
             segments,
+            relative_level,
             loc: Loc::new(self.file_id(), line, column, start, end),
         })
     }
@@ -543,6 +565,8 @@ impl<'source_file> Parser<'source_file> {
     pub(crate) fn parse_module_path(&mut self) -> Result<ModulePath, Diag> {
         let loc = self.current_token().loc;
         let (line, column, start) = (loc.line, loc.column, loc.start);
+
+        let relative_level = self.parse_relative_level()?;
 
         let mut segments = Vec::new();
         let mut alias = None;
@@ -573,6 +597,7 @@ impl<'source_file> Parser<'source_file> {
         Ok(ModulePath {
             alias,
             segments,
+            relative_level,
             loc: Loc::new(self.file_id(), line, column, start, end),
         })
     }

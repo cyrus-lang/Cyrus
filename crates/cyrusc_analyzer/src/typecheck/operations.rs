@@ -35,13 +35,24 @@ impl<'a> AnalysisContext<'a> {
     ) -> Option<SemaType> {
         let mut lhs_type = match self.analyze_expr(&mut infix.lhs, expected_type.clone()) {
             Some(ty) => ty.const_inner().clone(),
-            None => return None,
+            None => {
+                let err_ty = SemaType::Err(infix.loc);
+                return Some(err_ty);
+            }
         };
 
         let mut rhs_type = match self.analyze_expr(&mut infix.rhs, Some(lhs_type.clone())) {
             Some(ty) => ty.const_inner().clone(),
-            None => return None,
+            None => {
+                let err_ty = SemaType::Err(infix.loc);
+                return Some(err_ty);
+            }
         };
+
+        if lhs_type.contains_error() || rhs_type.contains_error() {
+            let err_ty = SemaType::Err(infix.loc);
+            return Some(err_ty);
+        }
 
         lhs_type = self.expand_sema_type(lhs_type, infix.loc);
         rhs_type = self.expand_sema_type(rhs_type, infix.loc);
@@ -171,8 +182,16 @@ impl<'a> AnalysisContext<'a> {
     ) -> Option<SemaType> {
         let mut operand_type = match self.analyze_expr(&mut prefix.operand, expected_type) {
             Some(sema_type) => sema_type.const_inner().clone(),
-            None => return None,
+            None => {
+                let err_ty = SemaType::Err(prefix.loc);
+                return Some(err_ty);
+            }
         };
+
+        if operand_type.contains_error() {
+            let err_ty = SemaType::Err(prefix.loc);
+            return Some(err_ty);
+        }
 
         // expand operand type
         operand_type = self.expand_sema_type(operand_type, prefix.loc);

@@ -135,7 +135,7 @@ impl InferCtx {
         let a = self.resolve(a);
         let b = self.resolve(b);
 
-        if a.is_err() || b.is_err() {
+        if a.contains_error() || b.contains_error() {
             return true;
         }
 
@@ -144,22 +144,24 @@ impl InferCtx {
 
             (SemaType::InferVar(id), ty) | (ty, SemaType::InferVar(id)) => {
                 if self.occurs_check(*id, ty) {
-                    return false;
+                    false
+                } else {
+                    self.bind(*id, ty.clone());
+                    true
                 }
-                self.bind(*id, ty.clone());
-                true
             }
+
+            (SemaType::Plain(p1), SemaType::Plain(p2)) => p1 == p2,
 
             (SemaType::Named(n1), SemaType::Named(n2)) => {
                 if n1.type_decl_id != n2.type_decl_id {
-                    return false;
+                    false
+                } else {
+                    n1.type_args
+                        .iter()
+                        .zip(n2.type_args.iter())
+                        .all(|(a, b)| self.unify_type_arg(a, b))
                 }
-                for (a, b) in n1.type_args.iter().zip(n2.type_args.iter()) {
-                    if !self.unify_type_arg(a, b) {
-                        return false;
-                    }
-                }
-                true
             }
 
             (SemaType::Tuple(t1), SemaType::Tuple(t2)) => {

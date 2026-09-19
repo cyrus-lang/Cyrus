@@ -1,41 +1,116 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 The Cyrus Language
 
-import std::io{Writer, StringWriter};
+import std::io{Writer, StringWriter, StderrWriter};
 import std::mem::libc{LibcAllocator};
 import std::libc{stderr, fprintf};
 import std::format{format_usize};
+import std::color{colorize_fg};
 import std::collections{Vec};
 import std::option{Option};
 import std::mem{Allocator};
 import std::string{String};
 import std::os{exit};
-import tokens{Loc};
+import std::os::tty;
+
+import tokens{Span, Loc};
+import source{SourceId};
+
+pub enum DiagLevel {
+    Error,
+    Warning,
+    Note,
+    Help,
+}
+
+pub enum LabelRole {
+    Primary,
+    Secondary,
+}
+
+pub struct Label {
+    pub span: Span,
+    pub mesg: Option<String>,
+    pub role: LabelRole,
+
+    pub fn new(span: Span, role: LabelRole) Self {
+        return Self { span, mesg: .None, role };
+    }
+
+    pub fn with_mesg(allocator: Allocator, span: Span, role: LabelRole, mesg: const uint8*) Self {
+        return Self { span, mesg: .Some(String.from_str(allocator, mesg)), role };
+    }
+
+    pub fn free(self: Self*) {
+        switch (self->mesg) {
+            case .Some(str) => str.free();
+            case .None => {}
+        }
+    }
+}
+
+pub enum SubDiagKind {
+    Note,
+    Help,
+    Info,
+}
+
+pub struct SubDiag {
+    pub kind: SubDiagKind,
+    pub mesg: String,
+    pub span: Option<Span>,
+
+    pub fn new(allocator: Allocator, kind: SubDiagKind, mesg: const uint8*, span: Option<Span>) Self {
+        return Self {
+            kind,
+            mesg: String.from_str(allocator, mesg),
+            span,
+        };
+    }
+
+    pub fn free(self: Self*) {
+        self->mesg.free();
+        switch (self->span) {
+            case .Some(span) => {}
+            case .None => {}
+        }
+    }
+}
 
 pub struct DiagContext {
     diags: Vec<Diag>,
 
-    [[inline]]
     pub fn new(allocator: Allocator) Self {
-        const diags: Vec<Diag> = Vec.new(allocator);
-        
-        return Self { diags };
+        return Self { diags: Vec.new(allocator) };
     }
 
     [[inline]]
-    pub fn report(self: Self*, diag: Diag) {
-        self->diags.push(diag);
+    pub fn report(self: Self*, diag_ptr: Diag*) {
+        self->diags.push(*diag_ptr);
+        diag_ptr->allocator.free(diag_ptr);
     }
 
+    // FIXME Should return `const Vec<Diag>*` without requiring a grouped type
     [[inline]]
-    pub fn diags(self: const Self*) Vec<Diag>* {
+    pub fn diags(self: const Self*) const (Vec<Diag>)* {
         return &self->diags;
+    }
+
+    pub fn has_errors(self: const Self*) bool {
+        for (var i: usize = 0; i < self->diags.len(); i += 1) {
+            const diag = self->diags.get_const(i).unwrap();
+
+            if (diag->level == .Error) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     pub fn free(self: Self*) {
         for (var i: usize; i < self->diags.len(); i += 1) {
-            var diag = self->diags.get(i).unwrap();
-
+            var diag = self->diags.get_owned(i).unwrap();
             diag.free();
         }
 
@@ -44,69 +119,98 @@ pub struct DiagContext {
 }
 
 pub struct Diag {
+    pub allocator: Allocator,
+    pub level: DiagLevel,
     pub mesg: String,
-    pub under: Option<String>,
-    pub subs: Vec<SubDiag>,
-    pub loc: Loc,
+    pub span: Span,
+    pub labels: Vec<Label>,
+    pub sub_diags: Vec<SubDiag>,
 
-    pub fn new(allocator: Allocator, mesg: String, under: Option<String>, loc: Loc) Self {
-        var subs: Vec<SubDiag> = Vec.new(allocator);
-        
-        return Self { mesg, subs, under, loc };
+    pub fn new(
+        allocator: Allocator,
+        level: DiagLevel,
+        mesg: const uint8*,
+        span: Span
+    ) Self* {
+        const self: Diag* = allocator.alloc(@sizeof(Diag));
+        @assert(self, "diag allocation failed");
+
+        *self = Self {
+            allocator,
+            level,
+            mesg: String.from_str(allocator, mesg), 
+            span,
+            labels: Vec.new(allocator),
+            sub_diags: Vec.new(allocator),
+        };
+
+        return self;
+    }
+    
+    [[inline]]
+    pub fn under(self: Self*, mesg: const uint8*) Self* {
+        self->labels.push(Label.with_mesg(self->allocator, self->span, .Primary, mesg));
+        return self;
     }
 
     [[inline]]
-    pub fn add_sub(self: Self*, sub: SubDiag) {
-        self->subs.push(sub);
+    pub fn secondary_span(self: Self*, span: Span, mesg: const uint8*) Self* {
+        self->labels.push(Label.with_mesg(self->allocator, span, .Secondary, mesg));
+        return self;
+    }
+
+    [[inline]]
+    pub fn note(self: Self*, mesg: const uint8*) Self* {
+        self->sub_diags.push(SubDiag.new(self->allocator, .Note, mesg, .None));
+        return self;
+    }
+
+    [[inline]]
+    pub fn note_at(self: Self*, span: Span, mesg: const uint8*) Self* {
+        self->sub_diags.push(SubDiag.new(self->allocator, .Note, mesg, .Some(span)));
+        return self;
+    }
+
+    [[inline]]
+    pub fn help(self: Self*, mesg: const uint8*) Self* {
+        self->sub_diags.push(SubDiag.new(self->allocator, .Help, mesg, .None));
+        return self;
+    }
+
+    [[inline]]
+    pub fn help_at(self: Self*, span: Span, mesg: const uint8*) Self* {
+        self->sub_diags.push(SubDiag.new(self->allocator, .Help, mesg, .Some(span)));
+        return self;
     }
 
     pub fn free(self: Self*) {
         self->mesg.free();
 
-        switch (self->under) {
-            case .Some(str) => str.free();
+        for (var i: usize = 0; i < self->labels.len(); i += 1) {
+            var label = self->labels.get_owned(i).unwrap();
+            label.free();
         }
-        
-        for (var i: usize; i < self->subs.len(); i += 1) {
-            var sub = self->subs.get(i).unwrap();
+        self->labels.free();
 
+        for (var i: usize = 0; i < self->sub_diags.len(); i += 1) {
+            var sub = self->sub_diags.get_owned(i).unwrap();
             sub.free();
         }
-
-        self->subs.free();
+        self->sub_diags.free();
     }
 }
 
-pub enum SubDiagKind {
-    Hint,
-    Info
-}
-
-pub struct SubDiag {
-    pub kind: SubDiagKind,
-    pub mesg: String,
-    pub under: Option<String>,
-    pub loc: Loc,
-
-    pub fn new(
-        kind: SubDiagKind,
-        mesg: String,
-        under: Option<String>,
-        loc: Loc
-    ) Self {
-        return Self { kind, mesg, under, loc };
-    }
-    
-    pub fn free(self: Self*) {
-        self->mesg.free();
-
-        switch (self->under) {
-            case .Some(str) => str.free();
-        }
-    }
-}
-
+[[inline]]
 pub fn exit_with_compile_error(mesg: const uint8*) {
-    fprintf(stderr, "error: %s\n", mesg);
+    var writer: Writer = dynamic StderrWriter.new();
+
+    if (tty::is_color_supported(.Stderr)) {
+        colorize_fg(writer, .Red, "error: ");
+    } else {
+        writer.write("error: ");
+    }
+
+    writer.write(mesg);
+    writer.write_char('\n');
     exit(.Failure);
 }

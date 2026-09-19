@@ -7,11 +7,8 @@ import std::mem{Allocator};
 pub struct Buffer<T> {
     buffer: Vec<T>,
 
-    [[inline]]
     pub fn new(allocator: Allocator) Self {
-        var buffer: Vec<T> = Vec.with_capacity(allocator, 1);
-
-        return Self { buffer };
+        return Self { buffer: Vec.with_capacity(allocator, 1) };
     }
 
     [[inline]]
@@ -75,7 +72,6 @@ pub struct Buffer<T> {
         self->buffer.clear();
     }
 
-    [[inline]]
     pub fn free(self: Self*) {
         self->buffer.free();
     }

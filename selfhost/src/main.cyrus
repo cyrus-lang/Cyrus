@@ -3,44 +3,19 @@
 
 import std::libc::types{c_int, c_char};
 import std::mem::libc{LibcAllocator};
-import tokens{dump_tokens};
+import std::io{Writer, StderrWriter};
 import std::mem{Allocator};
+import std::string{String};
 import std::libc{printf};
 import std::path{Path};
 import std::cli;
+
+import diags{DiagContext, Diag, exit_with_compile_error};
+import diags::render{CompilerDiagRender};
+import source{Source, SourceContext};
+import tokens{dump_tokens, Loc};
+import driver{CompilerDriver};
 import version;
-import driver;
-
-fn command_new(ctx: cli::ActionContext) {
-    @todo();
-}
-
-fn command_build(ctx: cli::ActionContext) {
-    printf("Build command triggered.\n");
-
-    if (ctx.opts->enabled("jobs")) {
-        printf("Jobs option enabled.\n");
-    }
-}
-
-fn command_lex(ctx: cli::ActionContext) {
-    const allocator: Allocator = dynamic LibcAllocator.new();
-
-    // TODO Get path from App 
-
-    const path = Path.new(allocator, "/home/tahad/Code/Cyrus/Cyrus/tmp/main.cyrus");
-    defer path.free();
-
-    var source_tokens = driver::tokenize_source(allocator, &path);
-    defer source_tokens.free();
-
-    dump_tokens(&source_tokens.tokens);
-    printf("Read %lu tokens from `%s`\n", source_tokens.tokens.len(), "meow.cyrus");
-}
-
-fn command_version(ctx: cli::ActionContext) {
-    printf("Cyrus %s\n", version::COMPILER_VERSION);
-}
 
 pub fn main(argc: c_int, argv: c_char**) {
     const allocator: Allocator = dynamic LibcAllocator.new();
@@ -84,7 +59,7 @@ pub fn main(argc: c_int, argv: c_char**) {
         ->add_option(jobs_opt);
     
     const test_cmd = 
-        cli::Cmd.new(allocator, "test", command_build)
+        cli::Cmd.new(allocator, "test", command_build) 
         .help("Run tests")
         ->add_option(verbose_opt)
         ->add_option(quiet_opt)
@@ -95,21 +70,15 @@ pub fn main(argc: c_int, argv: c_char**) {
         cli::Cmd.new(allocator, "clean", command_build)
         .help("Clean build artifacts");
     
-    const add_cmd = 
-        cli::Cmd.new(allocator, "add", command_build)
-        .help("Add dependency");
+    const tokenize_cmd = 
+        cli::Cmd.new(allocator, "tokenize", command_tokenize)
+        .help("Dump scanned tokens")
+        ->optional_argument(.Str);
     
-    const remove_cmd = 
-        cli::Cmd.new(allocator, "remove", command_build)
-        .help("Remove dependency");
-    
-    const update_cmd = 
-        cli::Cmd.new(allocator, "update", command_build)
-        .help("Update dependencies");
-    
-    const lex_cmd = 
-        cli::Cmd.new(allocator, "lex", command_lex)
-        .help("Dump file tokens");
+    const parse_cmd = 
+        cli::Cmd.new(allocator, "parse", command_parse)
+        .help("Parse file")
+        ->optional_argument(.Str);
     
     const version_cmd = 
         cli::Cmd.new(allocator, "version", command_version)
@@ -120,11 +89,55 @@ pub fn main(argc: c_int, argv: c_char**) {
     app.register(*build_cmd);
     app.register(*test_cmd);
     app.register(*clean_cmd);
-    app.register(*add_cmd);
-    app.register(*remove_cmd);
-    app.register(*update_cmd);
-    app.register(*lex_cmd);
+    app.register(*tokenize_cmd);
+    app.register(*parse_cmd);
     app.register(*version_cmd);
 
     app.run(struct { argc, argv });
+}
+
+fn command_new(ctx: cli::ActionContext) {
+    @todo();
+}
+
+fn command_build(ctx: cli::ActionContext) {
+    printf("Build command triggered.\n");
+
+    if (ctx.opts->enabled("jobs")) {
+        printf("Jobs option enabled.\n");
+    }
+}
+
+fn command_tokenize(ctx: cli::ActionContext) {
+    const allocator: Allocator = dynamic LibcAllocator.new();
+
+    const driver = CompilerDriver.new(allocator);
+    defer driver.free();
+
+    const lexical = driver.create_lexical_resource();
+
+    switch (ctx.args->get_str(0)) {
+        case .Some(file_path) => {
+            const path = Path.new(allocator, file_path);
+
+            switch (lexical.tokenize_source(path)) case .Value(var source_tokens) else {
+                return;
+            }
+            defer source_tokens.free();
+
+            dump_tokens(&source_tokens.tokens);
+            printf("Read %lu tokens from `%s`\n", source_tokens.tokens.len(), path.as_string().as_str_const());
+        }
+        case .None => {
+            exit_with_compile_error("no input file provided");
+        }
+    }
+}
+
+fn command_parse(ctx: cli::ActionContext) {
+    @todo();
+}
+
+fn command_version(ctx: cli::ActionContext) {
+    printf("Cyrus %s\n", version::COMPILER_VERSION);
 }

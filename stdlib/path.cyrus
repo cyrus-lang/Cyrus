@@ -10,11 +10,11 @@ pub struct Path {
     allocator: Allocator,
     inner: String,
 
-    [[inline]]
     pub fn new(allocator: Allocator, name: const uint8*) Self {
-        const inner = String.from_str(allocator, name);
-
-        return Self { allocator, inner };
+        return Self {
+            allocator, 
+            inner: String.from_str(allocator, name)
+        };
     }
 
     /// POSIX ONLY!
@@ -193,17 +193,9 @@ pub struct Path {
 
     [[inline]]
     pub fn as_string(self: Self*) String {
-        // FIXME: Return String*.
         return self->inner;
     }
 
-    [[inline]]
-    pub fn as_string_const(self: const Self*) const String {
-        // FIXME: Return const String*.
-        return self->inner;
-    }
-
-    [[inline]]
     pub fn free(self: Self*) {
         self->inner.free();
     }

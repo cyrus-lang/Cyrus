@@ -16,8 +16,6 @@ pub struct Vec<T> {
     cap: usize,
     len: usize,
 
-    /// Create a new array using a specific allocator.
-    [[inline]]
     pub fn new(allocator: Allocator) Self {
         const data: T* = allocator.alloc(@sizeof(T));
         if (!data) {
@@ -330,16 +328,6 @@ pub struct Vec<T> {
         return VecIterOwned<T> { vec: self, idx: 0 };
     }
 
-    [[inline]]
-    pub fn free(self: Self*) {
-        if (self->data != null) {
-            self->allocator.free(self->data);
-            self->data = null;
-            self->len = 0;
-            self->cap = 0;
-        }
-    }
-
     fn grow(self: Self*, min_cap: usize) {
         var new_cap: usize;
 
@@ -365,6 +353,15 @@ pub struct Vec<T> {
 
         self->data = new_data;
         self->cap = new_cap;
+    }
+
+    pub fn free(self: Self*) {
+        if (self->data != null) {
+            self->allocator.free(self->data);
+            self->data = null;
+            self->len = 0;
+            self->cap = 0;
+        }
     }
 }
 
@@ -410,44 +407,5 @@ pub struct VecIterOwned<T> : IterConst<T> {
         const item = self->vec->get_owned(self->idx).unwrap();
         self->idx += 1;
         return .Some(item);
-    }
-}
-
-pub struct Map<K, V> {
-    entries: Vec<(K, V)>,
-
-    [[inline]]
-    pub fn new(allocator: Allocator) Self {
-        return Self { entries: Vec.new(allocator) };
-    }
-
-    pub fn set(self: Self*, key: K, value: V) bool {
-        if (self->get(key).is_some()) {
-            return false;
-        }
-
-        self->entries.push((key, value));
-        return true;
-    }
-
-    pub fn get(self: const Self*, key: K) Option<V> {
-        const len = self->entries.len();
-        const data = self->entries.data_const();
-
-        // linear search
-        for (var i: usize = 0; i < len; i += 1) {
-            const item = data[i];
-            
-            if (item.0 == key) {
-                return .Some(item.1);
-            }
-        }
-
-        return .None;
-    }
-
-    [[inline]]
-    pub fn free(self: Self*) {
-        self->entries.free();
     }
 }

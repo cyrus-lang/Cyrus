@@ -440,6 +440,12 @@ impl fmt::Display for ProgramTree {
 
 impl fmt::Display for ASTModuleImport {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        if self.relative_level < 0 {
+            for _ in 0..(-self.relative_level) {
+                write!(f, ".")?;
+            }
+            write!(f, "::")?;
+        }
         write!(f, "{}", format_module_segments(&self.segments))
     }
 }

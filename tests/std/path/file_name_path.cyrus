@@ -14,5 +14,5 @@ pub fn main() {
 
     var file_name = path.file_name();
     defer file_name.free();
-    printf("file_name: %s\n", file_name.as_string_const().as_str_const());
+    printf("file_name: %s\n", file_name.as_string().as_str_const());
 }

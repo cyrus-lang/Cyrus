@@ -1,9 +1,9 @@
 // @stdout: hash_map_iter ok
 
 import std::collections::hash_map{HashMap};
+import std::hash{hash_usize, eq_usize};
 import std::mem::libc{LibcAllocator};
 import std::mem{Allocator};
-import std::hash{hash_usize, eq_usize};
 import std::libc{printf};
 
 pub fn main() {
@@ -13,9 +13,7 @@ pub fn main() {
         allocator,
         8,
         hash_usize,
-        eq_usize,
-        @cast(usize, 0),
-        @cast(usize, 0)
+        eq_usize
     );
     defer map.free();
 

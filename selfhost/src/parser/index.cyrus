@@ -1,2 +1,14 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 The Cyrus Language
+
+import tokens{SourceTokens};
+
+pub struct Parser {
+    tokens: SourceTokens,
+    source_id: SourceId,
+    dctx: DiagContext*,
+
+    pub fn new(self: Self*) Self {
+        @todo()
+    }
+}

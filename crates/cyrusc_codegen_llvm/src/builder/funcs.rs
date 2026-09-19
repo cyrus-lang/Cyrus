@@ -164,6 +164,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
                     );
 
                     let param_type: BasicTypeEnum<'ll> = self.emit_type(param.ty.clone()).try_into().unwrap();
+                    let param_alloca = self.llvm_builder.build_alloca(param_type, "param").unwrap();
 
                     let lo = self.cur_func.unwrap().get_nth_param(llvm_param_index as u32).unwrap();
                     let hi = self
@@ -173,8 +174,6 @@ impl<'ll> CodeGenIRBuilder<'ll> {
                         .unwrap();
 
                     llvm_param_index += 2;
-
-                    let param_alloca = self.llvm_builder.build_alloca(param_type, "param").unwrap();
 
                     let lo_ptr = self
                         .llvm_builder
@@ -640,15 +639,21 @@ impl<'ll> CodeGenIRBuilder<'ll> {
                 BasicValueEnum::StructValue(struct_value) => {
                     let (lo_index, hi_index) = struct_original_indices();
 
-                    let lo_val = self
+                    let mut lo_val = self
                         .llvm_builder
                         .build_extract_value(*struct_value, lo_index as u32, "lo")
                         .unwrap();
 
-                    let hi_val = self
+                    let mut hi_val = self
                         .llvm_builder
                         .build_extract_value(*struct_value, hi_index as u32, "hi")
                         .unwrap();
+
+                    let lo_ty: BasicTypeEnum<'ll> = self.emit_type(lo).try_into().unwrap();
+                    let hi_ty: BasicTypeEnum<'ll> = self.emit_type(hi).try_into().unwrap();
+
+                    lo_val = self.intrinsic_coerce_through_alloca(lo_val, lo_ty, "direct_pair.coerce.lo");
+                    hi_val = self.intrinsic_coerce_through_alloca(hi_val, hi_ty, "direct_pair.coerce.hi");
 
                     args.push(lo_val.into());
                     args.push(hi_val.into());
@@ -693,6 +698,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
                     panic!("direct-pair rvalue must be struct or array, got {:?}", other);
                 }
             },
+
             _ => unreachable!(),
         }
     }

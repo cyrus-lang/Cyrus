@@ -44,6 +44,7 @@ impl FsModuleLoader {
     fn get_imported_module_file_path(
         &self,
         segments: Vec<ModuleSegment>,
+        relative_level: isize,
         current_module_file_path: PathBuf,
     ) -> Result<ResolvedModuleFile, ModuleFSLoaderDiagKind> {
         // filter sub-modules
@@ -66,6 +67,32 @@ impl FsModuleLoader {
             segments.remove(0);
             sources = vec![stdlib_modules_path()?];
             is_std = true;
+        } else if relative_level < 0 {
+            let parent_dir = current_module_file_path
+                .parent()
+                .ok_or(ModuleFSLoaderDiagKind::RelativeImportEscapesProjectRoot)?;
+
+            let mut current_dir = parent_dir.to_path_buf();
+            let ascents = (-relative_level) - 1;
+            for _ in 0..ascents {
+                current_dir = current_dir
+                    .parent()
+                    .ok_or(ModuleFSLoaderDiagKind::RelativeImportEscapesProjectRoot)?
+                    .to_path_buf();
+            }
+
+            let project_root = Path::new(&self.opts.base_path)
+                .canonicalize()
+                .unwrap_or_else(|_| PathBuf::from(&self.opts.base_path));
+
+            let canonical_current = current_dir.canonicalize().unwrap_or(current_dir.clone());
+            let canonical_root = project_root.canonicalize().unwrap_or(project_root.clone());
+
+            if !canonical_current.starts_with(&canonical_root) {
+                return Err(ModuleFSLoaderDiagKind::RelativeImportEscapesProjectRoot);
+            }
+
+            sources = vec![current_dir.to_string_lossy().to_string()];
         }
 
         let mut resolved_module_file = self.load_module_segments(&segments, sources, String::new())?;
@@ -203,7 +230,7 @@ impl FsModuleLoader {
 }
 
 impl ModuleLoader for FsModuleLoader {
-    /// Loads all modules referenced in an import statement.
+    /// Loads module referenced in the import statement.
     /// Phase 1: locate and parse each module.  
     /// Phase 2: if all succeeded, construct LoadedModule entries.
     fn load_module(
@@ -217,9 +244,11 @@ impl ModuleLoader for FsModuleLoader {
         let mut parsed_program_trees: Vec<(FileID, Rc<ProgramTree>, &ModulePath, ResolvedModuleFile)> = Vec::new();
         let mut loaded_modules_list: Vec<Result<LoadedModule, Option<Box<dyn DiagKindClone>>>> = Vec::new();
 
-        let resolved_module_file = match self
-            .get_imported_module_file_path(import.module_path.segments.clone(), current_module_file_path.clone())
-        {
+        let resolved_module_file = match self.get_imported_module_file_path(
+            import.module_path.segments.clone(),
+            import.module_path.relative_level,
+            current_module_file_path.clone(),
+        ) {
             Ok(path) => path,
             Err(diag) => {
                 loaded_modules_list.push(Err(Some(Box::new(diag))));

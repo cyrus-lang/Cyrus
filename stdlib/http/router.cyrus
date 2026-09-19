@@ -156,7 +156,6 @@ pub struct Router {
         return false;
     }
 
-    [[inline]]
     pub fn free(self: Self*) {
         self->routes.free();
     }
