@@ -24,6 +24,9 @@ pub enum ModuleFSLoaderDiagKind {
 
     #[error("Module cannot import itself.")]
     ModuleCannotImportItself,
+
+    #[error("Relative import navigates above the project root directory.")]
+    RelativeImportEscapesProjectRoot,
 }
 
 impl DiagKind for ModuleFSLoaderDiagKind {}

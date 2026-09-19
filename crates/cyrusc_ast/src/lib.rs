@@ -338,6 +338,7 @@ pub struct Ident {
 #[derive(Debug, Clone)]
 pub struct ASTModuleImport {
     pub segments: Vec<ModuleSegment>,
+    pub relative_level: isize,
     pub loc: Loc,
 }
 
@@ -550,6 +551,7 @@ pub enum ModuleSegment {
 pub struct ModulePath {
     pub alias: Option<String>,
     pub segments: Vec<ModuleSegment>,
+    pub relative_level: isize,
     pub loc: Loc,
 }
 
@@ -948,6 +950,9 @@ impl ModuleSegment {
 
 impl PartialEq for ModulePath {
     fn eq(&self, other: &Self) -> bool {
+        if self.relative_level != other.relative_level {
+            return false;
+        }
         let self_submodules: Vec<&String> = self
             .segments
             .iter()
@@ -980,6 +985,7 @@ impl ModulePath {
     pub fn as_module_import(&self) -> ASTModuleImport {
         ASTModuleImport {
             segments: self.segments.clone(),
+            relative_level: self.relative_level,
             loc: self.loc,
         }
     }
@@ -1202,6 +1208,7 @@ impl TypeSpecifier {
         match self {
             TypeSpecifier::Ident(ident) => Some(ASTModuleImport {
                 segments: vec![ModuleSegment::SubModule(ident.clone())],
+                relative_level: 0,
                 loc: ident.loc,
             }),
             TypeSpecifier::ModuleImport(module_import) => Some(module_import.clone()),
@@ -1289,6 +1296,7 @@ impl Hash for ModuleSegmentSingle {
 
 impl Hash for ModulePath {
     fn hash<H: Hasher>(&self, state: &mut H) {
+        self.relative_level.hash(state);
         for segment in &self.segments {
             if let ModuleSegment::SubModule(ident) = segment {
                 ident.value.hash(state);
@@ -1311,7 +1319,7 @@ impl PartialEq for Ident {
 
 impl PartialEq for ASTModuleImport {
     fn eq(&self, other: &Self) -> bool {
-        self.segments == other.segments
+        self.relative_level == other.relative_level && self.segments == other.segments
     }
 }
 
