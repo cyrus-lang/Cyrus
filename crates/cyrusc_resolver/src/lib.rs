@@ -894,10 +894,13 @@ impl<'a> SymbolQuery for Resolver<'a> {
             SymbolEntryKind::Interface(interface_decl_id) => Some(DeclID::Interface(interface_decl_id)),
             SymbolEntryKind::Typedef(typedef_decl_id) => Some(DeclID::Typedef(typedef_decl_id)),
 
+            SymbolEntryKind::ProxiedSymbol { symbol_id, .. } => {
+                self.lookup_symbol_as_decl_id(symbol_id)
+            }
+
             SymbolEntryKind::Namespace(_)
             | SymbolEntryKind::Module(_)
             | SymbolEntryKind::Unresolved
-            | SymbolEntryKind::ProxiedSymbol { .. }
             | SymbolEntryKind::ProxiedModule { .. } => None,
         }
     }

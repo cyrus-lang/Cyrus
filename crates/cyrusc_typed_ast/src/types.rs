@@ -468,7 +468,7 @@ impl SemaType {
     pub fn contains_error(&self) -> bool {
         match self.const_inner() {
             SemaType::Err(_) => true,
-            
+
             SemaType::Unresolved(_)
             | SemaType::Plain(_)
             | SemaType::SelfType(_)
@@ -511,6 +511,56 @@ impl SemaType {
                         TypedTypeArg::Infer => false,
                     })
                     || interface_obj.concrete_type.contains_error()
+            }
+        }
+    }
+
+    pub fn contains_unresolved(&self) -> bool {
+        match self.const_inner() {
+            SemaType::Unresolved(_) => true,
+
+            SemaType::Err(_)
+            | SemaType::Plain(_)
+            | SemaType::SelfType(_)
+            | SemaType::GenericParam(_)
+            | SemaType::InferVar(_)
+            | SemaType::Placeholder => false,
+
+            SemaType::Named(named_type) => named_type.type_args.iter().any(|type_arg| match type_arg {
+                TypedTypeArg::Type(ty, _) => ty.contains_unresolved(),
+                TypedTypeArg::Infer => false,
+            }),
+
+            SemaType::Const(inner) | SemaType::Pointer(inner) => inner.contains_unresolved(),
+
+            SemaType::Array(array) => array.element_type.contains_unresolved(),
+
+            SemaType::FuncType(func) => {
+                func.params.list.iter().any(|ty| ty.contains_unresolved())
+                    || func
+                        .params
+                        .variadic
+                        .as_ref()
+                        .map(|variadic| match &**variadic {
+                            TypedFuncTypeVariadicParam::UntypedCStyle => false,
+                            TypedFuncTypeVariadicParam::Typed(ty) => ty.contains_unresolved(),
+                        })
+                        .unwrap_or(false)
+                    || func.ret_type.contains_unresolved()
+            }
+
+            SemaType::Tuple(tuple) => tuple.elements.iter().any(|(ty, _)| ty.contains_unresolved()),
+
+            SemaType::InterfaceObject(interface_obj) => {
+                interface_obj
+                    .interface_type
+                    .type_args
+                    .iter()
+                    .any(|type_arg| match type_arg {
+                        TypedTypeArg::Type(ty, _) => ty.contains_unresolved(),
+                        TypedTypeArg::Infer => false,
+                    })
+                    || interface_obj.concrete_type.contains_unresolved()
             }
         }
     }

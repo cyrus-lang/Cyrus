@@ -76,7 +76,7 @@ impl<'a> AnalysisContext<'a> {
         for field in struct_fields {
             field.ty = match self.normalize_and_check_type_formation(field.ty.clone(), field.loc, 0) {
                 Some(ty) => ty,
-                None => continue,
+                None => SemaType::Err(field.loc),
             };
 
             if !field.ty.contains_generic_param() {

@@ -290,6 +290,9 @@ fn lower_struct_decl(
     struct_decl: &StructDecl,
     type_args: TypedTypeArgs,
 ) -> CIRStructType {
+    #[cfg(debug_assertions)]
+    struct_decl.assert_fully_resolved();
+
     let fields = struct_decl
         .fields
         .iter()
@@ -313,7 +316,6 @@ fn lower_struct_decl(
     }
 }
 
-// TODO: Change doc comment
 /// Lowers a semantic `EnumDecl` into a `CIREnumType`.
 ///
 /// This converts each semantic variant into its CIR representation and
@@ -329,6 +331,9 @@ fn lower_enum_decl(
     enum_decl: &EnumDecl,
     type_args: TypedTypeArgs,
 ) -> CIREnumType {
+    #[cfg(debug_assertions)]
+    enum_decl.assert_fully_resolved();
+
     let mut variants: Vec<CIREnumVariant> = enum_decl
         .variants
         .iter()
@@ -401,6 +406,9 @@ fn lower_union_decl(
     union_decl: &UnionDecl,
     type_args: TypedTypeArgs,
 ) -> CIRUnionType {
+    #[cfg(debug_assertions)]
+    union_decl.assert_fully_resolved();
+
     let fields = union_decl
         .fields
         .iter()

@@ -140,13 +140,13 @@ impl<'a> AnalysisContext<'a> {
                 }
 
                 for tuple_field in fields {
-                    if !tuple_field.ty.contains_generic_param() {
-                        tuple_field.ty =
-                            match self.normalize_and_check_type_formation(tuple_field.ty.clone(), tuple_field.loc, 0) {
-                                Some(ty) => ty,
-                                None => continue,
-                            };
+                    tuple_field.ty =
+                        match self.normalize_and_check_type_formation(tuple_field.ty.clone(), tuple_field.loc, 0) {
+                            Some(ty) => ty,
+                            None => SemaType::Err(tuple_field.loc),
+                        };
 
+                    if !tuple_field.ty.contains_generic_param() {
                         self.validate_enum_variant_field_type(enum_decl_id, &tuple_field.ty, tuple_field.loc);
                     }
                 }
@@ -162,14 +162,14 @@ impl<'a> AnalysisContext<'a> {
                 }
 
                 for struct_field in fields {
-                    if !struct_field.ty.contains_generic_param() {
-                        struct_field.ty =
-                            match self.normalize_and_check_type_formation(struct_field.ty.clone(), struct_field.loc, 0)
-                            {
-                                Some(ty) => ty,
-                                None => continue,
-                            };
+                    struct_field.ty =
+                        match self.normalize_and_check_type_formation(struct_field.ty.clone(), struct_field.loc, 0)
+                        {
+                            Some(ty) => ty,
+                            None => SemaType::Err(struct_field.loc),
+                        };
 
+                    if !struct_field.ty.contains_generic_param() {
                         self.validate_enum_variant_field_type(enum_decl_id, &struct_field.ty, struct_field.loc);
                     }
                 }

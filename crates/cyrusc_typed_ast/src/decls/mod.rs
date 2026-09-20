@@ -103,7 +103,6 @@ pub struct StructDecl {
     pub modifiers: StructModifiers,
     pub align: Option<usize>,
     pub loc: Loc,
-
     pub is_normalized: bool,
 }
 
@@ -117,7 +116,6 @@ pub struct UnionDecl {
     pub modifiers: UnionModifiers,
     pub align: Option<usize>,
     pub loc: Loc,
-
     pub is_normalized: bool,
 }
 
@@ -132,7 +130,6 @@ pub struct EnumDecl {
     pub tag_type: Option<SemaType>,
     pub align: Option<usize>,
     pub loc: Loc,
-
     pub is_normalized: bool,
 }
 
@@ -212,6 +209,40 @@ pub struct VarDecl {
 }
 
 impl EnumDecl {
+    #[cfg(debug_assertions)]
+    pub fn assert_fully_resolved(&self) {
+        for variant in &self.variants {
+            match variant {
+                TypedEnumVariant::Unit(_) => {}
+
+                TypedEnumVariant::Valued { value, .. } => {
+                    debug_assert!(
+                        !value.ty.as_ref().unwrap().contains_unresolved(),
+                        "enum valued variant is not normalized properly"
+                    );
+                }
+
+                TypedEnumVariant::Tuple { fields, .. } => {
+                    fields.iter().for_each(|field| {
+                        debug_assert!(
+                            !field.ty.contains_unresolved(),
+                            "enum tuple variant is not normalized properly"
+                        );
+                    });
+                }
+
+                TypedEnumVariant::Struct { fields, .. } => {
+                    fields.iter().for_each(|field| {
+                        debug_assert!(
+                            !field.ty.contains_unresolved(),
+                            "enum struct variant is not normalized properly"
+                        );
+                    });
+                }
+            }
+        }
+    }
+
     #[inline]
     pub fn is_generic(&self) -> bool {
         !self.generic_params.is_empty()
@@ -297,6 +328,13 @@ impl PartialEq for FuncDecl {
 }
 
 impl UnionDecl {
+    #[cfg(debug_assertions)]
+    pub fn assert_fully_resolved(&self) {
+        for field in &self.fields {
+            debug_assert!(!field.ty.contains_unresolved())
+        }
+    }
+
     #[inline]
     pub fn is_generic(&self) -> bool {
         !self.generic_params.is_empty()
@@ -314,6 +352,13 @@ impl UnionDecl {
 }
 
 impl StructDecl {
+    #[cfg(debug_assertions)]
+    pub fn assert_fully_resolved(&self) {
+        for field in &self.fields {
+            debug_assert!(!field.ty.contains_unresolved());
+        }
+    }
+
     #[inline]
     pub fn is_generic(&self) -> bool {
         !self.generic_params.is_empty()
