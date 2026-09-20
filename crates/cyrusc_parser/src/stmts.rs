@@ -466,8 +466,7 @@ impl<'source_file> Parser<'source_file> {
             };
         }
 
-        if loop_broke_at_sync_brace {
-        } else {
+        if !loop_broke_at_sync_brace {
             self.expect_peek(TokenKind::RightBrace)?;
         }
 

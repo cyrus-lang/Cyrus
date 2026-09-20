@@ -99,10 +99,7 @@ impl<'a> AnalysisContext<'a> {
             _struct_decl.fields = struct_decl.fields;
         });
 
-        Some(SemaType::Named(NamedType {
-            type_decl_id: TypeDeclID::Struct(struct_decl_id),
-            type_args: type_args.clone(),
-        }))
+        Some(struct_type)
     }
 
     fn normalize_union_decl(
@@ -113,11 +110,13 @@ impl<'a> AnalysisContext<'a> {
     ) -> Option<SemaType> {
         let mut union_decl = self.decl_tables.union_decl(union_decl_id);
 
+        let union_type = SemaType::Named(NamedType {
+            type_decl_id: TypeDeclID::Union(union_decl_id),
+            type_args: type_args.clone(),
+        });
+
         if union_decl.is_normalized {
-            return Some(SemaType::Named(NamedType {
-                type_decl_id: TypeDeclID::Union(union_decl_id),
-                type_args: type_args.clone(),
-            }));
+            return Some(union_type);
         }
 
         self.decl_tables.with_union_decl_mut(union_decl_id, |_union_decl| {
@@ -135,10 +134,7 @@ impl<'a> AnalysisContext<'a> {
             _union_decl.fields = union_decl.fields;
         });
 
-        Some(SemaType::Named(NamedType {
-            type_decl_id: TypeDeclID::Union(union_decl_id),
-            type_args: type_args.clone(),
-        }))
+        Some(union_type)
     }
 
     fn normalize_enum_decl(
@@ -149,11 +145,13 @@ impl<'a> AnalysisContext<'a> {
     ) -> Option<SemaType> {
         let mut enum_decl = self.decl_tables.enum_decl(enum_decl_id);
 
+        let enum_type = SemaType::Named(NamedType {
+            type_decl_id: TypeDeclID::Enum(enum_decl_id),
+            type_args: type_args.clone(),
+        });
+
         if enum_decl.is_normalized {
-            return Some(SemaType::Named(NamedType {
-                type_decl_id: TypeDeclID::Enum(enum_decl_id),
-                type_args: type_args.clone(),
-            }));
+            return Some(enum_type);
         }
 
         self.decl_tables.with_enum_decl_mut(enum_decl_id, |_enum_decl| {
@@ -170,10 +168,7 @@ impl<'a> AnalysisContext<'a> {
             _enum_decl.variants = enum_decl.variants;
         });
 
-        Some(SemaType::Named(NamedType {
-            type_decl_id: TypeDeclID::Enum(enum_decl_id),
-            type_args: type_args.clone(),
-        }))
+        Some(enum_type)
     }
 
     fn normalize_unresolved_type(
