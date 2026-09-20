@@ -21,6 +21,14 @@ impl<'a> AnalysisContext<'a> {
     }
 
     pub(crate) fn analyze_toplevel_stmts(&mut self, typed_stmts: &mut [TypedStmt]) {
+        // IMPORTANT(1): Analyze all typedefs first to ensure their types are normalized.
+        for stmt in &mut *typed_stmts {
+            if let TypedStmtKind::Typedef(typedef) = &mut stmt.kind {
+                self.analyze_typedef(typedef);
+            }
+        }
+
+        // IMPORTANT(2): Order matters!
         for stmt in &mut *typed_stmts {
             match &mut stmt.kind {
                 TypedStmtKind::GlobalVar(global_var) => self.analyze_global_var(global_var),
@@ -36,8 +44,14 @@ impl<'a> AnalysisContext<'a> {
     fn analyze_toplevel_stmt(&mut self, typed_stmt: &mut TypedStmtKind) {
         match typed_stmt {
             TypedStmtKind::GlobalVar(_) => {
-                // Skipped, because it's intended to be analyzed
+                // IMPORTANT: Skipped, because it's intended to be analyzed
                 // before all of the other top level statements.
+                return;
+            }
+
+            TypedStmtKind::Typedef(_) => {
+                // IMPORTANT: Skipped, because all typedefs are analyzed first
+                // in analyze_toplevel_stmts to ensure their types are normalized.
                 return;
             }
 
@@ -47,7 +61,6 @@ impl<'a> AnalysisContext<'a> {
             TypedStmtKind::Struct(struct_stmt) => self.analyze_struct_stmt(struct_stmt),
             TypedStmtKind::Enum(enum_stmt) => self.analyze_enum_stmt(enum_stmt),
             TypedStmtKind::Union(union_stmt) => self.analyze_union_stmt(union_stmt),
-            TypedStmtKind::Typedef(typedef) => self.analyze_typedef(typedef),
 
             TypedStmtKind::Builtin(_) => {
                 self.analyze_builtin(typed_stmt, true);

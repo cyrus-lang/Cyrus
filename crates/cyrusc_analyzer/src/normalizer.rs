@@ -46,24 +46,30 @@ impl<'a> AnalysisContext<'a> {
             SemaType::SelfType(self_type) => self.normalize_self_type(self_type),
             SemaType::InterfaceObject(_) => Some(ty),
             SemaType::Plain(_) => Some(ty),
-
             SemaType::Err(_) => Some(ty),
         }
     }
 
     fn normalize_named_type(&mut self, named_type: &NamedType, indirection: u8) -> Option<SemaType> {
+        let mut type_args = named_type.type_args.clone();
+        
+        self.normalize_type_args(&mut type_args, indirection);
+
         match named_type.type_decl_id {
             TypeDeclID::Enum(enum_decl_id) => {
-                self.normalize_enum_decl(enum_decl_id, &named_type.type_args, indirection)
+                self.normalize_enum_decl(enum_decl_id, &type_args, indirection)
             }
             TypeDeclID::Struct(struct_decl_id) => {
-                self.normalize_struct_decl(struct_decl_id, &named_type.type_args, indirection)
+                self.normalize_struct_decl(struct_decl_id, &type_args, indirection)
             }
             TypeDeclID::Union(union_decl_id) => {
-                self.normalize_union_decl(union_decl_id, &named_type.type_args, indirection)
+                self.normalize_union_decl(union_decl_id, &type_args, indirection)
             }
 
-            TypeDeclID::Interface(_) | TypeDeclID::Typedef(_) => Some(SemaType::Named(named_type.clone())),
+            TypeDeclID::Interface(_) | TypeDeclID::Typedef(_) => Some(SemaType::Named(NamedType {
+                type_decl_id: named_type.type_decl_id,
+                type_args,
+            })),
         }
     }
 
@@ -89,9 +95,9 @@ impl<'a> AnalysisContext<'a> {
         });
 
         for field in &mut struct_decl.fields {
-            field.ty = match self.normalize_sema_type(field.ty.clone(), field.loc, indirection) {
+            field.ty = match self.normalize_sema_type(field.ty.clone(), field.loc, indirection + 1) {
                 Some(ty) => ty,
-                None => continue,
+                None => SemaType::Err(field.loc),
             };
         }
 
@@ -124,9 +130,9 @@ impl<'a> AnalysisContext<'a> {
         });
 
         for field in &mut union_decl.fields {
-            field.ty = match self.normalize_sema_type(field.ty.clone(), field.loc, indirection) {
+            field.ty = match self.normalize_sema_type(field.ty.clone(), field.loc, indirection + 1) {
                 Some(ty) => ty,
-                None => continue,
+                None => SemaType::Err(field.loc),
             };
         }
 
@@ -170,18 +176,18 @@ impl<'a> AnalysisContext<'a> {
 
                 TypedEnumVariant::Tuple { fields, .. } => {
                     for field in fields {
-                        field.ty = match self.normalize_sema_type(field.ty.clone(), field.loc, indirection) {
+                        field.ty = match self.normalize_sema_type(field.ty.clone(), field.loc, indirection + 1) {
                             Some(ty) => ty,
-                            None => continue,
+                            None => SemaType::Err(field.loc),
                         };
                     }
                 }
                 
                 TypedEnumVariant::Struct { fields, .. } => {
                     for field in fields {
-                        field.ty = match self.normalize_sema_type(field.ty.clone(), field.loc, indirection) {
+                        field.ty = match self.normalize_sema_type(field.ty.clone(), field.loc, indirection + 1) {
                             Some(ty) => ty,
-                            None => continue,
+                            None => SemaType::Err(field.loc),
                         };
                     }
                 }
@@ -222,19 +228,17 @@ impl<'a> AnalysisContext<'a> {
                 base_symbol_id,
                 mut type_args,
             } => {
-                let base_type =
-                    self.normalize_unresolved_type(UnresolvedType::Decl(base_symbol_id), loc, indirection)?;
+                let decl_id = self.lookup_symbol_as_decl_id(base_symbol_id)?;
+                let type_decl_id = decl_id.as_type_decl_id()?;
 
-                if let Some(named_type) = base_type.as_named_type() {
-                    self.normalize_type_args(&mut type_args, indirection);
+                self.normalize_type_args(&mut type_args, indirection);
 
-                    SemaType::Named(NamedType {
-                        type_decl_id: named_type.type_decl_id,
-                        type_args,
-                    })
-                } else {
-                    return None;
-                }
+                let normalized_named = NamedType {
+                    type_decl_id,
+                    type_args,
+                };
+                
+                return self.normalize_named_type(&normalized_named, indirection);
             }
             UnresolvedType::BuiltinFunc(mut builtin_func) => {
                 self.analyze_builtin_expr(&mut builtin_func);
@@ -406,7 +410,7 @@ impl<'a> AnalysisContext<'a> {
                 TypedTypeArg::Type(ty, loc) => {
                     *ty = match self.normalize_sema_type(ty.clone(), *loc, indirection) {
                         Some(sema_type) => sema_type,
-                        None => continue,
+                        None => SemaType::Err(*loc),
                     };
                 }
                 TypedTypeArg::Infer => { /* skip */ }

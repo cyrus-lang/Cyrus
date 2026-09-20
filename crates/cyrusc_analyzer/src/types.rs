@@ -975,9 +975,15 @@ impl<'a> AnalysisContext<'a> {
             }
         }
 
+        #[cfg(debug_assertions)]
+        if ty.contains_unresolved() {
+            panic!("type cannot have unresolved symbols");
+        }
+        
         if ty.is_err() {
             return None;
         }
+
 
         if check_recursively(self, &ty, loc) {
             Some(())
