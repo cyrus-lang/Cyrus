@@ -141,7 +141,7 @@ impl<'a> AnalysisContext<'a> {
         &mut self,
         enum_decl_id: EnumDeclID,
         type_args: &TypedTypeArgs,
-        _indirection: u8,
+        indirection: u8,
     ) -> Option<SemaType> {
         let mut enum_decl = self.decl_tables.enum_decl(enum_decl_id);
 
@@ -159,8 +159,32 @@ impl<'a> AnalysisContext<'a> {
         });
 
         for variant in &mut enum_decl.variants {
-            if let TypedEnumVariant::Valued { value, .. } = variant {
-                self.analyze_expr(value, enum_decl.tag_type.clone());
+            match variant {
+                TypedEnumVariant::Unit(_) => {
+                    // Nothing to normalize
+                }
+
+                TypedEnumVariant::Valued { value, .. } => {
+                    self.analyze_expr(value, enum_decl.tag_type.clone());
+                }
+
+                TypedEnumVariant::Tuple { fields, .. } => {
+                    for field in fields {
+                        field.ty = match self.normalize_sema_type(field.ty.clone(), field.loc, indirection) {
+                            Some(ty) => ty,
+                            None => continue,
+                        };
+                    }
+                }
+                
+                TypedEnumVariant::Struct { fields, .. } => {
+                    for field in fields {
+                        field.ty = match self.normalize_sema_type(field.ty.clone(), field.loc, indirection) {
+                            Some(ty) => ty,
+                            None => continue,
+                        };
+                    }
+                }
             }
         }
 
