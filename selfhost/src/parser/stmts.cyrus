@@ -5,6 +5,8 @@ import tokens{SourceTokens, Token, dump_token};
 import .::state{ParserState};
 import diags{DiagContext};
 
+import std::libc{printf};
+
 pub struct ParserStmts {
     source_tokens: const SourceTokens*,
     state: ParserState*,
@@ -76,7 +78,6 @@ pub fn parse_stmt(state: ParserState*) {
     }
 }
 
-// ANCHOR
 pub fn parse_global_var(state: ParserState*) bool {
     var is_static = false;
     var is_const = false;
@@ -89,11 +90,19 @@ pub fn parse_global_var(state: ParserState*) bool {
     if (state->is(.Const)) {
         state->next();
         is_const = true;
-    } else if (!state->expect(.Var)) {
+    } else {
+        if (!state->expect(.Var)) {
+            return false;
+        }
+    }
+
+    switch (state->expect_ident()) case .Some(ident) else {
         return false;
     }
 
-    @todo();
+    if (!state->expect_semicolon()) {
+        return false;
+    }
 
     return true; 
 }

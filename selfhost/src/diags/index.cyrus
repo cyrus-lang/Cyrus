@@ -199,7 +199,6 @@ pub struct Diag {
     }
 }
 
-[[inline]]
 pub fn exit_with_compile_error(mesg: const uint8*) {
     var writer: Writer = dynamic StderrWriter.new();
 

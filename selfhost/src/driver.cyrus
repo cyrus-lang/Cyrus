@@ -85,6 +85,8 @@ pub struct LexicalResource {
     pub fn parse_source(self: Self*, source_tokens: SourceTokens) ErrorOr<ASTProgram, ()> {
         const allocator = self->driver->allocator;
 
-        return Parser.parse(allocator, source_tokens, &self->driver->dctx);
+        const result = Parser.parse(allocator, source_tokens, &self->driver->dctx);
+        self->driver->render_diags();
+        return result;
     }
 }
