@@ -89,16 +89,20 @@ impl<'source_file> Parser<'source_file> {
     ///
     /// This is the heart of parsing types in our language.
     pub(crate) fn parse_type_specifier(&mut self) -> Result<TypeSpecifier, Diag> {
+        self.parse_type_specifier_impl(true, true)
+    }
+
+    fn parse_type_specifier_impl(&mut self, allow_pointers: bool, allow_arrays: bool) -> Result<TypeSpecifier, Diag> {
         let mut base_type = self.parse_base_type_token()?;
 
         let loc = base_type.loc();
         let (line, column, start) = (loc.line, loc.column, loc.start);
 
         loop {
-            if self.peek_token_is(TokenKind::Asterisk) {
+            if allow_pointers && self.peek_token_is(TokenKind::Asterisk) {
                 self.next_token();
                 base_type = TypeSpecifier::Pointer(Box::new(base_type));
-            } else if self.peek_token_is(TokenKind::LeftBracket) {
+            } else if allow_arrays && self.peek_token_is(TokenKind::LeftBracket) {
                 self.next_token();
                 base_type = self.parse_array_type(base_type)?;
             } else if self.peek_token_is(TokenKind::LessThan) {
@@ -650,7 +654,7 @@ impl<'source_file> Parser<'source_file> {
 
             TokenKind::Const => {
                 self.next_token(); // consume const
-                let inner_type = self.parse_base_type_token()?;
+                let inner_type = self.parse_type_specifier_impl(false, false)?;
                 Ok(TypeSpecifier::Const(Box::new(inner_type)))
             }
 
