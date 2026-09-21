@@ -10,6 +10,7 @@ import std::os{File};
 
 import diags::render{CompilerDiagRender};
 import source{Source, SourceContext};
+import parser::ast{ASTProgram};
 import tokens{SourceTokens};
 import diags{DiagContext};
 import parser{Parser};
@@ -81,7 +82,7 @@ pub struct LexicalResource {
     }
 
     /// Driver handler responsible for parsing source tokens.
-    pub fn parse_source(self: Self*, source_tokens: SourceTokens) ErrorOr<(), ()> {
+    pub fn parse_source(self: Self*, source_tokens: SourceTokens) ErrorOr<ASTProgram, ()> {
         const allocator = self->driver->allocator;
 
         return Parser.parse(allocator, source_tokens, &self->driver->dctx);
