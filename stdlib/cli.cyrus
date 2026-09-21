@@ -93,6 +93,7 @@ pub struct App {
                 switch (self->parse_remaining_args(cmd, pargs, result.rem_args)) {
                     case .Error(err) => {
                         self->display_parse_error(err);
+                        self->cleanup_after_error();
                         return .Error(());
                     }
                 }
@@ -107,6 +108,7 @@ pub struct App {
                 const args = Args.new(&self->args);
 
                 if (!validate(&args, cmd)) {
+                    self->cleanup_after_error();
                     return .Error(());
                 }
 
@@ -120,6 +122,7 @@ pub struct App {
             }
             case .Error(err) => {
                 self->display_parse_error(err);
+                self->cleanup_after_error();
                 return .Error(());
             }
         }
@@ -127,9 +130,18 @@ pub struct App {
 
     /// Adds the command into the registry.
     pub fn register(self: Self*, cmd: Cmd) {
-        const help_opt = self->opts->get_help_opt();
         var heap = self->cmds.add(cmd);
-        heap->add_option(help_opt);
+    }
+
+    fn cleanup_after_error(self: Self*) void {
+        for (var i: usize = 0; i < self->args.len(); i += 1) {
+            const value = self->args.get(i).unwrap();
+            value->free();
+        }
+        self->cmds.free();
+        self->cmds = Cmds.new(self->allocator);
+        self->args.free();
+        self->args = Vec.new(self->allocator);
     }
 
     pub fn free(self: Self*) {
@@ -140,7 +152,6 @@ pub struct App {
 
         self->cmds.free();
         self->args.free();
-        self->opts->free();
     }
 
     // Internal
@@ -253,25 +264,28 @@ pub struct App {
 
         const (is_assign, var assign_index) = is_opt_assign(name);
 
+        var assign_name_buf: uint8*;
+        var assign_value_buf: uint8*;
+
         if (is_assign) {
             // REVIEW: We have to make a buffer for 
             // storing option name and value because language 
             // currently do not have a strong support of slices.
 
             const val_len = strlen(name + assign_index + 1);
-            var opt_name = @cast(uint8*, self->allocator.alloc(assign_index + 1));
-            var opt_val = @cast(uint8*, self->allocator.alloc(val_len + 1));
+            assign_name_buf = self->allocator.alloc(assign_index + 1);
+            assign_value_buf = self->allocator.alloc(val_len + 1);
 
-            @memcpy(opt_name, name, assign_index);
-            opt_name[assign_index] = '\0';
+            @memcpy(assign_name_buf, name, assign_index);
+            assign_name_buf[assign_index] = '\0';
 
             @assert(name[assign_index] == '=', "assign index is wrong");
 
-            @memcpy(opt_val, name + assign_index + 1, val_len);
-            opt_val[val_len] = '\0';
+            @memcpy(assign_value_buf, name + assign_index + 1, val_len);
+            assign_value_buf[val_len] = '\0';
             
-            name = opt_name;
-            next_arg = opt_val;
+            name = assign_name_buf;
+            next_arg = assign_value_buf;
         }
 
         var value: Value;
@@ -289,6 +303,12 @@ pub struct App {
         if (ty.is_bool() && (!next_arg || is_arg_an_opt(next_arg))) {
             // Option used as flag
             value = .Bool(true);
+            if (assign_name_buf) {
+                self->allocator.free(assign_name_buf);
+            }
+            if (assign_value_buf) { 
+                self->allocator.free(assign_value_buf);
+            }
             goto register_value;
         }
         
@@ -307,6 +327,13 @@ pub struct App {
 
         // Parse the value
         value = self->parse_value(next_arg);
+
+        if (assign_name_buf) {
+            self->allocator.free(assign_name_buf);
+        }
+        if (assign_value_buf) {
+            self->allocator.free(assign_value_buf);
+        }
     
     register_value:
         opt->add_value(value);
@@ -694,11 +721,6 @@ pub struct Cmd {
     }
 
     pub fn free(self: Self*) {
-        for (var i: usize = 0; i < self->opts.len(); i += 1) {
-            const opt = self->opts.get_owned(i).unwrap();
-            opt->free();
-        }
-
         self->opts.free();
 
         self->sub_cmds->free();
