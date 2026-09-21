@@ -34,6 +34,7 @@ use inkwell::{
 };
 use std::{
     cell::RefCell,
+    collections::HashSet,
     path::{Path, PathBuf},
     rc::Rc,
     sync::{Arc, Mutex},
@@ -367,13 +368,16 @@ impl CodeGenBackend<'static, OwnedModule> for CodeGenLLVM {
 impl SeparateModuleSupport<'static, OwnedModule> for CodeGenLLVM {
     fn process_separately(&self, cir_modules: &[Box<CIRModule>]) -> Vec<OwnedModule> {
         let mut modules = Vec::with_capacity(cir_modules.len());
+        let recompiled_modules = compute_recompiled_modules(&self.ctx, cir_modules);
 
         for cir_module in cir_modules {
             let context = OwnedModule::create_context();
             let owned_module =
                 OwnedModule::create_owned_module(context, &cir_module.file_path, &cir_module.module_name, false);
 
-            let recompile_forced = need_to_be_recompiled(&self.ctx, &Path::new(&cir_module.file_path).to_path_buf());
+            let path = PathBuf::from(&cir_module.file_path);
+            let canonical_path = std::fs::canonicalize(&path).unwrap_or(path);
+            let recompile_forced = recompiled_modules.contains(&canonical_path);
 
             // skip emit module if recompilation is not forced
             if !recompile_forced {
@@ -485,4 +489,46 @@ fn need_to_be_recompiled(ctx: &CodeGenContext, module_file_path: &PathBuf) -> bo
     let is_source_changed = build_manifest.is_source_changed(&module_file_path.clone()).unwrap();
 
     is_source_changed || ctx.opts.disable_modulefs_cache || build_manifest.initial_build
+}
+
+fn compute_recompiled_modules(ctx: &CodeGenContext, cir_modules: &[Box<CIRModule>]) -> HashSet<PathBuf> {
+    let mut dirty = HashSet::new();
+    let build_manifest = ctx.build_manifest.lock().unwrap();
+
+    for cir_module in cir_modules {
+        let path = PathBuf::from(&cir_module.file_path);
+        let canonical_path = std::fs::canonicalize(&path).unwrap_or(path);
+        let is_source_changed = build_manifest.is_source_changed(&canonical_path).unwrap_or(true);
+        if is_source_changed || ctx.opts.disable_modulefs_cache || build_manifest.initial_build {
+            dirty.insert(canonical_path);
+        }
+    }
+    drop(build_manifest);
+
+    let mut changed = true;
+    while changed {
+        changed = false;
+        for (module_path, imported_paths) in &ctx.module_dependencies {
+            let canonical_module = std::fs::canonicalize(module_path).unwrap_or(module_path.clone());
+            for imported_path in imported_paths {
+                let canonical_imported = std::fs::canonicalize(imported_path).unwrap_or(imported_path.clone());
+                if dirty.contains(&canonical_imported) && !dirty.contains(&canonical_module) {
+                    dirty.insert(canonical_module.clone());
+                    changed = true;
+                }
+            }
+        }
+        for (module_path, dependent_paths) in &ctx.module_dependents {
+            let canonical_module = std::fs::canonicalize(module_path).unwrap_or(module_path.clone());
+            for dependent_path in dependent_paths {
+                let canonical_dependent = std::fs::canonicalize(dependent_path).unwrap_or(dependent_path.clone());
+                if dirty.contains(&canonical_module) && !dirty.contains(&canonical_dependent) {
+                    dirty.insert(canonical_dependent.clone());
+                    changed = true;
+                }
+            }
+        }
+    }
+
+    dirty
 }

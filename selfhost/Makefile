@@ -3,19 +3,19 @@ STDLIB ?= ../stdlib
 
 release:
 	$(COMPILER) build --profile=release \
-						--stdlib=$(STDLIB) \
-						--linker=clang \
-					    --optimize=o2 \
-						-z="-flto" \
-						--module-merge-mode=separate
+					--stdlib=$(STDLIB) \
+					--linker=clang \
+					--optimize=o2 \
+					-z="-flto" \
+					--module-merge-mode=separate
 
 debug:
 	$(COMPILER) build --profile=debug \
-						--sanitize=address -g \
-						--stdlib=$(STDLIB) \
-						--linker=clang \
-					    --optimize=o0 \
-						--module-merge-mode=unified
+					--sanitize=address -g \
+					--stdlib=$(STDLIB) \
+					--linker=clang \
+					--optimize=o0 \
+					--module-merge-mode=separate
 	
 clean: 
 	rm -rdf ./build

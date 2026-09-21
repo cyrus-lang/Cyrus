@@ -17,7 +17,9 @@ use cyrusc_internal::{
 };
 use cyrusc_tui_utils::tui_warning;
 use inkwell::targets::{Target as LLVMTarget, TargetTriple};
+use fx_hash::FxHashMap;
 use std::{
+    collections::HashSet,
     path::PathBuf,
     sync::{Arc, Mutex},
 };
@@ -38,6 +40,9 @@ pub struct CodeGenContext {
     pub llvm_target_triple: TargetTriple,
 
     pub tctx: Arc<CIRTypeContext>,
+
+    pub module_dependencies: FxHashMap<PathBuf, HashSet<PathBuf>>,
+    pub module_dependents: FxHashMap<PathBuf, HashSet<PathBuf>>,
 }
 
 impl CodeGenContext {
@@ -62,7 +67,18 @@ impl CodeGenContext {
             linker_output_kind,
             linker,
             tctx,
+            module_dependencies: FxHashMap::default(),
+            module_dependents: FxHashMap::default(),
         }
+    }
+
+    pub fn set_module_dependencies(
+        &mut self,
+        deps: FxHashMap<PathBuf, HashSet<PathBuf>>,
+        dependents: FxHashMap<PathBuf, HashSet<PathBuf>>,
+    ) {
+        self.module_dependencies = deps;
+        self.module_dependents = dependents;
     }
 
     /// Orchestrates compilation and returns collected objects.
