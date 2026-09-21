@@ -231,6 +231,18 @@ impl<'a> Resolver<'a> {
                 return;
             }
 
+            // record module dependency
+            let current_path = self.source_map.get_file(current_file).unwrap().file_path.clone();
+            let imported_path = self.source_map.get_file(loaded_module.file_id).unwrap().file_path.clone();
+
+            {
+                let mut deps = self.module_dependencies.lock().unwrap();
+                deps.entry(current_path.clone()).or_default().insert(imported_path.clone());
+
+                let mut dependents = self.module_dependents.lock().unwrap();
+                dependents.entry(imported_path).or_default().insert(current_path);
+            }
+
             // insert file module
 
             let mut module_symbol_id =

@@ -34,6 +34,7 @@ use fx_hash::{FxHashMap, FxHashMapExt};
 use inkwell::targets::{InitializationConfig, Target as InkwellTarget, TargetTriple};
 use std::{
     cell::RefCell,
+    collections::HashSet,
     env,
     path::{Path, PathBuf},
     process::exit,
@@ -51,6 +52,8 @@ pub struct CodeGenContextBundle {
     pub llvm_target_triple: TargetTriple,
     pub source_map: Arc<SourceMap>,
     pub tctx: Arc<CIRTypeContext>,
+    pub module_dependencies: FxHashMap<PathBuf, HashSet<PathBuf>>,
+    pub module_dependents: FxHashMap<PathBuf, HashSet<PathBuf>>,
 }
 
 pub struct CodeGenSemanticBundle<'a> {
@@ -89,6 +92,8 @@ pub fn create_compiler_context(
     llvm_target: InkwellTarget,
     llvm_target_triple: TargetTriple,
     tctx: Arc<CIRTypeContext>,
+    module_dependencies: FxHashMap<PathBuf, HashSet<PathBuf>>,
+    module_dependents: FxHashMap<PathBuf, HashSet<PathBuf>>,
 ) -> CodeGenContext {
     let base_path = opts.base_path.clone().map(|path| Path::new(&path).to_path_buf());
 
@@ -107,7 +112,7 @@ pub fn create_compiler_context(
         }
     };
 
-    CodeGenContext::new(
+    let mut ctx = CodeGenContext::new(
         opts,
         target,
         llvm_target,
@@ -117,7 +122,9 @@ pub fn create_compiler_context(
         linker_output_kind,
         linker,
         tctx,
-    )
+    );
+    ctx.set_module_dependencies(module_dependencies, module_dependents);
+    ctx
 }
 
 pub fn build_semantic_bundle<'a>(
@@ -300,6 +307,9 @@ pub fn build_compilation_bundle(opts: &mut CompilerOptions, file_path_opt: Optio
         &target,
     );
 
+    let module_dependencies = bundle.resolver.module_dependencies.lock().unwrap().clone();
+    let module_dependents = bundle.resolver.module_dependents.lock().unwrap().clone();
+
     CodeGenContextBundle {
         opts: opts.clone(),
         program_trees: cir_modules,
@@ -310,6 +320,8 @@ pub fn build_compilation_bundle(opts: &mut CompilerOptions, file_path_opt: Optio
         llvm_target_triple,
         llvm_target,
         target,
+        module_dependencies,
+        module_dependents,
     }
 }
 

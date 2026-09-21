@@ -979,11 +979,10 @@ impl<'a> AnalysisContext<'a> {
         if ty.contains_unresolved() {
             panic!("type cannot have unresolved symbols");
         }
-        
+
         if ty.is_err() {
             return None;
         }
-
 
         if check_recursively(self, &ty, loc) {
             Some(())

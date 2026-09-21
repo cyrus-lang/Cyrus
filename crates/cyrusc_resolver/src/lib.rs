@@ -21,6 +21,7 @@ use cyrusc_typed_ast::stmts::*;
 use cyrusc_typed_ast::types::TypeDeclID;
 use cyrusc_typed_ast::*;
 use std::collections::HashSet;
+use fx_hash::FxHashMap;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::{Arc, Mutex, RwLock};
@@ -94,6 +95,9 @@ pub struct Resolver<'a> {
 
     // ID allocator for all compiler entities
     pub(crate) id_gen: IDGen,
+
+    pub module_dependencies: Arc<Mutex<FxHashMap<PathBuf, HashSet<PathBuf>>>>,
+    pub module_dependents: Arc<Mutex<FxHashMap<PathBuf, HashSet<PathBuf>>>>,
 }
 
 pub struct ResolvedProgramTree {
@@ -132,6 +136,8 @@ impl<'a> Resolver<'a> {
             module_symbols: HashMap::new(),
             current_module_file_id: None,
             current_object_symbol_id: None,
+            module_dependencies: Arc::new(Mutex::new(FxHashMap::default())),
+            module_dependents: Arc::new(Mutex::new(FxHashMap::default())),
         }
     }
 
