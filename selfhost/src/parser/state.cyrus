@@ -1,42 +1,70 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 The Cyrus Language
 
+import std::io{Writer, StringWriter};
+import std::collections{Vec};
 import std::option{Option};
+import std::string{String};
+import std::mem{Allocator};
 
-import diags{DiagContext};
+import .::ast{NodeId, ASTNode, ASTIdent};
+import diags{Diag, DiagContext};
 import source{SourceId};
 import tokens{
     Token, 
     TokenKind, 
     SourceTokens, 
-    Span
+    Span,
+    dump_token
 };
 
+const FORMAT_BUFFER_SIZE: usize = 2048;
+
 pub struct ParserState {
+    allocator: Allocator,
     pub dctx: DiagContext*,
-    source_tokens: SourceTokens,
+    pub pending: Vec<NodeId>*,
+    source_tokens: SourceTokens*,
     pos: usize,
 
     [[inline]]
-    pub fn new(dctx: DiagContext*, source_tokens: SourceTokens) Self {
-        return Self { dctx, source_tokens, pos: 0 };
+    pub fn new(
+        allocator: Allocator,
+        dctx: DiagContext*, 
+        source_tokens: SourceTokens*, 
+        pending: Vec<NodeId>*
+    ) Self {
+        return Self { 
+            allocator,
+            dctx, 
+            source_tokens, 
+            pending,
+            pos: 0
+        };
     }
 
     [[inline]]
     pub fn source_id(self: const Self*) SourceId {
-        return self->source_tokens.source_id;
+        return self->source_tokens->source_id;
     }
 
     pub fn get(self: const Self*, idx: usize) Option<const Token*> {
         return self->source_tokens
-            .tokens
+            ->tokens
             .get_const(self->pos);
     }
 
     pub fn current(self: const Self*) const Token* {
         return self->source_tokens
-            .tokens
+            ->tokens
             .get_const(self->pos)
+            .unwrap();
+    }
+
+    pub fn peek(self: const Self*) const Token* {
+        return self->source_tokens
+            ->tokens
+            .get_const(self->pos + 1)
             .unwrap();
     }
 
@@ -64,8 +92,29 @@ pub struct ParserState {
             return true;
         }
 
+        const got = self->current();
         const span = self->current_span();
-        // ANCHOR Diag
+
+        // TODO Make a helper method called report_expected in parser/diags.cyrus
+        var buffer = String.new(self->allocator);
+        defer buffer.free();
+
+        // ANCHOR
+        
+        var writer: Writer = dynamic StringWriter.new(&buffer);
+        writer.write("expected `");
+        kind.format(writer);
+        writer.write("` but got `");
+        got->kind->format(writer);
+        writer.write_char('`');
+        
+        self->dctx->report(Diag.new(
+            self->allocator, 
+            .Error, 
+            buffer.as_str(),
+            span
+        ));
+
         return false;
     }
 
@@ -78,6 +127,10 @@ pub struct ParserState {
         const span = self->current_span();
         // ANCHOR Diag
         return false;
+    }
+
+    pub fn expect_ident(self: Self*) ASTIdent {
+        @todo();
     }
 
     // TODO expect_left_paren
@@ -155,5 +208,15 @@ pub struct ParserState {
 
             self->next();
         }
+    }
+
+    /// Dumps current token only for debugging purposes.
+    pub fn dump_current(self: const Self*) {
+        dump_token(*self->current());
+    }
+
+    /// Dumps peek token only for debugging purposes.
+    pub fn dump_peek(self: const Self*) {
+        dump_token(*self->peek());
     }
 }

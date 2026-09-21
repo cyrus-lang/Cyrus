@@ -122,6 +122,7 @@ pub enum TokenKind : Format {
 
     // Keywords
     Module,
+    Static,
     Var,
     Dynamic,
     Goto,
@@ -132,23 +133,19 @@ pub enum TokenKind : Format {
     Typedef,
     Switch,
     Case,
-    Default,
     If,
     Else,
     Return,
     For,
     While,
-    Foreach,
     Break,
     Continue,
     Struct,
     Import,
-    In,
     Enum,
     True,
     False,
     Null,
-    As,
 
     // Types
     UIntPtr,
@@ -234,6 +231,7 @@ pub enum TokenKind : Format {
     pub fn lookup_keyword(str: const uint8*) Option<Self> {
         switch (str) {
             case "dynamic" => return .Some(.Dynamic);
+            case "static" => return .Some(.Static);
             case "var" => return .Some(.Var);
             case "mod" => return .Some(.Module);
             case "interface" => return .Some(.Interface);
@@ -241,14 +239,12 @@ pub enum TokenKind : Format {
             case "fn" => return .Some(.Function);
             case "switch" => return .Some(.Switch);
             case "case" => return .Some(.Case);
-            case "default" => return .Some(.Default);
             case "struct" => return .Some(.Struct);
             case "import" => return .Some(.Import);
             case "if" => return .Some(.If);
             case "else" => return .Some(.Else);
             case "return" => return .Some(.Return);
             case "for" => return .Some(.For);
-            case "foreach" => return .Some(.Foreach);
             case "break" => return .Some(.Break);
             case "continue" => return .Some(.Continue);
             case "true" => return .Some(.True);
@@ -337,6 +333,7 @@ pub enum TokenKind : Format {
             case .DoubleColon => writer.write("::");
 
             case .Dynamic => writer.write("dynamic");
+            case .Static => writer.write("static");
             case .Var => writer.write("var");
             case .Module => writer.write("mod");
             case .Interface => writer.write("interface");
@@ -388,6 +385,39 @@ pub enum TokenKind : Format {
             case .INVALID => writer.write("INVALID");
         }
         return true;
+    }
+
+    pub fn to_kind_str(self: const Self*) const uint8* {
+        switch (*self) {
+            case .Ident(ident) => return "IDENT";
+            case .Literal(lit) => return "LITERAL";
+
+            case .Underscore | .Plus | .Minus | .Asterisk | .Slash
+            | .Percent | .Assign | .Equal | .LeftParen | .RightParen
+            | .LeftBrace | .RightBrace | .LeftBracket | .RightBracket | .At
+            | .Comma | .DoubleDot | .TripleDot | .Dot | .DoubleQuote
+            | .SingleQuote | .Pipe | .Ampersand | .LessThan | .GreaterThan
+            | .LessEqual | .GreaterEqual | .And | .Or | .Semicolon
+            | .Colon | .ThinArrow | .FatArrow | .Increment | .Decrement
+            | .ShiftRight | .ShiftLeft | .Caret | .AmpTilde | .Tilde
+            | .NotEqual | .Bang | .DoubleColon
+            => return "SYMBOL";
+
+            case .Dynamic | .Static | .Var | .Module | .Interface | .Typedef
+            | .Function | .Switch | .Case | .Struct | .Import
+            | .If | .Else | .Return | .For | .Break
+            | .Continue | .True | .False | .Null | .UIntPtr
+            | .IntPtr | .ISize | .USize | .Int8 | .Int16
+            | .Int32 | .Int64 | .Int128 | .UInt8 | .UInt16
+            | .UInt32 | .UInt64 | .UInt128 | .Float16 | .Float32
+            | .Float64 | .Float128 | .Bool | .Void | .Enum
+            | .Public | .Const | .Goto | .Defer | .Union
+            | .While | .Extern
+            => return "KEYWORD";
+
+            case .EOF => return "EOF";
+            case .INVALID => return "INVALID";
+        }
     }
 }
 
@@ -591,7 +621,8 @@ pub fn dump_token(token: Token) {
     defer fmt.free();
         
     printf(
-        "Token `%s`, Start: %u, End: %u\n",
+        "Token(%s) `%s`, Start: %u, End: %u\n",
+        token.kind->to_kind_str(),
         fmt.as_str_const(),
         token.loc.start,
         token.loc.end

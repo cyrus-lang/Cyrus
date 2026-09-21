@@ -35,6 +35,11 @@ pub struct ASTProgram {
         self->nodes.push(node);
         return id;
     }
+
+    pub fn free(self: Self*) {
+        self->nodes.free();
+        self->children.free();
+    }
 }
 
 pub enum ASTNode {

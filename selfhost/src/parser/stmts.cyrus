@@ -1,19 +1,99 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 The Cyrus Language
 
+import tokens{SourceTokens, Token, dump_token};
 import .::state{ParserState};
 import diags{DiagContext};
 
 pub struct ParserStmts {
+    source_tokens: const SourceTokens*,
     state: ParserState*,
-    dctx: DiagContext*,
 
     [[inline]]
-    pub fn new(state: ParserState*, dctx: DiagContext*) Self {
-        return Self { state, dctx };
+    pub fn new(
+        source_tokens: const SourceTokens*,
+        state: ParserState*
+    ) Self {
+        return Self { source_tokens, state };
     }
 
-    pub fn parse(self: Self*) {
-        @todo();
+    pub fn parse_toplevels(self: Self*) {
+        const tokens = &self->source_tokens->tokens;
+
+        for (var i: usize = 0; i < tokens->len(); i += 1) {
+            parse_toplevel(self->state);            
+        }
     }
+}
+
+pub fn parse_toplevel(state: ParserState*) bool {
+    // TODO Detect & Parse Attributes
+    // TODO Detect & Parse Builtins
+
+    const token = state->current();
+
+    var ok = false;
+
+    switch (*token->kind) {
+        case .Static | .Var | .Const => ok = parse_global_var(state);
+        case .Import => @todo();
+        case .Function => @todo();
+        case .Module => @todo();
+        case .Struct => @todo();
+        case .Enum => @todo();
+        case .Union => @todo();
+        case .Typedef => @todo();
+        case .Interface => @todo();
+        else => {
+            // TODO Emit diagnostic: invalid statement
+        }
+    }
+
+    // TODO Drain Attributes
+    // No matter is okay or not, always drain attrs if parsed something.
+
+    return ok;
+}
+
+pub fn parse_stmt(state: ParserState*) {
+    // TODO Detect & Parse Builtins
+    // TODO Detect & Parse Inline Assembly
+
+    const token = state->current();
+
+    switch (*token->kind) {
+        case .Var | .Const => @todo();
+        case .Defer => @todo();
+        case .If => @todo();
+        case .Return => @todo();
+        case .For => @todo();
+        case .While => @todo();
+        case .Break => @todo();
+        case .Continue => @todo();
+        case .Switch => @todo();
+        case .Goto => @todo();
+        case .LeftBrace => @todo();
+    }
+}
+
+// ANCHOR
+pub fn parse_global_var(state: ParserState*) bool {
+    var is_static = false;
+    var is_const = false;
+
+    if (state->is(.Static)) {
+        state->next();
+        is_static = true;
+    }
+
+    if (state->is(.Const)) {
+        state->next();
+        is_const = true;
+    } else if (!state->expect(.Var)) {
+        return false;
+    }
+
+    @todo();
+
+    return true; 
 }

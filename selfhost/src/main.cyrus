@@ -160,6 +160,7 @@ fn command_parse(ctx: cli::ActionContext) {
     switch (lexical.parse_source(source_tokens)) case .Value(var program) else {
         return;
     }
+    defer program.free();
 
     printf("Parsed.\n");
 }
