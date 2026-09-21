@@ -8,6 +8,7 @@ import std::string{String};
 import std::mem{Allocator};
 
 import .::ast{NodeId, ASTNode, ASTIdent};
+import .::diags{format_expected_token};
 import diags{Diag, DiagContext};
 import source{SourceId};
 import tokens{
@@ -74,6 +75,12 @@ pub struct ParserState {
         return Span.new(self->source_id(), loc);
     }
 
+    [[inline]]
+    pub fn peek_span(self: const Self*) Span {
+        const loc = self->current()->loc;
+        return Span.new(self->source_id(), loc);
+    }
+
     pub fn next(self: Self*) Option<const Token*> {
         switch (self->get(self->pos)) {
             case .Some(token) => {
@@ -95,23 +102,13 @@ pub struct ParserState {
         const got = self->current();
         const span = self->current_span();
 
-        // TODO Make a helper method called report_expected in parser/diags.cyrus
-        var buffer = String.new(self->allocator);
-        defer buffer.free();
+        var fmt = format_expected_token(self->allocator, kind, *got->kind);
+        defer fmt.free();
 
-        // ANCHOR
-        
-        var writer: Writer = dynamic StringWriter.new(&buffer);
-        writer.write("expected `");
-        kind.format(writer);
-        writer.write("` but got `");
-        got->kind->format(writer);
-        writer.write_char('`');
-        
         self->dctx->report(Diag.new(
             self->allocator, 
             .Error, 
-            buffer.as_str(),
+            fmt.as_str(),
             span
         ));
 
@@ -124,17 +121,77 @@ pub struct ParserState {
             return true;
         }
 
-        const span = self->current_span();
-        // ANCHOR Diag
+        const got = self->peek();
+        const span = self->peek_span();
+
+        var fmt = format_expected_token(self->allocator, kind, *got->kind);
+        defer fmt.free();
+
+        self->dctx->report(Diag.new(
+            self->allocator, 
+            .Error, 
+            fmt.as_str(),
+            span
+        ));
+        
         return false;
     }
 
-    pub fn expect_ident(self: Self*) ASTIdent {
-        @todo();
+    [[inline]]
+    pub fn expect_left_paren(self: Self*) bool {
+        return self->expect(.LeftParen);
     }
 
-    // TODO expect_left_paren
-    // TODO expect_peek_left_paren
+    [[inline]]
+    pub fn expect_right_paren(self: Self*) bool {
+        return self->expect(.RightParen);
+    }
+
+    [[inline]]
+    pub fn expect_peek_left_paren(self: Self*) bool {
+        return self->expect_peek(.LeftParen);
+    }
+
+    [[inline]]
+    pub fn expect_peek_right_paren(self: Self*) bool {
+        return self->expect_peek(.RightParen);
+    }
+
+    [[inline]]
+    pub fn expect_semicolon(self: Self*) bool {
+        return self->expect(.Semicolon);
+    }
+
+    [[inline]]
+    pub fn expect_peek_semicolon(self: Self*) bool {
+        return self->expect_peek(.Semicolon);
+    }
+
+    pub fn expect_ident(self: Self*) Option<ASTIdent> {
+        const token = self->current();
+        const span = Span { 
+            source_id: self->source_id(), 
+            loc: token->loc
+        };
+
+        switch (*token->kind) {
+            case .Ident(str) => {
+                self->next();
+                return .Some(ASTIdent { str, span });
+            }
+            else => {
+                self->dctx->report(Diag.new(
+                    self->allocator, 
+                    .Error, 
+                    "expected ident",
+                    span
+                ));
+                return .None;
+            }
+        }
+        
+        return .None;
+    }
 
     pub fn is(self: const Self*, kind: TokenKind) bool {
         switch (self->get(self->pos)) {
