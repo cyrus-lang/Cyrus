@@ -90,7 +90,6 @@ pub struct DiagContext {
         diag_ptr->allocator.free(diag_ptr);
     }
 
-    // FIXME Should return `const Vec<Diag>*` without requiring a grouped type
     [[inline]]
     pub fn diags(self: const Self*) const Vec<Diag>* {
         return &self->diags;
