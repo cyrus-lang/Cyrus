@@ -1,0 +1,10 @@
+// @stderr: thread 'assert_ca78506f' panicked at tests/stage0/core/builtins/assert.cyrus:7:6\nassertion failed: x is not 2
+
+import std::libc{printf};
+
+pub fn main() {
+    const x = 20;
+    @assert(x == 2, "x is not 2");
+
+    printf("nothing\n");
+}

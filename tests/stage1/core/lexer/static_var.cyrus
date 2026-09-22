@@ -1,0 +1,11 @@
+// @tokenize
+
+static var foo;
+
+/*@tokenize
+KEYWORD      static       Start: 14           End: 20
+KEYWORD      var          Start: 21           End: 24
+IDENT        foo          Start: 25           End: 28
+SYMBOL       ;            Start: 28           End: 29
+EOF          EOF          Start: 326          End: 326
+@tokenize*/

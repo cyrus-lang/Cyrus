@@ -1,0 +1,24 @@
+// @tokenize
+
+var n = 42;
+var s = "hi\n";
+var f = 3.14;
+
+/*@tokenize
+KEYWORD      var          Start: 14           End: 17
+IDENT        n            Start: 18           End: 19
+SYMBOL       =            Start: 20           End: 21
+LITERAL      42           Start: 22           End: 24
+SYMBOL       ;            Start: 24           End: 25
+KEYWORD      var          Start: 26           End: 29
+IDENT        s            Start: 30           End: 31
+SYMBOL       =            Start: 32           End: 33
+LITERAL      "hi\n"       Start: 34           End: 40
+SYMBOL       ;            Start: 40           End: 41
+KEYWORD      var          Start: 42           End: 45
+IDENT        f            Start: 46           End: 47
+SYMBOL       =            Start: 48           End: 49
+LITERAL      3.14         Start: 50           End: 54
+SYMBOL       ;            Start: 54           End: 55
+EOF          EOF          Start: 946          End: 946
+@tokenize*/
