@@ -1,7 +1,0 @@
-// @stdout: tests/builtins/file_name.cyrus
-
-import std::libc{printf};
-
-pub fn main() {
-    printf("%s\n", @file_name());
-}

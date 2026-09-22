@@ -1,0 +1,9 @@
+// @stderr: thread 'unimplemented_e' hit UNIMPLEMENTED code at tests/stage0/core/builtins/unimplemented.cyrus:6:6\nmeow
+
+import std::libc{printf};
+
+pub fn main() {
+    @unimplemented("meow");
+
+    printf("nothing\n");
+}

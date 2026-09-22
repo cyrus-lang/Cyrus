@@ -1,0 +1,110 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 The Cyrus Language
+
+use cyrusc_diagcentral::reporter::DiagReporter;
+use cyrusc_fs_utils::get_directory_of_file;
+use cyrusc_internal::compiler_options::CompilerOptions;
+use cyrusc_parser::SourceParser;
+use cyrusc_resolver::{
+    Resolver,
+    fs_module_loader::{FsModuleLoader, FsModuleLoaderOptions},
+    modules::VisitingModule,
+};
+use cyrusc_source_loc::SourceMap;
+use cyrusc_typed_ast::decls::table::DeclTablesRegistry;
+use std::{env, path::Path, process::exit, sync::Arc, vec};
+
+fn main() {
+    let args: Vec<String> = env::args().collect();
+    if args.len() < 2 {
+        eprintln!("Usage: cyrusc_resolver <input.cyrus> [--stdlib=<path>]");
+        exit(1);
+    }
+    let file_path = args[1].clone();
+    let stdlib_path = resolve_stdlib_path(&args);
+
+    let input_dir = get_directory_of_file(&file_path).expect("failed to resolve input directory");
+
+    let source_map = Arc::new(SourceMap::new());
+    let file_id = source_map.add_file_by_loading(file_path.clone());
+    let entry_source_file = { source_map.get_file(file_id).unwrap().clone() };
+
+    let reporter = Arc::new(DiagReporter::new(source_map.clone()));
+    let source_parser = Arc::new(SourceParser::new(reporter.clone()));
+
+    let opts = CompilerOptions::default();
+
+    match source_parser.parse_program(&entry_source_file) {
+        Ok(program) => {
+            let current_dir = env::current_dir().unwrap();
+
+            println!("Stdlib Path: ");
+            println!("  {}", stdlib_path);
+            println!("Source Dirs: ");
+            println!("  {}", input_dir);
+
+            let fs_module_loader_opts = FsModuleLoaderOptions {
+                base_path: current_dir.to_string_lossy().to_string(),
+                stdlib_path: Some(stdlib_path.clone()),
+                source_dirs: vec![input_dir.clone()],
+            };
+
+            let fs_module_loader = FsModuleLoader::new(source_map.clone(), source_parser, fs_module_loader_opts);
+
+            let decl_tables = Arc::new(DeclTablesRegistry::new());
+
+            let mut resolver = Resolver::new(
+                &opts,
+                Box::new(fs_module_loader),
+                source_map.clone(),
+                reporter,
+                decl_tables,
+            );
+
+            let module_symbol_id = resolver.create_entry_module_symbol_id(Path::new(&file_path), file_id);
+
+            let typed_program_tree = resolver
+                .resolve_module(module_symbol_id, &program, &mut VisitingModule::new(), file_id, true)
+                .unwrap();
+
+            if resolver.reporter.has_errors() {
+                resolver.reporter.display();
+                exit(1);
+            }
+
+            dbg!(typed_program_tree);
+        }
+        Err(()) => exit(1),
+    }
+}
+
+/// Resolve the stdlib root from `--stdlib=<path>`, `CYRUS_STDLIB_PATH`,
+/// or the repository layout (`./lib/std`, legacy `./stdlib`).
+fn resolve_stdlib_path(args: &[String]) -> String {
+    for arg in args {
+        if let Some(path) = arg.strip_prefix("--stdlib=") {
+            return canonicalize_or_passthrough(path);
+        }
+    }
+    if let Ok(path) = env::var("CYRUS_STDLIB_PATH") {
+        if !path.is_empty() {
+            return path;
+        }
+    }
+    for candidate in ["./lib/std", "./lib", "./stdlib"] {
+        if Path::new(candidate).exists() {
+            return canonicalize_or_passthrough(candidate);
+        }
+    }
+    eprintln!(
+        "error: stdlib path not found; pass --stdlib=<path> or set CYRUS_STDLIB_PATH"
+    );
+    exit(1);
+}
+
+fn canonicalize_or_passthrough(path: &str) -> String {
+    Path::new(path)
+        .canonicalize()
+        .map(|p| p.to_string_lossy().to_string())
+        .unwrap_or_else(|_| path.to_string())
+}

@@ -1,0 +1,7 @@
+// @stdout: tests_stage0_core_builtins_module_name
+
+import std::libc{printf};
+
+pub fn main() {
+    printf("%s\n", @module_name());
+}
