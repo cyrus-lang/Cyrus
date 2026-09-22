@@ -627,7 +627,7 @@ pub fn dump_token(token: Token) {
     defer fmt.free();
         
     printf(
-        "Token(%s) `%s`, Start: %u, End: %u\n",
+        "%-12s %-12s Start: %-12u End: %u\n",
         token.kind->to_kind_str(),
         fmt.as_str_const(),
         token.loc.start,
