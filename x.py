@@ -259,7 +259,49 @@ def load_config(root: Path, args: argparse.Namespace) -> Config:
     if cfg.jobs < 1:
         raise SystemExit("error: --jobs must be >= 1")
 
+    cfg.linker = resolve_linker(cfg.linker)
+
     return cfg
+
+
+def resolve_linker(requested: str) -> str:
+    """Return `requested` if on PATH, else the first usable fallback."""
+    def on_path(name: str) -> bool:
+        return shutil.which(name) is not None
+
+    if on_path(requested):
+        return requested
+
+    # Prefer CC if it points at a clang/gcc driver (CI often only has clang-NN).
+    cc = os.environ.get("CC")
+    if cc and on_path(cc):
+        return cc
+
+    candidates: List[str] = []
+    if requested == "clang" or requested.startswith("clang"):
+        candidates += [
+            "clang", "clang-22", "clang-21", "clang-20", "clang-19",
+            "clang-18", "clang-17", "gcc", "cc",
+        ]
+    elif requested.startswith("gcc") or requested in ("cc", "ld"):
+        candidates += [requested, "gcc", "cc", "clang", "clang-22"]
+    else:
+        candidates += [requested, "clang", "gcc", "cc"]
+
+    seen = set()
+    for name in candidates:
+        if name in seen:
+            continue
+        seen.add(name)
+        if on_path(name):
+            if name != requested:
+                log(STYLE.yellow(
+                    f"warning: linker {requested!r} not on PATH; using {name!r}"
+                ))
+            return name
+
+    # Leave as-is so the cyrus binary reports a clear error.
+    return requested
 
 # ************* Process helpers *************
 

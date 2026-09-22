@@ -66,6 +66,7 @@ jobs:
           LLVM_CONFIG: /usr/bin/llvm-config-22
           CC: clang-22
           CXX: clang++-22
+          CYRUS_LINKER: clang-22
         run: |
           chmod +x ./scripts/release.sh
           ./scripts/release.sh
@@ -75,6 +76,7 @@ jobs:
           LLVM_CONFIG: /usr/bin/llvm-config-22
           CC: clang-22
           CXX: clang++-22
+          CYRUS_LINKER: clang-22
         run: python3 ./x.py test --stage all --profile release
 
       - name: Determine package version
