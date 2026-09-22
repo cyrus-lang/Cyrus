@@ -25,7 +25,7 @@ pub struct ParserState {
     allocator: Allocator,
     pub dctx: DiagContext*,
     pub pending: Vec<NodeId>*,
-    source_tokens: SourceTokens*,
+    pub source_tokens: SourceTokens*,
     pos: usize,
 
     [[inline]]
@@ -52,7 +52,7 @@ pub struct ParserState {
     pub fn get(self: const Self*, idx: usize) Option<const Token*> {
         return self->source_tokens
             ->tokens
-            .get_const(self->pos);
+            .get_const(idx);
     }
 
     pub fn current(self: const Self*) const Token* {
@@ -69,6 +69,12 @@ pub struct ParserState {
             .unwrap();
     }
 
+    pub fn peek_n(self: const Self*, n: usize) Option<const Token*> {
+        return self->source_tokens
+            ->tokens
+            .get_const(self->pos + n);
+    }
+
     [[inline]]
     pub fn current_span(self: const Self*) Span {
         const loc = self->current()->loc;
@@ -77,7 +83,7 @@ pub struct ParserState {
 
     [[inline]]
     pub fn peek_span(self: const Self*) Span {
-        const loc = self->current()->loc;
+        const loc = self->peek()->loc;
         return Span.new(self->source_id(), loc);
     }
 
@@ -169,10 +175,7 @@ pub struct ParserState {
 
     pub fn expect_ident(self: Self*) Option<ASTIdent> {
         const token = self->current();
-        const span = Span { 
-            source_id: self->source_id(), 
-            loc: token->loc
-        };
+        const span = Span { source_id: self->source_id(), loc: token->loc };
 
         switch (*token->kind) {
             case .Ident(str) => {
@@ -189,8 +192,6 @@ pub struct ParserState {
                 return .None;
             }
         }
-        
-        return .None;
     }
 
     pub fn is(self: const Self*, kind: TokenKind) bool {
@@ -217,6 +218,16 @@ pub struct ParserState {
         switch (self->get(self->pos)) {
             case .Some(token) => switch (*token->kind) {
                 case .Ident(_) => return true;
+            }
+        }
+
+        return false;
+    }
+
+    pub fn is_ident_str(self: const Self*, value: const uint8*) bool {
+        switch (self->get(self->pos)) {
+            case .Some(token) => switch (*token->kind) {
+                case .Ident(str) => return str.as_str_const() == value;
             }
         }
 
@@ -265,6 +276,56 @@ pub struct ParserState {
 
             self->next();
         }
+    }
+
+    [[inline]]
+    pub fn expect_peek_right_brace(self: Self*) bool {
+        return self->expect_peek(.RightBrace);
+    }
+
+    [[inline]]
+    pub fn expect_right_brace(self: Self*) bool {
+        return self->expect(.RightBrace);
+    }
+
+    [[inline]]
+    pub fn expect_left_brace(self: Self*) bool {
+        return self->expect(.LeftBrace);
+    }
+
+    [[inline]]
+    pub fn expect_peek_left_brace(self: Self*) bool {
+        return self->expect_peek(.LeftBrace);
+    }
+
+    [[inline]]
+    pub fn expect_right_bracket(self: Self*) bool {
+        return self->expect(.RightBracket);
+    }
+
+    [[inline]]
+    pub fn expect_peek_right_bracket(self: Self*) bool {
+        return self->expect_peek(.RightBracket);
+    }
+
+    [[inline]]
+    pub fn expect_comma(self: Self*) bool {
+        return self->expect(.Comma);
+    }
+
+    [[inline]]
+    pub fn expect_peek_comma(self: Self*) bool {
+        return self->expect_peek(.Comma);
+    }
+
+    [[inline]]
+    pub fn expect_colon(self: Self*) bool {
+        return self->expect(.Colon);
+    }
+
+    [[inline]]
+    pub fn expect_peek_colon(self: Self*) bool {
+        return self->expect_peek(.Colon);
     }
 
     /// Dumps current token only for debugging purposes.

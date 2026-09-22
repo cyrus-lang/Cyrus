@@ -1,108 +1,302 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 The Cyrus Language
 
-import tokens{SourceTokens, Token, dump_token};
+import .::ast{
+    ASTUnionField, ASTEnumVariant, ASTEnumVariantTupleField, ASTEnumVariantStructField,
+    ASTDefer, ASTImport, ASTStruct, ASTEnum, ASTUnion, ASTInterface, ASTTypeAlias,
+    ASTVar, ASTBlock, ASTIf, ASTWhile, ASTFor, ASTReturn, ASTBreak, ASTContinue,
+    ASTSelfModifier, ASTConstness, ASTVisibility, ASTExtern, ASTFuncModifiers,
+    ASTStructModifiers, ASTEnumModifiers, ASTUnionModifiers, ASTStructField,
+    ASTProgram, ASTNode, ASTNodeList, ASTGlobalVar, ASTFuncDef, ASTFuncDecl,
+    ASTModuleDecl, ASTIdent, ASTFuncParams, ASTFuncParam, ASTFuncParamKind,
+    ASTModuleSegment, ASTModuleSegmentSingle, ASTAssignExpr, ASTAssignKind,
+    ASTImplementInterface, ASTGenericParam, ASTGenericParams, ASTBound,
+    ASTFuncVariadicParam, NodeId, ASTTypeArgs, ASTTypeArg, ASTLambda,
+    ASTDerefExpr, ASTArrayIndexExpr, ASTTupleValue, ASTModuleImport, 
+};
+import std::collections{Vec};
 import .::state{ParserState};
+import .::exprs{ParserExprs};
+import std::option{Option};
 import diags{DiagContext};
-
-import std::libc{printf};
+import tokens{
+    Token, 
+    TokenKind, 
+    SourceTokens, 
+    Span
+};
 
 pub struct ParserStmts {
-    source_tokens: const SourceTokens*,
+    program: ASTProgram*,
     state: ParserState*,
 
     [[inline]]
-    pub fn new(
-        source_tokens: const SourceTokens*,
-        state: ParserState*
-    ) Self {
-        return Self { source_tokens, state };
+    pub fn new(program: ASTProgram*, state: ParserState*) Self {
+        return Self { program, state };
     }
 
+    [[inline]]
+    pub fn parse_expr(self: Self*) Option<NodeId> {
+        var exprs = ParserExprs.new(self->program, self->state);
+        return exprs.parse_expr();
+    }
+
+    [[inline]]
+    pub fn parse_type(self: Self*) Option<NodeId> {
+        var exprs = ParserExprs.new(self->program, self->state);
+        return exprs.parse_type();
+    }
+
+    [[inline]]
     pub fn parse_toplevels(self: Self*) {
-        const tokens = &self->source_tokens->tokens;
-
-        for (var i: usize = 0; i < tokens->len(); i += 1) {
-            parse_toplevel(self->state);            
-        }
-    }
-}
-
-pub fn parse_toplevel(state: ParserState*) bool {
-    // TODO Detect & Parse Attributes
-    // TODO Detect & Parse Builtins
-
-    const token = state->current();
-
-    var ok = false;
-
-    switch (*token->kind) {
-        case .Static | .Var | .Const => ok = parse_global_var(state);
-        case .Import => @todo();
-        case .Function => @todo();
-        case .Module => @todo();
-        case .Struct => @todo();
-        case .Enum => @todo();
-        case .Union => @todo();
-        case .Typedef => @todo();
-        case .Interface => @todo();
-        else => {
-            // TODO Emit diagnostic: invalid statement
+        while (!self->state->is(.EOF)) {
+            self->parse_toplevel();
         }
     }
 
-    // TODO Drain Attributes
-    // No matter is okay or not, always drain attrs if parsed something.
+    pub fn parse_toplevel(self: Self*) bool {
+        var is_pub = false;
+        if (self->state->is(.Public)) {
+            self->state->next();
+            is_pub = true;
+        }
 
-    return ok;
-}
+        var is_extern = false;
+        if (self->state->is(.Extern)) {
+            self->state->next();
+            is_extern = true;
+        }
 
-pub fn parse_stmt(state: ParserState*) {
-    // TODO Detect & Parse Builtins
-    // TODO Detect & Parse Inline Assembly
+        const token = self->state->current();
 
-    const token = state->current();
-
-    switch (*token->kind) {
-        case .Var | .Const => @todo();
-        case .Defer => @todo();
-        case .If => @todo();
-        case .Return => @todo();
-        case .For => @todo();
-        case .While => @todo();
-        case .Break => @todo();
-        case .Continue => @todo();
-        case .Switch => @todo();
-        case .Goto => @todo();
-        case .LeftBrace => @todo();
-    }
-}
-
-pub fn parse_global_var(state: ParserState*) bool {
-    var is_static = false;
-    var is_const = false;
-
-    if (state->is(.Static)) {
-        state->next();
-        is_static = true;
+        switch (*token->kind) {
+            case .Static | .Var | .Const => return self->parse_global_var(is_pub, is_extern);
+            case .Function => return self->parse_func(is_pub, is_extern);
+            case .Interface => return self->parse_interface(is_pub);
+            case .Module => return self->parse_module_decl(is_pub);
+            case .Type => return self->parse_type_alias(is_pub);
+            case .Struct => return self->parse_struct(is_pub);
+            case .Union => return self->parse_union(is_pub);
+            case .Enum => return self->parse_enum(is_pub);
+            case .Import => return self->parse_import();
+            else => {
+                self->state->sync();
+                return false;
+            }
+        }
     }
 
-    if (state->is(.Const)) {
-        state->next();
-        is_const = true;
-    } else {
-        if (!state->expect(.Var)) {
+    pub fn parse_stmt(self: Self*) {
+        const token = self->state->current();
+
+        switch (*token->kind) {
+            case .Function => self->parse_func(false, false);
+            case .Continue => self->parse_continue();
+            case .Var | .Const => self->parse_var();
+            case .LeftBrace => self->parse_block();
+            case .Return => self->parse_return();
+            case .While => self->parse_while();
+            case .Break => self->parse_break();
+            case .Defer => self->parse_defer();
+            case .For => self->parse_for();
+            case .If => self->parse_if();
+            else => self->parse_expr();
+        }
+    }
+
+    /// Grammar: static? (const | var) IDENT (: Type)? (= Expr)? ;
+    pub fn parse_global_var(self: Self*, is_pub: bool, is_extern: bool) bool {
+        const start_span = self->state->current_span();
+
+        var is_static = false;
+        var is_const = false;
+        
+        if (self->state->is(.Static)) {
+            self->state->next();
+            is_static = true;
+        }
+
+        if (self->state->is(.Const)) {
+            self->state->next();
+            is_const = true;
+        } else {
+            if (!self->state->expect(.Var)) {
+                self->state->sync();
+                return false;
+            }
+        }
+
+        switch (self->state->expect_ident()) case .Some(ident) else {
+            self->state->sync();
             return false;
         }
+
+        // Optional type annotation
+        var ty: Option<NodeId> = .None;
+
+        if (self->state->is(.Colon)) {
+            self->state->next();
+
+            switch (self->parse_type()) {
+                case .Some(id) => ty = .Some(id);
+            }
+        }
+
+        // Optional initializer
+        var expr: Option<NodeId> = .None;
+        var is_undef = false;
+        
+        if (self->state->is(.Assign)) {
+            self->state->next();
+
+            if (self->state->is_ident_str("undefined")) {
+                self->state->next();
+                is_undef = true;
+            } else {
+                switch (self->parse_expr()) {
+                    case .Some(id) => expr = .Some(id);
+                }
+            }
+        }
+
+        if (!self->state->expect_semicolon()) {
+            self->state->sync();
+            return false;
+        }
+
+        const end = self->state->current_span();
+        const span = start_span.merge(end);
+
+        self->state->pending->push(self->program->create_node(.GlobalVar(ASTGlobalVar {
+            ident,
+            ty,
+            expr,
+            is_const,
+            is_undef,
+            is_static,
+            span,
+        })));
+
+        return true;
     }
 
-    switch (state->expect_ident()) case .Some(ident) else {
-        return false;
+    /// Grammar: (const | var) IDENT (: Type)? (= Expr)? ;
+    pub fn parse_var(self: Self*) {
+        @todo();
     }
 
-    if (!state->expect_semicolon()) {
-        return false;
+    // Grammar: fn IDENT <GenericParams>? FuncParams (-> Type)? (Block | ;)
+    pub fn parse_func(self: Self*, is_pub: bool, is_extern: bool) bool {
+        @todo();
     }
 
-    return true; 
+    pub fn parse_func_params(self: Self*) ASTFuncParams {
+        @todo();
+    }
+
+    [[inline]]
+    pub fn parse_block(self: Self*) {
+        self->parse_block_node();
+    }
+
+    pub fn parse_block_node(self: Self*) Option<NodeId> {
+        @todo();
+    }
+
+    // Grammar: if (Expr) Block (else if (Expr) Block)* (else Block)?
+    pub fn parse_if(self: Self*) {
+        @todo();
+    }
+
+    pub fn parse_return(self: Self*) {
+        @todo();
+    }
+
+    pub fn parse_while(self: Self*) {
+        @todo();
+    }
+
+    //  Grammar: for (Init? ; Cond? ; Incr?) Block
+    pub fn parse_for(self: Self*) {
+        @todo();
+    }
+
+    /// Grammar: break
+    pub fn parse_break(self: Self*) {
+        const span = self->state->current_span();
+        self->state->next(); // consume break
+        self->state->pending->push(self->program->create_node(.Break(
+            ASTBreak {
+                span
+            }
+        )));
+    }
+
+    /// Grammar: continue
+    pub fn parse_continue(self: Self*) {
+        const span = self->state->current_span();
+        self->state->next(); // consume continue
+        self->state->pending->push(self->program->create_node(.Continue(
+            ASTContinue {
+                span
+            }
+        )));
+    }
+
+    /// Grammar: defer STMT ;
+    pub fn parse_defer(self: Self*) {
+        @todo();
+    }
+
+    /// Grammar: import PATH (:: PATH)* ;
+    pub fn parse_import(self: Self*) bool {
+        @todo();
+    }
+
+    ///  Grammar:  struct IDENT <GenericParams>? (: Impl)? { FieldOrMethod* }
+    pub fn parse_struct(self: Self*, is_pub: bool) bool {
+        @todo();
+    }
+
+    fn parse_struct_field(self: Self*) Option<ASTStructField> {
+        @todo();
+    }
+
+    ///  Grammar:  enum IDENT (TagType)? <GenericParams>? { Variant* }
+    pub fn parse_enum(self: Self*, is_pub: bool) bool {
+        @todo();
+    }
+
+    fn parse_enum_variant(self: Self*) Option<ASTEnumVariant> {
+        @todo();
+    }
+
+    // Grammar: union IDENT <GenericParams>? { (Field | Method)* }
+    pub fn parse_union(self: Self*, is_pub: bool) bool {
+        @todo();
+    }
+
+    fn parse_union_field(self: Self*) Option<ASTUnionField> {
+        @todo();
+    }
+
+    /// Grammar: type IDENT <GenericParams>? = Type ;
+    pub fn parse_type_alias(self: Self*, is_pub: bool) bool {
+        @todo();
+    }
+
+    /// Grammar: interface IDENT <GenericParams>? { FuncDecl* }
+    pub fn parse_interface(self: Self*, is_pub: bool) bool {
+        @todo();
+    }
+
+    /// Grammar: mod IDENT { Toplevel* }
+    pub fn parse_module_decl(self: Self*, is_pub: bool) bool {
+        @todo();
+    }
+
+    ///  Grammar: <IDENT (: Bound)? (= Type)? (, ...)* >
+    pub fn parse_generic_params(self: Self*) ASTGenericParams {
+        @todo();
+    }
 }

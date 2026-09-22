@@ -1,14 +1,601 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 The Cyrus Language
 
-import .::ast{ASTProgram};
-import std::io{Writer};
+import .::ast{
+    ASTProgram, ASTNode, ASTExpr, NodeId, ASTIdent, ASTVar, ASTFuncDef, ASTFuncDecl,
+    ASTStruct, ASTEnum, ASTUnion, ASTInterface, ASTBlock, ASTIf, ASTWhile, ASTFor,
+    ASTSwitch, ASTSwitchCase, ASTSwitchGuard, ASTReturn, ASTImport, ASTModuleDecl,
+    ASTTypeAlias, ASTGlobalVar, ASTAssignExpr, ASTInfixExpr, ASTPrefixExpr, ASTFuncCall,
+    ASTFieldAccess, ASTMethodCall, ASTStructInit, ASTArrayExpr, ASTUntypedArrayExpr,
+    ASTArrayIndexExpr, ASTAddrOfExpr, ASTDerefExpr, ASTTupleValue, ASTTupleAccess,
+    ASTDynamic, ASTLambda, ASTInlineAsm, ASTBuiltin, ASTEnumStructVariantInit,
+    ASTUnnamedStructValue, ASTUnnamedUnionValue, ASTUnnamedEnumValue, ASTDestructTuple,
+    ASTLabel, ASTGoto, ASTDefer, ASTBreak, ASTContinue, ASTModuleImport
+};
+import std::io{Writer, StdoutWriter};
+import std::format{format_usize};
+import tokens{Token};
 
 pub struct ASTDump {
     program: ASTProgram,
-    writer: Writer
+    writer: Writer,
+    indent: usize,
 
     pub fn new(program: ASTProgram, writer: Writer) Self {
-        return Self { program, writer };
+        return Self {
+            program,
+            writer,
+            indent: 0,
+        };
+    }
+
+    pub fn dump(self: Self*) {
+        self->dump_program_node();
+    }
+
+    fn write_indent(self: Self*) {
+        for (var i: usize = 0; i < self->indent; i += 1) {
+            self->writer.write("    ");
+        }
+    }
+
+    fn dump_ident(self: Self*, name: const uint8*, ident: const ASTIdent*) {
+        self->write_indent();
+        self->writer.write(name);
+        self->writer.write(": ");
+        self->writer.writeln(ident->str.as_str_const());
+    }
+
+    fn dump_bool(self: Self*, name: const uint8*, val: bool) {
+        self->write_indent();
+        self->writer.write(name);
+        self->writer.write(": ");
+        if (val) {
+            self->writer.writeln("true");
+        } else {
+            self->writer.writeln("false");
+        }
+    }
+
+    fn dump_usize(self: Self*, name: const uint8*, val: usize) {
+        self->write_indent();
+        self->writer.write(name);
+        self->writer.write(": ");
+        format_usize(self->writer, val);
+        self->writer.write_char('\n');
+    }
+
+    fn dump_node_id(self: Self*, name: const uint8*, id: NodeId) {
+        self->dump_usize(name, id);
+    }
+
+    fn dump_program_node(self: Self*) {
+        self->write_indent();
+        self->writer.writeln("ASTProgram");
+        self->indent += 1;
+
+        self->dump_usize("nodes_count", self->program.nodes.len());
+        self->dump_usize("children_count", self->program.children.len());
+
+        for (var i: usize = 0; i < self->program.nodes.len(); i += 1) {
+            const node = self->program.nodes.get_const(i).unwrap();
+            self->write_indent();
+            self->writer.write("Node[");
+            format_usize(self->writer, i);
+            self->writer.writeln("]:");
+            self->indent += 1;
+            self->dump_node(node);
+            self->indent -= 1;
+        }
+
+        self->indent -= 1;
+    }
+
+    fn dump_node(self: Self*, node: const ASTNode*) {
+        switch (*node) {
+            case .TypeAlias(var n) => self->dump_type_alias(&n);
+            case .Expr(var expr) => self->dump_expr_node(&expr);
+            case .Var(var n) => self->dump_var(&n);
+            case .FuncDef(var n) => self->dump_func_def(&n);
+            case .FuncDecl(var n) => self->dump_func_decl(&n);
+            case .Struct(var n) => self->dump_struct(&n);
+            case .Enum(var n) => self->dump_enum(&n);
+            case .Union(var n) => self->dump_union(&n);
+            case .Interface(var n) => self->dump_interface(&n);
+            case .Block(var n) => self->dump_block(&n);
+            case .If(var n) => self->dump_if(&n);
+            case .While(var n) => self->dump_while(&n);
+            case .For(var n) => self->dump_for(&n);
+            case .Switch(var n) => self->dump_switch(&n);
+            case .SwitchGuard(var n) => self->dump_switch_guard(&n);
+            case .Return(var n) => self->dump_return(&n);
+            case .Import(var n) => self->dump_import(&n);
+            case .ModuleDecl(var n) => self->dump_module_decl(&n);
+            case .GlobalVar(var n) => self->dump_global_var(&n);
+            case .Defer(var n) => self->dump_defer(&n);
+            case .Break(var n) => self->dump_break(&n);
+            case .Continue(var n) => self->dump_continue(&n);
+            case .Label(var n) => self->dump_label(&n);
+            case .Goto(var n) => self->dump_goto(&n);
+            case .DestructTuple(var n) => self->dump_destruct_tuple(&n);
+            case .Builtin(var n) => self->dump_builtin(&n);
+            case .InlineAsm(var n) => self->dump_inline_asm(&n);
+        }
+    }
+
+    fn dump_type_alias(self: Self*, n: const ASTTypeAlias*) {
+        self->write_indent();
+        self->writer.writeln("ASTTypeAlias");
+        self->indent += 1;
+        self->dump_ident("ident", &n->ident);
+        // self->dump_node_id("type_spec", n->type_spec);
+        self->indent -= 1;
+    }
+
+    fn dump_var(self: Self*, n: const ASTVar*) {
+        self->write_indent();
+        self->writer.writeln("ASTVar");
+        self->indent += 1;
+        self->dump_ident("ident", &n->ident);
+        self->dump_bool("is_const", n->is_const);
+        self->dump_bool("is_undef", n->is_undef);
+        switch (n->ty) {
+            case .Some(ty_id) => self->dump_node_id("ty", ty_id);
+            case .None => {}
+        }
+        switch (n->rhs) {
+            case .Some(rhs_id) => self->dump_node_id("rhs", rhs_id);
+            case .None => {}
+        }
+        self->indent -= 1;
+    }
+
+    fn dump_global_var(self: Self*, n: const ASTGlobalVar*) {
+        self->write_indent();
+        self->writer.writeln("ASTGlobalVar");
+        self->indent += 1;
+        self->dump_ident("ident", &n->ident);
+        self->dump_bool("is_const", n->is_const);
+        self->dump_bool("is_undef", n->is_undef);
+        self->dump_bool("is_static", n->is_static);
+        // switch (n->type_spec) {
+        //     case .Some(ts) => self->dump_node_id("type_spec", ts);
+        //     case .None => {}
+        // }
+        switch (n->expr) {
+            case .Some(expr_id) => self->dump_node_id("expr", expr_id);
+            case .None => {}
+        }
+        self->indent -= 1;
+    }
+
+    fn dump_func_def(self: Self*, n: const ASTFuncDef*) {
+        self->write_indent();
+        self->writer.writeln("ASTFuncDef");
+        self->indent += 1;
+        self->dump_ident("ident", &n->ident);
+        self->dump_node_id("body", n->body);
+        switch (n->ret_type) {
+            case .Some(rt) => self->dump_node_id("ret_type", rt);
+            case .None => {}
+        }
+        self->indent -= 1;
+    }
+
+    fn dump_func_decl(self: Self*, n: const ASTFuncDecl*) {
+        self->write_indent();
+        self->writer.writeln("ASTFuncDecl");
+        self->indent += 1;
+        self->dump_ident("ident", &n->ident);
+        switch (n->ret_type) {
+            case .Some(rt) => self->dump_node_id("ret_type", rt);
+            case .None => {}
+        }
+        self->indent -= 1;
+    }
+
+    fn dump_struct(self: Self*, n: const ASTStruct*) {
+        self->write_indent();
+        self->writer.writeln("ASTStruct");
+        self->indent += 1;
+        self->dump_ident("ident", &n->ident);
+        self->dump_bool("is_packed", n->is_packed);
+        self->indent -= 1;
+    }
+
+    fn dump_enum(self: Self*, n: const ASTEnum*) {
+        self->write_indent();
+        self->writer.writeln("ASTEnum");
+        self->indent += 1;
+        self->dump_ident("ident", &n->ident);
+        self->indent -= 1;
+    }
+
+    fn dump_union(self: Self*, n: const ASTUnion*) {
+        self->write_indent();
+        self->writer.writeln("ASTUnion");
+        self->indent += 1;
+        self->dump_ident("ident", &n->ident);
+        self->indent -= 1;
+    }
+
+    fn dump_interface(self: Self*, n: const ASTInterface*) {
+        self->write_indent();
+        self->writer.writeln("ASTInterface");
+        self->indent += 1;
+        self->dump_ident("ident", &n->ident);
+        self->indent -= 1;
+    }
+
+    fn dump_block(self: Self*, n: const ASTBlock*) {
+        self->write_indent();
+        self->writer.writeln("ASTBlock");
+        self->indent += 1;
+        self->dump_usize("stmts_count", n->stmts.len);
+        self->indent -= 1;
+    }
+
+    fn dump_if(self: Self*, n: const ASTIf*) {
+        self->write_indent();
+        self->writer.writeln("ASTIf");
+        self->indent += 1;
+        self->dump_node_id("condition", n->condition);
+        self->dump_node_id("then_block", n->then_block);
+        self->indent -= 1;
+    }
+
+    fn dump_while(self: Self*, n: const ASTWhile*) {
+        self->write_indent();
+        self->writer.writeln("ASTWhile");
+        self->indent += 1;
+        self->dump_node_id("condition", n->condition);
+        self->dump_node_id("body", n->body);
+        self->indent -= 1;
+    }
+
+    fn dump_for(self: Self*, n: const ASTFor*) {
+        self->write_indent();
+        self->writer.writeln("ASTFor");
+        self->indent += 1;
+        self->dump_node_id("body", n->body);
+        self->indent -= 1;
+    }
+
+    fn dump_switch(self: Self*, n: const ASTSwitch*) {
+        self->write_indent();
+        self->writer.writeln("ASTSwitch");
+        self->indent += 1;
+        self->dump_node_id("operand", n->operand);
+        self->indent -= 1;
+    }
+
+    fn dump_switch_guard(self: Self*, n: const ASTSwitchGuard*) {
+        self->write_indent();
+        self->writer.writeln("ASTSwitchGuard");
+        self->indent += 1;
+        self->dump_node_id("operand", n->operand);
+        self->indent -= 1;
+    }
+
+    fn dump_return(self: Self*, n: const ASTReturn*) {
+        self->write_indent();
+        self->writer.writeln("ASTReturn");
+        self->indent += 1;
+        switch (n->argument) {
+            case .Some(arg) => self->dump_node_id("argument", arg);
+            case .None => {}
+        }
+        self->indent -= 1;
+    }
+
+    fn dump_import(self: Self*, n: const ASTImport*) {
+        self->write_indent();
+        self->writer.writeln("ASTImport");
+        self->indent += 1;
+        self->indent -= 1;
+    }
+
+    fn dump_module_decl(self: Self*, n: const ASTModuleDecl*) {
+        self->write_indent();
+        self->writer.writeln("ASTModuleDecl");
+        self->indent += 1;
+        self->dump_ident("ident", &n->ident);
+        self->indent -= 1;
+    }
+
+    fn dump_defer(self: Self*, n: const ASTDefer*) {
+        self->write_indent();
+        self->writer.writeln("ASTDefer");
+        self->indent += 1;
+        self->dump_node_id("operand", n->operand);
+        self->indent -= 1;
+    }
+
+    fn dump_break(self: Self*, n: const ASTBreak*) {
+        self->write_indent();
+        self->writer.writeln("ASTBreak");
+    }
+
+    fn dump_continue(self: Self*, n: const ASTContinue*) {
+        self->write_indent();
+        self->writer.writeln("ASTContinue");
+    }
+
+    fn dump_label(self: Self*, n: const ASTLabel*) {
+        self->write_indent();
+        self->writer.writeln("ASTLabel");
+        self->indent += 1;
+        self->dump_ident("name", &n->name);
+        self->indent -= 1;
+    }
+
+    fn dump_goto(self: Self*, n: const ASTGoto*) {
+        self->write_indent();
+        self->writer.writeln("ASTGoto");
+        self->indent += 1;
+        self->dump_ident("name", &n->name);
+        self->indent -= 1;
+    }
+
+    fn dump_destruct_tuple(self: Self*, n: const ASTDestructTuple*) {
+        self->write_indent();
+        self->writer.writeln("ASTDestructTuple");
+    }
+
+    fn dump_builtin(self: Self*, n: const ASTBuiltin*) {
+        self->write_indent();
+        self->writer.writeln("ASTBuiltin");
+    }
+
+    fn dump_inline_asm(self: Self*, n: const ASTInlineAsm*) {
+        self->write_indent();
+        self->writer.writeln("ASTInlineAsm");
+        self->indent += 1;
+        self->dump_bool("is_volatile", n->is_volatile);
+        self->indent -= 1;
+    }
+
+    fn dump_expr_node(self: Self*, expr: const ASTExpr*) {
+        switch (*expr) {
+            case .Ident(var n) => self->dump_expr_ident(&n);
+            case .Literal(var n) => self->dump_expr_literal(&n);
+            case .Infix(var n) => self->dump_expr_infix(&n);
+            case .Prefix(var n) => self->dump_expr_prefix(&n);
+            case .Assign(var n) => self->dump_expr_assign(&n);
+            case .FuncCall(var n) => self->dump_expr_func_call(&n);
+            case .FieldAccess(var n) => self->dump_expr_field_access(&n);
+            case .MethodCall(var n) => self->dump_expr_method_call(&n);
+            case .StructInit(var n) => self->dump_expr_struct_init(&n);
+            case .Array(var n) => self->dump_expr_array(&n);
+            case .UntypedArray(var n) => self->dump_expr_untyped_array(&n);
+            case .ArrayIndex(var n) => self->dump_expr_array_index(&n);
+            case .AddrOf(var n) => self->dump_expr_addr_of(&n);
+            case .Deref(var n) => self->dump_expr_deref(&n);
+            case .Tuple(var n) => self->dump_expr_tuple(&n);
+            case .TupleAccess(var n) => self->dump_expr_tuple_access(&n);
+            case .Dynamic(var n) => self->dump_expr_dynamic(&n);
+            case .Lambda(var n) => self->dump_expr_lambda(&n);
+            case .TypeSpecifier(var n) => self->dump_expr_type_specifier(n);
+            case .ModuleImport(var n) => self->dump_expr_module_import(&n);
+            case .Builtin(var n) => self->dump_expr_builtin(&n);
+            case .EnumStructVariantInit(var n) => self->dump_expr_enum_struct_variant_init(&n);
+            case .UnnamedStructValue(var n) => self->dump_expr_unnamed_struct_value(&n);
+            case .UnnamedUnionValue(var n) => self->dump_expr_unnamed_union_value(&n);
+            case .UnnamedEnumValue(var n) => self->dump_expr_unnamed_enum_value(&n);
+            case .InlineAsm(var n) => self->dump_expr_inline_asm(&n);
+        }
+    }
+
+    fn dump_expr_ident(self: Self*, n: const ASTIdent*) {
+        self->write_indent();
+        self->writer.writeln("ASTExpr::Ident");
+        self->indent += 1;
+        self->dump_ident("ident", n);
+        self->indent -= 1;
+    }
+
+    fn dump_expr_literal(self: Self*, token: const Token*) {
+        self->write_indent();
+        self->writer.writeln("ASTExpr::Literal");
+    }
+
+    fn dump_expr_infix(self: Self*, n: const ASTInfixExpr*) {
+        self->write_indent();
+        self->writer.writeln("ASTExpr::Infix");
+        self->indent += 1;
+        self->dump_node_id("lhs", n->lhs);
+        self->dump_node_id("rhs", n->rhs);
+        self->indent -= 1;
+    }
+
+    fn dump_expr_prefix(self: Self*, n: const ASTPrefixExpr*) {
+        self->write_indent();
+        self->writer.writeln("ASTExpr::Prefix");
+        self->indent += 1;
+        self->dump_node_id("operand", n->operand);
+        self->indent -= 1;
+    }
+
+    fn dump_expr_assign(self: Self*, n: const ASTAssignExpr*) {
+        self->write_indent();
+        self->writer.writeln("ASTExpr::Assign");
+        self->indent += 1;
+        self->dump_node_id("lhs", n->lhs);
+        self->dump_node_id("rhs", n->rhs);
+        self->indent -= 1;
+    }
+
+    fn dump_expr_func_call(self: Self*, n: const ASTFuncCall*) {
+        self->write_indent();
+        self->writer.writeln("ASTExpr::FuncCall");
+        self->indent += 1;
+        self->dump_node_id("operand", n->operand);
+        self->dump_usize("args_count", n->args.len());
+        self->indent -= 1;
+    }
+
+    fn dump_expr_field_access(self: Self*, n: const ASTFieldAccess*) {
+        self->write_indent();
+        self->writer.writeln("ASTExpr::FieldAccess");
+        self->indent += 1;
+        self->dump_node_id("operand", n->operand);
+        self->dump_ident("field_name", &n->field_name);
+        self->dump_bool("is_thin_arrow", n->is_thin_arrow);
+        self->indent -= 1;
+    }
+
+    fn dump_expr_method_call(self: Self*, n: const ASTMethodCall*) {
+        self->write_indent();
+        self->writer.writeln("ASTExpr::MethodCall");
+        self->indent += 1;
+        self->dump_node_id("operand", n->operand);
+        self->dump_ident("method_name", &n->method_name);
+        self->dump_usize("args_count", n->args.len());
+        self->dump_bool("is_thin_arrow", n->is_thin_arrow);
+        self->indent -= 1;
+    }
+
+    fn dump_expr_struct_init(self: Self*, n: const ASTStructInit*) {
+        self->write_indent();
+        self->writer.writeln("ASTExpr::StructInit");
+        self->indent += 1;
+        self->dump_node_id("operand", n->operand);
+        self->dump_usize("field_inits_count", n->field_inits.len());
+        self->indent -= 1;
+    }
+
+    fn dump_expr_array(self: Self*, n: const ASTArrayExpr*) {
+        self->write_indent();
+        self->writer.writeln("ASTExpr::Array");
+        self->indent += 1;
+        self->dump_node_id("data_type", n->data_type);
+        self->dump_usize("elements_count", n->elements.len());
+        self->indent -= 1;
+    }
+
+    fn dump_expr_untyped_array(self: Self*, n: const ASTUntypedArrayExpr*) {
+        self->write_indent();
+        self->writer.writeln("ASTExpr::UntypedArray");
+        self->indent += 1;
+        self->dump_usize("elements_count", n->elements.len());
+        self->indent -= 1;
+    }
+
+    fn dump_expr_array_index(self: Self*, n: const ASTArrayIndexExpr*) {
+        self->write_indent();
+        self->writer.writeln("ASTExpr::ArrayIndex");
+        self->indent += 1;
+        self->dump_node_id("operand", n->operand);
+        self->dump_node_id("index", n->index);
+        self->indent -= 1;
+    }
+
+    fn dump_expr_addr_of(self: Self*, n: const ASTAddrOfExpr*) {
+        self->write_indent();
+        self->writer.writeln("ASTExpr::AddrOf");
+        self->indent += 1;
+        self->dump_node_id("expr", n->expr);
+        self->indent -= 1;
+    }
+
+    fn dump_expr_deref(self: Self*, n: const ASTDerefExpr*) {
+        self->write_indent();
+        self->writer.writeln("ASTExpr::Deref");
+        self->indent += 1;
+        self->dump_node_id("expr", n->expr);
+        self->indent -= 1;
+    }
+
+    fn dump_expr_tuple(self: Self*, n: const ASTTupleValue*) {
+        self->write_indent();
+        self->writer.writeln("ASTExpr::Tuple");
+        self->indent += 1;
+        self->dump_usize("elements_count", n->elements.len());
+        self->indent -= 1;
+    }
+
+    fn dump_expr_tuple_access(self: Self*, n: const ASTTupleAccess*) {
+        self->write_indent();
+        self->writer.writeln("ASTExpr::TupleAccess");
+        self->indent += 1;
+        self->dump_node_id("operand", n->operand);
+        self->dump_usize("index", n->index);
+        self->indent -= 1;
+    }
+
+    fn dump_expr_dynamic(self: Self*, n: const ASTDynamic*) {
+        self->write_indent();
+        self->writer.writeln("ASTExpr::Dynamic");
+        self->indent += 1;
+        self->dump_node_id("operand", n->operand);
+        self->indent -= 1;
+    }
+
+    fn dump_expr_lambda(self: Self*, n: const ASTLambda*) {
+        self->write_indent();
+        self->writer.writeln("ASTExpr::Lambda");
+        self->indent += 1;
+        self->dump_node_id("body", n->body);
+        self->dump_node_id("ret_type", n->ret_type);
+        self->indent -= 1;
+    }
+
+    fn dump_expr_type_specifier(self: Self*, id: NodeId) {
+        self->write_indent();
+        self->writer.writeln("ASTExpr::TypeSpecifier");
+        self->indent += 1;
+        self->dump_node_id("type_node", id);
+        self->indent -= 1;
+    }
+
+    fn dump_expr_module_import(self: Self*, n: const ASTModuleImport*) {
+        self->write_indent();
+        self->writer.writeln("ASTExpr::ModuleImport");
+    }
+
+    fn dump_expr_builtin(self: Self*, n: const ASTBuiltin*) {
+        self->write_indent();
+        self->writer.writeln("ASTExpr::Builtin");
+    }
+
+    fn dump_expr_enum_struct_variant_init(self: Self*, n: const ASTEnumStructVariantInit*) {
+        self->write_indent();
+        self->writer.writeln("ASTExpr::EnumStructVariantInit");
+        self->indent += 1;
+        self->dump_node_id("operand", n->operand);
+        self->dump_ident("ident", &n->ident);
+        self->indent -= 1;
+    }
+
+    fn dump_expr_unnamed_struct_value(self: Self*, n: const ASTUnnamedStructValue*) {
+        self->write_indent();
+        self->writer.writeln("ASTExpr::UnnamedStructValue");
+        self->indent += 1;
+        self->dump_usize("fields_count", n->fields.len());
+        self->indent -= 1;
+    }
+
+    fn dump_expr_unnamed_union_value(self: Self*, n: const ASTUnnamedUnionValue*) {
+        self->write_indent();
+        self->writer.writeln("ASTExpr::UnnamedUnionValue");
+        self->indent += 1;
+        self->dump_usize("fields_count", n->fields.len());
+        self->indent -= 1;
+    }
+
+    fn dump_expr_unnamed_enum_value(self: Self*, n: const ASTUnnamedEnumValue*) {
+        self->write_indent();
+        self->writer.writeln("ASTExpr::UnnamedEnumValue");
+        self->indent += 1;
+        self->dump_ident("ident", &n->ident);
+        self->indent -= 1;
+    }
+
+    fn dump_expr_inline_asm(self: Self*, n: const ASTInlineAsm*) {
+        self->write_indent();
+        self->writer.writeln("ASTExpr::InlineAsm");
+        self->indent += 1;
+        self->dump_bool("is_volatile", n->is_volatile);
+        self->indent -= 1;
     }
 }

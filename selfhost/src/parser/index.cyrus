@@ -5,7 +5,7 @@ import std::collections{Vec};
 import std::errors{ErrorOr};
 import std::mem{Allocator};
 
-import .::ast{NodeId, ASTProgram};
+import .::ast{NodeId, ASTProgram, ASTNodeList};
 import .::stmts{ParserStmts};
 import .::state{ParserState};
 import tokens{SourceTokens};
@@ -22,8 +22,14 @@ pub struct Parser {
 
         var program = ASTProgram.new(allocator);
         var state = ParserState.new(allocator, dctx, &source_tokens, &pending);
-        var stmts = ParserStmts.new(&source_tokens, &state);
+        var stmts = ParserStmts.new(&program, &state);
         stmts.parse_toplevels();
+
+        // Mark, Parse, Commit, Truncate: drain pending into program.statements
+        if (pending.len() > 0) {
+            program.statements = .Some(program.commit_pending(&pending, 0));
+        }
+
         return .Value(program);
     }
 }

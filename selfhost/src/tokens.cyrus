@@ -9,6 +9,7 @@ import std::string{String};
 import std::mem{Allocator};
 import std::option{Option};
 import std::libc{printf};
+import source{SourceId};
 import std::io{Writer};
 import std::format{
     Format,
@@ -18,8 +19,6 @@ import std::format{
     format_bool,
     format
 };
-
-import source{SourceId};
 
 pub struct SourceTokens {
     pub source_id: SourceId,
@@ -130,7 +129,7 @@ pub enum TokenKind : Format {
     Union,
     Interface,
     Function,
-    Typedef,
+    Type,
     Switch,
     Case,
     If,
@@ -235,7 +234,7 @@ pub enum TokenKind : Format {
             case "var" => return .Some(.Var);
             case "mod" => return .Some(.Module);
             case "interface" => return .Some(.Interface);
-            case "type" => return .Some(.Typedef);
+            case "type" => return .Some(.Type);
             case "fn" => return .Some(.Function);
             case "switch" => return .Some(.Switch);
             case "case" => return .Some(.Case);
@@ -337,7 +336,7 @@ pub enum TokenKind : Format {
             case .Var => writer.write("var");
             case .Module => writer.write("mod");
             case .Interface => writer.write("interface");
-            case .Typedef => writer.write("type");
+            case .Type => writer.write("type");
             case .Function => writer.write("fn");
             case .Switch => writer.write("switch");
             case .Case => writer.write("case");
@@ -403,7 +402,7 @@ pub enum TokenKind : Format {
             | .NotEqual | .Bang | .DoubleColon
             => return "SYMBOL";
 
-            case .Dynamic | .Static | .Var | .Module | .Interface | .Typedef
+            case .Dynamic | .Static | .Var | .Module | .Interface | .Type
             | .Function | .Switch | .Case | .Struct | .Import
             | .If | .Else | .Return | .For | .Break
             | .Continue | .True | .False | .Null | .UIntPtr
@@ -583,13 +582,20 @@ pub struct Span {
     pub fn new(source_id: SourceId, loc: Loc) Self {
         return Self { source_id, loc };
     }
+
+    [[inline]]
+    pub fn merge(self: Self, other: Self) Self {
+        const loc = self.loc.merge(other.loc);
+        return Self { source_id: self.source_id, loc };
+    }
 }
 
 pub struct Loc {
     pub start: usize, // Byte offset
     pub end: usize,   // Byte offset
 
-    pub fn merge(self: Self, other: Self) Self {
+    // FIXME (compiler): other type must be Self
+    pub fn merge(self: Self, other: Loc) Self {
         var merge = self;
         
         // Byte offsets

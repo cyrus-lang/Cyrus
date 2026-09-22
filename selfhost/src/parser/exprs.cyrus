@@ -1,25 +1,72 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 The Cyrus Language
 
-import tokens{TokenKind};
+import .::ast{
+    ASTAssignExpr, ASTAssignKind, ASTFuncCall, ASTFieldAccess, ASTMethodCall,
+    ASTProgram, ASTNode, ASTExpr, ASTIdent, ASTInfixExpr, ASTPrefixExpr,
+    ASTStructInit, ASTArrayExpr, ASTUntypedArrayExpr, ASTArrayIndexExpr,
+    ASTDynamic, ASTLambda, ASTInlineAsm, ASTBuiltin, ASTFieldInit,
+    ASTAddrOfExpr, ASTDerefExpr, ASTTupleValue, ASTTupleAccess,
+    ASTModuleImport, ASTModuleSegment, ASTModuleSegmentSingle,
+    ASTEnumStructVariantInit, ASTEnumStructVariantFieldInit,
+    ASTUnnamedStructValue, ASTUnnamedStructValueField,
+    ASTInfixOperator, ASTPrefixOperator, ASTConstness,
+    ASTUnnamedUnionValue, ASTUnnamedUnionValueField,
+    ASTTypeArgs, ASTTypeArg, ASTFuncParams, NodeId,
+    ASTUnnamedEnumValue, ASTUnnamedEnumValueKind,
+};
+import std::collections{Vec};
+import .::state{ParserState};
+import std::option{Option};
+import diags{DiagContext};
+import tokens{
+    Token, 
+    TokenKind, 
+    SourceTokens, 
+    Span, 
+    Literal
+};
 
-pub enum Prec {
-    Lowest       = 0,  // LOWEST
-    Assign       = 1,  // =
-    Or           = 2,  // ||
-    NullCoalesce = 3,  // ??
-    And          = 4,  // &&
-    Equals       = 5,  // ==, !=
-    LessGreater  = 6,  // >, <, >=, <=
-    Sum          = 7,  // +, -
-    Product      = 8,  // *, /, %
-    Bitwise      = 9,  // &, |, ~, &~, ^, <<, >>
-    Prefix       = 10, // -X, !X, &X
-    Call         = 11, // my_function(x)
-    Index        = 12, // array[index]
-    Field        = 13, // . and ->
+pub struct ParserExprs {
+    program: ASTProgram*,
+    state: ParserState*,
 
-    pub fn prec_of(kind: TokenKind) Self {
+    [[inline]]
+    pub fn new(program: ASTProgram*, state: ParserState*) Self {
+        return Self { program, state };
+    }
+
+    pub fn parse_expr(self: Self*) Option<NodeId> {
         @todo();
     }
+
+    pub fn parse_type(self: Self*) Option<NodeId> {
+        @todo();
+    }
+}
+
+pub enum Prec {
+    Lowest,
+    Assign,
+    Or,
+    And,
+    Equals,
+    LessGreater
+    Sum,
+    Product,
+    Bitwise,
+    Prefix,
+    Call,
+    Index,
+    Field
+}
+
+/// Returns true if a <= b.
+fn prec_less_eq(a: Prec, b: Prec) bool {
+    return @cast(usize, a) <= @cast(usize, b);
+}
+
+/// Returns the next-higher precedence for right-associative parsing.
+fn next_prec(p: Prec) Prec {
+    return @cast(Prec, @cast(usize, p) + 1);
 }
