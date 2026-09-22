@@ -5,7 +5,6 @@ import std::collections{Vec};
 import std::option{Option};
 import std::string{String};
 import std::mem{Allocator};
-
 import tokens{Span, Token};
 
 /* ************* Nodes ************* */
@@ -34,6 +33,26 @@ pub struct ASTProgram {
         const id = self->nodes.len();
         self->nodes.push(node);
         return id;
+    }
+
+    /// Commits pending children into the global children pool.
+    pub fn commit_pending(self: Self*, pending: Vec<NodeId>*, mark: usize) ASTNodeList {
+        @assert(pending->len() >= mark, "mark cannot be bigger than pending nodes length");
+
+        const len = pending->len() - mark;
+        const start = self->children.len();
+        
+        // Push pending nodes into children
+        for (var i: usize = mark; i < pending->len(); i += 1) {
+            self->children.push(pending->get_owned(i).unwrap());
+        }
+        
+        // Truncate back to mark
+        for (var i: usize = 0; i < len; i += 1) {
+            pending->pop();
+        }
+
+        return ASTNodeList { start, len };
     }
 
     pub fn free(self: Self*) {
@@ -412,7 +431,7 @@ pub struct ASTFuncDecl {
 /* ************* Statements ************* */
 
 pub struct ASTBlock {
-    pub stmts: Vec<NodeId>,
+    pub stmts: ASTNodeList,
     pub span: Span,
 }
 
@@ -614,7 +633,7 @@ pub struct ASTUnion {
 
 pub struct ASTTypeAlias {
     pub ident: ASTIdent,
-    pub type_spec: NodeId,
+    pub ty: NodeId,
     pub generic_params: ASTGenericParams,
     pub vis: ASTVisibility,
     pub span: Span,
@@ -622,12 +641,11 @@ pub struct ASTTypeAlias {
 
 pub struct ASTGlobalVar {
     pub ident: ASTIdent,
-    pub type_spec: Option<NodeId>,
+    pub ty: Option<NodeId>,
     pub expr: Option<NodeId>,
     pub is_const: bool,
     pub is_undef: bool,
     pub is_static: bool,
-    pub modifiers: ASTGlobalVarModifiers,
     pub span: Span,
 }
 

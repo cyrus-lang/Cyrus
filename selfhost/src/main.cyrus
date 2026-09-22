@@ -3,7 +3,8 @@
 
 import std::libc::types{c_int, c_char};
 import std::mem::libc{LibcAllocator};
-import std::io{Writer, StderrWriter};
+import std::io{Writer, StdoutWriter};
+import parser::dump{ASTDump};
 import std::mem{Allocator};
 import std::string{String};
 import std::libc{printf};
@@ -162,7 +163,9 @@ fn command_parse(ctx: cli::ActionContext) {
     }
     defer program.free();
 
-    printf("Parsed.\n");
+    const writer: Writer = dynamic StdoutWriter.new();
+    var dump = ASTDump.new(program, writer);
+    dump.dump();
 }
 
 fn command_version(ctx: cli::ActionContext) {
