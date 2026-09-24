@@ -15,7 +15,14 @@ impl<'a> AnalysisContext<'a> {
     pub(crate) fn analyze_global_var(&mut self, global_var: &mut TypedGlobalVarStmt) {
         if let Some(mut expr) = global_var.expr.clone() {
             if self.analyze_expr(&mut expr, global_var.ty.clone()).is_none() {
-                global_var.ty = Some(SemaType::Err(global_var.loc));
+                if global_var.ty.is_none() {
+                    global_var.ty = Some(SemaType::Err(global_var.loc));
+                }
+                self.decl_tables
+                    .with_global_var_decl_mut(global_var.global_var_decl_id, |global_var_decl| {
+                        global_var_decl.rhs = global_var.expr.clone();
+                        global_var_decl.ty = global_var.ty.clone();
+                    });
                 return;
             }
 
@@ -26,6 +33,14 @@ impl<'a> AnalysisContext<'a> {
                     loc: Some(global_var.loc),
                     hint: None,
                 });
+                if global_var.ty.is_none() {
+                    global_var.ty = Some(SemaType::Err(global_var.loc));
+                }
+                self.decl_tables
+                    .with_global_var_decl_mut(global_var.global_var_decl_id, |global_var_decl| {
+                        global_var_decl.rhs = global_var.expr.clone();
+                        global_var_decl.ty = global_var.ty.clone();
+                    });
                 return;
             }
 
@@ -36,6 +51,14 @@ impl<'a> AnalysisContext<'a> {
                     loc: Some(global_var.loc),
                     hint: None,
                 });
+                if global_var.ty.is_none() {
+                    global_var.ty = Some(SemaType::Err(global_var.loc));
+                }
+                self.decl_tables
+                    .with_global_var_decl_mut(global_var.global_var_decl_id, |global_var_decl| {
+                        global_var_decl.rhs = global_var.expr.clone();
+                        global_var_decl.ty = global_var.ty.clone();
+                    });
                 return;
             }
 
@@ -55,6 +78,11 @@ impl<'a> AnalysisContext<'a> {
                         loc: Some(global_var.loc),
                         hint: None,
                     });
+                    self.decl_tables
+                        .with_global_var_decl_mut(global_var.global_var_decl_id, |global_var_decl| {
+                            global_var_decl.rhs = global_var.expr.clone();
+                            global_var_decl.ty = global_var.ty.clone();
+                        });
                     return;
                 }
             },
@@ -62,6 +90,12 @@ impl<'a> AnalysisContext<'a> {
 
         if let Some(ty) = &global_var.ty {
             if !self.validate_variable_type(ty, global_var.expr.is_some() || global_var.is_undef, global_var.loc) {
+                global_var.ty = Some(SemaType::Err(global_var.loc));
+                self.decl_tables
+                    .with_global_var_decl_mut(global_var.global_var_decl_id, |global_var_decl| {
+                        global_var_decl.rhs = global_var.expr.clone();
+                        global_var_decl.ty = global_var.ty.clone();
+                    });
                 return;
             }
 
