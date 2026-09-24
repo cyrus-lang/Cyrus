@@ -19,8 +19,6 @@ import tokens{
     dump_token
 };
 
-const FORMAT_BUFFER_SIZE: usize = 2048;
-
 pub struct ParserState {
     allocator: Allocator,
     pub dctx: DiagContext*,

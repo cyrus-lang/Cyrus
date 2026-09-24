@@ -1,24 +1,11 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 The Cyrus Language
 
-import .::ast{
-    ASTAssignExpr, ASTAssignKind, ASTFuncCall, ASTFieldAccess, ASTMethodCall,
-    ASTProgram, ASTNode, ASTExpr, ASTIdent, ASTInfixExpr, ASTPrefixExpr,
-    ASTStructInit, ASTArrayExpr, ASTUntypedArrayExpr, ASTArrayIndexExpr,
-    ASTDynamic, ASTLambda, ASTInlineAsm, ASTBuiltin, ASTFieldInit,
-    ASTAddrOfExpr, ASTDerefExpr, ASTTupleValue, ASTTupleAccess,
-    ASTModuleImport, ASTModuleSegment, ASTModuleSegmentSingle,
-    ASTEnumStructVariantInit, ASTEnumStructVariantFieldInit,
-    ASTUnnamedStructValue, ASTUnnamedStructValueField,
-    ASTInfixOperator, ASTPrefixOperator, ASTConstness,
-    ASTUnnamedUnionValue, ASTUnnamedUnionValueField,
-    ASTTypeArgs, ASTTypeArg, ASTFuncParams, NodeId,
-    ASTUnnamedEnumValue, ASTUnnamedEnumValueKind,
-};
 import std::collections{Vec};
 import .::state{ParserState};
 import std::option{Option};
 import diags{DiagContext};
+import .::ast;
 import tokens{
     Token, 
     TokenKind, 
@@ -28,20 +15,161 @@ import tokens{
 };
 
 pub struct ParserExprs {
-    program: ASTProgram*,
+    program: ast::ASTProgram*,
     state: ParserState*,
 
     [[inline]]
-    pub fn new(program: ASTProgram*, state: ParserState*) Self {
+    pub fn new(program: ast::ASTProgram*, state: ParserState*) Self {
         return Self { program, state };
     }
 
-    pub fn parse_expr(self: Self*) Option<NodeId> {
+    pub fn parse_expr(self: Self*) Option<ast::NodeId> {
         @todo();
     }
 
-    pub fn parse_type(self: Self*) Option<NodeId> {
-        @todo();
+    pub fn parse_type(self: Self*) Option<ast::ASTType> {
+        return self->parse_type_with_options(true, true);
+    }
+
+    fn parse_type_with_options(
+        self: Self*, 
+        allow_pointers: bool, 
+        allow_arrays: bool
+    ) Option<ast::ASTType> {
+        const span = self->state->current_span();
+        
+        switch (self->parse_primitive_type()) case .Some(var base_type) else {
+            return .None;
+        }
+
+        while (true) {
+            // Pointer Type
+            if (allow_pointers && self->state->is_peek(.Asterisk)) {
+                self->state->next();
+
+                const node_id = self->program->create_node(.Type(base_type));
+                base_type = .Pointer(node_id);
+            } 
+            // Array Type
+            else if (allow_arrays && self->state->is_peek(.LeftBracket)) {
+                @todo();
+            } 
+            // Generic Type
+            else if (allow_arrays && self->state->is_peek(.LessThan)) {
+                @todo();
+            } 
+            else {
+                break;
+            }
+        }
+
+        return .Some(base_type);
+    }
+
+    fn parse_primitive_type(self: Self*) Option<ast::ASTType> {
+        const token = self->state->current();
+
+        switch (*token->kind) {
+            case .Int8 => {
+                self->state->next();
+                return .Some(.Primitive(.Int8));
+            }
+            case .Int16 => {
+                self->state->next();
+                return .Some(.Primitive(.Int16));
+            }
+            case .Int32 => {
+                self->state->next();
+                return .Some(.Primitive(.Int32));
+            }
+            case .Int64 => {
+                self->state->next();
+                return .Some(.Primitive(.Int64));
+            }
+            case .Int128 => {
+                self->state->next();
+                return .Some(.Primitive(.Int128));
+            }
+            case .IntPtr => {
+                self->state->next();
+                return .Some(.Primitive(.IntPtr));
+            }
+            case .ISize => {
+                self->state->next();
+                return .Some(.Primitive(.ISize));
+            }
+            case .UInt8 => {
+                self->state->next();
+                return .Some(.Primitive(.UInt8));
+            }
+            case .UInt16 => {
+                self->state->next();
+                return .Some(.Primitive(.UInt16));
+            }
+            case .UInt32 => {
+                self->state->next();
+                return .Some(.Primitive(.UInt32));
+            }
+            case .UInt64 => {
+                self->state->next();
+                return .Some(.Primitive(.UInt64));
+            }
+            case .UInt128 => {
+                self->state->next();
+                return .Some(.Primitive(.UInt128));
+            }
+            case .UIntPtr => {
+                self->state->next();
+                return .Some(.Primitive(.UIntPtr));
+            }
+            case .USize => {
+                self->state->next();
+                return .Some(.Primitive(.USize));
+            }
+            case .Float16 => {
+                self->state->next();
+                return .Some(.Primitive(.Float16));
+            }
+            case .Float32 => {
+                self->state->next();
+                return .Some(.Primitive(.Float32));
+            }
+            case .Float64 => {
+                self->state->next();
+                return .Some(.Primitive(.Float64));
+            }
+            case .Float128 => {
+                self->state->next();
+                return .Some(.Primitive(.Float128));
+            }
+            case .Bool => {
+                self->state->next();
+                return .Some(.Primitive(.Bool));
+            }
+            case .Void => {
+                self->state->next();
+                return .Some(.Primitive(.Void));
+            }
+            
+            case .Const => {
+                self->state->next();
+
+                switch (self->parse_type_with_options(false, false)) case .Some(inner) else {
+                    return .None;
+                }
+
+                const node_id = self->program->create_node(.Type(inner));
+                return .Some(.Const(node_id));
+            }
+
+            case .Struct => @todo();
+            case .Enum => @todo();
+            case .Union => @todo();
+            case .Function => @todo();
+            case .LeftParen => @todo();
+        }
+
+        return .None;
     }
 }
 

@@ -1,25 +1,13 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 The Cyrus Language
 
-import .::ast{
-    ASTUnionField, ASTEnumVariant, ASTEnumVariantTupleField, ASTEnumVariantStructField,
-    ASTDefer, ASTImport, ASTStruct, ASTEnum, ASTUnion, ASTInterface, ASTTypeAlias,
-    ASTVar, ASTBlock, ASTIf, ASTWhile, ASTFor, ASTReturn, ASTBreak, ASTContinue,
-    ASTSelfModifier, ASTConstness, ASTVisibility, ASTExtern, ASTFuncModifiers,
-    ASTStructModifiers, ASTEnumModifiers, ASTUnionModifiers, ASTStructField,
-    ASTProgram, ASTNode, ASTNodeList, ASTGlobalVar, ASTFuncDef, ASTFuncDecl,
-    ASTModuleDecl, ASTIdent, ASTFuncParams, ASTFuncParam, ASTFuncParamKind,
-    ASTModuleSegment, ASTModuleSegmentSingle, ASTAssignExpr, ASTAssignKind,
-    ASTImplementInterface, ASTGenericParam, ASTGenericParams, ASTBound,
-    ASTFuncVariadicParam, NodeId, ASTTypeArgs, ASTTypeArg, ASTLambda,
-    ASTDerefExpr, ASTArrayIndexExpr, ASTTupleValue, ASTModuleImport, 
-};
 import diags{Diag, DiagContext};
 import std::collections{Vec};
 import .::state{ParserState};
 import .::exprs{ParserExprs};
 import std::option{Option};
 import std::mem{Allocator};
+import .::ast;
 import tokens{
     Token, 
     TokenKind, 
@@ -27,31 +15,32 @@ import tokens{
     Span
 };
 
+// FIXME Remove
 import std::libc{printf};
 
 
 pub struct ParserStmts {
     allocator: Allocator,
-    program: ASTProgram*,
+    program: ast::ASTProgram*,
     state: ParserState*,
 
     [[inline]]
     pub fn new(
         allocator: Allocator, 
-        program: ASTProgram*, 
+        program: ast::ASTProgram*, 
         state: ParserState*
     ) Self {
         return Self { allocator, program, state };
     }
 
     [[inline]]
-    pub fn parse_expr(self: Self*) Option<NodeId> {
+    pub fn parse_expr(self: Self*) Option<ast::NodeId> {
         var exprs = ParserExprs.new(self->program, self->state);
         return exprs.parse_expr();
     }
 
     [[inline]]
-    pub fn parse_type(self: Self*) Option<NodeId> {
+    pub fn parse_type(self: Self*) Option<ast::ASTType> {
         var exprs = ParserExprs.new(self->program, self->state);
         return exprs.parse_type();
     }
@@ -141,18 +130,20 @@ pub struct ParserStmts {
         }
 
         // Optional type annotation
-        var ty: Option<NodeId> = .None;
+        var ty: Option<ast::ASTType> = .None;
 
         if (self->state->is(.Colon)) {
             self->state->next();
 
-            switch (self->parse_type()) {
-                case .Some(id) => ty = .Some(id);
+            switch (self->parse_type()) case .Some(explicit_type) else {
+                return false;
             }
+
+            ty = .Some(explicit_type);
         }
 
         // Optional initializer
-        var expr: Option<NodeId> = .None;
+        var expr: Option<ast::NodeId> = .None;
         var is_undef = false;
         
         if (self->state->is(.Assign)) {
@@ -186,7 +177,37 @@ pub struct ParserStmts {
             return false;
         }
 
-        const node_id = self->program->create_node(.GlobalVar(ASTGlobalVar {
+        if (expr.is_none() && is_const) {
+            self->state->dctx->report(Diag.new(
+                self->allocator, 
+                .Error, 
+                "constant global variable must be initialized", 
+                ident.span
+            ));
+            return false;
+        }
+
+        if (!is_static && !is_const) {
+            self->state->dctx->report(Diag.new(
+                self->allocator, 
+                .Error, 
+                "non-static global variable must be constant", 
+                ident.span
+            ));
+            return false;
+        }
+
+        if (ty.is_none() && is_undef) {
+            self->state->dctx->report(Diag.new(
+                self->allocator, 
+                .Error, 
+                "expected explicit type specifier", 
+                ident.span
+            ));
+            return false;
+        }
+
+        const node = ast::ASTGlobalVar {
             ident,
             ty,
             expr,
@@ -194,7 +215,8 @@ pub struct ParserStmts {
             is_undef,
             is_static,
             span,
-        }));
+        };
+        const node_id = self->program->create_node(.GlobalVar(node));
         self->state->pending->push(node_id);
         return true;
     }
@@ -209,7 +231,7 @@ pub struct ParserStmts {
         @todo();
     }
 
-    pub fn parse_func_params(self: Self*) ASTFuncParams {
+    pub fn parse_func_params(self: Self*) ast::ASTFuncParams {
         @todo();
     }
 
@@ -218,7 +240,7 @@ pub struct ParserStmts {
         self->parse_block_node();
     }
 
-    pub fn parse_block_node(self: Self*) Option<NodeId> {
+    pub fn parse_block_node(self: Self*) Option<ast::NodeId> {
         @todo();
     }
 
@@ -244,22 +266,16 @@ pub struct ParserStmts {
     pub fn parse_break(self: Self*) {
         const span = self->state->current_span();
         self->state->next(); // consume break
-        self->state->pending->push(self->program->create_node(.Break(
-            ASTBreak {
-                span
-            }
-        )));
+        const node = ast::ASTBreak { span };
+        self->state->pending->push(self->program->create_node(.Break(node)));
     }
 
     /// Grammar: continue
     pub fn parse_continue(self: Self*) {
         const span = self->state->current_span();
         self->state->next(); // consume continue
-        self->state->pending->push(self->program->create_node(.Continue(
-            ASTContinue {
-                span
-            }
-        )));
+        const node = ast::ASTContinue { span };
+        self->state->pending->push(self->program->create_node(.Continue(node)));
     }
 
     /// Grammar: defer STMT ;
@@ -277,7 +293,7 @@ pub struct ParserStmts {
         @todo();
     }
 
-    fn parse_struct_field(self: Self*) Option<ASTStructField> {
+    fn parse_struct_field(self: Self*) Option<ast::ASTStructField> {
         @todo();
     }
 
@@ -286,7 +302,7 @@ pub struct ParserStmts {
         @todo();
     }
 
-    fn parse_enum_variant(self: Self*) Option<ASTEnumVariant> {
+    fn parse_enum_variant(self: Self*) Option<ast::ASTEnumVariant> {
         @todo();
     }
 
@@ -295,7 +311,7 @@ pub struct ParserStmts {
         @todo();
     }
 
-    fn parse_union_field(self: Self*) Option<ASTUnionField> {
+    fn parse_union_field(self: Self*) Option<ast::ASTUnionField> {
         @todo();
     }
 
@@ -315,7 +331,7 @@ pub struct ParserStmts {
     }
 
     ///  Grammar: <IDENT (: Bound)? (= Type)? (, ...)* >
-    pub fn parse_generic_params(self: Self*) ASTGenericParams {
+    pub fn parse_generic_params(self: Self*) ast::ASTGenericParams {
         @todo();
     }
 }

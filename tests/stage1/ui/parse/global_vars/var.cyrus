@@ -1,0 +1,16 @@
+// @parse
+
+var foo: int32;
+
+/*@parse
+ASTProgram
+    nodes_count: 1
+    children_count: 1
+    Node[0]:
+        ASTGlobalVar
+            ident: foo
+            is_const: false
+            is_undef: false
+            is_static: false
+            ty: int32
+@parse*/

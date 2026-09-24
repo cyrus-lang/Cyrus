@@ -40,7 +40,7 @@ pub struct ASTProgram {
         @assert(pending->len() >= mark, "mark cannot be bigger than pending nodes length");
 
         const len = pending->len() - mark;
-        const start = self->children.len();
+        const start = self->children.len() + 1;
         
         // Push pending nodes into children
         for (var i: usize = mark; i < pending->len(); i += 1) {
@@ -63,6 +63,7 @@ pub struct ASTProgram {
 
 pub enum ASTNode {
     TypeAlias(ASTTypeAlias),
+    Type(ASTType),
     Expr(ASTExpr),
     DestructTuple(ASTDestructTuple),
     SwitchGuard(ASTSwitchGuard),
@@ -80,7 +81,6 @@ pub enum ASTNode {
     Interface(ASTInterface),
     Struct(ASTStruct),
     Import(ASTImport),
-    If(ASTIf),
     Union(ASTUnion),
     Return(ASTReturn),
     Defer(ASTDefer),
@@ -89,13 +89,14 @@ pub enum ASTNode {
     Switch(ASTSwitch),
     Block(ASTBlock),
     For(ASTFor),
+    If(ASTIf),
 }
 
 /* ************* Expressions ************* */
 
 pub enum ASTExpr {
     Ident(ASTIdent),
-    TypeSpecifier(NodeId),
+    Type(ASTType),
     ModuleImport(ASTModuleImport),
     Builtin(ASTBuiltin),
     Assign(ASTAssignExpr),
@@ -394,7 +395,7 @@ pub enum ASTFuncParamKind {
 
 pub struct ASTFuncParam {
     pub ident: ASTIdent,
-    pub ty: Option<NodeId>,
+    pub ty: Option<ASTType>,
     pub constness: ASTConstness,
     pub span: Span,
 }
@@ -437,7 +438,7 @@ pub struct ASTBlock {
 
 pub struct ASTVar {
     pub ident: ASTIdent,
-    pub ty: Option<NodeId>,
+    pub ty: Option<ASTType>,
     pub rhs: Option<NodeId>,
     pub is_const: bool,
     pub is_undef: bool,
@@ -557,7 +558,7 @@ pub struct ASTDestructTuple {
 
 pub struct ASTDestructTuplePattern {
     pub kind: ASTDestructTuplePatternKind,
-    pub ty: Option<NodeId>,
+    pub ty: Option<ASTType>,
     pub bind: ASTConstness,
     pub span: Span,
 }
@@ -641,7 +642,7 @@ pub struct ASTTypeAlias {
 
 pub struct ASTGlobalVar {
     pub ident: ASTIdent,
-    pub ty: Option<NodeId>,
+    pub ty: Option<ASTType>,
     pub expr: Option<NodeId>,
     pub is_const: bool,
     pub is_undef: bool,
@@ -907,16 +908,39 @@ pub enum ASTType {
     UnnamedUnion(ASTUnnamedUnionType),
     UnnamedEnum(ASTUnnamedEnumType),
     ModuleImport(ASTModuleImport),
+    Primitive(ASTPrimitiveType),
     SelfType(ASTSelfType),
     Builtin(ASTBuiltin),
     Tuple(ASTTupleType),
     Array(ASTArrayType),
     GenericInst(NodeId),
-    TypeToken(Token),
     FuncType(NodeId),
     Ident(ASTIdent),
     Pointer(NodeId),
     Const(NodeId),
+}
+
+pub enum ASTPrimitiveType {
+    Int8,
+    Int16,
+    Int32,
+    Int64,
+    Int128,
+    IntPtr,
+    ISize,
+    UInt8,
+    UInt16,
+    UInt32,
+    UInt64,
+    UInt128,
+    UIntPtr,
+    USize,
+    Float16,
+    Float32,
+    Float64,
+    Float128,
+    Bool,
+    Void
 }
 
 /* ************* Operators ************* */
