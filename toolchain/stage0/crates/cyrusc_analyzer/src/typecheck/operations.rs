@@ -107,6 +107,12 @@ impl<'a> AnalysisContext<'a> {
             None => return None,
         };
 
+        // IMPORTANT: Prevent cascading failures by staying silent when the
+        // operand is already poisoned by a previously reported error.
+        if operand_type.contains_error() {
+            return Some(SemaType::Err(addr_of.loc));
+        }
+
         if !addr_of.operand.is_lvalue() {
             self.reporter.report(Diag {
                 level: DiagLevel::Error,
@@ -138,6 +144,12 @@ impl<'a> AnalysisContext<'a> {
         };
 
         deref.operand.ty = Some(operand_type.clone());
+
+        // IMPORTANT: Prevent cascading failures by staying silent when the
+        // operand is already poisoned by a previously reported error.
+        if operand_type.contains_error() {
+            return Some(SemaType::Err(deref.loc));
+        }
 
         if (!deref.operand.is_lvalue() || operand_type.as_func_type().is_some()) && !operand_type.is_pointer() {
             self.reporter.report(Diag {

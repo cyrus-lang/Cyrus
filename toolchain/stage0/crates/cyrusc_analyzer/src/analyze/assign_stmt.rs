@@ -18,6 +18,9 @@ impl<'a> AnalysisContext<'a> {
             None => return,
         };
 
+        // Captured before `lhs_type` is moved into the mismatch diagnostic.
+        let lhs_is_poisoned = lhs_type.contains_error();
+
         if self.is_const_qualified_lvalue(&assign.lhs) {
             self.reporter.report(Diag {
                 level: DiagLevel::Error,
@@ -44,7 +47,9 @@ impl<'a> AnalysisContext<'a> {
             });
         }
 
-        if !assign.lhs.is_lvalue() {
+        // IMPORTANT: Prevent cascading failures by staying silent when the
+        // lhs is already poisoned by a previously reported error.
+        if !assign.lhs.is_lvalue() && !lhs_is_poisoned {
             self.reporter.report(Diag {
                 level: DiagLevel::Error,
                 kind: Box::new(AnalyzerDiagKind::CannotAssignToNonValue),

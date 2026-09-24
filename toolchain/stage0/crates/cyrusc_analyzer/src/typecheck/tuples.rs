@@ -60,6 +60,12 @@ impl<'a> AnalysisContext<'a> {
         // expand operand type
         operand_type = self.expand_sema_type(operand_type, member_access.loc);
 
+        // IMPORTANT: Prevent cascading failures by staying silent when the
+        // operand is already poisoned by a previously reported error.
+        if operand_type.contains_error() {
+            return Some(SemaType::Err(member_access.loc));
+        }
+
         if !operand_type.const_inner().as_tuple_type().is_some() {
             self.reporter.report(Diag {
                 level: DiagLevel::Error,

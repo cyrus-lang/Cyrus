@@ -52,6 +52,10 @@ impl<'a> AnalysisContext<'a> {
                 this.analyze_switch_on_enum(switch_stmt, &operand_type)
             } else if operand_type.is_plain_type() || operand_type.is_uint8_pointer() {
                 this.analyze_switch_on_value(switch_stmt, &operand_type)
+            } else if operand_type.contains_error() {
+                // IMPORTANT: Prevent cascading failures: the operand error has
+                // already been reported, so only the case bodies are analyzed.
+                this.analyze_switch_on_poisoned_operand(switch_stmt)
             } else {
                 let expr_type = format_sema_type(operand_type.clone(), this.formatter);
 
@@ -64,6 +68,26 @@ impl<'a> AnalysisContext<'a> {
                 FlowState::Reachable
             }
         })
+    }
+
+    /// Analyzes a switch statement whose operand is poisoned by a previously
+    /// reported error.
+    ///
+    /// Case patterns are skipped because they would only report spurious errors
+    /// about the poisoned operand, while case bodies are still analyzed so their
+    /// own diagnostics are kept.
+    fn analyze_switch_on_poisoned_operand(&mut self, switch_stmt: &mut TypedSwitchStmt) -> FlowState {
+        for case in &mut switch_stmt.cases {
+            self.analyze_block_stmt(&mut case.body);
+        }
+
+        if let Some(default) = &mut switch_stmt.default_case {
+            self.analyze_block_stmt(default);
+        }
+
+        switch_stmt.all_cases_covered = Some(true);
+
+        FlowState::Reachable
     }
 
     fn analyze_switch_on_value(&mut self, switch_stmt: &mut TypedSwitchStmt, operand_type: &SemaType) -> FlowState {
