@@ -20,6 +20,24 @@ pub fn main() {
                arena.reset();
           }
      }
+
+     // Test realloc on last pointer (grow)
+     var p1: int32* = @cast(int32*, arena.alloc(4));
+     @assert(p1 != null, "p1 alloc failed");
+     *p1 = 999;
+     var p1_grown: int32* = @cast(int32*, arena.realloc(p1, 32));
+     @assert(p1_grown != null, "p1 realloc failed");
+     @assert(*p1_grown == 999, "p1 value preserved");
+
+     // Test realloc on non-last pointer
+     var a: int32* = @cast(int32*, arena.alloc(4));
+     var b: int32* = @cast(int32*, arena.alloc(4));
+     *a = 111;
+     *b = 222;
+     var a_realloc: int32* = @cast(int32*, arena.realloc(a, 16));
+     @assert(a_realloc != null, "a realloc failed");
+     @assert(*a_realloc == 111, "a value preserved");
+
      arena.destroy();
      printf("sum: %d\n", sum);
 }
