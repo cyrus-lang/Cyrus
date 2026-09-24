@@ -14,11 +14,12 @@ import .::ast{
     ASTFuncVariadicParam, NodeId, ASTTypeArgs, ASTTypeArg, ASTLambda,
     ASTDerefExpr, ASTArrayIndexExpr, ASTTupleValue, ASTModuleImport, 
 };
+import diags{Diag, DiagContext};
 import std::collections{Vec};
 import .::state{ParserState};
 import .::exprs{ParserExprs};
 import std::option{Option};
-import diags{DiagContext};
+import std::mem{Allocator};
 import tokens{
     Token, 
     TokenKind, 
@@ -26,13 +27,21 @@ import tokens{
     Span
 };
 
+import std::libc{printf};
+
+
 pub struct ParserStmts {
+    allocator: Allocator,
     program: ASTProgram*,
     state: ParserState*,
 
     [[inline]]
-    pub fn new(program: ASTProgram*, state: ParserState*) Self {
-        return Self { program, state };
+    pub fn new(
+        allocator: Allocator, 
+        program: ASTProgram*, 
+        state: ParserState*
+    ) Self {
+        return Self { allocator, program, state };
     }
 
     [[inline]]
@@ -167,7 +176,17 @@ pub struct ParserStmts {
         const end = self->state->current_span();
         const span = start_span.merge(end);
 
-        self->state->pending->push(self->program->create_node(.GlobalVar(ASTGlobalVar {
+        if (expr.is_none() && ty.is_none() && !is_undef) {
+            self->state->dctx->report(Diag.new(
+                self->allocator, 
+                .Error, 
+                "expected initializer or undefined, or an explicit type specifier", 
+                span
+            ));
+            return false;
+        }
+
+        const node_id = self->program->create_node(.GlobalVar(ASTGlobalVar {
             ident,
             ty,
             expr,
@@ -175,8 +194,8 @@ pub struct ParserStmts {
             is_undef,
             is_static,
             span,
-        })));
-
+        }));
+        self->state->pending->push(node_id);
         return true;
     }
 
@@ -185,7 +204,7 @@ pub struct ParserStmts {
         @todo();
     }
 
-    // Grammar: fn IDENT <GenericParams>? FuncParams (-> Type)? (Block | ;)
+    // Grammar: fn IDENT <GenericParams>? FuncParams (Type)? (Block | ;)
     pub fn parse_func(self: Self*, is_pub: bool, is_extern: bool) bool {
         @todo();
     }

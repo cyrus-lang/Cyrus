@@ -161,11 +161,7 @@ pub struct Lexer {
             return;
         }
 
-        const next_pos = self->pos + 1;
-
-        self->pos += 1; // consume
-
-        switch (self->input->get(next_pos)) {
+        switch (self->input->get(self->pos)) {
             case .Some(char) => {
                 if (char == '\n') {
                     self->line += 1;
@@ -175,11 +171,14 @@ pub struct Lexer {
                 }
             }
         }
+
+        self->pos += 1; // consume
     }
 
     [[inline]]
     fn read_ident_or_prefix_or_keyword(self: Self*) TokenKind* {
         if (self->cur() == 'b' && self->peek() == '"') {
+            self->read();
             return self->read_string_literal(.Some(.Byte));
         }
 
@@ -240,17 +239,26 @@ pub struct Lexer {
 
             const char = self->cur();
 
-            switch (char) {
-                case '"' => break;
-                else => value.push(char);
+            if (char == '\\') {
+                value.push(char);
+                self->read();
+                if (!self->is_eof()) {
+                    value.push(self->cur());
+                    self->read();
+                }
+                continue;
             }
 
+            if (char == '"') {
+                self->read();
+                break;
+            }
+
+            value.push(char);
             self->read();
         }
 
-        self->read();
-
-        // TODO: Unespcae string
+        // TODO: Unescape string
 
         return self->init_string_literal(value, suffix);
     }
