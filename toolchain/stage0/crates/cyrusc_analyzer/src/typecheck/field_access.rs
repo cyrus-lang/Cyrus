@@ -20,6 +20,14 @@ impl<'a> AnalysisContext<'a> {
         // expand operand type
         operand_type = self.expand_sema_type(operand_type, field_access.loc);
 
+        // IMPORTANT: Prevent cascading failures by staying silent when the
+        // operand is already poisoned by a previously reported error.
+        if operand_type.contains_error() {
+            let err_ty = SemaType::Err(field_access.loc);
+            field_access.ty = Some(err_ty.clone());
+            return Some(err_ty);
+        }
+
         let pure_operand_type = operand_type.const_inner().pointer_inner().clone();
 
         let Some(type_args) = &pure_operand_type

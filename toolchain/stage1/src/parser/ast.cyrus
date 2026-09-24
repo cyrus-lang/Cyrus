@@ -40,8 +40,8 @@ pub struct ASTProgram {
         @assert(pending->len() >= mark, "mark cannot be bigger than pending nodes length");
 
         const len = pending->len() - mark;
-        const start = self->children.len() + 1;
-        
+        const start = self->children.len();
+
         // Push pending nodes into children
         for (var i: usize = mark; i < pending->len(); i += 1) {
             self->children.push(pending->get_owned(i).unwrap());

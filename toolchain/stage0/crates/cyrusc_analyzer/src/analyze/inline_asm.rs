@@ -60,7 +60,11 @@ impl<'a> AnalysisContext<'a> {
         for operand in &mut asm.outputs {
             self.analyze_expr_non_terminal(&mut operand.expr, None);
 
-            if !matches!(operand.expr.val_cat, ValueCategory::LValue(_)) {
+            // IMPORTANT: Prevent cascading failures by staying silent when the
+            // operand is already poisoned by a previously reported error.
+            let is_poisoned = operand.expr.ty.as_ref().map_or(false, |ty| ty.contains_error());
+
+            if !matches!(operand.expr.val_cat, ValueCategory::LValue(_)) && !is_poisoned {
                 self.reporter.report(Diag {
                     level: DiagLevel::Warning,
                     kind: Box::new(AnalyzerDiagKind::AsmOutputNotLValue),
@@ -188,6 +192,12 @@ impl<'a> AnalysisContext<'a> {
                 Some(t) => t,
                 None => continue,
             };
+
+            // IMPORTANT: Prevent cascading failures by staying silent when the
+            // operand is already poisoned by a previously reported error.
+            if ty.contains_error() {
+                continue;
+            }
 
             let ok = match bare {
                 "r" | "g" => is_integer_bool_or_pointer(ty),

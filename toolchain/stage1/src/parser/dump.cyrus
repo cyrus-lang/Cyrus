@@ -27,8 +27,10 @@ pub struct ASTDump {
 
         const statements = self->program.statements.unwrap();
 
-        for (var i: usize = statements.start; i <= statements.len; i += 1) {
-            const node = self->program.nodes.get_const(i).unwrap();
+        for (var i: usize = 0; i < statements.len; i += 1) {
+            const node_id = self->program.children.get_owned(statements.start + i).unwrap();
+            const node = self->program.nodes.get_const(node_id).unwrap();
+            
             self->write_indent();
             self->writer.write("Node[");
             format_usize(self->writer, i);

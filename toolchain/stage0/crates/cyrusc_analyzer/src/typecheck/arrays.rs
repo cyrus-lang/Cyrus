@@ -163,6 +163,12 @@ impl<'a> AnalysisContext<'a> {
             None => return None,
         };
 
+        // IMPORTANT: Prevent cascading failures by staying silent when the
+        // operand is already poisoned by a previously reported error.
+        if operand_type.contains_error() {
+            return Some(SemaType::Err(array_index.loc));
+        }
+
         let is_operand_array = operand_type.const_inner().is_array();
 
         if !(operand_type.is_pointer() || is_operand_array) {
@@ -182,11 +188,14 @@ impl<'a> AnalysisContext<'a> {
             None => return None,
         };
 
-        if !index_concrete_type
-            .const_inner()
-            .as_plain_type()
-            .and_then(|b| Some(b.is_integer()))
-            .is_some()
+        // IMPORTANT: Prevent cascading failures by staying silent when the
+        // index is already poisoned by a previously reported error.
+        if !index_concrete_type.contains_error()
+            && !index_concrete_type
+                .const_inner()
+                .as_plain_type()
+                .and_then(|b| Some(b.is_integer()))
+                .is_some()
         {
             let found_type = format_sema_type(index_concrete_type, self.formatter);
 

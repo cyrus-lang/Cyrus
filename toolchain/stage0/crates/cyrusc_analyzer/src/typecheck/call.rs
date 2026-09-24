@@ -41,6 +41,12 @@ impl<'a> AnalysisContext<'a> {
         // expand operand type
         operand_type = self.expand_sema_type(operand_type, func_call.loc);
 
+        // IMPORTANT: Prevent cascading failures by staying silent when the
+        // callee is already poisoned by a previously reported error.
+        if operand_type.contains_error() {
+            return Some(SemaType::Err(func_call.loc));
+        }
+
         self.normalize_type_args(&mut func_call.type_args, 0);
 
         let Some(mut func_type) = operand_type.as_func_type().cloned() else {
@@ -222,6 +228,12 @@ impl<'a> AnalysisContext<'a> {
 
         // expand operand type
         operand_type = self.expand_sema_type(operand_type, method_call.loc);
+
+        // IMPORTANT: Prevent cascading failures by staying silent when the
+        // operand is already poisoned by a previously reported error.
+        if operand_type.contains_error() {
+            return Some(SemaType::Err(method_call.loc));
+        }
 
         let is_operand_interface = operand_type.as_interface_object().is_some() || operand_type.is_interface();
 
