@@ -1,6 +1,6 @@
 // @parse
 
-static var foo = undefined;
+var foo: int32 = undefined;
 
 /*@parse
 ASTProgram
@@ -11,5 +11,6 @@ ASTProgram
             ident: foo
             is_const: false
             is_undef: true
-            is_static: true
+            is_static: false
+            ty: int32
 @parse*/
