@@ -1,0 +1,24 @@
+// @tokenize
+
+'a'
+'Z'
+'\n'
+'\t'
+'\r'
+'\0'
+'\\'
+'\''
+'\x41'
+
+/*@tokenize
+LITERAL      'a'          Start: 14           End: 17
+LITERAL      'Z'          Start: 18           End: 21
+LITERAL      '\n'         Start: 22           End: 26
+LITERAL      '\t'         Start: 27           End: 31
+LITERAL      '\r'         Start: 32           End: 36
+LITERAL      '\0'         Start: 37           End: 41
+LITERAL      '\\'         Start: 42           End: 46
+LITERAL      '\''         Start: 47           End: 51
+LITERAL      'A'          Start: 52           End: 58
+EOF          EOF          Start: 624          End: 624
+@tokenize*/

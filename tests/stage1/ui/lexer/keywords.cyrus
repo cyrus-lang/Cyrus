@@ -1,0 +1,57 @@
+// @tokenize
+
+dynamic static var mod interface type fn switch case struct import if else while for return break continue
+true false null uintptr intptr isize usize int8 int16 int32 int64 int128 uint8 uint16 uint32 uint64 uint128
+float16 float32 float64 float128 bool void enum extern pub const goto defer union
+
+/*@tokenize
+KEYWORD      dynamic      Start: 14           End: 21
+KEYWORD      static       Start: 22           End: 28
+KEYWORD      var          Start: 29           End: 32
+KEYWORD      mod          Start: 33           End: 36
+KEYWORD      interface    Start: 37           End: 46
+KEYWORD      type         Start: 47           End: 51
+KEYWORD      fn           Start: 52           End: 54
+KEYWORD      switch       Start: 55           End: 61
+KEYWORD      case         Start: 62           End: 66
+KEYWORD      struct       Start: 67           End: 73
+KEYWORD      import       Start: 74           End: 80
+KEYWORD      if           Start: 81           End: 83
+KEYWORD      else         Start: 84           End: 88
+KEYWORD      while        Start: 89           End: 94
+KEYWORD      for          Start: 95           End: 98
+KEYWORD      return       Start: 99           End: 105
+KEYWORD      break        Start: 106          End: 111
+KEYWORD      continue     Start: 112          End: 120
+KEYWORD      true         Start: 121          End: 125
+KEYWORD      false        Start: 126          End: 131
+KEYWORD      null         Start: 132          End: 136
+KEYWORD      uintptr      Start: 137          End: 144
+KEYWORD      intptr       Start: 145          End: 151
+KEYWORD      isize        Start: 152          End: 157
+KEYWORD      usize        Start: 158          End: 163
+KEYWORD      int8         Start: 164          End: 168
+KEYWORD      int16        Start: 169          End: 174
+KEYWORD      int32        Start: 175          End: 180
+KEYWORD      int64        Start: 181          End: 186
+KEYWORD      int128       Start: 187          End: 193
+KEYWORD      uint8        Start: 194          End: 199
+KEYWORD      uint16       Start: 200          End: 206
+KEYWORD      uint32       Start: 207          End: 213
+KEYWORD      uint64       Start: 214          End: 220
+KEYWORD      uint128      Start: 221          End: 228
+KEYWORD      float16      Start: 229          End: 236
+KEYWORD      float32      Start: 237          End: 244
+KEYWORD      float64      Start: 245          End: 252
+KEYWORD      float128     Start: 253          End: 261
+KEYWORD      bool         Start: 262          End: 266
+KEYWORD      void         Start: 267          End: 271
+KEYWORD      enum         Start: 272          End: 276
+KEYWORD      extern       Start: 277          End: 283
+KEYWORD      pub          Start: 284          End: 287
+KEYWORD      const        Start: 288          End: 293
+KEYWORD      goto         Start: 294          End: 298
+KEYWORD      defer        Start: 299          End: 304
+KEYWORD      union        Start: 305          End: 310
+EOF          EOF          Start: 3017         End: 3017
+@tokenize*/

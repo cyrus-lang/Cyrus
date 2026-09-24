@@ -22,14 +22,20 @@ pub struct Parser {
 
         var program = ASTProgram.new(allocator);
         var state = ParserState.new(allocator, dctx, &source_tokens, &pending);
-        var stmts = ParserStmts.new(&program, &state);
+        var stmts = ParserStmts.new(allocator, &program, &state);
+        
         stmts.parse_toplevels();
 
-        // Mark, Parse, Commit, Truncate: drain pending into program.statements
+        // Drain pending statements
         if (pending.len() > 0) {
             program.statements = .Some(program.commit_pending(&pending, 0));
         }
 
-        return .Value(program);
+        if (!dctx->has_errors()) {
+            return .Value(program);
+        } else {
+            program.free();
+            return .Error(());
+        }
     }
 }

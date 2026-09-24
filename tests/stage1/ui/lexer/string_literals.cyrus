@@ -1,0 +1,10 @@
+// @tokenize
+
+"hello"
+"world"
+
+/*@tokenize
+LITERAL      "hello"      Start: 14           End: 21
+LITERAL      "world"      Start: 22           End: 29
+EOF          EOF          Start: 217          End: 217
+@tokenize*/

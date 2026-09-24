@@ -1,0 +1,24 @@
+// @tokenize
+
+3.14
+0.0
+1e10
+1e-10
+1.23e+45
+2.0f16
+3.0f32
+4.0f64
+5.0f128
+
+/*@tokenize
+LITERAL      3.14         Start: 14           End: 18
+LITERAL      0            Start: 19           End: 22
+LITERAL      1e+10        Start: 23           End: 27
+LITERAL      1e-10        Start: 28           End: 33
+LITERAL      1.23e+45     Start: 34           End: 42
+LITERAL      2            Start: 43           End: 49
+LITERAL      3            Start: 50           End: 56
+LITERAL      4            Start: 57           End: 63
+LITERAL      5            Start: 64           End: 71
+EOF          EOF          Start: 637          End: 637
+@tokenize*/

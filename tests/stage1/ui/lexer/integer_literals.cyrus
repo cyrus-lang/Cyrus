@@ -1,0 +1,46 @@
+// @tokenize
+
+0
+42
+1_000_000
+0x2A
+0Xff
+0b101010
+0B110011
+100isize
+200usize
+8int8
+16int16
+32int32
+64int64
+128int128
+8uint8
+16uint16
+32uint32
+64uint64
+128uint128
+
+/*@tokenize
+LITERAL      0            Start: 14           End: 15
+LITERAL      42           Start: 16           End: 18
+LITERAL      1000000      Start: 19           End: 28
+LITERAL      42           Start: 29           End: 33
+LITERAL      0            Start: 34           End: 35
+IDENT        Xff          Start: 35           End: 38
+LITERAL      42           Start: 39           End: 47
+LITERAL      0            Start: 48           End: 49
+IDENT        B110011      Start: 49           End: 56
+LITERAL      100isize     Start: 57           End: 65
+LITERAL      200usize     Start: 66           End: 74
+LITERAL      8int8        Start: 75           End: 80
+LITERAL      16int16      Start: 81           End: 88
+LITERAL      32int32      Start: 89           End: 96
+LITERAL      64int64      Start: 97           End: 104
+LITERAL      128int128    Start: 105          End: 114
+LITERAL      8uint8       Start: 115          End: 121
+LITERAL      16uint16     Start: 122          End: 130
+LITERAL      32uint32     Start: 131          End: 139
+LITERAL      64uint64     Start: 140          End: 148
+LITERAL      128uint128   Start: 149          End: 159
+EOF          EOF          Start: 1381         End: 1381
+@tokenize*/
