@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 The Cyrus Language
 
+import std::libc{memmove};
 import std::collections::linked_list{SinglyLinkedList, SinglyNode};
 import std::mem{Allocator, alloc_init, align_up, is_power_of_two};
 
@@ -16,6 +17,8 @@ pub struct ArenaAllocator : Allocator {
     child_allocator: Allocator,
     nodes: SinglyLinkedList<ArenaNode>*,
     default_capacity: usize,
+    last_alloc_ptr: void*,
+    last_alloc_size: usize,
 
     pub fn new(child_allocator: Allocator, capacity: usize) Self {
         const linked_list: SinglyLinkedList<ArenaNode> = SinglyLinkedList.new();
@@ -25,7 +28,9 @@ pub struct ArenaAllocator : Allocator {
         var arena = Self { 
             child_allocator, 
             nodes,
-            default_capacity: capacity
+            default_capacity: capacity,
+            last_alloc_ptr: null,
+            last_alloc_size: 0,
         };
         
         arena.create_node(capacity);
@@ -56,7 +61,10 @@ pub struct ArenaAllocator : Allocator {
 
         if (arena->used + total_needed <= arena->capacity) {
             arena->used += total_needed;
-            return @cast(void*, aligned_addr);
+            const ptr = @cast(void*, aligned_addr);
+            self->last_alloc_ptr = ptr;
+            self->last_alloc_size = size;
+            return ptr;
         }
 
         const needed = total_needed + align;
@@ -79,7 +87,10 @@ pub struct ArenaAllocator : Allocator {
         const new_total = new_padding + size;
 
         new_arena->used += new_total;
-        return @cast(void*, new_aligned);
+        const ptr = @cast(void*, new_aligned);
+        self->last_alloc_ptr = ptr;
+        self->last_alloc_size = size;
+        return ptr;
     }
 
     pub fn alloc_zeroed(self: Self*, size: usize) void* {
@@ -98,15 +109,65 @@ pub struct ArenaAllocator : Allocator {
         }
 
         if (size == 0) {
+            if (ptr == self->last_alloc_ptr) {
+                switch (self->nodes->peek_first()) case .Some(node) else {
+                    return null;
+                }
+                var arena = &node->value;
+                arena->used -= self->last_alloc_size;
+                self->last_alloc_ptr = null;
+                self->last_alloc_size = 0;
+            }
             return null;
+        }
+
+        if (ptr == self->last_alloc_ptr) {
+            if (size <= self->last_alloc_size) {
+                switch (self->nodes->peek_first()) case .Some(node) else {
+                    return null;
+                }
+                
+                var arena = &node->value;
+                arena->used -= (self->last_alloc_size - size);
+                self->last_alloc_size = size;
+                return ptr;
+            } else {
+                const diff = size - self->last_alloc_size;
+                
+                switch (self->nodes->peek_first()) case .Some(node) else {
+                    return null;
+                }
+                
+                var arena = &node->value;
+                
+                if (arena->used + diff <= arena->capacity) {
+                    arena->used += diff;
+                    self->last_alloc_size = size;
+                    return ptr;
+                } else {
+                    const old_size = self->last_alloc_size;
+                    const new_ptr = self->alloc(size);
+                    if (new_ptr == null) {
+                        return null;
+                    }
+                    memmove(new_ptr, ptr, old_size);
+                    return new_ptr;
+                }
+            }
         }
 
         const new_ptr = self->alloc(size);
 
-        if (new_ptr != null) {
-            @memset(new_ptr, 0, size);
+        if (new_ptr == null) {
+            return null;
         }
-        
+
+        var copy_size = size;
+        if (copy_size > self->last_alloc_size) {
+            copy_size = self->last_alloc_size;
+        }
+
+        memmove(new_ptr, ptr, copy_size);
         return new_ptr;
     }
 
@@ -119,6 +180,8 @@ pub struct ArenaAllocator : Allocator {
             current->value.used = 0;
             current = current->next;
         }
+        self->last_alloc_ptr = null;
+        self->last_alloc_size = 0;
     }
 
     pub fn destroy(self: Self*) {
