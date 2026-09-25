@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 The Cyrus Language
 
+import diags{Diag, DiagContext};
 import std::collections{Vec};
 import .::state{ParserState};
 import std::option{Option};
-import diags{DiagContext};
 import .::ast;
 import tokens{
     Token, 
@@ -23,9 +23,554 @@ pub struct ParserExprs {
         return Self { program, state };
     }
 
+    /* ************* Expressions ************* */
+
     pub fn parse_expr(self: Self*) Option<ast::NodeId> {
-        @todo();
+        return self->parse_expr_with_precedence(.Lowest);
     }
+
+    fn parse_expr_with_precedence(self: Self*, min_prec: Prec) Option<ast::NodeId> {
+        switch (self->parse_prefix()) case .Some(first) else {
+            return .None;
+        }
+
+        var lhs = first;
+
+        while (true) {
+            // The prefix parser consumed the operand, so the current token
+            // is the operator that may continue this expression.
+            const operator_token = self->state->current();
+
+            var operator_precedence: Prec = undefined;
+            var has_precedence = false;
+
+            switch (self->prec_of_op(operator_token)) {
+                case .Some(prec) => {
+                    operator_precedence = prec;
+                    has_precedence = true;
+                }
+            }
+
+            if (!has_precedence) {
+                break;
+            }
+
+            if (precedence_less_eq(operator_precedence, min_prec)) {
+                break;
+            }
+
+            switch (self->parse_infix(lhs, operator_token, operator_precedence)) 
+            case .Some(next) else {
+                return .None;
+            }
+
+            lhs = next;
+        }
+
+        return .Some(lhs);
+    }
+
+    /// Precedence of a token that follows an operand, if any.
+    fn prec_of_op(self: Self*, operator: const Token*) Option<Prec> {
+        switch (*operator->kind) {
+            case .GreaterThan => {
+                // `>>` is lexed as two `>` tokens, in expression context
+                // a doubled `>` is a shift-right operator.
+                if (self->state->is_peek_n(1, .GreaterThan)) {
+                    return .Some(.Bitwise);
+                }
+
+                return .Some(.LessGreater);
+            }
+            else => return precedence_of_token_kind(*operator->kind);
+        }
+    }
+
+    /// Parses the leading operand of an expression.
+    fn parse_prefix(self: Self*) Option<ast::NodeId> {
+        const start = self->state->current_span();
+
+        switch (*self->state->current()->kind) {
+            case .Literal(_) | .True | .False | .Null => {
+                const token = *self->state->current();
+                self->state->next();
+                return .Some(self->create_expr(.Literal(token)));
+            }
+
+            case .Ident(str) => {
+                const ident = ast::ASTIdent { str, span: start };
+                self->state->next();
+
+                if (self->state->is(.DoubleColon)) {
+                    return self->parse_module_import(ident);
+                }
+
+                return .Some(self->create_expr(.Ident(ident)));
+            }
+
+            case .Minus | .Bang | .Tilde => {
+                switch (map_prefix_operator(*self->state->current()->kind)) 
+                case .Some(operator) else {
+                    return .None;
+                }
+
+                self->state->next();
+
+                switch (self->parse_expr_with_precedence(.Prefix)) 
+                case .Some(operand) else {
+                    return .None;
+                }
+
+                const node = ast::ASTPrefixExpr {
+                    operand,
+                    operator,
+                    span: start.merge(self->state->current_span()),
+                };
+                return .Some(self->create_expr(.Prefix(node)));
+            }
+
+            case .Ampersand => {
+                self->state->next();
+
+                switch (self->parse_expr_with_precedence(.Prefix)) 
+                case .Some(expr) else {
+                    return .None;
+                }
+
+                const node = ast::ASTAddrOfExpr {
+                    expr,
+                    span: start.merge(self->state->current_span()),
+                };
+                return .Some(self->create_expr(.AddrOf(node)));
+            }
+
+            case .Asterisk => {
+                self->state->next();
+
+                switch (self->parse_expr_with_precedence(.Prefix)) 
+                case .Some(expr) else {
+                    return .None;
+                }
+
+                const node = ast::ASTDerefExpr {
+                    expr,
+                    span: start.merge(self->state->current_span()),
+                };
+                return .Some(self->create_expr(.Deref(node)));
+            }
+
+            case .LeftParen => {
+                self->state->next();
+
+                switch (self->parse_tuple_or_group(start)) case .Some(id) else {
+                    return .None;
+                }
+                return .Some(id);
+            }
+
+            case .LeftBrace => {
+                self->state->next();
+
+                switch (self->parse_expr_list(.RightBrace)) case .Some(elements) else {
+                    return .None;
+                }
+
+                const node = ast::ASTUntypedArrayExpr {
+                    elements,
+                    span: start.merge(self->state->current_span()),
+                };
+                return .Some(self->create_expr(.UntypedArray(node)));
+            }
+
+            else => {
+                self->state->dctx->report(Diag.new(
+                    self->state->allocator,
+                    .Error,
+                    "expected expression",
+                    start
+                ));
+                return .None;
+            }
+        }
+    }
+
+    fn parse_tuple_or_group(self: Self*, start: Span) Option<ast::NodeId> {
+        if (self->state->is(.RightParen)) {
+            self->state->next();
+
+            const node = ast::ASTTupleValue {
+                elements: Vec.new(self->state->allocator),
+                span: start.merge(self->state->current_span()),
+            };
+            return .Some(self->create_expr(.Tuple(node)));
+        }
+
+        switch (self->parse_expr()) case .Some(first) else {
+            return .None;
+        }
+
+        // Expression grouping
+        if (!self->state->is(.Comma)) {
+            if (!self->state->expect(.RightParen)) {
+                return .None;
+            }
+
+            return .Some(first);
+        }
+
+        var elements: Vec<ast::NodeId> = Vec.new(self->state->allocator);
+        elements.push(first);
+
+        while (self->state->is(.Comma)) {
+            self->state->next();
+
+            // Trailing comma
+            if (self->state->is(.RightParen)) {
+                break;
+            }
+
+            switch (self->parse_expr()) case .Some(elem) else {
+                elements.free();
+                return .None;
+            }
+
+            elements.push(elem);
+        }
+
+        if (!self->state->expect(.RightParen)) {
+            elements.free();
+            return .None;
+        }
+
+        const node = ast::ASTTupleValue {
+            elements,
+            span: start.merge(self->state->current_span()),
+        };
+        return .Some(self->create_expr(.Tuple(node)));
+    }
+
+    /// Parses a comma separated expression list closed by `close`.
+    /// The opening token must already be consumed.
+    fn parse_expr_list(self: Self*, close: TokenKind) Option<Vec<ast::NodeId>> {
+        var elements: Vec<ast::NodeId> = Vec.new(self->state->allocator);
+
+        if (self->state->is(close)) {
+            self->state->next();
+            return .Some(elements);
+        }
+
+        while (true) {
+            switch (self->parse_expr()) case .Some(elem) else {
+                elements.free();
+                return .None;
+            }
+
+            elements.push(elem);
+
+            if (self->state->is(.Comma)) {
+                self->state->next();
+
+                // Trailing comma
+                if (self->state->is(close)) {
+                    break;
+                }
+
+                continue;
+            }
+
+            break;
+        }
+
+        if (!self->state->expect(close)) {
+            elements.free();
+            return .None;
+        }
+
+        return .Some(elements);
+    }
+
+    fn parse_module_import(self: Self*, first: ast::ASTIdent) Option<ast::NodeId> {
+        switch (self->parse_module_import_value(first)) case .Some(node) else {
+            return .None;
+        }
+
+        return .Some(self->create_expr(.ModuleImport(node)));
+    }
+
+    fn parse_module_import_value(self: Self*, first: ast::ASTIdent) Option<ast::ASTModuleImport> {
+        var segments: Vec<ast::ASTModuleSegment> = Vec.new(self->state->allocator);
+        segments.push(.SubModule(first));
+
+        var span = first.span;
+
+        while (self->state->is(.DoubleColon)) {
+            self->state->next();
+
+            const next_ident = self->state->expect_ident();
+            var valid = false;
+
+            switch (next_ident) {
+                case .Some(ident) => {
+                    span = span.merge(ident.span);
+                    segments.push(.SubModule(ident));
+                    valid = true;
+                }
+            }
+
+            if (!valid) {
+                segments.free();
+                return .None;
+            }
+        }
+
+        return .Some(ast::ASTModuleImport {
+            segments,
+            relative_level: 0,
+            span,
+        });
+    }
+
+    fn parse_infix(
+        self: Self*,
+        lhs: ast::NodeId,
+        operator: const Token*,
+        op_prec: Prec
+    ) Option<ast::NodeId> {
+        const start = self->state->current_span();
+
+        switch (*operator->kind) {
+            case .LeftParen => {
+                self->state->next();
+
+                switch (self->parse_expr_list(.RightParen)) case .Some(args) else {
+                    return .None;
+                }
+
+                const node = ast::ASTFuncCall {
+                    operand: lhs,
+                    args,
+                    type_args: ast::ASTTypeArgs {
+                        list: Vec.new(self->state->allocator)
+                    },
+                    span: start.merge(self->state->current_span()),
+                };
+                return .Some(self->create_expr(.FuncCall(node)));
+            }
+
+            case .LeftBracket => {
+                self->state->next();
+
+                switch (self->parse_expr()) case .Some(index) else {
+                    return .None;
+                }
+
+                if (!self->state->expect(.RightBracket)) {
+                    return .None;
+                }
+
+                const node = ast::ASTArrayIndexExpr {
+                    operand: lhs,
+                    index,
+                    span: start.merge(self->state->current_span()),
+                };
+                return .Some(self->create_expr(.ArrayIndex(node)));
+            }
+
+            case .Dot | .ThinArrow => {
+                var is_thin_arrow = false;
+
+                switch (*operator->kind) {
+                    case .ThinArrow => is_thin_arrow = true;
+                }
+
+                return self->parse_field_access(lhs, is_thin_arrow);
+            }
+        }
+
+        var operator_kind = *operator->kind;
+        var joined_shift = false;
+
+        switch (operator_kind) {
+            case .GreaterThan => {
+                if (self->state->is_peek_n(1, .GreaterThan)) {
+                    operator_kind = .ShiftRight;
+                    joined_shift = true;
+                }
+            }
+        }
+
+        switch (operator_kind) {
+            case .Assign => {
+                self->state->next();
+
+                switch (self->parse_expr_with_precedence(.Lowest)) case .Some(rhs) else {
+                    return .None;
+                }
+
+                const node = ast::ASTAssignExpr {
+                    lhs,
+                    rhs,
+                    kind: .Default,
+                    span: start.merge(self->state->current_span()),
+                };
+                return .Some(self->create_expr(.Assign(node)));
+            }
+        }
+
+        self->state->next();
+
+        if (joined_shift) {
+            self->state->next();
+        }
+
+        if (self->state->is(.Assign)) {
+            switch (map_assign_kind(operator_kind)) case .Some(kind) else {
+                // FIXME: Improve error message
+                self->state->dctx->report(Diag.new(
+                    self->state->allocator,
+                    .Error,
+                    "invalid compound assignment operator",
+                    start
+                ));
+                return .None;
+            }
+
+            self->state->next();
+
+            switch (self->parse_expr_with_precedence(.Lowest)) case .Some(rhs) else {
+                return .None;
+            }
+
+            const node = ast::ASTAssignExpr {
+                lhs,
+                rhs,
+                kind,
+                span: start.merge(self->state->current_span()),
+            };
+            return .Some(self->create_expr(.Assign(node)));
+        }
+
+        switch (map_infix_operator(operator_kind)) case .Some(op) else {
+            // FIXME: Improve error message
+            self->state->dctx->report(Diag.new(
+                self->state->allocator,
+                .Error,
+                "invalid infix operator",
+                start
+            ));
+            return .None;
+        }
+
+        switch (self->parse_expr_with_precedence(op_prec)) case .Some(rhs) else {
+            return .None;
+        }
+
+        const node = ast::ASTInfixExpr {
+            op,
+            lhs,
+            rhs,
+            span: start.merge(self->state->current_span()),
+        };
+        return .Some(self->create_expr(.Infix(node)));
+    }
+
+    fn parse_field_access(
+        self: Self*,
+        lhs: ast::NodeId,
+        is_thin_arrow: bool
+    ) Option<ast::NodeId> {
+        const start = self->state->current_span();
+        self->state->next();
+
+        var peeked: const Token*;
+        var has_peek = false;
+
+        switch (self->state->peek_n(0)) {
+            case .Some(token) => {
+                peeked = token;
+                has_peek = true;
+            }
+        }
+
+        if (!has_peek) {
+            self->state->dctx->report(Diag.new(
+                self->state->allocator,
+                .Error,
+                "expected field name after `.`",
+                start
+            ));
+            return .None;
+        }
+
+        var tuple_index: usize = 0;
+        var is_tuple_index = false;
+
+        switch (*peeked->kind) {
+            case .Literal(lit) => switch (lit) {
+                case .Integer { value, .. } => switch (value) {
+                    case .Unsigned(raw) => {
+                        tuple_index = @cast(usize, raw);
+                        is_tuple_index = true;
+                    }
+                    case .Signed(raw) => {
+                        tuple_index = @cast(usize, raw);
+                        is_tuple_index = true;
+                    }
+                }
+            }
+        }
+
+        if (is_tuple_index) {
+            self->state->next();
+
+            const node = ast::ASTTupleAccess {
+                operand: lhs,
+                index: tuple_index,
+                span: op_span.merge(self->state->current_span()),
+            };
+            return .Some(self->create_expr(.TupleAccess(node)));
+        }
+
+        switch (self->state->expect_ident()) case .Some(name) else {
+            return .None;
+        }
+
+        // Method call
+        if (self->state->is(.LeftParen)) {
+            self->state->next();
+
+            switch (self->parse_expr_list(.RightParen)) case .Some(args) else {
+                return .None;
+            }
+
+            const node = ast::ASTMethodCall {
+                operand: lhs,
+                method_name: name,
+                args,
+                type_args: ast::ASTTypeArgs {
+                    list: Vec.new(self->state->allocator)
+                },
+                is_thin_arrow,
+                span: op_span.merge(self->state->current_span()),
+            };
+            return .Some(self->create_expr(.MethodCall(node)));
+        }
+
+        const node = ast::ASTFieldAccess {
+            is_thin_arrow,
+            operand: lhs,
+            field_name: name,
+            span: op_span.merge(name.span),
+        };
+        return .Some(self->create_expr(.FieldAccess(node)));
+    }
+
+    [[inline]]
+    fn create_expr(self: Self*, expr: ast::ASTExpr) ast::NodeId {
+        return self->program->create_node(.Expr(expr));
+    }
+
+    /* ************* Types ************* */
 
     pub fn parse_type(self: Self*) Option<ast::ASTType> {
         return self->parse_type_with_options(true, true);
@@ -36,27 +581,50 @@ pub struct ParserExprs {
         allow_pointers: bool, 
         allow_arrays: bool
     ) Option<ast::ASTType> {
-        const span = self->state->current_span();
-        
-        switch (self->parse_primitive_type()) case .Some(var base_type) else {
-            return .None;
+        const start = self->state->current_span();
+
+        var base_type: ast::ASTType = undefined;
+
+        if (self->state->is(.Const)) {
+            self->state->next();
+
+            switch (self->parse_type_with_options(false, false)) case .Some(inner) else {
+                return .None;
+            }
+
+            const node_id = self->program->create_node(.Type(inner));
+            base_type = .Const(node_id);
+        } else {
+            switch (self->parse_base_type()) case .Some(base) else {
+                return .None;
+            }
+
+            base_type = base;
         }
 
         while (true) {
             // Pointer Type
-            if (allow_pointers && self->state->is_peek(.Asterisk)) {
+            if (allow_pointers && self->state->is(.Asterisk)) {
                 self->state->next();
 
                 const node_id = self->program->create_node(.Type(base_type));
                 base_type = .Pointer(node_id);
             } 
             // Array Type
-            else if (allow_arrays && self->state->is_peek(.LeftBracket)) {
-                @todo();
+            else if (allow_arrays && self->state->is(.LeftBracket)) {
+                switch (self->parse_array_suffix(base_type, start)) case .Some(array_type) else {
+                    return .None;
+                }
+
+                base_type = array_type;
             } 
             // Generic Type
-            else if (allow_arrays && self->state->is_peek(.LessThan)) {
-                @todo();
+            else if (self->state->is(.LessThan)) {
+                switch (self->parse_generic_suffix(base_type, start)) case .Some(generic_type) else {
+                    return .None;
+                }
+
+                base_type = generic_type;
             } 
             else {
                 break;
@@ -66,7 +634,8 @@ pub struct ParserExprs {
         return .Some(base_type);
     }
 
-    fn parse_primitive_type(self: Self*) Option<ast::ASTType> {
+    fn parse_base_type(self: Self*) Option<ast::ASTType> {
+        const start = self->state->current_span();
         const token = self->state->current();
 
         switch (*token->kind) {
@@ -151,25 +720,213 @@ pub struct ParserExprs {
                 return .Some(.Primitive(.Void));
             }
             
-            case .Const => {
-                self->state->next();
-
-                switch (self->parse_type_with_options(false, false)) case .Some(inner) else {
-                    return .None;
+            case .Ident(str) => {
+                if (self->state->is_ident_str("Self")) {
+                    self->state->next();
+                    return .Some(.SelfType(ast::ASTSelfType { span: start }));
                 }
 
-                const node_id = self->program->create_node(.Type(inner));
-                return .Some(.Const(node_id));
+                const ident = ast::ASTIdent { str, span: start };
+                self->state->next();
+
+                if (self->state->is(.DoubleColon)) {
+                    switch (self->parse_module_import_value(ident)) case .Some(path) else {
+                        return .None;
+                    }
+
+                    return .Some(.ModuleImport(path));
+                }
+
+                return .Some(.Ident(ident));
+            }
+
+            case .LeftParen => {
+                return self->parse_tuple_type();
             }
 
             case .Struct => @todo();
             case .Enum => @todo();
             case .Union => @todo();
             case .Function => @todo();
-            case .LeftParen => @todo();
+
+            else => {
+                self->state->dctx->report(Diag.new(
+                    self->state->allocator,
+                    .Error,
+                    "expected type",
+                    start
+                ));
+                return .None;
+            }
+        }
+    }
+
+    fn parse_array_suffix(
+        self: Self*,
+        base_type: ast::ASTType,
+        start: Span
+    ) Option<ast::ASTType> {
+        var dims: Vec<ast::ASTArrayCapacity> = Vec.new(self->state->allocator);
+        defer dims.free();
+
+        while (true) {
+            self->state->next();
+
+            var capacity: ast::ASTArrayCapacity = .Dynamic;
+
+            if (!self->state->is(.RightBracket)) {
+                switch (self->parse_expr()) case .Some(size_id) else {
+                    return .None;
+                }
+
+                capacity = .Fixed(size_id);
+            }
+
+            dims.push(capacity);
+
+            if (!self->state->expect(.RightBracket)) {
+                return .None;
+            }
+
+            if (self->state->is(.LeftBracket)) {
+                continue;
+            }
+
+            break;
         }
 
-        return .None;
+        var ty = base_type;
+
+        // Build the nested array type from the inside out, so the first
+        // dimension stays the outermost one. 
+        // 
+        // `T[2][3]` is Array(2, Array(3, T)).
+        //
+        for (var i: usize = dims.len(); i > 0; i -= 1) {
+            const element = self->program->create_node(.Type(ty));
+            const size = dims.get_owned(i - 1).unwrap();
+
+            ty = .Array(ast::ASTArrayType {
+                size,
+                element_type: element,
+                span: start.merge(self->state->current_span()),
+            });
+        }
+
+        return .Some(ty);
+    }
+
+    fn parse_generic_suffix(
+        self: Self*,
+        base_type: ast::ASTType,
+        start: Span
+    ) Option<ast::ASTType> {
+        switch (self->parse_type_args()) case .Some(type_args) else {
+            return .None;
+        }
+
+        const base = self->program->create_node(.Type(base_type));
+
+        var ty: ast::ASTType = .GenericInst(ast::ASTGenericInst {
+            base,
+            type_args,
+            span: start.merge(self->state->current_span()),
+        });
+        return .Some(ty);
+    }
+
+    fn parse_type_args(self: Self*) Option<ast::ASTTypeArgs> {
+        if (!self->state->expect(.LessThan)) {
+            return .None;
+        }
+
+        var list: Vec<ast::ASTTypeArg> = Vec.new(self->state->allocator);
+
+        while (true) {
+            if (self->state->is(.Underscore)) {
+                self->state->next();
+                list.push(.Infer);
+            } else {
+                switch (self->parse_type()) case .Some(ty) else {
+                    list.free();
+                    return .None;
+                }
+
+                const node_id = self->program->create_node(.Type(ty));
+                list.push(.Type(node_id));
+            }
+
+            if (self->state->is(.Comma)) {
+                self->state->next();
+                continue;
+            }
+
+            break;
+        }
+
+        if (!self->state->expect(.GreaterThan)) {
+            list.free();
+            return .None;
+        }
+
+        return .Some(ast::ASTTypeArgs { list });
+    }
+
+    fn parse_tuple_type(self: Self*) Option<ast::ASTType> {
+        const start = self->state->current_span();
+        self->state->next();
+
+        // Empty tuple `()`
+        if (self->state->is(.RightParen)) {
+            self->state->next();
+
+            return .Some(.Tuple(ast::ASTTupleType {
+                type_list: Vec.new(self->state->allocator),
+                span: start.merge(self->state->current_span()),
+            }));
+        }
+
+        switch (self->parse_type()) case .Some(first_ty) else {
+            return .None;
+        }
+
+        // `(T)` is a grouping, not a one-element tuple.
+        if (self->state->is(.RightParen)) {
+            self->state->next();
+            return .Some(first_ty);
+        }
+
+        var type_list: Vec<ast::NodeId> = Vec.new(self->state->allocator);
+        type_list.push(self->program->create_node(.Type(first_ty)));
+
+        while (!self->state->is(.RightParen)) {
+            if (!self->state->expect(.Comma)) {
+                type_list.free();
+                return .None;
+            }
+
+            // Trailing comma before the closer
+            if (self->state->is(.RightParen)) {
+                break;
+            }
+
+            switch (self->parse_type()) case .Some(ty) else {
+                type_list.free();
+                return .None;
+            }
+
+            type_list.push(self->program->create_node(.Type(ty)));
+        }
+
+        if (!self->state->expect(.RightParen)) {
+            type_list.free();
+            return .None;
+        }
+
+        return .Some(.Tuple(ast::ASTTupleType {
+            type_list,
+            span: start.merge(self->state->current_span()),
+        }));
     }
 }
 
@@ -179,7 +936,7 @@ pub enum Prec {
     Or,
     And,
     Equals,
-    LessGreater
+    LessGreater,
     Sum,
     Product,
     Bitwise,
@@ -190,11 +947,91 @@ pub enum Prec {
 }
 
 /// Returns true if a <= b.
-fn prec_less_eq(a: Prec, b: Prec) bool {
+fn precedence_less_eq(a: Prec, b: Prec) bool {
     return @cast(usize, a) <= @cast(usize, b);
 }
 
 /// Returns the next-higher precedence for right-associative parsing.
-fn next_prec(p: Prec) Prec {
+fn next_precedence(p: Prec) Prec {
     return @cast(Prec, @cast(usize, p) + 1);
+}
+
+/// Precedence of a token when it appears between two operands.
+fn precedence_of_token_kind(kind: TokenKind) Option<Prec> {
+    switch (kind) {
+        case .Asterisk | .Slash | .Percent => return .Some(.Product);
+        case .Equal | .NotEqual => return .Some(.Equals);
+        case .Dot | .ThinArrow => return .Some(.Field);
+        case .LeftBracket => return .Some(.Index);
+        case .Plus | .Minus => return .Some(.Sum);
+        case .LeftParen => return .Some(.Call);
+        case .Assign => return .Some(.Assign);
+        case .And => return .Some(.And);
+        case .Or => return .Some(.Or);
+        
+        case .LessThan 
+        | .LessEqual 
+        | .GreaterThan 
+        | .GreaterEqual => return .Some(.LessGreater);
+        
+        case .Ampersand
+        | .Pipe
+        | .Tilde
+        | .AmpTilde
+        | .Caret
+        | .ShiftLeft
+        | .ShiftRight => return .Some(.Bitwise);
+        
+        else => return .None;
+    }
+}
+
+fn map_prefix_operator(kind: TokenKind) Option<ast::ASTPrefixOperator> {
+    switch (kind) {
+        case .Minus => return .Some(.Minus);
+        case .Bang => return .Some(.Bang);
+        case .Tilde => return .Some(.BitwiseNot);
+        else => return .None;
+    }
+}
+
+fn map_infix_operator(kind: TokenKind) Option<ast::ASTInfixOperator> {
+    switch (kind) {
+        case .Plus => return .Some(.Add);
+        case .Minus => return .Some(.Sub);
+        case .Asterisk => return .Some(.Mul);
+        case .Slash => return .Some(.Div);
+        case .Percent => return .Some(.Rem);
+        case .LessThan => return .Some(.LessThan);
+        case .LessEqual => return .Some(.LessEqual);
+        case .GreaterThan => return .Some(.GreaterThan);
+        case .GreaterEqual => return .Some(.GreaterEqual);
+        case .Equal => return .Some(.Equal);
+        case .NotEqual => return .Some(.NotEqual);
+        case .Or => return .Some(.Or);
+        case .And => return .Some(.And);
+        case .Ampersand => return .Some(.BitwiseAnd);
+        case .Pipe => return .Some(.BitwiseOr);
+        case .Caret => return .Some(.BitwiseXor);
+        case .AmpTilde => return .Some(.BitwiseAndNot);
+        case .ShiftLeft => return .Some(.ShiftLeft);
+        case .ShiftRight => return .Some(.ShiftRight);
+        else => return .None;
+    }
+}
+
+fn map_assign_kind(kind: TokenKind) Option<ast::ASTAssignKind> {
+    switch (kind) {
+        case .Plus => return .Some(.AddAssign);
+        case .Minus => return .Some(.SubAssign);
+        case .Asterisk => return .Some(.MulAssign);
+        case .Slash => return .Some(.DivAssign);
+        case .Percent => return .Some(.ModAssign);
+        case .Ampersand => return .Some(.BitwiseAndAssign);
+        case .Tilde => return .Some(.BitwiseXorAssign);
+        case .AmpTilde => return .Some(.BitwiseAndNotAssign);
+        case .ShiftLeft => return .Some(.LeftShiftAssign);
+        case .ShiftRight => return .Some(.RightShiftAssign);
+        else => return .None;
+    }
 }

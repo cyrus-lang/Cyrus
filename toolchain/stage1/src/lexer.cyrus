@@ -905,10 +905,8 @@ pub struct Lexer {
 
         if (self->cur() == '&') {
             self->read();
-            self->read();
             return self->init_kind(.And);
         } else if (self->cur() == '~') {
-            self->read();
             self->read();
             return self->init_kind(.AmpTilde);
         } else {
@@ -920,7 +918,7 @@ pub struct Lexer {
     fn read_pipe(self: Self*) TokenKind* {
         self->read();
 
-        if (self->cur() == '/') {
+        if (self->cur() == '|') {
             self->read();
             return self->init_kind(.Or);
         } else {
@@ -933,6 +931,7 @@ pub struct Lexer {
         self->read();
         
         if (self->cur() == '.' && self->peek() == '.') {
+            self->read();
             self->read();
             return self->init_kind(.TripleDot);
         } else if (self->cur() == '.') {

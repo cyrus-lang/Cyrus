@@ -20,7 +20,7 @@ import tokens{
 };
 
 pub struct ParserState {
-    allocator: Allocator,
+    pub allocator: Allocator,
     pub dctx: DiagContext*,
     pub pending: Vec<NodeId>*,
     pub source_tokens: SourceTokens*,
@@ -45,6 +45,11 @@ pub struct ParserState {
     [[inline]]
     pub fn source_id(self: const Self*) SourceId {
         return self->source_tokens->source_id;
+    }
+
+    [[inline]]
+    pub fn pos(self: const Self*) usize {
+        return self->pos;
     }
 
     pub fn get(self: const Self*, idx: usize) Option<const Token*> {
@@ -242,6 +247,17 @@ pub struct ParserState {
         return false;
     }
 
+    /// Returns true if the token `n` positions ahead of the cursor has `kind`.
+    pub fn is_peek_n(self: const Self*, n: usize, kind: TokenKind) bool {
+        switch (self->get(self->pos + n)) {
+            case .Some(token) => if (*token->kind == kind) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     pub fn is_peek_literal(self: const Self*, kind: TokenKind) bool {
         switch (self->get(self->pos + 1)) {
             case .Some(token) => switch (*token->kind) {
@@ -262,14 +278,22 @@ pub struct ParserState {
         return false;
     }
 
+    /// Skips tokens until a recovery point is reached.
     pub fn sync(self: Self*) {
         while (true) {
+            if (self->is(.EOF)) {
+                return;
+            }
+
             switch (*self->current()->kind) {
-                case .Semicolon
-                | .RightBrace
-                | .RightParen
-                | .RightBracket
-                | .EOF => break;
+                case .RightBrace 
+                | .RightParen 
+                | .RightBracket => return;
+                
+                case .Semicolon => {
+                    self->next();
+                    return;
+                }
             }
 
             self->next();

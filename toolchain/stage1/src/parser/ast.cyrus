@@ -56,9 +56,134 @@ pub struct ASTProgram {
     }
 
     pub fn free(self: Self*) {
+        for (var i: usize = 0; i < self->nodes.len(); i += 1) {
+            switch (self->nodes.get(i)) {
+                case .Some(node) => free_node(node);
+            }
+        }
+
         self->nodes.free();
         self->children.free();
     }
+}
+
+fn free_node(node: ASTNode*) {
+    switch (*node) {
+        case .GlobalVar(var n) => free_opt_type(&n.ty);
+        case .Var(var n) => free_opt_type(&n.ty);
+        case .Expr(var n) => free_expr(&n);
+        case .Type(var n) => free_type(&n);
+        
+        case .FuncDef(var n) => {
+            n.generic_params.free();
+            free_func_params(&n.params);
+            free_modifiers(&n.modifiers);
+        }
+        
+        case .FuncDecl(var n) => {
+            n.generic_params.free();
+            free_func_params(&n.params);
+            free_modifiers(&n.modifiers);
+        }
+    }
+}
+
+// FIXME: rename to free_option_type
+fn free_opt_type(ty: Option<ASTType>*) {
+    switch (*ty) {
+        case .Some(var inner) => free_type(&inner);
+    }
+}
+
+pub fn free_param_list(list: Vec<ASTFuncParamKind>*) {
+    for (var i: usize = 0; i < list->len(); i += 1) {
+        switch (list->get(i)) {
+            case .Some(kind) => {
+                switch (*kind) {
+                    case .FuncParam(var param) => free_opt_type(&param.ty);
+                }
+            }
+        }
+    }
+
+    list->free();
+}
+
+pub fn free_func_params(params: ASTFuncParams*) {
+    free_param_list(&params->list);
+}
+
+pub fn free_modifiers(modifiers: ASTFuncModifiers*) {
+    modifiers->optional_flags.free();
+}
+
+fn free_expr(expr: ASTExpr*) {
+    switch (*expr) {
+        case .EnumStructVariantInit(var n) => n.field_inits.free();
+        case .ModuleImport(var n) => free_segments(&n.segments);
+        case .UnnamedStructValue(var n) => n.fields.free();
+        case .UnnamedUnionValue(var n) => n.fields.free();
+        case .StructInit(var n) => n.field_inits.free();
+        case .UntypedArray(var n) => n.elements.free();
+        case .Builtin(var n) => free_builtin(&n);
+        case .Tuple(var n) => n.elements.free();
+        case .Array(var n) => n.elements.free();
+
+        case .UnnamedEnumValue(var n) => {
+            switch (n.kind) {
+                case .Tuple(var list) => list.free();
+                case .Struct(var list) => list.free();
+            }
+        }
+
+        case .FuncCall(var n) => {
+            n.args.free();
+            n.type_args.list.free();
+        }
+        case .MethodCall(var n) => {
+            n.args.free();
+            n.type_args.list.free();
+        }
+        
+        case .InlineAsm(var n) => {
+            n.outputs.free();
+            n.inputs.free();
+            n.clobbers.free();
+        }
+    }
+}
+
+pub fn free_type(ty: ASTType*) {
+    switch (*ty) {
+        case .Tuple(var n) => n.type_list.free();
+        case .UnnamedStruct(var n) => n.fields.free();
+        case .UnnamedUnion(var n) => n.fields.free();
+        case .UnnamedEnum(var n) => n.variants.free();
+        case .ModuleImport(var n) => free_segments(&n.segments);
+        case .Builtin(var n) => free_builtin(&n);
+        case .GenericInst(var n) => n.type_args.list.free();
+    }
+}
+
+fn free_builtin(builtin: ASTBuiltin*) {
+    switch (*builtin) {
+        case .BuiltinFunc(var n) => n.args.free();
+        case .BuiltinBlock(var n) => n.args.free();
+    }
+}
+
+fn free_segments(segments: Vec<ASTModuleSegment>*) {
+    for (var i: usize = 0; i < segments->len(); i += 1) {
+        switch (segments->get(i)) {
+            case .Some(segment) => {
+                switch (*segment) {
+                    case .Single(var list) => list.free();
+                }
+            }
+        }
+    }
+
+    segments->free();
 }
 
 pub enum ASTNode {
@@ -216,16 +341,32 @@ pub enum ASTAssignKind {
     BitwiseAndNotAssign,
     LeftShiftAssign,
     RightShiftAssign,
+
+    pub fn to_str(self: Self) const uint8* {
+        switch (self) {
+            case .Default => return "=";
+            case .AddAssign => return "+=";
+            case .SubAssign => return "-=";
+            case .MulAssign => return "*=";
+            case .DivAssign => return "/=";
+            case .ModAssign => return "%=";
+            case .BitwiseAndAssign => return "&=";
+            case .BitwiseXorAssign => return "^=";
+            case .BitwiseAndNotAssign => return "&~=";
+            case .LeftShiftAssign => return "<<=";
+            case .RightShiftAssign => return ">>=";
+        }
+    }
 }
 
 pub struct ASTPrefixExpr {
+    pub operator: ASTPrefixOperator,
     pub operand: NodeId,
-    pub op: ASTPrefixOperator,
     pub span: Span,
 }
 
 pub struct ASTInfixExpr {
-    pub op: ASTInfixOperator,
+    pub operator: ASTInfixOperator,
     pub lhs: NodeId,
     pub rhs: NodeId,
     pub span: Span,
@@ -913,7 +1054,7 @@ pub enum ASTType {
     Builtin(ASTBuiltin),
     Tuple(ASTTupleType),
     Array(ASTArrayType),
-    GenericInst(NodeId),
+    GenericInst(ASTGenericInst),
     FuncType(NodeId),
     Ident(ASTIdent),
     Pointer(NodeId),
@@ -966,12 +1107,45 @@ pub enum ASTInfixOperator {
     BitwiseAndNot,
     ShiftRight,
     ShiftLeft,
+
+    pub fn to_str(self: Self) const uint8* {
+        switch (self) {
+            case .Add => return "+";
+            case .Sub => return "-";
+            case .Mul => return "*";
+            case .Div => return "/";
+            case .Rem => return "%";
+            case .LessThan => return "<";
+            case .LessEqual => return "<=";
+            case .GreaterThan => return ">";
+            case .GreaterEqual => return ">=";
+            case .Equal => return "==";
+            case .NotEqual => return "!=";
+            case .Or => return "||";
+            case .NullCoalesce => return "??";
+            case .And => return "&&";
+            case .BitwiseAnd => return "&";
+            case .BitwiseOr => return "|";
+            case .BitwiseXor => return "^";
+            case .BitwiseAndNot => return "&~";
+            case .ShiftRight => return ">>";
+            case .ShiftLeft => return "<<";
+        }
+    }
 }
 
 pub enum ASTPrefixOperator {
     Bang,
     Minus,
     BitwiseNot,
+
+    pub fn to_str(self: Self) const uint8* {
+        switch (self) {
+            case .Bang => return "!";
+            case .Minus => return "-";
+            case .BitwiseNot => return "~";
+        }
+    }
 }
 
 /* ************* ETC ************* */
@@ -979,6 +1153,13 @@ pub enum ASTPrefixOperator {
 pub enum ASTConstness {
     Const,
     Var,
+
+    pub fn to_str(self: Self) const uint8* {
+        switch (self) {
+            case .Const => return "const";
+            case .Var => return "var";
+        }
+    }
 }
 
 pub enum ASTVisibility {
