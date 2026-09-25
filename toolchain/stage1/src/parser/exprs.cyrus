@@ -1,11 +1,14 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 The Cyrus Language
 
-import diags{Diag, DiagContext};
 import std::collections{Vec};
 import .::state{ParserState};
 import std::option{Option};
-import .::ast;
+import .::diags{
+    report_error, 
+    report_expected_ident, 
+    report_invalid_operator
+};
 import tokens{
     Token, 
     TokenKind, 
@@ -13,6 +16,7 @@ import tokens{
     Span, 
     Literal
 };
+import .::ast;
 
 pub struct ParserExprs {
     program: ast::ASTProgram*,
@@ -29,7 +33,7 @@ pub struct ParserExprs {
         return self->parse_expr_with_precedence(.Lowest);
     }
 
-    fn parse_expr_with_precedence(self: Self*, min_prec: Prec) Option<ast::NodeId> {
+    pub fn parse_expr_with_precedence(self: Self*, minimum_precedence: Prec) Option<ast::NodeId> {
         switch (self->parse_prefix()) case .Some(first) else {
             return .None;
         }
@@ -55,7 +59,7 @@ pub struct ParserExprs {
                 break;
             }
 
-            if (precedence_less_eq(operator_precedence, min_prec)) {
+            if (precedence_less_eq(operator_precedence, minimum_precedence)) {
                 break;
             }
 
@@ -183,12 +187,7 @@ pub struct ParserExprs {
             }
 
             else => {
-                self->state->dctx->report(Diag.new(
-                    self->state->allocator,
-                    .Error,
-                    "expected expression",
-                    start
-                ));
+                report_error(self->state->allocator, self->state->dctx, start, "expected expression");
                 return .None;
             }
         }
@@ -425,13 +424,13 @@ pub struct ParserExprs {
 
         if (self->state->is(.Assign)) {
             switch (map_assign_kind(operator_kind)) case .Some(kind) else {
-                // FIXME: Improve error message
-                self->state->dctx->report(Diag.new(
+                report_invalid_operator(
                     self->state->allocator,
-                    .Error,
-                    "invalid compound assignment operator",
-                    start
-                ));
+                    self->state->dctx,
+                    start,
+                    "compound assignment operator",
+                    operator_kind
+                );
                 return .None;
             }
 
@@ -450,14 +449,14 @@ pub struct ParserExprs {
             return .Some(self->create_expr(.Assign(node)));
         }
 
-        switch (map_infix_operator(operator_kind)) case .Some(op) else {
-            // FIXME: Improve error message
-            self->state->dctx->report(Diag.new(
+        switch (map_infix_operator(operator_kind)) case .Some(operator) else {
+            report_invalid_operator(
                 self->state->allocator,
-                .Error,
-                "invalid infix operator",
-                start
-            ));
+                self->state->dctx,
+                start,
+                "infix operator",
+                operator_kind
+            );
             return .None;
         }
 
@@ -466,7 +465,7 @@ pub struct ParserExprs {
         }
 
         const node = ast::ASTInfixExpr {
-            op,
+            operator,
             lhs,
             rhs,
             span: start.merge(self->state->current_span()),
@@ -493,12 +492,7 @@ pub struct ParserExprs {
         }
 
         if (!has_peek) {
-            self->state->dctx->report(Diag.new(
-                self->state->allocator,
-                .Error,
-                "expected field name after `.`",
-                start
-            ));
+            report_error(self->state->allocator, self->state->dctx, start, "expected field name after `.`");
             return .None;
         }
 
@@ -526,7 +520,7 @@ pub struct ParserExprs {
             const node = ast::ASTTupleAccess {
                 operand: lhs,
                 index: tuple_index,
-                span: op_span.merge(self->state->current_span()),
+                span: start.merge(self->state->current_span()),
             };
             return .Some(self->create_expr(.TupleAccess(node)));
         }
@@ -551,7 +545,7 @@ pub struct ParserExprs {
                     list: Vec.new(self->state->allocator)
                 },
                 is_thin_arrow,
-                span: op_span.merge(self->state->current_span()),
+                span: start.merge(self->state->current_span()),
             };
             return .Some(self->create_expr(.MethodCall(node)));
         }
@@ -560,7 +554,7 @@ pub struct ParserExprs {
             is_thin_arrow,
             operand: lhs,
             field_name: name,
-            span: op_span.merge(name.span),
+            span: start.merge(name.span),
         };
         return .Some(self->create_expr(.FieldAccess(node)));
     }
@@ -571,6 +565,678 @@ pub struct ParserExprs {
     }
 
     /* ************* Types ************* */
+
+    pub fn parse_integer_value(self: Self*) Option<usize> {
+        const token = self->state->current();
+
+        switch (*token->kind) {
+            case .Literal(lit) => switch (lit) {
+                case .Integer { value, suffix } => {
+                    if (suffix.is_some()) {
+                        return .None;
+                    }
+
+                    switch (value) {
+                        case .Unsigned(raw) => {
+                            self->state->next();
+                            return .Some(@cast(usize, raw));
+                        }
+                        case .Signed(raw) => {
+                            if (raw < 0) {
+                                return .None;
+                            }
+
+                            self->state->next();
+                            return .Some(@cast(usize, raw));
+                        }
+                    }
+                }
+            }
+            else => return .None;
+        }
+
+        return .None;
+    }
+
+    pub fn parse_enum_variant(self: Self*) Option<ast::ASTEnumVariant> {
+        switch (self->state->expect_ident()) case .Some(name) else {
+            return .None;
+        }
+
+        if (self->state->is(.Comma) || self->state->is(.RightBrace)) {
+            return .Some(.Unit(name));
+        }
+
+        if (self->state->is(.Assign)) {
+            self->state->next(); // consume `=`
+
+            switch (self->parse_expr()) case .Some(value) else {
+                return .None;
+            }
+
+            return .Some(.Valued { ident: name, value: value });
+        }
+
+        if (self->state->is(.LeftParen)) {
+            switch (self->parse_enum_tuple_variant()) case .Some(var fields) else {
+                return .None;
+            }
+
+            return .Some(.Tuple { ident: name, fields: fields });
+        }
+
+        if (self->state->is(.LeftBrace)) {
+            switch (self->parse_enum_struct_variant()) case .Some(var fields) else {
+                return .None;
+            }
+
+            return .Some(.Struct { ident: name, fields: fields });
+        }
+
+        return .Some(.Unit(name));
+    }
+
+    /// Grammar: ( Type , )* Type
+    /// No trailing comma, empty list would be rejected.
+    fn parse_enum_tuple_variant(self: Self*) Option<Vec<ast::ASTEnumVariantTupleField>> {
+        if (!self->state->expect(.LeftParen)) {
+            return .None;
+        }
+
+        var fields: Vec<ast::ASTEnumVariantTupleField> = Vec.new(self->state->allocator);
+
+        while (true) {
+            if (self->state->is(.RightParen)) {
+                report_error(self->state->allocator, self->state->dctx, self->state->current_span(), "consider adding a field to enum tuple variant or removing the parentheses");
+                fields.free();
+                self->state->sync();
+                return .None;
+            }
+
+            const field_start = self->state->current_span();
+
+            switch (self->parse_type()) case .Some(ty) else {
+                fields.free();
+                self->state->sync();
+                return .None;
+            }
+
+            fields.push(ast::ASTEnumVariantTupleField {
+                ty: self->program->create_node(.Type(ty)),
+                span: field_start.merge(self->state->current_span()),
+            });
+
+            if (self->state->is(.RightParen)) {
+                self->state->next();
+                break;
+            }
+
+            if (!self->state->expect(.Comma)) {
+                fields.free();
+                self->state->sync();
+                return .None;
+            }
+        }
+
+        return .Some(fields);
+    }
+
+    /// Grammar: ( IDENT : Type , )* IDENT : Type
+    fn parse_enum_struct_variant(self: Self*) Option<Vec<ast::ASTEnumVariantStructField>> {
+        if (!self->state->expect(.LeftBrace)) {
+            return .None;
+        }
+
+        var fields: Vec<ast::ASTEnumVariantStructField> = Vec.new(self->state->allocator);
+
+        while (true) {
+            const field_start = self->state->current_span();
+
+            switch (self->state->expect_ident()) case .Some(name) else {
+                fields.free();
+                self->state->sync();
+                return .None;
+            }
+
+            if (!self->state->expect(.Colon)) {
+                fields.free();
+                self->state->sync();
+                return .None;
+            }
+
+            switch (self->parse_type()) case .Some(ty) else {
+                fields.free();
+                self->state->sync();
+                return .None;
+            }
+
+            fields.push(ast::ASTEnumVariantStructField {
+                name,
+                ty: self->program->create_node(.Type(ty)),
+                span: field_start.merge(self->state->current_span()),
+            });
+
+            if (self->state->is(.RightBrace)) {
+                self->state->next();
+                break;
+            }
+
+            if (self->state->is(.Comma) && self->state->is_peek(.RightBrace)) {
+                self->state->next();
+                self->state->next();
+                break;
+            }
+
+            if (!self->state->expect(.Comma)) {
+                fields.free();
+                self->state->sync();
+                return .None;
+            }
+        }
+
+        return .Some(fields);
+    }
+
+    fn parse_unnamed_struct_type(self: Self*) Option<ast::ASTType> {
+        const start = self->state->current_span();
+        self->state->next();
+
+        var align: Option<usize> = .None;
+
+        if (self->state->is_ident_str("align")) {
+            self->state->next();
+
+            if (!self->state->expect(.LeftParen)) {
+                self->state->sync();
+                return .None;
+            }
+
+            switch (self->parse_integer_value()) {
+                case .Some(value) => align = .Some(value);
+                else => {
+                    report_error(
+                        self->state->allocator, 
+                        self->state->dctx, 
+                        self->state->current_span(), 
+                        "integer literals cannot have suffixes in this context"
+                    );
+                    self->state->sync();
+                    return .None;
+                }
+            }
+
+            if (!self->state->expect(.RightParen)) {
+                self->state->sync();
+                return .None;
+            }
+        }
+
+        if (!self->state->expect(.LeftBrace)) {
+            self->state->sync();
+            return .None;
+        }
+
+        var fields: Vec<ast::ASTUnnamedStructTypeField> = Vec.new(self->state->allocator);
+
+        while (true) {
+            if (self->state->is(.RightBrace)) {
+                break;
+            }
+
+            if (self->state->is(.EOF)) {
+                report_error(self->state->allocator, self->state->dctx, self->state->current_span(), "missing closing brace `}`");
+                fields.free();
+                self->state->sync();
+                return .None;
+            }
+
+            if (!self->state->is_ident()) {
+                report_expected_ident(
+                    self->state->allocator,
+                    self->state->dctx,
+                    self->state->current_span(),
+                    *self->state->current()->kind
+                );
+                fields.free();
+                self->state->sync();
+                return .None;
+            }
+
+            const field_start = self->state->current_span();
+
+            switch (self->state->expect_ident()) case .Some(name) else {
+                fields.free();
+                self->state->sync();
+                return .None;
+            }
+
+            if (!self->state->expect(.Colon)) {
+                fields.free();
+                self->state->sync();
+                return .None;
+            }
+
+            switch (self->parse_type()) case .Some(ty) else {
+                fields.free();
+                self->state->sync();
+                return .None;
+            }
+
+            fields.push(ast::ASTUnnamedStructTypeField {
+                name,
+                ty: self->program->create_node(.Type(ty)),
+                span: field_start.merge(self->state->current_span()),
+            });
+
+            if (self->state->is(.RightBrace)) {
+                break;
+            }
+
+            if (!self->state->expect(.Comma)) {
+                fields.free();
+                self->state->sync();
+                return .None;
+            }
+        }
+
+        const span = start.merge(self->state->current_span());
+
+        if (!self->state->expect(.RightBrace)) {
+            fields.free();
+            return .None;
+        }
+
+        return .Some(.UnnamedStruct(ast::ASTUnnamedStructType {
+            fields,
+            repr_attr: .None,
+            align,
+            span,
+        }));
+    }
+
+    fn parse_unnamed_union_type(self: Self*) Option<ast::ASTType> {
+        const start = self->state->current_span();
+        self->state->next();
+
+        var align: Option<usize> = .None;
+
+        if (self->state->is_ident_str("align")) {
+            self->state->next();
+
+            if (!self->state->expect(.LeftParen)) {
+                self->state->sync();
+                return .None;
+            }
+
+            switch (self->parse_integer_value()) {
+                case .Some(value) => align = .Some(value);
+                else => {
+                    report_error(
+                        self->state->allocator, 
+                        self->state->dctx, 
+                        self->state->current_span(), 
+                        "integer literals cannot have suffixes in this context"
+                    );
+                    self->state->sync();
+                    return .None;
+                }
+            }
+
+            if (!self->state->expect(.RightParen)) {
+                self->state->sync();
+                return .None;
+            }
+        }
+
+        if (!self->state->expect(.LeftBrace)) {
+            self->state->sync();
+            return .None;
+        }
+
+        var fields: Vec<ast::ASTUnnamedUnionTypeField> = Vec.new(self->state->allocator);
+
+        while (true) {
+            if (self->state->is(.RightBrace)) {
+                break;
+            }
+
+            if (self->state->is(.EOF)) {
+                report_error(
+                    self->state->allocator, 
+                    self->state->dctx, 
+                    self->state->current_span(), 
+                    "missing closing brace `}`"
+                );
+                fields.free();
+                self->state->sync();
+                return .None;
+            }
+
+            if (!self->state->is_ident()) {
+                report_expected_ident(
+                    self->state->allocator,
+                    self->state->dctx,
+                    self->state->current_span(),
+                    *self->state->current()->kind
+                );
+                fields.free();
+                self->state->sync();
+                return .None;
+            }
+
+            const field_start = self->state->current_span();
+
+            switch (self->state->expect_ident()) case .Some(name) else {
+                fields.free();
+                self->state->sync();
+                return .None;
+            }
+
+            if (!self->state->expect(.Colon)) {
+                fields.free();
+                self->state->sync();
+                return .None;
+            }
+
+            switch (self->parse_type()) case .Some(ty) else {
+                fields.free();
+                self->state->sync();
+                return .None;
+            }
+
+            fields.push(ast::ASTUnnamedUnionTypeField {
+                ident: name,
+                field_type: self->program->create_node(.Type(ty)),
+                span: field_start.merge(self->state->current_span()),
+            });
+
+            if (self->state->is(.RightBrace)) {
+                break;
+            }
+
+            if (!self->state->expect(.Comma)) {
+                fields.free();
+                self->state->sync();
+                return .None;
+            }
+        }
+
+        const span = start.merge(self->state->current_span());
+
+        if (!self->state->expect(.RightBrace)) {
+            fields.free();
+            return .None;
+        }
+
+        return .Some(.UnnamedUnion(ast::ASTUnnamedUnionType {
+            fields,
+            repr_attr: .None,
+            align,
+            span,
+        }));
+    }
+
+    fn parse_unnamed_enum_type(self: Self*) Option<ast::ASTType> {
+        const start = self->state->current_span();
+        self->state->next();
+
+        var tag_type: Option<ast::NodeId> = .None;
+
+        if (self->state->is(.LeftParen)) {
+            self->state->next();
+
+            switch (self->parse_type()) case .Some(ty) else {
+                self->state->sync();
+                return .None;
+            }
+
+            tag_type = .Some(self->program->create_node(.Type(ty)));
+
+            if (!self->state->expect(.RightParen)) {
+                self->state->sync();
+                return .None;
+            }
+        }
+
+        var align: Option<usize> = .None;
+
+        // FIXME: This syntax should be removed and 
+        // replaced with attribute.
+        if (self->state->is_ident_str("align")) {
+            self->state->next(); // consume `align`
+
+            if (!self->state->expect(.LeftParen)) {
+                self->state->sync();
+                return .None;
+            }
+
+            switch (self->parse_integer_value()) {
+                case .Some(value) => align = .Some(value);
+                else => {
+                    report_error(
+                        self->state->allocator, 
+                        self->state->dctx, 
+                        self->state->current_span(), 
+                        "integer literals cannot have suffixes in this context"
+                    );
+                    self->state->sync();
+                    return .None;
+                }
+            }
+
+            if (!self->state->expect(.RightParen)) {
+                self->state->sync();
+                return .None;
+            }
+        }
+
+        if (!self->state->expect(.LeftBrace)) {
+            self->state->sync();
+            return .None;
+        }
+
+        var variants: Vec<ast::ASTEnumVariant> = Vec.new(self->state->allocator);
+
+        if (self->state->is(.RightBrace)) {
+            const span = start.merge(self->state->current_span());
+
+            if (!self->state->expect(.RightBrace)) {
+                variants.free();
+                return .None;
+            }
+
+            return .Some(.UnnamedEnum(ast::ASTUnnamedEnumType {
+                variants,
+                tag_type,
+                repr_attr: .None,
+                align,
+                span,
+            }));
+        }
+
+        switch (self->parse_enum_variant()) case .Some(variant) else {
+            variants.free();
+            self->state->sync();
+            return .None;
+        }
+
+        variants.push(variant);
+
+        while (self->state->is(.Comma)) {
+            self->state->next();
+
+            if (self->state->is(.RightBrace)) {
+                break;
+            }
+
+            switch (self->parse_enum_variant()) case .Some(variant) else {
+                variants.free();
+                self->state->sync();
+                return .None;
+            }
+
+            variants.push(variant);
+
+            if (self->state->is_peek(.RightBrace)) {
+                break;
+            }
+        }
+
+        if (self->state->is(.Comma)) {
+            self->state->next();
+        }
+
+        const span = start.merge(self->state->current_span());
+
+        if (!self->state->expect(.RightBrace)) {
+            variants.free();
+            return .None;
+        }
+
+        return .Some(.UnnamedEnum(ast::ASTUnnamedEnumType {
+            variants,
+            tag_type,
+            repr_attr: .None,
+            align,
+            span,
+        }));
+    }
+
+    /// Grammar: @ IDENT ( Expr,* ) 
+    fn parse_builtin_type(self: Self*) Option<ast::ASTType> {
+        const start = self->state->current_span();
+        self->state->next(); // consume `@`
+
+        switch (self->state->expect_ident()) case .Some(name) else {
+            self->state->sync();
+            return .None;
+        }
+
+        if (!self->state->expect(.LeftParen)) {
+            self->state->sync();
+            return .None;
+        }
+
+        var args: Vec<ast::NodeId> = Vec.new(self->state->allocator);
+
+        if (self->state->is(.RightParen)) {
+            self->state->next();
+        } else {
+            while (true) {
+                switch (self->parse_expr()) case .Some(arg) else {
+                    args.free();
+                    self->state->sync();
+                    return .None;
+                }
+
+                args.push(arg);
+
+                if (self->state->is(.Comma)) {
+                    self->state->next();
+                    continue;
+                }
+
+                break;
+            }
+
+            if (!self->state->expect(.RightParen)) {
+                args.free();
+                self->state->sync();
+                return .None;
+            }
+        }
+
+        const span = start.merge(self->state->current_span());
+
+        return .Some(.Builtin(.BuiltinFunc(ast::ASTBuiltinFunc {
+            name,
+            args,
+            span,
+        })));
+    }
+
+    // Grammar: fn ( Type,* [Variadic] ) Type
+    fn parse_func_type(self: Self*) Option<ast::ASTType> {
+        const start = self->state->current_span();
+        self->state->next();
+
+        if (!self->state->expect(.LeftParen)) {
+            self->state->sync();
+            return .None;
+        }
+
+        var list: Vec<ast::NodeId> = Vec.new(self->state->allocator);
+        var variadic: Option<ast::ASTFuncTypeVariadicParams> = .None;
+
+        while (!self->state->is(.RightParen)) {
+            if (self->state->is(.TripleDot)) {
+                self->state->next(); // consume `...`
+
+                if (self->state->is(.RightParen)) {
+                    variadic = .Some(.UntypedCStyle);
+                    break;
+                }
+
+                switch (self->parse_type()) case .Some(ty) else {
+                    list.free();
+                    self->state->sync();
+                    return .None;
+                }
+
+                variadic = .Some(.Typed(self->program->create_node(.Type(ty))));
+                break;
+            }
+
+            switch (self->parse_type()) case .Some(ty) else {
+                list.free();
+                self->state->sync();
+                return .None;
+            }
+
+            list.push(self->program->create_node(.Type(ty)));
+
+            if (self->state->is(.Comma)) {
+                self->state->next();
+                continue;
+            }
+
+            if (!self->state->is(.RightParen)) {
+                report_error(
+                    self->state->allocator, 
+                    self->state->dctx, 
+                    self->state->current_span(), 
+                    "expected `,` or `)` in function type parameters"
+                );
+                list.free();
+                self->state->sync();
+                return .None;
+            }
+        }
+
+        if (!self->state->expect(.RightParen)) {
+            list.free();
+            self->state->sync();
+            return .None;
+        }
+
+        switch (self->parse_type()) case .Some(ret) else {
+            list.free();
+            self->state->sync();
+            return .None;
+        }
+
+        const ret_type = self->program->create_node(.Type(ret));
+        const span = start.merge(self->state->current_span());
+
+        const id = self->program->create_node(.FuncType(ast::ASTFuncType {
+            params: ast::ASTFuncTypeParams { list, variadic },
+            ret_type,
+            vis_opt: .None,
+            span,
+        }));
+
+        return .Some(.FuncType(id));
+    }
 
     pub fn parse_type(self: Self*) Option<ast::ASTType> {
         return self->parse_type_with_options(true, true);
@@ -744,18 +1410,18 @@ pub struct ParserExprs {
                 return self->parse_tuple_type();
             }
 
-            case .Struct => @todo();
-            case .Enum => @todo();
-            case .Union => @todo();
-            case .Function => @todo();
+            case .At => return self->parse_builtin_type();
+            case .Struct => return self->parse_unnamed_struct_type();
+            case .Enum => return self->parse_unnamed_enum_type();
+            case .Union => return self->parse_unnamed_union_type();
+            case .Function => return self->parse_func_type();
 
             else => {
-                self->state->dctx->report(Diag.new(
-                    self->state->allocator,
-                    .Error,
-                    "expected type",
-                    start
-                ));
+                report_error(
+                    self->state->allocator, 
+                    self->state->dctx, start, 
+                    "expected type"
+                );
                 return .None;
             }
         }

@@ -1,0 +1,38 @@
+// @parse
+
+static var a: Foo;
+static var b: Self;
+static var c: const Foo;
+static var d: const Self;
+
+/*@parse
+ASTProgram
+    Node[0]:
+        ASTGlobalVar
+            ident: a
+            is_const: false
+            is_undef: false
+            is_static: true
+            ty: Foo
+    Node[1]:
+        ASTGlobalVar
+            ident: b
+            is_const: false
+            is_undef: false
+            is_static: true
+            ty: Self
+    Node[2]:
+        ASTGlobalVar
+            ident: c
+            is_const: false
+            is_undef: false
+            is_static: true
+            ty: const Foo
+    Node[3]:
+        ASTGlobalVar
+            ident: d
+            is_const: false
+            is_undef: false
+            is_static: true
+            ty: const Self
+@parse*/

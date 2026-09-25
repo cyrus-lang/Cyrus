@@ -1,0 +1,118 @@
+// @parse
+
+fn add(a: int32, b: int32) int32 {
+    var sum = a + b;
+    return sum;
+}
+
+pub fn exported() int32 {
+    return 0;
+}
+
+fn noop() {}
+
+fn no_params_ret() int32 {
+    return 1;
+}
+
+fn outer() {
+    fn inner() int32 {
+        return 1;
+    }
+
+    return inner();
+}
+
+/*@parse
+ASTProgram
+    Node[0]:
+        ASTFuncDef
+            ident: add
+            params:
+                param[0]:
+                    ident: a
+                    constness: const
+                    ty: int32
+                param[1]:
+                    ident: b
+                    constness: const
+                    ty: int32
+            ret_type: int32
+            body:
+                ASTBlock
+                    stmt[0]:
+                        ASTVar
+                            ident: sum
+                            is_const: false
+                            is_undef: false
+                            rhs:
+                                ASTExpr::Infix
+                                    operator: +
+                                    lhs:
+                                        ASTExpr::Ident
+                                            ident: a
+                                    rhs:
+                                        ASTExpr::Ident
+                                            ident: b
+                    stmt[1]:
+                        ASTReturn
+                            argument:
+                                ASTExpr::Ident
+                                    ident: sum
+    Node[1]:
+        ASTFuncDef
+            ident: exported
+            visibility: public
+            params:
+            ret_type: int32
+            body:
+                ASTBlock
+                    stmt[0]:
+                        ASTReturn
+                            argument:
+                                ASTExpr::Literal
+                                    value: 0
+    Node[2]:
+        ASTFuncDef
+            ident: noop
+            params:
+            body:
+                ASTBlock
+    Node[3]:
+        ASTFuncDef
+            ident: no_params_ret
+            params:
+            ret_type: int32
+            body:
+                ASTBlock
+                    stmt[0]:
+                        ASTReturn
+                            argument:
+                                ASTExpr::Literal
+                                    value: 1
+    Node[4]:
+        ASTFuncDef
+            ident: outer
+            params:
+            body:
+                ASTBlock
+                    stmt[0]:
+                        ASTFuncDef
+                            ident: inner
+                            params:
+                            ret_type: int32
+                            body:
+                                ASTBlock
+                                    stmt[0]:
+                                        ASTReturn
+                                            argument:
+                                                ASTExpr::Literal
+                                                    value: 1
+                    stmt[1]:
+                        ASTReturn
+                            argument:
+                                ASTExpr::FuncCall
+                                    operand:
+                                        ASTExpr::Ident
+                                            ident: inner
+@parse*/

@@ -1,0 +1,57 @@
+// @parse
+
+fn variadic(fmt: const uint8*, ...) void;
+fn typed_varargs(name: const uint8*, args: ...int32) void;
+fn pointers(p: Foo**, q: const uint8*) void;
+fn constness(const a: int32, var b: int32) void;
+
+/*@parse
+ASTProgram
+    Node[0]:
+        ASTFuncDecl
+            ident: variadic
+            params:
+                param[0]:
+                    ident: fmt
+                    constness: const
+                    ty: *const uint8
+                variadic: c_style
+            ret_type: void
+    Node[1]:
+        ASTFuncDecl
+            ident: typed_varargs
+            params:
+                param[0]:
+                    ident: name
+                    constness: const
+                    ty: *const uint8
+                variadic: args
+                type: int32
+            ret_type: void
+    Node[2]:
+        ASTFuncDecl
+            ident: pointers
+            params:
+                param[0]:
+                    ident: p
+                    constness: const
+                    ty: **Foo
+                param[1]:
+                    ident: q
+                    constness: const
+                    ty: *const uint8
+            ret_type: void
+    Node[3]:
+        ASTFuncDecl
+            ident: constness
+            params:
+                param[0]:
+                    ident: a
+                    constness: const
+                    ty: int32
+                param[1]:
+                    ident: b
+                    constness: var
+                    ty: int32
+            ret_type: void
+@parse*/

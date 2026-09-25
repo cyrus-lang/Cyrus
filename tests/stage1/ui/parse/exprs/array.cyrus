@@ -1,0 +1,76 @@
+// @parse
+
+const a = {1, 2, 3};
+const b = {};
+const c = {x + 1, y};
+const d = {foo(1), {2}};
+
+/*@parse
+ASTProgram
+    Node[0]:
+        ASTGlobalVar
+            ident: a
+            is_const: true
+            is_undef: false
+            is_static: false
+            expr:
+                ASTExpr::UntypedArray
+                    element[0]:
+                        ASTExpr::Literal
+                            value: 1
+                    element[1]:
+                        ASTExpr::Literal
+                            value: 2
+                    element[2]:
+                        ASTExpr::Literal
+                            value: 3
+    Node[1]:
+        ASTGlobalVar
+            ident: b
+            is_const: true
+            is_undef: false
+            is_static: false
+            expr:
+                ASTExpr::UntypedArray
+    Node[2]:
+        ASTGlobalVar
+            ident: c
+            is_const: true
+            is_undef: false
+            is_static: false
+            expr:
+                ASTExpr::UntypedArray
+                    element[0]:
+                        ASTExpr::Infix
+                            operator: +
+                            lhs:
+                                ASTExpr::Ident
+                                    ident: x
+                            rhs:
+                                ASTExpr::Literal
+                                    value: 1
+                    element[1]:
+                        ASTExpr::Ident
+                            ident: y
+    Node[3]:
+        ASTGlobalVar
+            ident: d
+            is_const: true
+            is_undef: false
+            is_static: false
+            expr:
+                ASTExpr::UntypedArray
+                    element[0]:
+                        ASTExpr::FuncCall
+                            operand:
+                                ASTExpr::Ident
+                                    ident: foo
+                            arg[0]:
+                                ASTExpr::Literal
+                                    value: 1
+                    element[1]:
+                        ASTExpr::UntypedArray
+                            element[0]:
+                                ASTExpr::Literal
+                                    value: 2
+@parse*/

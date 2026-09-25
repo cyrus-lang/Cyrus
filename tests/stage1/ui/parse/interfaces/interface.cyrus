@@ -1,0 +1,112 @@
+// @parse
+
+interface Empty {
+}
+
+interface Simple {
+    fn run();
+}
+
+interface WithReturn {
+    fn get() int32;
+    fn set(x: int32, flag: bool);
+}
+
+interface Generic<T> {
+    fn value() T;
+}
+
+pub interface Visible {
+    fn greet();
+}
+
+interface Multi {
+    fn a();
+    fn b(x: int32) bool;
+    fn c() void;
+}
+
+/*@parse
+ASTProgram
+    Node[0]:
+        ASTInterface
+            ident: Empty
+            generic_params_count: 0
+            methods_count: 0
+    Node[1]:
+        ASTInterface
+            ident: Simple
+            generic_params_count: 0
+            methods_count: 1
+            method[0]:
+                ASTFuncDecl
+                    ident: run
+                    params:
+    Node[2]:
+        ASTInterface
+            ident: WithReturn
+            generic_params_count: 0
+            methods_count: 2
+            method[0]:
+                ASTFuncDecl
+                    ident: get
+                    params:
+                    ret_type: int32
+            method[1]:
+                ASTFuncDecl
+                    ident: set
+                    params:
+                        param[0]:
+                            ident: x
+                            constness: const
+                            ty: int32
+                        param[1]:
+                            ident: flag
+                            constness: const
+                            ty: bool
+    Node[3]:
+        ASTInterface
+            ident: Generic
+            generic_params_count: 1
+            generic_param[0]:
+                name: T
+            methods_count: 1
+            method[0]:
+                ASTFuncDecl
+                    ident: value
+                    params:
+                    ret_type: T
+    Node[4]:
+        ASTInterface
+            ident: Visible
+            visibility: public
+            generic_params_count: 0
+            methods_count: 1
+            method[0]:
+                ASTFuncDecl
+                    ident: greet
+                    params:
+    Node[5]:
+        ASTInterface
+            ident: Multi
+            generic_params_count: 0
+            methods_count: 3
+            method[0]:
+                ASTFuncDecl
+                    ident: a
+                    params:
+            method[1]:
+                ASTFuncDecl
+                    ident: b
+                    params:
+                        param[0]:
+                            ident: x
+                            constness: const
+                            ty: int32
+                    ret_type: bool
+            method[2]:
+                ASTFuncDecl
+                    ident: c
+                    params:
+                    ret_type: void
+@parse*/

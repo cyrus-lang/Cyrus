@@ -1,0 +1,48 @@
+// @parse
+
+fn example() {
+    {}
+    {
+        const a = 1;
+    }
+    {
+        {
+            var b: int32 = 2;
+        }
+    }
+}
+
+/*@parse
+ASTProgram
+    Node[0]:
+        ASTFuncDef
+            ident: example
+            params:
+            body:
+                ASTBlock
+                    stmt[0]:
+                        ASTBlock
+                    stmt[1]:
+                        ASTBlock
+                            stmt[0]:
+                                ASTVar
+                                    ident: a
+                                    is_const: true
+                                    is_undef: false
+                                    rhs:
+                                        ASTExpr::Literal
+                                            value: 1
+                    stmt[2]:
+                        ASTBlock
+                            stmt[0]:
+                                ASTBlock
+                                    stmt[0]:
+                                        ASTVar
+                                            ident: b
+                                            is_const: false
+                                            is_undef: false
+                                            ty: int32
+                                            rhs:
+                                                ASTExpr::Literal
+                                                    value: 2
+@parse*/

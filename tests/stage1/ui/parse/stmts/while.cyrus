@@ -1,0 +1,134 @@
+// @parse
+
+fn example() {
+    while (i < 10) {
+        i += 1;
+    }
+
+    while (running) {
+        step();
+    }
+
+    while (a && b || c) {
+        tick();
+    }
+
+    while (i < 100) {
+        while (j < 50) {
+            j += 1;
+        }
+        i += 1;
+    }
+}
+
+/*@parse
+ASTProgram
+    Node[0]:
+        ASTFuncDef
+            ident: example
+            params:
+            body:
+                ASTBlock
+                    stmt[0]:
+                        ASTWhile
+                            condition:
+                                ASTExpr::Infix
+                                    operator: <
+                                    lhs:
+                                        ASTExpr::Ident
+                                            ident: i
+                                    rhs:
+                                        ASTExpr::Literal
+                                            value: 10
+                            body:
+                                ASTBlock
+                                    stmt[0]:
+                                        ASTExpr::Assign
+                                            kind: +=
+                                            lhs:
+                                                ASTExpr::Ident
+                                                    ident: i
+                                            rhs:
+                                                ASTExpr::Literal
+                                                    value: 1
+                    stmt[1]:
+                        ASTWhile
+                            condition:
+                                ASTExpr::Ident
+                                    ident: running
+                            body:
+                                ASTBlock
+                                    stmt[0]:
+                                        ASTExpr::FuncCall
+                                            operand:
+                                                ASTExpr::Ident
+                                                    ident: step
+                    stmt[2]:
+                        ASTWhile
+                            condition:
+                                ASTExpr::Infix
+                                    operator: ||
+                                    lhs:
+                                        ASTExpr::Infix
+                                            operator: &&
+                                            lhs:
+                                                ASTExpr::Ident
+                                                    ident: a
+                                            rhs:
+                                                ASTExpr::Ident
+                                                    ident: b
+                                    rhs:
+                                        ASTExpr::Ident
+                                            ident: c
+                            body:
+                                ASTBlock
+                                    stmt[0]:
+                                        ASTExpr::FuncCall
+                                            operand:
+                                                ASTExpr::Ident
+                                                    ident: tick
+                    stmt[3]:
+                        ASTWhile
+                            condition:
+                                ASTExpr::Infix
+                                    operator: <
+                                    lhs:
+                                        ASTExpr::Ident
+                                            ident: i
+                                    rhs:
+                                        ASTExpr::Literal
+                                            value: 100
+                            body:
+                                ASTBlock
+                                    stmt[0]:
+                                        ASTWhile
+                                            condition:
+                                                ASTExpr::Infix
+                                                    operator: <
+                                                    lhs:
+                                                        ASTExpr::Ident
+                                                            ident: j
+                                                    rhs:
+                                                        ASTExpr::Literal
+                                                            value: 50
+                                            body:
+                                                ASTBlock
+                                                    stmt[0]:
+                                                        ASTExpr::Assign
+                                                            kind: +=
+                                                            lhs:
+                                                                ASTExpr::Ident
+                                                                    ident: j
+                                                            rhs:
+                                                                ASTExpr::Literal
+                                                                    value: 1
+                                    stmt[1]:
+                                        ASTExpr::Assign
+                                            kind: +=
+                                            lhs:
+                                                ASTExpr::Ident
+                                                    ident: i
+                                            rhs:
+                                                ASTExpr::Literal
+                                                    value: 1
+@parse*/

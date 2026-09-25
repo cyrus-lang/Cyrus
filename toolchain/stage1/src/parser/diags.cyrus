@@ -2,9 +2,19 @@
 // Copyright (c) 2026 The Cyrus Language
 
 import std::io{Writer, StringWriter};
+import diags{Diag, DiagContext};
+import tokens{TokenKind, Span};
 import std::mem{Allocator};
 import std::string{String};
-import tokens{TokenKind};
+
+pub fn format_unexpected_token(allocator: Allocator, got: TokenKind) String {
+    var buffer = String.new(allocator);
+    var writer: Writer = dynamic StringWriter.new(&buffer);
+    writer.write("unexpected token `");
+    got.format(writer);
+    writer.write("`");
+    return buffer;
+}
 
 pub fn format_expected_token(
     allocator: Allocator,
@@ -19,4 +29,119 @@ pub fn format_expected_token(
     got.format(writer);
     writer.write_char('`');
     return buffer;
+}
+
+pub fn format_expected_ident(allocator: Allocator, got: TokenKind) String {
+    var buffer = String.new(allocator);
+    var writer: Writer = dynamic StringWriter.new(&buffer);
+    writer.write("expected ident but got `");
+    got.format(writer);
+    writer.write_char('`');
+    return buffer;
+}
+
+pub fn report_error(
+    allocator: Allocator,
+    dctx: DiagContext*,
+    span: Span,
+    mesg: const uint8*
+) {
+    dctx->report(Diag.new(allocator, .Error, mesg, span));
+}
+
+pub fn report_expected_token(
+    allocator: Allocator,
+    dctx: DiagContext*,
+    span: Span,
+    expected: TokenKind,
+    got: TokenKind
+) {
+    var fmt = format_expected_token(allocator, expected, got);
+    defer fmt.free();
+    dctx->report(Diag.new(allocator, .Error, fmt.as_str(), span));
+}
+
+pub fn report_unexpected_token(
+    allocator: Allocator,
+    dctx: DiagContext*,
+    span: Span,
+    got: TokenKind
+) {
+    var fmt = format_unexpected_token(allocator, got);
+    defer fmt.free();
+    dctx->report(Diag.new(allocator, .Error, fmt.as_str(), span));
+}
+
+pub fn report_expected_ident(
+    allocator: Allocator,
+    dctx: DiagContext*,
+    span: Span,
+    got: TokenKind
+) {
+    var fmt = format_expected_ident(allocator, got);
+    defer fmt.free();
+    dctx->report(Diag.new(allocator, .Error, fmt.as_str(), span));
+}
+
+pub fn report_local_decl_error(
+    allocator: Allocator,
+    dctx: DiagContext*,
+    span: Span,
+    keyword: const uint8*
+) {
+    var buffer = String.new(allocator);
+    var writer: Writer = dynamic StringWriter.new(&buffer);
+    writer.write("`");
+    writer.write(keyword);
+    writer.write("` cannot be defined inside a function body");
+    dctx->report(Diag.new(allocator, .Error, buffer.as_str(), span));
+    buffer.free();
+}
+
+pub fn report_invalid_operator(
+    allocator: Allocator,
+    dctx: DiagContext*,
+    span: Span,
+    what: const uint8*,
+    got: TokenKind
+) {
+    var buffer = String.new(allocator);
+    var writer: Writer = dynamic StringWriter.new(&buffer);
+    writer.write("invalid ");
+    writer.write(what);
+    writer.write(" `");
+    got.format(writer);
+    writer.write("`");
+    dctx->report(Diag.new(allocator, .Error, buffer.as_str(), span));
+    buffer.free();
+}
+
+pub fn report_invalid_abi(
+    allocator: Allocator,
+    dctx: DiagContext*,
+    span: Span,
+    name: const uint8*
+) {
+    var buffer = String.new(allocator);
+    var writer: Writer = dynamic StringWriter.new(&buffer);
+    writer.write("invalid ABI `");
+    writer.write(name);
+    writer.write("`, expected `c` or `cyrus`");
+    dctx->report(Diag.new(allocator, .Error, buffer.as_str(), span));
+    buffer.free();
+}
+
+pub fn report_undefined_needs_type(
+    allocator: Allocator,
+    dctx: DiagContext*,
+    span: Span,
+    name: const uint8*
+) {
+    var buffer = String.new(allocator);
+    var writer: Writer = dynamic StringWriter.new(&buffer);
+    writer.write("variable `");
+    writer.write(name);
+    writer.write("` requires an explicit type when initialized with `undefined`");
+    dctx->report(Diag.new(allocator, .Error, buffer.as_str(), span));
+    buffer.free();
 }

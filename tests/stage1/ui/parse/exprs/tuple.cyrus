@@ -1,0 +1,76 @@
+// @parse
+
+const a = (1, 2, 3);
+const b = (1, x + 1);
+const c = ();
+const d = (1,);
+const e = (x);
+
+/*@parse
+ASTProgram
+    Node[0]:
+        ASTGlobalVar
+            ident: a
+            is_const: true
+            is_undef: false
+            is_static: false
+            expr:
+                ASTExpr::Tuple
+                    element[0]:
+                        ASTExpr::Literal
+                            value: 1
+                    element[1]:
+                        ASTExpr::Literal
+                            value: 2
+                    element[2]:
+                        ASTExpr::Literal
+                            value: 3
+    Node[1]:
+        ASTGlobalVar
+            ident: b
+            is_const: true
+            is_undef: false
+            is_static: false
+            expr:
+                ASTExpr::Tuple
+                    element[0]:
+                        ASTExpr::Literal
+                            value: 1
+                    element[1]:
+                        ASTExpr::Infix
+                            operator: +
+                            lhs:
+                                ASTExpr::Ident
+                                    ident: x
+                            rhs:
+                                ASTExpr::Literal
+                                    value: 1
+    Node[2]:
+        ASTGlobalVar
+            ident: c
+            is_const: true
+            is_undef: false
+            is_static: false
+            expr:
+                ASTExpr::Tuple
+    Node[3]:
+        ASTGlobalVar
+            ident: d
+            is_const: true
+            is_undef: false
+            is_static: false
+            expr:
+                ASTExpr::Tuple
+                    element[0]:
+                        ASTExpr::Literal
+                            value: 1
+    Node[4]:
+        ASTGlobalVar
+            ident: e
+            is_const: true
+            is_undef: false
+            is_static: false
+            expr:
+                ASTExpr::Ident
+                    ident: x
+@parse*/

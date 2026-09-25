@@ -1,0 +1,44 @@
+// @parse
+
+fn no_args();
+fn pub_fn(a: uint8) void;
+extern "c" fn ext_fn();
+pub extern "c" fn both();
+fn self_method(self: Self*) void;
+
+/*@parse
+ASTProgram
+    Node[0]:
+        ASTFuncDecl
+            ident: no_args
+            params:
+    Node[1]:
+        ASTFuncDecl
+            ident: pub_fn
+            params:
+                param[0]:
+                    ident: a
+                    constness: const
+                    ty: uint8
+            ret_type: void
+    Node[2]:
+        ASTFuncDecl
+            ident: ext_fn
+            extern: c
+            params:
+    Node[3]:
+        ASTFuncDecl
+            ident: both
+            visibility: public
+            extern: c
+            params:
+    Node[4]:
+        ASTFuncDecl
+            ident: self_method
+            params:
+                param[0]:
+                    self
+                    constness: const
+                    ty: *Self
+            ret_type: void
+@parse*/

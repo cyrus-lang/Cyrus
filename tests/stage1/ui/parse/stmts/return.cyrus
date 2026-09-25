@@ -1,0 +1,46 @@
+// @parse
+
+fn example() {
+    return;
+    return 1;
+    return foo(1);
+    return a + b;
+}
+
+/*@parse
+ASTProgram
+    Node[0]:
+        ASTFuncDef
+            ident: example
+            params:
+            body:
+                ASTBlock
+                    stmt[0]:
+                        ASTReturn
+                    stmt[1]:
+                        ASTReturn
+                            argument:
+                                ASTExpr::Literal
+                                    value: 1
+                    stmt[2]:
+                        ASTReturn
+                            argument:
+                                ASTExpr::FuncCall
+                                    operand:
+                                        ASTExpr::Ident
+                                            ident: foo
+                                    arg[0]:
+                                        ASTExpr::Literal
+                                            value: 1
+                    stmt[3]:
+                        ASTReturn
+                            argument:
+                                ASTExpr::Infix
+                                    operator: +
+                                    lhs:
+                                        ASTExpr::Ident
+                                            ident: a
+                                    rhs:
+                                        ASTExpr::Ident
+                                            ident: b
+@parse*/

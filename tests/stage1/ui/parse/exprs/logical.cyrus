@@ -1,0 +1,103 @@
+// @parse
+
+const a = x && y || z;
+const b = a < b && c > d;
+const c = a == b || c != d;
+const d = !a && b;
+
+/*@parse
+ASTProgram
+    Node[0]:
+        ASTGlobalVar
+            ident: a
+            is_const: true
+            is_undef: false
+            is_static: false
+            expr:
+                ASTExpr::Infix
+                    operator: ||
+                    lhs:
+                        ASTExpr::Infix
+                            operator: &&
+                            lhs:
+                                ASTExpr::Ident
+                                    ident: x
+                            rhs:
+                                ASTExpr::Ident
+                                    ident: y
+                    rhs:
+                        ASTExpr::Ident
+                            ident: z
+    Node[1]:
+        ASTGlobalVar
+            ident: b
+            is_const: true
+            is_undef: false
+            is_static: false
+            expr:
+                ASTExpr::Infix
+                    operator: &&
+                    lhs:
+                        ASTExpr::Infix
+                            operator: <
+                            lhs:
+                                ASTExpr::Ident
+                                    ident: a
+                            rhs:
+                                ASTExpr::Ident
+                                    ident: b
+                    rhs:
+                        ASTExpr::Infix
+                            operator: >
+                            lhs:
+                                ASTExpr::Ident
+                                    ident: c
+                            rhs:
+                                ASTExpr::Ident
+                                    ident: d
+    Node[2]:
+        ASTGlobalVar
+            ident: c
+            is_const: true
+            is_undef: false
+            is_static: false
+            expr:
+                ASTExpr::Infix
+                    operator: ||
+                    lhs:
+                        ASTExpr::Infix
+                            operator: ==
+                            lhs:
+                                ASTExpr::Ident
+                                    ident: a
+                            rhs:
+                                ASTExpr::Ident
+                                    ident: b
+                    rhs:
+                        ASTExpr::Infix
+                            operator: !=
+                            lhs:
+                                ASTExpr::Ident
+                                    ident: c
+                            rhs:
+                                ASTExpr::Ident
+                                    ident: d
+    Node[3]:
+        ASTGlobalVar
+            ident: d
+            is_const: true
+            is_undef: false
+            is_static: false
+            expr:
+                ASTExpr::Infix
+                    operator: &&
+                    lhs:
+                        ASTExpr::Prefix
+                            operator: !
+                            operand:
+                                ASTExpr::Ident
+                                    ident: a
+                    rhs:
+                        ASTExpr::Ident
+                            ident: b
+@parse*/

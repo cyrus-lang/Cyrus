@@ -1,0 +1,93 @@
+// @parse
+
+fn identity<T>(value: T) T {
+    return value;
+}
+
+fn pair<A, B>(a: A, b: B) Pair {
+    return make(a, b);
+}
+
+fn bounded<T: Display + Clone>(value: T) {
+}
+
+fn defaulted<T = int32>(value: T) {
+}
+
+fn decl<T>(value: T);
+
+/*@parse
+ASTProgram
+    Node[0]:
+        ASTFuncDef
+            ident: identity
+            params:
+                param[0]:
+                    ident: value
+                    constness: const
+                    ty: T
+            ret_type: T
+            body:
+                ASTBlock
+                    stmt[0]:
+                        ASTReturn
+                            argument:
+                                ASTExpr::Ident
+                                    ident: value
+    Node[1]:
+        ASTFuncDef
+            ident: pair
+            params:
+                param[0]:
+                    ident: a
+                    constness: const
+                    ty: A
+                param[1]:
+                    ident: b
+                    constness: const
+                    ty: B
+            ret_type: Pair
+            body:
+                ASTBlock
+                    stmt[0]:
+                        ASTReturn
+                            argument:
+                                ASTExpr::FuncCall
+                                    operand:
+                                        ASTExpr::Ident
+                                            ident: make
+                                    arg[0]:
+                                        ASTExpr::Ident
+                                            ident: a
+                                    arg[1]:
+                                        ASTExpr::Ident
+                                            ident: b
+    Node[2]:
+        ASTFuncDef
+            ident: bounded
+            params:
+                param[0]:
+                    ident: value
+                    constness: const
+                    ty: T
+            body:
+                ASTBlock
+    Node[3]:
+        ASTFuncDef
+            ident: defaulted
+            params:
+                param[0]:
+                    ident: value
+                    constness: const
+                    ty: T
+            body:
+                ASTBlock
+    Node[4]:
+        ASTFuncDecl
+            ident: decl
+            params:
+                param[0]:
+                    ident: value
+                    constness: const
+                    ty: T
+@parse*/

@@ -1,0 +1,65 @@
+// @parse
+
+fn example() {
+    var i = 0;
+
+again:
+    if (i < 3) {
+        i += 1;
+        goto again;
+    }
+
+done:
+    return;
+}
+
+/*@parse
+ASTProgram
+    Node[0]:
+        ASTFuncDef
+            ident: example
+            params:
+            body:
+                ASTBlock
+                    stmt[0]:
+                        ASTVar
+                            ident: i
+                            is_const: false
+                            is_undef: false
+                            rhs:
+                                ASTExpr::Literal
+                                    value: 0
+                    stmt[1]:
+                        ASTLabel
+                            name: again
+                    stmt[2]:
+                        ASTIf
+                            condition:
+                                ASTExpr::Infix
+                                    operator: <
+                                    lhs:
+                                        ASTExpr::Ident
+                                            ident: i
+                                    rhs:
+                                        ASTExpr::Literal
+                                            value: 3
+                            then_block:
+                                ASTBlock
+                                    stmt[0]:
+                                        ASTExpr::Assign
+                                            kind: +=
+                                            lhs:
+                                                ASTExpr::Ident
+                                                    ident: i
+                                            rhs:
+                                                ASTExpr::Literal
+                                                    value: 1
+                                    stmt[1]:
+                                        ASTGoto
+                                            name: again
+                    stmt[3]:
+                        ASTLabel
+                            name: done
+                    stmt[4]:
+                        ASTReturn
+@parse*/

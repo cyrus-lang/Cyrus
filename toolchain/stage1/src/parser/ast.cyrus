@@ -69,21 +69,55 @@ pub struct ASTProgram {
 
 fn free_node(node: ASTNode*) {
     switch (*node) {
+        case .SwitchGuard(var n) => free_switch_patterns(&n.case_item.patterns);
+        case .Switch(var n) => free_switch_cases(&n.cases);
+        case .Import(var n) => free_segments(&n.segments);
         case .GlobalVar(var n) => free_opt_type(&n.ty);
         case .Var(var n) => free_opt_type(&n.ty);
+        case .If(var n) => n.branches.free();
         case .Expr(var n) => free_expr(&n);
         case .Type(var n) => free_type(&n);
         
         case .FuncDef(var n) => {
-            n.generic_params.free();
+            free_generic_params(&n.generic_params);
             free_func_params(&n.params);
             free_modifiers(&n.modifiers);
         }
         
         case .FuncDecl(var n) => {
-            n.generic_params.free();
+            free_generic_params(&n.generic_params);
             free_func_params(&n.params);
             free_modifiers(&n.modifiers);
+        }
+
+        case .Struct(var n) => {
+            free_generic_params(&n.generic_params);
+            n.impls.free();
+            n.fields.free();
+            n.methods.free();
+        }
+
+        case .Enum(var n) => {
+            free_enum_variants(&n.variants);
+            free_generic_params(&n.generic_params);
+            n.impls.free();
+            n.methods.free();
+        }
+
+        case .TypeAlias(var n) => free_generic_params(&n.generic_params);
+
+        case .FuncType(var n) => n.params.list.free();
+
+        case .Interface(var n) => {
+            n.methods.free();
+            free_generic_params(&n.generic_params);
+        }
+
+        case .Union(var n) => {
+            n.fields.free();
+            free_generic_params(&n.generic_params);
+            n.impls.free();
+            n.methods.free();
         }
     }
 }
@@ -92,6 +126,36 @@ fn free_node(node: ASTNode*) {
 fn free_opt_type(ty: Option<ASTType>*) {
     switch (*ty) {
         case .Some(var inner) => free_type(&inner);
+    }
+}
+
+pub fn free_enum_variants(variants: Vec<ASTEnumVariant>*) {
+    for (var i: usize = 0; i < variants->len(); i += 1) {
+        switch (variants->get(i)) {
+            case .Some(variant) => switch (*variant) {
+                case .Tuple { var fields, .. } => fields.free();
+                case .Struct { var fields, .. } => fields.free();
+            }
+        }
+    }
+
+    variants->free();
+}
+
+pub fn free_generic_params(list: ASTGenericParams*) {
+    for (var i: usize = 0; i < list->len(); i += 1) {
+        switch (list->get(i)) {
+            case .Some(param) => free_opt_bounds(&param->bounds);
+        }
+    }
+
+    list->free();
+}
+
+// FIXME rename
+pub fn free_opt_bounds(bounds: Option<Vec<ASTBound>>*) {
+    switch (*bounds) {
+        case .Some(var list) => list.free();
     }
 }
 
@@ -115,6 +179,43 @@ pub fn free_func_params(params: ASTFuncParams*) {
 
 pub fn free_modifiers(modifiers: ASTFuncModifiers*) {
     modifiers->optional_flags.free();
+}
+
+pub fn free_switch_pattern(pattern: ASTSwitchCasePattern*) {
+    switch (pattern->kind) {
+        case .EnumTupleVariant { var items, .. } => free_switch_patterns(&items);
+        case .EnumStructVariant { var items, .. } => free_switch_struct_fields(&items);
+    }
+}
+
+pub fn free_switch_patterns(list: Vec<ASTSwitchCasePattern>*) {
+    for (var i: usize = 0; i < list->len(); i += 1) {
+        switch (list->get(i)) {
+            case .Some(pattern) => free_switch_pattern(pattern);
+        }
+    }
+
+    list->free();
+}
+
+pub fn free_switch_struct_fields(list: Vec<ASTSwitchCaseEnumStructPatternField>*) {
+    for (var i: usize = 0; i < list->len(); i += 1) {
+        switch (list->get(i)) {
+            case .Some(field) => free_switch_pattern(&field->pattern);
+        }
+    }
+
+    list->free();
+}
+
+pub fn free_switch_cases(list: Vec<ASTSwitchCase>*) {
+    for (var i: usize = 0; i < list->len(); i += 1) {
+        switch (list->get(i)) {
+            case .Some(item) => free_switch_patterns(&item->patterns);
+        }
+    }
+
+    list->free();
 }
 
 fn free_expr(expr: ASTExpr*) {
@@ -155,13 +256,13 @@ fn free_expr(expr: ASTExpr*) {
 
 pub fn free_type(ty: ASTType*) {
     switch (*ty) {
-        case .Tuple(var n) => n.type_list.free();
+        case .UnnamedEnum(var n) => free_enum_variants(&n.variants);
+        case .ModuleImport(var n) => free_segments(&n.segments);
+        case .GenericInst(var n) => n.type_args.list.free();
         case .UnnamedStruct(var n) => n.fields.free();
         case .UnnamedUnion(var n) => n.fields.free();
-        case .UnnamedEnum(var n) => n.variants.free();
-        case .ModuleImport(var n) => free_segments(&n.segments);
+        case .Tuple(var n) => n.type_list.free();
         case .Builtin(var n) => free_builtin(&n);
-        case .GenericInst(var n) => n.type_args.list.free();
     }
 }
 
@@ -172,7 +273,7 @@ fn free_builtin(builtin: ASTBuiltin*) {
     }
 }
 
-fn free_segments(segments: Vec<ASTModuleSegment>*) {
+pub fn free_segments(segments: Vec<ASTModuleSegment>*) {
     for (var i: usize = 0; i < segments->len(); i += 1) {
         switch (segments->get(i)) {
             case .Some(segment) => {
@@ -189,6 +290,7 @@ fn free_segments(segments: Vec<ASTModuleSegment>*) {
 pub enum ASTNode {
     TypeAlias(ASTTypeAlias),
     Type(ASTType),
+    FuncType(ASTFuncType),
     Expr(ASTExpr),
     DestructTuple(ASTDestructTuple),
     SwitchGuard(ASTSwitchGuard),
@@ -917,6 +1019,14 @@ pub enum ASTCallconv {
 pub enum ASTExtern {
     C,
     Cyrus,
+
+    [[inline]]
+    pub fn to_str(self: Self) const uint8* {
+        switch (self) {
+            case .C => return "c";
+            case .Cyrus => return "cyrus";
+        }
+    }
 }
 
 pub enum ASTOptionalFlag {

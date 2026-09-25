@@ -1,0 +1,87 @@
+// @parse
+
+const a = value.field;
+const b = value->field;
+const c = obj.method(1);
+const d = a.b.c;
+const e = obj.method()->field;
+
+/*@parse
+ASTProgram
+    Node[0]:
+        ASTGlobalVar
+            ident: a
+            is_const: true
+            is_undef: false
+            is_static: false
+            expr:
+                ASTExpr::FieldAccess
+                    operand:
+                        ASTExpr::Ident
+                            ident: value
+                    field_name: field
+                    is_thin_arrow: false
+    Node[1]:
+        ASTGlobalVar
+            ident: b
+            is_const: true
+            is_undef: false
+            is_static: false
+            expr:
+                ASTExpr::FieldAccess
+                    operand:
+                        ASTExpr::Ident
+                            ident: value
+                    field_name: field
+                    is_thin_arrow: true
+    Node[2]:
+        ASTGlobalVar
+            ident: c
+            is_const: true
+            is_undef: false
+            is_static: false
+            expr:
+                ASTExpr::MethodCall
+                    operand:
+                        ASTExpr::Ident
+                            ident: obj
+                    method_name: method
+                    arg[0]:
+                        ASTExpr::Literal
+                            value: 1
+                    is_thin_arrow: false
+    Node[3]:
+        ASTGlobalVar
+            ident: d
+            is_const: true
+            is_undef: false
+            is_static: false
+            expr:
+                ASTExpr::FieldAccess
+                    operand:
+                        ASTExpr::FieldAccess
+                            operand:
+                                ASTExpr::Ident
+                                    ident: a
+                            field_name: b
+                            is_thin_arrow: false
+                    field_name: c
+                    is_thin_arrow: false
+    Node[4]:
+        ASTGlobalVar
+            ident: e
+            is_const: true
+            is_undef: false
+            is_static: false
+            expr:
+                ASTExpr::FieldAccess
+                    operand:
+                        ASTExpr::MethodCall
+                            operand:
+                                ASTExpr::Ident
+                                    ident: obj
+                            method_name: method
+                            is_thin_arrow: false
+                    field_name: field
+                    is_thin_arrow: true
+@parse*/

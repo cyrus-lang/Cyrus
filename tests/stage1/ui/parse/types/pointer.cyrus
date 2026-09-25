@@ -1,0 +1,46 @@
+// @parse
+
+static var a: int32*;
+static var b: const uint8*;
+static var c: Foo*;
+static var d: Foo**;
+static var e: (int32*)*;
+
+/*@parse
+ASTProgram
+    Node[0]:
+        ASTGlobalVar
+            ident: a
+            is_const: false
+            is_undef: false
+            is_static: true
+            ty: *int32
+    Node[1]:
+        ASTGlobalVar
+            ident: b
+            is_const: false
+            is_undef: false
+            is_static: true
+            ty: *const uint8
+    Node[2]:
+        ASTGlobalVar
+            ident: c
+            is_const: false
+            is_undef: false
+            is_static: true
+            ty: *Foo
+    Node[3]:
+        ASTGlobalVar
+            ident: d
+            is_const: false
+            is_undef: false
+            is_static: true
+            ty: **Foo
+    Node[4]:
+        ASTGlobalVar
+            ident: e
+            is_const: false
+            is_undef: false
+            is_static: true
+            ty: **int32
+@parse*/

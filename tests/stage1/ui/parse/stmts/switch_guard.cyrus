@@ -1,0 +1,77 @@
+// @parse
+
+fn example(v: Val, n: int32) {
+    switch (v) case .Some(x) else {
+        fallback();
+    }
+
+    switch (n) case 1 else {
+        other();
+    }
+
+    consume(x);
+}
+
+/*@parse
+ASTProgram
+    Node[0]:
+        ASTFuncDef
+            ident: example
+            params:
+                param[0]:
+                    ident: v
+                    constness: const
+                    ty: Val
+                param[1]:
+                    ident: n
+                    constness: const
+                    ty: int32
+            body:
+                ASTBlock
+                    stmt[0]:
+                        ASTSwitchGuard
+                            operand:
+                                ASTExpr::Ident
+                                    ident: v
+                            case:
+                                pattern[0]:
+                                    EnumTupleVariant
+                                        variant: Some
+                                        item[0]:
+                                            Binding
+                                                ident: x
+                                                constness: const
+                            default_case:
+                                ASTBlock
+                                    stmt[0]:
+                                        ASTExpr::FuncCall
+                                            operand:
+                                                ASTExpr::Ident
+                                                    ident: fallback
+                    stmt[1]:
+                        ASTSwitchGuard
+                            operand:
+                                ASTExpr::Ident
+                                    ident: n
+                            case:
+                                pattern[0]:
+                                    Expr
+                                        expr:
+                                            ASTExpr::Literal
+                                                value: 1
+                            default_case:
+                                ASTBlock
+                                    stmt[0]:
+                                        ASTExpr::FuncCall
+                                            operand:
+                                                ASTExpr::Ident
+                                                    ident: other
+                    stmt[2]:
+                        ASTExpr::FuncCall
+                            operand:
+                                ASTExpr::Ident
+                                    ident: consume
+                            arg[0]:
+                                ASTExpr::Ident
+                                    ident: x
+@parse*/

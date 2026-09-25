@@ -1,0 +1,49 @@
+// @parse
+
+const a: int32 = 1;
+const b = 2;
+static const c: int32 = 3;
+const d: int32* = null;
+
+/*@parse
+ASTProgram
+    Node[0]:
+        ASTGlobalVar
+            ident: a
+            is_const: true
+            is_undef: false
+            is_static: false
+            ty: int32
+            expr:
+                ASTExpr::Literal
+                    value: 1
+    Node[1]:
+        ASTGlobalVar
+            ident: b
+            is_const: true
+            is_undef: false
+            is_static: false
+            expr:
+                ASTExpr::Literal
+                    value: 2
+    Node[2]:
+        ASTGlobalVar
+            ident: c
+            is_const: true
+            is_undef: false
+            is_static: true
+            ty: int32
+            expr:
+                ASTExpr::Literal
+                    value: 3
+    Node[3]:
+        ASTGlobalVar
+            ident: d
+            is_const: true
+            is_undef: false
+            is_static: false
+            ty: *int32
+            expr:
+                ASTExpr::Literal
+                    value: null
+@parse*/

@@ -224,7 +224,9 @@ pub struct CompilerDiagRender {
                         if (l == end) {
                             mark_len = label->span.loc.end - line_start - column_offset;
                         } else {
-                            mark_len = source->get_line(l).unwrap().1;
+                            switch (source->get_line(l)) {
+                                case .Some(got) => mark_len = got.1;
+                            }
                         }
 
                         if (mark_len == 0) {
@@ -389,7 +391,14 @@ pub struct CompilerDiagRender {
     }
 
     fn render_line(self: Self*, source: const Source*, n: usize) {
-        const (ptr, len) = source->get_line(n).unwrap();
+        // A span may point past the last source line (trailing newline);
+        // render an empty line instead of panicking on the None.
+        switch (source->get_line(n)) case .Some(line) else {
+            self->writer.write_char('\n');
+            return;
+        }
+
+        const (ptr, len) = line;
 
         for (var i: usize = 0; i < len; i += 1) {    
             self->writer.write_char(ptr[i]);

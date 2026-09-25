@@ -1,0 +1,98 @@
+// @parse
+
+import std::io{Writer, StringWriter};
+import std::mem{Allocator, Layout as MemLayout};
+import std::collections;
+import std::option as opt;
+import .::state{ParserState};
+import ..::tokens{Token, TokenKind};
+import ..::..::deep::modname{item};
+import a::b::c::d;
+import m::x{a, b as c, d,};
+import a::b as c{d, e};
+import m::x{ };
+
+/*@parse
+ASTProgram
+    Node[0]:
+        ASTImport
+            relative_level: 0
+            segments_count: 3
+            submodule: std
+            submodule: io
+            import: Writer
+            import: StringWriter
+    Node[1]:
+        ASTImport
+            relative_level: 0
+            segments_count: 3
+            submodule: std
+            submodule: mem
+            import: Allocator
+            import: Layout as MemLayout
+    Node[2]:
+        ASTImport
+            relative_level: 0
+            segments_count: 2
+            submodule: std
+            submodule: collections
+    Node[3]:
+        ASTImport
+            relative_level: 0
+            alias: opt
+            segments_count: 2
+            submodule: std
+            submodule: option
+    Node[4]:
+        ASTImport
+            relative_level: -1
+            segments_count: 2
+            submodule: state
+            import: ParserState
+    Node[5]:
+        ASTImport
+            relative_level: -2
+            segments_count: 2
+            submodule: tokens
+            import: Token
+            import: TokenKind
+    Node[6]:
+        ASTImport
+            relative_level: -3
+            segments_count: 3
+            submodule: deep
+            submodule: modname
+            import: item
+    Node[7]:
+        ASTImport
+            relative_level: 0
+            segments_count: 4
+            submodule: a
+            submodule: b
+            submodule: c
+            submodule: d
+    Node[8]:
+        ASTImport
+            relative_level: 0
+            segments_count: 3
+            submodule: m
+            submodule: x
+            import: a
+            import: b as c
+            import: d
+    Node[9]:
+        ASTImport
+            relative_level: 0
+            alias: c
+            segments_count: 3
+            submodule: a
+            submodule: b
+            import: d
+            import: e
+    Node[10]:
+        ASTImport
+            relative_level: 0
+            segments_count: 3
+            submodule: m
+            submodule: x
+@parse*/

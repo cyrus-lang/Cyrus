@@ -1,0 +1,49 @@
+// @parse
+
+static var a: Vec<int32>;
+static var b: Map<Key, Value>;
+static var c: Vec<Vec<int32>>;
+static var d: Vec<_>;
+
+/*@parse
+ASTProgram
+    Node[0]:
+        ASTGlobalVar
+            ident: a
+            is_const: false
+            is_undef: false
+            is_static: true
+            ty: ASTType::GenericInst
+                base: Vec
+                type_arg[0]: int32
+    Node[1]:
+        ASTGlobalVar
+            ident: b
+            is_const: false
+            is_undef: false
+            is_static: true
+            ty: ASTType::GenericInst
+                base: Map
+                type_arg[0]: Key
+                type_arg[1]: Value
+    Node[2]:
+        ASTGlobalVar
+            ident: c
+            is_const: false
+            is_undef: false
+            is_static: true
+            ty: ASTType::GenericInst
+                base: Vec
+                type_arg[0]: ASTType::GenericInst
+                    base: Vec
+                    type_arg[0]: int32
+    Node[3]:
+        ASTGlobalVar
+            ident: d
+            is_const: false
+            is_undef: false
+            is_static: true
+            ty: ASTType::GenericInst
+                base: Vec
+                type_arg[0]: _
+@parse*/

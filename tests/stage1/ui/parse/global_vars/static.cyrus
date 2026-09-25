@@ -1,0 +1,44 @@
+// @parse
+
+static var a: int32;
+static var b: int32 = 5;
+static var c: Foo;
+static var d: int32* = null;
+
+/*@parse
+ASTProgram
+    Node[0]:
+        ASTGlobalVar
+            ident: a
+            is_const: false
+            is_undef: false
+            is_static: true
+            ty: int32
+    Node[1]:
+        ASTGlobalVar
+            ident: b
+            is_const: false
+            is_undef: false
+            is_static: true
+            ty: int32
+            expr:
+                ASTExpr::Literal
+                    value: 5
+    Node[2]:
+        ASTGlobalVar
+            ident: c
+            is_const: false
+            is_undef: false
+            is_static: true
+            ty: Foo
+    Node[3]:
+        ASTGlobalVar
+            ident: d
+            is_const: false
+            is_undef: false
+            is_static: true
+            ty: *int32
+            expr:
+                ASTExpr::Literal
+                    value: null
+@parse*/
