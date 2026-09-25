@@ -78,16 +78,40 @@ pub struct ParserState {
             .get_const(self->pos + n);
     }
 
+    /// Span of the last consumed token.
+    [[inline]]
+    fn last_parsed_span(self: const Self*) Span {
+        if (self->pos > 0) {
+            switch (self->get(self->pos - 1)) {
+                case .Some(prev) => return Span.new(self->source_id(), prev->loc);
+            }
+        }
+
+        return self->current_span();
+    }
+
     [[inline]]
     pub fn current_span(self: const Self*) Span {
-        const loc = self->current()->loc;
-        return Span.new(self->source_id(), loc);
+        const token = self->current();
+
+        // At EOF there is no real token to point at. Use the last
+        // parsed token instead so the renderer get a source line to show.
+        if (*token->kind == .EOF) {
+            return self->last_parsed_span();
+        }
+
+        return Span.new(self->source_id(), token->loc);
     }
 
     [[inline]]
     pub fn peek_span(self: const Self*) Span {
-        const loc = self->peek()->loc;
-        return Span.new(self->source_id(), loc);
+        const token = self->peek();
+
+        if (*token->kind == .EOF) {
+            return Span.new(self->source_id(), self->current()->loc);
+        }
+
+        return Span.new(self->source_id(), token->loc);
     }
 
     pub fn next(self: Self*) Option<const Token*> {
@@ -159,9 +183,22 @@ pub struct ParserState {
         return self->expect_peek(.RightParen);
     }
 
-    [[inline]]
+    /// Missing `;` is reported on the last parsed token.
     pub fn expect_semicolon(self: Self*) bool {
-        return self->expect(.Semicolon);
+        if (self->is(.Semicolon)) {
+            self->next();
+            return true;
+        }
+
+        const got = self->current();
+        report_expected_token(
+            self->allocator,
+            self->dctx,
+            self->last_parsed_span(),
+            .Semicolon,
+            *got->kind
+        );
+        return false;
     }
 
     [[inline]]

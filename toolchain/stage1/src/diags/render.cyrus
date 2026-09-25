@@ -161,18 +161,33 @@ pub struct CompilerDiagRender {
             
             self->render_line_number(line, line_number_offset);
             self->render_line(source, line);
-
             self->render_pipe(space);
-            const line_start = source->line_to_offset(line - 1);
-            const column_offset = diag->span.loc.start - line_start;
-            self->render_space(column_offset);
 
-            var mark_len: usize = diag->span.loc.end - diag->span.loc.start;
-            
+            const line_start = source->line_to_offset(line - 1);
+            var column_offset = diag->span.loc.start - line_start;
+            var mark_len = diag->span.loc.end - diag->span.loc.start;
+
+            // A span may cross a line break, and carets 
+            // must never run past the end of the line.
+            switch (source->get_line(line)) {
+                case .Some(got) => {
+                    const line_len = got.1;
+
+                    if (column_offset > line_len) {
+                        column_offset = line_len;
+                    }
+
+                    if (mark_len > line_len - column_offset) {
+                        mark_len = line_len - column_offset;
+                    }
+                }
+            }
+
             if (mark_len == 0) {
                 mark_len = 1;
             }
-            
+
+            self->render_space(column_offset);
             self->render_mark(mark_len, .Primary);
             self->writer.write_char('\n');
             return;

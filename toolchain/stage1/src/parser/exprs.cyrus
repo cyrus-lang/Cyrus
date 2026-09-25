@@ -566,7 +566,7 @@ pub struct ParserExprs {
 
     /* ************* Types ************* */
 
-    pub fn parse_integer_value(self: Self*) Option<usize> {
+    pub fn parse_unsuffixed_integer_value(self: Self*) Option<usize> {
         const token = self->state->current();
 
         switch (*token->kind) {
@@ -592,7 +592,6 @@ pub struct ParserExprs {
                     }
                 }
             }
-            else => return .None;
         }
 
         return .None;
@@ -608,7 +607,7 @@ pub struct ParserExprs {
         }
 
         if (self->state->is(.Assign)) {
-            self->state->next(); // consume `=`
+            self->state->next();
 
             switch (self->parse_expr()) case .Some(value) else {
                 return .None;
@@ -647,13 +646,18 @@ pub struct ParserExprs {
 
         while (true) {
             if (self->state->is(.RightParen)) {
-                report_error(self->state->allocator, self->state->dctx, self->state->current_span(), "consider adding a field to enum tuple variant or removing the parentheses");
+                report_error(
+                    self->state->allocator, 
+                    self->state->dctx, 
+                    self->state->current_span(), 
+                    "consider adding a field to enum tuple variant or removing the parentheses"
+                );
                 fields.free();
                 self->state->sync();
                 return .None;
             }
 
-            const field_start = self->state->current_span();
+            const span = self->state->current_span();
 
             switch (self->parse_type()) case .Some(ty) else {
                 fields.free();
@@ -663,7 +667,7 @@ pub struct ParserExprs {
 
             fields.push(ast::ASTEnumVariantTupleField {
                 ty: self->program->create_node(.Type(ty)),
-                span: field_start.merge(self->state->current_span()),
+                span: span.merge(self->state->current_span()),
             });
 
             if (self->state->is(.RightParen)) {
@@ -690,7 +694,7 @@ pub struct ParserExprs {
         var fields: Vec<ast::ASTEnumVariantStructField> = Vec.new(self->state->allocator);
 
         while (true) {
-            const field_start = self->state->current_span();
+            const start = self->state->current_span();
 
             switch (self->state->expect_ident()) case .Some(name) else {
                 fields.free();
@@ -713,7 +717,7 @@ pub struct ParserExprs {
             fields.push(ast::ASTEnumVariantStructField {
                 name,
                 ty: self->program->create_node(.Type(ty)),
-                span: field_start.merge(self->state->current_span()),
+                span: start.merge(self->state->current_span()),
             });
 
             if (self->state->is(.RightBrace)) {
@@ -743,6 +747,8 @@ pub struct ParserExprs {
 
         var align: Option<usize> = .None;
 
+        // FIXME: This syntax should be removed and 
+        // replaced with attribute.
         if (self->state->is_ident_str("align")) {
             self->state->next();
 
@@ -751,7 +757,7 @@ pub struct ParserExprs {
                 return .None;
             }
 
-            switch (self->parse_integer_value()) {
+            switch (self->parse_unsuffixed_integer_value()) {
                 case .Some(value) => align = .Some(value);
                 else => {
                     report_error(
@@ -860,6 +866,8 @@ pub struct ParserExprs {
 
         var align: Option<usize> = .None;
 
+        // FIXME: This syntax should be removed and 
+        // replaced with attribute.
         if (self->state->is_ident_str("align")) {
             self->state->next();
 
@@ -868,7 +876,7 @@ pub struct ParserExprs {
                 return .None;
             }
 
-            switch (self->parse_integer_value()) {
+            switch (self->parse_unsuffixed_integer_value()) {
                 case .Some(value) => align = .Some(value);
                 else => {
                     report_error(
@@ -1003,14 +1011,14 @@ pub struct ParserExprs {
         // FIXME: This syntax should be removed and 
         // replaced with attribute.
         if (self->state->is_ident_str("align")) {
-            self->state->next(); // consume `align`
+            self->state->next();
 
             if (!self->state->expect(.LeftParen)) {
                 self->state->sync();
                 return .None;
             }
 
-            switch (self->parse_integer_value()) {
+            switch (self->parse_unsuffixed_integer_value()) {
                 case .Some(value) => align = .Some(value);
                 else => {
                     report_error(
@@ -1105,7 +1113,7 @@ pub struct ParserExprs {
     /// Grammar: @ IDENT ( Expr,* ) 
     fn parse_builtin_type(self: Self*) Option<ast::ASTType> {
         const start = self->state->current_span();
-        self->state->next(); // consume `@`
+        self->state->next();
 
         switch (self->state->expect_ident()) case .Some(name) else {
             self->state->sync();
@@ -1170,7 +1178,7 @@ pub struct ParserExprs {
 
         while (!self->state->is(.RightParen)) {
             if (self->state->is(.TripleDot)) {
-                self->state->next(); // consume `...`
+                self->state->next();
 
                 if (self->state->is(.RightParen)) {
                     variadic = .Some(.UntypedCStyle);
