@@ -1,0 +1,47 @@
+// @parse
+
+fn nested() {
+    if (outer) {
+        if (inner) {
+            deep();
+        } else {
+            shallow();
+        }
+    }
+}
+
+/*@parse
+ASTProgram
+    Node[0]:
+        ASTFuncDef
+            ident: nested
+            params:
+            body:
+                ASTBlock
+                    stmt[0]:
+                        ASTIf
+                            condition:
+                                ASTExpr::Ident
+                                    ident: outer
+                            then_block:
+                                ASTBlock
+                                    stmt[0]:
+                                        ASTIf
+                                            condition:
+                                                ASTExpr::Ident
+                                                    ident: inner
+                                            then_block:
+                                                ASTBlock
+                                                    stmt[0]:
+                                                        ASTExpr::FuncCall
+                                                            operand:
+                                                                ASTExpr::Ident
+                                                                    ident: deep
+                                            else_block:
+                                                ASTBlock
+                                                    stmt[0]:
+                                                        ASTExpr::FuncCall
+                                                            operand:
+                                                                ASTExpr::Ident
+                                                                    ident: shallow
+@parse*/

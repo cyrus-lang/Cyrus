@@ -3,9 +3,7 @@
 const a = 1 + 2 * 3;
 const b = (1 + 2) * 3;
 const c = a + b - c;
-const d = -x + y;
 const e = a / b % c;
-const f = x & y | z ^ w;
 
 /*@parse
 ASTProgram
@@ -74,24 +72,6 @@ ASTProgram
                             ident: c
     Node[3]:
         ASTGlobalVar
-            ident: d
-            is_const: true
-            is_undef: false
-            is_static: false
-            expr:
-                ASTExpr::Infix
-                    operator: +
-                    lhs:
-                        ASTExpr::Prefix
-                            operator: -
-                            operand:
-                                ASTExpr::Ident
-                                    ident: x
-                    rhs:
-                        ASTExpr::Ident
-                            ident: y
-    Node[4]:
-        ASTGlobalVar
             ident: e
             is_const: true
             is_undef: false
@@ -111,31 +91,4 @@ ASTProgram
                     rhs:
                         ASTExpr::Ident
                             ident: c
-    Node[5]:
-        ASTGlobalVar
-            ident: f
-            is_const: true
-            is_undef: false
-            is_static: false
-            expr:
-                ASTExpr::Infix
-                    operator: ^
-                    lhs:
-                        ASTExpr::Infix
-                            operator: |
-                            lhs:
-                                ASTExpr::Infix
-                                    operator: &
-                                    lhs:
-                                        ASTExpr::Ident
-                                            ident: x
-                                    rhs:
-                                        ASTExpr::Ident
-                                            ident: y
-                            rhs:
-                                ASTExpr::Ident
-                                    ident: z
-                    rhs:
-                        ASTExpr::Ident
-                            ident: w
 @parse*/

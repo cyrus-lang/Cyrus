@@ -212,7 +212,7 @@ pub struct ParserStmts {
 
     /// Grammar: static? (const | var) IDENT (: Type)? (= Expr)? ;
     pub fn parse_global_var(self: Self*, is_pub: bool, is_extern: bool) bool {
-        const start_span = self->state->current_span();
+        const start = self->state->current_span();
 
         var is_static = false;
         var is_const = false;
@@ -273,7 +273,7 @@ pub struct ParserStmts {
         }
 
         const end = self->state->current_span();
-        const span = start_span.merge(end);
+        const span = start.merge(end);
 
         if (expr.is_none() && ty.is_none() && !is_undef) {
             report_error(
@@ -426,7 +426,7 @@ pub struct ParserStmts {
 
     // Grammar: fn IDENT <GenericParams>? FuncParams (Type)? (Block | ;)
     pub fn parse_func(self: Self*, is_pub: bool, extrn: Option<ast::ASTExtern>) bool {
-        const start_span = self->state->current_span();
+        const start = self->state->current_span();
         self->state->next(); // consume `fn`
 
         switch (self->state->expect_ident()) case .Some(ident) else {
@@ -473,7 +473,9 @@ pub struct ParserStmts {
 
         // Function declaration
         if (self->state->is(.Semicolon)) {
-            const end_span = self->state->current_span();
+            self->reject_var_in_decl(&params);
+
+            const end = self->state->current_span();
             self->state->next();
 
             const node = ast::ASTFuncDecl {
@@ -482,7 +484,7 @@ pub struct ParserStmts {
                 params,
                 ret_type,
                 modifiers,
-                span: start_span.merge(end_span),
+                span: start.merge(end),
             };
             self->state->pending->push(self->program->create_node(.FuncDecl(node)));
             return true;
@@ -503,10 +505,36 @@ pub struct ParserStmts {
             ret_type,
             modifiers,
             generic_params,
-            span: start_span.merge(self->state->current_span()),
+            span: start.merge(self->state->current_span()),
         };
         self->state->pending->push(self->program->create_node(.FuncDef(node)));
         return true;
+    }
+
+    /// Constness specifiers on parameters are only allowed in function definitions.
+    fn reject_var_in_decl(self: Self*, params: const ast::ASTFuncParams*) {
+        for (var i: usize = 0; i < params->list.len(); i += 1) {
+            switch (params->list.get_const(i)) {
+                case .Some(kind) => switch (*kind) {
+                    case .FuncParam(var param) => if (param.constness == .Var) {
+                        report_error(
+                            self->allocator,
+                            self->state->dctx,
+                            param.span,
+                            "`var` parameter specifier is only allowed in function definitions"
+                        );
+                    }
+                    case .SelfModifier(var modifier) => if (modifier.constness == .Var) {
+                        report_error(
+                            self->allocator,
+                            self->state->dctx,
+                            modifier.span,
+                            "`var` parameter specifier is only allowed in function definitions"
+                        );
+                    }
+                }
+            }
+        }
     }
 
     // Grammar: ( var? IDENT (: Type)? (, ...)* ...? )
@@ -533,8 +561,6 @@ pub struct ParserStmts {
             if (self->state->is(.Var)) {
                 self->state->next();
                 constness = .Var;
-            } else if (self->state->is(.Const)) {
-                self->state->next();
             }
 
             switch (self->state->expect_ident()) case .Some(ident) else {

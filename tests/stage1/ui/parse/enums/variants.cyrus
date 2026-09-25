@@ -1,0 +1,68 @@
+// @parse
+
+enum TupleVariants {
+    Single(int32),
+    Pair(uint8, uint64),
+}
+
+enum StructVariants {
+    One { x: int32 },
+    Two { y: uint8, z: uint16 },
+    Trailing { x: int32, },
+}
+
+/*@parse
+ASTProgram
+    Node[0]:
+        ASTEnum
+            ident: TupleVariants
+            generic_params_count: 0
+            impls_count: 0
+            variants_count: 2
+            variant[0]:
+                ASTEnumVariant::Tuple
+                    ident: Single
+                    fields_count: 1
+                    field[0]:
+                        ty: int32
+            variant[1]:
+                ASTEnumVariant::Tuple
+                    ident: Pair
+                    fields_count: 2
+                    field[0]:
+                        ty: uint8
+                    field[1]:
+                        ty: uint64
+            methods_count: 0
+    Node[1]:
+        ASTEnum
+            ident: StructVariants
+            generic_params_count: 0
+            impls_count: 0
+            variants_count: 3
+            variant[0]:
+                ASTEnumVariant::Struct
+                    ident: One
+                    fields_count: 1
+                    field[0]:
+                        name: x
+                        ty: int32
+            variant[1]:
+                ASTEnumVariant::Struct
+                    ident: Two
+                    fields_count: 2
+                    field[0]:
+                        name: y
+                        ty: uint8
+                    field[1]:
+                        name: z
+                        ty: uint16
+            variant[2]:
+                ASTEnumVariant::Struct
+                    ident: Trailing
+                    fields_count: 1
+                    field[0]:
+                        name: x
+                        ty: int32
+            methods_count: 0
+@parse*/

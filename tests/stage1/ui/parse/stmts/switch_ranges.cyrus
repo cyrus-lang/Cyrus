@@ -1,0 +1,67 @@
+// @parse
+
+fn ranges(x: int32) {
+    switch (x) {
+        case 3...7 => range_low(x);
+        case 10..=20 => range_high(x);
+    }
+}
+
+/*@parse
+ASTProgram
+    Node[0]:
+        ASTFuncDef
+            ident: ranges
+            params:
+                param[0]:
+                    ident: x
+                    constness: const
+                    ty: int32
+            body:
+                ASTBlock
+                    stmt[0]:
+                        ASTSwitch
+                            operand:
+                                ASTExpr::Ident
+                                    ident: x
+                            case[0]:
+                                pattern[0]:
+                                    Range
+                                        lower:
+                                            ASTExpr::Literal
+                                                value: 3
+                                        upper:
+                                            ASTExpr::Literal
+                                                value: 7
+                                        inclusive_upper: false
+                                body:
+                                    ASTBlock
+                                        stmt[0]:
+                                            ASTExpr::FuncCall
+                                                operand:
+                                                    ASTExpr::Ident
+                                                        ident: range_low
+                                                arg[0]:
+                                                    ASTExpr::Ident
+                                                        ident: x
+                            case[1]:
+                                pattern[0]:
+                                    Range
+                                        lower:
+                                            ASTExpr::Literal
+                                                value: 10
+                                        upper:
+                                            ASTExpr::Literal
+                                                value: 20
+                                        inclusive_upper: true
+                                body:
+                                    ASTBlock
+                                        stmt[0]:
+                                            ASTExpr::FuncCall
+                                                operand:
+                                                    ASTExpr::Ident
+                                                        ident: range_high
+                                                arg[0]:
+                                                    ASTExpr::Ident
+                                                        ident: x
+@parse*/

@@ -1,0 +1,13 @@
+// @parse
+
+fn f() {
+    var x = undefined;
+}
+
+/*@parse
+tests/stage1/ui/parse/failures/local_undefined_var.cyrus:4:5: error: variable `x` requires an explicit type when initialized with `undefined`
+      |
+    4 ~     var x = undefined;
+      |     ^^^^^^^^^^^^^^^^^^^^
+      |
+@parse*/

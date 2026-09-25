@@ -1,0 +1,67 @@
+// @parse
+
+pub union Visible {
+    x: int32,
+}
+
+union Aligned align(8) {
+    x: int32,
+}
+
+union Generic<T> {
+    item: T,
+}
+
+union Constrained : Iface {
+    x: int32,
+}
+
+/*@parse
+ASTProgram
+    Node[0]:
+        ASTUnion
+            ident: Visible
+            visibility: public
+            generic_params_count: 0
+            impls_count: 0
+            fields_count: 1
+            field[0]:
+                name: x
+                ty: int32
+            methods_count: 0
+    Node[1]:
+        ASTUnion
+            ident: Aligned
+            align: 8
+            generic_params_count: 0
+            impls_count: 0
+            fields_count: 1
+            field[0]:
+                name: x
+                ty: int32
+            methods_count: 0
+    Node[2]:
+        ASTUnion
+            ident: Generic
+            generic_params_count: 1
+            generic_param[0]:
+                name: T
+            impls_count: 0
+            fields_count: 1
+            field[0]:
+                name: item
+                ty: T
+            methods_count: 0
+    Node[3]:
+        ASTUnion
+            ident: Constrained
+            generic_params_count: 0
+            impls_count: 1
+            impl[0]:
+                ty: Iface
+            fields_count: 1
+            field[0]:
+                name: x
+                ty: int32
+            methods_count: 0
+@parse*/

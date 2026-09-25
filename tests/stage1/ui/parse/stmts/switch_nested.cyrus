@@ -1,0 +1,54 @@
+// @parse
+
+fn nested(x: int32) {
+    switch (x) {
+        case 1 => switch (x) {
+            case 2 => deep();
+        }
+    }
+}
+
+/*@parse
+ASTProgram
+    Node[0]:
+        ASTFuncDef
+            ident: nested
+            params:
+                param[0]:
+                    ident: x
+                    constness: const
+                    ty: int32
+            body:
+                ASTBlock
+                    stmt[0]:
+                        ASTSwitch
+                            operand:
+                                ASTExpr::Ident
+                                    ident: x
+                            case[0]:
+                                pattern[0]:
+                                    Expr
+                                        expr:
+                                            ASTExpr::Literal
+                                                value: 1
+                                body:
+                                    ASTBlock
+                                        stmt[0]:
+                                            ASTSwitch
+                                                operand:
+                                                    ASTExpr::Ident
+                                                        ident: x
+                                                case[0]:
+                                                    pattern[0]:
+                                                        Expr
+                                                            expr:
+                                                                ASTExpr::Literal
+                                                                    value: 2
+                                                    body:
+                                                        ASTBlock
+                                                            stmt[0]:
+                                                                ASTExpr::FuncCall
+                                                                    operand:
+                                                                        ASTExpr::Ident
+                                                                            ident: deep
+@parse*/

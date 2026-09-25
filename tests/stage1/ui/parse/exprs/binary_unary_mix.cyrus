@@ -1,0 +1,25 @@
+// @parse
+
+const d = -x + y;
+
+/*@parse
+ASTProgram
+    Node[0]:
+        ASTGlobalVar
+            ident: d
+            is_const: true
+            is_undef: false
+            is_static: false
+            expr:
+                ASTExpr::Infix
+                    operator: +
+                    lhs:
+                        ASTExpr::Prefix
+                            operator: -
+                            operand:
+                                ASTExpr::Ident
+                                    ident: x
+                    rhs:
+                        ASTExpr::Ident
+                            ident: y
+@parse*/

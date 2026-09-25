@@ -350,6 +350,14 @@ def strip_ansi(text: str) -> str:
     return re.sub(r"\x1b\[[0-9;]*m", "", text)
 
 
+def root_relative_path(cfg: Config, file_path: Path) -> str:
+    """Path relative to the repo root so snapshot output is machine-independent."""
+    try:
+        return str(Path(file_path).resolve().relative_to(Path(cfg.root).resolve()))
+    except ValueError:
+        return str(file_path)
+
+
 def normalize_text(text: str) -> str:
     """Normalize line endings and trailing whitespace for stable comparisons."""
     text = text.replace("\r\n", "\n").replace("\r", "\n")
@@ -1207,7 +1215,7 @@ def run_snapshot_checks(
             continue
 
         argv = snapshot_command_for(stage, directive, cfg)
-        cmd = [str(compiler), *argv, str(file_path)]
+        cmd = [str(compiler), *argv, root_relative_path(cfg, file_path)]
         proc = run_cmd(cmd, cwd=cfg.root, capture=True, check=False)
         raw = proc.stdout or ""
         if proc.returncode != 0:

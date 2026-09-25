@@ -1,0 +1,34 @@
+// @parse
+
+const f = x & y | z ^ w;
+
+/*@parse
+ASTProgram
+    Node[0]:
+        ASTGlobalVar
+            ident: f
+            is_const: true
+            is_undef: false
+            is_static: false
+            expr:
+                ASTExpr::Infix
+                    operator: ^
+                    lhs:
+                        ASTExpr::Infix
+                            operator: |
+                            lhs:
+                                ASTExpr::Infix
+                                    operator: &
+                                    lhs:
+                                        ASTExpr::Ident
+                                            ident: x
+                                    rhs:
+                                        ASTExpr::Ident
+                                            ident: y
+                            rhs:
+                                ASTExpr::Ident
+                                    ident: z
+                    rhs:
+                        ASTExpr::Ident
+                            ident: w
+@parse*/

@@ -1,0 +1,84 @@
+// @parse
+
+fn example(x: int32) {
+    switch (x) {
+    }
+
+    switch (x) {
+        case 0 => {
+            zero();
+        }
+        case 1 | 2 => small(x);
+        else => {
+            other(x);
+        }
+    }
+}
+
+/*@parse
+ASTProgram
+    Node[0]:
+        ASTFuncDef
+            ident: example
+            params:
+                param[0]:
+                    ident: x
+                    constness: const
+                    ty: int32
+            body:
+                ASTBlock
+                    stmt[0]:
+                        ASTSwitch
+                            operand:
+                                ASTExpr::Ident
+                                    ident: x
+                    stmt[1]:
+                        ASTSwitch
+                            operand:
+                                ASTExpr::Ident
+                                    ident: x
+                            case[0]:
+                                pattern[0]:
+                                    Expr
+                                        expr:
+                                            ASTExpr::Literal
+                                                value: 0
+                                body:
+                                    ASTBlock
+                                        stmt[0]:
+                                            ASTExpr::FuncCall
+                                                operand:
+                                                    ASTExpr::Ident
+                                                        ident: zero
+                            case[1]:
+                                pattern[0]:
+                                    Expr
+                                        expr:
+                                            ASTExpr::Literal
+                                                value: 1
+                                pattern[1]:
+                                    Expr
+                                        expr:
+                                            ASTExpr::Literal
+                                                value: 2
+                                body:
+                                    ASTBlock
+                                        stmt[0]:
+                                            ASTExpr::FuncCall
+                                                operand:
+                                                    ASTExpr::Ident
+                                                        ident: small
+                                                arg[0]:
+                                                    ASTExpr::Ident
+                                                        ident: x
+                            default_case:
+                                ASTBlock
+                                    stmt[0]:
+                                        ASTExpr::FuncCall
+                                            operand:
+                                                ASTExpr::Ident
+                                                    ident: other
+                                            arg[0]:
+                                                ASTExpr::Ident
+                                                    ident: x
+@parse*/

@@ -1,0 +1,96 @@
+// @parse
+
+fn example() {
+    for (var i = 0; i < 10; i += 1) {
+        total += i;
+    }
+
+    for (var i: usize = 0; i < 5; i += 1) {
+        step();
+    }
+}
+
+/*@parse
+ASTProgram
+    Node[0]:
+        ASTFuncDef
+            ident: example
+            params:
+            body:
+                ASTBlock
+                    stmt[0]:
+                        ASTFor
+                            initializer:
+                                ASTVar
+                                    ident: i
+                                    is_const: false
+                                    is_undef: false
+                                    rhs:
+                                        ASTExpr::Literal
+                                            value: 0
+                            condition:
+                                ASTExpr::Infix
+                                    operator: <
+                                    lhs:
+                                        ASTExpr::Ident
+                                            ident: i
+                                    rhs:
+                                        ASTExpr::Literal
+                                            value: 10
+                            increment:
+                                ASTExpr::Assign
+                                    kind: +=
+                                    lhs:
+                                        ASTExpr::Ident
+                                            ident: i
+                                    rhs:
+                                        ASTExpr::Literal
+                                            value: 1
+                            body:
+                                ASTBlock
+                                    stmt[0]:
+                                        ASTExpr::Assign
+                                            kind: +=
+                                            lhs:
+                                                ASTExpr::Ident
+                                                    ident: total
+                                            rhs:
+                                                ASTExpr::Ident
+                                                    ident: i
+                    stmt[1]:
+                        ASTFor
+                            initializer:
+                                ASTVar
+                                    ident: i
+                                    is_const: false
+                                    is_undef: false
+                                    ty: usize
+                                    rhs:
+                                        ASTExpr::Literal
+                                            value: 0
+                            condition:
+                                ASTExpr::Infix
+                                    operator: <
+                                    lhs:
+                                        ASTExpr::Ident
+                                            ident: i
+                                    rhs:
+                                        ASTExpr::Literal
+                                            value: 5
+                            increment:
+                                ASTExpr::Assign
+                                    kind: +=
+                                    lhs:
+                                        ASTExpr::Ident
+                                            ident: i
+                                    rhs:
+                                        ASTExpr::Literal
+                                            value: 1
+                            body:
+                                ASTBlock
+                                    stmt[0]:
+                                        ASTExpr::FuncCall
+                                            operand:
+                                                ASTExpr::Ident
+                                                    ident: step
+@parse*/

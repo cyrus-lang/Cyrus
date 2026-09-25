@@ -1,0 +1,13 @@
+// @parse
+
+fn f() {
+    interface I { fn m(); }
+}
+
+/*@parse
+tests/stage1/ui/parse/failures/local_interface.cyrus:4:5: error: `interface` cannot be defined inside a function body
+      |
+    4 ~     interface I { fn m(); }
+      |     ^^^^^^^^^
+      |
+@parse*/

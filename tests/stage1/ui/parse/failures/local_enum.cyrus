@@ -1,0 +1,13 @@
+// @parse
+
+fn f() {
+    enum E { A, B }
+}
+
+/*@parse
+tests/stage1/ui/parse/failures/local_enum.cyrus:4:5: error: `enum` cannot be defined inside a function body
+      |
+    4 ~     enum E { A, B }
+      |     ^^^^
+      |
+@parse*/

@@ -1,0 +1,60 @@
+// @parse
+
+fn example() {
+    if (flag) {
+        run();
+    }
+
+    if (a == 1) {
+        b();
+    } else {
+        c();
+    }
+}
+
+/*@parse
+ASTProgram
+    Node[0]:
+        ASTFuncDef
+            ident: example
+            params:
+            body:
+                ASTBlock
+                    stmt[0]:
+                        ASTIf
+                            condition:
+                                ASTExpr::Ident
+                                    ident: flag
+                            then_block:
+                                ASTBlock
+                                    stmt[0]:
+                                        ASTExpr::FuncCall
+                                            operand:
+                                                ASTExpr::Ident
+                                                    ident: run
+                    stmt[1]:
+                        ASTIf
+                            condition:
+                                ASTExpr::Infix
+                                    operator: ==
+                                    lhs:
+                                        ASTExpr::Ident
+                                            ident: a
+                                    rhs:
+                                        ASTExpr::Literal
+                                            value: 1
+                            then_block:
+                                ASTBlock
+                                    stmt[0]:
+                                        ASTExpr::FuncCall
+                                            operand:
+                                                ASTExpr::Ident
+                                                    ident: b
+                            else_block:
+                                ASTBlock
+                                    stmt[0]:
+                                        ASTExpr::FuncCall
+                                            operand:
+                                                ASTExpr::Ident
+                                                    ident: c
+@parse*/

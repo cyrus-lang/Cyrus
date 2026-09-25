@@ -1,0 +1,85 @@
+// @parse
+
+enum Tagged(int32) {
+    A,
+}
+
+enum Aligned align(8) {
+    A,
+}
+
+enum Generic<T> {
+    Item(T),
+}
+
+enum Constrained : Iface {
+    A,
+}
+
+pub enum Visible {
+    A,
+}
+
+/*@parse
+ASTProgram
+    Node[0]:
+        ASTEnum
+            ident: Tagged
+            tag_type: int32
+            generic_params_count: 0
+            impls_count: 0
+            variants_count: 1
+            variant[0]:
+                ASTEnumVariant::Unit
+                    ident: A
+            methods_count: 0
+    Node[1]:
+        ASTEnum
+            ident: Aligned
+            align: 8
+            generic_params_count: 0
+            impls_count: 0
+            variants_count: 1
+            variant[0]:
+                ASTEnumVariant::Unit
+                    ident: A
+            methods_count: 0
+    Node[2]:
+        ASTEnum
+            ident: Generic
+            generic_params_count: 1
+            generic_param[0]:
+                name: T
+            impls_count: 0
+            variants_count: 1
+            variant[0]:
+                ASTEnumVariant::Tuple
+                    ident: Item
+                    fields_count: 1
+                    field[0]:
+                        ty: T
+            methods_count: 0
+    Node[3]:
+        ASTEnum
+            ident: Constrained
+            generic_params_count: 0
+            impls_count: 1
+            impl[0]:
+                ty: Iface
+            variants_count: 1
+            variant[0]:
+                ASTEnumVariant::Unit
+                    ident: A
+            methods_count: 0
+    Node[4]:
+        ASTEnum
+            ident: Visible
+            visibility: public
+            generic_params_count: 0
+            impls_count: 0
+            variants_count: 1
+            variant[0]:
+                ASTEnumVariant::Unit
+                    ident: A
+            methods_count: 0
+@parse*/

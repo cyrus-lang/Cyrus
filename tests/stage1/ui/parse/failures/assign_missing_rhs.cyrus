@@ -1,0 +1,13 @@
+// @parse
+
+fn f() {
+    var x: int32 = ;
+}
+
+/*@parse
+tests/stage1/ui/parse/failures/assign_missing_rhs.cyrus:4:20: error: expected expression
+      |
+    4 ~     var x: int32 = ;
+      |                    ^
+      |
+@parse*/
