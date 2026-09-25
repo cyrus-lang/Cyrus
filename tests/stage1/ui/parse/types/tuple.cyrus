@@ -1,0 +1,47 @@
+// @parse
+
+static var a: (int32, int32);
+static var b: (int32);
+static var c: (int32, Foo*);
+static var d: (int32, int32,);
+
+/*@parse
+ASTProgram
+    Node[0]:
+        ASTGlobalVar
+            ident: a
+            is_const: false
+            is_undef: false
+            is_static: true
+            ty: ASTType::Tuple
+                elements_count: 2
+                element[0]: int32
+                element[1]: int32
+    Node[1]:
+        ASTGlobalVar
+            ident: b
+            is_const: false
+            is_undef: false
+            is_static: true
+            ty: int32
+    Node[2]:
+        ASTGlobalVar
+            ident: c
+            is_const: false
+            is_undef: false
+            is_static: true
+            ty: ASTType::Tuple
+                elements_count: 2
+                element[0]: int32
+                element[1]: *Foo
+    Node[3]:
+        ASTGlobalVar
+            ident: d
+            is_const: false
+            is_undef: false
+            is_static: true
+            ty: ASTType::Tuple
+                elements_count: 2
+                element[0]: int32
+                element[1]: int32
+@parse*/

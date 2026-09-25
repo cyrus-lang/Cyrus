@@ -1,0 +1,77 @@
+// @parse
+
+const a = &value;
+const b = *ptr;
+const c = &obj.field;
+const d = **pp;
+const e = *arr[0];
+
+/*@parse
+ASTProgram
+    Node[0]:
+        ASTGlobalVar
+            ident: a
+            is_const: true
+            is_undef: false
+            is_static: false
+            expr:
+                ASTExpr::AddrOf
+                    expr:
+                        ASTExpr::Ident
+                            ident: value
+    Node[1]:
+        ASTGlobalVar
+            ident: b
+            is_const: true
+            is_undef: false
+            is_static: false
+            expr:
+                ASTExpr::Deref
+                    expr:
+                        ASTExpr::Ident
+                            ident: ptr
+    Node[2]:
+        ASTGlobalVar
+            ident: c
+            is_const: true
+            is_undef: false
+            is_static: false
+            expr:
+                ASTExpr::AddrOf
+                    expr:
+                        ASTExpr::FieldAccess
+                            operand:
+                                ASTExpr::Ident
+                                    ident: obj
+                            field_name: field
+                            is_thin_arrow: false
+    Node[3]:
+        ASTGlobalVar
+            ident: d
+            is_const: true
+            is_undef: false
+            is_static: false
+            expr:
+                ASTExpr::Deref
+                    expr:
+                        ASTExpr::Deref
+                            expr:
+                                ASTExpr::Ident
+                                    ident: pp
+    Node[4]:
+        ASTGlobalVar
+            ident: e
+            is_const: true
+            is_undef: false
+            is_static: false
+            expr:
+                ASTExpr::Deref
+                    expr:
+                        ASTExpr::ArrayIndex
+                            operand:
+                                ASTExpr::Ident
+                                    ident: arr
+                            index:
+                                ASTExpr::Literal
+                                    value: 0
+@parse*/

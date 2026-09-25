@@ -1,0 +1,75 @@
+// @parse
+
+fn example() {
+    defer cleanup();
+    defer count += 1;
+    defer total = 0;
+    defer var tmp = 1;
+
+    if (flag) {
+        defer finish();
+    }
+}
+
+/*@parse
+ASTProgram
+    Node[0]:
+        ASTFuncDef
+            ident: example
+            params:
+            body:
+                ASTBlock
+                    stmt[0]:
+                        ASTDefer
+                            operand:
+                                ASTExpr::FuncCall
+                                    operand:
+                                        ASTExpr::Ident
+                                            ident: cleanup
+                    stmt[1]:
+                        ASTDefer
+                            operand:
+                                ASTExpr::Assign
+                                    kind: +=
+                                    lhs:
+                                        ASTExpr::Ident
+                                            ident: count
+                                    rhs:
+                                        ASTExpr::Literal
+                                            value: 1
+                    stmt[2]:
+                        ASTDefer
+                            operand:
+                                ASTExpr::Assign
+                                    kind: =
+                                    lhs:
+                                        ASTExpr::Ident
+                                            ident: total
+                                    rhs:
+                                        ASTExpr::Literal
+                                            value: 0
+                    stmt[3]:
+                        ASTDefer
+                            operand:
+                                ASTVar
+                                    ident: tmp
+                                    is_const: false
+                                    is_undef: false
+                                    rhs:
+                                        ASTExpr::Literal
+                                            value: 1
+                    stmt[4]:
+                        ASTIf
+                            condition:
+                                ASTExpr::Ident
+                                    ident: flag
+                            then_block:
+                                ASTBlock
+                                    stmt[0]:
+                                        ASTDefer
+                                            operand:
+                                                ASTExpr::FuncCall
+                                                    operand:
+                                                        ASTExpr::Ident
+                                                            ident: finish
+@parse*/

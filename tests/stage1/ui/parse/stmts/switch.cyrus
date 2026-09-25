@@ -1,0 +1,318 @@
+// @parse
+
+fn example(x: int32, msg: Msg) {
+    switch (x) {
+    }
+
+    switch (x) {
+        case 0 => {
+            zero();
+        }
+        case 1 | 2 => small(x);
+        case 3...7 => range_low(x);
+        case 10..=20 => range_high(x);
+        else => {
+            other(x);
+        }
+    }
+
+    switch (msg) {
+        case .Quit => quit();
+        case .Move { x, y } => move(x, y);
+        case .Pair(a, b) => pair(a, b);
+        case .Rec { var first, second: alias, .. } => rec(first, alias);
+        case name => use(name);
+        case var mutable => use(mutable);
+        case _ => fallback();
+    }
+
+    switch (x) {
+        case 1 => switch (x) {
+            case 2 => deep();
+        }
+    }
+}
+
+/*@parse
+ASTProgram
+    Node[0]:
+        ASTFuncDef
+            ident: example
+            params:
+                param[0]:
+                    ident: x
+                    constness: const
+                    ty: int32
+                param[1]:
+                    ident: msg
+                    constness: const
+                    ty: Msg
+            body:
+                ASTBlock
+                    stmt[0]:
+                        ASTSwitch
+                            operand:
+                                ASTExpr::Ident
+                                    ident: x
+                    stmt[1]:
+                        ASTSwitch
+                            operand:
+                                ASTExpr::Ident
+                                    ident: x
+                            case[0]:
+                                pattern[0]:
+                                    Expr
+                                        expr:
+                                            ASTExpr::Literal
+                                                value: 0
+                                body:
+                                    ASTBlock
+                                        stmt[0]:
+                                            ASTExpr::FuncCall
+                                                operand:
+                                                    ASTExpr::Ident
+                                                        ident: zero
+                            case[1]:
+                                pattern[0]:
+                                    Expr
+                                        expr:
+                                            ASTExpr::Literal
+                                                value: 1
+                                pattern[1]:
+                                    Expr
+                                        expr:
+                                            ASTExpr::Literal
+                                                value: 2
+                                body:
+                                    ASTBlock
+                                        stmt[0]:
+                                            ASTExpr::FuncCall
+                                                operand:
+                                                    ASTExpr::Ident
+                                                        ident: small
+                                                arg[0]:
+                                                    ASTExpr::Ident
+                                                        ident: x
+                            case[2]:
+                                pattern[0]:
+                                    Range
+                                        lower:
+                                            ASTExpr::Literal
+                                                value: 3
+                                        upper:
+                                            ASTExpr::Literal
+                                                value: 7
+                                        inclusive_upper: false
+                                body:
+                                    ASTBlock
+                                        stmt[0]:
+                                            ASTExpr::FuncCall
+                                                operand:
+                                                    ASTExpr::Ident
+                                                        ident: range_low
+                                                arg[0]:
+                                                    ASTExpr::Ident
+                                                        ident: x
+                            case[3]:
+                                pattern[0]:
+                                    Range
+                                        lower:
+                                            ASTExpr::Literal
+                                                value: 10
+                                        upper:
+                                            ASTExpr::Literal
+                                                value: 20
+                                        inclusive_upper: true
+                                body:
+                                    ASTBlock
+                                        stmt[0]:
+                                            ASTExpr::FuncCall
+                                                operand:
+                                                    ASTExpr::Ident
+                                                        ident: range_high
+                                                arg[0]:
+                                                    ASTExpr::Ident
+                                                        ident: x
+                            default_case:
+                                ASTBlock
+                                    stmt[0]:
+                                        ASTExpr::FuncCall
+                                            operand:
+                                                ASTExpr::Ident
+                                                    ident: other
+                                            arg[0]:
+                                                ASTExpr::Ident
+                                                    ident: x
+                    stmt[2]:
+                        ASTSwitch
+                            operand:
+                                ASTExpr::Ident
+                                    ident: msg
+                            case[0]:
+                                pattern[0]:
+                                    EnumUnit
+                                        ident: Quit
+                                body:
+                                    ASTBlock
+                                        stmt[0]:
+                                            ASTExpr::FuncCall
+                                                operand:
+                                                    ASTExpr::Ident
+                                                        ident: quit
+                            case[1]:
+                                pattern[0]:
+                                    EnumStructVariant
+                                        variant: Move
+                                        has_rest: false
+                                        field[0]:
+                                            name: x
+                                            pattern:
+                                                Binding
+                                                    ident: x
+                                                    constness: const
+                                        field[1]:
+                                            name: y
+                                            pattern:
+                                                Binding
+                                                    ident: y
+                                                    constness: const
+                                body:
+                                    ASTBlock
+                                        stmt[0]:
+                                            ASTExpr::FuncCall
+                                                operand:
+                                                    ASTExpr::Ident
+                                                        ident: move
+                                                arg[0]:
+                                                    ASTExpr::Ident
+                                                        ident: x
+                                                arg[1]:
+                                                    ASTExpr::Ident
+                                                        ident: y
+                            case[2]:
+                                pattern[0]:
+                                    EnumTupleVariant
+                                        variant: Pair
+                                        item[0]:
+                                            Binding
+                                                ident: a
+                                                constness: const
+                                        item[1]:
+                                            Binding
+                                                ident: b
+                                                constness: const
+                                body:
+                                    ASTBlock
+                                        stmt[0]:
+                                            ASTExpr::FuncCall
+                                                operand:
+                                                    ASTExpr::Ident
+                                                        ident: pair
+                                                arg[0]:
+                                                    ASTExpr::Ident
+                                                        ident: a
+                                                arg[1]:
+                                                    ASTExpr::Ident
+                                                        ident: b
+                            case[3]:
+                                pattern[0]:
+                                    EnumStructVariant
+                                        variant: Rec
+                                        has_rest: true
+                                        field[0]:
+                                            name: first
+                                            pattern:
+                                                Binding
+                                                    ident: first
+                                                    constness: var
+                                        field[1]:
+                                            name: second
+                                            pattern:
+                                                Binding
+                                                    ident: alias
+                                                    constness: const
+                                body:
+                                    ASTBlock
+                                        stmt[0]:
+                                            ASTExpr::FuncCall
+                                                operand:
+                                                    ASTExpr::Ident
+                                                        ident: rec
+                                                arg[0]:
+                                                    ASTExpr::Ident
+                                                        ident: first
+                                                arg[1]:
+                                                    ASTExpr::Ident
+                                                        ident: alias
+                            case[4]:
+                                pattern[0]:
+                                    Binding
+                                        ident: name
+                                        constness: const
+                                body:
+                                    ASTBlock
+                                        stmt[0]:
+                                            ASTExpr::FuncCall
+                                                operand:
+                                                    ASTExpr::Ident
+                                                        ident: use
+                                                arg[0]:
+                                                    ASTExpr::Ident
+                                                        ident: name
+                            case[5]:
+                                pattern[0]:
+                                    Binding
+                                        ident: mutable
+                                        constness: var
+                                body:
+                                    ASTBlock
+                                        stmt[0]:
+                                            ASTExpr::FuncCall
+                                                operand:
+                                                    ASTExpr::Ident
+                                                        ident: use
+                                                arg[0]:
+                                                    ASTExpr::Ident
+                                                        ident: mutable
+                            case[6]:
+                                pattern[0]:
+                                    Wildcard
+                                body:
+                                    ASTBlock
+                                        stmt[0]:
+                                            ASTExpr::FuncCall
+                                                operand:
+                                                    ASTExpr::Ident
+                                                        ident: fallback
+                    stmt[3]:
+                        ASTSwitch
+                            operand:
+                                ASTExpr::Ident
+                                    ident: x
+                            case[0]:
+                                pattern[0]:
+                                    Expr
+                                        expr:
+                                            ASTExpr::Literal
+                                                value: 1
+                                body:
+                                    ASTBlock
+                                        stmt[0]:
+                                            ASTSwitch
+                                                operand:
+                                                    ASTExpr::Ident
+                                                        ident: x
+                                                case[0]:
+                                                    pattern[0]:
+                                                        Expr
+                                                            expr:
+                                                                ASTExpr::Literal
+                                                                    value: 2
+                                                    body:
+                                                        ASTBlock
+                                                            stmt[0]:
+                                                                ASTExpr::FuncCall
+                                                                    operand:
+                                                                        ASTExpr::Ident
+                                                                            ident: deep
+@parse*/

@@ -7,9 +7,9 @@ import std::option{Option};
 import std::string{String};
 import std::mem{Allocator};
 
+import .::diags{report_expected_ident, report_expected_token};
 import .::ast{NodeId, ASTNode, ASTIdent};
-import .::diags{format_expected_token};
-import diags{Diag, DiagContext};
+import diags{DiagContext};
 import source{SourceId};
 import tokens{
     Token, 
@@ -109,18 +109,14 @@ pub struct ParserState {
         }
 
         const got = self->current();
-        const span = self->current_span();
-
-        var fmt = format_expected_token(self->allocator, kind, *got->kind);
-        defer fmt.free();
-
-        self->dctx->report(Diag.new(
+        
+        report_expected_token(
             self->allocator, 
-            .Error, 
-            fmt.as_str(),
-            span
-        ));
-
+            self->dctx, 
+            self->current_span(), 
+            kind, 
+            *got->kind
+        );
         return false;
     }
 
@@ -131,17 +127,14 @@ pub struct ParserState {
         }
 
         const got = self->peek();
-        const span = self->peek_span();
-
-        var fmt = format_expected_token(self->allocator, kind, *got->kind);
-        defer fmt.free();
-
-        self->dctx->report(Diag.new(
+        
+        report_expected_token(
             self->allocator, 
-            .Error, 
-            fmt.as_str(),
-            span
-        ));
+            self->dctx, 
+            self->peek_span(), 
+            kind, 
+            *got->kind
+        );
         
         return false;
     }
@@ -186,12 +179,7 @@ pub struct ParserState {
                 return .Some(ASTIdent { str, span });
             }
             else => {
-                self->dctx->report(Diag.new(
-                    self->allocator, 
-                    .Error, 
-                    "expected ident",
-                    span
-                ));
+                report_expected_ident(self->allocator, self->dctx, span, *token->kind);
                 return .None;
             }
         }
@@ -217,7 +205,7 @@ pub struct ParserState {
         return false;
     }
 
-    pub fn is_ident(self: const Self*, kind: TokenKind) bool {
+    pub fn is_ident(self: const Self*) bool {
         switch (self->get(self->pos)) {
             case .Some(token) => switch (*token->kind) {
                 case .Ident(_) => return true;
@@ -279,6 +267,25 @@ pub struct ParserState {
     }
 
     /// Skips tokens until a recovery point is reached.
+    /// Consumes a balanced `{ ... }` group starting at the current `{`.
+    pub fn skip_braced(self: Self*) {
+        var depth: usize = 0;
+
+        while (!self->is(.EOF)) {
+            if (self->is(.LeftBrace)) {
+                depth += 1;
+            } else if (self->is(.RightBrace)) {
+                depth -= 1;
+            }
+
+            self->next();
+
+            if (depth == 0) {
+                return;
+            }
+        }
+    }
+
     pub fn sync(self: Self*) {
         while (true) {
             if (self->is(.EOF)) {

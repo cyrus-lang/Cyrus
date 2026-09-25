@@ -1,0 +1,82 @@
+// @parse
+
+const a = value >> 2;
+const b = value << 2;
+const c = value >> 3 >> 1;
+const d = value << 1 + 2;
+
+/*@parse
+ASTProgram
+    Node[0]:
+        ASTGlobalVar
+            ident: a
+            is_const: true
+            is_undef: false
+            is_static: false
+            expr:
+                ASTExpr::Infix
+                    operator: >>
+                    lhs:
+                        ASTExpr::Ident
+                            ident: value
+                    rhs:
+                        ASTExpr::Literal
+                            value: 2
+    Node[1]:
+        ASTGlobalVar
+            ident: b
+            is_const: true
+            is_undef: false
+            is_static: false
+            expr:
+                ASTExpr::Infix
+                    operator: <<
+                    lhs:
+                        ASTExpr::Ident
+                            ident: value
+                    rhs:
+                        ASTExpr::Literal
+                            value: 2
+    Node[2]:
+        ASTGlobalVar
+            ident: c
+            is_const: true
+            is_undef: false
+            is_static: false
+            expr:
+                ASTExpr::Infix
+                    operator: >>
+                    lhs:
+                        ASTExpr::Infix
+                            operator: >>
+                            lhs:
+                                ASTExpr::Ident
+                                    ident: value
+                            rhs:
+                                ASTExpr::Literal
+                                    value: 3
+                    rhs:
+                        ASTExpr::Literal
+                            value: 1
+    Node[3]:
+        ASTGlobalVar
+            ident: d
+            is_const: true
+            is_undef: false
+            is_static: false
+            expr:
+                ASTExpr::Infix
+                    operator: +
+                    lhs:
+                        ASTExpr::Infix
+                            operator: <<
+                            lhs:
+                                ASTExpr::Ident
+                                    ident: value
+                            rhs:
+                                ASTExpr::Literal
+                                    value: 1
+                    rhs:
+                        ASTExpr::Literal
+                            value: 2
+@parse*/

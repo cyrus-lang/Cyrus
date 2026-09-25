@@ -1,0 +1,254 @@
+// @parse
+
+enum Empty {
+}
+
+enum Unit {
+    A,
+    B,
+}
+
+enum Values {
+    A = 1,
+    B = 1 + 2,
+}
+
+enum TupleVariants {
+    Single(int32),
+    Pair(uint8, uint64),
+}
+
+enum StructVariants {
+    One { x: int32 },
+    Two { y: uint8, z: uint16 },
+    Trailing { x: int32, },
+}
+
+enum Tagged(int32) {
+    A,
+}
+
+enum Aligned align(8) {
+    A,
+}
+
+enum Generic<T> {
+    Item(T),
+}
+
+enum Constrained : Iface {
+    A,
+}
+
+pub enum Visible {
+    A,
+}
+
+enum WithMethods {
+    A,
+
+    fn size(self: Self*) usize {
+        return 0;
+    }
+
+    pub fn reset(self: Self*) {
+    }
+}
+
+/*@parse
+ASTProgram
+    Node[0]:
+        ASTEnum
+            ident: Empty
+            generic_params_count: 0
+            impls_count: 0
+            variants_count: 0
+            methods_count: 0
+    Node[1]:
+        ASTEnum
+            ident: Unit
+            generic_params_count: 0
+            impls_count: 0
+            variants_count: 2
+            variant[0]:
+                ASTEnumVariant::Unit
+                    ident: A
+            variant[1]:
+                ASTEnumVariant::Unit
+                    ident: B
+            methods_count: 0
+    Node[2]:
+        ASTEnum
+            ident: Values
+            generic_params_count: 0
+            impls_count: 0
+            variants_count: 2
+            variant[0]:
+                ASTEnumVariant::Valued
+                    ident: A
+                    value:
+                        ASTExpr::Literal
+                            value: 1
+            variant[1]:
+                ASTEnumVariant::Valued
+                    ident: B
+                    value:
+                        ASTExpr::Infix
+                            operator: +
+                            lhs:
+                                ASTExpr::Literal
+                                    value: 1
+                            rhs:
+                                ASTExpr::Literal
+                                    value: 2
+            methods_count: 0
+    Node[3]:
+        ASTEnum
+            ident: TupleVariants
+            generic_params_count: 0
+            impls_count: 0
+            variants_count: 2
+            variant[0]:
+                ASTEnumVariant::Tuple
+                    ident: Single
+                    fields_count: 1
+                    field[0]:
+                        ty: int32
+            variant[1]:
+                ASTEnumVariant::Tuple
+                    ident: Pair
+                    fields_count: 2
+                    field[0]:
+                        ty: uint8
+                    field[1]:
+                        ty: uint64
+            methods_count: 0
+    Node[4]:
+        ASTEnum
+            ident: StructVariants
+            generic_params_count: 0
+            impls_count: 0
+            variants_count: 3
+            variant[0]:
+                ASTEnumVariant::Struct
+                    ident: One
+                    fields_count: 1
+                    field[0]:
+                        name: x
+                        ty: int32
+            variant[1]:
+                ASTEnumVariant::Struct
+                    ident: Two
+                    fields_count: 2
+                    field[0]:
+                        name: y
+                        ty: uint8
+                    field[1]:
+                        name: z
+                        ty: uint16
+            variant[2]:
+                ASTEnumVariant::Struct
+                    ident: Trailing
+                    fields_count: 1
+                    field[0]:
+                        name: x
+                        ty: int32
+            methods_count: 0
+    Node[5]:
+        ASTEnum
+            ident: Tagged
+            tag_type: int32
+            generic_params_count: 0
+            impls_count: 0
+            variants_count: 1
+            variant[0]:
+                ASTEnumVariant::Unit
+                    ident: A
+            methods_count: 0
+    Node[6]:
+        ASTEnum
+            ident: Aligned
+            align: 8
+            generic_params_count: 0
+            impls_count: 0
+            variants_count: 1
+            variant[0]:
+                ASTEnumVariant::Unit
+                    ident: A
+            methods_count: 0
+    Node[7]:
+        ASTEnum
+            ident: Generic
+            generic_params_count: 1
+            generic_param[0]:
+                name: T
+            impls_count: 0
+            variants_count: 1
+            variant[0]:
+                ASTEnumVariant::Tuple
+                    ident: Item
+                    fields_count: 1
+                    field[0]:
+                        ty: T
+            methods_count: 0
+    Node[8]:
+        ASTEnum
+            ident: Constrained
+            generic_params_count: 0
+            impls_count: 1
+            impl[0]:
+                ty: Iface
+            variants_count: 1
+            variant[0]:
+                ASTEnumVariant::Unit
+                    ident: A
+            methods_count: 0
+    Node[9]:
+        ASTEnum
+            ident: Visible
+            visibility: public
+            generic_params_count: 0
+            impls_count: 0
+            variants_count: 1
+            variant[0]:
+                ASTEnumVariant::Unit
+                    ident: A
+            methods_count: 0
+    Node[10]:
+        ASTEnum
+            ident: WithMethods
+            generic_params_count: 0
+            impls_count: 0
+            variants_count: 1
+            variant[0]:
+                ASTEnumVariant::Unit
+                    ident: A
+            methods_count: 2
+            method[0]:
+                ASTFuncDef
+                    ident: size
+                    params:
+                        param[0]:
+                            self
+                            constness: const
+                            ty: *Self
+                    ret_type: usize
+                    body:
+                        ASTBlock
+                            stmt[0]:
+                                ASTReturn
+                                    argument:
+                                        ASTExpr::Literal
+                                            value: 0
+            method[1]:
+                ASTFuncDef
+                    ident: reset
+                    visibility: public
+                    params:
+                        param[0]:
+                            self
+                            constness: const
+                            ty: *Self
+                    body:
+                        ASTBlock
+@parse*/

@@ -1,0 +1,141 @@
+// @parse
+
+const a = 1 + 2 * 3;
+const b = (1 + 2) * 3;
+const c = a + b - c;
+const d = -x + y;
+const e = a / b % c;
+const f = x & y | z ^ w;
+
+/*@parse
+ASTProgram
+    Node[0]:
+        ASTGlobalVar
+            ident: a
+            is_const: true
+            is_undef: false
+            is_static: false
+            expr:
+                ASTExpr::Infix
+                    operator: +
+                    lhs:
+                        ASTExpr::Literal
+                            value: 1
+                    rhs:
+                        ASTExpr::Infix
+                            operator: *
+                            lhs:
+                                ASTExpr::Literal
+                                    value: 2
+                            rhs:
+                                ASTExpr::Literal
+                                    value: 3
+    Node[1]:
+        ASTGlobalVar
+            ident: b
+            is_const: true
+            is_undef: false
+            is_static: false
+            expr:
+                ASTExpr::Infix
+                    operator: *
+                    lhs:
+                        ASTExpr::Infix
+                            operator: +
+                            lhs:
+                                ASTExpr::Literal
+                                    value: 1
+                            rhs:
+                                ASTExpr::Literal
+                                    value: 2
+                    rhs:
+                        ASTExpr::Literal
+                            value: 3
+    Node[2]:
+        ASTGlobalVar
+            ident: c
+            is_const: true
+            is_undef: false
+            is_static: false
+            expr:
+                ASTExpr::Infix
+                    operator: -
+                    lhs:
+                        ASTExpr::Infix
+                            operator: +
+                            lhs:
+                                ASTExpr::Ident
+                                    ident: a
+                            rhs:
+                                ASTExpr::Ident
+                                    ident: b
+                    rhs:
+                        ASTExpr::Ident
+                            ident: c
+    Node[3]:
+        ASTGlobalVar
+            ident: d
+            is_const: true
+            is_undef: false
+            is_static: false
+            expr:
+                ASTExpr::Infix
+                    operator: +
+                    lhs:
+                        ASTExpr::Prefix
+                            operator: -
+                            operand:
+                                ASTExpr::Ident
+                                    ident: x
+                    rhs:
+                        ASTExpr::Ident
+                            ident: y
+    Node[4]:
+        ASTGlobalVar
+            ident: e
+            is_const: true
+            is_undef: false
+            is_static: false
+            expr:
+                ASTExpr::Infix
+                    operator: %
+                    lhs:
+                        ASTExpr::Infix
+                            operator: /
+                            lhs:
+                                ASTExpr::Ident
+                                    ident: a
+                            rhs:
+                                ASTExpr::Ident
+                                    ident: b
+                    rhs:
+                        ASTExpr::Ident
+                            ident: c
+    Node[5]:
+        ASTGlobalVar
+            ident: f
+            is_const: true
+            is_undef: false
+            is_static: false
+            expr:
+                ASTExpr::Infix
+                    operator: ^
+                    lhs:
+                        ASTExpr::Infix
+                            operator: |
+                            lhs:
+                                ASTExpr::Infix
+                                    operator: &
+                                    lhs:
+                                        ASTExpr::Ident
+                                            ident: x
+                                    rhs:
+                                        ASTExpr::Ident
+                                            ident: y
+                            rhs:
+                                ASTExpr::Ident
+                                    ident: z
+                    rhs:
+                        ASTExpr::Ident
+                            ident: w
+@parse*/

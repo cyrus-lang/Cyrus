@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 The Cyrus Language
 
+import std::format{format_usize, format_int64};
 import std::io{Writer, StdoutWriter};
-import std::format{format_usize};
 import std::collections{Vec};
 import tokens{Token};
 import .::ast;
@@ -149,6 +149,12 @@ pub struct ASTDump {
         self->writer.writeln("ASTTypeAlias");
         self->indent += 1;
         self->dump_ident("ident", &n->ident);
+
+        switch (n->vis) {
+            case .Public => self->dump_str("visibility", "public");
+        }
+
+        self->dump_generic_params(&n->generic_params);
         self->dump_type_node("ty", n->ty);
         self->indent -= 1;
     }
@@ -191,6 +197,7 @@ pub struct ASTDump {
         self->writer.writeln("ASTFuncDef");
         self->indent += 1;
         self->dump_ident("ident", &n->ident);
+        self->dump_func_modifiers(&n->modifiers);
         self->dump_func_params(&n->params);
         switch (n->ret_type) {
             case .Some(ty) => self->dump_type_node("ret_type", ty);
@@ -204,11 +211,22 @@ pub struct ASTDump {
         self->writer.writeln("ASTFuncDecl");
         self->indent += 1;
         self->dump_ident("ident", &n->ident);
+        self->dump_func_modifiers(&n->modifiers);
         self->dump_func_params(&n->params);
         switch (n->ret_type) {
             case .Some(ty) => self->dump_type_node("ret_type", ty);
         }
         self->indent -= 1;
+    }
+
+    fn dump_func_modifiers(self: Self*, m: const ast::ASTFuncModifiers*) {
+        switch (m->vis) {
+            case .Public => self->dump_str("visibility", "public");            
+        }
+
+        switch (m->extrn) {
+            case .Some(abi) => self->dump_str("extern", abi.to_str());
+        }
     }
 
     fn dump_func_params(self: Self*, params: const ast::ASTFuncParams*) {
@@ -268,7 +286,95 @@ pub struct ASTDump {
         self->indent += 1;
         self->dump_ident("ident", &n->ident);
         self->dump_bool("is_packed", n->is_packed);
+
+        switch (n->modifiers.vis) {
+            case .Public => self->dump_str("visibility", "public");
+            
+        }
+
+        switch (n->align) {
+            case .Some(value) => self->dump_usize("align", value);
+        }
+
+        self->dump_generic_params(&n->generic_params);
+
+        self->dump_usize("impls_count", n->impls.len());
+
+        for (var i: usize = 0; i < n->impls.len(); i += 1) {
+            const imp = n->impls.get_const(i).unwrap();
+
+            self->write_indent();
+            self->writer.write("impl[");
+            format_usize(self->writer, i);
+            self->writer.writeln("]:");
+            self->indent += 1;
+            self->dump_type_node("ty", imp->ty);
+            self->indent -= 1;
+        }
+
+        self->dump_usize("fields_count", n->fields.len());
+
+        for (var i: usize = 0; i < n->fields.len(); i += 1) {
+            const field = n->fields.get_const(i).unwrap();
+
+            self->write_indent();
+            self->writer.write("field[");
+            format_usize(self->writer, i);
+            self->writer.writeln("]:");
+            self->indent += 1;
+            self->dump_ident("name", &field->name);
+
+            switch (field->vis) {
+                case .Public => self->dump_str("visibility", "public");
+                
+            }
+
+            self->dump_type_node("ty", field->ty);
+            self->indent -= 1;
+        }
+
+        self->dump_usize("methods_count", n->methods.len());
+        self->dump_node_list("method", &n->methods);
         self->indent -= 1;
+    }
+
+    fn dump_generic_params(self: Self*, params: const ast::ASTGenericParams*) {
+        self->dump_usize("generic_params_count", params->len());
+
+        for (var i: usize = 0; i < params->len(); i += 1) {
+            const param = params->get_const(i).unwrap();
+
+            self->write_indent();
+            self->writer.write("generic_param[");
+            format_usize(self->writer, i);
+            self->writer.writeln("]:");
+            self->indent += 1;
+            self->dump_ident("name", &param->name);
+
+            switch (param->bounds) {
+                case .Some(bounds) => {
+                    self->dump_usize("bounds_count", bounds.len());
+
+                    for (var j: usize = 0; j < bounds.len(); j += 1) {
+                        const bound = bounds.get_const(j).unwrap();
+
+                        self->write_indent();
+                        self->writer.write("bound[");
+                        format_usize(self->writer, j);
+                        self->writer.writeln("]:");
+                        self->indent += 1;
+                        self->dump_type_node("ty", bound->ty);
+                        self->indent -= 1;
+                    }
+                }
+            }
+
+            switch (param->default) {
+                case .Some(ty) => self->dump_type_node("default", ty);
+            }
+
+            self->indent -= 1;
+        }
     }
 
     fn dump_enum(self: Self*, n: const ast::ASTEnum*) {
@@ -276,6 +382,113 @@ pub struct ASTDump {
         self->writer.writeln("ASTEnum");
         self->indent += 1;
         self->dump_ident("ident", &n->ident);
+
+        switch (n->modifiers.vis) {
+            case .Public => self->dump_str("visibility", "public");
+            
+        }
+
+        switch (n->align) {
+            case .Some(value) => self->dump_usize("align", value);
+        }
+
+        switch (n->tag_type) {
+            case .Some(ty) => self->dump_type_node("tag_type", ty);
+        }
+
+        self->dump_generic_params(&n->generic_params);
+
+        self->dump_usize("impls_count", n->impls.len());
+
+        for (var i: usize = 0; i < n->impls.len(); i += 1) {
+            const imp = n->impls.get_const(i).unwrap();
+
+            self->write_indent();
+            self->writer.write("impl[");
+            format_usize(self->writer, i);
+            self->writer.writeln("]:");
+            self->indent += 1;
+            self->dump_type_node("ty", imp->ty);
+            self->indent -= 1;
+        }
+
+        self->dump_usize("variants_count", n->variants.len());
+
+        for (var i: usize = 0; i < n->variants.len(); i += 1) {
+            const variant = n->variants.get_const(i).unwrap();
+
+            self->write_indent();
+            self->writer.write("variant[");
+            format_usize(self->writer, i);
+            self->writer.writeln("]:");
+            self->indent += 1;
+
+            switch (*variant) {
+                case .Unit(var name) => {
+                    self->write_indent();
+                    self->writer.writeln("ASTEnumVariant::Unit");
+                    self->indent += 1;
+                    self->dump_ident("ident", &name);
+                    self->indent -= 1;
+                }
+                case .Valued { ident, value } => {
+                    self->write_indent();
+                    self->writer.writeln("ASTEnumVariant::Valued");
+                    self->indent += 1;
+                    self->dump_ident("ident", &ident);
+                    self->dump_subtree("value", value);
+                    self->indent -= 1;
+                }
+                case .Tuple { ident, fields } => {
+                    self->write_indent();
+                    self->writer.writeln("ASTEnumVariant::Tuple");
+                    self->indent += 1;
+                    self->dump_ident("ident", &ident);
+                    self->dump_usize("fields_count", fields.len());
+
+                    for (var j: usize = 0; j < fields.len(); j += 1) {
+                        const field = fields.get_const(j).unwrap();
+
+                        self->write_indent();
+                        self->writer.write("field[");
+                        format_usize(self->writer, j);
+                        self->writer.writeln("]:");
+                        self->indent += 1;
+                        self->dump_type_node("ty", field->ty);
+                        self->indent -= 1;
+                    }
+
+                    self->indent -= 1;
+                }
+                case .Struct { ident, fields } => {
+                    self->write_indent();
+                    self->writer.writeln("ASTEnumVariant::Struct");
+                    self->indent += 1;
+                    self->dump_ident("ident", &ident);
+                    self->dump_usize("fields_count", fields.len());
+
+                    for (var j: usize = 0; j < fields.len(); j += 1) {
+                        const field = fields.get_const(j).unwrap();
+
+                        self->write_indent();
+                        self->writer.write("field[");
+                        format_usize(self->writer, j);
+                        self->writer.writeln("]:");
+                        self->indent += 1;
+                        self->dump_ident("name", &field->name);
+                        self->dump_type_node("ty", field->ty);
+                        self->indent -= 1;
+                    }
+
+                    self->indent -= 1;
+                }
+            }
+
+            self->indent -= 1;
+        }
+
+        self->dump_usize("methods_count", n->methods.len());
+        self->dump_node_list("method", &n->methods);
         self->indent -= 1;
     }
 
@@ -284,6 +497,76 @@ pub struct ASTDump {
         self->writer.writeln("ASTUnion");
         self->indent += 1;
         self->dump_ident("ident", &n->ident);
+
+        switch (n->modifiers.vis) {
+            case .Public => self->dump_str("visibility", "public");
+        }
+
+        switch (n->align) {
+            case .Some(value) => self->dump_usize("align", value);
+        }
+
+        self->dump_generic_params(&n->generic_params);
+
+        self->dump_usize("impls_count", n->impls.len());
+
+        for (var i: usize = 0; i < n->impls.len(); i += 1) {
+            const impl = n->impls.get_const(i).unwrap();
+
+            self->write_indent();
+            self->writer.write("impl[");
+            format_usize(self->writer, i);
+            self->writer.writeln("]:");
+            self->indent += 1;
+            self->dump_type_node("ty", impl->ty);
+            self->indent -= 1;
+        }
+
+        self->dump_usize("fields_count", n->fields.len());
+
+        for (var i: usize = 0; i < n->fields.len(); i += 1) {
+            const field = n->fields.get_const(i).unwrap();
+
+            self->write_indent();
+            self->writer.write("field[");
+            format_usize(self->writer, i);
+            self->writer.writeln("]:");
+            self->indent += 1;
+            self->dump_ident("name", &field->name);
+            self->dump_type_node("ty", field->ty);
+            self->indent -= 1;
+        }
+
+        self->dump_usize("methods_count", n->methods.len());
+        self->dump_node_list("method", &n->methods);
+        self->indent -= 1;
+    }
+
+    fn dump_func_type(self: Self*, n: const ast::ASTFuncType*) {
+        self->writer.writeln("ASTFuncType");
+        self->indent += 1;
+        self->dump_usize("params_count", n->params.list.len());
+
+        for (var i: usize = 0; i < n->params.list.len(); i += 1) {
+            const id = *n->params.list.get_const(i).unwrap();
+
+            self->write_indent();
+            self->writer.write("param[");
+            format_usize(self->writer, i);
+            self->writer.writeln("]:");
+            self->indent += 1;
+            self->dump_type_node("ty", id);
+            self->indent -= 1;
+        }
+
+        switch (n->params.variadic) {
+            case .Some(v) => switch (v) {
+                case .UntypedCStyle => self->dump_str("variadic", "cstyle");
+                case .Typed(ty) => self->dump_type_node("variadic_type", ty);
+            }
+        }
+
+        self->dump_type_node("ret_type", n->ret_type);
         self->indent -= 1;
     }
 
@@ -292,6 +575,14 @@ pub struct ASTDump {
         self->writer.writeln("ASTInterface");
         self->indent += 1;
         self->dump_ident("ident", &n->ident);
+
+        switch (n->vis) {
+            case .Public => self->dump_str("visibility", "public");
+        }
+
+        self->dump_generic_params(&n->generic_params);
+        self->dump_usize("methods_count", n->methods.len());
+        self->dump_node_list("method", &n->methods);
         self->indent -= 1;
     }
 
@@ -312,8 +603,12 @@ pub struct ASTDump {
         self->write_indent();
         self->writer.writeln("ASTIf");
         self->indent += 1;
-        self->dump_node_id("condition", n->condition);
-        self->dump_node_id("then_block", n->then_block);
+        self->dump_subtree("condition", n->condition);
+        self->dump_subtree("then_block", n->then_block);
+        self->dump_node_list("branch", &n->branches);
+        switch (n->else_block) {
+            case .Some(block) => self->dump_subtree("else_block", block);
+        }
         self->indent -= 1;
     }
 
@@ -321,8 +616,8 @@ pub struct ASTDump {
         self->write_indent();
         self->writer.writeln("ASTWhile");
         self->indent += 1;
-        self->dump_node_id("condition", n->condition);
-        self->dump_node_id("body", n->body);
+        self->dump_subtree("condition", n->condition);
+        self->dump_subtree("body", n->body);
         self->indent -= 1;
     }
 
@@ -330,7 +625,16 @@ pub struct ASTDump {
         self->write_indent();
         self->writer.writeln("ASTFor");
         self->indent += 1;
-        self->dump_node_id("body", n->body);
+        switch (n->initializer) {
+            case .Some(init) => self->dump_subtree("initializer", init);
+        }
+        switch (n->condition) {
+            case .Some(cond) => self->dump_subtree("condition", cond);
+        }
+        switch (n->increment) {
+            case .Some(step) => self->dump_subtree("increment", step);
+        }
+        self->dump_subtree("body", n->body);
         self->indent -= 1;
     }
 
@@ -338,7 +642,11 @@ pub struct ASTDump {
         self->write_indent();
         self->writer.writeln("ASTSwitch");
         self->indent += 1;
-        self->dump_node_id("operand", n->operand);
+        self->dump_subtree("operand", n->operand);
+        self->dump_switch_cases(&n->cases);
+        switch (n->default_case) {
+            case .Some(body) => self->dump_subtree("default_case", body);
+        }
         self->indent -= 1;
     }
 
@@ -346,8 +654,135 @@ pub struct ASTDump {
         self->write_indent();
         self->writer.writeln("ASTSwitchGuard");
         self->indent += 1;
-        self->dump_node_id("operand", n->operand);
+        self->dump_subtree("operand", n->operand);
+
+        self->write_indent();
+        self->writer.writeln("case:");
+        self->indent += 1;
+        self->dump_switch_patterns(&n->case_item.patterns);
         self->indent -= 1;
+
+        switch (n->default_case) {
+            case .Some(body) => self->dump_subtree("default_case", body);
+        }
+        self->indent -= 1;
+    }
+
+    fn dump_switch_cases(self: Self*, cases: const Vec<ast::ASTSwitchCase>*) {
+        for (var i: usize = 0; i < cases->len(); i += 1) {
+            const item = cases->get_const(i).unwrap();
+
+            self->write_indent();
+            self->writer.write("case[");
+            format_usize(self->writer, i);
+            self->writer.writeln("]:");
+            self->indent += 1;
+            self->dump_switch_patterns(&item->patterns);
+            self->dump_subtree("body", item->body);
+            self->indent -= 1;
+        }
+    }
+
+    fn dump_switch_patterns(self: Self*, patterns: const Vec<ast::ASTSwitchCasePattern>*) {
+        for (var i: usize = 0; i < patterns->len(); i += 1) {
+            const pattern = patterns->get_const(i).unwrap();
+
+            self->write_indent();
+            self->writer.write("pattern[");
+            format_usize(self->writer, i);
+            self->writer.writeln("]:");
+            self->indent += 1;
+            self->dump_switch_pattern_kind(&pattern->kind);
+            self->indent -= 1;
+        }
+    }
+
+    fn dump_switch_pattern_kind(self: Self*, kind: const ast::ASTSwitchCasePatternKind*) {
+        switch (*kind) {
+            case .Wildcard => {
+                self->write_indent();
+                self->writer.writeln("Wildcard");
+            }
+            case .Expr(var id) => {
+                self->write_indent();
+                self->writer.writeln("Expr");
+                self->indent += 1;
+                self->dump_subtree("expr", id);
+                self->indent -= 1;
+            }
+            case .Range(var r) => {
+                self->write_indent();
+                self->writer.writeln("Range");
+                self->indent += 1;
+                self->dump_subtree("lower", r.lower);
+                self->dump_subtree("upper", r.upper);
+                self->dump_bool("inclusive_upper", r.inclusive_upper);
+                self->indent -= 1;
+            }
+            case .EnumUnit(var name) => {
+                self->write_indent();
+                self->writer.writeln("EnumUnit");
+                self->indent += 1;
+                self->dump_ident("ident", &name);
+                self->indent -= 1;
+            }
+            case .EnumTupleVariant { variant, items } => {
+                self->write_indent();
+                self->writer.writeln("EnumTupleVariant");
+                self->indent += 1;
+                self->dump_ident("variant", &variant);
+
+                for (var i: usize = 0; i < items.len(); i += 1) {
+                    const item = items.get_const(i).unwrap();
+
+                    self->write_indent();
+                    self->writer.write("item[");
+                    format_usize(self->writer, i);
+                    self->writer.writeln("]:");
+                    self->indent += 1;
+                    self->dump_switch_pattern_kind(&item->kind);
+                    self->indent -= 1;
+                }
+
+                self->indent -= 1;
+            }
+            case .EnumStructVariant { variant, items, has_rest } => {
+                self->write_indent();
+                self->writer.writeln("EnumStructVariant");
+                self->indent += 1;
+                self->dump_ident("variant", &variant);
+                self->dump_bool("has_rest", has_rest);
+
+                for (var i: usize = 0; i < items.len(); i += 1) {
+                    const field = items.get_const(i).unwrap();
+
+                    self->write_indent();
+                    self->writer.write("field[");
+                    format_usize(self->writer, i);
+                    self->writer.writeln("]:");
+                    self->indent += 1;
+                    self->dump_ident("name", &field->name);
+
+                    self->write_indent();
+                    self->writer.writeln("pattern:");
+                    self->indent += 1;
+                    self->dump_switch_pattern_kind(&field->pattern.kind);
+                    self->indent -= 1;
+
+                    self->indent -= 1;
+                }
+
+                self->indent -= 1;
+            }
+            case .Binding { ident, constness } => {
+                self->write_indent();
+                self->writer.writeln("Binding");
+                self->indent += 1;
+                self->dump_ident("ident", &ident);
+                self->dump_str("constness", constness.to_str());
+                self->indent -= 1;
+            }
+        }
     }
 
     fn dump_return(self: Self*, n: const ast::ASTReturn*) {
@@ -364,6 +799,27 @@ pub struct ASTDump {
         self->write_indent();
         self->writer.writeln("ASTImport");
         self->indent += 1;
+
+        self->write_indent();
+        self->writer.write("relative_level: ");
+        format_int64(self->writer, @cast(int64, n->relative_level));
+        self->writer.write_char('\n');
+
+        switch (n->alias) {
+            case .Some(alias) => self->dump_str("alias", alias.as_str_const());
+        }
+
+        self->dump_usize("segments_count", n->segments.len());
+
+        for (var i: usize = 0; i < n->segments.len(); i += 1) {
+            const segment = n->segments.get_const(i).unwrap();
+
+            switch (*segment) {
+                case .Single(list) => self->dump_module_segment_single(&list);
+                case .SubModule(ident) => self->dump_ident("submodule", &ident);
+            }
+        }
+
         self->indent -= 1;
     }
 
@@ -379,7 +835,7 @@ pub struct ASTDump {
         self->write_indent();
         self->writer.writeln("ASTDefer");
         self->indent += 1;
-        self->dump_node_id("operand", n->operand);
+        self->dump_subtree("operand", n->operand);
         self->indent -= 1;
     }
 
@@ -481,7 +937,7 @@ pub struct ASTDump {
         self->write_indent();
         self->writer.writeln("ASTExpr::Infix");
         self->indent += 1;
-        self->dump_str("op", n->op.to_str());
+        self->dump_str("operator", n->operator.to_str());
         self->dump_subtree("lhs", n->lhs);
         self->dump_subtree("rhs", n->rhs);
         self->indent -= 1;
@@ -491,7 +947,7 @@ pub struct ASTDump {
         self->write_indent();
         self->writer.writeln("ASTExpr::Prefix");
         self->indent += 1;
-        self->dump_str("op", n->op.to_str());
+        self->dump_str("operator", n->operator.to_str());
         self->dump_subtree("operand", n->operand);
         self->indent -= 1;
     }
@@ -655,6 +1111,7 @@ pub struct ASTDump {
 
         switch (*node) {
             case .Type(ty) => self->write_type(&ty);
+            case .FuncType(ty) => self->dump_func_type(&ty);
             else => @unreachable();
         }
     }

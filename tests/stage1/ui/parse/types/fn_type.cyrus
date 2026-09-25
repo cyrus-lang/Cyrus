@@ -1,0 +1,136 @@
+// @parse
+
+type Callback = fn(int32) int32;
+
+type MultiArg = fn(int32, uint8) void;
+
+type NoArgs = fn() void;
+
+type Variadic = fn(int32, ...) void;
+
+type TypedVariadic = fn(...uint8) void;
+
+type PointerArg = fn(int32*, const uint8*) bool;
+
+fn higher_order(f: fn(int32) int32, x: int32) int32 {
+    return f(x);
+}
+
+fn pointers() {
+    var op: fn(int32, int32) int32 = undefined;
+}
+
+/*@parse
+ASTProgram
+    Node[0]:
+        ASTTypeAlias
+            ident: Callback
+            generic_params_count: 0
+            ty: ASTType::FuncType
+                func: ASTFuncType
+                    params_count: 1
+                    param[0]:
+                        ty: int32
+                    ret_type: int32
+    Node[1]:
+        ASTTypeAlias
+            ident: MultiArg
+            generic_params_count: 0
+            ty: ASTType::FuncType
+                func: ASTFuncType
+                    params_count: 2
+                    param[0]:
+                        ty: int32
+                    param[1]:
+                        ty: uint8
+                    ret_type: void
+    Node[2]:
+        ASTTypeAlias
+            ident: NoArgs
+            generic_params_count: 0
+            ty: ASTType::FuncType
+                func: ASTFuncType
+                    params_count: 0
+                    ret_type: void
+    Node[3]:
+        ASTTypeAlias
+            ident: Variadic
+            generic_params_count: 0
+            ty: ASTType::FuncType
+                func: ASTFuncType
+                    params_count: 1
+                    param[0]:
+                        ty: int32
+                    variadic: cstyle
+                    ret_type: void
+    Node[4]:
+        ASTTypeAlias
+            ident: TypedVariadic
+            generic_params_count: 0
+            ty: ASTType::FuncType
+                func: ASTFuncType
+                    params_count: 0
+                    variadic_type: uint8
+                    ret_type: void
+    Node[5]:
+        ASTTypeAlias
+            ident: PointerArg
+            generic_params_count: 0
+            ty: ASTType::FuncType
+                func: ASTFuncType
+                    params_count: 2
+                    param[0]:
+                        ty: *int32
+                    param[1]:
+                        ty: *const uint8
+                    ret_type: bool
+    Node[6]:
+        ASTFuncDef
+            ident: higher_order
+            params:
+                param[0]:
+                    ident: f
+                    constness: const
+                    ty: ASTType::FuncType
+                        func: ASTFuncType
+                            params_count: 1
+                            param[0]:
+                                ty: int32
+                            ret_type: int32
+                param[1]:
+                    ident: x
+                    constness: const
+                    ty: int32
+            ret_type: int32
+            body:
+                ASTBlock
+                    stmt[0]:
+                        ASTReturn
+                            argument:
+                                ASTExpr::FuncCall
+                                    operand:
+                                        ASTExpr::Ident
+                                            ident: f
+                                    arg[0]:
+                                        ASTExpr::Ident
+                                            ident: x
+    Node[7]:
+        ASTFuncDef
+            ident: pointers
+            params:
+            body:
+                ASTBlock
+                    stmt[0]:
+                        ASTVar
+                            ident: op
+                            is_const: false
+                            is_undef: true
+                            ty: ASTType::FuncType
+                                func: ASTFuncType
+                                    params_count: 2
+                                    param[0]:
+                                        ty: int32
+                                    param[1]:
+                                        ty: int32
+                                    ret_type: int32
+@parse*/
