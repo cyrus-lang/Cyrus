@@ -1,0 +1,22 @@
+// @parse
+
+const a = (b = 1);
+
+/*@parse
+ASTProgram
+    Node[0]:
+        ASTGlobalVar
+            ident: a
+            is_const: true
+            is_undef: false
+            is_static: false
+            expr:
+                ASTExpr::Assign
+                    kind: =
+                    lhs:
+                        ASTExpr::Ident
+                            ident: b
+                    rhs:
+                        ASTExpr::Literal
+                            value: 1
+@parse*/

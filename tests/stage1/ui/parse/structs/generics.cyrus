@@ -1,0 +1,45 @@
+// @parse
+
+struct Wrapped<T> {
+    item: T,
+}
+
+struct Constrained<T: Display + Clone = int32> {
+    item: T,
+}
+
+/*@parse
+ASTProgram
+    Node[0]:
+        ASTStruct
+            ident: Wrapped
+            is_packed: false
+            generic_params_count: 1
+            generic_param[0]:
+                name: T
+            impls_count: 0
+            fields_count: 1
+            field[0]:
+                name: item
+                ty: T
+            methods_count: 0
+    Node[1]:
+        ASTStruct
+            ident: Constrained
+            is_packed: false
+            generic_params_count: 1
+            generic_param[0]:
+                name: T
+                bounds_count: 2
+                bound[0]:
+                    ty: Display
+                bound[1]:
+                    ty: Clone
+                default: int32
+            impls_count: 0
+            fields_count: 1
+            field[0]:
+                name: item
+                ty: T
+            methods_count: 0
+@parse*/

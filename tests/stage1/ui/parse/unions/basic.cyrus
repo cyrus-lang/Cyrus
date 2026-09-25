@@ -1,0 +1,47 @@
+// @parse
+
+union Empty {
+}
+
+union Simple {
+    x: int32,
+    y: int64,
+}
+
+union Trailing {
+    x: int32,
+}
+
+/*@parse
+ASTProgram
+    Node[0]:
+        ASTUnion
+            ident: Empty
+            generic_params_count: 0
+            impls_count: 0
+            fields_count: 0
+            methods_count: 0
+    Node[1]:
+        ASTUnion
+            ident: Simple
+            generic_params_count: 0
+            impls_count: 0
+            fields_count: 2
+            field[0]:
+                name: x
+                ty: int32
+            field[1]:
+                name: y
+                ty: int64
+            methods_count: 0
+    Node[2]:
+        ASTUnion
+            ident: Trailing
+            generic_params_count: 0
+            impls_count: 0
+            fields_count: 1
+            field[0]:
+                name: x
+                ty: int32
+            methods_count: 0
+@parse*/

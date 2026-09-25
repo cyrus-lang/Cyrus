@@ -1,16 +1,6 @@
 // @parse
 
-fn example() {
-    if (flag) {
-        run();
-    }
-
-    if (a == 1) {
-        b();
-    } else {
-        c();
-    }
-
+fn else_if() {
     if (ready) {
         start();
     } else if (loading) {
@@ -26,62 +16,17 @@ fn example() {
     } else if (e) {
         f();
     }
-
-    if (outer) {
-        if (inner) {
-            deep();
-        } else {
-            shallow();
-        }
-    }
 }
 
 /*@parse
 ASTProgram
     Node[0]:
         ASTFuncDef
-            ident: example
+            ident: else_if
             params:
             body:
                 ASTBlock
                     stmt[0]:
-                        ASTIf
-                            condition:
-                                ASTExpr::Ident
-                                    ident: flag
-                            then_block:
-                                ASTBlock
-                                    stmt[0]:
-                                        ASTExpr::FuncCall
-                                            operand:
-                                                ASTExpr::Ident
-                                                    ident: run
-                    stmt[1]:
-                        ASTIf
-                            condition:
-                                ASTExpr::Infix
-                                    operator: ==
-                                    lhs:
-                                        ASTExpr::Ident
-                                            ident: a
-                                    rhs:
-                                        ASTExpr::Literal
-                                            value: 1
-                            then_block:
-                                ASTBlock
-                                    stmt[0]:
-                                        ASTExpr::FuncCall
-                                            operand:
-                                                ASTExpr::Ident
-                                                    ident: b
-                            else_block:
-                                ASTBlock
-                                    stmt[0]:
-                                        ASTExpr::FuncCall
-                                            operand:
-                                                ASTExpr::Ident
-                                                    ident: c
-                    stmt[2]:
                         ASTIf
                             condition:
                                 ASTExpr::Ident
@@ -112,7 +57,7 @@ ASTProgram
                                             operand:
                                                 ASTExpr::Ident
                                                     ident: stop
-                    stmt[3]:
+                    stmt[1]:
                         ASTIf
                             condition:
                                 ASTExpr::Ident
@@ -148,30 +93,4 @@ ASTProgram
                                                     operand:
                                                         ASTExpr::Ident
                                                             ident: f
-                    stmt[4]:
-                        ASTIf
-                            condition:
-                                ASTExpr::Ident
-                                    ident: outer
-                            then_block:
-                                ASTBlock
-                                    stmt[0]:
-                                        ASTIf
-                                            condition:
-                                                ASTExpr::Ident
-                                                    ident: inner
-                                            then_block:
-                                                ASTBlock
-                                                    stmt[0]:
-                                                        ASTExpr::FuncCall
-                                                            operand:
-                                                                ASTExpr::Ident
-                                                                    ident: deep
-                                            else_block:
-                                                ASTBlock
-                                                    stmt[0]:
-                                                        ASTExpr::FuncCall
-                                                            operand:
-                                                                ASTExpr::Ident
-                                                                    ident: shallow
 @parse*/

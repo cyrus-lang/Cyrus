@@ -1,0 +1,84 @@
+// @parse
+
+fn partial() {
+    for (var i = 0; i < 10;) {
+        i += 1;
+    }
+
+    for (var i = 0;) {
+        once();
+    }
+
+    for (; running;) {
+        tick();
+    }
+}
+
+/*@parse
+ASTProgram
+    Node[0]:
+        ASTFuncDef
+            ident: partial
+            params:
+            body:
+                ASTBlock
+                    stmt[0]:
+                        ASTFor
+                            initializer:
+                                ASTVar
+                                    ident: i
+                                    is_const: false
+                                    is_undef: false
+                                    rhs:
+                                        ASTExpr::Literal
+                                            value: 0
+                            condition:
+                                ASTExpr::Infix
+                                    operator: <
+                                    lhs:
+                                        ASTExpr::Ident
+                                            ident: i
+                                    rhs:
+                                        ASTExpr::Literal
+                                            value: 10
+                            body:
+                                ASTBlock
+                                    stmt[0]:
+                                        ASTExpr::Assign
+                                            kind: +=
+                                            lhs:
+                                                ASTExpr::Ident
+                                                    ident: i
+                                            rhs:
+                                                ASTExpr::Literal
+                                                    value: 1
+                    stmt[1]:
+                        ASTFor
+                            initializer:
+                                ASTVar
+                                    ident: i
+                                    is_const: false
+                                    is_undef: false
+                                    rhs:
+                                        ASTExpr::Literal
+                                            value: 0
+                            body:
+                                ASTBlock
+                                    stmt[0]:
+                                        ASTExpr::FuncCall
+                                            operand:
+                                                ASTExpr::Ident
+                                                    ident: once
+                    stmt[2]:
+                        ASTFor
+                            condition:
+                                ASTExpr::Ident
+                                    ident: running
+                            body:
+                                ASTBlock
+                                    stmt[0]:
+                                        ASTExpr::FuncCall
+                                            operand:
+                                                ASTExpr::Ident
+                                                    ident: tick
+@parse*/

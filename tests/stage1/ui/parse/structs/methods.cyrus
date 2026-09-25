@@ -1,0 +1,96 @@
+// @parse
+
+struct WithMethods {
+    count: uint64,
+
+    fn size(self: Self*) usize {
+        return 0;
+    }
+
+    pub fn reset(self: Self*) {
+    }
+}
+
+pub struct Combined align(4) <T> : Base {
+    pub item: T,
+
+    fn get(self: Self*) T {
+        return item;
+    }
+}
+
+/*@parse
+ASTProgram
+    Node[0]:
+        ASTStruct
+            ident: WithMethods
+            is_packed: false
+            generic_params_count: 0
+            impls_count: 0
+            fields_count: 1
+            field[0]:
+                name: count
+                ty: uint64
+            methods_count: 2
+            method[0]:
+                ASTFuncDef
+                    ident: size
+                    params:
+                        param[0]:
+                            self
+                            constness: const
+                            ty: *Self
+                    ret_type: usize
+                    body:
+                        ASTBlock
+                            stmt[0]:
+                                ASTReturn
+                                    argument:
+                                        ASTExpr::Literal
+                                            value: 0
+            method[1]:
+                ASTFuncDef
+                    ident: reset
+                    visibility: public
+                    params:
+                        param[0]:
+                            self
+                            constness: const
+                            ty: *Self
+                    body:
+                        ASTBlock
+    Node[1]:
+        ASTStruct
+            ident: Combined
+            is_packed: false
+            visibility: public
+            align: 4
+            generic_params_count: 1
+            generic_param[0]:
+                name: T
+            impls_count: 1
+            impl[0]:
+                ty: Base
+            fields_count: 1
+            field[0]:
+                name: item
+                visibility: public
+                ty: T
+            methods_count: 1
+            method[0]:
+                ASTFuncDef
+                    ident: get
+                    params:
+                        param[0]:
+                            self
+                            constness: const
+                            ty: *Self
+                    ret_type: T
+                    body:
+                        ASTBlock
+                            stmt[0]:
+                                ASTReturn
+                                    argument:
+                                        ASTExpr::Ident
+                                            ident: item
+@parse*/

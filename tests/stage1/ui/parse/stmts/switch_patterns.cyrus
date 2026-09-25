@@ -1,21 +1,6 @@
 // @parse
 
-fn example(x: int32, msg: Msg) {
-    switch (x) {
-    }
-
-    switch (x) {
-        case 0 => {
-            zero();
-        }
-        case 1 | 2 => small(x);
-        case 3...7 => range_low(x);
-        case 10..=20 => range_high(x);
-        else => {
-            other(x);
-        }
-    }
-
+fn patterns(msg: Msg) {
     switch (msg) {
         case .Quit => quit();
         case .Move { x, y } => move(x, y);
@@ -25,125 +10,21 @@ fn example(x: int32, msg: Msg) {
         case var mutable => use(mutable);
         case _ => fallback();
     }
-
-    switch (x) {
-        case 1 => switch (x) {
-            case 2 => deep();
-        }
-    }
 }
 
 /*@parse
 ASTProgram
     Node[0]:
         ASTFuncDef
-            ident: example
+            ident: patterns
             params:
                 param[0]:
-                    ident: x
-                    constness: const
-                    ty: int32
-                param[1]:
                     ident: msg
                     constness: const
                     ty: Msg
             body:
                 ASTBlock
                     stmt[0]:
-                        ASTSwitch
-                            operand:
-                                ASTExpr::Ident
-                                    ident: x
-                    stmt[1]:
-                        ASTSwitch
-                            operand:
-                                ASTExpr::Ident
-                                    ident: x
-                            case[0]:
-                                pattern[0]:
-                                    Expr
-                                        expr:
-                                            ASTExpr::Literal
-                                                value: 0
-                                body:
-                                    ASTBlock
-                                        stmt[0]:
-                                            ASTExpr::FuncCall
-                                                operand:
-                                                    ASTExpr::Ident
-                                                        ident: zero
-                            case[1]:
-                                pattern[0]:
-                                    Expr
-                                        expr:
-                                            ASTExpr::Literal
-                                                value: 1
-                                pattern[1]:
-                                    Expr
-                                        expr:
-                                            ASTExpr::Literal
-                                                value: 2
-                                body:
-                                    ASTBlock
-                                        stmt[0]:
-                                            ASTExpr::FuncCall
-                                                operand:
-                                                    ASTExpr::Ident
-                                                        ident: small
-                                                arg[0]:
-                                                    ASTExpr::Ident
-                                                        ident: x
-                            case[2]:
-                                pattern[0]:
-                                    Range
-                                        lower:
-                                            ASTExpr::Literal
-                                                value: 3
-                                        upper:
-                                            ASTExpr::Literal
-                                                value: 7
-                                        inclusive_upper: false
-                                body:
-                                    ASTBlock
-                                        stmt[0]:
-                                            ASTExpr::FuncCall
-                                                operand:
-                                                    ASTExpr::Ident
-                                                        ident: range_low
-                                                arg[0]:
-                                                    ASTExpr::Ident
-                                                        ident: x
-                            case[3]:
-                                pattern[0]:
-                                    Range
-                                        lower:
-                                            ASTExpr::Literal
-                                                value: 10
-                                        upper:
-                                            ASTExpr::Literal
-                                                value: 20
-                                        inclusive_upper: true
-                                body:
-                                    ASTBlock
-                                        stmt[0]:
-                                            ASTExpr::FuncCall
-                                                operand:
-                                                    ASTExpr::Ident
-                                                        ident: range_high
-                                                arg[0]:
-                                                    ASTExpr::Ident
-                                                        ident: x
-                            default_case:
-                                ASTBlock
-                                    stmt[0]:
-                                        ASTExpr::FuncCall
-                                            operand:
-                                                ASTExpr::Ident
-                                                    ident: other
-                                            arg[0]:
-                                                ASTExpr::Ident
-                                                    ident: x
-                    stmt[2]:
                         ASTSwitch
                             operand:
                                 ASTExpr::Ident
@@ -284,35 +165,4 @@ ASTProgram
                                                 operand:
                                                     ASTExpr::Ident
                                                         ident: fallback
-                    stmt[3]:
-                        ASTSwitch
-                            operand:
-                                ASTExpr::Ident
-                                    ident: x
-                            case[0]:
-                                pattern[0]:
-                                    Expr
-                                        expr:
-                                            ASTExpr::Literal
-                                                value: 1
-                                body:
-                                    ASTBlock
-                                        stmt[0]:
-                                            ASTSwitch
-                                                operand:
-                                                    ASTExpr::Ident
-                                                        ident: x
-                                                case[0]:
-                                                    pattern[0]:
-                                                        Expr
-                                                            expr:
-                                                                ASTExpr::Literal
-                                                                    value: 2
-                                                    body:
-                                                        ASTBlock
-                                                            stmt[0]:
-                                                                ASTExpr::FuncCall
-                                                                    operand:
-                                                                        ASTExpr::Ident
-                                                                            ident: deep
 @parse*/

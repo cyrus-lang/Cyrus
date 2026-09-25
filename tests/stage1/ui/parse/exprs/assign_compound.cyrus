@@ -1,6 +1,5 @@
 // @parse
 
-const a = (b = 1);
 const c = (b += 2);
 const d = (b -= 3);
 const e = (b *= 4);
@@ -15,21 +14,6 @@ const k = (b <<= 10);
 ASTProgram
     Node[0]:
         ASTGlobalVar
-            ident: a
-            is_const: true
-            is_undef: false
-            is_static: false
-            expr:
-                ASTExpr::Assign
-                    kind: =
-                    lhs:
-                        ASTExpr::Ident
-                            ident: b
-                    rhs:
-                        ASTExpr::Literal
-                            value: 1
-    Node[1]:
-        ASTGlobalVar
             ident: c
             is_const: true
             is_undef: false
@@ -43,7 +27,7 @@ ASTProgram
                     rhs:
                         ASTExpr::Literal
                             value: 2
-    Node[2]:
+    Node[1]:
         ASTGlobalVar
             ident: d
             is_const: true
@@ -58,7 +42,7 @@ ASTProgram
                     rhs:
                         ASTExpr::Literal
                             value: 3
-    Node[3]:
+    Node[2]:
         ASTGlobalVar
             ident: e
             is_const: true
@@ -73,7 +57,7 @@ ASTProgram
                     rhs:
                         ASTExpr::Literal
                             value: 4
-    Node[4]:
+    Node[3]:
         ASTGlobalVar
             ident: f
             is_const: true
@@ -88,7 +72,7 @@ ASTProgram
                     rhs:
                         ASTExpr::Literal
                             value: 5
-    Node[5]:
+    Node[4]:
         ASTGlobalVar
             ident: g
             is_const: true
@@ -103,7 +87,7 @@ ASTProgram
                     rhs:
                         ASTExpr::Literal
                             value: 6
-    Node[6]:
+    Node[5]:
         ASTGlobalVar
             ident: h
             is_const: true
@@ -118,7 +102,7 @@ ASTProgram
                     rhs:
                         ASTExpr::Literal
                             value: 7
-    Node[7]:
+    Node[6]:
         ASTGlobalVar
             ident: i
             is_const: true
@@ -133,7 +117,7 @@ ASTProgram
                     rhs:
                         ASTExpr::Literal
                             value: 8
-    Node[8]:
+    Node[7]:
         ASTGlobalVar
             ident: j
             is_const: true
@@ -148,7 +132,7 @@ ASTProgram
                     rhs:
                         ASTExpr::Literal
                             value: 9
-    Node[9]:
+    Node[8]:
         ASTGlobalVar
             ident: k
             is_const: true

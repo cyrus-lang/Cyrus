@@ -1,0 +1,53 @@
+// @parse
+
+union WithMethods {
+    x: int32,
+
+    fn size(self: Self*) usize {
+        return 0;
+    }
+
+    pub fn reset(self: Self*) {
+    }
+}
+
+/*@parse
+ASTProgram
+    Node[0]:
+        ASTUnion
+            ident: WithMethods
+            generic_params_count: 0
+            impls_count: 0
+            fields_count: 1
+            field[0]:
+                name: x
+                ty: int32
+            methods_count: 2
+            method[0]:
+                ASTFuncDef
+                    ident: size
+                    params:
+                        param[0]:
+                            self
+                            constness: const
+                            ty: *Self
+                    ret_type: usize
+                    body:
+                        ASTBlock
+                            stmt[0]:
+                                ASTReturn
+                                    argument:
+                                        ASTExpr::Literal
+                                            value: 0
+            method[1]:
+                ASTFuncDef
+                    ident: reset
+                    visibility: public
+                    params:
+                        param[0]:
+                            self
+                            constness: const
+                            ty: *Self
+                    body:
+                        ASTBlock
+@parse*/

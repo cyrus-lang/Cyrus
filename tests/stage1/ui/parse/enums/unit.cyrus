@@ -1,0 +1,63 @@
+// @parse
+
+enum Empty {
+}
+
+enum Unit {
+    A,
+    B,
+}
+
+enum Values {
+    A = 1,
+    B = 1 + 2,
+}
+
+/*@parse
+ASTProgram
+    Node[0]:
+        ASTEnum
+            ident: Empty
+            generic_params_count: 0
+            impls_count: 0
+            variants_count: 0
+            methods_count: 0
+    Node[1]:
+        ASTEnum
+            ident: Unit
+            generic_params_count: 0
+            impls_count: 0
+            variants_count: 2
+            variant[0]:
+                ASTEnumVariant::Unit
+                    ident: A
+            variant[1]:
+                ASTEnumVariant::Unit
+                    ident: B
+            methods_count: 0
+    Node[2]:
+        ASTEnum
+            ident: Values
+            generic_params_count: 0
+            impls_count: 0
+            variants_count: 2
+            variant[0]:
+                ASTEnumVariant::Valued
+                    ident: A
+                    value:
+                        ASTExpr::Literal
+                            value: 1
+            variant[1]:
+                ASTEnumVariant::Valued
+                    ident: B
+                    value:
+                        ASTExpr::Infix
+                            operator: +
+                            lhs:
+                                ASTExpr::Literal
+                                    value: 1
+                            rhs:
+                                ASTExpr::Literal
+                                    value: 2
+            methods_count: 0
+@parse*/

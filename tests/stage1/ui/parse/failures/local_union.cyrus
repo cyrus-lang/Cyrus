@@ -1,0 +1,13 @@
+// @parse
+
+fn f() {
+    union U { a: int32, b: float }
+}
+
+/*@parse
+tests/stage1/ui/parse/failures/local_union.cyrus:4:5: error: `union` cannot be defined inside a function body
+      |
+    4 ~     union U { a: int32, b: float }
+      |     ^^^^^
+      |
+@parse*/

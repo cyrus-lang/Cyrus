@@ -1,0 +1,43 @@
+// @parse
+
+fn plain(a: int32) { }
+fn var_param(var a: int32) { }
+fn mixed(var a: int32, b: int32) { }
+
+/*@parse
+ASTProgram
+    Node[0]:
+        ASTFuncDef
+            ident: plain
+            params:
+                param[0]:
+                    ident: a
+                    constness: const
+                    ty: int32
+            body:
+                ASTBlock
+    Node[1]:
+        ASTFuncDef
+            ident: var_param
+            params:
+                param[0]:
+                    ident: a
+                    constness: var
+                    ty: int32
+            body:
+                ASTBlock
+    Node[2]:
+        ASTFuncDef
+            ident: mixed
+            params:
+                param[0]:
+                    ident: a
+                    constness: var
+                    ty: int32
+                param[1]:
+                    ident: b
+                    constness: const
+                    ty: int32
+            body:
+                ASTBlock
+@parse*/

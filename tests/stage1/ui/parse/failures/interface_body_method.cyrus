@@ -1,0 +1,19 @@
+// @parse
+
+interface I {
+    fn m() { }
+}
+
+/*@parse
+tests/stage1/ui/parse/failures/interface_body_method.cyrus:5:1: error: expected method declaration
+      |
+    5 ~ }
+      | ^
+      |
+
+tests/stage1/ui/parse/failures/interface_body_method.cyrus:5:1: error: unexpected token `}`
+      |
+    5 ~ }
+      | ^
+      |
+@parse*/
