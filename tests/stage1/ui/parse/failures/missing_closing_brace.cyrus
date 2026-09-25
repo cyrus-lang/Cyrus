@@ -1,0 +1,11 @@
+// @parse
+
+fn f() {
+
+/*@parse
+tests/stage1/ui/parse/failures/missing_closing_brace.cyrus:3:8: error: expected `}` but got `EOF`
+      |
+    3 ~ fn f() {
+      |        ^
+      |
+@parse*/

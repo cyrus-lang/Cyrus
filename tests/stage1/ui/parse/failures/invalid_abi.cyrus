@@ -1,0 +1,11 @@
+// @parse
+
+extern "q" fn f();
+
+/*@parse
+tests/stage1/ui/parse/failures/invalid_abi.cyrus:3:8: error: invalid ABI `q`, expected `c` or `cyrus`
+      |
+    3 ~ extern "q" fn f();
+      |        ^^^
+      |
+@parse*/

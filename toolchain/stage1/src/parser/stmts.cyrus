@@ -389,6 +389,8 @@ pub struct ParserStmts {
             }
         }
 
+        const end = self->state->current_span();
+
         if (!self->state->expect_semicolon()) {
             return .None;
         }
@@ -397,7 +399,7 @@ pub struct ParserStmts {
             report_error(
                 self->allocator, 
                 self->state->dctx, 
-                start.merge(self->state->current_span()), 
+                start.merge(end), 
                 "expected initializer, `undefined`, or an explicit type specifier"
             );
             return .None;
@@ -407,7 +409,7 @@ pub struct ParserStmts {
             report_undefined_needs_type(
                 self->allocator,
                 self->state->dctx,
-                start.merge(self->state->current_span()),
+                start.merge(end),
                 ident.str.as_str_const()
             );
             return .None;
@@ -419,7 +421,7 @@ pub struct ParserStmts {
             rhs,
             is_const,
             is_undef,
-            span: start.merge(self->state->current_span()),
+            span: start.merge(end),
         };
         return .Some(self->program->create_node(.Var(node)));
     }
@@ -563,10 +565,21 @@ pub struct ParserStmts {
                 constness = .Var;
             }
 
-            switch (self->state->expect_ident()) case .Some(ident) else {
-                ast::free_param_list(&list);
-                return .None;
+            const ident_opt = self->state->expect_ident();
+
+            // REVIEW
+            // Prevent cascading failure
+            if (ident_opt.is_none()) {
+                if (self->state->is(.EOF)) {
+                    ast::free_param_list(&list);
+                    return .None;
+                }
+
+                self->state->next();
+                continue;
             }
+
+            const ident = ident_opt.unwrap();
 
             var ty: Option<ast::ASTType> = .None;
 
@@ -1477,7 +1490,8 @@ pub struct ParserStmts {
                         value.as_str_const()
                     );
                     abi.free();
-                    return .None;
+                    self->state->next();
+                    return .Some(.C); // Fallback
                 }
             }
         }
@@ -1488,7 +1502,8 @@ pub struct ParserStmts {
             start, 
             "expected string literal"
         );
-        return .None;
+
+        return .Some(.C); // Fallback
     }
 
     /// Grammar: import PATH (:: PATH)* ;
@@ -2362,7 +2377,7 @@ pub struct ParserStmts {
 
     fn parse_integer_value(self: Self*) Option<usize> {
         var exprs = ParserExprs.new(self->program, self->state);
-        return exprs.parse_integer_value();
+        return exprs.parse_unsuffixed_integer_value();
     }
 
     // Grammar: type IDENT <GenericParams>? = Type ;
