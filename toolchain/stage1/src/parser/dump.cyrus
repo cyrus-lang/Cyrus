@@ -25,19 +25,22 @@ pub struct ASTDump {
         self->writer.writeln("ASTProgram");
         self->indent += 1;
 
-        const statements = self->program.statements.unwrap();
+        switch (self->program.statements) {
+            case .Some(statements) => {
+                for (var i: usize = 0; i < statements.len; i += 1) {
+                    const node_id = self->program.children.get_owned(statements.start + i).unwrap();
+                    const node = self->program.nodes.get_const(node_id).unwrap();
 
-        for (var i: usize = 0; i < statements.len; i += 1) {
-            const node_id = self->program.children.get_owned(statements.start + i).unwrap();
-            const node = self->program.nodes.get_const(node_id).unwrap();
-            
-            self->write_indent();
-            self->writer.write("Node[");
-            format_usize(self->writer, i);
-            self->writer.writeln("]:");
-            self->indent += 1;
-            self->dump_node(node);
-            self->indent -= 1;
+                    self->write_indent();
+                    self->writer.write("Node[");
+                    format_usize(self->writer, i);
+                    self->writer.writeln("]:");
+                    self->indent += 1;
+                    self->dump_node(node);
+                    self->indent -= 1;
+                }
+            }
+            case .None => {}
         }
 
         self->indent -= 1;
@@ -77,6 +80,35 @@ pub struct ASTDump {
 
     fn dump_node_id(self: Self*, name: const uint8*, id: ast::NodeId) {
         self->dump_usize(name, id);
+    }
+
+    fn dump_subtree(self: Self*, name: const uint8*, id: ast::NodeId) {
+        self->write_indent();
+        self->writer.write(name);
+        self->writer.writeln(":");
+        self->indent += 1;
+        const node = self->program.nodes.get_const(id).unwrap();
+        self->dump_node(node);
+        self->indent -= 1;
+    }
+
+    fn dump_subtree_indexed(self: Self*, name: const uint8*, index: usize, id: ast::NodeId) {
+        self->write_indent();
+        self->writer.write(name);
+        self->writer.write("[");
+        format_usize(self->writer, index);
+        self->writer.writeln("]:");
+        self->indent += 1;
+        const node = self->program.nodes.get_const(id).unwrap();
+        self->dump_node(node);
+        self->indent -= 1;
+    }
+
+    fn dump_node_list(self: Self*, name: const uint8*, list: const Vec<ast::NodeId>*) {
+        for (var i: usize = 0; i < list->len(); i += 1) {
+            const id = list->get_const(i).unwrap();
+            self->dump_subtree_indexed(name, i, *id);
+        }
     }
 
     fn dump_node(self: Self*, node: const ast::ASTNode*) {
@@ -132,7 +164,7 @@ pub struct ASTDump {
             case .Some(ty) => self->dump_type("ty", ty);
         }
         switch (n->rhs) {
-            case .Some(rhs_id) => self->dump_node_id("rhs", rhs_id);
+            case .Some(rhs_id) => self->dump_subtree("rhs", rhs_id);
         }
         self->indent -= 1;
     }
@@ -149,8 +181,7 @@ pub struct ASTDump {
             case .Some(ty) => self->dump_type("ty", ty);
         }
         switch (n->expr) {
-            case .Some(expr_id) => self->dump_node_id("expr", expr_id);
-            case .None => {}
+            case .Some(expr_id) => self->dump_subtree("expr", expr_id);
         }
         self->indent -= 1;
     }
@@ -160,11 +191,11 @@ pub struct ASTDump {
         self->writer.writeln("ASTFuncDef");
         self->indent += 1;
         self->dump_ident("ident", &n->ident);
-        self->dump_node_id("body", n->body);
+        self->dump_func_params(&n->params);
         switch (n->ret_type) {
-            case .Some(rt) => self->dump_node_id("ret_type", rt);
-            case .None => {}
+            case .Some(ty) => self->dump_type_node("ret_type", ty);
         }
+        self->dump_subtree("body", n->body);
         self->indent -= 1;
     }
 
@@ -173,10 +204,61 @@ pub struct ASTDump {
         self->writer.writeln("ASTFuncDecl");
         self->indent += 1;
         self->dump_ident("ident", &n->ident);
+        self->dump_func_params(&n->params);
         switch (n->ret_type) {
-            case .Some(rt) => self->dump_node_id("ret_type", rt);
-            case .None => {}
+            case .Some(ty) => self->dump_type_node("ret_type", ty);
         }
+        self->indent -= 1;
+    }
+
+    fn dump_func_params(self: Self*, params: const ast::ASTFuncParams*) {
+        self->write_indent();
+        self->writer.writeln("params:");
+        self->indent += 1;
+
+        for (var i: usize = 0; i < params->list.len(); i += 1) {
+            const kind = params->list.get_const(i).unwrap();
+
+            self->write_indent();
+            self->writer.write("param[");
+            format_usize(self->writer, i);
+            self->writer.writeln("]:");
+            self->indent += 1;
+
+            switch (*kind) {
+                case .FuncParam(var param) => {
+                    self->dump_ident("ident", &param.ident);
+                    self->dump_str("constness", param.constness.to_str());
+
+                    switch (param.ty) {
+                        case .Some(ty) => self->dump_type("ty", ty);
+                    }
+                }
+                case .SelfModifier(var m) => {
+                    self->write_indent();
+                    self->writer.writeln("self");
+                    self->dump_str("constness", m.constness.to_str());
+                    self->dump_type_node("ty", m.ty);
+                }
+            }
+
+            self->indent -= 1;
+        }
+
+        switch (params->variadic) {
+            case .Some(variadic) => {
+                switch (variadic) {
+                    case .UntypedCStyle => {
+                        self->dump_str("variadic", "c_style");
+                    }
+                    case .Typed(name, ty) => {
+                        self->dump_ident("variadic", &name);
+                        self->dump_type_node("type", ty);
+                    }
+                }
+            }
+        }
+
         self->indent -= 1;
     }
 
@@ -217,7 +299,12 @@ pub struct ASTDump {
         self->write_indent();
         self->writer.writeln("ASTBlock");
         self->indent += 1;
-        self->dump_usize("stmts_count", n->stmts.len);
+
+        for (var i: usize = 0; i < n->stmts.len; i += 1) {
+            const node_id = self->program.children.get_owned(n->stmts.start + i).unwrap();
+            self->dump_subtree_indexed("stmt", i, node_id);
+        }
+
         self->indent -= 1;
     }
 
@@ -268,8 +355,7 @@ pub struct ASTDump {
         self->writer.writeln("ASTReturn");
         self->indent += 1;
         switch (n->argument) {
-            case .Some(arg) => self->dump_node_id("argument", arg);
-            case .None => {}
+            case .Some(arg) => self->dump_subtree("argument", arg);
         }
         self->indent -= 1;
     }
@@ -383,14 +469,21 @@ pub struct ASTDump {
     fn dump_expr_literal(self: Self*, token: const Token*) {
         self->write_indent();
         self->writer.writeln("ASTExpr::Literal");
+        self->indent += 1;
+        self->write_indent();
+        self->writer.write("value: ");
+        token->format(self->writer);
+        self->writer.write_char('\n');
+        self->indent -= 1;
     }
 
     fn dump_expr_infix(self: Self*, n: const ast::ASTInfixExpr*) {
         self->write_indent();
         self->writer.writeln("ASTExpr::Infix");
         self->indent += 1;
-        self->dump_node_id("lhs", n->lhs);
-        self->dump_node_id("rhs", n->rhs);
+        self->dump_str("op", n->op.to_str());
+        self->dump_subtree("lhs", n->lhs);
+        self->dump_subtree("rhs", n->rhs);
         self->indent -= 1;
     }
 
@@ -398,7 +491,8 @@ pub struct ASTDump {
         self->write_indent();
         self->writer.writeln("ASTExpr::Prefix");
         self->indent += 1;
-        self->dump_node_id("operand", n->operand);
+        self->dump_str("op", n->op.to_str());
+        self->dump_subtree("operand", n->operand);
         self->indent -= 1;
     }
 
@@ -406,8 +500,9 @@ pub struct ASTDump {
         self->write_indent();
         self->writer.writeln("ASTExpr::Assign");
         self->indent += 1;
-        self->dump_node_id("lhs", n->lhs);
-        self->dump_node_id("rhs", n->rhs);
+        self->dump_str("kind", n->kind.to_str());
+        self->dump_subtree("lhs", n->lhs);
+        self->dump_subtree("rhs", n->rhs);
         self->indent -= 1;
     }
 
@@ -415,8 +510,8 @@ pub struct ASTDump {
         self->write_indent();
         self->writer.writeln("ASTExpr::FuncCall");
         self->indent += 1;
-        self->dump_node_id("operand", n->operand);
-        self->dump_usize("args_count", n->args.len());
+        self->dump_subtree("operand", n->operand);
+        self->dump_node_list("arg", &n->args);
         self->indent -= 1;
     }
 
@@ -424,7 +519,7 @@ pub struct ASTDump {
         self->write_indent();
         self->writer.writeln("ASTExpr::FieldAccess");
         self->indent += 1;
-        self->dump_node_id("operand", n->operand);
+        self->dump_subtree("operand", n->operand);
         self->dump_ident("field_name", &n->field_name);
         self->dump_bool("is_thin_arrow", n->is_thin_arrow);
         self->indent -= 1;
@@ -434,9 +529,9 @@ pub struct ASTDump {
         self->write_indent();
         self->writer.writeln("ASTExpr::MethodCall");
         self->indent += 1;
-        self->dump_node_id("operand", n->operand);
+        self->dump_subtree("operand", n->operand);
         self->dump_ident("method_name", &n->method_name);
-        self->dump_usize("args_count", n->args.len());
+        self->dump_node_list("arg", &n->args);
         self->dump_bool("is_thin_arrow", n->is_thin_arrow);
         self->indent -= 1;
     }
@@ -445,7 +540,7 @@ pub struct ASTDump {
         self->write_indent();
         self->writer.writeln("ASTExpr::StructInit");
         self->indent += 1;
-        self->dump_node_id("operand", n->operand);
+        self->dump_subtree("operand", n->operand);
         self->dump_usize("field_inits_count", n->field_inits.len());
         self->indent -= 1;
     }
@@ -454,8 +549,8 @@ pub struct ASTDump {
         self->write_indent();
         self->writer.writeln("ASTExpr::Array");
         self->indent += 1;
-        self->dump_node_id("data_type", n->data_type);
-        self->dump_usize("elements_count", n->elements.len());
+        self->dump_subtree("data_type", n->data_type);
+        self->dump_node_list("element", &n->elements);
         self->indent -= 1;
     }
 
@@ -463,7 +558,7 @@ pub struct ASTDump {
         self->write_indent();
         self->writer.writeln("ASTExpr::UntypedArray");
         self->indent += 1;
-        self->dump_usize("elements_count", n->elements.len());
+        self->dump_node_list("element", &n->elements);
         self->indent -= 1;
     }
 
@@ -471,8 +566,8 @@ pub struct ASTDump {
         self->write_indent();
         self->writer.writeln("ASTExpr::ArrayIndex");
         self->indent += 1;
-        self->dump_node_id("operand", n->operand);
-        self->dump_node_id("index", n->index);
+        self->dump_subtree("operand", n->operand);
+        self->dump_subtree("index", n->index);
         self->indent -= 1;
     }
 
@@ -480,7 +575,7 @@ pub struct ASTDump {
         self->write_indent();
         self->writer.writeln("ASTExpr::AddrOf");
         self->indent += 1;
-        self->dump_node_id("expr", n->expr);
+        self->dump_subtree("expr", n->expr);
         self->indent -= 1;
     }
 
@@ -488,7 +583,7 @@ pub struct ASTDump {
         self->write_indent();
         self->writer.writeln("ASTExpr::Deref");
         self->indent += 1;
-        self->dump_node_id("expr", n->expr);
+        self->dump_subtree("expr", n->expr);
         self->indent -= 1;
     }
 
@@ -496,7 +591,7 @@ pub struct ASTDump {
         self->write_indent();
         self->writer.writeln("ASTExpr::Tuple");
         self->indent += 1;
-        self->dump_usize("elements_count", n->elements.len());
+        self->dump_node_list("element", &n->elements);
         self->indent -= 1;
     }
 
@@ -504,7 +599,7 @@ pub struct ASTDump {
         self->write_indent();
         self->writer.writeln("ASTExpr::TupleAccess");
         self->indent += 1;
-        self->dump_node_id("operand", n->operand);
+        self->dump_subtree("operand", n->operand);
         self->dump_usize("index", n->index);
         self->indent -= 1;
     }
@@ -513,7 +608,7 @@ pub struct ASTDump {
         self->write_indent();
         self->writer.writeln("ASTExpr::Dynamic");
         self->indent += 1;
-        self->dump_node_id("operand", n->operand);
+        self->dump_subtree("operand", n->operand);
         self->indent -= 1;
     }
 
@@ -521,8 +616,8 @@ pub struct ASTDump {
         self->write_indent();
         self->writer.writeln("ASTExpr::Lambda");
         self->indent += 1;
-        self->dump_node_id("body", n->body);
-        self->dump_node_id("ret_type", n->ret_type);
+        self->dump_subtree("body", n->body);
+        self->dump_subtree("ret_type", n->ret_type);
         self->indent -= 1;
     }
 
@@ -535,7 +630,6 @@ pub struct ASTDump {
 
     fn write_type(self: Self*, n: const ast::ASTType*) {
         switch (*n) {
-            case .GenericInst(id) => self->dump_type_ref("ASTType::GenericInst", "base", id);
             case .FuncType(id) => self->dump_type_ref("ASTType::FuncType", "func", id);
             case .UnnamedStruct(strct) => self->dump_unnamed_struct_type(&strct);
             case .ModuleImport(module) => self->dump_module_import_type(&module);
@@ -543,6 +637,7 @@ pub struct ASTDump {
             case .Builtin(builtin) => self->dump_builtin_type(&builtin);
             case .UnnamedEnum(en) => self->dump_unnamed_enum_type(&en);
             case .SelfType(self_type) => self->writer.writeln("Self");
+            case .GenericInst(inst) => self->dump_generic_inst(&inst);
             case .Ident(ident) => self->write_ident_line(&ident);
             case .Pointer(elem) => self->dump_type_pointer(elem);
             case .Tuple(tuple) => self->dump_tuple_type(&tuple);
@@ -575,6 +670,28 @@ pub struct ASTDump {
         self->writer.writeln(header);
         self->indent += 1;
         self->dump_type_node(name, id);
+        self->indent -= 1;
+    }
+
+    fn dump_generic_inst(self: Self*, n: const ast::ASTGenericInst*) {
+        self->writer.writeln("ASTType::GenericInst");
+        self->indent += 1;
+        self->dump_type_node("base", n->base);
+
+        for (var i: usize = 0; i < n->type_args.list.len(); i += 1) {
+            const arg = n->type_args.list.get_const(i).unwrap();
+
+            self->write_indent();
+            self->writer.write("type_arg[");
+            format_usize(self->writer, i);
+            self->writer.write("]: ");
+
+            switch (*arg) {
+                case .Type(id) => self->write_type_node(id);
+                case .Infer => self->writer.writeln("_");
+            }
+        }
+
         self->indent -= 1;
     }
 
@@ -615,7 +732,7 @@ pub struct ASTDump {
         self->indent += 1;
 
         switch (n->size) {
-            case .Fixed(capacity) => self->dump_node_id("size", capacity);
+            case .Fixed(capacity) => self->dump_subtree("size", capacity);
             case .Dynamic => self->dump_str("size", "dynamic");
         }
 

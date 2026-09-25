@@ -48,7 +48,15 @@ pub struct ParserStmts {
     [[inline]]
     pub fn parse_toplevels(self: Self*) {
         while (!self->state->is(.EOF)) {
+            const before = self->state->pos();
+            
             self->parse_toplevel();
+
+            // Error recovery must always advance, 
+            // otherwise we spin forever!
+            if (self->state->pos() == before) {
+                self->state->next();
+            }
         }
     }
 
@@ -98,8 +106,23 @@ pub struct ParserStmts {
             case .Defer => self->parse_defer();
             case .For => self->parse_for();
             case .If => self->parse_if();
-            else => self->parse_expr();
+            else => self->parse_expr_stmt();
         }
+    }
+
+    /// Grammar: Expr ;
+    fn parse_expr_stmt(self: Self*) {
+        switch (self->parse_expr()) case .Some(expr) else {
+            self->state->sync();
+            return;
+        }
+
+        if (!self->state->expect_semicolon()) {
+            self->state->sync();
+            return;
+        }
+
+        self->state->pending->push(expr);
     }
 
     /// Grammar: static? (const | var) IDENT (: Type)? (= Expr)? ;
@@ -221,27 +244,307 @@ pub struct ParserStmts {
         return true;
     }
 
-    /// Grammar: (const | var) IDENT (: Type)? (= Expr)? ;
+    /// Grammar: (const | var) IDENT (: Type)? (= Expr | undefined)? ;
     pub fn parse_var(self: Self*) {
-        @todo();
+        const start = self->state->current_span();
+
+        var is_const = false;
+
+        if (self->state->is(.Const)) {
+            self->state->next();
+            is_const = true;
+        } else {
+            if (!self->state->expect(.Var)) {
+                self->state->sync();
+                return;
+            }
+        }
+
+        switch (self->state->expect_ident()) case .Some(ident) else {
+            self->state->sync();
+            return;
+        }
+
+        // Optional type annotation
+        var ty: Option<ast::ASTType> = .None;
+
+        if (self->state->is(.Colon)) {
+            self->state->next();
+
+            switch (self->parse_type()) case .Some(explicit_type) else {
+                self->state->sync();
+                return;
+            }
+
+            ty = .Some(explicit_type);
+        }
+
+        // Optional initializer
+        var rhs: Option<ast::NodeId> = .None;
+        var is_undef = false;
+
+        if (self->state->is(.Assign)) {
+            self->state->next();
+
+            if (self->state->is_ident_str("undefined")) {
+                self->state->next();
+                is_undef = true;
+            } else {
+                switch (self->parse_expr()) case .Some(value) else {
+                    self->state->sync();
+                    return;
+                }
+
+                rhs = .Some(value);
+            }
+        }
+
+        if (!self->state->expect_semicolon()) {
+            self->state->sync();
+            return;
+        }
+
+        if (rhs.is_none() && ty.is_none() && !is_undef) {
+            self->state->dctx->report(Diag.new(
+                self->allocator,
+                .Error,
+                "expected initializer or undefined, or an explicit type specifier",
+                start.merge(self->state->current_span())
+            ));
+            self->state->sync();
+            return;
+        }
+
+        const node = ast::ASTVar {
+            ident,
+            ty,
+            rhs,
+            is_const,
+            is_undef,
+            span: start.merge(self->state->current_span()),
+        };
+        self->state->pending->push(self->program->create_node(.Var(node)));
     }
 
     // Grammar: fn IDENT <GenericParams>? FuncParams (Type)? (Block | ;)
     pub fn parse_func(self: Self*, is_pub: bool, is_extern: bool) bool {
-        @todo();
+        const start_span = self->state->current_span();
+        self->state->next(); // consume `fn`
+
+        switch (self->state->expect_ident()) case .Some(ident) else {
+            self->state->sync();
+            return false;
+        }
+
+        if (self->state->is(.LessThan)) {
+            @todo();
+        }
+
+        switch (self->parse_func_params()) case .Some(var params) else {
+            self->state->sync();
+            return false;
+        }
+
+        var ret_type: Option<ast::NodeId> = .None;
+
+        if (!self->state->is(.LeftBrace) && !self->state->is(.Semicolon)) {
+            switch (self->parse_type()) case .Some(ty) else {
+                ast::free_func_params(&params);
+                self->state->sync();
+                return false;
+            }
+
+            ret_type = .Some(self->program->create_node(.Type(ty)));
+        }
+
+        var modifiers = make_func_modifiers(self->allocator, is_pub, is_extern);
+
+        // Function declaration
+        if (self->state->is(.Semicolon)) {
+            const end_span = self->state->current_span();
+            self->state->next();
+
+            const node = ast::ASTFuncDecl {
+                ident,
+                generic_params: Vec.new(self->state->allocator),
+                params,
+                ret_type,
+                modifiers,
+                span: start_span.merge(end_span),
+            };
+            self->state->pending->push(self->program->create_node(.FuncDecl(node)));
+            return true;
+        }
+
+        switch (self->parse_block_node()) case .Some(body) else {
+            ast::free_func_params(&params);
+            ast::free_modifiers(&modifiers);
+            self->state->sync();
+            return false;
+        }
+
+        const node = ast::ASTFuncDef {
+            ident,
+            params,
+            body,
+            ret_type,
+            modifiers,
+            generic_params: Vec.new(self->state->allocator),
+            span: start_span.merge(self->state->current_span()),
+        };
+        self->state->pending->push(self->program->create_node(.FuncDef(node)));
+        return true;
     }
 
-    pub fn parse_func_params(self: Self*) ast::ASTFuncParams {
-        @todo();
+    // Grammar: ( (var | const)? IDENT (: Type)? (, ...)* ...? )
+    pub fn parse_func_params(self: Self*) Option<ast::ASTFuncParams> {
+        if (!self->state->expect(.LeftParen)) {
+            return .None;
+        }
+
+        var list: Vec<ast::ASTFuncParamKind> = Vec.new(self->state->allocator);
+        var variadic: Option<ast::ASTFuncVariadicParam> = .None;
+
+        while (!self->state->is(.RightParen)) {
+            // C style varargs
+            if (self->state->is(.TripleDot)) {
+                self->state->next();
+                variadic = .Some(.UntypedCStyle);
+                break;
+            }
+
+            const param_span = self->state->current_span();
+
+            var constness = ast::ASTConstness.Var;
+
+            if (self->state->is(.Var)) {
+                self->state->next();
+            } else if (self->state->is(.Const)) {
+                self->state->next();
+                constness = .Const;
+            }
+
+            switch (self->state->expect_ident()) case .Some(ident) else {
+                ast::free_param_list(&list);
+                return .None;
+            }
+
+            var ty: Option<ast::ASTType> = .None;
+
+            if (self->state->is(.Colon)) {
+                self->state->next();
+
+                // Typed varargs
+                if (self->state->is(.TripleDot)) {
+                    self->state->next();
+
+                    switch (self->parse_type()) case .Some(variadic_type) else {
+                        ast::free_param_list(&list);
+                        return .None;
+                    }
+
+                    const type_id = self->program->create_node(.Type(variadic_type));
+                    variadic = .Some(.Typed(ident, type_id));
+                    break;
+                }
+
+                switch (self->parse_type()) case .Some(param_type) else {
+                    ast::free_param_list(&list);
+                    return .None;
+                }
+
+                ty = .Some(param_type);
+            }
+
+            const span = param_span.merge(self->state->current_span());
+
+            if (ident.str.as_str_const() == "self") {
+                switch (ty) {
+                    case .Some(self_type) => {
+                        const type_id = self->program->create_node(.Type(self_type));
+                        list.push(.SelfModifier(ast::ASTSelfModifier {
+                            ty: type_id,
+                            constness,
+                            span,
+                        }));
+                    }
+                    case .None => {
+                        self->state->dctx->report(Diag.new(
+                            self->allocator,
+                            .Error,
+                            "self parameter must have an explicit type",
+                            span
+                        ));
+                        ast::free_param_list(&list);
+                        return .None;
+                    }
+                }
+            } else {
+                list.push(.FuncParam(ast::ASTFuncParam {
+                    ident,
+                    ty,
+                    constness,
+                    span,
+                }));
+            }
+
+            if (self->state->is(.Comma)) {
+                self->state->next();
+                continue;
+            }
+
+            break;
+        }
+
+        if (!self->state->expect(.RightParen)) {
+            ast::free_param_list(&list);
+            return .None;
+        }
+
+        return .Some(ast::ASTFuncParams { list, variadic });
     }
 
     [[inline]]
     pub fn parse_block(self: Self*) {
-        self->parse_block_node();
+        switch (self->parse_block_node()) case .Some(block) else {
+            self->state->sync();
+            return;
+        }
+
+        self->state->pending->push(block);
     }
 
     pub fn parse_block_node(self: Self*) Option<ast::NodeId> {
-        @todo();
+        const start = self->state->current_span();
+
+        if (!self->state->expect(.LeftBrace)) {
+            return .None;
+        }
+
+        const mark = self->state->pending->len();
+
+        while (!self->state->is(.RightBrace) && !self->state->is(.EOF)) {
+            const before = self->state->pos();
+
+            self->parse_stmt();
+
+            // Error recovery must always advance, 
+            // otherwise we spin forever.
+            if (self->state->pos() == before) {
+                self->state->next();
+            }
+        }
+
+        if (!self->state->expect(.RightBrace)) {
+            return .None;
+        }
+
+        const stmts = self->program->commit_pending(self->state->pending, mark);
+        const node = ast::ASTBlock {
+            stmts,
+            span: start.merge(self->state->current_span()),
+        };
+        return .Some(self->program->create_node(.Block(node)));
     }
 
     // Grammar: if (Expr) Block (else if (Expr) Block)* (else Block)?
@@ -249,8 +552,32 @@ pub struct ParserStmts {
         @todo();
     }
 
+    // Grammar: return Expr? ;
     pub fn parse_return(self: Self*) {
-        @todo();
+        const start = self->state->current_span();
+        self->state->next();
+
+        var argument: Option<ast::NodeId> = .None;
+
+        if (!self->state->is(.Semicolon)) {
+            switch (self->parse_expr()) case .Some(value) else {
+                self->state->sync();
+                return;
+            }
+
+            argument = .Some(value);
+        }
+
+        if (!self->state->expect_semicolon()) {
+            self->state->sync();
+            return;
+        }
+
+        const node = ast::ASTReturn {
+            argument,
+            span: start.merge(self->state->current_span()),
+        };
+        self->state->pending->push(self->program->create_node(.Return(node)));
     }
 
     pub fn parse_while(self: Self*) {
@@ -264,17 +591,29 @@ pub struct ParserStmts {
 
     /// Grammar: break
     pub fn parse_break(self: Self*) {
-        const span = self->state->current_span();
-        self->state->next(); // consume break
-        const node = ast::ASTBreak { span };
+        const start = self->state->current_span();
+        self->state->next();
+
+        if (!self->state->expect_semicolon()) {
+            self->state->sync();
+            return;
+        }
+
+        const node = ast::ASTBreak { span: start.merge(self->state->current_span()) };
         self->state->pending->push(self->program->create_node(.Break(node)));
     }
 
     /// Grammar: continue
     pub fn parse_continue(self: Self*) {
-        const span = self->state->current_span();
-        self->state->next(); // consume continue
-        const node = ast::ASTContinue { span };
+        const start = self->state->current_span();
+        self->state->next();
+
+        if (!self->state->expect_semicolon()) {
+            self->state->sync();
+            return;
+        }
+
+        const node = ast::ASTContinue { span: start.merge(self->state->current_span()) };
         self->state->pending->push(self->program->create_node(.Continue(node)));
     }
 
@@ -334,4 +673,30 @@ pub struct ParserStmts {
     pub fn parse_generic_params(self: Self*) ast::ASTGenericParams {
         @todo();
     }
+}
+
+/// Builds the default set of function modifiers for a parsed function.
+fn make_func_modifiers(allocator: Allocator, is_pub: bool, is_extern: bool) ast::ASTFuncModifiers {
+    var vis = ast::ASTVisibility.Private;
+    if (is_pub) {
+        vis = .Public;
+    }
+
+    var extrn: Option<ast::ASTExtern> = .None;
+    if (is_extern) {
+        extrn = .Some(.C);
+    }
+
+    return ast::ASTFuncModifiers {
+        vis,
+        link_name: .None,
+        extrn,
+        inline: .None,
+        prologue: .None,
+        callconv: .None,
+        optional_flags: Vec.new(allocator),
+        section: .None,
+        link_once: false,
+        weak: false,
+    };
 }

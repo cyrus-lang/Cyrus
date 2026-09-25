@@ -8,8 +8,8 @@ ENV PATH=$CARGO_HOME/bin:$PATH
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
         build-essential \
-        llvm-18 llvm-18-dev clang \
-        zlib1g zlib1g-dev libpolly-18-dev \
+        llvm-22 llvm-22-dev clang \
+        zlib1g zlib1g-dev libpolly-22-dev \
         curl git unzip zip ca-certificates python3 && \
     rm -rf /var/lib/apt/lists/*
 
