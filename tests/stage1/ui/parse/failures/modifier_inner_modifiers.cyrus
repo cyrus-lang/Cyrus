@@ -1,0 +1,13 @@
+// @parse
+
+pub {
+    pub fn f() {}
+}
+
+/*@parse
+tests/stage1/ui/parse/failures/modifier_inner_modifiers.cyrus:4:5: error: group modifiers cannot be nested
+      |
+    4 ~     pub fn f() {}
+      |     ^^^
+      |
+@parse*/

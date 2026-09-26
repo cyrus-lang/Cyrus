@@ -1,0 +1,16 @@
+// @parse
+
+struct WithMethods {
+    x: int32,
+
+    pub [[cold]]
+    fn n(self: Self*) {}
+}
+
+/*@parse
+tests/stage1/ui/parse/failures/attr_after_modifier_method.cyrus:6:9: error: attributes must precede modifiers
+      |
+    6 ~     pub [[cold]]
+      |         ^^^^^^^^
+      |
+@parse*/

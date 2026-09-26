@@ -1,0 +1,57 @@
+// @parse
+
+extern "c" struct S {
+    a: int32,
+}
+
+extern "c" enum E {
+    A,
+}
+
+extern "c" union U {
+    a: int32,
+}
+
+extern "c" interface I {}
+
+extern "c" mod m {}
+
+extern "c" type T = int32;
+
+/*@parse
+tests/stage1/ui/parse/failures/modifier_extern_decl.cyrus:3:12: error: `extern` is not allowed on `struct` declarations
+      |
+    3 ~ extern "c" struct S {
+      |            ^^^^^^
+      |
+
+tests/stage1/ui/parse/failures/modifier_extern_decl.cyrus:7:12: error: `extern` is not allowed on `enum` declarations
+      |
+    7 ~ extern "c" enum E {
+      |            ^^^^
+      |
+
+tests/stage1/ui/parse/failures/modifier_extern_decl.cyrus:11:12: error: `extern` is not allowed on `union` declarations
+      |
+   11 ~ extern "c" union U {
+      |            ^^^^^
+      |
+
+tests/stage1/ui/parse/failures/modifier_extern_decl.cyrus:15:12: error: `extern` is not allowed on `interface` declarations
+      |
+   15 ~ extern "c" interface I {}
+      |            ^^^^^^^^^
+      |
+
+tests/stage1/ui/parse/failures/modifier_extern_decl.cyrus:17:12: error: `extern` is not allowed on `module` declarations
+      |
+   17 ~ extern "c" mod m {}
+      |            ^^^
+      |
+
+tests/stage1/ui/parse/failures/modifier_extern_decl.cyrus:19:12: error: `extern` is not allowed on `type alias` declarations
+      |
+   19 ~ extern "c" type T = int32;
+      |            ^^^^
+      |
+@parse*/

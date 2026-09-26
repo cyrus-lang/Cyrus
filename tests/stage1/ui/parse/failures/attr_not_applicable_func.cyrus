@@ -1,0 +1,12 @@
+// @parse
+
+[[thread_local]]
+fn f();
+
+/*@parse
+tests/stage1/ui/parse/failures/attr_not_applicable_func.cyrus:3:1: error: attribute `thread_local` cannot be applied to this statement
+      |
+    3 ~ [[thread_local]]
+      | ^^^^^^^^^^^^^^^^
+      |
+@parse*/

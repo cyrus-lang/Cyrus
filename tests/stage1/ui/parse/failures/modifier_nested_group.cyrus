@@ -1,0 +1,15 @@
+// @parse
+
+{
+    {
+        fn deep() {}
+    }
+}
+
+/*@parse
+tests/stage1/ui/parse/failures/modifier_nested_group.cyrus:4:5: error: block statements are not allowed at top level
+      |
+    4 ~     {
+      |     ^
+      |
+@parse*/

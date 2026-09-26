@@ -1,0 +1,13 @@
+// @parse
+
+pub @debug() {
+    const y = 1;
+}
+
+/*@parse
+tests/stage1/ui/parse/failures/modifier_on_builtin.cyrus:3:5: error: unexpected token `@`
+      |
+    3 ~ pub @debug() {
+      |     ^
+      |
+@parse*/

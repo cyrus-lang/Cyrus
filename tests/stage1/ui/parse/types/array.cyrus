@@ -1,0 +1,62 @@
+// @parse
+
+static var a: int32[4];
+static var b: int32[];
+static var c: int32[2][3];
+static var d: Foo[4 * 2];
+
+/*@parse
+ASTProgram
+    Node[0]:
+        ASTGlobalVar
+            ident: a
+            is_const: false
+            is_undef: false
+            is_static: true
+            ty: ASTType::Array
+                size:
+                    ASTExpr::Literal
+                        value: 4
+                element_type: int32
+    Node[1]:
+        ASTGlobalVar
+            ident: b
+            is_const: false
+            is_undef: false
+            is_static: true
+            ty: ASTType::Array
+                size: dynamic
+                element_type: int32
+    Node[2]:
+        ASTGlobalVar
+            ident: c
+            is_const: false
+            is_undef: false
+            is_static: true
+            ty: ASTType::Array
+                size:
+                    ASTExpr::Literal
+                        value: 2
+                element_type: ASTType::Array
+                    size:
+                        ASTExpr::Literal
+                            value: 3
+                    element_type: int32
+    Node[3]:
+        ASTGlobalVar
+            ident: d
+            is_const: false
+            is_undef: false
+            is_static: true
+            ty: ASTType::Array
+                size:
+                    ASTExpr::Infix
+                        operator: *
+                        lhs:
+                            ASTExpr::Literal
+                                value: 4
+                        rhs:
+                            ASTExpr::Literal
+                                value: 2
+                element_type: Foo
+@parse*/

@@ -1,0 +1,255 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 The Cyrus Language
+
+import std::io{Writer, StringWriter};
+import diags{Diag, DiagContext};
+import tokens{TokenKind, Span};
+import std::mem{Allocator};
+import std::string{String};
+
+pub fn format_unexpected_token(allocator: Allocator, got: TokenKind) String {
+    var buffer = String.new(allocator);
+    var writer: Writer = dynamic StringWriter.new(&buffer);
+    writer.write("unexpected token `");
+    got.format(writer);
+    writer.write("`");
+    return buffer;
+}
+
+pub fn format_expected_token(
+    allocator: Allocator,
+    expected: TokenKind, 
+    got: TokenKind
+) String {
+    var buffer = String.new(allocator);
+    var writer: Writer = dynamic StringWriter.new(&buffer);
+    writer.write("expected `");
+    expected.format(writer);
+    writer.write("` but got `");
+    got.format(writer);
+    writer.write_char('`');
+    return buffer;
+}
+
+pub fn format_expected_ident(allocator: Allocator, got: TokenKind) String {
+    var buffer = String.new(allocator);
+    var writer: Writer = dynamic StringWriter.new(&buffer);
+    writer.write("expected ident but got `");
+    got.format(writer);
+    writer.write_char('`');
+    return buffer;
+}
+
+pub fn report_error(
+    allocator: Allocator,
+    dctx: DiagContext*,
+    span: Span,
+    mesg: const uint8*
+) {
+    dctx->report(Diag.new(allocator, .Error, mesg, span));
+}
+
+pub fn report_expected_token(
+    allocator: Allocator,
+    dctx: DiagContext*,
+    span: Span,
+    expected: TokenKind,
+    got: TokenKind
+) {
+    var fmt = format_expected_token(allocator, expected, got);
+    defer fmt.free();
+    dctx->report(Diag.new(allocator, .Error, fmt.as_str(), span));
+}
+
+pub fn report_unexpected_token(
+    allocator: Allocator,
+    dctx: DiagContext*,
+    span: Span,
+    got: TokenKind
+) {
+    var fmt = format_unexpected_token(allocator, got);
+    defer fmt.free();
+    dctx->report(Diag.new(allocator, .Error, fmt.as_str(), span));
+}
+
+pub fn report_expected_ident(
+    allocator: Allocator,
+    dctx: DiagContext*,
+    span: Span,
+    got: TokenKind
+) {
+    var fmt = format_expected_ident(allocator, got);
+    defer fmt.free();
+    dctx->report(Diag.new(allocator, .Error, fmt.as_str(), span));
+}
+
+pub fn report_local_decl_error(
+    allocator: Allocator,
+    dctx: DiagContext*,
+    span: Span,
+    keyword: const uint8*
+) {
+    var buffer = String.new(allocator);
+    var writer: Writer = dynamic StringWriter.new(&buffer);
+    writer.write("`");
+    writer.write(keyword);
+    writer.write("` cannot be defined inside a function body");
+    dctx->report(Diag.new(allocator, .Error, buffer.as_str(), span));
+    buffer.free();
+}
+
+pub fn report_invalid_operator(
+    allocator: Allocator,
+    dctx: DiagContext*,
+    span: Span,
+    what: const uint8*,
+    got: TokenKind
+) {
+    var buffer = String.new(allocator);
+    var writer: Writer = dynamic StringWriter.new(&buffer);
+    writer.write("invalid ");
+    writer.write(what);
+    writer.write(" `");
+    got.format(writer);
+    writer.write("`");
+    dctx->report(Diag.new(allocator, .Error, buffer.as_str(), span));
+    buffer.free();
+}
+
+pub fn report_invalid_abi(
+    allocator: Allocator,
+    dctx: DiagContext*,
+    span: Span,
+    name: const uint8*
+) {
+    var buffer = String.new(allocator);
+    var writer: Writer = dynamic StringWriter.new(&buffer);
+    writer.write("invalid ABI `");
+    writer.write(name);
+    writer.write("`, expected `c` or `cyrus`");
+    dctx->report(Diag.new(allocator, .Error, buffer.as_str(), span));
+    buffer.free();
+}
+
+pub fn report_undefined_needs_type(
+    allocator: Allocator,
+    dctx: DiagContext*,
+    span: Span,
+    name: const uint8*
+) {
+    var buffer = String.new(allocator);
+    var writer: Writer = dynamic StringWriter.new(&buffer);
+    writer.write("variable `");
+    writer.write(name);
+    writer.write("` requires an explicit type when initialized with `undefined`");
+    dctx->report(Diag.new(allocator, .Error, buffer.as_str(), span));
+    buffer.free();
+}
+
+pub fn report_duplicate_modifier(
+    allocator: Allocator,
+    dctx: DiagContext*,
+    span: Span,
+    what: const uint8*
+) {
+    var buffer = String.new(allocator);
+    var writer: Writer = dynamic StringWriter.new(&buffer);
+    writer.write(what);
+    writer.write(" modifier already specified");
+    dctx->report(Diag.new(allocator, .Error, buffer.as_str(), span));
+    buffer.free();
+}
+
+pub fn report_modifier_not_allowed(
+    allocator: Allocator,
+    dctx: DiagContext*,
+    span: Span,
+    modifier: const uint8*,
+    decl: const uint8*
+) {
+    var buffer = String.new(allocator);
+    var writer: Writer = dynamic StringWriter.new(&buffer);
+    writer.write("`");
+    writer.write(modifier);
+    writer.write("` is not allowed on `");
+    writer.write(decl);
+    writer.write("` declarations");
+    dctx->report(Diag.new(allocator, .Error, buffer.as_str(), span));
+    buffer.free();
+}
+
+pub fn report_modifier_order_error(
+    allocator: Allocator,
+    dctx: DiagContext*,
+    span: Span,
+    first: const uint8*,
+    second: const uint8*
+) {
+    var buffer = String.new(allocator);
+    var writer: Writer = dynamic StringWriter.new(&buffer);
+    writer.write("`");
+    writer.write(first);
+    writer.write("` must precede `");
+    writer.write(second);
+    writer.write("`");
+    dctx->report(Diag.new(allocator, .Error, buffer.as_str(), span));
+    buffer.free();
+}
+
+pub fn report_attrs_after_modifiers(
+    allocator: Allocator,
+    dctx: DiagContext*,
+    span: Span
+) {
+    report_error(
+        allocator,
+        dctx,
+        span,
+        "attributes must precede modifiers"
+    );
+}
+
+pub fn report_unknown_attribute(
+    allocator: Allocator,
+    dctx: DiagContext*,
+    span: Span,
+    name: const uint8*
+) {
+    var buffer = String.new(allocator);
+    var writer: Writer = dynamic StringWriter.new(&buffer);
+    writer.write("unknown attribute `");
+    writer.write(name);
+    writer.write("`");
+    dctx->report(Diag.new(allocator, .Error, buffer.as_str(), span));
+    buffer.free();
+}
+
+pub fn report_duplicate_attribute(
+    allocator: Allocator,
+    dctx: DiagContext*,
+    span: Span,
+    key: const uint8*
+) {
+    var buffer = String.new(allocator);
+    var writer: Writer = dynamic StringWriter.new(&buffer);
+    writer.write("duplicate attribute `");
+    writer.write(key);
+    writer.write("`");
+    dctx->report(Diag.new(allocator, .Error, buffer.as_str(), span));
+    buffer.free();
+}
+
+pub fn report_attr_not_applicable(
+    allocator: Allocator,
+    dctx: DiagContext*,
+    span: Span,
+    key: const uint8*
+) {
+    var buffer = String.new(allocator);
+    var writer: Writer = dynamic StringWriter.new(&buffer);
+    writer.write("attribute `");
+    writer.write(key);
+    writer.write("` cannot be applied to this statement");
+    dctx->report(Diag.new(allocator, .Error, buffer.as_str(), span));
+    buffer.free();
+}

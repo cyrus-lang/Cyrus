@@ -1,0 +1,22 @@
+// @parse
+
+static var a: int32 = undefined;
+static var b: int32* = undefined;
+
+/*@parse
+ASTProgram
+    Node[0]:
+        ASTGlobalVar
+            ident: a
+            is_const: false
+            is_undef: true
+            is_static: true
+            ty: int32
+    Node[1]:
+        ASTGlobalVar
+            ident: b
+            is_const: false
+            is_undef: true
+            is_static: true
+            ty: *int32
+@parse*/

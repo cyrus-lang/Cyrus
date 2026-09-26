@@ -1,0 +1,102 @@
+// @parse
+
+type Int = int32;
+
+pub type Visible = uint8;
+
+type Pair<K, V> = Map<K, V>;
+
+type Ptr = int32*;
+
+type StructLit = struct { x: int32, y: uint64 };
+
+type UnionLit = union { a: int32, b: uint8 };
+
+type EnumLit = enum { A, B = 2, C(int32), D { v: int32 } };
+
+type TaggedEnum = enum(uint8) { X, Y };
+
+type Builtin = @int(8);
+
+fn nested() {
+    type Local = int32;
+}
+
+/*@parse
+ASTProgram
+    Node[0]:
+        ASTTypeAlias
+            ident: Int
+            generic_params_count: 0
+            ty: int32
+    Node[1]:
+        ASTTypeAlias
+            ident: Visible
+            visibility: public
+            generic_params_count: 0
+            ty: uint8
+    Node[2]:
+        ASTTypeAlias
+            ident: Pair
+            generic_params_count: 2
+            generic_param[0]:
+                name: K
+            generic_param[1]:
+                name: V
+            ty: ASTType::GenericInst
+                base: Map
+                type_arg[0]: K
+                type_arg[1]: V
+    Node[3]:
+        ASTTypeAlias
+            ident: Ptr
+            generic_params_count: 0
+            ty: *int32
+    Node[4]:
+        ASTTypeAlias
+            ident: StructLit
+            generic_params_count: 0
+            ty: ASTType::UnnamedStruct
+                fields_count: 2
+                field[0]: x: int32
+                field[1]: y: uint64
+    Node[5]:
+        ASTTypeAlias
+            ident: UnionLit
+            generic_params_count: 0
+            ty: ASTType::UnnamedUnion
+                fields_count: 2
+                field[0]: a: int32
+                field[1]: b: uint8
+    Node[6]:
+        ASTTypeAlias
+            ident: EnumLit
+            generic_params_count: 0
+            ty: ASTType::UnnamedEnum
+                variants_count: 4
+    Node[7]:
+        ASTTypeAlias
+            ident: TaggedEnum
+            generic_params_count: 0
+            ty: ASTType::UnnamedEnum
+                variants_count: 2
+                tag_type: uint8
+    Node[8]:
+        ASTTypeAlias
+            ident: Builtin
+            generic_params_count: 0
+            ty: ASTType::BuiltinFunc
+                name: int
+                args_count: 1
+    Node[9]:
+        ASTFuncDef
+            ident: nested
+            params:
+            body:
+                ASTBlock
+                    stmt[0]:
+                        ASTTypeAlias
+                            ident: Local
+                            generic_params_count: 0
+                            ty: int32
+@parse*/

@@ -1,0 +1,11 @@
+// @parse
+
+pub pub fn f() {}
+
+/*@parse
+tests/stage1/ui/parse/failures/modifier_duplicate_vis.cyrus:3:5: error: visibility modifier already specified
+      |
+    3 ~ pub pub fn f() {}
+      |     ^^^
+      |
+@parse*/

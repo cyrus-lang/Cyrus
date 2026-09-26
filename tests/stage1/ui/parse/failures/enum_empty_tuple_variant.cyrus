@@ -1,0 +1,13 @@
+// @parse
+
+enum E {
+    A(),
+}
+
+/*@parse
+tests/stage1/ui/parse/failures/enum_empty_tuple_variant.cyrus:4:7: error: consider adding a field to enum tuple variant or removing the parentheses
+      |
+    4 ~     A(),
+      |       ^
+      |
+@parse*/

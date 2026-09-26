@@ -1,0 +1,27 @@
+// @parse
+
+@debug();
+
+pub fn main() {
+    @panic("boom");
+}
+
+/*@parse
+ASTProgram
+    Node[0]:
+        ASTBuiltin
+            name: debug
+    Node[1]:
+        ASTFuncDef
+            ident: main
+            visibility: public
+            params:
+            body:
+                ASTBlock
+                    stmt[0]:
+                        ASTBuiltin
+                            name: panic
+                            arg[0]:
+                                ASTExpr::Literal
+                                    value: "boom"
+@parse*/

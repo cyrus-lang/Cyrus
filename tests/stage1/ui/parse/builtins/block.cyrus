@@ -1,0 +1,67 @@
+// @parse
+
+@debug() {
+    const x = 10;
+}
+
+pub fn main() {
+    @debug() {
+        printf("nested block\n");
+    }
+
+    @debug() printf("nested shorthand\n");
+}
+
+/*@parse
+ASTProgram
+    Node[0]:
+        ASTBuiltin
+            name: debug
+            is_toplevel: true
+            block:
+                ASTBlock
+                    stmt[0]:
+                        ASTGlobalVar
+                            ident: x
+                            is_const: true
+                            is_undef: false
+                            is_static: false
+                            expr:
+                                ASTExpr::Literal
+                                    value: 10
+    Node[1]:
+        ASTFuncDef
+            ident: main
+            visibility: public
+            params:
+            body:
+                ASTBlock
+                    stmt[0]:
+                        ASTBuiltin
+                            name: debug
+                            is_toplevel: false
+                            block:
+                                ASTBlock
+                                    stmt[0]:
+                                        ASTExpr::FuncCall
+                                            operand:
+                                                ASTExpr::Ident
+                                                    ident: printf
+                                            arg[0]:
+                                                ASTExpr::Literal
+                                                    value: "nested block\n"
+                    stmt[1]:
+                        ASTBuiltin
+                            name: debug
+                            is_toplevel: false
+                            block:
+                                ASTBlock
+                                    stmt[0]:
+                                        ASTExpr::FuncCall
+                                            operand:
+                                                ASTExpr::Ident
+                                                    ident: printf
+                                            arg[0]:
+                                                ASTExpr::Literal
+                                                    value: "nested shorthand\n"
+@parse*/

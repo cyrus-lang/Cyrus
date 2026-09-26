@@ -1,0 +1,13 @@
+// @parse
+
+interface I {
+    fn m() { }
+}
+
+/*@parse
+tests/stage1/ui/parse/failures/interface_body_method.cyrus:4:5: error: interface methods cannot have a body
+      |
+    4 ~     fn m() { }
+      |     ^^^^^^^^^^
+      |
+@parse*/

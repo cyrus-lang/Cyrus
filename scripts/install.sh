@@ -27,7 +27,7 @@ if command -v "$EXECUTABLE_NAME" &>/dev/null; then
     echo "   - Check version:       cyrus version"
     echo "   - Show help:           cyrus help"
     echo ""
-    echo "Happy coding with Cyrus Lang! 👾"
+    echo "Happy coding with Cyrus language!"
 else
     echo "Installation failed."
     exit 1

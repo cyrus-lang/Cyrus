@@ -1,3 +1,0 @@
-import ..::..::..::..::..::..::root; //~ ERROR Relative import navigates above the project root directory.
-
-pub fn main() {}

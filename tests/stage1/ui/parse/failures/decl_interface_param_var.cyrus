@@ -1,0 +1,13 @@
+// @parse
+
+interface I {
+    fn m(var a: int32);
+}
+
+/*@parse
+tests/stage1/ui/parse/failures/decl_interface_param_var.cyrus:4:10: error: `var` parameter specifier is only allowed in function definitions
+      |
+    4 ~     fn m(var a: int32);
+      |          ^^^^^^^^^^^^
+      |
+@parse*/

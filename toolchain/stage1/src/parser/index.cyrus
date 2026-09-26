@@ -1,0 +1,49 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 The Cyrus Language
+
+import std::collections{Vec};
+import std::errors{ErrorOr};
+import std::mem{Allocator};
+
+import .::stmts{ParserStmts};
+import .::state{ParserState};
+import tokens{SourceTokens};
+import diags{DiagContext};
+import .::ast{
+    NodeId, 
+    ASTProgram, 
+    ASTNodeList, 
+    free_attrs
+};
+
+pub struct Parser {
+    pub fn parse(
+        allocator: Allocator,
+        var source_tokens: SourceTokens,
+        dctx: DiagContext*
+    ) ErrorOr<ASTProgram, ()> {
+        var pending: Vec<NodeId> = Vec.new(allocator);
+        defer pending.free();
+
+        var program = ASTProgram.new(allocator);
+        var state = ParserState.new(allocator, dctx, &source_tokens, &pending);
+        var stmts = ParserStmts.new(allocator, &program, &state);
+        
+        stmts.parse_toplevels();
+
+        // Dangling attributes are dropped.
+        free_attrs(&stmts.pending_attrs);
+
+        // Drain pending statements
+        if (pending.len() > 0) {
+            program.statements = .Some(program.commit_pending(&pending, 0));
+        }
+
+        if (!dctx->has_errors()) {
+            return .Value(program);
+        } else {
+            program.free();
+            return .Error(());
+        }
+    }
+}

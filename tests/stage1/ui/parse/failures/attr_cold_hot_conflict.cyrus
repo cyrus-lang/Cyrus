@@ -1,0 +1,13 @@
+// @parse
+
+[[cold]]
+[[hot]]
+fn f();
+
+/*@parse
+tests/stage1/ui/parse/failures/attr_cold_hot_conflict.cyrus:3:1: error: attributes `[[cold]]` and `[[hot]]` cannot be used together
+      |
+    3 ~ [[cold]]
+      | ^^^^^^^^
+      |
+@parse*/

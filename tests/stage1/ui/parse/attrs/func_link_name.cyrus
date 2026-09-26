@@ -1,0 +1,13 @@
+// @parse
+
+[[link_name("my_func")]]
+fn renamed();
+
+/*@parse
+ASTProgram
+    Node[0]:
+        ASTFuncDecl
+            ident: renamed
+            link_name: my_func
+            params:
+@parse*/

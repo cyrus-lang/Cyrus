@@ -1,0 +1,453 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 The Cyrus Language
+
+import std::color{colorize_fg, colorize, reset};
+import std::io{Writer, StringWriter};
+import std::mem::libc{LibcAllocator};
+import std::format{format_usize};
+import std::math{saturating_sub};
+import std::collections{Vec};
+import std::string{String};
+import std::option{Option};
+import std::mem{Allocator};
+import std::os::tty;
+
+import diags{DiagContext, SubDiag, Diag, DiagLevel, LabelRole, Label};
+import source{Source, SourceContext};
+import tokens{Loc, Span};
+
+const MIN_PANEL_SPACE: uint32 = 5;
+
+pub struct CompilerDiagRender {
+    dctx: const DiagContext*,
+    sctx: const SourceContext*,
+    writer: Writer,
+    colorize: bool,
+
+    [[inline]]
+    pub fn new(
+        dctx: const DiagContext*,
+        sctx: const SourceContext*,
+        writer: Writer,
+    ) Self {
+        const colorize = tty::is_color_supported(.Stderr);
+        return Self { dctx, sctx, writer, colorize };
+    }
+
+    pub fn render(self: Self*) {
+        const diags = self->dctx->diags();
+
+        for (var i: usize = 0; i < diags->len(); i += 1) {
+            const diag = diags->get_const(i).unwrap();
+            const space = self->panel_space(diag);
+            self->render_diag(diag, space);
+
+            if (i < diags->len() - 1) {
+                self->writer.write("\n");
+            }
+        }
+    }
+
+    pub fn panel_space(self: const Self*, diag: const Diag*) uint32 {
+        const source = self->sctx->get(diag->span.source_id);
+
+        var max_line = source->nearest_line(saturating_sub(diag->span.loc.end, 1)).unwrap_or(1);
+
+        for (var i: usize = 0; i < diag->labels.len(); i += 1) {
+            const label = diag->labels.get_const(i).unwrap();
+            
+            if (label->span.source_id == diag->span.source_id) {
+                const source = self->sctx->get(label->span.source_id);
+                const start = source->nearest_line(label->span.loc.start).unwrap_or(1);
+                const end = source->nearest_line(saturating_sub(label->span.loc.end, 1)).unwrap_or(start);
+                
+                if (end > max_line) {
+                    max_line = end;
+                }
+            }
+        }
+
+        for (var i: usize = 0; i < diag->sub_diags.len(); i += 1) {
+            const sub = diag->sub_diags.get_const(i).unwrap();
+            
+            switch (sub->span) {
+                case .Some(span) => {
+                    const source = self->sctx->get(span.source_id);
+                    const start = source->nearest_line(span.loc.start).unwrap_or(1);
+                    const end = source->nearest_line(saturating_sub(span.loc.end, 1)).unwrap_or(start);
+                    
+                    if (end > max_line) {
+                        max_line = end;
+                    }
+                }
+            }
+        }
+
+        const end_space = line_space(max_line);
+        
+        var max_space: uint32 = end_space;
+        
+        if (max_space < MIN_PANEL_SPACE) {
+            max_space = MIN_PANEL_SPACE;
+        }
+
+        return max_space + 2;
+    }
+    
+    fn render_diag(self: Self*, diag: const Diag*, space: uint32) {
+        const mesg = diag->mesg.as_str();
+        const span = diag->span;
+        const source = self->sctx->get(span.source_id);
+        const line = source->nearest_line(span.loc.start).unwrap_or(1);
+        const column = source->line_offset_to_column(line, span.loc.start);
+        const file_path = source->path.as_string().as_str();
+
+        self->render_header(file_path, diag->level, mesg, line, column);
+        self->render_panel(diag, source, space);
+
+        self->render_sub_diags(&diag->sub_diags, space);
+
+        self->render_pipe(space);
+        self->writer.write_char('\n');
+    }
+
+    [[inline]]
+    fn render_header(
+        self: Self*,
+        file_path: const uint8*,
+        level: DiagLevel,
+        mesg: const uint8*,
+        line: usize,
+        column: usize
+    ) {
+        self->writer.write(file_path);
+        self->writer.write(":");
+        format_usize(self->writer, line);
+        self->writer.write(":");
+        format_usize(self->writer, column);
+        self->writer.write(": ");
+
+        if (self->colorize) {
+            switch (level) {
+                case .Error => colorize_fg(self->writer, .Red, "error: ");
+                case .Warning => colorize_fg(self->writer, .Yellow, "warning: ");
+                case .Note => colorize_fg(self->writer, .Green, "note: ");
+                case .Help => colorize_fg(self->writer, .Blue, "help: ");
+            }
+        } else {
+            switch (level) {
+                case .Error => self->writer.write("error: ");
+                case .Warning => self->writer.write("warning: ");
+                case .Note => self->writer.write("note: ");
+                case .Help => self->writer.write("help: ");
+            }
+        }
+
+        self->writer.writeln(mesg);
+    }
+
+    fn render_panel(
+        self: Self*,
+        diag: const Diag*,
+        source: const Source*,
+        space: uint32
+    ) {
+        self->render_pipe(space);
+        self->writer.write_char('\n');
+
+        if (diag->labels.len() == 0) {
+            const line = source->nearest_line(diag->span.loc.start).unwrap_or(1);
+            const line_number_offset = (space - line_digits(line)) - 2;
+            
+            self->render_line_number(line, line_number_offset);
+            self->render_line(source, line);
+            self->render_pipe(space);
+
+            const line_start = source->line_to_offset(line - 1);
+            var column_offset = diag->span.loc.start - line_start;
+            var mark_len = diag->span.loc.end - diag->span.loc.start;
+
+            // A span may cross a line break, and carets 
+            // must never run past the end of the line.
+            switch (source->get_line(line)) {
+                case .Some(got) => {
+                    const line_len = got.1;
+
+                    if (column_offset > line_len) {
+                        column_offset = line_len;
+                    }
+
+                    if (mark_len > line_len - column_offset) {
+                        mark_len = line_len - column_offset;
+                    }
+                }
+            }
+
+            if (mark_len == 0) {
+                mark_len = 1;
+            }
+
+            self->render_space(column_offset);
+            self->render_mark(mark_len, .Primary);
+            self->writer.write_char('\n');
+            return;
+        }
+
+        // Determine min and max line across all labels
+        var min_line = source->nearest_line(diag->span.loc.start).unwrap_or(1);
+        var max_line = source->nearest_line(saturating_sub(diag->span.loc.end, 1)).unwrap_or(min_line);
+
+        for (var i: usize = 0; i < diag->labels.len(); i += 1) {
+            const label = diag->labels.get_const(i).unwrap();
+            
+            if (label->span.source_id == diag->span.source_id) {
+                const start = source->nearest_line(label->span.loc.start).unwrap_or(1);
+                const end = source->nearest_line(saturating_sub(label->span.loc.end, 1)).unwrap_or(start);
+                
+                if (start < min_line) {
+                    min_line = start;
+                }
+                if (end > max_line) {
+                    max_line = end;
+                }
+            }
+        }
+
+        const line_number_offset = (space - line_digits(min_line)) - 2;
+
+        // Render each line in range [min_line, max_line]
+        for (var l: usize = min_line; l <= max_line; l += 1) {
+            self->render_line_number(l, line_number_offset);
+            self->render_line(source, l);
+
+            // Render marks for labels
+            for (var i: usize = 0; i < diag->labels.len(); i += 1) {
+                const label = diag->labels.get_const(i).unwrap();
+                
+                if (label->span.source_id == diag->span.source_id) {
+                    const start = source->nearest_line(label->span.loc.start).unwrap_or(1);
+                    const end = source->nearest_line(saturating_sub(label->span.loc.end, 1)).unwrap_or(start);
+
+                    if (l >= start && l <= end) {
+                        const line_start = source->line_to_offset(l - 1);
+                        var column_offset: usize = 0;
+                        if (l == start) {
+                            column_offset = label->span.loc.start - line_start;
+                        }
+
+                        var mark_len: usize = 0;
+                        if (l == end) {
+                            mark_len = label->span.loc.end - line_start - column_offset;
+                        } else {
+                            switch (source->get_line(l)) {
+                                case .Some(got) => mark_len = got.1;
+                            }
+                        }
+
+                        if (mark_len == 0) {
+                            mark_len = 1;
+                        }
+
+                        self->render_pipe(space);
+                        self->render_space(column_offset);
+                        self->render_mark(mark_len, label->role);
+
+                        switch (label->mesg) {
+                            case .Some(str) => if (l == end) {
+                                self->render_under(str.as_str_const(), column_offset, space, label->role);
+                            }
+                        }
+
+                        self->writer.write_char('\n');
+                    }
+                }
+            }
+        }
+    }
+
+    fn render_sub_diags(self: Self*, sub_diags: const (Vec<SubDiag>)*, space: usize) {
+        if (sub_diags->len() > 0) {
+            self->render_pipe(space);
+            self->writer.write_char('\n');
+        }
+
+        for (var i: usize = 0; i < sub_diags->len(); i += 1) {
+            const sub = sub_diags->get_const(i).unwrap();
+            
+            switch (sub->span) {
+                case .Some(span) => {
+                    const source = self->sctx->get(span.source_id);
+                    const line = source->nearest_line(span.loc.start).unwrap_or(1);
+                    const column = source->line_offset_to_column(line, span.loc.start);
+                    const file_path = source->path.as_string().as_str();
+
+                    self->render_pipe(space);
+                    self->writer.write_char('\n');
+                    
+                    self->writer.write("  --> ");
+                    self->writer.write(file_path);
+                    self->writer.write(":");
+                    format_usize(self->writer, line);
+                    self->writer.write(":");
+                    format_usize(self->writer, column);
+                    self->writer.write_char('\n');
+                }
+            }
+
+            self->render_assign(space);
+            
+            if (self->colorize) {
+                switch (sub->kind) {
+                    case .Note => { colorize_fg(self->writer, .Green, " note: "); }
+                    case .Help => { colorize_fg(self->writer, .Blue, " help: "); }
+                    case .Info => { colorize_fg(self->writer, .Cyan, " info: "); }
+                }
+            } else {
+                switch (sub->kind) {
+                    case .Note => { self->writer.write(" note: "); }
+                    case .Help => { self->writer.write(" help: "); }
+                    case .Info => { self->writer.write(" info: "); }
+                }
+            }
+
+            self->writer.write(sub->mesg.as_str_const());
+            self->writer.write_char('\n');
+
+            if (i != sub_diags->len() - 1) {
+                self->render_pipe(space);
+                self->writer.write_char('\n');
+            }
+        }
+    }
+
+    fn render_line_number(self: Self*, line: usize, offset: usize) {
+        self->render_space(offset);
+        format_usize(self->writer, line);
+
+        if (self->colorize) {
+            colorize_fg(self->writer, .Yellow, " ~ ");
+        } else {
+            self->writer.write(" ~ ");
+        }
+    }
+
+    [[inline]]
+    fn render_under(self: Self*, mesg: const uint8*, offset: usize, space: usize, role: LabelRole) {
+        self->writer.write_char('\n');
+        self->render_pipe(space);
+
+        self->render_space(offset);
+        self->writer.write_char(' ');
+        
+        switch (role) {
+            case .Primary => { self->writer.write("╰ "); }
+            case .Secondary => { self->writer.write("─ "); }
+        }
+
+        if (self->colorize) {
+            switch (role) {
+                case .Primary => { colorize_fg(self->writer, .Cyan, mesg); }
+                case .Secondary => { colorize_fg(self->writer, .Blue, mesg); }
+            }
+        } else {
+            self->writer.write(mesg);
+        }
+    }
+
+    [[inline]]
+    fn render_mark(self: Self*, n: usize, role: LabelRole) {
+        self->writer.write_char(' '); 
+
+        if (self->colorize) {
+            switch (role) {
+                case .Primary => { colorize(self->writer, .Red); }
+                case .Secondary => { colorize(self->writer, .Cyan); }
+            }
+        }
+        
+        for (var i: usize = 0; i < n; i += 1) {
+            switch (role) {
+                case .Primary => { self->writer.write("^"); }
+                case .Secondary => { self->writer.write("-"); }
+            }
+        }
+
+        if (self->colorize) {
+            reset(self->writer);
+        }
+    }
+
+    [[inline]]
+    fn render_pipe(self: Self*, n: usize) {
+        for (var i: usize; i < n - 1; i += 1) {
+            self->writer.write(" ");
+        }
+        self->writer.write("|");
+    }
+
+    [[inline]]
+    fn render_assign(self: Self*, n: usize) {
+        for (var i: usize; i < n - 1; i += 1) {
+            self->writer.write(" ");
+        }
+
+        if (self->colorize) {
+            colorize_fg(self->writer, .Yellow, "=");
+        } else {
+            self->writer.write("=");
+        }
+    }
+
+    [[inline]]
+    fn render_space(self: Self*, n: usize) {
+        for (var i: usize = 0; i < n; i += 1) {
+            self->writer.write(" ");
+        }
+    }
+
+    fn render_line(self: Self*, source: const Source*, n: usize) {
+        // A span may point past the last source line (trailing newline);
+        // render an empty line instead of panicking on the None.
+        switch (source->get_line(n)) case .Some(line) else {
+            self->writer.write_char('\n');
+            return;
+        }
+
+        const (ptr, len) = line;
+
+        for (var i: usize = 0; i < len; i += 1) {    
+            self->writer.write_char(ptr[i]);
+        }
+
+        self->writer.write_char('\n');
+    }
+}
+
+[[inline]]
+fn line_space(line: usize) uint32 {
+    const i = line_digits(line);
+
+    if (i < MIN_PANEL_SPACE) {
+        return MIN_PANEL_SPACE;
+    } else {
+        return i + 1;
+    }
+}
+
+[[inline]]
+fn line_digits(var line: usize) uint32 {
+    var i: uint32 = 0;
+    while (line > 0) {
+        line /= 10;
+        i += 1;
+    }
+    return i;
+}
+
+[[inline]]
+fn is_ws(char: uint8) bool {
+    switch (char) {
+        case ' ' | '\t' | '\r' | '\v' | '\f' => return true;
+        else => return false;
+    }
+}

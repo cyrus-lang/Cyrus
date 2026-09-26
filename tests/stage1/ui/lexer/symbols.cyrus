@@ -1,0 +1,54 @@
+// @tokenize
+
++ - * / % ^ ~ & | = == != < > <= >= -> => . , ; : ( ) { } [ ] @ ++ -- += -= *= /= %= &= |= ^=
+
+/*@tokenize
+SYMBOL       +            Start: 14           End: 15
+SYMBOL       -            Start: 16           End: 17
+SYMBOL       *            Start: 18           End: 19
+SYMBOL       /            Start: 20           End: 21
+SYMBOL       %            Start: 22           End: 23
+SYMBOL       ^            Start: 24           End: 25
+SYMBOL       ~            Start: 26           End: 27
+SYMBOL       &            Start: 28           End: 29
+SYMBOL       |            Start: 30           End: 31
+SYMBOL       =            Start: 32           End: 33
+SYMBOL       ==           Start: 34           End: 36
+SYMBOL       !=           Start: 37           End: 39
+SYMBOL       <            Start: 40           End: 41
+SYMBOL       >            Start: 42           End: 43
+SYMBOL       <=           Start: 44           End: 46
+SYMBOL       >=           Start: 47           End: 49
+SYMBOL       ->           Start: 50           End: 52
+SYMBOL       =>           Start: 53           End: 55
+SYMBOL       .            Start: 56           End: 57
+SYMBOL       ,            Start: 58           End: 59
+SYMBOL       ;            Start: 60           End: 61
+SYMBOL       :            Start: 62           End: 63
+SYMBOL       (            Start: 64           End: 65
+SYMBOL       )            Start: 66           End: 67
+SYMBOL       {            Start: 68           End: 69
+SYMBOL       }            Start: 70           End: 71
+SYMBOL       [            Start: 72           End: 73
+SYMBOL       ]            Start: 74           End: 75
+SYMBOL       @            Start: 76           End: 77
+SYMBOL       ++           Start: 78           End: 80
+SYMBOL       --           Start: 81           End: 83
+SYMBOL       +            Start: 84           End: 85
+SYMBOL       =            Start: 85           End: 86
+SYMBOL       -            Start: 87           End: 88
+SYMBOL       =            Start: 88           End: 89
+SYMBOL       *            Start: 90           End: 91
+SYMBOL       =            Start: 91           End: 92
+SYMBOL       /            Start: 93           End: 94
+SYMBOL       =            Start: 94           End: 95
+SYMBOL       %            Start: 96           End: 97
+SYMBOL       =            Start: 97           End: 98
+SYMBOL       &            Start: 99           End: 100
+SYMBOL       =            Start: 100          End: 101
+SYMBOL       |            Start: 102          End: 103
+SYMBOL       =            Start: 103          End: 104
+SYMBOL       ^            Start: 105          End: 106
+SYMBOL       =            Start: 106          End: 107
+EOF          EOF          Start: 2732         End: 2732
+@tokenize*/

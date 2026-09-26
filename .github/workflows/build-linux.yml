@@ -33,6 +33,7 @@ jobs:
             gnupg \
             wget \
             build-essential \
+            python3 \
             zlib1g \
             zlib1g-dev \
             upx-ucl \
@@ -65,6 +66,7 @@ jobs:
           LLVM_CONFIG: /usr/bin/llvm-config-22
           CC: clang-22
           CXX: clang++-22
+          CYRUS_LINKER: clang-22
         run: |
           chmod +x ./scripts/release.sh
           ./scripts/release.sh
@@ -74,19 +76,20 @@ jobs:
           LLVM_CONFIG: /usr/bin/llvm-config-22
           CC: clang-22
           CXX: clang++-22
-        run: make testsuite PROFILE=release
+          CYRUS_LINKER: clang-22
+        run: python3 ./x.py test --stage all --profile release
 
       - name: Determine package version
         id: version
         run: |
-          VERSION=$(cat ./CYRUS_COMPILER_VERSION | tr -d '[:space:]')
+          VERSION=$(cat ./toolchain/stage0/VERSION | tr -d '[:space:]')
           echo "VERSION=$VERSION" >> "$GITHUB_OUTPUT"
 
       - name: Prepare binary artifact directory
         run: |
           mkdir -p ./dist
-          cp ./target/release/cyrus ./dist/
-          cp -r ./stdlib ./dist/
+          cp ./toolchain/stage0/target/release/cyrus ./dist/
+          cp -r ./lib/std ./dist/stdlib
           if [ -f "./scripts/install.sh" ]; then
             cp ./scripts/install.sh ./dist/
           fi

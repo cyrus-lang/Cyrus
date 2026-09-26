@@ -1,0 +1,59 @@
+// @parse
+
+pub struct Visible {
+    pub name: String,
+    count: uint64,
+}
+
+struct Aligned align(8) {
+    value: int32,
+}
+
+struct Guarded : Iface {
+    value: int32,
+}
+
+/*@parse
+ASTProgram
+    Node[0]:
+        ASTStruct
+            ident: Visible
+            is_packed: false
+            visibility: public
+            generic_params_count: 0
+            impls_count: 0
+            fields_count: 2
+            field[0]:
+                name: name
+                visibility: public
+                ty: String
+            field[1]:
+                name: count
+                ty: uint64
+            methods_count: 0
+    Node[1]:
+        ASTStruct
+            ident: Aligned
+            is_packed: false
+            align: 8
+            generic_params_count: 0
+            impls_count: 0
+            fields_count: 1
+            field[0]:
+                name: value
+                ty: int32
+            methods_count: 0
+    Node[2]:
+        ASTStruct
+            ident: Guarded
+            is_packed: false
+            generic_params_count: 0
+            impls_count: 1
+            impl[0]:
+                ty: Iface
+            fields_count: 1
+            field[0]:
+                name: value
+                ty: int32
+            methods_count: 0
+@parse*/

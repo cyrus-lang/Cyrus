@@ -1,0 +1,19 @@
+// @parse
+
+[[inline]]
+{
+    fn first_fn();
+    fn second_fn();
+}
+
+pub {
+    fn group_pub_fn();
+}
+
+/*@parse
+tests/stage1/ui/parse/failures/attr_on_block.cyrus:3:1: error: attribute `inline` cannot be applied to this statement
+      |
+    3 ~ [[inline]]
+      | ^^^^^^^^^^
+      |
+@parse*/

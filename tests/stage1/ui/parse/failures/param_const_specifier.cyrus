@@ -1,0 +1,11 @@
+// @parse
+
+fn f(const a: int32) { }
+
+/*@parse
+tests/stage1/ui/parse/failures/param_const_specifier.cyrus:3:6: error: expected ident but got `const`
+      |
+    3 ~ fn f(const a: int32) { }
+      |      ^^^^^
+      |
+@parse*/

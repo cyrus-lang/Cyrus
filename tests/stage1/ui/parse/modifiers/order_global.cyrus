@@ -1,0 +1,42 @@
+// @parse
+
+extern "c" const ext_const = 1;
+
+pub const pub_const = 2;
+
+pub extern "c" const both_pub_ext_const = 3;
+
+/*@parse
+ASTProgram
+    Node[0]:
+        ASTGlobalVar
+            ident: ext_const
+            extern: c
+            is_const: true
+            is_undef: false
+            is_static: false
+            expr:
+                ASTExpr::Literal
+                    value: 1
+    Node[1]:
+        ASTGlobalVar
+            ident: pub_const
+            visibility: public
+            is_const: true
+            is_undef: false
+            is_static: false
+            expr:
+                ASTExpr::Literal
+                    value: 2
+    Node[2]:
+        ASTGlobalVar
+            ident: both_pub_ext_const
+            visibility: public
+            extern: c
+            is_const: true
+            is_undef: false
+            is_static: false
+            expr:
+                ASTExpr::Literal
+                    value: 3
+@parse*/

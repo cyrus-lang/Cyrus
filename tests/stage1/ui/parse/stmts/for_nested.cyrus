@@ -1,0 +1,90 @@
+// @parse
+
+fn nested() {
+    for (var i = 0; i < 3; i += 1) {
+        for (var j = 0; j < 3; j += 1) {
+            grid(i, j);
+        }
+    }
+}
+
+/*@parse
+ASTProgram
+    Node[0]:
+        ASTFuncDef
+            ident: nested
+            params:
+            body:
+                ASTBlock
+                    stmt[0]:
+                        ASTFor
+                            initializer:
+                                ASTVar
+                                    ident: i
+                                    is_const: false
+                                    is_undef: false
+                                    rhs:
+                                        ASTExpr::Literal
+                                            value: 0
+                            condition:
+                                ASTExpr::Infix
+                                    operator: <
+                                    lhs:
+                                        ASTExpr::Ident
+                                            ident: i
+                                    rhs:
+                                        ASTExpr::Literal
+                                            value: 3
+                            increment:
+                                ASTExpr::Assign
+                                    kind: +=
+                                    lhs:
+                                        ASTExpr::Ident
+                                            ident: i
+                                    rhs:
+                                        ASTExpr::Literal
+                                            value: 1
+                            body:
+                                ASTBlock
+                                    stmt[0]:
+                                        ASTFor
+                                            initializer:
+                                                ASTVar
+                                                    ident: j
+                                                    is_const: false
+                                                    is_undef: false
+                                                    rhs:
+                                                        ASTExpr::Literal
+                                                            value: 0
+                                            condition:
+                                                ASTExpr::Infix
+                                                    operator: <
+                                                    lhs:
+                                                        ASTExpr::Ident
+                                                            ident: j
+                                                    rhs:
+                                                        ASTExpr::Literal
+                                                            value: 3
+                                            increment:
+                                                ASTExpr::Assign
+                                                    kind: +=
+                                                    lhs:
+                                                        ASTExpr::Ident
+                                                            ident: j
+                                                    rhs:
+                                                        ASTExpr::Literal
+                                                            value: 1
+                                            body:
+                                                ASTBlock
+                                                    stmt[0]:
+                                                        ASTExpr::FuncCall
+                                                            operand:
+                                                                ASTExpr::Ident
+                                                                    ident: grid
+                                                            arg[0]:
+                                                                ASTExpr::Ident
+                                                                    ident: i
+                                                            arg[1]:
+                                                                ASTExpr::Ident
+                                                                    ident: j
+@parse*/

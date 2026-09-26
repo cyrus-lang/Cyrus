@@ -1,0 +1,27 @@
+// @parse
+
+extern "c" fn ext_fn();
+
+pub extern "c" fn both_first_pub();
+
+pub fn pub_fn();
+
+/*@parse
+ASTProgram
+    Node[0]:
+        ASTFuncDecl
+            ident: ext_fn
+            extern: c
+            params:
+    Node[1]:
+        ASTFuncDecl
+            ident: both_first_pub
+            visibility: public
+            extern: c
+            params:
+    Node[2]:
+        ASTFuncDecl
+            ident: pub_fn
+            visibility: public
+            params:
+@parse*/

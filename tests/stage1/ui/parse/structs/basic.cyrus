@@ -1,0 +1,54 @@
+// @parse
+
+struct Empty {
+}
+
+struct Point {
+    x: int32,
+    y: int64,
+}
+
+struct Named {
+    name: String,
+    count: uint64
+}
+
+/*@parse
+ASTProgram
+    Node[0]:
+        ASTStruct
+            ident: Empty
+            is_packed: false
+            generic_params_count: 0
+            impls_count: 0
+            fields_count: 0
+            methods_count: 0
+    Node[1]:
+        ASTStruct
+            ident: Point
+            is_packed: false
+            generic_params_count: 0
+            impls_count: 0
+            fields_count: 2
+            field[0]:
+                name: x
+                ty: int32
+            field[1]:
+                name: y
+                ty: int64
+            methods_count: 0
+    Node[2]:
+        ASTStruct
+            ident: Named
+            is_packed: false
+            generic_params_count: 0
+            impls_count: 0
+            fields_count: 2
+            field[0]:
+                name: name
+                ty: String
+            field[1]:
+                name: count
+                ty: uint64
+            methods_count: 0
+@parse*/

@@ -1,0 +1,12 @@
+// @parse
+
+[[inline]]
+type T = int32;
+
+/*@parse
+tests/stage1/ui/parse/failures/attr_not_applicable_type.cyrus:3:1: error: attribute `inline` cannot be applied to this statement
+      |
+    3 ~ [[inline]]
+      | ^^^^^^^^^^
+      |
+@parse*/

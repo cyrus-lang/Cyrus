@@ -1,0 +1,1458 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 The Cyrus Language
+
+import std::collections{Vec};
+import std::option{Option};
+import std::string{String};
+import std::mem{Allocator};
+import tokens{Span, Token};
+
+/* ************* Nodes ************* */
+
+pub type NodeId = usize;
+
+pub struct ASTNodeList {
+    pub start: usize,
+    pub len: usize,
+}
+
+pub struct ASTProgram {
+    pub nodes: Vec<ASTNode>,
+    pub children: Vec<NodeId>,
+    pub statements: Option<ASTNodeList>,
+
+    pub fn new(allocator: Allocator) Self {
+        return Self {
+            nodes: Vec.new(allocator),
+            children: Vec.new(allocator),
+            statements: .None,
+        };
+    }
+
+    pub fn create_node(self: Self*, node: ASTNode) NodeId {
+        const id = self->nodes.len();
+        self->nodes.push(node);
+        return id;
+    }
+
+    /// Commits pending children into the global children pool.
+    pub fn commit_pending(self: Self*, pending: Vec<NodeId>*, mark: usize) ASTNodeList {
+        @assert(pending->len() >= mark, "mark cannot be bigger than pending nodes length");
+
+        const len = pending->len() - mark;
+        const start = self->children.len();
+
+        // Push pending nodes into children
+        for (var i: usize = mark; i < pending->len(); i += 1) {
+            self->children.push(pending->get_owned(i).unwrap());
+        }
+        
+        // Truncate back to mark
+        for (var i: usize = 0; i < len; i += 1) {
+            pending->pop();
+        }
+
+        return ASTNodeList { start, len };
+    }
+
+    pub fn free(self: Self*) {
+        for (var i: usize = 0; i < self->nodes.len(); i += 1) {
+            switch (self->nodes.get(i)) {
+                case .Some(node) => free_node(node);
+            }
+        }
+
+        self->nodes.free();
+        self->children.free();
+    }
+}
+
+fn free_node(node: ASTNode*) {
+    switch (*node) {
+        case .SwitchGuard(var n) => free_switch_patterns(&n.case_item.patterns);
+        case .DestructTuple(var n) => free_destruct_pattern(&n.pat);
+        case .Switch(var n) => free_switch_cases(&n.cases);
+        case .Import(var n) => free_segments(&n.segments);
+        case .Builtin(var n) => free_builtin(&n);
+        case .Var(var n) => free_option_type(&n.ty);
+        case .If(var n) => n.branches.free();
+        case .Expr(var n) => free_expr(&n);
+        case .Type(var n) => free_type(&n);
+
+        case .InlineAsm(var n) => {
+            free_asm_template(&n.template);
+            free_asm_operands(&n.outputs);
+            free_asm_operands(&n.inputs);
+            free_asm_clobbers(&n.clobbers);
+        }
+
+        case .GlobalVar(var n) => {
+            free_option_type(&n.ty);
+            free_global_var_modifiers(&n.modifiers);
+        }
+
+        case .FuncDef(var n) => {
+            free_generic_params(&n.generic_params);
+            free_func_params(&n.params);
+            free_modifiers(&n.modifiers);
+        }
+        
+        case .FuncDecl(var n) => {
+            free_generic_params(&n.generic_params);
+            free_func_params(&n.params);
+            free_modifiers(&n.modifiers);
+        }
+
+        case .Struct(var n) => {
+            n.impls.free();
+            n.fields.free();
+            n.methods.free();
+            free_generic_params(&n.generic_params);
+            free_opt_repr_attr(&n.modifiers.repr_attr);
+        }
+
+        case .Enum(var n) => {
+            n.impls.free();
+            n.methods.free();
+            free_enum_variants(&n.variants);
+            free_generic_params(&n.generic_params);
+            free_opt_repr_attr(&n.modifiers.repr_attr);
+        }
+
+        case .TypeAlias(var n) => free_generic_params(&n.generic_params);
+
+        case .FuncType(var n) => n.params.list.free();
+
+        case .Interface(var n) => {
+            n.methods.free();
+            free_generic_params(&n.generic_params);
+        }
+
+        case .Union(var n) => {
+            n.fields.free();
+            free_generic_params(&n.generic_params);
+            n.impls.free();
+            n.methods.free();
+            free_opt_repr_attr(&n.modifiers.repr_attr);
+        }
+    }
+}
+
+pub fn free_asm_template(template: Vec<String>*) {
+    for (var i: usize = 0; i < template->len(); i += 1) {
+        switch (template->get(i)) {
+            case .Some(part) => part->free();
+        }
+    }
+
+    template->free();
+}
+
+pub fn free_asm_operands(operands: Vec<ASTAsmOperand>*) {
+    for (var i: usize = 0; i < operands->len(); i += 1) {
+        switch (operands->get(i)) {
+            case .Some(operand) => operand->constraint.free();
+        }
+    }
+
+    operands->free();
+}
+
+pub fn free_asm_clobbers(clobbers: Vec<ASTAsmClobber>*) {
+    for (var i: usize = 0; i < clobbers->len(); i += 1) {
+        switch (clobbers->get(i)) {
+            case .Some(clobber) => clobber->name.free();
+        }
+    }
+
+    clobbers->free();
+}
+
+pub fn free_destruct_kind(kind: ASTDestructTuplePatternKind*) {
+    switch (*kind) {
+        case .Tuple(var patterns) => {
+            for (var i: usize = 0; i < patterns.len(); i += 1) {
+                switch (patterns.get(i)) {
+                    case .Some(pattern) => free_destruct_pattern(pattern);
+                }
+            }
+
+            patterns.free();
+        }
+    }
+}
+
+pub fn free_destruct_pattern(pattern: ASTDestructTuplePattern*) {
+    free_destruct_kind(&pattern->kind);
+    free_option_type(&pattern->ty);
+}
+
+fn free_option_type(ty: Option<ASTType>*) {
+    switch (*ty) {
+        case .Some(var inner) => free_type(&inner);
+    }
+}
+
+pub fn free_enum_variants(variants: Vec<ASTEnumVariant>*) {
+    for (var i: usize = 0; i < variants->len(); i += 1) {
+        switch (variants->get(i)) {
+            case .Some(variant) => switch (*variant) {
+                case .Tuple { var fields, .. } => fields.free();
+                case .Struct { var fields, .. } => fields.free();
+            }
+        }
+    }
+
+    variants->free();
+}
+
+pub fn free_generic_params(list: ASTGenericParams*) {
+    for (var i: usize = 0; i < list->len(); i += 1) {
+        switch (list->get(i)) {
+            case .Some(param) => free_option_bounds(&param->bounds);
+        }
+    }
+
+    list->free();
+}
+
+pub fn free_option_bounds(bounds: Option<Vec<ASTBound>>*) {
+    switch (*bounds) {
+        case .Some(var list) => list.free();
+    }
+}
+
+pub fn free_param_list(list: Vec<ASTFuncParamKind>*) {
+    for (var i: usize = 0; i < list->len(); i += 1) {
+        switch (list->get(i)) {
+            case .Some(kind) => {
+                switch (*kind) {
+                    case .FuncParam(var param) => free_option_type(&param.ty);
+                }
+            }
+        }
+    }
+
+    list->free();
+}
+
+pub fn free_func_params(params: ASTFuncParams*) {
+    free_param_list(&params->list);
+}
+
+pub fn free_modifiers(modifiers: ASTFuncModifiers*) {
+    switch (modifiers->link_name) {
+        case .Some(name) => name.free();
+    }
+
+    switch (modifiers->section) {
+        case .Some(name) => name.free();
+    }
+
+    for (var i: usize = 0; i < modifiers->optional_flags.len(); i += 1) {
+        switch (modifiers->optional_flags.get_const(i)) {
+            case .Some(flag) => switch (*flag) {
+                case .NoSanitize(name) => name.free();
+            }
+        }
+    }
+
+    modifiers->optional_flags.free();
+}
+
+pub fn free_global_var_modifiers(modifiers: ASTGlobalVarModifiers*) {
+    switch (modifiers->link_name) {
+        case .Some(name) => name.free();
+    }
+
+    switch (modifiers->section) {
+        case .Some(name) => name.free();
+    }
+}
+
+pub fn free_repr_attr(repr: ASTReprAttr*) {
+    repr->items.free();
+}
+
+pub fn free_opt_repr_attr(repr: Option<ASTReprAttr>*) {
+    switch (*repr) {
+        case .Some(var items) => free_repr_attr(&items);
+    }
+}
+
+pub fn copy_repr_attr(allocator: Allocator, repr: ASTReprAttr) ASTReprAttr {
+    var items: Vec<ASTReprItem> = Vec.new(allocator);
+
+    for (var i: usize = 0; i < repr.items.len(); i += 1) {
+        switch (repr.items.get_const(i)) {
+            case .Some(item) => {
+                items.push(ASTReprItem {
+                    kind: item->kind,
+                    span: item->span,
+                });
+            }
+        }
+    }
+
+    return ASTReprAttr { items };
+}
+
+pub fn free_attr_kind(kind: ASTAttrKind*) {
+    switch (*kind) {
+        case .Repr(var repr) => free_repr_attr(&repr);
+        case .NoSanitize(name) => name.free();
+        case .LinkName(name) => name.free();
+        case .Section(name) => name.free();
+    }
+}
+
+pub fn free_attr(attr: ASTAttr*) {
+    free_attr_kind(&attr->kind);
+}
+
+pub fn free_attrs(list: Vec<ASTAttr>*) {
+    for (var i: usize = 0; i < list->len(); i += 1) {
+        switch (list->get(i)) {
+            case .Some(attr) => free_attr(attr);
+        }
+    }
+
+    list->free();
+}
+
+pub fn free_switch_pattern(pattern: ASTSwitchCasePattern*) {
+    switch (pattern->kind) {
+        case .EnumStructVariant { var items, .. } => free_switch_struct_fields(&items);
+        case .EnumTupleVariant { var items, .. } => free_switch_patterns(&items);
+    }
+}
+
+pub fn free_switch_patterns(list: Vec<ASTSwitchCasePattern>*) {
+    for (var i: usize = 0; i < list->len(); i += 1) {
+        switch (list->get(i)) {
+            case .Some(pattern) => free_switch_pattern(pattern);
+        }
+    }
+
+    list->free();
+}
+
+pub fn free_switch_struct_fields(list: Vec<ASTSwitchCaseEnumStructPatternField>*) {
+    for (var i: usize = 0; i < list->len(); i += 1) {
+        switch (list->get(i)) {
+            case .Some(field) => free_switch_pattern(&field->pattern);
+        }
+    }
+
+    list->free();
+}
+
+pub fn free_switch_cases(list: Vec<ASTSwitchCase>*) {
+    for (var i: usize = 0; i < list->len(); i += 1) {
+        switch (list->get(i)) {
+            case .Some(item) => free_switch_patterns(&item->patterns);
+        }
+    }
+
+    list->free();
+}
+
+fn free_expr(expr: ASTExpr*) {
+    switch (*expr) {
+        case .EnumStructVariantInit(var n) => n.field_inits.free();
+        case .ModuleImport(var n) => free_segments(&n.segments);
+        case .UnnamedStructValue(var n) => n.fields.free();
+        case .UnnamedUnionValue(var n) => n.fields.free();
+        case .StructInit(var n) => n.field_inits.free();
+        case .UntypedArray(var n) => n.elements.free();
+        case .Builtin(var n) => free_builtin(&n);
+        case .Tuple(var n) => n.elements.free();
+        case .Array(var n) => n.elements.free();
+
+        case .UnnamedEnumValue(var n) => {
+            switch (n.kind) {
+                case .Tuple(var list) => list.free();
+                case .Struct(var list) => list.free();
+            }
+        }
+
+        case .FuncCall(var n) => {
+            n.args.free();
+            n.type_args.list.free();
+        }
+        case .MethodCall(var n) => {
+            n.args.free();
+            n.type_args.list.free();
+        }
+        
+        case .InlineAsm(var n) => {
+            free_asm_template(&n.template);
+            free_asm_operands(&n.outputs);
+            free_asm_operands(&n.inputs);
+            free_asm_clobbers(&n.clobbers);
+        }
+    }
+}
+
+pub fn free_type(ty: ASTType*) {
+    switch (*ty) {
+        case .UnnamedEnum(var n) => free_enum_variants(&n.variants);
+        case .ModuleImport(var n) => free_segments(&n.segments);
+        case .GenericInst(var n) => n.type_args.list.free();
+        case .UnnamedStruct(var n) => n.fields.free();
+        case .UnnamedUnion(var n) => n.fields.free();
+        case .Tuple(var n) => n.type_list.free();
+        case .Builtin(var n) => free_builtin(&n);
+    }
+}
+
+fn free_builtin(builtin: ASTBuiltin*) {
+    switch (*builtin) {
+        case .BuiltinFunc(var n) => n.args.free();
+        case .BuiltinBlock(var n) => n.args.free();
+    }
+}
+
+pub fn free_segments(segments: Vec<ASTModuleSegment>*) {
+    for (var i: usize = 0; i < segments->len(); i += 1) {
+        switch (segments->get(i)) {
+            case .Some(segment) => {
+                switch (*segment) {
+                    case .Single(var list) => list.free();
+                }
+            }
+        }
+    }
+
+    segments->free();
+}
+
+pub enum ASTNode {
+    DestructTuple(ASTDestructTuple),
+    SwitchGuard(ASTSwitchGuard),
+    ModuleDecl(ASTModuleDecl),
+    InlineAsm(ASTInlineAsm),
+    Interface(ASTInterface),
+    TypeAlias(ASTTypeAlias),
+    GlobalVar(ASTGlobalVar),
+    FuncDecl(ASTFuncDecl),
+    FuncType(ASTFuncType),
+    Continue(ASTContinue),
+    FuncDef(ASTFuncDef),
+    Builtin(ASTBuiltin),
+    Switch(ASTSwitch),
+    Struct(ASTStruct),
+    Import(ASTImport),
+    Return(ASTReturn),
+    Union(ASTUnion),
+    Defer(ASTDefer),
+    Break(ASTBreak),
+    Block(ASTBlock),
+    While(ASTWhile),
+    Label(ASTLabel),
+    Goto(ASTGoto),
+    Type(ASTType),
+    Expr(ASTExpr),
+    Enum(ASTEnum),
+    Var(ASTVar),
+    For(ASTFor),
+    If(ASTIf),
+}
+
+/* ************* Expressions ************* */
+
+pub enum ASTExpr {
+    EnumStructVariantInit(ASTEnumStructVariantInit),
+    UnnamedStructValue(ASTUnnamedStructValue),
+    UnnamedUnionValue(ASTUnnamedUnionValue),
+    UnnamedEnumValue(ASTUnnamedEnumValue),
+    UntypedArray(ASTUntypedArrayExpr),
+    ModuleImport(ASTModuleImport),
+    ArrayIndex(ASTArrayIndexExpr),
+    TupleAccess(ASTTupleAccess),
+    FieldAccess(ASTFieldAccess),
+    MethodCall(ASTMethodCall),
+    StructInit(ASTStructInit),
+    InlineAsm(ASTInlineAsm),
+    Prefix(ASTPrefixExpr),
+    FuncCall(ASTFuncCall),
+    Assign(ASTAssignExpr),
+    AddrOf(ASTAddrOfExpr),
+    Tuple(ASTTupleValue),
+    Infix(ASTInfixExpr),
+    Array(ASTArrayExpr),
+    Dynamic(ASTDynamic),
+    Builtin(ASTBuiltin),
+    Deref(ASTDerefExpr),
+    Lambda(ASTLambda),
+    Ident(ASTIdent),
+    Literal(Token),
+    Type(ASTType),
+}
+
+pub struct ASTIdent {
+    pub str: String,
+    pub span: Span,
+}
+
+pub struct ASTModuleImport {
+    pub segments: Vec<ASTModuleSegment>,
+    pub relative_level: isize,
+    pub span: Span,
+}
+
+pub enum ASTModuleSegment {
+    Single(Vec<ASTModuleSegmentSingle>),
+    SubModule(ASTIdent),
+}
+
+pub struct ASTModuleSegmentSingle {
+    pub ident: ASTIdent,
+    pub renamed: Option<ASTIdent>,
+}
+
+pub struct ASTModulePath {
+    pub alias: Option<String>,
+    pub segments: Vec<ASTModuleSegment>,
+    pub relative_level: isize,
+    pub span: Span,
+}
+
+pub struct ASTImport {
+    pub alias: Option<String>,
+    pub segments: Vec<ASTModuleSegment>,
+    pub relative_level: isize,
+    pub span: Span,
+}
+
+pub struct ASTAsmOperand {
+    pub constraint: String,
+    pub expr: NodeId,
+    pub span: Span,
+}
+
+pub struct ASTInlineAsm {
+    pub template: Vec<String>,
+    pub outputs: Vec<ASTAsmOperand>,
+    pub inputs: Vec<ASTAsmOperand>,
+    pub clobbers: Vec<ASTAsmClobber>,
+    pub is_volatile: bool,
+    pub span: Span,
+}
+
+pub struct ASTAsmClobber {
+    pub name: String,
+    pub span: Span,
+}
+
+pub enum ASTBuiltin {
+    BuiltinFunc(ASTBuiltinFunc),
+    BuiltinBlock(ASTBuiltinBlock),
+}
+
+pub struct ASTBuiltinFunc {
+    pub name: ASTIdent,
+    pub args: Vec<NodeId>,
+    pub span: Span,
+}
+
+pub struct ASTBuiltinBlock {
+    pub name: ASTIdent,
+    pub args: Vec<NodeId>,
+    pub block: NodeId,
+    pub is_toplevel: bool,
+    pub span: Span,
+}
+
+pub struct ASTAssignExpr {
+    pub lhs: NodeId,
+    pub rhs: NodeId,
+    pub kind: ASTAssignKind,
+    pub span: Span,
+}
+
+pub enum ASTAssignKind {
+    Default,
+    AddAssign,
+    SubAssign,
+    MulAssign,
+    DivAssign,
+    ModAssign,
+    BitwiseAndAssign,
+    BitwiseXorAssign,
+    BitwiseAndNotAssign,
+    LeftShiftAssign,
+    RightShiftAssign,
+
+    pub fn to_str(self: Self) const uint8* {
+        switch (self) {
+            case .Default => return "=";
+            case .AddAssign => return "+=";
+            case .SubAssign => return "-=";
+            case .MulAssign => return "*=";
+            case .DivAssign => return "/=";
+            case .ModAssign => return "%=";
+            case .BitwiseAndAssign => return "&=";
+            case .BitwiseXorAssign => return "^=";
+            case .BitwiseAndNotAssign => return "&~=";
+            case .LeftShiftAssign => return "<<=";
+            case .RightShiftAssign => return ">>=";
+        }
+    }
+}
+
+pub struct ASTPrefixExpr {
+    pub operator: ASTPrefixOperator,
+    pub operand: NodeId,
+    pub span: Span,
+}
+
+pub struct ASTInfixExpr {
+    pub operator: ASTInfixOperator,
+    pub lhs: NodeId,
+    pub rhs: NodeId,
+    pub span: Span,
+}
+
+pub struct ASTArrayExpr {
+    pub data_type: NodeId,
+    pub elements: Vec<NodeId>,
+    pub span: Span,
+}
+
+pub struct ASTUntypedArrayExpr {
+    pub elements: Vec<NodeId>,
+    pub span: Span,
+}
+
+pub struct ASTArrayIndexExpr {
+    pub operand: NodeId,
+    pub index: NodeId,
+    pub span: Span,
+}
+
+pub struct ASTAddrOfExpr {
+    pub expr: NodeId,
+    pub span: Span,
+}
+
+pub struct ASTDerefExpr {
+    pub expr: NodeId,
+    pub span: Span,
+}
+
+pub struct ASTFieldInit {
+    pub ident: ASTIdent,
+    pub value: NodeId,
+    pub span: Span,
+}
+
+pub struct ASTStructInit {
+    pub operand: NodeId,
+    pub field_inits: Vec<ASTFieldInit>,
+    pub span: Span,
+}
+
+pub struct ASTFuncCall {
+    pub operand: NodeId,
+    pub args: Vec<NodeId>,
+    pub type_args: ASTTypeArgs,
+    pub span: Span,
+}
+
+pub struct ASTFieldAccess {
+    pub is_thin_arrow: bool,
+    pub operand: NodeId,
+    pub field_name: ASTIdent,
+    pub span: Span,
+}
+
+pub struct ASTEnumStructVariantInit {
+    pub operand: NodeId,
+    pub ident: ASTIdent,
+    pub field_inits: Vec<ASTEnumStructVariantFieldInit>,
+    pub span: Span,
+}
+
+pub struct ASTEnumStructVariantFieldInit {
+    pub name: ASTIdent,
+    pub value: NodeId,
+    pub span: Span,
+}
+
+pub struct ASTMethodCall {
+    pub operand: NodeId,
+    pub method_name: ASTIdent,
+    pub args: Vec<NodeId>,
+    pub type_args: ASTTypeArgs,
+    pub is_thin_arrow: bool,
+    pub span: Span,
+}
+
+pub struct ASTTupleValue {
+    pub elements: Vec<NodeId>,
+    pub span: Span,
+}
+
+pub struct ASTTupleAccess {
+    pub operand: NodeId,
+    pub index: usize,
+    pub span: Span,
+}
+
+pub struct ASTDynamic {
+    pub operand: NodeId,
+    pub span: Span,
+}
+
+pub struct ASTUnnamedStructValueField {
+    pub name: ASTIdent,
+    pub value: NodeId,
+    pub span: Span,
+}
+
+pub struct ASTUnnamedStructValue {
+    pub fields: Vec<ASTUnnamedStructValueField>,
+    pub repr_attr: Option<ASTReprAttr>,
+    pub align: Option<usize>,
+    pub span: Span,
+}
+
+pub struct ASTUnnamedUnionValueField {
+    pub name: ASTIdent,
+    pub value: NodeId,
+    pub span: Span,
+}
+
+pub struct ASTUnnamedUnionValue {
+    pub fields: Vec<ASTUnnamedUnionValueField>,
+    pub span: Span,
+}
+
+pub enum ASTUnnamedEnumValueKind {
+    Plain,
+    Tuple(Vec<NodeId>),
+    Struct(Vec<ASTEnumStructVariantFieldInit>),
+}
+
+pub struct ASTUnnamedEnumValue {
+    pub ident: ASTIdent,
+    pub kind: ASTUnnamedEnumValueKind,
+    pub span: Span,
+}
+
+pub struct ASTLambda {
+    pub params: ASTFuncParams,
+    pub body: NodeId,
+    pub ret_type: NodeId,
+    pub span: Span,
+}
+
+/* ************* Generics ************* */
+
+pub struct ASTBound {
+    pub ty: NodeId,
+    pub span: Span,
+}
+
+pub struct ASTGenericParam {
+    pub name: ASTIdent,
+    pub bounds: Option<Vec<ASTBound>>,
+    pub default: Option<NodeId>,
+}
+
+pub type ASTGenericParams = Vec<ASTGenericParam>;
+
+/* ************* Functions ************* */
+
+pub struct ASTSelfModifier {
+    pub ty: NodeId,
+    pub constness: ASTConstness,
+    pub span: Span,
+}
+
+pub enum ASTFuncParamKind {
+    FuncParam(ASTFuncParam),
+    SelfModifier(ASTSelfModifier),
+}
+
+pub struct ASTFuncParam {
+    pub ident: ASTIdent,
+    pub ty: Option<ASTType>,
+    pub constness: ASTConstness,
+    pub span: Span,
+}
+
+pub enum ASTFuncVariadicParam {
+    UntypedCStyle,
+    Typed(ASTIdent, NodeId),
+}
+
+pub struct ASTFuncParams {
+    pub list: Vec<ASTFuncParamKind>,
+    pub variadic: Option<ASTFuncVariadicParam>,
+}
+
+pub struct ASTFuncDef {
+    pub ident: ASTIdent,
+    pub generic_params: ASTGenericParams,
+    pub params: ASTFuncParams,
+    pub body: NodeId,
+    pub ret_type: Option<NodeId>,
+    pub modifiers: ASTFuncModifiers,
+    pub span: Span,
+}
+
+pub struct ASTFuncDecl {
+    pub ident: ASTIdent,
+    pub generic_params: ASTGenericParams,
+    pub params: ASTFuncParams,
+    pub ret_type: Option<NodeId>,
+    pub modifiers: ASTFuncModifiers,
+    pub span: Span,
+}
+
+/* ************* Statements ************* */
+
+pub struct ASTBlock {
+    pub stmts: ASTNodeList,
+    pub span: Span,
+}
+
+pub struct ASTVar {
+    pub ident: ASTIdent,
+    pub ty: Option<ASTType>,
+    pub rhs: Option<NodeId>,
+    pub is_const: bool,
+    pub is_undef: bool,
+    pub span: Span,
+}
+
+pub struct ASTIf {
+    pub condition: NodeId,
+    pub then_block: NodeId,
+    pub branches: Vec<NodeId>,
+    pub else_block: Option<NodeId>,
+    pub span: Span,
+}
+
+pub struct ASTReturn {
+    pub argument: Option<NodeId>,
+    pub span: Span,
+}
+
+pub struct ASTFor {
+    pub initializer: Option<NodeId>,
+    pub condition: Option<NodeId>,
+    pub increment: Option<NodeId>,
+    pub body: NodeId,
+    pub span: Span,
+}
+
+pub struct ASTWhile {
+    pub condition: NodeId,
+    pub body: NodeId,
+    pub span: Span,
+}
+
+pub struct ASTSwitchCasePattern {
+    pub kind: ASTSwitchCasePatternKind,
+    pub span: Span,
+}
+
+pub enum ASTSwitchCasePatternKind {
+    Wildcard,
+    Expr(NodeId),
+    Range(ASTRange),
+    EnumUnit(ASTIdent),
+    EnumTupleVariant {
+        variant: ASTIdent,
+        items: Vec<ASTSwitchCasePattern>,
+    },
+    EnumStructVariant {
+        variant: ASTIdent,
+        items: Vec<ASTSwitchCaseEnumStructPatternField>,
+        has_rest: bool,
+    },
+    Binding { ident: ASTIdent, constness: ASTConstness },
+}
+
+pub struct ASTSwitchCaseEnumStructPatternField {
+    pub name: ASTIdent,
+    pub pattern: ASTSwitchCasePattern,
+}
+
+pub struct ASTRange {
+    pub lower: NodeId,
+    pub upper: NodeId,
+    pub inclusive_upper: bool,
+    pub span: Span,
+}
+
+pub struct ASTSwitchCase {
+    pub patterns: Vec<ASTSwitchCasePattern>,
+    pub body: NodeId,
+    pub span: Span,
+}
+
+pub struct ASTSwitchGuard {
+    pub operand: NodeId,
+    pub case_item: ASTSwitchCase,
+    pub default_case: Option<NodeId>,
+    pub span: Span,
+}
+
+pub struct ASTSwitch {
+    pub operand: NodeId,
+    pub cases: Vec<ASTSwitchCase>,
+    pub default_case: Option<NodeId>,
+    pub span: Span,
+}
+
+pub struct ASTBreak {
+    pub span: Span,
+}
+
+pub struct ASTContinue {
+    pub span: Span,
+}
+
+pub struct ASTDefer {
+    pub operand: NodeId,
+    pub span: Span,
+}
+
+pub struct ASTLabel {
+    pub name: ASTIdent,
+    pub span: Span,
+}
+
+pub struct ASTGoto {
+    pub name: ASTIdent,
+    pub span: Span,
+}
+
+pub struct ASTDestructTuple {
+    pub pat: ASTDestructTuplePattern,
+    pub rhs: Option<NodeId>,
+    pub bind: ASTConstness,
+    pub span: Span,
+}
+
+pub struct ASTDestructTuplePattern {
+    pub kind: ASTDestructTuplePatternKind,
+    pub ty: Option<ASTType>,
+    pub bind: ASTConstness,
+    pub span: Span,
+}
+
+pub enum ASTDestructTuplePatternKind {
+    Tuple(Vec<ASTDestructTuplePattern>),
+    Ident(ASTIdent),
+    Ignore,
+}
+
+/* ************* Declarations ************* */
+
+pub struct ASTInterface {
+    pub ident: ASTIdent,
+    pub methods: Vec<NodeId>,
+    pub generic_params: ASTGenericParams,
+    pub vis: ASTVisibility,
+    pub span: Span,
+}
+
+pub struct ASTStructField {
+    pub name: ASTIdent,
+    pub vis: ASTVisibility,
+    pub ty: NodeId,
+    pub span: Span,
+}
+
+pub struct ASTImplementInterface {
+    pub ty: NodeId,
+    pub span: Span,
+}
+
+pub struct ASTStruct {
+    pub ident: ASTIdent,
+    pub generic_params: ASTGenericParams,
+    pub impls: Vec<ASTImplementInterface>,
+    pub fields: Vec<ASTStructField>,
+    pub methods: Vec<NodeId>,
+    pub modifiers: ASTStructModifiers,
+    pub align: Option<usize>,
+    pub is_packed: bool,
+    pub span: Span,
+}
+
+pub struct ASTEnum {
+    pub ident: ASTIdent,
+    pub variants: Vec<ASTEnumVariant>,
+    pub generic_params: ASTGenericParams,
+    pub methods: Vec<NodeId>,
+    pub impls: Vec<ASTImplementInterface>,
+    pub modifiers: ASTEnumModifiers,
+    pub tag_type: Option<NodeId>,
+    pub align: Option<usize>,
+    pub span: Span,
+}
+
+pub struct ASTUnionField {
+    pub name: ASTIdent,
+    pub ty: NodeId,
+    pub span: Span,
+}
+
+pub struct ASTUnion {
+    pub ident: ASTIdent,
+    pub fields: Vec<ASTUnionField>,
+    pub generic_params: ASTGenericParams,
+    pub methods: Vec<NodeId>,
+    pub impls: Vec<ASTImplementInterface>,
+    pub modifiers: ASTUnionModifiers,
+    pub align: Option<usize>,
+    pub span: Span,
+}
+
+pub struct ASTTypeAlias {
+    pub ident: ASTIdent,
+    pub ty: NodeId,
+    pub generic_params: ASTGenericParams,
+    pub vis: ASTVisibility,
+    pub span: Span,
+}
+
+pub struct ASTGlobalVar {
+    pub ident: ASTIdent,
+    pub ty: Option<ASTType>,
+    pub expr: Option<NodeId>,
+    pub is_const: bool,
+    pub is_undef: bool,
+    pub is_static: bool,
+    pub modifiers: ASTGlobalVarModifiers,
+    pub span: Span,
+}
+
+pub struct ASTModuleDecl {
+    pub ident: ASTIdent,
+    pub stmts: ASTNodeList,
+    pub vis: ASTVisibility,
+    pub span: Span,
+}
+
+/* ************* Attributes ************* */
+
+pub enum ASTAttrKind {
+    Link(ASTLinkAttr),
+    LinkName(String),
+    Inline(ASTInlining),
+    Callconv(ASTCallconv),
+    NoSanitize(String),
+    Section(String),
+    Repr(ASTReprAttr),
+    Opt(ASTOptAttr),
+    ThreadLocal,
+    Naked,
+    Cold,
+    Hot,
+}
+
+pub struct ASTAttr {
+    pub kind: ASTAttrKind,
+    pub span: Span,
+}
+
+pub enum ASTReprKind {
+    C,
+    Cyrus,
+    Transparent,
+
+    [[inline]]
+    pub fn to_str(self: Self) const uint8* {
+        switch (self) {
+            case .C => return "c";
+            case .Cyrus => return "cyrus";
+            case .Transparent => return "transparent";
+        }
+    }
+}
+
+pub enum ASTReprAttrKind {
+    Kind(ASTReprKind),
+    Packed,
+}
+
+pub struct ASTReprItem {
+    pub kind: ASTReprAttrKind,
+    pub span: Span,
+}
+
+pub struct ASTReprAttr {
+    pub items: Vec<ASTReprItem>,
+}
+
+pub enum ASTLinkAttr {
+    Weak,
+    LinkOnce,
+}
+
+pub enum ASTInlining {
+    Hint,
+    Never,
+    Always,
+
+    [[inline]]
+    pub fn to_str(self: Self) const uint8* {
+        switch (self) {
+            case .Hint => return "hint";
+            case .Never => return "never";
+            case .Always => return "always";
+        }
+    }
+}
+
+pub enum ASTPrologue {
+    Naked,
+}
+
+pub enum ASTOptAttr {
+    None,
+    Size,
+}
+
+/* ************* Modifiers ************* */
+
+pub struct ASTFuncModifiers {
+    pub vis: ASTVisibility,
+    pub link_name: Option<String>,
+    pub extrn: Option<ASTExtern>,
+    pub inline: Option<ASTInlining>,
+    pub prologue: Option<ASTPrologue>,
+    pub callconv: Option<ASTCallconv>,
+    pub optional_flags: Vec<ASTOptionalFlag>,
+    pub section: Option<String>,
+    pub link_once: bool,
+    pub weak: bool,
+}
+
+pub struct ASTStructModifiers {
+    pub vis: ASTVisibility,
+    pub repr_attr: Option<ASTReprAttr>,
+}
+
+pub struct ASTEnumModifiers {
+    pub vis: ASTVisibility,
+    pub repr_attr: Option<ASTReprAttr>,
+}
+
+pub struct ASTUnionModifiers {
+    pub vis: ASTVisibility,
+    pub repr_attr: Option<ASTReprAttr>,
+}
+
+pub struct ASTGlobalVarModifiers {
+    pub vis: ASTVisibility,
+    pub link_name: Option<String>,
+    pub extrn: Option<ASTExtern>,
+    pub section: Option<String>,
+    pub thread_local: bool,
+    pub link_once: bool,
+    pub weak: bool,
+}
+
+pub enum ASTCallconv {
+    C,
+    Naked,
+    Interrupt,
+    Fast,
+    Cold,
+    Aapcs,
+    Stdcall,
+    Fastcall,
+    Thiscall,
+    Vectorcall,
+    SysV64,
+    Win64,
+    System,
+
+    [[inline]]
+    pub fn to_str(self: Self) const uint8* {
+        switch (self) {
+            case .C => return "c";
+            case .Naked => return "naked";
+            case .Interrupt => return "interrupt";
+            case .Fast => return "fast";
+            case .Cold => return "cold";
+            case .Aapcs => return "aapcs";
+            case .Stdcall => return "stdcall";
+            case .Fastcall => return "fastcall";
+            case .Thiscall => return "thiscall";
+            case .Vectorcall => return "vectorcall";
+            case .SysV64 => return "sysv64";
+            case .Win64 => return "win64";
+            case .System => return "system";
+        }
+    }
+}
+
+pub enum ASTExtern {
+    C,
+    Cyrus,
+
+    [[inline]]
+    pub fn to_str(self: Self) const uint8* {
+        switch (self) {
+            case .C => return "c";
+            case .Cyrus => return "cyrus";
+        }
+    }
+}
+
+pub enum ASTOptionalFlag {
+    NoReturn,
+    NoUnwind,
+    Cold,
+    Hot,
+    OptSize,
+    OptNone,
+    NoSanitize(String),
+}
+
+/* ************* Types ************* */
+
+pub struct ASTTypeArgs {
+    pub list: Vec<ASTTypeArg>,
+}
+
+pub enum ASTTypeArg {
+    Type(NodeId),
+    Infer,
+}
+
+pub struct ASTGenericInst {
+    pub base: NodeId,
+    pub type_args: ASTTypeArgs,
+    pub span: Span,
+}
+
+pub struct ASTTupleType {
+    pub type_list: Vec<NodeId>,
+    pub span: Span,
+}
+
+pub struct ASTArrayType {
+    pub size: ASTArrayCapacity,
+    pub element_type: NodeId,
+    pub span: Span,
+}
+
+pub enum ASTArrayCapacity {
+    Fixed(NodeId),
+    Dynamic,
+}
+
+pub struct ASTFuncTypeParams {
+    pub list: Vec<NodeId>,
+    pub variadic: Option<ASTFuncTypeVariadicParams>,
+}
+
+pub enum ASTFuncTypeVariadicParams {
+    UntypedCStyle,
+    Typed(NodeId),
+}
+
+pub struct ASTFuncType {
+    pub params: ASTFuncTypeParams,
+    pub ret_type: NodeId,
+    pub vis_opt: Option<ASTVisibility>,
+    pub span: Span,
+}
+
+pub struct ASTUnnamedStructType {
+    pub fields: Vec<ASTUnnamedStructTypeField>,
+    pub repr_attr: Option<ASTReprAttr>,
+    pub align: Option<usize>,
+    pub span: Span,
+}
+
+pub struct ASTUnnamedStructTypeField {
+    pub name: ASTIdent,
+    pub ty: NodeId,
+    pub span: Span,
+}
+
+pub struct ASTUnnamedUnionTypeField {
+    pub ident: ASTIdent,
+    pub field_type: NodeId,
+    pub span: Span,
+}
+
+pub struct ASTUnnamedUnionType {
+    pub fields: Vec<ASTUnnamedUnionTypeField>,
+    pub repr_attr: Option<ASTReprAttr>,
+    pub align: Option<usize>,
+    pub span: Span,
+}
+
+pub enum ASTEnumVariant {
+    Unit(ASTIdent),
+    Valued {
+        ident: ASTIdent,
+        value: NodeId,
+    },
+    Tuple {
+        ident: ASTIdent,
+        fields: Vec<ASTEnumVariantTupleField>,
+    },
+    Struct {
+        ident: ASTIdent,
+        fields: Vec<ASTEnumVariantStructField>,
+    },
+}
+
+pub struct ASTEnumVariantTupleField {
+    pub ty: NodeId,
+    pub span: Span,
+}
+
+pub struct ASTEnumVariantStructField {
+    pub name: ASTIdent,
+    pub ty: NodeId,
+    pub span: Span,
+}
+
+pub struct ASTUnnamedEnumType {
+    pub variants: Vec<ASTEnumVariant>,
+    pub tag_type: Option<NodeId>,
+    pub repr_attr: Option<ASTReprAttr>,
+    pub align: Option<usize>,
+    pub span: Span,
+}
+
+pub struct ASTSelfType {
+    pub span: Span,
+}
+
+pub enum ASTType {
+    UnnamedStruct(ASTUnnamedStructType),
+    UnnamedUnion(ASTUnnamedUnionType),
+    UnnamedEnum(ASTUnnamedEnumType),
+    ModuleImport(ASTModuleImport),
+    Primitive(ASTPrimitiveType),
+    SelfType(ASTSelfType),
+    Builtin(ASTBuiltin),
+    Tuple(ASTTupleType),
+    Array(ASTArrayType),
+    GenericInst(ASTGenericInst),
+    FuncType(NodeId),
+    Ident(ASTIdent),
+    Pointer(NodeId),
+    Const(NodeId),
+}
+
+pub enum ASTPrimitiveType {
+    Int8,
+    Int16,
+    Int32,
+    Int64,
+    Int128,
+    IntPtr,
+    ISize,
+    UInt8,
+    UInt16,
+    UInt32,
+    UInt64,
+    UInt128,
+    UIntPtr,
+    USize,
+    Float16,
+    Float32,
+    Float64,
+    Float128,
+    Bool,
+    Void
+}
+
+/* ************* Operators ************* */
+
+pub enum ASTInfixOperator {
+    Add,
+    Sub,
+    Mul,
+    Div,
+    Rem,
+    LessThan,
+    LessEqual,
+    GreaterThan,
+    GreaterEqual,
+    Equal,
+    NotEqual,
+    Or,
+    NullCoalesce,
+    And,
+    BitwiseAnd,
+    BitwiseOr,
+    BitwiseXor,
+    BitwiseAndNot,
+    ShiftRight,
+    ShiftLeft,
+
+    pub fn to_str(self: Self) const uint8* {
+        switch (self) {
+            case .Add => return "+";
+            case .Sub => return "-";
+            case .Mul => return "*";
+            case .Div => return "/";
+            case .Rem => return "%";
+            case .LessThan => return "<";
+            case .LessEqual => return "<=";
+            case .GreaterThan => return ">";
+            case .GreaterEqual => return ">=";
+            case .Equal => return "==";
+            case .NotEqual => return "!=";
+            case .Or => return "||";
+            case .NullCoalesce => return "??";
+            case .And => return "&&";
+            case .BitwiseAnd => return "&";
+            case .BitwiseOr => return "|";
+            case .BitwiseXor => return "^";
+            case .BitwiseAndNot => return "&~";
+            case .ShiftRight => return ">>";
+            case .ShiftLeft => return "<<";
+        }
+    }
+}
+
+pub enum ASTPrefixOperator {
+    Bang,
+    Minus,
+    BitwiseNot,
+
+    pub fn to_str(self: Self) const uint8* {
+        switch (self) {
+            case .Bang => return "!";
+            case .Minus => return "-";
+            case .BitwiseNot => return "~";
+        }
+    }
+}
+
+/* ************* ETC ************* */
+
+pub enum ASTConstness {
+    Const,
+    Var,
+
+    pub fn to_str(self: Self) const uint8* {
+        switch (self) {
+            case .Const => return "const";
+            case .Var => return "var";
+        }
+    }
+}
+
+pub enum ASTVisibility {
+    Public,
+    Private,
+}

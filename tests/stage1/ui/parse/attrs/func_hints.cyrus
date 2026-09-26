@@ -1,0 +1,67 @@
+// @parse
+
+[[inline]]
+fn inline_hint();
+
+[[inline(always)]]
+fn inline_always();
+
+[[inline(never)]]
+fn inline_never() {}
+
+[[cold]]
+fn cold_fn() {}
+
+[[hot]]
+fn hot_fn();
+
+[[opt(none)]]
+fn opt_none() {}
+
+[[opt(size)]]
+fn opt_size();
+
+/*@parse
+ASTProgram
+    Node[0]:
+        ASTFuncDecl
+            ident: inline_hint
+            inline: hint
+            params:
+    Node[1]:
+        ASTFuncDecl
+            ident: inline_always
+            inline: always
+            params:
+    Node[2]:
+        ASTFuncDef
+            ident: inline_never
+            inline: never
+            params:
+            body:
+                ASTBlock
+    Node[3]:
+        ASTFuncDef
+            ident: cold_fn
+            optional_flag: cold
+            params:
+            body:
+                ASTBlock
+    Node[4]:
+        ASTFuncDecl
+            ident: hot_fn
+            optional_flag: hot
+            params:
+    Node[5]:
+        ASTFuncDef
+            ident: opt_none
+            optional_flag: opt_none
+            params:
+            body:
+                ASTBlock
+    Node[6]:
+        ASTFuncDecl
+            ident: opt_size
+            optional_flag: opt_size
+            params:
+@parse*/

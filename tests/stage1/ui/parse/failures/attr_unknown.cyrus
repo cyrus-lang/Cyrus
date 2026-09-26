@@ -1,0 +1,12 @@
+// @parse
+
+[[bogus]]
+fn f();
+
+/*@parse
+tests/stage1/ui/parse/failures/attr_unknown.cyrus:3:3: error: unknown attribute `bogus`
+      |
+    3 ~ [[bogus]]
+      |   ^^^^^
+      |
+@parse*/

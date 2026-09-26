@@ -1,0 +1,96 @@
+// @parse
+
+fn else_if() {
+    if (ready) {
+        start();
+    } else if (loading) {
+        wait();
+    } else {
+        stop();
+    }
+
+    if (a) {
+        b();
+    } else if (c) {
+        d();
+    } else if (e) {
+        f();
+    }
+}
+
+/*@parse
+ASTProgram
+    Node[0]:
+        ASTFuncDef
+            ident: else_if
+            params:
+            body:
+                ASTBlock
+                    stmt[0]:
+                        ASTIf
+                            condition:
+                                ASTExpr::Ident
+                                    ident: ready
+                            then_block:
+                                ASTBlock
+                                    stmt[0]:
+                                        ASTExpr::FuncCall
+                                            operand:
+                                                ASTExpr::Ident
+                                                    ident: start
+                            branch[0]:
+                                ASTIf
+                                    condition:
+                                        ASTExpr::Ident
+                                            ident: loading
+                                    then_block:
+                                        ASTBlock
+                                            stmt[0]:
+                                                ASTExpr::FuncCall
+                                                    operand:
+                                                        ASTExpr::Ident
+                                                            ident: wait
+                            else_block:
+                                ASTBlock
+                                    stmt[0]:
+                                        ASTExpr::FuncCall
+                                            operand:
+                                                ASTExpr::Ident
+                                                    ident: stop
+                    stmt[1]:
+                        ASTIf
+                            condition:
+                                ASTExpr::Ident
+                                    ident: a
+                            then_block:
+                                ASTBlock
+                                    stmt[0]:
+                                        ASTExpr::FuncCall
+                                            operand:
+                                                ASTExpr::Ident
+                                                    ident: b
+                            branch[0]:
+                                ASTIf
+                                    condition:
+                                        ASTExpr::Ident
+                                            ident: c
+                                    then_block:
+                                        ASTBlock
+                                            stmt[0]:
+                                                ASTExpr::FuncCall
+                                                    operand:
+                                                        ASTExpr::Ident
+                                                            ident: d
+                            branch[1]:
+                                ASTIf
+                                    condition:
+                                        ASTExpr::Ident
+                                            ident: e
+                                    then_block:
+                                        ASTBlock
+                                            stmt[0]:
+                                                ASTExpr::FuncCall
+                                                    operand:
+                                                        ASTExpr::Ident
+                                                            ident: f
+@parse*/

@@ -1,0 +1,75 @@
+// @parse
+
+fn example() {
+    foo();
+    foo(1, 2);
+    a = 1;
+    b += 2;
+    obj.method();
+    a.b.c(1);
+}
+
+/*@parse
+ASTProgram
+    Node[0]:
+        ASTFuncDef
+            ident: example
+            params:
+            body:
+                ASTBlock
+                    stmt[0]:
+                        ASTExpr::FuncCall
+                            operand:
+                                ASTExpr::Ident
+                                    ident: foo
+                    stmt[1]:
+                        ASTExpr::FuncCall
+                            operand:
+                                ASTExpr::Ident
+                                    ident: foo
+                            arg[0]:
+                                ASTExpr::Literal
+                                    value: 1
+                            arg[1]:
+                                ASTExpr::Literal
+                                    value: 2
+                    stmt[2]:
+                        ASTExpr::Assign
+                            kind: =
+                            lhs:
+                                ASTExpr::Ident
+                                    ident: a
+                            rhs:
+                                ASTExpr::Literal
+                                    value: 1
+                    stmt[3]:
+                        ASTExpr::Assign
+                            kind: +=
+                            lhs:
+                                ASTExpr::Ident
+                                    ident: b
+                            rhs:
+                                ASTExpr::Literal
+                                    value: 2
+                    stmt[4]:
+                        ASTExpr::MethodCall
+                            operand:
+                                ASTExpr::Ident
+                                    ident: obj
+                            method_name: method
+                            is_thin_arrow: false
+                    stmt[5]:
+                        ASTExpr::MethodCall
+                            operand:
+                                ASTExpr::FieldAccess
+                                    operand:
+                                        ASTExpr::Ident
+                                            ident: a
+                                    field_name: b
+                                    is_thin_arrow: false
+                            method_name: c
+                            arg[0]:
+                                ASTExpr::Literal
+                                    value: 1
+                            is_thin_arrow: false
+@parse*/

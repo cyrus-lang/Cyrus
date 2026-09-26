@@ -1,0 +1,3929 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 The Cyrus Language
+
+import std::collections{Vec};
+import std::option{Option};
+import std::string{String};
+import std::mem{Allocator};
+
+import .::state{ParserState};
+import .::exprs{ParserExprs};
+import .::diags{
+    report_error,
+    report_unexpected_token,
+    report_local_decl_error,
+    report_undefined_needs_type,
+    report_invalid_abi,
+    report_duplicate_modifier,
+    report_modifier_not_allowed,
+    report_modifier_order_error,
+    report_attrs_after_modifiers,
+    report_attr_not_applicable
+};
+import .::attrs{
+    parse_attr,
+    check_attrs,
+    check_attrs_cross,
+    apply_func_attrs,
+    apply_global_attrs,
+    apply_object_attrs,
+    report_attrs_not_applicable,
+    ObjectKind,
+    attr_key
+};
+import tokens{
+    Token, 
+    TokenKind, 
+    SourceTokens, 
+    Span
+};
+import .::ast;
+
+pub struct ParserStmts {
+    allocator: Allocator,
+    program: ast::ASTProgram*,
+    state: ParserState*,
+    pub pending_attrs: Vec<ast::ASTAttr>,
+    // Set by struct/union/enum method loops so the next `parse_stmt`
+    // finalizes its attributes onto the method itself (stage0 parses
+    // methods with `toplevel = true`).
+    method_ctx: bool,
+
+    [[inline]]
+    pub fn new(
+        allocator: Allocator, 
+        program: ast::ASTProgram*, 
+        state: ParserState*
+    ) Self {
+        return Self {
+            allocator,
+            program,
+            state,
+            pending_attrs: Vec.new(allocator),
+            method_ctx: false
+        };
+    }
+
+    [[inline]]
+    pub fn parse_expr(self: Self*) Option<ast::NodeId> {
+        var exprs = ParserExprs.new(self->program, self->state);
+        return exprs.parse_expr();
+    }
+
+    [[inline]]
+    fn parse_expr_list(self: Self*, close: TokenKind) Option<Vec<ast::NodeId>> {
+        var exprs = ParserExprs.new(self->program, self->state);
+        return exprs.parse_expr_list(close);
+    }
+
+    /// Pattern expressions parse a prefix/postfix operand only.
+    fn parse_pattern_expr(self: Self*) Option<ast::NodeId> {
+        var exprs = ParserExprs.new(self->program, self->state);
+        return exprs.parse_expr_with_precedence(.Prefix);
+    }
+
+    [[inline]]
+    pub fn parse_type(self: Self*) Option<ast::ASTType> {
+        var exprs = ParserExprs.new(self->program, self->state);
+        return exprs.parse_type();
+    }
+
+    [[inline]]
+    pub fn parse_toplevels(self: Self*) {
+        while (!self->state->is(.EOF)) {
+            const before = self->state->pos();
+            
+            self->parse_toplevel();
+
+            // Error recovery must always advance, 
+            // otherwise we spin forever!
+            if (self->state->pos() == before) {
+                self->state->next();
+            }
+        }
+    }
+
+    pub fn parse_toplevel(self: Self*) bool {
+        // Attributes have the highest priority and may appear in
+        // any number of groups before the modifiers.
+        var attrs: Vec<ast::ASTAttr> = Vec.new(self->allocator);
+
+        // Attributes written in front of a builtin, 
+        // for example `[[x]] @ident() stmt`, are stashed in `pending_attrs` 
+        // while the builtin itself is parsed,
+        // because the builtin and the statement it wraps are two separate
+        // parse steps. The wrapped statement is parsed by a nested call to
+        // this function, so adopt the stash first: those attributes then
+        // behave exactly as if they had been written in front of this
+        // statement, which is what they semantically belong to.
+        if (self->pending_attrs.len() > 0) {
+            attrs.free();
+            attrs = self->pending_attrs;
+            self->pending_attrs = Vec.new(self->allocator);
+        }
+
+        while (self->state->is(.LeftBracket)) {
+            switch (parse_attr(self->state)) {
+                case .Some(attr) => {
+                    attrs.push(attr);
+                }
+            }
+        }
+
+        var is_pub = false;
+        var extrn: Option<ast::ASTExtern> = .None;
+
+        if (!self->collect_modifiers(&is_pub, &extrn)) {
+            ast::free_attrs(&attrs);
+            self->state->sync();
+            return false;
+        }
+
+        // Attributes and modifiers are never mixed.
+        // Attributes always come first.
+        self->reject_attrs_after_modifiers();
+
+        var attrs_ptr: Option<Vec<ast::ASTAttr>*> = .None;
+
+        if (attrs.len() > 0) {
+            attrs_ptr = .Some(&attrs);
+        }
+
+        var ok = false;
+
+        if (self->state->is(.LeftBrace)) {
+            // Attributes cannot be attached to a block statement.
+            report_attrs_not_applicable(
+                self->allocator,
+                self->state->dctx,
+                &attrs
+            );
+
+            ast::free_attrs(&attrs);
+            attrs = Vec.new(self->allocator);
+            attrs_ptr = .None;
+
+            ok = self->parse_grouped_modifiers(is_pub, extrn);
+        } else if (self->state->is(.Module)) {
+            // `mod` never accepts attributes; the declaration reports
+            // them as not applicable.
+            ok = self->parse_toplevel_decl(is_pub, extrn, attrs_ptr);
+        } else if (self->state->is(.At)) {
+            // Builtins hand their attributes to the wrapped statement.
+            if (attrs.len() > 0) {
+                self->pending_attrs.free();
+                self->pending_attrs = attrs;
+                attrs = Vec.new(self->allocator);
+                attrs_ptr = .None;
+            }
+
+            ok = self->parse_toplevel_decl(is_pub, extrn, attrs_ptr);
+        } else {
+            switch (attrs_ptr) {
+                case .Some(list) => {
+                    check_attrs(self->allocator, self->state->dctx, list);
+                }
+            }
+
+            // These statements accept no attributes
+            if (self->state->is(.Type)
+                || self->state->is(.Interface)
+                || self->state->is(.Import)
+            ) {
+                report_attrs_not_applicable(
+                    self->allocator,
+                    self->state->dctx,
+                    &attrs
+                );
+            }
+
+            ok = self->parse_toplevel_decl(is_pub, extrn, attrs_ptr);
+        }
+
+        ast::free_attrs(&attrs);
+        return ok;
+    }
+
+    /// Parses a single file-scope declaration with the modifiers and
+    /// attributes already collected by the caller.
+    fn parse_toplevel_decl(
+        self: Self*,
+        is_pub: bool,
+        extrn: Option<ast::ASTExtern>,
+        attrs: Option<Vec<ast::ASTAttr>*>
+    ) bool {
+        const token = self->state->current();
+
+        switch (*token->kind) {
+            case .Static | .Var | .Const => return self->parse_global_var(is_pub, extrn, attrs);
+            case .Function => return self->parse_func(is_pub, extrn, attrs, true);
+            case .Import => return self->parse_import();
+
+            case .Module => {
+                self->reject_extrn_modifier(extrn, "module");
+
+                // Module declaration never accepts attributes
+                switch (attrs) {
+                    case .Some(list) => {
+                        report_attrs_not_applicable(
+                            self->allocator,
+                            self->state->dctx,
+                            list
+                        );
+                    }
+                }
+
+                return self->parse_module_decl(is_pub);
+            }
+            case .Interface => {
+                self->reject_extrn_modifier(extrn, "interface");
+                return self->parse_interface(is_pub);
+            }
+            case .Type => {
+                self->reject_extrn_modifier(extrn, "type alias");
+                return self->parse_type_alias(is_pub);
+            }
+            case .Struct => {
+                self->reject_extrn_modifier(extrn, "struct");
+                return self->parse_struct(is_pub, attrs, true);
+            }
+            case .Union => {
+                self->reject_extrn_modifier(extrn, "union");
+                return self->parse_union(is_pub, attrs, true);
+            }
+            case .Enum => {
+                self->reject_extrn_modifier(extrn, "enum");
+                return self->parse_enum(is_pub, attrs, true);
+            }
+            
+            case .At => {
+                // Builtins does accept any modifiers
+                if (is_pub || extrn.is_some()) {
+                    report_unexpected_token(
+                        self->allocator,
+                        self->state->dctx,
+                        self->state->current_span(),
+                        *token->kind
+                    );
+                    self->skip_stray_stmt();
+                    return false;
+                }
+
+                return self->parse_builtin_stmt(true);
+            }
+            
+            else => {
+                report_unexpected_token(
+                    self->allocator,
+                    self->state->dctx,
+                    self->state->current_span(),
+                    *token->kind
+                );
+                self->skip_stray_stmt();
+                return false;
+            }
+        }
+    }
+    
+    /// Grammar: `{` (Attrs? ToplevelDecl)* `}`
+    fn parse_grouped_modifiers(
+        self: Self*,
+        is_pub: bool,
+        extrn: Option<ast::ASTExtern>
+    ) bool {
+        self->state->next();
+
+        while (!self->state->is(.RightBrace)) {
+            if (self->state->is(.EOF)) {
+                break;
+            }
+
+            // Inner declarations may not declare their own modifiers.
+            if (self->state->is(.Public) || self->state->is(.Extern)) {
+                report_error(
+                    self->allocator,
+                    self->state->dctx,
+                    self->state->current_span(),
+                    "group modifiers cannot be nested"
+                );
+
+                if (!self->skip_nested_group_modifiers()) {
+                    return false;
+                }
+
+                continue;
+            }
+
+            // Inner declarations may carry their own attributes.
+            var inner: Vec<ast::ASTAttr> = Vec.new(self->allocator);
+
+            while (self->state->is(.LeftBracket)) {
+                switch (parse_attr(self->state)) {
+                    case .Some(attr) => {
+                        inner.push(attr);
+                    }
+                }
+            }
+
+            if (self->state->is(.LeftBrace)) {
+                report_error(
+                    self->allocator,
+                    self->state->dctx,
+                    self->state->current_span(),
+                    "block statements are not allowed at top level"
+                );
+                ast::free_attrs(&inner);
+                self->state->skip_braced();
+                continue;
+            }
+
+            var pass: Option<Vec<ast::ASTAttr>*> = .None;
+
+            if (inner.len() > 0) {
+                pass = .Some(&inner);
+                check_attrs(self->allocator, self->state->dctx, &inner);
+            }
+
+            const before = self->state->pos();
+
+            // Builtins ignore the group's modifiers
+            var parsed = false;
+
+            if (self->state->is(.At)) {
+                switch (pass) {
+                    case .Some(list) => {
+                        for (var i: usize = 0; i < list->len(); i += 1) {
+                            switch (list->get_const(i)) {
+                                case .Some(item) => {
+                                    self->pending_attrs.push(*item);
+                                }
+                            }
+                        }
+
+                        list->free();
+                        *list = Vec.new(self->allocator);
+                    }
+                }
+
+                parsed = self->parse_builtin_stmt(true);
+            } else {
+                parsed = self->parse_toplevel_decl(is_pub, extrn, pass);
+            }
+
+            ast::free_attrs(&inner);
+
+            if (!parsed) {
+                if (self->state->pos() == before) {
+                    self->state->next();
+                } else if (self->state->is(.Semicolon)) {
+                    self->state->next();
+                }
+            }
+        }
+
+        return self->state->expect(.RightBrace);
+    }
+
+    fn skip_nested_group_modifiers(self: Self*) bool {
+        while (true) {
+            if (self->state->is(.Public)) {
+                self->state->next();
+                continue;
+            }
+
+            if (self->state->is(.Extern)) {
+                self->state->next();
+
+                const abi_ok = self->parse_extern_abi();
+
+                if (abi_ok.is_none()) {
+                    self->state->sync();
+                    return false;
+                }
+
+                continue;
+            }
+
+            break;
+        }
+
+        return true;
+    }
+
+    /// Reports and drops any attributes that appear after the modifiers.
+    /// Attributes and modifiers are never mixed, attributes come first.
+    fn reject_attrs_after_modifiers(self: Self*) {
+        var dropped: Vec<ast::ASTAttr> = Vec.new(self->allocator);
+
+        while (self->state->is(.LeftBracket)) {
+            switch (parse_attr(self->state)) {
+                case .Some(attr) => {
+                    dropped.push(attr);
+                }
+            }
+        }
+
+        for (var i: usize = 0; i < dropped.len(); i += 1) {
+            switch (dropped.get_const(i)) {
+                case .Some(attr) => {
+                    report_attrs_after_modifiers(
+                        self->allocator,
+                        self->state->dctx,
+                        attr->span
+                    );
+                }
+            }
+        }
+
+        ast::free_attrs(&dropped);
+    }
+
+    /// Collects the modifiers in that fixed order.
+    fn collect_modifiers(self: Self*, is_pub: bool*, extrn: Option<ast::ASTExtern>*) bool {
+        while (true) {
+            if (self->state->is(.Public)) {
+                if (*is_pub) {
+                    report_duplicate_modifier(
+                        self->allocator,
+                        self->state->dctx,
+                        self->state->current_span(),
+                        "visibility"
+                    );
+                }
+
+                if (extrn->is_some()) {
+                    report_modifier_order_error(
+                        self->allocator,
+                        self->state->dctx,
+                        self->state->current_span(),
+                        "pub",
+                        "extern"
+                    );
+                }
+
+                *is_pub = true;
+                self->state->next();
+                continue;
+            }
+
+            if (self->state->is(.Extern)) {
+                if (extrn->is_some()) {
+                    report_duplicate_modifier(
+                        self->allocator,
+                        self->state->dctx,
+                        self->state->current_span(),
+                        "linkage"
+                    );
+                }
+
+                self->state->next();
+
+                switch (self->parse_extern_abi()) {
+                    case .Some(parsed_abi) => {
+                        if (extrn->is_none()) {
+                            *extrn = .Some(parsed_abi);
+                        }
+                    }
+                    else => return false;
+                }
+
+                continue;
+            }
+
+            break;
+        }
+
+        return true;
+    }
+
+    fn reject_extrn_modifier(self: Self*, extrn: Option<ast::ASTExtern>, decl: const uint8*) {
+        if (extrn.is_some()) {
+            report_modifier_not_allowed(
+                self->allocator,
+                self->state->dctx,
+                self->state->current_span(),
+                "extern",
+                decl
+            );
+        }
+    }
+
+    /// Skip the rest of the stray statement so a single bad token
+    /// doesn't cascade into one error per token.
+    fn skip_stray_stmt(self: Self*) {
+        var depth: usize = 0;
+
+        while (!self->state->is(.EOF)) {
+            if (self->state->is(.LeftBrace)) {
+                depth += 1;
+                self->state->next();
+                continue;
+            }
+
+            if (self->state->is(.RightBrace)) {
+                if (depth == 0) {
+                    // Belongs to the enclosing block; leave it.
+                    return;
+                }
+
+                depth -= 1;
+                self->state->next();
+                continue;
+            }
+
+            if (self->state->is(.Semicolon) && depth == 0) {
+                self->state->next();
+                return;
+            }
+
+            self->state->next();
+        }
+    }
+
+    pub fn parse_stmt(self: Self*) {
+        var attrs: Vec<ast::ASTAttr> = Vec.new(self->allocator);
+
+        while (self->state->is(.LeftBracket)) {
+            switch (parse_attr(self->state)) {
+                case .Some(attr) => {
+                    attrs.push(attr);
+                }
+            }
+        }
+
+        const had_attrs = attrs.len() > 0;
+
+        // Method declarations finalize their attributes onto themselves
+        // Every other statement inside a block accumulates them on 
+        // the stack for the enclosing toplevel statement.
+        const is_method = self->method_ctx;
+        self->method_ctx = false;
+
+        // Attributes cannot be attached to a block statement.
+        if (had_attrs && self->state->is(.LeftBrace)) {
+            report_attrs_not_applicable(
+                self->allocator,
+                self->state->dctx,
+                &attrs
+            );
+
+            ast::free_attrs(&attrs);
+            self->parse_block();
+            return;
+        }
+
+        if (is_method && had_attrs) {
+            check_attrs(self->allocator, self->state->dctx, &attrs);
+        }
+
+        if (!is_method && had_attrs) {
+            for (var i: usize = 0; i < attrs.len(); i += 1) {
+                switch (attrs.get_const(i)) {
+                    case .Some(attr) => {
+                        self->pending_attrs.push(*attr);
+                    }
+                }
+            }
+
+            attrs.free();
+            attrs = Vec.new(self->allocator);
+        }
+
+        // Attributes written right before the closing `}` of the
+        // enclosing body have no declaration to attach to: they were
+        // already adopted by `pending_attrs` above (or belong to the
+        // method, in which case they are dropped), so simply let the
+        // `}` close the body.
+        if (had_attrs && self->state->is(.RightBrace)) {
+            ast::free_attrs(&attrs);
+            return;
+        }
+
+        var is_pub = false;
+        var extrn: Option<ast::ASTExtern> = .None;
+
+        if (!self->collect_modifiers(&is_pub, &extrn)) {
+            ast::free_attrs(&attrs);
+            self->state->sync();
+            return;
+        }
+
+        // Attributes and modifiers are never mixed.
+        // Attributes always come first.
+        self->reject_attrs_after_modifiers();
+
+        const token = self->state->current();
+
+        switch (*token->kind) {
+            // Rejected in local scope
+            case .Interface => self->reject_local_decl(is_pub, "interface", .Interface);
+            case .Struct => self->reject_local_decl(is_pub, "struct", .Struct);
+            case .Union => self->reject_local_decl(is_pub, "union", .Union);
+            case .Module => self->reject_local_decl(is_pub, "mod", .Module);
+            case .Enum => self->reject_local_decl(is_pub, "enum", .Enum);
+
+            // Accepted only in local scope
+            case .Continue => self->parse_continue();
+            case .Var | .Const => self->parse_var();
+            case .LeftBrace => self->parse_block();
+            case .Return => self->parse_return();
+            case .Switch => self->parse_switch();
+            case .While => self->parse_while();
+            case .Break => self->parse_break();
+            case .Defer => self->parse_defer();
+            case .Goto => self->parse_goto();
+            case .For => self->parse_for();
+            case .If => self->parse_if();
+            
+            case .Function => {
+                // Functions cannot be declared inside another function body
+                if (is_method) {
+                    self->parse_func(is_pub, extrn, .Some(&attrs), true);
+                } else {
+                    self->reject_local_decl(is_pub, "fn", .Function);
+                }
+            }
+            
+            case .Ident(_) => self->parse_ident_stmt();
+            
+            case .Type => {
+                if (extrn.is_some()) {
+                    report_modifier_not_allowed(
+                        self->allocator,
+                        self->state->dctx,
+                        self->state->current_span(),
+                        "extern",
+                        "type alias"
+                    );
+                }
+
+                self->parse_type_alias(is_pub);
+            }
+            
+            case .At => {
+                // Bare builtins accept no modifiers (stage0 parity).
+                if (is_pub || extrn.is_some()) {
+                    report_unexpected_token(
+                        self->allocator,
+                        self->state->dctx,
+                        self->state->current_span(),
+                        *token->kind
+                    );
+                    self->skip_stray_stmt();
+                    ast::free_attrs(&attrs);
+                    return;
+                }
+
+                self->parse_builtin_stmt(false);
+            }
+
+            else => self->parse_expr_stmt();
+        }
+
+        ast::free_attrs(&attrs);
+    }
+
+    /// Applies attributes accumulated inside a function body onto the
+    /// function itself — stage0 validates and finalizes the whole
+    /// `attrs_stack` when the enclosing toplevel statement finishes.
+    fn absorb_pending_attrs(
+        self: Self*,
+        own: Option<Vec<ast::ASTAttr>*>,
+        has_body: bool,
+        modifiers: ast::ASTFuncModifiers*
+    ) {
+        if (self->pending_attrs.len() == 0) {
+            return;
+        }
+
+        check_attrs(self->allocator, self->state->dctx, &self->pending_attrs);
+
+        switch (own) {
+            case .Some(list) => {
+                if (list->len() > 0) {
+                    check_attrs_cross(
+                        self->allocator,
+                        self->state->dctx,
+                        list,
+                        &self->pending_attrs
+                    );
+                }
+            }
+        }
+
+        apply_func_attrs(
+            self->allocator,
+            self->state->dctx,
+            modifiers,
+            .Some(&self->pending_attrs),
+            has_body
+        );
+
+        ast::free_attrs(&self->pending_attrs);
+        self->pending_attrs = Vec.new(self->allocator);
+    }
+
+    /// Object declarations absorb leftover stack attributes the same way
+    /// functions do: anything still pending belongs to this statement
+    /// (method bodies finalize onto their own methods first).
+    fn absorb_pending_object_attrs(
+        self: Self*,
+        own: Option<Vec<ast::ASTAttr>*>,
+        repr_slot: Option<ast::ASTReprAttr>*,
+        object: ObjectKind
+    ) {
+        if (self->pending_attrs.len() == 0) {
+            return;
+        }
+
+        check_attrs(self->allocator, self->state->dctx, &self->pending_attrs);
+
+        switch (own) {
+            case .Some(list) => {
+                if (list->len() > 0) {
+                    check_attrs_cross(
+                        self->allocator,
+                        self->state->dctx,
+                        list,
+                        &self->pending_attrs
+                    );
+                }
+            }
+        }
+
+        apply_object_attrs(
+            self->allocator,
+            self->state->dctx,
+            .Some(&self->pending_attrs),
+            repr_slot,
+            object
+        );
+
+        ast::free_attrs(&self->pending_attrs);
+        self->pending_attrs = Vec.new(self->allocator);
+    }
+
+    /// Data structure declarations are only allowed at file scope; report the
+    /// error, still consume the declaration for recovery, then drop its node.
+    fn reject_local_decl(self: Self*, is_pub: bool, keyword: const uint8*, kind: TokenKind) {
+        report_local_decl_error(
+            self->allocator,
+            self->state->dctx,
+            self->state->current_span(),
+            keyword
+        );
+
+        const mark = self->state->pending->len();
+
+        switch (kind) {
+            case .Function => self->parse_func(is_pub, .None, .None, false);
+            case .Struct => self->parse_struct(is_pub, .None, false);
+            case .Enum => self->parse_enum(is_pub, .None, false);
+            case .Union => self->parse_union(is_pub, .None, false);
+            case .Interface => self->parse_interface(is_pub);
+            case .Module => {
+                self->state->next();
+
+                if (self->state->is_ident()) {
+                    self->state->next();
+                }
+
+                if (self->state->is(.LeftBrace)) {
+                    self->state->skip_braced();
+                } else if (self->state->is(.Semicolon)) {
+                    self->state->next();
+                }
+            }
+        }
+
+        while (self->state->pending->len() > mark) {
+            self->state->pending->pop();
+        }
+    }
+
+    fn parse_ident_stmt(self: Self*) {
+        if (self->state->is_peek(.Colon)) {
+            self->parse_label();
+        } else {
+            self->parse_expr_stmt();
+        }
+    }
+
+    /// Grammar: Expr ;
+    fn parse_expr_stmt(self: Self*) {
+        switch (self->parse_expr()) case .Some(expr) else {
+            self->state->sync();
+            return;
+        }
+
+        if (!self->state->expect_semicolon()) {
+            self->state->sync();
+            return;
+        }
+
+        self->state->pending->push(expr);
+    }
+
+    /// Grammar: static? (const | var) IDENT (: Type)? (= Expr)? ;
+    pub fn parse_global_var(
+        self: Self*,
+        is_pub: bool,
+        extrn: Option<ast::ASTExtern>,
+        attrs: Option<Vec<ast::ASTAttr>*>
+    ) bool {
+        const start = self->state->current_span();
+
+        var is_static = false;
+        var is_const = false;
+        
+        if (self->state->is(.Static)) {
+            self->state->next();
+            is_static = true;
+        }
+
+        if (self->state->is(.Const)) {
+            self->state->next();
+            is_const = true;
+        } else {
+            if (!self->state->expect(.Var)) {
+                self->state->sync();
+                return false;
+            }
+        }
+
+        switch (self->state->expect_ident()) case .Some(ident) else {
+            self->state->sync();
+            return false;
+        }
+
+        // Optional type annotation
+        var ty: Option<ast::ASTType> = .None;
+
+        if (self->state->is(.Colon)) {
+            self->state->next();
+
+            switch (self->parse_type()) case .Some(explicit_type) else {
+                return false;
+            }
+
+            ty = .Some(explicit_type);
+        }
+
+        // Optional initializer
+        var expr: Option<ast::NodeId> = .None;
+        var is_undef = false;
+        
+        if (self->state->is(.Assign)) {
+            self->state->next();
+
+            if (self->state->is_ident_str("undefined")) {
+                self->state->next();
+                is_undef = true;
+            } else {
+                switch (self->parse_expr()) {
+                    case .Some(id) => expr = .Some(id);
+                }
+            }
+        }
+
+        if (!self->state->expect_semicolon()) {
+            self->state->sync();
+            return false;
+        }
+
+        const end = self->state->current_span();
+        const span = start.merge(end);
+
+        if (expr.is_none() && ty.is_none() && !is_undef) {
+            report_error(
+                self->allocator, 
+                self->state->dctx, 
+                span, 
+                "expected initializer, `undefined`, or an explicit type specifier"
+            );
+            return false;
+        }
+
+        if (expr.is_none() && is_const) {
+            report_error(
+                self->allocator, 
+                self->state->dctx, ident.span, 
+                "constant global variable must be initialized"
+            );
+            return false;
+        }
+
+        if (!is_static && !is_const) {
+            report_error(
+                self->allocator, 
+                self->state->dctx, 
+                ident.span, 
+                "non-static global variable must be constant"
+            );
+            return false;
+        }
+
+        if (ty.is_none() && is_undef) {
+            report_error(
+                self->allocator, 
+                self->state->dctx, 
+                ident.span, 
+                "expected explicit type specifier"
+            );
+            return false;
+        }
+
+        var modifiers = make_global_modifiers(self->allocator, is_pub, extrn);
+        apply_global_attrs(self->allocator, self->state->dctx, &modifiers, attrs);
+
+        const node = ast::ASTGlobalVar {
+            ident,
+            ty,
+            expr,
+            is_const,
+            is_undef,
+            is_static,
+            modifiers,
+            span,
+        };
+        const node_id = self->program->create_node(.GlobalVar(node));
+        self->state->pending->push(node_id);
+        return true;
+    }
+
+    /// Grammar: (const | var) IDENT (: Type)? (= Expr | undefined)? ;
+    pub fn parse_var(self: Self*) {
+        switch (self->parse_var_node()) case .Some(node) else {
+            self->state->sync();
+            return;
+        }
+
+        self->state->pending->push(node);
+    }
+
+    /// Grammar: (const | var) IDENT (: Type)? (= Expr | undefined)? ;
+    fn parse_var_node(self: Self*) Option<ast::NodeId> {
+        const start = self->state->current_span();
+
+        var is_const = false;
+
+        if (self->state->is(.Const)) {
+            self->state->next();
+            is_const = true;
+        } else {
+            if (!self->state->expect(.Var)) {
+                return .None;
+            }
+        }
+
+        if (self->state->is(.LeftParen)) {
+            return self->parse_destruct_tuple(is_const, start);
+        }
+
+        switch (self->state->expect_ident()) case .Some(ident) else {
+            return .None;
+        }
+
+        // Optional type annotation
+        var ty: Option<ast::ASTType> = .None;
+
+        if (self->state->is(.Colon)) {
+            self->state->next();
+
+            switch (self->parse_type()) case .Some(explicit_type) else {
+                return .None;
+            }
+
+            ty = .Some(explicit_type);
+        }
+
+        // Optional initializer
+        var rhs: Option<ast::NodeId> = .None;
+        var is_undef = false;
+
+        if (self->state->is(.Assign)) {
+            self->state->next();
+
+            if (self->state->is_ident_str("undefined")) {
+                self->state->next();
+                is_undef = true;
+            } else {
+                switch (self->parse_expr()) case .Some(value) else {
+                    return .None;
+                }
+
+                rhs = .Some(value);
+            }
+        }
+
+        const end = self->state->current_span();
+
+        if (!self->state->expect_semicolon()) {
+            return .None;
+        }
+
+        if (rhs.is_none() && ty.is_none() && !is_undef) {
+            report_error(
+                self->allocator, 
+                self->state->dctx, 
+                start.merge(end), 
+                "expected initializer, `undefined`, or an explicit type specifier"
+            );
+            return .None;
+        }
+
+        if (is_undef && ty.is_none()) {
+            report_undefined_needs_type(
+                self->allocator,
+                self->state->dctx,
+                start.merge(end),
+                ident.str.as_str_const()
+            );
+            return .None;
+        }
+
+        const node = ast::ASTVar {
+            ident,
+            ty,
+            rhs,
+            is_const,
+            is_undef,
+            span: start.merge(end),
+        };
+        return .Some(self->program->create_node(.Var(node)));
+    }
+
+    /// Grammar: (const | var) ( Pattern, ... ) (= Expr)? ;
+    fn parse_destruct_tuple(self: Self*, is_const: bool, start: Span) Option<ast::NodeId> {
+        switch (self->parse_destruct_pattern()) case .Some(parsed_pat) else {
+            return .None;
+        }
+
+        var pat = parsed_pat;
+
+        // Optional initializer
+        var rhs: Option<ast::NodeId> = .None;
+
+        if (self->state->is(.Assign)) {
+            self->state->next();
+
+            switch (self->parse_expr()) case .Some(value) else {
+                ast::free_destruct_pattern(&pat);
+                return .None;
+            }
+
+            rhs = .Some(value);
+        }
+
+        const end = self->state->current_span();
+
+        if (!self->state->expect_semicolon()) {
+            ast::free_destruct_pattern(&pat);
+            return .None;
+        }
+
+        var bind = ast::ASTConstness.Const;
+
+        if (!is_const) {
+            bind = .Var;
+        }
+
+        const node = ast::ASTDestructTuple {
+            pat,
+            rhs,
+            bind,
+            span: start.merge(end),
+        };
+        return .Some(self->program->create_node(.DestructTuple(node)));
+    }
+
+    /// Grammar: mutability? ( _ | IDENT ( : Type )? | ( Pattern, ... ) ( : Type )? )
+    fn parse_destruct_pattern(self: Self*) Option<ast::ASTDestructTuplePattern> {
+        const start = self->state->current_span();
+
+        var bind = ast::ASTConstness.Const;
+
+        if (self->state->is(.Var)) {
+            self->state->next();
+            bind = .Var;
+        } else if (self->state->is(.Const)) {
+            self->state->next();
+        }
+
+        var kind: ast::ASTDestructTuplePatternKind;
+
+        if (self->state->is(.Underscore)) {
+            self->state->next();
+            kind = .Ignore;
+        } else if (self->state->is(.LeftParen)) {
+            self->state->next();
+
+            var patterns: Vec<ast::ASTDestructTuplePattern> = Vec.new(self->allocator);
+
+            if (!self->state->is(.RightParen)) {
+                while (true) {
+                    if (self->state->is(.EOF)) {
+                        patterns.free();
+                        return .None;
+                    }
+
+                    const inner_opt = self->parse_destruct_pattern();
+
+                    if (inner_opt.is_none()) {
+                        // Recovery: skip garbage up to `,` or `)` so a single
+                        // stray token still reports one error.
+                        if (self->state->is(.RightParen)) {
+                            break;
+                        }
+
+                        if (self->state->is(.Comma)) {
+                            self->state->next();
+
+                            if (self->state->is(.RightParen)) {
+                                break;
+                            }
+
+                            continue;
+                        }
+
+                        patterns.free();
+                        return .None;
+                    }
+
+                    switch (inner_opt) case .Some(inner) else {
+                        patterns.free();
+                        return .None;
+                    }
+
+                    patterns.push(inner);
+
+                    if (self->state->is(.Comma)) {
+                        self->state->next();
+                        continue;
+                    }
+
+                    if (self->state->is(.RightParen)) {
+                        break;
+                    }
+
+                    report_error(
+                        self->allocator,
+                        self->state->dctx,
+                        self->state->current_span(),
+                        "expected `,` or `)` in tuple pattern"
+                    );
+
+                    // Recovery: skip garbage up to `,` or `)` and keep going,
+                    // so a missing separator reports one error.
+                    while (!self->state->is(.EOF)
+                        && !self->state->is(.Comma)
+                        && !self->state->is(.RightParen)
+                    ) {
+                        self->state->next();
+                    }
+
+                    if (self->state->is(.Comma)) {
+                        self->state->next();
+                        continue;
+                    }
+
+                    if (self->state->is(.RightParen)) {
+                        break;
+                    }
+
+                    patterns.free();
+                    return .None;
+                }
+            }
+
+            if (!self->state->expect(.RightParen)) {
+                patterns.free();
+                return .None;
+            }
+
+            kind = .Tuple(patterns);
+        } else {
+            switch (self->state->expect_ident()) case .Some(ident) else {
+                return .None;
+            }
+
+            kind = .Ident(ident);
+        }
+
+        // Optional type annotation
+        var ty: Option<ast::ASTType> = .None;
+
+        if (self->state->is(.Colon)) {
+            self->state->next();
+
+            switch (self->parse_type()) case .Some(explicit_type) else {
+                ast::free_destruct_kind(&kind);
+                return .None;
+            }
+
+            ty = .Some(explicit_type);
+        }
+
+        const pattern = ast::ASTDestructTuplePattern {
+            kind,
+            ty,
+            bind,
+            span: start.merge(self->state->current_span()),
+        };
+        return .Some(pattern);
+    }
+
+    // Grammar: fn IDENT <GenericParams>? FuncParams (Type)? (Block | ;)
+    pub fn parse_func(
+        self: Self*,
+        is_pub: bool,
+        extrn: Option<ast::ASTExtern>,
+        attrs: Option<Vec<ast::ASTAttr>*>,
+        absorb: bool
+    ) bool {
+        const start = self->state->current_span();
+        self->state->next(); // consume `fn`
+
+        switch (self->state->expect_ident()) case .Some(ident) else {
+            self->state->sync();
+            return false;
+        }
+
+        var generic_params: ast::ASTGenericParams = Vec.new(self->allocator);
+
+        if (self->state->is(.LessThan)) {
+            switch (self->parse_generic_params()) {
+                case .Some(parsed) => {
+                    generic_params.free();
+                    generic_params = parsed;
+                }
+                else => {
+                    generic_params.free();
+                    self->state->sync();
+                    return false;
+                }
+            }
+        }
+
+        switch (self->parse_func_params()) case .Some(var params) else {
+            ast::free_generic_params(&generic_params);
+            self->state->sync();
+            return false;
+        }
+
+        var ret_type: Option<ast::NodeId> = .None;
+
+        if (!self->state->is(.LeftBrace) && !self->state->is(.Semicolon)) {
+            switch (self->parse_type()) case .Some(ty) else {
+                ast::free_func_params(&params);
+                ast::free_generic_params(&generic_params);
+                self->state->sync();
+                return false;
+            }
+
+            ret_type = .Some(self->program->create_node(.Type(ty)));
+        }
+
+        var modifiers = make_func_modifiers(self->allocator, is_pub, extrn);
+
+        // Function declaration
+        if (self->state->is(.Semicolon)) {
+            apply_func_attrs(
+                self->allocator,
+                self->state->dctx,
+                &modifiers,
+                attrs,
+                false
+            );
+
+            if (absorb) {
+                self->absorb_pending_attrs(attrs, false, &modifiers);
+            }
+
+            self->reject_var_in_decl(&params);
+
+            const end = self->state->current_span();
+            self->state->next();
+
+            const node = ast::ASTFuncDecl {
+                ident,
+                generic_params,
+                params,
+                ret_type,
+                modifiers,
+                span: start.merge(end),
+            };
+            self->state->pending->push(self->program->create_node(.FuncDecl(node)));
+            return true;
+        }
+
+        switch (self->parse_block_node()) case .Some(body) else {
+            ast::free_func_params(&params);
+            ast::free_modifiers(&modifiers);
+            ast::free_generic_params(&generic_params);
+            self->state->sync();
+            return false;
+        }
+
+        apply_func_attrs(
+            self->allocator,
+            self->state->dctx,
+            &modifiers,
+            attrs,
+            true
+        );
+
+        if (absorb) {
+            self->absorb_pending_attrs(attrs, true, &modifiers);
+        }
+
+        const node = ast::ASTFuncDef {
+            ident,
+            params,
+            body,
+            ret_type,
+            modifiers,
+            generic_params,
+            span: start.merge(self->state->current_span()),
+        };
+        self->state->pending->push(self->program->create_node(.FuncDef(node)));
+        return true;
+    }
+
+    /// Constness specifiers on parameters are only allowed in function definitions.
+    fn reject_var_in_decl(self: Self*, params: const ast::ASTFuncParams*) {
+        for (var i: usize = 0; i < params->list.len(); i += 1) {
+            switch (params->list.get_const(i)) {
+                case .Some(kind) => switch (*kind) {
+                    case .FuncParam(var param) => if (param.constness == .Var) {
+                        report_error(
+                            self->allocator,
+                            self->state->dctx,
+                            param.span,
+                            "`var` parameter specifier is only allowed in function definitions"
+                        );
+                    }
+                    case .SelfModifier(var modifier) => if (modifier.constness == .Var) {
+                        report_error(
+                            self->allocator,
+                            self->state->dctx,
+                            modifier.span,
+                            "`var` parameter specifier is only allowed in function definitions"
+                        );
+                    }
+                }
+            }
+        }
+    }
+
+    // Grammar: ( var? IDENT (: Type)? (, ...)* ...? )
+    pub fn parse_func_params(self: Self*) Option<ast::ASTFuncParams> {
+        if (!self->state->expect(.LeftParen)) {
+            return .None;
+        }
+
+        var list: Vec<ast::ASTFuncParamKind> = Vec.new(self->state->allocator);
+        var variadic: Option<ast::ASTFuncVariadicParam> = .None;
+
+        while (!self->state->is(.RightParen)) {
+            // C style varargs
+            if (self->state->is(.TripleDot)) {
+                self->state->next();
+                variadic = .Some(.UntypedCStyle);
+                break;
+            }
+
+            const param_span = self->state->current_span();
+
+            var constness = ast::ASTConstness.Const;
+
+            if (self->state->is(.Var)) {
+                self->state->next();
+                constness = .Var;
+            }
+
+            const ident_opt = self->state->expect_ident();
+
+            // REVIEW
+            // Prevent cascading failure
+            if (ident_opt.is_none()) {
+                if (self->state->is(.EOF)) {
+                    ast::free_param_list(&list);
+                    return .None;
+                }
+
+                self->state->next();
+                continue;
+            }
+
+            const ident = ident_opt.unwrap();
+
+            var ty: Option<ast::ASTType> = .None;
+
+            if (self->state->is(.Colon)) {
+                self->state->next();
+
+                // Typed varargs
+                if (self->state->is(.TripleDot)) {
+                    self->state->next();
+
+                    switch (self->parse_type()) case .Some(variadic_type) else {
+                        ast::free_param_list(&list);
+                        return .None;
+                    }
+
+                    const type_id = self->program->create_node(.Type(variadic_type));
+                    variadic = .Some(.Typed(ident, type_id));
+                    break;
+                }
+
+                switch (self->parse_type()) case .Some(param_type) else {
+                    ast::free_param_list(&list);
+                    return .None;
+                }
+
+                ty = .Some(param_type);
+            }
+
+            const span = param_span.merge(self->state->last_parsed_span());
+
+            if (ident.str.as_str_const() == "self") {
+                switch (ty) {
+                    case .Some(self_type) => {
+                        const type_id = self->program->create_node(.Type(self_type));
+                        list.push(.SelfModifier(ast::ASTSelfModifier {
+                            ty: type_id,
+                            constness,
+                            span,
+                        }));
+                    }
+                    case .None => {
+                        report_error(
+                            self->allocator, 
+                            self->state->dctx, 
+                            span, 
+                            "`self` parameter must have an explicit type"
+                        );
+                        ast::free_param_list(&list);
+                        return .None;
+                    }
+                }
+            } else {
+                list.push(.FuncParam(ast::ASTFuncParam {
+                    ident,
+                    ty,
+                    constness,
+                    span,
+                }));
+            }
+
+            if (self->state->is(.Comma)) {
+                self->state->next();
+                continue;
+            }
+
+            break;
+        }
+
+        if (!self->state->expect(.RightParen)) {
+            ast::free_param_list(&list);
+            return .None;
+        }
+
+        return .Some(ast::ASTFuncParams { list, variadic });
+    }
+
+    [[inline]]
+    pub fn parse_block(self: Self*) {
+        switch (self->parse_block_node()) case .Some(block) else {
+            self->state->sync();
+            return;
+        }
+
+        self->state->pending->push(block);
+    }
+
+    pub fn parse_block_node(self: Self*) Option<ast::NodeId> {
+        const start = self->state->current_span();
+
+        if (!self->state->expect(.LeftBrace)) {
+            return .None;
+        }
+
+        const mark = self->state->pending->len();
+
+        while (!self->state->is(.RightBrace) && !self->state->is(.EOF)) {
+            const before = self->state->pos();
+
+            self->parse_stmt();
+
+            // Error recovery must always advance, 
+            // otherwise we spin forever.
+            if (self->state->pos() == before) {
+                self->state->next();
+            }
+        }
+
+        if (!self->state->expect(.RightBrace)) {
+            return .None;
+        }
+
+        const stmts = self->program->commit_pending(self->state->pending, mark);
+        const node = ast::ASTBlock {
+            stmts,
+            span: start.merge(self->state->current_span()),
+        };
+        return .Some(self->program->create_node(.Block(node)));
+    }
+
+    // Grammar: if (Expr) Block (else if (Expr) Block)* (else Block)?
+    pub fn parse_if(self: Self*) {
+        const start = self->state->current_span();
+
+        switch (self->parse_if_primary()) case .Some(var first) else {
+            self->state->sync();
+            return;
+        }
+
+        var branches: Vec<ast::NodeId> = Vec.new(self->state->allocator);
+        var else_block: Option<ast::NodeId> = .None;
+
+        while (self->state->is(.Else)) {
+            self->state->next();
+
+            if (self->state->is(.If)) {
+                switch (self->parse_if_primary()) case .Some(branch) else {
+                    branches.free();
+                    first.branches.free();
+                    self->state->sync();
+                    return;
+                }
+
+                branches.push(self->program->create_node(.If(branch)));
+            } else {
+                switch (self->parse_block_node()) case .Some(block) else {
+                    branches.free();
+                    first.branches.free();
+                    self->state->sync();
+                    return;
+                }
+
+                else_block = .Some(block);
+                break;
+            }
+        }
+
+        const node = ast::ASTIf {
+            condition: first.condition,
+            then_block: first.then_block,
+            branches,
+            else_block,
+            span: start.merge(self->state->current_span()),
+        };
+        first.branches.free();
+
+        self->state->pending->push(self->program->create_node(.If(node)));
+    }
+
+    /// Parses a if statement without branches or an else block.
+    fn parse_if_primary(self: Self*) Option<ast::ASTIf> {
+        const start = self->state->current_span();
+        self->state->next();
+
+        if (!self->state->expect(.LeftParen)) {
+            return .None;
+        }
+
+        switch (self->parse_expr()) case .Some(condition) else {
+            return .None;
+        }
+
+        if (!self->state->expect(.RightParen)) {
+            return .None;
+        }
+
+        switch (self->parse_block_node()) case .Some(then_block) else {
+            return .None;
+        }
+
+        return .Some(ast::ASTIf {
+            condition,
+            then_block,
+            branches: Vec.new(self->state->allocator),
+            else_block: .None,
+            span: start.merge(self->state->current_span()),
+        });
+    }
+
+    // Grammar: return Expr? ;
+    pub fn parse_return(self: Self*) {
+        const start = self->state->current_span();
+        self->state->next();
+
+        var argument: Option<ast::NodeId> = .None;
+
+        if (!self->state->is(.Semicolon)) {
+            switch (self->parse_expr()) case .Some(value) else {
+                self->state->sync();
+                return;
+            }
+
+            argument = .Some(value);
+        }
+
+        if (!self->state->expect_semicolon()) {
+            self->state->sync();
+            return;
+        }
+
+        const node = ast::ASTReturn {
+            argument,
+            span: start.merge(self->state->current_span()),
+        };
+        self->state->pending->push(self->program->create_node(.Return(node)));
+    }
+
+    // Grammar: while (Expr) Block
+    pub fn parse_while(self: Self*) {
+        const start = self->state->current_span();
+        self->state->next();
+
+        if (!self->state->expect(.LeftParen)) {
+            self->state->sync();
+            return;
+        }
+
+        switch (self->parse_expr()) case .Some(condition) else {
+            self->state->sync();
+            return;
+        }
+
+        if (!self->state->expect(.RightParen)) {
+            self->state->sync();
+            return;
+        }
+
+        switch (self->parse_block_node()) case .Some(body) else {
+            self->state->sync();
+            return;
+        }
+
+        const node = ast::ASTWhile {
+            condition,
+            body,
+            span: start.merge(self->state->current_span()),
+        };
+        self->state->pending->push(self->program->create_node(.While(node)));
+    }
+
+    // Grammar: for (Init? ; Cond ; Incr?) Block
+    //          for (Init ;) Block
+    pub fn parse_for(self: Self*) {
+        const start = self->state->current_span();
+        self->state->next();
+
+        if (!self->state->expect(.LeftParen)) {
+            self->state->sync();
+            return;
+        }
+
+        // Initializer
+        var initializer: Option<ast::NodeId> = .None;
+
+        if (!self->state->is(.Semicolon)) {
+            switch (self->parse_var_node()) case .Some(id) else {
+                self->state->sync();
+                return;
+            }
+
+            initializer = .Some(id);
+        } else if (!self->state->expect_semicolon()) {
+            self->state->sync();
+            return;
+        }
+
+        // For loop has neither a condition nor an increment.
+        if (self->state->is_peek(.LeftBrace)) {
+            if (!self->state->expect(.RightParen)) {
+                self->state->sync();
+                return;
+            }
+
+            switch (self->parse_block_node()) case .Some(body) else {
+                self->state->sync();
+                return;
+            }
+
+            const node = ast::ASTFor {
+                initializer,
+                condition: .None,
+                increment: .None,
+                body,
+                span: start.merge(self->state->current_span()),
+            };
+            self->state->pending->push(self->program->create_node(.For(node)));
+            return;
+        }
+
+        // Condition
+        switch (self->parse_expr()) case .Some(cond) else {
+            self->state->sync();
+            return;
+        }
+
+        if (!self->state->expect_semicolon()) {
+            self->state->sync();
+            return;
+        }
+
+        // Increment
+        var increment: Option<ast::NodeId> = .None;
+
+        if (!self->state->is(.RightParen)) {
+            switch (self->parse_expr()) case .Some(step) else {
+                self->state->sync();
+                return;
+            }
+
+            increment = .Some(step);
+        }
+
+        if (!self->state->expect(.RightParen)) {
+            self->state->sync();
+            return;
+        }
+
+        switch (self->parse_block_node()) case .Some(body) else {
+            self->state->sync();
+            return;
+        }
+
+        const node = ast::ASTFor {
+            initializer,
+            condition: .Some(cond),
+            increment,
+            body,
+            span: start.merge(self->state->current_span()),
+        };
+        self->state->pending->push(self->program->create_node(.For(node)));
+    }
+
+    /// Grammar: break
+    pub fn parse_break(self: Self*) {
+        const start = self->state->current_span();
+        self->state->next();
+
+        if (!self->state->expect_semicolon()) {
+            self->state->sync();
+            return;
+        }
+
+        const node = ast::ASTBreak { span: start.merge(self->state->current_span()) };
+        self->state->pending->push(self->program->create_node(.Break(node)));
+    }
+
+    /// Grammar: continue
+    pub fn parse_continue(self: Self*) {
+        const start = self->state->current_span();
+        self->state->next();
+
+        if (!self->state->expect_semicolon()) {
+            self->state->sync();
+            return;
+        }
+
+        const node = ast::ASTContinue { span: start.merge(self->state->current_span()) };
+        self->state->pending->push(self->program->create_node(.Continue(node)));
+    }
+
+    /// Grammar: goto IDENT ;
+    pub fn parse_goto(self: Self*) {
+        const start = self->state->current_span();
+        self->state->next();
+
+        switch (self->state->expect_ident()) case .Some(name) else {
+            self->state->sync();
+            return;
+        }
+
+        if (!self->state->expect_semicolon()) {
+            self->state->sync();
+            return;
+        }
+
+        const node = ast::ASTGoto { name, span: start.merge(self->state->current_span()) };
+        self->state->pending->push(self->program->create_node(.Goto(node)));
+    }
+
+    /// Grammar: IDENT :
+    pub fn parse_label(self: Self*) {
+        const start = self->state->current_span();
+
+        switch (self->state->expect_ident()) case .Some(name) else {
+            self->state->sync();
+            return;
+        }
+
+        if (!self->state->expect(.Colon)) {
+            self->state->sync();
+            return;
+        }
+
+        const node = ast::ASTLabel { name, span: start.merge(self->state->current_span()) };
+        self->state->pending->push(self->program->create_node(.Label(node)));
+    }
+
+    /// Grammar: defer Stmt
+    pub fn parse_defer(self: Self*) {
+        const start = self->state->current_span();
+        self->state->next();
+
+        const mark = self->state->pending->len();
+
+        self->parse_stmt();
+
+        // The inner statement must have pushed exactly one node.
+        if (self->state->pending->len() != mark + 1) {
+            self->state->sync();
+            return;
+        }
+
+        // The inner statement must be `;` terminated, which means the
+        // last token it consumed has to be the semicolon itself.
+        switch (self->state->get(self->state->pos() - 1)) case .Some(token) else {
+            self->state->sync();
+            return;
+        }
+
+        switch (*token->kind) {
+            case .Semicolon => {
+                const operand = self->state->pending->pop();
+
+                const node = ast::ASTDefer {
+                    operand,
+                    span: start.merge(self->state->current_span()),
+                };
+                self->state->pending->push(self->program->create_node(.Defer(node)));
+            }
+            else => {
+                report_error(
+                    self->allocator, 
+                    self->state->dctx, 
+                    start.merge(self->state->current_span()), 
+                    "missing semicolon"
+                );
+                self->state->sync();
+                return;
+            }
+        }
+    }
+
+    /// Grammar: switch (Expr) { (case Pattern (| Pattern)* => Body)* (else => Body)? }
+    ///          switch (Expr) case Pattern else Block
+    pub fn parse_switch(self: Self*) {
+        const start = self->state->current_span();
+        self->state->next();
+
+        if (!self->state->expect(.LeftParen)) {
+            self->state->sync();
+            return;
+        }
+
+        switch (self->parse_expr()) case .Some(operand) else {
+            self->state->sync();
+            return;
+        }
+
+        if (!self->state->expect(.RightParen)) {
+            self->state->sync();
+            return;
+        }
+
+        // Switch Guard
+        if (self->state->is(.Case)) {
+            self->parse_switch_guard(start, operand);
+            return;
+        }
+
+        if (!self->state->expect(.LeftBrace)) {
+            self->state->sync();
+            return;
+        }
+
+        var cases: Vec<ast::ASTSwitchCase> = Vec.new(self->state->allocator);
+        var default_case: Option<ast::NodeId> = .None;
+
+        while (true) {
+            if (self->state->is(.Case)) {
+                switch (self->parse_switch_case()) case .Some(item) else {
+                    ast::free_switch_cases(&cases);
+                    self->state->sync();
+                    return;
+                }
+
+                cases.push(item);
+            } else if (self->state->is(.Else)) {
+                self->state->next();
+
+                if (!self->state->expect(.FatArrow)) {
+                    ast::free_switch_cases(&cases);
+                    self->state->sync();
+                    return;
+                }
+
+                switch (self->parse_switch_case_body()) case .Some(body) else {
+                    ast::free_switch_cases(&cases);
+                    self->state->sync();
+                    return;
+                }
+
+                default_case = .Some(body);
+                break;
+            } else {
+                break;
+            }
+        }
+
+        if (!self->state->expect(.RightBrace)) {
+            ast::free_switch_cases(&cases);
+            self->state->sync();
+            return;
+        }
+
+        const node = ast::ASTSwitch {
+            operand,
+            cases,
+            default_case,
+            span: start.merge(self->state->current_span()),
+        };
+        self->state->pending->push(self->program->create_node(.Switch(node)));
+    }
+
+    /// Parses `case Pattern (| Pattern)* => Body`
+    fn parse_switch_case(self: Self*) Option<ast::ASTSwitchCase> {
+        const start = self->state->current_span();
+        self->state->next();
+
+        var patterns: Vec<ast::ASTSwitchCasePattern> = Vec.new(self->state->allocator);
+
+        while (true) {
+            switch (self->parse_switch_pattern()) case .Some(pattern) else {
+                ast::free_switch_patterns(&patterns);
+                return .None;
+            }
+
+            patterns.push(pattern);
+
+            if (self->state->is(.Pipe)) {
+                self->state->next();
+                continue;
+            }
+
+            break;
+        }
+
+        if (!self->state->expect(.FatArrow)) {
+            ast::free_switch_patterns(&patterns);
+            return .None;
+        }
+
+        switch (self->parse_switch_case_body()) case .Some(body) else {
+            ast::free_switch_patterns(&patterns);
+            return .None;
+        }
+
+        return .Some(ast::ASTSwitchCase {
+            patterns,
+            body,
+            span: start.merge(self->state->current_span()),
+        });
+    }
+
+    fn parse_switch_case_body(self: Self*) Option<ast::NodeId> {
+        if (self->state->is(.LeftBrace)) {
+            return self->parse_block_node();
+        }
+
+        const start = self->state->current_span();
+        const mark = self->state->pending->len();
+
+        self->parse_stmt();
+
+        if (self->state->pending->len() != mark + 1) {
+            return .None;
+        }
+
+        const stmts = self->program->commit_pending(self->state->pending, mark);
+        
+        const block = ast::ASTBlock {
+            stmts,
+            span: start.merge(self->state->current_span()),
+        };
+        return .Some(self->program->create_node(.Block(block)));
+    }
+
+    fn parse_switch_guard(self: Self*, start: Span, operand: ast::NodeId) {
+        self->state->next();
+
+        switch (self->parse_switch_pattern()) case .Some(var pattern) else {
+            self->state->sync();
+            return;
+        }
+
+        // Guard patterns must match a value, they cannot bind names.
+        var valid = true;
+
+        switch (pattern.kind) {
+            case .Wildcard => valid = false;
+            case .Binding { .. } => valid = false;
+        }
+
+        if (!valid) {
+            ast::free_switch_pattern(&pattern);
+            report_error(
+                self->allocator,
+                self->state->dctx,
+                start.merge(self->state->current_span()), 
+                "invalid switch guard pattern"
+            );
+            self->state->sync();
+            return;
+        }
+
+        if (!self->state->expect(.Else)) {
+            ast::free_switch_pattern(&pattern);
+            self->state->sync();
+            return;
+        }
+
+        switch (self->parse_block_node()) case .Some(default_block) else {
+            ast::free_switch_pattern(&pattern);
+            self->state->sync();
+            return;
+        }
+
+        // The guard case has no body of its own, use an empty block.
+        const dummy_stmts = self->program->commit_pending(
+            self->state->pending,
+            self->state->pending->len()
+        );
+        const dummy = ast::ASTBlock { stmts: dummy_stmts, span: pattern.span };
+
+        var patterns: Vec<ast::ASTSwitchCasePattern> = Vec.new(self->state->allocator);
+        patterns.push(pattern);
+
+        const case_item = ast::ASTSwitchCase {
+            patterns,
+            body: self->program->create_node(.Block(dummy)),
+            span: start.merge(self->state->current_span()),
+        };
+
+        const node = ast::ASTSwitchGuard {
+            operand,
+            case_item,
+            default_case: .Some(default_block),
+            span: start.merge(self->state->current_span()),
+        };
+        self->state->pending->push(self->program->create_node(.SwitchGuard(node)));
+    }
+
+    /// Grammar:
+    /// _ 
+    /// | .IDENT 
+    /// | .IDENT (Pattern, ...)? 
+    /// | .IDENT { FieldPattern, ... }
+    /// | var IDENT | Expr | Expr...Expr | Expr..=Expr
+    fn parse_switch_pattern(self: Self*) Option<ast::ASTSwitchCasePattern> {
+        const start = self->state->current_span();
+
+        // Wildcard: _
+        if (self->state->is(.Underscore)) {
+            self->state->next();
+
+            return .Some(ast::ASTSwitchCasePattern {
+                kind: .Wildcard,
+                span: start.merge(self->state->current_span()),
+            });
+        }
+
+        // Enum variants
+        if (self->state->is(.Dot)) {
+            self->state->next();
+
+            switch (self->state->expect_ident()) case .Some(variant) else {
+                return .None;
+            }
+
+            // .Variant(a, b, _)
+            if (self->state->is(.LeftParen)) {
+                self->state->next();
+
+                var items: Vec<ast::ASTSwitchCasePattern> = Vec.new(self->state->allocator);
+
+                if (!self->state->is(.RightParen)) {
+                    while (true) {
+                        switch (self->parse_switch_pattern()) case .Some(item) else {
+                            ast::free_switch_patterns(&items);
+                            return .None;
+                        }
+
+                        items.push(item);
+
+                        if (self->state->is(.Comma)) {
+                            self->state->next();
+                            continue;
+                        }
+
+                        break;
+                    }
+                }
+
+                if (!self->state->expect(.RightParen)) {
+                    ast::free_switch_patterns(&items);
+                    return .None;
+                }
+
+                return .Some(ast::ASTSwitchCasePattern {
+                    kind: .EnumTupleVariant { variant, items },
+                    span: start.merge(self->state->current_span()),
+                });
+            }
+
+            // .Variant { a, b: x, var c, .. }
+            if (self->state->is(.LeftBrace)) {
+                self->state->next();
+
+                var items: Vec<ast::ASTSwitchCaseEnumStructPatternField> = Vec.new(self->state->allocator);
+                var has_rest = false;
+
+                while (!self->state->is(.RightBrace) && !self->state->is(.EOF)) {
+                    if (self->state->is(.DoubleDot)) {
+                        has_rest = true;
+                        self->state->next();
+                        break;
+                    }
+
+                    var constness = ast::ASTConstness.Const;
+
+                    if (self->state->is(.Var)) {
+                        self->state->next();
+                        constness = .Var;
+                    }
+
+                    const field_start = self->state->current_span();
+
+                    switch (self->state->expect_ident()) case .Some(name) else {
+                        ast::free_switch_struct_fields(&items);
+                        return .None;
+                    }
+
+                    if (self->state->is(.Colon)) {
+                        self->state->next();
+
+                        switch (self->parse_switch_pattern()) case .Some(inner) else {
+                            ast::free_switch_struct_fields(&items);
+                            return .None;
+                        }
+
+                        items.push(ast::ASTSwitchCaseEnumStructPatternField { name, pattern: inner });
+                    } else {
+                        // Shorthand: `{ a }` is the same as `{ a: a }`
+                        items.push(ast::ASTSwitchCaseEnumStructPatternField {
+                            name,
+                            pattern: ast::ASTSwitchCasePattern {
+                                kind: .Binding { ident: name, constness },
+                                span: field_start,
+                            },
+                        });
+                    }
+
+                    if (self->state->is(.Comma)) {
+                        self->state->next();
+                        continue;
+                    }
+
+                    break;
+                }
+
+                if (!self->state->expect(.RightBrace)) {
+                    ast::free_switch_struct_fields(&items);
+                    return .None;
+                }
+
+                return .Some(ast::ASTSwitchCasePattern {
+                    kind: .EnumStructVariant { variant, items, has_rest },
+                    span: start.merge(self->state->current_span()),
+                });
+            }
+
+            // .Variant
+            return .Some(ast::ASTSwitchCasePattern {
+                kind: .EnumUnit(variant),
+                span: start.merge(self->state->current_span()),
+            });
+        }
+
+        // Binding
+        var constness = ast::ASTConstness.Const;
+
+        if (self->state->is(.Var)) {
+            self->state->next();
+            constness = .Var;
+        }
+
+        if (self->state->is_ident()) {
+            switch (self->state->expect_ident()) case .Some(name) else {
+                return .None;
+            }
+
+            return .Some(ast::ASTSwitchCasePattern {
+                kind: .Binding { ident: name, constness },
+                span: start.merge(self->state->current_span()),
+            });
+        }
+
+        // Expression or range pattern
+        switch (self->parse_pattern_expr()) case .Some(lower) else {
+            return .None;
+        }
+
+        // Range, exclusive: lower...upper
+        if (self->state->is(.TripleDot)) {
+            self->state->next();
+
+            switch (self->parse_pattern_expr()) case .Some(upper) else {
+                return .None;
+            }
+
+            const span = start.merge(self->state->current_span());
+            return .Some(ast::ASTSwitchCasePattern {
+                kind: .Range(ast::ASTRange {
+                    lower,
+                    upper,
+                    inclusive_upper: false,
+                    span,
+                }),
+                span,
+            });
+        }
+
+        // Range, inclusive: lower..=upper
+        if (self->state->is(.DoubleDot) && self->state->is_peek(.Assign)) {
+            self->state->next();
+            self->state->next();
+
+            switch (self->parse_pattern_expr()) case .Some(upper) else {
+                return .None;
+            }
+
+            const span = start.merge(self->state->current_span());
+            return .Some(ast::ASTSwitchCasePattern {
+                kind: .Range(ast::ASTRange {
+                    lower,
+                    upper,
+                    inclusive_upper: true,
+                    span,
+                }),
+                span,
+            });
+        }
+
+        // Literal / expression pattern
+        return .Some(ast::ASTSwitchCasePattern {
+            kind: .Expr(lower),
+            span: start.merge(self->state->current_span()),
+        });
+    }
+
+    /// Grammar: extern ("c" | "cyrus")
+    fn parse_extern_abi(self: Self*) Option<ast::ASTExtern> {
+        const start = self->state->current_span();
+
+        switch (*self->state->current()->kind) {
+            case .Literal(lit) => switch (lit) {
+                case .String { value, .. } => {
+                    const span = start.merge(self->state->current_span());
+
+                    var abi = String.new(self->state->allocator);
+                    abi.push_str(value.as_str_const());
+                    abi.to_lower();
+
+                    if (abi.as_str_const() == "c") {
+                        abi.free();
+                        self->state->next();
+                        return .Some(.C);
+                    }
+
+                    if (abi.as_str_const() == "cyrus") {
+                        abi.free();
+                        self->state->next();
+                        return .Some(.Cyrus);
+                    }
+
+                    report_invalid_abi(
+                        self->state->allocator,
+                        self->state->dctx,
+                        span,
+                        value.as_str_const()
+                    );
+                    abi.free();
+                    self->state->next();
+                    return .Some(.C); // Fallback
+                }
+            }
+        }
+
+        report_error(
+            self->state->allocator, 
+            self->state->dctx, 
+            start, 
+            "expected string literal"
+        );
+
+        return .Some(.C); // Fallback
+    }
+
+    /// Grammar: import PATH (:: PATH)* ;
+    ///          import <relative_level> Path (as Alias)? ({ ident (as renamed)?, ... })? ;
+    pub fn parse_import(self: Self*) bool {
+        const start = self->state->current_span();
+        self->state->next();
+
+        var relative_level: isize = 0;
+
+        if (self->state->is(.Dot)) {
+            self->state->next();
+
+            if (!self->state->expect(.DoubleColon)) {
+                self->state->sync();
+                return false;
+            }
+
+            relative_level = -1;
+        } else if (self->state->is(.DoubleDot)) {
+            var count: isize = -1;
+
+            while (self->state->is(.DoubleDot)) {
+                self->state->next();
+
+                if (!self->state->expect(.DoubleColon)) {
+                    self->state->sync();
+                    return false;
+                }
+
+                count -= 1;
+            }
+
+            relative_level = count;
+        }
+
+        switch (self->state->expect_ident()) case .Some(first) else {
+            self->state->sync();
+            return false;
+        }
+
+        var segments: Vec<ast::ASTModuleSegment> = Vec.new(self->allocator);
+        segments.push(.SubModule(first));
+
+        while (self->state->is(.DoubleColon)) {
+            self->state->next();
+
+            switch (self->state->expect_ident()) case .Some(ident) else {
+                ast::free_segments(&segments);
+                self->state->sync();
+                return false;
+            }
+
+            segments.push(.SubModule(ident));
+        }
+
+        var alias: Option<String> = .None;
+
+        if (self->state->is_ident_str("as")) {
+            self->state->next();
+
+            switch (self->state->expect_ident()) case .Some(alias_ident) else {
+                ast::free_segments(&segments);
+                self->state->sync();
+                return false;
+            }
+
+            alias = .Some(alias_ident.str);
+        }
+
+        if (self->state->is(.LeftBrace)) {
+            self->state->next();
+
+            var singles: Vec<ast::ASTModuleSegmentSingle> = Vec.new(self->allocator);
+
+            while (!self->state->is(.RightBrace) && !self->state->is(.EOF)) {
+                switch (self->state->expect_ident()) case .Some(ident) else {
+                    singles.free();
+                    ast::free_segments(&segments);
+                    self->state->sync();
+                    return false;
+                }
+
+                var renamed: Option<ast::ASTIdent> = .None;
+
+                if (self->state->is_ident_str("as")) {
+                    self->state->next();
+
+                    switch (self->state->expect_ident()) case .Some(rename) else {
+                        singles.free();
+                        ast::free_segments(&segments);
+                        self->state->sync();
+                        return false;
+                    }
+
+                    renamed = .Some(rename);
+                }
+
+                singles.push(ast::ASTModuleSegmentSingle { ident, renamed });
+
+                if (!self->state->is(.RightBrace) && !self->state->expect(.Comma)) {
+                    singles.free();
+                    ast::free_segments(&segments);
+                    self->state->sync();
+                    return false;
+                }
+            }
+
+            if (!self->state->expect(.RightBrace)) {
+                singles.free();
+                ast::free_segments(&segments);
+                self->state->sync();
+                return false;
+            }
+
+            segments.push(.Single(singles));
+        }
+
+        const span = start.merge(self->state->current_span());
+
+        if (!self->state->expect_semicolon()) {
+            ast::free_segments(&segments);
+            self->state->sync();
+            return false;
+        }
+
+        const node = ast::ASTImport { alias, segments, relative_level, span };
+        self->state->pending->push(self->program->create_node(.Import(node)));
+        return true;
+    }
+
+    /// Grammar: struct IDENT align(N)? <GenericParams>? (: Impl)? { FieldOrMethod* }
+    pub fn parse_struct(
+        self: Self*,
+        is_pub: bool,
+        attrs: Option<Vec<ast::ASTAttr>*>,
+        absorb: bool
+    ) bool {
+        const start = self->state->current_span();
+        self->state->next(); // consume `struct`
+
+        switch (self->state->expect_ident()) case .Some(ident) else {
+            self->state->sync();
+            return false;
+        }
+
+        var align: Option<usize> = .None;
+
+        // TODO (stage2): Make it attribute
+        if (self->state->is_ident_str("align")) {
+            self->state->next();
+
+            if (!self->state->expect(.LeftParen)) {
+                self->state->sync();
+                return false;
+            }
+
+            switch (self->parse_integer_value()) {
+                case .Some(value) => align = .Some(value);
+                else => {
+                    report_error(
+                        self->allocator, 
+                        self->state->dctx, 
+                        self->state->current_span(), 
+                        "integer literals cannot have suffixes in this context"
+                    );
+                    self->state->sync();
+                    return false;
+                }
+            }
+
+            if (!self->state->expect(.RightParen)) {
+                self->state->sync();
+                return false;
+            }
+        }
+
+        var generic_params: ast::ASTGenericParams = Vec.new(self->allocator);
+
+        if (self->state->is(.LessThan)) {
+            switch (self->parse_generic_params()) {
+                case .Some(parsed) => {
+                    generic_params.free();
+                    generic_params = parsed;
+                }
+                else => {
+                    generic_params.free();
+                    self->state->sync();
+                    return false;
+                }
+            }
+        }
+
+        var impls: Vec<ast::ASTImplementInterface> = Vec.new(self->allocator);
+
+        if (self->state->is(.Colon)) {
+            self->state->next();
+
+            while (true) {
+                const impl_start = self->state->current_span();
+
+                switch (self->parse_type()) case .Some(ty) else {
+                    ast::free_generic_params(&generic_params);
+                    impls.free();
+                    self->state->sync();
+                    return false;
+                }
+
+                impls.push(ast::ASTImplementInterface {
+                    ty: self->program->create_node(.Type(ty)),
+                    span: impl_start.merge(self->state->current_span()),
+                });
+
+                if (self->state->is(.Comma)) {
+                    continue;
+                }
+
+                break;
+            }
+        }
+
+        if (!self->state->expect(.LeftBrace)) {
+            ast::free_generic_params(&generic_params);
+            impls.free();
+            self->state->sync();
+            return false;
+        }
+
+        var fields: Vec<ast::ASTStructField> = Vec.new(self->allocator);
+        var methods: Vec<ast::NodeId> = Vec.new(self->allocator);
+
+        while (true) {
+            if (self->state->is(.RightBrace)) {
+                break;
+            }
+
+            if (self->state->is(.EOF)) {
+                report_error(
+                    self->allocator, 
+                    self->state->dctx, 
+                    self->state->current_span(), 
+                    "missing closing brace `}`"
+                );
+                ast::free_generic_params(&generic_params);
+                impls.free();
+                fields.free();
+                methods.free();
+                self->state->sync();
+                return false;
+            }
+
+            var is_pub = false;
+            var extrn: Option<ast::ASTExtern> = .None;
+
+            if (!self->collect_modifiers(&is_pub, &extrn)) {
+                ast::free_generic_params(&generic_params);
+                impls.free();
+                fields.free();
+                methods.free();
+                self->state->sync();
+                return false;
+            }
+
+            var attrs: Vec<ast::ASTAttr> = Vec.new(self->allocator);
+
+            while (self->state->is(.LeftBracket)) {
+                switch (parse_attr(self->state)) {
+                    case .Some(attr) => {
+                        attrs.push(attr);
+                    }
+                }
+            }
+
+            if (attrs.len() > 0 && (is_pub || extrn.is_some())) {
+                // Attributes and modifiers are never mixed.
+                // Attributes always come first.
+                for (var i: usize = 0; i < attrs.len(); i += 1) {
+                    switch (attrs.get_const(i)) {
+                        case .Some(attr) => {
+                            report_attrs_after_modifiers(
+                                self->allocator,
+                                self->state->dctx,
+                                attr->span
+                            );
+                        }
+                    }
+                }
+
+                ast::free_attrs(&attrs);
+                attrs = Vec.new(self->allocator);
+            } else {
+                if (attrs.len() > 0) {
+                    if (!self->collect_modifiers(&is_pub, &extrn)) {
+                        ast::free_attrs(&attrs);
+                        ast::free_generic_params(&generic_params);
+                        impls.free();
+                        fields.free();
+                        methods.free();
+                        self->state->sync();
+                        return false;
+                    }
+                }
+
+                self->reject_attrs_after_modifiers();
+            }
+
+            if (attrs.len() > 0) {
+                check_attrs(self->allocator, self->state->dctx, &attrs);
+            }
+
+            if (self->state->is(.Function)) {
+                const mark = self->state->pending->len();
+                const parsed = self->parse_func(is_pub, extrn, .Some(&attrs), true);
+                ast::free_attrs(&attrs);
+
+                if (!parsed || self->state->pending->len() != mark + 1) {
+                    report_error(
+                        self->allocator, 
+                        self->state->dctx, 
+                        self->state->current_span(), 
+                        "expected method definition"
+                    );
+                    ast::free_generic_params(&generic_params);
+                    impls.free();
+                    fields.free();
+                    methods.free();
+                    self->state->sync();
+                    return false;
+                }
+
+                const method = self->state->pending->pop();
+                var is_def = false;
+
+                switch (self->program->nodes.get(method)) {
+                    case .Some(node) => switch (*node) {
+                        case .FuncDef(_) => is_def = true;
+                    }
+                }
+
+                if (!is_def) {
+                    report_error(
+                        self->allocator, 
+                        self->state->dctx, 
+                        self->state->current_span(), 
+                        
+                        "expected method definition"
+                    );
+                    ast::free_generic_params(&generic_params);
+                    impls.free();
+                    fields.free();
+                    methods.free();
+                    self->state->sync();
+                    return false;
+                }
+
+                methods.push(method);
+                continue;
+            }
+
+            const had_attrs = attrs.len() > 0;
+            ast::free_attrs(&attrs);
+
+            // FIXME: This is temporary! We will support attributes
+            // on fields very soon.
+            if (had_attrs) {
+                report_unexpected_token(
+                    self->allocator,
+                    self->state->dctx,
+                    self->state->current_span(),
+                    *self->state->current()->kind
+                );
+                ast::free_generic_params(&generic_params);
+                impls.free();
+                fields.free();
+                methods.free();
+                self->state->sync();
+                return false;
+            }
+
+            if (self->state->is_ident()) {
+                switch (self->parse_struct_field(is_pub)) {
+                    case .Some(field) => fields.push(field);
+                    else => {
+                        ast::free_generic_params(&generic_params);
+                        impls.free();
+                        fields.free();
+                        methods.free();
+                        self->state->sync();
+                        return false;
+                    }
+                }
+
+                continue;
+            }
+
+            report_error(
+                self->allocator, 
+                self->state->dctx, 
+                self->state->current_span(), 
+                "expected field or method definition"
+            );
+            ast::free_generic_params(&generic_params);
+            impls.free();
+            fields.free();
+            methods.free();
+            self->state->sync();
+            return false;
+        }
+
+        const span = start.merge(self->state->current_span());
+
+        if (!self->state->expect(.RightBrace)) {
+            ast::free_generic_params(&generic_params);
+            impls.free();
+            fields.free();
+            methods.free();
+            return false;
+        }
+
+        var modifiers = make_struct_modifiers(self->allocator, is_pub);
+
+        apply_object_attrs(
+            self->allocator,
+            self->state->dctx,
+            attrs,
+            &modifiers.repr_attr,
+            ObjectKind.Struct
+        );
+
+        if (absorb) {
+            self->absorb_pending_object_attrs(attrs, &modifiers.repr_attr, ObjectKind.Struct);
+        }
+
+        const node = ast::ASTStruct {
+            ident,
+            generic_params,
+            impls,
+            fields,
+            methods,
+            modifiers,
+            align,
+            is_packed: false,
+            span,
+        };
+        self->state->pending->push(self->program->create_node(.Struct(node)));
+        return true;
+    }
+
+    fn parse_struct_field(self: Self*, is_pub: bool) Option<ast::ASTStructField> {
+        const start = self->state->current_span();
+
+        switch (self->state->expect_ident()) case .Some(name) else {
+            return .None;
+        }
+
+        if (!self->state->expect(.Colon)) {
+            return .None;
+        }
+
+        switch (self->parse_type()) case .Some(ty) else {
+            return .None;
+        }
+
+        const span = start.merge(self->state->current_span());
+        var vis = ast::ASTVisibility.Private;
+
+        if (is_pub) {
+            vis = .Public;
+        }
+
+        const field = ast::ASTStructField {
+            name,
+            vis,
+            ty: self->program->create_node(.Type(ty)),
+            span,
+        };
+
+        if (!self->state->is(.RightBrace) && !self->state->expect(.Comma)) {
+            return .None;
+        }
+
+        return .Some(field);
+    }
+
+    /// Grammar: enum IDENT (TagType)? align(N)? <GenericParams>? (: Impl)? { (Variant | Method)* }
+    pub fn parse_enum(
+        self: Self*,
+        is_pub: bool,
+        attrs: Option<Vec<ast::ASTAttr>*>,
+        absorb: bool
+    ) bool {
+        const start = self->state->current_span();
+        self->state->next(); // consume `enum`
+
+        switch (self->state->expect_ident()) case .Some(ident) else {
+            self->state->sync();
+            return false;
+        }
+
+        var tag_type: Option<ast::NodeId> = .None;
+
+        if (self->state->is(.LeftParen)) {
+            self->state->next(); // consume `(`
+
+            switch (self->parse_type()) case .Some(ty) else {
+                self->state->sync();
+                return false;
+            }
+
+            tag_type = .Some(self->program->create_node(.Type(ty)));
+
+            if (!self->state->expect(.RightParen)) {
+                self->state->sync();
+                return false;
+            }
+        }
+
+        var align: Option<usize> = .None;
+
+        if (self->state->is_ident_str("align")) {
+            self->state->next();
+
+            if (!self->state->expect(.LeftParen)) {
+                self->state->sync();
+                return false;
+            }
+
+            switch (self->parse_integer_value()) {
+                case .Some(value) => align = .Some(value);
+                else => {
+                    report_error(
+                        self->allocator, 
+                        self->state->dctx, 
+                        self->state->current_span(), 
+                        "integer literals cannot have suffixes in this context"
+                    );
+                    self->state->sync();
+                    return false;
+                }
+            }
+
+            if (!self->state->expect(.RightParen)) {
+                self->state->sync();
+                return false;
+            }
+        }
+
+        var generic_params: ast::ASTGenericParams = Vec.new(self->allocator);
+
+        if (self->state->is(.LessThan)) {
+            switch (self->parse_generic_params()) {
+                case .Some(parsed) => {
+                    generic_params.free();
+                    generic_params = parsed;
+                }
+                else => {
+                    generic_params.free();
+                    self->state->sync();
+                    return false;
+                }
+            }
+        }
+
+        var impls: Vec<ast::ASTImplementInterface> = Vec.new(self->allocator);
+
+        if (self->state->is(.Colon)) {
+            self->state->next();
+
+            while (true) {
+                const impl_start = self->state->current_span();
+
+                switch (self->parse_type()) case .Some(ty) else {
+                    ast::free_generic_params(&generic_params);
+                    impls.free();
+                    self->state->sync();
+                    return false;
+                }
+
+                impls.push(ast::ASTImplementInterface {
+                    ty: self->program->create_node(.Type(ty)),
+                    span: impl_start.merge(self->state->current_span()),
+                });
+
+                if (self->state->is(.Comma)) {
+                    continue;
+                }
+
+                break;
+            }
+        }
+
+        if (!self->state->expect(.LeftBrace)) {
+            ast::free_generic_params(&generic_params);
+            impls.free();
+            self->state->sync();
+            return false;
+        }
+
+        var variants: Vec<ast::ASTEnumVariant> = Vec.new(self->allocator);
+        var methods: Vec<ast::NodeId> = Vec.new(self->allocator);
+
+        // TODO (stage2): Support attributes for variants
+
+        // Variants loop
+        while (true) {
+            if (self->state->is(.RightBrace)) {
+                break;
+            }
+
+            if (self->state->is(.Comma)) {
+                self->state->next();
+                continue;
+            }
+
+            switch (self->parse_enum_variant()) case .Some(variant) else {
+                ast::free_generic_params(&generic_params);
+                impls.free();
+                variants.free();
+                methods.free();
+                self->state->sync();
+                return false;
+            }
+
+            variants.push(variant);
+
+            if (self->state->is_peek(.RightBrace)
+                || self->state->is_peek(.Function)
+                || self->state->is_peek(.Extern)
+                || self->state->is_peek(.Public)
+                || self->state->is_peek(.LeftBracket)) {
+                break;
+            }
+        }
+
+        // Trailing comma
+        if (self->state->is(.Comma)) {
+            self->state->next();
+        }
+
+        // Methods loop
+        while (true) {
+            if (self->state->is(.RightBrace)) {
+                break;
+            }
+
+            if (self->state->is(.EOF)) {
+                report_error(
+                    self->allocator, 
+                    self->state->dctx, 
+                    self->state->current_span(), 
+                    "missing closing brace `}`"
+                );
+                ast::free_generic_params(&generic_params);
+                impls.free();
+                variants.free();
+                methods.free();
+                self->state->sync();
+                return false;
+            }
+
+            const mark = self->state->pending->len();
+            self->method_ctx = true;
+            self->parse_stmt();
+
+            if (self->state->pending->len() != mark + 1) {
+                report_error(
+                    self->allocator, 
+                    self->state->dctx, 
+                    self->state->current_span(),
+                    "expected method definition"
+                );
+                ast::free_generic_params(&generic_params);
+                impls.free();
+                variants.free();
+                methods.free();
+                self->state->sync();
+                return false;
+            }
+
+            const method = self->state->pending->pop();
+            var is_def = false;
+
+            switch (self->program->nodes.get(method)) {
+                case .Some(node) => switch (*node) {
+                    case .FuncDef(_) => is_def = true;
+                }
+            }
+
+            if (!is_def) {
+                report_error(
+                    self->allocator, 
+                    self->state->dctx, 
+                    self->state->current_span(),
+                    "expected method definition"
+                );
+                ast::free_generic_params(&generic_params);
+                impls.free();
+                variants.free();
+                methods.free();
+                self->state->sync();
+                return false;
+            }
+
+            methods.push(method);
+        }
+
+        const span = start.merge(self->state->current_span());
+
+        if (!self->state->expect(.RightBrace)) {
+            ast::free_generic_params(&generic_params);
+            impls.free();
+            variants.free();
+            methods.free();
+            return false;
+        }
+
+        var modifiers = make_enum_modifiers(self->allocator, is_pub);
+
+        apply_object_attrs(
+            self->allocator,
+            self->state->dctx,
+            attrs,
+            &modifiers.repr_attr,
+            ObjectKind.Enum
+        );
+
+        if (absorb) {
+            self->absorb_pending_object_attrs(attrs, &modifiers.repr_attr, ObjectKind.Enum);
+        }
+
+        const node = ast::ASTEnum {
+            ident,
+            variants,
+            generic_params,
+            methods,
+            impls,
+            modifiers,
+            tag_type,
+            align,
+            span,
+        };
+        self->state->pending->push(self->program->create_node(.Enum(node)));
+        return true;
+    }
+
+
+    // Grammar: union IDENT align(N)? <GenericParams>? (: Impl)? { (Field | Method)* }
+    pub fn parse_union(
+        self: Self*,
+        is_pub: bool,
+        attrs: Option<Vec<ast::ASTAttr>*>,
+        absorb: bool
+    ) bool {
+        const start = self->state->current_span();
+        self->state->next();
+
+        switch (self->state->expect_ident()) case .Some(ident) else {
+            self->state->sync();
+            return false;
+        }
+
+        var align: Option<usize> = .None;
+
+        // FIXME: Make it attribute.
+        if (self->state->is_ident_str("align")) {
+            self->state->next(); // consume `align`
+
+            if (!self->state->expect(.LeftParen)) {
+                self->state->sync();
+                return false;
+            }
+
+            switch (self->parse_integer_value()) {
+                case .Some(value) => align = .Some(value);
+                else => {
+                    report_error(
+                        self->allocator, 
+                        self->state->dctx,
+                        self->state->current_span(),
+                        "integer literals cannot have suffixes in this context"
+                    );
+                    self->state->sync();
+                    return false;
+                }
+            }
+
+            if (!self->state->expect(.RightParen)) {
+                self->state->sync();
+                return false;
+            }
+        }
+
+        var generic_params: ast::ASTGenericParams = Vec.new(self->allocator);
+
+        if (self->state->is(.LessThan)) {
+            switch (self->parse_generic_params()) {
+                case .Some(parsed) => {
+                    generic_params.free();
+                    generic_params = parsed;
+                }
+                else => {
+                    generic_params.free();
+                    self->state->sync();
+                    return false;
+                }
+            }
+        }
+
+        var impls: Vec<ast::ASTImplementInterface> = Vec.new(self->allocator);
+
+        if (self->state->is(.Colon)) {
+            self->state->next();
+
+            while (true) {
+                const impl_start = self->state->current_span();
+
+                switch (self->parse_type()) case .Some(ty) else {
+                    ast::free_generic_params(&generic_params);
+                    impls.free();
+                    self->state->sync();
+                    return false;
+                }
+
+                impls.push(ast::ASTImplementInterface {
+                    ty: self->program->create_node(.Type(ty)),
+                    span: impl_start.merge(self->state->current_span()),
+                });
+
+                if (self->state->is(.Comma)) {
+                    continue;
+                }
+
+                break;
+            }
+        }
+
+        if (!self->state->expect(.LeftBrace)) {
+            ast::free_generic_params(&generic_params);
+            impls.free();
+            self->state->sync();
+            return false;
+        }
+
+        var fields: Vec<ast::ASTUnionField> = Vec.new(self->allocator);
+        var methods: Vec<ast::NodeId> = Vec.new(self->allocator);
+
+        while (true) {
+            if (self->state->is(.RightBrace)) {
+                break;
+            }
+
+            if (self->state->is(.EOF)) {
+                report_error(
+                    self->allocator, 
+                    self->state->dctx, 
+                    self->state->current_span(),
+                    "missing closing brace `}`"
+                );
+                ast::free_generic_params(&generic_params);
+                impls.free();
+                fields.free();
+                methods.free();
+                self->state->sync();
+                return false;
+            }
+
+            if (self->state->is_ident()) {
+                switch (self->parse_union_field()) case .Some(field) else {
+                    ast::free_generic_params(&generic_params);
+                    impls.free();
+                    fields.free();
+                    methods.free();
+                    self->state->sync();
+                    return false;
+                }
+
+                fields.push(field);
+                continue;
+            }
+
+            const mark = self->state->pending->len();
+            self->method_ctx = true;
+            self->parse_stmt();
+
+            if (self->state->pending->len() != mark + 1) {
+                report_error(
+                    self->allocator, 
+                    self->state->dctx, 
+                    self->state->current_span(),
+                    "expected method definition"
+                );
+                ast::free_generic_params(&generic_params);
+                impls.free();
+                fields.free();
+                methods.free();
+                self->state->sync();
+                return false;
+            }
+
+            const method = self->state->pending->pop();
+            var is_def = false;
+
+            switch (self->program->nodes.get(method)) {
+                case .Some(node) => switch (*node) {
+                    case .FuncDef(_) => is_def = true;
+                }
+            }
+
+            if (!is_def) {
+                report_error(
+                    self->allocator,
+                    self->state->dctx,
+                    self->state->current_span(),
+                    "expected method definition"
+                );
+                ast::free_generic_params(&generic_params);
+                impls.free();
+                fields.free();
+                methods.free();
+                self->state->sync();
+                return false;
+            }
+
+            methods.push(method);
+        }
+
+        const span = start.merge(self->state->current_span());
+
+        if (!self->state->expect(.RightBrace)) {
+            ast::free_generic_params(&generic_params);
+            impls.free();
+            fields.free();
+            methods.free();
+            return false;
+        }
+
+        var modifiers = make_union_modifiers(self->allocator, is_pub);
+
+        apply_object_attrs(
+            self->allocator,
+            self->state->dctx,
+            attrs,
+            &modifiers.repr_attr,
+            ObjectKind.Union
+        );
+
+        if (absorb) {
+            self->absorb_pending_object_attrs(attrs, &modifiers.repr_attr, ObjectKind.Union);
+        }
+
+        const node = ast::ASTUnion {
+            ident,
+            fields,
+            generic_params,
+            methods,
+            impls,
+            modifiers,
+            align,
+            span,
+        };
+        self->state->pending->push(self->program->create_node(.Union(node)));
+        return true;
+    }
+
+    fn parse_union_field(self: Self*) Option<ast::ASTUnionField> {
+        const start = self->state->current_span();
+
+        switch (self->state->expect_ident()) case .Some(name) else {
+            return .None;
+        }
+
+        if (!self->state->expect(.Colon)) {
+            return .None;
+        }
+
+        switch (self->parse_type()) case .Some(ty) else {
+            return .None;
+        }
+
+        const span = start.merge(self->state->current_span());
+
+        const field = ast::ASTUnionField {
+            name,
+            ty: self->program->create_node(.Type(ty)),
+            span,
+        };
+
+        if (self->state->is(.RightBrace)) {
+            return .Some(field);
+        }
+
+        if (!self->state->expect(.Comma)) {
+            return .None;
+        }
+
+        return .Some(field);
+    }
+
+    /// Grammar: type IDENT <GenericParams>? = Type ;
+    fn parse_enum_variant(self: Self*) Option<ast::ASTEnumVariant> {
+        var exprs = ParserExprs.new(self->program, self->state);
+        return exprs.parse_enum_variant();
+    }
+
+    fn parse_integer_value(self: Self*) Option<usize> {
+        var exprs = ParserExprs.new(self->program, self->state);
+        return exprs.parse_unsuffixed_integer_value();
+    }
+
+    // Grammar: type IDENT <GenericParams>? = Type ;
+    pub fn parse_type_alias(self: Self*, is_pub: bool) bool {
+        const start = self->state->current_span();
+        self->state->next();
+
+        switch (self->state->expect_ident()) case .Some(ident) else {
+            self->state->sync();
+            return false;
+        }
+
+        var generic_params: ast::ASTGenericParams = Vec.new(self->allocator);
+
+        if (self->state->is(.LessThan)) {
+            switch (self->parse_generic_params()) {
+                case .Some(parsed) => {
+                    generic_params.free();
+                    generic_params = parsed;
+                }
+                else => {
+                    generic_params.free();
+                    self->state->sync();
+                    return false;
+                }
+            }
+        }
+
+        if (!self->state->expect(.Assign)) {
+            ast::free_generic_params(&generic_params);
+            self->state->sync();
+            return false;
+        }
+
+        switch (self->parse_type()) case .Some(ty) else {
+            ast::free_generic_params(&generic_params);
+            self->state->sync();
+            return false;
+        }
+
+        const span = start.merge(self->state->current_span());
+
+        if (!self->state->expect_semicolon()) {
+            ast::free_generic_params(&generic_params);
+            self->state->sync();
+            return false;
+        }
+
+        var vis = ast::ASTVisibility.Private;
+
+        if (is_pub) {
+            vis = .Public;
+        }
+
+        const node = ast::ASTTypeAlias {
+            ident,
+            ty: self->program->create_node(.Type(ty)),
+            generic_params,
+            vis,
+            span,
+        };
+        self->state->pending->push(self->program->create_node(.TypeAlias(node)));
+        return true;
+    }
+
+    /// Grammar: interface IDENT <GenericParams>? { FuncDecl* }
+    pub fn parse_interface(self: Self*, is_pub: bool) bool {
+        const start = self->state->current_span();
+        self->state->next();
+
+        switch (self->state->expect_ident()) case .Some(ident) else {
+            self->state->sync();
+            return false;
+        }
+
+        var generic_params: ast::ASTGenericParams = Vec.new(self->allocator);
+
+        if (self->state->is(.LessThan)) {
+            switch (self->parse_generic_params()) {
+                case .Some(parsed) => {
+                    generic_params.free();
+                    generic_params = parsed;
+                }
+                else => {
+                    generic_params.free();
+                    self->state->sync();
+                    return false;
+                }
+            }
+        }
+
+        if (!self->state->expect(.LeftBrace)) {
+            ast::free_generic_params(&generic_params);
+            self->state->sync();
+            return false;
+        }
+
+        var methods: Vec<ast::NodeId> = Vec.new(self->allocator);
+
+        while (self->state->is(.Function)) {
+            const mark = self->state->pending->len();
+
+            if (!self->parse_func(false, .None, .None, false) || self->state->pending->len() != mark + 1) {
+                ast::free_generic_params(&generic_params);
+                methods.free();
+                self->state->sync();
+                return false;
+            }
+
+            const method = self->state->pending->pop();
+            var def_span: Option<Span> = .None;
+            var is_decl = false;
+
+            switch (self->program->nodes.get(method)) {
+                case .Some(node) => switch (*node) {
+                    case .FuncDef(func_def) => def_span = .Some(func_def.span);
+                    case .FuncDecl(_) => is_decl = true;
+                }
+            }
+
+            if (!is_decl) {
+                switch (def_span) {
+                    case .Some(span) => report_error(
+                        self->allocator,
+                        self->state->dctx,
+                        span,
+                        "interface methods cannot have a body"
+                    );
+                    else => report_error(
+                        self->allocator,
+                        self->state->dctx,
+                        self->state->current_span(),
+                        "expected method declaration"
+                    );
+                }
+
+                // Drop the malformed method and keep parsing the rest
+                // of the interface.
+                if (self->state->is(.RightBrace)) {
+                    break;
+                }
+
+                continue;
+            }
+
+            methods.push(method);
+
+            if (self->state->is(.RightBrace)) {
+                break;
+            }
+        }
+
+        if (!self->state->is(.RightBrace)) {
+            if (!self->state->is_peek(.RightBrace)) {
+                report_error(
+                    self->allocator,
+                    self->state->dctx,
+                    self->state->current_span(),
+                    "expected right brace `}`"
+                );
+                ast::free_generic_params(&generic_params);
+                methods.free();
+                self->state->sync();
+                return false;
+            }
+
+            self->state->next();
+        }
+
+        const span = start.merge(self->state->current_span());
+
+        if (!self->state->expect(.RightBrace)) {
+            ast::free_generic_params(&generic_params);
+            methods.free();
+            return false;
+        }
+
+        var vis = ast::ASTVisibility.Private;
+
+        if (is_pub) {
+            vis = .Public;
+        }
+
+        const node = ast::ASTInterface {
+            ident,
+            methods,
+            generic_params,
+            vis,
+            span,
+        };
+        self->state->pending->push(self->program->create_node(.Interface(node)));
+        return true;
+    }
+
+    /// Grammar: mod IDENT { Toplevel* }
+    pub fn parse_module_decl(self: Self*, is_pub: bool) bool {
+        const start = self->state->current_span();
+        self->state->next();
+
+        switch (self->state->expect_ident()) case .Some(ident) else {
+            self->state->sync();
+            return false;
+        }
+
+        switch (self->parse_toplevel_block()) case .Some(stmts) else {
+            return false;
+        }
+
+        // Anything still on the stack belongs to the module statement
+        // itself, which accepts no attributes.
+        if (self->pending_attrs.len() > 0) {
+            check_attrs(self->allocator, self->state->dctx, &self->pending_attrs);
+            report_attrs_not_applicable(
+                self->allocator,
+                self->state->dctx,
+                &self->pending_attrs
+            );
+
+            ast::free_attrs(&self->pending_attrs);
+            self->pending_attrs = Vec.new(self->allocator);
+        }
+
+        var vis = ast::ASTVisibility.Private;
+
+        if (is_pub) {
+            vis = .Public;
+        }
+
+        const node = ast::ASTModuleDecl {
+            ident,
+            stmts,
+            vis,
+            span: start.merge(self->state->current_span()),
+        };
+        self->state->pending->push(self->program->create_node(.ModuleDecl(node)));
+        return true;
+    }
+
+    /// Used by `mod` bodies and toplevel builtin blocks.
+    fn parse_toplevel_block(self: Self*) Option<ast::ASTNodeList> {
+        if (!self->state->expect(.LeftBrace)) {
+            return .None;
+        }
+
+        const mark = self->state->pending->len();
+
+        while (!self->state->is(.RightBrace) && !self->state->is(.EOF)) {
+            const before = self->state->pos();
+
+            self->parse_toplevel();
+
+            // Error recovery must always advance,
+            // otherwise we spin forever!
+            if (self->state->pos() == before) {
+                self->state->next();
+            }
+        }
+
+        if (!self->state->expect(.RightBrace)) {
+            while (self->state->pending->len() > mark) {
+                self->state->pending->pop();
+            }
+            return .None;
+        }
+
+        return .Some(self->program->commit_pending(self->state->pending, mark));
+    }
+
+    /// Grammar: @ IDENT ( Expr, ... ) ( ToplevelBlock | Block | stmt | ε ) ;
+    pub fn parse_builtin_stmt(self: Self*, is_toplevel: bool) bool {
+        // Inline assembly is a builtin but has a special syntax
+        // and always parses as an expression.
+        if (self->state->is_peek_ident_str("asm")) {
+            self->parse_expr_stmt();
+            return true;
+        }
+
+        const start = self->state->current_span();
+        self->state->next();
+
+        switch (self->state->expect_ident()) case .Some(name) else {
+            self->skip_stray_stmt();
+            return false;
+        }
+
+        if (!self->state->expect(.LeftParen)) {
+            self->state->sync();
+            return false;
+        }
+
+        var args: Vec<ast::NodeId>;
+
+        switch (self->parse_expr_list(.RightParen)) case .Some(parsed_args) else {
+            self->state->sync();
+            return false;
+        }
+
+        args = parsed_args;
+
+        if (self->state->is(.LeftBrace)) {
+            var block: Option<ast::NodeId> = .None;
+
+            if (is_toplevel) {
+                switch (self->parse_toplevel_block()) case .Some(toplevel_stmts) else {
+                    args.free();
+                    self->state->sync();
+                    return false;
+                }
+
+                const block_span = start.merge(self->state->current_span());
+                block = .Some(self->program->create_node(.Block(ast::ASTBlock {
+                    stmts: toplevel_stmts,
+                    span: block_span,
+                })));
+            } else {
+                block = self->parse_block_node();
+
+                if (block.is_none()) {
+                    args.free();
+                    self->state->sync();
+                    return false;
+                }
+            }
+
+            switch (block) case .Some(block_id) else {
+                args.free();
+                return false;
+            }
+
+            const end = self->state->current_span();
+            const node = ast::ASTBuiltinBlock {
+                name,
+                args,
+                block: block_id,
+                is_toplevel,
+                span: start.merge(end),
+            };
+            self->state->pending->push(
+                self->program->create_node(.Builtin(ast::ASTBuiltin.BuiltinBlock(node)))
+            );
+            return true;
+        }
+
+        if (!self->state->is(.Semicolon)) {
+            const mark = self->state->pending->len();
+
+            if (is_toplevel) {
+                self->parse_toplevel();
+            } else {
+                self->parse_stmt();
+            }
+
+            const stmts = self->program->commit_pending(self->state->pending, mark);
+
+            if (stmts.len != 1 && !self->state->dctx->has_errors()) {
+                report_unexpected_token(
+                    self->allocator,
+                    self->state->dctx,
+                    self->state->current_span(),
+                    *self->state->current()->kind
+                );
+            }
+
+            const block_node = self->program->create_node(.Block(ast::ASTBlock {
+                stmts,
+                span: start.merge(self->state->current_span())
+            }));
+
+            const end = self->state->current_span();
+            const node = ast::ASTBuiltinBlock {
+                name,
+                args,
+                block: block_node,
+                is_toplevel,
+                span: start.merge(end),
+            };
+            self->state->pending->push(
+                self->program->create_node(.Builtin(ast::ASTBuiltin.BuiltinBlock(node)))
+            );
+            return true;
+        }
+
+        const end = self->state->current_span();
+
+        if (!self->state->expect_semicolon()) {
+            args.free();
+            self->state->sync();
+            return false;
+        }
+
+        const node = ast::ASTBuiltinFunc {
+            name,
+            args,
+            span: start.merge(end),
+        };
+        self->state->pending->push(
+            self->program->create_node(.Builtin(ast::ASTBuiltin.BuiltinFunc(node)))
+        );
+        return true;
+    }
+
+    /// Grammar: <IDENT (: Bound)? (= Type)? (, ...)* >
+    pub fn parse_generic_params(self: Self*) Option<ast::ASTGenericParams> {
+        if (!self->state->expect(.LessThan)) {
+            return .None;
+        }
+
+        var params: ast::ASTGenericParams = Vec.new(self->allocator);
+
+        while (true) {
+            switch (self->parse_generic_param()) {
+                case .Some(param) => params.push(param);
+                else => {
+                    ast::free_generic_params(&params);
+                    return .None;
+                }
+            }
+
+            if (self->state->is(.Comma)) {
+                self->state->next();
+                continue;
+            }
+
+            break;
+        }
+
+        if (!self->state->expect(.GreaterThan)) {
+            ast::free_generic_params(&params);
+            return .None;
+        }
+
+        return .Some(params);
+    }
+
+    /// Grammar: IDENT (: Bounds)? (= Type)?
+    fn parse_generic_param(self: Self*) Option<ast::ASTGenericParam> {
+        switch (self->state->expect_ident()) case .Some(name) else {
+            return .None;
+        }
+
+        var bounds: Option<Vec<ast::ASTBound>> = .None;
+
+        if (self->state->is(.Colon)) {
+            self->state->next();
+
+            switch (self->parse_bounds()) {
+                case .Some(list) => bounds = .Some(list);
+                else => return .None;
+            }
+        }
+
+        var default: Option<ast::NodeId> = .None;
+
+        if (self->state->is(.Assign)) {
+            self->state->next();
+
+            switch (self->parse_type()) {
+                case .Some(ty) => default = .Some(self->program->create_node(.Type(ty)));
+                else => {
+                    ast::free_option_bounds(&bounds);
+                    return .None;
+                }
+            }
+        }
+
+        return .Some(ast::ASTGenericParam { name, bounds, default });
+    }
+
+    /// Grammar: Type (+ Type)*
+    fn parse_bounds(self: Self*) Option<Vec<ast::ASTBound>> {
+        var list: Vec<ast::ASTBound> = Vec.new(self->allocator);
+
+        while (true) {
+            const start = self->state->current_span();
+
+            switch (self->parse_type()) case .Some(ty) else {
+                list.free();
+                return .None;
+            }
+
+            list.push(ast::ASTBound {
+                ty: self->program->create_node(.Type(ty)),
+                span: start.merge(self->state->current_span()),
+            });
+
+            if (self->state->is(.Plus)) {
+                self->state->next();
+                continue;
+            }
+
+            break;
+        }
+
+        return .Some(list);
+    }
+}
+
+/// Builds the default set of modifiers for a parsed struct.
+fn make_struct_modifiers(allocator: Allocator, is_pub: bool) ast::ASTStructModifiers {
+    var vis = ast::ASTVisibility.Private;
+    if (is_pub) {
+        vis = .Public;
+    }
+
+    return ast::ASTStructModifiers {
+        vis,
+        repr_attr: .None,
+    };
+}
+
+fn make_enum_modifiers(allocator: Allocator, is_pub: bool) ast::ASTEnumModifiers {
+    var vis = ast::ASTVisibility.Private;
+    if (is_pub) {
+        vis = .Public;
+    }
+
+    return ast::ASTEnumModifiers {
+        vis,
+        repr_attr: .None,
+    };
+}
+
+fn make_union_modifiers(allocator: Allocator, is_pub: bool) ast::ASTUnionModifiers {
+    var vis = ast::ASTVisibility.Private;
+    if (is_pub) {
+        vis = .Public;
+    }
+
+    return ast::ASTUnionModifiers {
+        vis,
+        repr_attr: .None,
+    };
+}
+
+fn make_global_modifiers(
+    allocator: Allocator,
+    is_pub: bool,
+    extrn: Option<ast::ASTExtern>
+) ast::ASTGlobalVarModifiers {
+    var vis = ast::ASTVisibility.Private;
+    
+    if (is_pub) {
+        vis = .Public;
+    }
+
+    return ast::ASTGlobalVarModifiers {
+        vis,
+        link_name: .None,
+        extrn,
+        section: .None,
+        thread_local: false,
+        link_once: false,
+        weak: false,
+    };
+}
+
+fn make_func_modifiers(
+    allocator: Allocator, 
+    is_pub: bool, 
+    extrn: Option<ast::ASTExtern>
+) ast::ASTFuncModifiers {
+    var vis = ast::ASTVisibility.Private;
+    if (is_pub) {
+        vis = .Public;
+    }
+
+    return ast::ASTFuncModifiers {
+        vis,
+        link_name: .None,
+        extrn,
+        inline: .None,
+        prologue: .None,
+        callconv: .None,
+        optional_flags: Vec.new(allocator),
+        section: .None,
+        link_once: false,
+        weak: false,
+    };
+}

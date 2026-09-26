@@ -1,0 +1,82 @@
+// @parse
+
+const a = -x;
+const b = !flag;
+const c = ~mask;
+const d = -(a + b);
+const e = !foo(1);
+
+/*@parse
+ASTProgram
+    Node[0]:
+        ASTGlobalVar
+            ident: a
+            is_const: true
+            is_undef: false
+            is_static: false
+            expr:
+                ASTExpr::Prefix
+                    operator: -
+                    operand:
+                        ASTExpr::Ident
+                            ident: x
+    Node[1]:
+        ASTGlobalVar
+            ident: b
+            is_const: true
+            is_undef: false
+            is_static: false
+            expr:
+                ASTExpr::Prefix
+                    operator: !
+                    operand:
+                        ASTExpr::Ident
+                            ident: flag
+    Node[2]:
+        ASTGlobalVar
+            ident: c
+            is_const: true
+            is_undef: false
+            is_static: false
+            expr:
+                ASTExpr::Prefix
+                    operator: ~
+                    operand:
+                        ASTExpr::Ident
+                            ident: mask
+    Node[3]:
+        ASTGlobalVar
+            ident: d
+            is_const: true
+            is_undef: false
+            is_static: false
+            expr:
+                ASTExpr::Prefix
+                    operator: -
+                    operand:
+                        ASTExpr::Infix
+                            operator: +
+                            lhs:
+                                ASTExpr::Ident
+                                    ident: a
+                            rhs:
+                                ASTExpr::Ident
+                                    ident: b
+    Node[4]:
+        ASTGlobalVar
+            ident: e
+            is_const: true
+            is_undef: false
+            is_static: false
+            expr:
+                ASTExpr::Prefix
+                    operator: !
+                    operand:
+                        ASTExpr::FuncCall
+                            operand:
+                                ASTExpr::Ident
+                                    ident: foo
+                            arg[0]:
+                                ASTExpr::Literal
+                                    value: 1
+@parse*/

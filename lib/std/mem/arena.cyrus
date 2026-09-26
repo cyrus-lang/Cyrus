@@ -1,0 +1,217 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 The Cyrus Language
+
+import std::libc{memmove};
+import std::collections::linked_list{SinglyLinkedList, SinglyNode};
+import std::mem{Allocator, alloc_init, align_up, is_power_of_two};
+
+pub const ARENA_DEFAULT_ALIGNMENT = @sizeof(uintptr);
+
+struct ArenaNode {
+    pub ptr: uint8*,
+    pub capacity: usize,
+    pub used: usize,
+}
+
+pub struct ArenaAllocator : Allocator {
+    child_allocator: Allocator,
+    nodes: SinglyLinkedList<ArenaNode>*,
+    default_capacity: usize,
+    last_alloc_ptr: void*,
+    last_alloc_size: usize,
+
+    pub fn new(child_allocator: Allocator, capacity: usize) Self {
+        const linked_list: SinglyLinkedList<ArenaNode> = SinglyLinkedList.new();
+
+        var nodes = alloc_init(child_allocator, linked_list);
+        
+        var arena = Self { 
+            child_allocator, 
+            nodes,
+            default_capacity: capacity,
+            last_alloc_ptr: null,
+            last_alloc_size: 0,
+        };
+        
+        arena.create_node(capacity);
+
+        return arena;
+    }
+
+    pub fn alloc(self: Self*, size: usize) void* {
+        return self->alloc_aligned(size, ARENA_DEFAULT_ALIGNMENT);
+    }
+
+    pub fn alloc_aligned(self: Self*, size: usize, align: usize) void* {
+        @assert(is_power_of_two(align), "alignment must be a power of two");
+
+        if (size == 0) {
+            return null;
+        }
+
+        switch (self->nodes->peek_first()) case .Some(node) else {
+            return null;
+        }
+
+        var arena = &node->value;
+        const base_addr = @cast(uintptr, arena->ptr) + arena->used;
+        const aligned_addr = align_up(base_addr, align);
+        const padding = aligned_addr - base_addr;
+        const total_needed = padding + size;
+
+        if (arena->used + total_needed <= arena->capacity) {
+            arena->used += total_needed;
+            const ptr = @cast(void*, aligned_addr);
+            self->last_alloc_ptr = ptr;
+            self->last_alloc_size = size;
+            return ptr;
+        }
+
+        const needed = total_needed + align;
+        var next_cap = self->default_capacity;
+
+        if (needed > next_cap) {
+            next_cap = needed;
+        }
+
+        self->create_node(next_cap);
+
+        switch (self->nodes->peek_first()) case .Some(new_node) else {
+            return null;
+        }
+
+        var new_arena = &new_node->value;
+        const new_base = @cast(uintptr, new_arena->ptr);
+        const new_aligned = align_up(new_base, align);
+        const new_padding = new_aligned - new_base;
+        const new_total = new_padding + size;
+
+        new_arena->used += new_total;
+        const ptr = @cast(void*, new_aligned);
+        self->last_alloc_ptr = ptr;
+        self->last_alloc_size = size;
+        return ptr;
+    }
+
+    pub fn alloc_zeroed(self: Self*, size: usize) void* {
+        const ptr = self->alloc(size);
+        
+        if (ptr != null) {
+            @memset(ptr, 0, size);
+        }
+        
+        return ptr;
+    }
+
+    pub fn realloc(self: Self*, ptr: void*, size: usize) void* {
+        if (ptr == null) {
+            return self->alloc(size);
+        }
+
+        if (size == 0) {
+            if (ptr == self->last_alloc_ptr) {
+                switch (self->nodes->peek_first()) case .Some(node) else {
+                    return null;
+                }
+                var arena = &node->value;
+                arena->used -= self->last_alloc_size;
+                self->last_alloc_ptr = null;
+                self->last_alloc_size = 0;
+            }
+            return null;
+        }
+
+        if (ptr == self->last_alloc_ptr) {
+            if (size <= self->last_alloc_size) {
+                switch (self->nodes->peek_first()) case .Some(node) else {
+                    return null;
+                }
+                
+                var arena = &node->value;
+                arena->used -= (self->last_alloc_size - size);
+                self->last_alloc_size = size;
+                return ptr;
+            } else {
+                const diff = size - self->last_alloc_size;
+                
+                switch (self->nodes->peek_first()) case .Some(node) else {
+                    return null;
+                }
+                
+                var arena = &node->value;
+                
+                if (arena->used + diff <= arena->capacity) {
+                    arena->used += diff;
+                    self->last_alloc_size = size;
+                    return ptr;
+                } else {
+                    const old_size = self->last_alloc_size;
+                    const new_ptr = self->alloc(size);
+                    if (new_ptr == null) {
+                        return null;
+                    }
+                    memmove(new_ptr, ptr, old_size);
+                    return new_ptr;
+                }
+            }
+        }
+
+        const new_ptr = self->alloc(size);
+
+        if (new_ptr == null) {
+            return null;
+        }
+
+        var copy_size = size;
+        if (copy_size > self->last_alloc_size) {
+            copy_size = self->last_alloc_size;
+        }
+
+        memmove(new_ptr, ptr, copy_size);
+        return new_ptr;
+    }
+
+    pub fn free(self: Self*, ptr: void*) void {}
+
+    pub fn reset(self: Self*) {
+        var current = self->nodes->head;
+        
+        while (current != null) {
+            current->value.used = 0;
+            current = current->next;
+        }
+        self->last_alloc_ptr = null;
+        self->last_alloc_size = 0;
+    }
+
+    pub fn destroy(self: Self*) {
+        while (self->nodes->head != null) {
+            switch (self->nodes->pop_first()) case .Some(node) else {
+                break;
+            }
+
+            self->child_allocator.free(node->value.ptr);
+            self->child_allocator.free(node);
+        }
+        self->child_allocator.free(self->nodes);
+    }
+
+    fn create_node(self: Self*, capacity: usize) {
+        const ptr: uint8* = self->child_allocator.alloc(capacity);
+        
+        var node: SinglyNode<ArenaNode>* = 
+            self->child_allocator.alloc(@sizeof(SinglyNode<ArenaNode>));
+        
+        *node = SinglyNode {
+            value: ArenaNode {
+                ptr,
+                capacity,
+                used: 0
+            },
+            next: self->nodes->head
+        };
+
+        self->nodes->head = node;
+        self->nodes->size += 1;
+    }
+}

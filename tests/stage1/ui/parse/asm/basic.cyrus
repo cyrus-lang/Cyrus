@@ -1,0 +1,31 @@
+// @parse
+
+pub fn main() {
+    @asm("nop");
+    @asm("nop" : : : "eax", "ebx");
+}
+
+/*@parse
+ASTProgram
+    Node[0]:
+        ASTFuncDef
+            ident: main
+            visibility: public
+            params:
+            body:
+                ASTBlock
+                    stmt[0]:
+                        ASTExpr::InlineAsm
+                            is_volatile: false
+                            template[0]:
+                                value: nop
+                    stmt[1]:
+                        ASTExpr::InlineAsm
+                            is_volatile: false
+                            template[0]:
+                                value: nop
+                            clobber[0]:
+                                name: eax
+                            clobber[1]:
+                                name: ebx
+@parse*/

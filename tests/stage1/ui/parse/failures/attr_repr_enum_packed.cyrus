@@ -1,0 +1,14 @@
+// @parse
+
+[[repr(packed)]]
+enum E {
+    A,
+}
+
+/*@parse
+tests/stage1/ui/parse/failures/attr_repr_enum_packed.cyrus:3:1: error: `repr(packed)` is not valid for enums
+      |
+    3 ~ [[repr(packed)]]
+      | ^^^^^^^^^^^^^^^^
+      |
+@parse*/

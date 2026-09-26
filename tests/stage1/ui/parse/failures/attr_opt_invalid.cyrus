@@ -1,0 +1,14 @@
+// @parse
+
+[[opt(bogus)]]
+fn f();
+
+/*@parse
+tests/stage1/ui/parse/failures/attr_opt_invalid.cyrus:3:7: error: invalid opt kind in attribute
+      |
+    3 ~ [[opt(bogus)]]
+      |       ^^^^^
+      |
+      = help: expected `none` or `size`
+      |
+@parse*/

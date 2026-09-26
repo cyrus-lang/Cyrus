@@ -1,0 +1,12 @@
+// @parse
+
+[[callconv(bogus)]]
+fn f();
+
+/*@parse
+tests/stage1/ui/parse/failures/attr_callconv_invalid.cyrus:3:12: error: invalid callconv in attribute
+      |
+    3 ~ [[callconv(bogus)]]
+      |            ^^^^^
+      |
+@parse*/

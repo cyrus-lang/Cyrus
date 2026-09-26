@@ -1,0 +1,40 @@
+// @parse
+
+extern "c" {
+    fn ext_grouped() {}
+
+    const ext_var = 2;
+}
+
+pub extern "c" {
+    fn both_grouped() {}
+}
+
+/*@parse
+ASTProgram
+    Node[0]:
+        ASTFuncDef
+            ident: ext_grouped
+            extern: c
+            params:
+            body:
+                ASTBlock
+    Node[1]:
+        ASTGlobalVar
+            ident: ext_var
+            extern: c
+            is_const: true
+            is_undef: false
+            is_static: false
+            expr:
+                ASTExpr::Literal
+                    value: 2
+    Node[2]:
+        ASTFuncDef
+            ident: both_grouped
+            visibility: public
+            extern: c
+            params:
+            body:
+                ASTBlock
+@parse*/

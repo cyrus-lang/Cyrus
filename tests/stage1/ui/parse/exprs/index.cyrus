@@ -1,0 +1,94 @@
+// @parse
+
+const a = list[0];
+const b = list[i + 1];
+const c = list[0][1];
+const d = pair.0;
+const e = matrix[0].field;
+
+/*@parse
+ASTProgram
+    Node[0]:
+        ASTGlobalVar
+            ident: a
+            is_const: true
+            is_undef: false
+            is_static: false
+            expr:
+                ASTExpr::ArrayIndex
+                    operand:
+                        ASTExpr::Ident
+                            ident: list
+                    index:
+                        ASTExpr::Literal
+                            value: 0
+    Node[1]:
+        ASTGlobalVar
+            ident: b
+            is_const: true
+            is_undef: false
+            is_static: false
+            expr:
+                ASTExpr::ArrayIndex
+                    operand:
+                        ASTExpr::Ident
+                            ident: list
+                    index:
+                        ASTExpr::Infix
+                            operator: +
+                            lhs:
+                                ASTExpr::Ident
+                                    ident: i
+                            rhs:
+                                ASTExpr::Literal
+                                    value: 1
+    Node[2]:
+        ASTGlobalVar
+            ident: c
+            is_const: true
+            is_undef: false
+            is_static: false
+            expr:
+                ASTExpr::ArrayIndex
+                    operand:
+                        ASTExpr::ArrayIndex
+                            operand:
+                                ASTExpr::Ident
+                                    ident: list
+                            index:
+                                ASTExpr::Literal
+                                    value: 0
+                    index:
+                        ASTExpr::Literal
+                            value: 1
+    Node[3]:
+        ASTGlobalVar
+            ident: d
+            is_const: true
+            is_undef: false
+            is_static: false
+            expr:
+                ASTExpr::TupleAccess
+                    operand:
+                        ASTExpr::Ident
+                            ident: pair
+                    index: 0
+    Node[4]:
+        ASTGlobalVar
+            ident: e
+            is_const: true
+            is_undef: false
+            is_static: false
+            expr:
+                ASTExpr::FieldAccess
+                    operand:
+                        ASTExpr::ArrayIndex
+                            operand:
+                                ASTExpr::Ident
+                                    ident: matrix
+                            index:
+                                ASTExpr::Literal
+                                    value: 0
+                    field_name: field
+                    is_thin_arrow: false
+@parse*/

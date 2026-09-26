@@ -1,0 +1,100 @@
+// @parse
+
+const a = foo();
+const b = foo(1, 2);
+const c = foo(bar(1), 2);
+const d = foo(1,);
+const e = foo(a, bar(b), c);
+
+/*@parse
+ASTProgram
+    Node[0]:
+        ASTGlobalVar
+            ident: a
+            is_const: true
+            is_undef: false
+            is_static: false
+            expr:
+                ASTExpr::FuncCall
+                    operand:
+                        ASTExpr::Ident
+                            ident: foo
+    Node[1]:
+        ASTGlobalVar
+            ident: b
+            is_const: true
+            is_undef: false
+            is_static: false
+            expr:
+                ASTExpr::FuncCall
+                    operand:
+                        ASTExpr::Ident
+                            ident: foo
+                    arg[0]:
+                        ASTExpr::Literal
+                            value: 1
+                    arg[1]:
+                        ASTExpr::Literal
+                            value: 2
+    Node[2]:
+        ASTGlobalVar
+            ident: c
+            is_const: true
+            is_undef: false
+            is_static: false
+            expr:
+                ASTExpr::FuncCall
+                    operand:
+                        ASTExpr::Ident
+                            ident: foo
+                    arg[0]:
+                        ASTExpr::FuncCall
+                            operand:
+                                ASTExpr::Ident
+                                    ident: bar
+                            arg[0]:
+                                ASTExpr::Literal
+                                    value: 1
+                    arg[1]:
+                        ASTExpr::Literal
+                            value: 2
+    Node[3]:
+        ASTGlobalVar
+            ident: d
+            is_const: true
+            is_undef: false
+            is_static: false
+            expr:
+                ASTExpr::FuncCall
+                    operand:
+                        ASTExpr::Ident
+                            ident: foo
+                    arg[0]:
+                        ASTExpr::Literal
+                            value: 1
+    Node[4]:
+        ASTGlobalVar
+            ident: e
+            is_const: true
+            is_undef: false
+            is_static: false
+            expr:
+                ASTExpr::FuncCall
+                    operand:
+                        ASTExpr::Ident
+                            ident: foo
+                    arg[0]:
+                        ASTExpr::Ident
+                            ident: a
+                    arg[1]:
+                        ASTExpr::FuncCall
+                            operand:
+                                ASTExpr::Ident
+                                    ident: bar
+                            arg[0]:
+                                ASTExpr::Ident
+                                    ident: b
+                    arg[2]:
+                        ASTExpr::Ident
+                            ident: c
+@parse*/

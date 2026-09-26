@@ -1,0 +1,12 @@
+// @parse
+
+[[link(weak)]]
+fn f() {}
+
+/*@parse
+tests/stage1/ui/parse/failures/attr_link_weak_def.cyrus:3:1: error: `[[link(weak)]]` cannot be applied to a function definition
+      |
+    3 ~ [[link(weak)]]
+      | ^^^^^^^^^^^^^^
+      |
+@parse*/
