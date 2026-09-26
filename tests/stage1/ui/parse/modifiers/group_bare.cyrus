@@ -1,0 +1,17 @@
+// @parse
+
+{ }
+
+{
+    fn bare_group() {}
+}
+
+/*@parse
+ASTProgram
+    Node[0]:
+        ASTFuncDef
+            ident: bare_group
+            params:
+            body:
+                ASTBlock
+@parse*/

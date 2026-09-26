@@ -1,0 +1,25 @@
+// @parse
+
+[[inline]]
+[[cold]]
+fn multi_group();
+
+[[section(".text")]]
+[[hot]]
+fn section_hot();
+
+/*@parse
+ASTProgram
+    Node[0]:
+        ASTFuncDecl
+            ident: multi_group
+            inline: hint
+            optional_flag: cold
+            params:
+    Node[1]:
+        ASTFuncDecl
+            ident: section_hot
+            optional_flag: hot
+            section: .text
+            params:
+@parse*/

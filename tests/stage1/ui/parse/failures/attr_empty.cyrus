@@ -1,0 +1,12 @@
+// @parse
+
+[[]]
+fn f();
+
+/*@parse
+tests/stage1/ui/parse/failures/attr_empty.cyrus:3:3: error: expected ident but got `]`
+      |
+    3 ~ [[]]
+      |   ^
+      |
+@parse*/

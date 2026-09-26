@@ -1,0 +1,13 @@
+// @parse
+
+[[section(".text")]]
+fn in_text();
+
+/*@parse
+ASTProgram
+    Node[0]:
+        ASTFuncDecl
+            ident: in_text
+            section: .text
+            params:
+@parse*/

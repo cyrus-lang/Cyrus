@@ -1,0 +1,72 @@
+// @parse
+
+[[thread_local]]
+static var tls_var: int32 = 5;
+
+[[section(".data")]]
+static var data_var = 1;
+
+[[link(once)]]
+static var once_var = 2;
+
+[[link(weak)]]
+static var weak_var: int32 = 5;
+
+[[link_name("pi")]]
+static var named_var = 3.0;
+
+/*@parse
+ASTProgram
+    Node[0]:
+        ASTGlobalVar
+            ident: tls_var
+            thread_local: true
+            is_const: false
+            is_undef: false
+            is_static: true
+            ty: int32
+            expr:
+                ASTExpr::Literal
+                    value: 5
+    Node[1]:
+        ASTGlobalVar
+            ident: data_var
+            section: .data
+            is_const: false
+            is_undef: false
+            is_static: true
+            expr:
+                ASTExpr::Literal
+                    value: 1
+    Node[2]:
+        ASTGlobalVar
+            ident: once_var
+            link_once: true
+            is_const: false
+            is_undef: false
+            is_static: true
+            expr:
+                ASTExpr::Literal
+                    value: 2
+    Node[3]:
+        ASTGlobalVar
+            ident: weak_var
+            weak: true
+            is_const: false
+            is_undef: false
+            is_static: true
+            ty: int32
+            expr:
+                ASTExpr::Literal
+                    value: 5
+    Node[4]:
+        ASTGlobalVar
+            ident: named_var
+            link_name: pi
+            is_const: false
+            is_undef: false
+            is_static: true
+            expr:
+                ASTExpr::Literal
+                    value: 3
+@parse*/

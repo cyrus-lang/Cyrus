@@ -1,0 +1,60 @@
+// @parse
+
+mod inner {
+    fn helper() {}
+    const flag: int32 = 0;
+    type Handle = int32;
+}
+
+pub mod outer {
+    const limit: usize = 16;
+    fn run() {}
+}
+
+/*@parse
+ASTProgram
+    Node[0]:
+        ASTModuleDecl
+            ident: inner
+            stmt[0]:
+                ASTFuncDef
+                    ident: helper
+                    params:
+                    body:
+                        ASTBlock
+            stmt[1]:
+                ASTGlobalVar
+                    ident: flag
+                    is_const: true
+                    is_undef: false
+                    is_static: false
+                    ty: int32
+                    expr:
+                        ASTExpr::Literal
+                            value: 0
+            stmt[2]:
+                ASTTypeAlias
+                    ident: Handle
+                    generic_params_count: 0
+                    ty: int32
+    Node[1]:
+        ASTModuleDecl
+            ident: outer
+            visibility: public
+            stmt[0]:
+                ASTGlobalVar
+                    ident: limit
+                    is_const: true
+                    is_undef: false
+                    is_static: false
+                    ty: usize
+                    expr:
+                        ASTExpr::Literal
+                            value: 16
+            stmt[1]:
+                ASTFuncDef
+                    ident: run
+                    params:
+                    body:
+                        ASTBlock
+@parse*/

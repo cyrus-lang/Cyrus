@@ -6,6 +6,6 @@ fn f(var a: int32);
 tests/stage1/ui/parse/failures/decl_param_var.cyrus:3:6: error: `var` parameter specifier is only allowed in function definitions
       |
     3 ~ fn f(var a: int32);
-      |      ^^^^^^^^^^^^^
+      |      ^^^^^^^^^^^^
       |
 @parse*/

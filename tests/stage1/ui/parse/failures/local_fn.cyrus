@@ -1,0 +1,21 @@
+// @parse
+
+fn main() {
+    fn local_fn();
+
+    fn local_def() {}
+}
+
+/*@parse
+tests/stage1/ui/parse/failures/local_fn.cyrus:4:5: error: `fn` cannot be defined inside a function body
+      |
+    4 ~     fn local_fn();
+      |     ^^
+      |
+
+tests/stage1/ui/parse/failures/local_fn.cyrus:6:5: error: `fn` cannot be defined inside a function body
+      |
+    6 ~     fn local_def() {}
+      |     ^^
+      |
+@parse*/

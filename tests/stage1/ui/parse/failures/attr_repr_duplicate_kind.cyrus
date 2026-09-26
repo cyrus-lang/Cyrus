@@ -1,0 +1,14 @@
+// @parse
+
+[[repr(c, cyrus)]]
+struct S {
+    x: int32,
+}
+
+/*@parse
+tests/stage1/ui/parse/failures/attr_repr_duplicate_kind.cyrus:3:11: error: multiple repr kinds specified
+      |
+    3 ~ [[repr(c, cyrus)]]
+      |           ^^^^^
+      |
+@parse*/

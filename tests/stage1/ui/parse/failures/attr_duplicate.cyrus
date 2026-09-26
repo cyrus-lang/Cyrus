@@ -1,0 +1,13 @@
+// @parse
+
+[[inline]]
+[[inline]]
+fn f();
+
+/*@parse
+tests/stage1/ui/parse/failures/attr_duplicate.cyrus:4:1: error: duplicate attribute `inline`
+      |
+    4 ~ [[inline]]
+      | ^^^^^^^^^^
+      |
+@parse*/

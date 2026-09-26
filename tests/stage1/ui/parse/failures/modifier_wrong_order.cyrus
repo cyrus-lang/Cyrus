@@ -1,0 +1,19 @@
+// @parse
+
+extern "c" pub fn wrong_order();
+
+extern "c" pub const wrong_const = 1;
+
+/*@parse
+tests/stage1/ui/parse/failures/modifier_wrong_order.cyrus:3:12: error: `pub` must precede `extern`
+      |
+    3 ~ extern "c" pub fn wrong_order();
+      |            ^^^
+      |
+
+tests/stage1/ui/parse/failures/modifier_wrong_order.cyrus:5:12: error: `pub` must precede `extern`
+      |
+    5 ~ extern "c" pub const wrong_const = 1;
+      |            ^^^
+      |
+@parse*/

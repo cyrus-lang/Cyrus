@@ -1,0 +1,12 @@
+// @parse
+
+pub [[inline]]
+fn f();
+
+/*@parse
+tests/stage1/ui/parse/failures/attr_after_modifier.cyrus:3:5: error: attributes must precede modifiers
+      |
+    3 ~ pub [[inline]]
+      |     ^^^^^^^^^^
+      |
+@parse*/

@@ -1,0 +1,23 @@
+// @parse
+
+[[link(weak)]]
+fn weak_decl();
+
+[[link(once)]]
+fn once_def() {}
+
+/*@parse
+ASTProgram
+    Node[0]:
+        ASTFuncDecl
+            ident: weak_decl
+            weak: true
+            params:
+    Node[1]:
+        ASTFuncDef
+            ident: once_def
+            link_once: true
+            params:
+            body:
+                ASTBlock
+@parse*/

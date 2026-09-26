@@ -1,0 +1,26 @@
+// @parse
+
+interface I {
+    [[inline]]
+    fn m();
+}
+
+/*@parse
+tests/stage1/ui/parse/failures/attr_interface_method.cyrus:4:5: error: expected right brace `}`
+      |
+    4 ~     [[inline]]
+      |     ^
+      |
+
+tests/stage1/ui/parse/failures/attr_interface_method.cyrus:4:13: error: unexpected token `]`
+      |
+    4 ~     [[inline]]
+      |             ^
+      |
+
+tests/stage1/ui/parse/failures/attr_interface_method.cyrus:6:1: error: unexpected token `}`
+      |
+    6 ~ }
+      | ^
+      |
+@parse*/

@@ -10,22 +10,4 @@ tests/stage1/ui/parse/failures/enum_empty_tuple_variant.cyrus:4:7: error: consid
     4 ~     A(),
       |       ^
       |
-
-tests/stage1/ui/parse/failures/enum_empty_tuple_variant.cyrus:4:7: error: unexpected token `)`
-      |
-    4 ~     A(),
-      |       ^
-      |
-
-tests/stage1/ui/parse/failures/enum_empty_tuple_variant.cyrus:4:8: error: unexpected token `,`
-      |
-    4 ~     A(),
-      |        ^
-      |
-
-tests/stage1/ui/parse/failures/enum_empty_tuple_variant.cyrus:5:1: error: unexpected token `}`
-      |
-    5 ~ }
-      | ^
-      |
 @parse*/

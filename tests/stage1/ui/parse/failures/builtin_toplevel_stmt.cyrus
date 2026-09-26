@@ -1,0 +1,21 @@
+// @parse
+
+@debug() printf("toplevel shorthand");
+
+@debug() {
+    printf("toplevel block\n");
+}
+
+/*@parse
+tests/stage1/ui/parse/failures/builtin_toplevel_stmt.cyrus:3:10: error: unexpected token `printf`
+      |
+    3 ~ @debug() printf("toplevel shorthand");
+      |          ^^^^^^
+      |
+
+tests/stage1/ui/parse/failures/builtin_toplevel_stmt.cyrus:6:5: error: unexpected token `printf`
+      |
+    6 ~     printf("toplevel block\n");
+      |     ^^^^^^
+      |
+@parse*/

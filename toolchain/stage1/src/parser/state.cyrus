@@ -7,7 +7,6 @@ import std::option{Option};
 import std::string{String};
 import std::mem{Allocator};
 
-import .::diags{report_expected_ident, report_expected_token};
 import .::ast{NodeId, ASTNode, ASTIdent};
 import diags{DiagContext};
 import source{SourceId};
@@ -17,6 +16,10 @@ import tokens{
     SourceTokens, 
     Span,
     dump_token
+};
+import .::diags{
+    report_expected_ident, 
+    report_expected_token
 };
 
 pub struct ParserState {
@@ -80,7 +83,7 @@ pub struct ParserState {
 
     /// Span of the last consumed token.
     [[inline]]
-    fn last_parsed_span(self: const Self*) Span {
+    pub fn last_parsed_span(self: const Self*) Span {
         if (self->pos > 0) {
             switch (self->get(self->pos - 1)) {
                 case .Some(prev) => return Span.new(self->source_id(), prev->loc);
@@ -254,6 +257,16 @@ pub struct ParserState {
 
     pub fn is_ident_str(self: const Self*, value: const uint8*) bool {
         switch (self->get(self->pos)) {
+            case .Some(token) => switch (*token->kind) {
+                case .Ident(str) => return str.as_str_const() == value;
+            }
+        }
+
+        return false;
+    }
+
+    pub fn is_peek_ident_str(self: const Self*, value: const uint8*) bool {
+        switch (self->get(self->pos + 1)) {
             case .Some(token) => switch (*token->kind) {
                 case .Ident(str) => return str.as_str_const() == value;
             }

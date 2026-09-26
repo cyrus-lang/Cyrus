@@ -1,0 +1,69 @@
+// @parse
+
+[[repr(c)]]
+struct ReprC {
+    x: int32,
+    y: bool,
+}
+
+[[repr(cyrus)]]
+struct ReprCyrus {
+    x: int32,
+    y: bool,
+}
+
+[[repr(c, packed)]]
+struct ReprPacked {
+    x: int32,
+    y: bool,
+}
+
+/*@parse
+ASTProgram
+    Node[0]:
+        ASTStruct
+            ident: ReprC
+            is_packed: false
+            repr[0]: c
+            generic_params_count: 0
+            impls_count: 0
+            fields_count: 2
+            field[0]:
+                name: x
+                ty: int32
+            field[1]:
+                name: y
+                ty: bool
+            methods_count: 0
+    Node[1]:
+        ASTStruct
+            ident: ReprCyrus
+            is_packed: false
+            repr[0]: cyrus
+            generic_params_count: 0
+            impls_count: 0
+            fields_count: 2
+            field[0]:
+                name: x
+                ty: int32
+            field[1]:
+                name: y
+                ty: bool
+            methods_count: 0
+    Node[2]:
+        ASTStruct
+            ident: ReprPacked
+            is_packed: false
+            repr[0]: c
+            repr[1]: packed
+            generic_params_count: 0
+            impls_count: 0
+            fields_count: 2
+            field[0]:
+                name: x
+                ty: int32
+            field[1]:
+                name: y
+                ty: bool
+            methods_count: 0
+@parse*/

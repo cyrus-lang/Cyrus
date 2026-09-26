@@ -1,2 +1,977 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 The Cyrus Language
+
+import std::collections{Vec};
+import std::option{Option};
+import std::mem{Allocator};
+import std::string{String};
+
+import .::state{ParserState};
+import .::diags{
+    report_error,
+    report_unknown_attribute,
+    report_duplicate_attribute,
+    report_attr_not_applicable
+};
+import diags{Diag, DiagContext};
+import tokens{Span};
+import .::ast;
+
+/// Grammar: `[[ IDENT ( Args? )? ]]`
+pub fn parse_attr(state: ParserState*) Option<ast::ASTAttr> {
+    const start = state->current_span();
+
+    if (!state->expect(.LeftBracket)) {
+        return .None;
+    }
+
+    if (!state->expect(.LeftBracket)) {
+        skip_attr_close(state);
+        return .None;
+    }
+
+    switch (state->expect_ident()) case .Some(ident) else {
+        skip_attr_close(state);
+        return .None;
+    }
+
+    switch (parse_attr_kind(state, ident)) case .Some(var kind) else {
+        skip_attr_close(state);
+        return .None;
+    }
+
+    if (!state->expect(.RightBracket)) {
+        // 1. For Recovery leave the state at the offending token so the
+        // declaration following the broken attribute still parses.
+        ast::free_attr_kind(&kind);
+        return .None;
+    }
+
+    const end = state->current_span();
+
+    if (!state->expect(.RightBracket)) {
+        // 2. Same recovery as (1)
+        var failed = kind;
+        ast::free_attr_kind(&failed);
+        return .None;
+    }
+
+    return .Some(ast::ASTAttr { kind, span: start.merge(end) });
+}
+
+/// Skip the remainder of a malformed attribute.
+fn skip_attr_close(state: ParserState*) {
+    while (!state->is(.RightBracket)
+        && !state->is(.EOF)
+        && !state->is(.Semicolon)
+        && !state->is(.RightBrace)
+    ) {
+        state->next();
+    }
+
+    if (state->is(.RightBracket)) {
+        state->next();
+    }
+
+    if (state->is(.RightBracket)) {
+        state->next();
+    }
+}
+
+/// Dispatches an attribute to its parser based on the attribute name.
+fn parse_attr_kind(state: ParserState*, ident: ast::ASTIdent) Option<ast::ASTAttrKind> {
+    const name = ident.str.as_str_const();
+
+    switch (name) {
+        case "callconv" => return parse_callconv_attr(state);
+        case "thread_local" => return .Some(.ThreadLocal);
+        case "inline" => return parse_inline_attr(state);
+        case "link" => return parse_link_attr(state);
+        case "opt" => return parse_opt_attr(state);
+        case "naked" => return .Some(.Naked);
+        case "cold" => return .Some(.Cold);
+        case "hot" => return .Some(.Hot);
+
+        case "nosanitize" => {
+            switch (parse_attr_strval(state)) case .Some(value) else {
+                return .None;
+            }
+
+            return .Some(.NoSanitize(value));
+        }
+
+        case "link_name" => {
+            switch (parse_attr_strval(state)) case .Some(value) else {
+                return .None;
+            }
+
+            return .Some(.LinkName(value));
+        }
+
+        case "section" => {
+            switch (parse_attr_strval(state)) case .Some(value) else {
+                return .None;
+            }
+
+            return .Some(.Section(value));
+        }
+
+        case "repr" => {
+            switch (parse_repr_attr(state)) case .Some(repr) else {
+                return .None;
+            }
+
+            return .Some(.Repr(repr));
+        }
+
+        else => {
+            report_unknown_attribute(state->allocator, state->dctx, ident.span, name);
+            return .None;
+        }
+    }
+}
+
+fn parse_inline_attr(state: ParserState*) Option<ast::ASTAttrKind> {
+    if (!state->is(.LeftParen)) {
+        return .Some(.Inline(.Hint));
+    }
+
+    state->next();
+
+    switch (state->expect_ident()) case .Some(arg) else {
+        return .None;
+    }
+
+    const value = arg.str.as_str_const();
+
+    if (value == "always") {
+        if (!state->expect(.RightParen)) {
+            return .None;
+        }
+
+        return .Some(.Inline(.Always));
+    }
+
+    if (value == "never") {
+        if (!state->expect(.RightParen)) {
+            return .None;
+        }
+
+        return .Some(.Inline(.Never));
+    }
+
+    report_error(
+        state->allocator,
+        state->dctx,
+        arg.span,
+        "invalid inline attribute, expected `always` or `never`"
+    );
+    return .None;
+}
+
+fn parse_opt_attr(state: ParserState*) Option<ast::ASTAttrKind> {
+    if (!state->expect(.LeftParen)) {
+        return .None;
+    }
+
+    switch (state->expect_ident()) case .Some(arg) else {
+        return .None;
+    }
+
+    const value = arg.str.as_str_const();
+    var opt = ast::ASTOptAttr.None;
+
+    switch (value) {
+        case "none" => opt = .None;
+        case "size" => opt = .Size;
+        else => {
+            state->dctx->report(
+                Diag.new(
+                    state->allocator,
+                    .Error,
+                    "invalid opt kind in attribute",
+                    arg.span
+                )->help("expected `none` or `size`")
+            );
+            return .None;
+        }
+    }
+
+    if (!state->expect(.RightParen)) {
+        return .None;
+    }
+
+    return .Some(.Opt(opt));
+}
+
+fn parse_link_attr(state: ParserState*) Option<ast::ASTAttrKind> {
+    if (!state->expect(.LeftParen)) {
+        return .None;
+    }
+
+    switch (state->expect_ident()) case .Some(arg) else {
+        return .None;
+    }
+
+    const value = arg.str.as_str_const();
+    var link = ast::ASTLinkAttr.Weak;
+
+    switch (value) {
+        case "once" => link = .LinkOnce;
+        case "weak" => link = .Weak;
+        else => {
+            state->dctx->report(
+                Diag.new(
+                    state->allocator,
+                    .Error,
+                    "invalid link kind in attribute",
+                    arg.span
+                )->help("expected `once` or `weak`")
+            );
+            return .None;
+        }
+    }
+
+    if (!state->expect(.RightParen)) {
+        return .None;
+    }
+
+    return .Some(.Link(link));
+}
+
+fn parse_callconv_attr(state: ParserState*) Option<ast::ASTAttrKind> {
+    if (!state->expect(.LeftParen)) {
+        return .None;
+    }
+
+    switch (state->expect_ident()) case .Some(arg) else {
+        return .None;
+    }
+
+    const value = arg.str.as_str_const();
+    var callconv = ast::ASTCallconv.C;
+    var matched = false;
+
+    if (value == "c") {
+        callconv = .C;
+        matched = true;
+    }
+
+    if (value == "naked") {
+        callconv = .Naked;
+        matched = true;
+    }
+
+    if (value == "interrupt") {
+        callconv = .Interrupt;
+        matched = true;
+    }
+
+    if (value == "fast") {
+        callconv = .Fast;
+        matched = true;
+    }
+
+    if (value == "cold") {
+        callconv = .Cold;
+        matched = true;
+    }
+
+    if (value == "aapcs") {
+        callconv = .Aapcs;
+        matched = true;
+    }
+
+    if (value == "stdcall") {
+        callconv = .Stdcall;
+        matched = true;
+    }
+
+    if (value == "fastcall") {
+        callconv = .Fastcall;
+        matched = true;
+    }
+
+    if (value == "thiscall") {
+        callconv = .Thiscall;
+        matched = true;
+    }
+
+    if (value == "vectorcall") {
+        callconv = .Vectorcall;
+        matched = true;
+    }
+
+    if (value == "sysv64") {
+        callconv = .SysV64;
+        matched = true;
+    }
+
+    if (value == "win64") {
+        callconv = .Win64;
+        matched = true;
+    }
+
+    if (value == "system") {
+        callconv = .System;
+        matched = true;
+    }
+
+    if (!matched) {
+        report_error(
+            state->allocator,
+            state->dctx,
+            arg.span,
+            "invalid callconv in attribute"
+        );
+        return .None;
+    }
+
+    if (!state->expect(.RightParen)) {
+        return .None;
+    }
+
+    return .Some(.Callconv(callconv));
+}
+
+fn parse_attr_strval(state: ParserState*) Option<String> {
+    if (!state->expect(.LeftParen)) {
+        return .None;
+    }
+
+    switch (*state->current()->kind) {
+        case .Literal(lit) => switch (lit) {
+            case .String { value, .. } => {
+                var text = String.from_str(state->allocator, value.as_str_const());
+                state->next();
+
+                if (!state->expect(.RightParen)) {
+                    text.free();
+                    return .None;
+                }
+
+                return .Some(text);
+            }
+        }
+    }
+
+    report_error(
+        state->allocator,
+        state->dctx,
+        state->current_span(),
+        "expected string literal"
+    );
+    return .None;
+}
+
+/// Grammar: `repr ( Item ( , Item )? )` with at most two items.
+fn parse_repr_attr(state: ParserState*) Option<ast::ASTReprAttr> {
+    if (!state->expect(.LeftParen)) {
+        return .None;
+    }
+
+    var items: Vec<ast::ASTReprItem> = Vec.new(state->allocator);
+    var has_kind = false;
+    var has_packed = false;
+
+    for (var i: usize = 0; i < 2; i += 1) {
+        if (state->is(.RightParen)) {
+            break;
+        }
+
+        switch (state->expect_ident()) case .Some(item_ident) else {
+            items.free();
+            return .None;
+        }
+
+        const item_span = item_ident.span;
+        const value = item_ident.str.as_str_const();
+        var item_kind: Option<ast::ASTReprAttrKind> = .None;
+
+        if (value == "packed") {
+            if (has_packed) {
+                report_error(
+                    state->allocator,
+                    state->dctx,
+                    item_span,
+                    "duplicate packed modifier"
+                );
+                items.free();
+                return .None;
+            }
+
+            has_packed = true;
+            item_kind = .Some(.Packed);
+        }
+
+        if (value == "c" || value == "cyrus" || value == "transparent") {
+            if (has_kind) {
+                report_error(
+                    state->allocator,
+                    state->dctx,
+                    item_span,
+                    "multiple repr kinds specified"
+                );
+                items.free();
+                return .None;
+            }
+
+            has_kind = true;
+
+            if (value == "c") {
+                item_kind = .Some(.Kind(.C));
+            }
+
+            if (value == "cyrus") {
+                item_kind = .Some(.Kind(.Cyrus));
+            }
+
+            if (value == "transparent") {
+                item_kind = .Some(.Kind(.Transparent));
+            }
+        }
+
+        if (item_kind.is_none()) {
+            report_error(
+                state->allocator,
+                state->dctx,
+                item_span,
+                "invalid repr kind in attribute"
+            );
+            items.free();
+            return .None;
+        }
+
+        switch (item_kind) {
+            case .Some(pushed) => {
+                items.push(ast::ASTReprItem { kind: pushed, span: item_span });
+            }
+        }
+
+        if (!state->is(.RightParen)) {
+            if (!state->expect(.Comma)) {
+                items.free();
+                return .None;
+            }
+        }
+    }
+
+    if (!state->expect(.RightParen)) {
+        items.free();
+        return .None;
+    }
+
+    return .Some(ast::ASTReprAttr { items });
+}
+
+/// Reports every attribute of the list as 
+/// not applicable to the statement.
+pub fn report_attrs_not_applicable(
+    allocator: Allocator,
+    dctx: DiagContext*,
+    attrs: Vec<ast::ASTAttr>*
+) {
+    for (var i: usize = 0; i < attrs->len(); i += 1) {
+        switch (attrs->get_const(i)) {
+            case .Some(attr) => {
+                report_attr_not_applicable(
+                    allocator,
+                    dctx,
+                    attr->span,
+                    attr_key(&attr->kind)
+                );
+            }
+        }
+    }
+}
+
+/// Reports duplicate attributes and validates combinations.
+pub fn check_attrs(allocator: Allocator, dctx: DiagContext*, attrs: Vec<ast::ASTAttr>*) bool {
+    var ok = true;
+
+    for (var i: usize = 0; i < attrs->len(); i += 1) {
+        switch (attrs->get_const(i)) case .Some(attr) else {
+            continue;
+        }
+
+        const key = attr_key(&attr->kind);
+
+        for (var j: usize = 0; j < i; j += 1) {
+            switch (attrs->get_const(j)) {
+                case .Some(prev) => {
+                    if (attr_key(&prev->kind) == key) {
+                        report_duplicate_attribute(allocator, dctx, attr->span, key);
+                        ok = false;
+                    }
+                }
+            }
+        }
+    }
+
+    var cold_span: Option<Span> = .None;
+    var hot_span: Option<Span> = .None;
+
+    for (var i: usize = 0; i < attrs->len(); i += 1) {
+        switch (attrs->get_const(i)) {
+            case .Some(attr) => {
+                if (attr_key(&attr->kind) == "cold") {
+                    cold_span = .Some(attr->span);
+                }
+
+                if (attr_key(&attr->kind) == "hot") {
+                    hot_span = .Some(attr->span);
+                }
+            }
+        }
+    }
+
+    if (cold_span.is_some() && hot_span.is_some()) {
+        switch (cold_span) {
+            case .Some(span) => {
+                report_error(
+                    allocator,
+                    dctx,
+                    span,
+                    "attributes `[[cold]]` and `[[hot]]` cannot be used together"
+                );
+            }
+        }
+
+        ok = false;
+    }
+
+    return ok;
+}
+
+/// Cross-checks a statement's own attributes against attributes that
+/// accumulated inside its body.
+pub fn check_attrs_cross(
+    allocator: Allocator,
+    dctx: DiagContext*,
+    own: Vec<ast::ASTAttr>*,
+    pending: Vec<ast::ASTAttr>*
+) bool {
+    var ok = true;
+
+    for (var i: usize = 0; i < pending->len(); i += 1) {
+        switch (pending->get_const(i)) {
+            case .Some(attr) => {
+                const key = attr_key(&attr->kind);
+                var found = false;
+
+                for (var j: usize = 0; j < own->len(); j += 1) {
+                    if (found) {
+                        continue;
+                    }
+
+                    switch (own->get_const(j)) {
+                        case .Some(prev) => {
+                            if (attr_key(&prev->kind) == key) {
+                                report_duplicate_attribute(allocator, dctx, attr->span, key);
+                                ok = false;
+                                found = true;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    var own_cold: Option<Span> = .None;
+    var own_hot = false;
+
+    for (var i: usize = 0; i < own->len(); i += 1) {
+        switch (own->get_const(i)) {
+            case .Some(attr) => {
+                if (attr_key(&attr->kind) == "cold") {
+                    own_cold = .Some(attr->span);
+                }
+
+                if (attr_key(&attr->kind) == "hot") {
+                    own_hot = true;
+                }
+            }
+        }
+    }
+
+    var pending_cold: Option<Span> = .None;
+    var pending_hot = false;
+
+    for (var i: usize = 0; i < pending->len(); i += 1) {
+        switch (pending->get_const(i)) {
+            case .Some(attr) => {
+                if (attr_key(&attr->kind) == "cold") {
+                    pending_cold = .Some(attr->span);
+                }
+
+                if (attr_key(&attr->kind) == "hot") {
+                    pending_hot = true;
+                }
+            }
+        }
+    }
+
+    // Sets that already contain both were reported by their own check.
+    if (!(own_cold.is_some() && own_hot) && !(pending_cold.is_some() && pending_hot)) {
+        if ((pending_cold.is_some() && own_hot) || (own_cold.is_some() && pending_hot)) {
+            var span: Option<Span> = .None;
+
+            switch (own_cold) {
+                case .Some(s) => {
+                    span = .Some(s);
+                }
+                else => switch (pending_cold) {
+                    case .Some(s) => {
+                        span = .Some(s);
+                    }
+                }
+            }
+
+            switch (span) {
+                case .Some(s) => {
+                    report_error(
+                        allocator,
+                        dctx,
+                        s,
+                        "attributes `[[cold]]` and `[[hot]]` cannot be used together"
+                    );
+                }
+            }
+
+            ok = false;
+        }
+    }
+
+    return ok;
+}
+
+pub enum AttrTarget {
+    Func,
+    GlobalVar,
+    Object,
+}
+
+pub enum ObjectKind {
+    Struct,
+    Enum,
+    Union,
+}
+
+pub fn attr_key(kind: const ast::ASTAttrKind*) const uint8* {
+    switch (*kind) {
+        case .NoSanitize(_) => return "nosanitize";
+        case .ThreadLocal => return "thread_local";
+        case .LinkName(_) => return "link_name";
+        case .Callconv(_) => return "callconv";
+        case .Section(_) => return "section";
+        case .Inline(_) => return "inline";
+        case .Repr(_) => return "repr";
+        case .Link(_) => return "link";
+        case .Naked => return "naked";
+        case .Opt(_) => return "opt";
+        case .Cold => return "cold";
+        case .Hot => return "hot";
+    }
+}
+
+fn target_allows(target: AttrTarget, key: const uint8*) bool {
+    switch (target) {
+        case .Func => {
+            return key == "opt"
+                || key == "callconv"
+                || key == "inline"
+                || key == "naked"
+                || key == "nosanitize"
+                || key == "cold"
+                || key == "hot"
+                || key == "section"
+                || key == "link"
+                || key == "link_name";
+        }
+
+        case .GlobalVar => {
+            return key == "thread_local"
+                || key == "section"
+                || key == "link"
+                || key == "link_name";
+        }
+
+        case .Object => return key == "repr";
+    }
+}
+
+pub fn apply_func_attrs(
+    allocator: Allocator,
+    dctx: DiagContext*,
+    modifiers: ast::ASTFuncModifiers*,
+    attrs: Option<Vec<ast::ASTAttr>*>,
+    has_body: bool
+) {
+    switch (attrs) case .Some(list) else {
+        return;
+    }
+
+    for (var i: usize = 0; i < list->len(); i += 1) {
+        const attr = list->get_const(i).unwrap();
+        const key = attr_key(&attr->kind);
+
+        if (!target_allows(.Func, key)) {
+            report_attr_not_applicable(allocator, dctx, attr->span, key);
+            continue;
+        }
+
+        switch (attr->kind) {
+            case .Callconv(value) => modifiers->callconv = .Some(value);
+            case .Inline(value) => modifiers->inline = .Some(value);
+            case .Cold => modifiers->optional_flags.push(.Cold);
+            case .Naked => modifiers->prologue = .Some(.Naked);
+            case .Hot => modifiers->optional_flags.push(.Hot);
+            
+            case .NoSanitize(name) => {
+                modifiers->optional_flags.push(.NoSanitize(
+                    String.from_str(allocator, name.as_str_const())
+                ));
+            }
+            case .Opt(value) => switch (value) {
+                case .None => modifiers->optional_flags.push(.OptNone);
+                case .Size => modifiers->optional_flags.push(.OptSize);
+            }
+            case .Section(name) => {
+                modifiers->section = .Some(String.from_str(
+                    allocator,
+                    name.as_str_const()
+                ));
+            }
+            case .LinkName(name) => {
+                modifiers->link_name = .Some(String.from_str(
+                    allocator,
+                    name.as_str_const()
+                ));
+            }
+            case .Link(value) => switch (value) {
+                case .Weak => modifiers->weak = true;
+                case .LinkOnce => modifiers->link_once = true;
+            }
+        }
+
+        if (has_body) {
+            switch (attr->kind) {
+                case .Link(value) => {
+                    if (value == .Weak) {
+                        report_error(
+                            allocator,
+                            dctx,
+                            attr->span,
+                            "`[[link(weak)]]` cannot be applied to a function definition"
+                        );
+                    }
+                }
+            }
+        }
+
+        validate_func_modifiers(allocator, dctx, modifiers, attr->span);
+    }
+}
+
+fn validate_func_modifiers(
+    allocator: Allocator,
+    dctx: DiagContext*,
+    modifiers: const ast::ASTFuncModifiers*,
+    span: Span
+) {
+    if (modifiers->prologue.is_none()) {
+        return;
+    }
+
+    if (modifiers->inline.is_some()) {
+        report_error(
+            allocator,
+            dctx,
+            span,
+            "cannot combine `naked` prologue with any inline modifier"
+        );
+    }
+
+    switch (modifiers->callconv) {
+        case .Some(callconv) => {
+            if (callconv != .Naked) {
+                report_error(
+                    allocator,
+                    dctx,
+                    span,
+                    "naked prologue requires `[[callconv(naked)]]`"
+                );
+            }
+        }
+        else => {
+            report_error(
+                allocator,
+                dctx,
+                span,
+                "naked prologue requires `[[callconv(naked)]]`"
+            );
+        }
+    }
+}
+
+pub fn apply_global_attrs(
+    allocator: Allocator,
+    dctx: DiagContext*,
+    modifiers: ast::ASTGlobalVarModifiers*,
+    attrs: Option<Vec<ast::ASTAttr>*>
+) {
+    switch (attrs) case .Some(list) else {
+        return;
+    }
+
+    for (var i: usize = 0; i < list->len(); i += 1) {
+        const attr = list->get_const(i).unwrap();
+        const key = attr_key(&attr->kind);
+
+        if (!target_allows(.GlobalVar, key)) {
+            report_attr_not_applicable(allocator, dctx, attr->span, key);
+            continue;
+        }
+
+        switch (attr->kind) {
+            case .Link(value) => switch (value) {
+                case .Weak => modifiers->weak = true;
+                case .LinkOnce => modifiers->link_once = true;
+            }
+            case .Section(name) => {
+                modifiers->section = .Some(String.from_str(
+                    allocator,
+                    name.as_str_const()
+                ));
+            }
+            case .LinkName(name) => {
+                modifiers->link_name = .Some(String.from_str(
+                    allocator,
+                    name.as_str_const()
+                ));
+            }
+            case .ThreadLocal => {
+                modifiers->thread_local = true;
+            }
+        }
+    }
+}
+
+pub fn apply_object_attrs(
+    allocator: Allocator,
+    dctx: DiagContext*,
+    attrs: Option<Vec<ast::ASTAttr>*>,
+    repr_slot: Option<ast::ASTReprAttr>*,
+    object: ObjectKind
+) {
+    switch (attrs) case .Some(list) else {
+        return;
+    }
+
+    for (var i: usize = 0; i < list->len(); i += 1) {
+        const attr = list->get_const(i).unwrap();
+        const key = attr_key(&attr->kind);
+
+        if (!target_allows(.Object, key)) {
+            report_attr_not_applicable(allocator, dctx, attr->span, key);
+            continue;
+        }
+
+        switch (attr->kind) {
+            case .Repr(repr) => {
+                validate_object_repr(allocator, dctx, object, repr, attr->span);
+                *repr_slot = .Some(ast::copy_repr_attr(allocator, repr));
+            }
+        }
+    }
+}
+
+fn validate_object_repr(
+    allocator: Allocator,
+    dctx: DiagContext*,
+    object: ObjectKind,
+    repr: ast::ASTReprAttr,
+    span: Span
+) {
+    var packed = false;
+    var kind: Option<ast::ASTReprKind> = .None;
+
+    for (var i: usize = 0; i < repr.items.len(); i += 1) {
+        switch (repr.items.get_const(i)) case .Some(item) else {
+            continue;
+        }
+        
+        switch (item->kind) {
+            case .Packed => packed = true;
+            case .Kind(value) => {
+                if (kind.is_none()) {
+                    kind = .Some(value);
+                }
+            }
+        }
+    }
+
+    switch (object) {
+        case .Struct => {
+            switch (kind) {
+                case .Some(value) => {
+                    if (value == .Transparent && packed) {
+                        report_error(
+                            allocator,
+                            dctx,
+                            span,
+                            "`repr(transparent)` cannot be combined with `repr(packed)`"
+                        );
+                    }
+                }
+            }
+        }
+        case .Union => {
+            if (packed) {
+                report_error(
+                    allocator,
+                    dctx,
+                    span,
+                    "packed layout is not supported for unions"
+                );
+            }
+
+            switch (kind) {
+                case .Some(value) => {
+                    if (value == .Transparent) {
+                        report_error(
+                            allocator,
+                            dctx,
+                            span,
+                            "`repr(transparent)` is not valid for unions"
+                        );
+                    }
+                }
+            }
+        }
+        case .Enum => {
+            if (packed) {
+                report_error(
+                    allocator,
+                    dctx,
+                    span,
+                    "`repr(packed)` is not valid for enums"
+                );
+            }
+
+            switch (kind) {
+                case .Some(value) => {
+                    if (value == .Transparent) {
+                        report_error(
+                            allocator,
+                            dctx,
+                            span,
+                            "`repr(transparent)` is not valid for enums"
+                        );
+                    }
+                }
+            }
+        }
+    }
+}

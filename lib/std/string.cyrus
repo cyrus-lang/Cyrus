@@ -57,6 +57,19 @@ pub struct String {
         return Self { vec };
     }
 
+    pub fn clone(self: const Self*, allocator: Allocator) Self {
+        const len = self->vec.len();
+        const src = self->vec.data_const();
+
+        var vec: Vec<uint8> = Vec.with_capacity(allocator, len);
+
+        for (var i: usize = 0; i < len; i += 1) {
+            vec.push(src[i]);
+        }
+
+        return Self { vec };
+    }
+
     pub fn reserve(self: Self*, extra: usize) {
         const required = self->len() + extra;
         

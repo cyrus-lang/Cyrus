@@ -1,0 +1,13 @@
+// @parse
+
+pub fn main() {
+    @();
+}
+
+/*@parse
+tests/stage1/ui/parse/failures/builtin_missing_ident.cyrus:4:6: error: expected ident but got `(`
+      |
+    4 ~     @();
+      |      ^
+      |
+@parse*/

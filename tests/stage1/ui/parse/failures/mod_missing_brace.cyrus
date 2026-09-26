@@ -1,0 +1,12 @@
+// @parse
+
+mod broken {
+    fn helper() {}
+
+/*@parse
+tests/stage1/ui/parse/failures/mod_missing_brace.cyrus:4:18: error: expected `}` but got `EOF`
+      |
+    4 ~     fn helper() {}
+      |                  ^
+      |
+@parse*/

@@ -1,0 +1,15 @@
+// @parse
+
+[[nosanitize("address")]]
+fn no_asan() {}
+
+/*@parse
+ASTProgram
+    Node[0]:
+        ASTFuncDef
+            ident: no_asan
+            optional_flag: address
+            params:
+            body:
+                ASTBlock
+@parse*/

@@ -4,6 +4,7 @@
 import std::format{format_usize, format_int64};
 import std::io{Writer, StdoutWriter};
 import std::collections{Vec};
+import std::option{Option};
 import tokens{Token};
 import .::ast;
 
@@ -180,6 +181,7 @@ pub struct ASTDump {
         self->writer.writeln("ASTGlobalVar");
         self->indent += 1;
         self->dump_ident("ident", &n->ident);
+        self->dump_global_var_modifiers(&n->modifiers);
         self->dump_bool("is_const", n->is_const);
         self->dump_bool("is_undef", n->is_undef);
         self->dump_bool("is_static", n->is_static);
@@ -226,6 +228,104 @@ pub struct ASTDump {
 
         switch (m->extrn) {
             case .Some(abi) => self->dump_str("extern", abi.to_str());
+        }
+
+        switch (m->inline) {
+            case .Some(value) => self->dump_str("inline", value.to_str());
+        }
+
+        switch (m->callconv) {
+            case .Some(value) => self->dump_str("callconv", value.to_str());
+        }
+
+        switch (m->prologue) {
+            case .Some(_) => self->dump_str("prologue", "naked");
+        }
+
+        for (var i: usize = 0; i < m->optional_flags.len(); i += 1) {
+            switch (m->optional_flags.get_const(i)) {
+                case .Some(flag) => {
+                    switch (*flag) {
+                        case .NoReturn => self->dump_str("optional_flag", "noreturn");
+                        case .NoUnwind => self->dump_str("optional_flag", "nounwind");
+                        case .OptSize => self->dump_str("optional_flag", "opt_size");
+                        case .OptNone => self->dump_str("optional_flag", "opt_none");
+                        case .Cold => self->dump_str("optional_flag", "cold");
+                        case .Hot => self->dump_str("optional_flag", "hot");
+                        case .NoSanitize(name) => {
+                            self->dump_str("optional_flag", name.as_str_const());
+                        }
+                    }
+                }
+            }
+        }
+
+        switch (m->section) {
+            case .Some(value) => self->dump_str("section", value.as_str_const());
+        }
+
+        switch (m->link_name) {
+            case .Some(value) => self->dump_str("link_name", value.as_str_const());
+        }
+
+        if (m->link_once) {
+            self->dump_bool("link_once", true);
+        }
+
+        if (m->weak) {
+            self->dump_bool("weak", true);
+        }
+    }
+
+    fn dump_global_var_modifiers(self: Self*, m: const ast::ASTGlobalVarModifiers*) {
+        switch (m->vis) {
+            case .Public => self->dump_str("visibility", "public");
+        }
+
+        switch (m->extrn) {
+            case .Some(abi) => self->dump_str("extern", abi.to_str());
+        }
+
+        if (m->thread_local) {
+            self->dump_bool("thread_local", true);
+        }
+
+        switch (m->section) {
+            case .Some(value) => self->dump_str("section", value.as_str_const());
+        }
+
+        switch (m->link_name) {
+            case .Some(value) => self->dump_str("link_name", value.as_str_const());
+        }
+
+        if (m->link_once) {
+            self->dump_bool("link_once", true);
+        }
+
+        if (m->weak) {
+            self->dump_bool("weak", true);
+        }
+    }
+
+    fn dump_repr_attr(self: Self*, repr: const Option<ast::ASTReprAttr>*) {
+        switch (*repr) case .Some(value) else {
+            return;
+        }
+
+        for (var i: usize = 0; i < value.items.len(); i += 1) {
+            switch (value.items.get_const(i)) {
+                case .Some(item) => {
+                    self->write_indent();
+                    self->writer.write("repr[");
+                    format_usize(self->writer, i);
+                    self->writer.write("]: ");
+
+                    switch (item->kind) {
+                        case .Packed => self->writer.writeln("packed");
+                        case .Kind(kind) => self->writer.writeln(kind.to_str());
+                    }
+                }
+            }
         }
     }
 
@@ -291,6 +391,8 @@ pub struct ASTDump {
             case .Public => self->dump_str("visibility", "public");
             
         }
+
+        self->dump_repr_attr(&n->modifiers.repr_attr);
 
         switch (n->align) {
             case .Some(value) => self->dump_usize("align", value);
@@ -387,6 +489,8 @@ pub struct ASTDump {
             case .Public => self->dump_str("visibility", "public");
             
         }
+
+        self->dump_repr_attr(&n->modifiers.repr_attr);
 
         switch (n->align) {
             case .Some(value) => self->dump_usize("align", value);
@@ -501,6 +605,8 @@ pub struct ASTDump {
         switch (n->modifiers.vis) {
             case .Public => self->dump_str("visibility", "public");
         }
+
+        self->dump_repr_attr(&n->modifiers.repr_attr);
 
         switch (n->align) {
             case .Some(value) => self->dump_usize("align", value);
@@ -828,6 +934,16 @@ pub struct ASTDump {
         self->writer.writeln("ASTModuleDecl");
         self->indent += 1;
         self->dump_ident("ident", &n->ident);
+
+        switch (n->vis) {
+            case .Public => self->dump_str("visibility", "public");
+        }
+
+        for (var i: usize = 0; i < n->stmts.len; i += 1) {
+            const node_id = self->program.children.get_owned(n->stmts.start + i).unwrap();
+            self->dump_subtree_indexed("stmt", i, node_id);
+        }
+
         self->indent -= 1;
     }
 
@@ -868,19 +984,121 @@ pub struct ASTDump {
     fn dump_destruct_tuple(self: Self*, n: const ast::ASTDestructTuple*) {
         self->write_indent();
         self->writer.writeln("ASTDestructTuple");
+        self->indent += 1;
+        self->dump_str("bind", n->bind.to_str());
+        self->dump_destruct_pattern("pattern", &n->pat);
+
+        switch (n->rhs) {
+            case .Some(rhs) => self->dump_subtree("rhs", rhs);
+        }
+
+        self->indent -= 1;
+    }
+
+    fn dump_destruct_pattern(self: Self*, name: const uint8*, p: const ast::ASTDestructTuplePattern*) {
+        self->write_indent();
+        self->writer.write(name);
+        self->writer.writeln(":");
+        self->indent += 1;
+
+        switch (p->kind) {
+            case .Tuple(var patterns) => {
+                self->write_indent();
+                self->writer.writeln("Tuple");
+
+                for (var i: usize = 0; i < patterns.len(); i += 1) {
+                    const inner = patterns.get_const(i).unwrap();
+                    self->dump_destruct_pattern("item", inner);
+                }
+            }
+            case .Ident(var ident) => self->dump_ident("ident", &ident);
+            case .Ignore => {
+                self->write_indent();
+                self->writer.writeln("ignore");
+            }
+        }
+
+        switch (p->ty) {
+            case .Some(ty) => self->dump_type("ty", ty);
+        }
+
+        self->indent -= 1;
     }
 
     fn dump_builtin(self: Self*, n: const ast::ASTBuiltin*) {
         self->write_indent();
         self->writer.writeln("ASTBuiltin");
+        self->indent += 1;
+        self->dump_builtin_fields(n);
+        self->indent -= 1;
+    }
+
+    fn dump_builtin_fields(self: Self*, n: const ast::ASTBuiltin*) {
+        switch (*n) {
+            case .BuiltinFunc(var f) => {
+                self->dump_ident("name", &f.name);
+                self->dump_node_list("arg", &f.args);
+            }
+            case .BuiltinBlock(var b) => {
+                self->dump_ident("name", &b.name);
+                self->dump_node_list("arg", &b.args);
+                self->dump_bool("is_toplevel", b.is_toplevel);
+                self->dump_subtree("block", b.block);
+            }
+        }
     }
 
     fn dump_inline_asm(self: Self*, n: const ast::ASTInlineAsm*) {
         self->write_indent();
         self->writer.writeln("ASTInlineAsm");
         self->indent += 1;
-        self->dump_bool("is_volatile", n->is_volatile);
+        self->dump_asm_fields(n);
         self->indent -= 1;
+    }
+
+    fn dump_asm_fields(self: Self*, n: const ast::ASTInlineAsm*) {
+        self->dump_bool("is_volatile", n->is_volatile);
+
+        for (var i: usize = 0; i < n->template.len(); i += 1) {
+            const part = n->template.get_const(i).unwrap();
+            self->write_indent();
+            self->writer.write("template[");
+            format_usize(self->writer, i);
+            self->writer.writeln("]:");
+            self->indent += 1;
+            self->dump_str("value", part->as_str_const());
+            self->indent -= 1;
+        }
+
+        self->dump_asm_operands("output", &n->outputs);
+        self->dump_asm_operands("input", &n->inputs);
+
+        for (var i: usize = 0; i < n->clobbers.len(); i += 1) {
+            const clobber = n->clobbers.get_const(i).unwrap();
+            self->write_indent();
+            self->writer.write("clobber[");
+            format_usize(self->writer, i);
+            self->writer.writeln("]:");
+            self->indent += 1;
+            self->dump_str("name", clobber->name.as_str_const());
+            self->indent -= 1;
+        }
+    }
+
+    fn dump_asm_operands(self: Self*, name: const uint8*, operands: const Vec<ast::ASTAsmOperand>*) {
+        for (var i: usize = 0; i < operands->len(); i += 1) {
+            const operand = operands->get_const(i).unwrap();
+
+            self->write_indent();
+            self->writer.write(name);
+            self->writer.write("[");
+            format_usize(self->writer, i);
+            self->writer.writeln("]:");
+            self->indent += 1;
+            self->dump_str("constraint", operand->constraint.as_str_const());
+            self->dump_subtree("expr", operand->expr);
+            self->indent -= 1;
+        }
     }
 
     fn dump_expr_node(self: Self*, expr: const ast::ASTExpr*) {
@@ -1357,6 +1575,9 @@ pub struct ASTDump {
     fn dump_expr_builtin(self: Self*, n: const ast::ASTBuiltin*) {
         self->write_indent();
         self->writer.writeln("ASTExpr::Builtin");
+        self->indent += 1;
+        self->dump_builtin_fields(n);
+        self->indent -= 1;
     }
 
     fn dump_expr_enum_struct_variant_init(self: Self*, n: const ast::ASTEnumStructVariantInit*) {
@@ -1396,7 +1617,7 @@ pub struct ASTDump {
         self->write_indent();
         self->writer.writeln("ASTExpr::InlineAsm");
         self->indent += 1;
-        self->dump_bool("is_volatile", n->is_volatile);
+        self->dump_asm_fields(n);
         self->indent -= 1;
     }
 }

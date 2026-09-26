@@ -1,8 +1,8 @@
 // @parse
 
 static var a: std::io::Writer;
-static var b: Writer;
-static var c: pkg::Type;
+static var b: module::Sub_module;
+static var c: Writer;
 
 /*@parse
 ASTProgram
@@ -23,15 +23,15 @@ ASTProgram
             is_const: false
             is_undef: false
             is_static: true
-            ty: Writer
+            ty: ASTType::ModuleImport
+                segments_count: 2
+                submodule: module
+                submodule: Sub_module
     Node[2]:
         ASTGlobalVar
             ident: c
             is_const: false
             is_undef: false
             is_static: true
-            ty: ASTType::ModuleImport
-                segments_count: 2
-                submodule: pkg
-                submodule: Type
+            ty: Writer
 @parse*/

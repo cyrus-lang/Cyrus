@@ -1,0 +1,14 @@
+// @parse
+
+[[repr(bogus)]]
+struct S {
+    x: int32,
+}
+
+/*@parse
+tests/stage1/ui/parse/failures/attr_repr_invalid_kind.cyrus:3:8: error: invalid repr kind in attribute
+      |
+    3 ~ [[repr(bogus)]]
+      |        ^^^^^
+      |
+@parse*/

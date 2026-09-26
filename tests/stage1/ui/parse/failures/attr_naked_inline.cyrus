@@ -1,0 +1,19 @@
+// @parse
+
+[[inline]]
+[[naked]]
+fn f() {}
+
+/*@parse
+tests/stage1/ui/parse/failures/attr_naked_inline.cyrus:4:1: error: cannot combine `naked` prologue with any inline modifier
+      |
+    4 ~ [[naked]]
+      | ^^^^^^^^^
+      |
+
+tests/stage1/ui/parse/failures/attr_naked_inline.cyrus:4:1: error: naked prologue requires `[[callconv(naked)]]`
+      |
+    4 ~ [[naked]]
+      | ^^^^^^^^^
+      |
+@parse*/

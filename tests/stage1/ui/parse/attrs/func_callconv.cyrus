@@ -1,0 +1,35 @@
+// @parse
+
+[[callconv(c)]]
+fn conv_c() {}
+
+[[callconv(sysv64)]]
+fn conv_sysv();
+
+[[callconv(naked)]]
+[[naked]]
+fn naked_fn() {}
+
+/*@parse
+ASTProgram
+    Node[0]:
+        ASTFuncDef
+            ident: conv_c
+            callconv: c
+            params:
+            body:
+                ASTBlock
+    Node[1]:
+        ASTFuncDecl
+            ident: conv_sysv
+            callconv: sysv64
+            params:
+    Node[2]:
+        ASTFuncDef
+            ident: naked_fn
+            callconv: naked
+            prologue: naked
+            params:
+            body:
+                ASTBlock
+@parse*/

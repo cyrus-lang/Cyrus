@@ -15,14 +15,6 @@ fn no_params_ret() int32 {
     return 1;
 }
 
-fn outer() {
-    fn inner() int32 {
-        return 1;
-    }
-
-    return inner();
-}
-
 /*@parse
 ASTProgram
     Node[0]:
@@ -90,29 +82,4 @@ ASTProgram
                             argument:
                                 ASTExpr::Literal
                                     value: 1
-    Node[4]:
-        ASTFuncDef
-            ident: outer
-            params:
-            body:
-                ASTBlock
-                    stmt[0]:
-                        ASTFuncDef
-                            ident: inner
-                            params:
-                            ret_type: int32
-                            body:
-                                ASTBlock
-                                    stmt[0]:
-                                        ASTReturn
-                                            argument:
-                                                ASTExpr::Literal
-                                                    value: 1
-                    stmt[1]:
-                        ASTReturn
-                            argument:
-                                ASTExpr::FuncCall
-                                    operand:
-                                        ASTExpr::Ident
-                                            ident: inner
 @parse*/

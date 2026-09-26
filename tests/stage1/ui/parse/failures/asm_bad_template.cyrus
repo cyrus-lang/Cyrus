@@ -1,0 +1,25 @@
+// @parse
+
+pub fn main() {
+    @asm(1);
+}
+
+/*@parse
+tests/stage1/ui/parse/failures/asm_bad_template.cyrus:4:10: error: expected assembly string literal
+      |
+    4 ~     @asm(1);
+      |          ^
+      |
+
+tests/stage1/ui/parse/failures/asm_bad_template.cyrus:4:11: error: expected expression
+      |
+    4 ~     @asm(1);
+      |           ^
+      |
+
+tests/stage1/ui/parse/failures/asm_bad_template.cyrus:4:12: error: expected expression
+      |
+    4 ~     @asm(1);
+      |            ^
+      |
+@parse*/

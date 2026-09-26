@@ -1,0 +1,14 @@
+// @parse
+
+[[repr(packed)]]
+union U {
+    a: int32,
+}
+
+/*@parse
+tests/stage1/ui/parse/failures/attr_repr_union_packed.cyrus:3:1: error: packed layout is not supported for unions
+      |
+    3 ~ [[repr(packed)]]
+      | ^^^^^^^^^^^^^^^^
+      |
+@parse*/

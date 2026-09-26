@@ -1,0 +1,65 @@
+// @parse
+
+pub { }
+
+pub {
+    struct Inner {
+        a: int32,
+    }
+
+    fn inner_fn() {}
+
+    const grouped_var = 1;
+
+    @debug() {
+        const d = 1;
+    }
+}
+
+/*@parse
+ASTProgram
+    Node[0]:
+        ASTStruct
+            ident: Inner
+            is_packed: false
+            visibility: public
+            generic_params_count: 0
+            impls_count: 0
+            fields_count: 1
+            field[0]:
+                name: a
+                ty: int32
+            methods_count: 0
+    Node[1]:
+        ASTFuncDef
+            ident: inner_fn
+            visibility: public
+            params:
+            body:
+                ASTBlock
+    Node[2]:
+        ASTGlobalVar
+            ident: grouped_var
+            visibility: public
+            is_const: true
+            is_undef: false
+            is_static: false
+            expr:
+                ASTExpr::Literal
+                    value: 1
+    Node[3]:
+        ASTBuiltin
+            name: debug
+            is_toplevel: true
+            block:
+                ASTBlock
+                    stmt[0]:
+                        ASTGlobalVar
+                            ident: d
+                            is_const: true
+                            is_undef: false
+                            is_static: false
+                            expr:
+                                ASTExpr::Literal
+                                    value: 1
+@parse*/

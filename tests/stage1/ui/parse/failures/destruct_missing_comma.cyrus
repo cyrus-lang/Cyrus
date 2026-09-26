@@ -1,0 +1,13 @@
+// @parse
+
+pub fn main() {
+    const (a b) = (1, 2);
+}
+
+/*@parse
+tests/stage1/ui/parse/failures/destruct_missing_comma.cyrus:4:14: error: expected `,` or `)` in tuple pattern
+      |
+    4 ~     const (a b) = (1, 2);
+      |              ^
+      |
+@parse*/

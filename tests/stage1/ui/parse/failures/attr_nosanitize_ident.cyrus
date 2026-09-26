@@ -1,0 +1,12 @@
+// @parse
+
+[[nosanitize(address)]]
+fn f();
+
+/*@parse
+tests/stage1/ui/parse/failures/attr_nosanitize_ident.cyrus:3:14: error: expected string literal
+      |
+    3 ~ [[nosanitize(address)]]
+      |              ^^^^^^^
+      |
+@parse*/

@@ -1,0 +1,12 @@
+// @parse
+
+[[inline]
+fn f();
+
+/*@parse
+tests/stage1/ui/parse/failures/attr_unclosed.cyrus:4:1: error: expected `]` but got `fn`
+      |
+    4 ~ fn f();
+      | ^^
+      |
+@parse*/

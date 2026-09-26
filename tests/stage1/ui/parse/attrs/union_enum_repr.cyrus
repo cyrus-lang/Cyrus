@@ -1,0 +1,45 @@
+// @parse
+
+[[repr(c)]]
+union ReprUnion {
+    a: int32,
+    b: bool,
+}
+
+[[repr(c)]]
+enum ReprEnum {
+    A,
+    B,
+}
+
+/*@parse
+ASTProgram
+    Node[0]:
+        ASTUnion
+            ident: ReprUnion
+            repr[0]: c
+            generic_params_count: 0
+            impls_count: 0
+            fields_count: 2
+            field[0]:
+                name: a
+                ty: int32
+            field[1]:
+                name: b
+                ty: bool
+            methods_count: 0
+    Node[1]:
+        ASTEnum
+            ident: ReprEnum
+            repr[0]: c
+            generic_params_count: 0
+            impls_count: 0
+            variants_count: 2
+            variant[0]:
+                ASTEnumVariant::Unit
+                    ident: A
+            variant[1]:
+                ASTEnumVariant::Unit
+                    ident: B
+            methods_count: 0
+@parse*/

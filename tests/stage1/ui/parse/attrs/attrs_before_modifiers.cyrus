@@ -1,0 +1,37 @@
+// @parse
+
+[[inline]]
+pub fn pub_inline();
+
+[[inline]]
+extern "c" fn extern_inline();
+
+[[thread_local]]
+pub static var pub_thread_local = 1;
+
+/*@parse
+ASTProgram
+    Node[0]:
+        ASTFuncDecl
+            ident: pub_inline
+            visibility: public
+            inline: hint
+            params:
+    Node[1]:
+        ASTFuncDecl
+            ident: extern_inline
+            extern: c
+            inline: hint
+            params:
+    Node[2]:
+        ASTGlobalVar
+            ident: pub_thread_local
+            visibility: public
+            thread_local: true
+            is_const: false
+            is_undef: false
+            is_static: true
+            expr:
+                ASTExpr::Literal
+                    value: 1
+@parse*/
