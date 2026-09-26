@@ -5,7 +5,7 @@ pub @debug() {
 }
 
 /*@parse
-tests/stage1/ui/parse/failures/modifier_on_builtin.cyrus:7:5: error: unexpected token `@`
+tests/stage1/ui/parse/failures/modifier_on_builtin.cyrus:3:5: error: unexpected token `@`
       |
     3 ~ pub @debug() {
       |     ^
