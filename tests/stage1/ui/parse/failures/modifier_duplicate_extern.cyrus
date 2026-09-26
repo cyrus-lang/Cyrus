@@ -1,0 +1,11 @@
+// @parse
+
+extern "c" extern "c" fn f();
+
+/*@parse
+tests/stage1/ui/parse/failures/modifier_duplicate_extern.cyrus:3:12: error: linkage modifier already specified
+      |
+    3 ~ extern "c" extern "c" fn f();
+      |            ^^^^^^
+      |
+@parse*/

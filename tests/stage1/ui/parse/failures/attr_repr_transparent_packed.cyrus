@@ -1,0 +1,14 @@
+// @parse
+
+[[repr(transparent, packed)]]
+struct S {
+    x: int32,
+}
+
+/*@parse
+tests/stage1/ui/parse/failures/attr_repr_transparent_packed.cyrus:3:1: error: `repr(transparent)` cannot be combined with `repr(packed)`
+      |
+    3 ~ [[repr(transparent, packed)]]
+      | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+      |
+@parse*/

@@ -1,0 +1,35 @@
+// @parse
+
+@debug()
+[[inline]]
+fn wrapped_decl();
+
+@debug() [[inline]] fn wrapped_def() {}
+
+/*@parse
+ASTProgram
+    Node[0]:
+        ASTBuiltin
+            name: debug
+            is_toplevel: true
+            block:
+                ASTBlock
+                    stmt[0]:
+                        ASTFuncDecl
+                            ident: wrapped_decl
+                            inline: hint
+                            params:
+    Node[1]:
+        ASTBuiltin
+            name: debug
+            is_toplevel: true
+            block:
+                ASTBlock
+                    stmt[0]:
+                        ASTFuncDef
+                            ident: wrapped_def
+                            inline: hint
+                            params:
+                            body:
+                                ASTBlock
+@parse*/

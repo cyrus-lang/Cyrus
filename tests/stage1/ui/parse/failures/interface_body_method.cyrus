@@ -5,15 +5,9 @@ interface I {
 }
 
 /*@parse
-tests/stage1/ui/parse/failures/interface_body_method.cyrus:5:1: error: expected method declaration
+tests/stage1/ui/parse/failures/interface_body_method.cyrus:4:5: error: interface methods cannot have a body
       |
-    5 ~ }
-      | ^
-      |
-
-tests/stage1/ui/parse/failures/interface_body_method.cyrus:5:1: error: unexpected token `}`
-      |
-    5 ~ }
-      | ^
+    4 ~     fn m() { }
+      |     ^^^^^^^^^^
       |
 @parse*/

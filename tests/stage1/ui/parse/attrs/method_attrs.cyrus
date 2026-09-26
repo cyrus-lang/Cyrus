@@ -1,0 +1,64 @@
+// @parse
+
+struct WithMethods {
+    x: int32,
+
+    [[inline]]
+    pub fn m(self: Self*) {}
+}
+
+union UnionMethods {
+    a: int32,
+
+    [[hot]]
+    pub fn um(self: Self*) {}
+}
+
+/*@parse
+ASTProgram
+    Node[0]:
+        ASTStruct
+            ident: WithMethods
+            is_packed: false
+            generic_params_count: 0
+            impls_count: 0
+            fields_count: 1
+            field[0]:
+                name: x
+                ty: int32
+            methods_count: 1
+            method[0]:
+                ASTFuncDef
+                    ident: m
+                    visibility: public
+                    inline: hint
+                    params:
+                        param[0]:
+                            self
+                            constness: const
+                            ty: *Self
+                    body:
+                        ASTBlock
+    Node[1]:
+        ASTUnion
+            ident: UnionMethods
+            generic_params_count: 0
+            impls_count: 0
+            fields_count: 1
+            field[0]:
+                name: a
+                ty: int32
+            methods_count: 1
+            method[0]:
+                ASTFuncDef
+                    ident: um
+                    visibility: public
+                    optional_flag: hot
+                    params:
+                        param[0]:
+                            self
+                            constness: const
+                            ty: *Self
+                    body:
+                        ASTBlock
+@parse*/

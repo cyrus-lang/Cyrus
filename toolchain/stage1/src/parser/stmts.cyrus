@@ -2,17 +2,34 @@
 // Copyright (c) 2026 The Cyrus Language
 
 import std::collections{Vec};
-import .::state{ParserState};
-import .::exprs{ParserExprs};
 import std::option{Option};
 import std::string{String};
 import std::mem{Allocator};
+
+import .::state{ParserState};
+import .::exprs{ParserExprs};
 import .::diags{
     report_error,
     report_unexpected_token,
     report_local_decl_error,
     report_undefined_needs_type,
-    report_invalid_abi
+    report_invalid_abi,
+    report_duplicate_modifier,
+    report_modifier_not_allowed,
+    report_modifier_order_error,
+    report_attrs_after_modifiers,
+    report_attr_not_applicable
+};
+import .::attrs{
+    parse_attr,
+    check_attrs,
+    check_attrs_cross,
+    apply_func_attrs,
+    apply_global_attrs,
+    apply_object_attrs,
+    report_attrs_not_applicable,
+    ObjectKind,
+    attr_key
 };
 import tokens{
     Token, 
@@ -26,6 +43,11 @@ pub struct ParserStmts {
     allocator: Allocator,
     program: ast::ASTProgram*,
     state: ParserState*,
+    pub pending_attrs: Vec<ast::ASTAttr>,
+    // Set by struct/union/enum method loops so the next `parse_stmt`
+    // finalizes its attributes onto the method itself (stage0 parses
+    // methods with `toplevel = true`).
+    method_ctx: bool,
 
     [[inline]]
     pub fn new(
@@ -33,13 +55,25 @@ pub struct ParserStmts {
         program: ast::ASTProgram*, 
         state: ParserState*
     ) Self {
-        return Self { allocator, program, state };
+        return Self {
+            allocator,
+            program,
+            state,
+            pending_attrs: Vec.new(allocator),
+            method_ctx: false
+        };
     }
 
     [[inline]]
     pub fn parse_expr(self: Self*) Option<ast::NodeId> {
         var exprs = ParserExprs.new(self->program, self->state);
         return exprs.parse_expr();
+    }
+
+    [[inline]]
+    fn parse_expr_list(self: Self*, close: TokenKind) Option<Vec<ast::NodeId>> {
+        var exprs = ParserExprs.new(self->program, self->state);
+        return exprs.parse_expr_list(close);
     }
 
     /// Pattern expressions parse a prefix/postfix operand only.
@@ -70,38 +104,174 @@ pub struct ParserStmts {
     }
 
     pub fn parse_toplevel(self: Self*) bool {
-        var is_pub = false;
+        // Attributes have the highest priority and may appear in
+        // any number of groups before the modifiers.
+        var attrs: Vec<ast::ASTAttr> = Vec.new(self->allocator);
 
-        if (self->state->is(.Public)) {
-            self->state->next();
-            is_pub = true;
+        // Attributes written in front of a builtin, 
+        // for example `[[x]] @ident() stmt`, are stashed in `pending_attrs` 
+        // while the builtin itself is parsed,
+        // because the builtin and the statement it wraps are two separate
+        // parse steps. The wrapped statement is parsed by a nested call to
+        // this function, so adopt the stash first: those attributes then
+        // behave exactly as if they had been written in front of this
+        // statement, which is what they semantically belong to.
+        if (self->pending_attrs.len() > 0) {
+            attrs.free();
+            attrs = self->pending_attrs;
+            self->pending_attrs = Vec.new(self->allocator);
         }
 
+        while (self->state->is(.LeftBracket)) {
+            switch (parse_attr(self->state)) {
+                case .Some(attr) => {
+                    attrs.push(attr);
+                }
+            }
+        }
+
+        var is_pub = false;
         var extrn: Option<ast::ASTExtern> = .None;
 
-        if (self->state->is(.Extern)) {
-            self->state->next();
-
-            switch (self->parse_extern_abi()) case .Some(abi) else {
-                self->state->sync();
-                return false;
-            }
-
-            extrn = .Some(abi);
+        if (!self->collect_modifiers(&is_pub, &extrn)) {
+            ast::free_attrs(&attrs);
+            self->state->sync();
+            return false;
         }
 
+        // Attributes and modifiers are never mixed.
+        // Attributes always come first.
+        self->reject_attrs_after_modifiers();
+
+        var attrs_ptr: Option<Vec<ast::ASTAttr>*> = .None;
+
+        if (attrs.len() > 0) {
+            attrs_ptr = .Some(&attrs);
+        }
+
+        var ok = false;
+
+        if (self->state->is(.LeftBrace)) {
+            // Attributes cannot be attached to a block statement.
+            report_attrs_not_applicable(
+                self->allocator,
+                self->state->dctx,
+                &attrs
+            );
+
+            ast::free_attrs(&attrs);
+            attrs = Vec.new(self->allocator);
+            attrs_ptr = .None;
+
+            ok = self->parse_grouped_modifiers(is_pub, extrn);
+        } else if (self->state->is(.Module)) {
+            // `mod` never accepts attributes; the declaration reports
+            // them as not applicable.
+            ok = self->parse_toplevel_decl(is_pub, extrn, attrs_ptr);
+        } else if (self->state->is(.At)) {
+            // Builtins hand their attributes to the wrapped statement.
+            if (attrs.len() > 0) {
+                self->pending_attrs.free();
+                self->pending_attrs = attrs;
+                attrs = Vec.new(self->allocator);
+                attrs_ptr = .None;
+            }
+
+            ok = self->parse_toplevel_decl(is_pub, extrn, attrs_ptr);
+        } else {
+            switch (attrs_ptr) {
+                case .Some(list) => {
+                    check_attrs(self->allocator, self->state->dctx, list);
+                }
+            }
+
+            // These statements accept no attributes
+            if (self->state->is(.Type)
+                || self->state->is(.Interface)
+                || self->state->is(.Import)
+            ) {
+                report_attrs_not_applicable(
+                    self->allocator,
+                    self->state->dctx,
+                    &attrs
+                );
+            }
+
+            ok = self->parse_toplevel_decl(is_pub, extrn, attrs_ptr);
+        }
+
+        ast::free_attrs(&attrs);
+        return ok;
+    }
+
+    /// Parses a single file-scope declaration with the modifiers and
+    /// attributes already collected by the caller.
+    fn parse_toplevel_decl(
+        self: Self*,
+        is_pub: bool,
+        extrn: Option<ast::ASTExtern>,
+        attrs: Option<Vec<ast::ASTAttr>*>
+    ) bool {
         const token = self->state->current();
 
         switch (*token->kind) {
-            case .Static | .Var | .Const => return self->parse_global_var(is_pub, extrn.is_some());
-            case .Function => return self->parse_func(is_pub, extrn);
-            case .Interface => return self->parse_interface(is_pub);
-            case .Module => return self->parse_module_decl(is_pub);
-            case .Type => return self->parse_type_alias(is_pub);
-            case .Struct => return self->parse_struct(is_pub);
-            case .Union => return self->parse_union(is_pub);
-            case .Enum => return self->parse_enum(is_pub);
+            case .Static | .Var | .Const => return self->parse_global_var(is_pub, extrn, attrs);
+            case .Function => return self->parse_func(is_pub, extrn, attrs, true);
             case .Import => return self->parse_import();
+
+            case .Module => {
+                self->reject_extrn_modifier(extrn, "module");
+
+                // Module declaration never accepts attributes
+                switch (attrs) {
+                    case .Some(list) => {
+                        report_attrs_not_applicable(
+                            self->allocator,
+                            self->state->dctx,
+                            list
+                        );
+                    }
+                }
+
+                return self->parse_module_decl(is_pub);
+            }
+            case .Interface => {
+                self->reject_extrn_modifier(extrn, "interface");
+                return self->parse_interface(is_pub);
+            }
+            case .Type => {
+                self->reject_extrn_modifier(extrn, "type alias");
+                return self->parse_type_alias(is_pub);
+            }
+            case .Struct => {
+                self->reject_extrn_modifier(extrn, "struct");
+                return self->parse_struct(is_pub, attrs, true);
+            }
+            case .Union => {
+                self->reject_extrn_modifier(extrn, "union");
+                return self->parse_union(is_pub, attrs, true);
+            }
+            case .Enum => {
+                self->reject_extrn_modifier(extrn, "enum");
+                return self->parse_enum(is_pub, attrs, true);
+            }
+            
+            case .At => {
+                // Builtins does accept any modifiers
+                if (is_pub || extrn.is_some()) {
+                    report_unexpected_token(
+                        self->allocator,
+                        self->state->dctx,
+                        self->state->current_span(),
+                        *token->kind
+                    );
+                    self->skip_stray_stmt();
+                    return false;
+                }
+
+                return self->parse_builtin_stmt(true);
+            }
+            
             else => {
                 report_unexpected_token(
                     self->allocator,
@@ -109,32 +279,350 @@ pub struct ParserStmts {
                     self->state->current_span(),
                     *token->kind
                 );
-
+                self->skip_stray_stmt();
                 return false;
             }
         }
     }
+    
+    /// Grammar: `{` (Attrs? ToplevelDecl)* `}`
+    fn parse_grouped_modifiers(
+        self: Self*,
+        is_pub: bool,
+        extrn: Option<ast::ASTExtern>
+    ) bool {
+        self->state->next();
+
+        while (!self->state->is(.RightBrace)) {
+            if (self->state->is(.EOF)) {
+                break;
+            }
+
+            // Inner declarations may not declare their own modifiers.
+            if (self->state->is(.Public) || self->state->is(.Extern)) {
+                report_error(
+                    self->allocator,
+                    self->state->dctx,
+                    self->state->current_span(),
+                    "group modifiers cannot be nested"
+                );
+
+                if (!self->skip_nested_group_modifiers()) {
+                    return false;
+                }
+
+                continue;
+            }
+
+            // Inner declarations may carry their own attributes.
+            var inner: Vec<ast::ASTAttr> = Vec.new(self->allocator);
+
+            while (self->state->is(.LeftBracket)) {
+                switch (parse_attr(self->state)) {
+                    case .Some(attr) => {
+                        inner.push(attr);
+                    }
+                }
+            }
+
+            if (self->state->is(.LeftBrace)) {
+                report_error(
+                    self->allocator,
+                    self->state->dctx,
+                    self->state->current_span(),
+                    "block statements are not allowed at top level"
+                );
+                ast::free_attrs(&inner);
+                self->state->skip_braced();
+                continue;
+            }
+
+            var pass: Option<Vec<ast::ASTAttr>*> = .None;
+
+            if (inner.len() > 0) {
+                pass = .Some(&inner);
+                check_attrs(self->allocator, self->state->dctx, &inner);
+            }
+
+            const before = self->state->pos();
+
+            // Builtins ignore the group's modifiers
+            var parsed = false;
+
+            if (self->state->is(.At)) {
+                switch (pass) {
+                    case .Some(list) => {
+                        for (var i: usize = 0; i < list->len(); i += 1) {
+                            switch (list->get_const(i)) {
+                                case .Some(item) => {
+                                    self->pending_attrs.push(*item);
+                                }
+                            }
+                        }
+
+                        list->free();
+                        *list = Vec.new(self->allocator);
+                    }
+                }
+
+                parsed = self->parse_builtin_stmt(true);
+            } else {
+                parsed = self->parse_toplevel_decl(is_pub, extrn, pass);
+            }
+
+            ast::free_attrs(&inner);
+
+            if (!parsed) {
+                if (self->state->pos() == before) {
+                    self->state->next();
+                } else if (self->state->is(.Semicolon)) {
+                    self->state->next();
+                }
+            }
+        }
+
+        return self->state->expect(.RightBrace);
+    }
+
+    fn skip_nested_group_modifiers(self: Self*) bool {
+        while (true) {
+            if (self->state->is(.Public)) {
+                self->state->next();
+                continue;
+            }
+
+            if (self->state->is(.Extern)) {
+                self->state->next();
+
+                const abi_ok = self->parse_extern_abi();
+
+                if (abi_ok.is_none()) {
+                    self->state->sync();
+                    return false;
+                }
+
+                continue;
+            }
+
+            break;
+        }
+
+        return true;
+    }
+
+    /// Reports and drops any attributes that appear after the modifiers.
+    /// Attributes and modifiers are never mixed, attributes come first.
+    fn reject_attrs_after_modifiers(self: Self*) {
+        var dropped: Vec<ast::ASTAttr> = Vec.new(self->allocator);
+
+        while (self->state->is(.LeftBracket)) {
+            switch (parse_attr(self->state)) {
+                case .Some(attr) => {
+                    dropped.push(attr);
+                }
+            }
+        }
+
+        for (var i: usize = 0; i < dropped.len(); i += 1) {
+            switch (dropped.get_const(i)) {
+                case .Some(attr) => {
+                    report_attrs_after_modifiers(
+                        self->allocator,
+                        self->state->dctx,
+                        attr->span
+                    );
+                }
+            }
+        }
+
+        ast::free_attrs(&dropped);
+    }
+
+    /// Collects the modifiers in that fixed order.
+    fn collect_modifiers(self: Self*, is_pub: bool*, extrn: Option<ast::ASTExtern>*) bool {
+        while (true) {
+            if (self->state->is(.Public)) {
+                if (*is_pub) {
+                    report_duplicate_modifier(
+                        self->allocator,
+                        self->state->dctx,
+                        self->state->current_span(),
+                        "visibility"
+                    );
+                }
+
+                if (extrn->is_some()) {
+                    report_modifier_order_error(
+                        self->allocator,
+                        self->state->dctx,
+                        self->state->current_span(),
+                        "pub",
+                        "extern"
+                    );
+                }
+
+                *is_pub = true;
+                self->state->next();
+                continue;
+            }
+
+            if (self->state->is(.Extern)) {
+                if (extrn->is_some()) {
+                    report_duplicate_modifier(
+                        self->allocator,
+                        self->state->dctx,
+                        self->state->current_span(),
+                        "linkage"
+                    );
+                }
+
+                self->state->next();
+
+                switch (self->parse_extern_abi()) {
+                    case .Some(parsed_abi) => {
+                        if (extrn->is_none()) {
+                            *extrn = .Some(parsed_abi);
+                        }
+                    }
+                    else => return false;
+                }
+
+                continue;
+            }
+
+            break;
+        }
+
+        return true;
+    }
+
+    fn reject_extrn_modifier(self: Self*, extrn: Option<ast::ASTExtern>, decl: const uint8*) {
+        if (extrn.is_some()) {
+            report_modifier_not_allowed(
+                self->allocator,
+                self->state->dctx,
+                self->state->current_span(),
+                "extern",
+                decl
+            );
+        }
+    }
+
+    /// Skip the rest of the stray statement so a single bad token
+    /// doesn't cascade into one error per token.
+    fn skip_stray_stmt(self: Self*) {
+        var depth: usize = 0;
+
+        while (!self->state->is(.EOF)) {
+            if (self->state->is(.LeftBrace)) {
+                depth += 1;
+                self->state->next();
+                continue;
+            }
+
+            if (self->state->is(.RightBrace)) {
+                if (depth == 0) {
+                    // Belongs to the enclosing block; leave it.
+                    return;
+                }
+
+                depth -= 1;
+                self->state->next();
+                continue;
+            }
+
+            if (self->state->is(.Semicolon) && depth == 0) {
+                self->state->next();
+                return;
+            }
+
+            self->state->next();
+        }
+    }
 
     pub fn parse_stmt(self: Self*) {
-        var is_pub = false;
+        var attrs: Vec<ast::ASTAttr> = Vec.new(self->allocator);
 
-        if (self->state->is(.Public)) {
-            self->state->next();
-            is_pub = true;
+        while (self->state->is(.LeftBracket)) {
+            switch (parse_attr(self->state)) {
+                case .Some(attr) => {
+                    attrs.push(attr);
+                }
+            }
         }
+
+        const had_attrs = attrs.len() > 0;
+
+        // Method declarations finalize their attributes onto themselves
+        // Every other statement inside a block accumulates them on 
+        // the stack for the enclosing toplevel statement.
+        const is_method = self->method_ctx;
+        self->method_ctx = false;
+
+        // Attributes cannot be attached to a block statement.
+        if (had_attrs && self->state->is(.LeftBrace)) {
+            report_attrs_not_applicable(
+                self->allocator,
+                self->state->dctx,
+                &attrs
+            );
+
+            ast::free_attrs(&attrs);
+            self->parse_block();
+            return;
+        }
+
+        if (is_method && had_attrs) {
+            check_attrs(self->allocator, self->state->dctx, &attrs);
+        }
+
+        if (!is_method && had_attrs) {
+            for (var i: usize = 0; i < attrs.len(); i += 1) {
+                switch (attrs.get_const(i)) {
+                    case .Some(attr) => {
+                        self->pending_attrs.push(*attr);
+                    }
+                }
+            }
+
+            attrs.free();
+            attrs = Vec.new(self->allocator);
+        }
+
+        // Attributes written right before the closing `}` of the
+        // enclosing body have no declaration to attach to: they were
+        // already adopted by `pending_attrs` above (or belong to the
+        // method, in which case they are dropped), so simply let the
+        // `}` close the body.
+        if (had_attrs && self->state->is(.RightBrace)) {
+            ast::free_attrs(&attrs);
+            return;
+        }
+
+        var is_pub = false;
+        var extrn: Option<ast::ASTExtern> = .None;
+
+        if (!self->collect_modifiers(&is_pub, &extrn)) {
+            ast::free_attrs(&attrs);
+            self->state->sync();
+            return;
+        }
+
+        // Attributes and modifiers are never mixed.
+        // Attributes always come first.
+        self->reject_attrs_after_modifiers();
 
         const token = self->state->current();
 
         switch (*token->kind) {
+            // Rejected in local scope
             case .Interface => self->reject_local_decl(is_pub, "interface", .Interface);
             case .Struct => self->reject_local_decl(is_pub, "struct", .Struct);
             case .Union => self->reject_local_decl(is_pub, "union", .Union);
-            case .Enum => self->reject_local_decl(is_pub, "enum", .Enum);
             case .Module => self->reject_local_decl(is_pub, "mod", .Module);
+            case .Enum => self->reject_local_decl(is_pub, "enum", .Enum);
 
-            case .Function => self->parse_func(is_pub, .None);
-            case .Type => self->parse_type_alias(is_pub);
-            case .Ident(_) => self->parse_ident_stmt();
+            // Accepted only in local scope
             case .Continue => self->parse_continue();
             case .Var | .Const => self->parse_var();
             case .LeftBrace => self->parse_block();
@@ -146,8 +634,133 @@ pub struct ParserStmts {
             case .Goto => self->parse_goto();
             case .For => self->parse_for();
             case .If => self->parse_if();
+            
+            case .Function => {
+                // Functions cannot be declared inside another function body
+                if (is_method) {
+                    self->parse_func(is_pub, extrn, .Some(&attrs), true);
+                } else {
+                    self->reject_local_decl(is_pub, "fn", .Function);
+                }
+            }
+            
+            case .Ident(_) => self->parse_ident_stmt();
+            
+            case .Type => {
+                if (extrn.is_some()) {
+                    report_modifier_not_allowed(
+                        self->allocator,
+                        self->state->dctx,
+                        self->state->current_span(),
+                        "extern",
+                        "type alias"
+                    );
+                }
+
+                self->parse_type_alias(is_pub);
+            }
+            
+            case .At => {
+                // Bare builtins accept no modifiers (stage0 parity).
+                if (is_pub || extrn.is_some()) {
+                    report_unexpected_token(
+                        self->allocator,
+                        self->state->dctx,
+                        self->state->current_span(),
+                        *token->kind
+                    );
+                    self->skip_stray_stmt();
+                    ast::free_attrs(&attrs);
+                    return;
+                }
+
+                self->parse_builtin_stmt(false);
+            }
+
             else => self->parse_expr_stmt();
         }
+
+        ast::free_attrs(&attrs);
+    }
+
+    /// Applies attributes accumulated inside a function body onto the
+    /// function itself — stage0 validates and finalizes the whole
+    /// `attrs_stack` when the enclosing toplevel statement finishes.
+    fn absorb_pending_attrs(
+        self: Self*,
+        own: Option<Vec<ast::ASTAttr>*>,
+        has_body: bool,
+        modifiers: ast::ASTFuncModifiers*
+    ) {
+        if (self->pending_attrs.len() == 0) {
+            return;
+        }
+
+        check_attrs(self->allocator, self->state->dctx, &self->pending_attrs);
+
+        switch (own) {
+            case .Some(list) => {
+                if (list->len() > 0) {
+                    check_attrs_cross(
+                        self->allocator,
+                        self->state->dctx,
+                        list,
+                        &self->pending_attrs
+                    );
+                }
+            }
+        }
+
+        apply_func_attrs(
+            self->allocator,
+            self->state->dctx,
+            modifiers,
+            .Some(&self->pending_attrs),
+            has_body
+        );
+
+        ast::free_attrs(&self->pending_attrs);
+        self->pending_attrs = Vec.new(self->allocator);
+    }
+
+    /// Object declarations absorb leftover stack attributes the same way
+    /// functions do: anything still pending belongs to this statement
+    /// (method bodies finalize onto their own methods first).
+    fn absorb_pending_object_attrs(
+        self: Self*,
+        own: Option<Vec<ast::ASTAttr>*>,
+        repr_slot: Option<ast::ASTReprAttr>*,
+        object: ObjectKind
+    ) {
+        if (self->pending_attrs.len() == 0) {
+            return;
+        }
+
+        check_attrs(self->allocator, self->state->dctx, &self->pending_attrs);
+
+        switch (own) {
+            case .Some(list) => {
+                if (list->len() > 0) {
+                    check_attrs_cross(
+                        self->allocator,
+                        self->state->dctx,
+                        list,
+                        &self->pending_attrs
+                    );
+                }
+            }
+        }
+
+        apply_object_attrs(
+            self->allocator,
+            self->state->dctx,
+            .Some(&self->pending_attrs),
+            repr_slot,
+            object
+        );
+
+        ast::free_attrs(&self->pending_attrs);
+        self->pending_attrs = Vec.new(self->allocator);
     }
 
     /// Data structure declarations are only allowed at file scope; report the
@@ -163,9 +776,10 @@ pub struct ParserStmts {
         const mark = self->state->pending->len();
 
         switch (kind) {
-            case .Struct => self->parse_struct(is_pub);
-            case .Enum => self->parse_enum(is_pub);
-            case .Union => self->parse_union(is_pub);
+            case .Function => self->parse_func(is_pub, .None, .None, false);
+            case .Struct => self->parse_struct(is_pub, .None, false);
+            case .Enum => self->parse_enum(is_pub, .None, false);
+            case .Union => self->parse_union(is_pub, .None, false);
             case .Interface => self->parse_interface(is_pub);
             case .Module => {
                 self->state->next();
@@ -211,7 +825,12 @@ pub struct ParserStmts {
     }
 
     /// Grammar: static? (const | var) IDENT (: Type)? (= Expr)? ;
-    pub fn parse_global_var(self: Self*, is_pub: bool, is_extern: bool) bool {
+    pub fn parse_global_var(
+        self: Self*,
+        is_pub: bool,
+        extrn: Option<ast::ASTExtern>,
+        attrs: Option<Vec<ast::ASTAttr>*>
+    ) bool {
         const start = self->state->current_span();
 
         var is_static = false;
@@ -314,6 +933,9 @@ pub struct ParserStmts {
             return false;
         }
 
+        var modifiers = make_global_modifiers(self->allocator, is_pub, extrn);
+        apply_global_attrs(self->allocator, self->state->dctx, &modifiers, attrs);
+
         const node = ast::ASTGlobalVar {
             ident,
             ty,
@@ -321,6 +943,7 @@ pub struct ParserStmts {
             is_const,
             is_undef,
             is_static,
+            modifiers,
             span,
         };
         const node_id = self->program->create_node(.GlobalVar(node));
@@ -351,6 +974,10 @@ pub struct ParserStmts {
             if (!self->state->expect(.Var)) {
                 return .None;
             }
+        }
+
+        if (self->state->is(.LeftParen)) {
+            return self->parse_destruct_tuple(is_const, start);
         }
 
         switch (self->state->expect_ident()) case .Some(ident) else {
@@ -426,8 +1053,194 @@ pub struct ParserStmts {
         return .Some(self->program->create_node(.Var(node)));
     }
 
+    /// Grammar: (const | var) ( Pattern, ... ) (= Expr)? ;
+    fn parse_destruct_tuple(self: Self*, is_const: bool, start: Span) Option<ast::NodeId> {
+        switch (self->parse_destruct_pattern()) case .Some(parsed_pat) else {
+            return .None;
+        }
+
+        var pat = parsed_pat;
+
+        // Optional initializer
+        var rhs: Option<ast::NodeId> = .None;
+
+        if (self->state->is(.Assign)) {
+            self->state->next();
+
+            switch (self->parse_expr()) case .Some(value) else {
+                ast::free_destruct_pattern(&pat);
+                return .None;
+            }
+
+            rhs = .Some(value);
+        }
+
+        const end = self->state->current_span();
+
+        if (!self->state->expect_semicolon()) {
+            ast::free_destruct_pattern(&pat);
+            return .None;
+        }
+
+        var bind = ast::ASTConstness.Const;
+
+        if (!is_const) {
+            bind = .Var;
+        }
+
+        const node = ast::ASTDestructTuple {
+            pat,
+            rhs,
+            bind,
+            span: start.merge(end),
+        };
+        return .Some(self->program->create_node(.DestructTuple(node)));
+    }
+
+    /// Grammar: mutability? ( _ | IDENT ( : Type )? | ( Pattern, ... ) ( : Type )? )
+    fn parse_destruct_pattern(self: Self*) Option<ast::ASTDestructTuplePattern> {
+        const start = self->state->current_span();
+
+        var bind = ast::ASTConstness.Const;
+
+        if (self->state->is(.Var)) {
+            self->state->next();
+            bind = .Var;
+        } else if (self->state->is(.Const)) {
+            self->state->next();
+        }
+
+        var kind: ast::ASTDestructTuplePatternKind;
+
+        if (self->state->is(.Underscore)) {
+            self->state->next();
+            kind = .Ignore;
+        } else if (self->state->is(.LeftParen)) {
+            self->state->next();
+
+            var patterns: Vec<ast::ASTDestructTuplePattern> = Vec.new(self->allocator);
+
+            if (!self->state->is(.RightParen)) {
+                while (true) {
+                    if (self->state->is(.EOF)) {
+                        patterns.free();
+                        return .None;
+                    }
+
+                    const inner_opt = self->parse_destruct_pattern();
+
+                    if (inner_opt.is_none()) {
+                        // Recovery: skip garbage up to `,` or `)` so a single
+                        // stray token still reports one error.
+                        if (self->state->is(.RightParen)) {
+                            break;
+                        }
+
+                        if (self->state->is(.Comma)) {
+                            self->state->next();
+
+                            if (self->state->is(.RightParen)) {
+                                break;
+                            }
+
+                            continue;
+                        }
+
+                        patterns.free();
+                        return .None;
+                    }
+
+                    switch (inner_opt) case .Some(inner) else {
+                        patterns.free();
+                        return .None;
+                    }
+
+                    patterns.push(inner);
+
+                    if (self->state->is(.Comma)) {
+                        self->state->next();
+                        continue;
+                    }
+
+                    if (self->state->is(.RightParen)) {
+                        break;
+                    }
+
+                    report_error(
+                        self->allocator,
+                        self->state->dctx,
+                        self->state->current_span(),
+                        "expected `,` or `)` in tuple pattern"
+                    );
+
+                    // Recovery: skip garbage up to `,` or `)` and keep going,
+                    // so a missing separator reports one error.
+                    while (!self->state->is(.EOF)
+                        && !self->state->is(.Comma)
+                        && !self->state->is(.RightParen)
+                    ) {
+                        self->state->next();
+                    }
+
+                    if (self->state->is(.Comma)) {
+                        self->state->next();
+                        continue;
+                    }
+
+                    if (self->state->is(.RightParen)) {
+                        break;
+                    }
+
+                    patterns.free();
+                    return .None;
+                }
+            }
+
+            if (!self->state->expect(.RightParen)) {
+                patterns.free();
+                return .None;
+            }
+
+            kind = .Tuple(patterns);
+        } else {
+            switch (self->state->expect_ident()) case .Some(ident) else {
+                return .None;
+            }
+
+            kind = .Ident(ident);
+        }
+
+        // Optional type annotation
+        var ty: Option<ast::ASTType> = .None;
+
+        if (self->state->is(.Colon)) {
+            self->state->next();
+
+            switch (self->parse_type()) case .Some(explicit_type) else {
+                ast::free_destruct_kind(&kind);
+                return .None;
+            }
+
+            ty = .Some(explicit_type);
+        }
+
+        const pattern = ast::ASTDestructTuplePattern {
+            kind,
+            ty,
+            bind,
+            span: start.merge(self->state->current_span()),
+        };
+        return .Some(pattern);
+    }
+
     // Grammar: fn IDENT <GenericParams>? FuncParams (Type)? (Block | ;)
-    pub fn parse_func(self: Self*, is_pub: bool, extrn: Option<ast::ASTExtern>) bool {
+    pub fn parse_func(
+        self: Self*,
+        is_pub: bool,
+        extrn: Option<ast::ASTExtern>,
+        attrs: Option<Vec<ast::ASTAttr>*>,
+        absorb: bool
+    ) bool {
         const start = self->state->current_span();
         self->state->next(); // consume `fn`
 
@@ -475,6 +1288,18 @@ pub struct ParserStmts {
 
         // Function declaration
         if (self->state->is(.Semicolon)) {
+            apply_func_attrs(
+                self->allocator,
+                self->state->dctx,
+                &modifiers,
+                attrs,
+                false
+            );
+
+            if (absorb) {
+                self->absorb_pending_attrs(attrs, false, &modifiers);
+            }
+
             self->reject_var_in_decl(&params);
 
             const end = self->state->current_span();
@@ -498,6 +1323,18 @@ pub struct ParserStmts {
             ast::free_generic_params(&generic_params);
             self->state->sync();
             return false;
+        }
+
+        apply_func_attrs(
+            self->allocator,
+            self->state->dctx,
+            &modifiers,
+            attrs,
+            true
+        );
+
+        if (absorb) {
+            self->absorb_pending_attrs(attrs, true, &modifiers);
         }
 
         const node = ast::ASTFuncDef {
@@ -608,7 +1445,7 @@ pub struct ParserStmts {
                 ty = .Some(param_type);
             }
 
-            const span = param_span.merge(self->state->current_span());
+            const span = param_span.merge(self->state->last_parsed_span());
 
             if (ident.str.as_str_const() == "self") {
                 switch (ty) {
@@ -1635,8 +2472,13 @@ pub struct ParserStmts {
         return true;
     }
 
-    ///  Grammar:  struct IDENT align(N)? <GenericParams>? (: Impl)? { FieldOrMethod* }
-    pub fn parse_struct(self: Self*, is_pub: bool) bool {
+    /// Grammar: struct IDENT align(N)? <GenericParams>? (: Impl)? { FieldOrMethod* }
+    pub fn parse_struct(
+        self: Self*,
+        is_pub: bool,
+        attrs: Option<Vec<ast::ASTAttr>*>,
+        absorb: bool
+    ) bool {
         const start = self->state->current_span();
         self->state->next(); // consume `struct`
 
@@ -1647,7 +2489,7 @@ pub struct ParserStmts {
 
         var align: Option<usize> = .None;
 
-        // FIXME: Make it attribute
+        // TODO (stage2): Make it attribute
         if (self->state->is_ident_str("align")) {
             self->state->next();
 
@@ -1751,16 +2593,70 @@ pub struct ParserStmts {
             }
 
             var is_pub = false;
+            var extrn: Option<ast::ASTExtern> = .None;
 
-            if (self->state->is(.Public)) {
-                self->state->next();
-                is_pub = true;
+            if (!self->collect_modifiers(&is_pub, &extrn)) {
+                ast::free_generic_params(&generic_params);
+                impls.free();
+                fields.free();
+                methods.free();
+                self->state->sync();
+                return false;
+            }
+
+            var attrs: Vec<ast::ASTAttr> = Vec.new(self->allocator);
+
+            while (self->state->is(.LeftBracket)) {
+                switch (parse_attr(self->state)) {
+                    case .Some(attr) => {
+                        attrs.push(attr);
+                    }
+                }
+            }
+
+            if (attrs.len() > 0 && (is_pub || extrn.is_some())) {
+                // Attributes and modifiers are never mixed.
+                // Attributes always come first.
+                for (var i: usize = 0; i < attrs.len(); i += 1) {
+                    switch (attrs.get_const(i)) {
+                        case .Some(attr) => {
+                            report_attrs_after_modifiers(
+                                self->allocator,
+                                self->state->dctx,
+                                attr->span
+                            );
+                        }
+                    }
+                }
+
+                ast::free_attrs(&attrs);
+                attrs = Vec.new(self->allocator);
+            } else {
+                if (attrs.len() > 0) {
+                    if (!self->collect_modifiers(&is_pub, &extrn)) {
+                        ast::free_attrs(&attrs);
+                        ast::free_generic_params(&generic_params);
+                        impls.free();
+                        fields.free();
+                        methods.free();
+                        self->state->sync();
+                        return false;
+                    }
+                }
+
+                self->reject_attrs_after_modifiers();
+            }
+
+            if (attrs.len() > 0) {
+                check_attrs(self->allocator, self->state->dctx, &attrs);
             }
 
             if (self->state->is(.Function)) {
                 const mark = self->state->pending->len();
+                const parsed = self->parse_func(is_pub, extrn, .Some(&attrs), true);
+                ast::free_attrs(&attrs);
 
-                if (!self->parse_func(is_pub, .None) || self->state->pending->len() != mark + 1) {
+                if (!parsed || self->state->pending->len() != mark + 1) {
                     report_error(
                         self->allocator, 
                         self->state->dctx, 
@@ -1804,6 +2700,26 @@ pub struct ParserStmts {
                 continue;
             }
 
+            const had_attrs = attrs.len() > 0;
+            ast::free_attrs(&attrs);
+
+            // FIXME: This is temporary! We will support attributes
+            // on fields very soon.
+            if (had_attrs) {
+                report_unexpected_token(
+                    self->allocator,
+                    self->state->dctx,
+                    self->state->current_span(),
+                    *self->state->current()->kind
+                );
+                ast::free_generic_params(&generic_params);
+                impls.free();
+                fields.free();
+                methods.free();
+                self->state->sync();
+                return false;
+            }
+
             if (self->state->is_ident()) {
                 switch (self->parse_struct_field(is_pub)) {
                     case .Some(field) => fields.push(field);
@@ -1844,13 +2760,27 @@ pub struct ParserStmts {
             return false;
         }
 
+        var modifiers = make_struct_modifiers(self->allocator, is_pub);
+
+        apply_object_attrs(
+            self->allocator,
+            self->state->dctx,
+            attrs,
+            &modifiers.repr_attr,
+            ObjectKind.Struct
+        );
+
+        if (absorb) {
+            self->absorb_pending_object_attrs(attrs, &modifiers.repr_attr, ObjectKind.Struct);
+        }
+
         const node = ast::ASTStruct {
             ident,
             generic_params,
             impls,
             fields,
             methods,
-            modifiers: make_struct_modifiers(self->allocator, is_pub),
+            modifiers,
             align,
             is_packed: false,
             span,
@@ -1896,7 +2826,12 @@ pub struct ParserStmts {
     }
 
     /// Grammar: enum IDENT (TagType)? align(N)? <GenericParams>? (: Impl)? { (Variant | Method)* }
-    pub fn parse_enum(self: Self*, is_pub: bool) bool {
+    pub fn parse_enum(
+        self: Self*,
+        is_pub: bool,
+        attrs: Option<Vec<ast::ASTAttr>*>,
+        absorb: bool
+    ) bool {
         const start = self->state->current_span();
         self->state->next(); // consume `enum`
 
@@ -2007,7 +2942,7 @@ pub struct ParserStmts {
         var variants: Vec<ast::ASTEnumVariant> = Vec.new(self->allocator);
         var methods: Vec<ast::NodeId> = Vec.new(self->allocator);
 
-        // TODO: Support attributes for variants
+        // TODO (stage2): Support attributes for variants
 
         // Variants loop
         while (true) {
@@ -2067,6 +3002,7 @@ pub struct ParserStmts {
             }
 
             const mark = self->state->pending->len();
+            self->method_ctx = true;
             self->parse_stmt();
 
             if (self->state->pending->len() != mark + 1) {
@@ -2121,13 +3057,27 @@ pub struct ParserStmts {
             return false;
         }
 
+        var modifiers = make_enum_modifiers(self->allocator, is_pub);
+
+        apply_object_attrs(
+            self->allocator,
+            self->state->dctx,
+            attrs,
+            &modifiers.repr_attr,
+            ObjectKind.Enum
+        );
+
+        if (absorb) {
+            self->absorb_pending_object_attrs(attrs, &modifiers.repr_attr, ObjectKind.Enum);
+        }
+
         const node = ast::ASTEnum {
             ident,
             variants,
             generic_params,
             methods,
             impls,
-            modifiers: make_enum_modifiers(self->allocator, is_pub),
+            modifiers,
             tag_type,
             align,
             span,
@@ -2138,7 +3088,12 @@ pub struct ParserStmts {
 
 
     // Grammar: union IDENT align(N)? <GenericParams>? (: Impl)? { (Field | Method)* }
-    pub fn parse_union(self: Self*, is_pub: bool) bool {
+    pub fn parse_union(
+        self: Self*,
+        is_pub: bool,
+        attrs: Option<Vec<ast::ASTAttr>*>,
+        absorb: bool
+    ) bool {
         const start = self->state->current_span();
         self->state->next();
 
@@ -2267,6 +3222,7 @@ pub struct ParserStmts {
             }
 
             const mark = self->state->pending->len();
+            self->method_ctx = true;
             self->parse_stmt();
 
             if (self->state->pending->len() != mark + 1) {
@@ -2321,13 +3277,27 @@ pub struct ParserStmts {
             return false;
         }
 
+        var modifiers = make_union_modifiers(self->allocator, is_pub);
+
+        apply_object_attrs(
+            self->allocator,
+            self->state->dctx,
+            attrs,
+            &modifiers.repr_attr,
+            ObjectKind.Union
+        );
+
+        if (absorb) {
+            self->absorb_pending_object_attrs(attrs, &modifiers.repr_attr, ObjectKind.Union);
+        }
+
         const node = ast::ASTUnion {
             ident,
             fields,
             generic_params,
             methods,
             impls,
-            modifiers: make_union_modifiers(self->allocator, is_pub),
+            modifiers,
             align,
             span,
         };
@@ -2480,7 +3450,7 @@ pub struct ParserStmts {
         while (self->state->is(.Function)) {
             const mark = self->state->pending->len();
 
-            if (!self->parse_func(false, .None) || self->state->pending->len() != mark + 1) {
+            if (!self->parse_func(false, .None, .None, false) || self->state->pending->len() != mark + 1) {
                 ast::free_generic_params(&generic_params);
                 methods.free();
                 self->state->sync();
@@ -2488,25 +3458,39 @@ pub struct ParserStmts {
             }
 
             const method = self->state->pending->pop();
+            var def_span: Option<Span> = .None;
             var is_decl = false;
 
             switch (self->program->nodes.get(method)) {
                 case .Some(node) => switch (*node) {
+                    case .FuncDef(func_def) => def_span = .Some(func_def.span);
                     case .FuncDecl(_) => is_decl = true;
                 }
             }
 
             if (!is_decl) {
-                report_error(
-                    self->allocator,
-                    self->state->dctx,
-                    self->state->current_span(),
-                    "expected method declaration"
-                );
-                ast::free_generic_params(&generic_params);
-                methods.free();
-                self->state->sync();
-                return false;
+                switch (def_span) {
+                    case .Some(span) => report_error(
+                        self->allocator,
+                        self->state->dctx,
+                        span,
+                        "interface methods cannot have a body"
+                    );
+                    else => report_error(
+                        self->allocator,
+                        self->state->dctx,
+                        self->state->current_span(),
+                        "expected method declaration"
+                    );
+                }
+
+                // Drop the malformed method and keep parsing the rest
+                // of the interface.
+                if (self->state->is(.RightBrace)) {
+                    break;
+                }
+
+                continue;
             }
 
             methods.push(method);
@@ -2560,10 +3544,212 @@ pub struct ParserStmts {
 
     /// Grammar: mod IDENT { Toplevel* }
     pub fn parse_module_decl(self: Self*, is_pub: bool) bool {
-        @todo();
+        const start = self->state->current_span();
+        self->state->next();
+
+        switch (self->state->expect_ident()) case .Some(ident) else {
+            self->state->sync();
+            return false;
+        }
+
+        switch (self->parse_toplevel_block()) case .Some(stmts) else {
+            return false;
+        }
+
+        // Anything still on the stack belongs to the module statement
+        // itself, which accepts no attributes.
+        if (self->pending_attrs.len() > 0) {
+            check_attrs(self->allocator, self->state->dctx, &self->pending_attrs);
+            report_attrs_not_applicable(
+                self->allocator,
+                self->state->dctx,
+                &self->pending_attrs
+            );
+
+            ast::free_attrs(&self->pending_attrs);
+            self->pending_attrs = Vec.new(self->allocator);
+        }
+
+        var vis = ast::ASTVisibility.Private;
+
+        if (is_pub) {
+            vis = .Public;
+        }
+
+        const node = ast::ASTModuleDecl {
+            ident,
+            stmts,
+            vis,
+            span: start.merge(self->state->current_span()),
+        };
+        self->state->pending->push(self->program->create_node(.ModuleDecl(node)));
+        return true;
     }
 
-    ///  Grammar: <IDENT (: Bound)? (= Type)? (, ...)* >
+    /// Used by `mod` bodies and toplevel builtin blocks.
+    fn parse_toplevel_block(self: Self*) Option<ast::ASTNodeList> {
+        if (!self->state->expect(.LeftBrace)) {
+            return .None;
+        }
+
+        const mark = self->state->pending->len();
+
+        while (!self->state->is(.RightBrace) && !self->state->is(.EOF)) {
+            const before = self->state->pos();
+
+            self->parse_toplevel();
+
+            // Error recovery must always advance,
+            // otherwise we spin forever!
+            if (self->state->pos() == before) {
+                self->state->next();
+            }
+        }
+
+        if (!self->state->expect(.RightBrace)) {
+            while (self->state->pending->len() > mark) {
+                self->state->pending->pop();
+            }
+            return .None;
+        }
+
+        return .Some(self->program->commit_pending(self->state->pending, mark));
+    }
+
+    /// Grammar: @ IDENT ( Expr, ... ) ( ToplevelBlock | Block | stmt | ε ) ;
+    pub fn parse_builtin_stmt(self: Self*, is_toplevel: bool) bool {
+        // Inline assembly is a builtin but has a special syntax
+        // and always parses as an expression.
+        if (self->state->is_peek_ident_str("asm")) {
+            self->parse_expr_stmt();
+            return true;
+        }
+
+        const start = self->state->current_span();
+        self->state->next();
+
+        switch (self->state->expect_ident()) case .Some(name) else {
+            self->skip_stray_stmt();
+            return false;
+        }
+
+        if (!self->state->expect(.LeftParen)) {
+            self->state->sync();
+            return false;
+        }
+
+        var args: Vec<ast::NodeId>;
+
+        switch (self->parse_expr_list(.RightParen)) case .Some(parsed_args) else {
+            self->state->sync();
+            return false;
+        }
+
+        args = parsed_args;
+
+        if (self->state->is(.LeftBrace)) {
+            var block: Option<ast::NodeId> = .None;
+
+            if (is_toplevel) {
+                switch (self->parse_toplevel_block()) case .Some(toplevel_stmts) else {
+                    args.free();
+                    self->state->sync();
+                    return false;
+                }
+
+                const block_span = start.merge(self->state->current_span());
+                block = .Some(self->program->create_node(.Block(ast::ASTBlock {
+                    stmts: toplevel_stmts,
+                    span: block_span,
+                })));
+            } else {
+                block = self->parse_block_node();
+
+                if (block.is_none()) {
+                    args.free();
+                    self->state->sync();
+                    return false;
+                }
+            }
+
+            switch (block) case .Some(block_id) else {
+                args.free();
+                return false;
+            }
+
+            const end = self->state->current_span();
+            const node = ast::ASTBuiltinBlock {
+                name,
+                args,
+                block: block_id,
+                is_toplevel,
+                span: start.merge(end),
+            };
+            self->state->pending->push(
+                self->program->create_node(.Builtin(ast::ASTBuiltin.BuiltinBlock(node)))
+            );
+            return true;
+        }
+
+        if (!self->state->is(.Semicolon)) {
+            const mark = self->state->pending->len();
+
+            if (is_toplevel) {
+                self->parse_toplevel();
+            } else {
+                self->parse_stmt();
+            }
+
+            const stmts = self->program->commit_pending(self->state->pending, mark);
+
+            if (stmts.len != 1 && !self->state->dctx->has_errors()) {
+                report_unexpected_token(
+                    self->allocator,
+                    self->state->dctx,
+                    self->state->current_span(),
+                    *self->state->current()->kind
+                );
+            }
+
+            const block_node = self->program->create_node(.Block(ast::ASTBlock {
+                stmts,
+                span: start.merge(self->state->current_span())
+            }));
+
+            const end = self->state->current_span();
+            const node = ast::ASTBuiltinBlock {
+                name,
+                args,
+                block: block_node,
+                is_toplevel,
+                span: start.merge(end),
+            };
+            self->state->pending->push(
+                self->program->create_node(.Builtin(ast::ASTBuiltin.BuiltinBlock(node)))
+            );
+            return true;
+        }
+
+        const end = self->state->current_span();
+
+        if (!self->state->expect_semicolon()) {
+            args.free();
+            self->state->sync();
+            return false;
+        }
+
+        const node = ast::ASTBuiltinFunc {
+            name,
+            args,
+            span: start.merge(end),
+        };
+        self->state->pending->push(
+            self->program->create_node(.Builtin(ast::ASTBuiltin.BuiltinFunc(node)))
+        );
+        return true;
+    }
+
+    /// Grammar: <IDENT (: Bound)? (= Type)? (, ...)* >
     pub fn parse_generic_params(self: Self*) Option<ast::ASTGenericParams> {
         if (!self->state->expect(.LessThan)) {
             return .None;
@@ -2621,7 +3807,7 @@ pub struct ParserStmts {
             switch (self->parse_type()) {
                 case .Some(ty) => default = .Some(self->program->create_node(.Type(ty)));
                 else => {
-                    ast::free_opt_bounds(&bounds);
+                    ast::free_option_bounds(&bounds);
                     return .None;
                 }
             }
@@ -2696,8 +3882,33 @@ fn make_union_modifiers(allocator: Allocator, is_pub: bool) ast::ASTUnionModifie
     };
 }
 
-/// Builds the default set of function modifiers for a parsed function.
-fn make_func_modifiers(allocator: Allocator, is_pub: bool, extrn: Option<ast::ASTExtern>) ast::ASTFuncModifiers {
+fn make_global_modifiers(
+    allocator: Allocator,
+    is_pub: bool,
+    extrn: Option<ast::ASTExtern>
+) ast::ASTGlobalVarModifiers {
+    var vis = ast::ASTVisibility.Private;
+    
+    if (is_pub) {
+        vis = .Public;
+    }
+
+    return ast::ASTGlobalVarModifiers {
+        vis,
+        link_name: .None,
+        extrn,
+        section: .None,
+        thread_local: false,
+        link_once: false,
+        weak: false,
+    };
+}
+
+fn make_func_modifiers(
+    allocator: Allocator, 
+    is_pub: bool, 
+    extrn: Option<ast::ASTExtern>
+) ast::ASTFuncModifiers {
     var vis = ast::ASTVisibility.Private;
     if (is_pub) {
         vis = .Public;

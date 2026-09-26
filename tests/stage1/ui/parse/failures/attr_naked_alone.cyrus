@@ -1,0 +1,12 @@
+// @parse
+
+[[naked]]
+fn f() {}
+
+/*@parse
+tests/stage1/ui/parse/failures/attr_naked_alone.cyrus:3:1: error: naked prologue requires `[[callconv(naked)]]`
+      |
+    3 ~ [[naked]]
+      | ^^^^^^^^^
+      |
+@parse*/

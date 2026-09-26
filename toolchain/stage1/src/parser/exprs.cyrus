@@ -2,11 +2,13 @@
 // Copyright (c) 2026 The Cyrus Language
 
 import std::collections{Vec};
-import .::state{ParserState};
 import std::option{Option};
+import std::string{String};
+
 import .::diags{
     report_error, 
     report_expected_ident, 
+    report_unexpected_token,
     report_invalid_operator
 };
 import tokens{
@@ -16,6 +18,7 @@ import tokens{
     Span, 
     Literal
 };
+import .::state{ParserState};
 import .::ast;
 
 pub struct ParserExprs {
@@ -48,7 +51,7 @@ pub struct ParserExprs {
             var operator_precedence: Prec = undefined;
             var has_precedence = false;
 
-            switch (self->prec_of_op(operator_token)) {
+            switch (self->precedence_of_operator(operator_token)) {
                 case .Some(prec) => {
                     operator_precedence = prec;
                     has_precedence = true;
@@ -75,7 +78,7 @@ pub struct ParserExprs {
     }
 
     /// Precedence of a token that follows an operand, if any.
-    fn prec_of_op(self: Self*, operator: const Token*) Option<Prec> {
+    fn precedence_of_operator(self: Self*, operator: const Token*) Option<Prec> {
         switch (*operator->kind) {
             case .GreaterThan => {
                 // `>>` is lexed as two `>` tokens, in expression context
@@ -186,11 +189,278 @@ pub struct ParserExprs {
                 return .Some(self->create_expr(.UntypedArray(node)));
             }
 
+            case .At => return self->parse_builtin_or_inline_asm();
+
             else => {
                 report_error(self->state->allocator, self->state->dctx, start, "expected expression");
                 return .None;
             }
         }
+    }
+
+    /// Grammar: (asm ... | IDENT ( Expr, ... ))
+    fn parse_builtin_or_inline_asm(self: Self*) Option<ast::NodeId> {
+        if (self->state->is_peek_ident_str("asm")) {
+            return self->parse_inline_asm();
+        }
+
+        return self->parse_builtin_expr();
+    }
+
+    /// Grammar: @ IDENT ( Expr, ... )
+    fn parse_builtin_expr(self: Self*) Option<ast::NodeId> {
+        const start = self->state->current_span();
+        self->state->next(); // consume `@`
+
+        switch (self->state->expect_ident()) case .Some(name) else {
+            return .None;
+        }
+
+        if (!self->state->expect(.LeftParen)) {
+            return .None;
+        }
+
+        var args: Vec<ast::NodeId>;
+
+        switch (self->parse_expr_list(.RightParen)) case .Some(parsed_args) else {
+            return .None;
+        }
+
+        args = parsed_args;
+
+        const node = ast::ASTBuiltinFunc {
+            name,
+            args,
+            span: start.merge(self->state->current_span()),
+        };
+        return .Some(self->create_expr(.Builtin(ast::ASTBuiltin.BuiltinFunc(node))));
+    }
+
+    /// Grammar: @ asm volatile? ( String, ... (: Operand, ... )? (: Operand, ... )? (: Clobber, ... )? )
+    fn parse_inline_asm(self: Self*) Option<ast::NodeId> {
+        const start = self->state->current_span();
+        self->state->next(); // consume `@`
+
+        if (!self->state->is_ident_str("asm")) {
+            report_unexpected_token(
+                self->state->allocator,
+                self->state->dctx,
+                self->state->current_span(),
+                *self->state->current()->kind
+            );
+            return .None;
+        }
+
+        self->state->next();
+
+        var is_volatile = false;
+
+        if (self->state->is_ident_str("volatile")) {
+            self->state->next();
+            is_volatile = true;
+        }
+
+        if (!self->state->expect(.LeftParen)) {
+            return .None;
+        }
+
+        // Template is constructed from a collection of string literals
+        var template: Vec<String> = Vec.new(self->state->allocator);
+
+        while (self->at_literal()) {
+            switch (self->parse_asm_string()) case .Some(part) else {
+                ast::free_asm_template(&template);
+                return .None;
+            }
+
+            template.push(part);
+        }
+
+        // Outputs
+        var outputs: Vec<ast::ASTAsmOperand> = Vec.new(self->state->allocator);
+
+        if (self->state->is(.Colon)) {
+            self->state->next();
+
+            switch (self->parse_asm_operands()) case .Some(parsed) else {
+                ast::free_asm_template(&template);
+                outputs.free();
+                return .None;
+            }
+
+            outputs.free();
+            outputs = parsed;
+        }
+
+        // Inputs
+        var inputs: Vec<ast::ASTAsmOperand> = Vec.new(self->state->allocator);
+
+        if (self->state->is(.Colon)) {
+            self->state->next();
+
+            switch (self->parse_asm_operands()) case .Some(parsed) else {
+                ast::free_asm_template(&template);
+                outputs.free();
+                inputs.free();
+                return .None;
+            }
+
+            inputs.free();
+            inputs = parsed;
+        }
+
+        // Clobbers
+        var clobbers: Vec<ast::ASTAsmClobber> = Vec.new(self->state->allocator);
+
+        if (self->state->is(.Colon)) {
+            self->state->next();
+
+            switch (self->parse_asm_clobbers()) case .Some(parsed) else {
+                ast::free_asm_template(&template);
+                ast::free_asm_operands(&outputs);
+                ast::free_asm_operands(&inputs);
+                clobbers.free();
+                return .None;
+            }
+
+            clobbers.free();
+            clobbers = parsed;
+        }
+
+        if (!self->state->expect(.RightParen)) {
+            ast::free_asm_template(&template);
+            ast::free_asm_operands(&outputs);
+            ast::free_asm_operands(&inputs);
+            ast::free_asm_clobbers(&clobbers);
+            return .None;
+        }
+
+        const node = ast::ASTInlineAsm {
+            template,
+            outputs,
+            inputs,
+            clobbers,
+            is_volatile,
+            span: start.merge(self->state->current_span()),
+        };
+        return .Some(self->create_expr(.InlineAsm(node)));
+    }
+
+    fn at_literal(self: Self*) bool {
+        switch (*self->state->current()->kind) {
+            case .Literal(_) => return true;
+        }
+
+        return false;
+    }
+
+    /// Copies the current string literal token and consumes it.
+    fn parse_asm_string(self: Self*) Option<String> {
+        var copy: Option<String> = .None;
+
+        switch (*self->state->current()->kind) {
+            case .Literal(lit) => switch (lit) {
+                case .String { value, .. } => {
+                    copy = .Some(value.clone(self->state->allocator));
+                    self->state->next();
+                }
+            }
+        }
+
+        switch (copy) case .Some(part) else {
+            report_error(
+                self->state->allocator,
+                self->state->dctx,
+                self->state->current_span(),
+                "expected assembly string literal"
+            );
+            return .None;
+        }
+
+        return copy;
+    }
+
+    /// Grammar: String ( Expr ) (, String ( Expr ))*
+    fn parse_asm_operands(self: Self*) Option<Vec<ast::ASTAsmOperand>> {
+        var operands: Vec<ast::ASTAsmOperand> = Vec.new(self->state->allocator);
+
+        while (true) {
+            if (self->state->is(.Colon)
+                || self->state->is(.RightParen)
+                || self->state->is(.Semicolon)
+                || self->state->is(.EOF)
+            ) {
+                break;
+            }
+
+            const span = self->state->current_span();
+
+            switch (self->parse_asm_string()) case .Some(constraint) else {
+                ast::free_asm_operands(&operands);
+                return .None;
+            }
+
+            if (!self->state->expect(.LeftParen)) {
+                ast::free_asm_operands(&operands);
+                return .None;
+            }
+
+            switch (self->parse_expr()) case .Some(expr) else {
+                ast::free_asm_operands(&operands);
+                return .None;
+            }
+
+            if (!self->state->expect(.RightParen)) {
+                ast::free_asm_operands(&operands);
+                return .None;
+            }
+
+            const operand = ast::ASTAsmOperand { constraint, expr, span };
+            operands.push(operand);
+
+            if (self->state->is(.Comma)) {
+                self->state->next();
+                continue;
+            }
+
+            break;
+        }
+
+        return .Some(operands);
+    }
+
+    /// Grammar: String (, String)*
+    fn parse_asm_clobbers(self: Self*) Option<Vec<ast::ASTAsmClobber>> {
+        var clobbers: Vec<ast::ASTAsmClobber> = Vec.new(self->state->allocator);
+
+        while (true) {
+            if (self->state->is(.Colon)
+                || self->state->is(.RightParen)
+                || self->state->is(.Semicolon)
+                || self->state->is(.EOF)
+            ) {
+                break;
+            }
+
+            const span = self->state->current_span();
+
+            switch (self->parse_asm_string()) case .Some(name) else {
+                ast::free_asm_clobbers(&clobbers);
+                return .None;
+            }
+
+            const clobber = ast::ASTAsmClobber { name, span };
+            clobbers.push(clobber);
+
+            if (self->state->is(.Comma)) {
+                self->state->next();
+                continue;
+            }
+
+            break;
+        }
+
+        return .Some(clobbers);
     }
 
     fn parse_tuple_or_group(self: Self*, start: Span) Option<ast::NodeId> {
@@ -250,7 +520,7 @@ pub struct ParserExprs {
 
     /// Parses a comma separated expression list closed by `close`.
     /// The opening token must already be consumed.
-    fn parse_expr_list(self: Self*, close: TokenKind) Option<Vec<ast::NodeId>> {
+    pub fn parse_expr_list(self: Self*, close: TokenKind) Option<Vec<ast::NodeId>> {
         var elements: Vec<ast::NodeId> = Vec.new(self->state->allocator);
 
         if (self->state->is(close)) {
@@ -492,7 +762,12 @@ pub struct ParserExprs {
         }
 
         if (!has_peek) {
-            report_error(self->state->allocator, self->state->dctx, start, "expected field name after `.`");
+            report_error(
+                self->state->allocator, 
+                self->state->dctx, 
+                start,
+                "expected field name after `.`"
+            );
             return .None;
         }
 
@@ -652,9 +927,11 @@ pub struct ParserExprs {
                     self->state->current_span(), 
                     "consider adding a field to enum tuple variant or removing the parentheses"
                 );
-                fields.free();
-                self->state->sync();
-                return .None;
+
+                // Consume the empty parentheses and recover with an
+                // empty field list so the rest of the enum parses.
+                self->state->next();
+                return .Some(fields);
             }
 
             const span = self->state->current_span();
@@ -747,7 +1024,7 @@ pub struct ParserExprs {
 
         var align: Option<usize> = .None;
 
-        // FIXME: This syntax should be removed and 
+        // TODO (stage2): This syntax should be removed and 
         // replaced with attribute.
         if (self->state->is_ident_str("align")) {
             self->state->next();
@@ -866,7 +1143,7 @@ pub struct ParserExprs {
 
         var align: Option<usize> = .None;
 
-        // FIXME: This syntax should be removed and 
+        // TODO (stage2): This syntax should be removed and 
         // replaced with attribute.
         if (self->state->is_ident_str("align")) {
             self->state->next();
@@ -1008,7 +1285,7 @@ pub struct ParserExprs {
 
         var align: Option<usize> = .None;
 
-        // FIXME: This syntax should be removed and 
+        // TODO (stage2): This syntax should be removed and 
         // replaced with attribute.
         if (self->state->is_ident_str("align")) {
             self->state->next();

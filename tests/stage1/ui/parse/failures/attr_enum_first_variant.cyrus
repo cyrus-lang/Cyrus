@@ -1,0 +1,26 @@
+// @parse
+
+enum E {
+    [[cold]]
+    A,
+}
+
+/*@parse
+tests/stage1/ui/parse/failures/attr_enum_first_variant.cyrus:4:5: error: expected ident but got `[`
+      |
+    4 ~     [[cold]]
+      |     ^
+      |
+
+tests/stage1/ui/parse/failures/attr_enum_first_variant.cyrus:4:11: error: unexpected token `]`
+      |
+    4 ~     [[cold]]
+      |           ^
+      |
+
+tests/stage1/ui/parse/failures/attr_enum_first_variant.cyrus:6:1: error: unexpected token `}`
+      |
+    6 ~ }
+      | ^
+      |
+@parse*/

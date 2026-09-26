@@ -1,0 +1,84 @@
+// @parse
+
+pub fn main() {
+    var x: int32 = 0;
+    var a: int32 = 1;
+    var b: int32 = 2;
+
+    @asm(
+        "movl %1, %0; addl %2, %0"
+        : "=r"(x)
+        : "r"(a), "r"(b)
+        :
+    );
+
+    @asm volatile("movq %%rsp, %0" : "=r"(x) : : );
+}
+
+/*@parse
+ASTProgram
+    Node[0]:
+        ASTFuncDef
+            ident: main
+            visibility: public
+            params:
+            body:
+                ASTBlock
+                    stmt[0]:
+                        ASTVar
+                            ident: x
+                            is_const: false
+                            is_undef: false
+                            ty: int32
+                            rhs:
+                                ASTExpr::Literal
+                                    value: 0
+                    stmt[1]:
+                        ASTVar
+                            ident: a
+                            is_const: false
+                            is_undef: false
+                            ty: int32
+                            rhs:
+                                ASTExpr::Literal
+                                    value: 1
+                    stmt[2]:
+                        ASTVar
+                            ident: b
+                            is_const: false
+                            is_undef: false
+                            ty: int32
+                            rhs:
+                                ASTExpr::Literal
+                                    value: 2
+                    stmt[3]:
+                        ASTExpr::InlineAsm
+                            is_volatile: false
+                            template[0]:
+                                value: movl %1, %0; addl %2, %0
+                            output[0]:
+                                constraint: =r
+                                expr:
+                                    ASTExpr::Ident
+                                        ident: x
+                            input[0]:
+                                constraint: r
+                                expr:
+                                    ASTExpr::Ident
+                                        ident: a
+                            input[1]:
+                                constraint: r
+                                expr:
+                                    ASTExpr::Ident
+                                        ident: b
+                    stmt[4]:
+                        ASTExpr::InlineAsm
+                            is_volatile: true
+                            template[0]:
+                                value: movq %%rsp, %0
+                            output[0]:
+                                constraint: =r
+                                expr:
+                                    ASTExpr::Ident
+                                        ident: x
+@parse*/

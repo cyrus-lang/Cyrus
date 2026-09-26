@@ -1,0 +1,34 @@
+// @parse
+
+fn example() {
+    var a: int32 = 1;
+    var e: int32* = null;
+}
+
+/*@parse
+ASTProgram
+    Node[0]:
+        ASTFuncDef
+            ident: example
+            params:
+            body:
+                ASTBlock
+                    stmt[0]:
+                        ASTVar
+                            ident: a
+                            is_const: false
+                            is_undef: false
+                            ty: int32
+                            rhs:
+                                ASTExpr::Literal
+                                    value: 1
+                    stmt[1]:
+                        ASTVar
+                            ident: e
+                            is_const: false
+                            is_undef: false
+                            ty: *int32
+                            rhs:
+                                ASTExpr::Literal
+                                    value: null
+@parse*/

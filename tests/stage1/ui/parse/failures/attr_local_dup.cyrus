@@ -1,0 +1,17 @@
+// @parse
+
+fn main() {
+    [[inline]]
+    var x = 1;
+
+    [[inline]]
+    var y = 2;
+}
+
+/*@parse
+tests/stage1/ui/parse/failures/attr_local_dup.cyrus:7:5: error: duplicate attribute `inline`
+      |
+    7 ~     [[inline]]
+      |     ^^^^^^^^^^
+      |
+@parse*/

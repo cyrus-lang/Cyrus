@@ -5,11 +5,16 @@ import std::collections{Vec};
 import std::errors{ErrorOr};
 import std::mem{Allocator};
 
-import .::ast{NodeId, ASTProgram, ASTNodeList};
 import .::stmts{ParserStmts};
 import .::state{ParserState};
 import tokens{SourceTokens};
 import diags{DiagContext};
+import .::ast{
+    NodeId, 
+    ASTProgram, 
+    ASTNodeList, 
+    free_attrs
+};
 
 pub struct Parser {
     pub fn parse(
@@ -25,6 +30,9 @@ pub struct Parser {
         var stmts = ParserStmts.new(allocator, &program, &state);
         
         stmts.parse_toplevels();
+
+        // Dangling attributes are dropped.
+        free_attrs(&stmts.pending_attrs);
 
         // Drain pending statements
         if (pending.len() > 0) {

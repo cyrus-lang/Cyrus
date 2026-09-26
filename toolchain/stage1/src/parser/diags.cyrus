@@ -145,3 +145,111 @@ pub fn report_undefined_needs_type(
     dctx->report(Diag.new(allocator, .Error, buffer.as_str(), span));
     buffer.free();
 }
+
+pub fn report_duplicate_modifier(
+    allocator: Allocator,
+    dctx: DiagContext*,
+    span: Span,
+    what: const uint8*
+) {
+    var buffer = String.new(allocator);
+    var writer: Writer = dynamic StringWriter.new(&buffer);
+    writer.write(what);
+    writer.write(" modifier already specified");
+    dctx->report(Diag.new(allocator, .Error, buffer.as_str(), span));
+    buffer.free();
+}
+
+pub fn report_modifier_not_allowed(
+    allocator: Allocator,
+    dctx: DiagContext*,
+    span: Span,
+    modifier: const uint8*,
+    decl: const uint8*
+) {
+    var buffer = String.new(allocator);
+    var writer: Writer = dynamic StringWriter.new(&buffer);
+    writer.write("`");
+    writer.write(modifier);
+    writer.write("` is not allowed on `");
+    writer.write(decl);
+    writer.write("` declarations");
+    dctx->report(Diag.new(allocator, .Error, buffer.as_str(), span));
+    buffer.free();
+}
+
+pub fn report_modifier_order_error(
+    allocator: Allocator,
+    dctx: DiagContext*,
+    span: Span,
+    first: const uint8*,
+    second: const uint8*
+) {
+    var buffer = String.new(allocator);
+    var writer: Writer = dynamic StringWriter.new(&buffer);
+    writer.write("`");
+    writer.write(first);
+    writer.write("` must precede `");
+    writer.write(second);
+    writer.write("`");
+    dctx->report(Diag.new(allocator, .Error, buffer.as_str(), span));
+    buffer.free();
+}
+
+pub fn report_attrs_after_modifiers(
+    allocator: Allocator,
+    dctx: DiagContext*,
+    span: Span
+) {
+    report_error(
+        allocator,
+        dctx,
+        span,
+        "attributes must precede modifiers"
+    );
+}
+
+pub fn report_unknown_attribute(
+    allocator: Allocator,
+    dctx: DiagContext*,
+    span: Span,
+    name: const uint8*
+) {
+    var buffer = String.new(allocator);
+    var writer: Writer = dynamic StringWriter.new(&buffer);
+    writer.write("unknown attribute `");
+    writer.write(name);
+    writer.write("`");
+    dctx->report(Diag.new(allocator, .Error, buffer.as_str(), span));
+    buffer.free();
+}
+
+pub fn report_duplicate_attribute(
+    allocator: Allocator,
+    dctx: DiagContext*,
+    span: Span,
+    key: const uint8*
+) {
+    var buffer = String.new(allocator);
+    var writer: Writer = dynamic StringWriter.new(&buffer);
+    writer.write("duplicate attribute `");
+    writer.write(key);
+    writer.write("`");
+    dctx->report(Diag.new(allocator, .Error, buffer.as_str(), span));
+    buffer.free();
+}
+
+pub fn report_attr_not_applicable(
+    allocator: Allocator,
+    dctx: DiagContext*,
+    span: Span,
+    key: const uint8*
+) {
+    var buffer = String.new(allocator);
+    var writer: Writer = dynamic StringWriter.new(&buffer);
+    writer.write("attribute `");
+    writer.write(key);
+    writer.write("` cannot be applied to this statement");
+    dctx->report(Diag.new(allocator, .Error, buffer.as_str(), span));
+    buffer.free();
+}

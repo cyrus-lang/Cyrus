@@ -1,0 +1,14 @@
+// @parse
+
+[[link(bogus)]]
+fn f();
+
+/*@parse
+tests/stage1/ui/parse/failures/attr_link_invalid.cyrus:3:8: error: invalid link kind in attribute
+      |
+    3 ~ [[link(bogus)]]
+      |        ^^^^^
+      |
+      = help: expected `once` or `weak`
+      |
+@parse*/
