@@ -1,0 +1,18 @@
+// @parse
+
+mod {
+}
+
+/*@parse
+tests/stage1/parse/modules/failures/missing_name.cyrus:3:5: error: expected ident but got `{`
+      |
+    3 ~ mod {
+      |     ^
+      |
+
+tests/stage1/parse/modules/failures/missing_name.cyrus:4:1: error: unexpected token `}`
+      |
+    4 ~ }
+      | ^
+      |
+@parse*/

@@ -1,0 +1,36 @@
+// @parse
+
+const a = H<uint32> { state: 1, key: 2 };
+const b = Wrapper<Wrapper<uint32>> { value: Wrapper<uint32> { value: 3 } };
+
+/*@parse
+ASTProgram
+    Node[0]:
+        ASTGlobalVar
+            ident: a
+            is_const: true
+            is_undef: false
+            is_static: false
+            expr:
+                ASTExpr::StructInit
+                    operand:
+                        Type: ASTType::GenericInst
+                            base: H
+                            type_arg[0]: uint32
+                    field_inits_count: 2
+    Node[1]:
+        ASTGlobalVar
+            ident: b
+            is_const: true
+            is_undef: false
+            is_static: false
+            expr:
+                ASTExpr::StructInit
+                    operand:
+                        Type: ASTType::GenericInst
+                            base: Wrapper
+                            type_arg[0]: ASTType::GenericInst
+                                base: Wrapper
+                                type_arg[0]: uint32
+                    field_inits_count: 1
+@parse*/

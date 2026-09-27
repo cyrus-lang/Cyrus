@@ -10,7 +10,7 @@ import ..::..::deep::modname{item};
 import a::b::c::d;
 import m::x{a, b as c, d,};
 import a::b as c{d, e};
-import m::x{ };
+import m::x{};
 
 /*@parse
 ASTProgram

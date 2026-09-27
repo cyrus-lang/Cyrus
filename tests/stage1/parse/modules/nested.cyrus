@@ -1,0 +1,23 @@
+// @parse
+
+mod outer {
+    mod inner {
+        fn helper() {}
+    }
+}
+
+/*@parse
+ASTProgram
+    Node[0]:
+        ASTModuleDecl
+            ident: outer
+            stmt[0]:
+                ASTModuleDecl
+                    ident: inner
+                    stmt[0]:
+                        ASTFuncDef
+                            ident: helper
+                            params:
+                            body:
+                                ASTBlock
+@parse*/

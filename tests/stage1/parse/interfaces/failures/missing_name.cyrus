@@ -1,0 +1,18 @@
+// @parse
+
+interface {
+}
+
+/*@parse
+tests/stage1/parse/interfaces/failures/missing_name.cyrus:3:11: error: expected ident but got `{`
+      |
+    3 ~ interface {
+      |           ^
+      |
+
+tests/stage1/parse/interfaces/failures/missing_name.cyrus:4:1: error: unexpected token `}`
+      |
+    4 ~ }
+      | ^
+      |
+@parse*/

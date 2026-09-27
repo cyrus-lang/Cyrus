@@ -1,0 +1,17 @@
+// @parse
+
+type P<T> = Pair<T, int32>;
+
+/*@parse
+ASTProgram
+    Node[0]:
+        ASTTypeAlias
+            ident: P
+            generic_params_count: 1
+            generic_param[0]:
+                name: T
+            ty: ASTType::GenericInst
+                base: Pair
+                type_arg[0]: T
+                type_arg[1]: int32
+@parse*/

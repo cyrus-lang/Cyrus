@@ -1,0 +1,39 @@
+// @parse
+
+fn f() {
+    var size = @sizeof(int32);
+    var generic = @sizeof(R<uint32, uint32>);
+}
+
+/*@parse
+ASTProgram
+    Node[0]:
+        ASTFuncDef
+            ident: f
+            params:
+            body:
+                ASTBlock
+                    stmt[0]:
+                        ASTVar
+                            ident: size
+                            is_const: false
+                            is_undef: false
+                            rhs:
+                                ASTExpr::Builtin
+                                    name: sizeof
+                                    arg[0]:
+                                        Type: int32
+                    stmt[1]:
+                        ASTVar
+                            ident: generic
+                            is_const: false
+                            is_undef: false
+                            rhs:
+                                ASTExpr::Builtin
+                                    name: sizeof
+                                    arg[0]:
+                                        Type: ASTType::GenericInst
+                                            base: R
+                                            type_arg[0]: uint32
+                                            type_arg[1]: uint32
+@parse*/
