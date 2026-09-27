@@ -9,7 +9,6 @@ import std::mem{Allocator};
 import .::state{ParserState};
 import .::exprs{ParserExprs};
 import .::diags{
-    report_error,
     report_unexpected_token,
     report_local_decl_error,
     report_undefined_needs_type,
@@ -20,6 +19,7 @@ import .::diags{
     report_attrs_after_modifiers,
     report_attr_not_applicable
 };
+import diags{Diag};
 import .::attrs{
     parse_attr,
     check_attrs,
@@ -308,12 +308,12 @@ pub struct ParserStmts {
 
             // Inner declarations may not declare their own modifiers.
             if (self->state->is(.Public) || self->state->is(.Extern)) {
-                report_error(
-                    self->allocator,
-                    self->state->dctx,
-                    self->state->current_span(),
-                    "group modifiers cannot be nested"
-                );
+                self->state->dctx->report(Diag.new(
+                    self->state->allocator,
+                    .Error,
+                    "group modifiers cannot be nested",
+                    self->state->current_span()
+                ));
 
                 if (!self->skip_nested_group_modifiers()) {
                     return false;
@@ -334,12 +334,12 @@ pub struct ParserStmts {
             }
 
             if (self->state->is(.LeftBrace)) {
-                report_error(
-                    self->allocator,
-                    self->state->dctx,
-                    self->state->current_span(),
-                    "block statements are not allowed at top level"
-                );
+                self->state->dctx->report(Diag.new(
+                    self->state->allocator,
+                    .Error,
+                    "block statements are not allowed at top level",
+                    self->state->current_span()
+                ));
                 ast::free_attrs(&inner);
                 self->state->skip_braced();
                 continue;
@@ -903,41 +903,42 @@ pub struct ParserStmts {
         const span = start.merge(end);
 
         if (expr.is_none() && ty.is_none() && !is_undef) {
-            report_error(
-                self->allocator, 
-                self->state->dctx, 
-                span, 
-                "expected initializer, `undefined`, or an explicit type specifier"
-            );
+            self->state->dctx->report(Diag.new(
+                self->state->allocator,
+                .Error,
+                "expected initializer, `undefined`, or an explicit type specifier",
+                span
+            ));
             return false;
         }
 
         if (expr.is_none() && is_const) {
-            report_error(
-                self->allocator, 
-                self->state->dctx, ident.span, 
-                "constant global variable must be initialized"
-            );
+            self->state->dctx->report(Diag.new(
+                self->state->allocator,
+                .Error,
+                "constant global variable must be initialized",
+                ident.span
+            ));
             return false;
         }
 
         if (!is_static && !is_const) {
-            report_error(
-                self->allocator, 
-                self->state->dctx, 
-                ident.span, 
-                "non-static global variable must be constant"
-            );
+            self->state->dctx->report(Diag.new(
+                self->state->allocator,
+                .Error,
+                "non-static global variable must be constant",
+                ident.span
+            ));
             return false;
         }
 
         if (ty.is_none() && is_undef) {
-            report_error(
-                self->allocator, 
-                self->state->dctx, 
-                ident.span, 
-                "expected explicit type specifier"
-            );
+            self->state->dctx->report(Diag.new(
+                self->state->allocator,
+                .Error,
+                "expected explicit type specifier",
+                ident.span
+            ));
             return false;
         }
 
@@ -1031,12 +1032,12 @@ pub struct ParserStmts {
         }
 
         if (rhs.is_none() && ty.is_none() && !is_undef) {
-            report_error(
-                self->allocator, 
-                self->state->dctx, 
-                start.merge(end), 
-                "expected initializer, `undefined`, or an explicit type specifier"
-            );
+            self->state->dctx->report(Diag.new(
+                self->state->allocator,
+                .Error,
+                "expected initializer, `undefined`, or an explicit type specifier",
+                start.merge(end)
+            ));
             return .None;
         }
 
@@ -1174,12 +1175,12 @@ pub struct ParserStmts {
                         break;
                     }
 
-                    report_error(
-                        self->allocator,
-                        self->state->dctx,
-                        self->state->current_span(),
-                        "expected `,` or `)` in tuple pattern"
-                    );
+                    self->state->dctx->report(Diag.new(
+                        self->state->allocator,
+                        .Error,
+                        "expected `,` or `)` in tuple pattern",
+                        self->state->current_span()
+                    ));
 
                     // Recovery: skip garbage up to `,` or `)` and keep going,
                     // so a missing separator reports one error.
@@ -1250,7 +1251,7 @@ pub struct ParserStmts {
         absorb: bool
     ) bool {
         const start = self->state->current_span();
-        self->state->next(); // consume `fn`
+        self->state->next();
 
         switch (self->state->expect_ident()) case .Some(ident) else {
             self->state->sync();
@@ -1364,20 +1365,20 @@ pub struct ParserStmts {
             switch (params->list.get_const(i)) {
                 case .Some(kind) => switch (*kind) {
                     case .FuncParam(var param) => if (param.constness == .Var) {
-                        report_error(
-                            self->allocator,
-                            self->state->dctx,
-                            param.span,
-                            "`var` parameter specifier is only allowed in function definitions"
-                        );
+                        self->state->dctx->report(Diag.new(
+                            self->state->allocator,
+                            .Error,
+                            "`var` parameter specifier is only allowed in function definitions",
+                            param.span
+                        ));
                     }
                     case .SelfModifier(var modifier) => if (modifier.constness == .Var) {
-                        report_error(
-                            self->allocator,
-                            self->state->dctx,
-                            modifier.span,
-                            "`var` parameter specifier is only allowed in function definitions"
-                        );
+                        self->state->dctx->report(Diag.new(
+                            self->state->allocator,
+                            .Error,
+                            "`var` parameter specifier is only allowed in function definitions",
+                            modifier.span
+                        ));
                     }
                 }
             }
@@ -1763,12 +1764,12 @@ pub struct ParserStmts {
                 self->state->pending->push(self->program->create_node(.Defer(node)));
             }
             else => {
-                report_error(
-                    self->allocator, 
-                    self->state->dctx, 
-                    start.merge(self->state->current_span()), 
-                    "missing semicolon"
-                );
+                self->state->dctx->report(Diag.new(
+                    self->state->allocator,
+                    .Error,
+                    "missing semicolon",
+                    start.merge(self->state->current_span())
+                ));
                 self->state->sync();
                 return;
             }
@@ -1937,12 +1938,12 @@ pub struct ParserStmts {
 
         if (!valid) {
             ast::free_switch_pattern(&pattern);
-            report_error(
-                self->allocator,
-                self->state->dctx,
-                start.merge(self->state->current_span()), 
-                "invalid switch guard pattern"
-            );
+            self->state->dctx->report(Diag.new(
+                self->state->allocator,
+                .Error,
+                "invalid switch guard pattern",
+                start.merge(self->state->current_span())
+            ));
             self->state->sync();
             return;
         }
@@ -2230,12 +2231,12 @@ pub struct ParserStmts {
             }
         }
 
-        report_error(
-            self->state->allocator, 
-            self->state->dctx, 
-            start, 
-            "expected string literal"
-        );
+        self->state->dctx->report(Diag.new(
+            self->state->allocator,
+            .Error,
+            "expected string literal",
+            start
+        ));
 
         return .Some(.C); // Fallback
     }
@@ -2377,7 +2378,7 @@ pub struct ParserStmts {
         absorb: bool
     ) bool {
         const start = self->state->current_span();
-        self->state->next(); // consume `struct`
+        self->state->next();
 
         switch (self->state->expect_ident()) case .Some(ident) else {
             self->state->sync();
@@ -2398,12 +2399,13 @@ pub struct ParserStmts {
             switch (self->parse_integer_value()) {
                 case .Some(value) => align = .Some(value);
                 else => {
-                    report_error(
-                        self->allocator, 
-                        self->state->dctx, 
-                        self->state->current_span(), 
-                        "integer literals cannot have suffixes in this context"
-                    );
+                    // REVIEW: Write a better diagnostic message for it.
+                    self->state->dctx->report(Diag.new(
+                        self->state->allocator,
+                        .Error,
+                        "integer literals cannot have suffixes in this context",
+                        self->state->current_span()
+                    ));
                     self->state->sync();
                     return false;
                 }
@@ -2475,12 +2477,12 @@ pub struct ParserStmts {
             }
 
             if (self->state->is(.EOF)) {
-                report_error(
-                    self->allocator, 
-                    self->state->dctx, 
-                    self->state->current_span(), 
-                    "missing closing brace `}`"
-                );
+                self->state->dctx->report(Diag.new(
+                    self->state->allocator,
+                    .Error,
+                    "missing closing brace `}`",
+                    self->state->current_span()
+                ));
                 ast::free_generic_params(&generic_params);
                 impls.free();
                 fields.free();
@@ -2554,12 +2556,12 @@ pub struct ParserStmts {
                 ast::free_attrs(&attrs);
 
                 if (!parsed || self->state->pending->len() != mark + 1) {
-                    report_error(
-                        self->allocator, 
-                        self->state->dctx, 
-                        self->state->current_span(), 
-                        "expected method definition"
-                    );
+                    self->state->dctx->report(Diag.new(
+                        self->state->allocator,
+                        .Error,
+                        "expected method definition",
+                        self->state->current_span()
+                    ));
                     ast::free_generic_params(&generic_params);
                     impls.free();
                     fields.free();
@@ -2578,13 +2580,12 @@ pub struct ParserStmts {
                 }
 
                 if (!is_def) {
-                    report_error(
-                        self->allocator, 
-                        self->state->dctx, 
-                        self->state->current_span(), 
-                        
-                        "expected method definition"
-                    );
+                    self->state->dctx->report(Diag.new(
+                        self->state->allocator,
+                        .Error,
+                        "expected method definition",
+                        self->state->current_span()
+                    ));
                     ast::free_generic_params(&generic_params);
                     impls.free();
                     fields.free();
@@ -2633,12 +2634,12 @@ pub struct ParserStmts {
                 continue;
             }
 
-            report_error(
-                self->allocator, 
-                self->state->dctx, 
-                self->state->current_span(), 
-                "expected field or method definition"
-            );
+            self->state->dctx->report(Diag.new(
+                self->state->allocator,
+                .Error,
+                "expected field or method definition",
+                self->state->current_span()
+            ));
             ast::free_generic_params(&generic_params);
             impls.free();
             fields.free();
@@ -2722,7 +2723,7 @@ pub struct ParserStmts {
         return .Some(field);
     }
 
-    /// Grammar: enum IDENT (TagType)? align(N)? <GenericParams>? (: Impl)? { (Variant | Method)* }
+    /// Grammar: enum IDENT (TagType)? align(N)? <GenericParams>? (: Impls)? { (Variant | Method)* }
     pub fn parse_enum(
         self: Self*,
         is_pub: bool,
@@ -2730,7 +2731,7 @@ pub struct ParserStmts {
         absorb: bool
     ) bool {
         const start = self->state->current_span();
-        self->state->next(); // consume `enum`
+        self->state->next();
 
         switch (self->state->expect_ident()) case .Some(ident) else {
             self->state->sync();
@@ -2740,7 +2741,7 @@ pub struct ParserStmts {
         var tag_type: Option<ast::NodeId> = .None;
 
         if (self->state->is(.LeftParen)) {
-            self->state->next(); // consume `(`
+            self->state->next();
 
             switch (self->parse_type()) case .Some(ty) else {
                 self->state->sync();
@@ -2768,12 +2769,13 @@ pub struct ParserStmts {
             switch (self->parse_integer_value()) {
                 case .Some(value) => align = .Some(value);
                 else => {
-                    report_error(
-                        self->allocator, 
-                        self->state->dctx, 
-                        self->state->current_span(), 
-                        "integer literals cannot have suffixes in this context"
-                    );
+                    // REVIEW: Write a better diagnostic message for it.
+                    self->state->dctx->report(Diag.new(
+                        self->state->allocator,
+                        .Error,
+                        "integer literals cannot have suffixes in this context",
+                        self->state->current_span()
+                    ));
                     self->state->sync();
                     return false;
                 }
@@ -2884,12 +2886,12 @@ pub struct ParserStmts {
             }
 
             if (self->state->is(.EOF)) {
-                report_error(
-                    self->allocator, 
-                    self->state->dctx, 
-                    self->state->current_span(), 
-                    "missing closing brace `}`"
-                );
+                self->state->dctx->report(Diag.new(
+                    self->state->allocator,
+                    .Error,
+                    "missing closing brace `}`",
+                    self->state->current_span()
+                ));
                 ast::free_generic_params(&generic_params);
                 impls.free();
                 variants.free();
@@ -2903,12 +2905,12 @@ pub struct ParserStmts {
             self->parse_stmt();
 
             if (self->state->pending->len() != mark + 1) {
-                report_error(
-                    self->allocator, 
-                    self->state->dctx, 
-                    self->state->current_span(),
-                    "expected method definition"
-                );
+                self->state->dctx->report(Diag.new(
+                    self->state->allocator,
+                    .Error,
+                    "expected method definition",
+                    self->state->current_span()
+                ));
                 ast::free_generic_params(&generic_params);
                 impls.free();
                 variants.free();
@@ -2927,12 +2929,12 @@ pub struct ParserStmts {
             }
 
             if (!is_def) {
-                report_error(
-                    self->allocator, 
-                    self->state->dctx, 
-                    self->state->current_span(),
-                    "expected method definition"
-                );
+                self->state->dctx->report(Diag.new(
+                    self->state->allocator,
+                    .Error,
+                    "expected method definition",
+                    self->state->current_span()
+                ));
                 ast::free_generic_params(&generic_params);
                 impls.free();
                 variants.free();
@@ -3003,7 +3005,7 @@ pub struct ParserStmts {
 
         // FIXME: Make it attribute.
         if (self->state->is_ident_str("align")) {
-            self->state->next(); // consume `align`
+            self->state->next();
 
             if (!self->state->expect(.LeftParen)) {
                 self->state->sync();
@@ -3013,12 +3015,13 @@ pub struct ParserStmts {
             switch (self->parse_integer_value()) {
                 case .Some(value) => align = .Some(value);
                 else => {
-                    report_error(
-                        self->allocator, 
-                        self->state->dctx,
-                        self->state->current_span(),
-                        "integer literals cannot have suffixes in this context"
-                    );
+                    // REVIEW: Write a better diagnostic message for it.
+                    self->state->dctx->report(Diag.new(
+                        self->state->allocator,
+                        .Error,
+                        "integer literals cannot have suffixes in this context",
+                        self->state->current_span()
+                    ));
                     self->state->sync();
                     return false;
                 }
@@ -3090,12 +3093,12 @@ pub struct ParserStmts {
             }
 
             if (self->state->is(.EOF)) {
-                report_error(
-                    self->allocator, 
-                    self->state->dctx, 
-                    self->state->current_span(),
-                    "missing closing brace `}`"
-                );
+                self->state->dctx->report(Diag.new(
+                    self->state->allocator,
+                    .Error,
+                    "missing closing brace `}`",
+                    self->state->current_span()
+                ));
                 ast::free_generic_params(&generic_params);
                 impls.free();
                 fields.free();
@@ -3123,12 +3126,12 @@ pub struct ParserStmts {
             self->parse_stmt();
 
             if (self->state->pending->len() != mark + 1) {
-                report_error(
-                    self->allocator, 
-                    self->state->dctx, 
-                    self->state->current_span(),
-                    "expected method definition"
-                );
+                self->state->dctx->report(Diag.new(
+                    self->state->allocator,
+                    .Error,
+                    "expected method definition",
+                    self->state->current_span()
+                ));
                 ast::free_generic_params(&generic_params);
                 impls.free();
                 fields.free();
@@ -3147,12 +3150,12 @@ pub struct ParserStmts {
             }
 
             if (!is_def) {
-                report_error(
-                    self->allocator,
-                    self->state->dctx,
-                    self->state->current_span(),
-                    "expected method definition"
-                );
+                self->state->dctx->report(Diag.new(
+                    self->state->allocator,
+                    .Error,
+                    "expected method definition",
+                    self->state->current_span()
+                ));
                 ast::free_generic_params(&generic_params);
                 impls.free();
                 fields.free();
@@ -3366,18 +3369,22 @@ pub struct ParserStmts {
 
             if (!is_decl) {
                 switch (def_span) {
-                    case .Some(span) => report_error(
-                        self->allocator,
-                        self->state->dctx,
-                        span,
-                        "interface methods cannot have a body"
-                    );
-                    else => report_error(
-                        self->allocator,
-                        self->state->dctx,
-                        self->state->current_span(),
-                        "expected method declaration"
-                    );
+                    case .Some(span) => {
+                        self->state->dctx->report(Diag.new(
+                            self->state->allocator,
+                            .Error,
+                            "interface methods cannot have a body",
+                            span
+                        ));
+                    }
+                    else => {
+                        self->state->dctx->report(Diag.new(
+                            self->state->allocator,
+                            .Error,
+                            "expected method declaration",
+                            self->state->current_span()
+                        ));
+                    }
                 }
 
                 // Drop the malformed method and keep parsing the rest
@@ -3398,12 +3405,12 @@ pub struct ParserStmts {
 
         if (!self->state->is(.RightBrace)) {
             if (!self->state->is_peek(.RightBrace)) {
-                report_error(
-                    self->allocator,
-                    self->state->dctx,
-                    self->state->current_span(),
-                    "expected right brace `}`"
-                );
+                self->state->dctx->report(Diag.new(
+                    self->state->allocator,
+                    .Error,
+                    "expected right brace `}`",
+                    self->state->current_span()
+                ));
                 ast::free_generic_params(&generic_params);
                 methods.free();
                 self->state->sync();

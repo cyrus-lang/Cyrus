@@ -8,7 +8,6 @@ import std::string{String};
 
 import .::state{ParserState};
 import .::diags{
-    report_error,
     report_unknown_attribute,
     report_duplicate_attribute,
     report_attr_not_applicable
@@ -160,12 +159,12 @@ fn parse_inline_attr(state: ParserState*) Option<ast::ASTAttrKind> {
         return .Some(.Inline(.Never));
     }
 
-    report_error(
+    state->dctx->report(Diag.new(
         state->allocator,
-        state->dctx,
-        arg.span,
-        "invalid inline attribute, expected `always` or `never`"
-    );
+        .Error,
+        "invalid inline attribute, expected `always` or `never`",
+        arg.span
+    ));
     return .None;
 }
 
@@ -318,12 +317,12 @@ fn parse_callconv_attr(state: ParserState*) Option<ast::ASTAttrKind> {
     }
 
     if (!matched) {
-        report_error(
+        state->dctx->report(Diag.new(
             state->allocator,
-            state->dctx,
-            arg.span,
-            "invalid callconv in attribute"
-        );
+            .Error,
+            "invalid callconv in attribute",
+            arg.span
+        ));
         return .None;
     }
 
@@ -355,12 +354,12 @@ fn parse_attr_strval(state: ParserState*) Option<String> {
         }
     }
 
-    report_error(
+    state->dctx->report(Diag.new(
         state->allocator,
-        state->dctx,
-        state->current_span(),
-        "expected string literal"
-    );
+        .Error,
+        "expected string literal",
+        state->current_span()
+    ));
     return .None;
 }
 
@@ -390,12 +389,12 @@ fn parse_repr_attr(state: ParserState*) Option<ast::ASTReprAttr> {
 
         if (value == "packed") {
             if (has_packed) {
-                report_error(
+                state->dctx->report(Diag.new(
                     state->allocator,
-                    state->dctx,
-                    item_span,
-                    "duplicate packed modifier"
-                );
+                    .Error,
+                    "duplicate packed modifier",
+                    item_span
+                ));
                 items.free();
                 return .None;
             }
@@ -406,12 +405,12 @@ fn parse_repr_attr(state: ParserState*) Option<ast::ASTReprAttr> {
 
         if (value == "c" || value == "cyrus" || value == "transparent") {
             if (has_kind) {
-                report_error(
+                state->dctx->report(Diag.new(
                     state->allocator,
-                    state->dctx,
-                    item_span,
-                    "multiple repr kinds specified"
-                );
+                    .Error,
+                    "multiple repr kinds specified",
+                    item_span
+                ));
                 items.free();
                 return .None;
             }
@@ -432,12 +431,12 @@ fn parse_repr_attr(state: ParserState*) Option<ast::ASTReprAttr> {
         }
 
         if (item_kind.is_none()) {
-            report_error(
+            state->dctx->report(Diag.new(
                 state->allocator,
-                state->dctx,
-                item_span,
-                "invalid repr kind in attribute"
-            );
+                .Error,
+                "invalid repr kind in attribute",
+                item_span
+            ));
             items.free();
             return .None;
         }
@@ -528,12 +527,12 @@ pub fn check_attrs(allocator: Allocator, dctx: DiagContext*, attrs: Vec<ast::AST
     if (cold_span.is_some() && hot_span.is_some()) {
         switch (cold_span) {
             case .Some(span) => {
-                report_error(
+                dctx->report(Diag.new(
                     allocator,
-                    dctx,
-                    span,
-                    "attributes `[[cold]]` and `[[hot]]` cannot be used together"
-                );
+                    .Error,
+                    "attributes `[[cold]]` and `[[hot]]` cannot be used together",
+                    span
+                ));
             }
         }
 
@@ -630,12 +629,12 @@ pub fn check_attrs_cross(
 
             switch (span) {
                 case .Some(s) => {
-                    report_error(
+                    dctx->report(Diag.new(
                         allocator,
-                        dctx,
-                        s,
-                        "attributes `[[cold]]` and `[[hot]]` cannot be used together"
-                    );
+                        .Error,
+                        "attributes `[[cold]]` and `[[hot]]` cannot be used together",
+                        s
+                    ));
                 }
             }
 
@@ -759,12 +758,12 @@ pub fn apply_func_attrs(
             switch (attr->kind) {
                 case .Link(value) => {
                     if (value == .Weak) {
-                        report_error(
+                        dctx->report(Diag.new(
                             allocator,
-                            dctx,
-                            attr->span,
-                            "`[[link(weak)]]` cannot be applied to a function definition"
-                        );
+                            .Error,
+                            "`[[link(weak)]]` cannot be applied to a function definition",
+                            attr->span
+                        ));
                     }
                 }
             }
@@ -785,32 +784,32 @@ fn validate_func_modifiers(
     }
 
     if (modifiers->inline.is_some()) {
-        report_error(
+        dctx->report(Diag.new(
             allocator,
-            dctx,
-            span,
-            "cannot combine `naked` prologue with any inline modifier"
-        );
+            .Error,
+            "cannot combine `naked` prologue with any inline modifier",
+            span
+        ));
     }
 
     switch (modifiers->callconv) {
         case .Some(callconv) => {
             if (callconv != .Naked) {
-                report_error(
+                dctx->report(Diag.new(
                     allocator,
-                    dctx,
-                    span,
-                    "naked prologue requires `[[callconv(naked)]]`"
-                );
+                    .Error,
+                    "naked prologue requires `[[callconv(naked)]]`",
+                    span
+                ));
             }
         }
         else => {
-            report_error(
+            dctx->report(Diag.new(
                 allocator,
-                dctx,
-                span,
-                "naked prologue requires `[[callconv(naked)]]`"
-            );
+                .Error,
+                "naked prologue requires `[[callconv(naked)]]`",
+                span
+            ));
         }
     }
 }
@@ -917,58 +916,58 @@ fn validate_object_repr(
             switch (kind) {
                 case .Some(value) => {
                     if (value == .Transparent && packed) {
-                        report_error(
+                        dctx->report(Diag.new(
                             allocator,
-                            dctx,
-                            span,
-                            "`repr(transparent)` cannot be combined with `repr(packed)`"
-                        );
+                            .Error,
+                            "`repr(transparent)` cannot be combined with `repr(packed)`",
+                            span
+                        ));
                     }
                 }
             }
         }
         case .Union => {
             if (packed) {
-                report_error(
+                dctx->report(Diag.new(
                     allocator,
-                    dctx,
-                    span,
-                    "packed layout is not supported for unions"
-                );
+                    .Error,
+                    "packed layout is not supported for unions",
+                    span
+                ));
             }
 
             switch (kind) {
                 case .Some(value) => {
                     if (value == .Transparent) {
-                        report_error(
+                        dctx->report(Diag.new(
                             allocator,
-                            dctx,
-                            span,
-                            "`repr(transparent)` is not valid for unions"
-                        );
+                            .Error,
+                            "`repr(transparent)` is not valid for unions",
+                            span
+                        ));
                     }
                 }
             }
         }
         case .Enum => {
             if (packed) {
-                report_error(
+                dctx->report(Diag.new(
                     allocator,
-                    dctx,
-                    span,
-                    "`repr(packed)` is not valid for enums"
-                );
+                    .Error,
+                    "`repr(packed)` is not valid for enums",
+                    span
+                ));
             }
 
             switch (kind) {
                 case .Some(value) => {
                     if (value == .Transparent) {
-                        report_error(
+                        dctx->report(Diag.new(
                             allocator,
-                            dctx,
-                            span,
-                            "`repr(transparent)` is not valid for enums"
-                        );
+                            .Error,
+                            "`repr(transparent)` is not valid for enums",
+                            span
+                        ));
                     }
                 }
             }

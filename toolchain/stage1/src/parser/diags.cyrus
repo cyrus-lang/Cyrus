@@ -40,15 +40,6 @@ pub fn format_expected_ident(allocator: Allocator, got: TokenKind) String {
     return buffer;
 }
 
-pub fn report_error(
-    allocator: Allocator,
-    dctx: DiagContext*,
-    span: Span,
-    mesg: const uint8*
-) {
-    dctx->report(Diag.new(allocator, .Error, mesg, span));
-}
-
 pub fn report_expected_token(
     allocator: Allocator,
     dctx: DiagContext*,
@@ -58,7 +49,12 @@ pub fn report_expected_token(
 ) {
     var fmt = format_expected_token(allocator, expected, got);
     defer fmt.free();
-    dctx->report(Diag.new(allocator, .Error, fmt.as_str(), span));
+    dctx->report(Diag.new(
+        allocator,
+        .Error,
+        fmt.as_str(),
+        span
+    ));
 }
 
 pub fn report_unexpected_token(
@@ -69,7 +65,12 @@ pub fn report_unexpected_token(
 ) {
     var fmt = format_unexpected_token(allocator, got);
     defer fmt.free();
-    dctx->report(Diag.new(allocator, .Error, fmt.as_str(), span));
+    dctx->report(Diag.new(
+        allocator,
+        .Error,
+        fmt.as_str(),
+        span
+    ));
 }
 
 pub fn report_expected_ident(
@@ -80,7 +81,12 @@ pub fn report_expected_ident(
 ) {
     var fmt = format_expected_ident(allocator, got);
     defer fmt.free();
-    dctx->report(Diag.new(allocator, .Error, fmt.as_str(), span));
+    dctx->report(Diag.new(
+        allocator,
+        .Error,
+        fmt.as_str(),
+        span
+    ));
 }
 
 pub fn report_local_decl_error(
@@ -94,7 +100,12 @@ pub fn report_local_decl_error(
     writer.write("`");
     writer.write(keyword);
     writer.write("` cannot be defined inside a function body");
-    dctx->report(Diag.new(allocator, .Error, buffer.as_str(), span));
+    dctx->report(Diag.new(
+        allocator,
+        .Error,
+        buffer.as_str(),
+        span
+    ));
     buffer.free();
 }
 
@@ -112,7 +123,12 @@ pub fn report_invalid_operator(
     writer.write(" `");
     got.format(writer);
     writer.write("`");
-    dctx->report(Diag.new(allocator, .Error, buffer.as_str(), span));
+    dctx->report(Diag.new(
+        allocator,
+        .Error,
+        buffer.as_str(),
+        span
+    ));
     buffer.free();
 }
 
@@ -127,7 +143,12 @@ pub fn report_invalid_abi(
     writer.write("invalid ABI `");
     writer.write(name);
     writer.write("`, expected `c` or `cyrus`");
-    dctx->report(Diag.new(allocator, .Error, buffer.as_str(), span));
+    dctx->report(Diag.new(
+        allocator,
+        .Error,
+        buffer.as_str(),
+        span
+    ));
     buffer.free();
 }
 
@@ -142,7 +163,12 @@ pub fn report_undefined_needs_type(
     writer.write("variable `");
     writer.write(name);
     writer.write("` requires an explicit type when initialized with `undefined`");
-    dctx->report(Diag.new(allocator, .Error, buffer.as_str(), span));
+    dctx->report(Diag.new(
+        allocator,
+        .Error,
+        buffer.as_str(),
+        span
+    ));
     buffer.free();
 }
 
@@ -156,7 +182,12 @@ pub fn report_duplicate_modifier(
     var writer: Writer = dynamic StringWriter.new(&buffer);
     writer.write(what);
     writer.write(" modifier already specified");
-    dctx->report(Diag.new(allocator, .Error, buffer.as_str(), span));
+    dctx->report(Diag.new(
+        allocator,
+        .Error,
+        buffer.as_str(),
+        span
+    ));
     buffer.free();
 }
 
@@ -174,7 +205,12 @@ pub fn report_modifier_not_allowed(
     writer.write("` is not allowed on `");
     writer.write(decl);
     writer.write("` declarations");
-    dctx->report(Diag.new(allocator, .Error, buffer.as_str(), span));
+    dctx->report(Diag.new(
+        allocator,
+        .Error,
+        buffer.as_str(),
+        span
+    ));
     buffer.free();
 }
 
@@ -192,7 +228,12 @@ pub fn report_modifier_order_error(
     writer.write("` must precede `");
     writer.write(second);
     writer.write("`");
-    dctx->report(Diag.new(allocator, .Error, buffer.as_str(), span));
+    dctx->report(Diag.new(
+        allocator,
+        .Error,
+        buffer.as_str(),
+        span
+    ));
     buffer.free();
 }
 
@@ -201,12 +242,12 @@ pub fn report_attrs_after_modifiers(
     dctx: DiagContext*,
     span: Span
 ) {
-    report_error(
+    dctx->report(Diag.new(
         allocator,
-        dctx,
-        span,
-        "attributes must precede modifiers"
-    );
+        .Error,
+        "attributes must precede modifiers",
+        span
+    ));
 }
 
 pub fn report_unknown_attribute(
@@ -220,7 +261,12 @@ pub fn report_unknown_attribute(
     writer.write("unknown attribute `");
     writer.write(name);
     writer.write("`");
-    dctx->report(Diag.new(allocator, .Error, buffer.as_str(), span));
+    dctx->report(Diag.new(
+        allocator,
+        .Error,
+        buffer.as_str(),
+        span
+    ));
     buffer.free();
 }
 
@@ -235,7 +281,12 @@ pub fn report_duplicate_attribute(
     writer.write("duplicate attribute `");
     writer.write(key);
     writer.write("`");
-    dctx->report(Diag.new(allocator, .Error, buffer.as_str(), span));
+    dctx->report(Diag.new(
+        allocator,
+        .Error,
+        buffer.as_str(),
+        span
+    ));
     buffer.free();
 }
 
@@ -250,6 +301,11 @@ pub fn report_attr_not_applicable(
     writer.write("attribute `");
     writer.write(key);
     writer.write("` cannot be applied to this statement");
-    dctx->report(Diag.new(allocator, .Error, buffer.as_str(), span));
+    dctx->report(Diag.new(
+        allocator,
+        .Error,
+        buffer.as_str(),
+        span
+    ));
     buffer.free();
 }
