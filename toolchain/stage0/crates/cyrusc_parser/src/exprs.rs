@@ -320,29 +320,78 @@ impl<'source_file> Parser<'source_file> {
                 Ok(expr)
             }
         } else {
-            if type_args.is_empty() {
+            let expr = if type_args.is_empty() {
                 // if we don't have type args means its not a candidate for
                 // generic array / struct init, func call, hence
                 // we can treat it as a result of a normal prefix expr
-                Ok(expr)
+                expr
             } else {
                 // likely to be a type like: `Box<int>`
                 if let ASTExpr::ModuleImport(module_import) = expr {
                     let end = self.current_token().loc.end;
 
-                    let type_spec = TypeSpecifier::GenericInst(GenericInst {
+                    ASTExpr::TypeSpecifier(TypeSpecifier::GenericInst(GenericInst {
                         base: Box::new(TypeSpecifier::ModuleImport(module_import)),
                         type_args,
                         loc: Loc::new(self.file_id(), line, column, start, end),
-                    });
-
-                    Ok(ASTExpr::TypeSpecifier(type_spec))
+                    }))
                 } else {
                     // type args are given to the wrong expression
                     return Err(self.error_invalid_token());
                 }
+            };
+
+            // `Foo*` written in expression position is a pointer type, not
+            // a multiplication: the first argument of `@cast(Foo*, ptr)` or
+            // `@sizeof(Foo*)`. It only qualifies as a type when the run of
+            // `*` is followed by a delimiter, so `a * b` and `a *= 2` keep
+            // being parsed as multiplication and compound assignment.
+            if self.peek_token_is(TokenKind::Asterisk) && self.pointer_suffix_ahead() {
+                if let Some(base) = as_type_specifier(&expr) {
+                    return Ok(ASTExpr::TypeSpecifier(self.parse_pointer_suffix(base)));
+                }
             }
+
+            Ok(expr)
         }
+    }
+
+    /// True when the run of `*` starting at the cursor is a pointer type
+    /// suffix rather than a multiplication operator.
+    fn pointer_suffix_ahead(&self) -> bool {
+        let mut i = 1; // index 0 is the last token of the path, 1 is the first `*`
+
+        while let Some(token) = self.peek_n_token(i) {
+            if token.kind == TokenKind::Asterisk {
+                i += 1;
+                continue;
+            }
+
+            return is_type_terminator(&token.kind);
+        }
+
+        true
+    }
+
+    /// Wraps `base` into the pointer type written as a run of `*` after it,
+    /// consuming every `*` but the last one so that the operand still ends
+    /// on the token the parser stopped at.
+    fn parse_pointer_suffix(&mut self, base: TypeSpecifier) -> TypeSpecifier {
+        let mut ty = base;
+
+        self.next_token(); // leave the first `*` as the current token
+
+        while self.current_token_is(TokenKind::Asterisk) {
+            ty = TypeSpecifier::Pointer(Box::new(ty));
+
+            if !self.peek_token_is(TokenKind::Asterisk) {
+                break;
+            }
+
+            self.next_token(); // hop to the next `*`, it stays unconsumed
+        }
+
+        ty
     }
 
     fn parse_infix_expr_with_banned(
@@ -1395,6 +1444,33 @@ fn map_assign_kind(token_kind: TokenKind) -> Option<AssignKind> {
         TokenKind::ShiftRight => Some(AssignKind::RightShiftAssign),
         _ => None,
     }
+}
+
+/// Views a path-like expression as the type it denotes, if it can denote
+/// one (`Foo`, `module::Foo`, `Foo<int>`).
+fn as_type_specifier(expr: &ASTExpr) -> Option<TypeSpecifier> {
+    match expr {
+        ASTExpr::Ident(ident) => Some(TypeSpecifier::Ident(ident.clone())),
+        ASTExpr::ModuleImport(module_import) => {
+            Some(TypeSpecifier::ModuleImport(module_import.clone()))
+        }
+        ASTExpr::TypeSpecifier(type_spec) => Some(type_spec.clone()),
+        _ => None,
+    }
+}
+
+fn is_type_terminator(kind: &TokenKind) -> bool {
+    matches!(
+        kind,
+        TokenKind::Comma
+            | TokenKind::RightParen
+            | TokenKind::RightBracket
+            | TokenKind::RightBrace
+            | TokenKind::Semicolon
+            | TokenKind::Colon
+            | TokenKind::GreaterThan
+            | TokenKind::EOF
+    )
 }
 
 fn can_start_expr(kind: &TokenKind) -> bool {

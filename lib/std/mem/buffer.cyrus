@@ -19,7 +19,7 @@ pub struct Buffer<T> {
     }
 
     [[inline]]
-    pub fn reserve(self: Self*, const extra: usize) {
+    pub fn reserve(self: Self*, extra: usize) {
         const required = self->len() + extra + 1;
 
         if (required > self->cap()) {

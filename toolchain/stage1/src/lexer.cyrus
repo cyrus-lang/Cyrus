@@ -540,8 +540,7 @@ pub struct Lexer {
     fn read_hexadecimal_integer(self: Self*) String {
         var number = String.new(self->allocator);
 
-        // Alphanumeric
-        while (is_alphanumeric(self->cur()) || self->cur() == '_') {
+        while (is_hex_digit(self->cur()) || self->cur() == '_') {
             if (self->cur() != '_') {
                 number.push(self->cur());
             }
@@ -653,7 +652,7 @@ pub struct Lexer {
                     self->dctx->report(Diag.new(
                         self->allocator,
                         .Error,
-                        "hex does not fit into `uint8`",
+                        "hexadecimal number does not fit into `uint128`",
                         Span { source_id: self->source_id, loc: self->loc() }
                     ));
                     return self->init_kind(.INVALID);
@@ -665,7 +664,7 @@ pub struct Lexer {
                     self->dctx->report(Diag.new(
                         self->allocator,
                         .Error,
-                        "binary does not fit into `uint8`",
+                        "binary number does not fit into `uint128`",
                         Span { source_id: self->source_id, loc: self->loc() }
                     ));
                     return self->init_kind(.INVALID);
@@ -677,7 +676,7 @@ pub struct Lexer {
                     self->dctx->report(Diag.new(
                         self->allocator,
                         .Error,
-                        "integer does not fit into `u128`",
+                        "integer number does not fit into `u128`",
                         Span { source_id: self->source_id, loc: self->loc() }
                     ));
                     return self->init_kind(.INVALID);
@@ -689,7 +688,7 @@ pub struct Lexer {
                     self->dctx->report(Diag.new(
                         self->allocator,
                         .Error,
-                        "integer does not fit into `i128`",
+                        "integer number does not fit into `i128`",
                         Span { source_id: self->source_id, loc: self->loc() }
                     ));
                     return self->init_kind(.INVALID);
@@ -1072,21 +1071,22 @@ fn try_str_as_octal(str: const uint8*) Option<uint32> {
     return .Some(value);
 }
 
-fn try_str_as_hex(str: const uint8*) Option<uint32> {
+fn try_str_as_hex(str: const uint8*) Option<uint128> {
     @assert(str, "str cannot be empty");
 
     const len = strlen(str);
 
-    // Hex char should have 1-2 hex digits
-    if (len == 0 || len > 2) {
+    // Hex digits must fit into `uint128` 
+    // (at most 16 of them)
+    if (len == 0 || len > 16) {
         return .None;
     }
     
-    var value: uint32 = 0;
+    var value: uint128 = 0;
     
     for (var i: usize = 0; i < len; i += 1) {
         const char = str[i];
-        var digit: uint32 = 0;
+        var digit: uint128 = 0;
         
         // Validate hex digit (0-9, A-F, a-f)
         switch (char) {
@@ -1102,21 +1102,22 @@ fn try_str_as_hex(str: const uint8*) Option<uint32> {
     return .Some(value);
 }
 
-fn try_str_as_binary(str: const uint8*) Option<uint32> {
+fn try_str_as_binary(str: const uint8*) Option<uint128> {
     @assert(str, "str cannot be empty");
 
     const len = strlen(str);
 
-    // Binary should have 1-8 binary digits
-    if (len == 0 || len > 8) {
+    // Binary digits must fit into `uint128` 
+    // (at most 32 of them)
+    if (len == 0 || len > 32) {
         return .None;
     }
     
-    var value: uint32 = 0;
+    var value: uint128 = 0;
     
     for (var i: usize = 0; i < len; i += 1) {
         const char = str[i];
-        var digit: uint32 = 0;
+        var digit: uint128 = 0;
         
         // Validate binary digit (0 or 1)
         switch (char) {
@@ -1126,10 +1127,6 @@ fn try_str_as_binary(str: const uint8*) Option<uint32> {
         }
         
         value = (value * 2) + digit;
-        
-        if (value > 255) {
-            return .None;
-        }
     }
     
     return .Some(value);
@@ -1156,6 +1153,13 @@ fn is_alphanumeric(char: uint8) bool {
 [[inline]]
 fn is_digit(char: uint8) bool {
     return (char >= '0' && char <= '9');
+}
+
+[[inline]]
+fn is_hex_digit(char: uint8) bool {
+    return (char >= '0' && char <= '9')
+        || (char >= 'a' && char <= 'f')
+        || (char >= 'A' && char <= 'F');
 }
 
 [[inline]]

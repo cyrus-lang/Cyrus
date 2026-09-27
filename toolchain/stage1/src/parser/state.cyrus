@@ -235,7 +235,7 @@ pub struct ParserState {
         return false;
     }
 
-    pub fn is_literal(self: const Self*, kind: TokenKind) bool {
+    pub fn is_literal(self: const Self*) bool {
         switch (self->get(self->pos)) {
             case .Some(token) => switch (*token->kind) {
                 case .Literal(_) => return true;

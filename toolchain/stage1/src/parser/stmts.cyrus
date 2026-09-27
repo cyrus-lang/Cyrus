@@ -66,26 +66,34 @@ pub struct ParserStmts {
 
     [[inline]]
     pub fn parse_expr(self: Self*) Option<ast::NodeId> {
-        var exprs = ParserExprs.new(self->program, self->state);
-        return exprs.parse_expr();
+        return self->exprs().parse_expr();
     }
 
     [[inline]]
     fn parse_expr_list(self: Self*, close: TokenKind) Option<Vec<ast::NodeId>> {
-        var exprs = ParserExprs.new(self->program, self->state);
-        return exprs.parse_expr_list(close);
+        return self->exprs().parse_expr_list(close);
     }
 
     /// Pattern expressions parse a prefix/postfix operand only.
     fn parse_pattern_expr(self: Self*) Option<ast::NodeId> {
-        var exprs = ParserExprs.new(self->program, self->state);
-        return exprs.parse_expr_with_precedence(.Prefix);
+        return self->exprs().parse_expr_with_precedence(.Prefix);
     }
 
     [[inline]]
     pub fn parse_type(self: Self*) Option<ast::ASTType> {
-        var exprs = ParserExprs.new(self->program, self->state);
+        var exprs = self->exprs();
         return exprs.parse_type();
+    }
+
+    /// Creates an expression parser that can parse lambda bodies through
+    /// this statement parser.
+    fn exprs(self: Self*) ParserExprs {
+        var sub = ParserExprs.new(self->program, self->state);
+        sub.set_block_parser(struct {
+            handler: parse_stmt_block, 
+            context: @cast(void*, self)
+        });
+        return sub;
     }
 
     [[inline]]
@@ -1233,7 +1241,7 @@ pub struct ParserStmts {
         return .Some(pattern);
     }
 
-    // Grammar: fn IDENT <GenericParams>? FuncParams (Type)? (Block | ;)
+    /// Grammar: fn IDENT <GenericParams>? FuncParams (Type)? (Block | ;)
     pub fn parse_func(
         self: Self*,
         is_pub: bool,
@@ -1376,121 +1384,10 @@ pub struct ParserStmts {
         }
     }
 
-    // Grammar: ( var? IDENT (: Type)? (, ...)* ...? )
+    /// Grammar: ( var? IDENT (: Type)? (, ...)* ...? )
+    [[inline]]
     pub fn parse_func_params(self: Self*) Option<ast::ASTFuncParams> {
-        if (!self->state->expect(.LeftParen)) {
-            return .None;
-        }
-
-        var list: Vec<ast::ASTFuncParamKind> = Vec.new(self->state->allocator);
-        var variadic: Option<ast::ASTFuncVariadicParam> = .None;
-
-        while (!self->state->is(.RightParen)) {
-            // C style varargs
-            if (self->state->is(.TripleDot)) {
-                self->state->next();
-                variadic = .Some(.UntypedCStyle);
-                break;
-            }
-
-            const param_span = self->state->current_span();
-
-            var constness = ast::ASTConstness.Const;
-
-            if (self->state->is(.Var)) {
-                self->state->next();
-                constness = .Var;
-            }
-
-            const ident_opt = self->state->expect_ident();
-
-            // REVIEW
-            // Prevent cascading failure
-            if (ident_opt.is_none()) {
-                if (self->state->is(.EOF)) {
-                    ast::free_param_list(&list);
-                    return .None;
-                }
-
-                self->state->next();
-                continue;
-            }
-
-            const ident = ident_opt.unwrap();
-
-            var ty: Option<ast::ASTType> = .None;
-
-            if (self->state->is(.Colon)) {
-                self->state->next();
-
-                // Typed varargs
-                if (self->state->is(.TripleDot)) {
-                    self->state->next();
-
-                    switch (self->parse_type()) case .Some(variadic_type) else {
-                        ast::free_param_list(&list);
-                        return .None;
-                    }
-
-                    const type_id = self->program->create_node(.Type(variadic_type));
-                    variadic = .Some(.Typed(ident, type_id));
-                    break;
-                }
-
-                switch (self->parse_type()) case .Some(param_type) else {
-                    ast::free_param_list(&list);
-                    return .None;
-                }
-
-                ty = .Some(param_type);
-            }
-
-            const span = param_span.merge(self->state->last_parsed_span());
-
-            if (ident.str.as_str_const() == "self") {
-                switch (ty) {
-                    case .Some(self_type) => {
-                        const type_id = self->program->create_node(.Type(self_type));
-                        list.push(.SelfModifier(ast::ASTSelfModifier {
-                            ty: type_id,
-                            constness,
-                            span,
-                        }));
-                    }
-                    case .None => {
-                        report_error(
-                            self->allocator, 
-                            self->state->dctx, 
-                            span, 
-                            "`self` parameter must have an explicit type"
-                        );
-                        ast::free_param_list(&list);
-                        return .None;
-                    }
-                }
-            } else {
-                list.push(.FuncParam(ast::ASTFuncParam {
-                    ident,
-                    ty,
-                    constness,
-                    span,
-                }));
-            }
-
-            if (self->state->is(.Comma)) {
-                self->state->next();
-                continue;
-            }
-
-            break;
-        }
-
-        if (!self->state->expect(.RightParen)) {
-            ast::free_param_list(&list);
-            return .None;
-        }
-
-        return .Some(ast::ASTFuncParams { list, variadic });
+        return self->exprs().parse_func_params();
     }
 
     [[inline]]
@@ -1536,7 +1433,7 @@ pub struct ParserStmts {
         return .Some(self->program->create_node(.Block(node)));
     }
 
-    // Grammar: if (Expr) Block (else if (Expr) Block)* (else Block)?
+    /// Grammar: if (Expr) Block (else if (Expr) Block)* (else Block)?
     pub fn parse_if(self: Self*) {
         const start = self->state->current_span();
 
@@ -1615,7 +1512,7 @@ pub struct ParserStmts {
         });
     }
 
-    // Grammar: return Expr? ;
+    /// Grammar: return Expr? ;
     pub fn parse_return(self: Self*) {
         const start = self->state->current_span();
         self->state->next();
@@ -1643,7 +1540,7 @@ pub struct ParserStmts {
         self->state->pending->push(self->program->create_node(.Return(node)));
     }
 
-    // Grammar: while (Expr) Block
+    /// Grammar: while (Expr) Block
     pub fn parse_while(self: Self*) {
         const start = self->state->current_span();
         self->state->next();
@@ -1676,7 +1573,7 @@ pub struct ParserStmts {
         self->state->pending->push(self->program->create_node(.While(node)));
     }
 
-    // Grammar: for (Init? ; Cond ; Incr?) Block
+    /// Grammar: for (Init? ; Cond ; Incr?) Block
     //          for (Init ;) Block
     pub fn parse_for(self: Self*) {
         const start = self->state->current_span();
@@ -3087,7 +2984,7 @@ pub struct ParserStmts {
     }
 
 
-    // Grammar: union IDENT align(N)? <GenericParams>? (: Impl)? { (Field | Method)* }
+    /// Grammar: union IDENT align(N)? <GenericParams>? (: Impl)? { (Field | Method)* }
     pub fn parse_union(
         self: Self*,
         is_pub: bool,
@@ -3341,16 +3238,15 @@ pub struct ParserStmts {
 
     /// Grammar: type IDENT <GenericParams>? = Type ;
     fn parse_enum_variant(self: Self*) Option<ast::ASTEnumVariant> {
-        var exprs = ParserExprs.new(self->program, self->state);
-        return exprs.parse_enum_variant();
+        return self->exprs().parse_enum_variant();
     }
 
+    // FIXME: Remove?
     fn parse_integer_value(self: Self*) Option<usize> {
-        var exprs = ParserExprs.new(self->program, self->state);
-        return exprs.parse_unsuffixed_integer_value();
+        return self->exprs().parse_unsuffixed_integer_value();
     }
 
-    // Grammar: type IDENT <GenericParams>? = Type ;
+    /// Grammar: type IDENT <GenericParams>? = Type ;
     pub fn parse_type_alias(self: Self*, is_pub: bool) bool {
         const start = self->state->current_span();
         self->state->next();
@@ -3926,4 +3822,11 @@ fn make_func_modifiers(
         link_once: false,
         weak: false,
     };
+}
+
+/// Statement block parser handed to `ParserExprs` so that lambdas can
+/// parse their bodies without `exprs.cyrus` importing this module.
+fn parse_stmt_block(context: void*) Option<ast::NodeId> {
+    const stmts = @cast(ParserStmts*, context);
+    return stmts->parse_block_node();
 }

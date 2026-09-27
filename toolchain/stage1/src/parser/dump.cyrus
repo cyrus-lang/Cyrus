@@ -1223,7 +1223,7 @@ pub struct ASTDump {
         self->write_indent();
         self->writer.writeln("ASTExpr::Array");
         self->indent += 1;
-        self->dump_subtree("data_type", n->data_type);
+        self->dump_subtree("element_type", n->element_type);
         self->dump_node_list("element", &n->elements);
         self->indent -= 1;
     }
