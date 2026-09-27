@@ -1,0 +1,11 @@
+// @parse
+
+var = 1;
+
+/*@parse
+tests/stage1/parse/vars/failures/missing_name.cyrus:3:5: error: expected ident but got `=`
+      |
+    3 ~ var = 1;
+      |     ^
+      |
+@parse*/

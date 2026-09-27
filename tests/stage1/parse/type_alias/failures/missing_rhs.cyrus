@@ -1,0 +1,11 @@
+// @parse
+
+type T = ;
+
+/*@parse
+tests/stage1/parse/type_alias/failures/missing_rhs.cyrus:3:10: error: expected type
+      |
+    3 ~ type T = ;
+      |          ^
+      |
+@parse*/

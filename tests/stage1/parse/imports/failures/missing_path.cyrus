@@ -1,0 +1,11 @@
+// @parse
+
+import ;
+
+/*@parse
+tests/stage1/parse/imports/failures/missing_path.cyrus:3:8: error: expected ident but got `;`
+      |
+    3 ~ import ;
+      |        ^
+      |
+@parse*/

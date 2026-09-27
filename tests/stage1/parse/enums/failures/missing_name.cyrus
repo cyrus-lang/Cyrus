@@ -1,0 +1,19 @@
+// @parse
+
+enum {
+    A,
+}
+
+/*@parse
+tests/stage1/parse/enums/failures/missing_name.cyrus:3:6: error: expected ident but got `{`
+      |
+    3 ~ enum {
+      |      ^
+      |
+
+tests/stage1/parse/enums/failures/missing_name.cyrus:5:1: error: unexpected token `}`
+      |
+    5 ~ }
+      | ^
+      |
+@parse*/

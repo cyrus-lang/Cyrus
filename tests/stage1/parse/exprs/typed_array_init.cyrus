@@ -1,0 +1,43 @@
+// @parse
+
+const a = int32[3] { 1, 2, 3 };
+const b = uint8[] { 1, 2 };
+
+/*@parse
+ASTProgram
+    Node[0]:
+        ASTGlobalVar
+            ident: a
+            is_const: true
+            is_undef: false
+            is_static: false
+            expr:
+                ASTExpr::Array
+                    element_type:
+                        Type: int32
+                    element[0]:
+                        ASTExpr::Literal
+                            value: 1
+                    element[1]:
+                        ASTExpr::Literal
+                            value: 2
+                    element[2]:
+                        ASTExpr::Literal
+                            value: 3
+    Node[1]:
+        ASTGlobalVar
+            ident: b
+            is_const: true
+            is_undef: false
+            is_static: false
+            expr:
+                ASTExpr::Array
+                    element_type:
+                        Type: uint8
+                    element[0]:
+                        ASTExpr::Literal
+                            value: 1
+                    element[1]:
+                        ASTExpr::Literal
+                            value: 2
+@parse*/

@@ -1,0 +1,31 @@
+// @parse
+
+const a = MyResult<T, uint32>;
+const b = Vec<Vec<int32>>;
+
+/*@parse
+ASTProgram
+    Node[0]:
+        ASTGlobalVar
+            ident: a
+            is_const: true
+            is_undef: false
+            is_static: false
+            expr:
+                Type: ASTType::GenericInst
+                    base: MyResult
+                    type_arg[0]: T
+                    type_arg[1]: uint32
+    Node[1]:
+        ASTGlobalVar
+            ident: b
+            is_const: true
+            is_undef: false
+            is_static: false
+            expr:
+                Type: ASTType::GenericInst
+                    base: Vec
+                    type_arg[0]: ASTType::GenericInst
+                        base: Vec
+                        type_arg[0]: int32
+@parse*/

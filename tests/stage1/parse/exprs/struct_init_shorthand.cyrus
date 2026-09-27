@@ -1,0 +1,32 @@
+// @parse
+
+const q = Point { x, y };
+const r = Pair { first, second, };
+
+/*@parse
+ASTProgram
+    Node[0]:
+        ASTGlobalVar
+            ident: q
+            is_const: true
+            is_undef: false
+            is_static: false
+            expr:
+                ASTExpr::StructInit
+                    operand:
+                        ASTExpr::Ident
+                            ident: Point
+                    field_inits_count: 2
+    Node[1]:
+        ASTGlobalVar
+            ident: r
+            is_const: true
+            is_undef: false
+            is_static: false
+            expr:
+                ASTExpr::StructInit
+                    operand:
+                        ASTExpr::Ident
+                            ident: Pair
+                    field_inits_count: 2
+@parse*/

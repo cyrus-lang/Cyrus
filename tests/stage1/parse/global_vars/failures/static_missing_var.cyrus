@@ -1,0 +1,11 @@
+// @parse
+
+static = 1;
+
+/*@parse
+tests/stage1/parse/global_vars/failures/static_missing_var.cyrus:3:8: error: expected `var` but got `=`
+      |
+    3 ~ static = 1;
+      |        ^
+      |
+@parse*/

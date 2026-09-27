@@ -1,0 +1,20 @@
+// @parse
+
+interface I<T> {
+    fn m();
+}
+
+/*@parse
+ASTProgram
+    Node[0]:
+        ASTInterface
+            ident: I
+            generic_params_count: 1
+            generic_param[0]:
+                name: T
+            methods_count: 1
+            method[0]:
+                ASTFuncDecl
+                    ident: m
+                    params:
+@parse*/
