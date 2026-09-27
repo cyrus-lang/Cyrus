@@ -396,6 +396,12 @@ impl<'a> AnalysisContext<'a> {
             return None;
         };
 
+        if matches!(type_expr.kind, TypedExprKind::SemaType { .. }) {
+            if let Some(analyzed) = type_expr.ty.clone() {
+                target_type = analyzed;
+            }
+        }
+
         target_type = self.expand_sema_type(target_type, builtin_func.loc);
         target_type = self.substitute_type(&target_type);
 

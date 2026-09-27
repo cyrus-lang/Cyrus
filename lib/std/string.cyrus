@@ -230,31 +230,93 @@ pub fn try_str_as_int64(str: const uint8*) Option<int64> {
 pub fn try_str_as_int128(str: const uint8*) Option<int128> {
     @assert(str, "str cannot be empty");
 
-    var endptr: c_char*;
+    var i: usize = 0;
+    var negative = false;
 
-    errno = 0;
-    const result = strtoll(str, &endptr, 10);
+    if (str[0] == '-') {
+        negative = true;
+        i = 1;
+    } else if (str[0] == '+') {
+        i = 1;
+    }
 
-    if ((errno == ERANGE || endptr == str) || *endptr != '\0') {
+    if (str[i] == '\0') {
         return .None;
     }
 
-    return .Some(@cast(int128, result));
+    var all_ones: uint128 = 0;
+    all_ones = ~all_ones;
+
+    const limit: uint128 = (all_ones >> 1) + 1;
+
+    var value: uint128 = 0;
+
+    while (str[i] != '\0') {
+        const char = str[i];
+
+        if (char < '0' || char > '9') {
+            return .None;
+        }
+
+        const digit: uint128 = @cast(uint128, char - '0');
+
+        if (value > (limit - digit) / 10) {
+            return .None;
+        }
+
+        value = value * 10 + digit;
+        i += 1;
+    }
+
+    const magnitude = @cast(int128, value);
+
+    if (negative) {
+        return .Some(-magnitude);
+    }
+
+    return .Some(magnitude);
 }
 
 pub fn try_str_as_uint128(str: const uint8*) Option<uint128> {
     @assert(str, "str cannot be empty");
 
-    var endptr: c_char*;
+    var i: usize = 0;
 
-    errno = 0;
-    const result = strtoull(str, &endptr, 10);
-
-    if ((errno == ERANGE || endptr == str) || *endptr != '\0') {
+    if (str[0] == '-') {
         return .None;
     }
 
-    return .Some(@cast(uint128, result));
+    if (str[0] == '+') {
+        i = 1;
+    }
+
+    if (str[i] == '\0') {
+        return .None;
+    }
+
+    var limit: uint128 = 0;
+    limit = ~limit;
+
+    var value: uint128 = 0;
+
+    while (str[i] != '\0') {
+        const char = str[i];
+
+        if (char < '0' || char > '9') {
+            return .None;
+        }
+
+        const digit: uint128 = @cast(uint128, char - '0');
+
+        if (value > (limit - digit) / 10) {
+            return .None;
+        }
+
+        value = value * 10 + digit;
+        i += 1;
+    }
+
+    return .Some(value);
 }
 
 pub fn try_str_as_float64(str: const uint8*) Option<float64> {

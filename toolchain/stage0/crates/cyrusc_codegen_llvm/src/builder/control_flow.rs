@@ -99,8 +99,16 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         let parent_block = self.block_reg.cur_block.unwrap();
         let exit_block = self.new_basic_block("switch_on_enum.exit");
 
-        let else_block = if let Some(block_stmt) = &switch_stmt.default {
-            let else_block = self.new_basic_block("switch_on_enum.default");
+        let else_block = if switch_stmt.default.is_some() {
+            self.new_basic_block("switch_on_enum.default")
+        } else {
+            exit_block
+        };
+
+        self.emit_basic_block(parent_block);
+        let switch_inst = self.llvm_builder.build_switch(enum_value, else_block, &[]).unwrap();
+
+        if let Some(block_stmt) = &switch_stmt.default {
             self.emit_basic_block(else_block);
             self.emit_body(block_stmt);
 
@@ -109,14 +117,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
                     self.llvm_builder.build_unconditional_branch(exit_block).unwrap();
                 }
             }
-
-            else_block
-        } else {
-            exit_block
-        };
-
-        self.emit_basic_block(parent_block);
-        let switch_inst = self.llvm_builder.build_switch(enum_value, else_block, &[]).unwrap();
+        }
 
         let mut cases: Vec<(IntValue<'ll>, BasicBlock<'ll>)> = Vec::new();
 
@@ -193,17 +194,17 @@ impl<'ll> CodeGenIRBuilder<'ll> {
             })
         });
 
-        if all_cases_return && switch_stmt.all_cases_covered {
+        let exit_in_use: bool = unsafe {
+            let first_use: *const LLVMUse = LLVMGetFirstUse(LLVMBasicBlockAsValue(exit_block.as_mut_ptr()));
+            !first_use.is_null()
+        };
+
+        if all_cases_return && switch_stmt.all_cases_covered && !exit_in_use {
             self.emit_basic_block(exit_block);
             self.llvm_builder.build_unreachable().unwrap();
             self.block_reg.cur_block = None;
             return;
         }
-
-        let exit_in_use: bool = unsafe {
-            let first_use: *const LLVMUse = LLVMGetFirstUse(LLVMBasicBlockAsValue(exit_block.as_mut_ptr()));
-            !first_use.is_null()
-        };
 
         if exit_in_use {
             self.emit_basic_block(exit_block);
@@ -232,26 +233,25 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         let parent_block = self.block_reg.cur_block.unwrap();
         let exit_block = self.new_basic_block("switch_on_enum.exit");
 
-        let else_block = {
-            if let Some(block_stmt) = &switch_stmt.default {
-                let else_block = self.new_basic_block("switch_on_enum.default");
-                self.emit_basic_block(else_block);
-                self.emit_body(block_stmt);
-
-                if let Some(cur_block) = &self.block_reg.cur_block {
-                    if cur_block.get_terminator().is_none() {
-                        self.llvm_builder.build_unconditional_branch(exit_block).unwrap();
-                    }
-                }
-
-                else_block
-            } else {
-                exit_block
-            }
+        let else_block = if switch_stmt.default.is_some() {
+            self.new_basic_block("switch_on_enum.default")
+        } else {
+            exit_block
         };
 
         self.emit_basic_block(parent_block);
         let switch_inst = self.llvm_builder.build_switch(tag_value, else_block, &[]).unwrap();
+
+        if let Some(block_stmt) = &switch_stmt.default {
+            self.emit_basic_block(else_block);
+            self.emit_body(block_stmt);
+
+            if let Some(cur_block) = &self.block_reg.cur_block {
+                if cur_block.get_terminator().is_none() {
+                    self.llvm_builder.build_unconditional_branch(exit_block).unwrap();
+                }
+            }
+        }
 
         let tag_type = self
             .emit_type(*enum_type.tag_type_or_infer_or_default())
@@ -368,16 +368,17 @@ impl<'ll> CodeGenIRBuilder<'ll> {
             })
         });
 
-        if all_cases_return && switch_stmt.all_cases_covered {
-            self.emit_basic_block(exit_block);
-            self.llvm_builder.build_unreachable().unwrap();
-            self.block_reg.cur_block = None;
-        }
-
         let exit_in_use: bool = unsafe {
             let first_use: *const LLVMUse = LLVMGetFirstUse(LLVMBasicBlockAsValue(exit_block.as_mut_ptr()));
             !first_use.is_null()
         };
+
+        if all_cases_return && switch_stmt.all_cases_covered && !exit_in_use {
+            self.emit_basic_block(exit_block);
+            self.llvm_builder.build_unreachable().unwrap();
+            self.block_reg.cur_block = None;
+            return;
+        }
 
         if exit_in_use {
             self.emit_basic_block(exit_block);
@@ -406,18 +407,8 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         let parent_block = self.block_reg.cur_block.unwrap();
         let exit_block = self.new_basic_block("switch.exit");
 
-        let else_block = if let Some(block_stmt) = &switch_stmt.default {
-            let else_block = self.new_basic_block("switch.default");
-            self.emit_basic_block(else_block);
-            self.emit_body(block_stmt);
-
-            if let Some(cur_block) = &self.block_reg.cur_block {
-                if cur_block.get_terminator().is_none() {
-                    self.llvm_builder.build_unconditional_branch(exit_block).unwrap();
-                }
-            }
-
-            else_block
+        let else_block = if switch_stmt.default.is_some() {
+            self.new_basic_block("switch.default")
         } else {
             exit_block
         };
@@ -427,6 +418,17 @@ impl<'ll> CodeGenIRBuilder<'ll> {
             .llvm_builder
             .build_switch(rvalue.as_basic_value().into_int_value(), else_block, &[])
             .unwrap();
+
+        if let Some(block_stmt) = &switch_stmt.default {
+            self.emit_basic_block(else_block);
+            self.emit_body(block_stmt);
+
+            if let Some(cur_block) = &self.block_reg.cur_block {
+                if cur_block.get_terminator().is_none() {
+                    self.llvm_builder.build_unconditional_branch(exit_block).unwrap();
+                }
+            }
+        }
 
         let mut cases: Vec<(IntValue<'ll>, BasicBlock<'ll>)> = Vec::new();
 
@@ -482,16 +484,17 @@ impl<'ll> CodeGenIRBuilder<'ll> {
             })
         });
 
-        if all_cases_return && switch_stmt.all_cases_covered {
-            self.emit_basic_block(exit_block);
-            self.llvm_builder.build_unreachable().unwrap();
-            self.block_reg.cur_block = None;
-        }
-
         let exit_in_use: bool = unsafe {
             let first_use: *const LLVMUse = LLVMGetFirstUse(LLVMBasicBlockAsValue(exit_block.as_mut_ptr()));
             !first_use.is_null()
         };
+
+        if all_cases_return && switch_stmt.all_cases_covered && !exit_in_use {
+            self.emit_basic_block(exit_block);
+            self.llvm_builder.build_unreachable().unwrap();
+            self.block_reg.cur_block = None;
+            return;
+        }
 
         if exit_in_use {
             self.emit_basic_block(exit_block);

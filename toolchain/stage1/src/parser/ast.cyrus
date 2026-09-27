@@ -361,6 +361,7 @@ fn free_expr(expr: ASTExpr*) {
     switch (*expr) {
         case .EnumStructVariantInit(var n) => n.field_inits.free();
         case .ModuleImport(var n) => free_segments(&n.segments);
+        case .Lambda(var n) => free_func_params(&n.params);
         case .UnnamedStructValue(var n) => n.fields.free();
         case .UnnamedUnionValue(var n) => n.fields.free();
         case .StructInit(var n) => n.field_inits.free();
@@ -368,6 +369,7 @@ fn free_expr(expr: ASTExpr*) {
         case .Builtin(var n) => free_builtin(&n);
         case .Tuple(var n) => n.elements.free();
         case .Array(var n) => n.elements.free();
+        case .Type(var n) => free_type(&n);
 
         case .UnnamedEnumValue(var n) => {
             switch (n.kind) {
@@ -615,7 +617,7 @@ pub struct ASTInfixExpr {
 }
 
 pub struct ASTArrayExpr {
-    pub data_type: NodeId,
+    pub element_type: NodeId,
     pub elements: Vec<NodeId>,
     pub span: Span,
 }

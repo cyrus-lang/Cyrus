@@ -21,13 +21,30 @@ import tokens{
 import .::state{ParserState};
 import .::ast;
 
+pub type BlockParserFn = fn(void*) Option<ast::NodeId>;
+
+pub type BlockParser = struct {
+    handler: BlockParserFn,
+    context: void*
+};
+
 pub struct ParserExprs {
     program: ast::ASTProgram*,
     state: ParserState*,
+    block_parser: Option<BlockParser>,
 
     [[inline]]
     pub fn new(program: ast::ASTProgram*, state: ParserState*) Self {
-        return Self { program, state };
+        return Self {
+            program,
+            state,
+            block_parser: .None
+        };
+    }
+
+    [[inline]]
+    pub fn set_block_parser(self: Self*, parser: BlockParser) {
+        self->block_parser = .Some(parser);
     }
 
     /* ************* Expressions ************* */
@@ -98,21 +115,29 @@ pub struct ParserExprs {
         const start = self->state->current_span();
 
         switch (*self->state->current()->kind) {
-            case .Literal(_) | .True | .False | .Null => {
-                const token = *self->state->current();
-                self->state->next();
-                return .Some(self->create_expr(.Literal(token)));
-            }
+            case .Struct => return self->parse_unnamed_struct_value(start);
+
+            case .Union => return self->parse_unnamed_union_value(start);
+
+            case .Function => return self->parse_lambda_expr(start);
+
+            case .Dynamic => return self->parse_dynamic_expr(start);
+
+            case .Dot => return self->parse_unnamed_enum_value(start);
 
             case .Ident(str) => {
                 const ident = ast::ASTIdent { str, span: start };
                 self->state->next();
 
                 if (self->state->is(.DoubleColon)) {
-                    return self->parse_module_import(ident);
+                    switch (self->parse_module_import_value(ident)) case .Some(path) else {
+                        return .None;
+                    }
+
+                    return self->finish_path_expr(.ModuleImport(path), start);
                 }
 
-                return .Some(self->create_expr(.Ident(ident)));
+                return self->finish_path_expr(.Ident(ident), start);
             }
 
             case .Minus | .Bang | .Tilde => {
@@ -189,13 +214,841 @@ pub struct ParserExprs {
                 return .Some(self->create_expr(.UntypedArray(node)));
             }
 
+            case .Literal(_) | .True | .False | .Null => {
+                const token = *self->state->current();
+                self->state->next();
+                return .Some(self->create_expr(.Literal(token)));
+            }
+
             case .At => return self->parse_builtin_or_inline_asm();
 
             else => {
-                report_error(self->state->allocator, self->state->dctx, start, "expected expression");
+                // Types are first-class expressions
+                if (self->starts_type(*self->state->current()->kind)) {
+                    switch (self->parse_type()) case .Some(ty) else {
+                        return .None;
+                    }
+
+                    if (self->state->is(.LeftBrace)) {
+                        return self->parse_array_literal(
+                            self->program->create_node(.Type(ty)),
+                            start
+                        );
+                    }
+
+                    return .Some(self->create_expr(.Type(ty)));
+                }
+
+                report_error(
+                    self->state->allocator, 
+                    self->state->dctx, 
+                    start, 
+                    "expected expression"
+                );
                 return .None;
             }
         }
+    }
+
+    /// Grammar: IDENT <TypeArgs>? ( `{` FieldInits `}` )?
+    ///
+    /// Shared by identifiers and module paths. Resolves the `<` ambiguity
+    /// between generic type arguments and the less-than operator, then
+    /// turns a following `{` into a struct initialization.
+    fn finish_path_expr(
+        self: Self*,
+        base: ast::ASTType,
+        start: Span
+    ) Option<ast::NodeId> {
+        if (self->state->is(.LessThan) && self->type_args_ahead()) {
+            switch (self->parse_type_args()) case .Some(type_args) else {
+                return .None;
+            }
+
+            const base_id = self->program->create_node(.Type(base));
+            const ty = ast::ASTType.GenericInst(ast::ASTGenericInst {
+                base: base_id,
+                type_args,
+                span: start.merge(self->state->last_parsed_span()),
+            });
+            const operand = self->create_expr(.Type(ty));
+
+            if (self->state->is(.LeftBrace)) {
+                return self->parse_struct_init(operand, start);
+            }
+
+            return .Some(operand);
+        }
+
+        if (self->state->is(.LeftBrace)) {
+            return self->parse_struct_init(self->type_as_path_expr(base), start);
+        }
+
+        return .Some(self->type_as_path_expr(base));
+    }
+
+    /// Turns a path-like type into an equivalent expression.
+    fn type_as_path_expr(self: Self*, base: ast::ASTType) ast::NodeId {
+        switch (base) {
+            case .ModuleImport(path) => return self->create_expr(.ModuleImport(path));
+            case .Ident(ident) => return self->create_expr(.Ident(ident));
+            else => return self->create_expr(.Type(base));
+        }
+    }
+
+    /// Grammar: `{` ( IDENT ( `:` Expr )? , )* `}`
+    fn parse_struct_init(
+        self: Self*,
+        operand: ast::NodeId,
+        start: Span
+    ) Option<ast::NodeId> {
+        if (!self->state->expect(.LeftBrace)) {
+            return .None;
+        }
+
+        switch (self->parse_field_inits()) case .Some(field_inits) else {
+            return .None;
+        }
+
+        const node = ast::ASTStructInit {
+            operand,
+            field_inits,
+            span: start.merge(self->state->last_parsed_span()),
+        };
+        return .Some(self->create_expr(.StructInit(node)));
+    }
+
+    /// Parses `IDENT ( `:` Expr )?` entries until the closing `}`.
+    ///
+    /// The opening brace must already be consumed by the caller.
+    fn parse_field_inits(self: Self*) Option<Vec<ast::ASTFieldInit>> {
+        var field_inits: Vec<ast::ASTFieldInit> = Vec.new(self->state->allocator);
+
+        while (true) {
+            if (self->state->is(.RightBrace)) {
+                self->state->next();
+                break;
+            }
+
+            if (self->state->is(.EOF)) {
+                // FIXME: convert to helper method
+                report_error(
+                    self->state->allocator,
+                    self->state->dctx,
+                    self->state->current_span(),
+                    "missing closing brace `}`"
+                );
+                field_inits.free();
+                return .None;
+            }
+
+            const field_start = self->state->current_span();
+
+            switch (self->state->expect_ident()) case .Some(name) else {
+                field_inits.free();
+                return .None;
+            }
+
+            var value: ast::NodeId = undefined;
+
+            if (self->state->is(.Comma) || self->state->is(.RightBrace)) {
+                // Shorthand for `ident: ident`.
+                value = self->create_expr(.Ident(name));
+            } else {
+                if (!self->state->expect(.Colon)) {
+                    field_inits.free();
+                    return .None;
+                }
+
+                switch (self->parse_expr()) case .Some(parsed) else {
+                    field_inits.free();
+                    return .None;
+                }
+                value = parsed;
+            }
+
+            field_inits.push(ast::ASTFieldInit {
+                ident: name,
+                value,
+                span: field_start.merge(self->state->last_parsed_span()),
+            });
+
+            if (self->state->is(.RightBrace)) {
+                self->state->next();
+                break;
+            }
+
+            if (!self->state->expect(.Comma)) {
+                field_inits.free();
+                return .None;
+            }
+        }
+
+        return .Some(field_inits);
+    }
+
+    // FIXME: Must be removed
+    /// Converts generic field inits into the enum variant flavour,
+    /// taking ownership of `list`.
+    fn into_variant_field_inits(
+        self: Self*,
+        list: Vec<ast::ASTFieldInit>*
+    ) Vec<ast::ASTEnumStructVariantFieldInit> {
+        var fields: Vec<ast::ASTEnumStructVariantFieldInit> = 
+            Vec.with_capacity(self->state->allocator, list->len());
+
+        for (var i: usize = 0; i < list->len(); i += 1) {
+            const field = list->get_const(i).unwrap();
+
+            fields.push(ast::ASTEnumStructVariantFieldInit {
+                name: field->ident,
+                value: field->value,
+                span: field->span,
+            });
+        }
+
+        list->free();
+        return fields;
+    }
+
+    /// Grammar: `struct` ( `align` `(` Num `)` )? `{` FieldInits `}`
+    fn parse_unnamed_struct_value(self: Self*, start: Span) Option<ast::NodeId> {
+        self->state->next();
+
+        var align: Option<usize> = .None;
+
+        if (self->state->is_ident_str("align")) {
+            self->state->next();
+
+            if (!self->state->expect(.LeftParen)) {
+                return .None;
+            }
+
+            switch (self->parse_unsuffixed_integer_value()) {
+                case .Some(value) => align = .Some(value);
+                else => {
+                    report_error(
+                        self->state->allocator,
+                        self->state->dctx,
+                        self->state->current_span(),
+                        "integer literals cannot have suffixes in this context"
+                    );
+                    return .None;
+                }
+            }
+
+            if (!self->state->expect(.RightParen)) {
+                return .None;
+            }
+        }
+
+        if (!self->state->expect(.LeftBrace)) {
+            return .None;
+        }
+
+        switch (self->parse_field_inits()) case .Some(parsed) else {
+            return .None;
+        }
+
+        var field_inits = parsed;
+        var fields: Vec<ast::ASTUnnamedStructValueField> = Vec.new(self->state->allocator);
+
+        for (var i: usize = 0; i < field_inits.len(); i += 1) {
+            const field = field_inits.get_const(i).unwrap();
+            fields.push(ast::ASTUnnamedStructValueField {
+                name: field->ident,
+                value: field->value,
+                span: field->span,
+            });
+        }
+        field_inits.free();
+
+        const node = ast::ASTUnnamedStructValue {
+            fields,
+            repr_attr: .None,
+            align,
+            span: start.merge(self->state->last_parsed_span()),
+        };
+        return .Some(self->create_expr(.UnnamedStructValue(node)));
+    }
+
+    /// Grammar: `union` `{` FieldInits `}`
+    fn parse_unnamed_union_value(self: Self*, start: Span) Option<ast::NodeId> {
+        self->state->next();
+
+        if (!self->state->expect(.LeftBrace)) {
+            return .None;
+        }
+
+        switch (self->parse_field_inits()) case .Some(var field_inits) else {
+            return .None;
+        }
+
+        var fields: Vec<ast::ASTUnnamedUnionValueField> = Vec.new(self->state->allocator);
+
+        for (var i: usize = 0; i < field_inits.len(); i += 1) {
+            const field = field_inits.get_const(i).unwrap();
+            fields.push(ast::ASTUnnamedUnionValueField {
+                name: field->ident,
+                value: field->value,
+                span: field->span,
+            });
+        }
+        field_inits.free();
+
+        const node = ast::ASTUnnamedUnionValue {
+            fields,
+            span: start.merge(self->state->last_parsed_span()),
+        };
+        return .Some(self->create_expr(.UnnamedUnionValue(node)));
+    }
+
+    /// Grammar: `.` IDENT ( `(` Expr,* `}` | `{` FieldInits `}` )?
+    fn parse_unnamed_enum_value(self: Self*, start: Span) Option<ast::NodeId> {
+        self->state->next();
+
+        switch (self->state->expect_ident()) case .Some(ident) else {
+            return .None;
+        }
+
+        if (self->state->is(.LeftParen)) {
+            self->state->next();
+
+            switch (self->parse_expr_list(.RightParen)) case .Some(values) else {
+                return .None;
+            }
+
+            const node = ast::ASTUnnamedEnumValue {
+                ident,
+                kind: .Tuple(values),
+                span: start.merge(self->state->last_parsed_span()),
+            };
+            return .Some(self->create_expr(.UnnamedEnumValue(node)));
+        }
+
+        if (self->state->is(.LeftBrace)) {
+            self->state->next();
+
+            // FIXME: Make a parse_enum_variants_init and use it instead of parse_field_inits
+            switch (self->parse_field_inits()) case .Some(var field_inits) else {
+                return .None;
+            }
+
+            const node = ast::ASTUnnamedEnumValue {
+                ident,
+                kind: .Struct(self->into_variant_field_inits(&field_inits)),
+                span: start.merge(self->state->last_parsed_span()),
+            };
+            return .Some(self->create_expr(.UnnamedEnumValue(node)));
+        }
+
+        const node = ast::ASTUnnamedEnumValue {
+            ident,
+            kind: .Plain,
+            span: start.merge(self->state->last_parsed_span()),
+        };
+        return .Some(self->create_expr(.UnnamedEnumValue(node)));
+    }
+
+    /// Grammar: `dynamic` Expr
+    fn parse_dynamic_expr(self: Self*, start: Span) Option<ast::NodeId> {
+        self->state->next();
+
+        switch (self->parse_expr_with_precedence(.Prefix)) case .Some(operand) else {
+            return .None;
+        }
+
+        const node = ast::ASTDynamic {
+            operand,
+            span: start.merge(self->state->last_parsed_span()),
+        };
+        return .Some(self->create_expr(.Dynamic(node)));
+    }
+
+    /// Grammar: `fn` Params Type? Block
+    ///
+    /// The body is a statement block, so it is parsed by the callback
+    /// installed by `ParserStmts`.
+    fn parse_lambda_expr(self: Self*, start: Span) Option<ast::NodeId> {
+        self->state->next();
+
+        switch (self->parse_func_params()) case .Some(var params) else {
+            return .None;
+        }
+
+        var ret_type: ast::ASTType = .Primitive(.Void);
+
+        if (!self->state->is(.LeftBrace)) {
+            switch (self->parse_type()) case .Some(ty) else {
+                ast::free_func_params(&params);
+                return .None;
+            }
+            ret_type = ty;
+        }
+
+        const ret_node = self->program->create_node(.Type(ret_type));
+
+        const block_parser = self->block_parser.unwrap();
+        
+        switch ((block_parser.handler)(block_parser.context)) case .Some(body) else {
+            ast::free_func_params(&params);
+            return .None;
+        }
+
+        const node = ast::ASTLambda {
+            params,
+            body,
+            ret_type: ret_node,
+            span: start.merge(self->state->last_parsed_span()),
+        };
+        return .Some(self->create_expr(.Lambda(node)));
+    }
+
+    /// Grammar: Type `{` Expr,* `}`
+    fn parse_array_literal(
+        self: Self*,
+        element_type: ast::NodeId,
+        start: Span
+    ) Option<ast::NodeId> {
+        if (!self->state->expect(.LeftBrace)) {
+            return .None;
+        }
+
+        switch (self->parse_expr_list(.RightBrace)) case .Some(elements) else {
+            return .None;
+        }
+
+        const node = ast::ASTArrayExpr {
+            element_type,
+            elements,
+            span: start.merge(self->state->last_parsed_span()),
+        };
+        return .Some(self->create_expr(.Array(node)));
+    }
+
+    /// Grammar: ( var? IDENT ( : Type )? , )* ...? )
+    pub fn parse_func_params(self: Self*) Option<ast::ASTFuncParams> {
+        if (!self->state->expect(.LeftParen)) {
+            return .None;
+        }
+
+        var list: Vec<ast::ASTFuncParamKind> = Vec.new(self->state->allocator);
+        var variadic: Option<ast::ASTFuncVariadicParam> = .None;
+
+        while (!self->state->is(.RightParen)) {
+            // C style varargs
+            if (self->state->is(.TripleDot)) {
+                self->state->next();
+                variadic = .Some(.UntypedCStyle);
+                break;
+            }
+
+            const param_span = self->state->current_span();
+
+            var constness = ast::ASTConstness.Const;
+
+            if (self->state->is(.Var)) {
+                self->state->next();
+                constness = .Var;
+            }
+
+            const ident_opt = self->state->expect_ident();
+
+            // Prevent cascading failure
+            if (ident_opt.is_none()) {
+                if (self->state->is(.EOF)) {
+                    ast::free_param_list(&list);
+                    return .None;
+                }
+
+                self->state->next();
+                continue;
+            }
+
+            const ident = ident_opt.unwrap();
+
+            var ty: Option<ast::ASTType> = .None;
+
+            if (self->state->is(.Colon)) {
+                self->state->next();
+
+                // Typed varargs
+                if (self->state->is(.TripleDot)) {
+                    self->state->next();
+
+                    switch (self->parse_type()) case .Some(variadic_type) else {
+                        ast::free_param_list(&list);
+                        return .None;
+                    }
+
+                    const type_id = self->program->create_node(.Type(variadic_type));
+                    variadic = .Some(.Typed(ident, type_id));
+                    break;
+                }
+
+                switch (self->parse_type()) case .Some(param_type) else {
+                    ast::free_param_list(&list);
+                    return .None;
+                }
+
+                ty = .Some(param_type);
+            }
+
+            const span = param_span.merge(self->state->last_parsed_span());
+
+            if (ident.str.as_str_const() == "self") {
+                switch (ty) {
+                    case .Some(self_type) => {
+                        const type_id = self->program->create_node(.Type(self_type));
+                        
+                        list.push(.SelfModifier(ast::ASTSelfModifier {
+                            ty: type_id,
+                            constness,
+                            span,
+                        }));
+                    }
+                    case .None => {
+                        report_error(
+                            self->state->allocator,
+                            self->state->dctx,
+                            span,
+                            "`self` parameter must have an explicit type"
+                        );
+                        ast::free_param_list(&list);
+                        return .None;
+                    }
+                }
+            } else {
+                list.push(.FuncParam(ast::ASTFuncParam {
+                    ident,
+                    ty,
+                    constness,
+                    span,
+                }));
+            }
+
+            if (self->state->is(.Comma)) {
+                self->state->next();
+                continue;
+            }
+
+            break;
+        }
+
+        if (!self->state->expect(.RightParen)) {
+            ast::free_param_list(&list);
+            return .None;
+        }
+
+        return .Some(ast::ASTFuncParams { list, variadic });
+    }
+
+    /* ************* Generic type arguments ************* */
+
+    /// Decides whether the `<` at the cursor opens a type argument list
+    /// instead of being a less-than operator.
+    fn type_args_ahead(self: Self*) bool {
+        if (!self->state->is(.LessThan)) {
+            return false;
+        }
+
+        var i: usize = 0;
+        var depth: isize = 0;
+
+        while (true) {
+            var token: const Token* = undefined;
+            switch (self->state->peek_n(i)) {
+                case .Some(t) => token = t;
+                else => return false;
+            }
+
+            switch (*token->kind) {
+                case .LessThan => {
+                    depth += 1;
+
+                    // Scan the tokens inside this pair of angle brackets up
+                    // to the matching `>`.
+                    var j = i + 1;
+
+                    while (true) {
+                        var inner: const Token* = undefined;
+                        var have_inner = true;
+                        switch (self->state->peek_n(j)) {
+                            case .Some(t) => inner = t;
+                            else => have_inner = false;
+                        }
+
+                        if (!have_inner) {
+                            break;
+                        }
+
+                        if (*inner->kind == .GreaterThan) {
+                            break;
+                        }
+
+                        if (self->token_disqualifies_type_arg(*inner->kind)) {
+                            return false;
+                        }
+
+                        j += 1;
+                    }
+                }
+                case .GreaterThan => {
+                    depth -= 1;
+
+                    if (depth == 0) {
+                        var after: const Token* = undefined;
+                        var have_after = true;
+                        switch (self->state->peek_n(i + 1)) {
+                            case .Some(t) => after = t;
+                            else => have_after = false;
+                        }
+
+                        if (!have_after) {
+                            return true;
+                        }
+
+                        switch (*after->kind) {
+                            case .LeftBracket => {
+                                return self->check_for_array_init_after_generic(i + 1);
+                            }
+                            case .LeftBrace | .Dot | .LeftParen => {
+                                return true;
+                            }
+                            else => {
+                                if (self->token_disqualifies_type_arg(*after->kind)) {
+                                    return false;
+                                }
+                            }
+                        }
+
+                        return true;
+                    }
+                }
+                case .Semicolon | .EOF => return false;
+            }
+
+            i += 1;
+        }
+
+        return false;
+    }
+
+    /// True for tokens that cannot follow a type expression, meaning the
+    /// preceding `<` was a comparison operator.
+    fn token_disqualifies_type_arg(self: Self*, kind: TokenKind) bool {
+        switch (kind) {
+            case .Dot
+                | .LeftParen
+                | .LeftBrace
+                | .LeftBracket
+                | .RightBracket
+                | .LessThan
+                | .GreaterThan
+                | .Comma
+                | .Asterisk
+                | .Underscore
+                | .RightParen
+                | .RightBrace
+                | .Semicolon
+                | .Const => return false;
+
+            case .Literal(_) 
+                | .Assign 
+                | .DoubleColon
+                | .Plus 
+                | .Minus 
+                | .Slash 
+                | .Percent
+                | .DoubleQuote 
+                | .SingleQuote
+                | .Equal 
+                | .NotEqual 
+                | .Bang
+                | .LessEqual 
+                | .GreaterEqual
+                | .Pipe 
+                | .AmpTilde 
+                | .Tilde
+                | .ShiftLeft 
+                | .ShiftRight
+                | .Increment 
+                | .Decrement
+                | .DoubleDot 
+                | .TripleDot
+                | .ThinArrow 
+                | .FatArrow
+                | .True 
+                | .False 
+                | .Null 
+                | .And 
+                | .Or 
+                | .Caret => return true;
+
+            else => return !self->starts_type(kind);
+        }
+    }
+
+    /// True for the tokens `starts_type` accepts, as a value.
+    fn starts_type(self: Self*, kind: TokenKind) bool {
+        switch (kind) {
+            case .Int8
+                | .Int16
+                | .Int32
+                | .Int64
+                | .Int128
+                | .IntPtr
+                | .ISize
+                | .UInt8
+                | .UInt16
+                | .UInt32
+                | .UInt64
+                | .UInt128
+                | .UIntPtr
+                | .USize
+                | .Float16
+                | .Float32
+                | .Float64
+                | .Float128
+                | .Bool
+                | .Void
+                | .Const
+                | .Function
+                | .Struct
+                | .Union
+                | .Enum => return true;
+
+            else => return false;
+        }
+    }
+
+    /// True when `GenericType<T>[ ... ]` is an array initializer rather
+    /// than a type with an array type argument.
+    fn check_for_array_init_after_generic(self: Self*, start: usize) bool {
+        var i = start;
+        var bracket_depth: isize = 0;
+
+        while (true) {
+            var token: const Token* = undefined;
+            switch (self->state->peek_n(i)) {
+                case .Some(t) => token = t;
+                else => return false;
+            }
+
+            switch (*token->kind) {
+                case .LeftBracket => {
+                    bracket_depth += 1;
+                    i += 1;
+                }
+                case .RightBracket => {
+                    bracket_depth -= 1;
+                    i += 1;
+
+                    if (bracket_depth == 0) {
+                        var next: const Token* = undefined;
+                        var have_next = true;
+                        switch (self->state->peek_n(i)) {
+                            case .Some(t) => next = t;
+                            else => have_next = false;
+                        }
+
+                        if (!have_next) {
+                            return false;
+                        }
+
+                        return *next->kind == .LeftBrace;
+                    }
+                }
+                else => i += 1;
+            }
+        }
+
+        return false;
+    }
+
+    /// True when the `[ ... ]` chain starting at the cursor is closed by
+    /// an initializer block: `T[2][3]{ ... }`.
+    fn array_init_ahead(self: Self*) bool {
+        var i: usize = 0;
+        var depth: isize = 0;
+
+        while (true) {
+            var token: const Token* = undefined;
+            switch (self->state->peek_n(i)) {
+                case .Some(t) => token = t;
+                else => return false;
+            }
+
+            switch (*token->kind) {
+                case .LeftBracket => {
+                    depth += 1;
+                    i += 1;
+                }
+                case .RightBracket => {
+                    depth -= 1;
+                    i += 1;
+
+                    if (depth <= 0) {
+                        var next: const Token* = undefined;
+                        var have_next = true;
+                        switch (self->state->peek_n(i)) {
+                            case .Some(t) => next = t;
+                            else => have_next = false;
+                        }
+
+                        if (!have_next) {
+                            return false;
+                        }
+
+                        return *next->kind == .LeftBrace;
+                    }
+                }
+                else => i += 1;
+            }
+        }
+
+        return false;
+    }
+
+    /// Builds the array type of an initializer from its element type
+    /// expression and the dimensions in source order. The element type
+    /// expression node is rewritten into a type node in place, so that an
+    /// owned payload is moved instead of copied twice.
+    fn create_array_init_type(
+        self: Self*,
+        operand: ast::NodeId,
+        indices: const Vec<ast::NodeId>*
+    ) Option<ast::NodeId> {
+        switch (self->program->nodes.get(operand)) case .Some(slot) else {
+            return .None;
+        }
+
+        switch (*slot) {
+            case .Expr(var expr) => switch (expr) {
+                case .ModuleImport(path) => *slot = .Type(.ModuleImport(path));
+                case .Ident(ident) => *slot = .Type(.Ident(ident));
+                case .Type(var ty) => *slot = .Type(ty);
+                else => return .None;
+            }
+            else => return .None;
+        }
+
+        var element_id: ast::NodeId = operand;
+
+        // The last dimension is the innermost one
+        for (var i: usize = indices->len(); i > 0; i -= 1) {
+            const size = indices->get_owned(i - 1).unwrap();
+
+            const array_type: ast::ASTType = .Array(ast::ASTArrayType {
+                size: .Fixed(size),
+                element_type: element_id,
+                span: self->state->current_span(),
+            });
+
+            element_id = self->program->create_node(.Type(array_type));
+        }
+
+        return .Some(element_id);
     }
 
     /// Grammar: (asm ... | IDENT ( Expr, ... ))
@@ -210,7 +1063,7 @@ pub struct ParserExprs {
     /// Grammar: @ IDENT ( Expr, ... )
     fn parse_builtin_expr(self: Self*) Option<ast::NodeId> {
         const start = self->state->current_span();
-        self->state->next(); // consume `@`
+        self->state->next();
 
         switch (self->state->expect_ident()) case .Some(name) else {
             return .None;
@@ -239,7 +1092,7 @@ pub struct ParserExprs {
     /// Grammar: @ asm volatile? ( String, ... (: Operand, ... )? (: Operand, ... )? (: Clobber, ... )? )
     fn parse_inline_asm(self: Self*) Option<ast::NodeId> {
         const start = self->state->current_span();
-        self->state->next(); // consume `@`
+        self->state->next();
 
         if (!self->state->is_ident_str("asm")) {
             report_unexpected_token(
@@ -267,7 +1120,7 @@ pub struct ParserExprs {
         // Template is constructed from a collection of string literals
         var template: Vec<String> = Vec.new(self->state->allocator);
 
-        while (self->at_literal()) {
+        while (self->state->is_literal()) {
             switch (self->parse_asm_string()) case .Some(part) else {
                 ast::free_asm_template(&template);
                 return .None;
@@ -344,14 +1197,6 @@ pub struct ParserExprs {
             span: start.merge(self->state->current_span()),
         };
         return .Some(self->create_expr(.InlineAsm(node)));
-    }
-
-    fn at_literal(self: Self*) bool {
-        switch (*self->state->current()->kind) {
-            case .Literal(_) => return true;
-        }
-
-        return false;
     }
 
     /// Copies the current string literal token and consumes it.
@@ -626,7 +1471,8 @@ pub struct ParserExprs {
                 return .Some(self->create_expr(.FuncCall(node)));
             }
 
-            case .LeftBracket => {
+            // TODO: Make a helper method for this part.
+            case .LeftBracket => {            
                 self->state->next();
 
                 switch (self->parse_expr()) case .Some(index) else {
@@ -637,12 +1483,59 @@ pub struct ParserExprs {
                     return .None;
                 }
 
-                const node = ast::ASTArrayIndexExpr {
-                    operand: lhs,
-                    index,
-                    span: start.merge(self->state->current_span()),
-                };
-                return .Some(self->create_expr(.ArrayIndex(node)));
+                var indices: Vec<ast::NodeId> = Vec.new(self->state->allocator);
+                indices.push(index);
+
+                while (self->state->is(.LeftBracket)) {
+                    if (!self->array_init_ahead()) {
+                        break;
+                    }
+
+                    self->state->next();
+
+                    switch (self->parse_expr()) case .Some(dimension) else {
+                        indices.free();
+                        return .None;
+                    }
+
+                    if (!self->state->expect(.RightBracket)) {
+                        indices.free();
+                        return .None;
+                    }
+
+                    indices.push(dimension);
+                }
+
+                if (self->state->is(.LeftBrace)) {
+                    switch (self->create_array_init_type(lhs, &indices)) case .Some(element_type) else {
+                        indices.free();
+                        report_error(
+                            self->state->allocator,
+                            self->state->dctx,
+                            start,
+                            "invalid element type for array initializer"
+                        );
+                        return .None;
+                    }
+
+                    indices.free();
+                    return self->parse_array_literal(element_type, start);
+                }
+
+                // Plain indexing, possibly chained: `value[index]`
+                var operand = lhs;
+
+                for (var i: usize = 0; i < indices.len(); i += 1) {
+                    const next = ast::ASTArrayIndexExpr {
+                        operand,
+                        index: indices.get_owned(i).unwrap(),
+                        span: start.merge(self->state->last_parsed_span()),
+                    };
+                    operand = self->create_expr(.ArrayIndex(next));
+                }
+
+                indices.free();
+                return .Some(operand);
             }
 
             case .Dot | .ThinArrow => {
@@ -823,6 +1716,22 @@ pub struct ParserExprs {
                 span: start.merge(self->state->current_span()),
             };
             return .Some(self->create_expr(.MethodCall(node)));
+        }
+
+        if (!is_thin_arrow && self->state->is(.LeftBrace)) {
+            self->state->next();
+
+            switch (self->parse_field_inits()) case .Some(var field_inits) else {
+                return .None;
+            }
+
+            const node = ast::ASTEnumStructVariantInit {
+                operand: lhs,
+                ident: name,
+                field_inits: self->into_variant_field_inits(&field_inits),
+                span: start.merge(self->state->last_parsed_span()),
+            };
+            return .Some(self->create_expr(.EnumStructVariantInit(node)));
         }
 
         const node = ast::ASTFieldAccess {
@@ -1440,7 +2349,7 @@ pub struct ParserExprs {
         })));
     }
 
-    // Grammar: fn ( Type,* [Variadic] ) Type
+    /// Grammar: fn ( Type,* [Variadic] ) Type
     fn parse_func_type(self: Self*) Option<ast::ASTType> {
         const start = self->state->current_span();
         self->state->next();
@@ -1523,6 +2432,7 @@ pub struct ParserExprs {
         return .Some(.FuncType(id));
     }
 
+    [[inline]]
     pub fn parse_type(self: Self*) Option<ast::ASTType> {
         return self->parse_type_with_options(true, true);
     }
@@ -1695,11 +2605,11 @@ pub struct ParserExprs {
                 return self->parse_tuple_type();
             }
 
-            case .At => return self->parse_builtin_type();
             case .Struct => return self->parse_unnamed_struct_type();
-            case .Enum => return self->parse_unnamed_enum_type();
             case .Union => return self->parse_unnamed_union_type();
+            case .Enum => return self->parse_unnamed_enum_type();
             case .Function => return self->parse_func_type();
+            case .At => return self->parse_builtin_type();
 
             else => {
                 report_error(
@@ -1841,7 +2751,7 @@ pub struct ParserExprs {
             return .None;
         }
 
-        // `(T)` is a grouping, not a one-element tuple.
+        // `(T)` is a grouping, not a one-element tuple
         if (self->state->is(.RightParen)) {
             self->state->next();
             return .Some(first_ty);
@@ -1897,12 +2807,13 @@ pub enum Prec {
     Field
 }
 
-/// Returns true if a <= b.
+[[inline]]
 fn precedence_less_eq(a: Prec, b: Prec) bool {
     return @cast(usize, a) <= @cast(usize, b);
 }
 
 /// Returns the next-higher precedence for right-associative parsing.
+[[inline]]
 fn next_precedence(p: Prec) Prec {
     return @cast(Prec, @cast(usize, p) + 1);
 }
@@ -1939,50 +2850,50 @@ fn precedence_of_token_kind(kind: TokenKind) Option<Prec> {
 
 fn map_prefix_operator(kind: TokenKind) Option<ast::ASTPrefixOperator> {
     switch (kind) {
+        case .Tilde => return .Some(.BitwiseNot);
         case .Minus => return .Some(.Minus);
         case .Bang => return .Some(.Bang);
-        case .Tilde => return .Some(.BitwiseNot);
         else => return .None;
     }
 }
 
 fn map_infix_operator(kind: TokenKind) Option<ast::ASTInfixOperator> {
     switch (kind) {
-        case .Plus => return .Some(.Add);
-        case .Minus => return .Some(.Sub);
-        case .Asterisk => return .Some(.Mul);
-        case .Slash => return .Some(.Div);
-        case .Percent => return .Some(.Rem);
-        case .LessThan => return .Some(.LessThan);
-        case .LessEqual => return .Some(.LessEqual);
-        case .GreaterThan => return .Some(.GreaterThan);
         case .GreaterEqual => return .Some(.GreaterEqual);
-        case .Equal => return .Some(.Equal);
-        case .NotEqual => return .Some(.NotEqual);
-        case .Or => return .Some(.Or);
-        case .And => return .Some(.And);
-        case .Ampersand => return .Some(.BitwiseAnd);
-        case .Pipe => return .Some(.BitwiseOr);
-        case .Caret => return .Some(.BitwiseXor);
+        case .GreaterThan => return .Some(.GreaterThan);
         case .AmpTilde => return .Some(.BitwiseAndNot);
-        case .ShiftLeft => return .Some(.ShiftLeft);
         case .ShiftRight => return .Some(.ShiftRight);
+        case .Ampersand => return .Some(.BitwiseAnd);
+        case .ShiftLeft => return .Some(.ShiftLeft);
+        case .LessEqual => return .Some(.LessEqual);
+        case .NotEqual => return .Some(.NotEqual);
+        case .LessThan => return .Some(.LessThan);
+        case .Caret => return .Some(.BitwiseXor);
+        case .Pipe => return .Some(.BitwiseOr);
+        case .Asterisk => return .Some(.Mul);
+        case .Percent => return .Some(.Rem);
+        case .Equal => return .Some(.Equal);
+        case .Slash => return .Some(.Div);
+        case .Minus => return .Some(.Sub);
+        case .Plus => return .Some(.Add);
+        case .And => return .Some(.And);
+        case .Or => return .Some(.Or);
         else => return .None;
     }
 }
 
 fn map_assign_kind(kind: TokenKind) Option<ast::ASTAssignKind> {
     switch (kind) {
-        case .Plus => return .Some(.AddAssign);
-        case .Minus => return .Some(.SubAssign);
-        case .Asterisk => return .Some(.MulAssign);
-        case .Slash => return .Some(.DivAssign);
-        case .Percent => return .Some(.ModAssign);
-        case .Ampersand => return .Some(.BitwiseAndAssign);
-        case .Tilde => return .Some(.BitwiseXorAssign);
         case .AmpTilde => return .Some(.BitwiseAndNotAssign);
-        case .ShiftLeft => return .Some(.LeftShiftAssign);
         case .ShiftRight => return .Some(.RightShiftAssign);
+        case .Ampersand => return .Some(.BitwiseAndAssign);
+        case .ShiftLeft => return .Some(.LeftShiftAssign);
+        case .Tilde => return .Some(.BitwiseXorAssign);
+        case .Asterisk => return .Some(.MulAssign);
+        case .Percent => return .Some(.ModAssign);
+        case .Slash => return .Some(.DivAssign);
+        case .Minus => return .Some(.SubAssign);
+        case .Plus => return .Some(.AddAssign);
         else => return .None;
     }
 }
