@@ -6,11 +6,11 @@ import std::option{Option};
 import std::string{String};
 
 import .::diags{
-    report_error, 
     report_expected_ident, 
     report_unexpected_token,
     report_invalid_operator
 };
+import diags{Diag};
 import tokens{
     Token, 
     TokenKind, 
@@ -230,21 +230,29 @@ pub struct ParserExprs {
                     }
 
                     if (self->state->is(.LeftBrace)) {
-                        return self->parse_array_literal(
-                            self->program->create_node(.Type(ty)),
-                            start
-                        );
+                        // Only the element type belongs into the literal.
+                        switch (ty) {
+                            case .Array(var array_type) => {
+                                return self->parse_array_literal(array_type.element_type, start);
+                            }
+                            else => {
+                                return self->parse_array_literal(
+                                    self->program->create_node(.Type(ty)),
+                                    start
+                                );
+                            }
+                        }
                     }
 
                     return .Some(self->create_expr(.Type(ty)));
                 }
 
-                report_error(
-                    self->state->allocator, 
-                    self->state->dctx, 
-                    start, 
-                    "expected expression"
-                );
+                self->state->dctx->report(Diag.new(
+                    self->state->allocator,
+                    .Error,
+                    "expected expression",
+                    start
+                ));
                 return .None;
             }
         }
@@ -318,6 +326,39 @@ pub struct ParserExprs {
         return .Some(self->create_expr(.StructInit(node)));
     }
 
+    /// Parses a single `IDENT ( `:` Expr )?` entry.
+    ///
+    /// Returns `.None` after reporting a diagnostic.
+    fn parse_field_init_entry(self: Self*) Option<ast::ASTFieldInit> {
+        const field_start = self->state->current_span();
+
+        switch (self->state->expect_ident()) case .Some(name) else {
+            return .None;
+        }
+
+        var value: ast::NodeId = undefined;
+
+        if (self->state->is(.Comma) || self->state->is(.RightBrace)) {
+            // Shorthand for `ident: ident`.
+            value = self->create_expr(.Ident(name));
+        } else {
+            if (!self->state->expect(.Colon)) {
+                return .None;
+            }
+
+            switch (self->parse_expr()) case .Some(parsed) else {
+                return .None;
+            }
+            value = parsed;
+        }
+
+        return .Some(ast::ASTFieldInit {
+            ident: name,
+            value,
+            span: field_start.merge(self->state->last_parsed_span()),
+        });
+    }
+
     /// Parses `IDENT ( `:` Expr )?` entries until the closing `}`.
     ///
     /// The opening brace must already be consumed by the caller.
@@ -331,47 +372,21 @@ pub struct ParserExprs {
             }
 
             if (self->state->is(.EOF)) {
-                // FIXME: convert to helper method
-                report_error(
+                self->state->dctx->report(Diag.new(
                     self->state->allocator,
-                    self->state->dctx,
-                    self->state->current_span(),
-                    "missing closing brace `}`"
-                );
+                    .Error,
+                    "missing closing brace `}`",
+                    self->state->current_span()
+                ));
                 field_inits.free();
                 return .None;
             }
 
-            const field_start = self->state->current_span();
-
-            switch (self->state->expect_ident()) case .Some(name) else {
+            switch (self->parse_field_init_entry()) case .Some(entry) else {
                 field_inits.free();
                 return .None;
             }
-
-            var value: ast::NodeId = undefined;
-
-            if (self->state->is(.Comma) || self->state->is(.RightBrace)) {
-                // Shorthand for `ident: ident`.
-                value = self->create_expr(.Ident(name));
-            } else {
-                if (!self->state->expect(.Colon)) {
-                    field_inits.free();
-                    return .None;
-                }
-
-                switch (self->parse_expr()) case .Some(parsed) else {
-                    field_inits.free();
-                    return .None;
-                }
-                value = parsed;
-            }
-
-            field_inits.push(ast::ASTFieldInit {
-                ident: name,
-                value,
-                span: field_start.merge(self->state->last_parsed_span()),
-            });
+            field_inits.push(entry);
 
             if (self->state->is(.RightBrace)) {
                 self->state->next();
@@ -387,28 +402,53 @@ pub struct ParserExprs {
         return .Some(field_inits);
     }
 
-    // FIXME: Must be removed
-    /// Converts generic field inits into the enum variant flavour,
-    /// taking ownership of `list`.
-    fn into_variant_field_inits(
-        self: Self*,
-        list: Vec<ast::ASTFieldInit>*
-    ) Vec<ast::ASTEnumStructVariantFieldInit> {
-        var fields: Vec<ast::ASTEnumStructVariantFieldInit> = 
-            Vec.with_capacity(self->state->allocator, list->len());
+    /// Parses the `IDENT ( `:` Expr )?` entries of an enum struct variant
+    /// body until the closing `}`.
+    ///
+    /// The opening brace must already be consumed by the caller.
+    fn parse_enum_struct_variant_init(self: Self*) Option<Vec<ast::ASTEnumStructVariantFieldInit>> {
+        var field_inits: Vec<ast::ASTEnumStructVariantFieldInit> = Vec.new(self->state->allocator);
 
-        for (var i: usize = 0; i < list->len(); i += 1) {
-            const field = list->get_const(i).unwrap();
+        while (true) {
+            if (self->state->is(.RightBrace)) {
+                self->state->next();
+                break;
+            }
 
-            fields.push(ast::ASTEnumStructVariantFieldInit {
-                name: field->ident,
-                value: field->value,
-                span: field->span,
+            if (self->state->is(.EOF)) {
+                self->state->dctx->report(Diag.new(
+                    self->state->allocator,
+                    .Error,
+                    "missing closing brace `}`",
+                    self->state->current_span()
+                ));
+                field_inits.free();
+                return .None;
+            }
+
+            switch (self->parse_field_init_entry()) case .Some(entry) else {
+                field_inits.free();
+                return .None;
+            }
+
+            field_inits.push(ast::ASTEnumStructVariantFieldInit {
+                name: entry.ident,
+                value: entry.value,
+                span: entry.span,
             });
+
+            if (self->state->is(.RightBrace)) {
+                self->state->next();
+                break;
+            }
+
+            if (!self->state->expect(.Comma)) {
+                field_inits.free();
+                return .None;
+            }
         }
 
-        list->free();
-        return fields;
+        return .Some(field_inits);
     }
 
     /// Grammar: `struct` ( `align` `(` Num `)` )? `{` FieldInits `}`
@@ -427,12 +467,13 @@ pub struct ParserExprs {
             switch (self->parse_unsuffixed_integer_value()) {
                 case .Some(value) => align = .Some(value);
                 else => {
-                    report_error(
+                    // REVIEW: Write a better diagnostic message for it.
+                    self->state->dctx->report(Diag.new(
                         self->state->allocator,
-                        self->state->dctx,
-                        self->state->current_span(),
-                        "integer literals cannot have suffixes in this context"
-                    );
+                        .Error,
+                        "integer literals cannot have suffixes in this context",
+                        self->state->current_span()
+                    ));
                     return .None;
                 }
             }
@@ -529,14 +570,13 @@ pub struct ParserExprs {
         if (self->state->is(.LeftBrace)) {
             self->state->next();
 
-            // FIXME: Make a parse_enum_variants_init and use it instead of parse_field_inits
-            switch (self->parse_field_inits()) case .Some(var field_inits) else {
+            switch (self->parse_enum_struct_variant_init()) case .Some(field_inits) else {
                 return .None;
             }
 
             const node = ast::ASTUnnamedEnumValue {
                 ident,
-                kind: .Struct(self->into_variant_field_inits(&field_inits)),
+                kind: .Struct(field_inits),
                 span: start.merge(self->state->last_parsed_span()),
             };
             return .Some(self->create_expr(.UnnamedEnumValue(node)));
@@ -708,12 +748,12 @@ pub struct ParserExprs {
                         }));
                     }
                     case .None => {
-                        report_error(
+                        self->state->dctx->report(Diag.new(
                             self->state->allocator,
-                            self->state->dctx,
-                            span,
-                            "`self` parameter must have an explicit type"
-                        );
+                            .Error,
+                            "`self` parameter must have an explicit type",
+                            span
+                        ));
                         ast::free_param_list(&list);
                         return .None;
                     }
@@ -851,7 +891,8 @@ pub struct ParserExprs {
                 | .RightParen
                 | .RightBrace
                 | .Semicolon
-                | .Const => return false;
+                | .Const
+                | .Ident(_) => return false;
 
             case .Literal(_) 
                 | .Assign 
@@ -968,7 +1009,7 @@ pub struct ParserExprs {
 
     /// True when the `[ ... ]` chain starting at the cursor is closed by
     /// an initializer block: `T[2][3]{ ... }`.
-    fn array_init_ahead(self: Self*) bool {
+    fn is_array_literal_ahead(self: Self*) bool {
         var i: usize = 0;
         var depth: isize = 0;
 
@@ -1010,45 +1051,98 @@ pub struct ParserExprs {
         return false;
     }
 
-    /// Builds the array type of an initializer from its element type
-    /// expression and the dimensions in source order. The element type
-    /// expression node is rewritten into a type node in place, so that an
-    /// owned payload is moved instead of copied twice.
-    fn create_array_init_type(
+    /// A bracket chain closed by an initializer block is an array literal,
+    /// otherwise it is an index expression.
+    fn parse_index_or_array_literal(
         self: Self*,
-        operand: ast::NodeId,
-        indices: const Vec<ast::NodeId>*
+        lhs: ast::NodeId,
+        start: Span
     ) Option<ast::NodeId> {
-        switch (self->program->nodes.get(operand)) case .Some(slot) else {
+        self->state->next();
+
+        switch (self->parse_expr()) case .Some(index) else {
             return .None;
         }
 
-        switch (*slot) {
-            case .Expr(var expr) => switch (expr) {
-                case .ModuleImport(path) => *slot = .Type(.ModuleImport(path));
-                case .Ident(ident) => *slot = .Type(.Ident(ident));
-                case .Type(var ty) => *slot = .Type(ty);
-                else => return .None;
+        if (!self->state->expect(.RightBracket)) {
+            return .None;
+        }
+
+        var indices: Vec<ast::NodeId> = Vec.new(self->state->allocator);
+        indices.push(index);
+
+        while (self->state->is(.LeftBracket)) {
+            if (!self->is_array_literal_ahead()) {
+                break;
             }
-            else => return .None;
+
+            self->state->next();
+
+            switch (self->parse_expr()) case .Some(dimension) else {
+                indices.free();
+                return .None;
+            }
+
+            if (!self->state->expect(.RightBracket)) {
+                indices.free();
+                return .None;
+            }
+
+            indices.push(dimension);
         }
 
-        var element_id: ast::NodeId = operand;
+        if (self->state->is(.LeftBrace)) {
+            switch (self->program->nodes.get(lhs)) case .Some(slot) else {
+                indices.free();
+                return .None;
+            }
 
-        // The last dimension is the innermost one
-        for (var i: usize = indices->len(); i > 0; i -= 1) {
-            const size = indices->get_owned(i - 1).unwrap();
+            switch (*slot) {
+                case .Expr(var expr) => switch (expr) {
+                    case .ModuleImport(path) => *slot = .Type(.ModuleImport(path));
+                    case .Ident(ident) => *slot = .Type(.Ident(ident));
+                    case .Type(var ty) => *slot = .Type(ty);
+                    else => {
+                        indices.free();
+                        self->state->dctx->report(Diag.new(
+                            self->state->allocator,
+                            .Error,
+                            "invalid element type for array initializer",
+                            start
+                        ));
+                        return .None;
+                    }
+                }
+                else => {
+                    indices.free();
+                    self->state->dctx->report(Diag.new(
+                        self->state->allocator,
+                        .Error,
+                        "invalid element type for array initializer",
+                        start
+                    ));
+                    return .None;
+                }
+            }
 
-            const array_type: ast::ASTType = .Array(ast::ASTArrayType {
-                size: .Fixed(size),
-                element_type: element_id,
-                span: self->state->current_span(),
-            });
-
-            element_id = self->program->create_node(.Type(array_type));
+            indices.free();
+            return self->parse_array_literal(lhs, start);
         }
 
-        return .Some(element_id);
+        // Plain indexing
+        var operand = lhs;
+
+        for (var i: usize = 0; i < indices.len(); i += 1) {
+            const next = ast::ASTArrayIndexExpr {
+                operand,
+                index: indices.get_owned(i).unwrap(),
+                span: start.merge(self->state->last_parsed_span()),
+            };
+            operand = self->create_expr(.ArrayIndex(next));
+        }
+
+        indices.free();
+        return .Some(operand);
     }
 
     /// Grammar: (asm ... | IDENT ( Expr, ... ))
@@ -1213,12 +1307,12 @@ pub struct ParserExprs {
         }
 
         switch (copy) case .Some(part) else {
-            report_error(
+            self->state->dctx->report(Diag.new(
                 self->state->allocator,
-                self->state->dctx,
-                self->state->current_span(),
-                "expected assembly string literal"
-            );
+                .Error,
+                "expected string literal as assembly template",
+                self->state->current_span()
+            ));
             return .None;
         }
 
@@ -1471,72 +1565,7 @@ pub struct ParserExprs {
                 return .Some(self->create_expr(.FuncCall(node)));
             }
 
-            // TODO: Make a helper method for this part.
-            case .LeftBracket => {            
-                self->state->next();
-
-                switch (self->parse_expr()) case .Some(index) else {
-                    return .None;
-                }
-
-                if (!self->state->expect(.RightBracket)) {
-                    return .None;
-                }
-
-                var indices: Vec<ast::NodeId> = Vec.new(self->state->allocator);
-                indices.push(index);
-
-                while (self->state->is(.LeftBracket)) {
-                    if (!self->array_init_ahead()) {
-                        break;
-                    }
-
-                    self->state->next();
-
-                    switch (self->parse_expr()) case .Some(dimension) else {
-                        indices.free();
-                        return .None;
-                    }
-
-                    if (!self->state->expect(.RightBracket)) {
-                        indices.free();
-                        return .None;
-                    }
-
-                    indices.push(dimension);
-                }
-
-                if (self->state->is(.LeftBrace)) {
-                    switch (self->create_array_init_type(lhs, &indices)) case .Some(element_type) else {
-                        indices.free();
-                        report_error(
-                            self->state->allocator,
-                            self->state->dctx,
-                            start,
-                            "invalid element type for array initializer"
-                        );
-                        return .None;
-                    }
-
-                    indices.free();
-                    return self->parse_array_literal(element_type, start);
-                }
-
-                // Plain indexing, possibly chained: `value[index]`
-                var operand = lhs;
-
-                for (var i: usize = 0; i < indices.len(); i += 1) {
-                    const next = ast::ASTArrayIndexExpr {
-                        operand,
-                        index: indices.get_owned(i).unwrap(),
-                        span: start.merge(self->state->last_parsed_span()),
-                    };
-                    operand = self->create_expr(.ArrayIndex(next));
-                }
-
-                indices.free();
-                return .Some(operand);
-            }
+            case .LeftBracket => return self->parse_index_or_array_literal(lhs, start);
 
             case .Dot | .ThinArrow => {
                 var is_thin_arrow = false;
@@ -1655,12 +1684,12 @@ pub struct ParserExprs {
         }
 
         if (!has_peek) {
-            report_error(
-                self->state->allocator, 
-                self->state->dctx, 
-                start,
-                "expected field name after `.`"
-            );
+            self->state->dctx->report(Diag.new(
+                self->state->allocator,
+                .Error,
+                "expected field name after `.`",
+                start
+            ));
             return .None;
         }
 
@@ -1721,14 +1750,14 @@ pub struct ParserExprs {
         if (!is_thin_arrow && self->state->is(.LeftBrace)) {
             self->state->next();
 
-            switch (self->parse_field_inits()) case .Some(var field_inits) else {
+            switch (self->parse_enum_struct_variant_init()) case .Some(field_inits) else {
                 return .None;
             }
 
             const node = ast::ASTEnumStructVariantInit {
                 operand: lhs,
                 ident: name,
-                field_inits: self->into_variant_field_inits(&field_inits),
+                field_inits,
                 span: start.merge(self->state->last_parsed_span()),
             };
             return .Some(self->create_expr(.EnumStructVariantInit(node)));
@@ -1830,12 +1859,12 @@ pub struct ParserExprs {
 
         while (true) {
             if (self->state->is(.RightParen)) {
-                report_error(
-                    self->state->allocator, 
-                    self->state->dctx, 
-                    self->state->current_span(), 
-                    "consider adding a field to enum tuple variant or removing the parentheses"
-                );
+                self->state->dctx->report(Diag.new(
+                    self->state->allocator,
+                    .Error,
+                    "consider adding a field to enum tuple variant or removing the parentheses",
+                    self->state->current_span()
+                ));
 
                 // Consume the empty parentheses and recover with an
                 // empty field list so the rest of the enum parses.
@@ -1946,12 +1975,13 @@ pub struct ParserExprs {
             switch (self->parse_unsuffixed_integer_value()) {
                 case .Some(value) => align = .Some(value);
                 else => {
-                    report_error(
-                        self->state->allocator, 
-                        self->state->dctx, 
-                        self->state->current_span(), 
-                        "integer literals cannot have suffixes in this context"
-                    );
+                    // REVIEW: Write a better diagnostic message for it.
+                    self->state->dctx->report(Diag.new(
+                        self->state->allocator,
+                        .Error,
+                        "integer literals cannot have suffixes in this context",
+                        self->state->current_span()
+                    ));
                     self->state->sync();
                     return .None;
                 }
@@ -1976,7 +2006,12 @@ pub struct ParserExprs {
             }
 
             if (self->state->is(.EOF)) {
-                report_error(self->state->allocator, self->state->dctx, self->state->current_span(), "missing closing brace `}`");
+                self->state->dctx->report(Diag.new(
+                    self->state->allocator,
+                    .Error,
+                    "missing closing brace `}`",
+                    self->state->current_span()
+                ));
                 fields.free();
                 self->state->sync();
                 return .None;
@@ -2065,12 +2100,13 @@ pub struct ParserExprs {
             switch (self->parse_unsuffixed_integer_value()) {
                 case .Some(value) => align = .Some(value);
                 else => {
-                    report_error(
-                        self->state->allocator, 
-                        self->state->dctx, 
-                        self->state->current_span(), 
-                        "integer literals cannot have suffixes in this context"
-                    );
+                    // REVIEW: Write a better diagnostic message for it.
+                    self->state->dctx->report(Diag.new(
+                        self->state->allocator,
+                        .Error,
+                        "integer literals cannot have suffixes in this context",
+                        self->state->current_span()
+                    ));
                     self->state->sync();
                     return .None;
                 }
@@ -2095,12 +2131,12 @@ pub struct ParserExprs {
             }
 
             if (self->state->is(.EOF)) {
-                report_error(
-                    self->state->allocator, 
-                    self->state->dctx, 
-                    self->state->current_span(), 
-                    "missing closing brace `}`"
-                );
+                self->state->dctx->report(Diag.new(
+                    self->state->allocator,
+                    .Error,
+                    "missing closing brace `}`",
+                    self->state->current_span()
+                ));
                 fields.free();
                 self->state->sync();
                 return .None;
@@ -2207,12 +2243,13 @@ pub struct ParserExprs {
             switch (self->parse_unsuffixed_integer_value()) {
                 case .Some(value) => align = .Some(value);
                 else => {
-                    report_error(
-                        self->state->allocator, 
-                        self->state->dctx, 
-                        self->state->current_span(), 
-                        "integer literals cannot have suffixes in this context"
-                    );
+                    // REVIEW: Write a better diagnostic message for it.
+                    self->state->dctx->report(Diag.new(
+                        self->state->allocator,
+                        .Error,
+                        "integer literals cannot have suffixes in this context",
+                        self->state->current_span()
+                    ));
                     self->state->sync();
                     return .None;
                 }
@@ -2395,12 +2432,12 @@ pub struct ParserExprs {
             }
 
             if (!self->state->is(.RightParen)) {
-                report_error(
-                    self->state->allocator, 
-                    self->state->dctx, 
-                    self->state->current_span(), 
-                    "expected `,` or `)` in function type parameters"
-                );
+                self->state->dctx->report(Diag.new(
+                    self->state->allocator,
+                    .Error,
+                    "expected `,` or `)` in function type parameters",
+                    self->state->current_span()
+                ));
                 list.free();
                 self->state->sync();
                 return .None;
@@ -2612,11 +2649,12 @@ pub struct ParserExprs {
             case .At => return self->parse_builtin_type();
 
             else => {
-                report_error(
-                    self->state->allocator, 
-                    self->state->dctx, start, 
-                    "expected type"
-                );
+                self->state->dctx->report(Diag.new(
+                    self->state->allocator,
+                    .Error,
+                    "expected type",
+                    start
+                ));
                 return .None;
             }
         }

@@ -1103,32 +1103,32 @@ pub struct ASTDump {
 
     fn dump_expr_node(self: Self*, expr: const ast::ASTExpr*) {
         switch (*expr) {
-            case .Ident(var n) => self->dump_expr_ident(&n);
-            case .Literal(var n) => self->dump_expr_literal(&n);
-            case .Infix(var n) => self->dump_expr_infix(&n);
-            case .Prefix(var n) => self->dump_expr_prefix(&n);
-            case .Assign(var n) => self->dump_expr_assign(&n);
-            case .FuncCall(var n) => self->dump_expr_func_call(&n);
-            case .FieldAccess(var n) => self->dump_expr_field_access(&n);
-            case .MethodCall(var n) => self->dump_expr_method_call(&n);
-            case .StructInit(var n) => self->dump_expr_struct_init(&n);
-            case .Array(var n) => self->dump_expr_array(&n);
-            case .UntypedArray(var n) => self->dump_expr_untyped_array(&n);
-            case .ArrayIndex(var n) => self->dump_expr_array_index(&n);
-            case .AddrOf(var n) => self->dump_expr_addr_of(&n);
-            case .Deref(var n) => self->dump_expr_deref(&n);
-            case .Tuple(var n) => self->dump_expr_tuple(&n);
-            case .TupleAccess(var n) => self->dump_expr_tuple_access(&n);
-            case .Dynamic(var n) => self->dump_expr_dynamic(&n);
-            case .Lambda(var n) => self->dump_expr_lambda(&n);
-            case .Type(var n) => self->dump_type("Type", n);
-            case .ModuleImport(var n) => self->dump_expr_module_import(&n);
-            case .Builtin(var n) => self->dump_expr_builtin(&n);
             case .EnumStructVariantInit(var n) => self->dump_expr_enum_struct_variant_init(&n);
             case .UnnamedStructValue(var n) => self->dump_expr_unnamed_struct_value(&n);
             case .UnnamedUnionValue(var n) => self->dump_expr_unnamed_union_value(&n);
             case .UnnamedEnumValue(var n) => self->dump_expr_unnamed_enum_value(&n);
+            case .UntypedArray(var n) => self->dump_expr_untyped_array(&n);
+            case .ModuleImport(var n) => self->dump_expr_module_import(&n);
+            case .TupleAccess(var n) => self->dump_expr_tuple_access(&n);
+            case .FieldAccess(var n) => self->dump_expr_field_access(&n);
+            case .MethodCall(var n) => self->dump_expr_method_call(&n);
+            case .StructInit(var n) => self->dump_expr_struct_init(&n);
+            case .ArrayIndex(var n) => self->dump_expr_array_index(&n);
             case .InlineAsm(var n) => self->dump_expr_inline_asm(&n);
+            case .FuncCall(var n) => self->dump_expr_func_call(&n);
+            case .Literal(var n) => self->dump_expr_literal(&n);
+            case .Dynamic(var n) => self->dump_expr_dynamic(&n);
+            case .Builtin(var n) => self->dump_expr_builtin(&n);
+            case .Prefix(var n) => self->dump_expr_prefix(&n);
+            case .AddrOf(var n) => self->dump_expr_addr_of(&n);
+            case .Assign(var n) => self->dump_expr_assign(&n);
+            case .Lambda(var n) => self->dump_expr_lambda(&n);
+            case .Deref(var n) => self->dump_expr_deref(&n);
+            case .Tuple(var n) => self->dump_expr_tuple(&n);
+            case .Ident(var n) => self->dump_expr_ident(&n);
+            case .Infix(var n) => self->dump_expr_infix(&n);
+            case .Array(var n) => self->dump_expr_array(&n);
+            case .Type(var n) => self->dump_type("Type", n);
         }
     }
 
