@@ -618,6 +618,7 @@ pub struct ASTInfixExpr {
 
 pub struct ASTArrayExpr {
     pub element_type: NodeId,
+    pub capacity: ASTArrayCapacity,
     pub elements: Vec<NodeId>,
     pub span: Span,
 }

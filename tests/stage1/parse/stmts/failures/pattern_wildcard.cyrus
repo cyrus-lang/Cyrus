@@ -1,0 +1,15 @@
+// @parse
+
+fn f(msg: Msg) {
+    switch (msg) {
+        case _ => fallback();
+    }
+}
+
+/*@parse
+tests/stage1/parse/stmts/failures/pattern_wildcard.cyrus:5:14: error: wildcard patterns are only allowed inside enum patterns
+      |
+    5 ~         case _ => fallback();
+      |              ^
+      |
+@parse*/

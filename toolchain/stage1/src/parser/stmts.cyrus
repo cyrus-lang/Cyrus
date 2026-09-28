@@ -22,6 +22,7 @@ import .::diags{
 import diags{Diag};
 import .::attrs{
     parse_attr,
+    skip_attr_close,
     check_attrs,
     check_attrs_cross,
     apply_func_attrs,
@@ -99,6 +100,20 @@ pub struct ParserStmts {
     [[inline]]
     pub fn parse_toplevels(self: Self*) {
         while (!self->state->is(.EOF)) {
+            // Recovery;
+            // - A failed declaration leaves its closing token behind.
+            // - A stray `;` left behind by a failed initializer is 
+            //   skipped for the same reason.
+            if (self->state->dctx->has_errors()
+                && (self->state->is(.RightBrace)
+                    || self->state->is(.RightParen)
+                    || self->state->is(.RightBracket)
+                    || self->state->is(.Semicolon)))
+            {
+                self->state->next();
+                continue;
+            }
+
             const before = self->state->pos();
             
             self->parse_toplevel();
@@ -871,6 +886,7 @@ pub struct ParserStmts {
             self->state->next();
 
             switch (self->parse_type()) case .Some(explicit_type) else {
+                self->state->sync();
                 return false;
             }
 
@@ -888,9 +904,12 @@ pub struct ParserStmts {
                 self->state->next();
                 is_undef = true;
             } else {
-                switch (self->parse_expr()) {
-                    case .Some(id) => expr = .Some(id);
+                switch (self->parse_expr()) case .Some(id) else {
+                    self->state->sync();
+                    return false;
                 }
+
+                expr = .Some(id);
             }
         }
 
@@ -1865,7 +1884,7 @@ pub struct ParserStmts {
         var patterns: Vec<ast::ASTSwitchCasePattern> = Vec.new(self->state->allocator);
 
         while (true) {
-            switch (self->parse_switch_pattern()) case .Some(pattern) else {
+            switch (self->parse_switch_pattern(false)) case .Some(pattern) else {
                 ast::free_switch_patterns(&patterns);
                 return .None;
             }
@@ -1923,7 +1942,7 @@ pub struct ParserStmts {
     fn parse_switch_guard(self: Self*, start: Span, operand: ast::NodeId) {
         self->state->next();
 
-        switch (self->parse_switch_pattern()) case .Some(var pattern) else {
+        switch (self->parse_switch_pattern(true)) case .Some(var pattern) else {
             self->state->sync();
             return;
         }
@@ -1991,11 +2010,20 @@ pub struct ParserStmts {
     /// | .IDENT (Pattern, ...)? 
     /// | .IDENT { FieldPattern, ... }
     /// | var IDENT | Expr | Expr...Expr | Expr..=Expr
-    fn parse_switch_pattern(self: Self*) Option<ast::ASTSwitchCasePattern> {
+    fn parse_switch_pattern(self: Self*, nested: bool) Option<ast::ASTSwitchCasePattern> {
         const start = self->state->current_span();
 
         // Wildcard: _
         if (self->state->is(.Underscore)) {
+            if (!nested) {
+                self->state->dctx->report(Diag.new(
+                    self->state->allocator,
+                    .Error,
+                    "wildcard patterns are only allowed inside enum patterns",
+                    start
+                ));
+            }
+
             self->state->next();
 
             return .Some(ast::ASTSwitchCasePattern {
@@ -2020,7 +2048,7 @@ pub struct ParserStmts {
 
                 if (!self->state->is(.RightParen)) {
                     while (true) {
-                        switch (self->parse_switch_pattern()) case .Some(item) else {
+                        switch (self->parse_switch_pattern(true)) case .Some(item) else {
                             ast::free_switch_patterns(&items);
                             return .None;
                         }
@@ -2078,7 +2106,7 @@ pub struct ParserStmts {
                     if (self->state->is(.Colon)) {
                         self->state->next();
 
-                        switch (self->parse_switch_pattern()) case .Some(inner) else {
+                        switch (self->parse_switch_pattern(true)) case .Some(inner) else {
                             ast::free_switch_struct_fields(&items);
                             return .None;
                         }
@@ -2122,6 +2150,15 @@ pub struct ParserStmts {
         }
 
         // Binding
+        if (!nested && (self->state->is(.Var) || self->state->is_ident())) {
+            self->state->dctx->report(Diag.new(
+                self->state->allocator,
+                .Error,
+                "binding patterns are only allowed inside enum patterns",
+                start
+            ));
+        }
+
         var constness = ast::ASTConstness.Const;
 
         if (self->state->is(.Var)) {
@@ -2855,6 +2892,20 @@ pub struct ParserStmts {
             }
 
             switch (self->parse_enum_variant()) case .Some(variant) else {
+                // NOTE: This is temporary until we support attributes for 
+                // enum variants!
+                //
+                // A malformed attribute in front of a variant is
+                // reported by expect_ident; skip it and keep parsing
+                // the remaining variants instead of giving up on the
+                // whole enum, which would orphan them at file scope.
+                if (self->state->is(.LeftBracket)
+                    || self->state->is(.RightBracket))
+                {
+                    skip_attr_close(self->state);
+                    continue;
+                }
+
                 ast::free_generic_params(&generic_params);
                 impls.free();
                 variants.free();

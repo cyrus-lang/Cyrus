@@ -10,10 +10,4 @@ tests/stage1/parse/structs/failures/field_missing_type.cyrus:4:6: error: expecte
     4 ~     x,
       |      ^
       |
-
-tests/stage1/parse/structs/failures/field_missing_type.cyrus:5:1: error: unexpected token `}`
-      |
-    5 ~ }
-      | ^
-      |
 @parse*/

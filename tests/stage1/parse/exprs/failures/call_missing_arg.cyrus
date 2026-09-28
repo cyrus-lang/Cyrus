@@ -8,10 +8,4 @@ tests/stage1/parse/exprs/failures/call_missing_arg.cyrus:3:18: error: expected e
     3 ~ const a = foo(1, ;
       |                  ^
       |
-
-tests/stage1/parse/exprs/failures/call_missing_arg.cyrus:3:1: error: expected initializer, `undefined`, or an explicit type specifier
-      |
-    3 ~ const a = foo(1, ;
-      | ^^^^^^^^^^^^^^^^^^
-      |
 @parse*/

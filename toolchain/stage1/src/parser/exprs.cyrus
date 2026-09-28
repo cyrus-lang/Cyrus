@@ -230,14 +230,31 @@ pub struct ParserExprs {
                     }
 
                     if (self->state->is(.LeftBrace)) {
-                        // Only the element type belongs into the literal.
                         switch (ty) {
                             case .Array(var array_type) => {
-                                return self->parse_array_literal(array_type.element_type, start);
+                                return self->parse_array_literal(
+                                    array_type.element_type,
+                                    array_type.size,
+                                    start
+                                );
                             }
                             else => {
+                                self->state->dctx->report(Diag.new(
+                                    self->state->allocator,
+                                    .Error,
+                                    "cannot use non-array type for array construction",
+                                    start
+                                ));
+
+                                // REVIEW: Maybe we should make a Error expression
+                                // so in such cases we fallback to that instead of 
+                                // assuming array capacity dynamic.
+                                // 
+                                // Parse the literal anyway so the rest
+                                // of the declaration does not cascade.
                                 return self->parse_array_literal(
                                     self->program->create_node(.Type(ty)),
+                                    .Dynamic,
                                     start
                                 );
                             }
@@ -648,6 +665,7 @@ pub struct ParserExprs {
     fn parse_array_literal(
         self: Self*,
         element_type: ast::NodeId,
+        capacity: ast::ASTArrayCapacity,
         start: Span
     ) Option<ast::NodeId> {
         if (!self->state->expect(.LeftBrace)) {
@@ -660,6 +678,7 @@ pub struct ParserExprs {
 
         const node = ast::ASTArrayExpr {
             element_type,
+            capacity,
             elements,
             span: start.merge(self->state->last_parsed_span()),
         };
@@ -1125,8 +1144,16 @@ pub struct ParserExprs {
                 }
             }
 
+            // The first dimension is the outermost one,
+            // matching the size carried by an array type.
+            var capacity: ast::ASTArrayCapacity = .Dynamic;
+
+            if (indices.len() > 0) {
+                capacity = .Fixed(indices.get_owned(0).unwrap());
+            }
+
             indices.free();
-            return self->parse_array_literal(lhs, start);
+            return self->parse_array_literal(lhs, capacity, start);
         }
 
         // Plain indexing

@@ -8,10 +8,4 @@ tests/stage1/parse/types/failures/unclosed_generic.cyrus:3:19: error: expected t
     3 ~ static var a: Vec<;
       |                   ^
       |
-
-tests/stage1/parse/types/failures/unclosed_generic.cyrus:3:19: error: unexpected token `;`
-      |
-    3 ~ static var a: Vec<;
-      |                   ^
-      |
 @parse*/

@@ -13,6 +13,9 @@ ASTProgram
             is_static: false
             expr:
                 ASTExpr::Array
+                    size:
+                        ASTExpr::Literal
+                            value: 3
                     element_type:
                         Type: int32
                     element[0]:
@@ -32,6 +35,7 @@ ASTProgram
             is_static: false
             expr:
                 ASTExpr::Array
+                    size: dynamic
                     element_type:
                         Type: uint8
                     element[0]:

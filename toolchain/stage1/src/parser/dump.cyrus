@@ -1223,6 +1223,12 @@ pub struct ASTDump {
         self->write_indent();
         self->writer.writeln("ASTExpr::Array");
         self->indent += 1;
+
+        switch (n->capacity) {
+            case .Fixed(capacity) => self->dump_subtree("size", capacity);
+            case .Dynamic => self->dump_str("size", "dynamic");
+        }
+
         self->dump_subtree("element_type", n->element_type);
         self->dump_node_list("element", &n->elements);
         self->indent -= 1;
