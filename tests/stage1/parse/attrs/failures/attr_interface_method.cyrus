@@ -11,16 +11,4 @@ tests/stage1/parse/attrs/failures/attr_interface_method.cyrus:4:5: error: expect
     4 ~     [[inline]]
       |     ^
       |
-
-tests/stage1/parse/attrs/failures/attr_interface_method.cyrus:4:13: error: unexpected token `]`
-      |
-    4 ~     [[inline]]
-      |             ^
-      |
-
-tests/stage1/parse/attrs/failures/attr_interface_method.cyrus:6:1: error: unexpected token `}`
-      |
-    6 ~ }
-      | ^
-      |
 @parse*/

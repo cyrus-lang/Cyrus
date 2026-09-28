@@ -11,10 +11,4 @@ tests/stage1/parse/stmts/failures/if_missing_cond.cyrus:4:8: error: expected `(`
     4 ~     if {
       |        ^
       |
-
-tests/stage1/parse/stmts/failures/if_missing_cond.cyrus:6:1: error: unexpected token `}`
-      |
-    6 ~ }
-      | ^
-      |
 @parse*/

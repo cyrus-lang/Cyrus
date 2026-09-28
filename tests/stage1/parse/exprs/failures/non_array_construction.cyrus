@@ -1,0 +1,11 @@
+// @parse
+
+const c = int32 { 1, 2 };
+
+/*@parse
+tests/stage1/parse/exprs/failures/non_array_construction.cyrus:3:11: error: cannot use non-array type for array construction
+      |
+    3 ~ const c = int32 { 1, 2 };
+      |           ^^^^^
+      |
+@parse*/

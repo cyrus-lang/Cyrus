@@ -8,10 +8,4 @@ tests/stage1/parse/funcs/failures/missing_name.cyrus:3:4: error: expected ident 
     3 ~ fn () {}
       |    ^
       |
-
-tests/stage1/parse/funcs/failures/missing_name.cyrus:3:5: error: unexpected token `)`
-      |
-    3 ~ fn () {}
-      |     ^
-      |
 @parse*/

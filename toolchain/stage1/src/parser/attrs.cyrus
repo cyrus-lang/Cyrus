@@ -59,7 +59,7 @@ pub fn parse_attr(state: ParserState*) Option<ast::ASTAttr> {
 }
 
 /// Skip the remainder of a malformed attribute.
-fn skip_attr_close(state: ParserState*) {
+pub fn skip_attr_close(state: ParserState*) {
     while (!state->is(.RightBracket)
         && !state->is(.EOF)
         && !state->is(.Semicolon)

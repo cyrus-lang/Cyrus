@@ -1,0 +1,15 @@
+// @parse
+
+fn f(msg: Msg) {
+    switch (msg) {
+        case var mutable => use(mutable);
+    }
+}
+
+/*@parse
+tests/stage1/parse/stmts/failures/pattern_var_binding.cyrus:5:14: error: binding patterns are only allowed inside enum patterns
+      |
+    5 ~         case var mutable => use(mutable);
+      |              ^^^
+      |
+@parse*/

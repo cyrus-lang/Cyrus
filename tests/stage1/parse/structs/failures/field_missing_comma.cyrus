@@ -11,10 +11,4 @@ tests/stage1/parse/structs/failures/field_missing_comma.cyrus:5:5: error: expect
     5 ~     b: int32,
       |     ^
       |
-
-tests/stage1/parse/structs/failures/field_missing_comma.cyrus:6:1: error: unexpected token `}`
-      |
-    6 ~ }
-      | ^
-      |
 @parse*/
