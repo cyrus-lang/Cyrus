@@ -1,6 +1,3 @@
-// SPDX-License-Identifier: MIT
-// Copyright (c) 2026 The Cyrus Language
-
 // @resolve
 pub fn dup() {}
 
@@ -9,24 +6,11 @@ pub fn dup() {}
 pub fn main() {}
 
 /*@resolve
-tests/stage1/resolver/duplicate.cyrus:7:8: error: symbol 'dup' is already declared
+tests/stage1/resolver/duplicate.cyrus:4:8: error: symbol `dup` is already declared
       |
-    7 ~ pub fn dup() {}
+    4 ~ pub fn dup() {}
       |        ^^^
       |
       = help: remove or rename the duplicate declaration
       |
-SYMBOL TREE
-
-[0] Namespace GLOBAL
-├── tests_stage1_resolver_duplicate -> [1]
-└── [1] Module tests_stage1_resolver_duplicate
-    ├── dup -> [2]
-    ├── main -> [3]
-    ├── [2] Unresolved dup
-    └── [3] Unresolved main
-
-SOURCE MAP
-
-└── [0] tests/stage1/resolver/duplicate.cyrus
 @resolve*/

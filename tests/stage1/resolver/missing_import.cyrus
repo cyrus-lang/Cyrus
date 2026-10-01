@@ -1,26 +1,14 @@
-// SPDX-License-Identifier: MIT
-// Copyright (c) 2026 The Cyrus Language
-
 // @resolve
 import definitely_missing_module;
 
 pub fn main() {}
 
 /*@resolve
-tests/stage1/resolver/missing_import.cyrus:5:1: error: module 'definitely_missing_module' not found
+tests/stage1/resolver/missing_import.cyrus:2:8: error: module `definitely_missing_module` not found
       |
-    5 ~ import definitely_missing_module;
-      | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    2 ~ import definitely_missing_module;
+      |        ^^^^^^^^^^^^^^^^^^^^^^^^^
       |
       = help: check that it exists under one of the configured source directories
       |
-SYMBOL TREE
-
-[0] Namespace GLOBAL
-├── tests_stage1_resolver_missing_import -> [1]
-└── [1] Module tests_stage1_resolver_missing_import
-
-SOURCE MAP
-
-└── [0] tests/stage1/resolver/missing_import.cyrus
 @resolve*/

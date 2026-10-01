@@ -194,13 +194,17 @@ fn command_resolve(ctx: cli::ActionContext) {
     const path = Path.new(allocator, file_path);
 
     switch (lexical.tokenize_source(path)) case .Value(var source_tokens) else {
-        resolver.dump_symbols();
+        if (!driver.dctx.has_errors()) {
+            resolver.dump_symbols();
+        }
         return;
     }
     defer source_tokens.free();
 
     switch (lexical.parse_source(source_tokens)) case .Value(var program) else {
-        resolver.dump_symbols();
+        if (!driver.dctx.has_errors()) {
+            resolver.dump_symbols();
+        }
         return;
     }
     defer program.free();
@@ -208,7 +212,10 @@ fn command_resolve(ctx: cli::ActionContext) {
     resolver.resolve_entry(source_tokens.source_id, file_path, &program);
 
     driver.render_diags();
-    resolver.dump_symbols();
+
+    if (!driver.dctx.has_errors()) {
+        resolver.dump_symbols();
+    }
 }
 
 

@@ -1,7 +1,7 @@
 // @stdout: Sibling: 100
 
 import std::libc{printf};
-import .::_sibling;
+import .::helpers::_sibling;
 
 pub fn main() {
     printf("Sibling: %d\n", _sibling::get_val());

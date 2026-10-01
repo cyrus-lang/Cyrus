@@ -1,26 +1,14 @@
-// SPDX-License-Identifier: MIT
-// Copyright (c) 2026 The Cyrus Language
-
 // @resolve
 import ..::..::..::..::missing_upwards;
 
 pub fn main() {}
 
 /*@resolve
-tests/stage1/resolver/escape.cyrus:5:1: error: relative import escapes the project root
+tests/stage1/resolver/escape.cyrus:2:1: error: relative import escapes the project root
       |
-    5 ~ import ..::..::..::..::missing_upwards;
+    2 ~ import ..::..::..::..::missing_upwards;
       | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
       |
       = help: use a path that stays under the project base directory
       |
-SYMBOL TREE
-
-[0] Namespace GLOBAL
-├── tests_stage1_resolver_escape -> [1]
-└── [1] Module tests_stage1_resolver_escape
-
-SOURCE MAP
-
-└── [0] tests/stage1/resolver/escape.cyrus
 @resolve*/

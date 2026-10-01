@@ -3,7 +3,7 @@
 import std::mem::libc{LibcAllocator};
 import std::mem{Allocator};
 import std::libc{printf};
-import _app;
+import helpers::_app;
 
 pub fn main() {
     const allocator: Allocator = dynamic LibcAllocator.new();

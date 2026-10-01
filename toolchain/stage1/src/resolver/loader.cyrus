@@ -20,6 +20,8 @@ import std::path{
 };
 
 import parser::ast{ASTModuleSegment};
+import tokens{Span, Loc};
+import source{SourceId};
 import cir::format{
     format_sub_module_names,
     format_module_segments, 
@@ -59,14 +61,14 @@ pub struct ResolverOptions {
 
 pub enum LoaderError {
     RelativeImportEscapesProjectRoot,
+    ModuleNotFound(String, Span),
     ModuleCannotImportItself,
     DuplicateModule(String),
-    ModuleNotFound(String),
     StdlibNotFound,
 
     pub fn free(self: Self*) {
         switch (*self) {
-            case .ModuleNotFound(name) => name.free();
+            case .ModuleNotFound(name, _) => name.free();
             case .DuplicateModule(name) => name.free();
         }
     }
@@ -214,6 +216,61 @@ pub fn last_sub_module_name(allocator: Allocator, segments: const Vec<ASTModuleS
     return String.new(allocator);
 }
 
+/// Span of the submodule segment at `ordinal` (counting only `.SubModule` entries).
+pub fn segment_span(segments: const Vec<ASTModuleSegment>*, ordinal: usize) Span {
+    var seen: usize = 0;
+
+    for (var i: usize = 0; i < segments->len(); i += 1) {
+        const seg = segments->get_owned(i).unwrap();
+
+        switch (seg) {
+            case .SubModule(ident) => {
+                if (seen == ordinal) {
+                    return ident.span;
+                }
+
+                seen += 1;
+            }
+        }
+    }
+
+    return first_segment_span(segments);
+}
+
+/// Span of the last submodule segment of an import path.
+pub fn last_sub_module_span(segments: const Vec<ASTModuleSegment>*) Span {
+    var i = segments->len();
+
+    while (i > 0) {
+        i -= 1;
+
+        switch (segments->get_owned(i).unwrap()) {
+            case .SubModule(ident) => return ident.span;
+        }
+    }
+
+    return first_segment_span(segments);
+}
+
+/// Span of the first identifiable piece of an import path.
+pub fn first_segment_span(segments: const Vec<ASTModuleSegment>*) Span {
+    for (var i: usize = 0; i < segments->len(); i += 1) {
+        const seg = segments->get_owned(i).unwrap();
+
+        switch (seg) {
+            case .SubModule(ident) => return ident.span;
+            case .Single(singles) => {
+                if (singles.len() > 0) {
+                    const single = singles.get_const(0).unwrap();
+                    return single->ident.span;
+                }
+            }
+        }
+    }
+
+    return Span.new(@cast(SourceId, 0), Loc { start: 0, end: 0 });
+}
+
 /// Locate an imported module file for an import statement.
 pub fn resolve_import(
     allocator: Allocator,
@@ -226,7 +283,10 @@ pub fn resolve_import(
 
     if (names.len() == 0) {
         free_string_vec(&names);
-        return .Error(.ModuleNotFound(format_module_segments(allocator, segments)));
+        return .Error(.ModuleNotFound(
+            format_module_segments(allocator, segments),
+            first_segment_span(segments)
+        ));
     }
 
     var sources: Vec<String> = Vec.new(allocator);
@@ -267,14 +327,23 @@ pub fn resolve_import(
     if (names.len() == 0) {
         free_string_vec(&sources);
         free_string_vec(&names);
-        return .Error(.ModuleNotFound(format_module_segments(allocator, segments)));
+        return .Error(.ModuleNotFound(
+            format_module_segments(allocator, segments),
+            first_segment_span(segments)
+        ));
     }
 
-    const load_result = load_module_segments(allocator, &names, &sources);
+    var name_offset: usize = 0;
+
+    if (is_std) {
+        name_offset = 1;
+    }
+
+    const result = load_module_segments(allocator, &names, &sources, segments, name_offset);
     free_string_vec(&sources);
     free_string_vec(&names);
 
-    switch (load_result) {
+    switch (result) {
         case .Value(var resolved) => {
             if (same_file(allocator, resolved.file_path.as_str_const(), current_file_path)) {
                 resolved.free();
@@ -298,6 +367,8 @@ fn load_module_segments(
     allocator: Allocator,
     names: const Vec<String>*,
     sources: const Vec<String>*,
+    segments: const Vec<ASTModuleSegment>*,
+    name_offset: usize,
 ) ErrorOr<ResolvedModuleFile, LoaderError> {
     var directory_modules: Vec<String> = Vec.new(allocator);
     var current_path = String.new(allocator);
@@ -366,7 +437,10 @@ fn load_module_segments(
                     case .None => {
                         free_string_vec(&directory_modules);
                         current_path.free();
-                        return .Error(.ModuleNotFound(format_sub_module_names(allocator, names)));
+                        return .Error(.ModuleNotFound(
+                            format_sub_module_names(allocator, names),
+                            segment_span(segments, i + name_offset)
+                        ));
                     }
                 }
             }
@@ -392,7 +466,10 @@ fn load_module_segments(
         index_path.free();
         free_string_vec(&directory_modules);
         current_path.free();
-        return .Error(.ModuleNotFound(format_sub_module_names(allocator, names)));
+        return .Error(.ModuleNotFound(
+            format_sub_module_names(allocator, names),
+            segment_span(segments, (names->len() - 1) + name_offset)
+        ));
     }
 
     // Fallback: 

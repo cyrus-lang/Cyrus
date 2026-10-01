@@ -2,7 +2,7 @@
 // @compilerArgs: --module-merge-mode=separate
 
 import std::libc{printf};
-import _bar;
+import helpers::_bar;
 
 pub fn main() {
     printf("PI: %f | ", _bar::PI);

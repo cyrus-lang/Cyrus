@@ -12,7 +12,7 @@ pub fn main() {
         :
     );
 
-    @asm volatile("movq %%rsp, %0" : "=r"(x) : : );
+    @asm volatile("movq %%rsp, %0" : "=r"(x) : :);
 }
 
 /*@parse
