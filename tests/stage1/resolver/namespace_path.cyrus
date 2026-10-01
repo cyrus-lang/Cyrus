@@ -1,8 +1,5 @@
-// SPDX-License-Identifier: MIT
-// Copyright (c) 2026 The Cyrus Language
-
 // @resolve
-import .::_single::inner;
+import .::helpers::_single::inner;
 
 pub fn main() {}
 
@@ -11,26 +8,28 @@ SYMBOL TREE
 
 [0] Namespace GLOBAL
 ├── tests_stage1_resolver_namespace_path -> [1]
-├── tests_stage1_resolver__single -> [2]
+├── tests_stage1_resolver_helpers__single -> [2]
 ├── [1] Module tests_stage1_resolver_namespace_path
-│   ├── _single -> [3]
-│   ├── inner -> [8]
-│   ├── main -> [9]
-│   ├── [3] ProxiedModule _single -> [2]
-│   ├── [8] ProxiedModule inner -> [6]
-│   └── [9] Unresolved main
+│   ├── helpers -> [3]
+│   ├── inner -> [9]
+│   ├── main -> [10]
+│   ├── [3] Module helpers
+│   │   ├── _single -> [4]
+│   │   └── [4] ProxiedModule _single -> [2]
+│   ├── [9] ProxiedModule inner -> [7]
+│   └── [10] Unresolved main
 └── [2] Module inner
-    ├── hidden -> [4]
-    ├── exposed -> [5]
-    ├── inner -> [6]
-    ├── [4] Unresolved hidden
-    ├── [5] Unresolved exposed
-    └── [6] Namespace inner
-        ├── inside -> [7]
-        └── [7] Unresolved inside
+    ├── hidden -> [5]
+    ├── exposed -> [6]
+    ├── inner -> [7]
+    ├── [5] Unresolved hidden
+    ├── [6] Unresolved exposed
+    └── [7] Namespace inner
+        ├── inside -> [8]
+        └── [8] Unresolved inside
 
 SOURCE MAP
 
 ├── [0] tests/stage1/resolver/namespace_path.cyrus
-└── [1] tests/stage1/resolver/_single.cyrus
+└── [1] tests/stage1/resolver/helpers/_single.cyrus
 @resolve*/

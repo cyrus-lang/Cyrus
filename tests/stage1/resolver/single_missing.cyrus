@@ -1,33 +1,14 @@
-// SPDX-License-Identifier: MIT
-// Copyright (c) 2026 The Cyrus Language
-
 // @resolve
-import _util{nope};
+import helpers::_util{nope};
 
 pub fn main() {}
 
 /*@resolve
-tests/stage1/resolver/single_missing.cyrus:5:14: error: symbol 'nope' not found
+tests/stage1/resolver/single_missing.cyrus:2:23: error: symbol `nope` not found
       |
-    5 ~ import _util{nope};
-      |              ^^^^
+    2 ~ import helpers::_util{nope};
+      |                       ^^^^
       |
       = help: declare or import it before use
       |
-SYMBOL TREE
-
-[0] Namespace GLOBAL
-├── tests_stage1_resolver_single_missing -> [1]
-├── tests_stage1_resolver__util -> [2]
-├── [1] Module tests_stage1_resolver_single_missing
-│   ├── _util -> [3]
-│   └── [3] ProxiedModule _util -> [2]
-└── [2] Module _util
-    ├── helper -> [4]
-    └── [4] Unresolved helper
-
-SOURCE MAP
-
-├── [0] tests/stage1/resolver/single_missing.cyrus
-└── [1] tests/stage1/resolver/_util.cyrus
 @resolve*/

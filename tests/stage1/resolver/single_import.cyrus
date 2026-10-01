@@ -1,9 +1,6 @@
-// SPDX-License-Identifier: MIT
-// Copyright (c) 2026 The Cyrus Language
-
 // @resolve
-import _util{helper};
-import _util{helper as h};
+import helpers::_util{helper};
+import helpers::_util{helper as h};
 
 pub fn main() {}
 
@@ -12,23 +9,25 @@ SYMBOL TREE
 
 [0] Namespace GLOBAL
 ├── tests_stage1_resolver_single_import -> [1]
-├── tests_stage1_resolver__util -> [2]
+├── tests_stage1_resolver_helpers__util -> [2]
 ├── [1] Module tests_stage1_resolver_single_import
-│   ├── _util -> [6]
-│   ├── helper -> [5]
-│   ├── h -> [7]
-│   ├── main -> [8]
-│   ├── [3] ProxiedModule _util -> [2]
-│   ├── [5] ProxiedSymbol helper -> [4]
-│   ├── [6] ProxiedModule _util -> [2]
-│   ├── [7] ProxiedSymbol h -> [4]
-│   └── [8] Unresolved main
+│   ├── helpers -> [3]
+│   ├── helper -> [6]
+│   ├── h -> [8]
+│   ├── main -> [9]
+│   ├── [3] Module helpers
+│   │   ├── _util -> [7]
+│   │   ├── [4] ProxiedModule _util -> [2]
+│   │   └── [7] ProxiedModule _util -> [2]
+│   ├── [6] ProxiedSymbol helper -> [5]
+│   ├── [8] ProxiedSymbol h -> [5]
+│   └── [9] Unresolved main
 └── [2] Module _util
-    ├── helper -> [4]
-    └── [4] Unresolved helper
+    ├── helper -> [5]
+    └── [5] Unresolved helper
 
 SOURCE MAP
 
 ├── [0] tests/stage1/resolver/single_import.cyrus
-└── [1] tests/stage1/resolver/_util.cyrus
+└── [1] tests/stage1/resolver/helpers/_util.cyrus
 @resolve*/

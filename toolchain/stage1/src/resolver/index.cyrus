@@ -18,6 +18,7 @@ import resolver::loader{
     resolve_import as fs_resolve_import,
     module_name_from_file_path,
     last_sub_module_name,
+    last_sub_module_span,
     ResolvedModuleFile, 
     ResolverOptions,
 };
@@ -37,12 +38,14 @@ import resolver::modules{
 };
 import driver{CompilerDriver};
 import source{SourceId};
+import tokens{SourceTokens};
 import cir{SymbolId};
 
 pub struct SourceProgram {
     pub absolute_path: String,
     pub source_id: SourceId,
-    pub program: ASTProgram*
+    pub program: ASTProgram*,
+    pub tokens: SourceTokens
 }
 
 pub struct Resolver {
@@ -114,6 +117,7 @@ pub struct Resolver {
         for (var i: usize = 0; i < self->source_programs.len(); i += 1) {
             var file = self->source_programs.get(i).unwrap();
             file->absolute_path.free();
+            file->tokens.free();
             file->program->free();
             self->allocator.free(file->program);
         }
@@ -196,7 +200,7 @@ pub struct Resolver {
             case .Error(err) => {
                 switch (err) {
                     case .RelativeImportEscapesProjectRoot => report_relative_import_escapes_project_root(&self->driver->dctx, allocator, imp->span);
-                    case .ModuleNotFound(name) => report_module_not_found(&self->driver->dctx, allocator, imp->span, name.as_str_const());
+                    case .ModuleNotFound(name, span) => report_module_not_found(&self->driver->dctx, allocator, span, name.as_str_const());
                     case .DuplicateModule(name) => report_duplicate_module(&self->driver->dctx, allocator, imp->span, name.as_str_const());
                     case .ModuleCannotImportItself => report_module_cannot_import_itself(&self->driver->dctx, allocator, imp->span);
                     case .StdlibNotFound => report_stdlib_not_found(&self->driver->dctx, allocator, imp->span);
@@ -264,7 +268,7 @@ pub struct Resolver {
             case .None => {
                 if (!is_file(resolved.file_path.as_str_const())) {
                     var name = format_module_segments(allocator, &imp->segments);
-                    report_module_not_found(dctx, allocator, span, name.as_str_const());
+                    report_module_not_found(dctx, allocator, last_sub_module_span(&imp->segments), name.as_str_const());
                     name.free();
                     key.free();
                     switch (alias) {
@@ -304,6 +308,7 @@ pub struct Resolver {
                     absolute_path: String.from_str(allocator, key.as_str_const()),
                     program: owned_program,
                     source_id,
+                    tokens: source_tokens,
                 });
 
                 program = owned_program;
@@ -343,7 +348,7 @@ pub struct Resolver {
                             report_namespace_segment_not_found(
                                 dctx, 
                                 allocator, 
-                                span, 
+                                ident.span,
                                 ident.str.as_str_const()
                             );
                             key.free();

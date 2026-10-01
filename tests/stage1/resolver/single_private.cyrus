@@ -1,39 +1,14 @@
-// SPDX-License-Identifier: MIT
-// Copyright (c) 2026 The Cyrus Language
-
 // @resolve
-import _single{hidden};
+import helpers::_single{hidden};
 
 pub fn main() {}
 
 /*@resolve
-tests/stage1/resolver/single_private.cyrus:5:16: error: symbol 'hidden' is private
+tests/stage1/resolver/single_private.cyrus:2:25: error: symbol `hidden` is private
       |
-    5 ~ import _single{hidden};
-      |                ^^^^^^
+    2 ~ import helpers::_single{hidden};
+      |                         ^^^^^^
       |
       = help: declare it as `pub` to make it importable
       |
-SYMBOL TREE
-
-[0] Namespace GLOBAL
-├── tests_stage1_resolver_single_private -> [1]
-├── tests_stage1_resolver__single -> [2]
-├── [1] Module tests_stage1_resolver_single_private
-│   ├── _single -> [3]
-│   └── [3] ProxiedModule _single -> [2]
-└── [2] Module _single
-    ├── hidden -> [4]
-    ├── exposed -> [5]
-    ├── inner -> [6]
-    ├── [4] Unresolved hidden
-    ├── [5] Unresolved exposed
-    └── [6] Namespace inner
-        ├── inside -> [7]
-        └── [7] Unresolved inside
-
-SOURCE MAP
-
-├── [0] tests/stage1/resolver/single_private.cyrus
-└── [1] tests/stage1/resolver/_single.cyrus
 @resolve*/

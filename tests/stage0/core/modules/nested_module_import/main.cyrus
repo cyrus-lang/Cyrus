@@ -1,7 +1,7 @@
 // @stdout: Result: 42
 
 import std::libc{printf};
-import math::_ops;
+import math::helpers::_ops;
 
 pub fn main() {
     const res: int32 = _ops::add(20, 22);

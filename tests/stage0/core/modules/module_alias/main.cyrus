@@ -1,7 +1,7 @@
 // @stdout: 50
 
 import std::libc{printf};
-import _geometry as geom;
+import helpers::_geometry as geom;
 
 pub fn main() {
     const res: int32 = geom::area(5, 10);

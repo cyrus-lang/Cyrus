@@ -1,0 +1,3 @@
+pub fn sibling() int32 {
+    return 3;
+}
