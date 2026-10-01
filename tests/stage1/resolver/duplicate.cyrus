@@ -1,4 +1,5 @@
 // @resolve
+
 pub fn dup() {}
 
 pub fn dup() {}
