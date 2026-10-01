@@ -1,4 +1,5 @@
 // @resolve
+
 import .::helpers::_single::inner;
 
 pub fn main() {}
