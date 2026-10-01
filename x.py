@@ -523,7 +523,7 @@ DIRECTIVE_SINGLE_RE = {
 }
 
 # Snapshot directives: `// @name` trigger + `/*@name ... @name*/` block.
-SNAPSHOT_DIRECTIVES = ("tokenize", "parse")
+SNAPSHOT_DIRECTIVES = ("tokenize", "parse", "resolve")
 
 
 @dataclass
@@ -1166,6 +1166,8 @@ def snapshot_command_for(stage: str, directive: str, cfg: Config) -> List[str]:
             return ["tokenize"]
         if directive == "parse":
             return ["parse"]
+        if directive == "resolve":
+            return ["resolve"]
     if stage == "stage0":
         if directive == "tokenize":
             return ["lex-only"]
@@ -1216,6 +1218,8 @@ def run_snapshot_checks(
 
         argv = snapshot_command_for(stage, directive, cfg)
         cmd = [str(compiler), *argv, root_relative_path(cfg, file_path)]
+        if directive == "resolve":
+            cmd.append(_stdlib_flag(cfg))
         proc = run_cmd(cmd, cwd=cfg.root, capture=True, check=False)
         raw = proc.stdout or ""
         if proc.returncode != 0:
@@ -1224,10 +1228,13 @@ def run_snapshot_checks(
                 f"`{' '.join(argv)}` failed with exit code {proc.returncode}:\n{detail}"
             )
             continue
-        actual = normalize_text(strip_ansi(raw))
+        
+        # Strip the repo-root prefix so absolute paths in snapshot output
+        # stay machine-independent (relative path).
+        actual = normalize_runtime_text(strip_ansi(raw), cfg.root)
 
         for block in blocks:
-            expected = normalize_text(block.expected)
+            expected = normalize_runtime_text(block.expected, cfg.root)
             if normalize_eof_offsets(actual) == normalize_eof_offsets(expected):
                 continue
             if bless:

@@ -23,6 +23,15 @@ pub const FG_CYAN = "\x1B[36m";
 pub const FG_WHITE = "\x1B[37m";
 pub const FG_DEFAULT = "\x1B[39m";
 
+pub const FG_BRIGHT_BLACK = "\x1B[90m";
+pub const FG_BRIGHT_RED = "\x1B[91m";
+pub const FG_BRIGHT_GREEN = "\x1B[92m";
+pub const FG_BRIGHT_YELLOW = "\x1B[93m";
+pub const FG_BRIGHT_BLUE = "\x1B[94m";
+pub const FG_BRIGHT_MAGENTA = "\x1B[95m";
+pub const FG_BRIGHT_CYAN = "\x1B[96m";
+pub const FG_BRIGHT_WHITE = "\x1B[97m";
+
 pub const BG_BLACK = "\x1B[40m";
 pub const BG_RED = "\x1B[41m";
 pub const BG_GREEN = "\x1B[42m";

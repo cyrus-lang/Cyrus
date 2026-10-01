@@ -4,7 +4,7 @@
 import std::option{Option};
 
 pub struct Slice<T> {
-    ptr: T*,
+    ptr: const T*,
     len: usize,
 
     [[inline]]
@@ -13,8 +13,8 @@ pub struct Slice<T> {
     }
 
     [[inline]]
-    pub fn ptr(self: Self*) T* {
-        return self->ptr;
+    pub fn new_const(ptr: const T*, len: usize) Self {
+        return Self { ptr, len };
     }
 
     [[inline]]
@@ -31,15 +31,6 @@ pub struct Slice<T> {
         return .Some(*(self->ptr + index));
     }
 
-    [[inline]]
-    pub fn get_ref(self: Self*, index: usize) Option<T*> {
-        if (index >= self->len) {
-            return .None;
-        }
-
-        return .Some(self->ptr + index);
-    }
-    
     [[inline]]
     pub fn get_const(self: const Self*, index: usize) Option<const T*> {
         if (index >= self->len) {

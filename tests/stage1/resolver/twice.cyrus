@@ -1,0 +1,35 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 The Cyrus Language
+
+// @resolve
+import _util;
+import _util;
+
+pub fn main() {}
+
+/*@resolve
+tests/stage1/resolver/twice.cyrus:6:1: error: module '_util' imported twice
+      |
+    6 ~ import _util;
+      | ^^^^^^^^^^^^^
+      |
+      = help: consider removing the previous declaration
+      |
+SYMBOL TREE
+
+[0] Namespace GLOBAL
+├── tests_stage1_resolver_twice -> [1]
+├── tests_stage1_resolver__util -> [2]
+├── [1] Module tests_stage1_resolver_twice
+│   ├── _util -> [5]
+│   ├── [3] ProxiedModule _util -> [2]
+│   └── [5] ProxiedModule _util -> [2]
+└── [2] Module _util
+    ├── helper -> [4]
+    └── [4] Unresolved helper
+
+SOURCE MAP
+
+├── [0] tests/stage1/resolver/twice.cyrus
+└── [1] tests/stage1/resolver/_util.cyrus
+@resolve*/

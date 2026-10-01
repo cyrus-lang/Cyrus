@@ -1,0 +1,29 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 The Cyrus Language
+
+// @resolve
+import .::_rel_sibling;
+
+pub fn main() {}
+
+/*@resolve
+SYMBOL TREE
+
+[0] Namespace GLOBAL
+├── tests_stage1_resolver_relative_import -> [1]
+├── tests_stage1_resolver__rel_sibling -> [2]
+├── [1] Module tests_stage1_resolver_relative_import
+│   ├── _rel_sibling -> [5]
+│   ├── main -> [6]
+│   ├── [3] ProxiedModule _rel_sibling -> [2]
+│   ├── [5] ProxiedModule _rel_sibling -> [2]
+│   └── [6] Unresolved main
+└── [2] Module _rel_sibling
+    ├── sibling -> [4]
+    └── [4] Unresolved sibling
+
+SOURCE MAP
+
+├── [0] tests/stage1/resolver/relative_import.cyrus
+└── [1] tests/stage1/resolver/_rel_sibling.cyrus
+@resolve*/

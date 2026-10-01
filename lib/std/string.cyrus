@@ -201,6 +201,20 @@ pub struct String {
         return strcmp(self->as_str_const(), other->as_str_const()) == 0;
     }
 
+    /// Whether the string begins with `prefix`.
+    pub fn starts_with(self: const Self*, prefix: const uint8*) bool {
+        const hay = self->as_str_const();
+        const prefix_len = strlen(prefix);
+
+        for (var i: usize = 0; i < prefix_len; i += 1) {
+            if (hay[i] != prefix[i]) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
     [[inline]]
     pub fn clear(self: Self*) {
         self->vec.clear();
@@ -210,6 +224,16 @@ pub struct String {
     pub fn free(self: Self*) {
         self->vec.free();
     }
+}
+
+/// Free every string owned by `vec`, then the vec itself.
+pub fn free_string_vec(vec: Vec<String>*) {
+    for (var i: usize = 0; i < vec->len(); i += 1) {
+        var entry = vec->get_owned(i).unwrap();
+        entry.free();
+    }
+
+    vec->free();
 }
 
 pub fn try_str_as_int64(str: const uint8*) Option<int64> {

@@ -1,9 +1,13 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 The Cyrus Language
 
-import std::string{String};
+import std::string{String, free_string_vec};
+import std::collections{Vec};
 import std::mem{Allocator};
 import std::option{Option};
+import std::libc{strlen};
+import std::slices{Slice};
+import std::os::dir;
 
 /// POSIX ONLY!
 pub struct Path {
@@ -99,9 +103,6 @@ pub struct Path {
         const other_str = other->inner.as_str_const();
         const other_len = other->inner.len();
 
-        @assert(self_str, "self path string cannot be null");
-        @assert(other_str, "other path string cannot be null");
-
         const self_ends_with_slash = self_len > 0 && self_str[self_len - 1] == separator();
 
         // if `other` is absolute, just return other
@@ -192,6 +193,11 @@ pub struct Path {
     }
 
     [[inline]]
+    pub fn as_str_const(self: const Self*) const uint8* {
+        return self->inner.as_str_const();
+    }
+
+    [[inline]]
     pub fn as_string(self: Self*) String {
         return self->inner;
     }
@@ -211,4 +217,248 @@ fn is_separator(ch: uint8) bool {
 [[inline]]
 fn separator() uint8 {
     return '/';
+}
+
+/// Directory part of a file path (everything before the last `/`).
+/// Returns `.` when the path has no directory component.
+pub fn dir_of_file(allocator: Allocator, file_path: const uint8*) String {
+    const len = strlen(file_path);
+
+    var last_sep: usize = 0;
+    var found = false;
+
+    for (var i: usize = 0; i < len; i += 1) {
+        if (file_path[i] == separator()) {
+            last_sep = i;
+            found = true;
+        }
+    }
+
+    if (!found) {
+        return String.from_str(allocator, ".");
+    }
+
+    if (last_sep == 0) {
+        return String.from_str(allocator, "/");
+    }
+
+    var dir = String.new(allocator);
+    for (var i: usize = 0; i < last_sep; i += 1) {
+        dir.push(file_path[i]);
+    }
+
+    return dir;
+}
+
+/// Parent directory of a file path: `a/b.cyrus -> a`, `b.cyrus -> ""`,
+/// `/x/y.cyrus -> /x`. `.None` when the path is empty.
+pub fn file_parent(allocator: Allocator, path: const uint8*) Option<String> {
+    const len = strlen(path);
+
+    if (len == 0) {
+        return .None;
+    }
+
+    var i = len;
+    while (i > 0) {
+        i -= 1;
+
+        if (path[i] == separator()) {
+            if (i == 0) {
+                return .Some(String.from_str(allocator, "/"));
+            }
+            return .Some(str_slice(allocator, path, 0, i));
+        }
+    }
+
+    // No separator: parent is the (empty) cwd-relative directory.
+    return .Some(String.new(allocator));
+}
+
+/// Join two path fragments; an absolute `child` replaces `base`.
+pub fn join_path(allocator: Allocator, base: const uint8*, child: const uint8*) String {
+    if (child[0] == '/' || base[0] == '\0') {
+        return String.from_str(allocator, child);
+    }
+
+    var out = String.from_str(allocator, base);
+    const base_len = strlen(base);
+
+    if (base[base_len - 1] != '/') {
+        out.push('/');
+    }
+    out.push_str(child);
+
+    return out;
+}
+
+/// Final path component with its extension stripped.
+pub fn file_stem(allocator: Allocator, path: const uint8*) String {
+    const len = strlen(path);
+
+    var start: usize = 0;
+    for (var i: usize = 0; i < len; i += 1) {
+        if (path[i] == '/') {
+            start = i + 1;
+        }
+    }
+
+    if (start >= len) {
+        return String.from_str(allocator, "module");
+    }
+
+    var end = len;
+    for (var i: usize = len; i > start; i -= 1) {
+        if (path[i - 1] == '.') {
+            if (i - 1 == start) {
+                break;
+            }
+            end = i - 1;
+            break;
+        }
+    }
+
+    return str_slice(allocator, path, start, end);
+}
+
+pub fn normalize_abs(allocator: Allocator, cwd: const uint8*, path: const uint8*) Option<String> {
+    var components: Vec<String> = Vec.new(allocator);
+    const absolute = (path[0] == '/') || (cwd[0] == '/');
+
+    if ((path[0] != '/') && (!push_components(allocator, &components, cwd))) {
+        free_string_vec(&components);
+        return .None;
+    }
+
+    if (!push_components(allocator, &components, path)) {
+        free_string_vec(&components);
+        return .None;
+    }
+
+    var out = String.new(allocator);
+    if (absolute) {
+        out.push('/');
+    }
+
+    for (var i: usize = 0; i < components.len(); i += 1) {
+        const component = components.get_const(i).unwrap();
+
+        if (i > 0) {
+            out.push('/');
+        }
+        out.push_str(component->as_str_const());
+    }
+
+    free_string_vec(&components);
+    return .Some(out);
+}
+
+pub fn has_path_prefix(str: const uint8*, prefix: const uint8*) bool {
+    const prefix_len = strlen(prefix);
+
+    for (var i: usize = 0; i < prefix_len; i += 1) {
+        if (str[i] != prefix[i]) {
+            return false;
+        }
+    }
+
+    const next = str[prefix_len];
+    return next == '\0' || next == '/';
+}
+
+/// True when both paths resolve to the same file.
+pub fn same_file(allocator: Allocator, a: const uint8*, b: const uint8*) bool {
+    if (a == b) {
+        return true;
+    }
+
+    var cwd = dir::cwd(allocator);
+    var right: String;
+    var left: String;
+
+    switch (normalize_abs(allocator, cwd.as_str_const(), a)) {
+        case .Some(path) => left = path;
+        case .None => left = String.from_str(allocator, a);
+    }
+
+    switch (normalize_abs(allocator, cwd.as_str_const(), b)) {
+        case .Some(path) => right = path;
+        case .None => right = String.from_str(allocator, b);
+    }
+
+    const equal = left.eq(&right);
+
+    cwd.free();
+    left.free();
+    right.free();
+
+    return equal;
+}
+
+/// Split `path` into components, resolving `.` and `..` in place.
+/// Returns `.false` when `..` walks above the root of a stacked path.
+fn push_components(allocator: Allocator, components: Vec<String>*, path: const uint8*) bool {
+    const len = strlen(path);
+    var i: usize = 0;
+
+    while (i < len) {
+        while (i < len && path[i] == '/') {
+            i += 1;
+        }
+
+        if (i >= len) {
+            break;
+        }
+
+        const start = i;
+        while (i < len && path[i] != '/') {
+            i += 1;
+        }
+
+        if (component_equals(path, start, i, ".")) {
+            continue;
+        }
+
+        if (component_equals(path, start, i, "..")) {
+            if (components->len() == 0) {
+                return false;
+            }
+
+            var last = components->get_owned(components->len() - 1).unwrap();
+            last.free();
+            components->pop();
+            continue;
+        }
+
+        components->push(str_slice(allocator, path, start, i));
+    }
+
+    return true;
+}
+
+[[inline]]
+fn component_equals(path: const uint8*, start: usize, end: usize, what: const uint8*) bool {
+    const what_len = strlen(what);
+    if (end - start != what_len) {
+        return false;
+    }
+
+    for (var k: usize = 0; k < what_len; k += 1) {
+        if (path[start + k] != what[k]) {
+            return false;
+        }
+    }
+
+    return true;
+}
+
+// TODO: Would be removed after implementing slices in language.
+fn str_slice(allocator: Allocator, path: const uint8*, start: usize, end: usize) String {
+    if (start >= end) {
+        return String.new(allocator);
+    }
+
+    const slice = Slice.new_const(path, end);
+    const part = slice.range(start, end);
+    return String.from_slice(allocator, part);
 }

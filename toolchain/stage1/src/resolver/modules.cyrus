@@ -1,0 +1,222 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 The Cyrus Language
+
+import std::string{String, free_string_vec};
+import std::path{normalize_abs};
+import std::os::dir{cwd};
+import std::collections{Vec};
+import std::option{Option};
+import std::mem{Allocator};
+
+import parser::ast{ASTImport, ASTModuleSegment};
+import resolver::symbols{GlobalSymbolRegistry};
+import source{SourceId};
+import resolver::loader{
+    ResolverOptions, 
+    ResolvedModuleFile, 
+    module_name_from_file_path,
+};
+import cir;
+
+/// Maps a loaded source file to its module symbol.
+pub struct SourceSymbolBinding {
+    pub source_id: SourceId,
+    pub symbol_id: cir::SymbolId,
+}
+
+/// Tracks module resolution state for cycle detection.
+///
+/// `active` is the stack of modules currently being resolved; a path
+/// found there means an import cycle. `done` holds modules whose
+/// resolution finished, so they are never resolved twice.
+pub struct VisitingModule {
+    active: Vec<String>,
+    done: Vec<String>,
+    allocator: Allocator,
+
+    pub fn new(allocator: Allocator) Self {
+        return Self {
+            active: Vec.new(allocator),
+            done: Vec.new(allocator),
+            allocator,
+        };
+    }
+
+    pub fn free(self: Self*) {
+        free_string_vec(&self->active);
+        free_string_vec(&self->done);
+    }
+
+    [[inline]]
+    pub fn active_contains(self: const Self*, key: const uint8*) bool {
+        return contains_key(&self->active, key);
+    }
+
+    [[inline]]
+    pub fn done_contains(self: const Self*, key: const uint8*) bool {
+        return contains_key(&self->done, key);
+    }
+
+    pub fn push_active(self: Self*, key: String) {
+        self->active.push(key);
+    }
+
+    /// Pop the innermost active key, returning it for reuse (marking
+    /// the module done, for example).
+    pub fn pop_active(self: Self*) String {
+        return self->active.remove(self->active.len() - 1);
+    }
+
+    pub fn mark_done(self: Self*, key: String) {
+        self->done.push(key);
+    }
+
+    /// Format the active stack as a cycle chain: the first path is
+    /// repeated at the end so the loop is visible (A -> B -> A).
+    pub fn active_paths_str(self: const Self*) String {
+        var out = String.new(self->allocator);
+
+        if (self->active.len() == 0) {
+            return out;
+        }
+
+        const first = self->active.get_const(0).unwrap();
+        out.push_str(first->as_str_const());
+
+        for (var i: usize = 1; i < self->active.len(); i += 1) {
+            const path = self->active.get_const(i).unwrap();
+            out.push_str("\n  - ");
+            out.push_str(path->as_str_const());
+        }
+
+        out.push_str("\n  - ");
+        out.push_str(first->as_str_const());
+
+        return out;
+    }
+}
+
+pub fn visit_key(allocator: Allocator, path: const uint8*) String {
+    var cwd = cwd(allocator);
+
+    switch (normalize_abs(allocator, cwd.as_str_const(), path)) {
+        case .Some(key) => {
+            cwd.free();
+            return key;
+        }
+    }
+
+    cwd.free();
+    return String.from_str(allocator, path);
+}
+
+pub fn group_alias(allocator: Allocator, imp: const ASTImport*) Option<String> {
+    if (imp->segments.len() == 0) {
+        return .None;
+    }
+
+    const last = imp->segments.get_const(imp->segments.len() - 1).unwrap();
+
+    switch (*last) {
+        case .SubModule(ident) => {
+            switch (imp->alias) {
+                case .Some(alias) => return .Some(String.from_str(allocator, alias.as_str_const()));
+                case .None => return .Some(String.from_str(allocator, ident.str.as_str_const()));
+            }
+        }
+        case .Single => return .None;
+    }
+}
+
+pub fn get_or_create_module_symbol(
+    registry: GlobalSymbolRegistry*,
+    opts: const ResolverOptions*,
+    bindings: Vec<SourceSymbolBinding>*,
+    parent_scope_id: cir::SymbolId,
+    source_id: SourceId,
+    resolved: const ResolvedModuleFile*,
+    segment: const uint8*
+) cir::SymbolId {
+    const allocator = registry->allocator;
+
+    var fs_name = module_name_from_file_path(
+        allocator,
+        opts,
+        resolved->file_path.as_str_const()
+    );
+
+    const root_scope_id = registry->root_scope_id();
+    var real_module_symbol_id: cir::SymbolId;
+
+    switch (registry->lookup_symbol_id_in_scope(root_scope_id, fs_name.as_str_const())) {
+        case .Some(existing) => real_module_symbol_id = existing;
+        case .None => {
+            real_module_symbol_id = registry->insert_module_symbol(
+                root_scope_id,
+                fs_name.as_str_const(),
+                segment
+            );
+            bindings->push(SourceSymbolBinding {
+                source_id,
+                symbol_id: real_module_symbol_id,
+            });
+        }
+    }
+
+    fs_name.free();
+
+    var current_scope_id = parent_scope_id;
+
+    for (var i: usize = 0; i < resolved->directory_modules.len(); i += 1) {
+        const dir = resolved->directory_modules.get_const(i).unwrap();
+        const dir_scope = get_or_create_virtual_module(
+            registry,
+            current_scope_id,
+            dir->as_str_const()
+        );
+        current_scope_id = dir_scope;
+    }
+
+    registry->insert_proxied_module(
+        current_scope_id,
+        resolved->file_module_name.as_str_const(),
+        real_module_symbol_id
+    );
+
+    return real_module_symbol_id;
+}
+
+fn get_or_create_virtual_module(
+    registry: GlobalSymbolRegistry*,
+    parent_scope_id: cir::SymbolId,
+    module_name: const uint8*
+) cir::SymbolId {
+    const resolved_parent = registry->resolve_concrete_scope_id(parent_scope_id);
+
+    switch (registry->lookup_symbol_id_in_scope(resolved_parent, module_name)) {
+        case .Some(symbol_id) => {
+            switch (registry->entries.get_const(symbol_id).unwrap()->kind) {
+                case .ProxiedModule { symbol_id: target } => {
+                    return registry->resolve_concrete_scope_id(target);
+                }
+                else => return symbol_id;
+            }
+        }
+    }
+
+    return registry->insert_module_symbol(resolved_parent, module_name, module_name);
+}
+
+// NOTE: Vec::contains is not usable here: it compares `T == T`, and String
+// has no `==` operator (only the `eq` method).
+fn contains_key(keys: const Vec<String>*, key: const uint8*) bool {
+    for (var i: usize = 0; i < keys->len(); i += 1) {
+        const candidate = keys->get_const(i).unwrap();
+
+        if (candidate->as_str_const() == key) {
+            return true;
+        }
+    }
+
+    return false;
+}

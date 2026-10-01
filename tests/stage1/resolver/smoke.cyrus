@@ -1,0 +1,17 @@
+// @resolve
+
+pub fn main() {}
+
+/*@resolve
+SYMBOL TREE
+
+[0] Namespace GLOBAL
+├── tests_stage1_resolver_smoke -> [1]
+└── [1] Module tests_stage1_resolver_smoke
+    ├── main -> [2]
+    └── [2] Unresolved main
+
+SOURCE MAP
+
+└── [0] tests/stage1/resolver/smoke.cyrus
+@resolve*/

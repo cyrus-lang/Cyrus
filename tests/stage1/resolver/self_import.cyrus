@@ -1,0 +1,26 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 The Cyrus Language
+
+// @resolve
+import .::self_import;
+
+pub fn main() {}
+
+/*@resolve
+tests/stage1/resolver/self_import.cyrus:5:1: error: module cannot import itself
+      |
+    5 ~ import .::self_import;
+      | ^^^^^^^^^^^^^^^^^^^^^^
+      |
+      = help: remove this import statement
+      |
+SYMBOL TREE
+
+[0] Namespace GLOBAL
+├── tests_stage1_resolver_self_import -> [1]
+└── [1] Module tests_stage1_resolver_self_import
+
+SOURCE MAP
+
+└── [0] tests/stage1/resolver/self_import.cyrus
+@resolve*/
