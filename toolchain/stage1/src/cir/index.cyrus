@@ -2,11 +2,3249 @@
 // Copyright (c) 2026 The Cyrus Language
 
 import std::collections{Vec};
+import std::option{Option};
+import std::string{String};
+import std::mem{Allocator};
+import std::libc{strcmp};
 
-pub struct CIRProgram {
-    body: Vec<CIRStmt>    
+import tokens{Span, TokenKind, Literal};
+import source{SourceId};
+import parser::ast;
+
+/* ************* Identifiers ************* */
+
+pub type GenericParamId = usize;
+pub type InferVarId = usize;
+pub type SymbolId = usize;
+pub type VTableId = usize;
+pub type LabelId = usize;
+pub type BodyId = usize;
+
+pub type InterfaceDeclId = usize;
+pub type GlobalVarDeclId = usize;
+pub type TypedefDeclId = usize;
+pub type MethodDeclId = usize;
+pub type StructDeclId = usize;
+pub type UnionDeclId = usize;
+pub type MonomorphId = usize;
+pub type FuncDeclId = usize;
+pub type EnumDeclId = usize;
+pub type VarDeclId = usize;
+
+/* ************* Literals ************* */
+
+pub enum IntegerLiteral {
+    Signed(int128),
+    Unsigned(uint128),
 }
 
-pub enum CIRStmt {
+/* ************* Builtins ************* */
+
+pub enum TypedBuiltin {
+    BuiltinBlock(TypedBuiltinBlock),
+    BuiltinFunc(TypedBuiltinFunc),
+
+    [[inline]]
+    pub fn span(self: const Self*) Span {
+        switch (*self) {
+            case .BuiltinBlock(builtin_block) => return builtin_block.span;
+            case .BuiltinFunc(builtin_func) => return builtin_func.span;
+        }
+    }
+}
+
+pub enum TypedBuiltinForm {
+    Expr,
+    Stmt,
+}
+
+pub struct TypedBuiltinFunc {
+    pub name: ast::ASTIdent,
+    pub args: Vec<TypedExpr>,
+    pub ret_type: Option<SemaType>,
+    pub span: Span,
+}
+
+pub struct TypedBuiltinBlock {
+    pub name: ast::ASTIdent,
+    pub args: Vec<TypedExpr>,
+    pub block: TypedBlockStmt*,
+    pub is_toplevel: Option<bool>,
+    pub span: Span,
+}
+
+pub enum TypedBuiltinFamily {
+    ConstEval,
+    Intrinsic,
+}
+
+pub enum TypedBuiltinPhase {
+    Resolver,
+    ConstEval,
+    Codegen,
+}
+
+pub enum TypedBuiltinKind {
+    FuncName,
+    MethodName,
+    ModuleName,
+    FileName,
+    Line,
+    Column,
+
+    SizeOf,
+    AlignOf,
+    OffsetOf,
+    TypeOf,
+
+    Cast,
+    Memcpy,
+    Memset,
+    Assert,
+    Panic,
+    Todo,
+    Unimplemented,
+    Unreachable,
+
+    Debug,
+    Release,
+    Unroll,
+}
+
+pub struct TypedBuiltinSpec {
+    pub kind: TypedBuiltinKind,
+    pub name: const uint8*,
+
+    pub family: TypedBuiltinFamily,
+    pub phase: TypedBuiltinPhase,
+    pub form: TypedBuiltinForm,
+    pub unreachable: bool,
+
+    pub min_args: usize,
+    pub max_args: Option<usize>,
+}
+
+pub fn lookup_builtin(name: const uint8*) Option<TypedBuiltinKind> {
+    switch (name) {
+        case "unimplemented" => return .Some(.Unimplemented);
+        case "unreachable" => return .Some(.Unreachable);
+        case "method_name" => return .Some(.MethodName);
+        case "module_name" => return .Some(.ModuleName);
+        case "func_name" => return .Some(.FuncName);
+        case "file_name" => return .Some(.FileName);
+        case "offsetof" => return .Some(.OffsetOf);
+        case "alignof" => return .Some(.AlignOf);
+        case "release" => return .Some(.Release);
+        case "typeof" => return .Some(.TypeOf);
+        case "column" => return .Some(.Column);
+        case "sizeof" => return .Some(.SizeOf);
+        case "memcpy" => return .Some(.Memcpy);
+        case "memset" => return .Some(.Memset);
+        case "assert" => return .Some(.Assert);
+        case "panic" => return .Some(.Panic);
+        case "debug" => return .Some(.Debug);
+        case "line" => return .Some(.Line);
+        case "cast" => return .Some(.Cast);
+        case "todo" => return .Some(.Todo);
+        else => return .None;
+    }
+}
+
+pub fn builtin_spec_of(kind: TypedBuiltinKind) TypedBuiltinSpec {
+    switch (kind) {
+        case .FuncName => return TypedBuiltinSpec {
+            kind,
+            name: "func_name",
+            family: .ConstEval,
+            phase: .ConstEval,
+            form: .Expr,
+            unreachable: false,
+            min_args: 0,
+            max_args: .Some(0),
+        };
+        
+        case .MethodName => return TypedBuiltinSpec {
+            kind,
+            name: "method_name",
+            family: .ConstEval,
+            phase: .ConstEval,
+            form: .Expr,
+            unreachable: false,
+            min_args: 0,
+            max_args: .Some(0),
+        };
+        
+        case .ModuleName => return TypedBuiltinSpec {
+            kind,
+            name: "module_name",
+            family: .ConstEval,
+            phase: .ConstEval,
+            form: .Expr,
+            unreachable: false,
+            min_args: 0,
+            max_args: .Some(0),
+        };
+        
+        case .FileName => return TypedBuiltinSpec {
+            kind,
+            name: "file_name",
+            family: .ConstEval,
+            phase: .ConstEval,
+            form: .Expr,
+            unreachable: false,
+            min_args: 0,
+            max_args: .Some(0),
+        };
+        
+        case .Line => return TypedBuiltinSpec {
+            kind,
+            name: "line",
+            family: .ConstEval,
+            phase: .ConstEval,
+            form: .Expr,
+            unreachable: false,
+            min_args: 0,
+            max_args: .Some(0),
+        };
+        
+        case .Column => return TypedBuiltinSpec {
+            kind,
+            name: "column",
+            family: .ConstEval,
+            phase: .ConstEval,
+            form: .Expr,
+            unreachable: false,
+            min_args: 0,
+            max_args: .Some(0),
+        };
+        
+        case .SizeOf => return TypedBuiltinSpec {
+            kind,
+            name: "sizeof",
+            family: .ConstEval,
+            phase: .ConstEval,
+            form: .Expr,
+            unreachable: false,
+            min_args: 1,
+            max_args: .Some(1),
+        };
+        
+        case .AlignOf => return TypedBuiltinSpec {
+            kind,
+            name: "alignof",
+            family: .ConstEval,
+            phase: .ConstEval,
+            form: .Expr,
+            unreachable: false,
+            min_args: 1,
+            max_args: .Some(1),
+        };
+        
+        case .OffsetOf => return TypedBuiltinSpec {
+            kind,
+            name: "offsetof",
+            family: .ConstEval,
+            phase: .ConstEval,
+            form: .Expr,
+            unreachable: false,
+            min_args: 2,
+            max_args: .Some(2),
+        };
+        
+        case .TypeOf => return TypedBuiltinSpec {
+            kind,
+            name: "typeof",
+            family: .ConstEval,
+            phase: .ConstEval,
+            form: .Expr,
+            unreachable: false,
+            min_args: 1,
+            max_args: .Some(1),
+        };
+        
+        case .Cast => return TypedBuiltinSpec {
+            kind,
+            name: "cast",
+            family: .Intrinsic,
+            phase: .Codegen,
+            form: .Expr,
+            unreachable: false,
+            min_args: 2,
+            max_args: .Some(2),
+        };
+        
+        case .Memcpy => return TypedBuiltinSpec {
+            kind,
+            name: "memcpy",
+            family: .Intrinsic,
+            phase: .Codegen,
+            form: .Expr,
+            unreachable: false,
+            min_args: 3,
+            max_args: .Some(3),
+        };
+        
+        case .Memset => return TypedBuiltinSpec {
+            kind,
+            name: "memset",
+            family: .Intrinsic,
+            phase: .Codegen,
+            form: .Expr,
+            unreachable: false,
+            min_args: 3,
+            max_args: .Some(3),
+        };
+        
+        case .Assert => return TypedBuiltinSpec {
+            kind,
+            name: "assert",
+            family: .Intrinsic,
+            phase: .Codegen,
+            form: .Expr,
+            unreachable: false,
+            min_args: 1,
+            max_args: .Some(2),
+        };
+        
+        case .Panic => return TypedBuiltinSpec {
+            kind,
+            name: "panic",
+            family: .Intrinsic,
+            phase: .Codegen,
+            form: .Expr,
+            unreachable: true,
+            min_args: 0,
+            max_args: .Some(1),
+        };
+        
+        case .Todo => return TypedBuiltinSpec {
+            kind,
+            name: "todo",
+            family: .Intrinsic,
+            phase: .Codegen,
+            form: .Expr,
+            unreachable: true,
+            min_args: 0,
+            max_args: .Some(1),
+        };
+        
+        case .Unimplemented => return TypedBuiltinSpec {
+            kind,
+            name: "unimplemented",
+            family: .Intrinsic,
+            phase: .Codegen,
+            form: .Expr,
+            unreachable: true,
+            min_args: 0,
+            max_args: .Some(1),
+        };
+        
+        case .Unreachable => return TypedBuiltinSpec {
+            kind,
+            name: "unreachable",
+            family: .Intrinsic,
+            phase: .Codegen,
+            form: .Expr,
+            unreachable: true,
+            min_args: 0,
+            max_args: .Some(1),
+        };
+        
+        case .Debug => return TypedBuiltinSpec {
+            kind,
+            name: "debug",
+            family: .ConstEval,
+            phase: .Resolver,
+            form: .Stmt,
+            unreachable: false,
+            min_args: 0,
+            max_args: .Some(0),
+        };
+        
+        case .Release => return TypedBuiltinSpec {
+            kind,
+            name: "release",
+            family: .ConstEval,
+            phase: .Resolver,
+            form: .Stmt,
+            unreachable: false,
+            min_args: 0,
+            max_args: .Some(0),
+        };
+        
+        case .Unroll => @panic("builtin spec missing");
+    }
+}
+
+pub fn is_builtin_unreachable(name: const uint8*) bool {
+    switch (lookup_builtin(name)) {
+        case .Some(builtin_kind) => return builtin_spec_of(builtin_kind).unreachable;
+        case .None => @panic("unknown builtin");
+    }
+}
+
+/* ************* Types ************* */
+
+pub enum SemaType {
+    InterfaceObject(InterfaceObjectType),
+    GenericParam(GenericParamId),
+    Unresolved(UnresolvedType),
+    FuncType(TypedFuncType),
+    SelfType(TypedSelfType),
+    Array(TypedArrayType),
+    Tuple(TypedTupleType),
+    InferVar(InferVarId),
+    Pointer(SemaType*),
+    Const(SemaType*),
+    Plain(PlainType),
+    Named(NamedType),
+    Placeholder,
+    Err(Span),
+
+    /// Returns true if this type contains `Unresolved` inside it.
+    pub fn includes_unresolved_type(self: const Self*) bool {
+        switch (*self) {
+            case .Unresolved => return true;
+
+            case .Err
+            | .Plain
+            | .SelfType
+            | .GenericParam
+            | .InferVar
+            | .Placeholder => return false;
+
+            case .Named(named_type) => {
+                for (var i: usize = 0; i < named_type.type_args.len(); i += 1) {
+                    const type_arg = named_type.type_args.get(i).unwrap();
+
+                    switch (*type_arg) {
+                        case .Type(ty, _) => if (ty.includes_unresolved_type()) {
+                            return true;
+                        }
+                    }
+                }
+
+                return false;
+            }
+
+            case .FuncType(func) => {
+                for (var i: usize = 0; i < func.params.list.len(); i += 1) {
+                    const ty = func.params.list.get_const(i).unwrap();
+
+                    if (ty->includes_unresolved_type()) {
+                        return true;
+                    }
+                }
+
+                switch (func.params.variadic) {
+                    case .Some(variadic) => switch (*variadic) {
+                        case .Typed(ty) => if (ty.includes_unresolved_type()) {
+                            return true;
+                        }
+                    }
+                }
+
+                return func.ret_type->includes_unresolved_type();
+            }
+
+            case .Tuple(tuple) => {
+                for (var i: usize = 0; i < tuple.elements.len(); i += 1) {
+                    const element = tuple.elements.get_const(i).unwrap();
+
+                    if (element->ty.includes_unresolved_type()) {
+                        return true;
+                    }
+                }
+
+                return false;
+            }
+
+            case .InterfaceObject(interface_obj) => {
+                for (var i: usize = 0; i < interface_obj.interface_type.type_args.len(); i += 1) {
+                    const type_arg = interface_obj.interface_type.type_args.get(i).unwrap();
+
+                    switch (*type_arg) {
+                        case .Type(ty, _) => if (ty.includes_unresolved_type()) {
+                            return true;
+                        }
+                    }
+                }
+
+                return interface_obj.concrete_type->includes_unresolved_type();
+            }
+
+            case .Array(array) => return array.element_type->includes_unresolved_type();
+            
+            case .Pointer(inner) => return inner->includes_unresolved_type();
+            
+            case .Const(inner) => return inner->includes_unresolved_type();
+        }
+    }
+
+    // TODO: Rename
+    [[inline]]
+    pub fn as_unresolved_decl_id(self: const Self*) Option<SymbolId> {
+        switch (*self->const_inner()) {
+            case .Unresolved(unresolved_type) => return unresolved_type.as_symbol_id();
+            else => return .None;
+        }
+    }
+
+    // TODO: Rename
+    [[inline]]
+    pub fn as_unresolved_base_decl_id(self: const Self*) Option<SymbolId> {
+        switch (*self->const_inner()) {
+            case .Unresolved(unresolved_type) => return unresolved_type.as_base_symbol_id();
+            else => return .None;
+        }
+    }
+
+    [[inline]]
+    pub fn const_inner(self: const Self*) const SemaType* {
+        switch (*self) {
+            case .Const(sema_type) => return sema_type;
+            else => return self;
+        }
+    }
+
+    [[inline]]
+    pub fn count_const_layers(self: const Self*) usize {
+        switch (*self) {
+            case .Const(inner) => return 1 + inner->count_const_layers();
+            else => return 0;
+        }
+    }
+
+    [[inline]]
+    pub fn pointer_inner(self: const Self*) const SemaType* {
+        switch (*self) {
+            case .Pointer(sema_type) => return sema_type;
+            else => return self;
+        }
+    }
+
+    [[inline]]
+    pub fn as_plain_type(self: const Self*) Option<PlainType> {
+        switch (*self->const_inner()) {
+            case .Plain(ty) => return .Some(ty);
+            else => return .None;
+        }
+    }
+
+    [[inline]]
+    pub fn as_named_type(self: const Self*) Option<NamedType> {
+        switch (*self->const_inner()) {
+            case .Named(named_type) => return .Some(named_type);
+            else => return .None;
+        }
+    }
+
+    [[inline]]
+    pub fn as_struct(self: const Self*) Option<StructDeclId> {
+        switch (*self->const_inner()) {
+            case .Named(named_type) => return named_type.type_decl_id.as_struct();
+            else => return .None;
+        }
+    }
+
+    [[inline]]
+    pub fn as_union(self: const Self*) Option<UnionDeclId> {
+        switch (*self->const_inner()) {
+            case .Named(named_type) => return named_type.type_decl_id.as_union();
+            else => return .None;
+        }
+    }
+
+    [[inline]]
+    pub fn as_enum(self: const Self*) Option<EnumDeclId> {
+        switch (*self->const_inner()) {
+            case .Named(named_type) => return named_type.type_decl_id.as_enum();
+            else => return .None;
+        }
+    }
+
+    [[inline]]
+    pub fn as_named_interface(self: const Self*) Option<InterfaceDeclId> {
+        switch (*self->const_inner()) {
+            case .Named(named_type) => return named_type.type_decl_id.as_interface();
+            else => return .None;
+        }
+    }
+
+    [[inline]]
+    pub fn as_interface_object(self: const Self*) Option<InterfaceObjectType> {
+        switch (*self->const_inner()) {
+            case .InterfaceObject(interface_object) => return .Some(interface_object);
+            else => return .None;
+        }
+    }
+
+    [[inline]]
+    pub fn as_tuple_type(self: const Self*) Option<TypedTupleType> {
+        switch (*self->const_inner()) {
+            case .Tuple(tuple_type) => return .Some(tuple_type);
+            else => return .None;
+        }
+    }
+
+    [[inline]]
+    pub fn as_func_type(self: const Self*) Option<TypedFuncType> {
+        switch (*self->const_inner()) {
+            case .FuncType(func_type) => return .Some(func_type);
+            else => return .None;
+        }
+    }
+
+    [[inline]]
+    pub fn as_array_type(self: const Self*) Option<TypedArrayType> {
+        switch (*self->const_inner()) {
+            case .Array(ty) => return .Some(ty);
+            else => return .None;
+        }
+    }
+
+    [[inline]]
+    pub fn as_self_type(self: const Self*) Option<TypedSelfType> {
+        switch (*self->const_inner()) {
+            case .SelfType(self_type) => return .Some(self_type);
+            else => return .None;
+        }
+    }
+
+    [[inline]]
+    pub fn as_generic_param(self: const Self*) Option<GenericParamId> {
+        switch (*self->const_inner()) {
+            case .GenericParam(generic_param_id) => return .Some(generic_param_id);
+            else => return .None;
+        }
+    }
+
+    [[inline]]
+    pub fn is_err(self: const Self*) bool {
+        switch (*self) {
+            case .Err => return true;
+            else => return false;
+        }
+    }
+
+    [[inline]]
+    pub fn is_error(self: const Self*) bool {
+        switch (*self->const_inner()) {
+            case .Err => return true;
+            else => return false;
+        }
+    }
+
+    pub fn contains_error(self: const Self*) bool {
+        switch (*self->const_inner()) {
+            case .Err => return true;
+
+            case .Unresolved
+            | .Plain
+            | .SelfType
+            | .GenericParam
+            | .InferVar
+            | .Placeholder => return false;
+
+            case .Named(named_type) => {
+                for (var i: usize = 0; i < named_type.type_args.len(); i += 1) {
+                    const type_arg = named_type.type_args.get(i).unwrap();
+
+                    switch (*type_arg) {
+                        case .Type(ty, _) => if (ty.contains_error()) {
+                            return true;
+                        }
+                    }
+                }
+
+                return false;
+            }
+
+            case .FuncType(func) => {
+                for (var i: usize = 0; i < func.params.list.len(); i += 1) {
+                    const ty = func.params.list.get_const(i).unwrap();
+
+                    if (ty->contains_error()) {
+                        return true;
+                    }
+                }
+
+                switch (func.params.variadic) {
+                    case .Some(variadic) => switch (*variadic) {
+                        case .Typed(ty) => if (ty.contains_error()) {
+                            return true;
+                        }
+                    }
+                }
+
+                return func.ret_type->contains_error();
+            }
+
+            case .Tuple(tuple) => {
+                for (var i: usize = 0; i < tuple.elements.len(); i += 1) {
+                    const element = tuple.elements.get_const(i).unwrap();
+
+                    if (element->ty.contains_error()) {
+                        return true;
+                    }
+                }
+
+                return false;
+            }
+
+            case .InterfaceObject(interface_obj) => {
+                for (var i: usize = 0; i < interface_obj.interface_type.type_args.len(); i += 1) {
+                    const type_arg = interface_obj.interface_type.type_args.get(i).unwrap();
+
+                    switch (*type_arg) {
+                        case .Type(ty, _) => if (ty.contains_error()) {
+                            return true;
+                        }
+                    }
+                }
+
+                return interface_obj.concrete_type->contains_error();
+            }
+
+            case .Array(array) => return array.element_type->contains_error();
+            
+            case .Pointer(inner) => return inner->contains_error();
+            
+            case .Const(inner) => return inner->contains_error();
+        }
+    }
+
+    pub fn contains_unresolved(self: const Self*) bool {
+        switch (*self->const_inner()) {
+            case .Unresolved => return true;
+
+            case .Err
+            | .Plain
+            | .SelfType
+            | .GenericParam
+            | .InferVar
+            | .Placeholder => return false;
+
+            case .Named(named_type) => {
+                for (var i: usize = 0; i < named_type.type_args.len(); i += 1) {
+                    const type_arg = named_type.type_args.get(i).unwrap();
+
+                    switch (*type_arg) {
+                        case .Type(ty, _) => if (ty.contains_unresolved()) {
+                            return true;
+                        }
+                    }
+                }
+
+                return false;
+            }
+
+            case .FuncType(func) => {
+                for (var i: usize = 0; i < func.params.list.len(); i += 1) {
+                    const ty = func.params.list.get_const(i).unwrap();
+
+                    if (ty->contains_unresolved()) {
+                        return true;
+                    }
+                }
+
+                switch (func.params.variadic) {
+                    case .Some(variadic) => switch (*variadic) {
+                        case .Typed(ty) => if (ty.contains_unresolved()) {
+                            return true;
+                        }
+                    }
+                }
+
+                return func.ret_type->contains_unresolved();
+            }
+
+            case .Tuple(tuple) => {
+                for (var i: usize = 0; i < tuple.elements.len(); i += 1) {
+                    const element = tuple.elements.get_const(i).unwrap();
+
+                    if (element->ty.contains_unresolved()) {
+                        return true;
+                    }
+                }
+
+                return false;
+            }
+
+            case .InterfaceObject(interface_obj) => {
+                for (var i: usize = 0; i < interface_obj.interface_type.type_args.len(); i += 1) {
+                    const type_arg = interface_obj.interface_type.type_args.get(i).unwrap();
+
+                    switch (*type_arg) {
+                        case .Type(ty, _) => if (ty.contains_unresolved()) {
+                            return true;
+                        }
+                    }
+                }
+
+                return interface_obj.concrete_type->contains_unresolved();
+            }
+
+            case .Array(array) => return array.element_type->contains_unresolved();
+            
+            case .Pointer(inner) => return inner->contains_unresolved();
+            
+            case .Const(inner) => return inner->contains_unresolved();
+        }
+    }
+
+    [[inline]]
+    pub fn is_unresolved(self: const Self*) bool {
+        switch (*self) {
+            case .Unresolved => return true;
+            else => return false;
+        }
+    }
+
+    [[inline]]
+    pub fn is_uint8(self: const Self*) bool {
+        switch (*self->const_inner()) {
+            case .Plain(.UInt8) => return true;
+            else => return false;
+        }
+    }
+
+    [[inline]]
+    pub fn is_uint8_pointer(self: const Self*) bool {
+        switch (*self->const_inner()) {
+            case .Pointer(inner) => return inner->is_uint8();
+            else => return false;
+        }
+    }
+
+    [[inline]]
+    pub fn is_scalar(self: const Self*) bool {
+        switch (*self->const_inner()) {
+            case .Plain(plain_type) => return plain_type.is_scalar();
+            else => return false;
+        }
+    }
+
+    [[inline]]
+    pub fn is_self_type(self: const Self*) bool {
+        switch (*self) {
+            case .SelfType => return true;
+            else => return false;
+        }
+    }
+
+    [[inline]]
+    pub fn is_plain_type(self: const Self*) bool {
+        switch (*self->const_inner()) {
+            case .Plain => return true;
+            else => return false;
+        }
+    }
+
+    [[inline]]
+    pub fn is_integer(self: const Self*) bool {
+        switch (*self->const_inner()) {
+            case .Plain(basic) => return basic.is_integer();
+            else => return false;
+        }
+    }
+
+    [[inline]]
+    pub fn is_float(self: const Self*) bool {
+        switch (*self->const_inner()) {
+            case .Plain(basic) => return basic.is_float();
+            else => return false;
+        }
+    }
+
+    [[inline]]
+    pub fn is_bool(self: const Self*) bool {
+        switch (*self->const_inner()) {
+            case .Plain(.Bool) => return true;
+            else => return false;
+        }
+    }
+
+    [[inline]]
+    pub fn is_array(self: const Self*) bool {
+        switch (*self->const_inner()) {
+            case .Array => return true;
+            else => return false;
+        }
+    }
+
+    [[inline]]
+    pub fn is_func_type(self: const Self*) bool {
+        switch (*self->const_inner()) {
+            case .FuncType => return true;
+            else => return false;
+        }
+    }
+
+    [[inline]]
+    pub fn is_const(self: const Self*) bool {
+        switch (*self) {
+            case .Const => return true;
+            else => return false;
+        }
+    }
+
+    [[inline]]
+    pub fn is_void(self: const Self*) bool {
+        switch (*self->const_inner()) {
+            case .Plain(.Void) => return true;
+            else => return false;
+        }
+    }
+
+    [[inline]]
+    pub fn is_pointer(self: const Self*) bool {
+        switch (*self->const_inner()) {
+            case .Pointer => return true;
+            else => return false;
+        }
+    }
+
+    [[inline]]
+    pub fn is_struct(self: const Self*) bool {
+        switch (*self->const_inner()) {
+            case .Named(named_type) => return named_type.type_decl_id.is_struct();
+            else => return false;
+        }
+    }
+
+    [[inline]]
+    pub fn is_union(self: const Self*) bool {
+        switch (*self->const_inner()) {
+            case .Named(named_type) => return named_type.type_decl_id.is_union();
+            else => return false;
+        }
+    }
+
+    [[inline]]
+    pub fn is_enum(self: const Self*) bool {
+        switch (*self->const_inner()) {
+            case .Named(named_type) => return named_type.type_decl_id.is_enum();
+            else => return false;
+        }
+    }
+
+    [[inline]]
+    pub fn is_interface(self: const Self*) bool {
+        switch (*self->const_inner()) {
+            case .Named(named_type) => return named_type.type_decl_id.is_interface();
+            else => return false;
+        }
+    }
+
+    [[inline]]
+    pub fn is_interface_object(self: const Self*) bool {
+        switch (*self) {
+            case .InterfaceObject => return true;
+            else => return false;
+        }
+    }
+
+    pub fn contains_infer_var(self: const Self*) bool {
+        switch (*self) {
+            case .Placeholder | .GenericParam | .Err | .Unresolved | .Plain | .SelfType | .InterfaceObject => return false;
+            case .InferVar => return true;
+            case .Const(inner) => return inner->contains_infer_var();
+            case .Pointer(inner) => return inner->contains_infer_var();
+
+            case .Array(array) => return array.element_type->contains_infer_var();
+
+            case .Tuple(tuple) => {
+                for (var i: usize = 0; i < tuple.elements.len(); i += 1) {
+                    const element = tuple.elements.get_const(i).unwrap();
+
+                    if (element->ty.contains_infer_var()) {
+                        return true;
+                    }
+                }
+
+                return false;
+            }
+
+            case .FuncType(func) => {
+                for (var i: usize = 0; i < func.params.list.len(); i += 1) {
+                    const ty = func.params.list.get_const(i).unwrap();
+
+                    if (ty->contains_infer_var()) {
+                        return true;
+                    }
+                }
+
+                switch (func.params.variadic) {
+                    case .Some(variadic) => switch (*variadic) {
+                        case .UntypedCStyle => {}
+                        case .Typed(ty) => {
+                            if (ty.contains_infer_var()) {
+                                return true;
+                            }
+                        }
+                    }
+                }
+
+                return func.ret_type->contains_infer_var();
+            }
+
+            case .Named(named_type) => {
+                for (var i: usize = 0; i < named_type.type_args.len(); i += 1) {
+                    const type_arg = named_type.type_args.get(i).unwrap();
+
+                    switch (*type_arg) {
+                        case .Type(ty, _) => {
+                            if (ty.contains_infer_var()) {
+                                return true;
+                            }
+                        }
+                        case .Infer => return true;
+                    }
+                }
+
+                return false;
+            }
+        }
+    }
+
+    pub fn contains_generic_param(self: const Self*) bool {
+        switch (*self) {
+            case .Array(array) => return array.element_type->contains_generic_param();
+            
+            case .Pointer(inner) => return inner->contains_generic_param();
+            
+            case .Const(inner) => return inner->contains_generic_param();
+            
+            case .GenericParam => return true;
+
+            case .Placeholder 
+            | .InferVar 
+            | .Err 
+            | .Unresolved 
+            | .Plain 
+            | .SelfType 
+            | .InterfaceObject => return false;
+
+            case .Tuple(tuple) => {
+                for (var i: usize = 0; i < tuple.elements.len(); i += 1) {
+                    const element = tuple.elements.get_const(i).unwrap();
+
+                    if (element->ty.contains_generic_param()) {
+                        return true;
+                    }
+                }
+
+                return false;
+            }
+
+            case .FuncType(func) => {
+                for (var i: usize = 0; i < func.params.list.len(); i += 1) {
+                    const ty = func.params.list.get_const(i).unwrap();
+
+                    if (ty->contains_generic_param()) {
+                        return true;
+                    }
+                }
+
+                switch (func.params.variadic) {
+                    case .Some(variadic) => switch (*variadic) {
+                        case .Typed(ty) => if (ty.contains_generic_param()) {
+                            return true;
+                        }
+                    }
+                }
+
+                return func.ret_type->contains_generic_param();
+            }
+
+            case .Named(named_type) => {
+                for (var i: usize = 0; i < named_type.type_args.len(); i += 1) {
+                    const type_arg = named_type.type_args.get(i).unwrap();
+
+                    switch (*type_arg) {
+                        case .Type(ty, _) => if (ty.contains_generic_param()) {
+                            return true;
+                        }
+                    }
+                }
+
+                return false;
+            }
+        }
+    }
+
+    /// Returns true if this type contains `SelfType` inside it.
+    pub fn contains_self_type(self: const Self*) bool {
+        switch (*self) {
+            case .Named(named_type) => {
+                for (var i: usize = 0; i < named_type.type_args.len(); i += 1) {
+                    const type_arg = named_type.type_args.get(i).unwrap();
+
+                    switch (*type_arg) {
+                        case .Type(ty, _) => if (ty.contains_self_type()) {
+                            return true;
+                        }
+                    }
+                }
+
+                return false;
+            }
+
+            case .FuncType(func_ty) => {
+                for (var i: usize = 0; i < func_ty.params.list.len(); i += 1) {
+                    const ty = func_ty.params.list.get_const(i).unwrap();
+
+                    if (ty->contains_self_type()) {
+                        return true;
+                    }
+                }
+
+                return func_ty.ret_type->contains_self_type();
+            }
+
+            case .Tuple(ty) => {
+                for (var i: usize = 0; i < ty.elements.len(); i += 1) {
+                    const element = ty.elements.get_const(i).unwrap();
+
+                    if (element->ty.contains_self_type()) {
+                        return true;
+                    }
+                }
+
+                return false;
+            }
+
+            case .Pointer(inner_type) => return inner_type->contains_self_type();
+            
+            case .Array(array) => return array.element_type->contains_self_type();
+
+            case .Const(inner_type) => return inner_type->contains_self_type();
+            
+            case .SelfType => return true;
+
+            case .InterfaceObject
+            | .Plain
+            | .GenericParam
+            | .InferVar
+            | .Unresolved
+            | .Err
+            | .Placeholder => return false;
+        }
+    }
+}
+
+pub enum UnresolvedType {
+    GenericInst { base_symbol_id: SymbolId, type_args: TypedTypeArgs },
+    BuiltinFunc(TypedBuiltinFunc*),
+    Decl(SymbolId),
+
+    [[inline]]
+    pub fn as_symbol_id(self: const Self*) Option<SymbolId> {
+        switch (*self) {
+            case .Decl(symbol_id) => return .Some(symbol_id);
+            else => return .None;
+        }
+    }
+
+    [[inline]]
+    pub fn as_base_symbol_id(self: const Self*) Option<SymbolId> {
+        switch (*self) {
+            case .GenericInst { base_symbol_id, .. } => return .Some(base_symbol_id);
+            case .Decl(symbol_id) => return .Some(symbol_id);
+            case .BuiltinFunc => return .None;
+        }
+    }
+}
+
+pub struct NamedType {
+    pub type_decl_id: TypeDeclId,
+    pub type_args: TypedTypeArgs,
+}
+
+pub enum TypeDeclId {
+    Interface(InterfaceDeclId),
+    Typedef(TypedefDeclId),
+    Struct(StructDeclId),
+    Union(UnionDeclId),
+    Enum(EnumDeclId),
+
+    [[inline]]
+    pub fn as_struct(self: const Self*) Option<StructDeclId> {
+        switch (*self) {
+            case .Struct(struct_decl_id) => return .Some(struct_decl_id);
+            else => return .None;
+        }
+    }
+
+    [[inline]]
+    pub fn as_enum(self: const Self*) Option<EnumDeclId> {
+        switch (*self) {
+            case .Enum(enum_decl_id) => return .Some(enum_decl_id);
+            else => return .None;
+        }
+    }
+
+    [[inline]]
+    pub fn as_union(self: const Self*) Option<UnionDeclId> {
+        switch (*self) {
+            case .Union(union_decl_id) => return .Some(union_decl_id);
+            else => return .None;
+        }
+    }
+
+    [[inline]]
+    pub fn as_interface(self: const Self*) Option<InterfaceDeclId> {
+        switch (*self) {
+            case .Interface(interface_decl_id) => return .Some(interface_decl_id);
+            else => return .None;
+        }
+    }
+
+    [[inline]]
+    pub fn is_struct(self: const Self*) bool {
+        switch (*self) {
+            case .Struct => return true;
+            else => return false;
+        }
+    }
+
+    [[inline]]
+    pub fn is_enum(self: const Self*) bool {
+        switch (*self) {
+            case .Enum => return true;
+            else => return false;
+        }
+    }
+
+    [[inline]]
+    pub fn is_union(self: const Self*) bool {
+        switch (*self) {
+            case .Union => return true;
+            else => return false;
+        }
+    }
+
+    [[inline]]
+    pub fn is_interface(self: const Self*) bool {
+        switch (*self) {
+            case .Interface => return true;
+            else => return false;
+        }
+    }
+}
+
+pub enum PlainType {
+    UIntPtr,
+    IntPtr,
+    ISize,
+    USize,
+    Int8,
+    Int16,
+    Int32,
+    Int64,
+    Int128,
+    UInt8,
+    UInt16,
+    UInt32,
+    UInt64,
+    UInt128,
+    Float16,
+    Float32,
+    Float64,
+    Float128,
+    Bool,
+    Void,
+    Null,
+
+    [[inline]]
+    pub fn map_integer_size_to_type(size: usize) Option<PlainType> {
+        switch (size) {
+            case 1 => return .Some(.Int8);
+            case 2 => return .Some(.Int16);
+            case 4 => return .Some(.Int32);
+            case 8 => return .Some(.Int64);
+            case 16 => return .Some(.Int128);
+            else => return .None;
+        }
+    }
+
+    [[inline]]
+    pub fn is_scalar(self: const Self*) bool {
+        switch (*self) {
+            case .UIntPtr 
+            | .IntPtr 
+            | .ISize 
+            | .USize => return true;
+
+            case .Int8 
+            | .Int16 
+            | .Int32 
+            | .Int64 
+            | .Int128 => return true;
+
+            case .UInt8 
+            | .UInt16 
+            | .UInt32 
+            | .UInt64 
+            | .UInt128 => return true;
+
+            case .Float16 
+            | .Float32 
+            | .Float64 
+            | .Float128 => return true;
+
+            case .Void | .Null => return false;
+            
+            case .Bool => return true;
+        }
+    }
+
+    [[inline]]
+    pub fn is_void(self: const Self*) bool {
+        switch (*self) {
+            case .Void => return true;
+            else => return false;
+        }
+    }
+
+    [[inline]]
+    pub fn is_bool(self: const Self*) bool {
+        switch (*self) {
+            case .Bool => return true;
+            else => return false;
+        }
+    }
+
+    [[inline]]
+    pub fn is_uint8(self: const Self*) bool {
+        switch (*self) {
+            case .UInt8 => return true;
+            else => return false;
+        }
+    }
+
+    [[inline]]
+    pub fn is_integer_or_bool(self: const Self*) bool {
+        return self->is_integer() || self->is_bool();
+    }
+
+    [[inline]]
+    pub fn is_integer(self: const Self*) bool {
+        switch (*self) {
+            case .UIntPtr
+            | .IntPtr
+            | .ISize
+            | .USize
+            | .Int8
+            | .Int16
+            | .Int32
+            | .Int64
+            | .Int128
+            | .UInt8
+            | .UInt16
+            | .UInt32
+            | .UInt64
+            | .UInt128 => return true;
+
+            else => return false;
+        }
+    }
+
+    [[inline]]
+    pub fn is_float(self: const Self*) bool {
+        switch (*self) {
+            case .Float16 | .Float32 | .Float64 | .Float128 => return true;
+            else => return false;
+        }
+    }
+
+    [[inline]]
+    pub fn is_signed(self: const Self*) bool {
+        switch (*self) {
+            case .UIntPtr
+            | .UInt8
+            | .UInt16
+            | .UInt32
+            | .UInt64
+            | .UInt128
+            | .USize => return false;
+
+            case .ISize
+            | .IntPtr
+            | .Int8
+            | .Int16
+            | .Int32
+            | .Int64
+            | .Int128 => return true;
+
+            case .Bool | .Void | .Null => return false;
+
+            case .Float16 | .Float32 | .Float64 | .Float128 => return false;
+        }
+    }
+
+    // TODO: I believe bool also should be added here.
+    [[inline]]
+    pub fn plain_type_rank(ty: const PlainType*) Option<uint8> {
+        switch (*ty) {
+            case .Int8 | .UInt8 => return .Some(2);
+            
+            case .Int16 | .UInt16 => return .Some(3);
+            
+            case .Int32 | .UInt32 => return .Some(4);
+            
+            case .Int64 | .UInt64 => return .Some(5);
+            
+            case .IntPtr 
+            | .UIntPtr 
+            | .ISize 
+            | .USize => return .Some(6);
+
+            case .Int128 | .UInt128 => return .Some(7);
+
+            case .Float16 => return .Some(8);
+            case .Float32 => return .Some(9);
+            case .Float64 => return .Some(10);
+            case .Float128 => return .Some(11);
+
+            else => return .None;
+        }
+    }
+
+    [[inline]]
+    pub fn widen_type(a: PlainType, b: PlainType) Option<PlainType> {
+        switch (PlainType.plain_type_rank(&a)) {
+            case .Some(ar) => switch (PlainType.plain_type_rank(&b)) {
+                case .Some(br) => if (ar >= br) {
+                    return .Some(a);
+                } else {
+                    return .Some(b);
+                }
+            }
+        }
+
+        return .None;
+    }
+
+    [[inline]]
+    pub fn to_str(self: const Self*) const uint8* {
+        switch (*self) {
+            case .UIntPtr => return "uintptr";
+            case .IntPtr => return "intptr";
+            case .ISize => return "isize";
+            case .USize => return "usize";
+            case .Int8 => return "int8";
+            case .Int16 => return "int16";
+            case .Int32 => return "int32";
+            case .Int64 => return "int64";
+            case .Int128 => return "int128";
+            case .UInt8 => return "uint8";
+            case .UInt16 => return "uint16";
+            case .UInt32 => return "uint32";
+            case .UInt64 => return "uint64";
+            case .UInt128 => return "uint128";
+            case .Float16 => return "float16";
+            case .Float32 => return "float32";
+            case .Float64 => return "float64";
+            case .Float128 => return "float128";
+            case .Bool => return "bool";
+            case .Void => return "void";
+            case .Null => return "null";
+        }
+    }
+}
+
+pub struct TypedTupleType {
+    pub elements: Vec<TypedTupleElement>,
+    pub span: Span,
+}
+
+pub struct TypedTupleElement {
+    pub ty: SemaType,
+    pub span: Span,
+}
+
+pub struct TypedFuncType {
+    pub params: TypedFuncTypeParams,
+    pub ret_type: SemaType*,
+    pub vis: ast::ASTVisibility,
+    pub callconv: ast::ASTCallconv,
+    pub span: Span,
+}
+
+pub struct TypedArrayType {
+    pub element_type: SemaType*,
+    pub capacity: TypedArrayCapacity,
+    pub span: Span,
+}
+
+pub enum TypedArrayCapacity {
+    Fixed(TypedExpr*),
+    Slice,
+}
+
+pub struct InterfaceObjectType {
+    pub interface_type: NamedType,
+    pub concrete_type: SemaType*,
+    pub vtable_id: VTableId,
+    pub span: Span,
+}
+
+[[inline]]
+pub fn map_integer_suffix_to_sema_type(suffix: const TokenKind*) Option<SemaType> {
+    switch (*suffix) {
+        case .UIntPtr => return .Some(.Plain(.UIntPtr));
+        case .IntPtr => return .Some(.Plain(.IntPtr));
+        case .USize => return .Some(.Plain(.USize));
+        case .ISize => return .Some(.Plain(.ISize));
+        case .Int8 => return .Some(.Plain(.Int8));
+        case .Int16 => return .Some(.Plain(.Int16));
+        case .Int32 => return .Some(.Plain(.Int32));
+        case .Int64 => return .Some(.Plain(.Int64));
+        case .Int128 => return .Some(.Plain(.Int128));
+        case .UInt8 => return .Some(.Plain(.UInt8));
+        case .UInt16 => return .Some(.Plain(.UInt16));
+        case .UInt32 => return .Some(.Plain(.UInt32));
+        case .UInt64 => return .Some(.Plain(.UInt64));
+        case .UInt128 => return .Some(.Plain(.UInt128));
+        else => return .None;
+    }
+}
+
+[[inline]]
+pub fn map_float_suffix_to_sema_type(suffix: const TokenKind*) Option<SemaType> {
+    switch (*suffix) {
+        case .Float16 => return .Some(.Plain(.Float16));
+        case .Float32 => return .Some(.Plain(.Float32));
+        case .Float64 => return .Some(.Plain(.Float64));
+        case .Float128 => return .Some(.Plain(.Float128));
+        else => return .None;
+    }
+}
+
+/* ************* Expressions ************* */
+
+pub struct TypedExpr {
+    pub kind: TypedExprKind,
+    pub ty: Option<SemaType>,
+    pub val_cat: ValueCategory,
+    pub analyzed: bool,
+    pub span: Span,
+
+    [[inline]]
+    pub fn is_lvalue(self: const Self*) bool {
+        switch (self->val_cat) {
+            case .LValue => return true;
+            else => return false;
+        }
+    }
+
+    [[inline]]
+    pub fn is_rvalue(self: const Self*) bool {
+        switch (self->val_cat) {
+            case .RValue => return true;
+            else => return false;
+        }
+    }
+
+    pub fn is_comptime_expr(self: const Self*) bool {
+        switch (self->kind) {
+            case .Literal => return true;
+            case .Lambda => return true;
+
+            case .Array(array) => {
+                for (var i: usize = 0; i < array.elements.len(); i += 1) {
+                    const element = array.elements.get_const(i).unwrap();
+
+                    if (!element->is_comptime_expr()) {
+                        return false;
+                    }
+                }
+
+                return true;
+            }
+
+            case .Tuple(tuple) => {
+                for (var i: usize = 0; i < tuple.elements.len(); i += 1) {
+                    const element = tuple.elements.get_const(i).unwrap();
+
+                    if (!element->is_comptime_expr()) {
+                        return false;
+                    }
+                }
+
+                return true;
+            }
+
+            case .EnumInit(enum_init) => {
+                switch (enum_init.arg) {
+                    case .Unit => return true;
+                    
+                    case .Tuple(exprs) => {
+                        for (var i: usize = 0; i < exprs.len(); i += 1) {
+                            const element = exprs.get_const(i).unwrap();
+
+                            if (!element->is_comptime_expr()) {
+                                return false;
+                            }
+                        }
+
+                        return true;
+                    }
+                    
+                    case .Struct(field_inits) => {
+                        for (var i: usize = 0; i < field_inits.len(); i += 1) {
+                            const field_init = field_inits.get_const(i).unwrap();
+
+                            if (!field_init->value->is_comptime_expr()) {
+                                return false;
+                            }
+                        }
+
+                        return true;
+                    }
+                }
+            }
+
+            case .StructInit(struct_init) => {
+                for (var i: usize = 0; i < struct_init.fields.len(); i += 1) {
+                    const field = struct_init.fields.get_const(i).unwrap();
+
+                    if (!field->value.is_comptime_expr()) {
+                        return false;
+                    }
+                }
+
+                return true;
+            }
+
+            case .UnionInit(union_init) => {
+                return union_init.field->value.is_comptime_expr();
+            }
+
+            else => return false;
+        }
+    }
+
+    pub fn literal_const_int_value(self: const Self*) Option<IntegerLiteral> {
+        switch (self->kind) case .Literal(lit) else {
+            return .None;
+        }
+
+        switch (lit.kind) {
+            case .Integer { value, .. } => {
+                switch (value) {
+                    case .Unsigned(val) => return .Some(.Unsigned(val));
+                    case .Signed(val) => return .Some(.Signed(val));
+                }
+            }
+            case .Bool(v) => {
+                if (v) {
+                    return .Some(.Unsigned(1));
+                } else {
+                    return .Some(.Unsigned(0));
+                }
+            }
+        }
+
+        return .None;
+    }
+
+    pub fn literal_const_string_value(self: const Self*) Option<const uint8*> {
+        switch (self->kind) case .Literal(lit) else {
+            return .None;
+        }
+
+        switch (lit.kind) {
+            case .String { value, suffix } => {
+                switch (suffix) {
+                    case .None => return .Some(value.as_str_const());
+                    case .Some => return .None;
+                }
+            }
+        }
+
+        return .None;
+    }
+}
+
+pub enum ValueCategory {
+    LValue(ast::ASTConstness),
+    Unknown,
+    RValue,
+    Type,
+
+    [[inline]]
+    pub fn is_const_lvalue(self: const Self*) bool {
+        switch (*self) {
+            case .LValue(.Const) => return true;
+            else => return false;
+        }
+    }
+}
+
+pub enum TypedExprKind {
+    EnumStructVariantInit(TypedEnumStructVariantInit),
+    UnnamedStructValue(TypedUnnamedStructValue),
+    UnnamedUnionValue(TypedUnnamedUnionValue),
+    UnnamedEnumValue(TypedUnnamedEnumValue),
+    TupleAccess(TypedTupleAccessExpr),
+    StructInit(TypedStructInitExpr),
+    ArrayIndex(TypedArrayIndexExpr),
+    FieldAccess(TypedFieldAccess),
+    UnionInit(TypedUnionInitExpr),
+    MethodCall(TypedMethodCall),
+    InlineAsm(TypedInlineAsm),
+    Literal(TypedLiteralExpr),
+    Dynamic(TypedDynamicExpr),
+    FuncCall(TypedFuncCall),
+    EnumInit(TypedEnumInit),
+    Lambda(TypedLambdaExpr),
+    AddrOf(TypedAddrOfExpr),
+    Assign(TypedAssignExpr),
+    Symbol(TypedSymbolExpr),
+    Prefix(TypedPrefixExpr),
+    Builtin(TypedBuiltin),
+    Infix(TypedInfixExpr),
+    Deref(TypedDerefExpr),
+    Array(TypedArrayExpr),
+    Tuple(TypedTupleExpr),
+    SemaType {
+        ty: SemaType,
+        span: Span
+    },
+    Poisoned,
+
+    [[inline]]
+    pub fn as_literal(self: const Self*) Option<TypedLiteralExpr> {
+        switch (*self) {
+            case .Literal(literal) => return .Some(literal);
+            else => return .None;
+        }
+    }
+
+    pub fn as_type_expr(self: const Self*, allocator: Allocator) Option<SemaType> {
+        switch (*self) {
+            case .Symbol(symbol_expr) => {
+                switch (symbol_expr.as_decl_id()) {
+                    case .Some(decl_id) => {
+                        switch (decl_id.as_type_decl_id()) {
+                            case .Some(type_decl_id) => {
+                                return .Some(.Named(NamedType {
+                                    type_decl_id,
+                                    type_args: TypedTypeArgs.new(allocator),
+                                }));
+                            }
+                        }
+                    }
+                }
+            }
+            case .SemaType { ty, .. } => return .Some(ty);
+        }
+
+        return .None;
+    }
+
+    [[inline]]
+    pub fn is_dynamic(self: const Self*) bool {
+        switch (*self) {
+            case .Dynamic => return true;
+            else => return false;
+        }
+    }
+
+    [[inline]]
+    pub fn as_unresolved_symbol_id(self: const Self*) Option<SymbolId> {
+        switch (*self) {
+            case .Symbol(symbol_expr) => return symbol_expr.as_symbol_id();
+            else => return .None;
+        }
+    }
+
+    [[inline]]
+    pub fn as_resolved_decl_id(self: const Self*) Option<DeclId> {
+        switch (*self) {
+            case .Symbol(symbol_expr) => return symbol_expr.as_decl_id();
+            else => return .None;
+        }
+    }
+
+    [[inline]]
+    pub fn is_lvalue(self: const Self*) bool {
+        switch (*self) {
+            case .Symbol | .ArrayIndex | .Deref | .FieldAccess | .TupleAccess => return true;
+
+            case .Poisoned 
+            | .MethodCall
+            | .FuncCall
+            | .StructInit
+            | .UnnamedStructValue
+            | .UnnamedEnumValue
+            | .Literal
+            | .Prefix
+            | .Infix
+            | .Assign
+            | .AddrOf
+            | .Array
+            | .Lambda
+            | .Tuple
+            | .Dynamic
+            | .UnnamedUnionValue
+            | .Builtin
+            | .InlineAsm
+            | .EnumStructVariantInit
+            | .UnionInit
+            | .EnumInit
+            | .SemaType => return false;
+        }
+    }
+}
+
+pub struct TypedAsmOperand {
+    pub constraint: String,
+    pub expr: TypedExpr*,
+    pub span: Span,
+}
+
+pub struct TypedAsmClobber {
+    pub name: String,
+    pub span: Span,
+}
+
+pub struct TypedInlineAsm {
+    pub template: Vec<String>,
+    pub outputs: Vec<TypedAsmOperand>,
+    pub inputs: Vec<TypedAsmOperand>,
+    pub clobbers: Vec<TypedAsmClobber>,
+    pub is_volatile: bool,
+    pub span: Span,
+}
+
+pub enum TypedSymbolExpr {
+    Unresolved {
+        symbol_id: SymbolId,
+        span: Span,
+    },
+    Resolved {
+        decl_id: DeclId,
+        span: Span,
+    },
+
+    [[inline]]
+    pub fn to_resolved_decl_id(self: Self*, decl_id: DeclId) {
+        switch (*self) {
+            case .Unresolved { span, .. } => {
+                *self = .Resolved { decl_id, span };
+            }
+        }
+    }
+
+    [[inline]]
+    pub fn as_decl_id(self: const Self*) Option<DeclId> {
+        switch (*self) {
+            case .Resolved { decl_id, .. } => return .Some(decl_id);
+            else => return .None;
+        }
+    }
+
+    [[inline]]
+    pub fn as_symbol_id(self: const Self*) Option<SymbolId> {
+        switch (*self) {
+            case .Unresolved { symbol_id, .. } => return .Some(symbol_id);
+            else => return .None;
+        }
+    }
+
+    [[inline]]
+    pub fn span(self: const Self*) Span {
+        switch (*self) {
+            case .Unresolved { span, .. } => return span;
+            case .Resolved { span, .. } => return span;
+        }
+    }
+}
+
+pub struct TypedDynamicExpr {
+    pub operand: TypedExpr*,
+    pub object_name: Option<String>,
+    pub interface_object_type: Option<InterfaceObjectType>,
+    pub concrete_type: Option<SemaType>,
+    pub span: Span,
+}
+
+pub struct TypedTupleAccessExpr {
+    pub operand: TypedExpr*,
+    pub index: usize,
+    pub span: Span,
+}
+
+pub struct TypedTupleExpr {
+    pub elements: Vec<TypedExpr>,
+    pub span: Span,
+}
+
+pub struct TypedLambdaExpr {
+    pub params: TypedFuncParams,
+    pub body: TypedBlockStmt*,
+    pub ret_type: SemaType,
+    pub span: Span,
+}
+
+pub struct TypedSizeOfExpr {
+    pub operand: TypedExpr*,
+    pub span: Span,
+}
+
+pub struct TypedLiteralExpr {
+    pub ty: Option<SemaType>,
+    pub kind: Literal,
+    pub span: Span,
+
+    pub fn format_kind(self: const Self*) const uint8* {
+        switch (self->kind) {
+            case .Integer => return "integer";
+            case .Float => return "float";
+            case .String => return "string";
+            case .Bool => return "bool";
+            case .Char => return "char";
+            case .Null => return "null";
+        }
+    }
+}
+
+pub struct TypedSelfType {
+    pub span: Span,
+}
+
+pub struct TypedPrefixExpr {
+    pub op: ast::ASTPrefixOperator,
+    pub operand: TypedExpr*,
+    pub span: Span,
+}
+
+pub struct TypedInfixExpr {
+    pub op: ast::ASTInfixOperator,
+    pub lhs: TypedExpr*,
+    pub rhs: TypedExpr*,
+    pub span: Span,
+}
+
+pub struct TypedAssignExpr {
+    pub lhs: TypedExpr*,
+    pub rhs: TypedExpr*,
+    pub kind: ast::ASTAssignKind,
+    pub span: Span,
+}
+
+pub struct TypedCastExpr {
+    pub operand: TypedExpr*,
+    pub target_type: SemaType,
+    pub span: Span,
+}
+
+pub struct TypedArrayExpr {
+    pub ty: Option<SemaType>,
+    pub elements: Vec<TypedExpr>,
+    pub span: Span,
+}
+
+pub struct TypedArrayIndexExpr {
+    pub operand: TypedExpr*,
+    pub index: TypedExpr*,
+    pub span: Span,
+}
+
+pub struct TypedAddrOfExpr {
+    pub operand: TypedExpr*,
+    pub span: Span,
+}
+
+pub struct TypedDerefExpr {
+    pub operand: TypedExpr*,
+    pub span: Span,
+}
+
+pub struct TypedStructInitExpr {
+    pub operand: SemaType,
+    pub fields: Vec<TypedFieldInit>,
+    pub span: Span,
+}
+
+pub struct TypedUnionInitExpr {
+    pub operand: SemaType,
+    pub field: TypedFieldInit*,
+    pub span: Span,
+}
+
+pub struct TypedFieldInit {
+    pub name: String,
+    pub value: TypedExpr,
+    pub span: Span,
+}
+
+pub struct TypedFuncCall {
+    pub operand: TypedExpr*,
+    pub args: Vec<TypedExpr>,
+    pub type_args: TypedTypeArgs,
+    pub dispatch: TypedFuncCallDispatch,
+    pub span: Span,
+}
+
+pub enum TypedFuncCallDispatch {
+    Unresolved,
+
+    /// Normal function call
+    Normal {
+        func_decl_id: FuncDeclId,
+    },
+
+    /// Generic function instantiation
+    Monomorph {
+        monomorph_id: MonomorphId,
+    },
+
+    /// Calling a function pointer
+    FunctionPointer {
+        func_type: TypedFuncType,
+    },
+}
+
+pub struct TypedFieldAccess {
+    pub operand: TypedExpr*,
+    pub name: String,
+    pub dispatch: TypedFieldAccessDispatch,
+    pub ty: Option<SemaType>,
+    pub is_thin_arrow: bool,
+    pub span: Span,
+}
+
+pub enum TypedFieldAccessDispatch {
+    Unresolved,
+
+    Struct {
+        struct_decl_id: StructDeclId,
+        index: usize,
+    },
+
+    Union {
+        union_decl_id: UnionDeclId,
+    },
+}
+
+pub struct TypedEnumInit {
+    pub operand: SemaType,
+    pub name: String,
+    pub arg: TypedEnumInitArgs,
+    pub span: Span,
+}
+
+pub enum TypedEnumInitArgs {
+    Struct(Vec<TypedEnumStructVariantFieldInit>),
+    Tuple(Vec<TypedExpr>),
+    Unit,
+}
+
+pub struct TypedMethodCall {
+    pub name: String,
+    pub operand: TypedExpr*,
+    pub args: Vec<TypedExpr>,
+    pub type_args: TypedTypeArgs,
+    pub dispatch: TypedMethodCallDispatch,
+    pub is_thin_arrow: bool,
+    pub span: Span,
+}
+
+pub enum TypedMethodCallDispatch {
+    Unresolved,
+
+    Normal {
+        method_decl_id: MethodDeclId,
+    },
+
+    Interface {
+        interface_decl_id: InterfaceDeclId,
+        index: usize,
+
+        dispatch: TypedInterfaceCallDispatch,
+    },
+
+    Monomorph {
+        monomorph_id: MonomorphId,
+        is_instance_method: bool,
+    },
+}
+
+pub enum TypedInterfaceCallDispatch {
+    StaticMonomorphized { monomorph_id: MonomorphId },
+    StaticNormal { method_decl_id: MethodDeclId },
+    Dynamic,
+}
+
+pub struct TypedUnnamedStructValue {
+    pub struct_decl_id: Option<StructDeclId>,
+    pub fields: Vec<TypedUnnamedStructValueField>,
+    pub repr_attr: Option<ast::ASTReprAttr>,
+    pub align: Option<usize>,
+    pub span: Span,
+}
+
+pub struct TypedUnnamedUnionValue {
+    pub union_decl_id: Option<UnionDeclId>,
+    pub fields: Vec<TypedUnnamedUnionValueField>,
+    pub span: Span,
+}
+
+pub struct TypedUnnamedEnumValue {
+    pub enum_decl_id: Option<EnumDeclId>,
+    pub kind: TypedUnnamedEnumValueKind,
+    pub ident: ast::ASTIdent,
+    pub span: Span,
+}
+
+pub enum TypedUnnamedEnumValueKind {
+    Struct(Vec<TypedEnumStructVariantFieldInit>),
+    Tuple(Vec<TypedExpr>),
+    Unit,
+
+    [[inline]]
+    pub fn as_fielded(self: const Self*) Option<Vec<TypedExpr>> {
+        switch (*self) {
+            case .Tuple(exprs) => return .Some(exprs);
+            else => return .None;
+        }
+    }
+}
+
+pub struct TypedEnumStructVariantInit {
+    pub enum_decl_id: Option<EnumDeclId>,
+    pub field_inits: Vec<TypedEnumStructVariantFieldInit>,
+    pub operand: TypedExpr*,
+    pub ident: ast::ASTIdent,
+    pub span: Span,
+}
+
+pub struct TypedEnumStructVariantFieldInit {
+    pub name: ast::ASTIdent,
+    pub value: TypedExpr*,
+    pub span: Span,
+}
+
+pub struct TypedUnnamedStructValueField {
+    pub name: String,
+    pub value: TypedExpr*,
+    pub span: Span,
+}
+
+pub struct TypedUnnamedUnionValueField {
+    pub name: String,
+    pub value: TypedExpr*,
+    pub span: Span,
+}
+
+/* ************* Statements ************* */
+
+pub struct TypedStmt {
+    pub kind: TypedStmtKind,
+    pub is_dead: bool,
+
+    [[inline]]
+    pub fn new(kind: TypedStmtKind) Self {
+        return Self { kind, is_dead: false };
+    }
+}
+
+pub enum TypedStmtKind {
+    TupleExport(TypedTupleExportStmt),
+    Interface(TypedInterfaceStmt),
+    GlobalVar(TypedGlobalVarStmt),
+    Continue(TypedContinueStmt),
+    FuncDecl(TypedFuncDeclStmt),
+    FuncDef(TypedFuncDefStmt),
+    InlineAsm(TypedInlineAsm),
+    Typedef(TypedTypedefStmt),
+    BlockStmt(TypedBlockStmt),
+    Switch(TypedSwitchStmt),
+    Return(TypedReturnStmt),
+    Struct(TypedStructStmt),
+    Variable(TypedVarStmt),
+    Builtin(TypedBuiltin),
+    While(TypedWhileStmt),
+    Label(TypedLabelStmt),
+    Union(TypedUnionStmt),
+    Break(TypedBreakStmt),
+    Defer(TypedDeferStmt),
+    Goto(TypedGotoStmt),
+    Enum(TypedEnumStmt),
+    For(TypedForStmt),
+    If(TypedIfStmt),
+    Expr(TypedExpr),
+
+    pub fn span(self: const Self*) Span {
+        switch (*self) {
+            case .BlockStmt(typed_block_statement) => return typed_block_statement.span;
+            case .GlobalVar(typed_global_variable) => return typed_global_variable.span;
+            case .TupleExport(export_tuple_values) => return export_tuple_values.span;
+            case .Interface(typed_interface) => return typed_interface.span;
+            case .FuncDecl(typed_func_decl) => return typed_func_decl.span;
+            case .Label(typed_label_stmt) => return typed_label_stmt.span;
+            case .Variable(typed_variable) => return typed_variable.span;
+            case .Continue(typed_continue) => return typed_continue.span;
+            case .FuncDef(typed_func_def) => return typed_func_def.span;
+            case .Builtin(typed_builtin) => return typed_builtin.span();
+            case .Goto(typed_goto_stmt) => return typed_goto_stmt.span;
+            case .Typedef(typed_typedef) => return typed_typedef.span;
+            case .Switch(typed_switch) => return typed_switch.span;
+            case .Return(typed_return) => return typed_return.span;
+            case .Struct(struct_stmt) => return struct_stmt.span;
+            case .Defer(typed_defer) => return typed_defer.span;
+            case .Break(typed_break) => return typed_break.span;
+            case .While(while_stmt) => return while_stmt.span;
+            case .Union(union_stmt) => return union_stmt.span;
+            case .Expr(typed_expr) => return typed_expr.span;
+            case .Enum(typed_enum) => return typed_enum.span;
+            case .For(typed_for) => return typed_for.span;
+            case .If(typed_if) => return typed_if.span;
+            case .InlineAsm(asm) => return asm.span;
+        }
+    }
+}
+
+pub struct TypedLabelStmt {
+    pub name: String,
+    pub label_id: LabelId,
+    pub span: Span,
+}
+
+pub struct TypedGotoStmt {
+    pub name: String,
+    pub label_id: Option<LabelId>,
+    pub span: Span,
+}
+
+pub struct TypedTupleExportStmt {
+    pub pattern: TypedTupleExportPattern,
+    pub rhs: Option<TypedExpr>,
+    pub is_const: bool,
+    pub span: Span,
+}
+
+pub struct TypedTupleExportPattern {
+    pub kind: TypedTupleExportPatternKind,
+    pub ty: Option<SemaType>,
+    pub mutability: Option<ast::ASTConstness>,
+    pub span: Span,
+
+    [[inline]]
+    pub fn as_tuple(self: const Self*) Option<Vec<TypedTupleExportPattern>> {
+        switch (self->kind) {
+            case .Tuple(patterns) => return .Some(patterns);
+            else => return .None;
+        }
+    }
+}
+
+pub enum TypedTupleExportPatternKind {
+    Tuple(Vec<TypedTupleExportPattern>),
+    Ident(VarDeclId),
+    Ignore,
+}
+
+pub struct TypedDeferStmt {
+    pub operand: TypedStmt*,
+    pub span: Span,
+}
+
+pub struct TypedImplementInterface {
+    pub ty: SemaType,
+    pub span: Span,
+}
+
+pub struct TypedInterfaceStmt {
+    pub name: String,
+    pub interface_decl_id: InterfaceDeclId,
+    pub methods: MethodDecls,
+    pub generic_params: TypedGenericParams,
+    pub vis: ast::ASTVisibility,
+    pub span: Span,
+}
+
+pub struct TypedEnumStmt {
+    pub enum_decl_id: EnumDeclId,
+    pub variants: Vec<TypedEnumVariant>,
+    pub generic_params: TypedGenericParams,
+    pub impls: Vec<TypedImplementInterface>,
+    pub modifiers: ast::ASTEnumModifiers,
+    pub tag_type: Option<SemaType>,
+    pub align: Option<usize>,
+    pub methods: MethodDecls,
+    pub name: String,
+    pub span: Span,
+
+    [[inline]]
+    pub fn is_generic(self: const Self*) bool {
+        return !self->generic_params.is_empty();
+    }
+
+    pub fn is_repr_c(self: const Self*) bool {
+        switch (self->modifiers.repr_attr) {
+            case .Some(repr_attr) => {
+                for (var i: usize = 0; i < repr_attr.items.len(); i += 1) {
+                    const item = repr_attr.items.get_const(i).unwrap();
+
+                    switch (item->kind) {
+                        case .Kind(kind) => {
+                            switch (kind) {
+                                case .C => return true;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        return false;
+    }
+}
+
+pub enum TypedEnumVariant {
+    Struct { ident: ast::ASTIdent, fields: Vec<TypedEnumVariantStructField> },
+    Tuple { ident: ast::ASTIdent, fields: Vec<TypedEnumVariantTupleField> },
+    Valued { ident: ast::ASTIdent, value: TypedExpr* },
+    Unit(ast::ASTIdent),
+}
+
+pub struct TypedEnumVariantTupleField {
+    pub ty: SemaType,
+    pub span: Span,
+}
+
+pub struct TypedEnumVariantStructField {
+    pub name: ast::ASTIdent,
+    pub ty: SemaType,
+    pub span: Span,
+}
+
+pub struct TypedStructStmt {
+    pub struct_decl_id: StructDeclId,
+    pub generic_params: TypedGenericParams,
+    pub impls: Vec<TypedImplementInterface>,
+    pub modifiers: ast::ASTStructModifiers,
+    pub fields: Vec<TypedStructField>,
+    pub align: Option<usize>,
+    pub methods: MethodDecls,
+    pub name: String,
+    pub span: Span,
+
+    [[inline]]
+    pub fn is_generic(self: const Self*) bool {
+        return !self->generic_params.is_empty();
+    }
+}
+
+pub struct TypedUnionStmt {
+    pub union_decl_id: UnionDeclId,
+    pub generic_params: TypedGenericParams,
+    pub impls: Vec<TypedImplementInterface>,
+    pub modifiers: ast::ASTEnumModifiers,
+    pub fields: Vec<TypedUnionField>,
+    pub methods: MethodDecls,
+    pub align: Option<usize>,
+    pub name: String,
+    pub span: Span,
+
+    [[inline]]
+    pub fn is_generic(self: const Self*) bool {
+        return !self->generic_params.is_empty();
+    }
+}
+
+pub struct TypedUnionField {
+    pub name: String,
+    pub ty: SemaType,
+    pub span: Span,
+}
+
+pub struct TypedStructField {
+    pub name: String,
+    pub ty: SemaType,
+    pub vis: ast::ASTVisibility,
+    pub span: Span,
+}
+
+pub struct TypedReturnStmt {
+    pub arg: Option<TypedExpr>,
+    pub span: Span,
+}
+
+pub struct TypedGlobalVarStmt {
+    pub file_id: SourceId,
+    pub global_var_decl_id: GlobalVarDeclId,
+    pub modifiers: ast::ASTGlobalVarModifiers,
+    pub expr: Option<TypedExpr>,
+    pub ty: Option<SemaType>,
+    pub name: String,
+    pub is_const: bool,
+    pub is_static: bool,
+    pub is_undef: bool,
+    pub span: Span,
+}
+
+pub struct TypedTypedefStmt {
+    pub typedef_decl_id: TypedefDeclId,
+    pub name: String,
+    pub ty: SemaType,
+    pub generic_params: TypedGenericParams,
+    pub vis: ast::ASTVisibility,
+    pub span: Span,
+}
+
+pub struct TypedBlockStmt {
+    pub stmts: Vec<TypedStmt>,
+    pub defers: Vec<TypedDeferStmt>,
+    pub span: Span,
     
+    pub fn empty(allocator: Allocator, span: Span) Self {
+        return Self {
+            stmts: Vec.new(allocator),
+            defers: Vec.new(allocator),
+            span,
+        };
+    }
+}
+
+pub struct TypedVarStmt {
+    pub var_decl_id: VarDeclId,
+    pub name: String,
+    pub ty: Option<SemaType>,
+    pub rhs: Option<TypedExpr>,
+    pub is_const: bool,
+    pub is_undef: bool,
+    pub span: Span,
+}
+
+pub struct TypedIfStmt {
+    pub cond: TypedExpr,
+    pub then_block: TypedBlockStmt*,
+    pub branches: Vec<TypedIfStmt>,
+    pub else_block: Option<TypedBlockStmt*>,
+    pub span: Span,
+}
+
+pub struct TypedFuncDefStmt {
+    pub func_decl_id: Option<FuncDeclId>,
+    pub name: String,
+    pub params: TypedFuncParams,
+    pub generic_params: TypedGenericParams,
+    pub body: TypedBlockStmt*,
+    pub ret_type: SemaType,
+    pub modifiers: ast::ASTFuncModifiers,
+    pub span: Span,
+
+    [[inline]]
+    pub fn is_generic(self: const Self*) bool {
+        return !self->generic_params.is_empty();
+    }
+}
+
+pub struct TypedFuncDeclStmt {
+    pub file_id: SourceId,
+    pub func_decl_id: FuncDeclId,
+    pub name: String,
+    pub generic_params: TypedGenericParams,
+    pub params: TypedFuncParams,
+    pub ret_type: SemaType,
+    pub modifiers: ast::ASTFuncModifiers,
+    pub span: Span,
+
+    [[inline]]
+    pub fn is_generic(self: const Self*) bool {
+        return !self->generic_params.is_empty();
+    }
+}
+
+pub struct TypedFuncParams {
+    pub variadic: Option<TypedFuncVariadicParam>,
+    pub list: Vec<TypedFuncParamKind>,
+
+    pub fn lookup_param(self: const Self*, name: const uint8*) Option<const TypedFuncParamKind*> {
+        for (var i: usize = 0; i < self->list.len(); i += 1) {
+            const param_kind = self->list.get_const(i).unwrap();
+
+            if (param_kind->name_str() == name) {
+                return .Some(param_kind);
+            }
+        }
+
+        return .None;
+    }
+
+    [[inline]]
+    pub fn is_instance_method(self: const Self*) bool {
+        if (self->list.len() == 0) {
+            return false;
+        }
+
+        switch (self->list.first_const()) {
+            case .Some(param) => switch (param->as_self_modifier()) {
+                case .Some => return true;
+                case .None => return false;
+            }
+        }
+
+        return false;
+    }
+
+    [[inline]]
+    pub fn get_self_modifier(self: const Self*) Option<TypedSelfModifier> {
+        switch (self->list.first_const()) {
+            case .Some(param) => return param->as_self_modifier();
+            case .None => return .None;
+        }
+    }
+}
+
+pub enum TypedFuncVariadicParam {
+    Typed {
+        var_decl_id: VarDeclId,
+        ty: SemaType,
+        span: Span,
+    },
+    UntypedCStyle,
+}
+
+pub struct TypedFuncTypeParams {
+    pub variadic: Option<TypedFuncTypeVariadicParam*>,
+    pub list: Vec<SemaType>,
+}
+
+pub enum TypedFuncTypeVariadicParam {
+    UntypedCStyle,
+    Typed(SemaType),
+}
+
+pub enum TypedFuncParamKind {
+    SelfModifier(TypedSelfModifier),
+    FuncParam(TypedFuncParam),
+
+    [[inline]]
+    pub fn is_const(self: const Self*) bool {
+        switch (*self) {
+            case .FuncParam(func_param) => return func_param.mutability == .Const;
+            case .SelfModifier(self_modifier) => return self_modifier.mutability == .Const;
+        }
+    }
+
+    [[inline]]
+    pub fn name_str(self: const Self*) const uint8* {
+        switch (*self) {
+            case .FuncParam(func_param) => return func_param.ident.str.as_str_const();
+            case .SelfModifier => return "self";
+        }
+    }
+
+    [[inline]]
+    pub fn span(self: const Self*) Span {
+        switch (*self) {
+            case .FuncParam(typed_func_param) => return typed_func_param.span;
+            case .SelfModifier(typed_self_modifier) => return typed_self_modifier.span;
+        }
+    }
+
+    [[inline]]
+    pub fn var_decl_id(self: const Self*) Option<VarDeclId> {
+        switch (*self) {
+            case .FuncParam(func_param) => return func_param.var_decl_id;
+            case .SelfModifier(self_modifier) => return self_modifier.var_decl_id;
+        }
+    }
+
+    [[inline]]
+    pub fn as_self_modifier(self: const Self*) Option<TypedSelfModifier> {
+        switch (*self) {
+            case .SelfModifier(self_modifier) => return .Some(self_modifier);
+            else => return .None;
+        }
+    }
+}
+
+pub struct TypedSelfModifier {
+    pub var_decl_id: Option<VarDeclId>,
+    pub ty: SemaType,
+    pub mutability: ast::ASTConstness,
+    pub span: Span,
+
+    [[inline]]
+    pub fn is_indirect(self: const Self*) bool {
+        return self->ty.is_pointer();
+    }
+}
+
+pub struct TypedFuncParam {
+    pub var_decl_id: Option<VarDeclId>,
+    pub ident: ast::ASTIdent,
+    pub ty: SemaType,
+    pub mutability: ast::ASTConstness,
+    pub span: Span,
+}
+
+pub struct TypedForStmt {
+    pub initializer: Option<TypedVarStmt>,
+    pub cond: Option<TypedExpr>,
+    pub increment: Option<TypedExpr>,
+    pub body: TypedBlockStmt*,
+    pub span: Span,
+}
+
+pub struct TypedWhileStmt {
+    pub cond: TypedExpr,
+    pub body: TypedBlockStmt*,
+    pub span: Span,
+}
+
+pub struct TypedSwitchStmt {
+    pub operand: TypedExpr,
+    pub cases: Vec<TypedSwitchCase>,
+    pub default_case: Option<TypedBlockStmt>,
+    pub all_cases_covered: Option<bool>,
+    pub span: Span,
+
+    pub fn includes_any_range(self: const Self*) bool {
+        for (var i: usize = 0; i < self->cases.len(); i += 1) {
+            const switch_case = self->cases.get_const(i).unwrap();
+
+            for (var j: usize = 0; j < switch_case->patterns.len(); j += 1) {
+                const pattern = switch_case->patterns.get_const(j).unwrap();
+
+                switch (pattern->kind) {
+                    case .Range => return true;
+                }
+            }
+        }
+
+        return false;
+    }
+
+    pub fn includes_only_integer(self: const Self*) bool {
+        for (var i: usize = 0; i < self->cases.len(); i += 1) {
+            const switch_case = self->cases.get_const(i).unwrap();
+
+            for (var j: usize = 0; j < switch_case->patterns.len(); j += 1) {
+                const pattern = switch_case->patterns.get_const(j).unwrap();
+
+                switch (pattern->kind) {
+                    case .Expr(expr) => {
+                        switch (expr.ty) {
+                            case .Some(ty) => if (ty.is_uint8() || ty.is_integer()) {
+                                return true;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        return false;
+    }
+}
+
+pub struct TypedSwitchCase {
+    pub patterns: Vec<TypedSwitchCasePattern>,
+    pub body: TypedBlockStmt*,
+    pub span: Span,
+}
+
+pub struct TypedSwitchCasePattern {
+    pub kind: TypedSwitchCasePatternKind,
+    pub span: Span,
+}
+
+pub enum TypedSwitchCasePatternKind {
+    /// `_`
+    Wildcard,
+
+    Binding {
+        name: ast::ASTIdent,
+        var_decl_id: VarDeclId,
+    },
+
+    /// `1..10` or `1..=10`
+    Range(TypedRange),
+
+    /// literal / constant expression
+    Expr(TypedExpr),
+
+    /// .Variant
+    EnumUnit(ast::ASTIdent),
+
+    /// .Variant(a, b, _)
+    EnumTupleVariant {
+        ident: ast::ASTIdent,
+        items: Vec<TypedSwitchCasePattern>,
+    },
+
+    /// .Variant { a, b: x, c: _, .. }
+    EnumStructVariant {
+        ident: ast::ASTIdent,
+        items: Vec<TypedSwitchCaseEnumStructPatternField>,
+        has_rest: bool,
+    },
+}
+
+pub struct TypedSwitchCaseEnumStructPatternField {
+    pub name: ast::ASTIdent,
+    pub pattern: TypedSwitchCasePattern,
+}
+
+pub struct TypedRange {
+    pub lower: TypedExpr,
+    pub upper: TypedExpr,
+    pub inclusive_upper: bool,
+    pub span: Span,
+}
+
+pub struct TypedBreakStmt {
+    pub span: Span,
+}
+
+pub struct TypedContinueStmt {
+    pub span: Span,
+}
+
+pub struct TypedGenericParams {
+    pub ids: Vec<GenericParamId>,
+
+    [[inline]]
+    pub fn new(allocator: Allocator) Self {
+        return Self { ids: Vec.new(allocator) };
+    }
+
+    [[inline]]
+    pub fn is_empty(self: const Self*) bool {
+        return self->ids.is_empty();
+    }
+
+    [[inline]]
+    pub fn len(self: const Self*) usize {
+        return self->ids.len();
+    }
+
+    [[inline]]
+    pub fn contains(self: const Self*, id: GenericParamId) bool {
+        switch (self->ids.index(id)) {
+            case .Some => return true;
+            case .None => return false;
+        }
+    }
+}
+
+pub struct TypedGenericParam {
+    pub name: ast::ASTIdent,
+    pub bounds: Vec<TypedBound>,
+    pub default: Option<SemaType*>,
+}
+
+pub struct TypedTypeArgs {
+    pub list: Vec<TypedTypeArg>,
+
+    [[inline]]
+    pub fn new(allocator: Allocator) Self {
+        return Self { list: Vec.new(allocator) };
+    }
+
+    [[inline]]
+    pub fn get(self: const Self*, index: usize) Option<const TypedTypeArg*> {
+        return self->list.get_const(index);
+    }
+
+    [[inline]]
+    pub fn is_empty(self: const Self*) bool {
+        return self->list.is_empty();
+    }
+
+    [[inline]]
+    pub fn len(self: const Self*) usize {
+        return self->list.len();
+    }
+
+    [[inline]]
+    pub fn push(self: Self*, ty: TypedTypeArg) {
+        self->list.push(ty);
+    }
+}
+
+pub enum TypedTypeArg {
+    Type(SemaType, Span),
+    Infer,
+}
+
+pub struct TypedBound {
+    pub ty: SemaType,
+    pub span: Span,
+}
+
+/* ************* Declarations ************* */
+
+pub enum DeclId {
+    Interface(InterfaceDeclId),
+    GlobalVar(GlobalVarDeclId),
+    Typedef(TypedefDeclId),
+    Method(MethodDeclId),
+    Struct(StructDeclId),
+    Union(UnionDeclId),
+    Func(FuncDeclId),
+    Enum(EnumDeclId),
+    Var(VarDeclId),
+
+    [[inline]]
+    pub fn as_type_decl_id(self: const Self*) Option<TypeDeclId> {
+        switch (*self) {
+            case .Struct(id) => return .Some(.Struct(id));
+            case .Enum(id) => return .Some(.Enum(id));
+            case .Union(id) => return .Some(.Union(id));
+            case .Interface(id) => return .Some(.Interface(id));
+            case .Typedef(id) => return .Some(.Typedef(id));
+            case .Func | .Method | .GlobalVar | .Var => return .None;
+        }
+    }
+
+    [[inline]]
+    pub fn is_var(self: const Self*) bool {
+        switch (*self) {
+            case .Var => return true;
+            else => return false;
+        }
+    }
+
+    [[inline]]
+    pub fn is_global_var(self: const Self*) bool {
+        switch (*self) {
+            case .GlobalVar => return true;
+            else => return false;
+        }
+    }
+
+    [[inline]]
+    pub fn is_var_or_global_var(self: const Self*) bool {
+        switch (*self) {
+            case .Var | .GlobalVar => return true;
+            else => return false;
+        }
+    }
+
+    [[inline]]
+    pub fn is_func(self: const Self*) bool {
+        switch (*self) {
+            case .Func => return true;
+            else => return false;
+        }
+    }
+
+    [[inline]]
+    pub fn as_struct(self: const Self*) Option<StructDeclId> {
+        switch (*self) {
+            case .Struct(id) => return .Some(id);
+            else => return .None;
+        }
+    }
+
+    [[inline]]
+    pub fn as_enum(self: const Self*) Option<EnumDeclId> {
+        switch (*self) {
+            case .Enum(id) => return .Some(id);
+            else => return .None;
+        }
+    }
+
+    [[inline]]
+    pub fn as_union(self: const Self*) Option<UnionDeclId> {
+        switch (*self) {
+            case .Union(id) => return .Some(id);
+            else => return .None;
+        }
+    }
+
+    [[inline]]
+    pub fn as_func(self: const Self*) Option<FuncDeclId> {
+        switch (*self) {
+            case .Func(id) => return .Some(id);
+            else => return .None;
+        }
+    }
+
+    [[inline]]
+    pub fn as_method(self: const Self*) Option<MethodDeclId> {
+        switch (*self) {
+            case .Method(id) => return .Some(id);
+            else => return .None;
+        }
+    }
+
+    [[inline]]
+    pub fn as_interface(self: const Self*) Option<InterfaceDeclId> {
+        switch (*self) {
+            case .Interface(id) => return .Some(id);
+            else => return .None;
+        }
+    }
+
+    [[inline]]
+    pub fn as_global_var(self: const Self*) Option<GlobalVarDeclId> {
+        switch (*self) {
+            case .GlobalVar(id) => return .Some(id);
+            else => return .None;
+        }
+    }
+
+    [[inline]]
+    pub fn as_var(self: const Self*) Option<VarDeclId> {
+        switch (*self) {
+            case .Var(id) => return .Some(id);
+            else => return .None;
+        }
+    }
+
+    [[inline]]
+    pub fn as_typedef(self: const Self*) Option<TypedefDeclId> {
+        switch (*self) {
+            case .Typedef(id) => return .Some(id);
+            else => return .None;
+        }
+    }
+}
+
+pub struct MethodDeclEntry {
+    pub name: String,
+    pub id: MethodDeclId,
+}
+
+pub struct MethodDecls {
+    pub entries: Vec<MethodDeclEntry>,
+
+    [[inline]]
+    pub fn new(allocator: Allocator) Self {
+        return Self { entries: Vec.new(allocator) };
+    }
+
+    [[inline]]
+    pub fn len(self: const Self*) usize {
+        return self->entries.len();
+    }
+
+    pub fn insert(self: Self*, name: String, method_decl_id: MethodDeclId) bool {
+        for (var i: usize = 0; i < self->entries.len(); i += 1) {
+            const entry = self->entries.get(i).unwrap();
+
+            if (strcmp(entry->name.as_str_const(), name.as_str_const()) == 0) {
+                entry->id = method_decl_id;
+                name.free();
+                return false;
+            }
+        }
+
+        self->entries.push(MethodDeclEntry { name, id: method_decl_id });
+        return true;
+    }
+
+    pub fn get(self: const Self*, name: const uint8*) Option<MethodDeclId> {
+        for (var i: usize = 0; i < self->entries.len(); i += 1) {
+            const entry = self->entries.get_const(i).unwrap();
+
+            if (strcmp(entry->name.as_str_const(), name) == 0) {
+                return .Some(entry->id);
+            }
+        }
+
+        return .None;
+    }
+
+    [[inline]]
+    pub fn contains(self: const Self*, name: const uint8*) bool {
+        switch (self->get(name)) {
+            case .Some => return true;
+            case .None => return false;
+        }
+    }
+
+    pub fn contains_method_id(self: const Self*, method_decl_id: MethodDeclId) bool {
+        for (var i: usize = 0; i < self->entries.len(); i += 1) {
+            const entry = self->entries.get_const(i).unwrap();
+
+            if (entry->id == method_decl_id) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+}
+
+pub struct StructDecl {
+    pub name: Option<String>,
+    pub fields: Vec<TypedStructField>,
+    pub impls: Vec<TypedImplementInterface>,
+    pub methods: MethodDecls,
+    pub generic_params: TypedGenericParams,
+    pub modifiers: ast::ASTStructModifiers,
+    pub align: Option<usize>,
+    pub is_normalized: bool,
+    pub span: Span,
+
+    [[inline]]
+    pub fn is_generic(self: const Self*) bool {
+        return !self->generic_params.is_empty();
+    }
+
+    pub fn lookup_field(self: const Self*, name: const uint8*) Option<const TypedStructField*> {
+        for (var i: usize = 0; i < self->fields.len(); i += 1) {
+            const field = self->fields.get_const(i).unwrap();
+
+            if (strcmp(field->name.as_str_const(), name) == 0) {
+                return .Some(field);
+            }
+        }
+
+        return .None;
+    }
+
+    pub fn is_packed(self: const Self*) bool {
+        switch (self->modifiers.repr_attr) {
+            case .Some(repr_attr) => {
+                for (var i: usize = 0; i < repr_attr.items.len(); i += 1) {
+                    const item = repr_attr.items.get_const(i).unwrap();
+
+                    switch (item->kind) {
+                        case .Packed => return true;
+                    }
+                }
+
+                return false;
+            }
+            case .None => return false;
+        }
+    }
+}
+
+pub struct UnionDecl {
+    pub name: Option<String>,
+    pub fields: Vec<TypedUnionField>,
+    pub impls: Vec<TypedImplementInterface>,
+    pub methods: MethodDecls,
+    pub generic_params: TypedGenericParams,
+    pub modifiers: ast::ASTUnionModifiers,
+    pub align: Option<usize>,
+    pub is_normalized: bool,
+    pub span: Span,
+
+    [[inline]]
+    pub fn is_generic(self: const Self*) bool {
+        return !self->generic_params.is_empty();
+    }
+
+    pub fn lookup_field(self: const Self*, name: const uint8*) Option<const TypedUnionField*> {
+        for (var i: usize = 0; i < self->fields.len(); i += 1) {
+            const field = self->fields.get_const(i).unwrap();
+
+            if (strcmp(field->name.as_str_const(), name) == 0) {
+                return .Some(field);
+            }
+        }
+
+        return .None;
+    }
+}
+
+pub struct EnumDecl {
+    pub name: Option<String>,
+    pub methods: MethodDecls,
+    pub variants: Vec<TypedEnumVariant>,
+    pub impls: Vec<TypedImplementInterface>,
+    pub generic_params: TypedGenericParams,
+    pub modifiers: ast::ASTEnumModifiers,
+    pub tag_type: Option<SemaType>,
+    pub align: Option<usize>,
+    pub is_normalized: bool,
+    pub span: Span,
+
+    [[inline]]
+    pub fn is_generic(self: const Self*) bool {
+        return !self->generic_params.is_empty();
+    }
+
+    pub fn lookup_variant(self: const Self*, name: const uint8*) Option<const TypedEnumVariant*> {
+        for (var i: usize = 0; i < self->variants.len(); i += 1) {
+            const variant = self->variants.get_const(i).unwrap();
+
+            switch (*variant) {
+                case .Unit(ident) => {
+                    if (strcmp(ident.str.as_str_const(), name) == 0) {
+                        return .Some(variant);
+                    }
+                }
+                case .Valued { ident, .. } => {
+                    if (strcmp(ident.str.as_str_const(), name) == 0) {
+                        return .Some(variant);
+                    }
+                }
+                case .Tuple { ident, .. } => {
+                    if (strcmp(ident.str.as_str_const(), name) == 0) {
+                        return .Some(variant);
+                    }
+                }
+                case .Struct { ident, .. } => {
+                    if (strcmp(ident.str.as_str_const(), name) == 0) {
+                        return .Some(variant);
+                    }
+                }
+            }
+        }
+
+        return .None;
+    }
+
+    pub fn is_repr_c(self: const Self*) bool {
+        switch (self->modifiers.repr_attr) {
+            case .Some(repr_attr) => {
+                for (var i: usize = 0; i < repr_attr.items.len(); i += 1) {
+                    const item = repr_attr.items.get_const(i).unwrap();
+
+                    switch (item->kind) {
+                        case .Kind(kind) => {
+                            switch (kind) {
+                                case .C => return true;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        return false;
+    }
+}
+
+pub struct FuncDecl {
+    pub file_id: SourceId,
+    pub name: String,
+    pub params: TypedFuncParams,
+    pub generic_params: TypedGenericParams,
+    pub ret_type: SemaType,
+    pub body: Option<BodyId>,
+
+    pub is_func_decl: bool,
+    pub modifiers: ast::ASTFuncModifiers,
+    pub span: Span,
+
+    pub fn is_generic(self: const Self*) bool {
+        return !self->generic_params.is_empty();
+    }
+
+    pub fn decl_contains_any_infer_var(self: const Self*) bool {
+        for (var i: usize = 0; i < self->params.list.len(); i += 1) {
+            const param = self->params.list.get_const(i).unwrap();
+
+            switch (*param) {
+                case .FuncParam(func_param) => {
+                    if (func_param.ty.contains_infer_var()) {
+                        return true;
+                    }
+                }
+                case .SelfModifier(self_modifier) => {
+                    if (self_modifier.ty.contains_infer_var()) {
+                        return true;
+                    }
+                }
+            }
+        }
+
+        switch (self->params.variadic) {
+            case .Some(variadic) => {
+                switch (variadic) {
+                    case .Typed { ty, .. } => {
+                        if (ty.contains_infer_var()) {
+                            return true;
+                        }
+                    }
+                }
+            }
+        }
+
+        return false;
+    }
+}
+
+pub struct MethodDecl {
+    /// Object name is used for name-mangling.
+    pub object_name: Option<String>,
+    pub func_decl: FuncDecl,
+    pub body: Option<BodyId>,
+
+    pub fn is_instance_method(self: const Self*) bool {
+        return self->func_decl.params.is_instance_method();
+    }
+}
+
+pub struct TypedefDecl {
+    pub name: String,
+    pub ty: SemaType*,
+    pub generic_params: TypedGenericParams,
+    pub vis: ast::ASTVisibility,
+    pub span: Span,
+}
+
+pub struct InterfaceDecl {
+    pub name: String,
+    pub methods: MethodDecls,
+    pub generic_params: TypedGenericParams,
+    pub is_interface_dynamically_dispatchable: bool,
+    pub vis: ast::ASTVisibility,
+    pub span: Span,
+
+    pub fn is_generic(self: const Self*) bool {
+        return !self->generic_params.is_empty();
+    }
+
+    pub fn method_index(self: const Self*, name: const uint8*) Option<usize> {
+        for (var i: usize = 0; i < self->methods.entries.len(); i += 1) {
+            const entry = self->methods.entries.get_const(i).unwrap();
+
+            if (strcmp(entry->name.as_str_const(), name) == 0) {
+                return .Some(i);
+            }
+        }
+
+        return .None;
+    }
+
+    pub fn get_method(self: const Self*, name: const uint8*) Option<MethodDeclId> {
+        return self->methods.get(name);
+    }
+}
+
+pub struct GlobalVarDecl {
+    pub file_id: SourceId,
+    pub name: String,
+    pub ty: Option<SemaType>,
+    pub rhs: Option<TypedExpr>,
+    pub is_const: bool,
+    pub is_static: bool,
+    pub analyzed: bool,
+    pub modifiers: ast::ASTGlobalVarModifiers,
+    pub span: Span,
+}
+
+pub struct VarDecl {
+    pub name: String,
+    pub ty: Option<SemaType>,
+    pub rhs: Option<TypedExpr>,
+    pub is_const: bool,
+    pub analyzed: bool,
+    pub span: Span,
+}
+
+pub struct TypedProgramTree {
+    pub file_id: SourceId,
+    pub body: Vec<TypedStmt>,
+    pub file_name: String,
+    pub module_name: String,
 }

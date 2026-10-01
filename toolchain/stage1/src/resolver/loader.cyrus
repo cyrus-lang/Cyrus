@@ -1,2 +1,540 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 The Cyrus Language
+
+import std::string{String, free_string_vec};
+import std::collections{Vec};
+import std::errors{ErrorOr};
+import std::os{path_exists};
+import std::option{Option};
+import std::mem{Allocator};
+import std::libc{strlen};
+import std::os::dir;
+import std::os::env;
+import std::path{
+    has_path_prefix,
+    normalize_abs, 
+    file_parent, 
+    join_path, 
+    file_stem, 
+    same_file
+};
+
+import parser::ast{ASTModuleSegment};
+import cir::format{
+    format_sub_module_names,
+    format_module_segments, 
+    sub_module_names, 
+};
+
+const INDEX_MODULE_FILENAME = "index.cyrus";
+const CYRUS_EXTENSION = ".cyrus";
+
+pub struct ResolverOptions {
+    pub stdlib_path: Option<String>,
+    pub source_dirs: Vec<String>,
+    pub base_path: String,
+
+    pub fn new(allocator: Allocator) Self {
+        return Self {
+            base_path: String.from_str(allocator, "."),
+            source_dirs: Vec.new(allocator),
+            stdlib_path: .None,
+        };
+    }
+
+    pub fn free(self: Self*) {
+        for (var i: usize = 0; i < self->source_dirs.len(); i += 1) {
+            var dir = self->source_dirs.get_owned(i).unwrap();
+            dir.free();
+        }
+        self->source_dirs.free();
+
+        switch (self->stdlib_path) {
+            case .Some(path) => path.free();
+        }
+
+        self->base_path.free();
+    }
+}
+
+pub enum LoaderError {
+    RelativeImportEscapesProjectRoot,
+    ModuleCannotImportItself,
+    DuplicateModule(String),
+    ModuleNotFound(String),
+    StdlibNotFound,
+
+    pub fn free(self: Self*) {
+        switch (*self) {
+            case .ModuleNotFound(name) => name.free();
+            case .DuplicateModule(name) => name.free();
+        }
+    }
+}
+
+pub struct ResolvedModuleFile {
+    /// Path of the resolved file.
+    pub file_path: String,
+    /// Directory names traversed to reach the file.
+    pub directory_modules: Vec<String>,
+    /// Name of the final path component, extension stripped.
+    pub file_module_name: String,
+    /// How many import segments the walk consumed.
+    pub consumed_segments: usize,
+
+    pub fn free(self: Self*) {
+        self->file_path.free();
+        self->file_module_name.free();
+        free_string_vec(&self->directory_modules);
+    }
+}
+
+pub fn module_name_from_file_path(
+    allocator: Allocator,
+    opts: const ResolverOptions*,
+    file_path: const uint8*,
+) String {
+    const base_len = strlen(opts->base_path.as_str_const());
+    
+    var start: usize = 0;
+
+    if (file_path[0] == '/' 
+        && base_len > 0 
+        && has_path_prefix(file_path, opts->base_path.as_str_const())
+    ) {
+        start = base_len;
+
+        while (file_path[start] == '/') {
+            start += 1;
+        }
+    }
+
+    var end = strlen(file_path);
+    var seg = start;
+
+    for (var i: usize = start; i < end; i += 1) {
+        if (file_path[i] == '/') {
+            seg = i + 1;
+        }
+    }
+
+    // Strip the extension `.cyrus`
+    if (ends_with_exten(file_path, seg, end)) {
+        end -= 6;
+    } else {
+        for (var i: usize = end; i > seg; i -= 1) {
+            if (file_path[i - 1] == '.') {
+                end = i - 1;
+                break;
+            }
+        }
+    }
+
+    // Sanitize to a valid identifier 
+    // and trim leading underscores
+    var name = String.new(allocator);
+    var pending = String.new(allocator);
+
+    for (var i: usize = start; i < end; i += 1) {
+        const ch = file_path[i];
+
+        if (is_ident_char(ch)) {
+            pending.push(ch);
+        } else {
+            pending.push('_');
+        }
+    }
+
+    // Trim leading underscores produced by sanitization
+    const pending_str = pending.as_str_const();
+    const pending_len = pending.len();
+
+    var first: usize = 0;
+
+    while (first < pending_len && pending_str[first] == '_') {
+        first += 1;
+    }
+
+    for (var i: usize = first; i < pending_len; i += 1) {
+        name.push(pending_str[i]);
+    }
+
+    pending.free();
+
+    switch (opts->stdlib_path) {
+        case .Some(std_path) => {
+            if (name.starts_with("stdlib_") ||
+                !is_under_stdlib(allocator, file_path, std_path.as_str_const())) {
+                return name;
+            }
+
+            var prefixed = String.from_str(allocator, "stdlib_");
+            prefixed.push_str(name.as_str_const());
+            name.free();
+            name = prefixed;
+        }
+    }
+
+    return name;
+}
+
+fn is_under_stdlib(allocator: Allocator, file_path: const uint8*, std_path: const uint8*) bool {
+    var cwd = dir::cwd(allocator);
+    var found = false;
+
+    switch (normalize_abs(allocator, cwd.as_str_const(), file_path)) {
+        case .Some(file) => {
+            switch (normalize_abs(allocator, cwd.as_str_const(), std_path)) {
+                case .Some(std) => {
+                    found = has_path_prefix(file.as_str_const(), std.as_str_const());
+                    std.free();
+                }
+            }
+            file.free();
+        }
+    }
+
+    cwd.free();
+    return found;
+}
+
+/// Name of the last submodule segment (`last_sub_module_index` in stage0).
+pub fn last_sub_module_name(allocator: Allocator, segments: const Vec<ASTModuleSegment>*) String {
+    var i = segments->len();
+
+    while (i > 0) {
+        i -= 1;
+        const seg = segments->get_const(i).unwrap();
+
+        switch (*seg) {
+            case .SubModule(ident) => return String.from_str(allocator, ident.str.as_str_const());
+        }
+    }
+
+    return String.new(allocator);
+}
+
+/// Locate an imported module file for an import statement.
+pub fn resolve_import(
+    allocator: Allocator,
+    opts: const ResolverOptions*,
+    segments: const Vec<ASTModuleSegment>*,
+    relative_level: isize,
+    current_file_path: const uint8*,
+) ErrorOr<ResolvedModuleFile, LoaderError> {
+    var names = sub_module_names(allocator, segments);
+
+    if (names.len() == 0) {
+        free_string_vec(&names);
+        return .Error(.ModuleNotFound(format_module_segments(allocator, segments)));
+    }
+
+    var sources: Vec<String> = Vec.new(allocator);
+    var is_std = false;
+
+    const first = names.get_const(0).unwrap();
+
+    if (first->as_str_const() == "std") {
+        is_std = true;
+
+        var removed = names.remove(0);
+        removed.free();
+
+        switch (stdlib_modules_path(allocator, opts)) {
+            case .Some(root) => sources.push(root);
+            case .None => {
+                free_string_vec(&sources);
+                free_string_vec(&names);
+                return .Error(.StdlibNotFound);
+            }
+        }
+    } else if (relative_level < 0) {
+        switch (relative_search_dir(allocator, opts, current_file_path, relative_level)) {
+            case .Some(search_dir) => sources.push(search_dir);
+            case .None => {
+                free_string_vec(&sources);
+                free_string_vec(&names);
+                return .Error(.RelativeImportEscapesProjectRoot);
+            }
+        }
+    } else {
+        for (var i: usize = 0; i < opts->source_dirs.len(); i += 1) {
+            const source_dir = opts->source_dirs.get_const(i).unwrap();
+            sources.push(String.from_str(allocator, source_dir->as_str_const()));
+        }
+    }
+
+    if (names.len() == 0) {
+        free_string_vec(&sources);
+        free_string_vec(&names);
+        return .Error(.ModuleNotFound(format_module_segments(allocator, segments)));
+    }
+
+    const load_result = load_module_segments(allocator, &names, &sources);
+    free_string_vec(&sources);
+    free_string_vec(&names);
+
+    switch (load_result) {
+        case .Value(var resolved) => {
+            if (same_file(allocator, resolved.file_path.as_str_const(), current_file_path)) {
+                resolved.free();
+                return .Error(.ModuleCannotImportItself);
+            }
+
+            if (is_std) {
+                resolved.directory_modules.insert(0, String.from_str(allocator, "std"));
+                resolved.consumed_segments += 1;
+            }
+
+            return .Value(resolved);
+        }
+        case .Error(err) => {
+            return .Error(err);
+        }
+    }
+}
+
+fn load_module_segments(
+    allocator: Allocator,
+    names: const Vec<String>*,
+    sources: const Vec<String>*,
+) ErrorOr<ResolvedModuleFile, LoaderError> {
+    var directory_modules: Vec<String> = Vec.new(allocator);
+    var current_path = String.new(allocator);
+
+    for (var i: usize = 0; i < names->len(); i += 1) {
+        const name_str = names->get_const(i).unwrap()->as_str_const();
+
+        var file_candidate = join_path(allocator, current_path.as_str_const(), name_str);
+        file_candidate.push_str(CYRUS_EXTENSION);
+
+        var dir_candidate = join_path(allocator, current_path.as_str_const(), name_str);
+
+        const file_hit = find_in_sources(allocator, file_candidate, sources);
+        const dir_hit = find_dir_in_sources(allocator, dir_candidate, sources);
+
+        switch (file_hit) {
+            case .Some(file_path) => {
+                switch (dir_hit) {
+                    case .Some(conflict_path) => {
+                        file_path.free();
+                        conflict_path.free();
+                        free_string_vec(&directory_modules);
+                        current_path.free();
+                        return .Error(.DuplicateModule(String.from_str(allocator, name_str)));
+                    }
+                    case .None => {
+                        const result = ResolvedModuleFile {
+                            file_path,
+                            directory_modules,
+                            file_module_name: String.from_str(allocator, name_str),
+                            consumed_segments: i + 1,
+                        };
+                        current_path.free();
+                        return .Value(result);
+                    }
+                }
+            }
+            case .None => {
+                switch (dir_hit) {
+                    case .Some(dir_path) => {
+                        const is_last = (i + 1 == names->len());
+
+                        if (is_last) {
+                            var index_path = join_path(allocator, dir_path.as_str_const(), INDEX_MODULE_FILENAME);
+
+                            if (path_exists(index_path.as_str_const())) {
+                                const result = ResolvedModuleFile {
+                                    file_path: index_path,
+                                    directory_modules,
+                                    file_module_name: String.from_str(allocator, name_str),
+                                    consumed_segments: i + 1,
+                                };
+                                dir_path.free();
+                                current_path.free();
+                                return .Value(result);
+                            }
+
+                            index_path.free();
+                        }
+
+                        // Descend into the directory module
+                        current_path.free();
+                        current_path = dir_path;
+                        directory_modules.push(String.from_str(allocator, name_str));
+                    }
+                    case .None => {
+                        free_string_vec(&directory_modules);
+                        current_path.free();
+                        return .Error(.ModuleNotFound(format_sub_module_names(allocator, names)));
+                    }
+                }
+            }
+        }
+    }
+
+    // If the walk is ended inside a directory,
+    // we gotta look for its index file.
+    if (dir::is_dir(current_path.as_str_const())) {
+        var index_path = join_path(allocator, current_path.as_str_const(), INDEX_MODULE_FILENAME);
+
+        if (path_exists(index_path.as_str_const())) {
+            const result = ResolvedModuleFile {
+                file_path: index_path,
+                directory_modules,
+                file_module_name: file_stem(allocator, current_path.as_str_const()),
+                consumed_segments: names->len(),
+            };
+            current_path.free();
+            return .Value(result);
+        }
+
+        index_path.free();
+        free_string_vec(&directory_modules);
+        current_path.free();
+        return .Error(.ModuleNotFound(format_sub_module_names(allocator, names)));
+    }
+
+    // Fallback: 
+    // The path itself is the module file 
+    const result = ResolvedModuleFile {
+        file_path: current_path,
+        directory_modules,
+        file_module_name: file_stem(allocator, current_path.as_str_const()),
+        consumed_segments: names->len(),
+    };
+    return .Value(result);
+}
+
+fn relative_search_dir(
+    allocator: Allocator,
+    opts: const ResolverOptions*,
+    current_file_path: const uint8*,
+    relative_level: isize,
+) Option<String> {
+    switch (file_parent(allocator, current_file_path)) case .Some(var current) else {
+        return .None;
+    }
+
+    const ascents = (-relative_level) - 1;
+
+    for (var a: isize = 0; a < ascents; a += 1) {
+        switch (file_parent(allocator, current.as_str_const())) {
+            case .Some(parent) => {
+                current.free();
+                current = parent;
+            }
+            case .None => {
+                current.free();
+                return .None;
+            }
+        }
+    }
+
+    var cwd = dir::cwd(allocator);
+    const normalized = normalize_abs(allocator, cwd.as_str_const(), current.as_str_const());
+    cwd.free();
+    current.free();
+
+    switch (normalized) case .Some(var search_dir) else {
+        return .None;
+    }
+
+    var root_cwd = dir::cwd(allocator);
+    var root: String = undefined;
+
+    switch (normalize_abs(allocator, root_cwd.as_str_const(), opts->base_path.as_str_const())) {
+        case .None => root = String.from_str(allocator, opts->base_path.as_str_const());
+        case .Some(path) => root = path;
+    }
+    
+    root_cwd.free();
+
+    if (!has_path_prefix(search_dir.as_str_const(), root.as_str_const())) {
+        search_dir.free();
+        root.free();
+        return .None;
+    }
+
+    root.free();
+    return .Some(search_dir);
+}
+
+fn stdlib_modules_path(allocator: Allocator, opts: const ResolverOptions*) Option<String> {
+    switch (opts->stdlib_path) {
+        case .Some(path) => return .Some(String.from_str(allocator, path.as_str_const()));
+    }
+
+    return env::get_string(allocator, "CYRUS_STDLIB_PATH");
+}
+
+fn find_in_sources(
+    allocator: Allocator,
+    candidate: String,
+    sources: const Vec<String>*,
+) Option<String> {
+    if (path_exists(candidate.as_str_const())) {
+        return .Some(candidate);
+    }
+
+    for (var i: usize = 0; i < sources->len(); i += 1) {
+        const source = sources->get_const(i).unwrap();
+        const joined = join_path(allocator, source->as_str_const(), candidate.as_str_const());
+
+        if (path_exists(joined.as_str_const())) {
+            candidate.free();
+            return .Some(joined);
+        }
+
+        joined.free();
+    }
+
+    candidate.free();
+    return .None;
+}
+
+fn find_dir_in_sources(
+    allocator: Allocator,
+    candidate: String,
+    sources: const Vec<String>*,
+) Option<String> {
+    if (dir::is_dir(candidate.as_str_const())) {
+        return .Some(candidate);
+    }
+
+    for (var i: usize = 0; i < sources->len(); i += 1) {
+        const source = sources->get_const(i).unwrap();
+        const joined = join_path(allocator, source->as_str_const(), candidate.as_str_const());
+
+        if (dir::is_dir(joined.as_str_const())) {
+            candidate.free();
+            return .Some(joined);
+        }
+
+        joined.free();
+    }
+
+    candidate.free();
+    return .None;
+}
+
+fn ends_with_exten(path: const uint8*, seg: usize, end: usize) bool {
+    if (end < seg + 6) {
+        return false;
+    }
+
+    for (var i: usize = 0; i < 6; i += 1) {
+        if (path[end - 6 + i] != CYRUS_EXTENSION[i]) {
+            return false;
+        }
+    }
+
+    return true;
+}
+
+[[inline]]
+fn is_ident_char(ch: uint8) bool {
+    return (ch >= 'a' && ch <= 'z')
+        || (ch >= 'A' && ch <= 'Z')
+        || (ch >= '0' && ch <= '9');
+}

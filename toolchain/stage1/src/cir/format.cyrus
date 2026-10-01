@@ -1,0 +1,86 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 The Cyrus Language
+
+import std::collections{Vec};
+import std::mem{Allocator};
+import std::string{String};
+
+import parser::ast{ASTModuleSegment};
+
+pub fn format_module_segments(
+    allocator: Allocator,
+    segments: const Vec<ASTModuleSegment>*
+) String {
+    var out = String.new(allocator);
+
+    for (var i: usize = 0; i < segments->len(); i += 1) {
+        const seg = segments->get_const(i).unwrap();
+
+        switch (*seg) {
+            case .SubModule(ident) => {
+                out.push_str(ident.str.as_str_const());
+
+                if (i + 1 < segments->len()) {
+                    const next = segments->get_const(i + 1).unwrap();
+
+                    switch (*next) {
+                        case .SubModule => out.push_str("::");
+                    }
+                }
+            }
+            case .Single(singles) => {
+                out.push('{');
+
+                for (var j: usize = 0; j < singles.len(); j += 1) {
+                    const single = singles.get_const(j).unwrap();
+
+                    switch (single->renamed) {
+                        case .Some(renamed) => {
+                            out.push_str(renamed.str.as_str_const());
+                            out.push(':');
+                        }
+                    }
+
+                    out.push_str(single->ident.str.as_str_const());
+
+                    if (j + 1 != singles.len()) {
+                        out.push_str(", ");
+                    }
+                }
+
+                out.push('}');
+            }
+        }
+    }
+
+    return out;
+}
+
+pub fn format_sub_module_names(allocator: Allocator, names: const Vec<String>*) String {
+    var out = String.new(allocator);
+
+    for (var i: usize = 0; i < names->len(); i += 1) {
+        const name = names->get_const(i).unwrap();
+
+        if (i > 0) {
+            out.push_str("::");
+        }
+        out.push_str(name->as_str_const());
+    }
+
+    return out;
+}
+
+pub fn sub_module_names(allocator: Allocator, segments: const Vec<ASTModuleSegment>*) Vec<String> {
+    var names: Vec<String> = Vec.new(allocator);
+
+    for (var i: usize = 0; i < segments->len(); i += 1) {
+        const seg = segments->get_const(i).unwrap();
+
+        switch (*seg) {
+            case .SubModule(ident) => names.push(String.from_str(allocator, ident.str.as_str_const()));
+        }
+    }
+
+    return names;
+}

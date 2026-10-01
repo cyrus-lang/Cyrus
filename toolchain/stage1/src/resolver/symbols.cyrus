@@ -1,0 +1,386 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 The Cyrus Language
+
+import std::collections{Vec};
+import std::option{Option};
+import std::string{String};
+import std::mem{Allocator, alloc_init};
+
+import parser::ast{ASTVisibility};
+import cir;
+
+const GLOBAL_NAMESPACE = "GLOBAL";
+
+pub struct ScopeBinding {
+    pub name: String,
+    pub symbol_id: cir::SymbolId,
+}
+
+pub struct ScopeTable {
+    pub bindings: Vec<ScopeBinding>,
+    allocator: Allocator,
+
+    pub fn new(allocator: Allocator) Self {
+        return Self { bindings: Vec.new(allocator), allocator };
+    }
+
+    pub fn lookup(self: const Self*, name: const uint8*) Option<cir::SymbolId> {
+        for (var i: usize = 0; i < self->bindings.len(); i += 1) {
+            const binding = self->bindings.get_const(i).unwrap();
+
+            if (binding->name.as_str_const() == name) {
+                return .Some(binding->symbol_id);
+            }
+        }
+
+        return .None;
+    }
+
+    pub fn bind(self: Self*, name: const uint8*, symbol_id: cir::SymbolId) Option<cir::SymbolId> {
+        for (var i: usize = 0; i < self->bindings.len(); i += 1) {
+            var binding = self->bindings.get(i).unwrap();
+
+            if (binding->name.as_str_const() == name) {
+                const previous = binding->symbol_id;
+                binding->symbol_id = symbol_id;
+                return .Some(previous);
+            }
+        }
+
+        self->bindings.push(ScopeBinding {
+            name: String.from_str(self->allocator, name),
+            symbol_id,
+        });
+
+        return .None;
+    }
+
+    pub fn contains(self: const Self*, name: const uint8*) bool {
+        switch (self->lookup(name)) {
+            case .Some(symbol_id) => return true;
+            case .None => return false;
+        }
+    }
+
+    pub fn free(self: Self*) {
+        const allocator = self->allocator;
+
+        for (var i: usize = 0; i < self->bindings.len(); i += 1) {
+            var binding = self->bindings.get_owned(i).unwrap();
+            binding.name.free();
+        }
+
+        self->bindings.free();
+        allocator.free(self);
+    }
+}
+
+pub struct Module {
+    pub scope: ScopeTable*,
+}
+
+pub struct Namespace {
+    pub scope: ScopeTable*,
+}
+
+pub enum SymbolEntryKind {
+    ProxiedSymbol { scope_id: cir::SymbolId, symbol_id: cir::SymbolId },
+    ProxiedModule { symbol_id: cir::SymbolId },
+    Namespace(Namespace),
+    Module(Module),
+    Unresolved,
+}
+
+pub struct SymbolEntry {
+    pub parent_scope_id: Option<cir::SymbolId>,
+    pub vis_opt: Option<ASTVisibility>,
+    pub kind: SymbolEntryKind,
+    pub name: String,
+    pub used: bool,
+
+    pub fn free(self: Self*) {
+        self->name.free();
+
+        switch (self->kind) {
+            case .Namespace(namespace) => namespace.scope->free();
+            case .Module(module) => module.scope->free();
+        }
+    }
+}
+
+pub struct GlobalSymbolRegistry {
+    pub allocator: Allocator,
+    pub entries: Vec<SymbolEntry>,
+    root: Option<cir::SymbolId>,
+
+    pub fn new(allocator: Allocator) Self {
+        var registry = Self {
+            allocator,
+            entries: Vec.new(allocator),
+            root: .None,
+        };
+
+        const root_id = registry.insert_symbol_entry(SymbolEntry {
+            name: String.from_str(allocator, GLOBAL_NAMESPACE),
+            parent_scope_id: .None,
+            kind: .Namespace(Namespace {
+                scope: alloc_init(allocator, ScopeTable.new(allocator)),
+            }),
+            used: false,
+            vis_opt: .None,
+        });
+        registry.root = .Some(root_id);
+
+        return registry;
+    }
+
+    pub fn free(self: Self*) {
+        for (var i: usize = 0; i < self->entries.len(); i += 1) {
+            var entry = self->entries.get_owned(i).unwrap();
+            entry.free();
+        }
+
+        self->entries.free();
+    }
+
+    pub fn root_scope_id(self: const Self*) cir::SymbolId {
+        return self->root.unwrap();
+    }
+
+    pub fn insert_symbol_entry(self: Self*, entry: SymbolEntry) cir::SymbolId {
+        const symbol_id = self->entries.len();
+        self->entries.push(entry);
+        return symbol_id;
+    }
+
+    pub fn insert_symbol_name(
+        self: Self*,
+        scope_id: cir::SymbolId,
+        symbol_id: cir::SymbolId,
+        name: const uint8*,
+    ) {
+        const scope_idx = self->resolve_concrete_scope_id(scope_id);
+        const scope_entry = self->entries.get(scope_idx).unwrap();
+
+        switch (scope_entry->kind) {
+            case .Module(module) => module.scope->bind(name, symbol_id);
+            case .Namespace(namespace) => namespace.scope->bind(name, symbol_id);
+            else => @assert(false, "scope does not exist for given scope id");
+        }
+    }
+
+    pub fn insert_module_symbol(
+        self: Self*,
+        parent_scope_id: cir::SymbolId,
+        ident: const uint8*,
+        name: const uint8*,
+    ) cir::SymbolId {
+        const scope = alloc_init(self->allocator, ScopeTable.new(self->allocator));
+
+        const module_symbol_id = self->insert_symbol_entry(SymbolEntry {
+            name: String.from_str(self->allocator, name),
+            parent_scope_id: .Some(parent_scope_id),
+            kind: .Module(Module { scope }),
+            used: false,
+            vis_opt: .None,
+        });
+
+        self->insert_symbol_name(parent_scope_id, module_symbol_id, ident);
+        return module_symbol_id;
+    }
+
+    pub fn insert_namespace_symbol(
+        self: Self*,
+        parent_scope_id: cir::SymbolId,
+        name: const uint8*,
+        vis_opt: Option<ASTVisibility>,
+    ) cir::SymbolId {
+        const scope = alloc_init(self->allocator, ScopeTable.new(self->allocator));
+
+        const namespace_symbol_id = self->insert_symbol_entry(SymbolEntry {
+            name: String.from_str(self->allocator, name),
+            parent_scope_id: .Some(parent_scope_id),
+            kind: .Namespace(Namespace { scope }),
+            used: false,
+            vis_opt,
+        });
+
+        self->insert_symbol_name(parent_scope_id, namespace_symbol_id, name);
+        return namespace_symbol_id;
+    }
+
+    pub fn insert_unresolved_symbol(
+        self: Self*,
+        scope_id: cir::SymbolId,
+        name: const uint8*,
+        vis_opt: Option<ASTVisibility>,
+    ) cir::SymbolId {
+        const symbol_id = self->insert_symbol_entry(SymbolEntry {
+            name: String.from_str(self->allocator, name),
+            parent_scope_id: .Some(scope_id),
+            kind: .Unresolved,
+            used: false,
+            vis_opt,
+        });
+
+        self->insert_symbol_name(scope_id, symbol_id, name);
+        return symbol_id;
+    }
+
+    pub fn insert_proxied_symbol(
+        self: Self*,
+        current_scope_id: cir::SymbolId,
+        name: const uint8*,
+        imported_scope_id: cir::SymbolId,
+        target_symbol_id: cir::SymbolId,
+    ) cir::SymbolId {
+        // The proxy inherits visibility from the target symbol
+        var vis_opt: Option<ASTVisibility> = .None;
+        
+        if (target_symbol_id < self->entries.len()) {
+            const entry = self->entries.get_const(target_symbol_id).unwrap();
+            vis_opt = entry->vis_opt;
+        }
+
+        const proxy_id = self->insert_symbol_entry(SymbolEntry {
+            name: String.from_str(self->allocator, name),
+            parent_scope_id: .Some(current_scope_id),
+            kind: .ProxiedSymbol {
+                scope_id: imported_scope_id,
+                symbol_id: target_symbol_id,
+            },
+            used: false,
+            vis_opt
+        });
+
+        self->insert_symbol_name(current_scope_id, proxy_id, name);
+        return proxy_id;
+    }
+
+    pub fn insert_proxied_module(
+        self: Self*,
+        parent_scope_id: cir::SymbolId,
+        name: const uint8*,
+        target_symbol_id: cir::SymbolId,
+    ) cir::SymbolId {
+        const proxy_id = self->insert_symbol_entry(SymbolEntry {
+            name: String.from_str(self->allocator, name),
+            parent_scope_id: .Some(parent_scope_id),
+            kind: .ProxiedModule { symbol_id: target_symbol_id },
+            used: false,
+            vis_opt: .None,
+        });
+
+        self->insert_symbol_name(parent_scope_id, proxy_id, name);
+        return proxy_id;
+    }
+
+    /// Lookup a symbol by name within a single scope (no parent walk).
+    pub fn lookup_symbol_id_in_scope(
+        self: const Self*,
+        scope_id: cir::SymbolId,
+        name: const uint8*,
+    ) Option<cir::SymbolId> {
+        const index = self->resolve_concrete_scope_id(scope_id);
+
+        if (index >= self->entries.len()) {
+            return .None;
+        }
+
+        return self->lookup_in_single_scope(index, name);
+    }
+
+    /// Recursively search up the scope chain for a symbol by name.
+    pub fn lookup_in_scope_chain(
+        self: const Self*,
+        scope_id: cir::SymbolId,
+        name: const uint8*,
+    ) Option<cir::SymbolId> {
+        var current = self->resolve_concrete_scope_id(scope_id);
+
+        while (true) {
+            const current_idx = current;
+
+            if (current_idx >= self->entries.len()) {
+                return .None;
+            }
+
+            const found = self->lookup_in_single_scope(current_idx, name);
+
+            switch (found) {
+                case .Some(symbol_id) => {
+                    return .Some(symbol_id);
+                }
+                case .None => {
+                    const entry = self->entries.get_const(current_idx).unwrap();
+
+                    switch (entry->parent_scope_id) {
+                        case .Some(parent) => {
+                            current = parent;
+                            continue;
+                        }
+                        case .None => {
+                            return .None;
+                        }
+                    }
+                }
+            }
+        }
+
+        @unreachable();
+    }
+
+    /// Resolve a symbol id to the concrete scope that owns a scope table.
+    ///
+    /// `ProxiedModule` entries forward to their target symbol.
+    /// Everything else is already a concrete scope owner.
+    pub fn resolve_concrete_scope_id(self: const Self*, scope_id: cir::SymbolId) cir::SymbolId {
+        if (scope_id >= self->entries.len()) {
+            return scope_id;
+        }
+
+        const entry = self->entries.get_const(scope_id).unwrap();
+
+        switch (entry->kind) {
+            case .ProxiedModule { symbol_id } => return self->resolve_concrete_scope_id(symbol_id);
+            else => return scope_id;
+        }
+    }
+
+    /// Resolve a symbol id through `ProxiedSymbol` indirections.
+    pub fn resolve_concrete_symbol_id(self: const Self*, symbol_id: cir::SymbolId) cir::SymbolId {
+        if (symbol_id >= self->entries.len()) {
+            return symbol_id;
+        }
+
+        const entry = self->entries.get_const(symbol_id).unwrap();
+
+        switch (entry->kind) {
+            case .ProxiedSymbol { symbol_id: target, .. } => return self->resolve_concrete_symbol_id(target);
+            else => return symbol_id;
+        }
+    }
+
+    pub fn symbol_name(self: const Self*, symbol_id: cir::SymbolId) Option<String> {
+        if (symbol_id >= self->entries.len()) {
+            return .None;
+        }
+
+        const entry = self->entries.get_const(symbol_id).unwrap();
+        return .Some(entry->name.clone(self->allocator));
+    }
+
+    fn lookup_in_single_scope(
+        self: const Self*,
+        index: usize,
+        name: const uint8*,
+    ) Option<cir::SymbolId> {
+        const entry = self->entries.get_const(index).unwrap();
+
+        switch (entry->kind) {
+            case .Namespace(namespace) => return namespace.scope->lookup(name);
+            case .Module(module) => return module.scope->lookup(name);
+            else => return .None;
+        }
+    }
+}

@@ -92,3 +92,22 @@ pub type c_va_list = uint8[24];
 // FIXME: not implemented yet.
 pub type c_long_double = float64; 
 // pub type c_long_double = x86_fp80; 
+
+[[repr(c)]]
+pub struct CInAddr {
+    pub s_addr: c_uint32
+}
+
+[[repr(c)]]
+pub struct CSockAddr {
+    pub sa_family: c_uint16,
+    pub sa_data: c_uint8[14]
+}
+
+[[repr(c)]]
+pub struct CSockAddrIn {
+    pub sin_family: c_uint16,
+    pub sin_port: c_uint16,
+    pub sin_addr: CInAddr,
+    pub sin_zero: c_uint8[8]
+}

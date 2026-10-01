@@ -1,0 +1,38 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 The Cyrus Language
+
+// @resolve
+import .::_cycle_b;
+
+pub fn main() {}
+
+/*@resolve
+tests/stage1/resolver/_cycle_b.cyrus:4:1: error: import cycle detected:
+
+tests/stage1/resolver/cycle.cyrus
+  - tests/stage1/resolver/_cycle_b.cyrus
+  - tests/stage1/resolver/cycle.cyrus
+      |
+    4 ~ import .::cycle;
+      | ^^^^^^^^^^^^^^^^
+      |
+      = help: break the cycle by removing one import
+      |
+SYMBOL TREE
+
+[0] Namespace GLOBAL
+├── tests_stage1_resolver_cycle -> [1]
+├── tests_stage1_resolver__cycle_b -> [2]
+├── [1] Module tests_stage1_resolver_cycle
+│   ├── _cycle_b -> [4]
+│   ├── main -> [5]
+│   ├── [3] ProxiedModule _cycle_b -> [2]
+│   ├── [4] ProxiedModule _cycle_b -> [2]
+│   └── [5] Unresolved main
+└── [2] Module _cycle_b
+
+SOURCE MAP
+
+├── [0] tests/stage1/resolver/cycle.cyrus
+└── [1] tests/stage1/resolver/_cycle_b.cyrus
+@resolve*/

@@ -137,8 +137,12 @@ pub extern "C" {
     fn quick_exit(status: types::c_int) types::c_void;
     fn at_quick_exit(func: fn() types::c_void) types::c_int;
 
-    fn getenv(name: const types::c_char*) types::c_char*;
+    fn setenv(name: const types::c_char*, value: const types::c_char*, overwrite: types::c_int) types::c_int;
+    fn popen(command: const types::c_char*, mode: const types::c_char*) types::c_file*;
     fn system(command: const types::c_char*) types::c_int;
+    fn getenv(name: const types::c_char*) types::c_char*;
+    fn unsetenv(name: const types::c_char*) types::c_int;
+    fn pclose(stream: types::c_file*) types::c_int;
 
     fn bsearch(
         key: const types::c_void*,
@@ -571,8 +575,35 @@ pub const LC_MONETARY: types::c_int = 4;
 pub const LC_MESSAGES: types::c_int = 5;
 pub const LC_ALL: types::c_int = 6;
 
-// uninst
-
 pub extern "C" {
     fn access(pathname: const types::c_char*, mode: types::c_int) types::c_int;
+    fn close(fd: types::c_int) types::c_int;
+}
+
+pub extern "C" {
+    fn mkdir(path: const types::c_char*, mode: types::c_uint) types::c_int;
+    fn rmdir(path: const types::c_char*) types::c_int;
+    fn chdir(path: const types::c_char*) types::c_int;
+    fn getcwd(buf: types::c_char*, size: types::c_size) types::c_char*;
+    fn opendir(path: const types::c_char*) types::c_void*;
+    fn closedir(dirp: types::c_void*) types::c_int;
+}
+
+pub extern "C" {
+    fn socket(domain: types::c_int, socket_type: types::c_int, protocol: types::c_int) types::c_int;
+    fn bind(sockfd: types::c_int, addr: const types::CSockAddr*, addrlen: types::c_uint) types::c_int;
+    fn listen(sockfd: types::c_int, backlog: types::c_int) types::c_int;
+    fn accept(sockfd: types::c_int, addr: types::CSockAddr*, addrlen: types::c_uint*) types::c_int;
+    fn connect(sockfd: types::c_int, addr: const types::CSockAddr*, addrlen: types::c_uint) types::c_int;
+    fn setsockopt(sockfd: types::c_int, level: types::c_int, optname: types::c_int, optval: const types::c_void*, optlen: types::c_uint) types::c_int;
+    fn getsockopt(sockfd: types::c_int, level: types::c_int, optname: types::c_int, optval: types::c_void*, optlen: types::c_uint*) types::c_int;
+    fn send(sockfd: types::c_int, buf: const types::c_void*, len: types::c_size, flags: types::c_int) types::c_ssize;
+    fn recv(sockfd: types::c_int, buf: types::c_void*, len: types::c_size, flags: types::c_int) types::c_ssize;
+    fn shutdown(sockfd: types::c_int, how: types::c_int) types::c_int;
+    fn htons(hostshort: types::c_uint16) types::c_uint16;
+    fn htonl(hostlong: types::c_uint32) types::c_uint32;
+    fn ntohs(netshort: types::c_uint16) types::c_uint16;
+    fn ntohl(netlong: types::c_uint32) types::c_uint32;
+    fn inet_addr(cp: const types::c_char*) types::c_uint32;
+    fn inet_ntoa(addr: types::CInAddr) types::c_char*;
 }

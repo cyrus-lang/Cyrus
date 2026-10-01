@@ -182,6 +182,18 @@ pub struct Diag {
         return self;
     }
 
+    [[inline]]
+    pub fn info(self: Self*, mesg: const uint8*) Self* {
+        self->sub_diags.push(SubDiag.new(self->allocator, .Info, mesg, .None));
+        return self;
+    }
+
+    [[inline]]
+    pub fn info_at(self: Self*, span: Span, mesg: const uint8*) Self* {
+        self->sub_diags.push(SubDiag.new(self->allocator, .Info, mesg, .Some(span)));
+        return self;
+    }
+
     pub fn free(self: Self*) {
         self->mesg.free();
 

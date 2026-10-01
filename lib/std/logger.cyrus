@@ -4,6 +4,7 @@
 import std::libc{time, localtime_r, strftime, CTm};
 import std::libc::types{c_long};
 import std::io{Writer};
+import std::color;
 
 const TIMESTAMP_BUF_SIZE: usize = 32;
 
@@ -40,12 +41,12 @@ pub enum LogLevel {
 
     pub fn color(self: Self) const uint8* {
         switch (self) {
-            case .Trace => return "\x1b[90m";
-            case .Debug => return "\x1b[36m";
-            case .Info => return "\x1b[32m";
-            case .Warn => return "\x1b[33m";
-            case .Error => return "\x1b[31m";
-            case .Fatal => return "\x1b[35m";
+            case .Trace => return color::FG_BRIGHT_BLACK;
+            case .Fatal => return color::FG_MAGENTA;
+            case .Warn => return color::FG_YELLOW;
+            case .Debug => return color::FG_CYAN;
+            case .Info => return color::FG_GREEN;
+            case .Error => return color::FG_RED;
             case .Off => return "";
         }
     }
@@ -140,6 +141,7 @@ pub struct Logger {
 
         writer.write(mesg);
 
+        // FIXME: Use std::color reset instead of direct ansi.
         if (self->colored) {
             writer.write("\x1b[0m");
         }
@@ -180,8 +182,6 @@ pub struct Logger {
 }
 
 fn format_timestamp(buffer: uint8*, size: usize) usize {
-    @assert(buffer, "buffer cannot be null");
-
     var out = buffer;
     var now: c_long = time(null);
     var tm: CTm;

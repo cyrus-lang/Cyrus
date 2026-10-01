@@ -1,2 +1,137 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 The Cyrus Language
+
+import std::mem{Allocator};
+import std::option{Option};
+
+import resolver::diags{report_duplicate_symbol};
+import resolver::symbols{GlobalSymbolRegistry};
+import diags{DiagContext};
+import parser::ast;
+import cir;
+
+/// Declaration pass entry which register every declared name of a module in
+/// its scope table before later passes resolve the declarations fully.
+pub fn bind_program_decl_names(
+    registry: GlobalSymbolRegistry*,
+    dctx: DiagContext*,
+    allocator: Allocator,
+    scope_id: cir::SymbolId,
+    program: const ast::ASTProgram*
+) {
+    switch (program->statements) {
+        case .Some(statements) => {
+            resolve_decl_names(registry, dctx, allocator, scope_id, program, &statements);
+        }
+    }
+}
+
+/// (First Pass) Scans the top-level AST for declarations and registers 
+/// each declared name into the current module's symbol table.
+fn resolve_decl_names(
+    registry: GlobalSymbolRegistry*,
+    dctx: DiagContext*,
+    allocator: Allocator,
+    scope_id: cir::SymbolId,
+    program: const ast::ASTProgram*,
+    statements: const ast::ASTNodeList*
+) {
+    for (var i: usize = 0; i < statements->len; i += 1) {
+        const node_id = program->children.get_owned(statements->start + i).unwrap();
+        const node = program->nodes.get_const(node_id).unwrap();
+
+        switch (*node) {
+            case .ModuleDecl(module_decl) => {
+                resolve_module_decl_names(registry, dctx, allocator, scope_id, program, &module_decl);
+            }
+            case .Builtin(builtin) => {
+                resolve_builtin_decl_names(registry, dctx, allocator, scope_id, program, &builtin);
+            }
+            else => {
+                // skip statement if it's not a declaration symbol
+                switch (node->decl_name()) {
+                    case .Some(decl_name) => {
+                        const name = decl_name.str.as_str_const();
+
+                        switch (registry->lookup_symbol_id_in_scope(scope_id, name)) {
+                            case .Some => {
+                                report_duplicate_symbol(dctx, allocator, decl_name.span, name);
+                            }
+                            case .None => {
+                                registry->insert_unresolved_symbol(scope_id, name, node->vis());
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+fn resolve_module_decl_names(
+    registry: GlobalSymbolRegistry*,
+    dctx: DiagContext*,
+    allocator: Allocator,
+    parent_scope_id: cir::SymbolId,
+    program: const ast::ASTProgram*,
+    module_decl: const ast::ASTModuleDecl*
+) {
+    const name = module_decl->ident.str.as_str_const();
+    var module_scope_id: cir::SymbolId;
+
+    switch (registry->lookup_symbol_id_in_scope(parent_scope_id, name)) {
+        case .Some(existing) => {
+            module_scope_id = registry->resolve_concrete_scope_id(existing);
+        }
+        case .None => {
+            module_scope_id = registry->insert_namespace_symbol(
+                parent_scope_id,
+                name,
+                .Some(module_decl->vis)
+            );
+        }
+    }
+
+    resolve_decl_names(registry, dctx, allocator, module_scope_id, program, &module_decl->stmts);
+}
+
+// TODO (stage2): Temporary! Will be replaced with a multi stage 
+// comptime evaluation engine.
+fn resolve_builtin_decl_names(
+    registry: GlobalSymbolRegistry*,
+    dctx: DiagContext*,
+    allocator: Allocator,
+    scope_id: cir::SymbolId,
+    program: const ast::ASTProgram*,
+    builtin: const ast::ASTBuiltin*
+) {
+    switch (*builtin) {
+        case .BuiltinBlock(builtin_block) => {
+            // stage0 additionally gates Debug/Release builtin blocks on the
+            // build profile (`is_builtin_active`); stage1 has no profile
+            // option yet, so every block is treated as active.
+            switch (cir::lookup_builtin(builtin_block.name.str.as_str_const())) {
+                case .Some(builtin_kind) => {
+                    const builtin_spec = cir::builtin_spec_of(builtin_kind);
+
+                    if (builtin_spec.phase == .Resolver) {
+                        const block = program->nodes.get_const(builtin_block.block).unwrap();
+
+                        switch (*block) {
+                            case .Block(block_stmt) => {
+                                resolve_decl_names(
+                                    registry,
+                                    dctx,
+                                    allocator,
+                                    scope_id,
+                                    program,
+                                    &block_stmt.stmts
+                                );
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}

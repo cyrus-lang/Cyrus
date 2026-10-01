@@ -2,10 +2,16 @@
 // Copyright (c) 2026 The Cyrus Language
 
 import std::errors{ErrorOr, ErrorStr};
-import std::libc{errno, strerror};
+import std::libc{
+    setsockopt, send, recv, shutdown, 
+    bind, listen, accept, connect,
+    errno, strerror, socket,
+    close, htons, inet_addr
+};
 import std::libc::types{
-    c_int, c_uint, c_char,
-    c_void, c_size, c_ssize
+    CInAddr, CSockAddr, CSockAddrIn,
+    c_void, c_size, c_ssize,
+    c_int, c_uint, c_char, 
 };
 
 pub const AF_INET: c_int = 2;
@@ -23,45 +29,6 @@ pub const MSG_NOSIGNAL: c_int = 16384;
 pub const INADDR_ANY: uint32 = 0;
 pub const INADDR_NONE: uint32 = 4294967295;
 pub const DEFAULT_BACKLOG: int32 = 128;
-
-[[repr(c)]]
-pub struct CInAddr {
-    pub s_addr: uint32
-}
-
-[[repr(c)]]
-pub struct CSockAddr {
-    pub sa_family: uint16,
-    pub sa_data: uint8[14]
-}
-
-[[repr(c)]]
-pub struct CSockAddrIn {
-    pub sin_family: uint16,
-    pub sin_port: uint16,
-    pub sin_addr: CInAddr,
-    pub sin_zero: uint8[8]
-}
-
-pub extern "C" {
-    fn socket(domain: c_int, socket_type: c_int, protocol: c_int) c_int;
-    fn bind(sockfd: c_int, addr: const CSockAddr*, addrlen: c_uint) c_int;
-    fn listen(sockfd: c_int, backlog: c_int) c_int;
-    fn accept(sockfd: c_int, addr: CSockAddr*, addrlen: c_uint*) c_int;
-    fn connect(sockfd: c_int, addr: const CSockAddr*, addrlen: c_uint) c_int;
-    fn setsockopt(sockfd: c_int, level: c_int, optname: c_int, optval: const c_void*, optlen: c_uint) c_int;
-    fn getsockopt(sockfd: c_int, level: c_int, optname: c_int, optval: c_void*, optlen: c_uint*) c_int;
-    fn send(sockfd: c_int, buf: const c_void*, len: c_size, flags: c_int) c_ssize;
-    fn recv(sockfd: c_int, buf: c_void*, len: c_size, flags: c_int) c_ssize;
-    fn shutdown(sockfd: c_int, how: c_int) c_int;
-    fn close(fd: c_int) c_int;
-    fn htons(hostshort: uint16) uint16;
-    fn htonl(hostlong: uint32) uint32;
-    fn ntohs(netshort: uint16) uint16;
-    fn ntohl(netlong: uint32) uint32;
-    fn inet_addr(cp: const c_char*) uint32;
-    fn inet_ntoa(addr: CInAddr) c_char*;
-}
 
 [[inline]]
 pub fn last_error() ErrorStr {
