@@ -11,16 +11,30 @@ pub fn format_module_segments(
     allocator: Allocator,
     segments: const Vec<ASTModuleSegment>*
 ) String {
-    var out = String.new(allocator);
+    return format_module_segments_upto(allocator, segments, segments->len());
+}
 
-    for (var i: usize = 0; i < segments->len(); i += 1) {
+/// Formats the first `count` segments of an import path.
+pub fn format_module_segments_upto(
+    allocator: Allocator,
+    segments: const Vec<ASTModuleSegment>*,
+    count: usize,
+) String {
+    var out = String.new(allocator);
+    var limit = segments->len();
+
+    if (count < limit) {
+        limit = count;
+    }
+
+    for (var i: usize = 0; i < limit; i += 1) {
         const seg = segments->get_const(i).unwrap();
 
         switch (*seg) {
             case .SubModule(ident) => {
                 out.push_str(ident.str.as_str_const());
 
-                if (i + 1 < segments->len()) {
+                if (i + 1 < limit) {
                     const next = segments->get_const(i + 1).unwrap();
 
                     switch (*next) {

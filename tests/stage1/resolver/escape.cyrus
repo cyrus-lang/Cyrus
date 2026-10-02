@@ -5,9 +5,9 @@ import ..::..::..::..::missing_upwards;
 pub fn main() {}
 
 /*@resolve
-tests/stage1/resolver/escape.cyrus:2:1: error: relative import escapes the project root
+tests/stage1/resolver/escape.cyrus:3:1: error: relative import escapes the project root
       |
-    2 ~ import ..::..::..::..::missing_upwards;
+    3 ~ import ..::..::..::..::missing_upwards;
       | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
       |
       = help: use a path that stays under the project base directory

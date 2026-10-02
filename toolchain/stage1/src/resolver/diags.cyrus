@@ -7,7 +7,6 @@ import std::string{String};
 import diags{DiagContext, Diag};
 import tokens{Span};
 
-/// Report that an imported module file could not be located.
 pub fn report_module_not_found(
     dctx: DiagContext*,
     allocator: Allocator,
@@ -30,7 +29,6 @@ pub fn report_module_not_found(
     help.free();
 }
 
-/// Report that no stdlib directory is configured.
 pub fn report_stdlib_not_found(
     dctx: DiagContext*,
     allocator: Allocator,
@@ -48,7 +46,6 @@ pub fn report_stdlib_not_found(
     help.free();
 }
 
-/// Report a module name that resolves to both a file and a directory.
 pub fn report_duplicate_module(
     dctx: DiagContext*,
     allocator: Allocator,
@@ -75,7 +72,6 @@ pub fn report_duplicate_module(
     help.free();
 }
 
-/// Report a module importing itself.
 pub fn report_module_cannot_import_itself(
     dctx: DiagContext*,
     allocator: Allocator,
@@ -90,7 +86,6 @@ pub fn report_module_cannot_import_itself(
     msg.free();
 }
 
-/// Report a relative import climbing above the project root.
 pub fn report_relative_import_escapes_project_root(
     dctx: DiagContext*,
     allocator: Allocator,
@@ -105,8 +100,6 @@ pub fn report_relative_import_escapes_project_root(
     msg.free();
 }
 
-/// Report an import cycle. `active_paths` is the formatted chain of
-/// module paths currently being resolved (first path repeated last).
 pub fn report_import_cycle(
     dctx: DiagContext*,
     allocator: Allocator,
@@ -124,7 +117,6 @@ pub fn report_import_cycle(
     msg.free();
 }
 
-/// Report that the same module group was imported twice in one scope.
 pub fn report_import_twice(
     dctx: DiagContext*,
     allocator: Allocator,
@@ -143,7 +135,6 @@ pub fn report_import_twice(
     msg.free();
 }
 
-/// Report a name that could not be found in the current scope.
 pub fn report_symbol_not_found(
     dctx: DiagContext*,
     allocator: Allocator,
@@ -162,7 +153,6 @@ pub fn report_symbol_not_found(
     msg.free();
 }
 
-/// Report a path segment that is missing from an already loaded module.
 pub fn report_namespace_segment_not_found(
     dctx: DiagContext*,
     allocator: Allocator,
@@ -187,7 +177,6 @@ pub fn report_namespace_segment_not_found(
     help.free();
 }
 
-/// Report a namespace (inline `mod`) imported through `{ }` items.
 pub fn report_namespace_as_single(
     dctx: DiagContext*,
     allocator: Allocator,
@@ -210,7 +199,42 @@ pub fn report_namespace_as_single(
     help.free();
 }
 
-/// Report a private symbol pulled in through a single import.
+pub fn report_expected_ident_in_import(
+    dctx: DiagContext*,
+    allocator: Allocator,
+    span: Span,
+) {
+    var msg = String.new(allocator);
+    msg.push_str("expected an ident in module import path");
+
+    const diag = Diag.new(allocator, .Error, msg.as_str_const(), span);
+    diag->help("import path segments must be idents");
+    dctx->report(diag);
+
+    msg.free();
+}
+
+pub fn report_symbol_not_defined_in_module(
+    dctx: DiagContext*,
+    allocator: Allocator,
+    span: Span,
+    symbol_name: const uint8*,
+    module_name: const uint8*,
+) {
+    var msg = String.new(allocator);
+    msg.push_str("symbol `");
+    msg.push_str(symbol_name);
+    msg.push_str("` is not defined in module `");
+    msg.push_str(module_name);
+    msg.push('`');
+
+    const diag = Diag.new(allocator, .Error, msg.as_str_const(), span);
+    diag->help("declare it in that module or import it from the correct path");
+    dctx->report(diag);
+
+    msg.free();
+}
+
 pub fn report_private_symbol(
     dctx: DiagContext*,
     allocator: Allocator,
@@ -229,7 +253,6 @@ pub fn report_private_symbol(
     msg.free();
 }
 
-/// Report a name declared twice in the same scope.
 pub fn report_duplicate_symbol(
     dctx: DiagContext*,
     allocator: Allocator,
@@ -246,4 +269,205 @@ pub fn report_duplicate_symbol(
     dctx->report(diag);
 
     msg.free();
+}
+
+pub fn report_label_already_defined(
+    dctx: DiagContext*,
+    allocator: Allocator,
+    span: Span,
+    name: const uint8*,
+) {
+    var msg = String.new(allocator);
+    msg.push_str("label `");
+    msg.push_str(name);
+    msg.push_str("` already defined in this scope");
+
+    const diag = Diag.new(allocator, .Error, msg.as_str_const(), span);
+    diag->help("remove or rename the duplicate label");
+    dctx->report(diag);
+
+    msg.free();
+}
+
+pub fn report_label_not_defined(
+    dctx: DiagContext*,
+    allocator: Allocator,
+    span: Span,
+    name: const uint8*,
+) {
+    var msg = String.new(allocator);
+    msg.push_str("label `");
+    msg.push_str(name);
+    msg.push_str("` not defined in this scope");
+
+    const diag = Diag.new(allocator, .Error, msg.as_str_const(), span);
+    diag->help("declare the label before jumping to it");
+    dctx->report(diag);
+
+    msg.free();
+}
+
+pub fn report_type_does_not_accept_type_args(
+    dctx: DiagContext*,
+    allocator: Allocator,
+    span: Span,
+    name: const uint8*,
+) {
+    var msg = String.new(allocator);
+    msg.push_str("type `");
+    msg.push_str(name);
+    msg.push_str("` does not accept any type arguments");
+
+    const diag = Diag.new(allocator, .Error, msg.as_str_const(), span);
+    diag->help("remove the type arguments");
+    dctx->report(diag);
+
+    msg.free();
+}
+
+pub fn report_self_type_does_not_accept_type_args(
+    dctx: DiagContext*,
+    allocator: Allocator,
+    span: Span,
+) {
+    var msg = String.from_str(allocator, "self type does not accept any type arguments");
+
+    const diag = Diag.new(allocator, .Error, msg.as_str_const(), span);
+    diag->help("remove the type arguments");
+    dctx->report(diag);
+
+    msg.free();
+}
+
+pub fn report_invalid_literal_suffix(
+    dctx: DiagContext*,
+    allocator: Allocator,
+    span: Span,
+) {
+    var msg = String.from_str(allocator, "invalid literal suffix");
+
+    const diag = Diag.new(allocator, .Error, msg.as_str_const(), span);
+    dctx->report(diag);
+
+    msg.free();
+}
+
+pub fn report_type_not_found(
+    dctx: DiagContext*,
+    allocator: Allocator,
+    span: Span,
+    name: const uint8*,
+) {
+    var msg = String.new(allocator);
+    msg.push_str("type `");
+    msg.push_str(name);
+    msg.push_str("` not found");
+
+    const diag = Diag.new(allocator, .Error, msg.as_str_const(), span);
+    diag->help("declare or import it before use");
+    dctx->report(diag);
+
+    msg.free();
+}
+
+pub fn report_invalid_top_level_statement(
+    dctx: DiagContext*,
+    allocator: Allocator,
+    span: Span,
+) {
+    var msg = String.from_str(allocator, "invalid top-level statement");
+
+    const diag = Diag.new(allocator, .Error, msg.as_str_const(), span);
+    diag->help("only declarations are allowed at file scope");
+    dctx->report(diag);
+
+    msg.free();
+}
+
+pub fn report_invalid_statement(
+    dctx: DiagContext*,
+    allocator: Allocator,
+    span: Span,
+) {
+    var msg = String.from_str(allocator, "invalid statement");
+
+    const diag = Diag.new(allocator, .Error, msg.as_str_const(), span);
+    dctx->report(diag);
+
+    msg.free();
+}
+
+pub fn report_invalid_untyped_func_param(
+    dctx: DiagContext*,
+    allocator: Allocator,
+    span: Span,
+) {
+    var msg = String.from_str(allocator, "function parameter must have a type");
+
+    const diag = Diag.new(allocator, .Error, msg.as_str_const(), span);
+    diag->help("add an explicit type annotation to the parameter");
+    dctx->report(diag);
+
+    msg.free();
+}
+
+pub fn report_duplicate_generic_param(
+    dctx: DiagContext*,
+    allocator: Allocator,
+    span: Span,
+    name: const uint8*,
+) {
+    var msg = String.new(allocator);
+    msg.push_str("generic parameter `");
+    msg.push_str(name);
+    msg.push_str("` is declared more than once");
+
+    const diag = Diag.new(allocator, .Error, msg.as_str_const(), span);
+    diag->help("rename the duplicate generic parameter");
+    dctx->report(diag);
+
+    msg.free();
+}
+
+pub fn report_duplicate_symbol_in_this_scope(
+    dctx: DiagContext*,
+    allocator: Allocator,
+    span: Span,
+    name: const uint8*,
+) {
+    var msg = String.new(allocator);
+    msg.push_str("symbol `");
+    msg.push_str(name);
+    msg.push_str("` cannot be declared again");
+
+    const diag = Diag.new(allocator, .Error, msg.as_str_const(), span);
+    diag->help("remove or rename the duplicate declaration");
+    dctx->report(diag);
+
+    msg.free();
+}
+
+pub fn report_duplicate_method_name(
+    dctx: DiagContext*,
+    allocator: Allocator,
+    span: Span,
+    struct_name: const uint8*,
+    method_name: const uint8*,
+) {
+    var msg = String.new(allocator);
+    msg.push_str("duplicate declaration of method `");
+    msg.push_str(method_name);
+    msg.push_str("` in `");
+    msg.push_str(struct_name);
+    msg.push_str("`");
+
+    var help = String.new(allocator);
+    help.push_str("consider renaming the method to a different name");
+
+    const diag = Diag.new(allocator, .Error, msg.as_str_const(), span);
+    diag->help(help.as_str_const());
+    dctx->report(diag);
+
+    msg.free();
+    help.free();
 }

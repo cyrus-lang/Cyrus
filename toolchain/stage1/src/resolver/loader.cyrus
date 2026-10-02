@@ -268,7 +268,7 @@ pub fn first_segment_span(segments: const Vec<ASTModuleSegment>*) Span {
         }
     }
 
-    return Span.new(@cast(SourceId, 0), Loc { start: 0, end: 0 });
+    return Span.new(0, Loc.new(0, 0));
 }
 
 /// Locate an imported module file for an import statement.

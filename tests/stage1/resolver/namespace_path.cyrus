@@ -18,16 +18,16 @@ SYMBOL TREE
 │   │   ├── _single -> [4]
 │   │   └── [4] ProxiedModule _single -> [2]
 │   ├── [9] ProxiedModule inner -> [7]
-│   └── [10] Unresolved main
+│   └── [10] Func main
 └── [2] Module inner
     ├── hidden -> [5]
     ├── exposed -> [6]
     ├── inner -> [7]
-    ├── [5] Unresolved hidden
-    ├── [6] Unresolved exposed
+    ├── [5] Func hidden
+    ├── [6] Func exposed
     └── [7] Namespace inner
         ├── inside -> [8]
-        └── [8] Unresolved inside
+        └── [8] Func inside
 
 SOURCE MAP
 

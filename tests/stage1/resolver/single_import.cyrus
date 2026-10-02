@@ -22,10 +22,10 @@ SYMBOL TREE
 │   │   └── [7] ProxiedModule _util -> [2]
 │   ├── [6] ProxiedSymbol helper -> [5]
 │   ├── [8] ProxiedSymbol h -> [5]
-│   └── [9] Unresolved main
+│   └── [9] Func main
 └── [2] Module _util
     ├── helper -> [5]
-    └── [5] Unresolved helper
+    └── [5] Func helper
 
 SOURCE MAP
 

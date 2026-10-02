@@ -1533,6 +1533,17 @@ pub struct TypedExpr {
     pub span: Span,
 
     [[inline]]
+    pub fn new(kind: TypedExprKind, span: Span) Self {
+        return Self {
+            kind,
+            ty: .None,
+            val_cat: .Unknown,
+            analyzed: false,
+            span,
+        };
+    }
+
+    [[inline]]
     pub fn is_lvalue(self: const Self*) bool {
         switch (self->val_cat) {
             case .LValue => return true;
@@ -2381,7 +2392,7 @@ pub struct TypedGlobalVarStmt {
     pub file_id: SourceId,
     pub global_var_decl_id: GlobalVarDeclId,
     pub modifiers: ast::ASTGlobalVarModifiers,
-    pub expr: Option<TypedExpr>,
+    pub expr: Option<TypedExpr>, // FIXME: Rename expr to rhs in TypedGlobalVarStmt
     pub ty: Option<SemaType>,
     pub name: String,
     pub is_const: bool,

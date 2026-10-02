@@ -95,7 +95,7 @@ pub struct Lexer {
         if (self->pos == self->input->len()) {
             return Token.new(
                 self->init_kind(.EOF),
-                Loc { start: self->pos, end: self->pos }
+                Loc.new(self->pos, self->pos)
             );
         }
 
@@ -103,7 +103,7 @@ pub struct Lexer {
         const kind = self->read_kind();
         const end_pos = self->pos;
 
-        return Token.new(kind, Loc { start: start_pos, end: end_pos });
+        return Token.new(kind, Loc.new(start_pos, end_pos));
     }
 
     [[inline(always)]]
@@ -148,7 +148,7 @@ pub struct Lexer {
                     self->allocator, 
                     .Error, 
                     "invalid character", 
-                    Span { source_id: self->source_id, loc: self->loc() }
+                    Span.new(self->source_id, self->loc())
                 ));
                 return self->init_kind(.INVALID);
             }
@@ -231,7 +231,7 @@ pub struct Lexer {
                     self->allocator, 
                     .Error, 
                     "unterminated string literal", 
-                    Span { source_id: self->source_id, loc }
+                    Span.new(self->source_id, loc)
                 ));
                 value.free();
                 return self->init_kind(.INVALID);
@@ -302,7 +302,7 @@ pub struct Lexer {
                         self->allocator,
                         .Error,
                         "unterminated character literal",
-                        Span { source_id: self->source_id, loc }
+                        Span.new(self->source_id, loc)
                     ));
                     return self->init_kind(.INVALID);
                 }
@@ -312,7 +312,7 @@ pub struct Lexer {
                         self->allocator,
                         .Error,
                         "invalid escape character",
-                        Span { source_id: self->source_id, loc }
+                        Span.new(self->source_id, loc)
                     ));
                     return self->init_kind(.INVALID);
                 }
@@ -324,7 +324,7 @@ pub struct Lexer {
         // Normal Char
         else {
             if (self->is_eof()) {
-                const span = Span { source_id: self->source_id, loc };
+                const span = Span.new(self->source_id, loc);
                 self->dctx->report(
                     Diag.new(self->allocator, .Error, "unterminated character literal", span)
                 );
@@ -341,7 +341,7 @@ pub struct Lexer {
                 self->allocator,
                 .Error,
                 "unterminated character literal",
-                Span { source_id: self->source_id, loc }
+                Span.new(self->source_id, loc)
             ));
             return self->init_kind(.INVALID);
         }
@@ -368,7 +368,7 @@ pub struct Lexer {
                 self->allocator,
                 .Error,
                 "unicode character must have at least one digit",
-                Span { source_id: self->source_id, loc }
+                Span.new(self->source_id, loc)
             ));
             return .None;
         }
@@ -380,7 +380,7 @@ pub struct Lexer {
                 self->allocator,
                 .Error,
                 "given number is not unicode",
-                Span { source_id: self->source_id, loc }
+                Span.new(self->source_id, loc)
             ));
             return .None;
         }
@@ -390,7 +390,7 @@ pub struct Lexer {
                 self->allocator,
                 .Error,
                 "unicode character value must be in range `0x00` to `0xff` (0-255)",
-                Span { source_id: self->source_id, loc }
+                Span.new(self->source_id, loc)
             ));
             return .None;
         }
@@ -400,7 +400,7 @@ pub struct Lexer {
                 self->allocator,
                 .Error,
                 "unicode digits must be two",
-                Span { source_id: self->source_id, loc }
+                Span.new(self->source_id, loc)
             ));
             return .None;
         }
@@ -426,7 +426,7 @@ pub struct Lexer {
                 self->allocator,
                 .Error,
                 "hex character must have at least one digit",
-                Span { source_id: self->source_id, loc }
+                Span.new(self->source_id, loc)
             ));
             return .None;
         }
@@ -438,7 +438,7 @@ pub struct Lexer {
                 self->allocator,
                 .Error,
                 "given number is not hex",
-                Span { source_id: self->source_id, loc }
+                Span.new(self->source_id, loc)
             ));
             return .None;
         }
@@ -448,7 +448,7 @@ pub struct Lexer {
                 self->allocator,
                 .Error,
                 "hex character value must be in range `0x00` to `0xff` (0-255)",
-                Span { source_id: self->source_id, loc }
+                Span.new(self->source_id, loc)
             ));
             return .None;
         }
@@ -458,7 +458,7 @@ pub struct Lexer {
                 self->allocator,
                 .Error,
                 "hex digits must be two",
-                Span { source_id: self->source_id, loc }
+                Span.new(self->source_id, loc)
             ));
             return .None;
         }
@@ -483,7 +483,7 @@ pub struct Lexer {
                 self->allocator,
                 .Error,
                 "octal character must have at least one digit",
-                Span { source_id: self->source_id, loc }
+                Span.new(self->source_id, loc)
             ));
             return .None;
         }
@@ -495,7 +495,7 @@ pub struct Lexer {
                 self->allocator,
                 .Error,
                 "given number is not octal",
-                Span { source_id: self->source_id, loc }
+                Span.new(self->source_id, loc)
             ));
             return .None;
         }
@@ -505,7 +505,7 @@ pub struct Lexer {
                 self->allocator,
                 .Error,
                 "octal character digits must be in range 0 to 255",
-                Span { source_id: self->source_id, loc }
+                Span.new(self->source_id, loc)
             ));
             return .None;
         }
@@ -515,7 +515,7 @@ pub struct Lexer {
                 self->allocator,
                 .Error,
                 "octal digits must be three",
-                Span { source_id: self->source_id, loc }
+                Span.new(self->source_id, loc)
             ));
             return .None;
         }
@@ -597,7 +597,7 @@ pub struct Lexer {
                         self->allocator,
                         .Error,
                         "non-decimal number cannot have mantissa",
-                        Span { source_id: self->source_id, loc: self->loc() }
+                        Span.new(self->source_id, self->loc())
                     ));
                     return self->init_kind(.INVALID);
                 }
@@ -638,7 +638,7 @@ pub struct Lexer {
                     self->allocator,
                     .Error,
                     "float does not fit into `float64`",
-                    Span { source_id: self->source_id, loc: self->loc() }
+                    Span.new(self->source_id, self->loc())
                 ));
                 return self->init_kind(.INVALID);
             }
@@ -653,7 +653,7 @@ pub struct Lexer {
                         self->allocator,
                         .Error,
                         "hexadecimal number does not fit into `uint128`",
-                        Span { source_id: self->source_id, loc: self->loc() }
+                        Span.new(self->source_id, self->loc())
                     ));
                     return self->init_kind(.INVALID);
                 }
@@ -665,7 +665,7 @@ pub struct Lexer {
                         self->allocator,
                         .Error,
                         "binary number does not fit into `uint128`",
-                        Span { source_id: self->source_id, loc: self->loc() }
+                        Span.new(self->source_id, self->loc())
                     ));
                     return self->init_kind(.INVALID);
                 }
@@ -677,7 +677,7 @@ pub struct Lexer {
                         self->allocator,
                         .Error,
                         "integer number does not fit into `u128`",
-                        Span { source_id: self->source_id, loc: self->loc() }
+                        Span.new(self->source_id, self->loc())
                     ));
                     return self->init_kind(.INVALID);
                 }
@@ -689,7 +689,7 @@ pub struct Lexer {
                         self->allocator,
                         .Error,
                         "integer number does not fit into `i128`",
-                        Span { source_id: self->source_id, loc: self->loc() }
+                        Span.new(self->source_id, self->loc())
                     ));
                     return self->init_kind(.INVALID);
                 }
@@ -785,7 +785,7 @@ pub struct Lexer {
                             self->allocator,
                             .Error,
                             "unclosed multi-line comment",
-                            Span { source_id: self->source_id, loc: self->loc() }
+                            Span.new(self->source_id, self->loc())
                         )
                         ->under("comment is opened here")
                         ->help("consider closing it with `*/`")
@@ -999,10 +999,7 @@ pub struct Lexer {
 
     [[inline]]
     fn loc(self: const Self*) Loc {
-        return Loc {
-            start: self->pos,
-            end: self->pos
-        };
+        return Loc.new(self->pos, self->pos);
     }
 }
 
