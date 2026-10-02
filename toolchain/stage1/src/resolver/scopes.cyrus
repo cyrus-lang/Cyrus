@@ -1,0 +1,201 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 The Cyrus Language
+
+import std::collections{Vec};
+import std::option{Option};
+import std::string{String};
+import std::mem{Allocator};
+
+import cir;
+
+pub struct LocalBinding {
+    pub name: String,
+    pub symbol_id: cir::SymbolId,
+}
+
+pub struct LabelBinding {
+    pub name: String,
+    pub label_id: cir::LabelId,
+}
+
+/// Represents a lexical local scope.
+///
+/// A `LocalScope` stores symbol bindings and control-flow labels declared
+/// within the scope. Parent traversal is performed by the traverse context
+/// rather than this type, so lookups only query the current scope.
+pub struct LocalScope {
+    symbols: Vec<LocalBinding>,
+    labels: Vec<LabelBinding>,
+    allocator: Allocator,
+
+    pub fn new(allocator: Allocator) Self {
+        return Self {
+            symbols: Vec.new(allocator),
+            labels: Vec.new(allocator),
+            allocator,
+        };
+    }
+
+    /// Inserts a symbol binding into the current scope.
+    ///
+    /// If a symbol with the same name already exists in this scope,
+    /// it will be replaced.
+    pub fn insert(self: Self*, name: const uint8*, symbol_id: cir::SymbolId) {
+        for (var i: usize = 0; i < self->symbols.len(); i += 1) {
+            var binding = self->symbols.get(i).unwrap();
+
+            if (binding->name.as_str_const() == name) {
+                binding->symbol_id = symbol_id;
+                return;
+            }
+        }
+
+        self->symbols.push(LocalBinding {
+            name: String.from_str(self->allocator, name),
+            symbol_id,
+        });
+    }
+
+    /// Looks up a symbol defined directly in this scope.
+    pub fn resolve(self: const Self*, name: const uint8*) Option<cir::SymbolId> {
+        for (var i: usize = 0; i < self->symbols.len(); i += 1) {
+            const binding = self->symbols.get_const(i).unwrap();
+
+            if (binding->name.as_str_const() == name) {
+                return .Some(binding->symbol_id);
+            }
+        }
+
+        return .None;
+    }
+
+    /// Returns `true` if a symbol with the given name exists in this scope only.
+    pub fn contains(self: const Self*, name: const uint8*) bool {
+        switch (self->resolve(name)) {
+            case .Some => return true;
+            case .None => return false;
+        }
+    }
+
+    /// Returns `true` if a label with the given name exists in this scope only.
+    pub fn contains_label(self: const Self*, name: const uint8*) bool {
+        switch (self->resolve_label(name)) {
+            case .Some => return true;
+            case .None => return false;
+        }
+    }
+
+    /// Inserts a control-flow label into the current scope.
+    pub fn insert_label(self: Self*, name: const uint8*, label_id: cir::LabelId) {
+        for (var i: usize = 0; i < self->labels.len(); i += 1) {
+            var binding = self->labels.get(i).unwrap();
+
+            if (binding->name.as_str_const() == name) {
+                binding->label_id = label_id;
+                return;
+            }
+        }
+
+        self->labels.push(LabelBinding {
+            name: String.from_str(self->allocator, name),
+            label_id,
+        });
+    }
+
+    /// Looks up a label defined directly in this scope.
+    pub fn resolve_label(self: const Self*, name: const uint8*) Option<cir::LabelId> {
+        for (var i: usize = 0; i < self->labels.len(); i += 1) {
+            const binding = self->labels.get_const(i).unwrap();
+
+            if (binding->name.as_str_const() == name) {
+                return .Some(binding->label_id);
+            }
+        }
+
+        return .None;
+    }
+
+    pub fn free(self: Self*) {
+        for (var i: usize = 0; i < self->symbols.len(); i += 1) {
+            var binding = self->symbols.get_owned(i).unwrap();
+            binding.name.free();
+        }
+
+        for (var i: usize = 0; i < self->labels.len(); i += 1) {
+            var binding = self->labels.get_owned(i).unwrap();
+            binding.name.free();
+        }
+
+        self->symbols.free();
+        self->labels.free();
+    }
+}
+
+pub struct GenericBinding {
+    pub name: String,
+    pub param_id: cir::GenericParamId,
+}
+
+/// A scope of generic parameter names visible while resolving a declaration
+/// signature or body.
+pub struct GenericScope {
+    params: Vec<GenericBinding>,
+    allocator: Allocator,
+
+    pub fn new(allocator: Allocator) Self {
+        return Self {
+            params: Vec.new(allocator),
+            allocator,
+        };
+    }
+
+    /// Binds a generic parameter name, returning the previous binding if any.
+    pub fn insert(self: Self*, name: const uint8*, param_id: cir::GenericParamId) Option<cir::GenericParamId> {
+        for (var i: usize = 0; i < self->params.len(); i += 1) {
+            var binding = self->params.get(i).unwrap();
+
+            if (binding->name.as_str_const() == name) {
+                const previous = binding->param_id;
+                binding->param_id = param_id;
+                return .Some(previous);
+            }
+        }
+
+        self->params.push(GenericBinding {
+            name: String.from_str(self->allocator, name),
+            param_id,
+        });
+
+        return .None;
+    }
+
+    /// Looks up a generic parameter name in this scope.
+    pub fn lookup(self: const Self*, name: const uint8*) Option<cir::GenericParamId> {
+        for (var i: usize = 0; i < self->params.len(); i += 1) {
+            const binding = self->params.get_const(i).unwrap();
+
+            if (binding->name.as_str_const() == name) {
+                return .Some(binding->param_id);
+            }
+        }
+
+        return .None;
+    }
+
+    /// Returns `true` if a generic parameter with the given name exists.
+    pub fn contains(self: const Self*, name: const uint8*) bool {
+        switch (self->lookup(name)) {
+            case .Some => return true;
+            case .None => return false;
+        }
+    }
+
+    pub fn free(self: Self*) {
+        for (var i: usize = 0; i < self->params.len(); i += 1) {
+            var binding = self->params.get_owned(i).unwrap();
+            binding.name.free();
+        }
+
+        self->params.free();
+    }
+}

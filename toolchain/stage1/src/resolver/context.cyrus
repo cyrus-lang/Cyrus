@@ -1,0 +1,198 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 The Cyrus Language
+
+import std::collections{Vec};
+import std::option{Option};
+import std::mem{Allocator};
+
+import cir; // FIXME: stage0 resolver bug
+import resolver::symbols{GlobalSymbolRegistry, SymbolEntry};
+import resolver::scopes{LocalScope, GenericScope};
+import cir::tables{DeclTables};
+import diags{DiagContext};
+import source{SourceId};
+
+pub struct TraverseContext {
+    pub allocator: Allocator,
+    pub diag_allocator: Allocator,
+    pub dctx: DiagContext*,
+    pub registry: GlobalSymbolRegistry*,
+    pub decl_tables: DeclTables*,
+    pub file_id: SourceId,
+    current_scope: Option<cir::SymbolId>,
+    scope_table_stack: Vec<cir::SymbolId>,
+    local_scopes: Vec<LocalScope>,
+    generic_scopes: Vec<GenericScope>,
+    next_label_id: cir::LabelId,
+
+    pub fn new(
+        allocator: Allocator,
+        diag_allocator: Allocator,
+        dctx: DiagContext*,
+        registry: GlobalSymbolRegistry*,
+        decl_tables: DeclTables*,
+        file_id: SourceId,
+        module_scope_id: cir::SymbolId,
+    ) Self {
+        return Self {
+            allocator,
+            diag_allocator,
+            dctx,
+            registry,
+            decl_tables,
+            file_id,
+            current_scope: .Some(module_scope_id),
+            scope_table_stack: Vec.new(allocator),
+            local_scopes: Vec.new(allocator),
+            generic_scopes: Vec.new(allocator),
+            next_label_id: 0,
+        };
+    }
+
+    pub fn enter_scope_table(self: Self*, scope_id: cir::SymbolId) {
+        const concrete = self->registry->resolve_concrete_scope_id(scope_id);
+
+        switch (self->current_scope) {
+            case .Some(prev) => {
+                self->scope_table_stack.push(prev);
+            }
+        }
+
+        self->current_scope = .Some(concrete);
+    }
+
+    pub fn exit_scope_table(self: Self*) {
+        self->current_scope = .Some(self->scope_table_stack.pop());
+    }
+
+    pub fn current_scope_id(self: Self*) cir::SymbolId {
+        switch (self->current_scope) case .Some(scope_id) else {
+            @panic("no current scope in traverse context");
+        }
+
+        return scope_id;
+    }
+
+    pub fn enter_local_scope(self: Self*, scope: LocalScope) {
+        self->local_scopes.push(scope);
+    }
+
+    pub fn exit_local_scope(self: Self*) {
+        var scope = self->local_scopes.pop();
+        scope.free();
+    }
+
+    // FIXME: This should return an Option<LocalScope*> instead of null
+    pub fn current_local_scope(self: Self*) LocalScope* {
+        if (self->local_scopes.len() == 0) {
+            return null;
+        }
+
+        return self->local_scopes.get(self->local_scopes.len() - 1).unwrap();
+    }
+
+    pub fn lookup_local(self: Self*, name: const uint8*) Option<cir::SymbolId> {
+        var i = self->local_scopes.len();
+
+        while (i > 0) {
+            i -= 1;
+
+            const scope = self->local_scopes.get_const(i).unwrap();
+
+            switch (scope->resolve(name)) {
+                case .Some(symbol_id) => return .Some(symbol_id);
+            }
+        }
+
+        return .None;
+    }
+
+    pub fn resolve_local_scope_label(self: Self*, name: const uint8*) Option<cir::LabelId> {
+        var i = self->local_scopes.len();
+
+        while (i > 0) {
+            i -= 1;
+
+            const scope = self->local_scopes.get_const(i).unwrap();
+
+            switch (scope->resolve_label(name)) {
+                case .Some(label_id) => return .Some(label_id);
+            }
+        }
+
+        return .None;
+    }
+
+    pub fn push_generic_scope(self: Self*, scope: GenericScope) {
+        self->generic_scopes.push(scope);
+    }
+
+    pub fn pop_generic_scope(self: Self*) {
+        var scope = self->generic_scopes.pop();
+        scope.free();
+    }
+
+    pub fn lookup_generic_param(self: Self*, name: const uint8*) Option<cir::GenericParamId> {
+        var i = self->generic_scopes.len();
+
+        while (i > 0) {
+            i -= 1;
+            const scope = self->generic_scopes.get_const(i).unwrap();
+
+            switch (scope->lookup(name)) {
+                case .Some(param_id) => return .Some(param_id);
+            }
+        }
+
+        return .None;
+    }
+
+    pub fn lookup_symbol_entry(self: Self*, symbol_id: cir::SymbolId) const SymbolEntry* {
+        const concrete = self->registry->resolve_concrete_symbol_id(symbol_id);
+
+        if (concrete >= self->registry->entries.len()) {
+            return null;
+        }
+
+        return self->registry->entries.get_const(concrete).unwrap();
+    }
+
+    pub fn lookup_symbol_id(
+        self: Self*,
+        scope_id: cir::SymbolId,
+        name: const uint8*,
+    ) Option<cir::SymbolId> {
+        switch (self->lookup_local(name)) {
+            case .Some(local_id) => return .Some(local_id);
+        }
+
+        return self->registry->lookup_in_scope_chain(scope_id, name);
+    }
+
+    pub fn lookup_symbol(self: Self*, name: const uint8*) Option<cir::SymbolId> {
+        const scope_id = self->current_scope_id();
+        return self->lookup_symbol_id(scope_id, name);
+    }
+
+    pub fn next_label_id(self: Self*) cir::LabelId {
+        const label_id = self->next_label_id;
+        self->next_label_id += 1;
+        return label_id;
+    }
+
+    pub fn free(self: Self*) {
+        while (self->local_scopes.len() > 0) {
+            var scope = self->local_scopes.pop();
+            scope.free();
+        }
+
+        while (self->generic_scopes.len() > 0) {
+            var scope = self->generic_scopes.pop();
+            scope.free();
+        }
+
+        self->local_scopes.free();
+        self->generic_scopes.free();
+        self->scope_table_stack.free();
+    }
+}

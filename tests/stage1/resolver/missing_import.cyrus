@@ -5,9 +5,9 @@ import definitely_missing_module;
 pub fn main() {}
 
 /*@resolve
-tests/stage1/resolver/missing_import.cyrus:2:8: error: module `definitely_missing_module` not found
+tests/stage1/resolver/missing_import.cyrus:3:8: error: module `definitely_missing_module` not found
       |
-    2 ~ import definitely_missing_module;
+    3 ~ import definitely_missing_module;
       |        ^^^^^^^^^^^^^^^^^^^^^^^^^
       |
       = help: check that it exists under one of the configured source directories

@@ -5,9 +5,9 @@ import helpers::_single{inner};
 pub fn main() {}
 
 /*@resolve
-tests/stage1/resolver/single_namespace.cyrus:2:25: error: namespace `inner` cannot be imported as a single item
+tests/stage1/resolver/single_namespace.cyrus:3:25: error: namespace `inner` cannot be imported as a single item
       |
-    2 ~ import helpers::_single{inner};
+    3 ~ import helpers::_single{inner};
       |                         ^^^^^
       |
       = help: import it as a path segment instead

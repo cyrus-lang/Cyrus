@@ -18,10 +18,10 @@ SYMBOL TREE
 │   │   ├── _rel_sibling -> [4]
 │   │   └── [4] ProxiedModule _rel_sibling -> [2]
 │   ├── [6] ProxiedModule _rel_sibling -> [2]
-│   └── [7] Unresolved main
+│   └── [7] Func main
 └── [2] Module _rel_sibling
     ├── sibling -> [5]
-    └── [5] Unresolved sibling
+    └── [5] Func sibling
 
 SOURCE MAP
 

@@ -175,11 +175,20 @@ fn dump_source_map(sctx: const SourceContext*, writer: Writer) {
 
 fn kind_str(entry: const SymbolEntry*) const uint8* {
     switch (entry->kind) {
-        case .Unresolved => return "Unresolved";
-        case .Module => return "Module";
-        case .Namespace => return "Namespace";
         case .ProxiedSymbol => return "ProxiedSymbol";
         case .ProxiedModule => return "ProxiedModule";
+        case .Unresolved => return "Unresolved";
+        case .GlobalVar => return "GlobalVar";
+        case .Namespace => return "Namespace";
+        case .Interface => return "Interface";
+        case .Typedef => return "Typedef";
+        case .Method => return "Method";
+        case .Module => return "Module";
+        case .Struct => return "Struct";
+        case .Union => return "Union";
+        case .Enum => return "Enum";
+        case .Func => return "Func";
+        case .Var => return "Var";
         else => return "Unknown";
     }
 }

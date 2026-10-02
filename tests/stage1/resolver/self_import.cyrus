@@ -5,9 +5,9 @@ import .::self_import;
 pub fn main() {}
 
 /*@resolve
-tests/stage1/resolver/self_import.cyrus:2:1: error: module cannot import itself
+tests/stage1/resolver/self_import.cyrus:3:1: error: module cannot import itself
       |
-    2 ~ import .::self_import;
+    3 ~ import .::self_import;
       | ^^^^^^^^^^^^^^^^^^^^^^
       |
       = help: remove this import statement

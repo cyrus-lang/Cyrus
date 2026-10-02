@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 The Cyrus Language
 
+import std::mem{Allocator, alloc_init};
 import std::collections{Vec};
 import std::option{Option};
 import std::string{String};
-import std::mem{Allocator, alloc_init};
 
 import parser::ast{ASTVisibility};
 import cir;
@@ -86,7 +86,16 @@ pub struct Namespace {
 pub enum SymbolEntryKind {
     ProxiedSymbol { scope_id: cir::SymbolId, symbol_id: cir::SymbolId },
     ProxiedModule { symbol_id: cir::SymbolId },
+    GlobalVar(cir::GlobalVarDeclId),
+    Interface(cir::InterfaceDeclId),
+    Typedef(cir::TypedefDeclId),
+    Struct(cir::StructDeclId),
+    Method(cir::MethodDeclId),
+    Union(cir::UnionDeclId),
+    Func(cir::FuncDeclId),
+    Enum(cir::EnumDeclId),
     Namespace(Namespace),
+    Var(cir::VarDeclId),
     Module(Module),
     Unresolved,
 }
@@ -275,7 +284,15 @@ pub struct GlobalSymbolRegistry {
         return proxy_id;
     }
 
-    /// Lookup a symbol by name within a single scope (no parent walk).
+    pub fn set_symbol_kind(self: Self*, symbol_id: cir::SymbolId, kind: SymbolEntryKind) {
+        if (symbol_id >= self->entries.len()) {
+            return;
+        }
+
+        var entry = self->entries.get(symbol_id).unwrap();
+        entry->kind = kind;
+    }
+
     pub fn lookup_symbol_id_in_scope(
         self: const Self*,
         scope_id: cir::SymbolId,
@@ -290,7 +307,6 @@ pub struct GlobalSymbolRegistry {
         return self->lookup_in_single_scope(index, name);
     }
 
-    /// Recursively search up the scope chain for a symbol by name.
     pub fn lookup_in_scope_chain(
         self: const Self*,
         scope_id: cir::SymbolId,
@@ -330,10 +346,6 @@ pub struct GlobalSymbolRegistry {
         @unreachable();
     }
 
-    /// Resolve a symbol id to the concrete scope that owns a scope table.
-    ///
-    /// `ProxiedModule` entries forward to their target symbol.
-    /// Everything else is already a concrete scope owner.
     pub fn resolve_concrete_scope_id(self: const Self*, scope_id: cir::SymbolId) cir::SymbolId {
         if (scope_id >= self->entries.len()) {
             return scope_id;
@@ -347,7 +359,6 @@ pub struct GlobalSymbolRegistry {
         }
     }
 
-    /// Resolve a symbol id through `ProxiedSymbol` indirections.
     pub fn resolve_concrete_symbol_id(self: const Self*, symbol_id: cir::SymbolId) cir::SymbolId {
         if (symbol_id >= self->entries.len()) {
             return symbol_id;
