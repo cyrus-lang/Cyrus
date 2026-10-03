@@ -1,0 +1,36 @@
+// @resolve
+
+import .::helpers::_single::inner;
+
+pub fn main() {}
+
+/*@resolve
+SYMBOL TREE
+
+[0] Namespace GLOBAL
+├── tests_stage1_resolver_namespace_path -> [1]
+├── tests_stage1_resolver_helpers__single -> [2]
+├── [1] Module tests_stage1_resolver_namespace_path
+│   ├── helpers -> [3]
+│   ├── inner -> [9]
+│   ├── main -> [10]
+│   ├── [3] Module helpers
+│   │   ├── _single -> [4]
+│   │   └── [4] ProxiedModule _single -> [2]
+│   ├── [9] ProxiedModule inner -> [7]
+│   └── [10] Func main
+└── [2] Module inner
+    ├── hidden -> [5]
+    ├── exposed -> [6]
+    ├── inner -> [7]
+    ├── [5] Func hidden
+    ├── [6] Func exposed
+    └── [7] Namespace inner
+        ├── inside -> [8]
+        └── [8] Func inside
+
+SOURCE MAP
+
+├── [0] tests/stage1/resolver/namespace_path.cyrus
+└── [1] tests/stage1/resolver/helpers/_single.cyrus
+@resolve*/

@@ -4,11 +4,11 @@
 import std::libc::types{c_int, c_char};
 import std::mem::libc{LibcAllocator};
 import std::io{Writer, StdoutWriter};
+import std::path{Path, dir_of_file};
 import parser::dump{ASTDump};
 import std::mem{Allocator};
-import std::string{String};
+import std::os::dir{cwd};
 import std::libc{printf};
-import std::path{Path};
 import std::cli;
 
 import diags{DiagContext, Diag, exit_with_compile_error};
@@ -16,6 +16,8 @@ import diags::render{CompilerDiagRender};
 import source{Source, SourceContext};
 import tokens{dump_tokens, Loc};
 import driver{CompilerDriver};
+import resolver::index{Resolver};
+import resolver::loader{ResolverOptions};
 import version;
 
 pub fn main(argc: c_int, argv: c_char**) {
@@ -31,6 +33,8 @@ pub fn main(argc: c_int, argv: c_char**) {
     const release_opt = opts.add(*cli::Opt.new(allocator, "release").short('r')->help("Build in release mode"));
     const debug_opt = opts.add(*cli::Opt.new(allocator, "debug").short('g')->help("Build with debug symbols"));
     const verbose_opt = opts.add(*cli::Opt.new(allocator, "verbose").short('v')->help("Increase verbosity"));
+    const stdlib_opt = opts.add(*cli::Opt.new(allocator, "stdlib").arg(.Str)->help("Stdlib root directory"));
+    const profile_opt = opts.add(*cli::Opt.new(allocator, "profile").arg(.Str)->help("Build profile (debug|release)"));
     const quiet_opt = opts.add(*cli::Opt.new(allocator, "quiet").short('q')->help("Suppress output"));
     const target_opt = opts.add(*cli::Opt.new(allocator, "target").short('t')->help("Target triple"));
     const color_opt = opts.add(*cli::Opt.new(allocator, "color").help("Colored output"));
@@ -81,6 +85,13 @@ pub fn main(argc: c_int, argv: c_char**) {
         .help("Parse file")
         ->optional_argument(.Str);
     
+    const resolve_cmd = 
+        cli::Cmd.new(allocator, "resolve", command_resolve)
+        .help("Resolve modules and dump the symbol table")
+        ->optional_argument(.Str)
+        ->add_option(stdlib_opt)
+        ->add_option(profile_opt);
+    
     const version_cmd = 
         cli::Cmd.new(allocator, "version", command_version)
         .help("Compiler version");
@@ -92,6 +103,7 @@ pub fn main(argc: c_int, argv: c_char**) {
     app.register(*clean_cmd);
     app.register(*tokenize_cmd);
     app.register(*parse_cmd);
+    app.register(*resolve_cmd);
     app.register(*version_cmd);
 
     app.run(struct { argc, argv });
@@ -158,6 +170,96 @@ fn command_parse(ctx: cli::ActionContext) {
     dump.dump();
 }
 
+fn command_resolve(ctx: cli::ActionContext) {
+    const allocator: Allocator = dynamic LibcAllocator.new();
+
+    var driver = CompilerDriver.new(allocator);
+    defer driver.free();
+
+    switch (ctx.args->get_str(0)) case .Some(file_path) else {
+        exit_with_compile_error("no input file provided");
+        @unreachable();
+    }
+
+    var opts = ResolverOptions.new(allocator);
+    defer opts.free();
+
+    opts.base_path.free();
+    opts.base_path = cwd(allocator);
+    opts.source_dirs.push(dir_of_file(allocator, file_path));
+    apply_stdlib_option(allocator, ctx.opts, &opts);
+    apply_profile_option(allocator, ctx.opts, &opts);
+
+    var resolver = Resolver.new(allocator, &driver, &opts);
+    defer resolver.free();
+
+    const lexical = driver.create_lexical_resource();
+    const path = Path.new(allocator, file_path);
+
+    switch (lexical.tokenize_source(path)) case .Value(var source_tokens) else {
+        if (!driver.dctx.has_errors()) {
+            resolver.dump_symbols();
+        }
+        return;
+    }
+    defer source_tokens.free();
+
+    switch (lexical.parse_source(source_tokens)) case .Value(var program) else {
+        if (!driver.dctx.has_errors()) {
+            resolver.dump_symbols();
+        }
+        return;
+    }
+    defer program.free();
+
+    resolver.resolve_entry(source_tokens.source_id, file_path, &program);
+
+    driver.render_diags();
+
+    if (!driver.dctx.has_errors()) {
+        resolver.dump_symbols();
+    }
+}
+
+
 fn command_version(ctx: cli::ActionContext) {
     printf("Cyrus %s\n", version::COMPILER_VERSION);
+}
+
+fn apply_stdlib_option(allocator: Allocator, ctx_opts: const cli::Opts*, opts: ResolverOptions*) {
+    switch (ctx_opts->find("stdlib")) case .Some(opt) else {
+        return;
+    }
+
+    switch (opt->values.get(0)) case .Some(value) else {
+        return;
+    }
+
+    switch (*value) case .Str(value_str) else {
+        return;
+    }
+
+    opts->stdlib_path = .Some(value_str.clone(allocator));
+}
+
+fn apply_profile_option(allocator: Allocator, ctx_opts: const cli::Opts*, opts: ResolverOptions*) {
+    switch (ctx_opts->find("profile")) case .Some(opt) else {
+        return;
+    }
+
+    switch (opt->values.get(0)) case .Some(value) else {
+        return;
+    }
+
+    switch (*value) case .Str(value_str) else {
+        return;
+    }
+    if (value_str.as_str_const() == "release") {
+        opts->profile = .Release;
+    } else if (value_str.as_str_const() == "debug") {
+        opts->profile = .Debug;
+    } else {
+        exit_with_compile_error("invalid profile (expected `debug` or `release`)");
+        @unreachable();
+    }
 }

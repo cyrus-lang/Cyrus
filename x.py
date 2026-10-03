@@ -523,7 +523,7 @@ DIRECTIVE_SINGLE_RE = {
 }
 
 # Snapshot directives: `// @name` trigger + `/*@name ... @name*/` block.
-SNAPSHOT_DIRECTIVES = ("tokenize", "parse")
+SNAPSHOT_DIRECTIVES = ("tokenize", "parse", "resolve")
 
 
 @dataclass
@@ -1166,6 +1166,8 @@ def snapshot_command_for(stage: str, directive: str, cfg: Config) -> List[str]:
             return ["tokenize"]
         if directive == "parse":
             return ["parse"]
+        if directive == "resolve":
+            return ["resolve"]
     if stage == "stage0":
         if directive == "tokenize":
             return ["lex-only"]
@@ -1216,6 +1218,8 @@ def run_snapshot_checks(
 
         argv = snapshot_command_for(stage, directive, cfg)
         cmd = [str(compiler), *argv, root_relative_path(cfg, file_path)]
+        if directive == "resolve":
+            cmd.append(_stdlib_flag(cfg))
         proc = run_cmd(cmd, cwd=cfg.root, capture=True, check=False)
         raw = proc.stdout or ""
         if proc.returncode != 0:
@@ -1224,10 +1228,13 @@ def run_snapshot_checks(
                 f"`{' '.join(argv)}` failed with exit code {proc.returncode}:\n{detail}"
             )
             continue
-        actual = normalize_text(strip_ansi(raw))
+        
+        # Strip the repo-root prefix so absolute paths in snapshot output
+        # stay machine-independent (relative path).
+        actual = normalize_runtime_text(strip_ansi(raw), cfg.root)
 
         for block in blocks:
-            expected = normalize_text(block.expected)
+            expected = normalize_runtime_text(block.expected, cfg.root)
             if normalize_eof_offsets(actual) == normalize_eof_offsets(expected):
                 continue
             if bless:
@@ -1466,6 +1473,23 @@ def run_single_test(
     return TestOutcome("passed", relative_name)
 
 
+def _is_module_entry(f: Path) -> bool:
+    """True for annotation-less `index.cyrus` module entry files.
+
+    These are imported as modules by sibling tests; running them standalone
+    would require a `main` that would hijack the importing test's entry point.
+    """
+    if f.name != "index.cyrus":
+        return False
+    try:
+        content = f.read_text()
+    except OSError:
+        return True
+    if "//~" in content or "/*@" in content:
+        return False
+    return re.search(r"//\s*@(stdout|stderr|stdin|args|parse|beforeCompile|compilerArgs)\b", content) is None
+
+
 def discover_tests(paths: Sequence[Path], stage: str) -> Tuple[Path, List[Path]]:
     """Return (base_path, test_files) for the given paths/stage."""
     test_files: List[Path] = []
@@ -1484,7 +1508,10 @@ def discover_tests(paths: Sequence[Path], stage: str) -> Tuple[Path, List[Path]]
             test_files.append(p)
             base_path = base_path or p.parent
         elif p.is_dir():
-            found = sorted(f for f in p.rglob("*.cyrus") if not f.name.startswith("_"))
+            found = sorted(
+                f for f in p.rglob("*.cyrus")
+                if not f.name.startswith("_") and not _is_module_entry(f)
+            )
             test_files.extend(found)
             base_path = base_path or p
         else:

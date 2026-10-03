@@ -459,6 +459,37 @@ pub enum ASTNode {
     Var(ASTVar),
     For(ASTFor),
     If(ASTIf),
+
+    pub fn vis(self: const Self*) Option<ASTVisibility> {
+        switch (*self) {
+            case .ModuleDecl(module_decl) => return .Some(module_decl.vis);
+            case .FuncDef(func_def) => return .Some(func_def.modifiers.vis);
+            case .FuncDecl(func_decl) => return .Some(func_decl.modifiers.vis);
+            case .Interface(interface_stmt) => return .Some(interface_stmt.vis);
+            case .Struct(struct_stmt) => return .Some(struct_stmt.modifiers.vis);
+            case .Union(union_stmt) => return .Some(union_stmt.modifiers.vis);
+            case .Enum(enum_stmt) => return .Some(enum_stmt.modifiers.vis);
+            case .GlobalVar(global_var) => return .Some(global_var.modifiers.vis);
+            else => return .None;
+        }
+    }
+
+    pub fn decl_name(self: const Self*) Option<ASTIdent> {
+        switch (*self) {
+            case .ModuleDecl(module_decl) => return .Some(module_decl.ident);
+            case .Var(variable) => return .Some(variable.ident);
+            case .FuncDef(func_def) => return .Some(func_def.ident);
+            case .FuncDecl(func_decl) => return .Some(func_decl.ident);
+            case .Interface(interface_stmt) => return .Some(interface_stmt.ident);
+            case .Struct(struct_stmt) => return .Some(struct_stmt.ident);
+            case .Enum(enum_stmt) => return .Some(enum_stmt.ident);
+            case .Union(union_stmt) => return .Some(union_stmt.ident);
+            case .TypeAlias(typedef) => return .Some(typedef.ident);
+            case .GlobalVar(global_var) => return .Some(global_var.ident);
+
+            else => return .None;
+        }
+    }
 }
 
 /* ************* Expressions ************* */
@@ -1374,7 +1405,32 @@ pub enum ASTPrimitiveType {
     Float64,
     Float128,
     Bool,
-    Void
+    Void,
+
+    pub fn as_str(self: const Self*) const uint8* {
+        switch (*self) {
+            case .Int8 => return "int8";
+            case .Int16 => return "int16";
+            case .Int32 => return "int32";
+            case .Int64 => return "int64";
+            case .Int128 => return "int128";
+            case .IntPtr => return "intptr";
+            case .ISize => return "isize";
+            case .UInt8 => return "uint8";
+            case .UInt16 => return "uint16";
+            case .UInt32 => return "uint32";
+            case .UInt64 => return "uint64";
+            case .UInt128 => return "uint128";
+            case .UIntPtr => return "uintptr";
+            case .USize => return "usize";
+            case .Float16 => return "float16";
+            case .Float32 => return "float32";
+            case .Float64 => return "float64";
+            case .Float128 => return "float128";
+            case .Bool => return "bool";
+            case .Void => return "void";
+        }
+    }
 }
 
 /* ************* Operators ************* */

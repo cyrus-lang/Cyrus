@@ -1,0 +1,299 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 The Cyrus Language
+
+import std::math::checked{checked_mul};
+import std::iterator{IterOwned};
+import std::collections{Vec};
+import std::mem{Allocator};
+import std::option{Option};
+
+enum EntryState {
+    Empty,
+    Occupied,
+    Deleted
+}
+
+pub struct HashEntry<K> {
+    pub state: EntryState,
+    pub hash: uint64,
+    pub key: Option<K>
+}
+
+pub struct HashSet<K>{
+    allocator: Allocator,
+    entries: Vec<HashEntry<K>>,
+    len: usize,
+    tombstones: usize,
+    cap: usize,
+    hash_fn: fn(K) uint64,
+    eq_fn: fn(K, K) bool,
+
+    pub fn with_hasher(
+        allocator: Allocator,
+        initial_cap: usize,
+        hash_fn: fn(K) uint64,
+        eq_fn: fn(K, K) bool,
+    ) Self {
+        var cap: usize = 16;
+
+        while (cap < initial_cap) {
+            cap = checked_mul(cap, 2).unwrap();
+        }
+
+        var entries: Vec<HashEntry<K>> = Vec.with_capacity(allocator, cap);
+
+        for (var i: usize = 0; i < cap; i += 1) {
+            entries.push(HashEntry<K> {
+                state: .Empty,
+                hash: 0,
+                key: .None,
+            });
+        }
+
+        return Self {
+            allocator,
+            entries,
+            len: 0,
+            tombstones: 0,
+            cap,
+            hash_fn,
+            eq_fn
+        };
+    }
+
+    fn find_slot(self: const Self*, key: K, hash: uint64) Option<usize> {
+        const mask = self->cap - 1;
+        const data = self->entries.data_const();
+        
+        var index = @cast(usize, hash) & mask;
+
+        for (var i: usize = 0; i < self->cap; i += 1) {
+            const entry = &data[index];
+            
+            if (entry->state == .Empty) {
+                return .None;
+            }
+            
+            if (entry->state == .Occupied && entry->hash == hash) {
+                switch (entry->key) {
+                    case .Some(entry_key) => if ((self->eq_fn)(key, entry_key)) {
+                        return .Some(index);
+                    }
+                }
+            }
+            
+            index = (index + 1) & mask;
+        }
+        
+        return .None;
+    }
+
+    pub fn insert(self: Self*, key: K) bool {
+        const hash = (self->hash_fn)(key);
+
+        if (self->find_slot(key, hash).is_some()) {
+            return false;   
+        }        
+
+        self->reserve(1);
+
+        const mask = self->cap - 1;
+        var index = @cast(usize, hash) & mask;
+        var first_tombstone: Option<usize> = .None;
+        var entries = self->entries.data();
+
+        for (var i: usize = 0; i < self->cap; i += 1) {
+            const entry = &entries[index];
+            
+            if (entry->state == .Empty) {
+                if (first_tombstone.is_none()) {
+                    entries[index] = HashEntry<K> {
+                        state: .Occupied,
+                        hash,
+                        key: .Some(key),
+                    };
+                    
+                    self->len += 1;
+                    return true;
+                }
+                break;
+            }
+            
+            if (entry->state == .Deleted) {
+                if (first_tombstone.is_none()) {
+                    first_tombstone = .Some(index);
+                }
+            }
+            
+            index = (index + 1) & mask;
+        }
+
+        if (first_tombstone.is_some()) {
+            const insert_index = first_tombstone.unwrap();
+            
+            entries[insert_index] = HashEntry<K> {
+                state: .Occupied,
+                hash,
+                key: .Some(key),
+            };
+            
+            self->len += 1;
+            self->tombstones -= 1;
+        }
+
+        return true;
+    }
+
+    pub fn reserve(self: Self*, extra: usize) {
+        const required = self->len + self->tombstones + extra;
+        const threshold = (self->cap >> 1) + (self->cap >> 2);
+        
+        if (required > threshold) {
+            var new_cap = self->cap;
+            
+            while (new_cap <= required || (new_cap >> 1) + (new_cap >> 2) < required) {
+                new_cap = checked_mul(new_cap, 2).unwrap();
+            }
+            
+            self->grow(new_cap);
+        }
+    }
+
+    fn grow(self: Self*, new_cap: usize) {
+        const old_entries = self->entries;
+        const old_cap = self->cap;
+
+        var new_entries: Vec<HashEntry<K>> = Vec.with_capacity(self->allocator, new_cap);
+        
+        for (var i: usize = 0; i < new_cap; i += 1) {
+            new_entries.push(HashEntry<K> {
+                state: .Empty,
+                hash: 0,
+                key: .None,
+            });
+        }
+
+        const new_mask = new_cap - 1;
+        const old_entries_data = old_entries.data_const();
+        var new_entries_data = new_entries.data();
+
+        for (var i: usize = 0; i < old_cap; i += 1) {
+            const entry = &old_entries_data[i];
+
+            if (entry->state == .Occupied) {
+                var index = @cast(usize, entry->hash) & new_mask;
+                
+                while (new_entries_data[index].state != .Empty) {
+                    index = (index + 1) & new_mask;
+                }
+                
+                new_entries_data[index] = HashEntry<K> {
+                    state: .Occupied,
+                    hash: entry->hash,
+                    key: entry->key,
+                };
+            }
+        }
+
+        var mutable_old_entries = old_entries;
+        mutable_old_entries.free();
+
+        self->entries = new_entries;
+        self->cap = new_cap;
+        self->tombstones = 0;
+    }
+    
+    [[inline]]
+    pub fn contains(self: const Self*, key: K) bool {
+        return self->find_slot(key, (self->hash_fn)(key)).is_some();
+    }
+
+    pub fn remove(self: Self*, key: K) bool {
+        const hash = (self->hash_fn)(key);
+        
+        switch (self->find_slot(key, hash)) case .Some(slot) else {
+            return false;
+        }
+
+        var entries_data = self->entries.data();
+
+        entries_data[slot].state = .Deleted;
+        entries_data[slot].key = .None;
+        self->len -= 1;
+        self->tombstones += 1;
+
+        return true;
+    }
+
+    [[inline]]
+    pub fn entries_data(self: Self*) HashEntry<K>* {
+        return self->entries.data();
+    }
+
+    [[inline]]
+    pub fn entries_data_const(self: const Self*) const HashEntry<K>* {
+        return self->entries.data_const();
+    }
+
+    [[inline]]
+    pub fn iter_owned(self: Self*) HashSetIterOwned<K> {
+        return HashSetIterOwned<K> { map: self, index: 0 };
+    }
+
+    [[inline]]
+    pub fn len(self: const Self*) usize {
+        return self->len;
+    }
+
+    [[inline]]
+    pub fn cap(self: const Self*) usize {
+        return self->cap;
+    }
+
+    [[inline]]
+    pub fn is_empty(self: const Self*) bool {
+        return self->len == 0;
+    }
+
+    pub fn clear(self: Self*) {
+        var entries_data = self->entries.data();
+        
+        for (var i: usize = 0; i < self->cap; i += 1) {
+            entries_data[i].state = .Empty;
+            entries_data[i].key = .None;
+        }
+        
+        self->len = 0;
+        self->tombstones = 0;
+    }
+
+    pub fn free(self: Self*) {
+        self->entries.free();
+        self->len = 0;
+        self->tombstones = 0;
+        self->cap = 0;
+    }
+}
+
+pub struct HashSetIterOwned<K> : IterOwned<K> {
+    map: HashSet<K>*,
+    index: usize,
+
+    pub fn next(self: Self*) Option<K> {
+        const cap = self->map->cap();
+        const entries_data = self->map->entries_data_const();
+
+        while (self->index < cap) {
+            const entry = &entries_data[self->index];
+            self->index += 1;
+            
+            if (entry->state == .Occupied) {
+                switch (entry->key) {
+                    case .Some(key) => return .Some(key);
+                }
+            }
+        }
+        
+        return .None;
+    }
+}

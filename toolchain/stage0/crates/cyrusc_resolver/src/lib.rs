@@ -98,6 +98,8 @@ pub struct Resolver<'a> {
 
     pub module_dependencies: Arc<Mutex<FxHashMap<PathBuf, HashSet<PathBuf>>>>,
     pub module_dependents: Arc<Mutex<FxHashMap<PathBuf, HashSet<PathBuf>>>>,
+
+    group_imports_done: FxHashMap<SymbolID, HashSet<String>>,
 }
 
 pub struct ResolvedProgramTree {
@@ -138,6 +140,7 @@ impl<'a> Resolver<'a> {
             current_object_symbol_id: None,
             module_dependencies: Arc::new(Mutex::new(FxHashMap::default())),
             module_dependents: Arc::new(Mutex::new(FxHashMap::default())),
+            group_imports_done: FxHashMap::default(),
         }
     }
 
@@ -477,6 +480,8 @@ impl GlobalSymbolRegistry {
     ///
     /// Used for module group imports or aliasing entire modules.
     pub fn insert_proxied_module(&self, parent_scope_id: SymbolID, name: &str, target_symbol_id: SymbolID) -> SymbolID {
+        self.upgrade_virtual_directory_module(parent_scope_id, name, target_symbol_id);
+
         let symbol_id = self.insert_symbol_entry(SymbolEntry::new(
             SymbolEntryKind::ProxiedModule {
                 symbol_id: target_symbol_id,
@@ -488,6 +493,51 @@ impl GlobalSymbolRegistry {
 
         self.insert_symbol_name(parent_scope_id, symbol_id, name);
         symbol_id
+    }
+
+    fn upgrade_virtual_directory_module(&self, parent_scope_id: SymbolID, name: &str, target_symbol_id: SymbolID) {
+        let Some(existing_id) = self.lookup_symbol_id_in_scope(parent_scope_id, name) else {
+            return;
+        };
+
+        let Some(entry) = self.get_symbol_entry(existing_id) else {
+            return;
+        };
+
+        let SymbolEntryKind::Module(module) = entry.kind else {
+            return;
+        };
+
+        let mut target_id = target_symbol_id;
+        {
+            let registry = self.inner.read().unwrap();
+            loop {
+                let next = registry.entries.get(target_id.0 as usize).and_then(|entry| {
+                    match &entry.kind {
+                        SymbolEntryKind::ProxiedModule { symbol_id } => Some(*symbol_id),
+                        _ => None,
+                    }
+                });
+                match next {
+                    Some(id) => target_id = id,
+                    None => break,
+                }
+            }
+        }
+
+        let children: Vec<(String, SymbolID)> = module.scope.iter().map(|(n, id)| (n.clone(), *id)).collect();
+
+        let mut registry = self.inner.write().unwrap();
+        
+        if let Some(target_scope) = registry
+            .entries
+            .get_mut(target_id.0 as usize)
+            .and_then(|entry| entry.get_scope_table_mut())
+        {
+            for (child_name, child_id) in children {
+                target_scope.bind(child_name, child_id);
+            }
+        }
     }
 
     /// Create and bind a new lexical namespace symbol.

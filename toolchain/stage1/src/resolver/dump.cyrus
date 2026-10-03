@@ -1,0 +1,202 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 The Cyrus Language
+
+import std::format{format_usize};
+import std::io{Writer};
+import std::option{Option};
+import std::collections{Vec};
+import std::mem{Allocator};
+import std::string{String};
+
+import source{SourceContext, SourceId};
+import resolver::symbols{
+    GlobalSymbolRegistry, 
+    ScopeBinding, 
+    SymbolEntry,
+};
+import cir;
+
+pub fn dump_resolver_symbols(
+    registry: const GlobalSymbolRegistry*,
+    sctx: const SourceContext*,
+    writer: Writer,
+    allocator: Allocator,
+) {
+    dump_symbol_tree(registry, writer, allocator);
+    dump_source_map(sctx, writer);
+}
+
+fn dump_symbol_tree(registry: const GlobalSymbolRegistry*, writer: Writer, allocator: Allocator) {
+    writer.writeln("SYMBOL TREE");
+    writer.writeln("");
+
+    for (var i: usize = 0; i < registry->entries.len(); i += 1) {
+        const entry = registry->entries.get_const(i).unwrap();
+
+        switch (entry->parent_scope_id) {
+            case .None => dump_node(registry, i, writer, allocator, "", true, true);
+        }
+    }
+}
+
+fn dump_node(
+    registry: const GlobalSymbolRegistry*,
+    id: usize,
+    writer: Writer,
+    allocator: Allocator,
+    prefix: const uint8*,
+    is_root: bool,
+    is_last: bool,
+) {
+    const entry = registry->entries.get_const(id).unwrap();
+
+    writer.write(prefix);
+
+    if (!is_root) {
+        if (is_last) {
+            writer.write("└── ");
+        } else {
+            writer.write("├── ");
+        }
+    }
+
+    writer.write("[");
+    format_usize(writer, id);
+    writer.write("] ");
+    writer.write(kind_str(entry));
+    writer.write(" ");
+    writer.write(entry->name.as_str_const());
+
+    switch (proxy_target(entry)) {
+        case .Some(target) => {
+            writer.write(" -> [");
+            format_usize(writer, target);
+            writer.write("]");
+        }
+    }
+
+    if (entry->used) {
+        writer.write(" (used)");
+    }
+
+    writer.writeln("");
+
+    var child_prefix = String.from_str(allocator, prefix);
+
+    if (!is_root) {
+        if (is_last) {
+            child_prefix.push_str("    ");
+        } else {
+            child_prefix.push_str("│   ");
+        }
+    }
+
+    const bindings = scope_bindings(entry);
+    var binding_count: usize = 0;
+
+    if (bindings != null) {
+        binding_count = bindings->len();
+    }
+
+    var children: Vec<usize> = Vec.new(allocator);
+
+    for (var i: usize = 0; i < registry->entries.len(); i += 1) {
+        const child = registry->entries.get_const(i).unwrap();
+
+        switch (child->parent_scope_id) {
+            case .Some(parent) => {
+                if (parent == id) {
+                    children.push(i);
+                }
+            }
+        }
+    }
+
+    const total = binding_count + children.len();
+
+    for (var i: usize = 0; i < total; i += 1) {
+        const last = (i + 1 == total);
+        const connector = branch_connector(last);
+
+        if (i < binding_count) {
+            const binding = bindings->get_const(i).unwrap();
+
+            writer.write(child_prefix.as_str_const());
+            writer.write(connector);
+            writer.write(binding->name.as_str_const());
+            writer.write(" -> [");
+            format_usize(writer, binding->symbol_id);
+            writer.writeln("]");
+        } else {
+            const child_id = *children.get_const(i - binding_count).unwrap();
+            dump_node(registry, child_id, writer, allocator, child_prefix.as_str_const(), false, last);
+        }
+    }
+
+    children.free();
+    child_prefix.free();
+}
+
+fn branch_connector(is_last: bool) const uint8* {
+    if (is_last) {
+        return "└── ";
+    }
+    return "├── ";
+}
+
+fn scope_bindings(entry: const SymbolEntry*) const Vec<ScopeBinding>* {
+    switch (entry->kind) {
+        case .Module(module) => return &module.scope->bindings;
+        case .Namespace(namespace) => return &namespace.scope->bindings;
+        else => return null;
+    }
+}
+
+fn dump_source_map(sctx: const SourceContext*, writer: Writer) {
+    writer.writeln("");
+    writer.writeln("SOURCE MAP");
+    writer.writeln("");
+
+    for (var i: usize = 0; i < sctx->len(); i += 1) {
+        const source = sctx->get(@cast(SourceId, i));
+
+        if (i + 1 == sctx->len()) {
+            writer.write("└── ");
+        } else {
+            writer.write("├── ");
+        }
+
+        writer.write("[");
+        format_usize(writer, i);
+        writer.write("] ");
+        writer.writeln(source->path.as_str_const());
+    }
+}
+
+fn kind_str(entry: const SymbolEntry*) const uint8* {
+    switch (entry->kind) {
+        case .ProxiedSymbol => return "ProxiedSymbol";
+        case .ProxiedModule => return "ProxiedModule";
+        case .Unresolved => return "Unresolved";
+        case .GlobalVar => return "GlobalVar";
+        case .Namespace => return "Namespace";
+        case .Interface => return "Interface";
+        case .Typedef => return "Typedef";
+        case .Method => return "Method";
+        case .Module => return "Module";
+        case .Struct => return "Struct";
+        case .Union => return "Union";
+        case .Enum => return "Enum";
+        case .Func => return "Func";
+        case .Var => return "Var";
+        else => return "Unknown";
+    }
+}
+
+fn proxy_target(entry: const SymbolEntry*) Option<cir::SymbolId> {
+    switch (entry->kind) {
+        case .ProxiedSymbol { symbol_id, .. } => return .Some(symbol_id);
+        case .ProxiedModule { symbol_id } => return .Some(symbol_id);
+        else => return .None;
+    }
+}

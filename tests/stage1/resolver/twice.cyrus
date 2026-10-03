@@ -1,0 +1,16 @@
+// @resolve
+
+import helpers::_util;
+import helpers::_util;
+
+pub fn main() {}
+
+/*@resolve
+tests/stage1/resolver/twice.cyrus:4:1: error: module `_util` imported twice
+      |
+    4 ~ import helpers::_util;
+      | ^^^^^^^^^^^^^^^^^^^^^^
+      |
+      = help: consider removing the previous declaration
+      |
+@resolve*/

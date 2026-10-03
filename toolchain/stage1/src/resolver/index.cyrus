@@ -1,0 +1,586 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 The Cyrus Language
+
+import std::mem::arena{ArenaAllocator};
+import std::mem{Allocator, alloc_init};
+import std::io{Writer, StdoutWriter};
+import std::collections{Vec};
+import std::os::dir{is_file};
+import std::option{Option};
+import std::string{String};
+import std::path{Path};
+
+import resolver::traverse{bind_program_decl_names, resolve_decl_full};
+import resolver::symbols{GlobalSymbolRegistry};
+import resolver::dump{dump_resolver_symbols};
+import resolver::context{TraverseContext};
+import cir::format{format_module_segments};
+import cir::tables{DeclTables};
+import cir{TypedProgramTree, TypedStmt};
+import parser::ast{ASTProgram, ASTImport};
+import resolver::loader{
+    resolve_import as fs_resolve_import,
+    module_name_from_file_path,
+    last_sub_module_name,
+    last_sub_module_span,
+    ResolvedModuleFile, 
+    ResolverOptions,
+};
+import resolver::diags{
+    report_module_cannot_import_itself, report_relative_import_escapes_project_root,
+    report_namespace_as_single, report_private_symbol, report_duplicate_symbol,
+    report_module_not_found, report_stdlib_not_found, report_duplicate_module,
+    report_symbol_not_found, report_namespace_segment_not_found,
+    report_import_cycle, report_import_twice,
+};
+import resolver::modules{
+    get_or_create_module_symbol,
+    SourceSymbolBinding, 
+    VisitingModule, 
+    group_alias,
+    visit_key, 
+};
+import driver{CompilerDriver};
+import tokens{SourceTokens};
+import source{SourceId};
+import cir{SymbolId};
+
+pub struct SourceProgram {
+    pub absolute_path: String,
+    pub source_id: SourceId,
+    pub program: ASTProgram*,
+    pub tokens: SourceTokens
+}
+
+struct GroupImportRecord {
+    pub scope: SymbolId,
+    pub alias: String,
+}
+
+const PASS_ARENA_SIZE: usize = 65536;
+
+pub struct Resolver {
+    pub allocator: Allocator,
+    pub opts: ResolverOptions*,
+    pub driver: CompilerDriver*,
+    pub global_symbols: GlobalSymbolRegistry,
+    pub decl_tables: DeclTables,
+    group_imports: Vec<GroupImportRecord>,
+    module_symbols: Vec<SourceSymbolBinding>,
+    program_trees: Vec<TypedProgramTree>,
+    source_programs: Vec<SourceProgram>,
+    visiting: VisitingModule,
+    arena: ArenaAllocator,
+
+    pub fn new(
+        allocator: Allocator,
+        driver: CompilerDriver*,
+        opts: ResolverOptions*
+    ) Self {
+        const arena = ArenaAllocator.new(allocator, PASS_ARENA_SIZE);
+        var decl_tables = DeclTables.new(allocator);
+
+        return Self {
+            allocator,
+            driver,
+            opts,
+            arena,
+            decl_tables,
+            program_trees: Vec.new(allocator),
+            module_symbols: Vec.new(allocator),
+            source_programs: Vec.new(allocator),
+            visiting: VisitingModule.new(allocator),
+            global_symbols: GlobalSymbolRegistry.new(allocator),
+            group_imports: Vec.new(allocator),
+        };
+    }
+
+    pub fn resolve_entry(
+        self: Self*,
+        source_id: SourceId,
+        file_path: const uint8*,
+        program: const ASTProgram*
+    ) {
+        const module_name = module_name_from_file_path(
+            self->allocator,
+            self->opts,
+            file_path
+        );
+
+        const module_symbol_id = self->global_symbols.insert_module_symbol(
+            self->global_symbols.root_scope_id(),
+            module_name.as_str_const(),
+            module_name.as_str_const()
+        );
+
+        module_name.free();
+
+        self->module_symbols.push(SourceSymbolBinding {
+            source_id,
+            symbol_id: module_symbol_id,
+        });
+
+        self->resolve_module(module_symbol_id, source_id, file_path, program);
+    }
+
+    pub fn dump_symbols(self: Self*) {
+        const writer: Writer = dynamic StdoutWriter.new();
+
+        dump_resolver_symbols(
+            &self->global_symbols, 
+            &self->driver->sctx, 
+            writer, 
+            self->allocator
+        );
+    }
+
+    pub fn free(self: Self*) {
+        for (var i: usize = 0; i < self->source_programs.len(); i += 1) {
+            var file = self->source_programs.get(i).unwrap();
+            file->absolute_path.free();
+            file->tokens.free();
+            file->program->free();
+            self->allocator.free(file->program);
+        }
+
+        self->source_programs.free();
+        self->module_symbols.free();
+        self->global_symbols.free();
+        self->visiting.free();
+        for (var i: usize = 0; i < self->group_imports.len(); i += 1) {
+            var record = self->group_imports.get(i).unwrap();
+            record->alias.free();
+        }
+        self->group_imports.free();
+        self->program_trees.free();
+        self->decl_tables.free();
+        self->arena.destroy();
+    }
+
+    fn resolve_module(
+        self: Self*,
+        module_symbol_id: SymbolId,
+        source_id: SourceId,
+        file_path: const uint8*,
+        program: const ASTProgram*
+    ) bool {
+        const allocator = self->allocator;
+        const key = visit_key(allocator, file_path);
+
+        if (self->visiting.done_contains(key.as_str_const())) {
+            key.free();
+            return true;
+        }
+
+        self->visiting.push_active(key);
+
+        const safe = self->resolve_module_imports(module_symbol_id, program, file_path);
+
+        if (safe) {
+            bind_program_decl_names(
+                &self->global_symbols,
+                &self->driver->dctx,
+                allocator,
+                module_symbol_id,
+                program,
+                self->opts->profile
+            );
+
+            var ctx = TraverseContext.new(
+                dynamic self->arena,
+                self->allocator,
+                &self->driver->dctx,
+                &self->global_symbols,
+                &self->decl_tables,
+                source_id,
+                self->opts->profile,
+                module_symbol_id
+            );
+
+            const body = resolve_decl_full(&ctx, program);
+
+            self->push_program_tree(source_id, file_path, body);
+
+            ctx.free();
+        }
+
+        const active_key = self->visiting.pop_active();
+        self->visiting.mark_done(active_key);
+
+        return safe;
+    }
+
+    /// Resolves this module's import statements in order. 
+    /// Will stop at the first failure so later imports 
+    /// cannot cascade errors.
+    fn resolve_module_imports(
+        self: Self*,
+        module_symbol_id: SymbolId,
+        program: const ASTProgram*,
+        file_path: const uint8*
+    ) bool {
+        switch (program->statements) {
+            case .Some(statements) => {
+                for (var i: usize = 0; i < statements.len; i += 1) {
+                    const node_id = program->children.get_owned(statements.start + i).unwrap();
+                    const node = program->nodes.get_const(node_id).unwrap();
+
+                    switch (*node) {
+                        case .Import(imp) => {
+                            if (!self->resolve_import(module_symbol_id, &imp, file_path)) {
+                                return false;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        return true;
+    }
+
+    fn push_program_tree(
+        self: Self*,
+        source_id: SourceId,
+        file_path: const uint8*,
+        body: Vec<TypedStmt>,
+    ) {
+        const allocator: Allocator = dynamic self->arena;
+
+        const module_name = module_name_from_file_path(allocator, self->opts, file_path);
+
+        self->program_trees.push(TypedProgramTree {
+            file_id: source_id,
+            body,
+            file_name: String.from_str(allocator, file_path),
+            module_name,
+        });
+    }
+
+    fn resolve_import(
+        self: Self*,
+        parent_scope_id: SymbolId,
+        imp: const ASTImport*,
+        file_path: const uint8*
+    ) bool {
+        const allocator = self->allocator;
+
+        const load_result = fs_resolve_import(
+            allocator,
+            self->opts,
+            &imp->segments,
+            imp->relative_level,
+            file_path
+        );
+
+        switch (load_result) {
+            case .Error(err) => {
+                switch (err) {
+                    case .RelativeImportEscapesProjectRoot => report_relative_import_escapes_project_root(&self->driver->dctx, allocator, imp->span);
+                    case .ModuleNotFound(name, span) => report_module_not_found(&self->driver->dctx, allocator, span, name.as_str_const());
+                    case .DuplicateModule(name) => report_duplicate_module(&self->driver->dctx, allocator, imp->span, name.as_str_const());
+                    case .ModuleCannotImportItself => report_module_cannot_import_itself(&self->driver->dctx, allocator, imp->span);
+                    case .StdlibNotFound => report_stdlib_not_found(&self->driver->dctx, allocator, imp->span);
+                }
+                err.free();
+                return false;
+            }
+            case .Value(var resolved) => {
+                return self->process_resolved_import(parent_scope_id, imp, resolved);
+            }
+        }
+    }
+
+    /// Continue resolution of an import whose file was located.
+    fn process_resolved_import(
+        self: Self*,
+        parent_scope_id: SymbolId,
+        imp: const ASTImport*,
+        resolved: ResolvedModuleFile
+    ) bool {
+        const allocator = self->allocator;
+        const dctx = &self->driver->dctx;
+        const span = imp->span;
+
+        var alias = group_alias(allocator, imp);
+
+        switch (alias) {
+            case .Some(name) => {
+                if (self->group_import_already_done(parent_scope_id, name.as_str_const())) {
+                    report_import_twice(dctx, allocator, span, name.as_str_const());
+                    name.free();
+                    resolved.free();
+                    return false;
+                }
+            }
+        }
+
+        const key = visit_key(allocator, resolved.file_path.as_str_const());
+
+        if (self->visiting.active_contains(key.as_str_const())) {
+            var paths = self->visiting.active_paths_str();
+            report_import_cycle(dctx, allocator, span, paths.as_str_const());
+            paths.free();
+            key.free();
+            switch (alias) {
+                case .Some(str) => str.free();
+            }
+            resolved.free();
+            return false;
+        }
+
+        var source_id: SourceId;
+        var program: ASTProgram*;
+
+        switch (self->get_source_program(key.as_str_const())) {
+            case .Some(found_index) => {
+                const entry = self->source_programs.get_const(found_index).unwrap();
+                source_id = entry->source_id;
+                program = entry->program;
+            }
+            case .None => {
+                if (!is_file(resolved.file_path.as_str_const())) {
+                    var name = format_module_segments(allocator, &imp->segments);
+                    report_module_not_found(dctx, allocator, last_sub_module_span(&imp->segments), name.as_str_const());
+                    name.free();
+                    key.free();
+                    switch (alias) {
+                        case .Some(str) => str.free();
+                    }
+                    resolved.free();
+                    return false;
+                }
+
+                const lexical = self->driver->create_lexical_resource();
+                const path = Path.new(allocator, resolved.file_path.as_str_const());
+
+                switch (lexical.tokenize_source(path)) case .Value(var source_tokens) else {
+                    key.free();
+                    switch (alias) {
+                        case .Some(str) => str.free();
+                    }
+                    resolved.free();
+                    return false;
+                }
+
+                source_id = source_tokens.source_id;
+
+                switch (lexical.parse_source(source_tokens)) case .Value(parsed) else {
+                    source_tokens.free();
+                    key.free();
+                    switch (alias) {
+                        case .Some(str) => str.free();
+                    }
+                    resolved.free();
+                    return false;
+                }
+
+                const owned_program = alloc_init(allocator, parsed);
+                
+                self->source_programs.push(SourceProgram {
+                    absolute_path: String.from_str(allocator, key.as_str_const()),
+                    program: owned_program,
+                    source_id,
+                    tokens: source_tokens,
+                });
+
+                program = owned_program;
+            }
+        }
+
+        const segment = last_sub_module_name(allocator, &imp->segments);
+        
+        const module_symbol_id = get_or_create_module_symbol(
+            &self->global_symbols,
+            self->opts,
+            &self->module_symbols,
+            parent_scope_id,
+            source_id,
+            &resolved,
+            segment.as_str_const()
+        );
+        
+        segment.free();
+
+        var current_symbol = self->global_symbols.resolve_concrete_scope_id(module_symbol_id);
+
+        if (!self->visiting.done_contains(key.as_str_const())) {
+            self->resolve_module(current_symbol, source_id, resolved.file_path.as_str_const(), program);
+        }
+
+        for (var i: usize = resolved.consumed_segments; i < imp->segments.len(); i += 1) {
+            const segment_node = imp->segments.get_const(i).unwrap();
+
+            switch (*segment_node) {
+                case .SubModule(ident) => {
+                    switch (self->global_symbols.lookup_symbol_id_in_scope(current_symbol, ident.str.as_str_const())) {
+                        case .Some(found) => {
+                            current_symbol = self->global_symbols.resolve_concrete_scope_id(found);
+                        }
+                        case .None => {
+                            report_namespace_segment_not_found(
+                                dctx, 
+                                allocator, 
+                                ident.span,
+                                ident.str.as_str_const()
+                            );
+                            key.free();
+                            switch (alias) {
+                                case .Some(str) => str.free();
+                            }
+                            resolved.free();
+                            return false;
+                        }
+                    }
+                }
+            }
+        }
+
+        key.free();
+        resolved.free();
+
+        switch (alias) {
+            case .Some(name) => {
+                self->global_symbols.insert_proxied_module(
+                    parent_scope_id,
+                    name.as_str_const(),
+                    current_symbol
+                );
+                self->group_imports.push(GroupImportRecord {
+                    scope: parent_scope_id,
+                    alias: String.from_str(allocator, name.as_str_const()),
+                });
+                name.free();
+                return true;
+            }
+            case .None => {
+                return self->resolve_single_import(parent_scope_id, current_symbol, imp);
+            }
+        }
+    }
+
+    fn group_import_already_done(
+        self: Self*,
+        scope: SymbolId,
+        alias: const uint8*
+    ) bool {
+        for (var i: usize = 0; i < self->group_imports.len(); i += 1) {
+            const record = self->group_imports.get_const(i).unwrap();
+            
+            if (record->scope == scope && record->alias.as_str_const() == alias) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    fn resolve_single_import(
+        self: Self*,
+        parent_scope_id: SymbolId,
+        module_symbol_id: SymbolId,
+        imp: const ASTImport*
+    ) bool {
+        const allocator = self->allocator;
+        const dctx = &self->driver->dctx;
+
+        if (imp->segments.len() == 0) {
+            return true;
+        }
+
+        const source_scope_id = self->global_symbols.resolve_concrete_scope_id(module_symbol_id);
+        const last = imp->segments.get_const(imp->segments.len() - 1).unwrap();
+        var safe = true;
+
+        switch (*last) {
+            case .Single(singles) => {
+                for (var i: usize = 0; i < singles.len(); i += 1) {
+                    const single = singles.get_const(i).unwrap();
+                    const actual = single->ident.str.as_str_const();
+                    const single_span = single->ident.span;
+
+                    var name = actual;
+
+                    switch (single->renamed) {
+                        case .Some(renamed) => name = renamed.str.as_str_const();
+                    }
+
+                    switch (self->global_symbols.lookup_symbol_id_in_scope(source_scope_id, actual)) {
+                        case .None => {
+                            report_symbol_not_found(dctx, allocator, single_span, actual);
+                            safe = false;
+                        }
+                        case .Some(target) => {
+                            const entry = self->global_symbols.entries
+                                .get_const(target).unwrap();
+
+                            switch (entry->kind) {
+                                case .Namespace => {
+                                    report_namespace_as_single(
+                                        dctx,
+                                        allocator,
+                                        single_span,
+                                        entry->name.as_str_const()
+                                    );
+                                    safe = false;
+                                }
+                                else => {
+                                    var is_private = false;
+
+                                    switch (entry->vis_opt) {
+                                        case .Some(vis) => {
+                                            switch (vis) {
+                                                case .Private => is_private = true;
+                                            }
+                                        }
+                                    }
+
+                                    if (is_private) {
+                                        report_private_symbol(
+                                            dctx, 
+                                            allocator, 
+                                            single_span, 
+                                            actual
+                                        );
+                                        safe = false;
+                                    } else {
+                                        switch (self->global_symbols.lookup_symbol_id_in_scope(parent_scope_id, name)) {
+                                            case .Some => {
+                                                report_duplicate_symbol(
+                                                    dctx, allocator, single_span, name
+                                                );
+                                                safe = false;
+                                            }
+                                            case .None => {
+                                                self->global_symbols.insert_proxied_symbol(
+                                                    parent_scope_id,
+                                                    name,
+                                                    source_scope_id,
+                                                    target
+                                                );
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        return safe;
+    }
+
+    fn get_source_program(self: Self*, key: const uint8*) Option<usize> {
+        for (var i: usize = 0; i < self->source_programs.len(); i += 1) {
+            const entry = self->source_programs.get_const(i).unwrap();
+
+            if (entry->absolute_path.as_str_const() == key) {
+                return .Some(i);
+            }
+        }
+
+        return .None;
+    }
+}

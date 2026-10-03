@@ -1,16 +1,12 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 The Cyrus Language
 
-import std::libc::types{c_file};
 import std::errors{ErrorOr, ErrorStr};
+import std::libc::types{c_file};
 import std::mem{Allocator};
 import std::string{String};
 import std::path{Path};
 import std::libc;
-
-// NOTE: Currently Cyrus only supports SYSV X86_64 target
-// immediately after compiler support more targets
-// we will support os tools target-independently.
 
 pub struct File {
     path: const Path*,
@@ -22,6 +18,7 @@ pub struct File {
         const mode_str = mode.as_str();
 
     	const file = libc::fopen(path_str, mode_str);
+
         if (!file) {
             return .Error("could not open the file");
         }
@@ -35,9 +32,11 @@ pub struct File {
 
     pub fn flush(self: const Self*) ErrorOr<(), ()> {
         const result = libc::fflush(self->file);
+        
         if (result != 0) {
             return .Error(());
         }
+
         return .Value(());
     }
 
@@ -59,6 +58,7 @@ pub struct File {
         var buffer: uint8* = allocator.alloc(size + 1);
 
         const read = libc::fread(buffer, 1, size, self->file);
+        
         if (read != size) {
             return .Error("failed to read file");
         }
@@ -75,6 +75,7 @@ pub struct File {
         const content_len = libc::strlen(content);
 
         const bytes = libc::fwrite(content, 1, content_len, self->file);
+        
         if (bytes == 0) {
             return .Error(());
         } 
@@ -83,12 +84,16 @@ pub struct File {
     }
 
     pub fn append(self: Self*, content: const uint8*) ErrorOr<usize, ErrorStr> {
+        // REVIEW: Use switch guard
         switch (self->mode) {
-            case .Append | .AppendBinary | .AppendRead | .AppendReadBinary => {}
-            else => { return .Error("file not opened in append mode"); }
+            case .Append | .AppendBinary | .AppendRead | .AppendReadBinary => {
+                // okay
+            }
+            else => return .Error("file not opened in append mode");
         }
 
         const result = libc::fseek(self->file, 0, FileSeek.End.as_num());
+        
         if (result != 0) {
             return .Error("failed to seek to end of file for append");
         }
@@ -96,6 +101,7 @@ pub struct File {
         const content_len = libc::strlen(content);
 
         const bytes = libc::fwrite(content, 1, content_len, self->file);
+        
         if (bytes == 0) {
             return .Error("failed to append to file");
         }
@@ -104,17 +110,7 @@ pub struct File {
     }
 
     pub fn exists(path: const Path*) bool {
-        const path_str = path->as_string().as_str_const();
-        const mode_str = OpeningModes.Read.as_str();
-
-        const file = libc::fopen(path_str, mode_str);
-
-        if (!file) {
-            return false;
-        } else {
-            libc::fclose(file);
-            return true;
-        }
+        return path_exists(path->as_string().as_str_const());
     }
 
     pub fn rename(old_path: const Path*, new_path: const Path*) ErrorOr<(), ()> {
@@ -122,6 +118,7 @@ pub struct File {
         const new_path_str = new_path->as_string().as_str_const();
 
         const result = libc::rename(old_path_str, new_path_str);
+        
         if (result != 0) {
             return .Error(());
         }
@@ -131,13 +128,17 @@ pub struct File {
 
     pub fn seek(self: Self*, offset: int64, whence: FileSeek) ErrorOr<usize, ErrorStr> {
         const result = libc::fseek(self->file, @cast(int32, offset), whence.as_num());
+        
         if (result != 0) {
             return .Error("failed to seek in file");
         }
+        
         const pos = libc::ftell(self->file);
+        
         if (pos < 0) {
             return .Error("failed to get file position after seek");
         }
+
         return .Value(@cast(usize, pos));
     }
 
@@ -169,21 +170,22 @@ pub enum OpeningModes {
     WriteReadBinary,
     AppendRead,
     AppendReadBinary,
-
+    
+    [[inline]]
     pub fn as_str(self: Self) const uint8* {
         switch (self) {
-            case .Read => return "r";
-            case .ReadBinary => return "rb";
-            case .Write => return "w";
-            case .WriteBinary => return "wb";
-            case .Append => return "a";
-            case .AppendBinary => return "ab";
-            case .ReadWrite => return "r+";
-            case .ReadWriteBinary => return "rb+";
-            case .WriteRead => return "w+";
-            case .WriteReadBinary => return "wb+";
-            case .AppendRead => return "a+";
             case .AppendReadBinary => return "ab+";
+            case .WriteReadBinary => return "wb+";
+            case .ReadWriteBinary => return "rb+";
+            case .AppendBinary => return "ab";
+            case .WriteBinary => return "wb";
+            case .AppendRead => return "a+";
+            case .ReadBinary => return "rb";
+            case .ReadWrite => return "r+";
+            case .WriteRead => return "w+";
+            case .Append => return "a";
+            case .Write => return "w";
+            case .Read => return "r";
         }
     }
 }
@@ -208,6 +210,7 @@ pub enum ExitStatusCode {
     AllocationError = 5,
     FileOperationError = 6,
     
+    [[inline]]
     pub fn as_num(self: Self) int32 {
         return @cast(int32, self);
     }
@@ -225,6 +228,20 @@ pub enum Fd {
 }
 
 [[inline]]
-pub fn exit(code: ExitStatusCode) {
-    libc::exit(code.as_num());
+pub fn exit(status: ExitStatusCode) {
+    libc::exit(status.as_num());
+}
+
+/// True when `path` exists (file or directory).
+pub fn path_exists(path: const uint8*) bool {
+    @assert(path != null, "path cannot be null");
+
+    const file = libc::fopen(path, OpeningModes.Read.as_str());
+
+    if (file == null) {
+        return false;
+    }
+
+    libc::fclose(file);
+    return true;
 }

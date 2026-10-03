@@ -1,0 +1,30 @@
+// @resolve
+
+import .::helpers::_rel_sibling;
+
+pub fn main() {}
+
+/*@resolve
+SYMBOL TREE
+
+[0] Namespace GLOBAL
+├── tests_stage1_resolver_relative_import -> [1]
+├── tests_stage1_resolver_helpers__rel_sibling -> [2]
+├── [1] Module tests_stage1_resolver_relative_import
+│   ├── helpers -> [3]
+│   ├── _rel_sibling -> [6]
+│   ├── main -> [7]
+│   ├── [3] Module helpers
+│   │   ├── _rel_sibling -> [4]
+│   │   └── [4] ProxiedModule _rel_sibling -> [2]
+│   ├── [6] ProxiedModule _rel_sibling -> [2]
+│   └── [7] Func main
+└── [2] Module _rel_sibling
+    ├── sibling -> [5]
+    └── [5] Func sibling
+
+SOURCE MAP
+
+├── [0] tests/stage1/resolver/relative_import.cyrus
+└── [1] tests/stage1/resolver/helpers/_rel_sibling.cyrus
+@resolve*/

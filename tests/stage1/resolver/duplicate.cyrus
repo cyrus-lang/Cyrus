@@ -1,0 +1,17 @@
+// @resolve
+
+pub fn dup() {}
+
+pub fn dup() {}
+
+pub fn main() {}
+
+/*@resolve
+tests/stage1/resolver/duplicate.cyrus:5:8: error: symbol `dup` is already declared
+      |
+    5 ~ pub fn dup() {}
+      |        ^^^
+      |
+      = help: remove or rename the duplicate declaration
+      |
+@resolve*/

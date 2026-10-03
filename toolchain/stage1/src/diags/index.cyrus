@@ -44,7 +44,6 @@ pub struct Label {
     pub fn free(self: Self*) {
         switch (self->mesg) {
             case .Some(str) => str.free();
-            case .None => {}
         }
     }
 }
@@ -70,10 +69,6 @@ pub struct SubDiag {
 
     pub fn free(self: Self*) {
         self->mesg.free();
-        switch (self->span) {
-            case .Some(span) => {}
-            case .None => {}
-        }
     }
 }
 
@@ -179,6 +174,18 @@ pub struct Diag {
     [[inline]]
     pub fn help_at(self: Self*, span: Span, mesg: const uint8*) Self* {
         self->sub_diags.push(SubDiag.new(self->allocator, .Help, mesg, .Some(span)));
+        return self;
+    }
+
+    [[inline]]
+    pub fn info(self: Self*, mesg: const uint8*) Self* {
+        self->sub_diags.push(SubDiag.new(self->allocator, .Info, mesg, .None));
+        return self;
+    }
+
+    [[inline]]
+    pub fn info_at(self: Self*, span: Span, mesg: const uint8*) Self* {
+        self->sub_diags.push(SubDiag.new(self->allocator, .Info, mesg, .Some(span)));
         return self;
     }
 

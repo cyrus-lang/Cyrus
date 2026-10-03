@@ -1,0 +1,7 @@
+fn hidden() {}
+
+pub fn exposed() {}
+
+mod inner {
+    pub fn inside() {}
+}

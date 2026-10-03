@@ -32,6 +32,11 @@ pub struct SourceContext {
         return id;
     }
 
+    [[inline]]
+    pub fn len(self: const Self*) usize {
+        return self->sources.len();
+    }
+
     pub fn free(self: Self*) {
         for (var i: usize = 0; i < self->sources.len(); i += 1) {
             var source = self->sources.get_owned(i).unwrap();

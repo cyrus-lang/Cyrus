@@ -200,18 +200,20 @@ impl<'a> Resolver<'a> {
             };
 
             if let ModuleAlias::Group(alias) = &loaded_module.alias {
-                if let Some(_) = self.lookup_symbol_id_in_scope(parent_scope_id, &alias) {
-                    self.reporter.report(Diag {
-                        level: DiagLevel::Error,
-                        kind: Box::new(ResolverDiagKind::ImportTwice {
-                            module_name: alias.clone(),
-                        }),
-                        loc: Some(import.loc),
-                        hint: Some("Consider removing the previous declaration.".to_string()),
-                    });
+                if let Some(done_aliases) = self.group_imports_done.get(&parent_scope_id) {
+                    if done_aliases.contains(alias) {
+                        self.reporter.report(Diag {
+                            level: DiagLevel::Error,
+                            kind: Box::new(ResolverDiagKind::ImportTwice {
+                                module_name: alias.clone(),
+                            }),
+                            loc: Some(import.loc),
+                            hint: Some("Consider removing the previous declaration.".to_string()),
+                        });
 
-                    *is_module_safe_to_be_resolved = false;
-                    return;
+                        *is_module_safe_to_be_resolved = false;
+                        return;
+                    }
                 }
             }
 
@@ -295,6 +297,11 @@ impl<'a> Resolver<'a> {
                     // insert proxied module symbol
                     self.global_symbols
                         .insert_proxied_module(parent_scope_id, &alias, module_symbol_id);
+
+                    self.group_imports_done
+                        .entry(parent_scope_id)
+                        .or_default()
+                        .insert(alias);
                 }
                 ModuleAlias::Single(singles) => {
                     self.resolve_import_single_symbols_from_module(

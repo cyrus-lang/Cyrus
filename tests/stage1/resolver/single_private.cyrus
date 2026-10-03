@@ -1,0 +1,15 @@
+// @resolve
+
+import helpers::_single{hidden};
+
+pub fn main() {}
+
+/*@resolve
+tests/stage1/resolver/single_private.cyrus:3:25: error: symbol `hidden` is private
+      |
+    3 ~ import helpers::_single{hidden};
+      |                         ^^^^^^
+      |
+      = help: declare it as `pub` to make it importable
+      |
+@resolve*/

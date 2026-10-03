@@ -1,0 +1,19 @@
+// @resolve
+
+import .::helpers::_cycle_b;
+
+pub fn main() {}
+
+/*@resolve
+tests/stage1/resolver/helpers/_cycle_b.cyrus:1:1: error: import cycle detected:
+
+tests/stage1/resolver/cycle.cyrus
+  - tests/stage1/resolver/helpers/_cycle_b.cyrus
+  - tests/stage1/resolver/cycle.cyrus
+      |
+    1 ~ import ..::cycle;
+      | ^^^^^^^^^^^^^^^^^
+      |
+      = help: break the cycle by removing one import
+      |
+@resolve*/

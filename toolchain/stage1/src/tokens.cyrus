@@ -594,6 +594,11 @@ pub struct Loc {
     pub start: usize, // Byte offset
     pub end: usize,   // Byte offset
 
+    [[inline]]
+    pub fn new(start: usize, end: usize) Self {
+        return Self { start, end };
+    }
+
     // FIXME (compiler): other type must be Self
     pub fn merge(self: Self, other: Loc) Self {
         var merge = self;

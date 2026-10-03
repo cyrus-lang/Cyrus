@@ -211,7 +211,7 @@ pub struct ParserState {
 
     pub fn expect_ident(self: Self*) Option<ASTIdent> {
         const token = self->current();
-        const span = Span { source_id: self->source_id(), loc: token->loc };
+        const span = Span.new(self->source_id(), token->loc);
 
         switch (*token->kind) {
             case .Ident(str) => {

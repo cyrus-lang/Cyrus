@@ -1,0 +1,15 @@
+// @resolve
+
+import helpers::_util{nope};
+
+pub fn main() {}
+
+/*@resolve
+tests/stage1/resolver/single_missing.cyrus:3:23: error: symbol `nope` not found
+      |
+    3 ~ import helpers::_util{nope};
+      |                       ^^^^
+      |
+      = help: declare or import it before use
+      |
+@resolve*/

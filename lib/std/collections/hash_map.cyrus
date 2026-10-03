@@ -7,7 +7,7 @@ import std::collections{Vec};
 import std::mem{Allocator};
 import std::option{Option};
 
-pub enum EntryState {
+enum EntryState {
     Empty,
     Occupied,
     Deleted
@@ -103,19 +103,20 @@ pub struct HashMap<K, V> {
 
         for (var i: usize = 0; i < old_cap; i += 1) {
             const entry = &old_entries_data[i];
+
             if (entry->state == .Occupied) {
-                var idx = @cast(usize, entry->hash) & new_mask;
+                var index = @cast(usize, entry->hash) & new_mask;
                 
-                while (new_entries_data[idx].state != .Empty) {
-                    idx = (idx + 1) & new_mask;
+                while (new_entries_data[index].state != .Empty) {
+                    index = (index + 1) & new_mask;
                 }
                 
-                new_entries_data[idx] = HashEntry<K> {
+                new_entries_data[index] = HashEntry<K> {
                     state: .Occupied,
                     hash: entry->hash,
                     key: entry->key,
                 };
-                new_values_data[idx] = old_values_data[i];
+                new_values_data[index] = old_values_data[i];
             }
         }
 
@@ -135,10 +136,10 @@ pub struct HashMap<K, V> {
         const mask = self->cap - 1;
         const data = self->entries.data_const();
         
-        var idx = @cast(usize, hash) & mask;
+        var index = @cast(usize, hash) & mask;
 
         for (var i: usize = 0; i < self->cap; i += 1) {
-            const entry = &data[idx];
+            const entry = &data[index];
             
             if (entry->state == .Empty) {
                 return .None;
@@ -147,12 +148,12 @@ pub struct HashMap<K, V> {
             if (entry->state == .Occupied && entry->hash == hash) {
                 switch (entry->key) {
                     case .Some(entry_key) => if ((self->eq_fn)(key, entry_key)) {
-                        return .Some(idx);
+                        return .Some(index);
                     }
                 }
             }
             
-            idx = (idx + 1) & mask;
+            index = (index + 1) & mask;
         }
         
         return .None;
@@ -160,36 +161,36 @@ pub struct HashMap<K, V> {
 
     pub fn insert(self: Self*, key: K, value: V) bool {
         const hash = (self->hash_fn)(key);
-        const slot_opt = self->find_slot(key, hash);
 
-        if (slot_opt.is_some()) {
-            const idx = slot_opt.unwrap();
-            var values_data = self->values.data();
-            values_data[idx] = value;
-            return false;
+        switch (self->find_slot(key, hash)) {
+            case .Some(slot) => {
+                var values_data = self->values.data();
+                values_data[slot] = value;
+                return false;
+            }
         }
 
         self->reserve(1);
 
         const mask = self->cap - 1;
-        var idx = @cast(usize, hash) & mask;
+        var index = @cast(usize, hash) & mask;
         var first_tombstone: Option<usize> = .None;
-        const entries_data_const = self->entries.data_const();
+        const entries = self->entries.data_const();
 
         for (var i: usize = 0; i < self->cap; i += 1) {
-            const entry = &entries_data_const[idx];
+            const entry = &entries[index];
             
             if (entry->state == .Empty) {
                 if (first_tombstone.is_none()) {
                     var entries_data = self->entries.data();
                     var values_data = self->values.data();
                     
-                    entries_data[idx] = HashEntry<K> {
+                    entries_data[index] = HashEntry<K> {
                         state: .Occupied,
                         hash,
                         key: .Some(key),
                     };
-                    values_data[idx] = value;
+                    values_data[index] = value;
                     
                     self->len += 1;
                     return true;
@@ -199,24 +200,24 @@ pub struct HashMap<K, V> {
             
             if (entry->state == .Deleted) {
                 if (first_tombstone.is_none()) {
-                    first_tombstone = .Some(idx);
+                    first_tombstone = .Some(index);
                 }
             }
             
-            idx = (idx + 1) & mask;
+            index = (index + 1) & mask;
         }
 
         if (first_tombstone.is_some()) {
-            const insert_idx = first_tombstone.unwrap();
+            const insert_index = first_tombstone.unwrap();
             var entries_data = self->entries.data();
             var values_data = self->values.data();
             
-            entries_data[insert_idx] = HashEntry<K> {
+            entries_data[insert_index] = HashEntry<K> {
                 state: .Occupied,
                 hash,
                 key: .Some(key),
             };
-            values_data[insert_idx] = value;
+            values_data[insert_index] = value;
             
             self->len += 1;
             self->tombstones -= 1;
@@ -227,64 +228,82 @@ pub struct HashMap<K, V> {
 
     pub fn get(self: Self*, key: K) Option<V*> {
         const hash = (self->hash_fn)(key);
-        const slot_opt = self->find_slot(key, hash);
-        if (slot_opt.is_none()) {
+
+        switch (self->find_slot(key, hash)) case .Some(slot) else {
             return .None;
         }
-        const idx = slot_opt.unwrap();
-        return .Some(self->values.data() + idx);
+
+        return .Some(self->values.data() + slot);
     }
 
     pub fn get_const(self: const Self*, key: K) Option<const V*> {
         const hash = (self->hash_fn)(key);
-        const slot_opt = self->find_slot(key, hash);
-        if (slot_opt.is_none()) {
+
+        switch (self->find_slot(key, hash)) case .Some(slot) else {
             return .None;
         }
-        const idx = slot_opt.unwrap();
-        return .Some(self->values.data_const() + idx);
+
+        return .Some(self->values.data_const() + slot);
     }
 
     pub fn get_owned(self: const Self*, key: K) Option<V> {
         const hash = (self->hash_fn)(key);
-        const slot_opt = self->find_slot(key, hash);
-        if (slot_opt.is_none()) {
+        
+        switch (self->find_slot(key, hash)) case .Some(slot) else {
             return .None;
         }
-        const idx = slot_opt.unwrap();
+
         const values_data = self->values.data_const();
-        return .Some(values_data[idx]);
+        return .Some(values_data[slot]);
     }
 
     [[inline]]
     pub fn contains_key(self: const Self*, key: K) bool {
-        const hash = (self->hash_fn)(key);
-        return self->find_slot(key, hash).is_some();
+        return self->find_slot(key, (self->hash_fn)(key)).is_some();
     }
 
     pub fn remove(self: Self*, key: K) Option<V> {
         const hash = (self->hash_fn)(key);
-        const slot_opt = self->find_slot(key, hash);
-        if (slot_opt.is_none()) {
+        
+        switch (self->find_slot(key, hash)) case .Some(slot) else {
             return .None;
         }
-        const idx = slot_opt.unwrap();
 
         var entries_data = self->entries.data();
         var values_data = self->values.data();
-        const old_val = values_data[idx];
+        const old_value = values_data[slot];
 
-        entries_data[idx].state = .Deleted;
-        entries_data[idx].key = .None;
+        entries_data[slot].state = .Deleted;
+        entries_data[slot].key = .None;
         self->len -= 1;
         self->tombstones += 1;
 
-        return .Some(old_val);
+        return .Some(old_value);
+    }
+
+    [[inline]]
+    pub fn entries_data(self: Self*) HashEntry<K>* {
+        return self->entries.data();
+    }
+
+    [[inline]]
+    pub fn entries_data_const(self: const Self*) const HashEntry<K>* {
+        return self->entries.data_const();
+    }
+
+    [[inline]]
+    pub fn values_data(self: Self*) V* {
+        return self->values.data();
+    }
+
+    [[inline]]
+    pub fn values_data_const(self: const Self*) const V* {
+        return self->values.data_const();
     }
 
     [[inline]]
     pub fn iter_owned(self: Self*) HashMapIterOwned<K, V> {
-        return HashMapIterOwned<K, V> { map: self, idx: 0 };
+        return HashMapIterOwned<K, V> { map: self, index: 0 };
     }
 
     [[inline]]
@@ -295,16 +314,6 @@ pub struct HashMap<K, V> {
     [[inline]]
     pub fn cap(self: const Self*) usize {
         return self->cap;
-    }
-
-    [[inline]]
-    pub fn entries_data(self: Self*) HashEntry<K>* {
-        return self->entries.data();
-    }
-
-    [[inline]]
-    pub fn values_data(self: Self*) V* {
-        return self->values.data();
     }
 
     [[inline]]
@@ -335,24 +344,25 @@ pub struct HashMap<K, V> {
 
 pub struct HashMapIterOwned<K, V> : IterOwned<(K, V)> {
     map: HashMap<K, V>*,
-    idx: usize,
+    index: usize,
 
     pub fn next(self: Self*) Option<(K, V)> {
         const cap = self->map->cap();
-        const entries_data = self->map->entries_data();
-        const values_data = self->map->values_data();
+        const entries_data = self->map->entries_data_const();
+        const values_data = self->map->values_data_const();
 
-        while (self->idx < cap) {
-            const entry = &entries_data[self->idx];
-            const val_idx = self->idx;
-            self->idx += 1;
+        while (self->index < cap) {
+            const entry = &entries_data[self->index];
+            const value_index = self->index;
+            self->index += 1;
             
             if (entry->state == .Occupied) {
-                switch (entry->key) {
-                    case .Some(key) => {
-                        return .Some((key, values_data[val_idx]));
-                    }
+                switch (entry->key) case .Some(key) else {
+                    continue;
                 }
+                
+                const val: V = values_data[value_index];
+                return .Some((key, val));
             }
         }
         
