@@ -57,7 +57,7 @@ struct GroupImportRecord {
     pub alias: String,
 }
 
-const PASS_ARENA_SIZE: usize = 65536;
+const RESOLVER_ARENA_SIZE: usize = 65536;
 
 pub struct Resolver {
     pub allocator: Allocator,
@@ -77,7 +77,7 @@ pub struct Resolver {
         driver: CompilerDriver*,
         opts: ResolverOptions*
     ) Self {
-        const arena = ArenaAllocator.new(allocator, PASS_ARENA_SIZE);
+        const arena = ArenaAllocator.new(allocator, RESOLVER_ARENA_SIZE);
         var decl_tables = DeclTables.new(allocator);
 
         return Self {
@@ -174,9 +174,9 @@ pub struct Resolver {
 
         self->visiting.push_active(key);
 
-        const safe = self->resolve_module_imports(module_symbol_id, program, file_path);
+        const ok = self->resolve_module_imports(module_symbol_id, program, file_path);
 
-        if (safe) {
+        if (ok) {
             bind_program_decl_names(
                 &self->global_symbols,
                 &self->driver->dctx,
@@ -198,16 +198,13 @@ pub struct Resolver {
             );
 
             const body = resolve_decl_full(&ctx, program);
-
             self->push_program_tree(source_id, file_path, body);
-
             ctx.free();
         }
 
         const active_key = self->visiting.pop_active();
         self->visiting.mark_done(active_key);
-
-        return safe;
+        return ok;
     }
 
     /// Resolves this module's import statements in order. 
@@ -490,7 +487,7 @@ pub struct Resolver {
 
         const source_scope_id = self->global_symbols.resolve_concrete_scope_id(module_symbol_id);
         const last = imp->segments.get_const(imp->segments.len() - 1).unwrap();
-        var safe = true;
+        var ok = true;
 
         switch (*last) {
             case .Single(singles) => {
@@ -508,7 +505,7 @@ pub struct Resolver {
                     switch (self->global_symbols.lookup_symbol_id_in_scope(source_scope_id, actual)) {
                         case .None => {
                             report_symbol_not_found(dctx, allocator, single_span, actual);
-                            safe = false;
+                            ok = false;
                         }
                         case .Some(target) => {
                             const entry = self->global_symbols.entries
@@ -522,7 +519,7 @@ pub struct Resolver {
                                         single_span,
                                         entry->name.as_str_const()
                                     );
-                                    safe = false;
+                                    ok = false;
                                 }
                                 else => {
                                     var is_private = false;
@@ -542,14 +539,14 @@ pub struct Resolver {
                                             single_span, 
                                             actual
                                         );
-                                        safe = false;
+                                        ok = false;
                                     } else {
                                         switch (self->global_symbols.lookup_symbol_id_in_scope(parent_scope_id, name)) {
                                             case .Some => {
                                                 report_duplicate_symbol(
                                                     dctx, allocator, single_span, name
                                                 );
-                                                safe = false;
+                                                ok = false;
                                             }
                                             case .None => {
                                                 self->global_symbols.insert_proxied_symbol(
@@ -569,7 +566,7 @@ pub struct Resolver {
             }
         }
 
-        return safe;
+        return ok;
     }
 
     fn get_source_program(self: Self*, key: const uint8*) Option<usize> {

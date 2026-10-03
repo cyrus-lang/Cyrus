@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 The Cyrus Language
 
-import std::string{String, free_string_vec};
+import std::string{String, free_strings};
 import std::collections{Vec};
 import std::errors{ErrorOr};
 import std::os{path_exists};
@@ -94,7 +94,7 @@ pub struct ResolvedModuleFile {
     pub fn free(self: Self*) {
         self->file_path.free();
         self->file_module_name.free();
-        free_string_vec(&self->directory_modules);
+        free_strings(&self->directory_modules);
     }
 }
 
@@ -289,7 +289,8 @@ pub fn resolve_import(
     var names = sub_module_names(allocator, segments);
 
     if (names.len() == 0) {
-        free_string_vec(&names);
+        free_strings(&names);
+
         return .Error(.ModuleNotFound(
             format_module_segments(allocator, segments),
             first_segment_span(segments)
@@ -310,8 +311,8 @@ pub fn resolve_import(
         switch (stdlib_modules_path(allocator, opts)) {
             case .Some(root) => sources.push(root);
             case .None => {
-                free_string_vec(&sources);
-                free_string_vec(&names);
+                free_strings(&sources);
+                free_strings(&names);
                 return .Error(.StdlibNotFound);
             }
         }
@@ -319,8 +320,8 @@ pub fn resolve_import(
         switch (relative_search_dir(allocator, opts, current_file_path, relative_level)) {
             case .Some(search_dir) => sources.push(search_dir);
             case .None => {
-                free_string_vec(&sources);
-                free_string_vec(&names);
+                free_strings(&sources);
+                free_strings(&names);
                 return .Error(.RelativeImportEscapesProjectRoot);
             }
         }
@@ -332,8 +333,8 @@ pub fn resolve_import(
     }
 
     if (names.len() == 0) {
-        free_string_vec(&sources);
-        free_string_vec(&names);
+        free_strings(&sources);
+        free_strings(&names);
         return .Error(.ModuleNotFound(
             format_module_segments(allocator, segments),
             first_segment_span(segments)
@@ -347,8 +348,8 @@ pub fn resolve_import(
     }
 
     const result = load_module_segments(allocator, &names, &sources, segments, name_offset);
-    free_string_vec(&sources);
-    free_string_vec(&names);
+    free_strings(&sources);
+    free_strings(&names);
 
     switch (result) {
         case .Value(var resolved) => {
@@ -397,7 +398,7 @@ fn load_module_segments(
                     case .Some(conflict_path) => {
                         file_path.free();
                         conflict_path.free();
-                        free_string_vec(&directory_modules);
+                        free_strings(&directory_modules);
                         current_path.free();
                         return .Error(.DuplicateModule(String.from_str(allocator, name_str)));
                     }
@@ -442,7 +443,7 @@ fn load_module_segments(
                         directory_modules.push(String.from_str(allocator, name_str));
                     }
                     case .None => {
-                        free_string_vec(&directory_modules);
+                        free_strings(&directory_modules);
                         current_path.free();
                         return .Error(.ModuleNotFound(
                             format_sub_module_names(allocator, names),
@@ -471,7 +472,7 @@ fn load_module_segments(
         }
 
         index_path.free();
-        free_string_vec(&directory_modules);
+        free_strings(&directory_modules);
         current_path.free();
         return .Error(.ModuleNotFound(
             format_sub_module_names(allocator, names),

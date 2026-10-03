@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 The Cyrus Language
 
-import std::string{String, free_string_vec};
+import std::string{String, free_strings};
 import std::collections{Vec};
 import std::mem{Allocator};
 import std::option{Option};
@@ -326,12 +326,12 @@ pub fn normalize_abs(allocator: Allocator, cwd: const uint8*, path: const uint8*
     const absolute = (path[0] == '/') || (cwd[0] == '/');
 
     if ((path[0] != '/') && (!push_components(allocator, &components, cwd))) {
-        free_string_vec(&components);
+        free_strings(&components);
         return .None;
     }
 
     if (!push_components(allocator, &components, path)) {
-        free_string_vec(&components);
+        free_strings(&components);
         return .None;
     }
 
@@ -349,7 +349,7 @@ pub fn normalize_abs(allocator: Allocator, cwd: const uint8*, path: const uint8*
         out.push_str(component->as_str_const());
     }
 
-    free_string_vec(&components);
+    free_strings(&components);
     return .Some(out);
 }
 
