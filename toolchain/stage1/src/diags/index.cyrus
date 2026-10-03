@@ -44,7 +44,6 @@ pub struct Label {
     pub fn free(self: Self*) {
         switch (self->mesg) {
             case .Some(str) => str.free();
-            case .None => {}
         }
     }
 }
@@ -70,10 +69,6 @@ pub struct SubDiag {
 
     pub fn free(self: Self*) {
         self->mesg.free();
-        switch (self->span) {
-            case .Some(span) => {}
-            case .None => {}
-        }
     }
 }
 

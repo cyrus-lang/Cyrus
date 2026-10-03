@@ -13,10 +13,13 @@ import resolver::diags{
     report_type_does_not_accept_type_args,
     report_duplicate_symbol_in_this_scope,
     report_symbol_not_defined_in_module,
+    report_invalid_struct_init_operand,
     report_invalid_top_level_statement,
     report_invalid_untyped_func_param,
+    report_if_duplicate_method_names,
     report_expected_ident_in_import,
     report_duplicate_generic_param,
+    report_builtin_block_as_type,
     report_duplicate_method_name,
     report_label_already_defined,
     report_label_not_defined,
@@ -26,30 +29,101 @@ import resolver::diags{
     report_type_not_found,
     report_private_symbol,
 };
-import resolver::loader{first_segment_span};
+import resolver::loader{first_segment_span, Profile};
 import resolver::context{TraverseContext};
 import tokens{Span, Loc, Token, Literal};
 import diags{DiagContext};
 import parser::ast;
-
-import cir; // FIXME: stage0 resolver bug
 import cir::format{
     format_module_segments, 
     format_module_segments_upto
 };
+import cir;
 
 pub fn bind_program_decl_names(
     registry: GlobalSymbolRegistry*,
     dctx: DiagContext*,
     allocator: Allocator,
     scope_id: cir::SymbolId,
-    program: const ast::ASTProgram*
+    program: const ast::ASTProgram*,
+    profile: Profile
 ) {
     switch (program->statements) {
         case .Some(statements) => {
-            resolve_decl_names(registry, dctx, allocator, scope_id, program, &statements);
+            resolve_decl_names(registry, dctx, allocator, scope_id, program, &statements, profile);
         }
     }
+}
+
+/// (First Pass) Scans the top-level AST for declarations and registers 
+/// each declared name into the current module's symbol table.
+fn resolve_decl_names(
+    registry: GlobalSymbolRegistry*,
+    dctx: DiagContext*,
+    allocator: Allocator,
+    scope_id: cir::SymbolId,
+    program: const ast::ASTProgram*,
+    statements: const ast::ASTNodeList*,
+    profile: Profile
+) {
+    for (var i: usize = 0; i < statements->len; i += 1) {
+        const node_id = program->children.get_owned(statements->start + i).unwrap();
+        const node = program->nodes.get_const(node_id).unwrap();
+
+        switch (*node) {
+            case .ModuleDecl(module_decl) => {
+                resolve_module_decl_names(registry, dctx, allocator, scope_id, program, &module_decl, profile);
+            }
+            case .Builtin(builtin) => {
+                resolve_builtin_decl_names(registry, dctx, allocator, scope_id, program, &builtin, profile);
+            }
+            else => {
+                // Skip statement if it's not a declaration symbol
+                switch (node->decl_name()) {
+                    case .Some(decl_name) => {
+                        const name = decl_name.str.as_str_const();
+
+                        switch (registry->lookup_symbol_id_in_scope(scope_id, name)) {
+                            case .Some => {
+                                report_duplicate_symbol(dctx, allocator, decl_name.span, name);
+                            }
+                            case .None => {
+                                registry->insert_unresolved_symbol(scope_id, name, node->vis());
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+fn resolve_module_decl_names(
+    registry: GlobalSymbolRegistry*,
+    dctx: DiagContext*,
+    allocator: Allocator,
+    parent_scope_id: cir::SymbolId,
+    program: const ast::ASTProgram*,
+    module_decl: const ast::ASTModuleDecl*,
+    profile: Profile
+) {
+    const name = module_decl->ident.str.as_str_const();
+    var module_scope_id: cir::SymbolId;
+
+    switch (registry->lookup_symbol_id_in_scope(parent_scope_id, name)) {
+        case .Some(existing) => {
+            module_scope_id = registry->resolve_concrete_scope_id(existing);
+        }
+        case .None => {
+            module_scope_id = registry->insert_namespace_symbol(
+                parent_scope_id,
+                name,
+                .Some(module_decl->vis)
+            );
+        }
+    }
+
+    resolve_decl_names(registry, dctx, allocator, module_scope_id, program, &module_decl->stmts, profile);
 }
 
 /// (Second Pass) Resolves the full meaning of each top-level declaration
@@ -75,7 +149,6 @@ pub fn resolve_decl_full(
                 stmts.free();
             }
         }
-        case .None => {}
     }
 
     return body;
@@ -101,7 +174,6 @@ fn resolve_toplevel_stmt(
         case .Builtin(builtin) => {
             switch (resolve_builtin(ctx, program, &builtin)) {
                 case .Some(kind) => out.push(cir::TypedStmt.new(.Builtin(kind)));
-                case .None => {}
             }
         }
         case .GlobalVar(global_var) => {
@@ -312,16 +384,13 @@ fn resolve_ident(
 
     switch (ctx->lookup_local(name)) {
         case .Some(symbol_id) => return .Some(symbol_id);
-        case .None => {}
     }
 
     switch (ctx->lookup_symbol(name)) {
         case .Some(symbol_id) => return .Some(symbol_id);
-        case .None => {}
     }
 
     report_symbol_not_found(ctx->dctx, ctx->diag_allocator, ident->span, name);
-
     return .None;
 }
 
@@ -452,10 +521,8 @@ fn report_if_symbol_is_private(
                         entry->name.as_str_const()
                     );
                 }
-                case .Public => {}
             }
         }
-        case .None => {}
     }
 }
 
@@ -467,7 +534,6 @@ fn push_kind(out: Vec<cir::TypedStmt>*, kind: Option<cir::TypedStmtKind>) {
         case .Some(resolved) => {
             out->push(cir::TypedStmt.new(resolved));
         }
-        case .None => {}
     }
 }
 
@@ -1283,10 +1349,9 @@ fn collect_labels_in_block(
                     }
                     case .None => {
                         const label_id = ctx->next_label_id();
-                        var scope = ctx->current_local_scope();
 
-                        if (scope) {
-                            scope->insert_label(name, label_id);
+                        switch (ctx->current_local_scope()) {
+                            case .Some(scope) => scope->insert_label(name, label_id);
                         }
                     }
                 }
@@ -1444,13 +1509,7 @@ fn resolve_inline_asm(
     };
 }
 
-// FIXME: Should be renamed into something like
-// - FuncSig
-// - FuncDecl
-// - ??
-// This is only used inside traverse so name
-// must be set accordingly.
-pub struct ResolvedFuncSignature {
+pub struct FuncSig {
     pub generic_params: cir::TypedGenericParams,
     pub params: cir::TypedFuncParams,
     pub ret_type: cir::SemaType,
@@ -1493,7 +1552,7 @@ fn resolve_func_signature(
     params: const ast::ASTFuncParams*,
     ret_type: Option<ast::NodeId>,
     span: Span
-) Option<ResolvedFuncSignature> {
+) Option<FuncSig> {
     switch (resolve_generic_params(ctx, program, generic_params)) {
         case .Some(resolved_generic_params) => {
             enter_generic_scope(ctx, &resolved_generic_params);
@@ -1550,7 +1609,7 @@ fn resolve_func_signature(
 
             switch (ret) {
                 case .Some(resolved_ret) => {
-                    return .Some(ResolvedFuncSignature {
+                    return .Some(FuncSig {
                         generic_params: resolved_generic_params,
                         params: cir::TypedFuncParams {
                             list: typed_params,
@@ -1667,27 +1726,28 @@ fn insert_variable_symbol_to_current_scope(
     span: Span,
     var_decl_id: cir::VarDeclId
 ) bool {
-    var scope = ctx->current_local_scope();
+    switch (ctx->current_local_scope()) {
+        case .Some(scope) => {
+            if (scope->contains(name)) {
+                report_duplicate_symbol_in_this_scope(ctx->dctx, ctx->diag_allocator, span, name);
+                return false;
+            }
 
-    if (!scope) {
-        return false;
+            const symbol_id = ctx->registry->insert_symbol_entry(SymbolEntry {
+                name: String.from_str(ctx->allocator, name),
+                parent_scope_id: .Some(ctx->current_scope_id()),
+                kind: .Unresolved,
+                used: false,
+                vis_opt: .None,
+            });
+
+            ctx->registry->set_symbol_kind(symbol_id, .Var(var_decl_id));
+            scope->insert(name, symbol_id);
+        }
+        case .None => {
+            return false;
+        }
     }
-
-    if (scope->contains(name)) {
-        report_duplicate_symbol_in_this_scope(ctx->dctx, ctx->diag_allocator, span, name);
-        return false;
-    }
-
-    const symbol_id = ctx->registry->insert_symbol_entry(SymbolEntry {
-        name: String.from_str(ctx->allocator, name),
-        parent_scope_id: .Some(ctx->current_scope_id()),
-        kind: .Unresolved,
-        used: false,
-        vis_opt: .None,
-    });
-
-    ctx->registry->set_symbol_kind(symbol_id, .Var(var_decl_id));
-    scope->insert(name, symbol_id);
 
     return true;
 }
@@ -1727,45 +1787,6 @@ fn insert_func_params_into_current_scope(
     }
 
     return true;
-}
-
-// FIXME: Move to resolver/diags.cyrus
-fn report_if_duplicate_method_names(
-    ctx: TraverseContext*,
-    program: const ast::ASTProgram*,
-    object_name: const uint8*,
-    methods: const Vec<ast::NodeId>*
-) {
-    for (var i: usize = 0; i < methods->len(); i += 1) {
-        const node_id = methods->get_owned(i).unwrap();
-
-        switch (*operand_node(program, node_id)) {
-            case .FuncDef(func_def) => {
-                const name = func_def.ident.str.as_str_const();
-                var dup = false;
-
-                var j: usize = 0;
-
-                while (!dup && j < i) {
-                    const prev_node_id = methods->get_owned(j).unwrap();
-
-                    switch (*operand_node(program, prev_node_id)) {
-                        case .FuncDef(prev_func_def) => {
-                            if (prev_func_def.ident.str.as_str_const() == name) {
-                                dup = true;
-                            }
-                        }
-                    }
-
-                    j += 1;
-                }
-
-                if (dup) {
-                    report_duplicate_method_name(ctx->dctx, ctx->diag_allocator, func_def.span, object_name, name);
-                }
-            }
-        }
-    }
 }
 
 fn resolve_object_implements_interfaces(
@@ -1889,7 +1910,7 @@ fn resolve_methods(
     ast_methods: const Vec<ast::NodeId>*,
     object_name: const uint8*
 ) cir::MethodDecls {
-    report_if_duplicate_method_names(ctx, program, object_name, ast_methods);
+    report_if_duplicate_method_names(ctx->dctx, ctx->diag_allocator, program, object_name, ast_methods);
     const method_decls = resolve_method_decls(ctx, program, object_name, ast_methods);
     resolve_method_bodies(ctx, program, &method_decls, ast_methods);
     return method_decls;
@@ -1955,7 +1976,7 @@ fn resolve_global_var_stmt(
         name: String.from_str(ctx->allocator, name),
         global_var_decl_id,
         ty: var_ty,
-        expr: rhs, // FIXME: Rename expr to rhs in TypedGlobalVarStmt
+        rhs: rhs,
         is_const: global_var->is_const,
         is_static: global_var->is_static,
         is_undef: global_var->is_undef,
@@ -2232,7 +2253,7 @@ fn resolve_struct_stmt(
                 }
             }
 
-            report_if_duplicate_method_names(ctx, program, name, &struct_decl->methods);
+            report_if_duplicate_method_names(ctx->dctx, ctx->diag_allocator, program, name, &struct_decl->methods);
 
             const methods = resolve_methods(ctx, program, &struct_decl->methods, name);
 
@@ -2317,7 +2338,7 @@ fn resolve_enum_stmt(
                     return .None;
                 }
                 case .Some(variants) => {
-                    report_if_duplicate_method_names(ctx, program, name, &enum_decl->methods);
+                    report_if_duplicate_method_names(ctx->dctx, ctx->diag_allocator, program, name, &enum_decl->methods);
 
                     const methods = resolve_methods(ctx, program, &enum_decl->methods, name);
 
@@ -2403,7 +2424,7 @@ fn resolve_union_stmt(
                 }
             }
 
-            report_if_duplicate_method_names(ctx, program, name, &union_decl->methods);
+            report_if_duplicate_method_names(ctx->dctx, ctx->diag_allocator, program, name, &union_decl->methods);
 
             const methods = resolve_methods(ctx, program, &union_decl->methods, name);
 
@@ -2415,16 +2436,13 @@ fn resolve_union_stmt(
 
             return .Some(.Union(cir::TypedUnionStmt {
                 union_decl_id,
+                name: String.from_str(ctx->allocator, name),
                 generic_params,
                 impls,
-                modifiers: ast::ASTEnumModifiers { // FIXME Use ASTUnionModifiers!!!
-                    vis: union_decl->modifiers.vis,
-                    repr_attr: union_decl->modifiers.repr_attr,
-                },
-                fields: typed_fields,
                 methods,
+                fields: typed_fields,
                 align: union_decl->align,
-                name: String.from_str(ctx->allocator, name),
+                modifiers: union_decl->modifiers,
                 span: union_decl->ident.span,
             }));
         }
@@ -2560,12 +2578,10 @@ fn resolve_builtin(
             }));
         }
         case .BuiltinBlock(builtin_block) => {
-            // FIXME: Stage0 gates builtin blocks on the build profile; stage1 has
-            // no profile so every builtin stays active.
-            //
-            // This is temporary and must be replaced with a phase-aware
-            // Comptime function execution (CTFE) engine
-            //
+            if (!is_builtin_active(ctx->profile, builtin_block.name.str.as_str_const())) {
+                return .None;
+            }
+
             var args: Vec<cir::TypedExpr> = Vec.new(ctx->allocator);
 
             for (var i: usize = 0; i < builtin_block.args.len(); i += 1) {
@@ -2573,7 +2589,6 @@ fn resolve_builtin(
 
                 switch (resolve_expr_node(ctx, program, arg_node_id)) {
                     case .Some(resolved) => args.push(resolved);
-                    case .None => {}
                 }
             }
 
@@ -3124,8 +3139,8 @@ fn resolve_struct_init_type(
         }
     }
 
-    // FIXME: Report diag instead of panic!
-    @panic("struct init operand must be a path or type");
+    report_invalid_struct_init_operand(ctx->dctx, ctx->diag_allocator, span);
+    return .None;
 }
 
 fn resolve_struct_init(
@@ -3443,137 +3458,20 @@ fn resolve_literal_expr(
 
     switch (*token->kind) {
         case .Literal(lit) => {
-            return make_literal(ctx, lit, span);
+            return cir::literal_expr(ctx->allocator, lit, span);
         }
         case .True => {
-            return make_literal(ctx, .Bool(true), span);
+            return cir::literal_expr(ctx->allocator, .Bool(true), span);
         }
         case .False => {
-            return make_literal(ctx, .Bool(false), span);
+            return cir::literal_expr(ctx->allocator, .Bool(false), span);
         }
         case .Null => {
-            return make_literal(ctx, .Null, span);
+            return cir::literal_expr(ctx->allocator, .Null, span);
         }
     }
 
     @unreachable();
-}
-
-// FIXME: Rename and move to cir/index.cyrus
-fn make_literal(ctx: TraverseContext*, lit: Literal, span: Span) Option<cir::TypedExpr> {
-    switch (resolve_literal_type(ctx, &lit, span)) {
-        case .Some(ty) => {
-            return .Some(cir::TypedExpr {
-                kind: .Literal(cir::TypedLiteralExpr {
-                    ty,
-                    kind: lit,
-                    span,
-                }),
-                ty: .None,
-                val_cat: .Unknown,
-                analyzed: false,
-                span,
-            });
-        }
-        case .None => return .None;
-    }
-}
-
-/// Infers the type of a literal token.
-fn resolve_literal_type(
-    ctx: TraverseContext*,
-    literal: const Literal*,
-    span: Span
-) Option<Option<cir::SemaType>> {
-    switch (*literal) {
-        case .Integer { suffix, .. } => {
-            switch (suffix) {
-                case .None => return .Some(.None);
-                case .Some(sfx) => {
-                    switch (sfx) {
-                        case .ISize => return .Some(.Some(.Plain(.ISize)));
-                        case .USize => return .Some(.Some(.Plain(.USize)));
-                        case .Int8 => return .Some(.Some(.Plain(.Int8)));
-                        case .Int16 => return .Some(.Some(.Plain(.Int16)));
-                        case .Int32 => return .Some(.Some(.Plain(.Int32)));
-                        case .Int64 => return .Some(.Some(.Plain(.Int64)));
-                        case .Int128 => return .Some(.Some(.Plain(.Int128)));
-                        case .UInt8 => return .Some(.Some(.Plain(.UInt8)));
-                        case .UInt16 => return .Some(.Some(.Plain(.UInt16)));
-                        case .UInt32 => return .Some(.Some(.Plain(.UInt32)));
-                        case .UInt64 => return .Some(.Some(.Plain(.UInt64)));
-                        case .UInt128 => return .Some(.Some(.Plain(.UInt128)));
-                    }
-                }
-            }
-        }
-        case .Float { suffix, .. } => {
-            switch (suffix) {
-                case .None => return .Some(.None);
-                case .Some(sfx) => {
-                    switch (sfx) {
-                        case .Float16 => return .Some(.Some(.Plain(.Float16)));
-                        case .Float32 => return .Some(.Some(.Plain(.Float32)));
-                        case .Float64 => return .Some(.Some(.Plain(.Float64)));
-                        case .Float128 => return .Some(.Some(.Plain(.Float128)));
-                    }
-                }
-            }
-        }
-        case .String { value, suffix } => {
-            switch (suffix) {
-                case .None => {
-                    const uint8_ty: cir::SemaType = .Plain(.UInt8);
-                    return .Some(.Some(.Pointer(alloc_init(ctx->allocator, uint8_ty))));
-                }
-                case .Some(prefix) => {
-                    switch (prefix) {
-                        case .Byte => {
-                            const element_type: cir::SemaType = .Plain(.UInt8);
-                            const len = value.len() + 1;
-
-                            return .Some(.Some(.Array(cir::TypedArrayType {
-                                element_type: alloc_init(ctx->allocator, element_type),
-                                capacity: .Fixed(alloc_init(
-                                    ctx->allocator,
-                                    const_uint128_expr(@cast(uint128, len), span)
-                                )),
-                                span,
-                            })));
-                        }
-                    }
-                }
-            }
-        }
-        case .Null => {
-            const void_ty: cir::SemaType = .Plain(.Void);
-            return .Some(.Some(.Pointer(alloc_init(ctx->allocator, void_ty))));
-        }
-        case .Bool => {
-            return .Some(.Some(.Plain(.Bool)));
-        }
-        case .Char => {
-            return .Some(.Some(.Plain(.UInt8)));
-        }
-    }
-}
-
-// FIXME: Move this to cir/index.cyrus
-fn const_uint128_expr(value: uint128, span: Span) cir::TypedExpr {
-    return cir::TypedExpr {
-        kind: .Literal(cir::TypedLiteralExpr {
-            ty: .None,
-            kind: .Integer {
-                value: .Unsigned(value),
-                suffix: .None,
-            },
-            span,
-        }),
-        ty: .None,
-        val_cat: .RValue,
-        analyzed: false,
-        span,
-    };
 }
 
 fn resolve_type(
@@ -3649,9 +3547,8 @@ fn resolve_type(
                             return .Some(.Unresolved(.BuiltinFunc(boxed)));
                         }
                         case .BuiltinBlock => {
-                            // FIXME: Report diag instead of panic or if it would not be trigger
-                            // make it @unreachable()
-                            @panic("builtin block cannot be used as a type");
+                            report_builtin_block_as_type(ctx->dctx, ctx->diag_allocator, span);
+                            return .None;
                         }
                     }
                 }
@@ -4281,165 +4178,6 @@ fn resolve_enum_variants(
     return .Some(typed_variants);
 }
 
-// FIXME: This is temporary.
-// Will be replaced with a type formatter object
-fn type_display_name(
-    ctx: TraverseContext*,
-    program: const ast::ASTProgram*,
-    ty: const ast::ASTType*
-) String {
-    switch (*ty) {
-        case .Ident(ident) => {
-            return String.from_str(ctx->allocator, ident.str.as_str_const());
-        }
-        case .ModuleImport(module_import) => {
-            return format_module_segments(ctx->allocator, &module_import.segments);
-        }
-        case .Primitive(prim) => {
-            return String.from_str(ctx->allocator, primitive_type_name(prim));
-        }
-        case .SelfType => {
-            return String.from_str(ctx->allocator, "Self");
-        }
-        case .Pointer(inner) => {
-            const node = program->nodes.get_const(inner).unwrap();
-
-            var inner_name = String.new(ctx->allocator);
-
-            switch (*node) {
-                case .Type(inner_ty) => {
-                    var name = type_display_name(ctx, program, &inner_ty);
-                    inner_name.push('*');
-                    inner_name.push_str(name.as_str_const());
-                    name.free();
-                }
-                else => {
-                    inner_name.push('*');
-                }
-            }
-
-            return inner_name;
-        }
-        case .Const(inner) => {
-            const node = program->nodes.get_const(inner).unwrap();
-
-            var inner_name = String.new(ctx->allocator);
-
-            switch (*node) {
-                case .Type(inner_ty) => {
-                    var name = type_display_name(ctx, program, &inner_ty);
-                    inner_name.push_str("const ");
-                    inner_name.push_str(name.as_str_const());
-                    name.free();
-                }
-                else => {
-                    inner_name.push_str("const");
-                }
-            }
-
-            return inner_name;
-        }
-        else => {
-            return String.from_str(ctx->allocator, "type");
-        }
-    }
-}
-
-// FIXME: Move to ast.cyrus as ASTPrimitiveType.as_str()
-fn primitive_type_name(prim: ast::ASTPrimitiveType) const uint8* {
-    switch (prim) {
-        case .Int8 => return "int8";
-        case .Int16 => return "int16";
-        case .Int32 => return "int32";
-        case .Int64 => return "int64";
-        case .Int128 => return "int128";
-        case .IntPtr => return "intptr";
-        case .ISize => return "isize";
-        case .UInt8 => return "uint8";
-        case .UInt16 => return "uint16";
-        case .UInt32 => return "uint32";
-        case .UInt64 => return "uint64";
-        case .UInt128 => return "uint128";
-        case .UIntPtr => return "uintptr";
-        case .USize => return "usize";
-        case .Float16 => return "float16";
-        case .Float32 => return "float32";
-        case .Float64 => return "float64";
-        case .Float128 => return "float128";
-        case .Bool => return "bool";
-        case .Void => return "void";
-    }
-}
-
-/// (First Pass) Scans the top-level AST for declarations and registers 
-/// each declared name into the current module's symbol table.
-fn resolve_decl_names(
-    registry: GlobalSymbolRegistry*,
-    dctx: DiagContext*,
-    allocator: Allocator,
-    scope_id: cir::SymbolId,
-    program: const ast::ASTProgram*,
-    statements: const ast::ASTNodeList*
-) {
-    for (var i: usize = 0; i < statements->len; i += 1) {
-        const node_id = program->children.get_owned(statements->start + i).unwrap();
-        const node = program->nodes.get_const(node_id).unwrap();
-
-        switch (*node) {
-            case .ModuleDecl(module_decl) => {
-                resolve_module_decl_names(registry, dctx, allocator, scope_id, program, &module_decl);
-            }
-            case .Builtin(builtin) => {
-                resolve_builtin_decl_names(registry, dctx, allocator, scope_id, program, &builtin);
-            }
-            else => {
-                // Skip statement if it's not a declaration symbol
-                switch (node->decl_name()) {
-                    case .Some(decl_name) => {
-                        const name = decl_name.str.as_str_const();
-
-                        switch (registry->lookup_symbol_id_in_scope(scope_id, name)) {
-                            case .Some => {
-                                report_duplicate_symbol(dctx, allocator, decl_name.span, name);
-                            }
-                            case .None => {
-                                registry->insert_unresolved_symbol(scope_id, name, node->vis());
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
-}
-
-fn resolve_module_decl_names(
-    registry: GlobalSymbolRegistry*,
-    dctx: DiagContext*,
-    allocator: Allocator,
-    parent_scope_id: cir::SymbolId,
-    program: const ast::ASTProgram*,
-    module_decl: const ast::ASTModuleDecl*
-) {
-    const name = module_decl->ident.str.as_str_const();
-    var module_scope_id: cir::SymbolId;
-
-    switch (registry->lookup_symbol_id_in_scope(parent_scope_id, name)) {
-        case .Some(existing) => {
-            module_scope_id = registry->resolve_concrete_scope_id(existing);
-        }
-        case .None => {
-            module_scope_id = registry->insert_namespace_symbol(
-                parent_scope_id,
-                name,
-                .Some(module_decl->vis)
-            );
-        }
-    }
-
-    resolve_decl_names(registry, dctx, allocator, module_scope_id, program, &module_decl->stmts);
-}
-
 // TODO (stage2): Temporary! Will be replaced with a multi stage 
 // comptime evaluation engine.
 fn resolve_builtin_decl_names(
@@ -4448,13 +4186,15 @@ fn resolve_builtin_decl_names(
     allocator: Allocator,
     scope_id: cir::SymbolId,
     program: const ast::ASTProgram*,
-    builtin: const ast::ASTBuiltin*
+    builtin: const ast::ASTBuiltin*,
+    profile: Profile
 ) {
     switch (*builtin) {
         case .BuiltinBlock(builtin_block) => {
-            // stage0 additionally gates Debug/Release builtin blocks on the
-            // build profile (`is_builtin_active`); stage1 has no profile
-            // option yet, so every block is treated as active.
+            if (!is_builtin_active(profile, builtin_block.name.str.as_str_const())) {
+                return;
+            }
+
             switch (cir::lookup_builtin(builtin_block.name.str.as_str_const())) {
                 case .Some(builtin_kind) => {
                     const builtin_spec = cir::builtin_spec_of(builtin_kind);
@@ -4470,7 +4210,8 @@ fn resolve_builtin_decl_names(
                                     allocator,
                                     scope_id,
                                     program,
-                                    &block_stmt.stmts
+                                    &block_stmt.stmts,
+                                    profile
                                 );
                             }
                         }
@@ -4479,4 +4220,21 @@ fn resolve_builtin_decl_names(
             }
         }
     }
+}
+
+fn is_builtin_active(profile: Profile, name: const uint8*) bool {
+    switch (cir::lookup_builtin(name)) {
+        case .Some(builtin_kind) => {
+            const builtin_spec = cir::builtin_spec_of(builtin_kind);
+
+            if (builtin_spec.phase == .Resolver) {
+                switch (builtin_spec.kind) {
+                    case .Debug => return profile == .Debug;
+                    case .Release => return profile == .Release;
+                }
+            }
+        }
+    }
+
+    return true;
 }

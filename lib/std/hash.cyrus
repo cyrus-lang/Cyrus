@@ -20,6 +20,10 @@ pub fn hash_usize(val: usize) uint64 {
     return x;
 }
 
+pub fn uintptr_hash(key: uintptr) uint64 {
+    return hash_usize(@cast(usize, key));
+}
+
 pub fn hash_bytes(bytes: const uint8*, len: usize) uint64 {
     var hash: uint64 = 5381;
 
@@ -51,6 +55,11 @@ pub fn eq_str(a: const uint8*, b: const uint8*) bool {
 
 [[inline]]
 pub fn eq_usize(a: usize, b: usize) bool {
+    return a == b;
+}
+
+[[inline]]
+pub fn uintptr_eq(a: uintptr, b: uintptr) bool {
     return a == b;
 }
 

@@ -31,16 +31,23 @@ import cir::format{
 const INDEX_MODULE_FILENAME = "index.cyrus";
 const CYRUS_EXTENSION = ".cyrus";
 
+pub enum Profile {
+    Debug,
+    Release,
+}
+
 pub struct ResolverOptions {
     pub stdlib_path: Option<String>,
     pub source_dirs: Vec<String>,
     pub base_path: String,
+    pub profile: Profile,
 
     pub fn new(allocator: Allocator) Self {
         return Self {
             base_path: String.from_str(allocator, "."),
             source_dirs: Vec.new(allocator),
             stdlib_path: .None,
+            profile: .Debug,
         };
     }
 

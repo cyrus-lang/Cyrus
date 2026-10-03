@@ -322,8 +322,9 @@ pub struct App {
             return .Error(.MissingValue { opt: name });
         }
 
-        // Consume the value
-        *i += 1;
+        if (!is_assign) {
+            *i += 1;
+        }
 
         // Parse the value
         value = self->parse_value(next_arg);

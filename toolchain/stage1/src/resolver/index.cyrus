@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 The Cyrus Language
 
+import std::mem::arena{ArenaAllocator};
 import std::mem{Allocator, alloc_init};
 import std::io{Writer, StdoutWriter};
 import std::collections{Vec};
@@ -8,7 +9,6 @@ import std::os::dir{is_file};
 import std::option{Option};
 import std::string{String};
 import std::path{Path};
-import std::mem::arena{ArenaAllocator};
 
 import resolver::traverse{bind_program_decl_names, resolve_decl_full};
 import resolver::symbols{GlobalSymbolRegistry};
@@ -41,8 +41,8 @@ import resolver::modules{
     visit_key, 
 };
 import driver{CompilerDriver};
-import source{SourceId};
 import tokens{SourceTokens};
+import source{SourceId};
 import cir{SymbolId};
 
 pub struct SourceProgram {
@@ -59,53 +59,41 @@ pub struct Resolver {
     pub opts: ResolverOptions*,
     pub driver: CompilerDriver*,
     pub global_symbols: GlobalSymbolRegistry,
+    pub decl_tables: DeclTables,
     module_symbols: Vec<SourceSymbolBinding>,
+    program_trees: Vec<TypedProgramTree>,
     source_programs: Vec<SourceProgram>,
     visiting: VisitingModule,
-    decl_tables: DeclTables,
-    program_trees: Vec<TypedProgramTree>,
-    pass_arena: ArenaAllocator,
+    arena: ArenaAllocator,
 
     pub fn new(
         allocator: Allocator,
         driver: CompilerDriver*,
         opts: ResolverOptions*
     ) Self {
-        // The pass arena is stored by value; all of its state lives behind
-        // the `nodes`/`live` pointers, so every copy of the struct addresses
-        // the same underlying arena. `dynamic` boxes rvalues (including
-        // derefs) into a scope-local temp, so arena interfaces must be formed
-        // from the stable `self->pass_arena` field lvalue -- see resolve_entry.
-        const pass_arena = ArenaAllocator.new(allocator, PASS_ARENA_SIZE);
+        const arena = ArenaAllocator.new(allocator, PASS_ARENA_SIZE);
         var decl_tables = DeclTables.new(allocator);
 
         return Self {
             allocator,
             driver,
             opts,
-            global_symbols: GlobalSymbolRegistry.new(allocator),
-            visiting: VisitingModule.new(allocator),
-            module_symbols: Vec.new(allocator),
-            source_programs: Vec.new(allocator),
+            arena,
             decl_tables,
             program_trees: Vec.new(allocator),
-            pass_arena,
+            module_symbols: Vec.new(allocator),
+            source_programs: Vec.new(allocator),
+            visiting: VisitingModule.new(allocator),
+            global_symbols: GlobalSymbolRegistry.new(allocator),
         };
     }
 
-    /// Register the entry module and resolve it like any other module.
     pub fn resolve_entry(
         self: Self*,
         source_id: SourceId,
         file_path: const uint8*,
         program: const ASTProgram*
     ) {
-        // Bind the decl tables to the pass arena. The arena interface has to
-        // be formed from the resolver's field (an lvalue that outlives this
-        // frame); `dynamic` of an rvalue would dangle once `new` returns.
-        self->decl_tables.free();
-        self->decl_tables = DeclTables.new(dynamic self->pass_arena);
-
         const module_name = module_name_from_file_path(
             self->allocator,
             self->opts,
@@ -153,10 +141,8 @@ pub struct Resolver {
         self->global_symbols.free();
         self->visiting.free();
         self->program_trees.free();
-
-        // Bulk-free every allocation made by the second resolution pass.
         self->decl_tables.free();
-        self->pass_arena.destroy();
+        self->arena.destroy();
     }
 
     fn resolve_module(
@@ -176,25 +162,7 @@ pub struct Resolver {
 
         self->visiting.push_active(key);
 
-        var safe = true;
-
-        switch (program->statements) {
-            case .Some(statements) => {
-                for (var i: usize = 0; i < statements.len; i += 1) {
-                    const node_id = program->children.get_owned(statements.start + i).unwrap();
-                    const node = program->nodes.get_const(node_id).unwrap();
-
-                    switch (*node) {
-                        case .Import(imp) => {
-                            if (!self->resolve_import(module_symbol_id, &imp, file_path)) {
-                                safe = false;
-                                break;
-                            }
-                        }
-                    }
-                }
-            }
-        }
+        const safe = self->resolve_module_imports(module_symbol_id, program, file_path);
 
         if (safe) {
             bind_program_decl_names(
@@ -202,16 +170,18 @@ pub struct Resolver {
                 &self->driver->dctx,
                 allocator,
                 module_symbol_id,
-                program
+                program,
+                self->opts->profile
             );
 
             var ctx = TraverseContext.new(
-                dynamic self->pass_arena,
+                dynamic self->arena,
                 self->allocator,
                 &self->driver->dctx,
                 &self->global_symbols,
                 &self->decl_tables,
                 source_id,
+                self->opts->profile,
                 module_symbol_id
             );
 
@@ -228,15 +198,44 @@ pub struct Resolver {
         return safe;
     }
 
-    /// Records the resolved (typed) tree for one module.
+    /// Resolves this module's import statements in order. 
+    /// Will stop at the first failure so later imports 
+    /// cannot cascade errors.
+    fn resolve_module_imports(
+        self: Self*,
+        module_symbol_id: SymbolId,
+        program: const ASTProgram*,
+        file_path: const uint8*
+    ) bool {
+        switch (program->statements) {
+            case .Some(statements) => {
+                for (var i: usize = 0; i < statements.len; i += 1) {
+                    const node_id = program->children.get_owned(statements.start + i).unwrap();
+                    const node = program->nodes.get_const(node_id).unwrap();
+
+                    switch (*node) {
+                        case .Import(imp) => {
+                            if (!self->resolve_import(module_symbol_id, &imp, file_path)) {
+                                return false;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        return true;
+    }
+
     fn push_program_tree(
         self: Self*,
         source_id: SourceId,
         file_path: const uint8*,
         body: Vec<TypedStmt>,
     ) {
-        const allocator: Allocator = dynamic self->pass_arena;
-        var module_name = module_name_from_file_path(allocator, self->opts, file_path);
+        const allocator: Allocator = dynamic self->arena;
+
+        const module_name = module_name_from_file_path(allocator, self->opts, file_path);
 
         self->program_trees.push(TypedProgramTree {
             file_id: source_id,

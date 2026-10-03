@@ -5,9 +5,10 @@ import std::collections{Vec};
 import std::option{Option};
 import std::mem{Allocator};
 
-import cir; // FIXME: stage0 resolver bug
 import resolver::symbols{GlobalSymbolRegistry, SymbolEntry};
 import resolver::scopes{LocalScope, GenericScope};
+import cir{GenericParamId, LabelId, SymbolId};
+import resolver::loader{Profile};
 import cir::tables{DeclTables};
 import diags{DiagContext};
 import source{SourceId};
@@ -19,6 +20,7 @@ pub struct TraverseContext {
     pub registry: GlobalSymbolRegistry*,
     pub decl_tables: DeclTables*,
     pub file_id: SourceId,
+    pub profile: Profile,
     current_scope: Option<cir::SymbolId>,
     scope_table_stack: Vec<cir::SymbolId>,
     local_scopes: Vec<LocalScope>,
@@ -32,6 +34,7 @@ pub struct TraverseContext {
         registry: GlobalSymbolRegistry*,
         decl_tables: DeclTables*,
         file_id: SourceId,
+        profile: Profile,
         module_scope_id: cir::SymbolId,
     ) Self {
         return Self {
@@ -41,6 +44,7 @@ pub struct TraverseContext {
             registry,
             decl_tables,
             file_id,
+            profile,
             current_scope: .Some(module_scope_id),
             scope_table_stack: Vec.new(allocator),
             local_scopes: Vec.new(allocator),
@@ -82,13 +86,12 @@ pub struct TraverseContext {
         scope.free();
     }
 
-    // FIXME: This should return an Option<LocalScope*> instead of null
-    pub fn current_local_scope(self: Self*) LocalScope* {
+    pub fn current_local_scope(self: Self*) Option<LocalScope*> {
         if (self->local_scopes.len() == 0) {
-            return null;
+            return .None;
         }
 
-        return self->local_scopes.get(self->local_scopes.len() - 1).unwrap();
+        return .Some(self->local_scopes.get(self->local_scopes.len() - 1).unwrap());
     }
 
     pub fn lookup_local(self: Self*, name: const uint8*) Option<cir::SymbolId> {

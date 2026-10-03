@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 The Cyrus Language
 
+import std::mem{Allocator, alloc_init};
 import std::collections{Vec};
 import std::option{Option};
 import std::string{String};
-import std::mem{Allocator};
 import std::libc{strcmp};
 
 import tokens{Span, TokenKind, Literal};
@@ -1907,6 +1907,119 @@ pub struct TypedSizeOfExpr {
     pub span: Span,
 }
 
+pub fn literal_expr(allocator: Allocator, lit: Literal, span: Span) Option<TypedExpr> {
+    const ty = resolve_literal_type(allocator, &lit, span);
+
+    return .Some(TypedExpr {
+        kind: .Literal(TypedLiteralExpr {
+            ty,
+            kind: lit,
+            span,
+        }),
+        ty: .None,
+        val_cat: .Unknown,
+        analyzed: false,
+        span,
+    });
+}
+
+/// Infers the type of a literal token. 
+/// Returns `.None` when the literal carries no explicit type.
+pub fn resolve_literal_type(
+    allocator: Allocator,
+    literal: const Literal*,
+    span: Span
+) Option<SemaType> {
+    switch (*literal) {
+        case .Integer { suffix, .. } => {
+            switch (suffix) {
+                case .None => return .None;
+                case .Some(sfx) => {
+                    switch (sfx) {
+                        case .ISize => return .Some(.Plain(.ISize));
+                        case .USize => return .Some(.Plain(.USize));
+                        case .Int8 => return .Some(.Plain(.Int8));
+                        case .Int16 => return .Some(.Plain(.Int16));
+                        case .Int32 => return .Some(.Plain(.Int32));
+                        case .Int64 => return .Some(.Plain(.Int64));
+                        case .Int128 => return .Some(.Plain(.Int128));
+                        case .UInt8 => return .Some(.Plain(.UInt8));
+                        case .UInt16 => return .Some(.Plain(.UInt16));
+                        case .UInt32 => return .Some(.Plain(.UInt32));
+                        case .UInt64 => return .Some(.Plain(.UInt64));
+                        case .UInt128 => return .Some(.Plain(.UInt128));
+                    }
+                }
+            }
+        }
+        case .Float { suffix, .. } => {
+            switch (suffix) {
+                case .None => return .None;
+                case .Some(sfx) => {
+                    switch (sfx) {
+                        case .Float16 => return .Some(.Plain(.Float16));
+                        case .Float32 => return .Some(.Plain(.Float32));
+                        case .Float64 => return .Some(.Plain(.Float64));
+                        case .Float128 => return .Some(.Plain(.Float128));
+                    }
+                }
+            }
+        }
+        case .String { value, suffix } => {
+            switch (suffix) {
+                case .None => {
+                    const uint8_ty: SemaType = .Plain(.UInt8);
+                    return .Some(.Pointer(alloc_init(allocator, uint8_ty)));
+                }
+                case .Some(prefix) => {
+                    switch (prefix) {
+                        case .Byte => {
+                            const element_type: SemaType = .Plain(.UInt8);
+                            const len = value.len() + 1;
+
+                            return .Some(.Array(TypedArrayType {
+                                element_type: alloc_init(allocator, element_type),
+                                capacity: .Fixed(alloc_init(
+                                    allocator,
+                                    const_untyped_integer_expr(@cast(uint128, len), span)
+                                )),
+                                span,
+                            }));
+                        }
+                    }
+                }
+            }
+        }
+        case .Null => {
+            const void_ty: SemaType = .Plain(.Void);
+            return .Some(.Pointer(alloc_init(allocator, void_ty)));
+        }
+        case .Bool => {
+            return .Some(.Plain(.Bool));
+        }
+        case .Char => {
+            return .Some(.Plain(.UInt8));
+        }
+    }
+}
+
+pub fn const_untyped_integer_expr(value: uint128, span: Span) TypedExpr {
+    return TypedExpr {
+        kind: .Literal(TypedLiteralExpr {
+            ty: .None,
+            kind: .Integer {
+                value: .Unsigned(value),
+                suffix: .None,
+            },
+            span,
+        }),
+        ty: .None,
+        val_cat: .RValue,
+        analyzed: false,
+        span,
+    };
+}
+
 pub struct TypedLiteralExpr {
     pub ty: Option<SemaType>,
     pub kind: Literal,
@@ -2357,7 +2470,7 @@ pub struct TypedUnionStmt {
     pub union_decl_id: UnionDeclId,
     pub generic_params: TypedGenericParams,
     pub impls: Vec<TypedImplementInterface>,
-    pub modifiers: ast::ASTEnumModifiers,
+    pub modifiers: ast::ASTUnionModifiers,
     pub fields: Vec<TypedUnionField>,
     pub methods: MethodDecls,
     pub align: Option<usize>,
@@ -2392,7 +2505,7 @@ pub struct TypedGlobalVarStmt {
     pub file_id: SourceId,
     pub global_var_decl_id: GlobalVarDeclId,
     pub modifiers: ast::ASTGlobalVarModifiers,
-    pub expr: Option<TypedExpr>, // FIXME: Rename expr to rhs in TypedGlobalVarStmt
+    pub rhs: Option<TypedExpr>,
     pub ty: Option<SemaType>,
     pub name: String,
     pub is_const: bool,
