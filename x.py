@@ -1473,6 +1473,23 @@ def run_single_test(
     return TestOutcome("passed", relative_name)
 
 
+def _is_module_entry(f: Path) -> bool:
+    """True for annotation-less `index.cyrus` module entry files.
+
+    These are imported as modules by sibling tests; running them standalone
+    would require a `main` that would hijack the importing test's entry point.
+    """
+    if f.name != "index.cyrus":
+        return False
+    try:
+        content = f.read_text()
+    except OSError:
+        return True
+    if "//~" in content or "/*@" in content:
+        return False
+    return re.search(r"//\s*@(stdout|stderr|stdin|args|parse|beforeCompile|compilerArgs)\b", content) is None
+
+
 def discover_tests(paths: Sequence[Path], stage: str) -> Tuple[Path, List[Path]]:
     """Return (base_path, test_files) for the given paths/stage."""
     test_files: List[Path] = []
@@ -1491,7 +1508,10 @@ def discover_tests(paths: Sequence[Path], stage: str) -> Tuple[Path, List[Path]]
             test_files.append(p)
             base_path = base_path or p.parent
         elif p.is_dir():
-            found = sorted(f for f in p.rglob("*.cyrus") if not f.name.startswith("_"))
+            found = sorted(
+                f for f in p.rglob("*.cyrus")
+                if not f.name.startswith("_") and not _is_module_entry(f)
+            )
             test_files.extend(found)
             base_path = base_path or p
         else:

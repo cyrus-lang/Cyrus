@@ -52,6 +52,11 @@ pub struct SourceProgram {
     pub tokens: SourceTokens
 }
 
+struct GroupImportRecord {
+    pub scope: SymbolId,
+    pub alias: String,
+}
+
 const PASS_ARENA_SIZE: usize = 65536;
 
 pub struct Resolver {
@@ -60,6 +65,7 @@ pub struct Resolver {
     pub driver: CompilerDriver*,
     pub global_symbols: GlobalSymbolRegistry,
     pub decl_tables: DeclTables,
+    group_imports: Vec<GroupImportRecord>,
     module_symbols: Vec<SourceSymbolBinding>,
     program_trees: Vec<TypedProgramTree>,
     source_programs: Vec<SourceProgram>,
@@ -85,6 +91,7 @@ pub struct Resolver {
             source_programs: Vec.new(allocator),
             visiting: VisitingModule.new(allocator),
             global_symbols: GlobalSymbolRegistry.new(allocator),
+            group_imports: Vec.new(allocator),
         };
     }
 
@@ -140,6 +147,11 @@ pub struct Resolver {
         self->module_symbols.free();
         self->global_symbols.free();
         self->visiting.free();
+        for (var i: usize = 0; i < self->group_imports.len(); i += 1) {
+            var record = self->group_imports.get(i).unwrap();
+            record->alias.free();
+        }
+        self->group_imports.free();
         self->program_trees.free();
         self->decl_tables.free();
         self->arena.destroy();
@@ -292,17 +304,13 @@ pub struct Resolver {
 
         var alias = group_alias(allocator, imp);
 
-        // A group alias bound in this scope means the module was
-        // already imported here, so report an error and skip the import
         switch (alias) {
             case .Some(name) => {
-                switch (self->global_symbols.lookup_symbol_id_in_scope(parent_scope_id, name.as_str_const())) {
-                    case .Some => {
-                        report_import_twice(dctx, allocator, span, name.as_str_const());
-                        name.free();
-                        resolved.free();
-                        return false;
-                    }
+                if (self->group_import_already_done(parent_scope_id, name.as_str_const())) {
+                    report_import_twice(dctx, allocator, span, name.as_str_const());
+                    name.free();
+                    resolved.free();
+                    return false;
                 }
             }
         }
@@ -438,6 +446,10 @@ pub struct Resolver {
                     name.as_str_const(),
                     current_symbol
                 );
+                self->group_imports.push(GroupImportRecord {
+                    scope: parent_scope_id,
+                    alias: String.from_str(allocator, name.as_str_const()),
+                });
                 name.free();
                 return true;
             }
@@ -445,6 +457,22 @@ pub struct Resolver {
                 return self->resolve_single_import(parent_scope_id, current_symbol, imp);
             }
         }
+    }
+
+    fn group_import_already_done(
+        self: Self*,
+        scope: SymbolId,
+        alias: const uint8*
+    ) bool {
+        for (var i: usize = 0; i < self->group_imports.len(); i += 1) {
+            const record = self->group_imports.get_const(i).unwrap();
+            
+            if (record->scope == scope && record->alias.as_str_const() == alias) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     fn resolve_single_import(
