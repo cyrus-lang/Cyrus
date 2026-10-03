@@ -3,6 +3,9 @@
  
 import std::option{Option};
 
+// NOTE: This library is temporary and will be deletect 
+// as soon as we implemented slices in language level.
+
 pub struct Slice<T> {
     ptr: const T*,
     len: usize,

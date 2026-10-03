@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 The Cyrus Language
 
-import std::string{String, free_string_vec};
+import std::string{String, free_strings};
 import std::path{normalize_abs};
 import std::os::dir{cwd};
 import std::collections{Vec};
@@ -43,8 +43,8 @@ pub struct VisitingModule {
     }
 
     pub fn free(self: Self*) {
-        free_string_vec(&self->active);
-        free_string_vec(&self->done);
+        free_strings(&self->active);
+        free_strings(&self->done);
     }
 
     [[inline]]
