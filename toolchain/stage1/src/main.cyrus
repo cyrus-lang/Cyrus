@@ -34,6 +34,7 @@ pub fn main(argc: c_int, argv: c_char**) {
     const debug_opt = opts.add(*cli::Opt.new(allocator, "debug").short('g')->help("Build with debug symbols"));
     const verbose_opt = opts.add(*cli::Opt.new(allocator, "verbose").short('v')->help("Increase verbosity"));
     const stdlib_opt = opts.add(*cli::Opt.new(allocator, "stdlib").arg(.Str)->help("Stdlib root directory"));
+    const profile_opt = opts.add(*cli::Opt.new(allocator, "profile").arg(.Str)->help("Build profile (debug|release)"));
     const quiet_opt = opts.add(*cli::Opt.new(allocator, "quiet").short('q')->help("Suppress output"));
     const target_opt = opts.add(*cli::Opt.new(allocator, "target").short('t')->help("Target triple"));
     const color_opt = opts.add(*cli::Opt.new(allocator, "color").help("Colored output"));
@@ -88,7 +89,8 @@ pub fn main(argc: c_int, argv: c_char**) {
         cli::Cmd.new(allocator, "resolve", command_resolve)
         .help("Resolve modules and dump the symbol table")
         ->optional_argument(.Str)
-        ->add_option(stdlib_opt);
+        ->add_option(stdlib_opt)
+        ->add_option(profile_opt);
     
     const version_cmd = 
         cli::Cmd.new(allocator, "version", command_version)
@@ -186,6 +188,7 @@ fn command_resolve(ctx: cli::ActionContext) {
     opts.base_path = cwd(allocator);
     opts.source_dirs.push(dir_of_file(allocator, file_path));
     apply_stdlib_option(allocator, ctx.opts, &opts);
+    apply_profile_option(allocator, ctx.opts, &opts);
 
     var resolver = Resolver.new(allocator, &driver, &opts);
     defer resolver.free();
@@ -237,4 +240,26 @@ fn apply_stdlib_option(allocator: Allocator, ctx_opts: const cli::Opts*, opts: R
     }
 
     opts->stdlib_path = .Some(value_str.clone(allocator));
+}
+
+fn apply_profile_option(allocator: Allocator, ctx_opts: const cli::Opts*, opts: ResolverOptions*) {
+    switch (ctx_opts->find("profile")) case .Some(opt) else {
+        return;
+    }
+
+    switch (opt->values.get(0)) case .Some(value) else {
+        return;
+    }
+
+    switch (*value) case .Str(value_str) else {
+        return;
+    }
+    if (value_str.as_str_const() == "release") {
+        opts->profile = .Release;
+    } else if (value_str.as_str_const() == "debug") {
+        opts->profile = .Debug;
+    } else {
+        exit_with_compile_error("invalid profile (expected `debug` or `release`)");
+        @unreachable();
+    }
 }

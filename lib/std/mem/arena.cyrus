@@ -4,25 +4,13 @@
 import std::collections::linked_list{SinglyLinkedList, SinglyNode};
 import std::mem{Allocator, alloc_init, align_up, is_power_of_two};
 import std::collections::hash_map{HashMap};
-import std::hash{hash_usize, eq_usize};
+import std::hash{uintptr_hash, uintptr_eq};
 import std::libc{memmove};
-
-pub const ARENA_DEFAULT_ALIGNMENT = @sizeof(uintptr);
 
 struct ArenaNode {
     pub ptr: uint8*,
     pub capacity: usize,
     pub used: usize,
-}
-
-// FIXME: Rename to uintptr_hash and move to std::hash
-fn live_hash(key: uintptr) uint64 {
-    return hash_usize(@cast(usize, key));
-}
-
-// FIXME: Rename to uintptr_eq and move to std::hash
-fn live_eq(a: uintptr, b: uintptr) bool {
-    return a == b;
 }
 
 pub struct ArenaAllocator : Allocator {
@@ -36,7 +24,10 @@ pub struct ArenaAllocator : Allocator {
 
         var nodes = alloc_init(child_allocator, linked_list);
         var map: HashMap<uintptr, usize> = HashMap.with_hasher(
-            child_allocator, 64, live_hash, live_eq
+            child_allocator,
+            64,
+            uintptr_hash,
+            uintptr_eq
         );
         var live = alloc_init(child_allocator, map);
 
@@ -52,7 +43,7 @@ pub struct ArenaAllocator : Allocator {
     }
 
     pub fn alloc(self: Self*, size: usize) void* {
-        return self->alloc_aligned(size, ARENA_DEFAULT_ALIGNMENT);
+        return self->alloc_aligned(size, 8);
     }
 
     pub fn alloc_aligned(self: Self*, size: usize, align: usize) void* {
@@ -141,6 +132,7 @@ pub struct ArenaAllocator : Allocator {
         const new_ptr = self->alloc(size);
 
         var copy_size = old_size;
+
         if (copy_size > size) {
             copy_size = size;
         }
@@ -181,6 +173,7 @@ pub struct ArenaAllocator : Allocator {
             self->child_allocator.free(node->value.ptr);
             self->child_allocator.free(node);
         }
+
         self->child_allocator.free(self->nodes);
     }
 

@@ -1,11 +1,13 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 The Cyrus Language
 
+import std::collections{Vec};
 import std::mem{Allocator};
 import std::string{String};
 
 import diags{DiagContext, Diag};
 import tokens{Span};
+import parser::ast;
 
 pub fn report_module_not_found(
     dctx: DiagContext*,
@@ -470,4 +472,74 @@ pub fn report_duplicate_method_name(
 
     msg.free();
     help.free();
+}
+
+pub fn report_if_duplicate_method_names(
+    dctx: DiagContext*,
+    allocator: Allocator,
+    program: const ast::ASTProgram*,
+    object_name: const uint8*,
+    methods: const Vec<ast::NodeId>*
+) {
+    for (var i: usize = 0; i < methods->len(); i += 1) {
+        const node_id = methods->get_owned(i).unwrap();
+
+        switch (*program->nodes.get_const(node_id).unwrap()) {
+            case .FuncDef(func_def) => {
+                const name = func_def.ident.str.as_str_const();
+                var dup = false;
+
+                var j: usize = 0;
+
+                while (!dup && j < i) {
+                    const prev_node_id = methods->get_owned(j).unwrap();
+
+                    switch (*program->nodes.get_const(prev_node_id).unwrap()) {
+                        case .FuncDef(prev_func_def) => {
+                            if (prev_func_def.ident.str.as_str_const() == name) {
+                                dup = true;
+                            }
+                        }
+                    }
+
+                    j += 1;
+                }
+
+                if (dup) {
+                    report_duplicate_method_name(dctx, allocator, func_def.span, object_name, name);
+                }
+            }
+        }
+    }
+}
+
+pub fn report_invalid_struct_init_operand(
+    dctx: DiagContext*,
+    allocator: Allocator,
+    span: Span,
+) {
+    var msg = String.from_str(allocator, "struct initializer operand must be a type or path");
+
+    var help = String.new(allocator);
+    help.push_str("use a type name, identifier, or module path");
+
+    const diag = Diag.new(allocator, .Error, msg.as_str_const(), span);
+    diag->help(help.as_str_const());
+    dctx->report(diag);
+
+    msg.free();
+    help.free();
+}
+
+pub fn report_builtin_block_as_type(
+    dctx: DiagContext*,
+    allocator: Allocator,
+    span: Span,
+) {
+    var msg = String.from_str(allocator, "builtin block cannot be used as a type");
+
+    const diag = Diag.new(allocator, .Error, msg.as_str_const(), span);
+    dctx->report(diag);
+
+    msg.free();
 }

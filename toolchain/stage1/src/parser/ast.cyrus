@@ -1405,7 +1405,32 @@ pub enum ASTPrimitiveType {
     Float64,
     Float128,
     Bool,
-    Void
+    Void,
+
+    pub fn as_str(self: const Self*) const uint8* {
+        switch (*self) {
+            case .Int8 => return "int8";
+            case .Int16 => return "int16";
+            case .Int32 => return "int32";
+            case .Int64 => return "int64";
+            case .Int128 => return "int128";
+            case .IntPtr => return "intptr";
+            case .ISize => return "isize";
+            case .UInt8 => return "uint8";
+            case .UInt16 => return "uint16";
+            case .UInt32 => return "uint32";
+            case .UInt64 => return "uint64";
+            case .UInt128 => return "uint128";
+            case .UIntPtr => return "uintptr";
+            case .USize => return "usize";
+            case .Float16 => return "float16";
+            case .Float32 => return "float32";
+            case .Float64 => return "float64";
+            case .Float128 => return "float128";
+            case .Bool => return "bool";
+            case .Void => return "void";
+        }
+    }
 }
 
 /* ************* Operators ************* */

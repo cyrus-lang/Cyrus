@@ -41,7 +41,6 @@ pub struct ASTDump {
                     self->indent -= 1;
                 }
             }
-            case .None => {}
         }
 
         self->indent -= 1;
