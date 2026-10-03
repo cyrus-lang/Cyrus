@@ -31,4 +31,8 @@ impl ScopeTable {
     pub fn contains(&self, name: &str) -> bool {
         self.names.contains_key(name)
     }
+
+    pub fn iter(&self) -> impl Iterator<Item = (&String, &SymbolID)> {
+        self.names.iter()
+    }
 }

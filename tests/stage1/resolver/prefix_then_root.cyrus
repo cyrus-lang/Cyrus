@@ -1,0 +1,42 @@
+// @resolve
+
+import helpers::_util{helper};
+import helpers;
+
+pub fn main() {
+    helper();
+    helpers::marker();
+}
+
+/*@resolve
+SYMBOL TREE
+
+[0] Namespace GLOBAL
+├── tests_stage1_resolver_prefix_then_root -> [1]
+├── tests_stage1_resolver_helpers__util -> [2]
+├── tests_stage1_resolver_helpers_index -> [7]
+├── [1] Module tests_stage1_resolver_prefix_then_root
+│   ├── helpers -> [10]
+│   ├── helper -> [6]
+│   ├── main -> [11]
+│   ├── [3] Module helpers
+│   │   ├── _util -> [4]
+│   │   └── [4] ProxiedModule _util -> [2]
+│   ├── [6] ProxiedSymbol helper -> [5]
+│   ├── [8] ProxiedModule helpers -> [7]
+│   ├── [10] ProxiedModule helpers -> [7]
+│   └── [11] Func main
+├── [2] Module _util
+│   ├── helper -> [5]
+│   └── [5] Func helper
+└── [7] Module helpers
+    ├── _util -> [4]
+    ├── marker -> [9]
+    └── [9] Func marker
+
+SOURCE MAP
+
+├── [0] tests/stage1/resolver/prefix_then_root.cyrus
+├── [1] tests/stage1/resolver/helpers/_util.cyrus
+└── [2] tests/stage1/resolver/helpers/index.cyrus
+@resolve*/

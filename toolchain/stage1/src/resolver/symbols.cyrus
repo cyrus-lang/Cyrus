@@ -272,6 +272,8 @@ pub struct GlobalSymbolRegistry {
         name: const uint8*,
         target_symbol_id: cir::SymbolId,
     ) cir::SymbolId {
+        self->upgrade_virtual_directory_module(parent_scope_id, name, target_symbol_id);
+
         const proxy_id = self->insert_symbol_entry(SymbolEntry {
             name: String.from_str(self->allocator, name),
             parent_scope_id: .Some(parent_scope_id),
@@ -282,6 +284,33 @@ pub struct GlobalSymbolRegistry {
 
         self->insert_symbol_name(parent_scope_id, proxy_id, name);
         return proxy_id;
+    }
+
+    fn upgrade_virtual_directory_module(
+        self: Self*,
+        parent_scope_id: cir::SymbolId,
+        name: const uint8*,
+        target_symbol_id: cir::SymbolId,
+    ) {
+        switch (self->lookup_symbol_id_in_scope(parent_scope_id, name)) case .Some(existing) else {
+            return;
+        }
+
+        const entry = self->entries.get_const(existing).unwrap();
+
+        switch (entry->kind) {
+            case .Module(module) => {
+                for (var i: usize = 0; i < module.scope->bindings.len(); i += 1) {
+                    const binding = module.scope->bindings.get_const(i).unwrap();
+
+                    self->insert_symbol_name(
+                        target_symbol_id,
+                        binding->symbol_id,
+                        binding->name.as_str_const()
+                    );
+                }
+            }
+        }
     }
 
     pub fn set_symbol_kind(self: Self*, symbol_id: cir::SymbolId, kind: SymbolEntryKind) {
