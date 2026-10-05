@@ -321,7 +321,7 @@ pub fn file_stem(allocator: Allocator, path: const uint8*) String {
     return str_slice(allocator, path, start, end);
 }
 
-pub fn normalize_abs(allocator: Allocator, cwd: const uint8*, path: const uint8*) Option<String> {
+pub fn canonicalize_absolute_path(allocator: Allocator, cwd: const uint8*, path: const uint8*) Option<String> {
     var components: Vec<String> = Vec.new(allocator);
     const absolute = (path[0] == '/') || (cwd[0] == '/');
 
@@ -376,12 +376,12 @@ pub fn same_file(allocator: Allocator, a: const uint8*, b: const uint8*) bool {
     var right: String;
     var left: String;
 
-    switch (normalize_abs(allocator, cwd.as_str_const(), a)) {
+    switch (canonicalize_absolute_path(allocator, cwd.as_str_const(), a)) {
         case .Some(path) => left = path;
         case .None => left = String.from_str(allocator, a);
     }
 
-    switch (normalize_abs(allocator, cwd.as_str_const(), b)) {
+    switch (canonicalize_absolute_path(allocator, cwd.as_str_const(), b)) {
         case .Some(path) => right = path;
         case .None => right = String.from_str(allocator, b);
     }
@@ -396,7 +396,7 @@ pub fn same_file(allocator: Allocator, a: const uint8*, b: const uint8*) bool {
 }
 
 /// Split `path` into components, resolving `.` and `..` in place.
-/// Returns `.false` when `..` walks above the root of a stacked path.
+/// Returns `false` when `..` walks above the root path of the project.
 fn push_components(allocator: Allocator, components: Vec<String>*, path: const uint8*) bool {
     const len = strlen(path);
     var i: usize = 0;

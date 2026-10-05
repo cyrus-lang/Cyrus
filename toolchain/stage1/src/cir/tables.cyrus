@@ -4,46 +4,21 @@
 import std::collections{Vec};
 import std::mem{Allocator};
 
-// FIXME: Remove single imports and 
-// use `cir` module path
-import cir{
-    TypedGenericParam,
-    InterfaceDeclId,
-    GlobalVarDeclId,
-    GenericParamId,
-    TypedBlockStmt,
-    InterfaceDecl,
-    GlobalVarDecl,
-    TypedefDeclId,
-    MethodDeclId,
-    StructDeclId,
-    UnionDeclId,
-    TypedefDecl,
-    MethodDecl,
-    StructDecl,
-    EnumDeclId,
-    FuncDeclId,
-    VarDeclId,
-    UnionDecl,
-    EnumDecl,
-    FuncDecl,
-    VarDecl,
-    BodyId,
-};
+import cir;
 
 pub struct DeclTables {
     pub allocator: Allocator,
-    pub structs: Vec<StructDecl>,
-    pub enums: Vec<EnumDecl>,
-    pub unions: Vec<UnionDecl>,
-    pub funcs: Vec<FuncDecl>,
-    pub methods: Vec<MethodDecl>,
-    pub interfaces: Vec<InterfaceDecl>,
-    pub global_vars: Vec<GlobalVarDecl>,
-    pub vars: Vec<VarDecl>,
-    pub typedefs: Vec<TypedefDecl>,
-    pub generic_params: Vec<TypedGenericParam>,
-    pub bodies: Vec<TypedBlockStmt>,
+    pub structs: Vec<cir::StructDecl>,
+    pub enums: Vec<cir::EnumDecl>,
+    pub unions: Vec<cir::UnionDecl>,
+    pub funcs: Vec<cir::FuncDecl>,
+    pub methods: Vec<cir::MethodDecl>,
+    pub interfaces: Vec<cir::InterfaceDecl>,
+    pub global_vars: Vec<cir::GlobalVarDecl>,
+    pub vars: Vec<cir::VarDecl>,
+    pub typedefs: Vec<cir::TypedefDecl>,
+    pub generic_params: Vec<cir::TypedGenericParam>,
+    pub bodies: Vec<cir::TypedBlockStmt>,
 
     pub fn new(allocator: Allocator) Self {
         return Self {
@@ -76,67 +51,67 @@ pub struct DeclTables {
         self->bodies.free();
     }
 
-    pub fn insert_struct(self: Self*, decl: StructDecl) StructDeclId {
+    pub fn insert_struct(self: Self*, decl: cir::StructDecl) cir::StructDeclId {
         const id = self->structs.len();
         self->structs.push(decl);
         return id;
     }
 
-    pub fn insert_enum(self: Self*, decl: EnumDecl) EnumDeclId {
+    pub fn insert_enum(self: Self*, decl: cir::EnumDecl) cir::EnumDeclId {
         const id = self->enums.len();
         self->enums.push(decl);
         return id;
     }
 
-    pub fn insert_union(self: Self*, decl: UnionDecl) UnionDeclId {
+    pub fn insert_union(self: Self*, decl: cir::UnionDecl) cir::UnionDeclId {
         const id = self->unions.len();
         self->unions.push(decl);
         return id;
     }
 
-    pub fn insert_func(self: Self*, decl: FuncDecl) FuncDeclId {
+    pub fn insert_func(self: Self*, decl: cir::FuncDecl) cir::FuncDeclId {
         const id = self->funcs.len();
         self->funcs.push(decl);
         return id;
     }
 
-    pub fn insert_method(self: Self*, decl: MethodDecl) MethodDeclId {
+    pub fn insert_method(self: Self*, decl: cir::MethodDecl) cir::MethodDeclId {
         const id = self->methods.len();
         self->methods.push(decl);
         return id;
     }
 
-    pub fn insert_interface(self: Self*, decl: InterfaceDecl) InterfaceDeclId {
+    pub fn insert_interface(self: Self*, decl: cir::InterfaceDecl) cir::InterfaceDeclId {
         const id = self->interfaces.len();
         self->interfaces.push(decl);
         return id;
     }
 
-    pub fn insert_global_var(self: Self*, decl: GlobalVarDecl) GlobalVarDeclId {
+    pub fn insert_global_var(self: Self*, decl: cir::GlobalVarDecl) cir::GlobalVarDeclId {
         const id = self->global_vars.len();
         self->global_vars.push(decl);
         return id;
     }
 
-    pub fn insert_var(self: Self*, decl: VarDecl) VarDeclId {
+    pub fn insert_var(self: Self*, decl: cir::VarDecl) cir::VarDeclId {
         const id = self->vars.len();
         self->vars.push(decl);
         return id;
     }
 
-    pub fn insert_typedef(self: Self*, decl: TypedefDecl) TypedefDeclId {
+    pub fn insert_typedef(self: Self*, decl: cir::TypedefDecl) cir::TypedefDeclId {
         const id = self->typedefs.len();
         self->typedefs.push(decl);
         return id;
     }
 
-    pub fn insert_generic_param(self: Self*, decl: TypedGenericParam) GenericParamId {
+    pub fn insert_generic_param(self: Self*, decl: cir::TypedGenericParam) cir::GenericParamId {
         const id = self->generic_params.len();
         self->generic_params.push(decl);
         return id;
     }
 
-    pub fn insert_body(self: Self*, decl: TypedBlockStmt) BodyId {
+    pub fn insert_body(self: Self*, decl: cir::TypedBlockStmt) cir::BodyId {
         const id = self->bodies.len();
         self->bodies.push(decl);
         return id;

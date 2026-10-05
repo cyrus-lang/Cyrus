@@ -11,8 +11,8 @@ import std::libc{strlen};
 import std::os::dir;
 import std::os::env;
 import std::path{
+    canonicalize_absolute_path, 
     has_path_prefix,
-    normalize_abs, 
     file_parent, 
     join_path, 
     file_stem, 
@@ -191,9 +191,9 @@ fn is_under_stdlib(allocator: Allocator, file_path: const uint8*, std_path: cons
     var cwd = dir::cwd(allocator);
     var found = false;
 
-    switch (normalize_abs(allocator, cwd.as_str_const(), file_path)) {
+    switch (canonicalize_absolute_path(allocator, cwd.as_str_const(), file_path)) {
         case .Some(file) => {
-            switch (normalize_abs(allocator, cwd.as_str_const(), std_path)) {
+            switch (canonicalize_absolute_path(allocator, cwd.as_str_const(), std_path)) {
                 case .Some(std) => {
                     found = has_path_prefix(file.as_str_const(), std.as_str_const());
                     std.free();
@@ -523,20 +523,22 @@ fn relative_search_dir(
         }
     }
 
-    // FIXME: Rename normalized to `canon` or `canonicalized`
     var cwd = dir::cwd(allocator);
-    const normalized = normalize_abs(allocator, cwd.as_str_const(), current.as_str_const());
-    cwd.free();
-    current.free();
-
-    switch (normalized) case .Some(var search_dir) else {
+    const canon = canonicalize_absolute_path(
+        allocator, 
+        cwd.as_str_const(), 
+        current.as_str_const()
+    );
+    switch (canon) case .Some(var search_dir) else {
         return .None;
     }
+    cwd.free();
+    current.free();
 
     var root_cwd = dir::cwd(allocator);
     var root: String = undefined;
 
-    switch (normalize_abs(allocator, root_cwd.as_str_const(), opts->base_path.as_str_const())) {
+    switch (canonicalize_absolute_path(allocator, root_cwd.as_str_const(), opts->base_path.as_str_const())) {
         case .None => root = String.from_str(allocator, opts->base_path.as_str_const());
         case .Some(path) => root = path;
     }

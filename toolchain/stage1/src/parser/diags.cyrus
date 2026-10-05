@@ -89,6 +89,26 @@ pub fn report_expected_ident(
     ));
 }
 
+pub fn report_expected_unsuffixed_integer(
+    allocator: Allocator,
+    dctx: DiagContext*,
+    span: Span,
+    got: TokenKind
+) {
+    var buffer = String.new(allocator);
+    var writer: Writer = dynamic StringWriter.new(&buffer);
+    writer.write("expected an unsuffixed integer literal in this context, but got `");
+    got.format(writer);
+    writer.write_char('`');
+    dctx->report(Diag.new(
+        allocator,
+        .Error,
+        buffer.as_str(),
+        span
+    ));
+    buffer.free();
+}
+
 pub fn report_local_decl_error(
     allocator: Allocator,
     dctx: DiagContext*,
