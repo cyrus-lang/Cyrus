@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 The Cyrus Language
 
+import std::path{canonicalize_absolute_path};
 import std::string{String, free_strings};
-import std::path{normalize_abs};
 import std::os::dir{cwd};
 import std::collections{Vec};
 import std::option{Option};
@@ -97,7 +97,7 @@ pub struct VisitingModule {
 pub fn visit_key(allocator: Allocator, path: const uint8*) String {
     var cwd = cwd(allocator);
 
-    switch (normalize_abs(allocator, cwd.as_str_const(), path)) {
+    switch (canonicalize_absolute_path(allocator, cwd.as_str_const(), path)) {
         case .Some(key) => {
             cwd.free();
             return key;

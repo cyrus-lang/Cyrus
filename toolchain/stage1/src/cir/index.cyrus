@@ -481,7 +481,6 @@ pub enum SemaType {
         }
     }
 
-    // TODO: Rename
     [[inline]]
     pub fn as_unresolved_decl_id(self: const Self*) Option<SymbolId> {
         switch (*self->const_inner()) {
@@ -490,7 +489,6 @@ pub enum SemaType {
         }
     }
 
-    // TODO: Rename
     [[inline]]
     pub fn as_unresolved_base_decl_id(self: const Self*) Option<SymbolId> {
         switch (*self->const_inner()) {
@@ -1384,10 +1382,11 @@ pub enum PlainType {
         }
     }
 
-    // TODO: I believe bool also should be added here.
     [[inline]]
     pub fn plain_type_rank(ty: const PlainType*) Option<uint8> {
         switch (*ty) {
+            case .Bool => return .Some(1);
+
             case .Int8 | .UInt8 => return .Some(2);
             
             case .Int16 | .UInt16 => return .Some(3);

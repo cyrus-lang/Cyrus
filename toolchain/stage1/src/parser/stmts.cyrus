@@ -17,7 +17,8 @@ import .::diags{
     report_modifier_not_allowed,
     report_modifier_order_error,
     report_attrs_after_modifiers,
-    report_attr_not_applicable
+    report_attr_not_applicable,
+    report_expected_unsuffixed_integer
 };
 import diags{Diag};
 import .::attrs{
@@ -2433,16 +2434,15 @@ pub struct ParserStmts {
                 return false;
             }
 
-            switch (self->parse_integer_value()) {
+            switch (self->exprs().parse_unsuffixed_integer_value()) {
                 case .Some(value) => align = .Some(value);
                 else => {
-                    // REVIEW: Write a better diagnostic message for it.
-                    self->state->dctx->report(Diag.new(
+                    report_expected_unsuffixed_integer(
                         self->state->allocator,
-                        .Error,
-                        "integer literals cannot have suffixes in this context",
-                        self->state->current_span()
-                    ));
+                        self->state->dctx,
+                        self->state->current_span(),
+                        *self->state->current()->kind
+                    );
                     self->state->sync();
                     return false;
                 }
@@ -2803,16 +2803,15 @@ pub struct ParserStmts {
                 return false;
             }
 
-            switch (self->parse_integer_value()) {
+            switch (self->exprs().parse_unsuffixed_integer_value()) {
                 case .Some(value) => align = .Some(value);
                 else => {
-                    // REVIEW: Write a better diagnostic message for it.
-                    self->state->dctx->report(Diag.new(
+                    report_expected_unsuffixed_integer(
                         self->state->allocator,
-                        .Error,
-                        "integer literals cannot have suffixes in this context",
-                        self->state->current_span()
-                    ));
+                        self->state->dctx,
+                        self->state->current_span(),
+                        *self->state->current()->kind
+                    );
                     self->state->sync();
                     return false;
                 }
@@ -3063,16 +3062,15 @@ pub struct ParserStmts {
                 return false;
             }
 
-            switch (self->parse_integer_value()) {
+            switch (self->exprs().parse_unsuffixed_integer_value()) {
                 case .Some(value) => align = .Some(value);
                 else => {
-                    // REVIEW: Write a better diagnostic message for it.
-                    self->state->dctx->report(Diag.new(
+                    report_expected_unsuffixed_integer(
                         self->state->allocator,
-                        .Error,
-                        "integer literals cannot have suffixes in this context",
-                        self->state->current_span()
-                    ));
+                        self->state->dctx,
+                        self->state->current_span(),
+                        *self->state->current()->kind
+                    );
                     self->state->sync();
                     return false;
                 }
@@ -3293,11 +3291,6 @@ pub struct ParserStmts {
     /// Grammar: type IDENT <GenericParams>? = Type ;
     fn parse_enum_variant(self: Self*) Option<ast::ASTEnumVariant> {
         return self->exprs().parse_enum_variant();
-    }
-
-    // FIXME: Remove?
-    fn parse_integer_value(self: Self*) Option<usize> {
-        return self->exprs().parse_unsuffixed_integer_value();
     }
 
     /// Grammar: type IDENT <GenericParams>? = Type ;

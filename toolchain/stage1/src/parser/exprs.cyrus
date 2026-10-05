@@ -8,7 +8,8 @@ import std::string{String};
 import .::diags{
     report_expected_ident, 
     report_unexpected_token,
-    report_invalid_operator
+    report_invalid_operator,
+    report_expected_unsuffixed_integer
 };
 import diags{Diag};
 import tokens{
@@ -484,13 +485,12 @@ pub struct ParserExprs {
             switch (self->parse_unsuffixed_integer_value()) {
                 case .Some(value) => align = .Some(value);
                 else => {
-                    // REVIEW: Write a better diagnostic message for it.
-                    self->state->dctx->report(Diag.new(
+                    report_expected_unsuffixed_integer(
                         self->state->allocator,
-                        .Error,
-                        "integer literals cannot have suffixes in this context",
-                        self->state->current_span()
-                    ));
+                        self->state->dctx,
+                        self->state->current_span(),
+                        *self->state->current()->kind
+                    );
                     return .None;
                 }
             }
@@ -2002,13 +2002,12 @@ pub struct ParserExprs {
             switch (self->parse_unsuffixed_integer_value()) {
                 case .Some(value) => align = .Some(value);
                 else => {
-                    // REVIEW: Write a better diagnostic message for it.
-                    self->state->dctx->report(Diag.new(
+                    report_expected_unsuffixed_integer(
                         self->state->allocator,
-                        .Error,
-                        "integer literals cannot have suffixes in this context",
-                        self->state->current_span()
-                    ));
+                        self->state->dctx,
+                        self->state->current_span(),
+                        *self->state->current()->kind
+                    );
                     self->state->sync();
                     return .None;
                 }
@@ -2127,13 +2126,12 @@ pub struct ParserExprs {
             switch (self->parse_unsuffixed_integer_value()) {
                 case .Some(value) => align = .Some(value);
                 else => {
-                    // REVIEW: Write a better diagnostic message for it.
-                    self->state->dctx->report(Diag.new(
+                    report_expected_unsuffixed_integer(
                         self->state->allocator,
-                        .Error,
-                        "integer literals cannot have suffixes in this context",
-                        self->state->current_span()
-                    ));
+                        self->state->dctx,
+                        self->state->current_span(),
+                        *self->state->current()->kind
+                    );
                     self->state->sync();
                     return .None;
                 }
@@ -2270,13 +2268,12 @@ pub struct ParserExprs {
             switch (self->parse_unsuffixed_integer_value()) {
                 case .Some(value) => align = .Some(value);
                 else => {
-                    // REVIEW: Write a better diagnostic message for it.
-                    self->state->dctx->report(Diag.new(
+                    report_expected_unsuffixed_integer(
                         self->state->allocator,
-                        .Error,
-                        "integer literals cannot have suffixes in this context",
-                        self->state->current_span()
-                    ));
+                        self->state->dctx,
+                        self->state->current_span(),
+                        *self->state->current()->kind
+                    );
                     self->state->sync();
                     return .None;
                 }
