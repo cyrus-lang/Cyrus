@@ -52,6 +52,10 @@ impl<'ll> CodeGenIRBuilder<'ll> {
 
         let layout = self.tctx.layout_of(&cir_global_var.ty);
 
+        if layout.align > 0 {
+            global_value.set_alignment(layout.align);
+        }
+
         if self.dctx.is_some() {
             self.emit_debug_global_var(&layout, &global_value, cir_global_var);
         }

@@ -851,6 +851,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
 impl<'ll> CodeGenIRBuilder<'ll> {
     #[inline]
     fn drain_before_return(&mut self) {
+        self.is_return = false;
         self.emit_all_defers();
         self.drain_alloca_ending_lifetime_stack();
     }
@@ -1025,6 +1026,8 @@ impl<'ll> CodeGenIRBuilder<'ll> {
             InternalValueKind::LValue(ptr) => *ptr,
             InternalValueKind::RValue(val) => {
                 let temp_alloca = self.alloca_with_scope_lifetime(val.get_type(), "sret.temp");
+                let alloca_instr = temp_alloca.as_instruction().unwrap();
+                alloca_instr.set_alignment(layout.align).unwrap();
 
                 self.llvm_builder.build_store(temp_alloca, *val).unwrap();
                 temp_alloca

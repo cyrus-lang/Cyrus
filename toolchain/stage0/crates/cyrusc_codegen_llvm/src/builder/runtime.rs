@@ -49,6 +49,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         self.block_reg.first_block = Some(entry_block);
         self.cur_func = Some(llvm_func);
         self.cur_sret = None; // FOR SAFETY
+        self.cur_sret_type = None; // FOR SAFETY
         self.cur_abi_func_info = None; // FOR SAFETY
 
         self.push_lifetime_scope();
