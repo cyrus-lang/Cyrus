@@ -123,9 +123,11 @@ pub struct GlobalSymbolRegistry {
     root: Option<cir::SymbolId>,
 
     pub fn new(allocator: Allocator) Self {
+        const entries: Vec<SymbolEntry> = Vec.new(allocator);
+
         var registry = Self {
             allocator,
-            entries: Vec.new(allocator),
+            entries,
             root: .None,
         };
 
