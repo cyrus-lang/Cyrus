@@ -11,7 +11,11 @@ pub fn format_module_segments(
     allocator: Allocator,
     segments: const Vec<ast::ASTModuleSegment>*
 ) String {
-    return format_module_segments_upto(allocator, segments, segments->len());
+    return format_module_segments_upto(
+        allocator, 
+        segments, 
+        segments->len()
+    );
 }
 
 /// Formats the first `count` segments of an import path.
@@ -70,7 +74,10 @@ pub fn format_module_segments_upto(
     return out;
 }
 
-pub fn format_sub_module_names(allocator: Allocator, names: const Vec<String>*) String {
+pub fn format_sub_module_names(
+    allocator: Allocator, 
+    names: const Vec<String>*
+) String {
     var out = String.new(allocator);
 
     for (var i: usize = 0; i < names->len(); i += 1) {
@@ -85,88 +92,24 @@ pub fn format_sub_module_names(allocator: Allocator, names: const Vec<String>*) 
     return out;
 }
 
-pub fn sub_module_names(allocator: Allocator, segments: const Vec<ast::ASTModuleSegment>*) Vec<String> {
+pub fn sub_module_names(
+    allocator: Allocator,
+    segments: const Vec<ast::ASTModuleSegment>*
+) Vec<String> {
     var names: Vec<String> = Vec.new(allocator);
 
     for (var i: usize = 0; i < segments->len(); i += 1) {
         const seg = segments->get_const(i).unwrap();
 
         switch (*seg) {
-            case .SubModule(ident) => names.push(String.from_str(allocator, ident.str.as_str_const()));
+            case .SubModule(ident) => {
+                names.push(String.from_str(
+                    allocator, 
+                    ident.str.as_str_const()
+                ));
+            }
         }
     }
 
     return names;
-}
-
-/// Formats AST types into displayable strings.
-pub struct TypeFormatter {
-    allocator: Allocator,
-    program: const ast::ASTProgram*,
-
-    pub fn new(allocator: Allocator, program: const ast::ASTProgram*) Self {
-        return Self {
-            allocator,
-            program,
-        };
-    }
-
-    pub fn display(self: const Self*, ty: const ast::ASTType*) String {
-        switch (*ty) {
-            case .ModuleImport(module_import) => {
-                return format_module_segments(self->allocator, &module_import.segments);
-            }
-            case .Ident(ident) => {
-                return String.from_str(self->allocator, ident.str.as_str_const());
-            }
-            case .Primitive(prim) => {
-                return String.from_str(self->allocator, prim.as_str());
-            }
-            case .SelfType => {
-                return String.from_str(self->allocator, "Self");
-            }
-            case .Pointer(inner) => {
-                const node = self->program->nodes.get_const(inner).unwrap();
-
-                var inner_name = String.new(self->allocator);
-
-                switch (*node) {
-                    case .Type(inner_ty) => {
-                        var name = self->display(&inner_ty);
-                        inner_name.push('*');
-                        inner_name.push_str(name.as_str_const());
-                        name.free();
-                    }
-                    else => {
-                        inner_name.push('*');
-                    }
-                }
-
-                return inner_name;
-            }
-            case .Const(inner) => {
-                const node = self->program->nodes.get_const(inner).unwrap();
-
-                var inner_name = String.new(self->allocator);
-
-                switch (*node) {
-                    case .Type(inner_ty) => {
-                        var name = self->display(&inner_ty);
-                        inner_name.push_str("const ");
-                        inner_name.push_str(name.as_str_const());
-                        name.free();
-                    }
-                    else => {
-                        inner_name.push_str("const");
-                    }
-                }
-
-                return inner_name;
-            }
-            // TODO: Implement format for other types also.
-            else => {
-                return String.from_str(self->allocator, "type");
-            }
-        }
-    }
 }

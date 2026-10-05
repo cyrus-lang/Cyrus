@@ -4,6 +4,8 @@
 import std::collections{Vec};
 import std::mem{Allocator};
 
+// FIXME: Remove single imports and 
+// use `cir` module path
 import cir{
     TypedGenericParam,
     InterfaceDeclId,
