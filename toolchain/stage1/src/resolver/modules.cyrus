@@ -26,9 +26,10 @@ pub struct SourceSymbolBinding {
 
 /// Tracks module resolution state for cycle detection.
 ///
-/// `active` is the stack of modules currently being resolved; a path
-/// found there means an import cycle. `done` holds modules whose
-/// resolution finished, so they are never resolved twice.
+/// `active` is the stack of modules currently being resolved. 
+/// A path found there means an import cycle. `done` holds 
+/// modules whose resolution finished,
+/// so they are never resolved twice.
 pub struct VisitingModule {
     active: Vec<String>,
     done: Vec<String>,
@@ -61,8 +62,6 @@ pub struct VisitingModule {
         self->active.push(key);
     }
 
-    /// Pop the innermost active key, returning it for reuse (marking
-    /// the module done, for example).
     pub fn pop_active(self: Self*) String {
         return self->active.remove(self->active.len() - 1);
     }
@@ -71,8 +70,7 @@ pub struct VisitingModule {
         self->done.push(key);
     }
 
-    /// Format the active stack as a cycle chain: the first path is
-    /// repeated at the end so the loop is visible (A -> B -> A).
+    /// Format the active stack as a cycle chain.
     pub fn active_paths_str(self: const Self*) String {
         var out = String.new(self->allocator);
 
@@ -207,8 +205,7 @@ fn get_or_create_virtual_module(
     return registry->insert_module_symbol(resolved_parent, module_name, module_name);
 }
 
-// NOTE: Vec::contains is not usable here: it compares `T == T`, and String
-// has no `==` operator (only the `eq` method).
+// FIXME (stage0 lambda bug): Use Vec.find when possible.
 fn contains_key(keys: const Vec<String>*, key: const uint8*) bool {
     for (var i: usize = 0; i < keys->len(); i += 1) {
         const candidate = keys->get_const(i).unwrap();

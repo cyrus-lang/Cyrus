@@ -207,12 +207,12 @@ fn is_under_stdlib(allocator: Allocator, file_path: const uint8*, std_path: cons
     return found;
 }
 
-/// Name of the last submodule segment (`last_sub_module_index` in stage0).
 pub fn last_sub_module_name(allocator: Allocator, segments: const Vec<ASTModuleSegment>*) String {
     var i = segments->len();
 
     while (i > 0) {
         i -= 1;
+
         const seg = segments->get_const(i).unwrap();
 
         switch (*seg) {
@@ -223,7 +223,7 @@ pub fn last_sub_module_name(allocator: Allocator, segments: const Vec<ASTModuleS
     return String.new(allocator);
 }
 
-/// Span of the submodule segment at `ordinal` (counting only `.SubModule` entries).
+/// Span of the submodule segment at `ordinal`.
 pub fn segment_span(segments: const Vec<ASTModuleSegment>*, ordinal: usize) Span {
     var seen: usize = 0;
 
@@ -265,7 +265,9 @@ pub fn first_segment_span(segments: const Vec<ASTModuleSegment>*) Span {
         const seg = segments->get_owned(i).unwrap();
 
         switch (seg) {
-            case .SubModule(ident) => return ident.span;
+            case .SubModule(ident) => {
+                return ident.span;
+            }
             case .Single(singles) => {
                 if (singles.len() > 0) {
                     const single = singles.get_const(0).unwrap();
@@ -309,7 +311,9 @@ pub fn resolve_import(
         removed.free();
 
         switch (stdlib_modules_path(allocator, opts)) {
-            case .Some(root) => sources.push(root);
+            case .Some(root) => {
+                sources.push(root);
+            }
             case .None => {
                 free_strings(&sources);
                 free_strings(&names);
@@ -318,7 +322,9 @@ pub fn resolve_import(
         }
     } else if (relative_level < 0) {
         switch (relative_search_dir(allocator, opts, current_file_path, relative_level)) {
-            case .Some(search_dir) => sources.push(search_dir);
+            case .Some(search_dir) => {
+                sources.push(search_dir);
+            }
             case .None => {
                 free_strings(&sources);
                 free_strings(&names);
@@ -335,6 +341,7 @@ pub fn resolve_import(
     if (names.len() == 0) {
         free_strings(&sources);
         free_strings(&names);
+
         return .Error(.ModuleNotFound(
             format_module_segments(allocator, segments),
             first_segment_span(segments)
@@ -516,6 +523,7 @@ fn relative_search_dir(
         }
     }
 
+    // FIXME: Rename normalized to `canon` or `canonicalized`
     var cwd = dir::cwd(allocator);
     const normalized = normalize_abs(allocator, cwd.as_str_const(), current.as_str_const());
     cwd.free();
