@@ -313,9 +313,11 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         let cur_func_name = cur_func.get_name().to_str().unwrap();
         let parent_dctx_func = self.dctx.as_ref().map(|dctx| dctx.func);
         let parent_sret = self.cur_sret.clone();
+        let parent_sret_ret_type = self.cur_sret_type.clone();
 
         if abi_func_info.ret_info.kind.is_indirect_sret() {
             self.cur_sret = Some(cur_func.get_first_param().unwrap().into_pointer_value());
+            self.cur_sret_type = Some(*abi_func_info.ret_info.ret_type.clone());
         }
 
         if let Some(dctx) = &mut self.dctx {
@@ -358,6 +360,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         }
 
         self.cur_sret = parent_sret;
+        self.cur_sret_type = parent_sret_ret_type;
     }
 }
 
@@ -851,14 +854,17 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         abi_arg_info: &ABIArgInfo,
     ) {
         // pass indirectly via pointer
-        let llvm_ty: BasicTypeEnum<'ll> = self.emit_type(ty).try_into().unwrap();
+        let layout = self.tctx.layout_of(&ty);
+        let llvm_type: BasicTypeEnum<'ll> = self.emit_type(ty).try_into().unwrap();
 
         if rvalue.as_basic_value().is_pointer_value() && !abi_arg_info.attrs.by_val {
             // already a pointer, use directly
             args_values.push(rvalue.as_basic_value().into());
         } else {
             // create a copy
-            let ptr = self.alloca_with_scope_lifetime(llvm_ty, "indirect.arg");
+            let ptr = self.alloca_with_scope_lifetime(llvm_type, "indirect.arg");
+            let alloca_instr = ptr.as_instruction().unwrap();
+            alloca_instr.set_alignment(layout.align).unwrap();
 
             // IMPORTANT: Snapshot intentionally deferred to the call site.
             // We need the memcpy to read from %src_ptr *after* any mutations
@@ -869,7 +875,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
             match &lvalue.kind {
                 InternalValueKind::LValue(src_ptr) => {
                     let target_data = self.llvm_target_machine.get_target_data();
-                    let size_in_bytes = target_data.get_store_size(&llvm_ty);
+                    let size_in_bytes = target_data.get_store_size(&llvm_type);
                     let size_value = self.llvm_ctx.i64_type().const_int(size_in_bytes, false);
                     let default_align = target_data.get_pointer_byte_size(None).max(8) as u32;
                     self.llvm_builder

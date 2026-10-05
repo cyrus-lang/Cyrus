@@ -2069,15 +2069,22 @@ impl<'ll> CodeGenIRBuilder<'ll> {
 
         if abi_func_info.ret_info.kind.is_indirect_sret() {
             let sret_type: BasicTypeEnum<'ll> = self.emit_type(*cir_func_type.ret_type.clone()).try_into().unwrap();
+            let sret_layout = self.tctx.layout_of(&cir_func_type.ret_type);
 
             let sret_ptr = {
-                if self.is_return && self.cur_sret.is_some() {
+                if self.is_return
+                    && self.cur_sret.is_some()
+                    && self.cur_sret_type.as_ref() == Some(cir_func_type.ret_type.as_ref())
+                {
                     // We are in a return statement and this function has an SRet param
                     // pass the current function's SRet pointer directly
                     self.cur_sret.unwrap()
                 } else {
                     // Normal case, allocate a new temporary
-                    self.alloca_with_scope_lifetime(sret_type, "sret")
+                    let ptr = self.alloca_with_scope_lifetime(sret_type, "sret");
+                    let alloca_instr = ptr.as_instruction().unwrap();
+                    alloca_instr.set_alignment(sret_layout.align).unwrap();
+                    ptr
                 }
             };
 

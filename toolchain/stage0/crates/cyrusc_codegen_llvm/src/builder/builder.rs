@@ -19,6 +19,7 @@ use cyrusc_internal::{
     cir::{
         cir::{CIRBlockStmt, CIRModule, CIRStmt},
         typectx::CIRTypeContext,
+        types::CIRType,
     },
     compiler_options::CompilerOption_Profile,
     vtable::VTableRegistry,
@@ -66,6 +67,7 @@ pub(crate) struct CodeGenIRBuilder<'ll> {
 
     // Used to prevent duplicate sret when chained function call happens
     pub(crate) cur_sret: Option<PointerValue<'ll>>,
+    pub(crate) cur_sret_type: Option<CIRType>,
     pub(crate) is_return: bool,
 }
 
@@ -216,6 +218,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
             type_cache: CodegenIRBuilderTypeCache::new(),
             profile,
             cur_sret: None,
+            cur_sret_type: None,
             is_return: false,
             string_cache: FxHashMap::new(),
             global_var_lazy_initializers: Vec::new(),
