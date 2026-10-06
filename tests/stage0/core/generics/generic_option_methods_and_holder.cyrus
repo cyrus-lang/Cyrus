@@ -1,0 +1,93 @@
+// @stdout: 21 -1 42 -1 14\nint 100 int 25.000000 empty -7 8 24\n
+
+import std::libc{printf};
+
+enum Option<T> {
+    Some(T),
+    None,
+
+    pub fn map<U>(self: Self, f: fn(T) U) Option<U> {
+        switch (self) {
+            case .Some(v) => {
+                return .Some(f(v));
+            }
+            case .None => {
+                return .None;
+            }
+        }
+    }
+
+    pub fn unwrap_or(self: Self, def: T) T {
+        switch (self) {
+            case .Some(v) => {
+                return v;
+            }
+            case .None => {
+                return def;
+            }
+        }
+    }
+}
+
+fn flatten<T>(o: Option<Option<T>>) Option<T> {
+    switch (o) {
+        case .Some(inner) => {
+            return inner;
+        }
+        case .None => {
+            return .None;
+        }
+    }
+}
+
+struct Holder<T> {
+    pub inner: Option<T>,
+    pub tag: const uint8*,
+
+    pub fn get_or(self: const Self*, def: T) T {
+        return self->inner.unwrap_or(def);
+    }
+
+    pub fn map_inner<U>(self: const Self*, f: fn(T) U) Holder<U> {
+        return Holder<U> {
+            inner: self->inner.map(f),
+            tag: self->tag,
+        };
+    }
+}
+
+fn triple(x: int32) int32 {
+    return x * 3;
+}
+
+pub fn main() {
+    const a: Option<int32> = .Some(7);
+    const none: Option<int32> = .None;
+
+    printf("%d ", a.map(triple).unwrap_or(0));
+    printf("%d ", none.map(triple).unwrap_or(-1));
+
+    const inner: Option<int32> = .Some(42);
+    const nested: Option<Option<int32>> = .Some(inner);
+    printf("%d ", flatten(nested).unwrap_or(0));
+
+    const empty: Option<Option<int32>> = .None;
+    printf("%d ", flatten(empty).unwrap_or(-1));
+
+    const doubled = a.map(fn(x: int32) int32 {
+        return x * 2;
+    });
+    printf("%d\n", doubled.unwrap_or(0));
+
+    const h: Holder<int32> = Holder { inner: .Some(100), tag: "int" };
+    printf("%s %d ", h.tag, h.get_or(0));
+    const hf = h.map_inner(fn(x: int32) float64 {
+        return @cast(float64, x) / 4.0;
+    });
+    printf("%s %f ", hf.tag, hf.get_or(0.0));
+    const none_opt: Option<int32> = .None;
+    const empty_h: Holder<int32> = Holder { inner: none_opt, tag: "empty" };
+    printf("%s %d ", empty_h.tag, empty_h.get_or(-7));
+
+    printf("%d %d\n", @sizeof(Option<int32>), @sizeof(Holder<float64>));
+}

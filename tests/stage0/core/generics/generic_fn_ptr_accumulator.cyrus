@@ -1,0 +1,64 @@
+// @stdout: 10 120 11.000000 55 120 41 7 16 16
+
+import std::libc{printf};
+
+struct Acc<T> {
+    pub total: T,
+    pub op: fn(T, T) T,
+
+    pub fn push(self: Self*, v: T) {
+        self->total = (self->op)(self->total, v);
+    }
+}
+
+fn make_acc<T>(start: T, op: fn(T, T) T) Acc<T> {
+    return Acc { total: start, op };
+}
+
+fn add_i32(a: int32, b: int32) int32 {
+    return a + b;
+}
+
+fn mul_i32(a: int32, b: int32) int32 {
+    return a * b;
+}
+
+fn reduce4<T>(start: T, op: fn(T, T) T, a: T, b: T, c: T, d: T) T {
+    var acc = make_acc(start, op);
+    acc.push(a);
+    acc.push(b);
+    acc.push(c);
+    acc.push(d);
+    return acc.total;
+}
+
+fn sweep<T>(start: T, op: fn(T, T) T, n: int32) T {
+    var acc = make_acc(start, op);
+    for (var i = 1; i <= n; i += 1) {
+        acc.push(i);
+    }
+    return acc.total;
+}
+
+pub fn main() {
+    printf("%d ", reduce4(0, add_i32, 1, 2, 3, 4));
+    printf("%d ", reduce4(1, mul_i32, 2, 3, 4, 5));
+
+    const fadd = fn(a: float64, b: float64) float64 {
+        return a + b;
+    };
+    printf("%f ", reduce4(0.0, fadd, 1.5, 2.5, 3.0, 4.0));
+
+    printf("%d ", sweep(0, add_i32, 10));
+    printf("%d ", sweep(1, mul_i32, 5));
+
+    var accs = Acc<int32>[2] {
+        make_acc(0, add_i32),
+        make_acc(1, mul_i32),
+    };
+    accs[0].push(41);
+    accs[1].push(7);
+    printf("%d %d ", accs[0].total, accs[1].total);
+
+    printf("%d %d\n", @sizeof(Acc<int32>), @sizeof(Acc<float64>));
+}

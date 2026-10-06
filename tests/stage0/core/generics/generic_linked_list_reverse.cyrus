@@ -1,0 +1,93 @@
+// @stdout: fwd: 3 2 1 | count 3 total 6\nrev: 1 2 3 | count 3 total 6\nfloats: 1.500000 2.250000 4.000000 | count 3 total 7.750000\nstrings: alpha beta | count 2\n
+
+import std::libc{printf};
+
+struct Node<T> {
+    pub value: T,
+    pub next: Node<T>*,
+}
+
+fn prepend<T>(head: Node<T>*, node: Node<T>*) Node<T>* {
+    node->next = head;
+    return node;
+}
+
+fn reverse<T>(head: Node<T>*) Node<T>* {
+    var prev: Node<T>* = null;
+    var cur = head;
+    while (cur != null) {
+        const nxt = cur->next;
+        cur->next = prev;
+        prev = cur;
+        cur = nxt;
+    }
+    return prev;
+}
+
+fn walk<T>(head: Node<T>*, fmt: const uint8*) int32 {
+    var cur = head;
+    var n: int32 = 0;
+    while (cur != null) {
+        printf(fmt, cur->value);
+        cur = cur->next;
+        n += 1;
+    }
+    return n;
+}
+
+fn total<T>(head: Node<T>*) T {
+    var acc = head->value;
+    var cur = head->next;
+    while (cur != null) {
+        acc = acc + cur->value;
+        cur = cur->next;
+    }
+    return acc;
+}
+
+pub fn main() {
+    var a = Node { value: 1, next: null };
+    var b = Node { value: 2, next: null };
+    var c = Node { value: 3, next: null };
+
+    var head: Node<int32>* = null;
+    head = prepend(head, &a);
+    head = prepend(head, &b);
+    head = prepend(head, &c);
+
+    printf("fwd: ");
+    const fwd_n = walk(head, "%d ");
+    printf("| count %d total %d\n", fwd_n, total(head));
+
+    head = reverse(head);
+
+    printf("rev: ");
+    const rev_n = walk(head, "%d ");
+    printf("| count %d total %d\n", rev_n, total(head));
+
+    var f1 = Node { value: 1.5, next: null };
+    var f2 = Node { value: 2.25, next: null };
+    var f3 = Node { value: 4.0, next: null };
+
+    var fhead: Node<float64>* = null;
+    fhead = prepend(fhead, &f1);
+    fhead = prepend(fhead, &f2);
+    fhead = prepend(fhead, &f3);
+    fhead = reverse(fhead);
+
+    printf("floats: ");
+    const float_n = walk(fhead, "%f ");
+    printf("| count %d total %f\n", float_n, total(fhead));
+
+    var s1 = Node<const uint8*> { value: "alpha", next: null };
+    var s2 = Node<const uint8*> { value: "beta", next: null };
+
+    var shead: Node<const uint8*>* = null;
+    shead = prepend(shead, &s1);
+    shead = prepend(shead, &s2);
+    shead = reverse(shead);
+
+    printf("strings: ");
+    const str_n = walk(shead, "%s ");
+    printf("| count %d\n", str_n);
+}
