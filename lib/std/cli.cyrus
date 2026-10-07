@@ -50,6 +50,7 @@ pub enum Value {
     pub fn free(self: Self*) {
         switch (*self) {
             case .Str(str) => str.free();
+            else => {}
         }
     }
 }
@@ -96,6 +97,7 @@ pub struct App {
                         self->cleanup_after_error();
                         return .Error(());
                     }
+                    else => {}
                 }
 
                 // If help option is enabled, only show options
@@ -166,6 +168,7 @@ pub struct App {
         for (var i: usize = argc - rem_args; i < argc; i += 1) {
             switch (self->parse_option(cmd, &i, pargs)) {
                 case .Error(err) => return .Error(err);
+                else => {}
             }
         }
         
@@ -351,6 +354,7 @@ pub struct App {
         // Option policy check
         switch (opt->check()) {
             case .Error(err) => return .Error(err);
+            else => {}
         }
 
         return .Value(());
@@ -583,6 +587,7 @@ pub struct Cmds {
                     write_spaces(writer, HELP_WS_LEN - len);
                     writer.write(text);
                 }
+                else => {}
             }
             
             writer.write("\n");
@@ -657,6 +662,7 @@ pub struct Cmd {
                         return .Some(opt);
                     }
                 }
+                else => {}
             }
 
             // Check with long name
@@ -715,6 +721,7 @@ pub struct Cmd {
                     );
                     writer.write(text);
                 }
+                else => {}
             }
 
             writer.write("\n");
@@ -769,6 +776,7 @@ pub struct Opts {
                         return .Some(opt);
                     }
                 }
+                else => {}
             }
 
             // Check with long name
@@ -782,8 +790,14 @@ pub struct Opts {
 
     pub fn enabled(self: const Self*, name: const uint8*) bool {
         switch (self->find(name)) {
-            case .Some(opt) => if (opt->enabled) { return true; }
+            case .Some(opt) => {
+                if (opt->enabled) {
+                    return true;
+                }
+            }
+            else => {}
         }
+
         return false;
     }
 
@@ -799,6 +813,7 @@ pub struct Opts {
                     writer.write("-");
                     writer.write_char(char);
                 }
+                else => {}
             }
             
             writer.write(", ");

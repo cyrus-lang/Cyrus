@@ -120,6 +120,7 @@ pub struct Server {
 
                     switch (result) {
                         case .Error(err) => return .Error(err);
+                        else => {}
                     }
                 }
                 case .Error(err) => {
@@ -198,6 +199,7 @@ pub struct Server {
                             return .Value(false);
                         }
                     }
+                    else => {}
                 }
             }
         }

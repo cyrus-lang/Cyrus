@@ -266,7 +266,23 @@ impl<'a> AnalysisContext<'a> {
                 // if yes, don't push anything.
                 switch_stmt.all_cases_covered = Some(true);
             } else {
-                // if no, we push an extra reachable flow state intentionally.
+                let missing_variants: Vec<String> = inst_enum_decl
+                    .variants
+                    .iter()
+                    .filter(|v| !all_covered_variants.contains(&v.ident().as_string()))
+                    .map(|v| v.ident().as_string())
+                    .collect();
+
+                self.reporter.report(Diag {
+                    level: DiagLevel::Error,
+                    kind: Box::new(AnalyzerDiagKind::NonExhaustiveSwitch {
+                        missing_variants: missing_variants.join(", "),
+                    }),
+                    loc: Some(switch_stmt.loc),
+                    hint: None,
+                });
+
+                switch_stmt.all_cases_covered = Some(false);
                 flow_states.push(FlowState::Reachable);
             }
         }

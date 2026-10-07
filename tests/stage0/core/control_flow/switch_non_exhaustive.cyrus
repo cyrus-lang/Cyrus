@@ -1,0 +1,29 @@
+// @stdout: Red
+//
+// ERROR: Non-exhaustive switch statement: missing variants 'Green, Blue'.
+
+import std::libc{printf};
+
+enum Color {
+    Red,
+    Green,
+    Blue
+}
+
+fn display_color(color: Color) const uint8* {
+    switch (color) {
+        case .Red => {
+            return "Red\n";
+        }
+        case .Green => {
+            return "Green\n";
+        }
+        case .Blue => {
+            return "Blue\n";
+        }   
+    }
+}
+
+pub fn main() {
+    printf("%s", display_color(Color.Red));
+}

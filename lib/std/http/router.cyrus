@@ -134,6 +134,7 @@ pub struct Router {
                 handler(request, response);
                 return true;
             }
+            else => {}
         }
 
         switch (self->fallback) {
@@ -141,6 +142,7 @@ pub struct Router {
                 handler(request, response);
                 return true;
             }
+            else => {}
         }
 
         if (self->allows(request->path())) {

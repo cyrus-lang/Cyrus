@@ -10,6 +10,7 @@ enum MyResult<T, E> {
 fn handle_ok<T, E>(r: MyResult<T, E>) {
     switch (r) {
         case .Ok(v) => printf("Ok(%d) ", v);
+        else => {}
     }
 }
 
@@ -18,6 +19,7 @@ fn handle_err<T, E>(r: MyResult<T, E>) {
         case .Err(m) => {
             printf("Err(%s)\n", m);
         }
+        else => {}
     }
 }
 

@@ -15,19 +15,27 @@ static var MY_ENUM4 = struct { id: 1, value: Enum.Value };
 
 pub fn main() {
     switch (MY_ENUM1) {
-        case .Tuple(x, y) => printf("(%d, %d) | ", x, y);
+        case .Tuple(x, y) => {
+            printf("(%d, %d) | ", x, y);
+        }
+        else => {}
     }
     switch (MY_ENUM2) {
-        case .Struct { x, y } => printf("{ %f, %f } | ", x, y);
+        case .Struct { x, y } => {
+            printf("{ %f, %f } | ", x, y);
+        }
+        else => {}
     }
     switch (MY_ENUM3) {
         case .Value(strukt) => {
             printf("name: %s, age: %d | ", strukt.name, strukt.age);
         }
+        else => {}
     }
     switch (MY_ENUM4.value) {
         case .Value(strukt) => {
             printf("name: %s, age: %d\n", strukt.name, strukt.age);
         }
+        else => {}
     }
 }

@@ -76,9 +76,12 @@ pub struct HashSet<K>{
             
             if (entry->state == .Occupied && entry->hash == hash) {
                 switch (entry->key) {
-                    case .Some(entry_key) => if ((self->eq_fn)(key, entry_key)) {
-                        return .Some(index);
+                    case .Some(entry_key) => {
+                        if ((self->eq_fn)(key, entry_key)) {
+                            return .Some(index);
+                        }
                     }
+                    else => {}
                 }
             }
             

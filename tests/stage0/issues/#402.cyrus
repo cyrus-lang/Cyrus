@@ -24,6 +24,7 @@ pub fn main() {
     const bar = Foo.bar();
     switch (bar) {
         case .Bar => printf("bar, ");
+        else => {}
     }
 
     const foo = Foo.get_opt();
@@ -33,7 +34,9 @@ pub fn main() {
                 case .Baz => {
                     printf("baz\n");
                 }
+                else => {}
             }
         }
+        else => {}
     }
 }

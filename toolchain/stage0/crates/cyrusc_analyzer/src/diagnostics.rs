@@ -196,6 +196,9 @@ pub enum AnalyzerDiagKind {
     #[error("Switch pattern of type '{pattern_type}' is not compatible with switch operand of type '{operand_type}'.")]
     IncompatibleSwitchPatternType { pattern_type: String, operand_type: String },
 
+    #[error("Non-exhaustive switch statement: missing variants '{missing_variants}'.")]
+    NonExhaustiveSwitch { missing_variants: String },
+
     #[error("Only enum variants are allowed here.")]
     OnlyVariantPatternIsAllowedInSwitch,
 
