@@ -434,6 +434,7 @@ pub struct BufferedReader : Reader {
                         }
                         return .Error(err);
                     }
+                    else => {}
                 }
 
                 if (self->valid == 0) {

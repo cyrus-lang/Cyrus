@@ -11,6 +11,7 @@ pub fn main() {
     printf("%ld, ", num2);
     
     switch (parse_str_as_int64("meow")) {
+        case .Some => {}
         case .None => printf("ok\n");
     }
 }

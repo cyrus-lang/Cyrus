@@ -23,5 +23,6 @@ pub fn main() {
 
     switch (iter.next()) {
         case .None => printf("none\n");
+        else => {}
     }
 }

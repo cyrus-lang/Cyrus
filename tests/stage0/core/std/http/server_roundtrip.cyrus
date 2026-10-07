@@ -42,6 +42,7 @@ pub fn main() {
 
     switch (server.serve_once()) {
         case .Error(err) => @panic(err);
+        else => {}
     }
 
     var inbox: uint8[512];
