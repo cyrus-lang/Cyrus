@@ -1,0 +1,52 @@
+struct Plain {
+    pub x: int32,
+}
+
+struct Wrapper<T> {
+    pub value: T,
+}
+
+struct Pair<K, V> {
+    pub key: K,
+    pub value: V,
+}
+
+enum Option<T> {
+    Some(T),
+    None,
+}
+
+fn id<T>(x: T) T {
+    return x;
+}
+
+fn empty<T>() Option<T> {
+    return .None;
+}
+
+fn bad_wrong_count() {
+    const a = Wrapper<int32, uint8> { value: 1 }; //~ ERROR Type 'Wrapper' expects 1 type arguments but 2 were provided.
+}
+
+fn bad_missing_arg() {
+    const b: Pair<int32> = Pair { key: 1, value: 2 }; //~ ERROR Missing type argument for generic parameter 'V' in type 'Pair<int32>'.
+}
+
+fn bad_non_generic() {
+    const c: Plain<int32> = Plain { x: 1 }; //~ ERROR Type arguments supplied to non-generic type 'Plain<int32>'.
+}
+
+fn bad_fn_type_args() {
+    const d = id<int32, int32>(5); //~ ERROR Type 'id' expects 1 type arguments but 2 were provided.
+}
+
+fn bad_uninferable() {
+    const e = empty(); //~ ERROR Cannot infer type for generic parameter 'T' in 'Option<_>'.
+}
+
+fn bad_unresolved_param() {
+    const f: Pair<uint32, _> = Pair { key: 1, value: 2 }; //~ ERROR Could not resolve type for generic parameter 'V'.
+}
+
+pub fn main() {
+}
