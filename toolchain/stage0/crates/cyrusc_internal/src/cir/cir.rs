@@ -421,7 +421,7 @@ pub enum CIRPattern {
 #[derive(Debug, Clone)]
 pub enum CIRVariantPayload {
     Unit,
-    Single(IRValueID, CIRType),
+    Single(Vec<(IRValueID, CIRType)>),
     Fields {
         struct_type: CIRStructType,
         exported_fields: Vec<(usize, IRValueID, CIRType)>,

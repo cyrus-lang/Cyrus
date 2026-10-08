@@ -138,19 +138,21 @@ impl<'ll> CodeGenIRBuilder<'ll> {
 
                 match payload {
                     CIRVariantPayload::Unit => { /* no payload */ }
-                    CIRVariantPayload::Single(irv_id, cir_type) => {
+                    CIRVariantPayload::Single(bindings) => {
                         self.emit_basic_block(case_block);
 
-                        let llvm_type: BasicTypeEnum<'ll> = self.emit_type(cir_type.clone()).try_into().unwrap();
+                        for (irv_id, cir_type) in bindings {
+                            let llvm_type: BasicTypeEnum<'ll> = self.emit_type(cir_type.clone()).try_into().unwrap();
 
-                        let alloca = self
-                            .llvm_builder
-                            .build_alloca(llvm_type, "scalar.enum.payload.alloca")
-                            .unwrap();
+                            let alloca = self
+                                .llvm_builder
+                                .build_alloca(llvm_type, "scalar.enum.payload.alloca")
+                                .unwrap();
 
-                        self.llvm_builder.build_store(alloca, enum_value).unwrap();
+                            self.llvm_builder.build_store(alloca, enum_value).unwrap();
 
-                        self.insert_local_ir_value(*irv_id, LocalIRValue::LValue(alloca, cir_type.clone()));
+                            self.insert_local_ir_value(*irv_id, LocalIRValue::LValue(alloca, cir_type.clone()));
+                        }
                     }
 
                     CIRVariantPayload::Fields { .. } => {
@@ -278,19 +280,21 @@ impl<'ll> CodeGenIRBuilder<'ll> {
                 match payload {
                     CIRVariantPayload::Unit => { /* no payload */ }
 
-                    CIRVariantPayload::Single(irv_id, cir_type) => {
+                    CIRVariantPayload::Single(bindings) => {
                         self.emit_basic_block(case_block);
-
-                        let llvm_type: BasicTypeEnum<'ll> = self.emit_type(cir_type.clone()).try_into().unwrap();
 
                         // reinterpret payload buffer
                         let enum_payload = self.extract_enum_payload(enum_struct_value);
 
-                        let ptr = self.llvm_builder.build_alloca(llvm_type, "enum.variant.cast").unwrap();
+                        for (irv_id, cir_type) in bindings {
+                            let llvm_type: BasicTypeEnum<'ll> = self.emit_type(cir_type.clone()).try_into().unwrap();
 
-                        self.intrinsic_optimized_memcpy(ptr, enum_payload.as_basic_value_enum());
+                            let ptr = self.llvm_builder.build_alloca(llvm_type, "enum.variant.cast").unwrap();
 
-                        self.insert_local_ir_value(*irv_id, LocalIRValue::LValue(ptr, cir_type.clone()));
+                            self.intrinsic_optimized_memcpy(ptr, enum_payload.as_basic_value_enum());
+
+                            self.insert_local_ir_value(*irv_id, LocalIRValue::LValue(ptr, cir_type.clone()));
+                        }
                     }
 
                     CIRVariantPayload::Fields {

@@ -168,8 +168,14 @@ impl<'a> CIRPrinter<'a> {
                     CIRPattern::Variant { name, tag, payload } => {
                         let payload_str = match payload {
                             CIRVariantPayload::Unit => String::new(),
-                            CIRVariantPayload::Single(var_id, ty) => {
-                                format!("({}: {})", var_id.0, self.print_type(ty))
+                            CIRVariantPayload::Single(bindings) => {
+                                let bindings = bindings
+                                    .iter()
+                                    .map(|(var_id, ty)| format!("%{}: {}", var_id.0, self.print_type(ty)))
+                                    .collect::<Vec<_>>()
+                                    .join(", ");
+
+                                format!("({bindings})")
                             }
                             CIRVariantPayload::Fields { exported_fields, .. } => {
                                 let fields = exported_fields
