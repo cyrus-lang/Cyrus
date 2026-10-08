@@ -1,0 +1,29 @@
+import std::libc{printf};
+
+enum OptionInt {
+    Some(int32),
+    None,
+}
+
+enum ResultOptionInt {
+    Ok(OptionInt),
+    Err(int32),
+}
+
+fn display(r: ResultOptionInt) {
+    switch (r) {
+        case .Ok(.Bogus(x)) => { //~ ERROR Enum 'OptionInt' does not have a variant named 'Bogus'.
+            printf("bogus\n");
+        }
+        case .Ok(.None) => {
+            printf("ok none\n");
+        }
+        case .Err(e) => {
+            printf("err: %d\n", e);
+        }
+    }
+}
+
+pub fn main() {
+    display(ResultOptionInt.Ok(OptionInt.None));
+}

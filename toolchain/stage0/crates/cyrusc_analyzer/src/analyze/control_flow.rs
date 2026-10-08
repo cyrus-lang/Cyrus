@@ -317,21 +317,183 @@ impl<'a> AnalysisContext<'a> {
             })
         }
 
-        fn expose_pattern_bindings<'a>(
+        fn analyze_pattern_recursively<'a>(
             this: &mut AnalysisContext<'a>,
             pattern: &TypedSwitchCasePattern,
             ty: &SemaType,
         ) {
             match &pattern.kind {
+                TypedSwitchCasePatternKind::Wildcard => {}
+
                 TypedSwitchCasePatternKind::Binding { var_decl_id, .. } => {
-                    // assign inferred type to the variable
                     this.decl_tables.with_var_decl_mut(*var_decl_id, |_var_decl| {
                         _var_decl.ty = Some(ty.clone());
                     });
                 }
-                TypedSwitchCasePatternKind::Wildcard => { /* ignore exposing */ }
 
-                _ => {}
+                TypedSwitchCasePatternKind::EnumUnit(ident)
+                | TypedSwitchCasePatternKind::EnumTupleVariant { ident, .. }
+                | TypedSwitchCasePatternKind::EnumStructVariant { ident, .. } => {
+                    let expanded = this.expand_sema_type(ty.clone(), pattern.loc);
+
+                    let named = expanded
+                        .as_named_type()
+                        .filter(|named| named.type_decl_id.as_enum().is_some());
+
+                    let Some(named) = named else {
+                        // variant pattern applied to a non-enum type
+                        this.reporter.report(Diag {
+                            level: DiagLevel::Error,
+                            kind: Box::new(AnalyzerDiagKind::OnlyVariantPatternIsAllowedInSwitch),
+                            loc: Some(pattern.loc),
+                            hint: None,
+                        });
+                        return;
+                    };
+
+                    let enum_id = named.type_decl_id.as_enum().unwrap();
+
+                    let enum_decl = this.decl_tables.enum_decl(enum_id);
+                    let mut inst = instantiate_enum_decl_with_type_args(&enum_decl, &named.type_args);
+                    let enum_name = format_enum_decl(&inst, this.formatter);
+
+                    let variant = inst.variants.iter_mut().find(|variant| match variant {
+                        TypedEnumVariant::Unit(id)
+                        | TypedEnumVariant::Valued { ident: id, .. }
+                        | TypedEnumVariant::Tuple { ident: id, .. }
+                        | TypedEnumVariant::Struct { ident: id, .. } => id == ident,
+                    });
+
+                    let Some(variant) = variant else {
+                        this.reporter.report(Diag {
+                            level: DiagLevel::Error,
+                            kind: Box::new(AnalyzerDiagKind::NoSuchEnumVariant {
+                                enum_name,
+                                variant_name: ident.as_string(),
+                            }),
+                            loc: Some(pattern.loc),
+                            hint: None,
+                        });
+                        return;
+                    };
+
+                    let variant_name = variant.ident().as_string();
+
+                    match (&pattern.kind, variant) {
+                        (TypedSwitchCasePatternKind::EnumUnit(_), TypedEnumVariant::Unit(_)) => {}
+
+                        (
+                            TypedSwitchCasePatternKind::EnumTupleVariant { items, .. },
+                            TypedEnumVariant::Tuple { fields, .. },
+                        ) => {
+                            if fields.len() != items.len() {
+                                this.reporter.report(Diag {
+                                    level: DiagLevel::Error,
+                                    kind: Box::new(AnalyzerDiagKind::EnumVariantArgCountMismatch {
+                                        variant_name,
+                                        expected: fields.len() as u32,
+                                        provided: items.len() as u32,
+                                    }),
+                                    loc: Some(pattern.loc),
+                                    hint: None,
+                                });
+                                return;
+                            }
+
+                            for (item_pattern, field) in items.iter().zip(fields) {
+                                analyze_pattern_recursively(this, item_pattern, &field.ty);
+                            }
+                        }
+
+                        (
+                            TypedSwitchCasePatternKind::EnumTupleVariant { items, .. },
+                            TypedEnumVariant::Valued { value, .. },
+                        ) => {
+                            if items.len() != 1 {
+                                this.reporter.report(Diag {
+                                    level: DiagLevel::Error,
+                                    kind: Box::new(AnalyzerDiagKind::ValuedEnumVariantCanOnlyExportOneField {
+                                        variant_name,
+                                    }),
+                                    loc: Some(pattern.loc),
+                                    hint: None,
+                                });
+                                return;
+                            }
+
+                            if let Some(expr_type) = this.analyze_expr(value, None) {
+                                analyze_pattern_recursively(this, items.first().unwrap(), &expr_type);
+                            }
+                        }
+
+                        (
+                            TypedSwitchCasePatternKind::EnumStructVariant { items, has_rest, .. },
+                            TypedEnumVariant::Struct { fields, .. },
+                        ) => {
+                            if !has_rest && fields.len() != items.len() {
+                                this.reporter.report(Diag {
+                                    level: DiagLevel::Error,
+                                    kind: Box::new(AnalyzerDiagKind::EnumVariantArgCountMismatch {
+                                        variant_name,
+                                        expected: fields.len() as u32,
+                                        provided: items.len() as u32,
+                                    }),
+                                    loc: Some(pattern.loc),
+                                    hint: None,
+                                });
+                                return;
+                            }
+
+                            let mut has_error = false;
+
+                            for item in items {
+                                if !fields.iter().any(|field| field.name == item.name) {
+                                    this.reporter.report(Diag {
+                                        level: DiagLevel::Error,
+                                        kind: Box::new(AnalyzerDiagKind::UnknownFieldInEnumStructPattern {
+                                            field_name: item.name.as_string(),
+                                        }),
+                                        loc: Some(pattern.loc),
+                                        hint: None,
+                                    });
+                                    has_error = true;
+                                }
+                            }
+
+                            if has_error {
+                                return;
+                            }
+
+                            for item in items {
+                                let Some(field) = fields.iter().find(|field| field.name == item.name) else {
+                                    continue;
+                                };
+
+                                analyze_pattern_recursively(this, &item.pattern, &field.ty);
+                            }
+                        }
+
+                        // pattern form does not match the variant kind
+                        _ => {
+                            this.reporter.report(Diag {
+                                level: DiagLevel::Error,
+                                kind: Box::new(AnalyzerDiagKind::EnumVariantKindMismatchInSwitchPattern),
+                                loc: Some(pattern.loc),
+                                hint: None,
+                            });
+                        }
+                    }
+                }
+
+                // expression/range patterns cannot appear inside enum patterns
+                _ => {
+                    this.reporter.report(Diag {
+                        level: DiagLevel::Error,
+                        kind: Box::new(AnalyzerDiagKind::OnlyVariantPatternIsAllowedInSwitch),
+                        loc: Some(pattern.loc),
+                        hint: None,
+                    });
+                }
             }
         }
 
@@ -435,7 +597,7 @@ impl<'a> AnalysisContext<'a> {
                             *exporting_pattern_count += 1;
 
                             for (pattern, field) in items.iter().zip(fields) {
-                                expose_pattern_bindings(this, pattern, &field.ty);
+                                analyze_pattern_recursively(this, pattern, &field.ty);
                             }
                         }
                         TypedEnumVariant::Valued { value, .. } => {
@@ -456,7 +618,7 @@ impl<'a> AnalysisContext<'a> {
                             let pattern = items.first().unwrap();
 
                             if let Some(expr_type) = this.analyze_expr(value, None) {
-                                expose_pattern_bindings(this, pattern, &expr_type);
+                                analyze_pattern_recursively(this, pattern, &expr_type);
                             }
                         }
                         _ => {
@@ -549,7 +711,7 @@ impl<'a> AnalysisContext<'a> {
                                         continue;
                                     };
 
-                                    expose_pattern_bindings(this, &struct_pattern_field.pattern, &field.ty);
+                                    analyze_pattern_recursively(this, &struct_pattern_field.pattern, &field.ty);
                                 }
                             }
                         }

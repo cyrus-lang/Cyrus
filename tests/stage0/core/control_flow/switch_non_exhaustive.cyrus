@@ -1,7 +1,3 @@
-// @stdout: Red
-//
-// ERROR: Non-exhaustive switch statement: missing variants 'Green, Blue'.
-
 import std::libc{printf};
 
 enum Color {
@@ -11,19 +7,13 @@ enum Color {
 }
 
 fn display_color(color: Color) const uint8* {
-    switch (color) {
+    switch (color) { //~ ERROR Non-exhaustive switch statement: missing variants 'Green, Blue'.
         case .Red => {
             return "Red\n";
         }
-        case .Green => {
-            return "Green\n";
-        }
-        case .Blue => {
-            return "Blue\n";
-        }   
     }
 }
 
 pub fn main() {
-    printf("%s", display_color(Color.Red));
+    printf("%s", display_color(Color.Green));
 }

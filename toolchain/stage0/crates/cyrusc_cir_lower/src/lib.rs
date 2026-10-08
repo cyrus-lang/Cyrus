@@ -36,6 +36,7 @@ use cyrusc_typed_ast::substitute::*;
 use cyrusc_typed_ast::types::*;
 use fx_hash::FxHashMap;
 use fx_hash::FxHashMapExt;
+use fx_hash::FxHashSet;
 use std::sync::Arc;
 
 struct CIRLower<'a> {
@@ -57,6 +58,88 @@ struct CIRLower<'a> {
     func_decls: FxHashMap<IRValueID, CIRFuncDeclStmt>,
     global_var_decls: FxHashMap<IRValueID, CIRGlobalVarStmt>,
     main_function: Option<CIRMainFunction>,
+}
+
+/// A single lowered switch case pattern together with its body and the
+/// nested-pattern layers that must be desugared into nested switches.
+struct EnumSwitchEntry {
+    pattern: CIRPattern,
+    layers: Vec<(IRValueID, CIRType, CIRPattern, Loc)>,
+    body: CIRBlockStmt,
+}
+
+impl EnumSwitchEntry {
+    fn tag(&self) -> usize {
+        match &self.pattern {
+            CIRPattern::Variant { tag, .. } => *tag,
+            _ => unreachable!(),
+        }
+    }
+
+    /// Wraps body with the entry's nested pattern layers (outermost first).
+    fn wrap_body(
+        body: CIRBlockStmt,
+        layers: &[(IRValueID, CIRType, CIRPattern, Loc)],
+        fallback: Option<CIRBlockStmt>,
+    ) -> CIRBlockStmt {
+        let mut body = body;
+
+        for (irv_id, ty, inner_pattern, loc) in layers.iter().rev() {
+            body = CIRBlockStmt {
+                stmts: vec![CIRStmt::Switch(CIRSwitchStmt {
+                    value: CIRExpr {
+                        kind: CIRExprKind::Load(CIRValue {
+                            irv_id: *irv_id,
+                            kind: CIRValueKind::LocalVariable,
+                        }),
+                        ty: ty.clone(),
+                        loc: *loc,
+                    },
+                    cases: vec![CIRSwitchCase {
+                        patterns: vec![inner_pattern.clone()],
+                        body,
+                    }],
+                    default: fallback.clone(),
+                    all_cases_covered: false,
+                    loc: *loc,
+                })],
+                defers: Vec::new(),
+                loc: *loc,
+            };
+        }
+
+        body
+    }
+
+    /// Builds the body for a group of same-tag entries. 
+    /// Entries are tried in source order, falling through to 
+    /// the next entry when a nested pattern does not match.
+    fn build_chain(entries: &[EnumSwitchEntry], group: &[usize], loc: Loc) -> CIRBlockStmt {
+        let Some(&entry_idx) = group.first() else {
+            return CIRBlockStmt {
+                stmts: Vec::new(),
+                defers: Vec::new(),
+                loc,
+            };
+        };
+
+        let entry = &entries[entry_idx];
+
+        // Plain binding patterns always match
+        if entry.layers.is_empty() {
+            return entry.body.clone();
+        }
+
+        let fallback = Self::build_chain(entries, &group[1..], loc);
+
+        let fallback = if fallback.stmts.is_empty() && fallback.defers.is_empty() {
+            None
+        } else {
+            Some(fallback)
+        };
+
+        Self::wrap_body(entry.body.clone(), &entry.layers, fallback)
+    }
 }
 
 impl<'a> CIRLower<'a> {
@@ -712,152 +795,138 @@ impl<'a> CIRLower<'a> {
         default: Option<CIRBlockStmt>,
         switch_stmt: &TypedSwitchStmt,
     ) -> CIRStmt {
-        let operand_type = switch_stmt.operand.ty.as_ref().unwrap().const_inner();
-        let named_type = operand_type.as_named_type().unwrap();
-        let type_args = &named_type.type_args;
-        let enum_decl_id = named_type.type_decl_id.as_enum().unwrap();
+        let operand_ty = switch_stmt.operand.ty.as_ref().unwrap().clone();
 
-        let decl_key = (TypeDeclID::Enum(enum_decl_id), type_args.clone());
-        let type_id = self.tctx.get_named_type(&decl_key).unwrap();
+        let has_duplicate_tags = {
+            let mut seen_variants = FxHashSet::default();
+            let mut has_duplicate = false;
 
-        let enum_decl = self.decl_tables.enum_decl(enum_decl_id);
+            for typed_case in &switch_stmt.cases {
+                for typed_pattern in &typed_case.patterns {
+                    let variant_name = match &typed_pattern.kind {
+                        TypedSwitchCasePatternKind::EnumUnit(ident)
+                        | TypedSwitchCasePatternKind::EnumTupleVariant { ident, .. }
+                        | TypedSwitchCasePatternKind::EnumStructVariant { ident, .. } => ident.as_string(),
+                        _ => continue,
+                    };
 
-        let inst_enum_decl = instantiate_enum_decl_with_type_args(&enum_decl, &type_args);
+                    if !seen_variants.insert(variant_name) {
+                        has_duplicate = true;
+                    }
+                }
+            }
+
+            has_duplicate
+        };
 
         let mut cases = Vec::new();
 
-        for typed_case in &switch_stmt.cases {
-            let mut patterns = Vec::new();
+        if !has_duplicate_tags {
+            for typed_case in &switch_stmt.cases {
+                let mut patterns = Vec::new();
+                let mut nested_layers = Vec::new();
 
-            for typed_pattern in &typed_case.patterns {
-                let pattern = match &typed_pattern.kind {
-                    TypedSwitchCasePatternKind::EnumUnit(ident) => {
-                        let tag = self.tctx.lookup_variant_tag(type_id, &ident.value).unwrap();
-
-                        CIRPattern::Variant {
-                            name: ident.to_string(),
-                            tag: tag as usize,
-                            payload: CIRVariantPayload::Unit,
-                        }
-                    }
-                    TypedSwitchCasePatternKind::EnumTupleVariant { ident, items } => {
-                        let tag = self.tctx.lookup_variant_tag(type_id, &ident.value).unwrap();
-
-                        let variant = inst_enum_decl
-                            .variants
-                            .iter()
-                            .find(|variant| variant.ident() == ident)
-                            .unwrap();
-
-                        let exported_fields = self.lower_switch_case_tuple_pattern_bindings(items, variant);
-
-                        if matches!(variant, TypedEnumVariant::Valued { .. }) {
-                            let (_, var_id, ty) = exported_fields.first().cloned().unwrap();
-
-                            CIRPattern::Variant {
-                                name: ident.to_string(),
-                                tag: tag as usize,
-                                payload: CIRVariantPayload::Single(var_id, ty),
-                            }
-                        } else {
-                            let cir_struct_type = {
-                                let TypedEnumVariant::Tuple { fields, .. } = variant else {
-                                    unreachable!()
-                                };
-
-                                let field_types = fields
-                                    .iter()
-                                    .map(|field| {
-                                        lower_sema_type(&self.decl_tables, self.target, self.tctx.clone(), &field.ty)
-                                    })
-                                    .collect();
-
-                                let fields_info = fields
-                                    .iter()
-                                    .enumerate()
-                                    .map(|(i, field)| (i.to_string(), field.loc))
-                                    .collect();
-
-                                CIRStructType {
-                                    decl_key: None,
-                                    name: None,
-                                    fields: field_types,
-                                    fields_info,
-                                    repr_attr: None,
-                                    align: None,
-                                    loc: ident.loc,
-                                }
-                            };
-
-                            CIRPattern::Variant {
-                                name: ident.to_string(),
-                                tag: tag as usize,
-                                payload: CIRVariantPayload::Fields {
-                                    struct_type: cir_struct_type,
-                                    exported_fields,
-                                },
-                            }
-                        }
-                    }
-                    TypedSwitchCasePatternKind::EnumStructVariant { ident, items, .. } => {
-                        let tag = self.tctx.lookup_variant_tag(type_id, &ident.value).unwrap();
-
-                        let variant = inst_enum_decl
-                            .variants
-                            .iter()
-                            .find(|variant| variant.ident() == ident)
-                            .unwrap();
-
-                        let exported_fields = self.lower_switch_case_struct_pattern_bindings(items, variant);
-
-                        let cir_struct_type = {
-                            let TypedEnumVariant::Struct { fields, .. } = variant else {
-                                unreachable!()
-                            };
-
-                            let field_types = fields
-                                .iter()
-                                .map(|field| {
-                                    lower_sema_type(&self.decl_tables, self.target, self.tctx.clone(), &field.ty)
-                                })
-                                .collect();
-
-                            let fields_info = fields.iter().map(|field| (field.name.as_string(), field.loc)).collect();
-
-                            CIRStructType {
-                                decl_key: None,
-                                name: None,
-                                fields: field_types,
-                                fields_info,
-                                repr_attr: None,
-                                align: None,
-                                loc: ident.loc,
-                            }
-                        };
-
-                        CIRPattern::Variant {
-                            name: ident.to_string(),
-                            tag: tag as usize,
-                            payload: CIRVariantPayload::Fields {
-                                struct_type: cir_struct_type,
-                                exported_fields,
-                            },
-                        }
-                    }
-
-                    TypedSwitchCasePatternKind::Wildcard => {
+                for typed_pattern in &typed_case.patterns {
+                    if matches!(typed_pattern.kind, TypedSwitchCasePatternKind::Wildcard) {
                         continue;
                     }
 
-                    _ => unreachable!("non-enum pattern in enum switch lowering"),
-                };
+                    let (pattern, layers) = self.lower_enum_pattern_with_layers(typed_pattern, &operand_ty);
 
-                patterns.push(pattern);
+                    patterns.push(pattern);
+                    nested_layers.extend(layers);
+                }
+
+                let body = self.lower_block(&typed_case.body);
+
+                // Desugar nested patterns (e.g. `case .Ok(.Some(x))`) into
+                // nested switch statements.
+                let body = EnumSwitchEntry::wrap_body(body, &nested_layers, None);
+
+                cases.push(CIRSwitchCase { patterns, body });
+            }
+        } else {
+            let mut entries: Vec<EnumSwitchEntry> = Vec::new();
+
+            for typed_case in &switch_stmt.cases {
+                let mut case_entries = Vec::new();
+
+                for typed_pattern in &typed_case.patterns {
+                    if matches!(typed_pattern.kind, TypedSwitchCasePatternKind::Wildcard) {
+                        continue;
+                    }
+
+                    let (pattern, layers) = self.lower_enum_pattern_with_layers(typed_pattern, &operand_ty);
+                    case_entries.push((pattern, layers));
+                }
+
+                if case_entries.is_empty() {
+                    continue;
+                }
+
+                let mut body = Some(self.lower_block(&typed_case.body));
+                let last_index = case_entries.len() - 1;
+
+                for (i, (pattern, layers)) in case_entries.into_iter().enumerate() {
+                    let body = if i == last_index {
+                        body.take().unwrap()
+                    } else {
+                        body.as_ref().unwrap().clone()
+                    };
+
+                    entries.push(EnumSwitchEntry { pattern, layers, body });
+                }
             }
 
-            let body = self.lower_block(&typed_case.body);
+            let mut groups: Vec<(usize, Vec<usize>)> = Vec::new();
 
-            cases.push(CIRSwitchCase { patterns, body });
+            for (i, entry) in entries.iter().enumerate() {
+                let tag = entry.tag();
+
+                match groups.iter_mut().find(|(group_tag, _)| *group_tag == tag) {
+                    Some((_, group)) => group.push(i),
+                    None => groups.push((tag, vec![i])),
+                }
+            }
+
+            for (_, group) in &groups {
+                let mut pattern = entries[group[0]].pattern.clone();
+
+                if let CIRPattern::Variant { payload, .. } = &mut pattern {
+                    for &entry_idx in &group[1..] {
+                        let CIRPattern::Variant {
+                            payload: other_payload, ..
+                        } = &entries[entry_idx].pattern
+                        else {
+                            unreachable!()
+                        };
+
+                        match (&mut *payload, other_payload) {
+                            (CIRVariantPayload::Unit, _) => {}
+                            (CIRVariantPayload::Single(bindings), CIRVariantPayload::Single(other_bindings)) => {
+                                bindings.extend(other_bindings.iter().cloned());
+                            }
+                            (
+                                CIRVariantPayload::Fields { exported_fields, .. },
+                                CIRVariantPayload::Fields {
+                                    exported_fields: other_exported_fields,
+                                    ..
+                                },
+                            ) => {
+                                exported_fields.extend(other_exported_fields.iter().cloned());
+                            }
+                            _ => unreachable!("inconsistent payload kinds for the same enum variant tag"),
+                        }
+                    }
+                }
+
+                let body = EnumSwitchEntry::build_chain(&entries, group, switch_stmt.loc);
+
+                cases.push(CIRSwitchCase {
+                    patterns: vec![pattern],
+                    body,
+                });
+            }
         }
 
         let all_cases_covered = switch_stmt.all_cases_covered.unwrap();
@@ -871,66 +940,263 @@ impl<'a> CIRLower<'a> {
         })
     }
 
-    fn lower_switch_case_struct_pattern_bindings(
+    fn lower_enum_pattern_with_layers(
         &mut self,
-        items: &[TypedSwitchCaseEnumStructPatternField],
-        variant_decl: &TypedEnumVariant,
-    ) -> Vec<(usize, IRValueID, CIRType)> {
-        items
-            .iter()
-            .filter_map(|item| {
-                if let TypedSwitchCasePatternKind::Binding { var_decl_id, .. } = &item.pattern.kind {
-                    let ty = variant_decl.get_struct_variant_field_type(&item.name.value).unwrap();
+        pattern: &TypedSwitchCasePattern,
+        ty: &SemaType,
+    ) -> (CIRPattern, Vec<(IRValueID, CIRType, CIRPattern, Loc)>) {
+        let mut layers = Vec::new();
 
-                    let irv_id = self.new_ir_value_id();
+        let enum_target = self.resolve_enum_pattern_target(ty);
+        let (enum_decl_id, type_args) = &enum_target;
 
-                    self.decl_to_ir_value_map.insert(DeclID::Var(*var_decl_id), irv_id);
+        // Lower first so the enum type is registered in the type context.
+        let cir_ty = lower_sema_type(&self.decl_tables, self.target, self.tctx.clone(), ty);
 
-                    let field_index = variant_decl.get_struct_variant_field_index(&item.name.value).unwrap();
+        let CIRType::Enum(type_id) = cir_ty else {
+            panic!("expected enum type in enum pattern lowering")
+        };
 
-                    Some((
-                        field_index,
-                        irv_id,
-                        lower_sema_type(&self.decl_tables, self.target, self.tctx.clone(), &ty),
-                    ))
-                } else {
-                    None
+        let decl_key = (TypeDeclID::Enum(*enum_decl_id), type_args.clone());
+        let type_id = self.tctx.get_named_type(&decl_key).unwrap_or(type_id);
+
+        let enum_decl = self.decl_tables.enum_decl(*enum_decl_id);
+        let inst_enum_decl = instantiate_enum_decl_with_type_args(&enum_decl, type_args);
+
+        let pattern = match &pattern.kind {
+            TypedSwitchCasePatternKind::EnumUnit(ident) => {
+                let tag = self.tctx.lookup_variant_tag(type_id, &ident.value).unwrap();
+
+                CIRPattern::Variant {
+                    name: ident.to_string(),
+                    tag: tag as usize,
+                    payload: CIRVariantPayload::Unit,
                 }
-            })
-            .collect()
-    }
+            }
 
-    fn lower_switch_case_tuple_pattern_bindings(
-        &mut self,
-        items: &[TypedSwitchCasePattern],
-        variant_decl: &TypedEnumVariant,
-    ) -> Vec<(usize, IRValueID, CIRType)> {
-        items
-            .iter()
-            .enumerate()
-            .filter_map(|(idx, p)| {
-                if let TypedSwitchCasePatternKind::Binding { var_decl_id, .. } = &p.kind {
-                    let ty = match variant_decl {
-                        TypedEnumVariant::Tuple { fields, .. } => &fields[idx].ty,
-                        TypedEnumVariant::Valued { value, .. } => value.ty.as_ref().unwrap(),
-                        _ => unreachable!(),
+            TypedSwitchCasePatternKind::EnumTupleVariant { ident, items } => {
+                let tag = self.tctx.lookup_variant_tag(type_id, &ident.value).unwrap();
+
+                let variant = inst_enum_decl
+                    .variants
+                    .iter()
+                    .find(|variant| variant.ident() == ident)
+                    .unwrap();
+
+                match variant {
+                    TypedEnumVariant::Unit(_) => CIRPattern::Variant {
+                        name: ident.to_string(),
+                        tag: tag as usize,
+                        payload: CIRVariantPayload::Unit,
+                    },
+
+                    TypedEnumVariant::Valued { value, .. } => {
+                        let value_ty = value.ty.as_ref().unwrap();
+                        let value_cir_ty = lower_sema_type(&self.decl_tables, self.target, self.tctx.clone(), value_ty);
+                        let irv_id = self.new_ir_value_id();
+
+                        if let Some(item) = items.first() {
+                            match &item.kind {
+                                TypedSwitchCasePatternKind::Wildcard => {}
+                                TypedSwitchCasePatternKind::Binding { var_decl_id, .. } => {
+                                    self.decl_to_ir_value_map.insert(DeclID::Var(*var_decl_id), irv_id);
+                                }
+                                _ => {
+                                    let (inner_pattern, inner_layers) =
+                                        self.lower_enum_pattern_with_layers(item, value_ty);
+
+                                    layers.push((irv_id, value_cir_ty.clone(), inner_pattern, item.loc));
+                                    layers.extend(inner_layers);
+                                }
+                            }
+                        }
+
+                        CIRPattern::Variant {
+                            name: ident.to_string(),
+                            tag: tag as usize,
+                            payload: CIRVariantPayload::Single(vec![(irv_id, value_cir_ty)]),
+                        }
+                    }
+
+                    TypedEnumVariant::Tuple { fields, .. } => {
+                        let mut exported_fields = Vec::new();
+
+                        for (idx, item) in items.iter().enumerate() {
+                            let Some(field) = fields.get(idx) else {
+                                break;
+                            };
+                            let field_ty = &field.ty;
+
+                            match &item.kind {
+                                TypedSwitchCasePatternKind::Wildcard => {}
+
+                                TypedSwitchCasePatternKind::Binding { var_decl_id, .. } => {
+                                    let irv_id = self.new_ir_value_id();
+                                    self.decl_to_ir_value_map.insert(DeclID::Var(*var_decl_id), irv_id);
+
+                                    let field_cir_ty =
+                                        lower_sema_type(&self.decl_tables, self.target, self.tctx.clone(), field_ty);
+
+                                    exported_fields.push((idx, irv_id, field_cir_ty));
+                                }
+
+                                // nested enum pattern: export the whole field and
+                                // desugar the rest of the body into a nested switch.
+                                _ => {
+                                    let field_cir_ty =
+                                        lower_sema_type(&self.decl_tables, self.target, self.tctx.clone(), field_ty);
+                                    let irv_id = self.new_ir_value_id();
+
+                                    let (inner_pattern, inner_layers) =
+                                        self.lower_enum_pattern_with_layers(item, field_ty);
+
+                                    exported_fields.push((idx, irv_id, field_cir_ty.clone()));
+                                    layers.push((irv_id, field_cir_ty, inner_pattern, item.loc));
+                                    layers.extend(inner_layers);
+                                }
+                            }
+                        }
+
+                        let cir_struct_type = CIRStructType {
+                            decl_key: None,
+                            name: None,
+                            fields: fields
+                                .iter()
+                                .map(|field| {
+                                    lower_sema_type(&self.decl_tables, self.target, self.tctx.clone(), &field.ty)
+                                })
+                                .collect(),
+                            fields_info: fields
+                                .iter()
+                                .enumerate()
+                                .map(|(i, field)| (i.to_string(), field.loc))
+                                .collect(),
+                            repr_attr: None,
+                            align: None,
+                            loc: ident.loc,
+                        };
+
+                        CIRPattern::Variant {
+                            name: ident.to_string(),
+                            tag: tag as usize,
+                            payload: CIRVariantPayload::Fields {
+                                struct_type: cir_struct_type,
+                                exported_fields,
+                            },
+                        }
+                    }
+
+                    TypedEnumVariant::Struct { .. } => {
+                        unreachable!("struct variant matched with tuple pattern")
+                    }
+                }
+            }
+
+            TypedSwitchCasePatternKind::EnumStructVariant { ident, items, .. } => {
+                let tag = self.tctx.lookup_variant_tag(type_id, &ident.value).unwrap();
+
+                let variant = inst_enum_decl
+                    .variants
+                    .iter()
+                    .find(|variant| variant.ident() == ident)
+                    .unwrap();
+
+                let TypedEnumVariant::Struct { fields, .. } = variant else {
+                    panic!("enum struct pattern used on non-struct variant")
+                };
+
+                let mut exported_fields = Vec::new();
+
+                for item in items {
+                    let field_index = match variant.get_struct_variant_field_index(&item.name.value) {
+                        Some(field_index) => field_index,
+                        None => continue,
                     };
 
-                    let irv_id = self.new_ir_value_id();
+                    match &item.pattern.kind {
+                        TypedSwitchCasePatternKind::Wildcard => {}
 
-                    self.decl_to_ir_value_map.insert(DeclID::Var(*var_decl_id), irv_id);
+                        TypedSwitchCasePatternKind::Binding { var_decl_id, .. } => {
+                            let field_ty = variant.get_struct_variant_field_type(&item.name.value).unwrap();
 
-                    // tuple: consecutive index
-                    Some((
-                        idx,
-                        irv_id,
-                        lower_sema_type(&self.decl_tables, self.target, self.tctx.clone(), &ty),
-                    ))
-                } else {
-                    None
+                            let irv_id = self.new_ir_value_id();
+                            self.decl_to_ir_value_map.insert(DeclID::Var(*var_decl_id), irv_id);
+
+                            let field_cir_ty =
+                                lower_sema_type(&self.decl_tables, self.target, self.tctx.clone(), &field_ty);
+
+                            exported_fields.push((field_index, irv_id, field_cir_ty));
+                        }
+
+                        // nested enum pattern: export the whole field and
+                        // desugar the rest of the body into a nested switch.
+                        _ => {
+                            let field_ty = variant.get_struct_variant_field_type(&item.name.value).unwrap();
+
+                            let field_cir_ty =
+                                lower_sema_type(&self.decl_tables, self.target, self.tctx.clone(), &field_ty);
+                            let irv_id = self.new_ir_value_id();
+
+                            let (inner_pattern, inner_layers) =
+                                self.lower_enum_pattern_with_layers(&item.pattern, &field_ty);
+
+                            exported_fields.push((field_index, irv_id, field_cir_ty.clone()));
+                            layers.push((irv_id, field_cir_ty, inner_pattern, item.pattern.loc));
+                            layers.extend(inner_layers);
+                        }
+                    }
                 }
-            })
-            .collect()
+
+                let cir_struct_type = CIRStructType {
+                    decl_key: None,
+                    name: None,
+                    fields: fields
+                        .iter()
+                        .map(|field| lower_sema_type(&self.decl_tables, self.target, self.tctx.clone(), &field.ty))
+                        .collect(),
+                    fields_info: fields.iter().map(|field| (field.name.as_string(), field.loc)).collect(),
+                    repr_attr: None,
+                    align: None,
+                    loc: ident.loc,
+                };
+
+                CIRPattern::Variant {
+                    name: ident.to_string(),
+                    tag: tag as usize,
+                    payload: CIRVariantPayload::Fields {
+                        struct_type: cir_struct_type,
+                        exported_fields,
+                    },
+                }
+            }
+
+            _ => unreachable!("non-enum pattern in enum switch lowering"),
+        };
+
+        (pattern, layers)
+    }
+
+    /// FIXME: This is not a solution but a glue just to fix the problem.
+    /// 
+    /// Resolves typedefs so the pattern target enum decl id and type args can be found.
+    fn resolve_enum_pattern_target(&mut self, ty: &SemaType) -> (EnumDeclID, TypedTypeArgs) {
+        let mut current = ty.clone();
+
+        for _ in 0..16 {
+            let Some(named) = current.const_inner().as_named_type() else {
+                break;
+            };
+
+            match named.type_decl_id {
+                TypeDeclID::Enum(enum_decl_id) => return (enum_decl_id, named.type_args.clone()),
+                TypeDeclID::Typedef(typedef_decl_id) => {
+                    current = (*self.decl_tables.typedef_decl(typedef_decl_id).ty).clone();
+                }
+                _ => break,
+            }
+        }
+
+        panic!("enum pattern applied to non-enum type")
     }
 
     fn lower_while(&mut self, while_stmt: &TypedWhileStmt) -> CIRStmt {
