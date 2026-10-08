@@ -44,6 +44,7 @@ pub struct Label {
     pub fn free(self: Self*) {
         switch (self->mesg) {
             case .Some(str) => str.free();
+            else => {}
         }
     }
 }

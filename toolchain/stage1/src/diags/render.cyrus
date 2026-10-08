@@ -80,6 +80,7 @@ pub struct CompilerDiagRender {
                         max_line = end;
                     }
                 }
+                else => {}
             }
         }
 
@@ -181,6 +182,7 @@ pub struct CompilerDiagRender {
                         mark_len = line_len - column_offset;
                     }
                 }
+                else => {}
             }
 
             if (mark_len == 0) {
@@ -241,6 +243,7 @@ pub struct CompilerDiagRender {
                         } else {
                             switch (source->get_line(l)) {
                                 case .Some(got) => mark_len = got.1;
+                                else => {}
                             }
                         }
 
@@ -253,9 +256,12 @@ pub struct CompilerDiagRender {
                         self->render_mark(mark_len, label->role);
 
                         switch (label->mesg) {
-                            case .Some(str) => if (l == end) {
-                                self->render_under(str.as_str_const(), column_offset, space, label->role);
+                            case .Some(str) => {
+                                if (l == end) {
+                                    self->render_under(str.as_str_const(), column_offset, space, label->role);
+                                }
                             }
+                            else => {}
                         }
 
                         self->writer.write_char('\n');
@@ -292,6 +298,7 @@ pub struct CompilerDiagRender {
                     format_usize(self->writer, column);
                     self->writer.write_char('\n');
                 }
+                else => {}
             }
 
             self->render_assign(space);

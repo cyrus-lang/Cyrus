@@ -228,9 +228,11 @@ pub struct Resolver {
                                 return false;
                             }
                         }
+                        else => {}
                     }
                 }
             }
+            else => {}
         }
 
         return true;
@@ -310,6 +312,7 @@ pub struct Resolver {
                     return false;
                 }
             }
+            else => {}
         }
 
         const key = visit_key(allocator, resolved.file_path.as_str_const());
@@ -321,6 +324,7 @@ pub struct Resolver {
             key.free();
             switch (alias) {
                 case .Some(str) => str.free();
+                else => {}
             }
             resolved.free();
             return false;
@@ -343,6 +347,7 @@ pub struct Resolver {
                     key.free();
                     switch (alias) {
                         case .Some(str) => str.free();
+                        else => {}
                     }
                     resolved.free();
                     return false;
@@ -355,6 +360,7 @@ pub struct Resolver {
                     key.free();
                     switch (alias) {
                         case .Some(str) => str.free();
+                        else => {}
                     }
                     resolved.free();
                     return false;
@@ -367,6 +373,7 @@ pub struct Resolver {
                     key.free();
                     switch (alias) {
                         case .Some(str) => str.free();
+                        else => {}
                     }
                     resolved.free();
                     return false;
@@ -424,12 +431,14 @@ pub struct Resolver {
                             key.free();
                             switch (alias) {
                                 case .Some(str) => str.free();
+                                else => {}
                             }
                             resolved.free();
                             return false;
                         }
                     }
                 }
+                else => {}
             }
         }
 
@@ -500,6 +509,7 @@ pub struct Resolver {
 
                     switch (single->renamed) {
                         case .Some(renamed) => name = renamed.str.as_str_const();
+                        else => {}
                     }
 
                     switch (self->global_symbols.lookup_symbol_id_in_scope(source_scope_id, actual)) {
@@ -525,11 +535,8 @@ pub struct Resolver {
                                     var is_private = false;
 
                                     switch (entry->vis_opt) {
-                                        case .Some(vis) => {
-                                            switch (vis) {
-                                                case .Private => is_private = true;
-                                            }
-                                        }
+                                        case .Some(.Private) => is_private = true;
+                                        else => {}
                                     }
 
                                     if (is_private) {
@@ -564,6 +571,7 @@ pub struct Resolver {
                     }
                 }
             }
+            else => {}
         }
 
         return ok;

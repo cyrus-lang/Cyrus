@@ -113,6 +113,7 @@ pub struct SymbolEntry {
         switch (self->kind) {
             case .Namespace(namespace) => namespace.scope->free();
             case .Module(module) => module.scope->free();
+            else => {}
         }
     }
 }
@@ -312,6 +313,7 @@ pub struct GlobalSymbolRegistry {
                     );
                 }
             }
+            else => {}
         }
     }
 

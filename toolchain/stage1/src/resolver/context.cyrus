@@ -60,6 +60,7 @@ pub struct TraverseContext {
             case .Some(prev) => {
                 self->scope_table_stack.push(prev);
             }
+            else => {}
         }
 
         self->current_scope = .Some(concrete);
@@ -104,6 +105,7 @@ pub struct TraverseContext {
 
             switch (scope->resolve(name)) {
                 case .Some(symbol_id) => return .Some(symbol_id);
+                else => {}
             }
         }
 
@@ -120,6 +122,7 @@ pub struct TraverseContext {
 
             switch (scope->resolve_label(name)) {
                 case .Some(label_id) => return .Some(label_id);
+                else => {}
             }
         }
 
@@ -144,6 +147,7 @@ pub struct TraverseContext {
 
             switch (scope->lookup(name)) {
                 case .Some(param_id) => return .Some(param_id);
+                else => {}
             }
         }
 
@@ -167,6 +171,7 @@ pub struct TraverseContext {
     ) Option<cir::SymbolId> {
         switch (self->lookup_local(name)) {
             case .Some(local_id) => return .Some(local_id);
+            else => {}
         }
 
         return self->registry->lookup_in_scope_chain(scope_id, name);

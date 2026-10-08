@@ -151,6 +151,7 @@ pub struct ParserStmts {
                 case .Some(attr) => {
                     attrs.push(attr);
                 }
+                else => {}
             }
         }
 
@@ -207,6 +208,7 @@ pub struct ParserStmts {
                 case .Some(list) => {
                     check_attrs(self->allocator, self->state->dctx, list);
                 }
+                else => {}
             }
 
             // These statements accept no attributes
@@ -255,6 +257,7 @@ pub struct ParserStmts {
                             list
                         );
                     }
+                    else => {}
                 }
 
                 return self->parse_module_decl(is_pub);
@@ -346,6 +349,7 @@ pub struct ParserStmts {
                     case .Some(attr) => {
                         inner.push(attr);
                     }
+                    else => {}
                 }
             }
 
@@ -381,12 +385,14 @@ pub struct ParserStmts {
                                 case .Some(item) => {
                                     self->pending_attrs.push(*item);
                                 }
+                                else => {}
                             }
                         }
 
                         list->free();
                         *list = Vec.new(self->allocator);
                     }
+                    else => {}
                 }
 
                 parsed = self->parse_builtin_stmt(true);
@@ -444,6 +450,7 @@ pub struct ParserStmts {
                 case .Some(attr) => {
                     dropped.push(attr);
                 }
+                else => {}
             }
         }
 
@@ -456,6 +463,7 @@ pub struct ParserStmts {
                         attr->span
                     );
                 }
+                else => {}
             }
         }
 
@@ -572,6 +580,7 @@ pub struct ParserStmts {
                 case .Some(attr) => {
                     attrs.push(attr);
                 }
+                else => {}
             }
         }
 
@@ -606,6 +615,7 @@ pub struct ParserStmts {
                     case .Some(attr) => {
                         self->pending_attrs.push(*attr);
                     }
+                    else => {}
                 }
             }
 
@@ -733,6 +743,7 @@ pub struct ParserStmts {
                     );
                 }
             }
+            else => {}
         }
 
         apply_func_attrs(
@@ -773,6 +784,7 @@ pub struct ParserStmts {
                     );
                 }
             }
+            else => {}
         }
 
         apply_object_attrs(
@@ -818,6 +830,7 @@ pub struct ParserStmts {
                     self->state->next();
                 }
             }
+            else => {}
         }
 
         while (self->state->pending->len() > mark) {
@@ -1401,6 +1414,7 @@ pub struct ParserStmts {
                         ));
                     }
                 }
+                else => {}
             }
         }
     }
@@ -1954,6 +1968,7 @@ pub struct ParserStmts {
         switch (pattern.kind) {
             case .Wildcard => valid = false;
             case .Binding { .. } => valid = false;
+            else => {}
         }
 
         if (!valid) {
@@ -2236,37 +2251,36 @@ pub struct ParserStmts {
         const start = self->state->current_span();
 
         switch (*self->state->current()->kind) {
-            case .Literal(lit) => switch (lit) {
-                case .String { value, .. } => {
-                    const span = start.merge(self->state->current_span());
+            case .Literal(.String { value, .. }) => {
+                const span = start.merge(self->state->current_span());
 
-                    var abi = String.new(self->state->allocator);
-                    abi.push_str(value.as_str_const());
-                    abi.to_lower();
+                var abi = String.new(self->state->allocator);
+                abi.push_str(value.as_str_const());
+                abi.to_lower();
 
-                    if (abi.as_str_const() == "c") {
-                        abi.free();
-                        self->state->next();
-                        return .Some(.C);
-                    }
-
-                    if (abi.as_str_const() == "cyrus") {
-                        abi.free();
-                        self->state->next();
-                        return .Some(.Cyrus);
-                    }
-
-                    report_invalid_abi(
-                        self->state->allocator,
-                        self->state->dctx,
-                        span,
-                        value.as_str_const()
-                    );
+                if (abi.as_str_const() == "c") {
                     abi.free();
                     self->state->next();
-                    return .Some(.C); // Fallback
+                    return .Some(.C);
                 }
+
+                if (abi.as_str_const() == "cyrus") {
+                    abi.free();
+                    self->state->next();
+                    return .Some(.Cyrus);
+                }
+
+                report_invalid_abi(
+                    self->state->allocator,
+                    self->state->dctx,
+                    span,
+                    value.as_str_const()
+                );
+                abi.free();
+                self->state->next();
+                return .Some(.C); // Fallback
             }
+            else => {}
         }
 
         self->state->dctx->report(Diag.new(
@@ -2547,6 +2561,7 @@ pub struct ParserStmts {
                     case .Some(attr) => {
                         attrs.push(attr);
                     }
+                    else => {}
                 }
             }
 
@@ -2562,6 +2577,7 @@ pub struct ParserStmts {
                                 attr->span
                             );
                         }
+                        else => {}
                     }
                 }
 
@@ -2613,7 +2629,9 @@ pub struct ParserStmts {
                 switch (self->program->nodes.get(method)) {
                     case .Some(node) => switch (*node) {
                         case .FuncDef(_) => is_def = true;
+                        else => {}
                     }
+                    else => {}
                 }
 
                 if (!is_def) {
@@ -2975,7 +2993,9 @@ pub struct ParserStmts {
             switch (self->program->nodes.get(method)) {
                 case .Some(node) => switch (*node) {
                     case .FuncDef(_) => is_def = true;
+                    else => {}
                 }
+                else => {}
             }
 
             if (!is_def) {
@@ -3195,7 +3215,9 @@ pub struct ParserStmts {
             switch (self->program->nodes.get(method)) {
                 case .Some(node) => switch (*node) {
                     case .FuncDef(_) => is_def = true;
+                    else => {}
                 }
+                else => {}
             }
 
             if (!is_def) {
@@ -3408,7 +3430,9 @@ pub struct ParserStmts {
                 case .Some(node) => switch (*node) {
                     case .FuncDef(func_def) => def_span = .Some(func_def.span);
                     case .FuncDecl(_) => is_decl = true;
+                    else => {}
                 }
+                else => {}
             }
 
             if (!is_decl) {

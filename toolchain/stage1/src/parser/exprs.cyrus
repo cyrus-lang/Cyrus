@@ -74,6 +74,7 @@ pub struct ParserExprs {
                     operator_precedence = prec;
                     has_precedence = true;
                 }
+                else => {}
             }
 
             if (!has_precedence) {
@@ -885,6 +886,7 @@ pub struct ParserExprs {
                     }
                 }
                 case .Semicolon | .EOF => return false;
+                else => {}
             }
 
             i += 1;
@@ -1117,21 +1119,9 @@ pub struct ParserExprs {
             }
 
             switch (*slot) {
-                case .Expr(var expr) => switch (expr) {
-                    case .ModuleImport(path) => *slot = .Type(.ModuleImport(path));
-                    case .Ident(ident) => *slot = .Type(.Ident(ident));
-                    case .Type(var ty) => *slot = .Type(ty);
-                    else => {
-                        indices.free();
-                        self->state->dctx->report(Diag.new(
-                            self->state->allocator,
-                            .Error,
-                            "invalid element type for array initializer",
-                            start
-                        ));
-                        return .None;
-                    }
-                }
+                case .Expr(.ModuleImport(path)) => *slot = .Type(.ModuleImport(path));
+                case .Expr(.Ident(ident)) => *slot = .Type(.Ident(ident));
+                case .Expr(.Type(var ty)) => *slot = .Type(ty);
                 else => {
                     indices.free();
                     self->state->dctx->report(Diag.new(
@@ -1325,12 +1315,11 @@ pub struct ParserExprs {
         var copy: Option<String> = .None;
 
         switch (*self->state->current()->kind) {
-            case .Literal(lit) => switch (lit) {
-                case .String { value, .. } => {
-                    copy = .Some(value.clone(self->state->allocator));
-                    self->state->next();
-                }
+            case .Literal(.String { value, .. }) => {
+                copy = .Some(value.clone(self->state->allocator));
+                self->state->next();
             }
+            else => {}
         }
 
         switch (copy) case .Some(part) else {
@@ -1550,6 +1539,7 @@ pub struct ParserExprs {
                     segments.push(.SubModule(ident));
                     valid = true;
                 }
+                else => {}
             }
 
             if (!valid) {
@@ -1599,10 +1589,12 @@ pub struct ParserExprs {
 
                 switch (*operator->kind) {
                     case .ThinArrow => is_thin_arrow = true;
+                    else => {}
                 }
 
                 return self->parse_field_access(lhs, is_thin_arrow);
             }
+            else => {}
         }
 
         var operator_kind = *operator->kind;
@@ -1615,6 +1607,7 @@ pub struct ParserExprs {
                     joined_shift = true;
                 }
             }
+            else => {}
         }
 
         switch (operator_kind) {
@@ -1633,6 +1626,7 @@ pub struct ParserExprs {
                 };
                 return .Some(self->create_expr(.Assign(node)));
             }
+            else => {}
         }
 
         self->state->next();
@@ -1708,6 +1702,7 @@ pub struct ParserExprs {
                 peeked = token;
                 has_peek = true;
             }
+            else => {}
         }
 
         if (!has_peek) {
@@ -1724,18 +1719,17 @@ pub struct ParserExprs {
         var is_tuple_index = false;
 
         switch (*peeked->kind) {
-            case .Literal(lit) => switch (lit) {
-                case .Integer { value, .. } => switch (value) {
-                    case .Unsigned(raw) => {
-                        tuple_index = @cast(usize, raw);
-                        is_tuple_index = true;
-                    }
-                    case .Signed(raw) => {
-                        tuple_index = @cast(usize, raw);
-                        is_tuple_index = true;
-                    }
+            case .Literal(.Integer { value, .. }) => switch (value) {
+                case .Unsigned(raw) => {
+                    tuple_index = @cast(usize, raw);
+                    is_tuple_index = true;
+                }
+                case .Signed(raw) => {
+                    tuple_index = @cast(usize, raw);
+                    is_tuple_index = true;
                 }
             }
+            else => {}
         }
 
         if (is_tuple_index) {
@@ -1810,28 +1804,27 @@ pub struct ParserExprs {
         const token = self->state->current();
 
         switch (*token->kind) {
-            case .Literal(lit) => switch (lit) {
-                case .Integer { value, suffix } => {
-                    if (suffix.is_some()) {
-                        return .None;
+            case .Literal(.Integer { value, suffix }) => {
+                if (suffix.is_some()) {
+                    return .None;
+                }
+
+                switch (value) {
+                    case .Unsigned(raw) => {
+                        self->state->next();
+                        return .Some(@cast(usize, raw));
                     }
-
-                    switch (value) {
-                        case .Unsigned(raw) => {
-                            self->state->next();
-                            return .Some(@cast(usize, raw));
+                    case .Signed(raw) => {
+                        if (raw < 0) {
+                            return .None;
                         }
-                        case .Signed(raw) => {
-                            if (raw < 0) {
-                                return .None;
-                            }
 
-                            self->state->next();
-                            return .Some(@cast(usize, raw));
-                        }
+                        self->state->next();
+                        return .Some(@cast(usize, raw));
                     }
                 }
             }
+            else => {}
         }
 
         return .None;

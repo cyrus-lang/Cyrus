@@ -60,6 +60,7 @@ pub struct ResolverOptions {
 
         switch (self->stdlib_path) {
             case .Some(path) => path.free();
+            else => {}
         }
 
         self->base_path.free();
@@ -77,6 +78,7 @@ pub enum LoaderError {
         switch (*self) {
             case .ModuleNotFound(name, _) => name.free();
             case .DuplicateModule(name) => name.free();
+            else => {}
         }
     }
 }
@@ -182,6 +184,7 @@ pub fn module_name_from_file_path(
             name.free();
             name = prefixed;
         }
+        else => {}
     }
 
     return name;
@@ -198,9 +201,11 @@ fn is_under_stdlib(allocator: Allocator, file_path: const uint8*, std_path: cons
                     found = has_path_prefix(file.as_str_const(), std.as_str_const());
                     std.free();
                 }
+                else => {}
             }
             file.free();
         }
+        else => {}
     }
 
     cwd.free();
@@ -217,6 +222,7 @@ pub fn last_sub_module_name(allocator: Allocator, segments: const Vec<ASTModuleS
 
         switch (*seg) {
             case .SubModule(ident) => return String.from_str(allocator, ident.str.as_str_const());
+            else => {}
         }
     }
 
@@ -238,6 +244,7 @@ pub fn segment_span(segments: const Vec<ASTModuleSegment>*, ordinal: usize) Span
 
                 seen += 1;
             }
+            else => {}
         }
     }
 
@@ -253,6 +260,7 @@ pub fn last_sub_module_span(segments: const Vec<ASTModuleSegment>*) Span {
 
         switch (segments->get_owned(i).unwrap()) {
             case .SubModule(ident) => return ident.span;
+            else => {}
         }
     }
 
@@ -558,6 +566,7 @@ fn relative_search_dir(
 fn stdlib_modules_path(allocator: Allocator, opts: const ResolverOptions*) Option<String> {
     switch (opts->stdlib_path) {
         case .Some(path) => return .Some(String.from_str(allocator, path.as_str_const()));
+        else => {}
     }
 
     return env::get_string(allocator, "CYRUS_STDLIB_PATH");

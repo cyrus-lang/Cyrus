@@ -43,6 +43,7 @@ pub fn format_module_segments_upto(
 
                     switch (*next) {
                         case .SubModule => out.push_str("::");
+                        else => {}
                     }
                 }
             }
@@ -57,6 +58,7 @@ pub fn format_module_segments_upto(
                             out.push_str(renamed.str.as_str_const());
                             out.push(':');
                         }
+                        else => {}
                     }
 
                     out.push_str(single->ident.str.as_str_const());
@@ -108,6 +110,7 @@ pub fn sub_module_names(
                     ident.str.as_str_const()
                 ));
             }
+            else => {}
         }
     }
 

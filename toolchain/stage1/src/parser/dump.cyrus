@@ -41,6 +41,7 @@ pub struct ASTDump {
                     self->indent -= 1;
                 }
             }
+            else => {}
         }
 
         self->indent -= 1;
@@ -141,6 +142,7 @@ pub struct ASTDump {
             case .DestructTuple(var n) => self->dump_destruct_tuple(&n);
             case .Builtin(var n) => self->dump_builtin(&n);
             case .InlineAsm(var n) => self->dump_inline_asm(&n);
+            else => {}
         }
     }
 
@@ -152,6 +154,7 @@ pub struct ASTDump {
 
         switch (n->vis) {
             case .Public => self->dump_str("visibility", "public");
+            else => {}
         }
 
         self->dump_generic_params(&n->generic_params);
@@ -168,9 +171,11 @@ pub struct ASTDump {
         self->dump_bool("is_undef", n->is_undef);
         switch (n->ty) {
             case .Some(ty) => self->dump_type("ty", ty);
+            else => {}
         }
         switch (n->rhs) {
             case .Some(rhs_id) => self->dump_subtree("rhs", rhs_id);
+            else => {}
         }
         self->indent -= 1;
     }
@@ -186,9 +191,11 @@ pub struct ASTDump {
         self->dump_bool("is_static", n->is_static);
         switch (n->ty) {
             case .Some(ty) => self->dump_type("ty", ty);
+            else => {}
         }
         switch (n->expr) {
             case .Some(expr_id) => self->dump_subtree("expr", expr_id);
+            else => {}
         }
         self->indent -= 1;
     }
@@ -202,6 +209,7 @@ pub struct ASTDump {
         self->dump_func_params(&n->params);
         switch (n->ret_type) {
             case .Some(ty) => self->dump_type_node("ret_type", ty);
+            else => {}
         }
         self->dump_subtree("body", n->body);
         self->indent -= 1;
@@ -216,6 +224,7 @@ pub struct ASTDump {
         self->dump_func_params(&n->params);
         switch (n->ret_type) {
             case .Some(ty) => self->dump_type_node("ret_type", ty);
+            else => {}
         }
         self->indent -= 1;
     }
@@ -223,22 +232,27 @@ pub struct ASTDump {
     fn dump_func_modifiers(self: Self*, m: const ast::ASTFuncModifiers*) {
         switch (m->vis) {
             case .Public => self->dump_str("visibility", "public");            
+            else => {}
         }
 
         switch (m->extrn) {
             case .Some(abi) => self->dump_str("extern", abi.to_str());
+            else => {}
         }
 
         switch (m->inline) {
             case .Some(value) => self->dump_str("inline", value.to_str());
+            else => {}
         }
 
         switch (m->callconv) {
             case .Some(value) => self->dump_str("callconv", value.to_str());
+            else => {}
         }
 
         switch (m->prologue) {
             case .Some(_) => self->dump_str("prologue", "naked");
+            else => {}
         }
 
         for (var i: usize = 0; i < m->optional_flags.len(); i += 1) {
@@ -256,15 +270,18 @@ pub struct ASTDump {
                         }
                     }
                 }
+                else => {}
             }
         }
 
         switch (m->section) {
             case .Some(value) => self->dump_str("section", value.as_str_const());
+            else => {}
         }
 
         switch (m->link_name) {
             case .Some(value) => self->dump_str("link_name", value.as_str_const());
+            else => {}
         }
 
         if (m->link_once) {
@@ -279,10 +296,12 @@ pub struct ASTDump {
     fn dump_global_var_modifiers(self: Self*, m: const ast::ASTGlobalVarModifiers*) {
         switch (m->vis) {
             case .Public => self->dump_str("visibility", "public");
+            else => {}
         }
 
         switch (m->extrn) {
             case .Some(abi) => self->dump_str("extern", abi.to_str());
+            else => {}
         }
 
         if (m->thread_local) {
@@ -291,10 +310,12 @@ pub struct ASTDump {
 
         switch (m->section) {
             case .Some(value) => self->dump_str("section", value.as_str_const());
+            else => {}
         }
 
         switch (m->link_name) {
             case .Some(value) => self->dump_str("link_name", value.as_str_const());
+            else => {}
         }
 
         if (m->link_once) {
@@ -324,6 +345,7 @@ pub struct ASTDump {
                         case .Kind(kind) => self->writer.writeln(kind.to_str());
                     }
                 }
+                else => {}
             }
         }
     }
@@ -349,6 +371,7 @@ pub struct ASTDump {
 
                     switch (param.ty) {
                         case .Some(ty) => self->dump_type("ty", ty);
+                        else => {}
                     }
                 }
                 case .SelfModifier(var m) => {
@@ -363,17 +386,14 @@ pub struct ASTDump {
         }
 
         switch (params->variadic) {
-            case .Some(variadic) => {
-                switch (variadic) {
-                    case .UntypedCStyle => {
-                        self->dump_str("variadic", "c_style");
-                    }
-                    case .Typed(name, ty) => {
-                        self->dump_ident("variadic", &name);
-                        self->dump_type_node("type", ty);
-                    }
-                }
+            case .Some(.UntypedCStyle) => {
+                self->dump_str("variadic", "c_style");
             }
+            case .Some(.Typed(name, ty)) => {
+                self->dump_ident("variadic", &name);
+                self->dump_type_node("type", ty);
+            }
+            else => {}
         }
 
         self->indent -= 1;
@@ -389,12 +409,14 @@ pub struct ASTDump {
         switch (n->modifiers.vis) {
             case .Public => self->dump_str("visibility", "public");
             
+            else => {}
         }
 
         self->dump_repr_attr(&n->modifiers.repr_attr);
 
         switch (n->align) {
             case .Some(value) => self->dump_usize("align", value);
+            else => {}
         }
 
         self->dump_generic_params(&n->generic_params);
@@ -428,6 +450,7 @@ pub struct ASTDump {
             switch (field->vis) {
                 case .Public => self->dump_str("visibility", "public");
                 
+                else => {}
             }
 
             self->dump_type_node("ty", field->ty);
@@ -468,10 +491,12 @@ pub struct ASTDump {
                         self->indent -= 1;
                     }
                 }
+                else => {}
             }
 
             switch (param->default) {
                 case .Some(ty) => self->dump_type_node("default", ty);
+                else => {}
             }
 
             self->indent -= 1;
@@ -487,16 +512,19 @@ pub struct ASTDump {
         switch (n->modifiers.vis) {
             case .Public => self->dump_str("visibility", "public");
             
+            else => {}
         }
 
         self->dump_repr_attr(&n->modifiers.repr_attr);
 
         switch (n->align) {
             case .Some(value) => self->dump_usize("align", value);
+            else => {}
         }
 
         switch (n->tag_type) {
             case .Some(ty) => self->dump_type_node("tag_type", ty);
+            else => {}
         }
 
         self->dump_generic_params(&n->generic_params);
@@ -603,12 +631,14 @@ pub struct ASTDump {
 
         switch (n->modifiers.vis) {
             case .Public => self->dump_str("visibility", "public");
+            else => {}
         }
 
         self->dump_repr_attr(&n->modifiers.repr_attr);
 
         switch (n->align) {
             case .Some(value) => self->dump_usize("align", value);
+            else => {}
         }
 
         self->dump_generic_params(&n->generic_params);
@@ -665,10 +695,9 @@ pub struct ASTDump {
         }
 
         switch (n->params.variadic) {
-            case .Some(v) => switch (v) {
-                case .UntypedCStyle => self->dump_str("variadic", "cstyle");
-                case .Typed(ty) => self->dump_type_node("variadic_type", ty);
-            }
+            case .Some(.UntypedCStyle) => self->dump_str("variadic", "cstyle");
+            case .Some(.Typed(ty)) => self->dump_type_node("variadic_type", ty);
+            else => {}
         }
 
         self->dump_type_node("ret_type", n->ret_type);
@@ -683,6 +712,7 @@ pub struct ASTDump {
 
         switch (n->vis) {
             case .Public => self->dump_str("visibility", "public");
+            else => {}
         }
 
         self->dump_generic_params(&n->generic_params);
@@ -713,6 +743,7 @@ pub struct ASTDump {
         self->dump_node_list("branch", &n->branches);
         switch (n->else_block) {
             case .Some(block) => self->dump_subtree("else_block", block);
+            else => {}
         }
         self->indent -= 1;
     }
@@ -732,12 +763,15 @@ pub struct ASTDump {
         self->indent += 1;
         switch (n->initializer) {
             case .Some(init) => self->dump_subtree("initializer", init);
+            else => {}
         }
         switch (n->condition) {
             case .Some(cond) => self->dump_subtree("condition", cond);
+            else => {}
         }
         switch (n->increment) {
             case .Some(step) => self->dump_subtree("increment", step);
+            else => {}
         }
         self->dump_subtree("body", n->body);
         self->indent -= 1;
@@ -751,6 +785,7 @@ pub struct ASTDump {
         self->dump_switch_cases(&n->cases);
         switch (n->default_case) {
             case .Some(body) => self->dump_subtree("default_case", body);
+            else => {}
         }
         self->indent -= 1;
     }
@@ -769,6 +804,7 @@ pub struct ASTDump {
 
         switch (n->default_case) {
             case .Some(body) => self->dump_subtree("default_case", body);
+            else => {}
         }
         self->indent -= 1;
     }
@@ -896,6 +932,7 @@ pub struct ASTDump {
         self->indent += 1;
         switch (n->argument) {
             case .Some(arg) => self->dump_subtree("argument", arg);
+            else => {}
         }
         self->indent -= 1;
     }
@@ -912,6 +949,7 @@ pub struct ASTDump {
 
         switch (n->alias) {
             case .Some(alias) => self->dump_str("alias", alias.as_str_const());
+            else => {}
         }
 
         self->dump_usize("segments_count", n->segments.len());
@@ -936,6 +974,7 @@ pub struct ASTDump {
 
         switch (n->vis) {
             case .Public => self->dump_str("visibility", "public");
+            else => {}
         }
 
         for (var i: usize = 0; i < n->stmts.len; i += 1) {
@@ -989,6 +1028,7 @@ pub struct ASTDump {
 
         switch (n->rhs) {
             case .Some(rhs) => self->dump_subtree("rhs", rhs);
+            else => {}
         }
 
         self->indent -= 1;
@@ -1019,6 +1059,7 @@ pub struct ASTDump {
 
         switch (p->ty) {
             case .Some(ty) => self->dump_type("ty", ty);
+            else => {}
         }
 
         self->indent -= 1;
@@ -1465,6 +1506,7 @@ pub struct ASTDump {
 
         switch (n->tag_type) {
             case .Some(tag) => self->dump_type_node("tag_type", tag);
+            else => {}
         }
 
         self->indent -= 1;

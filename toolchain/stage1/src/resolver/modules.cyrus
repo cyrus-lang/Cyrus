@@ -102,6 +102,7 @@ pub fn visit_key(allocator: Allocator, path: const uint8*) String {
             cwd.free();
             return key;
         }
+        else => {}
     }
 
     cwd.free();
@@ -200,6 +201,7 @@ fn get_or_create_virtual_module(
                 else => return symbol_id;
             }
         }
+        else => {}
     }
 
     return registry->insert_module_symbol(resolved_parent, module_name, module_name);

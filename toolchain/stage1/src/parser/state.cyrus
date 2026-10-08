@@ -87,6 +87,7 @@ pub struct ParserState {
         if (self->pos > 0) {
             switch (self->get(self->pos - 1)) {
                 case .Some(prev) => return Span.new(self->source_id(), prev->loc);
+                else => {}
             }
         }
 
@@ -227,9 +228,12 @@ pub struct ParserState {
 
     pub fn is(self: const Self*, kind: TokenKind) bool {
         switch (self->get(self->pos)) {
-            case .Some(token) => if (*token->kind == kind) {
-                return true;
+            case .Some(token) => {
+                if (*token->kind == kind) {
+                    return true;
+                }
             }
+            else => {}
         }
 
         return false;
@@ -239,7 +243,9 @@ pub struct ParserState {
         switch (self->get(self->pos)) {
             case .Some(token) => switch (*token->kind) {
                 case .Literal(_) => return true;
+                else => {}
             }
+            else => {}
         }
 
         return false;
@@ -249,7 +255,9 @@ pub struct ParserState {
         switch (self->get(self->pos)) {
             case .Some(token) => switch (*token->kind) {
                 case .Ident(_) => return true;
+                else => {}
             }
+            else => {}
         }
 
         return false;
@@ -259,7 +267,9 @@ pub struct ParserState {
         switch (self->get(self->pos)) {
             case .Some(token) => switch (*token->kind) {
                 case .Ident(str) => return str.as_str_const() == value;
+                else => {}
             }
+            else => {}
         }
 
         return false;
@@ -269,7 +279,9 @@ pub struct ParserState {
         switch (self->get(self->pos + 1)) {
             case .Some(token) => switch (*token->kind) {
                 case .Ident(str) => return str.as_str_const() == value;
+                else => {}
             }
+            else => {}
         }
 
         return false;
@@ -277,9 +289,12 @@ pub struct ParserState {
 
     pub fn is_peek(self: const Self*, kind: TokenKind) bool {
         switch (self->get(self->pos + 1)) {
-            case .Some(token) => if (*token->kind == kind) {
-                return true;
+            case .Some(token) => {
+                if (*token->kind == kind) {
+                    return true;
+                }
             }
+            else => {}
         }
 
         return false;
@@ -288,9 +303,12 @@ pub struct ParserState {
     /// Returns true if the token `n` positions ahead of the cursor has `kind`.
     pub fn is_peek_n(self: const Self*, n: usize, kind: TokenKind) bool {
         switch (self->get(self->pos + n)) {
-            case .Some(token) => if (*token->kind == kind) {
-                return true;
+            case .Some(token) => {
+                if (*token->kind == kind) {
+                    return true;
+                }
             }
+            else => {}
         }
 
         return false;
@@ -300,7 +318,9 @@ pub struct ParserState {
         switch (self->get(self->pos + 1)) {
             case .Some(token) => switch (*token->kind) {
                 case .Literal(_) => return true;
+                else => {}
             }
+            else => {}
         }
 
         return false;
@@ -310,7 +330,9 @@ pub struct ParserState {
         switch (self->get(self->pos + 1)) {
             case .Some(token) => switch (*token->kind) {
                 case .Ident(_) => return true;
+                else => {}
             }
+            else => {}
         }
 
         return false;
@@ -351,6 +373,7 @@ pub struct ParserState {
                     self->next();
                     return;
                 }
+                else => {}
             }
 
             self->next();

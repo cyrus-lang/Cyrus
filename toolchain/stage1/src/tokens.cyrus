@@ -61,9 +61,8 @@ pub struct Token : Format {
     pub fn free(self: Self*) {
         switch (*self->kind) {
             case .Ident(ident) => ident.free();
-            case .Literal(lit) => switch (lit) {
-                case .String { value, .. } => value.free();
-            }
+            case .Literal(.String { value, .. }) => value.free();
+            else => {}
         }
     }
 }
@@ -449,17 +448,20 @@ pub enum Literal : Format {
                 }
                 switch (suffix) {
                     case .Some(s) => writer.write(s.to_str());
+                    else => {}
                 }
             }
             case .Float { value, suffix } => {
                 format_float64(writer, value);
                 switch (suffix) {
                     case .Some(s) => writer.write(s.to_str());
+                    else => {}
                 }
             }
             case .String { value, suffix } => {
                 switch (suffix) {
                     case .Some(s) => writer.write(s.to_str());
+                    else => {}
                 }
                 writer.write("\"");
                 writer.write(value.as_str_const());
