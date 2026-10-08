@@ -161,15 +161,11 @@ pub struct Lexer {
             return;
         }
 
-        switch (self->input->get(self->pos)) {
-            case .Some(char) => {
-                if (char == '\n') {
-                    self->line += 1;
-                    self->col = 1;
-                } else {
-                    self->col += 1;
-                }
-            }
+        if (self->cur() == '\n') {
+            self->line += 1;
+            self->col = 1;
+        } else {
+            self->col += 1;
         }
 
         self->pos += 1; // consume
@@ -195,6 +191,7 @@ pub struct Lexer {
                 str.free();
                 return self->init_kind(token_kind);
             }
+            else => {}
         }
 
         if (str.as_str_const() == "_") {
@@ -706,8 +703,12 @@ pub struct Lexer {
 
             switch (TokenKind.lookup_keyword(suffix.as_str_const())) {
                 case .Some(token_kind) => {
-                    return (token_kind.as_integer_suffix(), token_kind.is_unsigned_integer());
+                    return (
+                        token_kind.as_integer_suffix(), 
+                        token_kind.is_unsigned_integer()
+                    );
                 }
+                else => {}
             }
         }
 
@@ -723,6 +724,7 @@ pub struct Lexer {
                 case .Some(token_kind) => {
                     return token_kind.as_float_suffix();
                 }
+                else => {}
             }
         }
 

@@ -93,7 +93,7 @@ pub fn report_relative_import_escapes_project_root(
     allocator: Allocator,
     span: Span,
 ) {
-    var msg = String.from_str(allocator, "relative import escapes the project root");
+    var msg = String.from_str(allocator, "relative import navigates above the project root directory");
 
     const diag = Diag.new(allocator, .Error, msg.as_str_const(), span);
     diag->help("use a path that stays under the project base directory");
@@ -500,6 +500,7 @@ pub fn report_if_duplicate_method_names(
                                 dup = true;
                             }
                         }
+                        else => {}
                     }
 
                     j += 1;
@@ -509,6 +510,7 @@ pub fn report_if_duplicate_method_names(
                     report_duplicate_method_name(dctx, allocator, func_def.span, object_name, name);
                 }
             }
+            else => {}
         }
     }
 }

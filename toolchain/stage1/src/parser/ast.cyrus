@@ -59,6 +59,7 @@ pub struct ASTProgram {
         for (var i: usize = 0; i < self->nodes.len(); i += 1) {
             switch (self->nodes.get(i)) {
                 case .Some(node) => free_node(node);
+                else => {}
             }
         }
 
@@ -135,6 +136,7 @@ fn free_node(node: ASTNode*) {
             n.methods.free();
             free_opt_repr_attr(&n.modifiers.repr_attr);
         }
+        else => {}
     }
 }
 
@@ -142,6 +144,7 @@ pub fn free_asm_template(template: Vec<String>*) {
     for (var i: usize = 0; i < template->len(); i += 1) {
         switch (template->get(i)) {
             case .Some(part) => part->free();
+            else => {}
         }
     }
 
@@ -152,6 +155,7 @@ pub fn free_asm_operands(operands: Vec<ASTAsmOperand>*) {
     for (var i: usize = 0; i < operands->len(); i += 1) {
         switch (operands->get(i)) {
             case .Some(operand) => operand->constraint.free();
+            else => {}
         }
     }
 
@@ -162,6 +166,7 @@ pub fn free_asm_clobbers(clobbers: Vec<ASTAsmClobber>*) {
     for (var i: usize = 0; i < clobbers->len(); i += 1) {
         switch (clobbers->get(i)) {
             case .Some(clobber) => clobber->name.free();
+            else => {}
         }
     }
 
@@ -174,11 +179,13 @@ pub fn free_destruct_kind(kind: ASTDestructTuplePatternKind*) {
             for (var i: usize = 0; i < patterns.len(); i += 1) {
                 switch (patterns.get(i)) {
                     case .Some(pattern) => free_destruct_pattern(pattern);
+                    else => {}
                 }
             }
 
             patterns.free();
         }
+        else => {}
     }
 }
 
@@ -190,6 +197,7 @@ pub fn free_destruct_pattern(pattern: ASTDestructTuplePattern*) {
 fn free_option_type(ty: Option<ASTType>*) {
     switch (*ty) {
         case .Some(var inner) => free_type(&inner);
+        else => {}
     }
 }
 
@@ -199,7 +207,9 @@ pub fn free_enum_variants(variants: Vec<ASTEnumVariant>*) {
             case .Some(variant) => switch (*variant) {
                 case .Tuple { var fields, .. } => fields.free();
                 case .Struct { var fields, .. } => fields.free();
+                else => {}
             }
+            else => {}
         }
     }
 
@@ -210,6 +220,7 @@ pub fn free_generic_params(list: ASTGenericParams*) {
     for (var i: usize = 0; i < list->len(); i += 1) {
         switch (list->get(i)) {
             case .Some(param) => free_option_bounds(&param->bounds);
+            else => {}
         }
     }
 
@@ -219,6 +230,7 @@ pub fn free_generic_params(list: ASTGenericParams*) {
 pub fn free_option_bounds(bounds: Option<Vec<ASTBound>>*) {
     switch (*bounds) {
         case .Some(var list) => list.free();
+        else => {}
     }
 }
 
@@ -228,8 +240,10 @@ pub fn free_param_list(list: Vec<ASTFuncParamKind>*) {
             case .Some(kind) => {
                 switch (*kind) {
                     case .FuncParam(var param) => free_option_type(&param.ty);
+                    else => {}
                 }
             }
+            else => {}
         }
     }
 
@@ -243,17 +257,21 @@ pub fn free_func_params(params: ASTFuncParams*) {
 pub fn free_modifiers(modifiers: ASTFuncModifiers*) {
     switch (modifiers->link_name) {
         case .Some(name) => name.free();
+        else => {}
     }
 
     switch (modifiers->section) {
         case .Some(name) => name.free();
+        else => {}
     }
 
     for (var i: usize = 0; i < modifiers->optional_flags.len(); i += 1) {
         switch (modifiers->optional_flags.get_const(i)) {
             case .Some(flag) => switch (*flag) {
                 case .NoSanitize(name) => name.free();
+                else => {}
             }
+            else => {}
         }
     }
 
@@ -263,10 +281,12 @@ pub fn free_modifiers(modifiers: ASTFuncModifiers*) {
 pub fn free_global_var_modifiers(modifiers: ASTGlobalVarModifiers*) {
     switch (modifiers->link_name) {
         case .Some(name) => name.free();
+        else => {}
     }
 
     switch (modifiers->section) {
         case .Some(name) => name.free();
+        else => {}
     }
 }
 
@@ -277,6 +297,7 @@ pub fn free_repr_attr(repr: ASTReprAttr*) {
 pub fn free_opt_repr_attr(repr: Option<ASTReprAttr>*) {
     switch (*repr) {
         case .Some(var items) => free_repr_attr(&items);
+        else => {}
     }
 }
 
@@ -291,6 +312,7 @@ pub fn copy_repr_attr(allocator: Allocator, repr: ASTReprAttr) ASTReprAttr {
                     span: item->span,
                 });
             }
+            else => {}
         }
     }
 
@@ -303,6 +325,7 @@ pub fn free_attr_kind(kind: ASTAttrKind*) {
         case .NoSanitize(name) => name.free();
         case .LinkName(name) => name.free();
         case .Section(name) => name.free();
+        else => {}
     }
 }
 
@@ -314,6 +337,7 @@ pub fn free_attrs(list: Vec<ASTAttr>*) {
     for (var i: usize = 0; i < list->len(); i += 1) {
         switch (list->get(i)) {
             case .Some(attr) => free_attr(attr);
+            else => {}
         }
     }
 
@@ -324,6 +348,7 @@ pub fn free_switch_pattern(pattern: ASTSwitchCasePattern*) {
     switch (pattern->kind) {
         case .EnumStructVariant { var items, .. } => free_switch_struct_fields(&items);
         case .EnumTupleVariant { var items, .. } => free_switch_patterns(&items);
+        else => {}
     }
 }
 
@@ -331,6 +356,7 @@ pub fn free_switch_patterns(list: Vec<ASTSwitchCasePattern>*) {
     for (var i: usize = 0; i < list->len(); i += 1) {
         switch (list->get(i)) {
             case .Some(pattern) => free_switch_pattern(pattern);
+            else => {}
         }
     }
 
@@ -341,6 +367,7 @@ pub fn free_switch_struct_fields(list: Vec<ASTSwitchCaseEnumStructPatternField>*
     for (var i: usize = 0; i < list->len(); i += 1) {
         switch (list->get(i)) {
             case .Some(field) => free_switch_pattern(&field->pattern);
+            else => {}
         }
     }
 
@@ -351,6 +378,7 @@ pub fn free_switch_cases(list: Vec<ASTSwitchCase>*) {
     for (var i: usize = 0; i < list->len(); i += 1) {
         switch (list->get(i)) {
             case .Some(item) => free_switch_patterns(&item->patterns);
+            else => {}
         }
     }
 
@@ -375,6 +403,7 @@ fn free_expr(expr: ASTExpr*) {
             switch (n.kind) {
                 case .Tuple(var list) => list.free();
                 case .Struct(var list) => list.free();
+                else => {}
             }
         }
 
@@ -393,6 +422,7 @@ fn free_expr(expr: ASTExpr*) {
             free_asm_operands(&n.inputs);
             free_asm_clobbers(&n.clobbers);
         }
+        else => {}
     }
 }
 
@@ -405,6 +435,7 @@ pub fn free_type(ty: ASTType*) {
         case .UnnamedUnion(var n) => n.fields.free();
         case .Tuple(var n) => n.type_list.free();
         case .Builtin(var n) => free_builtin(&n);
+        else => {}
     }
 }
 
@@ -421,8 +452,10 @@ pub fn free_segments(segments: Vec<ASTModuleSegment>*) {
             case .Some(segment) => {
                 switch (*segment) {
                     case .Single(var list) => list.free();
+                    else => {}
                 }
             }
+            else => {}
         }
     }
 

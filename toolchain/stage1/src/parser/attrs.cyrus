@@ -339,19 +339,18 @@ fn parse_attr_strval(state: ParserState*) Option<String> {
     }
 
     switch (*state->current()->kind) {
-        case .Literal(lit) => switch (lit) {
-            case .String { value, .. } => {
-                var text = String.from_str(state->allocator, value.as_str_const());
-                state->next();
+        case .Literal(.String { value, .. }) => {
+            var text = String.from_str(state->allocator, value.as_str_const());
+            state->next();
 
-                if (!state->expect(.RightParen)) {
-                    text.free();
-                    return .None;
-                }
-
-                return .Some(text);
+            if (!state->expect(.RightParen)) {
+                text.free();
+                return .None;
             }
+
+            return .Some(text);
         }
+        else => {}
     }
 
     state->dctx->report(Diag.new(
@@ -445,6 +444,7 @@ fn parse_repr_attr(state: ParserState*) Option<ast::ASTReprAttr> {
             case .Some(pushed) => {
                 items.push(ast::ASTReprItem { kind: pushed, span: item_span });
             }
+            else => {}
         }
 
         if (!state->is(.RightParen)) {
@@ -480,6 +480,7 @@ pub fn report_attrs_not_applicable(
                     attr_key(&attr->kind)
                 );
             }
+            else => {}
         }
     }
 }
@@ -503,6 +504,7 @@ pub fn check_attrs(allocator: Allocator, dctx: DiagContext*, attrs: Vec<ast::AST
                         ok = false;
                     }
                 }
+                else => {}
             }
         }
     }
@@ -521,6 +523,7 @@ pub fn check_attrs(allocator: Allocator, dctx: DiagContext*, attrs: Vec<ast::AST
                     hot_span = .Some(attr->span);
                 }
             }
+            else => {}
         }
     }
 
@@ -534,6 +537,7 @@ pub fn check_attrs(allocator: Allocator, dctx: DiagContext*, attrs: Vec<ast::AST
                     span
                 ));
             }
+            else => {}
         }
 
         ok = false;
@@ -571,9 +575,11 @@ pub fn check_attrs_cross(
                                 found = true;
                             }
                         }
+                        else => {}
                     }
                 }
             }
+            else => {}
         }
     }
 
@@ -591,6 +597,7 @@ pub fn check_attrs_cross(
                     own_hot = true;
                 }
             }
+            else => {}
         }
     }
 
@@ -608,6 +615,7 @@ pub fn check_attrs_cross(
                     pending_hot = true;
                 }
             }
+            else => {}
         }
     }
 
@@ -624,6 +632,7 @@ pub fn check_attrs_cross(
                     case .Some(s) => {
                         span = .Some(s);
                     }
+                    else => {}
                 }
             }
 
@@ -636,6 +645,7 @@ pub fn check_attrs_cross(
                         s
                     ));
                 }
+                else => {}
             }
 
             ok = false;
@@ -732,10 +742,8 @@ pub fn apply_func_attrs(
                     String.from_str(allocator, name.as_str_const())
                 ));
             }
-            case .Opt(value) => switch (value) {
-                case .None => modifiers->optional_flags.push(.OptNone);
-                case .Size => modifiers->optional_flags.push(.OptSize);
-            }
+            case .Opt(.None) => modifiers->optional_flags.push(.OptNone);
+            case .Opt(.Size) => modifiers->optional_flags.push(.OptSize);
             case .Section(name) => {
                 modifiers->section = .Some(String.from_str(
                     allocator,
@@ -748,24 +756,22 @@ pub fn apply_func_attrs(
                     name.as_str_const()
                 ));
             }
-            case .Link(value) => switch (value) {
-                case .Weak => modifiers->weak = true;
-                case .LinkOnce => modifiers->link_once = true;
-            }
+            case .Link(.Weak) => modifiers->weak = true;
+            case .Link(.LinkOnce) => modifiers->link_once = true;
+            else => {}
         }
 
         if (has_body) {
             switch (attr->kind) {
-                case .Link(value) => {
-                    if (value == .Weak) {
-                        dctx->report(Diag.new(
-                            allocator,
-                            .Error,
-                            "`[[link(weak)]]` cannot be applied to a function definition",
-                            attr->span
-                        ));
-                    }
+                case .Link(.Weak) => {
+                    dctx->report(Diag.new(
+                        allocator,
+                        .Error,
+                        "`[[link(weak)]]` cannot be applied to a function definition",
+                        attr->span
+                    ));
                 }
+                else => {}
             }
         }
 
@@ -834,25 +840,29 @@ pub fn apply_global_attrs(
         }
 
         switch (attr->kind) {
-            case .Link(value) => switch (value) {
-                case .Weak => modifiers->weak = true;
-                case .LinkOnce => modifiers->link_once = true;
-            }
+            case .Link(.LinkOnce) => modifiers->link_once = true;
+            
+            case .Link(.Weak) => modifiers->weak = true;
+            
             case .Section(name) => {
                 modifiers->section = .Some(String.from_str(
                     allocator,
                     name.as_str_const()
                 ));
             }
+            
             case .LinkName(name) => {
                 modifiers->link_name = .Some(String.from_str(
                     allocator,
                     name.as_str_const()
                 ));
             }
+            
             case .ThreadLocal => {
                 modifiers->thread_local = true;
             }
+            
+            else => {}
         }
     }
 }
@@ -882,6 +892,7 @@ pub fn apply_object_attrs(
                 validate_object_repr(allocator, dctx, object, repr, attr->span);
                 *repr_slot = .Some(ast::copy_repr_attr(allocator, repr));
             }
+            else => {}
         }
     }
 }
@@ -924,6 +935,7 @@ fn validate_object_repr(
                         ));
                     }
                 }
+                else => {}
             }
         }
         case .Union => {
@@ -947,6 +959,7 @@ fn validate_object_repr(
                         ));
                     }
                 }
+                else => {}
             }
         }
         case .Enum => {
@@ -970,6 +983,7 @@ fn validate_object_repr(
                         ));
                     }
                 }
+                else => {}
             }
         }
     }

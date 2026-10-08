@@ -418,9 +418,12 @@ pub enum SemaType {
                     const type_arg = named_type.type_args.get(i).unwrap();
 
                     switch (*type_arg) {
-                        case .Type(ty, _) => if (ty.includes_unresolved_type()) {
-                            return true;
+                        case .Type(ty, _) => {
+                            if (ty.includes_unresolved_type()) {
+                                return true;
+                            }
                         }
+                        else => {}
                     }
                 }
 
@@ -438,10 +441,14 @@ pub enum SemaType {
 
                 switch (func.params.variadic) {
                     case .Some(variadic) => switch (*variadic) {
-                        case .Typed(ty) => if (ty.includes_unresolved_type()) {
-                            return true;
+                        case .Typed(ty) => {
+                            if (ty.includes_unresolved_type()) {
+                                return true;
+                            }
                         }
+                        else => {}
                     }
+                    else => {}
                 }
 
                 return func.ret_type->includes_unresolved_type();
@@ -464,9 +471,12 @@ pub enum SemaType {
                     const type_arg = interface_obj.interface_type.type_args.get(i).unwrap();
 
                     switch (*type_arg) {
-                        case .Type(ty, _) => if (ty.includes_unresolved_type()) {
-                            return true;
+                        case .Type(ty, _) => {
+                            if (ty.includes_unresolved_type()) {
+                                return true;
+                            }
                         }
+                        else => {}
                     }
                 }
 
@@ -649,9 +659,12 @@ pub enum SemaType {
                     const type_arg = named_type.type_args.get(i).unwrap();
 
                     switch (*type_arg) {
-                        case .Type(ty, _) => if (ty.contains_error()) {
-                            return true;
+                        case .Type(ty, _) => {
+                            if (ty.contains_error()) {
+                                return true;
+                            }
                         }
+                        else => {}
                     }
                 }
 
@@ -669,10 +682,14 @@ pub enum SemaType {
 
                 switch (func.params.variadic) {
                     case .Some(variadic) => switch (*variadic) {
-                        case .Typed(ty) => if (ty.contains_error()) {
-                            return true;
+                        case .Typed(ty) => {
+                            if (ty.contains_error()) {
+                                return true;
+                            }
                         }
+                        else => {}
                     }
+                    else => {}
                 }
 
                 return func.ret_type->contains_error();
@@ -695,9 +712,12 @@ pub enum SemaType {
                     const type_arg = interface_obj.interface_type.type_args.get(i).unwrap();
 
                     switch (*type_arg) {
-                        case .Type(ty, _) => if (ty.contains_error()) {
-                            return true;
+                        case .Type(ty, _) => {
+                            if (ty.contains_error()) {
+                                return true;
+                            }
                         }
+                        else => {}
                     }
                 }
 
@@ -728,9 +748,12 @@ pub enum SemaType {
                     const type_arg = named_type.type_args.get(i).unwrap();
 
                     switch (*type_arg) {
-                        case .Type(ty, _) => if (ty.contains_unresolved()) {
-                            return true;
+                        case .Type(ty, _) => {
+                            if (ty.contains_unresolved()) {
+                                return true;
+                            }
                         }
+                        else => {}
                     }
                 }
 
@@ -748,10 +771,14 @@ pub enum SemaType {
 
                 switch (func.params.variadic) {
                     case .Some(variadic) => switch (*variadic) {
-                        case .Typed(ty) => if (ty.contains_unresolved()) {
-                            return true;
+                        case .Typed(ty) => {
+                            if (ty.contains_unresolved()) {
+                                return true;
+                            }
                         }
+                        else => {}
                     }
+                    else => {}
                 }
 
                 return func.ret_type->contains_unresolved();
@@ -774,9 +801,12 @@ pub enum SemaType {
                     const type_arg = interface_obj.interface_type.type_args.get(i).unwrap();
 
                     switch (*type_arg) {
-                        case .Type(ty, _) => if (ty.contains_unresolved()) {
-                            return true;
+                        case .Type(ty, _) => {
+                            if (ty.contains_unresolved()) {
+                                return true;
+                            }
                         }
+                        else => {}
                     }
                 }
 
@@ -982,6 +1012,7 @@ pub enum SemaType {
                             }
                         }
                     }
+                    else => {}
                 }
 
                 return func.ret_type->contains_infer_var();
@@ -1047,10 +1078,14 @@ pub enum SemaType {
 
                 switch (func.params.variadic) {
                     case .Some(variadic) => switch (*variadic) {
-                        case .Typed(ty) => if (ty.contains_generic_param()) {
-                            return true;
+                        case .Typed(ty) => {
+                            if (ty.contains_generic_param()) {
+                                return true;
+                            }
                         }
+                        else => {}
                     }
+                    else => {}
                 }
 
                 return func.ret_type->contains_generic_param();
@@ -1061,9 +1096,12 @@ pub enum SemaType {
                     const type_arg = named_type.type_args.get(i).unwrap();
 
                     switch (*type_arg) {
-                        case .Type(ty, _) => if (ty.contains_generic_param()) {
-                            return true;
+                        case .Type(ty, _) => {
+                            if (ty.contains_generic_param()) {
+                                return true;
+                            }
                         }
+                        else => {}
                     }
                 }
 
@@ -1080,9 +1118,12 @@ pub enum SemaType {
                     const type_arg = named_type.type_args.get(i).unwrap();
 
                     switch (*type_arg) {
-                        case .Type(ty, _) => if (ty.contains_self_type()) {
-                            return true;
+                        case .Type(ty, _) => {
+                            if (ty.contains_self_type()) {
+                                return true;
+                            }
                         }
+                        else => {}
                     }
                 }
 
@@ -1413,17 +1454,19 @@ pub enum PlainType {
 
     [[inline]]
     pub fn widen_type(a: PlainType, b: PlainType) Option<PlainType> {
-        switch (PlainType.plain_type_rank(&a)) {
-            case .Some(ar) => switch (PlainType.plain_type_rank(&b)) {
-                case .Some(br) => if (ar >= br) {
-                    return .Some(a);
-                } else {
-                    return .Some(b);
-                }
-            }
+        switch (PlainType.plain_type_rank(&a)) case .Some(ar) else {
+            return .None;
         }
 
-        return .None;
+        switch (PlainType.plain_type_rank(&b)) case .Some(br) else {
+            return .None;
+        }
+
+        if (ar >= br) {
+            return .Some(a);
+        } else {
+            return .Some(b);
+        }
     }
 
     [[inline]]
@@ -1643,12 +1686,8 @@ pub struct TypedExpr {
         }
 
         switch (lit.kind) {
-            case .Integer { value, .. } => {
-                switch (value) {
-                    case .Unsigned(val) => return .Some(.Unsigned(val));
-                    case .Signed(val) => return .Some(.Signed(val));
-                }
-            }
+            case .Integer { value: .Unsigned(val), .. } => return .Some(.Unsigned(val));
+            case .Integer { value: .Signed(val), .. } => return .Some(.Signed(val));
             case .Bool(v) => {
                 if (v) {
                     return .Some(.Unsigned(1));
@@ -1656,6 +1695,7 @@ pub struct TypedExpr {
                     return .Some(.Unsigned(0));
                 }
             }
+            else => {}
         }
 
         return .None;
@@ -1667,12 +1707,9 @@ pub struct TypedExpr {
         }
 
         switch (lit.kind) {
-            case .String { value, suffix } => {
-                switch (suffix) {
-                    case .None => return .Some(value.as_str_const());
-                    case .Some => return .None;
-                }
-            }
+            case .String { suffix: .None, value } => return .Some(value.as_str_const());
+            case .String { suffix: .Some(_), .. } => return .None;
+            else => {}
         }
 
         return .None;
@@ -1737,20 +1774,21 @@ pub enum TypedExprKind {
     pub fn as_type_expr(self: const Self*, allocator: Allocator) Option<SemaType> {
         switch (*self) {
             case .Symbol(symbol_expr) => {
-                switch (symbol_expr.as_decl_id()) {
-                    case .Some(decl_id) => {
-                        switch (decl_id.as_type_decl_id()) {
-                            case .Some(type_decl_id) => {
-                                return .Some(.Named(NamedType {
-                                    type_decl_id,
-                                    type_args: TypedTypeArgs.new(allocator),
-                                }));
-                            }
-                        }
-                    }
+                switch (symbol_expr.as_decl_id()) case .Some(decl_id) else {
+                    return .None;
                 }
+
+                switch (decl_id.as_type_decl_id()) case .Some(type_decl_id) else {
+                    return .None;
+                }
+
+                return .Some(.Named(NamedType {
+                    type_decl_id,
+                    type_args: TypedTypeArgs.new(allocator),
+                }));
             }
             case .SemaType { ty, .. } => return .Some(ty);
+            else => {}
         }
 
         return .None;
@@ -1847,6 +1885,7 @@ pub enum TypedSymbolExpr {
             case .Unresolved { span, .. } => {
                 *self = .Resolved { decl_id, span };
             }
+            else => {}
         }
     }
 
@@ -1930,64 +1969,44 @@ pub fn resolve_literal_type(
     span: Span
 ) Option<SemaType> {
     switch (*literal) {
-        case .Integer { suffix, .. } => {
-            switch (suffix) {
-                case .None => return .None;
-                case .Some(sfx) => {
-                    switch (sfx) {
-                        case .ISize => return .Some(.Plain(.ISize));
-                        case .USize => return .Some(.Plain(.USize));
-                        case .Int8 => return .Some(.Plain(.Int8));
-                        case .Int16 => return .Some(.Plain(.Int16));
-                        case .Int32 => return .Some(.Plain(.Int32));
-                        case .Int64 => return .Some(.Plain(.Int64));
-                        case .Int128 => return .Some(.Plain(.Int128));
-                        case .UInt8 => return .Some(.Plain(.UInt8));
-                        case .UInt16 => return .Some(.Plain(.UInt16));
-                        case .UInt32 => return .Some(.Plain(.UInt32));
-                        case .UInt64 => return .Some(.Plain(.UInt64));
-                        case .UInt128 => return .Some(.Plain(.UInt128));
-                    }
-                }
-            }
+        case .Integer { suffix: .None, .. } => return .None;
+        case .Integer { suffix: .Some(sfx), .. } => switch (sfx) {
+            case .ISize => return .Some(.Plain(.ISize));
+            case .USize => return .Some(.Plain(.USize));
+            case .Int8 => return .Some(.Plain(.Int8));
+            case .Int16 => return .Some(.Plain(.Int16));
+            case .Int32 => return .Some(.Plain(.Int32));
+            case .Int64 => return .Some(.Plain(.Int64));
+            case .Int128 => return .Some(.Plain(.Int128));
+            case .UInt8 => return .Some(.Plain(.UInt8));
+            case .UInt16 => return .Some(.Plain(.UInt16));
+            case .UInt32 => return .Some(.Plain(.UInt32));
+            case .UInt64 => return .Some(.Plain(.UInt64));
+            case .UInt128 => return .Some(.Plain(.UInt128));
         }
-        case .Float { suffix, .. } => {
-            switch (suffix) {
-                case .None => return .None;
-                case .Some(sfx) => {
-                    switch (sfx) {
-                        case .Float16 => return .Some(.Plain(.Float16));
-                        case .Float32 => return .Some(.Plain(.Float32));
-                        case .Float64 => return .Some(.Plain(.Float64));
-                        case .Float128 => return .Some(.Plain(.Float128));
-                    }
-                }
-            }
+        case .Float { suffix: .None, .. } => return .None;
+        case .Float { suffix: .Some(sfx), .. } => switch (sfx) {
+            case .Float16 => return .Some(.Plain(.Float16));
+            case .Float32 => return .Some(.Plain(.Float32));
+            case .Float64 => return .Some(.Plain(.Float64));
+            case .Float128 => return .Some(.Plain(.Float128));
         }
-        case .String { value, suffix } => {
-            switch (suffix) {
-                case .None => {
-                    const uint8_ty: SemaType = .Plain(.UInt8);
-                    return .Some(.Pointer(alloc_init(allocator, uint8_ty)));
-                }
-                case .Some(prefix) => {
-                    switch (prefix) {
-                        case .Byte => {
-                            const element_type: SemaType = .Plain(.UInt8);
-                            const len = value.len() + 1;
+        case .String { suffix: .None, .. } => {
+            const uint8_ty: SemaType = .Plain(.UInt8);
+            return .Some(.Pointer(alloc_init(allocator, uint8_ty)));
+        }
+        case .String { suffix: .Some(.Byte), value } => {
+            const element_type: SemaType = .Plain(.UInt8);
+            const len = value.len() + 1;
 
-                            return .Some(.Array(TypedArrayType {
-                                element_type: alloc_init(allocator, element_type),
-                                capacity: .Fixed(alloc_init(
-                                    allocator,
-                                    const_untyped_integer_expr(@cast(uint128, len), span)
-                                )),
-                                span,
-                            }));
-                        }
-                    }
-                }
-            }
+            return .Some(.Array(TypedArrayType {
+                element_type: alloc_init(allocator, element_type),
+                capacity: .Fixed(alloc_init(
+                    allocator,
+                    const_untyped_integer_expr(@cast(uint128, len), span)
+                )),
+                span,
+            }));
         }
         case .Null => {
             const void_ty: SemaType = .Plain(.Void);
@@ -2416,14 +2435,12 @@ pub struct TypedEnumStmt {
                     const item = repr_attr.items.get_const(i).unwrap();
 
                     switch (item->kind) {
-                        case .Kind(kind) => {
-                            switch (kind) {
-                                case .C => return true;
-                            }
-                        }
+                        case .Kind(.C) => return true;
+                        else => {}
                     }
                 }
             }
+            else => {}
         }
 
         return false;
@@ -2608,14 +2625,11 @@ pub struct TypedFuncParams {
             return false;
         }
 
-        switch (self->list.first_const()) {
-            case .Some(param) => switch (param->as_self_modifier()) {
-                case .Some => return true;
-                case .None => return false;
-            }
+        switch (self->list.first_const()) case .Some(param) else {
+            return false;
         }
 
-        return false;
+        return param->as_self_modifier().is_some();
     }
 
     [[inline]]
@@ -2741,6 +2755,7 @@ pub struct TypedSwitchStmt {
 
                 switch (pattern->kind) {
                     case .Range => return true;
+                    else => {}
                 }
             }
         }
@@ -2758,11 +2773,15 @@ pub struct TypedSwitchStmt {
                 switch (pattern->kind) {
                     case .Expr(expr) => {
                         switch (expr.ty) {
-                            case .Some(ty) => if (ty.is_uint8() || ty.is_integer()) {
-                                return true;
+                            case .Some(ty) => {
+                                if (ty.is_uint8() || ty.is_integer()) {
+                                    return true;
+                                }
                             }
+                            else => {}
                         }
                     }
+                    else => {}
                 }
             }
         }
@@ -3138,6 +3157,7 @@ pub struct StructDecl {
 
                     switch (item->kind) {
                         case .Packed => return true;
+                        else => {}
                     }
                 }
 
@@ -3232,14 +3252,12 @@ pub struct EnumDecl {
                     const item = repr_attr.items.get_const(i).unwrap();
 
                     switch (item->kind) {
-                        case .Kind(kind) => {
-                            switch (kind) {
-                                case .C => return true;
-                            }
-                        }
+                        case .Kind(.C) => return true;
+                        else => {}
                     }
                 }
             }
+            else => {}
         }
 
         return false;
@@ -3281,15 +3299,12 @@ pub struct FuncDecl {
         }
 
         switch (self->params.variadic) {
-            case .Some(variadic) => {
-                switch (variadic) {
-                    case .Typed { ty, .. } => {
-                        if (ty.contains_infer_var()) {
-                            return true;
-                        }
-                    }
+            case .Some(.Typed { ty, .. }) => {
+                if (ty.contains_infer_var()) {
+                    return true;
                 }
             }
+            else => {}
         }
 
         return false;
