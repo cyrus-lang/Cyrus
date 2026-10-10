@@ -5,7 +5,6 @@ import std::mem{Allocator, alloc_init};
 import std::collections{Vec};
 import std::option{Option};
 import std::string{String};
-import std::libc{strcmp};
 
 import tokens{Span, TokenKind, Literal};
 import source{SourceId};
@@ -36,6 +35,37 @@ pub type VarDeclId = usize;
 pub enum IntegerLiteral {
     Signed(int128),
     Unsigned(uint128),
+}
+
+pub fn integer_literal_as_usize(lit: IntegerLiteral) usize {
+    switch (lit) {
+        case .Signed(x) => {
+            if (x < 0) {
+                return 0;
+            }
+            return @cast(usize, @cast(uint128, x));
+        }
+        case .Unsigned(x) => {
+            return @cast(usize, x);
+        }
+    }
+}
+
+pub fn integer_literal_eq(a: IntegerLiteral, b: IntegerLiteral) bool {
+    switch (a) {
+        case .Signed(a1) => {
+            switch (b) {
+                case .Signed(b1) => return a1 == b1;
+                case .Unsigned => return false;
+            }
+        }
+        case .Unsigned(a1) => {
+            switch (b) {
+                case .Unsigned(b1) => return a1 == b1;
+                case .Signed => return false;
+            }
+        }
+    }
 }
 
 /* ************* Builtins ************* */
@@ -832,7 +862,12 @@ pub enum SemaType {
     [[inline]]
     pub fn is_uint8(self: const Self*) bool {
         switch (*self->const_inner()) {
-            case .Plain(.UInt8) => return true;
+            case .Plain(p) => {
+                switch (p) {
+                    case .UInt8 => return true;
+                    else => return false;
+                }
+            }
             else => return false;
         }
     }
@@ -888,7 +923,12 @@ pub enum SemaType {
     [[inline]]
     pub fn is_bool(self: const Self*) bool {
         switch (*self->const_inner()) {
-            case .Plain(.Bool) => return true;
+            case .Plain(p) => {
+                switch (p) {
+                    case .Bool => return true;
+                    else => return false;
+                }
+            }
             else => return false;
         }
     }
@@ -920,7 +960,20 @@ pub enum SemaType {
     [[inline]]
     pub fn is_void(self: const Self*) bool {
         switch (*self->const_inner()) {
-            case .Plain(.Void) => return true;
+            case .Plain(p) => {
+                switch (p) {
+                    case .Void => return true;
+                    else => return false;
+                }
+            }
+            else => return false;
+        }
+    }
+
+    [[inline]]
+    pub fn is_plain_null(self: const Self*) bool {
+        switch (*self) {
+            case .Plain(.Null) => return true;
             else => return false;
         }
     }
@@ -1199,6 +1252,11 @@ pub enum UnresolvedType {
 pub struct NamedType {
     pub type_decl_id: TypeDeclId,
     pub type_args: TypedTypeArgs,
+
+    [[inline]]
+    pub fn as_sema_type(self: const Self*) SemaType {
+        return .Named(*self);
+    }
 }
 
 pub enum TypeDeclId {
@@ -1722,12 +1780,16 @@ pub enum ValueCategory {
     RValue,
     Type,
 
-    [[inline]]
     pub fn is_const_lvalue(self: const Self*) bool {
         switch (*self) {
-            case .LValue(.Const) => return true;
-            else => return false;
+            case .LValue(vcat) => switch (vcat) {
+                case .Const => return true;
+                else => {}
+            }
+            else => {}
         }
+
+        return false;
     }
 }
 
@@ -1821,7 +1883,11 @@ pub enum TypedExprKind {
     [[inline]]
     pub fn is_lvalue(self: const Self*) bool {
         switch (*self) {
-            case .Symbol | .ArrayIndex | .Deref | .FieldAccess | .TupleAccess => return true;
+            case .Symbol 
+            | .ArrayIndex 
+            | .Deref 
+            | .FieldAccess 
+            | .TupleAccess => return true;
 
             case .Poisoned 
             | .MethodCall
@@ -1946,7 +2012,7 @@ pub struct TypedSizeOfExpr {
 }
 
 pub fn literal_expr(allocator: Allocator, lit: Literal, span: Span) Option<TypedExpr> {
-    const ty = resolve_literal_type(allocator, &lit, span);
+    const ty = infer_literal_type_or_default(allocator, &lit, span);
 
     return .Some(TypedExpr {
         kind: .Literal(TypedLiteralExpr {
@@ -1961,15 +2027,14 @@ pub fn literal_expr(allocator: Allocator, lit: Literal, span: Span) Option<Typed
     });
 }
 
-/// Infers the type of a literal token. 
-/// Returns `.None` when the literal carries no explicit type.
-pub fn resolve_literal_type(
+pub fn infer_literal_type_or_default(
     allocator: Allocator,
-    literal: const Literal*,
+    lit: const Literal*,
     span: Span
 ) Option<SemaType> {
-    switch (*literal) {
-        case .Integer { suffix: .None, .. } => return .None;
+    switch (*lit) {
+        // FIXME: Make a helper method to convert IntegerSuffix
+        // into SemaType
         case .Integer { suffix: .Some(sfx), .. } => switch (sfx) {
             case .ISize => return .Some(.Plain(.ISize));
             case .USize => return .Some(.Plain(.USize));
@@ -1984,17 +2049,27 @@ pub fn resolve_literal_type(
             case .UInt64 => return .Some(.Plain(.UInt64));
             case .UInt128 => return .Some(.Plain(.UInt128));
         }
-        case .Float { suffix: .None, .. } => return .None;
+
+        case .Integer { suffix: .None, .. } => return .None;
+        
+        // FIXME: Make a helper method to convert FloatSuffix
+        // into SemaType
         case .Float { suffix: .Some(sfx), .. } => switch (sfx) {
             case .Float16 => return .Some(.Plain(.Float16));
             case .Float32 => return .Some(.Plain(.Float32));
             case .Float64 => return .Some(.Plain(.Float64));
             case .Float128 => return .Some(.Plain(.Float128));
         }
+
+        case .Float { suffix: .None, .. } => return .None;
+
         case .String { suffix: .None, .. } => {
-            const uint8_ty: SemaType = .Plain(.UInt8);
-            return .Some(.Pointer(alloc_init(allocator, uint8_ty)));
+            return .Some(.Pointer(alloc_init(
+                allocator, 
+                SemaType.Plain(.UInt8)
+            )));
         }
+        
         case .String { suffix: .Some(.Byte), value } => {
             const element_type: SemaType = .Plain(.UInt8);
             const len = value.len() + 1;
@@ -2008,13 +2083,18 @@ pub fn resolve_literal_type(
                 span,
             }));
         }
+        
         case .Null => {
-            const void_ty: SemaType = .Plain(.Void);
-            return .Some(.Pointer(alloc_init(allocator, void_ty)));
+            return .Some(.Pointer(alloc_init(
+                allocator, 
+                SemaType.Plain(.Void)
+            )));
         }
+        
         case .Bool => {
             return .Some(.Plain(.Bool));
         }
+        
         case .Char => {
             return .Some(.Plain(.UInt8));
         }
@@ -2060,13 +2140,13 @@ pub struct TypedSelfType {
 }
 
 pub struct TypedPrefixExpr {
-    pub op: ast::ASTPrefixOperator,
+    pub op: ast::ASTPrefixOperator, // FIXME: Rename to operator
     pub operand: TypedExpr*,
     pub span: Span,
 }
 
 pub struct TypedInfixExpr {
-    pub op: ast::ASTInfixOperator,
+    pub op: ast::ASTInfixOperator, // FIXME: Rename to operator
     pub lhs: TypedExpr*,
     pub rhs: TypedExpr*,
     pub span: Span,
@@ -2185,6 +2265,14 @@ pub enum TypedEnumInitArgs {
     Struct(Vec<TypedEnumStructVariantFieldInit>),
     Tuple(Vec<TypedExpr>),
     Unit,
+
+    pub fn to_str(self: const Self*) const uint8* {
+        switch (*self) {
+            case .Struct => return "struct";
+            case .Tuple => return "tuple";
+            case .Unit => return "unit";
+        }
+    }
 }
 
 pub struct TypedMethodCall {
@@ -2248,6 +2336,14 @@ pub enum TypedUnnamedEnumValueKind {
     Struct(Vec<TypedEnumStructVariantFieldInit>),
     Tuple(Vec<TypedExpr>),
     Unit,
+
+    pub fn to_str(self: const Self*) const uint8* {
+        switch (*self) {
+            case .Struct => return "struct";
+            case .Tuple => return "tuple";
+            case .Unit => return "unit";
+        }
+    }
 
     [[inline]]
     pub fn as_fielded(self: const Self*) Option<Vec<TypedExpr>> {
@@ -2452,6 +2548,26 @@ pub enum TypedEnumVariant {
     Tuple { ident: ast::ASTIdent, fields: Vec<TypedEnumVariantTupleField> },
     Valued { ident: ast::ASTIdent, value: TypedExpr* },
     Unit(ast::ASTIdent),
+
+    [[inline]]
+    pub fn name(self: const Self*) const uint8* {
+        switch (*self) {
+            case .Valued { ident, .. } => return ident.str.as_str_const();
+            case .Struct { ident, .. } => return ident.str.as_str_const();
+            case .Tuple { ident, .. } => return ident.str.as_str_const();
+            case .Unit(ident) => return ident.str.as_str_const();
+        }
+    }
+
+    [[inline]]
+    pub fn span(self: const Self*) Span {
+        switch (*self) {
+            case .Valued { ident, .. } => return ident.span;
+            case .Struct { ident, .. } => return ident.span;
+            case .Tuple { ident, .. } => return ident.span;
+            case .Unit(ident) => return ident.span;
+        }
+    }
 }
 
 pub struct TypedEnumVariantTupleField {
@@ -2665,6 +2781,14 @@ pub enum TypedFuncParamKind {
     FuncParam(TypedFuncParam),
 
     [[inline]]
+    pub fn ty(self: const Self*) SemaType {
+        switch (*self) {
+            case .FuncParam(func_param) => return func_param.ty;
+            case .SelfModifier(self_modifier) => return self_modifier.ty;
+        }
+    }
+
+    [[inline]]
     pub fn is_const(self: const Self*) bool {
         switch (*self) {
             case .FuncParam(func_param) => return func_param.mutability == .Const;
@@ -2742,7 +2866,7 @@ pub struct TypedWhileStmt {
 pub struct TypedSwitchStmt {
     pub operand: TypedExpr,
     pub cases: Vec<TypedSwitchCase>,
-    pub default_case: Option<TypedBlockStmt>,
+    pub else_case: Option<TypedBlockStmt>,
     pub all_cases_covered: Option<bool>,
     pub span: Span,
 
@@ -2829,7 +2953,7 @@ pub enum TypedSwitchCasePatternKind {
     EnumStructVariant {
         ident: ast::ASTIdent,
         items: Vec<TypedSwitchCaseEnumStructPatternField>,
-        has_rest: bool,
+        ignore: bool,
     },
 }
 
@@ -3055,6 +3179,37 @@ pub enum DeclId {
     }
 }
 
+pub fn clone_typed_type_args(
+    allocator: Allocator,
+    src: const TypedTypeArgs*
+) TypedTypeArgs {
+    var list: Vec<TypedTypeArg> = Vec.new(allocator);
+    
+    for (var i: usize = 0; i < src->list.len(); i += 1) {
+        list.push(*src->list.get_const(i).unwrap());
+    }
+
+    return TypedTypeArgs { list };
+}
+
+pub fn clone_method_decls(
+    allocator: Allocator,
+    src: const MethodDecls*
+) MethodDecls {
+    var out = MethodDecls.new(allocator);
+    
+    for (var i: usize = 0; i < src->entries.len(); i += 1) {
+        const entry = src->entries.get_const(i).unwrap();
+
+        out.entries.push(MethodDeclEntry {
+            name: entry->name.clone(allocator),
+            id: entry->id,
+        });
+    }
+
+    return out;
+}
+
 pub struct MethodDeclEntry {
     pub name: String,
     pub id: MethodDeclId,
@@ -3077,7 +3232,7 @@ pub struct MethodDecls {
         for (var i: usize = 0; i < self->entries.len(); i += 1) {
             const entry = self->entries.get(i).unwrap();
 
-            if (strcmp(entry->name.as_str_const(), name.as_str_const()) == 0) {
+            if (entry->name.as_str_const() == name.as_str_const()) {
                 entry->id = method_decl_id;
                 name.free();
                 return false;
@@ -3092,7 +3247,7 @@ pub struct MethodDecls {
         for (var i: usize = 0; i < self->entries.len(); i += 1) {
             const entry = self->entries.get_const(i).unwrap();
 
-            if (strcmp(entry->name.as_str_const(), name) == 0) {
+            if (entry->name.as_str_const() == name) {
                 return .Some(entry->id);
             }
         }
@@ -3119,6 +3274,15 @@ pub struct MethodDecls {
 
         return false;
     }
+
+    pub fn free(self: Self*) {
+        for (var i: usize = 0; i < self->entries.len(); i += 1) {
+            const entry = self->entries.get(i).unwrap();
+            entry->name.free();
+        }
+
+        self->entries.free();
+    }
 }
 
 pub struct StructDecl {
@@ -3141,7 +3305,7 @@ pub struct StructDecl {
         for (var i: usize = 0; i < self->fields.len(); i += 1) {
             const field = self->fields.get_const(i).unwrap();
 
-            if (strcmp(field->name.as_str_const(), name) == 0) {
+            if (field->name.as_str_const() == name) {
                 return .Some(field);
             }
         }
@@ -3188,7 +3352,7 @@ pub struct UnionDecl {
         for (var i: usize = 0; i < self->fields.len(); i += 1) {
             const field = self->fields.get_const(i).unwrap();
 
-            if (strcmp(field->name.as_str_const(), name) == 0) {
+            if (field->name.as_str_const() == name) {
                 return .Some(field);
             }
         }
@@ -3220,22 +3384,22 @@ pub struct EnumDecl {
 
             switch (*variant) {
                 case .Unit(ident) => {
-                    if (strcmp(ident.str.as_str_const(), name) == 0) {
+                    if (ident.str.as_str_const() == name) {
                         return .Some(variant);
                     }
                 }
                 case .Valued { ident, .. } => {
-                    if (strcmp(ident.str.as_str_const(), name) == 0) {
+                    if (ident.str.as_str_const() == name) {
                         return .Some(variant);
                     }
                 }
                 case .Tuple { ident, .. } => {
-                    if (strcmp(ident.str.as_str_const(), name) == 0) {
+                    if (ident.str.as_str_const() == name) {
                         return .Some(variant);
                     }
                 }
                 case .Struct { ident, .. } => {
-                    if (strcmp(ident.str.as_str_const(), name) == 0) {
+                    if (ident.str.as_str_const() == name) {
                         return .Some(variant);
                     }
                 }
@@ -3346,7 +3510,7 @@ pub struct InterfaceDecl {
         for (var i: usize = 0; i < self->methods.entries.len(); i += 1) {
             const entry = self->methods.entries.get_const(i).unwrap();
 
-            if (strcmp(entry->name.as_str_const(), name) == 0) {
+            if (entry->name.as_str_const() == name) {
                 return .Some(i);
             }
         }
@@ -3385,4 +3549,909 @@ pub struct TypedProgramTree {
     pub body: Vec<TypedStmt>,
     pub file_name: String,
     pub module_name: String,
+}
+
+pub fn cir_types_eq(a: const SemaType*, b: const SemaType*) bool {
+    if (a->is_err() || b->is_err()) {
+        return true;
+    }
+
+    switch (*a) {
+        case .Plain(p1) => {
+            switch (*b) {
+                case .Plain(p2) => return p1 == p2;
+                else => return false;
+            }
+        }
+
+        case .InferVar(x) => {
+            switch (*b) {
+                case .InferVar(y) => return x == y;
+                else => return false;
+            }
+        }
+
+        case .Pointer(i1) => {
+            switch (*b) {
+                case .Pointer(i2) => return cir_types_eq(i1, i2);
+                else => return false;
+            }
+        }
+
+        case .Const(i1) => {
+            switch (*b) {
+                case .Const(i2) => return cir_types_eq(i1, i2);
+                else => return false;
+            }
+        }
+
+        case .Named(n1) => {
+            switch (*b) {
+                case .Named(n2) => {
+                    if (!type_decl_id_eq(n1.type_decl_id, n2.type_decl_id)) {
+                        return false;
+                    }
+                    
+                    if (n1.type_args.len() != n2.type_args.len()) {
+                        return false;
+                    }
+
+                    for (var i: usize = 0; i < n1.type_args.len(); i += 1) {
+                        const arg1 = n1.type_args.get(i).unwrap();
+                        const arg2 = n2.type_args.get(i).unwrap();
+
+                        switch (*arg1) {
+                            case .Type(t1, _) => {
+                                switch (*arg2) {
+                                    case .Type(t2, _) => {
+                                        if (!cir_types_eq(&t1, &t2)) {
+                                            return false;
+                                        }
+                                    }
+                                    case .Infer => {
+                                        return false;
+                                    }
+                                }
+                            }
+                            case .Infer => {
+                                switch (*arg2) {
+                                    case .Type => return false;
+                                    else => {}
+                                }
+                            }
+                        }
+                    }
+
+
+                    return true;
+                }
+                else => {}
+            }
+        }
+        case .Array(array1) => {
+            switch (*b) {
+                case .Array(array2) => {
+                    if (!array_capacity_eq(&array1.capacity, &array2.capacity)) {
+                        return false;
+                    }
+                    
+                    return cir_types_eq(array1.element_type, array2.element_type);
+                }
+                else => return false;
+            }
+        }
+
+        case .Tuple(tuple1) => {
+            switch (*b) {
+                case .Tuple(tuple2) => {
+                    if (tuple1.elements.len() != tuple2.elements.len()) {
+                        return false;
+                    }
+
+                    for (var i: usize = 0; i < tuple1.elements.len(); i += 1) {
+                        const e1 = tuple1.elements.get_const(i).unwrap();
+                        const e2 = tuple2.elements.get_const(i).unwrap();
+                        
+                        if (!cir_types_eq(&e1->ty, &e2->ty)) {
+                            return false;
+                        }
+                    }
+
+                    return true;
+                }
+                else => return false;
+            }
+        }
+
+        case .FuncType(func1) => {
+            switch (*b) {
+                case .FuncType(func2) => {
+                    if (func1.params.list.len() != func2.params.list.len()) {
+                        return false;
+                    }
+
+                    for (var i: usize = 0; i < func1.params.list.len(); i += 1) {
+                        const p1 = func1.params.list.get_const(i).unwrap();
+                        const p2 = func2.params.list.get_const(i).unwrap();
+                        
+                        if (!cir_types_eq(p1, p2)) {
+                            return false;
+                        }
+                    }
+
+                    switch (func1.params.variadic) {
+                        case .Some(v1) => {
+                            switch (func2.params.variadic) {
+                                case .Some(v2) => {
+                                    switch (*v1) {
+                                        case .UntypedCStyle => {
+                                            switch (*v2) {
+                                                case .UntypedCStyle => {}
+                                                else => return false;
+                                            }
+                                        }
+                                        case .Typed(t1) => {
+                                            switch (*v2) {
+                                                case .Typed(t2) => {
+                                                    if (!cir_types_eq(&t1, &t2)) {
+                                                        return false;
+                                                    }
+                                                }
+                                                else => return false;
+                                            }
+                                        }
+                                    }
+                                }
+                                case .None => return false;
+                            }
+                        }
+                        case .None => {
+                            switch (func2.params.variadic) {
+                                case .Some => return false;
+                                case .None => {}
+                            }
+                        }
+                    }
+
+                    return cir_types_eq(func1.ret_type, func2.ret_type);
+                }
+                else => return false;
+            }
+        }
+
+        case .InterfaceObject(io1) => {
+            switch (*b) {
+                case .InterfaceObject(io2) => {
+                    if (!type_decl_id_eq(io1.interface_type.type_decl_id, io2.interface_type.type_decl_id)) {
+                        return false;
+                    }
+                    
+                    if (!type_args_eq_infer(&io1.interface_type.type_args, &io2.interface_type.type_args)) {
+                        return false;
+                    }
+
+                    return cir_types_eq(io1.concrete_type, io2.concrete_type);
+                }
+                else => return false;
+            }
+        }
+
+        case .Unresolved(u1) => {
+            switch (*b) case .Unresolved(u2) else {
+                return false;
+            }
+
+            switch (u1) {
+                case .Decl(id1) => {
+                    switch (u2) case .Decl(id2) else {
+                        return false;
+                    }
+                    return id1 == id2;
+                }
+                case .GenericInst { base_symbol_id: base1, type_args: args1 } => {
+                    switch (u2) case .GenericInst { base_symbol_id: base2, type_args: args2 } else {
+                        return false;
+                    }
+                    
+                    if (base1 != base2) {
+                        return false;
+                    }
+                    
+                    return type_args_eq_infer(&args1, &args2);
+                }
+                case .BuiltinFunc(b1) => {
+                    switch (u2) case .BuiltinFunc(b2) else {
+                        return false;
+                    }
+                    return b1->name.str.as_str_const() == b2->name.str.as_str_const();
+                }
+            }
+        }
+
+        case .GenericParam(g1) => {
+            switch (*b) {
+                case .GenericParam(g2) => return g1 == g2;
+                else => return false;
+            }
+        }
+
+        case .SelfType => {
+            switch (*b) {
+                case .SelfType => return true;
+                else => return false;
+            }
+        }
+
+        case .Placeholder => {
+            switch (*b) {
+                case .Placeholder => return true;
+                else => return false;
+            }
+        }
+
+        else => {}
+    }
+
+    return false;
+}
+
+pub fn type_args_eq(a: const TypedTypeArgs*, b: const TypedTypeArgs*) bool {
+    if (a->len() != b->len()) {
+        return false;
+    }
+
+    for (var i: usize = 0; i < a->len(); i += 1) {
+        const arg1 = a->get(i).unwrap();
+        const arg2 = b->get(i).unwrap();
+
+        switch (*arg1) {
+            case .Type(t1, _) => {
+                switch (*arg2) {
+                    case .Type(t2, _) => {
+                        if (!cir_types_eq(&t1, &t2)) {
+                            return false;
+                        }
+                    }
+                    case .Infer => return false;
+                }
+            }
+            case .Infer => {
+                switch (*arg2) {
+                    case .Type => return false;
+                    case .Infer => {}
+                }
+            }
+        }
+    }
+
+    return true;
+}
+
+
+pub fn named_type_eq(a: const NamedType*, b: const NamedType*) bool {
+    if (!type_decl_id_eq(a->type_decl_id, b->type_decl_id)) {
+        return false;
+    }
+
+    return type_args_eq(&a->type_args, &b->type_args);
+}
+
+
+pub fn tuple_type_eq(a: const TypedTupleType*, b: const TypedTupleType*) bool {
+    if (a->elements.len() != b->elements.len()) {
+        return false;
+    }
+
+    for (var i: usize = 0; i < a->elements.len(); i += 1) {
+        const e1 = a->elements.get_const(i).unwrap();
+        const e2 = b->elements.get_const(i).unwrap();
+        
+        if (!cir_types_eq(&e1->ty, &e2->ty)) {
+            return false;
+        }
+    }
+
+    return true;
+}
+
+
+pub fn func_type_eq(a: const TypedFuncType*, b: const TypedFuncType*) bool {
+    if (a->params.list.len() != b->params.list.len()) {
+        return false;
+    }
+
+    for (var i: usize = 0; i < a->params.list.len(); i += 1) {
+        const p1 = a->params.list.get_const(i).unwrap();
+        const p2 = b->params.list.get_const(i).unwrap();
+        
+        if (!cir_types_eq(p1, p2)) {
+            return false;
+        }
+    }
+
+    switch (a->params.variadic) {
+        case .Some(v1) => {
+            switch (b->params.variadic) {
+                case .None => return false;
+                case .Some(v2) => {
+                    switch (*v1) {
+                        case .UntypedCStyle => {
+                            switch (*v2) {
+                                case .UntypedCStyle => {}
+                                else => return false;
+                            }
+                        }
+                        case .Typed(t1) => {
+                            switch (*v2) {
+                                case .Typed(t2) => {
+                                    if (!cir_types_eq(&t1, &t2)) {
+                                        return false;
+                                    }
+                                }
+                                else => return false;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        case .None => {
+            switch (b->params.variadic) {
+                case .Some => return false;
+                case .None => {}
+            }
+        }
+    }
+
+    return cir_types_eq(a->ret_type, b->ret_type);
+}
+
+
+fn type_args_eq_infer(a: const TypedTypeArgs*, b: const TypedTypeArgs*) bool {
+    if (a->len() != b->len()) {
+        return false;
+    }
+
+    for (var i: usize = 0; i < a->len(); i += 1) {
+        const arg1 = a->get(i).unwrap();
+        const arg2 = b->get(i).unwrap();
+
+        switch (*arg1) {
+            case .Type(t1, _) => {
+                switch (*arg2) {
+                    case .Type(t2, _) => {
+                        if (!cir_types_eq(&t1, &t2)) {
+                            return false;
+                        }
+                    }
+                    case .Infer => return false;
+                }
+            }
+            case .Infer => {
+                switch (*arg2) {
+                    case .Type => return false;
+                    case .Infer => {}
+                }
+            }
+        }
+    }
+
+    return true;
+}
+
+
+fn array_capacity_eq(a: const TypedArrayCapacity*, b: const TypedArrayCapacity*) bool {
+    switch (*a) {
+        case .Slice => {
+            switch (*b) {
+                case .Slice => return true;
+                else => return false;
+            }
+        }
+        case .Fixed(e1) => {
+            switch (*b) {
+                case .Fixed(e2) => {
+                    switch (e1->literal_const_int_value()) {
+                        case .Some(v1) => {
+                            switch (e2->literal_const_int_value()) {
+                                case .Some(v2) => return integer_literal_eq(v1, v2);
+                                else => return false;
+                            }
+                        }
+                        else => return false;
+                    }
+                }
+                else => return false;
+            }
+        }
+    }
+}
+
+pub fn type_decl_id_eq(a: TypeDeclId, b: TypeDeclId) bool {
+    switch (a) {
+        case .Interface(x) => switch (b) {
+            case .Interface(y) => return x == y;
+            else => {}
+        }
+        case .Typedef(x) => switch (b) {
+            case .Typedef(y) => return x == y;
+            else => {}
+        }
+        case .Struct(x) => switch (b) {
+            case .Struct(y) => return x == y;
+            else => {}
+        }
+        case .Union(x) => switch (b) {
+            case .Union(y) => return x == y;
+            else => {}
+        }
+        case .Enum(x) => switch (b) {
+            case .Enum(y) => return x == y;
+            else => {}
+        }
+    }
+
+    return false;
+}
+
+pub fn type_contains_self_by_value(
+    field_type: const SemaType*,
+    named_type: const NamedType*
+) bool {
+    switch (*field_type) {
+        case .Const(inner) => return type_contains_self_by_value(inner, named_type);
+        
+        case .Named(named) => return named_type_eq(&named, named_type);
+        
+        case .Tuple(tuple_type) => {
+            for (var i: usize = 0; i < tuple_type.elements.len(); i += 1) {
+                const element = tuple_type.elements.get_const(i).unwrap();
+                
+                if (type_contains_self_by_value(&element->ty, named_type)) {
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        case .Array(array_type) => {
+            return type_contains_self_by_value(array_type.element_type, named_type);
+        }
+
+        case .FuncType => return false;
+        
+        case .Pointer => return false;
+        
+        else => return false;
+    }
+}
+
+/// Substitutes generic parameter references inside
+/// a semantic type with the concrete type arguments.
+pub fn substitute_sema_type_with_type_args(
+    allocator: Allocator,
+    ty: const SemaType*,
+    generic_params: const TypedGenericParams*,
+    type_args: const TypedTypeArgs*
+) SemaType {
+    switch (*ty) {
+        case .GenericParam(generic_param_id) => {
+            var pos: usize = 0;
+            var found = false;
+            
+            for (var i: usize = 0; i < generic_params->len(); i += 1) {
+                const param_id = generic_params->ids.get_const(i).unwrap();
+
+                if (*param_id == generic_param_id) {
+                    pos = i;
+                    found = true;
+                    break;
+                }
+            }
+
+            if (!found) {
+                return *ty;
+            }
+
+            const arg = type_args->get(pos).unwrap();
+
+            switch (*arg) {
+                case .Type(inner, _) => {
+                    return substitute_sema_type_with_type_args(
+                        allocator,
+                        &inner,
+                        generic_params,
+                        type_args
+                    );
+                }
+                case .Infer => return *ty;
+            }
+        }
+
+        case .Named(named_type) => {
+            var new_args = TypedTypeArgs.new(allocator);
+            
+            for (var i: usize = 0; i < named_type.type_args.len(); i += 1) {
+                const arg = named_type.type_args.get(i).unwrap();
+
+                switch (*arg) {
+                    case .Type(inner, span) => {
+                        const subst = substitute_sema_type_with_type_args(
+                            allocator,
+                            &inner,
+                            generic_params,
+                            type_args
+                        );
+
+                        new_args.push(.Type(subst, span));
+                    }
+                    case .Infer => {
+                        new_args.push(.Infer);
+                    }
+                }
+            }
+
+            return .Named(NamedType {
+                type_decl_id: named_type.type_decl_id,
+                type_args: new_args,
+            });
+        }
+
+        case .InterfaceObject(interface_object) => {
+            const concrete_type = substitute_sema_type_with_type_args(
+                allocator,
+                interface_object.concrete_type,
+                generic_params,
+                type_args
+            );
+
+            return .InterfaceObject(InterfaceObjectType {
+                interface_type: interface_object.interface_type,
+                concrete_type: alloc_init(allocator, concrete_type),
+                vtable_id: interface_object.vtable_id,
+                span: interface_object.span,
+            });
+        }
+
+        case .Array(array_type) => {
+            const element_type = substitute_sema_type_with_type_args(
+                allocator,
+                array_type.element_type,
+                generic_params,
+                type_args
+            );
+
+            return .Array(TypedArrayType {
+                element_type: alloc_init(allocator, element_type),
+                capacity: array_type.capacity,
+                span: array_type.span,
+            });
+        }
+
+        case .Const(inner) => {
+            const subst = substitute_sema_type_with_type_args(
+                allocator, 
+                inner, 
+                generic_params, 
+                type_args
+            );
+
+            return .Const(alloc_init(allocator, subst));
+        }
+
+        case .Pointer(inner) => {
+            const subst = substitute_sema_type_with_type_args(
+                allocator, 
+                inner, 
+                generic_params, 
+                type_args
+            );
+
+            return .Pointer(alloc_init(allocator, subst));
+        }
+
+        case .Tuple(tuple_type) => {
+            var elements: Vec<TypedTupleElement> = Vec.with_capacity(allocator, tuple_type.elements.len());
+            
+            for (var i: usize = 0; i < tuple_type.elements.len(); i += 1) {
+                const element = tuple_type.elements.get_const(i).unwrap();
+
+                const subst = substitute_sema_type_with_type_args(
+                    allocator,
+                    &element->ty,
+                    generic_params,
+                    type_args
+                );
+
+                elements.push(TypedTupleElement {
+                    ty: subst,
+                    span: element->span,
+                });
+            }
+
+            return .Tuple(TypedTupleType {
+                elements,
+                span: tuple_type.span,
+            });
+        }
+
+        case .FuncType(func_type) => {
+            var params = TypedFuncTypeParams {
+                list: Vec.with_capacity(allocator, func_type.params.list.len()),
+                variadic: .None,
+            };
+
+            for (var i: usize = 0; i < func_type.params.list.len(); i += 1) {
+                const param = func_type.params.list.get_const(i).unwrap();
+                const subst = substitute_sema_type_with_type_args(
+                    allocator, 
+                    param, 
+                    generic_params, 
+                    type_args
+                );
+                params.list.push(subst);
+            }
+
+            switch (func_type.params.variadic) {
+                case .Some(variadic) => {
+                    switch (*variadic) {
+                        case .UntypedCStyle => {
+                            params.variadic = .Some(alloc_init(
+                                allocator,
+                                TypedFuncTypeVariadicParam.UntypedCStyle
+                            ));
+                        }
+                        case .Typed(inner) => {
+                            const subst = substitute_sema_type_with_type_args(
+                                allocator,
+                                &inner,
+                                generic_params,
+                                type_args
+                            );
+
+                            params.variadic = .Some(alloc_init(
+                                allocator,
+                                TypedFuncTypeVariadicParam.Typed(subst)
+                            ));
+                        }
+                    }
+                }
+                case .None => {}
+            }
+
+            const ret_type = substitute_sema_type_with_type_args(
+                allocator,
+                func_type.ret_type, 
+                generic_params, 
+                type_args
+            );
+
+            return .FuncType(TypedFuncType {
+                params,
+                ret_type: alloc_init(allocator, ret_type),
+                vis: func_type.vis,
+                callconv: func_type.callconv,
+                span: func_type.span,
+            });
+        }
+
+        else => return *ty;
+    }
+}
+
+pub fn func_decl_eq(a: const FuncDecl*, b: const FuncDecl*) bool {
+    if (a->name.as_str_const() != b->name.as_str_const()) {
+        return false;
+    }
+
+    if (a->params.list.len() != b->params.list.len()) {
+        return false;
+    }
+
+    for (var i: usize = 0; i < a->params.list.len(); i += 1) {
+        const p1 = a->params.list.get_const(i).unwrap();
+        const p2 = b->params.list.get_const(i).unwrap();
+
+        if (!func_param_kind_eq(p1, p2)) {
+            return false;
+        }
+    }
+
+    return cir_types_eq(&a->ret_type, &b->ret_type);
+}
+
+pub fn func_param_kind_eq(a: const TypedFuncParamKind*, b: const TypedFuncParamKind*) bool {
+    switch (*a) {
+        case .SelfModifier(m1) => {
+            switch (*b) {
+                case .SelfModifier(m2) => {
+                    return m1.is_indirect() == m2.is_indirect() 
+                        && m1.mutability == m2.mutability;
+                }
+                else => {
+                    return false;
+                }
+            }
+        }
+        case .FuncParam(p1) => {
+            switch (*b) {
+                case .FuncParam(p2) => {
+                    if (p1.ident.str.as_str_const() != p2.ident.str.as_str_const()) {
+                        return false;
+                    }
+
+                    return cir_types_eq(&p1.ty, &p2.ty);
+                }
+                else => {
+                    return false;
+                }
+            }
+        }
+    }
+}
+
+pub fn func_decl_as_func_type(allocator: Allocator, decl: const FuncDecl*) TypedFuncType {
+    var list: Vec<SemaType> = Vec.with_capacity(allocator, decl->params.list.len());
+
+    for (var i: usize = 0; i < decl->params.list.len(); i += 1) {
+        const kind = decl->params.list.get_const(i).unwrap();
+
+        switch (*kind) {
+            case .FuncParam(func_param) => list.push(func_param.ty);
+            case .SelfModifier(self_modifier) => list.push(self_modifier.ty);
+        }
+    }
+
+    var variadic: Option<TypedFuncTypeVariadicParam*> = .None;
+
+    switch (decl->params.variadic) {
+        case .Some(.UntypedCStyle) => {
+            variadic = .Some(alloc_init(allocator, TypedFuncTypeVariadicParam.UntypedCStyle));
+        }
+        case .Some(.Typed { ty, .. }) => {
+            variadic = .Some(alloc_init(allocator, TypedFuncTypeVariadicParam.Typed(ty)));
+        }
+        case .None => {}
+    }
+
+    const callconv = decl->modifiers.callconv.unwrap_or(.C);
+
+    return TypedFuncType {
+        params: TypedFuncTypeParams { list, variadic },
+        ret_type: alloc_init(allocator, decl->ret_type),
+        vis: decl->modifiers.vis,
+        callconv,
+        span: decl->span,
+    };
+}
+
+pub fn repr_attr_kind(repr_attr: const ast::ASTReprAttr*) Option<ast::ASTReprKind> {
+    for (var i: usize = 0; i < repr_attr->items.len(); i += 1) {
+        const item = repr_attr->items.get_const(i).unwrap();
+
+        switch (item->kind) {
+            case .Kind(kind) => return .Some(kind);
+            case .Packed => {}
+        }
+    }
+
+    return .None;
+}
+
+pub fn is_attr_repr_packed(repr_attr: const ast::ASTReprAttr*) bool {
+    for (var i: usize = 0; i < repr_attr->items.len(); i += 1) {
+        const item = repr_attr->items.get_const(i).unwrap();
+
+        switch (item->kind) {
+            case .Packed => return true;
+            case .Kind => {}
+        }
+    }
+
+    return false;
+}
+
+pub fn instantiate_method_decl(
+    allocator: Allocator,
+    method_decl: const MethodDecl*,
+    generic_params: const TypedGenericParams*,
+    type_args: const TypedTypeArgs*
+) MethodDecl {
+    return MethodDecl {
+        object_name: method_decl->object_name,
+        func_decl: instantiate_func_decl(
+            allocator, 
+            &method_decl->func_decl, 
+            generic_params, 
+            type_args
+        ),
+        body: method_decl->body,
+    };
+}
+
+pub fn instantiate_func_decl(
+    allocator: Allocator,
+    decl: const FuncDecl*,
+    generic_params: const TypedGenericParams*,
+    type_args: const TypedTypeArgs*
+) FuncDecl {
+    const params = substitute_func_params_with_type_args(
+        allocator,
+        &decl->params, 
+        generic_params, 
+        type_args
+    );
+
+    const ret_type = substitute_sema_type_with_type_args(
+        allocator,
+        &decl->ret_type, 
+        generic_params, 
+        type_args
+    );
+
+    return FuncDecl {
+        file_id: decl->file_id,
+        name: decl->name,
+        params,
+        ret_type,
+        body: decl->body,
+        generic_params: decl->generic_params,
+        is_func_decl: decl->is_func_decl,
+        modifiers: decl->modifiers,
+        span: decl->span,
+    };
+}
+
+pub fn substitute_func_params_with_type_args(
+    allocator: Allocator,
+    params: const TypedFuncParams*,
+    generic_params: const TypedGenericParams*,
+    type_args: const TypedTypeArgs*
+) TypedFuncParams {
+    var list: Vec<TypedFuncParamKind> = Vec.new(allocator);
+
+    for (var i: usize = 0; i < params->list.len(); i += 1) {
+        const kind = params->list.get_const(i).unwrap();
+
+        switch (*kind) {
+            case .FuncParam(var param) => {
+                param.ty = substitute_sema_type_with_type_args(
+                    allocator, 
+                    &param.ty,
+                    generic_params, 
+                    type_args
+                );
+                list.push(.FuncParam(param));
+            }
+            case .SelfModifier(var self_modifier) => {
+                self_modifier.ty = substitute_sema_type_with_type_args(
+                    allocator,
+                    &self_modifier.ty,
+                    generic_params,
+                    type_args
+                );
+                list.push(.SelfModifier(self_modifier));
+            }
+        }
+    }
+
+    var variadic: Option<TypedFuncVariadicParam> = .None;
+
+    switch (params->variadic) {
+        case .Some(.UntypedCStyle) => {
+            variadic = .Some(.UntypedCStyle);
+        }
+        case .Some(.Typed { var_decl_id, ty, span }) => {
+            const subst = substitute_sema_type_with_type_args(allocator, &ty, generic_params, type_args);
+
+            variadic = .Some(.Typed {
+                var_decl_id,
+                ty: subst,
+                span,
+            });
+        }
+        case .None => {}
+    }
+
+    return TypedFuncParams { variadic, list };
 }

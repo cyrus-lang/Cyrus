@@ -1,0 +1,2670 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 The Cyrus Language
+
+import std::format{format_usize, format_uint32};
+import std::io{Writer, StringWriter};
+import std::collections{Vec};
+import std::mem{Allocator};
+import std::string{String};
+
+import diags{DiagContext, Diag};
+import tokens{Span};
+import cir::tables{DeclTables};
+import cir;
+import analyzer::format;
+
+pub fn report_unknown_symbol(
+    dctx: DiagContext*,
+    allocator: Allocator,
+    span: Span,
+    symbol_name: const uint8*,
+) {
+    var msg = String.new(allocator);
+    msg.push_str("unknown symbol `");
+    msg.push_str(symbol_name);
+    msg.push_str("`");
+
+    const diag = Diag.new(allocator, .Error, msg.as_str_const(), span);
+    dctx->report(diag);
+
+    msg.free();
+}
+
+pub fn report_type_cannot_be_used_in_context(
+    dctx: DiagContext*,
+    allocator: Allocator,
+    span: Span,
+) {
+    var msg = String.from_str(allocator, "type cannot be used in this context");
+
+    const diag = Diag.new(allocator, .Error, msg.as_str_const(), span);
+    dctx->report(diag);
+
+    msg.free();
+}
+
+pub fn report_non_type_symbol(
+    dctx: DiagContext*,
+    allocator: Allocator,
+    span: Span,
+    symbol_name: const uint8*,
+) {
+    var msg = String.new(allocator);
+    msg.push_str("symbol `");
+    msg.push_str(symbol_name);
+    msg.push_str("` is not a type");
+
+    const diag = Diag.new(allocator, .Error, msg.as_str_const(), span);
+    dctx->report(diag);
+
+    msg.free();
+}
+
+pub fn report_non_function_symbol(
+    dctx: DiagContext*,
+    allocator: Allocator,
+    span: Span,
+    symbol_name: const uint8*,
+) {
+    var msg = String.new(allocator);
+    msg.push_str("symbol `");
+    msg.push_str(symbol_name);
+    msg.push_str("` is not a function");
+
+    const diag = Diag.new(allocator, .Error, msg.as_str_const(), span);
+    dctx->report(diag);
+
+    msg.free();
+}
+
+pub fn report_cyclic_type_definition(
+    dctx: DiagContext*,
+    allocator: Allocator,
+    span: Span,
+    cycle: const Vec<String>*,
+) {
+    var msg = String.new(allocator);
+
+    if (cycle->len() == 0) {
+        msg.push_str("cyclic type definition found");
+    } else {
+        const first = cycle->get_const(0).unwrap();
+        msg.push_str("cyclic type definition found for type `");
+        msg.push_str(first->as_str_const());
+        msg.push_str("`");
+    }
+
+    const diag = Diag.new(allocator, .Error, msg.as_str_const(), span);
+    diag->help("cycles in type definitions are not allowed as they result in infinite recursion");
+
+    for (var i: usize = 1; i < cycle->len(); i += 1) {
+        const name = cycle->get_const(i).unwrap();
+        diag->info(name->as_str_const());
+    }
+
+    dctx->report(diag);
+
+    msg.free();
+}
+
+pub fn report_redundant_const_qualifier(
+    dctx: DiagContext*,
+    allocator: Allocator,
+    span: Span,
+) {
+    var msg = String.from_str(allocator, "redundant `const` qualifier on an already-const type");
+
+    const diag = Diag.new(allocator, .Error, msg.as_str_const(), span);
+    dctx->report(diag);
+
+    msg.free();
+}
+
+pub fn report_void_element_type_not_allowed(
+    dctx: DiagContext*,
+    allocator: Allocator,
+    span: Span,
+) {
+    var msg = String.from_str(allocator, "element type of an array or slice cannot be `void`");
+
+    const diag = Diag.new(allocator, .Error, msg.as_str_const(), span);
+    dctx->report(diag);
+
+    msg.free();
+}
+
+pub fn report_void_parameter_type(
+    dctx: DiagContext*,
+    allocator: Allocator,
+    span: Span,
+) {
+    var msg = String.from_str(allocator, "function parameter cannot have type `void`");
+
+    const diag = Diag.new(allocator, .Error, msg.as_str_const(), span);
+    dctx->report(diag);
+
+    msg.free();
+}
+
+pub fn report_void_tuple_element_not_allowed(
+    dctx: DiagContext*,
+    allocator: Allocator,
+    span: Span,
+) {
+    var msg = String.from_str(allocator, "tuple element cannot have type `void`");
+
+    const diag = Diag.new(allocator, .Error, msg.as_str_const(), span);
+    dctx->report(diag);
+
+    msg.free();
+}
+
+pub fn report_void_field_type(
+    dctx: DiagContext*,
+    allocator: Allocator,
+    span: Span,
+) {
+    var msg = String.from_str(allocator, "field cannot have type `void`");
+
+    const diag = Diag.new(allocator, .Error, msg.as_str_const(), span);
+    dctx->report(diag);
+
+    msg.free();
+}
+
+pub fn report_void_variable_type(
+    dctx: DiagContext*,
+    allocator: Allocator,
+    span: Span,
+) {
+    var msg = String.from_str(allocator, "the type `void` cannot be used in this context");
+
+    const diag = Diag.new(allocator, .Error, msg.as_str_const(), span);
+    dctx->report(diag);
+
+    msg.free();
+}
+
+pub fn report_union_type_must_contain_at_least_one_field(
+    dctx: DiagContext*,
+    allocator: Allocator,
+    span: Span,
+) {
+    var msg = String.from_str(allocator, "union type must contain at least one field");
+
+    const diag = Diag.new(allocator, .Error, msg.as_str_const(), span);
+    dctx->report(diag);
+
+    msg.free();
+}
+
+pub fn report_self_type_outside_of_an_object(
+    dctx: DiagContext*,
+    allocator: Allocator,
+    span: Span,
+) {
+    var msg = String.from_str(allocator, "self type can only be used inside an object context");
+
+    const diag = Diag.new(allocator, .Error, msg.as_str_const(), span);
+    dctx->report(diag);
+
+    msg.free();
+}
+
+pub fn report_array_capacity_not_const(
+    dctx: DiagContext*,
+    allocator: Allocator,
+    span: Span,
+) {
+    var msg = String.from_str(allocator, "array capacity must be a compile-time constant expression");
+
+    const diag = Diag.new(allocator, .Error, msg.as_str_const(), span);
+    dctx->report(diag);
+
+    msg.free();
+}
+
+pub fn report_unimplemented_feature_slice(
+    dctx: DiagContext*,
+    allocator: Allocator,
+    span: Span,
+) {
+    var msg = String.from_str(
+        allocator,
+        "slices are not implemented yet; try to use pointer arithmetic instead for now"
+    );
+
+    const diag = Diag.new(allocator, .Error, msg.as_str_const(), span);
+    dctx->report(diag);
+
+    msg.free();
+}
+
+pub fn report_builtin_does_not_produce_type(
+    dctx: DiagContext*,
+    allocator: Allocator,
+    span: Span,
+    name: const uint8*,
+) {
+    var msg = String.new(allocator);
+    msg.push_str("builtin `@");
+    msg.push_str(name);
+    msg.push_str("` does not produce a type and cannot be used in a type context");
+
+    const diag = Diag.new(allocator, .Error, msg.as_str_const(), span);
+    dctx->report(diag);
+
+    msg.free();
+}
+
+pub fn report_unexpected_type_args(
+    dctx: DiagContext*,
+    allocator: Allocator,
+    span: Span,
+    type_name: const uint8*,
+) {
+    var msg = String.new(allocator);
+    msg.push_str("type arguments supplied to non-generic type `");
+    msg.push_str(type_name);
+    msg.push_str("`");
+
+    const diag = Diag.new(allocator, .Error, msg.as_str_const(), span);
+    dctx->report(diag);
+
+    msg.free();
+}
+
+pub fn report_missing_generic_argument(
+    dctx: DiagContext*,
+    allocator: Allocator,
+    span: Span,
+    type_name: const uint8*,
+    param_name: const uint8*,
+) {
+    var msg = String.new(allocator);
+    msg.push_str("missing type argument for generic parameter `");
+    msg.push_str(param_name);
+    msg.push_str("` in type `");
+    msg.push_str(type_name);
+    msg.push_str("`");
+
+    const diag = Diag.new(allocator, .Error, msg.as_str_const(), span);
+    dctx->report(diag);
+
+    msg.free();
+}
+
+pub fn report_wrong_number_of_type_args(
+    dctx: DiagContext*,
+    allocator: Allocator,
+    span: Span,
+    type_name: const uint8*,
+    expected: usize,
+    provided: usize,
+) {
+    var msg = String.new(allocator);
+    msg.push_str("type `");
+    msg.push_str(type_name);
+    msg.push_str("` expects ");
+    append_usize(&msg, expected);
+    msg.push_str(" type arguments but ");
+    append_usize(&msg, provided);
+    msg.push_str(" were provided");
+
+    const diag = Diag.new(allocator, .Error, msg.as_str_const(), span);
+    dctx->report(diag);
+
+    msg.free();
+}
+
+pub fn report_unresolved_generic_parameter(
+    dctx: DiagContext*,
+    allocator: Allocator,
+    span: Span,
+    param_name: const uint8*,
+) {
+    var msg = String.new(allocator);
+    msg.push_str("could not resolve type for generic parameter `");
+    msg.push_str(param_name);
+    msg.push_str("`");
+
+    const diag = Diag.new(allocator, .Error, msg.as_str_const(), span);
+    dctx->report(diag);
+
+    msg.free();
+}
+
+pub fn report_expected_interface_in_bound(
+    dctx: DiagContext*,
+    allocator: Allocator,
+    span: Span,
+    found: const uint8*,
+) {
+    var msg = String.new(allocator);
+    msg.push_str("expected an interface in bound, but found type `");
+    msg.push_str(found);
+    msg.push_str("`");
+
+    const diag = Diag.new(allocator, .Error, msg.as_str_const(), span);
+    dctx->report(diag);
+
+    msg.free();
+}
+
+pub fn report_cannot_infer_generic_argument(
+    dctx: DiagContext*,
+    allocator: Allocator,
+    span: Span,
+    type_name: const uint8*,
+    param_name: const uint8*,
+) {
+    var msg = String.new(allocator);
+    msg.push_str("cannot infer type for generic parameter `");
+    msg.push_str(param_name);
+    msg.push_str("` in `");
+    msg.push_str(type_name);
+    msg.push_str("`");
+
+    const diag = Diag.new(allocator, .Error, msg.as_str_const(), span);
+    diag->help("provide explicit type arguments at the call site");
+    dctx->report(diag);
+
+    msg.free();
+}
+
+pub fn report_assignment_type_mismatch(
+    dctx: DiagContext*,
+    allocator: Allocator,
+    span: Span,
+    lhs_type: const uint8*,
+    rhs_type: const uint8*,
+) {
+    var msg = String.new(allocator);
+    msg.push_str("cannot assign rvalue of type `");
+    msg.push_str(rhs_type);
+    msg.push_str("` to lvalue of type `");
+    msg.push_str(lhs_type);
+    msg.push_str("`");
+
+    const diag = Diag.new(allocator, .Error, msg.as_str_const(), span);
+    dctx->report(diag);
+
+    msg.free();
+}
+
+pub fn report_invalid_infix(
+    dctx: DiagContext*,
+    allocator: Allocator,
+    span: Span,
+    lhs_type: const uint8*,
+    rhs_type: const uint8*,
+    with_cast_hint: bool,
+) {
+    var msg = String.new(allocator);
+    msg.push_str("cannot apply infix operator between values of type `");
+    msg.push_str(lhs_type);
+    msg.push_str("` and `");
+    msg.push_str(rhs_type);
+    msg.push_str("`");
+
+    const diag = Diag.new(allocator, .Error, msg.as_str_const(), span);
+    if (with_cast_hint) {
+        diag->help(
+            "consider adding an explicit cast to either the lhs or rhs operand to make their types compatible"
+        );
+    }
+    dctx->report(diag);
+
+    msg.free();
+}
+
+pub fn report_infix_invalid(
+    dctx: DiagContext*,
+    allocator: Allocator,
+    decl_tables: const DeclTables*,
+    lhs_type: cir::SemaType,
+    rhs_type: cir::SemaType,
+    loc: Span,
+    with_cast_hint: bool,
+) {
+    var lhs_str = format::format_sema_type(allocator, decl_tables, &lhs_type);
+    var rhs_str = format::format_sema_type(allocator, decl_tables, &rhs_type);
+
+    report_invalid_infix(
+        dctx,
+        allocator,
+        loc,
+        lhs_str.as_str_const(),
+        rhs_str.as_str_const(),
+        with_cast_hint
+    );
+
+    lhs_str.free();
+    rhs_str.free();
+}
+
+pub fn report_prefix_minus_on_non_integer(
+    dctx: DiagContext*,
+    allocator: Allocator,
+    span: Span,
+    operand_type: const uint8*,
+) {
+    var msg = String.new(allocator);
+    msg.push_str("cannot apply minus operator to value of type `");
+    msg.push_str(operand_type);
+    msg.push_str("`");
+
+    const diag = Diag.new(allocator, .Error, msg.as_str_const(), span);
+    dctx->report(diag);
+
+    msg.free();
+}
+
+pub fn report_prefix_bang_on_non_bool(
+    dctx: DiagContext*,
+    allocator: Allocator,
+    span: Span,
+    operand_type: const uint8*,
+) {
+    var msg = String.new(allocator);
+    msg.push_str("cannot apply logical-not operator to value of type `");
+    msg.push_str(operand_type);
+    msg.push_str("`");
+
+    const diag = Diag.new(allocator, .Error, msg.as_str_const(), span);
+    dctx->report(diag);
+
+    msg.free();
+}
+
+pub fn report_unary_minus_on_unsigned_integer(
+    dctx: DiagContext*,
+    allocator: Allocator,
+    span: Span,
+) {
+    var msg = String.from_str(allocator, "unary operator minus is not permitted on unsigned types");
+
+    const diag = Diag.new(allocator, .Error, msg.as_str_const(), span);
+    diag->help("use a signed type if you need to represent negative values");
+    dctx->report(diag);
+
+    msg.free();
+}
+
+pub fn report_rhs_of_shift_must_be_unsigned_integer(
+    dctx: DiagContext*,
+    allocator: Allocator,
+    span: Span,
+) {
+    var msg = String.from_str(allocator, "rhs of the shift must be unsigned integer");
+
+    const diag = Diag.new(allocator, .Error, msg.as_str_const(), span);
+    dctx->report(diag);
+
+    msg.free();
+}
+
+pub fn report_address_of_rvalue(
+    dctx: DiagContext*,
+    allocator: Allocator,
+    span: Span,
+) {
+    var msg = String.from_str(allocator, "cannot take the address of a temporary value");
+
+    const diag = Diag.new(allocator, .Error, msg.as_str_const(), span);
+    dctx->report(diag);
+
+    msg.free();
+}
+
+pub fn report_deref_non_pointer_value(
+    dctx: DiagContext*,
+    allocator: Allocator,
+    span: Span,
+) {
+    var msg = String.from_str(allocator, "cannot dereference non-pointer value");
+
+    const diag = Diag.new(allocator, .Error, msg.as_str_const(), span);
+    dctx->report(diag);
+
+    msg.free();
+}
+
+pub fn report_deref_void_pointer_value(
+    dctx: DiagContext*,
+    allocator: Allocator,
+    span: Span,
+) {
+    var msg = String.from_str(allocator, "cannot dereference a pointer of type `void*`");
+
+    const diag = Diag.new(allocator, .Error, msg.as_str_const(), span);
+    diag->help("cast `void*` to a concrete pointer type before dereferencing it");
+    dctx->report(diag);
+
+    msg.free();
+}
+
+pub fn report_condition_must_be_bool(
+    dctx: DiagContext*,
+    allocator: Allocator,
+    span: Span,
+) {
+    var msg = String.from_str(allocator, "condition expression must be of type `bool`");
+
+    const diag = Diag.new(allocator, .Error, msg.as_str_const(), span);
+    dctx->report(diag);
+
+    msg.free();
+}
+
+pub fn report_missing_return(
+    dctx: DiagContext*,
+    allocator: Allocator,
+    span: Span,
+) {
+    var msg = String.from_str(allocator, "missing return statement");
+
+    const diag = Diag.new(allocator, .Error, msg.as_str_const(), span);
+    diag->help("not all control paths return a value");
+    dctx->report(diag);
+
+    msg.free();
+}
+
+pub fn report_return_statement_needs_an_argument(
+    dctx: DiagContext*,
+    allocator: Allocator,
+    span: Span,
+    arg_type: const uint8*,
+) {
+    var msg = String.new(allocator);
+    msg.push_str("return statement requires an argument of type `");
+    msg.push_str(arg_type);
+    msg.push_str("`");
+
+    const diag = Diag.new(allocator, .Error, msg.as_str_const(), span);
+    dctx->report(diag);
+
+    msg.free();
+}
+
+pub fn report_return_statement_type_mismatch(
+    dctx: DiagContext*,
+    allocator: Allocator,
+    span: Span,
+    expected: const uint8*,
+    got: const uint8*,
+) {
+    var msg = String.new(allocator);
+    msg.push_str("return statement argument must be a value of type `");
+    msg.push_str(expected);
+    msg.push_str("` but got `");
+    msg.push_str(got);
+    msg.push_str("`");
+
+    const diag = Diag.new(allocator, .Error, msg.as_str_const(), span);
+    dctx->report(diag);
+
+    msg.free();
+}
+
+pub fn report_void_function_returns_value(
+    dctx: DiagContext*,
+    allocator: Allocator,
+    span: Span,
+) {
+    var msg = String.from_str(allocator, "function with void return type cannot return a value");
+
+    const diag = Diag.new(allocator, .Error, msg.as_str_const(), span);
+    dctx->report(diag);
+
+    msg.free();
+}
+
+pub fn report_invalid_continue_statement(
+    dctx: DiagContext*,
+    allocator: Allocator,
+    span: Span,
+) {
+    var msg = String.from_str(
+        allocator,
+        "invalid usage of the continue statement; it must be inside a loop statement"
+    );
+
+    const diag = Diag.new(allocator, .Error, msg.as_str_const(), span);
+    dctx->report(diag);
+
+    msg.free();
+}
+
+pub fn report_invalid_break_statement(
+    dctx: DiagContext*,
+    allocator: Allocator,
+    span: Span,
+) {
+    var msg = String.from_str(
+        allocator,
+        "invalid usage of the break statement; it must be inside a loop/switch statement"
+    );
+
+    const diag = Diag.new(allocator, .Error, msg.as_str_const(), span);
+    dctx->report(diag);
+
+    msg.free();
+}
+
+pub fn report_invalid_statement(
+    dctx: DiagContext*,
+    allocator: Allocator,
+    span: Span,
+) {
+    var msg = String.from_str(allocator, "statement cannot be used in this context");
+
+    const diag = Diag.new(allocator, .Error, msg.as_str_const(), span);
+    dctx->report(diag);
+
+    msg.free();
+}
+
+pub fn report_private_entry_point(
+    dctx: DiagContext*,
+    allocator: Allocator,
+    span: Span,
+) {
+    var msg = String.from_str(
+        allocator,
+        "the program entry point is a linkage-visible symbol and cannot be private"
+    );
+
+    const diag = Diag.new(allocator, .Error, msg.as_str_const(), span);
+    diag->help("declare it as `pub` so the runtime and linker can reliably discover it");
+    dctx->report(diag);
+
+    msg.free();
+}
+
+pub fn report_generic_function_declaration(
+    dctx: DiagContext*,
+    allocator: Allocator,
+    span: Span,
+) {
+    var msg = String.from_str(allocator, "function declarations cannot have generic parameters");
+
+    const diag = Diag.new(allocator, .Error, msg.as_str_const(), span);
+    dctx->report(diag);
+
+    msg.free();
+}
+
+pub fn report_duplicate_func_parameter(
+    dctx: DiagContext*,
+    allocator: Allocator,
+    span: Span,
+    param_name: const uint8*,
+    param_idx: usize,
+) {
+    var msg = String.new(allocator);
+    msg.push_str("duplicate parameter name `");
+    msg.push_str(param_name);
+    msg.push_str("` at index ");
+    append_usize(&msg, param_idx);
+
+    const diag = Diag.new(allocator, .Error, msg.as_str_const(), span);
+    diag->help("consider renaming the parameter to a different name");
+    dctx->report(diag);
+
+    msg.free();
+}
+
+pub fn report_duplicate_func_variadic_parameter(
+    dctx: DiagContext*,
+    allocator: Allocator,
+    span: Span,
+    param_name: const uint8*,
+) {
+    var msg = String.new(allocator);
+    msg.push_str("duplicate declaration of variadic parameter `");
+    msg.push_str(param_name);
+    msg.push_str("`");
+
+    const diag = Diag.new(allocator, .Error, msg.as_str_const(), span);
+    diag->help("consider renaming the parameter to a different name");
+    dctx->report(diag);
+
+    msg.free();
+}
+
+pub fn report_cannot_assign_to_const_lvalue(
+    dctx: DiagContext*,
+    allocator: Allocator,
+    span: Span,
+) {
+    var msg = String.from_str(allocator, "cannot assign to immutable lvalue");
+
+    const diag = Diag.new(allocator, .Error, msg.as_str_const(), span);
+    dctx->report(diag);
+
+    msg.free();
+}
+
+pub fn report_cannot_assign_to_non_value(
+    dctx: DiagContext*,
+    allocator: Allocator,
+    span: Span,
+) {
+    var msg = String.from_str(allocator, "cannot assign to non-lvalue");
+
+    const diag = Diag.new(allocator, .Error, msg.as_str_const(), span);
+    dctx->report(diag);
+
+    msg.free();
+}
+
+pub fn report_global_var_requires_type_annotation(
+    dctx: DiagContext*,
+    allocator: Allocator,
+    span: Span,
+) {
+    var msg = String.from_str(allocator, "global variable requires explicit type annotation");
+
+    const diag = Diag.new(allocator, .Error, msg.as_str_const(), span);
+    dctx->report(diag);
+
+    msg.free();
+}
+
+pub fn report_const_variable_must_be_initialized(
+    dctx: DiagContext*,
+    allocator: Allocator,
+    span: Span,
+) {
+    var msg = String.from_str(allocator, "const variable must be initialized");
+
+    const diag = Diag.new(allocator, .Error, msg.as_str_const(), span);
+    dctx->report(diag);
+
+    msg.free();
+}
+
+pub fn report_undefined_without_type_annotation(
+    dctx: DiagContext*,
+    allocator: Allocator,
+    span: Span,
+) {
+    var msg = String.from_str(allocator, "undefined value cannot be used without type annotation");
+
+    const diag = Diag.new(allocator, .Error, msg.as_str_const(), span);
+    dctx->report(diag);
+
+    msg.free();
+}
+
+pub fn report_undefined_const_variable(
+    dctx: DiagContext*,
+    allocator: Allocator,
+    span: Span,
+) {
+    var msg = String.from_str(allocator, "undefined cannot be used with const variables");
+
+    const diag = Diag.new(allocator, .Error, msg.as_str_const(), span);
+    dctx->report(diag);
+
+    msg.free();
+}
+
+pub fn report_const_qualified_type_assigned_to_non_const_variable(
+    dctx: DiagContext*,
+    allocator: Allocator,
+    span: Span,
+) {
+    var msg = String.from_str(
+        allocator,
+        "variable has a const-qualified type but is not declared const"
+    );
+
+    const diag = Diag.new(allocator, .Warning, msg.as_str_const(), span);
+    diag->help("prefer declaring the variable itself as const instead of using a const-qualified type");
+    dctx->report(diag);
+
+    msg.free();
+}
+
+pub fn report_func_call_args_count_mismatch(
+    dctx: DiagContext*,
+    allocator: Allocator,
+    span: Span,
+    func_name: const uint8*,
+    expected: uint32,
+    provided: uint32,
+) {
+    var msg = String.new(allocator);
+    msg.push_str("function `");
+    msg.push_str(func_name);
+    msg.push_str("` expects ");
+    append_u32(&msg, expected);
+    msg.push_str(" arguments, but ");
+    append_u32(&msg, provided);
+    msg.push_str(" was provided");
+
+    const diag = Diag.new(allocator, .Error, msg.as_str_const(), span);
+    dctx->report(diag);
+
+    msg.free();
+}
+
+pub fn report_func_call_param_type_mismatch(
+    dctx: DiagContext*,
+    allocator: Allocator,
+    span: Span,
+    argument_idx: uint32,
+    argument_type: const uint8*,
+    param_type: const uint8*,
+) {
+    var msg = String.new(allocator);
+    msg.push_str("argument at index ");
+    append_u32(&msg, argument_idx);
+    msg.push_str(" has type `");
+    msg.push_str(argument_type);
+    msg.push_str("`, but the expected parameter type is `");
+    msg.push_str(param_type);
+    msg.push_str("`");
+
+    const diag = Diag.new(allocator, .Error, msg.as_str_const(), span);
+    dctx->report(diag);
+
+    msg.free();
+}
+
+pub fn report_instance_method_call_on_type(
+    dctx: DiagContext*,
+    allocator: Allocator,
+    span: Span,
+    method_name: const uint8*,
+) {
+    var msg = String.new(allocator);
+    msg.push_str("cannot call instance method `");
+    msg.push_str(method_name);
+    msg.push_str("` without an object");
+
+    const diag = Diag.new(allocator, .Error, msg.as_str_const(), span);
+    diag->help("use an object to call this method, e.g. `obj.method(...)`");
+
+    dctx->report(diag);
+
+    msg.free();
+}
+
+pub fn report_static_method_call_on_instance(
+    dctx: DiagContext*,
+    allocator: Allocator,
+    span: Span,
+    method_name: const uint8*,
+) {
+    var msg = String.new(allocator);
+    msg.push_str("cannot call static method `");
+    msg.push_str(method_name);
+    msg.push_str("` on an instance");
+
+    const diag = Diag.new(allocator, .Error, msg.as_str_const(), span);
+    diag->help("call static methods on the type, e.g. `TypeName.method()`");
+
+    dctx->report(diag);
+
+    msg.free();
+}
+
+pub fn report_mutable_method_on_const_instance(
+    dctx: DiagContext*,
+    allocator: Allocator,
+    span: Span,
+    method_name: const uint8*,
+    type_name: const uint8*,
+) {
+    var msg = String.new(allocator);
+    msg.push_str("method `");
+    msg.push_str(method_name);
+    msg.push_str("` requires mutable access to `self`, but instance of type `");
+    msg.push_str(type_name);
+    msg.push_str("` is declared `const`");
+
+    const diag = Diag.new(allocator, .Error, msg.as_str_const(), span);
+    diag->help("consider declaring the instance with `var` instead of `const` to allow mutation");
+
+    dctx->report(diag);
+
+    msg.free();
+}
+
+pub fn report_internal_method_call(
+    dctx: DiagContext*,
+    allocator: Allocator,
+    span: Span,
+    method_name: const uint8*,
+    object_name: const uint8*,
+) {
+    var msg = String.new(allocator);
+    msg.push_str("cannot call internal method `");
+    msg.push_str(method_name);
+    msg.push_str("` of object `");
+    msg.push_str(object_name);
+    msg.push_str("` from outside its definition");
+
+    const diag = Diag.new(allocator, .Error, msg.as_str_const(), span);
+    dctx->report(diag);
+
+    msg.free();
+}
+
+pub fn report_argument_does_not_satisfy_bound(
+    dctx: DiagContext*,
+    allocator: Allocator,
+    span: Span,
+    index: usize,
+    expected_bound: const uint8*,
+    found_type: const uint8*,
+) {
+    var msg = String.new(allocator);
+    msg.push_str("argument at index ");
+    append_usize(&msg, index);
+    msg.push_str(" does not satisfy the required bound: expected a type implementing `");
+    msg.push_str(expected_bound);
+    msg.push_str("`, but found `");
+    msg.push_str(found_type);
+    msg.push_str("`");
+
+    const diag = Diag.new(allocator, .Error, msg.as_str_const(), span);
+    dctx->report(diag);
+
+    msg.free();
+}
+
+pub fn report_func_call_variadic_param_type_mismatch(
+    dctx: DiagContext*,
+    allocator: Allocator,
+    span: Span,
+    argument_idx: uint32,
+    argument_type: const uint8*,
+    param_type: const uint8*,
+) {
+    var msg = String.new(allocator);
+    msg.push_str("argument at index ");
+    append_u32(&msg, argument_idx);
+    msg.push_str(" has type `");
+    msg.push_str(argument_type);
+    msg.push_str("`, but the variadic parameter expects type `");
+    msg.push_str(param_type);
+    msg.push_str("`");
+
+    const diag = Diag.new(allocator, .Error, msg.as_str_const(), span);
+    dctx->report(diag);
+
+    msg.free();
+}
+
+pub fn report_void_argument_in_variadic_param(
+    dctx: DiagContext*,
+    allocator: Allocator,
+    span: Span,
+) {
+    var msg = String.from_str(allocator, "cannot pass a `void` value into a variadic parameter");
+
+    const diag = Diag.new(allocator, .Error, msg.as_str_const(), span);
+    dctx->report(diag);
+
+    msg.free();
+}
+
+pub fn report_array_non_integer_index(
+    dctx: DiagContext*,
+    allocator: Allocator,
+    span: Span,
+    found_type: const uint8*,
+) {
+    var msg = String.new(allocator);
+    msg.push_str("array index must be an integer (found `");
+    msg.push_str(found_type);
+    msg.push_str("`)");
+
+    const diag = Diag.new(allocator, .Error, msg.as_str_const(), span);
+    dctx->report(diag);
+
+    msg.free();
+}
+
+pub fn report_array_index_on_non_array_operand(
+    dctx: DiagContext*,
+    allocator: Allocator,
+    span: Span,
+) {
+    var msg = String.from_str(allocator, "cannot index non-array value");
+
+    const diag = Diag.new(allocator, .Error, msg.as_str_const(), span);
+    dctx->report(diag);
+
+    msg.free();
+}
+
+pub fn report_tuple_member_access_on_non_tuple_operand(
+    dctx: DiagContext*,
+    allocator: Allocator,
+    span: Span,
+) {
+    var msg = String.from_str(allocator, "cannot access member of non-tuple value");
+
+    const diag = Diag.new(allocator, .Error, msg.as_str_const(), span);
+    dctx->report(diag);
+
+    msg.free();
+}
+
+pub fn report_member_access_on_empty_tuple(
+    dctx: DiagContext*,
+    allocator: Allocator,
+    span: Span,
+) {
+    var msg = String.from_str(allocator, "cannot access member of an empty tuple");
+
+    const diag = Diag.new(allocator, .Error, msg.as_str_const(), span);
+    dctx->report(diag);
+
+    msg.free();
+}
+
+pub fn report_tuple_index_out_of_range(
+    dctx: DiagContext*,
+    allocator: Allocator,
+    span: Span,
+    index: usize,
+    length: usize,
+) {
+    var msg = String.new(allocator);
+    msg.push_str("tuple member access with index ");
+    append_usize(&msg, index);
+    msg.push_str(" exceeds tuple length ");
+    append_usize(&msg, length);
+
+    const diag = Diag.new(allocator, .Error, msg.as_str_const(), span);
+    dctx->report(diag);
+
+    msg.free();
+}
+
+pub fn report_object_has_no_field_named(
+    dctx: DiagContext*,
+    allocator: Allocator,
+    span: Span,
+    object_name: const uint8*,
+    field_name: const uint8*,
+) {
+    var msg = String.new(allocator);
+    msg.push_str("`");
+    msg.push_str(object_name);
+    msg.push_str("` has no field named `");
+    msg.push_str(field_name);
+    msg.push_str("`");
+
+    const diag = Diag.new(allocator, .Error, msg.as_str_const(), span);
+    dctx->report(diag);
+
+    msg.free();
+}
+
+pub fn report_object_not_supports_fields(
+    dctx: DiagContext*,
+    allocator: Allocator,
+    span: Span,
+    operand_type: const uint8*,
+) {
+    var msg = String.new(allocator);
+    msg.push_str("type `");
+    msg.push_str(operand_type);
+    msg.push_str("` does not support field access");
+
+    const diag = Diag.new(allocator, .Error, msg.as_str_const(), span);
+    dctx->report(diag);
+
+    msg.free();
+}
+
+pub fn report_object_not_supports_methods(
+    dctx: DiagContext*,
+    allocator: Allocator,
+    span: Span,
+    operand_type: const uint8*,
+) {
+    var msg = String.new(allocator);
+    msg.push_str("type `");
+    msg.push_str(operand_type);
+    msg.push_str("` does not support method calls");
+
+    const diag = Diag.new(allocator, .Error, msg.as_str_const(), span);
+    dctx->report(diag);
+
+    msg.free();
+}
+
+pub fn report_object_method_not_defined(
+    dctx: DiagContext*,
+    allocator: Allocator,
+    span: Span,
+    object_name: const uint8*,
+    method_name: const uint8*,
+) {
+    var msg = String.new(allocator);
+    msg.push_str("method `");
+    msg.push_str(method_name);
+    msg.push_str("` not defined for `");
+    msg.push_str(object_name);
+    msg.push_str("`");
+
+    const diag = Diag.new(allocator, .Error, msg.as_str_const(), span);
+    dctx->report(diag);
+
+    msg.free();
+}
+
+pub fn report_use_thin_arrow(
+    dctx: DiagContext*,
+    allocator: Allocator,
+    span: Span,
+) {
+    var msg = String.from_str(allocator, "use `->` instead of `.` when accessing a member via a pointer");
+
+    const diag = Diag.new(allocator, .Error, msg.as_str_const(), span);
+    dctx->report(diag);
+
+    msg.free();
+}
+
+pub fn report_invalid_thin_arrow(
+    dctx: DiagContext*,
+    allocator: Allocator,
+    span: Span,
+) {
+    var msg = String.from_str(allocator, "invalid usage of the thin arrow");
+
+    const diag = Diag.new(allocator, .Error, msg.as_str_const(), span);
+    dctx->report(diag);
+
+    msg.free();
+}
+
+pub fn report_invalid_align(
+    dctx: DiagContext*,
+    allocator: Allocator,
+    span: Span,
+    value: usize,
+) {
+    var msg = String.new(allocator);
+    msg.push_str("alignment must be a power of two, got ");
+    append_usize(&msg, value);
+
+    const diag = Diag.new(allocator, .Error, msg.as_str_const(), span);
+    diag->help("alignment values must be powers of two (1, 2, 4, 8, 16, ...)");
+    dctx->report(diag);
+
+    msg.free();
+}
+
+pub fn report_invalid_enum_tag_type(
+    dctx: DiagContext*,
+    allocator: Allocator,
+    span: Span,
+    got: const uint8*,
+) {
+    var msg = String.new(allocator);
+    msg.push_str("enum tag type must be a scalar integer, char or bool but got `");
+    msg.push_str(got);
+    msg.push_str("`");
+
+    const diag = Diag.new(allocator, .Error, msg.as_str_const(), span);
+    dctx->report(diag);
+
+    msg.free();
+}
+
+pub fn report_invalid_enum_variant_value_type(
+    dctx: DiagContext*,
+    allocator: Allocator,
+    span: Span,
+    got_type: const uint8*,
+    expected_type: const uint8*,
+) {
+    var msg = String.new(allocator);
+    msg.push_str("value of type `");
+    msg.push_str(got_type);
+    msg.push_str("` is not compatible with the enum's tag type `");
+    msg.push_str(expected_type);
+    msg.push_str("`");
+
+    const diag = Diag.new(allocator, .Error, msg.as_str_const(), span);
+    dctx->report(diag);
+
+    msg.free();
+}
+
+pub fn report_duplicate_enum_variant_name(
+    dctx: DiagContext*,
+    allocator: Allocator,
+    span: Span,
+    enum_name: const uint8*,
+    variant_name: const uint8*,
+) {
+    var msg = String.new(allocator);
+    msg.push_str("duplicate declaration of enum variant `");
+    msg.push_str(variant_name);
+    msg.push_str("` in enum `");
+    msg.push_str(enum_name);
+    msg.push_str("`");
+
+    const diag = Diag.new(allocator, .Error, msg.as_str_const(), span);
+    dctx->report(diag);
+
+    msg.free();
+}
+
+pub fn report_duplicate_field_name(
+    dctx: DiagContext*,
+    allocator: Allocator,
+    span: Span,
+    object_name: const uint8*,
+    field_name: const uint8*,
+) {
+    var msg = String.new(allocator);
+    msg.push_str("duplicate declaration of field `");
+    msg.push_str(field_name);
+    msg.push_str("` in `");
+    msg.push_str(object_name);
+    msg.push_str("`");
+
+    const diag = Diag.new(allocator, .Error, msg.as_str_const(), span);
+    dctx->report(diag);
+
+    msg.free();
+}
+
+pub fn report_duplicate_field_initializer(
+    dctx: DiagContext*,
+    allocator: Allocator,
+    span: Span,
+    field_name: const uint8*,
+) {
+    var msg = String.new(allocator);
+    msg.push_str("duplicate initializer for field `");
+    msg.push_str(field_name);
+    msg.push_str("`");
+
+    const diag = Diag.new(allocator, .Error, msg.as_str_const(), span);
+    dctx->report(diag);
+
+    msg.free();
+}
+
+pub fn report_struct_missing_fields(
+    dctx: DiagContext*,
+    allocator: Allocator,
+    span: Span,
+    struct_name: const uint8*,
+    missing_field_names: const uint8*,
+) {
+    var msg = String.new(allocator);
+    msg.push_str("missing required field ");
+    msg.push_str(missing_field_names);
+    msg.push_str(" in struct `");
+    msg.push_str(struct_name);
+    msg.push_str("`");
+
+    const diag = Diag.new(allocator, .Error, msg.as_str_const(), span);
+    dctx->report(diag);
+
+    msg.free();
+}
+
+pub fn report_non_struct_symbol(
+    dctx: DiagContext*,
+    allocator: Allocator,
+    span: Span,
+    symbol_name: const uint8*,
+) {
+    var msg = String.new(allocator);
+    msg.push_str("symbol `");
+    msg.push_str(symbol_name);
+    msg.push_str("` is not a struct");
+
+    const diag = Diag.new(allocator, .Error, msg.as_str_const(), span);
+    dctx->report(diag);
+
+    msg.free();
+}
+
+pub fn report_non_union_symbol(
+    dctx: DiagContext*,
+    allocator: Allocator,
+    span: Span,
+    symbol_name: const uint8*,
+) {
+    var msg = String.new(allocator);
+    msg.push_str("symbol `");
+    msg.push_str(symbol_name);
+    msg.push_str("` is not an union");
+
+    const diag = Diag.new(allocator, .Error, msg.as_str_const(), span);
+    dctx->report(diag);
+
+    msg.free();
+}
+
+pub fn report_union_init_must_contain_exactly_one_field(
+    dctx: DiagContext*,
+    allocator: Allocator,
+    span: Span,
+) {
+    var msg = String.from_str(allocator, "union initialization must contain exactly one field");
+
+    const diag = Diag.new(allocator, .Error, msg.as_str_const(), span);
+    dctx->report(diag);
+
+    msg.free();
+}
+
+pub fn report_no_such_enum_variant(
+    dctx: DiagContext*,
+    allocator: Allocator,
+    span: Span,
+    enum_name: const uint8*,
+    variant_name: const uint8*,
+) {
+    var msg = String.new(allocator);
+    msg.push_str("enum `");
+    msg.push_str(enum_name);
+    msg.push_str("` does not have a variant named `");
+    msg.push_str(variant_name);
+    msg.push_str("`");
+
+    const diag = Diag.new(allocator, .Error, msg.as_str_const(), span);
+    dctx->report(diag);
+
+    msg.free();
+}
+
+pub fn report_enum_variant_arg_count_mismatch(
+    dctx: DiagContext*,
+    allocator: Allocator,
+    span: Span,
+    variant_name: const uint8*,
+    expected: uint32,
+    provided: uint32,
+) {
+    var msg = String.new(allocator);
+    msg.push_str("enum variant `");
+    msg.push_str(variant_name);
+    msg.push_str("` expects ");
+    append_u32(&msg, expected);
+    msg.push_str(" fields, but ");
+    append_u32(&msg, provided);
+    msg.push_str(" arguments were provided");
+
+    const diag = Diag.new(allocator, .Error, msg.as_str_const(), span);
+    dctx->report(diag);
+
+    msg.free();
+}
+
+pub fn report_enum_variant_does_not_accept_fields(
+    dctx: DiagContext*,
+    allocator: Allocator,
+    span: Span,
+    variant_name: const uint8*,
+) {
+    var msg = String.new(allocator);
+    msg.push_str("enum variant `");
+    msg.push_str(variant_name);
+    msg.push_str("` does not accept fields");
+
+    const diag = Diag.new(allocator, .Error, msg.as_str_const(), span);
+    dctx->report(diag);
+
+    msg.free();
+}
+
+pub fn report_enum_variant_kind_mismatch(
+    dctx: DiagContext*,
+    allocator: Allocator,
+    span: Span,
+    variant_name: const uint8*,
+    expected_kind: const uint8*,
+    provided_kind: const uint8*,
+) {
+    var msg = String.new(allocator);
+    msg.push_str("invalid construction of enum variant `");
+    msg.push_str(variant_name);
+    msg.push_str("`: expected ");
+    msg.push_str(expected_kind);
+    msg.push_str(" but got ");
+    msg.push_str(provided_kind);
+
+    const diag = Diag.new(allocator, .Error, msg.as_str_const(), span);
+    dctx->report(diag);
+
+    msg.free();
+}
+
+pub fn report_invalid_enum_variant_field(
+    dctx: DiagContext*,
+    allocator: Allocator,
+    span: Span,
+    variant_name: const uint8*,
+    field_name: const uint8*,
+) {
+    var msg = String.new(allocator);
+    msg.push_str("variant `");
+    msg.push_str(variant_name);
+    msg.push_str("` has no field named `");
+    msg.push_str(field_name);
+    msg.push_str("`");
+
+    const diag = Diag.new(allocator, .Error, msg.as_str_const(), span);
+    dctx->report(diag);
+
+    msg.free();
+}
+
+pub fn report_missing_enum_variant_field(
+    dctx: DiagContext*,
+    allocator: Allocator,
+    span: Span,
+    field_name: const uint8*,
+    variant_name: const uint8*,
+) {
+    var msg = String.new(allocator);
+    msg.push_str("missing field `");
+    msg.push_str(field_name);
+    msg.push_str("` in initializer for variant `");
+    msg.push_str(variant_name);
+    msg.push_str("`");
+
+    const diag = Diag.new(allocator, .Error, msg.as_str_const(), span);
+    dctx->report(diag);
+
+    msg.free();
+}
+
+pub fn report_non_enum_symbol(
+    dctx: DiagContext*,
+    allocator: Allocator,
+    span: Span,
+    symbol_name: const uint8*,
+) {
+    var msg = String.new(allocator);
+    msg.push_str("symbol `");
+    msg.push_str(symbol_name);
+    msg.push_str("` is not an enum");
+
+    const diag = Diag.new(allocator, .Error, msg.as_str_const(), span);
+    dctx->report(diag);
+
+    msg.free();
+}
+
+pub fn report_cannot_infer_enum_for_unnamed_variant(
+    dctx: DiagContext*,
+    allocator: Allocator,
+    span: Span,
+    variant_name: const uint8*,
+) {
+    var msg = String.new(allocator);
+    msg.push_str("could not infer type of unnamed enum value `");
+    msg.push_str(variant_name);
+    msg.push_str("`");
+
+    const diag = Diag.new(allocator, .Error, msg.as_str_const(), span);
+    dctx->report(diag);
+
+    msg.free();
+}
+
+pub fn report_invalid_enum_constructor_target(
+    dctx: DiagContext*,
+    allocator: Allocator,
+    span: Span,
+    expr: const uint8*,
+) {
+    var msg = String.new(allocator);
+    msg.push_str("invalid enum constructor target; expression `");
+    msg.push_str(expr);
+    msg.push_str("` is not an enum");
+
+    const diag = Diag.new(allocator, .Error, msg.as_str_const(), span);
+    dctx->report(diag);
+
+    msg.free();
+}
+
+pub fn report_builtin_not_defined(
+    dctx: DiagContext*,
+    allocator: Allocator,
+    span: Span,
+    name: const uint8*,
+) {
+    var msg = String.new(allocator);
+    msg.push_str("builtin `@");
+    msg.push_str(name);
+    msg.push_str("` is not defined");
+
+    const diag = Diag.new(allocator, .Error, msg.as_str_const(), span);
+    dctx->report(diag);
+
+    msg.free();
+}
+
+pub fn report_invalid_builtin_form(
+    dctx: DiagContext*,
+    allocator: Allocator,
+    span: Span,
+    name: const uint8*,
+) {
+    var msg = String.new(allocator);
+    msg.push_str("builtin `@");
+    msg.push_str(name);
+    msg.push_str("` cannot be used in this context");
+
+    const diag = Diag.new(allocator, .Error, msg.as_str_const(), span);
+    dctx->report(diag);
+
+    msg.free();
+}
+
+pub fn report_builtin_too_few_args(
+    dctx: DiagContext*,
+    allocator: Allocator,
+    span: Span,
+    name: const uint8*,
+    expected: usize,
+    found: usize,
+) {
+    var msg = String.new(allocator);
+    msg.push_str("builtin `@");
+    msg.push_str(name);
+    msg.push_str("` expects at least ");
+    append_usize(&msg, expected);
+    msg.push_str(" argument(s), but ");
+    append_usize(&msg, found);
+    msg.push_str(" were provided");
+
+    const diag = Diag.new(allocator, .Error, msg.as_str_const(), span);
+    dctx->report(diag);
+
+    msg.free();
+}
+
+pub fn report_builtin_too_many_args(
+    dctx: DiagContext*,
+    allocator: Allocator,
+    span: Span,
+    name: const uint8*,
+    expected: usize,
+    found: usize,
+) {
+    var msg = String.new(allocator);
+    msg.push_str("builtin `@");
+    msg.push_str(name);
+    msg.push_str("` expects at most ");
+    append_usize(&msg, expected);
+    msg.push_str(" argument(s), but ");
+    append_usize(&msg, found);
+    msg.push_str(" were provided");
+
+    const diag = Diag.new(allocator, .Error, msg.as_str_const(), span);
+    dctx->report(diag);
+
+    msg.free();
+}
+
+pub fn report_builtin_cast_requires_type_argument(
+    dctx: DiagContext*,
+    allocator: Allocator,
+    span: Span,
+) {
+    var msg = String.from_str(allocator, "builtin `@cast` requires a type as its first argument");
+
+    const diag = Diag.new(allocator, .Error, msg.as_str_const(), span);
+    dctx->report(diag);
+
+    msg.free();
+}
+
+pub fn report_cannot_cast(
+    dctx: DiagContext*,
+    allocator: Allocator,
+    span: Span,
+    value_type: const uint8*,
+    target_type: const uint8*,
+) {
+    var msg = String.new(allocator);
+    msg.push_str("cannot cast value of type `");
+    msg.push_str(value_type);
+    msg.push_str("` to `");
+    msg.push_str(target_type);
+    msg.push_str("`");
+
+    const diag = Diag.new(allocator, .Error, msg.as_str_const(), span);
+    dctx->report(diag);
+
+    msg.free();
+}
+
+pub fn report_invalid_offset_of_operand(
+    dctx: DiagContext*,
+    allocator: Allocator,
+    span: Span,
+    arg_type: const uint8*,
+) {
+    var msg = String.new(allocator);
+    msg.push_str("@offsetOf operand must be a struct type, but found `");
+    msg.push_str(arg_type);
+    msg.push_str("`");
+
+    const diag = Diag.new(allocator, .Error, msg.as_str_const(), span);
+    dctx->report(diag);
+
+    msg.free();
+}
+
+pub fn report_offset_of_field_must_be_string(
+    dctx: DiagContext*,
+    allocator: Allocator,
+    span: Span,
+) {
+    var msg = String.from_str(allocator, "@offsetOf field name must be a string literal");
+
+    const diag = Diag.new(allocator, .Error, msg.as_str_const(), span);
+    dctx->report(diag);
+
+    msg.free();
+}
+
+pub fn report_assert_message_must_be_const_string_literal(
+    dctx: DiagContext*,
+    allocator: Allocator,
+    span: Span,
+) {
+    var msg = String.from_str(allocator, "optional message argument to `@assert` must be a constant string literal");
+
+    const diag = Diag.new(allocator, .Error, msg.as_str_const(), span);
+    dctx->report(diag);
+
+    msg.free();
+}
+
+pub fn report_asm_empty_template(
+    dctx: DiagContext*,
+    allocator: Allocator,
+    span: Span,
+) {
+    var msg = String.from_str(allocator, "inline assembly template cannot be empty");
+
+    const diag = Diag.new(allocator, .Error, msg.as_str_const(), span);
+    dctx->report(diag);
+
+    msg.free();
+}
+
+pub fn report_asm_invalid_output_constraint(
+    dctx: DiagContext*,
+    allocator: Allocator,
+    span: Span,
+    constraint: const uint8*,
+) {
+    var msg = String.new(allocator);
+    msg.push_str("output constraint `");
+    msg.push_str(constraint);
+    msg.push_str("` is invalid; must begin with `=` or `+`");
+
+    const diag = Diag.new(allocator, .Error, msg.as_str_const(), span);
+    diag->help("output constraints must start with `=` (write-only) or `+` (read-write)");
+    dctx->report(diag);
+
+    msg.free();
+}
+
+pub fn report_asm_invalid_input_constraint(
+    dctx: DiagContext*,
+    allocator: Allocator,
+    span: Span,
+    constraint: const uint8*,
+) {
+    var msg = String.new(allocator);
+    msg.push_str("input constraint `");
+    msg.push_str(constraint);
+    msg.push_str("` is invalid; must not begin with `=` or `+`");
+
+    const diag = Diag.new(allocator, .Error, msg.as_str_const(), span);
+    diag->help("input constraints must not start with `=` or `+`. Those are only for outputs");
+    dctx->report(diag);
+
+    msg.free();
+}
+
+pub fn report_asm_output_not_lvalue(
+    dctx: DiagContext*,
+    allocator: Allocator,
+    span: Span,
+) {
+    var msg = String.from_str(allocator, "inline assembly output operand is not an lvalue");
+
+    const diag = Diag.new(allocator, .Warning, msg.as_str_const(), span);
+    diag->help("output operand should be an lvalue");
+    dctx->report(diag);
+
+    msg.free();
+}
+
+pub fn report_asm_duplicate_clobber(
+    dctx: DiagContext*,
+    allocator: Allocator,
+    span: Span,
+    name: const uint8*,
+) {
+    var msg = String.new(allocator);
+    msg.push_str("clobber `");
+    msg.push_str(name);
+    msg.push_str("` is listed more than once");
+
+    const diag = Diag.new(allocator, .Warning, msg.as_str_const(), span);
+    diag->help("remove the duplicate clobber entry");
+    dctx->report(diag);
+
+    msg.free();
+}
+
+pub fn report_asm_operand_index_out_of_bounds(
+    dctx: DiagContext*,
+    allocator: Allocator,
+    span: Span,
+    index: usize,
+    max: usize,
+    outputs: usize,
+    inputs: usize,
+) {
+    var msg = String.new(allocator);
+    msg.push_str("template operand index %");
+    append_usize(&msg, index);
+    msg.push_str(" is out of range. Valid range is 0..");
+    append_usize(&msg, max);
+
+    const diag = Diag.new(allocator, .Error, msg.as_str_const(), span);
+
+    var hint = String.new(allocator);
+    hint.push_str("You have ");
+    append_usize(&hint, outputs);
+    hint.push_str(" output(s) and ");
+    append_usize(&hint, inputs);
+    hint.push_str(" input(s), so valid indices are 0..");
+    append_usize(&hint, max);
+    hint.push_str("");
+    diag->help(hint.as_str_const());
+
+    dctx->report(diag);
+
+    hint.free();
+    msg.free();
+}
+
+pub fn report_asm_constraint_type_mismatch(
+    dctx: DiagContext*,
+    allocator: Allocator,
+    span: Span,
+    constraint: const uint8*,
+    found: const uint8*,
+    hint: const uint8*,
+) {
+    var msg = String.new(allocator);
+    msg.push_str("operand type `");
+    msg.push_str(found);
+    msg.push_str("` is not compatible with constraint `");
+    msg.push_str(constraint);
+    msg.push_str("`");
+
+    const diag = Diag.new(allocator, .Error, msg.as_str_const(), span);
+    if (hint[0] != 0) {
+        diag->help(hint);
+    }
+    dctx->report(diag);
+
+    msg.free();
+}
+
+pub fn report_array_elements_count_mismatch(
+    dctx: DiagContext*,
+    allocator: Allocator,
+    span: Span,
+    elements: uint32,
+    expected: uint32,
+) {
+    var msg = String.new(allocator);
+    msg.push_str("cannot use ");
+    append_u32(&msg, elements);
+    msg.push_str(" elements in an array of size ");
+    append_u32(&msg, expected);
+
+    const diag = Diag.new(allocator, .Error, msg.as_str_const(), span);
+    dctx->report(diag);
+
+    msg.free();
+}
+
+pub fn report_untyped_array_cannot_be_inferred(
+    dctx: DiagContext*,
+    allocator: Allocator,
+    span: Span,
+) {
+    var msg = String.from_str(
+        allocator,
+        "an untyped array was constructed, but the compiler was unable to infer a suitable element type"
+    );
+
+    const diag = Diag.new(allocator, .Error, msg.as_str_const(), span);
+    dctx->report(diag);
+
+    msg.free();
+}
+
+pub fn report_array_element_type_mismatch(
+    dctx: DiagContext*,
+    allocator: Allocator,
+    span: Span,
+    element_index: uint32,
+    element_type: const uint8*,
+    expected_type: const uint8*,
+) {
+    var msg = String.new(allocator);
+    msg.push_str("type mismatch for value of type `");
+    msg.push_str(element_type);
+    msg.push_str("` at index ");
+    append_u32(&msg, element_index);
+    msg.push_str(" for array of type `");
+    msg.push_str(expected_type);
+    msg.push_str("`");
+
+    const diag = Diag.new(allocator, .Error, msg.as_str_const(), span);
+    dctx->report(diag);
+
+    msg.free();
+}
+
+pub fn report_tuple_exported_values_and_tuple_elements_count_mismatch(
+    dctx: DiagContext*,
+    allocator: Allocator,
+    span: Span,
+    expected: usize,
+    provided: usize,
+) {
+    var msg = String.new(allocator);
+    msg.push_str(
+        "mismatch between number of exported values and tuple elements: expected "
+    );
+    append_usize(&msg, expected);
+    msg.push_str(", but ");
+    append_usize(&msg, provided);
+    msg.push_str(" were provided");
+
+    const diag = Diag.new(allocator, .Error, msg.as_str_const(), span);
+    dctx->report(diag);
+
+    msg.free();
+}
+
+pub fn report_tuple_destruction_with_no_rhs(
+    dctx: DiagContext*,
+    allocator: Allocator,
+    span: Span,
+) {
+    var msg = String.from_str(allocator, "cannot destructure tuple in export without a value");
+
+    const diag = Diag.new(allocator, .Error, msg.as_str_const(), span);
+    dctx->report(diag);
+
+    msg.free();
+}
+
+pub fn report_not_dynamic_compatible_interface(
+    dctx: DiagContext*,
+    allocator: Allocator,
+    span: Span,
+    interface_name: const uint8*,
+) {
+    var msg = String.new(allocator);
+    msg.push_str("interface `");
+    msg.push_str(interface_name);
+    msg.push_str("` is not dynamic-compatible");
+
+    const diag = Diag.new(allocator, .Error, msg.as_str_const(), span);
+    dctx->report(diag);
+
+    msg.free();
+}
+
+pub fn report_cannot_infer_dynamic_interface_type(
+    dctx: DiagContext*,
+    allocator: Allocator,
+    span: Span,
+) {
+    var msg = String.from_str(allocator, "cannot infer dynamic interface type");
+    const diag = Diag.new(allocator, .Error, msg.as_str_const(), span);
+    dctx->report(diag);
+    msg.free();
+}
+
+pub fn report_invalid_multiple_dynamic_type(
+    dctx: DiagContext*,
+    allocator: Allocator,
+    span: Span,
+) {
+    var msg = String.from_str(allocator, "cannot apply dynamic to an already dynamic value");
+    const diag = Diag.new(allocator, .Error, msg.as_str_const(), span);
+    dctx->report(diag);
+    msg.free();
+}
+
+pub fn report_invalid_dynamic_type(
+    dctx: DiagContext*,
+    allocator: Allocator,
+    span: Span,
+    type_name: const uint8*,
+) {
+    var msg = String.new(allocator);
+    msg.push_str("cannot apply dynamic to type `");
+    msg.push_str(type_name);
+    msg.push_str("`");
+    const diag = Diag.new(allocator, .Error, msg.as_str_const(), span);
+    dctx->report(diag);
+    msg.free();
+}
+
+pub fn report_dynamic_conversion_missing_interface(
+    dctx: DiagContext*,
+    allocator: Allocator,
+    span: Span,
+    interface_type: const uint8*,
+    concrete_type: const uint8*,
+) {
+    var msg = String.new(allocator);
+    msg.push_str("cannot convert to dynamic interface `");
+    msg.push_str(interface_type);
+    msg.push_str("`. Type `");
+    msg.push_str(concrete_type);
+    msg.push_str("` does not implement the interface");
+    const diag = Diag.new(allocator, .Error, msg.as_str_const(), span);
+    dctx->report(diag);
+    msg.free();
+}
+
+pub fn report_non_interface_symbol(
+    dctx: DiagContext*,
+    allocator: Allocator,
+    span: Span,
+    symbol_name: const uint8*,
+) {
+    var msg = String.new(allocator);
+    msg.push_str("symbol `");
+    msg.push_str(symbol_name);
+    msg.push_str("` is not an interface");
+    const diag = Diag.new(allocator, .Error, msg.as_str_const(), span);
+    dctx->report(diag);
+    msg.free();
+}
+
+pub fn report_interface_method_type_mismatch(
+    dctx: DiagContext*,
+    allocator: Allocator,
+    span: Span,
+    object_name: const uint8*,
+    method_name: const uint8*,
+    interface_name: const uint8*,
+) {
+    var msg = String.new(allocator);
+    msg.push_str("method `");
+    msg.push_str(method_name);
+    msg.push_str("` implemented in object `");
+    msg.push_str(object_name);
+    msg.push_str("` does not match the method from interface `");
+    msg.push_str(interface_name);
+    msg.push_str("`");
+    const diag = Diag.new(allocator, .Error, msg.as_str_const(), span);
+    dctx->report(diag);
+    msg.free();
+}
+
+pub fn report_mixed_struct_field_kinds(
+    dctx: DiagContext*,
+    allocator: Allocator,
+    span: Span,
+) {
+    var msg = String.from_str(allocator, "invalid struct literal: mixed type and value fields");
+    const diag = Diag.new(allocator, .Error, msg.as_str_const(), span);
+    dctx->report(diag);
+    msg.free();
+}
+
+pub fn report_mixed_union_field_kinds(
+    dctx: DiagContext*,
+    allocator: Allocator,
+    span: Span,
+) {
+    var msg = String.from_str(allocator, "invalid union literal: mixed type and value fields");
+    const diag = Diag.new(allocator, .Error, msg.as_str_const(), span);
+    dctx->report(diag);
+    msg.free();
+}
+
+pub fn report_type_args_must_be_supplied_to_enum_type_not_variant(
+    dctx: DiagContext*,
+    allocator: Allocator,
+    span: Span,
+) {
+    var msg = String.from_str(allocator, "type arguments must be applied to the enum type, not the variant");
+    const diag = Diag.new(allocator, .Error, msg.as_str_const(), span);
+    dctx->report(diag);
+    msg.free();
+}
+
+pub fn report_unescape_error(
+    dctx: DiagContext*,
+    allocator: Allocator,
+    span: Span,
+    err: const uint8*,
+) {
+    var msg = String.from_str(allocator, err);
+
+    const diag = Diag.new(allocator, .Error, msg.as_str_const(), span);
+    dctx->report(diag);
+
+    msg.free();
+}
+
+pub fn report_invalid_integer_literal_suffix(
+    dctx: DiagContext*,
+    allocator: Allocator,
+    span: Span,
+    suffix: const uint8*,
+) {
+    var msg = String.from_str(allocator, "invalid integer literal suffix");
+
+    const diag = Diag.new(allocator, .Error, msg.as_str_const(), span);
+
+    var hint = String.new(allocator);
+    hint.push_str("invalid suffix `");
+    hint.push_str(suffix);
+    hint.push_str("` for integer literal");
+    diag->help(hint.as_str_const());
+    dctx->report(diag);
+
+    hint.free();
+    msg.free();
+}
+
+pub fn report_invalid_float_literal_suffix(
+    dctx: DiagContext*,
+    allocator: Allocator,
+    span: Span,
+    suffix: const uint8*,
+) {
+    var msg = String.from_str(allocator, "invalid float literal suffix");
+
+    const diag = Diag.new(allocator, .Error, msg.as_str_const(), span);
+
+    var hint = String.new(allocator);
+    hint.push_str("invalid suffix `");
+    hint.push_str(suffix);
+    hint.push_str("` for float literal");
+    diag->help(hint.as_str_const());
+    dctx->report(diag);
+
+    hint.free();
+    msg.free();
+}
+
+pub fn report_internal_field_access(
+    dctx: DiagContext*,
+    allocator: Allocator,
+    span: Span,
+    field_name: const uint8*,
+    object_name: const uint8*,
+) {
+    var msg = String.new(allocator);
+    msg.push_str("cannot access internal field `");
+    msg.push_str(field_name);
+    msg.push_str("` of struct `");
+    msg.push_str(object_name);
+    msg.push_str("` from outside its definition");
+
+    const diag = Diag.new(allocator, .Error, msg.as_str_const(), span);
+    dctx->report(diag);
+
+    msg.free();
+}
+
+pub fn report_expr_not_comptime_valid(
+    dctx: DiagContext*,
+    allocator: Allocator,
+    span: Span,
+) {
+    var msg = String.from_str(allocator, "expression is not valid at compile time");
+
+    const diag = Diag.new(allocator, .Error, msg.as_str_const(), span);
+    dctx->report(diag);
+
+    msg.free();
+}
+
+pub fn report_switch_operand_not_enum(
+    dctx: DiagContext*,
+    allocator: Allocator,
+    span: Span,
+    expr_type: const uint8*,
+) {
+    var msg = String.new(allocator);
+    msg.push_str("switch expression must be an enum type, but found `");
+    msg.push_str(expr_type);
+    msg.push_str("`");
+
+    const diag = Diag.new(allocator, .Error, msg.as_str_const(), span);
+    dctx->report(diag);
+
+    msg.free();
+}
+
+pub fn report_empty_case_switch(dctx: DiagContext*, allocator: Allocator, span: Span) {
+    var msg = String.from_str(
+        allocator,
+        "switch statement must contain at least one case, consider removing it or replacing it with an if statement"
+    );
+
+    const diag = Diag.new(allocator, .Error, msg.as_str_const(), span);
+    dctx->report(diag);
+
+    msg.free();
+}
+
+pub fn report_duplicate_enum_variant_in_switch_patterns(
+    dctx: DiagContext*,
+    allocator: Allocator,
+    span: Span,
+    variant_name: const uint8*,
+) {
+    var msg = String.new(allocator);
+    msg.push_str("variant `");
+    msg.push_str(variant_name);
+    msg.push_str("` is listed more than once in the patterns");
+
+    const diag = Diag.new(allocator, .Error, msg.as_str_const(), span);
+    dctx->report(diag);
+
+    msg.free();
+}
+
+pub fn report_enum_variant_kind_mismatch_in_switch_pattern(
+    dctx: DiagContext*,
+    allocator: Allocator,
+    span: Span,
+) {
+    var msg = String.from_str(allocator, "enum variant kind does not match the pattern form");
+
+    const diag = Diag.new(allocator, .Error, msg.as_str_const(), span);
+    dctx->report(diag);
+
+    msg.free();
+}
+
+pub fn report_only_variant_pattern_is_allowed_in_switch(
+    dctx: DiagContext*,
+    allocator: Allocator,
+    span: Span,
+) {
+    var msg = String.from_str(allocator, "only enum variants are allowed here");
+
+    const diag = Diag.new(allocator, .Error, msg.as_str_const(), span);
+    dctx->report(diag);
+
+    msg.free();
+}
+
+pub fn report_multiple_exporting_patterns_in_switch_case(
+    dctx: DiagContext*,
+    allocator: Allocator,
+    span: Span,
+) {
+    var msg = String.from_str(allocator, "only one exporting pattern is allowed per switch case");
+
+    const diag = Diag.new(allocator, .Error, msg.as_str_const(), span);
+    dctx->report(diag);
+
+    msg.free();
+}
+
+pub fn report_incompatible_switch_pattern_type(
+    dctx: DiagContext*,
+    allocator: Allocator,
+    span: Span,
+    pattern_type: const uint8*,
+    operand_type: const uint8*,
+) {
+    var msg = String.new(allocator);
+    msg.push_str("switch pattern of type `");
+    msg.push_str(pattern_type);
+    msg.push_str("` is not compatible with switch operand of type `");
+    msg.push_str(operand_type);
+    msg.push_str("`");
+
+    const diag = Diag.new(allocator, .Error, msg.as_str_const(), span);
+    dctx->report(diag);
+
+    msg.free();
+}
+
+pub fn report_invalid_switch_case_pattern(
+    dctx: DiagContext*,
+    allocator: Allocator,
+    span: Span,
+) {
+    var msg = String.from_str(allocator, "invalid switch case pattern");
+
+    const diag = Diag.new(allocator, .Error, msg.as_str_const(), span);
+    dctx->report(diag);
+
+    msg.free();
+}
+
+pub fn report_overlapping_switch_case_range(
+    dctx: DiagContext*,
+    allocator: Allocator,
+    span: Span,
+) {
+    var msg = String.from_str(allocator, "overlapping range in switch case");
+
+    const diag = Diag.new(allocator, .Error, msg.as_str_const(), span);
+    dctx->report(diag);
+
+    msg.free();
+}
+
+pub fn report_non_exhaustive_switch(
+    dctx: DiagContext*,
+    allocator: Allocator,
+    span: Span,
+    missing_variants: const uint8*,
+) {
+    var msg = String.new(allocator);
+    msg.push_str("ensure that all variants are covered in switch statement");
+
+    var info = String.new(allocator);
+    info.push_str("missing variants includes: `");
+    info.push_str(missing_variants);
+    info.push('`');
+
+    const diag = Diag.new(allocator, .Error, msg.as_str_const(), span);
+    diag->info(info.as_str_const());
+    dctx->report(diag);
+
+    msg.free();
+    info.free();
+}
+
+pub fn report_unknown_field_in_enum_struct_pattern(
+    dctx: DiagContext*,
+    allocator: Allocator,
+    span: Span,
+    field_name: const uint8*,
+) {
+    var msg = String.new(allocator);
+    msg.push_str("unknown field `");
+    msg.push_str(field_name);
+    msg.push_str("` in enum struct pattern");
+
+    const diag = Diag.new(allocator, .Error, msg.as_str_const(), span);
+    dctx->report(diag);
+
+    msg.free();
+}
+
+pub fn report_invalid_range(dctx: DiagContext*, allocator: Allocator, span: Span) {
+    var msg = String.from_str(allocator, "range lower bound must not exceed upper bound");
+
+    const diag = Diag.new(allocator, .Error, msg.as_str_const(), span);
+    dctx->report(diag);
+
+    msg.free();
+}
+
+pub fn report_unreachable_code(dctx: DiagContext*, allocator: Allocator, span: Span) {
+    var msg = String.from_str(allocator, "unreachable code");
+
+    const diag = Diag.new(allocator, .Warning, msg.as_str_const(), span);
+    dctx->report(diag);
+
+    msg.free();
+}
+
+pub fn report_interface_duplicate_method(
+    dctx: DiagContext*,
+    allocator: Allocator,
+    span: Span,
+    interface_name: const uint8*,
+    method_name: const uint8*,
+) {
+    var msg = String.new(allocator);
+    msg.push_str("duplicate method `");
+    msg.push_str(method_name);
+    msg.push_str("` in interface `");
+    msg.push_str(interface_name);
+    msg.push_str("`");
+
+    const diag = Diag.new(allocator, .Error, msg.as_str_const(), span);
+    dctx->report(diag);
+
+    msg.free();
+}
+
+pub fn report_interface_methods_must_have_self_modifier(
+    dctx: DiagContext*,
+    allocator: Allocator,
+    span: Span,
+) {
+    var msg = String.from_str(allocator, "instance methods must have self modifier");
+
+    const diag = Diag.new(allocator, .Error, msg.as_str_const(), span);
+    dctx->report(diag);
+
+    msg.free();
+}
+
+pub fn report_interface_methods_must_use_referenced_self(
+    dctx: DiagContext*,
+    allocator: Allocator,
+    span: Span,
+) {
+    var msg = String.from_str(allocator, "interface methods must use referenced self. By-value `self` is not allowed");
+
+    const diag = Diag.new(allocator, .Error, msg.as_str_const(), span);
+    dctx->report(diag);
+
+    msg.free();
+}
+
+pub fn report_interface_method_param_contains_self(
+    dctx: DiagContext*,
+    allocator: Allocator,
+    span: Span,
+    interface_name: const uint8*,
+    method_name: const uint8*,
+) {
+    var msg = String.new(allocator);
+    msg.push_str("interface method parameter type cannot contain `Self`");
+
+    const diag = Diag.new(allocator, .Error, msg.as_str_const(), span);
+    dctx->report(diag);
+
+    msg.free();
+}
+
+pub fn report_missing_interface_method_impl(
+    dctx: DiagContext*,
+    allocator: Allocator,
+    span: Span,
+    object_name: const uint8*,
+    method_name: const uint8*,
+    interface_name: const uint8*,
+) {
+    var msg = String.new(allocator);
+    msg.push_str("object `");
+    msg.push_str(object_name);
+    msg.push_str("` does not implement required method `");
+    msg.push_str(method_name);
+    msg.push_str("` from interface `");
+    msg.push_str(interface_name);
+    msg.push_str("`");
+
+    const diag = Diag.new(allocator, .Error, msg.as_str_const(), span);
+    dctx->report(diag);
+
+    msg.free();
+}
+
+pub fn report_interface_type_must_be_initialized(
+    dctx: DiagContext*,
+    allocator: Allocator,
+    span: Span,
+) {
+    var msg = String.from_str(allocator, "interface type value must be initialized");
+
+    const diag = Diag.new(allocator, .Error, msg.as_str_const(), span);
+    dctx->report(diag);
+
+    msg.free();
+}
+
+pub fn report_lambda_type_must_be_initialized(
+    dctx: DiagContext*,
+    allocator: Allocator,
+    span: Span,
+) {
+    var msg = String.from_str(allocator, "lambda type value must be uninitialized");
+
+    const diag = Diag.new(allocator, .Error, msg.as_str_const(), span);
+    dctx->report(diag);
+
+    msg.free();
+}
+
+pub fn report_not_const_evaluable_global_variable_expr(
+    dctx: DiagContext*,
+    allocator: Allocator,
+    span: Span,
+) {
+    var msg = String.from_str(allocator, "global variable expression is not const evaluable");
+
+    const diag = Diag.new(allocator, .Error, msg.as_str_const(), span);
+    dctx->report(diag);
+
+    msg.free();
+}
+
+pub fn report_not_comptime_static_global_variable_expr(
+    dctx: DiagContext*,
+    allocator: Allocator,
+    span: Span,
+) {
+    var msg = String.from_str(allocator, "static global variable expression is valid at comptime");
+
+    const diag = Diag.new(allocator, .Error, msg.as_str_const(), span);
+    dctx->report(diag);
+
+    msg.free();
+}
+
+pub fn report_invalid_modifier_for_non_static_global_var(
+    dctx: DiagContext*,
+    allocator: Allocator,
+    span: Span,
+) {
+    var msg = String.from_str(allocator, "invalid modifiers for non static global variable");
+
+    const diag = Diag.new(allocator, .Error, msg.as_str_const(), span);
+    dctx->report(diag);
+
+    msg.free();
+}
+
+pub fn report_non_static_non_const_global_var(
+    dctx: DiagContext*,
+    allocator: Allocator,
+    span: Span,
+) {
+    var msg = String.from_str(allocator, "non static, const global var is forbidden due to potential side effects");
+
+    const diag = Diag.new(allocator, .Error, msg.as_str_const(), span);
+    dctx->report(diag);
+
+    msg.free();
+}
+
+pub fn report_infinite_size_recursive_type(
+    dctx: DiagContext*,
+    allocator: Allocator,
+    span: Span,
+    type_name: const uint8*,
+) {
+    var msg = String.new(allocator);
+    msg.push_str("recursive type `");
+    msg.push_str(type_name);
+    msg.push_str("` has infinite size");
+
+    const diag = Diag.new(allocator, .Error, msg.as_str_const(), span);
+    dctx->report(diag);
+
+    msg.free();
+}
+
+pub fn report_invalid_repr_attr(
+    dctx: DiagContext*,
+    allocator: Allocator,
+    span: Span,
+    err: const uint8*,
+    help: const uint8*,
+) {
+    var msg = String.new(allocator);
+    msg.push_str(err);
+
+    const diag = Diag.new(allocator, .Error, msg.as_str_const(), span);
+    diag->help(help);
+    dctx->report(diag);
+
+    msg.free();
+}
+
+pub fn report_repr_c_enum_with_non_integer_variant(
+    dctx: DiagContext*,
+    allocator: Allocator,
+    span: Span,
+) {
+    var msg = String.from_str(
+        allocator,
+        "`repr(c)` enum cannot contain non-integer variants, because their layout cannot be represented in the C ABI"
+    );
+
+    const diag = Diag.new(allocator, .Error, msg.as_str_const(), span);
+    dctx->report(diag);
+
+    msg.free();
+}
+
+pub fn report_invalid_nested_export_tuple(
+    dctx: DiagContext*,
+    allocator: Allocator,
+    span: Span,
+    mutability: const uint8*,
+) {
+    var msg = String.new(allocator);
+    msg.push_str("invalid variable declaration in tuple destructuring: nested `");
+    msg.push_str(mutability);
+    msg.push_str("` is not allowed");
+
+    const diag = Diag.new(allocator, .Error, msg.as_str_const(), span);
+    dctx->report(diag);
+
+    msg.free();
+}
+
+pub fn report_valued_enum_variant_can_only_export_one_field(
+    dctx: DiagContext*,
+    allocator: Allocator,
+    span: Span,
+    variant_name: const uint8*,
+) {
+    var msg = String.new(allocator);
+    msg.push_str("valued variant `");
+    msg.push_str(variant_name);
+    msg.push_str("` can export only one field, because it contains exactly one value");
+
+    const diag = Diag.new(allocator, .Error, msg.as_str_const(), span);
+    dctx->report(diag);
+
+    msg.free();
+}
+
+pub fn append_usize(out: String*, value: usize) {
+    var writer: Writer = dynamic StringWriter.new(out);
+    format_usize(writer, value);
+}
+
+pub fn append_u32(out: String*, value: uint32) {
+    var writer: Writer = dynamic StringWriter.new(out);
+    format_uint32(writer, value);
+}
+
+pub fn report_if_duplicate_param_names(dctx: DiagContext*, allocator: Allocator, decl_tables: DeclTables*, params: const cir::TypedFuncParams*, loc: Span) {
+    for (var i: usize = 0; i < params->list.len(); i += 1) {
+        const param = params->list.get_const(i).unwrap();
+
+        switch (*param) {
+            case .FuncParam(typed_func_param) => {
+                var is_duplicate = false;
+
+                for (var j: usize = 0; j < i; j += 1) {
+                    const earlier = params->list.get_const(j).unwrap();
+
+                    switch (*earlier) {
+                        case .FuncParam(earlier_param) => {
+                            if (typed_func_param.ident.str.as_str_const() == earlier_param.ident.str.as_str_const()) {
+                                is_duplicate = true;
+                            }
+                        }
+                        case .SelfModifier => {
+                            if (typed_func_param.ident.str.as_str_const() == "self") {
+                                is_duplicate = true;
+                            }
+                        }
+                    }
+                }
+
+                if (is_duplicate) {
+                    report_duplicate_func_parameter(
+                        dctx,
+                        allocator,
+                        loc,
+                        typed_func_param.ident.str.as_str_const(),
+                        i
+                    );
+                }
+            }
+            case .SelfModifier => {}
+        }
+    }
+
+    switch (params->variadic) {
+        case .Some(.Typed { var_decl_id, .. }) => {
+            const var_decl = decl_tables->vars.get_const(var_decl_id).unwrap();
+
+            var is_duplicate = false;
+
+            for (var j: usize = 0; j < params->list.len(); j += 1) {
+                const param = params->list.get_const(j).unwrap();
+                
+                if (param->name_str() == var_decl->name.as_str_const()) {
+                    is_duplicate = true;
+                }
+            }
+
+            if (is_duplicate) {
+                report_duplicate_func_variadic_parameter(
+                    dctx,
+                    allocator,
+                    loc,
+                    var_decl->name.as_str_const()
+                );
+            }
+        }
+        case .Some(.UntypedCStyle) => {}
+        case .None => {}
+    }
+}

@@ -1,2 +1,1091 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 The Cyrus Language
+
+import std::format{format_usize};
+import std::collections{Vec};
+import std::string{String};
+import std::mem{Allocator};
+import std::option{Option};
+import std::io{Writer};
+
+import resolver::symbols{GlobalSymbolRegistry};
+import cir::tables{DeclTables};
+import analyzer::format;
+import cir;
+
+pub fn dump_cir(
+    registry: const GlobalSymbolRegistry*,
+    tables: const DeclTables*,
+    trees: const Vec<cir::TypedProgramTree>*,
+    writer: Writer,
+    allocator: Allocator
+) {
+    var ctx = DumpContext {
+        writer,
+        allocator,
+        registry,
+        tables,
+    };
+
+    ctx.dump(trees);
+}
+
+struct DumpContext {
+    writer: Writer,
+    allocator: Allocator,
+    registry: const GlobalSymbolRegistry*,
+    tables: const DeclTables*,
+
+    fn write(self: Self*, text: const uint8*) {
+        self->writer.write(text);
+    }
+
+    fn write_owned(self: Self*, var text: String) {
+        self->writer.write(text.as_str_const());
+        text.free();
+    }
+
+    fn write_bool(self: Self*, value: bool) {
+        if (value) {
+            self->write("true");
+        } else {
+            self->write("false");
+        }
+    }
+
+    fn indent(self: Self*, depth: usize) {
+        for (var i: usize = 0; i < depth; i += 1) {
+            self->write("  ");
+        }
+    }
+
+    fn write_index(self: Self*, index: usize) {
+        self->write("  [");
+        format_usize(self->writer, index);
+        self->write("] ");
+    }
+
+    fn write_counts(self: Self*, label: const uint8*, count: usize) {
+        if (count == 0) {
+            return;
+        }
+
+        self->write(" ");
+        self->write(label);
+        self->write("=");
+        format_usize(self->writer, count);
+    }
+
+    fn write_type(self: Self*, ty: const cir::SemaType*) {
+        self->write_owned(format::format_sema_type(self->allocator, self->tables, ty));
+    }
+
+    fn write_opt_type(self: Self*, ty: const Option<cir::SemaType>*) {
+        switch (*ty) {
+            case .Some(value) => self->write_type(&value);
+            case .None => self->write("?");
+        }
+    }
+
+    fn write_opt_name(self: Self*, name: const Option<String>*) {
+        switch (*name) {
+            case .Some(value) => self->write(value.as_str_const());
+            case .None => self->write("<anon>");
+        }
+    }
+
+    fn write_expr(self: Self*, expr: const cir::TypedExpr*) {
+        self->write_owned(format::format_typed_expr(
+            self->allocator,
+            self->registry,
+            self->tables,
+            expr
+        ));
+    }
+
+    fn write_expr_typed(self: Self*, expr: const cir::TypedExpr*) {
+        self->write_expr(expr);
+
+        switch (expr->ty) {
+            case .Some(ty) => {
+                self->write(" : ");
+                self->write_type(&ty);
+            }
+            case .None => {}
+        }
+    }
+
+    fn write_impls(self: Self*, impls: const Vec<cir::TypedImplementInterface>*) {
+        if (impls->len() == 0) {
+            return;
+        }
+
+        self->write(" implements (");
+        for (var i: usize = 0; i < impls->len(); i += 1) {
+            const item = impls->get_const(i).unwrap();
+            self->write_type(&item->ty);
+
+            if (i + 1 != impls->len()) {
+                self->write(", ");
+            }
+        }
+        self->write(")");
+    }
+
+    fn write_func_params(self: Self*, params: const cir::TypedFuncParams*) {
+        self->write("(");
+
+        for (var i: usize = 0; i < params->list.len(); i += 1) {
+            const param = params->list.get_const(i).unwrap();
+
+            switch (*param) {
+                case .SelfModifier(self_mod) => {
+                    self->write("self: ");
+                    self->write_type(&self_mod.ty);
+                }
+                case .FuncParam(p) => {
+                    self->write(p.ident.str.as_str_const());
+                    self->write(": ");
+                    self->write_type(&p.ty);
+                }
+            }
+
+            if (i + 1 != params->list.len() || params->variadic.is_some()) {
+                self->write(", ");
+            }
+        }
+
+        switch (params->variadic) {
+            case .Some(variadic) => {
+                switch (variadic) {
+                    case .Typed { ty, .. } => {
+                        self->write("variadic: ");
+                        self->write_type(&ty);
+                    }
+                    case .UntypedCStyle => self->write("...");
+                }
+            }
+            case .None => {}
+        }
+
+        self->write(")");
+    }
+
+    fn write_method_header(self: Self*, decl: const cir::MethodDecl*) {
+        self->write("fn ");
+
+        switch (decl->object_name) {
+            case .Some(object_name) => {
+                self->write(object_name.as_str_const());
+                self->write("::");
+            }
+            case .None => {}
+        }
+
+        self->write(decl->func_decl.name.as_str_const());
+        self->write_func_params(&decl->func_decl.params);
+        self->write_type(&decl->func_decl.ret_type);
+    }
+
+    fn write_variants(self: Self*, variants: const Vec<cir::TypedEnumVariant>*) {
+        for (var i: usize = 0; i < variants->len(); i += 1) {
+            const variant = variants->get_const(i).unwrap();
+
+            switch (*variant) {
+                case .Unit(ident) => self->write(ident.str.as_str_const());
+                case .Valued { ident, value } => {
+                    self->write(ident.str.as_str_const());
+                    self->write(" = ");
+                    self->write_expr(value);
+                }
+                case .Tuple { ident, fields } => {
+                    self->write(ident.str.as_str_const());
+                    self->write("(");
+
+                    for (var j: usize = 0; j < fields.len(); j += 1) {
+                        const field = fields.get_const(j).unwrap();
+                        self->write_type(&field->ty);
+
+                        if (j + 1 != fields.len()) {
+                            self->write(", ");
+                        }
+                    }
+
+                    self->write(")");
+                }
+                case .Struct { ident, fields } => {
+                    self->write(ident.str.as_str_const());
+                    self->write(" { ");
+
+                    for (var j: usize = 0; j < fields.len(); j += 1) {
+                        const field = fields.get_const(j).unwrap();
+                        self->write(field->name.str.as_str_const());
+                        self->write(": ");
+                        self->write_type(&field->ty);
+
+                        if (j + 1 != fields.len()) {
+                            self->write(", ");
+                        }
+                    }
+
+                    self->write(" }");
+                }
+            }
+
+            if (i + 1 != variants->len()) {
+                self->write(", ");
+            }
+        }
+    }
+
+    fn write_export_pattern(self: Self*, pattern: const cir::TypedTupleExportPattern*) {
+        switch (pattern->kind) {
+            case .Tuple(elements) => {
+                self->write("(");
+
+                for (var i: usize = 0; i < elements.len(); i += 1) {
+                    const element = elements.get_const(i).unwrap();
+                    self->write_export_pattern(element);
+
+                    if (i + 1 != elements.len()) {
+                        self->write(", ");
+                    }
+                }
+
+                self->write(")");
+            }
+            case .Ident(var_decl_id) => {
+                switch (self->tables->vars.get(var_decl_id)) {
+                    case .Some(var_decl) => self->write(var_decl->name.as_str_const());
+                    case .None => self->write("<unknown>");
+                }
+            }
+            case .Ignore => self->write("_");
+        }
+    }
+
+    fn write_switch_pattern(self: Self*, pattern: const cir::TypedSwitchCasePattern*) {
+        switch (pattern->kind) {
+            case .Wildcard => self->write("_");
+            case .Binding { name, .. } => self->write(name.str.as_str_const());
+            case .Range(range) => {
+                self->write_expr(&range.lower);
+
+                if (range.inclusive_upper) {
+                    self->write("..=");
+                } else {
+                    self->write("..");
+                }
+
+                self->write_expr(&range.upper);
+            }
+            case .Expr(expr) => self->write_expr(&expr);
+            case .EnumUnit(ident) => {
+                self->write(".");
+                self->write(ident.str.as_str_const());
+            }
+            case .EnumTupleVariant { ident, items } => {
+                self->write(".");
+                self->write(ident.str.as_str_const());
+                self->write("(");
+
+                for (var i: usize = 0; i < items.len(); i += 1) {
+                    const item = items.get_const(i).unwrap();
+                    self->write_switch_pattern(item);
+
+                    if (i + 1 != items.len()) {
+                        self->write(", ");
+                    }
+                }
+
+                self->write(")");
+            }
+            case .EnumStructVariant { ident, items, ignore } => {
+                self->write(".");
+                self->write(ident.str.as_str_const());
+                self->write(" { ");
+
+                for (var i: usize = 0; i < items.len(); i += 1) {
+                    const item = items.get_const(i).unwrap();
+                    self->write(item->name.str.as_str_const());
+                    self->write(": ");
+                    self->write_switch_pattern(&item->pattern);
+
+                    if (i + 1 != items.len() || ignore) {
+                        self->write(", ");
+                    }
+                }
+
+                if (ignore) {
+                    self->write("..");
+                }
+
+                self->write(" }");
+            }
+        }
+    }
+
+    fn write_var_content(self: Self*, var_stmt: const cir::TypedVarStmt*) {
+        if (var_stmt->is_const) {
+            self->write("const ");
+        } else {
+            self->write("var ");
+        }
+
+        self->write(var_stmt->name.as_str_const());
+        self->write(": ");
+        self->write_opt_type(&var_stmt->ty);
+
+        switch (var_stmt->rhs) {
+            case .Some(rhs) => {
+                self->write(" = ");
+                self->write_expr(&rhs);
+            }
+            case .None => {
+                if (var_stmt->is_undef) {
+                    self->write(" = undef");
+                }
+            }
+        }
+    }
+
+    fn write_global_var_content(self: Self*, global_stmt: const cir::TypedGlobalVarStmt*) {
+        if (global_stmt->is_static) {
+            self->write("static ");
+        }
+
+        if (global_stmt->is_const) {
+            self->write("const ");
+        }
+
+        self->write("global ");
+        self->write(global_stmt->name.as_str_const());
+        self->write(": ");
+        self->write_opt_type(&global_stmt->ty);
+
+        switch (global_stmt->rhs) {
+            case .Some(rhs) => {
+                self->write(" = ");
+                self->write_expr(&rhs);
+            }
+            case .None => {
+                if (global_stmt->is_undef) {
+                    self->write(" = undef");
+                }
+            }
+        }
+    }
+
+    fn write_var_decl(self: Self*, decl: const cir::VarDecl*) {
+        if (decl->is_const) {
+            self->write("const ");
+        } else {
+            self->write("var ");
+        }
+
+        self->write(decl->name.as_str_const());
+        self->write(": ");
+        self->write_opt_type(&decl->ty);
+
+        switch (decl->rhs) {
+            case .Some(rhs) => {
+                self->write(" = ");
+                self->write_expr(&rhs);
+            }
+            case .None => {}
+        }
+    }
+
+    fn write_global_var_decl(self: Self*, decl: const cir::GlobalVarDecl*) {
+        if (decl->is_static) {
+            self->write("static ");
+        }
+
+        if (decl->is_const) {
+            self->write("const ");
+        }
+
+        self->write("global ");
+        self->write(decl->name.as_str_const());
+        self->write(": ");
+        self->write_opt_type(&decl->ty);
+
+        switch (decl->rhs) {
+            case .Some(rhs) => {
+                self->write(" = ");
+                self->write_expr(&rhs);
+            }
+            case .None => {}
+        }
+    }
+
+    fn write_args(self: Self*, args: const Vec<cir::TypedExpr>*) {
+        self->write("(");
+
+        for (var i: usize = 0; i < args->len(); i += 1) {
+            const arg = args->get_const(i).unwrap();
+            self->write_expr(arg);
+
+            if (i + 1 != args->len()) {
+                self->write(", ");
+            }
+        }
+
+        self->write(")");
+    }
+
+    pub fn dump(self: Self*, trees: const Vec<cir::TypedProgramTree>*) {
+        self->write("CIR DUMP\n");
+        self->dump_structs();
+        self->dump_unions();
+        self->dump_enums();
+        self->dump_funcs();
+        self->dump_methods();
+        self->dump_interfaces();
+        self->dump_global_vars();
+        self->dump_vars();
+        self->dump_typedefs();
+
+        self->write("BODIES (");
+        format_usize(self->writer, self->tables->bodies.len());
+        self->write(")\n");
+
+        self->write("TREES (");
+        format_usize(self->writer, trees->len());
+        self->write(")\n");
+
+        for (var i: usize = 0; i < trees->len(); i += 1) {
+            const tree = trees->get_const(i).unwrap();
+
+            self->write("  [");
+            format_usize(self->writer, i);
+            self->write("] module=");
+            self->write(tree->module_name.as_str_const());
+            self->write(" file=");
+            self->write(tree->file_name.as_str_const());
+            self->write("\n");
+
+            self->dump_stmts(&tree->body, 2);
+        }
+    }
+
+    fn dump_structs(self: Self*) {
+        self->write("STRUCTS (");
+        format_usize(self->writer, self->tables->structs.len());
+        self->write(")\n");
+
+        for (var i: usize = 0; i < self->tables->structs.len(); i += 1) {
+            const decl = self->tables->structs.get_const(i).unwrap();
+
+            self->write_index(i);
+            self->write("struct ");
+            self->write_opt_name(&decl->name);
+            self->write(" { ");
+
+            for (var j: usize = 0; j < decl->fields.len(); j += 1) {
+                const field = decl->fields.get_const(j).unwrap();
+                self->write(field->name.as_str_const());
+                self->write(": ");
+                self->write_type(&field->ty);
+
+                if (j + 1 != decl->fields.len()) {
+                    self->write(", ");
+                }
+            }
+
+            self->write(" }");
+            self->write_impls(&decl->impls);
+            self->write_counts("methods", decl->methods.len());
+            self->write_counts("generics", decl->generic_params.len());
+
+            switch (decl->align) {
+                case .Some(align) => {
+                    self->write(" align=");
+                    format_usize(self->writer, align);
+                }
+                case .None => {}
+            }
+
+            self->write("\n");
+        }
+    }
+
+    fn dump_unions(self: Self*) {
+        self->write("UNIONS (");
+        format_usize(self->writer, self->tables->unions.len());
+        self->write(")\n");
+
+        for (var i: usize = 0; i < self->tables->unions.len(); i += 1) {
+            const decl = self->tables->unions.get_const(i).unwrap();
+
+            self->write_index(i);
+            self->write("union ");
+            self->write_opt_name(&decl->name);
+            self->write(" { ");
+
+            for (var j: usize = 0; j < decl->fields.len(); j += 1) {
+                const field = decl->fields.get_const(j).unwrap();
+                self->write(field->name.as_str_const());
+                self->write(": ");
+                self->write_type(&field->ty);
+
+                if (j + 1 != decl->fields.len()) {
+                    self->write(", ");
+                }
+            }
+
+            self->write(" }");
+            self->write_impls(&decl->impls);
+            self->write_counts("methods", decl->methods.len());
+            self->write_counts("generics", decl->generic_params.len());
+
+            switch (decl->align) {
+                case .Some(align) => {
+                    self->write(" align=");
+                    format_usize(self->writer, align);
+                }
+                case .None => {}
+            }
+
+            self->write("\n");
+        }
+    }
+
+    fn dump_enums(self: Self*) {
+        self->write("ENUMS (");
+        format_usize(self->writer, self->tables->enums.len());
+        self->write(")\n");
+
+        for (var i: usize = 0; i < self->tables->enums.len(); i += 1) {
+            const decl = self->tables->enums.get_const(i).unwrap();
+
+            self->write_index(i);
+            self->write("enum ");
+            self->write_opt_name(&decl->name);
+
+            switch (decl->tag_type) {
+                case .Some(tag_type) => {
+                    self->write(" : ");
+                    self->write_type(&tag_type);
+                }
+                case .None => {}
+            }
+
+            self->write(" { ");
+            self->write_variants(&decl->variants);
+            self->write(" }");
+            self->write_impls(&decl->impls);
+            self->write_counts("methods", decl->methods.len());
+            self->write_counts("generics", decl->generic_params.len());
+            self->write("\n");
+        }
+    }
+
+    fn dump_funcs(self: Self*) {
+        self->write("FUNCS (");
+        format_usize(self->writer, self->tables->funcs.len());
+        self->write(")\n");
+
+        for (var i: usize = 0; i < self->tables->funcs.len(); i += 1) {
+            const decl = self->tables->funcs.get_const(i).unwrap();
+
+            self->write_index(i);
+            self->write("fn ");
+            self->write(decl->name.as_str_const());
+            self->write_func_params(&decl->params);
+            self->write_type(&decl->ret_type);
+
+            if (decl->body.is_some()) {
+                self->write(" has_body");
+            }
+
+            self->write_counts("generics", decl->generic_params.len());
+            self->write("\n");
+        }
+    }
+
+    fn dump_methods(self: Self*) {
+        self->write("METHODS (");
+        format_usize(self->writer, self->tables->methods.len());
+        self->write(")\n");
+
+        for (var i: usize = 0; i < self->tables->methods.len(); i += 1) {
+            const decl = self->tables->methods.get_const(i).unwrap();
+
+            self->write_index(i);
+            self->write_method_header(decl);
+
+            if (decl->body.is_some()) {
+                self->write(" has_body");
+            }
+
+            self->write("\n");
+        }
+    }
+
+    fn dump_interfaces(self: Self*) {
+        self->write("INTERFACES (");
+        format_usize(self->writer, self->tables->interfaces.len());
+        self->write(")\n");
+
+        for (var i: usize = 0; i < self->tables->interfaces.len(); i += 1) {
+            const decl = self->tables->interfaces.get_const(i).unwrap();
+
+            self->write_index(i);
+            self->write("interface ");
+            self->write(decl->name.as_str_const());
+            self->write(" { ");
+
+            for (var j: usize = 0; j < decl->methods.entries.len(); j += 1) {
+                const entry = decl->methods.entries.get_const(j).unwrap();
+                self->write(entry->name.as_str_const());
+
+                if (j + 1 != decl->methods.entries.len()) {
+                    self->write(", ");
+                }
+            }
+
+            self->write(" }");
+
+            if (decl->is_interface_dynamically_dispatchable) {
+                self->write(" dyn");
+            }
+
+            self->write_counts("generics", decl->generic_params.len());
+            self->write("\n");
+        }
+    }
+
+    fn dump_global_vars(self: Self*) {
+        self->write("GLOBAL VARS (");
+        format_usize(self->writer, self->tables->global_vars.len());
+        self->write(")\n");
+
+        for (var i: usize = 0; i < self->tables->global_vars.len(); i += 1) {
+            const decl = self->tables->global_vars.get_const(i).unwrap();
+
+            self->write_index(i);
+            self->write_global_var_decl(decl);
+            self->write("\n");
+        }
+    }
+
+    fn dump_vars(self: Self*) {
+        self->write("VARS (");
+        format_usize(self->writer, self->tables->vars.len());
+        self->write(")\n");
+
+        for (var i: usize = 0; i < self->tables->vars.len(); i += 1) {
+            const decl = self->tables->vars.get_const(i).unwrap();
+
+            self->write_index(i);
+            self->write_var_decl(decl);
+            self->write("\n");
+        }
+    }
+
+    fn dump_typedefs(self: Self*) {
+        self->write("TYPEDEFS (");
+        format_usize(self->writer, self->tables->typedefs.len());
+        self->write(")\n");
+
+        for (var i: usize = 0; i < self->tables->typedefs.len(); i += 1) {
+            const decl = self->tables->typedefs.get_const(i).unwrap();
+
+            self->write_index(i);
+            self->write("typedef ");
+            self->write(decl->name.as_str_const());
+            self->write(" = ");
+            self->write_type(decl->ty);
+            self->write("\n");
+        }
+    }
+
+    fn dump_stmts(self: Self*, stmts: const Vec<cir::TypedStmt>*, depth: usize) {
+        for (var i: usize = 0; i < stmts->len(); i += 1) {
+            const stmt = stmts->get_const(i).unwrap();
+            self->dump_stmt(stmt, depth);
+        }
+    }
+
+    fn dump_block_body(self: Self*, block: const cir::TypedBlockStmt*, depth: usize) {
+        self->dump_stmts(&block->stmts, depth + 1);
+
+        for (var i: usize = 0; i < block->defers.len(); i += 1) {
+            const defer_stmt = block->defers.get_const(i).unwrap();
+
+            self->indent(depth + 1);
+            self->write("defer {\n");
+            self->dump_stmt(defer_stmt->operand, depth + 2);
+            self->indent(depth + 1);
+            self->write("}\n");
+        }
+    }
+
+    fn dump_if(self: Self*, if_stmt: const cir::TypedIfStmt*, depth: usize) {
+        self->write("if ");
+        self->write_expr(&if_stmt->cond);
+        self->write(" {\n");
+        self->dump_block_body(if_stmt->then_block, depth);
+        self->indent(depth);
+        self->write("}");
+
+        for (var i: usize = 0; i < if_stmt->branches.len(); i += 1) {
+            const branch = if_stmt->branches.get_const(i).unwrap();
+
+            self->write(" else if ");
+            self->write_expr(&branch->cond);
+            self->write(" {\n");
+            self->dump_block_body(branch->then_block, depth);
+            self->indent(depth);
+            self->write("}");
+        }
+
+        switch (if_stmt->else_block) {
+            case .Some(block) => {
+                self->write(" else {\n");
+                self->dump_block_body(block, depth);
+                self->indent(depth);
+                self->write("}");
+            }
+            case .None => {}
+        }
+
+        self->write("\n");
+    }
+
+    fn dump_stmt(self: Self*, stmt: const cir::TypedStmt*, depth: usize) {
+        self->indent(depth);
+
+        if (stmt->is_dead) {
+            self->write("[dead] ");
+        }
+
+        switch (stmt->kind) {
+            case .Expr(expr) => {
+                self->write_expr_typed(&expr);
+                self->write(";\n");
+            }
+            case .Variable(var_stmt) => {
+                self->write_var_content(&var_stmt);
+                self->write(";\n");
+            }
+            case .GlobalVar(global_stmt) => {
+                self->write_global_var_content(&global_stmt);
+                self->write(";\n");
+            }
+            case .BlockStmt(block) => {
+                self->write("{\n");
+                self->dump_block_body(&block, depth);
+                self->indent(depth);
+                self->write("}\n");
+            }
+            case .If(if_stmt) => self->dump_if(&if_stmt, depth);
+            case .While(while_stmt) => {
+                self->write("while ");
+                self->write_expr(&while_stmt.cond);
+                self->write(" {\n");
+                self->dump_block_body(while_stmt.body, depth);
+                self->indent(depth);
+                self->write("}\n");
+            }
+            case .For(for_stmt) => {
+                self->write("for (");
+
+                switch (for_stmt.initializer) {
+                    case .Some(initializer) => self->write_var_content(&initializer);
+                    case .None => {}
+                }
+
+                self->write("; ");
+
+                switch (for_stmt.cond) {
+                    case .Some(cond) => self->write_expr(&cond);
+                    case .None => {}
+                }
+
+                self->write("; ");
+
+                switch (for_stmt.increment) {
+                    case .Some(increment) => self->write_expr(&increment);
+                    case .None => {}
+                }
+
+                self->write(") {\n");
+                self->dump_block_body(for_stmt.body, depth);
+                self->indent(depth);
+                self->write("}\n");
+            }
+            case .Return(return_stmt) => {
+                self->write("return");
+
+                switch (return_stmt.arg) {
+                    case .Some(arg) => {
+                        self->write(" ");
+                        self->write_expr_typed(&arg);
+                    }
+                    case .None => {}
+                }
+
+                self->write(";\n");
+            }
+            case .Break => self->write("break;\n");
+            case .Continue => self->write("continue;\n");
+            case .Switch(switch_stmt) => self->dump_switch(&switch_stmt, depth);
+            case .FuncDef(func_def) => {
+                self->write("fn ");
+                self->write(func_def.name.as_str_const());
+                self->write_func_params(&func_def.params);
+                self->write_type(&func_def.ret_type);
+                self->write(" {\n");
+                self->dump_block_body(func_def.body, depth);
+                self->indent(depth);
+                self->write("}\n");
+            }
+            case .FuncDecl(func_decl) => {
+                self->write("fn ");
+                self->write(func_decl.name.as_str_const());
+                self->write_func_params(&func_decl.params);
+                self->write_type(&func_decl.ret_type);
+                self->write(";\n");
+            }
+            case .Struct(struct_stmt) => {
+                self->write("struct ");
+                self->write(struct_stmt.name.as_str_const());
+                self->write(" { ");
+
+                for (var j: usize = 0; j < struct_stmt.fields.len(); j += 1) {
+                    const field = struct_stmt.fields.get_const(j).unwrap();
+                    self->write(field->name.as_str_const());
+                    self->write(": ");
+                    self->write_type(&field->ty);
+
+                    if (j + 1 != struct_stmt.fields.len()) {
+                        self->write(", ");
+                    }
+                }
+
+                self->write(" }");
+                self->write_impls(&struct_stmt.impls);
+                self->write_counts("methods", struct_stmt.methods.len());
+                self->write_counts("generics", struct_stmt.generic_params.len());
+
+                switch (struct_stmt.align) {
+                    case .Some(align) => {
+                        self->write(" align=");
+                        format_usize(self->writer, align);
+                    }
+                    case .None => {}
+                }
+
+                self->write("\n");
+            }
+            case .Union(union_stmt) => {
+                self->write("union ");
+                self->write(union_stmt.name.as_str_const());
+                self->write(" { ");
+
+                for (var j: usize = 0; j < union_stmt.fields.len(); j += 1) {
+                    const field = union_stmt.fields.get_const(j).unwrap();
+                    self->write(field->name.as_str_const());
+                    self->write(": ");
+                    self->write_type(&field->ty);
+
+                    if (j + 1 != union_stmt.fields.len()) {
+                        self->write(", ");
+                    }
+                }
+
+                self->write(" }");
+                self->write_impls(&union_stmt.impls);
+                self->write_counts("methods", union_stmt.methods.len());
+                self->write_counts("generics", union_stmt.generic_params.len());
+
+                switch (union_stmt.align) {
+                    case .Some(align) => {
+                        self->write(" align=");
+                        format_usize(self->writer, align);
+                    }
+                    case .None => {}
+                }
+
+                self->write("\n");
+            }
+            case .Enum(enum_stmt) => {
+                self->write("enum ");
+                self->write(enum_stmt.name.as_str_const());
+
+                switch (enum_stmt.tag_type) {
+                    case .Some(tag_type) => {
+                        self->write(" : ");
+                        self->write_type(&tag_type);
+                    }
+                    case .None => {}
+                }
+
+                self->write(" { ");
+                self->write_variants(&enum_stmt.variants);
+                self->write(" }");
+                self->write_impls(&enum_stmt.impls);
+                self->write_counts("methods", enum_stmt.methods.len());
+                self->write_counts("generics", enum_stmt.generic_params.len());
+                self->write("\n");
+            }
+            case .Interface(interface_stmt) => {
+                self->write("interface ");
+                self->write(interface_stmt.name.as_str_const());
+                self->write(" { ");
+
+                for (var j: usize = 0; j < interface_stmt.methods.entries.len(); j += 1) {
+                    const entry = interface_stmt.methods.entries.get_const(j).unwrap();
+                    self->write(entry->name.as_str_const());
+
+                    if (j + 1 != interface_stmt.methods.entries.len()) {
+                        self->write(", ");
+                    }
+                }
+
+                self->write(" }");
+                self->write_counts("generics", interface_stmt.generic_params.len());
+                self->write("\n");
+            }
+            case .Typedef(typedef_stmt) => {
+                self->write("typedef ");
+                self->write(typedef_stmt.name.as_str_const());
+                self->write(" = ");
+                self->write_type(&typedef_stmt.ty);
+                self->write(";\n");
+            }
+            case .TupleExport(export_stmt) => {
+                if (export_stmt.is_const) {
+                    self->write("const ");
+                }
+
+                self->write("export ");
+                self->write_export_pattern(&export_stmt.pattern);
+                self->write(" = ");
+
+                switch (export_stmt.rhs) {
+                    case .Some(rhs) => self->write_expr_typed(&rhs);
+                    case .None => self->write("undefined");
+                }
+
+                self->write(";\n");
+            }
+            case .InlineAsm(asm_stmt) => {
+                self->write("asm");
+
+                if (asm_stmt.is_volatile) {
+                    self->write(" volatile");
+                }
+
+                self->write(" {\n");
+
+                for (var j: usize = 0; j < asm_stmt.template.len(); j += 1) {
+                    const line = asm_stmt.template.get_const(j).unwrap();
+                    self->indent(depth + 1);
+                    self->write("\"");
+                    self->write(line->as_str_const());
+                    self->write("\"\n");
+                }
+
+                self->indent(depth + 1);
+                self->write("outputs=");
+                format_usize(self->writer, asm_stmt.outputs.len());
+                self->write(" inputs=");
+                format_usize(self->writer, asm_stmt.inputs.len());
+                self->write(" clobbers=");
+                format_usize(self->writer, asm_stmt.clobbers.len());
+                self->write("\n");
+                self->indent(depth);
+                self->write("}\n");
+            }
+            case .Builtin(builtin_stmt) => {
+                switch (builtin_stmt) {
+                    case .BuiltinFunc(func) => {
+                        self->write("builtin ");
+                        self->write(func.name.str.as_str_const());
+                        self->write_args(&func.args);
+                        self->write(";\n");
+                    }
+                    case .BuiltinBlock(block) => {
+                        self->write("builtin ");
+                        self->write(block.name.str.as_str_const());
+                        self->write_args(&block.args);
+                        self->write(" {\n");
+                        self->dump_block_body(block.block, depth);
+                        self->indent(depth);
+                        self->write("}\n");
+                    }
+                }
+            }
+            case .Label(label_stmt) => {
+                self->write("label ");
+                self->write(label_stmt.name.as_str_const());
+                self->write(":\n");
+            }
+            case .Goto(goto_stmt) => {
+                self->write("goto ");
+                self->write(goto_stmt.name.as_str_const());
+                self->write(";\n");
+            }
+            case .Defer(defer_stmt) => {
+                self->write("defer {\n");
+                self->dump_stmt(defer_stmt.operand, depth + 1);
+                self->indent(depth);
+                self->write("}\n");
+            }
+        }
+    }
+
+    fn dump_switch(self: Self*, switch_stmt: const cir::TypedSwitchStmt*, depth: usize) {
+        self->write("switch ");
+        self->write_expr(&switch_stmt->operand);
+        self->write(" {\n");
+
+        for (var i: usize = 0; i < switch_stmt->cases.len(); i += 1) {
+            const switch_case = switch_stmt->cases.get_const(i).unwrap();
+
+            self->indent(depth + 1);
+            self->write("case ");
+
+            for (var j: usize = 0; j < switch_case->patterns.len(); j += 1) {
+                const pattern = switch_case->patterns.get_const(j).unwrap();
+                self->write_switch_pattern(pattern);
+
+                if (j + 1 != switch_case->patterns.len()) {
+                    self->write(", ");
+                }
+            }
+
+            self->write(": {\n");
+            self->dump_block_body(switch_case->body, depth + 1);
+            self->indent(depth + 1);
+            self->write("}\n");
+        }
+
+        switch (switch_stmt->else_case) {
+            case .Some(default_block) => {
+                self->indent(depth + 1);
+                self->write("else {\n");
+                self->dump_block_body(&default_block, depth + 1);
+                self->indent(depth + 1);
+                self->write("}\n");
+            }
+            case .None => {}
+        }
+
+        switch (switch_stmt->all_cases_covered) {
+            case .Some(covered) => {
+                self->indent(depth + 1);
+                self->write("all_cases_covered=");
+                self->write_bool(covered);
+                self->write("\n");
+            }
+            case .None => {}
+        }
+
+        self->indent(depth);
+        self->write("}\n");
+    }
+}

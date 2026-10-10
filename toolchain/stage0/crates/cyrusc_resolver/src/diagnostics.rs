@@ -25,7 +25,7 @@ pub enum ModuleFSLoaderDiagKind {
     #[error("Module cannot import itself.")]
     ModuleCannotImportItself,
 
-    #[error("Relative import navigates above the project root directory.")]
+    #[error("relative import navigates above the project root directory")]
     RelativeImportEscapesProjectRoot,
 }
 
@@ -57,7 +57,7 @@ pub enum ResolverDiagKind {
     #[error("Invalid literal suffix.")]
     InvalidLiteralSuffix,
 
-    #[error("Symbol '{name}' not found anywhere.")]
+    #[error("symbol `{name}` not found")]
     SymbolNotFound { name: String },
 
     #[error("Type '{name}' not found.")]

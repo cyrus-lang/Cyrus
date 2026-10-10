@@ -1,3 +1,3 @@
-import ..::..::..::..::..::..::..::..::root; //~ ERROR Relative import navigates above the project root directory.
+import ..::..::..::..::..::..::..::..::root; //~ ERROR relative import navigates above the project root directory
 
 pub fn main() {}

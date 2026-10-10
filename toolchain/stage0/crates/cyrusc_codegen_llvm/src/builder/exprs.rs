@@ -934,7 +934,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
                 let shift_value = self.llvm_builder.build_left_shift(lhs, rhs, "lshift").unwrap();
 
                 InternalValue::new(
-                    CIRType::Plain(PlainType::Bool),
+                    lhs_rvalue.ty.clone(),
                     InternalValueKind::RValue(shift_value.into()),
                 )
             }
@@ -950,7 +950,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
                 let shift_value = self.llvm_builder.build_right_shift(lhs, rhs, signed, "rshift").unwrap();
 
                 InternalValue::new(
-                    CIRType::Plain(PlainType::Bool),
+                    lhs_rvalue.ty.clone(),
                     InternalValueKind::RValue(shift_value.into()),
                 )
             }
@@ -1322,6 +1322,19 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         InternalValue::new(CIRType::Plain(PlainType::Bool), InternalValueKind::RValue(cmp.into()))
     }
 
+    fn emit_cmp_neq_const_strings(&self, lhs_ptr: PointerValue<'ll>, rhs_ptr: PointerValue<'ll>) -> InternalValue<'ll> {
+        let strcmp_result = self.intrinsic_strcmp(lhs_ptr, rhs_ptr);
+
+        let zero = strcmp_result.get_type().const_zero();
+
+        let cmp = self
+            .llvm_builder
+            .build_int_compare(IntPredicate::NE, strcmp_result, zero, "strneq")
+            .unwrap();
+
+        InternalValue::new(CIRType::Plain(PlainType::Bool), InternalValueKind::RValue(cmp.into()))
+    }
+
     pub(crate) fn emit_cmp_eq(
         &mut self,
         lhs_rvalue: InternalValue<'ll>,
@@ -1400,6 +1413,14 @@ impl<'ll> CodeGenIRBuilder<'ll> {
                 InternalValue::new(CIRType::Plain(PlainType::Bool), InternalValueKind::RValue(cmp.into()))
             }
             (BasicValueEnum::PointerValue(lhs), BasicValueEnum::PointerValue(rhs)) => {
+                if let (Some(lhs_ptr_inner), Some(rhs_ptr_inner)) =
+                    (lhs_rvalue.ty.pointer_inner(), rhs_rvalue.ty.pointer_inner())
+                {
+                    if lhs_ptr_inner.is_char() && rhs_ptr_inner.is_char() {
+                        return self.emit_cmp_neq_const_strings(lhs, rhs);
+                    }
+                }
+
                 let cmp = self
                     .llvm_builder
                     .build_int_compare(IntPredicate::NE, lhs, rhs, "neq")

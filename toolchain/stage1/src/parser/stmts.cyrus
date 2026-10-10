@@ -46,10 +46,7 @@ pub struct ParserStmts {
     program: ast::ASTProgram*,
     state: ParserState*,
     pub pending_attrs: Vec<ast::ASTAttr>,
-    // Set by struct/union/enum method loops so the next `parse_stmt`
-    // finalizes its attributes onto the method itself (stage0 parses
-    // methods with `toplevel = true`).
-    method_ctx: bool,
+    is_method_context: bool,
 
     [[inline]]
     pub fn new(
@@ -62,7 +59,7 @@ pub struct ParserStmts {
             program,
             state,
             pending_attrs: Vec.new(allocator),
-            method_ctx: false
+            is_method_context: false
         };
     }
 
@@ -589,8 +586,8 @@ pub struct ParserStmts {
         // Method declarations finalize their attributes onto themselves
         // Every other statement inside a block accumulates them on 
         // the stack for the enclosing toplevel statement.
-        const is_method = self->method_ctx;
-        self->method_ctx = false;
+        const is_method = self->is_method_context;
+        self->is_method_context = false;
 
         // Attributes cannot be attached to a block statement.
         if (had_attrs && self->state->is(.LeftBrace)) {
@@ -695,7 +692,7 @@ pub struct ParserStmts {
             }
             
             case .At => {
-                // Bare builtins accept no modifiers (stage0 parity).
+                // Bare builtins accept no modifiers
                 if (is_pub || extrn.is_some()) {
                     report_unexpected_token(
                         self->allocator,
@@ -717,9 +714,6 @@ pub struct ParserStmts {
         ast::free_attrs(&attrs);
     }
 
-    /// Applies attributes accumulated inside a function body onto the
-    /// function itself — stage0 validates and finalizes the whole
-    /// `attrs_stack` when the enclosing toplevel statement finishes.
     fn absorb_pending_attrs(
         self: Self*,
         own: Option<Vec<ast::ASTAttr>*>,
@@ -1143,13 +1137,14 @@ pub struct ParserStmts {
     fn parse_destruct_pattern(self: Self*) Option<ast::ASTDestructTuplePattern> {
         const start = self->state->current_span();
 
-        var bind = ast::ASTConstness.Const;
+        var bind: Option<ast::ASTConstness> = .None;
 
         if (self->state->is(.Var)) {
             self->state->next();
-            bind = .Var;
+            bind = .Some(.Var);
         } else if (self->state->is(.Const)) {
             self->state->next();
+            bind = .Some(.Const);
         }
 
         var kind: ast::ASTDestructTuplePatternKind;
@@ -1172,7 +1167,7 @@ pub struct ParserStmts {
                     const inner_opt = self->parse_destruct_pattern();
 
                     if (inner_opt.is_none()) {
-                        // Recovery: skip garbage up to `,` or `)` so a single
+                        // Recovery: Skip garbage up to `,` or `)` so a single
                         // stray token still reports one error.
                         if (self->state->is(.RightParen)) {
                             break;
@@ -1843,7 +1838,7 @@ pub struct ParserStmts {
         }
 
         var cases: Vec<ast::ASTSwitchCase> = Vec.new(self->state->allocator);
-        var default_case: Option<ast::NodeId> = .None;
+        var else_case: Option<ast::NodeId> = .None;
 
         while (true) {
             if (self->state->is(.Case)) {
@@ -1869,7 +1864,7 @@ pub struct ParserStmts {
                     return;
                 }
 
-                default_case = .Some(body);
+                else_case = .Some(body);
                 break;
             } else {
                 break;
@@ -1885,7 +1880,7 @@ pub struct ParserStmts {
         const node = ast::ASTSwitch {
             operand,
             cases,
-            default_case,
+            else_case,
             span: start.merge(self->state->current_span()),
         };
         self->state->pending->push(self->program->create_node(.Switch(node)));
@@ -2014,7 +2009,7 @@ pub struct ParserStmts {
         const node = ast::ASTSwitchGuard {
             operand,
             case_item,
-            default_case: .Some(default_block),
+            else_case: .Some(default_block),
             span: start.merge(self->state->current_span()),
         };
         self->state->pending->push(self->program->create_node(.SwitchGuard(node)));
@@ -2096,11 +2091,11 @@ pub struct ParserStmts {
                 self->state->next();
 
                 var items: Vec<ast::ASTSwitchCaseEnumStructPatternField> = Vec.new(self->state->allocator);
-                var has_rest = false;
+                var ignore = false;
 
                 while (!self->state->is(.RightBrace) && !self->state->is(.EOF)) {
                     if (self->state->is(.DoubleDot)) {
-                        has_rest = true;
+                        ignore = true;
                         self->state->next();
                         break;
                     }
@@ -2153,7 +2148,7 @@ pub struct ParserStmts {
                 }
 
                 return .Some(ast::ASTSwitchCasePattern {
-                    kind: .EnumStructVariant { variant, items, has_rest },
+                    kind: .EnumStructVariant { variant, items, ignore },
                     span: start.merge(self->state->current_span()),
                 });
             }
@@ -2969,7 +2964,7 @@ pub struct ParserStmts {
             }
 
             const mark = self->state->pending->len();
-            self->method_ctx = true;
+            self->is_method_context = true;
             self->parse_stmt();
 
             if (self->state->pending->len() != mark + 1) {
@@ -3191,7 +3186,7 @@ pub struct ParserStmts {
             }
 
             const mark = self->state->pending->len();
-            self->method_ctx = true;
+            self->is_method_context = true;
             self->parse_stmt();
 
             if (self->state->pending->len() != mark + 1) {

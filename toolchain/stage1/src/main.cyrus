@@ -12,12 +12,14 @@ import std::libc{printf};
 import std::cli;
 
 import diags{DiagContext, Diag, exit_with_compile_error};
+import resolver::loader{ResolverOptions};
 import diags::render{CompilerDiagRender};
 import source{Source, SourceContext};
 import tokens{dump_tokens, Loc};
-import driver{CompilerDriver};
 import resolver::index{Resolver};
-import resolver::loader{ResolverOptions};
+import driver{CompilerDriver};
+import analyzer::check;
+import cir::dump;
 import version;
 
 pub fn main(argc: c_int, argv: c_char**) {
@@ -92,6 +94,13 @@ pub fn main(argc: c_int, argv: c_char**) {
         ->add_option(stdlib_opt)
         ->add_option(profile_opt);
     
+    const analyze_cmd = 
+        cli::Cmd.new(allocator, "analyze", command_analyze)
+        .help("Analyze modules and dump the CIR")
+        ->optional_argument(.Str)
+        ->add_option(stdlib_opt)
+        ->add_option(profile_opt);
+    
     const version_cmd = 
         cli::Cmd.new(allocator, "version", command_version)
         .help("Compiler version");
@@ -104,6 +113,7 @@ pub fn main(argc: c_int, argv: c_char**) {
     app.register(*tokenize_cmd);
     app.register(*parse_cmd);
     app.register(*resolve_cmd);
+    app.register(*analyze_cmd);
     app.register(*version_cmd);
 
     app.run(struct { argc, argv });
@@ -221,6 +231,76 @@ fn command_resolve(ctx: cli::ActionContext) {
     }
 }
 
+fn command_analyze(ctx: cli::ActionContext) {
+    const allocator: Allocator = dynamic LibcAllocator.new();
+
+    var driver = CompilerDriver.new(allocator);
+
+    switch (ctx.args->get_str(0)) case .Some(file_path) else {
+        exit_with_compile_error("no input file provided");
+        @unreachable();
+    }
+
+    var opts = ResolverOptions.new(allocator);
+
+    opts.base_path.free();
+    opts.base_path = cwd(allocator);
+    opts.source_dirs.push(dir_of_file(allocator, file_path));
+    apply_stdlib_option(allocator, ctx.opts, &opts);
+    apply_profile_option(allocator, ctx.opts, &opts);
+
+    var resolver = Resolver.new(allocator, &driver, &opts);
+
+    const lexical = driver.create_lexical_resource();
+    const path = Path.new(allocator, file_path);
+
+    switch (lexical.tokenize_source(path)) case .Value(var source_tokens) else {
+        driver.render_diags();
+        analyze_teardown(&driver, &resolver, &opts);
+        return;
+    }
+    defer source_tokens.free();
+
+    switch (lexical.parse_source(source_tokens)) case .Value(var program) else {
+        driver.render_diags();
+        analyze_teardown(&driver, &resolver, &opts);
+        return;
+    }
+    defer program.free();
+
+    resolver.resolve_entry(source_tokens.source_id, file_path, &program);
+
+    if (!driver.dctx.has_errors()) {
+        const arena_allocator: Allocator = dynamic resolver.arena;
+
+        var analyzer = check::Analyzer.new(
+            arena_allocator,
+            &driver.dctx,
+            &resolver.global_symbols,
+            &resolver.decl_tables,
+            resolver.program_trees
+        );
+        analyzer.analyze();
+        analyzer.free();
+    }
+
+    driver.render_diags();
+
+    if (!driver.dctx.has_errors()) {
+        const writer: Writer = dynamic StdoutWriter.new();
+
+        dump::dump_cir(
+            &resolver.global_symbols,
+            &resolver.decl_tables,
+            &resolver.program_trees,
+            writer,
+            allocator
+        );
+    }
+
+    analyze_teardown(&driver, &resolver, &opts);
+}
+
 
 fn command_version(ctx: cli::ActionContext) {
     printf("Cyrus %s\n", version::COMPILER_VERSION);
@@ -262,4 +342,11 @@ fn apply_profile_option(allocator: Allocator, ctx_opts: const cli::Opts*, opts: 
         exit_with_compile_error("invalid profile (expected `debug` or `release`)");
         @unreachable();
     }
+}
+
+// FIXME: Replace with defer! 
+fn analyze_teardown(driver: CompilerDriver*, resolver: Resolver*, opts: ResolverOptions*) {
+    driver->free();
+    resolver->free();
+    opts->free();
 }

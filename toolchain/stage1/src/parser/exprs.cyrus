@@ -292,6 +292,23 @@ pub struct ParserExprs {
                 return .None;
             }
 
+            if (self->state->is(.LeftParen)) {
+                self->state->next();
+
+                switch (self->parse_expr_list(.RightParen)) case .Some(args) else {
+                    return .None;
+                }
+
+                const node = ast::ASTFuncCall {
+                    operand: self->type_as_path_expr(base),
+                    args,
+                    type_args,
+                    span: start.merge(self->state->current_span()),
+                };
+                
+                return .Some(self->create_expr(.FuncCall(node)));
+            }
+
             const base_id = self->program->create_node(.Type(base));
             const ty = ast::ASTType.GenericInst(ast::ASTGenericInst {
                 base: base_id,

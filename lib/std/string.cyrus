@@ -354,3 +354,33 @@ pub fn parse_str_as_float64(str: const uint8*) Option<float64> {
 
     return .Some(@cast(float64, result));
 }
+
+pub fn parse_hex_uint32(hex: const String*) Option<uint32> {
+    if (hex->len() == 0) {
+        return .None;
+    }
+
+    var value: uint32 = 0;
+
+    for (var i: usize = 0; i < hex->len(); i += 1) {
+        switch (hex_digit_value(hex->get(i).unwrap())) {
+            case .None => return .None;
+            case .Some(d) => value = value * 16 + @cast(uint32, d);
+        }
+    }
+
+    return .Some(value);
+}
+
+fn hex_digit_value(c: uint8) Option<uint8> {
+    if (c >= '0' && c <= '9') {
+        return .Some(c - '0');
+    }
+    if (c >= 'a' && c <= 'f') {
+        return .Some(c - 'a' + 10);
+    }
+    if (c >= 'A' && c <= 'F') {
+        return .Some(c - 'A' + 10);
+    }
+    return .None;
+}

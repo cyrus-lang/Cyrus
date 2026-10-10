@@ -41,7 +41,7 @@ ASTProgram
                                             Binding
                                                 ident: x
                                                 constness: const
-                            default_case:
+                            else_case:
                                 ASTBlock
                                     stmt[0]:
                                         ASTExpr::FuncCall
@@ -59,7 +59,7 @@ ASTProgram
                                         expr:
                                             ASTExpr::Literal
                                                 value: 1
-                            default_case:
+                            else_case:
                                 ASTBlock
                                     stmt[0]:
                                         ASTExpr::FuncCall

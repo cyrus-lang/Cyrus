@@ -7,7 +7,7 @@ enum Color {
 }
 
 fn display_color(color: Color) const uint8* {
-    switch (color) { //~ ERROR Non-exhaustive switch statement: missing variants 'Green, Blue'.
+    switch (color) { //~ ERROR ensure that all variants are covered in switch statement
         case .Red => {
             return "Red\n";
         }

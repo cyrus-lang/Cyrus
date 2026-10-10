@@ -71,7 +71,7 @@ ASTProgram
                                                 arg[0]:
                                                     ASTExpr::Ident
                                                         ident: x
-                            default_case:
+                            else_case:
                                 ASTBlock
                                     stmt[0]:
                                         ASTExpr::FuncCall

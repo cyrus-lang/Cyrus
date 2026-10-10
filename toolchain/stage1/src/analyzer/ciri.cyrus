@@ -1,0 +1,261 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 The Cyrus Language
+
+// CyrusIR (CIR) interpreter
+
+import std::option{Option};
+
+import cir::tables{DeclTables};
+import resolver::symbols{
+    GlobalSymbolRegistry, 
+    is_decl_const, 
+    symbol_decl_id
+};
+import cir;
+
+pub fn fold_const_expr_int(
+    decl_tables: const DeclTables*, 
+    registry: const GlobalSymbolRegistry*, 
+    expr: const cir::TypedExpr*
+) Option<cir::IntegerLiteral> {
+    return fold_const_expr_int_depth(decl_tables, registry, expr, 0);
+}
+
+fn fold_const_expr_int_depth(
+    decl_tables: const DeclTables*,
+    registry: const GlobalSymbolRegistry*,
+    expr: const cir::TypedExpr*,
+    depth: usize
+) Option<cir::IntegerLiteral> {
+    if (depth > 32) {
+        return .None;
+    }
+
+    switch (expr->kind) {
+        case .Literal(lit) => {
+            switch (lit.kind) {
+                case .Integer { value, .. } => {
+                    switch (value) {
+                        case .Unsigned(x) => return .Some(.Unsigned(x));
+                        case .Signed(x) => return .Some(.Signed(x));
+                    }
+                }
+                case .Bool(x) => {
+                    if (x) {
+                        return .Some(.Unsigned(1));
+                    } else {
+                        return .Some(.Unsigned(0));
+                    }
+                }
+                else => {}
+            }
+        }
+
+        case .Symbol(symbol_expr) => {
+            switch (symbol_decl_id(registry, &symbol_expr)) {
+                case .Some(decl_id) => {
+                    if (!is_decl_const(decl_tables, decl_id)) {
+                        return .None;
+                    }
+
+                    switch (decl_id) {
+                        case .GlobalVar(global_var_decl_id) => {
+                            const global_var_decl = decl_tables->global_vars.get_const(global_var_decl_id).unwrap();
+
+                            switch (global_var_decl->rhs) {
+                                case .Some(rhs) => {
+                                    return fold_const_expr_int_depth(decl_tables, registry, &rhs, depth + 1);
+                                }
+                                else => {}
+                            }
+                        }
+                        case .Var(var_decl_id) => {
+                            const var_decl = decl_tables->vars.get_const(var_decl_id).unwrap();
+
+                            switch (var_decl->rhs) {
+                                case .Some(rhs) => {
+                                    return fold_const_expr_int_depth(
+                                        decl_tables, 
+                                        registry, 
+                                        &rhs,
+                                        depth + 1
+                                    );
+                                }
+                                case .None => {}
+                            }
+                        }
+                        else => return .None;
+                    }
+                }
+                else => {}
+            }
+        }
+
+        case .Prefix(prefix_expr) => {
+            switch (prefix_expr.op) {
+                case .Minus => {
+                    const inner = fold_const_expr_int_depth(
+                        decl_tables, 
+                        registry, 
+                        prefix_expr.operand, 
+                        depth + 1
+                    );
+                    
+                    switch (inner) {
+                        case .Some(.Signed(x)) => return .Some(.Signed(-x));
+                        case .Some(.Unsigned) => return .None;
+                        else => {}
+                    }
+                }
+                else => {}
+            }
+        }
+
+        case .Infix(infix_expr) => {
+            const lhs = fold_const_expr_int_depth(decl_tables, registry, infix_expr.lhs, depth + 1);
+            const rhs = fold_const_expr_int_depth(decl_tables, registry, infix_expr.rhs, depth + 1);
+
+            switch (lhs) case .Some(lv) else {
+                return .None;
+            }
+
+            switch (rhs) case .Some(rv) else {
+                return .None;
+            }
+
+            switch (lv) {
+                case .Signed(ls) => {
+                    switch (rv) case .Signed(rs) else {
+                        return .None;
+                    }
+
+                    switch (infix_expr.op) {
+                        case .Add => return .Some(.Signed(ls + rs));
+                        case .Sub => return .Some(.Signed(ls - rs));
+                        case .Mul => return .Some(.Signed(ls * rs));
+
+                        case .Div => {
+                            if (rs == 0) {
+                                return .None;
+                            }
+                            return .Some(.Signed(ls / rs));
+                        }
+                        
+                        case .Rem => {
+                            if (rs == 0) {
+                                return .None;
+                            }
+                            return .Some(.Signed(ls % rs));
+                        }
+                        
+                        else => return .None;
+                    }
+                }
+                case .Unsigned(lu) => {
+                    switch (rv) case .Unsigned(ru) else {
+                        return .None;
+                    }
+
+                    switch (infix_expr.op) {
+                        case .Add => return .Some(.Unsigned(lu + ru));
+                        case .Sub => return .Some(.Unsigned(lu - ru));
+                        case .Mul => return .Some(.Unsigned(lu * ru));
+                        
+                        case .Div => {
+                            if (ru == 0) {
+                                return .None;
+                            }
+                            return .Some(.Unsigned(lu / ru));
+                        }
+                        
+                        case .Rem => {
+                            if (ru == 0) {
+                                return .None;
+                            }
+                            return .Some(.Unsigned(lu % ru));
+                        }
+                        
+                        else => {}
+                    }
+                }
+            }
+        }
+        else => {}
+    }
+
+    return .None;
+}
+
+
+pub fn fold_const_expr(
+    decl_tables: const DeclTables*,
+    registry: const GlobalSymbolRegistry*,
+    expr: cir::TypedExpr*
+) {
+    switch (expr->kind) {
+        case .Prefix(prefix_expr) => {
+            fold_const_expr(decl_tables, registry, prefix_expr.operand);
+        }
+        case .Infix(infix_expr) => {
+            fold_const_expr(decl_tables, registry, infix_expr.lhs);
+            fold_const_expr(decl_tables, registry, infix_expr.rhs);
+        }
+        case .ArrayIndex(array_index) => {
+            fold_const_expr(decl_tables, registry, array_index.operand);
+            fold_const_expr(decl_tables, registry, array_index.index);
+        }
+        case .Array(array_expr) => {
+            for (var i: usize = 0; i < array_expr.elements.len(); i += 1) {
+                const element = array_expr.elements.get(i).unwrap();
+                fold_const_expr(decl_tables, registry, element);
+            }
+        }
+        else => {}
+    }
+
+    switch (fold_const_expr_int(decl_tables, registry, expr)) {
+        case .Some(x) => {
+            var lit: cir::IntegerLiteral;
+
+            switch (x) {
+                case .Signed(x) => {
+                    lit = .Signed(x);
+                }
+                case .Unsigned(x) => {
+                    lit = .Signed(@cast(int128, x));
+                }
+            }
+
+            expr->kind = .Literal(cir::TypedLiteralExpr {
+                ty: expr->ty,
+                kind: .Integer { value: lit, suffix: .None },
+                span: expr->span,
+            });
+        }
+        case .None => {}
+    }
+}
+
+
+pub fn is_expr_const_evaluable(kind: const cir::TypedExprKind*) bool {
+    switch (*kind) {
+        case .Prefix(prefix) => {
+            return is_expr_const_evaluable(&prefix.operand->kind);
+        }
+        
+        case .Infix(infix) => {
+            return is_expr_const_evaluable(&infix.lhs->kind)
+                && is_expr_const_evaluable(&infix.rhs->kind);
+        }
+        
+        case .InlineAsm 
+        | .Poisoned 
+        | .Builtin => return false;
+
+        case .SemaType 
+        | .Literal 
+        | .Lambda => return true;
+
+        else => return false;
+    }
+}

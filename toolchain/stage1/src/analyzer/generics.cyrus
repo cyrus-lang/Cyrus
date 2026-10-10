@@ -1,0 +1,393 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 The Cyrus Language
+
+import std::mem{Allocator, alloc_init};
+import std::collections{Vec};
+import std::option{Option};
+
+import cir{cir_types_eq, substitute_sema_type_with_type_args};
+import cir::tables{DeclTables};
+import cir;
+
+pub struct GenericEnv {
+    allocator: Allocator,
+    pub params: cir::TypedGenericParams,
+    bindings: Vec<Option<cir::SemaType>>,
+
+    pub fn new(allocator: Allocator, params: cir::TypedGenericParams) Self {
+        var bindings: Vec<Option<cir::SemaType>> = Vec.with_capacity(allocator, params.len());
+
+        for (var i: usize = 0; i < params.len(); i += 1) {
+            bindings.push(.None);
+        }
+
+        return Self {
+            allocator,
+            params,
+            bindings,
+        };
+    }
+
+    pub fn free(self: Self*) {
+        self->bindings.free();
+    }
+
+    pub fn from_type_args(
+        allocator: Allocator,
+        params: cir::TypedGenericParams,
+        type_args: const cir::TypedTypeArgs*
+    ) Self {
+        var env = GenericEnv.new(allocator, params);
+
+        for (var i: usize = 0; i < env.params.len() && i < type_args->len(); i += 1) {
+            const arg = type_args->get(i).unwrap();
+            
+            switch (*arg) {
+                case .Type(ty, _) => {
+                    const param_id = env.params.ids.get_const(i).unwrap();
+                    env.bind(*param_id, ty);
+                }
+                else => {}
+            }
+        }
+
+        return env;
+    }
+
+    pub fn merge(self: const Self*, other: const GenericEnv*) Self {
+        var params = cir::TypedGenericParams.new(self->allocator);
+
+        params.ids = Vec.with_capacity(self->allocator, self->params.len() + other->params.len());
+
+        for (var i: usize = 0; i < self->params.len(); i += 1) {
+            const id = self->params.ids.get_const(i).unwrap();
+            params.ids.push(*id);
+        }
+
+        for (var i: usize = 0; i < other->params.len(); i += 1) {
+            const id = other->params.ids.get_const(i).unwrap();
+            params.ids.push(*id);
+        }
+
+        var bindings: Vec<Option<cir::SemaType>> 
+            = Vec.with_capacity(self->allocator, self->bindings.len() + other->bindings.len());
+        
+        for (var i: usize = 0; i < self->bindings.len(); i += 1) {
+            const b = self->bindings.get_const(i).unwrap();
+            bindings.push(*b);
+        }
+
+        for (var i: usize = 0; i < other->bindings.len(); i += 1) {
+            const b = other->bindings.get_const(i).unwrap();
+            bindings.push(*b);
+        }
+
+        return Self {
+            allocator: self->allocator,
+            params,
+            bindings,
+        };
+    }
+
+    pub fn bind(self: Self*, generic_param_id: cir::GenericParamId, ty: cir::SemaType) bool {
+        const slot = self->slot(generic_param_id);
+
+        switch (slot) {
+            case .Some(index) => {
+                const existing = self->bindings.get_const(index).unwrap();
+
+                switch (*existing) {
+                    case .Some(old_type) => {
+                        return cir_types_eq(&old_type, &ty);
+                    }
+                    case .None => {
+                        const slot_mut = self->bindings.get(index).unwrap();
+                        *slot_mut = .Some(ty);
+                        return true;
+                    }
+                }
+            }
+            else => {}
+        }
+
+        return false;
+    }
+
+    pub fn lookup(self: const Self*, generic_param_id: cir::GenericParamId) Option<cir::SemaType> {
+        const slot = self->slot(generic_param_id);
+
+        switch (slot) {
+            case .Some(idx) => {
+                const b = self->bindings.get_const(idx).unwrap();
+                return *b;
+            }
+            else => {}
+        }
+
+        return .None;
+    }
+
+    fn slot(self: const Self*, generic_param_id: cir::GenericParamId) Option<usize> {
+        for (var i: usize = 0; i < self->params.len(); i += 1) {
+            const id = self->params.ids.get_const(i).unwrap();
+            
+            if (*id == generic_param_id) {
+                return .Some(i);
+            }
+        }
+
+        return .None;
+    }
+
+    pub fn substitute_sema_type(self: const Self*, ty: const cir::SemaType*) cir::SemaType {
+        switch (*ty) {
+            case .GenericParam(id) => {
+                const bound = self->lookup(id);
+
+                switch (bound) {
+                    case .Some(bound_ty) => return bound_ty;
+                    case .None => return *ty;
+                }
+            }
+
+            case .Named(named_type) => {
+                var type_args = cir::TypedTypeArgs.new(self->allocator);
+
+                for (var i: usize = 0; i < named_type.type_args.len(); i += 1) {
+                    const arg = named_type.type_args.get(i).unwrap();
+
+                    switch (*arg) {
+                        case .Type(inner, span) => {
+                            const subst = self->substitute_sema_type(&inner);
+                            type_args.push(.Type(subst, span));
+                        }
+                        case .Infer => {
+                            type_args.push(.Infer);
+                        }
+                    }
+                }
+
+                return .Named(cir::NamedType {
+                    type_decl_id: named_type.type_decl_id,
+                    type_args,
+                });
+            }
+
+            case .Array(array_type) => {
+                const element_type = self->substitute_sema_type(array_type.element_type);
+
+                return .Array(cir::TypedArrayType {
+                    element_type: alloc_init(self->allocator, element_type),
+                    capacity: array_type.capacity,
+                    span: array_type.span,
+                });
+            }
+
+            case .Const(inner) => {
+                const subst = self->substitute_sema_type(inner);
+                return .Const(alloc_init(self->allocator, subst));
+            }
+
+            case .Pointer(inner) => {
+                const subst = self->substitute_sema_type(inner);
+                return .Pointer(alloc_init(self->allocator, subst));
+            }
+
+            case .Tuple(tuple_type) => {
+                var elements: Vec<cir::TypedTupleElement> =
+                    Vec.with_capacity(self->allocator, tuple_type.elements.len());
+
+                for (var i: usize = 0; i < tuple_type.elements.len(); i += 1) {
+                    const element = tuple_type.elements.get_const(i).unwrap();
+                    const subst = self->substitute_sema_type(&element->ty);
+                    
+                    elements.push(cir::TypedTupleElement {
+                        ty: subst,
+                        span: element->span,
+                    });
+                }
+
+                return .Tuple(cir::TypedTupleType {
+                    elements,
+                    span: tuple_type.span,
+                });
+            }
+
+            case .FuncType(func_type) => {
+                var params = cir::TypedFuncTypeParams {
+                    list: Vec.with_capacity(self->allocator, func_type.params.list.len()),
+                    variadic: .None,
+                };
+
+                for (var i: usize = 0; i < func_type.params.list.len(); i += 1) {
+                    const param = func_type.params.list.get_const(i).unwrap();
+                    const subst = self->substitute_sema_type(param);
+                    params.list.push(subst);
+                }
+
+                switch (func_type.params.variadic) {
+                    case .Some(variadic) => {
+                        switch (*variadic) {
+                            case .UntypedCStyle => {
+                                params.variadic = .Some(alloc_init(
+                                    self->allocator,
+                                    cir::TypedFuncTypeVariadicParam.UntypedCStyle
+                                ));
+                            }
+                            case .Typed(inner) => {
+                                const subst = self->substitute_sema_type(&inner);
+                                
+                                params.variadic = .Some(alloc_init(
+                                    self->allocator,
+                                    cir::TypedFuncTypeVariadicParam.Typed(subst)
+                                ));
+                            }
+                        }
+                    }
+                    else => {}
+                }
+
+                const ret_type = self->substitute_sema_type(func_type.ret_type);
+
+                return .FuncType(cir::TypedFuncType {
+                    params,
+                    ret_type: alloc_init(self->allocator, ret_type),
+                    vis: func_type.vis,
+                    callconv: func_type.callconv,
+                    span: func_type.span,
+                });
+            }
+
+            case .InterfaceObject(interface_object) => {
+                const concrete_type = self->substitute_sema_type(interface_object.concrete_type);
+
+                return .InterfaceObject(cir::InterfaceObjectType {
+                    interface_type: interface_object.interface_type,
+                    concrete_type: alloc_init(self->allocator, concrete_type),
+                    vtable_id: interface_object.vtable_id,
+                    span: interface_object.span,
+                });
+            }
+
+            else => return *ty;
+        }
+    }
+}
+
+pub fn extend_generic_params(
+    allocator: Allocator,
+    a: const cir::TypedGenericParams*,
+    b: const cir::TypedGenericParams*
+) cir::TypedGenericParams {
+    var ids: Vec<cir::GenericParamId> = Vec.new(allocator);
+
+    for (var i: usize = 0; i < a->ids.len(); i += 1) {
+        ids.push(*a->ids.get_const(i).unwrap());
+    }
+    for (var i: usize = 0; i < b->ids.len(); i += 1) {
+        ids.push(*b->ids.get_const(i).unwrap());
+    }
+
+    return cir::TypedGenericParams { ids };
+}
+
+pub fn type_decl_generic_params(
+    decl_tables: const DeclTables*,
+    type_decl_id: cir::TypeDeclId
+) const cir::TypedGenericParams* {
+    switch (type_decl_id) {
+        case .Struct(id) => {
+            const decl = decl_tables->structs.get_const(id).unwrap();
+            return &decl->generic_params;
+        }
+        case .Enum(id) => {
+            const decl = decl_tables->enums.get_const(id).unwrap();
+            return &decl->generic_params;
+        }
+        case .Union(id) => {
+            const decl = decl_tables->unions.get_const(id).unwrap();
+            return &decl->generic_params;
+        }
+        case .Interface(id) => {
+            const decl = decl_tables->interfaces.get_const(id).unwrap();
+            return &decl->generic_params;
+        }
+        case .Typedef(id) => {
+            const decl = decl_tables->typedefs.get_const(id).unwrap();
+            return &decl->generic_params;
+        }
+    }
+}
+
+pub fn instantiate_enum_decl_with_type_args(
+    allocator: Allocator,
+    enum_decl: const cir::EnumDecl*,
+    type_args: const cir::TypedTypeArgs*
+) cir::EnumDecl {
+    var variants: Vec<cir::TypedEnumVariant> = Vec.new(allocator);
+
+    for (var i: usize = 0; i < enum_decl->variants.len(); i += 1) {
+        const variant = enum_decl->variants.get_const(i).unwrap();
+
+        switch (*variant) {
+            case .Unit(ident) => {
+                variants.push(.Unit(ident));
+            }
+            case .Valued { ident, value } => {
+                variants.push(.Valued { ident, value });
+            }
+            case .Tuple { ident, fields } => {
+                var new_fields: Vec<cir::TypedEnumVariantTupleField> = Vec.new(allocator);
+
+                for (var j: usize = 0; j < fields.len(); j += 1) {
+                    const field = fields.get_const(j).unwrap();
+
+                    new_fields.push(cir::TypedEnumVariantTupleField {
+                        ty: substitute_sema_type_with_type_args(
+                            allocator,
+                            &field->ty,
+                            &enum_decl->generic_params,
+                            type_args
+                        ),
+                        span: field->span,
+                    });
+                }
+
+                variants.push(.Tuple { ident, fields: new_fields });
+            }
+            case .Struct { ident, fields } => {
+                var new_fields: Vec<cir::TypedEnumVariantStructField> = Vec.new(allocator);
+
+                for (var j: usize = 0; j < fields.len(); j += 1) {
+                    const field = fields.get_const(j).unwrap();
+
+                    new_fields.push(cir::TypedEnumVariantStructField {
+                        name: field->name,
+                        ty: substitute_sema_type_with_type_args(
+                            allocator,
+                            &field->ty,
+                            &enum_decl->generic_params,
+                            type_args
+                        ),
+                        span: field->span,
+                    });
+                }
+
+                variants.push(.Struct { ident, fields: new_fields });
+            }
+        }
+    }
+
+    return cir::EnumDecl {
+        name: enum_decl->name,
+        methods: enum_decl->methods,
+        variants,
+        impls: enum_decl->impls,
+        generic_params: enum_decl->generic_params,
+        modifiers: enum_decl->modifiers,
+        tag_type: enum_decl->tag_type,
+        align: enum_decl->align,
+        is_normalized: enum_decl->is_normalized,
+        span: enum_decl->span,
+    };
+}

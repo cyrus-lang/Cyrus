@@ -1,0 +1,118 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 The Cyrus Language
+
+import std::collections{Vec};
+import std::mem{Allocator};
+import std::option{Option};
+
+import cir{cir_types_eq, type_args_eq};
+import tokens{Span};
+import cir;
+
+/* ************* VTables ************* */
+
+pub struct VTableInfo {
+    pub concrete_type: cir::SemaType,
+    pub interface_decl_id: cir::InterfaceDeclId,
+    pub interface_type_args: cir::TypedTypeArgs,
+    pub is_interface_generic: bool,
+    pub method_decls: cir::MethodDecls,
+    pub vtable_id: cir::VTableId,
+    pub monomorphized_methods: Vec<Option<cir::MonomorphId>>,
+    pub span: Span,
+
+    pub fn free(self: Self*) {
+        self->interface_type_args.list.free();
+        
+        for (var i: usize = 0; i < self->method_decls.entries.len(); i += 1) {
+            const entry = self->method_decls.entries.get(i).unwrap();
+            entry->name.free();
+        }
+
+        self->method_decls.entries.free();
+        self->monomorphized_methods.free();
+    }
+}
+
+pub struct VTableRegistry {
+    pub allocator: Allocator,
+    pub tables: Vec<VTableInfo>,
+
+    pub fn new(allocator: Allocator) Self {
+        return Self {
+            allocator,
+            tables: Vec.new(allocator),
+        };
+    }
+
+    pub fn get_or_create_vtable(
+        self: Self*,
+        arena: Allocator,
+        sema_type: const cir::SemaType*,
+        interface_decl_id: cir::InterfaceDeclId,
+        interface_type_args: const cir::TypedTypeArgs*,
+        methods: const cir::MethodDecls*,
+        is_interface_generic: bool,
+        span: Span
+    ) cir::VTableId {
+        for (var i: usize = 0; i < self->tables.len(); i += 1) {
+            const existing = self->tables.get_const(i).unwrap();
+
+            if (existing->interface_decl_id == interface_decl_id 
+                && cir_types_eq(&existing->concrete_type, sema_type) 
+                && type_args_eq(&existing->interface_type_args, interface_type_args)) {
+                return i;
+            }
+        }
+
+        const vtable_id = self->tables.len();
+
+        var monomorphized_methods: Vec<Option<cir::MonomorphId>> = Vec.new(self->allocator);
+            
+        // Placeholder
+        for (var i: usize = 0; i < methods->entries.len(); i += 1) {
+            monomorphized_methods.push(.None);
+        }
+
+        self->tables.push(VTableInfo {
+            concrete_type: *sema_type,
+            interface_decl_id,
+            interface_type_args: cir::clone_typed_type_args(arena, interface_type_args),
+            is_interface_generic,
+            method_decls: cir::clone_method_decls(arena, methods),
+            vtable_id,
+            monomorphized_methods,
+            span,
+        });
+
+        return vtable_id;
+    }
+
+    pub fn set_monomorphized_method(
+        self: Self*,
+        vtable_id: cir::VTableId,
+        index: usize,
+        monomorph_id: cir::MonomorphId
+    ) {
+        const info = self->tables.get(vtable_id);
+
+        switch (info) {
+            case .Some(entry) => {
+                if (index < entry->monomorphized_methods.len()) {
+                    entry->monomorphized_methods.set(index, .Some(monomorph_id));
+                }
+            }
+            else => {}
+        }
+    }
+
+    pub fn free(self: Self*) {
+        for (var i: usize = 0; i < self->tables.len(); i += 1) {
+            const entry = self->tables.get(i).unwrap();
+            entry->free();
+        }
+
+        self->tables.free();
+    }
+}
+

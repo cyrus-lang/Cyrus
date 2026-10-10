@@ -1,0 +1,589 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 The Cyrus Language
+
+import std::mem{Allocator, alloc_init};
+import std::collections{Vec};
+import std::option{Option};
+
+import cir::tables{DeclTables};
+import diags{DiagContext};
+import analyzer::format;
+import analyzer::diags;
+import parser::ast;
+import cir;
+
+pub fn lower_cond_pointer_as_null_check(allocator: Allocator, expr: cir::TypedExpr*) Option<cir::TypedExpr> {
+    const void_type: cir::SemaType = .Plain(.Void);
+
+    const null_literal_expr = cir::TypedExpr {
+        kind: .Literal(cir::TypedLiteralExpr {
+            ty: .Some(.Pointer(alloc_init(allocator, void_type))),
+            kind: .Null,
+            span: expr->span,
+        }),
+        ty: expr->ty,
+        val_cat: .RValue,
+        analyzed: false,
+        span: expr->span,
+    };
+
+    switch (expr->ty) {
+        case .Some(ty) => {
+            if (ty.is_pointer()) {
+                const lhs = *expr;
+                const new_infix: cir::TypedExprKind = .Infix(cir::TypedInfixExpr {
+                    op: .NotEqual,
+                    lhs: alloc_init(allocator, lhs),
+                    rhs: alloc_init(allocator, null_literal_expr),
+                    span: expr->span,
+                });
+                return .Some(cir::TypedExpr {
+                    kind: new_infix,
+                    ty: .Some(.Plain(.Bool)),
+                    val_cat: .RValue,
+                    analyzed: false,
+                    span: expr->span,
+                });
+            }
+        }
+        case .None => {}
+    }
+
+    return .None;
+}
+
+pub fn lower_unnamed_enum_value_as_enum_init(typed_expr: cir::TypedExpr*) {
+    switch (typed_expr->kind) {
+        case .UnnamedEnumValue(enum_value) => {
+            switch (typed_expr->ty) {
+                case .Some(operand) => {
+                    var arg: cir::TypedEnumInitArgs = .Unit;
+                    switch (enum_value.kind) {
+                        case .Unit => arg = .Unit;
+                        case .Tuple(elements) => arg = .Tuple(elements);
+                        case .Struct(field_inits) => arg = .Struct(field_inits);
+                    }
+
+                    const enum_init = cir::TypedEnumInit {
+                        operand,
+                        name: enum_value.ident.str,
+                        arg,
+                        span: enum_value.span,
+                    };
+
+                    *typed_expr = cir::TypedExpr {
+                        kind: .EnumInit(enum_init),
+                        ty: typed_expr->ty,
+                        val_cat: .RValue,
+                        analyzed: true,
+                        span: typed_expr->span,
+                    };
+                }
+                case .None => return;
+            }
+        }
+        else => return;
+    }
+}
+
+pub fn lower_enum_struct_variant_init_as_enum_init(typed_expr: cir::TypedExpr*) {
+    switch (typed_expr->kind) {
+        case .EnumStructVariantInit(struct_variant_init) => {
+            switch (typed_expr->ty) {
+                case .Some(operand) => {
+                    const enum_init = cir::TypedEnumInit {
+                        operand,
+                        name: struct_variant_init.ident.str,
+                        arg: .Struct(struct_variant_init.field_inits),
+                        span: struct_variant_init.span,
+                    };
+
+                    *typed_expr = cir::TypedExpr {
+                        kind: .EnumInit(enum_init),
+                        ty: typed_expr->ty,
+                        val_cat: .RValue,
+                        analyzed: true,
+                        span: typed_expr->span,
+                    };
+                }
+                else => {}
+            }
+        }
+        else => {}
+    }
+}
+
+pub fn lower_unnamed_union_value_as_union_init(dctx: DiagContext*, allocator: Allocator, typed_expr: cir::TypedExpr*) {
+    switch (typed_expr->kind) {
+        case .UnnamedUnionValue(union_value) => {
+            switch (typed_expr->ty) {
+                case .Some(operand) => {
+                    if (union_value.fields.len() != 1) {
+                        diags::report_union_init_must_contain_exactly_one_field(
+                            dctx,
+                            allocator,
+                            union_value.span
+                        );
+                        return;
+                    }
+
+                    const union_field = union_value.fields.get_const(0).unwrap();
+
+                    const field = cir::TypedFieldInit {
+                        name: union_field->name,
+                        value: *union_field->value,
+                        span: union_field->span,
+                    };
+
+                    const union_init = cir::TypedUnionInitExpr {
+                        operand,
+                        field: alloc_init(allocator, field),
+                        span: union_value.span,
+                    };
+
+                    *typed_expr = cir::TypedExpr {
+                        kind: .UnionInit(union_init),
+                        ty: typed_expr->ty,
+                        val_cat: .RValue,
+                        analyzed: true,
+                        span: typed_expr->span,
+                    };
+                }
+                else => {}
+            }
+        }
+        else => {}
+    }
+}
+
+pub fn lower_unnamed_struct_value_as_struct_init(allocator: Allocator, typed_expr: cir::TypedExpr*) {
+    switch (typed_expr->kind) {
+        case .UnnamedStructValue(struct_value) => {
+            switch (typed_expr->ty) {
+                case .Some(operand) => {
+                    var fields: Vec<cir::TypedFieldInit> = Vec.with_capacity(
+                        allocator,
+                        struct_value.fields.len()
+                    );
+
+                    for (var i: usize = 0; i < struct_value.fields.len(); i += 1) {
+                        const f = struct_value.fields.get_const(i).unwrap();
+                        fields.push(cir::TypedFieldInit {
+                            name: f->name,
+                            value: *f->value,
+                            span: f->span,
+                        });
+                    }
+
+                    const struct_init = cir::TypedStructInitExpr {
+                        operand,
+                        fields,
+                        span: struct_value.span,
+                    };
+
+                    *typed_expr = cir::TypedExpr {
+                        kind: .StructInit(struct_init),
+                        ty: typed_expr->ty,
+                        val_cat: .RValue,
+                        analyzed: true,
+                        span: typed_expr->span,
+                    };
+                }
+                case .None => {}
+            }
+        }
+        else => {}
+    }
+}
+
+pub fn lower_assign_to_infix_expr(allocator: Allocator, assign: const cir::TypedAssignExpr*) cir::TypedExprKind {
+    const infix_expr: cir::TypedExprKind = .Infix(cir::TypedInfixExpr {
+        op: assign->kind.to_infix_operator(),
+        lhs: assign->lhs,
+        rhs: assign->rhs,
+        span: assign->span,
+    });
+
+    const rhs_expr = cir::TypedExpr {
+        kind: infix_expr,
+        ty: .None,
+        span: assign->span,
+        val_cat: .RValue,
+        analyzed: false,
+    };
+
+    return .Assign(cir::TypedAssignExpr {
+        lhs: assign->lhs,
+        rhs: alloc_init(allocator, rhs_expr),
+        kind: .Default,
+        span: assign->span,
+    });
+}
+
+pub struct EnumDeclRef {
+    pub enum_decl_id: cir::EnumDeclId,
+    pub type_args: cir::TypedTypeArgs,
+}
+
+pub fn lower_prefix_not_pointer(
+    allocator: Allocator,
+    operand_type: cir::SemaType,
+    prefix_expr: cir::TypedPrefixExpr*
+) Option<cir::TypedExpr> {
+    if (!operand_type.is_pointer()) {
+        return .None;
+    }
+
+    const lhs = *prefix_expr->operand;
+
+    const null_literal_expr = cir::TypedExpr {
+        kind: .Literal(cir::TypedLiteralExpr {
+            ty: .Some(.Pointer(alloc_init(allocator, cir::SemaType.Plain(.Void)))),
+            kind: .Null,
+            span: prefix_expr->span,
+        }),
+        ty: .None,
+        val_cat: .RValue,
+        analyzed: false,
+        span: prefix_expr->span,
+    };
+
+    const new_infix: cir::TypedExprKind = .Infix(cir::TypedInfixExpr {
+        op: .Equal,
+        lhs: alloc_init(allocator, lhs),
+        rhs: alloc_init(allocator, null_literal_expr),
+        span: prefix_expr->span,
+    });
+
+    return .Some(cir::TypedExpr {
+        kind: new_infix,
+        ty: .None,
+        val_cat: .RValue,
+        analyzed: false,
+        span: prefix_expr->span,
+    });
+}
+
+pub fn lower_field_access_as_enum_init(
+    dctx: DiagContext*,
+    allocator: Allocator,
+    decl_tables: DeclTables*,
+    expr: cir::TypedExpr*,
+    info: EnumDeclRef
+) {
+    switch (expr->kind) {
+        case .FieldAccess(field_access) => {
+            const decl = decl_tables->enums.get_const(info.enum_decl_id).unwrap();
+
+            switch (decl->lookup_variant(field_access.name.as_str_const())) {
+                case .None => {
+                    var enum_name = format::format_type_decl_name(
+                        allocator,
+                        decl_tables,
+                        .Enum(info.enum_decl_id)
+                    );
+                    
+                    diags::report_no_such_enum_variant(
+                        dctx,
+                        allocator,
+                        field_access.span,
+                        enum_name.as_str_const(),
+                        field_access.name.as_str_const()
+                    );
+
+                    expr->kind = .Poisoned;
+                    enum_name.free();
+                    return;
+                }
+                else => {}
+            }
+
+            const enum_init = cir::TypedEnumInit {
+                operand: .Named(cir::NamedType {
+                    type_decl_id: .Enum(info.enum_decl_id),
+                    type_args: info.type_args,
+                }),
+                name: field_access.name,
+                arg: .Unit,
+                span: field_access.span,
+            };
+
+            *expr = cir::TypedExpr {
+                kind: .EnumInit(enum_init),
+                ty: .None,
+                val_cat: .RValue,
+                analyzed: false,
+                span: field_access.span,
+            };
+        }
+        else => return;
+    }
+}
+
+pub fn lower_method_call_as_enum_init(
+    dctx: DiagContext*,
+    allocator: Allocator,
+    decl_tables: DeclTables*,
+    typed_expr: cir::TypedExpr*,
+    info: EnumDeclRef
+) {
+    switch (typed_expr->kind) {
+        case .MethodCall(method_call) => {
+            if (!method_call.type_args.is_empty()) {
+                diags::report_type_args_must_be_supplied_to_enum_type_not_variant(
+                    dctx,
+                    allocator,
+                    method_call.span
+                );
+            }
+
+            const enum_decl = decl_tables->enums.get_const(info.enum_decl_id).unwrap();
+
+            switch (enum_decl->lookup_variant(method_call.name.as_str_const())) {
+                case .Some => {
+                    const enum_init = cir::TypedEnumInit {
+                        operand: .Named(cir::NamedType {
+                            type_decl_id: .Enum(info.enum_decl_id),
+                            type_args: info.type_args,
+                        }),
+                        name: method_call.name,
+                        arg: .Tuple(method_call.args),
+                        span: method_call.span,
+                    };
+
+                    *typed_expr = cir::TypedExpr {
+                        kind: .EnumInit(enum_init),
+                        ty: .None,
+                        val_cat: .RValue,
+                        analyzed: false,
+                        span: method_call.span,
+                    };
+                }
+                else => {}
+            }
+        }
+        else => {}
+    }
+}
+
+pub fn lower_struct_init_as_union_init(
+    dctx: DiagContext*,
+    allocator: Allocator,
+    typed_expr: cir::TypedExpr*,
+    expand: cir::SemaType
+) {
+    switch (typed_expr->kind) {
+        case .StructInit(struct_init) => {
+            if (struct_init.fields.len() != 1) {
+                diags::report_union_init_must_contain_exactly_one_field(
+                    dctx,
+                    allocator,
+                    struct_init.span
+                );
+                typed_expr->kind = .Poisoned;
+                return;
+            }
+
+            const field = struct_init.fields.get(0).unwrap();
+
+            const union_init = cir::TypedUnionInitExpr {
+                operand: expand,
+                field,
+                span: struct_init.span,
+            };
+
+            *typed_expr = cir::TypedExpr {
+                kind: .UnionInit(union_init),
+                ty: .None,
+                val_cat: .RValue,
+                analyzed: false,
+                span: struct_init.span,
+            };
+        }
+        else => return;
+    }
+}
+
+pub fn lower_unnamed_struct_value_as_unnamed_struct_type(
+    dctx: DiagContext*,
+    allocator: Allocator,
+    decl_tables: DeclTables*,
+    struct_value: cir::TypedUnnamedStructValue
+) Option<cir::TypedExpr> {
+    var all_type_fields = true;
+    var all_expr_fields = true;
+
+    for (var i: usize = 0; i < struct_value.fields.len(); i += 1) {
+        const field = struct_value.fields.get(i).unwrap();
+
+        switch (field->value->kind.as_type_expr(allocator)) {
+            case .Some => all_expr_fields = false;
+            case .None => all_type_fields = false;
+        }
+    }
+
+    if (all_expr_fields) {
+        return .None;
+    }
+
+    if (!all_type_fields) {
+        diags::report_mixed_struct_field_kinds(
+            dctx, 
+            allocator, 
+            struct_value.span
+        );
+
+        return .Some(cir::TypedExpr {
+            kind: .Poisoned,
+            ty: .None,
+            val_cat: .Unknown,
+            analyzed: false,
+            span: struct_value.span,
+        });
+    }
+
+    var fields: Vec<cir::TypedStructField> = Vec.with_capacity(
+        allocator,
+        struct_value.fields.len()
+    );
+
+    for (var i: usize = 0; i < struct_value.fields.len(); i += 1) {
+        const field = struct_value.fields.get(i).unwrap();
+
+        switch (field->value->ty) {
+            case .Some(ty) => {
+                fields.push(cir::TypedStructField {
+                    name: field->name,
+                    ty,
+                    vis: .Public,
+                    span: field->span,
+                });
+            }
+            else => {}
+        }
+    }
+
+    const struct_decl = cir::StructDecl {
+        name: .None,
+        fields,
+        impls: Vec.new(allocator),
+        methods: cir::MethodDecls.new(allocator),
+        generic_params: cir::TypedGenericParams.new(allocator),
+        modifiers: ast::ASTStructModifiers {
+            vis: .Public,
+            repr_attr: struct_value.repr_attr,
+        },
+        align: struct_value.align,
+        is_normalized: false,
+        span: struct_value.span,
+    };
+
+    const struct_decl_id = decl_tables->insert_struct(struct_decl);
+
+    const ty: cir::SemaType = .Named(cir::NamedType {
+        type_decl_id: .Struct(struct_decl_id),
+        type_args: cir::TypedTypeArgs.new(allocator),
+    });
+
+    return .Some(cir::TypedExpr {
+        kind: .SemaType {
+            ty,
+            span: struct_value.span,
+        },
+        ty: .Some(ty),
+        val_cat: .Unknown,
+        analyzed: false,
+        span: struct_value.span,
+    });
+}
+
+pub fn lower_unnamed_union_value_as_unnamed_union_type(
+    dctx: DiagContext*,
+    allocator: Allocator,
+    decl_tables: DeclTables*,
+    union_value: cir::TypedUnnamedUnionValue
+) Option<cir::TypedExpr> {
+    var all_type_fields = true;
+    var all_expr_fields = true;
+
+    for (var i: usize = 0; i < union_value.fields.len(); i += 1) {
+        const field = union_value.fields.get(i).unwrap();
+
+        switch (field->value->kind.as_type_expr(allocator)) {
+            case .Some => all_expr_fields = false;
+            case .None => all_type_fields = false;
+        }
+    }
+
+    if (all_expr_fields) {
+        return .None;
+    }
+
+    if (!all_type_fields) {
+        diags::report_mixed_union_field_kinds(
+            dctx, 
+            allocator, 
+            union_value.span
+        );
+        return .Some(cir::TypedExpr {
+            kind: .Poisoned,
+            ty: .None,
+            val_cat: .Unknown,
+            analyzed: false,
+            span: union_value.span,
+        });
+    }
+
+    var fields: Vec<cir::TypedUnionField> = Vec.with_capacity(
+        allocator,
+        union_value.fields.len()
+    );
+
+    for (var i: usize = 0; i < union_value.fields.len(); i += 1) {
+        const field = union_value.fields.get(i).unwrap();
+
+        switch (field->value->kind.as_type_expr(allocator)) {
+            case .Some(ty) => {
+                fields.push(cir::TypedUnionField {
+                    name: field->name,
+                    ty,
+                    span: field->span,
+                });
+            }
+            else => {}
+        }
+    }
+
+    const union_decl = cir::UnionDecl {
+        name: .None,
+        fields,
+        impls: Vec.new(allocator),
+        methods: cir::MethodDecls.new(allocator),
+        generic_params: cir::TypedGenericParams.new(allocator),
+        modifiers: ast::ASTUnionModifiers {
+            vis: .Public,
+            repr_attr: .None,
+        },
+        align: .None,
+        is_normalized: false,
+        span: union_value.span,
+    };
+
+    const union_decl_id = decl_tables->insert_union(union_decl);
+
+    const ty: cir::SemaType = .Named(cir::NamedType {
+        type_decl_id: .Union(union_decl_id),
+        type_args: cir::TypedTypeArgs.new(allocator),
+    });
+
+    return .Some(cir::TypedExpr {
+        kind: .SemaType {
+            ty,
+            span: union_value.span,
+        },
+        ty: .None,
+        val_cat: .Unknown,
+        analyzed: false,
+        span: union_value.span,
+    });
+}

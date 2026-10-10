@@ -464,7 +464,16 @@ pub enum Literal : Format {
                     else => {}
                 }
                 writer.write("\"");
-                writer.write(value.as_str_const());
+                const data = value.as_str_const();
+                for (var i: usize = 0; i < value.len(); i += 1) {
+                    const ch = data[i];
+                    if (is_escaped_char(ch)) {
+                        writer.write_char('\\');
+                        writer.write_char(char_to_escape_sequence(ch));
+                    } else {
+                        writer.write_char(ch);
+                    }
+                }
                 writer.write("\"");
             }
             case .Char(var char) => {
@@ -515,6 +524,7 @@ pub enum IntegerSuffix {
         }
     }
 
+    [[inline]]
     pub fn to_str(self: Self) const uint8* {
         switch (self) {
             case .ISize => return "isize";
@@ -549,6 +559,7 @@ pub enum FloatSuffix {
         }
     }
 
+    [[inline]]
     pub fn to_str(self: Self) const uint8* {
         switch (self) {
             case .Float16 => return "float16";
@@ -626,8 +637,9 @@ pub fn dump_tokens(tokens: const Vec<Token>*) {
     }
 }
 
-/// Formats and writes a tokens to stdout.
-/// This is primarily used for debugging and emitting lexer result.
+/// Formats and writes the token to stdout.
+/// This is primarily used for debugging and
+/// emitting lexer result.
 [[inline]]
 pub fn dump_token(token: Token) {
     var fmt = format(dynamic token);
@@ -702,4 +714,210 @@ pub fn is_escaped_char(char: uint8) bool {
     } else {
         return false;
     }
+}
+
+fn unescape_hex_digit(c: uint8) Option<uint8> {
+    if (c >= '0' && c <= '9') {
+        return .Some(c - '0');
+    }
+    if (c >= 'a' && c <= 'f') {
+        return .Some(c - 'a' + 10);
+    }
+    if (c >= 'A' && c <= 'F') {
+        return .Some(c - 'A' + 10);
+    }
+    return .None;
+}
+
+fn unescape_is_valid_codepoint(code: uint32) bool {
+    if (code > 0x10FFFF) {
+        return false;
+    }
+    if (code >= 0xD800 && code <= 0xDFFF) {
+        return false;
+    }
+    return true;
+}
+
+fn push_codepoint_utf8(out: String*, code: uint32) {
+    if (code < 0x80) {
+        out->push(@cast(uint8, code));
+    } else if (code < 0x800) {
+        out->push(@cast(uint8, @cast(uint32, 0xC0) | (code >> 6)));
+        out->push(@cast(uint8, @cast(uint32, 0x80) | (code & 0x3F)));
+    } else if (code < 0x10000) {
+        out->push(@cast(uint8, @cast(uint32, 0xE0) | (code >> 12)));
+        out->push(@cast(uint8, @cast(uint32, 0x80) | ((code >> 6) & 0x3F)));
+        out->push(@cast(uint8, @cast(uint32, 0x80) | (code & 0x3F)));
+    } else {
+        out->push(@cast(uint8, @cast(uint32, 0xF0) | (code >> 18)));
+        out->push(@cast(uint8, @cast(uint32, 0x80) | ((code >> 12) & 0x3F)));
+        out->push(@cast(uint8, @cast(uint32, 0x80) | ((code >> 6) & 0x3F)));
+        out->push(@cast(uint8, @cast(uint32, 0x80) | (code & 0x3F)));
+    }
+}
+
+pub fn unescape_string(allocator: Allocator, input: const String*) Option<String> {
+    var out = String.new(allocator);
+    const data = input->as_str_const();
+    const len = input->len();
+
+    var i: usize = 0;
+    while (i < len) {
+        const c = data[i];
+
+        if (c != '\\') {
+            out.push(c);
+            i += 1;
+            continue;
+        }
+
+        i += 1;
+        if (i >= len) {
+            out.free();
+            return .None;
+        }
+
+        const esc = data[i];
+        i += 1;
+
+        switch (esc) {
+            case 'n' => out.push('\n');
+            case 't' => out.push('\t');
+            case 'r' => out.push('\r');
+            case 'b' => out.push('\b');
+            case 'a' => out.push('\a');
+            case 'v' => out.push('\v');
+            case 'f' => out.push('\f');
+            case '\\' => out.push('\\');
+            case '"' => out.push('"');
+            case '\'' => out.push('\'');
+
+            case 'x' => {
+                if (i + 2 > len) {
+                    out.free();
+                    return .None;
+                }
+
+                switch (unescape_hex_digit(data[i])) case .Some(hex1) else {
+                    out.free();
+                    return .None;
+                }
+                switch (unescape_hex_digit(data[i + 1])) case .Some(hex2) else {
+                    out.free();
+                    return .None;
+                }
+
+                out.push(hex1 * 16 + hex2);
+                i += 2;
+            }
+
+            case '0' | '1' | '2' | '3' | '4' | '5' | '6' | '7' => {
+                var value: uint32 = @cast(uint32, esc - '0');
+                var count: usize = 1;
+
+                while (count < 3 && i < len && data[i] >= '0' && data[i] <= '7') {
+                    value = value * 8 + @cast(uint32, data[i] - '0');
+                    i += 1;
+                    count += 1;
+                }
+
+                if (value > 255) {
+                    out.free();
+                    return .None;
+                }
+
+                out.push(@cast(uint8, value));
+            }
+
+            case 'u' => {
+                var code: uint32 = 0;
+
+                if (i < len && data[i] == '{') {
+                    i += 1;
+
+                    var digits: uint32 = 0;
+                    var seen = false;
+
+                    while (i < len && data[i] != '}') {
+                        switch (unescape_hex_digit(data[i])) case .Some(dg) else {
+                            out.free();
+                            return .None;
+                        }
+
+                        digits = digits * 16 + @cast(uint32, dg);
+                        seen = true;
+                        i += 1;
+                    }
+
+                    if (i >= len || !seen) {
+                        out.free();
+                        return .None;
+                    }
+
+                    i += 1;
+                    code = digits;
+                } else {
+                    var digits: uint32 = 0;
+
+                    for (var k: usize = 0; k < 4; k += 1) {
+                        if (i >= len) {
+                            out.free();
+                            return .None;
+                        }
+
+                        switch (unescape_hex_digit(data[i])) case .Some(dg) else {
+                            out.free();
+                            return .None;
+                        }
+
+                        digits = digits * 16 + @cast(uint32, dg);
+                        i += 1;
+                    }
+
+                    code = digits;
+                }
+
+                if (!unescape_is_valid_codepoint(code)) {
+                    out.free();
+                    return .None;
+                }
+
+                push_codepoint_utf8(&out, code);
+            }
+
+            case 'U' => {
+                var code: uint32 = 0;
+
+                for (var k: usize = 0; k < 8; k += 1) {
+                    if (i >= len) {
+                        out.free();
+                        return .None;
+                    }
+
+                    switch (unescape_hex_digit(data[i])) case .Some(dg) else {
+                        out.free();
+                        return .None;
+                    }
+
+                    code = code * 16 + @cast(uint32, dg);
+                    i += 1;
+                }
+
+                if (!unescape_is_valid_codepoint(code)) {
+                    out.free();
+                    return .None;
+                }
+
+                push_codepoint_utf8(&out, code);
+            }
+
+            else => {
+                out.push('\\');
+                out.push(esc);
+            }
+        }
+    }
+
+    return .Some(out);
 }

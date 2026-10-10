@@ -106,16 +106,18 @@ pub fn report_import_cycle(
     dctx: DiagContext*,
     allocator: Allocator,
     span: Span,
-    active_paths: const uint8*,
+    active: const Vec<String>*,
 ) {
-    var msg = String.new(allocator);
-    msg.push_str("import cycle detected:\n\n");
-    msg.push_str(active_paths);
-
+    var msg = String.from_str(allocator, "import cycle detected");
     const diag = Diag.new(allocator, .Error, msg.as_str_const(), span);
     diag->help("break the cycle by removing one import");
-    dctx->report(diag);
 
+    for (var i: usize = 0; i < active->len(); i += 1) {
+        const path = active->get_const(i).unwrap();
+        diag->info(path->as_str_const());
+    }
+
+    dctx->report(diag);
     msg.free();
 }
 

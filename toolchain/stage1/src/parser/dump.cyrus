@@ -783,8 +783,8 @@ pub struct ASTDump {
         self->indent += 1;
         self->dump_subtree("operand", n->operand);
         self->dump_switch_cases(&n->cases);
-        switch (n->default_case) {
-            case .Some(body) => self->dump_subtree("default_case", body);
+        switch (n->else_case) {
+            case .Some(body) => self->dump_subtree("else_case", body);
             else => {}
         }
         self->indent -= 1;
@@ -802,8 +802,8 @@ pub struct ASTDump {
         self->dump_switch_patterns(&n->case_item.patterns);
         self->indent -= 1;
 
-        switch (n->default_case) {
-            case .Some(body) => self->dump_subtree("default_case", body);
+        switch (n->else_case) {
+            case .Some(body) => self->dump_subtree("else_case", body);
             else => {}
         }
         self->indent -= 1;
@@ -887,12 +887,12 @@ pub struct ASTDump {
 
                 self->indent -= 1;
             }
-            case .EnumStructVariant { variant, items, has_rest } => {
+            case .EnumStructVariant { variant, items, ignore } => {
                 self->write_indent();
                 self->writer.writeln("EnumStructVariant");
                 self->indent += 1;
                 self->dump_ident("variant", &variant);
-                self->dump_bool("has_rest", has_rest);
+                self->dump_bool("ignore", ignore);
 
                 for (var i: usize = 0; i < items.len(); i += 1) {
                     const field = items.get_const(i).unwrap();

@@ -5,7 +5,7 @@ import ..::..::..::..::missing_upwards;
 pub fn main() {}
 
 /*@resolve
-tests/stage1/resolver/escape.cyrus:3:1: error: relative import navigates above the project root directory
+tests/stage1/resolver/escape_project_root.cyrus:3:1: error: relative import navigates above the project root directory
       |
     3 ~ import ..::..::..::..::missing_upwards;
       | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^

@@ -665,6 +665,22 @@ pub enum ASTAssignKind {
             case .RightShiftAssign => return ">>=";
         }
     }
+
+    pub fn to_infix_operator(self: Self) ASTInfixOperator {
+        switch (self) {
+            case .Default => @panic("to_infix_operator called on default assignment");
+            case .AddAssign => return .Add;
+            case .SubAssign => return .Sub;
+            case .MulAssign => return .Mul;
+            case .DivAssign => return .Div;
+            case .ModAssign => return .Rem;
+            case .BitwiseAndAssign => return .BitwiseAnd;
+            case .BitwiseXorAssign => return .BitwiseXor;
+            case .BitwiseAndNotAssign => return .BitwiseAndNot;
+            case .LeftShiftAssign => return .ShiftLeft;
+            case .RightShiftAssign => return .ShiftRight;
+        }
+    }
 }
 
 pub struct ASTPrefixExpr {
@@ -939,7 +955,7 @@ pub enum ASTSwitchCasePatternKind {
     EnumStructVariant {
         variant: ASTIdent,
         items: Vec<ASTSwitchCaseEnumStructPatternField>,
-        has_rest: bool,
+        ignore: bool,
     },
     Binding { ident: ASTIdent, constness: ASTConstness },
 }
@@ -965,14 +981,14 @@ pub struct ASTSwitchCase {
 pub struct ASTSwitchGuard {
     pub operand: NodeId,
     pub case_item: ASTSwitchCase,
-    pub default_case: Option<NodeId>,
+    pub else_case: Option<NodeId>,
     pub span: Span,
 }
 
 pub struct ASTSwitch {
     pub operand: NodeId,
     pub cases: Vec<ASTSwitchCase>,
-    pub default_case: Option<NodeId>,
+    pub else_case: Option<NodeId>,
     pub span: Span,
 }
 
@@ -1009,7 +1025,7 @@ pub struct ASTDestructTuple {
 pub struct ASTDestructTuplePattern {
     pub kind: ASTDestructTuplePatternKind,
     pub ty: Option<ASTType>,
-    pub bind: ASTConstness,
+    pub bind: Option<ASTConstness>,
     pub span: Span,
 }
 
