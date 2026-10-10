@@ -1,0 +1,91 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 The Cyrus Language
+
+import std::collections{Vec};
+import std::mem{Allocator};
+import std::option{Option};
+import std::string{String};
+
+import cir{type_args_eq};
+import tokens{Span};
+import cir;
+
+pub struct MonomorphInstance {
+    pub template_id: MonomorphTemplateId,
+    pub type_args: cir::TypedTypeArgs,
+    pub params: cir::TypedFuncParams,
+    pub ret_type: cir::SemaType,
+    pub body: Option<cir::BodyId>,
+    pub analyzed: bool,
+}
+
+pub enum MonomorphTemplateId {
+    Func(cir::FuncDeclId),
+    Method(cir::MethodDeclId),
+}
+
+pub struct MonomorphRegistry {
+    pub allocator: Allocator,
+    pub instances: Vec<MonomorphInstance>,
+
+    pub fn new(allocator: Allocator) Self {
+        return Self {
+            allocator,
+            instances: Vec.new(allocator),
+        };
+    }
+
+    pub fn get_or_create(
+        self: Self*,
+        arena: Allocator,
+        template_id: MonomorphTemplateId,
+        type_args: const cir::TypedTypeArgs*,
+        params: cir::TypedFuncParams,
+        ret_type: cir::SemaType
+    ) cir::MonomorphId {
+        for (var i: usize = 0; i < self->instances.len(); i += 1) {
+            const inst = self->instances.get_const(i).unwrap();
+
+            if (inst->template_id == template_id 
+                && type_args_eq(&inst->type_args, type_args)) {
+                return i;
+            }
+        }
+
+        self->instances.push(MonomorphInstance {
+            template_id,
+            type_args: cir::clone_typed_type_args(arena, type_args),
+            params,
+            ret_type,
+            body: .None,
+            analyzed: false,
+        });
+
+        return self->instances.len() - 1;
+    }
+
+    pub fn mark_analyzed(self: Self*, monomorph_id: cir::MonomorphId) {
+        switch (self->instances.get(monomorph_id)) case .Some(var entry) else {
+            return;
+        }
+
+        entry->analyzed = true;
+    }
+
+    pub fn free(self: Self*) {
+        for (var i: usize = 0; i < self->instances.len(); i += 1) {
+            const inst = self->instances.get(i).unwrap();
+
+            inst->type_args.list.free();
+        }
+        
+        self->instances.free();
+    }
+}
+
+/// Records a generic instantiation key 
+/// together with its use-site span.
+pub struct InstantiationSite {
+    pub key: String,
+    pub span: Span,
+}

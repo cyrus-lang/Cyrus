@@ -1,0 +1,13 @@
+enum Color {
+    Red,
+    Green,
+    Blue
+}
+
+fn check_color(color: Color) {
+    switch (color) { //~ ERROR not all variants are covered
+        case .Red => {}
+    }
+}
+
+pub fn main() {}

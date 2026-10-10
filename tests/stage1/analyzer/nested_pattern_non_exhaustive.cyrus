@@ -1,0 +1,18 @@
+enum Inner {
+    A,
+    B
+}
+
+enum Outer {
+    One(Inner),
+    Two
+}
+
+fn classify(outer: Outer) {
+    switch (outer) { //~ ERROR not all variants are covered
+        case .One(.A) => {}
+        case .One(.B) => {}
+    }
+}
+
+pub fn main() {}

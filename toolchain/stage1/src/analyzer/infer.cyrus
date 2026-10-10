@@ -1,0 +1,416 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 The Cyrus Language
+
+import std::collections::hash_map{HashMap};
+import std::mem{Allocator, alloc_init};
+import std::hash{hash_usize, eq_usize};
+import std::collections{Vec};
+import std::option{Option};
+
+import cir{type_decl_id_eq};
+import cir;
+
+/// Local-bidirectional unification context
+/// which is unique per function environment.
+pub struct InferCtx {
+    allocator: Allocator,
+    next_var: usize,
+    bindings: HashMap<usize, cir::SemaType>,
+
+    pub fn new(allocator: Allocator) Self {
+        var bindings: HashMap<usize, cir::SemaType> = HashMap.with_hasher(
+            allocator,
+            16,
+            hash_usize,
+            eq_usize
+        );
+
+        return Self {
+            allocator,
+            next_var: 0,
+            bindings,
+        };
+    }
+
+    pub fn new_var_id(self: Self*) cir::InferVarId {
+        const id = self->next_var;
+        self->next_var += 1;
+        return id;
+    }
+    
+    pub fn new_var(self: Self*) cir::SemaType {
+        return .InferVar(self->new_var_id());
+    }
+
+    pub fn bind(self: Self*, var_id: usize, ty: const cir::SemaType*) {
+        self->bindings.insert(var_id, *ty->const_inner());
+    }
+
+    pub fn is_bound(self: const Self*, var_id: usize) bool {
+        return self->bindings.contains_key(var_id);
+    }
+
+    pub fn resolve(self: const Self*, ty: const cir::SemaType*) cir::SemaType {
+        switch (*ty) {
+            case .InferVar(id) => {
+                const bound = self->bindings.get_const(id);
+                
+                switch (bound) {
+                    case .Some(bound_ty) => return self->resolve(bound_ty);
+                    case .None => return *ty;
+                }
+            }
+
+            case .Named(named_type) => {
+                var type_args = cir::TypedTypeArgs.new(self->allocator);
+
+                for (var i: usize = 0; i < named_type.type_args.len(); i += 1) {
+                    const arg = named_type.type_args.get(i).unwrap();
+                    
+                    switch (*arg) {
+                        case .Type(inner_ty, span) => {
+                            const resolved = self->resolve(&inner_ty);
+                            type_args.push(.Type(resolved, span));
+                        }
+                        case .Infer => type_args.push(.Infer);
+                    }
+                }
+
+                return .Named(cir::NamedType {
+                    type_decl_id: named_type.type_decl_id,
+                    type_args,
+                });
+            }
+
+            case .Array(array_type) => {
+                const element_type = self->resolve(array_type.element_type);
+                return .Array(cir::TypedArrayType {
+                    element_type: alloc_init(self->allocator, element_type),
+                    capacity: array_type.capacity,
+                    span: array_type.span,
+                });
+            }
+
+            case .Const(inner) => {
+                const resolved = self->resolve(inner);
+                return .Const(alloc_init(self->allocator, resolved));
+            }
+
+            case .Pointer(inner) => {
+                const resolved = self->resolve(inner);
+                return .Pointer(alloc_init(self->allocator, resolved));
+            }
+
+            case .FuncType(func_type) => {
+                var params = cir::TypedFuncTypeParams {
+                    list: Vec.with_capacity(self->allocator, func_type.params.list.len()),
+                    variadic: .None,
+                };
+
+                for (var i: usize = 0; i < func_type.params.list.len(); i += 1) {
+                    const param = func_type.params.list.get_const(i).unwrap();
+                    const resolved = self->resolve(param);
+                    params.list.push(resolved);
+                }
+
+                switch (func_type.params.variadic) {
+                    case .Some(variadic) => {
+                        switch (*variadic) {
+                            case .UntypedCStyle => {
+                                params.variadic = .Some(alloc_init(
+                                    self->allocator,
+                                    cir::TypedFuncTypeVariadicParam.UntypedCStyle
+                                ));
+                            }
+                            case .Typed(inner) => {
+                                const resolved = self->resolve(&inner);
+                                params.variadic = .Some(alloc_init(
+                                    self->allocator,
+                                    cir::TypedFuncTypeVariadicParam.Typed(resolved)
+                                ));
+                            }
+                        }
+                    }
+                    else => {}
+                }
+
+                const ret_type = self->resolve(func_type.ret_type);
+
+                return .FuncType(cir::TypedFuncType {
+                    params,
+                    ret_type: alloc_init(self->allocator, ret_type),
+                    vis: func_type.vis,
+                    callconv: func_type.callconv,
+                    span: func_type.span,
+                });
+            }
+
+            case .Tuple(tuple_type) => {
+                var elements: Vec<cir::TypedTupleElement> =
+                    Vec.with_capacity(self->allocator, tuple_type.elements.len());
+
+                for (var i: usize = 0; i < tuple_type.elements.len(); i += 1) {
+                    const element = tuple_type.elements.get_const(i).unwrap();
+                    const resolved = self->resolve(&element->ty);
+                    
+                    elements.push(cir::TypedTupleElement {
+                        ty: resolved,
+                        span: element->span,
+                    });
+                }
+
+                return .Tuple(cir::TypedTupleType {
+                    elements,
+                    span: tuple_type.span,
+                });
+            }
+
+            else => return *ty;
+        }
+    }
+
+    fn occurs_check(self: const Self*, var_id: usize, ty: const cir::SemaType*) bool {
+        switch (*ty) {
+            case .InferVar(other) => return other == var_id;
+
+            case .Named(named_type) => {
+                for (var i: usize = 0; i < named_type.type_args.len(); i += 1) {
+                    const arg = named_type.type_args.get(i).unwrap();
+
+                    switch (*arg) {
+                        case .Type(inner, _) => {
+                            if (self->occurs_check(var_id, &inner)) {
+                                return true;
+                            }
+                        }
+                        else => {}
+                    }
+                }
+
+                return false;
+            }
+
+            case .Tuple(tuple_type) => {
+                for (var i: usize = 0; i < tuple_type.elements.len(); i += 1) {
+                    const element = tuple_type.elements.get_const(i).unwrap();
+
+                    if (self->occurs_check(var_id, &element->ty)) {
+                        return true;
+                    }
+                }
+
+                return false;
+            }
+
+            case .Array(array_type) => return self->occurs_check(var_id, array_type.element_type);
+            
+            case .Pointer(inner) => return self->occurs_check(var_id, inner);
+            
+            else => return false;
+        }
+    }
+
+    pub fn unify(self: Self*, a: const cir::SemaType*, b: const cir::SemaType*) bool {
+        const ra = self->resolve(a);
+        const rb = self->resolve(b);
+
+        if (ra.contains_error() || rb.contains_error()) {
+            return true;
+        }
+
+        switch (ra) {
+            case .InferVar(id1) => {
+                switch (rb) {
+                    case .InferVar(id2) => {
+                        return id1 == id2;
+                    }
+                    else => {
+                        if (self->occurs_check(id1, &rb)) {
+                            return false;
+                        }
+                        self->bind(id1, &rb);
+                        return true;
+                    }
+                }
+            }
+            else => {}
+        }
+
+        switch (rb) {
+            case .InferVar(id2) => {
+                if (self->occurs_check(id2, &ra)) {
+                    return false;
+                }
+                self->bind(id2, &ra);
+                return true;
+            }
+            else => {}
+        }
+
+        switch (ra) {
+            case .Plain(p1) => {
+                switch (rb) {
+                    case .Plain(p2) => return p1 == p2;
+                    else => return false;
+                }
+            }
+
+            case .Named(n1) => {
+                switch (rb) {
+                    case .Named(n2) => {
+                        if (!type_decl_id_eq(n1.type_decl_id, n2.type_decl_id)) {
+                            return false;
+                        }
+
+                        if (n1.type_args.len() != n2.type_args.len()) {
+                            return false;
+                        }
+
+                        for (var i: usize = 0; i < n1.type_args.len(); i += 1) {
+                            const arg1 = n1.type_args.get(i).unwrap();
+                            const arg2 = n2.type_args.get(i).unwrap();
+
+                            if (!self->unify_type_arg(arg1, arg2)) {
+                                return false;
+                            }
+                        }
+
+                        return true;
+                    }
+                    else => return false;
+                }
+            }
+
+            case .Tuple(t1) => {
+                switch (rb) {
+                    case .Tuple(t2) => {
+                        if (t1.elements.len() != t2.elements.len()) {
+                            return false;
+                        }
+
+                        for (var i: usize = 0; i < t1.elements.len(); i += 1) {
+                            const e1 = t1.elements.get_const(i).unwrap();
+                            const e2 = t2.elements.get_const(i).unwrap();
+
+                            if (!self->unify(&e1->ty, &e2->ty)) {
+                                return false;
+                            }
+                        }
+
+                        return true;
+                    }
+                    else => return false;
+                }
+            }
+
+            case .Array(arr) => {
+                switch (rb) {
+                    case .Array(arr2) => return self->unify(arr.element_type, arr2.element_type);
+                    case .Pointer(ptr) => return self->unify(arr.element_type, ptr);
+                    else => return false;
+                }
+            }
+
+            case .Pointer(p1) => {
+                switch (rb) {
+                    case .Pointer(p2) => return self->unify(p1, p2);
+                    case .Array(arr2) => return self->unify(p1, arr2.element_type);
+                    else => return false;
+                }
+            }
+
+            case .Const(c1) => {
+                switch (rb) {
+                    case .Const(c2) => return self->unify(c1, c2);
+                    else => return false;
+                }
+            }
+
+            case .FuncType(f1) => {
+                switch (rb) {
+                    case .FuncType(f2) => return self->unify_func(&f1, &f2);
+                    else => return false;
+                }
+            }
+
+            else => return false;
+        }
+    }
+
+    fn unify_type_arg(
+        self: Self*, 
+        a: const cir::TypedTypeArg*, 
+        b: const cir::TypedTypeArg*
+    ) bool {
+        switch (*a) {
+            case .Type(t1, _) => {
+                switch (*b) {
+                    case .Type(t2, _) => return self->unify(&t1, &t2);
+                    case .Infer => return true;
+                }
+            }
+            case .Infer => {
+                return true;
+            }
+        }
+    }
+
+    fn unify_func(
+        self: Self*, 
+        f1: const cir::TypedFuncType*, 
+        f2: const cir::TypedFuncType*
+    ) bool {
+        if (f1->params.list.len() != f2->params.list.len()) {
+            return false;
+        }
+
+        for (var i: usize = 0; i < f1->params.list.len(); i += 1) {
+            const p1 = f1->params.list.get_const(i).unwrap();
+            const p2 = f2->params.list.get_const(i).unwrap();
+
+            if (!self->unify(p1, p2)) {
+                return false;
+            }
+        }
+
+        switch (f1->params.variadic) {
+            case .None => {
+                switch (f2->params.variadic) {
+                    case .Some => return false;
+                    else => {}
+                }
+            }
+            case .Some(v1) => {
+                switch (f2->params.variadic) {
+                    case .Some(v2) => {
+                        switch (*v1) {
+                            case .UntypedCStyle => {
+                                switch (*v2) {
+                                    case .UntypedCStyle => {}
+                                    else => return false;
+                                }
+                            }
+                            case .Typed(t1) => {
+                                switch (*v2) {
+                                    case .Typed(t2) => {
+                                        if (!self->unify(&t1, &t2)) {
+                                            return false;
+                                        }
+                                    }
+                                    else => return false;
+                                }
+                            }
+                        }
+                    }
+                    case .None => return false;
+                }
+            }
+        }
+
+        return self->unify(f1->ret_type, f2->ret_type);
+    }
+    
+    pub fn free(self: Self*) {
+        self->bindings.free();
+    }
+}

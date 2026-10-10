@@ -53,6 +53,10 @@ pub struct VisitingModule {
         return contains_key(&self->active, key);
     }
 
+    pub fn active_paths(self: const Self*) const Vec<String>* {
+        return &self->active;
+    }
+
     [[inline]]
     pub fn done_contains(self: const Self*, key: const uint8*) bool {
         return contains_key(&self->done, key);

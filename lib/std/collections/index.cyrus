@@ -33,7 +33,20 @@ pub struct Vec<T> {
     /// Pre-allocate memory to avoid initial reallocations.
     [[inline]]
     pub fn with_capacity(allocator: Allocator, cap: usize) Self {
-        @assert(cap != 0, "initial capacity cannot be zero");
+        if (cap == 0) {
+            const data: T* = allocator.alloc(@sizeof(T));
+            
+            if (!data) {
+                @panic("allocation failed");
+            }
+
+            return Self {
+                allocator,
+                data,
+                cap: 1,
+                len: 0,
+            };
+        }
 
         const size = checked_mul(cap, @sizeof(T)).unwrap();
 
@@ -145,6 +158,14 @@ pub struct Vec<T> {
 
         self->data[index] = value;
         self->len += 1;
+    }
+
+    pub fn set(self: Self*, index: usize, value: T) {
+        if (index >= self->len) {
+            @panic("set index out of bounds");
+        }
+
+        self->data[index] = value;
     }
 
     pub fn find(self: const Self*, cond: fn(const T*) bool) Option<T*> {

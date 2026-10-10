@@ -523,7 +523,7 @@ DIRECTIVE_SINGLE_RE = {
 }
 
 # Snapshot directives: `// @name` trigger + `/*@name ... @name*/` block.
-SNAPSHOT_DIRECTIVES = ("tokenize", "parse", "resolve")
+SNAPSHOT_DIRECTIVES = ("tokenize", "parse", "resolve", "analyze")
 
 
 @dataclass
@@ -702,6 +702,57 @@ def parse_compiler_diagnostics(text: str) -> List[Dict[str, object]]:
         else:
             i += 1
     return diagnostics
+
+
+STAGE1_DIAG_RE = re.compile(
+    r"^(?P<path>.+):(?P<line>\d+):(?P<col>\d+): "
+    r"(?P<level>error|warning|note|help): (?P<msg>.*)$"
+)
+
+
+def parse_stage1_diagnostics(text: str) -> List[Dict[str, object]]:
+    """Parse stage1 rustc-style headers: `path:line:col: level: msg`."""
+    diagnostics: List[Dict[str, object]] = []
+    for line in text.replace("\r\n", "\n").split("\n"):
+        m = STAGE1_DIAG_RE.match(line)
+        if not m:
+            continue
+        diagnostics.append(
+            {
+                "level": m.group("level"),
+                "path": m.group("path"),
+                "line": int(m.group("line")),
+                "col": int(m.group("col")),
+                "msg": m.group("msg"),
+            }
+        )
+    return diagnostics
+
+
+def run_stage1_analyze_annotations(
+    cfg: Config,
+    file_path: Path,
+    md: TestMetadata,
+    *,
+    compiler: Path,
+) -> None:
+    """Run `analyze` and match `//~` annotations against its diagnostics."""
+    cmd = [
+        str(compiler),
+        "analyze",
+        root_relative_path(cfg, file_path),
+        _stdlib_flag(cfg),
+    ]
+    proc = run_cmd(cmd, cwd=cfg.root, capture=True, check=False)
+    if proc.returncode != 0:
+        detail = strip_ansi((proc.stderr or proc.stdout or "").strip())
+        raise RuntimeError(
+            f"`analyze` failed with exit code {proc.returncode}:\n{detail}"
+        )
+    diagnostics = parse_stage1_diagnostics(strip_ansi(proc.stdout or ""))
+    problems = match_error_annotations(md.error_annotations, diagnostics, file_path)
+    if problems:
+        raise RuntimeError("annotation mismatch:\n" + "\n".join(problems))
 
 
 def match_error_annotations(
@@ -1168,6 +1219,8 @@ def snapshot_command_for(stage: str, directive: str, cfg: Config) -> List[str]:
             return ["parse"]
         if directive == "resolve":
             return ["resolve"]
+        if directive == "analyze":
+            return ["analyze"]
     if stage == "stage0":
         if directive == "tokenize":
             return ["lex-only"]
@@ -1218,7 +1271,7 @@ def run_snapshot_checks(
 
         argv = snapshot_command_for(stage, directive, cfg)
         cmd = [str(compiler), *argv, root_relative_path(cfg, file_path)]
-        if directive == "resolve":
+        if directive in ("resolve", "analyze"):
             cmd.append(_stdlib_flag(cfg))
         proc = run_cmd(cmd, cwd=cfg.root, capture=True, check=False)
         raw = proc.stdout or ""
@@ -1451,6 +1504,21 @@ def run_single_test(
                         run_number=run_num,
                         total_runs=repeat,
                     )
+                elif (
+                    stage == "stage1"
+                    and md.error_annotations
+                    and not (
+                        md.stdout
+                        or md.stderr
+                        or md.args
+                        or md.stdin
+                        or md.before_compile
+                        or md.compiler_args
+                    )
+                ):
+                    run_stage1_analyze_annotations(
+                        cfg, file_path, md, compiler=compiler
+                    )
                 else:
                     raise RuntimeError(
                         "runtime checks (@stdout/@stderr/...) are only supported "
@@ -1471,6 +1539,121 @@ def run_single_test(
     if failures:
         return TestOutcome("failed", relative_name, "\n".join(failures))
     return TestOutcome("passed", relative_name)
+
+
+def cmd_analyze_corpus(cfg: Config, args: argparse.Namespace) -> int:
+    """Run the stage1 `analyze` command over the stage0 test corpus.
+
+    For files carrying `//~` annotations the produced diagnostics must match
+    the annotations exactly; every other file must analyze without errors
+    (warnings are allowed).
+    """
+    stage0_root = cfg.root / "tests" / "stage0"
+    ensure_stage1(cfg)
+
+    files = sorted(stage0_root.rglob("*.cyrus"))
+    if args.filter:
+        files = [p for p in files if args.filter in str(p.relative_to(cfg.root))]
+
+    if not files:
+        log(STYLE.yellow("no .cyrus files found under tests/stage0"))
+        return 0
+
+    skipped: List[str] = []
+    runnable: List[Path] = []
+    for f in files:
+        if _is_module_entry(f):
+            skipped.append(str(f.relative_to(cfg.root)))
+        else:
+            runnable.append(f)
+
+    log(STYLE.bold(
+        f"Analyzing {len(runnable)} corpus file(s) with stage1 "
+        f"[profile: {cfg.profile}; jobs: {cfg.jobs}]"
+    ))
+    log()
+
+    print_lock = threading.Lock()
+    passed: List[str] = []
+    failed: List[Tuple[str, str]] = []
+    completed = 0
+    total = len(runnable)
+
+    def worker(f: Path) -> Tuple[str, List[str]]:
+        rel = str(f.relative_to(cfg.root))
+        try:
+            content = f.read_text()
+        except OSError as exc:
+            return rel, [f"cannot read: {exc}"]
+
+        md = extract_test_metadata(content)
+        rel_input = str(f.relative_to(stage0_root))
+        try:
+            proc = run_cmd(
+                [str(cfg.stage1_binary), "analyze", rel_input, _stdlib_flag(cfg)],
+                cwd=stage0_root,
+                capture=True,
+                check=False,
+                timeout=60,
+            )
+        except subprocess.TimeoutExpired:
+            return rel, ["analyze timed out after 60s (possible hang)"]
+        out = strip_ansi(proc.stdout or "")
+        errs: List[str] = []
+        if proc.returncode != 0:
+            detail = strip_ansi((proc.stderr or "").strip())
+            errs.append(f"analyze exited with {proc.returncode}: {detail[:500]}")
+
+        diagnostics = parse_stage1_diagnostics(out)
+        if md.error_annotations:
+            errs.extend(match_error_annotations(md.error_annotations, diagnostics, f))
+        else:
+            for d in diagnostics:
+                if d["level"] != "error":
+                    continue
+                if os.path.basename(str(d["path"])) != f.name:
+                    errs.append(
+                        f'unexpected error in {d["path"]}:{d["line"]}: "{d["msg"]}"'
+                    )
+                else:
+                    errs.append(f'unexpected error on line {d["line"]}: "{d["msg"]}"')
+        return rel, errs
+
+    max_workers = max(1, min(cfg.jobs, total))
+    with ThreadPoolExecutor(max_workers=max_workers) as pool:
+        futures = {pool.submit(worker, f): f for f in runnable}
+        for fut in as_completed(futures):
+            rel, errs = fut.result()
+            completed += 1
+            with print_lock:
+                if errs:
+                    failed.append((rel, "\n".join(errs)))
+                    log(STYLE.red(f"[{completed}/{total}] FAIL    {rel}"))
+                    if args.fail:
+                        for line in errs:
+                            log("        " + line)
+                else:
+                    passed.append(rel)
+                    if not args.fail:
+                        log(STYLE.green(f"[{completed}/{total}] ok      {rel}"))
+
+    failed.sort()
+    log()
+    log(STYLE.bold("Analyze corpus summary"))
+    log(f"  total:   {total}")
+    log(f"  passed:  {len(passed)}")
+    log(f"  skipped: {len(skipped)} (module entry files)")
+    log(f"  failed:  {len(failed)}")
+
+    if failed:
+        log()
+        log(STYLE.red("failures:"))
+        for rel, detail in failed:
+            log(STYLE.red(f"  - {rel}"))
+            for line in detail.split("\n"):
+                log(f"      {line}")
+        return 1
+    return 0
 
 
 def _is_module_entry(f: Path) -> bool:
@@ -1827,6 +2010,18 @@ def build_parser() -> argparse.ArgumentParser:
                    help="run the file-based suite (default when no other selection is made)")
     p.add_argument("--cargo-args", default="", help="extra args for --unit cargo test")
     p.set_defaults(func=cmd_test)
+
+    # ************* analyze-corpus *************
+    p = sub.add_parser(
+        "analyze-corpus",
+        help="run the stage1 analyzer over the stage0 test corpus",
+    )
+    add_config_args(p)
+    p.add_argument("--filter", "-f", default=None,
+                   help="only analyze files whose relative path contains this substring")
+    p.add_argument("--fail", action="store_true",
+                   help="only print failing files (with details)")
+    p.set_defaults(func=cmd_analyze_corpus)
 
     # ************* run *************
     p = sub.add_parser("run", help="compile and run a .cyrus file")

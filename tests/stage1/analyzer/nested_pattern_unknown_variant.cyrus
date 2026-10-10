@@ -1,0 +1,18 @@
+enum Inner {
+    A,
+    B
+}
+
+enum Outer {
+    One(Inner),
+    Two
+}
+
+fn classify(outer: Outer) {
+    switch (outer) {
+        case .One(.Bogus) => {} //~ ERROR enum `Inner` does not have a variant named `Bogus`
+        case .Two => {}
+    }
+}
+
+pub fn main() {}

@@ -41,7 +41,7 @@ ASTProgram
                                 pattern[0]:
                                     EnumStructVariant
                                         variant: Move
-                                        has_rest: false
+                                        ignore: false
                                         field[0]:
                                             name: x
                                             pattern:
@@ -96,7 +96,7 @@ ASTProgram
                                 pattern[0]:
                                     EnumStructVariant
                                         variant: Rec
-                                        has_rest: true
+                                        ignore: true
                                         field[0]:
                                             name: first
                                             pattern:

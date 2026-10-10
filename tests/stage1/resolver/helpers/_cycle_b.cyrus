@@ -1,1 +1,1 @@
-import ..::cycle;
+import ..::cyclic_import;
