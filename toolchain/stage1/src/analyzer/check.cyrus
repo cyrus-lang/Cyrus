@@ -83,7 +83,7 @@ import analyzer::infer;
 
 const ANALYZER_ARENA_SIZE: usize = 65536;
 
-struct Analyzer {
+pub struct Analyzer {
     pub allocator: Allocator,
     pub arena: ArenaAllocator,
     pub dctx: DiagContext*,

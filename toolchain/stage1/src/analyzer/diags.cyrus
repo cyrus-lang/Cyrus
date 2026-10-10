@@ -2295,7 +2295,7 @@ pub fn report_non_exhaustive_switch(
     missing_variants: const uint8*,
 ) {
     var msg = String.new(allocator);
-    msg.push_str("ensure that all variants are covered in switch statement");
+    msg.push_str("not all variants are covered");
 
     var info = String.new(allocator);
     info.push_str("missing variants includes: `");

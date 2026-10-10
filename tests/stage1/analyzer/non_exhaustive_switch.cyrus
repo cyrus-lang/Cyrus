@@ -5,7 +5,7 @@ enum Color {
 }
 
 fn check_color(color: Color) {
-    switch (color) { //~ ERROR ensure that all variants are covered in switch statement
+    switch (color) { //~ ERROR not all variants are covered
         case .Red => {}
     }
 }
