@@ -8,8 +8,8 @@ enum Outer {
     Two
 }
 
-fn classify(o: Outer) {
-    switch (o) { //~ ERROR ensure that all variants are covered in switch statement
+fn classify(outer: Outer) {
+    switch (outer) { //~ ERROR not all variants are covered
         case .One(.A) => {}
         case .One(.B) => {}
     }

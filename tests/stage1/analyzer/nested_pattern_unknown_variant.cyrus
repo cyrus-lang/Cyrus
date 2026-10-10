@@ -8,8 +8,8 @@ enum Outer {
     Two
 }
 
-fn classify(o: Outer) {
-    switch (o) {
+fn classify(outer: Outer) {
+    switch (outer) {
         case .One(.Bogus) => {} //~ ERROR enum `Inner` does not have a variant named `Bogus`
         case .Two => {}
     }
