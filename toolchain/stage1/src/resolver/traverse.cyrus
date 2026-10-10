@@ -775,7 +775,7 @@ fn resolve_export_tuple_stmt(
         else => {}
     }
 
-    switch (resolve_export_pattern(ctx, program, &export_tuple->pat)) {
+    switch (resolve_export_pattern(ctx, program, &export_tuple->pat, export_tuple->bind == .Const)) {
         case .Some(pattern) => {
             return .Some(cir::TypedStmt.new(.TupleExport(cir::TypedTupleExportStmt {
                 pattern,
@@ -791,20 +791,28 @@ fn resolve_export_tuple_stmt(
 fn resolve_export_pattern(
     ctx: TraverseContext*,
     program: const ast::ASTProgram*,
-    pattern: const ast::ASTDestructTuplePattern*
+    pattern: const ast::ASTDestructTuplePattern*,
+    var is_const: bool
 ) Option<cir::TypedTupleExportPattern> {
     var kind: cir::TypedTupleExportPatternKind = .Ignore;
 
     switch (pattern->kind) {
         case .Ident(ident) => {
             const name = ident.str.as_str_const();
+
+            switch (pattern->bind) {
+                case .Some(.Const) => is_const = true;
+                case .Some(.Var) => is_const = false;
+                else => {}
+            }
+
             const var_decl_id = insert_variable_decl(
                 ctx,
                 name,
                 pattern->span,
                 .None,
                 .None,
-                pattern->bind == .Const
+                is_const
             );
 
             if (!insert_variable_symbol_to_current_scope(ctx, name, pattern->span, var_decl_id)) {
@@ -819,7 +827,7 @@ fn resolve_export_pattern(
             for (var i: usize = 0; i < patterns.len(); i += 1) {
                 const inner = patterns.get_const(i).unwrap();
 
-                switch (resolve_export_pattern(ctx, program, inner)) {
+                switch (resolve_export_pattern(ctx, program, inner, is_const)) {
                     case .Some(typed_pattern) => typed_patterns.push(typed_pattern);
                     case .None => return .None;
                 }
@@ -845,7 +853,7 @@ fn resolve_export_pattern(
     return .Some(cir::TypedTupleExportPattern {
         kind,
         ty,
-        mutability: .Some(pattern->bind),
+        mutability: pattern->bind,
         span: pattern->span,
     });
 }
@@ -1030,12 +1038,12 @@ fn resolve_switch_stmt(
         case .Some(operand) => {
             switch (resolve_switch_cases(ctx, program, &switch_stmt->cases)) {
                 case .Some(cases) => {
-                    var default_case: Option<cir::TypedBlockStmt> = .None;
+                    var else_case: Option<cir::TypedBlockStmt> = .None;
 
-                    switch (switch_stmt->default_case) {
+                    switch (switch_stmt->else_case) {
                         case .Some(default_id) => {
                             switch (resolve_block_node(ctx, program, default_id)) {
-                                case .Some(block) => default_case = .Some(block);
+                                case .Some(block) => else_case = .Some(block);
                                 case .None => return .None;
                             }
                         }
@@ -1045,7 +1053,7 @@ fn resolve_switch_stmt(
                     return .Some(cir::TypedSwitchStmt {
                         operand,
                         cases,
-                        default_case,
+                        else_case,
                         all_cases_covered: .None,
                         span: switch_stmt->span,
                     });
@@ -1078,12 +1086,12 @@ fn resolve_switch_guard_stmt(
                                 span: switch_guard->span,
                             });
 
-                            var default_case: Option<cir::TypedBlockStmt> = .None;
+                            var else_case: Option<cir::TypedBlockStmt> = .None;
 
-                            switch (switch_guard->default_case) {
+                            switch (switch_guard->else_case) {
                                 case .Some(default_id) => {
                                     switch (resolve_block_node(ctx, program, default_id)) {
-                                        case .Some(block) => default_case = .Some(block);
+                                        case .Some(block) => else_case = .Some(block);
                                         case .None => return .None;
                                     }
                                 }
@@ -1093,7 +1101,7 @@ fn resolve_switch_guard_stmt(
                             return .Some(cir::TypedSwitchStmt {
                                 operand,
                                 cases,
-                                default_case,
+                                else_case,
                                 all_cases_covered: .None,
                                 span: switch_guard->span,
                             });
@@ -1261,7 +1269,7 @@ fn resolve_switch_pattern(
         }
 
         // Enum struct variant: `.D { a, b: x, c: _, .. }`
-        case .EnumStructVariant { variant, items, has_rest } => {
+        case .EnumStructVariant { variant, items, ignore } => {
             var typed_items: Vec<cir::TypedSwitchCaseEnumStructPatternField> = Vec.new(ctx->allocator);
 
             for (var i: usize = 0; i < items.len(); i += 1) {
@@ -1282,7 +1290,7 @@ fn resolve_switch_pattern(
                 kind: .EnumStructVariant {
                     ident: variant,
                     items: typed_items,
-                    has_rest,
+                    ignore,
                 },
                 span: pattern->span,
             });
@@ -1785,27 +1793,25 @@ fn insert_func_params_into_current_scope(
         const is_const_param = ptr->is_const();
 
         switch (*ptr) {
-            case .FuncParam(func_param) => {
+            case .FuncParam(var func_param) => {
                 const var_decl_id = insert_variable_decl(ctx, func_param.ident.str.as_str_const(), func_param.span, .Some(func_param.ty), .None, is_const_param);
 
                 if (!insert_variable_symbol_to_current_scope(ctx, func_param.ident.str.as_str_const(), func_param.span, var_decl_id)) {
                     return false;
                 }
 
-                var typed_param = func_param;
-                typed_param.var_decl_id = .Some(var_decl_id);
-                *ptr = .FuncParam(typed_param);
+                func_param.var_decl_id = .Some(var_decl_id);
+                *ptr = .FuncParam(func_param);
             }
-            case .SelfModifier(self_modifier) => {
+            case .SelfModifier(var self_modifier) => {
                 const var_decl_id = insert_variable_decl(ctx, "self", self_modifier.span, .Some(self_modifier.ty), .None, is_const_param);
 
                 if (!insert_variable_symbol_to_current_scope(ctx, "self", self_modifier.span, var_decl_id)) {
                     return false;
                 }
 
-                var typed_self_modifier = self_modifier;
-                typed_self_modifier.var_decl_id = .Some(var_decl_id);
-                *ptr = .SelfModifier(typed_self_modifier);
+                self_modifier.var_decl_id = .Some(var_decl_id);
+                *ptr = .SelfModifier(self_modifier);
             }
         }
     }

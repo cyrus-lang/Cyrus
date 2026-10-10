@@ -62,15 +62,15 @@ const RESOLVER_ARENA_SIZE: usize = 65536;
 pub struct Resolver {
     pub allocator: Allocator,
     pub opts: ResolverOptions*,
+    pub decl_tables: DeclTables,
     pub driver: CompilerDriver*,
     pub global_symbols: GlobalSymbolRegistry,
-    pub decl_tables: DeclTables,
+    pub program_trees: Vec<TypedProgramTree>,
+    pub arena: ArenaAllocator,
     group_imports: Vec<GroupImportRecord>,
     module_symbols: Vec<SourceSymbolBinding>,
-    program_trees: Vec<TypedProgramTree>,
     source_programs: Vec<SourceProgram>,
     visiting: VisitingModule,
-    arena: ArenaAllocator,
 
     pub fn new(
         allocator: Allocator,
@@ -318,9 +318,12 @@ pub struct Resolver {
         const key = visit_key(allocator, resolved.file_path.as_str_const());
 
         if (self->visiting.active_contains(key.as_str_const())) {
-            var paths = self->visiting.active_paths_str();
-            report_import_cycle(dctx, allocator, span, paths.as_str_const());
-            paths.free();
+            report_import_cycle(
+                dctx, 
+                allocator, 
+                span, 
+                self->visiting.active_paths()
+            );
             key.free();
             switch (alias) {
                 case .Some(str) => str.free();

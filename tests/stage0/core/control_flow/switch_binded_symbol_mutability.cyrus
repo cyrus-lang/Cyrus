@@ -15,10 +15,10 @@ pub fn main() {
 			x = 10;
         }
         case .B(y) => {
-            y = false; //~ ERROR Cannot assign to immutable lvalue
+            y = false; //~ ERROR cannot assign to immutable lvalue
         }
         case .C { a, var b } => {
-            a = 1; //~ ERROR Cannot assign to immutable lvalue
+            a = 1; //~ ERROR cannot assign to immutable lvalue
             b = 2;
         }
     }

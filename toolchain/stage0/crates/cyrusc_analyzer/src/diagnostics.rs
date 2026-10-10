@@ -105,16 +105,16 @@ pub enum AnalyzerDiagKind {
     #[error("Cannot destructure tuple in export without a value.")]
     TupleDestructionWithNoRhs,
 
-    #[error("Missing type argument for generic parameter '{param_name}' in type '{type_name}'.")]
+    #[error("missing type argument for generic parameter `{param_name}` in type `{type_name}`")]
     MissingGenericArgument { type_name: String, param_name: String },
 
-    #[error("Type arguments supplied to non-generic type '{type_name}'.")]
+    #[error("type arguments supplied to non-generic type `{type_name}`")]
     UnexpectedTypeArgs { type_name: String },
 
-    #[error("Could not resolve type for generic parameter '{param_name}'.")]
+    #[error("could not resolve type for generic parameter `{param_name}`")]
     UnresolvedGenericParameter { param_name: String },
 
-    #[error("Type '{type_name}' expects {expected} type arguments but {provided} were provided.")]
+    #[error("type `{type_name}` expects {expected} type arguments but {provided} were provided")]
     WrongNumberOfTypeArgs {
         type_name: String,
         expected: usize,
@@ -124,7 +124,7 @@ pub enum AnalyzerDiagKind {
     #[error("Type arguments must be applied to the enum type, not the variant.")]
     TypeArgsMustBeSuppliedToEnumTypeNotVariant,
 
-    #[error("Unknown symbol '{symbol_name}'.")]
+    #[error("unknown symbol `{symbol_name}`")]
     UnknownSymbol { symbol_name: String },
 
     #[error("Recursive type '{type_name}' has infinite size.")]
@@ -181,7 +181,7 @@ pub enum AnalyzerDiagKind {
     #[error("Enum variant '{variant_name}' does not accept fields.")]
     EnumVariantDoesNotAcceptFields { variant_name: String },
 
-    #[error("Enum '{enum_name}' does not have a variant named '{variant_name}'.")]
+    #[error("enum `{enum_name}` does not have a variant named `{variant_name}`")]
     NoSuchEnumVariant { enum_name: String, variant_name: String },
 
     #[error("Could not infer type of unnamed enum value '.{variant_name}'")]
@@ -196,7 +196,7 @@ pub enum AnalyzerDiagKind {
     #[error("Switch pattern of type '{pattern_type}' is not compatible with switch operand of type '{operand_type}'.")]
     IncompatibleSwitchPatternType { pattern_type: String, operand_type: String },
 
-    #[error("Non-exhaustive switch statement: missing variants '{missing_variants}'.")]
+    #[error("ensure that all variants are covered in switch statement")]
     NonExhaustiveSwitch { missing_variants: String },
 
     #[error("Only enum variants are allowed here.")]
@@ -373,7 +373,7 @@ pub enum AnalyzerDiagKind {
     #[error("Expression is not valid at compile time.")]
     ExprNotComptimeValid,
 
-    #[error("Cannot assign to immutable lvalue.")]
+    #[error("cannot assign to immutable lvalue")]
     CannotAssignToConstLValue,
 
     #[error("Cannot assign to non-lvalue.")]
@@ -450,7 +450,7 @@ pub enum AnalyzerDiagKind {
     },
 
     #[error(
-        "Argument at index {argument_idx} has type '{argument_type}', but the expected parameter type is '{param_type}'."
+        "argument at index {argument_idx} has type `{argument_type}`, but the expected parameter type is `{param_type}`"
     )]
     FuncCallParamTypeMismatch {
         param_type: String,
@@ -482,7 +482,7 @@ pub enum AnalyzerDiagKind {
     #[error("An untyped array was constructed, but the compiler was unable to infer a suitable element type.")]
     UntypedArrayCannotBeInferred,
 
-    #[error("Cannot infer type for generic parameter '{param_name}' in '{type_name}'.")]
+    #[error("cannot infer type for generic parameter `{param_name}` in `{type_name}`")]
     CannotInferGenericArgument { type_name: String, param_name: String },
 
     #[error(
@@ -545,7 +545,7 @@ pub enum AnalyzerDiagKind {
         method_name: String,
     },
 
-    #[error("Interface '{interface_name}' is not dynamic-compatible.")]
+    #[error("interface `{interface_name}` is not dynamic-compatible")]
     NotDynamicCompatibleInterface { interface_name: String },
 
     // ------- UNIMPLEMENTED -------

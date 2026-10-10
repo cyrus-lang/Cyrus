@@ -7,6 +7,7 @@ import std::option{Option};
 import std::string{String};
 
 import parser::ast{ASTVisibility};
+import cir::tables{DeclTables};
 import cir;
 
 const GLOBAL_NAMESPACE = "GLOBAL";
@@ -426,5 +427,65 @@ pub struct GlobalSymbolRegistry {
             case .Module(module) => return module.scope->lookup(name);
             else => return .None;
         }
+    }
+
+    pub fn lookup_symbol_as_decl_id(self: const Self*, symbol_id: cir::SymbolId) Option<cir::DeclId> {
+        const concrete = self->resolve_concrete_symbol_id(symbol_id);
+        const entry = self->entries.get_const(concrete);
+
+        switch (entry) {
+            case .Some(e) => {
+                switch (e->kind) {
+                    case .GlobalVar(id) => return .Some(.GlobalVar(id));
+                    case .Interface(id) => return .Some(.Interface(id));
+                    case .Typedef(id) => return .Some(.Typedef(id));
+                    case .Struct(id) => return .Some(.Struct(id));
+                    case .Method(id) => return .Some(.Method(id));
+                    case .Union(id) => return .Some(.Union(id));
+                    case .Func(id) => return .Some(.Func(id));
+                    case .Enum(id) => return .Some(.Enum(id));
+                    case .Var(id) => return .Some(.Var(id));
+
+                    case .ProxiedModule 
+                    | .ProxiedSymbol 
+                    | .Unresolved 
+                    | .Namespace 
+                    | .Module => return .None;
+                }
+            }
+            case .None => return .None;
+        }
+    }
+
+}
+
+pub fn is_decl_const(decl_tables: const DeclTables*, decl_id: cir::DeclId) bool {
+    switch (decl_id) {
+        case .GlobalVar(id) => {
+            const decl = decl_tables->global_vars.get_const(id).unwrap();
+            return decl->is_const;
+        }
+        case .Var(id) => {
+            const decl = decl_tables->vars.get_const(id).unwrap();
+            return decl->is_const;
+        }
+        else => return false;
+    }
+}
+
+pub fn symbol_decl_id(
+    registry: const GlobalSymbolRegistry*, 
+    symbol_expr: const cir::TypedSymbolExpr*
+) Option<cir::DeclId> {
+    switch (symbol_expr->as_decl_id()) {
+        case .Some(decl_id) => return .Some(decl_id);
+        else => {}
+    }
+
+    switch (symbol_expr->as_symbol_id()) {
+        case .Some(symbol_id) => {
+            return registry->lookup_symbol_as_decl_id(symbol_id);
+        }
+        case .None => return .None;
     }
 }

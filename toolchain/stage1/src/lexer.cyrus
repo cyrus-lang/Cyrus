@@ -36,7 +36,8 @@ import tokens{
     Loc,
     Span,
     escape_sequence_to_char,
-    is_valid_escape
+    is_valid_escape,
+    unescape_string
 };
 
 pub struct Lexer {
@@ -255,9 +256,22 @@ pub struct Lexer {
             self->read();
         }
 
-        // TODO: Unescape string
-
-        return self->init_string_literal(value, suffix);
+        switch (unescape_string(self->allocator, &value)) {
+            case .Some(unescaped) => {
+                value.free();
+                return self->init_string_literal(unescaped, suffix);
+            }
+            case .None => {
+                value.free();
+                self->dctx->report(Diag.new(
+                    self->allocator,
+                    .Error,
+                    "Invalid escape sequence.",
+                    Span.new(self->source_id, loc)
+                ));
+                return self->init_kind(.INVALID);
+            }
+        }
     }
 
     [[inline]]

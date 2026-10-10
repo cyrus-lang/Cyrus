@@ -1,0 +1,271 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 The Cyrus Language
+
+import std::collections::hash_map{HashMap};
+import std::hash{hash_usize, eq_usize};
+import std::mem{Allocator, alloc_init};
+import std::collections{Vec};
+import std::string{String};
+import std::option{Option};
+
+import analyzer::infer{InferCtx};
+import tokens{Span};
+import cir;
+
+pub enum FlowState {
+    Unreachable,
+    Reachable,
+    Returns,
+
+    /// Merges two flow states coming from different paths.
+    pub fn merge(self: const Self*, other: FlowState) FlowState {
+        switch (*self) {
+            case .Returns => {
+                switch (other) {
+                    case .Returns => return .Returns;
+                    case .Unreachable => return .Unreachable;
+                    case .Reachable => return .Reachable;
+                }
+            }
+            case .Unreachable => {
+                switch (other) {
+                    case .Returns => return .Unreachable;
+                    case .Unreachable => return .Unreachable;
+                    case .Reachable => return .Reachable;
+                }
+            }
+            case .Reachable => {
+                switch (other) {
+                    case .Returns => return .Reachable;
+                    else => return .Reachable;
+                }
+            }
+        }
+    }
+
+    [[inline]]
+    pub fn is_returns(self: const Self*) bool {
+        switch (*self) {
+            case .Returns => return true;
+            else => return false;
+        }
+    }
+
+    [[inline]]
+    pub fn is_unreachable(self: const Self*) bool {
+        switch (*self) {
+            case .Unreachable => return true;
+            else => return false;
+        }
+    }
+    
+    [[inline]]
+    pub fn is_reachable(self: const Self*) bool {
+        switch (*self) {
+            case .Reachable => return true;
+            else => return false;
+        }
+    }
+}
+
+pub enum ControlRegion {
+    Loop,
+    Switch,
+
+    [[inline]]
+    pub fn allows_break(self: const Self*) bool {
+        switch (*self) {
+            case .Loop => return true;
+            case .Switch => return false;
+        }
+    }
+
+    [[inline]]
+    pub fn allows_continue(self: const Self*) bool {
+        switch (*self) {
+            case .Loop => return true;
+            case .Switch => return false;
+        }
+    }
+}
+
+pub struct FuncEnv {
+    allocator: Allocator,
+    pub current_func_name: Option<String>,
+    pub current_object: Option<cir::SemaType>,
+    pub current_method: Option<cir::MethodDeclId>,
+    pub current_func: Option<cir::TypedFuncType>,
+    pub infer: Option<InferCtx*>,
+
+    pub fn new(allocator: Allocator) Self {
+        return Self {
+            allocator,
+            current_func_name: .None,
+            current_object: .None,
+            current_method: .None,
+            current_func: .None,
+            infer: .None,
+        };
+    }
+
+    pub fn with_infer(allocator: Allocator, name: const uint8*) Self {
+        const infer: InferCtx* = alloc_init(allocator, InferCtx.new(allocator));
+
+        var env = Self {
+            allocator,
+            current_func_name: .None,
+            current_object: .None,
+            current_method: .None,
+            current_func: .None,
+            infer: .Some(infer),
+        };
+
+        env.current_func_name = .Some(String.from_str(allocator, name));
+        return env;
+    }
+
+    pub fn with_object_infer(allocator: Allocator, object_type: cir::SemaType) Self {
+        const infer: InferCtx* = alloc_init(allocator, InferCtx.new(allocator));
+
+        var env = Self {
+            allocator,
+            current_func_name: .None,
+            current_object: .None,
+            current_method: .None,
+            current_func: .None,
+            infer: .Some(infer),
+        };
+
+        env.current_object = .Some(object_type);
+        return env;
+    }
+
+    pub fn free(self: Self*) {
+        switch (self->current_func_name) {
+            case .Some(name) => name.free();
+            else => {}
+        }
+
+        switch (self->infer) {
+            case .Some(infer) => {
+                infer->free();
+                self->allocator.free(infer);
+            }
+            else => {}
+        }
+    }
+}
+
+pub enum TypeCacheState {
+    Resolving,
+    Resolved(cir::SemaType),
+}
+
+pub struct TypeCacheFrame {
+    pub key: usize,
+    pub indirection: uint8,
+}
+
+pub enum TypeCacheEnterResult {
+    Entered,
+    AlreadyResolving(uint8),
+}
+
+/// Caches type resolutions and detects cyclic type definitions.
+/// (Any indirection makes the cycle legal)
+pub struct TypeCache {
+    allocator: Allocator,
+    states: HashMap<usize, TypeCacheState>,
+    stack: Vec<TypeCacheFrame>,
+
+    pub fn new(allocator: Allocator) Self {
+        var states: HashMap<usize, TypeCacheState> = HashMap.with_hasher(
+            allocator,
+            64,
+            hash_usize,
+            eq_usize
+        );
+
+        return Self {
+            allocator,
+            states,
+            stack: Vec.new(allocator),
+        };
+    }
+
+    pub fn get(self: const Self*, key: usize) Option<cir::SemaType> {
+        const state = self->states.get_const(key);
+
+        switch (state) {
+            case .Some(entry) => {
+                switch (*entry) {
+                    case .Resolved(ty) => return .Some(ty);
+                    else => {}
+                }
+            }
+            else => {}
+        }
+
+        return .None;
+    }
+
+    pub fn enter(self: Self*, key: usize, indirection: uint8) TypeCacheEnterResult {
+        for (var i: usize = 0; i < self->stack.len(); i += 1) {
+            const frame = self->stack.get_const(i).unwrap();
+
+            if (frame->key == key) {
+                return .AlreadyResolving(frame->indirection);
+            }
+        }
+
+        self->states.insert(key, .Resolving);
+        self->stack.push(TypeCacheFrame { key, indirection });
+        return .Entered;
+    }
+
+    pub fn leave(self: Self*, key: usize, ty: cir::SemaType) {
+        self->stack.pop();
+        self->states.insert(key, .Resolved(ty));
+    }
+
+    pub fn free(self: Self*) {
+        self->states.free();
+        self->stack.free();
+    }
+}
+pub fn decl_id_key(decl_id: cir::DeclId) usize {
+    switch (decl_id) {
+        case .Interface(id) => return (1 << 48) | id;
+        case .GlobalVar(id) => return (2 << 48) | id;
+        case .Typedef(id) => return (3 << 48) | id;
+        case .Method(id) => return (4 << 48) | id;
+        case .Struct(id) => return (5 << 48) | id;
+        case .Union(id) => return (6 << 48) | id;
+        case .Func(id) => return (7 << 48) | id;
+        case .Enum(id) => return (8 << 48) | id;
+        case .Var(id) => return (9 << 48) | id;
+    }
+}
+
+pub fn all_flow_states_terminate(flow_states: const Vec<FlowState>*) bool {
+    for (var i: usize = 0; i < flow_states->len(); i += 1) {
+        switch (*flow_states->get_const(i).unwrap()) {
+            case .Returns => {}
+            case .Unreachable => {}
+            else => return false;
+        }
+    }
+
+    return true;
+}
+
+pub fn all_flow_states_are_unreachable(flow_states: const Vec<FlowState>*) bool {
+    for (var i: usize = 0; i < flow_states->len(); i += 1) {
+        switch (*flow_states->get_const(i).unwrap()) {
+            case .Unreachable => {}
+            else => return false;
+        }
+    }
+
+    return true;
+}

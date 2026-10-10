@@ -37,7 +37,12 @@ pub struct Label {
         return Self { span, mesg: .None, role };
     }
 
-    pub fn with_mesg(allocator: Allocator, span: Span, role: LabelRole, mesg: const uint8*) Self {
+    pub fn with_mesg(
+        allocator: Allocator, 
+        span: Span, 
+        role: LabelRole, 
+        mesg: const uint8*
+    ) Self {
         return Self { span, mesg: .Some(String.from_str(allocator, mesg)), role };
     }
 
@@ -60,7 +65,12 @@ pub struct SubDiag {
     pub mesg: String,
     pub span: Option<Span>,
 
-    pub fn new(allocator: Allocator, kind: SubDiagKind, mesg: const uint8*, span: Option<Span>) Self {
+    pub fn new(
+        allocator: Allocator, 
+        kind: SubDiagKind, 
+        mesg: const uint8*, 
+        span: Option<Span>
+    ) Self {
         return Self {
             kind,
             mesg: String.from_str(allocator, mesg),

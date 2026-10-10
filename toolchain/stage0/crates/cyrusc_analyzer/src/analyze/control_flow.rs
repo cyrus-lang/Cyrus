@@ -273,13 +273,15 @@ impl<'a> AnalysisContext<'a> {
                     .map(|v| v.ident().as_string())
                     .collect();
 
+                let missing = missing_variants.join(", ");
+
                 self.reporter.report(Diag {
                     level: DiagLevel::Error,
                     kind: Box::new(AnalyzerDiagKind::NonExhaustiveSwitch {
-                        missing_variants: missing_variants.join(", "),
+                        missing_variants: missing.clone(),
                     }),
                     loc: Some(switch_stmt.loc),
-                    hint: None,
+                    hint: Some(format!("missing variants includes: `{missing}`")),
                 });
 
                 switch_stmt.all_cases_covered = Some(false);
@@ -380,7 +382,7 @@ impl<'a> AnalysisContext<'a> {
                     let variant_name = variant.ident().as_string();
 
                     match (&pattern.kind, variant) {
-                        (TypedSwitchCasePatternKind::EnumUnit(_), TypedEnumVariant::Unit(_)) => {}
+                        (TypedSwitchCasePatternKind::EnumUnit(_), _) => {}
 
                         (
                             TypedSwitchCasePatternKind::EnumTupleVariant { items, .. },

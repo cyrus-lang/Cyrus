@@ -1,0 +1,617 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 The Cyrus Language
+
+import std::io{Writer, StringWriter};
+import std::format{format_uint128};
+import std::mem{Allocator};
+import std::string{String};
+import std::option{Option};
+
+import resolver::symbols{GlobalSymbolRegistry};
+import cir::tables{DeclTables};
+import parser::ast;
+import cir;
+
+pub fn format_sema_type(
+    allocator: Allocator,
+    tables: const DeclTables*,
+    ty: const cir::SemaType*
+) String {
+    var out = String.new(allocator);
+
+    switch (*ty) {
+        case .Plain(plain_type) => {
+            out.push_str(plain_type.to_str());
+        }
+
+        case .Pointer(inner) => {
+            out.push_str("(");
+            var inner_str = format_sema_type(allocator, tables, inner);
+            out.push_str(inner_str.as_str_const());
+            inner_str.free();
+            out.push_str(")*");
+        }
+
+        case .Const(inner) => {
+            out.push_str("const ");
+            var inner_str = format_sema_type(allocator, tables, inner);
+            out.push_str(inner_str.as_str_const());
+            inner_str.free();
+        }
+
+        case .Named(named_type) => {
+            var name = format_type_decl_name(allocator, tables, named_type.type_decl_id);
+            out.push_str(name.as_str_const());
+            name.free();
+
+            var args_str = format_type_args(allocator, tables, &named_type.type_args);
+            out.push_str(args_str.as_str_const());
+            args_str.free();
+        }
+
+        case .Array(array_type) => {
+            var elem_str = format_sema_type(allocator, tables, array_type.element_type);
+            out.push_str(elem_str.as_str_const());
+            elem_str.free();
+            out.push_str("[");
+
+            switch (array_type.capacity) {
+                case .Fixed(cap_expr) => {
+                    var cap_str = format_array_capacity(allocator, cap_expr);
+                    out.push_str(cap_str.as_str_const());
+                    cap_str.free();
+                }
+                else => {}
+            }
+
+            out.push_str("]");
+        }
+
+        case .Tuple(tuple_type) => {
+            out.push_str("(");
+            for (var i: usize = 0; i < tuple_type.elements.len(); i += 1) {
+                if (i > 0) {
+                    out.push_str(", ");
+                }
+
+                const element = tuple_type.elements.get_const(i).unwrap();
+                var elem_str = format_sema_type(allocator, tables, &element->ty);
+                out.push_str(elem_str.as_str_const());
+                elem_str.free();
+            }
+            out.push_str(")");
+        }
+
+        case .FuncType(func_type) => {
+            var func_str = format_func_type(allocator, tables, &func_type);
+            out.push_str(func_str.as_str_const());
+            func_str.free();
+        }
+
+        case .GenericParam(param_id) => {
+            const param = tables->generic_params.get_const(param_id);
+            switch (param) {
+                case .Some(p) => out.push_str(p->name.str.as_str_const());
+                case .None => out.push_str("GENERIC_PARAM");
+            }
+        }
+
+        case .InterfaceObject(interface_object) => {
+            var iface_str = format_named_type(allocator, tables, &interface_object.interface_type);
+            out.push_str(iface_str.as_str_const());
+            iface_str.free();
+        }
+
+        case .Unresolved(.Decl) => out.push_str("UNRESOLVED");
+        case .Unresolved(.GenericInst) => out.push_str("UNRESOLVED_GENERIC_INST");
+        case .Unresolved(.BuiltinFunc) => out.push_str("UNRESOLVED_BUILTIN_FUNC");
+
+        case .SelfType => out.push_str("Self");
+
+        case .InferVar => out.push_str("_");
+
+        case .Placeholder => out.push_str("PLACEHOLDER");
+        
+        case .Err => out.push_str("ERROR");
+    }
+
+    return out;
+}
+
+pub fn format_named_type(
+    allocator: Allocator,
+    tables: const DeclTables*,
+    named_type: const cir::NamedType*
+) String {
+    var out = String.new(allocator);
+
+    var name = format_type_decl_name(allocator, tables, named_type->type_decl_id);
+    out.push_str(name.as_str_const());
+    name.free();
+
+    var args_str = format_type_args(allocator, tables, &named_type->type_args);
+    out.push_str(args_str.as_str_const());
+    args_str.free();
+
+    return out;
+}
+
+pub fn format_type_args(
+    allocator: Allocator,
+    tables: const DeclTables*,
+    type_args: const cir::TypedTypeArgs*
+) String {
+    var out = String.new(allocator);
+
+    if (type_args->is_empty()) {
+        return out;
+    }
+
+    out.push_str("<");
+
+    for (var i: usize = 0; i < type_args->len(); i += 1) {
+        if (i > 0) {
+            out.push_str(", ");
+        }
+
+        const arg = type_args->get(i).unwrap();
+        switch (*arg) {
+            case .Type(ty, _) => {
+                var arg_str = format_sema_type(allocator, tables, &ty);
+                out.push_str(arg_str.as_str_const());
+                arg_str.free();
+            }
+            case .Infer => out.push_str("_");
+        }
+    }
+
+    out.push_str(">");
+    return out;
+}
+
+pub fn format_func_type(
+    allocator: Allocator,
+    tables: const DeclTables*,
+    func_type: const cir::TypedFuncType*
+) String {
+    var out = String.new(allocator);
+    out.push_str("fn(");
+
+    for (var i: usize = 0; i < func_type->params.list.len(); i += 1) {
+        if (i > 0) {
+            out.push_str(", ");
+        }
+
+        const param = func_type->params.list.get_const(i).unwrap();
+        var param_str = format_sema_type(allocator, tables, param);
+        out.push_str(param_str.as_str_const());
+        param_str.free();
+    }
+
+    switch (func_type->params.variadic) {
+        case .Some(variadic) => {
+            switch (*variadic) {
+                case .Typed(ty) => {
+                    out.push_str(", ");
+                    var var_str = format_sema_type(allocator, tables, &ty);
+                    out.push_str(var_str.as_str_const());
+                    var_str.free();
+                    out.push_str("...");
+                }
+                case .UntypedCStyle => {
+                    out.push_str(", ...");
+                }
+            }
+        }
+        else => {}
+    }
+
+    out.push_str(") ");
+
+    var ret_str = format_sema_type(allocator, tables, func_type->ret_type);
+    out.push_str(ret_str.as_str_const());
+    ret_str.free();
+
+    return out;
+}
+
+pub fn format_type_decl_name(
+    allocator: Allocator,
+    tables: const DeclTables*,
+    type_decl_id: cir::TypeDeclId
+) String {
+    switch (type_decl_id) {
+        case .Struct(id) => {
+            const decl_opt = tables->structs.get_const(id);
+
+            switch (decl_opt) {
+                case .Some(decl) => {
+                    switch (decl->name) {
+                        case .Some(name) => return String.from_str(allocator, name.as_str_const());
+                        case .None => return String.from_str(allocator, "ANONYNMOUS");
+                    }
+                }
+                case .None => return String.from_str(allocator, "STRUCT");
+            }
+        }
+
+        case .Enum(id) => {
+            const decl_opt = tables->enums.get_const(id);
+
+            switch (decl_opt) {
+                case .Some(decl) => {
+                    switch (decl->name) {
+                        case .Some(name) => return String.from_str(allocator, name.as_str_const());
+                        case .None => return String.from_str(allocator, "ANONYNMOUS");
+                    }
+                }
+                case .None => return String.from_str(allocator, "ENUM");
+            }
+        }
+
+        case .Union(id) => {
+            const decl_opt = tables->unions.get_const(id);
+
+            switch (decl_opt) {
+                case .Some(decl) => {
+                    switch (decl->name) {
+                        case .Some(name) => return String.from_str(allocator, name.as_str_const());
+                        case .None => return String.from_str(allocator, "ANONYNMOUS");
+                    }
+                }
+                case .None => return String.from_str(allocator, "UNION");
+            }
+        }
+
+        case .Interface(id) => {
+            const decl_opt = tables->interfaces.get_const(id);
+
+            switch (decl_opt) {
+                case .Some(decl) => return String.from_str(allocator, decl->name.as_str_const());
+                case .None => return String.from_str(allocator, "INTERFACE");
+            }
+        }
+
+        case .Typedef(id) => {
+            const decl_opt = tables->typedefs.get_const(id);
+
+            switch (decl_opt) {
+                case .Some(decl) => return String.from_str(allocator, decl->name.as_str_const());
+                case .None => return String.from_str(allocator, "TYPEDEF");
+            }
+        }
+    }
+}
+
+pub fn format_decl_name(
+    allocator: Allocator,
+    tables: const DeclTables*,
+    decl_id: const cir::DeclId*
+) String {
+    switch (*decl_id) {
+        case .Interface(id) => return format_type_decl_name(allocator, tables, .Interface(id));
+        case .Typedef(id) => return format_type_decl_name(allocator, tables, .Typedef(id));
+        case .Struct(id) => return format_type_decl_name(allocator, tables, .Struct(id));
+        case .Union(id) => return format_type_decl_name(allocator, tables, .Union(id));
+        case .Enum(id) => return format_type_decl_name(allocator, tables, .Enum(id));
+
+        case .Func(id) => {
+            const decl_opt = tables->funcs.get_const(id);
+            
+            switch (decl_opt) {
+                case .Some(decl) => return String.from_str(allocator, decl->name.as_str_const());
+                case .None => return String.from_str(allocator, "FUNCTION");
+            }
+        }
+
+        case .Method(id) => {
+            const decl_opt = tables->methods.get_const(id);
+
+            switch (decl_opt) {
+                case .Some(decl) => {
+                    switch (decl->object_name) {
+                        case .Some(obj) => {
+                            var out = String.from_str(allocator, obj.as_str_const());
+                            out.push('.');
+                            out.push_str(decl->func_decl.name.as_str_const());
+                            return out;
+                        }
+                        case .None => return String.from_str(allocator, decl->func_decl.name.as_str_const());
+                    }
+                }
+                case .None => return String.from_str(allocator, "METHOD");
+            }
+        }
+
+        case .GlobalVar(id) => {
+            const decl_opt = tables->global_vars.get_const(id);
+            
+            switch (decl_opt) {
+                case .Some(decl) => return String.from_str(allocator, decl->name.as_str_const());
+                case .None => return String.from_str(allocator, "GLOBAL");
+            }
+        }
+
+        case .Var(id) => {
+            const decl_opt = tables->vars.get_const(id);
+
+            switch (decl_opt) {
+                case .Some(decl) => return String.from_str(allocator, decl->name.as_str_const());
+                case .None => return String.from_str(allocator, "VARIABLE");
+            }
+        }
+    }
+}
+
+pub fn format_struct_decl(
+    allocator: Allocator,
+    tables: const DeclTables*,
+    decl: const cir::StructDecl*,
+) String {
+    switch (decl->name) {
+        case .Some(name) => return String.from_str(allocator, name.as_str_const());
+        else => {}
+    }
+
+    var out = String.from_str(allocator, "struct { ");
+
+    for (var i: usize = 0; i < decl->fields.len(); i += 1) {
+        const field = decl->fields.get_const(i).unwrap();
+        out.push_str(field->name.as_str_const());
+        out.push_str(": ");
+
+        var formatted_ty = format_sema_type(allocator, tables, &field->ty);
+        out.push_str(formatted_ty.as_str_const());
+        formatted_ty.free();
+
+        if (i + 1 != decl->fields.len()) {
+            out.push_str(", ");
+        }
+    }
+
+    out.push_str(" }");
+    return out;
+}
+
+pub fn format_union_decl(
+    allocator: Allocator,
+    tables: const DeclTables*,
+    decl: const cir::UnionDecl*,
+) String {
+    switch (decl->name) {
+        case .Some(name) => return String.from_str(allocator, name.as_str_const());
+        else => {}
+    }
+
+    var out = String.from_str(allocator, "union { ");
+
+    for (var i: usize = 0; i < decl->fields.len(); i += 1) {
+        const field = decl->fields.get_const(i).unwrap();
+        out.push_str(field->name.as_str_const());
+        out.push_str(": ");
+
+        var formatted_ty = format_sema_type(allocator, tables, &field->ty);
+        out.push_str(formatted_ty.as_str_const());
+        formatted_ty.free();
+
+        if (i + 1 != decl->fields.len()) {
+            out.push_str(", ");
+        }
+    }
+
+    out.push_str(" }");
+    return out;
+}
+
+pub fn format_enum_decl(
+    allocator: Allocator,
+    registry: const GlobalSymbolRegistry*,
+    tables: const DeclTables*,
+    decl: const cir::EnumDecl*,
+) String {
+    switch (decl->name) {
+        case .Some(name) => return String.from_str(allocator, name.as_str_const());
+        else => {}
+    }
+
+    var out = String.from_str(allocator, "enum { ");
+
+    for (var i: usize = 0; i < decl->variants.len(); i += 1) {
+        const variant = decl->variants.get_const(i).unwrap();
+        switch (*variant) {
+            case .Unit(ident) => {
+                out.push_str(ident.str.as_str_const());
+            }
+            case .Valued { ident, value } => {
+                out.push_str(ident.str.as_str_const());
+                out.push_str(" = ");
+                var value_str = format_typed_expr(allocator, registry, tables, value);
+                out.push_str(value_str.as_str_const());
+                value_str.free();
+            }
+            case .Tuple { ident, fields } => {
+                out.push_str(ident.str.as_str_const());
+                out.push_str("(");
+                for (var j: usize = 0; j < fields.len(); j += 1) {
+                    const field = fields.get_const(j).unwrap();
+                    var ty_str = format_sema_type(allocator, tables, &field->ty);
+                    out.push_str(ty_str.as_str_const());
+                    ty_str.free();
+                    if (j + 1 != fields.len()) {
+                        out.push_str(", ");
+                    }
+                }
+                out.push_str(")");
+            }
+            case .Struct { ident, fields } => {
+                out.push_str(ident.str.as_str_const());
+                out.push_str(" { ");
+                for (var j: usize = 0; j < fields.len(); j += 1) {
+                    const field = fields.get_const(j).unwrap();
+                    out.push_str(field->name.str.as_str_const());
+                    out.push_str(": ");
+                    var ty_str = format_sema_type(allocator, tables, &field->ty);
+                    out.push_str(ty_str.as_str_const());
+                    ty_str.free();
+                    if (j + 1 != fields.len()) {
+                        out.push_str(", ");
+                    }
+                }
+                out.push_str(" }");
+            }
+        }
+
+        if (i + 1 != decl->variants.len()) {
+            out.push_str(", ");
+        }
+    }
+
+    out.push_str(" }");
+    return out;
+}
+
+fn format_array_capacity(
+    allocator: Allocator,
+    expr: const cir::TypedExpr*
+) String {
+    switch (expr->literal_const_int_value()) {
+        case .Some(value) => {
+            var out = String.new(allocator);
+            var writer: Writer = dynamic StringWriter.new(&out);
+
+            switch (value) {
+                case .Signed(v) => {
+                    if (v < 0) {
+                        out.push('-');
+                        format_uint128(writer, @cast(uint128, -v));
+                    } else {
+                        format_uint128(writer, @cast(uint128, v));
+                    }
+                }
+                case .Unsigned(v) => {
+                    format_uint128(writer, v);
+                }
+            }
+
+            return out;
+        }
+        else => {}
+    }
+
+    return String.from_str(allocator, "CAPACITY");
+}
+
+pub fn format_typed_expr(
+    allocator: Allocator,
+    registry: const GlobalSymbolRegistry*,
+    tables: const DeclTables*,
+    expr: const cir::TypedExpr*,
+) String {
+    switch (expr->kind) {
+        case .Symbol(.Unresolved { symbol_id, .. }) => {
+            switch (registry->symbol_name(symbol_id)) {
+                case .Some(var name) => {
+                    return name;
+                }
+                case .None => return String.from_str(allocator, "UNRESOLVED");
+            }
+        }
+        case .Symbol(.Resolved { decl_id, .. }) => {
+            return format_decl_name(allocator, tables, &decl_id);
+        }
+        case .Literal(literal) => {
+            var buffer = String.new(allocator);
+            var writer: Writer = dynamic StringWriter.new(&buffer);
+            literal.kind.format(writer);
+            return buffer;
+        }
+        case .Prefix(prefix_expr) => {
+            var out = String.from_str(allocator, prefix_expr.op.to_str());
+            var operand_str = format_typed_expr(allocator, registry, tables, prefix_expr.operand);
+            out.push_str(operand_str.as_str_const());
+            operand_str.free();
+            return out;
+        }
+        case .Infix(infix_expr) => {
+            var out = format_typed_expr(allocator, registry, tables, infix_expr.lhs);
+            var rhs_str = format_typed_expr(allocator, registry, tables, infix_expr.rhs);
+            out.push_str(infix_expr.op.to_str());
+            out.push_str(rhs_str.as_str_const());
+            rhs_str.free();
+            return out;
+        }
+        case .AddrOf(addr_of) => {
+            var out = String.from_str(allocator, "&");
+            var operand_str = format_typed_expr(allocator, registry, tables, addr_of.operand);
+            out.push_str(operand_str.as_str_const());
+            operand_str.free();
+            return out;
+        }
+        case .Deref(deref) => {
+            var out = String.from_str(allocator, "*");
+            var operand_str = format_typed_expr(allocator, registry, tables, deref.operand);
+            out.push_str(operand_str.as_str_const());
+            operand_str.free();
+            return out;
+        }
+        case .ArrayIndex(array_index) => {
+            var out = format_typed_expr(allocator, registry, tables, array_index.operand);
+            out.push_str("[");
+            var index_str = format_typed_expr(allocator, registry, tables, array_index.index);
+            out.push_str(index_str.as_str_const());
+            index_str.free();
+            out.push_str("]");
+            return out;
+        }
+        case .FieldAccess(field_access) => {
+            var out = format_typed_expr(allocator, registry, tables, field_access.operand);
+            if (field_access.is_thin_arrow) {
+                out.push_str("->");
+            } else {
+                out.push_str(".");
+            }
+            out.push_str(field_access.name.as_str_const());
+            return out;
+        }
+        case .MethodCall(method_call) => {
+            var out = format_typed_expr(allocator, registry, tables, method_call.operand);
+            if (method_call.is_thin_arrow) {
+                out.push_str("->");
+            } else {
+                out.push_str(".");
+            }
+            out.push_str(method_call.name.as_str_const());
+            return out;
+        }
+        case .FuncCall(func_call) => {
+            var out = format_typed_expr(allocator, registry, tables, func_call.operand);
+            out.push_str("(");
+            for (var i: usize = 0; i < func_call.args.len(); i += 1) {
+                const arg = func_call.args.get_const(i).unwrap();
+                var arg_str = format_typed_expr(allocator, registry, tables, arg);
+                out.push_str(arg_str.as_str_const());
+                arg_str.free();
+                if (i + 1 != func_call.args.len()) {
+                    out.push_str(", ");
+                }
+            }
+            out.push_str(")");
+            return out;
+        }
+        case .Tuple(tuple_expr) => {
+            var out = String.from_str(allocator, "(");
+            for (var i: usize = 0; i < tuple_expr.elements.len(); i += 1) {
+                const element = tuple_expr.elements.get_const(i).unwrap();
+                var element_str = format_typed_expr(allocator, registry, tables, element);
+                out.push_str(element_str.as_str_const());
+                element_str.free();
+                if (i + 1 != tuple_expr.elements.len()) {
+                    out.push_str(", ");
+                }
+            }
+            out.push_str(")");
+            return out;
+        }
+        else => return String.from_str(allocator, "EXPR");
+    }
+}
