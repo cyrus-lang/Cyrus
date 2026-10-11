@@ -463,11 +463,11 @@ pub struct Analyzer {
     pub fn normalize_and_check_type_formation(
         self: Self*,
         ty: cir::SemaType,
-        loc: Span,
+        span: Span,
         indirection: uint8
     ) Option<cir::SemaType> {
-        switch (self->normalize_sema_type(ty, loc, indirection)) {
-            case .Some(normalized) => return self->check_type_formation(normalized, loc);
+        switch (self->normalize_sema_type(ty, span, indirection)) {
+            case .Some(normalized) => return self->check_type_formation(normalized, span);
             case .None => return .None;
         }
     }
@@ -477,18 +477,18 @@ pub struct Analyzer {
     pub fn normalize_sema_type(
         self: Self*,
         ty: cir::SemaType,
-        loc: Span,
+        span: Span,
         indirection: uint8
     ) Option<cir::SemaType> {
         switch (ty) {
-            case .Unresolved(unresolved) => return self->normalize_unresolved_type(unresolved, loc, indirection);
+            case .Unresolved(unresolved) => return self->normalize_unresolved_type(unresolved, span, indirection);
             case .GenericParam(generic_param_id) => return self->normalize_generic_param(generic_param_id);
             case .Named(named_type) => return self->normalize_named_type(&named_type, indirection);
-            case .Array(array_type) => return self->normalize_array(array_type, loc, indirection);
+            case .Array(array_type) => return self->normalize_array(array_type, span, indirection);
             case .FuncType(func_type) => return self->normalize_func_type(func_type, indirection);
             case .Tuple(tuple_type) => return self->normalize_tuple(tuple_type, indirection);
-            case .Pointer(inner) => return self->normalize_pointer(inner, loc, indirection);
-            case .Const(inner) => return self->normalize_const(inner, loc, indirection);
+            case .Pointer(inner) => return self->normalize_pointer(inner, span, indirection);
+            case .Const(inner) => return self->normalize_const(inner, span, indirection);
             case .SelfType(self_type) => return self->normalize_self_type(self_type);
             case .InterfaceObject => return .Some(ty);
             case .Placeholder => return .Some(ty);
@@ -647,7 +647,7 @@ pub struct Analyzer {
     fn normalize_unresolved_type(
         self: Self*,
         unresolved: cir::UnresolvedType,
-        loc: Span,
+        span: Span,
         indirection: uint8
     ) Option<cir::SemaType> {
         switch (unresolved) {
@@ -658,7 +658,7 @@ pub struct Analyzer {
                     case .Some(id) => {
                         switch (decl_id_as_type_decl_id(id)) {
                             case .Some => {
-                                return self->resolve_symbol_type(id, loc, indirection);
+                                return self->resolve_symbol_type(id, span, indirection);
                             }
                             case .None => {
                                 var symbol_name = format::format_decl_name(self->allocator, self->decl_tables, &id);
@@ -667,7 +667,7 @@ pub struct Analyzer {
                                 diags::report_non_type_symbol(
                                     self->dctx,
                                     self->allocator,
-                                    loc,
+                                    span,
                                     symbol_name.as_str_const()
                                 );
                                 return .None;
@@ -850,7 +850,7 @@ pub struct Analyzer {
     fn normalize_array(
         self: Self*,
         var array_type: cir::TypedArrayType,
-        loc: Span,
+        span: Span,
         indirection: uint8
     ) Option<cir::SemaType> {
         switch (array_type.capacity) {
@@ -858,17 +858,17 @@ pub struct Analyzer {
                 self->analyze_expr(expr, .None);
 
                 if (expr->literal_const_int_value().is_none()) {
-                    diags::report_array_capacity_not_const(self->dctx, self->allocator, loc);
+                    diags::report_array_capacity_not_const(self->dctx, self->allocator, span);
                     return .None;
                 }
             }
             case .Slice => {
-                diags::report_unimplemented_feature_slice(self->dctx, self->allocator, loc);
+                diags::report_unimplemented_feature_slice(self->dctx, self->allocator, span);
                 return .None;
             }
         }
 
-        switch (self->normalize_sema_type(*array_type.element_type, loc, indirection)) {
+        switch (self->normalize_sema_type(*array_type.element_type, span, indirection)) {
             case .Some(ty) => array_type.element_type = alloc_init(self->allocator, ty);
             case .None => return .None;
         }
@@ -879,10 +879,10 @@ pub struct Analyzer {
     fn normalize_const(
         self: Self*,
         inner: cir::SemaType*,
-        loc: Span,
+        span: Span,
         indirection: uint8
     ) Option<cir::SemaType> {
-        switch (self->normalize_sema_type(*inner, loc, indirection)) {
+        switch (self->normalize_sema_type(*inner, span, indirection)) {
             case .Some(ty) => return .Some(.Const(alloc_init(self->allocator, ty)));
             case .None => return .None;
         }
@@ -891,10 +891,10 @@ pub struct Analyzer {
     fn normalize_pointer(
         self: Self*,
         inner: cir::SemaType*,
-        loc: Span,
+        span: Span,
         indirection: uint8
     ) Option<cir::SemaType> {
-        switch (self->normalize_sema_type(*inner, loc, indirection + 1)) {
+        switch (self->normalize_sema_type(*inner, span, indirection + 1)) {
             case .Some(ty) => return .Some(.Pointer(alloc_init(self->allocator, ty)));
             case .None => return .None;
         }
@@ -999,16 +999,16 @@ pub struct Analyzer {
     pub fn normalize_func_type_params(
         self: Self*,
         params: cir::TypedFuncTypeParams*,
-        loc: Span,
+        span: Span,
         indirection: uint8
     ) {
         for (var i: usize = 0; i < params->list.len(); i += 1) {
             var param = params->list.get(i).unwrap();
 
-            switch (self->normalize_sema_type(*param, loc, indirection)) {
+            switch (self->normalize_sema_type(*param, span, indirection)) {
                 case .Some(normalized) => {
                     *param = normalized;
-                    self->validate_param_type(&normalized, loc);
+                    self->validate_param_type(&normalized, span);
                 }
                 case .None => return;
             }
@@ -1018,9 +1018,9 @@ pub struct Analyzer {
             case .Some(variadic) => {
                 switch (*variadic) {
                     case .Typed(ty) => {
-                        switch (self->normalize_sema_type(ty, loc, indirection)) {
+                        switch (self->normalize_sema_type(ty, span, indirection)) {
                             case .Some(normalized) => {
-                                self->validate_param_type(&normalized, loc);
+                                self->validate_param_type(&normalized, span);
                                 *variadic = cir::TypedFuncTypeVariadicParam.Typed(normalized);
                             }
                             case .None => return;
@@ -1036,7 +1036,7 @@ pub struct Analyzer {
     pub fn resolve_symbol_type(
         self: Self*,
         decl_id: cir::DeclId,
-        loc: Span,
+        span: Span,
         indirection: uint8
     ) Option<cir::SemaType> {
         var key = decl_id_key(decl_id);
@@ -1070,7 +1070,7 @@ pub struct Analyzer {
                 diags::report_cyclic_type_definition(
                     self->dctx,
                     self->allocator,
-                    loc,
+                    span,
                     &cycle
                 );
                 free_strings(&cycle);
@@ -1082,7 +1082,7 @@ pub struct Analyzer {
         const raw_ty = self->resolve_symbol_type_internal(decl_id, indirection);
         switch (raw_ty) {
             case .Some(raw) => {
-                switch (self->normalize_sema_type(raw, loc, indirection)) {
+                switch (self->normalize_sema_type(raw, span, indirection)) {
                     case .Some(ty) => {
                         self->type_cache.leave(key, ty);
                         return .Some(ty);
@@ -1155,13 +1155,13 @@ pub struct Analyzer {
 
     // Fully validates a normalized type (redundant const, args, void rules,
     // Self placement, union emptiness). Returns None when invalid.
-    pub fn check_type_formation(self: Self*, ty: cir::SemaType, loc: Span) Option<cir::SemaType> {
+    pub fn check_type_formation(self: Self*, ty: cir::SemaType, span: Span) Option<cir::SemaType> {
         if (ty.is_err()) {
             return .None;
         }
 
         var error = false;
-        self->check_type_formation_rec(&ty, loc, &error);
+        self->check_type_formation_rec(&ty, span, &error);
 
         if (error) {
             return .None;
@@ -1169,20 +1169,20 @@ pub struct Analyzer {
         return .Some(ty);
     }
 
-    fn check_type_formation_rec(self: Self*, ty: const cir::SemaType*, loc: Span, error: bool*) {
+    fn check_type_formation_rec(self: Self*, ty: const cir::SemaType*, span: Span, error: bool*) {
         if (ty->count_const_layers() > 1) {
-            diags::report_redundant_const_qualifier(self->dctx, self->allocator, loc);
+            diags::report_redundant_const_qualifier(self->dctx, self->allocator, span);
             *error = true;
         }
 
         switch (*ty) {
             case .Named(named_type) => {
-                self->check_unexpected_type_args(&named_type, loc);
+                self->check_unexpected_type_args(&named_type, span);
 
                 for (var i: usize = 0; i < named_type.type_args.len(); i += 1) {
                     const arg = named_type.type_args.get(i).unwrap();
                     switch (*arg) {
-                        case .Type(inner, _) => self->check_type_formation_rec(&inner, loc, error);
+                        case .Type(inner, _) => self->check_type_formation_rec(&inner, span, error);
                         case .Infer => {}
                     }
                 }
@@ -1194,7 +1194,7 @@ pub struct Analyzer {
                             diags::report_union_type_must_contain_at_least_one_field(
                                 self->dctx,
                                 self->allocator,
-                                loc
+                                span
                             );
                             *error = true;
                         }
@@ -1212,7 +1212,7 @@ pub struct Analyzer {
                     );
                     *error = true;
                 }
-                self->check_type_formation_rec(array_type.element_type, loc, error);
+                self->check_type_formation_rec(array_type.element_type, span, error);
             }
 
             case .FuncType(func_type) => {
@@ -1222,9 +1222,9 @@ pub struct Analyzer {
                         diags::report_void_parameter_type(self->dctx, self->allocator, func_type.span);
                         *error = true;
                     }
-                    self->check_type_formation_rec(param, loc, error);
+                    self->check_type_formation_rec(param, span, error);
                 }
-                self->check_type_formation_rec(func_type.ret_type, loc, error);
+                self->check_type_formation_rec(func_type.ret_type, span, error);
             }
 
             case .Tuple(tuple_type) => {
@@ -1238,7 +1238,7 @@ pub struct Analyzer {
                         );
                         *error = true;
                     }
-                    self->check_type_formation_rec(&element->ty, loc, error);
+                    self->check_type_formation_rec(&element->ty, span, error);
                 }
             }
 
@@ -1247,14 +1247,14 @@ pub struct Analyzer {
                     diags::report_self_type_outside_of_an_object(
                         self->dctx, 
                         self->allocator, 
-                        loc
+                        span
                     );
                     *error = true;
                 }
             }
 
-            case .Const(inner) => self->check_type_formation_rec(inner, loc, error);
-            case .Pointer(inner) => self->check_type_formation_rec(inner, loc, error);
+            case .Const(inner) => self->check_type_formation_rec(inner, span, error);
+            case .Pointer(inner) => self->check_type_formation_rec(inner, span, error);
 
             else => {
                 // Plain/InterfaceObject/GenericParam/InferVar/Unresolved/Err/Placeholder: nothing
@@ -1264,21 +1264,21 @@ pub struct Analyzer {
 
     // Arity/correctness checks for an already-normalized type (after monomorph
     // the type must be fully concrete).
-    pub fn check_type_arity(self: Self*, ty: cir::SemaType, loc: Span) bool {
+    pub fn check_type_arity(self: Self*, ty: cir::SemaType, span: Span) bool {
         if (ty.is_err()) {
             return true;
         }
 
-        return self->check_type_arity_rec(&ty, loc);
+        return self->check_type_arity_rec(&ty, span);
     }
 
-    fn check_type_arity_rec(self: Self*, ty: const cir::SemaType*, loc: Span) bool {
+    fn check_type_arity_rec(self: Self*, ty: const cir::SemaType*, span: Span) bool {
         switch (*ty) {
             case .Named(named_type) => {
-                if (self->check_missing_type_args(&named_type, loc)) {
+                if (self->check_missing_type_args(&named_type, span)) {
                     return false;
                 }
-                if (self->check_unresolved_infer_vars(&named_type, loc)) {
+                if (self->check_unresolved_infer_vars(&named_type, span)) {
                     return false;
                 }
 
@@ -1303,7 +1303,7 @@ pub struct Analyzer {
                             diags::report_not_dynamic_compatible_interface(
                                 self->dctx,
                                 self->allocator,
-                                loc,
+                                span,
                                 interface_decl->name.as_str_const()
                             );
                             return false;
@@ -1315,8 +1315,8 @@ pub struct Analyzer {
                 return true;
             }
 
-            case .Const(inner) => return self->check_type_arity_rec(inner, loc);
-            case .Pointer(inner) => return self->check_type_arity_rec(inner, loc);
+            case .Const(inner) => return self->check_type_arity_rec(inner, span);
+            case .Pointer(inner) => return self->check_type_arity_rec(inner, span);
             case .Array(array_type) => return self->check_type_arity_rec(array_type.element_type, array_type.span);
             case .FuncType(func_type) => {
                 for (var i: usize = 0; i < func_type.params.list.len(); i += 1) {
@@ -1341,21 +1341,21 @@ pub struct Analyzer {
         }
     }
 
-    pub fn check_type_correctness(self: Self*, ty: cir::SemaType, loc: Span) bool {
+    pub fn check_type_correctness(self: Self*, ty: cir::SemaType, span: Span) bool {
         if (ty.is_err()) {
             return true;
         }
 
-        return self->check_type_correctness_recursively(&ty, loc);
+        return self->check_type_correctness_recursively(&ty, span);
     }
 
-    fn check_type_correctness_recursively(self: Self*, ty: const cir::SemaType*, loc: Span) bool {
+    fn check_type_correctness_recursively(self: Self*, ty: const cir::SemaType*, span: Span) bool {
         switch (*ty) {
             case .Named(named_type) => {
-                if (self->check_missing_type_args(&named_type, loc)) {
+                if (self->check_missing_type_args(&named_type, span)) {
                     return false;
                 }
-                if (self->check_unresolved_infer_vars(&named_type, loc)) {
+                if (self->check_unresolved_infer_vars(&named_type, span)) {
                     return false;
                 }
 
@@ -1397,25 +1397,25 @@ pub struct Analyzer {
                 return self->check_type_correctness_recursively(array_type.element_type, array_type.span);
             }
 
-            case .Pointer(inner) => return self->check_type_correctness_recursively(inner, loc);
+            case .Pointer(inner) => return self->check_type_correctness_recursively(inner, span);
 
-            case .Const(inner) => return self->check_type_correctness_recursively(inner, loc);
+            case .Const(inner) => return self->check_type_correctness_recursively(inner, span);
 
             else => return true;
         }
     }
 
-    pub fn validate_param_type(self: Self*, ty: const cir::SemaType*, loc: Span) {
+    pub fn validate_param_type(self: Self*, ty: const cir::SemaType*, span: Span) {
         const inner = ty->const_inner();
 
         if (inner->is_void()) {
-            diags::report_void_parameter_type(self->dctx, self->allocator, loc);
+            diags::report_void_parameter_type(self->dctx, self->allocator, span);
         }
 
-        self->check_type_arity(*inner, loc);
+        self->check_type_arity(*inner, span);
     }
 
-    fn check_unexpected_type_args(self: Self*, named_type: const cir::NamedType*, loc: Span) bool {
+    fn check_unexpected_type_args(self: Self*, named_type: const cir::NamedType*, span: Span) bool {
         const generic_params = type_decl_generic_params(self->decl_tables, named_type->type_decl_id);
 
         if (generic_params->is_empty() && !named_type->type_args.is_empty()) {
@@ -1431,7 +1431,7 @@ pub struct Analyzer {
             diags::report_unexpected_type_args(
                 self->dctx,
                 self->allocator,
-                loc,
+                span,
                 type_name.as_str_const()
             );
             return true;
@@ -1440,7 +1440,7 @@ pub struct Analyzer {
         return false;
     }
 
-    fn check_missing_type_args(self: Self*, named_type: const cir::NamedType*, loc: Span) bool {
+    fn check_missing_type_args(self: Self*, named_type: const cir::NamedType*, span: Span) bool {
         var error = false;
 
         const generic_params = type_decl_generic_params(self->decl_tables, named_type->type_decl_id);
@@ -1467,7 +1467,7 @@ pub struct Analyzer {
                     diags::report_missing_generic_argument(
                         self->dctx,
                         self->allocator,
-                        loc,
+                        span,
                         type_name.as_str_const(),
                         param->name.str.as_str_const()
                     );
@@ -1483,7 +1483,7 @@ pub struct Analyzer {
                                 diags::report_unresolved_generic_parameter(
                                     self->dctx,
                                     self->allocator,
-                                    loc,
+                                    span,
                                     generic_param->name.str.as_str_const()
                                 );
                             }
@@ -1493,7 +1493,7 @@ pub struct Analyzer {
                             diags::report_unresolved_generic_parameter(
                                 self->dctx,
                                 self->allocator,
-                                loc,
+                                span,
                                 generic_param->name.str.as_str_const()
                             );
                         }
@@ -1505,7 +1505,7 @@ pub struct Analyzer {
         return error;
     }
 
-    fn check_unresolved_infer_vars(self: Self*, named_type: const cir::NamedType*, loc: Span) bool {
+    fn check_unresolved_infer_vars(self: Self*, named_type: const cir::NamedType*, span: Span) bool {
         var error = false;
 
         const generic_params = type_decl_generic_params(self->decl_tables, named_type->type_decl_id);
@@ -1535,7 +1535,7 @@ pub struct Analyzer {
                                 diags::report_cannot_infer_generic_argument(
                                     self->dctx,
                                     self->allocator,
-                                    loc,
+                                    span,
                                     type_name.as_str_const(),
                                     generic_param->name.str.as_str_const()
                                 );
@@ -1554,7 +1554,7 @@ pub struct Analyzer {
                             diags::report_cannot_infer_generic_argument(
                                 self->dctx,
                                 self->allocator,
-                                loc,
+                                span,
                                 type_name.as_str_const(),
                                 generic_param->name.str.as_str_const()
                             );
@@ -1571,7 +1571,7 @@ pub struct Analyzer {
     /* ************* Typedef Expansion ************* */
 
     /// Expand typedef references recursively.
-    pub fn expand_sema_type(self: Self*, ty: cir::SemaType, loc: Span) cir::SemaType {
+    pub fn expand_sema_type(self: Self*, ty: cir::SemaType, span: Span) cir::SemaType {
         switch (ty) {
             case .Placeholder => return ty;
             case .InferVar => return ty;
@@ -1579,7 +1579,7 @@ pub struct Analyzer {
             case .Named(named_type) => {
                 switch (named_type.type_decl_id) {
                     case .Typedef(typedef_decl_id) => {
-                        return self->expand_typedef(typedef_decl_id, &named_type.type_args, loc);
+                        return self->expand_typedef(typedef_decl_id, &named_type.type_args, span);
                     }
                     else => {
                         var type_args = cir::TypedTypeArgs.new(self->allocator);
@@ -1605,17 +1605,17 @@ pub struct Analyzer {
             }
 
             case .Pointer(inner) => {
-                const expand = self->expand_sema_type(*inner, loc);
+                const expand = self->expand_sema_type(*inner, span);
                 return .Pointer(alloc_init(self->allocator, expand));
             }
 
             case .Const(inner) => {
-                const expand = self->expand_sema_type(*inner, loc);
+                const expand = self->expand_sema_type(*inner, span);
                 return .Const(alloc_init(self->allocator, expand));
             }
 
             case .Array(array) => {
-                const element_type = self->expand_sema_type(*array.element_type, loc);
+                const element_type = self->expand_sema_type(*array.element_type, span);
                 
                 return .Array(cir::TypedArrayType {
                     element_type: alloc_init(self->allocator, element_type),
@@ -1652,7 +1652,7 @@ pub struct Analyzer {
 
                 for (var i: usize = 0; i < func_type.params.list.len(); i += 1) {
                     const param = func_type.params.list.get_const(i).unwrap();
-                    const expand = self->expand_sema_type(*param, loc);
+                    const expand = self->expand_sema_type(*param, span);
                     params.list.push(expand);
                 }
 
@@ -1666,7 +1666,7 @@ pub struct Analyzer {
                                 ));
                             }
                             case .Typed(ty) => {
-                                const expand = self->expand_sema_type(ty, loc);
+                                const expand = self->expand_sema_type(ty, span);
                                 params.variadic = .Some(alloc_init(
                                     self->allocator,
                                     cir::TypedFuncTypeVariadicParam.Typed(expand)
@@ -1677,7 +1677,7 @@ pub struct Analyzer {
                     else => {}
                 }
 
-                const ret_type = self->expand_sema_type(*func_type.ret_type, loc);
+                const ret_type = self->expand_sema_type(*func_type.ret_type, span);
 
                 return .FuncType(cir::TypedFuncType {
                     params,
@@ -1696,7 +1696,7 @@ pub struct Analyzer {
         self: Self*,
         typedef_decl_id: cir::TypedefDeclId,
         args: const cir::TypedTypeArgs*,
-        loc: Span
+        span: Span
     ) cir::SemaType {
         switch (self->push_typedef_expansion(typedef_decl_id)) {
             case .Some(var path) => {
@@ -1739,7 +1739,7 @@ pub struct Analyzer {
                     diags::report_cyclic_type_definition(
                         self->dctx,
                         self->allocator,
-                        loc,
+                        span,
                         &names
                     );
                     free_strings(&names);
@@ -1748,7 +1748,7 @@ pub struct Analyzer {
                 } else {
                 }
 
-                return .Err(loc);
+                return .Err(span);
             }
             else => {}
         }
@@ -1757,7 +1757,7 @@ pub struct Analyzer {
 
         if (typedef_decl->ty == null) {
             self->pop_typedef_expansion();
-            return .Err(loc);
+            return .Err(span);
         }
 
         const generic_params = &typedef_decl->generic_params;
@@ -1773,7 +1773,7 @@ pub struct Analyzer {
                 switch (self->func_env.infer) {
                     case .Some(infer_ctx) => {
                         const infer_var = infer_ctx->new_var_id();
-                        final_args.push(.Type(.InferVar(infer_var), loc));
+                        final_args.push(.Type(.InferVar(infer_var), span));
                     }
                     case .None => {
                         final_args.push(.Infer);
@@ -1805,7 +1805,7 @@ pub struct Analyzer {
             diags::report_wrong_number_of_type_args(
                 self->dctx,
                 self->allocator,
-                loc,
+                span,
                 type_name.as_str_const(),
                 final_args.len(),
                 args->len()
@@ -1821,17 +1821,17 @@ pub struct Analyzer {
         defer generic_env.free();
 
         const typedef_type =
-            self->normalize_and_check_type_formation(*typedef_decl->ty, loc, 0);
+            self->normalize_and_check_type_formation(*typedef_decl->ty, span, 0);
         
         switch (typedef_type) {
             case .None => {
                 self->pop_typedef_expansion();
-                return .Err(loc);
+                return .Err(span);
             }
             case .Some(defined_type) => {
                 const subst = generic_env.substitute_sema_type(&defined_type);
                 self->pop_typedef_expansion();
-                return self->expand_sema_type(subst, loc);
+                return self->expand_sema_type(subst, span);
             }
         }
     }
@@ -1842,14 +1842,14 @@ pub struct Analyzer {
         self: Self*,
         rhs_type: cir::SemaType,
         lhs_type: cir::SemaType,
-        loc: Span
+        span: Span
     ) bool {
         if (rhs_type.contains_error() || lhs_type.contains_error()) {
             return true;
         }
 
-        const expanded_lhs = self->expand_sema_type(lhs_type, loc);
-        const expanded_rhs = self->expand_sema_type(rhs_type, loc);
+        const expanded_lhs = self->expand_sema_type(lhs_type, span);
+        const expanded_rhs = self->expand_sema_type(rhs_type, span);
 
         // T* <-> T* (Constness matters)
         switch (expanded_rhs) {
@@ -1867,7 +1867,7 @@ pub struct Analyzer {
                             return true;
                         }
 
-                        return self->is_assignable_to(*inner1, *inner2, loc);
+                        return self->is_assignable_to(*inner1, *inner2, span);
                     }
                     else => {}
                 }
@@ -1907,14 +1907,14 @@ pub struct Analyzer {
                         return self->is_named_type_assignable_to(
                             &interface_object1.interface_type,
                             &interface_object2.interface_type,
-                            loc
+                            span
                         );
                     }
                     case .Named(named_type2) => {
                         return self->is_named_type_assignable_to(
                             &interface_object1.interface_type,
                             &named_type2,
-                            loc
+                            span
                         );
                     }
                     else => return false;
@@ -1924,7 +1924,7 @@ pub struct Analyzer {
             case .Named(named_type1) => {
                 switch (*lhs_inner) {
                     case .Named(named_type2) => {
-                        return self->is_named_type_assignable_to(&named_type1, &named_type2, loc);
+                        return self->is_named_type_assignable_to(&named_type1, &named_type2, span);
                     }
                     else => return false;
                 }
@@ -1939,12 +1939,12 @@ pub struct Analyzer {
                         return self->is_assignable_to(
                             *array_type1.element_type,
                             *array_type2.element_type,
-                            loc
+                            span
                         );
                     }
                     case .Pointer(inner) => {
                         // Array-to-pointer decay
-                        return self->is_assignable_to(*array_type1.element_type, *inner, loc);
+                        return self->is_assignable_to(*array_type1.element_type, *inner, span);
                     }
                     else => return false;
                 }
@@ -1972,7 +1972,7 @@ pub struct Analyzer {
         self: Self*,
         named_type1: const cir::NamedType*,
         named_type2: const cir::NamedType*,
-        loc: Span
+        span: Span
     ) bool {
         switch (named_type1->type_decl_id) {
             case .Struct(id1) => {
@@ -1999,7 +1999,7 @@ pub struct Analyzer {
                         );
                         defer env2.free();
 
-                        const result = self->is_struct_decl_assignable_to(decl1, decl2, &env1, &env2, loc);
+                        const result = self->is_struct_decl_assignable_to(decl1, decl2, &env1, &env2, span);
                         
                         return result;
                     }
@@ -2031,7 +2031,7 @@ pub struct Analyzer {
                         );
                         defer env2.free();
 
-                        const result = self->is_union_decl_assignable_to(decl1, decl2, &env1, &env2, loc);
+                        const result = self->is_union_decl_assignable_to(decl1, decl2, &env1, &env2, span);
                         return result;
                     }
                     else => return false;
@@ -2062,7 +2062,7 @@ pub struct Analyzer {
                         );
                         defer env2.free();
 
-                        const result = self->is_enum_decl_assignable_to(decl1, decl2, &env1, &env2, loc);
+                        const result = self->is_enum_decl_assignable_to(decl1, decl2, &env1, &env2, span);
                         return result;
                     }
                     else => return false;
@@ -2088,7 +2088,7 @@ pub struct Analyzer {
         struct_decl2: const cir::StructDecl*,
         env1: const GenericEnv*,
         env2: const GenericEnv*,
-        loc: Span
+        span: Span
     ) bool {
         var ok = true;
 
@@ -2101,12 +2101,12 @@ pub struct Analyzer {
                 continue;
             }
 
-            switch (self->normalize_sema_type(field1->ty, loc, 0)) case .Some(var ty1) else {
+            switch (self->normalize_sema_type(field1->ty, span, 0)) case .Some(var ty1) else {
                 ok = false;
                 continue;
             }
 
-            switch (self->normalize_sema_type(field2->ty, loc, 0)) case .Some(var ty2) else {
+            switch (self->normalize_sema_type(field2->ty, span, 0)) case .Some(var ty2) else {
                 ok = false;
                 continue;
             }
@@ -2114,7 +2114,7 @@ pub struct Analyzer {
             ty1 = env1->substitute_sema_type(&ty1);
             ty2 = env2->substitute_sema_type(&ty2);
 
-            if (!self->is_assignable_to(ty1, ty2, loc)) {
+            if (!self->is_assignable_to(ty1, ty2, span)) {
                 ok = false;
             }
         }
@@ -2128,7 +2128,7 @@ pub struct Analyzer {
         union_decl2: const cir::UnionDecl*,
         env1: const GenericEnv*,
         env2: const GenericEnv*,
-        loc: Span
+        span: Span
     ) bool {
         var ok = true;
 
@@ -2138,14 +2138,14 @@ pub struct Analyzer {
 
             switch (found) {
                 case .Some(field2) => {
-                    switch (self->normalize_sema_type(field1->ty, loc, 0)) {
+                    switch (self->normalize_sema_type(field1->ty, span, 0)) {
                         case .Some(ty1_raw) => {
-                            switch (self->normalize_sema_type(field2->ty, loc, 0)) {
+                            switch (self->normalize_sema_type(field2->ty, span, 0)) {
                                 case .Some(ty2_raw) => {
                                     const ty1 = env1->substitute_sema_type(&ty1_raw);
                                     const ty2 = env2->substitute_sema_type(&ty2_raw);
 
-                                    if (!self->is_assignable_to(ty1, ty2, loc)) {
+                                    if (!self->is_assignable_to(ty1, ty2, span)) {
                                         ok = false;
                                     }
                                 }
@@ -2168,7 +2168,7 @@ pub struct Analyzer {
         enum_decl2: const cir::EnumDecl*,
         env1: const GenericEnv*,
         env2: const GenericEnv*,
-        loc: Span
+        span: Span
     ) bool {
         switch (enum_decl1->tag_type) {
             case .Some(tag1) => {
@@ -2177,7 +2177,7 @@ pub struct Analyzer {
                         const s1 = env1->substitute_sema_type(&tag1);
                         const s2 = env2->substitute_sema_type(&tag2);
 
-                        if (!self->is_assignable_to(s1, s2, loc)) {
+                        if (!self->is_assignable_to(s1, s2, span)) {
                             return false;
                         }
                     }
@@ -2234,12 +2234,12 @@ pub struct Analyzer {
                                 continue;
                             }
 
-                            switch (self->normalize_sema_type(raw1, loc, 0)) case .Some(ty1_n) else {
+                            switch (self->normalize_sema_type(raw1, span, 0)) case .Some(ty1_n) else {
                                 ok = false;
                                 continue;
                             }
 
-                            switch (self->normalize_sema_type(raw2, loc, 0)) case .Some(ty2_n) else {
+                            switch (self->normalize_sema_type(raw2, span, 0)) case .Some(ty2_n) else {
                                 ok = false;
                                 continue;
                             }
@@ -2247,7 +2247,7 @@ pub struct Analyzer {
                             const ty1 = env1->substitute_sema_type(&ty1_n);
                             const ty2 = env2->substitute_sema_type(&ty2_n);
 
-                            if (!self->is_assignable_to(ty1, ty2, loc)) {
+                            if (!self->is_assignable_to(ty1, ty2, span)) {
                                 ok = false;
                             }
                         }
@@ -2263,12 +2263,12 @@ pub struct Analyzer {
                                             const t1 = f1.get_const(j).unwrap();
                                             const t2 = f2.get_const(j).unwrap();
 
-                                            switch (self->normalize_sema_type(t1->ty, loc, 0)) case .Some(ty1_n) else {
+                                            switch (self->normalize_sema_type(t1->ty, span, 0)) case .Some(ty1_n) else {
                                                 ok = false;
                                                 continue;
                                             }
 
-                                            switch (self->normalize_sema_type(t2->ty, loc, 0)) case .Some(ty2_n) else {
+                                            switch (self->normalize_sema_type(t2->ty, span, 0)) case .Some(ty2_n) else {
                                                 ok = false;
                                                 continue;
                                             }
@@ -2276,7 +2276,7 @@ pub struct Analyzer {
                                             const ty1 = env1->substitute_sema_type(&ty1_n);
                                             const ty2 = env2->substitute_sema_type(&ty2_n);
 
-                                            if (!self->is_assignable_to(ty1, ty2, loc)) {
+                                            if (!self->is_assignable_to(ty1, ty2, span)) {
                                                 ok = false;
                                             }
                                         }
@@ -2312,15 +2312,15 @@ pub struct Analyzer {
                                         } else {
                                             const field1 = f1.get_const(found_index).unwrap();
 
-                                            switch (self->normalize_sema_type(field1->ty, loc, 0)) {
+                                            switch (self->normalize_sema_type(field1->ty, span, 0)) {
                                                 case .Some(ty1_n) => {
-                                                    switch (self->normalize_sema_type(field2->ty, loc, 0)) {
+                                                    switch (self->normalize_sema_type(field2->ty, span, 0)) {
                                                         case .None => ok = false;
                                                         case .Some(ty2_n) => {
                                                             const ty1 = env1->substitute_sema_type(&ty1_n);
                                                             const ty2 = env2->substitute_sema_type(&ty2_n);
 
-                                                            if (!self->is_assignable_to(ty1, ty2, loc)) {
+                                                            if (!self->is_assignable_to(ty1, ty2, span)) {
                                                                 ok = false;
                                                             }
                                                         }
@@ -2348,13 +2348,13 @@ pub struct Analyzer {
         self: Self*,
         ty: const cir::SemaType*,
         expr: const cir::TypedExpr*,
-        loc: Span
+        span: Span
     ) cir::SemaType {
         switch (expr->ty) {
             case .Some(expr_type) => {
                 switch (expr_type.as_interface_object()) {
                     case .Some(interface_object) => {
-                        return self->coerce_interface_object_recursively(ty, &interface_object, loc);
+                        return self->coerce_interface_object_recursively(ty, &interface_object, span);
                     }
                     case .None => return *ty;
                 }
@@ -2367,23 +2367,23 @@ pub struct Analyzer {
         self: Self*,
         ty: const cir::SemaType*,
         interface_object: const cir::InterfaceObjectType*,
-        loc: Span
+        span: Span
     ) cir::SemaType {
         switch (*ty) {
             case .Named(named_type) => {
-                if (self->is_named_type_assignable_to(&named_type, &interface_object->interface_type, loc)) {
+                if (self->is_named_type_assignable_to(&named_type, &interface_object->interface_type, span)) {
                     return .InterfaceObject(*interface_object);
                 }
                 return *ty;
             }
 
             case .Const(inner) => {
-                const coerce = self->coerce_interface_object_recursively(inner, interface_object, loc);
+                const coerce = self->coerce_interface_object_recursively(inner, interface_object, span);
                 return .Const(alloc_init(self->allocator, coerce));
             }
 
             case .Pointer(inner) => {
-                const coerce = self->coerce_interface_object_recursively(inner, interface_object, loc);
+                const coerce = self->coerce_interface_object_recursively(inner, interface_object, span);
                 return .Pointer(alloc_init(self->allocator, coerce));
             }
 
@@ -2391,7 +2391,7 @@ pub struct Analyzer {
                 const element_type = self->coerce_interface_object_recursively(
                     array_type.element_type, 
                     interface_object, 
-                    loc
+                    span
                 );
 
                 return .Array(cir::TypedArrayType {
@@ -2406,7 +2406,7 @@ pub struct Analyzer {
 
                 for (var i: usize = 0; i < tuple_type.elements.len(); i += 1) {
                     const element = tuple_type.elements.get_const(i).unwrap();
-                    const coerce = self->coerce_interface_object_recursively(&element->ty, interface_object, loc);
+                    const coerce = self->coerce_interface_object_recursively(&element->ty, interface_object, span);
                     
                     elements.push(cir::TypedTupleElement {
                         ty: coerce,
@@ -2428,7 +2428,7 @@ pub struct Analyzer {
 
                 for (var i: usize = 0; i < func_type.params.list.len(); i += 1) {
                     const param = func_type.params.list.get_const(i).unwrap();
-                    const coerce = self->coerce_interface_object_recursively(param, interface_object, loc);
+                    const coerce = self->coerce_interface_object_recursively(param, interface_object, span);
                     params.list.push(coerce);
                 }
 
@@ -2442,7 +2442,7 @@ pub struct Analyzer {
                                 ));
                             }
                             case .Typed(ty_inner) => {
-                                const coerce = self->coerce_interface_object_recursively(&ty_inner, interface_object, loc);
+                                const coerce = self->coerce_interface_object_recursively(&ty_inner, interface_object, span);
                                 params.variadic = .Some(alloc_init(
                                     self->allocator,
                                     cir::TypedFuncTypeVariadicParam.Typed(coerce)
@@ -2453,7 +2453,7 @@ pub struct Analyzer {
                     else => {}
                 }
 
-                const ret_type = self->coerce_interface_object_recursively(func_type.ret_type, interface_object, loc);
+                const ret_type = self->coerce_interface_object_recursively(func_type.ret_type, interface_object, span);
 
                 return .FuncType(cir::TypedFuncType {
                     params,
@@ -2904,9 +2904,9 @@ pub struct Analyzer {
         self: Self*,
         field_expr: cir::TypedExpr*,
         var expected_type: cir::SemaType,
-        loc: Span
+        span: Span
     ) {
-        switch (self->normalize_sema_type(expected_type, loc, 0)) {
+        switch (self->normalize_sema_type(expected_type, span, 0)) {
             case .Some(ty) => expected_type = ty;
             case .None => return;
         }
@@ -2927,14 +2927,14 @@ pub struct Analyzer {
                 }
                 expected_type = self->substitute_type(&expected_type);
 
-                if (!self->is_assignable_to(v_ty, expected_type, loc)) {
+                if (!self->is_assignable_to(v_ty, expected_type, span)) {
                     var lhs_str = format::format_sema_type(self->allocator, self->decl_tables, &expected_type);
                     var rhs_str = format::format_sema_type(self->allocator, self->decl_tables, &v_ty);
 
                     diags::report_assignment_type_mismatch(
                         self->dctx, 
                         self->allocator, 
-                        loc, 
+                        span, 
                         lhs_str.as_str_const(), 
                         rhs_str.as_str_const()
                     );
@@ -3078,7 +3078,7 @@ pub struct Analyzer {
     fn extract_enum_decl_id_of_expr_kind(
         self: Self*,
         expr_kind: const cir::TypedExprKind*,
-        loc: Span
+        span: Span
     ) Option<EnumDeclRef> {
         switch (*expr_kind) {
             case .Symbol(symbol_expr) => {
@@ -3098,11 +3098,11 @@ pub struct Analyzer {
                         type_args,
                     });
 
-                    switch (self->normalize_sema_type(named, loc, 0)) case .Some(ty) else {
+                    switch (self->normalize_sema_type(named, span, 0)) case .Some(ty) else {
                         return .None;
                     }
 
-                    const expand = self->expand_sema_type(ty, loc);
+                    const expand = self->expand_sema_type(ty, span);
 
                     switch (expand.as_enum()) case .Some(aliased_enum_id) else {
                         return .None;
@@ -3121,11 +3121,11 @@ pub struct Analyzer {
             }
 
             case .SemaType { ty, .. } => {
-                switch (self->normalize_sema_type(ty, loc, 0)) case .Some(normalized) else {
+                switch (self->normalize_sema_type(ty, span, 0)) case .Some(normalized) else {
                     return .None;
                 }
 
-                const expand = self->expand_sema_type(normalized, loc);
+                const expand = self->expand_sema_type(normalized, span);
 
                 switch (expand.as_named_type()) case .Some(named_type) else {
                     return .None;
@@ -3644,10 +3644,10 @@ pub struct Analyzer {
         self: Self*,
         rhs_type: cir::SemaType,
         lhs_type: cir::SemaType,
-        loc: Span
+        span: Span
     ) bool {
-        const lhs = self->expand_sema_type(lhs_type, loc);
-        const rhs = self->expand_sema_type(rhs_type, loc);
+        const lhs = self->expand_sema_type(lhs_type, span);
+        const rhs = self->expand_sema_type(rhs_type, span);
 
         switch (rhs) {
             case .Pointer(inner_rhs) => {
@@ -3657,7 +3657,7 @@ pub struct Analyzer {
                             return true;
                         }
 
-                        return self->is_assignable_to(*inner_rhs, *inner_lhs, loc);
+                        return self->is_assignable_to(*inner_rhs, *inner_lhs, span);
                     }
                     else => {}
                 }
@@ -3665,26 +3665,26 @@ pub struct Analyzer {
             else => {}
         }
 
-        return self->is_assignable_to(rhs, lhs, loc);
+        return self->is_assignable_to(rhs, lhs, span);
     }
 
     fn analyze_arithmetic_expr(
         self: Self*,
         lhs_type: cir::SemaType,
         rhs_type: cir::SemaType,
-        loc: Span
+        span: Span
     ) Option<cir::SemaType> {
         const lhs = *lhs_type.const_inner();
         const rhs = *rhs_type.const_inner();
 
-        if (!self->is_type_comparable(rhs, lhs, loc)) {
+        if (!self->is_type_comparable(rhs, lhs, span)) {
             diags::report_infix_invalid(
                 self->dctx,
                 self->allocator, 
                 self->decl_tables, 
                 lhs, 
                 rhs, 
-                loc, 
+                span, 
                 true
             );
             return .None;
@@ -3713,7 +3713,7 @@ pub struct Analyzer {
             self->decl_tables, 
             lhs, 
             rhs, 
-            loc, 
+            span, 
             false
         );
         return .None;
@@ -3724,7 +3724,7 @@ pub struct Analyzer {
         lhs_type: cir::SemaType,
         rhs_type: cir::SemaType,
         cmp_eq: bool,
-        loc: Span
+        span: Span
     ) Option<cir::SemaType> {
         const lhs = *lhs_type.const_inner();
         const rhs = *rhs_type.const_inner();
@@ -3733,8 +3733,8 @@ pub struct Analyzer {
             return .Some(.Plain(.Bool));
         }
 
-        if (!self->is_type_comparable(rhs, lhs, loc)) {
-            diags::report_infix_invalid(self->dctx, self->allocator, self->decl_tables, lhs, rhs, loc, false);
+        if (!self->is_type_comparable(rhs, lhs, span)) {
+            diags::report_infix_invalid(self->dctx, self->allocator, self->decl_tables, lhs, rhs, span, false);
             return .None;
         }
 
@@ -3757,7 +3757,7 @@ pub struct Analyzer {
             }
         }
 
-        diags::report_infix_invalid(self->dctx, self->allocator, self->decl_tables, lhs, rhs, loc, false);
+        diags::report_infix_invalid(self->dctx, self->allocator, self->decl_tables, lhs, rhs, span, false);
         return .None;
     }
 
@@ -3765,13 +3765,13 @@ pub struct Analyzer {
         self: Self*,
         lhs_type: cir::SemaType,
         rhs_type: cir::SemaType,
-        loc: Span
+        span: Span
     ) Option<cir::SemaType> {
         const lhs = *lhs_type.const_inner();
         const rhs = *rhs_type.const_inner();
 
-        if (!self->is_type_comparable(rhs, lhs, loc)) {
-            diags::report_infix_invalid(self->dctx, self->allocator, self->decl_tables, lhs, rhs, loc, true);
+        if (!self->is_type_comparable(rhs, lhs, span)) {
+            diags::report_infix_invalid(self->dctx, self->allocator, self->decl_tables, lhs, rhs, span, true);
             return .None;
         }
 
@@ -3779,7 +3779,7 @@ pub struct Analyzer {
             return .Some(.Plain(.Bool));
         }
 
-        diags::report_infix_invalid(self->dctx, self->allocator, self->decl_tables, lhs, rhs, loc, false);
+        diags::report_infix_invalid(self->dctx, self->allocator, self->decl_tables, lhs, rhs, span, false);
         return .None;
     }
 
@@ -3787,13 +3787,13 @@ pub struct Analyzer {
         self: Self*,
         lhs_type: cir::SemaType,
         rhs_type: cir::SemaType,
-        loc: Span
+        span: Span
     ) Option<cir::SemaType> {
         const lhs = *lhs_type.const_inner();
         const rhs = *rhs_type.const_inner();
 
-        if (!self->is_type_comparable(rhs, lhs, loc)) {
-            diags::report_infix_invalid(self->dctx, self->allocator, self->decl_tables, lhs, rhs, loc, true);
+        if (!self->is_type_comparable(rhs, lhs, span)) {
+            diags::report_infix_invalid(self->dctx, self->allocator, self->decl_tables, lhs, rhs, span, true);
             return .None;
         }
 
@@ -3801,7 +3801,7 @@ pub struct Analyzer {
             return .Some(.Plain(.Bool));
         }
 
-        diags::report_infix_invalid(self->dctx, self->allocator, self->decl_tables, lhs, rhs, loc, false);
+        diags::report_infix_invalid(self->dctx, self->allocator, self->decl_tables, lhs, rhs, span, false);
         return .None;
     }
 
@@ -3809,13 +3809,13 @@ pub struct Analyzer {
         self: Self*,
         lhs_type: cir::SemaType,
         rhs_type: cir::SemaType,
-        loc: Span
+        span: Span
     ) Option<cir::SemaType> {
         const lhs = *lhs_type.const_inner();
         const rhs = *rhs_type.const_inner();
 
-        if (!self->is_type_comparable(rhs, lhs, loc)) {
-            diags::report_infix_invalid(self->dctx, self->allocator, self->decl_tables, lhs, rhs, loc, true);
+        if (!self->is_type_comparable(rhs, lhs, span)) {
+            diags::report_infix_invalid(self->dctx, self->allocator, self->decl_tables, lhs, rhs, span, true);
             return .None;
         }
 
@@ -3836,7 +3836,7 @@ pub struct Analyzer {
             else => {}
         }
 
-        diags::report_infix_invalid(self->dctx, self->allocator, self->decl_tables, lhs, rhs, loc, false);
+        diags::report_infix_invalid(self->dctx, self->allocator, self->decl_tables, lhs, rhs, span, false);
         return .None;
     }
 
@@ -3844,13 +3844,13 @@ pub struct Analyzer {
         self: Self*,
         lhs_type: cir::SemaType,
         rhs_type: cir::SemaType,
-        loc: Span
+        span: Span
     ) Option<cir::SemaType> {
         const lhs = *lhs_type.const_inner();
         const rhs = *rhs_type.const_inner();
 
-        if (!self->is_type_comparable(rhs, lhs, loc)) {
-            diags::report_infix_invalid(self->dctx, self->allocator, self->decl_tables, lhs, rhs, loc, true);
+        if (!self->is_type_comparable(rhs, lhs, span)) {
+            diags::report_infix_invalid(self->dctx, self->allocator, self->decl_tables, lhs, rhs, span, true);
             return .None;
         }
 
@@ -3862,7 +3862,7 @@ pub struct Analyzer {
                             diags::report_rhs_of_shift_must_be_unsigned_integer(
                                 self->dctx,
                                 self->allocator,
-                                loc
+                                span
                             );
                             return .None;
                         } else if (p1.is_integer() && p2.is_integer()) {
@@ -3878,7 +3878,7 @@ pub struct Analyzer {
             else => {}
         }
 
-        diags::report_infix_invalid(self->dctx, self->allocator, self->decl_tables, lhs, rhs, loc, false);
+        diags::report_infix_invalid(self->dctx, self->allocator, self->decl_tables, lhs, rhs, span, false);
         return .None;
     }
 
@@ -4444,7 +4444,7 @@ pub struct Analyzer {
         field_vis: ast::ASTVisibility,
         method_decls: const cir::MethodDecls*,
         is_thin_arrow: bool,
-        loc: Span
+        span: Span
     ) {
         var access_violation = false;
 
@@ -4463,7 +4463,7 @@ pub struct Analyzer {
             diags::report_internal_field_access(
                 self->dctx,
                 self->allocator,
-                loc,
+                span,
                 field_name,
                 object_name
             );
@@ -4476,11 +4476,11 @@ pub struct Analyzer {
 
         if (is_thin_arrow) {
             if (!is_pointer) {
-                diags::report_invalid_thin_arrow(self->dctx, self->allocator, loc);
+                diags::report_invalid_thin_arrow(self->dctx, self->allocator, span);
             }
         } else {
             if (!is_object) {
-                diags::report_use_thin_arrow(self->dctx, self->allocator, loc);
+                diags::report_use_thin_arrow(self->dctx, self->allocator, span);
             }
         }
     }
@@ -4594,13 +4594,13 @@ pub struct Analyzer {
         type_name: const uint8*,
         params: cir::TypedGenericParams,
         type_args: const cir::TypedTypeArgs*,
-        loc: Span
+        span: Span
     ) Option<GenericEnv> {
         if (!type_args->is_empty() && params.len() != type_args->len()) {
             diags::report_wrong_number_of_type_args(
                 self->dctx,
                 self->allocator,
-                loc,
+                span,
                 type_name,
                 params.len(),
                 type_args->len()
@@ -5136,7 +5136,7 @@ pub struct Analyzer {
         variant_name: const uint8*,
         field_inits: const Vec<cir::TypedEnumStructVariantFieldInit>*,
         fields: const Vec<cir::TypedEnumVariantStructField>*,
-        loc: Span
+        span: Span
     ) {
         for (var i: usize = 0; i < field_inits->len(); i += 1) {
             const field_init = field_inits->get_const(i).unwrap();
@@ -5211,7 +5211,7 @@ pub struct Analyzer {
                 diags::report_missing_enum_variant_field(
                     self->dctx,
                     self->allocator,
-                    loc,
+                    span,
                     declared_field->name.str.as_str_const(),
                     variant_name
                 );
@@ -5554,7 +5554,7 @@ pub struct Analyzer {
         self: Self*,
         struct_decl: const cir::StructDecl*,
         fields: const Vec<cir::TypedFieldInit>*,
-        loc: Span
+        span: Span
     ) {
         var missing = String.new(self->allocator);
         defer missing.free();
@@ -5594,7 +5594,7 @@ pub struct Analyzer {
             diags::report_struct_missing_fields(
                 self->dctx,
                 self->allocator,
-                loc,
+                span,
                 type_name.as_str_const(),
                 missing.as_str_const()
             );
@@ -6083,13 +6083,13 @@ pub struct Analyzer {
         self: Self*,
         builtin_spec: cir::TypedBuiltinSpec,
         actual: cir::TypedBuiltinForm,
-        loc: Span
+        span: Span
     ) bool {
         if (builtin_spec.form != actual) {
             diags::report_invalid_builtin_form(
                 self->dctx,
                 self->allocator,
-                loc,
+                span,
                 builtin_spec.name
             );
             return false;
@@ -6102,13 +6102,13 @@ pub struct Analyzer {
         self: Self*,
         spec: cir::TypedBuiltinSpec,
         count: usize,
-        loc: Span
+        span: Span
     ) bool {
         if (count < spec.min_args) {
             diags::report_builtin_too_few_args(
                 self->dctx,
                 self->allocator,
-                loc,
+                span,
                 spec.name,
                 spec.min_args,
                 count
@@ -6122,7 +6122,7 @@ pub struct Analyzer {
                     diags::report_builtin_too_many_args(
                         self->dctx,
                         self->allocator,
-                        loc,
+                        span,
                         spec.name,
                         max,
                         count
@@ -6568,9 +6568,9 @@ pub struct Analyzer {
         self: Self*,
         value_type: cir::SemaType,
         target_type: cir::SemaType,
-        loc: Span
+        span: Span
     ) bool {
-        if (self->is_assignable_to(value_type, target_type, loc)) {
+        if (self->is_assignable_to(value_type, target_type, span)) {
             return true;
         }
 
@@ -7629,9 +7629,9 @@ pub struct Analyzer {
         pure_operand_type: const cir::SemaType*,
         final_type_args: const cir::TypedTypeArgs*,
         is_instance_method_call: bool,
-        loc: Span
+        span: Span
     ) Option<cir::SemaType> {
-        switch (self->normalize_sema_type(method_decl->func_decl.ret_type, loc, 0)) {
+        switch (self->normalize_sema_type(method_decl->func_decl.ret_type, span, 0)) {
             case .Some(ty) => {
                 method_decl->func_decl.ret_type = ty;
             }
@@ -7651,7 +7651,7 @@ pub struct Analyzer {
             method_decl,
             final_type_args,
             false,
-            loc
+            span
         )) {
             case .Some(monomorph_id) => {
                 method_call->operand->ty = .Some(*operand_type);
@@ -7930,7 +7930,7 @@ pub struct Analyzer {
         is_thin_arrow: bool,
         is_interface_method_call: bool,
         is_operand_const_qualified: bool,
-        loc: Span
+        span: Span
     ) {
         var access_violation = false;
 
@@ -7955,7 +7955,7 @@ pub struct Analyzer {
             diags::report_internal_method_call(
                 self->dctx,
                 self->allocator,
-                loc,
+                span,
                 method_decl->func_decl.name.as_str_const(),
                 object_name
             );
@@ -7973,7 +7973,7 @@ pub struct Analyzer {
                     diags::report_mutable_method_on_const_instance(
                         self->dctx,
                         self->allocator,
-                        loc,
+                        span,
                         method_decl->func_decl.name.as_str_const(),
                         type_name.as_str_const()
                     );
@@ -7985,11 +7985,11 @@ pub struct Analyzer {
 
         if (is_base_type_pointer) {
             if (!is_thin_arrow) {
-                diags::report_use_thin_arrow(self->dctx, self->allocator, loc);
+                diags::report_use_thin_arrow(self->dctx, self->allocator, span);
             }
         } else {
             if (is_thin_arrow) {
-                diags::report_invalid_thin_arrow(self->dctx, self->allocator, loc);
+                diags::report_invalid_thin_arrow(self->dctx, self->allocator, span);
             }
         }
     }
@@ -7998,7 +7998,7 @@ pub struct Analyzer {
         self: Self*,
         arg: cir::TypedExpr*,
         expected_type: cir::SemaType,
-        loc: Span
+        span: Span
     ) Option<cir::SemaType> {
         var expect = self->substitute_type(&expected_type);
 
@@ -8026,7 +8026,7 @@ pub struct Analyzer {
             case .None => {}
         }
 
-        if (!self->is_assignable_to(arg_type, expect, loc)) {
+        if (!self->is_assignable_to(arg_type, expect, span)) {
             var param_type_str = format::format_sema_type(self->allocator, self->decl_tables, &expect);
             defer param_type_str.free();
             var argument_type_str = format::format_sema_type(self->allocator, self->decl_tables, &arg_type);
@@ -8050,7 +8050,7 @@ pub struct Analyzer {
         original_params: const cir::TypedFuncParams*,
         func_decl: const cir::FuncDecl*,
         args: Vec<cir::TypedExpr>*,
-        loc: Span,
+        span: Span,
         instance_method_call: bool
     ) bool {
         const is_variadic = func_decl->params.variadic.is_some();
@@ -8065,7 +8065,7 @@ pub struct Analyzer {
             diags::report_func_call_args_count_mismatch(
                 self->dctx,
                 self->allocator,
-                loc,
+                span,
                 func_decl->name.as_str_const(),
                 @cast(uint32, expected_args_len),
                 @cast(uint32, args->len())
@@ -8074,7 +8074,7 @@ pub struct Analyzer {
         }
 
         if (is_variadic) {
-            self->check_func_variadic_arguments(func_decl, args, loc);
+            self->check_func_variadic_arguments(func_decl, args, span);
         }
 
         var start_idx: usize = 0;
@@ -8188,7 +8188,7 @@ pub struct Analyzer {
         self: Self*,
         func_decl: const cir::FuncDecl*,
         args: Vec<cir::TypedExpr>*,
-        loc: Span
+        span: Span
     ) {
         const static_params_len = func_decl->params.list.len();
 
@@ -8203,7 +8203,7 @@ pub struct Analyzer {
 
                     switch (self->analyze_expr(arg, arg->ty)) {
                         case .Some(arg_type) => {
-                            if (!self->is_assignable_to(arg_type, ty, loc)) {
+                            if (!self->is_assignable_to(arg_type, ty, span)) {
                                 var param_type_str = format::format_sema_type(self->allocator, self->decl_tables, &ty);
                                 defer param_type_str.free();
                                 var argument_type_str = format::format_sema_type(self->allocator, self->decl_tables, &arg_type);
@@ -8211,7 +8211,7 @@ pub struct Analyzer {
                                 diags::report_func_call_variadic_param_type_mismatch(
                                     self->dctx,
                                     self->allocator,
-                                    loc,
+                                    span,
                                     @cast(uint32, i),
                                     argument_type_str.as_str_const(),
                                     param_type_str.as_str_const()
@@ -8232,7 +8232,7 @@ pub struct Analyzer {
                                 diags::report_void_argument_in_variadic_param(
                                     self->dctx,
                                     self->allocator,
-                                    loc
+                                    span
                                 );
                             }
                         }
@@ -8248,7 +8248,7 @@ pub struct Analyzer {
         self: Self*,
         func_type: cir::TypedFuncType*,
         args: Vec<cir::TypedExpr>*,
-        loc: Span
+        span: Span
     ) Option<cir::SemaType> {
         const expected_args_len = func_type->params.list.len();
         const is_variadic = func_type->params.variadic.is_some();
@@ -8261,7 +8261,7 @@ pub struct Analyzer {
             diags::report_func_call_args_count_mismatch(
                 self->dctx,
                 self->allocator,
-                loc,
+                span,
                 func_name.as_str_const(),
                 @cast(uint32, expected_args_len),
                 @cast(uint32, args->len())
@@ -8274,7 +8274,7 @@ pub struct Analyzer {
         while (i < expected_args_len && i < args->len()) {
             const param_type_raw = *func_type->params.list.get_const(i).unwrap();
 
-            switch (self->normalize_and_check_type_formation(param_type_raw, loc, 0)) {
+            switch (self->normalize_and_check_type_formation(param_type_raw, span, 0)) {
                 case .Some(param_type) => {
                     const arg = args->get(i).unwrap();
 
@@ -8317,7 +8317,7 @@ pub struct Analyzer {
 
                             switch (self->analyze_expr(arg, arg->ty)) {
                                 case .Some(arg_type) => {
-                                    if (!self->is_assignable_to(arg_type, ty, loc)) {
+                                    if (!self->is_assignable_to(arg_type, ty, span)) {
                                         var param_type_str = format::format_sema_type(self->allocator, self->decl_tables, &ty);
                                         defer param_type_str.free();
                                         var argument_type_str = format::format_sema_type(self->allocator, self->decl_tables, &arg_type);
@@ -8325,7 +8325,7 @@ pub struct Analyzer {
                                         diags::report_func_call_variadic_param_type_mismatch(
                                             self->dctx,
                                             self->allocator,
-                                            loc,
+                                            span,
                                             @cast(uint32, j),
                                             argument_type_str.as_str_const(),
                                             param_type_str.as_str_const()
@@ -8401,7 +8401,7 @@ pub struct Analyzer {
         method_decl: cir::MethodDecl*,
         final_type_args: const cir::TypedTypeArgs*,
         is_generic_interface_method_call: bool,
-        loc: Span
+        span: Span
     ) Option<cir::MonomorphId> {
         if (!is_generic_interface_method_call) {
             // Substitute Self inside params, ret_type, variables
@@ -8411,7 +8411,7 @@ pub struct Analyzer {
         self->substitute_func_params(&method_decl->func_decl.params);
         method_decl->func_decl.ret_type = self->substitute_type(&method_decl->func_decl.ret_type);
 
-        if (!self->check_type_arity(method_decl->func_decl.ret_type, loc)) {
+        if (!self->check_type_arity(method_decl->func_decl.ret_type, span)) {
             return .None;
         }
 
@@ -8707,13 +8707,13 @@ pub struct Analyzer {
         object_type: const cir::SemaType*,
         object_impls: const Vec<cir::TypedImplementInterface>*,
         method_decls: const cir::MethodDecls*,
-        loc: Span
+        span: Span
     ) {
         const generic_env_opt = self->create_inference_generic_env(
             interface_decl->name.as_str_const(),
             interface_decl->generic_params,
             interface_type_args,
-            loc
+            span
         );
 
         switch (generic_env_opt) case .Some(env) else {
@@ -8834,7 +8834,7 @@ pub struct Analyzer {
         methods: const cir::MethodDecls*,
         is_interface_generic: bool,
         concrete_type: const cir::SemaType*,
-        loc: Span
+        span: Span
     ) {
         switch (concrete_type->as_named_type()) case .Some(concrete_named) else {
             return;
@@ -8865,7 +8865,7 @@ pub struct Analyzer {
                     entry->name.as_str_const(),
                     object_generic_params,
                     &concrete_named.type_args,
-                    loc
+                    span
                 )) case .Some(object_method_generic_env) else {
                     continue;
                 }
@@ -8911,7 +8911,7 @@ pub struct Analyzer {
                     method_decl,
                     &final_type_args,
                     true,
-                    loc
+                    span
                 );
                 self->func_env = saved_func_env;
 
@@ -9246,20 +9246,20 @@ pub struct Analyzer {
 
 
 
-    fn validate_variable_type(self: Self*, ty: const cir::SemaType*, is_init: bool, loc: Span) bool {
+    fn validate_variable_type(self: Self*, ty: const cir::SemaType*, is_init: bool, span: Span) bool {
         if (ty->const_inner()->is_void()) {
-            diags::report_void_variable_type(self->dctx, self->allocator, loc);
+            diags::report_void_variable_type(self->dctx, self->allocator, span);
         }
 
         if (ty->const_inner()->is_interface() && !is_init) {
-            diags::report_interface_type_must_be_initialized(self->dctx, self->allocator, loc);
+            diags::report_interface_type_must_be_initialized(self->dctx, self->allocator, span);
         }
 
         if (ty->const_inner()->is_func_type() && !is_init) {
-            diags::report_lambda_type_must_be_initialized(self->dctx, self->allocator, loc);
+            diags::report_lambda_type_must_be_initialized(self->dctx, self->allocator, span);
         }
 
-        return self->check_type_arity(*ty, loc);
+        return self->check_type_arity(*ty, span);
     }
 
     fn validate_non_static_global_var_modifiers(self: Self*, global_var: const cir::TypedGlobalVarStmt*) {
@@ -11708,19 +11708,19 @@ pub struct Analyzer {
         sema_type: const cir::SemaType*,
         root_expr: const cir::TypedExpr*,
         stmt_is_const: bool,
-        loc: Span,
+        span: Span,
         path: Vec<usize>*
     ) {
         switch (pattern->ty) {
             case .Some(explicit_type) => {
-                if (!self->is_assignable_to(*sema_type, explicit_type, loc)) {
+                if (!self->is_assignable_to(*sema_type, explicit_type, span)) {
                     var lhs_str = format::format_sema_type(self->allocator, self->decl_tables, &explicit_type);
                     var rhs_str = format::format_sema_type(self->allocator, self->decl_tables, sema_type);
 
                     diags::report_assignment_type_mismatch(
                         self->dctx,
                         self->allocator,
-                        loc,
+                        span,
                         lhs_str.as_str_const(),
                         rhs_str.as_str_const()
                     );
@@ -11735,7 +11735,7 @@ pub struct Analyzer {
 
         switch (pattern->kind) {
             case .Ident(var_decl_id) => {
-                const access_expr = tuple_access_expr(self->allocator, root_expr, path, loc);
+                const access_expr = tuple_access_expr(self->allocator, root_expr, path, span);
 
                 var is_const_opt: Option<bool> = .None;
                 switch (pattern->mutability) {
@@ -11757,7 +11757,7 @@ pub struct Analyzer {
                         diags::report_invalid_nested_export_tuple(
                             self->dctx,
                             self->allocator,
-                            loc,
+                            span,
                             mutability_str
                         );
                     }
@@ -11774,7 +11774,7 @@ pub struct Analyzer {
                     diags::report_tuple_member_access_on_non_tuple_operand(
                         self->dctx,
                         self->allocator,
-                        loc
+                        span
                     );
                     return;
                 }
@@ -11783,7 +11783,7 @@ pub struct Analyzer {
                     diags::report_tuple_exported_values_and_tuple_elements_count_mismatch(
                         self->dctx,
                         self->allocator,
-                        loc,
+                        span,
                         tuple_type.elements.len(),
                         patterns.len()
                     );
@@ -11795,7 +11795,7 @@ pub struct Analyzer {
                     const element = tuple_type.elements.get_const(i).unwrap();
 
                     path->push(i);
-                    self->analyze_tuple_pattern(sub_pattern, &element->ty, root_expr, stmt_is_const, loc, path);
+                    self->analyze_tuple_pattern(sub_pattern, &element->ty, root_expr, stmt_is_const, span, path);
                     path->pop();
                 }
             }
@@ -12079,7 +12079,7 @@ fn tuple_access_expr(
     allocator: Allocator,
     base_expr: const cir::TypedExpr*,
     access_path: const Vec<usize>*, 
-    loc: Span
+    span: Span
 ) cir::TypedExpr {
     var expr: cir::TypedExpr = *base_expr;
     var current_type = expr.ty;
@@ -12116,12 +12116,12 @@ fn tuple_access_expr(
             kind: .TupleAccess(cir::TypedTupleAccessExpr {
                 operand: alloc_init(allocator, expr),
                 index,
-                span: loc,
+                span: span,
             }),
             ty: .Some(element_type),
             analyzed: false,
             val_cat: expr.val_cat,
-            span: loc,
+            span: span,
         };
 
         current_type = .Some(element_type);
