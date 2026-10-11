@@ -1,0 +1,7 @@
+fn add(x: int32, y: int32) int32 {
+    return x + y;
+}
+
+pub fn main() {
+    add(1, true); //~ ERROR argument at index 0 has type `bool`, but the expected parameter type is `int32`
+}

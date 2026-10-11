@@ -1,0 +1,17 @@
+interface Animal {
+    fn speak(self: Self*) void;
+}
+
+struct Dog {
+    pub name: uint8*,
+
+    pub fn speak(self: Self*) void {}
+}
+
+fn animal_speak<T: Animal>(creature: T) {
+    creature.speak();
+}
+
+pub fn main() {
+    animal_speak(5); //~ ERROR argument at index 0 does not satisfy the required bound: expected a type implementing `Animal`, but found `int32`
+}

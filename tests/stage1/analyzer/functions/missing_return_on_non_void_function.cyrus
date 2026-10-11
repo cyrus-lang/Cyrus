@@ -1,0 +1,9 @@
+fn foo(foo: int32) int32 { //~ ERROR missing return statement
+    if (foo > 0) {
+        return 1;
+    }
+}
+
+pub fn main() {
+    foo(5);
+}

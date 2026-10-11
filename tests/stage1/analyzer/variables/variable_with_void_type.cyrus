@@ -1,0 +1,7 @@
+fn foo() {
+    var x: void; //~ ERROR the type `void` cannot be used in this context
+}
+
+pub fn main() {
+    foo();
+}

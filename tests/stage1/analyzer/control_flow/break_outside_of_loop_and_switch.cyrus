@@ -1,0 +1,7 @@
+fn foo() {
+    break; //~ ERROR invalid usage of the break statement
+}
+
+pub fn main() {
+    foo();
+}

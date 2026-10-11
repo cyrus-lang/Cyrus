@@ -1,0 +1,15 @@
+enum Color {
+    Red,
+    Green
+}
+
+fn describe_number(number: int32) {
+    switch (number) {
+        case .Red => {} //~ ERROR cannot use an enum-variant, binding, or wildcard pattern in a switch over a non-enum operand of type `int32`
+        else => {}
+    }
+}
+
+pub fn main() {
+    describe_number(1);
+}

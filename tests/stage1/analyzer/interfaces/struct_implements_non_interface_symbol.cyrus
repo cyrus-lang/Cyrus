@@ -1,0 +1,9 @@
+struct Base {
+    pub x: int32
+}
+
+struct Derived : Base { //~ ERROR symbol `Base` is not an interface
+    pub y: int32
+}
+
+pub fn main() {}

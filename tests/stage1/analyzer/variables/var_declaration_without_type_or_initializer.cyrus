@@ -1,0 +1,7 @@
+fn foo() {
+    var total; //~ ERROR expected initializer, `undefined`, or an explicit type specifier
+}
+
+pub fn main() {
+    foo();
+}

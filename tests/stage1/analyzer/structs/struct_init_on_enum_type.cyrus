@@ -1,0 +1,8 @@
+enum Color {
+    Red,
+    Green
+}
+
+pub fn main() {
+    var invalid = Color { value: 1 }; //~ ERROR symbol `Color` is not a struct
+}

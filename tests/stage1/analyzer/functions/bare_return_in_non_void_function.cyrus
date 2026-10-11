@@ -1,0 +1,7 @@
+fn foo() int32 {
+    return; //~ ERROR return statement requires an argument of type `int32`
+}
+
+pub fn main() {
+    foo();
+}

@@ -1,0 +1,8 @@
+enum Color {
+    Red,
+    Green
+}
+
+pub fn main() {
+    var color = Color.Red(5); //~ ERROR enum variant `Red` does not accept fields
+}

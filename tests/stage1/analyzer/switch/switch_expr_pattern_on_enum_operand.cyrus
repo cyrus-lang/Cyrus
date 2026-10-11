@@ -1,0 +1,15 @@
+enum Color {
+    Red,
+    Green
+}
+
+fn describe_color(color: Color) {
+    switch (color) {
+        case 1 => {} //~ ERROR only enum variants are allowed here
+        else => {}
+    }
+}
+
+pub fn main() {
+    describe_color(Color.Red);
+}

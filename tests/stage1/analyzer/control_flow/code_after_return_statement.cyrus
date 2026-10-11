@@ -1,0 +1,8 @@
+fn exit() int32 {
+    return 1;
+    const x = 2; //~ WARNING unreachable code
+}
+
+pub fn main() {
+    exit();
+}

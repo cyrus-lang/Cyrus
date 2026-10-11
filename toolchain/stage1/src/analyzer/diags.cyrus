@@ -521,8 +521,12 @@ pub fn report_deref_non_pointer_value(
     dctx: DiagContext*,
     allocator: Allocator,
     span: Span,
+    operand_type: const uint8*,
 ) {
-    var msg = String.from_str(allocator, "cannot dereference non-pointer value");
+    var msg = String.new(allocator);
+    msg.push_str("cannot dereference non-pointer value of type `");
+    msg.push_str(operand_type);
+    msg.push_str("`");
 
     const diag = Diag.new(allocator, .Error, msg.as_str_const(), span);
     dctx->report(diag);
@@ -628,7 +632,7 @@ pub fn report_invalid_continue_statement(
 ) {
     var msg = String.from_str(
         allocator,
-        "invalid usage of the continue statement; it must be inside a loop statement"
+        "invalid usage of the continue statement"
     );
 
     const diag = Diag.new(allocator, .Error, msg.as_str_const(), span);
@@ -644,7 +648,7 @@ pub fn report_invalid_break_statement(
 ) {
     var msg = String.from_str(
         allocator,
-        "invalid usage of the break statement; it must be inside a loop/switch statement"
+        "invalid usage of the break statement"
     );
 
     const diag = Diag.new(allocator, .Error, msg.as_str_const(), span);
@@ -673,7 +677,7 @@ pub fn report_private_entry_point(
 ) {
     var msg = String.from_str(
         allocator,
-        "the program entry point is a linkage-visible symbol and cannot be private"
+        "entry point must be public"
     );
 
     const diag = Diag.new(allocator, .Error, msg.as_str_const(), span);
@@ -947,7 +951,7 @@ pub fn report_internal_method_call(
     msg.push_str(method_name);
     msg.push_str("` of object `");
     msg.push_str(object_name);
-    msg.push_str("` from outside its definition");
+    msg.push_str("`");
 
     const diag = Diag.new(allocator, .Error, msg.as_str_const(), span);
     dctx->report(diag);
@@ -1034,9 +1038,13 @@ pub fn report_array_non_integer_index(
 pub fn report_array_index_on_non_array_operand(
     dctx: DiagContext*,
     allocator: Allocator,
+    operand_type: const uint8*,
     span: Span,
 ) {
-    var msg = String.from_str(allocator, "cannot index non-array value");
+    var msg = String.new(allocator);
+    msg.push_str("cannot index non-array value of type `");
+    msg.push_str(operand_type);
+    msg.push_str("`");
 
     const diag = Diag.new(allocator, .Error, msg.as_str_const(), span);
     dctx->report(diag);
@@ -1181,7 +1189,7 @@ pub fn report_invalid_thin_arrow(
     allocator: Allocator,
     span: Span,
 ) {
-    var msg = String.from_str(allocator, "invalid usage of the thin arrow");
+    var msg = String.from_str(allocator, "use `.` instead of `->` when accessing an object directly");
 
     const diag = Diag.new(allocator, .Error, msg.as_str_const(), span);
     dctx->report(diag);
@@ -1436,12 +1444,13 @@ pub fn report_enum_variant_kind_mismatch(
     provided_kind: const uint8*,
 ) {
     var msg = String.new(allocator);
-    msg.push_str("invalid construction of enum variant `");
+    msg.push_str("enum variant `");
     msg.push_str(variant_name);
-    msg.push_str("`: expected ");
+    msg.push_str("` is a ");
     msg.push_str(expected_kind);
-    msg.push_str(" but got ");
+    msg.push_str(" variant, but it was constructed with ");
     msg.push_str(provided_kind);
+    msg.push_str(" syntax");
 
     const diag = Diag.new(allocator, .Error, msg.as_str_const(), span);
     dctx->report(diag);
@@ -1513,7 +1522,7 @@ pub fn report_cannot_infer_enum_for_unnamed_variant(
     variant_name: const uint8*,
 ) {
     var msg = String.new(allocator);
-    msg.push_str("could not infer type of unnamed enum value `");
+    msg.push_str("could not infer type of enum value `");
     msg.push_str(variant_name);
     msg.push_str("`");
 
@@ -1919,7 +1928,7 @@ pub fn report_tuple_destruction_with_no_rhs(
     allocator: Allocator,
     span: Span,
 ) {
-    var msg = String.from_str(allocator, "cannot destructure tuple in export without a value");
+    var msg = String.from_str(allocator, "cannot destructure tuple without a value");
 
     const diag = Diag.new(allocator, .Error, msg.as_str_const(), span);
     dctx->report(diag);
@@ -2136,7 +2145,7 @@ pub fn report_internal_field_access(
     msg.push_str(field_name);
     msg.push_str("` of struct `");
     msg.push_str(object_name);
-    msg.push_str("` from outside its definition");
+    msg.push_str("`");
 
     const diag = Diag.new(allocator, .Error, msg.as_str_const(), span);
     dctx->report(diag);
@@ -2266,8 +2275,12 @@ pub fn report_invalid_switch_case_pattern(
     dctx: DiagContext*,
     allocator: Allocator,
     span: Span,
+    operand_type: const uint8*,
 ) {
-    var msg = String.from_str(allocator, "invalid switch case pattern");
+    var msg = String.new(allocator);
+    msg.push_str("cannot use an enum-variant, binding, or wildcard pattern in a switch over a non-enum operand of type `");
+    msg.push_str(operand_type);
+    msg.push_str("`; use literal or range patterns instead");
 
     const diag = Diag.new(allocator, .Error, msg.as_str_const(), span);
     dctx->report(diag);
@@ -2383,7 +2396,7 @@ pub fn report_interface_methods_must_use_referenced_self(
     allocator: Allocator,
     span: Span,
 ) {
-    var msg = String.from_str(allocator, "interface methods must use referenced self. By-value `self` is not allowed");
+    var msg = String.from_str(allocator, "interface methods must use referenced self");
 
     const diag = Diag.new(allocator, .Error, msg.as_str_const(), span);
     dctx->report(diag);
@@ -2448,7 +2461,7 @@ pub fn report_lambda_type_must_be_initialized(
     allocator: Allocator,
     span: Span,
 ) {
-    var msg = String.from_str(allocator, "lambda type value must be uninitialized");
+    var msg = String.from_str(allocator, "lambda value must be initialized");
 
     const diag = Diag.new(allocator, .Error, msg.as_str_const(), span);
     dctx->report(diag);
@@ -2549,7 +2562,7 @@ pub fn report_repr_c_enum_with_non_integer_variant(
 ) {
     var msg = String.from_str(
         allocator,
-        "`repr(c)` enum cannot contain non-integer variants, because their layout cannot be represented in the C ABI"
+        "[[repr(c)]] enum cannot contain non-integer variants"
     );
 
     const diag = Diag.new(allocator, .Error, msg.as_str_const(), span);

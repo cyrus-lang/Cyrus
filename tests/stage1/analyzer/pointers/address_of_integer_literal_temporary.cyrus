@@ -1,0 +1,7 @@
+fn foo() {
+    const ptr = &5; //~ ERROR cannot take the address of a temporary value
+}
+
+pub fn main() {
+    foo();
+}

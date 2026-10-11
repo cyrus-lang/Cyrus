@@ -1,0 +1,12 @@
+struct Logger {
+    pub level: int32,
+
+    fn log_internal(self: Self*) {
+        self->level += 1;
+    }
+}
+
+pub fn main() {
+    var logger = Logger { level: 0 };
+    logger.log_internal(); //~ ERROR cannot call internal method `log_internal` of object `Logger`
+}

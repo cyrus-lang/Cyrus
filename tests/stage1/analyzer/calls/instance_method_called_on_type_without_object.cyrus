@@ -1,0 +1,15 @@
+struct Counter {
+    pub count: int32,
+
+    pub fn new(initial: int32) Self {
+        return Self { count: initial };
+    }
+
+    pub fn increment(self: Self*) {
+        self->count += 1;
+    }
+}
+
+pub fn main() {
+    Counter.increment(); //~ ERROR cannot call instance method `increment` without an object
+}

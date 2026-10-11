@@ -1,0 +1,8 @@
+fn foo() {
+    var x = 42;
+    const y = *x; //~ ERROR cannot dereference non-pointer value of type `int32`
+}
+
+pub fn main() {
+    foo();
+}

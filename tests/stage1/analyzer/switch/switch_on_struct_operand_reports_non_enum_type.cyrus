@@ -1,0 +1,16 @@
+struct Point {
+    x: int32,
+    y: int32
+}
+
+fn switch_on_struct_pointer_operand(point: Point*) {
+    switch (point) { //~ ERROR switch expression must be an enum type, but found `(Point)*`
+        case 1 => {}
+        else => {}
+    }
+}
+
+pub fn main() {
+    var point = Point { x: 1, y: 2 };
+    switch_on_struct_pointer_operand(&point);
+}

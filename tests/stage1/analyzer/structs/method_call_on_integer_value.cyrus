@@ -1,0 +1,8 @@
+fn foo() {
+    var x = 42;
+    x.method(); //~ ERROR type `int32` does not support method calls
+}
+
+pub fn main() {
+    foo();
+}

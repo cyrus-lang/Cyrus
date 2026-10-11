@@ -1,0 +1,11 @@
+interface Notifier {
+    fn notify(self: Self*) void;
+}
+
+fn foo() {
+    var notifier: Notifier; //~ ERROR interface type value must be initialized
+}
+
+pub fn main() {
+    foo();
+}

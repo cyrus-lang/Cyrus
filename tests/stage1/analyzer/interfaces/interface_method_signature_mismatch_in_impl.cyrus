@@ -1,0 +1,19 @@
+interface Notifier {
+    fn notify(self: Self*, priority: int32) void;
+}
+
+struct EmailSender : Notifier {
+    pub address: uint8*,
+
+    pub fn new() Self {
+        return Self { address: "noreply" };
+    }
+
+    pub fn notify(self: Self*, priority: uint8) void {
+        //~^ ERROR method `notify` implemented in object `EmailSender` does not match the method from interface `Notifier`
+    }
+}
+
+pub fn main() {
+    var sender = EmailSender.new();
+}

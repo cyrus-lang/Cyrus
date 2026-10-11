@@ -1,0 +1,7 @@
+fn foo(x: int32, x: int32) int32 { //~ ERROR symbol `x` cannot be declared again
+    return x + x;
+}
+
+pub fn main() {
+    foo(1, 2);
+}

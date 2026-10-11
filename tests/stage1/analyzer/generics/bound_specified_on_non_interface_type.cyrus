@@ -1,0 +1,5 @@
+fn foo<T: int32>(value: T) {} //~ ERROR expected an interface in bound, but found type `int32`
+
+pub fn main() {
+    foo(5);
+}

@@ -1,0 +1,4 @@
+pub fn main() {
+    const pair = (1, 2);
+    const member = pair.5; //~ ERROR tuple member access with index 5 exceeds tuple length 2
+}

@@ -1,0 +1,7 @@
+fn add(x: int32, y: int32) int32 {
+    return x + y;
+}
+
+pub fn main() {
+    add(1, 2, 3); //~ ERROR function `add` expects 2 arguments, but 3 was provided
+}

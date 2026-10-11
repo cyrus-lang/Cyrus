@@ -3492,7 +3492,20 @@ pub struct Analyzer {
             || operand_type.as_func_type().is_some())
             && !operand_type.is_pointer())
         {
-            diags::report_deref_non_pointer_value(self->dctx, self->allocator, deref->span);
+            var operand_str = format::format_sema_type(
+                self->allocator,
+                self->decl_tables,
+                &operand_type
+            );
+
+            diags::report_deref_non_pointer_value(
+                self->dctx,
+                self->allocator,
+                deref->span,
+                operand_str.as_str_const()
+            );
+
+            operand_str.free();
             return .None;
         }
 
@@ -3505,7 +3518,17 @@ pub struct Analyzer {
                 return .Some(*inner);
             }
             else => {
-                diags::report_deref_non_pointer_value(self->dctx, self->allocator, deref->span);
+                var operand_str = format::format_sema_type(
+                    self->allocator, 
+                    self->decl_tables, 
+                    &operand_type
+                );
+                diags::report_deref_non_pointer_value(
+                    self->dctx,
+                    self->allocator,
+                    deref->span, operand_str.as_str_const()
+                );
+                operand_str.free();
                 return .None;
             }
         }
@@ -3841,6 +3864,7 @@ pub struct Analyzer {
                                 self->allocator,
                                 loc
                             );
+                            return .None;
                         } else if (p1.is_integer() && p2.is_integer()) {
                             switch (cir::PlainType.widen_type(p1, p2)) {
                                 case .Some(widen) => return .Some(.Plain(widen));
@@ -4160,11 +4184,20 @@ pub struct Analyzer {
         const is_operand_array = operand_type.const_inner()->is_array();
 
         if (!operand_type.is_pointer() && !is_operand_array) {
+            var operand_str = format::format_sema_type(
+                self->allocator,
+                self->decl_tables, 
+                &operand_type
+            );
+
             diags::report_array_index_on_non_array_operand(
                 self->dctx,
                 self->allocator,
+                operand_str.as_str_const(),
                 array_index->span
             );
+
+            operand_str.free();
             return .None;
         }
 
@@ -8106,7 +8139,12 @@ pub struct Analyzer {
 
         for (var i: usize = 0; i < generic_param->bounds.len(); i += 1) {
             const bound = generic_param->bounds.get_const(i).unwrap();
-            
+
+            // Prevent cascading failures
+            if (!bound->ty.is_interface()) {
+                continue;
+            }
+
             var satisfies_bound = false;
 
             switch (arg_type->as_named_type()) {
@@ -8129,9 +8167,8 @@ pub struct Analyzer {
 
             if (!satisfies_bound) {
                 var expected_bound = format::format_sema_type(self->allocator, self->decl_tables, &bound->ty);
-                defer expected_bound.free();
                 var found_type = format::format_sema_type(self->allocator, self->decl_tables, arg_type);
-                defer found_type.free();
+
                 diags::report_argument_does_not_satisfy_bound(
                     self->dctx,
                     self->allocator,
@@ -8140,6 +8177,9 @@ pub struct Analyzer {
                     expected_bound.as_str_const(),
                     found_type.as_str_const()
                 );
+
+                expected_bound.free();
+                found_type.free();
             }
         }
     }
@@ -9837,6 +9877,7 @@ pub struct Analyzer {
 
         self->analyze_object_implements_interfaces(
             object_name.as_str_const(),
+            struct_decl->span,
             struct_decl->is_generic(),
             &struct_decl->impls,
             &struct_decl->methods
@@ -9879,22 +9920,24 @@ pub struct Analyzer {
                     case .None => return;
                     case .Some(.Transparent) => {
                         if (fields_count != 1) {
+                            // FIXME: Diag message has to rewritten entirely
                             diags::report_invalid_repr_attr(
                                 self->dctx,
                                 self->allocator,
                                 span,
                                 "repr(transparent)` struct must have exactly one field",
-                            "remove the extra fields or drop the `repr(transparent)` attribute"
+                                "remove the extra fields or drop the `repr(transparent)` attribute"
                             );
                         }
 
                         if (is_attr_repr_packed(&attr)) {
+                            // FIXME: Diag message has to rewritten entirely
                             diags::report_invalid_repr_attr(
                                 self->dctx,
                                 self->allocator,
                                 span,
                                 "`repr(transparent)` cannot be combined with `repr(packed)`",
-                            "use either `repr(transparent)` or `repr(packed)`, not both"
+                                "use either `repr(transparent)` or `repr(packed)`, not both"
                             );
                         }
                     }
@@ -9977,6 +10020,7 @@ pub struct Analyzer {
 
         self->analyze_object_implements_interfaces(
             object_name.as_str_const(),
+            union_decl->span,
             union_decl->is_generic(),
             &union_decl->impls,
             &union_decl->methods
@@ -10109,6 +10153,7 @@ pub struct Analyzer {
 
         self->analyze_object_implements_interfaces(
             object_name.as_str_const(),
+            enum_decl->span,
             enum_decl->is_generic(),
             &enum_decl->impls,
             &enum_decl->methods
@@ -10429,6 +10474,7 @@ pub struct Analyzer {
     pub fn analyze_object_implements_interfaces(
         self: Self*,
         object_name: const uint8*,
+        object_span: Span,
         is_object_generic: bool,
         impls: const Vec<cir::TypedImplementInterface>*,
         method_decls: const cir::MethodDecls*
@@ -10479,7 +10525,7 @@ pub struct Analyzer {
                     diags::report_missing_interface_method_impl(
                         self->dctx,
                         self->allocator,
-                        implement_interface->span,
+                        object_span,
                         object_name,
                         inst_func->name.as_str_const(),
                         interface_decl->name.as_str_const()
@@ -10496,7 +10542,7 @@ pub struct Analyzer {
                         diags::report_interface_method_type_mismatch(
                             self->dctx,
                             self->allocator,
-                            inst_func->span,
+                            object_method.func_decl.span,
                             object_name,
                             inst_func->name.as_str_const(),
                             interface_decl->name.as_str_const()
@@ -10910,7 +10956,20 @@ pub struct Analyzer {
             | .EnumTupleVariant 
             | .Binding 
             | .Wildcard => {
-                diags::report_invalid_switch_case_pattern(self->dctx, self->allocator, pattern->span);
+                var operand_str = format::format_sema_type(
+                    self->allocator, 
+                    self->decl_tables, 
+                    operand_type
+                );
+
+                diags::report_invalid_switch_case_pattern(
+                    self->dctx, 
+                    self->allocator, 
+                    pattern->span, 
+                    operand_str.as_str_const()
+                );
+                
+                operand_str.free();
                 return .Some(Vec.new(self->allocator));
             }
 

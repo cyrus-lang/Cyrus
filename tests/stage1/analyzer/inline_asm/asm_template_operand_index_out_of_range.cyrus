@@ -1,0 +1,9 @@
+pub fn main() {
+    var value: int32 = 0;
+    @asm( //~ ERROR template operand index %7 is out of range
+        "movl %7, %0"
+        : "=r"(value)
+        : "r"(value)
+        :
+    );
+}

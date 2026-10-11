@@ -1,0 +1,5 @@
+interface Wrapper {
+    fn wrap(self: Self*, other: Self) void; //~ ERROR interface method parameter type cannot contain `Self`
+}
+
+pub fn main() {}

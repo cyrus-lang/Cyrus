@@ -1,0 +1,8 @@
+enum Color {
+    Red,
+    Green
+}
+
+pub fn main() {
+    var color = .Red; //~ ERROR could not infer type of enum value `Red`
+}

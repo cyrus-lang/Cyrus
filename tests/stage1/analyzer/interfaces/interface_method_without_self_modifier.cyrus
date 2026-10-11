@@ -1,0 +1,5 @@
+interface Notifier {
+    fn notify() void; //~ ERROR instance methods must have self modifier
+}
+
+pub fn main() {}

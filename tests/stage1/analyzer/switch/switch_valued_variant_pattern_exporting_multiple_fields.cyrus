@@ -1,0 +1,17 @@
+enum Severity {
+    Low = 1,
+    Medium = 2,
+    High = 3
+}
+
+fn describe_severity(severity: Severity) {
+    switch (severity) {
+        case .Low(level, extra) => {} //~ ERROR valued variant `Low` can export only one field
+        case .Medium => {}
+        case .High => {}
+    }
+}
+
+pub fn main() {
+    describe_severity(Severity.Low);
+}

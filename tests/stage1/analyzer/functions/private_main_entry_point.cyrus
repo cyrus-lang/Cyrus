@@ -1,0 +1,2 @@
+fn main() { //~ ERROR entry point must be public
+}

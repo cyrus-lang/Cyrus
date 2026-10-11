@@ -1,0 +1,7 @@
+[[repr(c)]]
+enum Flag {
+    Disabled,
+    Enabled = 1.5 //~ ERROR [[repr(c)]] enum cannot contain non-integer variants
+}
+
+pub fn main() {}

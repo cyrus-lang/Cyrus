@@ -1,0 +1,17 @@
+enum LogLevel {
+    Info,
+    Warning,
+    Error
+}
+
+fn emit_level_message(level: LogLevel) {
+    switch (level) {
+        case .Info => {}
+        case .Warning => {}
+        case .Error(message) => {} //~ ERROR enum variant kind does not match the pattern form
+    }
+}
+
+pub fn main() {
+    emit_level_message(LogLevel.Info);
+}

@@ -1,0 +1,10 @@
+fn foo() {
+    var x: int32 = 8;
+    var y: int32 = 2;
+    
+    const result = x >> y; //~ ERROR rhs of the shift must be unsigned integer
+}
+
+pub fn main() {
+    foo();
+}

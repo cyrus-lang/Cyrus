@@ -255,14 +255,12 @@ fn command_analyze(ctx: cli::ActionContext) {
     const path = Path.new(allocator, file_path);
 
     switch (lexical.tokenize_source(path)) case .Value(var source_tokens) else {
-        driver.render_diags();
         analyze_teardown(&driver, &resolver, &opts);
         return;
     }
     defer source_tokens.free();
 
     switch (lexical.parse_source(source_tokens)) case .Value(var program) else {
-        driver.render_diags();
         analyze_teardown(&driver, &resolver, &opts);
         return;
     }

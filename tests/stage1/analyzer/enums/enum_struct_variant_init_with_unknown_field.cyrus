@@ -1,0 +1,12 @@
+enum Event {
+    Clicked {
+        x: int32,
+        y: int32
+    }
+}
+
+pub fn main() {
+    var event = Event.Clicked { x: 1, z: 2 }; 
+    //~^  ERROR variant `Clicked` has no field named `z`
+    //~^^ ERROR missing field `y` in initializer for variant `Clicked`
+}

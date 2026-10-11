@@ -1,0 +1,6 @@
+enum Color {
+    Red,
+    Red //~ ERROR duplicate declaration of enum variant `Red` in enum `Color`
+}
+
+pub fn main() {}

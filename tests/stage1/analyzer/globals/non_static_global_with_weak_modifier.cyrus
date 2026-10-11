@@ -1,0 +1,4 @@
+[[link(weak)]]
+const foo: int32 = 0; //~ ERROR invalid modifiers for non static global variable
+
+pub fn main() {}

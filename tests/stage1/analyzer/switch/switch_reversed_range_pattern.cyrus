@@ -1,0 +1,10 @@
+fn classify_digit(digit: int32) {
+    switch (digit) {
+        case 7...3 => {} //~ ERROR range lower bound must not exceed upper bound
+        else => {}
+    }
+}
+
+pub fn main() {
+    classify_digit(0);
+}

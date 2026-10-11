@@ -1,0 +1,7 @@
+fn foo() {
+    const x = -true; //~ ERROR cannot apply minus operator to value of type `bool`
+}
+
+pub fn main() {
+    foo();
+}

@@ -1,0 +1,9 @@
+pub fn main() {
+    var value: int32 = 0;
+    @asm(
+        "movl %1, %0"
+        : "=r"(value)
+        : "=r"(value) //~ ERROR input constraint `=r` is invalid; must not begin with `=` or `+`
+        :
+    );
+}

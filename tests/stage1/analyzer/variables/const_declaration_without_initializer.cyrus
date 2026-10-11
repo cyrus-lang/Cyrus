@@ -1,0 +1,7 @@
+fn foo() {
+    const x; //~ ERROR expected initializer, `undefined`, or an explicit type specifier
+}
+
+pub fn main() {
+    foo();
+}

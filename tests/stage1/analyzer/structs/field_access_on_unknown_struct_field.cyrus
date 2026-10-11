@@ -1,0 +1,13 @@
+struct Point {
+    pub x: int32,
+    pub y: int32
+}
+
+fn foo(point: Point) int32 {
+    return point.z; //~ ERROR `Point` has no field named `z`
+}
+
+pub fn main() {
+    var point = Point { x: 1, y: 2 };
+    foo(point);
+}

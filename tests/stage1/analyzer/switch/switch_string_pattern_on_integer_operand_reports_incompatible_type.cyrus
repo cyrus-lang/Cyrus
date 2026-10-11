@@ -1,0 +1,10 @@
+fn describe_number(number: int32) {
+    switch (number) {
+        case "not a number" => {} //~ ERROR switch pattern of type `(uint8)*` is not compatible with switch operand of type `int32`
+        else => {}
+    }
+}
+
+pub fn main() {
+    describe_number(1);
+}

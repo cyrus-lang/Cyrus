@@ -1,0 +1,8 @@
+union Value {
+    int_val: int32,
+    float_val: float64
+}
+
+pub fn main() {
+    var value = Value { int_val: 1, float_val: 2.0 }; //~ ERROR union initialization must contain exactly one field
+}

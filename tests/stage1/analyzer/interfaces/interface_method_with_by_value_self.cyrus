@@ -1,0 +1,5 @@
+interface Notifier {
+    fn notify(self: Self) void; //~ ERROR interface methods must use referenced self
+}
+
+pub fn main() {}
