@@ -845,9 +845,9 @@ pub fn report_func_call_args_count_mismatch(
     msg.push_str("function `");
     msg.push_str(func_name);
     msg.push_str("` expects ");
-    append_u32(&msg, expected);
+    append_uint32(&msg, expected);
     msg.push_str(" arguments, but ");
-    append_u32(&msg, provided);
+    append_uint32(&msg, provided);
     msg.push_str(" was provided");
 
     const diag = Diag.new(allocator, .Error, msg.as_str_const(), span);
@@ -866,7 +866,7 @@ pub fn report_func_call_param_type_mismatch(
 ) {
     var msg = String.new(allocator);
     msg.push_str("argument at index ");
-    append_u32(&msg, argument_idx);
+    append_uint32(&msg, argument_idx);
     msg.push_str(" has type `");
     msg.push_str(argument_type);
     msg.push_str("`, but the expected parameter type is `");
@@ -992,7 +992,7 @@ pub fn report_func_call_variadic_param_type_mismatch(
 ) {
     var msg = String.new(allocator);
     msg.push_str("argument at index ");
-    append_u32(&msg, argument_idx);
+    append_uint32(&msg, argument_idx);
     msg.push_str(" has type `");
     msg.push_str(argument_type);
     msg.push_str("`, but the variadic parameter expects type `");
@@ -1407,9 +1407,9 @@ pub fn report_enum_variant_arg_count_mismatch(
     msg.push_str("enum variant `");
     msg.push_str(variant_name);
     msg.push_str("` expects ");
-    append_u32(&msg, expected);
+    append_uint32(&msg, expected);
     msg.push_str(" fields, but ");
-    append_u32(&msg, provided);
+    append_uint32(&msg, provided);
     msg.push_str(" arguments were provided");
 
     const diag = Diag.new(allocator, .Error, msg.as_str_const(), span);
@@ -1852,9 +1852,9 @@ pub fn report_array_elements_count_mismatch(
 ) {
     var msg = String.new(allocator);
     msg.push_str("cannot use ");
-    append_u32(&msg, elements);
+    append_uint32(&msg, elements);
     msg.push_str(" elements in an array of size ");
-    append_u32(&msg, expected);
+    append_uint32(&msg, expected);
 
     const diag = Diag.new(allocator, .Error, msg.as_str_const(), span);
     dctx->report(diag);
@@ -1890,7 +1890,7 @@ pub fn report_array_element_type_mismatch(
     msg.push_str("type mismatch for value of type `");
     msg.push_str(element_type);
     msg.push_str("` at index ");
-    append_u32(&msg, element_index);
+    append_uint32(&msg, element_index);
     msg.push_str(" for elements of type `");
     msg.push_str(expected_type);
     msg.push_str("`");
@@ -2605,16 +2605,6 @@ pub fn report_valued_enum_variant_can_only_export_one_field(
     msg.free();
 }
 
-pub fn append_usize(out: String*, value: usize) {
-    var writer: Writer = dynamic StringWriter.new(out);
-    format_usize(writer, value);
-}
-
-pub fn append_u32(out: String*, value: uint32) {
-    var writer: Writer = dynamic StringWriter.new(out);
-    format_uint32(writer, value);
-}
-
 pub fn report_if_duplicate_param_names(
     dctx: DiagContext*, 
     allocator: Allocator, 
@@ -2686,4 +2676,14 @@ pub fn report_if_duplicate_param_names(
         case .Some(.UntypedCStyle) => {}
         case .None => {}
     }
+}
+
+pub fn append_usize(out: String*, value: usize) {
+    var writer: Writer = dynamic StringWriter.new(out);
+    format_usize(writer, value);
+}
+
+pub fn append_uint32(out: String*, value: uint32) {
+    var writer: Writer = dynamic StringWriter.new(out);
+    format_uint32(writer, value);
 }
