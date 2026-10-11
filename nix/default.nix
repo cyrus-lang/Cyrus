@@ -1,16 +1,10 @@
 {
-  # Package set. Defaults to <nixpkgs> so classic Nix works out of the box.
   pkgs ? import <nixpkgs> { },
-
-  # Repository root (the parent directory of nix/).
   src ? ../.,
-
-  # Lock file next to the stage0 cargo project.
+  # Lock file next to the stage0 cargo project
   cargoLockFile ? ../toolchain/stage0/Cargo.lock,
-
-  # LLVM used to link llvm-sys / inkwell (project targets LLVM 22).
+  # LLVM used to link llvm-sys / inkwell
   llvm ? pkgs.llvm_22,
-
   # Build profile for cargo.
   profile ? "release",
 }:
@@ -38,7 +32,6 @@ let
     cargo
   ];
 
-  # Environment the llvm-sys / asan / optimizer-wrapper build scripts expect.
   llvmEnv = {
     LLVM_CONFIG = "${llvm}/bin/llvm-config";
     LLVM_SYS_221_PREFIX = "${llvm.dev}";
@@ -50,7 +43,6 @@ let
     pname = "cyrus";
     inherit version src;
 
-    # Cargo project lives under toolchain/stage0 after the repo restructure.
     cargoRoot = "toolchain/stage0";
     cargoLock.lockFile = cargoLockFile;
 
@@ -64,7 +56,6 @@ let
       openssl
     ];
 
-    # buildRustPackage runs these relative to the unpacked source root.
     preBuild = ''
       export LLVM_CONFIG="${llvm}/bin/llvm-config"
       export LLVM_SYS_221_PREFIX="${llvm.dev}"
@@ -109,7 +100,6 @@ let
     };
   };
 
-  # Development shell: toolchain + LLVM + helpful aliases.
   devShell = pkgs.mkShell {
     name = "cyrus-dev";
 
@@ -133,13 +123,11 @@ let
       alias cyrus-build='./x.py build --stage stage0'
       alias cyrus-test='./x.py test --stage all'
 
-      echo "Cyrus dev shell (non-flake). Try: ./x.py --help"
+      echo "Cyrus dev shell. Try: ./x.py --help"
     '';
   };
 in
 cyrus.overrideAttrs (old: {
-  # Expose the shell for `nix-shell nix/default.nix -A devShell` style use
-  # is not standard for derivations; instead provide passthru.
   passthru = (old.passthru or { }) // {
     inherit devShell;
     inherit version;
