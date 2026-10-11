@@ -1,0 +1,3 @@
+pub fn main() {
+    const offset = @offsetof(int32, "x"); //~ ERROR @offsetOf operand must be a struct type, but found `int32`
+}

@@ -1882,7 +1882,7 @@ pub fn report_array_element_type_mismatch(
     msg.push_str(element_type);
     msg.push_str("` at index ");
     append_u32(&msg, element_index);
-    msg.push_str(" for array of type `");
+    msg.push_str(" for elements of type `");
     msg.push_str(expected_type);
     msg.push_str("`");
 
@@ -2584,7 +2584,7 @@ pub fn report_valued_enum_variant_can_only_export_one_field(
     var msg = String.new(allocator);
     msg.push_str("valued variant `");
     msg.push_str(variant_name);
-    msg.push_str("` can export only one field, because it contains exactly one value");
+    msg.push_str("` can export only one field");
 
     const diag = Diag.new(allocator, .Error, msg.as_str_const(), span);
     dctx->report(diag);

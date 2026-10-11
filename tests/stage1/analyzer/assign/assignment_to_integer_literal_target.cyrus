@@ -1,0 +1,7 @@
+fn foo() {
+    42 = 10; //~ ERROR cannot assign to non-lvalue
+}
+
+pub fn main() {
+    foo();
+}

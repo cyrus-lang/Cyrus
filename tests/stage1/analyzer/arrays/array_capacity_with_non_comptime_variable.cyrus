@@ -1,0 +1,4 @@
+pub fn main() {
+    var size = 5;
+    var buffer: int32[size]; //~ ERROR array capacity must be a compile-time constant expression
+}

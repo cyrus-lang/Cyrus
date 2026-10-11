@@ -1,0 +1,3 @@
+pub fn main() {
+    var buffer = int32[3] {1, 2}; //~ ERROR cannot use 2 elements in an array of size 3
+}

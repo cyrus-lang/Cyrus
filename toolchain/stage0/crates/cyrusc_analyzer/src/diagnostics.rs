@@ -99,7 +99,7 @@ pub enum AnalyzerDiagKind {
     #[error("Invalid enum constructor target; expression '{expr}' is not an enum.")]
     InvalidEnumConstructorTarget { expr: String },
 
-    #[error("Valued variant '.{variant_name}' can export only one field, because it contains exactly one value.")]
+    #[error("Valued variant '.{variant_name}' can export only one field")]
     ValuedEnumVariantCanOnlyExportOneField { variant_name: String },
 
     #[error("Cannot destructure tuple in export without a value.")]
@@ -486,7 +486,7 @@ pub enum AnalyzerDiagKind {
     CannotInferGenericArgument { type_name: String, param_name: String },
 
     #[error(
-        "Type mismatch for value of type '{element_type}' at index {element_index} for array of type '{expected_type}'."
+        "Type mismatch for value of type '{element_type}' at index {element_index} for elements of type '{expected_type}'."
     )]
     ArrayElementTypeMismatch {
         element_type: String,

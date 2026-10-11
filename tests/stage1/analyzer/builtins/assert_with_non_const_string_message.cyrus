@@ -1,0 +1,5 @@
+pub fn main() {
+    var number = 42;
+    var dynamic_message = "not equal";
+    @assert(number == 0, dynamic_message); //~ ERROR optional message argument to `@assert` must be a constant string literal
+}

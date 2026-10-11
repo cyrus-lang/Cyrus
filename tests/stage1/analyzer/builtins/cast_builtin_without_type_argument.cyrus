@@ -1,0 +1,4 @@
+pub fn main() {
+    var x = 42;
+    const y = @cast(5, x); //~ ERROR builtin `@cast` requires a type as its first argument
+}

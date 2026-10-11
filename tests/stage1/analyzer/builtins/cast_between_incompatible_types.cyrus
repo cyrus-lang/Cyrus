@@ -1,0 +1,4 @@
+pub fn main() {
+    var x = 42;
+    const y = @cast(bool, x); //~ ERROR cannot cast value of type `int32` to `bool`
+}
