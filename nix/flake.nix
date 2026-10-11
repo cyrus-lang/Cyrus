@@ -14,25 +14,20 @@
         inherit system overlays;
       };
 
-      # Shared derivation (also usable without flakes via nix-build nix/default.nix).
+      # Shared derivation
       mkCyrus = args: pkgs.callPackage ./default.nix ({
         inherit pkgs;
-        # The flake lives in nix/, the repository root is its parent.
         src = ../.;
       } // args);
     in
     {
-      ## -----------------------------
-      ## Packages
-      ## -----------------------------
+      # Packages
       packages.${system} = {
         default = mkCyrus { };
         linux = mkCyrus { };
 
-        # Release-profile variant of the stage0 compiler.
         release = mkCyrus { profile = "release"; };
 
-        # Cross-compile stage0 for Windows (requires the windows dev toolchain).
         windows = pkgs.rustPlatform.buildRustPackage {
           pname = "cyrus";
           version = "latest";
@@ -66,9 +61,7 @@
 
       defaultPackage.${system} = self.packages.${system}.default;
 
-      ## -----------------------------
-      ## Dev shells
-      ## -----------------------------
+      # Dev shells
       devShells.${system} = {
         default = (mkCyrus { }).devShell;
         linux = (mkCyrus { }).devShell;
