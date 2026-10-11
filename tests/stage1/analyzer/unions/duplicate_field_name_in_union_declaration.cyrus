@@ -1,0 +1,6 @@
+union Value {
+    payload: int32,
+    payload: float64 //~ ERROR duplicate declaration of field `payload` in `Value`
+}
+
+pub fn main() {}

@@ -1,0 +1,10 @@
+fn foo(x: float64) {
+    switch (x) {
+        case 1 => {} //~ ERROR switch pattern of type `int32` is not compatible with switch operand of type `float64`
+        else => {}
+    }
+}
+
+pub fn main() {
+    foo(0.5);
+}

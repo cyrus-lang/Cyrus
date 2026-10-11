@@ -1,0 +1,14 @@
+struct Point {
+    pub x: int32
+}
+
+fn foo() {
+    var point = Point { x: 1 };
+
+    const result = !point; 
+    //~^ ERROR cannot apply logical-not operator to value of type `Point`
+}
+
+pub fn main() {
+    foo();
+}

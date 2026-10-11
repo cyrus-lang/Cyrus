@@ -1,0 +1,12 @@
+enum Event {
+    Clicked {
+        x: int32,
+        y: int32
+    },
+    Closed
+}
+
+pub fn main() {
+    var event = Event.Clicked(1, 2); //~ ERROR enum variant `Clicked` is a struct variant, but it was constructed with tuple syntax
+    var closed = Event.Closed;
+}

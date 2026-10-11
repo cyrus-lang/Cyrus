@@ -1,0 +1,10 @@
+fn classify_digit(digit: int32) {
+    switch (digit) {
+        case 0...4 | 3...7 => {} //~ ERROR overlapping range in switch case
+        else => {}
+    }
+}
+
+pub fn main() {
+    classify_digit(0);
+}

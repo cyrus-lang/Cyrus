@@ -1,0 +1,15 @@
+struct Point {
+    pub x: int32
+}
+
+fn foo() {
+    var point = Point { x: 1 };
+
+    while (point) { //~ ERROR condition expression must be of type `bool`
+        point.x += 1;
+    }
+}
+
+pub fn main() {
+    foo();
+}

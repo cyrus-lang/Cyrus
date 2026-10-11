@@ -1,0 +1,7 @@
+fn foo() {
+    var callback: fn(int32) int32; //~ ERROR lambda value must be initialized
+}
+
+pub fn main() {
+    foo();
+}

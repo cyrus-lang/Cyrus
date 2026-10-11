@@ -1,0 +1,3 @@
+pub fn main() {
+    const (first, second); //~ ERROR cannot destructure tuple without a value
+}

@@ -1,4 +1,4 @@
 pub fn main() {
-    var num = 42;
-    const indexed = num[0]; //~ ERROR cannot index non-array value
+    var nums = 42;
+    nums[0]; //~ ERROR cannot index non-array value of type `int32`
 }

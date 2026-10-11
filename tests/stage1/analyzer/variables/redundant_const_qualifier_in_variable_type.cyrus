@@ -1,0 +1,7 @@
+fn foo() {
+    var x: const const int32 = 10; //~ ERROR redundant `const` qualifier on an already-const type
+}
+
+pub fn main() {
+    foo();
+}

@@ -1,0 +1,6 @@
+struct Point {
+    pub x: int32,
+    pub x: int32 //~ ERROR duplicate declaration of field `x` in `Point`
+}
+
+pub fn main() {}

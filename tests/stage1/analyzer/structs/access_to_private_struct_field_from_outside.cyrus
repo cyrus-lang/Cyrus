@@ -1,0 +1,10 @@
+struct Logger {
+    level: int32
+}
+
+pub fn main() {
+    var logger = Logger { level: 1 };
+
+    const level = logger.level; 
+    //~^ ERROR cannot access internal field `level` of struct `Logger`
+}

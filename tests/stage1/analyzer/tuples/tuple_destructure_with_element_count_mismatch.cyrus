@@ -1,0 +1,3 @@
+pub fn main() {
+    const (first, second, third) = (1, 2); //~ ERROR mismatch between number of exported values and tuple elements: expected 2, but 3 were provided
+}

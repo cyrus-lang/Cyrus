@@ -1,0 +1,7 @@
+fn foo() int32 {
+    return true; //~ ERROR return statement argument must be a value of type `int32` but got `bool`
+}
+
+pub fn main() {
+    foo();
+}

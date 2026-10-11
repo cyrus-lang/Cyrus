@@ -1,0 +1,7 @@
+fn foo() {
+    const sum = true + 5; //~ ERROR cannot apply infix operator between values of type `bool` and `int32`
+}
+
+pub fn main() {
+    foo();
+}

@@ -1,0 +1,16 @@
+enum Event {
+    Clicked { x: int32, y: int32 },
+    Closed
+}
+
+fn handle_event(event: Event) {
+    switch (event) {
+        case .Clicked { x, y } => {}
+        case .Clicked { x, z } => {} //~ ERROR unknown field `z` in enum struct pattern
+        case .Closed => {}
+    }
+}
+
+pub fn main() {
+    handle_event(Event.Closed);
+}

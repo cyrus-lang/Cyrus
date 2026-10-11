@@ -1,0 +1,9 @@
+// FIXME: Temporary! Will be removed after implementing CTFE
+
+fn foo() int32 {
+    return 3;
+}
+
+static var FOO: int32 = foo(); //~ ERROR static global variable expression is valid at comptime
+
+pub fn main() {}

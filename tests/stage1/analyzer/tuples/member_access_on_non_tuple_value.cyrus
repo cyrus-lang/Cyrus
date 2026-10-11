@@ -1,0 +1,4 @@
+pub fn main() {
+    var x = 42;
+    const y = x.0; //~ ERROR cannot access member of non-tuple value
+}

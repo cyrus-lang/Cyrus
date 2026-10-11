@@ -1,0 +1,8 @@
+fn foo() {
+    var ptr: void*;
+    *ptr; //~ ERROR cannot dereference a pointer of type `void*`
+}
+
+pub fn main() {
+    foo();
+}

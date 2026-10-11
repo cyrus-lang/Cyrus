@@ -1,0 +1,8 @@
+fn switch_without_any_case(value: int32) {
+    switch (value) { //~ ERROR switch statement must contain at least one case
+    }
+}
+
+pub fn main() {
+    switch_without_any_case(1);
+}

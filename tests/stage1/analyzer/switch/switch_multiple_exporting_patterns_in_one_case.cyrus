@@ -1,0 +1,16 @@
+enum Connection {
+    Opened(int32),
+    Rejected(int32),
+    Closed
+}
+
+fn connect(conn: Connection) {
+    switch (conn) {
+        case .Opened(x1) | .Rejected(x2) => {} //~ ERROR only one exporting pattern is allowed per switch case
+        case .Closed => {}
+    }
+}
+
+pub fn main() {
+    connect(Connection.Closed);
+}

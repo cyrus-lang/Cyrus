@@ -1,0 +1,7 @@
+fn foo() {
+    const x = undefined; //~ ERROR variable `x` requires an explicit type when initialized with `undefined`
+}
+
+pub fn main() {
+    foo();
+}

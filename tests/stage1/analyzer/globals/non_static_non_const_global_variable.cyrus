@@ -1,0 +1,3 @@
+var foo: int32 = 5; //~ ERROR non static global variable must be constant
+
+pub fn main() {}

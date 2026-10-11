@@ -1,0 +1,15 @@
+struct Point {
+    pub x: int32
+}
+
+fn branch_on_struct_condition() {
+    var point = Point { x: 1 };
+    
+    if (point) {
+        //~^ ERROR condition expression must be of type `bool`
+    }
+}
+
+pub fn main() {
+    branch_on_struct_condition();
+}

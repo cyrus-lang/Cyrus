@@ -1,0 +1,7 @@
+fn foo() {
+    continue; //~ ERROR invalid usage of the continue statement
+}
+
+pub fn main() {
+    foo();
+}

@@ -1,0 +1,17 @@
+enum HttpStatus {
+    Ok,
+    NotFound,
+    ServerError
+}
+
+fn foo(status: HttpStatus) {
+    switch (status) {
+        case .Ok | .Ok => {} //~ ERROR variant `Ok` is listed more than once in the patterns
+        case .NotFound => {}
+        case .ServerError => {}
+    }
+}
+
+pub fn main() {
+    foo(HttpStatus.Ok);
+}

@@ -1,0 +1,7 @@
+fn log_message() {
+    return 42; //~ ERROR return statement argument must be a value of type `void` but got `int32`
+}
+
+pub fn main() {
+    log_message();
+}

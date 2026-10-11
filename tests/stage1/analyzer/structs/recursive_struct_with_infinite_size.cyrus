@@ -1,0 +1,6 @@
+struct Node {
+    pub value: int32,
+    pub next: Node //~ ERROR recursive type `Node` has infinite size
+}
+
+pub fn main() {}

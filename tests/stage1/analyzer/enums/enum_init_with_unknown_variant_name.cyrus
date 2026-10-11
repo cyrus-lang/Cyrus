@@ -1,0 +1,8 @@
+enum Color {
+    Red,
+    Green
+}
+
+pub fn main() {
+    var color = Color.Purple; //~ ERROR enum `Color` does not have a variant named `Purple`
+}

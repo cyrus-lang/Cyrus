@@ -1,0 +1,8 @@
+enum Shape {
+    Circle(float64),
+    Square(float64)
+}
+
+pub fn main() {
+    var shape = Shape.Circle(1.0, 2.0); //~ ERROR enum variant `Circle` expects 1 fields, but 2 arguments were provided
+}

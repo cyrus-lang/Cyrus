@@ -1,0 +1,10 @@
+pub fn main() {
+    var value: int32 = 0;
+    
+    @asm(
+        "movl %1, %0"
+        : "=r"(value)
+        : "r"(value)
+        : "eax", "eax" //~ WARNING clobber `eax` is listed more than once
+    );
+}

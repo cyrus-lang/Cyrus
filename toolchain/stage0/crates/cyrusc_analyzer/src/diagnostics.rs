@@ -26,9 +26,7 @@ pub enum AnalyzerDiagKind {
     #[error("Invalid union literal: mixed type and value fields.")]
     MixedUnionFieldKinds,
 
-    #[error(
-        "Repr 'c' enum cannot contain non-integer variants, because their layout cannot be represented in the C ABI."
-    )]
+    #[error("[[repr(c)]] enum cannot contain non-integer variants")]
     ReprCEnumWithNonIntegerVariant,
 
     #[error("Enum tag type must be a scalar integer, char or bool but got '{got}'.")]
@@ -184,7 +182,7 @@ pub enum AnalyzerDiagKind {
     #[error("enum `{enum_name}` does not have a variant named `{variant_name}`")]
     NoSuchEnumVariant { enum_name: String, variant_name: String },
 
-    #[error("Could not infer type of unnamed enum value '.{variant_name}'")]
+    #[error("Could not infer type of enum value '.{variant_name}'")]
     CannotInferEnumForUnnamedVariant { variant_name: String },
 
     #[error("Union initialization must contain exactly one field.")]
@@ -244,10 +242,10 @@ pub enum AnalyzerDiagKind {
     #[error("Only one exporting pattern is allowed per switch case.")]
     MultipleExportingPatternsInSwitchCase,
 
-    #[error("Cannot access internal field '{field_name}' of struct '{object_name}' from outside its definition.")]
+    #[error("Cannot access internal field '{field_name}' of struct '{object_name}'")]
     InternalFieldAccess { field_name: String, object_name: String },
 
-    #[error("Cannot call internal method '{method_name}' of object '{object_name}' from outside its definition.")]
+    #[error("Cannot call internal method '{method_name}' of object '{object_name}'")]
     InternalMethodCall { method_name: String, object_name: String },
 
     #[error("Use '->' instead of '.' when accessing a member via a pointer.")]

@@ -1,0 +1,7 @@
+fn foo() int32 {
+    return 7;
+}
+
+const FOO = foo(); //~ ERROR global variable expression is not const evaluable
+
+pub fn main() {}

@@ -1,0 +1,9 @@
+struct Point {
+    pub x: int32,
+    pub y: int32
+}
+
+pub fn main() {
+    var point = Point { x: 1, y: 2 };
+    point.area(); //~ ERROR method `area` not defined for `Point`
+}

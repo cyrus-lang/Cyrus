@@ -1,0 +1,8 @@
+fn foo() {
+    var x: uint32 = 10;
+    const y = -x; //~ ERROR unary operator minus is not permitted on unsigned types
+}
+
+pub fn main() {
+    foo();
+}

@@ -1,0 +1,8 @@
+pub fn main() {
+    @asm(
+        "movl $0, %0"
+        : "=r"(5) //~ WARNING inline assembly output operand is not an lvalue
+        :
+        :
+    );
+}

@@ -1,0 +1,8 @@
+fn foo() {
+    var x = 42;
+    const y = x.field; //~ ERROR type `int32` does not support field access
+}
+
+pub fn main() {
+    foo();
+}

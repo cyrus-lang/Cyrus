@@ -1,0 +1,15 @@
+interface Notifier {
+    fn notify(self: Self*) void;
+}
+
+struct EmailSender : Notifier { //~ ERROR object `EmailSender` does not implement required method `notify` from interface `Notifier`
+    pub address: uint8*,
+
+    pub fn new() Self {
+        return Self { address: "noreply" };
+    }
+}
+
+pub fn main() {
+    var sender = EmailSender.new();
+}

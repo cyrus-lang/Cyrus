@@ -1,0 +1,7 @@
+fn foo() {
+    var x: const int32 = 10; //~ WARNING variable has a const-qualified type but is not declared const
+}
+
+pub fn main() {
+    foo();
+}

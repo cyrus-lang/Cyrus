@@ -28,10 +28,6 @@ pub struct GenericEnv {
         };
     }
 
-    pub fn free(self: Self*) {
-        self->bindings.free();
-    }
-
     pub fn from_type_args(
         allocator: Allocator,
         params: cir::TypedGenericParams,
@@ -122,18 +118,6 @@ pub struct GenericEnv {
                 return *b;
             }
             else => {}
-        }
-
-        return .None;
-    }
-
-    fn slot(self: const Self*, generic_param_id: cir::GenericParamId) Option<usize> {
-        for (var i: usize = 0; i < self->params.len(); i += 1) {
-            const id = self->params.ids.get_const(i).unwrap();
-            
-            if (*id == generic_param_id) {
-                return .Some(i);
-            }
         }
 
         return .None;
@@ -271,6 +255,22 @@ pub struct GenericEnv {
 
             else => return *ty;
         }
+    }
+
+    fn slot(self: const Self*, generic_param_id: cir::GenericParamId) Option<usize> {
+        for (var i: usize = 0; i < self->params.len(); i += 1) {
+            const id = self->params.ids.get_const(i).unwrap();
+            
+            if (*id == generic_param_id) {
+                return .Some(i);
+            }
+        }
+
+        return .None;
+    }
+
+    pub fn free(self: Self*) {
+        self->bindings.free();
     }
 }
 
