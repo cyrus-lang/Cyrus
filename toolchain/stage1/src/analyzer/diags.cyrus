@@ -424,7 +424,7 @@ pub fn report_infix_invalid(
     decl_tables: const DeclTables*,
     lhs_type: cir::SemaType,
     rhs_type: cir::SemaType,
-    loc: Span,
+    span: Span,
     with_cast_hint: bool,
 ) {
     var lhs_str = format::format_sema_type(allocator, decl_tables, &lhs_type);
@@ -433,7 +433,7 @@ pub fn report_infix_invalid(
     report_invalid_infix(
         dctx,
         allocator,
-        loc,
+        span,
         lhs_str.as_str_const(),
         rhs_str.as_str_const(),
         with_cast_hint
@@ -2615,7 +2615,13 @@ pub fn append_u32(out: String*, value: uint32) {
     format_uint32(writer, value);
 }
 
-pub fn report_if_duplicate_param_names(dctx: DiagContext*, allocator: Allocator, decl_tables: DeclTables*, params: const cir::TypedFuncParams*, loc: Span) {
+pub fn report_if_duplicate_param_names(
+    dctx: DiagContext*, 
+    allocator: Allocator, 
+    decl_tables: DeclTables*, 
+    params: const cir::TypedFuncParams*, 
+    span: Span
+) {
     for (var i: usize = 0; i < params->list.len(); i += 1) {
         const param = params->list.get_const(i).unwrap();
 
@@ -2644,7 +2650,7 @@ pub fn report_if_duplicate_param_names(dctx: DiagContext*, allocator: Allocator,
                     report_duplicate_func_parameter(
                         dctx,
                         allocator,
-                        loc,
+                        span,
                         typed_func_param.ident.str.as_str_const(),
                         i
                     );
@@ -2672,7 +2678,7 @@ pub fn report_if_duplicate_param_names(dctx: DiagContext*, allocator: Allocator,
                 report_duplicate_func_variadic_parameter(
                     dctx,
                     allocator,
-                    loc,
+                    span,
                     var_decl->name.as_str_const()
                 );
             }
