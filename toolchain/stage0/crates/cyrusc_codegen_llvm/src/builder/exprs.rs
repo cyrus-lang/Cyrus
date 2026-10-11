@@ -556,7 +556,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
                 self.llvm_builder.build_store(ptr, value).unwrap();
                 ptr
             }
-            _ => unreachable!("cannot decay a non-lvalue/rvalue array"),
+            _ => unreachable!("cannot decay a non lvalue/rvalue array"),
         };
 
         let element_type = array_lvalue.ty.as_array().unwrap().element_type;

@@ -1,0 +1,3 @@
+pub fn main() {
+    var buffer: void[3]; //~ ERROR element type of an array or slice cannot be `void`
+}

@@ -62,7 +62,7 @@ impl<'a, R: ConstResolver> ConstEvaluator<'a, R> {
                     let global_var = self.decl_tables.global_var_decl(global_var_decl_id);
 
                     // const-eval in analyzer layer is only
-                    // valid for non-static global vars
+                    // valid for non static global vars
                     if !global_var.is_static {
                         return self.eval_symbol(decl_id);
                     }

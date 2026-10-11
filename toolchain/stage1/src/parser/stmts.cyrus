@@ -953,7 +953,7 @@ pub struct ParserStmts {
             self->state->dctx->report(Diag.new(
                 self->state->allocator,
                 .Error,
-                "non-static global variable must be constant",
+                "non static global variable must be constant",
                 ident.span
             ));
             return false;

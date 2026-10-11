@@ -1,0 +1,9 @@
+fn foo() {
+    var v = 10;
+    const ptr: const int32* = &v;
+    *ptr = 99; //~ ERROR cannot assign to immutable lvalue
+}
+
+pub fn main() {
+    foo();
+}
