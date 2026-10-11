@@ -14,7 +14,6 @@ import diags{DiagContext};
 import parser::ast;
 import cir;
 
-import analyzer::vtables{VTableRegistry};
 import analyzer::lower{
     lower_unnamed_struct_value_as_unnamed_struct_type,
     lower_unnamed_union_value_as_unnamed_union_type,
@@ -56,11 +55,6 @@ import cir{
     cir_types_eq,
     type_args_eq
 };
-import analyzer::ciri{
-    fold_const_expr, 
-    fold_const_expr_int, 
-    is_expr_const_evaluable
-};
 import analyzer::lower{
     lower_cond_pointer_as_null_check, 
     lower_unnamed_enum_value_as_enum_init, 
@@ -68,13 +62,19 @@ import analyzer::lower{
     lower_unnamed_union_value_as_union_init, 
     lower_unnamed_struct_value_as_struct_init
 };
-
 import analyzer::monomorph{
     MonomorphRegistry, 
     MonomorphInstance, 
     MonomorphTemplateId, 
     InstantiationSite
 };
+import ciri{
+    is_expr_const_evaluable,
+    fold_const_expr_int, 
+    fold_const_expr,
+};
+
+import analyzer::vtables{VTableRegistry};
 import analyzer::format;
 import analyzer::diags;
 import analyzer::infer;
