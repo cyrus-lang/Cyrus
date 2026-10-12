@@ -1,0 +1,11 @@
+// @parse
+
+const a = foo(1, ;
+
+/*@parse
+tests/stage1/parser/exprs/failures/call_missing_arg.cyrus:3:18: error: expected expression
+      |
+    3 ~ const a = foo(1, ;
+      |                  ^
+      |
+@parse*/

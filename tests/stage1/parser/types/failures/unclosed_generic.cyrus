@@ -1,0 +1,11 @@
+// @parse
+
+static var a: Vec<;
+
+/*@parse
+tests/stage1/parser/types/failures/unclosed_generic.cyrus:3:19: error: expected type
+      |
+    3 ~ static var a: Vec<;
+      |                   ^
+      |
+@parse*/

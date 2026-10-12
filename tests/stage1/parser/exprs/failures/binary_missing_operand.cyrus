@@ -1,0 +1,11 @@
+// @parse
+
+const a = 1 + ;
+
+/*@parse
+tests/stage1/parser/exprs/failures/binary_missing_operand.cyrus:3:15: error: expected expression
+      |
+    3 ~ const a = 1 + ;
+      |               ^
+      |
+@parse*/
