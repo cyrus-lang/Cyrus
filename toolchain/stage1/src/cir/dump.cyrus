@@ -59,23 +59,6 @@ struct DumpContext {
         }
     }
 
-    fn write_index(self: Self*, index: usize) {
-        self->write("  [");
-        format_usize(self->writer, index);
-        self->write("] ");
-    }
-
-    fn write_counts(self: Self*, label: const uint8*, count: usize) {
-        if (count == 0) {
-            return;
-        }
-
-        self->write(" ");
-        self->write(label);
-        self->write("=");
-        format_usize(self->writer, count);
-    }
-
     fn write_type(self: Self*, ty: const cir::SemaType*) {
         self->write_owned(format::format_sema_type(self->allocator, self->tables, ty));
     }
@@ -105,14 +88,6 @@ struct DumpContext {
 
     fn write_expr_typed(self: Self*, expr: const cir::TypedExpr*) {
         self->write_expr(expr);
-
-        switch (expr->ty) {
-            case .Some(ty) => {
-                self->write(" : ");
-                self->write_type(&ty);
-            }
-            case .None => {}
-        }
     }
 
     fn write_impls(self: Self*, impls: const Vec<cir::TypedImplementInterface>*) {
@@ -184,6 +159,7 @@ struct DumpContext {
 
         self->write(decl->func_decl.name.as_str_const());
         self->write_func_params(&decl->func_decl.params);
+        self->write(" ");
         self->write_type(&decl->func_decl.ret_type);
     }
 
@@ -435,269 +411,61 @@ struct DumpContext {
     }
 
     pub fn dump(self: Self*, trees: const Vec<cir::TypedProgramTree>*) {
-        self->write("CIR DUMP\n");
-        self->dump_structs();
-        self->dump_unions();
-        self->dump_enums();
-        self->dump_funcs();
-        self->dump_methods();
-        self->dump_interfaces();
-        self->dump_global_vars();
-        self->dump_vars();
-        self->dump_typedefs();
+        // Emit like a clean source file: interfaces, structs, enums, unions,
+        // remaining top-level declarations, then funcs and methods.
+        self->dump_tree_category(trees, 0);
+        self->dump_tree_category(trees, 1);
+        self->dump_tree_category(trees, 2);
+        self->dump_tree_category(trees, 3);
+        self->dump_tree_category(trees, 5);
+        self->dump_tree_category(trees, 4);
+        self->dump_method_bodies();
+    }
 
-        self->write("BODIES (");
-        format_usize(self->writer, self->tables->bodies.len());
-        self->write(")\n");
+    fn decl_category(self: Self*, stmt: const cir::TypedStmt*) usize {
+        switch (stmt->kind) {
+            case .Interface => return 0;
+            case .Struct => return 1;
+            case .Enum => return 2;
+            case .Union => return 3;
+            case .FuncDef | .FuncDecl => return 4;
+            else => return 5;
+        }
+    }
 
-        self->write("TREES (");
-        format_usize(self->writer, trees->len());
-        self->write(")\n");
-
+    fn dump_tree_category(self: Self*, trees: const Vec<cir::TypedProgramTree>*, category: usize) {
         for (var i: usize = 0; i < trees->len(); i += 1) {
             const tree = trees->get_const(i).unwrap();
-
-            self->write("  [");
-            format_usize(self->writer, i);
-            self->write("] module=");
-            self->write(tree->module_name.as_str_const());
-            self->write(" file=");
-            self->write(tree->file_name.as_str_const());
-            self->write("\n");
-
-            self->dump_stmts(&tree->body, 2);
+            self->dump_tree_stmts_category(&tree->body, category);
         }
     }
 
-    fn dump_structs(self: Self*) {
-        self->write("STRUCTS (");
-        format_usize(self->writer, self->tables->structs.len());
-        self->write(")\n");
+    fn dump_tree_stmts_category(self: Self*, stmts: const Vec<cir::TypedStmt>*, category: usize) {
+        for (var i: usize = 0; i < stmts->len(); i += 1) {
+            const stmt = stmts->get_const(i).unwrap();
 
-        for (var i: usize = 0; i < self->tables->structs.len(); i += 1) {
-            const decl = self->tables->structs.get_const(i).unwrap();
-
-            self->write_index(i);
-            self->write("struct ");
-            self->write_opt_name(&decl->name);
-            self->write(" { ");
-
-            for (var j: usize = 0; j < decl->fields.len(); j += 1) {
-                const field = decl->fields.get_const(j).unwrap();
-                self->write(field->name.as_str_const());
-                self->write(": ");
-                self->write_type(&field->ty);
-
-                if (j + 1 != decl->fields.len()) {
-                    self->write(", ");
-                }
+            if (self->decl_category(stmt) == category) {
+                self->dump_stmt(stmt, 0);
             }
-
-            self->write(" }");
-            self->write_impls(&decl->impls);
-            self->write_counts("methods", decl->methods.len());
-            self->write_counts("generics", decl->generic_params.len());
-
-            switch (decl->align) {
-                case .Some(align) => {
-                    self->write(" align=");
-                    format_usize(self->writer, align);
-                }
-                case .None => {}
-            }
-
-            self->write("\n");
         }
     }
 
-    fn dump_unions(self: Self*) {
-        self->write("UNIONS (");
-        format_usize(self->writer, self->tables->unions.len());
-        self->write(")\n");
-
-        for (var i: usize = 0; i < self->tables->unions.len(); i += 1) {
-            const decl = self->tables->unions.get_const(i).unwrap();
-
-            self->write_index(i);
-            self->write("union ");
-            self->write_opt_name(&decl->name);
-            self->write(" { ");
-
-            for (var j: usize = 0; j < decl->fields.len(); j += 1) {
-                const field = decl->fields.get_const(j).unwrap();
-                self->write(field->name.as_str_const());
-                self->write(": ");
-                self->write_type(&field->ty);
-
-                if (j + 1 != decl->fields.len()) {
-                    self->write(", ");
-                }
-            }
-
-            self->write(" }");
-            self->write_impls(&decl->impls);
-            self->write_counts("methods", decl->methods.len());
-            self->write_counts("generics", decl->generic_params.len());
-
-            switch (decl->align) {
-                case .Some(align) => {
-                    self->write(" align=");
-                    format_usize(self->writer, align);
-                }
-                case .None => {}
-            }
-
-            self->write("\n");
-        }
-    }
-
-    fn dump_enums(self: Self*) {
-        self->write("ENUMS (");
-        format_usize(self->writer, self->tables->enums.len());
-        self->write(")\n");
-
-        for (var i: usize = 0; i < self->tables->enums.len(); i += 1) {
-            const decl = self->tables->enums.get_const(i).unwrap();
-
-            self->write_index(i);
-            self->write("enum ");
-            self->write_opt_name(&decl->name);
-
-            switch (decl->tag_type) {
-                case .Some(tag_type) => {
-                    self->write(" : ");
-                    self->write_type(&tag_type);
-                }
-                case .None => {}
-            }
-
-            self->write(" { ");
-            self->write_variants(&decl->variants);
-            self->write(" }");
-            self->write_impls(&decl->impls);
-            self->write_counts("methods", decl->methods.len());
-            self->write_counts("generics", decl->generic_params.len());
-            self->write("\n");
-        }
-    }
-
-    fn dump_funcs(self: Self*) {
-        self->write("FUNCS (");
-        format_usize(self->writer, self->tables->funcs.len());
-        self->write(")\n");
-
-        for (var i: usize = 0; i < self->tables->funcs.len(); i += 1) {
-            const decl = self->tables->funcs.get_const(i).unwrap();
-
-            self->write_index(i);
-            self->write("fn ");
-            self->write(decl->name.as_str_const());
-            self->write_func_params(&decl->params);
-            self->write_type(&decl->ret_type);
-
-            if (decl->body.is_some()) {
-                self->write(" has_body");
-            }
-
-            self->write_counts("generics", decl->generic_params.len());
-            self->write("\n");
-        }
-    }
-
-    fn dump_methods(self: Self*) {
-        self->write("METHODS (");
-        format_usize(self->writer, self->tables->methods.len());
-        self->write(")\n");
-
+    fn dump_method_bodies(self: Self*) {
         for (var i: usize = 0; i < self->tables->methods.len(); i += 1) {
             const decl = self->tables->methods.get_const(i).unwrap();
-
-            self->write_index(i);
             self->write_method_header(decl);
 
-            if (decl->body.is_some()) {
-                self->write(" has_body");
-            }
-
-            self->write("\n");
-        }
-    }
-
-    fn dump_interfaces(self: Self*) {
-        self->write("INTERFACES (");
-        format_usize(self->writer, self->tables->interfaces.len());
-        self->write(")\n");
-
-        for (var i: usize = 0; i < self->tables->interfaces.len(); i += 1) {
-            const decl = self->tables->interfaces.get_const(i).unwrap();
-
-            self->write_index(i);
-            self->write("interface ");
-            self->write(decl->name.as_str_const());
-            self->write(" { ");
-
-            for (var j: usize = 0; j < decl->methods.entries.len(); j += 1) {
-                const entry = decl->methods.entries.get_const(j).unwrap();
-                self->write(entry->name.as_str_const());
-
-                if (j + 1 != decl->methods.entries.len()) {
-                    self->write(", ");
+            switch (decl->body) {
+                case .Some(body_id) => {
+                    const block = self->tables->bodies.get_const(body_id).unwrap();
+                    self->write(" {\n");
+                    self->dump_block_body(block, 0);
+                    self->write("}\n");
+                }
+                case .None => {
+                    self->write(";\n");
                 }
             }
-
-            self->write(" }");
-
-            if (decl->is_interface_dynamically_dispatchable) {
-                self->write(" dyn");
-            }
-
-            self->write_counts("generics", decl->generic_params.len());
-            self->write("\n");
-        }
-    }
-
-    fn dump_global_vars(self: Self*) {
-        self->write("GLOBAL VARS (");
-        format_usize(self->writer, self->tables->global_vars.len());
-        self->write(")\n");
-
-        for (var i: usize = 0; i < self->tables->global_vars.len(); i += 1) {
-            const decl = self->tables->global_vars.get_const(i).unwrap();
-
-            self->write_index(i);
-            self->write_global_var_decl(decl);
-            self->write("\n");
-        }
-    }
-
-    fn dump_vars(self: Self*) {
-        self->write("VARS (");
-        format_usize(self->writer, self->tables->vars.len());
-        self->write(")\n");
-
-        for (var i: usize = 0; i < self->tables->vars.len(); i += 1) {
-            const decl = self->tables->vars.get_const(i).unwrap();
-
-            self->write_index(i);
-            self->write_var_decl(decl);
-            self->write("\n");
-        }
-    }
-
-    fn dump_typedefs(self: Self*) {
-        self->write("TYPEDEFS (");
-        format_usize(self->writer, self->tables->typedefs.len());
-        self->write(")\n");
-
-        for (var i: usize = 0; i < self->tables->typedefs.len(); i += 1) {
-            const decl = self->tables->typedefs.get_const(i).unwrap();
-
-            self->write_index(i);
-            self->write("typedef ");
-            self->write(decl->name.as_str_const());
-            self->write(" = ");
-            self->write_type(decl->ty);
-            self->write("\n");
         }
     }
 
@@ -836,6 +604,7 @@ struct DumpContext {
                 self->write("fn ");
                 self->write(func_def.name.as_str_const());
                 self->write_func_params(&func_def.params);
+                self->write(" ");
                 self->write_type(&func_def.ret_type);
                 self->write(" {\n");
                 self->dump_block_body(func_def.body, depth);
@@ -846,6 +615,7 @@ struct DumpContext {
                 self->write("fn ");
                 self->write(func_decl.name.as_str_const());
                 self->write_func_params(&func_decl.params);
+                self->write(" ");
                 self->write_type(&func_decl.ret_type);
                 self->write(";\n");
             }
@@ -867,17 +637,6 @@ struct DumpContext {
 
                 self->write(" }");
                 self->write_impls(&struct_stmt.impls);
-                self->write_counts("methods", struct_stmt.methods.len());
-                self->write_counts("generics", struct_stmt.generic_params.len());
-
-                switch (struct_stmt.align) {
-                    case .Some(align) => {
-                        self->write(" align=");
-                        format_usize(self->writer, align);
-                    }
-                    case .None => {}
-                }
-
                 self->write("\n");
             }
             case .Union(union_stmt) => {
@@ -898,17 +657,6 @@ struct DumpContext {
 
                 self->write(" }");
                 self->write_impls(&union_stmt.impls);
-                self->write_counts("methods", union_stmt.methods.len());
-                self->write_counts("generics", union_stmt.generic_params.len());
-
-                switch (union_stmt.align) {
-                    case .Some(align) => {
-                        self->write(" align=");
-                        format_usize(self->writer, align);
-                    }
-                    case .None => {}
-                }
-
                 self->write("\n");
             }
             case .Enum(enum_stmt) => {
@@ -927,8 +675,6 @@ struct DumpContext {
                 self->write_variants(&enum_stmt.variants);
                 self->write(" }");
                 self->write_impls(&enum_stmt.impls);
-                self->write_counts("methods", enum_stmt.methods.len());
-                self->write_counts("generics", enum_stmt.generic_params.len());
                 self->write("\n");
             }
             case .Interface(interface_stmt) => {
@@ -945,9 +691,7 @@ struct DumpContext {
                     }
                 }
 
-                self->write(" }");
-                self->write_counts("generics", interface_stmt.generic_params.len());
-                self->write("\n");
+                self->write(" }\n");
             }
             case .Typedef(typedef_stmt) => {
                 self->write("typedef ");

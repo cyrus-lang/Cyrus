@@ -77,30 +77,39 @@ pub fn main(argc: c_int, argv: c_char**) {
         cli::Cmd.new(allocator, "clean", command_build)
         .help("Clean build artifacts");
     
-    const tokenize_cmd = 
+    const dump_tokenize_cmd = 
         cli::Cmd.new(allocator, "tokenize", command_tokenize)
         .help("Dump scanned tokens")
         ->optional_argument(.Str);
-    
-    const parse_cmd = 
+
+    const dump_parse_cmd = 
         cli::Cmd.new(allocator, "parse", command_parse)
-        .help("Parse file")
+        .help("Parse file and dump the AST")
         ->optional_argument(.Str);
-    
-    const resolve_cmd = 
+
+    const dump_resolve_cmd = 
         cli::Cmd.new(allocator, "resolve", command_resolve)
         .help("Resolve modules and dump the symbol table")
         ->optional_argument(.Str)
         ->add_option(stdlib_opt)
         ->add_option(profile_opt);
-    
-    const analyze_cmd = 
+
+    const dump_analyze_cmd = 
         cli::Cmd.new(allocator, "analyze", command_analyze)
         .help("Analyze modules and dump the CIR")
         ->optional_argument(.Str)
         ->add_option(stdlib_opt)
         ->add_option(profile_opt);
-    
+
+    const dump_cmd = 
+        cli::Cmd.new(allocator, "dump", command_dump)
+        .help("Dump compiler intermediate representations");
+
+    dump_cmd->add_sub_command(*dump_tokenize_cmd);
+    dump_cmd->add_sub_command(*dump_parse_cmd);
+    dump_cmd->add_sub_command(*dump_resolve_cmd);
+    dump_cmd->add_sub_command(*dump_analyze_cmd);
+
     const version_cmd = 
         cli::Cmd.new(allocator, "version", command_version)
         .help("Compiler version");
@@ -110,10 +119,7 @@ pub fn main(argc: c_int, argv: c_char**) {
     app.register(*build_cmd);
     app.register(*test_cmd);
     app.register(*clean_cmd);
-    app.register(*tokenize_cmd);
-    app.register(*parse_cmd);
-    app.register(*resolve_cmd);
-    app.register(*analyze_cmd);
+    app.register(*dump_cmd);
     app.register(*version_cmd);
 
     app.run(struct { argc, argv });
@@ -125,6 +131,10 @@ fn command_new(ctx: cli::ActionContext) {
 
 fn command_build(ctx: cli::ActionContext) {
     @todo();
+}
+
+fn command_dump(ctx: cli::ActionContext) {
+    printf("usage: cyrus dump <tokenize|parse|resolve|analyze> <file>\n");
 }
 
 fn command_tokenize(ctx: cli::ActionContext) {

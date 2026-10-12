@@ -8,10 +8,10 @@ import std::mem{Allocator};
 import std::string{String};
 
 import diags{DiagContext, Diag};
-import tokens{Span};
 import cir::tables{DeclTables};
-import cir;
 import analyzer::format;
+import tokens{Span};
+import cir;
 
 pub fn report_unknown_symbol(
     dctx: DiagContext*,
