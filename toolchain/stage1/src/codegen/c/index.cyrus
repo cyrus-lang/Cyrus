@@ -1,0 +1,16 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 The Cyrus Language
+
+import .::emitter{CodegenC_Emitter};
+
+pub struct CodegenC {
+    allocator: Allocator,
+    modules: Vec<CIRModule>,
+
+    pub fn new(
+        allocator: Allocator,
+        modules: Vec<CIRModule>
+    ) Self {
+        return Self { allocator, modules };
+    }
+}

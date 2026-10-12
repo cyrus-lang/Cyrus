@@ -26,7 +26,13 @@ pub type ActionFn = fn(ActionContext) void;
 
 pub struct ActionContext {
     pub opts: const Opts*,
-    pub args: const Args*
+    pub args: const Args*,
+    pub cmd: const Cmd*,
+
+    pub fn print_help(self: const Self*) {
+        var writer: Writer = dynamic StdoutWriter.new();
+        self->cmd->display_panel(writer);
+    }
 }
 
 pub enum Error {
@@ -118,6 +124,7 @@ pub struct App {
                 (cmd->action)(ActionContext {
                     opts: self->opts,
                     args: &args,
+                    cmd: cmd,
                 });
 
                 return .Value(self);
@@ -614,6 +621,10 @@ pub struct Cmds {
         return self->inner.len();
     }
 
+    pub fn get(self: const Self*, index: usize) Option<Cmd*> {
+        return self->inner.get_owned(index);
+    }
+
     pub fn free(self: Self*) {
         for (var i: usize = 0; i < self->inner.len(); i += 1) {
             var cmd = self->inner.get_owned(i).unwrap();
@@ -735,6 +746,80 @@ pub struct Cmd {
             }
 
             writer.write("\n");
+        }
+    }
+
+    pub fn display_panel(self: const Self*, writer: Writer) {
+        writer.write("Usage: ");
+        writer.write(self->name);
+
+        if (self->sub_cmds->len() > 0) {
+            writer.write(" <subcommand>");
+        }
+
+        if (self->expected_args.len() > 0) {
+            writer.write(" <args>");
+        }
+
+        writer.write(" [OPTIONS]\n");
+
+        switch (self->help) {
+            case .Some(text) => {
+                writer.write("\n");
+                writer.write(text);
+                writer.write("\n");
+            }
+            else => {}
+        }
+
+        if (self->sub_cmds->len() > 0) {
+            writer.write("\n");
+            writer.writeln("Commands:");
+
+            for (var i: usize = 0; i < self->sub_cmds->len(); i += 1) {
+                const sub = self->sub_cmds->get(i).unwrap();
+                const len = strlen(sub->name);
+
+                writer.write("  ");
+                writer.write(sub->name);
+
+                switch (sub->help) {
+                    case .Some(text) => {
+                        write_spaces(writer, HELP_WS_LEN - len);
+                        writer.write(text);
+                    }
+                    else => {}
+                }
+
+                writer.write("\n");
+            }
+        }
+
+        if (self->opts.len() > 0) {
+            writer.write("\n");
+            writer.writeln("Options:");
+
+            for (var i: usize = 0; i < self->opts.len(); i += 1) {
+                const opt = self->opts.get_owned(i).unwrap();
+
+                const space_len: usize = 2;
+                const dash_len: usize = 2;
+                const name_len = strlen(opt->long_name);
+                const len = space_len + dash_len + name_len;
+
+                writer.write("  --");
+                writer.write(opt->long_name);
+
+                switch (opt->help) {
+                    case .Some(text) => {
+                        write_spaces(writer, HELP_WS_LEN - len);
+                        writer.write(text);
+                    }
+                    else => {}
+                }
+
+                writer.write("\n");
+            }
         }
     }
 

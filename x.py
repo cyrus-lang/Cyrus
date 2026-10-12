@@ -740,7 +740,7 @@ def run_stage1_analyze_annotations(
     cmd = [
         str(compiler),
         "dump",
-        "analyze",
+        "analyzer",
         root_relative_path(cfg, file_path),
         _stdlib_flag(cfg),
     ]
@@ -1139,7 +1139,7 @@ def cmd_tokenize(cfg: Config, args: argparse.Namespace) -> int:
     rest = [str(a) for a in (args.rest or [])]
     if stage == "stage1":
         ensure_stage1(cfg)
-        proc = run_cmd([str(cfg.stage1_binary), "dump", "tokenize", input_path, *rest],
+        proc = run_cmd([str(cfg.stage1_binary), "dump", "lexer", input_path, *rest],
                        cwd=cfg.root, capture=False, check=False)
     else:
         proc = stage0_binary_run(cfg, ["lex-only", input_path, *rest], capture=False, check=False)
@@ -1152,7 +1152,7 @@ def cmd_parse(cfg: Config, args: argparse.Namespace) -> int:
     rest = [str(a) for a in (args.rest or [])]
     if stage == "stage1":
         ensure_stage1(cfg)
-        proc = run_cmd([str(cfg.stage1_binary), "dump", "parse", input_path, *rest],
+        proc = run_cmd([str(cfg.stage1_binary), "dump", "parser", input_path, *rest],
                        cwd=cfg.root, capture=False, check=False)
     else:
         proc = stage0_binary_run(cfg, ["parse-only", input_path, *rest], capture=False, check=False)
@@ -1215,13 +1215,13 @@ def snapshot_command_for(stage: str, directive: str, cfg: Config) -> List[str]:
     """Command argv (excluding binary) used to produce snapshot output."""
     if stage == "stage1":
         if directive == "tokenize":
-            return ["dump", "tokenize"]
+            return ["dump", "lexer"]
         if directive == "parse":
-            return ["dump", "parse"]
+            return ["dump", "parser"]
         if directive == "resolve":
-            return ["dump", "resolve"]
+            return ["dump", "resolver"]
         if directive == "analyze":
-            return ["dump", "analyze"]
+            return ["dump", "analyzer"]
     if stage == "stage0":
         if directive == "tokenize":
             return ["lex-only"]
@@ -1591,7 +1591,7 @@ def cmd_analyze_corpus(cfg: Config, args: argparse.Namespace) -> int:
         rel_input = str(f.relative_to(stage0_root))
         try:
             proc = run_cmd(
-                [str(cfg.stage1_binary), "dump", "analyze", rel_input, _stdlib_flag(cfg)],
+                [str(cfg.stage1_binary), "dump", "analyzer", rel_input, _stdlib_flag(cfg)],
                 cwd=stage0_root,
                 capture=True,
                 check=False,

@@ -1,4 +1,4 @@
-// @stderr: Option `-i` wants a value of type `integer`\nPlease use command `help` to see usage.
+// @stderr: Option `-i` wants a value of type `integer`\nPlease use command `help` to see usage
 
 import std::mem::libc{LibcAllocator};
 import std::mem{Allocator};
