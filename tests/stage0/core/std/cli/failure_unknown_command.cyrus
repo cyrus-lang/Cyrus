@@ -1,4 +1,4 @@
-// @stderr: Unknown cmd: unknown\nPlease use command `help` to see usage.
+// @stderr: Unknown cmd: unknown\nPlease use command `help` to see usage
 
 import std::mem::libc{LibcAllocator};
 import std::mem{Allocator};
