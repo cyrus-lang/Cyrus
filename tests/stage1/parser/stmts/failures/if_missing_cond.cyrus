@@ -1,0 +1,14 @@
+// @parse
+
+fn f() {
+    if {
+    }
+}
+
+/*@parse
+tests/stage1/parser/stmts/failures/if_missing_cond.cyrus:4:8: error: expected `(` but got `{`
+      |
+    4 ~     if {
+      |        ^
+      |
+@parse*/

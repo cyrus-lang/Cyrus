@@ -1,0 +1,11 @@
+// @parse
+
+const a = foo(1 2);
+
+/*@parse
+tests/stage1/parser/exprs/failures/call_missing_comma.cyrus:3:17: error: expected `)` but got `2`
+      |
+    3 ~ const a = foo(1 2);
+      |                 ^
+      |
+@parse*/

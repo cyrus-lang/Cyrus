@@ -1,0 +1,14 @@
+// @parse
+
+struct S {
+    a: int32
+    b: int32,
+}
+
+/*@parse
+tests/stage1/parser/structs/failures/field_missing_comma.cyrus:5:5: error: expected `,` but got `b`
+      |
+    5 ~     b: int32,
+      |     ^
+      |
+@parse*/
