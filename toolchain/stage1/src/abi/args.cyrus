@@ -1,0 +1,259 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 The Cyrus Language
+
+import std::collections{Vec};
+import std::option{Option};
+
+import cir;
+
+pub struct ABIFunctionInfo {
+    pub params_types: Vec<cir::SemaType>,
+    pub params_infos: Vec<ABIArgInfo>,
+    pub ret_info: ABIRetInfo,
+}
+
+pub struct ABIRetInfo {
+    pub kind: ABIRetInfoKind,
+    pub abi_type: cir::SemaType,
+    pub ret_type: cir::SemaType,
+}
+
+pub enum ABIRetInfoKind {
+    Direct {
+        coerce_to: Option<cir::SemaType>,
+    },
+    DirectPair {
+        lo: cir::SemaType,
+        hi: cir::SemaType,
+    },
+    Indirect {
+        sret: bool,
+    },
+    Ignore,
+
+    [[inline]]
+    pub fn is_ignore(self: const Self*) bool {
+        switch (*self) {
+            case .Ignore => return true;
+            else => return false;
+        }
+    }
+
+    [[inline]]
+    pub fn is_indirect(self: const Self*) bool {
+        switch (*self) {
+            case .Indirect => return true;
+            else => return false;
+        }
+    }
+
+    [[inline]]
+    pub fn is_indirect_sret(self: const Self*) bool {
+        switch (*self) {
+            case .Indirect { sret } => return sret;
+            else => return false;
+        }
+    }
+}
+
+pub struct ABIArgInfo {
+    pub param_index_start: uint16,
+    pub param_index_end: uint16,
+
+    pub kind: ABIArgKind,
+    pub attrs: ABIArgAttrs,
+
+    [[inline]]
+    pub fn expand(kind: ExpandKind) Self {
+        return Self {
+            param_index_start: 0,
+            param_index_end: 0,
+            kind: .Expand { kind },
+            attrs: ABIArgAttrs.zero(),
+        };
+    }
+
+    [[inline]]
+    pub fn direct() Self {
+        return Self {
+            param_index_start: 0,
+            param_index_end: 0,
+            kind: .Direct { coerce_to: .None },
+            attrs: ABIArgAttrs.zero(),
+        };
+    }
+
+    [[inline]]
+    pub fn direct_coerce(ty: cir::SemaType) Self {
+        return Self {
+            param_index_start: 0,
+            param_index_end: 0,
+            kind: .DirectCoerce { ty },
+            attrs: ABIArgAttrs.zero(),
+        };
+    }
+
+    [[inline]]
+    pub fn direct_pair(lo: cir::SemaType, hi: cir::SemaType) Self {
+        return Self {
+            param_index_start: 0,
+            param_index_end: 0,
+            kind: .DirectPair { lo, hi },
+            attrs: ABIArgAttrs.zero(),
+        };
+    }
+
+    [[inline]]
+    pub fn indirect(ty: cir::SemaType, alignment: uint32) Self {
+        return Self {
+            param_index_start: 0,
+            param_index_end: 0,
+            kind: .Indirect { ty, align: alignment },
+            attrs: ABIArgAttrs.zero(),
+        };
+    }
+
+    [[inline]]
+    pub fn extend(signed: bool) Self {
+        return Self {
+            param_index_start: 0,
+            param_index_end: 0,
+            kind: .Extend { signed },
+            attrs: ABIArgAttrs.zero(),
+        };
+    }
+
+    [[inline]]
+    pub fn ignore() Self {
+        return Self {
+            param_index_start: 0,
+            param_index_end: 0,
+            kind: .Ignore,
+            attrs: ABIArgAttrs.zero(),
+        };
+    }
+
+    [[inline]]
+    pub fn with_attrs(self: Self*, attrs: ABIArgAttrs) Self {
+        var info = *self;
+        info.attrs = attrs;
+        return info;
+    }
+
+    [[inline]]
+    pub fn with_indices(self: Self*, start: uint16, end: uint16) Self {
+        var info = *self;
+        info.param_index_start = start;
+        info.param_index_end = end;
+        return info;
+    }
+
+    [[inline]]
+    pub fn is_direct(self: const Self*) bool {
+        switch (self->kind) {
+            case .Direct | .DirectCoerce | .DirectPair => return true;
+            else => return false;
+        }
+    }
+
+    [[inline]]
+    pub fn is_indirect(self: const Self*) bool {
+        switch (self->kind) {
+            case .Indirect => return true;
+            else => return false;
+        }
+    }
+
+    [[inline]]
+    pub fn is_indirect_by_val(self: const Self*) bool {
+        if (!self->is_indirect()) {
+            return false;
+        }
+
+        return self->attrs.by_val;
+    }
+
+    [[inline]]
+    pub fn is_ignore(self: const Self*) bool {
+        switch (self->kind) {
+            case .Ignore => return true;
+            else => return false;
+        }
+    }
+}
+
+pub struct ABIArgAttrs {
+    /// Passed in register
+    pub by_reg: bool,
+    /// Zero extend
+    pub zero_ext: bool,
+    /// Sign extend
+    pub sign_ext: bool,
+    /// Pass by value
+    pub by_val: bool,
+
+    [[inline]]
+    pub fn zero() Self {
+        return Self {
+            by_reg: false,
+            zero_ext: false,
+            sign_ext: false,
+            by_val: false,
+        };
+    }
+}
+
+pub enum ABIArgKind {
+    /// Direct register passing (maybe coerced)
+    Direct {
+        coerce_to: Option<cir::SemaType>,
+    },
+
+    /// Passed in a pair of registers
+    DirectPair {
+        lo: cir::SemaType,
+        hi: cir::SemaType,
+    },
+
+    /// Coerced to a different type and passed directly
+    DirectCoerce {
+        ty: cir::SemaType,
+    },
+
+    /// Expanded into multiple arguments
+    Expand {
+        kind: ExpandKind,
+    },
+
+    /// Integer extension
+    Extend {
+        signed: bool,
+    },
+
+    /// Indirect passing (by pointer)
+    Indirect {
+        align: uint32,
+        ty: cir::SemaType,
+    },
+
+    /// Ignored argument
+    Ignore,
+}
+
+pub enum ExpandKind {
+    /// Simple expansion
+    Simple,
+
+    /// Coerced expansion with offset info
+    Coerced {
+        offset_hi: uint8,
+        packed: bool,
+        lo: cir::SemaType,
+        hi: cir::SemaType,
+    },
+
+    /// Struct expansion with field count
+    Struct {
+        field_count: uint8,
+    },
+}

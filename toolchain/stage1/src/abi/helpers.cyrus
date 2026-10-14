@@ -1,0 +1,84 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 The Cyrus Language
+
+import cir::tables{DeclTables};
+import cir;
+
+pub struct Registers {
+    pub int_regs: uint32,
+    pub sse_regs: uint32,
+
+    [[inline]]
+    pub fn zero() Self {
+        return Self {
+            int_regs: 0,
+            sse_regs: 0,
+        };
+    }
+}
+
+[[inline]]
+pub fn align_offset(offset: uint32, align: uint32) uint32 {
+    if (align == 0) {
+        return 0;
+    }
+
+    return (offset + align - 1) / align * align;
+}
+
+[[inline]]
+pub fn align_up(value: usize, align: usize) usize {
+    return (value + align - 1) & ~(align - 1);
+}
+
+pub fn extract_typedef_inner_type(
+    tables: const DeclTables*,
+    ty: const cir::SemaType*
+) const cir::SemaType* {
+    var current = ty->const_inner();
+    var depth: usize = 0;
+
+    while (depth < 64) {
+        switch (*current) {
+            case .Named(named) => {
+                switch (named.type_decl_id) {
+                    case .Typedef(id) => {
+                        switch (tables->typedefs.get_const(id)) {
+                            case .Some(decl) => {
+                                if (decl->ty == null) {
+                                    return current;
+                                }
+
+                                current = decl->ty->const_inner();
+                            }
+                            case .None => return current;
+                        }
+                    }
+                    else => return current;
+                }
+            }
+            else => return current;
+        }
+
+        depth += 1;
+    }
+
+    @unreachable();
+}
+
+pub fn is_aggregate_type(
+    ty: const cir::SemaType*,
+    tables: const DeclTables*
+) bool {
+    const resolved = extract_typedef_inner_type(tables, ty);
+
+    switch (*resolved) {
+        case .Named(named) => {
+            switch (named.type_decl_id) {
+                case .Struct | .Union | .Enum => return true;
+                else => return false;
+            }
+        }
+        else => return false;
+    }
+}
