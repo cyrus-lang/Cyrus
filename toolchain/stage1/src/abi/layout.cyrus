@@ -151,4 +151,9 @@ pub struct ABITypeLayout {
 
         @panic("field offset not found for index");
     }
+
+    [[inline]]
+    pub fn free(self: Self*) {
+        self->field_offsets.free();
+    }
 }

@@ -523,7 +523,7 @@ DIRECTIVE_SINGLE_RE = {
 }
 
 # Snapshot directives: `// @name` trigger + `/*@name ... @name*/` block.
-SNAPSHOT_DIRECTIVES = ("tokenize", "parse", "resolve", "analyze")
+SNAPSHOT_DIRECTIVES = ("tokenize", "parse", "resolve", "analyze", "codegen")
 
 
 @dataclass
@@ -1222,6 +1222,8 @@ def snapshot_command_for(stage: str, directive: str, cfg: Config) -> List[str]:
             return ["dump", "resolver"]
         if directive == "analyze":
             return ["dump", "analyzer"]
+        if directive == "codegen":
+            return ["dump", "bir"]
     if stage == "stage0":
         if directive == "tokenize":
             return ["lex-only"]
@@ -1272,7 +1274,7 @@ def run_snapshot_checks(
 
         argv = snapshot_command_for(stage, directive, cfg)
         cmd = [str(compiler), *argv, root_relative_path(cfg, file_path)]
-        if directive in ("resolve", "analyze"):
+        if directive in ("resolve", "analyze", "codegen"):
             cmd.append(_stdlib_flag(cfg))
         proc = run_cmd(cmd, cwd=cfg.root, capture=True, check=False)
         raw = proc.stdout or ""
@@ -1770,6 +1772,8 @@ def cmd_test(cfg: Config, args: argparse.Namespace) -> int:
         if "stage0" in parts:
             return "stage0"
         if "stage1" in parts:
+            return "stage1"
+        if "codegen" in parts:
             return "stage1"
         return stages[0] if stages else "stage0"
 

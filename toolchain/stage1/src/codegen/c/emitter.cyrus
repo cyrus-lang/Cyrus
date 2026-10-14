@@ -1,6 +1,3596 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 The Cyrus Language
 
-pub struct CodegenC_Emitter {
-    
+import std::collections::hash_map{HashMap};
+import std::hash{hash_usize, eq_usize};
+import std::io{Writer, StringWriter};
+import std::format{format_float64};
+import std::collections{Vec};
+import std::mem{Allocator};
+import std::option{Option};
+import std::string{String};
+
+import abi::typectx{is_enum_scalar_optimizable};
+import resolver::symbols{GlobalSymbolRegistry};
+import analyzer::monomorph{MonomorphInstance, MonomorphRegistry};
+import analyzer::vtables{VTableRegistry};
+import codegen::c::types{TypeEmitter};
+import cir::tables{DeclTables};
+import codegen::c::mangle;
+import ciri;
+import cir;
+
+pub struct Emitter {
+    pub allocator: Allocator,
+    pub tables: DeclTables*,
+    pub registry: GlobalSymbolRegistry*,
+    pub trees: const Vec<cir::TypedProgramTree>*,
+    pub vtables: VTableRegistry*,
+    pub monomorphs: MonomorphRegistry*,
+    pub types: TypeEmitter,
+
+    protos_out: String,
+    global_out: String,
+    pending_out: String,
+    body_out: String,
+    ctor_out: String,
+
+    defer_scopes: Vec<Vec<cir::TypedDeferStmt> >,
+    loop_marks: Vec<usize>,
+    in_void_main: bool,
+    vtable_emitted: HashMap<usize, uint8>,
+    lambda_counter: usize,
+    func_proto_emitted: Vec<uint8>,
+    needs_panic_helper: bool,
+    needs_assert_helper: bool,
+    needs_string_header: bool,
+    needs_stdio_header: bool,
+    needs_stdlib_header: bool,
+    needs_stddef_header: bool,
+
+    pub fn new(
+        allocator: Allocator,
+        tables: DeclTables*,
+        registry: GlobalSymbolRegistry*,
+        trees: const Vec<cir::TypedProgramTree>*,
+        vtables: VTableRegistry*,
+        monomorphs: MonomorphRegistry*,
+        maps: mangle::ModuleMaps
+    ) Self {
+        var func_proto_emitted: Vec<uint8> = Vec.new(allocator);
+        func_proto_emitted.resize(tables->funcs.len(), 0);
+
+        return Self {
+            allocator,
+            tables,
+            registry,
+            trees,
+            vtables,
+            monomorphs,
+            types: TypeEmitter.new(allocator, tables, registry, maps),
+            protos_out: String.new(allocator),
+            global_out: String.new(allocator),
+            pending_out: String.new(allocator),
+            body_out: String.new(allocator),
+            ctor_out: String.new(allocator),
+            defer_scopes: Vec.new(allocator),
+            loop_marks: Vec.new(allocator),
+            in_void_main: false,
+            vtable_emitted: HashMap.with_hasher(allocator, 16, hash_usize, eq_usize),
+            lambda_counter: 0,
+            func_proto_emitted,
+            needs_panic_helper: false,
+            needs_assert_helper: false,
+            needs_string_header: false,
+            needs_stdio_header: false,
+            needs_stdlib_header: false,
+            needs_stddef_header: false,
+        };
+    }
+
+    pub fn free(self: Self*) {
+        self->types.free();
+        self->protos_out.free();
+        self->global_out.free();
+        self->pending_out.free();
+        self->body_out.free();
+        self->ctor_out.free();
+
+        for (var i: usize = 0; i < self->defer_scopes.len(); i += 1) {
+            self->defer_scopes.get(i).unwrap()->free();
+        }
+        self->defer_scopes.free();
+        self->loop_marks.free();
+        self->vtable_emitted.free();
+        self->func_proto_emitted.free();
+    }
+
+    pub fn run(self: Self*, writer: Writer) {
+        // 1. Ensure every top-level type declaration.
+        for (var t: usize = 0; t < self->trees->len(); t += 1) {
+            const tree = self->trees->get_const(t).unwrap();
+            for (var i: usize = 0; i < tree->body.len(); i += 1) {
+                const stmt = tree->body.get_const(i).unwrap();
+                switch (stmt->kind) {
+                    case .Struct(s) => {
+                        const decl = self->tables->structs.get_const(s.struct_decl_id).unwrap();
+                        // Generic templates are only emitted as substituted
+                        // instantiations, never directly.
+                        if (decl->is_generic()) {
+                            continue;
+                        }
+                        for (var f: usize = 0; f < decl->fields.len(); f += 1) {
+                            const field = decl->fields.get_const(f).unwrap();
+                            self->types.ensure_named(&field->ty);
+                        }
+                    }
+                    case .Union(u) => {
+                        const decl = self->tables->unions.get_const(u.union_decl_id).unwrap();
+                        if (decl->is_generic()) {
+                            continue;
+                        }
+                        for (var f: usize = 0; f < decl->fields.len(); f += 1) {
+                            const field = decl->fields.get_const(f).unwrap();
+                            self->types.ensure_named(&field->ty);
+                        }
+                    }
+                    case .Enum(e) => {
+                        var targs = cir::TypedTypeArgs.new(self->allocator);
+                        const nt = cir::NamedType {
+                            type_decl_id: .Enum(e.enum_decl_id),
+                            type_args: targs,
+                        };
+                        const st = cir::SemaType.Named(nt);
+                        self->types.ensure_named(&st);
+                        targs.list.free();
+                    }
+                    case .Typedef(td) => {
+                        var targs = cir::TypedTypeArgs.new(self->allocator);
+                        const nt = cir::NamedType {
+                            type_decl_id: .Typedef(td.typedef_decl_id),
+                            type_args: targs,
+                        };
+                        const st = cir::SemaType.Named(nt);
+                        self->types.ensure_named(&st);
+                        targs.list.free();
+                    }
+                    else => {}
+                }
+            }
+        }
+
+        // 2. Globals.
+        for (var t: usize = 0; t < self->trees->len(); t += 1) {
+            const tree = self->trees->get_const(t).unwrap();
+            for (var i: usize = 0; i < tree->body.len(); i += 1) {
+                const stmt = tree->body.get_const(i).unwrap();
+                switch (stmt->kind) {
+                    case .GlobalVar(gv) => {
+                        self->emit_global(&gv);
+                    }
+                    else => {}
+                }
+            }
+        }
+
+        // 3. Function and method definitions. Pure function declarations
+        // (extern prototypes) are emitted lazily by `ensure_func_decl_proto`
+        // when a call site actually references them.
+        for (var t: usize = 0; t < self->trees->len(); t += 1) {
+            const tree = self->trees->get_const(t).unwrap();
+            for (var i: usize = 0; i < tree->body.len(); i += 1) {
+                const stmt = tree->body.get_const(i).unwrap();
+                switch (stmt->kind) {
+                    case .FuncDef(fd) => {
+                        if (!fd.is_generic()) {
+                            self->emit_func_def(&fd);
+                        }
+                    }
+                    else => {}
+                }
+            }
+        }
+
+        for (var m: usize = 0; m < self->tables->methods.len(); m += 1) {
+            const method = self->tables->methods.get_const(m).unwrap();
+            if (method->func_decl.is_generic()) {
+                continue;
+            }
+            switch (method->body) {
+                case .Some(body_id) => {
+                    self->emit_method_def(m, method, body_id);
+                }
+                else => {}
+            }
+        }
+
+        // 4. Monomorphized specializations. The analyzer records one
+        // instance per (template, type-args) pair; instances with a body
+        // are emitted as standalone functions under their mangled name.
+        for (var i: usize = 0; i < self->monomorphs->instances.len(); i += 1) {
+            const inst = self->monomorphs->instances.get_const(i).unwrap();
+            switch (inst->body) {
+                case .Some(body_id) => {
+                    self->emit_monomorph_def(i, inst, body_id);
+                }
+                else => {}
+            }
+        }
+
+        self->assemble(writer);
+    }
+
+    fn assemble(self: Self*, writer: Writer) {
+        var out = String.new(self->allocator);
+
+        out.push_str("/* Generated by Cyrus CodegenC (BIR dump). */\n");
+
+        if (self->types.used_stdint) {
+            out.push_str("#include <stdint.h>\n");
+        }
+        if (self->types.used_bool) {
+            out.push_str("#include <stdbool.h>\n");
+        }
+        if (self->needs_stddef_header) {
+            out.push_str("#include <stddef.h>\n");
+        }
+        if (self->needs_string_header) {
+            out.push_str("#include <string.h>\n");
+        }
+        if (self->needs_stdio_header) {
+            out.push_str("#include <stdio.h>\n");
+        }
+        if (self->needs_stdlib_header) {
+            out.push_str("#include <stdlib.h>\n");
+        }
+        out.push('\n');
+
+        if (self->needs_panic_helper) {
+            out.push_str("static void cyrus_panic_(const char *msg) {\n");
+            out.push_str("    fprintf(stderr, \"panic: %s");
+            out.push('\\');
+            out.push_str("n\", msg);\n");
+            out.push_str("    abort();\n");
+            out.push_str("}\n\n");
+        }
+
+        if (self->needs_assert_helper) {
+            out.push_str("static void cyrus_assert_fail_(const char *file, int line, const char *msg) {\n");
+            out.push_str("    fprintf(stderr, \"assertion failed: %s at %s:%d");
+            out.push('\\');
+            out.push_str("n\", msg, file, line);\n");
+            out.push_str("    abort();\n");
+            out.push_str("}\n\n");
+        }
+
+        out.push_str(self->types.type_out.as_str_const());
+        out.push_str(self->protos_out.as_str_const());
+        out.push_str("\n");
+        out.push_str(self->global_out.as_str_const());
+
+        if (self->ctor_out.len() > 0) {
+            out.push_str("static void __cyrus_global_ctors(void) __attribute__((constructor));\n");
+            out.push_str("static void __cyrus_global_ctors(void) {\n");
+            out.push_str(self->ctor_out.as_str_const());
+            out.push_str("}\n\n");
+        }
+
+        out.push_str(self->pending_out.as_str_const());
+        out.push_str(self->body_out.as_str_const());
+
+        writer.write(out.as_str_const());
+        out.free();
+    }
+
+    /* ************* Globals ************* */
+
+    fn emit_global(self: Self*, gv: const cir::TypedGlobalVarStmt*) {
+        var name = mangle::mangle_global(
+            self->allocator,
+            &self->types.maps,
+            gv->name.as_str_const(),
+            gv->global_var_decl_id,
+            &gv->modifiers
+        );
+
+        switch (gv->modifiers.extern_) {
+            case .Some(ext) => {
+                switch (ext) {
+                    case .C => {
+                        // extern declaration only
+                        switch (gv->ty) {
+                            case .Some(ty) => {
+                                self->types.ensure_named(&ty);
+                                var decl = self->types.build_decl(&ty, name.as_str_const());
+                                self->global_out.push_str("extern ");
+                                self->global_out.push_str(decl.as_str_const());
+                                self->global_out.push_str(";\n");
+                                decl.free();
+                                name.free();
+                                return;
+                            }
+                            else => {
+                                name.free();
+                                return;
+                            }
+                        }
+                    }
+                    else => {}
+                }
+            }
+            else => {}
+        }
+
+        switch (gv->ty) {
+            case .Some(ty) => {
+                self->types.ensure_named(&ty);
+
+                if (gv->is_const) {
+                    self->global_out.push_str("const ");
+                }
+
+                var decl = self->types.build_decl(&ty, name.as_str_const());
+
+                switch (gv->rhs) {
+                    case .Some(rhs) => {
+                        if (rhs.is_comptime_expr()) {
+                            self->global_out.push_str(decl.as_str_const());
+                            self->global_out.push_str(" = ");
+                            var init = self->emit_global_init(&rhs, &ty);
+                            self->global_out.push_str(init.as_str_const());
+                            self->global_out.push_str(";\n");
+                            init.free();
+                        } else {
+                            // Zero-init + constructor assignment.
+                            self->global_out.push_str(decl.as_str_const());
+                            self->global_out.push_str(" = {0};\n");
+
+                            self->ctor_out.push_str("    ");
+                            self->ctor_out.push_str(name.as_str_const());
+                            self->ctor_out.push_str(" = ");
+                            var e = self->emit_expr(&rhs);
+                            self->ctor_out.push_str(e.as_str_const());
+                            self->ctor_out.push_str(";\n");
+                            e.free();
+                        }
+                    }
+                    case .None => {
+                        self->global_out.push_str(decl.as_str_const());
+                        self->global_out.push_str(";\n");
+                    }
+                }
+
+                decl.free();
+            }
+            case .None => {}
+        }
+
+        name.free();
+    }
+
+    fn emit_global_init(self: Self*, expr: const cir::TypedExpr*, ty: const cir::SemaType*) String {
+        switch (expr->kind) {
+            case .Literal(lit) => {
+                return self->emit_literal(&lit);
+            }
+
+            case .StructInit(si) => {
+                var out = String.from_str(self->allocator, "{ ");
+
+                for (var i: usize = 0; i < si.fields.len(); i += 1) {
+                    const field = si.fields.get_const(i).unwrap();
+
+                    out.push_str(".");
+                    out.push_str(field->name.as_str_const());
+                    out.push_str(" = ");
+                    
+                    switch (field->value.ty) {
+                        case .Some(ty) => {
+                            var global_var = self->emit_global_init(&field->value, &ty);
+                            out.push_str(global_var.as_str_const());
+                            global_var.free();
+                        }
+                        case .None => {
+                            var expr = self->emit_expr(&field->value);
+                            out.push_str(expr.as_str_const());
+                            expr.free();
+                        }
+                    }
+                    
+                    out.push_str(", ");
+                }
+
+                out.push_str("}");
+                return out;
+            }
+
+            case .UnionInit(union_init) => {
+                var out = String.from_str(self->allocator, "{ .");
+                out.push_str(union_init.field->name.as_str_const());
+                out.push_str(" = ");
+                
+                var expr = self->emit_expr(&union_init.field->value);
+                out.push_str(expr.as_str_const());
+                expr.free();
+                
+                out.push_str(" }");
+                return out;
+            }
+
+            case .Array(array) => {
+                var out = String.from_str(self->allocator, "{ ");
+                
+                for (var i: usize = 0; i < array.elements.len(); i += 1) {
+                    const element = array.elements.get_const(i).unwrap();
+                    
+                    var expr = self->emit_expr(element);
+                    out.push_str(expr.as_str_const());
+                    expr.free();
+
+                    out.push_str(", ");
+                }
+                
+                out.push_str("}");
+                return out;
+            }
+
+            case .Tuple(tuple) => {
+                var out = String.from_str(self->allocator, "{ ");
+
+                for (var i: usize = 0; i < tuple.elements.len(); i += 1) {
+                    const element = tuple.elements.get_const(i).unwrap();
+                    
+                    var expr = self->emit_expr(element);
+                    out.push_str(expr.as_str_const());
+                    expr.free();
+                    
+                    out.push_str(", ");
+                }
+
+                out.push_str("}");
+                return out;
+            }
+
+            case .EnumInit(enum_init) => {
+                switch (enum_init.operand) {
+                    case .Named(named) => {
+                        switch (named.type_decl_id) {
+                            case .Enum(id) => {
+                                const enum_decl = self->tables->enums.get_const(id).unwrap();
+                                const is_scalar = is_enum_scalar_optimizable(self->tables, enum_decl);
+                                const tags = self->types.tctx.enum_variant_tags(id, enum_decl);
+
+                                const tag = self->find_variant_tag(
+                                    enum_decl, 
+                                    tags, 
+                                    enum_init.name.as_str_const()
+                                );
+
+                                if (is_scalar) {
+                                    var out = String.new(self->allocator);
+
+                                    switch (enum_init.arg) {
+                                        case .Unit => {}
+                                        case .Tuple(exprs) => {
+                                            if (exprs.len() == 1) {
+                                                const el = exprs.get_const(0).unwrap();
+                                                var v = self->emit_expr(el);
+                                                out.push_str(v.as_str_const());
+                                                v.free();
+                                            }
+                                        }
+                                        else => {}
+                                    }
+                                    if (out.len() == 0) {
+                                        push_u32(&out, tag);
+                                    }
+                                    return out;
+                                }
+                            }
+                            else => {}
+                        }
+                    }
+                    else => {}
+                }
+
+                return self->emit_enum_init_runtime(&enum_init);
+            }
+
+            else => {
+                var e = self->emit_expr(expr);
+                return e;
+            }
+        }
+    }
+
+    /* ************* Prototypes and definitions ************* */
+
+    /// Emits the C prototype for a pure function declaration on first use.
+    ///
+    /// Definitions emit their own forward declaration, so only declarations
+    /// without a body (`is_func_decl`) need a tracked prototype. Shadowed
+    /// libc names keep their standard-header declaration instead.
+    fn ensure_func_decl_proto(self: Self*, func_decl_id: cir::FuncDeclId, decl: const cir::FuncDecl*) {
+        if (!decl->is_func_decl) {
+            return;
+        }
+
+        if (func_decl_id >= self->func_proto_emitted.len()) {
+            self->func_proto_emitted.resize(func_decl_id + 1, 0);
+        }
+
+        switch (self->func_proto_emitted.get(func_decl_id)) {
+            case .Some(emitted_flag) => {
+                if (*emitted_flag != 0) {
+                    return;
+                }
+                *emitted_flag = 1;
+            }
+            else => return;
+        }
+
+        var mangled_name = mangle::mangle_func(
+            self->allocator,
+            &self->types.maps,
+            decl->name.as_str_const(),
+            func_decl_id,
+            &decl->modifiers
+        );
+
+        if (is_libc_shadowed(mangled_name.as_str_const())) {
+            self->note_libc_symbol_use(mangled_name.as_str_const());
+            mangled_name.free();
+            return;
+        }
+
+        var signature = self->build_func_signature(
+            &decl->ret_type,
+            &decl->params,
+            &mangled_name,
+            mangled_name.as_str_const()
+        );
+        self->protos_out.push_str(signature.as_str_const());
+        self->protos_out.push_str(";\n");
+        signature.free();
+        mangled_name.free();
+    }
+
+    fn note_libc_symbol_use(self: Self*, symbol_name: const uint8*) {
+        if (is_stdio_symbol(symbol_name)) {
+            self->needs_stdio_header = true;
+        } else if (is_stdlib_symbol(symbol_name)) {
+            self->needs_stdlib_header = true;
+        } else if (is_string_header_symbol(symbol_name)) {
+            self->needs_string_header = true;
+        }
+    }
+
+    fn note_panic_use(self: Self*) {
+        self->needs_panic_helper = true;
+        self->needs_stdio_header = true;
+        self->needs_stdlib_header = true;
+    }
+
+    fn note_assert_use(self: Self*) {
+        self->needs_assert_helper = true;
+        self->needs_stdio_header = true;
+        self->needs_stdlib_header = true;
+    }
+
+    fn note_mem_string_use(self: Self*) {
+        self->needs_string_header = true;
+    }
+
+    fn emit_func_def(self: Self*, fd: const cir::TypedFuncDefStmt*) {
+        switch (fd->func_decl_id) {
+            case .Some(func_decl_id) => {
+                var name = mangle::mangle_func(
+                    self->allocator,
+                    &self->types.maps,
+                    fd->name.as_str_const(),
+                    func_decl_id,
+                    &fd->modifiers
+                );
+
+                var sig = self->build_func_signature(&fd->ret_type, &fd->params, &name, name.as_str_const());
+
+                self->protos_out.push_str(sig.as_str_const());
+                self->protos_out.push_str(";\n");
+
+                self->body_out.push_str(sig.as_str_const());
+                self->body_out.push_str(" {\n");
+                sig.free();
+
+                self->emit_param_prologue(&fd->params);
+
+                // Detect void main.
+                self->in_void_main = name.as_str_const() == "main" && fd->ret_type.is_void() && fd->params.list.len() == 0;
+                self->emit_block_stmts(fd->body, true);
+                self->in_void_main = false;
+
+                self->body_out.push_str("}\n\n");
+                name.free();
+            }
+            case .None => {}
+        }
+    }
+
+    fn emit_method_def(self: Self*, method_id: usize, method: const cir::MethodDecl*, body_id: cir::BodyId) {
+        var name = mangle::mangle_method(self->allocator, &self->types.maps, method_id, method);
+        const func = &method->func_decl;
+
+        var sig = self->build_func_signature(&func->ret_type, &func->params, &name, name.as_str_const());
+
+        self->protos_out.push_str(sig.as_str_const());
+        self->protos_out.push_str(";\n");
+
+        self->body_out.push_str(sig.as_str_const());
+        self->body_out.push_str(" {\n");
+        sig.free();
+
+        self->emit_param_prologue(&func->params);
+
+        switch (self->tables->bodies.get_const(body_id)) {
+            case .Some(body) => {
+                self->emit_block_stmts(body, false);
+            }
+            else => {}
+        }
+
+        self->body_out.push_str("}\n\n");
+        name.free();
+    }
+
+    /// Emits a monomorphized specialization. The signature comes from the
+    /// instance's substituted params/ret; the body from the recorded BodyId.
+    fn emit_monomorph_def(
+        self: Self*,
+        monomorph_id: cir::MonomorphId,
+        inst: const MonomorphInstance*,
+        body_id: cir::BodyId
+    ) {
+        var name: String;
+        var have_name = false;
+
+        switch (inst->template_id) {
+            case .Func(fid) => {
+                switch (self->tables->funcs.get_const(fid)) {
+                    case .Some(decl) => {
+                        name = mangle::mangle_monomorphized_func(
+                            self->allocator,
+                            &self->types.maps,
+                            decl->name.as_str_const(),
+                            fid,
+                            &decl->modifiers,
+                            &inst->type_args
+                        );
+                        have_name = true;
+                    }
+                    else => {}
+                }
+            }
+            case .Method(mid) => {
+                switch (self->tables->methods.get_const(mid)) {
+                    case .Some(method) => {
+                        name = mangle::mangle_monomorphized_method(
+                            self->allocator,
+                            &self->types.maps,
+                            mid,
+                            method,
+                            &inst->type_args
+                        );
+                        have_name = true;
+                    }
+                    else => {}
+                }
+            }
+        }
+
+        if (!have_name) {
+            return;
+        }
+
+        var sig = self->build_func_signature(&inst->ret_type, &inst->params, &name, name.as_str_const());
+
+        self->protos_out.push_str(sig.as_str_const());
+        self->protos_out.push_str(";\n");
+
+        self->body_out.push_str(sig.as_str_const());
+        self->body_out.push_str(" {\n");
+        sig.free();
+
+        self->emit_param_prologue(&inst->params);
+
+        switch (self->tables->bodies.get_const(body_id)) {
+            case .Some(body) => {
+                self->emit_block_stmts(body, true);
+            }
+            else => {}
+        }
+
+        self->body_out.push_str("}\n\n");
+        name.free();
+    }
+
+    fn build_func_signature(
+        self: Self*,
+        ret_type: const cir::SemaType*,
+        params: const cir::TypedFuncParams*,
+        _name: const String*,
+        name_c: const uint8*
+    ) String {
+        self->types.ensure_named(ret_type);
+
+        var out = String.new(self->allocator);
+
+        for (var i: usize = 0; i < params->list.len(); i += 1) {
+            const param = params->list.get_const(i).unwrap();
+            const ty = param->ty();
+            self->types.ensure_named(&ty);
+        }
+
+        var ret_decl = self->types.build_decl(ret_type, "");
+        out.push_str(ret_decl.as_str_const());
+        ret_decl.free();
+        out.push(' ');
+        out.push_str(name_c);
+        out.push('(');
+
+        if (params->list.len() == 0) {
+            switch (params->variadic) {
+                case .Some => {
+                    out.push_str("...");
+                }
+                else => {
+                    out.push_str("void");
+                }
+            }
+        } else {
+            for (var i: usize = 0; i < params->list.len(); i += 1) {
+                const param = params->list.get_const(i).unwrap();
+                
+                var name = String.from_str(self->allocator, param->name_str());
+                var ty = param->ty();
+
+                // Array params are passed as pointers
+                var is_array = false;
+
+                switch (ty) {
+                    case .Array(array) => {
+                        is_array = true;
+                        ty = .Pointer(array.element_type);
+                    }
+                    else => {}
+                }
+
+                var pdecl = self->types.build_decl(&ty, name.as_str_const());
+                out.push_str(pdecl.as_str_const());
+                pdecl.free();
+                name.free();
+
+                if (i + 1 < params->list.len()) {
+                    out.push_str(", ");
+                }
+            }
+
+            switch (params->variadic) {
+                case .Some => {
+                    if (params->list.len() > 0) {
+                        out.push_str(", ");
+                    }
+                    out.push_str("...");
+                }
+                else => {}
+            }
+        }
+
+        out.push(')');
+        return out;
+    }
+
+    fn emit_param_prologue(self: Self*, params: const cir::TypedFuncParams*) {
+        for (var i: usize = 0; i < params->list.len(); i += 1) {
+            const param = params->list.get_const(i).unwrap();
+            const ty = param->ty();
+
+            switch (ty) {
+                case .Array(array) => {
+                    const name = param->name_str();
+                    
+                    var cap: usize = 1;
+                    
+                    switch (array.capacity) {
+                        case .Fixed(cap_expr) => {
+                            switch (ciri::fold_const_expr_int(self->tables, self->registry, cap_expr)) {
+                                case .Some(lit) => cap = cir::integer_literal_as_usize(lit);
+                                else => {}
+                            }
+                        }
+                        else => {}
+                    }
+
+                    var tyname = self->types.type_name(array.element_type);
+                    self->body_out.push_str("    ");
+                    self->body_out.push_str(tyname.as_str_const());
+                    self->body_out.push(' ');
+                    self->body_out.push_str(name);
+                    self->body_out.push('[');
+                    push_usize(&self->body_out, cap);
+                    self->body_out.push_str("];\n");
+                    self->note_mem_string_use();
+                    self->body_out.push_str("    memcpy(");
+                    self->body_out.push_str(name);
+                    self->body_out.push_str(", ");
+                    self->body_out.push_str(name);
+                    self->body_out.push_str("__p, sizeof(");
+                    self->body_out.push_str(name);
+                    self->body_out.push_str("));\n");
+                    tyname.free();
+                }
+                else => {}
+            }
+        }
+    }
+
+    /* ************* Statements ************* */
+
+    fn emit_block_stmts(self: Self*, block: const cir::TypedBlockStmt*, push_scope: bool) {
+        if (push_scope) {
+            var scope: Vec<cir::TypedDeferStmt> = Vec.new(self->allocator);
+
+            for (var i: usize = 0; i < block->defers.len(); i += 1) {
+                const defers = block->defers.get_const(i).unwrap();
+                scope.push(*defers);
+            }
+
+            self->defer_scopes.push(scope);
+        }
+
+        for (var i: usize = 0; i < block->stmts.len(); i += 1) {
+            const stmt = block->stmts.get_const(i).unwrap();
+            self->emit_stmt(stmt);
+        }
+
+        if (push_scope) {
+            self->pop_defer_scope();
+        }
+    }
+
+    fn emit_stmt(self: Self*, stmt: const cir::TypedStmt*) {
+        switch (stmt->kind) {
+            case .Expr(expr) => {
+                var body = self->emit_expr(&expr);
+                self->body_out.push_str("    ");
+                self->body_out.push_str(body.as_str_const());
+                self->body_out.push_str(";\n");
+                body.free();
+            }
+
+            case .BlockStmt(block) => {
+                self->body_out.push_str("    {\n");
+                self->emit_block_stmts(&block, true);
+                self->body_out.push_str("    }\n");
+            }
+
+            case .Variable(var_) => {
+                self->emit_var_stmt(&var_);
+            }
+            
+            case .Return(return_) => {
+                self->emit_return(&return_);
+            }
+
+            case .If(if_) => {
+                self->emit_if(&if_);
+            }
+
+            case .While(while_) => {
+                self->emit_while(&while_);
+            }
+
+            case .For(for_) => {
+                self->emit_for(&for_);
+            }
+
+            case .Switch(switch_) => {
+                self->emit_switch(&switch_);
+            }
+            
+            case .Break => {
+                self->emit_defers_to_loop_mark();
+                self->body_out.push_str("    break;\n");
+            }
+            case .Continue => {
+                self->emit_defers_to_loop_mark();
+                self->body_out.push_str("    continue;\n");
+            }
+            
+            case .Label(label) => {
+                self->body_out.push_str(self->sanitize_label(
+                    label.name.as_str_const()
+                ).as_str_const());
+
+                self->body_out.push_str(":\n");
+            }
+
+            case .Goto(goto_) => {
+                self->body_out.push_str("    goto ");
+                var label = self->sanitize_label(goto_.name.as_str_const());
+                self->body_out.push_str(label.as_str_const());
+                self->body_out.push_str(";\n");
+                label.free();
+            }
+            
+            case .InlineAsm(asm) => {
+                self->emit_inline_asm_stmt(asm);
+            }
+
+            case .Builtin(builtin) => {
+                switch (builtin) {
+                    case .BuiltinFunc(builtin_func) => {
+                        var str = self->emit_builtin_func(&builtin_func);
+                        self->body_out.push_str("    ");
+                        self->body_out.push_str(str.as_str_const());
+                        self->body_out.push_str(";\n");
+                        str.free();
+                    }
+                    else => {}
+                }
+            }
+
+            case .Defer => {}
+
+            else => {}
+        }
+    }
+
+    fn emit_var_stmt(self: Self*, var_: const cir::TypedVarStmt*) {
+        var name = mangle::sanitized(self->allocator, var_->name.as_str_const());
+
+        if (var_->ty.is_none()) {
+            // Infer from rhs
+            switch (var_->rhs) {
+                case .Some(rhs) => {
+                    switch (rhs.ty) {
+                        case .Some(ty) => {
+                            self->types.ensure_named(&ty);
+                            
+                            var decl = self->types.build_decl(&ty, name.as_str_const());
+
+                            self->body_out.push_str("    ");
+                            
+                            if (var_->is_const) {
+                                self->body_out.push_str("const ");
+                            }
+                            
+                            self->body_out.push_str(decl.as_str_const());
+                            
+                            switch (rhs.kind) {
+                                case .Array(array) => {
+                                    self->body_out.push_str(" = ");
+                                    var braces = self->emit_array_braces(&array);
+                                    self->body_out.push_str(braces.as_str_const());
+                                    braces.free();
+                                }
+                                else => {
+                                    self->body_out.push_str(" = ");
+                                    var expr = self->emit_expr(&rhs);
+                                    self->body_out.push_str(expr.as_str_const());
+                                    expr.free();
+                                }
+                            }
+
+                            self->body_out.push_str(";\n");
+                            decl.free();
+                        }
+                        case .None => {}
+                    }
+                }
+                case .None => {}
+            }
+
+            name.free();
+            return;
+        }
+
+        switch (var_->ty) {
+            case .Some(ty) => {
+                self->types.ensure_named(&ty);
+                var decl = self->types.build_decl(&ty, name.as_str_const());
+
+                self->body_out.push_str("    ");
+                if (var_->is_const) {
+                    self->body_out.push_str("const ");
+                }
+                self->body_out.push_str(decl.as_str_const());
+
+                switch (var_->rhs) {
+                    case .Some(rhs) => {
+                        self->body_out.push_str(" = ");
+
+                        switch (rhs.kind) {
+                            case .Array(array) => {
+                                var braces = self->emit_array_braces(&array);
+                                self->body_out.push_str(braces.as_str_const());
+                                braces.free();
+                            }
+                            else => {
+                                var e = self->emit_expr(&rhs);
+                                self->body_out.push_str(e.as_str_const());
+                                e.free();
+                            }
+                        }
+                    }
+                    case .None => {
+                        if (!var_->is_undef) {
+                            self->body_out.push_str(" = {0}");
+                        }
+                    }
+                }
+
+                self->body_out.push_str(";\n");
+                decl.free();
+                name.free();
+            }
+            case .None => {}
+        }
+    }
+
+    fn emit_array_braces(self: Self*, array: const cir::TypedArrayExpr*) String {
+        var out = String.from_str(self->allocator, "{ ");
+
+        for (var i: usize = 0; i < array->elements.len(); i += 1) {
+            const element = array->elements.get_const(i).unwrap();
+            
+            var expr = self->emit_expr(element);
+            
+            out.push_str(expr.as_str_const());
+            expr.free();
+            out.push_str(", ");
+        }
+
+        out.push('}');
+        return out;
+    }
+
+    fn emit_return(self: Self*, return_: const cir::TypedReturnStmt*) {
+        self->emit_all_defers();
+
+        if (self->in_void_main) {
+            switch (return_->arg) {
+                case .Some(arg) => {
+                    var expr = self->emit_expr(&arg);
+                    self->body_out.push_str("    return ");
+                    self->body_out.push_str(expr.as_str_const());
+                    self->body_out.push_str(";\n");
+                    expr.free();
+                }
+                case .None => {
+                    self->body_out.push_str("    return 0;\n");
+                }
+            }
+            return;
+        }
+
+        switch (return_->arg) {
+            case .Some(arg) => {
+                var expr = self->emit_expr(&arg);
+                self->body_out.push_str("    return ");
+                self->body_out.push_str(expr.as_str_const());
+                self->body_out.push_str(";\n");
+                expr.free();
+            }
+            case .None => self->body_out.push_str("    return;\n");
+        }
+    }
+
+    fn emit_if(self: Self*, if_: const cir::TypedIfStmt*) {
+        var cond = self->emit_expr(&if_->cond);
+        self->body_out.push_str("    if (");
+        self->body_out.push_str(cond.as_str_const());
+        self->body_out.push_str(") {\n");
+        cond.free();
+
+        self->emit_block_stmts(if_->then_block, true);
+        self->body_out.push_str("    }\n");
+
+        for (var b: usize = 0; b < if_->branches.len(); b += 1) {
+            const branch = if_->branches.get_const(b).unwrap();
+            
+            var cond = self->emit_expr(&branch->cond);
+            
+            self->body_out.push_str("    else if (");
+            self->body_out.push_str(cond.as_str_const());
+            self->body_out.push_str(") {\n");
+            
+            self->emit_block_stmts(branch->then_block, true);
+            self->body_out.push_str("    }\n");
+
+            cond.free();
+        }
+
+        switch (if_->else_block) {
+            case .Some(else_block) => {
+                self->body_out.push_str("    else {\n");
+                self->emit_block_stmts(else_block, true);
+                self->body_out.push_str("    }\n");
+            }
+            else => {}
+        }
+    }
+
+    fn emit_while(self: Self*, while_: const cir::TypedWhileStmt*) {
+        var cond = self->emit_expr(&while_->cond);
+        self->body_out.push_str("    while (");
+        self->body_out.push_str(cond.as_str_const());
+        self->body_out.push_str(") {\n");
+        cond.free();
+
+        self->loop_marks.push(self->defer_scopes.len());
+        self->emit_block_stmts(while_->body, true);
+        self->loop_marks.pop();
+
+        self->body_out.push_str("    }\n");
+    }
+
+    fn emit_for(self: Self*, for_: const cir::TypedForStmt*) {
+        self->body_out.push_str("    for (");
+
+        switch (for_->initializer) {
+            case .Some(var_) => {
+                switch (var_.ty) {
+                    case .Some(ty) => {
+                        self->types.ensure_named(&ty);
+                        
+                        var decl = self->types.build_decl(&ty, var_.name.as_str_const());
+                        
+                        if (var_.is_const) {
+                            self->body_out.push_str("const ");
+                        }
+                        
+                        self->body_out.push_str(decl.as_str_const());
+                        decl.free();
+                    }
+                    case .None => {
+                        var name = mangle::sanitized(self->allocator, var_.name.as_str_const());
+                        // FIXME: Never hard code type! Use var_.ty instead
+                        self->body_out.push_str("int ");
+                        self->body_out.push_str(name.as_str_const());
+                        name.free();
+                    }
+                }
+
+                switch (var_.rhs) {
+                    case .Some(rhs) => {
+                        self->body_out.push_str(" = ");
+                        var expr = self->emit_expr(&rhs);
+                        self->body_out.push_str(expr.as_str_const());
+                        expr.free();
+                    }
+                    else => {}
+                }
+            }
+            else => {}
+        }
+
+        self->body_out.push_str("; ");
+
+        switch (for_->cond) {
+            case .Some(cond) => {
+                var expr = self->emit_expr(&cond);
+                self->body_out.push_str(expr.as_str_const());
+                expr.free();
+            }
+            else => {}
+        }
+
+        self->body_out.push_str("; ");
+
+        switch (for_->increment) {
+            case .Some(var_) => {
+                var expr = self->emit_expr(&var_);
+                self->body_out.push_str(expr.as_str_const());
+                expr.free();
+            }
+            else => {}
+        }
+
+        self->body_out.push_str(") {\n");
+
+        self->loop_marks.push(self->defer_scopes.len());
+        self->emit_block_stmts(for_->body, true);
+        self->loop_marks.pop();
+
+        self->body_out.push_str("    }\n");
+    }
+
+    fn emit_switch(self: Self*, switch_: const cir::TypedSwitchStmt*) {
+        var enum_id: cir::EnumDeclId;
+        var is_scalar_enum = false;
+        var is_enum = false;
+
+        switch (switch_->operand.ty) {
+            case .Some(ty) => {
+                switch (ty.as_enum()) {
+                    case .Some(enum_decl_id) => {
+                        is_enum = true;
+                        enum_id = enum_decl_id;
+
+                        switch (self->tables->enums.get_const(enum_decl_id)) {
+                            case .Some(decl) => {
+                                is_scalar_enum = is_enum_scalar_optimizable(self->tables, decl);
+                            }
+                            else => {}
+                        }
+                    }
+                    else => {}
+                }
+            }
+            else => {}
+        }
+
+        if (is_enum && is_scalar_enum) {
+            self->emit_switch_scalar_enum(switch_, enum_id);
+            return;
+        }
+
+        if (is_enum) {
+            self->emit_switch_payload_enum(switch_, enum_id);
+            return;
+        }
+
+        if (!switch_->includes_any_range()) {
+            self->emit_switch_int(switch_);
+            return;
+        }
+
+        self->emit_switch_if_chain(switch_);
+    }
+
+    fn emit_switch_scalar_enum(self: Self*, switch_: const cir::TypedSwitchStmt*, enum_id: cir::EnumDeclId) {
+        var name = self->types.enum_c_name(enum_id);
+
+        var operand = self->emit_expr(&switch_->operand);
+        self->body_out.push_str("    switch (");
+        self->body_out.push_str(operand.as_str_const());
+        self->body_out.push_str(") {\n");
+        operand.free();
+
+        for (var if_: usize = 0; if_ < switch_->cases.len(); if_ += 1) {
+            const case_ = switch_->cases.get_const(if_).unwrap();
+
+            for (var j: usize = 0; j < case_->patterns.len(); j += 1) {
+                const pattern = case_->patterns.get_const(j).unwrap();
+                
+                switch (pattern->kind) {
+                    case .Wildcard => {
+                        self->body_out.push_str("    default: {\n");
+                    }
+                    case .EnumUnit(ident) => {
+                        self->body_out.push_str("    case ");
+                        self->body_out.push_str(name.as_str_const());
+                        self->body_out.push('_');
+                        self->body_out.push_str(ident.str.as_str_const());
+                        self->body_out.push_str(": {\n");
+                    }
+                    case .Binding { name, .. } => {
+                        self->body_out.push_str("    default: {\n");
+
+                        switch (switch_->operand.ty) {
+                            case .Some(ty) => {
+                                var type_name = self->types.type_name(&ty);
+
+                                self->body_out.push_str("        ");
+                                self->body_out.push_str(type_name.as_str_const());
+                                self->body_out.push(' ');
+                                self->body_out.push_str(name.str.as_str_const());
+                                self->body_out.push_str(" = ");
+                                
+                                var expr = self->emit_expr(&switch_->operand);
+                                self->body_out.push_str(expr.as_str_const());
+                                expr.free();
+
+                                self->body_out.push_str(";\n");
+                                type_name.free();
+                            }
+                            else => {}
+                        }
+                    }
+                    case .Expr(expr) => {
+                        switch (expr.literal_const_int_value()) {
+                            case .Some(lit) => {
+                                self->body_out.push_str("    case ");
+
+                                switch (lit) {
+                                    case .Signed(v) => push_i128(&self->body_out, v);
+                                    case .Unsigned(v) => push_u128(&self->body_out, v);
+                                }
+                                
+                                self->body_out.push_str(": {\n");
+                            }
+                            case .None => {
+                                self->body_out.push_str("    default: {\n");
+                            }
+                        }
+                    }
+                    else => {
+                        self->body_out.push_str("    default: {\n");
+                    }
+                }
+            }
+
+            self->emit_block_stmts(case_->body, true);
+            self->body_out.push_str("    } break;\n");
+        }
+
+        switch (switch_->else_case) {
+            case .Some(else_case) => {
+                self->body_out.push_str("    default: {\n");
+                self->emit_block_stmts(&else_case, true);
+                self->body_out.push_str("    } break;\n");
+            }
+            else => {
+                self->body_out.push_str("    default: break;\n");
+            }
+        }
+
+        self->body_out.push_str("    }\n");
+        name.free();
+    }
+
+    fn emit_switch_payload_enum(self: Self*, switch_: const cir::TypedSwitchStmt*, enum_id: cir::EnumDeclId) {
+        const decl = self->tables->enums.get_const(enum_id).unwrap();
+        const tags = self->types.tctx.enum_variant_tags(enum_id, decl);
+        var name = self->types.enum_c_name(enum_id);
+
+        var op = self->emit_expr(&switch_->operand);
+
+        self->body_out.push_str("    {\n        ");
+        self->body_out.push_str(name.as_str_const());
+        self->body_out.push_str(" __sw_op = ");
+        self->body_out.push_str(op.as_str_const());
+        self->body_out.push_str(";\n");
+        op.free();
+
+        var first = true;
+
+        for (var i: usize = 0; i < switch_->cases.len(); i += 1) {
+            const case_ = switch_->cases.get_const(i).unwrap();
+
+            for (var j: usize = 0; j < case_->patterns.len(); j += 1) {
+                const pattern = case_->patterns.get_const(j).unwrap();
+
+                switch (pattern->kind) {
+                    case .Wildcard => {
+                        self->body_out.push_str("    else {\n");
+                        self->emit_block_stmts(case_->body, true);
+                        self->body_out.push_str("    }\n");
+                        j = case_->patterns.len();
+                        continue;
+                    }
+                    case .EnumUnit(ident) => {
+                        const tag = self->find_variant_tag(decl, tags, ident.str.as_str_const());
+
+                        if (first) {
+                            self->body_out.push_str("    if (__sw_op.tag == ");
+                            first = false;
+                        } else {
+                            self->body_out.push_str("    else if (__sw_op.tag == ");
+                        }
+                        
+                        push_u32(&self->body_out, tag);
+                        self->body_out.push_str(") {\n");
+                        self->emit_block_stmts(case_->body, true);
+                        self->body_out.push_str("    }\n");
+                    }
+                    case .EnumTupleVariant { ident, items } => {
+                        const tag = self->find_variant_tag(decl, tags, ident.str.as_str_const());
+
+                        if (first) {
+                            self->body_out.push_str("    if (__sw_op.tag == ");
+                            first = false;
+                        } else {
+                            self->body_out.push_str("    else if (__sw_op.tag == ");
+                        }
+                        
+                        push_u32(&self->body_out, tag);
+                        self->body_out.push_str(") {\n");
+
+                        // Emit typed bindings from the variant overlay
+                        switch (decl->lookup_variant(ident.str.as_str_const())) {
+                            case .Some(variant) => {
+                                switch (*variant) {
+                                    case .Tuple { fields, .. } => {
+                                        for (var k: usize = 0; k < items.len(); k += 1) {
+                                            const item = items.get_const(k).unwrap();
+                                            
+                                            switch (item->kind) {
+                                                case .Binding { name, .. } => {
+                                                    if (k < fields.len()) {
+                                                        const field = fields.get_const(k).unwrap();
+                                                        
+                                                        var type_name = self->types.type_name(&field->ty);
+                                                        self->body_out.push_str("        ");
+                                                        self->body_out.push_str(type_name.as_str_const());
+                                                        self->body_out.push(' ');
+                                                        self->body_out.push_str(name.str.as_str_const());
+                                                        self->body_out.push_str(" = __sw_op.u.v");
+                                                        push_u32(&self->body_out, tag);
+                                                        self->body_out.push('.');
+
+                                                        var field_name = self->tuple_field_c_name(k);
+                                                        self->body_out.push_str(field_name.as_str_const());
+                                                        self->body_out.push_str(";\n");
+                                                        
+                                                        field_name.free();
+                                                        type_name.free();
+                                                    }
+                                                }
+                                                else => {}
+                                            }
+                                        }
+                                    }
+                                    else => {}
+                                }
+                            }
+                            else => {}
+                        }
+
+                        self->emit_block_stmts(case_->body, true);
+                        self->body_out.push_str("    }\n");
+                    }
+                    case .EnumStructVariant { ident, items, .. } => {
+                        const tag = self->find_variant_tag(decl, tags, ident.str.as_str_const());
+                        if (first) {
+                            self->body_out.push_str("    if (__sw_op.tag == ");
+                            first = false;
+                        } else {
+                            self->body_out.push_str("    else if (__sw_op.tag == ");
+                        }
+                        push_u32(&self->body_out, tag);
+                        self->body_out.push_str(") {\n");
+
+                        switch (decl->lookup_variant(ident.str.as_str_const())) {
+                            case .Some(variant) => {
+                                switch (*variant) {
+                                    case .Struct { fields, .. } => {
+                                        for (var k: usize = 0; k < items.len(); k += 1) {
+                                            const item = items.get_const(k).unwrap();
+                                            switch (item->pattern.kind) {
+                                                case .Binding { name, .. } => {
+                                                    for (var f: usize = 0; f < fields.len(); f += 1) {
+                                                        const field = fields.get_const(f).unwrap();
+                                                        if (str_eq(field->name.str.as_str_const(), item->name.str.as_str_const())) {
+                                                            var tn = self->types.type_name(&field->ty);
+                                                            self->body_out.push_str("        ");
+                                                            self->body_out.push_str(tn.as_str_const());
+                                                            self->body_out.push(' ');
+                                                            self->body_out.push_str(name.str.as_str_const());
+                                                            self->body_out.push_str(" = __sw_op.u.v");
+                                                            push_u32(&self->body_out, tag);
+                                                            self->body_out.push('.');
+                                                            self->body_out.push_str(item->name.str.as_str_const());
+                                                            self->body_out.push_str(";\n");
+                                                            tn.free();
+                                                            break;
+                                                        }
+                                                    }
+                                                }
+                                                else => {}
+                                            }
+                                        }
+                                    }
+                                    else => {}
+                                }
+                            }
+                            else => {}
+                        }
+
+                        self->emit_block_stmts(case_->body, true);
+                        self->body_out.push_str("    }\n");
+                    }
+                    case .Binding { name, .. } => {
+                        if (first) {
+                            self->body_out.push_str("    if (1) {\n");
+                            first = false;
+                        } else {
+                            self->body_out.push_str("    else if (1) {\n");
+                        }
+                        var binding_type_name = self->types.enum_c_name(enum_id);
+                        self->body_out.push_str("        ");
+                        self->body_out.push_str(binding_type_name.as_str_const());
+                        self->body_out.push(' ');
+                        self->body_out.push_str(name.str.as_str_const());
+                        self->body_out.push_str(" = __sw_op;\n");
+                        binding_type_name.free();
+                        self->emit_block_stmts(case_->body, true);
+                        self->body_out.push_str("    }\n");
+                    }
+                    else => {
+                        if (first) {
+                            self->body_out.push_str("    if (0) {\n");
+                            first = false;
+                        } else {
+                            self->body_out.push_str("    else if (0) {\n");
+                        }
+                        self->emit_block_stmts(case_->body, true);
+                        self->body_out.push_str("    }\n");
+                    }
+                }
+            }
+        }
+
+        switch (switch_->else_case) {
+            case .Some(else_case) => {
+                self->body_out.push_str("    else {\n");
+                self->emit_block_stmts(&else_case, true);
+                self->body_out.push_str("    }\n");
+            }
+            else => {}
+        }
+
+        self->body_out.push_str("    }\n");
+        name.free();
+    }
+
+    fn emit_switch_int(self: Self*, switch_: const cir::TypedSwitchStmt*) {
+        var operand = self->emit_expr(&switch_->operand);
+        self->body_out.push_str("    switch (");
+        self->body_out.push_str(operand.as_str_const());
+        self->body_out.push_str(") {\n");
+        operand.free();
+
+        for (var i: usize = 0; i < switch_->cases.len(); i += 1) {
+            const case_ = switch_->cases.get_const(i).unwrap();
+
+            for (var j: usize = 0; j < case_->patterns.len(); j += 1) {
+                const pattern = case_->patterns.get_const(j).unwrap();
+
+                switch (pattern->kind) {
+                    case .Wildcard => {
+                        self->body_out.push_str("    default: {\n");
+                    }
+                    case .Binding { name, .. } => {
+                        self->body_out.push_str("    default: {\n");
+                        const ty_opt = switch_->operand.ty;
+                        if (ty_opt.is_some()) {
+                            const ty = ty_opt.unwrap();
+                            var tn = self->types.type_name(&ty);
+                            self->body_out.push_str("        ");
+                            self->body_out.push_str(tn.as_str_const());
+                            self->body_out.push(' ');
+                            self->body_out.push_str(name.str.as_str_const());
+                            self->body_out.push_str(" = ");
+                            var e = self->emit_expr(&switch_->operand);
+                            self->body_out.push_str(e.as_str_const());
+                            e.free();
+                            self->body_out.push_str(";\n");
+                            tn.free();
+                        }
+                    }
+                    case .Range => {
+                        // Should not reach here (ranges force if/else chain).
+                        self->body_out.push_str("    default: {\n");
+                    }
+                    case .Expr(e) => {
+                        switch (e.literal_const_int_value()) {
+                            case .Some(lit) => {
+                                self->body_out.push_str("    case ");
+                                switch (lit) {
+                                    case .Signed(v) => push_i128(&self->body_out, v);
+                                    case .Unsigned(v) => push_u128(&self->body_out, v);
+                                }
+                                self->body_out.push_str(": {\n");
+                            }
+                            case .None => {
+                                self->body_out.push_str("    default: {\n");
+                            }
+                        }
+                    }
+                    else => {
+                        self->body_out.push_str("    default: {\n");
+                    }
+                }
+            }
+
+            self->emit_block_stmts(case_->body, true);
+            self->body_out.push_str("    } break;\n");
+        }
+
+        switch (switch_->else_case) {
+            case .Some(else_case) => {
+                self->body_out.push_str("    default: {\n");
+                self->emit_block_stmts(&else_case, true);
+                self->body_out.push_str("    } break;\n");
+            }
+            else => {
+                self->body_out.push_str("    default: break;\n");
+            }
+        }
+
+        self->body_out.push_str("    }\n");
+    }
+
+    fn emit_switch_if_chain(self: Self*, switch_: const cir::TypedSwitchStmt*) {
+        var op = self->emit_expr(&switch_->operand);
+
+        self->body_out.push_str("    {\n        ");
+        var op_ty_name: String;
+        switch (switch_->operand.ty) {
+            case .Some(ty) => {
+                self->types.ensure_named(&ty);
+                op_ty_name = self->types.type_name(&ty);
+            }
+            else => {
+                op_ty_name = String.from_str(self->allocator, "int64_t");
+            }
+        }
+
+        self->body_out.push_str(op_ty_name.as_str_const());
+        self->body_out.push_str(" __sw_op = ");
+        self->body_out.push_str(op.as_str_const());
+        self->body_out.push_str(";\n");
+        op.free();
+
+        var first = true;
+
+        for (var i: usize = 0; i < switch_->cases.len(); i += 1) {
+            const case_ = switch_->cases.get_const(i).unwrap();
+
+            // One if per pattern (multiple patterns with one body).
+            for (var j: usize = 0; j < case_->patterns.len(); j += 1) {
+                const pattern = case_->patterns.get_const(j).unwrap();
+
+                switch (pattern->kind) {
+                    case .Wildcard => {
+                        self->body_out.push_str("    else {\n");
+                        self->emit_block_stmts(case_->body, true);
+                        self->body_out.push_str("    }\n");
+                        j = case_->patterns.len();
+                        continue;
+                    }
+                    case .Range(r) => {
+                        if (first) {
+                            self->body_out.push_str("    if (");
+                            first = false;
+                        } else {
+                            self->body_out.push_str("    else if (");
+                        }
+                        var lo = self->emit_expr(&r.lower);
+                        var hi = self->emit_expr(&r.upper);
+                        self->body_out.push_str("__sw_op >= ");
+                        self->body_out.push_str(lo.as_str_const());
+                        self->body_out.push_str(" && __sw_op ");
+                        if (r.inclusive_upper) {
+                            self->body_out.push_str("<=");
+                        } else {
+                            self->body_out.push('<');
+                        }
+                        self->body_out.push_str(" ");
+                        self->body_out.push_str(hi.as_str_const());
+                        self->body_out.push_str(") {\n");
+                        lo.free();
+                        hi.free();
+                        self->emit_block_stmts(case_->body, true);
+                        self->body_out.push_str("    }\n");
+                    }
+                    case .Expr(e) => {
+                        if (first) {
+                            self->body_out.push_str("    if (");
+                            first = false;
+                        } else {
+                            self->body_out.push_str("    else if (");
+                        }
+                        var v = self->emit_expr(&e);
+                        self->body_out.push_str("__sw_op == ");
+                        self->body_out.push_str(v.as_str_const());
+                        self->body_out.push_str(") {\n");
+                        v.free();
+                        self->emit_block_stmts(case_->body, true);
+                        self->body_out.push_str("    }\n");
+                    }
+                    case .Binding { name, .. } => {
+                        self->body_out.push_str("    ");
+                        if (!first) {
+                            self->body_out.push_str("else ");
+                        }
+                        first = false;
+                        self->body_out.push_str("{\n        ");
+                        self->body_out.push_str(op_ty_name.as_str_const());
+                        self->body_out.push(' ');
+                        self->body_out.push_str(name.str.as_str_const());
+                        self->body_out.push_str(" = __sw_op;\n");
+                        self->emit_block_stmts(case_->body, true);
+                        self->body_out.push_str("    }\n");
+                    }
+                    case .EnumUnit(ident) => {
+                        if (first) {
+                            self->body_out.push_str("    if (");
+                            first = false;
+                        } else {
+                            self->body_out.push_str("    else if (");
+                        }
+                        self->body_out.push_str("__sw_op == ");
+                        self->body_out.push_str(ident.str.as_str_const());
+                        self->body_out.push_str(") {\n");
+                        self->emit_block_stmts(case_->body, true);
+                        self->body_out.push_str("    }\n");
+                    }
+                    else => {
+                        self->body_out.push_str("    ");
+                        if (!first) {
+                            self->body_out.push_str("else ");
+                        }
+                        first = false;
+                        self->body_out.push_str("{\n");
+                        self->emit_block_stmts(case_->body, true);
+                        self->body_out.push_str("    }\n");
+                    }
+                }
+            }
+        }
+
+        switch (switch_->else_case) {
+            case .Some(else_case) => {
+                self->body_out.push_str("    else {\n");
+                self->emit_block_stmts(&else_case, true);
+                self->body_out.push_str("    }\n");
+            }
+            else => {}
+        }
+
+        self->body_out.push_str("    }\n");
+        op_ty_name.free();
+    }
+
+    fn emit_inline_asm_stmt(self: Self*, a: const cir::TypedInlineAsm) {
+        self->body_out.push_str("    __asm__ ");
+        if (a.is_volatile) {
+            self->body_out.push_str("__volatile__(");
+        } else {
+            self->body_out.push('(');
+        }
+
+        for (var i: usize = 0; i < a.template.len(); i += 1) {
+            const line = a.template.get_const(i).unwrap();
+            self->body_out.push('"');
+            self->body_out.push_str(line->as_str_const());
+            self->body_out.push('\\');
+            self->body_out.push('n');
+            self->body_out.push('"');
+            if (i + 1 < a.template.len()) {
+                self->body_out.push_str(" ");
+            }
+        }
+
+        if (a.outputs.len() > 0 || a.inputs.len() > 0 || a.clobbers.len() > 0) {
+            self->body_out.push_str(" : ");
+            for (var i: usize = 0; i < a.outputs.len(); i += 1) {
+                const op = a.outputs.get_const(i).unwrap();
+                self->body_out.push_str("[");
+                var en = mangle::sanitized(self->allocator, op->constraint.as_str_const());
+                self->body_out.push_str(en.as_str_const());
+                en.free();
+                self->body_out.push_str("] \"");
+                self->body_out.push_str(op->constraint.as_str_const());
+                self->body_out.push_str("\"(");
+                var e = self->emit_expr(op->expr);
+                self->body_out.push_str(e.as_str_const());
+                e.free();
+                self->body_out.push(')');
+                if (i + 1 < a.outputs.len()) {
+                    self->body_out.push_str(", ");
+                }
+            }
+
+            if (a.inputs.len() > 0) {
+                self->body_out.push_str(" : ");
+            }
+
+            for (var i: usize = 0; i < a.inputs.len(); i += 1) {
+                const op = a.inputs.get_const(i).unwrap();
+                self->body_out.push_str("[");
+                var en = mangle::sanitized(self->allocator, op->constraint.as_str_const());
+                self->body_out.push_str(en.as_str_const());
+                en.free();
+                self->body_out.push_str("] \"");
+                self->body_out.push_str(op->constraint.as_str_const());
+                self->body_out.push_str("\"(");
+                var e = self->emit_expr(op->expr);
+                self->body_out.push_str(e.as_str_const());
+                e.free();
+                self->body_out.push(')');
+                if (i + 1 < a.inputs.len()) {
+                    self->body_out.push_str(", ");
+                }
+            }
+
+            if (a.clobbers.len() > 0) {
+                self->body_out.push_str(" : ");
+                for (var i: usize = 0; i < a.clobbers.len(); i += 1) {
+                    const clobber = a.clobbers.get_const(i).unwrap();
+                    self->body_out.push('"');
+                    self->body_out.push_str(clobber->name.as_str_const());
+                    self->body_out.push('"');
+                    if (i + 1 < a.clobbers.len()) {
+                        self->body_out.push_str(", ");
+                    }
+                }
+            }
+        }
+
+        self->body_out.push_str(");\n");
+    }
+
+    fn sanitize_label(self: Self*, name: const uint8*) String {
+        return mangle::sanitized(self->allocator, name);
+    }
+
+    /* ************* Defers ************* */
+
+    fn push_defer(self: Self*, defer_stmt: cir::TypedDeferStmt) {
+        if (self->defer_scopes.len() == 0) {
+            var scope: Vec<cir::TypedDeferStmt> = Vec.new(self->allocator);
+            scope.push(defer_stmt);
+            self->defer_scopes.push(scope);
+            return;
+        }
+
+        switch (self->defer_scopes.last()) {
+            case .Some(scope) => scope->push(defer_stmt);
+            else => {}
+        }
+    }
+
+    fn pop_defer_scope(self: Self*) {
+        switch (self->defer_scopes.last()) {
+            case .Some(scope) => {
+                for (var i: usize = scope->len(); i > 0; i -= 1) {
+                    const d = scope->get_const(i - 1).unwrap();
+                    self->emit_defer_stmt(d);
+                }
+            }
+            else => {}
+        }
+
+        if (self->defer_scopes.len() > 0) {
+            var popped = self->defer_scopes.pop();
+            popped.free();
+        }
+    }
+
+    fn emit_all_defers(self: Self*) {
+        for (var s: usize = self->defer_scopes.len(); s > 0; s -= 1) {
+            switch (self->defer_scopes.get_const(s - 1)) {
+                case .Some(scope) => {
+                    for (var i: usize = scope->len(); i > 0; i -= 1) {
+                        const d = scope->get_const(i - 1).unwrap();
+                        self->emit_defer_stmt(d);
+                    }
+                }
+                else => {}
+            }
+        }
+    }
+
+    fn emit_defers_to_loop_mark(self: Self*) {
+        switch (self->loop_marks.last_const()) {
+            case .Some(mark) => {
+                for (var s: usize = self->defer_scopes.len(); s > *mark; s -= 1) {
+                    switch (self->defer_scopes.get_const(s - 1)) {
+                        case .Some(scope) => {
+                            for (var i: usize = scope->len(); i > 0; i -= 1) {
+                                const d = scope->get_const(i - 1).unwrap();
+                                self->emit_defer_stmt(d);
+                            }
+                        }
+                        else => {}
+                    }
+                }
+            }
+            else => {}
+        }
+    }
+
+    fn emit_defer_stmt(self: Self*, defer_stmt: const cir::TypedDeferStmt*) {
+        // Register nested defers of the deferred statement's block if any,
+        // then emit the statement itself->
+        self->emit_stmt(defer_stmt->operand);
+    }
+
+    /* ************* Expressions ************* */
+
+    fn emit_expr(self: Self*, expr: const cir::TypedExpr*) String {
+        switch (expr->kind) {
+            case .Literal(lit) => return self->emit_literal(&lit);
+
+            case .Symbol(sym) => return self->emit_symbol(&sym);
+
+            case .Prefix(p) => {
+                var out = String.new(self->allocator);
+                var operand = self->emit_expr(p.operand);
+                switch (p.op) {
+                    case .Bang => {
+                        out.push_str("(!");
+                        out.push_str(operand.as_str_const());
+                        out.push(')');
+                    }
+                    case .Minus => {
+                        out.push_str("(-");
+                        out.push_str(operand.as_str_const());
+                        out.push(')');
+                    }
+                    case .BitwiseNot => {
+                        out.push_str("(~");
+                        out.push_str(operand.as_str_const());
+                        out.push(')');
+                    }
+                }
+                operand.free();
+                return out;
+            }
+
+            case .Infix(inf) => return self->emit_infix(&inf);
+
+            case .Assign(a) => return self->emit_assign(&a);
+
+            case .AddrOf(a) => {
+                var out = String.from_str(self->allocator, "(&");
+                var e = self->emit_expr(a.operand);
+                out.push_str(e.as_str_const());
+                e.free();
+                out.push(')');
+                return out;
+            }
+
+            case .Deref(d) => {
+                var out = String.from_str(self->allocator, "(*");
+                var e = self->emit_expr(d.operand);
+                out.push_str(e.as_str_const());
+                e.free();
+                out.push(')');
+                return out;
+            }
+
+            case .ArrayIndex(ai) => {
+                var out = String.new(self->allocator);
+                var base = self->emit_expr(ai.operand);
+                var idx = self->emit_expr(ai.index);
+                out.push('(');
+                out.push_str(base.as_str_const());
+                out.push('[');
+                out.push_str(idx.as_str_const());
+                out.push_str("])");
+                base.free();
+                idx.free();
+                return out;
+            }
+
+            case .FieldAccess(fa) => {
+                var out = String.new(self->allocator);
+                var base = self->emit_expr(fa.operand);
+                if (fa.is_thin_arrow) {
+                    out.push_str("((");
+                    out.push_str(base.as_str_const());
+                    out.push_str(")->");
+                } else {
+                    out.push('(');
+                    out.push_str(base.as_str_const());
+                    out.push('.');
+                }
+                out.push_str(fa.name.as_str_const());
+                out.push(')');
+                base.free();
+                return out;
+            }
+
+            case .FuncCall(fc) => return self->emit_func_call(&fc);
+
+            case .MethodCall(mc) => return self->emit_method_call(&mc);
+
+            case .StructInit(si) => return self->emit_struct_init(&si);
+
+            case .UnionInit(ui) => {
+                var tname = self->type_name_of(&ui.operand);
+                var out = String.from_str(self->allocator, "((");
+                out.push_str(tname.as_str_const());
+                out.push_str("){ .");
+                out.push_str(ui.field->name.as_str_const());
+                out.push_str(" = ");
+                var v = self->emit_expr(&ui.field->value);
+                out.push_str(v.as_str_const());
+                v.free();
+                out.push_str(" })");
+                tname.free();
+                return out;
+            }
+
+            case .Array(array) => {
+                var tname: String;
+                switch (array.ty) {
+                    case .Some(ty) => {
+                        self->types.ensure_named(&ty);
+                        tname = self->types.type_name(&ty);
+                    }
+                    case .None => {
+                        tname = String.from_str(self->allocator, "void *");
+                    }
+                }
+
+                var out = String.from_str(self->allocator, "((");
+                out.push_str(tname.as_str_const());
+                out.push_str("){ ");
+                for (var i: usize = 0; i < array.elements.len(); i += 1) {
+                    const el = array.elements.get_const(i).unwrap();
+                    var v = self->emit_expr(el);
+                    out.push_str(v.as_str_const());
+                    v.free();
+                    out.push_str(", ");
+                }
+                out.push_str(" })");
+                tname.free();
+                return out;
+            }
+
+            case .Tuple(tup) => {
+                var tyname: String;
+                switch (expr->ty) {
+                    case .Some(ty) => {
+                        self->types.ensure_named(&ty);
+                        tyname = self->types.type_name(&ty);
+                    }
+                    case .None => tyname = String.from_str(self->allocator, "void");
+                }
+
+                var out = String.from_str(self->allocator, "((");
+                out.push_str(tyname.as_str_const());
+                out.push_str("){ ");
+                for (var i: usize = 0; i < tup.elements.len(); i += 1) {
+                    const el = tup.elements.get_const(i).unwrap();
+                    var v = self->emit_expr(el);
+                    out.push_str(v.as_str_const());
+                    v.free();
+                    out.push_str(", ");
+                }
+                out.push_str(" })");
+                tyname.free();
+                return out;
+            }
+
+            case .TupleAccess(ta) => {
+                var out = String.new(self->allocator);
+                var base = self->emit_expr(ta.operand);
+                out.push('(');
+                out.push_str(base.as_str_const());
+                out.push_str(").f");
+                push_usize(&out, ta.index);
+                base.free();
+                return out;
+            }
+
+            case .EnumInit(enum_init) => return self->emit_enum_init_runtime(&enum_init);
+
+            case .EnumStructVariantInit(esv) => return self->emit_enum_struct_variant_init(&esv);
+
+            case .UnnamedStructValue(usv) => {
+                var tyname: String;
+                switch (expr->ty) {
+                    case .Some(ty) => {
+                        self->types.ensure_named(&ty);
+                        tyname = self->types.type_name(&ty);
+                    }
+                    case .None => tyname = String.from_str(self->allocator, "void");
+                }
+
+                var out = String.from_str(self->allocator, "((");
+                out.push_str(tyname.as_str_const());
+                out.push_str("){ ");
+                for (var i: usize = 0; i < usv.fields.len(); i += 1) {
+                    const field = usv.fields.get_const(i).unwrap();
+                    out.push('.');
+                    out.push_str(field->name.as_str_const());
+                    out.push_str(" = ");
+                    var v = self->emit_expr(field->value);
+                    out.push_str(v.as_str_const());
+                    v.free();
+                    out.push_str(", ");
+                }
+                out.push_str(" })");
+                tyname.free();
+                return out;
+            }
+
+            case .UnnamedUnionValue(uuv) => {
+                var tyname: String;
+                switch (expr->ty) {
+                    case .Some(ty) => {
+                        self->types.ensure_named(&ty);
+                        tyname = self->types.type_name(&ty);
+                    }
+                    case .None => tyname = String.from_str(self->allocator, "void");
+                }
+
+                var out = String.from_str(self->allocator, "((");
+                out.push_str(tyname.as_str_const());
+                out.push_str("){ .");
+                for (var i: usize = 0; i < uuv.fields.len(); i += 1) {
+                    const field = uuv.fields.get_const(i).unwrap();
+                    out.push_str(field->name.as_str_const());
+                    out.push_str(" = ");
+                    var v = self->emit_expr(field->value);
+                    out.push_str(v.as_str_const());
+                    v.free();
+                    out.push_str(", ");
+                }
+                out.push_str(" })");
+                tyname.free();
+                return out;
+            }
+
+            case .UnnamedEnumValue(uen) => {
+                var enum_init = cir::TypedEnumInit {
+                    operand: .Placeholder,
+                    name: String.from_str(self->allocator, uen.ident.str.as_str_const()),
+                    arg: self->unnamed_enum_kind_to_args(&uen.kind),
+                    span: uen.span,
+                };
+                // Fix operand to the enum named type when possible.
+                var targs = cir::TypedTypeArgs.new(self->allocator);
+                switch (uen.enum_decl_id) {
+                    case .Some(id) => {
+                        enum_init.operand = .Named(cir::NamedType {
+                            type_decl_id: .Enum(id),
+                            type_args: targs,
+                        });
+                    }
+                    else => {}
+                }
+                var out = self->emit_enum_init_runtime(&enum_init);
+                targs.list.free();
+                enum_init.name.free();
+                return out;
+            }
+
+            case .Lambda(lam) => return self->emit_lambda(&lam);
+
+            case .Dynamic(dyn) => return self->emit_dynamic(&dyn);
+
+            case .Builtin(b) => {
+                switch (b) {
+                    case .BuiltinFunc(bf) => return self->emit_builtin_func(&bf);
+                    case .BuiltinBlock => {
+                        return String.from_str(self->allocator, "((void)0)");
+                    }
+                }
+            }
+
+            case .SemaType => {
+                return String.from_str(self->allocator, "((void)0)");
+            }
+            case .Poisoned => {
+                return String.from_str(self->allocator, "((void)0)");
+            }
+            case .InlineAsm => {
+                return String.from_str(self->allocator, "((void)0)");
+            }
+        }
+    }
+
+    fn emit_infix(self: Self*, inf: const cir::TypedInfixExpr*) String {
+        var out = String.new(self->allocator);
+        var lhs = self->emit_expr(inf->lhs);
+        var rhs = self->emit_expr(inf->rhs);
+
+        out.push('(');
+        out.push_str(lhs.as_str_const());
+        out.push(' ');
+
+        switch (inf->op) {
+            case .Add => out.push('+');
+            case .Sub => out.push('-');
+            case .Mul => out.push('*');
+            case .Div => out.push('/');
+            case .Rem => out.push('%');
+            case .LessThan => out.push('<');
+            case .LessEqual => out.push_str("<=");
+            case .GreaterThan => out.push('>');
+            case .GreaterEqual => out.push_str(">=");
+            case .Equal => out.push_str("==");
+            case .NotEqual => out.push_str("!=");
+            case .Or => out.push_str("||");
+            case .And => out.push_str("&&");
+            case .BitwiseAnd => out.push('&');
+            case .BitwiseOr => out.push('|');
+            case .BitwiseXor => out.push('^');
+            case .ShiftRight => out.push_str(">>");
+            case .ShiftLeft => out.push_str("<<");
+            case .BitwiseAndNot => {
+                out.push_str("& ~");
+            }
+            case .NullCoalesce => {
+                // (lhs) ? (lhs) : (rhs) — lhs double-evaluated (limitation).
+                lhs.free();
+                rhs.free();
+                var l2 = self->emit_expr(inf->lhs);
+                var r2 = self->emit_expr(inf->rhs);
+                var out2 = String.new(self->allocator);
+                out2.push_str("((");
+                out2.push_str(l2.as_str_const());
+                out2.push_str(") ? (");
+                out2.push_str(l2.as_str_const());
+                out2.push_str(") : (");
+                out2.push_str(r2.as_str_const());
+                out2.push_str("))");
+                l2.free();
+                r2.free();
+                out.free();
+                return out2;
+            }
+        }
+
+        out.push(' ');
+        out.push_str(rhs.as_str_const());
+        out.push(')');
+        lhs.free();
+        rhs.free();
+        return out;
+    }
+
+    fn emit_assign(self: Self*, a: const cir::TypedAssignExpr*) String {
+        var lhs = self->emit_expr(a->lhs);
+        var out = String.new(self->allocator);
+
+        switch (a->kind) {
+            case .Default => {
+                out.push('(');
+                out.push_str(lhs.as_str_const());
+                out.push_str(" = ");
+                var rhs = self->emit_expr(a->rhs);
+                out.push_str(rhs.as_str_const());
+                rhs.free();
+                out.push(')');
+            }
+            case .AddAssign => {
+                return self->compound_assign(lhs, a->rhs, "+");
+            }
+            case .SubAssign => {
+                return self->compound_assign(lhs, a->rhs, "-");
+            }
+            case .MulAssign => {
+                return self->compound_assign(lhs, a->rhs, "*");
+            }
+            case .DivAssign => {
+                return self->compound_assign(lhs, a->rhs, "/");
+            }
+            case .ModAssign => {
+                return self->compound_assign(lhs, a->rhs, "%");
+            }
+            case .BitwiseAndAssign => {
+                return self->compound_assign(lhs, a->rhs, "&");
+            }
+            case .BitwiseXorAssign => {
+                return self->compound_assign(lhs, a->rhs, "^");
+            }
+            case .LeftShiftAssign => {
+                return self->compound_assign(lhs, a->rhs, "<<");
+            }
+            case .RightShiftAssign => {
+                return self->compound_assign(lhs, a->rhs, ">>");
+            }
+            case .BitwiseAndNotAssign => {
+                var rhs = self->emit_expr(a->rhs);
+                out.push('(');
+                out.push_str(lhs.as_str_const());
+                out.push_str(" = ");
+                out.push_str(lhs.as_str_const());
+                out.push_str(" & ~(");
+                out.push_str(rhs.as_str_const());
+                out.push_str("))");
+                rhs.free();
+            }
+        }
+
+        lhs.free();
+        return out;
+    }
+
+    fn compound_assign(self: Self*, lhs: String, rhs: const cir::TypedExpr*, op: const uint8*) String {
+        var out = String.new(self->allocator);
+        var r = self->emit_expr(rhs);
+        out.push('(');
+        out.push_str(lhs.as_str_const());
+        out.push(' ');
+        out.push_str(op);
+        out.push_str("= ");
+        out.push_str(r.as_str_const());
+        out.push(')');
+        lhs.free();
+        r.free();
+        return out;
+    }
+
+    fn emit_symbol(self: Self*, sym: const cir::TypedSymbolExpr*) String {
+        switch (*sym) {
+            case .Resolved { decl_id, .. } => {
+                switch (decl_id) {
+                    case .Var(id) => {
+                        switch (self->tables->vars.get_const(id)) {
+                            case .Some(decl) => {
+                                return mangle::sanitized(self->allocator, decl->name.as_str_const());
+                            }
+                            else => {}
+                        }
+                    }
+                    case .GlobalVar(id) => {
+                        switch (self->tables->global_vars.get_const(id)) {
+                            case .Some(decl) => {
+                                return mangle::mangle_global(
+                                    self->allocator,
+                                    &self->types.maps,
+                                    decl->name.as_str_const(),
+                                    id,
+                                    &decl->modifiers
+                                );
+                            }
+                            else => {}
+                        }
+                    }
+                    case .Func(id) => {
+                        switch (self->tables->funcs.get_const(id)) {
+                            case .Some(decl) => {
+                                self->ensure_func_decl_proto(id, decl);
+
+                                return mangle::mangle_func(
+                                    self->allocator,
+                                    &self->types.maps,
+                                    decl->name.as_str_const(),
+                                    id,
+                                    &decl->modifiers
+                                );
+                            }
+                            else => {}
+                        }
+                    }
+                    case .Method(id) => {
+                        switch (self->tables->methods.get_const(id)) {
+                            case .Some(decl) => {
+                                return mangle::mangle_method(self->allocator, &self->types.maps, id, decl);
+                            }
+                            else => {}
+                        }
+                    }
+                    else => {}
+                }
+            }
+            case .Unresolved { symbol_id, .. } => {
+                switch (self->registry->symbol_name(symbol_id)) {
+                    case .Some(name) => {
+                        var out = mangle::sanitized(self->allocator, name.as_str_const());
+                        return out;
+                    }
+                    else => {}
+                }
+            }
+        }
+
+        return String.from_str(self->allocator, "/*unresolved_symbol*/0");
+    }
+
+    fn emit_func_call(self: Self*, fc: const cir::TypedFuncCall*) String {
+        var out = String.new(self->allocator);
+        var callee: String;
+
+        switch (fc->dispatch) {
+            case .Normal { func_decl_id } => {
+                switch (self->tables->funcs.get_const(func_decl_id)) {
+                    case .Some(decl) => {
+                        self->ensure_func_decl_proto(func_decl_id, decl);
+
+                        callee = mangle::mangle_func(
+                            self->allocator,
+                            &self->types.maps,
+                            decl->name.as_str_const(),
+                            func_decl_id,
+                            &decl->modifiers
+                        );
+                    }
+                    else => {
+                        callee = self->emit_expr(fc->operand);
+                    }
+                }
+            }
+            case .Monomorph { monomorph_id } => {
+                var resolved = false;
+
+                switch (self->monomorphs->instances.get_const(monomorph_id)) {
+                    case .Some(inst) => {
+                        switch (inst->template_id) {
+                            case .Func(fid) => {
+                                switch (self->tables->funcs.get_const(fid)) {
+                                    case .Some(decl) => {
+                                        callee = mangle::mangle_monomorphized_func(
+                                            self->allocator,
+                                            &self->types.maps,
+                                            decl->name.as_str_const(),
+                                            fid,
+                                            &decl->modifiers,
+                                            &inst->type_args
+                                        );
+                                        resolved = true;
+                                    }
+                                    else => {}
+                                }
+                            }
+                            else => {}
+                        }
+                    }
+                    else => {}
+                }
+
+                if (!resolved) {
+                    callee = self->emit_expr(fc->operand);
+                }
+            }
+            else => {
+                callee = self->emit_expr(fc->operand);
+            }
+        }
+
+        // For extern C variadic calls the callee expr already carries the name.
+        out.push_str(callee.as_str_const());
+        out.push('(');
+
+        for (var i: usize = 0; i < fc->args.len(); i += 1) {
+            const arg = fc->args.get_const(i).unwrap();
+            var e = self->emit_expr(arg);
+            out.push_str(e.as_str_const());
+            e.free();
+            if (i + 1 < fc->args.len()) {
+                out.push_str(", ");
+            }
+        }
+
+        out.push(')');
+        callee.free();
+        return out;
+    }
+
+    fn emit_method_call(self: Self*, mc: const cir::TypedMethodCall*) String {
+        switch (mc->dispatch) {
+            case .Normal { method_decl_id } => {
+                switch (self->tables->methods.get_const(method_decl_id)) {
+                    case .Some(method) => {
+                        var name = mangle::mangle_method(self->allocator, &self->types.maps, method_decl_id, method);
+                        var out = String.new(self->allocator);
+                        out.push_str(name.as_str_const());
+                        out.push('(');
+                        var self_arg = self->emit_expr(mc->operand);
+                        if (self->method_needs_address_of_self(method, mc->operand)) {
+                            out.push_str("(&");
+                            out.push_str(self_arg.as_str_const());
+                            out.push(')');
+                        } else {
+                            out.push_str(self_arg.as_str_const());
+                        }
+                        self_arg.free();
+                        for (var i: usize = 0; i < mc->args.len(); i += 1) {
+                            const arg = mc->args.get_const(i).unwrap();
+                            out.push_str(", ");
+                            var e = self->emit_expr(arg);
+                            out.push_str(e.as_str_const());
+                            e.free();
+                        }
+                        out.push(')');
+                        name.free();
+                        return out;
+                    }
+                    else => {}
+                }
+            }
+            case .Interface { interface_decl_id, index, dispatch } => {
+                switch (dispatch) {
+                    case .StaticNormal { method_decl_id } => {
+                        switch (self->tables->methods.get_const(method_decl_id)) {
+                            case .Some(method) => {
+                                var name = mangle::mangle_method(self->allocator, &self->types.maps, method_decl_id, method);
+                                var out = String.new(self->allocator);
+                                out.push_str(name.as_str_const());
+                                out.push('(');
+                                var self_arg = self->emit_expr(mc->operand);
+                                if (self->method_needs_address_of_self(method, mc->operand)) {
+                                    out.push_str("(&");
+                                    out.push_str(self_arg.as_str_const());
+                                    out.push(')');
+                                } else {
+                                    out.push_str(self_arg.as_str_const());
+                                }
+                                self_arg.free();
+                                for (var i: usize = 0; i < mc->args.len(); i += 1) {
+                                    const arg = mc->args.get_const(i).unwrap();
+                                    out.push_str(", ");
+                                    var e = self->emit_expr(arg);
+                                    out.push_str(e.as_str_const());
+                                    e.free();
+                                }
+                                out.push(')');
+                                name.free();
+                                return out;
+                            }
+                            else => {}
+                        }
+                    }
+                    case .StaticMonomorphized { monomorph_id } => {
+                        // Static call to a monomorphized method: use the
+                        // instance's substituted signature.
+                        switch (self->monomorphs->instances.get_const(monomorph_id)) {
+                            case .Some(inst) => {
+                                switch (inst->template_id) {
+                                    case .Method(mid) => {
+                                        switch (self->tables->methods.get_const(mid)) {
+                                            case .Some(method) => {
+                                                var name = mangle::mangle_monomorphized_method(
+                                                    self->allocator,
+                                                    &self->types.maps,
+                                                    mid,
+                                                    method,
+                                                    &inst->type_args
+                                                );
+                                                var out = String.new(self->allocator);
+                                                out.push_str(name.as_str_const());
+                                                out.push('(');
+                                                var self_arg = self->emit_expr(mc->operand);
+                                                if (self->method_needs_address_of_self(method, mc->operand)) {
+                                                    out.push_str("(&");
+                                                    out.push_str(self_arg.as_str_const());
+                                                    out.push(')');
+                                                } else {
+                                                    out.push_str(self_arg.as_str_const());
+                                                }
+                                                self_arg.free();
+                                                for (var i: usize = 0; i < mc->args.len(); i += 1) {
+                                                    const arg = mc->args.get_const(i).unwrap();
+                                                    out.push_str(", ");
+                                                    var e = self->emit_expr(arg);
+                                                    out.push_str(e.as_str_const());
+                                                    e.free();
+                                                }
+                                                out.push(')');
+                                                name.free();
+                                                return out;
+                                            }
+                                            else => {}
+                                        }
+                                    }
+                                    else => {}
+                                }
+                            }
+                            else => {}
+                        }
+                    }
+                    case .Dynamic => {
+                        // ((RET (*)(void *, ...))((void **)fp.vtable)[IDX])(fp.data, args...)
+                        var fp = self->emit_expr(mc->operand);
+                        var ret_name = self->interface_method_ret_type_name(interface_decl_id, index, &mc->type_args);
+
+                        var out = String.from_str(self->allocator, "((");
+                        out.push_str(ret_name.as_str_const());
+                        out.push_str(" (*)(void *");
+                        for (var i: usize = 0; i < mc->args.len(); i += 1) {
+                            const arg = mc->args.get_const(i).unwrap();
+                            switch (arg->ty) {
+                                case .Some(ty) => {
+                                    var tn = self->types.type_name(&ty);
+                                    out.push_str(", ");
+                                    out.push_str(tn.as_str_const());
+                                    tn.free();
+                                }
+                                else => out.push_str(", void *");
+
+                            }
+                        }
+                        out.push_str("))((void **)(");
+                        out.push_str(fp.as_str_const());
+                        out.push_str(").vtable)[");
+                        push_usize(&out, index);
+                        out.push_str("])((");
+                        out.push_str(fp.as_str_const());
+                        out.push_str(").data");
+                        for (var i: usize = 0; i < mc->args.len(); i += 1) {
+                            const arg = mc->args.get_const(i).unwrap();
+                            out.push_str(", ");
+                            var e = self->emit_expr(arg);
+                            out.push_str(e.as_str_const());
+                            e.free();
+                        }
+                        out.push(')');
+                        fp.free();
+                        ret_name.free();
+                        return out;
+                    }
+                    else => {}
+                }
+            }
+            case .Monomorph { monomorph_id, .. } => {
+                switch (self->monomorphs->instances.get_const(monomorph_id)) {
+                    case .Some(inst) => {
+                        switch (inst->template_id) {
+                            case .Method(mid) => {
+                                switch (self->tables->methods.get_const(mid)) {
+                                    case .Some(method) => {
+                                        var name = mangle::mangle_monomorphized_method(
+                                            self->allocator,
+                                            &self->types.maps,
+                                            mid,
+                                            method,
+                                            &inst->type_args
+                                        );
+                                        var out = String.new(self->allocator);
+                                        out.push_str(name.as_str_const());
+                                        out.push('(');
+                                        var self_arg = self->emit_expr(mc->operand);
+                                        if (self->method_needs_address_of_self(method, mc->operand)) {
+                                            out.push_str("(&");
+                                            out.push_str(self_arg.as_str_const());
+                                            out.push(')');
+                                        } else {
+                                            out.push_str(self_arg.as_str_const());
+                                        }
+                                        self_arg.free();
+                                        for (var i: usize = 0; i < mc->args.len(); i += 1) {
+                                            const arg = mc->args.get_const(i).unwrap();
+                                            out.push_str(", ");
+                                            var e = self->emit_expr(arg);
+                                            out.push_str(e.as_str_const());
+                                            e.free();
+                                        }
+                                        out.push(')');
+                                        name.free();
+                                        return out;
+                                    }
+                                    else => {}
+                                }
+                            }
+                            else => {}
+                        }
+                    }
+                    else => {}
+                }
+            }
+            else => {}
+        }
+
+        // Fallback: treat as a plain call on the operand.
+        var fb = String.new(self->allocator);
+        var base = self->emit_expr(mc->operand);
+        fb.push_str(base.as_str_const());
+        base.free();
+        fb.push_str("/*unresolved_method*/(");
+        for (var i: usize = 0; i < mc->args.len(); i += 1) {
+            const arg = mc->args.get_const(i).unwrap();
+            var e = self->emit_expr(arg);
+            fb.push_str(e.as_str_const());
+            e.free();
+            if (i + 1 < mc->args.len()) {
+                fb.push_str(", ");
+            }
+        }
+        fb.push(')');
+        return fb;
+    }
+
+    fn emit_struct_init(self: Self*, si: const cir::TypedStructInitExpr*) String {
+        var tname = self->type_name_of(&si->operand);
+        var out = String.from_str(self->allocator, "((");
+        out.push_str(tname.as_str_const());
+        out.push_str("){ ");
+        for (var i: usize = 0; i < si->fields.len(); i += 1) {
+            const field = si->fields.get_const(i).unwrap();
+            out.push('.');
+            out.push_str(field->name.as_str_const());
+            out.push_str(" = ");
+            var v = self->emit_expr(&field->value);
+            out.push_str(v.as_str_const());
+            v.free();
+            out.push_str(", ");
+        }
+        out.push_str(" })");
+        tname.free();
+        return out;
+    }
+
+    fn emit_enum_init_runtime(self: Self*, enum_init: const cir::TypedEnumInit*) String {
+        var enum_id: cir::EnumDeclId = 0;
+        var found = false;
+
+        switch (*enum_init->operand.const_inner()) {
+            case .Named(named) => {
+                switch (named.type_decl_id) {
+                    case .Enum(id) => {
+                        enum_id = id;
+                        found = true;
+                    }
+                    else => {}
+                }
+            }
+            else => {}
+        }
+
+        if (!found) {
+            return String.from_str(self->allocator, "((void)0)/*enum_init*/");
+        }
+
+        const decl = self->tables->enums.get_const(enum_id).unwrap();
+        const scalar = is_enum_scalar_optimizable(self->tables, decl);
+        const tags = self->types.tctx.enum_variant_tags(enum_id, decl);
+        var name = self->types.enum_c_name(enum_id);
+
+        const tag = self->find_variant_tag(decl, tags, enum_init->name.as_str_const());
+        var variant_index: usize = 0;
+        var found_variant = false;
+        for (var i: usize = 0; i < decl->variants.len(); i += 1) {
+            const variant = decl->variants.get_const(i).unwrap();
+            if (str_eq(variant->name(), enum_init->name.as_str_const())) {
+                variant_index = i;
+                found_variant = true;
+                break;
+            }
+        }
+
+        if (!found_variant) {
+            name.free();
+            return String.from_str(self->allocator, "((void)0)/*enum_variant*/");
+        }
+
+        if (scalar) {
+            // Unit or single-value payload folded into the tag.
+            var out = String.from_str(self->allocator, "((");
+            out.push_str(name.as_str_const());
+            out.push(')');
+            switch (enum_init->arg) {
+                case .Unit => push_u32(&out, tag);
+                case .Tuple(exprs) => {
+                    if (exprs.len() == 1) {
+                        const el = exprs.get_const(0).unwrap();
+                        var v = self->emit_expr(el);
+                        out.push_str(v.as_str_const());
+                        v.free();
+                    } else {
+                        push_u32(&out, tag);
+                    }
+                }
+                else => push_u32(&out, tag);
+
+            }
+            out.push(')');
+            name.free();
+            return out;
+        }
+
+        // Payload enum: GNU statement expression.
+        self->note_mem_string_use();
+
+        const variant = decl->variants.get_const(variant_index).unwrap();
+
+        var out = String.from_str(self->allocator, "(({ ");
+        out.push_str(name.as_str_const());
+        out.push_str(" __e; memset(&__e, 0, sizeof(__e)); __e.tag = ");
+        push_u32(&out, tag);
+        out.push_str("; ");
+
+        switch (*variant) {
+            case .Unit => {}
+            case .Valued { value, .. } => {
+                var vname = self->types.enum_variant_type_name(&name, tag);
+                out.push_str(vname.as_str_const());
+                out.push_str(" __p = { ");
+                var v = self->emit_expr(value);
+                out.push_str(v.as_str_const());
+                v.free();
+                out.push_str(" }; memcpy(__e.u.raw, &__p, sizeof(__p)); ");
+                vname.free();
+            }
+            case .Tuple { fields, .. } => {
+                var vname = self->types.enum_variant_type_name(&name, tag);
+                out.push_str(vname.as_str_const());
+                out.push_str(" __p = { ");
+                switch (enum_init->arg) {
+                    case .Tuple(exprs) => {
+                        for (var j: usize = 0; j < fields.len(); j += 1) {
+                            if (j < exprs.len()) {
+                                const el = exprs.get_const(j).unwrap();
+                                var v = self->emit_expr(el);
+                                out.push_str(v.as_str_const());
+                                v.free();
+                            }
+                            out.push_str(", ");
+                        }
+                    }
+                    else => {}
+                }
+                out.push_str(" }; memcpy(__e.u.raw, &__p, sizeof(__p)); ");
+                vname.free();
+            }
+            case .Struct { fields, .. } => {
+                var vname = self->types.enum_variant_type_name(&name, tag);
+                out.push_str(vname.as_str_const());
+                out.push_str(" __p = { ");
+                switch (enum_init->arg) {
+                    case .Struct(field_inits) => {
+                        for (var j: usize = 0; j < fields.len(); j += 1) {
+                            const field = fields.get_const(j).unwrap();
+                            // Match by name.
+                            for (var k: usize = 0; k < field_inits.len(); k += 1) {
+                                const fi = field_inits.get_const(k).unwrap();
+                                if (str_eq(fi->name.str.as_str_const(), field->name.str.as_str_const())) {
+                                    out.push('.');
+                                    out.push_str(field->name.str.as_str_const());
+                                    out.push_str(" = ");
+                                    var v = self->emit_expr(fi->value);
+                                    out.push_str(v.as_str_const());
+                                    v.free();
+                                    out.push_str(", ");
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                    else => {}
+                }
+                out.push_str(" }; memcpy(__e.u.raw, &__p, sizeof(__p)); ");
+                vname.free();
+            }
+        }
+
+        out.push_str("__e; }))");
+        name.free();
+        return out;
+    }
+
+    fn emit_enum_struct_variant_init(self: Self*, esv: const cir::TypedEnumStructVariantInit*) String {
+        // Best effort: create a fresh value with the given fields.
+        var enum_init = cir::TypedEnumInit {
+            operand: .Placeholder,
+            name: String.from_str(self->allocator, esv->ident.str.as_str_const()),
+            arg: .Struct(esv->field_inits),
+            span: esv->span,
+        };
+
+        var targs = cir::TypedTypeArgs.new(self->allocator);
+        switch (esv->enum_decl_id) {
+            case .Some(id) => {
+                enum_init.operand = .Named(cir::NamedType {
+                    type_decl_id: .Enum(id),
+                    type_args: targs,
+                });
+            }
+            else => {}
+        }
+
+        var out = self->emit_enum_init_runtime(&enum_init);
+        targs.list.free();
+        enum_init.name.free();
+        return out;
+    }
+
+    fn emit_lambda(self: Self*, lam: const cir::TypedLambdaExpr*) String {
+        const id = self->lambda_counter;
+        self->lambda_counter += 1;
+
+        var name = String.from_str(self->allocator, "__lambda_");
+        push_usize(&name, id);
+
+        var sig = self->build_func_signature(&lam->ret_type, &lam->params, &name, name.as_str_const());
+
+        self->pending_out.push_str("static ");
+        self->pending_out.push_str(sig.as_str_const());
+        self->pending_out.push_str(";\n");
+
+        self->pending_out.push_str("static ");
+        self->pending_out.push_str(sig.as_str_const());
+        self->pending_out.push_str(" {\n");
+        sig.free();
+
+        self->emit_param_prologue(&lam->params);
+        self->emit_block_stmts(lam->body, false);
+        self->pending_out.push_str("}\n\n");
+
+        return name;
+    }
+
+    fn emit_dynamic(self: Self*, dyn: const cir::TypedDynamicExpr*) String {
+        var vt_name = self->ensure_vtable_for(dyn);
+
+        // Ensure fat_ptr typedef.
+        self->types.ensure_fat_ptr();
+
+        // The operand is always a by-value concrete object (the analyzer
+        // rejects non-`Named` operand types); the fat pointer stores its
+        // address.
+        var out = String.from_str(self->allocator, "((__fat_ptr){ .data = (void *)&(");
+        var e = self->emit_expr(dyn->operand);
+        out.push_str(e.as_str_const());
+        e.free();
+        out.push_str("), .vtable = (void *)");
+        out.push_str(vt_name.as_str_const());
+        out.push_str(" })");
+        vt_name.free();
+        return out;
+    }
+
+    fn ensure_vtable_for(self: Self*, dyn: const cir::TypedDynamicExpr*) String {
+        var vt_id: cir::VTableId = 0;
+        var found = false;
+
+        switch (dyn->interface_object_type) {
+            case .Some(iot) => {
+                vt_id = iot.vtable_id;
+                found = true;
+            }
+            else => {}
+        }
+
+        if (!found) {
+            switch (dyn->concrete_type) {
+                case .Some(cty) => {
+                    // Find a vtable whose concrete type matches.
+                    for (var i: usize = 0; i < self->vtables->tables.len(); i += 1) {
+                        const info = self->vtables->tables.get_const(i).unwrap();
+                        if (cir::cir_types_eq(&info->concrete_type, &cty)) {
+                            vt_id = i;
+                            found = true;
+                            break;
+                        }
+                    }
+                }
+                else => {}
+            }
+        }
+
+        var out = String.from_str(self->allocator, "__cyrus_vtable_");
+        push_usize(&out, vt_id);
+
+        if (!found) {
+            return out;
+        }
+
+        switch (self->vtable_emitted.get(vt_id)) {
+            case .Some => return out;
+            else => {}
+        }
+
+        self->vtable_emitted.insert(vt_id, 1);
+
+        const info = self->vtables->tables.get_const(vt_id).unwrap();
+
+        self->pending_out.push_str("static void *__cyrus_vtable_");
+        push_usize(&self->pending_out, vt_id);
+        self->pending_out.push_str("[] = {\n");
+
+        for (var i: usize = 0; i < info->method_decls.entries.len(); i += 1) {
+            const entry = info->method_decls.entries.get_const(i).unwrap();
+
+            // Prefer the monomorphized specialization when the analyzer
+            // recorded one for this slot.
+            var slot_emitted = false;
+            switch (info->monomorphized_methods.get_const(i)) {
+                case .Some(slot) => {
+                    switch (*slot) {
+                        case .Some(mono_id) => {
+                            switch (self->monomorphs->instances.get_const(mono_id)) {
+                                case .Some(inst) => {
+                                    switch (inst->template_id) {
+                                        case .Method(mid) => {
+                                            switch (self->tables->methods.get_const(mid)) {
+                                                case .Some(method) => {
+                                                    var mname = mangle::mangle_monomorphized_method(
+                                                        self->allocator,
+                                                        &self->types.maps,
+                                                        mid,
+                                                        method,
+                                                        &inst->type_args
+                                                    );
+                                                    self->pending_out.push_str("    (void *)&");
+                                                    self->pending_out.push_str(mname.as_str_const());
+                                                    self->pending_out.push_str(",\n");
+                                                    mname.free();
+                                                    slot_emitted = true;
+                                                }
+                                                else => {}
+                                            }
+                                        }
+                                        else => {}
+                                    }
+                                }
+                                else => {}
+                            }
+                        }
+                        else => {}
+                    }
+                }
+                else => {}
+            }
+
+            if (slot_emitted) {
+                continue;
+            }
+
+            switch (self->tables->methods.get_const(entry->id)) {
+                case .Some(method) => {
+                    var mname = mangle::mangle_method(self->allocator, &self->types.maps, entry->id, method);
+                    self->pending_out.push_str("    (void *)&");
+                    self->pending_out.push_str(mname.as_str_const());
+                    self->pending_out.push_str(",\n");
+                    mname.free();
+                }
+                else => self->pending_out.push_str("    0,\n");
+
+            }
+        }
+
+        self->pending_out.push_str("};\n\n");
+
+        return out;
+    }
+
+    fn emit_builtin_func(self: Self*, bf: const cir::TypedBuiltinFunc*) String {
+        const kind_opt = cir::lookup_builtin(bf->name.str.as_str_const());
+
+        switch (kind_opt) {
+            case .Some(kind) => {
+                switch (kind) {
+                    case .SizeOf => {
+                        switch (bf->args.get_const(0)) {
+                            case .Some(operand) => {
+                                switch (operand->ty) {
+                                    case .Some(ty) => {
+                                        self->types.ensure_named(&ty);
+                                        var tn = self->types.type_name(&ty);
+                                        var out = String.from_str(self->allocator, "sizeof(");
+                                        out.push_str(tn.as_str_const());
+                                        out.push(')');
+                                        tn.free();
+                                        return out;
+                                    }
+                                    case .None => {}
+                                }
+                            }
+                            else => {}
+                        }
+                        return String.from_str(self->allocator, "sizeof(void)");
+                    }
+                    case .AlignOf => {
+                        switch (bf->args.get_const(0)) {
+                            case .Some(operand) => {
+                                switch (operand->ty) {
+                                    case .Some(ty) => {
+                                        self->types.ensure_named(&ty);
+                                        var tn = self->types.type_name(&ty);
+                                        var out = String.from_str(self->allocator, "__alignof__(");
+                                        out.push_str(tn.as_str_const());
+                                        out.push(')');
+                                        tn.free();
+                                        return out;
+                                    }
+                                    case .None => {}
+                                }
+                            }
+                            else => {}
+                        }
+                        return String.from_str(self->allocator, "__alignof__(void)");
+                    }
+                    case .OffsetOf => {
+                        switch (bf->args.get_const(0)) {
+                            case .Some(type_arg) => {
+                                switch (bf->args.get_const(1)) {
+                                    case .Some(field_arg) => {
+                                        switch (type_arg->ty) {
+                                            case .Some(ty) => {
+                                                self->types.ensure_named(&ty);
+                                                var tn = self->types.type_name(&ty);
+                                                var out = String.from_str(self->allocator, "offsetof(");
+                                                out.push_str(tn.as_str_const());
+                                                out.push_str(", ");
+                                                switch (field_arg->literal_const_string_value()) {
+                                                    case .Some(fname) => out.push_str(fname);
+                                                    case .None => out.push_str("0");
+                                                }
+                                                out.push(')');
+                                                tn.free();
+                                                return out;
+                                            }
+                                            case .None => {}
+                                        }
+                                    }
+                                    else => {}
+                                }
+                            }
+                            else => {}
+                        }
+                        return String.from_str(self->allocator, "0");
+                    }
+                    case .Cast => {
+                        switch (bf->args.get_const(0)) {
+                            case .Some(type_arg) => {
+                                switch (bf->args.get_const(1)) {
+                                    case .Some(value_arg) => {
+                                        switch (type_arg->ty) {
+                                            case .Some(ty) => {
+                                                self->types.ensure_named(&ty);
+                                                var tn = self->types.type_name(&ty);
+                                                var out = String.from_str(self->allocator, "((");
+                                                out.push_str(tn.as_str_const());
+                                                out.push_str(")");
+                                                var v = self->emit_expr(value_arg);
+                                                out.push_str(v.as_str_const());
+                                                v.free();
+                                                out.push(')');
+                                                tn.free();
+                                                return out;
+                                            }
+                                            case .None => {}
+                                        }
+                                    }
+                                    else => {}
+                                }
+                            }
+                            else => {}
+                        }
+                        return String.from_str(self->allocator, "((void)0)");
+                    }
+                    case .Assert => {
+                        self->note_assert_use();
+                        var out = String.from_str(self->allocator, "(((");
+                        switch (bf->args.get_const(0)) {
+                            case .Some(cond) => {
+                                var c = self->emit_expr(cond);
+                                out.push_str(c.as_str_const());
+                                c.free();
+                            }
+                            else => out.push_str("1");
+
+                        }
+                        out.push_str(") ? (void)0 : cyrus_assert_fail_(__FILE__, __LINE__, ");
+                        switch (bf->args.get_const(1)) {
+                            case .Some(msg) => {
+                                switch (msg->literal_const_string_value()) {
+                                    case .Some(m) => {
+                                        out.push('"');
+                                        self->push_c_escaped(&out, m);
+                                        out.push('"');
+                                    }
+                                    case .None => out.push_str("\"assertion failed\"");
+                                }
+                            }
+                            case .None => out.push_str("\"assertion failed\"");
+                        }
+                        out.push_str("))");
+                        return out;
+                    }
+                    case .Panic => {
+                        self->note_panic_use();
+                        var out = String.from_str(self->allocator, "cyrus_panic_(");
+                        switch (bf->args.get_const(0)) {
+                            case .Some(msg) => {
+                                switch (msg->literal_const_string_value()) {
+                                    case .Some(m) => {
+                                        out.push('"');
+                                        self->push_c_escaped(&out, m);
+                                        out.push('"');
+                                    }
+                                    case .None => out.push_str("\"panic\"");
+                                }
+                            }
+                            case .None => out.push_str("\"panic\"");
+                        }
+                        out.push(')');
+                        return out;
+                    }
+                    case .Unreachable => {
+                        self->note_panic_use();
+                        return String.from_str(self->allocator, "cyrus_panic_(\"unreachable\")");
+                    }
+                    case .Todo => {
+                        self->note_panic_use();
+                        return String.from_str(self->allocator, "cyrus_panic_(\"todo\")");
+                    }
+                    case .Unimplemented => {
+                        self->note_panic_use();
+                        return String.from_str(self->allocator, "cyrus_panic_(\"unimplemented\")");
+                    }
+                    case .Memcpy => {
+                        self->note_mem_string_use();
+                        var out = String.from_str(self->allocator, "memcpy(");
+                        for (var i: usize = 0; i < bf->args.len(); i += 1) {
+                            const arg = bf->args.get_const(i).unwrap();
+                            var e = self->emit_expr(arg);
+                            out.push_str(e.as_str_const());
+                            e.free();
+                            if (i + 1 < bf->args.len()) {
+                                out.push_str(", ");
+                            }
+                        }
+                        out.push(')');
+                        return out;
+                    }
+                    case .Memset => {
+                        self->note_mem_string_use();
+                        var out = String.from_str(self->allocator, "memset(");
+                        for (var i: usize = 0; i < bf->args.len(); i += 1) {
+                            const arg = bf->args.get_const(i).unwrap();
+                            var e = self->emit_expr(arg);
+                            out.push_str(e.as_str_const());
+                            e.free();
+                            if (i + 1 < bf->args.len()) {
+                                out.push_str(", ");
+                            }
+                        }
+                        out.push(')');
+                        return out;
+                    }
+                    else => return String.from_str(self->allocator, "((void)0)");
+
+                }
+            }
+            else => {}
+        }
+
+        return String.from_str(self->allocator, "((void)0)");
+    }
+
+    /* ************* Literals and helpers ************* */
+
+    fn emit_literal(self: Self*, lit: const cir::TypedLiteralExpr*) String {
+        switch (lit->kind) {
+            case .Integer { value, .. } => {
+                var out = String.new(self->allocator);
+
+                switch (value) {
+                    case .Signed(x) => {
+                        if (x < 0) {
+                            out.push('-');
+                            push_u128(&out, @cast(uint128, -(x + 1)) + 1);
+                        } else {
+                            push_u128(&out, @cast(uint128, x));
+                        }
+                    }
+                    case .Unsigned(x) => push_u128(&out, x);
+                }
+
+                return out;
+            }
+            case .Float { value, .. } => {
+                var str = String.new(self->allocator);
+                var writer: Writer = dynamic StringWriter.new(&str);
+                format_float64(writer, value);
+
+                if (!str_contains_char(str.as_str_const(), '.') 
+                    && !str_contains_char(str.as_str_const(), 'e') 
+                    && !str_contains_char(str.as_str_const(), 'n'))
+                {
+                    str.push_str(".0");
+                }
+
+                return str;
+            }
+            case .String { value, .. } => {
+                var out = String.from_str(self->allocator, "\"");
+                self->push_c_escaped(&out, value.as_str_const());
+                out.push('"');
+                return out;
+            }
+            case .Char(c) => {
+                var out = String.new(self->allocator);
+                out.push('\'');
+                self->push_c_char(&out, c);
+                out.push('\'');
+                return out;
+            }
+            case .Bool(x) => {
+                self->types.used_bool = true;
+
+                if (x) {
+                    return String.from_str(self->allocator, "true");
+                } else {
+                    return String.from_str(self->allocator, "false");
+                }
+            }
+            case .Null => {
+                self->needs_stddef_header = true;
+                return String.from_str(self->allocator, "NULL");
+            }
+        }
+    }
+
+    fn push_c_escaped(self: Self*, out: String*, s: const uint8*) {
+        var i: usize = 0;
+
+        while (s[i] != 0) {
+            const ch = s[i];
+
+            if (ch == '"') {
+                out->push('\\');
+                out->push('"');
+            } else if (ch == '\\') {
+                out->push('\\');
+                out->push('\\');
+            } else if (ch == '\n') {
+                out->push('\\');
+                out->push('n');
+            } else if (ch == '\t') {
+                out->push('\\');
+                out->push('t');
+            } else if (ch == '\r') {
+                out->push('\\');
+                out->push('r');
+            } else if (ch < 32 || ch > 126) {
+                out->push('\\');
+                push_octal3(out, ch);
+            } else {
+                out->push(ch);
+            }
+
+            i += 1;
+        }
+    }
+
+    fn push_c_char(self: Self*, out: String*, c: uint8) {
+        if (c == '\'') {
+            out->push('\\');
+            out->push('\'');
+        } else if (c == '\\') {
+            out->push('\\');
+            out->push('\\');
+        } else if (c == '\n') {
+            out->push('\\');
+            out->push('n');
+        } else if (c == '\t') {
+            out->push('\\');
+            out->push('t');
+        } else if (c == '\r') {
+            out->push('\\');
+            out->push('r');
+        } else if (c < 32 || c > 126) {
+            out->push('\\');
+            push_octal3(out, c);
+        } else {
+            out->push(c);
+        }
+    }
+
+    fn type_name_of(self: Self*, ty: const cir::SemaType*) String {
+        self->types.ensure_named(ty);
+        return self->types.type_name(ty);
+    }
+
+    /// Resolves the C return type name for the `index`-th method of an
+    /// interface, substituting interface type arguments when generic.
+    fn interface_method_ret_type_name(
+        self: Self*,
+        interface_decl_id: cir::InterfaceDeclId,
+        index: usize,
+        call_type_args: const cir::TypedTypeArgs*
+    ) String {
+        switch (self->tables->interfaces.get_const(interface_decl_id)) {
+            case .Some(iface) => {
+                switch (iface->methods.entries.get_const(index)) {
+                    case .Some(entry) => {
+                        switch (self->tables->methods.get_const(entry->id)) {
+                            case .Some(method) => {
+                                var ret_ty = method->func_decl.ret_type;
+
+                                if (iface->is_generic() && !call_type_args->is_empty()) {
+                                    ret_ty = cir::substitute_sema_type_with_type_args(
+                                        self->allocator,
+                                        &ret_ty,
+                                        &iface->generic_params,
+                                        call_type_args
+                                    );
+                                }
+
+                                self->types.ensure_named(&ret_ty);
+                                var name = self->types.type_name(&ret_ty);
+                                return name;
+                            }
+                            else => {}
+                        }
+                    }
+                    else => {}
+                }
+            }
+            else => {}
+        }
+
+        return String.from_str(self->allocator, "void");
+    }
+
+    fn method_needs_address_of_self(
+        self: Self*,
+        method: const cir::MethodDecl*,
+        operand: const cir::TypedExpr*
+    ) bool {
+        const params = &method->func_decl.params;
+
+        if (params->list.len() == 0) {
+            return false;
+        }
+
+        const first = params->list.get_const(0).unwrap();
+
+        if (first->name_str() != "self") {
+            return false;
+        }
+
+        switch (operand->ty) {
+            case .Some(ty) => {
+                switch (*ty.const_inner()) {
+                    case .Pointer => return false;
+                    else => return true;
+                }
+            }
+            else => return false;
+        }
+    }
+
+    fn find_variant_tag(
+        self: Self*,
+        decl: const cir::EnumDecl*,
+        tags: const Vec<uint32>*,
+        name: const uint8*
+    ) uint32 {
+        for (var i: usize = 0; i < decl->variants.len(); i += 1) {
+            const variant = decl->variants.get_const(i).unwrap();
+            if (str_eq(variant->name(), name)) {
+                return tags->get_owned(i).unwrap();
+            }
+        }
+        return 0;
+    }
+
+    fn tuple_field_c_name(self: Self*, index: usize) String {
+        var out = String.from_str(self->allocator, "f");
+        push_usize(&out, index);
+        return out;
+    }
+
+    fn unnamed_enum_kind_to_args(self: Self*, kind: const cir::TypedUnnamedEnumValueKind*) cir::TypedEnumInitArgs {
+        switch (*kind) {
+            case .Unit => return .Unit;
+            case .Tuple(exprs) => return .Tuple(exprs);
+            case .Struct(inits) => return .Struct(inits);
+        }
+    }
+}
+
+/* ************* Free helpers ************* */
+
+// FIXME: Eliminate this! You can compare two `const uint8*` easily with `==` operator in Cyrus
+fn str_eq(a: const uint8*, b: const uint8*) bool {
+    var i: usize = 0;
+    while (a[i] != 0 && b[i] != 0) {
+        if (a[i] != b[i]) {
+            return false;
+        }
+        i += 1;
+    }
+    return a[i] == b[i];
+}
+
+fn str_contains_char(s: const uint8*, char: uint8) bool {
+    var i: usize = 0;
+
+    while (s[i] != 0) {
+        if (s[i] == char) {
+            return true;
+        }
+        
+        i += 1;
+    }
+
+    return false;
+}
+
+// FIXME: Eliminate push helpers as well and use format_* from std::format preferably
+
+fn push_usize(out: String*, value: usize) {
+    if (value == 0) {
+        out->push('0');
+        return;
+    }
+
+    var digits: uint8[20];
+    var n = value;
+    var len: usize = 0;
+
+    while (n > 0) {
+        digits[len] = @cast(uint8, @cast(usize, '0') + (n % 10));
+        n /= 10;
+        len += 1;
+    }
+
+    var i = len;
+    while (i > 0) {
+        i -= 1;
+        out->push(digits[i]);
+    }
+}
+
+fn push_u32(out: String*, value: uint32) {
+    push_usize(out, @cast(usize, value));
+}
+
+fn push_u128(out: String*, value: uint128) {
+    if (value == 0) {
+        out->push('0');
+        return;
+    }
+
+    var digits: uint8[40];
+    var n = value;
+    var len: usize = 0;
+
+    while (n > 0) {
+        digits[len] = @cast(uint8, @cast(uint64, '0') + @cast(uint64, n % 10));
+        n /= 10;
+        len += 1;
+    }
+
+    var i = len;
+    while (i > 0) {
+        i -= 1;
+        out->push(digits[i]);
+    }
+}
+
+fn push_i128(out: String*, value: int128) {
+    if (value < 0) {
+        out->push('-');
+        push_u128(out, @cast(uint128, -(value + 1)) + 1);
+    } else {
+        push_u128(out, @cast(uint128, value));
+    }
+}
+
+fn push_octal3(out: String*, value: uint8) {
+    var d2 = @cast(uint8, (value >> 6) & 7);
+    var d1 = @cast(uint8, (value >> 3) & 7);
+    var d0 = @cast(uint8, value & 7);
+    out->push(@cast(uint8, '0' + d2));
+    out->push(@cast(uint8, '0' + d1));
+    out->push(@cast(uint8, '0' + d0));
+}
+
+/// True for symbols declared in `<stdio.h>`. These are part of the
+/// libc-shadow denylist: user extern decls must not redeclare them.
+fn is_stdio_symbol(name: const uint8*) bool {
+    return name == "printf" || name == "fprintf" || name == "sprintf"
+        || name == "snprintf" || name == "puts" || name == "putchar"
+        || name == "gets" || name == "fgets" || name == "getchar"
+        || name == "perror" || name == "feof" || name == "fflush"
+        || name == "fopen" || name == "fclose" || name == "fread"
+        || name == "fwrite" || name == "fseek" || name == "ftell";
+}
+
+/// True for symbols declared in `<stdlib.h>`.
+fn is_stdlib_symbol(name: const uint8*) bool {
+    return name == "abs" || name == "labs" || name == "llabs"
+        || name == "malloc" || name == "calloc" || name == "realloc"
+        || name == "free" || name == "exit" || name == "abort"
+        || name == "atoi" || name == "atol" || name == "atoll"
+        || name == "strtol" || name == "strtoul" || name == "rand"
+        || name == "srand" || name == "qsort" || name == "bsearch"
+        || name == "time" || name == "clock" || name == "getenv"
+        || name == "system" || name == "assert";
+}
+
+/// True for symbols declared in `<string.h>`.
+fn is_string_header_symbol(name: const uint8*) bool {
+    return name == "memset" || name == "memcpy" || name == "memmove"
+        || name == "memcmp" || name == "strlen" || name == "strcmp"
+        || name == "strncmp" || name == "strcpy" || name == "strncpy"
+        || name == "strcat" || name == "strchr" || name == "strstr";
+}
+
+fn is_libc_shadowed(name: const uint8*) bool {
+    return is_stdio_symbol(name) || is_stdlib_symbol(name)
+        || is_string_header_symbol(name);
 }

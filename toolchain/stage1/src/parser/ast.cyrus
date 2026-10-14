@@ -1209,7 +1209,7 @@ pub enum ASTOptAttr {
 pub struct ASTFuncModifiers {
     pub vis: ASTVisibility,
     pub link_name: Option<String>,
-    pub extrn: Option<ASTExtern>,
+    pub extern_: Option<ASTExtern>,
     pub inline: Option<ASTInlining>,
     pub prologue: Option<ASTPrologue>,
     pub callconv: Option<ASTCallconv>,
@@ -1237,7 +1237,7 @@ pub struct ASTUnionModifiers {
 pub struct ASTGlobalVarModifiers {
     pub vis: ASTVisibility,
     pub link_name: Option<String>,
-    pub extrn: Option<ASTExtern>,
+    pub extern_: Option<ASTExtern>,
     pub section: Option<String>,
     pub thread_local: bool,
     pub link_once: bool,

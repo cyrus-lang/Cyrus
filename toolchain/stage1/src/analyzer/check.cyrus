@@ -9266,7 +9266,7 @@ pub struct Analyzer {
         if (global_var->modifiers.weak
             || global_var->modifiers.link_once
             || global_var->modifiers.thread_local
-            || global_var->modifiers.extrn.is_some()
+            || global_var->modifiers.extern_.is_some()
             || global_var->modifiers.section.is_some()
         ) {
             diags::report_invalid_modifier_for_non_static_global_var(
@@ -9708,7 +9708,7 @@ pub struct Analyzer {
             case .Private => {}
         }
 
-        switch (func_def->modifiers.extrn) {
+        switch (func_def->modifiers.extern_) {
             case .Some => { is_extern = true; }
             case .None => {}
         }

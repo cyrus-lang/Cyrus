@@ -153,9 +153,9 @@ pub struct ParserStmts {
         }
 
         var is_pub = false;
-        var extrn: Option<ast::ASTExtern> = .None;
+        var extern_: Option<ast::ASTExtern> = .None;
 
-        if (!self->collect_modifiers(&is_pub, &extrn)) {
+        if (!self->collect_modifiers(&is_pub, &extern_)) {
             ast::free_attrs(&attrs);
             self->state->sync();
             return false;
@@ -185,11 +185,11 @@ pub struct ParserStmts {
             attrs = Vec.new(self->allocator);
             attrs_ptr = .None;
 
-            ok = self->parse_grouped_modifiers(is_pub, extrn);
+            ok = self->parse_grouped_modifiers(is_pub, extern_);
         } else if (self->state->is(.Module)) {
             // `mod` never accepts attributes; the declaration reports
             // them as not applicable.
-            ok = self->parse_toplevel_decl(is_pub, extrn, attrs_ptr);
+            ok = self->parse_toplevel_decl(is_pub, extern_, attrs_ptr);
         } else if (self->state->is(.At)) {
             // Builtins hand their attributes to the wrapped statement.
             if (attrs.len() > 0) {
@@ -199,7 +199,7 @@ pub struct ParserStmts {
                 attrs_ptr = .None;
             }
 
-            ok = self->parse_toplevel_decl(is_pub, extrn, attrs_ptr);
+            ok = self->parse_toplevel_decl(is_pub, extern_, attrs_ptr);
         } else {
             switch (attrs_ptr) {
                 case .Some(list) => {
@@ -220,7 +220,7 @@ pub struct ParserStmts {
                 );
             }
 
-            ok = self->parse_toplevel_decl(is_pub, extrn, attrs_ptr);
+            ok = self->parse_toplevel_decl(is_pub, extern_, attrs_ptr);
         }
 
         ast::free_attrs(&attrs);
@@ -232,18 +232,18 @@ pub struct ParserStmts {
     fn parse_toplevel_decl(
         self: Self*,
         is_pub: bool,
-        extrn: Option<ast::ASTExtern>,
+        extern_: Option<ast::ASTExtern>,
         attrs: Option<Vec<ast::ASTAttr>*>
     ) bool {
         const token = self->state->current();
 
         switch (*token->kind) {
-            case .Static | .Var | .Const => return self->parse_global_var(is_pub, extrn, attrs);
-            case .Function => return self->parse_func(is_pub, extrn, attrs, true);
+            case .Static | .Var | .Const => return self->parse_global_var(is_pub, extern_, attrs);
+            case .Function => return self->parse_func(is_pub, extern_, attrs, true);
             case .Import => return self->parse_import();
 
             case .Module => {
-                self->reject_extrn_modifier(extrn, "module");
+                self->reject_extrn_modifier(extern_, "module");
 
                 // Module declaration never accepts attributes
                 switch (attrs) {
@@ -260,29 +260,29 @@ pub struct ParserStmts {
                 return self->parse_module_decl(is_pub);
             }
             case .Interface => {
-                self->reject_extrn_modifier(extrn, "interface");
+                self->reject_extrn_modifier(extern_, "interface");
                 return self->parse_interface(is_pub);
             }
             case .Type => {
-                self->reject_extrn_modifier(extrn, "type alias");
+                self->reject_extrn_modifier(extern_, "type alias");
                 return self->parse_type_alias(is_pub);
             }
             case .Struct => {
-                self->reject_extrn_modifier(extrn, "struct");
+                self->reject_extrn_modifier(extern_, "struct");
                 return self->parse_struct(is_pub, attrs, true);
             }
             case .Union => {
-                self->reject_extrn_modifier(extrn, "union");
+                self->reject_extrn_modifier(extern_, "union");
                 return self->parse_union(is_pub, attrs, true);
             }
             case .Enum => {
-                self->reject_extrn_modifier(extrn, "enum");
+                self->reject_extrn_modifier(extern_, "enum");
                 return self->parse_enum(is_pub, attrs, true);
             }
             
             case .At => {
                 // Builtins does accept any modifiers
-                if (is_pub || extrn.is_some()) {
+                if (is_pub || extern_.is_some()) {
                     report_unexpected_token(
                         self->allocator,
                         self->state->dctx,
@@ -313,7 +313,7 @@ pub struct ParserStmts {
     fn parse_grouped_modifiers(
         self: Self*,
         is_pub: bool,
-        extrn: Option<ast::ASTExtern>
+        extern_: Option<ast::ASTExtern>
     ) bool {
         self->state->next();
 
@@ -394,7 +394,7 @@ pub struct ParserStmts {
 
                 parsed = self->parse_builtin_stmt(true);
             } else {
-                parsed = self->parse_toplevel_decl(is_pub, extrn, pass);
+                parsed = self->parse_toplevel_decl(is_pub, extern_, pass);
             }
 
             ast::free_attrs(&inner);
@@ -468,7 +468,7 @@ pub struct ParserStmts {
     }
 
     /// Collects the modifiers in that fixed order.
-    fn collect_modifiers(self: Self*, is_pub: bool*, extrn: Option<ast::ASTExtern>*) bool {
+    fn collect_modifiers(self: Self*, is_pub: bool*, extern_: Option<ast::ASTExtern>*) bool {
         while (true) {
             if (self->state->is(.Public)) {
                 if (*is_pub) {
@@ -480,7 +480,7 @@ pub struct ParserStmts {
                     );
                 }
 
-                if (extrn->is_some()) {
+                if (extern_->is_some()) {
                     report_modifier_order_error(
                         self->allocator,
                         self->state->dctx,
@@ -496,7 +496,7 @@ pub struct ParserStmts {
             }
 
             if (self->state->is(.Extern)) {
-                if (extrn->is_some()) {
+                if (extern_->is_some()) {
                     report_duplicate_modifier(
                         self->allocator,
                         self->state->dctx,
@@ -509,8 +509,8 @@ pub struct ParserStmts {
 
                 switch (self->parse_extern_abi()) {
                     case .Some(parsed_abi) => {
-                        if (extrn->is_none()) {
-                            *extrn = .Some(parsed_abi);
+                        if (extern_->is_none()) {
+                            *extern_ = .Some(parsed_abi);
                         }
                     }
                     else => return false;
@@ -525,8 +525,8 @@ pub struct ParserStmts {
         return true;
     }
 
-    fn reject_extrn_modifier(self: Self*, extrn: Option<ast::ASTExtern>, decl: const uint8*) {
-        if (extrn.is_some()) {
+    fn reject_extrn_modifier(self: Self*, extern_: Option<ast::ASTExtern>, decl: const uint8*) {
+        if (extern_.is_some()) {
             report_modifier_not_allowed(
                 self->allocator,
                 self->state->dctx,
@@ -631,9 +631,9 @@ pub struct ParserStmts {
         }
 
         var is_pub = false;
-        var extrn: Option<ast::ASTExtern> = .None;
+        var extern_: Option<ast::ASTExtern> = .None;
 
-        if (!self->collect_modifiers(&is_pub, &extrn)) {
+        if (!self->collect_modifiers(&is_pub, &extern_)) {
             ast::free_attrs(&attrs);
             self->state->sync();
             return;
@@ -669,7 +669,7 @@ pub struct ParserStmts {
             case .Function => {
                 // Functions cannot be declared inside another function body
                 if (is_method) {
-                    self->parse_func(is_pub, extrn, .Some(&attrs), true);
+                    self->parse_func(is_pub, extern_, .Some(&attrs), true);
                 } else {
                     self->reject_local_decl(is_pub, "fn", .Function);
                 }
@@ -678,7 +678,7 @@ pub struct ParserStmts {
             case .Ident(_) => self->parse_ident_stmt();
             
             case .Type => {
-                if (extrn.is_some()) {
+                if (extern_.is_some()) {
                     report_modifier_not_allowed(
                         self->allocator,
                         self->state->dctx,
@@ -693,7 +693,7 @@ pub struct ParserStmts {
             
             case .At => {
                 // Bare builtins accept no modifiers
-                if (is_pub || extrn.is_some()) {
+                if (is_pub || extern_.is_some()) {
                     report_unexpected_token(
                         self->allocator,
                         self->state->dctx,
@@ -859,7 +859,7 @@ pub struct ParserStmts {
     pub fn parse_global_var(
         self: Self*,
         is_pub: bool,
-        extrn: Option<ast::ASTExtern>,
+        extern_: Option<ast::ASTExtern>,
         attrs: Option<Vec<ast::ASTAttr>*>
     ) bool {
         const start = self->state->current_span();
@@ -969,7 +969,7 @@ pub struct ParserStmts {
             return false;
         }
 
-        var modifiers = make_global_modifiers(self->allocator, is_pub, extrn);
+        var modifiers = make_global_modifiers(self->allocator, is_pub, extern_);
         apply_global_attrs(self->allocator, self->state->dctx, &modifiers, attrs);
 
         const node = ast::ASTGlobalVar {
@@ -1274,7 +1274,7 @@ pub struct ParserStmts {
     pub fn parse_func(
         self: Self*,
         is_pub: bool,
-        extrn: Option<ast::ASTExtern>,
+        extern_: Option<ast::ASTExtern>,
         attrs: Option<Vec<ast::ASTAttr>*>,
         absorb: bool
     ) bool {
@@ -1321,7 +1321,7 @@ pub struct ParserStmts {
             ret_type = .Some(self->program->create_node(.Type(ty)));
         }
 
-        var modifiers = make_func_modifiers(self->allocator, is_pub, extrn);
+        var modifiers = make_func_modifiers(self->allocator, is_pub, extern_);
 
         // Function declaration
         if (self->state->is(.Semicolon)) {
@@ -2538,9 +2538,9 @@ pub struct ParserStmts {
             }
 
             var is_pub = false;
-            var extrn: Option<ast::ASTExtern> = .None;
+            var extern_: Option<ast::ASTExtern> = .None;
 
-            if (!self->collect_modifiers(&is_pub, &extrn)) {
+            if (!self->collect_modifiers(&is_pub, &extern_)) {
                 ast::free_generic_params(&generic_params);
                 impls.free();
                 fields.free();
@@ -2560,7 +2560,7 @@ pub struct ParserStmts {
                 }
             }
 
-            if (attrs.len() > 0 && (is_pub || extrn.is_some())) {
+            if (attrs.len() > 0 && (is_pub || extern_.is_some())) {
                 // Attributes and modifiers are never mixed.
                 // Attributes always come first.
                 for (var i: usize = 0; i < attrs.len(); i += 1) {
@@ -2580,7 +2580,7 @@ pub struct ParserStmts {
                 attrs = Vec.new(self->allocator);
             } else {
                 if (attrs.len() > 0) {
-                    if (!self->collect_modifiers(&is_pub, &extrn)) {
+                    if (!self->collect_modifiers(&is_pub, &extern_)) {
                         ast::free_attrs(&attrs);
                         ast::free_generic_params(&generic_params);
                         impls.free();
@@ -2600,7 +2600,7 @@ pub struct ParserStmts {
 
             if (self->state->is(.Function)) {
                 const mark = self->state->pending->len();
-                const parsed = self->parse_func(is_pub, extrn, .Some(&attrs), true);
+                const parsed = self->parse_func(is_pub, extern_, .Some(&attrs), true);
                 ast::free_attrs(&attrs);
 
                 if (!parsed || self->state->pending->len() != mark + 1) {
@@ -3851,7 +3851,7 @@ fn make_union_modifiers(allocator: Allocator, is_pub: bool) ast::ASTUnionModifie
 fn make_global_modifiers(
     allocator: Allocator,
     is_pub: bool,
-    extrn: Option<ast::ASTExtern>
+    extern_: Option<ast::ASTExtern>
 ) ast::ASTGlobalVarModifiers {
     var vis = ast::ASTVisibility.Private;
     
@@ -3862,7 +3862,7 @@ fn make_global_modifiers(
     return ast::ASTGlobalVarModifiers {
         vis,
         link_name: .None,
-        extrn,
+        extern_,
         section: .None,
         thread_local: false,
         link_once: false,
@@ -3873,7 +3873,7 @@ fn make_global_modifiers(
 fn make_func_modifiers(
     allocator: Allocator, 
     is_pub: bool, 
-    extrn: Option<ast::ASTExtern>
+    extern_: Option<ast::ASTExtern>
 ) ast::ASTFuncModifiers {
     var vis = ast::ASTVisibility.Private;
     if (is_pub) {
@@ -3883,7 +3883,7 @@ fn make_func_modifiers(
     return ast::ASTFuncModifiers {
         vis,
         link_name: .None,
-        extrn,
+        extern_,
         inline: .None,
         prologue: .None,
         callconv: .None,

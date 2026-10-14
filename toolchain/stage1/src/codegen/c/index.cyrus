@@ -1,16 +1,54 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 The Cyrus Language
 
-import .::emitter{CodegenC_Emitter};
+import std::collections{Vec};
+import std::mem{Allocator};
+import std::option{Option};
+import std::io{Writer};
+
+import resolver::symbols{GlobalSymbolRegistry};
+import analyzer::monomorph{MonomorphRegistry};
+import analyzer::vtables{VTableRegistry};
+import codegen::c::emitter{Emitter};
+import cir::tables{DeclTables};
+import codegen::c::mangle;
+import cir;
+import abi;
 
 pub struct CodegenC {
-    allocator: Allocator,
-    modules: Vec<CIRModule>,
+    pub allocator: Allocator,
+    emitter: Emitter,
 
     pub fn new(
         allocator: Allocator,
-        modules: Vec<CIRModule>
+        tables: DeclTables*,
+        registry: GlobalSymbolRegistry*,
+        trees: const Vec< cir::TypedProgramTree >*,
+        vtables: VTableRegistry*,
+        monomorphs: MonomorphRegistry*
     ) Self {
-        return Self { allocator, modules };
+        var maps = mangle::new_module_maps(allocator, trees);
+
+        mangle::build_module_maps(&maps, tables, trees);
+
+        const emitter = Emitter.new(
+            allocator, 
+            tables, 
+            registry, 
+            trees, 
+            vtables, 
+            monomorphs,
+            maps
+        );
+
+        return Self { allocator, emitter };
+    }
+
+    pub fn emit(self: Self*, writer: Writer) {
+        self->emitter.run(writer);
+    }
+
+    pub fn free(self: Self*) {
+        self->emitter.free();
     }
 }

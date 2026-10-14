@@ -5,7 +5,7 @@ import std::collections::hash_map{HashMap};
 import std::hash{hash_usize, eq_usize};
 import std::collections{Vec};
 import std::option{Option};
-import std::mem{Allocator};
+import std::mem{Allocator, alloc_init};
 
 import abi::helpers{align_offset, extract_typedef_inner_type};
 import abi::layout{ABITypeLayout, ABIFieldOffsetInfo};
@@ -17,14 +17,16 @@ import cir;
 
 /* ************* Type Context ************* */
 
+/// Owns every ABITypeLayout produced during ABI computation.
 pub struct TypeContext {
     pub target_info: TargetInfo,
     tables: const DeclTables*,
     registry: const GlobalSymbolRegistry*,
-    struct_layouts: HashMap<usize, ABITypeLayout>,
-    union_layouts: HashMap<usize, ABITypeLayout>,
-    enum_layouts: HashMap<usize, ABITypeLayout>,
+    struct_layouts: HashMap<usize, uintptr>,
+    union_layouts: HashMap<usize, uintptr>,
+    enum_layouts: HashMap<usize, uintptr>,
     enum_tags: HashMap<usize, Vec<uint32>>,
+    owned_layouts: Vec<uintptr>,
 
     pub fn new(
         target_info: TargetInfo,
@@ -37,6 +39,7 @@ pub struct TypeContext {
             struct_layouts: HashMap.with_hasher(allocator, 64, hash_usize, eq_usize),
             union_layouts: HashMap.with_hasher(allocator, 64, hash_usize, eq_usize),
             enum_layouts: HashMap.with_hasher(allocator, 64, hash_usize, eq_usize),
+            owned_layouts: Vec.new(allocator),
             enum_tags: HashMap.with_hasher(allocator, 64, hash_usize, eq_usize),
             target_info,
             registry,
@@ -59,8 +62,8 @@ pub struct TypeContext {
         return self->registry;
     }
 
-    pub fn array_capacity_len(self: Self*, arr: const cir::TypedArrayType*) usize {
-        switch (arr->capacity) {
+    pub fn array_capacity_len(self: Self*, array: const cir::TypedArrayType*) usize {
+        switch (array->capacity) {
             case .Fixed(expr) => {
                 switch (ciri::fold_const_expr_int(self->tables, self->registry, expr)) {
                     case .Some(lit) => return cir::integer_literal_as_usize(lit);
@@ -77,7 +80,7 @@ pub struct TypeContext {
         switch (ty->as_plain_type()) {
             case .Some(p) => {
                 if (p.is_integer_or_bool()) {
-                    return .Some(@cast(usize, layout.size) * 8);
+                    return .Some(@cast(usize, layout->size) * 8);
                 }
 
                 return .None;
@@ -86,131 +89,164 @@ pub struct TypeContext {
         }
     }
 
-    pub fn layout_of(self: Self*, ty: const cir::SemaType*) ABITypeLayout {
+    fn own_layout(self: Self*, layout: ABITypeLayout) ABITypeLayout* {
+        const owned_layout = alloc_init(self->allocator(), layout);
+        self->owned_layouts.push(@cast(uintptr, owned_layout));
+        return owned_layout;
+    }
+
+    fn layout_at(self: const Self*, address: uintptr) ABITypeLayout* {
+        return @cast(ABITypeLayout*, address);
+    }
+
+    pub fn layout_of(self: Self*, ty: const cir::SemaType*) ABITypeLayout* {
         const inner = ty->const_inner();
 
         switch (*inner) {
+            case .Plain(plan) => {
+                return self->own_layout(self->plain_type_layout(plan));
+            }
+
             case .Named(named) => {
                 switch (named.type_decl_id) {
                     case .Struct(id) => {
                         switch (self->struct_layouts.get_owned(id)) {
-                            case .Some(cached) => return cached;
+                            case .Some(cached_address) => return self->layout_at(cached_address);
                             else => {}
                         }
 
                         const decl = self->tables->structs.get_const(id).unwrap();
 
-                        const layout = self->compute_struct_layout(decl);
-                        self->struct_layouts.insert(id, layout);
-                        return layout;
+                        const struct_layout = self->compute_struct_layout(decl);
+                        self->struct_layouts.insert(id, @cast(uintptr, struct_layout));
+                        return struct_layout;
                     }
                     case .Union(id) => {
                         switch (self->union_layouts.get_owned(id)) {
-                            case .Some(cached) => return cached;
+                            case .Some(cached_address) => return self->layout_at(cached_address);
                             else => {}
                         }
 
                         const decl = self->tables->unions.get_const(id).unwrap();
 
-                        const layout = self->compute_union_layout(decl);
-                        self->union_layouts.insert(id, layout);
-                        return layout;
+                        const union_layout = self->compute_union_layout(decl);
+                        self->union_layouts.insert(id, @cast(uintptr, union_layout));
+                        return union_layout;
                     }
                     case .Enum(id) => {
                         switch (self->enum_layouts.get_owned(id)) {
-                            case .Some(cached) => return cached;
+                            case .Some(cached_address) => return self->layout_at(cached_address);
                             else => {}
                         }
 
                         const decl = self->tables->enums.get_const(id).unwrap();
 
-                        const layout = self->compute_enum_layout(decl);
-                        self->enum_layouts.insert(id, layout);
-                        return layout;
+                        const enum_layout = self->compute_enum_layout(decl);
+                        self->enum_layouts.insert(id, @cast(uintptr, enum_layout));
+                        return enum_layout;
                     }
                     case .Typedef => {
-                        const resolved = extract_typedef_inner_type(self->tables, inner);
+                        const resolved_typedef_inner = extract_typedef_inner_type(self->tables, inner);
 
-                        if (resolved == inner) {
+                        if (resolved_typedef_inner == inner) {
                             @panic("typedef cycle in abi layout");
                         }
 
-                        return self->layout_of(resolved);
+                        return self->layout_of(resolved_typedef_inner);
                     }
                     case .Interface => @panic("interface type in abi layout");
                 }
             }
-            case .Plain(p) => return self->plain_type_layout(p);
+            
             case .Pointer => {
-                const size = self->target_info.pointer_size();
-                return ABITypeLayout.normal(size, size, Vec.new(self->allocator()));
+                const pointer_size = self->target_info.pointer_size();
+
+                return self->own_layout(ABITypeLayout.normal(
+                    pointer_size,
+                    pointer_size,
+                    Vec.new(self->allocator())
+                ));
             }
             case .FuncType => {
-                const size = self->target_info.pointer_size();
-                return ABITypeLayout.normal(size, size, Vec.new(self->allocator()));
+                const pointer_size = self->target_info.pointer_size();
+
+                return self->own_layout(ABITypeLayout.normal(
+                    pointer_size,
+                    pointer_size,
+                    Vec.new(self->allocator())
+                ));
             }
-            case .Array(arr) => {
-                const element_layout = self->layout_of(arr.element_type);
-                const len = self->array_capacity_len(&arr);
-                const total_size = element_layout.size * @cast(uint32, len);
+            case .Array(array) => {
+                const element_layout = self->layout_of(array.element_type);
 
-                var field_offsets: Vec<ABIFieldOffsetInfo> = Vec.new(self->allocator());
+                const element_count = self->array_capacity_len(&array);
+                const total_size = element_layout->size * @cast(uint32, element_count);
 
-                for (var i: usize = 0; i < len; i += 1) {
-                    field_offsets.push(ABIFieldOffsetInfo.normal(
+                var element_offsets: Vec<ABIFieldOffsetInfo> = Vec.new(self->allocator());
+
+                for (var i: usize = 0; i < element_count; i += 1) {
+                    element_offsets.push(ABIFieldOffsetInfo.normal(
                         @cast(uint32, i),
-                        element_layout.size * @cast(uint32, i),
+                        element_layout->size * @cast(uint32, i),
                         i,
-                        @cast(usize, element_layout.size)
+                        @cast(usize, element_layout->size)
                     ));
                 }
 
-                return ABITypeLayout.aggregate(total_size, element_layout.align, field_offsets);
+                return self->own_layout(ABITypeLayout.aggregate(
+                    total_size,
+                    element_layout->align,
+                    element_offsets
+                ));
             }
             case .Tuple(tuple) => {
-                var types: Vec<cir::SemaType> = Vec.new(self->allocator());
+                var element_types: Vec<cir::SemaType> = Vec.new(self->allocator());
 
                 for (var i: usize = 0; i < tuple.elements.len(); i += 1) {
                     const element = tuple.elements.get_const(i).unwrap();
-                    types.push(element->ty);
+                    element_types.push(element->ty);
                 }
 
-                const layout = self->compute_fields_layout(&types, false, .None);
-                types.free();
-                return layout;
+                const tuple_layout = self->compute_fields_layout(&element_types, false, .None);
+                element_types.free();
+                return tuple_layout;
             }
             case .InterfaceObject => {
-                const size = self->target_info.pointer_size() * 2;
-                return ABITypeLayout.normal(size, self->target_info.pointer_size(), Vec.new(self->allocator()));
+                const pointer_size = self->target_info.pointer_size();
+                return self->own_layout(ABITypeLayout.normal(
+                    pointer_size * 2,
+                    pointer_size,
+                    Vec.new(self->allocator())
+                ));
             }
             else => @panic("unresolved type in abi layout");
         }
     }
 
-    pub fn compute_struct_layout(self: Self*, decl: const cir::StructDecl*) ABITypeLayout {
-        var types: Vec<cir::SemaType> = Vec.new(self->allocator());
+    pub fn compute_struct_layout(self: Self*, decl: const cir::StructDecl*) ABITypeLayout* {
+        var field_types: Vec<cir::SemaType> = Vec.new(self->allocator());
 
         for (var i: usize = 0; i < decl->fields.len(); i += 1) {
             const field = decl->fields.get_const(i).unwrap();
-            types.push(field->ty);
+            field_types.push(field->ty);
         }
 
-        const layout = self->compute_fields_layout(&types, decl->is_packed(), decl->align);
-        types.free();
-        return layout;
+        const struct_layout = self->compute_fields_layout(&field_types, decl->is_packed(), decl->align);
+        field_types.free();
+        return struct_layout;
     }
 
-    pub fn compute_union_layout(self: Self*, decl: const cir::UnionDecl*) ABITypeLayout {
-        var types: Vec<cir::SemaType> = Vec.new(self->allocator());
+    pub fn compute_union_layout(self: Self*, decl: const cir::UnionDecl*) ABITypeLayout* {
+        var field_types: Vec<cir::SemaType> = Vec.new(self->allocator());
 
         for (var i: usize = 0; i < decl->fields.len(); i += 1) {
             const field = decl->fields.get_const(i).unwrap();
-            types.push(field->ty);
+            field_types.push(field->ty);
         }
 
-        const layout = self->compute_union_layout_types(&types);
-        types.free();
-        return layout;
+        const union_layout = self->compute_union_layout_types(&field_types);
+        field_types.free();
+        return union_layout;
     }
 
     pub fn compute_fields_layout(
@@ -218,103 +254,104 @@ pub struct TypeContext {
         types: const Vec<cir::SemaType>*,
         is_packed: bool,
         explicit_align: Option<usize>
-    ) ABITypeLayout {
-        var offset: uint32 = 0;
-        var max_align: uint32 = 1;
+    ) ABITypeLayout* {
+        var running_offset: uint32 = 0;
+        var max_field_align: uint32 = 1;
         var field_offset_index: uint32 = 0;
         var field_offsets: Vec<ABIFieldOffsetInfo> = Vec.new(self->allocator());
 
         for (var i: usize = 0; i < types->len(); i += 1) {
-            const ty = types->get_const(i).unwrap();
-            const field_layout = self->layout_of(ty);
+            const field_type = types->get_const(i).unwrap();
+            const field_layout = self->layout_of(field_type);
 
-            var effective_field_align = field_layout.align;
+            var effective_field_align = field_layout->align;
 
             if (is_packed) {
                 effective_field_align = 1;
             }
 
             if (!is_packed) {
-                const padding = (effective_field_align - (offset % effective_field_align)) % effective_field_align;
+                const padding = (effective_field_align - (running_offset % effective_field_align)) % effective_field_align;
 
                 if (padding > 0) {
-                    field_offsets.push(ABIFieldOffsetInfo.padding(field_offset_index, offset, padding));
+                    field_offsets.push(ABIFieldOffsetInfo.padding(field_offset_index, running_offset, padding));
                     field_offset_index += 1;
-                    offset += padding;
+                    running_offset += padding;
                 }
             }
 
             field_offsets.push(ABIFieldOffsetInfo.normal(
                 field_offset_index,
-                offset,
+                running_offset,
                 i,
-                @cast(usize, field_layout.size)
+                @cast(usize, field_layout->size)
             ));
             field_offset_index += 1;
 
-            offset += field_layout.size;
+            running_offset += field_layout->size;
 
-            if (field_layout.align > max_align) {
-                max_align = field_layout.align;
+            if (field_layout->align > max_field_align) {
+                max_field_align = field_layout->align;
             }
         }
 
         switch (explicit_align) {
             case .Some(align) => {
-                if (@cast(uint32, align) > max_align) {
-                    max_align = @cast(uint32, align);
+                if (@cast(uint32, align) > max_field_align) {
+                    max_field_align = @cast(uint32, align);
                 }
             }
             else => {}
         }
 
         if (is_packed) {
-            max_align = 1;
+            max_field_align = 1;
         }
 
-        const total_size = align_offset(offset, max_align);
+        const total_size = align_offset(running_offset, max_field_align);
 
-        if (total_size > offset) {
+        if (total_size > running_offset) {
             field_offsets.push(ABIFieldOffsetInfo.padding(
                 @cast(uint32, field_offsets.len()),
-                offset,
-                total_size - offset
+                running_offset,
+                total_size - running_offset
             ));
         }
 
-        return ABITypeLayout.aggregate(total_size, max_align, field_offsets);
+        return self->own_layout(ABITypeLayout.aggregate(total_size, max_field_align, field_offsets));
     }
 
-    pub fn compute_union_layout_types(self: Self*, types: const Vec<cir::SemaType>*) ABITypeLayout {
-        var max_size: uint32 = 0;
-        var max_align: uint32 = 1;
-        var field_offsets: Vec<ABIFieldOffsetInfo> = Vec.new(self->allocator());
+    pub fn compute_union_layout_types(self: Self*, types: const Vec<cir::SemaType>*) ABITypeLayout* {
+        var max_member_size: uint32 = 0;
+        var max_member_align: uint32 = 1;
+        var member_offsets: Vec<ABIFieldOffsetInfo> = Vec.new(self->allocator());
 
         for (var i: usize = 0; i < types->len(); i += 1) {
-            const ty = types->get_const(i).unwrap();
-            const field_layout = self->layout_of(ty);
+            const member_type = types->get_const(i).unwrap();
 
-            if (field_layout.size > max_size) {
-                max_size = field_layout.size;
+            const member_layout = self->layout_of(member_type);
+
+            if (member_layout->size > max_member_size) {
+                max_member_size = member_layout->size;
             }
 
-            if (field_layout.align > max_align) {
-                max_align = field_layout.align;
+            if (member_layout->align > max_member_align) {
+                max_member_align = member_layout->align;
             }
 
-            field_offsets.push(ABIFieldOffsetInfo.normal(
+            member_offsets.push(ABIFieldOffsetInfo.normal(
                 @cast(uint32, i),
                 0,
                 i,
-                @cast(usize, field_layout.size)
+                @cast(usize, member_layout->size)
             ));
         }
 
-        const total_size = align_offset(max_size, max_align);
-        return ABITypeLayout.aggregate(total_size, max_align, field_offsets);
+        const total_size = align_offset(max_member_size, max_member_align);
+        return self->own_layout(ABITypeLayout.aggregate(total_size, max_member_align, member_offsets));
     }
 
-    pub fn compute_enum_layout(self: Self*, decl: const cir::EnumDecl*) ABITypeLayout {
+    pub fn compute_enum_layout(self: Self*, decl: const cir::EnumDecl*) ABITypeLayout* {
         const tag_type = enum_tag_type(self->tables, self->registry, decl);
 
         if (is_enum_scalar_optimizable(self->tables, decl)) {
@@ -322,8 +359,8 @@ pub struct TypeContext {
         }
 
         const tag_layout = self->layout_of(&tag_type);
-        const tag_align = tag_layout.align;
-        const tag_size = tag_layout.size;
+        const tag_align = tag_layout->align;
+        const tag_size = tag_layout->size;
 
         var max_payload_size: uint32 = 0;
         var max_payload_align: uint32 = 1;
@@ -341,41 +378,41 @@ pub struct TypeContext {
                 }
                 case .Valued { value, .. } => {
                     switch (value->ty) {
-                        case .Some(ty) => {
-                            const layout = self->layout_of(&ty);
-                            variant_size = layout.size;
-                            variant_align = layout.align;
+                        case .Some(payload_type) => {
+                            const payload_layout = self->layout_of(&payload_type);
+                            variant_size = payload_layout->size;
+                            variant_align = payload_layout->align;
                         }
                         else => {}
                     }
                 }
                 case .Tuple { fields, .. } => {
-                    var types: Vec<cir::SemaType> = Vec.new(self->allocator());
+                    var payload_types: Vec<cir::SemaType> = Vec.new(self->allocator());
 
                     for (var j: usize = 0; j < fields.len(); j += 1) {
                         const field = fields.get_const(j).unwrap();
-                        types.push(field->ty);
+                        payload_types.push(field->ty);
                     }
 
-                    const layout = self->compute_fields_layout(&types, false, .None);
-                    types.free();
+                    const variant_layout = self->compute_fields_layout(&payload_types, false, .None);
+                    payload_types.free();
 
-                    variant_size = layout.size;
-                    variant_align = layout.align;
+                    variant_size = variant_layout->size;
+                    variant_align = variant_layout->align;
                 }
                 case .Struct { fields, .. } => {
-                    var types: Vec<cir::SemaType> = Vec.new(self->allocator());
+                    var payload_types: Vec<cir::SemaType> = Vec.new(self->allocator());
 
                     for (var j: usize = 0; j < fields.len(); j += 1) {
                         const field = fields.get_const(j).unwrap();
-                        types.push(field->ty);
+                        payload_types.push(field->ty);
                     }
 
-                    const layout = self->compute_fields_layout(&types, false, .None);
-                    types.free();
+                    const variant_layout = self->compute_fields_layout(&payload_types, false, .None);
+                    payload_types.free();
 
-                    variant_size = layout.size;
-                    variant_align = layout.align;
+                    variant_size = variant_layout->size;
+                    variant_align = variant_layout->align;
                 }
             }
 
@@ -394,9 +431,9 @@ pub struct TypeContext {
         }
 
         switch (decl->align) {
-            case .Some(align) => {
-                if (@cast(uint32, align) > max_payload_align) {
-                    max_payload_align = @cast(uint32, align);
+            case .Some(explicit_align) => {
+                if (@cast(uint32, explicit_align) > max_payload_align) {
+                    max_payload_align = @cast(uint32, explicit_align);
                 }
             }
             else => {}
@@ -409,9 +446,9 @@ pub struct TypeContext {
         }
 
         switch (decl->align) {
-            case .Some(align) => {
-                if (@cast(uint32, align) > total_align) {
-                    total_align = @cast(uint32, align);
+            case .Some(explicit_align) => {
+                if (@cast(uint32, explicit_align) > total_align) {
+                    total_align = @cast(uint32, explicit_align);
                 }
             }
             else => {}
@@ -455,16 +492,16 @@ pub struct TypeContext {
             ));
         }
 
-        return ABITypeLayout.aggregate(total_size, total_align, field_offsets);
+        return self->own_layout(ABITypeLayout.aggregate(total_size, total_align, field_offsets));
     }
 
-    pub fn compute_enum_variant_tags(
+    pub fn enum_variant_tags(
         self: Self*,
         enum_decl_id: cir::EnumDeclId,
         decl: const cir::EnumDecl*
-    ) Vec<uint32> {
-        switch (self->enum_tags.get_owned(enum_decl_id)) {
-            case .Some(cached) => return cached;
+    ) const Vec<uint32>* {
+        switch (self->enum_tags.get(enum_decl_id)) {
+            case .Some(cache) => return cache;
             else => {}
         }
 
@@ -488,17 +525,17 @@ pub struct TypeContext {
                     case .Valued { value, .. } => {
                         switch (value->literal_const_int_value()) {
                             case .Some(lit) => {
-                                const v = cir::integer_literal_as_usize(lit);
+                                const value = cir::integer_literal_as_usize(lit);
 
-                                if (v < 512) {
+                                if (value < 512) {
                                     switch (tags.get(i)) {
                                         case .Some(tag_ptr) => {
-                                            *tag_ptr = @cast(uint32, v);
+                                            *tag_ptr = @cast(uint32, value);
                                         }
                                         else => {}
                                     }
 
-                                    switch (used.get(v)) {
+                                    switch (used.get(value)) {
                                         case .Some(used_ptr) => {
                                             *used_ptr = true;
                                         }
@@ -518,11 +555,11 @@ pub struct TypeContext {
             for (var i: usize = 0; i < count; i += 1) {
                 const tag = tags.get_owned(i).unwrap();
 
-                if (tag_used(&used, tag)) {
+                if (is_tag_used(&used, tag)) {
                     continue;
                 }
 
-                while (tag_used(&used, next_tag)) {
+                while (is_tag_used(&used, next_tag)) {
                     next_tag += 1;
                 }
 
@@ -548,23 +585,49 @@ pub struct TypeContext {
             used.free();
         }
 
-        var result = tags;
         self->enum_tags.insert(enum_decl_id, tags);
-        return result;
+        return self->enum_tags.get(enum_decl_id).unwrap();
+    }
+
+    pub fn free(self: Self*) {
+        const allocator = self->allocator();
+
+        for (var i: usize = 0; i < self->owned_layouts.len(); i += 1) {
+            const address = self->owned_layouts.get_const(i).unwrap();
+            const owned_layout = self->layout_at(*address);
+            owned_layout->free();
+            allocator.free(owned_layout);
+        }
+
+        const tag_values = self->enum_tags.values_data();
+        for (var i: usize = 0; i < self->enum_tags.len(); i += 1) {
+            tag_values[i].free();
+        }
+
+        self->owned_layouts.free();
+        self->enum_tags.free();
+        self->struct_layouts.free();
+        self->union_layouts.free();
+        self->enum_layouts.free();
     }
 
     fn plain_type_layout(self: Self*, plain_type: cir::PlainType) ABITypeLayout {
-        var empty: Vec<ABIFieldOffsetInfo> = Vec.new(self->allocator());
+        var empty_offsets: Vec<ABIFieldOffsetInfo> = Vec.new(self->allocator());
 
         switch (plain_type) {
             case .UIntPtr | .IntPtr | .ISize | .USize => {
-                const size = self->target_info.pointer_size();
-                return ABITypeLayout.normal(size, size, empty);
+                const pointer_size = self->target_info.pointer_size();
+                return ABITypeLayout.normal(pointer_size, pointer_size, empty_offsets);
             }
-            case .Int8 | .UInt8 | .Bool => return ABITypeLayout.normal(1, 1, empty);
-            case .Int16 | .UInt16 => return ABITypeLayout.normal(2, 2, empty);
-            case .Int32 | .UInt32 => return ABITypeLayout.normal(4, 4, empty);
-            case .Int64 | .UInt64 => return ABITypeLayout.normal(8, 8, empty);
+            
+            case .Int8 | .UInt8 | .Bool => return ABITypeLayout.normal(1, 1, empty_offsets);
+            
+            case .Int16 | .UInt16 => return ABITypeLayout.normal(2, 2, empty_offsets);
+            
+            case .Int32 | .UInt32 => return ABITypeLayout.normal(4, 4, empty_offsets);
+            
+            case .Int64 | .UInt64 => return ABITypeLayout.normal(8, 8, empty_offsets);
+            
             case .Int128 | .UInt128 => {
                 var align: uint32 = 16;
 
@@ -577,35 +640,40 @@ pub struct TypeContext {
                     }
                 }
 
-                return ABITypeLayout.normal(16, align, empty);
+                return ABITypeLayout.normal(16, align, empty_offsets);
             }
-            case .Float16 => return ABITypeLayout.normal(2, 2, empty);
-            case .Float32 => return ABITypeLayout.normal(4, 4, empty);
-            case .Float64 => return ABITypeLayout.normal(8, 8, empty);
+            
+            case .Float16 => return ABITypeLayout.normal(2, 2, empty_offsets);
+            
+            case .Float32 => return ABITypeLayout.normal(4, 4, empty_offsets);
+            
+            case .Float64 => return ABITypeLayout.normal(8, 8, empty_offsets);
+
             case .Float128 => {
-                var align: uint32 = 16;
+                var float_align: uint32 = 16;
 
                 switch (self->target_info.arch) {
                     case .X86_64 | .Aarch64 | .RiscV64 => {
-                        align = 16;
+                        float_align = 16;
                     }
                     case .Wasm32 => {
-                        align = 8;
+                        float_align = 8;
                     }
                 }
 
-                return ABITypeLayout.normal(16, align, empty);
+                return ABITypeLayout.normal(16, float_align, empty_offsets);
             }
-            case .Void => return ABITypeLayout.normal(0, 1, empty);
             case .Null => {
-                const size = self->target_info.pointer_size();
-                return ABITypeLayout.normal(size, size, empty);
+                const pointer_size = self->target_info.pointer_size();
+                return ABITypeLayout.normal(pointer_size, pointer_size, empty_offsets);
             }
+
+            case .Void => return ABITypeLayout.normal(0, 1, empty_offsets);
         }
     }
 }
 
-fn tag_used(used: const Vec<bool>*, tag: uint32) bool {
+fn is_tag_used(used: const Vec<bool>*, tag: uint32) bool {
     switch (used->get_const(@cast(usize, tag))) {
         case .Some(flag) => return *flag;
         case .None => return false;

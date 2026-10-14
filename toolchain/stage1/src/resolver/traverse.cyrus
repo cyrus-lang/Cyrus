@@ -2553,7 +2553,7 @@ fn resolve_interface_stmt(
                                         modifiers: ast::ASTFuncModifiers {
                                             vis: .Public,
                                             link_name: .None,
-                                            extrn: .None,
+                                            extern_: .None,
                                             inline: .None,
                                             prologue: .None,
                                             callconv: .None,
