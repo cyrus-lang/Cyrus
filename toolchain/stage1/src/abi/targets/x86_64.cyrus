@@ -491,15 +491,13 @@ pub struct X86_64 : TargetABI {
             params_infos.push(ABIArgInfo.direct());
         }
 
-        const ty = func_type->ret_type;
-
         var ret_info = ABIRetInfo {
             kind: .Direct { coerce_to: .None },
-            abi_type: *ty,
-            ret_type: *ty,
+            abi_type: *func_type->ret_type,
+            ret_type: *func_type->ret_type,
         };
 
-        if (ty->is_void()) {
+        if (func_type->ret_type->is_void()) {
             ret_info.kind = .Ignore;
         }
 
@@ -572,8 +570,7 @@ pub struct X86_64 : TargetABI {
                 attrs.zero_ext = !is_signed;
                 attrs.sign_ext = is_signed;
 
-                var info = ABIArgInfo.direct_coerce(*ty);
-                return info.with_attrs(attrs);
+                return ABIArgInfo.direct_coerce(*ty).with_attrs(attrs);
             }
 
             // No change
@@ -582,8 +579,8 @@ pub struct X86_64 : TargetABI {
 
         // Byval alignment
         const layout = self->tctx->layout_of(ty);
-        const align = layout.align;
-        const size = layout.size;
+        const align = layout->align;
+        const size = layout->size;
 
         // Pass directly if there are no more free int regs
         if (free_int_regs == 0) {
@@ -643,7 +640,7 @@ pub struct X86_64 : TargetABI {
 
                             if (self->bits_contain_no_user_data(
                                 source_type, 
-                                source_offset + layout.size,
+                                source_offset + layout->size,
                                 source_offset + 8
                             )) {
                                 return *ty->const_inner();
@@ -714,10 +711,10 @@ pub struct X86_64 : TargetABI {
                 }
             }
 
-            case .Array(arr) => {
-                const element_type = arr.element_type;
+            case .Array(array) => {
+                const element_type = array.element_type;
                 const element_layout = self->tctx->layout_of(element_type);
-                const element_offset = (offset / element_layout.size) * element_layout.size;
+                const element_offset = (offset / element_layout->size) * element_layout->size;
 
                 return self->get_int_type_at_offset(
                     element_type,
@@ -743,7 +740,7 @@ pub struct X86_64 : TargetABI {
         }
 
         const layout = self->tctx->layout_of(source_type);
-        const remaining_bytes = layout.size - source_offset;
+        const remaining_bytes = layout->size - source_offset;
 
         if (remaining_bytes > 8) {
             // Fits in eightbyte register
@@ -766,7 +763,7 @@ pub struct X86_64 : TargetABI {
     ) Option<StructOrUnionMember> {
         const layout = self->tctx->compute_union_layout(decl);
 
-        if (layout.size < offset) {
+        if (layout->size < offset) {
             return .None;
         }
 
@@ -774,7 +771,7 @@ pub struct X86_64 : TargetABI {
             const field = decl->fields.get_const(i).unwrap();
             const field_layout = self->tctx->layout_of(&field->ty);
 
-            if (offset < field_layout.size) {
+            if (offset < field_layout->size) {
                 return .Some(StructOrUnionMember { ty: field->ty, field_offset: 0 });
             }
         }
@@ -789,7 +786,7 @@ pub struct X86_64 : TargetABI {
     ) Option<StructOrUnionMember> {
         const layout = self->tctx->compute_struct_layout(decl);
 
-        if (layout.size < offset) {
+        if (layout->size < offset) {
             return .None;
         }
 
@@ -798,7 +795,7 @@ pub struct X86_64 : TargetABI {
         for (var i: usize = 0; i < decl->fields.len(); i += 1) {
             const field = decl->fields.get_const(i).unwrap();
             const field_layout = self->tctx->layout_of(&field->ty);
-            const align = field_layout.align;
+            const align = field_layout->align;
 
             const padding = (align - (current_offset % align)) % align;
             current_offset += padding;
@@ -807,11 +804,11 @@ pub struct X86_64 : TargetABI {
                 break;
             }
 
-            if (current_offset <= offset && offset < current_offset + field_layout.size) {
+            if (current_offset <= offset && offset < current_offset + field_layout->size) {
                 return .Some(StructOrUnionMember { ty: field->ty, field_offset: current_offset });
             }
 
-            current_offset += field_layout.size;
+            current_offset += field_layout->size;
         }
 
         return .None;
@@ -827,7 +824,7 @@ pub struct X86_64 : TargetABI {
         for (var i: usize = 0; i < tuple->elements.len(); i += 1) {
             const element = tuple->elements.get_const(i).unwrap();
             const field_layout = self->tctx->layout_of(&element->ty);
-            const align = field_layout.align;
+            const align = field_layout->align;
 
             const padding = (align - (current_offset % align)) % align;
             current_offset += padding;
@@ -836,11 +833,11 @@ pub struct X86_64 : TargetABI {
                 break;
             }
 
-            if (current_offset <= offset && offset < current_offset + field_layout.size) {
+            if (current_offset <= offset && offset < current_offset + field_layout->size) {
                 return .Some(StructOrUnionMember { ty: element->ty, field_offset: current_offset });
             }
 
-            current_offset += field_layout.size;
+            current_offset += field_layout->size;
         }
 
         return .None;
@@ -887,10 +884,10 @@ pub struct X86_64 : TargetABI {
                     else => {}
                 }
             }
-            case .Array(arr) => {
-                const element_type = arr.element_type;
+            case .Array(array) => {
+                const element_type = array.element_type;
                 const element_layout = self->tctx->layout_of(element_type);
-                const element_start = (offset / element_layout.size) * element_layout.size;
+                const element_start = (offset / element_layout->size) * element_layout->size;
 
                 return self->get_fp_type_at_offset(element_type, offset - element_start);
             }
@@ -928,10 +925,10 @@ pub struct X86_64 : TargetABI {
                         }
 
                         const source_layout = self->tctx->layout_of(source_type);
-                        const source_size = source_layout.size - source_offset;
+                        const source_size = source_layout->size - source_offset;
 
                         const float_plain: cir::SemaType = .Plain(float_type);
-                        const float_size = self->tctx->layout_of(&float_plain).size;
+                        const float_size = self->tctx->layout_of(&float_plain)->size;
 
                         var float_type2: Option<cir::PlainType> = .None;
 
@@ -993,18 +990,18 @@ pub struct X86_64 : TargetABI {
     fn bits_contain_no_user_data(self: Self*, ty: const cir::SemaType*, start: uint32, end: uint32) bool {
         const layout = self->tctx->layout_of(ty);
 
-        if (layout.size <= start) {
+        if (layout->size <= start) {
             return true;
         }
 
         const allocator = self->tctx->allocator();
 
         switch (*ty->const_inner()) {
-            case .Array(arr) => {
-                const element_type = arr.element_type;
+            case .Array(array) => {
+                const element_type = array.element_type;
                 const element_layout = self->tctx->layout_of(element_type);
-                const element_size = element_layout.size;
-                const len = self->tctx->array_capacity_len(&arr);
+                const element_size = element_layout->size;
+                const len = self->tctx->array_capacity_len(&array);
 
                 for (var i: usize = 0; i < len; i += 1) {
                     const offset = @cast(uint32, i) * element_size;
@@ -1080,7 +1077,7 @@ pub struct X86_64 : TargetABI {
         for (var i: usize = 0; i < types->len(); i += 1) {
             const ty = types->get_const(i).unwrap();
             const field_layout = self->tctx->layout_of(ty);
-            const align = field_layout.align;
+            const align = field_layout->align;
 
             // Add padding before field 
             // (for structs, unions don't have padding)
@@ -1105,7 +1102,7 @@ pub struct X86_64 : TargetABI {
                 return false;
             }
 
-            current_offset += field_layout.size;
+            current_offset += field_layout->size;
         }
 
         return true;
@@ -1358,7 +1355,7 @@ fn classify(tctx: TypeContext*, ty: const cir::SemaType*, offset_base: uint32) R
             return result;
         }
 
-        case .Array(arr) => return classify_array(tctx, ty, &arr, offset_base, pair);
+        case .Array(array) => return classify_array(tctx, ty, &array, offset_base, pair);
 
         case .Plain(plain) => return classify_plain_type(plain, offset_base, pair);
 
@@ -1388,22 +1385,22 @@ fn classify_dynamic(tctx: TypeContext*, offset_base: uint32, var pair: RegisterC
 fn classify_array(
     tctx: TypeContext*,
     ty: const cir::SemaType*,
-    arr: const cir::TypedArrayType*,
+    array: const cir::TypedArrayType*,
     offset_base: uint32,
     var pair: RegisterClassPair
 ) RegisterClassPair {
     const layout = tctx->layout_of(ty);
-    const element_type = arr->element_type;
+    const element_type = array->element_type;
     const element_layout = tctx->layout_of(element_type);
 
-    if (layout.size > 16) {
+    if (layout->size > 16) {
         // Keep memory class
         return pair;
     }
 
-    if (offset_base % element_layout.align != 0) {
+    if (offset_base % element_layout->align != 0) {
         pair.lo = .Memory;
-        return classify_post_merge(layout.size, pair);
+        return classify_post_merge(layout->size, pair);
     }
 
     // Re-classify
@@ -1414,18 +1411,18 @@ fn classify_array(
     }
 
     // Check for vector-sized array
-    if (layout.size > 16 && layout.size != element_layout.size) {
+    if (layout->size > 16 && layout->size != element_layout->size) {
         pair.lo = .Memory;
         return pair;
     }
 
-    const len = tctx->array_capacity_len(arr);
+    const len = tctx->array_capacity_len(array);
     var offset = offset_base;
 
     for (var i: usize = 0; i < len; i += 1) {
         const field_pair = classify(tctx, element_type, offset);
 
-        offset += element_layout.size;
+        offset += element_layout->size;
 
         pair.lo = classify_merge(pair.lo, field_pair.lo);
         pair.hi = classify_merge(pair.hi, field_pair.hi);
@@ -1435,7 +1432,7 @@ fn classify_array(
         }
     }
 
-    return classify_post_merge(layout.size, pair);
+    return classify_post_merge(layout->size, pair);
 }
 
 fn classify_enum(
@@ -1460,7 +1457,7 @@ fn classify_enum(
     const layout = tctx->layout_of(ty);
 
     // If size > 16 bytes, keep default memory class
-    if (layout.size > 16) {
+    if (layout->size > 16) {
         return pair;
     }
 
@@ -1474,18 +1471,18 @@ fn classify_enum(
     // First, classify the tag field at offset 0
     const tag_ty = enum_tag_type(tables, registry, decl);
     const tag_layout = tctx->layout_of(&tag_ty);
-    const tag_size = tag_layout.size;
+    const tag_size = tag_layout->size;
 
     const tag_pair = classify(tctx, &tag_ty, offset_base);
     pair.lo = classify_merge(pair.lo, tag_pair.lo);
     pair.hi = classify_merge(pair.hi, tag_pair.hi);
 
     if (pair.lo == .Memory || pair.hi == .Memory) {
-        return classify_post_merge(layout.size, pair);
+        return classify_post_merge(layout->size, pair);
     }
 
     // Classify the payload
-    const payload_size = layout.size - tag_size;
+    const payload_size = layout->size - tag_size;
     const payload_offset = offset_base + tag_size;
 
     if (payload_size > 0) {
@@ -1497,7 +1494,7 @@ fn classify_enum(
         pair.hi = classify_merge(pair.hi, payload_pair.hi);
     }
 
-    return classify_post_merge(layout.size, pair);
+    return classify_post_merge(layout->size, pair);
 }
 
 fn make_u8_array(allocator: Allocator, len: usize, span: Span) cir::SemaType {
@@ -1524,7 +1521,7 @@ fn classify_struct_or_union(
     offset_base: uint32,
     var pair: RegisterClassPair
 ) RegisterClassPair {
-    var layout: ABITypeLayout;
+    var layout: ABITypeLayout*;
 
     if (is_union) {
         layout = tctx->compute_union_layout_types(types);
@@ -1532,7 +1529,7 @@ fn classify_struct_or_union(
         layout = tctx->compute_fields_layout(types, false, .None);
     }
 
-    const size = layout.size;
+    const size = layout->size;
 
     if (size > 16) {
         // Keep memory class
@@ -1552,10 +1549,10 @@ fn classify_struct_or_union(
         var field_offset = offset_base;
 
         if (!is_union) {
-            field_offset += layout.lookup_field_offset(i);
+            field_offset += layout->lookup_field_offset(i);
         }
 
-        if (field_offset % field_layout.align != 0) {
+        if (field_offset % field_layout->align != 0) {
             pair.lo = .Memory;
             return classify_post_merge(size, pair);
         }
