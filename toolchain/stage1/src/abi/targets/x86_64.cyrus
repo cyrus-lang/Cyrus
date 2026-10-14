@@ -1,0 +1,1665 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 The Cyrus Language
+
+import std::mem{Allocator, alloc_init};
+import std::collections{Vec};
+import std::option{Option};
+
+import abi::layout{ABITypeLayout};
+import abi::args{
+    ABIFunctionInfo,
+    ABIRetInfoKind, 
+    ABIArgAttrs, 
+    ABIArgInfo, 
+    ABIArgKind, 
+    ABIRetInfo, 
+    ExpandKind,
+};
+import abi::helpers{
+    extract_typedef_inner_type,
+    is_aggregate_type, 
+    Registers, 
+    align_up
+};
+import abi::target{
+    ClassifyArgResult, 
+    RegisterClassPair,
+    RegisterClass, 
+    TargetInfo,
+    TargetABI, 
+};
+import abi::typectx{
+    is_enum_scalar_optimizable, 
+    enum_tag_type, 
+    TypeContext, 
+};
+import tokens{Span, Loc};
+import cir;
+
+const MIN_ABI_STACK_ALIGN: uint32 = 16;
+
+struct StructOrUnionMember {
+    pub ty: cir::SemaType,
+    pub field_offset: uint32,
+}
+
+pub struct X86_64 : TargetABI {
+    pub target_info: TargetInfo,
+    pub tctx: TypeContext*,
+
+    pub fn new(info: TargetInfo, tctx: TypeContext*) Self {
+        return Self { target_info: info, tctx };
+    }
+
+    [[inline]]
+    pub fn stack_alignment(self: Self*) uint32 {
+        return MIN_ABI_STACK_ALIGN;
+    }
+
+    pub fn apply_variadic_argument_promote(self: Self*, ty: const cir::SemaType*) cir::SemaType {
+        const inner = ty->const_inner();
+
+        switch (*inner) {
+            case .Plain(plain) => {
+                switch (plain) {
+                    case .UIntPtr
+                    | .IntPtr
+                    | .ISize
+                    | .USize
+                    | .Int32
+                    | .UInt32
+                    | .Int64
+                    | .UInt64
+                    | .Int128
+                    | .UInt128 => return *inner;
+
+                    case .Int8 | .Int16 => {
+                        if (plain.is_signed()) {
+                            return .Plain(.Int32);
+                        } else {
+                            return .Plain(.UInt32);
+                        }
+                    }
+
+                    case .Float16 | .Float32 => return .Plain(.Float64);
+                    case .UInt8 | .UInt16 => return .Plain(.UInt32);
+                    case .Float64 | .Float128 => return *inner;
+                    case .Bool => return .Plain(.Int32);
+                    
+                    case .Void | .Null => @panic("void or null type in varargs");
+                }
+            }
+
+            case .Array(array) => return .Pointer(array.element_type);
+            else => return *inner;
+        }
+    }
+
+    pub fn classify_return(self: Self*, ty: const cir::SemaType*) ABIRetInfo {
+        const pair = classify(self->tctx, ty, 0);
+
+        if (pair.hi == .Memory && pair.lo != .Memory) {
+            @panic("invalid memory classification");
+        }
+
+        if (pair.hi == .SSEUP && pair.lo != .SSE) {
+            @panic("invalid SSEUp classification");
+        }
+
+        var result: Option<cir::SemaType> = .None;
+
+        switch (pair.lo) {
+            case .NoClass => {
+                if (pair.hi == .NoClass) {
+                    return ABIRetInfo {
+                        kind: .Ignore,
+                        abi_type: *ty,
+                        ret_type: *ty,
+                    };
+                }
+
+                if (!(pair.hi == .SSE || pair.hi == .Integer)) {
+                    @panic("expected SSE or Integer for high class when low is NoClass");
+                }
+            }
+            case .Memory => {
+                return ABIRetInfo {
+                    kind: .Indirect { sret: true },
+                    abi_type: *ty,
+                    ret_type: *ty,
+                };
+            }
+            case .Integer => {
+                result = .Some(self->get_int_type_at_offset(ty, 0, ty, 0));
+
+                if (pair.hi == .NoClass && (ty->is_integer() || ty->is_bool())) {
+                    switch (result) case .Some(rt) else {
+                        @panic("expected integer result type");
+                    }
+                    
+                    return ABIRetInfo {
+                        kind: .Direct { coerce_to: .Some(rt) },
+                        abi_type: rt,
+                        ret_type: *ty,
+                    };
+                }
+            }
+            case .SSE => {
+                if (pair.hi == .SSEUP) {
+                    const f128: cir::SemaType = .Plain(.Float128);
+
+                    return ABIRetInfo {
+                        kind: .Direct { coerce_to: .Some(f128) },
+                        abi_type: f128,
+                        ret_type: *ty,
+                    };
+                }
+
+                switch (self->get_sse_type_at_offset(ty, 0, ty, 0)) {
+                    case .Some(sse_ty) => {
+                        result = .Some(sse_ty);
+                    }
+                    else => @panic("expected sse result type");
+                }
+            }
+            case .SSEUP => @panic("unexpected SSEUP low class");
+        }
+
+        var hi: Option<cir::SemaType> = .None;
+
+        switch (pair.hi) {
+            case .Memory | .NoClass => {}
+
+            case .Integer => {
+                if (pair.lo == .NoClass) {
+                    @panic("empty first 8 bytes not allowed");
+                }
+
+                hi = .Some(self->get_int_type_at_offset(ty, 8, ty, 8));
+            }
+
+            case .SSE => {
+                if (pair.lo == .NoClass) {
+                    @panic("empty first 8 bytes not allowed");
+                }
+
+                hi = .Some(self->get_sse_type_at_offset(ty, 8, ty, 8).unwrap_or(.Plain(.Float64)));
+            }
+            
+            case .SSEUP => @panic("unexpected SSEUP high class");
+        }
+
+        switch (result) {
+            case .Some(lo) => {
+                switch (hi) {
+                    case .Some(hi) => {
+                        const allocator = self->tctx->allocator();
+                        const span = dummy_span();
+
+                        var elements: Vec<cir::TypedTupleElement> = Vec.new(allocator);
+                        elements.push(cir::TypedTupleElement { ty: lo, span });
+                        elements.push(cir::TypedTupleElement { ty: hi, span });
+
+                        const abi_type: cir::SemaType = .Tuple(cir::TypedTupleType { elements, span });
+
+                        return ABIRetInfo {
+                            kind: .DirectPair { lo: lo, hi: hi },
+                            abi_type,
+                            ret_type: *ty,
+                        };
+                    }
+                    else => {}
+                }
+
+                if (cir::cir_types_eq(&lo, ty)) {
+                    return ABIRetInfo {
+                        kind: .Direct { coerce_to: .None },
+                        abi_type: lo,
+                        ret_type: *ty,
+                    };
+                }
+
+                return ABIRetInfo {
+                    kind: .Direct { coerce_to: .Some(lo) },
+                    abi_type: lo,
+                    ret_type: *ty,
+                };
+            }
+            else => {}
+        }
+
+        return ABIRetInfo {
+            kind: .Direct { coerce_to: .None },
+            abi_type: *ty,
+            ret_type: *ty,
+        };
+    }
+
+    pub fn classify_argument(
+        self: Self*,
+        var ty: const cir::SemaType*,
+        free_int_regs: uint32,
+        is_named: bool
+    ) ClassifyArgResult {
+        var promoted: cir::SemaType = undefined;
+
+        if (!is_named) {
+            promoted = self->apply_variadic_argument_promote(ty);
+            ty = &promoted;
+        }
+
+        // Codegen will emit i128 directly
+        if (is_128bit_int(ty)) {
+            var attrs = ABIArgAttrs.zero();
+
+            if (ty->is_signed_integer_type()) {
+                attrs.sign_ext = true;
+            } else {
+                attrs.zero_ext = true;
+            }
+
+            return ClassifyArgResult {
+                info: ABIArgInfo.direct_coerce(*ty).with_attrs(attrs),
+                needed_regs: Registers { int_regs: 2, sse_regs: 0 },
+            };
+        }
+
+        const pair = classify(self->tctx, ty, 0);
+
+        if (pair.hi == .Memory && pair.lo != .Memory) {
+            @panic("invalid memory classification");
+        }
+
+        if (pair.hi == .SSEUP && pair.lo != .SSE) {
+            @panic("invalid SSEUp classification");
+        }
+
+        var result: Option<cir::SemaType> = .None;
+        var needed_regs = Registers.zero();
+
+        switch (pair.lo) {
+            case .NoClass => {
+                if (pair.hi != .NoClass) {
+                    @panic("invalid NoClass classification");
+                }
+
+                return ClassifyArgResult { info: ABIArgInfo.ignore(), needed_regs };
+            }
+            case .Integer => {
+                needed_regs.int_regs += 1;
+
+                if (ty->is_integer() || ty->is_bool()) {
+                    result = .Some(*ty);
+                } else {
+                    switch (ty->as_enum()) {
+                        case .Some(enum_decl_id) => {
+                            const tables = self->tctx->decl_tables();
+                            const decl = tables->enums.get_const(enum_decl_id).unwrap();
+
+                            if (is_enum_scalar_optimizable(tables, decl)) {
+                                result = .Some(enum_tag_type(tables, self->tctx->symbol_registry(), decl));
+                            }
+                        }
+                        else => {
+                            result = .Some(self->get_int_type_at_offset(ty, 0, ty, 0));
+                        }
+                    }
+                }
+
+                if (pair.hi == .NoClass && (ty->is_integer() || ty->is_bool())) {
+                    var attrs = ABIArgAttrs.zero();
+
+                    if (ty->is_signed_integer_type()) {
+                        attrs.sign_ext = true;
+                    } else {
+                        attrs.zero_ext = true;
+                    }
+
+                    if (is_128bit_int(ty)) {
+                        needed_regs.int_regs += 1;
+                    }
+
+                    switch (result) {
+                        case .Some(rt) => {
+                            return ClassifyArgResult {
+                                info: ABIArgInfo.direct_coerce(rt).with_attrs(attrs),
+                                needed_regs,
+                            };
+                        }
+                        else => @panic("expected Integer result type");
+                    }
+                }
+            }
+            case .Memory => {
+                return ClassifyArgResult {
+                    info: self->abi_arg_info_indirect_result(ty, free_int_regs),
+                    needed_regs,
+                };
+            }
+            case .SSE => {
+                needed_regs.sse_regs += 1;
+
+                switch (self->get_sse_type_at_offset(ty, 0, ty, 0)) {
+                    case .Some(sse_ty) => {
+                        result = .Some(sse_ty);
+                    }
+                    else => @panic("expected SSE result type");
+                }
+            }
+            case .SSEUP => @panic("unexpected SSEUP low class");
+        }
+
+        var hi: Option<cir::SemaType> = .None;
+
+        switch (pair.hi) {
+            case .Memory | .NoClass => {}
+
+            case .Integer => {
+                if (pair.lo == .NoClass) {
+                    @panic("empty first 8 bytes not allowed");
+                }
+
+                needed_regs.int_regs += 1;
+                hi = .Some(self->get_int_type_at_offset(ty, 8, ty, 8));
+            }
+
+            case .SSE => {
+                if (pair.lo == .NoClass) {
+                    @panic("empty first 8 bytes not allowed");
+                }
+
+                needed_regs.sse_regs += 1;
+                hi = .Some(self->get_sse_type_at_offset(ty, 8, ty, 8).unwrap_or(.Plain(.Float64)));
+            }
+
+            case .SSEUP => {
+                if (pair.lo != .SSE) {
+                    @panic("invalid SSEUp classification");
+                }
+
+                needed_regs.sse_regs += 1;
+
+                return ClassifyArgResult {
+                    info: ABIArgInfo.direct_coerce(.Plain(.Float128)),
+                    needed_regs,
+                };
+            }
+        }
+
+        switch (result) {
+            case .Some(result) => {
+                switch (hi) {
+                    case .Some(hi_ty) => {
+                        return ClassifyArgResult {
+                            info: ABIArgInfo.direct_pair(result, hi_ty),
+                            needed_regs,
+                        };
+                    }
+                    else => {}
+                }
+
+                // If abi type already matches, pass directly
+                if (cir::cir_types_eq(&result, ty)) {
+                    return ClassifyArgResult { info: ABIArgInfo.direct(), needed_regs };
+                }
+
+                // Only allow integer-width coercion for scalar integer types
+                if (ty->is_integer() || ty->is_bool()) {
+                    switch (self->tctx->get_integer_bit_width(&result)) {
+                        case .Some(result_width) => {
+                            switch (self->tctx->get_integer_bit_width(ty)) {
+                                case .Some(eff_width) => {
+                                    if (result_width == eff_width) {
+                                        return ClassifyArgResult { info: ABIArgInfo.direct(), needed_regs };
+                                    }
+                                }
+                                else => {}
+                            }
+                        }
+                        else => {}
+                    }
+                }
+
+                return ClassifyArgResult {
+                    info: ABIArgInfo.direct_coerce(result),
+                    needed_regs,
+                };
+            }
+            else => {}
+        }
+
+        return ClassifyArgResult { info: ABIArgInfo.direct(), needed_regs };
+    }
+
+    pub fn classify_func(self: Self*, func_type: const cir::TypedFuncType*) Option<ABIFunctionInfo> {
+        switch (func_type->callconv) {
+            // C default convention, platform dependent
+            case .System | .C => {
+                switch (self->target_info.os) {
+                    case .Linux | .MacOS => return .Some(self->classify_func_sysv(func_type));
+                    case .Windows => @panic("Windows ABI not implemented yet");
+                    case .Unknown => @unreachable();
+                }
+            }
+
+            // SYS_V64
+            case .SysV64 => return .Some(self->classify_func_sysv(func_type));
+
+            // Naked
+            case .Naked => return .Some(self->classify_func_naked(func_type));
+
+            // Win64
+            case .Win64 => @panic("Windows ABI not implemented yet");
+
+            // Interrupt handler
+            case .Interrupt => @panic("Interrupt calling convention not supported yet");
+
+            // Fast/Cold optimization hints, same as C convention
+            case .Fast | .Cold => {
+                switch (self->target_info.os) {
+                    case .Linux | .MacOS => return .Some(self->classify_func_sysv(func_type));
+                    case .Windows => @panic("Windows ABI not implemented yet");
+                    case .Unknown => @unreachable();
+                }
+            }
+
+            // ARM convention on x86-64
+            case .Aapcs => @panic("AAPCS is ARM-only and not supported on x86-64");
+
+            // 32-bit x86 conventions not supported on x86-64
+            case .Stdcall | .Fastcall | .Thiscall => {
+                @panic("32-bit x86 calling convention is not supported on x86-64");
+            }
+
+            // Vectorcall (Available on both x86 and x86-64)
+            case .Vectorcall => {
+                @panic("Vectorcall calling convention is not implemented yet");
+            }
+        }
+    }
+
+    fn classify_func_naked(self: Self*, func_type: const cir::TypedFuncType*) ABIFunctionInfo {
+        const allocator = self->tctx->allocator();
+
+        var params_types: Vec<cir::SemaType> = Vec.new(allocator);
+        var params_infos: Vec<ABIArgInfo> = Vec.new(allocator);
+
+        for (var i: usize = 0; i < func_type->params.list.len(); i += 1) {
+            const param_type = func_type->params.list.get_const(i).unwrap();
+
+            params_types.push(*param_type);
+            params_infos.push(ABIArgInfo.direct());
+        }
+
+        const ty = func_type->ret_type;
+
+        var ret_info = ABIRetInfo {
+            kind: .Direct { coerce_to: .None },
+            abi_type: *ty,
+            ret_type: *ty,
+        };
+
+        if (ty->is_void()) {
+            ret_info.kind = .Ignore;
+        }
+
+        return ABIFunctionInfo { params_types, params_infos, ret_info };
+    }
+
+    fn classify_func_sysv(self: Self*, func_type: const cir::TypedFuncType*) ABIFunctionInfo {
+        const allocator = self->tctx->allocator();
+
+        var available_regs = Registers { int_regs: 6, sse_regs: 8 };
+
+        var params_types: Vec<cir::SemaType> = Vec.new(allocator);
+        var params_infos: Vec<ABIArgInfo> = Vec.new(allocator);
+
+        const ret_info = self->classify_return(func_type->ret_type);
+
+        if (ret_info.kind.is_indirect()) {
+            available_regs.int_regs -= 1;
+        }
+
+        for (var i: usize = 0; i < func_type->params.list.len(); i += 1) {
+            const param_type = func_type->params.list.get_const(i).unwrap();
+
+            var abi_arg = self->classify_parameter(param_type, &available_regs, true);
+
+            // Index before expansion
+            const start = @cast(uint16, params_types.len());
+
+            // Expand ABI arg into param types
+            var expanded = self->param_types_from_arg_info(&abi_arg, param_type);
+
+            for (var j: usize = 0; j < expanded.len(); j += 1) {
+                params_types.push(*expanded.get_const(j).unwrap());
+            }
+
+            expanded.free();
+
+            // Index after expansion
+            const end = @cast(uint16, params_types.len());
+
+            params_infos.push(abi_arg.with_indices(start, end));
+        }
+
+        return ABIFunctionInfo { params_types, params_infos, ret_info };
+    }
+
+    fn classify_parameter(
+        self: Self*,
+        ty: const cir::SemaType*,
+        available_regs: Registers*,
+        is_named: bool
+    ) ABIArgInfo {
+        const result = self->classify_argument(ty, available_regs->int_regs, is_named);
+
+        if (try_use_registers(available_regs, &result.needed_regs)) {
+            return result.info;
+        }
+
+        return self->abi_arg_info_indirect_result(ty, available_regs->int_regs);
+    }
+
+    fn abi_arg_info_indirect_result(self: Self*, ty: const cir::SemaType*, free_int_regs: uint32) ABIArgInfo {
+        // If this is a scalar LLVM value then assume 
+        // LLVM will pass it in the right place naturally
+        if (!is_aggregate_type(ty, self->tctx->decl_tables())) {
+            if (ty->is_integer() || ty->is_bool()) {
+                const is_signed = ty->is_signed_integer_type();
+
+                var attrs = ABIArgAttrs.zero();
+                attrs.zero_ext = !is_signed;
+                attrs.sign_ext = is_signed;
+
+                var info = ABIArgInfo.direct_coerce(*ty);
+                return info.with_attrs(attrs);
+            }
+
+            // No change
+            return ABIArgInfo.direct();
+        }
+
+        // Byval alignment
+        const layout = self->tctx->layout_of(ty);
+        const align = layout.align;
+        const size = layout.size;
+
+        // Pass directly if there are no more free int regs
+        if (free_int_regs == 0) {
+            if (align <= 8 && size <= 8) {
+                var info = ABIArgInfo.direct_coerce(.Plain(.Int64));
+                return info;
+            }
+        }
+
+        if (align < 8) {
+            // Realigned indirect
+            var info = ABIArgInfo.indirect(*ty, 8);
+            var attrs = ABIArgAttrs.zero();
+            attrs.by_val = true;
+            return info.with_attrs(attrs);
+        } else {
+            // Regular byval indirect
+            var info = ABIArgInfo.indirect(*ty, align);
+            var attrs = ABIArgAttrs.zero();
+            attrs.by_val = true;
+            return info.with_attrs(attrs);
+        }
+    }
+
+    fn get_int_type_at_offset(
+        self: Self*,
+        ty: const cir::SemaType*,
+        offset: uint32,
+        source_type: const cir::SemaType*,
+        source_offset: uint32
+    ) cir::SemaType {
+        switch (*ty->const_inner()) {
+            case .Plain(plain) => {
+                switch (plain) {
+                    case .UIntPtr 
+                    | .IntPtr 
+                    | .ISize 
+                    | .USize 
+                    | .Int64 
+                    | .UInt64 => {
+                        if (offset != 0) {
+                            return *ty->const_inner();
+                        }
+                    }
+
+                    case .Bool
+                    | .UInt8
+                    | .Int8
+                    | .UInt16
+                    | .Int16
+                    | .UInt32
+                    | .Int32 => {
+                        if (offset != 0) {
+                            // Fallback
+                        } else {
+                            const layout = self->tctx->layout_of(ty);
+
+                            if (self->bits_contain_no_user_data(
+                                source_type, 
+                                source_offset + layout.size,
+                                source_offset + 8
+                            )) {
+                                return *ty->const_inner();
+                            }
+                        }
+                    }
+                    
+                    case .UInt128 | .Int128 => {
+                        // Fallback
+                    }
+                    
+                    case .Float16 
+                    | .Float32 
+                    | .Float64 
+                    | .Float128 => {
+                        // Fallback
+                    }
+                    
+                    case .Void | .Null => @unreachable();
+                }
+            }
+            
+            case .Pointer | .FuncType => {
+                if (offset == 0) {
+                    return *ty->const_inner();
+                }
+            }
+
+            case .Named(named) => {
+                switch (named.type_decl_id) {
+                    case .Struct(id) => {
+                        const tables = self->tctx->decl_tables();
+                        const decl = tables->structs.get_const(id).unwrap();
+
+                        switch (self->get_struct_member_at_offset(decl, offset)) {
+                            case .Some(member) => {
+                                return self->get_int_type_at_offset(
+                                    &member.ty,
+                                    offset - member.field_offset,
+                                    source_type,
+                                    source_offset
+                                );
+                            }
+                            else => {}
+                        }
+                    }
+                    
+                    case .Union 
+                    | .Enum 
+                    | .Typedef 
+                    | .Interface => {
+                        // Fallback
+                    }
+                }
+            }
+
+            case .Tuple(tuple) => {
+                switch (self->get_tuple_member_at_offset(&tuple, offset)) {
+                    case .Some(member) => {
+                        return self->get_int_type_at_offset(
+                            &member.ty,
+                            offset - member.field_offset,
+                            source_type,
+                            source_offset
+                        );
+                    }
+                    else => {}
+                }
+            }
+
+            case .Array(arr) => {
+                const element_type = arr.element_type;
+                const element_layout = self->tctx->layout_of(element_type);
+                const element_offset = (offset / element_layout.size) * element_layout.size;
+
+                return self->get_int_type_at_offset(
+                    element_type,
+                    offset - element_offset,
+                    source_type,
+                    source_offset
+                );
+            }
+
+            case .InterfaceObject => {
+                if (offset < 8) {
+                    return void_ptr_type(self->tctx->allocator());
+                }
+
+                if (offset < 16) {
+                    return void_ptr_type(self->tctx->allocator());
+                }
+            }
+
+            else => {
+                // Fallback
+            }
+        }
+
+        const layout = self->tctx->layout_of(source_type);
+        const remaining_bytes = layout.size - source_offset;
+
+        if (remaining_bytes > 8) {
+            // Fits in eightbyte register
+            return .Plain(.Int64);
+        } else {
+            // Span across multiple registers
+            const aligned = align_up(@cast(usize, remaining_bytes), 8);
+
+            switch (cir::PlainType.map_integer_size_to_type(aligned)) {
+                case .Some(plain) => return .Plain(plain);
+                else => @panic("expected an integer type for aligned size");
+            }
+        }
+    }
+
+    fn get_union_member_at_offset(
+        self: Self*,
+        decl: const cir::UnionDecl*,
+        offset: uint32
+    ) Option<StructOrUnionMember> {
+        const layout = self->tctx->compute_union_layout(decl);
+
+        if (layout.size < offset) {
+            return .None;
+        }
+
+        for (var i: usize = 0; i < decl->fields.len(); i += 1) {
+            const field = decl->fields.get_const(i).unwrap();
+            const field_layout = self->tctx->layout_of(&field->ty);
+
+            if (offset < field_layout.size) {
+                return .Some(StructOrUnionMember { ty: field->ty, field_offset: 0 });
+            }
+        }
+
+        return .None;
+    }
+
+    fn get_struct_member_at_offset(
+        self: Self*,
+        decl: const cir::StructDecl*,
+        offset: uint32
+    ) Option<StructOrUnionMember> {
+        const layout = self->tctx->compute_struct_layout(decl);
+
+        if (layout.size < offset) {
+            return .None;
+        }
+
+        var current_offset: uint32 = 0;
+
+        for (var i: usize = 0; i < decl->fields.len(); i += 1) {
+            const field = decl->fields.get_const(i).unwrap();
+            const field_layout = self->tctx->layout_of(&field->ty);
+            const align = field_layout.align;
+
+            const padding = (align - (current_offset % align)) % align;
+            current_offset += padding;
+
+            if (current_offset > offset) {
+                break;
+            }
+
+            if (current_offset <= offset && offset < current_offset + field_layout.size) {
+                return .Some(StructOrUnionMember { ty: field->ty, field_offset: current_offset });
+            }
+
+            current_offset += field_layout.size;
+        }
+
+        return .None;
+    }
+
+    fn get_tuple_member_at_offset(
+        self: Self*,
+        tuple: const cir::TypedTupleType*,
+        offset: uint32
+    ) Option<StructOrUnionMember> {
+        var current_offset: uint32 = 0;
+
+        for (var i: usize = 0; i < tuple->elements.len(); i += 1) {
+            const element = tuple->elements.get_const(i).unwrap();
+            const field_layout = self->tctx->layout_of(&element->ty);
+            const align = field_layout.align;
+
+            const padding = (align - (current_offset % align)) % align;
+            current_offset += padding;
+
+            if (current_offset > offset) {
+                break;
+            }
+
+            if (current_offset <= offset && offset < current_offset + field_layout.size) {
+                return .Some(StructOrUnionMember { ty: element->ty, field_offset: current_offset });
+            }
+
+            current_offset += field_layout.size;
+        }
+
+        return .None;
+    }
+
+    fn get_fp_type_at_offset(self: Self*, ty: const cir::SemaType*, offset: uint32) Option<cir::SemaType> {
+        if (offset == 0 && ty->is_float()) {
+            return .Some(*ty->const_inner());
+        }
+
+        switch (*ty->const_inner()) {
+            case .Named(named) => {
+                switch (named.type_decl_id) {
+                    case .Struct(id) => {
+                        const tables = self->tctx->decl_tables();
+                        const decl = tables->structs.get_const(id).unwrap();
+
+                        switch (self->get_struct_member_at_offset(decl, offset)) {
+                            case .Some(member) => {
+                                return self->get_fp_type_at_offset(&member.ty, offset - member.field_offset);
+                            }
+                            else => {}
+                        }
+                    }
+                    case .Union(id) => {
+                        const tables = self->tctx->decl_tables();
+                        const decl = tables->unions.get_const(id).unwrap();
+
+                        switch (self->get_union_member_at_offset(decl, offset)) {
+                            case .Some(member) => {
+                                return self->get_fp_type_at_offset(&member.ty, offset - member.field_offset);
+                            }
+                            else => {}
+                        }
+                    }
+                    else => {}
+                }
+            }
+            case .Tuple(tuple) => {
+                switch (self->get_tuple_member_at_offset(&tuple, offset)) {
+                    case .Some(member) => {
+                        return self->get_fp_type_at_offset(&member.ty, offset - member.field_offset);
+                    }
+                    else => {}
+                }
+            }
+            case .Array(arr) => {
+                const element_type = arr.element_type;
+                const element_layout = self->tctx->layout_of(element_type);
+                const element_start = (offset / element_layout.size) * element_layout.size;
+
+                return self->get_fp_type_at_offset(element_type, offset - element_start);
+            }
+            else => {}
+        }
+
+        return .None;
+    }
+
+    fn get_sse_type_at_offset(
+        self: Self*,
+        ty: const cir::SemaType*,
+        offset: uint32,
+        source_type: const cir::SemaType*,
+        source_offset: uint32
+    ) Option<cir::SemaType> {
+        switch (self->get_fp_type_at_offset(ty, offset)) {
+            case .Some(fp_ty) => {
+                switch (fp_ty.as_plain_type()) {
+                    case .None => return .Some(.Plain(.Float64));
+                    case .Some(float_type) => {
+                        if (float_type == .Float64) {
+                            return .Some(.Plain(.Float64));
+                        }
+
+                        // f128 uses SSE + SSEUP
+                        if (float_type == .Float128) {
+                            // f128 needs 16-byte alignment
+                            if ((source_offset + offset) % 16 == 0) {
+                                return .Some(.Plain(.Float128));
+                            } else {
+                                // Misaligned f128 spills to memory
+                                return .None;
+                            }
+                        }
+
+                        const source_layout = self->tctx->layout_of(source_type);
+                        const source_size = source_layout.size - source_offset;
+
+                        const float_plain: cir::SemaType = .Plain(float_type);
+                        const float_size = self->tctx->layout_of(&float_plain).size;
+
+                        var float_type2: Option<cir::PlainType> = .None;
+
+                        if (source_size > float_size) {
+                            switch (self->get_fp_type_at_offset(ty, offset + float_size)) {
+                                case .Some(next_ty) => {
+                                    float_type2 = next_ty.as_plain_type();
+                                }
+                                else => {}
+                            }
+                        }
+
+                        switch (float_type2) {
+                            case .None => {
+                                if (float_type == .Float16 && source_size > 4) {
+                                    switch (self->get_fp_type_at_offset(ty, offset + 4)) {
+                                        case .Some(next_ty) => {
+                                            float_type2 = next_ty.as_plain_type();
+                                        }
+                                        else => {}
+                                    }
+                                }
+
+                                switch (float_type2) {
+                                    case .None => return .Some(.Plain(float_type));
+                                    else => {}
+                                }
+                            }
+                            else => {}
+                        }
+
+                        switch (float_type2) {
+                            case .Some(second_type) => {
+                                // FIXME: Stage1 has no vector SemaType yet, so paired f32/f16
+                                // results degrade to the single float element type
+                                if (float_type == .Float32 && second_type == .Float32) {
+                                    return .Some(.Plain(.Float32));
+                                }
+
+                                if (float_type == .Float16 && second_type == .Float16) {
+                                    return .Some(.Plain(.Float16));
+                                }
+
+                                if (float_type == .Float16 || second_type == .Float16) {
+                                    return .Some(.Plain(.Float16));
+                                }
+
+                                return .Some(.Plain(.Float64));
+                            }
+                            else => return .Some(.Plain(.Float64));
+                        }
+                    }
+                }
+            }
+            case .None => return .None;
+        }
+    }
+
+    fn bits_contain_no_user_data(self: Self*, ty: const cir::SemaType*, start: uint32, end: uint32) bool {
+        const layout = self->tctx->layout_of(ty);
+
+        if (layout.size <= start) {
+            return true;
+        }
+
+        const allocator = self->tctx->allocator();
+
+        switch (*ty->const_inner()) {
+            case .Array(arr) => {
+                const element_type = arr.element_type;
+                const element_layout = self->tctx->layout_of(element_type);
+                const element_size = element_layout.size;
+                const len = self->tctx->array_capacity_len(&arr);
+
+                for (var i: usize = 0; i < len; i += 1) {
+                    const offset = @cast(uint32, i) * element_size;
+
+                    // If the field is after the span 
+                    // we care about, then we're done
+                    if (offset >= end) {
+                        break;
+                    }
+
+                    var element_start: uint32 = 0;
+
+                    if (offset < start) {
+                        element_start = start - offset;
+                    }
+
+                    if (!self->bits_contain_no_user_data(element_type, element_start, end - offset)) {
+                        return false;
+                    }
+                }
+
+                // No overlap found
+                return true;
+            }
+            case .Named(named) => {
+                switch (named.type_decl_id) {
+                    case .Struct(id) => {
+                        const tables = self->tctx->decl_tables();
+                        const decl = tables->structs.get_const(id).unwrap();
+
+                        var types: Vec<cir::SemaType> = Vec.new(allocator);
+
+                        for (var i: usize = 0; i < decl->fields.len(); i += 1) {
+                            const field = decl->fields.get_const(i).unwrap();
+                            types.push(field->ty);
+                        }
+
+                        const result = self->bits_contain_no_user_data_fields(&types, false, start, end);
+                        types.free();
+                        return result;
+                    }
+                    case .Union(id) => {
+                        const tables = self->tctx->decl_tables();
+                        const decl = tables->unions.get_const(id).unwrap();
+
+                        var types: Vec<cir::SemaType> = Vec.new(allocator);
+
+                        for (var i: usize = 0; i < decl->fields.len(); i += 1) {
+                            const field = decl->fields.get_const(i).unwrap();
+                            types.push(field->ty);
+                        }
+
+                        const result = self->bits_contain_no_user_data_fields(&types, true, start, end);
+                        types.free();
+                        return result;
+                    }
+                    else => return false;
+                }
+            }
+            else => return false;
+        }
+    }
+
+    fn bits_contain_no_user_data_fields(
+        self: Self*,
+        types: const Vec<cir::SemaType>*,
+        is_union: bool,
+        start: uint32,
+        end: uint32
+    ) bool {
+        var current_offset: uint32 = 0;
+
+        for (var i: usize = 0; i < types->len(); i += 1) {
+            const ty = types->get_const(i).unwrap();
+            const field_layout = self->tctx->layout_of(ty);
+            const align = field_layout.align;
+
+            // Add padding before field 
+            // (for structs, unions don't have padding)
+            if (!is_union) {
+                const padding = (align - (current_offset % align)) % align;
+                current_offset += padding;
+            }
+
+            const field_offset = current_offset;
+
+            if (field_offset >= end) {
+                break;
+            }
+
+            var field_start: uint32 = 0;
+
+            if (field_offset < start) {
+                field_start = start - field_offset;
+            }
+
+            if (!self->bits_contain_no_user_data(ty, field_start, end - field_offset)) {
+                return false;
+            }
+
+            current_offset += field_layout.size;
+        }
+
+        return true;
+    }
+
+    fn param_types_from_arg_info(
+        self: Self*,
+        abi_arg: const ABIArgInfo*,
+        param_type: const cir::SemaType*
+    ) Vec<cir::SemaType> {
+        const allocator = self->tctx->allocator();
+
+        var types: Vec<cir::SemaType> = Vec.new(allocator);
+
+        switch (abi_arg->kind) {
+            case .Direct { coerce_to } => {
+                switch (coerce_to) {
+                    case .Some(ty) => types.push(ty);
+                    case .None => types.push(*param_type);
+                }
+            }
+            case .DirectCoerce { ty } => {
+                types.push(ty);
+            }
+            case .DirectPair { lo, hi } => {
+                types.push(lo);
+                types.push(hi);
+            }
+            case .Indirect { ty, .. } => {
+                types.push(ty);
+            }
+            case .Extend { .. } => {
+                types.push(*param_type);
+            }
+            case .Expand { kind } => {
+                switch (kind) {
+                    case .Struct { .. } => {
+                        switch (*param_type->const_inner()) {
+                            case .Named(named) => {
+                                const tables = self->tctx->decl_tables();
+
+                                switch (named.type_decl_id) {
+                                    case .Struct(id) => {
+                                        const decl = tables->structs.get_const(id).unwrap();
+
+                                        for (var i: usize = 0; i < decl->fields.len(); i += 1) {
+                                            const field = decl->fields.get_const(i).unwrap();
+                                            types.push(field->ty);
+                                        }
+                                    }
+                                    case .Union(id) => {
+                                        const decl = tables->unions.get_const(id).unwrap();
+
+                                        for (var i: usize = 0; i < decl->fields.len(); i += 1) {
+                                            const field = decl->fields.get_const(i).unwrap();
+                                            types.push(field->ty);
+                                        }
+                                    }
+                                    else => @panic("expanded struct argument must be a struct or union");
+                                }
+                            }
+                            else => @panic("expanded struct argument must be a struct or union");
+                        }
+                    }
+                    else => {
+                        types.free();
+                        var single: Vec<cir::SemaType> = Vec.new(allocator);
+                        single.push(*param_type);
+                        return single;
+                    }
+                }
+            }
+            case .Ignore => {
+                // Skip
+            }
+        }
+
+        return types;
+    }
+}
+
+fn dummy_span() Span {
+    return Span {
+        source_id: 0,
+        loc: Loc { start: 0, end: 0 },
+    };
+}
+
+// FIXME: Move to cir/index.cyrus
+fn void_ptr_type(allocator: Allocator) cir::SemaType {
+    return .Pointer(alloc_init(allocator, cir::SemaType.Plain(.Void)));
+}
+
+// FIXME: Make a method of cir::SemaType
+fn is_128bit_int(ty: const cir::SemaType*) bool {
+    switch (ty->as_plain_type()) {
+        case .Some(p) => {
+            return p == .Int128 || p == .UInt128;
+        }
+        case .None => return false;
+    }
+}
+
+fn try_use_registers(available_regs: Registers*, used: const Registers*) bool {
+    if (available_regs->sse_regs < used->sse_regs) {
+        return false;
+    }
+
+    if (available_regs->int_regs < used->int_regs) {
+        return false;
+    }
+
+    available_regs->int_regs -= used->int_regs;
+    available_regs->sse_regs -= used->sse_regs;
+    return true;
+}
+
+fn classify_merge(current: RegisterClass, field: RegisterClass) RegisterClass {
+    if (current == field) {
+        return current;
+    }
+
+    if (current == .NoClass) {
+        return field;
+    }
+
+    if (field == .NoClass) {
+        return current;
+    }
+
+    if (current == .Integer || field == .Integer) {
+        return .Integer;
+    }
+
+    if ((current == .SSE && field == .SSEUP) 
+        || (current == .SSEUP && field == .SSE)) {
+        return .SSE;
+    }
+
+    return .Memory;
+}
+
+fn classify_post_merge(size: uint32, var pair: RegisterClassPair) RegisterClassPair {
+    if (pair.hi == .Memory) {
+        pair.lo = .Memory;
+        return pair;
+    }
+
+    // If size > 16 and lo isn't SSE or hi isn't SSEUP, default to memory
+    if (size > 16 && (pair.lo != .SSE || pair.hi != .SSEUP)) {
+        pair.lo = .Memory;
+        return pair;
+    }
+
+    // If hi is SSEUP but lo isn't SSE, something is wrong, default to memory
+    if (pair.hi == .SSEUP && pair.lo != .SSE && pair.lo != .SSEUP) {
+        pair.lo = .Memory;
+        pair.hi = .Memory;
+        return pair;
+    }
+
+    // If hi is SSEUP but lo is also SSEUP (unlikely), treat as memory
+    if (pair.hi == .SSEUP && pair.lo == .SSEUP) {
+        pair.lo = .Memory;
+    }
+
+    return pair;
+}
+
+fn classify(tctx: TypeContext*, ty: const cir::SemaType*, offset_base: uint32) RegisterClassPair {
+    var pair = RegisterClassPair { lo: .NoClass, hi: .NoClass };
+
+    if (offset_base < 8) {
+        pair.lo = .Memory;
+    } else {
+        pair.hi = .Memory;
+    }
+
+    switch (*ty->const_inner()) {
+        case .Named(named) => {
+            switch (named.type_decl_id) {
+                case .Struct(id) => {
+                    const tables = tctx->decl_tables();
+                    const decl = tables->structs.get_const(id).unwrap();
+
+                    var types: Vec<cir::SemaType> = Vec.new(tctx->allocator());
+
+                    for (var i: usize = 0; i < decl->fields.len(); i += 1) {
+                        const field = decl->fields.get_const(i).unwrap();
+                        types.push(field->ty);
+                    }
+
+                    const result = classify_struct_or_union(tctx, &types, false, offset_base, pair);
+                    types.free();
+                    return result;
+                }
+                case .Union(id) => {
+                    const tables = tctx->decl_tables();
+                    const decl = tables->unions.get_const(id).unwrap();
+
+                    var types: Vec<cir::SemaType> = Vec.new(tctx->allocator());
+
+                    for (var i: usize = 0; i < decl->fields.len(); i += 1) {
+                        const field = decl->fields.get_const(i).unwrap();
+                        types.push(field->ty);
+                    }
+
+                    const result = classify_struct_or_union(tctx, &types, true, offset_base, pair);
+                    types.free();
+                    return result;
+                }
+                case .Enum(id) => {
+                    const tables = tctx->decl_tables();
+                    const decl = tables->enums.get_const(id).unwrap();
+                    return classify_enum(tctx, ty, decl, offset_base, pair);
+                }
+                case .Typedef => {
+                    const resolved = extract_typedef_inner_type(tctx->decl_tables(), ty);
+
+                    if (resolved == ty->const_inner()) {
+                        @panic("typedef cycle in abi classify");
+                    }
+
+                    return classify(tctx, resolved, offset_base);
+                }
+                case .Interface => @panic("interface type in abi classify");
+            }
+        }
+        
+        case .Pointer | .FuncType => {
+            if (offset_base < 8) {
+                pair.lo = .Integer;
+            } else {
+                pair.hi = .Integer;
+            }
+
+            return pair;
+        }
+        
+        case .Tuple(tuple) => {
+            var types: Vec<cir::SemaType> = Vec.new(tctx->allocator());
+
+            for (var i: usize = 0; i < tuple.elements.len(); i += 1) {
+                const element = tuple.elements.get_const(i).unwrap();
+                types.push(element->ty);
+            }
+
+            const result = classify_struct_or_union(tctx, &types, false, offset_base, pair);
+            types.free();
+            return result;
+        }
+
+        case .Array(arr) => return classify_array(tctx, ty, &arr, offset_base, pair);
+
+        case .Plain(plain) => return classify_plain_type(plain, offset_base, pair);
+
+        case .InterfaceObject => return classify_dynamic(tctx, offset_base, pair);
+        
+        else => return pair;
+    }
+}
+
+fn classify_dynamic(tctx: TypeContext*, offset_base: uint32, var pair: RegisterClassPair) RegisterClassPair {
+    // Dynamic type is a { data_ptr: void*, vtable_ptr: void* }
+    // Each pointer is 8 bytes and integer-class
+
+    const data_ptr = void_ptr_type(tctx->allocator());
+
+    const first = classify(tctx, &data_ptr, offset_base);
+    pair.lo = classify_merge(pair.lo, first.lo);
+    pair.hi = classify_merge(pair.hi, first.hi);
+
+    const second = classify(tctx, &data_ptr, offset_base + 8);
+    pair.lo = classify_merge(pair.lo, second.lo);
+    pair.hi = classify_merge(pair.hi, second.hi);
+
+    return pair;
+}
+
+fn classify_array(
+    tctx: TypeContext*,
+    ty: const cir::SemaType*,
+    arr: const cir::TypedArrayType*,
+    offset_base: uint32,
+    var pair: RegisterClassPair
+) RegisterClassPair {
+    const layout = tctx->layout_of(ty);
+    const element_type = arr->element_type;
+    const element_layout = tctx->layout_of(element_type);
+
+    if (layout.size > 16) {
+        // Keep memory class
+        return pair;
+    }
+
+    if (offset_base % element_layout.align != 0) {
+        pair.lo = .Memory;
+        return classify_post_merge(layout.size, pair);
+    }
+
+    // Re-classify
+    if (offset_base < 8) {
+        pair.lo = .NoClass;
+    } else {
+        pair.hi = .NoClass;
+    }
+
+    // Check for vector-sized array
+    if (layout.size > 16 && layout.size != element_layout.size) {
+        pair.lo = .Memory;
+        return pair;
+    }
+
+    const len = tctx->array_capacity_len(arr);
+    var offset = offset_base;
+
+    for (var i: usize = 0; i < len; i += 1) {
+        const field_pair = classify(tctx, element_type, offset);
+
+        offset += element_layout.size;
+
+        pair.lo = classify_merge(pair.lo, field_pair.lo);
+        pair.hi = classify_merge(pair.hi, field_pair.hi);
+
+        if (pair.lo == .Memory || pair.hi == .Memory) {
+            break;
+        }
+    }
+
+    return classify_post_merge(layout.size, pair);
+}
+
+fn classify_enum(
+    tctx: TypeContext*,
+    ty: const cir::SemaType*,
+    decl: const cir::EnumDecl*,
+    offset_base: uint32,
+    pair: RegisterClassPair
+) RegisterClassPair {
+    var pair = pair;
+
+    const tables = tctx->decl_tables();
+    const registry = tctx->symbol_registry();
+
+    if (is_enum_scalar_optimizable(tables, decl)) {
+        // Enum is an integer
+        const tag_ty = enum_tag_type(tables, registry, decl);
+        return classify(tctx, &tag_ty, offset_base);
+    }
+
+    // Enums is a struct { tag: T, payload: int8[N] }
+    const layout = tctx->layout_of(ty);
+
+    // If size > 16 bytes, keep default memory class
+    if (layout.size > 16) {
+        return pair;
+    }
+
+    // Re-classify
+    if (offset_base < 8) {
+        pair.lo = .NoClass;
+    } else {
+        pair.hi = .NoClass;
+    }
+
+    // First, classify the tag field at offset 0
+    const tag_ty = enum_tag_type(tables, registry, decl);
+    const tag_layout = tctx->layout_of(&tag_ty);
+    const tag_size = tag_layout.size;
+
+    const tag_pair = classify(tctx, &tag_ty, offset_base);
+    pair.lo = classify_merge(pair.lo, tag_pair.lo);
+    pair.hi = classify_merge(pair.hi, tag_pair.hi);
+
+    if (pair.lo == .Memory || pair.hi == .Memory) {
+        return classify_post_merge(layout.size, pair);
+    }
+
+    // Classify the payload
+    const payload_size = layout.size - tag_size;
+    const payload_offset = offset_base + tag_size;
+
+    if (payload_size > 0) {
+        // Payload is a byte array, classify based on its size
+        const payload_type = make_u8_array(tctx->allocator(), @cast(usize, payload_size), decl->span);
+
+        const payload_pair = classify(tctx, &payload_type, payload_offset);
+        pair.lo = classify_merge(pair.lo, payload_pair.lo);
+        pair.hi = classify_merge(pair.hi, payload_pair.hi);
+    }
+
+    return classify_post_merge(layout.size, pair);
+}
+
+fn make_u8_array(allocator: Allocator, len: usize, span: Span) cir::SemaType {
+    const element_type = alloc_init(allocator, cir::SemaType.Plain(.UInt8));
+    const capacity_expr = alloc_init(
+        allocator, 
+        cir::const_untyped_integer_expr(
+            @cast(uint128, len), 
+            span
+        )
+    );
+
+    return .Array(cir::TypedArrayType {
+        element_type,
+        capacity: .Fixed(capacity_expr),
+        span,
+    });
+}
+
+fn classify_struct_or_union(
+    tctx: TypeContext*,
+    types: const Vec<cir::SemaType>*,
+    is_union: bool,
+    offset_base: uint32,
+    var pair: RegisterClassPair
+) RegisterClassPair {
+    var layout: ABITypeLayout;
+
+    if (is_union) {
+        layout = tctx->compute_union_layout_types(types);
+    } else {
+        layout = tctx->compute_fields_layout(types, false, .None);
+    }
+
+    const size = layout.size;
+
+    if (size > 16) {
+        // Keep memory class
+        return pair;
+    }
+
+    if (offset_base < 8) {
+        pair.lo = .NoClass;
+    } else {
+        pair.hi = .NoClass;
+    }
+
+    for (var i: usize = 0; i < types->len(); i += 1) {
+        const field_type = types->get_const(i).unwrap();
+        const field_layout = tctx->layout_of(field_type);
+
+        var field_offset = offset_base;
+
+        if (!is_union) {
+            field_offset += layout.lookup_field_offset(i);
+        }
+
+        if (field_offset % field_layout.align != 0) {
+            pair.lo = .Memory;
+            return classify_post_merge(size, pair);
+        }
+
+        const field_pair = classify(tctx, field_type, field_offset);
+
+        pair.lo = classify_merge(pair.lo, field_pair.lo);
+        pair.hi = classify_merge(pair.hi, field_pair.hi);
+
+        if (pair.lo == .Memory || pair.hi == .Memory) {
+            break;
+        }
+    }
+
+    return classify_post_merge(size, pair);
+}
+
+fn classify_plain_type(
+    plain_type: cir::PlainType, 
+    offset_base: uint32,
+    var pair: RegisterClassPair
+) RegisterClassPair {
+    switch (plain_type) {
+        case .Int8
+        | .UInt8
+        | .Int16
+        | .UInt16
+        | .Int32
+        | .UInt32
+        | .Int64
+        | .UInt64
+        | .Bool
+        | .ISize
+        | .USize
+        | .IntPtr
+        | .UIntPtr => {
+            if (offset_base < 8) {
+                pair.lo = .Integer;
+            } else {
+                pair.hi = .Integer;
+            }
+        }
+
+        case .Int128 | .UInt128 => {
+            pair.lo = .Integer;
+            pair.hi = .Integer;
+        }
+
+        case .Float16 | .Float32 | .Float64 => {
+            if (offset_base < 8) {
+                pair.lo = .SSE;
+            } else {
+                pair.hi = .SSE;
+            }
+        }
+
+        case .Float128 => {
+            // f128 is split into two 8-byte halves:
+            // - low 8 bytes -> SSE,
+            // - high 8 bytes -> SSEUP
+            // both in the same XMM register
+            if (offset_base < 8) {
+                pair.lo = .SSE;
+
+                // Set hi_class since it's 
+                // part of the same 16-byte type
+                if (offset_base == 0) {
+                    pair.hi = .SSEUP;
+                }
+            } else {
+                // If we're in the high half
+                pair.lo = .SSEUP;
+            }
+        }
+
+        case .Void => {
+            if (offset_base < 8) {
+                pair.lo = .NoClass;
+            } else {
+                pair.hi = .NoClass;
+            }
+        }
+
+        case .Null => @unreachable();
+    }
+
+    return pair;
+}
+
+pub fn create_target_abi(info: TargetInfo, tctx: TypeContext*) TargetABI {
+    switch (info.arch) {
+        case .X86_64 => {
+            switch (info.os) {
+                case .Linux => {
+                    switch (info.format) {
+                        case .Elf => return dynamic X86_64.new(info, tctx);
+                        else => {}
+                    }
+                }
+                else => {}
+            }
+        }
+        else => {}
+    }
+
+    @panic("unsupported target");
+}

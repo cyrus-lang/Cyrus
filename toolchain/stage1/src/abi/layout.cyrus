@@ -1,0 +1,154 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 The Cyrus Language
+
+import std::collections{Vec};
+import std::option{Option};
+
+pub enum ABIFieldOffsetInfo {
+    Normal {
+        index: uint32,
+        offset: uint32,
+        original_index: usize,
+        size: usize,
+    },
+    Padding {
+        index: uint32,
+        offset: uint32,
+        size: uint32,
+    },
+
+    [[inline]]
+    pub fn normal(index: uint32, offset: uint32, original_index: usize, size: usize) Self {
+        return .Normal {
+            index,
+            offset,
+            original_index,
+            size,
+        };
+    }
+
+    [[inline]]
+    pub fn padding(index: uint32, offset: uint32, size: uint32) Self {
+        return .Padding { index, offset, size };
+    }
+
+    pub fn offset(self: const Self*) uint32 {
+        switch (*self) {
+            case .Normal { offset, .. } => return offset;
+            case .Padding { offset, .. } => return offset;
+        }
+    }
+
+    pub fn index(self: const Self*) uint32 {
+        switch (*self) {
+            case .Normal { index, .. } => return index;
+            case .Padding { index, .. } => return index;
+        }
+    }
+
+    [[inline]]
+    pub fn is_padding(self: const Self*) bool {
+        switch (*self) {
+            case .Padding => return true;
+            else => return false;
+        }
+    }
+
+    pub fn size(self: const Self*) Option<uint32> {
+        switch (*self) {
+            case .Normal => return .None;
+            case .Padding { size, .. } => return .Some(size);
+        }
+    }
+
+    pub fn original_index(self: const Self*) Option<usize> {
+        switch (*self) {
+            case .Normal { original_index, .. } => return .Some(original_index);
+            case .Padding => return .None;
+        }
+    }
+}
+
+pub struct ABITypeLayout {
+    pub size: uint32,
+    pub align: uint32,
+    pub field_offsets: Vec<ABIFieldOffsetInfo>,
+
+    [[inline]]
+    pub fn normal(size: uint32, align: uint32, field_offsets: Vec<ABIFieldOffsetInfo>) Self {
+        return Self { size, align, field_offsets };
+    }
+
+    [[inline]]
+    pub fn aggregate(size: uint32, align: uint32, field_offsets: Vec<ABIFieldOffsetInfo>) Self {
+        return Self { size, align, field_offsets };
+    }
+
+    pub fn lookup_field_index(self: const Self*, original_index: usize) Option<uint32> {
+        for (var i: usize = 0; i < self->field_offsets.len(); i += 1) {
+            const field_offset = self->field_offsets.get_const(i).unwrap();
+
+            switch (field_offset->original_index()) {
+                case .Some(index) => {
+                    if (index == original_index) {
+                        return .Some(field_offset->index());
+                    }
+                }
+                else => {}
+            }
+        }
+
+        return .None;
+    }
+
+    pub fn lookup_field_index_at_offset(self: const Self*, offset: uint32) Option<usize> {
+        var best_index: Option<usize> = .None;
+        var best_size: uint32 = 0;
+
+        for (var i: usize = 0; i < self->field_offsets.len(); i += 1) {
+            const entry = self->field_offsets.get_const(i).unwrap();
+
+            switch (*entry) {
+                case .Normal { offset: field_offset, size: field_size, index, .. } => {
+                    if (offset >= field_offset && @cast(usize, offset) < ((@cast(usize, field_offset)) + field_size)) {
+                        var update = true;
+
+                        switch (best_index) {
+                            case .Some => {
+                                if (best_size >= self->size) {
+                                    update = false;
+                                }
+                            }
+                            case .None => {}
+                        }
+
+                        if (update) {
+                            best_index = .Some(@cast(usize, index));
+                            best_size = self->size;
+                        }
+                    }
+                }
+                else => {}
+            }
+        }
+
+        return best_index;
+    }
+
+    pub fn lookup_field_offset(self: const Self*, field_original_index: usize) uint32 {
+        for (var i: usize = 0; i < self->field_offsets.len(); i += 1) {
+            const entry = self->field_offsets.get_const(i).unwrap();
+
+            switch (*entry) {
+                case .Normal { offset, original_index, .. } => {
+                    if (original_index == field_original_index) {
+                        return offset;
+                    }
+                }
+                else => {}
+            }
+        }
+
+        @panic("field offset not found for index");
+    }
+}
