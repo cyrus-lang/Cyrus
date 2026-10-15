@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 The Cyrus Language
 
-import std::hash{hash_usize, eq_usize, hash_u32, eq_u32};
 import std::collections::hash_map{HashMap};
 import std::io{Writer, StringWriter};
 import std::format{format_usize};
@@ -9,6 +8,12 @@ import std::collections{Vec};
 import std::mem{Allocator};
 import std::option{Option};
 import std::string{String};
+import std::hash{
+    hash_uint32, 
+    hash_usize, 
+    eq_usize, 
+    eq_uint32
+};
 
 import cir::tables{DeclTables};
 import cir{TypedProgramTree};
@@ -16,17 +21,7 @@ import source{SourceId};
 import parser::ast;
 import cir;
 
-// FIXME: Remove wrapper and use 
-//
-// type ModuleName = const uint8*
-//
-// instead!
-//
-/// Just a Wrapper to store a
-/// borrowed module name pointer.
-pub struct ModuleName {
-    pub ptr: const uint8*,
-}
+pub type ModuleName = const uint8*;
 
 /// Maps file ids to module names 
 /// (borrowed from trees).
@@ -46,7 +41,6 @@ pub struct ModuleMaps {
 pub fn new_module_maps(allocator: Allocator, trees: const Vec<cir::TypedProgramTree>*) ModuleMaps {
     return ModuleMaps {
         allocator,
-        file_modules: HashMap<SourceId, ModuleName>.with_hasher(allocator, 64, hash_u32, eq_u32),
         interface_modules: HashMap.with_hasher(allocator, 64, hash_usize, eq_usize),
         typedef_modules: HashMap.with_hasher(allocator, 64, hash_usize, eq_usize),
         method_modules: HashMap.with_hasher(allocator, 64, hash_usize, eq_usize),
@@ -55,6 +49,12 @@ pub fn new_module_maps(allocator: Allocator, trees: const Vec<cir::TypedProgramT
         union_modules: HashMap.with_hasher(allocator, 64, hash_usize, eq_usize),
         enum_modules: HashMap.with_hasher(allocator, 64, hash_usize, eq_usize),
         func_modules: HashMap.with_hasher(allocator, 64, hash_usize, eq_usize),
+        file_modules: HashMap<SourceId, ModuleName>.with_hasher(
+            allocator, 
+            64, 
+            hash_uint32, 
+            eq_uint32
+        ),
     };
 }
 
@@ -65,9 +65,7 @@ pub fn build_module_maps(
 ) {
     for (var i: usize = 0; i < trees->len(); i += 1) {
         const tree = trees->get_const(i).unwrap();
-        const module = ModuleName {
-            ptr: tree->module_name.as_str_const()
-        };
+        const module = tree->module_name.as_str_const();
 
         maps->file_modules.insert(tree->file_id, module);
 
@@ -224,7 +222,7 @@ fn module_prefix(out: String*, module_name: const uint8*) {
 pub fn module_for_func(maps: const ModuleMaps*, id: cir::FuncDeclId) const uint8* {
     switch (maps->func_modules.get_owned(id)) {
         case .Some(module) => {
-            return module.ptr;
+            return module;
         }
         else => {
             return "";
@@ -235,7 +233,7 @@ pub fn module_for_func(maps: const ModuleMaps*, id: cir::FuncDeclId) const uint8
 pub fn module_for_method(maps: const ModuleMaps*, id: cir::MethodDeclId) const uint8* {
     switch (maps->method_modules.get_owned(id)) {
         case .Some(module) => {
-            return module.ptr;
+            return module;
         }
         else => {
             return "";
@@ -246,7 +244,7 @@ pub fn module_for_method(maps: const ModuleMaps*, id: cir::MethodDeclId) const u
 pub fn module_for_struct(maps: const ModuleMaps*, id: cir::StructDeclId) const uint8* {
     switch (maps->struct_modules.get_owned(id)) {
         case .Some(module) => {
-            return module.ptr;
+            return module;
         }
         else => {
             return "";
@@ -257,7 +255,7 @@ pub fn module_for_struct(maps: const ModuleMaps*, id: cir::StructDeclId) const u
 pub fn module_for_enum(maps: const ModuleMaps*, id: cir::EnumDeclId) const uint8* {
     switch (maps->enum_modules.get_owned(id)) {
         case .Some(module) => {
-            return module.ptr;
+            return module;
         }
         else => {
             return "";
@@ -268,7 +266,7 @@ pub fn module_for_enum(maps: const ModuleMaps*, id: cir::EnumDeclId) const uint8
 pub fn module_for_union(maps: const ModuleMaps*, id: cir::UnionDeclId) const uint8* {
     switch (maps->union_modules.get_owned(id)) {
         case .Some(module) => {
-            return module.ptr;
+            return module;
         }
         else => {
             return "";
@@ -279,7 +277,7 @@ pub fn module_for_union(maps: const ModuleMaps*, id: cir::UnionDeclId) const uin
 pub fn module_for_typedef(maps: const ModuleMaps*, id: cir::TypedefDeclId) const uint8* {
     switch (maps->typedef_modules.get_owned(id)) {
         case .Some(module) => {
-            return module.ptr;
+            return module;
         }
         else => {
             return "";
@@ -305,7 +303,7 @@ pub fn mangle_func(
         return String.from_str(allocator, "main");
     }
 
-    if (is_extern_c(modifiers)) {
+    if (modifiers->is_extern_c()) {
         return sanitized(allocator, name);
     }
 
@@ -357,22 +355,14 @@ pub fn mangle_global(
         else => {}
     }
 
-    switch (modifiers->extern_) {
-        case .Some(extern_) => {
-            switch (extern_) {
-                case .C => {
-                    return sanitized(allocator, name);
-                }
-                else => {}
-            }
-        }
-        else => {}
+    if (modifiers->is_extern_c()) {
+        return sanitized(allocator, name);
     }
 
     var out = String.new(allocator);
     switch (maps->global_modules.get_owned(global_var_decl_id)) {
         case .Some(module) => {
-            module_prefix(&out, module.ptr);
+            module_prefix(&out, module);
         }
         else => {}
     }
@@ -393,7 +383,7 @@ pub fn mangle_type(
         case .Some(type_name) => {
             if (type_name[0] == 0) {
                 out.push_str("anon_");
-                push_usize_into(&out, allocator, anon_id);
+                push_usize(&out, anon_id);
                 return out;
             }
             sanitize_into(&out, type_name);
@@ -401,7 +391,7 @@ pub fn mangle_type(
         }
         else => {
             out.push_str("anon_");
-            push_usize_into(&out, allocator, anon_id);
+            push_usize(&out, anon_id);
             return out;
         }
     }
@@ -449,7 +439,7 @@ pub fn mangle_type_args(
                 if (type_arg_index > 0) {
                     out.push('_');
                 }
-                type_ident(&out, allocator, &inner);
+                type_ident(&out, &inner);
             }
             else => {
                 if (type_arg_index > 0) {
@@ -506,56 +496,34 @@ pub fn mangle_monomorphized_method(
     return base;
 }
 
-fn push_usize_into(out: String*, allocator: Allocator, value: usize) {
-    var buffer = String.new(allocator);
-    var writer: Writer = dynamic StringWriter.new(&buffer);
-    format_usize(writer, value);
-    out->push_str(buffer.as_str_const());
-    buffer.free();
+[[inline]]
+fn push_usize(out: String*, value: usize) {
+    format_usize(dynamic StringWriter.new(out), value);
 }
 
-// FIXME: Move to parser/ast/index.cyrus as a method of ASTFuncModifiers
-fn is_extern_c(modifiers: const ast::ASTFuncModifiers*) bool {
-    switch (modifiers->extern_) {
-        case .Some(ext) => {
-            switch (ext) {
-                case .C => {
-                    return true;
-                }
-                else => {
-                    return false;
-                }
-            }
-        }
-        else => {
-            return false;
-        }
-    }
-}
-
-fn type_ident(out: String*, allocator: Allocator, ty: const cir::SemaType*) {
+fn type_ident(out: String*, ty: const cir::SemaType*) {
     switch (*ty) {
         case .Named(named) => {
             switch (named.type_decl_id) {
                 case .Struct(struct_decl_id) => {
                     out->push_str("S");
-                    push_usize_into(out, allocator, struct_decl_id);
+                    push_usize(out, struct_decl_id);
                 }
                 case .Enum(enum_decl_id) => {
                     out->push_str("E");
-                    push_usize_into(out, allocator, enum_decl_id);
+                    push_usize(out, enum_decl_id);
                 }
                 case .Union(union_decl_id) => {
                     out->push_str("U");
-                    push_usize_into(out, allocator, union_decl_id);
+                    push_usize(out, union_decl_id);
                 }
                 case .Typedef(typedef_decl_id) => {
                     out->push_str("T");
-                    push_usize_into(out, allocator, typedef_decl_id);
+                    push_usize(out, typedef_decl_id);
                 }
                 case .Interface(interface_decl_id) => {
                     out->push_str("I");
-                    push_usize_into(out, allocator, interface_decl_id);
+                    push_usize(out, interface_decl_id);
                 }
             }
 
@@ -563,7 +531,7 @@ fn type_ident(out: String*, allocator: Allocator, ty: const cir::SemaType*) {
                 switch (*named.type_args.get(type_arg_index).unwrap()) {
                     case .Type(inner, _) => {
                         out->push('_');
-                        type_ident(out, allocator, &inner);
+                        type_ident(out, &inner);
                     }
                     else => out->push_str("_x");
                 }
@@ -575,7 +543,7 @@ fn type_ident(out: String*, allocator: Allocator, ty: const cir::SemaType*) {
 
             for (var element_index: usize = 0; element_index < tuple.elements.len(); element_index += 1) {
                 out->push('_');
-                type_ident(out, allocator, &tuple.elements.get_const(element_index).unwrap()->ty);
+                type_ident(out, &tuple.elements.get_const(element_index).unwrap()->ty);
             }
         }
         
@@ -585,17 +553,17 @@ fn type_ident(out: String*, allocator: Allocator, ty: const cir::SemaType*) {
         
         case .Pointer(inner) => {
             out->push('P');
-            type_ident(out, allocator, inner);
+            type_ident(out, inner);
         }
         
         case .Const(inner) => {
             out->push('C');
-            type_ident(out, allocator, inner);
+            type_ident(out, inner);
         }
 
         case .Array(array) => {
             out->push_str("A");
-            type_ident(out, allocator, array.element_type);
+            type_ident(out, array.element_type);
         }
         
         case .FuncType => {
@@ -604,7 +572,7 @@ fn type_ident(out: String*, allocator: Allocator, ty: const cir::SemaType*) {
 
         case .GenericParam(generic_param_id) => {
             out->push_str("G");
-            push_usize_into(out, allocator, generic_param_id);
+            push_usize(out, generic_param_id);
         }
         
         else => out->push_str("x");

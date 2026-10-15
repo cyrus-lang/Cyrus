@@ -23,7 +23,7 @@ pub struct CodegenC {
         allocator: Allocator,
         tables: DeclTables*,
         registry: GlobalSymbolRegistry*,
-        trees: const Vec< cir::TypedProgramTree >*,
+        trees: const Vec<cir::TypedProgramTree>*,
         vtables: VTableRegistry*,
         monomorphs: MonomorphRegistry*
     ) Self {

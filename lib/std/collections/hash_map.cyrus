@@ -80,9 +80,10 @@ pub struct HashMap<K, V> {
     }
 
     fn grow(self: Self*, new_cap: usize) {
-        const old_entries = self->entries;
-        const old_values = self->values;
         const old_cap = self->cap;
+
+        var old_entries = self->entries;
+        var old_values = self->values;
 
         var new_entries: Vec<HashEntry<K>> = Vec.with_capacity(self->allocator, new_cap);
         var new_values: Vec<V> = Vec.with_capacity(self->allocator, new_cap);
@@ -96,8 +97,8 @@ pub struct HashMap<K, V> {
         }
 
         const new_mask = new_cap - 1;
-        const old_entries_data = old_entries.data_const();
-        const old_values_data = old_values.data_const();
+        const old_entries_data = old_entries.data();
+        const old_values_data = old_values.data();
         var new_entries_data = new_entries.data();
         var new_values_data = new_values.data();
 
@@ -257,8 +258,9 @@ pub struct HashMap<K, V> {
             return .None;
         }
 
-        const values_data = self->values.data_const();
-        return .Some(values_data[slot]);
+        var values = self->values;
+        
+        return .Some(values.data()[slot]);
     }
 
     [[inline]]

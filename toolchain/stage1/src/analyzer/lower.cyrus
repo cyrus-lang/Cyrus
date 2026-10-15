@@ -12,7 +12,10 @@ import analyzer::diags;
 import parser::ast;
 import cir;
 
-pub fn lower_cond_pointer_as_null_check(allocator: Allocator, expr: cir::TypedExpr*) Option<cir::TypedExpr> {
+pub fn lower_cond_pointer_as_null_check(
+    allocator: Allocator, 
+    expr: cir::TypedExpr*
+) Option<cir::TypedExpr> {
     const void_type: cir::SemaType = .Plain(.Void);
 
     const null_literal_expr = cir::TypedExpr {
@@ -30,13 +33,13 @@ pub fn lower_cond_pointer_as_null_check(allocator: Allocator, expr: cir::TypedEx
     switch (expr->ty) {
         case .Some(ty) => {
             if (ty.is_pointer()) {
-                const lhs = *expr;
                 const new_infix: cir::TypedExprKind = .Infix(cir::TypedInfixExpr {
                     op: .NotEqual,
-                    lhs: alloc_init(allocator, lhs),
+                    lhs: alloc_init(allocator, *expr),
                     rhs: alloc_init(allocator, null_literal_expr),
                     span: expr->span,
                 });
+
                 return .Some(cir::TypedExpr {
                     kind: new_infix,
                     ty: .Some(.Plain(.Bool)),
@@ -58,6 +61,7 @@ pub fn lower_unnamed_enum_value_as_enum_init(typed_expr: cir::TypedExpr*) {
             switch (typed_expr->ty) {
                 case .Some(operand) => {
                     var arg: cir::TypedEnumInitArgs = .Unit;
+
                     switch (enum_value.kind) {
                         case .Unit => arg = .Unit;
                         case .Tuple(elements) => arg = .Tuple(elements);
@@ -66,8 +70,8 @@ pub fn lower_unnamed_enum_value_as_enum_init(typed_expr: cir::TypedExpr*) {
 
                     const enum_init = cir::TypedEnumInit {
                         operand,
-                        name: enum_value.ident.str,
                         arg,
+                        name: enum_value.ident.str,
                         span: enum_value.span,
                     };
 
@@ -79,10 +83,10 @@ pub fn lower_unnamed_enum_value_as_enum_init(typed_expr: cir::TypedExpr*) {
                         span: typed_expr->span,
                     };
                 }
-                case .None => return;
+                case .None => {}
             }
         }
-        else => return;
+        else => {}
     }
 }
 
@@ -113,7 +117,11 @@ pub fn lower_enum_struct_variant_init_as_enum_init(typed_expr: cir::TypedExpr*) 
     }
 }
 
-pub fn lower_unnamed_union_value_as_union_init(dctx: DiagContext*, allocator: Allocator, typed_expr: cir::TypedExpr*) {
+pub fn lower_unnamed_union_value_as_union_init(
+    allocator: Allocator, 
+    dctx: DiagContext*, 
+    typed_expr: cir::TypedExpr*
+) {
     switch (typed_expr->kind) {
         case .UnnamedUnionValue(union_value) => {
             switch (typed_expr->ty) {

@@ -1217,6 +1217,21 @@ pub struct ASTFuncModifiers {
     pub section: Option<String>,
     pub link_once: bool,
     pub weak: bool,
+
+    [[inline]]
+    pub fn is_extern_c(self: const Self*) bool {
+        switch (self->extern_) {
+            case .Some(extern_) => {
+                switch (extern_) {
+                    case .C => return true;
+                    else => return false;
+                }
+            }
+            else => {
+                return false;
+            }
+        }
+    }
 }
 
 pub struct ASTStructModifiers {
@@ -1242,6 +1257,21 @@ pub struct ASTGlobalVarModifiers {
     pub thread_local: bool,
     pub link_once: bool,
     pub weak: bool,
+
+    [[inline]]
+    pub fn is_extern_c(self: const Self*) bool {
+        switch (self->extern_) {
+            case .Some(extern_) => {
+                switch (extern_) {
+                    case .C => return true;
+                    else => return false;
+                }
+            }
+            else => {
+                return false;
+            }
+        }
+    }
 }
 
 pub enum ASTCallconv {

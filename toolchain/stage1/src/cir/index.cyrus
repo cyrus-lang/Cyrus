@@ -37,8 +37,8 @@ pub enum IntegerLiteral {
     Unsigned(uint128),
 }
 
-pub fn integer_literal_as_usize(lit: IntegerLiteral) usize {
-    switch (lit) {
+pub fn integer_literal_as_usize(literal: IntegerLiteral) usize {
+    switch (literal) {
         case .Signed(x) => {
             if (x < 0) {
                 return 0;
@@ -1751,11 +1751,11 @@ pub struct TypedExpr {
     }
 
     pub fn literal_const_int_value(self: const Self*) Option<IntegerLiteral> {
-        switch (self->kind) case .Literal(lit) else {
+        switch (self->kind) case .Literal(literal) else {
             return .None;
         }
 
-        switch (lit.kind) {
+        switch (literal.kind) {
             case .Integer { value: .Unsigned(val), .. } => return .Some(.Unsigned(val));
             case .Integer { value: .Signed(val), .. } => return .Some(.Signed(val));
             case .Char(c) => return .Some(.Unsigned(@cast(uint64, c)));
@@ -1773,11 +1773,11 @@ pub struct TypedExpr {
     }
 
     pub fn literal_const_string_value(self: const Self*) Option<const uint8*> {
-        switch (self->kind) case .Literal(lit) else {
+        switch (self->kind) case .Literal(literal) else {
             return .None;
         }
 
-        switch (lit.kind) {
+        switch (literal.kind) {
             case .String { suffix: .None, value } => return .Some(value.as_str_const());
             case .String { suffix: .Some(_), .. } => return .None;
             else => {}
@@ -2917,7 +2917,7 @@ pub struct TypedGenericParam {
 }
 
 pub struct TypedTypeArgs {
-    pub list: Vec<TypedTypeArg>,
+    list: Vec<TypedTypeArg>,
 
     [[inline]]
     pub fn new(allocator: Allocator) Self {
@@ -2925,8 +2925,13 @@ pub struct TypedTypeArgs {
     }
 
     [[inline]]
-    pub fn get(self: const Self*, index: usize) Option<const TypedTypeArg*> {
-        return self->list.get_const(index);
+    pub fn get(self: const Self*, index: usize) Option<TypedTypeArg*> {
+        return self->list.get(index);
+    }
+
+    [[inline]]
+    pub fn push(self: Self*, ty: TypedTypeArg) {
+        self->list.push(ty);
     }
 
     [[inline]]
@@ -2939,9 +2944,8 @@ pub struct TypedTypeArgs {
         return self->list.len();
     }
 
-    [[inline]]
-    pub fn push(self: Self*, ty: TypedTypeArg) {
-        self->list.push(ty);
+    pub fn free(self: Self*) {
+        self->list.free();
     }
 }
 
@@ -3282,6 +3286,22 @@ pub struct EnumDecl {
         }
 
         return .None;
+    }
+
+    pub fn find_variant_tag(
+        self: const Self*,
+        tags: const Vec<uint32>*,
+        name: const uint8*
+    ) uint32 {
+        for (var i: usize = 0; i < self->variants.len(); i += 1) {
+            const variant = self->variants.get_const(i).unwrap();
+
+            if (variant->name() == name) {
+                return tags->get_owned(i).unwrap();
+            }
+        }
+
+        @unreachable();
     }
 
     pub fn is_repr_c(self: const Self*) bool {
@@ -4260,8 +4280,8 @@ pub fn clone_typed_type_args(
 ) TypedTypeArgs {
     var list: Vec<TypedTypeArg> = Vec.new(allocator);
     
-    for (var i: usize = 0; i < src->list.len(); i += 1) {
-        list.push(*src->list.get_const(i).unwrap());
+    for (var i: usize = 0; i < src->len(); i += 1) {
+        list.push(*src->get(i).unwrap());
     }
 
     return TypedTypeArgs { list };
@@ -4285,13 +4305,13 @@ pub fn clone_method_decls(
     return out;
 }
 
-pub fn literal_expr(allocator: Allocator, lit: Literal, span: Span) Option<TypedExpr> {
-    const ty = infer_literal_type_or_default(allocator, &lit, span);
+pub fn literal_expr(allocator: Allocator, literal: Literal, span: Span) Option<TypedExpr> {
+    const ty = infer_literal_type_or_default(allocator, &literal, span);
 
     return .Some(TypedExpr {
         kind: .Literal(TypedLiteralExpr {
             ty,
-            kind: lit,
+            kind: literal,
             span,
         }),
         ty: .None,
@@ -4303,10 +4323,10 @@ pub fn literal_expr(allocator: Allocator, lit: Literal, span: Span) Option<Typed
 
 pub fn infer_literal_type_or_default(
     allocator: Allocator,
-    lit: const Literal*,
+    literal: const Literal*,
     span: Span
 ) Option<SemaType> {
-    switch (*lit) {
+    switch (*literal) {
         // FIXME: Make a helper method to convert IntegerSuffix
         // into SemaType
         case .Integer { suffix: .Some(sfx), .. } => switch (sfx) {

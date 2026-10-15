@@ -3546,8 +3546,8 @@ fn resolve_literal_expr(
     const span = Span.new(ctx->file_id, token->loc);
 
     switch (*token->kind) {
-        case .Literal(lit) => {
-            return cir::literal_expr(ctx->allocator, lit, span);
+        case .Literal(literal) => {
+            return cir::literal_expr(ctx->allocator, literal, span);
         }
         case .True => {
             return cir::literal_expr(ctx->allocator, .Bool(true), span);

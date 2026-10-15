@@ -40,8 +40,8 @@ pub struct GenericEnv {
             
             switch (*arg) {
                 case .Type(ty, _) => {
-                    const param_id = env.params.ids.get_const(i).unwrap();
-                    env.bind(*param_id, ty);
+                    const param_id = env.params.ids.get_owned(i).unwrap();
+                    env.bind(param_id, ty);
                 }
                 else => {}
             }
@@ -56,26 +56,26 @@ pub struct GenericEnv {
         params.ids = Vec.with_capacity(self->allocator, self->params.len() + other->params.len());
 
         for (var i: usize = 0; i < self->params.len(); i += 1) {
-            const id = self->params.ids.get_const(i).unwrap();
-            params.ids.push(*id);
+            const param_id = self->params.ids.get_owned(i).unwrap();
+            params.ids.push(param_id);
         }
 
         for (var i: usize = 0; i < other->params.len(); i += 1) {
-            const id = other->params.ids.get_const(i).unwrap();
-            params.ids.push(*id);
+            const param_id = other->params.ids.get_owned(i).unwrap();
+            params.ids.push(param_id);
         }
 
         var bindings: Vec<Option<cir::SemaType>> 
             = Vec.with_capacity(self->allocator, self->bindings.len() + other->bindings.len());
         
         for (var i: usize = 0; i < self->bindings.len(); i += 1) {
-            const b = self->bindings.get_const(i).unwrap();
-            bindings.push(*b);
+            const ty = self->bindings.get_const(i).unwrap();
+            bindings.push(*ty);
         }
 
         for (var i: usize = 0; i < other->bindings.len(); i += 1) {
-            const b = other->bindings.get_const(i).unwrap();
-            bindings.push(*b);
+            const ty = other->bindings.get_const(i).unwrap();
+            bindings.push(*ty);
         }
 
         return Self {
@@ -259,9 +259,9 @@ pub struct GenericEnv {
 
     fn slot(self: const Self*, generic_param_id: cir::GenericParamId) Option<usize> {
         for (var i: usize = 0; i < self->params.len(); i += 1) {
-            const id = self->params.ids.get_const(i).unwrap();
+            const param_id = self->params.ids.get_owned(i).unwrap();
             
-            if (*id == generic_param_id) {
+            if (param_id == generic_param_id) {
                 return .Some(i);
             }
         }

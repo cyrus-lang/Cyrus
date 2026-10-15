@@ -12,17 +12,17 @@ import cir;
 /* ************* VTables ************* */
 
 pub struct VTableInfo {
-    pub concrete_type: cir::SemaType,
+    pub monomorphized_methods: Vec<Option<cir::MonomorphId>>,
     pub interface_decl_id: cir::InterfaceDeclId,
     pub interface_type_args: cir::TypedTypeArgs,
-    pub is_interface_generic: bool,
     pub method_decls: cir::MethodDecls,
+    pub concrete_type: cir::SemaType,
+    pub is_interface_generic: bool,
     pub vtable_id: cir::VTableId,
-    pub monomorphized_methods: Vec<Option<cir::MonomorphId>>,
     pub span: Span,
 
     pub fn free(self: Self*) {
-        self->interface_type_args.list.free();
+        self->interface_type_args.free();
         
         for (var i: usize = 0; i < self->method_decls.entries.len(); i += 1) {
             const entry = self->method_decls.entries.get(i).unwrap();

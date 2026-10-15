@@ -56,11 +56,11 @@ import cir{
     type_args_eq
 };
 import analyzer::lower{
-    lower_cond_pointer_as_null_check, 
-    lower_unnamed_enum_value_as_enum_init, 
     lower_enum_struct_variant_init_as_enum_init, 
+    lower_unnamed_struct_value_as_struct_init,
     lower_unnamed_union_value_as_union_init, 
-    lower_unnamed_struct_value_as_struct_init
+    lower_unnamed_enum_value_as_enum_init, 
+    lower_cond_pointer_as_null_check, 
 };
 import analyzer::monomorph{
     MonomorphRegistry, 
@@ -921,8 +921,8 @@ pub struct Analyzer {
     }
 
     pub fn normalize_type_args(self: Self*, type_args: cir::TypedTypeArgs*, indirection: uint8) {
-        for (var i: usize = 0; i < type_args->list.len(); i += 1) {
-            var arg = type_args->list.get(i).unwrap();
+        for (var i: usize = 0; i < type_args->len(); i += 1) {
+            var arg = type_args->get(i).unwrap();
 
             switch (*arg) {
                 case .Type(inner, span) => {
@@ -1763,7 +1763,7 @@ pub struct Analyzer {
         const generic_params = &typedef_decl->generic_params;
 
         var final_args = cir::TypedTypeArgs.new(self->allocator);
-        defer final_args.list.free();
+        defer final_args.free();
 
         for (var i: usize = 0; i < generic_params->len(); i += 1) {
             if (i < args->len()) {
@@ -1810,7 +1810,7 @@ pub struct Analyzer {
                 final_args.len(),
                 args->len()
             );
-            named.type_args.list.free();
+            named.type_args.free();
         }
 
         var generic_env = GenericEnv.from_type_args(
@@ -2613,9 +2613,9 @@ pub struct Analyzer {
                 return .None;
             }
             
-            case .Literal(var lit) => {
-                expr_type = self->analyze_literal(&lit, expected_type);
-                expr->kind = .Literal(lit);
+            case .Literal(var literal) => {
+                expr_type = self->analyze_literal(&literal, expected_type);
+                expr->kind = .Literal(literal);
             }
             
             case .Prefix(var prefix) => {
@@ -3069,7 +3069,7 @@ pub struct Analyzer {
     }
 
     pub fn lower_expr_post_analysis(self: Self*, typed_expr: cir::TypedExpr*) {
-        lower_unnamed_union_value_as_union_init(self->dctx, self->allocator, typed_expr);
+        lower_unnamed_union_value_as_union_init(self->allocator, self->dctx, typed_expr);
         lower_unnamed_struct_value_as_struct_init(self->allocator, typed_expr);
         lower_enum_struct_variant_init_as_enum_init(typed_expr);
         lower_unnamed_enum_value_as_enum_init(typed_expr);
