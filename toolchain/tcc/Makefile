@@ -3,6 +3,48 @@
 # Tiny C Compiler Makefile
 #
 
+# Build in OUTDIR by default. Use OUTDIR=. for an in-place build.
+OUTDIR ?= ./build
+
+ifeq ($(strip $(OUTDIR)),)
+ $(error OUTDIR must not be empty)
+endif
+
+_tcc_makefile := $(abspath $(lastword $(MAKEFILE_LIST)))
+_tcc_srcdir := $(patsubst %/,%,$(dir $(_tcc_makefile)))
+_tcc_outdir := $(abspath $(OUTDIR))
+
+# Redirect only top-level invocations to the output directory.
+ifeq ($(TOP),)
+ifneq ($(_tcc_outdir),$(CURDIR))
+ifneq ($(TCC_OUTDIR_BUILD),yes)
+
+.DEFAULT_GOAL := all
+
+.PHONY: all $(MAKECMDGOALS) _outdir-build
+all $(MAKECMDGOALS): _outdir-build ;
+
+_outdir-build:
+	+@mkdir -p "$(_tcc_outdir)"
+	+@if test ! -f "$(_tcc_outdir)/config.mak"; then \
+		cd "$(_tcc_outdir)" && \
+		"$(_tcc_srcdir)/configure" $(CONFIGURE_FLAGS); \
+	fi
+	+@$(MAKE) -C "$(_tcc_outdir)" \
+		TCC_OUTDIR_BUILD=yes $(or $(MAKECMDGOALS),all)
+
+else
+_tcc_use_original := yes
+endif
+else
+_tcc_use_original := yes
+endif
+else
+_tcc_use_original := yes
+endif
+
+ifeq ($(_tcc_use_original),yes)
+
 ifndef TOP
  TOP = .
  INCLUDED = no
@@ -305,11 +347,11 @@ libtcc.so: override LDFLAGS += -fPIC
 
 # OSX dynamic libtcc library
 libtcc.dylib: $(LIBTCC_OBJ)
-	$S$(CC) -dynamiclib $(DYLIBVER) -install_name @rpath/$@ -o $@ $^ $(LDFLAGS) 
+	$S$(CC) -dynamiclib $(DYLIBVER) -install_name @rpath/$@ -o $@ $^ $(LDFLAGS)
 
 # OSX libtcc.dylib (without rpath/ prefix)
 libtcc.osx: $(LIBTCC_OBJ)
-	$S$(CC) -shared -install_name libtcc.dylib -o libtcc.dylib $^ $(LDFLAGS) 
+	$S$(CC) -shared -install_name libtcc.dylib -o libtcc.dylib $^ $(LDFLAGS)
 
 # windows dynamic libtcc library
 libtcc.dll : $(LIBTCC_OBJ)
@@ -495,8 +537,12 @@ distclean: clean
 .PHONY: all clean test tar tags ETAGS doc distclean install uninstall FORCE
 
 help:
-	@echo "make"
-	@echo "   build native compiler (from separate objects)"
+	@echo "make [OUTDIR=./build]"
+	@echo "   build native compiler in OUTDIR (default: ./build)"
+	@echo "make OUTDIR=."
+	@echo "   build in place using the original behavior"
+	@echo "make CONFIGURE_FLAGS='...'"
+	@echo "   configure a new output directory with these configure options"
 	@echo "make ONE_SOURCE=no/yes SILENT=no/yes"
 	@echo "   force building from separate/one object(s), less/more silently"
 	@echo "make cross-TARGET"
@@ -511,16 +557,17 @@ help:
 	@echo "   run all/single test(s) from tests2, optionally update .expect"
 	@echo "make testspp.all / make testspp.17"
 	@echo "   run all/single test(s) from tests/pp"
-	@echo "make tcov-test / tcov-tests2.37 / tcov-testspp.17"
+	@echo "make tcov-test / make tcov-tests2.37 / make tcov-testspp.17"
 	@echo "   run tests as above with code coverage. After test(s) see tcc_c$(EXESUF).tcov"
-	@echo "make sani-test / sani-tests2.37 / sani-testspp.17"
+	@echo "make sani-test / make sani-tests2.37 / make sani-testspp.17"
 	@echo "   run tests as above with sanitize option."
 	@echo "make test-install"
 	@echo "   run tests with the installed tcc"
 	@echo "Other supported make targets:"
 	@echo "   install install-strip uninstall doc [dist]clean tags ETAGS tar help"
 	@echo "Custom configuration:"
-	@echo "   The makefile includes a file 'config-extra.mak' if it is present."
+	@echo "   The makefile includes a file 'config-extra.mak' if it is present"
+	@echo "   in the build directory."
 	@echo "   This file may contain some custom configuration.  For example to"
 	@echo "   configure the search paths for a cross-compiler, assuming the"
 	@echo "   support files in /usr/i686-linux-gnu:"
@@ -535,3 +582,5 @@ help:
 
 # --------------------------------------------------------------------------
 endif # ($(INCLUDED),no)
+
+endif # _tcc_use_original
