@@ -14,7 +14,6 @@ import std::format{
     format_uint128, 
     format_int128
 };
-import std::libc{strcmp};
 
 import resolver::symbols{GlobalSymbolRegistry};
 import cir::tables{DeclTables};
@@ -358,7 +357,7 @@ pub struct TypeEmitter {
         }
     }
 
-    fn ensure_type_decl(self: Self*, type_decl_id: const cir::TypeDeclId*) {
+    pub fn ensure_type_decl(self: Self*, type_decl_id: const cir::TypeDeclId*) {
         switch (*type_decl_id) {
             case .Struct(id) => self->ensure_struct(id);
 
@@ -1215,8 +1214,8 @@ fn push_capacity(
     switch (array->capacity) {
         case .Fixed(expr) => {
             switch (ciri::fold_const_expr_int(tables, registry, expr)) {
-                case .Some(lit) => {
-                    switch (lit) {
+                case .Some(literal) => {
+                    switch (literal) {
                         case .Signed(x) => {
                             if (x < 0) {
                                 push_i128_into(out, allocator, x);

@@ -76,7 +76,7 @@ pub struct MonomorphRegistry {
         for (var i: usize = 0; i < self->instances.len(); i += 1) {
             const inst = self->instances.get(i).unwrap();
 
-            inst->type_args.list.free();
+            inst->type_args.free();
         }
         
         self->instances.free();

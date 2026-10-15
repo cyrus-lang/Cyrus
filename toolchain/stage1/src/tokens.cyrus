@@ -284,7 +284,7 @@ pub enum TokenKind : Format {
     pub fn format(self: const Self*, writer: Writer) bool {
         switch (*self) {
             case .Ident(ident) => writer.write(ident.as_str_const());
-            case .Literal(lit) => lit.format(writer);
+            case .Literal(literal) => literal.format(writer);
 
             case .Underscore => writer.write("_");
             case .Plus => writer.write("+");
@@ -388,7 +388,7 @@ pub enum TokenKind : Format {
     pub fn to_kind_str(self: const Self*) const uint8* {
         switch (*self) {
             case .Ident(ident) => return "IDENT";
-            case .Literal(lit) => return "LITERAL";
+            case .Literal(literal) => return "LITERAL";
 
             case .Underscore | .Plus | .Minus | .Asterisk | .Slash
             | .Percent | .Assign | .Equal | .LeftParen | .RightParen
@@ -714,6 +714,71 @@ pub fn is_escaped_char(char: uint8) bool {
     } else {
         return false;
     }
+}
+
+pub fn push_c_escaped(out: String*, s: const uint8*) {
+    var i: usize = 0;
+
+    while (s[i] != 0) {
+        const ch = s[i];
+
+        if (ch == '"') {
+            out->push('\\');
+            out->push('"');
+        } else if (ch == '\\') {
+            out->push('\\');
+            out->push('\\');
+        } else if (ch == '\n') {
+            out->push('\\');
+            out->push('n');
+        } else if (ch == '\t') {
+            out->push('\\');
+            out->push('t');
+        } else if (ch == '\r') {
+            out->push('\\');
+            out->push('r');
+        } else if (ch < 32 || ch > 126) {
+            out->push('\\');
+            push_octal3(out, ch);
+        } else {
+            out->push(ch);
+        }
+
+        i += 1;
+    }
+}
+
+pub fn push_c_char(out: String*, c: uint8) {
+    if (c == '\'') {
+        out->push('\\');
+        out->push('\'');
+    } else if (c == '\\') {
+        out->push('\\');
+        out->push('\\');
+    } else if (c == '\n') {
+        out->push('\\');
+        out->push('n');
+    } else if (c == '\t') {
+        out->push('\\');
+        out->push('t');
+    } else if (c == '\r') {
+        out->push('\\');
+        out->push('r');
+    } else if (c < 32 || c > 126) {
+        out->push('\\');
+        push_octal3(out, c);
+    } else {
+        out->push(c);
+    }
+}
+
+fn push_octal3(out: String*, value: uint8) {
+    var d2 = @cast(uint8, (value >> 6) & 7);
+    var d1 = @cast(uint8, (value >> 3) & 7);
+    var d0 = @cast(uint8, value & 7);
+    out->push(@cast(uint8, '0' + d2));
+    out->push(@cast(uint8, '0' + d1));
+    out->push(@cast(uint8, '0' + d0));
 }
 
 fn unescape_hex_digit(c: uint8) Option<uint8> {
