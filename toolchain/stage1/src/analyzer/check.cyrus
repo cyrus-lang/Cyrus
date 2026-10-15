@@ -9000,9 +9000,8 @@ pub struct Analyzer {
                 self->analyze_builtin(stmt, true);
             }
 
-            case .GlobalVar => { /* Skipped */ }
-            
-            case .Typedef => { /* Skipped */ }
+            // Skipped
+            case .Typedef | .GlobalVar => {}
             
             else => {
                 diags::report_invalid_statement(
@@ -9242,8 +9241,6 @@ pub struct Analyzer {
         var typedef_decl2 = self->decl_tables->typedefs.get(typedef->typedef_decl_id).unwrap();
         *typedef_decl2->ty = typedef->ty;
     }
-
-
 
     fn validate_variable_type(self: Self*, ty: const cir::SemaType*, is_init: bool, span: Span) bool {
         if (ty->const_inner()->is_void()) {

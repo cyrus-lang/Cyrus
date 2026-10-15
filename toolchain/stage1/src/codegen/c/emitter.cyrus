@@ -215,9 +215,9 @@ pub struct Emitter {
         self->assemble(writer);
     }
 
-    fn assemble(self: Self*, writer: Writer) {
-        var out = String.new(self->allocator);
-        var writer: Writer = dynamic StringWriter.new(&out);
+    fn assemble(self: Self*, parent: Writer) {
+        var module = String.new(self->allocator);
+        var writer: Writer = dynamic StringWriter.new(&module);
 
         if (self->types.used_stdint) {
             writer.write("#include <stdint.h>\n");
@@ -230,15 +230,13 @@ pub struct Emitter {
         if (self->needs_stddef_header) {
             writer.write("#include <stddef.h>\n");
         }
-        writer.write_char('\n');
 
         if (self->libc_protos.len() > 0) {
             writer.write(self->libc_protos.as_str_const());
-            writer.write_char('\n');
         }
 
         if (self->needs_panic_helper) {
-            writer.write("static void cyrus_panic_(const char *mesg) {\n");
+            writer.write("static void __cyrus_panic_(const char *mesg) {\n");
             writer.write("    fprintf(stderr, \"panic: %s");
             writer.write_char('\\');
             writer.write("n\", mesg);\n");
@@ -247,7 +245,7 @@ pub struct Emitter {
         }
 
         if (self->needs_assert_helper) {
-            writer.write("static void cyrus_assert_fail_(const char *file, int line, const char *mesg) {\n");
+            writer.write("static void __cyrus_assert_fail_(const char *file, int line, const char *mesg) {\n");
             writer.write("    fprintf(stderr, \"assertion failed: %s at %s:%d");
             writer.write_char('\\');
             writer.write("n\", mesg, file, line);\n");
@@ -270,8 +268,8 @@ pub struct Emitter {
         writer.write(self->pending_out.as_str_const());
         writer.write(self->body_out.as_str_const());
 
-        writer.write(out.as_str_const());
-        out.free();
+        parent.write(module.as_str_const());
+        module.free();
     }
 
     /* ************* Globals ************* */
@@ -546,7 +544,12 @@ pub struct Emitter {
             &func_def->modifiers
         );
 
-        var sig = self->build_func_signature(&func_def->ret_type, &func_def->params, &name, name.as_str_const());
+        var sig = self->build_func_signature(
+            &func_def->ret_type, 
+            &func_def->params, 
+            &name, 
+            name.as_str_const()
+        );
 
         self->protos_out.push_str(sig.as_str_const());
         self->protos_out.push_str(";\n");
@@ -557,8 +560,11 @@ pub struct Emitter {
 
         self->emit_param_prologue(&func_def->params);
 
-        // Detect void main.
-        self->in_void_main = name.as_str_const() == "main" && func_def->ret_type.is_void() && func_def->params.list.len() == 0;
+        // Detect void main
+        self->in_void_main = name.as_str_const() == "main" 
+            && func_def->ret_type.is_void() 
+            && func_def->params.list.len() == 0;
+
         self->emit_block_stmts(func_def->body, true);
         self->in_void_main = false;
 
@@ -2757,7 +2763,7 @@ pub struct Emitter {
                     }
                     else => {}
                 }
-                
+
                 out.push_str(" }; memcpy(__e.u.raw, &__p, sizeof(__p)); ");
                 variant.free();
             }
@@ -3068,7 +3074,7 @@ pub struct Emitter {
                             else => out.push_str("1");
                         }
 
-                        out.push_str(") ? (void)0 : cyrus_assert_fail_(__FILE__, __LINE__, ");
+                        out.push_str(") ? (void)0 : __cyrus_assert_fail_(__FILE__, __LINE__, ");
 
                         switch (builtin_func->args.get_const(1)) {
                             case .Some(mesg) => {
@@ -3091,7 +3097,7 @@ pub struct Emitter {
                     case .Panic => {
                         self->note_panic_use();
 
-                        var out = String.from_str(self->allocator, "cyrus_panic_(");
+                        var out = String.from_str(self->allocator, "__cyrus_panic_(");
                         
                         switch (builtin_func->args.get_const(0)) {
                             case .Some(mesg) => {
@@ -3113,17 +3119,17 @@ pub struct Emitter {
 
                     case .Unreachable => {
                         self->note_panic_use();
-                        return String.from_str(self->allocator, "cyrus_panic_(\"unreachable\")");
+                        return String.from_str(self->allocator, "__cyrus_panic_(\"unreachable\")");
                     }
 
                     case .Todo => {
                         self->note_panic_use();
-                        return String.from_str(self->allocator, "cyrus_panic_(\"todo\")");
+                        return String.from_str(self->allocator, "__cyrus_panic_(\"todo\")");
                     }
 
                     case .Unimplemented => {
                         self->note_panic_use();
-                        return String.from_str(self->allocator, "cyrus_panic_(\"unimplemented\")");
+                        return String.from_str(self->allocator, "__cyrus_panic_(\"unimplemented\")");
                     }
 
                     case .Memcpy => {
