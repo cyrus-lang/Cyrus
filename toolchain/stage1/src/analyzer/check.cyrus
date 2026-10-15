@@ -378,85 +378,7 @@ pub struct Analyzer {
         }
     }
 
-    /* ************* Typedef Expansion ************* */
-
-    pub fn push_typedef_expansion(self: Self*, id: cir::TypedefDeclId) Option<Vec<usize>> {
-        for (var i: usize = 0; i < self->typedef_stack.len(); i += 1) {
-            const existing = *self->typedef_stack.get_const(i).unwrap();
-            
-            if (existing == id) {
-                var path: Vec<usize> =
-                    Vec.with_capacity(self->allocator, self->typedef_stack.len() - i + 1);
-                
-                for (var j: usize = i; j < self->typedef_stack.len(); j += 1) {
-                    path.push(*self->typedef_stack.get_const(j).unwrap());
-                }
-                
-                path.push(id);
-                return .Some(path);
-            }
-        }
-
-        self->typedef_stack.push(id);
-        return .None;
-    }
-
-    [[inline]]
-    pub fn pop_typedef_expansion(self: Self*) {
-        self->typedef_stack.pop();
-    }
-
-    pub fn typedef_cycle_key(self: Self*, path: const Vec<usize>) String {
-        if (path.len() == 0) {
-            return String.new(self->allocator);
-        }
-
-        const n = path.len() - 1;
-
-        if (n == 0) {
-            var key = String.new(self->allocator);
-            diags::append_usize(&key, *path.get_const(0).unwrap());
-            return key;
-        }
-
-        var min_index: usize = 0;
-        var min_value: usize = *path.get_const(0).unwrap();
-        
-        for (var i: usize = 1; i < n; i += 1) {
-            const v = *path.get_const(i).unwrap();
-            
-            if (v < min_value) {
-                min_value = v;
-                min_index = i;
-            }
-        }
-
-        var key = String.new(self->allocator);
-        
-        for (var i: usize = 0; i < n; i += 1) {
-            const index = (min_index + i) % n;
-            
-            if (i > 0) {
-                key.push(',');
-            }
-            
-            diags::append_usize(&key, *path.get_const(index).unwrap());
-        }
-
-        return key;
-    }
-
-    pub fn cycle_already_reported(self: Self*, key: const uint8*) bool {
-        for (var i: usize = 0; i < self->reported_typedef_cycles.len(); i += 1) {
-            const existing = self->reported_typedef_cycles.get_const(i).unwrap();
-            
-            if (existing->as_str_const() == key) {
-                return true;
-            }
-        }
-
-        return false;
-    }
+    /* ************* Normalization ************* */
 
     /// Fully normalize and validate a type which is mostly
     /// used when an explicit type is written.
@@ -1150,8 +1072,7 @@ pub struct Analyzer {
         }
     }
 
-
-    /* ************* Type formation & arity checks ************* */
+    /* ************* Type formation / Arity checks ************* */
 
     // Fully validates a normalized type (redundant const, args, void rules,
     // Self placement, union emptiness). Returns None when invalid.
@@ -1698,13 +1619,13 @@ pub struct Analyzer {
         args: const cir::TypedTypeArgs*,
         span: Span
     ) cir::SemaType {
-        switch (self->push_typedef_expansion(typedef_decl_id)) {
+        switch (self->enter_typedef(typedef_decl_id)) {
             case .Some(var path) => {
                 defer path.free();
                 var key = self->typedef_cycle_key(path);
                 defer key.free();
 
-                if (!self->cycle_already_reported(key.as_str_const())) {
+                if (!self->is_cycle_already_reported(key.as_str_const())) {
                     const n = path.len() - 1;
                     var min_index: usize = 0;
                     var min_val: usize = *path.get_const(0).unwrap();
@@ -1756,7 +1677,7 @@ pub struct Analyzer {
         const typedef_decl = self->decl_tables->typedefs.get_const(typedef_decl_id).unwrap();
 
         if (typedef_decl->ty == null) {
-            self->pop_typedef_expansion();
+            self->exit_typedef();
             return .Err(span);
         }
 
@@ -1825,15 +1746,93 @@ pub struct Analyzer {
         
         switch (typedef_type) {
             case .None => {
-                self->pop_typedef_expansion();
+                self->exit_typedef();
                 return .Err(span);
             }
             case .Some(defined_type) => {
                 const subst = generic_env.substitute_sema_type(&defined_type);
-                self->pop_typedef_expansion();
+                self->exit_typedef();
                 return self->expand_sema_type(subst, span);
             }
         }
+    }
+
+    pub fn enter_typedef(self: Self*, id: cir::TypedefDeclId) Option<Vec<usize>> {
+        for (var i: usize = 0; i < self->typedef_stack.len(); i += 1) {
+            const existing = *self->typedef_stack.get_const(i).unwrap();
+            
+            if (existing == id) {
+                var path: Vec<usize> =
+                    Vec.with_capacity(self->allocator, self->typedef_stack.len() - i + 1);
+                
+                for (var j: usize = i; j < self->typedef_stack.len(); j += 1) {
+                    path.push(*self->typedef_stack.get_const(j).unwrap());
+                }
+                
+                path.push(id);
+                return .Some(path);
+            }
+        }
+
+        self->typedef_stack.push(id);
+        return .None;
+    }
+
+    [[inline]]
+    pub fn exit_typedef(self: Self*) {
+        self->typedef_stack.pop();
+    }
+
+    pub fn typedef_cycle_key(self: Self*, path: const Vec<usize>) String {
+        if (path.len() == 0) {
+            return String.new(self->allocator);
+        }
+
+        const n = path.len() - 1;
+
+        if (n == 0) {
+            var key = String.new(self->allocator);
+            diags::append_usize(&key, *path.get_const(0).unwrap());
+            return key;
+        }
+
+        var min_index: usize = 0;
+        var min_value: usize = *path.get_const(0).unwrap();
+        
+        for (var i: usize = 1; i < n; i += 1) {
+            const v = *path.get_const(i).unwrap();
+            
+            if (v < min_value) {
+                min_value = v;
+                min_index = i;
+            }
+        }
+
+        var key = String.new(self->allocator);
+        
+        for (var i: usize = 0; i < n; i += 1) {
+            const index = (min_index + i) % n;
+            
+            if (i > 0) {
+                key.push(',');
+            }
+            
+            diags::append_usize(&key, *path.get_const(index).unwrap());
+        }
+
+        return key;
+    }
+
+    pub fn is_cycle_already_reported(self: Self*, key: const uint8*) bool {
+        for (var i: usize = 0; i < self->reported_typedef_cycles.len(); i += 1) {
+            const existing = self->reported_typedef_cycles.get_const(i).unwrap();
+            
+            if (existing->as_str_const() == key) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /* ************* Assignability ************* */
@@ -9627,9 +9626,9 @@ pub struct Analyzer {
         func_def->params = func_decl.params;
         func_def->ret_type = func_decl.ret_type;
 
-        var decl_slot = self->decl_tables->funcs.get(func_decl_id).unwrap();
-        decl_slot->params = func_decl.params;
-        decl_slot->ret_type = func_decl.ret_type;
+        var decl = self->decl_tables->funcs.get(func_decl_id).unwrap();
+        decl->params = func_decl.params;
+        decl->ret_type = func_decl.ret_type;
 
         if (!is_generic_func) {
             const func_type = func_decl_as_func_type(self->allocator, &func_decl);
@@ -9804,27 +9803,6 @@ pub struct Analyzer {
             return self->analyze_block_stmt(builtin_block->block);
         }
     }
-
-    fn write_struct_back(self: Self*, struct_decl_id: cir::StructDeclId, struct_decl: cir::StructDecl) {
-        var slot = self->decl_tables->structs.get(struct_decl_id).unwrap();
-        *slot = struct_decl;
-    }
-
-    fn write_union_back(self: Self*, union_decl_id: cir::UnionDeclId, union_decl: cir::UnionDecl) {
-        var slot = self->decl_tables->unions.get(union_decl_id).unwrap();
-        *slot = union_decl;
-    }
-
-    fn write_enum_back(self: Self*, enum_decl_id: cir::EnumDeclId, enum_decl: cir::EnumDecl) {
-        var slot = self->decl_tables->enums.get(enum_decl_id).unwrap();
-        *slot = enum_decl;
-    }
-
-    fn write_method_back(self: Self*, method_decl_id: cir::MethodDeclId, method_decl: cir::MethodDecl) {
-        var slot = self->decl_tables->methods.get(method_decl_id).unwrap();
-        *slot = method_decl;
-    }
-
 
     pub fn analyze_struct_stmt(self: Self*, struct_stmt: cir::TypedStructStmt*) {
         var struct_decl = *self->decl_tables->structs.get(struct_stmt->struct_decl_id).unwrap();
@@ -10467,8 +10445,8 @@ pub struct Analyzer {
             }
         }
 
-        var slot = self->decl_tables->interfaces.get(interface_stmt->interface_decl_id).unwrap();
-        slot->is_interface_dynamically_dispatchable = is_interface_dynamically_dispatchable;
+        var decl = self->decl_tables->interfaces.get(interface_stmt->interface_decl_id).unwrap();
+        decl->is_interface_dynamically_dispatchable = is_interface_dynamically_dispatchable;
     }
 
     pub fn analyze_object_implements_interfaces(
@@ -11614,7 +11592,7 @@ pub struct Analyzer {
 
     }
 
-    pub fn analyze_export_tuple_values(self: Self*, export_tuple: cir::TypedTupleExportStmt*) {
+    fn analyze_export_tuple_values(self: Self*, export_tuple: cir::TypedTupleExportStmt*) {
         switch (export_tuple->rhs) case .Some(rhs_val) else {
             diags::report_tuple_destruction_with_no_rhs(self->dctx, self->allocator, export_tuple->span);
             return;
@@ -11873,7 +11851,7 @@ pub struct Analyzer {
         }
     }
 
-    pub fn analyze_inline_asm_stmt(self: Self*, asm: cir::TypedInlineAsm*) {
+    fn analyze_inline_asm_stmt(self: Self*, asm: cir::TypedInlineAsm*) {
         self->validate_asm_template(asm);
         self->validate_asm_outputs(asm);
         self->validate_asm_inputs(asm);
@@ -11882,6 +11860,25 @@ pub struct Analyzer {
         self->validate_asm_constraint_types(asm);
     }
 
+    fn write_struct_back(self: Self*, id: cir::StructDeclId, struct_decl: cir::StructDecl) {
+        var decl = self->decl_tables->structs.get(id).unwrap();
+        *decl = struct_decl;
+    }
+
+    fn write_union_back(self: Self*, id: cir::UnionDeclId, union_decl: cir::UnionDecl) {
+        var decl = self->decl_tables->unions.get(id).unwrap();
+        *decl = union_decl;
+    }
+
+    fn write_enum_back(self: Self*, id: cir::EnumDeclId, enum_decl: cir::EnumDecl) {
+        var decl = self->decl_tables->enums.get(id).unwrap();
+        *decl = enum_decl;
+    }
+
+    fn write_method_back(self: Self*, id: cir::MethodDeclId, method_decl: cir::MethodDecl) {
+        var decl = self->decl_tables->methods.get(id).unwrap();
+        *decl = method_decl;
+    }
 }
 
 fn is_const_qualified_type_assigned_to_non_const_variable(
