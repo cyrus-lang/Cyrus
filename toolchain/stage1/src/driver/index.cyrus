@@ -8,13 +8,14 @@ import std::mem{Allocator};
 import std::path{Path};
 import std::os{File};
 
+import diags{DiagContext, exit_with_compile_error};
 import diags::render{CompilerDiagRender};
 import source{Source, SourceContext};
 import parser::ast{ASTProgram};
 import tokens{SourceTokens};
-import diags{DiagContext};
 import parser{Parser};
 import lexer{Lexer};
+import linker;
 
 const TOKENS_ARENA_SIZE: usize = 65536;
 
@@ -56,12 +57,14 @@ pub struct LexicalResource {
         const allocator = self->driver->allocator;
 
         switch (File.open(&path, .Read)) case .Value(file) else {
-            @panic("could not open file");
+            exit_with_compile_error("failed to open the file");
+            @unreachable();
         }
         defer file.close();
 
         switch (file.read(allocator)) case .Value(content) else {
-            @panic("could not read file");
+            exit_with_compile_error("failed to open the file");
+            @unreachable();
         }
 
         const source = Source.new(allocator, path, content);

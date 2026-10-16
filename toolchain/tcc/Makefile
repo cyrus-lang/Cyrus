@@ -58,6 +58,8 @@ ifeq (-$(GCC_MAJOR)-$(findstring $(GCC_MINOR),56789)-,-4--)
  CFLAGS += -D_FORTIFY_SOURCE=0
 endif
 
+CFLAGS += -fPIC
+
 LIBTCC = libtcc.a
 LIBTCC1 = libtcc1.a
 LINK_LIBTCC =
@@ -240,7 +242,7 @@ DEFINES += $(EXTRA-DEFS)
 # find config.h with 'out of tree' builds
 DEFINES += -I$(TOP)
 
-CORE_FILES = tcc.c tcctools.c libtcc.c tccpp.c tccgen.c tccdbg.c tccelf.c tccasm.c tccrun.c
+CORE_FILES = cyrus.c tcc.c tcctools.c libtcc.c tccpp.c tccgen.c tccdbg.c tccelf.c tccasm.c tccrun.c
 CORE_FILES += tcc.h config.h libtcc.h tcctok.h
 i386_FILES = $(CORE_FILES) i386-gen.c i386-link.c i386-asm.c i386-asm.h i386-tok.h
 i386-win32_FILES = $(i386_FILES) tccpe.c
@@ -513,12 +515,12 @@ tcov-tes% : tcc_c$(EXESUF)
 	@rm -f $<.tcov
 	@$(MAKE) --no-print-directory TCC_LOCAL=$(CURDIR)/$< tes$*
 tcc_c$(EXESUF): $($T_FILES)
-	$S$(TCC) tcc.c -o $@ -ftest-coverage $(DEFINES) $(LIBS)
+	$S$(TCC) cyrus.c tcc.c -o $@ -ftest-coverage $(DEFINES) $(LIBS)
 # run tests with sanitize option
 sani-tes% : tcc_s$(EXESUF)
 	@$(MAKE) --no-print-directory TCC_LOCAL=$(CURDIR)/$< tes$*
 tcc_s$(EXESUF): $($T_FILES)
-	$S$(CC) tcc.c -o $@ -fsanitize=address,undefined $(DEFINES) $(CFLAGS) $(LDFLAGS) $(LIBS)
+	$S$(CC) cyrus.c tcc.c -o $@ -fsanitize=address,undefined $(DEFINES) $(CFLAGS) $(LDFLAGS) $(LIBS)
 # test the installed tcc instead
 test-install: $(TCCDEFS_H)
 	@$(MAKE) -C tests TESTINSTALL=yes #_all

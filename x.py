@@ -840,6 +840,28 @@ def ensure_stage0(cfg: Config) -> None:
     run_cmd(cmd, cwd=cfg.root, capture=False)
 
 
+def ensure_tcc(cfg: Config) -> Path:
+    """Build the bundled tcc (libtcc.a) if it does not exist yet."""
+    tcc_build_dir = cfg.root / "toolchain" / "tcc" / "build"
+    libtcc = tcc_build_dir / "libtcc.a"
+    
+    if libtcc.is_file():
+        return tcc_build_dir
+    if not tcc_build_dir.is_dir():
+        tcc_build_dir.mkdir(parents=True, exist_ok=True)
+        log(STYLE.cyan(f"configuring tcc in {tcc_build_dir} ..."))
+        run_cmd(["../configure"], cwd=tcc_build_dir, capture=False)
+    
+    log(STYLE.cyan(f"building libtcc.a in {tcc_build_dir} ..."))
+    
+    run_cmd(["make"], cwd=tcc_build_dir, capture=False)
+    
+    if not libtcc.is_file():
+        raise SystemExit(f"error: libtcc.a was not produced at {libtcc}")
+    
+    return tcc_build_dir
+
+
 def ensure_stage1(cfg: Config) -> None:
     """Build the stage1 (self-hosted) compiler using stage0."""
     if cfg.stage1_binary.is_file():
@@ -926,6 +948,7 @@ def build_stage1(cfg: Config, *, release: bool, extra_args: Sequence[str] = ()) 
     """Bootstrap stage1 by driving stage0's `build` command on Project.toml."""
     ensure_stage0(cfg)
     profile = "release" if release else "debug"
+    tcc_dir = ensure_tcc(cfg)
 
     if release:
         args = [
@@ -933,6 +956,8 @@ def build_stage1(cfg: Config, *, release: bool, extra_args: Sequence[str] = ()) 
             f"--profile={profile}",
             f"--stdlib={cfg.stdlib_path}",
             f"--linker={cfg.linker}",
+            f"-L={tcc_dir}",
+            "-l=tcc",
             "--optimize=o2",
             '-z=-flto',
             "--module-merge-mode=separate",
@@ -946,10 +971,13 @@ def build_stage1(cfg: Config, *, release: bool, extra_args: Sequence[str] = ()) 
             "-g",
             f"--stdlib={cfg.stdlib_path}",
             f"--linker={cfg.linker}",
+            f"-L={tcc_dir}",
+            "-l=tcc",
             "--optimize=o0",
             "--module-merge-mode=separate",
             "--disable-modulefs-cache",
         ]
+
     args += list(extra_args)
 
     log(STYLE.cyan(f"building stage1 ({profile}, via stage0) ..."))
