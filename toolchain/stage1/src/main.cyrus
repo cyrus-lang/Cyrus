@@ -3,7 +3,9 @@
 
 import std::libc::types{c_int, c_char};
 import std::mem::libc{LibcAllocator};
-import std::io{Writer, StdoutWriter};
+import std::io{Writer, StdoutWriter, StringWriter};
+import std::string{String};
+import driver::tcc;
 import std::path{Path, dir_of_file};
 import parser::dump{ASTDump};
 import std::mem{Allocator};
@@ -40,6 +42,8 @@ pub fn main(argc: c_int, argv: c_char**) {
     const stdlib_opt = opts.add(*cli::Opt.new(allocator, "stdlib").arg(.Str)->help("Stdlib root directory"));
     const quiet_opt = opts.add(*cli::Opt.new(allocator, "quiet").short('q')->help("Suppress output"));
     const target_opt = opts.add(*cli::Opt.new(allocator, "target").short('t')->help("Target triple"));
+    const backend_opt = opts.add(*cli::Opt.new(allocator, "backend").arg(.Str)->help("Backend compiler (c|llvm)"));
+    const output_opt = opts.add(*cli::Opt.new(allocator, "output").short('o')->arg(.Str)->help("Output file path"));
     const color_opt = opts.add(*cli::Opt.new(allocator, "color").help("Colored output"));
 
     const new_cmd = 
@@ -47,23 +51,29 @@ pub fn main(argc: c_int, argv: c_char**) {
         .help("Create new project");
 
     const run_cmd = 
-        cli::Cmd.new(allocator, "run", command_new)
+        cli::Cmd.new(allocator, "run", command_run)
         .help("Build and run")
+        ->optional_argument(.Str)
         ->add_option(verbose_opt)
         ->add_option(quiet_opt)
         ->add_option(release_opt)
         ->add_option(debug_opt)
         ->add_option(target_opt)
+        ->add_option(backend_opt)
+        ->add_option(output_opt)
         ->add_option(jobs_opt);
     
     const build_cmd = 
         cli::Cmd.new(allocator, "build", command_build)
         .help("Build project")
+        ->optional_argument(.Str)
         ->add_option(verbose_opt)
         ->add_option(quiet_opt)
         ->add_option(release_opt)
         ->add_option(debug_opt)
-        ->add_option(target_opt)
+        ->add_option(backend_opt)
+        ->add_option(output_opt)
+        ->add_option(stdlib_opt)
         ->add_option(jobs_opt);
     
     const test_cmd = 
@@ -72,6 +82,8 @@ pub fn main(argc: c_int, argv: c_char**) {
         ->add_option(verbose_opt)
         ->add_option(quiet_opt)
         ->add_option(target_opt)
+        ->add_option(backend_opt)
+        ->add_option(output_opt)
         ->add_option(jobs_opt);
     
     const clean_cmd = 
@@ -138,8 +150,293 @@ fn command_new(ctx: cli::ActionContext) {
     @todo();
 }
 
+fn command_run(ctx: cli::ActionContext) {
+    const allocator: Allocator = dynamic LibcAllocator.new();
+
+    var driver = CompilerDriver.new(allocator);
+
+    // TODO: Support Babylon
+    switch (ctx.args->get_str(0)) case .Some(file_path) else {
+        exit_with_compile_error("please provide an input file");
+        @unreachable();
+    }
+
+    var output_path: String;
+    defer output_path.free();
+
+    switch (ctx.opts->find("output")) {
+        case .Some(opt) => {
+            switch (opt->values.get_owned(0)) {
+                case .Some(value) => {
+                    switch (value) {
+                        case .Str(str) => {
+                            output_path = str.clone(allocator);
+                        }
+                        else => {
+                            var stem = std::path::file_stem(allocator, file_path);
+                            var dir = dir_of_file(allocator, file_path);
+                            output_path = std::path::join_path(allocator, dir.as_str_const(), stem.as_str_const());
+                            stem.free();
+                            dir.free();
+                        }
+                    }
+                }
+                else => {
+                    var stem = std::path::file_stem(allocator, file_path);
+                    var dir = dir_of_file(allocator, file_path);
+                    output_path = std::path::join_path(allocator, dir.as_str_const(), stem.as_str_const());
+                    stem.free();
+                    dir.free();
+                }
+            }
+        }
+        case .None => {
+            var stem = std::path::file_stem(allocator, file_path);
+            var dir = dir_of_file(allocator, file_path);
+            output_path = std::path::join_path(allocator, dir.as_str_const(), stem.as_str_const());
+            stem.free();
+            dir.free();
+        }
+    }
+
+    var opts = ResolverOptions.new(allocator);
+
+    opts.base_path.free();
+    opts.base_path = dir::cwd(allocator);
+    opts.source_dirs.push(dir_of_file(allocator, file_path));
+    apply_stdlib_option(allocator, ctx.opts, &opts);
+    apply_profile_option(allocator, ctx.opts, &opts);
+
+    var resolver = Resolver.new(allocator, &driver, &opts);
+
+    const lexical = driver.create_lexical_resource();
+    const path = Path.new(allocator, file_path);
+
+    switch (lexical.tokenize_source(path)) case .Value(var source_tokens) else {
+        free_driver_resources(&driver, &resolver, &opts);
+        return;
+    }
+    defer source_tokens.free();
+
+    switch (lexical.parse_source(source_tokens)) case .Value(var program) else {
+        free_driver_resources(&driver, &resolver, &opts);
+        return;
+    }
+    defer program.free();
+
+    resolver.resolve_entry(source_tokens.source_id, file_path, &program);
+
+    if (!driver.dctx.has_errors()) {
+        const arena_allocator: Allocator = dynamic resolver.arena;
+
+        var analyzer = check::Analyzer.new(
+            arena_allocator,
+            &driver.dctx,
+            &resolver.global_symbols,
+            &resolver.decl_tables,
+            resolver.program_trees
+        );
+        analyzer.analyze();
+
+        if (driver.dctx.has_errors()) {
+            driver.render_diags();
+        } else {
+            var backend = String.from_str(allocator, "c");
+            switch (ctx.opts->find("backend")) {
+                case .Some(opt) => {
+                    switch (opt->values.get_owned(0)) {
+                        case .Some(value) => {
+                            switch (value) {
+                                case .Str(str) => {
+                                    backend.free();
+                                    backend = str.clone(allocator);
+                                }
+                                else => {}
+                            }
+                        }
+                        else => {}
+                    }
+                }
+                else => {}
+            }
+
+            if (backend.as_str_const() == "llvm") {
+                exit_with_compile_error("LLVM backend is not supported yet");
+            } else if (backend.as_str_const() == "c") {
+                var out = String.new(allocator);
+                const writer: Writer = dynamic StringWriter.new(&out);
+
+                var codegen = CodegenC.new(
+                    allocator,
+                    &resolver.decl_tables,
+                    &resolver.global_symbols,
+                    &resolver.program_trees,
+                    &analyzer.vtable_registry,
+                    &analyzer.monomorph_registry
+                );
+
+                codegen.emit(writer);
+                codegen.free();
+
+                tcc::compile(out.as_str_const(), output_path.as_str_const(), .MEM);
+
+                out.free();
+            } else {
+                exit_with_compile_error("unknown backend (expected `c` or `llvm`)");
+            }
+            backend.free();
+        }
+
+        analyzer.free();
+    } else {
+        driver.render_diags();
+    }
+
+    free_driver_resources(&driver, &resolver, &opts);
+}
+
 fn command_build(ctx: cli::ActionContext) {
-    @todo();
+    const allocator: Allocator = dynamic LibcAllocator.new();
+
+    var driver = CompilerDriver.new(allocator);
+
+    switch (ctx.args->get_str(0)) case .Some(file_path) else {
+        exit_with_compile_error("please provide an input file");
+        @unreachable();
+    }
+
+    var output_path: String;
+    defer output_path.free();
+
+    switch (ctx.opts->find("output")) {
+        case .Some(opt) => {
+            switch (opt->values.get_owned(0)) {
+                case .Some(value) => {
+                    switch (value) {
+                        case .Str(s) => {
+                            output_path = s.clone(allocator);
+                        }
+                        else => {
+                            var stem = std::path::file_stem(allocator, file_path);
+                            var dir = dir_of_file(allocator, file_path);
+                            output_path = std::path::join_path(allocator, dir.as_str_const(), stem.as_str_const());
+                            stem.free();
+                            dir.free();
+                        }
+                    }
+                }
+                else => {
+                    var stem = std::path::file_stem(allocator, file_path);
+                    var dir = dir_of_file(allocator, file_path);
+                    output_path = std::path::join_path(allocator, dir.as_str_const(), stem.as_str_const());
+                    stem.free();
+                    dir.free();
+                }
+            }
+        }
+        case .None => {
+            var stem = std::path::file_stem(allocator, file_path);
+            var dir = dir_of_file(allocator, file_path);
+            output_path = std::path::join_path(allocator, dir.as_str_const(), stem.as_str_const());
+            stem.free();
+            dir.free();
+        }
+    }
+
+    var opts = ResolverOptions.new(allocator);
+
+    opts.base_path.free();
+    opts.base_path = dir::cwd(allocator);
+    opts.source_dirs.push(dir_of_file(allocator, file_path));
+    apply_stdlib_option(allocator, ctx.opts, &opts);
+    apply_profile_option(allocator, ctx.opts, &opts);
+
+    var resolver = Resolver.new(allocator, &driver, &opts);
+
+    const lexical = driver.create_lexical_resource();
+    const path = Path.new(allocator, file_path);
+
+    switch (lexical.tokenize_source(path)) case .Value(var source_tokens) else {
+        free_driver_resources(&driver, &resolver, &opts);
+        return;
+    }
+    defer source_tokens.free();
+
+    switch (lexical.parse_source(source_tokens)) case .Value(var program) else {
+        free_driver_resources(&driver, &resolver, &opts);
+        return;
+    }
+    defer program.free();
+
+    resolver.resolve_entry(source_tokens.source_id, file_path, &program);
+
+    if (!driver.dctx.has_errors()) {
+        const arena_allocator: Allocator = dynamic resolver.arena;
+
+        var analyzer = check::Analyzer.new(
+            arena_allocator,
+            &driver.dctx,
+            &resolver.global_symbols,
+            &resolver.decl_tables,
+            resolver.program_trees
+        );
+        analyzer.analyze();
+
+        if (driver.dctx.has_errors()) {
+            driver.render_diags();
+        } else {
+            var backend = String.from_str(allocator, "c");
+            switch (ctx.opts->find("backend")) {
+                case .Some(opt) => {
+                    switch (opt->values.get(0)) {
+                        case .Some(val) => {
+                            switch (*val) {
+                                case .Str(s) => {
+                                    backend.free();
+                                    backend = s.clone(allocator);
+                                }
+                                else => {}
+                            }
+                        }
+                        else => {}
+                    }
+                }
+                else => {}
+            }
+
+            if (backend.as_str_const() == "llvm") {
+                exit_with_compile_error("LLVM backend is not supported yet");
+            } else if (backend.as_str_const() == "c") {
+                var out = String.new(allocator);
+                const writer: Writer = dynamic StringWriter.new(&out);
+
+                var codegen = CodegenC.new(
+                    allocator,
+                    &resolver.decl_tables,
+                    &resolver.global_symbols,
+                    &resolver.program_trees,
+                    &analyzer.vtable_registry,
+                    &analyzer.monomorph_registry
+                );
+
+                codegen.emit(writer);
+                codegen.free();
+
+                tcc::compile(out.as_str_const(), output_path.as_str_const(), .EXE);
+
+                out.free();
+            } else {
+                exit_with_compile_error("unknown backend (expected `c` or `llvm`)");
+            }
+            backend.free();
+        }
+
+        analyzer.free();
+    } else {
+        driver.render_diags();
+    }
+
+    free_driver_resources(&driver, &resolver, &opts);
 }
 
 fn command_dump(ctx: cli::ActionContext) {
