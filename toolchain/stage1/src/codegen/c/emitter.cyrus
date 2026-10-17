@@ -544,8 +544,20 @@ pub struct Emitter {
             &func_def->modifiers
         );
 
+        const is_void_main = name.as_str_const() == "main"
+            && func_def->ret_type.is_void()
+            && func_def->params.list.len() == 0;
+
+        const int32_type: cir::SemaType = .Plain(.Int32);
+
+        var ret_type_ptr: const cir::SemaType* = &func_def->ret_type;
+        
+        if (is_void_main) {
+            ret_type_ptr = &int32_type;
+        }
+
         var sig = self->build_func_signature(
-            &func_def->ret_type, 
+            ret_type_ptr, 
             &func_def->params, 
             &name, 
             name.as_str_const()
@@ -560,12 +572,13 @@ pub struct Emitter {
 
         self->emit_param_prologue(&func_def->params);
 
-        // Detect void main
-        self->in_void_main = name.as_str_const() == "main" 
-            && func_def->ret_type.is_void() 
-            && func_def->params.list.len() == 0;
+        self->in_void_main = is_void_main;
 
         self->emit_block_stmts(func_def->body, true);
+
+        if (self->in_void_main) {
+            self->body_out.push_str("    return 0;\n");
+        }
         self->in_void_main = false;
 
         self->body_out.push_str("}\n\n");
