@@ -1,15 +1,14 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 The Cyrus Language
 
+import std::io{Writer, StdoutWriter, StringWriter};
 import std::libc::types{c_int, c_char};
 import std::mem::libc{LibcAllocator};
-import std::io{Writer, StdoutWriter, StringWriter};
-import std::string{String};
-import driver::tcc;
 import std::path{Path, dir_of_file};
-import parser::dump{ASTDump};
+import std::libc{printf, exit};
 import std::mem{Allocator};
-import std::libc{printf};
+import std::string{String};
+import std::os::process;
 import std::os::dir;
 import std::cli;
 
@@ -17,11 +16,13 @@ import diags{DiagContext, Diag, exit_with_compile_error};
 import resolver::loader{ResolverOptions};
 import diags::render{CompilerDiagRender};
 import source{Source, SourceContext};
-import tokens{dump_tokens, Loc};
 import resolver::index{Resolver};
+import tokens{dump_tokens, Loc};
 import driver{CompilerDriver};
+import parser::dump{ASTDump};
 import codegen::c{CodegenC};
 import analyzer::check;
+import driver::tcc;
 import cir::dump;
 import version;
 
@@ -36,14 +37,14 @@ pub fn main(argc: c_int, argv: c_char**) {
 
     const profile_opt = opts.add(*cli::Opt.new(allocator, "profile").arg(.Str)->help("Build profile (debug|release)"));
     const jobs_opt = opts.add(*cli::Opt.new(allocator, "jobs").short('j')->arg(.Int)->help("Number of parallel jobs"));
+    const output_opt = opts.add(*cli::Opt.new(allocator, "output").short('o')->arg(.Str)->help("Output file path"));
+    const backend_opt = opts.add(*cli::Opt.new(allocator, "backend").arg(.Str)->help("Backend compiler (c|llvm)"));
     const release_opt = opts.add(*cli::Opt.new(allocator, "release").short('r')->help("Build in release mode"));
     const debug_opt = opts.add(*cli::Opt.new(allocator, "debug").short('g')->help("Build with debug symbols"));
     const verbose_opt = opts.add(*cli::Opt.new(allocator, "verbose").short('v')->help("Increase verbosity"));
     const stdlib_opt = opts.add(*cli::Opt.new(allocator, "stdlib").arg(.Str)->help("Stdlib root directory"));
     const quiet_opt = opts.add(*cli::Opt.new(allocator, "quiet").short('q')->help("Suppress output"));
     const target_opt = opts.add(*cli::Opt.new(allocator, "target").short('t')->help("Target triple"));
-    const backend_opt = opts.add(*cli::Opt.new(allocator, "backend").arg(.Str)->help("Backend compiler (c|llvm)"));
-    const output_opt = opts.add(*cli::Opt.new(allocator, "output").short('o')->arg(.Str)->help("Output file path"));
     const color_opt = opts.add(*cli::Opt.new(allocator, "color").help("Colored output"));
 
     const new_cmd = 
@@ -61,6 +62,7 @@ pub fn main(argc: c_int, argv: c_char**) {
         ->add_option(target_opt)
         ->add_option(backend_opt)
         ->add_option(output_opt)
+        ->add_option(stdlib_opt)
         ->add_option(jobs_opt);
     
     const build_cmd = 
@@ -164,40 +166,13 @@ fn command_run(ctx: cli::ActionContext) {
     var output_path: String;
     defer output_path.free();
 
-    switch (ctx.opts->find("output")) {
-        case .Some(opt) => {
-            switch (opt->values.get_owned(0)) {
-                case .Some(value) => {
-                    switch (value) {
-                        case .Str(str) => {
-                            output_path = str.clone(allocator);
-                        }
-                        else => {
-                            var stem = std::path::file_stem(allocator, file_path);
-                            var dir = dir_of_file(allocator, file_path);
-                            output_path = std::path::join_path(allocator, dir.as_str_const(), stem.as_str_const());
-                            stem.free();
-                            dir.free();
-                        }
-                    }
-                }
-                else => {
-                    var stem = std::path::file_stem(allocator, file_path);
-                    var dir = dir_of_file(allocator, file_path);
-                    output_path = std::path::join_path(allocator, dir.as_str_const(), stem.as_str_const());
-                    stem.free();
-                    dir.free();
-                }
-            }
-        }
-        case .None => {
-            var stem = std::path::file_stem(allocator, file_path);
-            var dir = dir_of_file(allocator, file_path);
-            output_path = std::path::join_path(allocator, dir.as_str_const(), stem.as_str_const());
-            stem.free();
-            dir.free();
-        }
+    switch (dir::TempDir.create(allocator)) case .Some(temp_dir) else {
+        exit_with_compile_error("failed to create a temporary directory");
+        @unreachable();
     }
+    defer temp_dir.free();
+
+    output_path = std::path::join_path(allocator, temp_dir.path(), "a.out");
 
     var opts = ResolverOptions.new(allocator);
 
@@ -216,15 +191,17 @@ fn command_run(ctx: cli::ActionContext) {
         free_driver_resources(&driver, &resolver, &opts);
         return;
     }
-    defer source_tokens.free();
 
     switch (lexical.parse_source(source_tokens)) case .Value(var program) else {
+        source_tokens.free();
         free_driver_resources(&driver, &resolver, &opts);
         return;
     }
-    defer program.free();
 
     resolver.resolve_entry(source_tokens.source_id, file_path, &program);
+
+    var exit_code: int32 = 0;
+    var did_run: bool = false;
 
     if (!driver.dctx.has_errors()) {
         const arena_allocator: Allocator = dynamic resolver.arena;
@@ -242,6 +219,7 @@ fn command_run(ctx: cli::ActionContext) {
             driver.render_diags();
         } else {
             var backend = String.from_str(allocator, "c");
+            
             switch (ctx.opts->find("backend")) {
                 case .Some(opt) => {
                     switch (opt->values.get_owned(0)) {
@@ -278,12 +256,25 @@ fn command_run(ctx: cli::ActionContext) {
                 codegen.emit(writer);
                 codegen.free();
 
-                tcc::compile(out.as_str_const(), output_path.as_str_const(), .MEM);
+                if (!tcc::compile(out.as_str_const(), output_path.as_str_const(), tcc::OutputKind.EXE)) {
+                    exit_with_compile_error("failed to compile the input file");
+                }
 
                 out.free();
+
+                var command = process::Command.new(allocator, output_path.as_str_const());
+                const exit_status = command.exec();
+                command.free();
+
+                dir::remove_file(output_path.as_str_const());
+
+                const child_status = @cast(uint32, exit_status);
+                exit_code = @cast(int32, (child_status >> 8) & 0xff);
+                did_run = true;
             } else {
                 exit_with_compile_error("unknown backend (expected `c` or `llvm`)");
             }
+
             backend.free();
         }
 
@@ -292,7 +283,13 @@ fn command_run(ctx: cli::ActionContext) {
         driver.render_diags();
     }
 
+    program.free();
+    source_tokens.free();
     free_driver_resources(&driver, &resolver, &opts);
+
+    if (did_run) {
+        exit(exit_code);
+    }
 }
 
 fn command_build(ctx: cli::ActionContext) {
@@ -388,12 +385,12 @@ fn command_build(ctx: cli::ActionContext) {
             var backend = String.from_str(allocator, "c");
             switch (ctx.opts->find("backend")) {
                 case .Some(opt) => {
-                    switch (opt->values.get(0)) {
-                        case .Some(val) => {
-                            switch (*val) {
-                                case .Str(s) => {
+                    switch (opt->values.get_owned(0)) {
+                        case .Some(value) => {
+                            switch (value) {
+                                case .Str(str) => {
                                     backend.free();
-                                    backend = s.clone(allocator);
+                                    backend = str.clone(allocator);
                                 }
                                 else => {}
                             }
@@ -689,7 +686,6 @@ fn command_dump_bir(ctx: cli::ActionContext) {
 
     free_driver_resources(&driver, &resolver, &opts);
 }
-
 
 fn command_version(ctx: cli::ActionContext) {
     printf("Cyrus %s\n", version::COMPILER_VERSION);

@@ -3,7 +3,7 @@
 
 pub enum Option<T> {
     Some(T),
-    None
+    None,
 
     [[inline]]
     pub fn unwrap(self: const Self*) T {
