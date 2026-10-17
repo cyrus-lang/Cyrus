@@ -30,8 +30,8 @@ fn fold_const_expr_int_depth(
     }
 
     switch (expr->kind) {
-        case .Literal(lit) => {
-            switch (lit.kind) {
+        case .Literal(literal) => {
+            switch (literal.kind) {
                 case .Integer { value, .. } => {
                     switch (value) {
                         case .Unsigned(x) => return .Some(.Unsigned(x));
@@ -213,20 +213,20 @@ pub fn fold_const_expr(
 
     switch (fold_const_expr_int(decl_tables, registry, expr)) {
         case .Some(x) => {
-            var lit: cir::IntegerLiteral;
+            var literal: cir::IntegerLiteral;
 
             switch (x) {
                 case .Signed(x) => {
-                    lit = .Signed(x);
+                    literal = .Signed(x);
                 }
                 case .Unsigned(x) => {
-                    lit = .Signed(@cast(int128, x));
+                    literal = .Signed(@cast(int128, x));
                 }
             }
 
             expr->kind = .Literal(cir::TypedLiteralExpr {
                 ty: expr->ty,
-                kind: .Integer { value: lit, suffix: .None },
+                kind: .Integer { value: literal, suffix: .None },
                 span: expr->span,
             });
         }

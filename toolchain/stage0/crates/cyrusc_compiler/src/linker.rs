@@ -82,14 +82,6 @@ impl Linker {
             cmd.arg("-fno-omit-frame-pointer");
         }
 
-        for library in &self.opts.libraries {
-            cmd.arg(format!("-l{}", library));
-        }
-
-        for library in &self.opts.library_paths {
-            cmd.arg(format!("-L{}", library));
-        }
-
         if let Some(opt_level) = self.opts.opt_level {
             let opt_level_str = match opt_level {
                 cyrusc_internal::compiler_options::CompilerOption_Optimize::O0 => "0",
@@ -106,6 +98,14 @@ impl Linker {
         cmd.arg("-o").arg(output_path);
         cmd.args(object_files);
         cmd.args(&self.opts.linker_flags);
+
+        for library in &self.opts.libraries {
+            cmd.arg(format!("-l{}", library));
+        }
+
+        for library in &self.opts.library_paths {
+            cmd.arg(format!("-L{}", library));
+        }
 
         if !self.opts.sanitizer.is_empty() {
             let joined_flags = self
