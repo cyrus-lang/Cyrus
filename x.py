@@ -842,19 +842,16 @@ def ensure_stage0(cfg: Config) -> None:
 
 def ensure_tcc(cfg: Config) -> Path:
     """Build the bundled tcc (libtcc.a) if it does not exist yet."""
-    tcc_build_dir = cfg.root / "toolchain" / "tcc" / "build"
+    tcc_dir = cfg.root / "toolchain" / "tcc"
+    tcc_build_dir = tcc_dir / "build"
     libtcc = tcc_build_dir / "libtcc.a"
     
     if libtcc.is_file():
         return tcc_build_dir
-    if not tcc_build_dir.is_dir():
-        tcc_build_dir.mkdir(parents=True, exist_ok=True)
-        log(STYLE.cyan(f"configuring tcc in {tcc_build_dir} ..."))
-        run_cmd(["../configure"], cwd=tcc_build_dir, capture=False)
     
     log(STYLE.cyan(f"building libtcc.a in {tcc_build_dir} ..."))
     
-    run_cmd(["make"], cwd=tcc_build_dir, capture=False)
+    run_cmd(["make"], cwd=tcc_dir, capture=False)
     
     if not libtcc.is_file():
         raise SystemExit(f"error: libtcc.a was not produced at {libtcc}")

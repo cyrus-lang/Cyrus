@@ -189,19 +189,26 @@ fn command_run(ctx: cli::ActionContext) {
 
     switch (lexical.tokenize_source(path)) case .Value(var source_tokens) else {
         free_driver_resources(&driver, &resolver, &opts);
-        return;
+        output_path.free();
+        temp_dir.free();
+        ctx.opts->free();
+        exit(1);
     }
 
     switch (lexical.parse_source(source_tokens)) case .Value(var program) else {
         source_tokens.free();
         free_driver_resources(&driver, &resolver, &opts);
-        return;
+        output_path.free();
+        temp_dir.free();
+        ctx.opts->free();
+        exit(1);
     }
 
     resolver.resolve_entry(source_tokens.source_id, file_path, &program);
 
+    var run: bool = false;
+    var error: bool = false;
     var exit_code: int32 = 0;
-    var did_run: bool = false;
 
     if (!driver.dctx.has_errors()) {
         const arena_allocator: Allocator = dynamic resolver.arena;
@@ -217,6 +224,7 @@ fn command_run(ctx: cli::ActionContext) {
 
         if (driver.dctx.has_errors()) {
             driver.render_diags();
+            error = true;
         } else {
             var backend = String.from_str(allocator, "c");
             
@@ -257,6 +265,14 @@ fn command_run(ctx: cli::ActionContext) {
                 codegen.free();
 
                 if (!tcc::compile(out.as_str_const(), output_path.as_str_const(), tcc::OutputKind.EXE)) {
+                    out.free();
+                    analyzer.free();
+                    program.free();
+                    source_tokens.free();
+                    output_path.free();
+                    temp_dir.free();
+                    free_driver_resources(&driver, &resolver, &opts);
+                    ctx.opts->free();
                     exit_with_compile_error("failed to compile the input file");
                 }
 
@@ -270,7 +286,7 @@ fn command_run(ctx: cli::ActionContext) {
 
                 const child_status = @cast(uint32, exit_status);
                 exit_code = @cast(int32, (child_status >> 8) & 0xff);
-                did_run = true;
+                run = true;
             } else {
                 exit_with_compile_error("unknown backend (expected `c` or `llvm`)");
             }
@@ -281,14 +297,21 @@ fn command_run(ctx: cli::ActionContext) {
         analyzer.free();
     } else {
         driver.render_diags();
+        error = true;
     }
 
     program.free();
     source_tokens.free();
     free_driver_resources(&driver, &resolver, &opts);
 
-    if (did_run) {
+    if (run) {
+        ctx.opts->free();
         exit(exit_code);
+    }
+
+    if (error) {
+        ctx.opts->free();
+        exit(1);
     }
 }
 
@@ -310,8 +333,8 @@ fn command_build(ctx: cli::ActionContext) {
             switch (opt->values.get_owned(0)) {
                 case .Some(value) => {
                     switch (value) {
-                        case .Str(s) => {
-                            output_path = s.clone(allocator);
+                        case .Str(str) => {
+                            output_path = str.clone(allocator);
                         }
                         else => {
                             var stem = std::path::file_stem(allocator, file_path);
@@ -355,17 +378,24 @@ fn command_build(ctx: cli::ActionContext) {
 
     switch (lexical.tokenize_source(path)) case .Value(var source_tokens) else {
         free_driver_resources(&driver, &resolver, &opts);
-        return;
+        output_path.free();
+        ctx.opts->free();
+        exit(1);
     }
     defer source_tokens.free();
 
     switch (lexical.parse_source(source_tokens)) case .Value(var program) else {
+        source_tokens.free();
         free_driver_resources(&driver, &resolver, &opts);
-        return;
+        output_path.free();
+        ctx.opts->free();
+        exit(1);
     }
     defer program.free();
 
     resolver.resolve_entry(source_tokens.source_id, file_path, &program);
+
+    var error: bool = false;
 
     if (!driver.dctx.has_errors()) {
         const arena_allocator: Allocator = dynamic resolver.arena;
@@ -381,6 +411,7 @@ fn command_build(ctx: cli::ActionContext) {
 
         if (driver.dctx.has_errors()) {
             driver.render_diags();
+            error = true;
         } else {
             var backend = String.from_str(allocator, "c");
             switch (ctx.opts->find("backend")) {
@@ -419,7 +450,16 @@ fn command_build(ctx: cli::ActionContext) {
                 codegen.emit(writer);
                 codegen.free();
 
-                tcc::compile(out.as_str_const(), output_path.as_str_const(), .EXE);
+                if (!tcc::compile(out.as_str_const(), output_path.as_str_const(), .EXE)) {
+                    out.free();
+                    analyzer.free();
+                    program.free();
+                    source_tokens.free();
+                    output_path.free();
+                    free_driver_resources(&driver, &resolver, &opts);
+                    ctx.opts->free();
+                    exit_with_compile_error("failed to compile the input file");
+                }
 
                 out.free();
             } else {
@@ -431,9 +471,15 @@ fn command_build(ctx: cli::ActionContext) {
         analyzer.free();
     } else {
         driver.render_diags();
+        error = true;
     }
 
     free_driver_resources(&driver, &resolver, &opts);
+
+    if (error) {
+        ctx.opts->free();
+        exit(1);
+    }
 }
 
 fn command_dump(ctx: cli::ActionContext) {
