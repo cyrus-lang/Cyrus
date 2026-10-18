@@ -435,9 +435,9 @@ pub struct Analyzer {
         self->normalize_type_args(&type_args, indirection);
 
         switch (named_type->type_decl_id) {
-            case .Struct(id) => return self->normalize_struct_decl(id, type_args, indirection);
-            case .Union(id) => return self->normalize_union_decl(id, type_args, indirection);
-            case .Enum(id) => return self->normalize_enum_decl(id, type_args, indirection);
+            case .Struct(struct_decl_id) => return self->normalize_struct_decl(struct_decl_id, type_args, indirection);
+            case .Union(union_decl_id) => return self->normalize_union_decl(union_decl_id, type_args, indirection);
+            case .Enum(enum_decl_id) => return self->normalize_enum_decl(enum_decl_id, type_args, indirection);
             else => return .Some(.Named(cir::NamedType {
                 type_decl_id: named_type->type_decl_id,
                 type_args,
@@ -1022,51 +1022,54 @@ pub struct Analyzer {
         indirection: uint8
     ) Option<cir::SemaType> {
         switch (decl_id) {
-            case .GlobalVar(id) => {
-                const decl = self->decl_tables->global_vars.get_const(id).unwrap();
-                return decl->ty;
+            case .GlobalVar(global_var_decl_id) => {
+                const global_var_decl =
+                    self->decl_tables->global_vars.get_const(global_var_decl_id).unwrap();
+
+                return global_var_decl->ty;
             }
-            case .Var(id) => {
-                const decl = self->decl_tables->vars.get_const(id).unwrap();
-                return decl->ty;
+            case .Var(var_decl_id) => {
+                const var_decl = self->decl_tables->vars.get_const(var_decl_id).unwrap();
+                return var_decl->ty;
             }
-            case .Func(id) => {
-                const decl = self->decl_tables->funcs.get_const(id).unwrap();
-                const func_type = func_decl_as_func_type(self->allocator, decl);
+            case .Func(func_decl_id) => {
+                const func_decl = self->decl_tables->funcs.get_const(func_decl_id).unwrap();
+                const func_type = func_decl_as_func_type(self->allocator, func_decl);
                 return self->normalize_func_type(func_type, indirection);
             }
-            case .Struct(id) => {
+            case .Struct(struct_decl_id) => {
                 return .Some(.Named(cir::NamedType {
-                    type_decl_id: .Struct(id),
+                    type_decl_id: .Struct(struct_decl_id),
                     type_args: cir::TypedTypeArgs.new(self->allocator),
                 }));
             }
-            case .Enum(id) => {
+            case .Enum(enum_decl_id) => {
                 return .Some(.Named(cir::NamedType {
-                    type_decl_id: .Enum(id),
+                    type_decl_id: .Enum(enum_decl_id),
                     type_args: cir::TypedTypeArgs.new(self->allocator),
                 }));
             }
-            case .Union(id) => {
+            case .Union(union_decl_id) => {
                 return .Some(.Named(cir::NamedType {
-                    type_decl_id: .Union(id),
+                    type_decl_id: .Union(union_decl_id),
                     type_args: cir::TypedTypeArgs.new(self->allocator),
                 }));
             }
-            case .Typedef(id) => {
+            case .Typedef(typedef_decl_id) => {
                 return .Some(.Named(cir::NamedType {
-                    type_decl_id: .Typedef(id),
+                    type_decl_id: .Typedef(typedef_decl_id),
                     type_args: cir::TypedTypeArgs.new(self->allocator),
                 }));
             }
-            case .Interface(id) => {
+            case .Interface(interface_decl_id) => {
                 return .Some(.Named(cir::NamedType {
-                    type_decl_id: .Interface(id),
+                    type_decl_id: .Interface(interface_decl_id),
                     type_args: cir::TypedTypeArgs.new(self->allocator),
                 }));
             }
             case .Method => {
-                // Methods never appear in type position; guarded by as_type_decl_id.
+                // Methods never appear here 
+                // (guarded by as_type_decl_id)
                 return .None;
             }
         }
@@ -1074,15 +1077,14 @@ pub struct Analyzer {
 
     /* ************* Type formation / Arity checks ************* */
 
-    // Fully validates a normalized type (redundant const, args, void rules,
-    // Self placement, union emptiness). Returns None when invalid.
+    /// Fully validates a normalized type.
     pub fn check_type_formation(self: Self*, ty: cir::SemaType, span: Span) Option<cir::SemaType> {
         if (ty.is_err()) {
             return .None;
         }
 
         var error = false;
-        self->check_type_formation_rec(&ty, span, &error);
+        self->check_type_formation_recuresively(&ty, span, &error);
 
         if (error) {
             return .None;
@@ -1090,7 +1092,7 @@ pub struct Analyzer {
         return .Some(ty);
     }
 
-    fn check_type_formation_rec(self: Self*, ty: const cir::SemaType*, span: Span, error: bool*) {
+    fn check_type_formation_recuresively(self: Self*, ty: const cir::SemaType*, span: Span, error: bool*) {
         if (ty->count_const_layers() > 1) {
             diags::report_redundant_const_qualifier(self->dctx, self->allocator, span);
             *error = true;
@@ -1103,7 +1105,7 @@ pub struct Analyzer {
                 for (var i: usize = 0; i < named_type.type_args.len(); i += 1) {
                     const arg = named_type.type_args.get(i).unwrap();
                     switch (*arg) {
-                        case .Type(inner, _) => self->check_type_formation_rec(&inner, span, error);
+                        case .Type(inner, _) => self->check_type_formation_recuresively(&inner, span, error);
                         case .Infer => {}
                     }
                 }
@@ -1133,7 +1135,7 @@ pub struct Analyzer {
                     );
                     *error = true;
                 }
-                self->check_type_formation_rec(array_type.element_type, span, error);
+                self->check_type_formation_recuresively(array_type.element_type, span, error);
             }
 
             case .FuncType(func_type) => {
@@ -1143,9 +1145,9 @@ pub struct Analyzer {
                         diags::report_void_parameter_type(self->dctx, self->allocator, func_type.span);
                         *error = true;
                     }
-                    self->check_type_formation_rec(param, span, error);
+                    self->check_type_formation_recuresively(param, span, error);
                 }
-                self->check_type_formation_rec(func_type.ret_type, span, error);
+                self->check_type_formation_recuresively(func_type.ret_type, span, error);
             }
 
             case .Tuple(tuple_type) => {
@@ -1159,7 +1161,7 @@ pub struct Analyzer {
                         );
                         *error = true;
                     }
-                    self->check_type_formation_rec(&element->ty, span, error);
+                    self->check_type_formation_recuresively(&element->ty, span, error);
                 }
             }
 
@@ -1174,8 +1176,8 @@ pub struct Analyzer {
                 }
             }
 
-            case .Const(inner) => self->check_type_formation_rec(inner, span, error);
-            case .Pointer(inner) => self->check_type_formation_rec(inner, span, error);
+            case .Const(inner) => self->check_type_formation_recuresively(inner, span, error);
+            case .Pointer(inner) => self->check_type_formation_recuresively(inner, span, error);
 
             else => {
                 // Plain/InterfaceObject/GenericParam/InferVar/Unresolved/Err/Placeholder: nothing
@@ -2442,6 +2444,7 @@ pub struct Analyzer {
                             }
                             case .Typed(ty_inner) => {
                                 const coerce = self->coerce_interface_object_recursively(&ty_inner, interface_object, span);
+                                
                                 params.variadic = .Some(alloc_init(
                                     self->allocator,
                                     cir::TypedFuncTypeVariadicParam.Typed(coerce)
@@ -2473,20 +2476,20 @@ pub struct Analyzer {
         target_type: const cir::TypedArrayType*
     ) bool {
         switch (value_type->capacity) {
-            case .Fixed(value_cap) => {
+            case .Fixed(value_capacity) => {
                 switch (target_type->capacity) {
-                    case .Fixed(target_cap) => {
-                        const v = fold_const_expr_int(self->decl_tables, self->registry, value_cap);
-                        const t = fold_const_expr_int(self->decl_tables, self->registry, target_cap);
+                    case .Fixed(target_capacity) => {
+                        const value = fold_const_expr_int(self->decl_tables, self->registry, value_capacity);
+                        const target = fold_const_expr_int(self->decl_tables, self->registry, target_capacity);
 
-                        switch (v) {
-                            case .None => return false;
-                            case .Some(vv) => {
-                                switch (t) {
+                        switch (value) {
+                            case .Some(value) => {
+                                switch (target) {
+                                    case .Some(target) => return cir::integer_literal_eq(value, target);
                                     case .None => return false;
-                                    case .Some(tv) => return cir::integer_literal_eq(vv, tv);
                                 }
                             }
+                            case .None => return false;
                         }
                     }
                     case .Slice => return false;
@@ -2558,16 +2561,16 @@ pub struct Analyzer {
         var expr_type: Option<cir::SemaType> = .None;
 
         switch (expr->kind) {
-            case .Symbol(var sym) => {
-                const decl_id_opt = analyze_symbol_expr(self->registry, &sym);
-                expr->kind = .Symbol(sym);
+            case .Symbol(var symbol) => {
+                const decl_id_opt = analyze_symbol_expr(self->registry, &symbol);
+                expr->kind = .Symbol(symbol);
 
                 switch (decl_id_opt) {
                     case .Some(decl_id) => {
-                        expr_type = self->resolve_symbol_type(decl_id, sym.span(), 0);
+                        expr_type = self->resolve_symbol_type(decl_id, symbol.span(), 0);
                     }
                     case .None => {
-                        switch (sym.as_symbol_id()) {
+                        switch (symbol.as_symbol_id()) {
                             case .Some(symbol_id) => {
                                 switch (self->registry->symbol_name(symbol_id)) {
                                     case .Some(var name) => {
@@ -2627,9 +2630,9 @@ pub struct Analyzer {
                 expr->kind = .Infix(infix);
             }
             
-            case .AddrOf(var addr_of) => {
-                expr_type = self->analyze_addr_of(&addr_of);
-                expr->kind = .AddrOf(addr_of);
+            case .AddrOf(var addr) => {
+                expr_type = self->analyze_addr_of(&addr);
+                expr->kind = .AddrOf(addr);
             }
             
             case .Deref(var deref) => {
@@ -3430,26 +3433,26 @@ pub struct Analyzer {
         }
     }
 
-    pub fn analyze_addr_of(self: Self*, addr_of: cir::TypedAddrOfExpr*) Option<cir::SemaType> {
-        const expected_type = addr_of->operand->ty;
+    pub fn analyze_addr_of(self: Self*, addr: cir::TypedAddrOfExpr*) Option<cir::SemaType> {
+        const expected_type = addr->operand->ty;
 
         var operand_type: cir::SemaType = .Placeholder;
 
-        switch (self->analyze_expr(addr_of->operand, expected_type)) {
+        switch (self->analyze_expr(addr->operand, expected_type)) {
             case .Some(ty) => operand_type = *ty.const_inner();
             case .None => return .None;
         }
 
         if (operand_type.contains_error()) {
-            return .Some(.Err(addr_of->span));
+            return .Some(.Err(addr->span));
         }
 
-        if (!addr_of->operand->is_lvalue()) {
-            diags::report_address_of_rvalue(self->dctx, self->allocator, addr_of->span);
+        if (!addr->operand->is_lvalue()) {
+            diags::report_address_of_rvalue(self->dctx, self->allocator, addr->span);
             return .None;
         }
 
-        if (addr_of->operand->val_cat.is_const_lvalue()) {
+        if (addr->operand->val_cat.is_const_lvalue()) {
             switch (operand_type) {
                 case .Pointer(pointee) => {
                     var inner: cir::SemaType = *pointee;
@@ -10468,14 +10471,16 @@ pub struct Analyzer {
             const ty = self->expand_sema_type(normalized, implement_interface->span);
 
             switch (ty.as_named_interface()) case .Some(interface_id) else {
-                var sym = format::format_sema_type(self->allocator, self->decl_tables, &ty);
-                defer sym.free();
+                var symbol = format::format_sema_type(self->allocator, self->decl_tables, &ty);
+                
                 diags::report_non_interface_symbol(
                     self->dctx,
                     self->allocator,
                     implement_interface->span,
-                    sym.as_str_const()
+                    symbol.as_str_const()
                 );
+
+                symbol.free();
                 continue;
             }
 
@@ -11908,17 +11913,17 @@ fn method_decls_of_named_type(
     named_type: const cir::NamedType*
 ) Option<const cir::MethodDecls*> {
     switch (named_type->type_decl_id) {
-        case .Struct(id) => {
-            const decl = decl_tables->structs.get_const(id).unwrap();
-            return .Some(&decl->methods);
+        case .Struct(struct_decl_id) => {
+            const struct_decl = decl_tables->structs.get_const(struct_decl_id).unwrap();
+            return .Some(&struct_decl->methods);
         }
-        case .Enum(id) => {
-            const decl = decl_tables->enums.get_const(id).unwrap();
-            return .Some(&decl->methods);
+        case .Enum(enum_decl_id) => {
+            const enum_decl = decl_tables->enums.get_const(enum_decl_id).unwrap();
+            return .Some(&enum_decl->methods);
         }
-        case .Union(id) => {
-            const decl = decl_tables->unions.get_const(id).unwrap();
-            return .Some(&decl->methods);
+        case .Union(union_decl_id) => {
+            const union_decl = decl_tables->unions.get_const(union_decl_id).unwrap();
+            return .Some(&union_decl->methods);
         }
         case .Interface | .Typedef => return .None;
     }
@@ -11930,17 +11935,17 @@ fn implement_interfaces_of_named_type(
     named_type: const cir::NamedType*
 ) Option<const Vec<cir::TypedImplementInterface>*> {
     switch (named_type->type_decl_id) {
-        case .Struct(id) => {
-            const decl = decl_tables->structs.get_const(id).unwrap();
-            return .Some(&decl->impls);
+        case .Struct(struct_decl_id) => {
+            const struct_decl = decl_tables->structs.get_const(struct_decl_id).unwrap();
+            return .Some(&struct_decl->impls);
         }
-        case .Enum(id) => {
-            const decl = decl_tables->enums.get_const(id).unwrap();
-            return .Some(&decl->impls);
+        case .Enum(enum_decl_id) => {
+            const enum_decl = decl_tables->enums.get_const(enum_decl_id).unwrap();
+            return .Some(&enum_decl->impls);
         }
-        case .Union(id) => {
-            const decl = decl_tables->unions.get_const(id).unwrap();
-            return .Some(&decl->impls);
+        case .Union(union_decl_id) => {
+            const union_decl = decl_tables->unions.get_const(union_decl_id).unwrap();
+            return .Some(&union_decl->impls);
         }
         case .Interface | .Typedef => return .None;
     }
@@ -11952,7 +11957,8 @@ fn is_plain_type_assignable_to(value_type: cir::PlainType, target_type: cir::Pla
     }
 
     if (value_type.is_integer() && target_type.is_integer()) {
-        const signedness = (value_type.is_signed() && target_type.is_signed())
+        const signedness = 
+            (value_type.is_signed() && target_type.is_signed())
             || (!value_type.is_signed() && !target_type.is_signed());
 
         const rank1 = cir::PlainType.plain_type_rank(&value_type);
@@ -12034,7 +12040,7 @@ fn asm_trim_constraint(allocator: Allocator, constraint: const uint8*) String {
 fn asm_is_integer_bool_or_pointer(ty: const cir::SemaType*) bool {
     switch (*ty) {
         case .Const(inner) => return asm_is_integer_bool_or_pointer(inner);
-        case .Plain(p) => return p.is_integer_or_bool();
+        case .Plain(plain) => return plain.is_integer_or_bool();
         case .Pointer => return true;
         else => return false;
     }
@@ -12042,6 +12048,7 @@ fn asm_is_integer_bool_or_pointer(ty: const cir::SemaType*) bool {
 
 fn switch_ranges_valid(existing: const Vec<usize>*, new_ranges: const Vec<usize>*) bool {
     var i: usize = 0;
+
     while (i + 1 < new_ranges->len()) {
         const new_start = *new_ranges->get_const(i).unwrap();
         const new_end = *new_ranges->get_const(i + 1).unwrap();
@@ -12077,7 +12084,6 @@ fn tuple_access_expr(
 ) cir::TypedExpr {
     var expr: cir::TypedExpr = *base_expr;
     var current_type = expr.ty;
-
     var done = false;
     
     for (var i: usize = 0; i < access_path->len() && !done; i += 1) {
@@ -12289,7 +12295,7 @@ fn analyze_symbol_expr_readonly(
     return symbol_expr->as_decl_id();
 }
 
-
+[[inline]]
 fn integer_suffix_to_sema_type(suffix: IntegerSuffix) Option<cir::SemaType> {
     switch (suffix) {
         case .ISize => return .Some(.Plain(.ISize));
@@ -12307,6 +12313,7 @@ fn integer_suffix_to_sema_type(suffix: IntegerSuffix) Option<cir::SemaType> {
     }
 }
 
+[[inline]]
 fn float_suffix_to_sema_type(suffix: FloatSuffix) Option<cir::SemaType> {
     switch (suffix) {
         case .Float16 => return .Some(.Plain(.Float16));
