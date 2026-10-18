@@ -193,6 +193,7 @@ fn command_run(ctx: cli::ActionContext) {
         temp_dir.free();
         ctx.opts->free();
         exit(1);
+        @unreachable();
     }
 
     switch (lexical.parse_source(source_tokens)) case .Value(var program) else {
@@ -202,6 +203,7 @@ fn command_run(ctx: cli::ActionContext) {
         temp_dir.free();
         ctx.opts->free();
         exit(1);
+        @unreachable();
     }
 
     resolver.resolve_entry(source_tokens.source_id, file_path, &program);
@@ -248,6 +250,7 @@ fn command_run(ctx: cli::ActionContext) {
 
             if (backend.as_str_const() == "llvm") {
                 exit_with_compile_error("LLVM backend is not supported yet");
+                @unreachable();
             } else if (backend.as_str_const() == "c") {
                 var out = String.new(allocator);
                 const writer: Writer = dynamic StringWriter.new(&out);
@@ -274,6 +277,7 @@ fn command_run(ctx: cli::ActionContext) {
                     free_driver_resources(&driver, &resolver, &opts);
                     ctx.opts->free();
                     exit_with_compile_error("failed to compile the input file");
+                    @unreachable();
                 }
 
                 out.free();
@@ -289,6 +293,7 @@ fn command_run(ctx: cli::ActionContext) {
                 run = true;
             } else {
                 exit_with_compile_error("unknown backend (expected `c` or `llvm`)");
+                @unreachable();
             }
 
             backend.free();
@@ -307,11 +312,13 @@ fn command_run(ctx: cli::ActionContext) {
     if (run) {
         ctx.opts->free();
         exit(exit_code);
+        @unreachable();
     }
 
     if (error) {
         ctx.opts->free();
         exit(1);
+        @unreachable();
     }
 }
 
@@ -381,6 +388,7 @@ fn command_build(ctx: cli::ActionContext) {
         output_path.free();
         ctx.opts->free();
         exit(1);
+        @unreachable();
     }
     defer source_tokens.free();
 
@@ -390,6 +398,7 @@ fn command_build(ctx: cli::ActionContext) {
         output_path.free();
         ctx.opts->free();
         exit(1);
+        @unreachable();
     }
     defer program.free();
 
@@ -432,9 +441,7 @@ fn command_build(ctx: cli::ActionContext) {
                 else => {}
             }
 
-            if (backend.as_str_const() == "llvm") {
-                exit_with_compile_error("LLVM backend is not supported yet");
-            } else if (backend.as_str_const() == "c") {
+            if (backend.as_str_const() == "c") {
                 var out = String.new(allocator);
                 const writer: Writer = dynamic StringWriter.new(&out);
 
@@ -459,11 +466,16 @@ fn command_build(ctx: cli::ActionContext) {
                     free_driver_resources(&driver, &resolver, &opts);
                     ctx.opts->free();
                     exit_with_compile_error("failed to compile the input file");
+                    @unreachable();
                 }
 
                 out.free();
+            } else if (backend.as_str_const() == "llvm") {
+                exit_with_compile_error("LLVM backend is not supported yet");
+                @unreachable();
             } else {
                 exit_with_compile_error("unknown backend (expected `c` or `llvm`)");
+                @unreachable();
             }
             backend.free();
         }
@@ -479,6 +491,7 @@ fn command_build(ctx: cli::ActionContext) {
     if (error) {
         ctx.opts->free();
         exit(1);
+        @unreachable();
     }
 }
 
@@ -772,6 +785,7 @@ fn apply_profile_option(allocator: Allocator, ctx_opts: const cli::Opts*, opts: 
         opts->profile = .Debug;
     } else {
         exit_with_compile_error("invalid profile (expected `debug` or `release`)");
+        @unreachable();
     }
 }
 

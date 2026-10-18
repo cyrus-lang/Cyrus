@@ -57,7 +57,7 @@ pub struct Emitter {
     needs_assert_helper: bool,
     needs_memcpy_proto: bool,
     needs_memset_proto: bool,
-    needs_fprintf_proto: bool,
+    needs_write_proto: bool,
     needs_abort_proto: bool,
     needs_stddef_header: bool,
 
@@ -95,7 +95,7 @@ pub struct Emitter {
             needs_assert_helper: false,
             needs_memcpy_proto: false,
             needs_memset_proto: false,
-            needs_fprintf_proto: false,
+            needs_write_proto: false,
             needs_abort_proto: false,
             needs_stddef_header: false,
             needs_panic_helper: false,
@@ -235,22 +235,57 @@ pub struct Emitter {
             writer.write(self->libc_protos.as_str_const());
         }
 
+        if (self->needs_panic_helper || self->needs_assert_helper) {
+            writer.write("static void __cyrus_write_cstr(int fd, const char *s) {\n");
+            writer.write("    const char *p = s;\n");
+            writer.write("    while (*p) { p += 1; }\n");
+            writer.write("    write(fd, s, (unsigned long)(p - s));\n");
+            writer.write("}\n\n");
+        }
+
         if (self->needs_panic_helper) {
             writer.write("static void __cyrus_panic_(const char *mesg) {\n");
-            writer.write("    fprintf(stderr, \"panic: %s");
+            writer.write("    __cyrus_write_cstr(2, \"panic: \");\n");
+            writer.write("    __cyrus_write_cstr(2, mesg);\n");
+            writer.write("    __cyrus_write_cstr(2, \"");
             writer.write_char('\\');
-            writer.write("n\", mesg);\n");
+            writer.write_char('n');
+            writer.write("\");\n");
             writer.write("    abort();\n");
             writer.write("}\n\n");
         }
 
         if (self->needs_assert_helper) {
+            writer.write("static void __cyrus_write_int(int fd, int value) {\n");
+            writer.write("    char buf[16];\n");
+            writer.write("    int i = 15;\n");
+            writer.write("    unsigned int u = (unsigned int)value;\n");
+            writer.write("    if (value < 0) { u = (unsigned int)(-(value + 1)) + 1u; }\n");
+            writer.write("    buf[i] = 0;\n");
+            writer.write("    do { i -= 1; buf[i] = (char)(48 + (u % 10)); u /= 10; } while (u > 0);\n");
+            writer.write("    if (value < 0) { i -= 1; buf[i] = '-'; }\n");
+            writer.write("    write(fd, buf + i, (unsigned long)(15 - i));\n");
+            writer.write("}\n\n");
+
             writer.write("static void __cyrus_assert_fail_(const char *file, int line, const char *mesg) {\n");
-            writer.write("    fprintf(stderr, \"assertion failed: %s at %s:%d");
+            writer.write("    __cyrus_write_cstr(2, \"assertion failed: \");\n");
+            writer.write("    __cyrus_write_cstr(2, mesg);\n");
+            writer.write("    __cyrus_write_cstr(2, \" at \");\n");
+            writer.write("    __cyrus_write_cstr(2, file);\n");
+            writer.write("    __cyrus_write_cstr(2, \":\");\n");
+            writer.write("    __cyrus_write_int(2, line);\n");
+            writer.write("    __cyrus_write_cstr(2, \"");
             writer.write_char('\\');
-            writer.write("n\", mesg, file, line);\n");
+            writer.write_char('n');
+            writer.write("\");\n");
             writer.write("    abort();\n");
             writer.write("}\n\n");
+        }
+
+        if (self->types.used_int128) {
+            writer.write("typedef struct { uint64_t lo; int64_t hi; } __cyrus_int128;\n");
+            writer.write("typedef struct { uint64_t lo; uint64_t hi; } __cyrus_uint128;\n");
+            writer.write("\n");
         }
 
         writer.write(self->types.type_out.as_str_const());
@@ -275,6 +310,10 @@ pub struct Emitter {
     /* ************* Globals ************* */
 
     fn emit_global(self: Self*, global_var: const cir::TypedGlobalVarStmt*) {
+        if (!global_var->is_static) {
+            return;
+        }
+
         var name = mangle::mangle_global(
             self->allocator,
             &self->types.maps,
@@ -284,8 +323,8 @@ pub struct Emitter {
         );
 
         switch (global_var->modifiers.extern_) {
-            case .Some(ext) => {
-                switch (ext) {
+            case .Some(extern_) => {
+                switch (extern_) {
                     case .C => {
                         // Extern declaration only
                         switch (global_var->ty) {
@@ -3373,25 +3412,23 @@ pub struct Emitter {
         self->libc_protos.push_str("void abort(void);\n");
     }
 
-    fn ensure_fprintf_proto(self: Self*) {
-        if (self->needs_fprintf_proto) {
+    fn ensure_write_proto(self: Self*) {
+        if (self->needs_write_proto) {
             return;
         }
-        self->needs_fprintf_proto = true;
-        self->libc_protos.push_str("struct __cyrus_FILE;\n");
-        self->libc_protos.push_str("extern struct __cyrus_FILE *stderr;\n");
-        self->libc_protos.push_str("int fprintf(struct __cyrus_FILE *stream, const char *format, ...);\n");
+        self->needs_write_proto = true;
+        self->libc_protos.push_str("extern long write(int fd, const void *buf, unsigned long n);\n");
     }
 
     fn note_panic_use(self: Self*) {
         self->needs_panic_helper = true;
-        self->ensure_fprintf_proto();
+        self->ensure_write_proto();
         self->ensure_abort_proto();
     }
 
     fn note_assert_use(self: Self*) {
         self->needs_assert_helper = true;
-        self->ensure_fprintf_proto();
+        self->ensure_write_proto();
         self->ensure_abort_proto();
     }
 

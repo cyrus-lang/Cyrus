@@ -77,6 +77,7 @@ pub struct TypeEmitter {
     pub fat_ptr_emitted: bool,
     pub used_bool: bool,
     pub used_stdint: bool,
+    pub used_int128: bool,
 
     pub fn new(
         allocator: Allocator,
@@ -84,6 +85,7 @@ pub struct TypeEmitter {
         registry: GlobalSymbolRegistry*,
         maps: mangle::ModuleMaps
     ) Self {
+        // FIXME
         const target = TargetInfo {
             arch: .X86_64,
             os: .Linux,
@@ -106,6 +108,7 @@ pub struct TypeEmitter {
             fat_ptr_emitted: false,
             used_bool: false,
             used_stdint: false,
+            used_int128: false,
         };
     }
 
@@ -227,6 +230,12 @@ pub struct TypeEmitter {
             | .Float128 => {}
             
             case .Bool => self->used_bool = true;
+
+            case .Int128 
+            | .UInt128 => {
+                self->used_int128 = true;
+                self->used_stdint = true;
+            }
             
             else => self->used_stdint = true;
         }
@@ -1188,12 +1197,12 @@ pub fn emit_plain_type(plain: cir::PlainType) const uint8* {
         case .Int16 => return "int16_t";
         case .Int32 => return "int32_t";
         case .Int64 => return "int64_t";
-        case .Int128 => return "__int128";
+        case .Int128 => return "__cyrus_int128";
         case .UInt8 => return "uint8_t";
         case .UInt16 => return "uint16_t";
         case .UInt32 => return "uint32_t";
         case .UInt64 => return "uint64_t";
-        case .UInt128 => return "unsigned __int128";
+        case .UInt128 => return "__cyrus_uint128";
         case .Float16 => return "float";
         case .Float32 => return "float";
         case .Float64 => return "double";
