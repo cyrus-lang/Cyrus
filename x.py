@@ -851,7 +851,15 @@ def ensure_tcc(cfg: Config) -> Path:
     
     log(STYLE.cyan(f"building libtcc.a in {tcc_build_dir} ..."))
     
-    run_cmd(["make"], cwd=tcc_dir, capture=False)
+    env = os.environ.copy()
+    machine = os.uname().machine
+    multiarch_include = Path(f"/usr/include/{machine}-linux-gnu")
+    if multiarch_include.is_dir():
+        env["CONFIGURE_FLAGS"] = (
+            f"--sysincludepaths={{B}}/include:/usr/include:{multiarch_include}"
+        )
+
+    run_cmd(["make"], cwd=tcc_dir, env=env, capture=False)
     
     if not libtcc.is_file():
         raise SystemExit(f"error: libtcc.a was not produced at {libtcc}")

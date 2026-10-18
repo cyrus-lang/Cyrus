@@ -287,6 +287,23 @@ pub struct ParserExprs {
         base: ast::ASTType,
         start: Span
     ) Option<ast::NodeId> {
+        if (self->state->is(.Asterisk) && self->pointer_suffix_ahead()) {
+            var curr_type = base;
+            while (self->state->is(.Asterisk)) {
+                self->state->next();
+                const node_id = self->program->create_node(.Type(curr_type));
+                curr_type = .Pointer(node_id);
+            }
+            const ty = curr_type;
+            const operand = self->create_expr(.Type(ty));
+
+            if (self->state->is(.LeftBrace)) {
+                return self->parse_struct_init(operand, start);
+            }
+
+            return .Some(operand);
+        }
+
         if (self->state->is(.LessThan) && self->type_args_ahead()) {
             switch (self->parse_type_args()) case .Some(type_args) else {
                 return .None;
@@ -912,7 +929,30 @@ pub struct ParserExprs {
         return false;
     }
 
-    /// True for tokens that cannot follow a type expression, meaning the
+    fn pointer_suffix_ahead(self: Self*) bool {
+        var i: usize = 1;
+        while (true) {
+            switch (self->state->peek_n(i)) {
+                case .Some(token) => {
+                    switch (*token->kind) {
+                        case .Asterisk => {
+                            i += 1;
+                        }
+                        case .Comma | .RightParen | .RightBracket | .RightBrace | .Semicolon | .Colon | .GreaterThan => {
+                            return true;
+                        }
+                        else => {
+                            return false;
+                        }
+                    }
+                }
+                case .None => {
+                    return true;
+                }
+            }
+        }
+        return true;
+    }
     /// preceding `<` was a comparison operator.
     fn token_disqualifies_type_arg(self: Self*, kind: TokenKind) bool {
         switch (kind) {

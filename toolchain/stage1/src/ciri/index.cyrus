@@ -67,21 +67,6 @@ fn fold_const_expr_int_depth(
                                 else => {}
                             }
                         }
-                        case .Var(var_decl_id) => {
-                            const var_decl = decl_tables->vars.get_const(var_decl_id).unwrap();
-
-                            switch (var_decl->rhs) {
-                                case .Some(rhs) => {
-                                    return fold_const_expr_int_depth(
-                                        decl_tables, 
-                                        registry, 
-                                        &rhs,
-                                        depth + 1
-                                    );
-                                }
-                                case .None => {}
-                            }
-                        }
                         else => return .None;
                     }
                 }
