@@ -750,6 +750,28 @@ pub struct TypeEmitter {
         );
     }
 
+    pub fn enum_c_name_for_ty(self: Self*, ty: const cir::SemaType*) String {
+        switch (*ty->const_inner()) {
+            case .Named(named) => {
+                switch (named.type_decl_id) {
+                    case .Enum(id) => {
+                        if (!named.type_args.is_empty()) {
+                            return self->generic_inst_c_name(&named.type_decl_id, &named.type_args);
+                        }
+                        return self->enum_c_name(id);
+                    }
+                    else => {}
+                }
+            }
+            else => {}
+        }
+
+        switch (ty->as_enum()) {
+            case .Some(id) => return self->enum_c_name(id);
+            else => return String.from_str(self->allocator, "void");
+        }
+    }
+
     pub fn struct_c_name(self: Self*, struct_decl_id: cir::StructDeclId) String {
         switch (self->tables->structs.get_const(struct_decl_id)) {
             case .None => return String.from_str(self->allocator, "void");
@@ -996,6 +1018,10 @@ pub struct TypeEmitter {
                         base.push_str("__");
                         base.push_str(targs.as_str_const());
 
+                        var owned_name = String.from_str(self->allocator, base.as_str_const());
+                        self->generic_inst_names.push(owned_name);
+                        self->generic_inst_sigs.push(sig);
+
                         self->type_out.push_str("typedef struct ");
                         self->type_out.push_str(base.as_str_const());
                         self->type_out.push(' ');
@@ -1040,8 +1066,6 @@ pub struct TypeEmitter {
 
                         self->type_out.push_str("};\n\n");
 
-                        var owned_name = String.from_str(self->allocator, base.as_str_const());
-                        self->generic_inst_names.push(owned_name);
                         base.free();
                     }
                     else => {}
@@ -1066,6 +1090,10 @@ pub struct TypeEmitter {
                         );
                         base.push_str("__");
                         base.push_str(targs.as_str_const());
+
+                        var owned_name = String.from_str(self->allocator, base.as_str_const());
+                        self->generic_inst_names.push(owned_name);
+                        self->generic_inst_sigs.push(sig);
 
                         self->type_out.push_str("typedef union ");
                         self->type_out.push_str(base.as_str_const());
@@ -1109,8 +1137,212 @@ pub struct TypeEmitter {
 
                         self->type_out.push_str("};\n\n");
 
+                        base.free();
+                    }
+                    else => {}
+                }
+            }
+            case .Enum(enum_decl_id) => {
+                switch (self->tables->enums.get_const(enum_decl_id)) {
+                    case .Some(enum_decl) => {
+                        emitted = true;
+
+                        var name_opt: Option<const uint8*> = .None;
+                        switch (enum_decl->name) {
+                            case .Some(enum_name) => name_opt = .Some(enum_name.as_str_const());
+                            else => {}
+                        }
+
+                        var base = mangle::mangle_type(
+                            self->allocator,
+                            mangle::module_for_enum(&self->maps, enum_decl_id),
+                            name_opt,
+                            enum_decl_id
+                        );
+
+                        base.push_str("__");
+                        base.push_str(targs.as_str_const());
+
                         var owned_name = String.from_str(self->allocator, base.as_str_const());
                         self->generic_inst_names.push(owned_name);
+                        self->generic_inst_sigs.push(sig);
+
+                        const scalar = is_enum_scalar_optimizable(self->tables, enum_decl);
+                        const tags = self->tctx.enum_variant_tags(enum_decl_id, enum_decl);
+
+                        if (scalar) {
+                            var tag_ty = enum_tag_type(self->tables, self->registry, enum_decl);
+                            var tag_name = self->type_name(&tag_ty);
+
+                            self->type_out.push_str("typedef ");
+                            self->type_out.push_str(tag_name.as_str_const());
+                            self->type_out.push(' ');
+                            self->type_out.push_str(base.as_str_const());
+                            self->type_out.push_str(";\n");
+
+                            for (var variant_index: usize = 0; variant_index < enum_decl->variants.len(); variant_index += 1) {
+                                const variant = enum_decl->variants.get_const(variant_index).unwrap();
+                                self->type_out.push_str("#define ");
+                                self->type_out.push_str(base.as_str_const());
+                                self->type_out.push('_');
+                                self->type_out.push_str(variant->name());
+                                self->type_out.push_str(" ((");
+                                self->type_out.push_str(base.as_str_const());
+                                self->type_out.push_str(")");
+                                push_u32_into(&self->type_out, self->allocator, tags->get_owned(variant_index).unwrap());
+                                self->type_out.push_str(")\n");
+                            }
+
+                            tag_name.free();
+                            self->type_out.push_str("\n");
+                        } else {
+                            var tag_ty = enum_tag_type(self->tables, self->registry, enum_decl);
+                            var tag_name = self->type_name(&tag_ty);
+
+                            self->type_out.push_str("typedef struct ");
+                            self->type_out.push_str(base.as_str_const());
+                            self->type_out.push(' ');
+                            self->type_out.push_str(base.as_str_const());
+                            self->type_out.push_str(";\n");
+
+                            for (var variant_index: usize = 0; variant_index < enum_decl->variants.len(); variant_index += 1) {
+                                const variant = enum_decl->variants.get_const(variant_index).unwrap();
+                                const tag = tags->get_owned(variant_index).unwrap();
+
+                                switch (*variant) {
+                                    case .Unit => {}
+                                    case .Valued { value, .. } => {
+                                        switch (value->ty) {
+                                            case .Some(payload_ty) => {
+                                                var subst = cir::substitute_sema_type_with_type_args(
+                                                    self->allocator,
+                                                    &payload_ty,
+                                                    &enum_decl->generic_params,
+                                                    type_args
+                                                );
+                                                self->ensure_named(&subst);
+                                                var vname = self->enum_variant_type_name(&base, tag);
+                                                var value_decl = self->build_decl(&subst, "value");
+                                                self->type_out.push_str("typedef struct ");
+                                                self->type_out.push_str(vname.as_str_const());
+                                                self->type_out.push_str(" { ");
+                                                self->type_out.push_str(value_decl.as_str_const());
+                                                self->type_out.push_str("; } ");
+                                                self->type_out.push_str(vname.as_str_const());
+                                                self->type_out.push_str(";\n");
+                                                value_decl.free();
+                                                vname.free();
+                                            }
+                                            else => {}
+                                        }
+                                    }
+                                    case .Tuple { fields, .. } => {
+                                        var vname = self->enum_variant_type_name(&base, tag);
+                                        self->type_out.push_str("typedef struct ");
+                                        self->type_out.push_str(vname.as_str_const());
+                                        self->type_out.push_str(" { ");
+                                        for (var field_index: usize = 0; field_index < fields.len(); field_index += 1) {
+                                            const field = fields.get_const(field_index).unwrap();
+                                            var subst = cir::substitute_sema_type_with_type_args(
+                                                self->allocator,
+                                                &field->ty,
+                                                &enum_decl->generic_params,
+                                                type_args
+                                            );
+                                            self->ensure_named(&subst);
+                                            var fname = tuple_field_name(self->allocator, field_index);
+                                            var field_decl = self->build_decl(&subst, fname.as_str_const());
+                                            self->type_out.push_str(field_decl.as_str_const());
+                                            self->type_out.push_str("; ");
+                                            field_decl.free();
+                                            fname.free();
+                                        }
+                                        self->type_out.push_str("} ");
+                                        self->type_out.push_str(vname.as_str_const());
+                                        self->type_out.push_str(";\n");
+                                        vname.free();
+                                    }
+                                    case .Struct { fields, .. } => {
+                                        var vname = self->enum_variant_type_name(&base, tag);
+                                        self->type_out.push_str("typedef struct ");
+                                        self->type_out.push_str(vname.as_str_const());
+                                        self->type_out.push_str(" { ");
+                                        for (var field_index: usize = 0; field_index < fields.len(); field_index += 1) {
+                                            const field = fields.get_const(field_index).unwrap();
+                                            var subst = cir::substitute_sema_type_with_type_args(
+                                                self->allocator,
+                                                &field->ty,
+                                                &enum_decl->generic_params,
+                                                type_args
+                                            );
+                                            self->ensure_named(&subst);
+                                            var field_decl = self->build_decl(&subst, field->name.str.as_str_const());
+                                            self->type_out.push_str(field_decl.as_str_const());
+                                            self->type_out.push_str("; ");
+                                            field_decl.free();
+                                        }
+                                        self->type_out.push_str("} ");
+                                        self->type_out.push_str(vname.as_str_const());
+                                        self->type_out.push_str(";\n");
+                                        vname.free();
+                                    }
+                                }
+                            }
+
+                            const enum_layout = self->tctx.compute_enum_layout_inst(enum_decl, type_args);
+
+                            self->type_out.push_str("struct ");
+                            self->type_out.push_str(base.as_str_const());
+                            self->type_out.push_str(" {\n    ");
+                            self->type_out.push_str(tag_name.as_str_const());
+                            self->type_out.push_str(" tag;\n    union {\n");
+
+                            for (var variant_index: usize = 0; variant_index < enum_decl->variants.len(); variant_index += 1) {
+                                const variant = enum_decl->variants.get_const(variant_index).unwrap();
+                                const tag = tags->get_owned(variant_index).unwrap();
+
+                                switch (*variant) {
+                                    case .Unit => {}
+                                    else => {
+                                        var vname = self->enum_variant_type_name(&base, tag);
+                                        self->type_out.push_str("        ");
+                                        self->type_out.push_str(vname.as_str_const());
+                                        self->type_out.push_str(" v");
+                                        push_u32_into(&self->type_out, self->allocator, tag);
+                                        self->type_out.push_str(";\n");
+                                        vname.free();
+                                    }
+                                }
+                            }
+
+                            var raw_member_decl = String.new(self->allocator);
+                            var raw_writer: Writer = dynamic StringWriter.new(&raw_member_decl);
+                            raw_writer.write("        uint8_t raw[");
+                            format_uint32(raw_writer, enum_layout->size);
+                            raw_writer.write("];\n");
+                            self->type_out.push_str(raw_member_decl.as_str_const());
+                            raw_member_decl.free();
+
+                            self->type_out.push_str("    } u;\n};\n\n");
+
+                            for (var variant_index: usize = 0; variant_index < enum_decl->variants.len(); variant_index += 1) {
+                                const variant = enum_decl->variants.get_const(variant_index).unwrap();
+                                const tag = tags->get_owned(variant_index).unwrap();
+                                self->type_out.push_str("#define ");
+                                self->type_out.push_str(base.as_str_const());
+                                self->type_out.push('_');
+                                self->type_out.push_str(variant->name());
+                                self->type_out.push_str(" ((");
+                                self->type_out.push_str(base.as_str_const());
+                                self->type_out.push_str(")");
+                                push_u32_into(&self->type_out, self->allocator, tag);
+                                self->type_out.push_str(")\n");
+                            }
+
+                            tag_name.free();
+                            self->type_out.push_str("\n");
+                        }
+
                         base.free();
                     }
                     else => {}
@@ -1121,9 +1353,7 @@ pub struct TypeEmitter {
 
         targs.free();
 
-        if (emitted) {
-            self->generic_inst_sigs.push(sig);
-        } else {
+        if (!emitted) {
             sig.free();
         }
     }

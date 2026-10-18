@@ -6,12 +6,14 @@ import std::hash{hash_usize, eq_usize};
 import std::collections{Vec};
 import std::option{Option};
 import std::mem{Allocator, alloc_init};
+import std::string{String};
 
 import abi::helpers{align_offset, extract_typedef_inner_type};
 import abi::layout{ABITypeLayout, ABIFieldOffsetInfo};
 import resolver::symbols{GlobalSymbolRegistry};
 import abi::target{TargetInfo};
 import cir::tables{DeclTables};
+import analyzer::format{format_sema_type};
 import ciri;
 import cir;
 
@@ -106,43 +108,51 @@ pub struct TypeContext {
             case .Plain(plan) => {
                 return self->own_layout(self->plain_type_layout(plan));
             }
+            
+            case .Const(inner) => {
+                return self->layout_of(inner);
+            }
 
             case .Named(named) => {
+                if (!named.type_args.is_empty()) {
+                    return self->instance_layout_of(&named);
+                }
+
                 switch (named.type_decl_id) {
-                    case .Struct(id) => {
-                        switch (self->struct_layouts.get_owned(id)) {
-                            case .Some(cached_address) => return self->layout_at(cached_address);
+                    case .Struct(struct_decl_id) => {
+                        switch (self->struct_layouts.get_owned(struct_decl_id)) {
+                            case .Some(cache) => return self->layout_at(cache);
                             else => {}
                         }
 
-                        const decl = self->tables->structs.get_const(id).unwrap();
+                        const decl = self->tables->structs.get_const(struct_decl_id).unwrap();
 
                         const struct_layout = self->compute_struct_layout(decl);
-                        self->struct_layouts.insert(id, @cast(uintptr, struct_layout));
+                        self->struct_layouts.insert(struct_decl_id, @cast(uintptr, struct_layout));
                         return struct_layout;
                     }
-                    case .Union(id) => {
-                        switch (self->union_layouts.get_owned(id)) {
-                            case .Some(cached_address) => return self->layout_at(cached_address);
+                    case .Union(union_decl_id) => {
+                        switch (self->union_layouts.get_owned(union_decl_id)) {
+                            case .Some(cache) => return self->layout_at(cache);
                             else => {}
                         }
 
-                        const decl = self->tables->unions.get_const(id).unwrap();
+                        const decl = self->tables->unions.get_const(union_decl_id).unwrap();
 
                         const union_layout = self->compute_union_layout(decl);
-                        self->union_layouts.insert(id, @cast(uintptr, union_layout));
+                        self->union_layouts.insert(union_decl_id, @cast(uintptr, union_layout));
                         return union_layout;
                     }
-                    case .Enum(id) => {
-                        switch (self->enum_layouts.get_owned(id)) {
-                            case .Some(cached_address) => return self->layout_at(cached_address);
+                    case .Enum(enum_decl_id) => {
+                        switch (self->enum_layouts.get_owned(enum_decl_id)) {
+                            case .Some(cache) => return self->layout_at(cache);
                             else => {}
                         }
 
-                        const decl = self->tables->enums.get_const(id).unwrap();
+                        const decl = self->tables->enums.get_const(enum_decl_id).unwrap();
 
                         const enum_layout = self->compute_enum_layout(decl);
-                        self->enum_layouts.insert(id, @cast(uintptr, enum_layout));
+                        self->enum_layouts.insert(enum_decl_id, @cast(uintptr, enum_layout));
                         return enum_layout;
                     }
                     case .Typedef => {
@@ -154,10 +164,18 @@ pub struct TypeContext {
 
                         return self->layout_of(resolved_typedef_inner);
                     }
-                    case .Interface => @panic("interface type in abi layout");
+            case .Interface => {
+                    const pointer_size = self->target_info.pointer_size();
+
+                    return self->own_layout(ABITypeLayout.normal(
+                        pointer_size * 2,
+                        pointer_size,
+                        Vec.new(self->allocator())
+                    ));
                 }
             }
-            
+        }
+
             case .Pointer => {
                 const pointer_size = self->target_info.pointer_size();
 
@@ -167,6 +185,7 @@ pub struct TypeContext {
                     Vec.new(self->allocator())
                 ));
             }
+
             case .FuncType => {
                 const pointer_size = self->target_info.pointer_size();
 
@@ -176,6 +195,7 @@ pub struct TypeContext {
                     Vec.new(self->allocator())
                 ));
             }
+
             case .Array(array) => {
                 const element_layout = self->layout_of(array.element_type);
 
@@ -199,6 +219,7 @@ pub struct TypeContext {
                     element_offsets
                 ));
             }
+
             case .Tuple(tuple) => {
                 var element_types: Vec<cir::SemaType> = Vec.new(self->allocator());
 
@@ -211,15 +232,100 @@ pub struct TypeContext {
                 element_types.free();
                 return tuple_layout;
             }
+
             case .InterfaceObject => {
                 const pointer_size = self->target_info.pointer_size();
+
                 return self->own_layout(ABITypeLayout.normal(
                     pointer_size * 2,
                     pointer_size,
                     Vec.new(self->allocator())
                 ));
             }
-            else => @panic("unresolved type in abi layout");
+
+            else => {
+                var type_str = format_sema_type(self->allocator(), self->tables, ty);
+                var msg = String.from_str(self->allocator(), "unresolved type in abi layout: ");
+                msg.push_str(type_str.as_str_const());
+                type_str.free();
+                @panic(msg.as_str_const());
+            }
+        }
+    }
+
+    fn instance_layout_of(self: Self*, named: const cir::NamedType*) ABITypeLayout* {
+        switch (named->type_decl_id) {
+            case .Struct(struct_decl_id) => {
+                const struct_decl = self->tables->structs.get_const(struct_decl_id).unwrap();
+                
+                var field_types: Vec<cir::SemaType> = Vec.new(self->allocator());
+
+                for (var i: usize = 0; i < struct_decl->fields.len(); i += 1) {
+                    const field = struct_decl->fields.get_const(i).unwrap();
+                    const field_type = cir::substitute_sema_type_with_type_args(
+                        self->allocator(),
+                        &field->ty,
+                        &struct_decl->generic_params,
+                        &named->type_args
+                    );
+                    field_types.push(field_type);
+                }
+
+                const layout = self->compute_fields_layout(
+                    &field_types, 
+                    struct_decl->is_packed(), 
+                    struct_decl->align
+                );
+                field_types.free();
+                return layout;
+            }
+            case .Union(union_decl_id) => {
+                const decl = self->tables->unions.get_const(union_decl_id).unwrap();
+                var field_types: Vec<cir::SemaType> = Vec.new(self->allocator());
+
+                for (var i: usize = 0; i < decl->fields.len(); i += 1) {
+                    const field = decl->fields.get_const(i).unwrap();
+                    const field_type = cir::substitute_sema_type_with_type_args(
+                        self->allocator(),
+                        &field->ty,
+                        &decl->generic_params,
+                        &named->type_args
+                    );
+                    field_types.push(field_type);
+                }
+
+                const layout = self->compute_union_layout_types(&field_types);
+                field_types.free();
+                return layout;
+            }
+            case .Enum(enum_decl_id) => {
+                const enum_decl = self->tables->enums.get_const(enum_decl_id).unwrap();
+                return self->compute_enum_layout_inst(enum_decl, &named->type_args);
+            }
+            case .Typedef(tyedef_decl_id) => {
+                const typedef_decl = self->tables->typedefs.get_const(tyedef_decl_id).unwrap();
+
+                if (typedef_decl->ty == null) {
+                    @panic("unresolved typedef in abi layout");
+                }
+
+                const subst = cir::substitute_sema_type_with_type_args(
+                    self->allocator(),
+                    typedef_decl->ty,
+                    &typedef_decl->generic_params,
+                    &named->type_args
+                );
+                return self->layout_of(&subst);
+            }
+            case .Interface => {
+                const pointer_size = self->target_info.pointer_size();
+
+                return self->own_layout(ABITypeLayout.normal(
+                    pointer_size * 2,
+                    pointer_size,
+                    Vec.new(self->allocator())
+                ));
+            }
         }
     }
 
@@ -352,6 +458,22 @@ pub struct TypeContext {
     }
 
     pub fn compute_enum_layout(self: Self*, decl: const cir::EnumDecl*) ABITypeLayout* {
+        return self->compute_enum_layout_inner(decl, null);
+    }
+
+    pub fn compute_enum_layout_inst(
+        self: Self*,
+        decl: const cir::EnumDecl*,
+        type_args: const cir::TypedTypeArgs*
+    ) ABITypeLayout* {
+        return self->compute_enum_layout_inner(decl, type_args);
+    }
+
+    fn compute_enum_layout_inner(
+        self: Self*,
+        decl: const cir::EnumDecl*,
+        type_args: const cir::TypedTypeArgs*
+    ) ABITypeLayout* {
         const tag_type = enum_tag_type(self->tables, self->registry, decl);
 
         if (is_enum_scalar_optimizable(self->tables, decl)) {
@@ -379,7 +501,18 @@ pub struct TypeContext {
                 case .Valued { value, .. } => {
                     switch (value->ty) {
                         case .Some(payload_type) => {
-                            const payload_layout = self->layout_of(&payload_type);
+                            var layout_ty: cir::SemaType = payload_type;
+
+                            if (type_args != null) {
+                                layout_ty = cir::substitute_sema_type_with_type_args(
+                                    self->allocator(),
+                                    &payload_type,
+                                    &decl->generic_params,
+                                    type_args
+                                );
+                            }
+
+                            const payload_layout = self->layout_of(&layout_ty);
                             variant_size = payload_layout->size;
                             variant_align = payload_layout->align;
                         }
@@ -391,7 +524,18 @@ pub struct TypeContext {
 
                     for (var j: usize = 0; j < fields.len(); j += 1) {
                         const field = fields.get_const(j).unwrap();
-                        payload_types.push(field->ty);
+                        var field_type: cir::SemaType = field->ty;
+
+                        if (type_args != null) {
+                            field_type = cir::substitute_sema_type_with_type_args(
+                                self->allocator(),
+                                &field->ty,
+                                &decl->generic_params,
+                                type_args
+                            );
+                        }
+
+                        payload_types.push(field_type);
                     }
 
                     const variant_layout = self->compute_fields_layout(&payload_types, false, .None);
@@ -405,7 +549,18 @@ pub struct TypeContext {
 
                     for (var j: usize = 0; j < fields.len(); j += 1) {
                         const field = fields.get_const(j).unwrap();
-                        payload_types.push(field->ty);
+                        var field_type: cir::SemaType = field->ty;
+
+                        if (type_args != null) {
+                            field_type = cir::substitute_sema_type_with_type_args(
+                                self->allocator(),
+                                &field->ty,
+                                &decl->generic_params,
+                                type_args
+                            );
+                        }
+
+                        payload_types.push(field_type);
                     }
 
                     const variant_layout = self->compute_fields_layout(&payload_types, false, .None);

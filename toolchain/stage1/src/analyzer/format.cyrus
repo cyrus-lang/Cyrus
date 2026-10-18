@@ -540,9 +540,9 @@ pub fn format_typed_expr(
             rhs_str.free();
             return out;
         }
-        case .AddrOf(addr_of) => {
+        case .AddrOf(addr) => {
             var out = String.from_str(allocator, "&");
-            var operand_str = format_typed_expr(allocator, registry, tables, addr_of.operand);
+            var operand_str = format_typed_expr(allocator, registry, tables, addr.operand);
             out.push_str(operand_str.as_str_const());
             operand_str.free();
             return out;

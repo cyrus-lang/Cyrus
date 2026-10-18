@@ -261,7 +261,8 @@ fn command_run(ctx: cli::ActionContext) {
                     &resolver.global_symbols,
                     &resolver.program_trees,
                     &analyzer.vtable_registry,
-                    &analyzer.monomorph_registry
+                    &analyzer.monomorph_registry,
+                    &driver.sctx
                 );
 
                 codegen.emit(writer);
@@ -451,7 +452,8 @@ fn command_build(ctx: cli::ActionContext) {
                     &resolver.global_symbols,
                     &resolver.program_trees,
                     &analyzer.vtable_registry,
-                    &analyzer.monomorph_registry
+                    &analyzer.monomorph_registry,
+                    &driver.sctx
                 );
 
                 codegen.emit(writer);
@@ -731,7 +733,8 @@ fn command_dump_bir(ctx: cli::ActionContext) {
                 &resolver.global_symbols,
                 &resolver.program_trees,
                 &analyzer.vtable_registry,
-                &analyzer.monomorph_registry
+                &analyzer.monomorph_registry,
+                &driver.sctx
             );
 
             codegen.emit(writer);

@@ -2803,8 +2803,8 @@ fn resolve_expr(
         case .Ident(ident) => {
             return resolve_ident_expr(ctx, &ident);
         }
-        case .AddrOf(addr_of) => {
-            return resolve_addr_of_expr(ctx, program, &addr_of);
+        case .AddrOf(addr) => {
+            return resolve_addr_of_expr(ctx, program, &addr);
         }
         case .Deref(deref) => {
             return resolve_deref_expr(ctx, program, &deref);
@@ -3506,14 +3506,14 @@ fn resolve_array_index_expr(
 fn resolve_addr_of_expr(
     ctx: TraverseContext*,
     program: const ast::ASTProgram*,
-    addr_of: const ast::ASTAddrOfExpr*
+    addr: const ast::ASTAddrOfExpr*
 ) Option<cir::TypedExpr> {
-    switch (resolve_expr_node(ctx, program, addr_of->expr)) {
+    switch (resolve_expr_node(ctx, program, addr->expr)) {
         case .Some(operand) => {
             return .Some(cir::TypedExpr.new(.AddrOf(cir::TypedAddrOfExpr {
                 operand: alloc_init(ctx->allocator, operand),
-                span: addr_of->span,
-            }), addr_of->span));
+                span: addr->span,
+            }), addr->span));
         }
         else => {}
     }

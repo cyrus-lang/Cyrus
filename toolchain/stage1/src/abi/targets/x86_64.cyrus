@@ -671,11 +671,11 @@ pub struct X86_64 : TargetABI {
 
             case .Named(named) => {
                 switch (named.type_decl_id) {
-                    case .Struct(id) => {
+                    case .Struct(struct_decl_id) => {
                         const tables = self->tctx->decl_tables();
-                        const decl = tables->structs.get_const(id).unwrap();
+                        const struct_decl = tables->structs.get_const(struct_decl_id).unwrap();
 
-                        switch (self->get_struct_member_at_offset(decl, offset)) {
+                        switch (self->get_struct_member_at_offset(struct_decl, offset)) {
                             case .Some(member) => {
                                 return self->get_int_type_at_offset(
                                     &member.ty,
@@ -851,20 +851,20 @@ pub struct X86_64 : TargetABI {
         switch (*ty->const_inner()) {
             case .Named(named) => {
                 switch (named.type_decl_id) {
-                    case .Struct(id) => {
+                    case .Struct(struct_decl_id) => {
                         const tables = self->tctx->decl_tables();
-                        const decl = tables->structs.get_const(id).unwrap();
+                        const struct_decl = tables->structs.get_const(struct_decl_id).unwrap();
 
-                        switch (self->get_struct_member_at_offset(decl, offset)) {
+                        switch (self->get_struct_member_at_offset(struct_decl, offset)) {
                             case .Some(member) => {
                                 return self->get_fp_type_at_offset(&member.ty, offset - member.field_offset);
                             }
                             else => {}
                         }
                     }
-                    case .Union(id) => {
+                    case .Union(union_decl_id) => {
                         const tables = self->tctx->decl_tables();
-                        const decl = tables->unions.get_const(id).unwrap();
+                        const decl = tables->unions.get_const(union_decl_id).unwrap();
 
                         switch (self->get_union_member_at_offset(decl, offset)) {
                             case .Some(member) => {
@@ -907,7 +907,6 @@ pub struct X86_64 : TargetABI {
         switch (self->get_fp_type_at_offset(ty, offset)) {
             case .Some(fp_ty) => {
                 switch (fp_ty.as_plain_type()) {
-                    case .None => return .Some(.Plain(.Float64));
                     case .Some(float_type) => {
                         if (float_type == .Float64) {
                             return .Some(.Plain(.Float64));
@@ -981,6 +980,7 @@ pub struct X86_64 : TargetABI {
                             else => return .Some(.Plain(.Float64));
                         }
                     }
+                    case .None => return .Some(.Plain(.Float64));
                 }
             }
             case .None => return .None;
@@ -1028,14 +1028,14 @@ pub struct X86_64 : TargetABI {
             }
             case .Named(named) => {
                 switch (named.type_decl_id) {
-                    case .Struct(id) => {
+                    case .Struct(struct_decl_id) => {
                         const tables = self->tctx->decl_tables();
-                        const decl = tables->structs.get_const(id).unwrap();
+                        const struct_decl = tables->structs.get_const(struct_decl_id).unwrap();
 
                         var types: Vec<cir::SemaType> = Vec.new(allocator);
 
-                        for (var i: usize = 0; i < decl->fields.len(); i += 1) {
-                            const field = decl->fields.get_const(i).unwrap();
+                        for (var i: usize = 0; i < struct_decl->fields.len(); i += 1) {
+                            const field = struct_decl->fields.get_const(i).unwrap();
                             types.push(field->ty);
                         }
 
@@ -1043,14 +1043,14 @@ pub struct X86_64 : TargetABI {
                         types.free();
                         return result;
                     }
-                    case .Union(id) => {
+                    case .Union(union_decl_id) => {
                         const tables = self->tctx->decl_tables();
-                        const decl = tables->unions.get_const(id).unwrap();
+                        const union_decl = tables->unions.get_const(union_decl_id).unwrap();
 
                         var types: Vec<cir::SemaType> = Vec.new(allocator);
 
-                        for (var i: usize = 0; i < decl->fields.len(); i += 1) {
-                            const field = decl->fields.get_const(i).unwrap();
+                        for (var i: usize = 0; i < union_decl->fields.len(); i += 1) {
+                            const field = union_decl->fields.get_const(i).unwrap();
                             types.push(field->ty);
                         }
 
@@ -1145,16 +1145,16 @@ pub struct X86_64 : TargetABI {
                                 const tables = self->tctx->decl_tables();
 
                                 switch (named.type_decl_id) {
-                                    case .Struct(id) => {
-                                        const decl = tables->structs.get_const(id).unwrap();
+                                    case .Struct(struct_decl_id) => {
+                                        const decl = tables->structs.get_const(struct_decl_id).unwrap();
 
                                         for (var i: usize = 0; i < decl->fields.len(); i += 1) {
                                             const field = decl->fields.get_const(i).unwrap();
                                             types.push(field->ty);
                                         }
                                     }
-                                    case .Union(id) => {
-                                        const decl = tables->unions.get_const(id).unwrap();
+                                    case .Union(union_decl_id) => {
+                                        const decl = tables->unions.get_const(union_decl_id).unwrap();
 
                                         for (var i: usize = 0; i < decl->fields.len(); i += 1) {
                                             const field = decl->fields.get_const(i).unwrap();
@@ -1284,14 +1284,14 @@ fn classify(tctx: TypeContext*, ty: const cir::SemaType*, offset_base: uint32) R
     switch (*ty->const_inner()) {
         case .Named(named) => {
             switch (named.type_decl_id) {
-                case .Struct(id) => {
+                case .Struct(struct_decl_id) => {
                     const tables = tctx->decl_tables();
-                    const decl = tables->structs.get_const(id).unwrap();
+                    const struct_decl = tables->structs.get_const(struct_decl_id).unwrap();
 
                     var types: Vec<cir::SemaType> = Vec.new(tctx->allocator());
 
-                    for (var i: usize = 0; i < decl->fields.len(); i += 1) {
-                        const field = decl->fields.get_const(i).unwrap();
+                    for (var i: usize = 0; i < struct_decl->fields.len(); i += 1) {
+                        const field = struct_decl->fields.get_const(i).unwrap();
                         types.push(field->ty);
                     }
 
@@ -1299,9 +1299,9 @@ fn classify(tctx: TypeContext*, ty: const cir::SemaType*, offset_base: uint32) R
                     types.free();
                     return result;
                 }
-                case .Union(id) => {
+                case .Union(union_decl_id) => {
                     const tables = tctx->decl_tables();
-                    const decl = tables->unions.get_const(id).unwrap();
+                    const decl = tables->unions.get_const(union_decl_id).unwrap();
 
                     var types: Vec<cir::SemaType> = Vec.new(tctx->allocator());
 
@@ -1314,9 +1314,9 @@ fn classify(tctx: TypeContext*, ty: const cir::SemaType*, offset_base: uint32) R
                     types.free();
                     return result;
                 }
-                case .Enum(id) => {
+                case .Enum(enum_decl_id) => {
                     const tables = tctx->decl_tables();
-                    const decl = tables->enums.get_const(id).unwrap();
+                    const decl = tables->enums.get_const(enum_decl_id).unwrap();
                     return classify_enum(tctx, ty, decl, offset_base, pair);
                 }
                 case .Typedef => {
