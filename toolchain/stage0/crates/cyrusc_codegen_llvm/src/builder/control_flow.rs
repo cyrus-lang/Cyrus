@@ -185,6 +185,17 @@ impl<'ll> CodeGenIRBuilder<'ll> {
             case_terminated_blocks.push(self.block_reg.cur_block);
         }
 
+        if let Some(block_stmt) = &switch_stmt.default {
+            self.emit_basic_block(else_block);
+            self.emit_body(block_stmt);
+
+            if let Some(cur_block) = &self.block_reg.cur_block {
+                if cur_block.get_terminator().is_none() {
+                    self.llvm_builder.build_unconditional_branch(exit_block).unwrap();
+                }
+            }
+        }
+
         let all_cases_return = case_terminated_blocks.iter().all(|opt| {
             opt.map_or(false, |basic_block| {
                 basic_block.get_terminator().map_or(false, |inst| {
@@ -243,17 +254,6 @@ impl<'ll> CodeGenIRBuilder<'ll> {
 
         self.emit_basic_block(parent_block);
         let switch_inst = self.llvm_builder.build_switch(tag_value, else_block, &[]).unwrap();
-
-        if let Some(block_stmt) = &switch_stmt.default {
-            self.emit_basic_block(else_block);
-            self.emit_body(block_stmt);
-
-            if let Some(cur_block) = &self.block_reg.cur_block {
-                if cur_block.get_terminator().is_none() {
-                    self.llvm_builder.build_unconditional_branch(exit_block).unwrap();
-                }
-            }
-        }
 
         let tag_type = self
             .emit_type(*enum_type.tag_type_or_infer_or_default())
@@ -359,6 +359,17 @@ impl<'ll> CodeGenIRBuilder<'ll> {
             }
 
             case_terminated_blocks.push(self.block_reg.cur_block);
+        }
+
+        if let Some(block_stmt) = &switch_stmt.default {
+            self.emit_basic_block(else_block);
+            self.emit_body(block_stmt);
+
+            if let Some(cur_block) = &self.block_reg.cur_block {
+                if cur_block.get_terminator().is_none() {
+                    self.llvm_builder.build_unconditional_branch(exit_block).unwrap();
+                }
+            }
         }
 
         let all_cases_return = case_terminated_blocks.iter().all(|opt| {
@@ -475,6 +486,17 @@ impl<'ll> CodeGenIRBuilder<'ll> {
             }
 
             case_terminated_blocks.push(self.block_reg.cur_block);
+        }
+
+        if let Some(block_stmt) = &switch_stmt.default {
+            self.emit_basic_block(else_block);
+            self.emit_body(block_stmt);
+
+            if let Some(cur_block) = &self.block_reg.cur_block {
+                if cur_block.get_terminator().is_none() {
+                    self.llvm_builder.build_unconditional_branch(exit_block).unwrap();
+                }
+            }
         }
 
         let all_cases_return = case_terminated_blocks.iter().all(|opt| {

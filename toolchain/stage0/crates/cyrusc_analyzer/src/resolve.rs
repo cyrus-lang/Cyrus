@@ -8,22 +8,9 @@ use cyrusc_typed_ast::{
     SymbolID,
     decls::DeclID,
     exprs::{TypedExpr, ValueCategory},
-    types::SemaType,
 };
 
 impl<'a> AnalysisContext<'a> {
-    /// Returns `true` when a const‑qualified type is assigned to a mutable variable.
-    ///
-    /// Example:
-    ///     var x: const int = 10;
-    pub(crate) fn is_const_qualified_type_assigned_to_non_const_variable(
-        &mut self,
-        ty: &SemaType,
-        is_variable_const: bool,
-    ) -> bool {
-        !is_variable_const && ty.is_const()
-    }
-
     pub(crate) fn is_const_qualified_lvalue(&self, expr: &TypedExpr) -> bool {
         // declaration-level constness
         if matches!(expr.val_cat, ValueCategory::LValue(Mutability::Const)) {

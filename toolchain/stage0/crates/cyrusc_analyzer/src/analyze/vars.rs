@@ -106,10 +106,6 @@ impl<'a> AnalysisContext<'a> {
         if let Some(expr) = &global_var.expr
             && let Some(target_type) = &global_var.ty
         {
-            if self.is_const_qualified_type_assigned_to_non_const_variable(&target_type, global_var.is_const) {
-                self.report_const_qualified_type_assigned_to_non_const_variable(global_var.loc);
-            }
-
             let expr_type = expr.ty.clone().unwrap();
 
             if *expr_type.const_inner() != *target_type.const_inner() {
@@ -198,10 +194,6 @@ impl<'a> AnalysisContext<'a> {
                     var_decl.ty = var.ty.clone();
                 });
                 return;
-            }
-
-            if self.is_const_qualified_type_assigned_to_non_const_variable(ty, var.is_const) {
-                self.report_const_qualified_type_assigned_to_non_const_variable(var.loc);
             }
 
             if !self.validate_variable_type(ty, var.rhs.is_some() || var.is_undef, var.loc) {

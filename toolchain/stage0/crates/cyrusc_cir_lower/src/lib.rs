@@ -111,8 +111,8 @@ impl EnumSwitchEntry {
         body
     }
 
-    /// Builds the body for a group of same-tag entries. 
-    /// Entries are tried in source order, falling through to 
+    /// Builds the body for a group of same-tag entries.
+    /// Entries are tried in source order, falling through to
     /// the next entry when a nested pattern does not match.
     fn build_chain(entries: &[EnumSwitchEntry], group: &[usize], loc: Loc) -> CIRBlockStmt {
         let Some(&entry_idx) = group.first() else {
@@ -602,13 +602,13 @@ impl<'a> CIRLower<'a> {
         let operand = self.lower_expr(&switch_stmt.operand);
         let operand_type = switch_stmt.operand.ty.as_ref().unwrap().const_inner();
 
-        let default = switch_stmt.default_case.as_ref().map(|block| self.lower_block(block));
-
         let is_enum = operand_type.is_enum();
 
         if is_enum {
-            self.lower_switch_on_enum(operand, default, switch_stmt)
+            self.lower_switch_on_enum(operand, switch_stmt)
         } else {
+            let default = switch_stmt.default_case.as_ref().map(|block| self.lower_block(block));
+
             let lower_as_chained_if = switch_stmt.cases.iter().any(|case| {
                 case.patterns.iter().any(|pattern| match &pattern.kind {
                     TypedSwitchCasePatternKind::Range(_) => {
@@ -789,12 +789,7 @@ impl<'a> CIRLower<'a> {
         })
     }
 
-    fn lower_switch_on_enum(
-        &mut self,
-        operand: CIRExpr,
-        default: Option<CIRBlockStmt>,
-        switch_stmt: &TypedSwitchStmt,
-    ) -> CIRStmt {
+    fn lower_switch_on_enum(&mut self, operand: CIRExpr, switch_stmt: &TypedSwitchStmt) -> CIRStmt {
         let operand_ty = switch_stmt.operand.ty.as_ref().unwrap().clone();
 
         let has_duplicate_tags = {
@@ -928,6 +923,8 @@ impl<'a> CIRLower<'a> {
                 });
             }
         }
+
+        let default = switch_stmt.default_case.as_ref().map(|block| self.lower_block(block));
 
         let all_cases_covered = switch_stmt.all_cases_covered.unwrap();
 
@@ -1177,7 +1174,7 @@ impl<'a> CIRLower<'a> {
     }
 
     /// FIXME: This is not a solution but a glue just to fix the problem.
-    /// 
+    ///
     /// Resolves typedefs so the pattern target enum decl id and type args can be found.
     fn resolve_enum_pattern_target(&mut self, ty: &SemaType) -> (EnumDeclID, TypedTypeArgs) {
         let mut current = ty.clone();

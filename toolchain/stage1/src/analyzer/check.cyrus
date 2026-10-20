@@ -1,8 +1,10 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 The Cyrus Language
 
+import std::collections::hash_map{HashMap};
 import std::string{String, free_strings};
 import std::mem{Allocator, alloc_init};
+import std::hash{hash_usize, eq_usize};
 import std::mem::arena{ArenaAllocator};
 import std::collections{Vec};
 import std::option{Option};
@@ -10,11 +12,7 @@ import std::option{Option};
 import resolver::symbols{GlobalSymbolRegistry, is_decl_const};
 import tokens{Span, IntegerSuffix, FloatSuffix};
 import cir::tables{DeclTables};
-import diags{DiagContext};
-import parser::ast;
-import cir;
-
-import analyzer::lower{
+import .::lower{
     lower_unnamed_struct_value_as_unnamed_struct_type,
     lower_unnamed_union_value_as_unnamed_union_type,
     lower_struct_init_as_union_init,
@@ -24,7 +22,7 @@ import analyzer::lower{
     lower_prefix_not_pointer,
     EnumDeclRef,
 };
-import analyzer::context{
+import .::context{
     all_flow_states_are_unreachable,
     all_flow_states_terminate,
     TypeCacheEnterResult,
@@ -35,11 +33,29 @@ import analyzer::context{
     TypeCache,
     FuncEnv,
 };
-import analyzer::generics{
+import .::generics{
     instantiate_enum_decl_with_type_args,
     type_decl_generic_params,
     extend_generic_params,
     GenericEnv,
+};
+import .::lower{
+    lower_enum_struct_variant_init_as_enum_init, 
+    lower_unnamed_struct_value_as_struct_init,
+    lower_unnamed_union_value_as_union_init, 
+    lower_unnamed_enum_value_as_enum_init, 
+    lower_cond_pointer_as_null_check, 
+};
+import .::monomorph{
+    MonomorphRegistry, 
+    MonomorphInstance, 
+    MonomorphTemplateId, 
+    InstantiationSite
+};
+import ciri{
+    is_expr_const_evaluable,
+    fold_const_expr_int, 
+    fold_const_expr,
 };
 import cir{
     substitute_sema_type_with_type_args,
@@ -55,29 +71,14 @@ import cir{
     cir_types_eq,
     type_args_eq
 };
-import analyzer::lower{
-    lower_enum_struct_variant_init_as_enum_init, 
-    lower_unnamed_struct_value_as_struct_init,
-    lower_unnamed_union_value_as_union_init, 
-    lower_unnamed_enum_value_as_enum_init, 
-    lower_cond_pointer_as_null_check, 
-};
-import analyzer::monomorph{
-    MonomorphRegistry, 
-    MonomorphInstance, 
-    MonomorphTemplateId, 
-    InstantiationSite
-};
-import ciri{
-    is_expr_const_evaluable,
-    fold_const_expr_int, 
-    fold_const_expr,
-};
-
-import analyzer::vtables{VTableRegistry};
-import analyzer::format;
-import analyzer::diags;
-import analyzer::infer;
+import .::vtables{VTableRegistry};
+import diags{DiagContext};
+import parser::ast;
+import cir::clone;
+import .::format;
+import .::diags;
+import .::infer;
+import cir;
 
 /* ************* Analyzer ************* */
 
@@ -7429,9 +7430,9 @@ pub struct Analyzer {
         }
 
         var method_decl = self->decl_tables->methods.get_owned(method_decl_id).unwrap();
-        
+
         method_decl.func_decl.params = clone_func_params_list(self->allocator, &method_decl.func_decl.params);
-        
+
         var original_params = clone_func_params_list(self->allocator, &method_decl.func_decl.params);
 
         if (method_decl.is_instance_method() && !is_instance_method_call) {
@@ -7513,7 +7514,10 @@ pub struct Analyzer {
         is_generic_method_call: bool,
         expected_type: Option<cir::SemaType>
     ) Option<cir::SemaType> {
+        var object = self->func_env.current_object;
+        self->func_env.current_object = .None;
         self->normalize_func_params(&method_decl->func_decl.params, true, 0);
+        self->func_env.current_object = object;
 
         if (!self->analyze_call(
             original_params,
@@ -7574,11 +7578,6 @@ pub struct Analyzer {
             // Substitute Self inside the self modifier
             switch (method_decl->func_decl.params.list.first()) {
                 case .Some(first_kind) => {
-                    // FIXME: Make sure first_kind is a `T*` because 
-                    // when doing pattern matching in Cyrus, 
-                    // it's byval (copy) so we need to make sure
-                    // when writing back the updated value,
-                    // it really affects func_decl.params
                     switch (*first_kind) {
                         case .SelfModifier(var self_modifier) => {
                             self_modifier.ty = self->substitute_self_type(&self_modifier.ty, pure_operand_type);
@@ -8321,9 +8320,8 @@ pub struct Analyzer {
                                 case .Some(arg_type) => {
                                     if (!self->is_assignable_to(arg_type, ty, span)) {
                                         var param_type_str = format::format_sema_type(self->allocator, self->decl_tables, &ty);
-                                        defer param_type_str.free();
                                         var argument_type_str = format::format_sema_type(self->allocator, self->decl_tables, &arg_type);
-                                        defer argument_type_str.free();
+                                        
                                         diags::report_func_call_variadic_param_type_mismatch(
                                             self->dctx,
                                             self->allocator,
@@ -8332,6 +8330,9 @@ pub struct Analyzer {
                                             argument_type_str.as_str_const(),
                                             param_type_str.as_str_const()
                                         );
+
+                                        argument_type_str.free();
+                                        param_type_str.free();
                                     }
                                 }
                                 case .None => {}
@@ -8351,6 +8352,877 @@ pub struct Analyzer {
         }
 
         return .Some(*func_type->ret_type);
+    }
+
+    fn specialize_func_body(
+        self: Self*,
+        template_body: const cir::TypedBlockStmt*,
+        params: cir::TypedFuncParams*
+    ) cir::TypedBlockStmt {
+        var body = cir::clone::clone_typed_block(self->allocator, template_body);
+
+        var decl_map: HashMap<usize, cir::VarDeclId> = HashMap.with_hasher(
+            self->allocator,
+            64,
+            hash_usize,
+            eq_usize
+        );
+
+        self->instantiate_and_specialize_func_params(params, &decl_map);
+
+        for (var i: usize = 0; i < body.stmts.len(); i += 1) {
+            const stmt = body.stmts.get_const(i).unwrap();
+            self->collect_and_instantiate_fresh_var_decls(&stmt->kind, &decl_map);
+        }
+
+        for (var i: usize = 0; i < body.defers.len(); i += 1) {
+            const defer_stmt = body.defers.get_const(i).unwrap();
+            self->collect_and_instantiate_fresh_var_decls(&defer_stmt->operand->kind, &decl_map);
+        }
+
+        self->specialize_block(&body, &decl_map);
+
+        return body;
+    }
+
+    fn instantiate_and_specialize_func_params(
+        self: Self*,
+        params: cir::TypedFuncParams*,
+        decl_map: HashMap<usize, cir::VarDeclId>*
+    ) {
+        for (var i: usize = 0; i < params->list.len(); i += 1) {
+            const param_kind = params->list.get(i).unwrap();
+
+            switch (*param_kind) {
+                case .FuncParam(var func_param) => {
+                    switch (func_param.var_decl_id) {
+                        case .Some(var_decl_id) => {
+                            switch (self->decl_tables->vars.get_const(var_decl_id)) {
+                                case .Some(var existing) => {
+                                    var template_var_decl = *existing;
+                                    template_var_decl.ty = .Some(func_param.ty);
+                                    self->instantiate_fresh_var_decl(var_decl_id, &template_var_decl, decl_map);
+                                }
+                                else => {}
+                            }
+
+                            switch (decl_map->get(var_decl_id)) {
+                                case .Some(new_var_decl_id) => func_param.var_decl_id = .Some(*new_var_decl_id);
+                                else => {}
+                            }
+                        }
+                        else => {}
+                    }
+
+                    *param_kind = .FuncParam(func_param);
+                }
+                case .SelfModifier(var self_modifier) => {
+                    switch (self_modifier.var_decl_id) {
+                        case .Some(var_decl_id) => {
+                            switch (self->decl_tables->vars.get_const(var_decl_id)) {
+                                case .Some(var existing) => {
+                                    var template_var_decl = *existing;
+                                    template_var_decl.ty = .Some(self_modifier.ty);
+                                    self->instantiate_fresh_var_decl(var_decl_id, &template_var_decl, decl_map);
+                                }
+                                else => {}
+                            }
+
+                            switch (decl_map->get(var_decl_id)) {
+                                case .Some(new_var_decl_id) => self_modifier.var_decl_id = .Some(*new_var_decl_id);
+                                else => {}
+                            }
+                        }
+                        else => {}
+                    }
+
+                    *param_kind = .SelfModifier(self_modifier);
+                }
+            }
+        }
+    }
+
+    fn instantiate_fresh_var_stmt(
+        self: Self*,
+        var_stmt: const cir::TypedVarStmt*,
+        decl_map: HashMap<usize, cir::VarDeclId>*
+    ) {
+        const template_var_decl = cir::VarDecl {
+            name: var_stmt->name,
+            ty: var_stmt->ty,
+            rhs: var_stmt->rhs,
+            is_const: var_stmt->is_const,
+            analyzed: false,
+            span: var_stmt->span,
+        };
+
+        self->instantiate_fresh_var_decl(var_stmt->var_decl_id, &template_var_decl, decl_map);
+    }
+
+    fn instantiate_fresh_var_decl(
+        self: Self*,
+        var_decl_id: cir::VarDeclId,
+        template_var_decl: const cir::VarDecl*,
+        decl_map: HashMap<usize, cir::VarDeclId>*
+    ) {
+        if (decl_map->get(var_decl_id).is_some()) {
+            return;
+        }
+
+        var var_decl = *template_var_decl;
+
+        switch (var_decl.ty) {
+            case .Some(ty) => {
+                var subst = self->substitute_type(&ty);
+
+                switch (self->func_env.infer) {
+                    case .Some(infer_ctx) => subst = infer_ctx->resolve(&subst);
+                    else => {}
+                }
+
+                var_decl.ty = .Some(subst);
+            }
+            else => {}
+        }
+
+        var_decl.analyzed = false;
+        const new_var_decl_id = self->decl_tables->insert_var(var_decl);
+        decl_map->insert(var_decl_id, new_var_decl_id);
+    }
+
+    fn collect_and_instantiate_fresh_var_decls(
+        self: Self*,
+        stmt_kind: const cir::TypedStmtKind*,
+        decl_map: HashMap<usize, cir::VarDeclId>*
+    ) {
+        switch (*stmt_kind) {
+            case .Switch(switch_stmt) => {
+                for (var i: usize = 0; i < switch_stmt.cases.len(); i += 1) {
+                    const case_item = switch_stmt.cases.get_const(i).unwrap();
+
+                    for (var j: usize = 0; j < case_item->patterns.len(); j += 1) {
+                        const pattern = case_item->patterns.get_const(j).unwrap();
+                        self->collect_fresh_var_decls_of_switch_pattern(pattern, decl_map);
+                    }
+
+                    self->collect_fresh_var_decls_in_block(case_item->body, decl_map);
+                }
+            }
+            case .For(for_stmt) => {
+                switch (for_stmt.initializer) {
+                    case .Some(var var_stmt) => {
+                        self->instantiate_fresh_var_stmt(&var_stmt, decl_map);
+                    }
+                    else => {}
+                }
+
+                self->collect_fresh_var_decls_in_block(for_stmt.body, decl_map);
+            }
+            case .Expr(expr) => {
+                switch (expr.kind) {
+                    case .Lambda(lambda) => {
+                        self->collect_fresh_var_decls_of_func_params(&lambda.params, decl_map);
+                        self->collect_fresh_var_decls_in_block(lambda.body, decl_map);
+                    }
+                    else => {}
+                }
+            }
+            case .Builtin(builtin) => {
+                switch (builtin) {
+                    case .BuiltinFunc => {}
+                    case .BuiltinBlock(builtin_block) => {
+                        self->collect_fresh_var_decls_in_block(builtin_block.block, decl_map);
+                    }
+                }
+            }
+            case .Defer(defer_stmt) => {
+                self->collect_and_instantiate_fresh_var_decls(&defer_stmt.operand->kind, decl_map);
+            }
+            case .TupleExport(tuple_export) => {
+                self->collect_fresh_var_decls_of_tuple_pattern(&tuple_export.pattern, decl_map);
+            }
+            case .Variable(var_stmt) => {
+                self->instantiate_fresh_var_stmt(&var_stmt, decl_map);
+            }
+            case .BlockStmt(block) => {
+                self->collect_fresh_var_decls_in_block(&block, decl_map);
+            }
+            case .While(while_stmt) => {
+                self->collect_fresh_var_decls_in_block(while_stmt.body, decl_map);
+            }
+            case .If(if_stmt) => {
+                self->collect_fresh_var_decls_of_if(&if_stmt, decl_map);
+            }
+            else => {}
+        }
+    }
+
+    fn collect_fresh_var_decls_in_block(
+        self: Self*,
+        block: const cir::TypedBlockStmt*,
+        decl_map: HashMap<usize, cir::VarDeclId>*
+    ) {
+        for (var i: usize = 0; i < block->stmts.len(); i += 1) {
+            const stmt = block->stmts.get_const(i).unwrap();
+            self->collect_and_instantiate_fresh_var_decls(&stmt->kind, decl_map);
+        }
+
+        for (var i: usize = 0; i < block->defers.len(); i += 1) {
+            const defer_stmt = block->defers.get_const(i).unwrap();
+            self->collect_and_instantiate_fresh_var_decls(&defer_stmt->operand->kind, decl_map);
+        }
+    }
+
+    fn collect_fresh_var_decls_of_if(
+        self: Self*,
+        if_stmt: const cir::TypedIfStmt*,
+        decl_map: HashMap<usize, cir::VarDeclId>*
+    ) {
+        self->collect_fresh_var_decls_in_block(if_stmt->then_block, decl_map);
+
+        switch (if_stmt->else_block) {
+            case .Some(else_block) => {
+                self->collect_fresh_var_decls_in_block(else_block, decl_map);
+            }
+            else => {}
+        }
+
+        for (var i: usize = 0; i < if_stmt->branches.len(); i += 1) {
+            const branch = if_stmt->branches.get_const(i).unwrap();
+            self->collect_fresh_var_decls_of_if(branch, decl_map);
+        }
+    }
+
+    fn collect_fresh_var_decls_of_func_params(
+        self: Self*,
+        params: const cir::TypedFuncParams*,
+        decl_map: HashMap<usize, cir::VarDeclId>*
+    ) {
+        for (var i: usize = 0; i < params->list.len(); i += 1) {
+            const param_kind = params->list.get_const(i).unwrap();
+
+            switch (*param_kind) {
+                case .FuncParam(func_param) => {
+                    switch (func_param.var_decl_id) {
+                        case .Some(var_decl_id) => self->instantiate_fresh_var_decl_from_tables(var_decl_id, decl_map);
+                        else => {}
+                    }
+                }
+                case .SelfModifier(self_modifier) => {
+                    switch (self_modifier.var_decl_id) {
+                        case .Some(var_decl_id) => self->instantiate_fresh_var_decl_from_tables(var_decl_id, decl_map);
+                        else => {}
+                    }
+                }
+            }
+        }
+
+        switch (params->variadic) {
+            case .Some(variadic) => {
+                switch (variadic) {
+                    case .UntypedCStyle => {}
+                    case .Typed { var_decl_id, .. } => {
+                        self->instantiate_fresh_var_decl_from_tables(var_decl_id, decl_map);
+                    }
+                }
+            }
+            else => {}
+        }
+    }
+
+    fn instantiate_fresh_var_decl_from_tables(
+        self: Self*,
+        var_decl_id: cir::VarDeclId,
+        decl_map: HashMap<usize, cir::VarDeclId>*
+    ) {
+        switch (self->decl_tables->vars.get_const(var_decl_id)) {
+            case .Some(var_decl) => self->instantiate_fresh_var_decl(var_decl_id, var_decl, decl_map);
+            else => {}
+        }
+    }
+
+    fn collect_fresh_var_decls_of_tuple_pattern(
+        self: Self*,
+        pattern: const cir::TypedTupleExportPattern*,
+        decl_map: HashMap<usize, cir::VarDeclId>*
+    ) {
+        switch (pattern->kind) {
+            case .Tuple(patterns) => {
+                for (var i: usize = 0; i < patterns.len(); i += 1) {
+                    const inner = patterns.get_const(i).unwrap();
+                    self->collect_fresh_var_decls_of_tuple_pattern(inner, decl_map);
+                }
+            }
+            case .Ident(var_decl_id) => {
+                self->instantiate_fresh_var_decl_from_tables(var_decl_id, decl_map);
+            }
+            case .Ignore => {}
+        }
+    }
+
+    fn collect_fresh_var_decls_of_switch_pattern(
+        self: Self*,
+        pattern: const cir::TypedSwitchCasePattern*,
+        decl_map: HashMap<usize, cir::VarDeclId>*
+    ) {
+        switch (pattern->kind) {
+            case .Wildcard 
+            | .Range 
+            | .Expr 
+            | .EnumUnit => {}
+
+            case .Binding { var_decl_id, .. } => {
+                self->instantiate_fresh_var_decl_from_tables(var_decl_id, decl_map);
+            }
+
+            case .EnumTupleVariant { items, .. } => {
+                for (var i: usize = 0; i < items.len(); i += 1) {
+                    const item = items.get_const(i).unwrap();
+                    self->collect_fresh_var_decls_of_switch_pattern(item, decl_map);
+                }
+            }
+
+            case .EnumStructVariant { items, .. } => {
+                for (var i: usize = 0; i < items.len(); i += 1) {
+                    const item = items.get_const(i).unwrap();
+                    self->collect_fresh_var_decls_of_switch_pattern(&item->pattern, decl_map);
+                }
+            }
+        }
+    }
+
+    fn specialize_block(
+        self: Self*,
+        body: cir::TypedBlockStmt*,
+        decl_map: HashMap<usize, cir::VarDeclId>*
+    ) {
+        for (var i: usize = 0; i < body->stmts.len(); i += 1) {
+            const stmt = body->stmts.get(i).unwrap();
+            self->specialize_stmt(&stmt->kind, decl_map);
+        }
+
+        for (var i: usize = 0; i < body->defers.len(); i += 1) {
+            const defer_stmt = body->defers.get(i).unwrap();
+            self->specialize_stmt(&defer_stmt->operand->kind, decl_map);
+        }
+    }
+
+    fn specialize_stmt(
+        self: Self*,
+        kind: cir::TypedStmtKind*,
+        decl_map: HashMap<usize, cir::VarDeclId>*
+    ) {
+        switch (*kind) {
+            case .TupleExport(var tuple_export) => {
+                self->specialize_tuple_export_pattern(&tuple_export.pattern, decl_map);
+
+                switch (tuple_export.rhs) {
+                    case .Some(var rhs) => {
+                        self->specialize_expr(&rhs, decl_map);
+                        tuple_export.rhs = .Some(rhs);
+                    }
+                    else => {}
+                }
+
+                *kind = .TupleExport(tuple_export);
+            }
+            case .For(var for_stmt) => {
+                switch (for_stmt.initializer) {
+                    case .Some(var initializer) => {
+                        self->specialize_var_stmt(&initializer, decl_map);
+                        for_stmt.initializer = .Some(initializer);
+                    }
+                    else => {}
+                }
+
+                switch (for_stmt.cond) {
+                    case .Some(var cond) => {
+                        self->specialize_expr(&cond, decl_map);
+                        for_stmt.cond = .Some(cond);
+                    }
+                    else => {}
+                }
+
+                switch (for_stmt.increment) {
+                    case .Some(var increment) => {
+                        self->specialize_expr(&increment, decl_map);
+                        for_stmt.increment = .Some(increment);
+                    }
+                    else => {}
+                }
+
+                self->specialize_block(for_stmt.body, decl_map);
+                *kind = .For(for_stmt);
+            }
+            case .Switch(var switch_stmt) => {
+                self->specialize_expr(&switch_stmt.operand, decl_map);
+
+                for (var i: usize = 0; i < switch_stmt.cases.len(); i += 1) {
+                    const case_item = switch_stmt.cases.get(i).unwrap();
+
+                    for (var j: usize = 0; j < case_item->patterns.len(); j += 1) {
+                        const pattern = case_item->patterns.get(j).unwrap();
+                        self->specialize_switch_pattern(pattern, decl_map);
+                    }
+
+                    self->specialize_block(case_item->body, decl_map);
+                }
+
+                switch (switch_stmt.else_case) {
+                    case .Some(var else_case) => {
+                        self->specialize_block(&else_case, decl_map);
+                        switch_stmt.else_case = .Some(else_case);
+                    }
+                    else => {}
+                }
+
+                *kind = .Switch(switch_stmt);
+            }
+            case .Return(var return_stmt) => {
+                switch (return_stmt.arg) {
+                    case .Some(var arg) => {
+                        self->specialize_expr(&arg, decl_map);
+                        return_stmt.arg = .Some(arg);
+                    }
+                    else => {}
+                }
+
+                *kind = .Return(return_stmt);
+            }
+            case .InlineAsm(var asm) => {
+                for (var i: usize = 0; i < asm.outputs.len(); i += 1) {
+                    const operand = asm.outputs.get(i).unwrap();
+                    self->specialize_expr(operand->expr, decl_map);
+                }
+
+                for (var i: usize = 0; i < asm.inputs.len(); i += 1) {
+                    const operand = asm.inputs.get(i).unwrap();
+                    self->specialize_expr(operand->expr, decl_map);
+                }
+
+                *kind = .InlineAsm(asm);
+            }
+            case .BlockStmt(var block) => {
+                self->specialize_block(&block, decl_map);
+                *kind = .BlockStmt(block);
+            }
+            case .If(var if_stmt) => {
+                self->specialize_if_stmt(&if_stmt, decl_map);
+                *kind = .If(if_stmt);
+            }
+            case .While(var while_stmt) => {
+                self->specialize_expr(&while_stmt.cond, decl_map);
+                self->specialize_block(while_stmt.body, decl_map);
+                *kind = .While(while_stmt);
+            }
+            case .Builtin(var builtin) => {
+                self->specialize_builtin(&builtin, decl_map);
+                *kind = .Builtin(builtin);
+            }
+            case .Expr(var expr) => {
+                self->specialize_expr(&expr, decl_map);
+                *kind = .Expr(expr);
+            }
+            case .Variable(var var_stmt) => {
+                self->specialize_var_stmt(&var_stmt, decl_map);
+                *kind = .Variable(var_stmt);
+            }
+            case .Defer(var defer_stmt) => {
+                self->specialize_stmt(&defer_stmt.operand->kind, decl_map);
+                *kind = .Defer(defer_stmt);
+            }
+            else => {}
+        }
+    }
+
+    fn specialize_if_stmt(
+        self: Self*,
+        if_stmt: cir::TypedIfStmt*,
+        decl_map: HashMap<usize, cir::VarDeclId>*
+    ) {
+        self->specialize_expr(&if_stmt->cond, decl_map);
+        self->specialize_block(if_stmt->then_block, decl_map);
+
+        switch (if_stmt->else_block) {
+            case .Some(else_block) => {
+                self->specialize_block(else_block, decl_map);
+            }
+            else => {}
+        }
+
+        for (var i: usize = 0; i < if_stmt->branches.len(); i += 1) {
+            const branch = if_stmt->branches.get(i).unwrap();
+            self->specialize_if_stmt(branch, decl_map);
+        }
+    }
+
+    fn specialize_var_stmt(
+        self: Self*,
+        var_stmt: cir::TypedVarStmt*,
+        decl_map: HashMap<usize, cir::VarDeclId>*
+    ) {
+        switch (self->remap_var_decl_id(decl_map, var_stmt->var_decl_id)) {
+            case .Some(new_var_decl_id) => var_stmt->var_decl_id = new_var_decl_id;
+            else => {}
+        }
+
+        switch (var_stmt->rhs) {
+            case .Some(var rhs) => {
+                self->specialize_expr(&rhs, decl_map);
+                var_stmt->rhs = .Some(rhs);
+            }
+            else => {}
+        }
+    }
+    
+    // FIXME: block?
+    fn specialize_builtin(
+        self: Self*,
+        builtin: const cir::TypedBuiltin*,
+        decl_map: HashMap<usize, cir::VarDeclId>*
+    ) {
+        switch (*builtin) {
+            case .BuiltinFunc => {}
+            case .BuiltinBlock => {}
+        }
+    }
+
+    fn specialize_tuple_export_pattern(
+        self: Self*,
+        pattern: cir::TypedTupleExportPattern*,
+        decl_map: HashMap<usize, cir::VarDeclId>*
+    ) {
+        switch (pattern->kind) {
+            case .Tuple(patterns) => {
+                for (var i: usize = 0; i < patterns.len(); i += 1) {
+                    const inner = patterns.get(i).unwrap();
+                    self->specialize_tuple_export_pattern(inner, decl_map);
+                }
+            }
+            case .Ident(var_decl_id) => {
+                switch (self->remap_var_decl_id(decl_map, var_decl_id)) {
+                    case .Some(new_var_decl_id) => pattern->kind = .Ident(new_var_decl_id);
+                    else => {}
+                }
+            }
+            case .Ignore => {}
+        }
+    }
+
+    fn specialize_switch_pattern(
+        self: Self*,
+        pattern: cir::TypedSwitchCasePattern*,
+        decl_map: HashMap<usize, cir::VarDeclId>*
+    ) {
+        switch (pattern->kind) {
+            case .Wildcard | .EnumUnit => {}
+
+            case .Binding { var name, var_decl_id, .. } => {
+                switch (self->remap_var_decl_id(decl_map, var_decl_id)) {
+                    case .Some(new_var_decl_id) => pattern->kind = .Binding {
+                        name,
+                        var_decl_id: new_var_decl_id
+                    };
+                    else => {}
+                }
+            }
+            
+            case .Range(var range) => {
+                self->specialize_expr(&range.lower, decl_map);
+                self->specialize_expr(&range.upper, decl_map);
+                pattern->kind = .Range(range);
+            }
+            
+            case .Expr(var expr) => {
+                self->specialize_expr(&expr, decl_map);
+                pattern->kind = .Expr(expr);
+            }
+            
+            case .EnumTupleVariant { ident, items, .. } => {
+                for (var i: usize = 0; i < items.len(); i += 1) {
+                    const item = items.get(i).unwrap();
+                    self->specialize_switch_pattern(item, decl_map);
+                }
+
+                pattern->kind = .EnumTupleVariant { ident, items };
+            }
+            
+            case .EnumStructVariant { ident, items, ignore } => {
+                for (var i: usize = 0; i < items.len(); i += 1) {
+                    const item = items.get(i).unwrap();
+                    self->specialize_switch_pattern(&item->pattern, decl_map);
+                }
+
+                pattern->kind = .EnumStructVariant { ident, items, ignore };
+            }
+        }
+    }
+
+    fn remap_var_decl_id(
+        self: Self*,
+        decl_map: HashMap<usize, cir::VarDeclId>*,
+        var_decl_id: cir::VarDeclId
+    ) Option<cir::VarDeclId> {
+        switch (decl_map->get(var_decl_id)) {
+            case .Some(new_var_decl_id) => return .Some(*new_var_decl_id);
+            else => return .None;
+        }
+    }
+
+    fn specialize_expr(
+        self: Self*,
+        expr: cir::TypedExpr*,
+        decl_map: HashMap<usize, cir::VarDeclId>*
+    ) {
+        switch (expr->kind) {
+            case .Literal 
+            | .SemaType 
+            | .Poisoned => {}
+
+            case .EnumInit(enum_init) => {
+                switch (enum_init.arg) {
+                    case .Unit => {}
+
+                    case .Tuple(var elements) => {
+                        self->specialize_expr_vec(&elements, decl_map);
+                    }
+                    
+                    case .Struct(var field_inits) => {
+                        for (var i: usize = 0; i < field_inits.len(); i += 1) {
+                            const field_init = field_inits.get(i).unwrap();
+                            self->specialize_expr(field_init->value, decl_map);
+                        }
+                    }
+                }
+            }
+
+            case .EnumStructVariantInit(variant_init) => {
+                self->specialize_expr(variant_init.operand, decl_map);
+
+                for (var i: usize = 0; i < variant_init.field_inits.len(); i += 1) {
+                    const field_init = variant_init.field_inits.get(i).unwrap();
+                    self->specialize_expr(field_init->value, decl_map);
+                }
+            }
+
+            case .UnnamedStructValue(struct_value) => {
+                for (var i: usize = 0; i < struct_value.fields.len(); i += 1) {
+                    const field = struct_value.fields.get(i).unwrap();
+                    self->specialize_expr(field->value, decl_map);
+                }
+            }
+
+            case .UnnamedUnionValue(union_value) => {
+                for (var i: usize = 0; i < union_value.fields.len(); i += 1) {
+                    const field = union_value.fields.get(i).unwrap();
+                    self->specialize_expr(field->value, decl_map);
+                }
+            }
+
+            case .UnnamedEnumValue(enum_value) => {
+                switch (enum_value.kind) {
+                    case .Unit => {}
+
+                    case .Tuple(var elements) => {
+                        self->specialize_expr_vec(&elements, decl_map);
+                    }
+                    
+                    case .Struct(var field_inits) => {
+                        for (var i: usize = 0; i < field_inits.len(); i += 1) {
+                            const field_init = field_inits.get(i).unwrap();
+                            self->specialize_expr(field_init->value, decl_map);
+                        }
+                    }
+                }
+            }
+           
+            case .InlineAsm(asm) => {
+                for (var i: usize = 0; i < asm.outputs.len(); i += 1) {
+                    const operand = asm.outputs.get(i).unwrap();
+                    self->specialize_expr(operand->expr, decl_map);
+                }
+
+                for (var i: usize = 0; i < asm.inputs.len(); i += 1) {
+                    const operand = asm.inputs.get(i).unwrap();
+                    self->specialize_expr(operand->expr, decl_map);
+                }
+            }
+
+            case .Symbol(var symbol_expr) => {
+                switch (analyze_symbol_expr(self->registry, &symbol_expr)) {
+                    case .Some(decl_id) => {
+                        switch (decl_id.as_var()) {
+                            case .Some(var_decl_id) => {
+                                switch (self->remap_var_decl_id(decl_map, var_decl_id)) {
+                                    case .Some(new_var_decl_id) => {
+                                        symbol_expr = .Resolved {
+                                            decl_id: .Var(new_var_decl_id),
+                                            span: symbol_expr.span()
+                                        };
+                                    }
+                                    else => {}
+                                }
+                            }
+                            else => {}
+                        }
+                    }
+                    else => {}
+                }
+
+                expr->kind = .Symbol(symbol_expr);
+            }
+
+            case .Prefix(prefix) => {
+                self->specialize_expr(prefix.operand, decl_map);
+            }
+            
+            case .Infix(infix) => {
+                self->specialize_expr(infix.lhs, decl_map);
+                self->specialize_expr(infix.rhs, decl_map);
+            }
+            
+            case .Assign(assign) => {
+                self->specialize_expr(assign.lhs, decl_map);
+                self->specialize_expr(assign.rhs, decl_map);
+            }
+            
+            case .AddrOf(addr_of) => {
+                self->specialize_expr(addr_of.operand, decl_map);
+            }
+            
+            case .Deref(deref) => {
+                self->specialize_expr(deref.operand, decl_map);
+            }
+            
+            case .Array(var array) => {
+                self->specialize_expr_vec(&array.elements, decl_map);
+            }
+            
+            case .Tuple(var tuple) => {
+                self->specialize_expr_vec(&tuple.elements, decl_map);
+            }
+            
+            case .ArrayIndex(array_index) => {
+                self->specialize_expr(array_index.operand, decl_map);
+                self->specialize_expr(array_index.index, decl_map);
+            }
+            
+            case .TupleAccess(tuple_access) => {
+                self->specialize_expr(tuple_access.operand, decl_map);
+            }
+            
+            case .FieldAccess(field_access) => {
+                self->specialize_expr(field_access.operand, decl_map);
+            }
+            
+            case .StructInit(var struct_init) => {
+                for (var i: usize = 0; i < struct_init.fields.len(); i += 1) {
+                    const field = struct_init.fields.get(i).unwrap();
+                    self->specialize_expr(&field->value, decl_map);
+                }
+            }
+            
+            case .UnionInit(union_init) => {
+                self->specialize_expr(&union_init.field->value, decl_map);
+            }
+            
+            case .FuncCall(var func_call) => {
+                self->specialize_expr(func_call.operand, decl_map);
+                self->specialize_expr_vec(&func_call.args, decl_map);
+            }
+            
+            case .MethodCall(var method_call) => {
+                self->specialize_expr(method_call.operand, decl_map);
+                self->specialize_expr_vec(&method_call.args, decl_map);
+            }
+            
+            case .Dynamic(dynamic_) => {
+                self->specialize_expr(dynamic_.operand, decl_map);
+            }
+            
+            case .Lambda(var lambda) => {
+                self->specialize_func_params(&lambda.params, decl_map);
+                self->specialize_block(lambda.body, decl_map);
+            }
+            
+            case .Builtin(builtin) => {
+                switch (builtin) {
+                    case .BuiltinFunc => {}
+                    case .BuiltinBlock => {}
+                }
+            }
+        }
+    }
+
+    fn specialize_expr_vec(
+        self: Self*,
+        exprs: Vec<cir::TypedExpr>*,
+        decl_map: HashMap<usize, cir::VarDeclId>*
+    ) {
+        for (var i: usize = 0; i < exprs->len(); i += 1) {
+            const element = exprs->get(i).unwrap();
+            self->specialize_expr(element, decl_map);
+        }
+    }
+
+    fn specialize_func_params(
+        self: Self*,
+        params: cir::TypedFuncParams*,
+        decl_map: HashMap<usize, cir::VarDeclId>*
+    ) {
+        for (var i: usize = 0; i < params->list.len(); i += 1) {
+            const param_kind = params->list.get(i).unwrap();
+
+            switch (*param_kind) {
+                case .FuncParam(var func_param) => {
+                    switch (func_param.var_decl_id) {
+                        case .Some(var_decl_id) => {
+                            switch (self->remap_var_decl_id(decl_map, var_decl_id)) {
+                                case .Some(new_var_decl_id) => func_param.var_decl_id = .Some(new_var_decl_id);
+                                else => {}
+                            }
+                        }
+                        else => {}
+                    }
+
+                    *param_kind = .FuncParam(func_param);
+                }
+                case .SelfModifier(var self_modifier) => {
+                    switch (self_modifier.var_decl_id) {
+                        case .Some(var_decl_id) => {
+                            switch (self->remap_var_decl_id(decl_map, var_decl_id)) {
+                                case .Some(new_var_decl_id) => self_modifier.var_decl_id = .Some(new_var_decl_id);
+                                else => {}
+                            }
+                        }
+                        else => {}
+                    }
+
+                    *param_kind = .SelfModifier(self_modifier);
+                }
+            }
+        }
+
+        switch (params->variadic) {
+            case .Some(var variadic) => {
+                switch (variadic) {
+                    case .UntypedCStyle => {}
+                    case .Typed { var ty, var span, var_decl_id } => {
+                        switch (self->remap_var_decl_id(decl_map, var_decl_id)) {
+                            case .Some(new_var_decl_id) => variadic = .Typed {
+                                var_decl_id: new_var_decl_id,
+                                ty,
+                                span
+                            };
+                            else => {}
+                        }
+                    }
+                }
+
+                params->variadic = .Some(variadic);
+            }
+            else => {}
+        }
     }
 
     fn monomorphize_generic_func_call(
@@ -8386,11 +9258,32 @@ pub struct Analyzer {
             func_decl->ret_type
         );
 
-        self->monomorph_registry.mark_analyzed(monomorph_id);
+        if (!self->monomorph_registry.is_analyzed(monomorph_id)) {
+            self->monomorph_registry.mark_analyzed(monomorph_id);
 
-        // NOTE: stage0 specializes and analyzes the monomorphized body here;
-        // deferred until statement analysis is ported (stage1 analyzes no
-        // function bodies yet).
+            switch (func_decl->body) {
+                case .Some(body_id) => {
+                    switch (self->decl_tables->bodies.get_const(body_id)) {
+                        case .Some(template_body) => {
+                            var body = self->specialize_func_body(template_body, &func_decl->params);
+                            
+                            self->analyze_func_body(&body, &func_decl->ret_type);
+
+                            const body_id = self->decl_tables->insert_body(body);
+
+                            self->monomorph_registry.set_body_and_params(
+                                monomorph_id,
+                                body_id,
+                                func_decl->params
+                            );
+                        }
+                        else => {}
+                    }
+                }
+                else => {}
+            }
+        }
+
         func_call->dispatch = .Monomorph { monomorph_id };
 
         return .Some(func_decl->ret_type);
@@ -8433,11 +9326,34 @@ pub struct Analyzer {
             method_decl->func_decl.params,
             method_decl->func_decl.ret_type
         );
-        self->monomorph_registry.mark_analyzed(monomorph_id);
 
-        // NOTE: stage0 specializes and analyzes the monomorphized body here;
-        // deferred until statement analysis is ported (stage1 analyzes no
-        // function bodies yet).
+        if (!is_generic_interface_method_call && !self->monomorph_registry.is_analyzed(monomorph_id)) {
+            self->monomorph_registry.mark_analyzed(monomorph_id);
+
+            switch (method_decl->body) {
+                case .Some(body_id) => {
+                    switch (self->decl_tables->bodies.get_const(body_id)) {
+                        case .Some(template_body) => {
+                            var specialized = self->specialize_func_body(
+                                template_body,
+                                &method_decl->func_decl.params
+                            );
+                            self->analyze_func_body(&specialized, &method_decl->func_decl.ret_type);
+
+                            const specialized_body_id = self->decl_tables->insert_body(specialized);
+                            self->monomorph_registry.set_body_and_params(
+                                monomorph_id,
+                                specialized_body_id,
+                                method_decl->func_decl.params
+                            );
+                        }
+                        else => {}
+                    }
+                }
+                else => {}
+            }
+        }
+
         return .Some(monomorph_id);
     }
 
@@ -9405,14 +10321,6 @@ pub struct Analyzer {
             case .Some(expr) => {
                 switch (global_var->ty) {
                     case .Some(target_type) => {
-                        if (is_const_qualified_type_assigned_to_non_const_variable(&target_type, global_var->is_const)) {
-                            diags::report_const_qualified_type_assigned_to_non_const_variable(
-                                self->dctx,
-                                self->allocator,
-                                global_var->span
-                            );
-                        }
-
                         switch (expr.ty) {
                             case .Some(expr_ty) => {
                                 if (!cir_types_eq(expr_ty.const_inner(), target_type.const_inner())) {
@@ -9526,14 +10434,6 @@ pub struct Analyzer {
                 if (ty.contains_error()) {
                     self->write_back_var(var_);
                     return;
-                }
-
-                if (is_const_qualified_type_assigned_to_non_const_variable(&ty, var_->is_const)) {
-                    diags::report_const_qualified_type_assigned_to_non_const_variable(
-                        self->dctx,
-                        self->allocator,
-                        var_->span
-                    );
                 }
 
                 const is_init = var_->rhs.is_some() || var_->is_undef;
@@ -11789,25 +12689,44 @@ pub struct Analyzer {
             case .Tuple(elements) => {
                 var result_type: Vec<cir::TypedTupleElement> = Vec.new(self->allocator);
                 defer result_type.free();
-        var has_explicit_type = false;
 
-        for (var i: usize = 0; i < elements.len(); i += 1) {
-            const element = elements.get_const(i).unwrap();
+                var has_explicit_type = false;
 
-            switch (element->ty) {
-                case .Some(ty) => {
-                    result_type.push(cir::TypedTupleElement { ty, span: element->span });
-                    has_explicit_type = true;
-                }
-                case .None => {
-                    switch (element->kind) {
-                        case .Tuple => {
-                            switch (self->build_expected_tuple_type_from_pattern(element)) {
-                                case .Some(inner) => {
-                                    result_type.push(cir::TypedTupleElement { ty: inner, span: element->span });
-                                    has_explicit_type = true;
+                for (var i: usize = 0; i < elements.len(); i += 1) {
+                    const element = elements.get_const(i).unwrap();
+
+                    switch (element->ty) {
+                        case .Some(ty) => {
+                            result_type.push(cir::TypedTupleElement {
+                                ty,
+                                span: element->span
+                            });
+                            has_explicit_type = true;
+                        }
+                        case .None => {
+                            switch (element->kind) {
+                                case .Tuple => {
+                                    switch (self->build_expected_tuple_type_from_pattern(element)) {
+                                        case .Some(inner) => {
+                                            result_type.push(cir::TypedTupleElement { ty: inner, span: element->span });
+                                            has_explicit_type = true;
+                                        }
+                                        case .None => {
+                                            switch (self->func_env.infer) {
+                                                case .Some(infer_ctx) => {
+                                                    result_type.push(cir::TypedTupleElement {
+                                                        ty: infer_ctx->new_var(),
+                                                        span: element->span,
+                                                    });
+                                                }
+                                                case .None => {
+                                                    return .None;
+                                                }
+                                            }
+                                        }
+                                    }
                                 }
-                                case .None => {
+                                else => {
                                     switch (self->func_env.infer) {
                                         case .Some(infer_ctx) => {
                                             result_type.push(cir::TypedTupleElement {
@@ -11822,23 +12741,8 @@ pub struct Analyzer {
                                 }
                             }
                         }
-                        else => {
-                            switch (self->func_env.infer) {
-                                case .Some(infer_ctx) => {
-                                    result_type.push(cir::TypedTupleElement {
-                                        ty: infer_ctx->new_var(),
-                                        span: element->span,
-                                    });
-                                }
-                                case .None => {
-                                    return .None;
-                                }
-                            }
-                        }
                     }
                 }
-            }
-        }
 
                 if (!has_explicit_type) {
                     return .None;
