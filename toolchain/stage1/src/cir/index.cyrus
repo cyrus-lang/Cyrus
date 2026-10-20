@@ -1878,6 +1878,14 @@ pub enum TypedExprKind {
     }
 
     [[inline]]
+    pub fn is_lambda(self: const Self*) bool {
+        switch (*self) {
+            case .Lambda => return true;
+            else => return false;
+        }
+    }
+
+    [[inline]]
     pub fn as_unresolved_symbol_id(self: const Self*) Option<SymbolId> {
         switch (*self) {
             case .Symbol(symbol_expr) => return symbol_expr.as_symbol_id();

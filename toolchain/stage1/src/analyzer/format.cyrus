@@ -480,16 +480,16 @@ fn format_array_capacity(
             var writer: Writer = dynamic StringWriter.new(&out);
 
             switch (value) {
-                case .Signed(v) => {
-                    if (v < 0) {
+                case .Signed(x) => {
+                    if (x < 0) {
                         out.push('-');
-                        format_uint128(writer, @cast(uint128, -v));
+                        format_uint128(writer, @cast(uint128, -x));
                     } else {
-                        format_uint128(writer, @cast(uint128, v));
+                        format_uint128(writer, @cast(uint128, x));
                     }
                 }
-                case .Unsigned(v) => {
-                    format_uint128(writer, v);
+                case .Unsigned(x) => {
+                    format_uint128(writer, x);
                 }
             }
 
@@ -612,6 +612,8 @@ pub fn format_typed_expr(
             out.push_str(")");
             return out;
         }
+
+        // FIXME: Complete it!
         else => return String.from_str(allocator, "EXPR");
     }
 }

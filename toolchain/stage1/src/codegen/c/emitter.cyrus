@@ -52,7 +52,7 @@ pub struct Emitter {
     vtable_emitted: HashMap<usize, uint8>,
     func_proto_emitted: Vec<uint8>,
     loop_marks: Vec<usize>,
-    lambda_counter: usize,
+    lambda_id: usize,
     in_void_main: bool,
     generic_object_names: Vec<String>,
 
@@ -105,7 +105,7 @@ pub struct Emitter {
             needs_stddef_header: false,
             needs_panic_helper: false,
             in_void_main: false,
-            lambda_counter: 0,
+            lambda_id: 0,
             generic_object_names: Vec.new(allocator),
         };
     }
@@ -200,7 +200,7 @@ pub struct Emitter {
                 switch (stmt->kind) {
                     case .FuncDef(func_def) => {
                         if (!func_def.is_generic()) {
-                            self->emit_func_def(&func_def);
+                            self->emit_func(&func_def);
                         }
                     }
                     else => {}
@@ -237,7 +237,7 @@ pub struct Emitter {
             
             switch (method->body) {
                 case .Some(body_id) => {
-                    self->emit_method_def(i, method, body_id);
+                    self->emit_method(i, method, body_id);
                 }
                 else => {}
             }
@@ -374,10 +374,13 @@ pub struct Emitter {
                         switch (global_var->ty) {
                             case .Some(ty) => {
                                 self->types.ensure_named(&ty);
+
                                 var decl = self->types.build_decl(&ty, name.as_str_const());
+                                
                                 self->global_out.push_str("extern ");
                                 self->global_out.push_str(decl.as_str_const());
                                 self->global_out.push_str(";\n");
+                                
                                 decl.free();
                                 name.free();
                                 return;
@@ -604,19 +607,21 @@ pub struct Emitter {
             &decl->modifiers
         );
 
-        var signature = self->build_func_signature(
+        var sig = self->build_func_signature(
             &decl->ret_type,
             &decl->params,
             &mangled_name,
             mangled_name.as_str_const()
         );
-        self->protos_out.push_str(signature.as_str_const());
+
+        self->protos_out.push_str(sig.as_str_const());
         self->protos_out.push_str(";\n");
-        signature.free();
+        
         mangled_name.free();
+        sig.free();
     }
 
-    fn emit_func_def(self: Self*, func_def: const cir::TypedFuncDefStmt*) {
+    fn emit_func(self: Self*, func_def: const cir::TypedFuncDefStmt*) {
         const func_decl_id = func_def->func_decl_id.unwrap();
 
         var name = mangle::mangle_func(
@@ -668,7 +673,7 @@ pub struct Emitter {
         name.free();
     }
 
-    fn emit_method_def(self: Self*, method_id: usize, method: const cir::MethodDecl*, body_id: cir::BodyId) {
+    fn emit_method(self: Self*, method_id: usize, method: const cir::MethodDecl*, body_id: cir::BodyId) {
         var name = mangle::mangle_method(self->allocator, &self->types.maps, method_id, method);
         
         const func = &method->func_decl;
@@ -914,10 +919,10 @@ pub struct Emitter {
     fn emit_stmt(self: Self*, stmt: const cir::TypedStmt*) {
         switch (stmt->kind) {
             case .Expr(expr) => {
-                var body = self->emit_expr(&expr);
-                self->body_out.push_str(body.as_str_const());
+                var expr = self->emit_expr(&expr);
+                self->body_out.push_str(expr.as_str_const());
                 self->body_out.push_str(";\n");
-                body.free();
+                expr.free();
             }
 
             case .BlockStmt(block) => {
@@ -926,8 +931,49 @@ pub struct Emitter {
                 self->body_out.push_str(" }\n");
             }
 
+            case .Label(label) => {
+                const name = mangle::sanitized(self->allocator, label.name.as_str_const());
+
+                self->body_out.push_str(name.as_str_const());
+                self->body_out.push_str(":\n");
+
+                name.free();
+            }
+
+            case .Goto(goto_) => {
+                var label = mangle::sanitized(self->allocator, goto_.name.as_str_const());
+
+                self->body_out.push_str(" goto ");
+                self->body_out.push_str(label.as_str_const());
+                self->body_out.push_str(";\n");
+                
+                label.free();
+            }
+
+            case .Builtin(builtin) => {
+                switch (builtin) {
+                    case .BuiltinFunc(builtin_func) => {
+                        var str = self->emit_builtin_func(&builtin_func);
+                        self->body_out.push_str(str.as_str_const());
+                        self->body_out.push_str(";\n");
+                        str.free();
+                    }
+                    else => {}
+                }
+            }
+
+            case .Break => {
+                self->emit_defers_to_loop_mark();
+                self->body_out.push_str(" break;\n");
+            }
+
+            case .Continue => {
+                self->emit_defers_to_loop_mark();
+                self->body_out.push_str(" continue;\n");
+            }
+
             case .Variable(var_) => {
-                self->emit_var_stmt(&var_);
+                self->emit_var(&var_);
             }
             
             case .Return(return_) => {
@@ -950,45 +996,8 @@ pub struct Emitter {
                 self->emit_switch(&switch_);
             }
             
-            case .Break => {
-                self->emit_defers_to_loop_mark();
-                self->body_out.push_str(" break;\n");
-            }
-            case .Continue => {
-                self->emit_defers_to_loop_mark();
-                self->body_out.push_str(" continue;\n");
-            }
-            
-            case .Label(label) => {
-                self->body_out.push_str(self->sanitize_label(
-                    label.name.as_str_const()
-                ).as_str_const());
-
-                self->body_out.push_str(":\n");
-            }
-
-            case .Goto(goto_) => {
-                self->body_out.push_str(" goto ");
-                var label = self->sanitize_label(goto_.name.as_str_const());
-                self->body_out.push_str(label.as_str_const());
-                self->body_out.push_str(";\n");
-                label.free();
-            }
-            
             case .InlineAsm(asm) => {
                 self->emit_inline_asm_stmt(asm);
-            }
-
-            case .Builtin(builtin) => {
-                switch (builtin) {
-                    case .BuiltinFunc(builtin_func) => {
-                        var str = self->emit_builtin_func(&builtin_func);
-                        self->body_out.push_str(str.as_str_const());
-                        self->body_out.push_str(";\n");
-                        str.free();
-                    }
-                    else => {}
-                }
             }
 
             case .Defer => {}
@@ -997,20 +1006,35 @@ pub struct Emitter {
         }
     }
 
-    fn emit_var_stmt(self: Self*, var_: const cir::TypedVarStmt*) {
+    fn emit_var(self: Self*, var_: const cir::TypedVarStmt*) {
         var name = mangle::sanitized(self->allocator, var_->name.as_str_const());
+        
+        switch (var_->rhs) {
+            case .Some(rhs) => {
+                if (rhs.kind.is_lambda()) {
+                    self->emit_var_lambda(var_, name);
+                    return;
+                }
+            }
+            else => {}
+        }
 
         if (var_->ty.is_none()) {
             // Infer from rhs
             switch (var_->rhs) {
                 case .Some(rhs) => {
+                    switch (rhs.kind) {
+                        case .Lambda => {
+                            self->emit_var_lambda(var_, name);
+                        }
+                        else => {}
+                    }
+                    
                     switch (rhs.ty) {
                         case .Some(ty) => {
                             self->types.ensure_named(&ty);
                             
                             var decl = self->types.build_decl(&ty, name.as_str_const());
-
-                            self->body_out.push_str("    ");
                             
                             if (var_->is_const) {
                                 self->body_out.push_str("const ");
@@ -1069,9 +1093,9 @@ pub struct Emitter {
                                 braces.free();
                             }
                             else => {
-                                var e = self->emit_expr(&rhs);
-                                self->body_out.push_str(e.as_str_const());
-                                e.free();
+                                var expr = self->emit_expr(&rhs);
+                                self->body_out.push_str(expr.as_str_const());
+                                expr.free();
                             }
                         }
                     }
@@ -1087,6 +1111,46 @@ pub struct Emitter {
                 name.free();
             }
             case .None => {}
+        }
+    }
+
+    fn emit_var_lambda(self: Self*, var_: const cir::TypedVarStmt*, name: String) {
+        switch (var_->rhs) {
+            case .Some(rhs) => {
+                switch (rhs.kind) {
+                    case .Lambda(lambda) => {
+                        var out = String.from_str(self->allocator, "(*");
+
+                        if (var_->is_const) {
+                            out.push_str("const ");
+                        }
+
+                        out.push_str(name.as_str_const());
+                        out.push(')');
+
+                        var decl = self->build_func_signature(
+                            &lambda.ret_type,
+                            &lambda.params,
+                            &out,
+                            out.as_str_const()
+                        );
+
+                        var expr = self->emit_lambda(&lambda);
+
+                        self->body_out.push_str(decl.as_str_const());
+                        self->body_out.push_str(" = ");
+                        self->body_out.push_str(expr.as_str_const());
+                        self->body_out.push_str(";\n");
+
+                        expr.free();
+                        decl.free();
+                        out.free();
+                        name.free();
+                    }
+                    else => {}
+                }
+            }
+            else => {}
         }
     }
 
@@ -1123,6 +1187,7 @@ pub struct Emitter {
                     self->body_out.push_str(" return 0;\n");
                 }
             }
+            
             return;
         }
 
@@ -1715,10 +1780,16 @@ pub struct Emitter {
                         switch (expr.literal_const_int_value()) {
                             case .Some(literal) => {
                                 self->body_out.push_str(" case ");
+
                                 switch (literal) {
-                                    case .Signed(v) => push_int128(&self->body_out, v);
-                                    case .Unsigned(v) => push_uint128(&self->body_out, v);
+                                    case .Signed(x) => {
+                                        push_int128(&self->body_out, x);
+                                    }
+                                    case .Unsigned(x) => {
+                                        push_uint128(&self->body_out, x);
+                                    }
                                 }
+                                
                                 self->body_out.push_str(": {\n");
                             }
                             case .None => {
@@ -1986,81 +2057,6 @@ pub struct Emitter {
         }
 
         self->body_out.push_str(");\n");
-    }
-
-    fn sanitize_label(self: Self*, name: const uint8*) String {
-        return mangle::sanitized(self->allocator, name);
-    }
-
-    /* ************* Defers ************* */
-
-    fn push_defer(self: Self*, defer_stmt: cir::TypedDeferStmt) {
-        if (self->defer_scopes.len() == 0) {
-            var scope: Vec<cir::TypedDeferStmt> = Vec.new(self->allocator);
-            scope.push(defer_stmt);
-            self->defer_scopes.push(scope);
-            return;
-        }
-
-        switch (self->defer_scopes.last()) {
-            case .Some(scope) => scope->push(defer_stmt);
-            else => {}
-        }
-    }
-
-    fn pop_defer_scope(self: Self*) {
-        switch (self->defer_scopes.last()) {
-            case .Some(scope) => {
-                for (var i: usize = scope->len(); i > 0; i -= 1) {
-                    const d = scope->get_const(i - 1).unwrap();
-                    self->emit_defer_stmt(d);
-                }
-            }
-            else => {}
-        }
-
-        if (self->defer_scopes.len() > 0) {
-            var popped = self->defer_scopes.pop();
-            popped.free();
-        }
-    }
-
-    fn emit_all_defers(self: Self*) {
-        for (var s: usize = self->defer_scopes.len(); s > 0; s -= 1) {
-            switch (self->defer_scopes.get_const(s - 1)) {
-                case .Some(scope) => {
-                    for (var i: usize = scope->len(); i > 0; i -= 1) {
-                        const d = scope->get_const(i - 1).unwrap();
-                        self->emit_defer_stmt(d);
-                    }
-                }
-                else => {}
-            }
-        }
-    }
-
-    fn emit_defers_to_loop_mark(self: Self*) {
-        switch (self->loop_marks.last_const()) {
-            case .Some(mark) => {
-                for (var s: usize = self->defer_scopes.len(); s > *mark; s -= 1) {
-                    switch (self->defer_scopes.get_const(s - 1)) {
-                        case .Some(scope) => {
-                            for (var i: usize = scope->len(); i > 0; i -= 1) {
-                                const d = scope->get_const(i - 1).unwrap();
-                                self->emit_defer_stmt(d);
-                            }
-                        }
-                        else => {}
-                    }
-                }
-            }
-            else => {}
-        }
-    }
-
-    [[inline]]
-    fn emit_defer_stmt(self: Self*, defer_stmt: const cir::TypedDeferStmt*) {
-        self->emit_stmt(defer_stmt->operand);
     }
 
     /* ************* Expressions ************* */
@@ -2427,6 +2423,7 @@ pub struct Emitter {
         return out;
     }
 
+    // FIXME: Rename and move
     fn compound_assign(
         self: Self*, 
         lhs: String, 
@@ -2516,6 +2513,7 @@ pub struct Emitter {
         return String.from_str(self->allocator, "/*unresolved_symbol*/0");
     }
 
+    // ANCHOR
     fn emit_func_call(self: Self*, func_call: const cir::TypedFuncCall*) String {
         var out = String.new(self->allocator);
         var callee: String;
@@ -2523,15 +2521,15 @@ pub struct Emitter {
         switch (func_call->dispatch) {
             case .Normal { func_decl_id } => {
                 switch (self->tables->funcs.get_const(func_decl_id)) {
-                    case .Some(decl) => {
-                        self->ensure_func_decl_proto(func_decl_id, decl);
+                    case .Some(func_decl) => {
+                        self->ensure_func_decl_proto(func_decl_id, func_decl);
 
                         callee = mangle::mangle_func(
                             self->allocator,
                             &self->types.maps,
-                            decl->name.as_str_const(),
+                            func_decl->name.as_str_const(),
                             func_decl_id,
-                            &decl->modifiers
+                            &func_decl->modifiers
                         );
                     }
                     else => {
@@ -2582,9 +2580,11 @@ pub struct Emitter {
 
         for (var i: usize = 0; i < func_call->args.len(); i += 1) {
             const arg = func_call->args.get_const(i).unwrap();
+
             var expr = self->emit_expr(arg);
             out.push_str(expr.as_str_const());
             expr.free();
+            
             if (i + 1 < func_call->args.len()) {
                 out.push_str(", ");
             }
@@ -2673,9 +2673,10 @@ pub struct Emitter {
                             else => {}
                         }
                     }
+
                     case .StaticMonomorphized { monomorph_id } => {
                         // Static call to a monomorphized method: use the
-                        // instance's substituted signature.
+                        // instance's substituted sig.
                         switch (self->monomorphs->instances.get_const(monomorph_id)) {
                             case .Some(inst) => {
                                 switch (inst->template_id) {
@@ -2728,6 +2729,7 @@ pub struct Emitter {
                             else => {}
                         }
                     }
+
                     case .Dynamic => {
                         // ((RET (*)(void *, ...))((void **)fat_pointer.vtable)[IDX])(fat_pointer.data, args...)
                         var fat_pointer = self->emit_expr(method_call->operand);
@@ -2736,8 +2738,10 @@ pub struct Emitter {
                         var out = String.from_str(self->allocator, "((");
                         out.push_str(ret_name.as_str_const());
                         out.push_str(" (*)(void *");
+
                         for (var i: usize = 0; i < method_call->args.len(); i += 1) {
                             const arg = method_call->args.get_const(i).unwrap();
+                            
                             switch (arg->ty) {
                                 case .Some(ty) => {
                                     var type_name = self->types.type_name(&ty);
@@ -2746,9 +2750,9 @@ pub struct Emitter {
                                     type_name.free();
                                 }
                                 else => out.push_str(", void *");
-
                             }
                         }
+
                         out.push_str("))((void **)(");
                         out.push_str(fat_pointer.as_str_const());
                         out.push_str(").vtable)[");
@@ -2756,13 +2760,17 @@ pub struct Emitter {
                         out.push_str("])((");
                         out.push_str(fat_pointer.as_str_const());
                         out.push_str(").data");
+
                         for (var i: usize = 0; i < method_call->args.len(); i += 1) {
                             const arg = method_call->args.get_const(i).unwrap();
+                            
                             out.push_str(", ");
-                            var e = self->emit_expr(arg);
-                            out.push_str(e.as_str_const());
-                            e.free();
+                            
+                            var expr = self->emit_expr(arg);
+                            out.push_str(expr.as_str_const());
+                            expr.free();
                         }
+
                         out.push(')');
                         fat_pointer.free();
                         ret_name.free();
@@ -2785,10 +2793,13 @@ pub struct Emitter {
                                             method,
                                             &inst->type_args
                                         );
+                                        
                                         var out = String.new(self->allocator);
                                         out.push_str(name.as_str_const());
                                         out.push('(');
+
                                         var self_arg = self->emit_expr(method_call->operand);
+
                                         if (self->is_method_self_argument_referenced(method, method_call->operand)) {
                                             out.push_str("(&");
                                             out.push_str(self_arg.as_str_const());
@@ -2824,23 +2835,29 @@ pub struct Emitter {
             else => {}
         }
 
-        // Fallback: treat as a plain call on the operand.
-        var fb = String.new(self->allocator);
+        // Fallback:
+        // Treat as a plain call on the operand
+        var fallback = String.new(self->allocator);
         var base = self->emit_expr(method_call->operand);
-        fb.push_str(base.as_str_const());
+        
+        fallback.push_str(base.as_str_const());
         base.free();
-        fb.push_str("/*unresolved_method*/(");
+        fallback.push_str("/*unresolved_method*/(");
+
         for (var i: usize = 0; i < method_call->args.len(); i += 1) {
             const arg = method_call->args.get_const(i).unwrap();
-            var e = self->emit_expr(arg);
-            fb.push_str(e.as_str_const());
-            e.free();
+            
+            var expr = self->emit_expr(arg);
+            fallback.push_str(expr.as_str_const());
+            expr.free();
+            
             if (i + 1 < method_call->args.len()) {
-                fb.push_str(", ");
+                fallback.push_str(", ");
             }
         }
-        fb.push(')');
-        return fb;
+
+        fallback.push(')');
+        return fallback;
     }
 
     fn emit_struct_init(self: Self*, struct_init: const cir::TypedStructInitExpr*) String {
@@ -2868,6 +2885,7 @@ pub struct Emitter {
         return out;
     }
 
+    // FIXME: Rename
     fn emit_enum_init_runtime(self: Self*, enum_init: const cir::TypedEnumInit*) String {
         var enum_decl_id: cir::EnumDeclId;
         var found = false;
@@ -3029,58 +3047,67 @@ pub struct Emitter {
         return out;
     }
 
-    fn emit_lambda(self: Self*, lam: const cir::TypedLambdaExpr*) String {
-        const id = self->lambda_counter;
-        self->lambda_counter += 1;
+    fn emit_lambda(self: Self*, lambda: const cir::TypedLambdaExpr*) String {
+        const lambda_id = self->lambda_id;
+        self->lambda_id += 1;
 
         var name = String.from_str(self->allocator, "__lambda_");
-        push_usize(&name, id);
+        push_usize(&name, lambda_id);
 
-        var sig = self->build_func_signature(&lam->ret_type, &lam->params, &name, name.as_str_const());
-
-        self->pending_out.push_str("static ");
-        self->pending_out.push_str(sig.as_str_const());
-        self->pending_out.push_str(";\n");
+        var sig = self->build_func_signature(
+            &lambda->ret_type, 
+            &lambda->params, 
+            &name, 
+            name.as_str_const()
+        );
 
         self->pending_out.push_str("static ");
         self->pending_out.push_str(sig.as_str_const());
         self->pending_out.push_str(" {\n");
-        sig.free();
+        
+        const parent = self->body_out;
+        self->body_out = String.new(self->allocator);
 
-        self->emit_param_prologue(&lam->params);
-        self->emit_block_stmts(lam->body, false);
+        self->emit_param_prologue(&lambda->params);
+        self->emit_block_stmts(lambda->body, false);
+
+        self->pending_out.push_str(self->body_out.as_str_const());
         self->pending_out.push_str("}\n\n");
 
+        self->body_out.free();
+        self->body_out = parent;
+
+        sig.free();
         return name;
     }
 
     fn emit_dynamic(self: Self*, dynamic_: const cir::TypedDynamicExpr*) String {
-        var vt_name = self->ensure_vtable_for(dynamic_);
+        var vtable_name = self->ensure_vtable_for(dynamic_);
 
-        // Ensure fat_ptr typedef.
         self->types.ensure_fat_ptr();
 
-        // The operand is always a by-value concrete object (the analyzer
-        // rejects non-`Named` operand types); the fat pointer stores its
-        // address.
+        // The operand is always a by-value concrete object
         var out = String.from_str(self->allocator, "((__fat_ptr){ .data = (void *)&(");
-        var e = self->emit_expr(dynamic_->operand);
-        out.push_str(e.as_str_const());
-        e.free();
+
+        var expr = self->emit_expr(dynamic_->operand);
+        out.push_str(expr.as_str_const());
+        expr.free();
+        
         out.push_str("), .vtable = (void *)");
-        out.push_str(vt_name.as_str_const());
+        out.push_str(vtable_name.as_str_const());
         out.push_str(" })");
-        vt_name.free();
+
+        vtable_name.free();
         return out;
     }
 
     fn ensure_vtable_for(self: Self*, dynamic_: const cir::TypedDynamicExpr*) String {
-        var vt_id: cir::VTableId = 0;
+        var vtable_id: cir::VTableId = 0;
         var found = false;
 
         switch (dynamic_->interface_object_type) {
-            case .Some(iot) => {
-                vt_id = iot.vtable_id;
+            case .Some(ty) => {
+                vtable_id = ty.vtable_id;
                 found = true;
             }
             else => {}
@@ -3088,12 +3115,13 @@ pub struct Emitter {
 
         if (!found) {
             switch (dynamic_->concrete_type) {
-                case .Some(cty) => {
-                    // Find a vtable whose concrete type matches.
+                case .Some(ty) => {
+                    // Find a vtable whose concrete type matches
                     for (var i: usize = 0; i < self->vtables->tables.len(); i += 1) {
                         const info = self->vtables->tables.get_const(i).unwrap();
-                        if (cir::cir_types_eq(&info->concrete_type, &cty)) {
-                            vt_id = i;
+
+                        if (cir::cir_types_eq(&info->concrete_type, &ty)) {
+                            vtable_id = i;
                             found = true;
                             break;
                         }
@@ -3104,31 +3132,32 @@ pub struct Emitter {
         }
 
         var out = String.from_str(self->allocator, "__cyrus_vtable_");
-        push_usize(&out, vt_id);
+        push_usize(&out, vtable_id);
 
         if (!found) {
             return out;
         }
 
-        switch (self->vtable_emitted.get(vt_id)) {
+        switch (self->vtable_emitted.get(vtable_id)) {
             case .Some => return out;
             else => {}
         }
 
-        self->vtable_emitted.insert(vt_id, 1);
+        self->vtable_emitted.insert(vtable_id, 1);
 
-        const info = self->vtables->tables.get_const(vt_id).unwrap();
+        const info = self->vtables->tables.get_const(vtable_id).unwrap();
 
         self->pending_out.push_str("static void *__cyrus_vtable_");
-        push_usize(&self->pending_out, vt_id);
+        push_usize(&self->pending_out, vtable_id);
         self->pending_out.push_str("[] = {\n");
 
         for (var i: usize = 0; i < info->method_decls.entries.len(); i += 1) {
             const entry = info->method_decls.entries.get_const(i).unwrap();
 
-            // Prefer the monomorphized specialization when the analyzer
-            // recorded one for this slot.
+            // Prefer the monomorphized specialization
+            // when the analyzer recorded one for this slot
             var slot_emitted = false;
+
             switch (info->monomorphized_methods.get_const(i)) {
                 case .Some(slot) => {
                     switch (*slot) {
@@ -3146,7 +3175,7 @@ pub struct Emitter {
                                                         method,
                                                         &inst->type_args
                                                     );
-                                                    self->pending_out.push_str("    (void *)&");
+                                                    self->pending_out.push_str(" (void *)&");
                                                     self->pending_out.push_str(mname.as_str_const());
                                                     self->pending_out.push_str(",\n");
                                                     mname.free();
@@ -3174,13 +3203,12 @@ pub struct Emitter {
             switch (self->tables->methods.get_const(entry->id)) {
                 case .Some(method) => {
                     var mname = mangle::mangle_method(self->allocator, &self->types.maps, entry->id, method);
-                    self->pending_out.push_str("    (void *)&");
+                    self->pending_out.push_str(" (void *)&");
                     self->pending_out.push_str(mname.as_str_const());
                     self->pending_out.push_str(",\n");
                     mname.free();
                 }
-                else => self->pending_out.push_str("    0,\n");
-
+                else => self->pending_out.push_str(" 0,\n");
             }
         }
 
@@ -3439,8 +3467,6 @@ pub struct Emitter {
         return String.from_str(self->allocator, "((void)0)");
     }
 
-    /* ************* Literals and helpers ************* */
-
     fn emit_literal(self: Self*, literal: const cir::TypedLiteralExpr*) String {
         switch (literal->kind) {
             case .Integer { value, .. } => {
@@ -3508,6 +3534,79 @@ pub struct Emitter {
         }
     }
 
+    /* ************* Defer ************* */
+
+    fn push_defer(self: Self*, defer_stmt: cir::TypedDeferStmt) {
+        if (self->defer_scopes.len() == 0) {
+            var scope: Vec<cir::TypedDeferStmt> = Vec.new(self->allocator);
+            scope.push(defer_stmt);
+            self->defer_scopes.push(scope);
+            return;
+        }
+
+        switch (self->defer_scopes.last()) {
+            case .Some(scope) => scope->push(defer_stmt);
+            else => {}
+        }
+    }
+
+    fn pop_defer_scope(self: Self*) {
+        switch (self->defer_scopes.last()) {
+            case .Some(scope) => {
+                for (var i: usize = scope->len(); i > 0; i -= 1) {
+                    const d = scope->get_const(i - 1).unwrap();
+                    self->emit_defer_stmt(d);
+                }
+            }
+            else => {}
+        }
+
+        if (self->defer_scopes.len() > 0) {
+            var popped = self->defer_scopes.pop();
+            popped.free();
+        }
+    }
+
+    fn emit_all_defers(self: Self*) {
+        for (var s: usize = self->defer_scopes.len(); s > 0; s -= 1) {
+            switch (self->defer_scopes.get_const(s - 1)) {
+                case .Some(scope) => {
+                    for (var i: usize = scope->len(); i > 0; i -= 1) {
+                        const d = scope->get_const(i - 1).unwrap();
+                        self->emit_defer_stmt(d);
+                    }
+                }
+                else => {}
+            }
+        }
+    }
+
+    fn emit_defers_to_loop_mark(self: Self*) {
+        switch (self->loop_marks.last_const()) {
+            case .Some(mark) => {
+                for (var s: usize = self->defer_scopes.len(); s > *mark; s -= 1) {
+                    switch (self->defer_scopes.get_const(s - 1)) {
+                        case .Some(scope) => {
+                            for (var i: usize = scope->len(); i > 0; i -= 1) {
+                                const d = scope->get_const(i - 1).unwrap();
+                                self->emit_defer_stmt(d);
+                            }
+                        }
+                        else => {}
+                    }
+                }
+            }
+            else => {}
+        }
+    }
+
+    [[inline]]
+    fn emit_defer_stmt(self: Self*, defer_stmt: const cir::TypedDeferStmt*) {
+        self->emit_stmt(defer_stmt->operand);
+    }
+
+    /* ************* Types Helpers ************* */
+
     fn type_name_of(self: Self*, ty: const cir::SemaType*) String {
         self->types.ensure_named(ty);
         return self->types.type_name(ty);
@@ -3518,7 +3617,7 @@ pub struct Emitter {
         push_usize(&out, index);
         return out;
     }
-
+    
     /* ************* Methods Helpers ************* */
 
     fn interface_method_ret_type(
@@ -3665,28 +3764,6 @@ pub struct Emitter {
 
 /* ************* Helpers ************* */
 
-fn panic_unlowered(emitter: Emitter*, expr: const cir::TypedExpr*, kind_name: const uint8*) {
-    var msg = String.from_str(emitter->allocator, "unlowered expr ");
-    msg.push_str(kind_name);
-
-    if (emitter->sctx != null) {
-        const source = emitter->sctx->get(expr->span.source_id);
-
-        if (source != null) {
-            msg.push_str(" at ");
-            msg.push_str(source->path.as_str_const());
-            msg.push(':');
-
-            switch (source->nearest_line(expr->span.loc.start)) {
-                case .Some(line) => push_usize(&msg, line);
-                else => msg.push_str("?");
-            }
-        }
-    }
-
-    @panic(msg.as_str_const());
-}
-
 fn resolve_var_type(var_: const cir::TypedVarStmt*) Option<cir::SemaType> {
     switch (var_->ty) {
         case .Some(ty) => return .Some(ty);
@@ -3721,4 +3798,28 @@ fn push_uint128(out: String*, value: uint128) {
 
 fn push_int128(out: String*, value: int128) {
     format_int128(dynamic StringWriter.new(out), value);
+}
+
+/* ************* Debug Helpers ************* */
+
+fn panic_unlowered(emitter: Emitter*, expr: const cir::TypedExpr*, kind_name: const uint8*) {
+    var msg = String.from_str(emitter->allocator, "unlowered expr ");
+    msg.push_str(kind_name);
+
+    if (emitter->sctx != null) {
+        const source = emitter->sctx->get(expr->span.source_id);
+
+        if (source != null) {
+            msg.push_str(" at ");
+            msg.push_str(source->path.as_str_const());
+            msg.push(':');
+
+            switch (source->nearest_line(expr->span.loc.start)) {
+                case .Some(line) => push_usize(&msg, line);
+                else => msg.push_str("?");
+            }
+        }
+    }
+
+    @panic(msg.as_str_const());
 }
