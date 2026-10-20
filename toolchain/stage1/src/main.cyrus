@@ -10,6 +10,7 @@ import std::mem{Allocator};
 import std::string{String};
 import std::os::process;
 import std::os::dir;
+import std::os::env;
 import std::cli;
 
 import diags{DiagContext, Diag, exit_with_compile_error};
@@ -249,6 +250,8 @@ fn command_run(ctx: cli::ActionContext) {
             }
 
             if (backend.as_str_const() == "llvm") {
+                backend.free();
+                analyzer.free();
                 exit_with_compile_error("LLVM backend is not supported yet");
                 @unreachable();
             } else if (backend.as_str_const() == "c") {
@@ -278,6 +281,7 @@ fn command_run(ctx: cli::ActionContext) {
                     free_driver_resources(&driver, &resolver, &opts);
                     ctx.opts->free();
                     exit_with_compile_error("failed to compile the input file");
+                    backend.free();
                     @unreachable();
                 }
 
@@ -292,12 +296,12 @@ fn command_run(ctx: cli::ActionContext) {
                 const child_status = @cast(uint32, exit_status);
                 exit_code = @cast(int32, (child_status >> 8) & 0xff);
                 run = true;
+                
+                backend.free();
             } else {
+                backend.free();
                 exit_with_compile_error("unknown backend (expected `c` or `llvm`)");
-                @unreachable();
             }
-
-            backend.free();
         }
 
         analyzer.free();

@@ -3658,7 +3658,8 @@ pub fn substitute_sema_type_with_type_args(
         }
 
         case .Tuple(tuple_type) => {
-            var elements: Vec<TypedTupleElement> = Vec.with_capacity(allocator, tuple_type.elements.len());
+            var elements: Vec<TypedTupleElement> =
+                Vec.with_capacity(allocator, tuple_type.elements.len());
             
             for (var i: usize = 0; i < tuple_type.elements.len(); i += 1) {
                 const element = tuple_type.elements.get_const(i).unwrap();
@@ -3815,9 +3816,9 @@ pub fn cir_types_eq(a: const SemaType*, b: const SemaType*) bool {
     }
 
     switch (*a) {
-        case .Plain(p1) => {
+        case .Plain(plain1) => {
             switch (*b) {
-                case .Plain(p2) => return p1 == p2;
+                case .Plain(plain2) => return plain1 == plain2;
                 else => return false;
             }
         }
@@ -3829,40 +3830,40 @@ pub fn cir_types_eq(a: const SemaType*, b: const SemaType*) bool {
             }
         }
 
-        case .Pointer(i1) => {
+        case .Pointer(inner1) => {
             switch (*b) {
-                case .Pointer(i2) => return cir_types_eq(i1, i2);
+                case .Pointer(inner2) => return cir_types_eq(inner1, inner2);
                 else => return false;
             }
         }
 
-        case .Const(i1) => {
+        case .Const(inner1) => {
             switch (*b) {
-                case .Const(i2) => return cir_types_eq(i1, i2);
+                case .Const(inner2) => return cir_types_eq(inner1, inner2);
                 else => return false;
             }
         }
 
-        case .Named(n1) => {
+        case .Named(named1) => {
             switch (*b) {
-                case .Named(n2) => {
-                    if (!type_decl_id_eq(n1.type_decl_id, n2.type_decl_id)) {
+                case .Named(named2) => {
+                    if (!type_decl_id_eq(named1.type_decl_id, named2.type_decl_id)) {
                         return false;
                     }
                     
-                    if (n1.type_args.len() != n2.type_args.len()) {
+                    if (named1.type_args.len() != named2.type_args.len()) {
                         return false;
                     }
 
-                    for (var i: usize = 0; i < n1.type_args.len(); i += 1) {
-                        const arg1 = n1.type_args.get(i).unwrap();
-                        const arg2 = n2.type_args.get(i).unwrap();
+                    for (var i: usize = 0; i < named1.type_args.len(); i += 1) {
+                        const arg1 = named1.type_args.get(i).unwrap();
+                        const arg2 = named2.type_args.get(i).unwrap();
 
                         switch (*arg1) {
-                            case .Type(t1, _) => {
+                            case .Type(ty1, _) => {
                                 switch (*arg2) {
-                                    case .Type(t2, _) => {
-                                        if (!cir_types_eq(&t1, &t2)) {
+                                    case .Type(ty2, _) => {
+                                        if (!cir_types_eq(&ty1, &ty2)) {
                                             return false;
                                         }
                                     }
@@ -3879,7 +3880,6 @@ pub fn cir_types_eq(a: const SemaType*, b: const SemaType*) bool {
                             }
                         }
                     }
-
 
                     return true;
                 }

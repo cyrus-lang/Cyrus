@@ -447,10 +447,14 @@ pub struct TypeEmitter {
         for (var field_index: usize = 0; field_index < struct_decl->fields.len(); field_index += 1) {
             const field = struct_decl->fields.get_const(field_index).unwrap();
 
-            var field_decl = self->build_decl(&field->ty, field->name.as_str_const());
+            var field_name = mangle::sanitized(self->allocator, field->name.as_str_const());
+            var field_decl = self->build_decl(&field->ty, field_name.as_str_const());
+            
             self->type_out.push_str("    ");
             self->type_out.push_str(field_decl.as_str_const());
             self->type_out.push_str(";\n");
+            
+            field_name.free();
             field_decl.free();
         }
 
@@ -514,11 +518,16 @@ pub struct TypeEmitter {
 
         for (var field_index: usize = 0; field_index < union_decl->fields.len(); field_index += 1) {
             const field = union_decl->fields.get_const(field_index).unwrap();
-            var field_decl = self->build_decl(&field->ty, field->name.as_str_const());
+           
+            var field_name = mangle::sanitized(self->allocator, field->name.as_str_const());
+            var field_decl = self->build_decl(&field->ty, field_name.as_str_const());
+            
             self->type_out.push_str("    ");
             self->type_out.push_str(field_decl.as_str_const());
             self->type_out.push_str(";\n");
+            
             field_decl.free();
+            field_name.free();
         }
 
         self->type_out.push_str("};\n\n");
@@ -611,58 +620,74 @@ pub struct TypeEmitter {
                         switch (value->ty) {
                             case .Some(ty) => {
                                 self->ensure_named(&ty);
-                                var vname = self->enum_variant_type_name(&c_name, tag);
+                                var variant = self->enum_variant_type_name(&c_name, tag);
                                 var value_decl = self->build_decl(&ty, "value");
                                 self->type_out.push_str("typedef struct ");
-                                self->type_out.push_str(vname.as_str_const());
+                                self->type_out.push_str(variant.as_str_const());
                                 self->type_out.push_str(" { ");
                                 self->type_out.push_str(value_decl.as_str_const());
                                 self->type_out.push_str("; } ");
-                                self->type_out.push_str(vname.as_str_const());
+                                self->type_out.push_str(variant.as_str_const());
                                 self->type_out.push_str(";\n");
                                 value_decl.free();
-                                vname.free();
+                                variant.free();
                             }
                             else => {}
                         }
                     }
                     case .Tuple { fields, .. } => {
-                        var vname = self->enum_variant_type_name(&c_name, tag);
+                        var variant = self->enum_variant_type_name(&c_name, tag);
+                        
                         self->type_out.push_str("typedef struct ");
-                        self->type_out.push_str(vname.as_str_const());
+                        self->type_out.push_str(variant.as_str_const());
                         self->type_out.push_str(" { ");
+                        
                         for (var field_index: usize = 0; field_index < fields.len(); field_index += 1) {
                             const field = fields.get_const(field_index).unwrap();
+                            
                             self->ensure_named(&field->ty);
-                            var fname = tuple_field_name(self->allocator, field_index);
-                            var field_decl = self->build_decl(&field->ty, fname.as_str_const());
+                            
+                            var field_name = tuple_field_name(self->allocator, field_index);
+                            var field_decl = self->build_decl(&field->ty, field_name.as_str_const());
+                            
                             self->type_out.push_str(field_decl.as_str_const());
                             self->type_out.push_str("; ");
+                            
                             field_decl.free();
-                            fname.free();
+                            field_name.free();
                         }
+
                         self->type_out.push_str("} ");
-                        self->type_out.push_str(vname.as_str_const());
+                        self->type_out.push_str(variant.as_str_const());
                         self->type_out.push_str(";\n");
-                        vname.free();
+                        variant.free();
                     }
                     case .Struct { fields, .. } => {
-                        var vname = self->enum_variant_type_name(&c_name, tag);
+                        var variant = self->enum_variant_type_name(&c_name, tag);
+                        
                         self->type_out.push_str("typedef struct ");
-                        self->type_out.push_str(vname.as_str_const());
+                        self->type_out.push_str(variant.as_str_const());
                         self->type_out.push_str(" { ");
+                        
                         for (var field_index: usize = 0; field_index < fields.len(); field_index += 1) {
                             const field = fields.get_const(field_index).unwrap();
+                            
                             self->ensure_named(&field->ty);
-                            var field_decl = self->build_decl(&field->ty, field->name.str.as_str_const());
+                            
+                            var field_name = mangle::sanitized(self->allocator, field->name.str.as_str_const());
+                            var field_decl = self->build_decl(&field->ty, field_name.as_str_const());
+                            
                             self->type_out.push_str(field_decl.as_str_const());
                             self->type_out.push_str("; ");
+                            
+                            field_name.free();
                             field_decl.free();
                         }
+
                         self->type_out.push_str("} ");
-                        self->type_out.push_str(vname.as_str_const());
+                        self->type_out.push_str(variant.as_str_const());
                         self->type_out.push_str(";\n");
-                        vname.free();
+                        variant.free();
                     }
                 }
             }
@@ -682,13 +707,15 @@ pub struct TypeEmitter {
                 switch (*variant) {
                     case .Unit => {}
                     else => {
-                        var vname = self->enum_variant_type_name(&c_name, tag);
+                        var variant = self->enum_variant_type_name(&c_name, tag);
+                        
                         self->type_out.push_str("        ");
-                        self->type_out.push_str(vname.as_str_const());
+                        self->type_out.push_str(variant.as_str_const());
                         self->type_out.push_str(" v");
                         push_u32_into(&self->type_out, self->allocator, tag);
                         self->type_out.push_str(";\n");
-                        vname.free();
+                        
+                        variant.free();
                     }
                 }
             }
@@ -1057,11 +1084,15 @@ pub struct TypeEmitter {
                                 type_args
                             );
 
-                            var field_decl = self->build_decl(&subst, field->name.as_str_const());
+                            var field_name = mangle::sanitized(self->allocator, field->name.as_str_const());
+                            var field_decl = self->build_decl(&subst, field_name.as_str_const());
+                            
                             self->type_out.push_str("    ");
                             self->type_out.push_str(field_decl.as_str_const());
                             self->type_out.push_str(";\n");
+                            
                             field_decl.free();
+                            field_name.free();
                         }
 
                         self->type_out.push_str("};\n\n");
@@ -1122,21 +1153,26 @@ pub struct TypeEmitter {
 
                         for (var field_index: usize = 0; field_index < union_decl->fields.len(); field_index += 1) {
                             const field = union_decl->fields.get_const(field_index).unwrap();
+                            
                             var subst = cir::substitute_sema_type_with_type_args(
                                 self->allocator,
                                 &field->ty,
                                 &union_decl->generic_params,
                                 type_args
                             );
-                            var field_decl = self->build_decl(&subst, field->name.as_str_const());
+                            
+                            var field_name = mangle::sanitized(self->allocator, field->name.as_str_const());
+                            var field_decl = self->build_decl(&subst, field_name.as_str_const());
+                            
                             self->type_out.push_str("    ");
                             self->type_out.push_str(field_decl.as_str_const());
                             self->type_out.push_str(";\n");
+                            
+                            field_name.free();
                             field_decl.free();
                         }
 
                         self->type_out.push_str("};\n\n");
-
                         base.free();
                     }
                     else => {}
@@ -1213,78 +1249,100 @@ pub struct TypeEmitter {
                                     case .Unit => {}
                                     case .Valued { value, .. } => {
                                         switch (value->ty) {
-                                            case .Some(payload_ty) => {
+                                            case .Some(payload_type) => {
                                                 var subst = cir::substitute_sema_type_with_type_args(
                                                     self->allocator,
-                                                    &payload_ty,
+                                                    &payload_type,
                                                     &enum_decl->generic_params,
                                                     type_args
                                                 );
+                                                
                                                 self->ensure_named(&subst);
-                                                var vname = self->enum_variant_type_name(&base, tag);
+                                                
+                                                var variant = self->enum_variant_type_name(&base, tag);
                                                 var value_decl = self->build_decl(&subst, "value");
+                                                
                                                 self->type_out.push_str("typedef struct ");
-                                                self->type_out.push_str(vname.as_str_const());
+                                                self->type_out.push_str(variant.as_str_const());
                                                 self->type_out.push_str(" { ");
                                                 self->type_out.push_str(value_decl.as_str_const());
                                                 self->type_out.push_str("; } ");
-                                                self->type_out.push_str(vname.as_str_const());
+                                                self->type_out.push_str(variant.as_str_const());
                                                 self->type_out.push_str(";\n");
+                                                
                                                 value_decl.free();
-                                                vname.free();
+                                                variant.free();
                                             }
                                             else => {}
                                         }
                                     }
                                     case .Tuple { fields, .. } => {
-                                        var vname = self->enum_variant_type_name(&base, tag);
+                                        var variant = self->enum_variant_type_name(&base, tag);
+                                        
                                         self->type_out.push_str("typedef struct ");
-                                        self->type_out.push_str(vname.as_str_const());
+                                        self->type_out.push_str(variant.as_str_const());
                                         self->type_out.push_str(" { ");
+                                        
                                         for (var field_index: usize = 0; field_index < fields.len(); field_index += 1) {
                                             const field = fields.get_const(field_index).unwrap();
+                                            
                                             var subst = cir::substitute_sema_type_with_type_args(
                                                 self->allocator,
                                                 &field->ty,
                                                 &enum_decl->generic_params,
                                                 type_args
                                             );
+                                            
                                             self->ensure_named(&subst);
-                                            var fname = tuple_field_name(self->allocator, field_index);
-                                            var field_decl = self->build_decl(&subst, fname.as_str_const());
+                                            
+                                            var field_name = tuple_field_name(self->allocator, field_index);
+                                            var field_decl = self->build_decl(&subst, field_name.as_str_const());
+                                            
                                             self->type_out.push_str(field_decl.as_str_const());
                                             self->type_out.push_str("; ");
+                                            
                                             field_decl.free();
-                                            fname.free();
+                                            field_name.free();
                                         }
+
                                         self->type_out.push_str("} ");
-                                        self->type_out.push_str(vname.as_str_const());
+                                        self->type_out.push_str(variant.as_str_const());
                                         self->type_out.push_str(";\n");
-                                        vname.free();
+                                        variant.free();
                                     }
                                     case .Struct { fields, .. } => {
-                                        var vname = self->enum_variant_type_name(&base, tag);
+                                        var variant = self->enum_variant_type_name(&base, tag);
+                                        
                                         self->type_out.push_str("typedef struct ");
-                                        self->type_out.push_str(vname.as_str_const());
+                                        self->type_out.push_str(variant.as_str_const());
                                         self->type_out.push_str(" { ");
+                                        
                                         for (var field_index: usize = 0; field_index < fields.len(); field_index += 1) {
                                             const field = fields.get_const(field_index).unwrap();
+                                            
                                             var subst = cir::substitute_sema_type_with_type_args(
                                                 self->allocator,
                                                 &field->ty,
                                                 &enum_decl->generic_params,
                                                 type_args
                                             );
+                                            
                                             self->ensure_named(&subst);
-                                            var field_decl = self->build_decl(&subst, field->name.str.as_str_const());
+                                            
+                                            var field_name = mangle::sanitized(self->allocator, field->name.str.as_str_const());
+                                            var field_decl = self->build_decl(&subst, field_name.as_str_const());
+                                            
                                             self->type_out.push_str(field_decl.as_str_const());
                                             self->type_out.push_str("; ");
+                                            
+                                            field_name.free();
                                             field_decl.free();
                                         }
+
                                         self->type_out.push_str("} ");
-                                        self->type_out.push_str(vname.as_str_const());
+                                        self->type_out.push_str(variant.as_str_const());
                                         self->type_out.push_str(";\n");
-                                        vname.free();
+                                        variant.free();
                                     }
                                 }
                             }
@@ -1304,13 +1362,15 @@ pub struct TypeEmitter {
                                 switch (*variant) {
                                     case .Unit => {}
                                     else => {
-                                        var vname = self->enum_variant_type_name(&base, tag);
+                                        var variant = self->enum_variant_type_name(&base, tag);
+                                        
                                         self->type_out.push_str("        ");
-                                        self->type_out.push_str(vname.as_str_const());
+                                        self->type_out.push_str(variant.as_str_const());
                                         self->type_out.push_str(" v");
                                         push_u32_into(&self->type_out, self->allocator, tag);
                                         self->type_out.push_str(";\n");
-                                        vname.free();
+                                        
+                                        variant.free();
                                     }
                                 }
                             }

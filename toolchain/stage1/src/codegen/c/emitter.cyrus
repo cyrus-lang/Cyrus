@@ -54,6 +54,7 @@ pub struct Emitter {
     loop_marks: Vec<usize>,
     lambda_counter: usize,
     in_void_main: bool,
+    generic_object_names: Vec<String>,
 
     needs_panic_helper: bool,
     needs_assert_helper: bool,
@@ -105,6 +106,7 @@ pub struct Emitter {
             needs_panic_helper: false,
             in_void_main: false,
             lambda_counter: 0,
+            generic_object_names: Vec.new(allocator),
         };
     }
 
@@ -121,6 +123,7 @@ pub struct Emitter {
                         const struct_decl = self->tables->structs.get_const(struct_.struct_decl_id).unwrap();
                         
                         if (struct_decl->is_generic()) {
+                            self->generic_object_names.push(String.from_str(self->allocator, struct_.name.as_str_const()));
                             continue;
                         }
 
@@ -133,6 +136,7 @@ pub struct Emitter {
                         const union_decl = self->tables->unions.get_const(union_.union_decl_id).unwrap();
 
                         if (union_decl->is_generic()) {
+                            self->generic_object_names.push(String.from_str(self->allocator, union_.name.as_str_const()));
                             continue;
                         }
 
@@ -142,13 +146,20 @@ pub struct Emitter {
                         }
                     }
                     case .Enum(enum_) => {
+                        var is_generic_enum = false;
+
                         switch (self->tables->enums.get_const(enum_.enum_decl_id)) {
                             case .Some(enum_decl) => {
                                 if (enum_decl->is_generic()) {
-                                    continue;
+                                    is_generic_enum = true;
                                 }
                             }
                             else => {}
+                        }
+
+                        if (is_generic_enum) {
+                            self->generic_object_names.push(String.from_str(self->allocator, enum_.name.as_str_const()));
+                            continue;
                         }
 
                         const type_decl_id: cir::TypeDeclId = .Enum(enum_.enum_decl_id);
@@ -202,6 +213,26 @@ pub struct Emitter {
 
             if (method->func_decl.is_generic()) {
                 continue;
+            }
+
+            switch (method->object_name) {
+                case .Some(obj_name) => {
+                    var is_generic_object = false;
+
+                    for (var k: usize = 0; k < self->generic_object_names.len(); k += 1) {
+                        const existing = self->generic_object_names.get_const(k).unwrap();
+
+                        if (existing->as_str_const() == obj_name.as_str_const()) {
+                            is_generic_object = true;
+                            break;
+                        }
+                    }
+
+                    if (is_generic_object) {
+                        continue;
+                    }
+                }
+                else => {}
             }
             
             switch (method->body) {
@@ -423,7 +454,7 @@ pub struct Emitter {
                     const field = struct_init.fields.get_const(i).unwrap();
 
                     out.push_str(".");
-                    out.push_str(field->name.as_str_const());
+                    mangle::sanitize_into(&out, field->name.as_str_const());
                     out.push_str(" = ");
                     
                     switch (field->value.ty) {
@@ -448,7 +479,7 @@ pub struct Emitter {
 
             case .UnionInit(union_init) => {
                 var out = String.from_str(self->allocator, "{ .");
-                out.push_str(union_init.field->name.as_str_const());
+                mangle::sanitize_into(&out, union_init.field->name.as_str_const());
                 out.push_str(" = ");
                 
                 var expr = self->emit_expr(&union_init.field->value);
@@ -770,7 +801,7 @@ pub struct Emitter {
             for (var i: usize = 0; i < params->list.len(); i += 1) {
                 const param = params->list.get_const(i).unwrap();
                 
-                var name = String.from_str(self->allocator, param->name_str());
+                var name = mangle::sanitized(self->allocator, param->name_str());
                 var ty = param->ty();
 
                 // Array params are passed as pointers
@@ -816,7 +847,7 @@ pub struct Emitter {
 
             switch (ty) {
                 case .Array(array) => {
-                    const name = param->name_str();
+                    var name = mangle::sanitized(self->allocator, param->name_str());
                     
                     var capacity: usize = 1;
                     
@@ -834,21 +865,22 @@ pub struct Emitter {
                     
                     self->body_out.push_str(type_name.as_str_const());
                     self->body_out.push(' ');
-                    self->body_out.push_str(name);
+                    self->body_out.push_str(name.as_str_const());
                     self->body_out.push('[');
                     push_usize(&self->body_out, capacity);
                     self->body_out.push_str("];\n");
                     
                     self->ensure_memcpy_proto();
                     self->body_out.push_str("    memcpy(");
-                    self->body_out.push_str(name);
+                    self->body_out.push_str(name.as_str_const());
                     self->body_out.push_str(", ");
-                    self->body_out.push_str(name);
+                    self->body_out.push_str(name.as_str_const());
                     self->body_out.push_str("__p, sizeof(");
-                    self->body_out.push_str(name);
+                    self->body_out.push_str(name.as_str_const());
                     self->body_out.push_str("));\n");
 
                     type_name.free();
+                    name.free();
                 }
                 else => {}
             }
@@ -1097,12 +1129,14 @@ pub struct Emitter {
         switch (return_->arg) {
             case .Some(arg) => {
                 var expr = self->emit_expr(&arg);
-                self->body_out.push_str("    return ");
+                self->body_out.push_str(" return ");
                 self->body_out.push_str(expr.as_str_const());
                 self->body_out.push_str(";\n");
                 expr.free();
             }
-            case .None => self->body_out.push_str("    return;\n");
+            case .None => {
+                self->body_out.push_str(" return;\n");
+            }
         }
     }
 
@@ -1258,7 +1292,7 @@ pub struct Emitter {
         }
 
         if (!switch_->includes_any_range()) {
-            self->emit_switch_int(switch_);
+            self->emit_switch_integer(switch_);
             return;
         }
 
@@ -1320,7 +1354,7 @@ pub struct Emitter {
                                 self->body_out.push_str("        ");
                                 self->body_out.push_str(type_name.as_str_const());
                                 self->body_out.push(' ');
-                                self->body_out.push_str(name.str.as_str_const());
+                                mangle::sanitize_into(&self->body_out, name.str.as_str_const());
                                 self->body_out.push_str(" = ");
                                 
                                 var expr = self->emit_expr(&switch_->operand);
@@ -1395,7 +1429,7 @@ pub struct Emitter {
                 operand_name = self->types.enum_c_name_for_ty(&ty);
                 has_operand_type = true;
 
-                switch (ty) {
+                switch (*ty.const_inner()) {
                     case .Named(named) => {
                         if (!named.type_args.is_empty()) {
                             inst_args_storage = cir::clone_typed_type_args(self->allocator, &named.type_args);
@@ -1498,7 +1532,7 @@ pub struct Emitter {
                                                         var type_name = self->types.type_name(&field_type);
                                                         self->body_out.push_str(type_name.as_str_const());
                                                         self->body_out.push(' ');
-                                                        self->body_out.push_str(name.str.as_str_const());
+                                                        mangle::sanitize_into(&self->body_out, name.str.as_str_const());
                                                         self->body_out.push_str(" = __sw_op.u.v");
                                                         push_uint32(&self->body_out, tag);
                                                         self->body_out.push('.');
@@ -1565,11 +1599,11 @@ pub struct Emitter {
                                                             
                                                             self->body_out.push_str(type_name.as_str_const());
                                                             self->body_out.push(' ');
-                                                            self->body_out.push_str(name.str.as_str_const());
+                                                            mangle::sanitize_into(&self->body_out, name.str.as_str_const());
                                                             self->body_out.push_str(" = __sw_op.u.v");
                                                             push_uint32(&self->body_out, tag);
                                                             self->body_out.push('.');
-                                                            self->body_out.push_str(item->name.str.as_str_const());
+                                                            mangle::sanitize_into(&self->body_out, item->name.str.as_str_const());
                                                             self->body_out.push_str(";\n");
                                                             
                                                             type_name.free();
@@ -1588,7 +1622,7 @@ pub struct Emitter {
                         }
 
                         self->emit_block_stmts(case_->body, true);
-                        self->body_out.push_str("    }\n");
+                        self->body_out.push_str(" }\n");
                     }
                     case .Binding { name, .. } => {
                         if (first) {
@@ -1598,16 +1632,16 @@ pub struct Emitter {
                             self->body_out.push_str(" else if (1) {\n");
                         }
 
-                        var binding_type_name = String.from_str(self->allocator, operand_name.as_str_const());
+                        var type_name = String.from_str(self->allocator, operand_name.as_str_const());
                         
-                        self->body_out.push_str(binding_type_name.as_str_const());
+                        self->body_out.push_str(type_name.as_str_const());
                         self->body_out.push(' ');
-                        self->body_out.push_str(name.str.as_str_const());
+                        mangle::sanitize_into(&self->body_out, name.str.as_str_const());
                         self->body_out.push_str(" = __sw_op;\n");
                         self->emit_block_stmts(case_->body, true);
-                        self->body_out.push_str("    }\n");
+                        self->body_out.push_str(" }\n");
                         
-                        binding_type_name.free();
+                        type_name.free();
                     }
                     else => {
                         if (first) {
@@ -1640,7 +1674,7 @@ pub struct Emitter {
         }
     }
 
-    fn emit_switch_int(self: Self*, switch_: const cir::TypedSwitchStmt*) {
+    fn emit_switch_integer(self: Self*, switch_: const cir::TypedSwitchStmt*) {
         var operand = self->emit_expr(&switch_->operand);
         self->body_out.push_str(" switch (");
         self->body_out.push_str(operand.as_str_const());
@@ -1655,10 +1689,10 @@ pub struct Emitter {
 
                 switch (pattern->kind) {
                     case .Wildcard => {
-                        self->body_out.push_str("    default: {\n");
+                        self->body_out.push_str(" default: {\n");
                     }
                     case .Binding { name, .. } => {
-                        self->body_out.push_str("    default: {\n");
+                        self->body_out.push_str(" default: {\n");
                         const ty_opt = switch_->operand.ty;
                         if (ty_opt.is_some()) {
                             const ty = ty_opt.unwrap();
@@ -1666,7 +1700,7 @@ pub struct Emitter {
                             var type_name = self->types.type_name(&ty);
                             self->body_out.push_str(type_name.as_str_const());
                             self->body_out.push(' ');
-                            self->body_out.push_str(name.str.as_str_const());
+                            mangle::sanitize_into(&self->body_out, name.str.as_str_const());
                             self->body_out.push_str(" = ");
                             
                             var expr = self->emit_expr(&switch_->operand);
@@ -1680,7 +1714,7 @@ pub struct Emitter {
                     case .Expr(expr) => {
                         switch (expr.literal_const_int_value()) {
                             case .Some(literal) => {
-                                self->body_out.push_str("    case ");
+                                self->body_out.push_str(" case ");
                                 switch (literal) {
                                     case .Signed(v) => push_int128(&self->body_out, v);
                                     case .Unsigned(v) => push_uint128(&self->body_out, v);
@@ -1688,7 +1722,7 @@ pub struct Emitter {
                                 self->body_out.push_str(": {\n");
                             }
                             case .None => {
-                                self->body_out.push_str("    default: {\n");
+                                self->body_out.push_str(" default: {\n");
                             }
                         }
                     }
@@ -1696,34 +1730,34 @@ pub struct Emitter {
                         @panic("range pattern must be lowered into chained if-else statement");
                     }
                     else => {
-                        self->body_out.push_str("    default: {\n");
+                        self->body_out.push_str(" default: {\n");
                     }
                 }
             }
 
             self->emit_block_stmts(case_->body, true);
-            self->body_out.push_str("    } break;\n");
+            self->body_out.push_str(" } break;\n");
         }
 
         switch (switch_->else_case) {
             case .Some(else_case) => {
-                self->body_out.push_str("    default: {\n");
+                self->body_out.push_str(" default: {\n");
                 self->emit_block_stmts(&else_case, true);
-                self->body_out.push_str("    } break;\n");
+                self->body_out.push_str(" } break;\n");
             }
             else => {
-                self->body_out.push_str("    default: break;\n");
+                self->body_out.push_str(" default: break;\n");
             }
         }
 
-        self->body_out.push_str("    }\n");
+        self->body_out.push_str(" }\n");
     }
 
     fn emit_switch_if_chain(self: Self*, switch_: const cir::TypedSwitchStmt*) {
         var operand_type_name: String;
         var operand = self->emit_expr(&switch_->operand);
 
-        self->body_out.push_str("    {\n        ");
+        self->body_out.push_str(" {\n ");
 
         switch (switch_->operand.ty) {
             case .Some(ty) => {
@@ -1751,9 +1785,9 @@ pub struct Emitter {
 
                 switch (pattern->kind) {
                     case .Wildcard => {
-                        self->body_out.push_str("    else {\n");
+                        self->body_out.push_str(" else {\n");
                         self->emit_block_stmts(case_->body, true);
-                        self->body_out.push_str("    }\n");
+                        self->body_out.push_str(" }\n");
                         j = case_->patterns.len();
                         continue;
                     }
@@ -1789,18 +1823,20 @@ pub struct Emitter {
                     }
                     case .Expr(expr) => {
                         if (first) {
-                            self->body_out.push_str("    if (");
+                            self->body_out.push_str(" if (");
                             first = false;
                         } else {
-                            self->body_out.push_str("    else if (");
+                            self->body_out.push_str(" else if (");
                         }
                         
                         var value = self->emit_expr(&expr);
+
                         self->body_out.push_str("__sw_op == ");
                         self->body_out.push_str(value.as_str_const());
                         self->body_out.push_str(") {\n");
                         self->emit_block_stmts(case_->body, true);
                         self->body_out.push_str("}\n");
+
                         value.free();
                     }
                     case .Binding { name, .. } => {
@@ -1812,17 +1848,17 @@ pub struct Emitter {
                         self->body_out.push_str("{");
                         self->body_out.push_str(operand_type_name.as_str_const());
                         self->body_out.push(' ');
-                        self->body_out.push_str(name.str.as_str_const());
+                        mangle::sanitize_into(&self->body_out, name.str.as_str_const());
                         self->body_out.push_str(" = __sw_op;\n");
                         self->emit_block_stmts(case_->body, true);
                         self->body_out.push_str("}\n");
                     }
                     case .EnumUnit(ident) => {
                         if (first) {
-                            self->body_out.push_str("    if (");
+                            self->body_out.push_str(" if (");
                             first = false;
                         } else {
-                            self->body_out.push_str("    else if (");
+                            self->body_out.push_str(" else if (");
                         }
                         self->body_out.push_str("__sw_op == ");
                         self->body_out.push_str(ident.str.as_str_const());
@@ -1831,10 +1867,10 @@ pub struct Emitter {
                         self->body_out.push_str("    }\n");
                     }
                     else => {
-                        self->body_out.push_str("    ");
                         if (!first) {
                             self->body_out.push_str("else ");
                         }
+
                         first = false;
                         self->body_out.push_str("{\n");
                         self->emit_block_stmts(case_->body, true);
@@ -1846,19 +1882,19 @@ pub struct Emitter {
 
         switch (switch_->else_case) {
             case .Some(else_case) => {
-                self->body_out.push_str("    else {\n");
+                self->body_out.push_str(" else {\n");
                 self->emit_block_stmts(&else_case, true);
-                self->body_out.push_str("    }\n");
+                self->body_out.push_str(" }\n");
             }
             else => {}
         }
 
-        self->body_out.push_str("    }\n");
+        self->body_out.push_str(" }\n");
         operand_type_name.free();
     }
 
     fn emit_inline_asm_stmt(self: Self*, inline_asm: const cir::TypedInlineAsm) {
-        self->body_out.push_str("    __asm__ ");
+        self->body_out.push_str(" __asm__ ");
 
         if (inline_asm.is_volatile) {
             self->body_out.push_str("__volatile__(");
@@ -1868,11 +1904,13 @@ pub struct Emitter {
 
         for (var i: usize = 0; i < inline_asm.template.len(); i += 1) {
             const line = inline_asm.template.get_const(i).unwrap();
+            
             self->body_out.push('"');
             self->body_out.push_str(line->as_str_const());
             self->body_out.push('\\');
             self->body_out.push('n');
             self->body_out.push('"');
+            
             if (i + 1 < inline_asm.template.len()) {
                 self->body_out.push_str(" ");
             }
@@ -1880,19 +1918,25 @@ pub struct Emitter {
 
         if (inline_asm.outputs.len() > 0 || inline_asm.inputs.len() > 0 || inline_asm.clobbers.len() > 0) {
             self->body_out.push_str(" : ");
+
             for (var i: usize = 0; i < inline_asm.outputs.len(); i += 1) {
                 const operand = inline_asm.outputs.get_const(i).unwrap();
+                
                 self->body_out.push_str("[");
-                var en = mangle::sanitized(self->allocator, operand->constraint.as_str_const());
-                self->body_out.push_str(en.as_str_const());
-                en.free();
+                var constraint = mangle::sanitized(self->allocator, operand->constraint.as_str_const());
+                self->body_out.push_str(constraint.as_str_const());
+                constraint.free();
+
                 self->body_out.push_str("] \"");
                 self->body_out.push_str(operand->constraint.as_str_const());
                 self->body_out.push_str("\"(");
-                var e = self->emit_expr(operand->expr);
-                self->body_out.push_str(e.as_str_const());
-                e.free();
+
+                var expr = self->emit_expr(operand->expr);
+                self->body_out.push_str(expr.as_str_const());
+                expr.free();
+
                 self->body_out.push(')');
+
                 if (i + 1 < inline_asm.outputs.len()) {
                     self->body_out.push_str(", ");
                 }
@@ -1905,16 +1949,21 @@ pub struct Emitter {
             for (var i: usize = 0; i < inline_asm.inputs.len(); i += 1) {
                 const operand = inline_asm.inputs.get_const(i).unwrap();
                 self->body_out.push_str("[");
-                var en = mangle::sanitized(self->allocator, operand->constraint.as_str_const());
-                self->body_out.push_str(en.as_str_const());
-                en.free();
+                
+                var constraint = mangle::sanitized(self->allocator, operand->constraint.as_str_const());
+                self->body_out.push_str(constraint.as_str_const());
+                constraint.free();
+                
                 self->body_out.push_str("] \"");
                 self->body_out.push_str(operand->constraint.as_str_const());
                 self->body_out.push_str("\"(");
-                var e = self->emit_expr(operand->expr);
-                self->body_out.push_str(e.as_str_const());
-                e.free();
+                
+                var expr = self->emit_expr(operand->expr);
+                self->body_out.push_str(expr.as_str_const());
+                expr.free();
+                
                 self->body_out.push(')');
+
                 if (i + 1 < inline_asm.inputs.len()) {
                     self->body_out.push_str(", ");
                 }
@@ -1924,9 +1973,11 @@ pub struct Emitter {
                 self->body_out.push_str(" : ");
                 for (var i: usize = 0; i < inline_asm.clobbers.len(); i += 1) {
                     const clobber = inline_asm.clobbers.get_const(i).unwrap();
+                    
                     self->body_out.push('"');
                     self->body_out.push_str(clobber->name.as_str_const());
                     self->body_out.push('"');
+                    
                     if (i + 1 < inline_asm.clobbers.len()) {
                         self->body_out.push_str(", ");
                     }
@@ -2007,9 +2058,8 @@ pub struct Emitter {
         }
     }
 
+    [[inline]]
     fn emit_defer_stmt(self: Self*, defer_stmt: const cir::TypedDeferStmt*) {
-        // Register nested defers of the deferred statement's block if any,
-        // then emit the statement itself->
         self->emit_stmt(defer_stmt->operand);
     }
 
@@ -2021,7 +2071,7 @@ pub struct Emitter {
                 var out = String.new(self->allocator);
                 var operand = self->emit_expr(prefix.operand);
 
-                switch (prefix.operand) {
+                switch (prefix.op) {
                     case .Bang => {
                         out.push_str("(!");
                         out.push_str(operand.as_str_const());
@@ -2091,7 +2141,7 @@ pub struct Emitter {
                     out.push('.');
                 }
 
-                out.push_str(field_access.name.as_str_const());
+                mangle::sanitize_into(&out, field_access.name.as_str_const());
                 out.push(')');
                 base.free();
                 return out;
@@ -2103,7 +2153,7 @@ pub struct Emitter {
 
                 out.push_str(type_name.as_str_const());
                 out.push_str("){ .");
-                out.push_str(union_init.field->name.as_str_const());
+                mangle::sanitize_into(&out, union_init.field->name.as_str_const());
                 out.push_str(" = ");
                 
                 var expr = self->emit_expr(&union_init.field->value);
@@ -2262,7 +2312,7 @@ pub struct Emitter {
         out.push_str(lhs.as_str_const());
         out.push(' ');
 
-        switch (infix->operand) {
+        switch (infix->op) {
             case .Add => out.push('+');
             case .Sub => out.push('-');
             case .Mul => out.push('*');
@@ -2798,16 +2848,21 @@ pub struct Emitter {
         var out = String.from_str(self->allocator, "((");
         out.push_str(type_name.as_str_const());
         out.push_str("){ ");
+        
         for (var i: usize = 0; i < struct_init->fields.len(); i += 1) {
             const field = struct_init->fields.get_const(i).unwrap();
+
             out.push('.');
-            out.push_str(field->name.as_str_const());
+            mangle::sanitize_into(&out, field->name.as_str_const());
             out.push_str(" = ");
-            var v = self->emit_expr(&field->value);
-            out.push_str(v.as_str_const());
-            v.free();
+            
+            var expr = self->emit_expr(&field->value);
+            out.push_str(expr.as_str_const());
+            expr.free();
+
             out.push_str(", ");
         }
+
         out.push_str(" })");
         type_name.free();
         return out;
@@ -2885,6 +2940,7 @@ pub struct Emitter {
         }
 
         self->ensure_memset_proto();
+        self->ensure_memcpy_proto();
 
         const variant = enum_decl->variants.get_const(variant_index).unwrap();
 
@@ -2947,7 +3003,7 @@ pub struct Emitter {
 
                                 if (field_init->name.str.as_str_const() == field->name.str.as_str_const()) {
                                     out.push('.');
-                                    out.push_str(field->name.str.as_str_const());
+                                    mangle::sanitize_into(&out, field->name.str.as_str_const());
                                     out.push_str(" = ");
                                     
                                     var expr = self->emit_expr(field_init->value);
@@ -3598,6 +3654,12 @@ pub struct Emitter {
         self->loop_marks.free();
         self->vtable_emitted.free();
         self->func_proto_emitted.free();
+
+        for (var i: usize = 0; i < self->generic_object_names.len(); i += 1) {
+            self->generic_object_names.get(i).unwrap()->free();
+        }
+
+        self->generic_object_names.free();
     }
 }
 

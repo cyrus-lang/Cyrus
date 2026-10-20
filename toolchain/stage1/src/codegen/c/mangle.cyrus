@@ -190,7 +190,63 @@ pub fn sanitize_into(out: String*, name: const uint8*) {
 
     if (i == 0) {
         out->push_str("_anon");
+        return;
     }
+
+    if (is_c_keyword(name)) {
+        out->push('_');
+    }
+}
+
+pub fn is_c_keyword(name: const uint8*) bool {
+    if (name == "auto") { return true; }
+    if (name == "break") { return true; }
+    if (name == "case") { return true; }
+    if (name == "char") { return true; }
+    if (name == "const") { return true; }
+    if (name == "continue") { return true; }
+    if (name == "default") { return true; }
+    if (name == "do") { return true; }
+    if (name == "double") { return true; }
+    if (name == "else") { return true; }
+    if (name == "enum") { return true; }
+    if (name == "extern") { return true; }
+    if (name == "float") { return true; }
+    if (name == "for") { return true; }
+    if (name == "goto") { return true; }
+    if (name == "if") { return true; }
+    if (name == "inline") { return true; }
+    if (name == "int") { return true; }
+    if (name == "long") { return true; }
+    if (name == "register") { return true; }
+    if (name == "restrict") { return true; }
+    if (name == "return") { return true; }
+    if (name == "short") { return true; }
+    if (name == "signed") { return true; }
+    if (name == "sizeof") { return true; }
+    if (name == "static") { return true; }
+    if (name == "struct") { return true; }
+    if (name == "switch") { return true; }
+    if (name == "typedef") { return true; }
+    if (name == "union") { return true; }
+    if (name == "unsigned") { return true; }
+    if (name == "void") { return true; }
+    if (name == "volatile") { return true; }
+    if (name == "while") { return true; }
+    if (name == "_Bool") { return true; }
+    if (name == "_Atomic") { return true; }
+    if (name == "_Generic") { return true; }
+    if (name == "_Noreturn") { return true; }
+    if (name == "_Static_assert") { return true; }
+    if (name == "_Thread_local") { return true; }
+    if (name == "_Alignas") { return true; }
+    if (name == "_Alignof") { return true; }
+    if (name == "bool") { return true; }
+    if (name == "true") { return true; }
+    if (name == "false") { return true; }
+    if (name == "NULL") { return true; }
+    if (name == "main") { return true; }
+    return false;
 }
 
 [[inline]]

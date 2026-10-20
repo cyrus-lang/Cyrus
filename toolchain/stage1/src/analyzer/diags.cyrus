@@ -816,23 +816,6 @@ pub fn report_undefined_const_variable(
     msg.free();
 }
 
-pub fn report_const_qualified_type_assigned_to_non_const_variable(
-    dctx: DiagContext*,
-    allocator: Allocator,
-    span: Span,
-) {
-    var msg = String.from_str(
-        allocator,
-        "variable has a const-qualified type but is not declared const"
-    );
-
-    const diag = Diag.new(allocator, .Warning, msg.as_str_const(), span);
-    diag->help("prefer declaring the variable itself as const instead of using a const-qualified type");
-    dctx->report(diag);
-
-    msg.free();
-}
-
 pub fn report_func_call_args_count_mismatch(
     dctx: DiagContext*,
     allocator: Allocator,

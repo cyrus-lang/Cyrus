@@ -14,5 +14,5 @@ pub fn main() {
 
     inst.c[0] = 5;
     inst.c[1] = 25;
-    printf("%d %d", inst.c[0], inst.c[1]);
+    printf("%d %d\n", inst.c[0], inst.c[1]);
 }
