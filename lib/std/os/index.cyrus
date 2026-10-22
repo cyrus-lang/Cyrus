@@ -245,3 +245,29 @@ pub fn path_exists(path: const uint8*) bool {
     libc::fclose(file);
     return true;
 }
+
+pub fn is_dir(path: const uint8*) bool {
+    @assert(path != null, "path cannot be null");
+
+    const file = libc::opendir(path);
+    
+    if (file == null) {
+        return false;
+    }
+    
+    libc::closedir(file);
+    return true;
+}
+
+pub fn is_file(path: const uint8*) bool {
+    @assert(path != null, "path cannot be null");
+
+    const file = libc::fopen(path, "r");
+    
+    if (file == null) {
+        return false;
+    }
+    
+    libc::fclose(file);
+    return !is_dir(path);
+}
