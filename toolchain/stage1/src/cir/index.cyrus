@@ -985,7 +985,12 @@ pub enum SemaType {
     [[inline]]
     pub fn is_plain_null(self: const Self*) bool {
         switch (*self) {
-            case .Plain(.Null) => return true;
+            case .Plain(plain) => {
+                switch (plain) {
+                    case .Null => return true;
+                    else => return false;
+                }
+            }
             else => return false;
         }
     }
