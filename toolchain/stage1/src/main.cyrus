@@ -64,6 +64,7 @@ pub fn main(argc: c_int, argv: c_char**) {
         ->add_option(backend_opt)
         ->add_option(output_opt)
         ->add_option(stdlib_opt)
+        ->add_option(profile_opt)
         ->add_option(jobs_opt);
     
     const build_cmd = 
@@ -77,6 +78,7 @@ pub fn main(argc: c_int, argv: c_char**) {
         ->add_option(backend_opt)
         ->add_option(output_opt)
         ->add_option(stdlib_opt)
+        ->add_option(profile_opt)
         ->add_option(jobs_opt);
     
     const test_cmd = 

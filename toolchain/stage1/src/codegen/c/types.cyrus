@@ -160,7 +160,13 @@ pub struct TypeEmitter {
                 return inner_name;
             }
 
-            case .Const(inner) => return self->type_name(inner);
+            case .Const(inner) => {
+                var inner_name = self->type_name(inner);
+                var out = String.from_str(self->allocator, "const ");
+                out.push_str(inner_name.as_str_const());
+                inner_name.free();
+                return out;
+            }
 
             case .Named(named) => return self->named_type_name(&named);
 
@@ -244,29 +250,55 @@ pub struct TypeEmitter {
     pub fn build_decl(self: Self*, ty: const cir::SemaType*, name: const uint8*) String {
         var decl = String.from_str(self->allocator, name);
         var t = ty;
+        var base_const = false;
+        var ptr_const_next = false;
 
         while (true) {
             switch (*t) {
                 case .Const(inner) => {
+                    switch (*inner->const_inner()) {
+                        case .Pointer => ptr_const_next = true;
+                        else => base_const = true;
+                    }
+
                     t = inner;
                 }
 
                 case .Pointer(inner) => {
-                    var star = String.new(self->allocator);
-                    star.push('*');
-                    star.push_str(decl.as_str_const());
-                    decl.free();
-                    decl = star;
-
                     switch (*inner->const_inner()) {
-                        case .FuncType | .Array => {
-                            var wrapped = String.from_str(self->allocator, "(");
-                            wrapped.push_str(decl.as_str_const());
-                            wrapped.push(')');
-                            decl.free();
-                            decl = wrapped;
+                        case .FuncType => {
+                            if (ptr_const_next) {
+                                var const_decl = String.from_str(self->allocator, " const ");
+                                const_decl.push_str(decl.as_str_const());
+                                decl.free();
+                                decl = const_decl;
+                                ptr_const_next = false;
+                            }
                         }
-                        else => {}
+                        else => {
+                            var star = String.new(self->allocator);
+                            star.push('*');
+
+                            if (ptr_const_next) {
+                                star.push_str(" const ");
+                                ptr_const_next = false;
+                            }
+
+                            star.push_str(decl.as_str_const());
+                            decl.free();
+                            decl = star;
+
+                            switch (*inner->const_inner()) {
+                                case .Array => {
+                                    var wrapped = String.from_str(self->allocator, "(");
+                                    wrapped.push_str(decl.as_str_const());
+                                    wrapped.push(')');
+                                    decl.free();
+                                    decl = wrapped;
+                                }
+                                else => {}
+                            }
+                        }
                     }
 
                     t = inner;
@@ -284,6 +316,12 @@ pub struct TypeEmitter {
                 }
 
                 case .FuncType(func) => {
+                    var wrapped = String.from_str(self->allocator, "(*");
+                    wrapped.push_str(decl.as_str_const());
+                    wrapped.push(')');
+                    decl.free();
+                    decl = wrapped;
+
                     var with_fn = String.new(self->allocator);
                     with_fn.push_str(decl.as_str_const());
                     with_fn.push('(');
@@ -318,6 +356,14 @@ pub struct TypeEmitter {
 
                 else => {
                     var base = self->type_name(t);
+
+                    if (base_const) {
+                        var const_base = String.from_str(self->allocator, "const ");
+                        const_base.push_str(base.as_str_const());
+                        base.free();
+                        base = const_base;
+                    }
+
                     if (decl.len() > 0) {
                         base.push(' ');
                         base.push_str(decl.as_str_const());
@@ -608,6 +654,32 @@ pub struct TypeEmitter {
             self->type_out.push(' ');
             self->type_out.push_str(c_name.as_str_const());
             self->type_out.push_str(";\n");
+
+            for (var variant_index: usize = 0; variant_index < enum_decl->variants.len(); variant_index += 1) {
+                const variant = enum_decl->variants.get_const(variant_index).unwrap();
+
+                switch (*variant) {
+                    case .Unit => {}
+                    case .Valued { value, .. } => {
+                        switch (value->ty) {
+                            case .Some(ty) => self->ensure_named(&ty);
+                            else => {}
+                        }
+                    }
+                    case .Tuple { fields, .. } => {
+                        for (var field_index: usize = 0; field_index < fields.len(); field_index += 1) {
+                            const field = fields.get_const(field_index).unwrap();
+                            self->ensure_named(&field->ty);
+                        }
+                    }
+                    case .Struct { fields, .. } => {
+                        for (var field_index: usize = 0; field_index < fields.len(); field_index += 1) {
+                            const field = fields.get_const(field_index).unwrap();
+                            self->ensure_named(&field->ty);
+                        }
+                    }
+                }
+            }
 
             // Overlay structs first so the union can reference them.
             for (var variant_index: usize = 0; variant_index < enum_decl->variants.len(); variant_index += 1) {
