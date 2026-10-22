@@ -12,6 +12,7 @@ import std::os::process;
 import std::os::dir;
 import std::os::env;
 import std::cli;
+import std::os;
 
 import diags{DiagContext, Diag, exit_with_compile_error};
 import resolver::loader{ResolverOptions};
@@ -163,6 +164,12 @@ fn command_run(ctx: cli::ActionContext) {
     // TODO: Support Babylon
     switch (ctx.args->get_str(0)) case .Some(file_path) else {
         exit_with_compile_error("please provide an input file");
+        @unreachable();
+    }
+
+    if (!os::is_file(file_path)) {
+        driver.free();
+        exit_with_compile_error("input must be a file");
         @unreachable();
     }
 
@@ -336,6 +343,12 @@ fn command_build(ctx: cli::ActionContext) {
 
     switch (ctx.args->get_str(0)) case .Some(file_path) else {
         exit_with_compile_error("please provide an input file");
+        @unreachable();
+    }
+
+    if (!os::is_file(file_path)) {
+        driver.free();
+        exit_with_compile_error("input must be a file");
         @unreachable();
     }
 
@@ -520,6 +533,12 @@ fn command_dump_lexer(ctx: cli::ActionContext) {
         @unreachable();
     }
 
+    if (!os::is_file(file_path)) {
+        driver.free();
+        exit_with_compile_error("input must be a file");
+        @unreachable();
+    }
+
     const path = Path.new(allocator, file_path);
 
     switch (lexical.tokenize_source(path)) case .Value(var source_tokens) else {
@@ -540,6 +559,12 @@ fn command_dump_parser(ctx: cli::ActionContext) {
 
     switch (ctx.args->get_str(0)) case .Some(file_path) else {
         exit_with_compile_error("please provide an input file");
+        @unreachable();
+    }
+
+    if (!os::is_file(file_path)) {
+        driver.free();
+        exit_with_compile_error("input must be a file");
         @unreachable();
     }
 
@@ -568,6 +593,12 @@ fn command_dump_resolver(ctx: cli::ActionContext) {
 
     switch (ctx.args->get_str(0)) case .Some(file_path) else {
         exit_with_compile_error("please provide an input file");
+        @unreachable();
+    }
+    
+    if (!os::is_file(file_path)) {
+        driver.free();
+        exit_with_compile_error("input must be a file");
         @unreachable();
     }
 
@@ -618,6 +649,12 @@ fn command_dump_analyzer(ctx: cli::ActionContext) {
 
     switch (ctx.args->get_str(0)) case .Some(file_path) else {
         exit_with_compile_error("please provide an input file");
+        @unreachable();
+    }
+
+    if (!os::is_file(file_path)) {
+        driver.free();
+        exit_with_compile_error("input must be a file");
         @unreachable();
     }
 
@@ -686,6 +723,12 @@ fn command_dump_bir(ctx: cli::ActionContext) {
 
     switch (ctx.args->get_str(0)) case .Some(file_path) else {
         exit_with_compile_error("please provide an input file");
+        @unreachable();
+    }
+
+    if (!os::is_file(file_path)) {
+        driver.free();
+        exit_with_compile_error("input must be a file");
         @unreachable();
     }
 

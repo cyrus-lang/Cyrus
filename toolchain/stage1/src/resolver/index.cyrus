@@ -5,10 +5,10 @@ import std::mem::arena{ArenaAllocator};
 import std::mem{Allocator, alloc_init};
 import std::io{Writer, StdoutWriter};
 import std::collections{Vec};
-import std::os::dir{is_file};
 import std::option{Option};
 import std::string{String};
 import std::path{Path};
+import std::os;
 
 import resolver::traverse{bind_program_decl_names, resolve_decl_full};
 import resolver::symbols{GlobalSymbolRegistry};
@@ -343,7 +343,7 @@ pub struct Resolver {
                 program = entry->program;
             }
             case .None => {
-                if (!is_file(resolved.file_path.as_str_const())) {
+                if (!os::is_file(resolved.file_path.as_str_const())) {
                     var name = format_module_segments(allocator, &imp->segments);
                     report_module_not_found(dctx, allocator, last_sub_module_span(&imp->segments), name.as_str_const());
                     name.free();
