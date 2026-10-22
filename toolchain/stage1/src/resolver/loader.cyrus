@@ -547,7 +547,11 @@ fn relative_search_dir(
     var root_cwd = dir::cwd(allocator);
     var root: String = undefined;
 
-    switch (canonicalize_absolute_path(allocator, root_cwd.as_str_const(), opts->base_path.as_str_const())) {
+    switch (canonicalize_absolute_path(
+        allocator, 
+        root_cwd.as_str_const(), 
+        opts->base_path.as_str_const()
+    )) {
         case .None => root = String.from_str(allocator, opts->base_path.as_str_const());
         case .Some(path) => root = path;
     }
@@ -584,14 +588,18 @@ fn find_in_sources(
 
     for (var i: usize = 0; i < sources->len(); i += 1) {
         const source = sources->get_const(i).unwrap();
-        const joined = join_path(allocator, source->as_str_const(), candidate.as_str_const());
+        const path = join_path(
+            allocator,
+            source->as_str_const(),
+            candidate.as_str_const()
+        );
 
-        if (path_exists(joined.as_str_const())) {
+        if (path_exists(path.as_str_const())) {
             candidate.free();
-            return .Some(joined);
+            return .Some(path);
         }
 
-        joined.free();
+        path.free();
     }
 
     candidate.free();
@@ -609,14 +617,18 @@ fn find_dir_in_sources(
 
     for (var i: usize = 0; i < sources->len(); i += 1) {
         const source = sources->get_const(i).unwrap();
-        const joined = join_path(allocator, source->as_str_const(), candidate.as_str_const());
+        const path = join_path(
+            allocator, 
+            source->as_str_const(), 
+            candidate.as_str_const()
+        );
 
-        if (os::is_dir(joined.as_str_const())) {
+        if (os::is_dir(path.as_str_const())) {
             candidate.free();
-            return .Some(joined);
+            return .Some(path);
         }
 
-        joined.free();
+        path.free();
     }
 
     candidate.free();

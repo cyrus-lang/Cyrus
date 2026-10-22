@@ -2558,11 +2558,11 @@ pub fn report_invalid_nested_export_tuple(
     dctx: DiagContext*,
     allocator: Allocator,
     span: Span,
-    mutability: const uint8*,
+    constness: const uint8*,
 ) {
     var msg = String.new(allocator);
     msg.push_str("invalid variable declaration in tuple destructuring: nested `");
-    msg.push_str(mutability);
+    msg.push_str(constness);
     msg.push_str("` is not allowed");
 
     const diag = Diag.new(allocator, .Error, msg.as_str_const(), span);

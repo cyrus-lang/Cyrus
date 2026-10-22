@@ -5,7 +5,10 @@ import std::mem{Allocator, alloc_init};
 import std::collections{Vec};
 import std::option{Option};
 
-import cir{cir_types_eq, substitute_sema_type_with_type_args};
+import cir{
+    substitute_sema_type_with_type_args,
+    cir_types_eq
+};
 import cir::tables{DeclTables};
 import cir;
 

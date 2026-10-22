@@ -1645,7 +1645,7 @@ pub fn map_float_suffix_to_sema_type(suffix: const TokenKind*) Option<SemaType> 
 pub struct TypedExpr {
     pub kind: TypedExprKind,
     pub ty: Option<SemaType>,
-    pub val_cat: ValueCategory,
+    pub value_category: ValueCategory,
     pub analyzed: bool,
     pub span: Span,
 
@@ -1654,7 +1654,7 @@ pub struct TypedExpr {
         return Self {
             kind,
             ty: .None,
-            val_cat: .Unknown,
+            value_category: .Unknown,
             analyzed: false,
             span,
         };
@@ -1662,7 +1662,7 @@ pub struct TypedExpr {
 
     [[inline]]
     pub fn is_lvalue(self: const Self*) bool {
-        switch (self->val_cat) {
+        switch (self->value_category) {
             case .LValue => return true;
             else => return false;
         }
@@ -1670,7 +1670,7 @@ pub struct TypedExpr {
 
     [[inline]]
     pub fn is_rvalue(self: const Self*) bool {
-        switch (self->val_cat) {
+        switch (self->value_category) {
             case .RValue => return true;
             else => return false;
         }
@@ -2389,7 +2389,7 @@ pub struct TypedTupleExportStmt {
 pub struct TypedTupleExportPattern {
     pub kind: TypedTupleExportPatternKind,
     pub ty: Option<SemaType>,
-    pub mutability: Option<ast::ASTConstness>,
+    pub constness: Option<ast::ASTConstness>,
     pub span: Span,
 
     [[inline]]
@@ -2710,8 +2710,8 @@ pub enum TypedFuncParamKind {
     [[inline]]
     pub fn is_const(self: const Self*) bool {
         switch (*self) {
-            case .FuncParam(func_param) => return func_param.mutability == .Const;
-            case .SelfModifier(self_modifier) => return self_modifier.mutability == .Const;
+            case .FuncParam(func_param) => return func_param.constness == .Const;
+            case .SelfModifier(self_modifier) => return self_modifier.constness == .Const;
         }
     }
 
@@ -2751,7 +2751,7 @@ pub enum TypedFuncParamKind {
 pub struct TypedSelfModifier {
     pub var_decl_id: Option<VarDeclId>,
     pub ty: SemaType,
-    pub mutability: ast::ASTConstness,
+    pub constness: ast::ASTConstness,
     pub span: Span,
 
     [[inline]]
@@ -2764,7 +2764,7 @@ pub struct TypedFuncParam {
     pub var_decl_id: Option<VarDeclId>,
     pub ident: ast::ASTIdent,
     pub ty: SemaType,
-    pub mutability: ast::ASTConstness,
+    pub constness: ast::ASTConstness,
     pub span: Span,
 }
 
@@ -4180,7 +4180,7 @@ pub fn func_type_eq(a: const TypedFuncType*, b: const TypedFuncType*) bool {
     return cir_types_eq(a->ret_type, b->ret_type);
 }
 
-fn array_capacity_eq(a: const TypedArrayCapacity*, b: const TypedArrayCapacity*) bool {
+pub fn array_capacity_eq(a: const TypedArrayCapacity*, b: const TypedArrayCapacity*) bool {
     switch (*a) {
         case .Slice => {
             switch (*b) {
@@ -4261,7 +4261,7 @@ pub fn func_param_kind_eq(a: const TypedFuncParamKind*, b: const TypedFuncParamK
             switch (*b) {
                 case .SelfModifier(m2) => {
                     return m1.is_indirect() == m2.is_indirect() 
-                        && m1.mutability == m2.mutability;
+                        && m1.constness == m2.constness;
                 }
                 else => {
                     return false;
@@ -4318,6 +4318,106 @@ pub fn clone_method_decls(
     return out;
 }
 
+/* ************* FuncDecls Helpers ************* */
+
+pub fn func_decl_as_func_type(allocator: Allocator, decl: const FuncDecl*) TypedFuncType {
+    var list: Vec<SemaType> = Vec.with_capacity(allocator, decl->params.list.len());
+
+    for (var i: usize = 0; i < decl->params.list.len(); i += 1) {
+        const kind = decl->params.list.get_const(i).unwrap();
+
+        switch (*kind) {
+            case .FuncParam(func_param) => list.push(func_param.ty);
+            case .SelfModifier(self_modifier) => list.push(self_modifier.ty);
+        }
+    }
+
+    var variadic: Option<TypedFuncTypeVariadicParam*> = .None;
+
+    switch (decl->params.variadic) {
+        case .Some(.UntypedCStyle) => {
+            variadic = .Some(alloc_init(allocator, TypedFuncTypeVariadicParam.UntypedCStyle));
+        }
+        case .Some(.Typed { ty, .. }) => {
+            variadic = .Some(alloc_init(allocator, TypedFuncTypeVariadicParam.Typed(ty)));
+        }
+        case .None => {}
+    }
+
+    const callconv = decl->modifiers.callconv.unwrap_or(.C);
+
+    return TypedFuncType {
+        params: TypedFuncTypeParams { list, variadic },
+        ret_type: alloc_init(allocator, decl->ret_type),
+        vis: decl->modifiers.vis,
+        callconv,
+        span: decl->span,
+    };
+}
+
+pub fn func_params_as_type_params(allocator: Allocator, params: const TypedFuncParams*) TypedFuncTypeParams {
+    var list: Vec<SemaType> = Vec.new(allocator);
+
+    for (var i: usize = 0; i < params->list.len(); i += 1) {
+        const param_kind = params->list.get_const(i).unwrap();
+
+        switch (*param_kind) {
+            case .FuncParam(func_param) => list.push(func_param.ty);
+            case .SelfModifier(self_modifier) => list.push(self_modifier.ty);
+        }
+    }
+
+    var variadic: Option<TypedFuncTypeVariadicParam*> = .None;
+
+    switch (params->variadic) {
+        case .Some(.UntypedCStyle) => {
+            variadic = .Some(alloc_init(
+                allocator,
+                TypedFuncTypeVariadicParam.UntypedCStyle
+            ));
+        }
+        case .Some(.Typed { ty, .. }) => {
+            variadic = .Some(alloc_init(
+                allocator,
+                TypedFuncTypeVariadicParam.Typed(ty)
+            ));
+        }
+        else => {}
+    }
+
+    return TypedFuncTypeParams { list, variadic };
+}
+
+/* ************* Attributes Helpers ************* */
+
+pub fn repr_attr_kind(repr_attr: const ast::ASTReprAttr*) Option<ast::ASTReprKind> {
+    for (var i: usize = 0; i < repr_attr->items.len(); i += 1) {
+        const item = repr_attr->items.get_const(i).unwrap();
+
+        switch (item->kind) {
+            case .Kind(kind) => return .Some(kind);
+            case .Packed => {}
+        }
+    }
+
+    return .None;
+}
+
+pub fn is_attr_repr_packed(repr_attr: const ast::ASTReprAttr*) bool {
+    for (var i: usize = 0; i < repr_attr->items.len(); i += 1) {
+        const item = repr_attr->items.get_const(i).unwrap();
+
+        switch (item->kind) {
+            case .Packed => return true;
+            case .Kind => {}
+        }
+    }
+
+    return false;
+}
+
+/* ************* Literals Helpers ************* */
+
 pub fn literal_expr(allocator: Allocator, literal: Literal, span: Span) Option<TypedExpr> {
     const ty = infer_literal_type_or_default(allocator, &literal, span);
 
@@ -4328,7 +4428,7 @@ pub fn literal_expr(allocator: Allocator, literal: Literal, span: Span) Option<T
             span,
         }),
         ty: .None,
-        val_cat: .Unknown,
+        value_category: .Unknown,
         analyzed: false,
         span,
     });
@@ -4342,7 +4442,7 @@ pub fn infer_literal_type_or_default(
     switch (*literal) {
         // FIXME: Make a helper method to convert IntegerSuffix
         // into SemaType
-        case .Integer { suffix: .Some(sfx), .. } => switch (sfx) {
+        case .Integer { suffix: .Some(suffix), .. } => switch (suffix) {
             case .ISize => return .Some(.Plain(.ISize));
             case .USize => return .Some(.Plain(.USize));
             case .Int8 => return .Some(.Plain(.Int8));
@@ -4361,7 +4461,7 @@ pub fn infer_literal_type_or_default(
         
         // FIXME: Make a helper method to convert FloatSuffix
         // into SemaType
-        case .Float { suffix: .Some(sfx), .. } => switch (sfx) {
+        case .Float { suffix: .Some(suffix), .. } => switch (suffix) {
             case .Float16 => return .Some(.Plain(.Float16));
             case .Float32 => return .Some(.Plain(.Float32));
             case .Float64 => return .Some(.Plain(.Float64));
@@ -4419,69 +4519,8 @@ pub fn const_untyped_integer_expr(value: uint128, span: Span) TypedExpr {
             span,
         }),
         ty: .None,
-        val_cat: .RValue,
+        value_category: .RValue,
         analyzed: false,
         span,
     };
-}
-
-pub fn func_decl_as_func_type(allocator: Allocator, decl: const FuncDecl*) TypedFuncType {
-    var list: Vec<SemaType> = Vec.with_capacity(allocator, decl->params.list.len());
-
-    for (var i: usize = 0; i < decl->params.list.len(); i += 1) {
-        const kind = decl->params.list.get_const(i).unwrap();
-
-        switch (*kind) {
-            case .FuncParam(func_param) => list.push(func_param.ty);
-            case .SelfModifier(self_modifier) => list.push(self_modifier.ty);
-        }
-    }
-
-    var variadic: Option<TypedFuncTypeVariadicParam*> = .None;
-
-    switch (decl->params.variadic) {
-        case .Some(.UntypedCStyle) => {
-            variadic = .Some(alloc_init(allocator, TypedFuncTypeVariadicParam.UntypedCStyle));
-        }
-        case .Some(.Typed { ty, .. }) => {
-            variadic = .Some(alloc_init(allocator, TypedFuncTypeVariadicParam.Typed(ty)));
-        }
-        case .None => {}
-    }
-
-    const callconv = decl->modifiers.callconv.unwrap_or(.C);
-
-    return TypedFuncType {
-        params: TypedFuncTypeParams { list, variadic },
-        ret_type: alloc_init(allocator, decl->ret_type),
-        vis: decl->modifiers.vis,
-        callconv,
-        span: decl->span,
-    };
-}
-
-pub fn repr_attr_kind(repr_attr: const ast::ASTReprAttr*) Option<ast::ASTReprKind> {
-    for (var i: usize = 0; i < repr_attr->items.len(); i += 1) {
-        const item = repr_attr->items.get_const(i).unwrap();
-
-        switch (item->kind) {
-            case .Kind(kind) => return .Some(kind);
-            case .Packed => {}
-        }
-    }
-
-    return .None;
-}
-
-pub fn is_attr_repr_packed(repr_attr: const ast::ASTReprAttr*) bool {
-    for (var i: usize = 0; i < repr_attr->items.len(); i += 1) {
-        const item = repr_attr->items.get_const(i).unwrap();
-
-        switch (item->kind) {
-            case .Packed => return true;
-            case .Kind => {}
-        }
-    }
-
-    return false;
 }

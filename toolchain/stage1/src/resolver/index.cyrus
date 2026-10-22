@@ -420,7 +420,10 @@ pub struct Resolver {
 
             switch (*segment_node) {
                 case .SubModule(ident) => {
-                    switch (self->global_symbols.lookup_symbol_id_in_scope(current_symbol, ident.str.as_str_const())) {
+                    switch (self->global_symbols.lookup_symbol_id_in_scope(
+                        current_symbol, 
+                        ident.str.as_str_const()
+                    )) {
                         case .Some(found) => {
                             current_symbol = self->global_symbols.resolve_concrete_scope_id(found);
                         }

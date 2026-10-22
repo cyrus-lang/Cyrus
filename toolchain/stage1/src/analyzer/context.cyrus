@@ -233,6 +233,7 @@ pub struct TypeCache {
         self->stack.free();
     }
 }
+
 pub fn decl_id_key(decl_id: cir::DeclId) usize {
     switch (decl_id) {
         case .Interface(id) => return (1 << 48) | id;
