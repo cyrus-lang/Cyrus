@@ -1133,7 +1133,7 @@ pub struct ParserStmts {
         return .Some(self->program->create_node(.DestructTuple(node)));
     }
 
-    /// Grammar: mutability? ( _ | IDENT ( : Type )? | ( Pattern, ... ) ( : Type )? )
+    /// Grammar: constness? ( _ | IDENT ( : Type )? | ( Pattern, ... ) ( : Type )? )
     fn parse_destruct_pattern(self: Self*) Option<ast::ASTDestructTuplePattern> {
         const start = self->state->current_span();
 

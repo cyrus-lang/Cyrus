@@ -84,11 +84,12 @@ pub struct File {
     }
 
     pub fn append(self: Self*, content: const uint8*) ErrorOr<usize, ErrorStr> {
-        // REVIEW: Use switch guard
         switch (self->mode) {
-            case .Append | .AppendBinary | .AppendRead | .AppendReadBinary => {
-                // okay
-            }
+            case .Append 
+            | .AppendBinary 
+            | .AppendRead 
+            | .AppendReadBinary => {}
+
             else => return .Error("file not opened in append mode");
         }
 
@@ -232,7 +233,6 @@ pub fn exit(status: ExitStatusCode) {
     libc::exit(status.as_num());
 }
 
-/// True when `path` exists (file or directory).
 pub fn path_exists(path: const uint8*) bool {
     @assert(path != null, "path cannot be null");
 

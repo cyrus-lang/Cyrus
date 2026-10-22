@@ -853,7 +853,7 @@ fn resolve_export_pattern(
     return .Some(cir::TypedTupleExportPattern {
         kind,
         ty,
-        mutability: pattern->bind,
+        constness: pattern->bind,
         span: pattern->span,
     });
 }
@@ -1672,7 +1672,7 @@ fn resolve_func_param(
                         var_decl_id: .None,
                         ident: func_param->ident,
                         ty: resolved,
-                        mutability: func_param->constness,
+                        constness: func_param->constness,
                         span: func_param->span,
                     });
                 }
@@ -1701,7 +1701,7 @@ fn resolve_self_modifier_param(
     return cir::TypedSelfModifier {
         var_decl_id: .None,
         ty,
-        mutability: self_modifier->constness,
+        constness: self_modifier->constness,
         span: self_modifier->span,
     };
 }
@@ -2717,7 +2717,7 @@ fn resolve_ident_expr(
                 },
                 ty: .None,
                 analyzed: false,
-                val_cat: .Unknown,
+                value_category: .Unknown,
                 span: ident->span,
             });
         }
@@ -2864,7 +2864,7 @@ fn resolve_module_import_expr(
                                 span: ident.span,
                             },
                             ty: .None,
-                            val_cat: .Unknown,
+                            value_category: .Unknown,
                             analyzed: false,
                             span: module_import->span,
                         });
@@ -2923,7 +2923,7 @@ fn resolve_type_expr(
                     return .Some(cir::TypedExpr {
                         kind: .SemaType { ty: resolved, span },
                         ty: .Some(resolved),
-                        val_cat: .Unknown,
+                        value_category: .Unknown,
                         analyzed: false,
                         span,
                     });

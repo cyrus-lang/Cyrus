@@ -25,7 +25,7 @@ pub fn lower_cond_pointer_as_null_check(
             span: expr->span,
         }),
         ty: expr->ty,
-        val_cat: .RValue,
+        value_category: .RValue,
         analyzed: false,
         span: expr->span,
     };
@@ -43,7 +43,7 @@ pub fn lower_cond_pointer_as_null_check(
                 return .Some(cir::TypedExpr {
                     kind: new_infix,
                     ty: .Some(.Plain(.Bool)),
-                    val_cat: .RValue,
+                    value_category: .RValue,
                     analyzed: false,
                     span: expr->span,
                 });
@@ -78,7 +78,7 @@ pub fn lower_unnamed_enum_value_as_enum_init(typed_expr: cir::TypedExpr*) {
                     *typed_expr = cir::TypedExpr {
                         kind: .EnumInit(enum_init),
                         ty: typed_expr->ty,
-                        val_cat: .RValue,
+                        value_category: .RValue,
                         analyzed: true,
                         span: typed_expr->span,
                     };
@@ -105,7 +105,7 @@ pub fn lower_enum_struct_variant_init_as_enum_init(typed_expr: cir::TypedExpr*) 
                     *typed_expr = cir::TypedExpr {
                         kind: .EnumInit(enum_init),
                         ty: typed_expr->ty,
-                        val_cat: .RValue,
+                        value_category: .RValue,
                         analyzed: true,
                         span: typed_expr->span,
                     };
@@ -152,7 +152,7 @@ pub fn lower_unnamed_union_value_as_union_init(
                     *typed_expr = cir::TypedExpr {
                         kind: .UnionInit(union_init),
                         ty: typed_expr->ty,
-                        val_cat: .RValue,
+                        value_category: .RValue,
                         analyzed: true,
                         span: typed_expr->span,
                     };
@@ -192,7 +192,7 @@ pub fn lower_unnamed_struct_value_as_struct_init(allocator: Allocator, typed_exp
                     *typed_expr = cir::TypedExpr {
                         kind: .StructInit(struct_init),
                         ty: typed_expr->ty,
-                        val_cat: .RValue,
+                        value_category: .RValue,
                         analyzed: true,
                         span: typed_expr->span,
                     };
@@ -216,7 +216,7 @@ pub fn lower_assign_to_infix_expr(allocator: Allocator, assign: const cir::Typed
         kind: infix_expr,
         ty: .None,
         span: assign->span,
-        val_cat: .RValue,
+        value_category: .RValue,
         analyzed: false,
     };
 
@@ -251,7 +251,7 @@ pub fn lower_prefix_not_pointer(
             span: prefix_expr->span,
         }),
         ty: .None,
-        val_cat: .RValue,
+        value_category: .RValue,
         analyzed: false,
         span: prefix_expr->span,
     };
@@ -266,7 +266,7 @@ pub fn lower_prefix_not_pointer(
     return .Some(cir::TypedExpr {
         kind: new_infix,
         ty: .None,
-        val_cat: .RValue,
+        value_category: .RValue,
         analyzed: false,
         span: prefix_expr->span,
     });
@@ -319,7 +319,7 @@ pub fn lower_field_access_as_enum_init(
             *expr = cir::TypedExpr {
                 kind: .EnumInit(enum_init),
                 ty: .None,
-                val_cat: .RValue,
+                value_category: .RValue,
                 analyzed: false,
                 span: field_access.span,
             };
@@ -362,7 +362,7 @@ pub fn lower_method_call_as_enum_init(
                     *typed_expr = cir::TypedExpr {
                         kind: .EnumInit(enum_init),
                         ty: .None,
-                        val_cat: .RValue,
+                        value_category: .RValue,
                         analyzed: false,
                         span: method_call.span,
                     };
@@ -403,7 +403,7 @@ pub fn lower_struct_init_as_union_init(
             *typed_expr = cir::TypedExpr {
                 kind: .UnionInit(union_init),
                 ty: .None,
-                val_cat: .RValue,
+                value_category: .RValue,
                 analyzed: false,
                 span: struct_init.span,
             };
@@ -444,7 +444,7 @@ pub fn lower_unnamed_struct_value_as_unnamed_struct_type(
         return .Some(cir::TypedExpr {
             kind: .Poisoned,
             ty: .None,
-            val_cat: .Unknown,
+            value_category: .Unknown,
             analyzed: false,
             span: struct_value.span,
         });
@@ -499,7 +499,7 @@ pub fn lower_unnamed_struct_value_as_unnamed_struct_type(
             span: struct_value.span,
         },
         ty: .Some(ty),
-        val_cat: .Unknown,
+        value_category: .Unknown,
         analyzed: false,
         span: struct_value.span,
     });
@@ -536,7 +536,7 @@ pub fn lower_unnamed_union_value_as_unnamed_union_type(
         return .Some(cir::TypedExpr {
             kind: .Poisoned,
             ty: .None,
-            val_cat: .Unknown,
+            value_category: .Unknown,
             analyzed: false,
             span: union_value.span,
         });
@@ -590,7 +590,7 @@ pub fn lower_unnamed_union_value_as_unnamed_union_type(
             span: union_value.span,
         },
         ty: .None,
-        val_cat: .Unknown,
+        value_category: .Unknown,
         analyzed: false,
         span: union_value.span,
     });

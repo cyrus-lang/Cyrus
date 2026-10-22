@@ -159,6 +159,7 @@ pub struct Analyzer {
         self->arena.destroy();
     }
 
+    // FIXME: Move
     /* ************* Generics ************* */
 
     pub fn current_generic_env(self: Self*) Option<GenericEnv*> {
@@ -379,6 +380,7 @@ pub struct Analyzer {
         }
     }
 
+    // FIXME: Move to new module
     /* ************* Normalization ************* */
 
     /// Fully normalize and validate a type which is mostly
@@ -581,7 +583,7 @@ pub struct Analyzer {
                     case .Some(id) => {
                         switch (decl_id_as_type_decl_id(id)) {
                             case .Some => {
-                                return self->resolve_symbol_type(id, span, indirection);
+                                return self->type_of_decl(id, span, indirection);
                             }
                             case .None => {
                                 var symbol_name = format::format_decl_name(self->allocator, self->decl_tables, &id);
@@ -956,17 +958,17 @@ pub struct Analyzer {
         }
     }
 
-    pub fn resolve_symbol_type(
+    // FIXME: Move to Types Helpers 
+
+    pub fn type_of_decl(
         self: Self*,
         decl_id: cir::DeclId,
         span: Span,
         indirection: uint8
     ) Option<cir::SemaType> {
-        var key = decl_id_key(decl_id);
+        const key = decl_id_key(decl_id);
 
-        const cached = self->type_cache.get(key);
-
-        switch (cached) {
+        switch (self->type_cache.get(key)) {
             case .Some(ty) => return .Some(ty);
             else => {}
         }
@@ -986,7 +988,11 @@ pub struct Analyzer {
                     }
                 }
 
-                var symbol_name = format::format_decl_name(self->allocator, self->decl_tables, &decl_id);
+                var symbol_name = format::format_decl_name(
+                    self->allocator, 
+                    self->decl_tables, 
+                    &decl_id
+                );
                 var cycle: Vec<String> = Vec.new(self->allocator);
                 cycle.push(symbol_name);
 
@@ -996,14 +1002,16 @@ pub struct Analyzer {
                     span,
                     &cycle
                 );
+
                 free_strings(&cycle);
                 return .None;
             }
             case .Entered => {}
         }
 
-        const raw_ty = self->resolve_symbol_type_internal(decl_id, indirection);
-        switch (raw_ty) {
+        const raw_type = self->type_of_decl_internal(decl_id, indirection);
+        
+        switch (raw_type) {
             case .Some(raw) => {
                 switch (self->normalize_sema_type(raw, span, indirection)) {
                     case .Some(ty) => {
@@ -1017,7 +1025,7 @@ pub struct Analyzer {
         }
     }
 
-    fn resolve_symbol_type_internal(
+    fn type_of_decl_internal(
         self: Self*,
         decl_id: cir::DeclId,
         indirection: uint8
@@ -1075,6 +1083,8 @@ pub struct Analyzer {
             }
         }
     }
+
+    // FIXME: Move to end
 
     /* ************* Type formation / Arity checks ************* */
 
@@ -1492,6 +1502,7 @@ pub struct Analyzer {
         return error;
     }
 
+    // FIXME: Move to end
     /* ************* Typedef Expansion ************* */
 
     /// Expand typedef references recursively.
@@ -1644,8 +1655,8 @@ pub struct Analyzer {
                     var names: Vec<String> = Vec.new(self->allocator);
 
                     for (var i: usize = 0; i < n; i += 1) {
-                        const idx = (min_index + i) % n;
-                        const id = *path.get_const(idx).unwrap();
+                        const index = (min_index + i) % n;
+                        const id = *path.get_const(index).unwrap();
 
                         names.push(format::format_type_decl_name(
                             self->allocator,
@@ -1838,6 +1849,7 @@ pub struct Analyzer {
         return false;
     }
 
+    // FIXME: Move to end
     /* ************* Assignability ************* */
 
     pub fn is_assignable_to(
@@ -2344,6 +2356,7 @@ pub struct Analyzer {
         return ok;
     }
 
+    // FIXME: Move to end
     /* ************* Interface Object Coercion ************* */
 
     pub fn coerce_interface_as_interface_object_if_possible(
@@ -2471,6 +2484,7 @@ pub struct Analyzer {
         }
     }
 
+    // FIXME: Move to Types Helpers
     fn is_const_str_assignable_to_array(
         self: Self*,
         value_type: const cir::TypedArrayType*,
@@ -2568,7 +2582,7 @@ pub struct Analyzer {
 
                 switch (decl_id_opt) {
                     case .Some(decl_id) => {
-                        expr_type = self->resolve_symbol_type(decl_id, symbol.span(), 0);
+                        expr_type = self->type_of_decl(decl_id, symbol.span(), 0);
                     }
                     case .None => {
                         switch (symbol.as_symbol_id()) {
@@ -2765,7 +2779,7 @@ pub struct Analyzer {
 
                         fold_const_expr(self->decl_tables, self->registry, expr);
                         self->lower_expr_post_analysis(expr);
-                        expr->val_cat = self->value_category_of_expr(expr);
+                        expr->value_category = self->value_category_of_expr(expr);
 
                         return .Some(normalized_type);
                     }
@@ -2790,6 +2804,7 @@ pub struct Analyzer {
         return .None;
     }
 
+    // FIXME: Move to ValueCategory Helpers
     pub fn value_category_of_expr(self: const Self*, expr: const cir::TypedExpr*) cir::ValueCategory {
         switch (expr->kind) {
             case .Symbol(symbol_expr) => {
@@ -2797,14 +2812,14 @@ pub struct Analyzer {
                     case .Some(decl_id) => {
                         const is_const = is_decl_const(self->decl_tables, decl_id);
                         
-                        var mutability: ast::ASTConstness = .Var;
+                        var constness: ast::ASTConstness = .Var;
 
                         if (is_const) {
-                            mutability = .Const;
+                            constness = .Const;
                         }
 
                         if (decl_id.is_var_or_global_var()) {
-                            return .LValue(mutability);
+                            return .LValue(constness);
                         } else {
                             return .Type;
                         }
@@ -2814,18 +2829,18 @@ pub struct Analyzer {
             }
             
             case .Deref(deref) => {
-                var mutability: ast::ASTConstness = .Var;
+                var constness: ast::ASTConstness = .Var;
                 
                 switch (deref.operand->ty) {
                     case .Some(ty) => {
                         if (ty.is_const()) {
-                            mutability = .Const;
+                            constness = .Const;
                         }
                     }
                     else => {}
                 }
                 
-                return .LValue(mutability);
+                return .LValue(constness);
             }
             
             case .FieldAccess(field_access) => {
@@ -2842,12 +2857,12 @@ pub struct Analyzer {
                     }
                 }
 
-                return field_access.operand->val_cat;
+                return field_access.operand->value_category;
             }
             
-            case .TupleAccess(tuple_access) => return tuple_access.operand->val_cat;
+            case .TupleAccess(tuple_access) => return tuple_access.operand->value_category;
             
-            case .ArrayIndex(array_index) => return array_index.operand->val_cat;
+            case .ArrayIndex(array_index) => return array_index.operand->value_category;
 
             case .Builtin => return .RValue;
 
@@ -2950,6 +2965,7 @@ pub struct Analyzer {
         }
     }
 
+    // FIXME: Move to Lower Helpers
     pub fn lower_expr_pre_analysis(self: Self*, typed_expr: cir::TypedExpr*, expected_type: Option<cir::SemaType>) {
         switch (typed_expr->kind) {
             case .Assign(assign) => {
@@ -3071,6 +3087,7 @@ pub struct Analyzer {
         }
     }
 
+    // FIXME: Move to Lower Helpers
     pub fn lower_expr_post_analysis(self: Self*, typed_expr: cir::TypedExpr*) {
         lower_unnamed_union_value_as_union_init(self->allocator, self->dctx, typed_expr);
         lower_unnamed_struct_value_as_struct_init(self->allocator, typed_expr);
@@ -3078,6 +3095,7 @@ pub struct Analyzer {
         lower_unnamed_enum_value_as_enum_init(typed_expr);
     }
 
+    // FIXME: Move to DeclTables Helpers
     fn extract_enum_decl_id_of_expr_kind(
         self: Self*,
         expr_kind: const cir::TypedExprKind*,
@@ -3085,7 +3103,7 @@ pub struct Analyzer {
     ) Option<EnumDeclRef> {
         switch (*expr_kind) {
             case .Symbol(symbol_expr) => {
-                switch (analyze_symbol_expr_readonly(self->registry, &symbol_expr)) case .Some(decl_id) else {
+                switch (symbol_expr_as_decl_id(self->registry, &symbol_expr)) case .Some(decl_id) else {
                     return .None;
                 }
 
@@ -3363,8 +3381,9 @@ pub struct Analyzer {
         return .Some(tuple_type.elements.get_const(member_access->index).unwrap()->ty);
     }
 
+    // FIXME: Move to Types Helpers
     pub fn is_const_qualified_lvalue(self: Self*, expr: const cir::TypedExpr*) bool {
-        if (expr->val_cat.is_const_lvalue()) {
+        if (expr->value_category.is_const_lvalue()) {
             return true;
         }
 
@@ -3453,7 +3472,7 @@ pub struct Analyzer {
             return .None;
         }
 
-        if (addr->operand->val_cat.is_const_lvalue()) {
+        if (addr->operand->value_category.is_const_lvalue()) {
             switch (operand_type) {
                 case .Pointer(pointee) => {
                     var inner: cir::SemaType = *pointee;
@@ -3643,6 +3662,7 @@ pub struct Analyzer {
         }
     }
 
+    // FIXME: Move to Types Helpers
     fn is_type_comparable(
         self: Self*,
         rhs_type: cir::SemaType,
@@ -3916,7 +3936,7 @@ pub struct Analyzer {
             }
 
             case .Add => {
-                switch (pointer_arithmetic_type(&lhs_type, &rhs_type, true)) {
+                switch (infer_pointer_arithmetic_type(&lhs_type, &rhs_type, true)) {
                     case .Some(ty) => return .Some(ty);
                     else => {}
                 }
@@ -3924,7 +3944,7 @@ pub struct Analyzer {
             }
             
             case .Sub => {
-                switch (pointer_arithmetic_type(&lhs_type, &rhs_type, false)) {
+                switch (infer_pointer_arithmetic_type(&lhs_type, &rhs_type, false)) {
                     case .Some(ty) => return .Some(ty);
                     else => {}
                 }
@@ -3958,14 +3978,17 @@ pub struct Analyzer {
             
             case .And => return self->analyze_and_expr(lhs_type, rhs_type, infix->span);
             
-            case .NullCoalesce => return null_coalesce_type(lhs_type, rhs_type);
+            case .NullCoalesce => return infer_null_coalesce_type(lhs_type, rhs_type);
         }
     }
 
-    pub fn analyze_lambda(self: Self*, lambda: cir::TypedLambdaExpr*) Option<cir::SemaType> {
+    pub fn analyze_lambda(
+        self: Self*, 
+        lambda: cir::TypedLambdaExpr*
+    ) Option<cir::SemaType> {
         self->normalize_func_params(&lambda->params, true, 0);
 
-        const params = func_params_as_type_params(self->allocator, &lambda->params);
+        const params = cir::func_params_as_type_params(self->allocator, &lambda->params);
 
         switch (self->normalize_and_check_type_formation(lambda->ret_type, lambda->span, 0)) {
             case .Some(ret_type) => lambda->ret_type = ret_type;
@@ -4439,6 +4462,7 @@ pub struct Analyzer {
         }
     }
 
+    // FIXME: Move 
     fn validate_field_access(
         self: Self*,
         operand_type: const cir::SemaType*,
@@ -4490,6 +4514,7 @@ pub struct Analyzer {
 
     /* ************* Generic Inference ************* */
 
+    // FIXME: Move to generics
     pub fn collect_instantiated_type_args(
         self: Self*,
         generic_params: cir::TypedGenericParams
@@ -4518,6 +4543,7 @@ pub struct Analyzer {
         return args;
     }
 
+    // FIXME: Move to generics
     pub fn apply_generic_defaults(self: Self*, generic_params: cir::TypedGenericParams) {
         for (var i: usize = 0; i < generic_params.len(); i += 1) {
             const generic_param_id = *generic_params.ids.get_const(i).unwrap();
@@ -4576,6 +4602,7 @@ pub struct Analyzer {
         }
     }
 
+    // FIXME: Move to infer
     pub fn unify_with_expected_type(
         self: Self*,
         operand_type: cir::SemaType,
@@ -4592,6 +4619,7 @@ pub struct Analyzer {
         }
     }
 
+    // FIXME: Move to generics
     pub fn create_inference_generic_env(
         self: Self*,
         type_name: const uint8*,
@@ -4648,7 +4676,7 @@ pub struct Analyzer {
 
     /* ************* Enum Init ************* */
 
-    pub fn analyze_enum_init(
+    fn analyze_enum_init(
         self: Self*,
         enum_init: cir::TypedEnumInit*,
         expected_type: Option<cir::SemaType>
@@ -4849,7 +4877,7 @@ pub struct Analyzer {
         return .Some(final_type);
     }
 
-    pub fn analyze_unnamed_enum_value(
+    fn analyze_unnamed_enum_value(
         self: Self*,
         enum_value: cir::TypedUnnamedEnumValue*,
         expected_type: Option<cir::SemaType>
@@ -5034,7 +5062,7 @@ pub struct Analyzer {
         }
     }
 
-    pub fn analyze_enum_struct_variant_init(
+    fn analyze_enum_struct_variant_init(
         self: Self*,
         struct_variant_init: cir::TypedEnumStructVariantInit*
     ) Option<cir::SemaType> {
@@ -5484,6 +5512,7 @@ pub struct Analyzer {
         }
     }
 
+    // FIXME: Move to StructDecl Helpers
     fn create_struct_decl_from_unnamed_struct_value(
         self: Self*,
         struct_value: const cir::TypedUnnamedStructValue*
@@ -5517,6 +5546,7 @@ pub struct Analyzer {
         };
     }
 
+    // FIXME: Move to builtins
     fn check_invalid_fields(
         self: Self*,
         struct_decl: const cir::StructDecl*,
@@ -5553,6 +5583,7 @@ pub struct Analyzer {
 
     }
 
+    // FIXME: Move to builtins
     fn check_missing_fields(
         self: Self*,
         struct_decl: const cir::StructDecl*,
@@ -5607,6 +5638,7 @@ pub struct Analyzer {
 
     }
 
+    // FIXME: Move to builtins
     fn check_duplicate_struct_field_init(
         self: Self*,
         fields: const Vec<cir::TypedFieldInit>*
@@ -5635,6 +5667,7 @@ pub struct Analyzer {
         }
     }
 
+    // FIXME: Move to builtins
     fn check_invalid_fields_for_unnamed_struct_value(
         self: Self*,
         struct_decl: const cir::StructDecl*,
@@ -5675,6 +5708,7 @@ pub struct Analyzer {
 
     }
 
+    // FIXME: Move to builtins
     fn check_missing_fields_for_unnamed_struct_value(
         self: Self*,
         struct_decl: const cir::StructDecl*,
@@ -5728,6 +5762,7 @@ pub struct Analyzer {
 
     }
 
+    // FIXME: Move to builtins
     fn check_duplicate_fields_for_unnamed_struct_value(
         self: Self*,
         struct_value: const cir::TypedUnnamedStructValue*
@@ -6082,6 +6117,7 @@ pub struct Analyzer {
         return self->analyze_builtin_func_semantics(builtin_kind, builtin_func);
     }
 
+    // FIXME: Move to builtins
     fn validate_builtin_form(
         self: Self*,
         builtin_spec: cir::TypedBuiltinSpec,
@@ -6101,6 +6137,7 @@ pub struct Analyzer {
         return true;
     }
 
+    // FIXME: Move to builtins
     fn validate_builtin_arg_count(
         self: Self*,
         spec: cir::TypedBuiltinSpec,
@@ -6413,35 +6450,7 @@ pub struct Analyzer {
         return .Some(target_type);
     }
 
-    fn builtin_copy_memset_param_type(
-        self: Self*,
-        is_memcpy: bool,
-        idx: usize
-    ) cir::SemaType {
-        const void_type: cir::SemaType = .Plain(.Void);
-        const const_void_ty: cir::SemaType = .Const(alloc_init(self->allocator, void_type));
-
-        var param: cir::SemaType = .Plain(.USize);
-
-        if (idx == 0) {
-            param = .Pointer(alloc_init(self->allocator, void_type));
-        } else if (idx == 1) {
-            if (is_memcpy) {
-                param = .Pointer(alloc_init(self->allocator, const_void_ty));
-            } else {
-                param = .Plain(.Int8);
-            }
-        }
-
-        return param;
-    }
-
-    fn builtin_const_msg_param_type(self: Self*) cir::SemaType {
-        const uint8_type: cir::SemaType = .Plain(.UInt8);
-        const const_uint8_type: cir::SemaType = .Const(alloc_init(self->allocator, uint8_type));
-        return .Pointer(alloc_init(self->allocator, const_uint8_type));
-    }
-
+    // FIXME: Move to diags
     fn report_builtin_param_mismatch(
         self: Self*,
         builtin_func: cir::TypedBuiltinFunc*,
@@ -6471,14 +6480,14 @@ pub struct Analyzer {
         is_memcpy: bool
     ) Option<cir::SemaType> {
         for (var i: usize = 0; i < builtin_func->args.len(); i += 1) {
-            const expect = self->builtin_copy_memset_param_type(is_memcpy, i);
+            const expect = builtin_copy_memset_param_type(self, is_memcpy, i);
             const arg = builtin_func->args.get(i).unwrap();
             
             self->analyze_expr_non_terminal(arg, .Some(expect));
         }
 
         for (var i: usize = 0; i < builtin_func->args.len(); i += 1) {
-            const expect = self->builtin_copy_memset_param_type(is_memcpy, i);
+            const expect = builtin_copy_memset_param_type(self, is_memcpy, i);
             const arg = builtin_func->args.get(i).unwrap();
             
             switch (arg->ty) {
@@ -6501,7 +6510,7 @@ pub struct Analyzer {
         self: Self*,
         builtin_func: cir::TypedBuiltinFunc*
     ) Option<cir::SemaType> {
-        const expect = self->builtin_const_msg_param_type();
+        const expect = builtin_const_mesg_param_type(self);
 
         for (var i: usize = 0; i < builtin_func->args.len(); i += 1) {
             const arg = builtin_func->args.get(i).unwrap();
@@ -6538,7 +6547,7 @@ pub struct Analyzer {
 
         if (builtin_func->args.len() > 1) {
             const msg = builtin_func->args.get(1).unwrap();
-            const expect = self->builtin_const_msg_param_type();
+            const expect = builtin_const_mesg_param_type(self);
 
             self->analyze_expr_non_terminal(msg, .Some(expect));
 
@@ -6567,6 +6576,7 @@ pub struct Analyzer {
         return .Some(ret_type);
     }
 
+    // FIXME: Move to Types Helpers
     fn is_explicit_cast_allowed(
         self: Self*,
         value_type: cir::SemaType,
@@ -6600,7 +6610,7 @@ pub struct Analyzer {
                         allowed = value_pt == .IntPtr || value_pt == .UIntPtr;
                     }
                     case .Named(named_type) => {
-                        allowed = self->enum_plain_cast_allowed(&named_type, value_pt);
+                        allowed = self->is_enum_to_plain_cast_allowed(&named_type, value_pt);
                     }
                     else => {}
                 }
@@ -6616,7 +6626,7 @@ pub struct Analyzer {
             case .Named(named_type) => {
                 switch (*target_base) {
                     case .Plain(plain_type) => {
-                        allowed = self->enum_plain_cast_allowed(&named_type, plain_type);
+                        allowed = self->is_enum_to_plain_cast_allowed(&named_type, plain_type);
                     }
                     else => {}
                 }
@@ -6627,7 +6637,8 @@ pub struct Analyzer {
         return allowed;
     }
 
-    fn enum_plain_cast_allowed(
+    // FIXME: Move to Types Helpers
+    fn is_enum_to_plain_cast_allowed(
         self: Self*,
         named_type: const cir::NamedType*,
         plain_type: cir::PlainType
@@ -6712,6 +6723,8 @@ pub struct Analyzer {
             }
         }
     }
+
+    // FIXME
 
     fn validate_asm_template(self: Self*, asm: cir::TypedInlineAsm*) {
         if (asm->template.len() == 0) {
@@ -7111,6 +7124,7 @@ pub struct Analyzer {
         return ret_type;
     }
 
+    // FIXME
     fn create_func_def_env(
         self: Self*,
         name: const uint8*,
@@ -7129,6 +7143,7 @@ pub struct Analyzer {
         return env;
     }
 
+    // FIXME
     fn create_method_env(
         self: Self*,
         method_decl_id: cir::MethodDeclId,
@@ -7184,7 +7199,7 @@ pub struct Analyzer {
                         if (decl_id.is_var_or_global_var()) {
                             // Extract variable type and use it as operand type
                             // for instance method calls
-                            switch (self->resolve_symbol_type(decl_id, method_call->span, 0)) {
+                            switch (self->type_of_decl(decl_id, method_call->span, 0)) {
                                 case .Some(ty) => operand_type_opt = .Some(ty);
                                 case .None => return .None;
                             }
@@ -7966,7 +7981,7 @@ pub struct Analyzer {
 
         switch (method_decl->func_decl.params.get_self_modifier()) {
             case .Some(self_modifier) => {
-                const is_self_const = self_modifier.mutability == .Const;
+                const is_self_const = self_modifier.constness == .Const;
 
                 // Only if referenced
                 if (!is_self_const && is_operand_const_qualified && self_modifier.is_indirect()) {
@@ -8887,6 +8902,7 @@ pub struct Analyzer {
         }
     }
 
+    // FIXME: Move
     fn specialize_tuple_export_pattern(
         self: Self*,
         pattern: cir::TypedTupleExportPattern*,
@@ -8909,6 +8925,7 @@ pub struct Analyzer {
         }
     }
 
+    // FIXME: Move
     fn specialize_switch_pattern(
         self: Self*,
         pattern: cir::TypedSwitchCasePattern*,
@@ -8958,6 +8975,7 @@ pub struct Analyzer {
         }
     }
 
+    // FIXME: Move
     fn remap_var_decl_id(
         self: Self*,
         decl_map: HashMap<usize, cir::VarDeclId>*,
@@ -8969,6 +8987,7 @@ pub struct Analyzer {
         }
     }
 
+    // FIXME: Move
     fn specialize_expr(
         self: Self*,
         expr: cir::TypedExpr*,
@@ -9154,6 +9173,7 @@ pub struct Analyzer {
         }
     }
 
+    // FIXME: Move
     fn specialize_expr_vec(
         self: Self*,
         exprs: Vec<cir::TypedExpr>*,
@@ -9165,6 +9185,7 @@ pub struct Analyzer {
         }
     }
 
+    // FIXME: Move
     fn specialize_func_params(
         self: Self*,
         params: cir::TypedFuncParams*,
@@ -9225,6 +9246,7 @@ pub struct Analyzer {
         }
     }
 
+    // FIXME: Move
     fn monomorphize_generic_func_call(
         self: Self*,
         operand_type: const cir::SemaType*,
@@ -9243,7 +9265,7 @@ pub struct Analyzer {
 
         switch (self->func_env.current_func) {
             case .Some(var updated) => {
-                updated.params = func_params_as_type_params(self->allocator, &func_decl->params);
+                updated.params = cir::func_params_as_type_params(self->allocator, &func_decl->params);
                 updated.ret_type = alloc_init(self->allocator, func_decl->ret_type);
                 self->func_env.current_func = .Some(updated);
             }
@@ -9289,6 +9311,7 @@ pub struct Analyzer {
         return .Some(func_decl->ret_type);
     }
 
+    // FIXME: Move
     fn monomorphize_generic_method_call(
         self: Self*,
         pure_operand_type: cir::SemaType,
@@ -9312,7 +9335,7 @@ pub struct Analyzer {
 
         switch (self->func_env.current_func) {
             case .Some(var updated) => {
-                updated.params = func_params_as_type_params(self->allocator, &method_decl->func_decl.params);
+                updated.params = cir::func_params_as_type_params(self->allocator, &method_decl->func_decl.params);
                 updated.ret_type = alloc_init(self->allocator, method_decl->func_decl.ret_type);
                 self->func_env.current_func = .Some(updated);
             }
@@ -9357,6 +9380,7 @@ pub struct Analyzer {
         return .Some(monomorph_id);
     }
 
+    // FIXME: Move
     fn apply_self_type_in_method_decl_and_variable(
         self: Self*,
         method_decl: cir::MethodDecl*,
@@ -9791,7 +9815,9 @@ pub struct Analyzer {
                 self->push_generic_env(object_method_generic_env);
 
                 self->substitute_func_params(&method_decl_storage.func_decl.params);
-                method_decl_storage.func_decl.ret_type = self->substitute_type(&method_decl_storage.func_decl.ret_type);
+                method_decl_storage.func_decl.ret_type = self->substitute_type(
+                    &method_decl_storage.func_decl.ret_type
+                );
 
                 // Substitute Self inside the self modifier
                 switch (method_decl->func_decl.params.list.first()) {
@@ -9858,7 +9884,7 @@ pub struct Analyzer {
         }
     }
 
-    pub fn analyze_toplevel_stmts(self: Self*, typed_stmts: Vec<cir::TypedStmt>*) {
+    fn analyze_toplevel_stmts(self: Self*, typed_stmts: Vec<cir::TypedStmt>*) {
         for (var i: usize = 0; i < typed_stmts->len(); i += 1) {
             var stmt = typed_stmts->get(i).unwrap();
 
@@ -9932,7 +9958,7 @@ pub struct Analyzer {
         }
     }
 
-    pub fn analyze_stmt(self: Self*, stmt: cir::TypedStmt*) FlowState {
+    fn analyze_stmt(self: Self*, stmt: cir::TypedStmt*) FlowState {
         switch (stmt->kind) {
             case .Builtin => {
                 return self->analyze_builtin_func_used_as_stmt(stmt);
@@ -10034,7 +10060,7 @@ pub struct Analyzer {
         self->analyze_stmt(operand);
     }
 
-    pub fn analyze_block_stmt(self: Self*, block: cir::TypedBlockStmt*) FlowState {
+    fn analyze_block_stmt(self: Self*, block: cir::TypedBlockStmt*) FlowState {
         const total = block->stmts.len();
 
         var flow_state: FlowState = .Reachable;
@@ -10161,6 +10187,7 @@ pub struct Analyzer {
         *typedef_decl2->ty = typedef->ty;
     }
 
+    // FIXME
     fn validate_variable_type(self: Self*, ty: const cir::SemaType*, is_init: bool, span: Span) bool {
         if (ty->const_inner()->is_void()) {
             diags::report_void_variable_type(self->dctx, self->allocator, span);
@@ -10177,6 +10204,7 @@ pub struct Analyzer {
         return self->check_type_arity(*ty, span);
     }
 
+    // FIXME
     fn validate_non_static_global_var_modifiers(self: Self*, global_var: const cir::TypedGlobalVarStmt*) {
         if (global_var->modifiers.weak
             || global_var->modifiers.link_once
@@ -10373,12 +10401,14 @@ pub struct Analyzer {
         self->write_back_global_var(global_var);
     }
 
+    // FIXME
     fn write_back_global_var(self: Self*, global_var: const cir::TypedGlobalVarStmt*) {
         var decl = self->decl_tables->global_vars.get(global_var->global_var_decl_id).unwrap();
         decl->rhs = global_var->rhs;
         decl->ty = global_var->ty;
     }
 
+    // FIXME
     fn write_back_var(self: Self*, var_: const cir::TypedVarStmt*) {
         var decl = self->decl_tables->vars.get(var_->var_decl_id).unwrap();
         decl->rhs = var_->rhs;
@@ -10512,7 +10542,7 @@ pub struct Analyzer {
         self->write_back_var(var_);
     }
 
-    pub fn analyze_func_def(self: Self*, func_def: cir::TypedFuncDefStmt*) {
+    fn analyze_func_def(self: Self*, func_def: cir::TypedFuncDefStmt*) {
         const is_generic_func = func_def->is_generic();
 
         self->analyze_entry_func(func_def);
@@ -10541,7 +10571,7 @@ pub struct Analyzer {
         }
     }
 
-    pub fn analyze_func_decl_stmt(self: Self*, func_decl_stmt: cir::TypedFuncDeclStmt*) {
+    fn analyze_func_decl_stmt(self: Self*, func_decl_stmt: cir::TypedFuncDeclStmt*) {
         if (func_decl_stmt->is_generic()) {
             diags::report_generic_function_declaration(self->dctx, self->allocator, func_decl_stmt->span);
         }
@@ -10558,7 +10588,7 @@ pub struct Analyzer {
         decl_slot->ret_type = func_decl.ret_type;
     }
 
-    pub fn analyze_func_decl(self: Self*, func_decl: cir::FuncDecl*) {
+    fn analyze_func_decl(self: Self*, func_decl: cir::FuncDecl*) {
         const is_not_generic_func = !func_decl->is_generic();
 
         diags::report_if_duplicate_param_names(
@@ -10587,7 +10617,7 @@ pub struct Analyzer {
         self->analyze_generic_bounds(&func_decl->generic_params);
     }
 
-    pub fn analyze_func_body(self: Self*, body: cir::TypedBlockStmt*, ret_type: const cir::SemaType*) {
+    fn analyze_func_body(self: Self*, body: cir::TypedBlockStmt*, ret_type: const cir::SemaType*) {
         const flow_state = self->analyze_block_stmt(body);
 
         if (!ret_type->is_void() 
@@ -10626,7 +10656,7 @@ pub struct Analyzer {
                 const name = builtin_func.name.str.as_str_const();
 
                 var builtin_expr = cir::TypedExpr.new(.Builtin(.BuiltinFunc(builtin_func)), span);
-                builtin_expr.val_cat = .RValue;
+                builtin_expr.value_category = .RValue;
 
                 if (self->analyze_expr(&builtin_expr, .None).is_none()) {
                     return .Reachable;
@@ -10784,6 +10814,7 @@ pub struct Analyzer {
         }
     }
 
+    // FIXME: Move out of object
     fn validate_struct_repr_attr(
         self: Self*, 
         repr_attr: const Option<ast::ASTReprAttr>*, 
@@ -10825,6 +10856,7 @@ pub struct Analyzer {
         }
     }
 
+    // FIXME: Move out of object
     fn validate_struct_field_type(self: Self*, struct_decl_id: cir::StructDeclId, sema_type: const cir::SemaType*, span: Span) {
         const inner = sema_type->const_inner();
 
@@ -10906,6 +10938,7 @@ pub struct Analyzer {
 
     }
 
+    // FIXME: Move out of object
     fn check_duplicate_union_field(self: Self*, object_name: const uint8*, fields: const Vec<cir::TypedUnionField>*) {
         for (var i: usize = 0; i < fields->len(); i += 1) {
             const field = fields->get_const(i).unwrap();
@@ -10927,6 +10960,7 @@ pub struct Analyzer {
         }
     }
 
+    // FIXME: Move out of object
     fn validate_union_repr_attr(self: Self*, repr_attr: const Option<ast::ASTReprAttr>*, fields_count: usize, span: Span) {
         switch (*repr_attr) {
             case .Some(attr) => {
@@ -10962,6 +10996,7 @@ pub struct Analyzer {
         }
     }
 
+    // FIXME: Move out of object
     fn validate_union_field_type(self: Self*, union_decl_id: cir::UnionDeclId, sema_type: const cir::SemaType*, span: Span) {
         const inner = sema_type->const_inner();
 
@@ -11137,6 +11172,7 @@ pub struct Analyzer {
         }
     }
 
+    // FIXME: Move out of object
     fn check_duplicate_enum_variants(self: Self*, object_name: const uint8*, variants: const Vec<cir::TypedEnumVariant>*) {
         for (var i: usize = 0; i < variants->len(); i += 1) {
             const variant = variants->get_const(i).unwrap();
@@ -11159,6 +11195,7 @@ pub struct Analyzer {
         }
     }
 
+    // FIXME: Move out of object
     fn validate_enum_repr_attr(self: Self*, repr_attr: const Option<ast::ASTReprAttr>*, has_align: bool, span: Span) {
         switch (*repr_attr) {
             case .Some(attr) => {
@@ -11215,6 +11252,7 @@ pub struct Analyzer {
         }
     }
 
+    // FIXME: Move out of object
     fn validate_enum_tag_type(self: Self*, tag_type: const Option<cir::SemaType>*, span: Span) {
         switch (*tag_type) {
             case .Some(ty) => {
@@ -11233,6 +11271,7 @@ pub struct Analyzer {
         }
     }
 
+    // FIXME: Move out of object
     fn validate_enum_variant_field_type(self: Self*, enum_decl_id: cir::EnumDeclId, sema_type: const cir::SemaType*, span: Span) {
         const inner = sema_type->const_inner();
 
@@ -11251,6 +11290,7 @@ pub struct Analyzer {
         self->check_type_arity(*inner, span);
     }
 
+    // FIXME: Move out of object
     fn validate_align(self: Self*, align: const Option<usize>*, span: Span) {
         switch (*align) {
             case .Some(value) => {
@@ -11262,7 +11302,7 @@ pub struct Analyzer {
         }
     }
 
-    pub fn analyze_interface(self: Self*, interface_stmt: cir::TypedInterfaceStmt*) {
+    fn analyze_interface(self: Self*, interface_stmt: cir::TypedInterfaceStmt*) {
         const interface_name = interface_stmt->name.as_str_const();
         
         var is_interface_dynamically_dispatchable = true;
@@ -11349,7 +11389,7 @@ pub struct Analyzer {
         decl->is_interface_dynamically_dispatchable = is_interface_dynamically_dispatchable;
     }
 
-    pub fn analyze_object_implements_interfaces(
+    fn analyze_object_implements_interfaces(
         self: Self*,
         object_name: const uint8*,
         object_span: Span,
@@ -11437,7 +11477,7 @@ pub struct Analyzer {
         }
     }
 
-    pub fn analyze_object_methods(self: Self*, object_type_decl_id: cir::TypeDeclId, method_decls: const cir::MethodDecls*) {
+    fn analyze_object_methods(self: Self*, object_type_decl_id: cir::TypeDeclId, method_decls: const cir::MethodDecls*) {
         for (var i: usize = 0; i < method_decls->entries.len(); i += 1) {
             const entry = method_decls->entries.get_const(i).unwrap();
 
@@ -11482,7 +11522,7 @@ pub struct Analyzer {
         self->analyze_func_decl(&method_decl->func_decl);
     }
 
-    pub fn analyze_method_body(
+    fn analyze_method_body(
         self: Self*,
         object_type: const cir::SemaType*,
         method_decl_id: cir::MethodDeclId,
@@ -11514,7 +11554,7 @@ pub struct Analyzer {
         self->func_env = saved_env;
     }
 
-    pub fn analyze_if_stmt(self: Self*, if_stmt: cir::TypedIfStmt*) FlowState {
+    fn analyze_if_stmt(self: Self*, if_stmt: cir::TypedIfStmt*) FlowState {
         self->analyze_cond_expr(&if_stmt->cond);
 
         const then_state = self->analyze_block_stmt(if_stmt->then_block);
@@ -11534,7 +11574,7 @@ pub struct Analyzer {
         return then_state.merge(else_state);
     }
 
-    pub fn analyze_while_loop(self: Self*, typed_while: cir::TypedWhileStmt*) FlowState {
+    fn analyze_while_loop(self: Self*, typed_while: cir::TypedWhileStmt*) FlowState {
         self->analyze_cond_expr(&typed_while->cond);
 
         self->control_region_stack.push(.Loop);
@@ -11544,7 +11584,7 @@ pub struct Analyzer {
         return .Reachable;
     }
 
-    pub fn analyze_for_loop(self: Self*, typed_for: cir::TypedForStmt*) FlowState {
+    fn analyze_for_loop(self: Self*, typed_for: cir::TypedForStmt*) FlowState {
         switch (typed_for->initializer) {
             case .Some(var var_) => {
                 self->analyze_var(&var_);
@@ -11576,7 +11616,7 @@ pub struct Analyzer {
         return .Reachable;
     }
 
-    pub fn analyze_return(self: Self*, ret: cir::TypedReturnStmt*) FlowState {
+    fn analyze_return(self: Self*, ret: cir::TypedReturnStmt*) FlowState {
         switch (self->func_env.current_func) case .Some(func_type) else {
             return .Reachable;
         }
@@ -11638,7 +11678,7 @@ pub struct Analyzer {
         return .Returns;
     }
 
-    pub fn analyze_break(self: Self*, break_stmt: const cir::TypedBreakStmt*) FlowState {
+    fn analyze_break(self: Self*, break_stmt: const cir::TypedBreakStmt*) FlowState {
         var valid = false;
 
         for (var i: usize = 0; i < self->control_region_stack.len(); i += 1) {
@@ -11662,7 +11702,7 @@ pub struct Analyzer {
         return .Unreachable;
     }
 
-    pub fn analyze_continue(self: Self*, continue_: const cir::TypedContinueStmt*) FlowState {
+    fn analyze_continue(self: Self*, continue_: const cir::TypedContinueStmt*) FlowState {
         var valid = false;
 
         for (var i: usize = 0; i < self->control_region_stack.len(); i += 1) {
@@ -11682,7 +11722,7 @@ pub struct Analyzer {
         return .Unreachable;
     }
 
-    pub fn analyze_switch(self: Self*, switch_: cir::TypedSwitchStmt*) FlowState {
+    fn analyze_switch(self: Self*, switch_: cir::TypedSwitchStmt*) FlowState {
         if (self->analyze_expr(&switch_->operand, .None).is_none()) {
             return .Reachable;
         }
@@ -11931,6 +11971,7 @@ pub struct Analyzer {
 
         var all_covered_variants: Vec<String> = Vec.new(self->allocator);
         defer all_covered_variants.free();
+
         var flow_states: Vec<FlowState> = Vec.new(self->allocator);
         defer flow_states.free();
 
@@ -12618,7 +12659,7 @@ pub struct Analyzer {
                 const access_expr = tuple_access_expr(self->allocator, root_expr, path, span);
 
                 var is_const_opt: Option<bool> = .None;
-                switch (pattern->mutability) {
+                switch (pattern->constness) {
                     case .Some(.Const) => is_const_opt = .Some(true);
                     case .Some(.Var) => is_const_opt = .Some(false);
                     case .None => {}
@@ -12628,17 +12669,17 @@ pub struct Analyzer {
                     const is_const = is_const_opt.unwrap();
 
                     if (is_const == stmt_is_const) {
-                        var mutability_str = "var";
+                        var constness_str = "var";
 
                         if (is_const) {
-                            mutability_str = "const";
+                            constness_str = "const";
                         }
                         
                         diags::report_invalid_nested_export_tuple(
                             self->dctx,
                             self->allocator,
                             span,
-                            mutability_str
+                            constness_str
                         );
                     }
                 }
@@ -12684,6 +12725,7 @@ pub struct Analyzer {
         }
     }
 
+    // FIXME: Move out of object
     fn build_expected_tuple_type_from_pattern(self: Self*, pattern: const cir::TypedTupleExportPattern*) Option<cir::SemaType> {
         switch (pattern->kind) {
             case .Tuple(elements) => {
@@ -12766,35 +12808,32 @@ pub struct Analyzer {
         self->validate_asm_constraint_types(asm);
     }
 
+    // FIXME: Move out of object
     fn write_struct_back(self: Self*, id: cir::StructDeclId, struct_decl: cir::StructDecl) {
         var decl = self->decl_tables->structs.get(id).unwrap();
         *decl = struct_decl;
     }
 
+    // FIXME: Move out of object
     fn write_union_back(self: Self*, id: cir::UnionDeclId, union_decl: cir::UnionDecl) {
         var decl = self->decl_tables->unions.get(id).unwrap();
         *decl = union_decl;
     }
 
+    // FIXME: Move out of object
     fn write_enum_back(self: Self*, id: cir::EnumDeclId, enum_decl: cir::EnumDecl) {
         var decl = self->decl_tables->enums.get(id).unwrap();
         *decl = enum_decl;
     }
 
+    // FIXME: Move out of object
     fn write_method_back(self: Self*, id: cir::MethodDeclId, method_decl: cir::MethodDecl) {
         var decl = self->decl_tables->methods.get(id).unwrap();
         *decl = method_decl;
     }
 }
 
-fn is_const_qualified_type_assigned_to_non_const_variable(
-    ty: const cir::SemaType*,
-    is_variable_const: bool
-) bool {
-    return !is_variable_const && ty->is_const();
-}
-
-// FIXME: Move to cir/index.cyrus
+// FIXME: Move to cir/clone.cyrus
 fn clone_func_params_list(
     allocator: Allocator,
     src: const cir::TypedFuncParams*
@@ -12811,49 +12850,7 @@ fn clone_func_params_list(
     };
 }
 
-// FIXME: Move to cir/index.cyrus
-fn method_decls_of_named_type(
-    decl_tables: DeclTables*,
-    named_type: const cir::NamedType*
-) Option<const cir::MethodDecls*> {
-    switch (named_type->type_decl_id) {
-        case .Struct(struct_decl_id) => {
-            const struct_decl = decl_tables->structs.get_const(struct_decl_id).unwrap();
-            return .Some(&struct_decl->methods);
-        }
-        case .Enum(enum_decl_id) => {
-            const enum_decl = decl_tables->enums.get_const(enum_decl_id).unwrap();
-            return .Some(&enum_decl->methods);
-        }
-        case .Union(union_decl_id) => {
-            const union_decl = decl_tables->unions.get_const(union_decl_id).unwrap();
-            return .Some(&union_decl->methods);
-        }
-        case .Interface | .Typedef => return .None;
-    }
-}
-
-// FIXME: Move to cir/index.cyrus
-fn implement_interfaces_of_named_type(
-    decl_tables: DeclTables*,
-    named_type: const cir::NamedType*
-) Option<const Vec<cir::TypedImplementInterface>*> {
-    switch (named_type->type_decl_id) {
-        case .Struct(struct_decl_id) => {
-            const struct_decl = decl_tables->structs.get_const(struct_decl_id).unwrap();
-            return .Some(&struct_decl->impls);
-        }
-        case .Enum(enum_decl_id) => {
-            const enum_decl = decl_tables->enums.get_const(enum_decl_id).unwrap();
-            return .Some(&enum_decl->impls);
-        }
-        case .Union(union_decl_id) => {
-            const union_decl = decl_tables->unions.get_const(union_decl_id).unwrap();
-            return .Some(&union_decl->impls);
-        }
-        case .Interface | .Typedef => return .None;
-    }
-}
+/* ************* Types Helpers ************* */
 
 fn is_plain_type_assignable_to(value_type: cir::PlainType, target_type: cir::PlainType) bool {
     if (value_type == target_type) {
@@ -12913,6 +12910,54 @@ fn is_plain_type_assignable_to(value_type: cir::PlainType, target_type: cir::Pla
     return false;
 }
 
+/* ************* Methods Helpers ************* */
+
+// FIXME: Move to cir/index.cyrus
+fn method_decls_of_named_type(
+    decl_tables: DeclTables*,
+    named_type: const cir::NamedType*
+) Option<const cir::MethodDecls*> {
+    switch (named_type->type_decl_id) {
+        case .Struct(struct_decl_id) => {
+            const struct_decl = decl_tables->structs.get_const(struct_decl_id).unwrap();
+            return .Some(&struct_decl->methods);
+        }
+        case .Enum(enum_decl_id) => {
+            const enum_decl = decl_tables->enums.get_const(enum_decl_id).unwrap();
+            return .Some(&enum_decl->methods);
+        }
+        case .Union(union_decl_id) => {
+            const union_decl = decl_tables->unions.get_const(union_decl_id).unwrap();
+            return .Some(&union_decl->methods);
+        }
+        case .Interface | .Typedef => return .None;
+    }
+}
+
+// FIXME: Move to cir/index.cyrus
+fn implement_interfaces_of_named_type(
+    decl_tables: DeclTables*,
+    named_type: const cir::NamedType*
+) Option<const Vec<cir::TypedImplementInterface>*> {
+    switch (named_type->type_decl_id) {
+        case .Struct(struct_decl_id) => {
+            const struct_decl = decl_tables->structs.get_const(struct_decl_id).unwrap();
+            return .Some(&struct_decl->impls);
+        }
+        case .Enum(enum_decl_id) => {
+            const enum_decl = decl_tables->enums.get_const(enum_decl_id).unwrap();
+            return .Some(&enum_decl->impls);
+        }
+        case .Union(union_decl_id) => {
+            const union_decl = decl_tables->unions.get_const(union_decl_id).unwrap();
+            return .Some(&union_decl->impls);
+        }
+        case .Interface | .Typedef => return .None;
+    }
+}
+
+/* ************* Inline ASM Helpers ************* */
+
 /// Strips leading and trailing `{` and `}` from an asm constraint.
 fn asm_trim_constraint(allocator: Allocator, constraint: const uint8*) String {
     var len: usize = 0;
@@ -12949,6 +12994,39 @@ fn asm_is_integer_bool_or_pointer(ty: const cir::SemaType*) bool {
         else => return false;
     }
 }
+
+/* ************* Builtins Helpers ************* */
+
+fn builtin_copy_memset_param_type(
+    this: Analyzer*,
+    is_memcpy: bool,
+    index: usize
+) cir::SemaType {
+    const void_type: cir::SemaType = .Plain(.Void);
+    const const_void_ty: cir::SemaType = .Const(alloc_init(this->allocator, void_type));
+
+    var param: cir::SemaType = .Plain(.USize);
+
+    if (index == 0) {
+        param = .Pointer(alloc_init(this->allocator, void_type));
+    } else if (index == 1) {
+        if (is_memcpy) {
+            param = .Pointer(alloc_init(this->allocator, const_void_ty));
+        } else {
+            param = .Plain(.Int8);
+        }
+    }
+
+    return param;
+}
+
+fn builtin_const_mesg_param_type(this: Analyzer*) cir::SemaType {
+    const uint8_type: cir::SemaType = .Plain(.UInt8);
+    const const_uint8_type: cir::SemaType = .Const(alloc_init(this->allocator, uint8_type));
+    return .Pointer(alloc_init(this->allocator, const_uint8_type));
+}
+
+/* ************* Switch Helpers ************* */
 
 fn switch_ranges_valid(existing: const Vec<usize>*, new_ranges: const Vec<usize>*) bool {
     var i: usize = 0;
@@ -13024,7 +13102,7 @@ fn tuple_access_expr(
             }),
             ty: .Some(element_type),
             analyzed: false,
-            val_cat: expr.val_cat,
+            value_category: expr.value_category,
             span: span,
         };
 
@@ -13063,9 +13141,9 @@ fn analyze_symbol_expr(
     return .None;
 }
 
-/* ************* Helpers ************* */
+/* ************* Inference Helpers ************* */
 
-fn pointer_arithmetic_type(
+fn infer_pointer_arithmetic_type(
     lhs_type: const cir::SemaType*,
     rhs_type: const cir::SemaType*,
     is_addition: bool
@@ -13081,7 +13159,7 @@ fn pointer_arithmetic_type(
     }
 }
 
-fn null_coalesce_type(lhs_type: cir::SemaType, rhs_type: cir::SemaType) Option<cir::SemaType> {
+fn infer_null_coalesce_type(lhs_type: cir::SemaType, rhs_type: cir::SemaType) Option<cir::SemaType> {
     if (lhs_type.is_plain_null()) {
         switch (rhs_type) {
             case .Pointer(inner) => return .Some(.Pointer(inner));
@@ -13110,43 +13188,6 @@ fn null_coalesce_type(lhs_type: cir::SemaType, rhs_type: cir::SemaType) Option<c
     return .None;
 }
 
-// FIXME: Move to cir/index.cyrus
-fn func_params_as_type_params(
-    allocator: Allocator,
-    params: const cir::TypedFuncParams*
-) cir::TypedFuncTypeParams {
-    var list: Vec<cir::SemaType> = Vec.new(allocator);
-
-    for (var i: usize = 0; i < params->list.len(); i += 1) {
-        const param_kind = params->list.get_const(i).unwrap();
-
-        switch (*param_kind) {
-            case .FuncParam(func_param) => list.push(func_param.ty);
-            case .SelfModifier(self_modifier) => list.push(self_modifier.ty);
-        }
-    }
-
-    var variadic: Option<cir::TypedFuncTypeVariadicParam*> = .None;
-
-    switch (params->variadic) {
-        case .Some(.UntypedCStyle) => {
-            variadic = .Some(alloc_init(
-                allocator,
-                cir::TypedFuncTypeVariadicParam.UntypedCStyle
-            ));
-        }
-        case .Some(.Typed { ty, .. }) => {
-            variadic = .Some(alloc_init(
-                allocator,
-                cir::TypedFuncTypeVariadicParam.Typed(ty)
-            ));
-        }
-        else => {}
-    }
-
-    return cir::TypedFuncTypeParams { list, variadic };
-}
-
 // FIXME: Remove this helper method
 fn str_set_contains(values: const Vec<String>*, name: const uint8*) bool {
     for (var i: usize = 0; i < values->len(); i += 1) {
@@ -13170,6 +13211,8 @@ fn str_set_insert(values: Vec<String>*, name: String) bool {
     return true;
 }
 
+/* ************* DeclTables Helpers ************* */
+
 [[inline]]
 fn decl_id_as_type_decl_id(decl_id: cir::DeclId) Option<cir::TypeDeclId> {
     switch (decl_id) {
@@ -13182,7 +13225,7 @@ fn decl_id_as_type_decl_id(decl_id: cir::DeclId) Option<cir::TypeDeclId> {
     }
 }
 
-fn analyze_symbol_expr_readonly(
+fn symbol_expr_as_decl_id(
     registry: const GlobalSymbolRegistry*,
     symbol_expr: const cir::TypedSymbolExpr*
 ) Option<cir::DeclId> {
@@ -13198,6 +13241,8 @@ fn analyze_symbol_expr_readonly(
 
     return symbol_expr->as_decl_id();
 }
+
+/* ************* Literals Helpers ************* */
 
 [[inline]]
 fn integer_suffix_to_sema_type(suffix: IntegerSuffix) Option<cir::SemaType> {
