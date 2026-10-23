@@ -499,10 +499,24 @@ impl Default for TypedTypeArgs {
     }
 }
 
+impl TypedTypeArg {
+    pub fn contains_error(&self) -> bool {
+        match self {
+            Self::Type(ty, _) => ty.contains_error(),
+            Self::Infer => false,
+        }
+    }
+}
+
 impl TypedTypeArgs {
     #[inline]
     pub fn new() -> Self {
         Self(Vec::new())
+    }
+
+    #[inline]
+    pub fn contains_error(&self) -> bool {
+        self.0.iter().any(TypedTypeArg::contains_error)
     }
 
     #[inline]

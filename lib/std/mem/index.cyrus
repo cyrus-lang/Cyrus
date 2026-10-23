@@ -13,14 +13,15 @@ pub interface Allocator {
 
 [[inline]]
 pub fn alloc_init<T>(allocator: Allocator, value: T) T* {
-	var heap: T* = allocator.alloc(@sizeof(T));
+	@todo();
+	// var heap: T* = allocator.alloc(@sizeof(T));
 	
-	if (!heap) {
-		return null;
-	}
+	// if (!heap) {
+	// 	return null;
+	// }
 	
-	*heap = value;
-	return heap;
+	// *heap = value;
+	// return heap;
 }
 
 [[inline]]

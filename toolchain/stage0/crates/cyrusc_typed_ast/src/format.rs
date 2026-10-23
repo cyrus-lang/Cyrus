@@ -415,7 +415,7 @@ pub fn format_sema_type(ty: SemaType, formatter: &dyn Formatter) -> String {
         }
         SemaType::SelfType(_) => "Self".to_string(),
         SemaType::Err(_) => "<error>".to_string(),
-        SemaType::InferVar(_) => "_".to_string(),
+        SemaType::InferVar { .. } => "_".to_string(),
         SemaType::Placeholder => "<placeholder>".to_string(),
     }
 }

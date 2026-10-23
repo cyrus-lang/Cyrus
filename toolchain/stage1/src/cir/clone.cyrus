@@ -78,7 +78,7 @@ pub fn clone_typed_block(
     return cir::TypedBlockStmt { stmts, defers, span: src->span };
 }
 
-pub fn clone_typed_func_params(
+pub fn clone_func_params(
     allocator: Allocator, 
     src: const cir::TypedFuncParams*
 ) cir::TypedFuncParams {
@@ -482,7 +482,7 @@ fn clone_expr_kind(
             return .FuncCall(cir::TypedFuncCall {
                 operand: clone_expr_alloc(allocator, func_call.operand),
                 args: clone_expr_vec(allocator, &func_call.args),
-                type_args: cir::clone_typed_type_args(allocator, &func_call.type_args),
+                type_args: clone_typed_type_args(allocator, &func_call.type_args),
                 dispatch: func_call.dispatch,
                 span: func_call.span,
             });
@@ -492,7 +492,7 @@ fn clone_expr_kind(
                 name: method_call.name,
                 operand: clone_expr_alloc(allocator, method_call.operand),
                 args: clone_expr_vec(allocator, &method_call.args),
-                type_args: cir::clone_typed_type_args(allocator, &method_call.type_args),
+                type_args: clone_typed_type_args(allocator, &method_call.type_args),
                 dispatch: method_call.dispatch,
                 is_thin_arrow: method_call.is_thin_arrow,
                 span: method_call.span,
@@ -509,7 +509,7 @@ fn clone_expr_kind(
         }
         case .Lambda(lambda) => {
             return .Lambda(cir::TypedLambdaExpr {
-                params: clone_typed_func_params(allocator, &lambda.params),
+                params: clone_func_params(allocator, &lambda.params),
                 body: clone_block_alloc(allocator, lambda.body),
                 ret_type: lambda.ret_type,
                 span: lambda.span,
@@ -701,6 +701,37 @@ fn clone_optional_block_ptr(
             return .None;
         }
     }
+}
+
+pub fn clone_typed_type_args(
+    allocator: Allocator,
+    src: const cir::TypedTypeArgs*
+) cir::TypedTypeArgs {
+    var list: Vec<cir::TypedTypeArg> = Vec.new(allocator);
+    
+    for (var i: usize = 0; i < src->len(); i += 1) {
+        list.push(*src->get(i).unwrap());
+    }
+
+    return cir::TypedTypeArgs { list };
+}
+
+pub fn clone_method_decls(
+    allocator: Allocator,
+    src: const cir::MethodDecls*
+) cir::MethodDecls {
+    var out = cir::MethodDecls.new(allocator);
+    
+    for (var i: usize = 0; i < src->entries.len(); i += 1) {
+        const entry = src->entries.get_const(i).unwrap();
+
+        out.entries.push(cir::MethodDeclEntry {
+            name: entry->name.clone(allocator),
+            id: entry->id,
+        });
+    }
+
+    return out;
 }
 
 /* ************* Helpers ************* */

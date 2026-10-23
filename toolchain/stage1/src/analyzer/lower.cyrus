@@ -204,7 +204,10 @@ pub fn lower_unnamed_struct_value_as_struct_init(allocator: Allocator, typed_exp
     }
 }
 
-pub fn lower_assign_to_infix_expr(allocator: Allocator, assign: const cir::TypedAssignExpr*) cir::TypedExprKind {
+pub fn lower_assign_to_infix_expr(
+    allocator: Allocator, 
+    assign: const cir::TypedAssignExpr*
+) cir::TypedExprKind {
     const infix_expr: cir::TypedExprKind = .Infix(cir::TypedInfixExpr {
         op: assign->kind.to_infix_operator(),
         lhs: assign->lhs,
@@ -226,11 +229,6 @@ pub fn lower_assign_to_infix_expr(allocator: Allocator, assign: const cir::Typed
         kind: .Default,
         span: assign->span,
     });
-}
-
-pub struct EnumDeclRef {
-    pub enum_decl_id: cir::EnumDeclId,
-    pub type_args: cir::TypedTypeArgs,
 }
 
 pub fn lower_prefix_not_pointer(
@@ -277,7 +275,7 @@ pub fn lower_field_access_as_enum_init(
     allocator: Allocator,
     decl_tables: DeclTables*,
     expr: cir::TypedExpr*,
-    info: EnumDeclRef
+    info: cir::EnumTypeDecl
 ) {
     switch (expr->kind) {
         case .FieldAccess(field_access) => {
@@ -333,7 +331,7 @@ pub fn lower_method_call_as_enum_init(
     allocator: Allocator,
     decl_tables: DeclTables*,
     typed_expr: cir::TypedExpr*,
-    info: EnumDeclRef
+    info: cir::EnumTypeDecl
 ) {
     switch (typed_expr->kind) {
         case .MethodCall(method_call) => {

@@ -82,7 +82,7 @@ impl GenericEnv {
 
             SemaType::Err(_)
             | SemaType::Unresolved(_)
-            | SemaType::InferVar(_)
+            | SemaType::InferVar { .. }
             | SemaType::Plain(_)
             | SemaType::Placeholder => ty.clone(),
 

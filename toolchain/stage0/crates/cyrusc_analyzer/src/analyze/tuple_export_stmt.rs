@@ -196,11 +196,11 @@ impl<'a> AnalysisContext<'a> {
 
                         has_explicit_type = true;
                     } else {
-                        result_type.push((self.func_env.infer.as_mut().unwrap().new_var(), element.loc));
+                        result_type.push((self.func_env.infer.as_mut().unwrap().new_var(element.loc), element.loc));
                     }
                 }
                 _ => {
-                    result_type.push((self.func_env.infer.as_mut().unwrap().new_var(), element.loc));
+                    result_type.push((self.func_env.infer.as_mut().unwrap().new_var(element.loc), element.loc));
                 }
             }
         }

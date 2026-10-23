@@ -29,6 +29,7 @@ import analyzer::monomorph{
 };
 import codegen::c::mangle;
 import parser::ast;
+import cir::clone;
 import ciri;
 import cir;
 
@@ -1759,7 +1760,7 @@ pub struct Emitter {
                 switch (*ty.const_inner()) {
                     case .Named(named) => {
                         if (!named.type_args.is_empty()) {
-                            inst_args_storage = cir::clone_typed_type_args(self->allocator, &named.type_args);
+                            inst_args_storage = clone::clone_typed_type_args(self->allocator, &named.type_args);
                             has_inst_args = true;
                         }
                     }

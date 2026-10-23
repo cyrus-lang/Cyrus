@@ -2661,6 +2661,33 @@ pub fn report_if_duplicate_param_names(
     }
 }
 
+pub fn report_builtin_param_mismatch(
+    dctx: DiagContext*, 
+    allocator: Allocator, 
+    decl_tables: DeclTables*, 
+    builtin_func: cir::TypedBuiltinFunc*,
+    argument_idx: usize,
+    argument_type: const cir::SemaType*,
+    param_type: const cir::SemaType*
+) {
+    var argument_type_str = format::format_sema_type(allocator, decl_tables, argument_type);
+    var param_type_str = format::format_sema_type(allocator, decl_tables, param_type);
+
+    report_func_call_param_type_mismatch(
+        dctx,
+        allocator,
+        builtin_func->span,
+        @cast(uint32, argument_idx),
+        argument_type_str.as_str_const(),
+        param_type_str.as_str_const()
+    );
+
+    argument_type_str.free();
+    param_type_str.free();
+}
+
+// MeOW
+
 pub fn append_usize(out: String*, value: usize) {
     var writer: Writer = dynamic StringWriter.new(out);
     format_usize(writer, value);

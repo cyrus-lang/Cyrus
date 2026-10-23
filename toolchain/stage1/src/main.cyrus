@@ -15,15 +15,16 @@ import std::cli;
 import std::os;
 
 import diags{DiagContext, Diag, exit_with_compile_error};
+import analyzer::context{AnalyzerContext};
 import resolver::loader{ResolverOptions};
 import diags::render{CompilerDiagRender};
 import source{Source, SourceContext};
+import analyzer{trigger_analyzer};
 import resolver::index{Resolver};
 import tokens{dump_tokens, Loc};
 import driver{CompilerDriver};
 import parser::dump{ASTDump};
 import codegen::c{CodegenC};
-import analyzer::check;
 import driver::tcc;
 import cir::dump;
 import version;
@@ -114,7 +115,7 @@ pub fn main(argc: c_int, argv: c_char**) {
         ->add_option(profile_opt);
 
     const dump_analyze_cmd = 
-        cli::Cmd.new(allocator, "analyzer", command_dump_analyzer)
+        cli::Cmd.new(allocator, "analyzer_context", command_dump_analyzer)
         .help("Analyze modules and dump the CIR")
         ->optional_argument(.Str)
         ->add_option(stdlib_opt)
@@ -225,14 +226,15 @@ fn command_run(ctx: cli::ActionContext) {
     if (!driver.dctx.has_errors()) {
         const arena_allocator: Allocator = dynamic resolver.arena;
 
-        var analyzer = check::Analyzer.new(
+        var analyzer_context = AnalyzerContext.new(
             arena_allocator,
             &driver.dctx,
             &resolver.global_symbols,
             &resolver.decl_tables,
             resolver.program_trees
         );
-        analyzer.analyze();
+        
+        trigger_analyzer(analyzer_context);
 
         if (driver.dctx.has_errors()) {
             driver.render_diags();
@@ -260,7 +262,7 @@ fn command_run(ctx: cli::ActionContext) {
 
             if (backend.as_str_const() == "llvm") {
                 backend.free();
-                analyzer.free();
+                analyzer_context.free();
                 exit_with_compile_error("LLVM backend is not supported yet");
                 @unreachable();
             } else if (backend.as_str_const() == "c") {
@@ -272,8 +274,8 @@ fn command_run(ctx: cli::ActionContext) {
                     &resolver.decl_tables,
                     &resolver.global_symbols,
                     &resolver.program_trees,
-                    &analyzer.vtable_registry,
-                    &analyzer.monomorph_registry,
+                    &analyzer_context.vtable_registry,
+                    &analyzer_context.monomorph_registry,
                     &driver.sctx
                 );
 
@@ -282,7 +284,7 @@ fn command_run(ctx: cli::ActionContext) {
 
                 if (!tcc::compile(out.as_str_const(), output_path.as_str_const(), tcc::OutputKind.EXE)) {
                     out.free();
-                    analyzer.free();
+                    analyzer_context.free();
                     program.free();
                     source_tokens.free();
                     output_path.free();
@@ -313,7 +315,7 @@ fn command_run(ctx: cli::ActionContext) {
             }
         }
 
-        analyzer.free();
+        analyzer_context.free();
     } else {
         driver.render_diags();
         error = true;
@@ -429,14 +431,15 @@ fn command_build(ctx: cli::ActionContext) {
     if (!driver.dctx.has_errors()) {
         const arena_allocator: Allocator = dynamic resolver.arena;
 
-        var analyzer = check::Analyzer.new(
+        var analyzer_context = AnalyzerContext.new(
             arena_allocator,
             &driver.dctx,
             &resolver.global_symbols,
             &resolver.decl_tables,
             resolver.program_trees
         );
-        analyzer.analyze();
+        
+        trigger_analyzer(analyzer_context);
 
         if (driver.dctx.has_errors()) {
             driver.render_diags();
@@ -470,8 +473,8 @@ fn command_build(ctx: cli::ActionContext) {
                     &resolver.decl_tables,
                     &resolver.global_symbols,
                     &resolver.program_trees,
-                    &analyzer.vtable_registry,
-                    &analyzer.monomorph_registry,
+                    &analyzer_context.vtable_registry,
+                    &analyzer_context.monomorph_registry,
                     &driver.sctx
                 );
 
@@ -480,7 +483,7 @@ fn command_build(ctx: cli::ActionContext) {
 
                 if (!tcc::compile(out.as_str_const(), output_path.as_str_const(), .EXE)) {
                     out.free();
-                    analyzer.free();
+                    analyzer_context.free();
                     program.free();
                     source_tokens.free();
                     output_path.free();
@@ -501,7 +504,7 @@ fn command_build(ctx: cli::ActionContext) {
             backend.free();
         }
 
-        analyzer.free();
+        analyzer_context.free();
     } else {
         driver.render_diags();
         error = true;
@@ -688,15 +691,18 @@ fn command_dump_analyzer(ctx: cli::ActionContext) {
     if (!driver.dctx.has_errors()) {
         const arena_allocator: Allocator = dynamic resolver.arena;
 
-        var analyzer = check::Analyzer.new(
+        var analyzer_context = AnalyzerContext.new(
             arena_allocator,
             &driver.dctx,
             &resolver.global_symbols,
             &resolver.decl_tables,
             resolver.program_trees
+        
         );
-        analyzer.analyze();
-        analyzer.free();
+        
+        trigger_analyzer(analyzer_context);
+        
+        analyzer_context.free();
     }
 
     driver.render_diags();
@@ -762,14 +768,15 @@ fn command_dump_bir(ctx: cli::ActionContext) {
     if (!driver.dctx.has_errors()) {
         const arena_allocator: Allocator = dynamic resolver.arena;
 
-        var analyzer = check::Analyzer.new(
+        var analyzer_context = AnalyzerContext.new(
             arena_allocator,
             &driver.dctx,
             &resolver.global_symbols,
             &resolver.decl_tables,
             resolver.program_trees
         );
-        analyzer.analyze();
+        
+        trigger_analyzer(analyzer_context);
 
         if (driver.dctx.has_errors()) {
             driver.render_diags();
@@ -781,8 +788,8 @@ fn command_dump_bir(ctx: cli::ActionContext) {
                 &resolver.decl_tables,
                 &resolver.global_symbols,
                 &resolver.program_trees,
-                &analyzer.vtable_registry,
-                &analyzer.monomorph_registry,
+                &analyzer_context.vtable_registry,
+                &analyzer_context.monomorph_registry,
                 &driver.sctx
             );
 
@@ -790,7 +797,7 @@ fn command_dump_bir(ctx: cli::ActionContext) {
             codegen.free();
         }
 
-        analyzer.free();
+        analyzer_context.free();
     } else {
         driver.render_diags();
     }

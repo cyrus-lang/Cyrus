@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 The Cyrus Language
 
+import std::collections::hash_map{HashMap};
+import std::hash{hash_usize, eq_usize};
 import std::collections{Vec};
 import std::mem{Allocator};
 import std::option{Option};
@@ -8,6 +10,7 @@ import std::string{String};
 
 import cir{type_args_eq};
 import tokens{Span};
+import cir::clone;
 import cir;
 
 pub struct MonomorphInstance {
@@ -54,7 +57,7 @@ pub struct MonomorphRegistry {
 
         self->instances.push(MonomorphInstance {
             template_id,
-            type_args: cir::clone_typed_type_args(arena, type_args),
+            type_args: clone::clone_typed_type_args(arena, type_args),
             params,
             ret_type,
             body: .None,
@@ -114,7 +117,7 @@ pub struct MonomorphRegistry {
 
 /// Records a generic instantiation key 
 /// together with its use-site span.
-pub struct InstantiationSite {
+pub struct InstanceSite {
     pub key: String,
     pub span: Span,
 }

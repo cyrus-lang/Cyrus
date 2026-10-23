@@ -6,14 +6,14 @@ use crate::abi::layout::{ABIFieldOffsetInfo, ABITypeLayout};
 use crate::abi::target::{ABITargetArch, ABITargetInfo};
 use crate::cir::cir::CIREnumVariant;
 use crate::cir::types::*;
-use cyrusc_source_loc::{FileID, Loc};
+use cyrusc_source_loc::{FileID, Loc, SourceMap};
 use cyrusc_typed_ast::stmts::TypedTypeArgs;
 use cyrusc_typed_ast::types::PlainType;
 use cyrusc_typed_ast::types::TypeDeclID;
 use fx_hash::FxHashMap;
 use std::cell::RefCell;
 use std::fmt;
-use std::sync::OnceLock;
+use std::sync::{Arc, OnceLock};
 
 /// A unique handle to a canonical type stored in the context.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -33,6 +33,7 @@ pub type CIRTypeContextDeclKey = (TypeDeclID, TypedTypeArgs);
 /// during type lowering.
 pub struct CIRTypeContext {
     pub target_info: ABITargetInfo,
+    pub source_map: Arc<SourceMap>,
     defs: RefCell<Vec<CIRTypeDef>>,
     key_to_id: RefCell<FxHashMap<CIRTypeKey, CIRTypeContextID>>,
     layouts: RefCell<FxHashMap<CIRTypeContextID, ABITypeLayout>>,
@@ -83,9 +84,10 @@ pub(crate) enum EnumVariantKey {
 
 impl CIRTypeContext {
     #[inline]
-    pub fn new(target_info: ABITargetInfo) -> Self {
+    pub fn new(target_info: ABITargetInfo, source_map: Arc<SourceMap>) -> Self {
         let ctx = Self {
             target_info,
+            source_map,
             defs: RefCell::new(Vec::new()),
             key_to_id: RefCell::new(FxHashMap::default()),
             layouts: RefCell::new(FxHashMap::default()),
