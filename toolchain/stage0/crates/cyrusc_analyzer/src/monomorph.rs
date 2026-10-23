@@ -135,7 +135,7 @@ impl<'a> AnalysisContext<'a> {
                 func_call.dispatch = TypedFuncCallDispatch::Monomorph { monomorph_id };
                 return Some(func_decl.ret_type.clone());
             };
-            
+
             let template_body = self.decl_tables.body(body_id);
 
             let mut specialized_body = self.specialize_func_body(&template_body, &mut func_decl.params);

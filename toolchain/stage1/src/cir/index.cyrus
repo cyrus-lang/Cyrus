@@ -30,6 +30,21 @@ pub type FuncDeclId = usize;
 pub type EnumDeclId = usize;
 pub type VarDeclId = usize;
 
+[[inline]]
+pub fn decl_id_key(decl_id: DeclId) usize {
+    switch (decl_id) {
+        case .Interface(id) => return (1 << 48) | id;
+        case .GlobalVar(id) => return (2 << 48) | id;
+        case .Typedef(id) => return (3 << 48) | id;
+        case .Method(id) => return (4 << 48) | id;
+        case .Struct(id) => return (5 << 48) | id;
+        case .Union(id) => return (6 << 48) | id;
+        case .Func(id) => return (7 << 48) | id;
+        case .Enum(id) => return (8 << 48) | id;
+        case .Var(id) => return (9 << 48) | id;
+    }
+}
+
 /* ************* Literals ************* */
 
 pub enum IntegerLiteral {
@@ -1346,6 +1361,11 @@ pub enum TypeDeclId {
             else => return false;
         }
     }
+}
+
+pub struct EnumTypeDecl {
+    pub enum_decl_id: EnumDeclId,
+    pub type_args: TypedTypeArgs,
 }
 
 pub enum PlainType {
@@ -3459,6 +3479,7 @@ pub struct TypedProgramTree {
     pub module_name: String,
 }
 
+// FIXME: Move to Types Helpers
 pub fn type_contains_self_by_value(
     field_type: const SemaType*,
     named_type: const NamedType*
@@ -4285,42 +4306,12 @@ pub fn func_param_kind_eq(a: const TypedFuncParamKind*, b: const TypedFuncParamK
     }
 }
 
-/* ************* Helpers ************* */
-
-pub fn clone_typed_type_args(
-    allocator: Allocator,
-    src: const TypedTypeArgs*
-) TypedTypeArgs {
-    var list: Vec<TypedTypeArg> = Vec.new(allocator);
-    
-    for (var i: usize = 0; i < src->len(); i += 1) {
-        list.push(*src->get(i).unwrap());
-    }
-
-    return TypedTypeArgs { list };
-}
-
-pub fn clone_method_decls(
-    allocator: Allocator,
-    src: const MethodDecls*
-) MethodDecls {
-    var out = MethodDecls.new(allocator);
-    
-    for (var i: usize = 0; i < src->entries.len(); i += 1) {
-        const entry = src->entries.get_const(i).unwrap();
-
-        out.entries.push(MethodDeclEntry {
-            name: entry->name.clone(allocator),
-            id: entry->id,
-        });
-    }
-
-    return out;
-}
-
 /* ************* FuncDecls Helpers ************* */
 
-pub fn func_decl_as_func_type(allocator: Allocator, decl: const FuncDecl*) TypedFuncType {
+pub fn func_decl_as_func_type(
+    allocator: Allocator, 
+    decl: const FuncDecl*
+) TypedFuncType {
     var list: Vec<SemaType> = Vec.with_capacity(allocator, decl->params.list.len());
 
     for (var i: usize = 0; i < decl->params.list.len(); i += 1) {
@@ -4355,7 +4346,10 @@ pub fn func_decl_as_func_type(allocator: Allocator, decl: const FuncDecl*) Typed
     };
 }
 
-pub fn func_params_as_type_params(allocator: Allocator, params: const TypedFuncParams*) TypedFuncTypeParams {
+pub fn func_params_as_type_params(
+    allocator: Allocator, 
+    params: const TypedFuncParams*
+) TypedFuncTypeParams {
     var list: Vec<SemaType> = Vec.new(allocator);
 
     for (var i: usize = 0; i < params->list.len(); i += 1) {
@@ -4418,8 +4412,12 @@ pub fn is_attr_repr_packed(repr_attr: const ast::ASTReprAttr*) bool {
 
 /* ************* Literals Helpers ************* */
 
-pub fn literal_expr(allocator: Allocator, literal: Literal, span: Span) Option<TypedExpr> {
-    const ty = infer_literal_type_or_default(allocator, &literal, span);
+pub fn literal_expr(
+    allocator: Allocator,
+    literal: Literal, 
+    span: Span
+) Option<TypedExpr> {
+    const ty = explicit_literal_type_or_default(allocator, &literal, span);
 
     return .Some(TypedExpr {
         kind: .Literal(TypedLiteralExpr {
@@ -4434,7 +4432,24 @@ pub fn literal_expr(allocator: Allocator, literal: Literal, span: Span) Option<T
     });
 }
 
-pub fn infer_literal_type_or_default(
+pub fn const_untyped_integer_expr(value: uint128, span: Span) TypedExpr {
+    return TypedExpr {
+        kind: .Literal(TypedLiteralExpr {
+            ty: .None,
+            kind: .Integer {
+                value: .Unsigned(value),
+                suffix: .None,
+            },
+            span,
+        }),
+        ty: .None,
+        value_category: .RValue,
+        analyzed: false,
+        span,
+    };
+}
+
+fn explicit_literal_type_or_default(
     allocator: Allocator,
     literal: const Literal*,
     span: Span
@@ -4508,19 +4523,21 @@ pub fn infer_literal_type_or_default(
     }
 }
 
-pub fn const_untyped_integer_expr(value: uint128, span: Span) TypedExpr {
-    return TypedExpr {
-        kind: .Literal(TypedLiteralExpr {
-            ty: .None,
-            kind: .Integer {
-                value: .Unsigned(value),
-                suffix: .None,
-            },
-            span,
-        }),
-        ty: .None,
-        value_category: .RValue,
-        analyzed: false,
-        span,
-    };
+/* ************* Other Helpers ************* */
+
+pub fn extend_generic_params(
+    allocator: Allocator,
+    a: const TypedGenericParams*,
+    b: const TypedGenericParams*
+) TypedGenericParams {
+    var ids: Vec<GenericParamId> = Vec.new(allocator);
+
+    for (var i: usize = 0; i < a->ids.len(); i += 1) {
+        ids.push(*a->ids.get_const(i).unwrap());
+    }
+    for (var i: usize = 0; i < b->ids.len(); i += 1) {
+        ids.push(*b->ids.get_const(i).unwrap());
+    }
+
+    return TypedGenericParams { ids };
 }

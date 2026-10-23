@@ -71,12 +71,12 @@ pub fn lower_sema_type(
                 len: len.as_int(),
             })
         }
-        SemaType::Const(sema_type) => {
-            let inner = lower_sema_type(decl_tables, target, tctx.clone(), sema_type);
+        SemaType::Const(inner) => {
+            let inner = lower_sema_type(decl_tables, target, tctx.clone(), inner);
             CIRType::Const(Box::new(inner))
         }
-        SemaType::Pointer(sema_type) => {
-            let inner = lower_sema_type(decl_tables, target, tctx.clone(), sema_type);
+        SemaType::Pointer(inner) => {
+            let inner = lower_sema_type(decl_tables, target, tctx.clone(), inner);
             CIRType::Pointer(Box::new(inner))
         }
         SemaType::FuncType(func_type) => {
@@ -85,12 +85,20 @@ pub fn lower_sema_type(
 
         SemaType::InterfaceObject(_) => tctx.fat_ptr_type(),
 
+        SemaType::Err(_) => panic!("error type reached cir lower"),
+        
         SemaType::Unresolved(_)
         | SemaType::GenericParam(_)
         | SemaType::SelfType(_)
-        | SemaType::InferVar(_)
-        | SemaType::Placeholder
-        | SemaType::Err(_) => {
+        | SemaType::InferVar { .. }
+        | SemaType::Placeholder => {
+            match ty {
+                SemaType::InferVar { loc, .. } => {
+                    dbg!(tctx.source_map.get_file(loc.file_id).unwrap().file_path.clone());
+                }
+                _ => {}
+            }
+
             panic!("encountered with unresolved symbol in lower sema type: {:#?}", ty)
         }
     }

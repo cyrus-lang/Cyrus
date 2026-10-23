@@ -12,7 +12,7 @@ import cir;
 
 /// Local-bidirectional unification context
 /// which is unique per function environment.
-pub struct InferCtx {
+pub struct InferContext {
     allocator: Allocator,
     next_var: usize,
     bindings: HashMap<usize, cir::SemaType>,

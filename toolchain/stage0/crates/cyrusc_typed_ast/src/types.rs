@@ -30,8 +30,12 @@ pub enum SemaType {
     Tuple(TypedTupleType),
     SelfType(TypedSelfType),
     GenericParam(GenericParamID),
-    InferVar(InferVarID),
     InterfaceObject(InterfaceObjectType),
+
+    InferVar {
+        id: InferVarID,
+        loc: Loc
+    },
 
     Placeholder, // used only during synthesis of unnamed unions/structs
 }
@@ -242,7 +246,7 @@ impl SemaType {
             | SemaType::Plain(_)
             | SemaType::SelfType(_)
             | SemaType::GenericParam(_)
-            | SemaType::InferVar(_)
+            | SemaType::InferVar { .. }
             | SemaType::Placeholder => false,
 
             SemaType::Named(named_type) => named_type.type_args.iter().any(|type_arg| match type_arg {
@@ -473,7 +477,7 @@ impl SemaType {
             | SemaType::Plain(_)
             | SemaType::SelfType(_)
             | SemaType::GenericParam(_)
-            | SemaType::InferVar(_)
+            | SemaType::InferVar { .. }
             | SemaType::Placeholder => false,
 
             SemaType::Named(named_type) => named_type.type_args.iter().any(|type_arg| match type_arg {
@@ -523,7 +527,7 @@ impl SemaType {
             | SemaType::Plain(_)
             | SemaType::SelfType(_)
             | SemaType::GenericParam(_)
-            | SemaType::InferVar(_)
+            | SemaType::InferVar { .. }
             | SemaType::Placeholder => false,
 
             SemaType::Named(named_type) => named_type.type_args.iter().any(|type_arg| match type_arg {
@@ -700,7 +704,7 @@ impl SemaType {
         match self {
             SemaType::Placeholder => false,
             SemaType::GenericParam(_) => false,
-            SemaType::InferVar(_) => true,
+            SemaType::InferVar { .. } => true,
             SemaType::Pointer(inner) | SemaType::Const(inner) => inner.contains_infer_var(),
             SemaType::Array(array) => array.element_type.contains_infer_var(),
             SemaType::Tuple(tuple) => tuple.elements.iter().any(|(ty, _)| ty.contains_infer_var()),
@@ -734,7 +738,7 @@ impl SemaType {
         match self {
             SemaType::Placeholder => false,
             SemaType::GenericParam(_) => true,
-            SemaType::InferVar(_) => false,
+            SemaType::InferVar { .. } => false,
 
             SemaType::Pointer(inner) | SemaType::Const(inner) => inner.contains_generic_param(),
             SemaType::Array(array) => array.element_type.contains_generic_param(),
@@ -802,7 +806,7 @@ impl SemaType {
 
                 SemaType::Plain(_)
                 | SemaType::GenericParam(_)
-                | SemaType::InferVar(_)
+                | SemaType::InferVar { .. }
                 | SemaType::Unresolved(_)
                 | SemaType::Err(_)
                 | SemaType::Placeholder => false,
