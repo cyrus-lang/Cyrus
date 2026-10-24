@@ -361,7 +361,7 @@ pub struct Resolver {
                         dctx, 
                         allocator, 
                         last_sub_module_span(&import_->segments), 
-                        ame.as_str_const()
+                        name.as_str_const()
                     );
                     
                     switch (alias) {

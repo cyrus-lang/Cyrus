@@ -7,30 +7,30 @@ pub fn main() {}
 /*@resolve
 SYMBOL TREE
 
-[0] Namespace GLOBAL
+[0] [NAMESPACE] GLOBAL
 ├── tests_stage1_resolver_namespace_path -> [1]
 ├── tests_stage1_resolver_helpers__single -> [2]
-├── [1] Module tests_stage1_resolver_namespace_path
+├── [1] [MODULE] tests_stage1_resolver_namespace_path
 │   ├── helpers -> [3]
 │   ├── inner -> [9]
 │   ├── main -> [10]
-│   ├── [3] Module helpers
+│   ├── [3] [MODULE] helpers
 │   │   ├── _single -> [4]
-│   │   └── [4] ProxiedModule _single -> [2]
-│   ├── [9] ProxiedModule inner -> [7]
-│   └── [10] Func main
-└── [2] Module inner
+│   │   └── [4] [PROXIED_MODULE] _single -> [2]
+│   ├── [9] [PROXIED_MODULE] inner -> [7]
+│   └── [10] [FUNC] main
+└── [2] [MODULE] inner
     ├── hidden -> [5]
     ├── exposed -> [6]
     ├── inner -> [7]
-    ├── [5] Func hidden
-    ├── [6] Func exposed
-    └── [7] Namespace inner
+    ├── [5] [FUNC] hidden
+    ├── [6] [FUNC] exposed
+    └── [7] [NAMESPACE] inner
         ├── inside -> [8]
-        └── [8] Func inside
+        └── [8] [FUNC] inside
 
 SOURCE MAP
 
 ├── [0] tests/stage1/resolver/namespace_path.cyrus
-└── [1] tests/stage1/resolver/helpers/_single.cyrus
+└── [1] /home/tahad/Code/Cyrus/Cyrus/tests/stage1/resolver/helpers/_single.cyrus
 @resolve*/
