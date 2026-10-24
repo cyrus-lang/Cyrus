@@ -95,6 +95,29 @@ pub struct Resolver {
         };
     }
 
+    pub fn free(self: Self*) {
+        for (var i: usize = 0; i < self->source_programs.len(); i += 1) {
+            var file = self->source_programs.get(i).unwrap();
+            file->absolute_path.free();
+            file->tokens.free();
+            file->program->free();
+            self->allocator.free(file->program);
+        }
+
+        self->source_programs.free();
+        self->module_symbols.free();
+        self->global_symbols.free();
+        self->visiting.free();
+        for (var i: usize = 0; i < self->group_imports.len(); i += 1) {
+            var record = self->group_imports.get(i).unwrap();
+            record->alias.free();
+        }
+        self->group_imports.free();
+        self->program_trees.free();
+        self->decl_tables.free();
+        self->arena.destroy();
+    }
+
     pub fn resolve_entry(
         self: Self*,
         source_id: SourceId,
@@ -132,29 +155,6 @@ pub struct Resolver {
             writer, 
             self->allocator
         );
-    }
-
-    pub fn free(self: Self*) {
-        for (var i: usize = 0; i < self->source_programs.len(); i += 1) {
-            var file = self->source_programs.get(i).unwrap();
-            file->absolute_path.free();
-            file->tokens.free();
-            file->program->free();
-            self->allocator.free(file->program);
-        }
-
-        self->source_programs.free();
-        self->module_symbols.free();
-        self->global_symbols.free();
-        self->visiting.free();
-        for (var i: usize = 0; i < self->group_imports.len(); i += 1) {
-            var record = self->group_imports.get(i).unwrap();
-            record->alias.free();
-        }
-        self->group_imports.free();
-        self->program_trees.free();
-        self->decl_tables.free();
-        self->arena.destroy();
     }
 
     fn resolve_module(

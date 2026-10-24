@@ -12,9 +12,16 @@ import std::option{Option};
 import std::mem{Allocator};
 import std::os::tty;
 
-import diags{DiagContext, SubDiag, Diag, DiagLevel, LabelRole, Label};
 import source{Source, SourceContext};
 import tokens{Loc, Span};
+import diags{
+    DiagContext, 
+    SubDiag, 
+    Diag, 
+    DiagLevel, 
+    LabelRole, 
+    Label
+};
 
 const MIN_PANEL_SPACE: uint32 = 5;
 

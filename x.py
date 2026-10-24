@@ -974,6 +974,7 @@ def build_stage1(cfg: Config, *, release: bool, extra_args: Sequence[str] = ()) 
             f"--profile={profile}",
             "--sanitize=address",
             "-g",
+            "-z=-fno-omit-frame-pointer",
             f"--stdlib={cfg.stdlib_path}",
             f"--linker={cfg.linker}",
             f"-L={tcc_dir}",
