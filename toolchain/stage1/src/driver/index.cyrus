@@ -18,6 +18,7 @@ import lexer{Lexer};
 import linker;
 
 const TOKENS_ARENA_SIZE: usize = 65536;
+const ANALYZER_ARENA_SIZE: usize = 65536;
 
 pub struct CompilerDriver {
     pub allocator: Allocator,
