@@ -234,7 +234,7 @@ fn command_run(ctx: cli::ActionContext) {
             resolver.program_trees
         );
         
-        trigger_analyzer(analyzer_context);
+        trigger_analyzer(&analyzer_context);
 
         if (driver.dctx.has_errors()) {
             driver.render_diags();
@@ -439,7 +439,7 @@ fn command_build(ctx: cli::ActionContext) {
             resolver.program_trees
         );
         
-        trigger_analyzer(analyzer_context);
+        trigger_analyzer(&analyzer_context);
 
         if (driver.dctx.has_errors()) {
             driver.render_diags();
@@ -700,7 +700,7 @@ fn command_dump_analyzer(ctx: cli::ActionContext) {
         
         );
         
-        trigger_analyzer(analyzer_context);
+        trigger_analyzer(&analyzer_context);
         
         analyzer_context.free();
     }
@@ -776,7 +776,7 @@ fn command_dump_bir(ctx: cli::ActionContext) {
             resolver.program_trees
         );
         
-        trigger_analyzer(analyzer_context);
+        trigger_analyzer(&analyzer_context);
 
         if (driver.dctx.has_errors()) {
             driver.render_diags();

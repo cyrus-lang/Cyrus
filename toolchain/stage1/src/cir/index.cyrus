@@ -45,6 +45,18 @@ pub fn decl_id_key(decl_id: DeclId) usize {
     }
 }
 
+[[inline]]
+pub fn decl_id_as_type_decl_id(decl_id: DeclId) Option<TypeDeclId> {
+    switch (decl_id) {
+        case .Interface(id) => return .Some(.Interface(id));
+        case .Typedef(id) => return .Some(.Typedef(id));
+        case .Struct(id) => return .Some(.Struct(id));
+        case .Union(id) => return .Some(.Union(id));
+        case .Enum(id) => return .Some(.Enum(id));
+        else => return .None;
+    }
+}
+
 /* ************* Literals ************* */
 
 pub enum IntegerLiteral {
@@ -1288,6 +1300,10 @@ pub struct NamedType {
     [[inline]]
     pub fn as_sema_type(self: const Self*) SemaType {
         return .Named(*self);
+    }
+
+    pub fn free(self: Self*) {
+        self->type_args.free();
     }
 }
 
