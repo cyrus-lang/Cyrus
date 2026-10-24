@@ -3,6 +3,7 @@
 
 import std::io{Writer, StdoutWriter, StringWriter};
 import std::libc::types{c_int, c_char};
+import std::mem::arena{ArenaAllocator};
 import std::mem::libc{LibcAllocator};
 import std::path{Path, dir_of_file};
 import std::libc{printf, exit};
@@ -256,6 +257,7 @@ fn command_version(ctx: cli::ActionContext) {
 
 /* ************* Compiler ************* */
 
+// FIXME: Move to driver
 fn build_or_run(ctx: cli::ActionContext, execute: bool) int32 {
     const allocator: Allocator = dynamic LibcAllocator.new();
 
@@ -345,6 +347,7 @@ fn build_or_run(ctx: cli::ActionContext, execute: bool) int32 {
     return compile_file(allocator, ctx, &output_path);
 }
 
+// FIXME: Move to driver
 fn compile_file(
     allocator: Allocator,
     ctx: cli::ActionContext,
@@ -472,6 +475,7 @@ fn compile_file(
     return 0;
 }
 
+// FIXME: Move to driver
 fn dump_lexer(ctx: cli::ActionContext) int32 {
     const allocator: Allocator = dynamic LibcAllocator.new();
 
@@ -501,6 +505,7 @@ fn dump_lexer(ctx: cli::ActionContext) int32 {
     return 0;
 }
 
+// FIXME: Move to driver
 fn dump_parser(ctx: cli::ActionContext) int32 {
     const allocator: Allocator = dynamic LibcAllocator.new();
 
@@ -538,6 +543,7 @@ fn dump_parser(ctx: cli::ActionContext) int32 {
     return 0;
 }
 
+// FIXME: Move to driver
 fn dump_resolver(ctx: cli::ActionContext) int32 {
     const allocator: Allocator = dynamic LibcAllocator.new();
 
@@ -602,6 +608,7 @@ fn dump_resolver(ctx: cli::ActionContext) int32 {
     return 0;
 }
 
+// FIXME: Move to driver
 fn dump_analyzed(ctx: cli::ActionContext, backend_ir: bool) int32 {
     const allocator: Allocator = dynamic LibcAllocator.new();
     
@@ -654,8 +661,11 @@ fn dump_analyzed(ctx: cli::ActionContext, backend_ir: bool) int32 {
         return 1;
     }
 
+    var arena = ArenaAllocator.new(allocator, 65000);
+    defer arena.destroy();
+
     var analyzer_context = AnalyzerContext.new(
-        allocator,
+        dynamic arena,
         &driver.dctx,
         &resolver.global_symbols,
         &resolver.decl_tables,
@@ -702,6 +712,8 @@ fn dump_analyzed(ctx: cli::ActionContext, backend_ir: bool) int32 {
 
     return 0;
 }
+
+/* ************* Options Helpers ************* */
 
 fn apply_stdlib_option(
     allocator: Allocator,

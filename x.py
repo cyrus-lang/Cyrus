@@ -744,13 +744,19 @@ def run_stage1_analyze_annotations(
         root_relative_path(cfg, file_path),
         _stdlib_flag(cfg),
     ]
+    
     proc = run_cmd(cmd, cwd=cfg.root, capture=True, check=False)
-    if proc.returncode != 0:
+    
+    if proc.returncode not in (0, 1):
         detail = strip_ansi((proc.stderr or proc.stdout or "").strip())
         raise RuntimeError(
             f"`analyze` failed with exit code {proc.returncode}:\n{detail}"
         )
-    diagnostics = parse_stage1_diagnostics(strip_ansi(proc.stdout or ""))
+        
+    # Compilation errors (exit 1) are expected in negative tests. Diagnostics
+    # may be emitted on either stream, including warnings on successful runs.
+    combined = strip_ansi((proc.stdout or "") + "\n" + (proc.stderr or ""))
+    diagnostics = parse_stage1_diagnostics(combined)
     problems = match_error_annotations(md.error_annotations, diagnostics, file_path)
     if problems:
         raise RuntimeError("annotation mismatch:\n" + "\n".join(problems))
@@ -1312,7 +1318,10 @@ def run_snapshot_checks(
             cmd.append(_stdlib_flag(cfg))
         proc = run_cmd(cmd, cwd=cfg.root, capture=True, check=False)
         raw = proc.stdout or ""
-        if proc.returncode != 0:
+        # Exit 1 is a normal compilation failure: negative tests snapshot
+        # diagnostics too. Compare that output rather than rejecting it before
+        # matching. Still reject crashes and command/infrastructure failures.
+        if proc.returncode not in (0, 1):
             detail = strip_ansi((proc.stderr or raw or "").strip())
             problems.append(
                 f"`{' '.join(argv)}` failed with exit code {proc.returncode}:\n{detail}"
