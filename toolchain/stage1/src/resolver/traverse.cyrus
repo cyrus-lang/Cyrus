@@ -853,7 +853,7 @@ fn resolve_export_pattern(
     return .Some(cir::TypedTupleExportPattern {
         kind,
         ty,
-        mutability: pattern->bind,
+        constness: pattern->bind,
         span: pattern->span,
     });
 }
@@ -1672,7 +1672,7 @@ fn resolve_func_param(
                         var_decl_id: .None,
                         ident: func_param->ident,
                         ty: resolved,
-                        mutability: func_param->constness,
+                        constness: func_param->constness,
                         span: func_param->span,
                     });
                 }
@@ -1701,7 +1701,7 @@ fn resolve_self_modifier_param(
     return cir::TypedSelfModifier {
         var_decl_id: .None,
         ty,
-        mutability: self_modifier->constness,
+        constness: self_modifier->constness,
         span: self_modifier->span,
     };
 }
@@ -2553,7 +2553,7 @@ fn resolve_interface_stmt(
                                         modifiers: ast::ASTFuncModifiers {
                                             vis: .Public,
                                             link_name: .None,
-                                            extrn: .None,
+                                            extern_: .None,
                                             inline: .None,
                                             prologue: .None,
                                             callconv: .None,
@@ -2717,7 +2717,7 @@ fn resolve_ident_expr(
                 },
                 ty: .None,
                 analyzed: false,
-                val_cat: .Unknown,
+                value_category: .Unknown,
                 span: ident->span,
             });
         }
@@ -2803,8 +2803,8 @@ fn resolve_expr(
         case .Ident(ident) => {
             return resolve_ident_expr(ctx, &ident);
         }
-        case .AddrOf(addr_of) => {
-            return resolve_addr_of_expr(ctx, program, &addr_of);
+        case .AddrOf(addr) => {
+            return resolve_addr_of_expr(ctx, program, &addr);
         }
         case .Deref(deref) => {
             return resolve_deref_expr(ctx, program, &deref);
@@ -2864,7 +2864,7 @@ fn resolve_module_import_expr(
                                 span: ident.span,
                             },
                             ty: .None,
-                            val_cat: .Unknown,
+                            value_category: .Unknown,
                             analyzed: false,
                             span: module_import->span,
                         });
@@ -2923,7 +2923,7 @@ fn resolve_type_expr(
                     return .Some(cir::TypedExpr {
                         kind: .SemaType { ty: resolved, span },
                         ty: .Some(resolved),
-                        val_cat: .Unknown,
+                        value_category: .Unknown,
                         analyzed: false,
                         span,
                     });
@@ -3506,14 +3506,14 @@ fn resolve_array_index_expr(
 fn resolve_addr_of_expr(
     ctx: TraverseContext*,
     program: const ast::ASTProgram*,
-    addr_of: const ast::ASTAddrOfExpr*
+    addr: const ast::ASTAddrOfExpr*
 ) Option<cir::TypedExpr> {
-    switch (resolve_expr_node(ctx, program, addr_of->expr)) {
+    switch (resolve_expr_node(ctx, program, addr->expr)) {
         case .Some(operand) => {
             return .Some(cir::TypedExpr.new(.AddrOf(cir::TypedAddrOfExpr {
                 operand: alloc_init(ctx->allocator, operand),
-                span: addr_of->span,
-            }), addr_of->span));
+                span: addr->span,
+            }), addr->span));
         }
         else => {}
     }
@@ -3546,8 +3546,8 @@ fn resolve_literal_expr(
     const span = Span.new(ctx->file_id, token->loc);
 
     switch (*token->kind) {
-        case .Literal(lit) => {
-            return cir::literal_expr(ctx->allocator, lit, span);
+        case .Literal(literal) => {
+            return cir::literal_expr(ctx->allocator, literal, span);
         }
         case .True => {
             return cir::literal_expr(ctx->allocator, .Bool(true), span);

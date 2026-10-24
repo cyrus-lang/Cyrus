@@ -60,7 +60,11 @@ struct DumpContext {
     }
 
     fn write_type(self: Self*, ty: const cir::SemaType*) {
-        self->write_owned(format::format_sema_type(self->allocator, self->tables, ty));
+        self->write_owned(format::format_sema_type(
+            self->allocator,
+            self->tables,
+            ty
+        ));
     }
 
     fn write_opt_type(self: Self*, ty: const Option<cir::SemaType>*) {
@@ -95,15 +99,18 @@ struct DumpContext {
             return;
         }
 
-        self->write(" implements (");
+        self->write(" impls (");
+
         for (var i: usize = 0; i < impls->len(); i += 1) {
             const item = impls->get_const(i).unwrap();
+            
             self->write_type(&item->ty);
 
             if (i + 1 != impls->len()) {
                 self->write(", ");
             }
         }
+
         self->write(")");
     }
 
@@ -114,14 +121,14 @@ struct DumpContext {
             const param = params->list.get_const(i).unwrap();
 
             switch (*param) {
-                case .SelfModifier(self_mod) => {
+                case .SelfModifier(self_modifier) => {
                     self->write("self: ");
-                    self->write_type(&self_mod.ty);
+                    self->write_type(&self_modifier.ty);
                 }
-                case .FuncParam(p) => {
-                    self->write(p.ident.str.as_str_const());
+                case .FuncParam(param) => {
+                    self->write(param.ident.str.as_str_const());
                     self->write(": ");
-                    self->write_type(&p.ty);
+                    self->write_type(&param.ty);
                 }
             }
 
@@ -134,10 +141,12 @@ struct DumpContext {
             case .Some(variadic) => {
                 switch (variadic) {
                     case .Typed { ty, .. } => {
-                        self->write("variadic: ");
                         self->write_type(&ty);
+                        self->write("...");
                     }
-                    case .UntypedCStyle => self->write("...");
+                    case .UntypedCStyle => {
+                        self->write("...");
+                    }
                 }
             }
             case .None => {}
@@ -168,7 +177,9 @@ struct DumpContext {
             const variant = variants->get_const(i).unwrap();
 
             switch (*variant) {
-                case .Unit(ident) => self->write(ident.str.as_str_const());
+                case .Unit(ident) => {
+                    self->write(ident.str.as_str_const());
+                }
                 case .Valued { ident, value } => {
                     self->write(ident.str.as_str_const());
                     self->write(" = ");
@@ -195,6 +206,7 @@ struct DumpContext {
 
                     for (var j: usize = 0; j < fields.len(); j += 1) {
                         const field = fields.get_const(j).unwrap();
+                        
                         self->write(field->name.str.as_str_const());
                         self->write(": ");
                         self->write_type(&field->ty);
@@ -221,6 +233,7 @@ struct DumpContext {
 
                 for (var i: usize = 0; i < elements.len(); i += 1) {
                     const element = elements.get_const(i).unwrap();
+                    
                     self->write_export_pattern(element);
 
                     if (i + 1 != elements.len()) {
@@ -236,14 +249,20 @@ struct DumpContext {
                     case .None => self->write("<unknown>");
                 }
             }
-            case .Ignore => self->write("_");
+            case .Ignore => {
+                self->write("_");
+            }
         }
     }
 
     fn write_switch_pattern(self: Self*, pattern: const cir::TypedSwitchCasePattern*) {
         switch (pattern->kind) {
-            case .Wildcard => self->write("_");
-            case .Binding { name, .. } => self->write(name.str.as_str_const());
+            case .Wildcard => {
+                self->write("_");
+            }
+            case .Binding { name, .. } => {
+                self->write(name.str.as_str_const());
+            }
             case .Range(range) => {
                 self->write_expr(&range.lower);
 
@@ -255,7 +274,9 @@ struct DumpContext {
 
                 self->write_expr(&range.upper);
             }
-            case .Expr(expr) => self->write_expr(&expr);
+            case .Expr(expr) => {
+                self->write_expr(&expr);
+            }
             case .EnumUnit(ident) => {
                 self->write(".");
                 self->write(ident.str.as_str_const());
@@ -267,6 +288,7 @@ struct DumpContext {
 
                 for (var i: usize = 0; i < items.len(); i += 1) {
                     const item = items.get_const(i).unwrap();
+                    
                     self->write_switch_pattern(item);
 
                     if (i + 1 != items.len()) {
@@ -283,6 +305,7 @@ struct DumpContext {
 
                 for (var i: usize = 0; i < items.len(); i += 1) {
                     const item = items.get_const(i).unwrap();
+                    
                     self->write(item->name.str.as_str_const());
                     self->write(": ");
                     self->write_switch_pattern(&item->pattern);
@@ -319,7 +342,7 @@ struct DumpContext {
             }
             case .None => {
                 if (var_stmt->is_undef) {
-                    self->write(" = undef");
+                    self->write(" = undefined");
                 }
             }
         }
@@ -346,7 +369,7 @@ struct DumpContext {
             }
             case .None => {
                 if (global_stmt->is_undef) {
-                    self->write(" = undef");
+                    self->write(" = undefined");
                 }
             }
         }
@@ -705,7 +728,6 @@ struct DumpContext {
                     self->write("const ");
                 }
 
-                self->write("export ");
                 self->write_export_pattern(&export_stmt.pattern);
                 self->write(" = ");
 

@@ -470,6 +470,8 @@ impl<'source_file> Parser<'source_file> {
 
             TokenKind::Asterisk => false,
 
+            TokenKind::DoubleColon => false,
+
             TokenKind::Underscore => false,
 
             // ------------------------------------------------------------
@@ -479,8 +481,6 @@ impl<'source_file> Parser<'source_file> {
             TokenKind::Literal(_) => true,
 
             TokenKind::Assign => true,
-
-            TokenKind::DoubleColon => true,
 
             TokenKind::Plus
             | TokenKind::Minus

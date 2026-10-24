@@ -495,9 +495,6 @@ pub enum AnalyzerDiagKind {
     #[error("Array capacity must be a compile-time constant expression.")]
     ArrayCapacityNotConst,
 
-    #[error("Variable has a const-qualified type but is not declared const.")]
-    ConstQualifiedTypeAssignedToNonConstVariable,
-
     #[error("Cannot assign rvalue of type '{rhs_type}' to lvalue of type '{lhs_type}'.")]
     AssignmentTypeMismatch { lhs_type: String, rhs_type: String },
 
@@ -583,17 +580,6 @@ pub enum AnalyzerDiagKind {
 }
 
 impl<'a> AnalysisContext<'a> {
-    pub(crate) fn report_const_qualified_type_assigned_to_non_const_variable(&mut self, loc: Loc) {
-        self.reporter.report(Diag {
-            level: DiagLevel::Warning,
-            kind: Box::new(AnalyzerDiagKind::ConstQualifiedTypeAssignedToNonConstVariable),
-            loc: Some(loc),
-            hint: Some(
-                "Prefer declaring the variable itself as const instead of using a const-qualified type.".to_string(),
-            ),
-        });
-    }
-
     /// Validates that an expression type is suitable for use as a boolean condition.
     pub(crate) fn report_not_cond_expr(&mut self, loc: Loc) {
         self.reporter.report(Diag {

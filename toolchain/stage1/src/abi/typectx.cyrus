@@ -1,0 +1,994 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 The Cyrus Language
+
+import std::collections::hash_map{HashMap};
+import std::hash{hash_usize, eq_usize};
+import std::collections{Vec};
+import std::option{Option};
+import std::mem{Allocator, alloc_init};
+import std::string{String};
+
+import abi::helpers{align_offset, extract_typedef_inner_type};
+import abi::layout{ABITypeLayout, ABIFieldOffsetInfo};
+import resolver::symbols{GlobalSymbolRegistry};
+import abi::target{TargetInfo};
+import cir::tables{DeclTables};
+import analyzer::format{format_sema_type};
+import ciri;
+import cir;
+
+/* ************* Type Context ************* */
+
+/// Owns every ABITypeLayout produced during ABI computation.
+pub struct TypeContext {
+    pub target_info: TargetInfo,
+    tables: const DeclTables*,
+    registry: const GlobalSymbolRegistry*,
+    struct_layouts: HashMap<usize, uintptr>,
+    union_layouts: HashMap<usize, uintptr>,
+    enum_layouts: HashMap<usize, uintptr>,
+    enum_tags: HashMap<usize, Vec<uint32>>,
+    owned_layouts: Vec<uintptr>,
+
+    pub fn new(
+        target_info: TargetInfo,
+        tables: const DeclTables*,
+        registry: const GlobalSymbolRegistry*
+    ) Self {
+        const allocator = tables->allocator;
+
+        return Self {
+            struct_layouts: HashMap.with_hasher(allocator, 64, hash_usize, eq_usize),
+            union_layouts: HashMap.with_hasher(allocator, 64, hash_usize, eq_usize),
+            enum_layouts: HashMap.with_hasher(allocator, 64, hash_usize, eq_usize),
+            owned_layouts: Vec.new(allocator),
+            enum_tags: HashMap.with_hasher(allocator, 64, hash_usize, eq_usize),
+            target_info,
+            registry,
+            tables,
+        };
+    }
+
+    [[inline]]
+    pub fn allocator(self: const Self*) Allocator {
+        return self->tables->allocator;
+    }
+
+    [[inline]]
+    pub fn decl_tables(self: const Self*) const DeclTables* {
+        return self->tables;
+    }
+
+    [[inline]]
+    pub fn symbol_registry(self: const Self*) const GlobalSymbolRegistry* {
+        return self->registry;
+    }
+
+    pub fn array_capacity_len(self: Self*, array: const cir::TypedArrayType*) usize {
+        switch (array->capacity) {
+            case .Fixed(expr) => {
+                switch (ciri::fold_const_expr_int(self->tables, self->registry, expr)) {
+                    case .Some(literal) => return cir::integer_literal_as_usize(literal);
+                    case .None => @panic("non-constant array capacity in abi layout");
+                }
+            }
+            case .Slice => @panic("slice layout not supported");
+        }
+    }
+
+    pub fn get_integer_bit_width(self: Self*, ty: const cir::SemaType*) Option<usize> {
+        const layout = self->layout_of(ty);
+
+        switch (ty->as_plain_type()) {
+            case .Some(p) => {
+                if (p.is_integer_or_bool()) {
+                    return .Some(@cast(usize, layout->size) * 8);
+                }
+
+                return .None;
+            }
+            case .None => return .None;
+        }
+    }
+
+    fn own_layout(self: Self*, layout: ABITypeLayout) ABITypeLayout* {
+        const owned_layout = alloc_init(self->allocator(), layout);
+        self->owned_layouts.push(@cast(uintptr, owned_layout));
+        return owned_layout;
+    }
+
+    fn layout_at(self: const Self*, address: uintptr) ABITypeLayout* {
+        return @cast(ABITypeLayout*, address);
+    }
+
+    pub fn layout_of(self: Self*, ty: const cir::SemaType*) ABITypeLayout* {
+        const inner = ty->const_inner();
+
+        switch (*inner) {
+            case .Plain(plan) => {
+                return self->own_layout(self->plain_type_layout(plan));
+            }
+            
+            case .Const(inner) => {
+                return self->layout_of(inner);
+            }
+
+            case .Named(named) => {
+                if (!named.type_args.is_empty()) {
+                    return self->instance_layout_of(&named);
+                }
+
+                switch (named.type_decl_id) {
+                    case .Struct(struct_decl_id) => {
+                        switch (self->struct_layouts.get_owned(struct_decl_id)) {
+                            case .Some(cache) => return self->layout_at(cache);
+                            else => {}
+                        }
+
+                        const decl = self->tables->structs.get_const(struct_decl_id).unwrap();
+
+                        const struct_layout = self->compute_struct_layout(decl);
+                        self->struct_layouts.insert(struct_decl_id, @cast(uintptr, struct_layout));
+                        return struct_layout;
+                    }
+                    case .Union(union_decl_id) => {
+                        switch (self->union_layouts.get_owned(union_decl_id)) {
+                            case .Some(cache) => return self->layout_at(cache);
+                            else => {}
+                        }
+
+                        const decl = self->tables->unions.get_const(union_decl_id).unwrap();
+
+                        const union_layout = self->compute_union_layout(decl);
+                        self->union_layouts.insert(union_decl_id, @cast(uintptr, union_layout));
+                        return union_layout;
+                    }
+                    case .Enum(enum_decl_id) => {
+                        switch (self->enum_layouts.get_owned(enum_decl_id)) {
+                            case .Some(cache) => return self->layout_at(cache);
+                            else => {}
+                        }
+
+                        const decl = self->tables->enums.get_const(enum_decl_id).unwrap();
+
+                        const enum_layout = self->compute_enum_layout(decl);
+                        self->enum_layouts.insert(enum_decl_id, @cast(uintptr, enum_layout));
+                        return enum_layout;
+                    }
+                    case .Typedef => {
+                        const resolved_typedef_inner = extract_typedef_inner_type(self->tables, inner);
+
+                        if (resolved_typedef_inner == inner) {
+                            @panic("typedef cycle in abi layout");
+                        }
+
+                        return self->layout_of(resolved_typedef_inner);
+                    }
+            case .Interface => {
+                    const pointer_size = self->target_info.pointer_size();
+
+                    return self->own_layout(ABITypeLayout.normal(
+                        pointer_size * 2,
+                        pointer_size,
+                        Vec.new(self->allocator())
+                    ));
+                }
+            }
+        }
+
+            case .Pointer => {
+                const pointer_size = self->target_info.pointer_size();
+
+                return self->own_layout(ABITypeLayout.normal(
+                    pointer_size,
+                    pointer_size,
+                    Vec.new(self->allocator())
+                ));
+            }
+
+            case .FuncType => {
+                const pointer_size = self->target_info.pointer_size();
+
+                return self->own_layout(ABITypeLayout.normal(
+                    pointer_size,
+                    pointer_size,
+                    Vec.new(self->allocator())
+                ));
+            }
+
+            case .Array(array) => {
+                const element_layout = self->layout_of(array.element_type);
+
+                const element_count = self->array_capacity_len(&array);
+                const total_size = element_layout->size * @cast(uint32, element_count);
+
+                var element_offsets: Vec<ABIFieldOffsetInfo> = Vec.new(self->allocator());
+
+                for (var i: usize = 0; i < element_count; i += 1) {
+                    element_offsets.push(ABIFieldOffsetInfo.normal(
+                        @cast(uint32, i),
+                        element_layout->size * @cast(uint32, i),
+                        i,
+                        @cast(usize, element_layout->size)
+                    ));
+                }
+
+                return self->own_layout(ABITypeLayout.aggregate(
+                    total_size,
+                    element_layout->align,
+                    element_offsets
+                ));
+            }
+
+            case .Tuple(tuple) => {
+                var element_types: Vec<cir::SemaType> = Vec.new(self->allocator());
+
+                for (var i: usize = 0; i < tuple.elements.len(); i += 1) {
+                    const element = tuple.elements.get_const(i).unwrap();
+                    element_types.push(element->ty);
+                }
+
+                const tuple_layout = self->compute_fields_layout(&element_types, false, .None);
+                element_types.free();
+                return tuple_layout;
+            }
+
+            case .InterfaceObject => {
+                const pointer_size = self->target_info.pointer_size();
+
+                return self->own_layout(ABITypeLayout.normal(
+                    pointer_size * 2,
+                    pointer_size,
+                    Vec.new(self->allocator())
+                ));
+            }
+
+            else => {
+                var type_str = format_sema_type(self->allocator(), self->tables, ty);
+                var msg = String.from_str(self->allocator(), "unresolved type in abi layout: ");
+                msg.push_str(type_str.as_str_const());
+                type_str.free();
+                @panic(msg.as_str_const());
+            }
+        }
+    }
+
+    fn instance_layout_of(self: Self*, named: const cir::NamedType*) ABITypeLayout* {
+        switch (named->type_decl_id) {
+            case .Struct(struct_decl_id) => {
+                const struct_decl = self->tables->structs.get_const(struct_decl_id).unwrap();
+                
+                var field_types: Vec<cir::SemaType> = Vec.new(self->allocator());
+
+                for (var i: usize = 0; i < struct_decl->fields.len(); i += 1) {
+                    const field = struct_decl->fields.get_const(i).unwrap();
+                    const field_type = cir::substitute_sema_type_with_type_args(
+                        self->allocator(),
+                        &field->ty,
+                        &struct_decl->generic_params,
+                        &named->type_args
+                    );
+                    field_types.push(field_type);
+                }
+
+                const layout = self->compute_fields_layout(
+                    &field_types, 
+                    struct_decl->is_packed(), 
+                    struct_decl->align
+                );
+                field_types.free();
+                return layout;
+            }
+            case .Union(union_decl_id) => {
+                const decl = self->tables->unions.get_const(union_decl_id).unwrap();
+                var field_types: Vec<cir::SemaType> = Vec.new(self->allocator());
+
+                for (var i: usize = 0; i < decl->fields.len(); i += 1) {
+                    const field = decl->fields.get_const(i).unwrap();
+                    const field_type = cir::substitute_sema_type_with_type_args(
+                        self->allocator(),
+                        &field->ty,
+                        &decl->generic_params,
+                        &named->type_args
+                    );
+                    field_types.push(field_type);
+                }
+
+                const layout = self->compute_union_layout_types(&field_types);
+                field_types.free();
+                return layout;
+            }
+            case .Enum(enum_decl_id) => {
+                const enum_decl = self->tables->enums.get_const(enum_decl_id).unwrap();
+                return self->compute_enum_layout_inst(enum_decl, &named->type_args);
+            }
+            case .Typedef(tyedef_decl_id) => {
+                const typedef_decl = self->tables->typedefs.get_const(tyedef_decl_id).unwrap();
+
+                if (typedef_decl->ty == null) {
+                    @panic("unresolved typedef in abi layout");
+                }
+
+                const subst = cir::substitute_sema_type_with_type_args(
+                    self->allocator(),
+                    typedef_decl->ty,
+                    &typedef_decl->generic_params,
+                    &named->type_args
+                );
+                return self->layout_of(&subst);
+            }
+            case .Interface => {
+                const pointer_size = self->target_info.pointer_size();
+
+                return self->own_layout(ABITypeLayout.normal(
+                    pointer_size * 2,
+                    pointer_size,
+                    Vec.new(self->allocator())
+                ));
+            }
+        }
+    }
+
+    pub fn compute_struct_layout(self: Self*, decl: const cir::StructDecl*) ABITypeLayout* {
+        var field_types: Vec<cir::SemaType> = Vec.new(self->allocator());
+
+        for (var i: usize = 0; i < decl->fields.len(); i += 1) {
+            const field = decl->fields.get_const(i).unwrap();
+            field_types.push(field->ty);
+        }
+
+        const struct_layout = self->compute_fields_layout(&field_types, decl->is_packed(), decl->align);
+        field_types.free();
+        return struct_layout;
+    }
+
+    pub fn compute_union_layout(self: Self*, decl: const cir::UnionDecl*) ABITypeLayout* {
+        var field_types: Vec<cir::SemaType> = Vec.new(self->allocator());
+
+        for (var i: usize = 0; i < decl->fields.len(); i += 1) {
+            const field = decl->fields.get_const(i).unwrap();
+            field_types.push(field->ty);
+        }
+
+        const union_layout = self->compute_union_layout_types(&field_types);
+        field_types.free();
+        return union_layout;
+    }
+
+    pub fn compute_fields_layout(
+        self: Self*,
+        types: const Vec<cir::SemaType>*,
+        is_packed: bool,
+        explicit_align: Option<usize>
+    ) ABITypeLayout* {
+        var running_offset: uint32 = 0;
+        var max_field_align: uint32 = 1;
+        var field_offset_index: uint32 = 0;
+        var field_offsets: Vec<ABIFieldOffsetInfo> = Vec.new(self->allocator());
+
+        for (var i: usize = 0; i < types->len(); i += 1) {
+            const field_type = types->get_const(i).unwrap();
+            const field_layout = self->layout_of(field_type);
+
+            var effective_field_align = field_layout->align;
+
+            if (is_packed) {
+                effective_field_align = 1;
+            }
+
+            if (!is_packed) {
+                const padding = (effective_field_align - (running_offset % effective_field_align)) % effective_field_align;
+
+                if (padding > 0) {
+                    field_offsets.push(ABIFieldOffsetInfo.padding(field_offset_index, running_offset, padding));
+                    field_offset_index += 1;
+                    running_offset += padding;
+                }
+            }
+
+            field_offsets.push(ABIFieldOffsetInfo.normal(
+                field_offset_index,
+                running_offset,
+                i,
+                @cast(usize, field_layout->size)
+            ));
+            field_offset_index += 1;
+
+            running_offset += field_layout->size;
+
+            if (field_layout->align > max_field_align) {
+                max_field_align = field_layout->align;
+            }
+        }
+
+        switch (explicit_align) {
+            case .Some(align) => {
+                if (@cast(uint32, align) > max_field_align) {
+                    max_field_align = @cast(uint32, align);
+                }
+            }
+            else => {}
+        }
+
+        if (is_packed) {
+            max_field_align = 1;
+        }
+
+        const total_size = align_offset(running_offset, max_field_align);
+
+        if (total_size > running_offset) {
+            field_offsets.push(ABIFieldOffsetInfo.padding(
+                @cast(uint32, field_offsets.len()),
+                running_offset,
+                total_size - running_offset
+            ));
+        }
+
+        return self->own_layout(ABITypeLayout.aggregate(total_size, max_field_align, field_offsets));
+    }
+
+    pub fn compute_union_layout_types(self: Self*, types: const Vec<cir::SemaType>*) ABITypeLayout* {
+        var max_member_size: uint32 = 0;
+        var max_member_align: uint32 = 1;
+        var member_offsets: Vec<ABIFieldOffsetInfo> = Vec.new(self->allocator());
+
+        for (var i: usize = 0; i < types->len(); i += 1) {
+            const member_type = types->get_const(i).unwrap();
+
+            const member_layout = self->layout_of(member_type);
+
+            if (member_layout->size > max_member_size) {
+                max_member_size = member_layout->size;
+            }
+
+            if (member_layout->align > max_member_align) {
+                max_member_align = member_layout->align;
+            }
+
+            member_offsets.push(ABIFieldOffsetInfo.normal(
+                @cast(uint32, i),
+                0,
+                i,
+                @cast(usize, member_layout->size)
+            ));
+        }
+
+        const total_size = align_offset(max_member_size, max_member_align);
+        return self->own_layout(ABITypeLayout.aggregate(total_size, max_member_align, member_offsets));
+    }
+
+    pub fn compute_enum_layout(self: Self*, decl: const cir::EnumDecl*) ABITypeLayout* {
+        return self->compute_enum_layout_inner(decl, null);
+    }
+
+    pub fn compute_enum_layout_inst(
+        self: Self*,
+        decl: const cir::EnumDecl*,
+        type_args: const cir::TypedTypeArgs*
+    ) ABITypeLayout* {
+        return self->compute_enum_layout_inner(decl, type_args);
+    }
+
+    fn compute_enum_layout_inner(
+        self: Self*,
+        decl: const cir::EnumDecl*,
+        type_args: const cir::TypedTypeArgs*
+    ) ABITypeLayout* {
+        const tag_type = enum_tag_type(self->tables, self->registry, decl);
+
+        if (is_enum_scalar_optimizable(self->tables, decl)) {
+            return self->layout_of(&tag_type);
+        }
+
+        const tag_layout = self->layout_of(&tag_type);
+        const tag_align = tag_layout->align;
+        const tag_size = tag_layout->size;
+
+        var max_payload_size: uint32 = 0;
+        var max_payload_align: uint32 = 1;
+
+        for (var i: usize = 0; i < decl->variants.len(); i += 1) {
+            const variant = decl->variants.get_const(i).unwrap();
+
+            var variant_size: uint32 = 0;
+            var variant_align: uint32 = 1;
+
+            switch (*variant) {
+                case .Unit => {
+                    variant_size = 0;
+                    variant_align = 1;
+                }
+                case .Valued { value, .. } => {
+                    switch (value->ty) {
+                        case .Some(payload_type) => {
+                            var layout_ty: cir::SemaType = payload_type;
+
+                            if (type_args != null) {
+                                layout_ty = cir::substitute_sema_type_with_type_args(
+                                    self->allocator(),
+                                    &payload_type,
+                                    &decl->generic_params,
+                                    type_args
+                                );
+                            }
+
+                            const payload_layout = self->layout_of(&layout_ty);
+                            variant_size = payload_layout->size;
+                            variant_align = payload_layout->align;
+                        }
+                        else => {}
+                    }
+                }
+                case .Tuple { fields, .. } => {
+                    var payload_types: Vec<cir::SemaType> = Vec.new(self->allocator());
+
+                    for (var j: usize = 0; j < fields.len(); j += 1) {
+                        const field = fields.get_const(j).unwrap();
+                        var field_type: cir::SemaType = field->ty;
+
+                        if (type_args != null) {
+                            field_type = cir::substitute_sema_type_with_type_args(
+                                self->allocator(),
+                                &field->ty,
+                                &decl->generic_params,
+                                type_args
+                            );
+                        }
+
+                        payload_types.push(field_type);
+                    }
+
+                    const variant_layout = self->compute_fields_layout(&payload_types, false, .None);
+                    payload_types.free();
+
+                    variant_size = variant_layout->size;
+                    variant_align = variant_layout->align;
+                }
+                case .Struct { fields, .. } => {
+                    var payload_types: Vec<cir::SemaType> = Vec.new(self->allocator());
+
+                    for (var j: usize = 0; j < fields.len(); j += 1) {
+                        const field = fields.get_const(j).unwrap();
+                        var field_type: cir::SemaType = field->ty;
+
+                        if (type_args != null) {
+                            field_type = cir::substitute_sema_type_with_type_args(
+                                self->allocator(),
+                                &field->ty,
+                                &decl->generic_params,
+                                type_args
+                            );
+                        }
+
+                        payload_types.push(field_type);
+                    }
+
+                    const variant_layout = self->compute_fields_layout(&payload_types, false, .None);
+                    payload_types.free();
+
+                    variant_size = variant_layout->size;
+                    variant_align = variant_layout->align;
+                }
+            }
+
+            if (variant_size > max_payload_size) {
+                max_payload_size = variant_size;
+            }
+
+            if (variant_align > max_payload_align) {
+                max_payload_align = variant_align;
+            }
+        }
+
+        if (max_payload_size == 0 && enum_includes_payload(decl)) {
+            max_payload_size = 1;
+            max_payload_align = 1;
+        }
+
+        switch (decl->align) {
+            case .Some(explicit_align) => {
+                if (@cast(uint32, explicit_align) > max_payload_align) {
+                    max_payload_align = @cast(uint32, explicit_align);
+                }
+            }
+            else => {}
+        }
+
+        var total_align = tag_align;
+
+        if (max_payload_align > total_align) {
+            total_align = max_payload_align;
+        }
+
+        switch (decl->align) {
+            case .Some(explicit_align) => {
+                if (@cast(uint32, explicit_align) > total_align) {
+                    total_align = @cast(uint32, explicit_align);
+                }
+            }
+            else => {}
+        }
+
+        const payload_offset = align_offset(tag_size, max_payload_align);
+        const total_size = align_offset(payload_offset + max_payload_size, total_align);
+
+        var field_offsets: Vec<ABIFieldOffsetInfo> = Vec.new(self->allocator());
+        var field_offset_index: uint32 = 0;
+
+        field_offsets.push(ABIFieldOffsetInfo.normal(field_offset_index, 0, 0, @cast(usize, tag_size)));
+        field_offset_index += 1;
+
+        if (payload_offset > tag_size) {
+            field_offsets.push(ABIFieldOffsetInfo.padding(
+                field_offset_index,
+                tag_size,
+                payload_offset - tag_size
+            ));
+            field_offset_index += 1;
+        }
+
+        if (max_payload_size > 0 || enum_includes_payload(decl)) {
+            field_offsets.push(ABIFieldOffsetInfo.normal(
+                field_offset_index,
+                payload_offset,
+                1,
+                @cast(usize, max_payload_size)
+            ));
+            field_offset_index += 1;
+        }
+
+        const payload_end = payload_offset + max_payload_size;
+
+        if (total_size > payload_end) {
+            field_offsets.push(ABIFieldOffsetInfo.padding(
+                field_offset_index,
+                payload_end,
+                total_size - payload_end
+            ));
+        }
+
+        return self->own_layout(ABITypeLayout.aggregate(total_size, total_align, field_offsets));
+    }
+
+    pub fn enum_variant_tags(
+        self: Self*,
+        enum_decl_id: cir::EnumDeclId,
+        decl: const cir::EnumDecl*
+    ) const Vec<uint32>* {
+        switch (self->enum_tags.get(enum_decl_id)) {
+            case .Some(cache) => return cache;
+            else => {}
+        }
+
+        const allocator = self->allocator();
+        const count = decl->variants.len();
+
+        var tags: Vec<uint32> = Vec.new(allocator);
+
+        for (var i: usize = 0; i < count; i += 1) {
+            tags.push(@cast(uint32, i));
+        }
+
+        if (is_enum_scalar_optimizable(self->tables, decl)) {
+            var used: Vec<bool> = Vec.new(allocator);
+            used.resize(512, false);
+
+            for (var i: usize = 0; i < count; i += 1) {
+                const variant = decl->variants.get_const(i).unwrap();
+
+                switch (*variant) {
+                    case .Valued { value, .. } => {
+                        switch (value->literal_const_int_value()) {
+                            case .Some(literal) => {
+                                const value = cir::integer_literal_as_usize(literal);
+
+                                if (value < 512) {
+                                    switch (tags.get(i)) {
+                                        case .Some(tag_ptr) => {
+                                            *tag_ptr = @cast(uint32, value);
+                                        }
+                                        else => {}
+                                    }
+
+                                    switch (used.get(value)) {
+                                        case .Some(used_ptr) => {
+                                            *used_ptr = true;
+                                        }
+                                        else => {}
+                                    }
+                                }
+                            }
+                            else => {}
+                        }
+                    }
+                    else => {}
+                }
+            }
+
+            var next_tag: uint32 = 0;
+
+            for (var i: usize = 0; i < count; i += 1) {
+                const tag = tags.get_owned(i).unwrap();
+
+                if (is_tag_used(&used, tag)) {
+                    continue;
+                }
+
+                while (is_tag_used(&used, next_tag)) {
+                    next_tag += 1;
+                }
+
+                switch (tags.get(i)) {
+                    case .Some(tag_ptr) => {
+                        *tag_ptr = next_tag;
+                    }
+                    else => {}
+                }
+
+                if (@cast(usize, next_tag) < used.len()) {
+                    switch (used.get(next_tag)) {
+                        case .Some(used_ptr) => {
+                            *used_ptr = true;
+                        }
+                        else => {}
+                    }
+                }
+
+                next_tag += 1;
+            }
+
+            used.free();
+        }
+
+        self->enum_tags.insert(enum_decl_id, tags);
+        return self->enum_tags.get(enum_decl_id).unwrap();
+    }
+
+    pub fn free(self: Self*) {
+        const allocator = self->allocator();
+
+        for (var i: usize = 0; i < self->owned_layouts.len(); i += 1) {
+            const address = self->owned_layouts.get_const(i).unwrap();
+            const owned_layout = self->layout_at(*address);
+            owned_layout->free();
+            allocator.free(owned_layout);
+        }
+
+        const tag_values = self->enum_tags.values_data();
+        for (var i: usize = 0; i < self->enum_tags.len(); i += 1) {
+            tag_values[i].free();
+        }
+
+        self->owned_layouts.free();
+        self->enum_tags.free();
+        self->struct_layouts.free();
+        self->union_layouts.free();
+        self->enum_layouts.free();
+    }
+
+    fn plain_type_layout(self: Self*, plain_type: cir::PlainType) ABITypeLayout {
+        var empty_offsets: Vec<ABIFieldOffsetInfo> = Vec.new(self->allocator());
+
+        switch (plain_type) {
+            case .UIntPtr | .IntPtr | .ISize | .USize => {
+                const pointer_size = self->target_info.pointer_size();
+                return ABITypeLayout.normal(pointer_size, pointer_size, empty_offsets);
+            }
+            
+            case .Int8 | .UInt8 | .Bool => return ABITypeLayout.normal(1, 1, empty_offsets);
+            
+            case .Int16 | .UInt16 => return ABITypeLayout.normal(2, 2, empty_offsets);
+            
+            case .Int32 | .UInt32 => return ABITypeLayout.normal(4, 4, empty_offsets);
+            
+            case .Int64 | .UInt64 => return ABITypeLayout.normal(8, 8, empty_offsets);
+            
+            case .Int128 | .UInt128 => {
+                var align: uint32 = 16;
+
+                switch (self->target_info.arch) {
+                    case .X86_64 | .Aarch64 | .RiscV64 => {
+                        align = 16;
+                    }
+                    case .Wasm32 => {
+                        align = 8;
+                    }
+                }
+
+                return ABITypeLayout.normal(16, align, empty_offsets);
+            }
+            
+            case .Float16 => return ABITypeLayout.normal(2, 2, empty_offsets);
+            
+            case .Float32 => return ABITypeLayout.normal(4, 4, empty_offsets);
+            
+            case .Float64 => return ABITypeLayout.normal(8, 8, empty_offsets);
+
+            case .Float128 => {
+                var float_align: uint32 = 16;
+
+                switch (self->target_info.arch) {
+                    case .X86_64 | .Aarch64 | .RiscV64 => {
+                        float_align = 16;
+                    }
+                    case .Wasm32 => {
+                        float_align = 8;
+                    }
+                }
+
+                return ABITypeLayout.normal(16, float_align, empty_offsets);
+            }
+            case .Null => {
+                const pointer_size = self->target_info.pointer_size();
+                return ABITypeLayout.normal(pointer_size, pointer_size, empty_offsets);
+            }
+
+            case .Void => return ABITypeLayout.normal(0, 1, empty_offsets);
+        }
+    }
+}
+
+fn is_tag_used(used: const Vec<bool>*, tag: uint32) bool {
+    switch (used->get_const(@cast(usize, tag))) {
+        case .Some(flag) => return *flag;
+        case .None => return false;
+    }
+}
+
+/* ************* Helpers ************* */
+
+pub fn enum_variant_value_type(
+    tables: const DeclTables*,
+    variant: const cir::TypedEnumVariant*
+) Option<cir::SemaType> {
+    switch (*variant) {
+        case .Valued { value, .. } => {
+            return value->ty;
+        }
+        else => return .None;
+    }
+}
+
+pub fn enum_variant_expr_type(
+    tables: const DeclTables*,
+    decl: const cir::EnumDecl*
+) Option<cir::SemaType> {
+    var expr_type: Option<cir::SemaType> = .None;
+
+    for (var i: usize = 0; i < decl->variants.len(); i += 1) {
+        const variant = decl->variants.get_const(i).unwrap();
+
+        switch (*variant) {
+            case .Valued { value, .. } => {
+                switch (value->ty) {
+                    case .Some(ty) => {
+                        switch (expr_type) {
+                            case .None => {
+                                expr_type = .Some(ty);
+                            }
+                            case .Some(existing) => {
+                                if (!cir::cir_types_eq(&existing, &ty)) {
+                                    return .None;
+                                }
+                            }
+                        }
+                    }
+                    case .None => return .None;
+                }
+            }
+            else => {}
+        }
+    }
+
+    return expr_type;
+}
+
+pub fn enum_includes_payload(decl: const cir::EnumDecl*) bool {
+    for (var i: usize = 0; i < decl->variants.len(); i += 1) {
+        const variant = decl->variants.get_const(i).unwrap();
+
+        switch (*variant) {
+            case .Unit => {}
+            else => return true;
+        }
+    }
+
+    return false;
+}
+
+pub fn enum_includes_only_same_type_integer_payload(
+    tables: const DeclTables*,
+    decl: const cir::EnumDecl*
+) bool {
+    var first_valued_signed = false;
+
+    switch (decl->variants.first_const()) {
+        case .Some(first) => {
+            switch (*first) {
+                case .Valued { value, .. } => {
+                    switch (value->ty) {
+                        case .Some(ty) => {
+                            first_valued_signed = ty.is_signed_integer_type();
+                        }
+                        else => {}
+                    }
+                }
+                else => {}
+            }
+        }
+        case .None => {}
+    }
+
+    for (var i: usize = 0; i < decl->variants.len(); i += 1) {
+        const variant = decl->variants.get_const(i).unwrap();
+
+        switch (*variant) {
+            case .Unit => {}
+
+            case .Valued { value, .. } => {
+                switch (value->ty) {
+                    case .Some(ty) => {
+                        if (!(ty.is_integer() || ty.is_bool())) {
+                            return false;
+                        }
+
+                        if (ty.is_signed_integer_type()) {
+                            if (!first_valued_signed) {
+                                return false;
+                            }
+                        } else {
+                            if (first_valued_signed) {
+                                return false;
+                            }
+                        }
+                    }
+                    case .None => return false;
+                }
+            }
+            
+            case .Tuple | .Struct => return false;
+        }
+    }
+
+    return true;
+}
+
+pub fn enum_tag_type(
+    tables: const DeclTables*,
+    registry: const GlobalSymbolRegistry*,
+    enum_decl: const cir::EnumDecl*
+) cir::SemaType {
+    switch (enum_decl->tag_type) {
+        case .Some(tag_type) => return tag_type;
+        else => {}
+    }
+
+    if (enum_includes_only_same_type_integer_payload(tables, enum_decl)) {
+        switch (enum_variant_expr_type(tables, enum_decl)) {
+            case .Some(expr_type) => return expr_type;
+            else => {}
+        }
+    }
+
+    return .Plain(.UInt8);
+}
+
+pub fn is_enum_scalar_optimizable(
+    tables: const DeclTables*,
+    enum_decl: const cir::EnumDecl*
+) bool {
+    if (enum_decl->is_repr_c()) {
+        return true;
+    }
+
+    if (!enum_includes_payload(enum_decl)) {
+        return true;
+    }
+
+    switch (enum_variant_expr_type(tables, enum_decl)) {
+        case .Some => {
+            return enum_includes_only_same_type_integer_payload(tables, enum_decl);
+        }
+        case .None => return false;
+    }
+}

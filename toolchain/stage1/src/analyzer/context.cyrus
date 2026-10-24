@@ -4,155 +4,106 @@
 import std::collections::hash_map{HashMap};
 import std::hash{hash_usize, eq_usize};
 import std::mem{Allocator, alloc_init};
+import std::mem::arena{ArenaAllocator};
 import std::collections{Vec};
 import std::string{String};
 import std::option{Option};
 
-import analyzer::infer{InferCtx};
+import .::monomorph{MonomorphRegistry, InstanceSite};
+import resolver::symbols{GlobalSymbolRegistry};
+import analyzer::infer{InferContext};
+import .::vtables{VTableRegistry};
+import diags{DiagContext};
 import tokens{Span};
+import cir::tables;
+import .::flow;
+import .::env;
 import cir;
 
-pub enum FlowState {
-    Unreachable,
-    Reachable,
-    Returns,
+const ANALYZER_ARENA_SIZE: usize = 65536;
 
-    /// Merges two flow states coming from different paths.
-    pub fn merge(self: const Self*, other: FlowState) FlowState {
-        switch (*self) {
-            case .Returns => {
-                switch (other) {
-                    case .Returns => return .Returns;
-                    case .Unreachable => return .Unreachable;
-                    case .Reachable => return .Reachable;
-                }
-            }
-            case .Unreachable => {
-                switch (other) {
-                    case .Returns => return .Unreachable;
-                    case .Unreachable => return .Unreachable;
-                    case .Reachable => return .Reachable;
-                }
-            }
-            case .Reachable => {
-                switch (other) {
-                    case .Returns => return .Reachable;
-                    else => return .Reachable;
-                }
-            }
-        }
-    }
+pub struct AnalyzerContext {
+    pub allocator: Allocator,
+    pub arena: ArenaAllocator,
+    pub dctx: DiagContext*,
+    pub registry: GlobalSymbolRegistry*,
+    pub decl_tables: tables::DeclTables*,
+    pub trees: Vec<cir::TypedProgramTree>,
+    pub func_env: env::FuncEnv,
+    pub type_cache: TypeCache,
+    pub typedef_stack: Vec<usize>,
+    pub generic_env_stack: Vec<env::GenericEnv*>,
+    pub reported_typedef_cycles: Vec<String>,
+    pub control_region_stack: Vec<flow::ControlRegion>,
+    pub instantiations: Vec<InstanceSite>,
+    pub monomorph_registry: MonomorphRegistry,
+    pub vtable_registry: VTableRegistry,
 
-    [[inline]]
-    pub fn is_returns(self: const Self*) bool {
-        switch (*self) {
-            case .Returns => return true;
-            else => return false;
-        }
-    }
+    pub fn new(
+        allocator: Allocator,
+        dctx: DiagContext*,
+        registry: GlobalSymbolRegistry*,
+        decl_tables: tables::DeclTables*,
+        trees: Vec<cir::TypedProgramTree>
+    ) Self {
+        const control_region_stack: Vec<flow::ControlRegion> = Vec.new(allocator);
+        const generic_env_stack: Vec<env::GenericEnv*> = Vec.new(allocator);
+        const arena = ArenaAllocator.new(allocator, ANALYZER_ARENA_SIZE);
+        const reported_typedef_cycles: Vec<String> = Vec.new(allocator);
+        const instantiations: Vec<InstanceSite> = Vec.new(allocator);
+        const monomorph_registry = MonomorphRegistry.new(allocator);
+        const vtable_registry = VTableRegistry.new(allocator);
+        const typedef_stack: Vec<usize> = Vec.new(allocator);
+        const func_env = env::FuncEnv.new(allocator);
+        const type_cache = TypeCache.new(allocator);
 
-    [[inline]]
-    pub fn is_unreachable(self: const Self*) bool {
-        switch (*self) {
-            case .Unreachable => return true;
-            else => return false;
-        }
-    }
-    
-    [[inline]]
-    pub fn is_reachable(self: const Self*) bool {
-        switch (*self) {
-            case .Reachable => return true;
-            else => return false;
-        }
-    }
-}
-
-pub enum ControlRegion {
-    Loop,
-    Switch,
-
-    [[inline]]
-    pub fn allows_break(self: const Self*) bool {
-        switch (*self) {
-            case .Loop => return true;
-            case .Switch => return false;
-        }
-    }
-
-    [[inline]]
-    pub fn allows_continue(self: const Self*) bool {
-        switch (*self) {
-            case .Loop => return true;
-            case .Switch => return false;
-        }
-    }
-}
-
-pub struct FuncEnv {
-    allocator: Allocator,
-    pub current_func_name: Option<String>,
-    pub current_object: Option<cir::SemaType>,
-    pub current_method: Option<cir::MethodDeclId>,
-    pub current_func: Option<cir::TypedFuncType>,
-    pub infer: Option<InferCtx*>,
-
-    pub fn new(allocator: Allocator) Self {
         return Self {
             allocator,
-            current_func_name: .None,
-            current_object: .None,
-            current_method: .None,
-            current_func: .None,
-            infer: .None,
+            arena,
+            dctx,
+            registry,
+            decl_tables,
+            trees,
+            func_env,
+            typedef_stack,
+            instantiations,
+            type_cache,
+            generic_env_stack,
+            control_region_stack,
+            reported_typedef_cycles,
+            vtable_registry,
+            monomorph_registry,
         };
-    }
-
-    pub fn with_infer(allocator: Allocator, name: const uint8*) Self {
-        const infer: InferCtx* = alloc_init(allocator, InferCtx.new(allocator));
-
-        var env = Self {
-            allocator,
-            current_func_name: .None,
-            current_object: .None,
-            current_method: .None,
-            current_func: .None,
-            infer: .Some(infer),
-        };
-
-        env.current_func_name = .Some(String.from_str(allocator, name));
-        return env;
-    }
-
-    pub fn with_object_infer(allocator: Allocator, object_type: cir::SemaType) Self {
-        const infer: InferCtx* = alloc_init(allocator, InferCtx.new(allocator));
-
-        var env = Self {
-            allocator,
-            current_func_name: .None,
-            current_object: .None,
-            current_method: .None,
-            current_func: .None,
-            infer: .Some(infer),
-        };
-
-        env.current_object = .Some(object_type);
-        return env;
     }
 
     pub fn free(self: Self*) {
-        switch (self->current_func_name) {
-            case .Some(name) => name.free();
-            else => {}
+        for (var i: usize = 0; i < self->generic_env_stack.len(); i += 1) {
+            const env = *self->generic_env_stack.get(i).unwrap();
+            env->free();
         }
 
-        switch (self->infer) {
-            case .Some(infer) => {
-                infer->free();
-                self->allocator.free(infer);
-            }
-            else => {}
+        self->generic_env_stack.free();
+
+        for (var i: usize = 0; i < self->instantiations.len(); i += 1) {
+            const record = self->instantiations.get(i).unwrap();
+            record->key.free();
         }
+
+        self->instantiations.free();
+
+        for (var i: usize = 0; i < self->reported_typedef_cycles.len(); i += 1) {
+            var key = self->reported_typedef_cycles.get(i).unwrap();
+            key->free();
+        }
+
+        self->reported_typedef_cycles.free();
+        self->typedef_stack.free();
+        self->control_region_stack.free();
+        self->type_cache.free();
+        self->monomorph_registry.free();
+        self->vtable_registry.free();
+        self->func_env.free();
+        self->arena.destroy();
     }
 }
 
@@ -232,40 +183,4 @@ pub struct TypeCache {
         self->states.free();
         self->stack.free();
     }
-}
-pub fn decl_id_key(decl_id: cir::DeclId) usize {
-    switch (decl_id) {
-        case .Interface(id) => return (1 << 48) | id;
-        case .GlobalVar(id) => return (2 << 48) | id;
-        case .Typedef(id) => return (3 << 48) | id;
-        case .Method(id) => return (4 << 48) | id;
-        case .Struct(id) => return (5 << 48) | id;
-        case .Union(id) => return (6 << 48) | id;
-        case .Func(id) => return (7 << 48) | id;
-        case .Enum(id) => return (8 << 48) | id;
-        case .Var(id) => return (9 << 48) | id;
-    }
-}
-
-pub fn all_flow_states_terminate(flow_states: const Vec<FlowState>*) bool {
-    for (var i: usize = 0; i < flow_states->len(); i += 1) {
-        switch (*flow_states->get_const(i).unwrap()) {
-            case .Returns => {}
-            case .Unreachable => {}
-            else => return false;
-        }
-    }
-
-    return true;
-}
-
-pub fn all_flow_states_are_unreachable(flow_states: const Vec<FlowState>*) bool {
-    for (var i: usize = 0; i < flow_states->len(); i += 1) {
-        switch (*flow_states->get_const(i).unwrap()) {
-            case .Unreachable => {}
-            else => return false;
-        }
-    }
-
-    return true;
 }

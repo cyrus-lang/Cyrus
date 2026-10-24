@@ -122,7 +122,7 @@ pub fn substitute_sema_type_with_type_args(
         SemaType::SelfType(_)
         | SemaType::Plain(_)
         | SemaType::Unresolved(_)
-        | SemaType::InferVar(_)
+        | SemaType::InferVar { .. }
         | SemaType::Placeholder
         | SemaType::Err(_) => ty.clone(),
     }

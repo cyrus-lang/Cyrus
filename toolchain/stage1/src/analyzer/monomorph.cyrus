@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 The Cyrus Language
 
+import std::collections::hash_map{HashMap};
+import std::hash{hash_usize, eq_usize};
 import std::collections{Vec};
 import std::mem{Allocator};
 import std::option{Option};
@@ -8,6 +10,7 @@ import std::string{String};
 
 import cir{type_args_eq};
 import tokens{Span};
+import cir::clone;
 import cir;
 
 pub struct MonomorphInstance {
@@ -54,7 +57,7 @@ pub struct MonomorphRegistry {
 
         self->instances.push(MonomorphInstance {
             template_id,
-            type_args: cir::clone_typed_type_args(arena, type_args),
+            type_args: clone::clone_typed_type_args(arena, type_args),
             params,
             ret_type,
             body: .None,
@@ -72,11 +75,40 @@ pub struct MonomorphRegistry {
         entry->analyzed = true;
     }
 
+    pub fn get(self: Self*, monomorph_id: cir::MonomorphId) const MonomorphInstance* {
+        switch (self->instances.get_const(monomorph_id)) case .Some(entry) else {
+            return null;
+        }
+
+        return entry;
+    }
+
+    pub fn is_analyzed(self: Self*, monomorph_id: cir::MonomorphId) bool {
+        switch (self->instances.get_const(monomorph_id)) case .Some(entry) else {
+            return false;
+        }
+
+        return entry->analyzed;
+    }
+
+    pub fn set_body_and_params(
+        self: Self*,
+        monomorph_id: cir::MonomorphId,
+        body: cir::BodyId,
+        params: cir::TypedFuncParams
+    ) {
+        switch (self->instances.get(monomorph_id)) case .Some(var entry) else {
+            return;
+        }
+
+        entry->body = .Some(body);
+        entry->params = params;
+    }
+
     pub fn free(self: Self*) {
         for (var i: usize = 0; i < self->instances.len(); i += 1) {
             const inst = self->instances.get(i).unwrap();
-
-            inst->type_args.list.free();
+            inst->type_args.free();
         }
         
         self->instances.free();
@@ -85,7 +117,7 @@ pub struct MonomorphRegistry {
 
 /// Records a generic instantiation key 
 /// together with its use-site span.
-pub struct InstantiationSite {
+pub struct InstanceSite {
     pub key: String,
     pub span: Span,
 }

@@ -523,7 +523,7 @@ DIRECTIVE_SINGLE_RE = {
 }
 
 # Snapshot directives: `// @name` trigger + `/*@name ... @name*/` block.
-SNAPSHOT_DIRECTIVES = ("tokenize", "parse", "resolve", "analyze")
+SNAPSHOT_DIRECTIVES = ("tokenize", "parse", "resolve", "analyze", "codegen")
 
 
 @dataclass
@@ -744,13 +744,19 @@ def run_stage1_analyze_annotations(
         root_relative_path(cfg, file_path),
         _stdlib_flag(cfg),
     ]
+    
     proc = run_cmd(cmd, cwd=cfg.root, capture=True, check=False)
-    if proc.returncode != 0:
+    
+    if proc.returncode not in (0, 1):
         detail = strip_ansi((proc.stderr or proc.stdout or "").strip())
         raise RuntimeError(
             f"`analyze` failed with exit code {proc.returncode}:\n{detail}"
         )
-    diagnostics = parse_stage1_diagnostics(strip_ansi(proc.stdout or ""))
+        
+    # Compilation errors (exit 1) are expected in negative tests. Diagnostics
+    # may be emitted on either stream, including warnings on successful runs.
+    combined = strip_ansi((proc.stdout or "") + "\n" + (proc.stderr or ""))
+    diagnostics = parse_stage1_diagnostics(combined)
     problems = match_error_annotations(md.error_annotations, diagnostics, file_path)
     if problems:
         raise RuntimeError("annotation mismatch:\n" + "\n".join(problems))
@@ -840,6 +846,33 @@ def ensure_stage0(cfg: Config) -> None:
     run_cmd(cmd, cwd=cfg.root, capture=False)
 
 
+def ensure_tcc(cfg: Config) -> Path:
+    """Build the bundled tcc (libtcc.a) if it does not exist yet."""
+    tcc_dir = cfg.root / "toolchain" / "tcc"
+    tcc_build_dir = tcc_dir / "build"
+    libtcc = tcc_build_dir / "libtcc.a"
+    
+    if libtcc.is_file():
+        return tcc_build_dir
+    
+    log(STYLE.cyan(f"building libtcc.a in {tcc_build_dir} ..."))
+    
+    env = os.environ.copy()
+    machine = os.uname().machine
+    multiarch_include = Path(f"/usr/include/{machine}-linux-gnu")
+    if multiarch_include.is_dir():
+        env["CONFIGURE_FLAGS"] = (
+            f"--sysincludepaths={{B}}/include:/usr/include:{multiarch_include}"
+        )
+
+    run_cmd(["make"], cwd=tcc_dir, env=env, capture=False)
+    
+    if not libtcc.is_file():
+        raise SystemExit(f"error: libtcc.a was not produced at {libtcc}")
+    
+    return tcc_build_dir
+
+
 def ensure_stage1(cfg: Config) -> None:
     """Build the stage1 (self-hosted) compiler using stage0."""
     if cfg.stage1_binary.is_file():
@@ -926,6 +959,7 @@ def build_stage1(cfg: Config, *, release: bool, extra_args: Sequence[str] = ()) 
     """Bootstrap stage1 by driving stage0's `build` command on Project.toml."""
     ensure_stage0(cfg)
     profile = "release" if release else "debug"
+    tcc_dir = ensure_tcc(cfg)
 
     if release:
         args = [
@@ -933,6 +967,8 @@ def build_stage1(cfg: Config, *, release: bool, extra_args: Sequence[str] = ()) 
             f"--profile={profile}",
             f"--stdlib={cfg.stdlib_path}",
             f"--linker={cfg.linker}",
+            f"-L={tcc_dir}",
+            "-l=tcc",
             "--optimize=o2",
             '-z=-flto',
             "--module-merge-mode=separate",
@@ -944,12 +980,16 @@ def build_stage1(cfg: Config, *, release: bool, extra_args: Sequence[str] = ()) 
             f"--profile={profile}",
             "--sanitize=address",
             "-g",
+            "-z=-fno-omit-frame-pointer",
             f"--stdlib={cfg.stdlib_path}",
             f"--linker={cfg.linker}",
+            f"-L={tcc_dir}",
+            "-l=tcc",
             "--optimize=o0",
             "--module-merge-mode=separate",
             "--disable-modulefs-cache",
         ]
+
     args += list(extra_args)
 
     log(STYLE.cyan(f"building stage1 ({profile}, via stage0) ..."))
@@ -1222,6 +1262,8 @@ def snapshot_command_for(stage: str, directive: str, cfg: Config) -> List[str]:
             return ["dump", "resolver"]
         if directive == "analyze":
             return ["dump", "analyzer"]
+        if directive == "codegen":
+            return ["dump", "bir"]
     if stage == "stage0":
         if directive == "tokenize":
             return ["lex-only"]
@@ -1272,11 +1314,14 @@ def run_snapshot_checks(
 
         argv = snapshot_command_for(stage, directive, cfg)
         cmd = [str(compiler), *argv, root_relative_path(cfg, file_path)]
-        if directive in ("resolve", "analyze"):
+        if directive in ("resolve", "analyze", "codegen"):
             cmd.append(_stdlib_flag(cfg))
         proc = run_cmd(cmd, cwd=cfg.root, capture=True, check=False)
         raw = proc.stdout or ""
-        if proc.returncode != 0:
+        # Exit 1 is a normal compilation failure: negative tests snapshot
+        # diagnostics too. Compare that output rather than rejecting it before
+        # matching. Still reject crashes and command/infrastructure failures.
+        if proc.returncode not in (0, 1):
             detail = strip_ansi((proc.stderr or raw or "").strip())
             problems.append(
                 f"`{' '.join(argv)}` failed with exit code {proc.returncode}:\n{detail}"
@@ -1770,6 +1815,8 @@ def cmd_test(cfg: Config, args: argparse.Namespace) -> int:
         if "stage0" in parts:
             return "stage0"
         if "stage1" in parts:
+            return "stage1"
+        if "codegen" in parts:
             return "stage1"
         return stages[0] if stages else "stage0"
 

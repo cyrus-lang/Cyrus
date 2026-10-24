@@ -1,0 +1,12 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 The Cyrus Language
+
+import .::check{analyze_toplevel_stmts};
+import .::context{AnalyzerContext};
+
+pub fn trigger_analyzer(context: AnalyzerContext*) {
+    for (var i: usize = 0; i < context->trees.len(); i += 1) {
+        var tree = context->trees.get(i).unwrap();
+        analyze_toplevel_stmts(context, &tree->body);
+    }
+}

@@ -78,7 +78,7 @@ impl<'a> AnalysisContext<'a> {
             if let Some(bound_type) = binding {
                 let resolved_type = self.func_env.infer.as_ref().unwrap().resolve(&bound_type);
 
-                if let SemaType::InferVar(var) = resolved_type {
+                if let SemaType::InferVar { id, loc } = resolved_type {
                     if let Some(mut default_type) = generic_param.default {
                         default_type = Box::new(self.substitute_type(&default_type));
 
@@ -86,7 +86,7 @@ impl<'a> AnalysisContext<'a> {
                             .infer
                             .as_mut()
                             .unwrap()
-                            .unify(&SemaType::InferVar(var), &default_type);
+                            .unify(&SemaType::InferVar { id, loc }, &default_type);
                     }
                 }
 
@@ -143,18 +143,18 @@ impl<'a> AnalysisContext<'a> {
                 // 1. check if an explicit type argument was provided
                 if let Some(type_arg) = type_args.get(i) {
                     match type_arg {
-                        TypedTypeArg::Type(sema_type, _) => {
-                            bound_type = Some(sema_type.clone());
+                        TypedTypeArg::Type(ty, _) => {
+                            bound_type = Some(ty.clone());
                         }
                         TypedTypeArg::Infer => {
-                            bound_type = Some(infer.new_var());
+                            bound_type = Some(infer.new_var(loc));
                         }
                     }
                 }
 
                 // 2. if nothing was provided (e.g. MyStruct { ... }), create an InferVar
                 if bound_type.is_none() {
-                    bound_type = Some(infer.new_var());
+                    bound_type = Some(infer.new_var(loc));
                 }
 
                 // bind it

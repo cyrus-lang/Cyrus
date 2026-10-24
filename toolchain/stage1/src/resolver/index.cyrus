@@ -5,10 +5,10 @@ import std::mem::arena{ArenaAllocator};
 import std::mem{Allocator, alloc_init};
 import std::io{Writer, StdoutWriter};
 import std::collections{Vec};
-import std::os::dir{is_file};
 import std::option{Option};
 import std::string{String};
 import std::path{Path};
+import std::os;
 
 import resolver::traverse{bind_program_decl_names, resolve_decl_full};
 import resolver::symbols{GlobalSymbolRegistry};
@@ -95,6 +95,31 @@ pub struct Resolver {
         };
     }
 
+    pub fn free(self: Self*) {
+        for (var i: usize = 0; i < self->source_programs.len(); i += 1) {
+            var file = self->source_programs.get(i).unwrap();
+            file->absolute_path.free();
+            file->tokens.free();
+            file->program->free();
+            self->allocator.free(file->program);
+        }
+
+        self->source_programs.free();
+        self->module_symbols.free();
+        self->global_symbols.free();
+        self->visiting.free();
+
+        for (var i: usize = 0; i < self->group_imports.len(); i += 1) {
+            var record = self->group_imports.get(i).unwrap();
+            record->alias.free();
+        }
+        
+        self->group_imports.free();
+        self->program_trees.free();
+        self->decl_tables.free();
+        self->arena.destroy();
+    }
+
     pub fn resolve_entry(
         self: Self*,
         source_id: SourceId,
@@ -132,29 +157,6 @@ pub struct Resolver {
             writer, 
             self->allocator
         );
-    }
-
-    pub fn free(self: Self*) {
-        for (var i: usize = 0; i < self->source_programs.len(); i += 1) {
-            var file = self->source_programs.get(i).unwrap();
-            file->absolute_path.free();
-            file->tokens.free();
-            file->program->free();
-            self->allocator.free(file->program);
-        }
-
-        self->source_programs.free();
-        self->module_symbols.free();
-        self->global_symbols.free();
-        self->visiting.free();
-        for (var i: usize = 0; i < self->group_imports.len(); i += 1) {
-            var record = self->group_imports.get(i).unwrap();
-            record->alias.free();
-        }
-        self->group_imports.free();
-        self->program_trees.free();
-        self->decl_tables.free();
-        self->arena.destroy();
     }
 
     fn resolve_module(
@@ -223,8 +225,8 @@ pub struct Resolver {
                     const node = program->nodes.get_const(node_id).unwrap();
 
                     switch (*node) {
-                        case .Import(imp) => {
-                            if (!self->resolve_import(module_symbol_id, &imp, file_path)) {
+                        case .Import(import_) => {
+                            if (!self->resolve_import(module_symbol_id, &import_, file_path)) {
                                 return false;
                             }
                         }
@@ -259,7 +261,7 @@ pub struct Resolver {
     fn resolve_import(
         self: Self*,
         parent_scope_id: SymbolId,
-        imp: const ASTImport*,
+        import_: const ASTImport*,
         file_path: const uint8*
     ) bool {
         const allocator = self->allocator;
@@ -267,55 +269,62 @@ pub struct Resolver {
         const load_result = fs_resolve_import(
             allocator,
             self->opts,
-            &imp->segments,
-            imp->relative_level,
+            &import_->segments,
+            import_->relative_level,
             file_path
         );
 
         switch (load_result) {
             case .Error(err) => {
                 switch (err) {
-                    case .RelativeImportEscapesProjectRoot => report_relative_import_escapes_project_root(&self->driver->dctx, allocator, imp->span);
+                    case .RelativeImportEscapesProjectRoot => report_relative_import_escapes_project_root(&self->driver->dctx, allocator, import_->span);
                     case .ModuleNotFound(name, span) => report_module_not_found(&self->driver->dctx, allocator, span, name.as_str_const());
-                    case .DuplicateModule(name) => report_duplicate_module(&self->driver->dctx, allocator, imp->span, name.as_str_const());
-                    case .ModuleCannotImportItself => report_module_cannot_import_itself(&self->driver->dctx, allocator, imp->span);
-                    case .StdlibNotFound => report_stdlib_not_found(&self->driver->dctx, allocator, imp->span);
+                    case .DuplicateModule(name) => report_duplicate_module(&self->driver->dctx, allocator, import_->span, name.as_str_const());
+                    case .ModuleCannotImportItself => report_module_cannot_import_itself(&self->driver->dctx, allocator, import_->span);
+                    case .StdlibNotFound => report_stdlib_not_found(&self->driver->dctx, allocator, import_->span);
                 }
                 err.free();
                 return false;
             }
             case .Value(var resolved) => {
-                return self->process_resolved_import(parent_scope_id, imp, resolved);
+                return self->process_resolved_import(parent_scope_id, import_, resolved);
             }
         }
     }
 
-    /// Continue resolution of an import whose file was located.
+    /// Continue resolution of an import 
+    /// whose file was located.
     fn process_resolved_import(
         self: Self*,
         parent_scope_id: SymbolId,
-        imp: const ASTImport*,
-        resolved: ResolvedModuleFile
+        import_: const ASTImport*,
+        module_file: ResolvedModuleFile
     ) bool {
         const allocator = self->allocator;
         const dctx = &self->driver->dctx;
-        const span = imp->span;
+        const span = import_->span;
 
-        var alias = group_alias(allocator, imp);
+        var alias = group_alias(allocator, import_);
 
         switch (alias) {
             case .Some(name) => {
                 if (self->group_import_already_done(parent_scope_id, name.as_str_const())) {
-                    report_import_twice(dctx, allocator, span, name.as_str_const());
+                    report_import_twice(
+                        dctx, 
+                        allocator, 
+                        span, 
+                        name.as_str_const()
+                    );
+
                     name.free();
-                    resolved.free();
+                    module_file.free();
                     return false;
                 }
             }
             else => {}
         }
 
-        const key = visit_key(allocator, resolved.file_path.as_str_const());
+        const key = visit_key(allocator, module_file.file_path.as_str_const());
 
         if (self->visiting.active_contains(key.as_str_const())) {
             report_import_cycle(
@@ -324,12 +333,14 @@ pub struct Resolver {
                 span, 
                 self->visiting.active_paths()
             );
-            key.free();
+            
             switch (alias) {
                 case .Some(str) => str.free();
                 else => {}
             }
-            resolved.free();
+
+            key.free();
+            module_file.free();
             return false;
         }
 
@@ -343,29 +354,38 @@ pub struct Resolver {
                 program = entry->program;
             }
             case .None => {
-                if (!is_file(resolved.file_path.as_str_const())) {
-                    var name = format_module_segments(allocator, &imp->segments);
-                    report_module_not_found(dctx, allocator, last_sub_module_span(&imp->segments), name.as_str_const());
-                    name.free();
-                    key.free();
+                if (!os::is_file(module_file.file_path.as_str_const())) {
+                    var name = format_module_segments(allocator, &import_->segments);
+
+                    report_module_not_found(
+                        dctx, 
+                        allocator, 
+                        last_sub_module_span(&import_->segments), 
+                        ame.as_str_const()
+                    );
+                    
                     switch (alias) {
                         case .Some(str) => str.free();
                         else => {}
                     }
-                    resolved.free();
+
+                    name.free();
+                    key.free();
+                    module_file.free();
                     return false;
                 }
 
                 const lexical = self->driver->create_lexical_resource();
-                const path = Path.new(allocator, resolved.file_path.as_str_const());
+                const path = Path.new(allocator, module_file.file_path.as_str_const());
 
                 switch (lexical.tokenize_source(path)) case .Value(var source_tokens) else {
-                    key.free();
                     switch (alias) {
                         case .Some(str) => str.free();
                         else => {}
                     }
-                    resolved.free();
+
+                    key.free();
+                    module_file.free();
                     return false;
                 }
 
@@ -378,16 +398,16 @@ pub struct Resolver {
                         case .Some(str) => str.free();
                         else => {}
                     }
-                    resolved.free();
+                    module_file.free();
                     return false;
                 }
 
                 const owned_program = alloc_init(allocator, parsed);
                 
                 self->source_programs.push(SourceProgram {
+                    source_id,
                     absolute_path: String.from_str(allocator, key.as_str_const()),
                     program: owned_program,
-                    source_id,
                     tokens: source_tokens,
                 });
 
@@ -395,7 +415,7 @@ pub struct Resolver {
             }
         }
 
-        const segment = last_sub_module_name(allocator, &imp->segments);
+        const segment = last_sub_module_name(allocator, &import_->segments);
         
         const module_symbol_id = get_or_create_module_symbol(
             &self->global_symbols,
@@ -403,7 +423,7 @@ pub struct Resolver {
             &self->module_symbols,
             parent_scope_id,
             source_id,
-            &resolved,
+            &module_file,
             segment.as_str_const()
         );
         
@@ -412,15 +432,23 @@ pub struct Resolver {
         var current_symbol = self->global_symbols.resolve_concrete_scope_id(module_symbol_id);
 
         if (!self->visiting.done_contains(key.as_str_const())) {
-            self->resolve_module(current_symbol, source_id, resolved.file_path.as_str_const(), program);
+            self->resolve_module(
+                current_symbol,
+                source_id,
+                module_file.file_path.as_str_const(),
+                program
+            );
         }
 
-        for (var i: usize = resolved.consumed_segments; i < imp->segments.len(); i += 1) {
-            const segment_node = imp->segments.get_const(i).unwrap();
+        for (var i: usize = module_file.consumed_segments; i < import_->segments.len(); i += 1) {
+            const segment_node = import_->segments.get_const(i).unwrap();
 
             switch (*segment_node) {
                 case .SubModule(ident) => {
-                    switch (self->global_symbols.lookup_symbol_id_in_scope(current_symbol, ident.str.as_str_const())) {
+                    switch (self->global_symbols.lookup_symbol_id_in_scope(
+                        current_symbol, 
+                        ident.str.as_str_const()
+                    )) {
                         case .Some(found) => {
                             current_symbol = self->global_symbols.resolve_concrete_scope_id(found);
                         }
@@ -436,7 +464,7 @@ pub struct Resolver {
                                 case .Some(str) => str.free();
                                 else => {}
                             }
-                            resolved.free();
+                            module_file.free();
                             return false;
                         }
                     }
@@ -446,7 +474,7 @@ pub struct Resolver {
         }
 
         key.free();
-        resolved.free();
+        module_file.free();
 
         switch (alias) {
             case .Some(name) => {
@@ -463,7 +491,11 @@ pub struct Resolver {
                 return true;
             }
             case .None => {
-                return self->resolve_single_import(parent_scope_id, current_symbol, imp);
+                return self->resolve_single_import(
+                    parent_scope_id, 
+                    current_symbol, 
+                    import_
+                );
             }
         }
     }
@@ -488,17 +520,17 @@ pub struct Resolver {
         self: Self*,
         parent_scope_id: SymbolId,
         module_symbol_id: SymbolId,
-        imp: const ASTImport*
+        import_: const ASTImport*
     ) bool {
         const allocator = self->allocator;
         const dctx = &self->driver->dctx;
 
-        if (imp->segments.len() == 0) {
+        if (import_->segments.len() == 0) {
             return true;
         }
 
         const source_scope_id = self->global_symbols.resolve_concrete_scope_id(module_symbol_id);
-        const last = imp->segments.get_const(imp->segments.len() - 1).unwrap();
+        const last = import_->segments.get_const(import_->segments.len() - 1).unwrap();
         var ok = true;
 
         switch (*last) {
