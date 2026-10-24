@@ -622,6 +622,9 @@ fn dump_analyzed(ctx: cli::ActionContext, backend_ir: bool) int32 {
         return 1;
     }
 
+    var arena = ArenaAllocator.new(allocator, 65000);
+    defer arena.destroy();
+    
     var driver = CompilerDriver.new(allocator);
     defer driver.free();
 
@@ -660,9 +663,6 @@ fn dump_analyzed(ctx: cli::ActionContext, backend_ir: bool) int32 {
         driver.render_diags();
         return 1;
     }
-
-    var arena = ArenaAllocator.new(allocator, 65000);
-    defer arena.destroy();
 
     var analyzer_context = AnalyzerContext.new(
         dynamic arena,
