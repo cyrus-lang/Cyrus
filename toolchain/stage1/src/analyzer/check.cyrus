@@ -25,8 +25,6 @@ import .::env;
 import ciri;
 import cir;
 
-/* ************************** Endpoints ************************* */
-
 /* ************* Expressions ************* */
 
 fn analyze_expr(
@@ -50,7 +48,7 @@ fn analyze_expr(
 
                         diags::report_unknown_symbol(
                             context->dctx, 
-                            context->allocator, 
+                            context->allocator,
                             symbol_expr.span(), 
                             name.as_str_const()
                         );

@@ -394,10 +394,8 @@ fn compile_file(
         return 1;
     }
 
-    const arena_allocator: Allocator = dynamic resolver.arena;
-
     var analyzer_context = AnalyzerContext.new(
-        arena_allocator,
+        allocator,
         &driver.dctx,
         &resolver.global_symbols,
         &resolver.decl_tables,
@@ -606,7 +604,7 @@ fn dump_resolver(ctx: cli::ActionContext) int32 {
 
 fn dump_analyzed(ctx: cli::ActionContext, backend_ir: bool) int32 {
     const allocator: Allocator = dynamic LibcAllocator.new();
-
+    
     switch (ctx.args->get_str(0)) case .Some(file_path) else {
         compile_error("please provide an input file");
         return 1;
@@ -656,10 +654,8 @@ fn dump_analyzed(ctx: cli::ActionContext, backend_ir: bool) int32 {
         return 1;
     }
 
-    const arena_allocator: Allocator = dynamic resolver.arena;
-
     var analyzer_context = AnalyzerContext.new(
-        arena_allocator,
+        allocator,
         &driver.dctx,
         &resolver.global_symbols,
         &resolver.decl_tables,
