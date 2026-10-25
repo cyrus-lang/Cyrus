@@ -2914,7 +2914,11 @@ fn analyze_func_call(
             if (func_decl.is_generic()) {
                 const decl_id: cir::DeclId = .Func(func_decl_id);
                 
-                var type_name = format::format_decl_name(context->allocator, context->decl_tables, &decl_id);
+                var type_name = format::format_decl_name(
+                    context->allocator, 
+                    context->decl_tables, 
+                    &decl_id
+                );
                 defer type_name.free();
                 
                 const generic_env_opt = create_inference_generic_env(context,
@@ -2942,7 +2946,14 @@ fn analyze_func_call(
             } else {
                 normalize_func_params(context, &func_decl.params, false, 0);
 
-                if (!analyze_call(context, &original_params, &func_decl, &func_call->args, func_call->span, false)) {
+                if (!analyze_call(
+                    context, 
+                    &original_params, 
+                    &func_decl, 
+                    &func_call->args,
+                    func_call->span,
+                    false
+                )) {
                     return .None;
                 }
 
@@ -2953,7 +2964,11 @@ fn analyze_func_call(
         // Lambda call
         case .None => {
             if (!func_call->type_args.is_empty()) {
-                var type_name = format::format_sema_type(context->allocator, context->decl_tables, &operand_type);
+                var type_name = format::format_sema_type(
+                    context->allocator,
+                    context->decl_tables,
+                    &operand_type
+                );
                 
                 diags::report_unexpected_type_args(
                     context->dctx, 
@@ -2967,7 +2982,12 @@ fn analyze_func_call(
 
             normalize_func_type_params(context, &func_type.params, func_call->span, 0);
 
-            switch (normalize_and_check_type_formation(context, *func_type.ret_type, func_call->span, 0)) {
+            switch (normalize_and_check_type_formation(
+                context, 
+                *func_type.ret_type, 
+                func_call->span, 
+                0
+            )) {
                 case .Some(ty) => {
                     func_type.ret_type = alloc_init(context->allocator, ty);
                 }
@@ -2976,7 +2996,12 @@ fn analyze_func_call(
                 }
             }
 
-            switch (check_func_type_call(context, &func_type, &func_call->args, func_call->span)) {
+            switch (check_func_type_call(
+                context, 
+                &func_type, 
+                &func_call->args, 
+                func_call->span
+            )) {
                 case .Some(ty) => {
                     func_call->dispatch = .FunctionPointer { func_type };
                     return .Some(ty);
@@ -2999,21 +3024,39 @@ fn analyze_func_call_generic(
 ) Option<cir::SemaType> {
     normalize_func_params(context, &func_decl->params, false, 0);
 
-    if (!analyze_call(context, original_params, func_decl, &func_call->args, func_call->span, false)) {
+    if (!analyze_call(
+        context, 
+        original_params, 
+        func_decl, 
+        &func_call->args,
+         func_call->span, false)) {
         return .None;
     }
 
-    const final_type_args = instantiated_type_args(context, func_decl->generic_params);
-    const func_type = cir::func_decl_as_func_type(context->allocator, func_decl);
+    const final_type_args = instantiated_type_args(
+        context,
+        func_decl->generic_params
+    );
 
-    var new_env = create_func_def_env(context, func_decl->name.as_str_const(), func_type, context->func_env.infer);
+    const func_type = cir::func_decl_as_func_type(
+        context->allocator,
+        func_decl
+    );
+
+    var new_env = create_func_def_env(
+        context, 
+        func_decl->name.as_str_const(), 
+        func_type, 
+        context->func_env.infer
+    );
     var old_env = context->func_env;
     context->func_env = new_env;
 
     // FIXME
     // NOTE: swapping func_env by value; new_env's heap infer/name leak
     // (shared infer pointer would double-free if FuncEnv.free were called).
-    const ret_type = monomorphize_generic_func_call(context,
+    const ret_type = monomorphize_generic_func_call(
+        context,
         operand_type,
         func_call,
         func_decl_id,
@@ -3095,7 +3138,11 @@ fn analyze_method_call(
         case .None => {
             switch (method_call->operand->ty) {
                 case .Some(ty) => {
-                    var type_name = format::format_sema_type(context->allocator, context->decl_tables, &ty);
+                    var type_name = format::format_sema_type(
+                        context->allocator, 
+                        context->decl_tables, 
+                        &ty
+                    );
                     
                     diags::report_object_not_supports_methods(
                         context->dctx,
@@ -3124,7 +3171,9 @@ fn analyze_method_call(
         return .Some(.Err(method_call->span));
     }
 
-    const is_operand_interface = operand_type.as_interface_object().is_some() || operand_type.is_interface();
+    const is_operand_interface = 
+        operand_type.as_interface_object().is_some() ||
+        operand_type.is_interface();
 
     if (is_operand_instance) {
         return analyze_instance_method_call(context, method_call, &operand_type, expected_type);
@@ -3143,7 +3192,9 @@ fn analyze_instance_method_call(
 ) Option<cir::SemaType> {
     const pure_operand_type = *operand_type->const_inner()->pointer_inner();
 
-    const is_interface = pure_operand_type.is_interface_object() || pure_operand_type.as_named_interface().is_some();
+    const is_interface = 
+        pure_operand_type.is_interface_object() ||
+        pure_operand_type.as_named_interface().is_some();
 
     if (is_interface) {
         return analyze_interface_method_call(context, method_call, operand_type, expected_type);
@@ -3228,14 +3279,20 @@ fn analyze_static_method_call(
     if (type_decl_id_opt.is_none()) {
         switch (method_call->operand->ty) {
             case .Some(ty) => {
-                var operand_str = format::format_sema_type(context->allocator, context->decl_tables, &ty);
-                defer operand_str.free();
+                var operand_str = format::format_sema_type(
+                    context->allocator,
+                    context->decl_tables,
+                    &ty
+                );
+                
                 diags::report_object_not_supports_methods(
                     context->dctx,
                     context->allocator,
                     method_call->span,
                     operand_str.as_str_const()
                 );
+
+                operand_str.free();
             }
             case .None => {}
         }
@@ -3286,7 +3343,10 @@ fn analyze_method_call_internal(
 
     switch (pure_operand_type.as_named_type()) {
         case .Some(named_type) => {
-            operand_generic_params = *tables::type_decl_generic_params(context->decl_tables, named_type.type_decl_id);
+            operand_generic_params = *tables::type_decl_generic_params(
+                context->decl_tables, 
+                named_type.type_decl_id
+            );
             operand_type_args = named_type.type_args;
         }
         case .None => {}
@@ -3309,9 +3369,15 @@ fn analyze_method_call_internal(
 
     var method_decl = context->decl_tables->methods.get_owned(method_decl_id).unwrap();
 
-    method_decl.func_decl.params = clone::clone_func_params(context->allocator, &method_decl.func_decl.params);
+    method_decl.func_decl.params = clone::clone_func_params(
+        context->allocator, 
+        &method_decl.func_decl.params
+    );
 
-    var original_params = clone::clone_func_params(context->allocator, &method_decl.func_decl.params);
+    var original_params = clone::clone_func_params(
+        context->allocator,
+        &method_decl.func_decl.params
+    );
 
     if (method_decl.is_instance_method() && !is_instance_method_call) {
         diags::report_instance_method_call_on_type(
@@ -3513,7 +3579,9 @@ fn analyze_dynamic_dispatch_interface_method_call(
         return .None;    
     }
 
-    switch (context->decl_tables->interfaces.get_const(interface_decl_id)) case .Some(interface_decl) else {
+    switch (context->decl_tables->interfaces.get_const(
+        interface_decl_id
+    )) case .Some(interface_decl) else {
         return .None;   
     }
 
@@ -3523,7 +3591,9 @@ fn analyze_dynamic_dispatch_interface_method_call(
 
     const interface_type_args = named_type.type_args;
 
-    switch (interface_decl->methods.get(method_call->name.as_str_const())) case .Some(interface_method_decl_id) else {
+    switch (interface_decl->methods.get(
+        method_call->name.as_str_const()
+    )) case .Some(interface_method_decl_id) else {
         diags::report_object_method_not_defined(
             context->dctx,
             context->allocator,
@@ -3534,10 +3604,20 @@ fn analyze_dynamic_dispatch_interface_method_call(
         return .None;
     }
 
-    const table_method = context->decl_tables->methods.get(interface_method_decl_id).unwrap();
-    var interface_method_decl = *table_method;
-    interface_method_decl.func_decl.params = clone::clone_func_params(context->allocator, &table_method->func_decl.params);
-    var original_func_params = clone::clone_func_params(context->allocator, &interface_method_decl.func_decl.params);
+    var interface_method_decl = context
+        ->decl_tables
+        ->methods
+        .get_owned(interface_method_decl_id).unwrap();
+    
+    interface_method_decl.func_decl.params = clone::clone_func_params(
+        context->allocator, 
+        &interface_method_decl.func_decl.params
+    );
+
+    var original_func_params = clone::clone_func_params(
+        context->allocator, 
+        &interface_method_decl.func_decl.params
+    );
 
     const final_generics_params = cir::extend_generic_params(
         context->allocator,
@@ -3808,6 +3888,7 @@ fn analyze_call(
     instance_method_call: bool
 ) bool {
     const is_variadic = func_decl->params.variadic.is_some();
+    
     var expected_args_len = func_decl->params.list.len();
 
     // if this is an instance method call, the context modifier is not passed
@@ -3815,7 +3896,9 @@ fn analyze_call(
         expected_args_len -= 1;
     }
 
-    if ((!is_variadic && args->len() != expected_args_len) || (is_variadic && args->len() < expected_args_len)) {
+    if ((!is_variadic && args->len() != expected_args_len) 
+        || (is_variadic && args->len() < expected_args_len))
+    {
         diags::report_func_call_args_count_mismatch(
             context->dctx,
             context->allocator,
@@ -3831,44 +3914,65 @@ fn analyze_call(
         check_func_variadic_arguments(context, func_decl, args, span);
     }
 
-    var start_idx: usize = 0;
+    var start_index: usize = 0;
+    
     if (instance_method_call) {
-        start_idx = 1;
+        start_index = 1;
     }
 
-    // zip params[start_idx..] with args[0..]
+    // zip params[start_index..] with args[0..]
     const param_list = &func_decl->params.list;
-    var param_i: usize = start_idx;
+    var param_i: usize = start_index;
     var arg_i: usize = 0;
-    var zip_idx: usize = 0;
+    var zip_index: usize = 0;
+    var error = false;
+
     while (param_i < param_list->len() && arg_i < args->len()) {
         const param_kind = param_list->get_const(param_i).unwrap();
 
-        switch (normalize_and_check_type_formation(context, param_kind->ty(), param_kind->span(), 0)) {
+        switch (normalize_and_check_type_formation(
+            context, 
+            param_kind->ty(), 
+            param_kind->span(), 
+            0
+        )) {
             case .Some(param_type) => {
                 const arg = args->get(arg_i).unwrap();
-                switch (analyze_argument(context, arg, param_type, arg->span)) {
+
+                switch (analyze_argument(
+                    context, 
+                    arg, 
+                    param_type, 
+                    arg->span
+                )) {
                     case .Some(arg_type) => {
-                        check_argument_satisfies_generic_param_bounds(context,
+                        if (check_argument_satisfies_generic_param_bounds(
+                            context,
                             original_params,
                             param_kind->name_str(),
                             &arg_type,
                             arg->span,
-                            zip_idx
-                        );
+                            zip_index
+                        )) {
+                            error = true;
+                        }
                     }
-                    case .None => {}
+                    case .None => {
+                        error = true;
+                    }
                 }
             }
-            case .None => {}
+            case .None => {
+                error = true;
+            }
         }
 
         param_i += 1;
         arg_i += 1;
-        zip_idx += 1;
+        zip_index += 1;
     }
 
-    return true;
+    return !error;
 }
 
 /* ************* Dynamic ************* */
@@ -4143,17 +4247,23 @@ fn analyze_object_implements_monomorphized_interfaces(
             continue;
         }
 
-        const sema_type = expand_sema_type(context, normalized_type, implement_interface->span);
+        const ty = expand_sema_type(context, normalized_type, implement_interface->span);
 
-        switch (sema_type.as_named_interface()) case .Some(inner_interface_id) else {
-            const symbol_name = format::format_sema_type(context->allocator, context->decl_tables, &sema_type);
-            defer symbol_name.free();
+        switch (ty.as_named_interface()) case .Some(inner_interface_id) else {
+            const symbol_name = format::format_sema_type(
+                context->allocator, 
+                context->decl_tables, 
+                &ty
+            );
+        
             diags::report_non_interface_symbol(
                 context->dctx,
                 context->allocator,
                 implement_interface->span,
                 symbol_name.as_str_const()
             );
+            
+            symbol_name.free();
             continue;
         }
 
@@ -4165,26 +4275,36 @@ fn analyze_object_implements_monomorphized_interfaces(
 
             // Interface method
             var interface_func = table_interface_method->func_decl;
-            const ifp = &interface_func;
-            ifp->params = clone::clone_func_params(context->allocator, &table_interface_method->func_decl.params);
+            
+            interface_func.params = clone::clone_func_params(
+                context->allocator, 
+                &table_interface_method->func_decl.params
+            );
 
-            switch (ifp->params.list.first()) {
+            switch (interface_func.params.list.first()) {
                 case .Some(first_kind) => {
                     switch (*first_kind) {
-                        case .SelfModifier(var updated) => {
-                            updated.ty = generics::substitute_self_type(context, &updated.ty, object_type);
-                            *first_kind = .SelfModifier(updated);
+                        case .SelfModifier(var self_modifier) => {
+                            self_modifier.ty = generics::substitute_self_type(
+                                context, 
+                                &self_modifier.ty, 
+                                object_type
+                            );
+                            *first_kind = .SelfModifier(self_modifier);
                         }
                         else => {}
                     }
                 }
                 case .None => {}
             }
+
             generics::substitute_func_params(context, &interface_func.params);
             interface_func.ret_type = generics::substitute_type(context, &interface_func.ret_type);
 
             // Object method
-            switch (method_decls->get(ifp->name.as_str_const())) case .Some(object_method_id) else {
+            switch (method_decls->get(
+                interface_func.name.as_str_const()
+            )) case .Some(object_method_id) else {
                 continue;
             }
 
@@ -4195,14 +4315,21 @@ fn analyze_object_implements_monomorphized_interfaces(
                 // because they will be validated during 
                 // monomorphization
                 var object_func = table_object_method->func_decl;
-                const ofp = &object_func;
-                ofp->params = clone::clone_func_params(context->allocator, &table_object_method->func_decl.params);
+                
+                object_func.params = clone::clone_func_params(
+                    context->allocator, 
+                    &table_object_method->func_decl.params
+                );
 
-                switch (ofp->params.list.first()) {
+                switch (object_func.params.list.first()) {
                     case .Some(first_kind) => {
                         switch (*first_kind) {
                             case .SelfModifier(var self_modifier) => {
-                                self_modifier.ty = generics::substitute_self_type(context, &self_modifier.ty, object_type);
+                                self_modifier.ty = generics::substitute_self_type(
+                                    context, 
+                                    &self_modifier.ty, 
+                                    object_type
+                                );
                                 *first_kind = .SelfModifier(self_modifier);
                             }
                             else => {}
@@ -4228,7 +4355,7 @@ fn analyze_object_implements_monomorphized_interfaces(
             }
         }
 
-        if (!check_type_correctness(context, sema_type, implement_interface->span)) {
+        if (!check_type_correctness(context, ty, implement_interface->span)) {
             continue;
         }
     }
@@ -11201,18 +11328,23 @@ fn check_argument_satisfies_generic_param_bounds(
     arg_type: const cir::SemaType*,
     arg_loc: Span,
     arg_index: usize
-) {
+) bool {
     switch (original_params->lookup_param(param_name)) case .Some(original_param) else {
-        return;
+        return false;
     }
 
     var original_param_type = original_param->ty();
 
     switch (original_param_type.as_generic_param()) case .Some(generic_param_id) else {
-        return;
+        return false;
     }
+
+    var error = false;
     
-    const generic_param = context->decl_tables->generic_params.get_const(generic_param_id).unwrap();
+    const generic_param = context
+        ->decl_tables
+        ->generic_params
+        .get_const(generic_param_id).unwrap();
 
     for (var i: usize = 0; i < generic_param->bounds.len(); i += 1) {
         const bound = generic_param->bounds.get_const(i).unwrap();
@@ -11226,12 +11358,20 @@ fn check_argument_satisfies_generic_param_bounds(
 
         switch (arg_type->as_named_type()) {
             case .Some(named_type) => {
-                switch (implement_interfaces_of_named_type(context->decl_tables, &named_type)) {
+                switch (implement_interfaces_of_named_type(
+                    context->decl_tables, 
+                    &named_type
+                )) {
                     case .Some(impls) => {
                         for (var j: usize = 0; j < impls->len() && !satisfies_bound; j += 1) {
                             const implement_interface = impls->get_const(j).unwrap();
                             
-                            if (!is_assignable_to(context, implement_interface->ty, bound->ty, bound->span)) {
+                            if (!is_assignable_to(
+                                context, 
+                                implement_interface->ty,
+                                bound->ty, 
+                                bound->span
+                            )) {
                                 satisfies_bound = true;
                             }
                         }
@@ -11243,8 +11383,18 @@ fn check_argument_satisfies_generic_param_bounds(
         }
 
         if (!satisfies_bound) {
-            var expected_bound = format::format_sema_type(context->allocator, context->decl_tables, &bound->ty);
-            var found_type = format::format_sema_type(context->allocator, context->decl_tables, arg_type);
+            error = true;
+
+            var expected_bound = format::format_sema_type(
+                context->allocator, 
+                context->decl_tables, 
+                &bound->ty
+            );
+            var found_type = format::format_sema_type(
+                context->allocator, 
+                context->decl_tables, 
+                arg_type
+            );
 
             diags::report_argument_does_not_satisfy_bound(
                 context->dctx,
@@ -11259,6 +11409,8 @@ fn check_argument_satisfies_generic_param_bounds(
             found_type.free();
         }
     }
+
+    return error; 
 }
 
 /* ************* Monomorph Helpers ************* */
