@@ -68,9 +68,9 @@ pub struct InferContext {
                     const arg = named_type.type_args.get(i).unwrap();
                     
                     switch (*arg) {
-                        case .Type(inner_ty, span) => {
-                            const resolved = self->resolve(&inner_ty);
-                            type_args.push(.Type(resolved, span));
+                        case .Type(inner_type, span) => {
+                            const ty = self->resolve(&inner_type);
+                            type_args.push(.Type(ty, span));
                         }
                         case .Infer => type_args.push(.Infer);
                     }
@@ -84,6 +84,7 @@ pub struct InferContext {
 
             case .Array(array_type) => {
                 const element_type = self->resolve(array_type.element_type);
+                
                 return .Array(cir::TypedArrayType {
                     element_type: alloc_init(self->allocator, element_type),
                     capacity: array_type.capacity,
@@ -92,13 +93,18 @@ pub struct InferContext {
             }
 
             case .Const(inner) => {
-                const resolved = self->resolve(inner);
-                return .Const(alloc_init(self->allocator, resolved));
+                const ty = self->resolve(inner);
+
+                if (ty.is_const()) {
+                    return ty;
+                }
+
+                return .Const(alloc_init(self->allocator, ty));
             }
 
             case .Pointer(inner) => {
-                const resolved = self->resolve(inner);
-                return .Pointer(alloc_init(self->allocator, resolved));
+                const ty = self->resolve(inner);
+                return .Pointer(alloc_init(self->allocator, ty));
             }
 
             case .FuncType(func_type) => {
@@ -109,8 +115,8 @@ pub struct InferContext {
 
                 for (var i: usize = 0; i < func_type.params.list.len(); i += 1) {
                     const param = func_type.params.list.get_const(i).unwrap();
-                    const resolved = self->resolve(param);
-                    params.list.push(resolved);
+                    const ty = self->resolve(param);
+                    params.list.push(ty);
                 }
 
                 switch (func_type.params.variadic) {
@@ -123,10 +129,11 @@ pub struct InferContext {
                                 ));
                             }
                             case .Typed(inner) => {
-                                const resolved = self->resolve(&inner);
+                                const ty = self->resolve(&inner);
+
                                 params.variadic = .Some(alloc_init(
                                     self->allocator,
-                                    cir::TypedFuncTypeVariadicParam.Typed(resolved)
+                                    cir::TypedFuncTypeVariadicParam.Typed(ty)
                                 ));
                             }
                         }
@@ -151,10 +158,10 @@ pub struct InferContext {
 
                 for (var i: usize = 0; i < tuple_type.elements.len(); i += 1) {
                     const element = tuple_type.elements.get_const(i).unwrap();
-                    const resolved = self->resolve(&element->ty);
+                    const ty = self->resolve(&element->ty);
                     
                     elements.push(cir::TypedTupleElement {
-                        ty: resolved,
+                        ty,
                         span: element->span,
                     });
                 }

@@ -25,6 +25,7 @@ pub type ProgramArgs = struct {
 pub type ActionFn = fn(ActionContext) void;
 
 pub struct ActionContext {
+    pub allocator: Allocator,
     pub opts: Opts*,
     pub args: const Args*,
     pub cmd: const Cmd*,
@@ -122,6 +123,7 @@ pub struct App {
 
                 // Trigger action
                 (cmd->action)(ActionContext {
+                    allocator: self->allocator,
                     opts: self->opts,
                     args: &args,
                     cmd: cmd,

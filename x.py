@@ -373,15 +373,95 @@ def normalize_text(text: str) -> str:
 _THREAD_HASH_RE = re.compile(r"(thread '[^']*?_)[0-9a-f]+")
 
 
+def _root_string_candidates(root: Path) -> List[str]:
+    """Yield textual variants of `root` that may appear in program output.
+
+    Covers absolute/resolved forms, native and forward separators, with and
+    without a trailing separator, and never raises for odd inputs.
+    """
+    candidates: List[str] = []
+    seen = set()
+
+    def add(s: object) -> None:
+        s = str(s)
+        if not s or s in seen:
+            return
+        seen.add(s)
+        candidates.append(s)
+        # With/without trailing separator, both slash styles.
+        for sep in (os.sep, "/"):
+            if s.endswith(sep):
+                add(s.rstrip(sep) if len(s) > len(sep) else s)
+            else:
+                add(s + sep)
+
+    try:
+        add(root)
+        try:
+            add(root.resolve())
+        except OSError:
+            pass
+        # Relative-to-cwd form (common when the compiler echoes cwd-relative
+        # arguments resolved against its cwd).
+        try:
+            add(Path(os.path.relpath(root.resolve(), Path.cwd())))
+        except (OSError, ValueError):
+            pass
+    except Exception:
+        pass
+    return candidates
+
+
 def normalize_runtime_text(text: str, root: Optional[Path] = None) -> str:
-    """Neutralize machine-specific paths and thread-name hashes in program output."""
+    """Neutralize machine-specific paths and thread-name hashes in program output.
+
+    Never calls find_repo_root: if `root` is omitted, a best-effort repo root is
+    derived from the current working directory (silently skipping normalization
+    when none can be found), so this stays safe during module import and for any
+    caller that has no Config available.
+    """
     text = normalize_text(text)
+    if root is None:
+        try:
+            root = _guess_repo_root()
+        except Exception:
+            root = None
     if root is not None:
-        root_s = str(root)
-        text = text.replace(root_s + os.sep, "")
-        text = text.replace(root_s + "/", "")
+        for root_s in _root_string_candidates(root):
+            text = text.replace(root_s, "")
+            # Also handle paths made absolute in a sandbox/tmp mirror, e.g.
+            # /tmp/.../repo/... by stripping after a known marker.
+        marker = "/" + root.name + "/"
+        if marker in text and root.name:
+            start = 0
+            while True:
+                idx = text.find(marker, start)
+                if idx < 0:
+                    break
+                end = idx + len(marker)
+                text = text[:idx] + text[end:]
+                start = idx
     text = _THREAD_HASH_RE.sub(r"\1", text)
     return text
+
+
+def _guess_repo_root() -> Optional[Path]:
+    """Best-effort repo-root discovery that never raises and never imports
+    find_repo_root (which is CLI-only and may SystemExit)."""
+    try:
+        cur = Path.cwd().resolve()
+    except OSError:
+        return None
+    for candidate in [cur, *cur.parents]:
+        if (candidate / "x.py").is_file() and (candidate / "toolchain").is_dir():
+            return candidate
+    try:
+        here = Path(__file__).resolve().parent
+    except (OSError, NameError):
+        return None
+    if (here / "toolchain").is_dir():
+        return here
+    return None
 
 
 # EOF offsets equal file size; snapshot blocks live inside the file, so
