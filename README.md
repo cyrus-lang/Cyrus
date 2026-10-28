@@ -1,7 +1,4 @@
-<h1 style="display: flex; align-items: center; gap: 10px;">
-  <img src="./docs/brand.png" width="28" height="28" alt="Cyrus Logo">
-  Cyrus Programming Language
-</h1>
+# Cyrus Programming Language
 
 > Cyrus is heavily under development and it's not ready for production use yet.
 
