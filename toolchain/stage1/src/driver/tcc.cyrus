@@ -14,13 +14,19 @@ pub enum OutputKind {
 pub fn compile(
     source: const c_char*,
     output: const c_char*,
-    kind: OutputKind
+    kind: OutputKind,
+    extra_files: const c_char*,
+    lib_paths: const c_char*,
+    libraries: const c_char*
 ) bool {
     if (__cyrus_tcc_compile_string(
         source, 
         output, 
-        @cast(c_int, kind)) == 0)
-    {
+        @cast(c_int, kind),
+        extra_files,
+        lib_paths,
+        libraries) == 0
+    ) {
         return true;
     }
 
@@ -31,4 +37,7 @@ extern "C" fn __cyrus_tcc_compile_string(
     source: const c_char*,
     output: const c_char*,
     kind: c_int,
+    extra_files: const c_char*,
+    lib_paths: const c_char*,
+    libraries: const c_char*,
 ) int32;

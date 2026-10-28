@@ -2,25 +2,17 @@
 // Copyright (c) 2026 The Cyrus Language
 
 import std::mem::arena{ArenaAllocator};
+import std::mem{Allocator, alloc_init};
 import std::io{Writer, StdoutWriter};
 import std::errors{ErrorOr};
-import std::mem{Allocator};
 import std::path{Path};
 import std::os{File};
 
-import diags{DiagContext, exit_with_compile_error};
 import diags::render{CompilerDiagRender};
-import source{Source, SourceContext};
-import parser::ast{ASTProgram};
-import tokens{SourceTokens};
-import parser{Parser};
-import lexer{Lexer};
-import linker;
+import source{SourceContext};
+import diags{DiagContext};
 
-const TOKENS_ARENA_SIZE: usize = 65536;
-const ANALYZER_ARENA_SIZE: usize = 65536;
-
-pub struct CompilerDriver {
+pub struct CompilerContext {
     pub allocator: Allocator,
     pub dctx: DiagContext,
     pub sctx: SourceContext,
@@ -33,11 +25,6 @@ pub struct CompilerDriver {
     }
 
     [[inline]]
-    pub fn create_lexical_resource(self: Self*) LexicalResource {
-        return LexicalResource { driver: self };
-    }
-
-    [[inline]]
     pub fn render_diags(self: const Self*) {
         const writer: Writer = dynamic StdoutWriter.new();
         
@@ -47,50 +34,5 @@ pub struct CompilerDriver {
     pub fn free(self: Self*) {
         self->dctx.free();
         self->sctx.free();
-    }
-}
-
-pub struct LexicalResource {
-    driver: CompilerDriver*,
-
-    /// Driver handler responsible for tokenizing source content.
-    pub fn tokenize_source(self: Self*, path: Path) ErrorOr<SourceTokens, ()> {
-        const allocator = self->driver->allocator;
-
-        switch (File.open(&path, .Read)) case .Value(file) else {
-            exit_with_compile_error("failed to open the file");
-            @unreachable();
-        }
-        defer file.close();
-
-        switch (file.read(allocator)) case .Value(content) else {
-            exit_with_compile_error("failed to open the file");
-            @unreachable();
-        }
-
-        const source = Source.new(allocator, path, content);
-        const source_id = self->driver->sctx.add(source);
-
-        const arena = ArenaAllocator.new(allocator, TOKENS_ARENA_SIZE);
-        const lexer = Lexer.new(allocator, arena, &content, source_id, &self->driver->dctx);
-        const source_tokens = SourceTokens.new(source_id, lexer.tokenize(), arena);
-
-        self->driver->render_diags();
-
-        if (!self->driver->dctx.has_errors()) {
-            return .Value(source_tokens);
-        } else {
-            source_tokens.free();
-            return .Error(());
-        }
-    }
-
-    /// Driver handler responsible for parsing source tokens.
-    pub fn parse_source(self: Self*, source_tokens: SourceTokens) ErrorOr<ASTProgram, ()> {
-        const allocator = self->driver->allocator;
-
-        const result = Parser.parse(allocator, source_tokens, &self->driver->dctx);
-        self->driver->render_diags();
-        return result;
     }
 }

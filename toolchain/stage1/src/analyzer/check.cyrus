@@ -7415,7 +7415,13 @@ fn normalize_const(
     indirection: uint8
 ) Option<cir::SemaType> {
     switch (normalize_sema_type(context, *inner, span, indirection)) {
-        case .Some(ty) => return .Some(.Const(alloc_init(context->allocator, ty)));
+        case .Some(ty) => {
+            if (ty.is_const()) {
+                return .Some(ty);
+            }
+
+            return .Some(.Const(alloc_init(context->allocator, ty)));
+        }
         case .None => return .None;
     }
 }
@@ -9594,6 +9600,11 @@ pub fn expand_sema_type(
 
         case .Const(inner) => {
             const expand = expand_sema_type(context, *inner, span);
+
+            if (expand.is_const()) {
+                return expand;
+            }
+
             return .Const(alloc_init(context->allocator, expand));
         }
 
@@ -10333,12 +10344,17 @@ fn specialize_var_stmt(
 
 fn specialize_builtin(
     context: AnalyzerContext*,
-    builtin: const cir::TypedBuiltin*,
+    builtin: cir::TypedBuiltin*,
     decl_map: HashMap<usize, cir::VarDeclId>*
 ) {
     switch (*builtin) {
-        case .BuiltinFunc => {}
-        case .BuiltinBlock => {}
+        case .BuiltinFunc(var builtin_func) => {
+            specialize_expr_vec(context, &builtin_func.args, decl_map);
+        }
+        case .BuiltinBlock(var builtin_block) => {
+            specialize_expr_vec(context, &builtin_block.args, decl_map);
+            specialize_block(context, builtin_block.block, decl_map);
+        }
     }
 }
 
@@ -10589,10 +10605,15 @@ fn specialize_expr(
             specialize_block(context, lambda.body, decl_map);
         }
         
-        case .Builtin(builtin) => {
+        case .Builtin(var builtin) => {
             switch (builtin) {
-                case .BuiltinFunc => {}
-                case .BuiltinBlock => {}
+                case .BuiltinFunc(var builtin_func) => {
+                    specialize_expr_vec(context, &builtin_func.args, decl_map);
+                }
+                case .BuiltinBlock(var builtin_block) => {
+                    specialize_expr_vec(context, &builtin_block.args, decl_map);
+                    specialize_block(context, builtin_block.block, decl_map);
+                }
             }
         }
     }

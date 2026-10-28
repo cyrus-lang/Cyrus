@@ -481,6 +481,7 @@ fn mangle_plain_type(out: String*, plain: cir::PlainType) {
 
 pub fn mangle_type_args(
     allocator: Allocator,
+    tables: const DeclTables*,
     type_args: const cir::TypedTypeArgs*
 ) String {
     if (type_args->is_empty()) {
@@ -495,7 +496,8 @@ pub fn mangle_type_args(
                 if (type_arg_index > 0) {
                     out.push('_');
                 }
-                type_ident(&out, &inner);
+
+                type_ident(&out, tables, &inner);
             }
             else => {
                 if (type_arg_index > 0) {
@@ -512,6 +514,7 @@ pub fn mangle_type_args(
 pub fn mangle_monomorphized_func(
     allocator: Allocator,
     maps: const ModuleMaps*,
+    tables: const DeclTables*,
     name: const uint8*,
     func_decl_id: cir::FuncDeclId,
     modifiers: const ast::ASTFuncModifiers*,
@@ -523,7 +526,7 @@ pub fn mangle_monomorphized_func(
         return base;
     }
 
-    var suffix = mangle_type_args(allocator, type_args);
+    var suffix = mangle_type_args(allocator, tables, type_args);
     base.push_str("__");
     base.push_str(suffix.as_str_const());
     suffix.free();
@@ -534,6 +537,7 @@ pub fn mangle_monomorphized_func(
 pub fn mangle_monomorphized_method(
     allocator: Allocator,
     maps: const ModuleMaps*,
+    tables: const DeclTables*,
     method_decl_id: cir::MethodDeclId,
     method: const cir::MethodDecl*,
     type_args: const cir::TypedTypeArgs*
@@ -544,7 +548,7 @@ pub fn mangle_monomorphized_method(
         return base;
     }
 
-    var suffix = mangle_type_args(allocator, type_args);
+    var suffix = mangle_type_args(allocator, tables, type_args);
     base.push_str("__");
     base.push_str(suffix.as_str_const());
     suffix.free();
@@ -557,7 +561,20 @@ fn push_usize(out: String*, value: usize) {
     format_usize(dynamic StringWriter.new(out), value);
 }
 
-fn type_ident(out: String*, ty: const cir::SemaType*) {
+fn type_ident(
+    out: String*,
+    tables: const DeclTables*,
+    ty: const cir::SemaType*
+) {
+    type_ident_impl(out, tables, ty, .None);
+}
+
+fn type_ident_impl(
+    out: String*,
+    tables: const DeclTables*,
+    ty: const cir::SemaType*,
+    sub: Option<const cir::TypedTypeArgs*>
+) {
     switch (*ty) {
         case .Named(named) => {
             switch (named.type_decl_id) {
@@ -565,29 +582,53 @@ fn type_ident(out: String*, ty: const cir::SemaType*) {
                     out->push_str("S");
                     push_usize(out, struct_decl_id);
                 }
+                
                 case .Enum(enum_decl_id) => {
                     out->push_str("E");
                     push_usize(out, enum_decl_id);
                 }
+                
                 case .Union(union_decl_id) => {
                     out->push_str("U");
                     push_usize(out, union_decl_id);
                 }
+                
                 case .Typedef(typedef_decl_id) => {
+                    switch (tables->typedefs.get_const(typedef_decl_id)) {
+                        case .Some(typedef_decl) => {
+                            const target_type = typedef_decl->ty;
+
+                            type_ident_impl(
+                                out, 
+                                tables, 
+                                target_type, 
+                                .Some(&named.type_args)
+                            );
+                            
+                            return;
+                        }
+                        case .None => {}
+                    }
+
                     out->push_str("T");
                     push_usize(out, typedef_decl_id);
                 }
+                
                 case .Interface(interface_decl_id) => {
                     out->push_str("I");
                     push_usize(out, interface_decl_id);
                 }
             }
 
-            for (var type_arg_index: usize = 0; type_arg_index < named.type_args.len(); type_arg_index += 1) {
+            for (
+                var type_arg_index: usize = 0; 
+                type_arg_index < named.type_args.len(); 
+                type_arg_index += 1
+            ) {
                 switch (*named.type_args.get(type_arg_index).unwrap()) {
                     case .Type(inner, _) => {
                         out->push('_');
-                        type_ident(out, &inner);
+                        type_ident_impl(out, tables, &inner, sub);
                     }
                     else => out->push_str("_x");
                 }
@@ -597,9 +638,18 @@ fn type_ident(out: String*, ty: const cir::SemaType*) {
         case .Tuple(tuple) => {
             out->push_str("Tu");
 
-            for (var element_index: usize = 0; element_index < tuple.elements.len(); element_index += 1) {
+            for (
+                var element_index: usize = 0; 
+                element_index < tuple.elements.len(); 
+                element_index += 1
+            ) {
                 out->push('_');
-                type_ident(out, &tuple.elements.get_const(element_index).unwrap()->ty);
+                type_ident_impl(
+                    out, 
+                    tables, 
+                    &tuple.elements.get_const(element_index).unwrap()->ty,
+                    sub
+                );
             }
         }
         
@@ -609,17 +659,17 @@ fn type_ident(out: String*, ty: const cir::SemaType*) {
         
         case .Pointer(inner) => {
             out->push('P');
-            type_ident(out, inner);
+            type_ident_impl(out, tables, inner, sub);
         }
         
         case .Const(inner) => {
             out->push('C');
-            type_ident(out, inner);
+            type_ident_impl(out, tables, inner, sub);
         }
 
         case .Array(array) => {
             out->push_str("A");
-            type_ident(out, array.element_type);
+            type_ident_impl(out, tables, array.element_type, sub);
         }
         
         case .FuncType => {
@@ -627,6 +677,21 @@ fn type_ident(out: String*, ty: const cir::SemaType*) {
         }
 
         case .GenericParam(generic_param_id) => {
+            switch (sub) {
+                case .Some(args) => {
+                    if (generic_param_id < args->len()) {
+                        switch (*args->get(generic_param_id).unwrap()) {
+                            case .Type(inner, _) => {
+                                type_ident_impl(out, tables, &inner, .None);
+                                return;
+                            }
+                            else => {}
+                        }
+                    }
+                }
+                case .None => {}
+            }
+
             out->push_str("G");
             push_usize(out, generic_param_id);
         }

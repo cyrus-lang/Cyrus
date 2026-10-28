@@ -6,7 +6,8 @@ import std::libc::types{c_int, c_char};
 import std::mem::arena{ArenaAllocator};
 import std::mem::libc{LibcAllocator};
 import std::path{Path, dir_of_file};
-import std::libc{printf, exit};
+import std::libc{printf, exit, getenv, fopen, fclose, fwrite};
+import std::errors{ErrorOr};
 import std::mem{Allocator};
 import std::string{String};
 import std::os::process;
@@ -16,9 +17,11 @@ import std::os;
 
 import analyzer::context{AnalyzerContext};
 import resolver::loader{ResolverOptions};
+import driver::analysis{AnalysisContext};
+import driver::lexical{LexicalContext};
 import analyzer{trigger_analyzer};
 import resolver::index{Resolver};
-import driver{CompilerDriver};
+import driver{CompilerContext};
 import parser::dump{ASTDump};
 import codegen::c{CodegenC};
 import diags{compile_error};
@@ -93,6 +96,33 @@ fn run_cli(argc: c_int, argv: c_char**) {
         ->help("Stdlib root directory")
     );
 
+    const extra_input_opt = opts.add(
+        *cli::Opt.new(allocator, "z")
+        .short('z')
+        ->arg(.Str)
+        ->help("Additional C source/object input to link (repeatable)")
+    );
+
+    const library_path_opt = opts.add(
+        *cli::Opt.new(allocator, "L")
+        .short('L')
+        ->arg(.Str)
+        ->help("Library search path (repeatable)")
+    );
+
+    const library_opt = opts.add(
+        *cli::Opt.new(allocator, "l")
+        .short('l')
+        ->arg(.Str)
+        ->help("Library to link against (repeatable)")
+    );
+
+    const merge_mode_opt = opts.add(
+        *cli::Opt.new(allocator, "module-merge-mode")
+        .arg(.Str)
+        ->help("Module merging strategy (only `separate` is supported)")
+    );
+
     const quiet_opt = opts.add(
         *cli::Opt.new(allocator, "quiet")
         .short('q')
@@ -118,6 +148,10 @@ fn run_cli(argc: c_int, argv: c_char**) {
         cli::Cmd.new(allocator, "run", command_run)
         .help("Build and run")
         ->optional_argument(.Str)
+        ->add_option(extra_input_opt)
+        ->add_option(library_path_opt)
+        ->add_option(library_opt)
+        ->add_option(merge_mode_opt)
         ->add_option(verbose_opt)
         ->add_option(quiet_opt)
         ->add_option(release_opt)
@@ -133,6 +167,10 @@ fn run_cli(argc: c_int, argv: c_char**) {
         cli::Cmd.new(allocator, "build", command_build)
         .help("Build project")
         ->optional_argument(.Str)
+        ->add_option(extra_input_opt)
+        ->add_option(library_path_opt)
+        ->add_option(library_opt)
+        ->add_option(merge_mode_opt)
         ->add_option(verbose_opt)
         ->add_option(quiet_opt)
         ->add_option(release_opt)
@@ -146,6 +184,10 @@ fn run_cli(argc: c_int, argv: c_char**) {
     const test_cmd =
         cli::Cmd.new(allocator, "test", command_build)
         .help("Run tests")
+        ->add_option(extra_input_opt)
+        ->add_option(library_path_opt)
+        ->add_option(library_opt)
+        ->add_option(merge_mode_opt)
         ->add_option(verbose_opt)
         ->add_option(quiet_opt)
         ->add_option(target_opt)
@@ -210,58 +252,183 @@ fn run_cli(argc: c_int, argv: c_char**) {
     app.register(*dump_cmd);
     app.register(*version_cmd);
 
-    app.run(struct { argc, argv });
+    switch (app.run(struct { argc, argv })) {
+        case .Value(_) => {}
+        case .Error(_) => {
+            command_exit_code = 1;
+        }
+    }
 }
 
 /* ************* Commands ************* */
 
-fn command_new(ctx: cli::ActionContext) {
+fn command_new(action: cli::ActionContext) {
     @todo();
 }
 
-fn command_run(ctx: cli::ActionContext) {
-    command_exit_code = build_or_run(ctx, true);
+fn command_run(action: cli::ActionContext) {
+    command_exit_code = build_or_run(action, true);
 }
 
-fn command_build(ctx: cli::ActionContext) {
-    command_exit_code = build_or_run(ctx, false);
+fn command_build(action: cli::ActionContext) {
+    command_exit_code = build_or_run(action, false);
 }
 
-fn command_dump(ctx: cli::ActionContext) {
-    ctx.print_help();
+fn command_dump(action: cli::ActionContext) {
+    action.print_help();
 }
 
-fn command_dump_lexer(ctx: cli::ActionContext) {
-    command_exit_code = dump_lexer(ctx);
+fn command_dump_lexer(action: cli::ActionContext) {
+    const allocator: Allocator = dynamic LibcAllocator.new();
+
+    switch (file_path_from_action_context(action)) case .Value(var file_path) else {
+        command_exit_code = 1;
+        return;
+    }
+    defer file_path.free();
+
+    var context = CompilerContext.new(allocator);
+    defer context.free();
+    
+    const lexical = LexicalContext.new(&context);
+
+    const path = Path.new(allocator, file_path.as_str_const());
+
+    switch (lexical.tokenize_source(path)) case .Value(var source_tokens) else {
+        command_exit_code = 1;
+        return;
+    }
+    defer source_tokens.free();
+
+    dump_tokens(&source_tokens.tokens);
+
+    command_exit_code = 0;
 }
 
-fn command_dump_parser(ctx: cli::ActionContext) {
-    command_exit_code = dump_parser(ctx);
+fn command_dump_parser(action: cli::ActionContext) {
+    const allocator: Allocator = dynamic LibcAllocator.new();
+
+    switch (file_path_from_action_context(action)) case .Value(var file_path) else {
+        command_exit_code = 1;
+        return;
+    }
+    defer file_path.free();
+
+    var context = CompilerContext.new(allocator);
+    defer context.free();
+    
+    const lexical = LexicalContext.new(&context);
+
+    const path = Path.new(allocator, file_path.as_str_const());
+
+    switch (lexical.tokenize_source(path)) case .Value(var source_tokens) else {
+        command_exit_code = 1;
+        return;
+    }
+    defer source_tokens.free();
+
+    switch (lexical.parse_source(source_tokens)) case .Value(var program) else {
+        command_exit_code = 1;
+        return;
+    }
+    defer program.free();
+
+    // FIXME: Move this part into LexicalContext
+
+    const writer: Writer = dynamic StdoutWriter.new();
+
+    var dump = ASTDump.new(program, writer);
+    dump.dump();
+
+    command_exit_code = 0;
+
+    // FIXME END
 }
 
-fn command_dump_resolver(ctx: cli::ActionContext) {
-    command_exit_code = dump_resolver(ctx);
+fn command_dump_resolver(action: cli::ActionContext) {
+    const allocator: Allocator = dynamic LibcAllocator.new();
+
+    switch (file_path_from_action_context(action)) case .Value(var file_path) else {
+        command_exit_code = 1;
+        return;
+    }
+    defer file_path.free();
+
+    switch (resolver_opts_from_action_context(action)) case .Value(var opts) else {
+        command_exit_code = 1;
+        return;
+    }
+    defer opts.free();
+    
+    var context = CompilerContext.new(allocator);
+    defer context.free();
+    
+    const analysis_context = AnalysisContext.new(&context, &opts);
+    defer analysis_context.free();
+
+    command_exit_code = analysis_context.dump_resolver(
+        file_path.as_str_const()
+    );
 }
 
-fn command_dump_analyzer(ctx: cli::ActionContext) {
-    command_exit_code = dump_analyzed(ctx, false);
+fn command_dump_analyzer(action: cli::ActionContext) {
+    const allocator: Allocator = dynamic LibcAllocator.new();
+
+    switch (file_path_from_action_context(action)) case .Value(var file_path) else {
+        command_exit_code = 1;
+        return;
+    }
+    defer file_path.free();
+
+    switch (resolver_opts_from_action_context(action)) case .Value(var opts) else {
+        command_exit_code = 1;
+        return;
+    }
+    defer opts.free();
+    
+    var context = CompilerContext.new(allocator);
+    defer context.free();
+    
+    const analysis_context = AnalysisContext.new(&context, &opts);
+    defer analysis_context.free();
+
+    command_exit_code = analysis_context.dump_cir_from_source(
+        file_path.as_str_const()
+    );
 }
 
-fn command_dump_bir(ctx: cli::ActionContext) {
-    command_exit_code = dump_analyzed(ctx, true);
+// ANCHOR: Call driver 
+fn command_dump_bir(action: cli::ActionContext) {
+    // TODO: Emit Backend IR after Codegen! 
+    // command_exit_code = dump_analyzed(action, true);
+    @todo();
 }
 
-fn command_version(ctx: cli::ActionContext) {
+fn command_version(action: cli::ActionContext) {
     printf("Cyrus %s\n", version::COMPILER_VERSION);
 }
 
 /* ************* Compiler ************* */
 
+// if (backend_ir) {
+//     var codegen = CodegenC.new(
+//         allocator,
+//         &resolver.decl_tables,
+//         &resolver.global_symbols,
+//         &resolver.program_trees,
+//         &analyzer_context.vtable_registry,
+//         &analyzer_context.monomorph_registry,
+//         &driver.sctx
+//     );
+//     codegen.emit(writer);
+//     codegen.free();
+// }
+
 // FIXME: Move to driver
-fn build_or_run(ctx: cli::ActionContext, execute: bool) int32 {
+fn build_or_run(action: cli::ActionContext, execute: bool) int32 {
     const allocator: Allocator = dynamic LibcAllocator.new();
 
-    switch (ctx.args->get_str(0)) case .Some(file_path) else {
+    switch (action.args->get_str(0)) case .Some(file_path) else {
         compile_error("please provide an input file");
         return 1;
     }
@@ -286,8 +453,11 @@ fn build_or_run(ctx: cli::ActionContext, execute: bool) int32 {
 
         defer output_path.free();
         defer dir::remove_file(output_path.as_str_const());
+        
+        var arena = ArenaAllocator.new(allocator, 65000);
+        defer arena.destroy();
 
-        const status = compile_file(allocator, ctx, &output_path);
+        const status = compile_file(dynamic arena, action, &output_path);
 
         if (status != 0) {
             return status;
@@ -310,7 +480,7 @@ fn build_or_run(ctx: cli::ActionContext, execute: bool) int32 {
 
     var explicit_output: bool = false;
 
-    switch (ctx.opts->find("output")) {
+    switch (action.opts->find("output")) {
         case .Some(opt) => {
             switch (opt->values.get(0)) {
                 case .Some(value) => {
@@ -337,6 +507,7 @@ fn build_or_run(ctx: cli::ActionContext, execute: bool) int32 {
         defer parent_dir.free();
 
         output_path.free();
+
         output_path = std::path::join_path(
             allocator,
             parent_dir.as_str_const(),
@@ -344,40 +515,85 @@ fn build_or_run(ctx: cli::ActionContext, execute: bool) int32 {
         );
     }
 
-    return compile_file(allocator, ctx, &output_path);
+    return compile_file(allocator, action, &output_path);
+}
+
+// Joins every value of a repeatable option (`-z`, `-L`, `-l`) into
+// `dst` as a newline separated list, matching tcc::compile's inputs.
+fn collect_opt_values(opts: cli::Opts*, name: const uint8*, dst: String*) void {
+    switch (opts->find(name)) case .Some(opt) else {
+        return;
+    }
+
+    for (var i: usize = 0; i < opt->values.len(); i += 1) {
+        switch (opt->values.get(i)) {
+            case .Some(value) => {
+                switch (*value) {
+                    case .Str(str) => {
+                        if (!dst->is_empty()) {
+                            dst->push('\n');
+                        }
+                        dst->push_str(str.as_str_const());
+                    }
+                    else => {}
+                }
+            }
+            else => {}
+        }
+    }
+}
+
+// Stage1 always compiles modules separately, so only `separate` is a
+// valid `--module-merge-mode` value. Returns true when an unsupported
+// mode was explicitly requested.
+fn module_merge_mode_unsupported(opts: cli::Opts*) bool {
+    switch (opts->find("module-merge-mode")) case .Some(opt) else {
+        return false;
+    }
+
+    switch (opt->values.get(0)) case .Some(value) else {
+        return false;
+    }
+
+    switch (*value) case .Str(str) else {
+        return false;
+    }
+
+    return str.as_str_const() != "separate";
 }
 
 // FIXME: Move to driver
 fn compile_file(
     allocator: Allocator,
-    ctx: cli::ActionContext,
+    action: cli::ActionContext,
     output_path: const String*
 ) int32 {
-    switch (ctx.args->get_str(0)) case .Some(file_path) else {
+    // Driver-owned arena for the analyzer's temporary allocations
+    // (normalized/cloned SemaTypes are never freed individually).
+    // Its `defer` is registered before all other defers below so it is
+    // destroyed last, after codegen and after the resolver freed the
+    // trees that may point into it.
+    var mem = ArenaAllocator.new(allocator, 65536);
+    defer mem.destroy();
+
+    switch (action.args->get_str(0)) case .Some(file_path) else {
         compile_error("please provide an input file");
         return 1;
     }
 
-    var driver = CompilerDriver.new(allocator);
-    defer driver.free();
+    var context = CompilerContext.new(allocator);
+    defer context.free();
+    
+    const lexical = LexicalContext.new(&context);
 
-    var opts = ResolverOptions.new(allocator);
-    defer opts.free();
-
-    opts.base_path.free();
-    opts.base_path = dir::cwd(allocator);
-    opts.source_dirs.push(dir_of_file(allocator, file_path));
-
-    apply_stdlib_option(allocator, ctx.opts, &opts);
-
-    if (!apply_profile_option(ctx.opts, &opts)) {
+    switch (resolver_opts_from_action_context(action)) case .Value(var opts) else {
         return 1;
     }
+    defer opts.free();
 
-    var resolver = Resolver.new(allocator, &driver, &opts);
+    var resolver = Resolver.new(allocator, &lexical, &opts);
     defer resolver.free();
 
-    const lexical = driver.create_lexical_resource();
     const path = Path.new(allocator, file_path);
 
     switch (lexical.tokenize_source(path)) case .Value(var source_tokens) else {
@@ -390,16 +606,20 @@ fn compile_file(
     }
     defer program.free();
 
-    resolver.resolve_entry(source_tokens.source_id, file_path, &program);
+    resolver.resolve_entry(
+        source_tokens.source_id, 
+        file_path, 
+        &program
+    );
 
-    if (driver.dctx.has_errors()) {
-        driver.render_diags();
+    if (context.dctx.has_errors()) {
+        context.render_diags();
         return 1;
     }
 
     var analyzer_context = AnalyzerContext.new(
-        allocator,
-        &driver.dctx,
+        dynamic mem,
+        &context.dctx,
         &resolver.global_symbols,
         &resolver.decl_tables,
         resolver.program_trees
@@ -408,15 +628,15 @@ fn compile_file(
 
     trigger_analyzer(&analyzer_context);
 
-    if (driver.dctx.has_errors()) {
-        driver.render_diags();
+    if (context.dctx.has_errors()) {
+        context.render_diags();
         return 1;
     }
 
     var backend = String.from_str(allocator, "c");
     defer backend.free();
 
-    switch (ctx.opts->find("backend")) {
+    switch (action.opts->find("backend")) {
         case .Some(opt) => {
             switch (opt->values.get(0)) {
                 case .Some(value) => {
@@ -447,6 +667,24 @@ fn compile_file(
     var out = String.new(allocator);
     defer out.free();
 
+    var extra_files = String.new(allocator);
+    defer extra_files.free();
+
+    var lib_paths = String.new(allocator);
+    defer lib_paths.free();
+
+    var libraries = String.new(allocator);
+    defer libraries.free();
+
+    if (module_merge_mode_unsupported(action.opts)) {
+        compile_error("unsupported module merge mode (expected `separate`)");
+        return 1;
+    }
+
+    collect_opt_values(action.opts, "z", &extra_files);
+    collect_opt_values(action.opts, "L", &lib_paths);
+    collect_opt_values(action.opts, "l", &libraries);
+
     {
         const writer: Writer = dynamic StringWriter.new(&out);
 
@@ -457,16 +695,32 @@ fn compile_file(
             &resolver.program_trees,
             &analyzer_context.vtable_registry,
             &analyzer_context.monomorph_registry,
-            &driver.sctx
+            &context.sctx
         );
         codegen.emit(writer);
         codegen.free();
     }
 
+    // Debug hook: CYRUS_EMIT_C=<path> dumps the generated C so it can be
+    // inspected without going through tcc.
+    const emit_path = getenv("CYRUS_EMIT_C");
+
+    if (emit_path != null) {
+        const emit_stream = fopen(emit_path, "w");
+
+        if (emit_stream != null) {
+            fwrite(out.as_str_const(), 1, out.len(), emit_stream);
+            fclose(emit_stream);
+        }
+    }
+
     if (!tcc::compile(
         out.as_str_const(),
         output_path->as_str_const(),
-        tcc::OutputKind.EXE
+        tcc::OutputKind.EXE,
+        extra_files.as_str_const(),
+        lib_paths.as_str_const(),
+        libraries.as_str_const()
     )) {
         compile_error("tcc failed to compile the input file");
         return 1;
@@ -475,242 +729,47 @@ fn compile_file(
     return 0;
 }
 
-// FIXME: Move to driver
-fn dump_lexer(ctx: cli::ActionContext) int32 {
-    const allocator: Allocator = dynamic LibcAllocator.new();
-
-    switch (ctx.args->get_str(0)) case .Some(file_path) else {
+fn file_path_from_action_context(action: cli::ActionContext) ErrorOr<String, ()> {
+    switch (action.args->get_str(0)) case .Some(file_path) else {
         compile_error("please provide an input file");
-        return 1;
+        return .Error(());
     }
 
     if (!os::is_file(file_path)) {
         compile_error("input must be a file");
-        return 1;
+        return .Error(());
     }
 
-    var driver = CompilerDriver.new(allocator);
-    defer driver.free();
-
-    const lexical = driver.create_lexical_resource();
-    const path = Path.new(allocator, file_path);
-
-    switch (lexical.tokenize_source(path)) case .Value(var source_tokens) else {
-        return 1;
-    }
-    defer source_tokens.free();
-
-    dump_tokens(&source_tokens.tokens);
-
-    return 0;
+    return .Value(String.from_str(action.allocator, file_path));
 }
 
-// FIXME: Move to driver
-fn dump_parser(ctx: cli::ActionContext) int32 {
+fn resolver_opts_from_action_context(action: cli::ActionContext) ErrorOr<ResolverOptions, ()> {
     const allocator: Allocator = dynamic LibcAllocator.new();
 
-    switch (ctx.args->get_str(0)) case .Some(file_path) else {
-        compile_error("please provide an input file");
-        return 1;
+    switch (file_path_from_action_context(action)) case .Value(var file_path) else {
+        return .Error(());
     }
-
-    if (!os::is_file(file_path)) {
-        compile_error("input must be a file");
-        return 1;
-    }
-
-    var driver = CompilerDriver.new(allocator);
-    defer driver.free();
-
-    const lexical = driver.create_lexical_resource();
-    const path = Path.new(allocator, file_path);
-
-    switch (lexical.tokenize_source(path)) case .Value(var source_tokens) else {
-        return 1;
-    }
-    defer source_tokens.free();
-
-    switch (lexical.parse_source(source_tokens)) case .Value(var program) else {
-        return 1;
-    }
-    defer program.free();
-
-    const writer: Writer = dynamic StdoutWriter.new();
-
-    var dump = ASTDump.new(program, writer);
-    dump.dump();
-
-    return 0;
-}
-
-// FIXME: Move to driver
-fn dump_resolver(ctx: cli::ActionContext) int32 {
-    const allocator: Allocator = dynamic LibcAllocator.new();
-
-    switch (ctx.args->get_str(0)) case .Some(file_path) else {
-        compile_error("please provide an input file");
-        return 1;
-    }
-
-    if (!os::is_file(file_path)) {
-        compile_error("input must be a file");
-        return 1;
-    }
-
-    var driver = CompilerDriver.new(allocator);
-    defer driver.free();
-
+    defer file_path.free();
+    
     var opts = ResolverOptions.new(allocator);
-    defer opts.free();
+
+    // NOTE: `opts` is returned by value on success, so its owned heap
+    // memory (base_path, source_dirs, stdlib_path) transfers to the
+    // caller, which frees it with `opts.free()`. We must only free
+    // `opts` here ourselves on the error paths.
 
     opts.base_path.free();
     opts.base_path = dir::cwd(allocator);
-    opts.source_dirs.push(dir_of_file(allocator, file_path));
+    opts.source_dirs.push(dir_of_file(allocator, file_path.as_str_const()));
 
-    apply_stdlib_option(allocator, ctx.opts, &opts);
+    apply_stdlib_option(allocator, action.opts, &opts);
 
-    if (!apply_profile_option(ctx.opts, &opts)) {
-        return 1;
-    }
+    if (!apply_profile_option(action.opts, &opts)) {
+        opts.free();
+        return .Error(());
+    }   
 
-    var resolver = Resolver.new(allocator, &driver, &opts);
-    defer resolver.free();
-
-    const lexical = driver.create_lexical_resource();
-    const path = Path.new(allocator, file_path);
-
-    switch (lexical.tokenize_source(path)) case .Value(var source_tokens) else {
-        if (!driver.dctx.has_errors()) {
-            resolver.dump_symbols();
-        }
-        return 1;
-    }
-    defer source_tokens.free();
-
-    switch (lexical.parse_source(source_tokens)) case .Value(var program) else {
-        if (!driver.dctx.has_errors()) {
-            resolver.dump_symbols();
-        }
-        return 1;
-    }
-    defer program.free();
-
-    resolver.resolve_entry(source_tokens.source_id, file_path, &program);
-
-    driver.render_diags();
-
-    if (driver.dctx.has_errors()) {
-        return 1;
-    }
-
-    resolver.dump_symbols();
-
-    return 0;
-}
-
-// FIXME: Move to driver
-fn dump_analyzed(ctx: cli::ActionContext, backend_ir: bool) int32 {
-    const allocator: Allocator = dynamic LibcAllocator.new();
-    
-    switch (ctx.args->get_str(0)) case .Some(file_path) else {
-        compile_error("please provide an input file");
-        return 1;
-    }
-
-    if (!os::is_file(file_path)) {
-        compile_error("input must be a file");
-        return 1;
-    }
-
-    var arena = ArenaAllocator.new(allocator, 65000);
-    defer arena.destroy();
-    
-    var driver = CompilerDriver.new(allocator);
-    defer driver.free();
-
-    var opts = ResolverOptions.new(allocator);
-    defer opts.free();
-
-    opts.base_path.free();
-    opts.base_path = dir::cwd(allocator);
-    opts.source_dirs.push(dir_of_file(allocator, file_path));
-
-    apply_stdlib_option(allocator, ctx.opts, &opts);
-
-    if (!apply_profile_option(ctx.opts, &opts)) {
-        return 1;
-    }
-
-    var resolver = Resolver.new(allocator, &driver, &opts);
-    defer resolver.free();
-
-    const lexical = driver.create_lexical_resource();
-    const path = Path.new(allocator, file_path);
-
-    switch (lexical.tokenize_source(path)) case .Value(var source_tokens) else {
-        return 1;
-    }
-    defer source_tokens.free();
-
-    switch (lexical.parse_source(source_tokens)) case .Value(var program) else {
-        return 1;
-    }
-    defer program.free();
-
-    resolver.resolve_entry(source_tokens.source_id, file_path, &program);
-
-    if (driver.dctx.has_errors()) {
-        driver.render_diags();
-        return 1;
-    }
-
-    var analyzer_context = AnalyzerContext.new(
-        dynamic arena,
-        &driver.dctx,
-        &resolver.global_symbols,
-        &resolver.decl_tables,
-        resolver.program_trees
-    );
-    defer analyzer_context.free();
-
-    trigger_analyzer(&analyzer_context);
-
-    if (!backend_ir) {
-        driver.render_diags();
-    }
-
-    if (driver.dctx.has_errors()) {
-        if (backend_ir) {
-            driver.render_diags();
-        }
-        return 1;
-    }
-
-    const writer: Writer = dynamic StdoutWriter.new();
-
-    if (backend_ir) {
-        var codegen = CodegenC.new(
-            allocator,
-            &resolver.decl_tables,
-            &resolver.global_symbols,
-            &resolver.program_trees,
-            &analyzer_context.vtable_registry,
-            &analyzer_context.monomorph_registry,
-            &driver.sctx
-        );
-        codegen.emit(writer);
-        codegen.free();
-    } else {
-        dump::dump_cir(
-            &resolver.global_symbols,
-            &resolver.decl_tables,
-            &resolver.program_trees,
-            writer,
-            allocator
-        );
-    }
-
-    return 0;
+    return .Value(opts);
 }
 
 /* ************* Options Helpers ************* */

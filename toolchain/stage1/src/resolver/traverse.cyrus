@@ -2,42 +2,19 @@
 // Copyright (c) 2026 The Cyrus Language
 
 import std::mem{Allocator, alloc_init};
-import std::option{Option};
 import std::collections{Vec};
+import std::option{Option};
 import std::string{String};
 
 import resolver::symbols{GlobalSymbolRegistry, SymbolEntry};
-import resolver::scopes{LocalScope, GenericScope};
-import resolver::diags{
-    report_self_type_does_not_accept_type_args,
-    report_type_does_not_accept_type_args,
-    report_duplicate_symbol_in_this_scope,
-    report_symbol_not_defined_in_module,
-    report_invalid_struct_init_operand,
-    report_invalid_top_level_statement,
-    report_invalid_untyped_func_param,
-    report_if_duplicate_method_names,
-    report_expected_ident_in_import,
-    report_duplicate_generic_param,
-    report_builtin_block_as_type,
-    report_duplicate_method_name,
-    report_label_already_defined,
-    report_label_not_defined,
-    report_invalid_statement,
-    report_symbol_not_found,
-    report_duplicate_symbol,
-    report_type_not_found,
-    report_private_symbol,
-};
 import resolver::loader{first_segment_span, Profile};
+import resolver::scopes{LocalScope, GenericScope};
 import resolver::context{TraverseContext};
 import tokens{Span, Loc, Token, Literal};
 import diags{DiagContext};
+import resolver::diags;
+import cir::format;
 import parser::ast;
-import cir::format{
-    format_module_segments, 
-    format_module_segments_upto
-};
 import cir;
 
 pub fn bind_program_decl_names(
@@ -86,7 +63,7 @@ fn resolve_decl_names(
 
                         switch (registry->lookup_symbol_id_in_scope(scope_id, name)) {
                             case .Some => {
-                                report_duplicate_symbol(dctx, allocator, decl_name.span, name);
+                                diags::report_duplicate_symbol(dctx, allocator, decl_name.span, name);
                             }
                             case .None => {
                                 registry->insert_unresolved_symbol(scope_id, name, node->vis());
@@ -205,7 +182,7 @@ fn resolve_toplevel_stmt(
             push_kind(&out, resolve_interface_stmt(ctx, program, &interface_stmt));
         }
         else => {
-            report_invalid_top_level_statement(
+            diags::report_invalid_top_level_statement(
                 ctx->dctx,
                 ctx->diag_allocator,
                 node_span(ctx, program, node)
@@ -330,7 +307,7 @@ fn resolve_stmt(
             return .Some(cir::TypedStmt.new(.InlineAsm(resolve_inline_asm(ctx, program, &asm))));
         }
         else => {
-            report_invalid_statement(
+            diags::report_invalid_statement(
                 ctx->dctx,
                 ctx->diag_allocator,
                 node_span(ctx, program, node)
@@ -397,7 +374,7 @@ fn resolve_ident(
         else => {}
     }
 
-    report_symbol_not_found(ctx->dctx, ctx->diag_allocator, ident->span, name);
+    diags::report_symbol_not_found(ctx->dctx, ctx->diag_allocator, ident->span, name);
     return .None;
 }
 
@@ -432,7 +409,7 @@ fn resolve_module_import(
             first_ident = ident;
         }
         case .Single => {
-            report_expected_ident_in_import(
+            diags::report_expected_ident_in_import(
                 ctx->dctx,
                 ctx->diag_allocator,
                 first_segment_span(segments)
@@ -449,7 +426,7 @@ fn resolve_module_import(
             current_symbol = symbol_id;
         }
         case .None => {
-            report_symbol_not_found(ctx->dctx, ctx->diag_allocator, first_ident.span, first_name);
+            diags::report_symbol_not_found(ctx->dctx, ctx->diag_allocator, first_ident.span, first_name);
             return .None;
         }
     }
@@ -466,7 +443,7 @@ fn resolve_module_import(
                 seg_ident = ident;
             }
             case .Single => {
-                report_expected_ident_in_import(
+                diags::report_expected_ident_in_import(
                     ctx->dctx,
                     ctx->diag_allocator,
                     segment_span_at(segments, idx)
@@ -483,9 +460,9 @@ fn resolve_module_import(
                 current_symbol = next_symbol;
             }
             case .None => {
-                var module_name = format_module_segments_upto(ctx->allocator, segments, i);
+                var module_name = format::format_module_segments_upto(ctx->allocator, segments, i);
 
-                report_symbol_not_defined_in_module(
+                diags::report_symbol_not_defined_in_module(
                     ctx->dctx,
                     ctx->diag_allocator,
                     seg_ident.span,
@@ -519,7 +496,7 @@ fn report_if_symbol_is_private(
 
     switch (entry->vis_opt) {
         case .Some(.Private) => {
-            report_private_symbol(
+            diags::report_private_symbol(
                 ctx->dctx,
                 ctx->diag_allocator,
                 span,
@@ -1369,7 +1346,7 @@ fn collect_labels_in_block(
 
                 switch (ctx->resolve_local_scope_label(name)) {
                     case .Some => {
-                        report_label_already_defined(ctx->dctx, ctx->diag_allocator, label_stmt.span, name);
+                        diags::report_label_already_defined(ctx->dctx, ctx->diag_allocator, label_stmt.span, name);
                     }
                     case .None => {
                         const label_id = ctx->next_label_id();
@@ -1460,7 +1437,7 @@ fn resolve_goto_stmt(
             }));
         }
         case .None => {
-            report_label_not_defined(ctx->dctx, ctx->diag_allocator, goto_stmt->name.span, name);
+            diags::report_label_not_defined(ctx->dctx, ctx->diag_allocator, goto_stmt->name.span, name);
             return .None;
         }
     }
@@ -1680,7 +1657,7 @@ fn resolve_func_param(
             }
         }
         case .None => {
-            report_invalid_untyped_func_param(ctx->dctx, ctx->diag_allocator, func_param->span);
+            diags::report_invalid_untyped_func_param(ctx->dctx, ctx->diag_allocator, func_param->span);
             return .None;
         }
     }
@@ -1761,7 +1738,7 @@ fn insert_variable_symbol_to_current_scope(
     switch (ctx->current_local_scope()) {
         case .Some(scope) => {
             if (scope->contains(name)) {
-                report_duplicate_symbol_in_this_scope(ctx->dctx, ctx->diag_allocator, span, name);
+                diags::report_duplicate_symbol_in_this_scope(ctx->dctx, ctx->diag_allocator, span, name);
                 return false;
             }
 
@@ -1946,7 +1923,7 @@ fn resolve_methods(
     ast_methods: const Vec<ast::NodeId>*,
     object_name: const uint8*
 ) cir::MethodDecls {
-    report_if_duplicate_method_names(ctx->dctx, ctx->diag_allocator, program, object_name, ast_methods);
+    diags::report_if_duplicate_method_names(ctx->dctx, ctx->diag_allocator, program, object_name, ast_methods);
     const method_decls = resolve_method_decls(ctx, program, object_name, ast_methods);
     resolve_method_bodies(ctx, program, &method_decls, ast_methods);
     return method_decls;
@@ -2300,7 +2277,7 @@ fn resolve_struct_stmt(
                 }
             }
 
-            report_if_duplicate_method_names(ctx->dctx, ctx->diag_allocator, program, name, &struct_decl->methods);
+            diags::report_if_duplicate_method_names(ctx->dctx, ctx->diag_allocator, program, name, &struct_decl->methods);
 
             const methods = resolve_methods(ctx, program, &struct_decl->methods, name);
 
@@ -2388,7 +2365,7 @@ fn resolve_enum_stmt(
                     return .None;
                 }
                 case .Some(variants) => {
-                    report_if_duplicate_method_names(ctx->dctx, ctx->diag_allocator, program, name, &enum_decl->methods);
+                    diags::report_if_duplicate_method_names(ctx->dctx, ctx->diag_allocator, program, name, &enum_decl->methods);
 
                     const methods = resolve_methods(ctx, program, &enum_decl->methods, name);
 
@@ -2476,7 +2453,7 @@ fn resolve_union_stmt(
                 }
             }
 
-            report_if_duplicate_method_names(ctx->dctx, ctx->diag_allocator, program, name, &union_decl->methods);
+            diags::report_if_duplicate_method_names(ctx->dctx, ctx->diag_allocator, program, name, &union_decl->methods);
 
             const methods = resolve_methods(ctx, program, &union_decl->methods, name);
 
@@ -3211,7 +3188,7 @@ fn resolve_struct_init_type(
         else => {}
     }
 
-    report_invalid_struct_init_operand(ctx->dctx, ctx->diag_allocator, span);
+    diags::report_invalid_struct_init_operand(ctx->dctx, ctx->diag_allocator, span);
     return .None;
 }
 
@@ -3642,7 +3619,7 @@ fn resolve_type(
                     return .Some(.Unresolved(.BuiltinFunc(boxed)));
                 }
                 case .BuiltinBlock => {
-                    report_builtin_block_as_type(ctx->dctx, ctx->diag_allocator, span);
+                    diags::report_builtin_block_as_type(ctx->dctx, ctx->diag_allocator, span);
                     return .None;
                 }
             }
@@ -3724,7 +3701,7 @@ fn resolve_ident_type(
         return .Some(.SelfType(cir::TypedSelfType { span: ident->span }));
     }
 
-    report_type_not_found(ctx->dctx, ctx->diag_allocator, ident->span, name);
+    diags::report_type_not_found(ctx->dctx, ctx->diag_allocator, ident->span, name);
     return .None;
 }
 
@@ -3745,8 +3722,8 @@ fn resolve_module_import_type(
             return .Some(.Unresolved(.Decl(symbol_id)));
         }
         case .None => {
-            var name = format_module_segments(ctx->allocator, &module_import->segments);
-            report_type_not_found(ctx->dctx, ctx->diag_allocator, module_import->span, name.as_str_const());
+            var name = format::format_module_segments(ctx->allocator, &module_import->segments);
+            diags::report_type_not_found(ctx->dctx, ctx->diag_allocator, module_import->span, name.as_str_const());
             name.free();
             return .None;
         }
@@ -3839,7 +3816,7 @@ fn resolve_generic_inst_type(
         case .Some(ty) => {
             switch (ty) {
                 case .SelfType => {
-                    report_self_type_does_not_accept_type_args(ctx->dctx, ctx->diag_allocator, inst->span);
+                    diags::report_self_type_does_not_accept_type_args(ctx->dctx, ctx->diag_allocator, inst->span);
                 }
                 else => {}
             }
@@ -3854,7 +3831,7 @@ fn resolve_generic_inst_type(
                     }
                 }
                 case .None => {
-                    report_type_does_not_accept_type_args(
+                    diags::report_type_does_not_accept_type_args(
                         ctx->dctx,
                         ctx->diag_allocator,
                         inst->span,
@@ -4142,7 +4119,7 @@ fn resolve_generic_params(
             const prev = generic_params->get_const(j).unwrap();
 
             if (prev->name.str.as_str_const() == name) {
-                report_duplicate_generic_param(ctx->dctx, ctx->diag_allocator, param->name.span, name);
+                diags::report_duplicate_generic_param(ctx->dctx, ctx->diag_allocator, param->name.span, name);
                 break;
             }
         }
