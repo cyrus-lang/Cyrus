@@ -37,7 +37,7 @@ pub struct Emitter {
     pub allocator: Allocator,
     pub tables: DeclTables*,
     pub registry: GlobalSymbolRegistry*,
-    pub trees: const Vec<cir::TypedProgramTree>*,
+    pub trees: const Vec<cir::ProgramTree>*,
     pub vtables: VTableRegistry*,
     pub monomorphs: MonomorphRegistry*,
     pub types: TypeEmitter,
@@ -50,7 +50,7 @@ pub struct Emitter {
     body_out: String,
     ctor_out: String,
 
-    defer_scopes: Vec<Vec<cir::TypedDeferStmt>>,
+    defer_scopes: Vec<Vec<cir::DeferStmt>>,
     vtable_emitted: HashMap<usize, uint8>,
     func_proto_emitted: Vec<uint8>,
     loop_marks: Vec<usize>,
@@ -83,7 +83,7 @@ pub struct Emitter {
         allocator: Allocator,
         tables: DeclTables*,
         registry: GlobalSymbolRegistry*,
-        trees: const Vec<cir::TypedProgramTree>*,
+        trees: const Vec<cir::ProgramTree>*,
         vtables: VTableRegistry*,
         monomorphs: MonomorphRegistry*,
         maps: mangle::ModuleMaps,
@@ -508,7 +508,7 @@ pub struct Emitter {
 
     /* ************* Globals ************* */
 
-    fn emit_global(self: Self*, global_var: const cir::TypedGlobalVarStmt*) {
+    fn emit_global(self: Self*, global_var: const cir::GlobalVarStmt*) {
         if (!global_var->is_static && !global_var->is_const) {
             return;
         }
@@ -608,7 +608,7 @@ pub struct Emitter {
         name.free();
     }
 
-    fn emit_global_init(self: Self*, expr: const cir::TypedExpr*, ty: const cir::SemaType*) String {
+    fn emit_global_init(self: Self*, expr: const cir::Expr*, ty: const cir::SemaType*) String {
         switch (expr->kind) {
             case .Literal(literal) => {
                 return self->emit_literal(&literal);
@@ -804,7 +804,7 @@ pub struct Emitter {
         sig.free();
     }
 
-    fn emit_func(self: Self*, func_def: const cir::TypedFuncDefStmt*) {
+    fn emit_func(self: Self*, func_def: const cir::FuncDefStmt*) {
         const func_decl_id = func_def->func_decl_id.unwrap();
 
         var name = mangle::mangle_func(
@@ -1008,7 +1008,7 @@ pub struct Emitter {
     fn build_func_signature(
         self: Self*,
         ret_type: const cir::SemaType*,
-        params: const cir::TypedFuncParams*,
+        params: const cir::FuncParams*,
         name: const uint8*
     ) String {
         self->types.ensure_named(ret_type);
@@ -1098,7 +1098,7 @@ pub struct Emitter {
         }
     }
 
-    fn tree_for_source(self: Self*, source_id: uint32) Option<const cir::TypedProgramTree*> {
+    fn tree_for_source(self: Self*, source_id: uint32) Option<const cir::ProgramTree*> {
         for (var i: usize = 0; i < self->trees->len(); i += 1) {
             const tree = self->trees->get_const(i).unwrap();
 
@@ -1119,7 +1119,7 @@ pub struct Emitter {
 
     fn builtin_line_column(
         self: Self*,
-        builtin_func: const cir::TypedBuiltinFunc*,
+        builtin_func: const cir::BuiltinFunc*,
         want_column: bool
     ) Option<usize> {
         if (self->sctx == null) {
@@ -1143,7 +1143,7 @@ pub struct Emitter {
         return .None;
     }
 
-    fn enter_function_scope(self: Self*, params: const cir::TypedFuncParams*) {
+    fn enter_function_scope(self: Self*, params: const cir::FuncParams*) {
         for (var i: usize = 0; i < self->fn_scope_names.len(); i += 1) {
             self->fn_scope_names.get(i).unwrap()->free();
         }
@@ -1210,7 +1210,7 @@ pub struct Emitter {
         self->fn_var_renames.insert(var_decl_id, owned);
     }
 
-    fn emit_param_prologue(self: Self*, params: const cir::TypedFuncParams*) {
+    fn emit_param_prologue(self: Self*, params: const cir::FuncParams*) {
         self->enter_function_scope(params);
 
         for (var i: usize = 0; i < params->list.len(); i += 1) {
@@ -1260,9 +1260,9 @@ pub struct Emitter {
 
     /* ************* Statements ************* */
 
-    fn emit_block_stmts(self: Self*, block: const cir::TypedBlockStmt*, push_scope: bool) {
+    fn emit_block_stmts(self: Self*, block: const cir::BlockStmt*, push_scope: bool) {
         if (push_scope) {
-            var scope: Vec<cir::TypedDeferStmt> = Vec.new(self->allocator);
+            var scope: Vec<cir::DeferStmt> = Vec.new(self->allocator);
 
             for (var i: usize = 0; i < block->defers.len(); i += 1) {
                 const defers = block->defers.get_const(i).unwrap();
@@ -1282,7 +1282,7 @@ pub struct Emitter {
         }
     }
 
-    fn emit_stmt(self: Self*, stmt: const cir::TypedStmt*) {
+    fn emit_stmt(self: Self*, stmt: const cir::Stmt*) {
         switch (stmt->kind) {
             case .Expr(expr) => {
                 var expr = self->emit_expr(&expr);
@@ -1376,7 +1376,7 @@ pub struct Emitter {
         }
     }
 
-    fn emit_tuple_export(self: Self*, export_tuple: const cir::TypedTupleExportStmt*) {
+    fn emit_tuple_export(self: Self*, export_tuple: const cir::TupleExportStmt*) {
         switch (export_tuple->rhs) {
             case .Some(rhs) => {
                 switch (rhs.ty) {
@@ -1416,7 +1416,7 @@ pub struct Emitter {
 
     fn emit_tuple_export_pattern(
         self: Self*,
-        pattern: const cir::TypedTupleExportPattern*,
+        pattern: const cir::TupleExportPattern*,
         accessor: const uint8*,
         var is_const: bool
     ) {
@@ -1474,7 +1474,7 @@ pub struct Emitter {
         }
     }
 
-    fn emit_var(self: Self*, var_: const cir::TypedVarStmt*) {
+    fn emit_var(self: Self*, var_: const cir::VarStmt*) {
         var base_name = mangle::sanitized(self->allocator, var_->name.as_str_const());
         var name = self->declare_fn_scope_name(base_name.as_str_const());
 
@@ -1599,7 +1599,7 @@ pub struct Emitter {
         }
     }
 
-    fn emit_var_lambda(self: Self*, var_: const cir::TypedVarStmt*, name: String) {
+    fn emit_var_lambda(self: Self*, var_: const cir::VarStmt*, name: String) {
         switch (var_->rhs) {
             case .Some(rhs) => {
                 switch (rhs.kind) {
@@ -1638,7 +1638,7 @@ pub struct Emitter {
         }
     }
 
-    fn emit_array_braces(self: Self*, array: const cir::TypedArrayExpr*) String {
+    fn emit_array_braces(self: Self*, array: const cir::ArrayExpr*) String {
         var out = String.from_str(self->allocator, "{ ");
 
         for (var i: usize = 0; i < array->elements.len(); i += 1) {
@@ -1664,7 +1664,7 @@ pub struct Emitter {
         return out;
     }
 
-    fn emit_return(self: Self*, return_: const cir::TypedReturnStmt*) {
+    fn emit_return(self: Self*, return_: const cir::ReturnStmt*) {
         self->emit_all_defers();
 
         if (self->in_void_main) {
@@ -1698,7 +1698,7 @@ pub struct Emitter {
         }
     }
 
-    fn emit_if(self: Self*, if_: const cir::TypedIfStmt*) {
+    fn emit_if(self: Self*, if_: const cir::IfStmt*) {
         var cond = self->emit_expr(&if_->cond);
         
         self->body_out.push_str("    if (");
@@ -1734,7 +1734,7 @@ pub struct Emitter {
         }
     }
 
-    fn emit_while(self: Self*, while_: const cir::TypedWhileStmt*) {
+    fn emit_while(self: Self*, while_: const cir::WhileStmt*) {
         var cond = self->emit_expr(&while_->cond);
         self->body_out.push_str(" while (");
         self->body_out.push_str(cond.as_str_const());
@@ -1748,7 +1748,7 @@ pub struct Emitter {
         self->body_out.push_str(" } ");
     }
 
-    fn emit_for(self: Self*, for_: const cir::TypedForStmt*) {
+    fn emit_for(self: Self*, for_: const cir::ForStmt*) {
         self->body_out.push_str(" for (");
 
         switch (for_->initializer) {
@@ -1824,7 +1824,7 @@ pub struct Emitter {
         self->body_out.push_str(" } ");
     }
 
-    fn emit_switch(self: Self*, switch_: const cir::TypedSwitchStmt*) {
+    fn emit_switch(self: Self*, switch_: const cir::SwitchStmt*) {
         var enum_decl_id: cir::EnumDeclId;
         var is_scalar_enum = false;
         var is_enum = false;
@@ -1879,7 +1879,7 @@ pub struct Emitter {
 
     fn emit_switch_scalar_enum(
         self: Self*, 
-        switch_: const cir::TypedSwitchStmt*, 
+        switch_: const cir::SwitchStmt*, 
         enum_decl_id: cir::EnumDeclId
     ) {
         var name: String;
@@ -2105,10 +2105,10 @@ pub struct Emitter {
 
     fn hoist_switch_pattern_bindings(
         self: Self*,
-        pattern: const cir::TypedSwitchCasePattern*,
+        pattern: const cir::SwitchCasePattern*,
         enum_decl: const cir::EnumDecl*,
         tags: const Vec<uint32>*,
-        inst_args: const cir::TypedTypeArgs*,
+        inst_args: const cir::TypeArgs*,
         operand_type: const cir::SemaType*
     ) {
         switch (pattern->kind) {
@@ -2218,7 +2218,7 @@ pub struct Emitter {
 
     fn emit_switch_payload_enum(
         self: Self*, 
-        switch_: const cir::TypedSwitchStmt*, 
+        switch_: const cir::SwitchStmt*, 
         enum_decl_id: cir::EnumDeclId
     ) {
         const enum_decl = self->tables->enums.get_const(enum_decl_id).unwrap();
@@ -2227,7 +2227,7 @@ pub struct Emitter {
         var operand_name: String;
 
         var has_operand_type = false;
-        var inst_args_storage: cir::TypedTypeArgs;
+        var inst_args_storage: cir::TypeArgs;
         var has_inst_args = false;
 
         switch (switch_->operand.ty) {
@@ -2255,7 +2255,7 @@ pub struct Emitter {
             operand_name = self->types.enum_c_name(enum_decl_id);
         }
 
-        var inst_args: const cir::TypedTypeArgs* = null;
+        var inst_args: const cir::TypeArgs* = null;
 
         if (has_inst_args) {
             inst_args = &inst_args_storage;
@@ -2513,7 +2513,7 @@ pub struct Emitter {
         }
     }
 
-    fn emit_switch_integer(self: Self*, switch_: const cir::TypedSwitchStmt*) {
+    fn emit_switch_integer(self: Self*, switch_: const cir::SwitchStmt*) {
         var operand = self->emit_expr(&switch_->operand);
         self->body_out.push_str(" switch (");
         self->body_out.push_str(operand.as_str_const());
@@ -2624,7 +2624,7 @@ pub struct Emitter {
         self->body_out.push_str(" } ");
     }
 
-    fn emit_switch_if_chain(self: Self*, switch_: const cir::TypedSwitchStmt*) {
+    fn emit_switch_if_chain(self: Self*, switch_: const cir::SwitchStmt*) {
         var operand_type_name: String;
         var operand = self->emit_expr(&switch_->operand);
 
@@ -2794,14 +2794,14 @@ pub struct Emitter {
         operand_type_name.free();
     }
 
-    fn emit_inline_asm_stmt(self: Self*, inline_asm: const cir::TypedInlineAsm) {
+    fn emit_inline_asm_stmt(self: Self*, inline_asm: const cir::InlineAsm) {
         var text = self->emit_inline_asm(inline_asm);
         self->body_out.push_str(text.as_str_const());
         self->body_out.push_str(";\n");
         text.free();
     }
 
-    fn emit_inline_asm(self: Self*, inline_asm: const cir::TypedInlineAsm) String {
+    fn emit_inline_asm(self: Self*, inline_asm: const cir::InlineAsm) String {
         var out = String.from_str(self->allocator, " __asm__ ");
 
         if (inline_asm.is_volatile) {
@@ -2859,7 +2859,7 @@ pub struct Emitter {
         return out;
     }
 
-    fn emit_asm_operands(self: Self*, out: String*, operands: const Vec<cir::TypedAsmOperand>*) {
+    fn emit_asm_operands(self: Self*, out: String*, operands: const Vec<cir::AsmOperand>*) {
         for (var i: usize = 0; i < operands->len(); i += 1) {
             const operand = operands->get_const(i).unwrap();
             
@@ -2908,7 +2908,7 @@ pub struct Emitter {
 
     /* ************* Expressions ************* */
 
-    fn emit_expr(self: Self*, expr: const cir::TypedExpr*) String {
+    fn emit_expr(self: Self*, expr: const cir::Expr*) String {
         switch (expr->kind) {
             case .Prefix(prefix) => {
                 var out = String.new(self->allocator);
@@ -3209,7 +3209,7 @@ pub struct Emitter {
         }
     }
 
-    fn emit_infix(self: Self*, infix: const cir::TypedInfixExpr*) String {
+    fn emit_infix(self: Self*, infix: const cir::InfixExpr*) String {
         switch (infix->op) {
             case .Equal | .NotEqual => {
                 if (self->is_byte_string_compare(infix)) {
@@ -3315,7 +3315,7 @@ pub struct Emitter {
         return out;
     }
 
-    fn is_byte_string_compare(self: Self*, infix: const cir::TypedInfixExpr*) bool {
+    fn is_byte_string_compare(self: Self*, infix: const cir::InfixExpr*) bool {
         switch (infix->lhs->ty) {
             case .Some(lhs_type) => {
                 switch (infix->rhs->ty) {
@@ -3339,7 +3339,7 @@ pub struct Emitter {
         }
     }
 
-    fn expr_is_null_literal(self: Self*, expr: const cir::TypedExpr*) bool {
+    fn expr_is_null_literal(self: Self*, expr: const cir::Expr*) bool {
         switch (expr->kind) {
             case .Literal(literal) => {
                 switch (literal.kind) {
@@ -3370,7 +3370,7 @@ pub struct Emitter {
         return .None;
     }
 
-    fn expr_int128_kind(self: Self*, expr: const cir::TypedExpr*) Option<bool> {
+    fn expr_int128_kind(self: Self*, expr: const cir::Expr*) Option<bool> {
         switch (expr->ty) {
             case .Some(ty) => {
                 return self->int128_kind_of(&ty);
@@ -3394,7 +3394,7 @@ pub struct Emitter {
         }
     }
 
-    fn scalar_operand_is_signed(self: Self*, expr: const cir::TypedExpr*) bool {
+    fn scalar_operand_is_signed(self: Self*, expr: const cir::Expr*) bool {
         switch (expr->kind) {
             case .Literal(literal) => {
                 switch (literal.kind) {
@@ -3442,7 +3442,7 @@ pub struct Emitter {
     /// 128-bit struct representation.
     fn coerce_to_int128(
         self: Self*,
-        expr: const cir::TypedExpr*,
+        expr: const cir::Expr*,
         text: const uint8*,
         unsigned_domain: bool
     ) String {
@@ -3655,7 +3655,7 @@ pub struct Emitter {
 
     fn emit_infix_int128(
         self: Self*,
-        infix: const cir::TypedInfixExpr*,
+        infix: const cir::InfixExpr*,
         ltext: const uint8*,
         rtext: const uint8*,
         unsigned_domain: bool
@@ -3804,7 +3804,7 @@ pub struct Emitter {
         }
     }
 
-    fn emit_strcmp_compare(self: Self*, infix: const cir::TypedInfixExpr*) String {
+    fn emit_strcmp_compare(self: Self*, infix: const cir::InfixExpr*) String {
         self->ensure_strcmp_proto();
 
         var lhs = self->emit_expr(infix->lhs);
@@ -3827,7 +3827,7 @@ pub struct Emitter {
         return out;
     }
 
-    fn emit_assign(self: Self*, assign: const cir::TypedAssignExpr*) String {
+    fn emit_assign(self: Self*, assign: const cir::AssignExpr*) String {
         var lhs = self->emit_expr(assign->lhs);
         var out = String.new(self->allocator);
 
@@ -3913,7 +3913,7 @@ pub struct Emitter {
 
     fn int128_shift_amount(
         self: Self*,
-        assign_rhs: const cir::TypedExpr*,
+        assign_rhs: const cir::Expr*,
         rhs_text: const uint8*,
         unsigned_domain: bool
     ) String {
@@ -3942,7 +3942,7 @@ pub struct Emitter {
 
     fn emit_assign_int128(
         self: Self*,
-        assign: const cir::TypedAssignExpr*,
+        assign: const cir::AssignExpr*,
         lhs_value: const uint8*,
         unsigned_domain: bool
     ) String {
@@ -4094,7 +4094,7 @@ pub struct Emitter {
     fn compound_assign(
         self: Self*, 
         lhs: String, 
-        rhs: const cir::TypedExpr*, 
+        rhs: const cir::Expr*, 
         operator: const uint8*
     ) String {
         var out = String.new(self->allocator);
@@ -4113,7 +4113,7 @@ pub struct Emitter {
         return out;
     }
 
-    fn emit_symbol(self: Self*, symbol: const cir::TypedSymbolExpr*) String {
+    fn emit_symbol(self: Self*, symbol: const cir::SymbolExpr*) String {
         switch (*symbol) {
             case .Resolved { decl_id, .. } => {
                 switch (decl_id) {
@@ -4213,7 +4213,7 @@ pub struct Emitter {
         return String.from_str(self->allocator, "/*unresolved_symbol*/0");
     }
 
-    fn emit_func_call(self: Self*, func_call: const cir::TypedFuncCall*) String {
+    fn emit_func_call(self: Self*, func_call: const cir::FuncCall*) String {
         var out = String.new(self->allocator);
         var callee: String;
 
@@ -4302,7 +4302,7 @@ pub struct Emitter {
         self: Self*,
         out: String*,
         method: const cir::MethodDecl*,
-        operand: const cir::TypedExpr*
+        operand: const cir::Expr*
     ) bool {
         if (!method->is_instance_method()) {
             return false;
@@ -4376,7 +4376,7 @@ pub struct Emitter {
         self: Self*,
         out: String*,
         method: const cir::MethodDecl*,
-        operand: const cir::TypedExpr*
+        operand: const cir::Expr*
     ) bool {
         if (!method->is_instance_method()) {
             return false;
@@ -4392,7 +4392,7 @@ pub struct Emitter {
         return true;
     }
 
-    fn emit_method_call(self: Self*, method_call: const cir::TypedMethodCall*) String {
+    fn emit_method_call(self: Self*, method_call: const cir::MethodCall*) String {
         switch (method_call->dispatch) {
             case .Normal { method_decl_id } => {
                 switch (self->tables->methods.get_const(method_decl_id)) {
@@ -4668,7 +4668,7 @@ pub struct Emitter {
         return fallback;
     }
 
-    fn emit_struct_init(self: Self*, struct_init: const cir::TypedStructInitExpr*) String {
+    fn emit_struct_init(self: Self*, struct_init: const cir::StructInitExpr*) String {
         var type_name = self->type_name_of(&struct_init->operand);
         var out = String.from_str(self->allocator, "((");
         out.push_str(type_name.as_str_const());
@@ -4694,7 +4694,7 @@ pub struct Emitter {
     }
 
     // FIXME: Rename
-    fn emit_enum_init(self: Self*, enum_init: const cir::TypedEnumInit*) String {
+    fn emit_enum_init(self: Self*, enum_init: const cir::EnumInit*) String {
         var enum_decl_id: cir::EnumDeclId;
         var found = false;
 
@@ -4864,7 +4864,7 @@ pub struct Emitter {
         return out;
     }
 
-    fn emit_lambda(self: Self*, lambda: const cir::TypedLambdaExpr*) String {
+    fn emit_lambda(self: Self*, lambda: const cir::LambdaExpr*) String {
         const lambda_id = self->lambda_id;
         self->lambda_id += 1;
 
@@ -4918,7 +4918,7 @@ pub struct Emitter {
         return name;
     }
 
-    fn emit_dynamic(self: Self*, dynamic_: const cir::TypedDynamicExpr*) String {
+    fn emit_dynamic(self: Self*, dynamic_: const cir::DynamicExpr*) String {
         var vtable_name = self->ensure_vtable_for(dynamic_);
 
         self->types.ensure_fat_ptr();
@@ -4941,7 +4941,7 @@ pub struct Emitter {
         return out;
     }
 
-    fn ensure_vtable_for(self: Self*, dynamic_: const cir::TypedDynamicExpr*) String {
+    fn ensure_vtable_for(self: Self*, dynamic_: const cir::DynamicExpr*) String {
         var vtable_id: cir::VTableId = 0;
         var found = false;
 
@@ -5068,7 +5068,7 @@ pub struct Emitter {
     fn needs_signed_cast(
         self: Self*, 
         target_type: const cir::SemaType*, 
-        value_arg: const cir::TypedExpr*
+        value_arg: const cir::Expr*
     ) bool {
         switch (value_arg->ty) {
             case .Some(src_type) => {
@@ -5113,7 +5113,7 @@ pub struct Emitter {
         }
     }
 
-    fn emit_builtin_func(self: Self*, builtin_func: const cir::TypedBuiltinFunc*) String {
+    fn emit_builtin_func(self: Self*, builtin_func: const cir::BuiltinFunc*) String {
         switch (cir::lookup_builtin(builtin_func->name.str.as_str_const())) {
             case .Some(kind) => {
                 switch (kind) {
@@ -5490,7 +5490,7 @@ pub struct Emitter {
         return String.from_str(self->allocator, "((void)0)");
     }
 
-    fn emit_literal(self: Self*, literal: const cir::TypedLiteralExpr*) String {
+    fn emit_literal(self: Self*, literal: const cir::LiteralExpr*) String {
         switch (literal->kind) {
             case .Integer { value, .. } => {
                 var literal_domain: Option<bool> = .None;
@@ -5605,9 +5605,9 @@ pub struct Emitter {
 
     /* ************* Defer ************* */
 
-    fn push_defer(self: Self*, defer_stmt: cir::TypedDeferStmt) {
+    fn push_defer(self: Self*, defer_stmt: cir::DeferStmt) {
         if (self->defer_scopes.len() == 0) {
-            var scope: Vec<cir::TypedDeferStmt> = Vec.new(self->allocator);
+            var scope: Vec<cir::DeferStmt> = Vec.new(self->allocator);
             scope.push(defer_stmt);
             self->defer_scopes.push(scope);
             return;
@@ -5669,7 +5669,7 @@ pub struct Emitter {
         }
     }
 
-    fn emit_defer_stmt(self: Self*, defer_stmt: const cir::TypedDeferStmt*) {
+    fn emit_defer_stmt(self: Self*, defer_stmt: const cir::DeferStmt*) {
         self->emit_stmt(defer_stmt->operand);
     }
 
@@ -5692,7 +5692,7 @@ pub struct Emitter {
         self: Self*,
         interface_decl_id: cir::InterfaceDeclId,
         index: usize,
-        call_type_args: const cir::TypedTypeArgs*
+        call_type_args: const cir::TypeArgs*
     ) String {
         switch (self->tables->interfaces.get_const(interface_decl_id)) {
             case .Some(interface_) => {
@@ -5868,7 +5868,7 @@ fn is_emitter_libc_name(name: const uint8*) bool {
         || name == "write";
 }
 
-fn resolve_var_type(var_: const cir::TypedVarStmt*) Option<cir::SemaType> {
+fn resolve_var_type(var_: const cir::VarStmt*) Option<cir::SemaType> {
     switch (var_->ty) {
         case .Some(ty) => return .Some(ty);
         else => {}
@@ -5934,7 +5934,7 @@ fn push_int128(out: String*, value: int128) {
 
 fn panic_unlowered(
     emitter: Emitter*, 
-    expr: const cir::TypedExpr*, 
+    expr: const cir::Expr*, 
     kind_name: const uint8*
 ) {
     var mesg = String.from_str(emitter->allocator, "unlowered expr ");

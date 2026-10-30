@@ -15,8 +15,8 @@ import cir;
 
 pub struct MonomorphInstance {
     pub template_id: MonomorphTemplateId,
-    pub type_args: cir::TypedTypeArgs,
-    pub params: cir::TypedFuncParams,
+    pub type_args: cir::TypeArgs,
+    pub params: cir::FuncParams,
     pub ret_type: cir::SemaType,
     pub body: Option<cir::BodyId>,
     pub analyzed: bool,
@@ -42,8 +42,8 @@ pub struct MonomorphRegistry {
         self: Self*,
         arena: Allocator,
         template_id: MonomorphTemplateId,
-        type_args: const cir::TypedTypeArgs*,
-        params: cir::TypedFuncParams,
+        type_args: const cir::TypeArgs*,
+        params: cir::FuncParams,
         ret_type: cir::SemaType
     ) cir::MonomorphId {
         for (var i: usize = 0; i < self->instances.len(); i += 1) {
@@ -95,7 +95,7 @@ pub struct MonomorphRegistry {
         self: Self*,
         monomorph_id: cir::MonomorphId,
         body: cir::BodyId,
-        params: cir::TypedFuncParams
+        params: cir::FuncParams
     ) {
         switch (self->instances.get(monomorph_id)) case .Some(var entry) else {
             return;

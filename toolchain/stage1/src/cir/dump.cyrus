@@ -16,7 +16,7 @@ import cir;
 pub fn dump_cir(
     registry: const GlobalSymbolRegistry*,
     tables: const DeclTables*,
-    trees: const Vec<cir::TypedProgramTree>*,
+    trees: const Vec<cir::ProgramTree>*,
     writer: Writer,
     allocator: Allocator
 ) {
@@ -81,7 +81,7 @@ struct DumpContext {
         }
     }
 
-    fn write_expr(self: Self*, expr: const cir::TypedExpr*) {
+    fn write_expr(self: Self*, expr: const cir::Expr*) {
         self->write_owned(format::format_typed_expr(
             self->allocator,
             self->registry,
@@ -90,11 +90,11 @@ struct DumpContext {
         ));
     }
 
-    fn write_expr_typed(self: Self*, expr: const cir::TypedExpr*) {
+    fn write_expr_typed(self: Self*, expr: const cir::Expr*) {
         self->write_expr(expr);
     }
 
-    fn write_impls(self: Self*, impls: const Vec<cir::TypedImplementInterface>*) {
+    fn write_impls(self: Self*, impls: const Vec<cir::ImplementInterface>*) {
         if (impls->len() == 0) {
             return;
         }
@@ -114,7 +114,7 @@ struct DumpContext {
         self->write(")");
     }
 
-    fn write_func_params(self: Self*, params: const cir::TypedFuncParams*) {
+    fn write_func_params(self: Self*, params: const cir::FuncParams*) {
         self->write("(");
 
         for (var i: usize = 0; i < params->list.len(); i += 1) {
@@ -172,7 +172,7 @@ struct DumpContext {
         self->write_type(&decl->func_decl.ret_type);
     }
 
-    fn write_variants(self: Self*, variants: const Vec<cir::TypedEnumVariant>*) {
+    fn write_variants(self: Self*, variants: const Vec<cir::EnumVariant>*) {
         for (var i: usize = 0; i < variants->len(); i += 1) {
             const variant = variants->get_const(i).unwrap();
 
@@ -226,7 +226,7 @@ struct DumpContext {
         }
     }
 
-    fn write_export_pattern(self: Self*, pattern: const cir::TypedTupleExportPattern*) {
+    fn write_export_pattern(self: Self*, pattern: const cir::TupleExportPattern*) {
         switch (pattern->kind) {
             case .Tuple(elements) => {
                 self->write("(");
@@ -255,7 +255,7 @@ struct DumpContext {
         }
     }
 
-    fn write_switch_pattern(self: Self*, pattern: const cir::TypedSwitchCasePattern*) {
+    fn write_switch_pattern(self: Self*, pattern: const cir::SwitchCasePattern*) {
         switch (pattern->kind) {
             case .Wildcard => {
                 self->write("_");
@@ -324,7 +324,7 @@ struct DumpContext {
         }
     }
 
-    fn write_var_content(self: Self*, var_stmt: const cir::TypedVarStmt*) {
+    fn write_var_content(self: Self*, var_stmt: const cir::VarStmt*) {
         if (var_stmt->is_const) {
             self->write("const ");
         } else {
@@ -348,7 +348,7 @@ struct DumpContext {
         }
     }
 
-    fn write_global_var_content(self: Self*, global_stmt: const cir::TypedGlobalVarStmt*) {
+    fn write_global_var_content(self: Self*, global_stmt: const cir::GlobalVarStmt*) {
         if (global_stmt->is_static) {
             self->write("static ");
         }
@@ -418,7 +418,7 @@ struct DumpContext {
         }
     }
 
-    fn write_args(self: Self*, args: const Vec<cir::TypedExpr>*) {
+    fn write_args(self: Self*, args: const Vec<cir::Expr>*) {
         self->write("(");
 
         for (var i: usize = 0; i < args->len(); i += 1) {
@@ -433,7 +433,7 @@ struct DumpContext {
         self->write(")");
     }
 
-    pub fn dump(self: Self*, trees: const Vec<cir::TypedProgramTree>*) {
+    pub fn dump(self: Self*, trees: const Vec<cir::ProgramTree>*) {
         // Emit like a clean source file: interfaces, structs, enums, unions,
         // remaining top-level declarations, then funcs and methods.
         self->dump_tree_category(trees, 0);
@@ -445,7 +445,7 @@ struct DumpContext {
         self->dump_method_bodies();
     }
 
-    fn decl_category(self: Self*, stmt: const cir::TypedStmt*) usize {
+    fn decl_category(self: Self*, stmt: const cir::Stmt*) usize {
         switch (stmt->kind) {
             case .Interface => return 0;
             case .Struct => return 1;
@@ -456,14 +456,14 @@ struct DumpContext {
         }
     }
 
-    fn dump_tree_category(self: Self*, trees: const Vec<cir::TypedProgramTree>*, category: usize) {
+    fn dump_tree_category(self: Self*, trees: const Vec<cir::ProgramTree>*, category: usize) {
         for (var i: usize = 0; i < trees->len(); i += 1) {
             const tree = trees->get_const(i).unwrap();
             self->dump_tree_stmts_category(&tree->body, category);
         }
     }
 
-    fn dump_tree_stmts_category(self: Self*, stmts: const Vec<cir::TypedStmt>*, category: usize) {
+    fn dump_tree_stmts_category(self: Self*, stmts: const Vec<cir::Stmt>*, category: usize) {
         for (var i: usize = 0; i < stmts->len(); i += 1) {
             const stmt = stmts->get_const(i).unwrap();
 
@@ -492,14 +492,14 @@ struct DumpContext {
         }
     }
 
-    fn dump_stmts(self: Self*, stmts: const Vec<cir::TypedStmt>*, depth: usize) {
+    fn dump_stmts(self: Self*, stmts: const Vec<cir::Stmt>*, depth: usize) {
         for (var i: usize = 0; i < stmts->len(); i += 1) {
             const stmt = stmts->get_const(i).unwrap();
             self->dump_stmt(stmt, depth);
         }
     }
 
-    fn dump_block_body(self: Self*, block: const cir::TypedBlockStmt*, depth: usize) {
+    fn dump_block_body(self: Self*, block: const cir::BlockStmt*, depth: usize) {
         self->dump_stmts(&block->stmts, depth + 1);
 
         for (var i: usize = 0; i < block->defers.len(); i += 1) {
@@ -513,7 +513,7 @@ struct DumpContext {
         }
     }
 
-    fn dump_if(self: Self*, if_stmt: const cir::TypedIfStmt*, depth: usize) {
+    fn dump_if(self: Self*, if_stmt: const cir::IfStmt*, depth: usize) {
         self->write("if ");
         self->write_expr(&if_stmt->cond);
         self->write(" {\n");
@@ -545,7 +545,7 @@ struct DumpContext {
         self->write("\n");
     }
 
-    fn dump_stmt(self: Self*, stmt: const cir::TypedStmt*, depth: usize) {
+    fn dump_stmt(self: Self*, stmt: const cir::Stmt*, depth: usize) {
         self->indent(depth);
 
         if (stmt->is_dead) {
@@ -804,7 +804,7 @@ struct DumpContext {
         }
     }
 
-    fn dump_switch(self: Self*, switch_stmt: const cir::TypedSwitchStmt*, depth: usize) {
+    fn dump_switch(self: Self*, switch_stmt: const cir::SwitchStmt*, depth: usize) {
         self->write("switch ");
         self->write_expr(&switch_stmt->operand);
         self->write(" {\n");

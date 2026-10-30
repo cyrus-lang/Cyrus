@@ -196,11 +196,11 @@ pub struct X86_64 : TargetABI {
                         const allocator = self->tctx->allocator();
                         const span = dummy_span();
 
-                        var elements: Vec<cir::TypedTupleElement> = Vec.new(allocator);
-                        elements.push(cir::TypedTupleElement { ty: lo, span });
-                        elements.push(cir::TypedTupleElement { ty: hi, span });
+                        var elements: Vec<cir::TupleElement> = Vec.new(allocator);
+                        elements.push(cir::TupleElement { ty: lo, span });
+                        elements.push(cir::TupleElement { ty: hi, span });
 
-                        const abi_type: cir::SemaType = .Tuple(cir::TypedTupleType { elements, span });
+                        const abi_type: cir::SemaType = .Tuple(cir::TupleType { elements, span });
 
                         return ABIRetInfo {
                             kind: .DirectPair { lo: lo, hi: hi },
@@ -431,7 +431,7 @@ pub struct X86_64 : TargetABI {
         return ClassifyArgResult { info: ABIArgInfo.direct(), needed_regs };
     }
 
-    pub fn classify_func(self: Self*, func_type: const cir::TypedFuncType*) Option<ABIFunctionInfo> {
+    pub fn classify_func(self: Self*, func_type: const cir::FuncType*) Option<ABIFunctionInfo> {
         switch (func_type->callconv) {
             // C default convention, platform dependent
             case .System | .C => {
@@ -478,7 +478,7 @@ pub struct X86_64 : TargetABI {
         }
     }
 
-    fn classify_func_naked(self: Self*, func_type: const cir::TypedFuncType*) ABIFunctionInfo {
+    fn classify_func_naked(self: Self*, func_type: const cir::FuncType*) ABIFunctionInfo {
         const allocator = self->tctx->allocator();
 
         var params_types: Vec<cir::SemaType> = Vec.new(allocator);
@@ -504,7 +504,7 @@ pub struct X86_64 : TargetABI {
         return ABIFunctionInfo { params_types, params_infos, ret_info };
     }
 
-    fn classify_func_sysv(self: Self*, func_type: const cir::TypedFuncType*) ABIFunctionInfo {
+    fn classify_func_sysv(self: Self*, func_type: const cir::FuncType*) ABIFunctionInfo {
         const allocator = self->tctx->allocator();
 
         var available_regs = Registers { int_regs: 6, sse_regs: 8 };
@@ -816,7 +816,7 @@ pub struct X86_64 : TargetABI {
 
     fn get_tuple_member_at_offset(
         self: Self*,
-        tuple: const cir::TypedTupleType*,
+        tuple: const cir::TupleType*,
         offset: uint32
     ) Option<StructOrUnionMember> {
         var current_offset: uint32 = 0;
@@ -1385,7 +1385,7 @@ fn classify_dynamic(tctx: TypeContext*, offset_base: uint32, var pair: RegisterC
 fn classify_array(
     tctx: TypeContext*,
     ty: const cir::SemaType*,
-    array: const cir::TypedArrayType*,
+    array: const cir::ArrayType*,
     offset_base: uint32,
     var pair: RegisterClassPair
 ) RegisterClassPair {
@@ -1507,7 +1507,7 @@ fn make_u8_array(allocator: Allocator, len: usize, span: Span) cir::SemaType {
         )
     );
 
-    return .Array(cir::TypedArrayType {
+    return .Array(cir::ArrayType {
         element_type,
         capacity: .Fixed(capacity_expr),
         span,

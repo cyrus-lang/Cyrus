@@ -64,7 +64,7 @@ pub struct TypeContext {
         return self->registry;
     }
 
-    pub fn array_capacity_len(self: Self*, array: const cir::TypedArrayType*) usize {
+    pub fn array_capacity_len(self: Self*, array: const cir::ArrayType*) usize {
         switch (array->capacity) {
             case .Fixed(expr) => {
                 switch (ciri::fold_const_expr_int(self->tables, self->registry, expr)) {
@@ -464,7 +464,7 @@ pub struct TypeContext {
     pub fn compute_enum_layout_inst(
         self: Self*,
         decl: const cir::EnumDecl*,
-        type_args: const cir::TypedTypeArgs*
+        type_args: const cir::TypeArgs*
     ) ABITypeLayout* {
         return self->compute_enum_layout_inner(decl, type_args);
     }
@@ -472,7 +472,7 @@ pub struct TypeContext {
     fn compute_enum_layout_inner(
         self: Self*,
         decl: const cir::EnumDecl*,
-        type_args: const cir::TypedTypeArgs*
+        type_args: const cir::TypeArgs*
     ) ABITypeLayout* {
         const tag_type = enum_tag_type(self->tables, self->registry, decl);
 
@@ -839,7 +839,7 @@ fn is_tag_used(used: const Vec<bool>*, tag: uint32) bool {
 
 pub fn enum_variant_value_type(
     tables: const DeclTables*,
-    variant: const cir::TypedEnumVariant*
+    variant: const cir::EnumVariant*
 ) Option<cir::SemaType> {
     switch (*variant) {
         case .Valued { value, .. } => {

@@ -110,8 +110,8 @@ fn resolve_module_decl_names(
 pub fn resolve_decl_full(
     ctx: TraverseContext*,
     program: const ast::ASTProgram*
-) Vec<cir::TypedStmt> {
-    var body: Vec<cir::TypedStmt> = Vec.new(ctx->allocator);
+) Vec<cir::Stmt> {
+    var body: Vec<cir::Stmt> = Vec.new(ctx->allocator);
 
     switch (program->statements) {
         case .Some(statements) => {
@@ -140,8 +140,8 @@ fn resolve_toplevel_stmt(
     ctx: TraverseContext*,
     program: const ast::ASTProgram*,
     node: const ast::ASTNode*
-) Vec<cir::TypedStmt> {
-    var out: Vec<cir::TypedStmt> = Vec.new(ctx->allocator);
+) Vec<cir::Stmt> {
+    var out: Vec<cir::Stmt> = Vec.new(ctx->allocator);
 
     switch (*node) {
         case .ModuleDecl(module_decl) => {
@@ -153,7 +153,7 @@ fn resolve_toplevel_stmt(
         }
         case .Builtin(builtin) => {
             switch (resolve_builtin(ctx, program, &builtin)) {
-                case .Some(kind) => out.push(cir::TypedStmt.new(.Builtin(kind)));
+                case .Some(kind) => out.push(cir::Stmt.new(.Builtin(kind)));
                 else => {}
             }
         }
@@ -200,11 +200,11 @@ fn resolve_stmt(
     ctx: TraverseContext*,
     program: const ast::ASTProgram*,
     node: const ast::ASTNode*
-) Option<cir::TypedStmt> {
+) Option<cir::Stmt> {
     switch (*node) {
         case .Var(variable) => {
             switch (resolve_var(ctx, program, &variable)) {
-                case .Some(stmt) => return .Some(cir::TypedStmt.new(.Variable(stmt)));
+                case .Some(stmt) => return .Some(cir::Stmt.new(.Variable(stmt)));
                 case .None => return .None;
             }
         }
@@ -216,77 +216,77 @@ fn resolve_stmt(
                 return .None;
             }
 
-            return .Some(cir::TypedStmt.new(.Builtin(kind)));
+            return .Some(cir::Stmt.new(.Builtin(kind)));
         }
         case .Expr(expr) => {
             switch (resolve_expr(ctx, program, &expr)) {
-                case .Some(resolved) => return .Some(cir::TypedStmt.new(.Expr(resolved)));
+                case .Some(resolved) => return .Some(cir::Stmt.new(.Expr(resolved)));
                 case .None => return .None;
             }
         }
         case .If(if_stmt) => {
             switch (resolve_if_stmt(ctx, program, &if_stmt)) {
-                case .Some(stmt) => return .Some(cir::TypedStmt.new(.If(stmt)));
+                case .Some(stmt) => return .Some(cir::Stmt.new(.If(stmt)));
                 case .None => return .None;
             }
         }
         case .For(for_stmt) => {
             switch (resolve_for_stmt(ctx, program, &for_stmt)) {
-                case .Some(stmt) => return .Some(cir::TypedStmt.new(.For(stmt)));
+                case .Some(stmt) => return .Some(cir::Stmt.new(.For(stmt)));
                 case .None => return .None;
             }
         }
         case .While(while_stmt) => {
             switch (resolve_while_stmt(ctx, program, &while_stmt)) {
-                case .Some(stmt) => return .Some(cir::TypedStmt.new(.While(stmt)));
+                case .Some(stmt) => return .Some(cir::Stmt.new(.While(stmt)));
                 case .None => return .None;
             }
         }
         case .Switch(switch_stmt) => {
             switch (resolve_switch_stmt(ctx, program, &switch_stmt)) {
-                case .Some(stmt) => return .Some(cir::TypedStmt.new(.Switch(stmt)));
+                case .Some(stmt) => return .Some(cir::Stmt.new(.Switch(stmt)));
                 case .None => return .None;
             }
         }
         case .SwitchGuard(switch_guard) => {
             switch (resolve_switch_guard_stmt(ctx, program, &switch_guard)) {
-                case .Some(stmt) => return .Some(cir::TypedStmt.new(.Switch(stmt)));
+                case .Some(stmt) => return .Some(cir::Stmt.new(.Switch(stmt)));
                 case .None => return .None;
             }
         }
         case .Block(block) => {
             switch (resolve_block_stmt(ctx, program, &block)) {
-                case .Some(stmt) => return .Some(cir::TypedStmt.new(.BlockStmt(stmt)));
+                case .Some(stmt) => return .Some(cir::Stmt.new(.BlockStmt(stmt)));
                 case .None => return .None;
             }
         }
         case .Return(return_stmt) => {
             switch (resolve_return_stmt(ctx, program, &return_stmt)) {
-                case .Some(stmt) => return .Some(cir::TypedStmt.new(.Return(stmt)));
+                case .Some(stmt) => return .Some(cir::Stmt.new(.Return(stmt)));
                 case .None => return .None;
             }
         }
         case .Break(break_stmt) => {
             switch (resolve_break_stmt(&break_stmt)) {
-                case .Some(kind) => return .Some(cir::TypedStmt.new(kind));
+                case .Some(kind) => return .Some(cir::Stmt.new(kind));
                 case .None => return .None;
             }
         }
         case .Continue(continue_stmt) => {
             switch (resolve_continue_stmt(&continue_stmt)) {
-                case .Some(kind) => return .Some(cir::TypedStmt.new(kind));
+                case .Some(kind) => return .Some(cir::Stmt.new(kind));
                 case .None => return .None;
             }
         }
         case .Label(label) => {
             switch (resolve_label_stmt(ctx, &label)) {
-                case .Some(kind) => return .Some(cir::TypedStmt.new(kind));
+                case .Some(kind) => return .Some(cir::Stmt.new(kind));
                 case .None => return .None;
             }
         }
         case .Goto(goto_stmt) => {
             switch (resolve_goto_stmt(ctx, &goto_stmt)) {
-                case .Some(kind) => return .Some(cir::TypedStmt.new(kind));
+                case .Some(kind) => return .Some(cir::Stmt.new(kind));
                 case .None => return .None;
             }
         }
@@ -295,7 +295,7 @@ fn resolve_stmt(
                 case .Some(operand) => {
                     const typed_operand = alloc_init(ctx->allocator, operand);
 
-                    return .Some(cir::TypedStmt.new(.Defer(cir::TypedDeferStmt {
+                    return .Some(cir::Stmt.new(.Defer(cir::DeferStmt {
                         operand: typed_operand,
                         span: defer_stmt.span,
                     })));
@@ -304,7 +304,7 @@ fn resolve_stmt(
             }
         }
         case .InlineAsm(asm) => {
-            return .Some(cir::TypedStmt.new(.InlineAsm(resolve_inline_asm(ctx, program, &asm))));
+            return .Some(cir::Stmt.new(.InlineAsm(resolve_inline_asm(ctx, program, &asm))));
         }
         else => {
             diags::report_invalid_statement(
@@ -323,7 +323,7 @@ fn resolve_module_decl(
     ctx: TraverseContext*,
     program: const ast::ASTProgram*,
     module_decl: const ast::ASTModuleDecl*
-) Vec<cir::TypedStmt> {
+) Vec<cir::Stmt> {
     const parent_scope_id = ctx->current_scope_id();
     const name = module_decl->ident.str.as_str_const();
 
@@ -331,7 +331,7 @@ fn resolve_module_decl(
 
     ctx->enter_scope_table(module_scope_id);
 
-    var stmts: Vec<cir::TypedStmt> = Vec.new(ctx->allocator);
+    var stmts: Vec<cir::Stmt> = Vec.new(ctx->allocator);
 
     for (var i: usize = 0; i < module_decl->stmts.len; i += 1) {
         const node_id = program->children.get_owned(module_decl->stmts.start + i).unwrap();
@@ -510,10 +510,10 @@ fn report_if_symbol_is_private(
 /* ************* Dispatcher helpers ************* */
 
 /// Pushes a resolved top-level statement kind, if resolution succeeded.
-fn push_kind(out: Vec<cir::TypedStmt>*, kind: Option<cir::TypedStmtKind>) {
+fn push_kind(out: Vec<cir::Stmt>*, kind: Option<cir::StmtKind>) {
     switch (kind) {
         case .Some(resolved) => {
-            out->push(cir::TypedStmt.new(resolved));
+            out->push(cir::Stmt.new(resolved));
         }
         else => {}
     }
@@ -671,7 +671,7 @@ fn resolve_expr_node(
     ctx: TraverseContext*,
     program: const ast::ASTProgram*,
     node_id: ast::NodeId
-) Option<cir::TypedExpr> {
+) Option<cir::Expr> {
     const node = program->nodes.get_const(node_id).unwrap();
 
     switch (*node) {
@@ -692,7 +692,7 @@ fn resolve_var(
     ctx: TraverseContext*,
     program: const ast::ASTProgram*,
     variable: const ast::ASTVar*
-) Option<cir::TypedVarStmt> {
+) Option<cir::VarStmt> {
     var ty: Option<cir::SemaType> = .None;
 
     switch (variable->ty) {
@@ -705,7 +705,7 @@ fn resolve_var(
         else => {}
     }
 
-    var rhs: Option<cir::TypedExpr> = .None;
+    var rhs: Option<cir::Expr> = .None;
 
     switch (variable->rhs) {
         case .Some(rhs_id) => {
@@ -724,7 +724,7 @@ fn resolve_var(
         return .None;
     }
 
-    return .Some(cir::TypedVarStmt {
+    return .Some(cir::VarStmt {
         var_decl_id,
         name: String.from_str(ctx->allocator, name),
         ty,
@@ -739,8 +739,8 @@ fn resolve_export_tuple_stmt(
     ctx: TraverseContext*,
     program: const ast::ASTProgram*,
     export_tuple: const ast::ASTDestructTuple*
-) Option<cir::TypedStmt> {
-    var rhs: Option<cir::TypedExpr> = .None;
+) Option<cir::Stmt> {
+    var rhs: Option<cir::Expr> = .None;
 
     switch (export_tuple->rhs) {
         case .Some(rhs_id) => {
@@ -754,7 +754,7 @@ fn resolve_export_tuple_stmt(
 
     switch (resolve_export_pattern(ctx, program, &export_tuple->pat, export_tuple->bind == .Const)) {
         case .Some(pattern) => {
-            return .Some(cir::TypedStmt.new(.TupleExport(cir::TypedTupleExportStmt {
+            return .Some(cir::Stmt.new(.TupleExport(cir::TupleExportStmt {
                 pattern,
                 rhs,
                 is_const: export_tuple->bind == .Const,
@@ -770,8 +770,8 @@ fn resolve_export_pattern(
     program: const ast::ASTProgram*,
     pattern: const ast::ASTDestructTuplePattern*,
     var is_const: bool
-) Option<cir::TypedTupleExportPattern> {
-    var kind: cir::TypedTupleExportPatternKind = .Ignore;
+) Option<cir::TupleExportPattern> {
+    var kind: cir::TupleExportPatternKind = .Ignore;
 
     switch (pattern->kind) {
         case .Ident(ident) => {
@@ -799,7 +799,7 @@ fn resolve_export_pattern(
             kind = .Ident(var_decl_id);
         }
         case .Tuple(patterns) => {
-            var typed_patterns: Vec<cir::TypedTupleExportPattern> = Vec.new(ctx->allocator);
+            var typed_patterns: Vec<cir::TupleExportPattern> = Vec.new(ctx->allocator);
 
             for (var i: usize = 0; i < patterns.len(); i += 1) {
                 const inner = patterns.get_const(i).unwrap();
@@ -827,7 +827,7 @@ fn resolve_export_pattern(
         else => {}
     }
 
-    return .Some(cir::TypedTupleExportPattern {
+    return .Some(cir::TupleExportPattern {
         kind,
         ty,
         constness: pattern->bind,
@@ -839,12 +839,12 @@ fn resolve_if_stmt(
     ctx: TraverseContext*,
     program: const ast::ASTProgram*,
     if_stmt: const ast::ASTIf*
-) Option<cir::TypedIfStmt> {
+) Option<cir::IfStmt> {
     switch (resolve_expr_node(ctx, program, if_stmt->condition)) {
         case .Some(cond) => {
             switch (resolve_block_node(ctx, program, if_stmt->then_block)) {
                 case .Some(then_block) => {
-                    var else_block: Option<cir::TypedBlockStmt*> = .None;
+                    var else_block: Option<cir::BlockStmt*> = .None;
 
                     switch (if_stmt->else_block) {
                         case .Some(else_id) => {
@@ -858,7 +858,7 @@ fn resolve_if_stmt(
                         else => {}
                     }
 
-                    var branches: Vec<cir::TypedIfStmt> = Vec.new(ctx->allocator);
+                    var branches: Vec<cir::IfStmt> = Vec.new(ctx->allocator);
 
                     for (var i: usize = 0; i < if_stmt->branches.len(); i += 1) {
                         const branch_id = if_stmt->branches.get_owned(i).unwrap();
@@ -874,7 +874,7 @@ fn resolve_if_stmt(
                         }
                     }
 
-                    return .Some(cir::TypedIfStmt {
+                    return .Some(cir::IfStmt {
                         cond,
                         then_block: alloc_init(ctx->allocator, then_block),
                         branches,
@@ -895,10 +895,10 @@ fn resolve_for_stmt(
     ctx: TraverseContext*,
     program: const ast::ASTProgram*,
     for_stmt: const ast::ASTFor*
-) Option<cir::TypedForStmt> {
+) Option<cir::ForStmt> {
     ctx->enter_local_scope(LocalScope.new(ctx->allocator));
 
-    var initializer: Option<cir::TypedVarStmt> = .None;
+    var initializer: Option<cir::VarStmt> = .None;
 
     switch (for_stmt->initializer) {
         case .Some(init_id) => {
@@ -921,7 +921,7 @@ fn resolve_for_stmt(
         else => {}
     }
 
-    var cond: Option<cir::TypedExpr> = .None;
+    var cond: Option<cir::Expr> = .None;
 
     switch (for_stmt->condition) {
         case .Some(cond_id) => {
@@ -938,7 +938,7 @@ fn resolve_for_stmt(
         else => {}
     }
 
-    var increment: Option<cir::TypedExpr> = .None;
+    var increment: Option<cir::Expr> = .None;
 
     switch (for_stmt->increment) {
         case .Some(incr_id) => {
@@ -959,7 +959,7 @@ fn resolve_for_stmt(
         case .Some(body) => {
             ctx->exit_local_scope();
 
-            return .Some(cir::TypedForStmt {
+            return .Some(cir::ForStmt {
                 initializer,
                 cond,
                 increment,
@@ -978,7 +978,7 @@ fn resolve_while_stmt(
     ctx: TraverseContext*,
     program: const ast::ASTProgram*,
     while_stmt: const ast::ASTWhile*
-) Option<cir::TypedWhileStmt> {
+) Option<cir::WhileStmt> {
     ctx->enter_local_scope(LocalScope.new(ctx->allocator));
 
     switch (resolve_expr_node(ctx, program, while_stmt->condition)) {
@@ -991,7 +991,7 @@ fn resolve_while_stmt(
                 case .Some(body) => {
                     ctx->exit_local_scope();
 
-                    return .Some(cir::TypedWhileStmt {
+                    return .Some(cir::WhileStmt {
                         cond,
                         body: alloc_init(ctx->allocator, body),
                         span: while_stmt->span,
@@ -1010,12 +1010,12 @@ fn resolve_switch_stmt(
     ctx: TraverseContext*,
     program: const ast::ASTProgram*,
     switch_stmt: const ast::ASTSwitch*
-) Option<cir::TypedSwitchStmt> {
+) Option<cir::SwitchStmt> {
     switch (resolve_expr_node(ctx, program, switch_stmt->operand)) {
         case .Some(operand) => {
             switch (resolve_switch_cases(ctx, program, &switch_stmt->cases)) {
                 case .Some(cases) => {
-                    var else_case: Option<cir::TypedBlockStmt> = .None;
+                    var else_case: Option<cir::BlockStmt> = .None;
 
                     switch (switch_stmt->else_case) {
                         case .Some(default_id) => {
@@ -1027,7 +1027,7 @@ fn resolve_switch_stmt(
                         else => {}
                     }
 
-                    return .Some(cir::TypedSwitchStmt {
+                    return .Some(cir::SwitchStmt {
                         operand,
                         cases,
                         else_case,
@@ -1048,22 +1048,22 @@ fn resolve_switch_guard_stmt(
     ctx: TraverseContext*,
     program: const ast::ASTProgram*,
     switch_guard: const ast::ASTSwitchGuard*
-) Option<cir::TypedSwitchStmt> {
+) Option<cir::SwitchStmt> {
     switch (resolve_expr_node(ctx, program, switch_guard->operand)) {
         case .Some(operand) => {
             switch (resolve_switch_patterns(ctx, program, &switch_guard->case_item.patterns)) {
                 case .Some(patterns) => {
                     switch (resolve_block_node(ctx, program, switch_guard->case_item.body)) {
                         case .Some(body) => {
-                            var cases: Vec<cir::TypedSwitchCase> = Vec.new(ctx->allocator);
+                            var cases: Vec<cir::SwitchCase> = Vec.new(ctx->allocator);
 
-                            cases.push(cir::TypedSwitchCase {
+                            cases.push(cir::SwitchCase {
                                 patterns,
                                 body: alloc_init(ctx->allocator, body),
                                 span: switch_guard->span,
                             });
 
-                            var else_case: Option<cir::TypedBlockStmt> = .None;
+                            var else_case: Option<cir::BlockStmt> = .None;
 
                             switch (switch_guard->else_case) {
                                 case .Some(default_id) => {
@@ -1075,7 +1075,7 @@ fn resolve_switch_guard_stmt(
                                 else => {}
                             }
 
-                            return .Some(cir::TypedSwitchStmt {
+                            return .Some(cir::SwitchStmt {
                                 operand,
                                 cases,
                                 else_case,
@@ -1099,8 +1099,8 @@ fn resolve_switch_cases(
     ctx: TraverseContext*,
     program: const ast::ASTProgram*,
     cases: const Vec<ast::ASTSwitchCase>*
-) Option<Vec<cir::TypedSwitchCase>> {
-    var typed_cases: Vec<cir::TypedSwitchCase> = Vec.new(ctx->allocator);
+) Option<Vec<cir::SwitchCase>> {
+    var typed_cases: Vec<cir::SwitchCase> = Vec.new(ctx->allocator);
 
     for (var i: usize = 0; i < cases->len(); i += 1) {
         const switch_case = cases->get_const(i).unwrap();
@@ -1118,7 +1118,7 @@ fn resolve_switch_case(
     ctx: TraverseContext*,
     program: const ast::ASTProgram*,
     switch_case: const ast::ASTSwitchCase*
-) Option<cir::TypedSwitchCase> {
+) Option<cir::SwitchCase> {
     ctx->enter_local_scope(LocalScope.new(ctx->allocator));
 
     switch (resolve_switch_patterns(ctx, program, &switch_case->patterns)) {
@@ -1131,7 +1131,7 @@ fn resolve_switch_case(
                 case .Some(body) => {
                     ctx->exit_local_scope();
 
-                    return .Some(cir::TypedSwitchCase {
+                    return .Some(cir::SwitchCase {
                         patterns,
                         body: alloc_init(ctx->allocator, body),
                         span: switch_case->span,
@@ -1150,8 +1150,8 @@ fn resolve_switch_patterns(
     ctx: TraverseContext*,
     program: const ast::ASTProgram*,
     patterns: const Vec<ast::ASTSwitchCasePattern>*
-) Option<Vec<cir::TypedSwitchCasePattern>> {
-    var typed_patterns: Vec<cir::TypedSwitchCasePattern> = Vec.new(ctx->allocator);
+) Option<Vec<cir::SwitchCasePattern>> {
+    var typed_patterns: Vec<cir::SwitchCasePattern> = Vec.new(ctx->allocator);
 
     for (var i: usize = 0; i < patterns->len(); i += 1) {
         const pattern = patterns->get_const(i).unwrap();
@@ -1169,11 +1169,11 @@ fn resolve_switch_pattern(
     ctx: TraverseContext*,
     program: const ast::ASTProgram*,
     pattern: const ast::ASTSwitchCasePattern*
-) Option<cir::TypedSwitchCasePattern> {
+) Option<cir::SwitchCasePattern> {
     switch (pattern->kind) {
         // `_`
         case .Wildcard => {
-            return .Some(cir::TypedSwitchCasePattern {
+            return .Some(cir::SwitchCasePattern {
                 kind: .Wildcard,
                 span: pattern->span,
             });
@@ -1183,7 +1183,7 @@ fn resolve_switch_pattern(
         case .Expr(expr_id) => {
             switch (resolve_expr_node(ctx, program, expr_id)) {
                 case .Some(typed_expr) => {
-                    return .Some(cir::TypedSwitchCasePattern {
+                    return .Some(cir::SwitchCasePattern {
                         kind: .Expr(typed_expr),
                         span: pattern->span,
                     });
@@ -1199,8 +1199,8 @@ fn resolve_switch_pattern(
                     switch (resolve_expr_node(ctx, program, range.upper)) {
                         case .None => return .None;
                         case .Some(upper) => {
-                            return .Some(cir::TypedSwitchCasePattern {
-                                kind: .Range(cir::TypedRange {
+                            return .Some(cir::SwitchCasePattern {
+                                kind: .Range(cir::Range {
                                     lower,
                                     upper,
                                     inclusive_upper: range.inclusive_upper,
@@ -1217,7 +1217,7 @@ fn resolve_switch_pattern(
 
         // Enum unit variant: `.A`
         case .EnumUnit(ident) => {
-            return .Some(cir::TypedSwitchCasePattern {
+            return .Some(cir::SwitchCasePattern {
                 kind: .EnumUnit(ident),
                 span: pattern->span,
             });
@@ -1225,7 +1225,7 @@ fn resolve_switch_pattern(
 
         // Enum tuple variant: `.C(a, b, _)`
         case .EnumTupleVariant { variant, items } => {
-            var typed_items: Vec<cir::TypedSwitchCasePattern> = Vec.new(ctx->allocator);
+            var typed_items: Vec<cir::SwitchCasePattern> = Vec.new(ctx->allocator);
 
             for (var i: usize = 0; i < items.len(); i += 1) {
                 const item = items.get_const(i).unwrap();
@@ -1236,7 +1236,7 @@ fn resolve_switch_pattern(
                 }
             }
 
-            return .Some(cir::TypedSwitchCasePattern {
+            return .Some(cir::SwitchCasePattern {
                 kind: .EnumTupleVariant {
                     ident: variant,
                     items: typed_items,
@@ -1247,14 +1247,14 @@ fn resolve_switch_pattern(
 
         // Enum struct variant: `.D { a, b: x, c: _, .. }`
         case .EnumStructVariant { variant, items, ignore } => {
-            var typed_items: Vec<cir::TypedSwitchCaseEnumStructPatternField> = Vec.new(ctx->allocator);
+            var typed_items: Vec<cir::SwitchCaseEnumStructPatternField> = Vec.new(ctx->allocator);
 
             for (var i: usize = 0; i < items.len(); i += 1) {
                 const field = items.get_const(i).unwrap();
 
                 switch (resolve_switch_pattern(ctx, program, &field->pattern)) {
                     case .Some(typed_pattern) => {
-                        typed_items.push(cir::TypedSwitchCaseEnumStructPatternField {
+                        typed_items.push(cir::SwitchCaseEnumStructPatternField {
                             name: field->name,
                             pattern: typed_pattern,
                         });
@@ -1263,7 +1263,7 @@ fn resolve_switch_pattern(
                 }
             }
 
-            return .Some(cir::TypedSwitchCasePattern {
+            return .Some(cir::SwitchCasePattern {
                 kind: .EnumStructVariant {
                     ident: variant,
                     items: typed_items,
@@ -1290,7 +1290,7 @@ fn resolve_switch_pattern(
                 return .None;
             }
 
-            return .Some(cir::TypedSwitchCasePattern {
+            return .Some(cir::SwitchCasePattern {
                 kind: .Binding {
                     name: ident,
                     var_decl_id,
@@ -1305,12 +1305,12 @@ fn resolve_block_stmt(
     ctx: TraverseContext*,
     program: const ast::ASTProgram*,
     block_stmt: const ast::ASTBlock*
-) Option<cir::TypedBlockStmt> {
+) Option<cir::BlockStmt> {
     ctx->enter_local_scope(LocalScope.new(ctx->allocator));
 
     collect_labels_in_block(ctx, program, block_stmt);
 
-    var typed_body: Vec<cir::TypedStmt> = Vec.new(ctx->allocator);
+    var typed_body: Vec<cir::Stmt> = Vec.new(ctx->allocator);
 
     for (var i: usize = 0; i < block_stmt->stmts.len; i += 1) {
         const node_id = program->children.get_owned(block_stmt->stmts.start + i).unwrap();
@@ -1324,7 +1324,7 @@ fn resolve_block_stmt(
 
     ctx->exit_local_scope();
 
-    return .Some(cir::TypedBlockStmt {
+    return .Some(cir::BlockStmt {
         stmts: typed_body,
         defers: Vec.new(ctx->allocator),
         span: block_stmt->span,
@@ -1367,8 +1367,8 @@ fn resolve_return_stmt(
     ctx: TraverseContext*,
     program: const ast::ASTProgram*,
     ret: const ast::ASTReturn*
-) Option<cir::TypedReturnStmt> {
-    var arg: Option<cir::TypedExpr> = .None;
+) Option<cir::ReturnStmt> {
+    var arg: Option<cir::Expr> = .None;
 
     switch (ret->argument) {
         case .Some(arg_id) => {
@@ -1380,7 +1380,7 @@ fn resolve_return_stmt(
         else => {}
     }
 
-    return .Some(cir::TypedReturnStmt {
+    return .Some(cir::ReturnStmt {
         arg,
         span: ret->span,
     });
@@ -1388,16 +1388,16 @@ fn resolve_return_stmt(
 
 fn resolve_break_stmt(
     break_stmt: const ast::ASTBreak*
-) Option<cir::TypedStmtKind> {
-    return .Some(.Break(cir::TypedBreakStmt {
+) Option<cir::StmtKind> {
+    return .Some(.Break(cir::BreakStmt {
         span: break_stmt->span,
     }));
 }
 
 fn resolve_continue_stmt(
     continue_stmt: const ast::ASTContinue*
-) Option<cir::TypedStmtKind> {
-    return .Some(.Continue(cir::TypedContinueStmt {
+) Option<cir::StmtKind> {
+    return .Some(.Continue(cir::ContinueStmt {
         span: continue_stmt->span,
     }));
 }
@@ -1405,12 +1405,12 @@ fn resolve_continue_stmt(
 fn resolve_label_stmt(
     ctx: TraverseContext*,
     label: const ast::ASTLabel*
-) Option<cir::TypedStmtKind> {
+) Option<cir::StmtKind> {
     const name = label->name.str.as_str_const();
 
     switch (ctx->resolve_local_scope_label(name)) {
         case .Some(label_id) => {
-            return .Some(.Label(cir::TypedLabelStmt {
+            return .Some(.Label(cir::LabelStmt {
                 name: String.from_str(ctx->allocator, name),
                 label_id,
                 span: label->span,
@@ -1425,12 +1425,12 @@ fn resolve_label_stmt(
 fn resolve_goto_stmt(
     ctx: TraverseContext*,
     goto_stmt: const ast::ASTGoto*
-) Option<cir::TypedStmtKind> {
+) Option<cir::StmtKind> {
     const name = goto_stmt->name.str.as_str_const();
 
     switch (ctx->resolve_local_scope_label(name)) {
         case .Some(label_id) => {
-            return .Some(.Goto(cir::TypedGotoStmt {
+            return .Some(.Goto(cir::GotoStmt {
                 name: String.from_str(ctx->allocator, name),
                 label_id: .Some(label_id),
                 span: goto_stmt->span,
@@ -1447,7 +1447,7 @@ fn resolve_inline_asm(
     ctx: TraverseContext*,
     program: const ast::ASTProgram*,
     asm: const ast::ASTInlineAsm*
-) cir::TypedInlineAsm {
+) cir::InlineAsm {
     var template: Vec<String> = Vec.new(ctx->allocator);
 
     for (var i: usize = 0; i < asm->template.len(); i += 1) {
@@ -1457,56 +1457,56 @@ fn resolve_inline_asm(
 
     // Failed operand expressions will fallback to a poisoned expr 
     // so the operand count stays correct
-    var outputs: Vec<cir::TypedAsmOperand> = Vec.new(ctx->allocator);
+    var outputs: Vec<cir::AsmOperand> = Vec.new(ctx->allocator);
 
     for (var i: usize = 0; i < asm->outputs.len(); i += 1) {
         const operand = asm->outputs.get_const(i).unwrap();
 
-        var expr: cir::TypedExpr = cir::TypedExpr.new(.Poisoned, operand->span);
+        var expr: cir::Expr = cir::Expr.new(.Poisoned, operand->span);
 
         switch (resolve_expr_node(ctx, program, operand->expr)) {
             case .Some(resolved) => expr = resolved;
             else => {}
         }
 
-        outputs.push(cir::TypedAsmOperand {
+        outputs.push(cir::AsmOperand {
             constraint: String.from_str(ctx->allocator, operand->constraint.as_str_const()),
             expr: alloc_init(ctx->allocator, expr),
             span: operand->span,
         });
     }
 
-    var inputs: Vec<cir::TypedAsmOperand> = Vec.new(ctx->allocator);
+    var inputs: Vec<cir::AsmOperand> = Vec.new(ctx->allocator);
 
     for (var i: usize = 0; i < asm->inputs.len(); i += 1) {
         const operand = asm->inputs.get_const(i).unwrap();
 
-        var expr: cir::TypedExpr = cir::TypedExpr.new(.Poisoned, operand->span);
+        var expr: cir::Expr = cir::Expr.new(.Poisoned, operand->span);
 
         switch (resolve_expr_node(ctx, program, operand->expr)) {
             case .Some(resolved) => expr = resolved;
             else => {}
         }
 
-        inputs.push(cir::TypedAsmOperand {
+        inputs.push(cir::AsmOperand {
             constraint: String.from_str(ctx->allocator, operand->constraint.as_str_const()),
             expr: alloc_init(ctx->allocator, expr),
             span: operand->span,
         });
     }
 
-    var clobbers: Vec<cir::TypedAsmClobber> = Vec.new(ctx->allocator);
+    var clobbers: Vec<cir::AsmClobber> = Vec.new(ctx->allocator);
 
     for (var i: usize = 0; i < asm->clobbers.len(); i += 1) {
         const clobber = asm->clobbers.get_const(i).unwrap();
 
-        clobbers.push(cir::TypedAsmClobber {
+        clobbers.push(cir::AsmClobber {
             name: String.from_str(ctx->allocator, clobber->name.as_str_const()),
             span: clobber->span,
         });
     }
 
-    return cir::TypedInlineAsm {
+    return cir::InlineAsm {
         template,
         outputs,
         inputs,
@@ -1517,14 +1517,14 @@ fn resolve_inline_asm(
 }
 
 pub struct FuncSig {
-    pub generic_params: cir::TypedGenericParams,
-    pub params: cir::TypedFuncParams,
+    pub generic_params: cir::GenericParams,
+    pub params: cir::FuncParams,
     pub ret_type: cir::SemaType,
 }
 
 fn enter_generic_scope(
     ctx: TraverseContext*,
-    generic_params: const cir::TypedGenericParams*
+    generic_params: const cir::GenericParams*
 ) {
     var scope = GenericScope.new(ctx->allocator);
 
@@ -1564,8 +1564,8 @@ fn resolve_func_signature(
         case .Some(resolved_generic_params) => {
             enter_generic_scope(ctx, &resolved_generic_params);
 
-            var typed_params: Vec<cir::TypedFuncParamKind> = Vec.new(ctx->allocator);
-            var variadic: Option<cir::TypedFuncVariadicParam> = .None;
+            var typed_params: Vec<cir::FuncParamKind> = Vec.new(ctx->allocator);
+            var variadic: Option<cir::FuncVariadicParam> = .None;
             var ret: Option<cir::SemaType> = .None;
             var ok = true;
 
@@ -1619,7 +1619,7 @@ fn resolve_func_signature(
                 case .Some(resolved_ret) => {
                     return .Some(FuncSig {
                         generic_params: resolved_generic_params,
-                        params: cir::TypedFuncParams {
+                        params: cir::FuncParams {
                             list: typed_params,
                             variadic,
                         },
@@ -1640,12 +1640,12 @@ fn resolve_func_param(
     ctx: TraverseContext*,
     program: const ast::ASTProgram*,
     func_param: const ast::ASTFuncParam*
-) Option<cir::TypedFuncParam> {
+) Option<cir::FuncParam> {
     switch (func_param->ty) {
         case .Some(ty) => {
             switch (resolve_type(ctx, program, &ty, func_param->span)) {
                 case .Some(resolved) => {
-                    return .Some(cir::TypedFuncParam {
+                    return .Some(cir::FuncParam {
                         var_decl_id: .None,
                         ident: func_param->ident,
                         ty: resolved,
@@ -1667,7 +1667,7 @@ fn resolve_self_modifier_param(
     ctx: TraverseContext*,
     program: const ast::ASTProgram*,
     self_modifier: const ast::ASTSelfModifier*
-) cir::TypedSelfModifier {
+) cir::SelfModifier {
     var ty: cir::SemaType = .Plain(.Void);
 
     switch (resolve_type_node(ctx, program, self_modifier->ty, self_modifier->span)) {
@@ -1675,7 +1675,7 @@ fn resolve_self_modifier_param(
         else => {}
     }
 
-    return cir::TypedSelfModifier {
+    return cir::SelfModifier {
         var_decl_id: .None,
         ty,
         constness: self_modifier->constness,
@@ -1687,7 +1687,7 @@ fn resolve_func_variadic_param(
     ctx: TraverseContext*,
     program: const ast::ASTProgram*,
     variadic: const ast::ASTFuncVariadicParam*
-) Option<cir::TypedFuncVariadicParam> {
+) Option<cir::FuncVariadicParam> {
     switch (*variadic) {
         case .Typed(ident, ty_id) => {
             switch (resolve_type_node(ctx, program, ty_id, ident.span)) {
@@ -1716,7 +1716,7 @@ fn insert_variable_decl(
     name: const uint8*,
     span: Span,
     ty: Option<cir::SemaType>,
-    rhs: Option<cir::TypedExpr>,
+    rhs: Option<cir::Expr>,
     is_const: bool
 ) cir::VarDeclId {
     return ctx->decl_tables->insert_var(cir::VarDecl {
@@ -1763,7 +1763,7 @@ fn insert_variable_symbol_to_current_scope(
 
 fn insert_func_params_into_current_scope(
     ctx: TraverseContext*,
-    params: cir::TypedFuncParams*
+    params: cir::FuncParams*
 ) bool {
     for (var i: usize = 0; i < params->list.len(); i += 1) {
         const ptr = params->list.get(i).unwrap();
@@ -1800,15 +1800,15 @@ fn resolve_object_implements_interfaces(
     ctx: TraverseContext*,
     program: const ast::ASTProgram*,
     impls: const Vec<ast::ASTImplementInterface>*
-) Vec<cir::TypedImplementInterface> {
-    var typed_impls: Vec<cir::TypedImplementInterface> = Vec.new(ctx->allocator);
+) Vec<cir::ImplementInterface> {
+    var typed_impls: Vec<cir::ImplementInterface> = Vec.new(ctx->allocator);
 
     for (var i: usize = 0; i < impls->len(); i += 1) {
         const implement_interface = impls->get_const(i).unwrap();
 
         switch (resolve_type_node(ctx, program, implement_interface->ty, implement_interface->span)) {
             case .Some(ty) => {
-                typed_impls.push(cir::TypedImplementInterface {
+                typed_impls.push(cir::ImplementInterface {
                     ty,
                     span: implement_interface->span,
                 });
@@ -1892,7 +1892,7 @@ fn resolve_method_bodies(
 
                         const params_ok = insert_func_params_into_current_scope(ctx, &entry->func_decl.params);
 
-                        var typed_body: Option<cir::TypedBlockStmt> = .None;
+                        var typed_body: Option<cir::BlockStmt> = .None;
 
                         if (params_ok) {
                             typed_body = resolve_block_node(ctx, program, func_def.body);
@@ -1933,7 +1933,7 @@ fn resolve_global_var_stmt(
     ctx: TraverseContext*,
     program: const ast::ASTProgram*,
     global_var: const ast::ASTGlobalVar*
-) Option<cir::TypedStmtKind> {
+) Option<cir::StmtKind> {
     const name = global_var->ident.str.as_str_const();
 
     var symbol_id: cir::SymbolId;
@@ -1963,7 +1963,7 @@ fn resolve_global_var_stmt(
         else => {}
     }
 
-    var rhs: Option<cir::TypedExpr> = .None;
+    var rhs: Option<cir::Expr> = .None;
 
     switch (global_var->expr) {
         case .Some(expr_node_id) => {
@@ -1989,7 +1989,7 @@ fn resolve_global_var_stmt(
 
     ctx->registry->set_symbol_kind(symbol_id, .GlobalVar(global_var_decl_id));
 
-    return .Some(.GlobalVar(cir::TypedGlobalVarStmt {
+    return .Some(.GlobalVar(cir::GlobalVarStmt {
         file_id: ctx->file_id,
         name: String.from_str(ctx->allocator, name),
         global_var_decl_id,
@@ -2007,7 +2007,7 @@ fn resolve_typedef(
     ctx: TraverseContext*,
     program: const ast::ASTProgram*,
     typedef: const ast::ASTTypeAlias*
-) Option<cir::TypedStmtKind> {
+) Option<cir::StmtKind> {
     const name = typedef->ident.str.as_str_const();
 
     var symbol_id: cir::SymbolId;
@@ -2040,14 +2040,14 @@ fn resolve_typedef(
 
             ctx->registry->set_symbol_kind(symbol_id, .Typedef(typedef_decl_id));
 
-            var out: Option<cir::TypedStmtKind> = .None;
+            var out: Option<cir::StmtKind> = .None;
 
             switch (resolve_type_node(ctx, program, typedef->ty, typedef->span)) {
                 case .Some(sema_type) => {
                     var entry = ctx->decl_tables->typedefs.get(typedef_decl_id).unwrap();
                     entry->ty = alloc_init(ctx->allocator, sema_type);
 
-                    out = .Some(.Typedef(cir::TypedTypedefStmt {
+                    out = .Some(.Typedef(cir::TypedefStmt {
                         typedef_decl_id,
                         name: String.from_str(ctx->allocator, name),
                         ty: sema_type,
@@ -2070,7 +2070,7 @@ fn resolve_block_node(
     ctx: TraverseContext*,
     program: const ast::ASTProgram*,
     block_node_id: ast::NodeId
-) Option<cir::TypedBlockStmt> {
+) Option<cir::BlockStmt> {
     switch (*operand_node(program, block_node_id)) {
         case .Block(block) => return resolve_block_stmt(ctx, program, &block);
         else => return .None;
@@ -2081,7 +2081,7 @@ fn resolve_func_def(
     ctx: TraverseContext*,
     program: const ast::ASTProgram*,
     func_def: const ast::ASTFuncDef*
-) Option<cir::TypedStmtKind> {
+) Option<cir::StmtKind> {
     const name = func_def->ident.str.as_str_const();
 
     var symbol_id: cir::SymbolId;
@@ -2119,7 +2119,7 @@ fn resolve_func_def(
             const is_generic = sig.generic_params.ids.len() > 0;
 
             var params = sig.params;
-            var typed_body: Option<cir::TypedBlockStmt> = .None;
+            var typed_body: Option<cir::BlockStmt> = .None;
 
             enter_generic_scope(ctx, &sig.generic_params);
             ctx->enter_local_scope(LocalScope.new(ctx->allocator));
@@ -2146,7 +2146,7 @@ fn resolve_func_def(
                         entry->body = .Some(body_id);
                     }
 
-                    return .Some(.FuncDef(cir::TypedFuncDefStmt {
+                    return .Some(.FuncDef(cir::FuncDefStmt {
                         func_decl_id: .Some(func_decl_id),
                         name: String.from_str(ctx->allocator, name),
                         params,
@@ -2167,7 +2167,7 @@ fn resolve_func_decl(
     ctx: TraverseContext*,
     program: const ast::ASTProgram*,
     func_decl: const ast::ASTFuncDecl*
-) Option<cir::TypedStmtKind> {
+) Option<cir::StmtKind> {
     const name = func_decl->ident.str.as_str_const();
 
     var symbol_id: cir::SymbolId;
@@ -2202,7 +2202,7 @@ fn resolve_func_decl(
 
             ctx->registry->set_symbol_kind(symbol_id, .Func(func_decl_id));
 
-            return .Some(.FuncDecl(cir::TypedFuncDeclStmt {
+            return .Some(.FuncDecl(cir::FuncDeclStmt {
                 file_id: ctx->file_id,
                 func_decl_id,
                 name: String.from_str(ctx->allocator, name),
@@ -2220,7 +2220,7 @@ fn resolve_struct_stmt(
     ctx: TraverseContext*,
     program: const ast::ASTProgram*,
     struct_decl: const ast::ASTStruct*
-) Option<cir::TypedStmtKind> {
+) Option<cir::StmtKind> {
     const name = struct_decl->ident.str.as_str_const();
 
     var symbol_id: cir::SymbolId;
@@ -2259,14 +2259,14 @@ fn resolve_struct_stmt(
 
             ctx->registry->set_symbol_kind(symbol_id, .Struct(struct_decl_id));
 
-            var typed_fields: Vec<cir::TypedStructField> = Vec.new(ctx->allocator);
+            var typed_fields: Vec<cir::StructField> = Vec.new(ctx->allocator);
 
             for (var i: usize = 0; i < struct_decl->fields.len(); i += 1) {
                 const field = struct_decl->fields.get_const(i).unwrap();
 
                 switch (resolve_type_node(ctx, program, field->ty, field->span)) {
                     case .Some(ty) => {
-                        typed_fields.push(cir::TypedStructField {
+                        typed_fields.push(cir::StructField {
                             name: String.from_str(ctx->allocator, field->name.str.as_str_const()),
                             vis: field->vis,
                             ty,
@@ -2288,7 +2288,7 @@ fn resolve_struct_stmt(
 
             ctx->pop_generic_scope();
 
-            return .Some(.Struct(cir::TypedStructStmt {
+            return .Some(.Struct(cir::StructStmt {
                 struct_decl_id,
                 generic_params,
                 impls,
@@ -2307,7 +2307,7 @@ fn resolve_enum_stmt(
     ctx: TraverseContext*,
     program: const ast::ASTProgram*,
     enum_decl: const ast::ASTEnum*
-) Option<cir::TypedStmtKind> {
+) Option<cir::StmtKind> {
     const name = enum_decl->ident.str.as_str_const();
 
     var symbol_id: cir::SymbolId;
@@ -2375,7 +2375,7 @@ fn resolve_enum_stmt(
 
                     ctx->pop_generic_scope();
 
-                    return .Some(.Enum(cir::TypedEnumStmt {
+                    return .Some(.Enum(cir::EnumStmt {
                         enum_decl_id,
                         name: String.from_str(ctx->allocator, name),
                         tag_type,
@@ -2397,7 +2397,7 @@ fn resolve_union_stmt(
     ctx: TraverseContext*,
     program: const ast::ASTProgram*,
     union_decl: const ast::ASTUnion*
-) Option<cir::TypedStmtKind> {
+) Option<cir::StmtKind> {
     const name = union_decl->ident.str.as_str_const();
 
     var symbol_id: cir::SymbolId;
@@ -2436,14 +2436,14 @@ fn resolve_union_stmt(
 
             ctx->registry->set_symbol_kind(symbol_id, .Union(union_decl_id));
 
-            var typed_fields: Vec<cir::TypedUnionField> = Vec.new(ctx->allocator);
+            var typed_fields: Vec<cir::UnionField> = Vec.new(ctx->allocator);
 
             for (var i: usize = 0; i < union_decl->fields.len(); i += 1) {
                 const field = union_decl->fields.get_const(i).unwrap();
 
                 switch (resolve_type_node(ctx, program, field->ty, field->span)) {
                     case .Some(ty) => {
-                        typed_fields.push(cir::TypedUnionField {
+                        typed_fields.push(cir::UnionField {
                             name: String.from_str(ctx->allocator, field->name.str.as_str_const()),
                             ty,
                             span: field->span,
@@ -2463,7 +2463,7 @@ fn resolve_union_stmt(
 
             ctx->pop_generic_scope();
 
-            return .Some(.Union(cir::TypedUnionStmt {
+            return .Some(.Union(cir::UnionStmt {
                 union_decl_id,
                 name: String.from_str(ctx->allocator, name),
                 generic_params,
@@ -2482,7 +2482,7 @@ fn resolve_interface_stmt(
     ctx: TraverseContext*,
     program: const ast::ASTProgram*,
     interface_stmt: const ast::ASTInterface*
-) Option<cir::TypedStmtKind> {
+) Option<cir::StmtKind> {
     const name = interface_stmt->ident.str.as_str_const();
 
     var symbol_id: cir::SymbolId;
@@ -2572,7 +2572,7 @@ fn resolve_interface_stmt(
 
             ctx->registry->set_symbol_kind(symbol_id, .Interface(interface_decl_id));
 
-            return .Some(.Interface(cir::TypedInterfaceStmt {
+            return .Some(.Interface(cir::InterfaceStmt {
                 name: String.from_str(ctx->allocator, name),
                 interface_decl_id,
                 methods: interface_methods,
@@ -2588,10 +2588,10 @@ fn resolve_builtin(
     ctx: TraverseContext*,
     program: const ast::ASTProgram*,
     builtin: const ast::ASTBuiltin*
-) Option<cir::TypedBuiltin> {
+) Option<cir::Builtin> {
     switch (*builtin) {
         case .BuiltinFunc(builtin_func) => {
-            var args: Vec<cir::TypedExpr> = Vec.new(ctx->allocator);
+            var args: Vec<cir::Expr> = Vec.new(ctx->allocator);
 
             for (var i: usize = 0; i < builtin_func.args.len(); i += 1) {
                 const arg_node_id = builtin_func.args.get_owned(i).unwrap();
@@ -2602,7 +2602,7 @@ fn resolve_builtin(
                 }
             }
 
-            return .Some(.BuiltinFunc(cir::TypedBuiltinFunc {
+            return .Some(.BuiltinFunc(cir::BuiltinFunc {
                 name: builtin_func.name,
                 args,
                 ret_type: .None,
@@ -2614,7 +2614,7 @@ fn resolve_builtin(
                 return .None;
             }
 
-            var args: Vec<cir::TypedExpr> = Vec.new(ctx->allocator);
+            var args: Vec<cir::Expr> = Vec.new(ctx->allocator);
 
             for (var i: usize = 0; i < builtin_block.args.len(); i += 1) {
                 const arg_node_id = builtin_block.args.get_owned(i).unwrap();
@@ -2625,7 +2625,7 @@ fn resolve_builtin(
                 }
             }
 
-            var stmts: Vec<cir::TypedStmt> = Vec.new(ctx->allocator);
+            var stmts: Vec<cir::Stmt> = Vec.new(ctx->allocator);
 
             switch (*operand_node(program, builtin_block.block)) {
                 case .Block(block) => {
@@ -2652,13 +2652,13 @@ fn resolve_builtin(
                 else => {}
             }
 
-            const block = alloc_init(ctx->allocator, cir::TypedBlockStmt {
+            const block = alloc_init(ctx->allocator, cir::BlockStmt {
                 stmts,
                 defers: Vec.new(ctx->allocator),
                 span: builtin_block.span,
             });
 
-            return .Some(.BuiltinBlock(cir::TypedBuiltinBlock {
+            return .Some(.BuiltinBlock(cir::BuiltinBlock {
                 name: builtin_block.name,
                 args,
                 block,
@@ -2672,12 +2672,12 @@ fn resolve_builtin(
 fn resolve_ident_expr(
     ctx: TraverseContext*,
     ident: const ast::ASTIdent*
-) Option<cir::TypedExpr> {
+) Option<cir::Expr> {
     const name = ident->str.as_str_const();
 
     switch (ctx->lookup_local(name)) {
         case .Some(symbol_id) => {
-            return .Some(cir::TypedExpr.new(.Symbol(.Unresolved {
+            return .Some(cir::Expr.new(.Symbol(.Unresolved {
                 symbol_id,
                 span: ident->span,
             }), ident->span));
@@ -2687,7 +2687,7 @@ fn resolve_ident_expr(
 
     switch (resolve_generic_param_as_type(ctx, ident)) {
         case .Some(generic_param_id) => {
-            return .Some(cir::TypedExpr {
+            return .Some(cir::Expr {
                 kind: .SemaType {
                     ty: .GenericParam(generic_param_id),
                     span: ident->span,
@@ -2703,7 +2703,7 @@ fn resolve_ident_expr(
 
     switch (resolve_ident(ctx, ident)) {
         case .Some(symbol_id) => {
-            return .Some(cir::TypedExpr.new(.Symbol(.Unresolved {
+            return .Some(cir::Expr.new(.Symbol(.Unresolved {
                 symbol_id,
                 span: ident->span,
             }), ident->span));
@@ -2718,7 +2718,7 @@ fn resolve_expr(
     ctx: TraverseContext*,
     program: const ast::ASTProgram*,
     expr: const ast::ASTExpr*
-) Option<cir::TypedExpr> {
+) Option<cir::Expr> {
     switch (*expr) {
         case .UnnamedStructValue(unnamed_struct_value) => {
             return resolve_unnamed_struct_value(ctx, program, &unnamed_struct_value);
@@ -2797,13 +2797,13 @@ fn resolve_expr(
                 return .None;
             }
 
-            return .Some(cir::TypedExpr.new(
+            return .Some(cir::Expr.new(
                 .Builtin(typed_builtin),
                 expr_span(ctx, program, expr)
             ));
         }
         case .InlineAsm(asm) => {
-            return .Some(cir::TypedExpr.new(
+            return .Some(cir::Expr.new(
                 .InlineAsm(resolve_inline_asm(ctx, program, &asm)),
                 asm.span
             ));
@@ -2815,7 +2815,7 @@ fn resolve_module_import_expr(
     ctx: TraverseContext*,
     program: const ast::ASTProgram*,
     module_import: const ast::ASTModuleImport*
-) Option<cir::TypedExpr> {
+) Option<cir::Expr> {
     if (module_import->segments.len() == 1) {
         const segment = module_import->segments.get_const(0).unwrap();
 
@@ -2835,7 +2835,7 @@ fn resolve_module_import_expr(
 
                 switch (resolve_generic_param_as_type(ctx, &ident)) {
                     case .Some(generic_param_id) => {
-                        return .Some(cir::TypedExpr {
+                        return .Some(cir::Expr {
                             kind: .SemaType {
                                 ty: .GenericParam(generic_param_id),
                                 span: ident.span,
@@ -2855,7 +2855,7 @@ fn resolve_module_import_expr(
 
     switch (resolve_module_import(ctx, program, module_import)) {
         case .Some(symbol_id) => {
-            return .Some(cir::TypedExpr.new(.Symbol(.Unresolved {
+            return .Some(cir::Expr.new(.Symbol(.Unresolved {
                 symbol_id,
                 span: module_import->span,
             }), module_import->span));
@@ -2868,14 +2868,14 @@ fn resolve_type_expr(
     ctx: TraverseContext*,
     program: const ast::ASTProgram*,
     ty: const ast::ASTType*
-) Option<cir::TypedExpr> {
+) Option<cir::Expr> {
     const span = type_span(ctx, program, ty);
 
     switch (*ty) {
         case .Ident(ident) => {
             switch (resolve_ident(ctx, &ident)) {
                 case .Some(symbol_id) => {
-                    return .Some(cir::TypedExpr.new(.Symbol(.Unresolved {
+                    return .Some(cir::Expr.new(.Symbol(.Unresolved {
                         symbol_id,
                         span,
                     }), span));
@@ -2886,7 +2886,7 @@ fn resolve_type_expr(
         case .ModuleImport(module_import) => {
             switch (resolve_module_import(ctx, program, &module_import)) {
                 case .Some(symbol_id) => {
-                    return .Some(cir::TypedExpr.new(.Symbol(.Unresolved {
+                    return .Some(cir::Expr.new(.Symbol(.Unresolved {
                         symbol_id,
                         span,
                     }), span));
@@ -2897,7 +2897,7 @@ fn resolve_type_expr(
         else => {
             switch (resolve_type(ctx, program, ty, span)) {
                 case .Some(resolved) => {
-                    return .Some(cir::TypedExpr {
+                    return .Some(cir::Expr {
                         kind: .SemaType { ty: resolved, span },
                         ty: .Some(resolved),
                         value_category: .Unknown,
@@ -2917,15 +2917,15 @@ fn resolve_unnamed_union_value(
     ctx: TraverseContext*,
     program: const ast::ASTProgram*,
     unnamed_union_value: const ast::ASTUnnamedUnionValue*
-) Option<cir::TypedExpr> {
-    var fields: Vec<cir::TypedUnnamedUnionValueField> = Vec.new(ctx->allocator);
+) Option<cir::Expr> {
+    var fields: Vec<cir::UnnamedUnionValueField> = Vec.new(ctx->allocator);
 
     for (var i: usize = 0; i < unnamed_union_value->fields.len(); i += 1) {
         const field = unnamed_union_value->fields.get_const(i).unwrap();
 
         switch (resolve_expr_node(ctx, program, field->value)) {
             case .Some(value) => {
-                fields.push(cir::TypedUnnamedUnionValueField {
+                fields.push(cir::UnnamedUnionValueField {
                     name: String.from_str(ctx->allocator, field->name.str.as_str_const()),
                     value: alloc_init(ctx->allocator, value),
                     span: field->span,
@@ -2935,7 +2935,7 @@ fn resolve_unnamed_union_value(
         }
     }
 
-    return .Some(cir::TypedExpr.new(.UnnamedUnionValue(cir::TypedUnnamedUnionValue {
+    return .Some(cir::Expr.new(.UnnamedUnionValue(cir::UnnamedUnionValue {
         union_decl_id: .None,
         fields,
         span: unnamed_union_value->span,
@@ -2946,12 +2946,12 @@ fn resolve_unnamed_enum_value(
     ctx: TraverseContext*,
     program: const ast::ASTProgram*,
     unnamed_enum_value: const ast::ASTUnnamedEnumValue*
-) Option<cir::TypedExpr> {
-    var kind: cir::TypedUnnamedEnumValueKind = .Unit;
+) Option<cir::Expr> {
+    var kind: cir::UnnamedEnumValueKind = .Unit;
 
     switch (unnamed_enum_value->kind) {
         case .Tuple(exprs) => {
-            var typed_exprs: Vec<cir::TypedExpr> = Vec.new(ctx->allocator);
+            var typed_exprs: Vec<cir::Expr> = Vec.new(ctx->allocator);
 
             for (var i: usize = 0; i < exprs.len(); i += 1) {
                 const expr_id = exprs.get_owned(i).unwrap();
@@ -2965,14 +2965,14 @@ fn resolve_unnamed_enum_value(
             kind = .Tuple(typed_exprs);
         }
         case .Struct(field_inits) => {
-            var typed_field_inits: Vec<cir::TypedEnumStructVariantFieldInit> = Vec.new(ctx->allocator);
+            var typed_field_inits: Vec<cir::EnumStructVariantFieldInit> = Vec.new(ctx->allocator);
 
             for (var i: usize = 0; i < field_inits.len(); i += 1) {
                 const field_init = field_inits.get_const(i).unwrap();
 
                 switch (resolve_expr_node(ctx, program, field_init->value)) {
                     case .Some(typed_expr) => {
-                        typed_field_inits.push(cir::TypedEnumStructVariantFieldInit {
+                        typed_field_inits.push(cir::EnumStructVariantFieldInit {
                             name: field_init->name,
                             value: alloc_init(ctx->allocator, typed_expr),
                             span: field_init->span,
@@ -2987,7 +2987,7 @@ fn resolve_unnamed_enum_value(
         else => {}
     }
 
-    return .Some(cir::TypedExpr.new(.UnnamedEnumValue(cir::TypedUnnamedEnumValue {
+    return .Some(cir::Expr.new(.UnnamedEnumValue(cir::UnnamedEnumValue {
         enum_decl_id: .None,
         kind,
         ident: unnamed_enum_value->ident,
@@ -2999,10 +2999,10 @@ fn resolve_dynamic_expr(
     ctx: TraverseContext*,
     program: const ast::ASTProgram*,
     dynamic_expr: const ast::ASTDynamic*
-) Option<cir::TypedExpr> {
+) Option<cir::Expr> {
     switch (resolve_expr_node(ctx, program, dynamic_expr->operand)) {
         case .Some(operand) => {
-            return .Some(cir::TypedExpr.new(.Dynamic(cir::TypedDynamicExpr {
+            return .Some(cir::Expr.new(.Dynamic(cir::DynamicExpr {
                 operand: alloc_init(ctx->allocator, operand),
                 object_name: .None,
                 interface_object_type: .None,
@@ -3018,10 +3018,10 @@ fn resolve_tuple_member_access(
     ctx: TraverseContext*,
     program: const ast::ASTProgram*,
     tuple_access: const ast::ASTTupleAccess*
-) Option<cir::TypedExpr> {
+) Option<cir::Expr> {
     switch (resolve_expr_node(ctx, program, tuple_access->operand)) {
         case .Some(operand) => {
-            return .Some(cir::TypedExpr.new(.TupleAccess(cir::TypedTupleAccessExpr {
+            return .Some(cir::Expr.new(.TupleAccess(cir::TupleAccessExpr {
                 operand: alloc_init(ctx->allocator, operand),
                 index: tuple_access->index,
                 span: tuple_access->span,
@@ -3035,8 +3035,8 @@ fn resolve_tuple_expr(
     ctx: TraverseContext*,
     program: const ast::ASTProgram*,
     tuple_value: const ast::ASTTupleValue*
-) Option<cir::TypedExpr> {
-    var elements: Vec<cir::TypedExpr> = Vec.new(ctx->allocator);
+) Option<cir::Expr> {
+    var elements: Vec<cir::Expr> = Vec.new(ctx->allocator);
 
     for (var i: usize = 0; i < tuple_value->elements.len(); i += 1) {
         const expr_id = tuple_value->elements.get_owned(i).unwrap();
@@ -3047,7 +3047,7 @@ fn resolve_tuple_expr(
         }
     }
 
-    return .Some(cir::TypedExpr.new(.Tuple(cir::TypedTupleExpr {
+    return .Some(cir::Expr.new(.Tuple(cir::TupleExpr {
         elements,
         span: tuple_value->span,
     }), tuple_value->span));
@@ -3057,7 +3057,7 @@ fn resolve_lambda_expr(
     ctx: TraverseContext*,
     program: const ast::ASTProgram*,
     lambda: const ast::ASTLambda*
-) Option<cir::TypedExpr> {
+) Option<cir::Expr> {
     ctx->enter_local_scope(LocalScope.new(ctx->allocator));
 
     var empty_generic_params: ast::ASTGenericParams = Vec.new(ctx->allocator);
@@ -3088,7 +3088,7 @@ fn resolve_lambda_expr(
                 case .Some(body) => {
                     ctx->exit_local_scope();
 
-                    return .Some(cir::TypedExpr.new(.Lambda(cir::TypedLambdaExpr {
+                    return .Some(cir::Expr.new(.Lambda(cir::LambdaExpr {
                         params,
                         body: alloc_init(ctx->allocator, body),
                         ret_type: sig.ret_type,
@@ -3109,10 +3109,10 @@ fn resolve_field_access(
     ctx: TraverseContext*,
     program: const ast::ASTProgram*,
     field_access: const ast::ASTFieldAccess*
-) Option<cir::TypedExpr> {
+) Option<cir::Expr> {
     switch (resolve_expr_node(ctx, program, field_access->operand)) {
         case .Some(operand) => {
-            return .Some(cir::TypedExpr.new(.FieldAccess(cir::TypedFieldAccess {
+            return .Some(cir::Expr.new(.FieldAccess(cir::FieldAccess {
                 operand: alloc_init(ctx->allocator, operand),
                 name: String.from_str(ctx->allocator, field_access->field_name.str.as_str_const()),
                 dispatch: .Unresolved,
@@ -3129,10 +3129,10 @@ fn resolve_method_call(
     ctx: TraverseContext*,
     program: const ast::ASTProgram*,
     method_call: const ast::ASTMethodCall*
-) Option<cir::TypedExpr> {
+) Option<cir::Expr> {
     switch (resolve_expr_node(ctx, program, method_call->operand)) {
         case .Some(operand) => {
-            var args: Vec<cir::TypedExpr> = Vec.new(ctx->allocator);
+            var args: Vec<cir::Expr> = Vec.new(ctx->allocator);
 
             for (var i: usize = 0; i < method_call->args.len(); i += 1) {
                 const arg_id = method_call->args.get_owned(i).unwrap();
@@ -3145,7 +3145,7 @@ fn resolve_method_call(
 
             switch (resolve_type_args(ctx, program, &method_call->type_args)) {
                 case .Some(type_args) => {
-                    return .Some(cir::TypedExpr.new(.MethodCall(cir::TypedMethodCall {
+                    return .Some(cir::Expr.new(.MethodCall(cir::MethodCall {
                         name: String.from_str(ctx->allocator, method_call->method_name.str.as_str_const()),
                         operand: alloc_init(ctx->allocator, operand),
                         args,
@@ -3196,17 +3196,17 @@ fn resolve_struct_init(
     ctx: TraverseContext*,
     program: const ast::ASTProgram*,
     struct_init: const ast::ASTStructInit*
-) Option<cir::TypedExpr> {
+) Option<cir::Expr> {
     switch (resolve_struct_init_type(ctx, program, struct_init->operand, struct_init->span)) {
         case .Some(operand) => {
-            var fields: Vec<cir::TypedFieldInit> = Vec.new(ctx->allocator);
+            var fields: Vec<cir::FieldInit> = Vec.new(ctx->allocator);
 
             for (var i: usize = 0; i < struct_init->field_inits.len(); i += 1) {
                 const field_init = struct_init->field_inits.get_const(i).unwrap();
 
                 switch (resolve_expr_node(ctx, program, field_init->value)) {
                     case .Some(value) => {
-                        fields.push(cir::TypedFieldInit {
+                        fields.push(cir::FieldInit {
                             name: String.from_str(ctx->allocator, field_init->ident.str.as_str_const()),
                             value,
                             span: field_init->span,
@@ -3216,7 +3216,7 @@ fn resolve_struct_init(
                 }
             }
 
-            return .Some(cir::TypedExpr.new(.StructInit(cir::TypedStructInitExpr {
+            return .Some(cir::Expr.new(.StructInit(cir::StructInitExpr {
                 operand,
                 fields,
                 span: struct_init->span,
@@ -3230,17 +3230,17 @@ fn resolve_enum_struct_variant_init(
     ctx: TraverseContext*,
     program: const ast::ASTProgram*,
     variant_init: const ast::ASTEnumStructVariantInit*
-) Option<cir::TypedExpr> {
+) Option<cir::Expr> {
     switch (resolve_expr_node(ctx, program, variant_init->operand)) {
         case .Some(operand) => {
-            var field_inits: Vec<cir::TypedEnumStructVariantFieldInit> = Vec.new(ctx->allocator);
+            var field_inits: Vec<cir::EnumStructVariantFieldInit> = Vec.new(ctx->allocator);
 
             for (var i: usize = 0; i < variant_init->field_inits.len(); i += 1) {
                 const field_init = variant_init->field_inits.get_const(i).unwrap();
 
                 switch (resolve_expr_node(ctx, program, field_init->value)) {
                     case .Some(typed_expr) => {
-                        field_inits.push(cir::TypedEnumStructVariantFieldInit {
+                        field_inits.push(cir::EnumStructVariantFieldInit {
                             name: field_init->name,
                             value: alloc_init(ctx->allocator, typed_expr),
                             span: field_init->span,
@@ -3250,7 +3250,7 @@ fn resolve_enum_struct_variant_init(
                 }
             }
 
-            return .Some(cir::TypedExpr.new(.EnumStructVariantInit(cir::TypedEnumStructVariantInit {
+            return .Some(cir::Expr.new(.EnumStructVariantInit(cir::EnumStructVariantInit {
                 enum_decl_id: .None,
                 field_inits,
                 operand: alloc_init(ctx->allocator, operand),
@@ -3268,15 +3268,15 @@ fn resolve_unnamed_struct_value(
     ctx: TraverseContext*,
     program: const ast::ASTProgram*,
     unnamed_struct_value: const ast::ASTUnnamedStructValue*
-) Option<cir::TypedExpr> {
-    var fields: Vec<cir::TypedUnnamedStructValueField> = Vec.new(ctx->allocator);
+) Option<cir::Expr> {
+    var fields: Vec<cir::UnnamedStructValueField> = Vec.new(ctx->allocator);
 
     for (var i: usize = 0; i < unnamed_struct_value->fields.len(); i += 1) {
         const field = unnamed_struct_value->fields.get_const(i).unwrap();
 
         switch (resolve_expr_node(ctx, program, field->value)) {
             case .Some(value) => {
-                fields.push(cir::TypedUnnamedStructValueField {
+                fields.push(cir::UnnamedStructValueField {
                     name: String.from_str(ctx->allocator, field->name.str.as_str_const()),
                     value: alloc_init(ctx->allocator, value),
                     span: field->span,
@@ -3286,7 +3286,7 @@ fn resolve_unnamed_struct_value(
         }
     }
 
-    return .Some(cir::TypedExpr.new(.UnnamedStructValue(cir::TypedUnnamedStructValue {
+    return .Some(cir::Expr.new(.UnnamedStructValue(cir::UnnamedStructValue {
         struct_decl_id: .None,
         fields,
         repr_attr: unnamed_struct_value->repr_attr,
@@ -3299,10 +3299,10 @@ fn resolve_func_call(
     ctx: TraverseContext*,
     program: const ast::ASTProgram*,
     func_call: const ast::ASTFuncCall*
-) Option<cir::TypedExpr> {
+) Option<cir::Expr> {
     switch (resolve_expr_node(ctx, program, func_call->operand)) {
         case .Some(operand) => {
-            var args: Vec<cir::TypedExpr> = Vec.new(ctx->allocator);
+            var args: Vec<cir::Expr> = Vec.new(ctx->allocator);
 
             for (var i: usize = 0; i < func_call->args.len(); i += 1) {
                 const arg_id = func_call->args.get_owned(i).unwrap();
@@ -3315,7 +3315,7 @@ fn resolve_func_call(
 
             switch (resolve_type_args(ctx, program, &func_call->type_args)) {
                 case .Some(type_args) => {
-                    return .Some(cir::TypedExpr.new(.FuncCall(cir::TypedFuncCall {
+                    return .Some(cir::Expr.new(.FuncCall(cir::FuncCall {
                         operand: alloc_init(ctx->allocator, operand),
                         args,
                         type_args,
@@ -3336,8 +3336,8 @@ fn resolve_untyped_array_expr(
     ctx: TraverseContext*,
     program: const ast::ASTProgram*,
     untyped_array: const ast::ASTUntypedArrayExpr*
-) Option<cir::TypedExpr> {
-    var elements: Vec<cir::TypedExpr> = Vec.new(ctx->allocator);
+) Option<cir::Expr> {
+    var elements: Vec<cir::Expr> = Vec.new(ctx->allocator);
 
     for (var i: usize = 0; i < untyped_array->elements.len(); i += 1) {
         const expr_id = untyped_array->elements.get_owned(i).unwrap();
@@ -3348,7 +3348,7 @@ fn resolve_untyped_array_expr(
         }
     }
 
-    return .Some(cir::TypedExpr.new(.Array(cir::TypedArrayExpr {
+    return .Some(cir::Expr.new(.Array(cir::ArrayExpr {
         ty: .None,
         elements,
         span: untyped_array->span,
@@ -3359,7 +3359,7 @@ fn resolve_array_expr(
     ctx: TraverseContext*,
     program: const ast::ASTProgram*,
     array: const ast::ASTArrayExpr*
-) Option<cir::TypedExpr> {
+) Option<cir::Expr> {
     const array_type = ast::ASTArrayType {
         size: array->capacity,
         element_type: array->element_type,
@@ -3368,7 +3368,7 @@ fn resolve_array_expr(
 
     switch (resolve_array_type(ctx, program, &array_type, array->span)) {
         case .Some(resolved_type) => {
-            var elements: Vec<cir::TypedExpr> = Vec.new(ctx->allocator);
+            var elements: Vec<cir::Expr> = Vec.new(ctx->allocator);
 
             for (var i: usize = 0; i < array->elements.len(); i += 1) {
                 const expr_id = array->elements.get_owned(i).unwrap();
@@ -3379,7 +3379,7 @@ fn resolve_array_expr(
                 }
             }
 
-            return .Some(cir::TypedExpr.new(.Array(cir::TypedArrayExpr {
+            return .Some(cir::Expr.new(.Array(cir::ArrayExpr {
                 ty: .Some(resolved_type),
                 elements,
                 span: array->span,
@@ -3393,12 +3393,12 @@ fn resolve_infix_expr(
     ctx: TraverseContext*,
     program: const ast::ASTProgram*,
     infix: const ast::ASTInfixExpr*
-) Option<cir::TypedExpr> {
+) Option<cir::Expr> {
     switch (resolve_expr_node(ctx, program, infix->lhs)) {
         case .Some(lhs) => {
             switch (resolve_expr_node(ctx, program, infix->rhs)) {
                 case .Some(rhs) => {
-                    return .Some(cir::TypedExpr.new(.Infix(cir::TypedInfixExpr {
+                    return .Some(cir::Expr.new(.Infix(cir::InfixExpr {
                         op: infix->operator,
                         lhs: alloc_init(ctx->allocator, lhs),
                         rhs: alloc_init(ctx->allocator, rhs),
@@ -3418,10 +3418,10 @@ fn resolve_prefix_expr(
     ctx: TraverseContext*,
     program: const ast::ASTProgram*,
     prefix: const ast::ASTPrefixExpr*
-) Option<cir::TypedExpr> {
+) Option<cir::Expr> {
     switch (resolve_expr_node(ctx, program, prefix->operand)) {
         case .Some(operand) => {
-            return .Some(cir::TypedExpr.new(.Prefix(cir::TypedPrefixExpr {
+            return .Some(cir::Expr.new(.Prefix(cir::PrefixExpr {
                 op: prefix->operator,
                 operand: alloc_init(ctx->allocator, operand),
                 span: prefix->span,
@@ -3435,12 +3435,12 @@ fn resolve_assign_expr(
     ctx: TraverseContext*,
     program: const ast::ASTProgram*,
     assign: const ast::ASTAssignExpr*
-) Option<cir::TypedExpr> {
+) Option<cir::Expr> {
     switch (resolve_expr_node(ctx, program, assign->lhs)) {
         case .Some(lhs) => {
             switch (resolve_expr_node(ctx, program, assign->rhs)) {
                 case .Some(rhs) => {
-                    return .Some(cir::TypedExpr.new(.Assign(cir::TypedAssignExpr {
+                    return .Some(cir::Expr.new(.Assign(cir::AssignExpr {
                         lhs: alloc_init(ctx->allocator, lhs),
                         rhs: alloc_init(ctx->allocator, rhs),
                         kind: assign->kind,
@@ -3460,12 +3460,12 @@ fn resolve_array_index_expr(
     ctx: TraverseContext*,
     program: const ast::ASTProgram*,
     array_index: const ast::ASTArrayIndexExpr*
-) Option<cir::TypedExpr> {
+) Option<cir::Expr> {
     switch (resolve_expr_node(ctx, program, array_index->operand)) {
         case .Some(operand) => {
             switch (resolve_expr_node(ctx, program, array_index->index)) {
                 case .Some(index) => {
-                    return .Some(cir::TypedExpr.new(.ArrayIndex(cir::TypedArrayIndexExpr {
+                    return .Some(cir::Expr.new(.ArrayIndex(cir::ArrayIndexExpr {
                         operand: alloc_init(ctx->allocator, operand),
                         index: alloc_init(ctx->allocator, index),
                         span: array_index->span,
@@ -3484,10 +3484,10 @@ fn resolve_addr_of_expr(
     ctx: TraverseContext*,
     program: const ast::ASTProgram*,
     addr: const ast::ASTAddrOfExpr*
-) Option<cir::TypedExpr> {
+) Option<cir::Expr> {
     switch (resolve_expr_node(ctx, program, addr->expr)) {
         case .Some(operand) => {
-            return .Some(cir::TypedExpr.new(.AddrOf(cir::TypedAddrOfExpr {
+            return .Some(cir::Expr.new(.AddrOf(cir::AddrOfExpr {
                 operand: alloc_init(ctx->allocator, operand),
                 span: addr->span,
             }), addr->span));
@@ -3502,10 +3502,10 @@ fn resolve_deref_expr(
     ctx: TraverseContext*,
     program: const ast::ASTProgram*,
     deref: const ast::ASTDerefExpr*
-) Option<cir::TypedExpr> {
+) Option<cir::Expr> {
     switch (resolve_expr_node(ctx, program, deref->expr)) {
         case .Some(operand) => {
-            return .Some(cir::TypedExpr.new(.Deref(cir::TypedDerefExpr {
+            return .Some(cir::Expr.new(.Deref(cir::DerefExpr {
                 operand: alloc_init(ctx->allocator, operand),
                 span: deref->span,
             }), deref->span));
@@ -3519,7 +3519,7 @@ fn resolve_deref_expr(
 fn resolve_literal_expr(
     ctx: TraverseContext*,
     token: const Token*
-) Option<cir::TypedExpr> {
+) Option<cir::Expr> {
     const span = Span.new(ctx->file_id, token->loc);
 
     switch (*token->kind) {
@@ -3549,7 +3549,7 @@ fn resolve_type(
 ) Option<cir::SemaType> {
     switch (*ty) {
         case .SelfType(self_ty) => {
-            return .Some(.SelfType(cir::TypedSelfType { span: self_ty.span }));
+            return .Some(.SelfType(cir::SelfType { span: self_ty.span }));
         }
         case .ModuleImport(module_import) => {
             return resolve_module_import_type(ctx, program, &module_import);
@@ -3698,7 +3698,7 @@ fn resolve_ident_type(
     }
 
     if (name == "Self") {
-        return .Some(.SelfType(cir::TypedSelfType { span: ident->span }));
+        return .Some(.SelfType(cir::SelfType { span: ident->span }));
     }
 
     diags::report_type_not_found(ctx->dctx, ctx->diag_allocator, ident->span, name);
@@ -3750,18 +3750,18 @@ fn resolve_func_type(
         }
     }
 
-    var variadic: Option<cir::TypedFuncTypeVariadicParam*> = .None;
+    var variadic: Option<cir::FuncTypeVariadicParam*> = .None;
 
     switch (func->params.variadic) {
         case .Some(.UntypedCStyle) => {
-            const variant: cir::TypedFuncTypeVariadicParam = .UntypedCStyle;
+            const variant: cir::FuncTypeVariadicParam = .UntypedCStyle;
             const boxed = alloc_init(ctx->allocator, variant);
             variadic = .Some(boxed);
         }
         case .Some(.Typed(spec)) => {
             switch (resolve_type_node(ctx, program, spec, span)) {
                 case .Some(ty) => {
-                    const variant: cir::TypedFuncTypeVariadicParam = .Typed(ty);
+                    const variant: cir::FuncTypeVariadicParam = .Typed(ty);
                     const boxed = alloc_init(ctx->allocator, variant);
                     variadic = .Some(boxed);
                 }
@@ -3783,8 +3783,8 @@ fn resolve_func_type(
                 else => {}
             }
 
-            return .Some(.FuncType(cir::TypedFuncType {
-                params: cir::TypedFuncTypeParams { list: params, variadic },
+            return .Some(.FuncType(cir::FuncType {
+                params: cir::FuncTypeParams { list: params, variadic },
                 ret_type: alloc_init(ctx->allocator, ret_type),
                 vis,
                 callconv: .C,
@@ -3852,7 +3852,7 @@ fn resolve_tuple_type(
     program: const ast::ASTProgram*,
     tuple: const ast::ASTTupleType*
 ) Option<cir::SemaType> {
-    var elements: Vec<cir::TypedTupleElement> = Vec.new(ctx->allocator);
+    var elements: Vec<cir::TupleElement> = Vec.new(ctx->allocator);
 
     for (var i: usize = 0; i < tuple->type_list.len(); i += 1) {
         const element_id = tuple->type_list.get_owned(i).unwrap();
@@ -3866,7 +3866,7 @@ fn resolve_tuple_type(
 
                 switch (resolve_type(ctx, program, &ty, element_span)) {
                     case .Some(ty) => {
-                        elements.push(cir::TypedTupleElement { ty, span: element_span });
+                        elements.push(cir::TupleElement { ty, span: element_span });
                     }
                     case .None => {
                         elements.free();
@@ -3881,7 +3881,7 @@ fn resolve_tuple_type(
         }
     }
 
-    return .Some(.Tuple(cir::TypedTupleType {
+    return .Some(.Tuple(cir::TupleType {
         elements,
         span: tuple->span,
     }));
@@ -3897,7 +3897,7 @@ fn resolve_array_type(
 
     switch (element_type) {
         case .Some(element_type) => {
-            var capacity: cir::TypedArrayCapacity = .Slice;
+            var capacity: cir::ArrayCapacity = .Slice;
 
             switch (array->size) {
                 case .Fixed(expr_id) => {
@@ -3914,7 +3914,7 @@ fn resolve_array_type(
                 }
             }
 
-            return .Some(.Array(cir::TypedArrayType {
+            return .Some(.Array(cir::ArrayType {
                 element_type: alloc_init(ctx->allocator, element_type),
                 capacity,
                 span,
@@ -3931,14 +3931,14 @@ fn resolve_unnamed_union_type(
     program: const ast::ASTProgram*,
     union_type: const ast::ASTUnnamedUnionType*
 ) Option<cir::SemaType> {
-    var fields: Vec<cir::TypedUnionField> = Vec.new(ctx->allocator);
+    var fields: Vec<cir::UnionField> = Vec.new(ctx->allocator);
 
     for (var i: usize = 0; i < union_type->fields.len(); i += 1) {
         const field = union_type->fields.get_const(i).unwrap();
 
         switch (resolve_type_node(ctx, program, field->field_type, field->span)) {
             case .Some(ty) => {
-                fields.push(cir::TypedUnionField {
+                fields.push(cir::UnionField {
                     name: String.from_str(ctx->allocator, field->ident.str.as_str_const()),
                     ty,
                     span: field->span,
@@ -3956,7 +3956,7 @@ fn resolve_unnamed_union_type(
         fields,
         impls: Vec.new(ctx->allocator),
         methods: cir::MethodDecls.new(ctx->allocator),
-        generic_params: cir::TypedGenericParams.new(ctx->allocator),
+        generic_params: cir::GenericParams.new(ctx->allocator),
         modifiers: ast::ASTUnionModifiers {
             vis: .Private,
             repr_attr: union_type->repr_attr,
@@ -3968,7 +3968,7 @@ fn resolve_unnamed_union_type(
 
     return .Some(.Named(cir::NamedType {
         type_decl_id: .Union(union_decl_id),
-        type_args: cir::TypedTypeArgs.new(ctx->allocator),
+        type_args: cir::TypeArgs.new(ctx->allocator),
     }));
 }
 
@@ -3998,7 +3998,7 @@ fn resolve_unnamed_enum_type(
                 methods: cir::MethodDecls.new(ctx->allocator),
                 variants: typed_variants,
                 impls: Vec.new(ctx->allocator),
-                generic_params: cir::TypedGenericParams.new(ctx->allocator),
+                generic_params: cir::GenericParams.new(ctx->allocator),
                 modifiers: ast::ASTEnumModifiers {
                     vis: .Private,
                     repr_attr: enum_type->repr_attr,
@@ -4011,7 +4011,7 @@ fn resolve_unnamed_enum_type(
 
             return .Some(.Named(cir::NamedType {
                 type_decl_id: .Enum(enum_decl_id),
-                type_args: cir::TypedTypeArgs.new(ctx->allocator),
+                type_args: cir::TypeArgs.new(ctx->allocator),
             }));
         }
         else => {}
@@ -4025,14 +4025,14 @@ fn resolve_unnamed_struct_type(
     program: const ast::ASTProgram*,
     struct_type: const ast::ASTUnnamedStructType*
 ) Option<cir::SemaType> {
-    var fields: Vec<cir::TypedStructField> = Vec.new(ctx->allocator);
+    var fields: Vec<cir::StructField> = Vec.new(ctx->allocator);
 
     for (var i: usize = 0; i < struct_type->fields.len(); i += 1) {
         const field = struct_type->fields.get_const(i).unwrap();
 
         switch (resolve_type_node(ctx, program, field->ty, field->span)) {
             case .Some(ty) => {
-                fields.push(cir::TypedStructField {
+                fields.push(cir::StructField {
                     name: String.from_str(ctx->allocator, field->name.str.as_str_const()),
                     ty,
                     vis: .Public,
@@ -4051,7 +4051,7 @@ fn resolve_unnamed_struct_type(
         fields,
         impls: Vec.new(ctx->allocator),
         methods: cir::MethodDecls.new(ctx->allocator),
-        generic_params: cir::TypedGenericParams.new(ctx->allocator),
+        generic_params: cir::GenericParams.new(ctx->allocator),
         modifiers: ast::ASTStructModifiers {
             vis: .Private,
             repr_attr: struct_type->repr_attr,
@@ -4063,7 +4063,7 @@ fn resolve_unnamed_struct_type(
 
     return .Some(.Named(cir::NamedType {
         type_decl_id: .Struct(struct_decl_id),
-        type_args: cir::TypedTypeArgs.new(ctx->allocator),
+        type_args: cir::TypeArgs.new(ctx->allocator),
     }));
 }
 
@@ -4071,8 +4071,8 @@ fn resolve_type_args(
     ctx: TraverseContext*,
     program: const ast::ASTProgram*,
     type_args: const ast::ASTTypeArgs*
-) Option<cir::TypedTypeArgs> {
-    var out = cir::TypedTypeArgs.new(ctx->allocator);
+) Option<cir::TypeArgs> {
+    var out = cir::TypeArgs.new(ctx->allocator);
 
     for (var i: usize = 0; i < type_args->list.len(); i += 1) {
         const arg = type_args->list.get_const(i).unwrap();
@@ -4108,7 +4108,7 @@ fn resolve_generic_params(
     ctx: TraverseContext*,
     program: const ast::ASTProgram*,
     generic_params: const ast::ASTGenericParams*
-) Option<cir::TypedGenericParams> {
+) Option<cir::GenericParams> {
     var list: Vec<cir::GenericParamId> = Vec.new(ctx->allocator);
 
     for (var i: usize = 0; i < generic_params->len(); i += 1) {
@@ -4131,7 +4131,7 @@ fn resolve_generic_params(
             case .Some(bounds) => {
                 switch (default) {
                     case .Some(default) => {
-                        const param_id = ctx->decl_tables->insert_generic_param(cir::TypedGenericParam {
+                        const param_id = ctx->decl_tables->insert_generic_param(cir::GenericParam {
                             name: param->name,
                             bounds,
                             default,
@@ -4145,15 +4145,15 @@ fn resolve_generic_params(
         }
     }
 
-    return .Some(cir::TypedGenericParams { ids: list });
+    return .Some(cir::GenericParams { ids: list });
 }
 
 fn resolve_generic_param_bounds(
     ctx: TraverseContext*,
     program: const ast::ASTProgram*,
     generic_param: const ast::ASTGenericParam*
-) Option<Vec<cir::TypedBound>> {
-    var typed_bounds: Vec<cir::TypedBound> = Vec.new(ctx->allocator);
+) Option<Vec<cir::Bound>> {
+    var typed_bounds: Vec<cir::Bound> = Vec.new(ctx->allocator);
 
     switch (generic_param->bounds) {
         case .Some(bounds) => {
@@ -4162,7 +4162,7 @@ fn resolve_generic_param_bounds(
 
                 switch (resolve_type_node(ctx, program, bound->ty, bound->span)) {
                     case .Some(ty) => {
-                        typed_bounds.push(cir::TypedBound { ty, span: bound->span });
+                        typed_bounds.push(cir::Bound { ty, span: bound->span });
                     }
                     else => {}
                 }
@@ -4198,8 +4198,8 @@ fn resolve_enum_variants(
     ctx: TraverseContext*,
     program: const ast::ASTProgram*,
     variants: const Vec<ast::ASTEnumVariant>*
-) Option<Vec<cir::TypedEnumVariant>> {
-    var typed_variants: Vec<cir::TypedEnumVariant> = Vec.new(ctx->allocator);
+) Option<Vec<cir::EnumVariant>> {
+    var typed_variants: Vec<cir::EnumVariant> = Vec.new(ctx->allocator);
 
     for (var i: usize = 0; i < variants->len(); i += 1) {
         const variant = variants->get_const(i).unwrap();
@@ -4220,14 +4220,14 @@ fn resolve_enum_variants(
                 }
             }
             case .Tuple { ident, fields } => {
-                var typed_fields: Vec<cir::TypedEnumVariantTupleField> = Vec.new(ctx->allocator);
+                var typed_fields: Vec<cir::EnumVariantTupleField> = Vec.new(ctx->allocator);
 
                 for (var j: usize = 0; j < fields.len(); j += 1) {
                     const tuple_field = fields.get_const(j).unwrap();
 
                     switch (resolve_type_node(ctx, program, tuple_field->ty, ident.span)) {
                         case .Some(ty) => {
-                            typed_fields.push(cir::TypedEnumVariantTupleField {
+                            typed_fields.push(cir::EnumVariantTupleField {
                                 ty,
                                 span: tuple_field->span,
                             });
@@ -4239,14 +4239,14 @@ fn resolve_enum_variants(
                 typed_variants.push(.Tuple { ident, fields: typed_fields });
             }
             case .Struct { ident, fields } => {
-                var typed_fields: Vec<cir::TypedEnumVariantStructField> = Vec.new(ctx->allocator);
+                var typed_fields: Vec<cir::EnumVariantStructField> = Vec.new(ctx->allocator);
 
                 for (var j: usize = 0; j < fields.len(); j += 1) {
                     const struct_field = fields.get_const(j).unwrap();
 
                     switch (resolve_type_node(ctx, program, struct_field->ty, ident.span)) {
                         case .Some(ty) => {
-                            typed_fields.push(cir::TypedEnumVariantStructField {
+                            typed_fields.push(cir::EnumVariantStructField {
                                 name: struct_field->name,
                                 ty,
                                 span: struct_field->span,
