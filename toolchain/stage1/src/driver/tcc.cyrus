@@ -1,0 +1,43 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 The Cyrus Language
+
+import std::libc::types{c_char, c_int};
+
+[[repr(c)]]
+pub enum OutputKind {
+    MEM = 1,
+    EXE = 2,
+    OBJ = 3,
+    DLL = 4
+}
+
+pub fn compile(
+    source: const c_char*,
+    output: const c_char*,
+    kind: OutputKind,
+    extra_files: const c_char*,
+    lib_paths: const c_char*,
+    libraries: const c_char*
+) bool {
+    if (__cyrus_tcc_compile_string(
+        source, 
+        output, 
+        @cast(c_int, kind),
+        extra_files,
+        lib_paths,
+        libraries) == 0
+    ) {
+        return true;
+    }
+
+    return false;
+}
+
+extern "C" fn __cyrus_tcc_compile_string(
+    source: const c_char*,
+    output: const c_char*,
+    kind: c_int,
+    extra_files: const c_char*,
+    lib_paths: const c_char*,
+    libraries: const c_char*,
+) int32;

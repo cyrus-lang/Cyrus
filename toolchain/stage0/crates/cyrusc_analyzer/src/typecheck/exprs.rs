@@ -215,7 +215,7 @@ impl<'a> AnalysisContext<'a> {
 
         expr.val_cat = self.value_category_of_expr(expr);
 
-        Some(normalized_type)
+        expr.ty.clone()
     }
 
     fn value_category_of_expr(&self, expr: &TypedExpr) -> ValueCategory {

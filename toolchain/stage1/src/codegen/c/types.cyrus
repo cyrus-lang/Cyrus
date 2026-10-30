@@ -1,0 +1,1960 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 The Cyrus Language
+
+import std::collections::hash_map{HashMap};
+import std::hash{hash_usize, eq_usize};
+import std::io{Writer, StringWriter};
+import std::collections{Vec};
+import std::mem{Allocator};
+import std::option{Option};
+import std::string{String};
+import std::format{
+    format_uint32, 
+    format_usize, 
+    format_uint128, 
+    format_int128
+};
+
+import resolver::symbols{GlobalSymbolRegistry};
+import cir::tables{DeclTables};
+import abi::typectx{
+    is_enum_scalar_optimizable,
+    enum_tag_type, 
+    TypeContext, 
+};
+import abi::target{TargetInfo};
+import codegen::c::mangle;
+import ciri;
+import cir;
+
+pub enum TypeState {
+    NotStarted = 0,
+    InProgress = 1,
+    Forward = 2,
+    Done = 3,
+}
+
+/// Maps a `TypeDeclId` to its emission state.
+pub struct DeclEmitState {
+    states: HashMap<usize, TypeState>,
+
+    pub fn new(allocator: Allocator) Self {
+        return Self {
+            states: HashMap.with_hasher(allocator, 64, hash_usize, eq_usize),
+        };
+    }
+
+    pub fn get(self: Self*, type_decl_id: cir::TypeDeclId) TypeState {
+        switch (self->states.get(@cast(usize, type_decl_id))) {
+            case .Some(state) => return *state;
+            else => return .NotStarted;
+        }
+    }
+
+    pub fn set(self: Self*, type_decl_id: cir::TypeDeclId, state: TypeState) {
+        self->states.insert(@cast(usize, type_decl_id), state);
+    }
+
+    pub fn free(self: Self*) {
+        self->states.free();
+    }
+}
+
+pub struct TypeEmitter {
+    pub allocator: Allocator,
+    pub tables: DeclTables*,
+    pub registry: GlobalSymbolRegistry*,
+    pub tctx: TypeContext,
+    pub maps: mangle::ModuleMaps,
+    pub type_out: String,
+    pub decl_state: DeclEmitState,
+    pub tuple_sigs: Vec<String>,
+    pub tuple_names: Vec<String>,
+    pub tuple_counter: usize,
+    pub generic_inst_sigs: Vec<String>,
+    pub generic_inst_names: Vec<String>,
+    pub deferred: Vec<cir::TypeDeclId>,
+    pub fat_ptr_emitted: bool,
+    pub used_stdint: bool,
+    pub used_int128: bool,
+    pub used_bool: bool,
+
+    pub fn new(
+        allocator: Allocator,
+        tables: DeclTables*,
+        registry: GlobalSymbolRegistry*,
+        maps: mangle::ModuleMaps
+    ) Self {
+        // FIXME
+        const target = TargetInfo {
+            arch: .X86_64,
+            os: .Linux,
+            format: .Elf,
+        };
+
+        return Self {
+            allocator,
+            tables,
+            registry,
+            maps,
+            tctx: TypeContext.new(target, tables, registry),
+            decl_state: DeclEmitState.new(allocator),
+            generic_inst_names: Vec.new(allocator),
+            generic_inst_sigs: Vec.new(allocator),
+            type_out: String.new(allocator),
+            tuple_names: Vec.new(allocator),
+            tuple_sigs: Vec.new(allocator),
+            deferred: Vec.new(allocator),
+            fat_ptr_emitted: false,
+            used_stdint: false,
+            used_int128: false,
+            used_bool: false,
+            tuple_counter: 0,
+        };
+    }
+
+    pub fn free(self: Self*) {
+        self->tctx.free();
+
+        mangle::free_module_maps(&self->maps);
+
+        self->type_out.free();
+        self->decl_state.free();
+        self->deferred.free();
+
+        for (var i: usize = 0; i < self->tuple_sigs.len(); i += 1) {
+            self->tuple_sigs.get(i).unwrap()->free();
+            self->tuple_names.get(i).unwrap()->free();
+        }
+
+        self->tuple_sigs.free();
+        self->tuple_names.free();
+
+        for (var i: usize = 0; i < self->generic_inst_sigs.len(); i += 1) {
+            self->generic_inst_sigs.get(i).unwrap()->free();
+            self->generic_inst_names.get(i).unwrap()->free();
+        }
+
+        self->generic_inst_sigs.free();
+        self->generic_inst_names.free();
+    }
+
+    pub fn type_name(self: Self*, ty: const cir::SemaType*) String {
+        switch (*ty) {
+            case .Plain(plain) => {
+                self->update_plain_type_used_libc_headers_state(plain);
+                return String.from_str(self->allocator, emit_plain_type(plain));
+            }
+
+            case .Pointer(inner) => {
+                var inner_name = self->type_name(inner);
+                
+                // Function and array pointees need 
+                // parens around the pointer
+                switch (*inner->const_inner()) {
+                    case .FuncType | .Array => {
+                        var out = String.from_str(self->allocator, "(");
+                        out.push_str(inner_name.as_str_const());
+                        out.push_str(")*");
+                        inner_name.free();
+                        return out;
+                    }
+                    else => {}
+                }
+
+                inner_name.push('*');
+                return inner_name;
+            }
+
+            case .Const(inner) => {
+                var inner_name = self->type_name(inner);
+                var out = String.from_str(self->allocator, "const ");
+                out.push_str(inner_name.as_str_const());
+                inner_name.free();
+                return out;
+            }
+
+            case .Array(array) => {
+                var out = String.new(self->allocator);
+                
+                var inner_name = self->type_name(array.element_type);
+                out.push_str(inner_name.as_str_const());
+                inner_name.free();
+                
+                out.push('[');
+                push_capacity(
+                    &out, 
+                    self->allocator, 
+                    self->tables, 
+                    self->registry, 
+                    &array
+                );
+                out.push(']');
+                
+                return out;
+            }
+
+            case .Tuple(tuple) => return self->tuple_type_name(&tuple);
+
+            case .FuncType(func) => {
+                var out = String.new(self->allocator);
+                
+                var ret = self->type_name(func.ret_type);
+                out.push_str(ret.as_str_const());
+                ret.free();
+                
+                out.push_str(" (*)(");
+
+                for (var i: usize = 0; i < func.params.list.len(); i += 1) {
+                    const param = func.params.list.get_const(i).unwrap();
+                    
+                    var str = self->type_name(param);
+                    out.push_str(str.as_str_const());
+                    str.free();
+                    
+                    if (i + 1 < func.params.list.len()) {
+                        out.push_str(", ");
+                    }
+                }
+
+                switch (func.params.variadic) {
+                    case .Some => {
+                        out.push_str(", ...");
+                    }
+                    else => {}
+                }
+
+                if (func.params.list.len() == 0) {
+                    out.push_str("void");
+                }
+
+                out.push(')');
+                return out;
+            }
+
+            case .InterfaceObject => {
+                self->ensure_fat_ptr();
+                return String.from_str(self->allocator, "__fat_ptr");
+            }
+
+            case .GenericParam => return String.from_str(self->allocator, "void");
+
+            case .SelfType => return String.from_str(self->allocator, "void");
+
+            case .Named(named) => return self->named_type_name(&named);
+
+            case .Placeholder 
+            | .InferVar 
+            | .Err 
+            | .Unresolved => {
+                return String.from_str(self->allocator, "void");
+            }
+        }
+    }
+
+    fn update_plain_type_used_libc_headers_state(self: Self*, plain: cir::PlainType) {
+        switch (plain) {
+            case .Void 
+            | .Null 
+            | .Float16 
+            | .Float32 
+            | .Float64 
+            | .Float128 => {}
+            
+            case .Int128 
+            | .UInt128 => {
+                self->used_int128 = true;
+                self->used_stdint = true;
+            }
+            
+            case .Bool => self->used_bool = true;
+            
+            else => self->used_stdint = true;
+        }
+    }
+
+    pub fn build_decl(self: Self*, var ty: const cir::SemaType*, name: const uint8*) String {
+        var decl = String.from_str(self->allocator, name);
+        var base_const = false;
+        var ptr_const_next = false;
+
+        while (true) {
+            switch (*ty) {
+                case .Const(inner) => {
+                    switch (*inner->const_inner()) {
+                        case .Pointer => ptr_const_next = true;
+                        else => base_const = true;
+                    }
+
+                    ty = inner;
+                }
+
+                case .Pointer(inner) => {
+                    switch (*inner->const_inner()) {
+                        case .FuncType => {
+                            if (ptr_const_next) {
+                                var const_decl = String.from_str(self->allocator, " const ");
+                                const_decl.push_str(decl.as_str_const());
+                                decl.free();
+                                decl = const_decl;
+                                ptr_const_next = false;
+                            }
+                        }
+                        else => {
+                            var star = String.new(self->allocator);
+                            star.push('*');
+
+                            if (ptr_const_next) {
+                                star.push_str(" const ");
+                                ptr_const_next = false;
+                            }
+
+                            star.push_str(decl.as_str_const());
+                            decl.free();
+                            decl = star;
+
+                            switch (*inner->const_inner()) {
+                                case .Array => {
+                                    var wrapped = String.from_str(self->allocator, "(");
+                                    wrapped.push_str(decl.as_str_const());
+                                    wrapped.push(')');
+                                    decl.free();
+                                    decl = wrapped;
+                                }
+                                else => {}
+                            }
+                        }
+                    }
+
+                    ty = inner;
+                }
+
+                case .Array(array) => {
+                    var out = String.new(self->allocator);
+                    out.push_str(decl.as_str_const());
+                    out.push('[');
+                    push_capacity(
+                        &out, 
+                        self->allocator, 
+                        self->tables, 
+                        self->registry, 
+                        &array
+                    );
+                    out.push(']');
+                    decl.free();
+                    decl = out;
+                    ty = array.element_type;
+                }
+
+                case .FuncType(func) => {
+                    var out = String.from_str(self->allocator, "(*");
+                    out.push_str(decl.as_str_const());
+                    out.push(')');
+                    decl.free();
+                    decl = out;
+
+                    var out_fn = String.new(self->allocator);
+                    out_fn.push_str(decl.as_str_const());
+                    out_fn.push('(');
+
+                    if (func.params.list.len() == 0) {
+                        switch (func.params.variadic) {
+                            case .Some => out_fn.push_str("...");
+                            else => out_fn.push_str("void");
+                        }
+                    } else {
+                        for (var i: usize = 0; i < func.params.list.len(); i += 1) {
+                            const param = func.params.list.get_const(i).unwrap();
+                            
+                            var str = self->build_decl(param, "");
+                            out_fn.push_str(str.as_str_const());
+                            str.free();
+                            
+                            if (i + 1 < func.params.list.len()) {
+                                out_fn.push_str(", ");
+                            }
+                        }
+
+                        switch (func.params.variadic) {
+                            case .Some => out_fn.push_str(", ...");
+                            else => {}
+                        }
+                    }
+
+                    out_fn.push(')');
+                    decl.free();
+                    decl = out_fn;
+                    ty = func.ret_type;
+                }
+
+                else => {
+                    var base = self->type_name(ty);
+
+                    if (base_const) {
+                        var const_base = String.from_str(self->allocator, "const ");
+                        const_base.push_str(base.as_str_const());
+                        base.free();
+                        base = const_base;
+                    }
+
+                    if (decl.len() > 0) {
+                        base.push(' ');
+                        base.push_str(decl.as_str_const());
+                    }
+
+                    decl.free();
+                    return base;
+                }
+            }
+        }
+
+        return decl;
+    }
+
+    pub fn ensure_named(self: Self*, ty: const cir::SemaType*) {
+        switch (*ty->const_inner()) {
+            case .Named(named) => {
+                if (!named.type_args.is_empty()) {
+                    self->ensure_generic_inst(&named.type_decl_id, &named.type_args);
+                    return;
+                }
+
+                self->ensure_type_decl(&named.type_decl_id);
+            }
+            
+            case .Pointer(inner) => {
+                self->ensure_named(inner);
+            }
+            
+            case .Const(inner) => {
+                self->ensure_named(inner);
+            }
+            
+            case .Array(array) => {
+                self->ensure_named(array.element_type);
+            }
+            
+            case .Tuple(tuple) => {
+                for (var i: usize = 0; i < tuple.elements.len(); i += 1) {
+                    const el = tuple.elements.get_const(i).unwrap();
+                    self->ensure_named(&el->ty);
+                }
+
+                // Materialize the tuple's typedef now, before the parent
+                // type starts writing, so it lands earlier in the type
+                // section than any reference to it.
+                var name = self->tuple_type_name(&tuple);
+                name.free();
+            }
+
+            case .FuncType(func) => {
+                for (var i: usize = 0; i < func.params.list.len(); i += 1) {
+                    const param = func.params.list.get_const(i).unwrap();
+                    
+                    self->ensure_named(param);
+                }
+
+                self->ensure_named(func.ret_type);
+            }
+            
+            else => {}
+        }
+    }
+
+    pub fn ensure_type_decl(self: Self*, type_decl_id: const cir::TypeDeclId*) {
+        switch (*type_decl_id) {
+            case .Typedef(id) => self->ensure_typedef(id);
+
+            case .Struct(id) => self->ensure_struct(id);
+
+            case .Enum(id) => self->ensure_enum(id);
+
+            case .Union(id) => self->ensure_union(id);
+
+            case .Interface => {
+                self->ensure_fat_ptr();
+            }
+        }
+    }
+
+    pub fn ensure_fat_ptr(self: Self*) {
+        if (self->fat_ptr_emitted) {
+            return;
+        }
+
+        self->fat_ptr_emitted = true;
+        self->type_out.push_str("typedef struct __fat_ptr { void *data; void *vtable; } __fat_ptr;\n");
+    }
+
+    /// Emits only a forward `typedef struct X X;` for an object that is
+    /// reachable exclusively through a pointer field,
+    /// and queues the body for `drain_deferred()`.
+    fn ensure_type_shell(self: Self*, type_decl_id: const cir::TypeDeclId*) {
+        const state = self->decl_state.get(*type_decl_id);
+
+        if (state != .NotStarted) {
+            return;
+        }
+
+        switch (*type_decl_id) {
+            case .Struct(struct_decl_id) => {
+                if (self->tables->structs.get_const(struct_decl_id).is_none()) {
+                    return;
+                }
+
+                var c_name = self->struct_c_name(struct_decl_id);
+                self->type_out.push_str("typedef struct ");
+                self->type_out.push_str(c_name.as_str_const());
+                self->type_out.push(' ');
+                self->type_out.push_str(c_name.as_str_const());
+                self->type_out.push_str(";\n");
+                c_name.free();
+
+                self->decl_state.set(*type_decl_id, .Forward);
+                self->deferred.push(.Struct(struct_decl_id));
+            }
+            case .Union(union_decl_id) => {
+                if (self->tables->unions.get_const(union_decl_id).is_none()) {
+                    return;
+                }
+
+                var c_name = self->union_c_name(union_decl_id);
+                self->type_out.push_str("typedef union ");
+                self->type_out.push_str(c_name.as_str_const());
+                self->type_out.push(' ');
+                self->type_out.push_str(c_name.as_str_const());
+                self->type_out.push_str(";\n");
+                c_name.free();
+
+                self->decl_state.set(*type_decl_id, .Forward);
+                self->deferred.push(.Union(union_decl_id));
+            }
+            else => {}
+        }
+    }
+
+    fn ensure_field_type(self: Self*, ty: const cir::SemaType*) {
+        switch (*ty->const_inner()) {
+            case .Pointer(inner) => {
+                switch (*inner->const_inner()) {
+                    case .Named(named) => {
+                        if (named.type_args.is_empty()) {
+                            switch (named.type_decl_id) {
+                                case .Struct | .Union => {
+                                    self->ensure_type_shell(&named.type_decl_id);
+                                    return;
+                                }
+                                case .Interface => {
+                                    self->ensure_fat_ptr();
+                                    return;
+                                }
+                                else => {}
+                            }
+                        }
+                    }
+                    else => {}
+                }
+
+                self->ensure_named(ty);
+            }
+            else => {
+                self->ensure_named(ty);
+            }
+        }
+    }
+
+    /// Emits the bodies queued by `ensure_type_shell()` after
+    /// the main type pass, so every reference 
+    /// sees a complete type.
+    pub fn drain_deferred(self: Self*) {
+        var index: usize = 0;
+
+        while (index < self->deferred.len()) {
+            const type_decl_id = *self->deferred.get_const(index).unwrap();
+            index += 1;
+
+            switch (type_decl_id) {
+                case .Struct(struct_decl_id) => {
+                    self->ensure_struct(struct_decl_id);
+                }
+                case .Union(union_decl_id) => {
+                    self->ensure_union(union_decl_id);
+                }
+                else => {}
+            }
+        }
+    }
+
+    fn ensure_struct(self: Self*, struct_decl_id: cir::StructDeclId) {
+        const type_decl_id: cir::TypeDeclId = .Struct(struct_decl_id);
+        const state = self->decl_state.get(type_decl_id);
+
+        if (state == .Done) {
+            return;
+        }
+
+        switch (self->tables->structs.get_const(struct_decl_id)) {
+            case .None => return;
+            else => {}
+        }
+
+        if (state == .InProgress) {
+            // Recursive: 
+            // the forward typedef is already emitted
+            return;
+        }
+
+        const shell_needed = state != .Forward;
+
+        self->decl_state.set(type_decl_id, .InProgress);
+
+        const struct_decl = self->tables->structs.get_const(struct_decl_id).unwrap();
+
+        var name_opt: Option<const uint8*> = .None;
+
+        switch (struct_decl->name) {
+            case .Some(struct_name) => {
+                name_opt = .Some(struct_name.as_str_const());
+            }
+            else => {}
+        }
+
+        var c_name = mangle::mangle_type(
+            self->allocator,
+            mangle::module_for_struct(&self->maps, struct_decl_id),
+            name_opt,
+            struct_decl_id
+        );
+
+        if (shell_needed) {
+            self->type_out.push_str("typedef struct ");
+            self->type_out.push_str(c_name.as_str_const());
+            self->type_out.push(' ');
+            self->type_out.push_str(c_name.as_str_const());
+            self->type_out.push_str(";\n");
+        }
+
+        for (
+            var field_index: usize = 0;
+            field_index < struct_decl->fields.len(); 
+            field_index += 1
+        ) {
+            const field = struct_decl->fields.get_const(field_index).unwrap();
+
+            self->ensure_field_type(&field->ty);
+        }
+
+        self->type_out.push_str("struct ");
+        self->type_out.push_str(c_name.as_str_const());
+        self->type_out.push_str(" {\n");
+
+        if (struct_decl->fields.len() == 0) {
+            self->type_out.push_str(" char __empty;\n");
+        }
+
+        for (
+            var field_index: usize = 0; 
+            field_index < struct_decl->fields.len(); 
+            field_index += 1
+        ) {
+            const field = struct_decl->fields.get_const(field_index).unwrap();
+
+            var field_name = mangle::sanitized(self->allocator, field->name.as_str_const());
+            var field_decl = self->build_decl(&field->ty, field_name.as_str_const());
+            
+            self->type_out.push(' ');
+            self->type_out.push_str(field_decl.as_str_const());
+            self->type_out.push_str(";\n");
+            
+            field_name.free();
+            field_decl.free();
+        }
+
+        self->type_out.push_str("};\n\n");
+
+        c_name.free();
+        self->decl_state.set(type_decl_id, .Done);
+    }
+
+    fn ensure_union(self: Self*, union_decl_id: cir::UnionDeclId) {
+        const type_decl_id: cir::TypeDeclId = .Union(union_decl_id);
+        const state = self->decl_state.get(type_decl_id);
+        
+        if (state == .Done) {
+            return;
+        }
+
+        switch (self->tables->unions.get_const(union_decl_id)) {
+            case .None => return;
+            else => {}
+        }
+
+        if (state == .InProgress) {
+            return;
+        }
+
+        const shell_needed = state != .Forward;
+
+        self->decl_state.set(type_decl_id, .InProgress);
+
+        const union_decl = self->tables->unions.get_const(union_decl_id).unwrap();
+
+        var name_opt: Option<const uint8*> = .None;
+
+        switch (union_decl->name) {
+            case .Some(union_name) => name_opt = .Some(union_name.as_str_const());
+            else => {}
+        }
+
+        var c_name = mangle::mangle_type(
+            self->allocator,
+            mangle::module_for_union(&self->maps, union_decl_id),
+            name_opt,
+            union_decl_id
+        );
+
+        if (shell_needed) {
+            self->type_out.push_str("typedef union ");
+            self->type_out.push_str(c_name.as_str_const());
+            self->type_out.push(' ');
+            self->type_out.push_str(c_name.as_str_const());
+            self->type_out.push_str(";\n");
+        }
+
+        for (
+            var field_index: usize = 0;
+            field_index < union_decl->fields.len();
+            field_index += 1
+        ) {
+            const field = union_decl->fields.get_const(field_index).unwrap();
+            self->ensure_field_type(&field->ty);
+        }
+
+        self->type_out.push_str("union ");
+        self->type_out.push_str(c_name.as_str_const());
+        self->type_out.push_str(" {\n");
+
+        if (union_decl->fields.len() == 0) {
+            self->type_out.push_str("    char __empty;\n");
+        }
+
+        for (
+            var field_index: usize = 0;
+            field_index < union_decl->fields.len();
+            field_index += 1
+        ) {
+            const field = union_decl->fields.get_const(field_index).unwrap();
+           
+            var field_name = mangle::sanitized(self->allocator, field->name.as_str_const());
+            var field_decl = self->build_decl(&field->ty, field_name.as_str_const());
+            
+            self->type_out.push(' ');
+            self->type_out.push_str(field_decl.as_str_const());
+            self->type_out.push_str(";\n");
+            
+            field_decl.free();
+            field_name.free();
+        }
+
+        self->type_out.push_str("};\n\n");
+
+        c_name.free();
+        self->decl_state.set(type_decl_id, .Done);
+    }
+
+    fn ensure_enum(self: Self*, enum_decl_id: cir::EnumDeclId) {
+        const type_decl_id: cir::TypeDeclId = .Enum(enum_decl_id);
+        const state = self->decl_state.get(type_decl_id);
+
+        if (state == .Done) {
+            return;
+        }
+
+        switch (self->tables->enums.get_const(enum_decl_id)) {
+            case .None => return;
+            else => {}
+        }
+
+        if (state == .InProgress) {
+            return;
+        }
+
+        self->decl_state.set(type_decl_id, .InProgress);
+
+        const enum_decl = self->tables->enums.get_const(enum_decl_id).unwrap();
+
+        var name_opt: Option<const uint8*> = .None;
+
+        switch (enum_decl->name) {
+            case .Some(enum_name) => {
+                name_opt = .Some(enum_name.as_str_const());
+            }
+            else => {}
+        }
+
+        var c_name = mangle::mangle_type(
+            self->allocator,
+            mangle::module_for_enum(&self->maps, enum_decl_id),
+            name_opt,
+            enum_decl_id
+        );
+
+        const scalar = is_enum_scalar_optimizable(self->tables, enum_decl);
+        const tags = self->tctx.enum_variant_tags(enum_decl_id, enum_decl);
+
+        if (scalar) {
+            var tag_type = enum_tag_type(self->tables, self->registry, enum_decl);
+            var tag_name = self->type_name(&tag_type);
+
+            self->type_out.push_str("typedef ");
+            self->type_out.push_str(tag_name.as_str_const());
+            self->type_out.push(' ');
+            self->type_out.push_str(c_name.as_str_const());
+            self->type_out.push_str(";\n");
+
+            for (
+                var variant_index: usize = 0;
+                variant_index < enum_decl->variants.len();
+                variant_index += 1
+            ) {
+                const variant = enum_decl->variants.get_const(variant_index).unwrap();
+                
+                self->type_out.push_str("#define ");
+                self->type_out.push_str(c_name.as_str_const());
+                self->type_out.push('_');
+                self->type_out.push_str(variant->name());
+                self->type_out.push_str(" ((");
+                self->type_out.push_str(c_name.as_str_const());
+                self->type_out.push_str(")");
+                push_uint32_into(
+                    &self->type_out,
+                    self->allocator,
+                    tags->get_owned(variant_index).unwrap()
+                );
+                self->type_out.push_str(")\n");
+            }
+
+            tag_name.free();
+            self->type_out.push_str("\n");
+        } else {
+            var tag_type = enum_tag_type(self->tables, self->registry, enum_decl);
+            var tag_name = self->type_name(&tag_type);
+
+            self->type_out.push_str("typedef struct ");
+            self->type_out.push_str(c_name.as_str_const());
+            self->type_out.push(' ');
+            self->type_out.push_str(c_name.as_str_const());
+            self->type_out.push_str(";\n");
+
+            for (
+                var variant_index: usize = 0; 
+                variant_index < enum_decl->variants.len(); 
+                variant_index += 1
+            ) {
+                const variant = enum_decl->variants.get_const(variant_index).unwrap();
+
+                switch (*variant) {
+                    case .Unit => {}
+
+                    case .Valued { value, .. } => {
+                        switch (value->ty) {
+                            case .Some(ty) => self->ensure_named(&ty);
+                            else => {}
+                        }
+                    }
+
+                    case .Tuple { fields, .. } => {
+                        for (var field_index: usize = 0; field_index < fields.len(); field_index += 1) {
+                            const field = fields.get_const(field_index).unwrap();
+                            self->ensure_field_type(&field->ty);
+                        }
+                    }
+                    
+                    case .Struct { fields, .. } => {
+                        for (var field_index: usize = 0; field_index < fields.len(); field_index += 1) {
+                            const field = fields.get_const(field_index).unwrap();
+                            self->ensure_field_type(&field->ty);
+                        }
+                    }
+                }
+            }
+
+            // Overlay structs first so the union can reference them
+            for (var variant_index: usize = 0; variant_index < enum_decl->variants.len(); variant_index += 1) {
+                const variant = enum_decl->variants.get_const(variant_index).unwrap();
+                const tag = tags->get_owned(variant_index).unwrap();
+
+                switch (*variant) {
+                    case .Unit => {}
+
+                    case .Valued { value, .. } => {
+                        switch (value->ty) {
+                            case .Some(ty) => {
+                                self->ensure_named(&ty);
+                                
+                                var variant = self->enum_variant_type_name(&c_name, tag);
+                                var value_decl = self->build_decl(&ty, "value");
+
+                                self->type_out.push_str("typedef struct ");
+                                self->type_out.push_str(variant.as_str_const());
+                                self->type_out.push_str(" { ");
+                                self->type_out.push_str(value_decl.as_str_const());
+                                self->type_out.push_str("; } ");
+                                self->type_out.push_str(variant.as_str_const());
+                                self->type_out.push_str(";\n");
+                                
+                                value_decl.free();
+                                variant.free();
+                            }
+                            else => {}
+                        }
+                    }
+
+                    case .Tuple { fields, .. } => {
+                        var variant = self->enum_variant_type_name(&c_name, tag);
+                        
+                        self->type_out.push_str("typedef struct ");
+                        self->type_out.push_str(variant.as_str_const());
+                        self->type_out.push_str(" { ");
+                        
+                        for (var field_index: usize = 0; field_index < fields.len(); field_index += 1) {
+                            const field = fields.get_const(field_index).unwrap();
+                            
+                            self->ensure_field_type(&field->ty);
+                            
+                            var field_name = tuple_field_name(self->allocator, field_index);
+                            var field_decl = self->build_decl(&field->ty, field_name.as_str_const());
+                            
+                            self->type_out.push_str(field_decl.as_str_const());
+                            self->type_out.push_str("; ");
+                            
+                            field_decl.free();
+                            field_name.free();
+                        }
+
+                        self->type_out.push_str("} ");
+                        self->type_out.push_str(variant.as_str_const());
+                        self->type_out.push_str(";\n");
+                        variant.free();
+                    }
+
+                    case .Struct { fields, .. } => {
+                        var variant = self->enum_variant_type_name(&c_name, tag);
+                        
+                        self->type_out.push_str("typedef struct ");
+                        self->type_out.push_str(variant.as_str_const());
+                        self->type_out.push_str(" { ");
+                        
+                        for (var field_index: usize = 0; field_index < fields.len(); field_index += 1) {
+                            const field = fields.get_const(field_index).unwrap();
+                            
+                            self->ensure_field_type(&field->ty);
+                            
+                            var field_name = mangle::sanitized(self->allocator, field->name.str.as_str_const());
+                            var field_decl = self->build_decl(&field->ty, field_name.as_str_const());
+                            
+                            self->type_out.push_str(field_decl.as_str_const());
+                            self->type_out.push_str("; ");
+                            
+                            field_name.free();
+                            field_decl.free();
+                        }
+
+                        self->type_out.push_str("} ");
+                        self->type_out.push_str(variant.as_str_const());
+                        self->type_out.push_str(";\n");
+                        variant.free();
+                    }
+                }
+            }
+
+            const enum_layout = self->tctx.compute_enum_layout(enum_decl);
+
+            self->type_out.push_str("struct ");
+            self->type_out.push_str(c_name.as_str_const());
+            self->type_out.push_str(" {\n    ");
+            self->type_out.push_str(tag_name.as_str_const());
+            self->type_out.push_str(" tag;\n    union {\n");
+
+            for (var variant_index: usize = 0; variant_index < enum_decl->variants.len(); variant_index += 1) {
+                const variant = enum_decl->variants.get_const(variant_index).unwrap();
+                const tag = tags->get_owned(variant_index).unwrap();
+
+                switch (*variant) {
+                    case .Unit => {}
+
+                    else => {
+                        var variant = self->enum_variant_type_name(&c_name, tag);
+                        
+                        self->type_out.push(' ');
+                        self->type_out.push_str(variant.as_str_const());
+                        self->type_out.push_str(" v");
+                        push_uint32_into(&self->type_out, self->allocator, tag);
+                        self->type_out.push_str(";\n");
+                        
+                        variant.free();
+                    }
+                }
+            }
+
+            {
+                var buffer_decl = String.new(self->allocator);
+                var writer: Writer = dynamic StringWriter.new(&buffer_decl);
+                writer.write(" uint8_t raw[");
+                format_uint32(writer, enum_layout->size);
+                writer.write("]; ");
+                self->type_out.push_str(buffer_decl.as_str_const());
+                buffer_decl.free();
+            }
+
+            self->type_out.push_str(" } u; };\n");
+
+            for (
+                var variant_index: usize = 0;
+                variant_index < enum_decl->variants.len();
+                variant_index += 1
+            ) {
+                const variant = enum_decl->variants.get_const(variant_index).unwrap();
+                const tag = tags->get_owned(variant_index).unwrap();
+
+                self->type_out.push_str("#define ");
+                self->type_out.push_str(c_name.as_str_const());
+                self->type_out.push('_');
+                self->type_out.push_str(variant->name());
+                self->type_out.push_str(" ((");
+                self->type_out.push_str(c_name.as_str_const());
+                self->type_out.push_str(")");
+                push_uint32_into(&self->type_out, self->allocator, tag);
+                self->type_out.push_str(")\n");
+            }
+
+            tag_name.free();
+            self->type_out.push_str("\n");
+        }
+
+        c_name.free();
+        self->decl_state.set(type_decl_id, .Done);
+    }
+
+    pub fn enum_c_name(self: Self*, enum_decl_id: cir::EnumDeclId) String {
+        switch (self->tables->enums.get_const(enum_decl_id)) {
+            case .None => {
+                return String.from_str(self->allocator, "void");
+            }
+            else => {}
+        }
+
+        const enum_decl = self->tables->enums.get_const(enum_decl_id).unwrap();
+        
+        var name_opt: Option<const uint8*> = .None;
+        
+        switch (enum_decl->name) {
+            case .Some(enum_name) => name_opt = .Some(enum_name.as_str_const());
+            else => {}
+        }
+
+        return mangle::mangle_type(
+            self->allocator,
+            mangle::module_for_enum(&self->maps, enum_decl_id),
+            name_opt,
+            enum_decl_id
+        );
+    }
+
+    pub fn enum_c_name_for_ty(self: Self*, ty: const cir::SemaType*) String {
+        switch (*ty->const_inner()) {
+            case .Named(named) => {
+                switch (named.type_decl_id) {
+                    case .Enum(id) => {
+                        if (!named.type_args.is_empty()) {
+                            return self->generic_inst_c_name(
+                                &named.type_decl_id, 
+                                &named.type_args
+                            );
+                        }
+
+                        return self->enum_c_name(id);
+                    }
+                    else => {}
+                }
+            }
+            else => {}
+        }
+
+        switch (ty->as_enum()) {
+            case .Some(id) => return self->enum_c_name(id);
+            else => return String.from_str(self->allocator, "void");
+        }
+    }
+
+    pub fn struct_c_name(self: Self*, struct_decl_id: cir::StructDeclId) String {
+        switch (self->tables->structs.get_const(struct_decl_id)) {
+            case .None => return String.from_str(self->allocator, "void");
+            else => {}
+        }
+
+        const struct_decl = self->tables->structs.get_const(struct_decl_id).unwrap();
+        
+        var name_opt: Option<const uint8*> = .None;
+        
+        switch (struct_decl->name) {
+            case .Some(struct_name) => {
+                name_opt = .Some(struct_name.as_str_const());
+            }
+            else => {}
+        }
+
+        return mangle::mangle_type(
+            self->allocator,
+            mangle::module_for_struct(&self->maps, struct_decl_id),
+            name_opt,
+            struct_decl_id
+        );
+    }
+
+    pub fn union_c_name(self: Self*, union_decl_id: cir::UnionDeclId) String {
+        switch (self->tables->unions.get_const(union_decl_id)) {
+            case .None => {
+                return String.from_str(self->allocator, "void");
+            }
+            else => {}
+        }
+
+        const union_decl = self->tables->unions.get_const(union_decl_id).unwrap();
+        
+        var name_opt: Option<const uint8*> = .None;
+        
+        switch (union_decl->name) {
+            case .Some(union_name) => {
+                name_opt = .Some(union_name.as_str_const());
+            }
+            else => {}
+        }
+
+        return mangle::mangle_type(
+            self->allocator,
+            mangle::module_for_union(&self->maps, union_decl_id),
+            name_opt,
+            union_decl_id
+        );
+    }
+
+    pub fn typedef_c_name(self: Self*, typedef_decl_id: cir::TypedefDeclId) String {
+        if (self->tables->typedefs.get_const(typedef_decl_id).is_none()) {
+            return String.from_str(self->allocator, "void");
+        }
+
+        const typedef_decl = self->tables->typedefs.get_const(typedef_decl_id).unwrap();
+        
+        return mangle::mangle_type(
+            self->allocator,
+            mangle::module_for_typedef(&self->maps, typedef_decl_id),
+            .Some(typedef_decl->name.as_str_const()),
+            typedef_decl_id
+        );
+    }
+
+    pub fn enum_variant_type_name(self: Self*, enum_name: const String*, tag: uint32) String {
+        var out = String.from_str(self->allocator, enum_name->as_str_const());
+        out.push_str("_v");
+        push_uint32_into(&out, self->allocator, tag);
+        return out;
+    }
+
+    fn ensure_typedef(self: Self*, typedef_decl_id: cir::TypedefDeclId) {
+        const type_decl_id: cir::TypeDeclId = .Typedef(typedef_decl_id);
+        const state = self->decl_state.get(type_decl_id);
+
+        if (state == .Done) {
+            return;
+        }
+        
+        if (self->tables->typedefs.get_const(typedef_decl_id).is_none()) {
+            return;
+        }
+
+        if (state == .InProgress) {
+            return;
+        }
+
+        self->decl_state.set(type_decl_id, .InProgress);
+
+        const typedef_decl = self->tables->typedefs.get_const(typedef_decl_id).unwrap();
+        self->ensure_named(typedef_decl->ty);
+
+        var c_name = self->typedef_c_name(typedef_decl_id);
+
+        var body = self->build_decl(typedef_decl->ty, c_name.as_str_const());
+
+        self->type_out.push_str("typedef ");
+        self->type_out.push_str(body.as_str_const());
+        self->type_out.push_str(";\n\n");
+
+        body.free();
+        c_name.free();
+        self->decl_state.set(type_decl_id, .Done);
+    }
+
+    fn named_type_name(self: Self*, named: const cir::NamedType*) String {
+        switch (named->type_decl_id) {
+            case .Struct(id) => {
+                if (!named->type_args.is_empty()) {
+                    return self->generic_inst_c_name(&named->type_decl_id, &named->type_args);
+                }
+                
+                if (self->decl_state.get(.Struct(id)) != .Forward) {
+                    self->ensure_struct(id);
+                }
+
+                return self->struct_c_name(id);
+            }
+            
+            case .Enum(id) => {
+                if (!named->type_args.is_empty()) {
+                    return self->generic_inst_c_name(&named->type_decl_id, &named->type_args);
+                }
+                
+                self->ensure_enum(id);
+
+                return self->enum_c_name(id);
+            }
+            
+            case .Union(id) => {
+                if (!named->type_args.is_empty()) {
+                    return self->generic_inst_c_name(&named->type_decl_id, &named->type_args);
+                }
+                
+                if (self->decl_state.get(.Union(id)) != .Forward) {
+                    self->ensure_union(id);
+                }
+
+                return self->union_c_name(id);
+            }
+
+            case .Typedef(id) => {
+                if (!named->type_args.is_empty()) {
+                    return self->generic_inst_c_name(&named->type_decl_id, &named->type_args);
+                }
+
+                self->ensure_typedef(id);
+                
+                return self->typedef_c_name(id);
+            }
+
+            case .Interface => {
+                self->ensure_fat_ptr();
+                return String.from_str(self->allocator, "__fat_ptr");
+            }
+        }
+    }
+
+    fn generic_inst_c_name(
+        self: Self*,
+        type_decl_id: const cir::TypeDeclId*,
+        type_args: const cir::TypeArgs*
+    ) String {
+        self->ensure_generic_inst(type_decl_id, type_args);
+
+        var sig = self->generic_inst_sig(type_decl_id, type_args);
+
+        for (var i: usize = 0; i < self->generic_inst_sigs.len(); i += 1) {
+            const existing = self->generic_inst_sigs.get_const(i).unwrap();
+
+            if (existing->as_str_const() == sig.as_str_const()) {
+                sig.free();
+                
+                const name = self->generic_inst_names.get_const(i).unwrap();
+                
+                return String.from_str(self->allocator, name->as_str_const());
+            }
+        }
+
+        sig.free();
+        return String.from_str(self->allocator, "void");
+    }
+
+    fn generic_inst_sig(
+        self: Self*,
+        type_decl_id: const cir::TypeDeclId*,
+        type_args: const cir::TypeArgs*
+    ) String {
+        var sig = String.new(self->allocator);
+
+        switch (*type_decl_id) {
+            case .Struct(struct_decl_id) => {
+                sig.push('S');
+                push_usize_into(&sig, self->allocator, struct_decl_id);
+            }
+            case .Enum(enum_decl_id) => {
+                sig.push('E');
+                push_usize_into(&sig, self->allocator, enum_decl_id);
+            }
+            case .Union(union_decl_id) => {
+                sig.push('U');
+                push_usize_into(&sig, self->allocator, union_decl_id);
+            }
+            case .Typedef(typedef_decl_id) => {
+                sig.push('T');
+                push_usize_into(&sig, self->allocator, typedef_decl_id);
+            }
+            case .Interface(interface_decl_id) => {
+                sig.push('I');
+                push_usize_into(&sig, self->allocator, interface_decl_id);
+            }
+        }
+
+        sig.push(':');
+        
+        var str = mangle::mangle_type_args(self->allocator, self->tables, type_args);
+        sig.push_str(str.as_str_const());
+        str.free();
+
+        return sig;
+    }
+
+    fn ensure_generic_inst(
+        self: Self*,
+        type_decl_id: const cir::TypeDeclId*,
+        type_args: const cir::TypeArgs*
+    ) {
+        var sig = self->generic_inst_sig(type_decl_id, type_args);
+
+        for (var i: usize = 0; i < self->generic_inst_sigs.len(); i += 1) {
+            const existing = self->generic_inst_sigs.get_const(i).unwrap();
+
+            if (existing->as_str_const() == sig.as_str_const()) {
+                sig.free();
+                return;
+            }
+        }
+
+        var targs = mangle::mangle_type_args(self->allocator, self->tables, type_args);
+        var emitted = false;
+
+        switch (*type_decl_id) {
+            case .Struct(struct_decl_id) => {
+                switch (self->tables->structs.get_const(struct_decl_id)) {
+                    case .Some(struct_decl) => {
+                        emitted = true;
+                        
+                        var name_opt: Option<const uint8*> = .None;
+                        
+                        switch (struct_decl->name) {
+                            case .Some(struct_name) => name_opt = .Some(struct_name.as_str_const());
+                            else => {}
+                        }
+
+                        var base = mangle::mangle_type(
+                            self->allocator,
+                            mangle::module_for_struct(&self->maps, struct_decl_id),
+                            name_opt,
+                            struct_decl_id
+                        );
+
+                        base.push_str("__");
+                        base.push_str(targs.as_str_const());
+
+
+                        var owned_name = String.from_str(self->allocator, base.as_str_const());
+                        self->generic_inst_names.push(owned_name);
+                        self->generic_inst_sigs.push(sig);
+
+                        self->type_out.push_str("typedef struct ");
+                        self->type_out.push_str(base.as_str_const());
+                        self->type_out.push(' ');
+                        self->type_out.push_str(base.as_str_const());
+                        self->type_out.push_str(";\n");
+
+                        for (
+                            var field_index: usize = 0; 
+                            field_index < struct_decl->fields.len();
+                            field_index += 1
+                        ) {
+                            const field = struct_decl->fields.get_const(field_index).unwrap();
+                            
+                            var subst = cir::substitute_sema_type_with_type_args(
+                                self->allocator,
+                                &field->ty,
+                                &struct_decl->generic_params,
+                                type_args
+                            );
+
+                            self->ensure_named(&subst);
+                        }
+
+                        self->type_out.push_str("struct ");
+                        self->type_out.push_str(base.as_str_const());
+                        self->type_out.push_str(" { ");
+
+                        if (struct_decl->fields.len() == 0) {
+                            self->type_out.push_str(" char __empty; ");
+                        }
+
+                        for (
+                            var field_index: usize = 0;
+                            field_index < struct_decl->fields.len();
+                            field_index += 1
+                        ) {
+                            const field = struct_decl->fields.get_const(field_index).unwrap();
+
+                            var subst = cir::substitute_sema_type_with_type_args(
+                                self->allocator,
+                                &field->ty,
+                                &struct_decl->generic_params,
+                                type_args
+                            );
+
+                            var field_name = mangle::sanitized(self->allocator, field->name.as_str_const());
+                            var field_decl = self->build_decl(&subst, field_name.as_str_const());
+                            
+                            self->type_out.push(' ');
+                            self->type_out.push_str(field_decl.as_str_const());
+                            self->type_out.push_str(";\n");
+                            
+                            field_decl.free();
+                            field_name.free();
+                        }
+
+                        self->type_out.push_str("};\n\n");
+
+                        base.free();
+                    }
+                    else => {}
+                }
+            }
+
+            case .Union(union_decl_id) => {
+                switch (self->tables->unions.get_const(union_decl_id)) {
+                    case .Some(union_decl) => {
+                        emitted = true;
+
+                        var name_opt: Option<const uint8*> = .None;
+
+                        switch (union_decl->name) {
+                            case .Some(union_name) => name_opt = .Some(union_name.as_str_const());
+                            else => {}
+                        }
+
+                        var base = mangle::mangle_type(
+                            self->allocator,
+                            mangle::module_for_union(&self->maps, union_decl_id),
+                            name_opt,
+                            union_decl_id
+                        );
+                        base.push_str("__");
+                        base.push_str(targs.as_str_const());
+
+                        var owned_name = String.from_str(self->allocator, base.as_str_const());
+                        self->generic_inst_names.push(owned_name);
+                        self->generic_inst_sigs.push(sig);
+
+                        self->type_out.push_str("typedef union ");
+                        self->type_out.push_str(base.as_str_const());
+                        self->type_out.push(' ');
+                        self->type_out.push_str(base.as_str_const());
+                        self->type_out.push_str(";\n");
+
+                        for (var field_index: usize = 0; field_index < union_decl->fields.len(); field_index += 1) {
+                            const field = union_decl->fields.get_const(field_index).unwrap();
+                            
+                            var subst = cir::substitute_sema_type_with_type_args(
+                                self->allocator,
+                                &field->ty,
+                                &union_decl->generic_params,
+                                type_args
+                            );
+                            
+                            self->ensure_named(&subst);
+                        }
+
+                        self->type_out.push_str("union ");
+                        self->type_out.push_str(base.as_str_const());
+                        self->type_out.push_str(" {\n");
+
+                        if (union_decl->fields.len() == 0) {
+                            self->type_out.push_str("    char __empty;\n");
+                        }
+
+                        for (var field_index: usize = 0; field_index < union_decl->fields.len(); field_index += 1) {
+                            const field = union_decl->fields.get_const(field_index).unwrap();
+                            
+                            var subst = cir::substitute_sema_type_with_type_args(
+                                self->allocator,
+                                &field->ty,
+                                &union_decl->generic_params,
+                                type_args
+                            );
+                            
+                            var field_name = mangle::sanitized(self->allocator, field->name.as_str_const());
+                            var field_decl = self->build_decl(&subst, field_name.as_str_const());
+                            
+                            self->type_out.push(' ');
+                            self->type_out.push_str(field_decl.as_str_const());
+                            self->type_out.push_str(";\n");
+                            
+                            field_name.free();
+                            field_decl.free();
+                        }
+
+                        self->type_out.push_str("};\n\n");
+                        base.free();
+                    }
+                    else => {}
+                }
+            }
+
+            case .Enum(enum_decl_id) => {
+                switch (self->tables->enums.get_const(enum_decl_id)) {
+                    case .Some(enum_decl) => {
+                        emitted = true;
+
+                        var name_opt: Option<const uint8*> = .None;
+
+                        switch (enum_decl->name) {
+                            case .Some(enum_name) => name_opt = .Some(enum_name.as_str_const());
+                            else => {}
+                        }
+
+                        var base = mangle::mangle_type(
+                            self->allocator,
+                            mangle::module_for_enum(&self->maps, enum_decl_id),
+                            name_opt,
+                            enum_decl_id
+                        );
+
+                        base.push_str("__");
+                        base.push_str(targs.as_str_const());
+
+                        var owned_name = String.from_str(self->allocator, base.as_str_const());
+                        self->generic_inst_names.push(owned_name);
+                        self->generic_inst_sigs.push(sig);
+
+                        const scalar = is_enum_scalar_optimizable(self->tables, enum_decl);
+                        const tags = self->tctx.enum_variant_tags(enum_decl_id, enum_decl);
+
+                        if (scalar) {
+                            var tag_type = enum_tag_type(self->tables, self->registry, enum_decl);
+                            var tag_name = self->type_name(&tag_type);
+
+                            self->type_out.push_str("typedef ");
+                            self->type_out.push_str(tag_name.as_str_const());
+                            self->type_out.push(' ');
+                            self->type_out.push_str(base.as_str_const());
+                            self->type_out.push_str(";\n");
+
+                            for (
+                                var variant_index: usize = 0;
+                                variant_index < enum_decl->variants.len();
+                                variant_index += 1
+                            ) {
+                                const variant = enum_decl->variants.get_const(variant_index).unwrap();
+
+                                self->type_out.push_str("#define ");
+                                self->type_out.push_str(base.as_str_const());
+                                self->type_out.push('_');
+                                self->type_out.push_str(variant->name());
+                                self->type_out.push_str(" ((");
+                                self->type_out.push_str(base.as_str_const());
+                                self->type_out.push_str(")");
+                                push_uint32_into(
+                                    &self->type_out,
+                                    self->allocator,
+                                    tags->get_owned(variant_index).unwrap()
+                                );
+                                self->type_out.push_str(")\n");
+                            }
+
+                            tag_name.free();
+                            self->type_out.push_str("\n");
+                        } else {
+                            var tag_type = enum_tag_type(self->tables, self->registry, enum_decl);
+                            var tag_name = self->type_name(&tag_type);
+
+                            self->type_out.push_str("typedef struct ");
+                            self->type_out.push_str(base.as_str_const());
+                            self->type_out.push(' ');
+                            self->type_out.push_str(base.as_str_const());
+                            self->type_out.push_str(";\n");
+
+                            for (
+                                var variant_index: usize = 0;
+                                variant_index < enum_decl->variants.len();
+                                variant_index += 1
+                            ) {
+                                const variant = enum_decl->variants.get_const(variant_index).unwrap();
+                                const tag = tags->get_owned(variant_index).unwrap();
+
+                                switch (*variant) {
+                                    case .Unit => {}
+                                    
+                                    case .Valued { value, .. } => {
+                                        switch (value->ty) {
+                                            case .Some(payload_type) => {
+                                                var subst = cir::substitute_sema_type_with_type_args(
+                                                    self->allocator,
+                                                    &payload_type,
+                                                    &enum_decl->generic_params,
+                                                    type_args
+                                                );
+                                                
+                                                self->ensure_named(&subst);
+                                                
+                                                var variant = self->enum_variant_type_name(&base, tag);
+                                                var value_decl = self->build_decl(&subst, "value");
+                                                
+                                                self->type_out.push_str("typedef struct ");
+                                                self->type_out.push_str(variant.as_str_const());
+                                                self->type_out.push_str(" { ");
+                                                self->type_out.push_str(value_decl.as_str_const());
+                                                self->type_out.push_str("; } ");
+                                                self->type_out.push_str(variant.as_str_const());
+                                                self->type_out.push_str(";\n");
+                                                
+                                                value_decl.free();
+                                                variant.free();
+                                            }
+                                            else => {}
+                                        }
+                                    }
+                                    
+                                    case .Tuple { fields, .. } => {
+                                        var variant = self->enum_variant_type_name(&base, tag);
+                                        
+                                        // Ensure every field type before writing
+                                        // the overlay struct, otherwise their
+                                        // definitions are appended into
+                                        // the middle of this one
+                                        for (var field_index: usize = 0; field_index < fields.len(); field_index += 1) {
+                                            const field = fields.get_const(field_index).unwrap();
+                                            
+                                            var subst = cir::substitute_sema_type_with_type_args(
+                                                self->allocator,
+                                                &field->ty,
+                                                &enum_decl->generic_params,
+                                                type_args
+                                            );
+                                            
+                                            self->ensure_named(&subst);
+                                        }
+                                        
+                                        self->type_out.push_str("typedef struct ");
+                                        self->type_out.push_str(variant.as_str_const());
+                                        self->type_out.push_str(" { ");
+                                        
+                                        for (var field_index: usize = 0; field_index < fields.len(); field_index += 1) {
+                                            const field = fields.get_const(field_index).unwrap();
+                                            
+                                            var subst = cir::substitute_sema_type_with_type_args(
+                                                self->allocator,
+                                                &field->ty,
+                                                &enum_decl->generic_params,
+                                                type_args
+                                            );
+                                            
+                                            self->ensure_named(&subst);
+                                            
+                                            var field_name = tuple_field_name(self->allocator, field_index);
+                                            var field_decl = self->build_decl(&subst, field_name.as_str_const());
+                                            
+                                            self->type_out.push_str(field_decl.as_str_const());
+                                            self->type_out.push_str("; ");
+                                            
+                                            field_decl.free();
+                                            field_name.free();
+                                        }
+
+                                        self->type_out.push_str("} ");
+                                        self->type_out.push_str(variant.as_str_const());
+                                        self->type_out.push_str(";\n");
+                                        variant.free();
+                                    }
+                                    case .Struct { fields, .. } => {
+                                        var variant = self->enum_variant_type_name(&base, tag);
+                                        
+                                        // Ensure every field type before writing
+                                        // the overlay struct, otherwise their
+                                        // definitions are appended into
+                                        // the middle of this one
+                                        for (var field_index: usize = 0; field_index < fields.len(); field_index += 1) {
+                                            const field = fields.get_const(field_index).unwrap();
+                                            
+                                            var subst = cir::substitute_sema_type_with_type_args(
+                                                self->allocator,
+                                                &field->ty,
+                                                &enum_decl->generic_params,
+                                                type_args
+                                            );
+                                            
+                                            self->ensure_named(&subst);
+                                        }
+                                        
+                                        self->type_out.push_str("typedef struct ");
+                                        self->type_out.push_str(variant.as_str_const());
+                                        self->type_out.push_str(" { ");
+                                        
+                                        for (var field_index: usize = 0; field_index < fields.len(); field_index += 1) {
+                                            const field = fields.get_const(field_index).unwrap();
+                                            
+                                            var subst = cir::substitute_sema_type_with_type_args(
+                                                self->allocator,
+                                                &field->ty,
+                                                &enum_decl->generic_params,
+                                                type_args
+                                            );
+                                            
+                                            self->ensure_named(&subst);
+                                            
+                                            var field_name = mangle::sanitized(self->allocator, field->name.str.as_str_const());
+                                            var field_decl = self->build_decl(&subst, field_name.as_str_const());
+                                            
+                                            self->type_out.push_str(field_decl.as_str_const());
+                                            self->type_out.push_str("; ");
+                                            
+                                            field_name.free();
+                                            field_decl.free();
+                                        }
+
+                                        self->type_out.push_str("} ");
+                                        self->type_out.push_str(variant.as_str_const());
+                                        self->type_out.push_str(";\n");
+                                        variant.free();
+                                    }
+                                }
+                            }
+
+                            const enum_layout = self->tctx.compute_enum_layout_inst(enum_decl, type_args);
+
+                            self->type_out.push_str("struct ");
+                            self->type_out.push_str(base.as_str_const());
+                            self->type_out.push_str(" {\n    ");
+                            self->type_out.push_str(tag_name.as_str_const());
+                            self->type_out.push_str(" tag;\n    union {\n");
+
+                            for (
+                                var variant_index: usize = 0;
+                                variant_index < enum_decl->variants.len();
+                                variant_index += 1
+                            ) {
+                                const variant = enum_decl->variants.get_const(variant_index).unwrap();
+                                const tag = tags->get_owned(variant_index).unwrap();
+
+                                switch (*variant) {
+                                    case .Unit => {}
+
+                                    else => {
+                                        var variant = self->enum_variant_type_name(&base, tag);
+                                        
+                                        self->type_out.push(' ');
+                                        self->type_out.push_str(variant.as_str_const());
+                                        self->type_out.push_str(" v");
+                                        push_uint32_into(&self->type_out, self->allocator, tag);
+                                        self->type_out.push_str(";\n");
+                                        
+                                        variant.free();
+                                    }
+                                }
+                            }
+
+                            {
+                                var buffer_decl = String.new(self->allocator);
+                                var writer: Writer = dynamic StringWriter.new(&buffer_decl);
+                                writer.write(" uint8_t raw[");
+                                format_uint32(writer, enum_layout->size);
+                                writer.write("]; ");
+                                self->type_out.push_str(buffer_decl.as_str_const());
+                                buffer_decl.free();
+                            }
+
+                            self->type_out.push_str(" } u; }; ");
+
+                            for (var variant_index: usize = 0; variant_index < enum_decl->variants.len(); variant_index += 1) {
+                                const variant = enum_decl->variants.get_const(variant_index).unwrap();
+                                const tag = tags->get_owned(variant_index).unwrap();
+                                
+                                self->type_out.push_str("#define ");
+                                self->type_out.push_str(base.as_str_const());
+                                self->type_out.push('_');
+                                self->type_out.push_str(variant->name());
+                                self->type_out.push_str(" ((");
+                                self->type_out.push_str(base.as_str_const());
+                                self->type_out.push_str(")");
+                                push_uint32_into(&self->type_out, self->allocator, tag);
+                                self->type_out.push_str(")\n");
+                            }
+
+                            tag_name.free();
+                            self->type_out.push_str("\n");
+                        }
+
+                        base.free();
+                    }
+                    else => {}
+                }
+            }
+            else => {}
+        }
+
+        targs.free();
+
+        if (!emitted) {
+            sig.free();
+        }
+    }
+
+    fn tuple_type_name(self: Self*, tuple: const cir::TupleType*) String {
+        var sig = String.new(self->allocator);
+
+        for (var element_index: usize = 0; element_index < tuple->elements.len(); element_index += 1) {
+            const element = tuple->elements.get_const(element_index).unwrap();
+
+            var name = self->type_name(&element->ty);
+            sig.push_str(name.as_str_const());
+            name.free();
+
+            if (element_index + 1 < tuple->elements.len()) {
+                sig.push(',');
+            }
+        }
+
+        for (var i: usize = 0; i < self->tuple_sigs.len(); i += 1) {
+            const existing = self->tuple_sigs.get_const(i).unwrap();
+
+            if (existing->as_str_const() == sig.as_str_const()) {
+                sig.free();
+                const existing_name = self->tuple_names.get_const(i).unwrap();
+                return String.from_str(self->allocator, existing_name->as_str_const());
+            }
+        }
+
+        var tuple_name = String.new(self->allocator);
+        tuple_name.push_str("__tuple_");
+        push_usize_into(&tuple_name, self->allocator, self->tuple_counter);
+        self->tuple_counter += 1;
+
+        self->type_out.push_str("typedef struct ");
+        self->type_out.push_str(tuple_name.as_str_const());
+        self->type_out.push_str(" { ");
+
+        for (var element_index: usize = 0; element_index < tuple->elements.len(); element_index += 1) {
+            const element = tuple->elements.get_const(element_index).unwrap();
+
+            var field_name = tuple_field_name(self->allocator, element_index);
+            var field_decl = self->build_decl(&element->ty, field_name.as_str_const());
+
+            self->type_out.push_str(field_decl.as_str_const());
+            self->type_out.push_str("; ");
+            field_decl.free();
+            field_name.free();
+        }
+
+        self->type_out.push_str("} ");
+        self->type_out.push_str(tuple_name.as_str_const());
+        self->type_out.push_str(";\n");
+
+        self->tuple_sigs.push(sig);
+
+        var owned_name = String.from_str(self->allocator, tuple_name.as_str_const());
+        self->tuple_names.push(owned_name);
+
+        return tuple_name;
+    }
+}
+
+pub fn emit_plain_type(plain: cir::PlainType) const uint8* {
+    switch (plain) {
+        case .UIntPtr => return "uintptr_t";
+        case .IntPtr => return "intptr_t";
+        case .ISize => return "intptr_t";
+        case .USize => return "uintptr_t";
+        case .Int8 => return "int8_t";
+        case .Int16 => return "int16_t";
+        case .Int32 => return "int32_t";
+        case .Int64 => return "int64_t";
+        case .Int128 => return "__cyrus_int128";
+        case .UInt8 => return "uint8_t";
+        case .UInt16 => return "uint16_t";
+        case .UInt32 => return "uint32_t";
+        case .UInt64 => return "uint64_t";
+        case .UInt128 => return "__cyrus_uint128";
+        case .Float16 => return "float";
+        case .Float32 => return "float";
+        case .Float64 => return "double";
+        case .Float128 => return "__float128";
+        case .Bool => return "bool";
+        case .Void => return "void";
+        case .Null => return "void*";
+    }
+}
+
+fn push_capacity(
+    out: String*,
+    allocator: Allocator,
+    tables: const DeclTables*,
+    registry: const GlobalSymbolRegistry*,
+    array: const cir::ArrayType*
+) {
+    switch (array->capacity) {
+        case .Fixed(expr) => {
+            switch (ciri::fold_const_expr_int(tables, registry, expr)) {
+                case .Some(literal) => {
+                    switch (literal) {
+                        case .Signed(x) => {
+                            if (x < 0) {
+                                push_int128_into(out, allocator, x);
+                            } else {
+                                push_uint128_into(out, allocator, @cast(uint128, x));
+                            }
+                        }
+                        case .Unsigned(x) => {
+                            push_uint128_into(out, allocator, x);
+                        }
+                    }
+                }
+                case .None => {
+                    out->push('1');
+                }
+            }
+        }
+        case .Slice => {
+            out->push('1');
+        }
+    }
+}
+
+fn push_uint32_into(out: String*, allocator: Allocator, value: uint32) {
+    var buffer = String.new(allocator);
+    var writer: Writer = dynamic StringWriter.new(&buffer);
+    format_uint32(writer, value);
+    out->push_str(buffer.as_str_const());
+    buffer.free();
+}
+
+fn push_usize_into(out: String*, allocator: Allocator, value: usize) {
+    var buffer = String.new(allocator);
+    var writer: Writer = dynamic StringWriter.new(&buffer);
+    format_usize(writer, value);
+    out->push_str(buffer.as_str_const());
+    buffer.free();
+}
+
+fn push_uint128_into(out: String*, allocator: Allocator, value: uint128) {
+    var buffer = String.new(allocator);
+    var writer: Writer = dynamic StringWriter.new(&buffer);
+    format_uint128(writer, value);
+    out->push_str(buffer.as_str_const());
+    buffer.free();
+}
+
+fn push_int128_into(out: String*, allocator: Allocator, value: int128) {
+    var buffer = String.new(allocator);
+    var writer: Writer = dynamic StringWriter.new(&buffer);
+    format_int128(writer, value);
+    out->push_str(buffer.as_str_const());
+    buffer.free();
+}
+
+fn tuple_field_name(allocator: Allocator, index: usize) String {
+    var out = String.from_str(allocator, "f");
+    push_usize_into(&out, allocator, index);
+    return out;
+}

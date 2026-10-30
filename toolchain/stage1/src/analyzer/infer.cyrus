@@ -12,7 +12,7 @@ import cir;
 
 /// Local-bidirectional unification context
 /// which is unique per function environment.
-pub struct InferCtx {
+pub struct InferContext {
     allocator: Allocator,
     next_var: usize,
     bindings: HashMap<usize, cir::SemaType>,
@@ -62,15 +62,15 @@ pub struct InferCtx {
             }
 
             case .Named(named_type) => {
-                var type_args = cir::TypedTypeArgs.new(self->allocator);
+                var type_args = cir::TypeArgs.new(self->allocator);
 
                 for (var i: usize = 0; i < named_type.type_args.len(); i += 1) {
                     const arg = named_type.type_args.get(i).unwrap();
                     
                     switch (*arg) {
-                        case .Type(inner_ty, span) => {
-                            const resolved = self->resolve(&inner_ty);
-                            type_args.push(.Type(resolved, span));
+                        case .Type(inner_type, span) => {
+                            const ty = self->resolve(&inner_type);
+                            type_args.push(.Type(ty, span));
                         }
                         case .Infer => type_args.push(.Infer);
                     }
@@ -84,7 +84,8 @@ pub struct InferCtx {
 
             case .Array(array_type) => {
                 const element_type = self->resolve(array_type.element_type);
-                return .Array(cir::TypedArrayType {
+                
+                return .Array(cir::ArrayType {
                     element_type: alloc_init(self->allocator, element_type),
                     capacity: array_type.capacity,
                     span: array_type.span,
@@ -92,25 +93,30 @@ pub struct InferCtx {
             }
 
             case .Const(inner) => {
-                const resolved = self->resolve(inner);
-                return .Const(alloc_init(self->allocator, resolved));
+                const ty = self->resolve(inner);
+
+                if (ty.is_const()) {
+                    return ty;
+                }
+
+                return .Const(alloc_init(self->allocator, ty));
             }
 
             case .Pointer(inner) => {
-                const resolved = self->resolve(inner);
-                return .Pointer(alloc_init(self->allocator, resolved));
+                const ty = self->resolve(inner);
+                return .Pointer(alloc_init(self->allocator, ty));
             }
 
             case .FuncType(func_type) => {
-                var params = cir::TypedFuncTypeParams {
+                var params = cir::FuncTypeParams {
                     list: Vec.with_capacity(self->allocator, func_type.params.list.len()),
                     variadic: .None,
                 };
 
                 for (var i: usize = 0; i < func_type.params.list.len(); i += 1) {
                     const param = func_type.params.list.get_const(i).unwrap();
-                    const resolved = self->resolve(param);
-                    params.list.push(resolved);
+                    const ty = self->resolve(param);
+                    params.list.push(ty);
                 }
 
                 switch (func_type.params.variadic) {
@@ -119,14 +125,15 @@ pub struct InferCtx {
                             case .UntypedCStyle => {
                                 params.variadic = .Some(alloc_init(
                                     self->allocator,
-                                    cir::TypedFuncTypeVariadicParam.UntypedCStyle
+                                    cir::FuncTypeVariadicParam.UntypedCStyle
                                 ));
                             }
                             case .Typed(inner) => {
-                                const resolved = self->resolve(&inner);
+                                const ty = self->resolve(&inner);
+
                                 params.variadic = .Some(alloc_init(
                                     self->allocator,
-                                    cir::TypedFuncTypeVariadicParam.Typed(resolved)
+                                    cir::FuncTypeVariadicParam.Typed(ty)
                                 ));
                             }
                         }
@@ -136,7 +143,7 @@ pub struct InferCtx {
 
                 const ret_type = self->resolve(func_type.ret_type);
 
-                return .FuncType(cir::TypedFuncType {
+                return .FuncType(cir::FuncType {
                     params,
                     ret_type: alloc_init(self->allocator, ret_type),
                     vis: func_type.vis,
@@ -146,20 +153,20 @@ pub struct InferCtx {
             }
 
             case .Tuple(tuple_type) => {
-                var elements: Vec<cir::TypedTupleElement> =
+                var elements: Vec<cir::TupleElement> =
                     Vec.with_capacity(self->allocator, tuple_type.elements.len());
 
                 for (var i: usize = 0; i < tuple_type.elements.len(); i += 1) {
                     const element = tuple_type.elements.get_const(i).unwrap();
-                    const resolved = self->resolve(&element->ty);
+                    const ty = self->resolve(&element->ty);
                     
-                    elements.push(cir::TypedTupleElement {
-                        ty: resolved,
+                    elements.push(cir::TupleElement {
+                        ty,
                         span: element->span,
                     });
                 }
 
-                return .Tuple(cir::TypedTupleType {
+                return .Tuple(cir::TupleType {
                     elements,
                     span: tuple_type.span,
                 });
@@ -255,20 +262,20 @@ pub struct InferCtx {
                 }
             }
 
-            case .Named(n1) => {
+            case .Named(named1) => {
                 switch (rb) {
-                    case .Named(n2) => {
-                        if (!type_decl_id_eq(n1.type_decl_id, n2.type_decl_id)) {
+                    case .Named(named2) => {
+                        if (!type_decl_id_eq(named1.type_decl_id, named2.type_decl_id)) {
                             return false;
                         }
 
-                        if (n1.type_args.len() != n2.type_args.len()) {
+                        if (named1.type_args.len() != named2.type_args.len()) {
                             return false;
                         }
 
-                        for (var i: usize = 0; i < n1.type_args.len(); i += 1) {
-                            const arg1 = n1.type_args.get(i).unwrap();
-                            const arg2 = n2.type_args.get(i).unwrap();
+                        for (var i: usize = 0; i < named1.type_args.len(); i += 1) {
+                            const arg1 = named1.type_args.get(i).unwrap();
+                            const arg2 = named2.type_args.get(i).unwrap();
 
                             if (!self->unify_type_arg(arg1, arg2)) {
                                 return false;
@@ -281,16 +288,16 @@ pub struct InferCtx {
                 }
             }
 
-            case .Tuple(t1) => {
+            case .Tuple(tuple1) => {
                 switch (rb) {
-                    case .Tuple(t2) => {
-                        if (t1.elements.len() != t2.elements.len()) {
+                    case .Tuple(tuple2) => {
+                        if (tuple1.elements.len() != tuple2.elements.len()) {
                             return false;
                         }
 
-                        for (var i: usize = 0; i < t1.elements.len(); i += 1) {
-                            const e1 = t1.elements.get_const(i).unwrap();
-                            const e2 = t2.elements.get_const(i).unwrap();
+                        for (var i: usize = 0; i < tuple1.elements.len(); i += 1) {
+                            const e1 = tuple1.elements.get_const(i).unwrap();
+                            const e2 = tuple2.elements.get_const(i).unwrap();
 
                             if (!self->unify(&e1->ty, &e2->ty)) {
                                 return false;
@@ -303,32 +310,32 @@ pub struct InferCtx {
                 }
             }
 
-            case .Array(arr) => {
+            case .Array(array1) => {
                 switch (rb) {
-                    case .Array(arr2) => return self->unify(arr.element_type, arr2.element_type);
-                    case .Pointer(ptr) => return self->unify(arr.element_type, ptr);
+                    case .Array(array2) => return self->unify(array1.element_type, array2.element_type);
+                    case .Pointer(pointer) => return self->unify(array1.element_type, pointer);
                     else => return false;
                 }
             }
 
-            case .Pointer(p1) => {
+            case .Pointer(pointer1) => {
                 switch (rb) {
-                    case .Pointer(p2) => return self->unify(p1, p2);
-                    case .Array(arr2) => return self->unify(p1, arr2.element_type);
+                    case .Array(array2) => return self->unify(pointer1, array2.element_type);
+                    case .Pointer(pointer2) => return self->unify(pointer1, pointer2);
                     else => return false;
                 }
             }
 
-            case .Const(c1) => {
+            case .Const(inner1) => {
                 switch (rb) {
-                    case .Const(c2) => return self->unify(c1, c2);
+                    case .Const(inner2) => return self->unify(inner1, inner2);
                     else => return false;
                 }
             }
 
-            case .FuncType(f1) => {
+            case .FuncType(func1) => {
                 switch (rb) {
-                    case .FuncType(f2) => return self->unify_func(&f1, &f2);
+                    case .FuncType(func2) => return self->unify_func(&func1, &func2);
                     else => return false;
                 }
             }
@@ -339,13 +346,13 @@ pub struct InferCtx {
 
     fn unify_type_arg(
         self: Self*, 
-        a: const cir::TypedTypeArg*, 
-        b: const cir::TypedTypeArg*
+        a: const cir::TypeArg*, 
+        b: const cir::TypeArg*
     ) bool {
         switch (*a) {
-            case .Type(t1, _) => {
+            case .Type(type1, _) => {
                 switch (*b) {
-                    case .Type(t2, _) => return self->unify(&t1, &t2);
+                    case .Type(type2, _) => return self->unify(&type1, &type2);
                     case .Infer => return true;
                 }
             }
@@ -357,31 +364,31 @@ pub struct InferCtx {
 
     fn unify_func(
         self: Self*, 
-        f1: const cir::TypedFuncType*, 
-        f2: const cir::TypedFuncType*
+        func1: const cir::FuncType*, 
+        func2: const cir::FuncType*
     ) bool {
-        if (f1->params.list.len() != f2->params.list.len()) {
+        if (func1->params.list.len() != func2->params.list.len()) {
             return false;
         }
 
-        for (var i: usize = 0; i < f1->params.list.len(); i += 1) {
-            const p1 = f1->params.list.get_const(i).unwrap();
-            const p2 = f2->params.list.get_const(i).unwrap();
+        for (var i: usize = 0; i < func1->params.list.len(); i += 1) {
+            const p1 = func1->params.list.get_const(i).unwrap();
+            const p2 = func2->params.list.get_const(i).unwrap();
 
             if (!self->unify(p1, p2)) {
                 return false;
             }
         }
 
-        switch (f1->params.variadic) {
+        switch (func1->params.variadic) {
             case .None => {
-                switch (f2->params.variadic) {
+                switch (func2->params.variadic) {
                     case .Some => return false;
                     else => {}
                 }
             }
             case .Some(v1) => {
-                switch (f2->params.variadic) {
+                switch (func2->params.variadic) {
                     case .Some(v2) => {
                         switch (*v1) {
                             case .UntypedCStyle => {
@@ -390,10 +397,10 @@ pub struct InferCtx {
                                     else => return false;
                                 }
                             }
-                            case .Typed(t1) => {
+                            case .Typed(tuple1) => {
                                 switch (*v2) {
-                                    case .Typed(t2) => {
-                                        if (!self->unify(&t1, &t2)) {
+                                    case .Typed(tuple2) => {
+                                        if (!self->unify(&tuple1, &tuple2)) {
                                             return false;
                                         }
                                     }
@@ -407,7 +414,7 @@ pub struct InferCtx {
             }
         }
 
-        return self->unify(f1->ret_type, f2->ret_type);
+        return self->unify(func1->ret_type, func2->ret_type);
     }
     
     pub fn free(self: Self*) {

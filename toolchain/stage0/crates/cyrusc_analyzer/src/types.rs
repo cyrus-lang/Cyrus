@@ -60,7 +60,7 @@ impl<'a> AnalysisContext<'a> {
             | SemaType::SelfType(_)
             | SemaType::Plain(_)
             | SemaType::GenericParam(_)
-            | SemaType::InferVar(_)
+            | SemaType::InferVar { .. }
             | SemaType::Placeholder
             | SemaType::Err(_) => false,
         }
@@ -479,7 +479,7 @@ impl<'a> AnalysisContext<'a> {
                 if let Some(arg) = args.get(i) {
                     final_args.push(arg.clone());
                 } else {
-                    let infer = self.func_env.infer.as_mut().unwrap().new_var();
+                    let infer = self.func_env.infer.as_mut().unwrap().new_var(loc);
                     final_args.push(TypedTypeArg::Type(infer, loc));
                 }
             }
@@ -552,7 +552,7 @@ impl<'a> AnalysisContext<'a> {
     pub(crate) fn expand_sema_type(&mut self, ty: SemaType, loc: Loc) -> SemaType {
         match &ty {
             SemaType::Placeholder => ty,
-            SemaType::InferVar(_) => ty,
+            SemaType::InferVar { .. } => ty,
 
             SemaType::Named(named_type) => match &named_type.type_decl_id {
                 TypeDeclID::Typedef(typedef_decl_id) => {
@@ -779,7 +779,7 @@ impl<'a> AnalysisContext<'a> {
 
                 SemaType::SelfType(_)
                 | SemaType::GenericParam(_)
-                | SemaType::InferVar(_)
+                | SemaType::InferVar { .. }
                 | SemaType::Unresolved(_)
                 | SemaType::Err(_)
                 | SemaType::Placeholder => ty.clone(),
@@ -883,7 +883,7 @@ impl<'a> AnalysisContext<'a> {
                 SemaType::Plain(_) => {}
 
                 SemaType::GenericParam(_)
-                | SemaType::InferVar(_)
+                | SemaType::InferVar { .. }
                 | SemaType::Unresolved(_)
                 | SemaType::Err(_)
                 | SemaType::Placeholder => {}
@@ -968,7 +968,7 @@ impl<'a> AnalysisContext<'a> {
 
                 SemaType::SelfType(_)
                 | SemaType::GenericParam(_)
-                | SemaType::InferVar(_)
+                | SemaType::InferVar { .. }
                 | SemaType::Unresolved(_)
                 | SemaType::Err(_)
                 | SemaType::Placeholder => true,
@@ -1045,7 +1045,7 @@ impl<'a> AnalysisContext<'a> {
 
                 SemaType::SelfType(_)
                 | SemaType::GenericParam(_)
-                | SemaType::InferVar(_)
+                | SemaType::InferVar { .. }
                 | SemaType::Unresolved(_)
                 | SemaType::Err(_)
                 | SemaType::Placeholder => true,

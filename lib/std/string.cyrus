@@ -233,6 +233,20 @@ pub fn free_strings(vec: Vec<String>*) {
     vec->free();
 }
 
+pub fn str_contains_char(str: const uint8*, char: uint8) bool {
+    var i: usize = 0;
+
+    while (str[i] != 0) {
+        if (str[i] == char) {
+            return true;
+        }
+        
+        i += 1;
+    }
+
+    return false;
+}
+
 pub fn parse_str_as_int64(str: const uint8*) Option<int64> {
     @assert(str, "str cannot be empty");
 

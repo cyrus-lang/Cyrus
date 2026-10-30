@@ -1,0 +1,701 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 The Cyrus Language
+
+import std::collections::hash_map{HashMap};
+import std::io{Writer, StringWriter};
+import std::format{format_usize};
+import std::collections{Vec};
+import std::mem{Allocator};
+import std::option{Option};
+import std::string{String};
+import std::hash{
+    hash_uint32, 
+    hash_usize, 
+    eq_usize, 
+    eq_uint32
+};
+
+import cir::tables{DeclTables};
+import cir{ProgramTree};
+import source{SourceId};
+import parser::ast;
+import cir;
+
+pub type ModuleName = const uint8*;
+
+/// Maps file ids to module names 
+/// (borrowed from trees).
+pub struct ModuleMaps {
+    pub allocator: Allocator,
+    pub file_modules: HashMap<SourceId, ModuleName>,
+    pub struct_modules: HashMap<cir::StructDeclId, ModuleName>,
+    pub enum_modules: HashMap<cir::EnumDeclId, ModuleName>,
+    pub union_modules: HashMap<cir::UnionDeclId, ModuleName>,
+    pub typedef_modules: HashMap<cir::TypedefDeclId, ModuleName>,
+    pub interface_modules: HashMap<cir::InterfaceDeclId, ModuleName>,
+    pub func_modules: HashMap<cir::FuncDeclId, ModuleName>,
+    pub method_modules: HashMap<cir::MethodDeclId, ModuleName>,
+    pub global_modules: HashMap<cir::GlobalVarDeclId, ModuleName>,
+}
+
+pub fn new_module_maps(allocator: Allocator, trees: const Vec<cir::ProgramTree>*) ModuleMaps {
+    return ModuleMaps {
+        allocator,
+        interface_modules: HashMap.with_hasher(allocator, 64, hash_usize, eq_usize),
+        typedef_modules: HashMap.with_hasher(allocator, 64, hash_usize, eq_usize),
+        method_modules: HashMap.with_hasher(allocator, 64, hash_usize, eq_usize),
+        global_modules: HashMap.with_hasher(allocator, 64, hash_usize, eq_usize),
+        struct_modules: HashMap.with_hasher(allocator, 64, hash_usize, eq_usize),
+        union_modules: HashMap.with_hasher(allocator, 64, hash_usize, eq_usize),
+        enum_modules: HashMap.with_hasher(allocator, 64, hash_usize, eq_usize),
+        func_modules: HashMap.with_hasher(allocator, 64, hash_usize, eq_usize),
+        file_modules: HashMap<SourceId, ModuleName>.with_hasher(
+            allocator, 
+            64, 
+            hash_uint32, 
+            eq_uint32
+        ),
+    };
+}
+
+pub fn build_module_maps(
+    maps: ModuleMaps*,
+    tables: const DeclTables*,
+    trees: const Vec<cir::ProgramTree>*
+) {
+    for (var i: usize = 0; i < trees->len(); i += 1) {
+        const tree = trees->get_const(i).unwrap();
+        const module = tree->module_name.as_str_const();
+
+        maps->file_modules.insert(tree->file_id, module);
+
+        for (var i: usize = 0; i < tree->body.len(); i += 1) {
+            const stmt = tree->body.get_const(i).unwrap();
+
+            switch (stmt->kind) {
+                case .Typedef(typedef) => {
+                    maps->typedef_modules.insert(typedef.typedef_decl_id, module);
+                }
+                case .Struct(struct_) => {
+                    maps->struct_modules.insert(struct_.struct_decl_id, module);
+                    record_method_modules(maps, &struct_.methods, module);
+                }
+                case .Enum(enum_) => {
+                    maps->enum_modules.insert(enum_.enum_decl_id, module);
+                    record_method_modules(maps, &enum_.methods, module);
+                }
+                case .Union(union_) => {
+                    maps->union_modules.insert(union_.union_decl_id, module);
+                    record_method_modules(maps, &union_.methods, module);
+                }
+                case .Interface(interface_) => {
+                    maps->interface_modules.insert(interface_.interface_decl_id, module);
+                    record_method_modules(maps, &interface_.methods, module);
+                }
+                case .FuncDef(func_def) => {
+                    switch (func_def.func_decl_id) {
+                        case .Some(func_decl_id) => {
+                            maps->func_modules.insert(func_decl_id, module);
+                        }
+                        else => {}
+                    }
+                }
+                case .FuncDecl(func_def) => {
+                    maps->func_modules.insert(func_def.func_decl_id, module);
+                }
+                case .GlobalVar(global_var) => {
+                    maps->global_modules.insert(global_var.global_var_decl_id, module);
+                }
+                else => {}
+            }
+        }
+    }
+
+    for (var i: usize = 0; i < tables->methods.len(); i += 1) {
+        if (maps->method_modules.get(@cast(cir::MethodDeclId, i)).is_some()) {
+            continue;
+        }
+
+        const method_decl = tables->methods.get_const(i).unwrap();
+        
+        switch (maps->file_modules.get_owned(method_decl->func_decl.file_id)) {
+            case .Some(module) => {
+                maps->method_modules.insert(i, module);
+            }
+            else => {}
+        }
+    }
+
+    for (var i: usize = 0; i < tables->funcs.len(); i += 1) {
+        if (maps->func_modules.get(@cast(cir::FuncDeclId, i)).is_some()) {
+            continue;
+        }
+
+        const func_decl = tables->funcs.get_const(i).unwrap();
+
+        switch (maps->file_modules.get_owned(func_decl->file_id)) {
+            case .Some(module) => {
+                maps->func_modules.insert(i, module);
+            }
+            else => {}
+        }
+    }
+}
+
+fn record_method_modules(
+    maps: ModuleMaps*,
+    methods: const cir::MethodDecls*,
+    module: ModuleName
+) {
+    for (var i: usize = 0; i < methods->entries.len(); i += 1) {
+        const entry = methods->entries.get_const(i).unwrap();
+        maps->method_modules.insert(entry->id, module);
+    }
+}
+
+pub fn free_module_maps(maps: ModuleMaps*) {
+    maps->file_modules.free();
+    maps->struct_modules.free();
+    maps->enum_modules.free();
+    maps->union_modules.free();
+    maps->typedef_modules.free();
+    maps->interface_modules.free();
+    maps->func_modules.free();
+    maps->method_modules.free();
+    maps->global_modules.free();
+}
+
+fn is_ident_char(char: uint8) bool {
+    switch (char) {
+        case 'a' ... 'z' 
+        | 'A' ... 'Z' 
+        | '0' ... '9' 
+        | '_' => return true;
+
+        else => return false;
+    }
+}
+
+pub fn sanitize_into(out: String*, name: const uint8*) {
+    var i: usize = 0;
+    
+    while (name[i] != 0) {
+        if (is_ident_char(name[i])) {
+            out->push(name[i]);
+        } else {
+            out->push('_');
+        }
+        i += 1;
+    }
+
+    if (i == 0) {
+        out->push_str("_anon");
+        return;
+    }
+
+    if (is_c_keyword(name)) {
+        out->push('_');
+    }
+}
+
+pub fn is_c_keyword(name: const uint8*) bool {
+    if (name == "auto") { return true; }
+    if (name == "break") { return true; }
+    if (name == "case") { return true; }
+    if (name == "char") { return true; }
+    if (name == "const") { return true; }
+    if (name == "continue") { return true; }
+    if (name == "default") { return true; }
+    if (name == "do") { return true; }
+    if (name == "double") { return true; }
+    if (name == "else") { return true; }
+    if (name == "enum") { return true; }
+    if (name == "extern") { return true; }
+    if (name == "float") { return true; }
+    if (name == "for") { return true; }
+    if (name == "goto") { return true; }
+    if (name == "if") { return true; }
+    if (name == "inline") { return true; }
+    if (name == "int") { return true; }
+    if (name == "long") { return true; }
+    if (name == "register") { return true; }
+    if (name == "restrict") { return true; }
+    if (name == "return") { return true; }
+    if (name == "short") { return true; }
+    if (name == "signed") { return true; }
+    if (name == "sizeof") { return true; }
+    if (name == "static") { return true; }
+    if (name == "struct") { return true; }
+    if (name == "switch") { return true; }
+    if (name == "typedef") { return true; }
+    if (name == "union") { return true; }
+    if (name == "unsigned") { return true; }
+    if (name == "void") { return true; }
+    if (name == "volatile") { return true; }
+    if (name == "while") { return true; }
+    if (name == "_Bool") { return true; }
+    if (name == "_Atomic") { return true; }
+    if (name == "_Generic") { return true; }
+    if (name == "_Noreturn") { return true; }
+    if (name == "_Static_assert") { return true; }
+    if (name == "_Thread_local") { return true; }
+    if (name == "_Alignas") { return true; }
+    if (name == "_Alignof") { return true; }
+    if (name == "bool") { return true; }
+    if (name == "true") { return true; }
+    if (name == "false") { return true; }
+    if (name == "NULL") { return true; }
+    if (name == "main") { return true; }
+    return false;
+}
+
+[[inline]]
+pub fn sanitized(allocator: Allocator, name: const uint8*) String {
+    var out = String.new(allocator);
+    sanitize_into(&out, name);
+    return out;
+}
+
+fn module_prefix(out: String*, module_name: const uint8*) {
+    if (module_name[0] == 0) {
+        return;
+    }
+
+    var i: usize = 0;
+
+    while (module_name[i] != 0) {
+        if (is_ident_char(module_name[i])) {
+            out->push(module_name[i]);
+        } else {
+            out->push('_');
+        }
+        i += 1;
+    }
+
+    out->push_str("__");
+}
+
+pub fn module_for_func(maps: const ModuleMaps*, id: cir::FuncDeclId) const uint8* {
+    switch (maps->func_modules.get_owned(id)) {
+        case .Some(module) => {
+            return module;
+        }
+        else => {
+            return "";
+        }
+    }
+}
+
+pub fn module_for_method(maps: const ModuleMaps*, id: cir::MethodDeclId) const uint8* {
+    switch (maps->method_modules.get_owned(id)) {
+        case .Some(module) => {
+            return module;
+        }
+        else => {
+            return "";
+        }
+    }
+}
+
+pub fn module_for_struct(maps: const ModuleMaps*, id: cir::StructDeclId) const uint8* {
+    switch (maps->struct_modules.get_owned(id)) {
+        case .Some(module) => {
+            return module;
+        }
+        else => {
+            return "";
+        }
+    }
+}
+
+pub fn module_for_enum(maps: const ModuleMaps*, id: cir::EnumDeclId) const uint8* {
+    switch (maps->enum_modules.get_owned(id)) {
+        case .Some(module) => {
+            return module;
+        }
+        else => {
+            return "";
+        }
+    }
+}
+
+pub fn module_for_union(maps: const ModuleMaps*, id: cir::UnionDeclId) const uint8* {
+    switch (maps->union_modules.get_owned(id)) {
+        case .Some(module) => {
+            return module;
+        }
+        else => {
+            return "";
+        }
+    }
+}
+
+pub fn module_for_typedef(maps: const ModuleMaps*, id: cir::TypedefDeclId) const uint8* {
+    switch (maps->typedef_modules.get_owned(id)) {
+        case .Some(module) => {
+            return module;
+        }
+        else => {
+            return "";
+        }
+    }
+}
+
+pub fn mangle_func(
+    allocator: Allocator,
+    maps: const ModuleMaps*,
+    name: const uint8*,
+    func_decl_id: cir::FuncDeclId,
+    modifiers: const ast::ASTFuncModifiers*
+) String {
+    switch (modifiers->link_name) {
+        case .Some(link) => {
+            return sanitized(allocator, link.as_str_const());
+        }
+        else => {}
+    }
+
+    if (name == "main") {
+        return String.from_str(allocator, "main");
+    }
+
+    if (modifiers->is_extern_c()) {
+        return sanitized(allocator, name);
+    }
+
+    var out = String.new(allocator);
+    module_prefix(&out, module_for_func(maps, func_decl_id));
+    sanitize_into(&out, name);
+    return out;
+}
+
+pub fn mangle_method(
+    allocator: Allocator,
+    maps: const ModuleMaps*,
+    method_decl_id: cir::MethodDeclId,
+    method: const cir::MethodDecl*
+) String {
+    switch (method->func_decl.modifiers.link_name) {
+        case .Some(link) => {
+            return sanitized(allocator, link.as_str_const());
+        }
+        else => {}
+    }
+
+    var out = String.new(allocator);
+    module_prefix(&out, module_for_method(maps, method_decl_id));
+
+    switch (method->object_name) {
+        case .Some(object_name) => {
+            sanitize_into(&out, object_name.as_str_const());
+            out.push_str("__");
+        }
+        else => {}
+    }
+
+    sanitize_into(&out, method->func_decl.name.as_str_const());
+    return out;
+}
+
+pub fn mangle_global(
+    allocator: Allocator,
+    maps: const ModuleMaps*,
+    name: const uint8*,
+    global_var_decl_id: cir::GlobalVarDeclId,
+    modifiers: const ast::ASTGlobalVarModifiers*
+) String {
+    switch (modifiers->link_name) {
+        case .Some(link) => {
+            return sanitized(allocator, link.as_str_const());
+        }
+        else => {}
+    }
+
+    if (modifiers->is_extern_c()) {
+        return sanitized(allocator, name);
+    }
+
+    var out = String.new(allocator);
+    switch (maps->global_modules.get_owned(global_var_decl_id)) {
+        case .Some(module) => {
+            module_prefix(&out, module);
+        }
+        else => {}
+    }
+    sanitize_into(&out, name);
+    return out;
+}
+
+pub fn mangle_type(
+    allocator: Allocator,
+    module: const uint8*,
+    name: const Option<const uint8*>,
+    anon_id: usize
+) String {
+    var out = String.new(allocator);
+    module_prefix(&out, module);
+
+    switch (name) {
+        case .Some(type_name) => {
+            if (type_name[0] == 0) {
+                out.push_str("anon_");
+                push_usize(&out, anon_id);
+                return out;
+            }
+            sanitize_into(&out, type_name);
+            return out;
+        }
+        else => {
+            out.push_str("anon_");
+            push_usize(&out, anon_id);
+            return out;
+        }
+    }
+}
+
+fn mangle_plain_type(out: String*, plain: cir::PlainType) {
+    switch (plain) {
+        case .UIntPtr => out->push_str("uintptr");
+        case .IntPtr => out->push_str("intptr");
+        case .ISize => out->push_str("isize");
+        case .USize => out->push_str("usize");
+        case .Int8 => out->push_str("int8");
+        case .Int16 => out->push_str("int16");
+        case .Int32 => out->push_str("int32");
+        case .Int64 => out->push_str("int64");
+        case .Int128 => out->push_str("int128");
+        case .UInt8 => out->push_str("uint8");
+        case .UInt16 => out->push_str("uint16");
+        case .UInt32 => out->push_str("uint32");
+        case .UInt64 => out->push_str("uint64");
+        case .UInt128 => out->push_str("uint128");
+        case .Float16 => out->push_str("float16");
+        case .Float32 => out->push_str("float32");
+        case .Float64 => out->push_str("float64");
+        case .Float128 => out->push_str("float128");
+        case .Bool => out->push_str("bool");
+        case .Void => out->push_str("void");
+        case .Null => out->push_str("null");
+    }
+}
+
+pub fn mangle_type_args(
+    allocator: Allocator,
+    tables: const DeclTables*,
+    type_args: const cir::TypeArgs*
+) String {
+    if (type_args->is_empty()) {
+        return String.new(allocator);
+    }
+
+    var out = String.new(allocator);
+
+    for (var type_arg_index: usize = 0; type_arg_index < type_args->len(); type_arg_index += 1) {
+        switch (*type_args->get(type_arg_index).unwrap()) {
+            case .Type(inner, _) => {
+                if (type_arg_index > 0) {
+                    out.push('_');
+                }
+
+                type_ident(&out, tables, &inner);
+            }
+            else => {
+                if (type_arg_index > 0) {
+                    out.push('_');
+                }
+                out.push('x');
+            }
+        }
+    }
+
+    return out;
+}
+
+pub fn mangle_monomorphized_func(
+    allocator: Allocator,
+    maps: const ModuleMaps*,
+    tables: const DeclTables*,
+    name: const uint8*,
+    func_decl_id: cir::FuncDeclId,
+    modifiers: const ast::ASTFuncModifiers*,
+    type_args: const cir::TypeArgs*
+) String {
+    var base = mangle_func(allocator, maps, name, func_decl_id, modifiers);
+
+    if (type_args->is_empty()) {
+        return base;
+    }
+
+    var suffix = mangle_type_args(allocator, tables, type_args);
+    base.push_str("__");
+    base.push_str(suffix.as_str_const());
+    suffix.free();
+    
+    return base;
+}
+
+pub fn mangle_monomorphized_method(
+    allocator: Allocator,
+    maps: const ModuleMaps*,
+    tables: const DeclTables*,
+    method_decl_id: cir::MethodDeclId,
+    method: const cir::MethodDecl*,
+    type_args: const cir::TypeArgs*
+) String {
+    var base = mangle_method(allocator, maps, method_decl_id, method);
+
+    if (type_args->is_empty()) {
+        return base;
+    }
+
+    var suffix = mangle_type_args(allocator, tables, type_args);
+    base.push_str("__");
+    base.push_str(suffix.as_str_const());
+    suffix.free();
+    
+    return base;
+}
+
+[[inline]]
+fn push_usize(out: String*, value: usize) {
+    format_usize(dynamic StringWriter.new(out), value);
+}
+
+fn type_ident(
+    out: String*,
+    tables: const DeclTables*,
+    ty: const cir::SemaType*
+) {
+    type_ident_impl(out, tables, ty, .None);
+}
+
+fn type_ident_impl(
+    out: String*,
+    tables: const DeclTables*,
+    ty: const cir::SemaType*,
+    sub: Option<const cir::TypeArgs*>
+) {
+    switch (*ty) {
+        case .Named(named) => {
+            switch (named.type_decl_id) {
+                case .Struct(struct_decl_id) => {
+                    out->push_str("S");
+                    push_usize(out, struct_decl_id);
+                }
+                
+                case .Enum(enum_decl_id) => {
+                    out->push_str("E");
+                    push_usize(out, enum_decl_id);
+                }
+                
+                case .Union(union_decl_id) => {
+                    out->push_str("U");
+                    push_usize(out, union_decl_id);
+                }
+                
+                case .Typedef(typedef_decl_id) => {
+                    switch (tables->typedefs.get_const(typedef_decl_id)) {
+                        case .Some(typedef_decl) => {
+                            const target_type = typedef_decl->ty;
+
+                            type_ident_impl(
+                                out, 
+                                tables, 
+                                target_type, 
+                                .Some(&named.type_args)
+                            );
+                            
+                            return;
+                        }
+                        case .None => {}
+                    }
+
+                    out->push_str("T");
+                    push_usize(out, typedef_decl_id);
+                }
+                
+                case .Interface(interface_decl_id) => {
+                    out->push_str("I");
+                    push_usize(out, interface_decl_id);
+                }
+            }
+
+            for (
+                var type_arg_index: usize = 0; 
+                type_arg_index < named.type_args.len(); 
+                type_arg_index += 1
+            ) {
+                switch (*named.type_args.get(type_arg_index).unwrap()) {
+                    case .Type(inner, _) => {
+                        out->push('_');
+                        type_ident_impl(out, tables, &inner, sub);
+                    }
+                    else => out->push_str("_x");
+                }
+            }
+        }
+
+        case .Tuple(tuple) => {
+            out->push_str("Tu");
+
+            for (
+                var element_index: usize = 0; 
+                element_index < tuple.elements.len(); 
+                element_index += 1
+            ) {
+                out->push('_');
+                type_ident_impl(
+                    out, 
+                    tables, 
+                    &tuple.elements.get_const(element_index).unwrap()->ty,
+                    sub
+                );
+            }
+        }
+        
+        case .Plain(plain) => {
+            mangle_plain_type(out, plain);
+        }
+        
+        case .Pointer(inner) => {
+            out->push('P');
+            type_ident_impl(out, tables, inner, sub);
+        }
+        
+        case .Const(inner) => {
+            out->push('C');
+            type_ident_impl(out, tables, inner, sub);
+        }
+
+        case .Array(array) => {
+            out->push_str("A");
+            type_ident_impl(out, tables, array.element_type, sub);
+        }
+        
+        case .FuncType => {
+            out->push_str("Fn");
+        }
+
+        case .GenericParam(generic_param_id) => {
+            switch (sub) {
+                case .Some(args) => {
+                    if (generic_param_id < args->len()) {
+                        switch (*args->get(generic_param_id).unwrap()) {
+                            case .Type(inner, _) => {
+                                type_ident_impl(out, tables, &inner, .None);
+                                return;
+                            }
+                            else => {}
+                        }
+                    }
+                }
+                case .None => {}
+            }
+
+            out->push_str("G");
+            push_usize(out, generic_param_id);
+        }
+        
+        else => out->push_str("x");
+    }
+}

@@ -1,0 +1,152 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 The Cyrus Language
+
+import std::mem::arena{ArenaAllocator};
+import std::mem{Allocator, alloc_init};
+import std::io{Writer, StdoutWriter};
+import std::collections{Vec};
+import std::errors{ErrorOr};
+import std::string{String};
+import std::path{Path};
+
+import analyzer::context{AnalyzerContext};
+import resolver::loader{ResolverOptions};
+import .::lexical{LexicalContext};
+import analyzer{trigger_analyzer};
+import .::index{CompilerContext};
+import resolver{Resolver};
+import cir::dump;
+import cir;
+
+const ANALYZER_ARENA_SIZE: usize = 65536;
+
+pub struct AnalysisContext {
+    pub context: CompilerContext*,
+    pub opts: const ResolverOptions*,
+    pub arena: ArenaAllocator,
+    pub lexical: LexicalContext*,
+    pub resolver: Resolver*,
+    
+    pub fn new(
+        context: CompilerContext*,
+        opts: const ResolverOptions*,
+    ) Self {
+        const allocator = context->allocator;
+        const arena = ArenaAllocator.new(allocator, ANALYZER_ARENA_SIZE);
+
+        const lexical = alloc_init(allocator, LexicalContext.new(context));
+        const resolver = alloc_init(allocator, Resolver.new(allocator, lexical, opts));
+
+        return Self { context, opts, arena, lexical, resolver };
+    }
+
+    pub fn analyze_source(
+        self: Self*, 
+        file_path: const uint8*
+    ) ErrorOr<Vec<cir::ProgramTree>, ()> {
+        const allocator = self->context->allocator;
+
+        const path = Path.new(allocator, file_path);
+
+        switch (self->lexical->tokenize_source(path)) case .Value(var source_tokens) else {
+            return .Error(());
+        }
+        defer source_tokens.free();
+
+        switch (self->lexical->parse_source(source_tokens)) case .Value(var program) else {
+            return .Error(());
+        }
+        defer program.free();
+
+        self->resolver->resolve_entry(source_tokens.source_id, file_path, &program);
+
+        if (self->context->dctx.has_errors()) {
+            self->context->render_diags();
+            return .Error(());
+        }
+
+        var analyzer_context = AnalyzerContext.new(
+            dynamic self->arena,
+            &self->context->dctx,
+            &self->resolver->global_symbols,
+            &self->resolver->decl_tables,
+            self->resolver->program_trees
+        );
+        defer analyzer_context.free();
+
+        trigger_analyzer(&analyzer_context);
+
+        self->context->render_diags();
+
+        if (self->context->dctx.has_errors()) {
+            return .Error(());
+        }
+
+        return .Value(self->resolver->program_trees);
+    }
+
+    pub fn dump_resolver(self: Self*, file_path: const uint8*) int32 {
+        const allocator = self->context->allocator;
+
+        const path = Path.new(allocator, file_path);
+
+        switch (self->lexical->tokenize_source(path)) case .Value(var source_tokens) else {
+            if (!self->context->dctx.has_errors()) {
+                self->resolver->dump_symbols();
+            }
+            return 1;
+        }
+        defer source_tokens.free();
+
+        switch (self->lexical->parse_source(source_tokens)) case .Value(var program) else {
+            if (!self->context->dctx.has_errors()) {
+                self->resolver->dump_symbols();
+            }
+            return 1;
+        }
+        defer program.free();
+
+        self->resolver->resolve_entry(
+            source_tokens.source_id, 
+            file_path, 
+            &program
+        );
+
+        self->context->render_diags();
+
+        if (self->context->dctx.has_errors()) {
+            return 1;
+        }
+
+        self->resolver->dump_symbols();
+        return 0;
+    }
+
+    pub fn dump_cir_from_source(self: Self*, file_path: const uint8*) int32 {
+        switch (self->analyze_source(file_path)) case .Value(trees) else {
+            return 1;
+        }
+
+        const writer: Writer = dynamic StdoutWriter.new();
+
+        dump::dump_cir(
+            &self->resolver->global_symbols,
+            &self->resolver->decl_tables,
+            &trees,
+            writer,
+            self->context->allocator
+        );
+
+        return 0;
+    }
+
+    pub fn free(self: Self*) {
+        const allocator = self->context->allocator;
+
+        self->resolver->free();
+        allocator.free(self->resolver);
+        allocator.free(self->lexical);
+
+        self->arena.destroy();
+    }
+}

@@ -15,7 +15,7 @@ mod tests {
         },
     };
     use cyrusc_ast::abi::Callconv;
-    use cyrusc_source_loc::{FileID, Loc};
+    use cyrusc_source_loc::{FileID, Loc, SourceMap};
     use cyrusc_typed_ast::{VTableID, types::PlainType};
     use std::sync::Arc;
 
@@ -33,7 +33,8 @@ mod tests {
             arch: ABITargetArch::X86_64,
             format: ABITargetObjectFormat::Elf,
         };
-        Arc::new(CIRTypeContext::new(info))
+        let source_map = Arc::new(SourceMap::new());
+        Arc::new(CIRTypeContext::new(info, source_map))
     }
 
     fn abi<'a>(tctx: Arc<CIRTypeContext>) -> X86_64 {

@@ -25,7 +25,8 @@ pub type ProgramArgs = struct {
 pub type ActionFn = fn(ActionContext) void;
 
 pub struct ActionContext {
-    pub opts: const Opts*,
+    pub allocator: Allocator,
+    pub opts: Opts*,
     pub args: const Args*,
     pub cmd: const Cmd*,
 
@@ -122,6 +123,7 @@ pub struct App {
 
                 // Trigger action
                 (cmd->action)(ActionContext {
+                    allocator: self->allocator,
                     opts: self->opts,
                     args: &args,
                     cmd: cmd,
@@ -311,6 +313,9 @@ pub struct App {
         var value: Value;
 
         switch (cmd->find_option(name)) case .Some(opt) else {
+            if (assign_value_buf) {
+                self->allocator.free(assign_value_buf);
+            }
             return .Error(.UnknownOption { opt: name });
         }
 
@@ -334,11 +339,17 @@ pub struct App {
         
         // For non-boolean options, or boolean with explicit value
         if (!next_arg) {
+            if (assign_value_buf) {
+                self->allocator.free(assign_value_buf);
+            }
             return .Error(.MissingValue { opt: name });
         }
 
         if (is_arg_an_opt(next_arg)) {
             // Next arg is an option, but we need a value
+            if (assign_value_buf) {
+                self->allocator.free(assign_value_buf);
+            }
             return .Error(.MissingValue { opt: name });
         }
 

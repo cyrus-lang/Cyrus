@@ -243,6 +243,7 @@ pub fn dir_of_file(allocator: Allocator, file_path: const uint8*) String {
     }
 
     var dir = String.new(allocator);
+
     for (var i: usize = 0; i < last_sep; i += 1) {
         dir.push(file_path[i]);
     }
@@ -250,8 +251,7 @@ pub fn dir_of_file(allocator: Allocator, file_path: const uint8*) String {
     return dir;
 }
 
-/// Parent directory of a file path: `a/b.cyrus -> a`, `b.cyrus -> ""`,
-/// `/x/y.cyrus -> /x`. `.None` when the path is empty.
+/// Parent directory of a file path.
 pub fn file_parent(allocator: Allocator, path: const uint8*) Option<String> {
     const len = strlen(path);
 
@@ -260,6 +260,7 @@ pub fn file_parent(allocator: Allocator, path: const uint8*) Option<String> {
     }
 
     var i = len;
+
     while (i > 0) {
         i -= 1;
 
@@ -271,22 +272,24 @@ pub fn file_parent(allocator: Allocator, path: const uint8*) Option<String> {
         }
     }
 
-    // No separator: parent is the (empty) cwd-relative directory.
+    // No separator
     return .Some(String.new(allocator));
 }
 
-/// Join two path fragments; an absolute `child` replaces `base`.
+/// Join two path fragments. An absolute `child` replaces `base`.
 pub fn join_path(allocator: Allocator, base: const uint8*, child: const uint8*) String {
     if (child[0] == '/' || base[0] == '\0') {
         return String.from_str(allocator, child);
     }
 
-    var out = String.from_str(allocator, base);
     const base_len = strlen(base);
+
+    var out = String.from_str(allocator, base);
 
     if (base[base_len - 1] != '/') {
         out.push('/');
     }
+    
     out.push_str(child);
 
     return out;
@@ -322,8 +325,9 @@ pub fn file_stem(allocator: Allocator, path: const uint8*) String {
 }
 
 pub fn canonicalize_absolute_path(allocator: Allocator, cwd: const uint8*, path: const uint8*) Option<String> {
-    var components: Vec<String> = Vec.new(allocator);
     const absolute = (path[0] == '/') || (cwd[0] == '/');
+
+    var components: Vec<String> = Vec.new(allocator);
 
     if ((path[0] != '/') && (!push_components(allocator, &components, cwd))) {
         free_strings(&components);
@@ -336,6 +340,7 @@ pub fn canonicalize_absolute_path(allocator: Allocator, cwd: const uint8*, path:
     }
 
     var out = String.new(allocator);
+
     if (absolute) {
         out.push('/');
     }
@@ -452,7 +457,7 @@ fn component_equals(path: const uint8*, start: usize, end: usize, what: const ui
     return true;
 }
 
-// TODO: Would be removed after implementing slices in language.
+// FIXME: Remove after implementing slices in language.
 fn str_slice(allocator: Allocator, path: const uint8*, start: usize, end: usize) String {
     if (start >= end) {
         return String.new(allocator);

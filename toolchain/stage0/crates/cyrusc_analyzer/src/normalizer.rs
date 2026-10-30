@@ -34,7 +34,7 @@ impl<'a> AnalysisContext<'a> {
     pub fn normalize_sema_type(&mut self, ty: SemaType, loc: Loc, indirection: u8) -> Option<SemaType> {
         match ty {
             SemaType::Placeholder => Some(ty),
-            SemaType::InferVar(_) => Some(ty),
+            SemaType::InferVar { .. } => Some(ty),
             SemaType::Unresolved(unresolved_type) => self.normalize_unresolved_type(unresolved_type, loc, indirection),
             SemaType::Named(ref named_type) => self.normalize_named_type(named_type, indirection),
             SemaType::GenericParam(generic_param_id) => self.normalize_generic_param(generic_param_id),

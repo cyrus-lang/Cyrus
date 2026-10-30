@@ -230,3 +230,16 @@ pub fn exit_with_compile_error(mesg: const uint8*) {
     writer.write_char('\n');
     exit(.Failure);
 }
+
+pub fn compile_error(mesg: const uint8*) {
+    var writer: Writer = dynamic StderrWriter.new();
+
+    if (tty::is_color_supported(.Stderr)) {
+        colorize_fg(writer, .Red, "error: ");
+    } else {
+        writer.write("error: ");
+    }
+
+    writer.write(mesg);
+    writer.write_char('\n');
+}

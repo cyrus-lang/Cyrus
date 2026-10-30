@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 The Cyrus Language
 
+use cyrusc_source_loc::Loc;
 use cyrusc_typed_ast::{
     stmts::{TypedFuncTypeParams, TypedFuncTypeVariadicParam, TypedTypeArg},
     types::{InferVarID, NamedType, SemaType, TypedArrayType, TypedFuncType, TypedTupleType},
@@ -21,11 +22,14 @@ impl InferCtx {
         }
     }
 
-    pub fn new_var(&mut self) -> SemaType {
+    pub fn new_var(&mut self, loc: Loc) -> SemaType {
         let id = self.next_var;
         self.next_var += 1;
 
-        SemaType::InferVar(InferVarID(id))
+        SemaType::InferVar {
+            id: InferVarID(id),
+            loc,
+        }
     }
 
     fn bind(&mut self, var: InferVarID, ty: SemaType) {
@@ -38,7 +42,7 @@ impl InferCtx {
 
     pub fn resolve(&self, ty: &SemaType) -> SemaType {
         match ty {
-            SemaType::InferVar(id) => {
+            SemaType::InferVar { id, .. } => {
                 if let Some(bound) = self.bindings.get(id) {
                     self.resolve(bound)
                 } else {
@@ -114,7 +118,7 @@ impl InferCtx {
 
     fn occurs_check(&self, var: InferVarID, ty: &SemaType) -> bool {
         match ty {
-            SemaType::InferVar(id) => *id == var,
+            SemaType::InferVar { id, .. } => *id == var,
 
             SemaType::Named(named) => named.type_args.iter().any(|arg| match arg {
                 TypedTypeArg::Type(t, _) => self.occurs_check(var, t),
@@ -140,9 +144,9 @@ impl InferCtx {
         }
 
         match (&a, &b) {
-            (SemaType::InferVar(id1), SemaType::InferVar(id2)) if id1 == id2 => true,
+            (SemaType::InferVar { id: id1, .. }, SemaType::InferVar { id: id2, .. }) if id1 == id2 => true,
 
-            (SemaType::InferVar(id), ty) | (ty, SemaType::InferVar(id)) => {
+            (SemaType::InferVar { id, .. }, ty) | (ty, SemaType::InferVar { id, .. }) => {
                 if self.occurs_check(*id, ty) {
                     false
                 } else {

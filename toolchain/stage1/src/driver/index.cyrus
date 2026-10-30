@@ -1,0 +1,38 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 The Cyrus Language
+
+import std::mem::arena{ArenaAllocator};
+import std::mem{Allocator, alloc_init};
+import std::io{Writer, StdoutWriter};
+import std::errors{ErrorOr};
+import std::path{Path};
+import std::os{File};
+
+import diags::render{CompilerDiagRender};
+import source{SourceContext};
+import diags{DiagContext};
+
+pub struct CompilerContext {
+    pub allocator: Allocator,
+    pub dctx: DiagContext,
+    pub sctx: SourceContext,
+
+    pub fn new(allocator: Allocator) Self {
+        const sctx = SourceContext.new(allocator);
+        const dctx = DiagContext.new(allocator);
+        
+        return Self { allocator, dctx, sctx };
+    }
+
+    [[inline]]
+    pub fn render_diags(self: const Self*) {
+        const writer: Writer = dynamic StdoutWriter.new();
+        
+        CompilerDiagRender.new(&self->dctx, &self->sctx, writer).render();
+    }
+
+    pub fn free(self: Self*) {
+        self->dctx.free();
+        self->sctx.free();
+    }
+}

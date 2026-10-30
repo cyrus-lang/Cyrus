@@ -50,16 +50,16 @@ pub fn format_sema_type(
         }
 
         case .Array(array_type) => {
-            var elem_str = format_sema_type(allocator, tables, array_type.element_type);
-            out.push_str(elem_str.as_str_const());
-            elem_str.free();
+            var type_name = format_sema_type(allocator, tables, array_type.element_type);
+            out.push_str(type_name.as_str_const());
+            type_name.free();
             out.push_str("[");
 
             switch (array_type.capacity) {
-                case .Fixed(cap_expr) => {
-                    var cap_str = format_array_capacity(allocator, cap_expr);
-                    out.push_str(cap_str.as_str_const());
-                    cap_str.free();
+                case .Fixed(capacity_expr) => {
+                    var type_name = format_array_capacity(allocator, capacity_expr);
+                    out.push_str(type_name.as_str_const());
+                    type_name.free();
                 }
                 else => {}
             }
@@ -69,16 +69,19 @@ pub fn format_sema_type(
 
         case .Tuple(tuple_type) => {
             out.push_str("(");
+
             for (var i: usize = 0; i < tuple_type.elements.len(); i += 1) {
                 if (i > 0) {
                     out.push_str(", ");
                 }
 
                 const element = tuple_type.elements.get_const(i).unwrap();
-                var elem_str = format_sema_type(allocator, tables, &element->ty);
-                out.push_str(elem_str.as_str_const());
-                elem_str.free();
+                
+                var type_name = format_sema_type(allocator, tables, &element->ty);
+                out.push_str(type_name.as_str_const());
+                type_name.free();
             }
+
             out.push_str(")");
         }
 
@@ -90,29 +93,54 @@ pub fn format_sema_type(
 
         case .GenericParam(param_id) => {
             const param = tables->generic_params.get_const(param_id);
+            
             switch (param) {
-                case .Some(p) => out.push_str(p->name.str.as_str_const());
-                case .None => out.push_str("GENERIC_PARAM");
+                case .Some(param) => {
+                    out.push_str(param->name.str.as_str_const());
+                }
+                case .None => {
+                    out.push_str("GENERIC_PARAM");
+                }
             }
         }
 
         case .InterfaceObject(interface_object) => {
-            var iface_str = format_named_type(allocator, tables, &interface_object.interface_type);
-            out.push_str(iface_str.as_str_const());
-            iface_str.free();
+            var type_name = format_named_type(
+                allocator, 
+                tables, 
+                &interface_object.interface_type
+            );
+            out.push_str(type_name.as_str_const());
+            type_name.free();
         }
 
-        case .Unresolved(.Decl) => out.push_str("UNRESOLVED");
-        case .Unresolved(.GenericInst) => out.push_str("UNRESOLVED_GENERIC_INST");
-        case .Unresolved(.BuiltinFunc) => out.push_str("UNRESOLVED_BUILTIN_FUNC");
-
-        case .SelfType => out.push_str("Self");
-
-        case .InferVar => out.push_str("_");
-
-        case .Placeholder => out.push_str("PLACEHOLDER");
+        case .Unresolved(.GenericInst) => {
+            out.push_str("UNRESOLVED_GENERIC_INST");
+        }
         
-        case .Err => out.push_str("ERROR");
+        case .Unresolved(.BuiltinFunc) => {
+            out.push_str("UNRESOLVED_BUILTIN_FUNC");
+        }
+        
+        case .Unresolved(.Decl) => {
+            out.push_str("UNRESOLVED");
+        }
+
+        case .Placeholder => {
+            out.push_str("PLACEHOLDER");
+        }
+        
+        case .SelfType => {
+            out.push_str("Self");
+        }
+
+        case .InferVar => {
+            out.push_str("_");
+        }
+
+        case .Err => {
+            out.push_str("ERROR");
+        }
     }
 
     return out;
@@ -139,7 +167,7 @@ pub fn format_named_type(
 pub fn format_type_args(
     allocator: Allocator,
     tables: const DeclTables*,
-    type_args: const cir::TypedTypeArgs*
+    type_args: const cir::TypeArgs*
 ) String {
     var out = String.new(allocator);
 
@@ -172,7 +200,7 @@ pub fn format_type_args(
 pub fn format_func_type(
     allocator: Allocator,
     tables: const DeclTables*,
-    func_type: const cir::TypedFuncType*
+    func_type: const cir::FuncType*
 ) String {
     var out = String.new(allocator);
     out.push_str("fn(");
@@ -472,7 +500,7 @@ pub fn format_enum_decl(
 
 fn format_array_capacity(
     allocator: Allocator,
-    expr: const cir::TypedExpr*
+    expr: const cir::Expr*
 ) String {
     switch (expr->literal_const_int_value()) {
         case .Some(value) => {
@@ -480,16 +508,16 @@ fn format_array_capacity(
             var writer: Writer = dynamic StringWriter.new(&out);
 
             switch (value) {
-                case .Signed(v) => {
-                    if (v < 0) {
+                case .Signed(x) => {
+                    if (x < 0) {
                         out.push('-');
-                        format_uint128(writer, @cast(uint128, -v));
+                        format_uint128(writer, @cast(uint128, -x));
                     } else {
-                        format_uint128(writer, @cast(uint128, v));
+                        format_uint128(writer, @cast(uint128, x));
                     }
                 }
-                case .Unsigned(v) => {
-                    format_uint128(writer, v);
+                case .Unsigned(x) => {
+                    format_uint128(writer, x);
                 }
             }
 
@@ -505,7 +533,7 @@ pub fn format_typed_expr(
     allocator: Allocator,
     registry: const GlobalSymbolRegistry*,
     tables: const DeclTables*,
-    expr: const cir::TypedExpr*,
+    expr: const cir::Expr*,
 ) String {
     switch (expr->kind) {
         case .Symbol(.Unresolved { symbol_id, .. }) => {
@@ -540,9 +568,9 @@ pub fn format_typed_expr(
             rhs_str.free();
             return out;
         }
-        case .AddrOf(addr_of) => {
+        case .AddrOf(addr) => {
             var out = String.from_str(allocator, "&");
-            var operand_str = format_typed_expr(allocator, registry, tables, addr_of.operand);
+            var operand_str = format_typed_expr(allocator, registry, tables, addr.operand);
             out.push_str(operand_str.as_str_const());
             operand_str.free();
             return out;
@@ -612,6 +640,8 @@ pub fn format_typed_expr(
             out.push_str(")");
             return out;
         }
+
+        // FIXME: Complete it!
         else => return String.from_str(allocator, "EXPR");
     }
 }

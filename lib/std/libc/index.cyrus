@@ -588,6 +588,7 @@ pub extern "C" {
     fn getcwd(buf: types::c_char*, size: types::c_size) types::c_char*;
     fn opendir(path: const types::c_char*) types::c_void*;
     fn closedir(dirp: types::c_void*) types::c_int;
+    fn mkdtemp(template: types::c_char*) types::c_char*;
 }
 
 pub extern "C" {

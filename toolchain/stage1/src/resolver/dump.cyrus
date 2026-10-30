@@ -63,9 +63,9 @@ fn dump_node(
 
     writer.write("[");
     format_usize(writer, id);
-    writer.write("] ");
+    writer.write("] [");
     writer.write(kind_str(entry));
-    writer.write(" ");
+    writer.write("] ");
     writer.write(entry->name.as_str_const());
 
     switch (proxy_target(entry)) {
@@ -178,21 +178,21 @@ fn dump_source_map(sctx: const SourceContext*, writer: Writer) {
 
 fn kind_str(entry: const SymbolEntry*) const uint8* {
     switch (entry->kind) {
-        case .ProxiedSymbol => return "ProxiedSymbol";
-        case .ProxiedModule => return "ProxiedModule";
-        case .Unresolved => return "Unresolved";
-        case .GlobalVar => return "GlobalVar";
-        case .Namespace => return "Namespace";
-        case .Interface => return "Interface";
-        case .Typedef => return "Typedef";
-        case .Method => return "Method";
-        case .Module => return "Module";
-        case .Struct => return "Struct";
-        case .Union => return "Union";
-        case .Enum => return "Enum";
-        case .Func => return "Func";
-        case .Var => return "Var";
-        else => return "Unknown";
+        case .ProxiedSymbol => return "PROXIED_SYMBOL";
+        case .ProxiedModule => return "PROXIED_MODULE";
+        case .Unresolved => return "UNRESOLVED";
+        case .GlobalVar => return "GLOBAL_VAR";
+        case .Namespace => return "NAMESPACE";
+        case .Interface => return "INTERFACE";
+        case .Typedef => return "TYPEDEF";
+        case .Method => return "METHOD";
+        case .Module => return "MODULE";
+        case .Struct => return "STRUCT";
+        case .Union => return "UNION";
+        case .Enum => return "ENUM";
+        case .Func => return "FUNC";
+        case .Var => return "VAR";
+        else => return "UNKNOWN";
     }
 }
 

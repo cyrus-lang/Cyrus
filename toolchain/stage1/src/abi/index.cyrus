@@ -1,0 +1,18 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 The Cyrus Language
+
+/// ABI computation module.
+///
+/// Submodule layout:
+/// - abi::helpers      — register counters and small shared helpers
+/// - abi::layout       — ABITypeLayout / ABIFieldOffsetInfo
+/// - abi::args         — ABIArgInfo / ABIRetInfo / ABIFunctionInfo
+/// - abi::target       — TargetInfo, RegisterClass and the TargetABI interface
+/// - abi::typectx      — TypeContext: layout computation and enum tag caches
+/// - abi::targets::x86_64 — System V AMD64 classification (create_target_abi)
+import abi::layout;
+import abi::args;
+import abi::helpers;
+import abi::target;
+import abi::typectx;
+import abi::targets::x86_64;

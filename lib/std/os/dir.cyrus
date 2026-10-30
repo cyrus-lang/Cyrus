@@ -6,37 +6,12 @@ import std::string{String};
 import std::mem{Allocator};
 import std::libc{
     closedir, fopen, fclose,
-    mkdir, rmdir, chdir,
-    getcwd, opendir, 
+    getcwd, opendir, mkdtemp,
+    getenv, remove, rmdir,
+    mkdir, chdir,
 };
 
 const DEFAULT_DIR_MODE: uint32 = 493; // 0755 in octal
-
-pub fn is_dir(path: const uint8*) bool {
-    @assert(path != null, "path cannot be null");
-
-    const file = opendir(path);
-    
-    if (file == null) {
-        return false;
-    }
-    
-    closedir(file);
-    return true;
-}
-
-pub fn is_file(path: const uint8*) bool {
-    @assert(path != null, "path cannot be null");
-
-    const file = fopen(path, "r");
-    
-    if (file == null) {
-        return false;
-    }
-    
-    fclose(file);
-    return !is_dir(path);
-}
 
 pub fn create_dir(path: const uint8*) bool {
     @assert(path != null, "path cannot be null");
@@ -55,17 +30,66 @@ pub fn set_current_dir(path: const uint8*) bool {
 
 pub fn get_current_dir(allocator: Allocator) Option<String> {
     var buffer: uint8[1024];
+
     const res = getcwd(&buffer[0], 1024);
+    
     if (res == null) {
         return .None;
     }
+    
     return .Some(String.from_str(allocator, &buffer[0]));
 }
 
-/// Current working directory, falling back to `.` when unavailable.
+// FIXME: Rename
 pub fn cwd(allocator: Allocator) String {
     switch (get_current_dir(allocator)) case .Some(cwd) else {
         return String.from_str(allocator, ".");
     }
+
     return cwd;
+}
+
+pub fn remove_file(path: const uint8*) bool {
+    @assert(path != null, "path cannot be null");
+    return remove(path) == 0;
+}
+
+pub struct TempDir {
+    allocator: Allocator,
+    path: String,
+
+    pub fn create(allocator: Allocator) Option<Self> {
+        var template = String.new(allocator);
+
+        const tmpdir = getenv("TMPDIR");
+
+        if (tmpdir != null) {
+            template.push_str(tmpdir);
+        } else {
+            template.push_str("/tmp");
+        }
+        
+        // FIXME: Use a random string/number to make it unique
+        template.push_str("/cyrus-XXXXXX");
+
+        if (mkdtemp(template.as_str()) == null) {
+            template.free();
+            return .None;
+        }
+
+        return .Some(Self {
+            allocator,
+            path: template
+        });
+    }
+
+    [[inline]]
+    pub fn path(self: const Self*) const uint8* {
+        return self->path.as_str_const();
+    }
+
+    pub fn free(self: Self*) {
+        remove_dir(self->path.as_str_const());
+        self->path.free();
+    }
 }

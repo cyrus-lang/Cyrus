@@ -245,7 +245,7 @@ fn mangle_sema_type(ty: &SemaType) -> String {
             format!("({elements})")
         }
 
-        SemaType::InferVar(_) => "_".to_string(),
+        SemaType::InferVar { .. } => "_".to_string(),
 
         SemaType::Err(_)
         | SemaType::Unresolved(_)
