@@ -434,8 +434,7 @@ struct DumpContext {
     }
 
     pub fn dump(self: Self*, trees: const Vec<cir::ProgramTree>*) {
-        // Emit like a clean source file: interfaces, structs, enums, unions,
-        // remaining top-level declarations, then funcs and methods.
+        // Emit a clean categorized source file
         self->dump_tree_category(trees, 0);
         self->dump_tree_category(trees, 1);
         self->dump_tree_category(trees, 2);
