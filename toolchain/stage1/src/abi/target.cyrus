@@ -96,7 +96,7 @@ pub struct ClassifyArgResult {
 }
 
 pub interface TargetABI {
-    fn classify_func(self: Self*, func_type: const cir::TypedFuncType*) Option<ABIFunctionInfo>;
+    fn classify_func(self: Self*, func_type: const cir::FuncType*) Option<ABIFunctionInfo>;
     
     fn apply_variadic_argument_promote(self: Self*, ty: const cir::SemaType*) cir::SemaType;
 

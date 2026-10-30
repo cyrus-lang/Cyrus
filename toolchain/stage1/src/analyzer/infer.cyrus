@@ -62,7 +62,7 @@ pub struct InferContext {
             }
 
             case .Named(named_type) => {
-                var type_args = cir::TypedTypeArgs.new(self->allocator);
+                var type_args = cir::TypeArgs.new(self->allocator);
 
                 for (var i: usize = 0; i < named_type.type_args.len(); i += 1) {
                     const arg = named_type.type_args.get(i).unwrap();
@@ -85,7 +85,7 @@ pub struct InferContext {
             case .Array(array_type) => {
                 const element_type = self->resolve(array_type.element_type);
                 
-                return .Array(cir::TypedArrayType {
+                return .Array(cir::ArrayType {
                     element_type: alloc_init(self->allocator, element_type),
                     capacity: array_type.capacity,
                     span: array_type.span,
@@ -108,7 +108,7 @@ pub struct InferContext {
             }
 
             case .FuncType(func_type) => {
-                var params = cir::TypedFuncTypeParams {
+                var params = cir::FuncTypeParams {
                     list: Vec.with_capacity(self->allocator, func_type.params.list.len()),
                     variadic: .None,
                 };
@@ -125,7 +125,7 @@ pub struct InferContext {
                             case .UntypedCStyle => {
                                 params.variadic = .Some(alloc_init(
                                     self->allocator,
-                                    cir::TypedFuncTypeVariadicParam.UntypedCStyle
+                                    cir::FuncTypeVariadicParam.UntypedCStyle
                                 ));
                             }
                             case .Typed(inner) => {
@@ -133,7 +133,7 @@ pub struct InferContext {
 
                                 params.variadic = .Some(alloc_init(
                                     self->allocator,
-                                    cir::TypedFuncTypeVariadicParam.Typed(ty)
+                                    cir::FuncTypeVariadicParam.Typed(ty)
                                 ));
                             }
                         }
@@ -143,7 +143,7 @@ pub struct InferContext {
 
                 const ret_type = self->resolve(func_type.ret_type);
 
-                return .FuncType(cir::TypedFuncType {
+                return .FuncType(cir::FuncType {
                     params,
                     ret_type: alloc_init(self->allocator, ret_type),
                     vis: func_type.vis,
@@ -153,20 +153,20 @@ pub struct InferContext {
             }
 
             case .Tuple(tuple_type) => {
-                var elements: Vec<cir::TypedTupleElement> =
+                var elements: Vec<cir::TupleElement> =
                     Vec.with_capacity(self->allocator, tuple_type.elements.len());
 
                 for (var i: usize = 0; i < tuple_type.elements.len(); i += 1) {
                     const element = tuple_type.elements.get_const(i).unwrap();
                     const ty = self->resolve(&element->ty);
                     
-                    elements.push(cir::TypedTupleElement {
+                    elements.push(cir::TupleElement {
                         ty,
                         span: element->span,
                     });
                 }
 
-                return .Tuple(cir::TypedTupleType {
+                return .Tuple(cir::TupleType {
                     elements,
                     span: tuple_type.span,
                 });
@@ -346,8 +346,8 @@ pub struct InferContext {
 
     fn unify_type_arg(
         self: Self*, 
-        a: const cir::TypedTypeArg*, 
-        b: const cir::TypedTypeArg*
+        a: const cir::TypeArg*, 
+        b: const cir::TypeArg*
     ) bool {
         switch (*a) {
             case .Type(type1, _) => {
@@ -364,8 +364,8 @@ pub struct InferContext {
 
     fn unify_func(
         self: Self*, 
-        func1: const cir::TypedFuncType*, 
-        func2: const cir::TypedFuncType*
+        func1: const cir::FuncType*, 
+        func2: const cir::FuncType*
     ) bool {
         if (func1->params.list.len() != func2->params.list.len()) {
             return false;

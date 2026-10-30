@@ -167,7 +167,7 @@ pub fn format_named_type(
 pub fn format_type_args(
     allocator: Allocator,
     tables: const DeclTables*,
-    type_args: const cir::TypedTypeArgs*
+    type_args: const cir::TypeArgs*
 ) String {
     var out = String.new(allocator);
 
@@ -200,7 +200,7 @@ pub fn format_type_args(
 pub fn format_func_type(
     allocator: Allocator,
     tables: const DeclTables*,
-    func_type: const cir::TypedFuncType*
+    func_type: const cir::FuncType*
 ) String {
     var out = String.new(allocator);
     out.push_str("fn(");
@@ -500,7 +500,7 @@ pub fn format_enum_decl(
 
 fn format_array_capacity(
     allocator: Allocator,
-    expr: const cir::TypedExpr*
+    expr: const cir::Expr*
 ) String {
     switch (expr->literal_const_int_value()) {
         case .Some(value) => {
@@ -533,7 +533,7 @@ pub fn format_typed_expr(
     allocator: Allocator,
     registry: const GlobalSymbolRegistry*,
     tables: const DeclTables*,
-    expr: const cir::TypedExpr*,
+    expr: const cir::Expr*,
 ) String {
     switch (expr->kind) {
         case .Symbol(.Unresolved { symbol_id, .. }) => {

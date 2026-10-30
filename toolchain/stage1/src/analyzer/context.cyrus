@@ -28,7 +28,7 @@ pub struct AnalyzerContext {
     pub dctx: DiagContext*,
     pub registry: GlobalSymbolRegistry*,
     pub decl_tables: tables::DeclTables*,
-    pub trees: Vec<cir::TypedProgramTree>,
+    pub trees: Vec<cir::ProgramTree>,
     pub func_env: env::FuncEnv,
     pub type_cache: TypeCache,
     pub typedef_stack: Vec<usize>,
@@ -44,7 +44,7 @@ pub struct AnalyzerContext {
         dctx: DiagContext*,
         registry: GlobalSymbolRegistry*,
         decl_tables: tables::DeclTables*,
-        trees: Vec<cir::TypedProgramTree>
+        trees: Vec<cir::ProgramTree>
     ) Self {
         const control_region_stack: Vec<flow::ControlRegion> = Vec.new(allocator);
         const generic_env_stack: Vec<env::GenericEnv*> = Vec.new(allocator);

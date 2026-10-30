@@ -15,7 +15,7 @@ import resolver::dump{dump_resolver_symbols};
 import cir::format{format_module_segments};
 import resolver::context{TraverseContext};
 import parser::ast{ASTProgram, ASTImport};
-import cir{TypedProgramTree, TypedStmt};
+import cir{ProgramTree, Stmt};
 import driver::lexical{LexicalContext};
 import cir::tables{DeclTables};
 import resolver::traverse{
@@ -56,7 +56,7 @@ pub struct Resolver {
     pub decl_tables: DeclTables,
     pub lexical: const LexicalContext*,
     pub global_symbols: GlobalSymbolRegistry,
-    pub program_trees: Vec<TypedProgramTree>,
+    pub program_trees: Vec<ProgramTree>,
     pub arena: ArenaAllocator,
     group_imports: Vec<GroupImportRecord>,
     module_symbols: Vec<modules::SourceSymbolBinding>,
@@ -235,13 +235,13 @@ pub struct Resolver {
         self: Self*,
         source_id: SourceId,
         file_path: const uint8*,
-        body: Vec<TypedStmt>,
+        body: Vec<Stmt>,
     ) {
         const allocator: Allocator = dynamic self->arena;
 
         const module_name = module_name_from_file_path(allocator, self->opts, file_path);
 
-        self->program_trees.push(TypedProgramTree {
+        self->program_trees.push(ProgramTree {
             file_id: source_id,
             body,
             file_name: String.from_str(allocator, file_path),

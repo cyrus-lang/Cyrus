@@ -1251,7 +1251,7 @@ pub struct TypeEmitter {
     fn generic_inst_c_name(
         self: Self*,
         type_decl_id: const cir::TypeDeclId*,
-        type_args: const cir::TypedTypeArgs*
+        type_args: const cir::TypeArgs*
     ) String {
         self->ensure_generic_inst(type_decl_id, type_args);
 
@@ -1276,7 +1276,7 @@ pub struct TypeEmitter {
     fn generic_inst_sig(
         self: Self*,
         type_decl_id: const cir::TypeDeclId*,
-        type_args: const cir::TypedTypeArgs*
+        type_args: const cir::TypeArgs*
     ) String {
         var sig = String.new(self->allocator);
 
@@ -1315,7 +1315,7 @@ pub struct TypeEmitter {
     fn ensure_generic_inst(
         self: Self*,
         type_decl_id: const cir::TypeDeclId*,
-        type_args: const cir::TypedTypeArgs*
+        type_args: const cir::TypeArgs*
     ) {
         var sig = self->generic_inst_sig(type_decl_id, type_args);
 
@@ -1801,7 +1801,7 @@ pub struct TypeEmitter {
         }
     }
 
-    fn tuple_type_name(self: Self*, tuple: const cir::TypedTupleType*) String {
+    fn tuple_type_name(self: Self*, tuple: const cir::TupleType*) String {
         var sig = String.new(self->allocator);
 
         for (var element_index: usize = 0; element_index < tuple->elements.len(); element_index += 1) {
@@ -1891,7 +1891,7 @@ fn push_capacity(
     allocator: Allocator,
     tables: const DeclTables*,
     registry: const GlobalSymbolRegistry*,
-    array: const cir::TypedArrayType*
+    array: const cir::ArrayType*
 ) {
     switch (array->capacity) {
         case .Fixed(expr) => {

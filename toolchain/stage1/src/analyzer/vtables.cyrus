@@ -15,7 +15,7 @@ import cir;
 pub struct VTableInfo {
     pub monomorphized_methods: Vec<Option<cir::MonomorphId>>,
     pub interface_decl_id: cir::InterfaceDeclId,
-    pub interface_type_args: cir::TypedTypeArgs,
+    pub interface_type_args: cir::TypeArgs,
     pub method_decls: cir::MethodDecls,
     pub concrete_type: cir::SemaType,
     pub is_interface_generic: bool,
@@ -51,7 +51,7 @@ pub struct VTableRegistry {
         arena: Allocator,
         sema_type: const cir::SemaType*,
         interface_decl_id: cir::InterfaceDeclId,
-        interface_type_args: const cir::TypedTypeArgs*,
+        interface_type_args: const cir::TypeArgs*,
         methods: const cir::MethodDecls*,
         is_interface_generic: bool,
         span: Span

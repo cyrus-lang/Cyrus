@@ -17,8 +17,8 @@ pub struct DeclTables {
     pub global_vars: Vec<cir::GlobalVarDecl>,
     pub vars: Vec<cir::VarDecl>,
     pub typedefs: Vec<cir::TypedefDecl>,
-    pub generic_params: Vec<cir::TypedGenericParam>,
-    pub bodies: Vec<cir::TypedBlockStmt>,
+    pub generic_params: Vec<cir::GenericParam>,
+    pub bodies: Vec<cir::BlockStmt>,
 
     pub fn new(allocator: Allocator) Self {
         return Self {
@@ -105,13 +105,13 @@ pub struct DeclTables {
         return id;
     }
 
-    pub fn insert_generic_param(self: Self*, decl: cir::TypedGenericParam) cir::GenericParamId {
+    pub fn insert_generic_param(self: Self*, decl: cir::GenericParam) cir::GenericParamId {
         const id = self->generic_params.len();
         self->generic_params.push(decl);
         return id;
     }
 
-    pub fn insert_body(self: Self*, decl: cir::TypedBlockStmt) cir::BodyId {
+    pub fn insert_body(self: Self*, decl: cir::BlockStmt) cir::BodyId {
         const id = self->bodies.len();
         self->bodies.push(decl);
         return id;
@@ -121,7 +121,7 @@ pub struct DeclTables {
 pub fn type_decl_generic_params(
     decl_tables: const DeclTables*,
     type_decl_id: cir::TypeDeclId
-) const cir::TypedGenericParams* {
+) const cir::GenericParams* {
     switch (type_decl_id) {
         case .Struct(id) => {
             const decl = decl_tables->structs.get_const(id).unwrap();

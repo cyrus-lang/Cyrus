@@ -2592,7 +2592,7 @@ pub fn report_if_duplicate_param_names(
     dctx: DiagContext*, 
     allocator: Allocator, 
     decl_tables: DeclTables*, 
-    params: const cir::TypedFuncParams*, 
+    params: const cir::FuncParams*, 
     span: Span
 ) {
     for (var i: usize = 0; i < params->list.len(); i += 1) {
@@ -2665,7 +2665,7 @@ pub fn report_builtin_param_mismatch(
     dctx: DiagContext*, 
     allocator: Allocator, 
     decl_tables: DeclTables*, 
-    builtin_func: cir::TypedBuiltinFunc*,
+    builtin_func: cir::BuiltinFunc*,
     argument_idx: usize,
     argument_type: const cir::SemaType*,
     param_type: const cir::SemaType*

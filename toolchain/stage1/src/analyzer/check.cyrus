@@ -29,7 +29,7 @@ import cir;
 
 fn analyze_expr(
     context: AnalyzerContext*,
-    expr: cir::TypedExpr*,
+    expr: cir::Expr*,
     expected_type: Option<cir::SemaType>
 ) Option<cir::SemaType> {
     switch (expr->kind) {
@@ -76,7 +76,7 @@ fn analyze_expr(
 
 fn analyze_expr_non_terminal(
     context: AnalyzerContext*,
-    expr: cir::TypedExpr*,
+    expr: cir::Expr*,
     var expected_type: Option<cir::SemaType>
 ) Option<cir::SemaType> {
     switch (expected_type) {
@@ -332,7 +332,7 @@ fn analyze_expr_non_terminal(
 
 fn analyze_symbol_expr(
     registry: const GlobalSymbolRegistry*,
-    symbol_expr: cir::TypedSymbolExpr*
+    symbol_expr: cir::SymbolExpr*
 ) Option<cir::DeclId> {
     switch (symbol_expr->as_decl_id()) {
         case .Some(decl_id) => return .Some(decl_id);
@@ -361,7 +361,7 @@ fn analyze_symbol_expr(
 
 fn analyze_cond_expr(
     context: AnalyzerContext*,
-    cond: cir::TypedExpr*
+    cond: cir::Expr*
 ) {
     switch (analyze_expr(context, cond, .Some(.Plain(.Bool)))) {
         case .Some(ty) => {
@@ -390,7 +390,7 @@ fn analyze_cond_expr(
 
 fn analyze_field_assign(
     context: AnalyzerContext*,
-    field_expr: cir::TypedExpr*,
+    field_expr: cir::Expr*,
     var expected_type: cir::SemaType,
     span: Span
 ) {
@@ -437,7 +437,7 @@ fn analyze_field_assign(
 
 fn analyze_literal(
     context: AnalyzerContext*,
-    literal: cir::TypedLiteralExpr*,
+    literal: cir::LiteralExpr*,
     expected_type: Option<cir::SemaType>
 ) Option<cir::SemaType> {
     const span = literal->span;
@@ -525,7 +525,7 @@ fn analyze_literal(
                                 span
                             );
 
-                            type_opt = .Some(.Array(cir::TypedArrayType {
+                            type_opt = .Some(.Array(cir::ArrayType {
                                 element_type: alloc_init(context->allocator, const_uint8_type),
                                 capacity: .Fixed(alloc_init(context->allocator, capacity_expr)),
                                 span,
@@ -556,11 +556,11 @@ fn analyze_literal(
 
 fn analyze_tuple_value(
     context: AnalyzerContext*,
-    tuple_value: cir::TypedTupleExpr*,
+    tuple_value: cir::TupleExpr*,
     expected_type: Option<cir::SemaType>
 ) Option<cir::SemaType> {
-    var elements: Vec<cir::TypedTupleElement> = Vec.new(context->allocator);
-    var tuple_type_opt: Option<cir::TypedTupleType> = .None;
+    var elements: Vec<cir::TupleElement> = Vec.new(context->allocator);
+    var tuple_type_opt: Option<cir::TupleType> = .None;
 
     switch (expected_type) {
         case .Some(ty) => tuple_type_opt = ty.as_tuple_type();
@@ -583,7 +583,7 @@ fn analyze_tuple_value(
 
         switch (analyze_expr(context, element, expect)) {
             case .Some(ty) => {
-                elements.push(cir::TypedTupleElement {
+                elements.push(cir::TupleElement {
                     ty,
                     span: element->span,
                 });
@@ -592,7 +592,7 @@ fn analyze_tuple_value(
         }
     }
 
-    return .Some(.Tuple(cir::TypedTupleType {
+    return .Some(.Tuple(cir::TupleType {
         elements,
         span: tuple_value->span,
     }));
@@ -600,7 +600,7 @@ fn analyze_tuple_value(
 
 fn analyze_tuple_access(
     context: AnalyzerContext*,
-    member_access: cir::TypedTupleAccessExpr*,
+    member_access: cir::TupleAccessExpr*,
     expected_type: Option<cir::SemaType>
 ) Option<cir::SemaType> {
     var operand_type: cir::SemaType = .Placeholder;
@@ -652,7 +652,7 @@ fn analyze_tuple_access(
 
 fn analyze_assign(
     context: AnalyzerContext*, 
-    assign: cir::TypedAssignExpr*
+    assign: cir::AssignExpr*
 ) {
     switch (analyze_expr(context, assign->lhs, .None)) {
         case .Some(lhs_type) => {
@@ -709,7 +709,7 @@ fn analyze_assign(
 
 fn analyze_addr_of(
     context: AnalyzerContext*,
-    addr: cir::TypedAddrOfExpr*
+    addr: cir::AddrOfExpr*
 ) Option<cir::SemaType> {
     const expected_type = addr->operand->ty;
 
@@ -753,7 +753,7 @@ fn analyze_addr_of(
 
 fn analyze_deref(
     context: AnalyzerContext*,
-    deref: cir::TypedDerefExpr*
+    deref: cir::DerefExpr*
 ) Option<cir::SemaType> {
     const expected_type = deref->operand->ty;
 
@@ -818,7 +818,7 @@ fn analyze_deref(
 
 fn analyze_prefix(
     context: AnalyzerContext*,
-    prefix: cir::TypedPrefixExpr*,
+    prefix: cir::PrefixExpr*,
     expected_type: Option<cir::SemaType>
 ) Option<cir::SemaType> {
     var operand_type: cir::SemaType = .Placeholder;
@@ -1138,7 +1138,7 @@ fn analyze_right_shift_expr(
 
 fn analyze_infix(
     context: AnalyzerContext*,
-    infix: cir::TypedInfixExpr*,
+    infix: cir::InfixExpr*,
     expected_type: Option<cir::SemaType>
 ) Option<cir::SemaType> {
     var lhs_type: cir::SemaType = .Placeholder;
@@ -1215,7 +1215,7 @@ fn analyze_infix(
 
 fn analyze_lambda(
     context: AnalyzerContext*, 
-    lambda: cir::TypedLambdaExpr*
+    lambda: cir::LambdaExpr*
 ) Option<cir::SemaType> {
     normalize_func_params(context, &lambda->params, true, 0);
 
@@ -1226,7 +1226,7 @@ fn analyze_lambda(
         case .None => return .None;
     }
 
-    var func_type = cir::TypedFuncType {
+    var func_type = cir::FuncType {
         params,
         ret_type: alloc_init(context->allocator, lambda->ret_type),
         vis: .Public,
@@ -1246,7 +1246,7 @@ fn analyze_lambda(
 
 fn analyze_array(
     context: AnalyzerContext*,
-    array: cir::TypedArrayExpr*,
+    array: cir::ArrayExpr*,
     expected_type: Option<cir::SemaType>
 ) Option<cir::SemaType> {
     var analyzed_first_element = false;
@@ -1279,7 +1279,7 @@ fn analyze_array(
                         first_elem->span
                     );
 
-                    array->ty = .Some(.Array(cir::TypedArrayType {
+                    array->ty = .Some(.Array(cir::ArrayType {
                         element_type: alloc_init(context->allocator, ty),
                         capacity: .Fixed(alloc_init(context->allocator, elements_count_expr)),
                         span: array->span,
@@ -1300,7 +1300,7 @@ fn analyze_array(
                     @cast(uint128, elements_count),
                     array->span
                 );
-                array->ty = .Some(.Array(cir::TypedArrayType {
+                array->ty = .Some(.Array(cir::ArrayType {
                     element_type: alloc_init(context->allocator, sema_type),
                     capacity: .Fixed(alloc_init(context->allocator, elements_count_expr)),
                     span: array->span,
@@ -1459,7 +1459,7 @@ fn analyze_array(
 
 fn analyze_array_index(
     context: AnalyzerContext*,
-    array_index: cir::TypedArrayIndexExpr*
+    array_index: cir::ArrayIndexExpr*
 ) Option<cir::SemaType> {
     var operand_type: cir::SemaType = .Placeholder;
     switch (analyze_expr(context, array_index->operand, .None)) {
@@ -1550,7 +1550,7 @@ fn analyze_array_index(
 
 fn analyze_field_access(
     context: AnalyzerContext*,
-    field_access: cir::TypedFieldAccess*
+    field_access: cir::FieldAccess*
 ) Option<cir::SemaType> {
     var operand_type: cir::SemaType = .Placeholder;
 
@@ -1571,7 +1571,7 @@ fn analyze_field_access(
     const pure_operand_type = *operand_type.const_inner()->pointer_inner();
     const named_type_opt = pure_operand_type.as_named_type();
 
-    var type_args = cir::TypedTypeArgs.new(context->allocator);
+    var type_args = cir::TypeArgs.new(context->allocator);
 
     switch (named_type_opt) {
         case .Some(named_type) => {
@@ -1731,7 +1731,7 @@ fn analyze_field_access(
 
 fn analyze_struct_init(
     context: AnalyzerContext*,
-    struct_init: cir::TypedStructInitExpr*,
+    struct_init: cir::StructInitExpr*,
     expected_type: Option<cir::SemaType>
 ) Option<cir::SemaType> {
     var operand: cir::SemaType = .Placeholder;
@@ -1802,7 +1802,7 @@ fn analyze_struct_init(
 
 fn analyze_struct_init_inner(
     context: AnalyzerContext*,
-    struct_init: cir::TypedStructInitExpr*,
+    struct_init: cir::StructInitExpr*,
     expected_type: Option<cir::SemaType>,
     struct_decl: const cir::StructDecl*,
     struct_decl_id: cir::StructDeclId
@@ -1855,14 +1855,14 @@ fn analyze_struct_init_inner(
 
 fn analyze_unnamed_struct_value(
     context: AnalyzerContext*,
-    struct_valueue: cir::TypedUnnamedStructValue*,
+    struct_valueue: cir::UnnamedStructValue*,
     expected_type: Option<cir::SemaType>
 ) Option<cir::SemaType> {
     // Case 1: If expect type is a struct, 
     // then use its declaration and analyze 
     // fields with expect type.
     var struct_decl_id_opt: Option<cir::StructDeclId> = .None;
-    var type_args: cir::TypedTypeArgs = cir::TypedTypeArgs.new(context->allocator);
+    var type_args: cir::TypeArgs = cir::TypeArgs.new(context->allocator);
 
     switch (expected_type) {
         case .Some(ty) => {
@@ -1947,13 +1947,13 @@ fn analyze_unnamed_struct_value(
 
     return .Some(.Named(cir::NamedType {
         type_decl_id: .Struct(struct_decl_id),
-        type_args: cir::TypedTypeArgs.new(context->allocator),
+        type_args: cir::TypeArgs.new(context->allocator),
     }));
 }
 
 fn analyze_unnamed_struct_value_inner(
     context: AnalyzerContext*,
-    struct_valueue: cir::TypedUnnamedStructValue*,
+    struct_valueue: cir::UnnamedStructValue*,
     expected_type: Option<cir::SemaType>,
     struct_decl: const cir::StructDecl*,
     struct_decl_id: cir::StructDeclId
@@ -1992,14 +1992,14 @@ fn analyze_unnamed_struct_value_inner(
 
 fn create_struct_decl_from_unnamed_struct_value(
     context: AnalyzerContext*,
-    struct_valueue: const cir::TypedUnnamedStructValue*
+    struct_valueue: const cir::UnnamedStructValue*
 ) cir::StructDecl {
-    var fields: Vec<cir::TypedStructField> = Vec.new(context->allocator);
+    var fields: Vec<cir::StructField> = Vec.new(context->allocator);
 
     for (var i: usize = 0; i < struct_valueue->fields.len(); i += 1) {
         const field = struct_valueue->fields.get_const(i).unwrap();
         
-        fields.push(cir::TypedStructField {
+        fields.push(cir::StructField {
             name: String.from_str(context->allocator, field->name.as_str_const()),
             ty: .Placeholder,
             vis: .Public,
@@ -2012,7 +2012,7 @@ fn create_struct_decl_from_unnamed_struct_value(
         fields,
         impls: Vec.new(context->allocator),
         methods: cir::MethodDecls.new(context->allocator),
-        generic_params: cir::TypedGenericParams.new(context->allocator),
+        generic_params: cir::GenericParams.new(context->allocator),
         modifiers: ast::ASTStructModifiers {
             vis: .Public,
             repr_attr: struct_valueue->repr_attr,
@@ -2027,7 +2027,7 @@ fn create_struct_decl_from_unnamed_struct_value(
 
 fn analyze_union_init(
     context: AnalyzerContext*,
-    union_init: cir::TypedUnionInitExpr*,
+    union_init: cir::UnionInitExpr*,
     expected_type: Option<cir::SemaType>
 ) Option<cir::SemaType> {
     var operand: cir::SemaType = .Placeholder;
@@ -2104,7 +2104,7 @@ fn analyze_union_init(
 
 fn analyze_union_init_inner(
     context: AnalyzerContext*,
-    union_init: cir::TypedUnionInitExpr*,
+    union_init: cir::UnionInitExpr*,
     expected_type: Option<cir::SemaType>,
     union_decl: const cir::UnionDecl*,
     union_decl_id: cir::UnionDeclId,
@@ -2150,7 +2150,7 @@ fn analyze_union_init_inner(
 
 fn analyze_unnamed_union_value(
     context: AnalyzerContext*,
-    union_valueue: cir::TypedUnnamedUnionValue*,
+    union_valueue: cir::UnnamedUnionValue*,
     expected_type: Option<cir::SemaType>
 ) Option<cir::SemaType> {
     if (union_valueue->fields.len() != 1) {
@@ -2165,7 +2165,7 @@ fn analyze_unnamed_union_value(
     const field_value = union_valueue->fields.get(0).unwrap();
 
     var union_decl_id_opt: Option<cir::UnionDeclId> = .None;
-    var type_args: cir::TypedTypeArgs = cir::TypedTypeArgs.new(context->allocator);
+    var type_args: cir::TypeArgs = cir::TypeArgs.new(context->allocator);
 
     switch (expected_type) {
         case .Some(ty) => {
@@ -2245,17 +2245,17 @@ fn analyze_unnamed_union_value(
 
     return .Some(.Named(cir::NamedType {
         type_decl_id: .Union(union_decl_id),
-        type_args: cir::TypedTypeArgs.new(context->allocator),
+        type_args: cir::TypeArgs.new(context->allocator),
     }));
 }
 
 fn analyze_unnamed_union_value_inner(
     context: AnalyzerContext*,
-    union_valueue: cir::TypedUnnamedUnionValue*,
+    union_valueue: cir::UnnamedUnionValue*,
     expected_type: Option<cir::SemaType>,
     union_decl: const cir::UnionDecl*,
     union_decl_id: cir::UnionDeclId,
-    union_field_value: cir::TypedUnnamedUnionValueField*
+    union_field_value: cir::UnnamedUnionValueField*
 ) Option<cir::SemaType> {
     const union_field = union_decl->lookup_field(union_field_value->name.as_str_const());
     switch (union_field) {
@@ -2293,11 +2293,11 @@ fn analyze_unnamed_union_value_inner(
 
 fn create_union_decl_from_unnamed_union_value(
     context: AnalyzerContext*,
-    union_field_value: const cir::TypedUnnamedUnionValueField*
+    union_field_value: const cir::UnnamedUnionValueField*
 ) cir::UnionDecl {
-    var fields: Vec<cir::TypedUnionField> = Vec.new(context->allocator);
+    var fields: Vec<cir::UnionField> = Vec.new(context->allocator);
     
-    fields.push(cir::TypedUnionField {
+    fields.push(cir::UnionField {
         name: String.from_str(context->allocator, union_field_value->name.as_str_const()),
         ty: .Placeholder,
         span: union_field_value->span,
@@ -2308,7 +2308,7 @@ fn create_union_decl_from_unnamed_union_value(
         fields,
         impls: Vec.new(context->allocator),
         methods: cir::MethodDecls.new(context->allocator),
-        generic_params: cir::TypedGenericParams.new(context->allocator),
+        generic_params: cir::GenericParams.new(context->allocator),
         modifiers: ast::ASTUnionModifiers {
             vis: .Public,
             repr_attr: .None,
@@ -2323,7 +2323,7 @@ fn create_union_decl_from_unnamed_union_value(
 
 fn analyze_builtin_expr(
     context: AnalyzerContext*,
-    builtin_func: cir::TypedBuiltinFunc*
+    builtin_func: cir::BuiltinFunc*
 ) Option<cir::SemaType> {
     switch (cir::lookup_builtin(builtin_func->name.str.as_str_const())) case .Some(builtin_kind) else {
         diags::report_builtin_not_defined(
@@ -2350,7 +2350,7 @@ fn analyze_builtin_expr(
 
 fn analyze_builtin_block(
     context: AnalyzerContext*,
-    builtin_block: cir::TypedBuiltinBlock*,
+    builtin_block: cir::BuiltinBlock*,
     is_toplevel: bool
 ) flow::FlowState {
     switch (cir::lookup_builtin(
@@ -2383,8 +2383,8 @@ fn analyze_builtin_block(
 
 fn analyze_builtin_func_semantics(
     context: AnalyzerContext*,
-    builtin_kind: cir::TypedBuiltinKind,
-    builtin_func: cir::TypedBuiltinFunc*
+    builtin_kind: cir::BuiltinKind,
+    builtin_func: cir::BuiltinFunc*
 ) Option<cir::SemaType> {
     switch (builtin_kind) {
         case .FuncName | .MethodName | .ModuleName | .FileName => {
@@ -2411,7 +2411,7 @@ fn analyze_builtin_func_semantics(
 
 fn analyze_builtin_name_ret(
     context: AnalyzerContext*,
-    builtin_func: cir::TypedBuiltinFunc*
+    builtin_func: cir::BuiltinFunc*
 ) Option<cir::SemaType> {
     const uint8_type: cir::SemaType = .Plain(.UInt8);
     const ret_type: cir::SemaType = .Pointer(alloc_init(context->allocator, uint8_type));
@@ -2421,7 +2421,7 @@ fn analyze_builtin_name_ret(
 
 fn analyze_builtin_usize_ret(
     context: AnalyzerContext*,
-    builtin_func: cir::TypedBuiltinFunc*
+    builtin_func: cir::BuiltinFunc*
 ) Option<cir::SemaType> {
     const ret_type: cir::SemaType = .Plain(.USize);
     builtin_func->ret_type = .Some(ret_type);
@@ -2430,7 +2430,7 @@ fn analyze_builtin_usize_ret(
 
 fn analyze_builtin_sizeof(
     context: AnalyzerContext*,
-    builtin_func: cir::TypedBuiltinFunc*
+    builtin_func: cir::BuiltinFunc*
 ) Option<cir::SemaType> {
     const operand = builtin_func->args.get(0).unwrap();
 
@@ -2459,7 +2459,7 @@ fn analyze_builtin_sizeof(
 
 fn analyze_builtin_alignof(
     context: AnalyzerContext*,
-    builtin_func: cir::TypedBuiltinFunc*
+    builtin_func: cir::BuiltinFunc*
 ) Option<cir::SemaType> {
     const operand = builtin_func->args.get(0).unwrap();
 
@@ -2481,7 +2481,7 @@ fn analyze_builtin_alignof(
 
 fn analyze_builtin_typeof(
     context: AnalyzerContext*,
-    builtin_func: cir::TypedBuiltinFunc*
+    builtin_func: cir::BuiltinFunc*
 ) Option<cir::SemaType> {
     const operand = builtin_func->args.get(0).unwrap();
 
@@ -2501,7 +2501,7 @@ fn analyze_builtin_typeof(
 
 fn analyze_builtin_offsetof(
     context: AnalyzerContext*,
-    builtin_func: cir::TypedBuiltinFunc*
+    builtin_func: cir::BuiltinFunc*
 ) Option<cir::SemaType> {
     for (var i: usize = 0; i < builtin_func->args.len(); i += 1) {
         const arg = builtin_func->args.get(i).unwrap();
@@ -2586,7 +2586,7 @@ fn analyze_builtin_offsetof(
 
 fn analyze_builtin_cast(
     context: AnalyzerContext*,
-    builtin_func: cir::TypedBuiltinFunc*
+    builtin_func: cir::BuiltinFunc*
 ) Option<cir::SemaType> {
     const type_arg = builtin_func->args.get(0).unwrap();
     const value_arg = builtin_func->args.get(1).unwrap();
@@ -2656,7 +2656,7 @@ fn analyze_builtin_cast(
 
 fn analyze_builtin_copy_memset(
     context: AnalyzerContext*,
-    builtin_func: cir::TypedBuiltinFunc*,
+    builtin_func: cir::BuiltinFunc*,
     is_memcpy: bool
 ) Option<cir::SemaType> {
     for (var i: usize = 0; i < builtin_func->args.len(); i += 1) {
@@ -2696,7 +2696,7 @@ fn analyze_builtin_copy_memset(
 
 fn analyze_builtin_const_msg_arg(
     context: AnalyzerContext*,
-    builtin_func: cir::TypedBuiltinFunc*
+    builtin_func: cir::BuiltinFunc*
 ) Option<cir::SemaType> {
     const expect = builtin_const_mesg_param_type(context);
 
@@ -2734,7 +2734,7 @@ fn analyze_builtin_const_msg_arg(
 
 fn analyze_builtin_assert(
     context: AnalyzerContext*,
-    builtin_func: cir::TypedBuiltinFunc*
+    builtin_func: cir::BuiltinFunc*
 ) Option<cir::SemaType> {
     if (builtin_func->args.len() > 0) {
         const cond = builtin_func->args.get(0).unwrap();
@@ -2784,7 +2784,7 @@ fn analyze_builtin_assert(
 
 fn analyze_inline_asm_expr(
     context: AnalyzerContext*,
-    asm: cir::TypedInlineAsm*
+    asm: cir::InlineAsm*
 ) Option<cir::SemaType> {
     check_asm_template(context, asm);
     check_asm_outputs(context, asm);
@@ -2806,14 +2806,14 @@ fn analyze_inline_asm_expr(
             }
         }
         else => {
-            var elements: Vec<cir::TypedTupleElement> = Vec.new(context->allocator);
+            var elements: Vec<cir::TupleElement> = Vec.new(context->allocator);
 
             for (var i: usize = 0; i < asm->outputs.len(); i += 1) {
                 const operand = asm->outputs.get_const(i).unwrap();
 
                 switch (operand->expr->ty) {
                     case .Some(ty) => {
-                        elements.push(cir::TypedTupleElement {
+                        elements.push(cir::TupleElement {
                             ty,
                             span: operand->span,
                         });
@@ -2824,7 +2824,7 @@ fn analyze_inline_asm_expr(
                 }
             }
 
-            const ret_type: cir::SemaType = .Tuple(cir::TypedTupleType {
+            const ret_type: cir::SemaType = .Tuple(cir::TupleType {
                 elements,
                 span: asm->span,
             });
@@ -2835,7 +2835,7 @@ fn analyze_inline_asm_expr(
 
 fn analyze_inline_asm_stmt(
     context: AnalyzerContext*,
-    asm: cir::TypedInlineAsm*
+    asm: cir::InlineAsm*
 ) {
     check_asm_template(context, asm);
     check_asm_outputs(context, asm);
@@ -2849,7 +2849,7 @@ fn analyze_inline_asm_stmt(
 
 fn analyze_func_call(
     context: AnalyzerContext*,
-    func_call: cir::TypedFuncCall*
+    func_call: cir::FuncCall*
 ) Option<cir::SemaType> {
     var func_decl_id_opt: Option<cir::FuncDeclId> = .None;
 
@@ -3017,10 +3017,10 @@ fn analyze_func_call(
 fn analyze_func_call_generic(
     context: AnalyzerContext*,
     operand_type: const cir::SemaType*,
-    func_call: cir::TypedFuncCall*,
+    func_call: cir::FuncCall*,
     func_decl_id: cir::FuncDeclId,
     func_decl: cir::FuncDecl*,
-    original_params: const cir::TypedFuncParams*
+    original_params: const cir::FuncParams*
 ) Option<cir::SemaType> {
     normalize_func_params(context, &func_decl->params, false, 0);
 
@@ -3070,7 +3070,7 @@ fn analyze_func_call_generic(
 
 fn analyze_method_call(
     context: AnalyzerContext*,
-    method_call: cir::TypedMethodCall*,
+    method_call: cir::MethodCall*,
     expected_type: Option<cir::SemaType>
 ) Option<cir::SemaType> {
     if (analyze_expr_non_terminal(context, method_call->operand, .None).is_none()) {
@@ -3082,7 +3082,7 @@ fn analyze_method_call(
     // Operand type is only present when
     // the operand is a generic enum decl.
     // Extract the `decl_id` manually when
-    // the operand kind is a `TypedSymbolExpr`.
+    // the operand kind is a `SymbolExpr`.
 
     var is_operand_instance = true;
     var operand_type_opt: Option<cir::SemaType> = .None;
@@ -3096,7 +3096,7 @@ fn analyze_method_call(
 
                     operand_type_opt = .Some(.Named(cir::NamedType {
                         type_decl_id,
-                        type_args: cir::TypedTypeArgs.new(context->allocator),
+                        type_args: cir::TypeArgs.new(context->allocator),
                     }));
                 }
                 case .None => {
@@ -3186,7 +3186,7 @@ fn analyze_method_call(
 
 fn analyze_instance_method_call(
     context: AnalyzerContext*,
-    method_call: cir::TypedMethodCall*,
+    method_call: cir::MethodCall*,
     operand_type: const cir::SemaType*,
     expected_type: Option<cir::SemaType>
 ) Option<cir::SemaType> {
@@ -3254,7 +3254,7 @@ fn analyze_instance_method_call(
 
 fn analyze_static_method_call(
     context: AnalyzerContext*,
-    method_call: cir::TypedMethodCall*,
+    method_call: cir::MethodCall*,
     operand_type: const cir::SemaType*,
     expected_type: Option<cir::SemaType>
 ) Option<cir::SemaType> {
@@ -3313,7 +3313,7 @@ fn analyze_static_method_call(
 
 fn analyze_method_call_internal(
     context: AnalyzerContext*,
-    method_call: cir::TypedMethodCall*,
+    method_call: cir::MethodCall*,
     method_decls: const cir::MethodDecls*,
     type_decl_id: cir::TypeDeclId,
     var operand_type: cir::SemaType,
@@ -3338,8 +3338,8 @@ fn analyze_method_call_internal(
         return .None;
     }
 
-    var operand_generic_params: cir::TypedGenericParams = cir::TypedGenericParams.new(context->allocator);
-    var operand_type_args: cir::TypedTypeArgs = cir::TypedTypeArgs.new(context->allocator);
+    var operand_generic_params: cir::GenericParams = cir::GenericParams.new(context->allocator);
+    var operand_type_args: cir::TypeArgs = cir::TypeArgs.new(context->allocator);
 
     switch (pure_operand_type.as_named_type()) {
         case .Some(named_type) => {
@@ -3441,15 +3441,15 @@ fn analyze_method_call_internal(
 
 fn analyze_method_call_with_env(
     context: AnalyzerContext*,
-    method_call: cir::TypedMethodCall*,
+    method_call: cir::MethodCall*,
     method_decl_id: cir::MethodDeclId,
     method_decl: cir::MethodDecl*,
-    original_params: const cir::TypedFuncParams*,
+    original_params: const cir::FuncParams*,
     method_decls: const cir::MethodDecls*,
     operand_type: cir::SemaType*,
     pure_operand_type: cir::SemaType*,
-    operand_generic_params: cir::TypedGenericParams,
-    method_generic_params: cir::TypedGenericParams,
+    operand_generic_params: cir::GenericParams,
+    method_generic_params: cir::GenericParams,
     object_name: const uint8*,
     type_decl_id: cir::TypeDeclId,
     is_instance_method_call: bool,
@@ -3571,7 +3571,7 @@ fn analyze_method_call_with_env(
 
 fn analyze_dynamic_dispatch_interface_method_call(
     context: AnalyzerContext*,
-    method_call: cir::TypedMethodCall*,
+    method_call: cir::MethodCall*,
     pure_operand_type: const cir::SemaType*,
     is_operand_const_qualified: bool
 ) Option<cir::SemaType> {
@@ -3651,9 +3651,9 @@ fn analyze_dynamic_dispatch_interface_method_call(
 
 fn analyze_dynamic_dispatch_inner(
     context: AnalyzerContext*,
-    method_call: cir::TypedMethodCall*,
+    method_call: cir::MethodCall*,
     interface_method_decl: cir::MethodDecl*,
-    original_func_params: const cir::TypedFuncParams*,
+    original_func_params: const cir::FuncParams*,
     interface_decl: const cir::InterfaceDecl*,
     interface_decl_id: cir::InterfaceDeclId,
     is_operand_const_qualified: bool
@@ -3720,7 +3720,7 @@ fn analyze_dynamic_dispatch_inner(
 
 fn analyze_static_dispatch_interface_method_call(
     context: AnalyzerContext*,
-    method_call: cir::TypedMethodCall*,
+    method_call: cir::MethodCall*,
     interface_object: const cir::InterfaceObjectType*,
     is_operand_const_qualified: bool,
     expected_type: Option<cir::SemaType>
@@ -3758,7 +3758,7 @@ fn analyze_static_dispatch_interface_method_call(
     );
 
     var dispatch = false;
-    var interface_call_dispatch: cir::TypedInterfaceCallDispatch = .Dynamic;
+    var interface_call_dispatch: cir::InterfaceCallDispatch = .Dynamic;
 
     switch (method_call->dispatch) {
         case .Monomorph { monomorph_id, .. } => {
@@ -3791,7 +3791,7 @@ fn analyze_static_dispatch_interface_method_call(
 
 fn analyze_interface_method_call(
     context: AnalyzerContext*,
-    method_call: cir::TypedMethodCall*,
+    method_call: cir::MethodCall*,
     operand_type: const cir::SemaType*,
     expected_type: Option<cir::SemaType>
 ) Option<cir::SemaType> {
@@ -3820,7 +3820,7 @@ fn analyze_interface_method_call(
 
 fn analyze_argument(
     context: AnalyzerContext*,
-    arg: cir::TypedExpr*,
+    arg: cir::Expr*,
     expected_type: cir::SemaType,
     span: Span
 ) Option<cir::SemaType> {
@@ -3881,9 +3881,9 @@ fn analyze_argument(
 /// Validates function calls against their signature.
 fn analyze_call(
     context: AnalyzerContext*,
-    original_params: const cir::TypedFuncParams*,
+    original_params: const cir::FuncParams*,
     func_decl: const cir::FuncDecl*,
-    args: Vec<cir::TypedExpr>*,
+    args: Vec<cir::Expr>*,
     span: Span,
     instance_method_call: bool
 ) bool {
@@ -3979,7 +3979,7 @@ fn analyze_call(
 
 fn analyze_dynamic(
     context: AnalyzerContext*,
-    dynamic_expr: cir::TypedDynamicExpr*,
+    dynamic_expr: cir::DynamicExpr*,
     expected_type: Option<cir::SemaType>
 ) Option<cir::SemaType> {
     switch (analyze_expr(context, 
@@ -4024,7 +4024,7 @@ fn analyze_dynamic(
     }
 
     var interface_decl_id_opt: Option<cir::InterfaceDeclId> = .None;
-    var interface_type_args = cir::TypedTypeArgs.new(context->allocator);
+    var interface_type_args = cir::TypeArgs.new(context->allocator);
 
     switch (expected_type) {
         case .Some(expect) => {
@@ -4214,10 +4214,10 @@ fn analyze_dynamic(
 fn analyze_object_implements_monomorphized_interfaces(
     context: AnalyzerContext*,
     interface_decl: const cir::InterfaceDecl*,
-    interface_type_args: const cir::TypedTypeArgs*,
+    interface_type_args: const cir::TypeArgs*,
     object_name: const uint8*,
     object_type: const cir::SemaType*,
-    object_impls: const Vec<cir::TypedImplementInterface>*,
+    object_impls: const Vec<cir::ImplementInterface>*,
     method_decls: const cir::MethodDecls*,
     span: Span
 ) {
@@ -4367,7 +4367,7 @@ fn analyze_object_implements_monomorphized_interfaces(
 
 pub fn analyze_toplevel_stmts(
     context: AnalyzerContext*, 
-    typed_stmts: Vec<cir::TypedStmt>*
+    typed_stmts: Vec<cir::Stmt>*
 ) {
     for (var i: usize = 0; i < typed_stmts->len(); i += 1) {
         var stmt = typed_stmts->get(i).unwrap();
@@ -4401,7 +4401,7 @@ pub fn analyze_toplevel_stmts(
 
 fn analyze_toplevel_stmt(
     context: AnalyzerContext*, 
-    stmt: cir::TypedStmt*
+    stmt: cir::Stmt*
 ) {
     switch (stmt->kind) {
         case .FuncDef(var func_def) => {
@@ -4447,7 +4447,7 @@ fn analyze_toplevel_stmt(
 
 fn analyze_stmt(
     context: AnalyzerContext*, 
-    stmt: cir::TypedStmt*
+    stmt: cir::Stmt*
 ) flow::FlowState {
     switch (stmt->kind) {
         case .Builtin => {
@@ -4548,22 +4548,22 @@ fn analyze_stmt(
 
 fn analyze_defer_stmt(
     context: AnalyzerContext*, 
-    operand: cir::TypedStmt*
+    operand: cir::Stmt*
 ) {
     analyze_stmt(context, operand);
 }
 
 fn analyze_block_stmt(
     context: AnalyzerContext*, 
-    block: cir::TypedBlockStmt*
+    block: cir::BlockStmt*
 ) flow::FlowState {
     const total = block->stmts.len();
 
     var flow_state: flow::FlowState = .Reachable;
     var terminated = false;
 
-    var final_stmts: Vec<cir::TypedStmt> = Vec.new(context->allocator);
-    var block_defers: Vec<cir::TypedDeferStmt> = Vec.new(context->allocator);
+    var final_stmts: Vec<cir::Stmt> = Vec.new(context->allocator);
+    var block_defers: Vec<cir::DeferStmt> = Vec.new(context->allocator);
 
     for (var i: usize = 0; i < total; i += 1) {
         var stmt = block->stmts.get(i).unwrap();
@@ -4619,7 +4619,7 @@ fn analyze_block_stmt(
 
 fn analyze_generic_bounds(
     context: AnalyzerContext*, 
-    generic_params: const cir::TypedGenericParams*
+    generic_params: const cir::GenericParams*
 ) {
     for (var i: usize = 0; i < generic_params->ids.len(); i += 1) {
         const generic_param_id = *generic_params->ids.get_const(i).unwrap();
@@ -4667,7 +4667,7 @@ fn analyze_generic_bounds(
 
 fn analyze_typedef(
     context: AnalyzerContext*, 
-    typedef: cir::TypedTypedefStmt*
+    typedef: cir::TypedefStmt*
 ) {
     const normalized_type = normalize_and_check_type_formation(context, typedef->ty, typedef->span, 0);
 
@@ -4691,7 +4691,7 @@ fn analyze_typedef(
 
 fn analyze_global_var(
     context: AnalyzerContext*, 
-    global_var: cir::TypedGlobalVarStmt*
+    global_var: cir::GlobalVarStmt*
 ) {
     switch (global_var->rhs) {
         case .Some(var expr) => {
@@ -4879,7 +4879,7 @@ fn analyze_global_var(
 
 fn analyze_var(
     context: AnalyzerContext*, 
-    var_: cir::TypedVarStmt*) {
+    var_: cir::VarStmt*) {
     switch (var_->ty) {
         case .Some(ty) => {
             const normalized_type = normalize_and_check_type_formation(context, ty, var_->span, 0);
@@ -5008,7 +5008,7 @@ fn analyze_var(
 
 fn analyze_func_def(
     context: AnalyzerContext*, 
-    func_def: cir::TypedFuncDefStmt*) {
+    func_def: cir::FuncDefStmt*) {
     const is_generic_func = func_def->is_generic();
 
     analyze_entry_func(context, func_def);
@@ -5039,7 +5039,7 @@ fn analyze_func_def(
 
 fn analyze_func_decl_stmt(
     context: AnalyzerContext*, 
-    func_decl_stmt: cir::TypedFuncDeclStmt*
+    func_decl_stmt: cir::FuncDeclStmt*
 ) {
     if (func_decl_stmt->is_generic()) {
         diags::report_generic_function_declaration(context->dctx, context->allocator, func_decl_stmt->span);
@@ -5091,7 +5091,7 @@ fn analyze_func_decl(
 
 fn analyze_func_body(
     context: AnalyzerContext*, 
-    body: cir::TypedBlockStmt*, 
+    body: cir::BlockStmt*, 
     ret_type: const cir::SemaType*
 ) {
     const flow_state = analyze_block_stmt(context, body);
@@ -5106,7 +5106,7 @@ fn analyze_func_body(
 
 fn analyze_entry_func(
     context: AnalyzerContext*, 
-    func_def: const cir::TypedFuncDefStmt*
+    func_def: const cir::FuncDefStmt*
 ) {
     var is_public = false;
     var is_extern = false;
@@ -5130,14 +5130,14 @@ fn analyze_entry_func(
 
 fn analyze_builtin_func_used_as_stmt(
     context: AnalyzerContext*,
-    stmt: cir::TypedStmt*
+    stmt: cir::Stmt*
 ) flow::FlowState {
     switch (stmt->kind) {
         case .Builtin(.BuiltinFunc(builtin_func)) => {
             const span = builtin_func.span;
             const name = builtin_func.name.str.as_str_const();
 
-            var builtin_expr = cir::TypedExpr.new(.Builtin(.BuiltinFunc(builtin_func)), span);
+            var builtin_expr = cir::Expr.new(.Builtin(.BuiltinFunc(builtin_func)), span);
             builtin_expr.value_category = .RValue;
 
             if (analyze_expr(context, &builtin_expr, .None).is_none()) {
@@ -5163,7 +5163,7 @@ fn analyze_builtin_func_used_as_stmt(
 
 fn analyze_builtin(
     context: AnalyzerContext*,
-    stmt: cir::TypedStmt*, 
+    stmt: cir::Stmt*, 
     is_toplevel: bool
 ) flow::FlowState {
     switch (stmt->kind) {
@@ -5195,14 +5195,14 @@ fn analyze_builtin(
 
 fn analyze_struct_stmt(
     context: AnalyzerContext*,
-    struct_stmt: cir::TypedStructStmt*
+    struct_stmt: cir::StructStmt*
 ) {
     var struct_decl = *context->decl_tables->structs.get(struct_stmt->struct_decl_id).unwrap();
 
     if (!struct_stmt->is_generic()) {
         var object_type = cir::SemaType.Named(cir::NamedType {
             type_decl_id: .Struct(struct_stmt->struct_decl_id),
-            type_args: cir::TypedTypeArgs.new(context->allocator),
+            type_args: cir::TypeArgs.new(context->allocator),
         });
         var old_object = context->func_env.current_object;
         context->func_env.current_object = .Some(object_type);
@@ -5261,14 +5261,14 @@ fn analyze_struct_decl(
 
 fn analyze_union_stmt(
     context: AnalyzerContext*, 
-    union_: cir::TypedUnionStmt*
+    union_: cir::UnionStmt*
 ) {
     var union_decl = *context->decl_tables->unions.get(union_->union_decl_id).unwrap();
 
     if (!union_->is_generic()) {
         var object_type = cir::SemaType.Named(cir::NamedType {
             type_decl_id: .Union(union_->union_decl_id),
-            type_args: cir::TypedTypeArgs.new(context->allocator),
+            type_args: cir::TypeArgs.new(context->allocator),
         });
         var old_object = context->func_env.current_object;
         context->func_env.current_object = .Some(object_type);
@@ -5335,14 +5335,14 @@ fn analyze_union_decl(
 
 fn analyze_enum_stmt(
     context: AnalyzerContext*,
-    enum_: cir::TypedEnumStmt*
+    enum_: cir::EnumStmt*
 ) {
     var enum_decl = *context->decl_tables->enums.get(enum_->enum_decl_id).unwrap();
 
     if (!enum_->is_generic()) {
         var object_type = cir::SemaType.Named(cir::NamedType {
             type_decl_id: .Enum(enum_->enum_decl_id),
-            type_args: cir::TypedTypeArgs.new(context->allocator),
+            type_args: cir::TypeArgs.new(context->allocator),
         });
         var old_object = context->func_env.current_object;
         context->func_env.current_object = .Some(object_type);
@@ -5398,7 +5398,7 @@ fn analyze_enum_decl(
 fn analyze_enum_variant(
     context: AnalyzerContext*,
     enum_decl_id: cir::EnumDeclId,
-    variant: cir::TypedEnumVariant*,
+    variant: cir::EnumVariant*,
     tag_type_opt: const Option<cir::SemaType>*,
     is_repr_c: bool
 ) {
@@ -5495,7 +5495,7 @@ fn analyze_enum_variant(
 
 fn analyze_interface(
     context: AnalyzerContext*, 
-    interface_: cir::TypedInterfaceStmt*
+    interface_: cir::InterfaceStmt*
 ) {
     const interface_name = interface_->name.as_str_const();
     
@@ -5588,7 +5588,7 @@ fn analyze_object_implements_interfaces(
     object_name: const uint8*,
     object_span: Span,
     is_object_generic: bool,
-    impls: const Vec<cir::TypedImplementInterface>*,
+    impls: const Vec<cir::ImplementInterface>*,
     method_decls: const cir::MethodDecls*
 ) {
     for (var i: usize = 0; i < impls->len(); i += 1) {
@@ -5690,7 +5690,7 @@ fn analyze_object_methods(
 
     var object_type = cir::SemaType.Named(cir::NamedType {
         type_decl_id: object_type_decl_id,
-        type_args: cir::TypedTypeArgs.new(context->allocator),
+        type_args: cir::TypeArgs.new(context->allocator),
     });
 
     for (var i: usize = 0; i < method_decls->entries.len(); i += 1) {
@@ -5716,7 +5716,7 @@ fn analyze_method_decl(
     if (!method_decl->func_decl.is_generic() && !object_type_decl_id.is_interface()) {
         var concrete_self_type = cir::SemaType.Named(cir::NamedType {
             type_decl_id: object_type_decl_id,
-            type_args: cir::TypedTypeArgs.new(context->allocator),
+            type_args: cir::TypeArgs.new(context->allocator),
         });
         apply_self_type_in_method_decl_and_variable(context, method_decl, &concrete_self_type);
     }
@@ -5758,7 +5758,7 @@ fn analyze_method_body(
 
 fn analyze_if_stmt(
     context: AnalyzerContext*, 
-    if_: cir::TypedIfStmt*
+    if_: cir::IfStmt*
 ) flow::FlowState {
     analyze_cond_expr(context, &if_->cond);
 
@@ -5781,7 +5781,7 @@ fn analyze_if_stmt(
 
 fn analyze_while_loop(
     context: AnalyzerContext*, 
-    while_: cir::TypedWhileStmt*
+    while_: cir::WhileStmt*
 ) flow::FlowState {
     analyze_cond_expr(context, &while_->cond);
 
@@ -5794,7 +5794,7 @@ fn analyze_while_loop(
 
 fn analyze_for_loop(
     context: AnalyzerContext*, 
-    for_: cir::TypedForStmt*
+    for_: cir::ForStmt*
 ) flow::FlowState {
     switch (for_->initializer) {
         case .Some(var var_) => {
@@ -5829,7 +5829,7 @@ fn analyze_for_loop(
 
 fn analyze_return(
     context: AnalyzerContext*, 
-    return_: cir::TypedReturnStmt*
+    return_: cir::ReturnStmt*
 ) flow::FlowState {
     switch (context->func_env.current_func) case .Some(func_type) else {
         return .Reachable;
@@ -5894,7 +5894,7 @@ fn analyze_return(
 
 fn analyze_break(
     context: AnalyzerContext*, 
-    break_: const cir::TypedBreakStmt*
+    break_: const cir::BreakStmt*
 ) flow::FlowState {
     var valid = false;
 
@@ -5921,7 +5921,7 @@ fn analyze_break(
 
 fn analyze_continue(
     context: AnalyzerContext*, 
-    continue_: const cir::TypedContinueStmt*
+    continue_: const cir::ContinueStmt*
 ) flow::FlowState {
     var valid = false;
 
@@ -5944,7 +5944,7 @@ fn analyze_continue(
 
 fn analyze_switch(
     context: AnalyzerContext*,
-    switch_: cir::TypedSwitchStmt*
+    switch_: cir::SwitchStmt*
 ) flow::FlowState {
     if (analyze_expr(context, &switch_->operand, .None).is_none()) {
         return .Reachable;
@@ -5969,7 +5969,7 @@ fn analyze_switch(
 
 fn analyze_switch_dispatch(
     context: AnalyzerContext*,
-    switch_: cir::TypedSwitchStmt*,
+    switch_: cir::SwitchStmt*,
     operand_type: const cir::SemaType*
 ) flow::FlowState {
     if (switch_->cases.is_empty()) {
@@ -6003,7 +6003,7 @@ fn analyze_switch_dispatch(
 
 fn analyze_switch_on_poisoned_operand(
     context: AnalyzerContext*,
-    switch_: cir::TypedSwitchStmt*
+    switch_: cir::SwitchStmt*
 ) flow::FlowState {
     for (var i: usize = 0; i < switch_->cases.len(); i += 1) {
         const case_ = switch_->cases.get(i).unwrap();
@@ -6025,7 +6025,7 @@ fn analyze_switch_on_poisoned_operand(
 
 fn analyze_switch_on_value(
     context: AnalyzerContext*,
-    switch_: cir::TypedSwitchStmt*,
+    switch_: cir::SwitchStmt*,
     operand_type: const cir::SemaType*
 ) flow::FlowState {
     var flow_states: Vec<flow::FlowState> = Vec.new(context->allocator);
@@ -6066,7 +6066,7 @@ fn analyze_switch_on_value(
 
 fn analyze_switch_on_value_case_patterns(
     context: AnalyzerContext*,
-    patterns: cir::Vec<cir::TypedSwitchCasePattern>*,
+    patterns: cir::Vec<cir::SwitchCasePattern>*,
     operand_type: const cir::SemaType*,
     case_span: Span
 ) {
@@ -6099,7 +6099,7 @@ fn analyze_switch_on_value_case_patterns(
 
 fn analyze_switch_value_pattern(
     context: AnalyzerContext*,
-    pattern: cir::TypedSwitchCasePattern*,
+    pattern: cir::SwitchCasePattern*,
     operand_type: const cir::SemaType*
 ) Option<Vec<usize>> {
     var kind = pattern->kind;
@@ -6191,7 +6191,7 @@ fn analyze_switch_value_pattern(
 
 fn analyze_switch_on_enum(
     context: AnalyzerContext*, 
-    switch_: cir::TypedSwitchStmt*, 
+    switch_: cir::SwitchStmt*, 
     operand_type: const cir::SemaType*
 ) flow::FlowState {
     switch (operand_type->as_named_type()) case .Some(named) else {
@@ -6287,7 +6287,7 @@ fn analyze_switch_on_enum(
 
 fn analyze_switch_on_enum_case_patterns(
     context: AnalyzerContext*,
-    patterns: const cir::Vec<cir::TypedSwitchCasePattern>*,
+    patterns: const cir::Vec<cir::SwitchCasePattern>*,
     inst_enum_decl: cir::EnumDecl*,
     span: Span
 ) Vec<String> {
@@ -6322,7 +6322,7 @@ fn analyze_switch_on_enum_case_patterns(
 
 fn analyze_enum_switch_pattern(
     context: AnalyzerContext*,
-    pattern: const cir::TypedSwitchCasePattern*,
+    pattern: const cir::SwitchCasePattern*,
     inst_enum_decl: cir::EnumDecl*,
     enum_name: const uint8*,
     exporting_pattern_count: usize*,
@@ -6562,7 +6562,7 @@ fn analyze_enum_switch_pattern(
 
 fn analyze_pattern_recursively(
     context: AnalyzerContext*,
-    pattern: const cir::TypedSwitchCasePattern*,
+    pattern: const cir::SwitchCasePattern*,
     ty: const cir::SemaType*
 ) {
     switch (pattern->kind) {
@@ -6599,7 +6599,7 @@ fn analyze_pattern_recursively(
 
 fn analyze_nested_enum_pattern(
     context: AnalyzerContext*,
-    pattern: const cir::TypedSwitchCasePattern*,
+    pattern: const cir::SwitchCasePattern*,
     ty: const cir::SemaType*,
     ident: ast::ASTIdent
 ) {
@@ -6775,7 +6775,7 @@ fn analyze_nested_enum_pattern(
 
 fn analyze_export_tuple_values(
     context: AnalyzerContext*,
-    export_tuple: cir::TypedTupleExportStmt*
+    export_tuple: cir::TupleExportStmt*
 ) {
     switch (export_tuple->rhs) case .Some(rhs_val) else {
         diags::report_tuple_destruction_with_no_rhs(context->dctx, context->allocator, export_tuple->span);
@@ -6849,7 +6849,7 @@ fn analyze_tuple_ident_pattern(
     context: AnalyzerContext*,
     var_decl_id: cir::VarDeclId,
     sema_type: const cir::SemaType*,
-    rhs: const cir::TypedExpr*,
+    rhs: const cir::Expr*,
     is_const: bool
 ) {
     const var_decl = context->decl_tables->vars.get(var_decl_id);
@@ -6866,9 +6866,9 @@ fn analyze_tuple_ident_pattern(
 
 fn analyze_tuple_pattern(
     context: AnalyzerContext*,
-    pattern: const cir::TypedTupleExportPattern*,
+    pattern: const cir::TupleExportPattern*,
     sema_type: const cir::SemaType*,
-    root_expr: const cir::TypedExpr*,
+    root_expr: const cir::Expr*,
     stmt_is_const: bool,
     span: Span,
     path: Vec<usize>*
@@ -7013,7 +7013,7 @@ fn normalize_named_type(
     named_type: const cir::NamedType*,
     indirection: uint8
 ) Option<cir::SemaType> {
-    var type_args = cir::TypedTypeArgs.new(context->allocator);
+    var type_args = cir::TypeArgs.new(context->allocator);
     
     for (var i: usize = 0; i < named_type->type_args.len(); i += 1) {
         const arg = named_type->type_args.get(i).unwrap();
@@ -7036,7 +7036,7 @@ fn normalize_named_type(
 fn normalize_struct_decl(
     context: AnalyzerContext*,
     struct_decl_id: cir::StructDeclId,
-    type_args: cir::TypedTypeArgs,
+    type_args: cir::TypeArgs,
     indirection: uint8
 ) Option<cir::SemaType> {
     const struct_type: cir::SemaType = .Named(cir::NamedType {
@@ -7068,7 +7068,7 @@ fn normalize_struct_decl(
 fn normalize_union_decl(
     context: AnalyzerContext*,
     union_decl_id: cir::UnionDeclId,
-    type_args: cir::TypedTypeArgs,
+    type_args: cir::TypeArgs,
     indirection: uint8
 ) Option<cir::SemaType> {
     const union_type: cir::SemaType = .Named(cir::NamedType {
@@ -7100,7 +7100,7 @@ fn normalize_union_decl(
 fn normalize_enum_decl(
     context: AnalyzerContext*,
     enum_decl_id: cir::EnumDeclId,
-    type_args: cir::TypedTypeArgs,
+    type_args: cir::TypeArgs,
     indirection: uint8
 ) Option<cir::SemaType> {
     const enum_type: cir::SemaType = .Named(cir::NamedType {
@@ -7204,7 +7204,7 @@ fn normalize_unresolved_type(
                 case .Some(id) => {
                     switch (cir::decl_id_as_type_decl_id(id)) {
                         case .Some(type_decl_id) => {
-                            var args = cir::TypedTypeArgs.new(context->allocator);
+                            var args = cir::TypeArgs.new(context->allocator);
                             
                             for (var i: usize = 0; i < type_args.len(); i += 1) {
                                 const arg = type_args.get(i).unwrap();
@@ -7258,12 +7258,12 @@ fn normalize_unresolved_type(
 
 fn normalize_func_type(
     context: AnalyzerContext*,
-    func_type: cir::TypedFuncType,
+    func_type: cir::FuncType,
     indirection: uint8
 ) Option<cir::SemaType> {
     const params_len = func_type.params.list.len();
 
-    var params = cir::TypedFuncTypeParams {
+    var params = cir::FuncTypeParams {
         list: Vec.with_capacity(context->allocator, params_len),
         variadic: .None,
     };
@@ -7290,7 +7290,7 @@ fn normalize_func_type(
                 case .UntypedCStyle => {
                     params.variadic = .Some(alloc_init(
                         context->allocator,
-                        cir::TypedFuncTypeVariadicParam.UntypedCStyle
+                        cir::FuncTypeVariadicParam.UntypedCStyle
                     ));
                 }
                 case .Typed(ty) => {
@@ -7298,7 +7298,7 @@ fn normalize_func_type(
                         case .Some(normalized_type) => {
                             params.variadic = .Some(alloc_init(
                                 context->allocator,
-                                cir::TypedFuncTypeVariadicParam.Typed(normalized_type)
+                                cir::FuncTypeVariadicParam.Typed(normalized_type)
                             ));
                         }
                         case .None => {
@@ -7318,7 +7318,7 @@ fn normalize_func_type(
         indirection
     )) {
         case .Some(ret_type) => {
-            return .Some(.FuncType(cir::TypedFuncType {
+            return .Some(.FuncType(cir::FuncType {
                 params,
                 ret_type: alloc_init(context->allocator, ret_type),
                 vis: func_type.vis,
@@ -7335,12 +7335,12 @@ fn normalize_func_type(
 
 fn normalize_tuple(
     context: AnalyzerContext*,
-    tuple_type: cir::TypedTupleType,
+    tuple_type: cir::TupleType,
     indirection: uint8
 ) Option<cir::SemaType> {
     const elements_len = tuple_type.elements.len();
 
-    var elements: Vec<cir::TypedTupleElement> = Vec.with_capacity(context->allocator, elements_len);
+    var elements: Vec<cir::TupleElement> = Vec.with_capacity(context->allocator, elements_len);
 
     var failed = false;
 
@@ -7349,7 +7349,7 @@ fn normalize_tuple(
 
         switch (normalize_sema_type(context, element->ty, element->span, indirection)) {
             case .Some(ty) => {
-                elements.push(cir::TypedTupleElement {
+                elements.push(cir::TupleElement {
                     ty,
                     span: element->span,
                 });
@@ -7365,7 +7365,7 @@ fn normalize_tuple(
         return .None;
     }
 
-    return .Some(.Tuple(cir::TypedTupleType {
+    return .Some(.Tuple(cir::TupleType {
         elements,
         span: tuple_type.span,
     }));
@@ -7373,7 +7373,7 @@ fn normalize_tuple(
 
 fn normalize_array(
     context: AnalyzerContext*,
-    var array_type: cir::TypedArrayType,
+    var array_type: cir::ArrayType,
     span: Span,
     indirection: uint8
 ) Option<cir::SemaType> {
@@ -7463,7 +7463,7 @@ fn normalize_generic_param(
 
 fn normalize_self_type(
     context: AnalyzerContext*, 
-    self_type: cir::TypedSelfType
+    self_type: cir::SelfType
 ) Option<cir::SemaType> {
     switch (context->func_env.current_object) {
         case .Some(object_type) => return .Some(object_type);
@@ -7473,7 +7473,7 @@ fn normalize_self_type(
 
 fn normalize_type_args(
     context: AnalyzerContext*, 
-    type_args: cir::TypedTypeArgs*, 
+    type_args: cir::TypeArgs*, 
     indirection: uint8
 ) {
     for (var i: usize = 0; i < type_args->len(); i += 1) {
@@ -7501,7 +7501,7 @@ fn normalize_type_args(
 
 fn normalize_func_params(
     context: AnalyzerContext*,
-    params: cir::TypedFuncParams*,
+    params: cir::FuncParams*,
     validate: bool,
     indirection: uint8
 ) {
@@ -7546,7 +7546,7 @@ fn normalize_func_params(
                         validate_param_type(context, &normalized_type, span);
                     }
 
-                    params->variadic = .Some(cir::TypedFuncVariadicParam.Typed {
+                    params->variadic = .Some(cir::FuncVariadicParam.Typed {
                             var_decl_id,
                             ty: normalized_type,
                             span,
@@ -7561,7 +7561,7 @@ fn normalize_func_params(
 
 fn normalize_func_type_params(
     context: AnalyzerContext*,
-    params: cir::TypedFuncTypeParams*,
+    params: cir::FuncTypeParams*,
     span: Span,
     indirection: uint8
 ) {
@@ -7584,7 +7584,7 @@ fn normalize_func_type_params(
                     switch (normalize_sema_type(context, ty, span, indirection)) {
                         case .Some(normalized_type) => {
                             validate_param_type(context, &normalized_type, span);
-                            *variadic = cir::TypedFuncTypeVariadicParam.Typed(normalized_type);
+                            *variadic = cir::FuncTypeVariadicParam.Typed(normalized_type);
                         }
                         case .None => return;
                     }
@@ -7600,7 +7600,7 @@ fn normalize_func_type_params(
 
 fn analyze_enum_init(
     context: AnalyzerContext*,
-    enum_init: cir::TypedEnumInit*,
+    enum_init: cir::EnumInit*,
     expected_type: Option<cir::SemaType>
 ) Option<cir::SemaType> {
     var operand: cir::SemaType = .Placeholder;
@@ -7676,11 +7676,11 @@ fn analyze_enum_init(
 
 fn analyze_enum_init_inner(
     context: AnalyzerContext*,
-    enum_init: cir::TypedEnumInit*,
+    enum_init: cir::EnumInit*,
     expected_type: Option<cir::SemaType>,
-    variant: const cir::TypedEnumVariant*,
+    variant: const cir::EnumVariant*,
     enum_decl_id: cir::EnumDeclId,
-    generic_params: const cir::TypedGenericParams*
+    generic_params: const cir::GenericParams*
 ) Option<cir::SemaType> {
     var handled = false;
 
@@ -7801,11 +7801,11 @@ fn analyze_enum_init_inner(
 
 fn analyze_unnamed_enum_value(
     context: AnalyzerContext*,
-    enum_value: cir::TypedUnnamedEnumValue*,
+    enum_value: cir::UnnamedEnumValue*,
     expected_type: Option<cir::SemaType>
 ) Option<cir::SemaType> {
     var enum_decl_id_opt: Option<cir::EnumDeclId> = .None;
-    var type_args: cir::TypedTypeArgs = cir::TypedTypeArgs.new(context->allocator);
+    var type_args: cir::TypeArgs = cir::TypeArgs.new(context->allocator);
 
     switch (expected_type) {
         case .Some(ty) => {
@@ -7877,11 +7877,11 @@ fn analyze_unnamed_enum_value(
 
 fn analyze_unnamed_enum_value_inner(
     context: AnalyzerContext*,
-    enum_value: cir::TypedUnnamedEnumValue*,
+    enum_value: cir::UnnamedEnumValue*,
     expected_type: Option<cir::SemaType>,
-    variant: const cir::TypedEnumVariant*,
+    variant: const cir::EnumVariant*,
     enum_decl_id: cir::EnumDeclId,
-    generic_params: const cir::TypedGenericParams*
+    generic_params: const cir::GenericParams*
 ) Option<cir::SemaType> {
     var handled = false;
 
@@ -7986,7 +7986,7 @@ fn analyze_unnamed_enum_value_inner(
 
 fn analyze_enum_struct_variant_init(
     context: AnalyzerContext*,
-    struct_variant_init: cir::TypedEnumStructVariantInit*
+    struct_variant_init: cir::EnumStructVariantInit*
 ) Option<cir::SemaType> {
     var decl_id_opt: Option<cir::DeclId> = .None;
     switch (struct_variant_init->operand->kind.as_unresolved_symbol_id()) {
@@ -8080,15 +8080,15 @@ fn analyze_enum_struct_variant_init(
 
     return .Some(.Named(cir::NamedType {
         type_decl_id: .Enum(enum_decl_id),
-        type_args: cir::TypedTypeArgs.new(context->allocator),
+        type_args: cir::TypeArgs.new(context->allocator),
     }));
 }
 
 fn analyze_enum_struct_variant_fields(
     context: AnalyzerContext*,
     variant_name: const uint8*,
-    field_inits: const Vec<cir::TypedEnumStructVariantFieldInit>*,
-    fields: const Vec<cir::TypedEnumVariantStructField>*,
+    field_inits: const Vec<cir::EnumStructVariantFieldInit>*,
+    fields: const Vec<cir::EnumVariantStructField>*,
     span: Span
 ) {
     for (var i: usize = 0; i < field_inits->len(); i += 1) {
@@ -8115,7 +8115,7 @@ fn analyze_enum_struct_variant_fields(
             continue;
         }
 
-        var variant_opt: Option<const cir::TypedEnumVariantStructField*> = .None;
+        var variant_opt: Option<const cir::EnumVariantStructField*> = .None;
 
         for (var k: usize = 0; k < fields->len(); k += 1) {
             const field = fields->get_const(k).unwrap();
@@ -8700,7 +8700,7 @@ pub fn type_of_decl(
                     case .Some(type_decl_id) => {
                         return .Some(.Named(cir::NamedType {
                             type_decl_id,
-                            type_args: cir::TypedTypeArgs.new(context->allocator),
+                            type_args: cir::TypeArgs.new(context->allocator),
                         }));
                     }
                     case .None => return .None;
@@ -8769,31 +8769,31 @@ fn type_of_decl_internal(
         case .Struct(struct_decl_id) => {
             return .Some(.Named(cir::NamedType {
                 type_decl_id: .Struct(struct_decl_id),
-                type_args: cir::TypedTypeArgs.new(context->allocator),
+                type_args: cir::TypeArgs.new(context->allocator),
             }));
         }
         case .Enum(enum_decl_id) => {
             return .Some(.Named(cir::NamedType {
                 type_decl_id: .Enum(enum_decl_id),
-                type_args: cir::TypedTypeArgs.new(context->allocator),
+                type_args: cir::TypeArgs.new(context->allocator),
             }));
         }
         case .Union(union_decl_id) => {
             return .Some(.Named(cir::NamedType {
                 type_decl_id: .Union(union_decl_id),
-                type_args: cir::TypedTypeArgs.new(context->allocator),
+                type_args: cir::TypeArgs.new(context->allocator),
             }));
         }
         case .Typedef(typedef_decl_id) => {
             return .Some(.Named(cir::NamedType {
                 type_decl_id: .Typedef(typedef_decl_id),
-                type_args: cir::TypedTypeArgs.new(context->allocator),
+                type_args: cir::TypeArgs.new(context->allocator),
             }));
         }
         case .Interface(interface_decl_id) => {
             return .Some(.Named(cir::NamedType {
                 type_decl_id: .Interface(interface_decl_id),
-                type_args: cir::TypedTypeArgs.new(context->allocator),
+                type_args: cir::TypeArgs.new(context->allocator),
             }));
         }
         case .Method => {
@@ -9506,8 +9506,8 @@ fn is_plain_type_assignable_to(
 
 fn is_const_str_assignable_to_array(
     context: AnalyzerContext*,
-    value_type: const cir::TypedArrayType*,
-    target_type: const cir::TypedArrayType*
+    value_type: const cir::ArrayType*,
+    target_type: const cir::ArrayType*
 ) bool {
     switch (value_type->capacity) {
         case .Fixed(value_capacity) => {
@@ -9535,7 +9535,7 @@ fn is_const_str_assignable_to_array(
 
 fn is_const_qualified_lvalue(
     context: AnalyzerContext*, 
-    expr: const cir::TypedExpr*
+    expr: const cir::Expr*
 ) bool {
     if (expr->value_category.is_const_lvalue()) {
         return true;
@@ -9571,7 +9571,7 @@ pub fn expand_sema_type(
                     return expand_typedef(context, typedef_decl_id, &named_type.type_args, span);
                 }
                 else => {
-                    var type_args = cir::TypedTypeArgs.new(context->allocator);
+                    var type_args = cir::TypeArgs.new(context->allocator);
                     
                     for (var i: usize = 0; i < named_type.type_args.len(); i += 1) {
                         const arg = named_type.type_args.get(i).unwrap();
@@ -9611,7 +9611,7 @@ pub fn expand_sema_type(
         case .Array(array) => {
             const element_type = expand_sema_type(context, *array.element_type, span);
             
-            return .Array(cir::TypedArrayType {
+            return .Array(cir::ArrayType {
                 element_type: alloc_init(context->allocator, element_type),
                 capacity: array.capacity,
                 span: array.span,
@@ -9619,27 +9619,27 @@ pub fn expand_sema_type(
         }
 
         case .Tuple(tuple_type) => {
-            var elements: Vec<cir::TypedTupleElement> =
+            var elements: Vec<cir::TupleElement> =
                 Vec.with_capacity(context->allocator, tuple_type.elements.len());
             
             for (var i: usize = 0; i < tuple_type.elements.len(); i += 1) {
                 const element = tuple_type.elements.get_const(i).unwrap();
                 const expand = expand_sema_type(context, element->ty, element->span);
                 
-                elements.push(cir::TypedTupleElement {
+                elements.push(cir::TupleElement {
                     ty: expand,
                     span: element->span,
                 });
             }
 
-            return .Tuple(cir::TypedTupleType {
+            return .Tuple(cir::TupleType {
                 elements,
                 span: tuple_type.span,
             });
         }
 
         case .FuncType(func_type) => {
-            var params = cir::TypedFuncTypeParams {
+            var params = cir::FuncTypeParams {
                 list: Vec.with_capacity(context->allocator, func_type.params.list.len()),
                 variadic: .None,
             };
@@ -9656,14 +9656,14 @@ pub fn expand_sema_type(
                         case .UntypedCStyle => {
                             params.variadic = .Some(alloc_init(
                                 context->allocator,
-                                cir::TypedFuncTypeVariadicParam.UntypedCStyle
+                                cir::FuncTypeVariadicParam.UntypedCStyle
                             ));
                         }
                         case .Typed(ty) => {
                             const expand = expand_sema_type(context, ty, span);
                             params.variadic = .Some(alloc_init(
                                 context->allocator,
-                                cir::TypedFuncTypeVariadicParam.Typed(expand)
+                                cir::FuncTypeVariadicParam.Typed(expand)
                             ));
                         }
                     }
@@ -9673,7 +9673,7 @@ pub fn expand_sema_type(
 
             const ret_type = expand_sema_type(context, *func_type.ret_type, span);
 
-            return .FuncType(cir::TypedFuncType {
+            return .FuncType(cir::FuncType {
                 params,
                 ret_type: alloc_init(context->allocator, ret_type),
                 vis: func_type.vis,
@@ -9689,7 +9689,7 @@ pub fn expand_sema_type(
 fn expand_typedef(
     context: AnalyzerContext*,
     typedef_decl_id: cir::TypedefDeclId,
-    args: const cir::TypedTypeArgs*,
+    args: const cir::TypeArgs*,
     span: Span
 ) cir::SemaType {
     switch (enter_typedef(context, typedef_decl_id)) {
@@ -9756,7 +9756,7 @@ fn expand_typedef(
 
     const generic_params = &typedef_decl->generic_params;
 
-    var final_args = cir::TypedTypeArgs.new(context->allocator);
+    var final_args = cir::TypeArgs.new(context->allocator);
     defer final_args.free();
 
     for (var i: usize = 0; i < generic_params->len(); i += 1) {
@@ -9779,7 +9779,7 @@ fn expand_typedef(
     if (args->len() > final_args.len()) {
         var named = cir::NamedType {
             type_decl_id: .Typedef(typedef_decl_id),
-            type_args: cir::TypedTypeArgs.new(context->allocator),
+            type_args: cir::TypeArgs.new(context->allocator),
         };
 
         for (var i: usize = 0; i < args->len(); i += 1) {
@@ -9922,7 +9922,7 @@ pub fn is_typedef_cycle_already_reported(
 
 fn instantiate_and_specialize_func_params(
     context: AnalyzerContext*,
-    params: cir::TypedFuncParams*,
+    params: cir::FuncParams*,
     decl_map: HashMap<usize, cir::VarDeclId>*
 ) {
     for (var i: usize = 0; i < params->list.len(); i += 1) {
@@ -9992,9 +9992,9 @@ fn instantiate_and_specialize_func_params(
 pub fn instantiate_enum_decl_with_type_args(
     allocator: Allocator,
     enum_decl: const cir::EnumDecl*,
-    type_args: const cir::TypedTypeArgs*
+    type_args: const cir::TypeArgs*
 ) cir::EnumDecl {
-    var variants: Vec<cir::TypedEnumVariant> = Vec.new(allocator);
+    var variants: Vec<cir::EnumVariant> = Vec.new(allocator);
 
     for (var i: usize = 0; i < enum_decl->variants.len(); i += 1) {
         const variant = enum_decl->variants.get_const(i).unwrap();
@@ -10007,12 +10007,12 @@ pub fn instantiate_enum_decl_with_type_args(
                 variants.push(.Valued { ident, value });
             }
             case .Tuple { ident, fields } => {
-                var new_fields: Vec<cir::TypedEnumVariantTupleField> = Vec.new(allocator);
+                var new_fields: Vec<cir::EnumVariantTupleField> = Vec.new(allocator);
 
                 for (var j: usize = 0; j < fields.len(); j += 1) {
                     const field = fields.get_const(j).unwrap();
 
-                    new_fields.push(cir::TypedEnumVariantTupleField {
+                    new_fields.push(cir::EnumVariantTupleField {
                         ty: cir::substitute_sema_type_with_type_args(
                             allocator,
                             &field->ty,
@@ -10026,12 +10026,12 @@ pub fn instantiate_enum_decl_with_type_args(
                 variants.push(.Tuple { ident, fields: new_fields });
             }
             case .Struct { ident, fields } => {
-                var new_fields: Vec<cir::TypedEnumVariantStructField> = Vec.new(allocator);
+                var new_fields: Vec<cir::EnumVariantStructField> = Vec.new(allocator);
 
                 for (var j: usize = 0; j < fields.len(); j += 1) {
                     const field = fields.get_const(j).unwrap();
 
-                    new_fields.push(cir::TypedEnumVariantStructField {
+                    new_fields.push(cir::EnumVariantStructField {
                         name: field->name,
                         ty: cir::substitute_sema_type_with_type_args(
                             allocator,
@@ -10064,7 +10064,7 @@ pub fn instantiate_enum_decl_with_type_args(
 
 fn instantiate_fresh_var_stmt(
     context: AnalyzerContext*,
-    var_stmt: const cir::TypedVarStmt*,
+    var_stmt: const cir::VarStmt*,
     decl_map: HashMap<usize, cir::VarDeclId>*
 ) {
     const template_var_decl = cir::VarDecl {
@@ -10129,9 +10129,9 @@ fn instantiate_fresh_var_decl_from_tables(
 
 fn specialize_func_body(
     context: AnalyzerContext*,
-    template_body: const cir::TypedBlockStmt*,
-    params: cir::TypedFuncParams*
-) cir::TypedBlockStmt {
+    template_body: const cir::BlockStmt*,
+    params: cir::FuncParams*
+) cir::BlockStmt {
     var body = cir::clone::clone_typed_block(context->allocator, template_body);
 
     var decl_map: HashMap<usize, cir::VarDeclId> = HashMap.with_hasher(
@@ -10160,7 +10160,7 @@ fn specialize_func_body(
 
 fn specialize_block(
     context: AnalyzerContext*,
-    body: cir::TypedBlockStmt*,
+    body: cir::BlockStmt*,
     decl_map: HashMap<usize, cir::VarDeclId>*
 ) {
     for (var i: usize = 0; i < body->stmts.len(); i += 1) {
@@ -10176,7 +10176,7 @@ fn specialize_block(
 
 fn specialize_stmt(
     context: AnalyzerContext*,
-    kind: cir::TypedStmtKind*,
+    kind: cir::StmtKind*,
     decl_map: HashMap<usize, cir::VarDeclId>*
 ) {
     switch (*kind) {
@@ -10304,7 +10304,7 @@ fn specialize_stmt(
 
 fn specialize_if_stmt(
     context: AnalyzerContext*,
-    if_: cir::TypedIfStmt*,
+    if_: cir::IfStmt*,
     decl_map: HashMap<usize, cir::VarDeclId>*
 ) {
     specialize_expr(context, &if_->cond, decl_map);
@@ -10325,7 +10325,7 @@ fn specialize_if_stmt(
 
 fn specialize_var_stmt(
     context: AnalyzerContext*,
-    var_stmt: cir::TypedVarStmt*,
+    var_stmt: cir::VarStmt*,
     decl_map: HashMap<usize, cir::VarDeclId>*
 ) {
     switch (remap_var_decl_id(context, decl_map, var_stmt->var_decl_id)) {
@@ -10344,7 +10344,7 @@ fn specialize_var_stmt(
 
 fn specialize_builtin(
     context: AnalyzerContext*,
-    builtin: cir::TypedBuiltin*,
+    builtin: cir::Builtin*,
     decl_map: HashMap<usize, cir::VarDeclId>*
 ) {
     switch (*builtin) {
@@ -10360,7 +10360,7 @@ fn specialize_builtin(
 
 fn specialize_tuple_export_pattern(
     context: AnalyzerContext*,
-    pattern: cir::TypedTupleExportPattern*,
+    pattern: cir::TupleExportPattern*,
     decl_map: HashMap<usize, cir::VarDeclId>*
 ) {
     switch (pattern->kind) {
@@ -10382,7 +10382,7 @@ fn specialize_tuple_export_pattern(
 
 fn specialize_switch_pattern(
     context: AnalyzerContext*,
-    pattern: cir::TypedSwitchCasePattern*,
+    pattern: cir::SwitchCasePattern*,
     decl_map: HashMap<usize, cir::VarDeclId>*
 ) {
     switch (pattern->kind) {
@@ -10431,7 +10431,7 @@ fn specialize_switch_pattern(
 
 fn specialize_expr(
     context: AnalyzerContext*,
-    expr: cir::TypedExpr*,
+    expr: cir::Expr*,
     decl_map: HashMap<usize, cir::VarDeclId>*
 ) {
     switch (expr->kind) {
@@ -10621,7 +10621,7 @@ fn specialize_expr(
 
 fn specialize_expr_vec(
     context: AnalyzerContext*,
-    exprs: Vec<cir::TypedExpr>*,
+    exprs: Vec<cir::Expr>*,
     decl_map: HashMap<usize, cir::VarDeclId>*
 ) {
     for (var i: usize = 0; i < exprs->len(); i += 1) {
@@ -10632,7 +10632,7 @@ fn specialize_expr_vec(
 
 fn specialize_func_params(
     context: AnalyzerContext*,
-    params: cir::TypedFuncParams*,
+    params: cir::FuncParams*,
     decl_map: HashMap<usize, cir::VarDeclId>*
 ) {
     for (var i: usize = 0; i < params->list.len(); i += 1) {
@@ -10692,7 +10692,7 @@ fn specialize_func_params(
 
 fn collect_and_instantiate_fresh_var_decls(
     context: AnalyzerContext*,
-    stmt_kind: const cir::TypedStmtKind*,
+    stmt_kind: const cir::StmtKind*,
     decl_map: HashMap<usize, cir::VarDeclId>*
 ) {
     switch (*stmt_kind) {
@@ -10759,7 +10759,7 @@ fn collect_and_instantiate_fresh_var_decls(
 
 fn collect_fresh_var_decls_in_block(
     context: AnalyzerContext*,
-    block: const cir::TypedBlockStmt*,
+    block: const cir::BlockStmt*,
     decl_map: HashMap<usize, cir::VarDeclId>*
 ) {
     for (var i: usize = 0; i < block->stmts.len(); i += 1) {
@@ -10775,7 +10775,7 @@ fn collect_fresh_var_decls_in_block(
 
 fn collect_fresh_var_decls_of_if(
     context: AnalyzerContext*,
-    if_: const cir::TypedIfStmt*,
+    if_: const cir::IfStmt*,
     decl_map: HashMap<usize, cir::VarDeclId>*
 ) {
     collect_fresh_var_decls_in_block(context, if_->then_block, decl_map);
@@ -10795,7 +10795,7 @@ fn collect_fresh_var_decls_of_if(
 
 fn collect_fresh_var_decls_of_func_params(
     context: AnalyzerContext*,
-    params: const cir::TypedFuncParams*,
+    params: const cir::FuncParams*,
     decl_map: HashMap<usize, cir::VarDeclId>*
 ) {
     for (var i: usize = 0; i < params->list.len(); i += 1) {
@@ -10832,7 +10832,7 @@ fn collect_fresh_var_decls_of_func_params(
 
 fn collect_fresh_var_decls_of_tuple_pattern(
     context: AnalyzerContext*,
-    pattern: const cir::TypedTupleExportPattern*,
+    pattern: const cir::TupleExportPattern*,
     decl_map: HashMap<usize, cir::VarDeclId>*
 ) {
     switch (pattern->kind) {
@@ -10851,7 +10851,7 @@ fn collect_fresh_var_decls_of_tuple_pattern(
 
 fn collect_fresh_var_decls_of_switch_pattern(
     context: AnalyzerContext*,
-    pattern: const cir::TypedSwitchCasePattern*,
+    pattern: const cir::SwitchCasePattern*,
     decl_map: HashMap<usize, cir::VarDeclId>*
 ) {
     switch (pattern->kind) {
@@ -10887,7 +10887,7 @@ fn collect_fresh_var_decls_of_switch_pattern(
 fn check_func_variadic_arguments(
     context: AnalyzerContext*,
     func_decl: const cir::FuncDecl*,
-    args: Vec<cir::TypedExpr>*,
+    args: Vec<cir::Expr>*,
     span: Span
 ) {
     const static_params_len = func_decl->params.list.len();
@@ -10946,8 +10946,8 @@ fn check_func_variadic_arguments(
 
 fn check_func_type_call(
     context: AnalyzerContext*,
-    func_type: cir::TypedFuncType*,
-    args: Vec<cir::TypedExpr>*,
+    func_type: cir::FuncType*,
+    args: Vec<cir::Expr>*,
     span: Span
 ) Option<cir::SemaType> {
     const expected_args_len = func_type->params.list.len();
@@ -11134,12 +11134,12 @@ fn check_method_call(
 
 fn finalize_generic_method_call(
     context: AnalyzerContext*,
-    method_call: cir::TypedMethodCall*,
+    method_call: cir::MethodCall*,
     method_decl: cir::MethodDecl*,
     method_decl_id: cir::MethodDeclId,
     operand_type: cir::SemaType*,
     pure_operand_type: const cir::SemaType*,
-    final_type_args: const cir::TypedTypeArgs*,
+    final_type_args: const cir::TypeArgs*,
     is_instance_method_call: bool,
     span: Span
 ) Option<cir::SemaType> {
@@ -11228,7 +11228,7 @@ fn apply_self_type_in_method_decl_and_variable(
 fn set_operand_named_type_args(
     context: AnalyzerContext*,
     ty: cir::SemaType*,
-    generic_params: cir::TypedGenericParams
+    generic_params: cir::GenericParams
 ) bool {
     switch (*ty) {
         case .Named(var named_type) => {
@@ -11250,7 +11250,7 @@ fn set_operand_named_type_args(
 
 /* ************* Generics Helpers ************* */
 
-fn apply_generic_defaults(context: AnalyzerContext*, generic_params: cir::TypedGenericParams) {
+fn apply_generic_defaults(context: AnalyzerContext*, generic_params: cir::GenericParams) {
     for (var i: usize = 0; i < generic_params.len(); i += 1) {
         const generic_param_id = *generic_params.ids.get_const(i).unwrap();
         
@@ -11316,9 +11316,9 @@ fn apply_generic_defaults(context: AnalyzerContext*, generic_params: cir::TypedG
 
 fn instantiated_type_args(
     context: AnalyzerContext*,
-    generic_params: cir::TypedGenericParams
-) cir::TypedTypeArgs {
-    var args = cir::TypedTypeArgs.new(context->allocator);
+    generic_params: cir::GenericParams
+) cir::TypeArgs {
+    var args = cir::TypeArgs.new(context->allocator);
 
     for (var i: usize = 0; i < generic_params.len(); i += 1) {
         const generic_param_id = *generic_params.ids.get_const(i).unwrap();
@@ -11344,7 +11344,7 @@ fn instantiated_type_args(
 
 fn check_argument_satisfies_generic_param_bounds(
     context: AnalyzerContext*,
-    original_params: const cir::TypedFuncParams*,
+    original_params: const cir::FuncParams*,
     param_name: const uint8*,
     arg_type: const cir::SemaType*,
     arg_loc: Span,
@@ -11439,10 +11439,10 @@ fn check_argument_satisfies_generic_param_bounds(
 fn monomorphize_generic_func_call(
     context: AnalyzerContext*,
     operand_type: const cir::SemaType*,
-    func_call: cir::TypedFuncCall*,
+    func_call: cir::FuncCall*,
     func_decl_id: cir::FuncDeclId,
     func_decl: cir::FuncDecl*,
-    final_type_args: const cir::TypedTypeArgs*
+    final_type_args: const cir::TypeArgs*
 ) Option<cir::SemaType> {
     func_call->operand->ty = .Some(generics::substitute_type(context, operand_type));
     generics::substitute_func_params(context, &func_decl->params);
@@ -11505,7 +11505,7 @@ fn monomorphize_generic_method_call(
     pure_operand_type: cir::SemaType,
     method_decl_id: cir::MethodDeclId,
     method_decl: cir::MethodDecl*,
-    final_type_args: const cir::TypedTypeArgs*,
+    final_type_args: const cir::TypeArgs*,
     is_generic_interface_method_call: bool,
     span: Span
 ) Option<cir::MonomorphId> {
@@ -11724,13 +11724,13 @@ fn asm_is_integer_bool_or_pointer(ty: const cir::SemaType*) bool {
     }
 }
 
-fn check_asm_template(context: AnalyzerContext*, asm: cir::TypedInlineAsm*) {
+fn check_asm_template(context: AnalyzerContext*, asm: cir::InlineAsm*) {
     if (asm->template.len() == 0) {
         diags::report_asm_empty_template(context->dctx, context->allocator, asm->span);
     }
 }
 
-fn check_asm_outputs(context: AnalyzerContext*, asm: cir::TypedInlineAsm*) {
+fn check_asm_outputs(context: AnalyzerContext*, asm: cir::InlineAsm*) {
     for (var i: usize = 0; i < asm->outputs.len(); i += 1) {
         const operand = asm->outputs.get(i).unwrap();
 
@@ -11763,7 +11763,7 @@ fn check_asm_outputs(context: AnalyzerContext*, asm: cir::TypedInlineAsm*) {
     }
 }
 
-fn check_asm_inputs(context: AnalyzerContext*, asm: cir::TypedInlineAsm*) {
+fn check_asm_inputs(context: AnalyzerContext*, asm: cir::InlineAsm*) {
     for (var i: usize = 0; i < asm->inputs.len(); i += 1) {
         const operand = asm->inputs.get(i).unwrap();
 
@@ -11785,7 +11785,7 @@ fn check_asm_inputs(context: AnalyzerContext*, asm: cir::TypedInlineAsm*) {
     }
 }
 
-fn check_asm_clobbers(context: AnalyzerContext*, asm: cir::TypedInlineAsm*) {
+fn check_asm_clobbers(context: AnalyzerContext*, asm: cir::InlineAsm*) {
     var seen: Vec<String> = Vec.new(context->allocator);
 
     for (var i: usize = 0; i < asm->clobbers.len(); i += 1) {
@@ -11821,7 +11821,7 @@ fn check_asm_clobbers(context: AnalyzerContext*, asm: cir::TypedInlineAsm*) {
     free_strings(&seen);
 }
 
-fn check_asm_template_indices(context: AnalyzerContext*, asm: cir::TypedInlineAsm*) {
+fn check_asm_template_indices(context: AnalyzerContext*, asm: cir::InlineAsm*) {
     const total_operands = asm->outputs.len() + asm->inputs.len();
 
     for (var li: usize = 0; li < asm->template.len(); li += 1) {
@@ -11861,7 +11861,7 @@ fn check_asm_template_indices(context: AnalyzerContext*, asm: cir::TypedInlineAs
     }
 }
 
-fn check_asm_constraint_types(context: AnalyzerContext*, asm: cir::TypedInlineAsm*) {
+fn check_asm_constraint_types(context: AnalyzerContext*, asm: cir::InlineAsm*) {
     for (var i: usize = 0; i < asm->outputs.len(); i += 1) {
         const operand = asm->outputs.get_const(i).unwrap();
         check_asm_operand_constraint_types(context, operand);
@@ -11875,7 +11875,7 @@ fn check_asm_constraint_types(context: AnalyzerContext*, asm: cir::TypedInlineAs
 
 fn check_asm_operand_constraint_types(
     context: AnalyzerContext*,
-    operand: const cir::TypedAsmOperand*
+    operand: const cir::AsmOperand*
 ) {
     const raw = asm_trim_constraint(context->allocator, operand->constraint.as_str_const());
     defer raw.free();
@@ -11949,8 +11949,8 @@ fn check_asm_operand_constraint_types(
 
 fn check_builtin_form(
     context: AnalyzerContext*,
-    builtin_spec: cir::TypedBuiltinSpec,
-    actual: cir::TypedBuiltinForm,
+    builtin_spec: cir::BuiltinSpec,
+    actual: cir::BuiltinForm,
     span: Span
 ) bool {
     if (builtin_spec.form != actual) {
@@ -11968,7 +11968,7 @@ fn check_builtin_form(
 
 fn check_builtin_arg_count(
     context: AnalyzerContext*,
-    spec: cir::TypedBuiltinSpec,
+    spec: cir::BuiltinSpec,
     count: usize,
     span: Span
 ) bool {
@@ -12073,7 +12073,7 @@ fn is_switch_range_valid(
 fn check_duplicate_union_field(
     context: AnalyzerContext*,
     object_name: const uint8*,
-    fields: const Vec<cir::TypedUnionField>*
+    fields: const Vec<cir::UnionField>*
 ) {
     for (var i: usize = 0; i < fields->len(); i += 1) {
         const field = fields->get_const(i).unwrap();
@@ -12153,7 +12153,7 @@ fn check_union_field_type(
 
     const ty = cir::NamedType {
         type_decl_id: .Union(union_decl_id),
-        type_args: cir::TypedTypeArgs.new(context->allocator),
+        type_args: cir::TypeArgs.new(context->allocator),
     };
 
     if (cir::type_contains_self_by_value(inner, &ty)) {
@@ -12182,7 +12182,7 @@ fn check_union_field_type(
 fn check_duplicate_enum_variants(
     context: AnalyzerContext*,
     object_name: const uint8*,
-    variants: const Vec<cir::TypedEnumVariant>*
+    variants: const Vec<cir::EnumVariant>*
 ) {
     for (var i: usize = 0; i < variants->len(); i += 1) {
         const variant = variants->get_const(i).unwrap();
@@ -12215,7 +12215,7 @@ fn check_enum_variant_field_type(
 
     const ty = cir::NamedType {
         type_decl_id: .Enum(enum_decl_id),
-        type_args: cir::TypedTypeArgs.new(context->allocator),
+        type_args: cir::TypeArgs.new(context->allocator),
     };
 
     if (cir::type_contains_self_by_value(inner, &ty)) {
@@ -12327,7 +12327,7 @@ fn check_enum_tag_type(
 fn check_invalid_struct_fields(
     context: AnalyzerContext*,
     struct_decl: const cir::StructDecl*,
-    fields: const Vec<cir::TypedFieldInit>*
+    fields: const Vec<cir::FieldInit>*
 ) {
     var struct_name = format::format_struct_decl(context->allocator, context->decl_tables, struct_decl);
     defer struct_name.free();
@@ -12364,7 +12364,7 @@ fn check_invalid_struct_fields(
 fn check_missing_struct_fields(
     context: AnalyzerContext*,
     struct_decl: const cir::StructDecl*,
-    fields: const Vec<cir::TypedFieldInit>*,
+    fields: const Vec<cir::FieldInit>*,
     span: Span
 ) {
     var missing = String.new(context->allocator);
@@ -12418,7 +12418,7 @@ fn check_missing_struct_fields(
 
 fn check_duplicate_struct_field_init(
     context: AnalyzerContext*,
-    fields: const Vec<cir::TypedFieldInit>*
+    fields: const Vec<cir::FieldInit>*
 ) {
     for (var i: usize = 0; i < fields->len(); i += 1) {
         const field = fields->get_const(i).unwrap();
@@ -12448,7 +12448,7 @@ fn check_duplicate_struct_field_init(
 fn check_invalid_struct_fields_for_unnamed_struct_value(
     context: AnalyzerContext*,
     struct_decl: const cir::StructDecl*,
-    struct_valueue: const cir::TypedUnnamedStructValue*
+    struct_valueue: const cir::UnnamedStructValue*
 ) {
     var struct_name = format::format_struct_decl(
         context->allocator, 
@@ -12489,7 +12489,7 @@ fn check_invalid_struct_fields_for_unnamed_struct_value(
 fn check_missing_struct_fields_for_unnamed_struct_value(
     context: AnalyzerContext*,
     struct_decl: const cir::StructDecl*,
-    struct_valueue: const cir::TypedUnnamedStructValue*
+    struct_valueue: const cir::UnnamedStructValue*
 ) {
     var missing = String.new(context->allocator);
     defer missing.free();
@@ -12542,7 +12542,7 @@ fn check_missing_struct_fields_for_unnamed_struct_value(
 
 fn check_duplicate_fields_for_unnamed_struct_value(
     context: AnalyzerContext*,
-    struct_valueue: const cir::TypedUnnamedStructValue*
+    struct_valueue: const cir::UnnamedStructValue*
 ) {
     for (var i: usize = 0; i < struct_valueue->fields.len(); i += 1) {
         const field = struct_valueue->fields.get_const(i).unwrap();
@@ -12628,7 +12628,7 @@ fn check_struct_field_type(
 
     const ty = cir::NamedType {
         type_decl_id: .Struct(struct_decl_id),
-        type_args: cir::TypedTypeArgs.new(context->allocator),
+        type_args: cir::TypeArgs.new(context->allocator),
     };
 
     if (cir::type_contains_self_by_value(inner, &ty)) {
@@ -12651,7 +12651,7 @@ fn check_struct_field_type(
 fn check_duplicate_struct_field(
     context: AnalyzerContext*, 
     object_name: const uint8*, 
-    fields: const Vec<cir::TypedStructField>*
+    fields: const Vec<cir::StructField>*
 ) {
     for (var i: usize = 0; i < fields->len(); i += 1) {
         const field = fields->get_const(i).unwrap();
@@ -12727,7 +12727,7 @@ fn check_field_access(
 pub fn coerce_interface_as_interface_object_if_possible(
     context: AnalyzerContext*,
     ty: const cir::SemaType*,
-    expr: const cir::TypedExpr*,
+    expr: const cir::Expr*,
     span: Span
 ) cir::SemaType {
     switch (expr->ty) {
@@ -12774,7 +12774,7 @@ fn coerce_interface_object_recursively(
                 span
             );
 
-            return .Array(cir::TypedArrayType {
+            return .Array(cir::ArrayType {
                 element_type: alloc_init(context->allocator, element_type),
                 capacity: array_type.capacity,
                 span: array_type.span,
@@ -12782,26 +12782,26 @@ fn coerce_interface_object_recursively(
         }
 
         case .Tuple(tuple_type) => {
-            var elements: Vec<cir::TypedTupleElement> = Vec.with_capacity(context->allocator, tuple_type.elements.len());
+            var elements: Vec<cir::TupleElement> = Vec.with_capacity(context->allocator, tuple_type.elements.len());
 
             for (var i: usize = 0; i < tuple_type.elements.len(); i += 1) {
                 const element = tuple_type.elements.get_const(i).unwrap();
                 const coerce = coerce_interface_object_recursively(context, &element->ty, interface_object, span);
                 
-                elements.push(cir::TypedTupleElement {
+                elements.push(cir::TupleElement {
                     ty: coerce,
                     span: element->span,
                 });
             }
 
-            return .Tuple(cir::TypedTupleType {
+            return .Tuple(cir::TupleType {
                 elements,
                 span: tuple_type.span,
             });
         }
 
         case .FuncType(func_type) => {
-            var params = cir::TypedFuncTypeParams {
+            var params = cir::FuncTypeParams {
                 list: Vec.with_capacity(context->allocator, func_type.params.list.len()),
                 variadic: .None,
             };
@@ -12818,7 +12818,7 @@ fn coerce_interface_object_recursively(
                         case .UntypedCStyle => {
                             params.variadic = .Some(alloc_init(
                                 context->allocator,
-                                cir::TypedFuncTypeVariadicParam.UntypedCStyle
+                                cir::FuncTypeVariadicParam.UntypedCStyle
                             ));
                         }
                         case .Typed(ty_inner) => {
@@ -12826,7 +12826,7 @@ fn coerce_interface_object_recursively(
                             
                             params.variadic = .Some(alloc_init(
                                 context->allocator,
-                                cir::TypedFuncTypeVariadicParam.Typed(coerce)
+                                cir::FuncTypeVariadicParam.Typed(coerce)
                             ));
                         }
                     }
@@ -12836,7 +12836,7 @@ fn coerce_interface_object_recursively(
 
             const ret_type = coerce_interface_object_recursively(context, func_type.ret_type, interface_object, span);
 
-            return .FuncType(cir::TypedFuncType {
+            return .FuncType(cir::FuncType {
                 params,
                 ret_type: alloc_init(context->allocator, ret_type),
                 vis: func_type.vis,
@@ -12874,7 +12874,7 @@ fn check_variable_type(
 
 fn check_non_static_global_var_modifiers(
     context: AnalyzerContext*,
-    global_var: const cir::TypedGlobalVarStmt*
+    global_var: const cir::GlobalVarStmt*
 ) {
     if (global_var->modifiers.weak
         || global_var->modifiers.link_once
@@ -12902,11 +12902,11 @@ fn check_non_static_global_var_modifiers(
 
 fn tuple_access_expr(
     allocator: Allocator,
-    base_expr: const cir::TypedExpr*,
+    base_expr: const cir::Expr*,
     access_path: const Vec<usize>*, 
     span: Span
-) cir::TypedExpr {
-    var expr: cir::TypedExpr = *base_expr;
+) cir::Expr {
+    var expr: cir::Expr = *base_expr;
     var current_type = expr.ty;
     var done = false;
     
@@ -12936,8 +12936,8 @@ fn tuple_access_expr(
             break;
         }
 
-        expr = cir::TypedExpr {
-            kind: .TupleAccess(cir::TypedTupleAccessExpr {
+        expr = cir::Expr {
+            kind: .TupleAccess(cir::TupleAccessExpr {
                 operand: alloc_init(allocator, expr),
                 index,
                 span: span,
@@ -12956,11 +12956,11 @@ fn tuple_access_expr(
 
 fn tuple_type_from_pattern(
     context: AnalyzerContext*, 
-    pattern: const cir::TypedTupleExportPattern*
+    pattern: const cir::TupleExportPattern*
 ) Option<cir::SemaType> {
     switch (pattern->kind) {
         case .Tuple(elements) => {
-            var result_type: Vec<cir::TypedTupleElement> = Vec.new(context->allocator);
+            var result_type: Vec<cir::TupleElement> = Vec.new(context->allocator);
             defer result_type.free();
 
             var has_explicit_type = false;
@@ -12970,7 +12970,7 @@ fn tuple_type_from_pattern(
 
                 switch (element->ty) {
                     case .Some(ty) => {
-                        result_type.push(cir::TypedTupleElement {
+                        result_type.push(cir::TupleElement {
                             ty,
                             span: element->span
                         });
@@ -12981,13 +12981,13 @@ fn tuple_type_from_pattern(
                             case .Tuple => {
                                 switch (tuple_type_from_pattern(context, element)) {
                                     case .Some(inner) => {
-                                        result_type.push(cir::TypedTupleElement { ty: inner, span: element->span });
+                                        result_type.push(cir::TupleElement { ty: inner, span: element->span });
                                         has_explicit_type = true;
                                     }
                                     case .None => {
                                         switch (context->func_env.infer) {
                                             case .Some(infer_ctx) => {
-                                                result_type.push(cir::TypedTupleElement {
+                                                result_type.push(cir::TupleElement {
                                                     ty: infer_ctx->new_var(),
                                                     span: element->span,
                                                 });
@@ -13002,7 +13002,7 @@ fn tuple_type_from_pattern(
                             else => {
                                 switch (context->func_env.infer) {
                                     case .Some(infer_ctx) => {
-                                        result_type.push(cir::TypedTupleElement {
+                                        result_type.push(cir::TupleElement {
                                             ty: infer_ctx->new_var(),
                                             span: element->span,
                                         });
@@ -13021,7 +13021,7 @@ fn tuple_type_from_pattern(
                 return .None;
             }
 
-            return .Some(.Tuple(cir::TypedTupleType {
+            return .Some(.Tuple(cir::TupleType {
                 elements: result_type,
                 span: pattern->span,
             }));
@@ -13103,8 +13103,8 @@ fn unify_with_expected_type(
 fn create_inference_generic_env(
     context: AnalyzerContext*,
     type_name: const uint8*,
-    params: cir::TypedGenericParams,
-    type_args: const cir::TypedTypeArgs*,
+    params: cir::GenericParams,
+    type_args: const cir::TypeArgs*,
     span: Span
 ) Option<env::GenericEnv> {
     if (!type_args->is_empty() && params.len() != type_args->len()) {
@@ -13157,7 +13157,7 @@ fn create_inference_generic_env(
 fn create_func_def_env(
     context: AnalyzerContext*,
     name: const uint8*,
-    func_type: cir::TypedFuncType,
+    func_type: cir::FuncType,
     parent_infer: Option<infer::InferContext*>
 ) env::FuncEnv {
     var env = env::FuncEnv.new(context->allocator);
@@ -13178,7 +13178,7 @@ fn create_func_def_env(
 fn create_method_env(
     context: AnalyzerContext*,
     method_decl_id: cir::MethodDeclId,
-    func_type: cir::TypedFuncType,
+    func_type: cir::FuncType,
     parent_infer: Option<infer::InferContext*>
 ) env::FuncEnv {
     var env = env::FuncEnv.new(context->allocator);
@@ -13200,7 +13200,7 @@ fn create_method_env(
 
 fn symbol_expr_as_decl_id(
     registry: const GlobalSymbolRegistry*,
-    symbol_expr: const cir::TypedSymbolExpr*
+    symbol_expr: const cir::SymbolExpr*
 ) Option<cir::DeclId> {
     switch (symbol_expr->as_symbol_id()) {
         case .Some(symbol_id) => {
@@ -13217,7 +13217,7 @@ fn symbol_expr_as_decl_id(
 
 fn enum_decl_id_of_expr_kind(
     context: AnalyzerContext*,
-    expr_kind: const cir::TypedExprKind*,
+    expr_kind: const cir::ExprKind*,
     span: Span
 ) Option<cir::EnumTypeDecl> {
     switch (*expr_kind) {
@@ -13231,7 +13231,7 @@ fn enum_decl_id_of_expr_kind(
                     return .None;
                 }
 
-                const type_args = cir::TypedTypeArgs.new(context->allocator);
+                const type_args = cir::TypeArgs.new(context->allocator);
 
                 const named: cir::SemaType = .Named(cir::NamedType {
                     type_decl_id,
@@ -13250,13 +13250,13 @@ fn enum_decl_id_of_expr_kind(
 
                 return .Some(cir::EnumTypeDecl {
                     enum_decl_id: aliased_enum_id,
-                    type_args: cir::TypedTypeArgs.new(context->allocator),
+                    type_args: cir::TypeArgs.new(context->allocator),
                 });
             }
 
             return .Some(cir::EnumTypeDecl {
                 enum_decl_id,
-                type_args: cir::TypedTypeArgs.new(context->allocator),
+                type_args: cir::TypeArgs.new(context->allocator),
             });
         }
 
@@ -13309,7 +13309,7 @@ fn method_decls_of_named_type(
 fn implement_interfaces_of_named_type(
     decl_tables: tables::DeclTables*,
     named_type: const cir::NamedType*
-) Option<const Vec<cir::TypedImplementInterface>*> {
+) Option<const Vec<cir::ImplementInterface>*> {
     switch (named_type->type_decl_id) {
         case .Struct(struct_decl_id) => {
             const struct_decl = decl_tables->structs.get_const(struct_decl_id).unwrap();
@@ -13365,7 +13365,7 @@ fn write_method_back(
 
 fn write_back_global_var(
     context: AnalyzerContext*,
-    global_var: const cir::TypedGlobalVarStmt*
+    global_var: const cir::GlobalVarStmt*
 ) {
     var decl = context
         ->decl_tables
@@ -13378,7 +13378,7 @@ fn write_back_global_var(
 
 fn write_back_var(
     context: AnalyzerContext*, 
-    var_: const cir::TypedVarStmt*
+    var_: const cir::VarStmt*
 ) {
     var decl = context->decl_tables->vars.get(var_->var_decl_id).unwrap();
     decl->rhs = var_->rhs;
@@ -13419,7 +13419,7 @@ fn float_suffix_to_sema_type(suffix: FloatSuffix) Option<cir::SemaType> {
 
 fn value_category_of_expr(
     context: const AnalyzerContext*, 
-    expr: const cir::TypedExpr*
+    expr: const cir::Expr*
 ) cir::ValueCategory {
     switch (expr->kind) {
         case .Symbol(symbol_expr) => {
@@ -13524,7 +13524,7 @@ fn check_align(context: AnalyzerContext*, align: const Option<usize>*, span: Spa
 
 fn lower_expr_pre_analysis(
     context: AnalyzerContext*, 
-    typed_expr: cir::TypedExpr*,
+    typed_expr: cir::Expr*,
     expected_type: Option<cir::SemaType>
 ) {
     switch (typed_expr->kind) {
@@ -13667,7 +13667,7 @@ fn lower_expr_pre_analysis(
     }
 }
 
-fn lower_expr_post_analysis(context: AnalyzerContext*, typed_expr: cir::TypedExpr*) {
+fn lower_expr_post_analysis(context: AnalyzerContext*, typed_expr: cir::Expr*) {
     lower::lower_unnamed_union_value_as_union_init(context->allocator, context->dctx, typed_expr);
     lower::lower_unnamed_struct_value_as_struct_init(context->allocator, typed_expr);
     lower::lower_enum_struct_variant_init_as_enum_init(typed_expr);

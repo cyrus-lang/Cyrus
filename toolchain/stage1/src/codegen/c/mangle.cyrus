@@ -16,7 +16,7 @@ import std::hash{
 };
 
 import cir::tables{DeclTables};
-import cir{TypedProgramTree};
+import cir{ProgramTree};
 import source{SourceId};
 import parser::ast;
 import cir;
@@ -38,7 +38,7 @@ pub struct ModuleMaps {
     pub global_modules: HashMap<cir::GlobalVarDeclId, ModuleName>,
 }
 
-pub fn new_module_maps(allocator: Allocator, trees: const Vec<cir::TypedProgramTree>*) ModuleMaps {
+pub fn new_module_maps(allocator: Allocator, trees: const Vec<cir::ProgramTree>*) ModuleMaps {
     return ModuleMaps {
         allocator,
         interface_modules: HashMap.with_hasher(allocator, 64, hash_usize, eq_usize),
@@ -61,7 +61,7 @@ pub fn new_module_maps(allocator: Allocator, trees: const Vec<cir::TypedProgramT
 pub fn build_module_maps(
     maps: ModuleMaps*,
     tables: const DeclTables*,
-    trees: const Vec<cir::TypedProgramTree>*
+    trees: const Vec<cir::ProgramTree>*
 ) {
     for (var i: usize = 0; i < trees->len(); i += 1) {
         const tree = trees->get_const(i).unwrap();
@@ -482,7 +482,7 @@ fn mangle_plain_type(out: String*, plain: cir::PlainType) {
 pub fn mangle_type_args(
     allocator: Allocator,
     tables: const DeclTables*,
-    type_args: const cir::TypedTypeArgs*
+    type_args: const cir::TypeArgs*
 ) String {
     if (type_args->is_empty()) {
         return String.new(allocator);
@@ -518,7 +518,7 @@ pub fn mangle_monomorphized_func(
     name: const uint8*,
     func_decl_id: cir::FuncDeclId,
     modifiers: const ast::ASTFuncModifiers*,
-    type_args: const cir::TypedTypeArgs*
+    type_args: const cir::TypeArgs*
 ) String {
     var base = mangle_func(allocator, maps, name, func_decl_id, modifiers);
 
@@ -540,7 +540,7 @@ pub fn mangle_monomorphized_method(
     tables: const DeclTables*,
     method_decl_id: cir::MethodDeclId,
     method: const cir::MethodDecl*,
-    type_args: const cir::TypedTypeArgs*
+    type_args: const cir::TypeArgs*
 ) String {
     var base = mangle_method(allocator, maps, method_decl_id, method);
 
@@ -573,7 +573,7 @@ fn type_ident_impl(
     out: String*,
     tables: const DeclTables*,
     ty: const cir::SemaType*,
-    sub: Option<const cir::TypedTypeArgs*>
+    sub: Option<const cir::TypeArgs*>
 ) {
     switch (*ty) {
         case .Named(named) => {
