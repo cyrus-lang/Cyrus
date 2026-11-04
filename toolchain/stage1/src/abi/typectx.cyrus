@@ -11,9 +11,9 @@ import std::string{String};
 import abi::helpers{align_offset, extract_typedef_inner_type};
 import abi::layout{ABITypeLayout, ABIFieldOffsetInfo};
 import resolver::symbols{GlobalSymbolRegistry};
+import sema::format{format_sema_type};
 import abi::target{TargetInfo};
 import cir::tables{DeclTables};
-import analyzer::format{format_sema_type};
 import ciri;
 import cir;
 

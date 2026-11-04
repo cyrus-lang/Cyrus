@@ -11,8 +11,8 @@ import std::option{Option};
 
 import .::monomorph{MonomorphRegistry, InstanceSite};
 import resolver::symbols{GlobalSymbolRegistry};
-import analyzer::infer{InferContext};
 import .::vtables{VTableRegistry};
+import sema::infer{InferContext};
 import diags{DiagContext};
 import tokens{Span};
 import cir::tables;

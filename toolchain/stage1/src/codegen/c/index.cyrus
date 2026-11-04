@@ -7,8 +7,8 @@ import std::option{Option};
 import std::io{Writer};
 
 import resolver::symbols{GlobalSymbolRegistry};
-import analyzer::monomorph{MonomorphRegistry};
-import analyzer::vtables{VTableRegistry};
+import sema::monomorph{MonomorphRegistry};
+import sema::vtables{VTableRegistry};
 import codegen::c::emitter{Emitter};
 import cir::tables{DeclTables};
 import codegen::c::mangle;

@@ -9,11 +9,11 @@ import std::errors{ErrorOr};
 import std::string{String};
 import std::path{Path};
 
-import analyzer::context{AnalyzerContext};
 import resolver::loader{ResolverOptions};
+import sema::context{AnalyzerContext};
 import .::lexical{LexicalContext};
-import analyzer{trigger_analyzer};
 import .::index{CompilerContext};
+import sema{trigger_analyzer};
 import resolver{Resolver};
 import cir::dump;
 import cir;
@@ -48,17 +48,25 @@ pub struct AnalysisContext {
 
         const path = Path.new(allocator, file_path);
 
-        switch (self->lexical->tokenize_source(path)) case .Value(var source_tokens) else {
+        switch (self->lexical->tokenize_source(
+            path
+        )) case .Value(var source_tokens) else {
             return .Error(());
         }
         defer source_tokens.free();
 
-        switch (self->lexical->parse_source(source_tokens)) case .Value(var program) else {
+        switch (self->lexical->parse_source(
+            source_tokens
+        )) case .Value(var program) else {
             return .Error(());
         }
         defer program.free();
 
-        self->resolver->resolve_entry(source_tokens.source_id, file_path, &program);
+        self->resolver->resolve_entry(
+            source_tokens.source_id, 
+            file_path, 
+            &program
+        );
 
         if (self->context->dctx.has_errors()) {
             self->context->render_diags();
@@ -90,7 +98,9 @@ pub struct AnalysisContext {
 
         const path = Path.new(allocator, file_path);
 
-        switch (self->lexical->tokenize_source(path)) case .Value(var source_tokens) else {
+        switch (self->lexical->tokenize_source(
+            path
+        )) case .Value(var source_tokens) else {
             if (!self->context->dctx.has_errors()) {
                 self->resolver->dump_symbols();
             }
@@ -98,7 +108,9 @@ pub struct AnalysisContext {
         }
         defer source_tokens.free();
 
-        switch (self->lexical->parse_source(source_tokens)) case .Value(var program) else {
+        switch (self->lexical->parse_source(
+            source_tokens
+        )) case .Value(var program) else {
             if (!self->context->dctx.has_errors()) {
                 self->resolver->dump_symbols();
             }

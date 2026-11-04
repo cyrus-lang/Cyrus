@@ -9,8 +9,8 @@ import std::string{String};
 
 import diags{DiagContext, Diag};
 import cir::tables{DeclTables};
-import analyzer::format;
 import tokens{Span};
+import sema::format;
 import cir;
 
 pub fn report_unknown_symbol(

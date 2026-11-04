@@ -19,11 +19,11 @@ import std::format{
 import abi::typectx{is_enum_scalar_optimizable};
 import resolver::symbols{GlobalSymbolRegistry};
 import tokens{push_c_escaped, push_c_char};
-import analyzer::vtables{VTableRegistry};
 import codegen::c::types{TypeEmitter};
+import sema::vtables{VTableRegistry};
 import cir::tables{DeclTables};
 import source{SourceContext};
-import analyzer::monomorph{
+import sema::monomorph{
     MonomorphInstance, 
     MonomorphRegistry
 };

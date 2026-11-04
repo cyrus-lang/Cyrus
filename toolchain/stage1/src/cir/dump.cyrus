@@ -10,7 +10,7 @@ import std::io{Writer};
 
 import resolver::symbols{GlobalSymbolRegistry};
 import cir::tables{DeclTables};
-import analyzer::format;
+import sema::format;
 import cir;
 
 pub fn dump_cir(
@@ -455,14 +455,22 @@ struct DumpContext {
         }
     }
 
-    fn dump_tree_category(self: Self*, trees: const Vec<cir::ProgramTree>*, category: usize) {
+    fn dump_tree_category(
+        self: Self*, 
+        trees: const Vec<cir::ProgramTree>*, 
+        category: usize
+    ) {
         for (var i: usize = 0; i < trees->len(); i += 1) {
             const tree = trees->get_const(i).unwrap();
             self->dump_tree_stmts_category(&tree->body, category);
         }
     }
 
-    fn dump_tree_stmts_category(self: Self*, stmts: const Vec<cir::Stmt>*, category: usize) {
+    fn dump_tree_stmts_category(
+        self: Self*, 
+        stmts: const Vec<cir::Stmt>*, 
+        category: usize
+    ) {
         for (var i: usize = 0; i < stmts->len(); i += 1) {
             const stmt = stmts->get_const(i).unwrap();
 
@@ -570,7 +578,9 @@ struct DumpContext {
                 self->indent(depth);
                 self->write("}\n");
             }
-            case .If(if_stmt) => self->dump_if(&if_stmt, depth);
+            case .If(if_stmt) => {
+                self->dump_if(&if_stmt, depth);
+            }
             case .While(while_stmt) => {
                 self->write("while ");
                 self->write_expr(&while_stmt.cond);
@@ -583,7 +593,9 @@ struct DumpContext {
                 self->write("for (");
 
                 switch (for_stmt.initializer) {
-                    case .Some(initializer) => self->write_var_content(&initializer);
+                    case .Some(initializer) => {
+                        self->write_var_content(&initializer);
+                    }
                     case .None => {}
                 }
 
@@ -619,9 +631,15 @@ struct DumpContext {
 
                 self->write(";\n");
             }
-            case .Break => self->write("break;\n");
-            case .Continue => self->write("continue;\n");
-            case .Switch(switch_stmt) => self->dump_switch(&switch_stmt, depth);
+            case .Break => {
+                self->write("break;\n");
+            }
+            case .Continue => {
+                self->write("continue;\n");
+            }
+            case .Switch(switch_) => {
+                self->dump_switch(&switch_, depth);
+            }
             case .FuncDef(func_def) => {
                 self->write("fn ");
                 self->write(func_def.name.as_str_const());

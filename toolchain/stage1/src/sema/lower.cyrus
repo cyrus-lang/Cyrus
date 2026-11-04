@@ -7,8 +7,8 @@ import std::option{Option};
 
 import cir::tables{DeclTables};
 import diags{DiagContext};
-import analyzer::format;
-import analyzer::diags;
+import sema::format;
+import sema::diags;
 import parser::ast;
 import cir;
 
