@@ -114,9 +114,9 @@ fn clone_if_stmt(allocator: Allocator, src: const cir::IfStmt*) cir::IfStmt {
     }
 
     return cir::IfStmt {
+        branches,
         cond: clone_expr(allocator, &src->cond),
         then_block: clone_block_alloc(allocator, src->then_block),
-        branches,
         else_block: clone_optional_block_ptr(allocator, &src->else_block),
         span: src->span,
     };
@@ -135,7 +135,9 @@ fn clone_for_stmt(allocator: Allocator, src: const cir::ForStmt*) cir::ForStmt {
     var initializer: Option<cir::VarStmt> = .None;
 
     switch (src->initializer) {
-        case .Some(var_stmt) => initializer = .Some(clone_var_stmt(allocator, &var_stmt));
+        case .Some(var_stmt) => {
+            initializer = .Some(clone_var_stmt(allocator, &var_stmt));
+        }
         case .None => {}
     }
 
@@ -361,6 +363,7 @@ fn clone_asm_operand_vec(
 
     for (var i: usize = 0; i < src->len(); i += 1) {
         const operand = src->get_const(i).unwrap();
+
         out.push(cir::AsmOperand {
             constraint: operand->constraint,
             expr: clone_expr_alloc(allocator, operand->expr),
@@ -387,9 +390,9 @@ fn clone_expr_kind(
     src: const cir::ExprKind*
 ) cir::ExprKind {
     switch (*src) {
-        case .Symbol(symbol) => return .Symbol(symbol);
-        case .Literal(literal) => return .Literal(literal);
         case .SemaType { ty, span } => return .SemaType { ty, span };
+        case .Literal(literal) => return .Literal(literal);
+        case .Symbol(symbol) => return .Symbol(symbol);
         case .Poisoned => return .Poisoned;
 
         case .Prefix(prefix) => {
@@ -399,6 +402,7 @@ fn clone_expr_kind(
                 span: prefix.span,
             });
         }
+
         case .Infix(infix) => {
             return .Infix(cir::InfixExpr {
                 op: infix.op,
@@ -407,6 +411,7 @@ fn clone_expr_kind(
                 span: infix.span,
             });
         }
+
         case .Assign(assign) => {
             return .Assign(cir::AssignExpr {
                 lhs: clone_expr_alloc(allocator, assign.lhs),
@@ -415,18 +420,21 @@ fn clone_expr_kind(
                 span: assign.span,
             });
         }
+
         case .AddrOf(addr_of) => {
             return .AddrOf(cir::AddrOfExpr {
                 operand: clone_expr_alloc(allocator, addr_of.operand),
                 span: addr_of.span,
             });
         }
+
         case .Deref(deref) => {
             return .Deref(cir::DerefExpr {
                 operand: clone_expr_alloc(allocator, deref.operand),
                 span: deref.span,
             });
         }
+
         case .Array(array) => {
             return .Array(cir::ArrayExpr {
                 ty: array.ty,
@@ -434,12 +442,14 @@ fn clone_expr_kind(
                 span: array.span,
             });
         }
+
         case .Tuple(tuple) => {
             return .Tuple(cir::TupleExpr {
                 elements: clone_expr_vec(allocator, &tuple.elements),
                 span: tuple.span,
             });
         }
+
         case .ArrayIndex(array_index) => {
             return .ArrayIndex(cir::ArrayIndexExpr {
                 operand: clone_expr_alloc(allocator, array_index.operand),
@@ -447,6 +457,7 @@ fn clone_expr_kind(
                 span: array_index.span,
             });
         }
+
         case .TupleAccess(tuple_access) => {
             return .TupleAccess(cir::TupleAccessExpr {
                 operand: clone_expr_alloc(allocator, tuple_access.operand),
@@ -454,6 +465,7 @@ fn clone_expr_kind(
                 span: tuple_access.span,
             });
         }
+
         case .FieldAccess(field_access) => {
             return .FieldAccess(cir::FieldAccess {
                 operand: clone_expr_alloc(allocator, field_access.operand),
@@ -464,6 +476,7 @@ fn clone_expr_kind(
                 span: field_access.span,
             });
         }
+
         case .StructInit(struct_init) => {
             return .StructInit(cir::StructInitExpr {
                 operand: struct_init.operand,
@@ -471,6 +484,7 @@ fn clone_expr_kind(
                 span: struct_init.span,
             });
         }
+
         case .UnionInit(union_init) => {
             return .UnionInit(cir::UnionInitExpr {
                 operand: union_init.operand,
@@ -478,6 +492,7 @@ fn clone_expr_kind(
                 span: union_init.span,
             });
         }
+
         case .FuncCall(func_call) => {
             return .FuncCall(cir::FuncCall {
                 operand: clone_expr_alloc(allocator, func_call.operand),
@@ -487,6 +502,7 @@ fn clone_expr_kind(
                 span: func_call.span,
             });
         }
+
         case .MethodCall(method_call) => {
             return .MethodCall(cir::MethodCall {
                 name: method_call.name,
@@ -498,6 +514,7 @@ fn clone_expr_kind(
                 span: method_call.span,
             });
         }
+
         case .Dynamic(dynamic_) => {
             return .Dynamic(cir::DynamicExpr {
                 operand: clone_expr_alloc(allocator, dynamic_.operand),
@@ -507,6 +524,7 @@ fn clone_expr_kind(
                 span: dynamic_.span,
             });
         }
+
         case .Lambda(lambda) => {
             return .Lambda(cir::LambdaExpr {
                 params: clone_func_params(allocator, &lambda.params),
@@ -515,6 +533,7 @@ fn clone_expr_kind(
                 span: lambda.span,
             });
         }
+
         case .EnumInit(enum_init) => {
             return .EnumInit(cir::EnumInit {
                 operand: enum_init.operand,
@@ -523,6 +542,7 @@ fn clone_expr_kind(
                 span: enum_init.span,
             });
         }
+
         case .EnumStructVariantInit(variant_init) => {
             return .EnumStructVariantInit(cir::EnumStructVariantInit {
                 enum_decl_id: variant_init.enum_decl_id,
@@ -532,6 +552,7 @@ fn clone_expr_kind(
                 span: variant_init.span,
             });
         }
+
         case .UnnamedStructValue(struct_value) => {
             return .UnnamedStructValue(cir::UnnamedStructValue {
                 struct_decl_id: struct_value.struct_decl_id,
@@ -541,6 +562,7 @@ fn clone_expr_kind(
                 span: struct_value.span,
             });
         }
+
         case .UnnamedUnionValue(union_value) => {
             return .UnnamedUnionValue(cir::UnnamedUnionValue {
                 union_decl_id: union_value.union_decl_id,
@@ -548,6 +570,7 @@ fn clone_expr_kind(
                 span: union_value.span,
             });
         }
+
         case .UnnamedEnumValue(enum_value) => {
             return .UnnamedEnumValue(cir::UnnamedEnumValue {
                 enum_decl_id: enum_value.enum_decl_id,
@@ -556,8 +579,14 @@ fn clone_expr_kind(
                 span: enum_value.span,
             });
         }
-        case .Builtin(builtin) => return .Builtin(clone_builtin(allocator, &builtin));
-        case .InlineAsm(asm) => return .InlineAsm(clone_inline_asm(allocator, &asm));
+
+        case .Builtin(builtin) => {
+            return .Builtin(clone_builtin(allocator, &builtin));
+        }
+
+        case .InlineAsm(asm) => {
+            return .InlineAsm(clone_inline_asm(allocator, &asm));
+        }
     }
 }
 
@@ -566,9 +595,15 @@ fn clone_enum_init_args(
     src: const cir::EnumInitArgs*
 ) cir::EnumInitArgs {
     switch (*src) {
-        case .Unit => return .Unit;
-        case .Tuple(elements) => return .Tuple(clone_expr_vec(allocator, &elements));
-        case .Struct(field_inits) => return .Struct(clone_variant_field_init_vec(allocator, &field_inits));
+        case .Struct(field_inits) => {
+            return .Struct(clone_variant_field_init_vec(allocator, &field_inits));
+        }
+        case .Tuple(elements) => {
+            return .Tuple(clone_expr_vec(allocator, &elements));
+        }
+        case .Unit => {
+            return .Unit;
+        }
     }
 }
 
@@ -577,9 +612,15 @@ fn clone_unnamed_enum_value_kind(
     src: const cir::UnnamedEnumValueKind*
 ) cir::UnnamedEnumValueKind {
     switch (*src) {
-        case .Unit => return .Unit;
-        case .Tuple(elements) => return .Tuple(clone_expr_vec(allocator, &elements));
-        case .Struct(field_inits) => return .Struct(clone_variant_field_init_vec(allocator, &field_inits));
+        case .Struct(field_inits) => {
+            return .Struct(clone_variant_field_init_vec(allocator, &field_inits));
+        }
+        case .Tuple(elements) => {
+            return .Tuple(clone_expr_vec(allocator, &elements));
+        }
+        case .Unit => {
+            return .Unit;
+        }
     }
 }
 
@@ -609,6 +650,7 @@ fn clone_variant_field_init_vec(
 
     for (var i: usize = 0; i < src->len(); i += 1) {
         const init = src->get_const(i).unwrap();
+
         out.push(cir::EnumStructVariantFieldInit {
             name: init->name,
             value: clone_expr_alloc(allocator, init->value),
@@ -627,6 +669,7 @@ fn clone_unnamed_struct_field_vec(
 
     for (var i: usize = 0; i < src->len(); i += 1) {
         const field = src->get_const(i).unwrap();
+
         out.push(cir::UnnamedStructValueField {
             name: field->name,
             value: clone_expr_alloc(allocator, field->value),
@@ -645,6 +688,7 @@ fn clone_unnamed_union_field_vec(
 
     for (var i: usize = 0; i < src->len(); i += 1) {
         const field = src->get_const(i).unwrap();
+
         out.push(cir::UnnamedUnionValueField {
             name: field->name,
             value: clone_expr_alloc(allocator, field->value),
@@ -674,8 +718,12 @@ fn clone_optional_expr(
     src: const Option<cir::Expr>*
 ) Option<cir::Expr> {
     switch (*src) {
-        case .Some(expr) => return .Some(clone_expr(allocator, &expr));
-        case .None => return .None;
+        case .Some(expr) => {
+            return .Some(clone_expr(allocator, &expr));
+        }
+        case .None => {
+            return .None;
+        }
     }
 }
 
@@ -684,8 +732,12 @@ fn clone_optional_block(
     src: const Option<cir::BlockStmt>*
 ) Option<cir::BlockStmt> {
     switch (*src) {
-        case .Some(block) => return .Some(clone_typed_block(allocator, &block));
-        case .None => return .None;
+        case .Some(block) => {
+            return .Some(clone_typed_block(allocator, &block));
+        }
+        case .None => {
+            return .None;
+        }
     }
 }
 

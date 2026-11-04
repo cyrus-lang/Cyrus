@@ -43,7 +43,14 @@ pub struct Label {
         role: LabelRole, 
         mesg: const uint8*
     ) Self {
-        return Self { span, mesg: .Some(String.from_str(allocator, mesg)), role };
+        return Self {
+            span, 
+            role,
+            mesg: .Some(String.from_str(
+                allocator, 
+                mesg
+            )), 
+        };
     }
 
     pub fn free(self: Self*) {

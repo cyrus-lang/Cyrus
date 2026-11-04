@@ -15,11 +15,11 @@ import std::os::dir;
 import std::cli;
 import std::os;
 
-import analyzer::context{AnalyzerContext};
 import resolver::loader{ResolverOptions};
 import driver::analysis{AnalysisContext};
 import driver::lexical{LexicalContext};
-import analyzer{trigger_analyzer};
+import sema::context{AnalyzerContext};
+import sema{trigger_analyzer};
 import resolver::index{Resolver};
 import driver{CompilerContext};
 import parser::dump{ASTDump};
