@@ -49,7 +49,13 @@ impl<'a, R: ConstResolver> ConstFolder<'a, R> {
 
         if let Ok(const_value) = self.evaluator.eval_expr(expr, analyzer_state) {
             if let Some(int_value) = const_value.as_int() {
-                let is_signed = expr.ty.as_ref().unwrap().as_plain_type().unwrap().is_signed();
+                let is_signed = expr
+                    .ty
+                    .as_ref()
+                    .unwrap()
+                    .as_plain_type()
+                    .map(|plain_type| plain_type.is_signed())
+                    .unwrap_or(false);
 
                 let int_literal_kind = {
                     if is_signed {
