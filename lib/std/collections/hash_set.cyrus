@@ -178,6 +178,7 @@ pub struct HashSet<K>{
 
         const new_mask = new_cap - 1;
         const old_entries_data = old_entries.data_const();
+        
         var new_entries_data = new_entries.data();
 
         for (var i: usize = 0; i < old_cap; i += 1) {

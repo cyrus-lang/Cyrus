@@ -1674,7 +1674,7 @@ def cmd_analyze_corpus(cfg: Config, args: argparse.Namespace) -> int:
     the annotations exactly; every other file must analyze without errors
     (warnings are allowed).
     """
-    stage0_root = cfg.root / "tests" / "stage0"
+    stage0_root = cfg.root / "tests" / "core"
     ensure_stage1(cfg)
 
     files = sorted(stage0_root.rglob("*.cyrus"))
@@ -1682,7 +1682,7 @@ def cmd_analyze_corpus(cfg: Config, args: argparse.Namespace) -> int:
         files = [p for p in files if args.filter in str(p.relative_to(cfg.root))]
 
     if not files:
-        log(STYLE.yellow("no .cyrus files found under tests/stage0"))
+        log(STYLE.yellow("no .cyrus files found under tests/core"))
         return 0
 
     skipped: List[str] = []

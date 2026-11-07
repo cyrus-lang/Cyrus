@@ -1,6 +1,121 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 The Cyrus Language
 
+import std::io{Writer};
+import std::mem{Allocator};
+import std::option{Option};
+import std::libc{getenv, fopen, fclose, fwrite};
+
+import sema::context{AnalyzerContext};
+import .::index{CompilerContext};
+import resolver::index{Resolver};
+import codegen::c{CodegenC};
+import .::tcc;
+
+pub enum Backend {
+    LLVM
+    C,
+}
+
+pub fn backend_from_name(name: const uint8*) Option<Backend> {
+    if (name == "c") {
+        return .Some(.C);
+    }
+
+    if (name == "llvm") {
+        return .Some(.LLVM);
+    }
+
+    return .None;
+}
+
 pub struct CodegenContext {
-    pub context: CompilerContext*,
+    pub allocator: Allocator,
+    pub backend: Backend,
+
+    pub fn new(allocator: Allocator, backend: Backend) Self {
+        return Self { allocator, backend };
+    }
+
+    pub fn emit(
+        self: Self*,
+        context: const CompilerContext*,
+        resolver: Resolver*,
+        analyzer: AnalyzerContext*,
+        writer: Writer
+    ) {
+        switch (self->backend) {
+            case .C => {
+                var codegen = CodegenC.new(
+                    self->allocator,
+                    &resolver->decl_tables,
+                    &resolver->global_symbols,
+                    &resolver->program_trees,
+                    &analyzer->vtable_registry,
+                    &analyzer->monomorph_registry,
+                    &context->sctx
+                );
+                codegen.emit(writer);
+                codegen.free();
+            }
+            case .LLVM => {
+                @todo();
+            }
+        }
+    }
+
+    /// Compiles emitted `source` into `output_path`.
+    pub fn build(
+        self: Self*,
+        source: const uint8*,
+        output_path: const uint8*,
+        extra_files: const uint8*,
+        lib_paths: const uint8*,
+        libraries: const uint8*
+    ) bool {
+        switch (self->backend) {
+            case .C => {
+                self->write_debug_source(source);
+
+                return tcc::compile(
+                    source,
+                    output_path,
+                    tcc::OutputKind.EXE,
+                    extra_files,
+                    lib_paths,
+                    libraries
+                );
+            }
+            case .LLVM => {
+                @todo();
+            }
+        }
+
+        return false;
+    }
+
+    fn write_debug_source(self: Self*, source: const uint8*) {
+        const emit_path = getenv("CYRUS_EMIT_C");
+
+        if (emit_path == null) {
+            return;
+        }
+
+        // FIXME: Use os::File instead of calling libc directly.
+        const emit_stream = fopen(emit_path, "w");
+
+        if (emit_stream == null) {
+            return;
+        }
+
+        var len: usize = 0;
+
+        while (source[len] != '\0') {
+            len += 1;
+        }
+
+        // FIXME: Use io::Writer instead of calling libc directly.
+        fwrite(source, 1, len, emit_stream);
+        fclose(emit_stream);
+    }
 }

@@ -249,81 +249,31 @@ fn parse_callconv_attr(state: ParserState*) Option<ast::ASTAttrKind> {
 
     const value = arg.str.as_str_const();
     var callconv = ast::ASTCallconv.C;
-    var matched = false;
 
-    if (value == "c") {
-        callconv = .C;
-        matched = true;
-    }
+    switch (value) {
+        case "vectorcall" => callconv = .Vectorcall;
+        case "interrupt" => callconv = .Interrupt;
+        case "fastcall" => callconv = .Fastcall;
+        case "thiscall" => callconv = .Thiscall;
+        case "stdcall" => callconv = .Stdcall;
+        case "system" => callconv = .System;
+        case "sysv64" => callconv = .SysV64;
+        case "aapcs" => callconv = .Aapcs;
+        case "win64" => callconv = .Win64;
+        case "naked" => callconv = .Naked;
+        case "fast" => callconv = .Fast;
+        case "cold" => callconv = .Cold;
+        case "c" => callconv = .C;
 
-    if (value == "naked") {
-        callconv = .Naked;
-        matched = true;
-    }
-
-    if (value == "interrupt") {
-        callconv = .Interrupt;
-        matched = true;
-    }
-
-    if (value == "fast") {
-        callconv = .Fast;
-        matched = true;
-    }
-
-    if (value == "cold") {
-        callconv = .Cold;
-        matched = true;
-    }
-
-    if (value == "aapcs") {
-        callconv = .Aapcs;
-        matched = true;
-    }
-
-    if (value == "stdcall") {
-        callconv = .Stdcall;
-        matched = true;
-    }
-
-    if (value == "fastcall") {
-        callconv = .Fastcall;
-        matched = true;
-    }
-
-    if (value == "thiscall") {
-        callconv = .Thiscall;
-        matched = true;
-    }
-
-    if (value == "vectorcall") {
-        callconv = .Vectorcall;
-        matched = true;
-    }
-
-    if (value == "sysv64") {
-        callconv = .SysV64;
-        matched = true;
-    }
-
-    if (value == "win64") {
-        callconv = .Win64;
-        matched = true;
-    }
-
-    if (value == "system") {
-        callconv = .System;
-        matched = true;
-    }
-
-    if (!matched) {
-        state->dctx->report(Diag.new(
-            state->allocator,
-            .Error,
-            "invalid callconv in attribute",
-            arg.span
-        ));
-        return .None;
+        else => {
+            state->dctx->report(Diag.new(
+                state->allocator,
+                .Error,
+                "invalid callconv in attribute",
+                arg.span
+            ));
+            return .None;
+        }
     }
 
     if (!state->expect(.RightParen)) {

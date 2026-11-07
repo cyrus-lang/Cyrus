@@ -18,7 +18,7 @@ import resolver{Resolver};
 import cir::dump;
 import cir;
 
-const ANALYZER_ARENA_SIZE: usize = 65536;
+const ANALYZER_ARENA_INITIAL_SIZE: usize = 65536;
 
 pub struct AnalysisContext {
     pub context: CompilerContext*,
@@ -32,7 +32,7 @@ pub struct AnalysisContext {
         opts: const ResolverOptions*,
     ) Self {
         const allocator = context->allocator;
-        const arena = ArenaAllocator.new(allocator, ANALYZER_ARENA_SIZE);
+        const arena = ArenaAllocator.new(allocator, ANALYZER_ARENA_INITIAL_SIZE);
 
         const lexical = alloc_init(allocator, LexicalContext.new(context));
         const resolver = alloc_init(allocator, Resolver.new(allocator, lexical, opts));

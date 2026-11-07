@@ -99,6 +99,7 @@ pub struct HashMap<K, V> {
         const new_mask = new_cap - 1;
         const old_entries_data = old_entries.data();
         const old_values_data = old_values.data();
+        
         var new_entries_data = new_entries.data();
         var new_values_data = new_values.data();
 

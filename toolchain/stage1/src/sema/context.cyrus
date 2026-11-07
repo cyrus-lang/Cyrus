@@ -20,7 +20,8 @@ import .::flow;
 import .::env;
 import cir;
 
-const ANALYZER_ARENA_SIZE: usize = 65536;
+const ANALYZER_ARENA_INITIAL_SIZE: usize = 65536;
+const TYPE_CACHE_INITIAL_SIZE: usize = 64;
 
 pub struct AnalyzerContext {
     pub allocator: Allocator,
@@ -48,7 +49,7 @@ pub struct AnalyzerContext {
     ) Self {
         const control_region_stack: Vec<flow::ControlRegion> = Vec.new(allocator);
         const generic_env_stack: Vec<env::GenericEnv*> = Vec.new(allocator);
-        const arena = ArenaAllocator.new(allocator, ANALYZER_ARENA_SIZE);
+        const arena = ArenaAllocator.new(allocator, ANALYZER_ARENA_INITIAL_SIZE);
         const reported_typedef_cycles: Vec<String> = Vec.new(allocator);
         const instantiations: Vec<InstanceSite> = Vec.new(allocator);
         const monomorph_registry = MonomorphRegistry.new(allocator);
@@ -132,7 +133,7 @@ pub struct TypeCache {
     pub fn new(allocator: Allocator) Self {
         var states: HashMap<usize, TypeCacheState> = HashMap.with_hasher(
             allocator,
-            64,
+            TYPE_CACHE_INITIAL_SIZE,
             hash_usize,
             eq_usize
         );

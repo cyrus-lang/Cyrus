@@ -21,7 +21,7 @@ pub fn bind_program_decl_names(
     registry: GlobalSymbolRegistry*,
     dctx: DiagContext*,
     allocator: Allocator,
-    scope_id: cir::SymbolId,
+    scope_id: cir::ScopeId,
     program: const ast::ASTProgram*,
     profile: Profile
 ) {
@@ -39,7 +39,7 @@ fn resolve_decl_names(
     registry: GlobalSymbolRegistry*,
     dctx: DiagContext*,
     allocator: Allocator,
-    scope_id: cir::SymbolId,
+    scope_id: cir::ScopeId,
     program: const ast::ASTProgram*,
     statements: const ast::ASTNodeList*,
     profile: Profile
@@ -81,13 +81,14 @@ fn resolve_module_decl_names(
     registry: GlobalSymbolRegistry*,
     dctx: DiagContext*,
     allocator: Allocator,
-    parent_scope_id: cir::SymbolId,
+    parent_scope_id: cir::ScopeId,
     program: const ast::ASTProgram*,
     module_decl: const ast::ASTModuleDecl*,
     profile: Profile
 ) {
     const name = module_decl->ident.str.as_str_const();
-    var module_scope_id: cir::SymbolId;
+
+    var module_scope_id: cir::ScopeId;
 
     switch (registry->lookup_symbol_id_in_scope(parent_scope_id, name)) {
         case .Some(existing) => {
@@ -2848,6 +2849,15 @@ fn resolve_module_import_expr(
                     }
                     else => {}
                 }
+
+                if (name == "Self") {
+                    return .Some(cir::Expr.new(.SemaType {
+                        ty: .SelfType(cir::TypedSelfType {
+                            span: module_import->span
+                        }),
+                        span: module_import->span
+                    }), module_import->span));
+                }
             }
             else => {}
         }
@@ -3176,8 +3186,8 @@ fn resolve_struct_init_type(
         case .Type(ty) => {
             return resolve_type(ctx, program, &ty, span);
         }
-        case .Expr(.Type(inner_ty)) => {
-            return resolve_type(ctx, program, &inner_ty, span);
+        case .Expr(.Type(inner_type)) => {
+            return resolve_type(ctx, program, &inner_type, span);
         }
         case .Expr(.Ident(ident)) => {
             return resolve_ident_type(ctx, &ident);
@@ -3548,8 +3558,8 @@ fn resolve_type(
     span: Span,
 ) Option<cir::SemaType> {
     switch (*ty) {
-        case .SelfType(self_ty) => {
-            return .Some(.SelfType(cir::SelfType { span: self_ty.span }));
+        case .SelfType(self_type) => {
+            return .Some(.SelfType(cir::SelfType { span: self_type.span }));
         }
         case .ModuleImport(module_import) => {
             return resolve_module_import_type(ctx, program, &module_import);
@@ -3592,8 +3602,8 @@ fn resolve_type(
 
         case .Const(inner) => {
             switch (resolve_type_node(ctx, program, inner, span)) {
-                case .Some(inner_ty) => {
-                    return .Some(.Const(alloc_init(ctx->allocator, inner_ty)));
+                case .Some(inner_type) => {
+                    return .Some(.Const(alloc_init(ctx->allocator, inner_type)));
                 }
                 else => {}
             }
@@ -3601,8 +3611,8 @@ fn resolve_type(
 
         case .Pointer(inner) => {
             switch (resolve_type_node(ctx, program, inner, span)) {
-                case .Some(inner_ty) => {
-                    return .Some(.Pointer(alloc_init(ctx->allocator, inner_ty)));
+                case .Some(inner_type) => {
+                    return .Some(.Pointer(alloc_init(ctx->allocator, inner_type)));
                 }
                 else => {}
             }
@@ -3816,7 +3826,7 @@ fn resolve_generic_inst_type(
         case .Some(ty) => {
             switch (ty) {
                 case .SelfType => {
-                    diags::report_self_type_does_not_accept_type_args(ctx->dctx, ctx->diag_allocator, inst->span);
+                    diags::report_self_typepe_does_not_accept_type_args(ctx->dctx, ctx->diag_allocator, inst->span);
                 }
                 else => {}
             }
@@ -4270,7 +4280,7 @@ fn resolve_builtin_decl_names(
     registry: GlobalSymbolRegistry*,
     dctx: DiagContext*,
     allocator: Allocator,
-    scope_id: cir::SymbolId,
+    scope_id: cir::ScopeId,
     program: const ast::ASTProgram*,
     builtin: const ast::ASTBuiltin*,
     profile: Profile
