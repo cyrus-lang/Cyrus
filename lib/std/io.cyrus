@@ -5,6 +5,7 @@ import std::errors{ErrorOr, ErrorStr};
 import std::collections{Vec};
 import std::option{Option};
 import std::string{String};
+import std::os{File};
 import std::libc{
     fprintf, stdout, stderr, 
     getchar, memmove, strlen,
@@ -138,6 +139,49 @@ pub struct StringWriter : Writer {
 
     pub fn to_str(self: const Self*) String* {
         return self->buffer;
+    }
+}
+
+pub struct FileWriter : Writer {
+    file: File*,
+
+    pub fn new(file: File*) Self {
+        @assert(file, "file cannot be null");
+        return Self { file };
+    }
+
+    pub fn write_all(self: Self*, data: const uint8*) IOError {
+        @assert(data, "data cannot be null");
+
+        switch (self->file->write(data)) {
+            case .Value(_) => return .Value(());
+            case .Error(_) => return .Error(());
+        }
+    }
+
+    pub fn write(self: Self*, data: const uint8*) IOError {
+        return self->write_all(data);
+    }
+
+    pub fn write_char(self: Self*, char: uint8) IOError {
+        var buffer: uint8[2];
+        buffer[0] = char;
+        buffer[1] = '\0';
+
+        return self->write_all(&buffer[0]);
+    }
+
+    pub fn writeln(self: Self*, data: const uint8*) IOError {
+        switch (self->write_all(data)) {
+            case .Value(_) => {}
+            case .Error(_) => return .Error(());
+        }
+
+        return self->write_char('\n');
+    }
+
+    pub fn flush(self: Self*) IOError {
+        return self->file->flush();
     }
 }
 
