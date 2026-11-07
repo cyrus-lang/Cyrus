@@ -63,6 +63,8 @@ pub struct Emitter {
     cur_func_name: Option<String>,
     cur_method_name: Option<String>,
     fn_ctx_owned: Vec<String>,
+    label_depth_ids: Vec<usize>,
+    label_depths: Vec<usize>,
 
     tuple_export_id: usize,
     lambda_id: usize,
@@ -128,6 +130,8 @@ pub struct Emitter {
             fn_renames_owned: Vec.new(allocator),
             fn_scope_names: Vec.new(allocator),
             fn_ctx_owned: Vec.new(allocator),
+            label_depth_ids: Vec.new(allocator),
+            label_depths: Vec.new(allocator),
             cur_method_name: .None,
             cur_func_name: .None,
             in_void_main: false,
@@ -848,6 +852,9 @@ pub struct Emitter {
 
         self->in_void_main = is_void_main;
 
+        self->begin_label_scan();
+        self->scan_func_labels(func_def->body, true);
+
         self->emit_block_stmts(func_def->body, true);
 
         self->cur_func_name = saved_func_name;
@@ -897,6 +904,9 @@ pub struct Emitter {
 
         switch (self->tables->bodies.get_const(body_id)) {
             case .Some(body) => {
+                self->begin_label_scan();
+                self->scan_func_labels(body, false);
+
                 self->emit_block_stmts(body, false);
             }
             else => {}
@@ -989,6 +999,9 @@ pub struct Emitter {
 
         switch (self->tables->bodies.get_const(body_id)) {
             case .Some(body) => {
+                self->begin_label_scan();
+                self->scan_func_labels(body, true);
+
                 self->emit_block_stmts(body, true);
             }
             else => {}
@@ -1282,6 +1295,120 @@ pub struct Emitter {
         }
     }
 
+    /* ************* Label depth scan ************* */
+
+    // Drops whatever was recorded before. Called at the top of every
+    // emitted function because label ids restart per module, so ids
+    // from an earlier module must never be visible again.
+    fn begin_label_scan(self: Self*) {
+        self->label_depth_ids.free();
+        self->label_depths.free();
+        self->label_depth_ids = Vec.new(self->allocator);
+        self->label_depths = Vec.new(self->allocator);
+    }
+
+    fn scan_func_labels(self: Self*, body: const cir::BlockStmt*, push_scope: bool) {
+        var depth = self->defer_scopes.len();
+
+        if (push_scope) {
+            depth += 1;
+        }
+
+        self->scan_block_labels(body, depth);
+    }
+
+    fn scan_block_labels(self: Self*, block: const cir::BlockStmt*, depth: usize) {
+        for (var i: usize = 0; i < block->stmts.len(); i += 1) {
+            const stmt = block->stmts.get_const(i).unwrap();
+            self->scan_stmt_labels(stmt, depth);
+        }
+    }
+
+    // Mirrors exactly which constructs push a defer scope while emitting
+    // (see emit_block_stmts call sites) so the recorded depth matches
+    // defer_scopes.len() at the point the label itself is emitted.
+    fn scan_stmt_labels(self: Self*, stmt: const cir::Stmt*, depth: usize) {
+        switch (stmt->kind) {
+            case .Label(label) => {
+                self->label_depth_ids.push(label.label_id);
+                self->label_depths.push(depth);
+            }
+
+            case .BlockStmt(block) => {
+                self->scan_block_labels(&block, depth + 1);
+            }
+
+            case .If(if_) => {
+                self->scan_block_labels(if_.then_block, depth + 1);
+
+                for (var b: usize = 0; b < if_.branches.len(); b += 1) {
+                    const branch = if_.branches.get_const(b).unwrap();
+                    self->scan_block_labels(branch->then_block, depth + 1);
+                }
+
+                switch (if_.else_block) {
+                    case .Some(else_block) => {
+                        self->scan_block_labels(else_block, depth + 1);
+                    }
+                    else => {}
+                }
+            }
+
+            case .While(while_) => {
+                self->scan_block_labels(while_.body, depth + 1);
+            }
+
+            case .For(for_) => {
+                self->scan_block_labels(for_.body, depth + 1);
+            }
+
+            case .Switch(switch_) => {
+                for (var i: usize = 0; i < switch_.cases.len(); i += 1) {
+                    const case_ = switch_.cases.get_const(i).unwrap();
+                    self->scan_block_labels(case_->body, depth + 1);
+                }
+
+                switch (switch_.else_case) {
+                    case .Some(else_case) => {
+                        self->scan_block_labels(&else_case, depth + 1);
+                    }
+                    else => {}
+                }
+            }
+
+            else => {}
+        }
+    }
+
+    fn label_depth_of(self: Self*, label_id: cir::LabelId) Option<usize> {
+        for (var i: usize = 0; i < self->label_depth_ids.len(); i += 1) {
+            const id = self->label_depth_ids.get_const(i).unwrap();
+
+            if (*id == label_id) {
+                return .Some(*self->label_depths.get_const(i).unwrap());
+            }
+        }
+
+        return .None;
+    }
+
+    // Emits the defers of every scope deeper than `depth`, innermost
+    // first, without popping them: emission continues linearly after
+    // the goto for the paths that never take it.
+    fn emit_defers_above(self: Self*, depth: usize) {
+        for (var s: usize = self->defer_scopes.len(); s > depth; s -= 1) {
+            switch (self->defer_scopes.get_const(s - 1)) {
+                case .Some(scope) => {
+                    for (var i: usize = scope->len(); i > 0; i -= 1) {
+                        const stmt = scope->get_const(i - 1).unwrap();
+                        self->emit_defer_stmt(stmt);
+                    }
+                }
+                else => {}
+            }
+        }
+    }
+
     fn emit_stmt(self: Self*, stmt: const cir::Stmt*) {
         switch (stmt->kind) {
             case .Expr(expr) => {
@@ -1307,6 +1434,20 @@ pub struct Emitter {
             }
 
             case .Goto(goto_) => {
+                // A goto leaves every defer scope deeper than the label
+                // it targets; run those defers before jumping.
+                switch (goto_.label_id) {
+                    case .Some(label_id) => {
+                        switch (self->label_depth_of(label_id)) {
+                            case .Some(depth) => {
+                                self->emit_defers_above(depth);
+                            }
+                            else => {}
+                        }
+                    }
+                    else => {}
+                }
+
                 var label = mangle::sanitized(self->allocator, goto_.name.as_str_const());
 
                 self->body_out.push_str(" goto ");
@@ -4895,8 +5036,19 @@ pub struct Emitter {
         var saved_method_name = self->cur_method_name;
         self->set_name_context("<unnamed>", null);
 
+        var saved_label_ids = self->label_depth_ids;
+        var saved_label_depths = self->label_depths;
+        self->label_depth_ids = Vec.new(self->allocator);
+        self->label_depths = Vec.new(self->allocator);
+
         self->emit_param_prologue(&lambda->params);
+        self->scan_func_labels(lambda->body, false);
         self->emit_block_stmts(lambda->body, false);
+
+        self->label_depth_ids.free();
+        self->label_depths.free();
+        self->label_depth_ids = saved_label_ids;
+        self->label_depths = saved_label_depths;
 
         self->cur_func_name = saved_func_name;
         self->cur_method_name = saved_method_name;
@@ -5853,6 +6005,8 @@ pub struct Emitter {
         }
 
         self->fn_ctx_owned.free();
+        self->label_depth_ids.free();
+        self->label_depths.free();
     }
 }
 

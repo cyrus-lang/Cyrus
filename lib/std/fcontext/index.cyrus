@@ -1,0 +1,62 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 The Cyrus Language
+
+import std::libc::types;
+import std::libc;
+
+// TODO (feature)
+// 
+// @link_asm("./asm/**.S");
+// 
+
+pub const FCONTEXT_SIZE: usize = 262144; // 256 KiB
+
+pub type FContext = types::c_void*;
+
+[[repr(c)]]
+pub struct FContextTransfer {
+    pub prev_context: FContext,
+    pub data: types::c_void*
+}
+
+pub type FContextOntopFn = fn(FContextTransfer) FContextTransfer;
+pub type FContextFn = fn(FContextTransfer) types::c_void;
+
+[[repr(c)]]
+pub struct FContextState {
+    pub context: FContext
+}
+
+pub extern "C" {
+    fn jump_fcontext(to: FContext, vp: types::c_void*) FContextTransfer;
+    fn make_fcontext(sp: types::c_void*, size: types::c_size, fn_: FContextFn) FContext;
+    fn ontop_fcontext(base: FContext, vp: types::c_void*, fn_: FContextOntopFn) FContextTransfer;
+}
+
+/// Creates a new fiber context.
+pub fn fcontext_create(entry_fn: FContextFn) FContextState* {
+    var state = @cast(FContextState*, libc::malloc(FCONTEXT_SIZE));
+    
+    if (state == null) {
+        return null;
+    }
+    
+    // Stack grows downwards on x86_64 SysV ABI
+    var stack_top = @cast(types::c_void*, (@cast(uintptr, state)) + FCONTEXT_SIZE);
+
+    var stack_usable = FCONTEXT_SIZE - @sizeof(FContextState); 
+    
+    state->context = make_fcontext(stack_top, stack_usable, entry_fn);
+
+    return state;
+}
+
+/// Swap from current context to next.
+pub fn fcontext_swap(next: FContext, arg: types::c_void*) FContextTransfer {
+    return jump_fcontext(next, arg);
+}
+
+/// Free a dead fiber's state.
+pub fn fcontext_destroy(ctx: FContextState*) {
+    libc::free(@cast(types::c_void*, ctx));
+}

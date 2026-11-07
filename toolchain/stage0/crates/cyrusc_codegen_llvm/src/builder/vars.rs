@@ -222,7 +222,8 @@ fn global_var_expr_includes_enum_init(expr_kind: &CIRExprKind) -> bool {
     match expr_kind {
         CIRExprKind::EnumInit(_) => true,
 
-        CIRExprKind::Prefix(_)
+        CIRExprKind::FunctionAddress(_)
+        | CIRExprKind::Prefix(_)
         | CIRExprKind::Infix(_)
         | CIRExprKind::Literal(_)
         | CIRExprKind::Load(_)

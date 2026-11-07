@@ -488,6 +488,7 @@ impl<'a> Resolver<'a> {
             },
 
             ASTExpr::TypeSpecifier(type_spec) => self.resolve_type_specifier_expr(type_spec),
+
             ASTExpr::InlineAsm(asm) => {
                 let typed_asm = self.resolve_inline_asm(asm);
                 Some(TypedExpr {
@@ -2209,6 +2210,19 @@ impl<'a> Resolver<'a> {
                 return Some(TypedExpr {
                     kind: TypedExprKind::SemaType {
                         ty: SemaType::GenericParam(generic_param_id),
+                        loc: ident.loc,
+                    },
+                    ty: None,
+                    val_cat: ValueCategory::Unknown,
+                    analyzed: false,
+                    loc: module_import.loc,
+                });
+            }
+
+            if ident.value == "Self" {
+                return Some(TypedExpr {
+                    kind: TypedExprKind::SemaType {
+                        ty: SemaType::SelfType(TypedSelfType { loc: ident.loc }),
                         loc: ident.loc,
                     },
                     ty: None,

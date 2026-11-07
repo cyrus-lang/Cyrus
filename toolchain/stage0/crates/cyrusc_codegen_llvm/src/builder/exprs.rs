@@ -44,25 +44,26 @@ pub enum DerefMode {
 impl<'ll> CodeGenIRBuilder<'ll> {
     pub(crate) fn emit_expr(&mut self, expr: &CIRExpr, target_cir_type: &Option<CIRType>) -> InternalValue<'ll> {
         let value = match &expr.kind {
-            CIRExprKind::Load(value_ref) => self.emit_load(value_ref),
-            CIRExprKind::Literal(literal) => self.emit_literal(literal),
-            CIRExprKind::Prefix(prefix_expr) => self.emit_prefix_expr(prefix_expr),
-            CIRExprKind::Infix(infix_expr) => self.emit_infix_expr(infix_expr, expr.loc),
-            CIRExprKind::Assign(assign_expr) => self.emit_assign(assign_expr),
-            CIRExprKind::AddrOf(addr_of_expr) => self.emit_addr_of(addr_of_expr),
-            CIRExprKind::Deref(deref_expr) => self.emit_deref(deref_expr, DerefMode::Load),
-            CIRExprKind::Array(array_expr) => self.emit_array(array_expr),
-            CIRExprKind::ArrayIndex(array_index_expr) => self.emit_array_index(array_index_expr),
-            CIRExprKind::Tuple(tuple_expr) => self.emit_tuple(tuple_expr),
-            CIRExprKind::TupleAccess(tuple_access) => self.emit_tuple_access(tuple_access),
-            CIRExprKind::StructInit(struct_init_expr) => self.emit_struct_init(struct_init_expr),
+            CIRExprKind::FunctionAddress(function_address) => self.emit_function_address(function_address),
             CIRExprKind::UnionInit(union_init_expr) => self.emit_union_init_value(union_init_expr),
-            CIRExprKind::EnumInit(enum_init_expr) => self.emit_enum_init(enum_init_expr),
+            CIRExprKind::ArrayIndex(array_index_expr) => self.emit_array_index(array_index_expr),
+            CIRExprKind::StructInit(struct_init_expr) => self.emit_struct_init(struct_init_expr),
             CIRExprKind::FieldAccess(field_access) => self.emit_field_access(field_access),
-            CIRExprKind::Call(call) => self.emit_call(call),
-            CIRExprKind::Lambda(lambda) => self.emit_lambda(lambda),
-            CIRExprKind::Dynamic(dynamic) => self.emit_dynamic_expr(dynamic),
+            CIRExprKind::Deref(deref_expr) => self.emit_deref(deref_expr, DerefMode::Load),
+            CIRExprKind::TupleAccess(tuple_access) => self.emit_tuple_access(tuple_access),
+            CIRExprKind::EnumInit(enum_init_expr) => self.emit_enum_init(enum_init_expr),
+            CIRExprKind::Infix(infix_expr) => self.emit_infix_expr(infix_expr, expr.loc),
+            CIRExprKind::Prefix(prefix_expr) => self.emit_prefix_expr(prefix_expr),
             CIRExprKind::InlineAsm(inline_asm) => self.emit_inline_asm(inline_asm),
+            CIRExprKind::AddrOf(addr_of_expr) => self.emit_addr_of(addr_of_expr),
+            CIRExprKind::Assign(assign_expr) => self.emit_assign(assign_expr),
+            CIRExprKind::Dynamic(dynamic) => self.emit_dynamic_expr(dynamic),
+            CIRExprKind::Literal(literal) => self.emit_literal(literal),
+            CIRExprKind::Tuple(tuple_expr) => self.emit_tuple(tuple_expr),
+            CIRExprKind::Array(array_expr) => self.emit_array(array_expr),
+            CIRExprKind::Load(value_ref) => self.emit_load(value_ref),
+            CIRExprKind::Lambda(lambda) => self.emit_lambda(lambda),
+            CIRExprKind::Call(call) => self.emit_call(call),
 
             CIRExprKind::Type(_) => unreachable!(),
         };
@@ -1801,6 +1802,13 @@ impl<'ll> CodeGenIRBuilder<'ll> {
             .build_load(struct_type, struct_ptr, "struct.rvalue")
             .unwrap()
             .into_struct_value()
+    }
+
+    fn emit_function_address(&mut self, function_address: &CIRFunctionAddress) -> InternalValue<'ll> {
+        let ir_value = self.get_or_declare_function(function_address.irv_id);
+        let func = ir_value.as_func().unwrap();
+
+        InternalValue::new(function_address.ty.clone(), InternalValueKind::FuncValue(*func))
     }
 
     fn emit_call(&mut self, call: &CIRCall) -> InternalValue<'ll> {
