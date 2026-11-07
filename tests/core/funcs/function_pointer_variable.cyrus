@@ -1,0 +1,21 @@
+// @stdout: 42
+
+import std::libc{printf};
+
+fn add(a: int32, b: int32) int32 {
+    return a + b;
+}
+
+fn sub(a: int32, b: int32) int32 {
+    return a - b;
+}
+
+pub fn main() {
+    var op: fn(int32, int32) int32 = undefined;
+
+    op = add;
+    printf("%d ", op(20, 22));
+
+    op = sub;
+    printf("\n");
+}

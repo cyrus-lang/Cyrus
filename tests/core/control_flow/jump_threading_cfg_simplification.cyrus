@@ -1,0 +1,22 @@
+// @stdout: BRANCH_A BRANCH_B BRANCH_C
+
+import std::libc{printf};
+
+fn complex_branch(x: int32, y: int32) {
+    if (x > 5) {
+        if (y < 10) {
+            printf("BRANCH_A ");
+        } else {
+            printf("BRANCH_B ");
+        }
+    } else {
+        printf("BRANCH_C ");
+    }
+}
+
+pub fn main() {
+    complex_branch(10, 2);
+    complex_branch(10, 15);
+    complex_branch(2, 2);
+    printf("\n");
+}

@@ -1805,6 +1805,22 @@ pub struct Emitter {
         return out;
     }
 
+    /// Value for a struct/union member inside a designated initializer.
+    ///
+    /// C refuses an array member initialized from an array *expression*:
+    /// `((int[3]){1, 2, 3})` is rejected by GCC with "array initialized from
+    /// non-constant array expression", and tcc mis-parses it as a
+    /// pointer-to-integer cast and fills the union with garbage. Array
+    /// members therefore have to be spelled as a brace list here.
+    fn emit_init_value(self: Self*, value: const cir::Expr*) String {
+        switch (value->kind) {
+            case .Array(array) => return self->emit_array_braces(&array);
+            else => {}
+        }
+
+        return self->emit_expr(value);
+    }
+
     fn emit_return(self: Self*, return_: const cir::ReturnStmt*) {
         self->emit_all_defers();
 
@@ -3191,7 +3207,7 @@ pub struct Emitter {
                 mangle::sanitize_into(&out, union_init.field->name.as_str_const());
                 out.push_str(" = ");
                 
-                var expr = self->emit_expr(&union_init.field->value);
+                var expr = self->emit_init_value(&union_init.field->value);
                 out.push_str(expr.as_str_const());
                 expr.free();
 
@@ -4822,7 +4838,7 @@ pub struct Emitter {
             mangle::sanitize_into(&out, field->name.as_str_const());
             out.push_str(" = ");
             
-            var expr = self->emit_expr(&field->value);
+            var expr = self->emit_init_value(&field->value);
             out.push_str(expr.as_str_const());
             expr.free();
 
@@ -5691,17 +5707,58 @@ pub struct Emitter {
                 }
 
                 var out = String.new(self->allocator);
+                var magnitude: uint128 = 0;
+                const c_int_max: uint128 = 2147483647;
 
                 switch (value) {
                     case .Signed(x) => {
                         if (x < 0) {
+                            magnitude = @cast(uint128, -(x + 1)) + 1;
                             out.push('-');
-                            push_uint128(&out, @cast(uint128, -(x + 1)) + 1);
                         } else {
-                            push_uint128(&out, @cast(uint128, x));
+                            magnitude = @cast(uint128, x);
                         }
+
+                        push_uint128(&out, magnitude);
                     }
-                    case .Unsigned(x) => push_uint128(&out, x);
+                    case .Unsigned(x) => {
+                        magnitude = x;
+                        push_uint128(&out, x);
+                    }
+                }
+
+                // C re-types any integer constant that does not fit in `int`
+                // (2863311530 becomes `long`), which changes how it converts
+                // against neighbouring operands -- an `int32` would sign
+                // extend where Cyrus expects it to truncate. The literal's
+                // Cyrus type is already fixed here, so apply it: typed
+                // constants do that truncation for free in LLVM.
+                if (magnitude > c_int_max) {
+                    switch (literal->ty) {
+                        case .Some(ty) => {
+                            switch (*ty.const_inner()) {
+                                case .Plain(plain) => {
+                                    switch (signed_int_c_name(&plain)) {
+                                        case .Some(ctype) => {
+                                            var casted = String.new(self->allocator);
+
+                                            casted.push_str("((");
+                                            casted.push_str(ctype);
+                                            casted.push_str(")");
+                                            casted.push_str(out.as_str_const());
+                                            casted.push(')');
+
+                                            out.free();
+                                            out = casted;
+                                        }
+                                        else => {}
+                                    }
+                                }
+                                else => {}
+                            }
+                        }
+                        else => {}
+                    }
                 }
 
                 return out;

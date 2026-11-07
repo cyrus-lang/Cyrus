@@ -1,0 +1,25 @@
+// @stdout: A B D2 D1 C
+
+import std::libc{printf};
+
+fn test_cond(cond: bool) {
+    defer printf("C");
+    printf("A ");
+
+    if (cond) {
+        defer printf("D1 ");
+        {
+            defer printf("D2 ");
+            printf("B ");
+            goto end;
+        }
+    }
+
+    printf("Unreached ");
+
+end:
+}
+
+pub fn main() {
+    test_cond(true);
+}

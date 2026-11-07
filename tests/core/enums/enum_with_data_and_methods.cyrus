@@ -1,0 +1,23 @@
+// @stdout: 5 0
+
+import std::libc{printf};
+
+enum MaybeInt {
+    Some(int32),
+    None,
+
+    pub fn value_or(self: const Self*, def: int32) int32 {
+        switch (*self) {
+            case .Some(v) => return v;
+            case .None => return def;
+        }
+    }
+}
+
+pub fn main() {
+    const a = MaybeInt.Some(5);
+    const b = MaybeInt.None;
+
+    printf("%d ", a.value_or(0));
+    printf("%d\n", b.value_or(0));
+}

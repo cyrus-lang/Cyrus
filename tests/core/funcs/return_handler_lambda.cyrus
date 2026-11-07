@@ -1,0 +1,15 @@
+// @stdout: 30.600000
+
+import std::libc{printf};
+
+fn make_double_handler() fn(float64) float64 {
+	return fn(x: float64) float64 {
+		return x * 2.0;
+	};
+}
+
+pub fn main() {
+	const handler = make_double_handler();
+    const result = handler(15.3);
+    printf("%f\n", result);
+}

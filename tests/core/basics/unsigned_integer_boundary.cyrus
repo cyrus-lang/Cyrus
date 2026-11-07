@@ -1,0 +1,19 @@
+// @stdout: 4294967295 0 4294967295 0 4294967295 0
+
+import std::libc{printf};
+
+pub fn main() {
+    const max_u8: uint8 = 255;
+    const min_u8: uint8 = 0;
+    const max_u16: uint16 = 65535;
+    const min_u16: uint16 = 0;
+    const max_u32: uint32 = 4294967295;
+    const min_u32: uint32 = 0;
+
+    printf("%u ", max_u8);
+    printf("%u ", min_u8);
+    printf("%u ", max_u16);
+    printf("%u ", min_u16);
+    printf("%u ", max_u32);
+    printf("%u\n", min_u32);
+}

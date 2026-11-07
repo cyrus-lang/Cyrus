@@ -1,0 +1,9 @@
+// @stdout: 16 64 7
+
+import std::libc{printf};
+import helpers::_utils{square, cube};
+import helpers;
+
+pub fn main() {
+    printf("%d %d %d\n", square(4), cube(4), helpers::marker());
+}

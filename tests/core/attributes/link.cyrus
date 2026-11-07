@@ -1,0 +1,21 @@
+[[link(once)]]
+static var foo1: int32 = 5;
+
+[[link(once)]]
+fn bar1() {}
+
+[[link(weak)]]
+static var foo2: int32 = 5;
+
+[[link(weak)]]
+fn bar2();
+
+pub fn main() {
+    foo1 = 10;
+    bar1();
+
+    foo2 = 20;
+    // MIGHT BE NULL,
+    // SINCE THE SYMBOL IS NOT RESOLVED
+    // bar2();
+}

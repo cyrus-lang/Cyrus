@@ -1,0 +1,17 @@
+// @stdout: and=2, or=7, xor=5, not=4294967292, shl=6, shr=3
+
+import std::libc{printf};
+
+pub fn main() {
+    const a: uint32 = 3;
+    const b: uint32 = 6;
+
+    const and_op = a & b;
+    const or_op = a | b;
+    const xor_op = a ^ b;
+    const not_op = ~a;
+    const shl_op = a << 1;
+    const shr_op = b >> 1;
+
+    printf("and=%d, or=%d, xor=%d, not=%u, shl=%d, shr=%d\n", and_op, or_op, xor_op, not_op, shl_op, shr_op);
+}

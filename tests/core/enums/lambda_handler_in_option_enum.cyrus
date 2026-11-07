@@ -1,0 +1,29 @@
+// @stdout: result: 7.000000
+
+import std::libc{printf};
+
+enum Option<T> {
+	Some(T),
+	None
+}
+
+fn make_double_handler() fn(float64) float64 {
+	return fn(x: float64) float64 {
+		return x * 2.0;
+	};
+}
+
+pub fn main() {
+	var opt: Option<fn(float64) float64> = .None;
+
+	opt = .Some(make_double_handler());
+
+	switch (opt) {
+		case .Some(double_handler) => {
+			printf("result: %f\n", double_handler(3.5));
+		}
+		case .None => {
+			printf("unknown\n");
+		}
+	}
+}

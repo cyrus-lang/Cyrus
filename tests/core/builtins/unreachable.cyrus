@@ -1,0 +1,9 @@
+// @stderr: thread 'unreachable_c8e' entered unreachable code at tests/stage0/core/builtins/unreachable.cyrus:6:6\nmeow
+
+import std::libc{printf};
+
+pub fn main() {
+    @unreachable("meow");
+
+    printf("nothing\n");
+}

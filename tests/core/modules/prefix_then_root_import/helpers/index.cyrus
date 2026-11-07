@@ -1,0 +1,3 @@
+pub fn marker() int32 {
+    return 7;
+}

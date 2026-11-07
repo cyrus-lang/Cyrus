@@ -1,0 +1,21 @@
+// @stdout: 12345
+
+import std::libc{printf};
+
+struct Box<T> {
+    pub val: T,
+}
+
+struct DoubleBox<A, B> {
+    pub first: Box<A>,
+    pub second: Box<B>,
+}
+
+pub fn main() {
+    var db: DoubleBox<int32, int32> = DoubleBox<int32, int32> {
+        first: Box<int32> { val: 123 },
+        second: Box<int32> { val: 45 },
+    };
+    var res: int32 = db.first.val * 100 + db.second.val;
+    printf("%d\n", res);
+}

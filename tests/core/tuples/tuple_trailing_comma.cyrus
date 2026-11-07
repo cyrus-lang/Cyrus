@@ -1,0 +1,11 @@
+// @stdout: 1 1 2 1 2 3
+
+import std::libc{printf};
+
+pub fn main() {
+    const a = (1, );
+    const b = (1, 2, );
+    const c = (1, 2, 3, );
+
+    printf("%d %d %d %d %d %d\n", a.0, b.0, b.1, c.0, c.1, c.2);
+}

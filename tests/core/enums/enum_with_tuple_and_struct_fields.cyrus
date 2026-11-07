@@ -1,0 +1,37 @@
+// @stdout: Compute(id: 1024, priority: 5) | Range(start: 0, end: 100) | Delay(ms: 500) |
+
+import std::libc{printf};
+
+enum Task {
+    Compute(struct {id: uint64, priority: int32 }),
+    Range((int32, int32))
+    Delay(uint32),
+}
+
+fn process_task(t: Task) {
+    switch (t) {
+        case .Compute(req) => {
+            printf("Compute(id: %llu, priority: %d) | ", req.id, req.priority);
+        }
+        case .Delay(ms) => {
+            printf("Delay(ms: %u) | ", ms);
+        }
+        case .Range(bounds) => {
+            printf("Range(start: %d, end: %d) | ", bounds.0, bounds.1);
+        }
+        else => {
+            printf("Unknown Task | ");
+        }
+    }
+}
+
+pub fn main() {
+    var t = Task.Compute(struct { id: 1024, priority: 5 });
+    process_task(t);
+
+    t = Task.Range((0, 100));
+    process_task(t);
+
+    t = Task.Delay(500);
+    process_task(t);
+}

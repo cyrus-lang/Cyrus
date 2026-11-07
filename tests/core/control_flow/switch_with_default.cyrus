@@ -1,0 +1,28 @@
+// @stdout: Default case executed\n
+
+import std::libc{printf};
+
+enum Status {
+    Running,
+    Stopped,
+    Paused
+}
+
+fn handle_status(s: Status) const uint8* {
+    switch (s) {
+        case .Running => {
+            return "Running\n";
+        }
+        case .Stopped => {
+            return "Stopped\n";
+        }
+        else => {
+            return "Default case executed\n";
+        }
+    }
+}
+
+pub fn main() {
+    const output = handle_status(Status.Paused);
+    printf("%s", output);
+}

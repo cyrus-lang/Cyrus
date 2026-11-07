@@ -1,0 +1,34 @@
+// @stdout: ok ok ok ok
+
+import std::libc{printf};
+
+// Switch with exclusive range
+fn foo(char: uint8) bool {
+    switch (char) {
+        case 'a'...'z' => return true;
+        else => return false;
+    }
+}
+
+// Switch with inclusive range
+fn bar(char: uint8) bool {
+    switch (char) {
+        case 'a'..='z' => return true;
+        else => return false;
+    }
+}
+
+pub fn main() {
+    if (foo('a')) {
+        printf("ok ");
+    }
+    if (!foo('z')) {
+        printf("ok ");
+    }
+    if (bar('a')) {
+        printf("ok ");
+    }
+    if (bar('z')) {
+        printf("ok\n");
+    }
+}

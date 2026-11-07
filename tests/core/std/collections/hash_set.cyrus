@@ -1,0 +1,40 @@
+// @stdout: ok ok ok ok ok
+
+import std::collections::hash_set{HashSet};
+import std::hash{hash_usize, eq_usize};
+import std::mem::libc{LibcAllocator};
+import std::mem{Allocator};
+import std::libc{printf};
+
+pub fn main() {
+    const allocator: Allocator = dynamic LibcAllocator.new();
+
+    var set: HashSet<usize> = HashSet.with_hasher(
+        allocator,
+        16,
+        hash_usize,
+        eq_usize
+    );
+    defer set.free();
+
+    set.insert(1);
+    set.insert(2);
+    set.insert(3);
+
+    if (set.contains(1)) {
+        printf("ok ");
+    }
+    if (set.contains(2)) {
+        printf("ok ");
+    }
+    if (set.contains(3)) {
+        printf("ok ");
+    }
+    if (!set.contains(4)) {
+        printf("ok ");
+    }
+
+    if (set.remove(3)) {
+        printf("ok\n");
+    }
+}

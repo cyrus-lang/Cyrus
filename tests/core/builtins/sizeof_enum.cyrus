@@ -1,0 +1,18 @@
+// @stdout: 1 16
+
+import std::libc{printf};
+
+enum Small {
+    A,
+    B,
+}
+
+enum WithData {
+    Int(int64),
+    Text(uint8*),
+}
+
+pub fn main() {
+    printf("%d ", @sizeof(Small));
+    printf("%d\n", @sizeof(WithData));
+}

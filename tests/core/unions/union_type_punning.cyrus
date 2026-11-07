@@ -1,0 +1,20 @@
+// @stdout: 3 3 5 5
+
+import std::libc{printf};
+
+union U {
+    a: int32,
+    b: int32,
+}
+
+pub fn main() {
+    var u: U = undefined;
+    u.a = 1;
+    u.b = 3;
+    printf("%d ", u.a);
+    printf("%d ", u.b);
+
+    u.a = 5;
+    printf("%d ", u.a);
+    printf("%d\n", u.b);
+}

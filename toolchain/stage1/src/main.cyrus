@@ -1,12 +1,12 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 The Cyrus Language
 
+import std::libc{printf, exit, getenv, fopen, fclose, fwrite};
 import std::io{Writer, StdoutWriter, StringWriter};
 import std::libc::types{c_int, c_char};
 import std::mem::arena{ArenaAllocator};
 import std::mem::libc{LibcAllocator};
 import std::path{Path, dir_of_file};
-import std::libc{printf, exit, getenv, fopen, fclose, fwrite};
 import std::errors{ErrorOr};
 import std::mem{Allocator};
 import std::string{String};
@@ -19,9 +19,9 @@ import resolver::loader{ResolverOptions};
 import driver::analysis{AnalysisContext};
 import driver::lexical{LexicalContext};
 import sema::context{AnalyzerContext};
-import sema{trigger_analyzer};
 import resolver::index{Resolver};
 import driver{CompilerContext};
+import sema{trigger_analyzer};
 import parser::dump{ASTDump};
 import codegen::c{CodegenC};
 import diags{compile_error};
@@ -33,11 +33,6 @@ import version;
 static var command_exit_code: int32 = 0;
 
 pub fn main(argc: c_int, argv: c_char**) {
-    run_cli(argc, argv);
-    exit(command_exit_code);
-}
-
-fn run_cli(argc: c_int, argv: c_char**) {
     const allocator: Allocator = dynamic LibcAllocator.new();
 
     var opts = cli::Opts.new(allocator);
@@ -252,12 +247,11 @@ fn run_cli(argc: c_int, argv: c_char**) {
     app.register(*dump_cmd);
     app.register(*version_cmd);
 
-    switch (app.run(struct { argc, argv })) {
-        case .Value(_) => {}
-        case .Error(_) => {
-            command_exit_code = 1;
-        }
+    if (app.run(struct { argc, argv }).is_error()) {
+        command_exit_code = 1;
     }
+
+    exit(command_exit_code);
 }
 
 /* ************* Commands ************* */

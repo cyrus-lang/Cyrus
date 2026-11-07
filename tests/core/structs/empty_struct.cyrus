@@ -1,0 +1,10 @@
+// @stdout: ok
+
+import std::libc{printf};
+
+struct Empty {}
+
+pub fn main() {
+    var e: Empty = Empty {};
+    printf("ok\n");
+}

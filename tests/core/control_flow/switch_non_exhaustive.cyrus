@@ -1,0 +1,19 @@
+import std::libc{printf};
+
+enum Color {
+    Red,
+    Green,
+    Blue
+}
+
+fn display_color(color: Color) const uint8* {
+    switch (color) { //~ ERROR not all variants are covered
+        case .Red => {
+            return "Red\n";
+        }
+    }
+}
+
+pub fn main() {
+    printf("%s", display_color(Color.Green));
+}

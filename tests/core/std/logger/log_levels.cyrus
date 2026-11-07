@@ -1,0 +1,19 @@
+// @stdout: [INFO] server started\n[WARN] disk almost full\n[ERROR] connection refused\n
+
+import std::logger{Logger, LogLevel};
+import std::io{Writer, StdoutWriter};
+import std::string{String};
+import std::libc{printf};
+
+pub fn main() {
+    const stderr_writer = StdoutWriter.new();
+    const writer: Writer = dynamic stderr_writer;
+
+    var logger = Logger.new(writer);
+
+    logger.trace("not logged");
+    logger.debug("not logged");
+    logger.info("server started");
+    logger.warn("disk almost full");
+    logger.error("connection refused");
+}

@@ -1,0 +1,15 @@
+// @stdout: 10 20
+
+import std::libc{printf, malloc, free};
+
+pub fn main() {
+    var ptr: int32[2]* = malloc(4 * 2);
+	
+    (*ptr)[0] = 10;
+    (*ptr)[1] = 20;
+    
+	const arr = *ptr;
+
+    printf("%d %d\n", (*ptr)[0], (*ptr)[1]);
+    free(ptr);
+}

@@ -1,0 +1,26 @@
+// @stdout: duration ok, instant ok
+
+import std::time{Duration, Instant, sleep_ms};
+import std::libc{printf};
+
+pub fn main() {
+    const d1 = Duration.from_millis(500);
+    const d2 = Duration.from_secs(1);
+    const total = d1.add(&d2);
+
+    if ((total.as_millis() == 1500 && d1.as_micros() == 500000) && d2.as_nanos() == 1000000000) {
+        printf("duration ok, ");
+    } else {
+        printf("duration fail, ");
+    }
+
+    const start = Instant.now();
+    sleep_ms(10);
+    const elapsed = start.elapsed();
+
+    if (elapsed.as_nanos() > 0) {
+        printf("instant ok\n");
+    } else {
+        printf("instant fail\n");
+    }
+}

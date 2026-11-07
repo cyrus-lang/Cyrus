@@ -17,6 +17,7 @@ import std::format{
 
 import resolver::symbols{GlobalSymbolRegistry};
 import cir::tables{DeclTables};
+import abi::layout{ABITypeLayout};
 import abi::typectx{
     is_enum_scalar_optimizable,
     enum_tag_type, 
@@ -292,13 +293,17 @@ pub struct TypeEmitter {
                 case .Pointer(inner) => {
                     switch (*inner->const_inner()) {
                         case .FuncType => {
+                            var star = String.from_str(self->allocator, "(*");
+
                             if (ptr_const_next) {
-                                var const_decl = String.from_str(self->allocator, " const ");
-                                const_decl.push_str(decl.as_str_const());
-                                decl.free();
-                                decl = const_decl;
+                                star.push_str(" const ");
                                 ptr_const_next = false;
                             }
+
+                            star.push_str(decl.as_str_const());
+                            star.push(')');
+                            decl.free();
+                            decl = star;
                         }
                         else => {
                             var star = String.new(self->allocator);
@@ -1001,7 +1006,7 @@ pub struct TypeEmitter {
                 var buffer_decl = String.new(self->allocator);
                 var writer: Writer = dynamic StringWriter.new(&buffer_decl);
                 writer.write(" uint8_t raw[");
-                format_uint32(writer, enum_layout->size);
+                format_uint32(writer, enum_payload_size(enum_layout));
                 writer.write("]; ");
                 self->type_out.push_str(buffer_decl.as_str_const());
                 buffer_decl.free();
@@ -1759,7 +1764,7 @@ pub struct TypeEmitter {
                                 var buffer_decl = String.new(self->allocator);
                                 var writer: Writer = dynamic StringWriter.new(&buffer_decl);
                                 writer.write(" uint8_t raw[");
-                                format_uint32(writer, enum_layout->size);
+                                format_uint32(writer, enum_payload_size(enum_layout));
                                 writer.write("]; ");
                                 self->type_out.push_str(buffer_decl.as_str_const());
                                 buffer_decl.free();
@@ -1927,6 +1932,30 @@ fn push_uint32_into(out: String*, allocator: Allocator, value: uint32) {
     format_uint32(writer, value);
     out->push_str(buffer.as_str_const());
     buffer.free();
+}
+
+/// Size of an enum's payload region.
+///
+/// `compute_enum_layout_inner` records two logical fields for an enum: the
+/// tag at `original_index` 0 and the payload at `original_index` 1. The
+/// union guarding the emitted enum struct has to span the payload only --
+/// sizing it with the whole tag+payload layout inflates the union and, with
+/// it, the struct (`@sizeof` then reports tag + 2 * payload).
+fn enum_payload_size(layout: const ABITypeLayout*) uint32 {
+    for (var i: usize = 0; i < layout->field_offsets.len(); i += 1) {
+        const entry = layout->field_offsets.get_const(i).unwrap();
+
+        switch (*entry) {
+            case .Normal { original_index, size, .. } => {
+                if (original_index == 1) {
+                    return @cast(uint32, size);
+                }
+            }
+            else => {}
+        }
+    }
+
+    return layout->size;
 }
 
 fn push_usize_into(out: String*, allocator: Allocator, value: usize) {

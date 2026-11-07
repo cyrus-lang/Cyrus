@@ -1,0 +1,35 @@
+// @stdout: ok, 50
+
+import std::libc{printf};
+
+struct Struct {
+	pub v: int32,
+
+	pub fn foo(self: const Self*, x: int32, cond: fn(int32) bool) {
+		if (cond(x + self->v)) {
+			printf("ok, ");
+		}
+	}
+
+	pub fn mut(self: Self*, f: fn(int32*) void) {
+		f(&self->v);
+	}
+}
+
+pub fn main() {
+	var s = Struct { v: 5 };
+
+	s.foo(10, fn(x: int32) bool {
+		if (x == 15) {
+			return true;
+		} else {
+			return false;
+		}
+	});
+
+	s.mut(fn(v: int32*) void {
+		*v = 50;
+	});
+
+	printf("%d\n", s.v);
+}

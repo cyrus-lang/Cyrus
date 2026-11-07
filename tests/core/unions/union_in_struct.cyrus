@@ -1,0 +1,22 @@
+// @stdout: 10 20
+
+import std::libc{printf};
+
+struct S {
+    pub tag: int32,
+    pub value: int32,
+}
+
+union U {
+    s: S,
+    raw: int32[2],
+}
+
+pub fn main() {
+    var u: U = undefined;
+    u.s.value = 10;
+    printf("%d ", u.s.value);
+
+    u.raw[1] = 20;
+    printf("%d\n", u.s.value);
+}

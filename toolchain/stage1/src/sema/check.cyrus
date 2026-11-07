@@ -8529,7 +8529,7 @@ fn check_unresolved_infer_vars(
     var error = false;
 
     const generic_params = tables::type_decl_generic_params(context->decl_tables, named_type->type_decl_id);
-    const ty = named_type->as_sema_type();
+    const named_ty = named_type->as_sema_type();
 
     for (var i: usize = 0; i < generic_params->len(); i += 1) {
         const param_id = generic_params->ids.get_const(i).unwrap();
@@ -8541,14 +8541,14 @@ fn check_unresolved_infer_vars(
                 const generic_param = context->decl_tables->generic_params.get_const(*param_id).unwrap();
 
                 switch (*arg) {
-                    case .Type(ty, _) => {
-                        if (ty.contains_infer_var()) {
+                    case .Type(arg_ty, _) => {
+                        if (arg_ty.contains_infer_var()) {
                             error = true;
 
                             var type_name = format::format_sema_type(
                                 context->allocator,
                                 context->decl_tables,
-                                &ty
+                                &named_ty
                             );
 
                             diags::report_cannot_infer_generic_argument(
@@ -8568,7 +8568,7 @@ fn check_unresolved_infer_vars(
                         var type_name = format::format_sema_type(
                             context->allocator,
                             context->decl_tables,
-                            &ty
+                            &named_ty
                         );
 
                         diags::report_cannot_infer_generic_argument(

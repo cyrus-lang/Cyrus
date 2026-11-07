@@ -1,0 +1,17 @@
+// @stdout: empty
+
+import std::mem::libc{LibcAllocator};
+import std::mem{Allocator};
+import std::string{String};
+import std::libc{printf};
+
+pub fn main() {
+    const allocator: Allocator = dynamic LibcAllocator.new();
+
+    var name = String.new(allocator);
+    defer name.free();
+
+    if (name.len() == 0) {
+        printf("empty\n");
+    }
+}

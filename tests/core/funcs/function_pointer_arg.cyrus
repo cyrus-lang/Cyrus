@@ -1,0 +1,18 @@
+// @stdout: 25
+
+import std::libc{printf};
+
+type IntOp = fn(int32, int32) int32;
+
+fn apply(x: int32, y: int32, op: IntOp) int32 {
+    return op(x, y);
+}
+
+fn mul(a: int32, b: int32) int32 {
+    return a * b;
+}
+
+pub fn main() {
+    const result = apply(5, 5, mul);
+    printf("%d\n", result);
+}

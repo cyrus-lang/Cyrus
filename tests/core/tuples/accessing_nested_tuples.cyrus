@@ -1,0 +1,8 @@
+// @stdout: 4, 5, 6
+
+import std::libc{printf};
+
+pub fn main() {
+	const exported = (4, (5, 6));
+	printf("%d, %d, %d\n", exported.0, (exported.1).0, (exported.1).1);
+}

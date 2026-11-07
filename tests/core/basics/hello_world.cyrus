@@ -1,0 +1,7 @@
+// @stdout: Hello, Cyrus!
+
+import std::libc{printf};
+
+pub fn main() {
+    printf("Hello, Cyrus!\n");
+}

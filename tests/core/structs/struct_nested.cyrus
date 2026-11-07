@@ -1,0 +1,23 @@
+// @stdout: Cyrus 42
+
+import std::libc{printf};
+
+struct Inner {
+    pub value: int32
+}
+
+struct Outer {
+    pub name: uint8*,
+    pub inner: Inner
+}
+
+pub fn main() {
+    const obj = Outer {
+        name: "Cyrus",
+        inner: Inner {
+            value: 42
+        }
+    };
+
+    printf("%s %d\n", obj.name, obj.inner.value);
+}

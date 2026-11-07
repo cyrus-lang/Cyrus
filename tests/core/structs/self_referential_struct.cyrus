@@ -1,0 +1,17 @@
+// @stdout: 5
+
+import std::libc{printf};
+
+struct S {
+    pub next: S*,
+    pub x: int32,
+}
+
+pub fn main() {
+    var s: S = undefined;
+    s.x = 5;
+    s.next = &s;
+
+    const result: int32 = s.next->next->next->next->next->x;
+    printf("%d\n", result);
+}
