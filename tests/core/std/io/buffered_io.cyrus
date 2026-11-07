@@ -1,0 +1,53 @@
+// @stdout: buffered test ok
+
+import std::io{
+    StringWriter, 
+    StringReader, 
+    BufferedWriter, 
+    BufferedReader, 
+    Writer, 
+    Reader
+};
+import std::mem::libc{LibcAllocator};
+import std::mem{Allocator};
+import std::string{String};
+import std::libc{printf, strlen};
+
+pub fn main() {
+    const allocator: Allocator = dynamic LibcAllocator.new();
+
+    var target_str = String.new(allocator);
+    defer target_str.free();
+
+    var str_writer = StringWriter.new(&target_str);
+    const base_writer: Writer = dynamic str_writer;
+
+    var write_cache: uint8[8];
+    var buf_writer = BufferedWriter.new(base_writer, &write_cache[0], 8);
+    const writer: Writer = dynamic buf_writer;
+
+    writer.write("Hello");
+    writer.write(" ");
+    writer.write("World!");
+    writer.flush();
+
+    const output_text = target_str.as_str_const();
+    const output_len = target_str.len();
+
+    var sr = StringReader.new(output_text, output_len);
+    const base_reader: Reader = dynamic sr;
+
+    var read_cache: uint8[4];
+    var buf_reader = BufferedReader.new(base_reader, &read_cache[0], 4);
+    const reader: Reader = dynamic buf_reader;
+
+    var dest: uint8[16];
+    const n = reader.read(&dest[0], 12).unwrap();
+    dest[n] = '\0';
+
+    if ((n == 12 && dest[0] == 'H') && dest[11] == '!') {
+        printf("buffered test ok\n");
+    } else {
+        printf("buffered test fail\n");
+    }
+}

@@ -1,0 +1,11 @@
+// @stdout: start start
+
+import std::libc{printf};
+
+pub fn main() {
+    var mesg: uint8* = "start";
+    defer mesg = "end";
+
+    printf("%s ", mesg);
+    printf("%s\n", mesg);
+}

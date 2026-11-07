@@ -111,8 +111,8 @@ impl EnumSwitchEntry {
         body
     }
 
-    /// Builds the body for a group of same-tag entries. 
-    /// Entries are tried in source order, falling through to 
+    /// Builds the body for a group of same-tag entries.
+    /// Entries are tried in source order, falling through to
     /// the next entry when a nested pattern does not match.
     fn build_chain(entries: &[EnumSwitchEntry], group: &[usize], loc: Loc) -> CIRBlockStmt {
         let Some(&entry_idx) = group.first() else {
@@ -602,13 +602,13 @@ impl<'a> CIRLower<'a> {
         let operand = self.lower_expr(&switch_stmt.operand);
         let operand_type = switch_stmt.operand.ty.as_ref().unwrap().const_inner();
 
-        let default = switch_stmt.default_case.as_ref().map(|block| self.lower_block(block));
-
         let is_enum = operand_type.is_enum();
 
         if is_enum {
-            self.lower_switch_on_enum(operand, default, switch_stmt)
+            self.lower_switch_on_enum(operand, switch_stmt)
         } else {
+            let default = switch_stmt.default_case.as_ref().map(|block| self.lower_block(block));
+
             let lower_as_chained_if = switch_stmt.cases.iter().any(|case| {
                 case.patterns.iter().any(|pattern| match &pattern.kind {
                     TypedSwitchCasePatternKind::Range(_) => {
@@ -789,12 +789,7 @@ impl<'a> CIRLower<'a> {
         })
     }
 
-    fn lower_switch_on_enum(
-        &mut self,
-        operand: CIRExpr,
-        default: Option<CIRBlockStmt>,
-        switch_stmt: &TypedSwitchStmt,
-    ) -> CIRStmt {
+    fn lower_switch_on_enum(&mut self, operand: CIRExpr, switch_stmt: &TypedSwitchStmt) -> CIRStmt {
         let operand_ty = switch_stmt.operand.ty.as_ref().unwrap().clone();
 
         let has_duplicate_tags = {
@@ -928,6 +923,8 @@ impl<'a> CIRLower<'a> {
                 });
             }
         }
+
+        let default = switch_stmt.default_case.as_ref().map(|block| self.lower_block(block));
 
         let all_cases_covered = switch_stmt.all_cases_covered.unwrap();
 
@@ -1177,7 +1174,7 @@ impl<'a> CIRLower<'a> {
     }
 
     /// FIXME: This is not a solution but a glue just to fix the problem.
-    /// 
+    ///
     /// Resolves typedefs so the pattern target enum decl id and type args can be found.
     fn resolve_enum_pattern_target(&mut self, ty: &SemaType) -> (EnumDeclID, TypedTypeArgs) {
         let mut current = ty.clone();
@@ -1898,24 +1895,26 @@ impl<'a> CIRLower<'a> {
 
                 self.lower_load_symbol(decl_id)
             }
+
+            TypedExprKind::FunctionAddress(function_address) => self.lower_function_address(function_address),
+            TypedExprKind::FieldAccess(field_access) => self.lower_field_access(field_access.clone()),
+            TypedExprKind::MethodCall(method_call) => self.lower_method_call(method_call.clone()),
+            TypedExprKind::TupleAccess(tuple_access) => self.lower_tuple_access(tuple_access),
+            TypedExprKind::StructInit(struct_init) => self.lower_struct_init(struct_init),
+            TypedExprKind::ArrayIndex(array_index) => self.lower_array_index(array_index),
+            TypedExprKind::UnionInit(union_init) => self.lower_union_init(union_init),
+            TypedExprKind::FuncCall(func_call) => self.lower_func_call(func_call),
+            TypedExprKind::EnumInit(enum_init) => self.lower_enum_init(enum_init),
+            TypedExprKind::Dynamic(dynamic) => self.lower_dynamic(dynamic),
             TypedExprKind::Literal(literal) => self.lower_literal(literal),
-            TypedExprKind::Prefix(prefix) => self.lower_prefix(prefix),
-            TypedExprKind::Infix(infix) => self.lower_infix(infix),
-            TypedExprKind::Assign(assign) => self.lower_assign(assign),
+            TypedExprKind::Lambda(lambda) => self.lower_lambda(lambda),
             TypedExprKind::AddrOf(addr_of) => self.lower_addr_of(addr_of),
+            TypedExprKind::Prefix(prefix) => self.lower_prefix(prefix),
+            TypedExprKind::Assign(assign) => self.lower_assign(assign),
+            TypedExprKind::Infix(infix) => self.lower_infix(infix),
             TypedExprKind::Deref(deref) => self.lower_deref(deref),
             TypedExprKind::Array(array) => self.lower_array(array),
-            TypedExprKind::ArrayIndex(array_index) => self.lower_array_index(array_index),
-            TypedExprKind::FuncCall(func_call) => self.lower_func_call(func_call),
-            TypedExprKind::MethodCall(method_call) => self.lower_method_call(method_call.clone()),
-            TypedExprKind::FieldAccess(field_access) => self.lower_field_access(field_access.clone()),
-            TypedExprKind::Lambda(lambda) => self.lower_lambda(lambda),
             TypedExprKind::Tuple(expr) => self.lower_tuple(expr),
-            TypedExprKind::TupleAccess(tuple_access) => self.lower_tuple_access(tuple_access),
-            TypedExprKind::Dynamic(dynamic) => self.lower_dynamic(dynamic),
-            TypedExprKind::StructInit(struct_init) => self.lower_struct_init(struct_init),
-            TypedExprKind::UnionInit(union_init) => self.lower_union_init(union_init),
-            TypedExprKind::EnumInit(enum_init) => self.lower_enum_init(enum_init),
 
             TypedExprKind::Builtin(builtin) => {
                 let stmt = self.lower_builtin(builtin).first().cloned().unwrap();
@@ -1938,6 +1937,25 @@ impl<'a> CIRLower<'a> {
             ty,
             loc: expr.loc,
         }
+    }
+
+    fn lower_function_address(&mut self, function_address: &TypedFunctionAddress) -> CIRExprKind {
+        let ty = self.lower_sema_type(&function_address.ty);
+
+        CIRExprKind::FunctionAddress(match function_address.dispatch {
+            TypedFunctionAddressDispatch::Monomorph(_monomorph_id) => {
+                // https://github.com/cyrus-lang/Cyrus/issues/518
+                todo!()
+            }
+            TypedFunctionAddressDispatch::Method(method_decl_id) => CIRFunctionAddress {
+                irv_id: self.get_or_declare_method_ir_value(method_decl_id),
+                ty,
+            },
+            TypedFunctionAddressDispatch::Function(func_decl_id) => CIRFunctionAddress {
+                irv_id: self.get_or_declare_func_ir_value(func_decl_id),
+                ty,
+            },
+        })
     }
 
     fn lower_method_call(&mut self, mut method_call: TypedMethodCall) -> CIRExprKind {
@@ -2395,7 +2413,13 @@ impl<'a> CIRLower<'a> {
     fn lower_literal(&mut self, literal: &TypedLiteralExpr) -> CIRExprKind {
         let kind = match &literal.kind {
             LiteralKind::Integer(value, ..) => {
-                let is_signed = literal.ty.clone().unwrap().as_plain_type().unwrap().is_signed();
+                let is_signed = literal
+                    .ty
+                    .clone()
+                    .unwrap()
+                    .as_plain_type()
+                    .map(|plain_type| plain_type.is_signed())
+                    .unwrap_or(false);
 
                 CIRLiteralKind::Integer(*value, is_signed)
             }

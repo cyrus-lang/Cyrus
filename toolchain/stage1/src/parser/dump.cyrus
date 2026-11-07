@@ -235,7 +235,7 @@ pub struct ASTDump {
             else => {}
         }
 
-        switch (m->extrn) {
+        switch (m->extern_) {
             case .Some(abi) => self->dump_str("extern", abi.to_str());
             else => {}
         }
@@ -299,7 +299,7 @@ pub struct ASTDump {
             else => {}
         }
 
-        switch (m->extrn) {
+        switch (m->extern_) {
             case .Some(abi) => self->dump_str("extern", abi.to_str());
             else => {}
         }

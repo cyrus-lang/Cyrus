@@ -12,6 +12,9 @@ tmp/**
 result
 **.o
 build/
+/toolchain/tcc/libtcc.a
+/toolchain/tcc/config.h
+/toolchain/tcc/config.mak
 .rustup
 
 __pycache__

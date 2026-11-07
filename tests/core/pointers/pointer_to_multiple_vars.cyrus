@@ -1,0 +1,17 @@
+// @stdout: 10 20 30
+
+import std::libc{printf};
+
+pub fn main() {
+    var x: int32 = 10;
+    var y: int32 = 20;
+    var z: int32 = 30;
+
+    var px: int32* = &x;
+    var py: int32* = &y;
+    var pz: int32* = &z;
+
+    printf("%d ", *px);
+    printf("%d ", *py);
+    printf("%d\n", *pz);
+}

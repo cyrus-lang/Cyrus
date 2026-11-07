@@ -1,0 +1,33 @@
+// @stdout: 5
+
+import std::libc{printf, malloc, free};
+
+interface Allocator {
+    fn alloc(self: Self*, size: usize) void*;
+    fn free(self: Self*, ptr: void*) void;
+}
+
+struct HeapAllocator : Allocator {
+    pub fn new() Self {
+        return Self {};
+    }
+
+    pub fn alloc(self: Self*, size: usize) void* {
+        return malloc(size);
+    }
+
+    pub fn free(self: Self*, ptr: void*) void {
+        free(ptr);
+    }
+}
+
+pub fn main() {
+    var allocator = HeapAllocator.new();
+    
+    var ptr: int32* = allocator.alloc(4);
+    
+    *ptr = 5;
+    printf("%d\n", *ptr);
+    
+    allocator.free(ptr);
+}

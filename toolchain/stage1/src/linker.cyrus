@@ -1,0 +1,18 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 The Cyrus Language
+
+import std::collections{Vec};
+import std::string{String};
+
+pub struct Linker {
+    pub fn trigger(
+        linker: String,
+        object_files: const Vec<String>*,
+        library_paths: const Vec<String>*,
+        library_names: const Vec<String>*
+    ) {
+        @todo();
+    }
+}
+
+

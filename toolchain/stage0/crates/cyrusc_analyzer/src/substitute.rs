@@ -52,7 +52,7 @@ impl<'a> AnalysisContext<'a> {
             SemaType::InterfaceObject(_)
             | SemaType::Unresolved(_)
             | SemaType::GenericParam(_)
-            | SemaType::InferVar(_)
+            | SemaType::InferVar { .. }
             | SemaType::Plain(_)
             | SemaType::Placeholder
             | SemaType::Err(_) => ty.clone(),

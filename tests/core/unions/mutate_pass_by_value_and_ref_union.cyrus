@@ -1,0 +1,26 @@
+// @stdout: mutated
+
+import std::libc{printf};
+
+union Value {
+    text_value: uint8*,
+    int_value: int64
+}
+
+fn set_by_value(var inst: Value) {
+    // Operates on a copy
+    inst.text_value = "pass_by_value never changes";
+}
+
+fn set_by_ref(inst: Value*) {
+    inst->text_value = "mutated";
+}
+
+pub fn main() {
+    var inst = Value { text_value: "cyrus" };
+
+    set_by_ref(&inst);
+    set_by_value(inst);
+
+    printf("%s\n", inst.text_value);
+}

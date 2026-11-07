@@ -1,0 +1,27 @@
+// @stdout: alias1: 7
+
+import std::libc{printf};
+
+struct X {
+    pub fn foo() {
+        const alias1: fn(int32, int32) int32 = Self.bar;
+        printf("alias1: %d\n", alias1(5, 2));
+
+        // FIXME
+        // https://github.com/cyrus-lang/Cyrus/issues/518
+        // const alias2: fn(float64, float64) float64 = Self.baz<float64>;
+        // printf("alias2: %d\n", alias2(5, 2));
+    }
+
+    pub fn bar(x: int32, y: int32) int32 {
+        return x + y;
+    }
+
+    pub fn baz<T>(x: T, y: T) T {
+        return x + y;
+    }
+}
+
+pub fn main() {
+    X.foo();
+}

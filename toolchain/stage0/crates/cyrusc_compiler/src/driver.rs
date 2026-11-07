@@ -196,7 +196,7 @@ pub fn build_semantic_bundle<'a>(
 
             let target_info = resolve_target_info_from_opts(&opts);
 
-            let tctx = Arc::new(CIRTypeContext::new(target_info.clone()));
+            let tctx = Arc::new(CIRTypeContext::new(target_info.clone(), source_map.clone()));
 
             let target_abi = match create_target_abi(target_info.clone(), tctx.clone()) {
                 Ok(target_abi) => target_abi,

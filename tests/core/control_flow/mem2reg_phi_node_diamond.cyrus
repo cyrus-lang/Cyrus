@@ -1,0 +1,20 @@
+// @stdout: 888
+
+import std::libc{printf};
+
+pub fn main() {
+    var x: int32 = 0;
+    var cond: int32 = 1;
+
+    if (cond != 0) {
+        if (cond == 1) {
+            x = 888;
+        } else {
+            x = 777;
+        }
+    } else {
+        x = 666;
+    }
+
+    printf("%d\n", x);
+}

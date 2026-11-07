@@ -8,24 +8,24 @@ pub fn main() {}
 /*@resolve
 SYMBOL TREE
 
-[0] Namespace GLOBAL
+[0] [NAMESPACE] GLOBAL
 ├── tests_stage1_resolver_single_import -> [1]
 ├── tests_stage1_resolver_helpers__util -> [2]
-├── [1] Module tests_stage1_resolver_single_import
+├── [1] [MODULE] tests_stage1_resolver_single_import
 │   ├── helpers -> [3]
 │   ├── helper -> [6]
 │   ├── h -> [8]
 │   ├── main -> [9]
-│   ├── [3] Module helpers
+│   ├── [3] [MODULE] helpers
 │   │   ├── _util -> [7]
-│   │   ├── [4] ProxiedModule _util -> [2]
-│   │   └── [7] ProxiedModule _util -> [2]
-│   ├── [6] ProxiedSymbol helper -> [5]
-│   ├── [8] ProxiedSymbol h -> [5]
-│   └── [9] Func main
-└── [2] Module _util
+│   │   ├── [4] [PROXIED_MODULE] _util -> [2]
+│   │   └── [7] [PROXIED_MODULE] _util -> [2]
+│   ├── [6] [PROXIED_SYMBOL] helper -> [5]
+│   ├── [8] [PROXIED_SYMBOL] h -> [5]
+│   └── [9] [FUNC] main
+└── [2] [MODULE] _util
     ├── helper -> [5]
-    └── [5] Func helper
+    └── [5] [FUNC] helper
 
 SOURCE MAP
 

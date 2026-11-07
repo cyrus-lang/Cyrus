@@ -1,0 +1,24 @@
+// @stdout: 8
+
+import std::libc{printf};
+
+enum MyResult<T, E> {
+    Ok(T),
+    Err(E),
+}
+
+struct Container<T> {
+    pub fn inner(self: Self) {
+        var s = @sizeof(MyResult<T, uint32>);
+        printf("%d\n", s);
+    }
+
+    pub fn outer(self: Self) {
+        self.inner();
+    }
+}
+
+pub fn main() {
+    const c: Container<int32> = Container {};
+    c.outer();
+}

@@ -1,0 +1,7 @@
+// @stdout: 26
+import std::libc{printf};
+
+pub fn main() {
+    const x = (((1 + 2) * (3 + 4)) - (5 * (6 - 7)));
+    printf("%d\n", x);
+}

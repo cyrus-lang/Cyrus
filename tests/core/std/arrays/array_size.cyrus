@@ -1,0 +1,10 @@
+// @stdout: 3
+
+import std::libc{printf};
+import std::arrays{array_size};
+
+pub fn main() {
+    const x = int64[3]{1, 2, 3};
+
+    printf("%d\n", array_size(&x));
+}

@@ -1,0 +1,253 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 The Cyrus Language
+
+import std::mem{Allocator, alloc_init};
+import std::collections{Vec};
+import std::option{Option};
+
+import .::context{AnalyzerContext};
+import cir::tables{DeclTables};
+import .::env;
+import cir;
+
+/* ************* GenericEnv ************* */
+
+pub fn current_generic_env(context: AnalyzerContext*) Option<env::GenericEnv*> {
+    switch (context->generic_env_stack.last()) {
+        case .Some(env_ptr) => return .Some(*env_ptr);
+        case .None => return .None;
+    }
+}
+
+pub fn push_generic_env(context: AnalyzerContext*, env: env::GenericEnv) {
+    const env = alloc_init(dynamic context->arena, env);
+    context->generic_env_stack.push(env);
+}
+
+pub fn pop_generic_env(context: AnalyzerContext*) {
+    const env = context->generic_env_stack.pop();
+    env->free();
+}
+
+/* ************* Substitution ************* */
+
+pub fn substitute_type(
+    context: AnalyzerContext*, 
+    ty: const cir::SemaType*
+) cir::SemaType {
+    var result: cir::SemaType = *ty;
+
+    for (var i: usize = context->generic_env_stack.len(); i > 0; i -= 1) {
+        const env = *context->generic_env_stack.get(i - 1).unwrap();
+
+        switch (context->func_env.current_object) {
+            case .Some(object_type) => {
+                result = substitute_self_type(context, &result, &object_type);
+            }
+            else => {}
+        }
+
+        result = env->substitute_sema_type(&result);
+    }
+
+    switch (context->func_env.infer) {
+        case .Some(infer_ctx) => {
+            result = infer_ctx->resolve(&result);
+        }
+        else => {}
+    }
+
+    return result;
+}
+
+pub fn substitute_func_params(
+    context: AnalyzerContext*, 
+    params: cir::FuncParams*
+) {
+    for (var i: usize = 0; i < params->list.len(); i += 1) {
+        var kind = params->list.get(i).unwrap();
+
+        switch (*kind) {
+            case .FuncParam(var param) => {
+                param.ty = substitute_type(context, &param.ty);
+                *kind = .FuncParam(param);
+            }
+            case .SelfModifier(var self_modifier) => {
+                self_modifier.ty = substitute_type(context, &self_modifier.ty);
+                *kind = .SelfModifier(self_modifier);
+            }
+        }
+    }
+
+    switch (params->variadic) {
+        case .Some(.Typed { var_decl_id, ty, span }) => {
+            const subst = substitute_type(context, &ty);
+
+            params->variadic = .Some(cir::FuncVariadicParam.Typed {
+                var_decl_id,
+                ty: subst,
+                span,
+            });
+        }
+        else => {}
+    }
+}
+
+pub fn substitute_self_type(
+    context: const AnalyzerContext*,
+    ty: const cir::SemaType*,
+    self_type: const cir::SemaType*
+) cir::SemaType {
+    switch (*ty) {
+        case .SelfType => return *self_type;
+
+        case .Named(named_type) => {
+            var type_args = cir::TypeArgs.new(context->allocator);
+            
+            for (var i: usize = 0; i < named_type.type_args.len(); i += 1) {
+                const arg = named_type.type_args.get(i).unwrap();
+
+                switch (*arg) {
+                    case .Type(inner, span) => {
+                        const subst = substitute_self_type(context, &inner, self_type);
+                        type_args.push(.Type(subst, span));
+                    }
+                    case .Infer => type_args.push(.Infer);
+                }
+            }
+
+            return .Named(cir::NamedType {
+                type_decl_id: named_type.type_decl_id,
+                type_args,
+            });
+        }
+
+        case .Array(array_type) => {
+            const element_type = substitute_self_type(
+                context,
+                array_type.element_type, 
+                self_type
+            );
+            
+            return .Array(cir::ArrayType {
+                element_type: alloc_init(context->allocator, element_type),
+                capacity: array_type.capacity,
+                span: array_type.span,
+            });
+        }
+
+        case .Const(inner) => {
+            const subst = substitute_self_type(context, inner, self_type);
+            return .Const(alloc_init(context->allocator, subst));
+        }
+
+        case .Pointer(inner) => {
+            const subst = substitute_self_type(context, inner, self_type);
+            return .Pointer(alloc_init(context->allocator, subst));
+        }
+
+        case .Tuple(tuple_type) => {
+            var elements: Vec<cir::TupleElement> = Vec.with_capacity(
+                context->allocator, 
+                tuple_type.elements.len()
+            );
+            
+            for (var i: usize = 0; i < tuple_type.elements.len(); i += 1) {
+                const element = tuple_type.elements.get_const(i).unwrap();
+                const subst = substitute_self_type(context, &element->ty, self_type);
+                
+                elements.push(cir::TupleElement {
+                    ty: subst,
+                    span: element->span,
+                });
+            }
+
+            return .Tuple(cir::TupleType {
+                elements,
+                span: tuple_type.span,
+            });
+        }
+
+        case .FuncType(func_type) => {
+            var params = cir::FuncTypeParams {
+                list: Vec.with_capacity(context->allocator, func_type.params.list.len()),
+                variadic: .None,
+            };
+
+            for (var i: usize = 0; i < func_type.params.list.len(); i += 1) {
+                const param = func_type.params.list.get_const(i).unwrap();
+                const subst = substitute_self_type(context, param, self_type);
+                params.list.push(subst);
+            }
+
+            switch (func_type.params.variadic) {
+                case .Some(variadic) => {
+                    switch (*variadic) {
+                        case .UntypedCStyle => {
+                            params.variadic = .Some(alloc_init(
+                                context->allocator,
+                                cir::FuncTypeVariadicParam.UntypedCStyle
+                            ));
+                        }
+                        case .Typed(inner) => {
+                            const subst = substitute_self_type(context, &inner, self_type);
+                            
+                            params.variadic = .Some(alloc_init(
+                                context->allocator,
+                                cir::FuncTypeVariadicParam.Typed(subst)
+                            ));
+                        }
+                    }
+                }
+                else => {}
+            }
+
+            const ret_type = substitute_self_type(context, func_type.ret_type, self_type);
+
+            return .FuncType(cir::FuncType {
+                params,
+                ret_type: alloc_init(context->allocator, ret_type),
+                vis: func_type.vis,
+                callconv: func_type.callconv,
+                span: func_type.span,
+            });
+        }
+
+        case .InterfaceObject(interface_object) => {
+            const concrete_type = substitute_self_type(context, 
+                interface_object.concrete_type, 
+                self_type
+            );
+            
+            return .InterfaceObject(cir::InterfaceObjectType {
+                interface_type: interface_object.interface_type,
+                concrete_type: alloc_init(context->allocator, concrete_type),
+                vtable_id: interface_object.vtable_id,
+                span: interface_object.span,
+            });
+        }
+
+        else => return *ty;
+    }
+}
+
+/* ************* Helpers ************* */
+
+pub fn lookup_generic_binding(
+    context: AnalyzerContext*, 
+    generic_param_id: cir::GenericParamId
+) Option<cir::SemaType> {
+    for (var i: usize = context->generic_env_stack.len(); i > 0; i -= 1) {
+        const env = *context->generic_env_stack.get(i - 1).unwrap();
+        const bound = env->lookup(generic_param_id);
+        
+        switch (bound) {
+            case .Some(ty) => {
+                return .Some(ty);
+            }
+            else => {}
+        }
+    }
+
+    return .None;
+}

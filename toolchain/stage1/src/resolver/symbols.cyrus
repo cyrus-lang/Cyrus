@@ -475,7 +475,7 @@ pub fn is_decl_const(decl_tables: const DeclTables*, decl_id: cir::DeclId) bool 
 
 pub fn symbol_decl_id(
     registry: const GlobalSymbolRegistry*, 
-    symbol_expr: const cir::TypedSymbolExpr*
+    symbol_expr: const cir::SymbolExpr*
 ) Option<cir::DeclId> {
     switch (symbol_expr->as_decl_id()) {
         case .Some(decl_id) => return .Some(decl_id);

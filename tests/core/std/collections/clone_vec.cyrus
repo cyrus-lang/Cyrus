@@ -1,0 +1,27 @@
+// @stdout: 1 2 3 10 
+
+import std::mem::libc{LibcAllocator};
+import std::collections{Vec};
+import std::mem{Allocator};
+import std::libc{printf};
+
+pub fn main() {
+    const allocator: Allocator = dynamic LibcAllocator.new();
+
+    var vec: Vec<int32> = Vec.new(allocator);
+    defer vec.free();
+
+    vec.push(1);
+    vec.push(2);
+    vec.push(3);
+    
+    var clone = vec.clone(allocator);
+    defer clone.free();
+
+    clone.push(10);
+    
+    for (var i: usize = 0; i < clone.len(); i += 1) {
+        printf("%d ", clone.get_owned(i).unwrap());
+    }
+    printf("\n");
+}

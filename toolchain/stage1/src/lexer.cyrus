@@ -88,7 +88,7 @@ pub struct Lexer {
         return tokens;
     }
 
-    [[inline(always)]]
+    [[inline]]
     fn next(self: Self*) Token {
         self->skip_ws();
         self->skip_comments();
@@ -107,7 +107,7 @@ pub struct Lexer {
         return Token.new(kind, Loc.new(start_pos, end_pos));
     }
 
-    [[inline(always)]]
+    [[inline]]
     fn read_kind(self: Self*) TokenKind* {
         switch (self->input->get(self->pos)) case .Some(char) else {
             return self->init_kind(.EOF);

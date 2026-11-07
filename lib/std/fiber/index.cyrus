@@ -1,0 +1,113 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 The Cyrus Language
+
+import std::errors{ErrorOr};
+import std::option{Option};
+import std::libc::types;
+import std::fcontext;
+import std::libc;
+
+pub type FiberFn = fn(Fiber*) void;
+
+pub enum FiberState {
+    New,
+    Running,
+    Suspended,
+    Done,
+    Error,
+}
+
+pub struct Fiber {
+    pub data: void*, // User data
+
+    caller: Option<fcontext::FContext>,
+    stack: fcontext::FContextState*,
+    context: fcontext::FContext,
+
+    state: FiberState,
+    entry: FiberFn,
+
+    pub fn create(entry: FiberFn, data: void*) ErrorOr<Fiber*, ()> {
+        const trampoline: fcontext::FContextFn = Self.trampoline;
+
+        var stack = fcontext::fcontext_create(trampoline);
+        if (stack == null) {
+            return .Error(());
+        }
+
+        var fiber: Fiber* = @cast(Fiber*, libc::malloc(@sizeof(Fiber)));
+        
+        if (fiber == null) {
+            fcontext::fcontext_destroy(stack);
+            return .Error(());
+        }
+
+        fiber->context = stack->context;
+        fiber->stack = stack;
+        fiber->caller = .None;
+        fiber->state = .New;
+        fiber->entry = entry;
+        fiber->data = data;
+
+        return .Value(fiber);
+    }
+
+    fn trampoline(trans: fcontext::FContextTransfer) {
+        var fiber = @cast(Fiber*, trans.data);
+        
+        fiber->caller = .Some(trans.prev_context);
+        fiber->state = .Running;
+
+        // Run user code
+        (fiber->entry)(fiber);
+
+        fiber->state = .Done;
+
+        const caller = fiber->caller.unwrap();
+        fcontext::fcontext_swap(caller, null);
+
+        // Reaching here would mean somebody
+        // resumed a completed fiber!
+        libc::abort();
+    }
+
+    pub fn resume(self: Self*) FiberState {
+        if (self->state != .New && self->state != .Suspended) {
+            return .Error;
+        }
+
+        self->state = .Running;
+
+        var t = fcontext::fcontext_swap(self->context, @cast(void*, self));
+
+        if (self->state == .Suspended) {
+            self->context = t.prev_context;
+        } else {
+            self->context = null;
+        }
+
+        return self->state;
+    }
+
+    pub fn yield(self: Self*) {
+        if (self->state != .Running) {
+            libc::abort();
+        }
+
+        self->state = .Suspended;
+        const caller = self->caller.unwrap();
+
+        var t = fcontext::fcontext_swap(caller, null);
+
+        // Update caller when resumed
+        self->caller = .Some(t.prev_context);
+    }
+
+    pub fn destroy(self: Self*) {
+        if (self->stack != null) {
+            fcontext::fcontext_destroy(self->stack);
+        }
+        
+        libc::free(@cast(void*, self));
+    }
+}

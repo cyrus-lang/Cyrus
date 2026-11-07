@@ -1,0 +1,10 @@
+The assembly files in this directory are copied directly from Boost.Context:
+https://github.com/boostorg/context/
+
+We have only included the assembly files for x86_64 Linux and OS X.
+If you are using a different platform, you can check for the corresponding
+low-level implementation of the API in the Boost.Context GitHub repository:
+https://github.com/boostorg/context/tree/boost-1.64.0/src/asm
+
+This code is distributed under the Boost Software License, version 1.0.
+See the accompanying LICENSE_1_0.txt for details.

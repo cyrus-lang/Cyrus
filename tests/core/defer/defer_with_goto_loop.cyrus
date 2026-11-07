@@ -1,0 +1,28 @@
+// @stdout: Loop0 D_Loop1 Loop1 D_Loop1 + Done
+
+import std::libc{printf};
+
+fn test_loop_goto() {
+    defer printf("Done");
+
+    var i: int32 = 0;
+    
+    while (i < 3) {
+        defer printf("D_Loop%d ", i);
+        printf("Loop%d ", i);
+
+        if (i == 1) {
+            goto exit_loop;
+        }
+
+        i += 1;
+    }
+
+exit_loop:
+    printf("+ ");
+}
+
+pub fn main() {
+    test_loop_goto();
+    printf("\n");
+}

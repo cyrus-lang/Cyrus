@@ -16,7 +16,7 @@ use cyrusc_tokens::literals::{IntLiteralKind, Integer};
 use cyrusc_typed_ast::{
     LabelID, VTableID,
     builtins::TypedBuiltinSpec,
-    decls::{MethodDecls, MonomorphID},
+    decls::{FuncDeclID, MethodDeclID, MethodDecls, MonomorphID},
     types::PlainType,
 };
 use fx_hash::FxHashMap;
@@ -93,6 +93,7 @@ pub enum CIRExprKind {
     Dynamic(CIRDynamicExpr),
     Call(CIRCall),
     InlineAsm(CIRInlineAsm),
+    FunctionAddress(CIRFunctionAddress),
     Type(CIRType),
 }
 
@@ -125,6 +126,12 @@ pub struct CIRLambda {
     pub body: Box<CIRBlockStmt>,
     pub abi_func_info: ABIFunctionInfo,
     pub loc: Loc,
+}
+
+#[derive(Debug, Clone)]
+pub struct CIRFunctionAddress {
+    pub irv_id: IRValueID,
+    pub ty: CIRType
 }
 
 #[derive(Debug, Clone)]

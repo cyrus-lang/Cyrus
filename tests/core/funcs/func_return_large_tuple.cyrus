@@ -1,0 +1,18 @@
+// @stdout: true, true, true, false, false, false
+
+import std::libc{printf};
+
+fn get_tuple() (bool, bool, bool, bool, bool, bool) {
+    return (true, true, true, false, false, false);
+}
+
+pub fn main() {
+    const t = get_tuple();
+
+    if (t.0) { printf("true, "); }
+    if (t.1) { printf("true, "); }
+    if (t.2) { printf("true, "); }
+    if (!t.3) { printf("false, "); }
+    if (!t.4) { printf("false, "); }
+    if (!t.5) { printf("false\n"); }
+}

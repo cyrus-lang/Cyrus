@@ -1,0 +1,25 @@
+// @stdout: 10 10 30
+
+import std::libc{printf};
+
+fn apply(f: fn(int32) int32, x: int32) int32 {
+    return f(x);
+}
+
+fn double(x: int32) int32 {
+    return x * 2;
+}
+
+fn negate(x: int32) int32 {
+    return -x;
+}
+
+fn identity(x: int32) int32 {
+    return x;
+}
+
+pub fn main() {
+    printf("%d ", apply(double, 5));
+    printf("%d ", apply(negate, -10));
+    printf("%d\n", apply(identity, 30));
+}

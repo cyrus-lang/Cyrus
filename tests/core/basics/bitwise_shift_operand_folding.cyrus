@@ -1,0 +1,12 @@
+// @stdout: 255 1 1024
+
+import std::libc{printf};
+
+pub fn main() {
+    var a: uint32 = 0xFF;
+    var b: uint32 = a << @cast(uint32, 0);
+    var c: uint32 = 256 >> @cast(uint32, 8);
+    var d: uint32 = 1 << @cast(uint32, 10);
+
+    printf("%u %u %u\n", b, c, d);
+}

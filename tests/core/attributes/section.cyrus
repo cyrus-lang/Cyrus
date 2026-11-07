@@ -1,0 +1,10 @@
+[[section(".data")]]
+static var global: int32 = 5;
+
+[[section(".text")]]
+fn foo() {}
+
+pub fn main() {
+    global = 10;
+    foo();
+}

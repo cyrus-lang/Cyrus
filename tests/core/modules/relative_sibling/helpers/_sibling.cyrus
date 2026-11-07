@@ -1,0 +1,3 @@
+pub fn get_val() int32 {
+    return 100;
+}

@@ -1,0 +1,39 @@
+// @stdout: R1 S1 R2 S2 R3 F D
+// @compilerArgs: -z="./lib/std/fcontext/asm/jump.o" -z="./lib/std/fcontext/asm/make.o" -z="./lib/std/fcontext/asm/ontop.o"
+
+import std::fiber{Fiber};
+import std::libc;
+
+fn my_entry(fiber: Fiber*) {
+    libc::printf("S1 ");
+    fiber->yield();
+
+    libc::printf("S2 ");
+    fiber->yield();
+
+    libc::printf("F ");
+}
+
+pub fn main() {
+    switch (Fiber.create(my_entry, null)) case .Value(fiber) else {
+        @panic("failed to create fiber");
+    }
+
+    libc::printf("R1 ");
+    switch (fiber->resume()) case .Suspended else {
+        @panic("fiber did not yield after step 1");
+    }
+
+    libc::printf("R2 ");
+    switch (fiber->resume()) case .Suspended else {
+        @panic("fiber did not yield after step 2");
+    }
+
+    libc::printf("R3 ");
+    switch (fiber->resume()) case .Done else {
+        @panic("fiber did not finish");
+    }
+
+    fiber->destroy();
+    libc::printf("D\n");
+}

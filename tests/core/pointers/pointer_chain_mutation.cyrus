@@ -1,0 +1,15 @@
+// @stdout: 42 99
+
+import std::libc{printf};
+
+pub fn main() {
+    var val = 10;
+    var ptr = &val;
+
+    *ptr = 42;
+    printf("%d ", val);
+
+    var pptr = &ptr;
+    **pptr = 99;
+    printf("%d\n", val);
+}

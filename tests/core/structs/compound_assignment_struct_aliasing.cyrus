@@ -1,0 +1,19 @@
+// @stdout: 150 45
+
+import std::libc{printf};
+
+struct Point {
+    pub x: int32,
+    pub y: int32,
+}
+
+pub fn main() {
+    var pt: Point = Point { x: 100, y: 50 };
+    var px: int32* = &pt.x;
+    var py: int32* = &pt.y;
+
+    *px += 50;
+    *py -= 5;
+
+    printf("%d %d\n", pt.x, pt.y);
+}

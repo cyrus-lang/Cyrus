@@ -1,0 +1,9 @@
+// @stderr: thread 'panic_008d24972' panicked at tests/stage0/core/builtins/panic.cyrus:6:6\nmeow
+
+import std::libc{printf};
+
+pub fn main() {
+    @panic("meow");
+
+    printf("nothing\n");
+}

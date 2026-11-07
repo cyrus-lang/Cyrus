@@ -79,6 +79,14 @@ impl<'a> AnalysisContext<'a> {
                 self.with_generic_env(generic_env, |this| {
                     this.normalize_func_params(&mut func_decl.params, false, 0);
 
+                    if func_call
+                        .args
+                        .iter()
+                        .any(|arg| arg.ty.as_ref().is_some_and(|ty| ty.contains_error()))
+                    {
+                        return Some(SemaType::Err(func_call.loc));
+                    }
+
                     if !this.analyze_call(
                         &original_params,
                         &mut func_decl,
@@ -90,6 +98,10 @@ impl<'a> AnalysisContext<'a> {
                     }
 
                     let final_type_args = this.collect_instantiated_type_args(func_decl.generic_params.clone());
+
+                    if final_type_args.contains_error() {
+                        return Some(SemaType::Err(func_call.loc));
+                    }
 
                     let func_type = func_decl.as_func_type();
                     let func_env = this.create_func_def_env(&func_decl.name, func_type, this.func_env.infer.clone());
@@ -110,6 +122,14 @@ impl<'a> AnalysisContext<'a> {
             // normal function
             else {
                 self.normalize_func_params(&mut func_decl.params, false, 0);
+
+                if func_call
+                    .args
+                    .iter()
+                    .any(|arg| arg.ty.as_ref().is_some_and(|ty| ty.contains_error()))
+                {
+                    return Some(SemaType::Err(func_call.loc));
+                }
 
                 if !self.analyze_call(
                     &original_params,
@@ -438,6 +458,14 @@ impl<'a> AnalysisContext<'a> {
             // normalize func params
             this.normalize_func_params(&mut method_decl.func_decl.params, true, 0);
 
+            if method_call
+                .args
+                .iter()
+                .any(|arg| arg.ty.as_ref().is_some_and(|ty| ty.contains_error()))
+            {
+                return Some(SemaType::Err(method_call.loc));
+            }
+
             // analyze call arguments
             if !this.analyze_call(
                 &original_params,
@@ -471,8 +499,6 @@ impl<'a> AnalysisContext<'a> {
                 &expected_type,
             );
 
-
-
             // apply defaults for generics
             this.apply_generic_defaults(method_decl.func_decl.generic_params.clone());
             this.apply_generic_defaults(operand_generic_params.clone());
@@ -492,6 +518,10 @@ impl<'a> AnalysisContext<'a> {
             let final_type_args = this.collect_instantiated_type_args(final_generics_params);
 
             method_call.type_args = final_type_args.clone();
+
+            if final_type_args.contains_error() {
+                return Some(SemaType::Err(method_call.loc));
+            }
 
             // generic static method
             if is_generic_method_call {
@@ -605,6 +635,14 @@ impl<'a> AnalysisContext<'a> {
                 this.substitute_func_params(interface_method_decl.func_decl.params);
 
             interface_method_decl.func_decl.ret_type = this.substitute_type(&interface_method_decl.func_decl.ret_type);
+
+            if method_call
+                .args
+                .iter()
+                .any(|arg| arg.ty.as_ref().is_some_and(|ty| ty.contains_error()))
+            {
+                return Some(SemaType::Err(method_call.loc));
+            }
 
             if !this.analyze_call(
                 &original_func_params,

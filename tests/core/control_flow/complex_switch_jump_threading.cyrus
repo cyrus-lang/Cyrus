@@ -1,0 +1,22 @@
+// @stdout: A B C D Default
+
+import std::libc{printf};
+
+fn test_switch(val: int32) {
+    switch (val) {
+        case 1 => printf("A ");
+        case 2 => printf("B ");
+        case 3 => printf("C ");
+        case 4 => printf("D ");
+        else => printf("Default ");
+    }
+}
+
+pub fn main() {
+    test_switch(1);
+    test_switch(2);
+    test_switch(3);
+    test_switch(4);
+    test_switch(99);
+    printf("\n");
+}

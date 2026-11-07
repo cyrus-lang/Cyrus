@@ -1,0 +1,12 @@
+// @stdout: 65.400000
+
+import std::libc{printf};
+
+type Float = const float64;
+
+pub fn main() {
+    var x: Float = 65.4;
+    // mutation not allowed! 
+    // x = 3.1; 
+    printf("%f\n", x);
+}

@@ -1,0 +1,9 @@
+[[repr(c)]]
+enum Foo {
+    A,
+    B
+}
+
+pub fn main() {
+    const foo = Foo.A;
+}

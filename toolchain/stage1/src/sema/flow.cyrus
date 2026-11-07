@@ -1,0 +1,107 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 The Cyrus Language
+
+import std::collections{Vec};
+
+pub enum FlowState {
+    Unreachable,
+    Reachable,
+    Returns,
+    
+    /// FIXME: Due to a bug in stage0 compiler, we can't write 
+    /// `other: Self` (Nested Self Substition Bug).
+    ///
+    /// Merges two flow states coming from different paths.
+    pub fn merge(self: const Self*, other: FlowState) FlowState {
+        switch (*self) {
+            case .Returns => {
+                switch (other) {
+                    case .Returns => return .Returns;
+                    case .Unreachable => return .Unreachable;
+                    case .Reachable => return .Reachable;
+                }
+            }
+            case .Unreachable => {
+                switch (other) {
+                    case .Returns => return .Unreachable;
+                    case .Unreachable => return .Unreachable;
+                    case .Reachable => return .Reachable;
+                }
+            }
+            case .Reachable => {
+                switch (other) {
+                    case .Returns => return .Reachable;
+                    else => return .Reachable;
+                }
+            }
+        }
+    }
+
+    [[inline]]
+    pub fn is_returns(self: const Self*) bool {
+        switch (*self) {
+            case .Returns => return true;
+            else => return false;
+        }
+    }
+
+    [[inline]]
+    pub fn is_unreachable(self: const Self*) bool {
+        switch (*self) {
+            case .Unreachable => return true;
+            else => return false;
+        }
+    }
+    
+    [[inline]]
+    pub fn is_reachable(self: const Self*) bool {
+        switch (*self) {
+            case .Reachable => return true;
+            else => return false;
+        }
+    }
+}
+
+pub enum ControlRegion {
+    Loop,
+    Switch,
+
+    [[inline]]
+    pub fn allows_break(self: const Self*) bool {
+        switch (*self) {
+            case .Loop => return true;
+            case .Switch => return false;
+        }
+    }
+
+    [[inline]]
+    pub fn allows_continue(self: const Self*) bool {
+        switch (*self) {
+            case .Loop => return true;
+            case .Switch => return false;
+        }
+    }
+}
+
+pub fn all_flow_states_terminate(flow_states: const Vec<FlowState>*) bool {
+    for (var i: usize = 0; i < flow_states->len(); i += 1) {
+        switch (*flow_states->get_const(i).unwrap()) {
+            case .Returns => {}
+            case .Unreachable => {}
+            else => return false;
+        }
+    }
+
+    return true;
+}
+
+pub fn all_flow_states_are_unreachable(flow_states: const Vec<FlowState>*) bool {
+    for (var i: usize = 0; i < flow_states->len(); i += 1) {
+        switch (*flow_states->get_const(i).unwrap()) {
+            case .Unreachable => {}
+            else => return false;
+        }
+    }
+
+    return true;
+}

@@ -1,0 +1,101 @@
+// @stdout: value: 42\nok none\nerr: 7\nnone first: none\nnone first: some(5)\ndepth3: 9\ndepth3: empty\ndepth3: nothing\nstruct nested: 3\nstruct nested: none\nstruct nested: nothing\n
+
+import std::libc{printf};
+
+enum OptionInt {
+    Some(int32),
+    None,
+}
+
+enum ResultOptionInt {
+    Ok(OptionInt),
+    Err(int32),
+}
+
+fn display_result(r: ResultOptionInt) {
+    switch (r) {
+        case .Ok(.Some(x)) => {
+            printf("value: %d\n", x);
+        }
+        case .Ok(.None) => {
+            printf("ok none\n");
+        }
+        case .Err(e) => {
+            printf("err: %d\n", e);
+        }
+    }
+}
+
+fn display_result_none_first(r: ResultOptionInt) {
+    switch (r) {
+        case .Ok(.None) => {
+            printf("none first: none\n");
+        }
+        case .Ok(.Some(x)) => {
+            printf("none first: some(%d)\n", x);
+        }
+        case .Err(e) => {
+            printf("none first: err(%d)\n", e);
+        }
+    }
+}
+
+enum InnerEnum {
+    Leaf(int32),
+    Empty,
+}
+
+enum OuterEnum {
+    Mid(InnerEnum),
+    Nothing,
+}
+
+fn display_depth3(o: OuterEnum) {
+    switch (o) {
+        case .Mid(.Leaf(v)) => {
+            printf("depth3: %d\n", v);
+        }
+        case .Mid(.Empty) => {
+            printf("depth3: empty\n");
+        }
+        case .Nothing => {
+            printf("depth3: nothing\n");
+        }
+    }
+}
+
+enum StructWrap {
+    Wrap { opt: OptionInt },
+    Nothing,
+}
+
+fn display_struct(s: StructWrap) {
+    switch (s) {
+        case .Wrap { opt: .Some(v) } => {
+            printf("struct nested: %d\n", v);
+        }
+        case .Wrap { opt: .None } => {
+            printf("struct nested: none\n");
+        }
+        case .Nothing => {
+            printf("struct nested: nothing\n");
+        }
+    }
+}
+
+pub fn main() {
+    display_result(ResultOptionInt.Ok(OptionInt.Some(42)));
+    display_result(ResultOptionInt.Ok(OptionInt.None));
+    display_result(ResultOptionInt.Err(7));
+
+    display_result_none_first(ResultOptionInt.Ok(OptionInt.None));
+    display_result_none_first(ResultOptionInt.Ok(OptionInt.Some(5)));
+
+    display_depth3(OuterEnum.Mid(InnerEnum.Leaf(9)));
+    display_depth3(OuterEnum.Mid(InnerEnum.Empty));
+    display_depth3(OuterEnum.Nothing);
+
+    display_struct(StructWrap.Wrap { opt: OptionInt.Some(3) });
+    display_struct(StructWrap.Wrap { opt: OptionInt.None });
+    display_struct(StructWrap.Nothing);
+}

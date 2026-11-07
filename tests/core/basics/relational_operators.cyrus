@@ -1,0 +1,17 @@
+// @stdout: 1 0 0 1 0 1 1 0
+
+import std::libc{printf};
+
+pub fn main() {
+    const a: int32 = 10;
+    const b: int32 = 20;
+
+    printf("%d ", a < b);
+    printf("%d ", a > b);
+    printf("%d ", a == b);
+    printf("%d ", a != b);
+    printf("%d ", a >= b);
+    printf("%d ", a <= b);
+    printf("%d ", a <= a);
+    printf("%d\n", a >= b);
+}

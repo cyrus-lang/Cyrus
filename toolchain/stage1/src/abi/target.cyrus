@@ -1,0 +1,113 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 The Cyrus Language
+
+import std::option{Option};
+
+import abi::helpers{Registers};
+import abi::args{
+    ABIArgInfo, 
+    ABIRetInfo, 
+    ABIFunctionInfo
+};
+import cir;
+
+pub enum OS {
+    Unknown,
+    Linux,
+    Windows,
+    MacOS,
+}
+
+pub enum Arch {
+    X86_64,
+    Aarch64,
+    RiscV64,
+    Wasm32,
+}
+
+pub enum ObjectFormat {
+    Elf,
+    MachO,
+    Coff,
+}
+
+pub struct TargetInfo {
+    pub arch: Arch,
+    pub os: OS,
+    pub format: ObjectFormat,
+
+    pub fn pointer_size(self: const Self*) uint32 {
+        switch (self->arch) {
+            case .X86_64 | .Aarch64 | .RiscV64 => return 8;
+            case .Wasm32 => return 4;
+        }
+    }
+
+    pub fn pointer_align(self: const Self*) uint32 {
+        switch (self->arch) {
+            case .X86_64 | .Aarch64 | .RiscV64 => return 8;
+            case .Wasm32 => return 4;
+        }
+    }
+
+    pub fn int_bit_width(self: const Self*) uint32 {
+        switch (self->arch) {
+            case .X86_64 | .Aarch64 | .RiscV64 => return 64;
+            case .Wasm32 => return 32;
+        }
+    }
+
+    pub fn pointer_bit_width(self: const Self*) uint32 {
+        switch (self->arch) {
+            case .X86_64 | .Aarch64 | .RiscV64 => return 64;
+            case .Wasm32 => return 32;
+        }
+    }
+
+    [[inline]]
+    pub fn is_64bit(self: const Self*) bool {
+        return self->int_bit_width() == 64;
+    }
+
+    pub fn c_int_bit_width(self: const Self*) uint32 {
+        switch (self->arch) {
+            case .X86_64 | .Aarch64 | .RiscV64 => return 32;
+            case .Wasm32 => return 32;
+        }
+    }
+}
+
+pub enum RegisterClass {
+    NoClass,
+    Memory,
+    Integer,
+    SSE,
+    SSEUP,
+}
+
+pub struct RegisterClassPair {
+    pub lo: RegisterClass,
+    pub hi: RegisterClass,
+}
+
+pub struct ClassifyArgResult {
+    pub info: ABIArgInfo,
+    pub needed_regs: Registers,
+}
+
+pub interface TargetABI {
+    fn classify_func(self: Self*, func_type: const cir::FuncType*) Option<ABIFunctionInfo>;
+    
+    fn apply_variadic_argument_promote(self: Self*, ty: const cir::SemaType*) cir::SemaType;
+
+    fn classify_return(self: Self*, ty: const cir::SemaType*) ABIRetInfo;
+    
+    fn stack_alignment(self: Self*) uint32;
+    
+    fn classify_argument(
+        self: Self*,
+        ty: const cir::SemaType*,
+        free_int_regs: uint32,
+        is_named: bool
+    ) ClassifyArgResult;
+}

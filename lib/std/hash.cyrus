@@ -20,6 +20,14 @@ pub fn hash_usize(val: usize) uint64 {
     return x;
 }
 
+pub fn hash_uint32(val: uint32) uint64 {
+    return hash_usize(@cast(usize, val));
+}
+
+pub fn eq_uint32(a: uint32, b: uint32) bool {
+    return a == b;
+}
+
 pub fn uintptr_hash(key: uintptr) uint64 {
     return hash_usize(@cast(usize, key));
 }

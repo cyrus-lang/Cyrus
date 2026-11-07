@@ -351,6 +351,9 @@ pub fn format_typed_expr(expr: &TypedExpr, formatter: &dyn Formatter) -> String 
         SemaType { ty, .. } => format_sema_type(ty.clone(), formatter),
 
         InlineAsm(asm) => format!("@asm(\"{}\")", asm.template.join("\\n")),
+
+        FunctionAddress(_) => unreachable!(),
+
         Poisoned => unreachable!(),
     }
 }
@@ -415,7 +418,7 @@ pub fn format_sema_type(ty: SemaType, formatter: &dyn Formatter) -> String {
         }
         SemaType::SelfType(_) => "Self".to_string(),
         SemaType::Err(_) => "<error>".to_string(),
-        SemaType::InferVar(_) => "_".to_string(),
+        SemaType::InferVar { .. } => "_".to_string(),
         SemaType::Placeholder => "<placeholder>".to_string(),
     }
 }

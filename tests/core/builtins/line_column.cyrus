@@ -1,0 +1,7 @@
+// @stdout: line: 6, column: 48
+
+import std::libc{printf};
+
+pub fn main() {
+    printf("line: %d, column: %d\n", @line(), @column());
+}

@@ -1,0 +1,19 @@
+// @stdout: 127 -128 32767 -32768 2147483647 -2147483648
+
+import std::libc{printf};
+
+pub fn main() {
+    const max_i8: int8 = 127;
+    const min_i8: int8 = -128;
+    const max_i16: int16 = 32767;
+    const min_i16: int16 = -32768;
+    const max_i32: int32 = 2147483647;
+    const min_i32: int32 = -2147483648;
+
+    printf("%d ", max_i8);
+    printf("%d ", min_i8);
+    printf("%d ", max_i16);
+    printf("%d ", min_i16);
+    printf("%d ", max_i32);
+    printf("%d\n", min_i32);
+}

@@ -8,8 +8,6 @@ import std::os{path_exists};
 import std::option{Option};
 import std::mem{Allocator};
 import std::libc{strlen};
-import std::os::dir;
-import std::os::env;
 import std::path{
     canonicalize_absolute_path, 
     has_path_prefix,
@@ -18,6 +16,9 @@ import std::path{
     file_stem, 
     same_file
 };
+import std::os::dir;
+import std::os::env;
+import std::os;
 
 import parser::ast{ASTModuleSegment};
 import tokens{Span, Loc};
@@ -471,8 +472,8 @@ fn load_module_segments(
     }
 
     // If the walk is ended inside a directory,
-    // we gotta look for its index file.
-    if (dir::is_dir(current_path.as_str_const())) {
+    // we gotta look for its index file
+    if (os::is_dir(current_path.as_str_const())) {
         var index_path = join_path(allocator, current_path.as_str_const(), INDEX_MODULE_FILENAME);
 
         if (path_exists(index_path.as_str_const())) {
@@ -532,12 +533,12 @@ fn relative_search_dir(
     }
 
     var cwd = dir::cwd(allocator);
-    const canon = canonicalize_absolute_path(
+    const abs = canonicalize_absolute_path(
         allocator, 
         cwd.as_str_const(), 
         current.as_str_const()
     );
-    switch (canon) case .Some(var search_dir) else {
+    switch (abs) case .Some(var search_dir) else {
         return .None;
     }
     cwd.free();
@@ -546,7 +547,11 @@ fn relative_search_dir(
     var root_cwd = dir::cwd(allocator);
     var root: String = undefined;
 
-    switch (canonicalize_absolute_path(allocator, root_cwd.as_str_const(), opts->base_path.as_str_const())) {
+    switch (canonicalize_absolute_path(
+        allocator, 
+        root_cwd.as_str_const(), 
+        opts->base_path.as_str_const()
+    )) {
         case .None => root = String.from_str(allocator, opts->base_path.as_str_const());
         case .Some(path) => root = path;
     }
@@ -583,14 +588,18 @@ fn find_in_sources(
 
     for (var i: usize = 0; i < sources->len(); i += 1) {
         const source = sources->get_const(i).unwrap();
-        const joined = join_path(allocator, source->as_str_const(), candidate.as_str_const());
+        const path = join_path(
+            allocator,
+            source->as_str_const(),
+            candidate.as_str_const()
+        );
 
-        if (path_exists(joined.as_str_const())) {
+        if (path_exists(path.as_str_const())) {
             candidate.free();
-            return .Some(joined);
+            return .Some(path);
         }
 
-        joined.free();
+        path.free();
     }
 
     candidate.free();
@@ -602,20 +611,24 @@ fn find_dir_in_sources(
     candidate: String,
     sources: const Vec<String>*,
 ) Option<String> {
-    if (dir::is_dir(candidate.as_str_const())) {
+    if (os::is_dir(candidate.as_str_const())) {
         return .Some(candidate);
     }
 
     for (var i: usize = 0; i < sources->len(); i += 1) {
         const source = sources->get_const(i).unwrap();
-        const joined = join_path(allocator, source->as_str_const(), candidate.as_str_const());
+        const path = join_path(
+            allocator, 
+            source->as_str_const(), 
+            candidate.as_str_const()
+        );
 
-        if (dir::is_dir(joined.as_str_const())) {
+        if (os::is_dir(path.as_str_const())) {
             candidate.free();
-            return .Some(joined);
+            return .Some(path);
         }
 
-        joined.free();
+        path.free();
     }
 
     candidate.free();

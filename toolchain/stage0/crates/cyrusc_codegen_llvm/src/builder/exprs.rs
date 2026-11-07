@@ -44,25 +44,26 @@ pub enum DerefMode {
 impl<'ll> CodeGenIRBuilder<'ll> {
     pub(crate) fn emit_expr(&mut self, expr: &CIRExpr, target_cir_type: &Option<CIRType>) -> InternalValue<'ll> {
         let value = match &expr.kind {
-            CIRExprKind::Load(value_ref) => self.emit_load(value_ref),
-            CIRExprKind::Literal(literal) => self.emit_literal(literal),
-            CIRExprKind::Prefix(prefix_expr) => self.emit_prefix_expr(prefix_expr),
-            CIRExprKind::Infix(infix_expr) => self.emit_infix_expr(infix_expr, expr.loc),
-            CIRExprKind::Assign(assign_expr) => self.emit_assign(assign_expr),
-            CIRExprKind::AddrOf(addr_of_expr) => self.emit_addr_of(addr_of_expr),
-            CIRExprKind::Deref(deref_expr) => self.emit_deref(deref_expr, DerefMode::Load),
-            CIRExprKind::Array(array_expr) => self.emit_array(array_expr),
-            CIRExprKind::ArrayIndex(array_index_expr) => self.emit_array_index(array_index_expr),
-            CIRExprKind::Tuple(tuple_expr) => self.emit_tuple(tuple_expr),
-            CIRExprKind::TupleAccess(tuple_access) => self.emit_tuple_access(tuple_access),
-            CIRExprKind::StructInit(struct_init_expr) => self.emit_struct_init(struct_init_expr),
+            CIRExprKind::FunctionAddress(function_address) => self.emit_function_address(function_address),
             CIRExprKind::UnionInit(union_init_expr) => self.emit_union_init_value(union_init_expr),
-            CIRExprKind::EnumInit(enum_init_expr) => self.emit_enum_init(enum_init_expr),
+            CIRExprKind::ArrayIndex(array_index_expr) => self.emit_array_index(array_index_expr),
+            CIRExprKind::StructInit(struct_init_expr) => self.emit_struct_init(struct_init_expr),
             CIRExprKind::FieldAccess(field_access) => self.emit_field_access(field_access),
-            CIRExprKind::Call(call) => self.emit_call(call),
-            CIRExprKind::Lambda(lambda) => self.emit_lambda(lambda),
-            CIRExprKind::Dynamic(dynamic) => self.emit_dynamic_expr(dynamic),
+            CIRExprKind::Deref(deref_expr) => self.emit_deref(deref_expr, DerefMode::Load),
+            CIRExprKind::TupleAccess(tuple_access) => self.emit_tuple_access(tuple_access),
+            CIRExprKind::EnumInit(enum_init_expr) => self.emit_enum_init(enum_init_expr),
+            CIRExprKind::Infix(infix_expr) => self.emit_infix_expr(infix_expr, expr.loc),
+            CIRExprKind::Prefix(prefix_expr) => self.emit_prefix_expr(prefix_expr),
             CIRExprKind::InlineAsm(inline_asm) => self.emit_inline_asm(inline_asm),
+            CIRExprKind::AddrOf(addr_of_expr) => self.emit_addr_of(addr_of_expr),
+            CIRExprKind::Assign(assign_expr) => self.emit_assign(assign_expr),
+            CIRExprKind::Dynamic(dynamic) => self.emit_dynamic_expr(dynamic),
+            CIRExprKind::Literal(literal) => self.emit_literal(literal),
+            CIRExprKind::Tuple(tuple_expr) => self.emit_tuple(tuple_expr),
+            CIRExprKind::Array(array_expr) => self.emit_array(array_expr),
+            CIRExprKind::Load(value_ref) => self.emit_load(value_ref),
+            CIRExprKind::Lambda(lambda) => self.emit_lambda(lambda),
+            CIRExprKind::Call(call) => self.emit_call(call),
 
             CIRExprKind::Type(_) => unreachable!(),
         };
@@ -469,11 +470,9 @@ impl<'ll> CodeGenIRBuilder<'ll> {
 
     pub(crate) fn emit_implicit_cast(&self, target_type: &CIRType, rvalue: InternalValue<'ll>) -> InternalValue<'ll> {
         let ty = self.emit_type(target_type.clone());
-        let casted = self.emit_cast(ty, rvalue);
-        InternalValue::new(
-            target_type.clone(),
-            InternalValueKind::RValue(casted.try_into().unwrap()),
-        )
+        let cast = self.emit_cast(ty, rvalue);
+
+        InternalValue::new(target_type.clone(), InternalValueKind::RValue(cast.try_into().unwrap()))
     }
 
     fn emit_array(&mut self, array: &CIRArrayExpr) -> InternalValue<'ll> {
@@ -933,10 +932,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
             (BasicValueEnum::IntValue(lhs), BasicValueEnum::IntValue(rhs)) => {
                 let shift_value = self.llvm_builder.build_left_shift(lhs, rhs, "lshift").unwrap();
 
-                InternalValue::new(
-                    lhs_rvalue.ty.clone(),
-                    InternalValueKind::RValue(shift_value.into()),
-                )
+                InternalValue::new(lhs_rvalue.ty.clone(), InternalValueKind::RValue(shift_value.into()))
             }
             _ => unreachable!(),
         }
@@ -949,10 +945,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
 
                 let shift_value = self.llvm_builder.build_right_shift(lhs, rhs, signed, "rshift").unwrap();
 
-                InternalValue::new(
-                    lhs_rvalue.ty.clone(),
-                    InternalValueKind::RValue(shift_value.into()),
-                )
+                InternalValue::new(lhs_rvalue.ty.clone(), InternalValueKind::RValue(shift_value.into()))
             }
             _ => unreachable!(),
         }
@@ -1811,6 +1804,13 @@ impl<'ll> CodeGenIRBuilder<'ll> {
             .into_struct_value()
     }
 
+    fn emit_function_address(&mut self, function_address: &CIRFunctionAddress) -> InternalValue<'ll> {
+        let ir_value = self.get_or_declare_function(function_address.irv_id);
+        let func = ir_value.as_func().unwrap();
+
+        InternalValue::new(function_address.ty.clone(), InternalValueKind::FuncValue(*func))
+    }
+
     fn emit_call(&mut self, call: &CIRCall) -> InternalValue<'ll> {
         match &call.dispatch {
             CIRCallDispatch::Normal { irv_id, func_type, .. } => {
@@ -2191,18 +2191,33 @@ impl<'ll> CodeGenIRBuilder<'ll> {
                 BasicValueEnum::PointerValue(self.llvm_ctx.ptr_type(AddressSpace::default()).const_null())
             }
             CIRLiteralKind::Integer(value, _) => {
-                let int_type = ty.into_int_type();
-                let bit_width = int_type.get_bit_width() as usize;
+                if ty.is_int_type() {
+                    let int_type = ty.into_int_type();
+                    let bit_width = int_type.get_bit_width() as usize;
 
-                let num_words = (bit_width + 63) / 64;
-                let full_value = value.as_int::<u128>();
+                    let num_words = (bit_width + 63) / 64;
+                    let full_value = value.as_int::<u128>();
 
-                let mut words = Vec::with_capacity(num_words);
-                for i in 0..num_words {
-                    words.push((full_value >> (i * 64)) as u64);
+                    let mut words = Vec::with_capacity(num_words);
+                    for i in 0..num_words {
+                        words.push((full_value >> (i * 64)) as u64);
+                    }
+
+                    BasicValueEnum::IntValue(int_type.const_int_arbitrary_precision(&words))
+                } else if ty.is_pointer_type() {
+                    let target_data = self.llvm_target_machine.get_target_data();
+                    let ptr_sized_int_type = self.llvm_ctx.ptr_sized_int_type(&target_data, None);
+
+                    let int_value = ptr_sized_int_type.const_int(value.as_int::<u64>(), false);
+
+                    BasicValueEnum::PointerValue(
+                        self.llvm_builder
+                            .build_int_to_ptr(int_value, ty.into_pointer_type(), "int_to_ptr")
+                            .unwrap(),
+                    )
+                } else {
+                    unreachable!()
                 }
-
-                BasicValueEnum::IntValue(int_type.const_int_arbitrary_precision(&words))
             }
             CIRLiteralKind::CString(value) => self.emit_const_str(value.clone()),
             CIRLiteralKind::ByteString(value) => self.emit_byte_string(value.clone()),
