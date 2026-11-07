@@ -549,6 +549,10 @@ impl<'a> CIRPrinter<'a> {
             }
 
             CIRExprKind::Type(ty) => self.print_type(ty),
+
+            CIRExprKind::FunctionAddress(function_address) => {
+                format!("function_address(%{})", function_address.irv_id.0)
+            }
         }
     }
 

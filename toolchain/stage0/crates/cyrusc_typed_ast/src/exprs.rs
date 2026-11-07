@@ -61,10 +61,24 @@ pub enum TypedExprKind {
     Dynamic(TypedDynamicExpr),
     Builtin(TypedBuiltin),
     InlineAsm(TypedInlineAsm),
+    FunctionAddress(TypedFunctionAddress),
 
     SemaType { ty: SemaType, loc: Loc },
 
     Poisoned, // semantically wrong
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct TypedFunctionAddress {
+    pub dispatch: TypedFunctionAddressDispatch,
+    pub ty: SemaType,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum TypedFunctionAddressDispatch {
+    Monomorph(MonomorphID),
+    Method(MethodDeclID),
+    Function(FuncDeclID),
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -506,11 +520,12 @@ impl TypedExprKind {
     #[inline]
     pub fn is_lvalue(&self) -> bool {
         match self {
-            TypedExprKind::Symbol(..) => true,
-            TypedExprKind::ArrayIndex(_) => true,
-            TypedExprKind::Deref(_) => true,
-            TypedExprKind::FieldAccess(_) => true,
-            TypedExprKind::TupleAccess(_) => true,
+            TypedExprKind::Symbol(..)
+            | TypedExprKind::ArrayIndex(_)
+            | TypedExprKind::Deref(_)
+            | TypedExprKind::FieldAccess(_)
+            | TypedExprKind::TupleAccess(_) => true,
+
             TypedExprKind::MethodCall(_)
             | TypedExprKind::FuncCall(_)
             | TypedExprKind::StructInit(_)
@@ -531,6 +546,7 @@ impl TypedExprKind {
             | TypedExprKind::EnumStructVariantInit(_)
             | TypedExprKind::UnionInit(_)
             | TypedExprKind::EnumInit(_)
+            | TypedExprKind::FunctionAddress(_)
             | TypedExprKind::SemaType { .. } => false,
 
             TypedExprKind::Poisoned => unreachable!(),

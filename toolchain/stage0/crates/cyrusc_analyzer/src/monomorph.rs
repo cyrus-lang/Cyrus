@@ -632,7 +632,10 @@ impl<'a> AnalysisContext<'a> {
                 }
             },
 
-            TypedExprKind::Poisoned | TypedExprKind::Literal(_) | TypedExprKind::SemaType { .. } => {}
+            TypedExprKind::FunctionAddress(_)
+            | TypedExprKind::Poisoned
+            | TypedExprKind::Literal(_)
+            | TypedExprKind::SemaType { .. } => {}
 
             TypedExprKind::InlineAsm(asm) => {
                 for op in &mut asm.outputs {

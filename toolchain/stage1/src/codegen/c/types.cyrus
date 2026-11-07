@@ -1765,7 +1765,7 @@ pub struct TypeEmitter {
                                 buffer_decl.free();
                             }
 
-                            self->type_out.push_str(" } u; }; ");
+                            self->type_out.push_str(" } u; };\n");
 
                             for (var variant_index: usize = 0; variant_index < enum_decl->variants.len(); variant_index += 1) {
                                 const variant = enum_decl->variants.get_const(variant_index).unwrap();

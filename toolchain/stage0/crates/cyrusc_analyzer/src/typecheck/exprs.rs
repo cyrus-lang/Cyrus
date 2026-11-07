@@ -97,29 +97,33 @@ impl<'a> AnalysisContext<'a> {
                 }
             }
 
+            TypedExprKind::StructInit(struct_init) => self.analyze_struct_init(struct_init, expected_type.clone()),
+            TypedExprKind::MethodCall(method_call) => self.analyze_method_call(method_call, expected_type.clone()),
+            TypedExprKind::UnionInit(union_init) => self.analyze_union_init(union_init, expected_type.clone()),
+            TypedExprKind::EnumInit(enum_init) => self.analyze_enum_init(enum_init, expected_type.clone()),
             TypedExprKind::Literal(literal) => self.analyze_literal(literal, expected_type.clone()),
+            TypedExprKind::Dynamic(dynamic) => self.analyze_dynamic(dynamic, expected_type.clone()),
+            TypedExprKind::Tuple(tuple) => self.analyze_tuple_value(tuple, expected_type.clone()),
             TypedExprKind::Prefix(prefix) => self.analyze_prefix(prefix, expected_type.clone()),
             TypedExprKind::Infix(infix) => self.analyze_infix(infix, expected_type.clone()),
-            TypedExprKind::AddrOf(addr_of) => self.analyze_addr_of(addr_of),
-            TypedExprKind::Deref(deref) => self.analyze_deref(deref),
             TypedExprKind::Array(array) => self.analyze_array(array, expected_type.clone()),
-            TypedExprKind::Dynamic(dynamic) => self.analyze_dynamic(dynamic, expected_type.clone()),
-            TypedExprKind::MethodCall(method_call) => self.analyze_method_call(method_call, expected_type.clone()),
             TypedExprKind::FuncCall(func_call) => self.analyze_func_call(func_call),
+            TypedExprKind::AddrOf(addr_of) => self.analyze_addr_of(addr_of),
             TypedExprKind::Lambda(lambda) => self.analyze_lambda(lambda),
-            TypedExprKind::Tuple(tuple) => self.analyze_tuple_value(tuple, expected_type.clone()),
-            TypedExprKind::EnumInit(enum_init) => self.analyze_enum_init(enum_init, expected_type.clone()),
-            TypedExprKind::StructInit(struct_init) => self.analyze_struct_init(struct_init, expected_type.clone()),
-            TypedExprKind::UnionInit(union_init) => self.analyze_union_init(union_init, expected_type.clone()),
+            TypedExprKind::Deref(deref) => self.analyze_deref(deref),
+
             TypedExprKind::UnnamedStructValue(struct_value) => {
                 self.analyze_unnamed_struct_value(struct_value, expected_type.clone())
             }
+
             TypedExprKind::UnnamedUnionValue(union_value) => {
                 self.analyze_unnamed_union_value(union_value, expected_type.clone())
             }
+
             TypedExprKind::UnnamedEnumValue(enum_value) => {
                 self.analyze_unnamed_enum_value(enum_value, expected_type.clone())
             }
+
             TypedExprKind::EnumStructVariantInit(struct_variant_init) => {
                 self.analyze_enum_struct_variant_init(struct_variant_init)
             }
@@ -128,6 +132,7 @@ impl<'a> AnalysisContext<'a> {
                 self.analyze_assign(assign);
                 assign.rhs.ty.clone()
             }
+
             TypedExprKind::ArrayIndex(array_index) => self.analyze_array_index(array_index),
             TypedExprKind::FieldAccess(field_access) => self.analyze_field_access(field_access),
             TypedExprKind::TupleAccess(tuple_access) => self.analyze_tuple_access(tuple_access, expected_type.clone()),
@@ -158,6 +163,8 @@ impl<'a> AnalysisContext<'a> {
                 expr.ty = Some(err_ty.clone());
                 return Some(err_ty);
             }
+
+            TypedExprKind::FunctionAddress(function_address) => Some(function_address.ty.clone()),
         };
 
         let expr_type = match expr_type {
@@ -274,7 +281,8 @@ impl<'a> AnalysisContext<'a> {
             TypedExprKind::TupleAccess(tuple_access) => tuple_access.operand.val_cat,
             TypedExprKind::ArrayIndex(array_index) => array_index.operand.val_cat,
 
-            TypedExprKind::Assign(_)
+            TypedExprKind::FunctionAddress(_)
+            | TypedExprKind::Assign(_)
             | TypedExprKind::Lambda(_)
             | TypedExprKind::Array(_)
             | TypedExprKind::Tuple(_)

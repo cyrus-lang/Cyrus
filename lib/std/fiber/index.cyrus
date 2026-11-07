@@ -1,0 +1,71 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 The Cyrus Language
+
+import std::errors{ErrorOr};
+import std::option{Option};
+import std::libc::types;
+import std::fcontext;
+import std::libc;
+
+pub type FiberFn = fn(Fiber*) void;
+
+pub enum FiberState {
+    New,
+    Running,
+    Suspended,
+    Done,
+    Error,
+}
+
+pub struct Fiber {
+    pub data: void*, // User data
+
+    caller: Option<fcontext::FContext>,
+    stack: fcontext::FContextState*,
+    context: fcontext::FContext,
+
+    state: FiberState,
+    entry: FiberFn,
+
+    pub fn create(entry: FiberFn, data: void*) ErrorOr<Self, ()> {
+        const trampoline: FiberFn = Fiber.trampoline;
+
+        var stack = fcontext::fcontext_create(trampoline);
+        @assert(stack, "failed to create fcontext");
+
+        var fiber: Fiber* = libc::malloc(@sizeof(Fiber));
+
+        if (fiber == null) {
+            fcontext::fcontext_destroy(stack);
+            return .Error(());
+        }
+
+        return .Value(Self {
+            context: stack->context,
+            caller: .None,
+            state: .New,
+            stack,
+            entry,
+            data,
+        });
+    }
+
+    fn trampoline(trans: fcontext::FContextTransfer) types::c_void {
+        var fiber = @cast(Fiber*, trans.data);
+        
+        const caller = fiber->caller.unwrap();
+
+        fiber->caller = .Some(trans.prev_context);
+        fiber->state = .Running;
+
+        (fiber->entry)(fiber);
+
+        fiber->state = .Done;
+
+        fcontext::fcontext_swap(caller, null);
+
+        // Reaching here would mean 
+        // somebody resumed a completed fiber!
+        libc::abort();
+    }
+}
