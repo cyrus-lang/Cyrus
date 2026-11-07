@@ -1,10 +1,12 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 The Cyrus Language
 
-import std::io{Writer};
+import std::io{Writer, FileWriter};
 import std::mem{Allocator};
 import std::option{Option};
-import std::libc{getenv, fopen, fclose, fwrite};
+import std::libc{getenv};
+import std::path{Path};
+import std::os{File};
 
 import sema::context{AnalyzerContext};
 import .::index{CompilerContext};
@@ -101,21 +103,14 @@ pub struct CodegenContext {
             return;
         }
 
-        // FIXME: Use os::File instead of calling libc directly.
-        const emit_stream = fopen(emit_path, "w");
+        const path = Path.new(self->allocator, emit_path);
 
-        if (emit_stream == null) {
+        switch (File.open(&path, .Write)) case .Value(var file) else {
             return;
         }
+        defer file.close();
 
-        var len: usize = 0;
-
-        while (source[len] != '\0') {
-            len += 1;
-        }
-
-        // FIXME: Use io::Writer instead of calling libc directly.
-        fwrite(source, 1, len, emit_stream);
-        fclose(emit_stream);
+        var writer: Writer = dynamic FileWriter.new(&file);
+        writer.write_all(source);
     }
 }

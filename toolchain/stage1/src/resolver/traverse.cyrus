@@ -194,9 +194,13 @@ fn resolve_toplevel_stmt(
     return out;
 }
 
-/// Resolves a statement nested inside a function, block, or control-flow
-/// construct. Reports `Invalid statement` for declarations that may only
-/// appear at the top level.
+/// Resolves a statement nested inside a:
+///
+/// - function
+/// - block
+/// - control-flow
+///
+/// construct.
 fn resolve_stmt(
     ctx: TraverseContext*,
     program: const ast::ASTProgram*,
@@ -379,8 +383,8 @@ fn resolve_ident(
     return .None;
 }
 
-/// Resolves a multi-segment module import path (e.g. `a::b::c`) to the
-/// symbol it names.
+/// Resolves a multi-segment module import path
+/// (e.g. `a::b::c`) to the symbol it names.
 fn resolve_module_import(
     ctx: TraverseContext*,
     program: const ast::ASTProgram*,
@@ -665,7 +669,7 @@ fn segment_span_at(segments: const Vec<ast::ASTModuleSegment>*, index: usize) Sp
     return first_segment_span(segments);
 }
 
-/* ************* Expression node dispatch ************* */
+/* ************* Expressions ************* */
 
 /// Resolves a child expression node id to its typed expression.
 fn resolve_expr_node(
