@@ -12,6 +12,12 @@ import parser::ast;
 
 /* ************* Identifiers ************* */
 
+pub type InstId = usize;
+pub type ExprId = usize;
+pub type StmtId = usize;
+pub type BlockId = usize;
+pub type ScopeId = usize;
+
 pub type GenericParamId = usize;
 pub type InferVarId = usize;
 pub type SymbolId = usize;
@@ -29,6 +35,134 @@ pub type MonomorphId = usize;
 pub type FuncDeclId = usize;
 pub type EnumDeclId = usize;
 pub type VarDeclId = usize;
+
+pub enum DeclId {
+    Interface(InterfaceDeclId),
+    GlobalVar(GlobalVarDeclId),
+    Typedef(TypedefDeclId),
+    Method(MethodDeclId),
+    Struct(StructDeclId),
+    Union(UnionDeclId),
+    Func(FuncDeclId),
+    Enum(EnumDeclId),
+    Var(VarDeclId),
+
+    [[inline]]
+    pub fn as_type_decl_id(self: const Self*) Option<TypeDeclId> {
+        switch (*self) {
+            case .Struct(id) => return .Some(.Struct(id));
+            case .Enum(id) => return .Some(.Enum(id));
+            case .Union(id) => return .Some(.Union(id));
+            case .Interface(id) => return .Some(.Interface(id));
+            case .Typedef(id) => return .Some(.Typedef(id));
+            case .Func | .Method | .GlobalVar | .Var => return .None;
+        }
+    }
+
+    [[inline]]
+    pub fn is_var(self: const Self*) bool {
+        switch (*self) {
+            case .Var => return true;
+            else => return false;
+        }
+    }
+
+    [[inline]]
+    pub fn is_global_var(self: const Self*) bool {
+        switch (*self) {
+            case .GlobalVar => return true;
+            else => return false;
+        }
+    }
+
+    [[inline]]
+    pub fn is_var_or_global_var(self: const Self*) bool {
+        switch (*self) {
+            case .Var | .GlobalVar => return true;
+            else => return false;
+        }
+    }
+
+    [[inline]]
+    pub fn is_func(self: const Self*) bool {
+        switch (*self) {
+            case .Func => return true;
+            else => return false;
+        }
+    }
+
+    [[inline]]
+    pub fn as_struct(self: const Self*) Option<StructDeclId> {
+        switch (*self) {
+            case .Struct(id) => return .Some(id);
+            else => return .None;
+        }
+    }
+
+    [[inline]]
+    pub fn as_enum(self: const Self*) Option<EnumDeclId> {
+        switch (*self) {
+            case .Enum(id) => return .Some(id);
+            else => return .None;
+        }
+    }
+
+    [[inline]]
+    pub fn as_union(self: const Self*) Option<UnionDeclId> {
+        switch (*self) {
+            case .Union(id) => return .Some(id);
+            else => return .None;
+        }
+    }
+
+    [[inline]]
+    pub fn as_func(self: const Self*) Option<FuncDeclId> {
+        switch (*self) {
+            case .Func(id) => return .Some(id);
+            else => return .None;
+        }
+    }
+
+    [[inline]]
+    pub fn as_method(self: const Self*) Option<MethodDeclId> {
+        switch (*self) {
+            case .Method(id) => return .Some(id);
+            else => return .None;
+        }
+    }
+
+    [[inline]]
+    pub fn as_interface(self: const Self*) Option<InterfaceDeclId> {
+        switch (*self) {
+            case .Interface(id) => return .Some(id);
+            else => return .None;
+        }
+    }
+
+    [[inline]]
+    pub fn as_global_var(self: const Self*) Option<GlobalVarDeclId> {
+        switch (*self) {
+            case .GlobalVar(id) => return .Some(id);
+            else => return .None;
+        }
+    }
+
+    [[inline]]
+    pub fn as_var(self: const Self*) Option<VarDeclId> {
+        switch (*self) {
+            case .Var(id) => return .Some(id);
+            else => return .None;
+        }
+    }
+
+    [[inline]]
+    pub fn as_typedef(self: const Self*) Option<TypedefDeclId> {
+        switch (*self) {
+            case .Typedef(id) => return .Some(id);
+            else => return .None;
+        }
+    }
+}
 
 [[inline]]
 pub fn decl_id_key(decl_id: DeclId) usize {
@@ -3004,134 +3138,6 @@ pub struct Bound {
 }
 
 /* ************* Declarations ************* */
-
-pub enum DeclId {
-    Interface(InterfaceDeclId),
-    GlobalVar(GlobalVarDeclId),
-    Typedef(TypedefDeclId),
-    Method(MethodDeclId),
-    Struct(StructDeclId),
-    Union(UnionDeclId),
-    Func(FuncDeclId),
-    Enum(EnumDeclId),
-    Var(VarDeclId),
-
-    [[inline]]
-    pub fn as_type_decl_id(self: const Self*) Option<TypeDeclId> {
-        switch (*self) {
-            case .Struct(id) => return .Some(.Struct(id));
-            case .Enum(id) => return .Some(.Enum(id));
-            case .Union(id) => return .Some(.Union(id));
-            case .Interface(id) => return .Some(.Interface(id));
-            case .Typedef(id) => return .Some(.Typedef(id));
-            case .Func | .Method | .GlobalVar | .Var => return .None;
-        }
-    }
-
-    [[inline]]
-    pub fn is_var(self: const Self*) bool {
-        switch (*self) {
-            case .Var => return true;
-            else => return false;
-        }
-    }
-
-    [[inline]]
-    pub fn is_global_var(self: const Self*) bool {
-        switch (*self) {
-            case .GlobalVar => return true;
-            else => return false;
-        }
-    }
-
-    [[inline]]
-    pub fn is_var_or_global_var(self: const Self*) bool {
-        switch (*self) {
-            case .Var | .GlobalVar => return true;
-            else => return false;
-        }
-    }
-
-    [[inline]]
-    pub fn is_func(self: const Self*) bool {
-        switch (*self) {
-            case .Func => return true;
-            else => return false;
-        }
-    }
-
-    [[inline]]
-    pub fn as_struct(self: const Self*) Option<StructDeclId> {
-        switch (*self) {
-            case .Struct(id) => return .Some(id);
-            else => return .None;
-        }
-    }
-
-    [[inline]]
-    pub fn as_enum(self: const Self*) Option<EnumDeclId> {
-        switch (*self) {
-            case .Enum(id) => return .Some(id);
-            else => return .None;
-        }
-    }
-
-    [[inline]]
-    pub fn as_union(self: const Self*) Option<UnionDeclId> {
-        switch (*self) {
-            case .Union(id) => return .Some(id);
-            else => return .None;
-        }
-    }
-
-    [[inline]]
-    pub fn as_func(self: const Self*) Option<FuncDeclId> {
-        switch (*self) {
-            case .Func(id) => return .Some(id);
-            else => return .None;
-        }
-    }
-
-    [[inline]]
-    pub fn as_method(self: const Self*) Option<MethodDeclId> {
-        switch (*self) {
-            case .Method(id) => return .Some(id);
-            else => return .None;
-        }
-    }
-
-    [[inline]]
-    pub fn as_interface(self: const Self*) Option<InterfaceDeclId> {
-        switch (*self) {
-            case .Interface(id) => return .Some(id);
-            else => return .None;
-        }
-    }
-
-    [[inline]]
-    pub fn as_global_var(self: const Self*) Option<GlobalVarDeclId> {
-        switch (*self) {
-            case .GlobalVar(id) => return .Some(id);
-            else => return .None;
-        }
-    }
-
-    [[inline]]
-    pub fn as_var(self: const Self*) Option<VarDeclId> {
-        switch (*self) {
-            case .Var(id) => return .Some(id);
-            else => return .None;
-        }
-    }
-
-    [[inline]]
-    pub fn as_typedef(self: const Self*) Option<TypedefDeclId> {
-        switch (*self) {
-            case .Typedef(id) => return .Some(id);
-            else => return .None;
-        }
-    }
-}
 
 pub struct MethodDeclEntry {
     pub name: String,

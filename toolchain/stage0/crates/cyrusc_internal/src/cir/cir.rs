@@ -16,7 +16,7 @@ use cyrusc_tokens::literals::{IntLiteralKind, Integer};
 use cyrusc_typed_ast::{
     LabelID, VTableID,
     builtins::TypedBuiltinSpec,
-    decls::{FuncDeclID, MethodDeclID, MethodDecls, MonomorphID},
+    decls::{MethodDecls, MonomorphID},
     types::PlainType,
 };
 use fx_hash::FxHashMap;
@@ -131,7 +131,7 @@ pub struct CIRLambda {
 #[derive(Debug, Clone)]
 pub struct CIRFunctionAddress {
     pub irv_id: IRValueID,
-    pub ty: CIRType
+    pub ty: CIRType,
 }
 
 #[derive(Debug, Clone)]

@@ -2,6 +2,7 @@
 // Copyright (c) 2026 The Cyrus Language
 
 import std::mem::arena{ArenaAllocator};
+import std::io{Writer, StdoutWriter};
 import std::mem{Allocator};
 import std::errors{ErrorOr};
 import std::path{Path};
@@ -9,6 +10,7 @@ import std::os{File};
 
 import .::index{CompilerContext};
 import parser::ast{ASTProgram};
+import parser::dump{ASTDump};
 import diags{compile_error};
 import tokens{SourceTokens};
 import source{Source};
@@ -83,5 +85,13 @@ pub struct LexicalContext {
         
         self->context->render_diags();
         return result;
+    }
+
+    /// Driver handler responsible for dumping the parsed AST.
+    pub fn dump_ast(self: const Self*, program: ASTProgram) {
+        const writer: Writer = dynamic StdoutWriter.new();
+
+        var dump = ASTDump.new(program, writer);
+        dump.dump();
     }
 }

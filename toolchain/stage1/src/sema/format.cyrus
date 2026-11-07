@@ -53,6 +53,7 @@ pub fn format_sema_type(
             var type_name = format_sema_type(allocator, tables, array_type.element_type);
             out.push_str(type_name.as_str_const());
             type_name.free();
+            
             out.push_str("[");
 
             switch (array_type.capacity) {

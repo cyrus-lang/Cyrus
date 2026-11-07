@@ -756,7 +756,10 @@ pub struct Lexer {
     }
 
     fn skip_comments(self: Self*) {
-        while (!self->is_eof() && self->cur() == '/' && (self->peek() == '/' || self->peek() == '*')) {
+        while (!self->is_eof() && 
+            self->cur() == '/' && 
+            (self->peek() == '/' || self->peek() == '*'))
+        {
             const loc = self->loc();
 
             // Single Line
