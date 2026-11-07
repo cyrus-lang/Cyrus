@@ -469,11 +469,9 @@ impl<'ll> CodeGenIRBuilder<'ll> {
 
     pub(crate) fn emit_implicit_cast(&self, target_type: &CIRType, rvalue: InternalValue<'ll>) -> InternalValue<'ll> {
         let ty = self.emit_type(target_type.clone());
-        let casted = self.emit_cast(ty, rvalue);
-        InternalValue::new(
-            target_type.clone(),
-            InternalValueKind::RValue(casted.try_into().unwrap()),
-        )
+        let cast = self.emit_cast(ty, rvalue);
+
+        InternalValue::new(target_type.clone(), InternalValueKind::RValue(cast.try_into().unwrap()))
     }
 
     fn emit_array(&mut self, array: &CIRArrayExpr) -> InternalValue<'ll> {
@@ -933,10 +931,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
             (BasicValueEnum::IntValue(lhs), BasicValueEnum::IntValue(rhs)) => {
                 let shift_value = self.llvm_builder.build_left_shift(lhs, rhs, "lshift").unwrap();
 
-                InternalValue::new(
-                    lhs_rvalue.ty.clone(),
-                    InternalValueKind::RValue(shift_value.into()),
-                )
+                InternalValue::new(lhs_rvalue.ty.clone(), InternalValueKind::RValue(shift_value.into()))
             }
             _ => unreachable!(),
         }
@@ -949,10 +944,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
 
                 let shift_value = self.llvm_builder.build_right_shift(lhs, rhs, signed, "rshift").unwrap();
 
-                InternalValue::new(
-                    lhs_rvalue.ty.clone(),
-                    InternalValueKind::RValue(shift_value.into()),
-                )
+                InternalValue::new(lhs_rvalue.ty.clone(), InternalValueKind::RValue(shift_value.into()))
             }
             _ => unreachable!(),
         }
@@ -2191,18 +2183,33 @@ impl<'ll> CodeGenIRBuilder<'ll> {
                 BasicValueEnum::PointerValue(self.llvm_ctx.ptr_type(AddressSpace::default()).const_null())
             }
             CIRLiteralKind::Integer(value, _) => {
-                let int_type = ty.into_int_type();
-                let bit_width = int_type.get_bit_width() as usize;
+                if ty.is_int_type() {
+                    let int_type = ty.into_int_type();
+                    let bit_width = int_type.get_bit_width() as usize;
 
-                let num_words = (bit_width + 63) / 64;
-                let full_value = value.as_int::<u128>();
+                    let num_words = (bit_width + 63) / 64;
+                    let full_value = value.as_int::<u128>();
 
-                let mut words = Vec::with_capacity(num_words);
-                for i in 0..num_words {
-                    words.push((full_value >> (i * 64)) as u64);
+                    let mut words = Vec::with_capacity(num_words);
+                    for i in 0..num_words {
+                        words.push((full_value >> (i * 64)) as u64);
+                    }
+
+                    BasicValueEnum::IntValue(int_type.const_int_arbitrary_precision(&words))
+                } else if ty.is_pointer_type() {
+                    let target_data = self.llvm_target_machine.get_target_data();
+                    let ptr_sized_int_type = self.llvm_ctx.ptr_sized_int_type(&target_data, None);
+
+                    let int_value = ptr_sized_int_type.const_int(value.as_int::<u64>(), false);
+
+                    BasicValueEnum::PointerValue(
+                        self.llvm_builder
+                            .build_int_to_ptr(int_value, ty.into_pointer_type(), "int_to_ptr")
+                            .unwrap(),
+                    )
+                } else {
+                    unreachable!()
                 }
-
-                BasicValueEnum::IntValue(int_type.const_int_arbitrary_precision(&words))
             }
             CIRLiteralKind::CString(value) => self.emit_const_str(value.clone()),
             CIRLiteralKind::ByteString(value) => self.emit_byte_string(value.clone()),

@@ -2392,7 +2392,13 @@ impl<'a> CIRLower<'a> {
     fn lower_literal(&mut self, literal: &TypedLiteralExpr) -> CIRExprKind {
         let kind = match &literal.kind {
             LiteralKind::Integer(value, ..) => {
-                let is_signed = literal.ty.clone().unwrap().as_plain_type().unwrap().is_signed();
+                let is_signed = literal
+                    .ty
+                    .clone()
+                    .unwrap()
+                    .as_plain_type()
+                    .map(|plain_type| plain_type.is_signed())
+                    .unwrap_or(false);
 
                 CIRLiteralKind::Integer(*value, is_signed)
             }

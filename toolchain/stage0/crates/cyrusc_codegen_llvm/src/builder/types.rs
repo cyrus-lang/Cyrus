@@ -470,7 +470,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         let enum_type = self.tctx.get_enum(type_id);
 
         if enum_type.is_scalar_optimizable() {
-            let llvm_basic_type = self.emit_repr_c_enum_ty(&enum_type);
+            let llvm_basic_type = self.emit_repr_c_enum_type(&enum_type);
             self.type_cache.insert_enum(type_id, llvm_basic_type);
             return llvm_basic_type;
         } else {
@@ -616,7 +616,7 @@ impl<'ll> CodeGenIRBuilder<'ll> {
         (payload_buffer_ty, aligned_size, max_payload_align)
     }
 
-    fn emit_repr_c_enum_ty(&self, enum_type: &CIREnumType) -> BasicTypeEnum<'ll> {
+    fn emit_repr_c_enum_type(&self, enum_type: &CIREnumType) -> BasicTypeEnum<'ll> {
         let cir_tag_type = enum_type.tag_type_or_infer_or_default();
         self.emit_type(*cir_tag_type.clone()).try_into().unwrap()
     }
