@@ -1,0 +1,10 @@
+// @stdout: 13
+
+import std::libc{printf};
+
+pub fn main() {
+    var a = 5;
+    const x = (a = 3) + 10;
+
+    printf("%d\n", x);
+}

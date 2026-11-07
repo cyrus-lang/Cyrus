@@ -1,0 +1,20 @@
+// @stdout: 30 10 40 30
+
+import std::libc{printf};
+
+pub fn main() {
+    var a: int32 = 10;
+    var b: int32 = 20;
+
+    a += b;
+    printf("%d ", a);
+
+    b -= 10;
+    printf("%d ", b);
+
+    a = a + b;
+    printf("%d ", a);
+
+    b = a - b;
+    printf("%d\n", b);
+}

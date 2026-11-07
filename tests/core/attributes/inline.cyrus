@@ -1,0 +1,14 @@
+[[inline]]
+fn foo() {}
+
+[[inline(always)]]
+fn bar() {}
+
+[[inline(never)]]
+fn baz() {}
+
+pub fn main() {
+    foo();
+    bar();
+    baz();
+}

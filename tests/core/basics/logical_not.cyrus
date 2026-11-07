@@ -1,0 +1,16 @@
+// @stdout: 0 1 1 1 0 1 0 1
+
+import std::libc{printf};
+
+pub fn main() {
+    var x: int32 = 4;
+
+    printf("%d ", !x);
+    printf("%d ", !!x);
+    printf("%d ", !0);
+    printf("%d ", !0 == 1);
+    printf("%d ", !1);
+    printf("%d ", !1 == 0);
+    printf("%d ", !(-1));
+    printf("%d\n", !(-1) == 0);
+}

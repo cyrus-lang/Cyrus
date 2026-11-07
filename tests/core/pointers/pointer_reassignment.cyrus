@@ -1,0 +1,18 @@
+// @stdout: 100 200 300
+
+import std::libc{printf};
+
+pub fn main() {
+    var x: int32 = 100;
+    var ptr: int32* = &x;
+
+    printf("%d ", *ptr);
+
+    var y: int32 = 200;
+    ptr = &y;
+    printf("%d ", *ptr);
+
+    var z: int32 = 300;
+    ptr = &z;
+    printf("%d\n", *ptr);
+}

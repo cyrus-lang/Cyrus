@@ -1,0 +1,29 @@
+// @stdout: Add(x: 5, y: 10)\nMul(z: 20)\nConstant: 100
+
+import std::libc{printf};
+
+enum Expression {
+    Add(struct {x: int32, y: int32}),
+    Mul(struct {z: int32}),
+    Constant(int32)
+}
+
+fn evaluate(expr: Expression) {
+    switch (expr) {
+        case .Add(op) => {
+            printf("Add(x: %d, y: %d)\n", op.x, op.y);
+        }
+        case .Mul(op) => {
+            printf("Mul(z: %d)\n", op.z);
+        }
+        case .Constant(val) => {
+            printf("Constant: %d\n", val);
+        }
+    }
+}
+
+pub fn main() {
+    evaluate(Expression.Add(struct { x: 5, y: 10 }));
+    evaluate(Expression.Mul(struct { z: 20 }));
+    evaluate(Expression.Constant(100));
+}

@@ -1,0 +1,19 @@
+// @stdout: Cyrus
+
+import std::mem::libc{LibcAllocator};
+import std::mem{Allocator};
+import std::string{String};
+import std::slices{Slice};
+import std::libc{printf};
+
+pub fn main() {
+    const allocator: Allocator = dynamic LibcAllocator.new();
+
+    var buffer = b"Cyrus";
+    const slice = Slice.new(&buffer[0], 4 + 1);
+    
+    var str = String.from_slice(allocator, slice);
+    defer str.free();
+
+    printf("%s\n", str.as_str_const());
+}

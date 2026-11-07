@@ -1,0 +1,14 @@
+// @stdout: 😇 🚀 α
+
+import std::libc{printf};
+
+pub fn main() {
+    const smile: uint8* = "😇";
+    printf("%s", smile);
+
+    const rocket: uint8* = " \u{1F680}";
+    printf("%s", rocket);
+    
+    const greek_alpha: uint8* = " \u03B1";
+    printf("%s", greek_alpha);
+}

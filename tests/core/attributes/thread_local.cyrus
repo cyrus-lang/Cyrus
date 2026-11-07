@@ -1,0 +1,6 @@
+[[thread_local]]
+static var foo: int32 = 5;
+
+pub fn main() {
+    foo = 10;
+}

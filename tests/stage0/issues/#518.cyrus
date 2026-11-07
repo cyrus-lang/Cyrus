@@ -1,3 +1,5 @@
+// @stdout: alias1: 7
+
 import std::libc{printf};
 
 struct X {

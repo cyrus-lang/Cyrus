@@ -1,0 +1,29 @@
+// @stdout: OK(42)\nERR(error)\nPending\n
+
+import std::libc{printf};
+
+enum Result<T, E> {
+    Ok(T),
+    Err(E),
+    Pending
+}
+
+fn display_result(r: Result<int32, const uint8*>) {
+    switch (r) {
+        case .Ok(value) => {
+            printf("OK(%d)\n", value);
+        }
+        case .Err(msg) => {
+            printf("ERR(%s)\n", msg);
+        }
+        case .Pending => {
+            printf("Pending\n");
+        }
+    }
+}
+
+pub fn main() {
+    display_result(Result.Ok(42));
+    display_result(Result.Err("error"));
+    display_result(Result.Pending);
+}

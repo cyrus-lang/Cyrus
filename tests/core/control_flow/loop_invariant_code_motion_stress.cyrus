@@ -1,0 +1,16 @@
+// @stdout: 5050
+
+import std::libc{printf};
+
+pub fn main() {
+    var sum: int32 = 0;
+    var factor: int32 = 10;
+    var i: int32 = 1;
+    while (i <= 100) {
+        // invariant calculation relative to loop
+        var invar: int32 = factor * 0 + i;
+        sum = sum + invar;
+        i = i + 1;
+    }
+    printf("%d\n", sum);
+}

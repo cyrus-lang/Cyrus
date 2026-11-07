@@ -1,0 +1,74 @@
+// @stdout: int 11 20 int 16.500000 99 11 a b c 16 16
+
+import std::libc{printf};
+
+union Slot<T> {
+    raw: int64,
+    val: T,
+
+    pub fn put(self: Self*, v: T) {
+        self->val = v;
+    }
+
+    pub fn get(self: const Self*) T {
+        return self->val;
+    }
+}
+
+struct Wrapper<T> {
+    pub slot: Slot<T>,
+    pub name: const uint8*,
+
+    pub fn new(v: T, name: const uint8*) Self {
+        return Self { slot: Slot { val: v }, name };
+    }
+
+    pub fn peek(self: const Self*) T {
+        return self->slot.get();
+    }
+
+    pub fn set(self: Self*, v: T) {
+        self->slot.put(v);
+    }
+
+    pub fn map<U>(self: const Self*, f: fn(T) U) Wrapper<U> {
+        return Wrapper<U> {
+            slot: Slot<U> { val: f(self->slot.get()) },
+            name: self->name,
+        };
+    }
+}
+
+fn pair_up<T, U>(a: T, b: U) (Wrapper<T>, Wrapper<U>) {
+    return (Wrapper.new(a, "first"), Wrapper.new(b, "second"));
+}
+
+fn scale(x: int32) float64 {
+    return @cast(float64, x) * 1.5;
+}
+
+pub fn main() {
+    const w = Wrapper.new(11, "int");
+    printf("%s %d ", w.name, w.peek());
+
+    var m = w;
+    m.set(20);
+    printf("%d ", m.peek());
+
+    const wf = w.map(scale);
+    printf("%s %f ", wf.name, wf.peek());
+
+    const (p, q) = pair_up(99, 11);
+    printf("%d %d ", p.peek(), q.peek());
+
+    const tags = Wrapper<const uint8*>[3] {
+        Wrapper.new("a", "t1"),
+        Wrapper.new("b", "t2"),
+        Wrapper.new("c", "t3"),
+    };
+    for (var i = 0; i < 3; i += 1) {
+        printf("%s ", tags[i].peek());
+    }
+
+    printf("%d %d\n", @sizeof(Wrapper<float64>), @sizeof(Wrapper<const uint8*>));
+}

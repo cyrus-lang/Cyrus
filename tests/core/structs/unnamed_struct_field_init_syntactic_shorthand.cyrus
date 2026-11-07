@@ -1,0 +1,11 @@
+// @stdout: 10, 20
+
+import std::libc{printf};
+
+pub fn main() {
+    const x = 10;
+    const y = 20;
+
+    const s = struct { x, y };
+    printf("%d, %d\n", s.x, s.y);
+}

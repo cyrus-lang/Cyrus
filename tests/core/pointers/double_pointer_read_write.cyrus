@@ -1,0 +1,17 @@
+// @stdout: 1\n10\n2
+
+import std::libc{printf};
+
+pub fn main() {
+    var x: int32 = 1;
+    var y: int32 = 2;
+
+    var px: int32* = &x;
+    var ppx: int32** = &px;
+
+    printf("%d\n", **ppx);
+    **ppx = 10;
+    printf("%d\n", x);
+    *ppx = &y;
+    printf("%d\n", **ppx);
+}

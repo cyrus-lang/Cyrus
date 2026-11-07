@@ -1,0 +1,59 @@
+// @stdout: Cyrus 32 | Choice -3 | Cyrus 52 | Cyrus 52 |
+
+import std::libc{printf};
+
+interface MyConstraint {
+    fn foo(self: Self*, x: int32) int32;
+    fn bar(self: Self*) uint8*;
+}
+
+struct Object : MyConstraint {
+    name: uint8*,
+
+    pub fn new(name: uint8*) Self {
+        return Self { name };
+    }
+
+    pub fn foo(self: Self*, x: int32) int32 {
+        return (x * 10) + 2;
+    }
+
+    pub fn bar(self: Self*) uint8* {
+        return self->name;
+    }
+}
+
+enum Choice : MyConstraint { 
+    A,
+    B,
+
+    pub fn foo(self: Self*, x: int32) int32 {
+        return -x;
+    }
+
+    pub fn bar(self: Self*) uint8* {
+        return "Choice";
+    }
+}
+
+// static-dispatch
+fn constraint_bar<T: MyConstraint>(object: T) {
+    printf("%s %d | ", object.bar(), object.foo(3));
+}
+
+// dynamic-dispatch
+fn dynamic_interface(object: MyConstraint) {
+    printf("%s %d | ", object.bar(), object.foo(5));
+}
+
+pub fn main() {
+    const object1 = Object.new("Cyrus");
+    const object2 = Choice.B;
+
+    constraint_bar(object1);
+    constraint_bar(object2);
+
+    const dynamic1: MyConstraint = dynamic object1;
+    dynamic_interface(dynamic1);
+    dynamic_interface(dynamic object1);
+}

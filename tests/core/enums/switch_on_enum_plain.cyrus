@@ -1,0 +1,31 @@
+// @stdout: abc
+
+import std::libc{printf};
+
+enum PlainEnum {
+    A,
+    B,
+    C
+}
+
+fn display_plain_enum(value: PlainEnum) {
+	switch (value) {
+		case .A => {
+			printf("a");
+		}
+		case .B => {
+			printf("b");
+		}
+		case .C => {
+			printf("c");
+		}
+	}
+}
+
+pub fn main() {
+	const x = PlainEnum.A;
+
+    display_plain_enum(x);
+    display_plain_enum(.B);
+    display_plain_enum(.C);
+}

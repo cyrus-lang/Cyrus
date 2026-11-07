@@ -1,0 +1,15 @@
+// @stdout: 1337 42
+
+import std::libc{printf};
+
+union PunUnion {
+    a: int32,
+    b: int32,
+}
+
+pub fn main() {
+    var u: PunUnion = PunUnion { a: 1337 };
+    printf("%d ", u.b);
+    u.b = 42;
+    printf("%d\n", u.a);
+}

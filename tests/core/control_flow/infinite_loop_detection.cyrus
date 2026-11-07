@@ -1,0 +1,16 @@
+// @stdout: 3
+
+import std::libc{printf};
+
+pub fn main() {
+    var x = 0;
+
+    while (true) {
+        if (x == 3) {
+            break;
+        }
+        x += 1;
+    }
+
+    printf("%d\n", x);
+}

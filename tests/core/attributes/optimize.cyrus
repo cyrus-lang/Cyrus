@@ -1,0 +1,10 @@
+[[opt(size)]]
+fn foo() {}
+
+[[opt(none)]]
+fn bar() {}
+
+pub fn main() {
+    foo();
+    bar();
+}

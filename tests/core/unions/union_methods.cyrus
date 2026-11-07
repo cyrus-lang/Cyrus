@@ -1,0 +1,17 @@
+// @stdout: value=42
+
+import std::libc{printf};
+
+union Value {
+    int_val: int32,
+    float_val: float64,
+
+    pub fn display(self: const Self*) {
+        printf("value=%d\n", self->int_val);
+    }
+}
+
+pub fn main() {
+    var v = Value { int_val: 42 };
+    v.display();
+}

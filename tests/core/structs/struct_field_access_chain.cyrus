@@ -1,0 +1,22 @@
+// @stdout: 1 2
+
+import std::libc{printf};
+
+struct Inner {
+    pub y: int32,
+}
+
+struct Outer {
+    pub inner: Inner,
+    pub x: int32,
+}
+
+pub fn main() {
+    var s: Outer = undefined;
+    s.x = 1;
+    s.inner.y = 2;
+
+    var p: Outer* = &s;
+    printf("%d ", p->x);
+    printf("%d\n", p->inner.y);
+}

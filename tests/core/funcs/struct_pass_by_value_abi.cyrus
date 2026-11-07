@@ -1,0 +1,21 @@
+// @stdout: 999 888
+
+import std::libc{printf};
+
+struct Data {
+    pub val1: int32,
+    pub val2: int32,
+}
+
+fn process_data(d: Data) Data {
+    return Data {
+        val1: d.val1 * 9,
+        val2: d.val2 * 8,
+    };
+}
+
+pub fn main() {
+    var input: Data = Data { val1: 111, val2: 111 };
+    var result: Data = process_data(input);
+    printf("%d %d\n", result.val1, result.val2);
+}

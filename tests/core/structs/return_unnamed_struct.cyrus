@@ -1,0 +1,12 @@
+// @stdout: Taha 18
+
+import std::libc{printf};
+
+fn new_person(name: uint8*, age: uint32) struct { name: uint8*, age: uint32 } {
+    return struct { name, age };
+}
+
+pub fn main() {
+    const person = new_person("Taha", 18);
+    printf("%s %d\n", person.name, person.age);
+}

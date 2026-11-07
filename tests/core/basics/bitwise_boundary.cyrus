@@ -1,0 +1,12 @@
+// @stdout: and=0, or=4294967295, xor=4294966294, not=4294966295, and_m1=1000, or_0=1000, xor_0=1000, xor_m1=4294966295, and_f0=224
+
+import std::libc{printf};
+
+pub fn main() {
+    const x: uint32 = 1000;
+
+    printf("and=%u, or=%u, xor=%u, not=%u, ", x & 0, x | 0xFFFFFFFF, x ^ 0xFFFFFFFE, ~x);
+    printf("and_m1=%u, or_0=%u, xor_0=%u, ", x & 0xFFFFFFFF, x | 0, x ^ 0);
+    printf("xor_m1=%u, ", x ^ 0xFFFFFFFF);
+    printf("and_f0=%u\n", x & 0xF0);
+}

@@ -1,0 +1,6 @@
+[[nosanitize("address")]]
+fn foo() {}
+
+pub fn main() {
+    foo();
+}
