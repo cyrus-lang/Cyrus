@@ -3,9 +3,9 @@
 
 import std::collections::hash_map{HashMap};
 import std::hash{hash_usize, eq_usize};
+import std::mem{Allocator, alloc_init};
 import std::collections{Vec};
 import std::option{Option};
-import std::mem{Allocator, alloc_init};
 import std::string{String};
 
 import abi::helpers{align_offset, extract_typedef_inner_type};
@@ -19,7 +19,6 @@ import cir;
 
 /* ************* Type Context ************* */
 
-/// Owns every ABITypeLayout produced during ABI computation.
 pub struct TypeContext {
     pub target_info: TargetInfo,
     tables: const DeclTables*,
@@ -41,8 +40,8 @@ pub struct TypeContext {
             struct_layouts: HashMap.with_hasher(allocator, 64, hash_usize, eq_usize),
             union_layouts: HashMap.with_hasher(allocator, 64, hash_usize, eq_usize),
             enum_layouts: HashMap.with_hasher(allocator, 64, hash_usize, eq_usize),
-            owned_layouts: Vec.new(allocator),
             enum_tags: HashMap.with_hasher(allocator, 64, hash_usize, eq_usize),
+            owned_layouts: Vec.new(allocator),
             target_info,
             registry,
             tables,
@@ -80,8 +79,8 @@ pub struct TypeContext {
         const layout = self->layout_of(ty);
 
         switch (ty->as_plain_type()) {
-            case .Some(p) => {
-                if (p.is_integer_or_bool()) {
+            case .Some(plain) => {
+                if (plain.is_integer_or_bool()) {
                     return .Some(@cast(usize, layout->size) * 8);
                 }
 
@@ -125,9 +124,9 @@ pub struct TypeContext {
                             else => {}
                         }
 
-                        const decl = self->tables->structs.get_const(struct_decl_id).unwrap();
+                        const struct_decl = self->tables->structs.get_const(struct_decl_id).unwrap();
 
-                        const struct_layout = self->compute_struct_layout(decl);
+                        const struct_layout = self->compute_struct_layout(struct_decl);
                         self->struct_layouts.insert(struct_decl_id, @cast(uintptr, struct_layout));
                         return struct_layout;
                     }
@@ -137,9 +136,9 @@ pub struct TypeContext {
                             else => {}
                         }
 
-                        const decl = self->tables->unions.get_const(union_decl_id).unwrap();
+                        const union_decl = self->tables->unions.get_const(union_decl_id).unwrap();
 
-                        const union_layout = self->compute_union_layout(decl);
+                        const union_layout = self->compute_union_layout(union_decl);
                         self->union_layouts.insert(union_decl_id, @cast(uintptr, union_layout));
                         return union_layout;
                     }
@@ -149,32 +148,33 @@ pub struct TypeContext {
                             else => {}
                         }
 
-                        const decl = self->tables->enums.get_const(enum_decl_id).unwrap();
+                        const enum_decl = self->tables->enums.get_const(enum_decl_id).unwrap();
 
-                        const enum_layout = self->compute_enum_layout(decl);
+                        const enum_layout = self->compute_enum_layout(enum_decl);
                         self->enum_layouts.insert(enum_decl_id, @cast(uintptr, enum_layout));
                         return enum_layout;
                     }
                     case .Typedef => {
-                        const resolved_typedef_inner = extract_typedef_inner_type(self->tables, inner);
+                        const typedef_inner = extract_typedef_inner_type(self->tables, inner);
 
-                        if (resolved_typedef_inner == inner) {
+                        // FIXME: Cannot compare SemaType like this
+                        if (typedef_inner == inner) {
                             @panic("typedef cycle in abi layout");
                         }
 
-                        return self->layout_of(resolved_typedef_inner);
+                        return self->layout_of(typedef_inner);
                     }
-            case .Interface => {
-                    const pointer_size = self->target_info.pointer_size();
+                    case .Interface => {
+                        const pointer_size = self->target_info.pointer_size();
 
-                    return self->own_layout(ABITypeLayout.normal(
-                        pointer_size * 2,
-                        pointer_size,
-                        Vec.new(self->allocator())
-                    ));
+                        return self->own_layout(ABITypeLayout.normal(
+                            pointer_size * 2,
+                            pointer_size,
+                            Vec.new(self->allocator())
+                        ));
+                    }
                 }
             }
-        }
 
             case .Pointer => {
                 const pointer_size = self->target_info.pointer_size();
@@ -245,10 +245,10 @@ pub struct TypeContext {
 
             else => {
                 var type_str = format_sema_type(self->allocator(), self->tables, ty);
-                var msg = String.from_str(self->allocator(), "unresolved type in abi layout: ");
-                msg.push_str(type_str.as_str_const());
+                var mesg = String.from_str(self->allocator(), "unresolved type in abi layout: ");
+                mesg.push_str(type_str.as_str_const());
                 type_str.free();
-                @panic(msg.as_str_const());
+                @panic(mesg.as_str_const());
             }
         }
     }
@@ -279,6 +279,7 @@ pub struct TypeContext {
                 field_types.free();
                 return layout;
             }
+
             case .Union(union_decl_id) => {
                 const decl = self->tables->unions.get_const(union_decl_id).unwrap();
                 var field_types: Vec<cir::SemaType> = Vec.new(self->allocator());
@@ -298,16 +299,15 @@ pub struct TypeContext {
                 field_types.free();
                 return layout;
             }
+
             case .Enum(enum_decl_id) => {
                 const enum_decl = self->tables->enums.get_const(enum_decl_id).unwrap();
+                
                 return self->compute_enum_layout_inst(enum_decl, &named->type_args);
             }
+
             case .Typedef(tyedef_decl_id) => {
                 const typedef_decl = self->tables->typedefs.get_const(tyedef_decl_id).unwrap();
-
-                if (typedef_decl->ty == null) {
-                    @panic("unresolved typedef in abi layout");
-                }
 
                 const subst = cir::substitute_sema_type_with_type_args(
                     self->allocator(),
@@ -317,6 +317,7 @@ pub struct TypeContext {
                 );
                 return self->layout_of(&subst);
             }
+
             case .Interface => {
                 const pointer_size = self->target_info.pointer_size();
 
@@ -329,24 +330,28 @@ pub struct TypeContext {
         }
     }
 
-    pub fn compute_struct_layout(self: Self*, decl: const cir::StructDecl*) ABITypeLayout* {
+    pub fn compute_struct_layout(self: Self*, struct_decl: const cir::StructDecl*) ABITypeLayout* {
         var field_types: Vec<cir::SemaType> = Vec.new(self->allocator());
 
-        for (var i: usize = 0; i < decl->fields.len(); i += 1) {
-            const field = decl->fields.get_const(i).unwrap();
+        for (var i: usize = 0; i < struct_decl->fields.len(); i += 1) {
+            const field = struct_decl->fields.get_const(i).unwrap();
             field_types.push(field->ty);
         }
 
-        const struct_layout = self->compute_fields_layout(&field_types, decl->is_packed(), decl->align);
+        const struct_layout = self->compute_fields_layout(
+            &field_types, 
+            struct_decl->is_packed(), 
+            struct_decl->align
+        );
         field_types.free();
         return struct_layout;
     }
 
-    pub fn compute_union_layout(self: Self*, decl: const cir::UnionDecl*) ABITypeLayout* {
+    pub fn compute_union_layout(self: Self*, union_decl: const cir::UnionDecl*) ABITypeLayout* {
         var field_types: Vec<cir::SemaType> = Vec.new(self->allocator());
 
-        for (var i: usize = 0; i < decl->fields.len(); i += 1) {
-            const field = decl->fields.get_const(i).unwrap();
+        for (var i: usize = 0; i < union_decl->fields.len(); i += 1) {
+            const field = union_decl->fields.get_const(i).unwrap();
             field_types.push(field->ty);
         }
 
@@ -380,7 +385,11 @@ pub struct TypeContext {
                 const padding = (effective_field_align - (running_offset % effective_field_align)) % effective_field_align;
 
                 if (padding > 0) {
-                    field_offsets.push(ABIFieldOffsetInfo.padding(field_offset_index, running_offset, padding));
+                    field_offsets.push(ABIFieldOffsetInfo.padding(
+                        field_offset_index, 
+                        running_offset, 
+                        padding
+                    ));
                     field_offset_index += 1;
                     running_offset += padding;
                 }
@@ -424,7 +433,11 @@ pub struct TypeContext {
             ));
         }
 
-        return self->own_layout(ABITypeLayout.aggregate(total_size, max_field_align, field_offsets));
+        return self->own_layout(ABITypeLayout.aggregate(
+            total_size, 
+            max_field_align, 
+            field_offsets
+        ));
     }
 
     pub fn compute_union_layout_types(self: Self*, types: const Vec<cir::SemaType>*) ABITypeLayout* {
@@ -454,7 +467,12 @@ pub struct TypeContext {
         }
 
         const total_size = align_offset(max_member_size, max_member_align);
-        return self->own_layout(ABITypeLayout.aggregate(total_size, max_member_align, member_offsets));
+
+        return self->own_layout(ABITypeLayout.aggregate(
+            total_size, 
+            max_member_align, 
+            member_offsets
+        ));
     }
 
     pub fn compute_enum_layout(self: Self*, decl: const cir::EnumDecl*) ABITypeLayout* {
@@ -615,7 +633,12 @@ pub struct TypeContext {
         var field_offsets: Vec<ABIFieldOffsetInfo> = Vec.new(self->allocator());
         var field_offset_index: uint32 = 0;
 
-        field_offsets.push(ABIFieldOffsetInfo.normal(field_offset_index, 0, 0, @cast(usize, tag_size)));
+        field_offsets.push(ABIFieldOffsetInfo.normal(
+            field_offset_index,
+            0,
+            0,
+            @cast(usize, tag_size)
+        ));
         field_offset_index += 1;
 
         if (payload_offset > tag_size) {
@@ -647,7 +670,11 @@ pub struct TypeContext {
             ));
         }
 
-        return self->own_layout(ABITypeLayout.aggregate(total_size, total_align, field_offsets));
+        return self->own_layout(ABITypeLayout.aggregate(
+            total_size, 
+            total_align, 
+            field_offsets
+        ));
     }
 
     pub fn enum_variant_tags(
@@ -684,15 +711,15 @@ pub struct TypeContext {
 
                                 if (value < 512) {
                                     switch (tags.get(i)) {
-                                        case .Some(tag_ptr) => {
-                                            *tag_ptr = @cast(uint32, value);
+                                        case .Some(tag) => {
+                                            *tag = @cast(uint32, value);
                                         }
                                         else => {}
                                     }
 
                                     switch (used.get(value)) {
-                                        case .Some(used_ptr) => {
-                                            *used_ptr = true;
+                                        case .Some(used) => {
+                                            *used = true;
                                         }
                                         else => {}
                                     }
@@ -719,16 +746,16 @@ pub struct TypeContext {
                 }
 
                 switch (tags.get(i)) {
-                    case .Some(tag_ptr) => {
-                        *tag_ptr = next_tag;
+                    case .Some(tag) => {
+                        *tag = next_tag;
                     }
                     else => {}
                 }
 
                 if (@cast(usize, next_tag) < used.len()) {
                     switch (used.get(next_tag)) {
-                        case .Some(used_ptr) => {
-                            *used_ptr = true;
+                        case .Some(used) => {
+                            *used = true;
                         }
                         else => {}
                     }
@@ -742,28 +769,6 @@ pub struct TypeContext {
 
         self->enum_tags.insert(enum_decl_id, tags);
         return self->enum_tags.get(enum_decl_id).unwrap();
-    }
-
-    pub fn free(self: Self*) {
-        const allocator = self->allocator();
-
-        for (var i: usize = 0; i < self->owned_layouts.len(); i += 1) {
-            const address = self->owned_layouts.get_const(i).unwrap();
-            const owned_layout = self->layout_at(*address);
-            owned_layout->free();
-            allocator.free(owned_layout);
-        }
-
-        const tag_values = self->enum_tags.values_data();
-        for (var i: usize = 0; i < self->enum_tags.len(); i += 1) {
-            tag_values[i].free();
-        }
-
-        self->owned_layouts.free();
-        self->enum_tags.free();
-        self->struct_layouts.free();
-        self->union_layouts.free();
-        self->enum_layouts.free();
     }
 
     fn plain_type_layout(self: Self*, plain_type: cir::PlainType) ABITypeLayout {
@@ -826,8 +831,33 @@ pub struct TypeContext {
             case .Void => return ABITypeLayout.normal(0, 1, empty_offsets);
         }
     }
+
+    pub fn free(self: Self*) {
+        const allocator = self->allocator();
+
+        for (var i: usize = 0; i < self->owned_layouts.len(); i += 1) {
+            const address = self->owned_layouts.get_const(i).unwrap();
+            const owned_layout = self->layout_at(*address);
+            owned_layout->free();
+            allocator.free(owned_layout);
+        }
+
+        // FIXME Use helper methof from HashMap instead of acessing via values_data
+        const tag_values = self->enum_tags.values_data();
+        
+        for (var i: usize = 0; i < self->enum_tags.len(); i += 1) {
+            tag_values[i].free();
+        }
+
+        self->owned_layouts.free();
+        self->enum_tags.free();
+        self->struct_layouts.free();
+        self->union_layouts.free();
+        self->enum_layouts.free();
+    }
 }
 
+[[inline]]
 fn is_tag_used(used: const Vec<bool>*, tag: uint32) bool {
     switch (used->get_const(@cast(usize, tag))) {
         case .Some(flag) => return *flag;

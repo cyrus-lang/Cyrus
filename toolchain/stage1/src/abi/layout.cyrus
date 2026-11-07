@@ -18,7 +18,12 @@ pub enum ABIFieldOffsetInfo {
     },
 
     [[inline]]
-    pub fn normal(index: uint32, offset: uint32, original_index: usize, size: usize) Self {
+    pub fn normal(
+        index: uint32, 
+        offset: uint32, 
+        original_index: usize, 
+        size: usize
+    ) Self {
         return .Normal {
             index,
             offset,
@@ -63,8 +68,12 @@ pub enum ABIFieldOffsetInfo {
 
     pub fn original_index(self: const Self*) Option<usize> {
         switch (*self) {
-            case .Normal { original_index, .. } => return .Some(original_index);
-            case .Padding => return .None;
+            case .Normal { original_index, .. } => {
+                return .Some(original_index);
+            }
+            case .Padding => {
+                return .None;
+            }
         }
     }
 }
@@ -75,12 +84,20 @@ pub struct ABITypeLayout {
     pub field_offsets: Vec<ABIFieldOffsetInfo>,
 
     [[inline]]
-    pub fn normal(size: uint32, align: uint32, field_offsets: Vec<ABIFieldOffsetInfo>) Self {
+    pub fn normal(
+        size: uint32, 
+        align: uint32, 
+        field_offsets: Vec<ABIFieldOffsetInfo>
+    ) Self {
         return Self { size, align, field_offsets };
     }
 
     [[inline]]
-    pub fn aggregate(size: uint32, align: uint32, field_offsets: Vec<ABIFieldOffsetInfo>) Self {
+    pub fn aggregate(
+        size: uint32, 
+        align: uint32, 
+        field_offsets: Vec<ABIFieldOffsetInfo>
+    ) Self {
         return Self { size, align, field_offsets };
     }
 
@@ -110,7 +127,10 @@ pub struct ABITypeLayout {
 
             switch (*entry) {
                 case .Normal { offset: field_offset, size: field_size, index, .. } => {
-                    if (offset >= field_offset && @cast(usize, offset) < ((@cast(usize, field_offset)) + field_size)) {
+                    if (offset >= field_offset &&
+                        @cast(usize, offset) < 
+                        ((@cast(usize, field_offset)) + field_size))
+                    {
                         var update = true;
 
                         switch (best_index) {
@@ -135,7 +155,10 @@ pub struct ABITypeLayout {
         return best_index;
     }
 
-    pub fn lookup_field_offset(self: const Self*, field_original_index: usize) uint32 {
+    pub fn lookup_field_offset(
+        self: const Self*, 
+        field_original_index: usize
+    ) uint32 {
         for (var i: usize = 0; i < self->field_offsets.len(); i += 1) {
             const entry = self->field_offsets.get_const(i).unwrap();
 
