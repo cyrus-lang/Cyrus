@@ -1,0 +1,394 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 The Cyrus Language
+
+import std::collections{Vec};
+import std::option{Option};
+import std::string{String};
+import std::mem{Allocator, alloc_init};
+import std::path{Path};
+import std::os;
+
+import parser::ast{ASTProgram, ASTImport, NodeId};
+import driver::lexical{LexicalContext};
+import resolver::loader{
+    resolve_import,
+    ResolverOptions,
+    ResolvedModuleFile,
+    LoaderError,
+    last_sub_module_span,
+};
+import resolver::modules{visit_key};
+import tokens{SourceTokens, Span};
+import source{SourceId};
+import diags{DiagContext};
+import resolver::diags;
+
+/// A resolved import: one edge of the module graph.
+pub struct ModuleEdge {
+    /// Span of the `import` statement that produced this edge.
+    pub span: Span,
+    /// Index of the import node inside the importer's AST.
+    pub import_node: NodeId,
+    /// Index of the target module in `ModuleGraph.nodes`.
+    pub target: usize,
+    /// Resolved filesystem information for the target.
+    pub resolved: ResolvedModuleFile,
+}
+
+/// One module in the graph.
+pub struct ModuleNode {
+    /// Canonical identity of the module (used for deduplication).
+    pub key: String,
+    /// Path used to derive the module name and for diagnostics.
+    pub file_path: String,
+    pub source_id: SourceId,
+    pub program: ASTProgram*,
+    /// Owned token stream; `.Some` exactly when `owns_program` is set.
+    pub tokens: Option<SourceTokens>,
+    pub owns_program: bool,
+    pub edges: Vec<ModuleEdge>,
+    /// Node that first discovered this module (`.None` for the entry).
+    pub parent: Option<usize>,
+    /// Import edge in the parent that discovered this module.
+    pub parent_edge: Option<usize>,
+    /// Concrete scope of this module's symbol, filled in by the resolver.
+    pub symbol: Option<usize>,
+}
+
+/// The reachable module graph obtained by discovery.
+///
+/// Discovery only parses modules and records imports; it never traverses
+/// declarations or bodies.
+pub struct ModuleGraph {
+    pub allocator: Allocator,
+    pub dctx: DiagContext*,
+    pub nodes: Vec<ModuleNode>,
+    /// Deterministic post-order: dependencies appear before dependents.
+    pub order: Vec<usize>,
+    active: Vec<usize>,
+    pub has_errors: bool,
+
+    pub fn discover(
+        allocator: Allocator,
+        dctx: DiagContext*,
+        lexical: const LexicalContext*,
+        opts: const ResolverOptions*,
+        entry_file_path: const uint8*,
+        entry_source_id: SourceId,
+        entry_program: ASTProgram*
+    ) Self {
+        var graph = Self {
+            allocator,
+            dctx,
+            nodes: Vec.new(allocator),
+            order: Vec.new(allocator),
+            active: Vec.new(allocator),
+            has_errors: false,
+        };
+
+        graph.nodes.push(ModuleNode {
+            key: visit_key(allocator, entry_file_path),
+            file_path: String.from_str(allocator, entry_file_path),
+            source_id: entry_source_id,
+            program: entry_program,
+            tokens: .None,
+            owns_program: false,
+            edges: Vec.new(allocator),
+            parent: .None,
+            parent_edge: .None,
+            symbol: .None,
+        });
+
+        graph.visit_node(0, lexical, opts);
+        return graph;
+    }
+
+    pub fn free(self: Self*) {
+        for (var i: usize = 0; i < self->nodes.len(); i += 1) {
+            var node = self->nodes.get(i).unwrap();
+
+            node->key.free();
+            node->file_path.free();
+
+            switch (node->tokens) {
+                case .Some(var tokens) => tokens.free();
+                else => {}
+            }
+
+            if (node->owns_program) {
+                node->program->free();
+                self->allocator.free(node->program);
+            }
+
+            for (var e: usize = 0; e < node->edges.len(); e += 1) {
+                var edge = node->edges.get(e).unwrap();
+                edge->resolved.free();
+            }
+
+            node->edges.free();
+        }
+
+        self->nodes.free();
+        self->order.free();
+        self->active.free();
+    }
+
+    /// Index of the node whose canonical key is `key`.
+    pub fn index_of(self: const Self*, key: const uint8*) Option<usize> {
+        for (var i: usize = 0; i < self->nodes.len(); i += 1) {
+            const node = self->nodes.get_const(i).unwrap();
+
+            if (node->key.as_str_const() == key) {
+                return .Some(i);
+            }
+        }
+
+        return .None;
+    }
+
+    fn active_contains(self: const Self*, index: usize) bool {
+        for (var i: usize = 0; i < self->active.len(); i += 1) {
+            if (*self->active.get_const(i).unwrap() == index) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    fn report_cycle(self: Self*, span: Span) {
+        var paths: Vec<String> = Vec.new(self->allocator);
+
+        for (var i: usize = 0; i < self->active.len(); i += 1) {
+            const node = self->nodes.get_const(*self->active.get_const(i).unwrap()).unwrap();
+            paths.push(String.from_str(self->allocator, node->file_path.as_str_const()));
+        }
+
+        diags::report_import_cycle(
+            self->dctx,
+            self->allocator,
+            span,
+            &paths
+        );
+
+        for (var i: usize = 0; i < paths.len(); i += 1) {
+            var path = paths.get(i).unwrap();
+            path->free();
+        }
+
+        paths.free();
+        self->has_errors = true;
+    }
+
+    fn visit_node(
+        self: Self*,
+        index: usize,
+        lexical: const LexicalContext*,
+        opts: const ResolverOptions*
+    ) {
+        self->active.push(index);
+
+        var position: usize = 0;
+
+        while (true) {
+            const node = self->nodes.get_const(index).unwrap();
+
+            var start: usize = 0;
+            var count: usize = 0;
+            var has_statements = false;
+
+            switch (node->program->statements) {
+                case .Some(statements) => {
+                    start = statements.start;
+                    count = statements.len;
+                    has_statements = true;
+                }
+                else => {}
+            }
+
+            if (!has_statements || position >= count) {
+                break;
+            }
+
+            const node_id = node->program->children.get_owned(start + position).unwrap();
+            position += 1;
+
+            const ast_node = node->program->nodes.get_const(node_id).unwrap();
+
+            switch (*ast_node) {
+                case .Import(import_) => {
+                    self->discover_import(index, &import_, node_id, lexical, opts);
+                }
+                else => {}
+            }
+        }
+
+        self->active.remove(self->active.len() - 1);
+        self->order.push(index);
+    }
+
+    fn discover_import(
+        self: Self*,
+        from: usize,
+        import_: const ASTImport*,
+        import_node: NodeId,
+        lexical: const LexicalContext*,
+        opts: const ResolverOptions*
+    ) {
+        const allocator = self->allocator;
+        const parent_path = self->nodes.get_const(from).unwrap()->file_path.as_str_const();
+
+        const load = resolve_import(
+            allocator,
+            opts,
+            &import_->segments,
+            import_->relative_level,
+            parent_path
+        );
+
+        switch (load) {
+            case .Error(err) => {
+                self->report_load_error(import_, err);
+                err.free();
+                return;
+            }
+            case .Value(var resolved) => {
+                const key = visit_key(allocator, resolved.file_path.as_str_const());
+
+                switch (self->index_of(key.as_str_const())) {
+                    case .Some(existing) => {
+                        if (self->active_contains(existing)) {
+                            self->report_cycle(import_->span);
+                            key.free();
+                            resolved.free();
+                            return;
+                        }
+
+                        self->push_edge(from, import_, import_node, existing, resolved);
+                        key.free();
+                        return;
+                    }
+                    case .None => {}
+                }
+
+                if (!os::is_file(resolved.file_path.as_str_const())) {
+                    diags::report_module_not_found(
+                        self->dctx,
+                        allocator,
+                        last_sub_module_span(&import_->segments),
+                        key.as_str_const()
+                    );
+
+                    self->has_errors = true;
+                    key.free();
+                    resolved.free();
+                    return;
+                }
+
+                const path = Path.new(allocator, resolved.file_path.as_str_const());
+
+                switch (lexical->tokenize_source(path)) case .Value(var source_tokens) else {
+                    key.free();
+                    resolved.free();
+                    return;
+                }
+
+                switch (lexical->parse_source(source_tokens)) case .Value(var parsed) else {
+                    source_tokens.free();
+                    key.free();
+                    resolved.free();
+                    return;
+                }
+
+                const target = self->nodes.len();
+                const target_source_id = source_tokens.source_id;
+
+                self->nodes.push(ModuleNode {
+                    key,
+                    file_path: String.from_str(allocator, resolved.file_path.as_str_const()),
+                    source_id: target_source_id,
+                    program: alloc_init(allocator, parsed),
+                    tokens: .Some(source_tokens),
+                    owns_program: true,
+                    edges: Vec.new(allocator),
+                    parent: .Some(from),
+                    parent_edge: .None,
+                    symbol: .None,
+                });
+
+                self->push_edge(from, import_, import_node, target, resolved);
+
+                // Recurse only after the edge and node are in place, so a
+                // cycle back to `target` is reported through `active`.
+                self->visit_node(target, lexical, opts);
+                return;
+            }
+        }
+    }
+
+    fn push_edge(
+        self: Self*,
+        from: usize,
+        import_: const ASTImport*,
+        import_node: NodeId,
+        target: usize,
+        resolved: ResolvedModuleFile
+    ) {
+        const edge_index = self->nodes.get_const(from).unwrap()->edges.len();
+
+        self->nodes.get(from).unwrap()->edges.push(ModuleEdge {
+            span: import_->span,
+            import_node,
+            target,
+            resolved,
+        });
+
+        const target_node = self->nodes.get(target).unwrap();
+
+        switch (target_node->parent) {
+            case .None => {
+                target_node->parent = .Some(from);
+                target_node->parent_edge = .Some(edge_index);
+            }
+            else => {}
+        }
+    }
+
+    fn report_load_error(
+        self: Self*,
+        import_: const ASTImport*,
+        err: LoaderError
+    ) {
+        const allocator = self->allocator;
+
+        switch (err) {
+            case .RelativeImportEscapesProjectRoot => {
+                diags::report_relative_import_escapes_project_root(
+                    self->dctx, allocator, import_->span
+                );
+            }
+            case .ModuleNotFound(name, span) => {
+                diags::report_module_not_found(
+                    self->dctx, allocator, span, name.as_str_const()
+                );
+            }
+            case .DuplicateModule(name) => {
+                diags::report_duplicate_module(
+                    self->dctx, allocator, import_->span, name.as_str_const()
+                );
+            }
+            case .ModuleCannotImportItself => {
+                diags::report_module_cannot_import_itself(
+                    self->dctx, allocator, import_->span
+                );
+            }
+            case .StdlibNotFound => {
+                diags::report_stdlib_not_found(
+                    self->dctx, allocator, import_->span
+                );
+            }
+        }
+
+        self->has_errors = true;
+    }
+}

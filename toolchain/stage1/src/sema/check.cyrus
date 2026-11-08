@@ -11,6 +11,8 @@ import std::option{Option};
 import resolver::symbols{GlobalSymbolRegistry, is_decl_const};
 import tokens{IntegerSuffix, FloatSuffix, Span};
 import .::context{AnalyzerContext};
+import abi::typectx{TypeContext};
+import abi::target{TargetInfo};
 import parser::ast;
 import .::generics;
 import cir::tables;
@@ -4365,9 +4367,79 @@ fn analyze_object_implements_monomorphized_interfaces(
 
 /* ************* Statements ************* */
 
+/// A body-analysis work item.
+///
+/// Bodies are analysed after every reachable module has established its
+/// top-level declarations and signatures, so they are identified by
+/// (tree, statement) indices rather than by pointers into movable storage.
+pub struct BodyWorkItem {
+    pub tree: usize,
+    pub stmt: usize,
+}
+
+/// Staging state threaded through the top-level pass.
+pub struct StagedBodies {
+    pub work: Vec<BodyWorkItem>*,
+    pub tree: usize,
+}
+
+/// Analyses one module's top level.
+///
+/// Function bodies are analysed immediately; this is the form used by
+/// nested `@builtin block` statement lists.
 pub fn analyze_toplevel_stmts(
     context: AnalyzerContext*, 
     typed_stmts: Vec<cir::Stmt>*
+) {
+    analyze_toplevel_stmts_staged(context, typed_stmts, .None);
+}
+
+/// Analyses one module's top level, but defers function bodies.
+///
+/// Every `FuncDef` contributes a `BodyWorkItem` instead of being analysed
+/// here, so bodies only run once all trees have their signatures.
+pub fn analyze_toplevel_headers(
+    context: AnalyzerContext*,
+    tree: cir::ProgramTree*,
+    tree_index: usize,
+    work: Vec<BodyWorkItem>*
+) {
+    const staged = StagedBodies { work, tree: tree_index };
+    const count = tree->body_len();
+
+    for (var i: usize = 0; i < count; i += 1) {
+        var stmt = tree->body_get_mut(i);
+
+        switch (stmt->kind) {
+            case .Typedef(var typedef) => {
+                analyze_typedef(context, &typedef);
+                stmt->kind = .Typedef(typedef);
+            }
+            else => {}
+        }
+    }
+
+    for (var i: usize = 0; i < count; i += 1) {
+        var stmt = tree->body_get_mut(i);
+
+        switch (stmt->kind) {
+            case .GlobalVar(var global_var) => {
+                analyze_global_var(context, &global_var);
+                stmt->kind = .GlobalVar(global_var);
+            }
+            else => {}
+        }
+    }
+
+    for (var i: usize = 0; i < count; i += 1) {
+        analyze_toplevel_stmt(context, tree->body_get_mut(i), i, .Some(staged));
+    }
+}
+
+fn analyze_toplevel_stmts_staged(
+    context: AnalyzerContext*, 
+    typed_stmts: Vec<cir::Stmt>*,
+    staged: Option<StagedBodies>
 ) {
     for (var i: usize = 0; i < typed_stmts->len(); i += 1) {
         var stmt = typed_stmts->get(i).unwrap();
@@ -4395,18 +4467,35 @@ pub fn analyze_toplevel_stmts(
 
     for (var i: usize = 0; i < typed_stmts->len(); i += 1) {
         var stmt = typed_stmts->get(i).unwrap();
-        analyze_toplevel_stmt(context, stmt);
+        analyze_toplevel_stmt(context, stmt, i, staged);
     }
 }
 
 fn analyze_toplevel_stmt(
     context: AnalyzerContext*, 
-    stmt: cir::Stmt*
+    stmt: cir::Stmt*,
+    index: usize,
+    staged: Option<StagedBodies>
 ) {
     switch (stmt->kind) {
         case .FuncDef(var func_def) => {
-            analyze_func_def(context, &func_def);
-            stmt->kind = .FuncDef(func_def);
+            switch (staged) {
+                case .Some(staged_bodies) => {
+                    const needs_body = analyze_func_def_header(context, &func_def);
+                    stmt->kind = .FuncDef(func_def);
+
+                    if (needs_body) {
+                        staged_bodies.work->push(BodyWorkItem {
+                            tree: staged_bodies.tree,
+                            stmt: index,
+                        });
+                    }
+                }
+                case .None => {
+                    analyze_func_def(context, &func_def);
+                    stmt->kind = .FuncDef(func_def);
+                }
+            }
         }
         case .FuncDecl(var func_decl) => {
             analyze_func_decl_stmt(context, &func_decl);
@@ -4442,6 +4531,25 @@ fn analyze_toplevel_stmt(
                 stmt->kind.span()
             );
         }
+    }
+}
+
+/// Analyses a deferred function body recorded by
+/// `analyze_toplevel_headers`.
+pub fn analyze_toplevel_body_item(
+    context: AnalyzerContext*,
+    tree_index: usize,
+    stmt_index: usize
+) {
+    var tree = context->trees.get(tree_index).unwrap();
+    var stmt = tree->body_get_mut(stmt_index);
+
+    switch (stmt->kind) {
+        case .FuncDef(var func_def) => {
+            analyze_func_def_body(context, &func_def);
+            stmt->kind = .FuncDef(func_def);
+        }
+        else => {}
     }
 }
 
@@ -4574,6 +4682,16 @@ fn analyze_block_stmt(
             case .Defer(var defer_copy) => {
                 defer_copy.operand->is_dead = terminated;
                 block_defers.push(defer_copy);
+            }
+            else => {}
+        }
+
+        // A label is a potential `goto` target, so the statements from here
+        // on are reachable even when the preceding flow terminated.
+        switch (stmt->kind) {
+            case .Label(_) => {
+                terminated = false;
+                flow_state = .Reachable;
             }
             else => {}
         }
@@ -5009,6 +5127,19 @@ fn analyze_var(
 fn analyze_func_def(
     context: AnalyzerContext*, 
     func_def: cir::FuncDefStmt*) {
+    const needs_body = analyze_func_def_header(context, func_def);
+
+    if (needs_body) {
+        analyze_func_def_body(context, func_def);
+    }
+}
+
+/// Analyses the declaration part of a function definition: entry checks,
+/// parameter/return types and generic bounds. Returns true when the body
+/// still has to be analysed (i.e. the function is not generic).
+fn analyze_func_def_header(
+    context: AnalyzerContext*, 
+    func_def: cir::FuncDefStmt*) bool {
     const is_generic_func = func_def->is_generic();
 
     analyze_entry_func(context, func_def);
@@ -5026,15 +5157,25 @@ fn analyze_func_def(
     decl->params = func_decl.params;
     decl->ret_type = func_decl.ret_type;
 
-    if (!is_generic_func) {
-        const func_type = cir::func_decl_as_func_type(context->allocator, &func_decl);
-        
-        var func_env = create_func_def_env(context, func_decl.name.as_str_const(), func_type, .None);
-        var saved_func_env = context->func_env;
-        context->func_env = func_env;
-        analyze_func_body(context, func_def->body, &func_def->ret_type);
-        context->func_env = saved_func_env;
-    }
+    return !is_generic_func;
+}
+
+/// Analyses a function body. The environment is saved and restored so the
+/// scheduler can interleave whole bodies without state leaking between them.
+fn analyze_func_def_body(
+    context: AnalyzerContext*, 
+    func_def: cir::FuncDefStmt*) {
+    const func_decl_id = func_def->func_decl_id.unwrap();
+
+    var func_decl = *context->decl_tables->funcs.get(func_decl_id).unwrap();
+
+    const func_type = cir::func_decl_as_func_type(context->allocator, &func_decl);
+    
+    var func_env = create_func_def_env(context, func_decl.name.as_str_const(), func_type, .None);
+    var saved_func_env = context->func_env;
+    context->func_env = func_env;
+    analyze_func_body(context, func_def->body, &func_def->ret_type);
+    context->func_env = saved_func_env;
 }
 
 fn analyze_func_decl_stmt(
@@ -7371,6 +7512,75 @@ fn normalize_tuple(
     }));
 }
 
+fn fold_type_builtin_as_integer(
+    context: AnalyzerContext*,
+    expr: cir::Expr*
+) bool {
+    switch (expr->kind) {
+        case .Builtin(builtin) => {
+            var func: cir::BuiltinFunc;
+
+            switch (builtin) {
+                case .BuiltinFunc(builtin_func) => func = builtin_func;
+                case .BuiltinBlock(_) => return false;
+            }
+
+            const name = func.name.str.as_str_const();
+
+            var is_size = false;
+            var is_align = false;
+
+            if (name == "sizeof") {
+                is_size = true;
+            } else if (name == "alignof") {
+                is_align = true;
+            } else {
+                return false;
+            }
+
+            switch (func.args.get_const(0)) {
+                case .Some(operand) => {
+                    switch (operand->ty) {
+                        case .Some(ty) => {
+                            const target = TargetInfo {
+                                arch: .X86_64,
+                                os: .Linux,
+                                format: .Elf,
+                            };
+
+                            var tctx = TypeContext.new(
+                                target,
+                                context->decl_tables,
+                                context->registry
+                            );
+
+                            const layout = tctx.layout_of(&ty);
+
+                            var value: uint128 = 0;
+
+                            if (is_size) {
+                                value = @cast(uint128, layout->size);
+                            } else if (is_align) {
+                                value = @cast(uint128, layout->align);
+                            }
+
+                            tctx.free();
+
+                            *expr = cir::const_untyped_integer_expr(value, expr->span);
+                            return true;
+                        }
+                        else => {}
+                    }
+                }
+                else => {}
+            }
+        }
+        else => {}
+    }
+
+    return false;
+}
+
 fn normalize_array(
     context: AnalyzerContext*,
     var array_type: cir::ArrayType,
@@ -7382,12 +7592,14 @@ fn normalize_array(
             analyze_expr(context, expr, .None);
 
             if (expr->literal_const_int_value().is_none()) {
-                diags::report_array_capacity_not_const(
-                    context->dctx, 
-                    context->allocator, 
-                    span
-                );
-                return .None;
+                if (!fold_type_builtin_as_integer(context, expr)) {
+                    diags::report_array_capacity_not_const(
+                        context->dctx, 
+                        context->allocator, 
+                        span
+                    );
+                    return .None;
+                }
             }
         }
         case .Slice => {
@@ -13561,9 +13773,19 @@ fn lower_expr_pre_analysis(
         }
 
         case .UnnamedStructValue(struct_value) => {
-            for (var i: usize = 0; i < struct_value.fields.len(); i += 1) {
-                const field = struct_value.fields.get(i).unwrap();
-                analyze_expr_non_terminal(context, field->value, .None);
+            // Only when there is no expected type are the field values the
+            // sole source of the struct's shape (and possibly a type
+            // expression). With an expected type the per-field analysis
+            // passes the declared field type, so pre-analysing here would
+            // freeze literals at their default type.
+            switch (expected_type) {
+                case .None => {
+                    for (var i: usize = 0; i < struct_value.fields.len(); i += 1) {
+                        const field = struct_value.fields.get(i).unwrap();
+                        analyze_expr_non_terminal(context, field->value, .None);
+                    }
+                }
+                case .Some => {}
             }
 
             switch (lower::lower_unnamed_struct_value_as_unnamed_struct_type(
@@ -13580,9 +13802,17 @@ fn lower_expr_pre_analysis(
         }
 
         case .UnnamedUnionValue(union_value) => {
-            for (var i: usize = 0; i < union_value.fields.len(); i += 1) {
-                const field = union_value.fields.get(i).unwrap();
-                analyze_expr_non_terminal(context, field->value, .None);
+            // See the `.UnnamedStructValue` case: with an expected type the
+            // field analysis supplies the declared field type, so do not
+            // pre-analyse literals against no expected type here.
+            switch (expected_type) {
+                case .None => {
+                    for (var i: usize = 0; i < union_value.fields.len(); i += 1) {
+                        const field = union_value.fields.get(i).unwrap();
+                        analyze_expr_non_terminal(context, field->value, .None);
+                    }
+                }
+                case .Some => {}
             }
 
             switch (lower::lower_unnamed_union_value_as_unnamed_union_type(

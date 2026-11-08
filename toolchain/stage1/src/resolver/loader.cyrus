@@ -157,7 +157,8 @@ pub fn module_name_from_file_path(
         }
     }
 
-    // Trim leading underscores produced by sanitization
+    // Trim leading underscores 
+    // produced by sanitization
     const pending_str = pending.as_str_const();
     const pending_len = pending.len();
 
@@ -588,6 +589,7 @@ fn find_in_sources(
 
     for (var i: usize = 0; i < sources->len(); i += 1) {
         const source = sources->get_const(i).unwrap();
+
         const path = join_path(
             allocator,
             source->as_str_const(),
@@ -617,6 +619,7 @@ fn find_dir_in_sources(
 
     for (var i: usize = 0; i < sources->len(); i += 1) {
         const source = sources->get_const(i).unwrap();
+        
         const path = join_path(
             allocator, 
             source->as_str_const(), 

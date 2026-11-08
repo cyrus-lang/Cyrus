@@ -69,8 +69,8 @@ pub fn build_module_maps(
 
         maps->file_modules.insert(tree->file_id, module);
 
-        for (var i: usize = 0; i < tree->body.len(); i += 1) {
-            const stmt = tree->body.get_const(i).unwrap();
+        for (var i: usize = 0; i < tree->body_len(); i += 1) {
+            const stmt = tree->body_get(i);
 
             switch (stmt->kind) {
                 case .Typedef(typedef) => {

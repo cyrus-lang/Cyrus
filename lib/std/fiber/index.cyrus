@@ -20,17 +20,18 @@ pub enum FiberState {
 pub struct Fiber {
     pub data: void*, // User data
 
-    caller: Option<fcontext::FContext>,
+    pub caller: Option<fcontext::FContext>,
+    pub state: FiberState,
+    pub entry: FiberFn,
+
     stack: fcontext::FContextState*,
     context: fcontext::FContext,
-
-    state: FiberState,
-    entry: FiberFn,
+    
 
     pub fn create(entry: FiberFn, data: void*) ErrorOr<Fiber*, ()> {
-        const trampoline: fcontext::FContextFn = Self.trampoline;
+        const entry_fn: fcontext::FContextFn = trampoline;
 
-        var stack = fcontext::fcontext_create(trampoline);
+        var stack = fcontext::fcontext_create(entry_fn);
         if (stack == null) {
             return .Error(());
         }
@@ -50,25 +51,6 @@ pub struct Fiber {
         fiber->data = data;
 
         return .Value(fiber);
-    }
-
-    fn trampoline(trans: fcontext::FContextTransfer) {
-        var fiber = @cast(Fiber*, trans.data);
-        
-        fiber->caller = .Some(trans.prev_context);
-        fiber->state = .Running;
-
-        // Run user code
-        (fiber->entry)(fiber);
-
-        fiber->state = .Done;
-
-        const caller = fiber->caller.unwrap();
-        fcontext::fcontext_swap(caller, null);
-
-        // Reaching here would mean somebody
-        // resumed a completed fiber!
-        libc::abort();
     }
 
     pub fn resume(self: Self*) FiberState {
@@ -110,4 +92,24 @@ pub struct Fiber {
         
         libc::free(@cast(void*, self));
     }
+}
+
+/// Entry point used by every fiber created with `Fiber.create`.
+fn trampoline(trans: fcontext::FContextTransfer) {
+    var fiber = @cast(Fiber*, trans.data);
+
+    fiber->caller = .Some(trans.prev_context);
+    fiber->state = .Running;
+
+    // Run user code
+    (fiber->entry)(fiber);
+
+    fiber->state = .Done;
+
+    const caller = fiber->caller.unwrap();
+    fcontext::fcontext_swap(caller, null);
+
+    // Reaching here would mean somebody
+    // resumed a completed fiber!
+    libc::abort();
 }

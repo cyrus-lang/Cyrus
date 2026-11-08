@@ -105,6 +105,13 @@ pub fn format_float64(writer: Writer, x: float64) {
     writer.write(&buffer[0]);
 }
 
+/// Used when emitting numeric literals into generated code.
+pub fn format_float64_precise(writer: Writer, x: float64) {
+    var buffer: uint8[FLOAT64_BUF_SIZE];
+    snprintf(&buffer[0], FLOAT64_BUF_SIZE, "%.17g", x);
+    writer.write(&buffer[0]);
+}
+
 // FIXME: UNSUPPORTED YET (#407)
 // 
 // pub fn format_float128(writer: Writer, x: float128) {

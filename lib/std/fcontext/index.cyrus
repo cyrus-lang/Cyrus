@@ -9,7 +9,7 @@ import std::libc;
 // @link_asm("./asm/**.S");
 // 
 
-pub const FCONTEXT_SIZE: usize = 262144; // 256 KiB
+pub const FCONTEXT_SIZE: usize = 16777216; // 16 MiB
 
 pub type FContext = types::c_void*;
 

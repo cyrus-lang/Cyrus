@@ -10,12 +10,12 @@ import std::string{String};
 import std::path{Path};
 import std::os;
 
+import cir{ProgramTree, Stmt, StmtArena, StmtList};
 import resolver::symbols{GlobalSymbolRegistry};
 import resolver::dump{dump_resolver_symbols};
 import cir::format{format_module_segments};
 import resolver::context{TraverseContext};
 import parser::ast{ASTProgram, ASTImport};
-import cir{ProgramTree, Stmt};
 import driver::lexical{LexicalContext};
 import cir::tables{DeclTables};
 import resolver::traverse{
@@ -32,6 +32,7 @@ import resolver::loader{
 };
 import tokens{SourceTokens};
 import resolver::modules;
+import resolver::graph{ModuleGraph};
 import source{SourceId};
 import resolver::diags;
 import cir{SymbolId};
@@ -115,28 +116,77 @@ pub struct Resolver {
         self: Self*,
         source_id: SourceId,
         file_path: const uint8*,
-        program: const ASTProgram*
+        program: ASTProgram*
     ) {
-        const module_name = module_name_from_file_path(
+        // A. Module discovery. Parses every reachable module once and
+        // records the import graph; declarations and bodies are untouched.
+        var graph = ModuleGraph.discover(
             self->allocator,
+            &self->lexical->context->dctx,
+            self->lexical,
             self->opts,
-            file_path
-        );
-
-        const module_symbol_id = self->global_symbols.insert_module_symbol(
-            self->global_symbols.root_scope_id(),
-            module_name.as_str_const(),
-            module_name.as_str_const()
-        );
-
-        module_name.free();
-
-        self->module_symbols.push(modules::SourceSymbolBinding {
+            file_path,
             source_id,
-            symbol_id: module_symbol_id,
-        });
+            program
+        );
+        defer graph.free();
 
-        self->resolve_module(module_symbol_id, source_id, file_path, program);
+        if (graph.has_errors || self->lexical->context->dctx.has_errors()) {
+            return;
+        }
+
+        // B. Create the module symbols in discovery order. A module is
+        // always discovered before the modules it imports, so the parent
+        // scope exists by the time an edge is processed.
+        self->create_module_symbols(&graph);
+
+        if (self->lexical->context->dctx.has_errors()) {
+            return;
+        }
+
+        // C. Top-level traversal in post-order: dependencies first, so the
+        // declarations and signatures a module needs already exist.
+        for (var i: usize = 0; i < graph.order.len(); i += 1) {
+            const index = graph.order.get_owned(i).unwrap();
+
+            if (!self->resolve_module_toplevel(&graph, index)) {
+                return;
+            }
+        }
+
+        // Keep discovered modules alive for the rest of compilation, the
+        // same lifetime the old `SourceProgram` list had: lowered nodes may
+        // still reference token/source storage until codegen finishes.
+        self->adopt_discovered_modules(&graph);
+    }
+
+    fn adopt_discovered_modules(self: Self*, graph: ModuleGraph*) {
+        const allocator = self->allocator;
+
+        for (var i: usize = 0; i < graph->nodes.len(); i += 1) {
+            var node = graph->nodes.get(i).unwrap();
+
+            if (!node->owns_program) {
+                continue;
+            }
+
+            var tokens: SourceTokens;
+
+            switch (node->tokens) {
+                case .Some(var owned_tokens) => tokens = owned_tokens;
+                case .None => continue;
+            }
+
+            self->source_programs.push(SourceProgram {
+                absolute_path: node->key.clone(allocator),
+                source_id: node->source_id,
+                program: node->program,
+                tokens,
+            });
+
+            node->owns_program = false;
+            node->tokens = .None;
+        }
     }
 
     pub fn dump_symbols(self: Self*) {
@@ -150,88 +200,157 @@ pub struct Resolver {
         );
     }
 
-    fn resolve_module(
-        self: Self*,
-        module_symbol_id: SymbolId,
-        source_id: SourceId,
-        file_path: const uint8*,
-        program: const ASTProgram*
-    ) bool {
+    fn create_module_symbols(self: Self*, graph: ModuleGraph*) {
         const allocator = self->allocator;
-        const key = modules::visit_key(allocator, file_path);
+        const entry = graph->nodes.get_const(0).unwrap();
 
-        if (self->visiting.done_contains(key.as_str_const())) {
-            key.free();
-            return true;
-        }
+        const entry_name = module_name_from_file_path(
+            allocator,
+            self->opts,
+            entry->file_path.as_str_const()
+        );
 
-        self->visiting.push_active(key);
+        const entry_symbol_id = self->global_symbols.insert_module_symbol(
+            self->global_symbols.root_scope_id(),
+            entry_name.as_str_const(),
+            entry_name.as_str_const()
+        );
 
-        const ok = self->resolve_module_imports(module_symbol_id, program, file_path);
+        entry_name.free();
 
-        if (ok) {
-            bind_program_decl_names(
-                &self->global_symbols,
-                &self->lexical->context->dctx,
-                allocator,
-                module_symbol_id,
-                program,
-                self->opts->profile
-            );
+        self->module_symbols.push(modules::SourceSymbolBinding {
+            source_id: entry->source_id,
+            symbol_id: entry_symbol_id,
+        });
 
-            var ctx = TraverseContext.new(
-                dynamic self->arena,
-                self->allocator,
-                &self->lexical->context->dctx,
-                &self->global_symbols,
-                &self->decl_tables,
-                source_id,
-                self->opts->profile,
-                module_symbol_id
-            );
+        graph->nodes.get(0).unwrap()->symbol = .Some(entry_symbol_id);
 
-            const body = resolve_decl_full(&ctx, program);
-            self->push_program_tree(source_id, file_path, body);
-            ctx.free();
-        }
+        for (var i: usize = 0; i < graph->nodes.len(); i += 1) {
+            const node = graph->nodes.get_const(i).unwrap();
 
-        const active_key = self->visiting.pop_active();
-        self->visiting.mark_done(active_key);
-        return ok;
-    }
+            var parent_symbol: usize = 0;
 
-    /// Resolves this module's import statements in order. 
-    /// Will stop at the first failure so later imports 
-    /// cannot cascade errors.
-    fn resolve_module_imports(
-        self: Self*,
-        module_symbol_id: SymbolId,
-        program: const ASTProgram*,
-        file_path: const uint8*
-    ) bool {
-        switch (program->statements) {
-            case .Some(statements) => {
-                for (var i: usize = 0; i < statements.len; i += 1) {
-                    const node_id = program->children.get_owned(statements.start + i).unwrap();
-                    const node = program->nodes.get_const(node_id).unwrap();
+            switch (node->symbol) {
+                case .Some(symbol) => parent_symbol = symbol;
+                case .None => continue;
+            }
 
-                    switch (*node) {
-                        case .Import(import_) => {
-                            if (!self->resolve_import(module_symbol_id, &import_, file_path)) {
-                                return false;
-                            }
+            for (var e: usize = 0; e < node->edges.len(); e += 1) {
+                const edge = node->edges.get_const(e).unwrap();
+                const import_ast_node = node->program->nodes.get_const(edge->import_node).unwrap();
+
+                switch (*import_ast_node) {
+                    case .Import(import_) => {
+                        const target_source_id = graph->nodes
+                            .get_const(edge->target).unwrap()->source_id;
+
+                        const segment = last_sub_module_name(allocator, &import_.segments);
+
+                        const real_symbol_id = modules::get_or_create_module_symbol(
+                            &self->global_symbols,
+                            self->opts,
+                            &self->module_symbols,
+                            parent_symbol,
+                            target_source_id,
+                            &edge->resolved,
+                            segment.as_str_const()
+                        );
+
+                        segment.free();
+
+                        const concrete = self->global_symbols
+                            .resolve_concrete_scope_id(real_symbol_id);
+
+                        const target_node = graph->nodes.get(edge->target).unwrap();
+
+                        switch (target_node->symbol) {
+                            case .None => target_node->symbol = .Some(concrete);
+                            else => {}
                         }
-                        else => {}
                     }
+                    else => {}
                 }
             }
-            else => {}
         }
+    }
+
+    fn resolve_module_toplevel(
+        self: Self*,
+        graph: const ModuleGraph*,
+        index: usize
+    ) bool {
+        const allocator = self->allocator;
+        const node = graph->nodes.get_const(index).unwrap();
+
+        var module_symbol_id: usize = 0;
+
+        switch (node->symbol) {
+            case .Some(symbol) => module_symbol_id = symbol;
+            case .None => return false;
+        }
+
+        // Imports first: binding them installs the proxied symbols that the
+        // module's own declarations and bodies reference.
+        for (var e: usize = 0; e < node->edges.len(); e += 1) {
+            const edge = node->edges.get_const(e).unwrap();
+            const import_ast_node = node->program->nodes.get_const(edge->import_node).unwrap();
+
+            switch (*import_ast_node) {
+                case .Import(import_) => {
+                    const target = graph->nodes.get_const(edge->target).unwrap();
+
+                    var target_symbol: usize = 0;
+
+                    switch (target->symbol) {
+                        case .Some(symbol) => target_symbol = symbol;
+                        case .None => return false;
+                    }
+
+                    if (!self->bind_resolved_import(
+                        module_symbol_id,
+                        &import_,
+                        target_symbol,
+                        edge->resolved.consumed_segments
+                    )) {
+                        return false;
+                    }
+                }
+                else => {}
+            }
+        }
+
+        bind_program_decl_names(
+            &self->global_symbols,
+            &self->lexical->context->dctx,
+            allocator,
+            module_symbol_id,
+            node->program,
+            self->opts->profile
+        );
+
+        var ctx = TraverseContext.new(
+            dynamic self->arena,
+            self->allocator,
+            &self->lexical->context->dctx,
+            &self->global_symbols,
+            &self->decl_tables,
+            node->source_id,
+            self->opts->profile,
+            module_symbol_id
+        );
+
+        const body = resolve_decl_full(&ctx, node->program);
+        self->insert_program_tree(
+            node->source_id,
+            node->file_path.as_str_const(),
+            body
+        );
+        ctx.free();
 
         return true;
     }
 
-    fn push_program_tree(
+    fn insert_program_tree(
         self: Self*,
         source_id: SourceId,
         file_path: const uint8*,
@@ -241,55 +360,35 @@ pub struct Resolver {
 
         const module_name = module_name_from_file_path(allocator, self->opts, file_path);
 
+        var arena = StmtArena.new(allocator);
+        const start = arena.len();
+
+        for (var i: usize = 0; i < body.len(); i += 1) {
+            arena.alloc(body.get_owned(i).unwrap());
+        }
+
+        body.free();
+
         self->program_trees.push(ProgramTree {
             file_id: source_id,
-            body,
+            body: StmtList {
+                start: @cast(uint32, start),
+                len: @cast(uint32, arena.len() - start),
+            },
+            arena,
             file_name: String.from_str(allocator, file_path),
             module_name,
         });
     }
 
-    fn resolve_import(
+    /// Binds an import whose module has already been discovered by the
+    /// graph. No filesystem work or recursion happens here.
+    fn bind_resolved_import(
         self: Self*,
         parent_scope_id: SymbolId,
         import_: const ASTImport*,
-        file_path: const uint8*
-    ) bool {
-        const allocator = self->allocator;
-
-        const load_result = fs_resolve_import(
-            allocator,
-            self->opts,
-            &import_->segments,
-            import_->relative_level,
-            file_path
-        );
-
-        switch (load_result) {
-            case .Error(err) => {
-                switch (err) {
-                    case .RelativeImportEscapesProjectRoot => diags::report_relative_import_escapes_project_root(&self->lexical->context->dctx, allocator, import_->span);
-                    case .ModuleNotFound(name, span) => diags::report_module_not_found(&self->lexical->context->dctx, allocator, span, name.as_str_const());
-                    case .DuplicateModule(name) => diags::report_duplicate_module(&self->lexical->context->dctx, allocator, import_->span, name.as_str_const());
-                    case .ModuleCannotImportItself => diags::report_module_cannot_import_itself(&self->lexical->context->dctx, allocator, import_->span);
-                    case .StdlibNotFound => diags::report_stdlib_not_found(&self->lexical->context->dctx, allocator, import_->span);
-                }
-                err.free();
-                return false;
-            }
-            case .Value(var resolved) => {
-                return self->process_resolved_import(parent_scope_id, import_, resolved);
-            }
-        }
-    }
-
-    /// Continue resolution of an import 
-    /// whose file was located.
-    fn process_resolved_import(
-        self: Self*,
-        parent_scope_id: SymbolId,
-        import_: const ASTImport*,
-        module_file: ResolvedModuleFile
+        target_scope_id: SymbolId,
+        consumed_segments: usize
     ) bool {
         const allocator = self->allocator;
         const dctx = &self->lexical->context->dctx;
@@ -301,161 +400,47 @@ pub struct Resolver {
             case .Some(name) => {
                 if (self->group_import_already_done(parent_scope_id, name.as_str_const())) {
                     diags::report_import_twice(
-                        dctx, 
-                        allocator, 
-                        span, 
+                        dctx,
+                        allocator,
+                        span,
                         name.as_str_const()
                     );
 
                     name.free();
-                    module_file.free();
                     return false;
                 }
             }
             else => {}
         }
 
-        const key = modules::visit_key(allocator, module_file.file_path.as_str_const());
+        var current_symbol = target_scope_id;
 
-        if (self->visiting.active_contains(key.as_str_const())) {
-            diags::report_import_cycle(
-                dctx, 
-                allocator, 
-                span, 
-                self->visiting.active_paths()
-            );
-            
-            switch (alias) {
-                case .Some(str) => str.free();
-                else => {}
-            }
-
-            key.free();
-            module_file.free();
-            return false;
-        }
-
-        var source_id: SourceId;
-        var program: ASTProgram*;
-
-        switch (self->get_source_program(key.as_str_const())) {
-            case .Some(found_index) => {
-                const entry = self->source_programs.get_const(found_index).unwrap();
-                source_id = entry->source_id;
-                program = entry->program;
-            }
-            case .None => {
-                if (!os::is_file(module_file.file_path.as_str_const())) {
-                    var name = format_module_segments(allocator, &import_->segments);
-
-                    diags::report_module_not_found(
-                        dctx, 
-                        allocator, 
-                        last_sub_module_span(&import_->segments), 
-                        name.as_str_const()
-                    );
-                    
-                    switch (alias) {
-                        case .Some(str) => str.free();
-                        else => {}
-                    }
-
-                    name.free();
-                    key.free();
-                    module_file.free();
-                    return false;
-                }
-
-
-                const path = Path.new(allocator, module_file.file_path.as_str_const());
-
-                switch (self->lexical->tokenize_source(path)) case .Value(var source_tokens) else {
-                    switch (alias) {
-                        case .Some(str) => str.free();
-                        else => {}
-                    }
-
-                    key.free();
-                    module_file.free();
-                    return false;
-                }
-
-                source_id = source_tokens.source_id;
-
-                switch (self->lexical->parse_source(source_tokens)) case .Value(parsed) else {
-                    source_tokens.free();
-                    key.free();
-                    switch (alias) {
-                        case .Some(str) => str.free();
-                        else => {}
-                    }
-                    module_file.free();
-                    return false;
-                }
-
-                const owned_program = alloc_init(allocator, parsed);
-                
-                self->source_programs.push(SourceProgram {
-                    source_id,
-                    absolute_path: String.from_str(allocator, key.as_str_const()),
-                    program: owned_program,
-                    tokens: source_tokens,
-                });
-
-                program = owned_program;
-            }
-        }
-
-        const segment = last_sub_module_name(allocator, &import_->segments);
-        
-        const module_symbol_id = modules::get_or_create_module_symbol(
-            &self->global_symbols,
-            self->opts,
-            &self->module_symbols,
-            parent_scope_id,
-            source_id,
-            &module_file,
-            segment.as_str_const()
-        );
-        
-        segment.free();
-
-        var current_symbol = self->global_symbols.resolve_concrete_scope_id(module_symbol_id);
-
-        if (!self->visiting.done_contains(key.as_str_const())) {
-            self->resolve_module(
-                current_symbol,
-                source_id,
-                module_file.file_path.as_str_const(),
-                program
-            );
-        }
-
-        for (var i: usize = module_file.consumed_segments; i < import_->segments.len(); i += 1) {
+        for (var i: usize = consumed_segments; i < import_->segments.len(); i += 1) {
             const segment_node = import_->segments.get_const(i).unwrap();
 
             switch (*segment_node) {
                 case .SubModule(ident) => {
                     switch (self->global_symbols.lookup_symbol_id_in_scope(
-                        current_symbol, 
+                        current_symbol,
                         ident.str.as_str_const()
                     )) {
                         case .Some(found) => {
-                            current_symbol = self->global_symbols.resolve_concrete_scope_id(found);
+                            current_symbol = self->global_symbols
+                                .resolve_concrete_scope_id(found);
                         }
                         case .None => {
                             diags::report_namespace_segment_not_found(
-                                dctx, 
-                                allocator, 
+                                dctx,
+                                allocator,
                                 ident.span,
                                 ident.str.as_str_const()
                             );
-                            key.free();
+
                             switch (alias) {
                                 case .Some(str) => str.free();
                                 else => {}
                             }
-                            module_file.free();
+
                             return false;
                         }
                     }
@@ -464,9 +449,6 @@ pub struct Resolver {
             }
         }
 
-        key.free();
-        module_file.free();
-
         switch (alias) {
             case .Some(name) => {
                 self->global_symbols.insert_proxied_module(
@@ -474,17 +456,19 @@ pub struct Resolver {
                     name.as_str_const(),
                     current_symbol
                 );
+
                 self->group_imports.push(GroupImportRecord {
                     scope: parent_scope_id,
                     alias: String.from_str(allocator, name.as_str_const()),
                 });
+
                 name.free();
                 return true;
             }
             case .None => {
                 return self->resolve_single_import(
-                    parent_scope_id, 
-                    current_symbol, 
+                    parent_scope_id,
+                    current_symbol,
                     import_
                 );
             }
