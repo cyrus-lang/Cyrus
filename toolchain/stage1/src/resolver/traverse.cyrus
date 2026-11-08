@@ -2706,6 +2706,19 @@ fn resolve_ident_expr(
         else => {}
     }
 
+    if (name == "Self") {
+        return .Some(cir::Expr {
+            kind: .SemaType {
+                ty: .SelfType(cir::SelfType { span: ident->span }),
+                span: ident->span,
+            },
+            ty: .None,
+            value_category: .Unknown,
+            analyzed: false,
+            span: ident->span,
+        });
+    }
+
     switch (resolve_ident(ctx, ident)) {
         case .Some(symbol_id) => {
             return .Some(cir::Expr.new(.Symbol(.Unresolved {
@@ -2856,11 +2869,11 @@ fn resolve_module_import_expr(
 
                 if (name == "Self") {
                     return .Some(cir::Expr.new(.SemaType {
-                        ty: .SelfType(cir::TypedSelfType {
+                        ty: .SelfType(cir::SelfType {
                             span: module_import->span
                         }),
                         span: module_import->span
-                    }), module_import->span));
+                    }, module_import->span));
                 }
             }
             else => {}
@@ -3830,7 +3843,11 @@ fn resolve_generic_inst_type(
         case .Some(ty) => {
             switch (ty) {
                 case .SelfType => {
-                    diags::report_self_typepe_does_not_accept_type_args(ctx->dctx, ctx->diag_allocator, inst->span);
+                    diags::report_self_type_does_not_accept_type_args(
+                        ctx->dctx, 
+                        ctx->diag_allocator, 
+                        inst->span
+                    );
                 }
                 else => {}
             }

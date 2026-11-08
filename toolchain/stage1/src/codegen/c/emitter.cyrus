@@ -9,7 +9,7 @@ import std::collections{Vec};
 import std::mem{Allocator};
 import std::option{Option};
 import std::format{
-    format_float64, 
+    format_float64_precise, 
     format_usize, 
     format_uint32, 
     format_uint128, 
@@ -45,6 +45,7 @@ pub struct Emitter {
 
     libc_protos: String,
     pending_out: String,
+    lambda_defs: String,
     protos_out: String,
     global_out: String,
     body_out: String,
@@ -107,6 +108,7 @@ pub struct Emitter {
             vtable_emitted: HashMap.with_hasher(allocator, 16, hash_usize, eq_usize),
             types: TypeEmitter.new(allocator, tables, registry, maps),
             pending_out: String.new(allocator),
+            lambda_defs: String.new(allocator),
             protos_out: String.new(allocator),
             global_out: String.new(allocator),
             defer_scopes: Vec.new(allocator),
@@ -140,13 +142,78 @@ pub struct Emitter {
         };
     }
 
+    /// Collects `tree`'s top-level statements, flattening `@builtin` blocks.
+    fn collect_toplevel(self: Self*, tree: const cir::ProgramTree*, out: Vec<cir::Stmt>*) {
+        for (var j: usize = 0; j < tree->body_len(); j += 1) {
+            self->push_toplevel_stmt(tree->body_get(j), out);
+        }
+    }
+
+    fn push_toplevel_stmt(self: Self*, stmt: const cir::Stmt*, out: Vec<cir::Stmt>*) {
+        switch (stmt->kind) {
+            case .Builtin(builtin) => {
+                switch (builtin) {
+                    case .BuiltinBlock(block) => {
+                        self->push_toplevel_block(block.block, out);
+                    }
+                    case .BuiltinFunc(_) => {
+                        out->push(*stmt);
+                    }
+                }
+            }
+            else => {
+                out->push(*stmt);
+            }
+        }
+    }
+
+    fn push_toplevel_block(self: Self*, block: const cir::BlockStmt*, out: Vec<cir::Stmt>*) {
+        for (var i: usize = 0; i < block->stmts.len(); i += 1) {
+            self->push_toplevel_stmt(block->stmts.get_const(i).unwrap(), out);
+        }
+    }
+
+    /// Emits a function definition nested in a statement list at file scope,
+    /// where C requires it (and where the already-emitted prototype is in
+    /// scope).
+    fn emit_nested_func(self: Self*, func_def: const cir::FuncDefStmt*) {
+        if (func_def->is_generic()) {
+            return;
+        }
+
+        const parent = self->body_out;
+        self->body_out = String.new(self->allocator);
+
+        var saved_defer_scopes = self->defer_scopes;
+        self->defer_scopes = Vec.new(self->allocator);
+
+        var saved_loop_marks = self->loop_marks;
+        self->loop_marks = Vec.new(self->allocator);
+
+        self->emit_func(func_def);
+
+        self->defer_scopes = saved_defer_scopes;
+        self->loop_marks = saved_loop_marks;
+
+        self->lambda_defs.push_str(self->body_out.as_str_const());
+        self->body_out.free();
+        self->body_out = parent;
+    }
+
     pub fn run(self: Self*, writer: Writer) {
-        // 1. Top-level type declaration
+        // Flatten top-level statements, expanding `@builtin` blocks: their
+        // bodies are semantically top level.
+        var top: Vec<cir::Stmt> = Vec.new(self->allocator);
+
         for (var i: usize = 0; i < self->trees->len(); i += 1) {
             const tree = self->trees->get_const(i).unwrap();
+            self->collect_toplevel(tree, &top);
+        }
+        defer top.free();
 
-            for (var j: usize = 0; j < tree->body.len(); j += 1) {
-                const stmt = tree->body.get_const(j).unwrap();
+        // 1. Top-level type declaration
+        for (var j: usize = 0; j < top.len(); j += 1) {
+                const stmt = top.get_const(j).unwrap();
 
                 switch (stmt->kind) {
                     case .Struct(struct_) => {
@@ -208,33 +275,25 @@ pub struct Emitter {
                         const type_decl_id: cir::TypeDeclId = .Typedef(td.typedef_decl_id);
                         self->types.ensure_type_decl(&type_decl_id);
                     }
-                    else => {}
-                }
+                else => {}
             }
         }
 
         // 2. Global Vars
-        for (var i: usize = 0; i < self->trees->len(); i += 1) {
-            const tree = self->trees->get_const(i).unwrap();
-
-            for (var j: usize = 0; j < tree->body.len(); j += 1) {
-                const stmt = tree->body.get_const(j).unwrap();
+        for (var j: usize = 0; j < top.len(); j += 1) {
+                const stmt = top.get_const(j).unwrap();
 
                 switch (stmt->kind) {
                     case .GlobalVar(global_var) => {
                         self->emit_global(&global_var);
                     }
-                    else => {}
-                }
+                else => {}
             }
         }
 
         // 3. Function and method definitions
-        for (var i: usize = 0; i < self->trees->len(); i += 1) {
-            const tree = self->trees->get_const(i).unwrap();
-
-            for (var j: usize = 0; j < tree->body.len(); j += 1) {
-                const stmt = tree->body.get_const(j).unwrap();
+        for (var j: usize = 0; j < top.len(); j += 1) {
+                const stmt = top.get_const(j).unwrap();
                 
                 switch (stmt->kind) {
                     case .FuncDef(func_def) => {
@@ -242,8 +301,7 @@ pub struct Emitter {
                             self->emit_func(&func_def);
                         }
                     }
-                    else => {}
-                }
+                else => {}
             }
         }
 
@@ -504,6 +562,7 @@ pub struct Emitter {
         }
 
         writer.write(self->pending_out.as_str_const());
+        writer.write(self->lambda_defs.as_str_const());
         writer.write(self->body_out.as_str_const());
 
         parent.write(module.as_str_const());
@@ -1465,8 +1524,14 @@ pub struct Emitter {
                         self->body_out.push_str(";\n");
                         str.free();
                     }
-                    else => {}
+                    case .BuiltinBlock(block) => {
+                        self->emit_block_stmts(block.block, false);
+                    }
                 }
+            }
+
+            case .FuncDef(var func_def) => {
+                self->emit_nested_func(&func_def);
             }
 
             case .Break => {
@@ -1700,28 +1765,93 @@ pub struct Emitter {
 
                 switch (var_->rhs) {
                     case .Some(rhs) => {
-                        self->body_out.push_str(" = ");
+                        // C arrays are not assignable and C aggregates of
+                        // distinct types are not assignable even when their
+                        // layouts match. Both cases are lowered explicitly.
+                        var copy_array = false;
 
                         switch (rhs.kind) {
-                            case .Array(array) => {
-                                var braces = self->emit_array_braces(&array);
-                                self->body_out.push_str(braces.as_str_const());
-                                braces.free();
-                            }
+                            case .Array(_) => {}
                             else => {
-                                var expr = self->emit_expr(&rhs);
-                                var dest_128 = self->int128_kind_of(&ty);
-                                var src_128 = self->expr_int128_kind(&rhs);
-
-                                if (dest_128.is_some() && !(src_128.is_some() && src_128.unwrap() == dest_128.unwrap())) {
-                                    var coerce = self->coerce_to_int128(&rhs, expr.as_str_const(), dest_128.unwrap());
-                                    self->body_out.push_str(coerce.as_str_const());
-                                    coerce.free();
-                                } else {
-                                    self->body_out.push_str(expr.as_str_const());
+                                if (ty.is_array()) {
+                                    copy_array = true;
                                 }
+                            }
+                        }
 
-                                expr.free();
+                        var reinterpret_aggregate = false;
+
+                        if (!copy_array) {
+                            switch (ty.const_inner()->as_struct()) {
+                                case .Some(dest_struct_id) => {
+                                    switch (rhs.ty) {
+                                        case .Some(source_ty) => {
+                                            switch (source_ty.const_inner()->as_struct()) {
+                                                case .Some(source_struct_id) => {
+                                                    if (dest_struct_id != source_struct_id) {
+                                                        reinterpret_aggregate = true;
+                                                    }
+                                                }
+                                                else => {}
+                                            }
+                                        }
+                                        else => {}
+                                    }
+                                }
+                                else => {}
+                            }
+                        }
+
+                        if (copy_array) {
+                            self->ensure_memcpy_proto();
+                            self->body_out.push_str(";\n memcpy(");
+                            self->body_out.push_str(name.as_str_const());
+                            self->body_out.push_str(", ");
+
+                            var expr = self->emit_expr(&rhs);
+                            self->body_out.push_str(expr.as_str_const());
+                            expr.free();
+
+                            self->body_out.push_str(", sizeof(");
+                            var size_name = self->types.type_name(&ty);
+                            self->body_out.push_str(size_name.as_str_const());
+                            size_name.free();
+                            self->body_out.push_str("))");
+                        } else {
+                            self->body_out.push_str(" = ");
+
+                            switch (rhs.kind) {
+                                case .Array(array) => {
+                                    var braces = self->emit_array_braces(&array);
+                                    self->body_out.push_str(braces.as_str_const());
+                                    braces.free();
+                                }
+                                else => {
+                                    var expr = self->emit_expr(&rhs);
+
+                                    if (reinterpret_aggregate) {
+                                        var cast_name = self->types.type_name(&ty);
+                                        self->body_out.push_str("*((");
+                                        self->body_out.push_str(cast_name.as_str_const());
+                                        self->body_out.push_str(" *)&(");
+                                        self->body_out.push_str(expr.as_str_const());
+                                        self->body_out.push_str("))");
+                                        cast_name.free();
+                                    } else {
+                                        var dest_128 = self->int128_kind_of(&ty);
+                                        var src_128 = self->expr_int128_kind(&rhs);
+
+                                        if (dest_128.is_some() && !(src_128.is_some() && src_128.unwrap() == dest_128.unwrap())) {
+                                            var coerce = self->coerce_to_int128(&rhs, expr.as_str_const(), dest_128.unwrap());
+                                            self->body_out.push_str(coerce.as_str_const());
+                                            coerce.free();
+                                        } else {
+                                            self->body_out.push_str(expr.as_str_const());
+                                        }
+                                    }
+
+                                    expr.free();
+                                }
                             }
                         }
                     }
@@ -2230,14 +2360,12 @@ pub struct Emitter {
             suffix += 1;
         }
 
-        var type_name = self->types.type_name(ty);
+        var decl = self->types.build_decl(ty, c_name.as_str_const());
 
         self->body_out.push(' ');
-        self->body_out.push_str(type_name.as_str_const());
-        self->body_out.push(' ');
-        self->body_out.push_str(c_name.as_str_const());
+        self->body_out.push_str(decl.as_str_const());
         self->body_out.push_str(" = {0};\n");
-        type_name.free();
+        decl.free();
 
         self->switch_binding_owned.push(c_name);
         self->switch_binding_names.insert(var_decl_id, c_name);
@@ -5038,15 +5166,27 @@ pub struct Emitter {
         self->protos_out.push_str(sig.as_str_const());
         self->protos_out.push_str(";\n");
 
-        self->pending_out.push_str("static ");
-        self->pending_out.push_str(sig.as_str_const());
-        self->pending_out.push_str(" { ");
+        // Build the definition in a temporary: nested lambdas are hoisted
+        // to `lambda_defs` while the body is emitted, so the enclosing
+        // definition must be appended only after its body is complete.
+        var definition = String.new(self->allocator);
+        definition.push_str("static ");
+        definition.push_str(sig.as_str_const());
+        definition.push_str(" { ");
         
         const parent = self->body_out;
         self->body_out = String.new(self->allocator);
 
         var saved_scope = self->fn_scope_names;
         self->fn_scope_names = Vec.new(self->allocator);
+
+        // A lambda is a separate function: defers and loop marks of the
+        // enclosing function must not leak into (or be emitted inside) it.
+        var saved_defer_scopes = self->defer_scopes;
+        self->defer_scopes = Vec.new(self->allocator);
+
+        var saved_loop_marks = self->loop_marks;
+        self->loop_marks = Vec.new(self->allocator);
 
         var saved_func_name = self->cur_func_name;
         var saved_method_name = self->cur_method_name;
@@ -5076,8 +5216,14 @@ pub struct Emitter {
         self->fn_scope_names.free();
         self->fn_scope_names = saved_scope;
 
-        self->pending_out.push_str(self->body_out.as_str_const());
-        self->pending_out.push_str("} \n");
+        self->defer_scopes = saved_defer_scopes;
+        self->loop_marks = saved_loop_marks;
+
+        definition.push_str(self->body_out.as_str_const());
+        definition.push_str("} \n");
+
+        self->lambda_defs.push_str(definition.as_str_const());
+        definition.free();
 
         self->body_out.free();
         self->body_out = parent;
@@ -5768,7 +5914,7 @@ pub struct Emitter {
                 var str = String.new(self->allocator);
                 var writer: Writer = dynamic StringWriter.new(&str);
 
-                format_float64(writer, value);
+                format_float64_precise(writer, value);
 
                 if (!str_contains_char(str.as_str_const(), '.') &&
                     !str_contains_char(str.as_str_const(), 'e') &&
@@ -6017,6 +6163,7 @@ pub struct Emitter {
         self->protos_out.free();
         self->global_out.free();
         self->pending_out.free();
+        self->lambda_defs.free();
         self->body_out.free();
         self->ctor_out.free();
         self->libc_protos.free();

@@ -462,17 +462,17 @@ struct DumpContext {
     ) {
         for (var i: usize = 0; i < trees->len(); i += 1) {
             const tree = trees->get_const(i).unwrap();
-            self->dump_tree_stmts_category(&tree->body, category);
+            self->dump_tree_stmts_category(tree, category);
         }
     }
 
     fn dump_tree_stmts_category(
         self: Self*, 
-        stmts: const Vec<cir::Stmt>*, 
+        tree: const cir::ProgramTree*, 
         category: usize
     ) {
-        for (var i: usize = 0; i < stmts->len(); i += 1) {
-            const stmt = stmts->get_const(i).unwrap();
+        for (var i: usize = 0; i < tree->body_len(); i += 1) {
+            const stmt = tree->body_get(i);
 
             if (self->decl_category(stmt) == category) {
                 self->dump_stmt(stmt, 0);

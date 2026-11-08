@@ -84,6 +84,7 @@ pub fn main(argc: c_int, argv: c_char**) {
         *cli::Opt.new(allocator, "z")
         .short('z')
         ->arg(.Str)
+        ->policy(.Last)
         ->help("Additional C source/object input to link (repeatable)")
     );
 
@@ -91,6 +92,7 @@ pub fn main(argc: c_int, argv: c_char**) {
         *cli::Opt.new(allocator, "L")
         .short('L')
         ->arg(.Str)
+        ->policy(.Last)
         ->help("Library search path (repeatable)")
     );
 
@@ -98,6 +100,7 @@ pub fn main(argc: c_int, argv: c_char**) {
         *cli::Opt.new(allocator, "l")
         .short('l')
         ->arg(.Str)
+        ->policy(.Last)
         ->help("Library to link against (repeatable)")
     );
 

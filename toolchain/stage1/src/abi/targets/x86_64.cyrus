@@ -56,7 +56,10 @@ pub struct X86_64 : TargetABI {
         return MIN_ABI_STACK_ALIGN;
     }
 
-    pub fn apply_variadic_argument_promote(self: Self*, ty: const cir::SemaType*) cir::SemaType {
+    pub fn apply_variadic_argument_promote(
+        self: Self*, 
+        ty: const cir::SemaType*
+    ) cir::SemaType {
         const inner = ty->const_inner();
 
         switch (*inner) {

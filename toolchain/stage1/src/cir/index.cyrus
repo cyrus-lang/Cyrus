@@ -13,8 +13,6 @@ import parser::ast;
 /* ************* Identifiers ************* */
 
 pub type InstId = usize;
-pub type ExprId = usize;
-pub type StmtId = usize;
 pub type BlockId = usize;
 pub type ScopeId = usize;
 
@@ -3489,11 +3487,122 @@ pub struct VarDecl {
     pub span: Span,
 }
 
+/// Compact handle to an expression node.
+///
+/// Reserved for the expression arena that will replace the remaining
+/// pointer-linked `Expr` payloads; `valid` makes "no expression" explicit.
+pub struct ExprId {
+    pub index: uint32,
+    pub valid: bool,
+
+    pub fn new(index: usize) ExprId {
+        return Self { index: @cast(uint32, index), valid: true };
+    }
+
+    pub fn invalid() ExprId {
+        return Self { index: 0, valid: false };
+    }
+
+    pub fn as_usize(self: const Self*) usize {
+        return @cast(usize, self->index);
+    }
+}
+
+/// Compact handle to a statement stored in a `StmtArena`.
+///
+/// IDs are arena-scoped: they are only meaningful against the arena that
+/// produced them (each `ProgramTree` owns one arena). `valid` makes the
+/// "no statement" case explicit instead of overloading an index.
+pub struct StmtId {
+    pub index: uint32,
+    pub valid: bool,
+
+    pub fn new(index: usize) StmtId {
+        return Self { index: @cast(uint32, index), valid: true };
+    }
+
+    pub fn invalid() StmtId {
+        return Self { index: 0, valid: false };
+    }
+
+    pub fn as_usize(self: const Self*) usize {
+        return @cast(usize, self->index);
+    }
+}
+
+/// Half-open range `[start, start + len)` of statement IDs.
+pub struct StmtList {
+    pub start: uint32,
+    pub len: uint32,
+}
+
+/// Arena owning every statement of one `ProgramTree`.
+///
+/// Statements are addressed by `StmtId`; no owning raw pointer into the
+/// (movable) backing storage escapes this type.
+pub struct StmtArena {
+    allocator: Allocator,
+    items: Vec<Stmt>,
+
+    pub fn new(allocator: Allocator) Self {
+        return Self { allocator, items: Vec.new(allocator) };
+    }
+
+    pub fn alloc(self: Self*, stmt: Stmt) StmtId {
+        const index = self->items.len();
+
+        // IDs are u32: fail loudly rather than silently wrapping.
+        @assert(
+            @cast(uint64, index) < 4294967296,
+            "statement arena capacity exceeded"
+        );
+
+        self->items.push(stmt);
+        return StmtId.new(index);
+    }
+
+    pub fn get(self: const Self*, id: StmtId) const Stmt* {
+        @assert(id.valid, "invalid StmtId");
+        return self->items.get_const(id.as_usize()).unwrap();
+    }
+
+    pub fn get_mut(self: Self*, id: StmtId) Stmt* {
+        @assert(id.valid, "invalid StmtId");
+        return self->items.get(id.as_usize()).unwrap();
+    }
+
+    pub fn len(self: const Self*) usize {
+        return self->items.len();
+    }
+}
+
+/// One module's lowered program.
+///
+/// The root statement list lives in `arena` and is referenced by a
+/// `StmtList`; the tree itself holds no owning statement pointers.
 pub struct ProgramTree {
     pub file_id: SourceId,
-    pub body: Vec<Stmt>,
+    pub body: StmtList,
+    pub arena: StmtArena,
     pub file_name: String,
     pub module_name: String,
+
+    [[inline]]
+    pub fn body_len(self: const Self*) usize {
+        return @cast(usize, self->body.len);
+    }
+
+    pub fn body_get(self: const Self*, index: usize) const Stmt* {
+        return self->arena.get(
+            StmtId.new(@cast(usize, self->body.start) + index)
+        );
+    }
+
+    pub fn body_get_mut(self: Self*, index: usize) Stmt* {
+        return self->arena.get_mut(
+            StmtId.new(@cast(usize, self->body.start) + index)
+        );
+    }
 }
 
 // FIXME: Move to Types Helpers

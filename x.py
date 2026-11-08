@@ -1069,6 +1069,20 @@ def build_stage1(cfg: Config, *, release: bool, extra_args: Sequence[str] = ()) 
             "--module-merge-mode=separate",
             "--disable-modulefs-cache",
         ]
+        
+    fcontext_asm = cfg.root / "lib" / "std" / "fcontext" / "asm"
+    fcontext_objects = [
+        fcontext_asm / "jump.o",
+        fcontext_asm / "make.o",
+        fcontext_asm / "ontop.o",
+    ]
+    missing = [p for p in fcontext_objects if not p.is_file()]
+    if missing:
+        raise SystemExit(
+            "error: missing fcontext objects: "
+            + ", ".join(str(p) for p in missing)
+        )
+    args += [f"-z={p}" for p in fcontext_objects]
 
     args += list(extra_args)
 

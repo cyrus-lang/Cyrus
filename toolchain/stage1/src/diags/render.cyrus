@@ -137,15 +137,15 @@ pub struct CompilerDiagRender {
 
         if (self->colorize) {
             switch (level) {
-                case .Error => colorize_fg(self->writer, .Red, "error: ");
                 case .Warning => colorize_fg(self->writer, .Yellow, "warning: ");
+                case .Error => colorize_fg(self->writer, .Red, "error: ");
                 case .Note => colorize_fg(self->writer, .Green, "note: ");
                 case .Help => colorize_fg(self->writer, .Blue, "help: ");
             }
         } else {
             switch (level) {
-                case .Error => self->writer.write("error: ");
                 case .Warning => self->writer.write("warning: ");
+                case .Error => self->writer.write("error: ");
                 case .Note => self->writer.write("note: ");
                 case .Help => self->writer.write("help: ");
             }

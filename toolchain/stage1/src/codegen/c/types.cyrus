@@ -538,6 +538,52 @@ pub struct TypeEmitter {
         }
     }
 
+    /// Forward-declares every named struct/union reachable from `ty`,
+    /// queueing their bodies for `drain_deferred()`.
+    ///
+    /// Used when an alias has to be emitted before the types it mentions
+    /// (see `ensure_typedef`), because a function-pointer alias only needs
+    /// the pointee's name, never its layout.
+    fn shell_named_types(self: Self*, ty: const cir::SemaType*) {
+        switch (*ty->const_inner()) {
+            case .Named(named) => {
+                if (named.type_args.is_empty()) {
+                    self->ensure_type_shell(&named.type_decl_id);
+                }
+            }
+
+            case .Pointer(inner) => {
+                self->shell_named_types(inner);
+            }
+
+            case .Const(inner) => {
+                self->shell_named_types(inner);
+            }
+
+            case .Array(array) => {
+                self->shell_named_types(array.element_type);
+            }
+
+            case .Tuple(tuple) => {
+                for (var i: usize = 0; i < tuple.elements.len(); i += 1) {
+                    const element = tuple.elements.get_const(i).unwrap();
+                    self->shell_named_types(&element->ty);
+                }
+            }
+
+            case .FuncType(func) => {
+                self->shell_named_types(func.ret_type);
+
+                for (var i: usize = 0; i < func.params.list.len(); i += 1) {
+                    const param = func.params.list.get_const(i).unwrap();
+                    self->shell_named_types(param);
+                }
+            }
+
+            else => {}
+        }
+    }
+
     fn ensure_field_type(self: Self*, ty: const cir::SemaType*) {
         switch (*ty->const_inner()) {
             case .Pointer(inner) => {
@@ -1185,7 +1231,32 @@ pub struct TypeEmitter {
         self->decl_state.set(type_decl_id, .InProgress);
 
         const typedef_decl = self->tables->typedefs.get_const(typedef_decl_id).unwrap();
-        self->ensure_named(typedef_decl->ty);
+
+        switch (*typedef_decl->ty->const_inner()) {
+            case .Named(named) => {
+                var shelled = false;
+
+                switch (named.type_decl_id) {
+                    case .Struct | .Union => {
+                        if (named.type_args.is_empty()) {
+                            self->ensure_type_shell(&named.type_decl_id);
+                            shelled = true;
+                        }
+                    }
+                    else => {}
+                }
+
+                if (!shelled) {
+                    self->ensure_named(typedef_decl->ty);
+                }
+            }
+            case .FuncType => {
+                self->shell_named_types(typedef_decl->ty);
+            }
+            else => {
+                self->ensure_named(typedef_decl->ty);
+            }
+        }
 
         var c_name = self->typedef_c_name(typedef_decl_id);
 

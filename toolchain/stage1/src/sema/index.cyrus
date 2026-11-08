@@ -1,12 +1,78 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 The Cyrus Language
 
-import .::check{analyze_toplevel_stmts};
+import std::collections{Vec};
+import std::fiber{Fiber, FiberState};
+
+import .::check{
+    analyze_toplevel_headers,
+    analyze_toplevel_body_item,
+    BodyWorkItem,
+};
 import .::context{AnalyzerContext};
 
+/// Shared state handed to the body worker fiber.
+///
+/// Body analysis is **cooperative**, not parallel: a single worker owns the
+/// analyzer state, processes one function body at a time, and yields
+/// between bodies so the scheduler can observe progress and stop early.
+/// Bodies therefore never observe another body's partially-built
+/// environment, and diagnostics stay in a deterministic order.
+pub struct BodyScheduler {
+    pub context: AnalyzerContext*,
+    pub work: const Vec<BodyWorkItem>*,
+    pub next: usize,
+}
+
 pub fn trigger_analyzer(context: AnalyzerContext*) {
+    var work: Vec<BodyWorkItem> = Vec.new(context->allocator);
+    defer work.free();
+
+    // Stage B: top-level traversal for every reachable module. Signatures,
+    // symbols and globals are established here; function bodies are only
+    // recorded as work items.
     for (var i: usize = 0; i < context->trees.len(); i += 1) {
         var tree = context->trees.get(i).unwrap();
-        analyze_toplevel_stmts(context, &tree->body);
+        analyze_toplevel_headers(context, tree, i, &work);
+    }
+
+    // Stage C: scheduled body traversal.
+    run_body_work(context, &work);
+}
+
+fn run_body_work(context: AnalyzerContext*, work: const Vec<BodyWorkItem>*) {
+    if (work->len() == 0) {
+        return;
+    }
+
+    var scheduler = BodyScheduler { context, work, next: 0 };
+
+    switch (Fiber.create(body_worker, @cast(void*, &scheduler))) case .Value(var fiber) else {
+        @panic("failed to create analyzer body-scheduler fiber");
+    }
+    defer fiber->destroy();
+
+    while (true) {
+        const state = fiber->resume();
+
+        switch (state) {
+            case .Done => return;
+            case .Suspended => {}
+            else => return;
+        }
+    }
+}
+
+fn body_worker(fiber: Fiber*) {
+    var scheduler = @cast(BodyScheduler*, fiber->data);
+
+    while (scheduler->next < scheduler->work->len()) {
+        const item = scheduler->work->get_const(scheduler->next).unwrap();
+        scheduler->next += 1;
+
+        analyze_toplevel_body_item(scheduler->context, item->tree, item->stmt);
+
+        // Cooperative yield: the scheduler resumes us for the next body.
+        fiber->yield();
     }
 }
