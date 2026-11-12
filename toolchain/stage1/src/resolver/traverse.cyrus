@@ -4349,8 +4349,8 @@ fn is_builtin_active(profile: Profile, name: const uint8*) bool {
 
             if (builtin_spec.phase == .Resolver) {
                 switch (builtin_spec.kind) {
-                    case .Debug => return profile == .Debug;
                     case .Release => return profile == .Release;
+                    case .Debug => return profile == .Debug;
                     else => {}
                 }
             }

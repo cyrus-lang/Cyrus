@@ -1804,11 +1804,31 @@ pub struct ParserExprs {
             return .None;
         }
 
+        // Generic method call: `Type.method<T>(args)`
+        // 
+        // Only treat `<` as generic arguments when the tokens
+        // through the matching `>` and the token after it look
+        // like a generic instantiation, so ordinary `a < b` 
+        // comparisons are unaffected
+        var type_args = ast::ASTTypeArgs {
+            list: Vec.new(self->state->allocator)
+        };
+
+        if (self->state->is(.LessThan) && self->type_args_ahead()) {
+            switch (self->parse_type_args()) case .Some(parsed) else {
+                type_args.list.free();
+                return .None;
+            }
+
+            type_args = parsed;
+        }
+
         // Method call
         if (self->state->is(.LeftParen)) {
             self->state->next();
 
             switch (self->parse_expr_list(.RightParen)) case .Some(args) else {
+                type_args.list.free();
                 return .None;
             }
 
@@ -1816,14 +1836,16 @@ pub struct ParserExprs {
                 operand: lhs,
                 method_name: name,
                 args,
-                type_args: ast::ASTTypeArgs {
-                    list: Vec.new(self->state->allocator)
-                },
+                type_args,
                 is_thin_arrow,
                 span: start.merge(self->state->current_span()),
             };
             return .Some(self->create_expr(.MethodCall(node)));
         }
+
+        // Not a method call
+        // (prevent memory leak)
+        type_args.list.free();
 
         if (!is_thin_arrow && self->state->is(.LeftBrace)) {
             self->state->next();

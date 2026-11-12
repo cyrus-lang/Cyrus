@@ -173,8 +173,8 @@ pub struct FileWriter : Writer {
 
     pub fn writeln(self: Self*, data: const uint8*) IOError {
         switch (self->write_all(data)) {
-            case .Value(_) => {}
-            case .Error(_) => return .Error(());
+            case .Value => {}
+            case .Error => return .Error(());
         }
 
         return self->write_char('\n');

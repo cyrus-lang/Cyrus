@@ -14,6 +14,7 @@ import sema::context{AnalyzerContext};
 import .::lexical{LexicalContext};
 import .::index{CompilerContext};
 import sema{trigger_analyzer};
+import tokens{SourceTokens};
 import resolver{Resolver};
 import cir::dump;
 import cir;
@@ -26,7 +27,8 @@ pub struct AnalysisContext {
     pub arena: ArenaAllocator,
     pub lexical: LexicalContext*,
     pub resolver: Resolver*,
-    
+    owned_source_tokens: Vec<SourceTokens>,
+
     pub fn new(
         context: CompilerContext*,
         opts: const ResolverOptions*,
@@ -37,7 +39,14 @@ pub struct AnalysisContext {
         const lexical = alloc_init(allocator, LexicalContext.new(context));
         const resolver = alloc_init(allocator, Resolver.new(allocator, lexical, opts));
 
-        return Self { context, opts, arena, lexical, resolver };
+        return Self {
+            context,
+            opts,
+            arena,
+            lexical,
+            resolver,
+            owned_source_tokens: Vec.new(allocator),
+        };
     }
 
     pub fn analyze_source(
@@ -53,14 +62,16 @@ pub struct AnalysisContext {
         )) case .Value(var source_tokens) else {
             return .Error(());
         }
-        defer source_tokens.free();
 
         switch (self->lexical->parse_source(
             source_tokens
         )) case .Value(var program) else {
+            source_tokens.free();
             return .Error(());
         }
         defer program.free();
+
+        self->owned_source_tokens.push(source_tokens);
 
         self->resolver->resolve_entry(
             source_tokens.source_id, 
@@ -106,17 +117,19 @@ pub struct AnalysisContext {
             }
             return 1;
         }
-        defer source_tokens.free();
 
         switch (self->lexical->parse_source(
             source_tokens
         )) case .Value(var program) else {
+            source_tokens.free();
             if (!self->context->dctx.has_errors()) {
                 self->resolver->dump_symbols();
             }
             return 1;
         }
         defer program.free();
+
+        self->owned_source_tokens.push(source_tokens);
 
         self->resolver->resolve_entry(
             source_tokens.source_id, 
@@ -158,6 +171,15 @@ pub struct AnalysisContext {
         self->resolver->free();
         allocator.free(self->resolver);
         allocator.free(self->lexical);
+
+        for (var i: usize = 0; i < self->owned_source_tokens.len(); i += 1) {
+            const tokens = self->owned_source_tokens.get(i).unwrap();
+            tokens->free();
+        }
+
+        self->owned_source_tokens.free();
+
+        self->context->dctx.free();
 
         self->arena.destroy();
     }

@@ -17,18 +17,14 @@ import .::tcc;
 pub enum Backend {
     LLVM
     C,
-}
 
-pub fn backend_from_name(name: const uint8*) Option<Backend> {
-    if (name == "c") {
-        return .Some(.C);
+    pub fn from_str(name: const uint8*) Option<Self> {
+        switch (name) {
+            case "llvm" => return .Some(.LLVM);
+            case "c" => return .Some(.C);
+            else => return .None;
+        }
     }
-
-    if (name == "llvm") {
-        return .Some(.LLVM);
-    }
-
-    return .None;
 }
 
 pub struct CodegenContext {

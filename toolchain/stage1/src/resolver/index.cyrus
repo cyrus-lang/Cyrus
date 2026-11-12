@@ -90,6 +90,7 @@ pub struct Resolver {
     pub fn free(self: Self*) {
         for (var i: usize = 0; i < self->source_programs.len(); i += 1) {
             var file = self->source_programs.get(i).unwrap();
+            
             file->absolute_path.free();
             file->tokens.free();
             file->program->free();
@@ -118,8 +119,12 @@ pub struct Resolver {
         file_path: const uint8*,
         program: ASTProgram*
     ) {
-        // A. Module discovery. Parses every reachable module once and
-        // records the import graph; declarations and bodies are untouched.
+        // A. Module discovery 
+        //
+        // Parses every reachable module once and
+        // records the import graph;
+        // declarations and bodies 
+        // are untouched
         var graph = ModuleGraph.discover(
             self->allocator,
             &self->lexical->context->dctx,
@@ -135,28 +140,28 @@ pub struct Resolver {
             return;
         }
 
-        // B. Create the module symbols in discovery order. A module is
-        // always discovered before the modules it imports, so the parent
-        // scope exists by the time an edge is processed.
-        self->create_module_symbols(&graph);
+        // B. Create the entry module symbol
+        //
+        // Imported modules get theirs when their
+        // import edge is processed below
+        self->create_entry_module_symbol(&graph);
 
         if (self->lexical->context->dctx.has_errors()) {
             return;
         }
 
-        // C. Top-level traversal in post-order: dependencies first, so the
-        // declarations and signatures a module needs already exist.
-        for (var i: usize = 0; i < graph.order.len(); i += 1) {
-            const index = graph.order.get_owned(i).unwrap();
+        // C. Resolve modules recursively in import order
+        var resolved: Vec<bool> = Vec.new(self->allocator);
+        defer resolved.free();
 
-            if (!self->resolve_module_toplevel(&graph, index)) {
-                return;
-            }
+        for (var i: usize = 0; i < graph.nodes.len(); i += 1) {
+            resolved.push(false);
         }
 
-        // Keep discovered modules alive for the rest of compilation, the
-        // same lifetime the old `SourceProgram` list had: lowered nodes may
-        // still reference token/source storage until codegen finishes.
+        if (!self->resolve_module_recursive(&graph, 0, &resolved)) {
+            return;
+        }
+
         self->adopt_discovered_modules(&graph);
     }
 
@@ -173,7 +178,7 @@ pub struct Resolver {
             var tokens: SourceTokens;
 
             switch (node->tokens) {
-                case .Some(var owned_tokens) => tokens = owned_tokens;
+                case .Some(owned_tokens) => tokens = owned_tokens;
                 case .None => continue;
             }
 
@@ -200,7 +205,7 @@ pub struct Resolver {
         );
     }
 
-    fn create_module_symbols(self: Self*, graph: ModuleGraph*) {
+    fn create_entry_module_symbol(self: Self*, graph: ModuleGraph*) {
         const allocator = self->allocator;
         const entry = graph->nodes.get_const(0).unwrap();
 
@@ -224,62 +229,30 @@ pub struct Resolver {
         });
 
         graph->nodes.get(0).unwrap()->symbol = .Some(entry_symbol_id);
-
-        for (var i: usize = 0; i < graph->nodes.len(); i += 1) {
-            const node = graph->nodes.get_const(i).unwrap();
-
-            var parent_symbol: usize = 0;
-
-            switch (node->symbol) {
-                case .Some(symbol) => parent_symbol = symbol;
-                case .None => continue;
-            }
-
-            for (var e: usize = 0; e < node->edges.len(); e += 1) {
-                const edge = node->edges.get_const(e).unwrap();
-                const import_ast_node = node->program->nodes.get_const(edge->import_node).unwrap();
-
-                switch (*import_ast_node) {
-                    case .Import(import_) => {
-                        const target_source_id = graph->nodes
-                            .get_const(edge->target).unwrap()->source_id;
-
-                        const segment = last_sub_module_name(allocator, &import_.segments);
-
-                        const real_symbol_id = modules::get_or_create_module_symbol(
-                            &self->global_symbols,
-                            self->opts,
-                            &self->module_symbols,
-                            parent_symbol,
-                            target_source_id,
-                            &edge->resolved,
-                            segment.as_str_const()
-                        );
-
-                        segment.free();
-
-                        const concrete = self->global_symbols
-                            .resolve_concrete_scope_id(real_symbol_id);
-
-                        const target_node = graph->nodes.get(edge->target).unwrap();
-
-                        switch (target_node->symbol) {
-                            case .None => target_node->symbol = .Some(concrete);
-                            else => {}
-                        }
-                    }
-                    else => {}
-                }
-            }
-        }
     }
 
-    fn resolve_module_toplevel(
+    fn resolve_module_recursive(
         self: Self*,
-        graph: const ModuleGraph*,
-        index: usize
+        graph: ModuleGraph*,
+        index: usize,
+        resolved: Vec<bool>*
     ) bool {
         const allocator = self->allocator;
+
+        switch (resolved->get_const(index)) {
+            case .Some(flag) => {
+                if (*flag) {
+                    return true;
+                }
+            }
+            else => return false;
+        }
+
+        switch (resolved->get(index)) {
+            case .Some(flag) => *flag = true;
+            else => return false;
+        }
+
         const node = graph->nodes.get_const(index).unwrap();
 
         var module_symbol_id: usize = 0;
@@ -289,27 +262,59 @@ pub struct Resolver {
             case .None => return false;
         }
 
-        // Imports first: binding them installs the proxied symbols that the
-        // module's own declarations and bodies reference.
         for (var e: usize = 0; e < node->edges.len(); e += 1) {
             const edge = node->edges.get_const(e).unwrap();
-            const import_ast_node = node->program->nodes.get_const(edge->import_node).unwrap();
+
+            const import_ast_node = 
+                node->
+                program->
+                nodes.get_const(edge->import_node).unwrap();
 
             switch (*import_ast_node) {
                 case .Import(import_) => {
-                    const target = graph->nodes.get_const(edge->target).unwrap();
+                    const target_source_id = graph->nodes
+                        .get_const(edge->target).unwrap()->source_id;
 
-                    var target_symbol: usize = 0;
+                    const segment = last_sub_module_name(allocator, &import_.segments);
 
-                    switch (target->symbol) {
-                        case .Some(symbol) => target_symbol = symbol;
-                        case .None => return false;
+                    const real_symbol_id = modules::get_or_create_module_symbol(
+                        &self->global_symbols,
+                        self->opts,
+                        &self->module_symbols,
+                        module_symbol_id,
+                        target_source_id,
+                        &edge->resolved,
+                        segment.as_str_const()
+                    );
+
+                    segment.free();
+
+                    const concrete = self->global_symbols
+                        .resolve_concrete_scope_id(real_symbol_id);
+
+                    const target_node = graph->nodes.get_const(edge->target).unwrap();
+
+                    switch (target_node->symbol) {
+                        case .None => {
+                            const node = graph->nodes.get(edge->target).unwrap();
+                            
+                            node->symbol = .Some(concrete);
+                        }
+                        else => {}
+                    }
+
+                    if (!self->resolve_module_recursive(
+                        graph,
+                        edge->target,
+                        resolved
+                    )) {
+                        return false;
                     }
 
                     if (!self->bind_resolved_import(
                         module_symbol_id,
                         &import_,
-                        target_symbol,
+                        concrete,
                         edge->resolved.consumed_segments
                     )) {
                         return false;
@@ -381,8 +386,8 @@ pub struct Resolver {
         });
     }
 
-    /// Binds an import whose module has already been discovered by the
-    /// graph. No filesystem work or recursion happens here.
+    /// Binds an import whose module has
+    /// already been discovered by the graph.
     fn bind_resolved_import(
         self: Self*,
         parent_scope_id: SymbolId,

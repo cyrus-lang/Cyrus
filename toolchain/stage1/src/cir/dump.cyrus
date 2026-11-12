@@ -472,7 +472,7 @@ struct DumpContext {
         category: usize
     ) {
         for (var i: usize = 0; i < tree->body_len(); i += 1) {
-            const stmt = tree->body_get(i);
+            const stmt = tree->body_get_const(i);
 
             if (self->decl_category(stmt) == category) {
                 self->dump_stmt(stmt, 0);
